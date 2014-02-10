@@ -1,0 +1,18 @@
+ElmerGUI GPL Exception v. 1.0
+=============================
+
+Additional rights granted by the copyright holder, beyond GPL version 2.
+-------------------------------------------------------------------------
+
+As an exception to the conditions of Gnu Public Licence version 2 (GPL-2),
+CSC - IT Center for Science Ltd., the copyright holder of ElmerGUI, hereby
+grants you the right to link the source code within this directory against
+the library of
+
+"Open CASCADE" v. 6.3 by Open CASCADE S.A.S.
+
+You may also link ElmerGUI against any later versions of Open CASCADE,
+provided that the lincense of Open CASCADE permits such usage. The licence
+terms for the Open CASCADE library can be found from
+
+http://www.opencascade.org/

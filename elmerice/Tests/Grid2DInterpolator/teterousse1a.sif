@@ -1,0 +1,215 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Elmer/Ice Course 2011                 !!
+!!                                       !!
+!! Olivier Gagliardini  May 2011         !!
+!!                                       !!
+!! Tete Rousse Step 1a  - No cavity      !! 
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Updated April 2013 to use internal Mesh Extrusion
+! Updated with the Grid2dInterpolator solver
+
+check keywords warn
+echo on
+
+$Step = "step1a"
+
+! Define the parameter in MPa - a - m
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$rhow = 1000.0/(1.0e6*yearinsec^2) 
+! Prefactor from Cuffey and Paterson (2010) in MPa^{-3} a^{-1}
+$A1 = 2.89165e-13*yearinsec*1.0e18 
+$A2 = 2.42736e-02*yearinsec*1.0e18 
+$gravity = -9.81*yearinsec^2
+
+Header
+  Mesh DB "." "teterousse1a"
+End
+
+Constants
+  Water Density = Real $rhow
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  =  Cartesian 3D 
+  Simulation Type = Steady        
+
+  Extruded Mesh Levels = Integer 16
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "teterousse_$Step$.result"
+  Post File = "teterousse_$Step$.vtu"
+  max output level = 3   
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  Velocity 1 = Real 0.0 
+  Velocity 2 = Real 0.0 
+  Velocity 3 = Real 0.0 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi   
+
+  Viscosity Model = String "glen"
+  Viscosity = 1.0 ! Dummy but avoid warning output
+  Glen Exponent = Real 3.0
+
+  Limit Temperature = Real -10.0
+  Rate Factor 1 = Real $A1
+  Rate Factor 2 = Real $A2
+  Activation Energy 1 = Real 60e3
+  Activation Energy 2 = Real 115e3
+  Glen Enhancement Factor = Real 1.0
+  Critical Shear Rate = Real 1.0e-10
+
+  Constant Temperature = Real -1.0
+End
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1  
+  Exec Solver = Before Simulation
+  Equation = "Read DEM"
+  Procedure = "ElmerIceSolvers" "Grid2DInterpolator"
+
+  Variable 1 = String "ZsDEM"
+  Variable 1 data file = File "./PROG/DEM_TR_surf.dat"
+  Variable 1 x0 = REal 947700.0d0                 
+  Variable 1 y0 = REal 2104850.0d0                 
+  Variable 1 lx = REal 800.0                   
+  Variable 1 ly = REal 350.0                  
+  Variable 1 Nx = Integer 268               
+  Variable 1 Ny = Integer 118               
+
+  Variable 2 = String "bedrockDEM"
+  Variable 2 data file = File "./PROG/DEM_TR_bed.dat"
+  Variable 2 x0 = REal 947700.0d0                 
+  Variable 2 y0 = REal 2104850.0d0                 
+  Variable 2 lx = REal 600.0                   
+  Variable 2 ly = REal 350.0                  
+  Variable 2 Nx = Integer 301              
+  Variable 2 Ny = Integer 176               
+End
+
+Solver 2  
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+  Mesh Velocity Variable = String "dSdt"
+  Mesh Update Variable = String "dS"
+  Mesh Velocity First Zero = Logical True
+End
+ 
+Solver 3
+  Equation = "Navier-Stokes"
+  
+  Stabilization Method = String Stabilized
+  Flow Model = Stokes
+
+  Exported Variable 1 = -dofs 1 "dSdt" 
+  Exported Variable 2 = -dofs 1 "dS" 
+  Exported Variable 3 = -dofs 1 "ZsDEM"
+  Exported Variable 4 = -dofs 1 "bedrockDEM"
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 5 
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+End
+
+
+Solver 4
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename =  "results.dat"
+  File Append = Logical False
+
+  Variable 1 = String "dS"
+  Operator 1 = String "int"
+  Variable 2 = String "dS"
+  Operator 2 = String "max"
+  Variable 3 = String "dS"
+  Operator 3 = String "min"
+
+  Variable 4 = String "ZsDEM"
+  Operator 4 = String "int"
+  Variable 5 = String "ZsDEM"
+  Operator 5 = String "max"
+  Variable 6 = String "ZsDEM"
+  Operator 6 = String "min"
+
+  Variable 7 = String "bedrockDEM"
+  Operator 7 = String "int"
+  Variable 8 = String "bedrockDEM"
+  Operator 8 = String "max"
+  Variable 9 = String "bedrockDEM"
+  Operator 9 = String "min"
+
+  Operator 10 = String "Cpu time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(4) = 1 2 3 4
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+! lateral side of the glacier 
+Boundary Condition 1
+  Target Boundaries = 1
+  Velocity 1 = real 0.0
+  Velocity 2 = real 0.0
+End
+
+! cavity roof and Bedrock 
+Boundary Condition 2
+  Bottom Surface = Equals bedrockDEM 
+
+! No sliding
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Velocity 3 = Real 0.0
+End
+
+! Upper Surface
+Boundary Condition 3
+  Top Surface = Variable ZsDEM, bedrockDEM
+    Real MATC "if (tx(0)>tx(1)+1.0) {tx(0)} else {tx(1)+1.0}"
+
+  Save Line = Logical True
+End

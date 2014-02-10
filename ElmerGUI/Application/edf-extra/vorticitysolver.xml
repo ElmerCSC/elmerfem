@@ -1,0 +1,31 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="VorticitySolver" >
+      <Name>Vorticity</Name>
+
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name > Procedure </Name>
+            <DefaultValue> "VorticitySolver" "VorticitySolver" </DefaultValue>
+         </Parameter>
+ 
+         <Parameter Widget="Edit">
+           <Name> Target Variable </Name>
+           <Whatis> The vector variable to apply the vorticity computation to. Default is Velocity. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+           <Name> Vorticity Coefficient </Name>
+           <Whatis> The name of the material parameter used to multiply the gradient in vorticity computation. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Constant Bulk Matrix </Name>
+           <Whatis> Reuse the same bulk matrix when returning to the same solver. </Whatis>
+         </Parameter>
+         
+       </Solver>
+
+   </PDE>
+</edf>

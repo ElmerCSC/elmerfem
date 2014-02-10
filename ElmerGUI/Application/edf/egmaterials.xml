@@ -1,0 +1,283 @@
+<!DOCTYPE egmaterials>
+<materiallibrary>
+  
+  <material name="Air (room temperature)" >
+    <parameter name="Density" >1.205</parameter>
+    <parameter name="Heat conductivity" >0.0257</parameter>
+    <parameter name="Heat capacity" >1005.0</parameter>
+    <parameter name="Heat expansion coeff." >3.43e-3</parameter>
+    <parameter name="Viscosity" >1.983e-5</parameter>
+    <parameter name="Turbulent Prandtl number" >0.713</parameter>
+    <parameter name="Sound speed" >343.0</parameter>
+    <parameter name="Relative Permittivity" >1.00059</parameter>
+  </material>
+
+  <material name="Water (room temperature)" >
+    <parameter name="Density" >998.3</parameter>
+    <parameter name="Heat conductivity" >0.58</parameter>
+    <parameter name="Heat capacity" >4183.0</parameter>
+    <parameter name="Heat expansion coeff." >0.207e-3</parameter>
+    <parameter name="Viscosity" >1.002e-3</parameter>
+    <parameter name="Turbulent Prandtl number" >7.01</parameter>
+    <parameter name="Sound speed" >1497.0</parameter>
+    <parameter name="Relative Permittivity" >80.1</parameter>
+  </material>
+
+  <material name="Glycerol (room temperature)" >
+    <parameter name="Density" >1261.0</parameter>
+    <parameter name="Heat conductivity" >0.28</parameter>
+    <parameter name="Heat capacity" >2400.0</parameter>
+    <parameter name="Heat expansion coeff." >0.610e-3</parameter>
+    <parameter name="Viscosity" >1.49</parameter>
+    <parameter name="Sound speed" >1904.0</parameter>
+    <parameter name="Relative Permittivity" >42.5</parameter>
+  </material>
+
+  <material name="Ethanol (room temperature)" >
+    <parameter name="Density" >789.0</parameter>
+    <parameter name="Heat conductivity" >0.171</parameter>
+    <parameter name="Heat capacity" >2440.0</parameter>
+    <parameter name="Heat expansion coeff." >0.25e-3</parameter>
+    <parameter name="Viscosity" >1.074e-3</parameter>
+    <parameter name="Sound speed" >1144.0</parameter>
+    <parameter name="Relative Permittivity" >24.3</parameter>
+  </material>
+
+  <material name="Oil, olive (25 C)" >
+    <parameter name="Density" >915.0</parameter>
+    <parameter name="Heat conductivity" >0.17</parameter>
+    <parameter name="Heat capacity" >1970.0</parameter>
+    <parameter name="Heat expansion coeff." >0.72e-3</parameter>
+    <parameter name="Viscosity" >0.081</parameter>
+    <parameter name="Sound speed" >1430.0</parameter>
+    <parameter name="Relative Permittivity" >3.1</parameter>
+  </material>
+
+
+  
+  <material name ="Aluminium (generic)" >
+    <parameter name="Density" >2700.0</parameter>
+    <parameter name="Youngs modulus" >70.0e9</parameter>
+    <parameter name="Poisson ratio" >0.35</parameter>
+    <parameter name="Shear modulus" >26.0e9</parameter>
+    <parameter name="Bulk modulus" >76.0e9</parameter>
+    <parameter name="Heat expansion coeff." >23.1e-6</parameter>
+    <parameter name="Heat conductivity" >237.0</parameter>
+    <parameter name="Heat capacity" >897.0</parameter>
+    <parameter name="Electric resistivity" >26.50e-9</parameter>
+    <parameter name="Electric conductivity" >37.73e6</parameter>
+    <parameter name="Sound speed" >5000.0</parameter>
+  </material>
+    
+  <material name="Steel (carbon - generic)">
+    <parameter name="Density" >7850.0</parameter>
+    <parameter name="Youngs modulus" >200.0e9</parameter>
+    <parameter name="Poisson ratio" >0.285</parameter>
+    <parameter name="Heat expansion coeff." >13.8e-6</parameter>
+    <parameter name="Heat conductivity" >44.8</parameter>
+    <parameter name="Heat capacity" >1265.0</parameter>
+    <parameter name="Electric resistivity" >690.0e-9</parameter>
+    <parameter name="Electric conductivity" >1.449e6</parameter>
+    <parameter name="Tensile strength" >1079.0e6</parameter>
+    <parameter name="Yield strength" >472.0e6</parameter>
+    <parameter name="Sound speed" >5100.0</parameter>
+  </material >
+  
+  <material name="Steel (alloy - generic)">
+    <parameter name="Density" >7850.0</parameter>
+    <parameter name="Youngs modulus" >200.0e9</parameter>
+    <parameter name="Poisson ratio" >0.285</parameter>
+    <parameter name="Heat expansion coeff." >12.0e-6</parameter>
+    <parameter name="Heat conductivity" >37.2</parameter>
+    <parameter name="Heat capacity" >976.0</parameter>
+    <parameter name="Electric resistivity" >731.0e-9</parameter>
+    <parameter name="Electric conductivity" >1.367e6</parameter>
+    <parameter name="Tensile strength" >1320.0e6</parameter>
+    <parameter name="Yield strength" >1080.0e6</parameter>
+    <parameter name="Sound speed" >5100.0</parameter>
+  </material >
+  
+  <material name="Steel (stainless - generic)">
+    <parameter name="Density" >7925.0</parameter>
+    <parameter name="Youngs modulus" >200.0e9</parameter>
+    <parameter name="Poisson ratio" >0.285</parameter>
+    <parameter name="Heat expansion coeff." >14.9e-6</parameter>
+    <parameter name="Heat conductivity" >24.0</parameter>
+    <parameter name="Heat capacity" >460.0</parameter>
+    <parameter name="Electric resistivity" >548.0e-9</parameter>
+    <parameter name="Electric conductivity" >1.824e6</parameter>
+    <parameter name="Tensile strength" >671.0e6</parameter>
+    <parameter name="Yield strength" >380.0e6</parameter>
+    <parameter name="Sound speed" >5100.0</parameter>
+  </material >
+
+  <material name ="Austenitic stainless steel (AK Steel 201)" >
+    <parameter name="Density" >7810.0</parameter>
+    <parameter name="Youngs modulus" >197.0e9</parameter>
+    <parameter name="Poisson ratio" >0.3</parameter>
+    <parameter name="Heat conductivity" >16.2</parameter>
+    <parameter name="Heat capacity" >500.0</parameter>
+    <parameter name="Heat expansion coeff." >15.7e-6</parameter>
+    <parameter name="Electric resistivity" >6.85e-7</parameter>
+    <parameter name="Electric conductivity" >14.60e3</parameter>
+    <parameter name="Magnetic permeability" >1.02</parameter>
+    <parameter name="Tensile strength" >379.0e6</parameter>
+  </material>
+
+  <material name="Copper (generic)" >
+    <parameter name="Density" >8960.0</parameter>
+    <parameter name="Youngs modulus" >115.0e9</parameter>
+    <parameter name="Poisson ratio" >0.34</parameter>
+    <parameter name="Shear modulus" >48.0e9</parameter>
+    <parameter name="Bulk modulus" >140.0e9</parameter>
+    <parameter name="Heat expansion coeff." >16.5e-6</parameter>
+    <parameter name="Heat conductivity" >401.0</parameter>
+    <parameter name="Heat capacity" >385.0</parameter>
+    <parameter name="Electric resistivity" >16.78e-9</parameter>
+    <parameter name="Electric conductivity" >59.59e6</parameter>
+    <parameter name="Sound speed" >3810.0</parameter>
+  </material>
+
+  <material name="Lead (generic)" >
+    <parameter name="Density" >11340.0</parameter>
+    <parameter name="Youngs modulus" >16.0e9</parameter>
+    <parameter name="Poisson ratio" >0.44</parameter>
+    <parameter name="Shear modulus" >5.6e9</parameter>
+    <parameter name="Bulk modulus" >46.0e9</parameter>
+    <parameter name="Heat expansion coeff." >28.9e-6</parameter>
+    <parameter name="Heat conductivity" >35.3</parameter>    
+	<parameter name="Heat capacity" >128.0</parameter>
+	<parameter name="Electric resistivity" >208.0e-9</parameter>
+    <parameter name="Electric conductivity" >4.808e6</parameter>
+    <parameter name="Sound speed" >1190.0</parameter>
+  </material>
+
+  <material name="Glass (borosilicate)" >
+    <parameter name="Density" >2235.0</parameter>
+    <parameter name="Heat expansion coeff." >3.5e-6</parameter>
+    <parameter name="Poisson ratio" >0.15</parameter>
+    <parameter name="Youngs modulus" >65.0e9</parameter>
+    <parameter name="Shear modulus" >28.2e9</parameter>
+    <parameter name="Heat conductivity" >1.14</parameter>
+    <parameter name="Heat capacity" >710.0</parameter>
+  </material>
+
+  <material name="Polycarbonate (generic)" >
+    <parameter name="Density" >1220.0</parameter>
+    <parameter name="Youngs modulus" >2.2e9</parameter>
+    <parameter name="Poisson ratio" >0.37</parameter>
+    <parameter name="Tensile strength" >60.0e6</parameter>
+    <parameter name="Heat expansion coeff." >67.0e-6</parameter>
+    <parameter name="Heat capacity" >1250.0</parameter>
+    <parameter name="Heat conductivity" >0.205</parameter>
+  </material>
+
+  <material name="Polyvinyl chloride (generic)" >
+    <parameter name="Density" >1380.0</parameter>
+    <parameter name="Youngs modulus" >3100.0e6</parameter>
+    <parameter name="Poisson ratio" >0.41</parameter>
+    <parameter name="Tensile strength" >65.0e6</parameter>
+    <parameter name="Heat expansion coeff." >80.0e-6</parameter>
+    <parameter name="Heat capacity" >900.0</parameter>
+    <parameter name="Heat conductivity" >0.16</parameter>
+  </material>
+
+  <material name="Gold (generic)" >
+    <parameter name="Density" >19300.0</parameter>
+    <parameter name="Youngs modulus" >78.0e9</parameter>    
+    <parameter name="Poisson ratio" >0.44</parameter>    
+    <parameter name="Shear modulus" >27.0e9</parameter>
+    <parameter name="Bulk modulus" >180.0e9</parameter>
+    <parameter name="Heat expansion coeff." >14.2e-6</parameter>
+    <parameter name="Heat conductivity" >318.0</parameter>
+    <parameter name="Heat capacity" >129.0</parameter>
+    <parameter name="Electric resistivity" >22.14e-9</parameter>
+    <parameter name="Electric conductivity" >45.17e6</parameter>
+    <parameter name="Sound speed" >2030.0</parameter>
+  </material>
+
+  <material name="Silver (generic)" >
+    <parameter name="Density" >10490.0</parameter>
+    <parameter name="Youngs modulus" >83.0e9</parameter>    
+    <parameter name="Poisson ratio" >0.37</parameter>    
+    <parameter name="Shear modulus" >30.0e9</parameter>
+    <parameter name="Bulk modulus" >100.0e9</parameter>
+    <parameter name="Heat expansion coeff." >18.9e-6</parameter>
+    <parameter name="Heat conductivity" >429.0</parameter>
+    <parameter name="Heat capacity" >235.0</parameter>
+    <parameter name="Electric resistivity" >15.87e-9</parameter>
+    <parameter name="Electric conductivity" >63.01e6</parameter>
+    <parameter name="Sound speed" >2680.0</parameter>
+  </material>
+
+  <material name="Platinum (generic)" >
+    <parameter name="Density" >21450.0</parameter>
+    <parameter name="Youngs modulus" >144.79e9</parameter>    
+    <parameter name="Poisson ratio" >0.38</parameter>    
+    <parameter name="Heat expansion coeff." >8.8e-6</parameter>
+    <parameter name="Heat conductivity" >71.6</parameter>
+    <parameter name="Heat capacity" >133.0</parameter>
+    <parameter name="Electric resistivity" >105.0e-9</parameter>
+    <parameter name="Electric conductivity" >9.523e6</parameter>
+    <parameter name="Sound speed" >2800.0</parameter>
+  </material>
+
+  <material name="Iron (generic)" >
+    <parameter name="Density" >7870.0</parameter>
+    <parameter name="Youngs modulus" >193.053e9</parameter>    
+    <parameter name="Poisson ratio" >0.29</parameter>    
+    <parameter name="Heat expansion coeff." >11.8e-6</parameter>
+    <parameter name="Heat conductivity" >80.2</parameter>
+    <parameter name="Heat capacity" >449.0</parameter>
+    <parameter name="Electric resistivity" >97.1e-9</parameter>
+    <parameter name="Electric conductivity" >10.30e6</parameter>
+    <parameter name="Sound speed" >5000.0</parameter>
+  </material>
+
+   <material name="Water (frozen in Celcius)" >
+     <parameter name="Density" >910.0</parameter>
+     <parameter name="Heat conductivity" >Variable Temperature; Real MATC "9.828*exp(-5.7E-03*(tx+273.15))"</parameter>
+     <parameter name="Heat capacity" >Variable Temperature; Real MATC "146.3+(7.253*(tx+273.15))"</parameter>
+     <parameter name="Viscosity Model" >Power law</parameter>
+     <parameter name="Viscosity Exponent" >$ (1.0/3.0)</parameter>
+     <parameter name="Critical Shear Rate" >1.0E-6</parameter>
+    <parameter name="Viscosity" >Variable Temperature; Real MATC "(2.0*3.0*1.916E03 * exp( -139.0E03/(8.314 *(tx+273.15))))^(-1.0/3.0)</parameter>
+   </material>
+
+  <material name="Silicon (solid)" >
+    <parameter name="Density" >2330.0</parameter>
+    <parameter name="Youngs modulus" >185.0e9</parameter>    
+    <parameter name="Poisson ratio" >0.28</parameter>    
+    <parameter name="Heat expansion coeff." >4.68e-6</parameter>
+    <parameter name="Heat conductivity" >Variable Temperature; Real; 0 156; 300 156; 550 72; 800 43; 1050 29; 1300 25; 1550 23; 1800 21; 3000 21; End</parameter>
+    <parameter name="Heat capacity" >555.8</parameter>
+    <parameter name="Emissivity" >0.7</parameter>
+    <parameter name="Electric resistivity" >1.0e3</parameter>
+    <parameter name="Electric conductivity" >1.0e-3</parameter>
+    <parameter name="Sound speed" >8433.0</parameter>
+    <parameter name="Melting Point" >1683.0</parameter>
+    <parameter name="Latent heat" >1.8e6</parameter>
+  </material>
+  
+  <material name="Silicon (liquid)" >
+    <parameter name="Liquid" >Logical True</parameter>
+    <parameter name="Viscosity" >8.0e-4</parameter>
+    <parameter name="Density" >2570</parameter>
+    <parameter name="Heat conductivity" >50.0</parameter>
+    <parameter name="Emissivity" >0.3</parameter>
+    <parameter name="Heat expansion coeff." >1.08e-4</parameter>
+ </material>
+
+  <material name="Fused Silica (25 C)" >
+   <parameter name="Density" >2200.0</parameter>
+    <parameter name="Youngs modulus" >72.0e9</parameter>    
+    <parameter name="Poisson ratio" >0.17</parameter>    
+    <parameter name="Heat expansion coeff." >5.4e-7</parameter>
+    <parameter name="Heat conductivity" >1.46</parameter>
+    <parameter name="Heat capacity" >670.0</parameter>
+    <parameter name="Sound speed" >5900.0</parameter>
+    <parameter name="Relative Permittivity" >3.75</parameter>
+    <parameter name="Melting Point" >1956.0</parameter>
+  </material>
+ 
+</materiallibrary>

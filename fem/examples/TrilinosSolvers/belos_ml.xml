@@ -1,0 +1,60 @@
+<!-- this parameter file demonstrates how to use the AMG solver ML -->
+<!-- without an outer Krylov iteration. This is useful for block   -->
+<!-- preconditioning with an inexact inner solve. At the moment    -->
+<!-- you can only set the number of cycles, not a convergence      -->
+<!-- tolerance, as ML is handled internally as a preconditioner,   -->
+<!-- not a solver.                                                 -->
+<ParameterList name="ML stand-alone"><!--{-->
+
+  <Parameter name="Dump Matrix" type="bool" value="false"/>
+  <Parameter name="Dump Vectors" type="bool" value="false"/>
+
+  <Parameter name="Iterative Solver" type="string" value="GMRES"/>   
+     
+  <!-- parameters for the iterative solver (Belos) -->
+  <ParameterList name="Belos">
+    <Parameter name="Maximum Iterations" type="int" value="500"/>
+    <Parameter name="Block Size" type="int" value="1"/>
+    <Parameter name="Maximum Restarts" type="int" value="0"/>
+    <Parameter name="Convergence Tolerance" type="double" value="1.0e-10"/>
+    <Parameter name="Output Frequency" type="int" value="1"/>
+    <Parameter name="Show Maximum Residual Norm Only" type="bool" value="1"/>
+  </ParameterList>
+  
+     
+  <Parameter name="Preconditioner" type="string" value="ML"/>
+
+  <!-- these are some diagnostic tools in ML that can be useful: -->
+  <Parameter name="ML: Analyze Cycle" type="bool" value="false"/>
+  <Parameter name="ML: Test Smoothers" type="bool" value="false"/>
+
+  <ParameterList name="ML">
+
+    <Parameter name="ML output" type="int" value="0"/>
+    <Parameter name="ML validate parameter list" type="bool" value="true"/>
+    
+    <!-- number of unknowns per node -->
+    <Parameter name="PDE equations" type="int" value="1"/>
+
+    <!-- number of MG cycles -->
+    <Parameter name="cycle applications" type="int" value="1"/>
+
+    <!-- SA stands for 'smoothed aggregation', other options include -->
+    <!-- DD (two-level domain decomposition), DD-ML (3-level method),-->
+    <!-- NSSA (non-symmetric SA etc.                                 -->
+    <Parameter name="default values" type="string" value="SA"/>
+    
+    <Parameter name="max levels" type="int" value="7"/>
+    <Parameter name="aggregation: type" type="string" value="Uncoupled-MIS"/>
+    <Parameter name="prec type" type="string" value="MGV"/>
+    <Parameter name="coarse: type" type="string" value="Amesos-KLU"/>
+    <Parameter name="smoother: type" type="string" value="symmetric Gauss-Seidel"/>
+    <Parameter name="smoother: damping factor" type="double" value="0.5"/>
+    <Parameter name="smoother: pre or post" type="string" value="both"/>
+    <Parameter name="smoother: sweeps" type="int" value="1"/>
+    
+    <!-- etc., we stick to the default values for this example -->
+    
+  </ParameterList>
+
+</ParameterList><!--}-->

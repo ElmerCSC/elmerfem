@@ -1,0 +1,122 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 42
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0 
+!  Post File = case.ep
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial condition = 1
+End
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = -dofs 1 Temperature
+  Stabilize = True
+  Bubbles = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Symmetric = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+
+  Calculate Loads = Logical True
+  Calculate Weights = Logical True
+  Calculate Boundary Weights = Logical True
+End
+
+Solver 2
+  Equation = SaveLine
+  Procedure = File "SaveData" "SaveLine"
+  Filename = f.dat
+
+  Calculate Weights = Logical True
+End
+
+Solver 3 
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = g.dat
+  Show Norm = True
+  Show Norm Index = 1
+
+! These are two different ways of computing the line length of BC2 = 2.
+  Variable 1 = Save Line Weights
+  Operator 1 = boundary sum
+
+  Operator 2 = area
+End
+
+
+Equation 1
+  Name = "Heat"
+  Active Solvers = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "Bottom"
+
+  Save Line = Logical True
+  Save Scalars = Logical True
+  Heat Flux = 10.0  
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = "Top"
+  Temperature = 0.0
+
+  Save Line = Logical True
+End
+
+Boundary Condition 3
+  Target Boundaries(3) = 3 4 5
+  Name = "Adiabatic"
+End 
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=2\n");

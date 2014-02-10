@@ -1,0 +1,210 @@
+<ui version="4.0" >
+ <class>mainForm</class>
+ <widget class="QWidget" name="mainForm" >
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>558</width>
+    <height>554</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>Form</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout" >
+   <item>
+    <widget class="QGroupBox" name="envGroup" >
+     <property name="title" >
+      <string>Environment variables</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout" >
+      <item>
+       <layout class="QGridLayout" name="gridLayout" >
+        <item row="0" column="0" >
+         <widget class="QLabel" name="elmerHomeLabel" >
+          <property name="maximumSize" >
+           <size>
+            <width>160</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>ELMER_HOME</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1" >
+         <widget class="QLabel" name="elmerHomeResult" >
+          <property name="text" >
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" >
+         <widget class="QLabel" name="elmerGuiHomeLabel" >
+          <property name="text" >
+           <string>ELMERGUI_HOME</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1" >
+         <widget class="QLabel" name="elmerGuiHomeResult" >
+          <property name="text" >
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0" >
+         <widget class="QLabel" name="elmerPostHomeLabel" >
+          <property name="text" >
+           <string>ELMER_POST_HOME</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1" >
+         <widget class="QLabel" name="elmerPostHomeResult" >
+          <property name="text" >
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0" >
+         <widget class="QLabel" name="pathLabel" >
+          <property name="text" >
+           <string>PATH</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1" >
+         <widget class="QLabel" name="pathResult" >
+          <property name="text" >
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="0" >
+         <widget class="QLabel" name="ldLibraryPathLabel" >
+          <property name="text" >
+           <string>LD_LIBRARY_PATH</string>
+          </property>
+         </widget>
+        </item>
+        <item row="4" column="1" >
+         <widget class="QLabel" name="ldLibraryPathResult" >
+          <property name="text" >
+           <string/>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="exeGroup" >
+     <property name="title" >
+      <string>Executables</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout_2" >
+      <item>
+       <layout class="QGridLayout" name="gridLayout_2" >
+        <item row="0" column="0" >
+         <widget class="QLabel" name="elmerSolverLabel" >
+          <property name="maximumSize" >
+           <size>
+            <width>160</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>ElmerSolver</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1" >
+         <widget class="QLabel" name="elmerSolverResult" >
+          <property name="text" >
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" >
+         <widget class="QLabel" name="elmerGui" >
+          <property name="text" >
+           <string>ElmerGUI</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1" >
+         <widget class="QLabel" name="elmerGuiResult" >
+          <property name="text" >
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0" >
+         <widget class="QLabel" name="elmerPost" >
+          <property name="text" >
+           <string>ElmerPost</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1" >
+         <widget class="QLabel" name="elmerPostResult" >
+          <property name="text" >
+           <string/>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0" >
+         <widget class="QLabel" name="elmerGrid" >
+          <property name="text" >
+           <string>ElmerGrid</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1" >
+         <widget class="QLabel" name="elmerGridResult" >
+          <property name="text" >
+           <string/>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="reportGroup" >
+     <property name="title" >
+      <string>Report</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayout_3" >
+      <item>
+       <widget class="QTextEdit" name="verdict" >
+        <property name="minimumSize" >
+         <size>
+          <width>0</width>
+          <height>0</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="closeButton" >
+     <property name="text" >
+      <string>Close</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

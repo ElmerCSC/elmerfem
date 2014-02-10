@@ -1,0 +1,105 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "Mesh"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = "Cartesian 2D"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Solver Input File = "TempDist.sif"
+! Output File = "TempDist.dat"
+  Post File = "TempDist.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+! Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body1"
+
+  Body Force = 1
+  Equation = 1
+  Material = 2
+End
+
+Equation 1
+  Name = "Equation1"
+  Heat Equation = True
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 350
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1000
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+optimize bandwidth=false
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 0.0001
+End
+
+Material 2
+  Name = "Material2"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1000
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries(1) = 1
+  Heat Gap = Logical True
+  Heat Transfer Coefficient = 10
+End
+
+Boundary Condition 2
+  Target Boundaries(2) = 2 3
+  Temperature  = 100
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 4 5
+  Temperature  = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=112.51801847382308, EPS=1e-4\n" );
+
+!End Of File

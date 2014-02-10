@@ -1,0 +1,309 @@
+<ui version="4.0" >
+ <class>textDialog</class>
+ <widget class="QDialog" name="textDialog" >
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>400</width>
+    <height>312</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>Text</string>
+  </property>
+  <property name="windowIcon" >
+   <iconset resource="../ElmerGUI.qrc" >:/icons/Mesh3D.png</iconset>
+  </property>
+  <layout class="QVBoxLayout" >
+   <item>
+    <widget class="QGroupBox" name="messageGroup" >
+     <property name="title" >
+      <string>Message</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QLabel" name="textLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>50</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Text:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="textEdit" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Message</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QLabel" name="posXLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>50</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>PosX:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="posxEdit" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>10</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="posYLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>50</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>PosY:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="posyEdit" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>10</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QRadioButton" name="left" >
+          <property name="text" >
+           <string>Left justified</string>
+          </property>
+          <property name="checked" >
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="centered" >
+          <property name="text" >
+           <string>Centered</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="right" >
+          <property name="text" >
+           <string>Right justified</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="fontGroup" >
+     <property name="title" >
+      <string>Font</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QLabel" name="fontLabel" >
+          <property name="maximumSize" >
+           <size>
+            <width>50</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Type:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="comboBox" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <item>
+           <property name="text" >
+            <string>Arial</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label" >
+          <property name="maximumSize" >
+           <size>
+            <width>50</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Size:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="size" >
+          <property name="maximumSize" >
+           <size>
+            <width>75</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="minimum" >
+           <number>1</number>
+          </property>
+          <property name="value" >
+           <number>18</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QCheckBox" name="bold" >
+          <property name="text" >
+           <string>Bold</string>
+          </property>
+          <property name="checked" >
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="italic" >
+          <property name="text" >
+           <string>Italic</string>
+          </property>
+          <property name="checked" >
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QCheckBox" name="shadow" >
+          <property name="text" >
+           <string>Shadow</string>
+          </property>
+          <property name="checked" >
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer>
+     <property name="orientation" >
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" >
+      <size>
+       <width>20</width>
+       <height>16</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" >
+     <item>
+      <spacer>
+       <property name="orientation" >
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" >
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="applyButton" >
+       <property name="text" >
+        <string>Apply</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancelButton" >
+       <property name="text" >
+        <string>Cancel</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-close.png</iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="okButton" >
+       <property name="text" >
+        <string>Ok</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="../ElmerGUI.qrc" />
+ </resources>
+ <connections/>
+</ui>

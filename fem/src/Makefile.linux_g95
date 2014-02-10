@@ -1,0 +1,158 @@
+#/*****************************************************************************/
+# *
+# *  Elmer, A Finite Element Software for Multiphysical Problems
+# *
+# *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+# * 
+# *  This program is free software; you can redistribute it and/or
+# *  modify it under the terms of the GNU General Public License
+# *  as published by the Free Software Foundation; either version 2
+# *  of the License, or (at your option) any later version.
+# * 
+# *  This program is distributed in the hope that it will be useful,
+# *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+# *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# *  GNU General Public License for more details.
+# *
+# *  You should have received a copy of the GNU General Public License
+# *  along with this program (in file fem/GPL-2); if not, write to the 
+# *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+# *  Boston, MA 02110-1301, USA.
+# *
+# *****************************************************************************/
+#
+#/******************************************************************************
+# *
+# *  Makefile for ElmerSolver
+# *
+# ******************************************************************************
+# *
+# *  Authors: Juha Ruokolainen
+# *  Email:   Juha.Ruokolainen@csc.fi
+# *  Web:     http://www.csc.fi/elmer
+# *  Address: CSC - IT Center for Science Ltd.
+# *           Keilaranta 14
+# *           02101 Espoo, Finland 
+# *
+# *  Original Date: 26.9.1995
+# *
+# *****************************************************************************/
+LIB	= libfem.a
+MPI	= MPI_STUBS
+
+include make.bin
+all:	$(MPI) $(LIB) $(SOLVER) $(BINARIES) $(BINARIES_ODD)
+
+TMPDIR  = /tmp/
+LIBDIR	= $(ELMER_PREFIX)/lib
+BINDIR	= $(ELMER_PREFIX)/bin
+INCLDIR	= $(ELMER_PREFIX)/include
+
+OBJ_EXT	=	.o
+include make.inc
+
+#F90	=	g95 -g -I. -O0 -pg -fno-second-underscore
+F90	=	g95  -I. -O -fno-second-underscore
+F77	=	g95  -I. -O -fno-second-underscore
+CC	=	cc -I. -g
+
+RM	=	/bin/rm
+CP	=	/bin/cp
+CPP	=	/lib/cpp -P -C -DLINUX_PC -DUSE_SPARSE -DCYLSYM -DFULL_INDUCTION -DUSE_ARPACK
+
+LD	=	$(F90)
+
+.SUFFIXES: .f90
+
+.f90.o:
+	$(CPP) -I. -DDLLEXPORT="!"  $< > $(TMPDIR)/$<
+	$(F90) -c  $(TMPDIR)/$<
+	ar r $(LIB) $@
+#	$(RM) $(TMPDIR)/$<
+
+.f.o:
+	$(CPP) -I. -DDLLEXPORT="!" $< > $(TMPDIR)/$<
+	$(F77) -c $(TMPDIR)/$<
+	$(RM) $(TMPDIR)/$<
+	ar r $(LIB) $@
+
+.c.o:
+	$(CC) -c -O  $<
+	ar r $(LIB) $@
+
+$(MPI):	mpi_stubs.o mpif_linux.h
+	$(CP) mpif_linux.h mpif.h
+
+$(LIB):	$(OBJS) elements.def SOLVER.KEYWORDS
+	$(CP) libfem.a $(LIBDIR)
+	$(CP) elements.def $(LIBDIR)
+	$(CP) SOLVER.KEYWORDS $(LIBDIR)
+
+$(SOLVER): $(OBJS) $(LIB) Solver.o
+	$(F90) -export_dynamic -shared -o libSolver.so ElmerSolver.o -L. -L$(LIBDIR) \
+	-lfem -lhuti -lsparse -lumfpack -lamd -lmatc -leioF -lstdc++ -larpack -llapack -lblas -ldl -L/usr/local/lib  \
+	-L/tmp/g95/lib/gcc-lib/i686-pc-linux-gnu/3.5.0// -lf95 -lgcc -L/usr/lib/gcc-lib/i386-redhat-linux/3.2.2/ -lgcc -lg2c
+	$(F90) -o $(SOLVER) Solver.o -L. -lSolver  -L$(LIBDIR)
+	$(CP) *.mod $(INCLDIR)
+	chmod 660 $(INCLDIR)/*.mod
+	$(CP) libSolver.so $(LIBDIR)
+	$(CP) ElmerSolver $(SOLVER) $(BINDIR)
+	chmod 770 $(BINDIR)/$(SOLVER) $(LIBDIR)/libSolver.so
+
+
+Solver.o: Solver.f90 $(OBJS)
+	$(F90) -c  Solver.f90
+
+FlowSolve.o: FlowSolve.f90
+	$(CPP) -I. -DDLLEXPORT="!"  $< > $(TMPDIR)/$<
+	$(F90) -c -O0 $(TMPDIR)/$<
+	ar r $(LIB) $@
+#	$(RM) $(TMPDIR)/$<
+
+$(RESULT): $(OBJS) $(LIB) $(RESULT).o
+	$(F90) -o $(RESULT) $(RESULT).o -L. -lSolver -L/usr/local/lib
+	$(CP) $(RESULT) $(BINDIR)
+	chmod 770 $(BINDIR)/$(RESULT)
+
+$(BINARIES): $(OBJS)
+	for p in $(BINARIES); do \
+	    $(F90) -shared -o $${p} $${p}.f90 -L$(LIBDIR) -lSolver; \
+	    $(CP) $${p} $(BINDIR); \
+	done;
+
+ResultToResult.o: ResultToResult.f90 $(OBJS)
+	$(CPP) -I. -DDLLEXPORT="!"  $< > $(TMPDIR)/$<
+	$(F90) -c  $(TMPDIR)/$<
+
+$(REYNOLDS):	$(REYNOLDS).f90 $(OBJS)
+	$(F90) -c ReynoldsUtilities.f90
+	$(F90) -c $(REYNOLDS).f90
+	$(LD) -shared -o $(REYNOLDS) $(REYNOLDS).o ReynoldsUtilities.o -L$(LIBDIR) -lSolver
+	$(CP) $(REYNOLDS) $(BINDIR)
+
+$(MEMREYNO):	$(MEMREYNO).f90 $(OBJS)
+	$(F90) -c MEMUtilities.f90
+	$(F90) -c $(MEMREYNO).f90
+	$(LD) -shared -o $(MEMREYNO) $(MEMREYNO).o MEMUtilities.o -L$(LIBDIR) -lSolver
+	$(CP) $(MEMREYNO) $(BINDIR)
+
+$(MEMELSTAT):	$(MEMELSTAT).f90 $(OBJS)
+	$(F90) -c MEMUtilities.f90
+	$(F90) -c $(MEMELSTAT).f90
+	$(LD) -shared -o $(MEMELSTAT) $(MEMELSTAT).o MEMUtilities.o -L$(LIBDIR) -lSolver
+	$(CP) $(MEMELSTAT) $(BINDIR)
+
+$(HELMHOLTZ_BEM): $(HELMHOLTZ_BEM).f90 $(OBJS)
+	$(F90) -I. -cpp -shared -o $(HELMHOLTZ_BEM) $(HELMHOLTZ_BEM).f90 solve_cmplx.f -L$(LIBDIR) -lSolver -llapack3 -lblas3
+	$(CP) $(HELMHOLTZ_BEM) $(BINDIR)
+
+$(POISSON_BEM): $(POISSON_BEM).f90 $(OBJS)
+	$(F90) -I. -cpp -shared -o $(POISSON_BEM) $(POISSON_BEM).f90 solve_real.f -L$(LIBDIR) -lSolver -llapack3 -lblas3
+	$(CP) $(POISSON_BEM) $(BINDIR)
+
+$(SC2ELMER): $(SC2ELMER).c
+	$(CC) -o SC2Elmer SC2Elmer.c -lm
+	$(CP) $(SC2ELMER) $(BINDIR)
+
+clean:
+	$(RM) $(ALL) *.o *.mod

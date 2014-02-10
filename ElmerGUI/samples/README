@@ -1,0 +1,47 @@
+The sample files are located in format-specific directories.
+We would like to recognize the copyright to the following
+sample files:
+
+- sample input files of tetgen (http://tetgen.berlios.de/):
+
+   L.smesh
+   L.mtr
+   example.poly
+   sphere.stl
+   sphere.smesh
+   spine.smesh
+   sample.ply
+   twobodies.poly
+   sample.off
+   socket.off
+
+- sample input files of netgen (http://www.hpfem.jku.at/netgen/):
+
+   part1.stl
+   hinge.stl
+
+
+- The following models are provided at the AIM@SHAPE Shape Repository 
+  at http://shapes.aimatshape.net courtesy of
+
+  INRIA:
+   axle.step  
+   couplingdown.step  
+   fusee.stp  
+   pump_carter_sup.stp  
+   shaft.step  
+   stator.step
+
+  MPII:
+   elk.off
+
+  Pierre Alliez, INRIA:
+   joint.off
+
+
+The following stl files are a small selection of the 180 Wrapped Tubes
+computed by prof. Herbert Edelsbrunner at Duke University and located at
+http://www.cs.duke.edu/~edels/Tubes/. 
+The stl files are used in Elmer with permission from prof. Edelsbrunner
+
+  

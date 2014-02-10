@@ -1,0 +1,29 @@
+<ParameterList name="Belos + Ifpack settings"><!--{-->
+
+  <Parameter name="Dump Matrix" type="bool" value="false"/>
+  <Parameter name="Dump Vectors" type="bool" value="false"/>
+
+  <Parameter name="Iterative Solver" type="string" value="GMRES"/>   
+     
+  <!-- parameters for the iterative solver (Belos) -->
+  <ParameterList name="Belos">
+    <Parameter name="Maximum Iterations" type="int" value="500"/>
+    <Parameter name="Block Size" type="int" value="1"/>
+    <Parameter name="Maximum Restarts" type="int" value="0"/>
+    <Parameter name="Convergence Tolerance" type="double" value="1.0e-10"/>
+    <Parameter name="Output Frequency" type="int" value="1"/>
+    <Parameter name="Show Maximum Residual Norm Only" type="bool" value="1"/>
+  </ParameterList>
+
+  <!-- settings for overlapping Additive Schwarz preconditioning -->
+  <!-- with ILU0 per subdomain  `                                -->
+  <Parameter name="Preconditioner" type="string" value="Ifpack"/>
+  
+  <Parameter name="Ifpack Method" type="string" value="ILU"/>
+  <Parameter name="Ifpack Overlap" type="int" value="1"/>
+
+  <ParameterList name="Ifpack">
+    <Parameter name="fact: level-of-fill" type="int" value="0"/>  
+  </ParameterList>   
+
+</ParameterList><!--}-->

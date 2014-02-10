@@ -1,0 +1,164 @@
+check keywords warn
+
+echo on
+$namerun = "test"
+
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type ="Steady"
+
+  Output Intervals = 1
+
+  Steady State Max Iterations = 10
+  Steady State Min Iterations = 1
+  Output File = "$namerun".result"
+  Post File = "$namerun$.vtu"
+  max output level = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! the ice core (3d)
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! for ice core
+Initial Condition 1
+  SSAFlow 1 = Variable Coordinate 2
+      Real MATC "1.0+0.001*tx"
+  SSAFlow 2 = Real 2.0
+  SSAFlow 3 = Real 0.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! ice material properties in MPa - m - a system 
+Material 1
+  Density = Real 9.037214e-19 
+  Viscosity = Real 3.751874e-1
+  Viscosity Model = String "power law"
+  Viscosity Exponent = Real 0.333333333333333333 
+  Critical Shear Rate = Real 1.0e-15
+End
+
+
+Solver 1
+  Equation = "Flowdepth"
+   Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+   Variable = String "Depth"
+   Variable DOFs = 1
+   Linear System Solver = "Direct"
+   Linear System Direct Method = umfpack
+   ! this sets the direction
+   ! -1 is negative z-direction (upside down)
+   ! +1 is positive (downside up)
+   Gradient = Real -1.0E00
+  ! switch that to True, if you
+  ! want to have free surface gradients
+  ! to be computed
+  !------------------------------------
+  Calc Free Surface = Logical True
+  ! will contain the variable of the corresponding free surface position
+  !---------------------------------------------------------------------
+  Exported Variable 1 = -dofs 1 "FreeSurf"
+  FreeSurf Name = String "FreeSurf"
+End
+ 
+Solver 2
+   Equation = "FlowHeight"
+   Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+   Variable = -dofs 1 "Height"
+   Linear System Solver = "Direct"
+   Linear System Direct Method = umfpack
+   ! this sets the direction
+   ! -1 is negative z-direction (upside down)
+   ! +1 is positive (downside up)
+   Gradient = Real 1.0E00
+   Calc Free Surface = Logical False
+End
+
+Solver 3
+  Equation = "Integrated Velocity"
+  Procedure = File "ElmerIceSolvers" "IntegratedVelocity"
+  Variable = -nooutput -dofs 1 "varVelo"
+
+  Exported Variable 1 = -dofs 1  "Integrated Velocity"
+  
+  Exported Variable 2 = -dofs 3  "SSAFlow"
+ 
+  Flow Solver Name = String SSAFlow 
+  On Surface = Logical True
+  Compute Flux = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+End
+
+Solver 4
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical True
+
+  Variable 1 = String "Integrated Velocity"
+  Operator 1 = String "int"
+
+  Variable 2 = String "Integrated Velocity"
+  Operator 2 = String "max"
+
+  Variable 3 = String "Integrated Velocity"
+  Operator 3 = String "min" 
+
+  Operator 4 = String "cpu time"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (4)= 1 2 3 4
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!! BC  Bedrock + Shelf 
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Integrated Velocity 1 = Equals SSAFlow 1
+  Height = Real 0.0
+End
+
+!!! BC Lateral Ice-Shelf (air or sea contact)
+Boundary Condition 2
+  Target Boundaries = 2
+End
+
+!!! BC  Free surface Top
+Boundary Condition 3
+  Target Boundaries = 3 
+
+  Depth = Real 0.0
+! Integrated Velocity 1 = Equals SSAFlow 1
+End
+
+!!! Symetry axis
+Boundary Condition 4
+  Target Boundaries = 4
+End

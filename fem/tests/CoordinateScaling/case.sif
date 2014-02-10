@@ -1,0 +1,77 @@
+! assuming that initial coordinates are given in 'mm' scale them
+! by a factor 0.001 to obtain them in metres.
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian"
+  Coordinate Scaling = Real 0.001
+
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = case.ep
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+Body Force 1
+  Heat Source = 1.0
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End 
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Temperature = 0.0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=3.93779036434094704E-002\n");

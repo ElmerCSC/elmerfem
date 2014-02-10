@@ -1,0 +1,17 @@
+# vim: noexpandtab
+
+CC = @CC@
+CFLAGS = @CFLAGS@
+
+FC = @FC@
+FCFLAGS = @FCFLAGS@
+
+# Source directory seen from the point of view of the test directories
+SRC = ../../src
+
+PREFIX=@prefix@
+
+MODSEARCH_OPT = @modsearch_opt@
+
+distdir: clean
+	cp -r ./* $(distdir)/

@@ -1,0 +1,231 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>parallelDialog</class>
+ <widget class="QDialog" name="parallelDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>501</width>
+    <height>471</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Parallel settings</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout_6">
+   <item>
+    <widget class="QGroupBox" name="generalGroupBox">
+     <property name="title">
+      <string>General settings</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout">
+      <item>
+       <layout class="QHBoxLayout" name="horizontalLayout">
+        <item>
+         <widget class="QCheckBox" name="parallelActiveCheckBox">
+          <property name="text">
+           <string>Use parallel solver</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="nofProcessorsLabel">
+          <property name="text">
+           <string>Number of processes:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="nofProcessorsSpinBox">
+          <property name="maximumSize">
+           <size>
+            <width>86</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="minimum">
+           <number>2</number>
+          </property>
+          <property name="maximum">
+           <number>9999999</number>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="systemCommandGroupBox">
+     <property name="title">
+      <string>System command to launch the parallel solver</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
+       <layout class="QGridLayout" name="gridLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="executableLabel">
+          <property name="text">
+           <string>Executable:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="parallelExecLineEdit">
+          <property name="text">
+           <string>mpirun</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2">
+         <widget class="QPushButton" name="browseButton">
+          <property name="text">
+           <string>Browse</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="argumentsLabel">
+          <property name="text">
+           <string>Arguments:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="parallelArgsLineEdit">
+          <property name="text">
+           <string>-np %n ElmerSolver_mpi</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="domainDecompisitionGroupBox">
+     <property name="title">
+      <string>System commands for domain decomposition</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_3">
+      <item>
+       <layout class="QGridLayout" name="gridLayout_2">
+        <item row="0" column="0">
+         <widget class="QLabel" name="splitLabel">
+          <property name="text">
+           <string>Divide:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="divideLineEdit">
+          <property name="text">
+           <string>ElmerGrid 2 2 %msh -metis %n</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="fuseLabel">
+          <property name="text">
+           <string>Merge:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="QLineEdit" name="mergeLineEdit">
+          <property name="text">
+           <string>ElmerGrid 15 3 %ep -partjoin %n</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0" colspan="2">
+         <widget class="QCheckBox" name="skipPartitioningCheckBox">
+          <property name="text">
+           <string>Skip mesh partitioning</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="legendGroupBox">
+     <property name="title">
+      <string>Legend</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_5">
+      <item>
+       <layout class="QVBoxLayout" name="verticalLayout_4">
+        <item>
+         <widget class="QLabel" name="label">
+          <property name="text">
+           <string>%n is the number of processes (spinbox above)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_2">
+          <property name="text">
+           <string>%msh is the mesh directory (File -&gt; Load/Save...)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="label_3">
+          <property name="text">
+           <string>%ep is the post file name (Model -&gt; Setup...)</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout_2">
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="defaultsButton">
+       <property name="text">
+        <string>Defaults</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="okButton">
+       <property name="text">
+        <string>Accept</string>
+       </property>
+       <property name="icon">
+        <iconset resource="../ElmerGUI.qrc">
+         <normaloff>:/icons/dialog-ok-apply.png</normaloff>:/icons/dialog-ok-apply.png</iconset>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="../ElmerGUI.qrc"/>
+ </resources>
+ <connections/>
+</ui>

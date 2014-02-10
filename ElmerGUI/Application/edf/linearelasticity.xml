@@ -1,0 +1,494 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Linear Elasticity" >
+      <Name>Linear elasticity</Name>
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name> Procedure </Name>
+            <DefaultValue> "StressSolve" "StressSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" >
+            <Name> Variable </Name>
+            <DefaultValue> Displacement(cdim) </DefaultValue>
+         </Parameter>
+
+
+         <Parameter Widget="Label"> <Name> Additional Variables</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Exported Variable 1 </Name>
+           <Activate> /Linear elasticity/Solver/Exported Variable 2</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 2 </Name>
+           <Activate> /Linear elasticity/Solver/Exported Variable 3</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 3 </Name>
+           <Activate> /Linear elasticity/Solver/Exported Variable 4</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 4 </Name>
+           <Activate> /Linear elasticity/Solver/Exported Variable 5</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 5 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Miscellaneous options</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Loads </Name>
+           <Whatis> If checked compute boundary reaction forces. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox"> 
+            <Name> Calculate Stresses </Name>
+            <StatusTip> Calculate Stresses as a post processing step.</StatusTip>
+            <Whatis> If checked the stress tensor will be computed and written to output in addition to Von Mises
+stress. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Label"> <Name> Eigen system solution </Name> </Parameter>
+
+        <Parameter Widget="CheckBox"> 
+          <Name> Eigen Analysis </Name>
+          <Whatis> Modal or stability analysis may be requested with this keyword. </Whatis>
+          <Activate> /Linear elasticity/Solver/Stability Analysis  </Activate>
+          <Activate> /Linear elasticity/Solver/Geometric Stiffness </Activate>
+          <Activate> /Linear elasticity/Solver/Eigen System Values </Activate>
+          <Activate> /Linear elasticity/Solver/Eigen System Select </Activate>
+          <Activate> /Linear elasticity/Solver/Eigen System Damped </Activate>
+          <Activate> /Linear elasticity/Solver/Eigen System Shift  </Activate>
+          <Activate> /Linear elasticity/Solver/Eigen System Compute Residuals </Activate>
+        </Parameter>
+
+        <Parameter Widget="CheckBox" Enabled="False"> 
+           <Name> Stability Analysis </Name>
+           <Whatis> If set to true, then eigen analysis is stability analysis. Otherwise modal analysis is performed. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="CheckBox" Enabled="False"> 
+           <Name> Geometric Stiffness </Name>
+           <Whatis> If set to true, then geometric stiffness is taken into account in modal analysis. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Edit" Enabled="False"> 
+          <Name>Eigen System Values </Name>
+          <Type>Integer </Type>
+          <Whatis> The number of the selected eigen states must be given with this keyword, if modal or stability analysis is in effect. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Combo" Enabled="False">
+          <Name> Eigen System Select </Name>
+          <Item> <Name> Smallest magnitude </Name> </Item>
+          <Item> <Name> Largest  magnitude </Name> </Item>
+          <Item> <Name> Smallest real part </Name> </Item>
+          <Item> <Name> Largest real part </Name> </Item>
+          <Item> <Name> Smallest imag part </Name> </Item>
+          <Item> <Name> Largest imag part </Name> </Item>
+          <Item> <Name> Smallest magnitude </Name> </Item>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False">
+          <Name> Eigen System Shift </Name>
+        </Parameter>
+        <Parameter Widget="CheckBox" Enabled="False">
+          <Name> Eigen System Damped </Name>
+        </Parameter>
+        <Parameter Widget="CheckBox" Enabled="False">
+          <Name> Eigen System Compute Residuals </Name>
+        </Parameter>
+
+        <Parameter Widget="Label"> <Name> Harmonic system solution </Name> </Parameter>
+
+        <Parameter Widget="CheckBox">
+           <Name> Harmonic Analysis </Name>
+           <Activate> /Linear elasticity/Solver/Frequency </Activate>
+           <Whatis> Time-harmonic analysis where the solution becomes complex if damping is defined. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Edit" Enabled="False"> 
+           <Name> Frequency </Name>
+           <Whatis> The frequency related to the harmonic analysis. If the simulation type is scanning this may a
+      scalar function, otherwise it is assumed to be a vector of the desired frequencies. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Label"> <Name> Model Lumping definitions </Name> </Parameter>
+
+        <Parameter Widget="CheckBox">
+            <Name>Model Lumping </Name>
+            <Whatis>If model lumping is desired this flag should be set to True. </Whatis>
+            <Activate> /Linear elasticity/Solver/Fix Displacements </Activate>
+            <Activate> /Linear elasticity/Solver/Model Lumping Filename </Activate>
+        </Parameter>
+
+        <Parameter Widget="Edit" Enabled="False">
+            <Name> Model Lumping Filename </Name>
+            <Type> File </Type>
+            <Whatis> The results from model lumping are saved into an external file the name of which is given by this keyword. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="CheckBox" Enabled="False"> 
+            <Name> Fix Displacements </Name>
+            <Whatis> This keyword defined if the displacements or forces are set and thereby chooces the model lumping algorhitm.</Whatis>
+        </Parameter>
+
+        <Parameter Widget="Label"> <Name> More Options </Name> </Parameter>
+
+        <Parameter Widget="CheckBox" Enabled="True"> 
+            <Name> Displace mesh </Name>
+            <DefaultValue> True </DefaultValue>
+            <Whatis> Displace mesh with the solution (or not).</Whatis>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Solver>
+
+      <Equation>
+         <Parameter Widget="Label">
+            <Name> Options </Name>
+         </Parameter>
+         <Parameter Widget="CheckBox"> 
+            <Name> Calculate Stresses </Name>
+            <StatusTip> Calculate Stresses as a post processing step.</StatusTip>
+            <Whatis> If checked the stress tensor and Von Mises stress will be computed for the domains activating this equation set. </Whatis>
+        </Parameter>
+
+         <Parameter Widget="CheckBox">
+            <Name> Plane Stress </Name>
+            <Whatis> If checked, compute the solution according to the plane stress situtation zz = 0, otherwise plane strain model is assumed. Applies only in 2D.  </Whatis> 
+         </Parameter>
+        <Parameter Widget="Label" > <Name> This and that </Name> </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Element Codes </Name>
+           <SifName> Element </SifName>
+           <Whatis> Define element degrees of freedom (p:n d:n n:n e:n f:n b:n d:n). "p" is the p-element degree, "e" number of edge DOFs, "f" number of face DOFs, "b" number of bubble DOFs, and "d" the Discontinuous Galerkin DOFs (0 = element number of nodes). "p" and "b" may be entered together, "d" on its own, and the rest together. </Whatis>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Equation>
+
+      <InitialCondition>
+          <Parameter Widget="Label"> <Name> Variables </Name> </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Displacement 1 </Name>
+             <Whatis> Initial condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 2 </Name>
+             <Whatis> Initial condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 3 </Name>
+             <Whatis> Initial condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> ...for time dependent simulations... </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement Velocity 1 </Name>
+             <Whatis> Initial condition for the displacement velocity in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement Velocity 2 </Name>
+             <Whatis> Initial condition for the displacement velocity in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement Velocity 3 </Name>
+             <Whatis> Initial condition for the displacement velocity in coordinate direction 3. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Initial Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Initial Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </InitialCondition>
+
+      <BodyForce>
+          <Parameter Widget="Label"> <Name> Volume forces </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Force 1 </Name>
+             <SifName> Stress Bodyforce 1 </SifName>
+             <Whatis> Volume force in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Force 2 </Name>
+             <SifName> Stress Bodyforce 2 </SifName>
+             <Whatis> Volume force in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Force 3 </Name>
+             <SifName> Stress Bodyforce 3 </SifName>
+             <Whatis> Volume force in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Pressure </Name>
+             <SifName> Stress Pressure </SifName>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Stress 6-vector </Name>
+             <SifName> Stress(6) </SifName>
+             <Whatis> Stress engineering 6-vector corresponding to a prestressed state. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Strain 6-vector </Name>
+             <SifName> Strain(6) </SifName>
+             <Whatis> Strain engineering 6-vector corresponding to a prestressed state. </Whatis>
+          </Parameter>
+          <Parameter Widget="Label"> <Name> Bodywise Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 1 </Name>
+             <Activate> /Linear elasticity/BodyForce/Displacement 1 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 2 </Name>
+             <Activate> /Linear elasticity/BodyForce/Displacement 2 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 3 </Name>
+             <Activate> /Linear elasticity/BodyForce/Displacement 3 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Body Force-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Body Force-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </BodyForce>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name>Youngs modulus</Name>
+            <Whatis> The elastic modulus must be given with this keyword. The modulus may be given as a scalar for the isotropic case or as 6 × 6 (3D) or 4 × 4 (2D and axisymmetric) matrix for the anisotropic case. Although the matrices are symmetric, all entries must be given. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name>Poisson ratio</Name>
+            <Whatis> For isotropic materials Poisson ratio must be given with this keyword. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+           <Name> Damping coefficient </Name>
+           <SifName> Damping </SifName>
+           <Whatis> Damping proportional to deformation velocity. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Rayleigh Damping </Name>
+           <Whatis> Damping proportional to linear combination of stiffness and mass. </Whatis>
+           <Activate> /Linear elasticity/Material/Rayleigh alpha </Activate>
+           <Activate> /Linear elasticity/Material/Rayleigh beta </Activate>
+         </Parameter>
+
+         <Parameter Widget="Edit" Enabled="False">
+           <Name> Rayleigh alpha </Name>
+         </Parameter>
+
+         <Parameter Widget="Edit" Enabled="False">
+           <Name> Rayleigh beta </Name>
+         </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Stress 6-vector </Name>
+             <SifName> Stress(6) </SifName>
+             <Whatis> Stress engineering 6-vector corresponding to a prestressed state. This is added to the load case in buckling and/or geometric stiffness analysis. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Strain 6-vector </Name>
+             <SifName> Strain(6) </SifName>
+             <Whatis> Strain engineering 6-vector corresponding to a prestressed state. This is converted to the corresponding stress and added to the load case in buckling and/or geometric stiffness analysis. </Whatis>
+          </Parameter>
+ 
+        <Parameter Widget="Label"> <Name> Material pricipal directions </Name> </Parameter>
+        <Parameter Widget="CheckBox">
+          <Name> Rotate Elasticity Tensor </Name>
+          <Whatis> For anisotropic materials the principal directions of anisotropy do not always correspond to the coordinate axes. Setting this keyord to True enables the user to input Youngs Modulus matrix with respect to the principal directions of anisotropy. Otherwise Youngs Modulus should be given with respect to the coordinate axis directions. </Whatis>
+          <Activate> /Linear elasticity/Material/Unit Vector 1</Activate>
+          <Activate> /Linear elasticity/Material/Unit Vector 2</Activate>
+          <Activate> /Linear elasticity/Material/Unit Vector 3</Activate>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False">
+           <Name> Unit Vector 1 </Name>
+           <SifName> Material Coordinates Unit Vector 1(3) </SifName>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False">
+           <Name> Unit Vector 2 </Name>
+           <SifName> Material Coordinates Unit Vector 2(3) </SifName>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False">
+           <Name> Unit Vector 3 </Name>
+           <SifName> Material Coordinates Unit Vector 3(3) </SifName>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Material>
+
+     <BoundaryCondition>
+         <Parameter Widget="Label"> <Name> Normal-Tangential Coordinate System</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+            <Name> Use normal-tangential coordinate system </Name>
+            <SifName> Normal-Tangential Displacement </SifName>
+            <Activate> /Linear elasticity/BoundaryCondition/Change of variables</Activate>
+            <Whatis>  The Dirichlet conditions for the vector variables may be given in normal-tangential coordinate system instead of the coordinate axis directed system. The first component will in this case be the normal component and the components 2, 3 two orthogonal tangent directions. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox" Enabled="False">
+            <Name> Change of variables </Name>
+            <DefaultValue> True </DefaultValue>
+            <SifName> Normal-Tangential Displacement Rotate </SifName>
+            <Whatis> If checked, do change of variables from x,y,z -> n,t1,t2. This change of variables is only needed if Dirichlet conditions are present. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 1 </Name>
+             <Activate> /Linear elasticity/BoundaryCondition/Displacement 1 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 2 </Name>
+             <Activate> /Linear elasticity/BoundaryCondition/Displacement 2 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 3 </Name>
+             <Activate> /Linear elasticity/BoundaryCondition/Displacement 3 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label"> <Name> Traction boundary conditions </Name> </Parameter>
+
+         <Parameter Widget="Edit">
+            <Name> Normal Force </Name>
+            <Whatis> A force normal to the boundary is given with this keyword. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Force 1 </Name>
+            <Whatis> A force in coordinate direction 1 is given with this keyword. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Force 2 </Name>
+            <Whatis> A force in coordinate direction 2 is given with this keyword. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Force 3 </Name>
+            <Whatis> A force in coordinate direction 3 is given with this keyword. </Whatis>
+         </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Stress 6-vector </Name>
+             <SifName> Stress(6) </SifName>
+             <Whatis> Stress engineering 6-vector as input is multiplied by outward unit normal to gain the traction on the boundary. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Spring coefficient </Name>
+             <SifName> Spring </SifName>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Damping coefficient </Name>
+             <SifName> Damping </SifName>
+          </Parameter>
+          <Parameter Widget="Label"> <Name> Periodic boundary condition </Name> </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Displacement 1 periodic </Name>
+              <SifName> Periodic BC Displacement 1 </SifName>
+          </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Displacement 2 periodic </Name>
+              <SifName> Periodic BC Displacement 2 </SifName>
+          </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Displacement 3 periodic </Name>
+              <SifName> Periodic BC Displacement 3 </SifName>
+          </Parameter>
+
+         <Parameter Widget="Label"> <Name> Miscellaneous </Name> </Parameter>
+         <Parameter Widget="CheckBox">
+            <Name>Model Lumping Boundary</Name>
+            <Whatis> When using the model lumping utility the user must define which boundary is to be loaded in order to determined the lumped model. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>	 
+
+      </BoundaryCondition>
+   </PDE>
+</edf>

@@ -1,0 +1,144 @@
+Header
+  Mesh DB "." "diffuser"
+echo on
+End
+
+Simulation
+  Coordinate System = Cartesian 2D
+  Max Output Level = 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations  = 500
+
+!  Post File = "diffuser.ep"
+! Output File = "diffuser.dat"
+  Restart File = "channel.dat"
+  Restart Position = 0
+End
+
+
+Body 1
+  Name  = "Flow"
+  Equation  = 1
+  Material  = 1
+  Initial Condition = 1
+End
+
+
+Solver 1
+  Exec Solver = Before Simulation
+  Equation = Distance
+
+  Procedure = "DistanceSolve" "DistanceSolver1"
+  Variable = "Wall Distance"
+ 
+  Nonlinear System Max Iterations = 200
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Relaxation Factor = 1
+  Distance Pseudo DT = Real 0.01
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning  = ILU0
+  Linear System Max Iterations   = 500
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStabL
+
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 2
+  Equation = K-omega
+
+  Procedure = "SSTKomega" "SSTKomega"
+  Variable = Komega[Kinetic Energy:1 Kinetic Dissipation:1]
+ 
+  Nonlinear System Max Iterations = 5
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.75
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning  = ILU0
+  Linear System Max Iterations   = 500
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStabL
+
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 3
+  Equation = Navier-Stokes
+
+  Stabilization Method = Stabilized
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 0.75
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance  = 1.0e-3
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning  = ILU0
+  Linear System Max Iterations   = 500
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStabL
+
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 4
+  Exec Solver = After Simulation
+  Equation = SaveLine
+  Procedure = "SaveData" "SaveLine"
+  Filename = "curve.dat"
+
+$ x = -3 3 6 14 17 20 24 27 30 34; x = (5+x)*0.127
+$ n = (0:9)*4
+$ y(n)=x; y(n+2)=x; y(n+1)=0; y(n+3)=1
+
+  Polyline coordinates(20,2) =  $ y
+End
+
+
+Equation 1 :: Active Solvers(3) = 1 2 3
+
+Material 1
+  Density = 10000
+  Viscosity = $25*0.127/2
+  Viscosity Model = sst k-omega
+End
+ 
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  ! use inlet values from restart file (channel flow):
+  ! --------------------------------------------------
+  Velocity 1 = Equals Velocity 1
+  Kinetic Energy = Equals Kinetic Energy
+  Kinetic Dissipation = Equals Kinetic Dissipation
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+  ! outlet BC:
+  ! ----------
+  Pressure   = 0
+  Velocity 2 = 0
+End
+
+
+Boundary Condition 3
+  Target Boundaries(2) = 3 4
+  Noslip Wall BC = Logical True
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=9.98368, EPS=1e-3\n" );

@@ -1,0 +1,82 @@
+! Computes divergence of the vector field x^2i+y^2j 
+! analytical solution for the problem is 2x+2y
+
+Header
+  Mesh DB "." "square"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 
+  Simulation Type = Steady 
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+!  Post File = "case.ep"
+End
+
+Body 1
+  Name = "Square"
+  Equation = 1	
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+
+Initial Condition 1
+  Comp 1 = Variable Coordinate 1
+    Real MATC "tx*tx"
+  Comp 2 = Variable Coordinate 2
+    Real MATC "tx*tx"
+End
+
+Material 1
+  Name = "Ideal"
+  Density = 1
+End
+
+Solver 1
+  Equation = Divergence Solver
+  Procedure = "DivergenceSolver" "DivergenceSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = diagonal
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Variable = Divergence
+  Exported Variable 1 = Comp 1
+  Exported Variable 2 = Comp 2
+  Exported Variable 3 = Computed Error
+
+  Nonlinear Update Exported Variables = Logical True
+
+  Divergence Variable = String "Comp"
+End
+
+
+Body Force 1
+  Computed Error = Variable Divergence, Coordinate 1, Coordinate 2
+    Real MATC "tx(0)-2*tx(1)-2*tx(2)"
+End 
+
+
+Boundary Condition 1
+  Name = "BC"
+  Target Boundaries = 1
+End 
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=2.1660803311802153\n");
+
+
+
+

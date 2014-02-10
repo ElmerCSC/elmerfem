@@ -1,0 +1,28 @@
+***** ElmerGrid input file for structured grid generation *****
+Version = 210903
+Coordinate System = 2D Polar
+Subcell Divisions in 2D = 1 1 
+Subcell Limits 1 = 0 1.0
+Subcell Limits 2 = 0 360 
+Material Structure in 2D
+  1    
+End
+Geometry Mappings
+! mode  line  limits(2)   Np  params(Np)
+  51    0     1e+06   1e+06   4   0 0 100 0 
+End
+Polar Radius = 1.0
+Materials Interval = 1 1
+Boundary Definitions
+! type     out      int      double   of the boundaries
+  1        -2       1        1       
+  2        -4       1        1       
+End
+Element Degree = 1
+Element Innernodes = False
+Triangles = False
+Element Ratios 1 = 1 
+Element Ratios 2 = 1 
+Element Divisions 1 = 10 
+Element Divisions 2 = 100 
+Merge = 1.0e-6 

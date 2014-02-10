@@ -1,0 +1,490 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Heat Equation" >
+      <Name>Heat Equation</Name>
+
+      <Equation>
+        <Parameter Widget="Label">
+          <Name> Options </Name>
+        </Parameter>
+        <Parameter Widget="Combo"> 
+          <Name> Phase Change Model </Name>
+          <Type> String </Type>
+          <Item Type="Active"> <Name> None </Name> </Item>
+          <Item> <Name> Spatial 1 </Name> </Item>
+          <Item> <Name> Spatial 2 </Name> </Item>
+          <Item> <Name> Temporal </Name> </Item>
+          <Whatis> One of: None, Spatial 1, Spatial 2 and Temporal. Note that when solidification is modelled, the enthalpy-temperature- and viscosity-temperature-curves must be defined in the material section. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Label" >
+           <Name> Convection </Name>
+        </Parameter>
+        <Parameter Widget="Combo" >
+            <Type> String </Type>
+            <Name> Convection </Name>
+            <Item Type="Active" > <Name> None </Name> </Item> <Item>
+               <Name> Constant </Name>
+               <Activate> /Heat Equation/Equation/Convection Velocity 1 </Activate>
+               <Activate> /Heat Equation/Equation/Convection Velocity 2 </Activate>
+               <Activate> /Heat Equation/Equation/Convection Velocity 3 </Activate>
+            </Item>
+            <Item> <Name> Computed </Name> </Item>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Convection Velocity 1</Name>
+            <SifName> Convection velocity 1</SifName>
+            <Whatis> Convection velocity for 'Constant' convection model. Despite its association, may be space and time varying. </Whatis>
+            <StatusTip> Convection velocity </StatusTip>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Convection Velocity 2</Name>
+            <SifName> Convection velocity 2</SifName>
+            <Whatis> Convection velocity for 'Constant' convection model. Despite its association, may be space and time varying. </Whatis>
+            
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Convection Velocity 3</Name>
+            <SifName> Convection velocity 3</SifName>
+            <Whatis> Convection velocity for 'Constant' convection model. Despite its association, may be space and time varying. </Whatis>
+            <StatusTip> Convection velocity </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name > Procedure </Name>
+            <DefaultValue> "HeatSolve" "HeatSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False">
+           <Name> Variable </Name>
+           <DefaultValue> Temperature </DefaultValue>
+         </Parameter>
+
+
+         <Parameter Widget="Label"> <Name>Additional Variables</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Exported Variable 1 </Name>
+           <Activate> /Heat Equation/Solver/Exported Variable 2</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 2 </Name>
+           <Activate> /Heat Equation/Solver/Exported Variable 3</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 3 </Name>
+           <Activate> /Heat Equation/Solver/Exported Variable 4</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 4 </Name>
+           <Activate> /Heat Equation/Solver/Exported Variable 5</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 5 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Miscellaneous options </Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Loads </Name>
+           <Whatis> If checked compute boundary reaction forces. </Whatis>
+         </Parameter>
+
+
+         <Parameter Widget="Label">
+           <Name> Radiation Factor computation </Name>
+           <Whatis>  In some cases the geometry or the emissivities of the radiation boundaries change. This may require the recomputation of the view factors and Gebhardt factors. For that purpose also dynamic computation of the factors is enabled and it is controlled by the keywords below. The radiation factors are also automatically computed, if no files for the factors are given allthough radiation boundaries exist. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox">
+            <Name> Update View Factors</Name>
+            <Type> Logical </Type>
+            <Whatis> The recomputation of the view factors is activated by setting the value of this flag to True.  False is the default. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+            <Name> Update Gebhardt Factors </Name>
+            <Type> Logical </Type>
+            <Whatis> If the emissivities depend on the solution, the Gebhardt factors may need to be recomputed. This is activated by setting giving this flag value True. False is the default. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Minimum View Factor </Name>
+            <Whatis> This keyword determines the cut-off value under which the view factors are omitted. Neglecting small values will not only save memory but also will make the matrix used for solving the Gabhardt factors less dense. This consequently will enable more efficient sparse matrix strategies in solving the Gebhardt factors. The value for this parameter might be of the order 10e-8. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Minimum Gebhardt Factor</Name>
+           <Whatis> The Gebhardt factors make part of matrix dense. By neglecting the smallest Gebhardt factors the matrix structure for the heat equation may become significantly sparser and thus the solution time may drop. The value for this parameter might also be of the order 10e-8. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Implicit Gebhardt Factor Fraction</Name>
+            <Whatis> In computing heat transfer problems with radiation in an implicit manner, the matrix structure becomes partially filled. This affects the performance of the linear equation solvers and also increases the memory requirements. On the other hand explicit treatment of radiation slows down the convergence significantly. This keyword allows that the largest Gebhardt factors are treated in an implicit manner, whereas the smallest are treated explicitely. The value should lie in between zero (fully explicit) and one (fully implicit). </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Matrix Topology Fixed</Name>
+           <Type> Logical </Type>
+           <Whatis> If the Gebhardt factors change, the matrix structure of the heat equation may also have to be changed, unless this flag is set to False. Then all factors that do not combine with the matrix structure are omitted. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+           <Name> View Factors Geometry Tolerance</Name>
+           <Whatis> The view factors take a lot of time to compute. Therefore during the iteration a test is performed to check whether the geometry has changed. If the relative maximum change in the coordinate values is less than the value given by this parameter, the view factors are not recomputed and the old values are used. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+           <Name> View Factors Fixed After Iterations </Name>
+           <Type> Integer </Type>
+           <Whatis> Sometimes the iteration changes the geometry of the radiation boundaries as an unwanted sideeffect. Then the geometry on the radiation boundary may be set fixed after some iterations. In practice this is done by adding suitable Dirichlet conditions in the boundary conditions. </Whatis>
+
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+            <Name>Gebhardt Factors Solver Full</Name>
+            <Type> Logical </Type>
+            <Whatis> If the view factor matrix is relatively sparse, it will make sense to use a sparse matrix equation for solving the Gebhardt factors. This flag may be used if a full matrix should be desired. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Gebhardt Factors Solver Iterative </Name>
+           <Type> Logical </Type>
+           <Whatis> If the Gebhardt factors are solved from a sparse matrix equation, also the type of solver may be selected. The default is direct umfpack solver. Sometimes the memory usage may be a problem, or the direct strategy is simply not efficient enough. Then an iterative cgs solver may be used instead. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Parameters for 2- and 3D viewfactor computation </Name>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+            <Name> Viewfactor area tolerance </Name>
+            <Whatis> (2D and 3D) Split input elements until areas are under given tolerance.  </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+            <Name> Viewfactor factor tolerance </Name>
+            <Whatis> (2D and 3D) Split input elements until respective viewfactor is under given tolerance.  </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+            <Name> Viewfactor number of rays </Name>
+            <Type> Integer </Type>
+            <Whatis> (2D and 3D) The viewfactor computation resolves shading by ray casting. Give number of rays sent for each pair of (possible subdivided) elements when trying to determine if the view is blocked. If all rays pass between the pair of elements and area and factor tolerances pass the viewfactor is computed. Otherwise the elements are further subdivided until all rays pass or the area and factor tolerances divided by two pass. The computed factor is then multiplied by "rays passed/rays sent".  </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Solver>
+
+      <BodyForce>
+         <Parameter Widget="Label" > <Name> Volume sources </Name> </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Heat Source </Name>
+           <Activate> /Heat Equation/BodyForce/Integral Heat Source</Activate>
+           <Activate> /Heat Equation/BodyForce/Smart Heater Control</Activate>
+           <Whatis> An additional heat source h for the heat equation may be given with this keyword. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Integral Heat Source </Name>
+           <Whatis> By this keyword the user activates a rescaling of the given Heat Source such that the total power is the one given.</Whatis>
+        </Parameter>
+        <Parameter Widget="CheckBox" Enabled="False" Visible="False">
+           <Name> Smart Heater Control </Name>
+           <Whatis> Activates the smart heat control in conjunction with the phase change solver. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="CheckBox">
+           <Name> Friction Heat </Name>
+           <Type> Logical </Type>
+           <Whatis>Include frictional heating as a heat source. Default is not to include frictional heating.</Whatis>
+        </Parameter>
+
+        <Parameter Widget="CheckBox">
+           <Name>Joule Heat </Name>
+           <Type> Logical </Type>
+           <Whatis> If set True, triggers use of the inductive heating. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Label"> <Name> Bodywise Dirichlet Conditions </Name> </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Temperature </Name>
+           <Activate> /Heat Equation/BodyForce/Temperature Condition </Activate>
+           <Whatis> Set temperature values for all nodes of bodies using this "Body Force" definition. The application of values is also affected by the "Temperature Condition" setting.</Whatis>
+           <StatusTip> Give temperature value for bodies using this "Body Force" definition. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Temperature Condition </Name>
+           <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <StatusTip> Give temperature condition value for bodies using this "Body Force" definition. </StatusTip>
+         </Parameter>
+
+		 <Parameter Widget="Label"> <Name> Perfusion </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Perfusion Rate </Name>
+           <Activate> /Heat Equation/BodyForce/Perfusion Reference Temperature </Activate>
+           <Activate> /Heat Equation/BodyForce/Perfusion Density </Activate>
+           <Activate> /Heat Equation/BodyForce/Perfusion Heat Capacity </Activate>
+           <Whatis> This "Body Force" models uniform perfusion (e.g. microperfusion with blood in biological tissue). The Perfusion rate is the volume of perfusion medium flowing through a unit volume per second.</Whatis>
+         </Parameter>
+		 
+         <Parameter  Widget="Edit" Enabled="False" Visible="False">
+           <Name> Perfusion Reference Temperature </Name>
+           <Whatis> The temperature of the perfusion medium. </Whatis>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False" Visible="False">
+           <Name> Perfusion Density </Name>
+           <Whatis> The density of the perfusion medium. </Whatis>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False" Visible="False">
+           <Name> Perfusion Heat Capacity </Name>
+           <Whatis> The specific heat capacity of the perfusion medium. </Whatis>
+         </Parameter>
+
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Body Force-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Body Force-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </BodyForce>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Heat Conductivity </Name>
+            <StatusTip> Set value to heat conductivity. </StatusTip>
+            <Whatis>Give value to heat conductivity material property.</Whatis>
+         </Parameter>
+         <Parameter Widget="Combo" >
+            <Name> Heat Conductivity Model</Name>
+            <Type> String </Type>
+            <Item> <Name> None </Name> </Item>
+            <Item> <Name> Turbulent </Name>
+               <Activate> /Heat Equation/Material/Turbulent Prandtl Number </Activate>
+            </Item>
+            <Item> <Name> User defined </Name> </Item>
+            <Whatis> Set heat conductivity model used to compute the effective heat conductivity. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Emissivity </Name>
+            <StatusTip> Set value to emissivity. </StatusTip>
+            <Whatis>Give value to emissivity material property.</Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False">
+            <Name> Turbulent Prandtl Number </Name>
+            <DefaultValue> 0.85 </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Enthalpy </Name>
+            <StatusTip> Set value to enthalpy. </StatusTip>
+            <Whatis>Note that, when using the solidification modelling, an enthalpy-temperature curve must be given.  The enthalpy is derived with respect to temperature to get the value of the effective heat capacity. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Pressure Coefficient </Name>
+            <StatusTip> Set Pressure Coefficient of the incompressible model. </StatusTip>
+            <Whatis> The "Pressure Coefficient" keyword  may be used to give the pressure material derivative coefficient value in the heat equation. This should give a value for the expression (@log(1/rho)/@log(T))_p. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Material>
+
+      <InitialCondition>
+         <Parameter Widget="Label" > <Name> Variables </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Temperature </Name>
+           <Whatis> Give initial value to temperature field. </Whatis>
+           <StatusTip> Give initial value to temperature field. </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Initial Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Initial Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </InitialCondition>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Dirichlet Conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Temperature </Name>
+           <Activate> /Heat Equation/BoundaryCondition/Temperature Condition </Activate>
+           <Whatis> Give temperature value for this boundary. </Whatis>
+           <StatusTip> Give temperature value for this boundary. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Temperature Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <StatusTip> Give temperature condition value for this boundary. </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Heat Flux conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Heat Flux </Name>
+           <Whatis> Give heat flux. </Whatis>
+           <StatusTip> Give heat flux. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Heat Transfer Coeff. </Name>
+           <SifName> Heat Transfer Coefficient </SifName>
+           <Whatis> Give transfer coefficient. </Whatis>
+           <StatusTip> Give heat transfer flux. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> External Temperature </Name>
+           <Whatis> Give external temperature. </Whatis>
+           <StatusTip> Give external temperature. </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Latent heat of phase change </Name> </Parameter>
+
+         <Parameter  Widget="CheckBox">
+           <Name> Phase Change </Name>
+           <Type> Logical </Type>
+           <Activate> /Heat Equation/BoundaryCondition/Latent Heat </Activate>
+           <Activate> /Heat Equation/BoundaryCondition/Phase Velocity 1 </Activate>
+           <Activate> /Heat Equation/BoundaryCondition/Phase Velocity 2 </Activate>
+           <Activate> /Heat Equation/BoundaryCondition/Phase Velocity 3 </Activate>
+           <Whatis> If the phase change is active the user may prescribe a flux condition given the 
+	   latent heat and velocity of the phase change interface.</Whatis>
+           <StatusTip> Switch latent heat from phase change on. </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Latent Heat </Name>
+           <Whatis> Give latent heat of phase change (e.g. melting or solidification). </Whatis>
+           <StatusTip> Give latent heat. </StatusTip>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Phase Velocity 1</Name>
+            <Whatis> Phase velocity for moving interface. If pulling occurs the interface position may still stay fixed,
+	    or the interface may move in the material.</Whatis>  
+            <StatusTip> Give velocity of the interface </StatusTip>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Phase Velocity 2</Name>
+            <Whatis> Phase velocity for moving interface. If pulling occurs the interface position may still stay fixed,
+	    or the interface may move in the material.</Whatis>  
+            <StatusTip> Give velocity of the interface </StatusTip>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Phase Velocity 3</Name>
+            <Whatis> Phase velocity for moving interface. If pulling occurs the interface position may still stay fixed,
+	    or the interface may move in the material.</Whatis>  
+           <StatusTip> Give velocity of the interface </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Heat Gap </Name> </Parameter>
+
+         <Parameter  Widget="CheckBox">
+           <Name> Heat Gap </Name>
+           <Type> Logical </Type>
+           <Whatis> Assume geometry has a gap, and direct diffusion over the gap is negligible. Heat is transferred over the gap by radiation and/or convectively, however. Special mesh with double boundary must be present in order to use this feature.</Whatis>
+           <StatusTip> Switch "heat gap" model on. </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Radiation Settings </Name> </Parameter>
+
+         <Parameter Widget="Combo" >
+            <Name> Radiation </Name>
+            <Type> String </Type>
+            <Item Type="Active" > <Name> None </Name>
+            </Item>
+            <Item> 
+              <Name> Idealized </Name>
+              <Activate> /Heat Equation/BoundaryCondition/Emissivity </Activate>
+            </Item>
+            <Item>
+              <Name> Diffuse Gray </Name>
+              <Activate> /Heat Equation/BoundaryCondition/Emissivity </Activate>
+              <Activate> /Heat Equation/BoundaryCondition/Radiation Target Body </Activate>
+              <Activate> /Heat Equation/BoundaryCondition/Radiation Boundary </Activate>
+              <Activate> /Heat Equation/BoundaryCondition/Radiation Boundary Open </Activate>
+            </Item>
+         </Parameter>
+
+	<Parameter Widget="Edit" Enabled="False">
+           <Name> Emissivity </Name>
+           <Whatis> Emissivity of the radiating surface, required for radiation model is present.</Whatis>
+           <StatusTip> Emissivity of the radiating surface, required for radiation model is present.</StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="CheckBox" Enabled="False">
+           <Name> Radiation Boundary Open </Name>
+           <Type> Logical </Type>
+           <Whatis> The closures may be partially open. Then no normalization of the view factors is enforced. The missing part of the radiation angle is assumed to be ideal radiation. Therefore if this option is enforced, also the parameter External Temperature must be given.  </Whatis>
+           <StatusTip> Account for missing space angle to have a full closure. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Radiation Boundary </Name>
+           <Type> Integer </Type>
+           <Whatis> If there are many closures with radiation boundary conditions that do not see each other, the view factors may be computed separately. This keyword is used to group the boundaries to independent sets. The default is one. </Whatis>
+           <StatusTip> Account for missing space angle to have a full closure. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Radiation Target Body </Name>
+           <Type> Integer </Type>
+           <Whatis> Normal points to this 'body's direction. </Whatis>
+           <StatusTip> Normal points to this 'body's direction. </StatusTip>
+         </Parameter>
+          <Parameter Widget="Label"> <Name> Periodic boundary condition </Name> </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Temperature periodic </Name>
+              <SifName> Periodic BC Temperature </SifName>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </BoundaryCondition>
+   </PDE>
+</edf>

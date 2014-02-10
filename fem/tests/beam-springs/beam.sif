@@ -1,0 +1,95 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam3d"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+! Max Output Level = 3
+
+  Coordinate System = "Cartesian 3D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+
+! Output File = "beam3d.dat"
+! Post File = "beam3d.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+
+  Stress Analysis = True
+  Calculate Stresses = Logical False
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Variable = -dofs 3 "Displacement"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Constant Bulk System = Logical True
+  Linear System Refactorize = Logical False
+
+  Model Lumping = Logical True
+  Model Lumping Filename = String "kmat.dat"
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Min Iterations = Integer 6
+  Nonlinear System Max Iterations = Integer 6
+  Time Derivative Order = 2
+
+  Fix Displacement = Logical False
+End
+
+
+Material 1
+  Name = "Material1"
+
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+  Density = 0.0
+End
+
+Boundary Condition 1
+  Name = "wall_end"
+  Target Boundaries(1) = 5
+
+! The beam is fixed at the one end
+  Displacement 1 = 0
+  Displacement 2 = 0
+  Displacement 3 = 0
+End
+
+Boundary Condition 2
+  Name = "free_end"
+  Target Boundaries(1) = 6
+
+! The force is permutated in three steps through the main directions.
+  Model Lumping Boundary = Logical True
+End
+
+
+
+$ fprintf( stderr, "TEST CASE 1\n" );
+RUN
+$ fprintf( stderr, "END TEST CASE 1, Target NRM=0.28897176E-01\n");

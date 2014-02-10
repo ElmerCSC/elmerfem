@@ -1,0 +1,20 @@
+! Name of the mesh directory (should exist)
+mismip 
+The mesh x-coordinates correspond to the data? (Yes=1, No=0)
+0
+Linear / Cubic Spline (0 / 1)
+1
+! Surface name file
+mismip_surf.dat
+! Number of Points in the surface file
+303
+! Bedrock name file
+mismip_bed.dat
+! Number of Point in the bed file
+303
+! Minimum ice thickness
+1.0
+! Mesh start at x0
+0.0
+! Mesh end at xEnd
+1800000.0

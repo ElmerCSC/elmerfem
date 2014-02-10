@@ -1,0 +1,96 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test ForeToStress Solver              !!
+!!                                       !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+echo on
+
+Header
+  Mesh DB "." "cube"
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "test.result"
+  Post File = "test.vtu"
+  max output level = 4
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Initial Condition = 1
+End
+
+Body 2
+  Equation = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  StressAna = Variable Coordinate 1, Coordinate 2
+      Real MATC "100.0*(cos(6.0*pi*tx(0)))*(cos(6.0*pi*tx(1)))"
+End
+
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 1
+  Equation = "Fw"
+  Procedure = "ElmerIceSolvers" "GetHydrostaticLoads"
+  Variable = Fw[Fx:1 Fy:1 Fz:1]
+  Variable DOFs = 3
+End
+
+Solver 2
+   Equation = "ForceToStress"
+   Procedure = File "ElmerIceSolvers" "ForceToStress"
+   Variable = String "Stress"
+   Variable DOFs = 1
+
+   Force Variable Name = String "Fz"
+
+   Exported Variable 1 = StressAna    
+   Exported Variable 1 DOFS = Integer 1
+   
+   Linear System Solver = Direct         
+   Linear System Direct Method = umfpack
+End
+
+Solver 3
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  Variable 1 = String "StressAna"
+  Operator 1 = String "int"
+  Variable 2 = String "StressAna"
+  Operator 2 = String "max"
+  Variable 3 = String "StressAna"
+  Operator 3 = String "min"
+  Operator 4 = String "cpu time"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 5
+  Body Id = 2
+  External Pressure = Variable Coordinate 1, Coordinate 2
+      Real MATC "100.0*(cos(6.0*pi*tx(0)))*(cos(6.0*pi*tx(1)))"
+End
+

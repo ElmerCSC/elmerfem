@@ -1,0 +1,102 @@
+Check Keywords "Warn"
+
+Header:: Mesh DB "." "square"
+
+Simulation
+  Max Output Level = 3
+
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+! Post File   = "ptest.ep"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+End
+
+Material 1
+  Relative Permeability = 1.05
+
+$ mag = 1006582
+$ ang = pi/2
+  Magnetization 1 = Real $ mag*cos(ang)
+  Magnetization 2 = Real $ mag*sin(ang)
+
+  Youngs Modulus=1
+  Poisson Ratio=0.35
+End
+
+Material 2
+  Relative Permeability = 1
+  Youngs Modulus=1
+  Poisson Ratio=0.35
+End
+
+Equation 1 :: Active Solvers(3) = 1 2 3
+
+! deform square -> circle
+Solver 1
+  Exec Solver = Before Simulation
+  Equation = MeshDeform
+  Procedure = "MeshSolve" "MeshSolver"
+  Variable = Mesh Update[Mesh Update:2]
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = UMFPack
+End
+
+! vector potential
+Solver 2
+  Equation = "Vecpot"
+
+  Variable = "A"
+  Variable DOFs = 1
+  Procedure = "MagnetoDynamics2D" "MagnetoDynamics2D"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = UMFPack
+End
+
+
+! magnetic flux density
+Solver 3
+  Equation = ComputeFlux
+
+  Procedure = "MagnetoDynamics2D" "bSolver"
+  Variable = -nooutput temp
+  Target Variable="A"
+  Exported Variable 1 = B[B:2]
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = UMFPack
+End
+
+! make outer boundary  circular + asymptotic bc
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Infinity BC = Logical True
+
+  Mesh Update 1 = Variable Coordinate
+    Real MATC "x=tx(0); y=tx(1); r=sqrt(x^2+y^2); x/r-x"
+  Mesh Update 2 = Variable Coordinate
+    Real MATC "x=tx(0); y=tx(1); r=sqrt(x^2+y^2); y/r-y"
+End
+
+! don't move magnet boundaries when deforming mesh
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Mesh Update 1 = 0
+  Mesh Update 2 = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.11769191\n" );

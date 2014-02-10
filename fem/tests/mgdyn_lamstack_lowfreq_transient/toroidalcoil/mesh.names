@@ -1,0 +1,11 @@
+! ----- names for bodies -----
+$ iron = 1
+$ air = 2
+$ coil = 3
+! ----- names for boundaries -----
+$ FluxParallel = 1
+$ Potential = 2
+$ currentIn = 3
+$ shell = 4
+$ Flux = 5
+$ bnry13 = 6

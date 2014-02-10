@@ -1,0 +1,96 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "msh1"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+!  Post File = case.ep
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Mesh = "msh1"
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement1
+  Steady State Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Linear System Solver = Direct
+  Linear System Direct Method = Umfpack
+End
+
+Solver 2
+  Mesh = "msh2"
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement2
+  Steady State Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Linear System Solver = Direct
+  Linear System Direct Method = Umfpack
+End
+
+Solver 3
+  Mesh = "msh2"
+  Equation = Difference
+  Procedure = "./Difference" "DifferenceSolver"
+  Variable = -dofs 1 Diff
+  F1 = String "Displacement1 1"
+  F2 = String "Displacement2 1"
+End
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(3) = 1 2 3
+End
+
+Material 1
+  Youngs modulus = 1.0
+  Density = 1.0
+  Poisson ratio = 0.35
+End
+
+Body Force 1
+  Stress Bodyforce 1 = 0
+  Stress Bodyforce 2 = 0
+  Stress Bodyforce 3 = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+
+  Displacement1 1 = Real 0
+  Displacement1 2 = Real 0
+  Displacement1 3 = Real 0
+
+  Displacement2 1 = Real 0
+  Displacement2 2 = Real 0
+  Displacement2 3 = Real 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.16123927E-02, EPS=1e-4\n");

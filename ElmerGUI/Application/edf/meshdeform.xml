@@ -1,0 +1,254 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Mesh Deformation" >
+      <Name>Mesh Update</Name>
+      <Equation>
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>	
+      </Equation>
+
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name> Procedure </Name>
+            <DefaultValue> "MeshSolve" "MeshSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" >
+            <Name> Variable </Name>
+            <DefaultValue> Mesh Update(cdim) </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Label"> <Name> Additional Variables</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Exported Variable 1 </Name>
+           <Activate> /Mesh Update/Solver/Exported Variable 2</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 2 </Name>
+           <Activate> /Mesh Update/Solver/Exported Variable 3</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 3 </Name>
+           <Activate> /Mesh Update/Solver/Exported Variable 4</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 4 </Name>
+           <Activate> /Mesh Update/Solver/Exported Variable 5</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 5 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Miscellaneous options</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Loads </Name>
+           <Whatis> If checked compute boundary reaction forces. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Solver>
+
+      <BodyForce>
+          <Parameter Widget="Label"> <Name> Bodywise Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Update 1 </Name>
+             <Activate> /Mesh Update/BodyForce/Mesh Update 1 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Update 2 </Name>
+             <Activate> /Mesh Update/BodyForce/Mesh Update 2 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Update 3 </Name>
+             <Activate> /Mesh Update/BodyForce/Mesh Update 3 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Mesh Update 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Mesh Update 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Mesh Update 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Body Force-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Body Force-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </BodyForce>
+
+
+      <InitialCondition>
+          <Parameter Widget="Label"> <Name> Variables </Name> </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Mesh Update 1 </Name>
+             <Whatis> Initial condition for the mesh displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Update 2 </Name>
+             <Whatis> Initial condition for the mesh displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Update 3 </Name>
+             <Whatis> Initial condition for the mesh displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> ...for time dependent simulations... </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Velocity 1 </Name>
+             <Whatis> Initial condition for the mesh displacement velocity in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Velocity 2 </Name>
+             <Whatis> Initial condition for the mesh displacement velocity in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Velocity 3 </Name>
+             <Whatis> Initial condition for the mesh displacement velocity in coordinate direction 3. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label">
+            <Name> Free text input </Name>
+          </Parameter>
+	  
+	  <Parameter Widget="TextEdit" Enabled="True">
+	    <Name> Free text </Name>
+	    <Type> String </Type>
+	    <Whatis> Free text is copied into the Initial Condition-block of the SIF as such. </Whatis>
+	    <StatusTip> Free text is copied into the Initial Condition-block of the SIF as such. </StatusTip>
+	  </Parameter>
+	  
+      </InitialCondition>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name>Elastic modulus</Name>
+            <SifName>Mesh Elastic Modulus</SifName>
+            <Whatis> The scalar elastic modulus must be given with this keyword.  Note that this value is fictional, and may be chosen freely to influence mesh quality.</Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name>Poisson ratio</Name>
+            <SifName>Mesh Poisson ratio</SifName>
+            <Whatis>  Poisson ratio must be given with this keyword.  Note that this value is fictional, and may be chosen freely to influence mesh quality.</Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Material>
+
+     <BoundaryCondition>
+         <Parameter Widget="Label"> <Name> Normal-Tangential Coordinate System</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+            <Name> Use normal-tangential coordinate system </Name>
+            <SifName> Normal-Tangential Mesh Update </SifName>
+            <Activate> /Mesh Update/BoundaryCondition/Change of variables</Activate>
+            <Whatis>  The Dirichlet conditions for the vector variables may be given in normal-tangential coordinate system instead of the coordinate axis directed system. The first component will in this case be the normal component and the components 2, 3 two orthogonal tangent directions. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox" Enabled="False">
+            <Name> Change of variables </Name>
+            <DefaultValue> True </DefaultValue>
+            <SifName> Normal-Tangential Mesh Update Rotate </SifName>
+            <Whatis> If checked, do change of variables from x,y,z -> n,t1,t2. This change of variables is only needed if Dirichlet conditions are present. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Update 1 </Name>
+             <Activate> /Mesh Update/BoundaryCondition/Mesh Update 1 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Update 2 </Name>
+             <Activate> /Mesh Update/BoundaryCondition/Mesh Update 2 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Mesh Update 3 </Name>
+             <Activate> /Mesh Update/BoundaryCondition/Mesh Update 3 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Mesh Update 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Mesh Update 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Mesh Update 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> Periodic boundary condition </Name> </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Mesh Update 1 periodic </Name>
+              <SifName> Periodic BC Mesh Update 1 </SifName>
+          </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Mesh Update 2 periodic </Name>
+              <SifName> Periodic BC Mesh Update 2 </SifName>
+          </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Mesh Update 3 periodic </Name>
+              <SifName> Periodic BC Mesh Update 3 </SifName>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </BoundaryCondition>
+   </PDE>
+</edf>

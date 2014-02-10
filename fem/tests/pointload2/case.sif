@@ -1,0 +1,96 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 42
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = case.ep
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Unit Charge = 1.602e-19
+  Boltzmann Constant = 1.3807e-23
+  Permittivity of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = Navier-Stokes
+
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+
+  Stabilize = True
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+End
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Viscosity = 1.0
+End
+
+Boundary Condition 1
+  Name = "Walls_x"
+  Target Boundaries(1) = 1 3
+!  Velocity 2 = 0
+End 
+
+Boundary Condition 2
+  Name = "Walls_y"
+  Target Boundaries(1) = 2 4
+!  Velocity 1 = 0
+End
+
+Boundary Condition 3
+  Name = "PointSource"
+!  Target Nodes(2) = 200 300
+  Target Coordinates(1,2) = 0.5 0.5 
+  Pressure Load = Real 1.0 
+
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.72547626961324641\n");

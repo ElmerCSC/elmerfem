@@ -1,0 +1,162 @@
+! A simple 3D transient structured mesh mapping example 
+! If an extruded structure may be recovered this is the fastest way to
+! perform mapping.
+! Test case authors: Peter Råback
+! Test case created: 26.11.2011
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Transient"
+  Steady State Max Iterations = 1
+
+  Timestepping Method = String BDF
+  BDF Order = Integer 2
+
+$ n = 10
+  Timestep Intervals = $ n
+  Timestep sizes = $ 1.0/n
+  Steady State Max Iterations = Integer 1
+  Output Intervals = 1
+!  Post File = "case.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(2) = 1 2 
+End
+
+Initial Condition 1
+  Name = "InitialCondition"
+  Temperature = 0.0
+  Bottom = Variable Coordinate
+    Real MATC "0.1*cos(pi*tx(0))*sin(pi*tx(1))"
+End 
+
+Solver 1 
+  Exec Solver = before timestep
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+
+! For time being this is currently externally allocated
+  Mesh Velocity Variable = String "MeshVelo 3"
+
+! The 1st value is special as the mesh velocity could be unrelistically high
+  Mesh Velocity First Zero = Logical True
+
+  Bottom Surface Variable = String Bottom
+End
+
+Solver 2
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+
+  Exported Variable 1 = Bottom
+  Exported Variable 2 = -dofs 3 MeshVelo
+End
+
+ 
+Solver 3
+!  Exec Solver = after saving
+  Exec Solver = never
+
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+
+  Vtu Format = Logical True
+  Binary Output = Logical True
+  Single Precision = Logical True
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 1.0
+
+! Note that if heat capasity would be nonzero also the mesh velocity
+! must be accounted for.
+  Heat Capacity = 0.0
+  Density = 1.0
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Adiabatic sides"
+  Target Boundaries(2) = 1 3 
+End
+
+
+! Test whether this kind of setting of BCs also works
+$cold = "size 2; 2 4"
+Boundary Condition 2
+  Name = "Cold sides"
+  Target Boundaries = $cold
+  Temperature = 0.0
+End
+
+Boundary Condition 3
+  Name = "Bottom"
+  Target Boundaries = 5 
+  Bottom Surface = Variable "Coordinate"
+     Real MATC "0.1*cos(pi*tx(0))*sin(pi*tx(1))"
+  Temperature = 0
+End
+
+Boundary Condition 4
+  Name = "Top"
+  Target Boundaries = 6 
+!  Top Surface = Variable time
+!    Real MATC "1.0-0.5*tx"
+  Top Surface = Variable time, Coordinate 1, Coordinate 2
+    Real MATC "1.0-0.5*tx(0)+0.1*sin(2*pi*tx(1))*cos(pi*tx(2))"
+  Temperature = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.14959169E-01\n");
+
+!End Of File

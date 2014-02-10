@@ -1,0 +1,96 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "Mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+
+  Timestepping Method = Runge-Kutta
+  Timestep Sizes  = 0.01
+  Timestep Intervals = 1
+  Output Intervals   = 1
+  Steady State Max Iterations = 2
+
+  Adaptive Timestepping  = True
+  Adaptive Time Error    = 1.0e-2
+  Adaptive Keep Smallest = 3
+  Adaptive Min Timestep  = 1.0e-3
+  Adaptive Max Timestep  = Real 0.01
+
+  Solver Input File = "TempDist.sif"
+! Output File = "TempDist.dat"
+  Post File = "TempDist.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+
+  Heat Equation = True
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "CG"
+  Linear System Max Iterations = 100
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = None
+  Linear System Residual Output = 1
+  Stabilize = True
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+  Lumped Mass Matrix = True
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Capacity = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce1"
+
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries(6) = 1 2 3 4 5 6 
+
+  Temperature = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.66387327E-02\n" );
+
+!End Of File

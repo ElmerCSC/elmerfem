@@ -1,0 +1,82 @@
+Header
+  Mesh DB "." "test"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+! Post File = "test.ep"
+! Output File = "test.result"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Heat Source = Variable Coordinate 1
+    Real MATC "tx^6"
+End
+
+
+Material 1
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = Heat Equation
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 1
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 4
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 3
+  Periodic BC = 1
+  Periodic BC Temperature = Logical True
+End
+
+
+Boundary Condition 3
+  Target Boundaries = 1
+  Periodic BC = 4
+  Periodic BC Temperature = Logical True
+End
+
+
+Boundary Condition 4
+  Target Boundaries = 2
+  Temperature  = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.13350244E-01\n" );

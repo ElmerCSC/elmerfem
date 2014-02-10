@@ -1,0 +1,1703 @@
+<ui version="4.0" >
+ <class>solverParameterEditor</class>
+ <widget class="QDialog" name="solverParameterEditor" >
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>643</width>
+    <height>522</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>Solver parameters</string>
+  </property>
+  <layout class="QVBoxLayout" >
+   <item>
+    <widget class="QTabWidget" name="solverControlTabs" >
+     <property name="tabShape" >
+      <enum>QTabWidget::Rounded</enum>
+     </property>
+     <property name="currentIndex" >
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="genaralTab" >
+      <property name="accessibleName" >
+       <string/>
+      </property>
+      <attribute name="title" >
+       <string>General</string>
+      </attribute>
+      <layout class="QVBoxLayout" >
+       <item>
+        <widget class="QGroupBox" name="execSolverGroup" >
+         <property name="title" >
+          <string>Execute solver</string>
+         </property>
+         <layout class="QVBoxLayout" >
+          <item>
+           <widget class="QRadioButton" name="execAlways" >
+            <property name="text" >
+             <string>Always</string>
+            </property>
+            <property name="checked" >
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="execBeforeSimulation" >
+            <property name="text" >
+             <string>Before simulation</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="execAfterSimulation" >
+            <property name="text" >
+             <string>After simulation</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="execBeforeTimestep" >
+            <property name="text" >
+             <string>Before timestep</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="execAfterTimestep" >
+            <property name="text" >
+             <string>After timestep</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QRadioButton" name="execNever" >
+            <property name="text" >
+             <string>Never</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="numericalTechniquesGroup" >
+         <property name="title" >
+          <string>Numerical techniques</string>
+         </property>
+         <layout class="QVBoxLayout" >
+          <item>
+           <widget class="QCheckBox" name="stabilizeCheck" >
+            <property name="text" >
+             <string>Stabilize</string>
+            </property>
+            <property name="checked" >
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="bubblesCheck" >
+            <property name="text" >
+             <string>Bubbles</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="lumpedMassCheck" >
+            <property name="text" >
+             <string>Lumped mass</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="optimizeBandwidthCheck" >
+            <property name="text" >
+             <string>Optimize bandwidth</string>
+            </property>
+            <property name="checked" >
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer>
+         <property name="orientation" >
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" >
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="steadyStateTab" >
+      <attribute name="title" >
+       <string>Steady state</string>
+      </attribute>
+      <layout class="QVBoxLayout" >
+       <item>
+        <widget class="QGroupBox" name="steadyStateControlGroup" >
+         <property name="title" >
+          <string>General</string>
+         </property>
+         <layout class="QGridLayout" >
+          <item row="0" column="0" >
+           <widget class="QLabel" name="steadyStateConvergenceToleranceLabel" >
+            <property name="text" >
+             <string>Convergence tol.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" colspan="2" >
+           <widget class="QLineEdit" name="steadyStateConvergenceToleranceEdit" >
+            <property name="text" >
+             <string>1.0e-5</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0" >
+           <widget class="QLabel" name="steadyStateConvergenceMeasureLabel" >
+            <property name="text" >
+             <string>Measure</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1" >
+           <widget class="QComboBox" name="steadyStateConvergenceMeasureCombo" >
+            <item>
+             <property name="text" >
+              <string>Norm</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>Solution</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>Residual</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="2" >
+           <spacer>
+            <property name="orientation" >
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" >
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer>
+         <property name="orientation" >
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" >
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="nonlinSystemTab" >
+      <attribute name="title" >
+       <string>Nonlinear system</string>
+      </attribute>
+      <layout class="QVBoxLayout" >
+       <item>
+        <widget class="QGroupBox" name="nonlinearSystemGeneralControlGroup" >
+         <property name="title" >
+          <string>General</string>
+         </property>
+         <layout class="QGridLayout" >
+          <item row="0" column="0" >
+           <widget class="QLabel" name="nonlinSystemConvergenceToleranceLabel" >
+            <property name="text" >
+             <string>Convergence tol.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" colspan="2" >
+           <widget class="QLineEdit" name="nonlinSystemConvergenceToleranceEdit" >
+            <property name="text" >
+             <string>1.0e-7</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0" >
+           <widget class="QLabel" name="nonlinSystemMaxIterationsLabel" >
+            <property name="text" >
+             <string>Max. iterations</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1" colspan="2" >
+           <widget class="QLineEdit" name="nonlinSystemMaxIterationEdit" >
+            <property name="text" >
+             <string>20</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0" >
+           <widget class="QLabel" name="nonlinSystemRelaxationFactorLabel" >
+            <property name="text" >
+             <string>Relaxation factor</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1" colspan="2" >
+           <widget class="QLineEdit" name="nonlinSystemRelaxationFactorEdit" >
+            <property name="text" >
+             <string>1</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0" >
+           <widget class="QLabel" name="nonlinSystemConvergenceMeasureLabel" >
+            <property name="text" >
+             <string>Measure</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1" >
+           <widget class="QComboBox" name="nonlinSystemConvergenceMeasureCombo" >
+            <item>
+             <property name="text" >
+              <string>Norm</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>Solution</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>Residual</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="3" column="2" >
+           <spacer>
+            <property name="orientation" >
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" >
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="newtonControlGroup" >
+         <property name="title" >
+          <string>Newton</string>
+         </property>
+         <layout class="QGridLayout" >
+          <item row="0" column="0" >
+           <widget class="QLabel" name="nonlinSystemNewtonAfterIterLabel" >
+            <property name="text" >
+             <string>After iterations</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" >
+           <widget class="QLineEdit" name="nonlinSystemNewtonAfterIterEdit" >
+            <property name="text" >
+             <string>3</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0" >
+           <widget class="QLabel" name="nonlinSystemNewtonAfterTolLabel" >
+            <property name="text" >
+             <string>After tolerance</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1" >
+           <widget class="QLineEdit" name="nonlinSystemNewtonAfterTolEdit" >
+            <property name="text" >
+             <string>1.0e-3</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer>
+         <property name="orientation" >
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" >
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="linearSystemTab" >
+      <attribute name="title" >
+       <string>Linear system</string>
+      </attribute>
+      <layout class="QVBoxLayout" >
+       <item>
+        <widget class="QGroupBox" name="linearSystemSolverGroup" >
+         <property name="title" >
+          <string>Method</string>
+         </property>
+         <layout class="QGridLayout" >
+          <item row="0" column="0" >
+           <widget class="QRadioButton" name="linearSystemSolverDirect" >
+            <property name="text" >
+             <string>Direct</string>
+            </property>
+            <property name="checked" >
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" >
+           <widget class="QComboBox" name="linearSystemDirectMethod" >
+            <item>
+             <property name="text" >
+              <string>Banded</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>Umfpack</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>MUMPS</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="0" column="2" >
+           <spacer>
+            <property name="orientation" >
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" >
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="1" column="0" >
+           <widget class="QRadioButton" name="linearSystemSolverIterative" >
+            <property name="text" >
+             <string>Iterative</string>
+            </property>
+            <property name="checked" >
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1" >
+           <widget class="QComboBox" name="linearSystemIterativeMethod" >
+            <item>
+             <property name="text" >
+              <string>BiCGStab</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>BiCGStabl</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>TFQMR</string> 
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>GCR</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>CGS</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>CG</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>GMRES</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="1" column="2" >
+           <spacer>
+            <property name="orientation" >
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" >
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="2" column="0" >
+           <widget class="QRadioButton" name="linearSystemSolverMultigrid" >
+            <property name="text" >
+             <string>Multigrid</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1" >
+           <widget class="QComboBox" name="linearSystemMultigridMethod" >
+            <item>
+             <property name="text" >
+              <string>Jacobi</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>CG</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>BiCGStab</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="2" column="2" >
+           <spacer>
+            <property name="orientation" >
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" >
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="iterativeMethodControlGroup" >
+         <property name="title" >
+          <string>Control</string>
+         </property>
+         <layout class="QGridLayout" >
+          <item row="0" column="0" >
+           <widget class="QLabel" name="linearSystemMaxIterationsLabel" >
+            <property name="text" >
+             <string>Max. iterations</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" colspan="3" >
+           <widget class="QLineEdit" name="linearSystemMaxIterationsEdit" >
+            <property name="text" >
+             <string>500</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0" >
+           <widget class="QLabel" name="linearSystemConvergenceToleranceLabel" >
+            <property name="text" >
+             <string>Convergence tol.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1" colspan="3" >
+           <widget class="QLineEdit" name="linearSystemConvergenceToleranceEdit" >
+            <property name="text" >
+             <string>1.0e-10</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0" >
+           <widget class="QLabel" name="linearSystemPreconditioningLabel" >
+            <property name="text" >
+             <string>Preconditioning</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1" >
+           <widget class="QComboBox" name="linearSystemPreconditioning" >
+            <property name="currentIndex" >
+             <number>2</number>
+            </property>
+            <item>
+             <property name="text" >
+              <string>Diagonal</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>Multigrid</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU0</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU1</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU2</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU3</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU4</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU5</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU6</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU7</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU8</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILU9</string>
+             </property>
+            </item>
+            <item>
+             <property name="text" >
+              <string>ILUT</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="2" column="2" colspan="2" >
+           <spacer>
+            <property name="orientation" >
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" >
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="3" column="0" >
+           <widget class="QLabel" name="linearSystemILUTToleranceLabel" >
+            <property name="text" >
+             <string>ILUT tolerance</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1" colspan="3" >
+           <widget class="QLineEdit" name="linearSystemILUTToleranceEdit" >
+            <property name="text" >
+             <string>1.0e-3</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0" >
+           <widget class="QLabel" name="linearSystemResiduaOutputLabel" >
+            <property name="text" >
+             <string>Residual output</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1" colspan="3" >
+           <widget class="QLineEdit" name="linearSystemResiduaOutputEdit" >
+            <property name="text" >
+             <string>1</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0" >
+           <widget class="QLabel" name="linearSystemPreconditionRecomputeLabel" >
+            <property name="text" >
+             <string>Prec. recompute</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1" colspan="3" >
+           <widget class="QLineEdit" name="linearSystemPreconditionRecomputeEdit" >
+            <property name="text" >
+             <string>1</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0" colspan="3" >
+           <widget class="QCheckBox" name="linearSystemAbortWhenNotConvergedCheck" >
+            <property name="text" >
+             <string>Abort if the solution did not converge</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="3" >
+           <spacer>
+            <property name="orientation" >
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" >
+             <size>
+              <width>20</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer>
+         <property name="orientation" >
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" >
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="parallelTab" >
+      <property name="accessibleName" >
+       <string/>
+      </property>
+      <attribute name="title" >
+       <string>Parallel</string>
+      </attribute>
+      <widget class="QGroupBox" name="hypreGroup" >
+       <property name="geometry" >
+        <rect>
+         <x>10</x>
+         <y>10</y>
+         <width>601</width>
+         <height>71</height>
+        </rect>
+       </property>
+       <property name="title" >
+        <string>HYPRE</string>
+       </property>
+       <widget class="QCheckBox" name="useHypre" >
+        <property name="geometry" >
+         <rect>
+          <x>10</x>
+          <y>30</y>
+          <width>101</width>
+          <height>24</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Use HYPRE</string>
+        </property>
+       </widget>
+      </widget>
+      <widget class="QGroupBox" name="parasailsGroup" >
+       <property name="geometry" >
+        <rect>
+         <x>10</x>
+         <y>90</y>
+         <width>601</width>
+         <height>131</height>
+        </rect>
+       </property>
+       <property name="title" >
+        <string>ParaSails</string>
+       </property>
+       <widget class="QCheckBox" name="useParasails" >
+        <property name="geometry" >
+         <rect>
+          <x>10</x>
+          <y>30</y>
+          <width>221</width>
+          <height>24</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Use ParaSails as preconditioner</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="thresholdLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>10</x>
+          <y>60</y>
+          <width>71</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Threshold:</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="filterLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>10</x>
+          <y>90</y>
+          <width>71</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Filter:</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="maxLevelLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>310</x>
+          <y>60</y>
+          <width>71</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>MaxLevel:</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="symmetryLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>310</x>
+          <y>90</y>
+          <width>71</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Symmetry:</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="thresholdEdit" >
+        <property name="geometry" >
+         <rect>
+          <x>100</x>
+          <y>60</y>
+          <width>181</width>
+          <height>28</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>-0.8</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="filterEdit" >
+        <property name="geometry" >
+         <rect>
+          <x>100</x>
+          <y>90</y>
+          <width>181</width>
+          <height>28</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>-0.8</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="maxLevelEdit" >
+        <property name="geometry" >
+         <rect>
+          <x>400</x>
+          <y>60</y>
+          <width>181</width>
+          <height>28</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>1</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="symmetryEdit" >
+        <property name="geometry" >
+         <rect>
+          <x>400</x>
+          <y>90</y>
+          <width>181</width>
+          <height>28</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>0</string>
+        </property>
+       </widget>
+      </widget>
+      <widget class="QGroupBox" name="boomerAMGGroup" >
+       <property name="geometry" >
+        <rect>
+         <x>10</x>
+         <y>230</y>
+         <width>601</width>
+         <height>191</height>
+        </rect>
+       </property>
+       <property name="title" >
+        <string>BoomerAMG</string>
+       </property>
+       <widget class="QCheckBox" name="useBoomerAMG" >
+        <property name="geometry" >
+         <rect>
+          <x>10</x>
+          <y>30</y>
+          <width>241</width>
+          <height>24</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Use BoomerAMG as preconditioner</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="boomerMaxLevels" >
+        <property name="geometry" >
+         <rect>
+          <x>100</x>
+          <y>150</y>
+          <width>181</width>
+          <height>28</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>25</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="boomerMaxLevelsLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>10</x>
+          <y>150</y>
+          <width>81</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>MaxLevels:</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="boomerSweepsLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>10</x>
+          <y>120</y>
+          <width>61</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Sweeps:</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="boomerSweeps" >
+        <property name="geometry" >
+         <rect>
+          <x>100</x>
+          <y>120</y>
+          <width>181</width>
+          <height>28</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>1</string>
+        </property>
+       </widget>
+       <widget class="QComboBox" name="boomerCycle" >
+        <property name="geometry" >
+         <rect>
+          <x>390</x>
+          <y>120</y>
+          <width>181</width>
+          <height>27</height>
+         </rect>
+        </property>
+        <property name="currentIndex" >
+         <number>1</number>
+        </property>
+        <item>
+         <property name="text" >
+          <string>0: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>1: V</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>2: W</string>
+         </property>
+        </item>
+       </widget>
+       <widget class="QLabel" name="boomerCycleLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>300</x>
+          <y>120</y>
+          <width>54</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Cycle:</string>
+        </property>
+       </widget>
+       <widget class="QComboBox" name="boomerCoarsening" >
+        <property name="geometry" >
+         <rect>
+          <x>100</x>
+          <y>90</y>
+          <width>181</width>
+          <height>27</height>
+         </rect>
+        </property>
+        <property name="currentIndex" >
+         <number>6</number>
+        </property>
+        <item>
+         <property name="text" >
+          <string>0: CLJP</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>1: Ruge-Stueben w/o bndry treatment</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>2: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>3: Ruge-Stueben with bndry treatment</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>4: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>5: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>6: Falgout</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>7: CLJP (debugging)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>8: PMIS</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>9: PMIS (debugging)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>10: HMIS</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>11: One-pass Ruge-Stueben</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>12: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>13: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>14: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>15: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>16: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>17: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>18: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>19: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>20: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>21: CGC</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>22: CGC-E</string>
+         </property>
+        </item>
+       </widget>
+       <widget class="QComboBox" name="boomerRelaxation" >
+        <property name="geometry" >
+         <rect>
+          <x>100</x>
+          <y>60</y>
+          <width>181</width>
+          <height>27</height>
+         </rect>
+        </property>
+        <property name="currentIndex" >
+         <number>3</number>
+        </property>
+        <item>
+         <property name="text" >
+          <string>0: Jabobi</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>1: Gauss-Seiden sequential</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>2: Gauss-Seidel interior in parallel</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>3: Hybrid Gauss-Seidel or SOR forward</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>4: Hybrid Gauss-Seidel or SOR backward</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>5: Hybrid chaotic Gauss-Seidel</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>6: Hybrid Symmetric Gauss-Seidel or SSOR</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>7: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>8: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>9: Gaussian elimination</string>
+         </property>
+        </item>
+       </widget>
+       <widget class="QLabel" name="boomerCoarseningLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>10</x>
+          <y>90</y>
+          <width>71</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Coarsening:</string>
+        </property>
+       </widget>
+       <widget class="QComboBox" name="boomerInterpolation" >
+        <property name="geometry" >
+         <rect>
+          <x>390</x>
+          <y>60</y>
+          <width>181</width>
+          <height>27</height>
+         </rect>
+        </property>
+        <item>
+         <property name="text" >
+          <string>0: Classical modified</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>1: LS</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>2: Classical modified for hyperpolic PDEs</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>3: Direct</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>4: Multipass</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>5: Multipass with separation of weights</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>6: Extended classical modified</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>7: Extended classical modified (no common C neighbour)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>8: Standard</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>9: Standard with separation of weights</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>10: Classical block</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>11: Classical block</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>12: FF</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>13: FF1</string>
+         </property>
+        </item>
+       </widget>
+       <widget class="QLabel" name="boomerInterpolationLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>300</x>
+          <y>60</y>
+          <width>81</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Interpolation:</string>
+        </property>
+       </widget>
+       <widget class="QLabel" name="boomerRelaxationLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>10</x>
+          <y>60</y>
+          <width>71</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Relaxation:</string>
+        </property>
+       </widget>
+       <widget class="QComboBox" name="boomerSmoother" >
+        <property name="geometry" >
+         <rect>
+          <x>390</x>
+          <y>90</y>
+          <width>181</width>
+          <height>27</height>
+         </rect>
+        </property>
+        <property name="currentIndex" >
+         <number>6</number>
+        </property>
+        <item>
+         <property name="text" >
+          <string>0: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>1: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>2: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>3: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>4: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>5: -</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>6: Schwarz</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>7: Pilut</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>8: ParaSails</string>
+         </property>
+        </item>
+        <item>
+         <property name="text" >
+          <string>9: Euclid</string>
+         </property>
+        </item>
+       </widget>
+       <widget class="QLabel" name="boomerSmootherLabel" >
+        <property name="geometry" >
+         <rect>
+          <x>300</x>
+          <y>90</y>
+          <width>71</width>
+          <height>18</height>
+         </rect>
+        </property>
+        <property name="text" >
+         <string>Smoother:</string>
+        </property>
+       </widget>
+      </widget>
+     </widget>
+     <widget class="QWidget" name="adaptiveTab" >
+      <attribute name="title" >
+       <string>Adaptive</string>
+      </attribute>
+      <layout class="QVBoxLayout" >
+       <item>
+        <widget class="QGroupBox" name="adaptiveGeneralControlGroup" >
+         <property name="title" >
+          <string>General</string>
+         </property>
+         <layout class="QGridLayout" >
+          <item row="0" column="0" >
+           <widget class="QLabel" name="adaptiveMeshNameLabel" >
+            <property name="text" >
+             <string>Adaptive mesh name</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" >
+           <widget class="QLineEdit" name="adaptiveMeshNameEdit" />
+          </item>
+          <item row="1" column="0" >
+           <widget class="QLabel" name="adaptiveErrorLimitLabel" >
+            <property name="text" >
+             <string>Adaptive error limit</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1" >
+           <widget class="QLineEdit" name="adaptiveErrorLimitEdit" >
+            <property name="text" >
+             <string>0.1</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="0" >
+           <widget class="QLabel" name="adaptiveMinHLabel" >
+            <property name="text" >
+             <string>Adaptive min h</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1" >
+           <widget class="QLineEdit" name="adaptiveMinHEdit" />
+          </item>
+          <item row="3" column="0" >
+           <widget class="QLabel" name="adaptiveMaxHLabel" >
+            <property name="text" >
+             <string>Adaptive max h</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1" >
+           <widget class="QLineEdit" name="adaptiveMaxHEdit" />
+          </item>
+          <item row="4" column="0" >
+           <widget class="QLabel" name="adaptiveMaxChangeLabel" >
+            <property name="text" >
+             <string>Adaptive max. change</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1" >
+           <widget class="QLineEdit" name="adaptiveMaxChangeEdit" >
+            <property name="text" >
+             <string>2</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="adaptiveSOlverControlBox" >
+         <property name="title" >
+          <string>Refinement</string>
+         </property>
+         <layout class="QVBoxLayout" >
+          <item>
+           <widget class="QCheckBox" name="adaptiveMeshRefinementCheck" >
+            <property name="text" >
+             <string>Adaptive mesh refinement</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="adaptiveRemeshCheck" >
+            <property name="text" >
+             <string>Adaptive remesh</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="adaptiveSaveMeshCheck" >
+            <property name="text" >
+             <string>Adaptive save mesh</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="adaptiveCoarseningCheck" >
+            <property name="text" >
+             <string>Adaptive coarsening</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer>
+         <property name="orientation" >
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" >
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="multigridTab" >
+      <attribute name="title" >
+       <string>Multigrid</string>
+      </attribute>
+      <layout class="QVBoxLayout" >
+       <item>
+        <widget class="QGroupBox" name="multigridGeneralControlGroup" >
+         <property name="title" >
+          <string>General</string>
+         </property>
+         <layout class="QGridLayout" >
+          <item row="0" column="0" >
+           <widget class="QLabel" name="mgLevelsLabel" >
+            <property name="text" >
+             <string>MG levels</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1" >
+           <widget class="QLineEdit" name="mgLevelsEdit" >
+            <property name="text" >
+             <string>2</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0" >
+           <widget class="QLabel" name="mgMeshNameLabel" >
+            <property name="text" >
+             <string>MG mesh name</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1" >
+           <widget class="QLineEdit" name="mgMeshNameEdit" />
+          </item>
+          <item row="2" column="0" >
+           <widget class="QLabel" name="mgPreSmoothingItersLabel" >
+            <property name="text" >
+             <string>MG pre smoothing iters.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="2" column="1" >
+           <widget class="QLineEdit" name="mgPreSmoothingItersEdit" >
+            <property name="text" >
+             <string>5</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0" >
+           <widget class="QLabel" name="mgPostSmoothingItersLabel" >
+            <property name="text" >
+             <string>MG post smoothing iters.</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1" >
+           <widget class="QLineEdit" name="mgPostSmoothingItersEdit" >
+            <property name="text" >
+             <string>5</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0" >
+           <widget class="QLabel" name="mgMaxItersLabel" >
+            <property name="text" >
+             <string>MG max. iterations</string>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="1" >
+           <widget class="QLineEdit" name="mgMaxItersEdit" >
+            <property name="text" >
+             <string>300</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0" >
+           <widget class="QLabel" name="mgToleranceLabel" >
+            <property name="text" >
+             <string>MG tolerance</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="1" >
+           <widget class="QLineEdit" name="mgToleranceEdit" >
+            <property name="text" >
+             <string>1.0e-8</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="0" >
+           <widget class="QLabel" name="mgILUTabel" >
+            <property name="text" >
+             <string>MG ILUT tolerance</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1" >
+           <widget class="QLineEdit" name="mgILUTEdit" >
+            <property name="text" >
+             <string>1.0e-3</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="multigridRefinementControlGroup" >
+         <property name="title" >
+          <string>Refinement</string>
+         </property>
+         <layout class="QVBoxLayout" >
+          <item>
+           <widget class="QCheckBox" name="mgEqualSplitCheck" >
+            <property name="text" >
+             <string>MG equal split</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer>
+         <property name="orientation" >
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" >
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" >
+     <item>
+      <spacer>
+       <property name="orientation" >
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" >
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="applyButton" >
+       <property name="text" >
+        <string>Apply</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="../ElmerGUI.qrc" />
+ </resources>
+ <connections/>
+</ui>

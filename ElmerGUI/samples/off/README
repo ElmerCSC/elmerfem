@@ -1,0 +1,4 @@
+Object File Format (.off) files are used to represent the geometry of
+a model by specifying the polygons of the model's surface.
+
+off files may be read by tetgen mesh generator.

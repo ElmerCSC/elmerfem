@@ -1,0 +1,38 @@
+# demo - .in2d file
+# geometry consists of two squares, 
+# the inner square is made of iron, the outer is not specified (default)
+# boundary condition 1 on the outside, 2 on the interface between inner and outer square
+
+# new .in2d geomety files ... 
+
+# start with keyword splinecurves2dv2 
+splinecurves2dv2
+# next the refinement factor
+20
+
+points
+1 0   0  -ref=3
+2 1.6 0  -ref=10
+3 2.0 0  -ref=10
+4 5.0 0  -ref=1
+5 10.0 0  -ref=1
+6 10.0 2.0 
+7 5.0 2.0 -ref=1
+8 2.0 2.0 -ref=5
+9 0.0 2.0  -ref=3
+10 2.0 1.0 -ref=10
+
+segments
+1	0	2	1	2  	-bc=1	
+1	2	2	2	10  	-bc=2	
+1	2	2	10	3 	-bc=3	
+1	0	2	3	4 	-bc=4	
+1	0	2	4	5 	-bc=4	
+1	0	2	5	6 	-bc=5	
+1	0	2	6	7 	-bc=6	
+1	0	2	7	8 	-bc=6	
+1	0	2	8	9 	-bc=6	
+1	0	2	9	1 	-bc=7	
+2	0	2	2	3 	-bc=8	
+
+

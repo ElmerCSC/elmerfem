@@ -1,0 +1,77 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." ""			! mistä hakemistosta verkko haetaan
+End
+
+Simulation
+  Coordinate System = "Cartesian 3D"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Timestepping Method = BDF
+  BDF Order = 2
+
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Youngs modulus = 100e9
+  Poisson ratio = 0.0
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End 
+
+Solver 1
+  Equation = "Displacement analysis"
+  Procedure = "StressSolve" "StressSolver"
+	
+  Variable = -dofs 3 Displacement
+
+  Calculate stresses = True
+  Calculate strains  =  True
+  Calculate Principal = Logical True
+  Calculate PAngle    = Logical True
+
+  Time derivative order = Integer 2	
+  Linear System Solver = "Iterative"
+  Linear system iterative method = BiCGstab
+  Linear system convergence tolerance = 1.0e-8
+  Linear system max iterations = 2000
+  Linear system preconditioning = ILU1
+  Linear System Precondition Recompute = 1000000
+
+  Steady State Convergence Tolerance = 1e-08
+
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Convergence Tolerance = Real 1.0e-8
+
+  Optimize bandwidth = False 
+  Linear System Symmetric = True
+End
+
+
+Boundary Condition 1      
+  Target Boundaries(1) = 1  
+
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+  Displacement 3 = Real 0.0
+End
+
+Boundary Condition 2
+  Target boundaries(1) = 3
+  Displacement 2 = Real 0.001
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.35764514E-03,EPS=1e-8\n" );
+
+

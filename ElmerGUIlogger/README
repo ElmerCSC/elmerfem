@@ -1,0 +1,6 @@
+Data logger for ElmerGUI. Needs Qt4. Compile as:
+
+$ qmake -project
+$ qmake
+$ make
+

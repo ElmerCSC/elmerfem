@@ -1,0 +1,84 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="StatCurrent" >
+      <Name>Static Current Conduction</Name>
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+        <Parameter Widget="Edit" >
+            <Name> Electric Conductivity </Name>
+            <Type> String </Type>
+            <Whatis> Give the electric conductivity of the material. </Whatis>
+         </Parameter>    
+      </Material>   
+      <BodyForce>
+       <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Current Source </Name>
+            <Type> String </Type>
+            <Whatis> Current Source. </Whatis>
+         </Parameter>    
+      </BodyForce>   
+      <InitialCondition>   
+        <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Potential </Name>
+            <Type> String </Type>
+            <Whatis> Give the initial condition for electrostatic potential. </Whatis>
+         </Parameter>    
+      </InitialCondition>   
+      <Solver>
+        <Parameter Widget="Edit" >
+           <Name> Procedure </Name>
+           <DefaultValue> "StatCurrentSolve" "StatCurrentSolver" </DefaultValue>
+         </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Variable </Name>
+           <DefaultValue> Potential</DefaultValue>
+         </Parameter>
+ 
+        <Parameter Widget="CheckBox" >
+            <Name> Calculate Joule Heating </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the resistive Joule heating. </Whatis>
+         </Parameter>
+        <Parameter Widget="CheckBox" >
+            <Name> Calculate Volume Current </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the electric current resulting from the electric field. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+            <Name> Constant Weights </Name>
+            <Type> Logical </Type>
+            <Whatis> Use constant weights in computing nodal values of derived fields rather than weighing by element Jacobian. </Whatis>
+         </Parameter> 
+       <Parameter Widget="Edit"> 
+           <Name> Current Control </Name> 
+           <Whatis> Enter the a value for controlled constant current. </Whatis> 
+        </Parameter> 
+        <Parameter Widget="Edit"> 
+           <Name> Power Control </Name> 
+           <Whatis> Enter the a value for controlled constant power. </Whatis> 
+        </Parameter> 
+	</Solver>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Dirichlet conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Potential </Name>
+           <Whatis> Give potential value for this boundary. </Whatis>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Potential Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Current Density </Name>
+           <Whatis> Give the current density in the direction normal to the surface. </Whatis>
+         </Parameter>
+      </BoundaryCondition>
+   </PDE>
+</edf>

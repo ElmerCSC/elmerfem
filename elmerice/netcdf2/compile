@@ -1,0 +1,6 @@
+elmerf90 -L/v/linux26_x86_64/opt/netcdf412/gnu450/lib -lnetcdff -lnetcdf -I/v/linux26_x86_64/opt/netcdf412/gnu450/include GridDataReader.f90 -o GridDataReader.so
+elmerf90 $NETCDF_LIBS $NETCDF_INCLUDES GridDataReader.f90 -o GridDataReader.so
+# R Gladstone Note: a choice of two commands for compilation is given above (CSC specific).  The second one probably 
+# works better, but you should load modules in the following order before compiling:
+#module load elmer/latest
+#module load netcdf

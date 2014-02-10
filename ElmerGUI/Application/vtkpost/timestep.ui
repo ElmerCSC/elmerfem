@@ -1,0 +1,392 @@
+<ui version="4.0" >
+ <class>timeStepDialog</class>
+ <widget class="QDialog" name="timeStepDialog" >
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>499</width>
+    <height>481</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>Time step control</string>
+  </property>
+  <property name="windowIcon" >
+   <iconset resource="../ElmerGUI.qrc" >:/icons/Mesh3D.png</iconset>
+  </property>
+  <layout class="QVBoxLayout" >
+   <item>
+    <widget class="QGroupBox" name="controlGroup" >
+     <property name="title" >
+      <string>Current</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QLabel" name="timeStepLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>50</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Step:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSpinBox" name="timeStep" >
+          <property name="minimumSize" >
+           <size>
+            <width>80</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="minimum" >
+           <number>1</number>
+          </property>
+          <property name="maximum" >
+           <number>99999</number>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer>
+          <property name="orientation" >
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" >
+           <size>
+            <width>161</width>
+            <height>24</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item>
+         <widget class="QPushButton" name="applyButton" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Apply</string>
+          </property>
+          <property name="default" >
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="loopGroup" >
+     <property name="title" >
+      <string>Loop</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <layout class="QGridLayout" >
+        <item row="0" column="0" >
+         <widget class="QLabel" name="startLabel" >
+          <property name="text" >
+           <string>Start:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1" >
+         <widget class="QSpinBox" name="start" >
+          <property name="minimumSize" >
+           <size>
+            <width>80</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="minimum" >
+           <number>1</number>
+          </property>
+          <property name="maximum" >
+           <number>99999</number>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2" >
+         <spacer>
+          <property name="orientation" >
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" >
+           <size>
+            <width>31</width>
+            <height>24</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item row="0" column="3" >
+         <widget class="QLabel" name="label" >
+          <property name="minimumSize" >
+           <size>
+            <width>0</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Increment:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="4" >
+         <widget class="QSpinBox" name="increment" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="minimum" >
+           <number>1</number>
+          </property>
+          <property name="maximum" >
+           <number>99999</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" >
+         <widget class="QLabel" name="stopLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>50</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Stop:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1" >
+         <widget class="QSpinBox" name="stop" >
+          <property name="minimumSize" >
+           <size>
+            <width>70</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="minimum" >
+           <number>1</number>
+          </property>
+          <property name="maximum" >
+           <number>99999</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="4" >
+         <widget class="QPushButton" name="loopButton" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Loop</string>
+          </property>
+          <property name="autoDefault" >
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="matcGroup" >
+     <property name="title" >
+      <string>MATC command to perform before drawing</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <layout class="QGridLayout" >
+        <item row="0" column="0" >
+         <widget class="QLabel" name="doBeforeLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>50</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Cmd:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1" >
+         <widget class="QLineEdit" name="doBefore" >
+          <property name="minimumSize" >
+           <size>
+            <width>305</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1" >
+         <widget class="QCheckBox" name="regenerateBeforeDrawing" >
+          <property name="text" >
+           <string>Regenerate all groups after the MATC command has been performed</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="saveGroup" >
+     <property name="title" >
+      <string>Save</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <layout class="QGridLayout" >
+        <item row="0" column="1" >
+         <widget class="QCheckBox" name="saveFrames" >
+          <property name="text" >
+           <string>Save frames in png format (overwrites existing files)</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" >
+         <widget class="QLabel" name="label_2" >
+          <property name="minimumSize" >
+           <size>
+            <width>50</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Directory:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1" >
+         <widget class="QLineEdit" name="saveDirectory" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>.</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="2" >
+         <widget class="QPushButton" name="browseButton" >
+          <property name="text" >
+           <string>Browse</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer>
+     <property name="orientation" >
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" >
+      <size>
+       <width>480</width>
+       <height>16</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" >
+     <item>
+      <spacer>
+       <property name="orientation" >
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" >
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancelButton" >
+       <property name="text" >
+        <string>Cancel</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-close.png</iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="okButton" >
+       <property name="text" >
+        <string>Ok</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
+       </property>
+       <property name="default" >
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="../ElmerGUI.qrc" />
+ </resources>
+ <connections/>
+</ui>

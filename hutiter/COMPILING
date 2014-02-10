@@ -1,0 +1,7 @@
+AIX:
+
+FCFLAGS=-qsuffix=cpp=F90
+FC=xlf95_r
+F77=xlf_r
+CC=cc
+CXX=c++

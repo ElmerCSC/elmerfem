@@ -1,0 +1,216 @@
+! Simple case 2D of sloshing as described in 
+! U. Rasthofer et al., Comput. Methods Appl. Mech. Engrg. 200 (2011) 1866-1876
+! An initial free surface is set and the time evolution of the 
+! free surface is studied. The free surface must be smooth enough to be 
+! descibed as h=h(x). 
+!
+! Authors: Tiago Rebelo & Peter Raback. 2013
+
+! Based on a simple structured mesh but could be unstructural 
+! and more complicated as well. 
+Header
+  Check Keywords Warn
+  Mesh DB "square" "."
+End
+
+Constants
+  Gravity(4)=  0 -1 0 1
+  Stefan Boltzmann =  5.67e-8
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type  = Transient
+  Steady State Max Iterations = 1
+  Timestepping Method = BDF
+! One could try to play around with also other 
+! time integration schemes. 
+!  Timestepping Method = Newmark	
+!  Newmark Beta = 0.5
+  BDF Order = 1
+
+! Number of timesteps is decreased for the consistency test
+  Timestep Intervals = Integer 20
+!500
+  Timestep Sizes = Real 0.02
+  Output Intervals = 5
+!  Post File = "case.vtu"
+End
+
+Body 1
+  Equation = 1 
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 2
+  Material = 1
+  Initial Condition = 1
+End
+
+! Mesh update is set as the 1st solver in order for the 
+! initial condition to be reflected also in the initial shape 
+Solver 1
+  Equation = Mesh Update
+  Procedure = File "MeshSolve" "MeshSolver"
+  
+  Exec Solver = "Before TimeStep"
+  
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 1000
+  Linear System Residual Output = 20
+  Linear System Convergence Tolerance = 1.0e-8
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 2
+  Equation = N-S
+  Exec Solver = "Always"
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+
+  Stabilization Method = stabilized
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-4
+  Nonlinear System Relaxation Factor = 1.0
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 1000
+  Linear System Residual Output = 20
+  Linear System Preconditioning = ILU0
+  Steady State Convergence Tolerance = 1.0e-5
+
+! With newmark one could test with the nonlinear timestepping schemes
+!  Nonlinear Timestepping = Logical True
+End
+
+Solver 3
+  Equation = String "FreeSurf"
+  Exec Solver = "After TimeStep"
+  Variable = FreeSurface
+  Variable DOFs = 1
+  Procedure = File "FreeSurfaceSolver" "FreeSurfaceSolver"
+
+  ALE Formulation = Logical True
+  
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 1000
+  Linear System Preconditioning = ILU2
+  Linear System Convergence Tolerance = 1.0e-4
+
+  Steady State Convergence Tolerance = 1.0e-4
+  
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Min Iterations = 2
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  
+  Flow Solution Name = String "Flow Solution"
+  
+!  Stabilization Method = Bubbles  
+  Exported Variable 1 = Freesurface Residual
+
+! With newmark one could test with the nonlinear timestepping schemes
+!  Nonlinear Timestepping = Logical True
+End
+
+
+Solver 4
+  Equation = String "SaveFree"
+  Exec Solver = never
+!"After TimeStep"
+
+  Procedure = File "SaveData" "SaveScalars"
+ 
+  Variable 1 = pressure 
+  Operator 1 = volume
+
+  Variable 2 = FreeSurface 
+  Operator 2 = min
+  Operator 3 = max
+  Operator 4 = mean
+
+  Filename = f.dat
+End 
+
+Equation 1
+  Name = "BulkSolvers"
+  Active Solvers(2) = 1 2
+End
+
+Equation 2
+  Name = "BoundarySolvers"
+  Active Solvers(1) = 3
+  Convection = Computed
+  Flow Solution Name = String "Flow Solution"
+End
+
+Body Force 1 
+  Name = "Hydrostatic"
+  Hydrostatic Pressure = Logical True
+End 
+
+Initial Condition 1
+  Name = "Guess" 
+  FreeSurface = Variable Coordinate 1
+    Real MATC "0.01+0.1*sin(pi*tx)"
+End
+
+Material 1
+  Viscosity = 1.0
+  Density = 1000.0
+  Mesh Poisson Ratio = Real 0.3
+  Mesh Youngs Modulus = Real 1.0
+End
+
+Boundary Condition 1    
+  Name = "Sides"  
+  Target Boundaries(2) = 1 3
+  
+  Mesh Update 1 = 0
+!  Mesh Update 3 = 0
+
+  Velocity 1 = 0
+!  Velocity 2 = 0
+!  Velocity 3 = 0
+End
+
+Boundary Condition 2
+  Name = "Bottom"
+  Target Boundaries = 4 
+    
+!  Velocity 1 = 0
+  Velocity 2 = 0
+!  Velocity 3 = 0
+      
+  Mesh Update 1 = 0
+  Mesh Update 2 = 0
+!  Mesh Update 3 = 0    
+End
+        
+Boundary Condition 3    
+  Name = "FreeSurface"  
+  Target Boundaries = 2
+  
+  Body Id = 2
+  
+  Surface Tension Coefficient = 0
+
+  Mesh Update 1 = 0
+  Mesh Update 2 =  Equals FreeSurface
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=5.48559563392912453E-002\n");
+

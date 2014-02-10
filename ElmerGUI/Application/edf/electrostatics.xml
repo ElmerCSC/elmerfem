@@ -1,0 +1,114 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Electrostatics" >
+      <Name>Electrostatics</Name>
+      <Material>
+        <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Relative Permittivity </Name>
+            <Type> String </Type>
+            <Whatis> Give the relative permittivity compared to vacuum. </Whatis>
+         </Parameter>    
+      </Material>   
+      <BodyForce>
+      <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Charge Density </Name>
+            <Type> String </Type>
+            <Whatis> Give the volume charge density. </Whatis>
+         </Parameter>    
+      </BodyForce>   
+      <InitialCondition>   
+        <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Potential </Name>
+            <Type> String </Type>
+            <Whatis> Give the initial condition for electrostatic potential. </Whatis>
+         </Parameter>    
+      </InitialCondition>   
+      <Solver>
+         <Parameter Widget="Edit" >
+           <Name> Procedure </Name>
+           <DefaultValue> "StatElecSolve" "StatElecSolver" </DefaultValue>
+         </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Variable </Name>
+           <DefaultValue> Potential</DefaultValue>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+            <Name> Calculate Electric Field </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the electric field from the electric potential. </Whatis>
+         </Parameter>
+        <Parameter Widget="CheckBox" >
+            <Name> Calculate Electric Flux </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the electric flux from the electric potential. </Whatis>
+         </Parameter>
+        <Parameter Widget="CheckBox" >
+            <Name> Calculate Electric Energy </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the electric energy from the electric potential. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+            <Name> Constant Weights </Name>
+            <Type> Logical </Type>
+            <Whatis> Use constant weights in computing nodal values of derived fields rather than weighing by element Jacobian. </Whatis>
+         </Parameter> 
+         <Parameter Widget="CheckBox" >
+            <Name> Calculate Capacitance Matrix </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the capacitance matrix. </Whatis>
+            <Activate>/Electrostatics/Solver/Capacitance Bodies</Activate>
+            <Activate>/Electrostatics/Solver/Capacitance Matrix Filename</Activate>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Capacitance Bodies </Name>
+            <Type> String </Type>
+            <Whatis> Number of different bodies in capacitance matrix computation. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Capacitance Matrix Filename </Name>
+            <Type> String </Type>
+            <Whatis> File to save the capacitance matrix. </Whatis>
+         </Parameter> 
+       </Solver>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Dirichlet conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Potential </Name>
+           <Whatis> Give potential value for this boundary. </Whatis>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Potential Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="True" Visible="True">
+           <Name>Capacitance Body</Name>
+           <Whatis> This keyword should be provided for capacitance matrix computation only. The numbers should provide continuous numbering from 1 to the total number of bodies. Ground may be defined with value 0 or by explicitely setting potential to zero somewhere.</Whatis>
+         </Parameter>
+ 
+         <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
+        <Parameter  Widget="Edit">
+           <Name> Electric Flux </Name>
+           <Whatis> Give electric flux equivalent to the surface charge density. </Whatis>
+         </Parameter>
+
+          <Parameter Widget="CheckBox" >
+            <Name> Electric Infinity BC </Name>
+            <Type> Logical </Type>
+            <Whatis> Use a far field condition for the electric flux. </Whatis>
+         </Parameter>
+
+		 </BoundaryCondition>
+   </PDE>
+</edf>
+
+
+
+
+

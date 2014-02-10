@@ -1,0 +1,109 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 8
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  
+  Output Intervals = 0
+!  Post File = case.ep
+
+
+! Parameters for the User Defined Function, SphereBottom
+  Sphere Radius = Real 2.0
+  Sphere Z = Real 1.0
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Disp
+  Steady State Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 30
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = 4
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "none"
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+  Apply Limiter = Logical True
+End
+
+Solver 2
+  Equation = Result Output
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+
+  Output File Name = case
+  Output Format = Vtu
+
+  Exec Solver = never
+!After Simulation  
+!  Save Geometry Ids = True
+End
+
+
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Youngs modulus = 1.0e3
+  Density = 1.0
+  Poisson ratio = 0.3
+End
+
+Boundary Condition 1
+  Name = "Natural" 
+  Target Boundaries(4) = 1 2 3 4
+End 
+
+Boundary Condition 2
+  Name = "Contact"
+  Target Boundaries(1) = 6
+
+  Disp 3 Upper Limit = Variable time
+    Real Procedure "ContactBC" "SphereBottom"
+End
+
+Boundary Condition 3
+  Name = "Bottom"
+  Target Boundaries(1) = 5
+  Disp 1 = Real 0.0
+  Disp 2 = Real 0.0
+  Disp 3 = Real 0.0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.13114840\n");

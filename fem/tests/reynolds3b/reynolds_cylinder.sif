@@ -1,0 +1,128 @@
+! Solves the fluid pressure for a flow between two non-concentric cylinders 
+! from the Reynolds equation.
+! Compared to test reynolds1 also cavitation is accounted for.
+! Compared to test reynolds3 the generic soft limiters are used. 
+
+! desired cavitation pressure
+$ pcav = 0.0
+
+Header
+  Mesh DB "." "cylinder"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System =  Cartesian 3D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+!  Post File = "reynolds_cylinder.ep"
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1 
+End
+
+
+Body Force 1
+  Name = "Cavitation" 
+  Filmpressure Lower Limit = Real 0.0
+End 
+
+Solver 1
+  Equation = "Reynolds"
+
+  Procedure = File "ReynoldsSolver" "ReynoldsSolver"
+  Variable = FilmPressure
+  Variable DOFS = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-2
+  Nonlinear System Relaxation Factor = 1.0
+
+  Apply Limiter = Logical True
+End
+
+
+
+Solver 2
+  Equation = "SaveMaterial"
+  Procedure = File "SaveData" "SaveMaterials"
+
+  Parameter 1 = String "Gap Height"
+  Parameter 2 = String "Surface Velocity 1"
+  Parameter 3 = String "Surface Velocity 2"
+End
+
+
+
+Material 1
+  Name = "Material1"
+
+  Gap Height = Variable Coordinate 1, Coordinate 2
+     Real MATC "0.01+0.005*tx(1)/sqrt(tx(0)*tx(0)+tx(1)*tx(1))"
+
+! -v0*sin(f)
+  Surface Velocity 1 = Variable Coordinate 1, Coordinate 2
+     Real MATC "-1.0e3*tx(1)/sqrt(tx(0)*tx(0)+tx(1)*tx(1))"
+
+! v0*cos(f)
+  Surface Velocity 2 = Variable Coordinate 1, Coordinate 2
+     Real MATC "1.0e3*tx(0)/sqrt(tx(0)*tx(0)+tx(1)*tx(1))"
+
+  Density = 1
+  Viscosity = 0.01
+  Compressibility Model = "weakly compressible"
+  Bulk Modulus = 1.0e4
+
+!  Compressibility Model = String "isothermal ideal gas"
+!  Specific Heat Ratio = 1.4
+!  Reference Pressure = 1e4
+
+!  Viscosity Model = String "rarefied"
+!  Mean Free Path = 1.0e-4
+!  Reference Pressure = 1.0e6
+End
+
+Boundary Condition 1
+  Name = "edges"
+
+  Target Boundaries(2) = 1 2
+  FilmPressure = 0.0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=4661.4716\n");
+
+

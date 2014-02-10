@@ -1,0 +1,49 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource>
+   <file>images/bgimage.png</file>
+   <file>images/splash.png</file>
+   <file>images/logo.png</file>
+   <file>icons/Mesh3D.png</file>
+   <file>icons/document-open.png</file>
+   <file>icons/document-open-folder.png</file>
+   <file>icons/document-save.png</file>
+   <file>icons/document-save-as.png</file>
+   <file>icons/document-save-all.png</file>
+   <file>icons/document-import.png</file>
+   <file>icons/games-config-custom.png</file>
+   <file>icons/document-export.png</file>
+   <file>icons/application-exit.png</file>
+   <file>icons/document-properties.png</file>
+   <file>icons/document-preview.png</file>
+   <file>icons/configure.png</file>
+   <file>icons/edit-redo.png</file>
+   <file>icons/divide.png</file>
+   <file>icons/divide-edge.png</file>
+   <file>icons/unify.png</file>
+   <file>icons/unify-edge.png</file>
+   <file>icons/help-about.png</file>
+   <file>icons/dialog-ok.png</file>
+   <file>icons/system-run.png</file>
+   <file>icons/window-close.png</file>
+   <file>icons/Solver.png</file>
+   <file>icons/Solver-red.png</file>
+   <file>icons/Post.png</file>
+   <file>icons/Post-red.png</file>
+   <file>icons/list-add.png</file>
+   <file>icons/list-remove.png</file>
+   <file>icons/dialog-close.png</file>
+   <file>icons/dialog-ok-apply.png</file>
+   <file>icons/arrow-up.png</file>
+   <file>icons/arrow-down.png</file>
+   <file>icons/tab-new-background.png</file>
+   <file>icons/tools-wizard.png</file>
+   <file>icons/document-print.png</file>
+   <file>icons/edit-clear.png</file>
+   <file>icons/edit-cut.png</file>
+   <file>icons/edit-copy.png</file>
+   <file>icons/edit-paste.png</file>
+   <file>icons/edit-find.png</file>
+   <file>icons/document-new.png</file>
+   <file>icons/view-preview.png</file>
+</qresource>
+</RCC>

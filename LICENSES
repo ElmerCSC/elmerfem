@@ -1,0 +1,95 @@
+Elmer - A finite elements software for multiphysical problems
+Copyright (C) 1995- , CSC - IT Center for Science Ltd.
+   
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+   
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+   
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+==============================================================================
+
+The Elmer source files consist of the following modules (in alphabetical order): 
+
+buildtools - sripts used in building Elmer
+ElmerGUI - the new graphical user interface of Elmer based on QT 
+ElmerGUIlogger - launcher for ElmerGUI based on QT
+eio - elmer I/O library used by ElmerSolver for some tasks
+elmergrid - simple mesh creation and manipulation utility
+elmerparam - optimization wrapper
+fem - elmersolver, the computational kernel
+front - ElmerFront, the old graphical user interface
+hutiter - iterative linear algebra 
+matc - library for on-the-line arithmetics  
+meshgen2d - 2d Delaunay mesh generation 
+post - ElmerPost, the visualization program of Elmer 
+misc - miscallenous stuff
+
+The following exception applied to ElmerGUI module:
+
+
+ElmerGUI GPL Exception v. 1.0
+=============================
+
+Additional rights granted by the copyright holder, beyond GPL version 2.
+-------------------------------------------------------------------------
+
+As an exception to the conditions of Gnu Public Licence version 2 (GPL-2),
+CSC - IT Center for Science Ltd., the copyright holder of ElmerGUI, hereby
+grants you the right to link the source code within this directory against
+the library of
+
+"Open CASCADE" v. 6.3 by Open CASCADE S.A.S.
+
+You may also link ElmerGUI against any later versions of Open CASCADE,
+provided that the lincense of Open CASCADE permits such usage. The licence
+terms for the Open CASCADE library can be found from
+
+http://www.opencascade.org/
+
+
+
+==========================================================================
+
+
+Additionally the source distribution comes with some libraries wrapped 
+up in autoconf/automake built scripts:
+
+mathlibs - scalapack components: blas, lapack, arpack, parpack
+umfpack - Umfpack version 4.4 (licensed under LGPL)
+metis - graph partitioning contained within ElmerGrid
+
+
+Metis license:
+--------------
+
+* Copyright 1997, Regents of the University of Minnesota
+
+Our policy regarding the distribution of METIS with third-party applications is as follows:
+
+    *  Non-commercial applications
+      METIS can be freely distributed provided that:
+          o Proper references are included.
+          o The original documentation and copyright notice is included.
+    * Commercial applications
+      METIS can be freely distributed provided that:
+          o Proper references are included.
+          o The original documentation and copyright notice is included.
+          o METIS is a relatively small portion of the overall application.
+
+
+
+
+
+
+
+
+

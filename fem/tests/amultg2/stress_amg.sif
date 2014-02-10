@@ -1,0 +1,97 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+!  Post File = "data.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Stress Analysis = True
+  Calculate Stresses = Logical False
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Variable = -dofs 2 "Displacement"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = bicgstab
+  Linear System Convergence Tolerance = 1.0e-07
+  Linear System Max Iterations = 1000
+
+!  Linear System Preconditioning = ILU2
+  Linear System Preconditioning = multigrid
+
+!--- generic AMG parameters 
+  MG Smoother = String bsgs
+  MG Levels = Integer 10
+  MG Pre Smoothing Iterations = 1
+  MG Post Smoothing Iterations = 1
+  MG Determining Component = Integer 1
+
+!--- Ruge-Stuben specific parameters 
+  MG Method = String algebraic   
+  MG Strong Connection Limit = Real 0.06
+  MG Projection Limit = Real 0.6
+  MG Direct Interpolate = Logical False
+
+!--- cluster MG specific parameters 
+!  MG Method = String cluster
+!  MG Cluster Size = Integer 4
+!  MG Cluster Alpha = Real 1.6
+!  MG Strong Connection Limit = Real 0.01
+!  MG Strong Connection Minimum = Integer 4
+End
+
+
+Material 1
+  Name = "Material1"
+
+  Youngs Modulus = 1.0
+  Poisson Ratio = 0.0
+  Density = 0.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Displacement 1 = 1.0
+  Displacement 2 = 1.0
+End
+
+$ fprintf( stderr, "TEST CASE 1\n" );
+RUN
+$ fprintf( stderr, "END TEST CASE 1, Target NRM=0.679189775918,EPS=1.0e-4\n");

@@ -1,0 +1,10 @@
+MODULE Kinds
+
+    ! IntOff_k is the kind of the file offsets used by ftello and fseeko,
+    ! corresponds to a C off_t.
+    INTEGER, PARAMETER :: IntOff_k = @OFF_KIND@
+
+    INTEGER, PARAMETER :: Int4_k = selected_int_kind(9)
+    INTEGER, PARAMETER :: Int8_k = selected_int_kind(18)
+
+END MODULE Kinds

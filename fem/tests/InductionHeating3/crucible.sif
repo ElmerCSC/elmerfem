@@ -1,0 +1,156 @@
+! This test case is similar to 'InductionHeating' except 
+! that the new generation solver MagnetoDynamics2D is used. 
+! This causes some difference to the results as the formulations
+! are a little bit different and also the postprocessing is done 
+! using Galerkin instead of nodal everaging. 
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "crucible"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Axi Symmetric"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Post File = "crucible.vtu"
+
+  Frequency = Real 50.0e3
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body Force 1
+  Current Density = 2.5e5
+End
+
+Body 1
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Coil"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 3
+  Name = "Insulation"
+  Equation = 1
+  Material = 2
+End
+
+Body 4
+  Name = "Graphite"
+  Equation = 1
+  Material = 3
+End
+
+Body 5
+  Name = "Powder"
+  Equation = 1
+  Material = 4
+End
+
+Equation 1
+  Name = "Vector Potential Equation"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = VecPotSol
+  Variable = Potential[Potential Re:1 Potential Im:1]
+
+  Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+
+  Linear System Solver = Iterative
+  Linear System Symmetric=True
+  Linear System Convergence Tolerance = 1.e-10
+  Linear System Max Iterations=1000
+  Linear System Residual Output=10
+  Linear System Abort not Converged=False
+  Linear System preconditioning=ilu
+  Linear System ILUT Tolerance=1e-8
+  Linear System Iterative Method = BicgstabL
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Relaxation Factor = 1
+End
+
+Solver 2
+  Exec Solver = never
+
+  Equation = BSolver
+
+  Procedure = "MagnetoDynamics2D" "BSolver"
+
+  Discontinuous Galerkin = Logical True
+  Average Within Materials = Logical True
+
+!  Frequency = Real 50.0e3
+  Calculate Joule Heating = Logical True
+  Desired Heating Power = Real 3.0e3
+
+  Target Variable = Potential
+  Target Variable Complex = Logical True
+
+  Linear System Solver = Iterative
+  Linear System Symmetric=True
+  Linear System Convergence Tolerance = 1.e-10
+  Linear System Max Iterations=1000
+  Linear System Residual Output=10
+  Linear System Abort not Converged=False
+  Linear System preconditioning=ilu
+  Linear System ILUT Tolerance=1e-8
+  Linear System Iterative Method = BicgstabL
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Relaxation Factor = 1
+End
+
+
+Material 1
+  Name = "Air"
+  Electric Conductivity = 0.0
+  Relative Permeability = 1.0
+End
+
+Material 2
+  Name = "Insulation"
+  Electric Conductivity = 2.0E3
+  Relative Permeability = 1.0
+End
+
+Material 3
+  Name = "Graphite"
+  Electric Conductivity = 2.0E4
+  Relative Permeability = 1.0
+End
+
+Material 4
+  Name = "Powder"
+  Electric Conductivity = 1.0E4
+  Relative Permeability = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential Re = Real 0.0
+  Potential Im = Real 0.0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.11526857E-04\n");
+

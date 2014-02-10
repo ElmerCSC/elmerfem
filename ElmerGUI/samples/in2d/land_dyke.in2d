@@ -1,0 +1,64 @@
+# demo - .in2d file
+# geometry consists of two squares, 
+# the inner square is made of iron, the outer is not specified (default)
+# boundary condition 1 on the outside, 2 on the interface between inner and outer square
+
+# new .in2d geomety files ... 
+
+# start with keyword splinecurves2dv2 
+splinecurves2dv2
+# next the refinement factor
+2
+
+# keyword points
+points
+
+# then the details:
+# point nr ( need not be ordered )   ---   x-coord   ---   y-coord   ---   flags
+# the refinement factor is an optional flag, -ref=factor, default 1
+
+1	0	0	
+2	15	0
+3	37	0
+4	52	0	
+5	52	6	
+6	37	6
+7	28	9
+8	24	9
+9	22.5	8.5
+10	15	6
+11	0	6
+
+# keyword segments for the segments
+segments
+
+# then the segment information
+# domain in --- domain out --- number of points --- points --- flags
+# again, the refinement factor is an optional flag, -ref=factor, default 1
+# still on the wishlist: give names to the boundary conditions, and have a default value for non-specified bcs
+# (similar to materials in subdomains)
+
+1	0	2	1	2  	-bc=1	
+1	0	2	2	3  	-bc=1  -ref=2	
+1	0	2	3	4 	-bc=1		
+1	0	2	4	5 	-bc=2  		
+1	0	2	5	6 	-bc=3
+1	0	2	6	7 	-bc=4  -ref=2		
+1	0	2	7	8 	-bc=4  -ref=2		
+1	0	2	8	9 	-bc=4  -ref=2		
+1	0	2	9	10 	-bc=5  -ref=2		
+1	0	2	10	11 	-bc=6		
+1	0	2	11	1 	-bc=7		
+
+
+# keyword for materials
+materials
+
+# subdomain nr ---- material
+# works the same way as materials in 3d csg geometries, 
+# non-specified domains get a default value
+# maximal meshsize can be given by -maxh=.. flag
+
+1 iron -maxh=1.0
+
+

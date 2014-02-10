@@ -1,0 +1,134 @@
+Check Keywords "Warn" 
+INCLUDE sector/mesh.names
+
+Header
+Mesh DB "." "sector"
+End
+
+Simulation
+  Max Output Level = 10
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+   Post File = sector.ep
+!  Output Intervals(1) = 1
+End
+
+Initial Condition 1
+ P = Real 0
+ P {e} = Real 0
+End
+
+Solver 1
+   Equation = "MGDynamics"
+
+   Variable = "P"
+
+   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+
+   Apply Mortar BCs = Logical True
+   Edge Basis = Logical True
+
+   ! use this to restore old behaviour when dirichlet & mortar constraints
+   ! co-exist for some of the boundary edges
+!  Enforce Exact Dirichlet BCs = Logical False
+
+!  Linear System Symmetric = Logical True
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = ilu2
+   Linear System Convergence Tolerance = 1e-6
+   Linear System Residual Output = 20
+   Linear System Max Iterations = 5000
+   BiCGstabl polynomial degree = 4
+   Linear System Iterative Method = BiCGStabL
+
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Abort Not Converged = False
+End
+
+
+Solver 2
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "P"
+
+   Calculate Magnetic Vector Potential = Logical true
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 0
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+
+Solver 3
+  Exec Solver = never
+!  Exec Solver = after timestep
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = sector
+  Vtu format = Logical True
+!  ElmerPost Format = Logical true 
+End
+
+Equation 1
+  Name = "Coupled Equations"
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Name = "Air"
+  Electric Conductivity = 0
+  Relative Permeability = 1
+End
+
+Material 2
+  Name = "magnet"
+  Electric Conductivity = 0
+  Relative Permeability = 1
+End
+
+Body 1
+   Name = "Air"
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = "magnet"
+   Target Bodies(1) = $ magnet
+   Equation = 1
+   Material = 2
+   Body Force = 1
+End
+
+Body Force 1
+  Name = "Magnetization"
+  Magnetization 2 = Real 1000000
+End
+
+Boundary Condition 1
+  Target Boundaries(3) = $ top bottom outer_surface
+  P {e} = real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = $ source_face
+  Mortar BC = Integer 3
+! Mortar BC scaling = Real -1
+  Periodic BC Rotate(3) = 0 0 -45
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = $ target_face
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.20552684E-02,EPS=1e-3\n" );
+

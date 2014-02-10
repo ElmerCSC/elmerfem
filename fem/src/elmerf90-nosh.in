@@ -1,0 +1,18 @@
+#!/bin/sh -f
+
+if test "$ELMER_LIB" = ""; then
+  if  test "$ELMER_HOME" = ""; then
+     INCLUDE=@prefix@/share/elmersolver/include
+  else
+     INCLUDE=$ELMER_HOME/share/elmersolver/include
+  fi
+  INCLUDE_DEF=.
+else
+  INCLUDE=$ELMER_LIB/../include
+  INCLUDE_DEF=$ELMER_LIB
+fi
+
+cmd="@FC@ @FCFLAGS@ @INCLUDE_MODULE_FLAG@$INCLUDE @B64FLAGS@ $*"
+printf "%s " $cmd
+printf "\n"
+@FC@ @FCFLAGS@ @INCLUDE_MODULE_FLAG@$INCLUDE @INCLUDE_MODULE_FLAG@$INCLUDE_DEF @INCLUDE_MODULE_FLAG@$INCLUDE_DEF/binio @B64FLAGS@ $*

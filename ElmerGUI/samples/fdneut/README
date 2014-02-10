@@ -1,0 +1,5 @@
+FDNEUT is the file format historically related as Fidap Neutral file
+and created, for example, by the Gambit preprocessor of the Ansys
+software suite.
+
+FDNEUT files may be read by ElmerGrid library.

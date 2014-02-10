@@ -1,0 +1,91 @@
+<!DOCTYPE egini>
+<egini version="1.0">
+
+  Default width for the main window at startup:
+  <width> 800 </width>
+
+  Default height for the main window at startup:
+  <height> 600 </height>
+
+  Show splash screen at startup:
+  <splashscreen> 1 </splashscreen>
+
+  Show system tray icon while running:
+  <systrayicon> 1 </systrayicon>
+
+  Show system tray messages:
+  <systraymessages> 1 </systraymessages>
+
+  System tray message duration in millisecons:
+  <systraymsgduration> 3000 </systraymsgduration>
+
+  Default image quality (-1 [sys] or 1 ... 100):
+  <defaultimagequality> -1 </defaultimagequality>
+
+  Screen shot delay (unit is milliseconds):
+  <screenshotdelay> 2000 </screenshotdelay>
+
+  Default directory for open/save dialogs (unix):
+  <unixdefaultdir> </unixdefaultdir>
+
+  Default directory for open/save dialogs (win32):
+  <win32defaultdir> C:\ </win32defaultdir>
+
+  Default directory for open/save dialogs (macx):
+  <macxdefaultdir> </macxdefaultdir>
+
+  Check the presence of external components: (ElmerSolver, ElmerPost, ...)
+  <checkexternalcomponents> 0 </checkexternalcomponents>
+
+  Hide toolbars:
+  <hidetoolbars> 0 </hidetoolbars>
+
+  Show convergence monitor during solution:
+  <showconvergence> 1 </showconvergence>
+
+  Draw background image:
+  <bgimage> 0 </bgimage>
+
+  Background image file:
+  <bgimagefile> :/images/bgimage.png </bgimagefile>
+
+  Align background image to the bottom right corner of the screen:
+  <bgimagealignright> 0 </bgimagealignright>
+
+  Stretch background image to fit the display area (overrides align):
+  <bgimagestretch> 1 </bgimagestretch>
+
+  Deprecated: Maximum number of solvers / equation:
+  <max_solvers> 25 </max_solvers>
+
+  Deprecated: Maximum number of equations:
+  <max_equations> 25 </max_equations>
+  
+  Deprecated: Maximum number of materials:
+  <max_materials> 25 </max_materials>
+
+  Deprecated: Maximum number of bodyforces:
+  <max_bodyforces> 25 </max_bodyforces>
+
+  Deprecated: Maximum number of initial conditions:
+  <max_initialconditions> 25 </max_initialconditions>
+
+  Deprecated: Maximum number of bcs:
+  <max_bcs> 500 </max_bcs>
+
+  Deprecated: Maximum number of bodies:
+  <max_bodies> 100 </max_bodies>
+
+  Deprecated: Maximum number of boundaries:
+  <max_boundaries> 500 </max_boundaries>
+
+  Autoshow geometry viewer after loading geometry input files:
+  <autoview> 1 </autoview>
+
+  Autostart meshing after having opened a geometry input file:
+  <automesh> 1 </automesh>
+
+  Allowable deflection for surface triangulation (occ):
+  <deflection> 0.00025 </deflection>
+
+</egini>

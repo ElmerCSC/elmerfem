@@ -1,0 +1,6 @@
+A .poly file represents a piecewise linear complex (PLC) as well as
+some additional information. It consists of four parts, which are a
+list of points, a list of facets, a list of (volume) hole points, and
+a list of region attributes, respectively. (from tetgen homepage)
+
+poly files may be read by tetgen mesh generator.

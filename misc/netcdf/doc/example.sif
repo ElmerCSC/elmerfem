@@ -1,0 +1,124 @@
+! A Solver Input File for testing the Grid Transform
+! Vili Forsell, 4.8.2011
+
+! Header
+Header
+  Mesh DB "." "."
+End
+
+! Simple simulation
+Simulation
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Post File = case.ep
+End
+
+Body 1
+  Equation = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+
+  !--------------------------------------------------------------------------
+  !-------- AN EXAMPLE DEFINITION OF THE GridDataMapper NetCDF ACCESS -------
+  !--------------------------------------------------------------------------
+
+  Equation = Mapper
+  Procedure = "./GridLib" "GridDataMapper"
+
+  !-------- GENERAL PARAMETERS --------------------------
+  ! The basic input/output parameters
+  !------------------------------------------------------
+  !---- NOTE: File is case sensitive, String is not!
+  File Name = File "./data.nc" ! NetCDF input file
+  Var Name = File "julytemp" ! The Variable to be opened
+  Variable = Output_Value ! The output variable name in Elmer
+  
+  !-------- NetCDF ACCESS PARAMETERS --------------------
+  ! GridDataMapper requires at least one usable access parameter.
+  ! In other words, it is enough to define only time, only one coordinate, or only one constant.
+  !
+  ! In all cases, however, the order and amount of the parameters needs to be the same as in the
+  !  network Common Data form Language (CDL) description to access the wanted variable.
+  !
+  ! The indexing automatically obeys the following order:
+  ! [time, coordinates/constants 1-N]
+  !
+  ! The indexing should be unique; i.e. no gaps, no duplicates and N should be 
+  !  at most the number indicated in "NetCDF Max Parameters". Its size affects efficiency a bit.
+  !
+  ! Each coordinate must correspond to an Elmer cartesian coordinate, 
+  !  and constant values should be within NetCDF index range.
+  ! 
+  ! Correspondences of NetCDF coordinates to Elmer cartesian coordinates are
+  !  defined by "Coordinate X To Elmer Coordinate" clauses, where every Coordinate must have one.
+  !  Elmer dimension are related to numbers as follows: x -> 1, y -> 2, z -> 3.
+  !  Note that this means you can f.ex. connect several access coordinates to the same Elmer dimension.
+  !
+  ! The example below defines the following CDL NetCDF access: "julytemp(time,x,y,z)", 
+  !  where x and z are Elmer coordinates 1 and 2, respectively, and y is a constant index.
+  !  Obtained values will be saved to variable "Output_Value".
+  !------------------------------------------------------
+
+  !--- Time
+  Time Name = File "time"
+  
+  !--- General Parameter Configuration
+  NetCDF Max Parameters = Integer 5 ! Maximum amount of searched non-time parameters (default: 10) (optional)
+
+  !--- Coordinates
+  Coordinate Name 1 = File "x" ! NetCDF variable dimensions
+  Coordinate 1 To Elmer Dimension = Integer 1 ! Maps Coordinate X to a certain Elmer Mesh dimension
+  Coordinate Name 3 = File "z"
+  Coordinate 3 To Elmer Dimension = Integer 2
+
+  !--- Constants
+  NetCDF Constant 2 = File "y" ! Name of the constant dimension
+  NetCDF Constant Value 2 = Integer 34 ! Index of the constant dimension
+
+  !-------- OPTIONAL CONFIGURATION VARIABLES ------------
+  ! All optional configuration variables are by default inactive, 
+  ! and can be set such simply by commenting the corresponding line
+  !------------------------------------------------------
+
+  !--- Interpolation variables
+  ! Each Epsilon corresponds to a above defined Coordinate value with the same number
+  !----------------------
+  Epsilon 1 = Real 1.0e-3 ! Allowed deviation from the bounding box limits (default: 0) (optional)
+  Epsilon 2 = Real 1.0e-3 ! (default: 0) (optional)
+  Epsilon Time = Real 1.0e-3 ! Rounds to the nearest index if within this tolerance; otherwise exact (default: 0) (optional)
+  Interpolation Bias = Real 0.0 ! Adds this bias to the final interpolation result (default: 0) (optional)
+  Interpolation Multiplier = Real 1.0 ! Multiplies the final interpolation result with this value (default: 1) (optional)
+  Time Interpolation Method = File "seasonal" ! Chooses the Fortran time interpolation method implemented in CustomTimeInterpolation.f90 (default: linear) (optional)
+
+  !--- Coordinate system variables
+  ! At the moment exist: 'cs2cs' and 'cylindrical'; does nothing by default
+  !----------------------
+  Coordinate System = File "cs2cs" ! Sets the coordinate system as a predefined one (default: none) (optional)
+  CS2CS Is Input Radians = LOGICAL FALSE ! True, if input is given in radians, otherwise degrees (default: false) (optional) (only for cs2cs)
+  CS2CS Elmer Projection = File "+proj=ups +ellps=WGS84 +inv" ! CS2CS definition for the Elmer coordinate system (only for cs2cs)
+  CS2CS NetCDF Projection = File "+proj=ups +ellps=WGS84" ! CS2CS definition for the NetCDF coordinate system (only for cs2cs)
+
+  !--- Masking variables
+  ! Uses a NetCDF variable to limit the area used in Elmer mesh; only 2D data supported at the moment.
+  !----------------------
+  Mask Variable = File "ablation" ! The masking NetCDF variable (optional)
+  Mask Limit = Real 0.0 ! The masking NetCDF value to be exceeded (optional) 
+
+  !--- Scaling variable
+  Enable Scaling = LOGICAL TRUE ! Scales the Elmer grid to match the NetCDF grid (default: false) (optional)
+
+  !--- Time variables ---
+  ! Options for defining the ways the time is used during the access
+  !----------------------
+  User Defines Time = LOGICAL FALSE ! True, if uses given time point also in the transient case (default: false) (optional)
+  Is Time Index = LOGICAL TRUE ! True if input Time Point is an index (default: false) (optional)
+  Time Point = Variable Time ; Real MATC "1 + tx"  ! Needs to be scalar (optional, if transient case is used)
+  NetCDF Starting Time = Real 34.0 ! Is summed to either the indices (if "Is Time Index" is TRUE ), or the input values (otherwise),
+                                   ! given by Elmer in transient mode (default: no effect) (optional)
+
+End

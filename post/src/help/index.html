@@ -1,0 +1,105 @@
+<html>
+<head>
+<body >
+
+<br>
+<img src=figs/elmer.gif>
+<p>
+<h1> Elmerpost Help </h1><br>
+<img src=figs/putki3d.gif>
+<p>
+<h2> A Short Intro to Elmerpost </h2>
+<p>
+Elmerpost is a program for displaying results from FEM analyses, primarily from Computational
+Fluid Dynamics (CFD). The program has been (or rather is being) developed at
+<a href=http://www.csc.fi/>CSC - IT Center for Science Ltd. (CSC)</a> as a part of the
+<a href=http://www.csc.fi/CFD/elmer/>Elmer project</a>, which itself is a part of the Finnish national
+<a href=http://www.csc.fi/CFD_ohjelma/vdto_eng.html> CFD Technology Programme</a> by the Technology
+Development Centre of Finland (TEKES).
+<p>
+Elmerpost is mostly coded in C-language using primarily two tool packages outside of it's own
+code: <a href=http://www.sgi.com/Technology/openGL> OpenGL</a> graphics library which can be replaced by
+the freely distributable library called <a href=http://www.ssec.wisc.edu/~brianp/Mesa.html> Mesa </a>,
+and the <a href=http://www.sunlabs.com/research/tcl/>  TCL/TK package</a> for user interface tools.
+The Elmerpost code and the tools used make this package usable in virtually any UNIX/X-environment.
+The tested environments are: Linux, SGI IRIX, HPUX and DEC Unix. Windows NT/Windows95 - version has
+also been tested and is working.
+<p>
+<h5>Elmerpost data display styles include:</h5>
+<ul>
+   <li> Color coded mesh display
+   <li> Isocountour line display
+   <li> Isosurface display
+   <li> Vector display
+   <li> Sphere display
+   <li> Particle advection and streamline display
+</ul>
+<p>
+<h5>There are also several additional features:</h5>
+<ul>
+  <li> A matrix language MATC, which can be used to manipulate data with
+     <ul>
+        <li> Basic matrix and vector operations
+        <li> Dynamically sizeable variables
+        <li> A programming language with functions, flow control, loops, I/O, etc.
+        <li> Derivative operators for the finite element model: gradient, divergence, and curl
+      </ul>
+   <li> Both a graphical and command line user interface
+   <li> The TCL/TK environment can be used to full extent, providing a programmable
+        user interface tool to extend the program to specific needs
+   <li> Arbitrary cuts may be extracted from a 3D model
+   <li> Colormap editor, surface material editor, background color editor
+   <li> Unlimited number of user controllable views of the model
+   <li> A versatile clipping ability
+   <li> Some basic element grouping ability (at the moment not very effective use
+        is made of this ability)
+   <li> Online help in HTML format (a simple basic HTML browser is also included)
+</ul>
+<p>
+Here are some example pictures made with Elmerpost: <a href=gallery.html> Picture Gallery </a>.
+To get more information and obtain the sofware contact <a href=http://www.csc.fi/faces/jpr.html>
+Juha Ruokolainen </a>
+at CSC.
+<p>
+<h2> Using Elmerpost </h2>
+
+<p>
+Below are specific instructions for using Elmerpost. This is not
+complete as yet, please be patient with me.
+<p>
+
+<h2> Topics </h2>
+<ul>
+<li> <a href=file.html> File Menu </a>
+  <ul>
+    <li> <a href=file.html#fileformat> File Format </a>
+  </ul>
+<li> <a href=edit.html> Edit Menu </a>
+  <ul>
+    <li> <a href=edit.html#Colormap> Colormap Editor</a>
+    <li> <a href=edit.html#Grouping> Grouping </a>
+    <li> <a href=edit.html#MaterialEditor> Material Editor </a>
+    <li> <a href=edit.html#BackgroundColor> Background Color Editor </a>
+    <li> <a href=edit.html#Timestep> Time Step Control </a>
+    <li> <a href=edit.html#MathModule> Math Module Window </a>
+    <li> <a href=edit.html#StopProcessing> Stop Processing </a>
+    <li> <a href=edit.html#CameraSettings> Camera Settings </a>
+    <li> <a href=edit.html#ObjectClipPlanes> Object Clip Planes </a>
+  </ul>
+<li> <a href=dspl.html> Display Menu </a>
+  <ul>
+    <li> <a href=dspl.html#MeshLines> Mesh Lines </a>
+    <li> <a href=dspl.html#ColorMesh> Color Mesh </a>
+    <li> <a href=dspl.html#ContourLines> Countour Lines </a>
+    <li> <a href=dspl.html#ContourSurfaces> Contour Surfaces and Model Cuts </a>
+    <li> <a href=dspl.html#Vectors> Vector Display </a>
+    <li> <a href=dspl.html#Particles> Particle Dispaly </a>
+    <li> <a href=dspl.html#Spheres> Shepre Display </a>
+    <li> <a href=dspl.html#ColorScale> Color Scale Display </a>
+  </ul>
+<li> <a href=matc/kirja.html> MATC Matrix Language </a>
+<li> <a href=mouse.html> Controlling transformations </a>
+</ul>
+
+</body>
+</html>

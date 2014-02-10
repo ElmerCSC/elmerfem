@@ -1,0 +1,468 @@
+<ui version="4.0" >
+ <class>isoSurfaceDialog</class>
+ <widget class="QDialog" name="isoSurfaceDialog" >
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>396</width>
+    <height>581</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>Iso surfaces</string>
+  </property>
+  <property name="windowIcon" >
+   <iconset resource="../ElmerGUI.qrc" >:/icons/Mesh3D.png</iconset>
+  </property>
+  <layout class="QVBoxLayout" >
+   <item>
+    <widget class="QGroupBox" name="contoursGroup" >
+     <property name="title" >
+      <string>Contour control</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QLabel" name="variableLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>55</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize" >
+           <size>
+            <width>50</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Variable:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="contoursCombo" >
+          <property name="minimumSize" >
+           <size>
+            <width>280</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QGridLayout" >
+        <item row="0" column="0" >
+         <widget class="QLabel" name="contoursMinLabel" >
+          <property name="text" >
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1" >
+         <widget class="QLineEdit" name="contoursMinEdit" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>0.0</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2" >
+         <widget class="QLabel" name="contoursMaxLabel" >
+          <property name="text" >
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3" >
+         <widget class="QLineEdit" name="contoursMaxEdit" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>1.0</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" >
+         <widget class="QLabel" name="contoursLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>55</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Contours:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1" >
+         <widget class="QSpinBox" name="contoursSpin" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="minimum" >
+           <number>1</number>
+          </property>
+          <property name="maximum" >
+           <number>99999</number>
+          </property>
+          <property name="value" >
+           <number>10</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="3" >
+         <widget class="QCheckBox" name="keepContourLimits" >
+          <property name="text" >
+           <string>Keep limits</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QLabel" name="listLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>55</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>List:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLineEdit" name="contourList" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="colorsGroup" >
+     <property name="title" >
+      <string>Color control</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <layout class="QHBoxLayout" >
+        <item>
+         <widget class="QLabel" name="colorLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>55</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize" >
+           <size>
+            <width>50</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Color:</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QComboBox" name="colorCombo" >
+          <property name="minimumSize" >
+           <size>
+            <width>280</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QGridLayout" >
+        <item row="0" column="0" >
+         <widget class="QLabel" name="colorMinLabel" >
+          <property name="minimumSize" >
+           <size>
+            <width>55</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Min:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1" >
+         <widget class="QLineEdit" name="colorMinEdit" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>0.0</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2" >
+         <widget class="QLabel" name="colorMaxLabel" >
+          <property name="text" >
+           <string>Max:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3" >
+         <widget class="QLineEdit" name="colorMaxEdit" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>1.0</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="3" >
+         <widget class="QCheckBox" name="keepColorLimits" >
+          <property name="text" >
+           <string>Keep limits</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="appearanceGroup" >
+     <property name="title" >
+      <string>Appearance</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <layout class="QGridLayout" >
+        <item row="0" column="0" >
+         <widget class="QCheckBox" name="normalsCheck" >
+          <property name="text" >
+           <string>Compute normals</string>
+          </property>
+          <property name="checked" >
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2" >
+         <widget class="QLabel" name="featurfeAngleLabel" >
+          <property name="text" >
+           <string>Feature angle:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3" >
+         <widget class="QSpinBox" name="featureAngle" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="maximum" >
+           <number>90</number>
+          </property>
+          <property name="value" >
+           <number>45</number>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="2" >
+         <widget class="QLabel" name="opacityLabel" >
+          <property name="text" >
+           <string>Opacity:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="3" >
+         <widget class="QSpinBox" name="opacitySpin" >
+          <property name="maximumSize" >
+           <size>
+            <width>16777215</width>
+            <height>24</height>
+           </size>
+          </property>
+          <property name="maximum" >
+           <number>100</number>
+          </property>
+          <property name="value" >
+           <number>100</number>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1" >
+         <spacer>
+          <property name="orientation" >
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" >
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item row="1" column="0" >
+         <widget class="QCheckBox" name="clipPlane" >
+          <property name="text" >
+           <string>Use clip plane</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="infoGroup" >
+     <property name="title" >
+      <string>Info</string>
+     </property>
+     <layout class="QVBoxLayout" >
+      <item>
+       <widget class="QTextEdit" name="infoEdit" >
+        <property name="readOnly" >
+         <bool>true</bool>
+        </property>
+        <property name="html" >
+         <string>&lt;html>&lt;head>&lt;meta name="qrichtext" content="1" />&lt;style type="text/css">
+p, li { white-space: pre-wrap; }
+&lt;/style>&lt;/head>&lt;body style=" font-family:'Sans Serif'; font-size:9pt; font-weight:400; font-style:normal;">
+&lt;p style=" margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;">Separate list values by semicolons (for example: 1.0; 2.0; 3.0). If the list is non-empty, it will be used. Otherwise, evenly spaced values between min and max will be generated.&lt;/p>&lt;/body>&lt;/html></string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <spacer>
+     <property name="orientation" >
+      <enum>Qt::Vertical</enum>
+     </property>
+     <property name="sizeHint" >
+      <size>
+       <width>367</width>
+       <height>16</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" >
+     <item>
+      <spacer>
+       <property name="orientation" >
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" >
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="applyButton" >
+       <property name="text" >
+        <string>Apply</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok.png</iconset>
+       </property>
+       <property name="default" >
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancelButton" >
+       <property name="text" >
+        <string>Cancel</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-close.png</iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="okButton" >
+       <property name="text" >
+        <string>Ok</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="../ElmerGUI.qrc" />
+ </resources>
+ <connections/>
+</ui>

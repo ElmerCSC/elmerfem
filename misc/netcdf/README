@@ -1,0 +1,14 @@
+This folder contains the GridDataMapper solver for Elmer
+- Subdirectory /doc/ contains the documentation; look here to see how files connect to each other
+- Subdirectory /src/ contains the source and implementation files
+- For example compilation, cleaning, backups and packing can be done via Makefile
+   ~ Note that the Makefile contains also comments
+- Library dependencies are as follows:
+	o NetCDF - the NetCDF Fortran90 libraries, path of which should be added to the Makefile includes
+		~ Library files libnetcdff and libnetcdf path are defined, f.ex., with library flag "-L/usr/lib/ -lnetcdff -lnetcdf", where "/usr/lib/" is the path containing the files.
+		~ Header files defined f.ex. in netcdf.* files in "-I/usr/include/"
+	o DefUtils - the Elmer library files
+	o Proj.4 - for cs2cs tools
+		~ needs proj_api.h, often found f.ex. in "/usr/include/"
+	o iso_c_binding - the files for C binding to Fortran
+		~ should be included in the compiler

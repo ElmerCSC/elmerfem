@@ -1,0 +1,50 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="FluxSolver" >
+      <Name>Flux and Gradient</Name>
+
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name > Procedure </Name>
+            <DefaultValue> "FluxSolver" "FluxSolver" </DefaultValue>
+         </Parameter>
+ 
+         <Parameter Widget="Edit">
+           <Name> Target Variable </Name>
+           <Whatis> The scalar variable to apply the flux computation to. Default is Temperature. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+           <Name> Flux Coefficient </Name>
+           <Whatis> The name of the material parameter used to multiply the gradient in flux computation. Default is Heat Conductivity. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Grad </Name>
+           <Whatis> Calculate the gradient of the scalar field. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Grad Magnitude </Name>
+           <Whatis> Calculate the magnitude of the gradient of the scalar field. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Flux </Name>
+           <Whatis> Calculate the flux of the scalar field. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Flux Magnitude </Name>
+           <Whatis> Calculate the magnitude of the flux of the scalar field. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Enforce Positive Magnitude </Name>
+           <Whatis> In magnitude computation use an dirty a posteriori fix to get rid of negative magnitude values. </Whatis>
+         </Parameter>
+       </Solver>
+
+   </PDE>
+</edf>

@@ -1,0 +1,16 @@
+Test case to interpolate sparse 2D data sets onto the FE mesh.
+
+data are read from an ASCII file (x,y,variable)
+Dec. 2013 : possibility to read NETCDF has been added (if data file has a .nc extension)
+
+Interpolation is made using external libraries
+ - nn (http://code.google.com/p/nn-c/): a c code for Natural Neighbours interpolation
+ - csa (http://code.google.com/p/csa-c/) : a c code for cubic spline approximation
+
+!! To use the solver :
+	- nn and csa libraries must be compiled by the user
+	- Go to the ELMER_TRUNK/elmerice/ScatteredDataInterpolator directory
+	- Edit/Update the Makefile and compile/install the solver
+
+
+!! The user is invited to get familiar with these libraries by usibg the command line utilities and test case provided with the libraries

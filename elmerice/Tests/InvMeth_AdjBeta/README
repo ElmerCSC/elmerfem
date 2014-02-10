@@ -1,0 +1,43 @@
+Test Case for the inverse methods
+
+I)  the control inverse method: Adjoint_Beta.sif  Adjoint_Mu.sif
+(cf Morlighem et al., Spatial patterns of basal drag inferred using control methods
+	from a full‐Stokes and simpler models for Pine Island Glacier, West Antarctica, Geophys. Res. Lett., 37, 2010
+    Petra et al., An inexact Gauss–Newton method for inversion of basal sliding
+	and rheology parameters in a nonlinear Stokes ice sheet model, J. Glaciol., 58(211), 2012)
+
+II) the Robin Inverse Method: Robin_Beta.sif
+(cf Arthern and Gudmundsson, Initialization of ice-sheet forecasts viewed as an inverse Robin problem, J. Glaciol., 56(197), 2010)
+
+
+-----------------------
+
+The setup is based on Mac Ayeal, D.,"A tutorial on the use of control methods in ice-sheet modeling",  J. Glaciol., 39(131), 1993
+
+Synthetic data (for U and V surface velocity, bedrock elevation and surface elevation) used as "perfect" observations are stored under the Data directory and have been generated previously using a slip coefficient defined by
+$ function betaSquare(tx) {\
+  Lx = 200.0e3;\
+  Ly = 50.0e03;\
+  yearinsec = 365.25*24*60*60;\
+  F1=sin(3.0*pi*tx(0)/Lx)*sin(pi*tx(1)/Ly);\
+  F2=sin(pi*tx(0)/(2.0*Lx))*cos(4.0*pi*tx(1)/Ly);\
+  beta=5.0e3*F1+5.0e03*F2;\
+  _betaSquare=beta*beta/(1.0e06*yearinsec);\
+}
+and a viscosity defined by
+$ function MuSquare(tx) {\
+  Lx = 200.0e3;\
+  Ly = 50.0e03;\
+  yearinsec = 365.25*24*60*60;\
+  F1=sin(3.0*pi*tx(0)/Lx)*sin(pi*tx(1)/Ly);\
+  F2=sin(pi*tx(0)/(2.0*Lx))*cos(4.0*pi*tx(1)/Ly);\
+  mu=sqrt(1.8e08)+1.0e03*(F1+F2);\
+  _MuSquare=mu*mu*1.0e-6*(2.0*yearinsec)^(-1.0/3.0);\
+}
+
+
+
+-----------------------
+TO RUN the TEST:
+
+Edit/Update then execute RunTest.sh

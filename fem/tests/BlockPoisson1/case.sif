@@ -1,0 +1,100 @@
+! Solves one normal Poisson equation using the block system machinery
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+!  Max Output Level = 4
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+!  Active Solvers(1) = 1
+  Active Variables = Integer 1
+End
+
+
+
+Solver 1
+  Block Solver = Logical True
+  Equation = "Poisson"
+
+  Variable 1 = TempA
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 100
+  Nonlinear System Max Stepsize Tests = Integer 30
+  Nonlinear System Convergence Tolerance = Real 1.0e-6
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = bicgstab
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU1
+
+  Bulk Assembly Procedure = File "./PoissonAssembly" "BulkAssembly"
+End  
+
+Solver 2
+  Exec Solver = never
+
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = TempA
+  Operator 1 = min
+  Variable 2 = TempA
+  Operator 2 = max
+End 
+
+
+Material 1
+  Name = "Material1"
+
+  Conductivity = Real 1.0
+  Reaction = Real 0.0
+  Source = Real 1.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries(2) = 1 2
+  TempA = Real 0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.77824031E-01\n");
+
+

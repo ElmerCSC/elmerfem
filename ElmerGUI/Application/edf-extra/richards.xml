@@ -1,0 +1,132 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Richards Equation" >
+      <Name>Richards Equation</Name>
+
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name > Procedure </Name>
+            <DefaultValue> "RichardsSolver" "RichardsSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False">
+           <Name> Variable </Name>
+           <DefaultValue> Total Head </DefaultValue>
+         </Parameter>
+ 
+         <Parameter Widget="CheckBox">
+           <Name> Saturated Initial Guess </Name>
+           <Whatis> If checked use fully saturated flow parameters for the first iteration. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Active Coordinate </Name>
+           <Whatis> The depth coordinate aligned with the gravity vector. </Whatis>
+         </Parameter>
+
+       </Solver>
+
+      <InitialCondition>
+         <Parameter Widget="Label" > <Name> Variables </Name> </Parameter>
+          <Parameter  Widget="Edit">
+           <Name> Total Head  </Name>
+         </Parameter>
+      </InitialCondition>
+
+      <BodyForce>
+         <Parameter Widget="Label" > <Name> Source terms</Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Richards Source </Name>
+           <Whatis> Source term in the Richards equation. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Bodywise Dirichlet Conditions</Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Total Head  </Name>
+           <Activate> /Richards Equation/BodyForce/Total Head Condition </Activate>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Total Head Condition </Name>
+         </Parameter>
+      </BodyForce>
+
+      <Material>
+        <Parameter Widget="Label" > <Name> Material properties </Name> </Parameter>
+
+         <Parameter Widget="Combo">
+            <Name>Porosity Model</Name>
+            <Type>String </Type>
+            <Whatis> The porosity models for the medium. </Whatis>
+            <Activate> /Richards Equation/Material/Saturated Hydraulic Conductivity</Activate>
+            <Activate> /Richards Equation/Material/Saturated Water Content</Activate>
+            <Item> <Name> Always saturated </Name>
+            </Item>
+            <Item> <Name> van Genuchten </Name> 
+              <Activate> /Richards Equation/Material/Residual Water Content</Activate>
+              <Activate> /Richards Equation/Material/van Genuchten Alpha</Activate>
+              <Activate> /Richards Equation/Material/van Genuchten N</Activate>
+              <Activate> /Richards Equation/Material/van Genuchten M</Activate>
+            </Item>
+            <Item> <Name> Brooks and Corey </Name> 
+              <Activate> /Richards Equation/Material/Residual Water Content</Activate>
+              <Activate> /Richards Equation/Material/Brooks and Corey Air entry value</Activate>
+              <Activate> /Richards Equation/Material/Brooks and Corey Lambda</Activate>
+            </Item>            
+           <DefaultValue> Always saturated </DefaultValue>
+          </Parameter>  
+
+         <Parameter Widget="Edit"  Enabled="True" Visible="True">
+            <Name> Saturated Hydraulic Conductivity  </Name>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="True" Visible="True">
+            <Name> Saturated Water Content </Name>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Residual Water Content </Name>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> van Genuchten Alpha </Name>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> van Genuchten N </Name>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> van Genuchten M </Name>
+         </Parameter>
+
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Brooks and Corey Air entry value </Name>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Brooks and Corey Lambda </Name>
+         </Parameter>
+      </Material>
+
+
+      <InitialCondition>
+         <Parameter Widget="Label" > <Name> Variables </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Total Head </Name>
+         </Parameter>
+      </InitialCondition>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Boundary Conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Total Head  </Name>
+           <Activate> /Richards Equation/BoundaryCondition/Total Head Condition </Activate>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Total Head Condition </Name>
+           <Whatis> Only apply Dirichlet conditions for total head if this expression obtains a positive value. </Whatis>
+           <StatusTip> Give Total head condition value for this boundary. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Richards Flux  </Name>
+         </Parameter>
+
+      </BoundaryCondition>
+   </PDE>
+</edf>

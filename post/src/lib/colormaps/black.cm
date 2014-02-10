@@ -1,0 +1,11 @@
+!
+!
+! black color
+!
+! Juha Ruokolainen CSC
+!
+! 17 Sep 1995
+!
+! code   index   red  green  blue
+!
+  knot     0      0    0    0  ! black

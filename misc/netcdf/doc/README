@@ -1,0 +1,5 @@
+This folder contains the documentation files:
+- README ~ this file
+- example.sif ~ documents the Solver Input File interface for using the NetCDF data access
+- module_structure.jpeg ~ shows a rought UML outline on how the modules depend on each other
+- GridDataMapper.xmi ~  is the Umbrello UML file for modifying the documentation on module dependencies

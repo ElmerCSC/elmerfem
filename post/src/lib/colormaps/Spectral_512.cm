@@ -1,0 +1,17 @@
+!
+!
+! Colormap trough spectre / 512 entries
+!
+! Juha Ruokolainen CSC
+!
+! 17 Sep 1995
+!
+! code   index   red  green  blue
+!
+  knot      0     0     0     100  ! start from blue
+  knot     85     0    100    100  ! to cyan
+  knot    170     0    100     0   ! to green
+  knot    256    100   100     0   ! to yellow
+  knot    341    100    0      0   ! to red
+  knot    426    100    0     100  ! to magenta
+  knot    511    100   100    100  ! to white

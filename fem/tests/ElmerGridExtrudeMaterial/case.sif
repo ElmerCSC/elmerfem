@@ -1,0 +1,94 @@
+! Test case for advanced ElmerGrid meshing
+! Selected extrusion with BC offset 100
+! Also a novel method of setting material indexes for the BC layers
+! For ElmerSolver just vanilla Poisson equation
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "cubes"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2  
+  Equation = 1
+  Material = 2
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+
+Material 2
+  Name = "Ideal2"
+  Heat Conductivity = 2.0
+  Density = 1.0
+End 
+
+
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End 
+
+
+Boundary Condition 1
+  Name = "Cold"
+  Target Boundaries(2) = 101 102
+  Temperature = 0.0
+End
+
+Boundary Condition 2
+  Name = "Hot"
+
+! There are really just boundaries 501 and 504 but 
+! it does not matter that there are missing bcs
+  Target Boundaries(4) = 501 502 503 504
+  Temperature = 1.0
+End
+
+
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.67120112\n");

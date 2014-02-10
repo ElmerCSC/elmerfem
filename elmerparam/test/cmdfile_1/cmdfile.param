@@ -1,0 +1,15 @@
+####################### test ####################################
+Comment = Just \ checking
+Echo = True
+Matc = True
+Input file = muu.<!T!> \ 
+# GURGEL!
+        using muu.model
+# BLUBB!
+Execute = awk '{print $1 + $2}' muu.<!T!> > out.<!T!>
+Output file = out.<!T!> using out.model
+$ foobar = R(3) + R(4)
+Parameter R5 = $ foobar + 1
+Input file = gurgel
+Execute = awk '{print $2*2}' gurgel > blubb
+Output file = blubb

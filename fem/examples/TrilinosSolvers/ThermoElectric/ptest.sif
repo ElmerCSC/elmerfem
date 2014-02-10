@@ -1,0 +1,70 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+  Post File   = "test.ep"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Equation 1 :: Active Solvers(1) = 1
+Body Force 1 :: Input Current = Real 100
+
+Material 1
+  Electric Conductivity = 1
+  Density = 1 
+  Heat Capacity = 1
+  Heat Conductivity = 1
+
+  Seebeck Coefficient = Real -0.005
+End
+
+
+Solver 1
+  Equation = "ThermoElectric"
+
+  Variable = POT[Temperature:1 Potential:1]
+  Procedure = "ThermoElectricSolver" "ThermoElectricSolver"
+
+  Element = "p:1"
+
+  Nonlinear System Convergence Tolerance=1e-6
+  Nonlinear System Max Iterations=100
+  Nonlinear System Newton After Iterations=1
+  Nonlinear System Newton After Tolerance=1e-9
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = BicgstabL
+  Bicgstabl Polynomial Degree = 2
+  Linear System Max Iterations = 200
+  Linear System Residual Output = 40
+  Linear System Preconditioning = Ilu
+  Linear System Convergence Tolerance = 1e-8
+
+  Steady State Convergence Tolerance = 1e-6
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential   = 0
+  Temperature = 300
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=221.28738\n" );

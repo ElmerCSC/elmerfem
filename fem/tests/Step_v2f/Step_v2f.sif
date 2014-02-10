@@ -1,0 +1,231 @@
+Header
+  Mesh DB "." "Step_v2f"
+End
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+
+  Simulation Type = Steady
+
+  Steady State Max Iterations  = 200
+  Output Intervals = 1
+
+  Set Dirichlet BCs by BC Numbering = True
+
+  Post File = "Step_small.ep"
+! Output File = "Step_small.result"
+End
+
+
+Body 1
+  Name  = "Flow"
+  Equation  = 1
+  Material  = 1
+  Initial Condition = 1
+End
+
+
+Body 2
+  Name  = "Flow1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Velocity 1 = 1
+  Velocity 2 = 0
+
+  F = Variable Coordinate 2
+   Real MATC "l=10*0.0127; s=2*tx/l-1; 1-s^2"
+
+  V2 = Variable Coordinate 2
+   Real MATC "l=10*0.0127; s=2*tx/l-1; 1-s^2"
+
+  Kinetic Energy = Variable Coordinate 2
+   Real MATC "l=10*0.0127; s=2*tx/l-1; 1-s^2+1"
+
+  Kinetic Dissipation = 3
+End
+
+
+
+Solver 1
+  Equation = V2-F
+
+  Procedure = "V2FSolver" "V2F_LDM"
+  Variable = V2F[V2:1 F:1]
+
+  Stabilization Method = String Bubbles
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.75
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+
+Solver 2
+  Equation = Kepsilon
+
+  Procedure = "KESolver" "KESolver"
+  Variable = KEpsilon[Kinetic Energy:1 Kinetic Dissipation:1]
+ 
+  Stabilization Method = String Bubbles
+  Nonlinear System Max Iterations = 5
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = Variable Time
+    Real MATC "max(min((tx/10) 0.75) 0.1)"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 3
+  Equation = Navier-Stokes
+
+  Stabilization Method = Bubbles
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance  = 1.0e-2
+  Nonlinear System Relaxation Factor = 0.75
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 4
+  Exec Solver = After Simulation
+  Equation = SaveLine
+  Procedure = "SaveData" "SaveLine"
+  Filename = "curve.dat"
+
+  Polyline Coordinates(2,2) = Real $ (14*0.0127) 0 (14*0.0127) 0.127
+End
+
+
+Equation 1 :: Active Solvers(3) = 1 2 3
+
+
+Material 1
+  Viscosity = 1.49691e-5
+  Density = 1
+
+  KE Clip   = Real 1.0e-12
+  KE Model  = V2-F
+  Viscosity Model = ke
+End
+ 
+
+Boundary Condition 1
+  Name
+    String "Inflow"
+
+   Target Boundaries = 1
+
+! y coordinate of the inlet
+$ y = 0.127000000000E-001 \
+ 0.142452305368E-001 \
+ 0.163058285753E-001 \
+ 0.190536802227E-001 \
+ 0.227179992870E-001 \
+ 0.276044472934E-001 \
+ 0.341206304371E-001 \
+ 0.428101003152E-001 \
+ 0.543976946317E-001 \
+ 0.698500000000E-001 \
+ 0.853023053683E-001 \
+ 0.968898996848E-001 \
+ 0.105579369563E+000 \
+ 0.112095552707E+000 \
+ 0.116982000713E+000 \
+ 0.120646319777E+000 \
+ 0.123394171425E+000 \
+ 0.125454769463E+000 \
+ 0.127000000000E+000
+
+
+! (V2 F K Epsilon U) at inlet as computed from channel flow
+$ v = 19 5 % \
+ 0.1E-8 0 0.1E-9 0.261786E3 0 \
+ 0.281109E1 0.206194E3 0.213497E2 0.113993E5 0.994830E1 \
+ 0.252579E1 0.108472E3 0.119292E2 0.282118E4 0.124224E2 \
+ 0.219348E1 0.725484E2 0.978697E1 0.158636E4 0.144692E2 \
+ 0.192908E1 0.512887E2 0.853926E1 0.950109E3 0.166111E2 \
+ 0.168538E1 0.370201E2 0.744215E1 0.590560E3 0.186800E2 \
+ 0.140633E1 0.264363E2 0.622921E1 0.359611E3 0.207083E2 \
+ 0.109205E1 0.178174E2 0.472364E1 0.190936E3 0.226506E2 \
+ 0.835585E0 0.112783E2 0.320459E1 0.817285E2 0.241885E2 \
+ 0.750700E0 0.883353E1 0.253040E1 0.450903E2 0.247760E2 \
+ 0.835585E0 0.112783E2 0.320459E1 0.817285E2 0.241885E2 \
+ 0.109205E1 0.178174E2 0.472364E1 0.190936E3 0.226506E2 \
+ 0.140633E1 0.264363E2 0.622921E1 0.359611E3 0.207083E2 \
+ 0.168538E1 0.370201E2 0.744215E1 0.590560E3 0.186800E2 \
+ 0.192908E1 0.512887E2 0.853926E1 0.950109E3 0.166111E2 \
+ 0.219348E1 0.725484E2 0.978697E1 0.158636E4 0.144692E2 \
+ 0.252579E1 0.108472E3 0.119292E2 0.282118E4 0.124224E2 \
+ 0.281109E1 0.206194E3 0.213497E2 0.113993E5 0.994830E1 \
+ 0.1E-8 0 0.1E-9 0.261785712202E3 0
+
+ V2 = Variable Coordinate 2
+ Real
+   $ for(i=0:18) { y(i) v(i,0) }
+ End
+
+ F = Variable Coordinate 2
+ Real
+   $ for(i=0:18) { y(i) v(i,1) }
+ End
+
+ Kinetic Energy = Variable Coordinate 2
+ Real
+   $ for(i=0:18) { y(i) v(i,2) }
+ End
+
+ Kinetic Dissipation = Variable Coordinate 2
+ Real
+   $ for(i=0:18) { y(i) v(i,3) }
+ End
+
+ Velocity 1 = Variable Coordinate 2
+ Real
+   $ for(i=0:18) { y(i) (44.2*v(i,4)/24.77) }
+ End
+
+ Velocity 2 = 0
+
+
+End
+
+Boundary Condition 2
+  Target Boundaries(2) = 2 3
+
+  Velocity 2 = 0
+  Pressure   = 0
+End
+
+Boundary Condition 3
+  Target Boundaries(4) = 4 5 6 7
+
+  Noslip Wall BC = Logical True
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=21.0671,EPS=1e-4\n" );

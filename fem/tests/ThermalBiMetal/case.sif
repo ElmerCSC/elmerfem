@@ -1,0 +1,117 @@
+! BiMetal under thermal stress resulting from constant dT=100 
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "beams"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+!  Post File = "case.ep"
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Name = "metal1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "metal2"
+  Equation = 1
+  Material = 2
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = 400.0
+End 
+
+
+Equation 1
+  Active Solvers = 1
+  Plane Stress = FALSE
+End
+
+
+Solver 1
+  Equation = "LinearDisp"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = "Displacement"
+  Variable DOFs = Integer 2
+
+! This introduces an additional scalar variable present
+! where Displacement is present. It may be initialized
+! for different value than reference temperature.
+  Exported Variable 1 = Temperature
+
+  Linear System Solver = Direct
+  Linear System Symmetric = Logical True
+  Linear System Scaling = Logical False
+  Linear System Iterative Method = BiCGStab
+  Linear System Direct Method = UMFPACK
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 200
+  Linear System Preconditioning = ILU2
+
+  Nonlinear System Convergence Tolerance = Real 1.0e-7
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Relaxation Factor = Real 1
+
+  Steady State Convergence Tolerance= 1.0e-6
+  Optimize Bandwidth = True
+End
+
+
+Solver 2
+  Exec Solver = Never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+
+  Variable 1 = Displacement 2
+  Operator 1 = max abs  
+End
+
+Material 1
+  Density = Real 1
+  Youngs Modulus = 1e9
+  Poisson Ratio = Real 0.3
+  Reference Temperature = 300.0
+  Heat Expansion Coefficient = 1.0e-4
+End
+
+Material 2
+  Density = Real 1
+  Youngs Modulus = 1e9
+  Poisson Ratio = Real 0.3
+  Reference Temperature = 300.0
+  Heat Expansion Coefficient = 2.0e-4
+End
+
+
+Boundary Condition 1
+  Name = "beam_fixed"
+  Target Boundaries(2) = 4 7
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM= 1.39759434511988389E-003\n");
+
+
+!End Of File
+

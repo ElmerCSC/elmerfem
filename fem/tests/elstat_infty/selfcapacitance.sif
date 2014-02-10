@@ -1,0 +1,123 @@
+! Computes the self-capacitance of a unit cube. Only 1/8 of the cube is
+! modeled. The cube is placed within a larger cube and at the external
+! walls infinite field approximation around origin is enforced. This
+! makes it possible not to extent the mesh into infinity. Note that 
+! this approximation is valied only in 3D. Permittivity of vacuum is set
+! to one to allow easier interpretation of the computed capacitance. 
+! 
+! As the capacitance is 1.02213 the true capacitance is something like 
+! 1.02213*8*eps. This is within 2% of the exact solution. 
+! Increasing mesh density and taking the outer cube further apart.
+! will improve on the accuracy.
+!
+! P.R. / 18.2.2012
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "cubes"
+End
+
+Simulation
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+!  Output File = "elstatics.result"
+!  Post File = "elstatics.ep"
+End
+
+Constants
+  Permittivity Of Vacuum = 1
+!8.8542e-12
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Calculate Electric Energy = True
+End
+
+Solver 1
+  Equation = Stat Elec Solver
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatElecSolve" "StatElecSolver"
+
+  Calculate Electric Energy = True
+  Calculate Electric Field = False
+  Calculate Electric Flux = False
+
+  Calculate Capacitance Matrix = True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-03
+  Linear System Residual Output = 10
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+Solver 2
+  Equation = Electric Force
+  Procedure = "ElectricForce" "StatElecForce"
+End
+
+Solver 3
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = "scalars.dat"
+  Variable 1 = Potential
+  Operator 1 = max
+  Operator 2 = min
+End
+
+Material 1
+  Relative Permittivity = 1.0
+End
+
+Boundary Condition 1
+  Name = Bc_inner
+  Target Boundaries(2) = 2 6
+
+! The "Capacitance body" keyword automatically sets the potential. 
+!  Potential = 1.0
+  Calculate Electric Force = True
+  Capacitance Body = 1
+End
+
+Boundary Condition 2
+  Name = bc_Symmetry
+  Target Boundaries(3) = 1 4 5
+End
+
+Boundary Condition 3
+  Name = bc_outer
+  Target Boundaries(2) = 3 7
+
+! Two cocentric cubes would result to Dirichlet condition for the outer cube
+! This would result to significantly larger capacitance.
+!  Potential = 0.0
+
+! This keyword enforces an approximation that assumes that the field decays as 1/r^2 to infinity
+  Electric Infinity BC = Logical True
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.482109\n");
+ 
+
+!End Of File
+

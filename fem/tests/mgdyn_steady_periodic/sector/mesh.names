@@ -1,0 +1,10 @@
+! ----- names for bodies -----
+$ magnet = 1
+$ air = 2
+! ----- names for boundaries -----
+$ top = 1
+$ bottom = 2
+$ source_face = 3
+$ target_face = 4
+$ outer_surface = 5
+$ bnry8 = 6

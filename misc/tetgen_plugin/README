@@ -1,0 +1,28 @@
+**************************
+Tetgen plugin for ElmerGUI
+**************************
+
+LICENCE: See plugin/LICENCE for a detailed licence description.
+========
+
+BUILD: Compile and install with Qt4 as:
+======
+
+Linux:
+------
+$ qmake
+$ make
+$ make install
+
+Windows (VC++):
+---------------
+> qmake
+> nmake
+> nmake install
+
+The plugin (libtet.so/dll) will be installed in ELMER_HOME/lib
+
+TEST: 
+=====
+cd testmain
+./testmain

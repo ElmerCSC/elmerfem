@@ -1,0 +1,220 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Elastic Plates" >
+      <Name>Elastic Plates</Name>
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name> Procedure </Name>
+            <DefaultValue> "Smitc" "SmitcSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" >
+            <Name> Variable </Name>
+            <DefaultValue> Deflection(3) </DefaultValue>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Additional Variables</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Exported Variable 1 </Name>
+           <Activate> /Elastic Plates/Solver/Exported Variable 2</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 2 </Name>
+           <Activate> /Elastic Plates/Solver/Exported Variable 3</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 3 </Name>
+           <Activate> /Elastic Plates/Solver/Exported Variable 4</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 4 </Name>
+           <Activate> /Elastic Plates/Solver/Exported Variable 5</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 5 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Miscellaneous options</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Loads </Name>
+           <Whatis> If checked compute boundary reaction forces. </Whatis>
+         </Parameter>
+
+        <Parameter Widget="Label"> <Name> Eigen system solution </Name> </Parameter>
+
+        <Parameter Widget="CheckBox"> 
+          <Name> Eigen Analysis </Name>
+          <Whatis> Modal analysis may be requested with this keyword. </Whatis>
+          <Activate> /Elastic Plates/Solver/Eigen System Values </Activate>
+          <Activate> /Elastic Plates/Solver/Eigen System Select </Activate>
+          <Activate> /Elastic Plates/Solver/Eigen System Damped </Activate>
+          <Activate> /Elastic Plates/Solver/Eigen System Shift  </Activate>
+          <Activate> /Elastic Plates/Solver/Eigen System Compute Residuals </Activate>
+        </Parameter>
+
+        <Parameter Widget="CheckBox" Enabled="False"> 
+           <Name> Geometric Stiffness </Name>
+           <Whatis> If set to true, then geometric stiffness is taken into account in modal analysis. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Edit" Enabled="False"> 
+          <Name>Eigen System Values </Name>
+          <Type>Integer </Type>
+          <Whatis> The number of the selected eigen states must be given with this keyword, if modal or stability analysis is in effect. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Combo" Enabled="False">
+          <Name> Eigen System Select </Name>
+          <Item> <Name> Smallest magnitude </Name> </Item>
+          <Item> <Name> Largest  magnitude </Name> </Item>
+          <Item> <Name> Smallest real part </Name> </Item>
+          <Item> <Name> Largest real part </Name> </Item>
+          <Item> <Name> Smallest imag part </Name> </Item>
+          <Item> <Name> Largest imag part </Name> </Item>
+          <Item> <Name> Smallest magnitude </Name> </Item>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False">
+          <Name> Eigen System Shift </Name>
+        </Parameter>
+        <Parameter Widget="CheckBox" Enabled="False">
+          <Name> Eigen System Damped </Name>
+        </Parameter>
+        <Parameter Widget="CheckBox" Enabled="False">
+          <Name> Eigen System Compute Residuals </Name>
+        </Parameter>
+
+      </Solver>
+
+      <InitialCondition>
+          <Parameter Widget="Label"> <Name> Variables </Name> </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Deflection 1 </Name>
+             <Whatis> Initial condition for the 1st component of the rotation vector. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Deflection 2 </Name>
+             <Whatis> Initial condition for the 2nd component of the rotation vector. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Deflection 3 </Name>
+             <Whatis> Initial condition for transverse deflection. </Whatis>
+          </Parameter>
+      </InitialCondition>
+
+      <BodyForce>
+          <Parameter Widget="Label"> <Name> Surface forces and impedance</Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Pressure </Name>
+             <Whatis> Surface force in normal direction. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Spring </Name>
+             <Whatis> Specific spring coefficient resulting to force f=kx. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Damping </Name>
+             <Whatis> Specific damping coefficient resulting to force f=kv. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> Bodywise Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Deflection 1 </Name>
+             <Activate> /Elastic Plates/BodyForce/Deflection 1 Condition </Activate>
+            <Whatis> Dirichlet condition for the 1st component of the rotation vector. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Deflection 2 </Name>
+             <Activate> /Elastic Plates/BodyForce/Deflection 2 Condition </Activate>
+            <Whatis> Dirichlet condition for the 2nd component of the rotation vector. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Deflection 3 </Name>
+             <Activate> /Elastic Plates/BodyForce/Deflection 3 Condition </Activate>
+              <Whatis> Dirichlet condition for the transverse deflection. </Whatis>
+          </Parameter>
+    
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Deflection 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Deflection 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Deflection 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+      </BodyForce>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name>Youngs modulus</Name>
+            <Whatis> The elastic modulus must be given with this keyword. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name>Poisson ratio</Name>
+            <Whatis> For isotropic materials Poisson ratio must be given with this keyword. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name>Thickness</Name>
+            <Whatis> The thickness of the plate. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name>Tension</Name>
+            <Whatis> The plate may be pre-stressed. </Whatis>
+         </Parameter>
+      </Material>
+
+     <BoundaryCondition>
+         <Parameter Widget="Label"> <Name> Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Deflection 1 </Name>
+             <Activate> /Elastic Plates/BoundaryCondition/Deflection 1 Condition </Activate>
+             <Whatis> Dirichlet condition for the 1st component of the rotation vector. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Deflection 2 </Name>
+             <Activate> /Elastic Plates/BoundaryCondition/Deflection 2 Condition </Activate>
+             <Whatis> Dirichlet condition for the 2nd component of the rotation vector. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Deflection 3 </Name>
+             <Activate> /Elastic Plates/BoundaryCondition/Deflection 3 Condition </Activate>
+             <Whatis> Dirichlet condition for the transverse deflection. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Deflection 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Deflection 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Deflection 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> Periodic boundary condition </Name> </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Deflection 1 periodic </Name>
+              <SifName> Periodic BC Deflection 1 </SifName>
+          </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Deflection 2 periodic </Name>
+              <SifName> Periodic BC Deflection 2 </SifName>
+          </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Deflection 3 periodic </Name>
+              <SifName> Periodic BC Deflection 3 </SifName>
+          </Parameter>
+
+      </BoundaryCondition>
+   </PDE>
+</edf>

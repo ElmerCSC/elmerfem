@@ -1,0 +1,87 @@
+Check Keywords "Warn"
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 2
+End
+
+Body Force 1
+  Mesh Translate 2 = Variable Coordinate 1
+    Real MATC "0.2*sin(2*pi*tx)"
+  Mesh Relax = Variable Coordinate 2 
+    Real MATC "tx"
+
+  Heat Source = 1.0
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+
+
+Solver 1
+! Solves the new mesh positions combining rigid mesh movement
+! and a given relaxation field [0,1].
+
+  Exec Solver = Before all
+
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+End
+
+Solver 2
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End 
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Temperature = 0.0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=3.65751569982390654E-002\n");

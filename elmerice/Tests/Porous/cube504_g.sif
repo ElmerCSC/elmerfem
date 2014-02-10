@@ -1,0 +1,195 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!
+! All units are in MPa - m - a 
+! Temperature is in Kelvin
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+ echo on
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$B = 20.0 ! MPa-3a-1 T = -2°C
+$n = 3.0
+$gravity = -9.81*yearinsec^2
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! HEADER
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Header
+  Mesh DB "." "mesh_504"
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! CONSTANTS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Constants
+  Gas Constant = Real 8.314D00 ! in m-k-s
+  Stefan Boltzmann = Real 6.78E-08
+  Density Name = String "Relative Density"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! SIMULATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = "Cartesian 3D"
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type ="Steady"
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+
+  Output File = "cube504_g.result"
+  Post File = "cube504_g.vtu"
+
+  max output level = 3
+End
+
+
+! this is the compressible Stokes solver
+!----------------------------------------
+Solver 1
+  Equation = String "PorousFlow"
+  Procedure = "ElmerIceSolvers" "PorousSolver"
+  Variable = "Porous"
+  Variable DOFs = 4
+
+  Optimize Bandwidth = False
+! Use p elements
+  Element = "p:1 b:1"
+  Stablization Method = String pBubbles
+
+  Exported Variable 1 = String "Relative Density"
+  Exported variable 1 DOFs = Integer 1
+
+  ! switch that in for post-processing issues only
+  ! ----------------------------------------------
+   Exported Variable 2 = String "StrainRate"
+   Exported variable 2 DOFs = Integer 6
+   Exported Variable 3 = String "DeviatoricStress"
+   Exported variable 3 DOFs = Integer 6
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0E-07
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+
+  Nonlinear System Convergence Tolerance = 1.0E-05
+  Nonlinear System Max Iterations = 50
+
+  Steady State Convergence Tolerance = 1.0E-03
+End
+
+Solver 2
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+
+  Variable 1 = String "Time"
+
+  Variable 2 = String "StrainRate"
+  Operator 2 = String "int"
+
+  Variable 3 = String "StrainRate"
+  Operator 3 = String "max"
+
+  Variable 4 = String "StrainRate"
+  Operator 4 = String "min"
+
+  Variable 5 = String "DeviatoricStress"
+  Operator 5= String "int"
+
+  Variable 6 = String "DeviatoricStress"
+  Operator 6 = String "max"
+
+  Variable 7 = String "DeviatoricStress"
+  Operator 7 = String "min"
+  Operator 8 = String "cpu time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BODIES (i.e., domains to compute on)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! EQUATION
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+ Active Solvers(1) = 1
+ Flow Solution Name = String "Porous"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! INITIAL CONDITIONS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Porous 1 = Real 0.0E0
+  Porous 2 = Real 0.0E0
+  Porous 3 = Real 0.0E0    
+  Porous 4 = Real 0.0E0
+  Relative Density =  Real 0.50D00
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BODY FORCE
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Porous Force 1 = Real 0.0E00
+  Porous Force 2 = Real 0.0E00
+  Porous Force 3 = Real $gravity*rhoi 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! MATERIAL
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Powerlaw Exponent = Real $n 
+  Min Second Invariant = Real 1.0E-10
+  Fluidity Parameter = Real $B  ! MPa^{-3}a^{-1} 
+
+  Density = Variable Relative Density
+        Real MATC "tx*rhoi"
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! BOUNDARY CONDITIONS
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! z = 1            
+Boundary Condition 1
+  Target Boundaries = 6
+End
+
+!! z = 0    
+!!!!!!!!!!!
+Boundary Condition 2
+  Target Boundaries  = 5
+  Porous 3 = Real 0.0
+End
+
+!! y = 0
+!!!!!!!!!!!!!!!!!!!
+Boundary Condition 3
+  Target Boundaries = 1
+  Porous 2 = Real 0.0     
+End
+
+!! x = 0   
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 4
+  Target Boundaries = 4
+  Porous 1 = Real 0.0     
+End
+

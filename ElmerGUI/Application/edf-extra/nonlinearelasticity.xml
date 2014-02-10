@@ -1,0 +1,343 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Nonlinear Elasticity" >
+      <Name>Nonlinear elasticity</Name>
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name> Procedure </Name>
+            <DefaultValue> "ElasticSolve" "ElasticSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" >
+            <Name> Variable </Name>
+            <DefaultValue> Displacement(cdim) </DefaultValue>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Additional Variables</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Exported Variable 1 </Name>
+           <Activate> /Nonlinear elasticity/Solver/Exported Variable 2</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 2 </Name>
+           <Activate> /Nonlinear elasticity/Solver/Exported Variable 3</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 3 </Name>
+           <Activate> /Nonlinear elasticity/Solver/Exported Variable 4</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 4 </Name>
+           <Activate> /Nonlinear elasticity/Solver/Exported Variable 5</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 5 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Miscellaneous options</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Loads </Name>
+           <Whatis> If checked compute boundary reaction forces. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox"> 
+            <Name> Elasticity Solver Linear </Name>
+            <StatusTip> Neglect geometric nonlineary.</StatusTip>
+            <Whatis> If checked the nonlinearity arising from large displacement is not accounted for. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="CheckBox" Enabled="True"> 
+            <Name> Displace mesh </Name>
+            <DefaultValue> True </DefaultValue>
+            <Whatis> Displace mesh with the solution (or not).</Whatis>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Solver>
+
+      <Equation>
+         <Parameter Widget="Label">
+            <Name> Options </Name>
+         </Parameter>
+         <Parameter Widget="CheckBox">
+            <Name> Plane Stress </Name>
+            <Whatis> If checked, compute the solution according to the plane stress situtation zz = 0, otherwise plane strain model is assumed. Applies only in 2D.  </Whatis> 
+         </Parameter>
+        <Parameter Widget="Label" > <Name> This and that </Name> </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Element Codes </Name>
+           <SifName> Element </SifName>
+           <Whatis> Define element degrees of freedom (p:n d:n n:n e:n f:n b:n d:n). "p" is the p-element degree, "e" number of edge DOFs, "f" number of face DOFs, "b" number of bubble DOFs, and "d" the Discontinuous Galerkin DOFs (0 = element number of nodes). "p" and "b" may be entered together, "d" on its own, and the rest together. </Whatis>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Equation>
+
+      <InitialCondition>
+          <Parameter Widget="Label"> <Name> Variables </Name> </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Displacement 1 </Name>
+             <Whatis> Initial condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 2 </Name>
+             <Whatis> Initial condition for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 3 </Name>
+             <Whatis> Initial condition for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> ...for time dependent simulations... </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement Velocity 1 </Name>
+             <Whatis> Initial condition for the displacement velocity in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement Velocity 2 </Name>
+             <Whatis> Initial condition for the displacement velocity in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement Velocity 3 </Name>
+             <Whatis> Initial condition for the displacement velocity in coordinate direction 3. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Initial Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Initial Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </InitialCondition>
+
+      <BodyForce>
+          <Parameter Widget="Label"> <Name> Volume forces </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Force 1 </Name>
+             <SifName> Stress Bodyforce 1 </SifName>
+             <Whatis> Volume force in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Force 2 </Name>
+             <SifName> Stress Bodyforce 2 </SifName>
+             <Whatis> Volume force in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Force 3 </Name>
+             <SifName> Stress Bodyforce 3 </SifName>
+             <Whatis> Volume force in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Label"> <Name> Bodywise Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 1 </Name>
+             <Activate> /Nonlinear elasticity/BodyForce/Displacement 1 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 2 </Name>
+             <Activate> /Nonlinear elasticity/BodyForce/Displacement 2 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 3 </Name>
+             <Activate> /Nonlinear elasticity/BodyForce/Displacement 3 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Body Force-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Body Force-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </BodyForce>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name>Youngs modulus</Name>
+            <Whatis> The elastic modulus must be given with this keyword. The modulus may be given as a scalar for the isotropic case or as 6 × 6 (3D) or 4 × 4 (2D and axisymmetric) matrix for the anisotropic case. Although the matrices are symmetric, all entries must be given. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name>Poisson ratio</Name>
+            <Whatis> For isotropic materials Poisson ratio must be given with this keyword. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+           <Name> Damping coefficient </Name>
+           <SifName> Damping </SifName>
+           <Whatis> Damping proportional to deformation velocity. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Material>
+
+     <BoundaryCondition>
+         <Parameter Widget="Label"> <Name> Normal-Tangential Coordinate System</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+            <Name> Use normal-tangential coordinate system </Name>
+            <SifName> Normal-Tangential Displacement </SifName>
+            <Activate> /Nonlinear elasticity/BoundaryCondition/Change of variables</Activate>
+            <Whatis>  The Dirichlet conditions for the vector variables may be given in normal-tangential coordinate system instead of the coordinate axis directed system. The first component will in this case be the normal component and the components 2, 3 two orthogonal tangent directions. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox" Enabled="False">
+            <Name> Change of variables </Name>
+            <DefaultValue> True </DefaultValue>
+            <SifName> Normal-Tangential Displacement Rotate </SifName>
+            <Whatis> If checked, do change of variables from x,y,z -> n,t1,t2. This change of variables is only needed if Dirichlet conditions are present. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 1 </Name>
+             <Activate> /Nonlinear elasticity/BoundaryCondition/Displacement 1 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 2 </Name>
+             <Activate> /Nonlinear elasticity/BoundaryCondition/Displacement 2 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 3 </Name>
+             <Activate> /Nonlinear elasticity/BoundaryCondition/Displacement 3 Condition </Activate>
+             <Whatis> Dirichlet condition for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Displacement 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label"> <Name> Traction boundary conditions </Name> </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Normal Force </Name>
+            <Whatis> A force normal to the boundary is given with this keyword. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Force 1 </Name>
+            <Whatis> A force in coordinate direction 1 is given with this keyword. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Force 2 </Name>
+            <Whatis> A force in coordinate direction 2 is given with this keyword. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Force 3 </Name>
+            <Whatis> A force in coordinate direction 3 is given with this keyword. </Whatis>
+         </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Damping coefficient </Name>
+             <SifName> Damping </SifName>
+          </Parameter>
+
+         <Parameter Widget="Label"> <Name>Fsi BC </Name> </Parameter>
+         <Parameter Widget="CheckBox"> 
+            <Name> Fsi BC </Name>
+            <Whatis> Apply continuous fluid-structure interaction BCs.</Whatis>
+        </Parameter>
+
+         <Parameter Widget="Label"> <Name>Nodal Loads </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 1 Load </Name>
+             <Whatis> Nodal load for the displacement in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 2 Load </Name>
+             <Whatis> Nodal load for the displacement in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Displacement 3 Load </Name>
+             <Whatis> Nodal load for the displacement in coordinate direction 3. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> Periodic boundary condition </Name> </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Displacement 1 periodic </Name>
+              <SifName> Periodic BC Displacement 1 </SifName>
+          </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Displacement 2 periodic </Name>
+              <SifName> Periodic BC Displacement 2 </SifName>
+          </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Displacement 3 periodic </Name>
+              <SifName> Periodic BC Displacement 3 </SifName>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>	 
+
+      </BoundaryCondition>
+   </PDE>
+</edf>

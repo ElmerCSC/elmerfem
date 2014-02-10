@@ -1,0 +1,16 @@
+make the meshes :
+808:
+ElmerGrid 1 2 mesh_808
+706:
+ElmerGrid 1 2 mesh_706
+504:
+gmsh mesh_504.geo -3 -o mesh_504.msh
+ElmerGrid 14 2 mesh_504.msh -autoclean
+
+Compile the Porous Solver
+elmerf90 $ElmerIceLGGE/Solvers/PorousSolve.f90 $ElmerIceLGGE/Solvers/fAandfB_in.f90 -o PorousSolve
+
+See the documentation (in DocSolverLGGE) of the Porous solver for the analytical solutions computed here with Elmer.
+Numerical value for the analytical solutions are given in the exel file (in DocSolverLGGE)
+
+

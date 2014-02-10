@@ -1,0 +1,65 @@
+proc integrate { n { nt 1 } { trace 0 } } {
+
+  global NumberOfTimesteps ParticleParticle
+
+  math n=$n
+  math {
+    part   = 0;
+    ptrace = 0;
+    t = 0:(n-1);
+
+    xmin = min(min(nodes(0,time(0))));
+    xmax = max(max(nodes(0,time(0))));
+
+    ymin = min(min(nodes(1,time(0))));
+    ymax = max(max(nodes(1,time(0))));
+
+    part(0,0:(n-1))   = (xmax-xmin)*rand(n) + xmin;
+    part(1,0:(n-1))   = (ymax-ymin)*rand(n) + ymin;
+    part(2:4,0:(n-1)) = 0.0;
+    _particle_last = part;
+  }
+
+  set ParticleParticle "part"
+  UpdateObject;
+
+  display
+  if { $trace == 1 } { clear off }
+  display
+
+  do i 1 $nt {
+    echo "Time: $i"
+    if { $i < $NumberOfTimesteps } { timestep $i }
+    pintegrate
+    math "i=$i-1; ptrace(0:4,i*n+t)=part"
+  } 1
+
+  if { $trace == 1 } { clear on }
+
+  echo "Integration ready"
+}
+
+
+proc showparticles { n { nt 1 } { trace 0 } } {
+  global NumberOfTimesteps
+
+  math n=$n
+  math {
+     t=0:(n-1);
+     part=ptrace(0:4,t);
+     _particle_last=ptrace(0:4,t);
+  }
+
+  display;
+  if { $trace == 1 } { clear off }
+  display;
+
+  do i 0 [@ $nt-1] {
+    echo "Time: $i"
+    math "i=$i; part=ptrace(0:4,i*n+t);"
+    display;
+    math _particle_last=part
+  }
+
+  if { $trace == 1 } { clear on }
+}

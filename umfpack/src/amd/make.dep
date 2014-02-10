@@ -1,0 +1,74 @@
+amd_i_aat.c:
+	$(CPP) $(INCLUDES) -DINT amd_aat.c > amd_i_aat.c
+amd_i_1.c:
+	$(CPP) $(INCLUDES) -DINT amd_1.c > amd_i_1.c
+amd_i_2.c:
+	$(CPP) $(INCLUDES) -DINT amd_2.c > amd_i_2.c
+amd_i_dump.c:
+	$(CPP) $(INCLUDES) -DINT amd_dump.c > amd_i_dump.c
+amd_i_postorder.c:
+	$(CPP) $(INCLUDES) -DINT amd_postorder.c > amd_i_postorder.c
+amd_i_post_tree.c:
+	$(CPP) $(INCLUDES) -DINT amd_post_tree.c > amd_i_post_tree.c
+amd_i_defaults.c:
+	$(CPP) $(INCLUDES) -DINT amd_defaults.c > amd_i_defaults.c
+amd_i_order.c:
+	$(CPP) $(INCLUDES) -DINT amd_order.c > amd_i_order.c
+amd_i_control.c:
+	$(CPP) $(INCLUDES) -DINT amd_control.c > amd_i_control.c
+amd_i_info.c:
+	$(CPP) $(INCLUDES) -DINT amd_info.c > amd_i_info.c
+amd_i_valid.c:
+	$(CPP) $(INCLUDES) -DINT amd_valid.c > amd_i_valid.c
+amd_i_preprocess.c:
+	$(CPP) $(INCLUDES) -DINT amd_preprocess.c > amd_i_preprocess.c
+amd_l_aat.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_aat.c > amd_l_aat.c
+amd_l_1.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_1.c > amd_l_1.c
+amd_l_2.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_2.c > amd_l_2.c
+amd_l_dump.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_dump.c > amd_l_dump.c
+amd_l_postorder.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_postorder.c > amd_l_postorder.c
+amd_l_post_tree.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_post_tree.c > amd_l_post_tree.c
+amd_l_defaults.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_defaults.c > amd_l_defaults.c
+amd_l_order.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_order.c > amd_l_order.c
+amd_l_control.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_control.c > amd_l_control.c
+amd_l_info.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_info.c > amd_l_info.c
+amd_l_valid.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_valid.c > amd_l_valid.c
+amd_l_preprocess.c:
+	$(CPP) $(INCLUDES) -DDLONG amd_preprocess.c > amd_l_preprocess.c
+
+AMD_CPP_SOURCES = \
+	amd_i_aat.c \
+	amd_i_1.c \
+	amd_i_2.c \
+	amd_i_dump.c \
+	amd_i_postorder.c \
+	amd_i_post_tree.c \
+	amd_i_defaults.c \
+	amd_i_order.c \
+	amd_i_control.c \
+	amd_i_info.c \
+	amd_i_valid.c \
+	amd_i_preprocess.c \
+	amd_l_aat.c \
+	amd_l_1.c \
+	amd_l_2.c \
+	amd_l_dump.c \
+	amd_l_postorder.c \
+	amd_l_post_tree.c \
+	amd_l_defaults.c \
+	amd_l_order.c \
+	amd_l_control.c \
+	amd_l_info.c \
+	amd_l_valid.c \
+	amd_l_preprocess.c

@@ -1,0 +1,157 @@
+! Test case for the ParticleAdvector 
+! Uses particle-specific timestep that strives to constant Courant number.
+! This should optimize the accuracy in a FE mesh. As advected field is 
+! "Strides" which demonstrates well how advection takes place without 
+! any diffusion. 
+
+$slipcoeff = 1.0
+$visc = 0.1
+
+Header
+  CHECK KEYWORDS Warn  
+  Mesh DB "." "mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Timestepping Method = BDF
+  BDF Order = 1
+!  Post File = case.ep
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1 
+  Name = "InitCond"
+  Strides = Variable Coordinate 1 
+    Real MATC "sin(3*pi*tx)"
+End 
+
+
+Solver 1
+  Equation = Navier-Stokes
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+  Optimize bandwidth = True
+  Exported Variable 1 = Strides
+End
+
+
+Solver 2
+  Equation = ParticleAdvector
+  Procedure = "ParticleAdvector" "ParticleAdvector"
+
+  Particle Accurate At Face = Logical True
+
+  Max Timestep Intervals = Integer 500
+  Particle Dt Constant = Logical False
+
+! Time in average 5 steps in each element 
+  Timestep Courant Number = Real 0.2
+  Max Timestep Size = Real 10.0
+
+!!!! time integration 
+  Runge Kutta = Logical True
+!  Velocity Gradient Correction = Logical True
+!  Velocity Variable Name = String Flow Solution
+
+! The variable to compute the norm for
+  Norm Variable Index = Integer 1
+
+! Show some info in the end
+  Particle Info = Logical True
+  Particle Time = Logical True
+
+! The field variables being advected
+  Variable 1 = String "Pressure"
+  Variable 2 = String "Strides"
+
+! The internal variables for this solver
+  Variable 3 = String "Particle Distance"
+  Variable 4 = String "Particle time"
+  Variable 5 = String "Particle Number"
+End 
+
+
+Equation 1
+  Name = "Flow"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Viscosity = $ visc
+  Density = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(8) = 1 2 3 5 6 8 9 10
+  Name = "Tangential slip"
+  Slip Coefficient 2 = $ slipcoeff
+  Velocity 1 = 0.0
+  Normal-Tangential Velocity = True
+
+  Particle Reflect = Logical True
+End
+
+
+Boundary Condition 2
+  Target Boundaries(1) = 4
+  Name = "Inlet"
+
+! Note: not quite zero anywhere
+  Velocity 2 = Variable Coordinate 1;  Real MATC "-4*tx*(1-tx)-0.01"
+  Velocity 1 = 0.0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 7
+  Name = "Outlet"
+  Velocity 2 = 0.0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM= 2.7999634\n");

@@ -1,0 +1,146 @@
+! Demonstrates computation of fluxes for case where discontinuous fields are to be expected. 
+! Then the DG machinery is used to solve the fields, which may be saved in ElmerPost (to ep.el file)
+! or to elementwise info in .vtu file. Note that in the example the saving is suppressed.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 10
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Output File = "TempDist.dat"
+!  Post File = "TempDist.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 1
+  Material = 2
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 350
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 2
+  Equation = ComputeFlux
+  Procedure = "FluxSolver" "FluxSolver"
+
+  Calculate Grad = Logical True
+  Calculate Flux = Logical True
+
+  Target Variable = String Temperature
+  Flux Coefficient = String "Heat Conductivity"
+
+! This ensures that the results are computed and saved elementwise
+! This will make the postprocessing of discontinuous fields more elegant
+! Note that the equation will then de facto consist of independent 
+! problems for each element are ridiculously easy to solve. 
+  Discontinuous Galerkin = True
+
+! these are taken care by the defaults
+!  Linear System Solver = "Iterative"
+!  Linear System Iterative Method = "cg"
+!  Linear System Preconditioning = None
+!  Linear System Residual Output = 10
+!  Linear System Max Iterations = Integer 500
+!  Linear System Convergence Tolerance = 1.0e-10
+End
+
+Solver 3
+  Exec Solver = Never
+
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "case" 
+
+  Scalar Field 1 = String "Temperature"
+
+  Vector Field 1 = String "Temperature flux"
+  Vector Field 2 = String "Temperature grad"
+
+  Binary Output = True
+
+  ElmerPost format = Logical True
+  Vtu format = Logical True
+End
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Material 2
+  Name = "Material2"
+  Density = 1
+  Heat Conductivity = 10
+End
+
+
+
+Boundary Condition 1
+  Name = "Cold"
+  Target Boundaries(1) = 1 
+  Temperature = 0
+End
+
+Boundary Condition 2
+  Name = "Hot"
+  Target Boundaries(1) = 2 
+  Temperature = 1
+End
+
+
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.15711091\n");
+!End Of File

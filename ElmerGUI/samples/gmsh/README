@@ -1,0 +1,10 @@
+Gmsh is an automatic 3D finite element grid generator with a build-in
+CAD engine and post-processor. Its design goal is to provide a simple
+meshing tool for academic problems with parametric input and advanced
+visualization capabilities. See http://www.geuz.org/gmsh/
+
+gmsh files (with suffix .msh) may be read by ElmerGrid library.
+
+Files t?.msh have been created from Gmsh tutorials using Gmsh version 
+2.2.6 and saving the results in format 2.0 saving all geometric entities
+(ignoring physical groups).  

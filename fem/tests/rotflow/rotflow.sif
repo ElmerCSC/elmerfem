@@ -1,0 +1,111 @@
+$NST=1
+
+$MeltSurface = 2
+$MeltAxis = 3
+$MeltSilicaCrucibleInterface =1
+
+$Melt = 1
+
+$CrucibleRotation = 0.5
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path "Mesh"
+  Results Directory ""
+End
+
+Simulation
+  Min Output Level = 0
+  Max Output Level = 31
+  Output Caller = Logical True
+  Coordinate System = Cylindric Symmetric
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Timestepping Method = BDF
+  Timestep Sizes = 1
+  Timestep Intervals = 100
+!  Output File = "Bullenmeltflow.dat"
+!  Post File = "Bullenmeltflow.ep"
+
+  Output Version Numbers = Logical True
+End
+
+Body $Melt
+  Name = Melt
+  Equation = $NST
+  Material = $Melt
+  Initial Condition = 1
+  Body Force = 1  
+End
+
+Body Force 1
+! Flow BodyForce 1 = Equals Coordinate 1
+End
+
+Initial Condition 1
+  Velocity 3 = 0.5
+End
+
+Equation $NST
+  Active Solvers(1) = 1
+  Element = "p:1 b:1"
+End
+
+Solver 1
+
+  Equation = String "Navier-Stokes"
+
+  Linear System Solver = String "Iterative"  ! "Direct"
+  Linear System Direct Method = "umfpack"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU2"
+  Linear System Ilut Tolerance = 0.0001
+  Linear System Residual Output = 1
+
+  Stabilization Method = PBubbles
+! Bubbles in Global System = False
+
+  Nonlinear System Convergence Tolerance = 1e-8
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Newton After Iterations = 90
+  Nonlinear System Newton After Tolerance = 1e-3
+  Nonlinear System Relaxation Factor = 1
+End
+
+Material $Melt
+  Density   = 1000.0
+  Viscosity = 1.0
+End
+
+
+Boundary Condition $MeltSurface
+  Target Boundaries(1) = $MeltSurface
+
+  Normal-Tangential Velocity = True
+  Velocity 1 = Real 0.0
+End
+
+
+Boundary Condition $MeltAxis
+  Target Boundaries = $MeltAxis
+  Velocity 1 = 0
+End
+
+
+Boundary Condition $MeltSilicaCrucibleInterface
+  Target Boundaries = $MeltSilicaCrucibleInterface
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Velocity 3 = $CrucibleRotation
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.172138\n" );
+!End Of File

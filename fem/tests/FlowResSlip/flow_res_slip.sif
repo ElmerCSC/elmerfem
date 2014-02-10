@@ -1,0 +1,142 @@
+! This case describes the flow trough a very small hole
+! where the flow is effectively Stokes flow. Then a flow resistance
+! may be defined for the flow.
+!
+! This case includes slip coefficient for the gas. 
+! There is a variant of the case with no-slip conditions. 
+! This is modern version of an old tutorial case which may 
+! not be working anymore. 
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "hole"
+End
+
+Simulation
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+!  Output File = "flow.result"
+!  Post File = "flow.ep"
+End
+
+Body 1
+  Name = "body_fluid"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+  NS Convect = False
+End
+
+
+Solver 1
+  Equation = N-S
+  Variable = Flow Solution[Velocity:3 Pressure:1]
+  Procedure = "FlowSolve" "FlowSolver"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  BiCgStabl Polynomial Degree = Integer 4 
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-08
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-08
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Calculate Loads = Logical True
+End
+
+Solver 2
+  Equation = Fluidic Force
+  Procedure  ="FluidicForce" "ForceCompute"
+  Calculate Viscous Force = True
+End
+
+Solver 3
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+
+! If filename is not given, echos the results only
+!  Filename = "flowdata.dat"
+
+! compute the more accurate force eastimate from the nodal loads
+  Operator 1 = boundary sum
+  Variable 1 = Flow Solution Loads 1
+  Operator 2 = boundary sum
+  Variable 2 = Flow Solution Loads 2
+  Operator 3 = boundary sum
+  Variable 3 = Flow Solution Loads 3
+
+! use this norm to ensure consistancy
+  Show Norm Index = 3
+End 
+
+Material 1
+  Name = Air
+  Density = 1.293
+  Viscosity = 1.67e-5
+End
+
+Boundary Condition 1
+  Name = "bc_moving" 
+  Target Boundaries = 4
+
+  Slip Coefficient 1 = 2e-4
+  Slip Coefficient 2 = 2e-4
+  Velocity 3 = 1.0
+  Calculate Fluidic Force = True
+End
+
+Boundary Condition 2
+  Name = "bc_symmetry_y"
+  Target Boundaries(2) = 8 10
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 3
+  Name = "bc_symmetry_x"
+  Target Boundaries(2) = 6 9
+  Velocity 1 = 0.0
+End
+
+Boundary Condition 4
+  Name = "bc_outlet"
+  Target Boundaries = 5
+End
+
+$slipcoeff = 2.0e-4
+Boundary Condition 5
+  Name = "bc_slip_xy"
+  Target Boundaries(2) = 2 3
+  Velocity 3 = 0.0
+  Slip Coefficient 1 = $ slipcoeff
+  Slip Coefficient 2 = $ slipcoeff
+End
+
+Boundary Condition 6
+  Name = "bc_slip_yz"
+  Target Boundaries = 1
+  Velocity 1 = 0.0
+  Slip Coefficient 2 = $ slipcoeff
+  Slip Coefficient 3 = $ slipcoeff
+End
+
+Boundary Condition 7
+  Name = "bc_slip_xz"
+  Target Boundaries = 7
+  Velocity 2 = 0.0
+  Slip Coefficient 1 = $ slipcoeff
+  Slip Coefficient 3 = $ slipcoeff
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=-3.057088198549E-002\n");

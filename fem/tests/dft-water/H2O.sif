@@ -1,0 +1,136 @@
+Check Keywords "Warn"
+
+Header :: Mesh DB "." "coarse"
+
+Simulation
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Binary = Logical True
+  Post File   = "H20.ep"
+  Output File = "H20.dat"
+  Steady State Max Iterations = 50
+End
+
+Body 1 :: Equation = 1
+Equation 1 :: Active Solvers(4) = 1 2 3 4
+
+Solver 1
+  Equation = "Poisson"
+
+  Variable = "Potential"
+  Procedure = "DFTSolver" "PoissonSolver"
+
+  ! NOFnuclei is the number of nuclei in the structure.
+
+  NOFnuclei = Integer 3
+
+  ! NucleiTable is an array of the form NucleiTable( NOFnuclei, 4 ) where
+  ! each row includes the information of one nucleus. The colums are
+  ! from left to right : 
+  ! atomic number, x-coordinate, y-coordinate and z-coordinate.
+
+  NucleiTable(3,4) =  Real 8.0  0.0  0.0  0.0 \ 
+                           1.0 -1.43 1.11 0.0 \
+                           1.0  1.43 1.11 0.0
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "CG"
+  Linear System Max Iterations = 2000
+  Linear System Preconditioning = "ILU0"
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Symmetric = Logical True
+  Linear System Residual Output = 0
+
+  !Linear System Solver = "Direct"
+
+  ! Select the relaxation method used, possibilities are constant
+  ! mixing parameter a(k) = A or varying parameter with scheme
+  ! a(k) = C + 1- A * Exp( B * k )
+
+  Relaxation Method = String "Exponential mixing"
+  Relaxation Parameter A = Real 1.0
+  Relaxation Parameter B = Real 0.05
+  Relaxation Parameter C = Real 0.005
+
+ ! Relaxation Method = String "Constant mixing"
+ ! Relaxation Parameter A = Real 0.01
+
+  Start GRPulay after iterations = Integer 10
+  Start GRPulay if relaxation factor is more than = Real 1.0	
+ 
+ ! Relaxation Method = String "Constant mixing"
+ ! Relaxation Parameter A = Real 0.1
+
+  Steady State Convergence Tolerance = 1e-6	
+End
+
+Solver 2
+  Equation = "EigenProblem"
+
+  Variable = "WaveFunctions"
+  Procedure = "DFTSolver" "WaveFunctionSolver"
+
+  Eigen Analysis = True
+  Eigen System Values = 8
+  Eigen System Select = String "Smallest amplitude"
+  Eigen System Convergence Tolerance = Real 1.0e-7
+  ! Eigen System Shifting Constant = Real 5.0d0
+  Eigen System Compute Residuals = True
+  Eigen System Lanczos Vectors = 50
+  Eigen System Max Iterations = Integer 3000
+
+  Linear System Iterative Method = "CG"
+  Linear System Solver = Iterative
+  Linear System Direct Method = UMFPack
+  Linear System Max Iterations = 10000
+  Linear System Preconditioning = "ILU1"
+  Linear System Convergence Tolerance = 1e-9
+  Linear System Residual Output = 0
+  Linear System Symmetric = Logical True
+  Linear System Abort Not Converged = Logical False  
+
+  ! Linear System Solver = "Direct"
+
+  ! Choose the type of the XC Potential, possible choises are:
+  !   "None"
+  !   "Perdew-Zunger"
+  !   "Von Barth-Hedin" 
+  !   "Gunnarsson-Lundqvist"
+  !   "Perdew-Wang"
+
+  XC Potential type = String "Perdew-Zunger"
+End
+
+
+Solver 3
+  Equation = "Charge density calculation"
+
+  Variable = "Charge density"
+  Procedure = "DFTSolver" "ChargeDensitySolver"
+
+  ! Define the number of eigenmodes included on the calculation of charge
+  ! density. Set weights for the eigen states. By default they are all 1.
+
+  Number of Eigenmodes Included = Integer 5
+  Weights of Eigen States(5,1) = Real 2.0 2.0 2.0 2.0 2.0
+
+  Linear System Iterative Method = "CG"
+  Linear System Solver = Iterative
+  Linear System Direct Method = UMFPack
+  Linear System Max Iterations = 10000
+  Linear System Preconditioning = "ILU0"
+  Linear System Convergence Tolerance = 1e-9
+  Linear System Residual Output = 0
+  Linear System Symmetric = Logical True
+  Linear System Refactorize = Logical False
+  Linear System Abort Not Converged = Logical False  
+
+  Steady State Convergence Tolerance = 1e-4
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  WaveFunctions = Real 0.0
+  Potential = Real 100.0 ! Applying the shift
+End

@@ -1,0 +1,52 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle3d"
+End
+
+Simulation
+  Max Output Level = 4
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+End
+
+Solver 2
+  Equation = "Xdmf"
+  Procedure = "XdmfWriter" "XdmfWriter"
+  Base File Name = String "Results"
+  Scalar Field 1 = String "Temperature"
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Density = 1000.0
+  Heat Conductivity = 100.0
+  Heat Capacity = 1000.0
+End
+
+Body Force 1
+  Heat Source = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Temperature = Real 0.0
+End

@@ -1,0 +1,55 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "1d"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = "Cartesian 1D"
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 2
+
+  Timestep Intervals(1) = 3001
+  Timestep Sizes(1)   = 0.001
+  Output Intervals(1) = 1000
+
+  Steady State Max Iterations = 3
+
+! Post File   = "1d.ep"
+! Output File = "1d.dat"
+End
+
+
+Body 1
+  Equation   = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Potential = Real 0
+End
+
+
+Body Force 1
+  Source = Variable Potential
+      Real Procedure "Source" "Source"
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Time Integration Tests"
+  Procedure = "TimeIntegrate" "TimeIntTest"
+  Variable  = "Potential"
+  Linear System Solver = "Direct"
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+$ fprintf( stderr, "TEST CASE 1\n" );
+RUN
+$ fprintf( stderr, "END TEST CASE 1, Target NRM=2.71828210437\n" );

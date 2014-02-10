@@ -1,0 +1,169 @@
+! In this example a light source describes by statistical photons being reflected 
+! and absorbed heats up a complex 2D geometry. For convenience the speed of light
+! is set to one and the time is scaled accordingly. Still the heat equation is 
+! solved in steady state as there is no heat capacity.
+!---------------------------------------------------------------------------------
+Check Keywords Warn
+
+
+Header
+  Mesh DB "." "maze"
+End
+
+Simulation
+  Max Output Level = 8
+  Coordinate System = Cartesian 
+  Simulation Type = transient
+  Steady State Max Iterations = 1
+  Timestep Intervals = 20
+  Output Intervals = 1
+  Timestep Sizes = 1.0
+End
+
+Constants
+  Permittivity Of Vacuum = 1.0
+  Gravity(4) = 0 -1 0 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body Force 1 
+  Temperature Load = Equals "Particle Weight" 
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = ParticleDynamics
+  Procedure = "ParticleDynamics" "ParticleDynamics"
+
+! Number of particles. The larger the number the better the statistics. 
+$ nopart = 1000
+  Number of Particles = Integer $ nopart
+  Random Seed = Integer 1 
+
+  Initial Coordinate(1,2) = Real 0.5 0.5 
+  Velocity Initialization Method = String constant random
+  Initial Velocity Amplitude = Real 1.0 
+
+  ! adds 0.05 to the initial radius of the light source
+  Initial Velocity Time = Real 0.05 
+
+! The total time should be 0.01*100*20=20 
+  Timestep Size = Real 0.01
+  Max Timestep Intervals = Integer 100
+
+! When time order is zero the speed stays constant
+  Time Order = Integer 0
+
+!  Particle Accurate At Face = Logical True
+  Particle Accurate Always = Logical True
+  Particle Locate Robust = Logical True
+
+
+  Particle To Field = Logical True
+  Particle To Field Weight = String "distance"
+
+! characteristic distance for absorption is this
+! i.e. particles are integrated four times this meaning an error of 1%
+$ sdecay = 5.0
+  Particle Decay Distance = Real $ sdecay
+$ power = 10.0
+
+! Assuming that the light source has a fixed power and the photons 
+! are decay distance of photons are given this coefficient 
+! results to a r.h.s. vector that should in a closed system
+! result to a force vector that approaches the given power.
+!------------------------------------------------------------------ 
+  Particle To Field Coefficient = Real $ power / (nopart*sdecay)
+
+!  Statistical Info = Logical True
+!  Particle Info = Logical True
+
+  Particle Distance = Logical True
+End 
+
+
+
+! Heat equation that takes as the r.h.s. the trace of the photons
+!----------------------------------------------------------------
+Solver 2
+! remove this to animate the evolution
+!  Exec Solver = After All
+
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+
+  Optimize Bandwidth = False
+End 
+
+
+
+Solver 3
+! activate for postprocessing with paraview
+  Exec Solver = never
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "light_heat" 
+  Output Format = "vtu"
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End
+
+Boundary Condition 1
+  Name = Reflect
+  Target Boundaries(1) = 1 
+
+  Particle Reflect = Logical True
+
+! When this is active instead the previous the 
+! BC physics is determined by "ParticleWallProc"
+!  Particle Interact = Logical True
+
+  Temperature = 0.0
+End
+
+Boundary Condition 2
+  Name = Outlet
+  Target Boundaries(1) = 2
+
+!  Particle Reflect = Logical True
+
+! Because some particles are leaked some power leakes also
+  Particle Outlet = Logical True
+End
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.14738252\n");

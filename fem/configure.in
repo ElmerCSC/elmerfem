@@ -1,0 +1,356 @@
+dnl
+dnl Juha.Vierinen@csc.fi 5/2005
+dnl 
+AC_INIT(src/Solver.src)
+
+AC_CANONICAL_HOST
+AC_CANONICAL_TARGET
+
+AM_INIT_AUTOMAKE(fem, 7.0)
+
+AM_MAINTAINER_MODE
+
+AC_SYS_LARGEFILE
+
+sinclude(acx_elmer.m4)
+ACX_MEANING
+ACX_HOST
+ACX_PLATFORM_DEFS
+ACX_DEBUG
+
+AC_PROG_CC([xlc pathcc icc cc gcc])
+AC_PROG_CXX([xlC pathCC icc CC g++])
+AC_PROG_FC([gfortran xlf90 pathf90 ifort ifc f90 g95])
+AC_PROG_F77([gfortran xlf pathf90 ifort ifc f77 g95 g77])
+
+ACX_BOURNE_SHELL
+
+AC_PROG_RANLIB
+ACX_PROG_AR
+
+ACX_LANG_COMPILER_MS
+
+ACX_PROG_TRADITIONAL_CPP
+
+ACX_CHECK_STDCXXLIB
+
+AC_EXEEXT
+AC_OBJEXT
+
+dnl It is important to do this before *_WRAPPERS, because the flibs will be different for 32 and 64 bits
+ACX_CHECK_B64FLAGS
+
+AC_F77_WRAPPERS
+AC_FC_WRAPPERS
+
+ACX_FC_LINKTYP
+ACX_FC_CHAR_MANGLING 
+ACX_FC_CONTIG
+ACX_FC_CHAR_ALLOC
+ACX_FC_ETIME
+ACX_FC_FLUSH
+
+ACX_PIC_FLAGS
+ACX_FC_INCLUDE_MODULE_FLAG
+ACX_SHLIB_STUFF
+
+if test "$RPATH_FLAG" != ""; then
+	RPATH_ELMER="${RPATH_FLAG}$prefix/lib"
+else
+	RPATH_ELMER=""
+fi
+AC_SUBST(RPATH_ELMER)
+
+
+if test "$prefix" = "NONE"; then
+   prefix="/usr/local"
+fi
+
+LIBS="-L. $LIBS -L$prefix/lib"
+LDFLAGS="-L. $LDFLAGS -L$prefix/lib"
+CFLAGS="$CFLAGS -I$prefix/include"
+FCFLAGS="$FCFLAGS -I. ${INCLUDE_MODULE_FLAG}binio ${INCLUDE_MODULE_FLAG}../binio"
+FFLAGS="$FFLAGS -I."
+ELMER_HOME="$prefix"
+FCPPFLAGS="$FCPPFLAGS -P $TRADITIONAL_CPP_FLAGS -I. -I$prefix/include -DFULL_INDUCTION -DUSE_ARPACK"
+TESTS_FCFLAGS=""
+
+ELMER_LIBERRORMSG="wasn't found, make sure it is in the prefix, or CFLAGS and LIBS are correct if they are somewhere else."
+
+sinclude(acx_mpi.m4)
+ACX_MPI
+ACX_MPI_COMPILERS
+
+if test "$MPI_INCLUDE_DIR" != ""; then
+   FCPPFLAGS="$FCPPFLAGS -I$MPI_INCLUDE_DIR"
+   CPPFLAGS="$CPPFLAGS -I$MPI_INCLUDE_DIR"
+   FFLAGS="$FFLAGS -I$MPI_INCLUDE_DIR"
+   CFLAGS="$CFLAGS -I$MPI_INCLUDE_DIR"
+   FCFLAGS="$FCFLAGS -I$MPI_INCLUDE_DIR"
+fi
+
+if test "$MPI_INCLUDE" != ""; then
+   FCPPFLAGS="$FCPPFLAGS $MPI_INCLUDE"
+   CPPFLAGS="$CPPFLAGS $MPI_INCLUDE"
+   FFLAGS="$FFLAGS $MPI_INCLUDE"
+   CFLAGS="$CFLAGS $MPI_INCLUDE"
+   FCFLAGS="$FCFLAGS $MPI_INCLUDE"
+fi
+   
+sinclude(acx_lapack.m4)
+sinclude(acx_blas.m4)
+ACX_BLAS([], [AC_MSG_ERROR([BLAS was not found!])])
+ACX_LAPACK([], [AC_MSG_ERROR([LAPACK was not found!])])
+ACX_HUTI([], [AC_MSG_ERROR([Libhuti wasn't found])])
+ACX_EIOF([], [AC_MSG_ERROR([libeiof $ELMER_LIBERRORMSG])])
+ACX_ARPACK([], [AC_MSG_ERROR([We need arpack!])])
+ACX_PARPACK([], [AC_MSG_WARN([No parallel arpack found.])])
+ACX_HYPRE([], [AC_MSG_WARN([HYPRE not found, some functionaly will be disabled.])])
+ACX_MUMPS([], [AC_MSG_WARN([MUMPS not found, some functionaly will be disabled.])])
+ACX_UMFPACK([], [AC_MSG_WARN([UMFPACK not found, some functionaly will be disabled.])])
+ACX_MATC([], [AC_MSG_ERROR([libmatc $ELMER_LIBERRORMSG])])
+AC_CHECK_LIB(m,main,[UNIX_MATH_LIB="-lm"; LIBS="$LIBS -lm"],[UNIX_MATH_LIB=""])
+
+dnl see if parpack has to be built locally (only when mpi is fine)
+if test x"$acx_parpack_ok" = xno; then
+if test x"$acx_mpi_ok" = xyes; then
+   AC_MSG_ERROR([The MPI version needs parpack. Disabling MPI.])
+   acx_mpi_ok=no
+fi
+fi
+
+ACX_FORTRAN_CPP
+
+AM_CONDITIONAL(USE_MPI, test "$acx_mpi_ok" = "yes")
+AM_CONDITIONAL(USE_CPP, test "$acx_fortran_cpp_ok" != "yes")
+AM_CONDITIONAL(USE_LOCAL_MPIF_H, test "$acx_mpif_h_found" = "no")
+
+dnl
+dnl Compiler specific stuff
+dnl
+dnl Troubles with intel compiler (ElmerSolver does not link with icc and libsolver doesn't link with ifort :)
+dnl
+case "$FC" in
+  *xlf*)
+    TESTS_FCFLAGS="$FCFLAGS -qsuffix=cpp=f90"
+    FCFLAGS="$FCFLAGS -qsuffix=cpp=f90"
+  ;;
+  ifort | ifc )
+    TESTS_FCFLAGS="$FCFLAGS"
+    if test "$ac_cv_f77_compiler_gnu" = yes; then
+       AC_MSG_WARN([Intel Fortran 90 compiler and g77 really don't mix that well, I hope you know what you are doing.])
+    fi
+  ;;
+  *)
+    TESTS_FCFLAGS="$FCFLAGS"
+  ;;
+esac
+
+ACX_COMPILER_FIXES
+
+ACX_FC_MODFILE
+AM_CONDITIONAL(UPPERCASEMODS, test $modfilename = "MODULENAME.mod")
+ACX_FC_PUT_MODULE_FLAG
+
+dnl 
+dnl Find the Fortran kind parameter corresponding to a C off_t type.
+dnl
+if test "$have_ftello" = yes; then
+  AC_CHECK_SIZEOF(off_t)
+  if test $ac_cv_sizeof_off_t -eq 4; then
+        OFF_KIND="selected_int_kind(9)"
+  elif test $ac_cv_sizeof_off_t -eq 8; then
+        OFF_KIND="selected_int_kind(18)"
+  else
+        OFF_KIND="selected_int_kind(int($ac_cv_sizeof_off_t*8*log10(2.0d0)))"
+        AC_MSG_WARN([sizeof(off_t) = $ac_cv_sizeof_off_t !? What kind of weird system is this?
+                    I'm not sure if this will work.])
+  fi
+else
+  AC_CHECK_SIZEOF(long)
+  if test $ac_cv_sizeof_long -eq 4; then
+          OFF_KIND="selected_int_kind(9)"
+  elif test $ac_cv_sizeof_long -eq 8; then
+          OFF_KIND="selected_int_kind(18)"
+  else
+          OFF_KIND="selected_int_kind(int($ac_cv_sizeof_long*8*log10(2.0d0)))"
+          AC_MSG_WARN([sizeof(long) = $ac_cv_sizeof_long !? What kind of weird system is this?
+                      I'm not sure if this will work.])
+  fi
+fi
+
+SOLVER_LIBS="$LIBS $ARPACK_LIBS $PARPACK_LIBS $HYPRE_LIBS $MUMPS_LIBS $UMFPACK_LIBS $HUTI_LIBS $MATC_LIBS $EIOF_LIBS $LIBS $LAPACK_LIBS $BLAS_LIBS $FCLIBS $FLIBS $STDCXX_LIBS"
+
+dnl Host specific hacks.
+dnl
+AM_CONDITIONAL(MAC_OSX,0)
+case "$canonical_host_type" in
+  rs6000-ibm-aix* | powerpc-ibm-aix*)
+    EXTRA_LIBS=""
+  ;;
+  *darwin*)
+    AM_CONDITIONAL(MAC_OSX,1)
+    EXTRA_LIBS="$STDCXX_LIBS $FCFLIBS $FLIBS"
+  ;;
+  *-*-mingw*)
+    EXTRA_LIBS="-L. -L$prefix/lib -lelmersolver"
+  ;;
+dnl  sparc-sun-solaris2* | i386-pc-solaris2*)
+dnl    
+dnl  ;;
+esac
+
+dnl REALLY REALLY UGLY HACK!!!
+if test "$acx_cv_c_compiler_ms" = "yes"; then
+    EXTRA_LIBS="-llibelmersolver -stack:500000000"
+fi
+
+
+TESTS_FCFLAGS="$TESTS_FCFLAGS $INCLUDE_MODULE_FLAG."
+
+CP='cp'
+LN='ln'
+RM='rm -f'
+MV='mv'
+MKDIR='mkdir -p'
+
+AC_MSG_RESULT([defining FPICFLAG to be $FPICFLAG])
+AC_MSG_RESULT([defining CPICFLAG to be $CPICFLAG])
+AC_MSG_RESULT([defining CXXPICFLAG to be $CXXPICFLAG])
+AC_MSG_RESULT([defining SHLEXT to be $SHLEXT])
+AC_MSG_RESULT([defining SHLLIB to be $SHLLIB])
+AC_MSG_RESULT([defining SHLBIN to be $SHLBIN])
+AC_MSG_RESULT([defining SHLEXT_VER to be $SHLEXT_VER])
+AC_MSG_RESULT([defining SHLLIB_VER to be $SHLLIB_VER])
+AC_MSG_RESULT([defining SHLBIN_VER to be $SHLBIN_VER])
+AC_MSG_RESULT([defining SHLLINKEXT to be $SHLLINKEXT])
+AC_MSG_RESULT([defining DLFCN_DIR to be $DLFCN_DIR])
+AC_MSG_RESULT([defining SH_LD to be $SH_LD])
+AC_MSG_RESULT([defining SH_LDFLAGS to be $SH_LDFLAGS])
+AC_MSG_RESULT([defining SH_LINKING_TO_FLAGS to be $SH_LINKING_TO_FLAGS])
+AC_MSG_RESULT([defining DL_LD to be $DL_LD])
+AC_MSG_RESULT([defining DL_LDFLAGS to be $DL_LDFLAGS])
+AC_MSG_RESULT([defining MKOCTFILE_DL_LDFLAGS to be $MKOCTFILE_DL_LDFLAGS])
+AC_MSG_RESULT([defining SONAME_FLAGS to be $SONAME_FLAGS])
+AC_MSG_RESULT([defining NO_OCT_FILE_STRIP to be $NO_OCT_FILE_STRIP])
+AC_MSG_RESULT([defining RLD_FLAG to be $RLD_FLAG])
+AC_MSG_RESULT([defining TEMPLATE_AR to be $TEMPLATE_AR])
+AC_MSG_RESULT([defining TEMPLATE_ARFLAGS to be $TEMPLATE_ARFLAGS])
+AC_MSG_RESULT([defining library_path_var to be $library_path_var])
+AC_MSG_RESULT([defining FCPPFLAGS to be $FCPPFLAGS])
+AC_MSG_RESULT([defining LIBSOLVER_DEPS to be $LIBSOLVER_DEPS])
+AC_MSG_RESULT([defining OFF_KIND to be $OFF_KIND])
+AC_MSG_RESULT([defining LONG_KIND to be $LONG_KIND])
+AC_SUBST(TESTS_FCFLAGS)
+AC_SUBST(INCLUDE_MODULE_FLAG)
+AC_SUBST(MESHGEN2D_LIBS)
+AC_SUBST(FPICFLAG)
+AC_SUBST(CPICFLAG)
+AC_SUBST(CXXPICFLAG)
+AC_SUBST(SHLEXT)
+AC_SUBST(SHLLIB)
+AC_SUBST(SHLBIN)
+AC_SUBST(SHLEXT_VER)
+AC_SUBST(SHLLIB_VER)
+AC_SUBST(SHLBIN_VER)
+AC_SUBST(SHLLINKEXT)
+AC_SUBST(DLFCN_DIR)
+AC_SUBST(SH_LD)
+AC_SUBST(SH_LD2)
+AC_SUBST(EXTRA_LIBS)
+AC_SUBST(SH_LDFLAGS)
+AC_SUBST(SH_LINKING_TO_FLAGS)
+AC_SUBST(DL_LD)
+AC_SUBST(DL_LDFLAGS)
+AC_SUBST(MKOCTFILE_DL_LDFLAGS)
+AC_SUBST(SONAME_FLAGS)
+AC_SUBST(NO_OCT_FILE_STRIP)
+AC_SUBST(RLD_FLAG)
+AC_SUBST(TEMPLATE_AR)
+AC_SUBST(TEMPLATE_ARFLAGS)
+AC_SUBST(library_path_var)
+AC_SUBST(FCPPFLAGS)
+AC_SUBST(LIBEXT)
+AC_SUBST(UNIX_MATH_LIB)
+AC_SUBST(LIBSOLVER_DEPS)
+AC_SUBST(RM)
+AC_SUBST(CP)
+AC_SUBST(LN)
+AC_SUBST(MV)
+AC_SUBST(F77)
+AC_SUBST(CPP)
+AC_SUBST(FC)
+AC_SUBST(MKDIR)
+AC_SUBST(SOLVER_LIBS)
+AC_SUBST(STDCXX_LIBS)
+AC_SUBST(SOLVER_MPI_LIBS)
+AC_SUBST(LIBS)
+AC_SUBST(FCFLAGS)
+AC_SUBST(OFF_KIND)
+AC_SUBST(LONG_KIND)
+
+AC_DEFINE_UNQUOTED(ELMER_SOLVER_HOME,"${prefix}/share/elmersolver", [Elmer solver default install directory])
+AC_CONFIG_HEADER(config.h)
+
+# runtests needs to be runnable
+AC_CONFIG_FILES([tests/runtests],
+                [chmod 755 tests/runtests])
+AC_CONFIG_FILES([src/elmerf90],
+                [chmod 755 src/elmerf90])
+AC_CONFIG_FILES([src/elmerf90-nosh],
+                [chmod 755 src/elmerf90-nosh])
+AC_CONFIG_FILES([src/elmerld],
+                [chmod 755 src/elmerld])
+
+AC_OUTPUT([
+Makefile
+Makeconf
+src/Makefile
+src/modules/Makefile
+src/view3d/Makefile
+src/viewaxis/Makefile
+src/binio/Makefile
+src/binio/kinds.f90
+src/binio/test/Makefile
+tests/Makefile
+]
+)
+
+AC_MSG_RESULT([
+ELMER build options:
+  Version                   $VERSION
+  Install prefix            $prefix
+  CPPFLAGS                  $CPPFLAGS
+  FCPPFLAGS                 $FCPPFLAGS
+
+  CFLAGS                    $CFLAGS
+  CXXFLAGS                  $CXXFLAGS
+  FCFLAGS                   $FCFLAGS
+  FFLAGS                    $FFLAGS
+
+  LDFLAGS                   $LDFLAGS
+  LIBS                      $LIBS
+  SOLVER_LIBS               $SOLVER_LIBS
+
+Compilers:
+  Fortran 90 compiler       $FC
+  Fortran 77 compiler       $F77
+  CC                        $CC
+  C++                       $CXX
+  CPP                       $CPP
+
+Libs:  
+  BLAS                      $BLAS_LIBS
+  LAPACK                    $LAPACK_LIBS
+  HYPRE                     $HYPRE_LIBS
+  MUMPS                     $MUMPS_LIBS
+  UMFPACK                   $UMFPACK_LIBS
+  ARPACK		    $ARPACK_LIBS
+  PARPACK		    $PARPACK_LIBS
+  HUTI			    $HUTI_LIBS
+  EIO			    $EIOF_LIBS
+  MPI                       $MPI_LIBS
+
+MPI:
+  $acx_mpi_ok
+])

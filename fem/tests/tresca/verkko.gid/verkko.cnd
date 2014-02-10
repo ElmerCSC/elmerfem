@@ -1,0 +1,18 @@
+NUMBER: 1 CONDITION: PointConstraint
+CONDTYPE: over points
+CONDMESHTYPE: over body elements
+QUESTION: Index
+VALUE: 1
+END CONDITION
+NUMBER: 2 CONDITION: LineConstraint
+CONDTYPE: over lines
+CONDMESHTYPE: over body elements
+QUESTION: Index
+VALUE: 1
+END CONDITION
+NUMBER: 3 CONDITION: SurfaceConstraint
+CONDTYPE: over surfaces
+CONDMESHTYPE: over body elements
+QUESTION: Index
+VALUE: 1
+END CONDITION

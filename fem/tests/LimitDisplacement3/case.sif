@@ -1,0 +1,90 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 6
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = scanning
+  Timestep Intervals = 3
+  Steady State Max Iterations = 1
+!  Post File = case.vtu
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Linear elasticity
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 2 Disp
+  Steady State Convergence Tolerance = 1.0e-8
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 30
+  Linear System Solver = Direct
+  Linear System Direct Method = Umfpack
+
+  Apply Limiter = Logical True
+End
+
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Youngs modulus = 1.0e3
+  Density = 1.0
+  Poisson ratio = 0.3
+End
+
+Body Force 1
+  Stress Bodyforce 1 = 0
+  Stress Bodyforce 2 = -20.0
+  Stress Bodyforce 3 = 0
+End
+
+Boundary Condition 1
+  Name = Contact
+  Target Boundaries(1) = 1
+
+  Disp 2 Lower Limit = Variable Coordinate 1
+   Real 
+     0.0   -10.0
+     1.999 -10.0
+     2.0     0.0
+     8.0     0.0
+     8.001  -10.0
+     10.0   -10.0
+   End
+End
+
+Boundary Condition 2
+  Name = Walls
+  Target Boundaries(2) = 2 4
+  Disp 1 = Real 0.0
+  Disp 2 = Variable time
+   Real MATC "-0.1*tx"
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.10640760\n");

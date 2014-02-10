@@ -1,0 +1,316 @@
+	umf_analyze.c umf_i_analyze.c -DDINT
+	umf_apply_order.c umf_i_apply_order.c -DDINT
+	umf_colamd.c umf_i_colamd.c -DDINT
+	umf_free.c umf_i_free.c -DDINT
+	umf_fsize.c umf_i_fsize.c -DDINT
+	umf_is_permutation.c umf_i_is_permutation.c -DDINT
+	umf_malloc.c umf_i_malloc.c -DDINT
+	umf_realloc.c umf_i_realloc.c -DDINT
+	umf_report_perm.c umf_i_report_perm.c -DDINT
+	umf_singletons.c umf_i_singletons.c -DDINT
+	umf_analyze.c umf_l_analyze.c -DDLONG
+	umf_apply_order.c umf_l_apply_order.c -DDLONG
+	umf_colamd.c umf_l_colamd.c -DDLONG
+	umf_free.c umf_l_free.c -DDLONG
+	umf_fsize.c umf_l_fsize.c -DDLONG
+	umf_is_permutation.c umf_l_is_permutation.c -DDLONG
+	umf_malloc.c umf_l_malloc.c -DDLONG
+	umf_realloc.c umf_l_realloc.c -DDLONG
+	umf_report_perm.c umf_l_report_perm.c -DDLONG
+	umf_singletons.c umf_l_singletons.c -DDLONG
+	umf_ltsolve.c umf_di_lhsolve.c -DDINT -DCONJUGATE_SOLVE
+	umf_utsolve.c umf_di_uhsolve.c -DDINT -DCONJUGATE_SOLVE
+	umf_triplet.c umf_di_triplet_map_nox.c -DDINT -DDO_MAP
+	umf_triplet.c umf_di_triplet_nomap_x.c -DDINT -DDO_VALUES
+	umf_triplet.c umf_di_triplet_nomap_nox.c -DDINT
+	umf_triplet.c umf_di_triplet_map_x.c -DDINT -DDO_MAP -DDO_VALUES
+	umf_assemble.c umf_di_assemble_fixq.c -DDINT -DFIXQ
+	umf_store_lu.c umf_di_store_lu_drop.c -DDINT -DDROP
+	umf_assemble.c umf_di_assemble.c -DDINT
+	umf_blas3_update.c umf_di_blas3_update.c -DDINT
+	umf_build_tuples.c umf_di_build_tuples.c -DDINT
+	umf_create_element.c umf_di_create_element.c -DDINT
+	umf_dump.c umf_di_dump.c -DDINT
+	umf_extend_front.c umf_di_extend_front.c -DDINT
+	umf_garbage_collection.c umf_di_garbage_collection.c -DDINT
+	umf_get_memory.c umf_di_get_memory.c -DDINT
+	umf_init_front.c umf_di_init_front.c -DDINT
+	umf_kernel.c umf_di_kernel.c -DDINT
+	umf_kernel_init.c umf_di_kernel_init.c -DDINT
+	umf_kernel_wrapup.c umf_di_kernel_wrapup.c -DDINT
+	umf_local_search.c umf_di_local_search.c -DDINT
+	umf_lsolve.c umf_di_lsolve.c -DDINT
+	umf_ltsolve.c umf_di_ltsolve.c -DDINT
+	umf_mem_alloc_element.c umf_di_mem_alloc_element.c -DDINT
+	umf_mem_alloc_head_block.c umf_di_mem_alloc_head_block.c -DDINT
+	umf_mem_alloc_tail_block.c umf_di_mem_alloc_tail_block.c -DDINT
+	umf_mem_free_tail_block.c umf_di_mem_free_tail_block.c -DDINT
+	umf_mem_init_memoryspace.c umf_di_mem_init_memoryspace.c -DDINT
+	umf_report_vector.c umf_di_report_vector.c -DDINT
+	umf_row_search.c umf_di_row_search.c -DDINT
+	umf_scale_column.c umf_di_scale_column.c -DDINT
+	umf_set_stats.c umf_di_set_stats.c -DDINT
+	umf_solve.c umf_di_solve.c -DDINT
+	umf_symbolic_usage.c umf_di_symbolic_usage.c -DDINT
+	umf_transpose.c umf_di_transpose.c -DDINT
+	umf_tuple_lengths.c umf_di_tuple_lengths.c -DDINT
+	umf_usolve.c umf_di_usolve.c -DDINT
+	umf_utsolve.c umf_di_utsolve.c -DDINT
+	umf_valid_numeric.c umf_di_valid_numeric.c -DDINT
+	umf_valid_symbolic.c umf_di_valid_symbolic.c -DDINT
+	umf_grow_front.c umf_di_grow_front.c -DDINT
+	umf_start_front.c umf_di_start_front.c -DDINT
+	umf_2by2.c umf_di_2by2.c -DDINT
+	umf_store_lu.c umf_di_store_lu.c -DDINT
+	umf_scale.c umf_di_scale.c -DDINT
+	umfpack_solve.c umfpack_di_wsolve.c -DDINT -DWSOLVE
+	umfpack_col_to_triplet.c umfpack_di_col_to_triplet.c -DDINT
+	umfpack_defaults.c umfpack_di_defaults.c -DDINT
+	umfpack_free_numeric.c umfpack_di_free_numeric.c -DDINT
+	umfpack_free_symbolic.c umfpack_di_free_symbolic.c -DDINT
+	umfpack_get_numeric.c umfpack_di_get_numeric.c -DDINT
+	umfpack_get_lunz.c umfpack_di_get_lunz.c -DDINT
+	umfpack_get_symbolic.c umfpack_di_get_symbolic.c -DDINT
+	umfpack_get_determinant.c umfpack_di_get_determinant.c -DDINT
+	umfpack_numeric.c umfpack_di_numeric.c -DDINT
+	umfpack_qsymbolic.c umfpack_di_qsymbolic.c -DDINT
+	umfpack_report_control.c umfpack_di_report_control.c -DDINT
+	umfpack_report_info.c umfpack_di_report_info.c -DDINT
+	umfpack_report_matrix.c umfpack_di_report_matrix.c -DDINT
+	umfpack_report_numeric.c umfpack_di_report_numeric.c -DDINT
+	umfpack_report_perm.c umfpack_di_report_perm.c -DDINT
+	umfpack_report_status.c umfpack_di_report_status.c -DDINT
+	umfpack_report_symbolic.c umfpack_di_report_symbolic.c -DDINT
+	umfpack_report_triplet.c umfpack_di_report_triplet.c -DDINT
+	umfpack_report_vector.c umfpack_di_report_vector.c -DDINT
+	umfpack_solve.c umfpack_di_solve.c -DDINT
+	umfpack_symbolic.c umfpack_di_symbolic.c -DDINT
+	umfpack_transpose.c umfpack_di_transpose.c -DDINT
+	umfpack_triplet_to_col.c umfpack_di_triplet_to_col.c -DDINT
+	umfpack_scale.c umfpack_di_scale.c -DDINT
+	umfpack_load_numeric.c umfpack_di_load_numeric.c -DDINT
+	umfpack_save_numeric.c umfpack_di_save_numeric.c -DDINT
+	umfpack_load_symbolic.c umfpack_di_load_symbolic.c -DDINT
+	umfpack_save_symbolic.c umfpack_di_save_symbolic.c -DDINT
+	umf_ltsolve.c umf_dl_lhsolve.c -DDLONG -DCONJUGATE_SOLVE
+	umf_utsolve.c umf_dl_uhsolve.c -DDLONG -DCONJUGATE_SOLVE
+	umf_triplet.c umf_dl_triplet_map_nox.c -DDLONG -DDO_MAP
+	umf_triplet.c umf_dl_triplet_nomap_x.c -DDLONG -DDO_VALUES
+	umf_triplet.c umf_dl_triplet_nomap_nox.c -DDLONG
+	umf_triplet.c umf_dl_triplet_map_x.c -DDLONG -DDO_MAP -DDO_VALUES
+	umf_assemble.c umf_dl_assemble_fixq.c -DDLONG -DFIXQ
+	umf_store_lu.c umf_dl_store_lu_drop.c -DDLONG -DDROP
+	umf_assemble.c umf_dl_assemble.c -DDLONG
+	umf_blas3_update.c umf_dl_blas3_update.c -DDLONG
+	umf_build_tuples.c umf_dl_build_tuples.c -DDLONG
+	umf_create_element.c umf_dl_create_element.c -DDLONG
+	umf_dump.c umf_dl_dump.c -DDLONG
+	umf_extend_front.c umf_dl_extend_front.c -DDLONG
+	umf_garbage_collection.c umf_dl_garbage_collection.c -DDLONG
+	umf_get_memory.c umf_dl_get_memory.c -DDLONG
+	umf_init_front.c umf_dl_init_front.c -DDLONG
+	umf_kernel.c umf_dl_kernel.c -DDLONG
+	umf_kernel_init.c umf_dl_kernel_init.c -DDLONG
+	umf_kernel_wrapup.c umf_dl_kernel_wrapup.c -DDLONG
+	umf_local_search.c umf_dl_local_search.c -DDLONG
+	umf_lsolve.c umf_dl_lsolve.c -DDLONG
+	umf_ltsolve.c umf_dl_ltsolve.c -DDLONG
+	umf_mem_alloc_element.c umf_dl_mem_alloc_element.c -DDLONG
+	umf_mem_alloc_head_block.c umf_dl_mem_alloc_head_block.c -DDLONG
+	umf_mem_alloc_tail_block.c umf_dl_mem_alloc_tail_block.c -DDLONG
+	umf_mem_free_tail_block.c umf_dl_mem_free_tail_block.c -DDLONG
+	umf_mem_init_memoryspace.c umf_dl_mem_init_memoryspace.c -DDLONG
+	umf_report_vector.c umf_dl_report_vector.c -DDLONG
+	umf_row_search.c umf_dl_row_search.c -DDLONG
+	umf_scale_column.c umf_dl_scale_column.c -DDLONG
+	umf_set_stats.c umf_dl_set_stats.c -DDLONG
+	umf_solve.c umf_dl_solve.c -DDLONG
+	umf_symbolic_usage.c umf_dl_symbolic_usage.c -DDLONG
+	umf_transpose.c umf_dl_transpose.c -DDLONG
+	umf_tuple_lengths.c umf_dl_tuple_lengths.c -DDLONG
+	umf_usolve.c umf_dl_usolve.c -DDLONG
+	umf_utsolve.c umf_dl_utsolve.c -DDLONG
+	umf_valid_numeric.c umf_dl_valid_numeric.c -DDLONG
+	umf_valid_symbolic.c umf_dl_valid_symbolic.c -DDLONG
+	umf_grow_front.c umf_dl_grow_front.c -DDLONG
+	umf_start_front.c umf_dl_start_front.c -DDLONG
+	umf_2by2.c umf_dl_2by2.c -DDLONG
+	umf_store_lu.c umf_dl_store_lu.c -DDLONG
+	umf_scale.c umf_dl_scale.c -DDLONG
+	umfpack_solve.c umfpack_dl_wsolve.c -DDLONG -DWSOLVE
+	umfpack_col_to_triplet.c umfpack_dl_col_to_triplet.c -DDLONG
+	umfpack_defaults.c umfpack_dl_defaults.c -DDLONG
+	umfpack_free_numeric.c umfpack_dl_free_numeric.c -DDLONG
+	umfpack_free_symbolic.c umfpack_dl_free_symbolic.c -DDLONG
+	umfpack_get_numeric.c umfpack_dl_get_numeric.c -DDLONG
+	umfpack_get_lunz.c umfpack_dl_get_lunz.c -DDLONG
+	umfpack_get_symbolic.c umfpack_dl_get_symbolic.c -DDLONG
+	umfpack_get_determinant.c umfpack_dl_get_determinant.c -DDLONG
+	umfpack_numeric.c umfpack_dl_numeric.c -DDLONG
+	umfpack_qsymbolic.c umfpack_dl_qsymbolic.c -DDLONG
+	umfpack_report_control.c umfpack_dl_report_control.c -DDLONG
+	umfpack_report_info.c umfpack_dl_report_info.c -DDLONG
+	umfpack_report_matrix.c umfpack_dl_report_matrix.c -DDLONG
+	umfpack_report_numeric.c umfpack_dl_report_numeric.c -DDLONG
+	umfpack_report_perm.c umfpack_dl_report_perm.c -DDLONG
+	umfpack_report_status.c umfpack_dl_report_status.c -DDLONG
+	umfpack_report_symbolic.c umfpack_dl_report_symbolic.c -DDLONG
+	umfpack_report_triplet.c umfpack_dl_report_triplet.c -DDLONG
+	umfpack_report_vector.c umfpack_dl_report_vector.c -DDLONG
+	umfpack_solve.c umfpack_dl_solve.c -DDLONG
+	umfpack_symbolic.c umfpack_dl_symbolic.c -DDLONG
+	umfpack_transpose.c umfpack_dl_transpose.c -DDLONG
+	umfpack_triplet_to_col.c umfpack_dl_triplet_to_col.c -DDLONG
+	umfpack_scale.c umfpack_dl_scale.c -DDLONG
+	umfpack_load_numeric.c umfpack_dl_load_numeric.c -DDLONG
+	umfpack_save_numeric.c umfpack_dl_save_numeric.c -DDLONG
+	umfpack_load_symbolic.c umfpack_dl_load_symbolic.c -DDLONG
+	umfpack_save_symbolic.c umfpack_dl_save_symbolic.c -DDLONG
+	umf_ltsolve.c umf_zi_lhsolve.c -DZINT -DCONJUGATE_SOLVE
+	umf_utsolve.c umf_zi_uhsolve.c -DZINT -DCONJUGATE_SOLVE
+	umf_triplet.c umf_zi_triplet_map_nox.c -DZINT -DDO_MAP
+	umf_triplet.c umf_zi_triplet_nomap_x.c -DZINT -DDO_VALUES
+	umf_triplet.c umf_zi_triplet_nomap_nox.c -DZINT
+	umf_triplet.c umf_zi_triplet_map_x.c -DZINT -DDO_MAP -DDO_VALUES
+	umf_assemble.c umf_zi_assemble_fixq.c -DZINT -DFIXQ
+	umf_store_lu.c umf_zi_store_lu_drop.c -DZINT -DDROP
+	umf_assemble.c umf_zi_assemble.c -DZINT
+	umf_blas3_update.c umf_zi_blas3_update.c -DZINT
+	umf_build_tuples.c umf_zi_build_tuples.c -DZINT
+	umf_create_element.c umf_zi_create_element.c -DZINT
+	umf_dump.c umf_zi_dump.c -DZINT
+	umf_extend_front.c umf_zi_extend_front.c -DZINT
+	umf_garbage_collection.c umf_zi_garbage_collection.c -DZINT
+	umf_get_memory.c umf_zi_get_memory.c -DZINT
+	umf_init_front.c umf_zi_init_front.c -DZINT
+	umf_kernel.c umf_zi_kernel.c -DZINT
+	umf_kernel_init.c umf_zi_kernel_init.c -DZINT
+	umf_kernel_wrapup.c umf_zi_kernel_wrapup.c -DZINT
+	umf_local_search.c umf_zi_local_search.c -DZINT
+	umf_lsolve.c umf_zi_lsolve.c -DZINT
+	umf_ltsolve.c umf_zi_ltsolve.c -DZINT
+	umf_mem_alloc_element.c umf_zi_mem_alloc_element.c -DZINT
+	umf_mem_alloc_head_block.c umf_zi_mem_alloc_head_block.c -DZINT
+	umf_mem_alloc_tail_block.c umf_zi_mem_alloc_tail_block.c -DZINT
+	umf_mem_free_tail_block.c umf_zi_mem_free_tail_block.c -DZINT
+	umf_mem_init_memoryspace.c umf_zi_mem_init_memoryspace.c -DZINT
+	umf_report_vector.c umf_zi_report_vector.c -DZINT
+	umf_row_search.c umf_zi_row_search.c -DZINT
+	umf_scale_column.c umf_zi_scale_column.c -DZINT
+	umf_set_stats.c umf_zi_set_stats.c -DZINT
+	umf_solve.c umf_zi_solve.c -DZINT
+	umf_symbolic_usage.c umf_zi_symbolic_usage.c -DZINT
+	umf_transpose.c umf_zi_transpose.c -DZINT
+	umf_tuple_lengths.c umf_zi_tuple_lengths.c -DZINT
+	umf_usolve.c umf_zi_usolve.c -DZINT
+	umf_utsolve.c umf_zi_utsolve.c -DZINT
+	umf_valid_numeric.c umf_zi_valid_numeric.c -DZINT
+	umf_valid_symbolic.c umf_zi_valid_symbolic.c -DZINT
+	umf_grow_front.c umf_zi_grow_front.c -DZINT
+	umf_start_front.c umf_zi_start_front.c -DZINT
+	umf_2by2.c umf_zi_2by2.c -DZINT
+	umf_store_lu.c umf_zi_store_lu.c -DZINT
+	umf_scale.c umf_zi_scale.c -DZINT
+	umfpack_solve.c umfpack_zi_wsolve.c -DZINT -DWSOLVE
+	umfpack_col_to_triplet.c umfpack_zi_col_to_triplet.c -DZINT
+	umfpack_defaults.c umfpack_zi_defaults.c -DZINT
+	umfpack_free_numeric.c umfpack_zi_free_numeric.c -DZINT
+	umfpack_free_symbolic.c umfpack_zi_free_symbolic.c -DZINT
+	umfpack_get_numeric.c umfpack_zi_get_numeric.c -DZINT
+	umfpack_get_lunz.c umfpack_zi_get_lunz.c -DZINT
+	umfpack_get_symbolic.c umfpack_zi_get_symbolic.c -DZINT
+	umfpack_get_determinant.c umfpack_zi_get_determinant.c -DZINT
+	umfpack_numeric.c umfpack_zi_numeric.c -DZINT
+	umfpack_qsymbolic.c umfpack_zi_qsymbolic.c -DZINT
+	umfpack_report_control.c umfpack_zi_report_control.c -DZINT
+	umfpack_report_info.c umfpack_zi_report_info.c -DZINT
+	umfpack_report_matrix.c umfpack_zi_report_matrix.c -DZINT
+	umfpack_report_numeric.c umfpack_zi_report_numeric.c -DZINT
+	umfpack_report_perm.c umfpack_zi_report_perm.c -DZINT
+	umfpack_report_status.c umfpack_zi_report_status.c -DZINT
+	umfpack_report_symbolic.c umfpack_zi_report_symbolic.c -DZINT
+	umfpack_report_triplet.c umfpack_zi_report_triplet.c -DZINT
+	umfpack_report_vector.c umfpack_zi_report_vector.c -DZINT
+	umfpack_solve.c umfpack_zi_solve.c -DZINT
+	umfpack_symbolic.c umfpack_zi_symbolic.c -DZINT
+	umfpack_transpose.c umfpack_zi_transpose.c -DZINT
+	umfpack_triplet_to_col.c umfpack_zi_triplet_to_col.c -DZINT
+	umfpack_scale.c umfpack_zi_scale.c -DZINT
+	umfpack_load_numeric.c umfpack_zi_load_numeric.c -DZINT
+	umfpack_save_numeric.c umfpack_zi_save_numeric.c -DZINT
+	umfpack_load_symbolic.c umfpack_zi_load_symbolic.c -DZINT
+	umfpack_save_symbolic.c umfpack_zi_save_symbolic.c -DZINT
+	umf_ltsolve.c umf_zl_lhsolve.c -DZLONG -DCONJUGATE_SOLVE
+	umf_utsolve.c umf_zl_uhsolve.c -DZLONG -DCONJUGATE_SOLVE
+	umf_triplet.c umf_zl_triplet_map_nox.c -DZLONG -DDO_MAP
+	umf_triplet.c umf_zl_triplet_nomap_x.c -DZLONG -DDO_VALUES
+	umf_triplet.c umf_zl_triplet_nomap_nox.c -DZLONG
+	umf_triplet.c umf_zl_triplet_map_x.c -DZLONG -DDO_MAP -DDO_VALUES
+	umf_assemble.c umf_zl_assemble_fixq.c -DZLONG -DFIXQ
+	umf_store_lu.c umf_zl_store_lu_drop.c -DZLONG -DDROP
+	umf_assemble.c umf_zl_assemble.c -DZLONG
+	umf_blas3_update.c umf_zl_blas3_update.c -DZLONG
+	umf_build_tuples.c umf_zl_build_tuples.c -DZLONG
+	umf_create_element.c umf_zl_create_element.c -DZLONG
+	umf_dump.c umf_zl_dump.c -DZLONG
+	umf_extend_front.c umf_zl_extend_front.c -DZLONG
+	umf_garbage_collection.c umf_zl_garbage_collection.c -DZLONG
+	umf_get_memory.c umf_zl_get_memory.c -DZLONG
+	umf_init_front.c umf_zl_init_front.c -DZLONG
+	umf_kernel.c umf_zl_kernel.c -DZLONG
+	umf_kernel_init.c umf_zl_kernel_init.c -DZLONG
+	umf_kernel_wrapup.c umf_zl_kernel_wrapup.c -DZLONG
+	umf_local_search.c umf_zl_local_search.c -DZLONG
+	umf_lsolve.c umf_zl_lsolve.c -DZLONG
+	umf_ltsolve.c umf_zl_ltsolve.c -DZLONG
+	umf_mem_alloc_element.c umf_zl_mem_alloc_element.c -DZLONG
+	umf_mem_alloc_head_block.c umf_zl_mem_alloc_head_block.c -DZLONG
+	umf_mem_alloc_tail_block.c umf_zl_mem_alloc_tail_block.c -DZLONG
+	umf_mem_free_tail_block.c umf_zl_mem_free_tail_block.c -DZLONG
+	umf_mem_init_memoryspace.c umf_zl_mem_init_memoryspace.c -DZLONG
+	umf_report_vector.c umf_zl_report_vector.c -DZLONG
+	umf_row_search.c umf_zl_row_search.c -DZLONG
+	umf_scale_column.c umf_zl_scale_column.c -DZLONG
+	umf_set_stats.c umf_zl_set_stats.c -DZLONG
+	umf_solve.c umf_zl_solve.c -DZLONG
+	umf_symbolic_usage.c umf_zl_symbolic_usage.c -DZLONG
+	umf_transpose.c umf_zl_transpose.c -DZLONG
+	umf_tuple_lengths.c umf_zl_tuple_lengths.c -DZLONG
+	umf_usolve.c umf_zl_usolve.c -DZLONG
+	umf_utsolve.c umf_zl_utsolve.c -DZLONG
+	umf_valid_numeric.c umf_zl_valid_numeric.c -DZLONG
+	umf_valid_symbolic.c umf_zl_valid_symbolic.c -DZLONG
+	umf_grow_front.c umf_zl_grow_front.c -DZLONG
+	umf_start_front.c umf_zl_start_front.c -DZLONG
+	umf_2by2.c umf_zl_2by2.c -DZLONG
+	umf_store_lu.c umf_zl_store_lu.c -DZLONG
+	umf_scale.c umf_zl_scale.c -DZLONG
+	umfpack_solve.c umfpack_zl_wsolve.c -DZLONG -DWSOLVE
+	umfpack_col_to_triplet.c umfpack_zl_col_to_triplet.c -DZLONG
+	umfpack_defaults.c umfpack_zl_defaults.c -DZLONG
+	umfpack_free_numeric.c umfpack_zl_free_numeric.c -DZLONG
+	umfpack_free_symbolic.c umfpack_zl_free_symbolic.c -DZLONG
+	umfpack_get_numeric.c umfpack_zl_get_numeric.c -DZLONG
+	umfpack_get_lunz.c umfpack_zl_get_lunz.c -DZLONG
+	umfpack_get_symbolic.c umfpack_zl_get_symbolic.c -DZLONG
+	umfpack_get_determinant.c umfpack_zl_get_determinant.c -DZLONG
+	umfpack_numeric.c umfpack_zl_numeric.c -DZLONG
+	umfpack_qsymbolic.c umfpack_zl_qsymbolic.c -DZLONG
+	umfpack_report_control.c umfpack_zl_report_control.c -DZLONG
+	umfpack_report_info.c umfpack_zl_report_info.c -DZLONG
+	umfpack_report_matrix.c umfpack_zl_report_matrix.c -DZLONG
+	umfpack_report_numeric.c umfpack_zl_report_numeric.c -DZLONG
+	umfpack_report_perm.c umfpack_zl_report_perm.c -DZLONG
+	umfpack_report_status.c umfpack_zl_report_status.c -DZLONG
+	umfpack_report_symbolic.c umfpack_zl_report_symbolic.c -DZLONG
+	umfpack_report_triplet.c umfpack_zl_report_triplet.c -DZLONG
+	umfpack_report_vector.c umfpack_zl_report_vector.c -DZLONG
+	umfpack_solve.c umfpack_zl_solve.c -DZLONG
+	umfpack_symbolic.c umfpack_zl_symbolic.c -DZLONG
+	umfpack_transpose.c umfpack_zl_transpose.c -DZLONG
+	umfpack_triplet_to_col.c umfpack_zl_triplet_to_col.c -DZLONG
+	umfpack_scale.c umfpack_zl_scale.c -DZLONG
+	umfpack_load_numeric.c umfpack_zl_load_numeric.c -DZLONG
+	umfpack_save_numeric.c umfpack_zl_save_numeric.c -DZLONG
+	umfpack_load_symbolic.c umfpack_zl_load_symbolic.c -DZLONG
+	umfpack_save_symbolic.c umfpack_zl_save_symbolic.c -DZLONG

@@ -1,0 +1,142 @@
+Header
+  Mesh DB "." "diffuser"
+End
+
+Simulation
+  Coordinate System = Cartesian 2D
+  Max Output Level = 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations  = 500
+
+!  Post File = "channel.ep"
+  Output File = "channel.dat"
+End
+
+
+Body 1
+  Name  = "Flow"
+  Equation  = 1
+  Material  = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Turbulent Viscosity = Real $25*0.127*100/20000
+
+  Velocity 1 = 10
+ 
+  Wall Distance = Variable Coordinate 2
+     Real MATC "s=2*(tx-0.4699)/0.127-1; (1-abs(s))*0.127/2"
+End
+
+
+Solver 1
+  Exec Solver = Before Simulation
+  Equation = Distance
+
+  Procedure = "DistanceSolve" "DistanceSolver1"
+  Variable = "Wall Distance"
+ 
+  Nonlinear System Max Iterations = 200
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Relaxation Factor = 1
+  Distance Pseudo DT = Real 0.01
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 2
+  Equation = Spalart-Allmaras
+
+  Procedure = "Spalart-Allmaras" "SpalartAllmaras"
+  Variable = "Turbulent Viscosity"
+ 
+  Nonlinear System Max Iterations = 5
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.25
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 3
+  Equation = Navier-Stokes
+
+  Stabilization Method = Stabilized
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 0.75
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance  = 1.0e-3
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 4
+  Exec Solver = After Simulation
+  Equation = SaveLine
+  Procedure = "SaveData" "SaveLine"
+  Filename = "curve.dat"
+
+$x = -3 3 6 14 17 20 24 27 30 34
+$x = (5+x)*0.127
+Polyline coordinates(20,2) =  $ x(0) 0 x(0) 1 x(1) 0 x(1) 1 x(2) 0 x(2) 1 \
+                                x(3) 0 x(3) 1 x(4) 0 x(4) 1 x(5) 0 x(5) 1 \
+                                x(6) 0 x(6) 1 x(7) 0 x(7) 1 x(8) 0 x(8) 1 \
+                                x(9) 0 x(9) 1
+End
+
+
+Equation 1 :: Active Solvers(3) = 1 2 3
+
+
+Material 1
+  Density = 1
+  Viscosity = $25*0.127/20000
+  Viscosity Model = spalart-allmaras
+End
+ 
+
+Boundary Condition 1
+ Target Boundaries = 1
+
+ Pressure 1 = 325
+ Flow Force BC = True
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+! uncomment for channel flow:
+  Periodic BC = 1
+  Periodic BC Velocity 1 = Logical True
+  Periodic BC Velocity 2 = Logical True
+  Periodic BC Turbulent Viscosity = Logical True
+
+  Pressure   = 0
+  Velocity 2 = 0
+End
+
+
+Boundary Condition 3
+  Target Boundaries(2) = 3 4
+  Noslip Wall BC = Logical True
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=10.1619, EPS=1e-3\n" );

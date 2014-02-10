@@ -1,0 +1,158 @@
+! Test case for a thermal actuator. 
+! This has been featured in the old tutorials and this is a minor
+! edit of the version to allow the consistency tests. 
+! Uses normal SI units.
+
+Header
+  Mesh DB "." "mesh"
+End
+
+Simulation
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 50
+  Output Intervals = 1
+!  Output File = "actuator.result"
+!  Post File = "actuator.ep"
+  
+! from um:s to m:s
+  Coordinate Scaling = 1.0e-6
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+Equation 1
+  Active Solvers(3) = Integer 1 2 3
+End
+
+$ frelax = 1.0
+Solver 1
+  Equation = Stat Current Solver
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+  Variable = Potential
+  Variable DOFs = 1
+  Calculate Volume Current = True
+  Calculate Electric Conductivity = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+!  BiCGStabl Polynomial Degree = 4
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 10
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0-6
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-12
+  Nonlinear System Relaxation Factor = $ frelax
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+$ trelax = 0.5
+Solver 2
+  Equation = HeatEq
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+!  BiCgstabl Polynomial Degree = 4
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-9
+  Linear System Residual Output = 10
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-07
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-12
+  Nonlinear System Relaxation Factor = $ trelax
+  Steady State Convergence Tolerance = 1.0e-05
+End
+
+Solver 3
+  Exec Solver = After All
+!  Exec Solver = never
+
+  Procedure = "StressSolve" "StressSolver"
+  Equation = Stress Analysis
+  Variable = Displacement
+  Variable DOFs = 3
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-12
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+Solver 4
+  Exec Solver = After All
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Temperature
+  Operator 1 = max abs
+  Variable 2 = Displacement
+  Operator 2 = max abs
+End
+
+
+Material 1
+  Electric Conductivity = Variable Temperature
+      Real
+        298.0   4.3478e4
+        498.0   1.2043e4
+        698.0   5.1781e3
+        898.0   2.7582e3
+        1098.0  1.6684e3
+        1298.0  1.0981e3
+        1683.0  1.0981e3
+      End
+
+  Density = 2.3e3
+  Heat Conductivity = 32.0
+  Youngs Modulus = 169.0e9
+  Poisson Ratio = 0.22
+  Heat Expansion Coefficient = 2.9e-6
+  Reference Temperature = 298.0
+End
+
+Initial Condition 1
+  Temperature = 298.0
+End
+
+Body Force 1
+! The internal logic for computing the Joule heating treats the 
+! discontinuities much better than the old way.
+  Joule Heat = True
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential = 0
+  Temperature = 298
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Potential = 7
+  Temperature = 298
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.61504839E-06\n");
+
+!End Of File

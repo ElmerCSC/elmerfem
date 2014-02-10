@@ -1,0 +1,6 @@
+
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR})
+
+CONFIGURE_FILE(config.h.cmake config.h)
+
+ADD_SUBDIRECTORY(src)

@@ -1,0 +1,24 @@
+Geometry2D:
+  H: 0.3
+  MeshScalingFactor: 1
+  Nodes: 6
+  Edges: 1
+  Bodies: 1
+NodeId: 1 1 0.0 0.0
+NodeId: 2 2 2.0 0.0
+NodeId: 3 3 2.0 1.0
+NodeId: 4 4 1.0 1.0
+NodeId: 5 5 1.0 2.0
+NodeId: 6 6 0.0 2.0
+EdgeId: 1 7 7 1 2 3 4 5 6 1
+BodyId: 1
+  ElementOrder: Parabolic
+  Layers: 1
+    LayerId: 1
+      LayerType: VoronoiVertex
+      FixedNodes: 0
+      BGMesh: Delaunay
+      Loops: 1
+        LoopId: 1
+          Direction: 1
+          Edges: 1 1

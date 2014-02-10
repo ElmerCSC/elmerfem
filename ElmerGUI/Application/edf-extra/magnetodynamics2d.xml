@@ -1,0 +1,331 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="MgDyn2D" >
+      <Name>MgDyn2D</Name>
+
+      <Equation>
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
+      <Material>
+        <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+        <Parameter Widget="Edit" >
+            <Name> Reluctivity </Name>
+            <Type> String </Type>
+            <Whatis> Give the reluctivitity (inverse of permeability). </Whatis>
+         </Parameter>         
+		 <Parameter Widget="Edit" >
+            <Name> Relative Permeability </Name>
+            <Type> String </Type>
+            <Whatis> Give the relative permeability compared to vacuum. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Electric Conductivity </Name>
+            <Type> String </Type>
+            <Whatis> Give the electric conductivity. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Magnetization 1</Name>
+            <Type> String </Type>
+            <Whatis> Give the magnetization in x-direction. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Magnetization 2</Name>
+            <Type> String </Type>
+            <Whatis> Give the magnetization in y-direction. </Whatis>
+         </Parameter> 
+         <Parameter Widget="Edit" >
+            <Name> H-B Curve</Name>
+            <Type> String </Type>
+            <Whatis> Give the H-B Curve as a cubic spline. </Whatis>
+         </Parameter> 
+      </Material>   
+	  
+      <BodyForce>
+      <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Current Density </Name>
+            <Type> String </Type>
+            <Whatis> Give the current density. </Whatis>
+         </Parameter>
+		 <Parameter Widget="CheckBox" >
+            <Name> Calculate Potential </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the potential. </Whatis>
+         </Parameter>    
+      </BodyForce>   
+      <InitialCondition>   
+        <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Az </Name>
+            <Type> String </Type>
+            <Whatis> Give the initial condition for the vector potential. </Whatis>
+         </Parameter>    
+      </InitialCondition>   
+      <Solver>
+         <Parameter Widget="Edit" >
+           <Name> Procedure </Name>
+           <DefaultValue> "MagnetoDynamics2D" "MagnetoDynamics2D" </DefaultValue>
+         </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Variable </Name>
+           <DefaultValue> Potential </DefaultValue>
+         </Parameter>
+       </Solver>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Dirichlet conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Potential </Name>
+           <Whatis> Give vector potential value for this boundary. </Whatis>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Potential Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
+
+		 <Parameter Widget="CheckBox" >
+            <Name> Infinity BC </Name>
+            <Type> Logical </Type>
+            <Whatis> Use a farfield condition for the vector potential. </Whatis>
+         </Parameter>
+	  </BoundaryCondition>
+   </PDE>
+
+   <PDE Name="MgDyn2DHarmonic" >
+      <Name>MgDyn2DHarmonic</Name>
+
+      <Equation>
+        <Parameter Widget="Label">
+          <Name> Options </Name>
+        </Parameter>
+        <Parameter Widget="Edit"> 
+           <Name> Angular Frequency </Name>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
+      <Material>
+        <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+        <Parameter Widget="Edit" >
+            <Name> Reluctivity </Name>
+            <Type> String </Type>
+            <Whatis> Give the reluctivitity (inverse of permeability). </Whatis>
+         </Parameter>         
+		 <Parameter Widget="Edit" >
+            <Name> Relative Permeability </Name>
+            <Type> String </Type>
+            <Whatis> Give the relative permeability compared to vacuum. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Electric Conductivity </Name>
+            <Type> String </Type>
+            <Whatis> Give the electric conductivity. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Electric Conductivity Im </Name>
+            <Type> String </Type>
+            <Whatis> Give the imaginary part of electric conductivity. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Magnetization 1</Name>
+            <Type> String </Type>
+            <Whatis> Give the magnetization in x-direction. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Magnetization 2</Name>
+            <Type> String </Type>
+            <Whatis> Give the magnetization in y-direction. </Whatis>
+         </Parameter> 
+         <Parameter Widget="Edit" >
+            <Name> Magnetization 1 Im</Name>
+            <Type> String </Type>
+            <Whatis> Give the imaginary part of magnetization in x-direction. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Magnetization 2 Im</Name>
+            <Type> String </Type>
+            <Whatis> Give the imaginary part of magnetization in y-direction. </Whatis>
+         </Parameter> 
+         <Parameter Widget="Edit" >
+            <Name> H-B Curve</Name>
+            <Type> String </Type>
+            <Whatis> Give the H-B Curve as a cubic spline. </Whatis>
+         </Parameter> 
+      </Material>   
+	  
+      <BodyForce>
+      <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Current Density </Name>
+            <Type> String </Type>
+            <Whatis> Give the current density. </Whatis>
+         </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Current Density Im </Name>
+            <Type> String </Type>
+            <Whatis> Give the imaginary part of current density. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+            <Name> Calculate Potential </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the potential. </Whatis>
+         </Parameter>    
+      </BodyForce>   
+      <InitialCondition>   
+        <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Potential Re </Name>
+            <Type> String </Type>
+            <Whatis> Give the initial condition for the vector potential. </Whatis>
+         </Parameter>    
+          <Parameter Widget="Edit" >
+            <Name> Potential Im </Name>
+            <Type> String </Type>
+            <Whatis> Give the initial condition for the imaginary part of the vector potential. </Whatis>
+         </Parameter>    
+      </InitialCondition>   
+      <Solver>
+         <Parameter Widget="Edit" >
+           <Name> Procedure </Name>
+           <DefaultValue> "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic" </DefaultValue>
+         </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Variable </Name>
+           <DefaultValue> Potential[Potential Re:1 Potential Im:1] </DefaultValue>
+         </Parameter>
+       </Solver>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Dirichlet conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Potential Re </Name>
+           <Whatis> Give vector potential value for this boundary. </Whatis>
+         </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Potential Im </Name>
+           <Whatis> Give the imaginary part of the vector potential value for this boundary. </Whatis>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Potential Re Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+         </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Potential Im Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition for the imaginary part. To be generally useful space and/or time varying values may be given. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
+	    <Parameter Widget="CheckBox" >
+            <Name> Infinity BC </Name>
+            <Type> Logical </Type>
+            <Whatis> Use a farfield condition for the vector potential. </Whatis>
+         </Parameter>
+	  </BoundaryCondition>
+   </PDE>
+
+   <PDE Name="MgDyn2DPost" >
+      <Name>MgDyn2DPost</Name>
+
+      <Equation>
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
+      <Solver>
+         <Parameter Widget="Label" > <Name> Vector Potential </Name> </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Target Variable </Name>
+            <Whatis> Name of the vector potential field to apply the postprocessing computation. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Target Variable Complex </Name>
+           <Type> Logical </Type>
+           <Whatis> Is the target field complex. This information is needed when allocating for the result field.</Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Magnetic flux computation </Name> </Parameter>
+         <Parameter Widget="Edit" >
+           <Name> Procedure </Name>
+           <DefaultValue> "MagnetoDynamics2D" "BSolver" </DefaultValue>
+         </Parameter>
+        <Parameter Widget="CheckBox">
+           <Name> Discontinuous Galerkin </Name>
+           <Type> Logical </Type>
+		   <Whatis> To show discontinuities use DG for computation of electric fields</Whatis>
+         </Parameter>
+        <Parameter Widget="CheckBox">
+           <Name> Average Within Materials </Name>
+           <Type> Logical </Type>
+		   <Whatis> In conjunction with DG apply averaging but only within materials.</Whatis>
+         </Parameter>
+         <Parameter Widget="Label" > <Name> Joule heat computation </Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Joule Heating </Name>
+           <Type> Logical </Type>
+		   <Whatis> Compute the heating resulting from the induced currents. Applicable only with harmonic fields.</Whatis>
+	   <Activate>/MgDyn2DPost/Solver/Desired Heating Power</Activate>	   
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False">
+            <Name> Desired Heating Power </Name>
+            <Whatis> Desired heating power to scale the Joule heating. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Loss Estimation </Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate  </Name>
+           <Type> Logical </Type>
+           <Whatis> Compute the heating resulting from the induced currents. Applicable only with harmonic fields.</Whatis>
+	   <Activate>/MgDyn2DPost/Solver/Fourier Loss Frequency Exponent</Activate>	   
+	   <Activate>/MgDyn2DPost/Solver/Fourier Loss Field Exponent</Activate>	   
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False">
+            <Name> Fourier Loss Frequency Exponent </Name>
+            <Whatis> Power for the frequency in loss computation. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False">
+            <Name> Fourier Loss Field Exponent </Name>
+            <Whatis> Power for magnetic field in loss computation. </Whatis>
+         </Parameter>
+
+       </Solver> 
+   </PDE>
+
+</edf>
+
+
+
+
+

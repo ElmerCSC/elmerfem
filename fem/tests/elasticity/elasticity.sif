@@ -1,0 +1,68 @@
+Header
+  Mesh DB "." "elasticity"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 30
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+! Output File = "elasticity.result"
+ Post File = "elasticity.ep"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+   Density = 1.0
+   Youngs Modulus = 70e9
+   Poisson Ratio = 0.3
+End
+
+Solver 1
+  Equation = Elasticity Solver
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1000
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Calculate Loads = Logical True
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Force 2 = -5.0e7
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.275359863061\n" );

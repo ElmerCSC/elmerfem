@@ -1,0 +1,157 @@
+! Solve for an analytical solution of the density
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "mesh"
+End
+
+$d0 = 0.3
+$di = 0.9
+$H = 100.0
+$factorvelo = -10.0
+
+$ function D(z) \
+  import d0, di, H, factorvelo {\
+  _D  = d0 + (di-d0)*(H-z)/H ;\
+}
+
+$ function Ezz(z) \
+  import d0, di, H, factorvelo {\
+  _Ezz  = factorvelo*(di-d0)/(H*(d0+(di-d0)*(H-z)/H))^2 ;\
+}
+
+$ function dDdz(z) \
+  import d0, di, H, factorvelo {\
+  _dDdz  = -(di-d0)/H ;\
+}
+
+$ function uz(z) \
+  import d0, di, H, factorvelo {\
+  _uz  = factorvelo/(d0+(di-d0)*(H-z)/H) ;\
+}
+
+Simulation
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+
+  Steady State Max Iterations  = 1
+  Steady State Min Iterations  = 1 
+  
+  Output Intervals = 10
+
+  Post File   = "density.ep"
+  max output level = 4
+End  
+
+
+Body 1
+   Equation = 1
+   Material = 1
+   Body Force = 1
+   Initial Condition = 1
+End
+
+Body Force 1
+  DGDens Source = Real 0.0 
+End
+
+Material 1
+! Relative density must stay < 1
+   DGDens Upper Limit = Real 1.0
+
+! a minimum relative density is recommended for the Porous solver 
+   DGDens Lower Limit = Real 0.2
+
+!Reaction rate is equal to zero 
+   DGDens Gamma = Real 0.0
+End
+
+Initial Condition 1
+  DGDens  = REal $d0 
+  Porous 1 = Real 0.0
+  Porous 2 = Variable Coordinate 2
+    Real MATC "uz(tx)"
+  Porous 3 = Real 0.0
+  DensAna = Variable Coordinate 2
+    Real MATC "D(tx)"
+  Ezz = Variable Coordinate 2
+    Real MATC "Ezz(tx)"
+  dDdz = Variable Coordinate 2
+    Real MATC "dDdz(tx)"
+End
+
+Solver 1
+  Exec solver = Never 
+  Equation = String "PorousFlow"
+  Procedure = "ElmerIceSolvers" "PorousSolver"
+  Variable = "Porous"
+  Variable DOFs = 3
+
+  Exported Variable 1 = DensAna
+  Exported Variable 1 DOFs = 1
+
+  Exported Variable 2 = Ezz
+  Exported Variable 2 DOFs = 1
+
+  Exported Variable 3 = dDdz
+  Exported Variable 3 DOFs = 1
+
+  Optimize Bandwidth = False
+! Use p elements
+  Stablization Method = String pBubbles
+
+  Linear System Solver = "Direct"
+
+  Nonlinear System Convergence Tolerance = 1.0E-05
+  Nonlinear System Max Iterations = 50
+End
+
+Solver 2
+  Equation = "AdvReact"
+  Exec Solver = "After Timestep"
+  Procedure = File "AdvectionReaction" "AdvectionReactionSolver"
+! this is the DG variable, which is not part of the output
+  Variable =  -nooutput "DGdens"
+! this tells that the solver is run on DG mesh
+  Discontinuous Galerkin = Logical True
+! the solver can account for upper and lower limits of the variable
+! imposed by formulation of an variational inequality (VI)
+! next line switches the VI to be accounted for
+  Limit Solution = Logical True
+   
+  Linear System Solver = Direct
+! Variational inequality makes it a non-linear problem
+  Nonlinear System Max Iterations = 40
+  Nonlinear System Min Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-06
+  
+! This is the variable that is used to interpolate
+! the DG solution to the regular FEM mesh in order
+! to get a correct output
+  Exported Variable 1 = Relative Density
+  Exported Variable 1 DOFS = 1
+End 
+
+Solver 3
+  Exec Solver =  After All
+  Procedure = File "SaveData" "SaveLine"
+  Filename =  "vertical_profil_linear.dat"
+  File Append = Logical False
+End
+
+Equation 1
+    Active Solvers(3) = Integer 1 2 3 
+    Flow Solution Name = String "Porous"
+    Convection = Computed
+End
+
+Boundary Condition 1
+   Target Boundaries  = 3
+   DGDens = Real $d0 
+End
+
+Boundary Condition 2
+   Target Boundaries  = 2
+   Save Line = Logical True
+End

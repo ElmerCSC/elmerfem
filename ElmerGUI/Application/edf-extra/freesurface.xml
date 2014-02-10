@@ -1,0 +1,171 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Free Surface" >
+      <Name>Free Surface</Name>
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name> Procedure </Name>
+            <DefaultValue> "FreeSurfaceSolver" "FreeSurfaceSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" >
+            <Name> Variable </Name>
+            <DefaultValue> FreeSurface </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Label"> <Name> Additional Variables</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Exported Variable 1 </Name>
+           <DefaultValue> FreeSurface Residual </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Exported Variable 2 </Name>
+           <Activate> /Free Surface/Solver/Exported Variable 3 </Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 3 </Name>
+           <Activate> /Free Surface/Solver/Exported Variable 4</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 4 </Name>
+           <Activate> /Free Surface/Solver/Exported Variable 5</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 5 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Miscellaneous options</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Loads </Name>
+           <Whatis> If checked compute boundary reaction forces. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox">
+            <Name> Apply Limits </Name>
+            <SifName> Apply Dirichlet </SifName>
+            <Whatis> Activate constrained solution. The limits are defined in Material-section. </Whatis>
+         </Parameter>
+      </Solver>
+
+      <Equation>
+        <Parameter Widget="Label" >
+           <Name> Convection </Name>
+        </Parameter>
+        <Parameter Widget="Combo" >
+            <Type> String </Type>
+            <Name> Convection </Name>
+            <Item> <Name> None </Name> </Item>
+            <Item>
+               <Name> Constant </Name>
+               <Activate> /Free Surface/Equation/Convection Velocity 1 </Activate>
+               <Activate> /Free Surface/Equation/Convection Velocity 2 </Activate>
+               <Activate> /Free Surface/Equation/Convection Velocity 3 </Activate>
+            </Item>
+            <Item Type="Active">
+               <Name> Computed </Name>
+               <Activate> /Free Surface/Equation/Convection Field </Activate>
+            </Item>
+         </Parameter>
+         <Parameter Widget="Edit" Visible="True">
+            <Type> String </Type>
+            <Name> Convection Field </Name>
+            <SifName> Flow Solution Name </SifName>
+            <DefaultValue> String Flow Solution </DefaultValue>
+            <Whatis> Convection field for 'Computed' convection model. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False" >
+            <Name> Convection Velocity 1</Name>
+            <SifName> Convection velocity 1</SifName>
+            <Whatis> Convection velocity for 'Constant' convection model. Despite its association, may be space and time varying. </Whatis>
+            <StatusTip> Convection velocity </StatusTip>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Convection Velocity 2</Name>
+            <SifName> Convection velocity 2</SifName>
+            <Whatis> Convection velocity for 'Constant' convection model. Despite its association, may be space and time varying. </Whatis>
+            
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Convection Velocity 3</Name>
+            <SifName> Convection velocity 3</SifName>
+            <Whatis> Convection velocity for 'Constant' convection model. Despite its association, may be space and time varying. </Whatis>
+            <StatusTip> Convection velocity </StatusTip>
+         </Parameter>
+      </Equation>
+
+      <BodyForce>
+          <Parameter Widget="Label"> <Name> Bodywise Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> FreeSurface </Name>
+             <Whatis> Dirichlet condition for the free surface. </Whatis>
+             <Activate> /Free Surface/BodyForce/FreeSurface Condition</Activate>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> FreeSurface Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> Volume source </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Accumulation </Name>
+             <Deactivate> /Free Surface/BodyForce/Accumulation Flux 1</Deactivate>
+             <Deactivate> /Free Surface/BodyForce/Accumulation Flux 2</Deactivate>
+             <Deactivate> /Free Surface/BodyForce/Accumulation Flux 3</Deactivate>
+             <Whatis> Normal flux. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Edit" Enabled="True">
+             <Name> Accumulation Flux 1 </Name>
+             <SifName> FreeSurface Accumulation Flux 1 </SifName>
+             <Whatis> Flux in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="True">
+             <Name> Accumulation Flux 2 </Name>
+             <SifName> FreeSurface Accumulation Flux 2 </SifName>
+             <Whatis> Accumulation flux in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="True">
+             <Name> Accumulation Flux 3 </Name>
+             <SifName> FreeSurface Accumulation Flux 3 </SifName>
+             <Whatis> Accumulatiion flux in coordinate direction 3. </Whatis>
+          </Parameter>
+      </BodyForce>
+
+
+      <InitialCondition>
+          <Parameter Widget="Label"> <Name> Variables </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> FreeSurface </Name>
+             <Whatis> Initial condition for the free surface. </Whatis>
+          </Parameter>
+      </InitialCondition>
+
+      <Material>
+        <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Min FreeSurface </Name>
+           <Whatis> If constrainded solution is active, this value gives the lower limit for the free surface. </Whatis>
+        </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Max FreeSurface </Name>
+           <Whatis> If constrainded solution is active, this value gives the upper limit for the free surface. </Whatis>
+        </Parameter>
+      </Material>
+
+     <BoundaryCondition>
+         <Parameter Widget="Label"> <Name> Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> FreeSurface </Name>
+             <Activate> /Free Surface/BoundaryCondition/FreeSurface Condition</Activate>
+             <Whatis> Dirichlet condition for the displacement. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> FreeSurface Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Label"> <Name> Periodic boundary condition </Name> </Parameter>
+          <Parameter Widget="CheckBox" Enabled="False">
+              <Name> Freesurface periodic </Name>
+              <SifName> Periodic BC Freesurface </SifName>
+          </Parameter>
+      </BoundaryCondition>
+   </PDE>
+</edf>

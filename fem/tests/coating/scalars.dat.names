@@ -1,0 +1,11 @@
+ Variables in columns of matrix: scalars.dat
+   1: res: free surface flux
+   2: res: free surface max. error
+   3: res: free thickness min
+   4: res: free thickness max
+   5: res: fluid force area bc 1
+   6: res: fluid force bc 1
+   7: res: fluid force 2 bc 1
+   8: res: fluid force 1 bc 1
+   9: mean: pressure
+  10: max:

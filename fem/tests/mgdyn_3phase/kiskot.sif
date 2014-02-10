@@ -1,0 +1,199 @@
+! A case of six copper conductors in air
+! Conductors are marked {A,B,C,D,E,F}
+! And their inlet and outlet as Ain, Aout etc.
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "kiskot"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = case1.ep
+  Coordinate Scaling=0.01
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Target Bodies(6) = 2 3 4 5 6 7
+  Name = "Conductors"
+  Equation = 2
+  Material = 2
+End
+
+
+$ w=2*pi*50
+
+Solver 1
+  Equation = "MGDynamics"
+
+  Variable = P[P re:1 P im:1]
+  Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+
+  Linear System Symmetric = True
+  Angular Frequency = Real $w
+
+  Linear System Preconditioning = None
+  Linear System Solver = "Iterative"
+  Linear System Residual Output = 5
+  Linear System Max Iterations = 5000
+
+  Linear System Iterative Method = Bicgstabl
+  Bicgstabl polynomial degree=4
+
+  Linear System Convergence Tolerance = 1e-6
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+! Discontinuous Galerkin=True
+! Average Within Materials=Logical True
+
+  Potential Variable = String "P"
+
+  Calculate Magnetic Vector Potential = Logical True
+  Calculate Current Density = Logical True
+  Calculate Joule Heating = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Flux Density = Logical True
+  Calculate Magnetic Field Strength = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ilu
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = Bicgstab
+  Linear System Convergence Tolerance = 1.0e-6
+End
+
+
+Solver 3
+  Equation = Result Output
+  Exec Solver = Never
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Binary Output = True
+  Output Format = Elmerpost
+  Output File Name = case
+End
+
+Equation 1
+  Name = "Equation"
+  Active Solvers(1) = 1
+End
+
+Equation 2
+  Name = "Equation"
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Name = "Air (room temperature)"
+  Viscosity = 1.983e-5
+  Heat expansion Coefficient = 3.43e-3
+  Heat Conductivity = 0.0257
+  Sound speed = 343.0
+  Density = 1.205
+  Heat Capacity = 1005.0
+
+  Relative Permittivity = Real 1
+  Relative Permeability = Real 1
+  Electric Conductivity = Real 0
+End
+
+
+Material 2
+  Name = "Copper (generic)"
+  Heat expansion Coefficient = 16.5e-6
+  Heat Conductivity = 401.0
+  Sound speed = 3810.0
+  Heat Capacity = 385.0
+  Density = 8960.0
+  Mesh Poisson ratio = 0.34
+  Poisson ratio = 0.34
+  Youngs modulus = 115.0e9
+
+  Relative Permittivity = Real 1
+  Relative Permeability = Real 1
+  Electric Conductivity = Real 5.96e7
+End
+
+Boundary Condition 1
+  Target Boundaries(3) = 1 8 21
+  Name = "FarField"
+
+  ! (A,t) = 0
+  p re {e} = real 0
+  p im {e} = real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(6) = 2 3 4 5 6 7
+  Name = "Conductor sides"
+  ! (J,n)=-(sigma*(i\omega*A+grad(V),n)=0 is the natural b.c.
+End
+
+Boundary Condition 3
+  Target Boundaries(6) = 9 10 11 12 13 14
+  Name = "Ground"
+
+  ! V=0
+  p re = Real 0
+  p im = Real 0
+End
+
+Boundary Condition 4
+  Target Boundaries(2) = 18 19
+  Name = "phase-0"
+
+  p re = Real $ cos(0)
+  p im = Real $ sin(0)
+End
+
+Boundary Condition 5
+  Target Boundaries(2) = 17 20
+  Name = "phase-120"
+
+  p re = Real $ cos(2*pi/3)
+  p im = Real $ sin(2*pi/3)
+End
+
+Boundary Condition 6
+  Target Boundaries(2) = 15 16
+  Name = "phase-240"
+
+  p re = Real $ cos(4*pi/3)
+  p im = Real $ sin(4*pi/3)
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1589.9049\n ");
