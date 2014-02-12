@@ -1,0 +1,116 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="PoissonBoltzmann" >
+      <Name>Poisson-Boltzmann equation</Name>
+      <Material>
+        <Parameter Widget="Label" > <Name>Dimensional Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Relative Permittivity </Name>
+            <Type> String </Type>
+            <Whatis> Give the relative permittivity compared to vacuum. </Whatis>
+         </Parameter>    
+
+         <Parameter Widget="Edit" >
+            <Name> Reference Temperature </Name>
+            <Type> String </Type>
+            <Whatis> This keyword is used to give the temperature occuring in the Boltzmann factor. </Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Charge Number </Name>
+            <Type> String </Type>
+            <Whatis> For symmetric cases the charge number. For unsymmetric cases 
+one should give separately Positive Charge Number
+and Negative Charge Number.
+</Whatis>
+         </Parameter>    
+         <Parameter Widget="Edit" >
+            <Name> Ion Density </Name>
+            <Type> String </Type>
+            <Whatis> For symmetric cases the original density of ions. For unsymmetric cases one should give separately Positive Ion Density and Negative Ion Density.
+	    </Whatis>
+          </Parameter>    
+
+         <Parameter Widget="Label" > <Name>Non-dimensional Properties </Name> </Parameter>
+        <Parameter Widget="Edit" >
+            <Name> Poisson Boltzmann Alpha </Name>
+            <Type> String </Type>
+            <Whatis> Parameter Alpha in the non-dimensionalized form of the PBE.</Whatis>
+          </Parameter>   
+        <Parameter Widget="Edit" >
+            <Name> Poisson Boltzmann Beta </Name>
+            <Type> String </Type>
+            <Whatis> Parameter Beta in the non-dimensionalized form of the PBE.</Whatis>
+          </Parameter>   
+
+     </Material>   
+      <BodyForce>
+       <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+           <Name> Charge Density </Name>
+            <Type> String </Type>
+            <Whatis> Give the volume charge density. </Whatis>
+         </Parameter>    
+      </BodyForce>   
+      <InitialCondition>   
+        <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+          <Parameter Widget="Edit" >
+            <Name> Potential </Name>
+            <Type> String </Type>
+            <Whatis> Give the initial condition for electric potential. </Whatis>
+         </Parameter>    
+      </InitialCondition>   
+
+      <Solver>
+         <Parameter Widget="Edit" >
+           <Name> Procedure </Name>
+           <DefaultValue> "PoissonBoltzmannSolve" "PoissonBoltzmannSolve" </DefaultValue>
+         </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Variable </Name>
+           <DefaultValue> Potential</DefaultValue>
+         </Parameter>
+
+         <Parameter Widget="CheckBox" >
+            <Name> Calculate Electric Field </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the electric field from the electric potential. </Whatis>
+         </Parameter>
+        <Parameter Widget="CheckBox" >
+            <Name> Calculate Electric Charge </Name>
+            <Type> Logical </Type>
+            <Whatis> Calculate the electric charge from the electric potential. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+            <Name> Constant Weights </Name>
+            <Type> Logical </Type>
+            <Whatis> Use constant weights in computing nodal values of derived fields rather than weighing by element Jacobian. </Whatis>
+         </Parameter> 
+
+       </Solver>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Dirichlet conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Potential </Name>
+           <Whatis> Give potential value for this boundary. </Whatis>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Potential Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Neumann conditions </Name> </Parameter>
+        <Parameter  Widget="Edit">
+           <Name> Surface Charge </Name>
+           <Whatis>  Give electric flux equivalent to the surface charge density. </Whatis>
+         </Parameter>
+      </BoundaryCondition>
+   </PDE>
+</edf>
+
+
+
+
+

@@ -1,0 +1,109 @@
+Check Keywords Warn
+
+Header
+  Mesh DB "." "crucible"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = "Axi Symmetric"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+!  Output File = "crucible.result"
+  Post File = "crucible.ep"
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body Force 1
+  Current Density = 2.5e5
+End
+
+Body 1
+  Name = "Air"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Coil"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 3
+  Name = "Insulation"
+  Equation = 1
+  Material = 2
+End
+
+Body 4
+  Name = "Graphite"
+  Equation = 1
+  Material = 3
+End
+
+Body 5
+  Name = "Powder"
+  Equation = 1
+  Material = 4
+End
+
+Equation 1
+  Name = "Vector Potential Equation"
+  Active Solvers = 1
+End
+
+Solver 1
+  Equation = Potential Solver
+  Variable = Potential
+  Variable DOFs = 2
+
+  Frequency = Real 50.0e3
+  Calculate Joule Heating = Logical True
+  Calculate Magnetic Flux = Logical False
+  Desired Heating = Real 3.0e3
+
+  Procedure = "StatMagSolve" "StatMagSolver"
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Relaxation Factor = 1
+End
+
+Material 1
+  Name = "Air"
+  Electric Conductivity = 0.0
+End
+
+Material 2
+  Name = "Insulation"
+  Electric Conductivity = 2.0E3
+End
+
+Material 3
+  Name = "Graphite"
+  Electric Conductivity = 2.0E4
+End
+
+Material 4
+  Name = "Powder"
+  Electric Conductivity = 1.0E4
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential 1 = Real 0.0
+  Potential 2 = Real 0.0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.888220239588E-05, EPS=1e-4\n" );
+

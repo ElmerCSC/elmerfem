@@ -1,0 +1,129 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <ALL Widget="" >
+      <Name>Stuff for all 'Solvers'</Name>
+
+      <Equation>
+        <Parameter Widget="Label" > <Name> Activate for this equation set </Name> </Parameter>
+        <Parameter Widget="CheckBox">
+          <Name> Active </Name>
+          <Type> Logical </Type>
+          <Statustip> Check if this equation is part of the PDE-system</Statustip>
+          <Whatis> If checked, this equation is part of the PDE-system. </Whatis>
+        </Parameter>
+
+        <Parameter Widget="Label" > <Name> Give Execution priority </Name> </Parameter>
+        <Parameter Widget="Edit">
+          <Name> Priority </Name>
+          <Type> Integer  </Type>
+          <Statustip> Execution priority </Statustip>
+          <Whatis> Solver execution priority, determines solvers execution order. </Whatis>
+        </Parameter>
+      </Equation>
+   </ALL>
+
+   <PDE Name="General" >
+      <Name>General</Name>
+      <Equation>
+      </Equation>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Density </Name>
+            <Whatis>Density value may be entered here. Some models, like the ideal gas model compute density internally. In such case this value may not be necessery.</Whatis>
+            <StatusTip>Give value to density.</StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Heat Capacity </Name>
+            <Whatis>Specific heat capacity value may be entered here.</Whatis>
+            <StatusTip> Set value to specific heat capacity </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Specific Heat Ratio </Name>
+            <Whatis> The ratio of specific heats (in constant pressure versus in constant volume) may be given with this keyword. The default value of this setting is 5/3, which is the appropriate value for monoatomic ideal gas. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Reference Temperature </Name>
+            <Whatis> Reference temperature value for various situations.</Whatis>
+            <StatusTip> Set value to reference temperature.</StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Reference Pressure </Name>
+            <Whatis> Reference pressure for compressible flow computations.</Whatis>
+            <StatusTip> Set value to reference pressure.</StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Heat expansion Coeff.</Name>
+            <SifName> Heat expansion Coefficient</SifName>
+            <Whatis> Material heat expansion coefficient.</Whatis>
+            <StatusTip> Set value to heat expansion coefficient.</StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Material>
+
+      <BoundaryCondition>
+        <Parameter Widget="Label"> <Name> Periodic boundary conditions </Name> </Parameter>
+        <Parameter Widget="Edit">
+          <Name> Periodic Boundary ID </Name>
+          <Activate> /General/BoundaryCondition/Translate 3-vector </Activate>
+          <Activate> /General/BoundaryCondition/Scale 3-vector </Activate>
+          <Activate> /General/BoundaryCondition/Rotate 3-vector </Activate>
+          <Activate> /Heat Equation/BoundaryCondition/Temperature periodic</Activate>
+          <Activate> /Navier-Stokes/BoundaryCondition/Pressure periodic</Activate>
+          <Activate> /Navier-Stokes/BoundaryCondition/Velocity 1 periodic</Activate>
+          <Activate> /Navier-Stokes/BoundaryCondition/Velocity 2 periodic</Activate>
+          <Activate> /Navier-Stokes/BoundaryCondition/Velocity 3 periodic</Activate>
+          <Activate> /Linear elasticity/BoundaryCondition/Displacement 1 periodic</Activate>
+          <Activate> /Linear elasticity/BoundaryCondition/Displacement 2 periodic</Activate>
+          <Activate> /Linear elasticity/BoundaryCondition/Displacement 3 periodic</Activate>
+          <Activate> /Mesh Update/BoundaryCondition/Mesh Update 1 periodic</Activate>
+          <Activate> /Mesh Update/BoundaryCondition/Mesh Update 2 periodic</Activate>
+          <Activate> /Mesh Update/BoundaryCondition/Mesh Update 3 periodic</Activate>
+          <Activate> /Helmholtz Equation/BoundaryCondition/Pressure Wave 1 periodic</Activate>
+          <Activate> /Helmholtz Equation/BoundaryCondition/Pressure Wave 2 periodic</Activate>
+          <SifName> Periodic BC </SifName>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False">
+          <Name> Translate 3-vector </Name>
+          <SifName> Periodic BC Translate(3)</SifName>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False">
+          <Name> Scale 3-vector </Name>
+          <SifName> Periodic BC Scale(3)</SifName>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False">
+          <Name> Rotate 3-vector </Name>
+          <SifName> Periodic BC Rotate(3)</SifName>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </BoundaryCondition>
+   </PDE>
+</edf>

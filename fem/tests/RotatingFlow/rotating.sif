@@ -1,0 +1,122 @@
+$ Omega = 1.0
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "circle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Timestepping Method = BDF
+  BDF Order = 1
+  Solver Input File = case.sif
+
+!  Post File = rotating.ep
+  Filename Numbering = True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body Property 1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Navier-Stokes
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1.0
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+
+! This is to measure just pressure against pressure in norms
+  Nonlinear System Norm Components(1) = Integer 3
+End
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+!  NS Convect = False
+End
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Viscosity = 0.1
+End
+
+Body Force 1
+  Name = "RotateBody"
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Name = "BigCircle"
+End
+
+! The pressure at center is fixed in order to make the two computations comparable
+Boundary Condition 2
+  Target Coordinates(1,2) = 0.0 0.0
+  Name = "Center"
+  Pressure = 0.0
+End
+  
+
+
+$ fprintf( stderr, "\n\nTEST CASE 1 (Fixed coordinates)\n");
+Boundary Condition 1 
+  Velocity 1 = Variable Coordinate 2
+    Real MATC "-Omega*tx"
+  Velocity 2 = Variable Coordinate 1
+    Real MATC "Omega*tx"
+End   
+RUN
+$ fprintf( stderr, "END TEST CASE 1: Target NRM=0.30416297\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 2 (Rotating coordinates)\n");
+Boundary Condition 1 
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+End   
+Body Force 1
+  Angular Velocity(3) = Real 0.0 0.0 $Omega$
+End
+RUN
+$ fprintf( stderr, "END TEST CASE 2: Target NRM=0.30416081\n ");
+
+

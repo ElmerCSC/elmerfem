@@ -1,0 +1,11 @@
+!
+!
+! white color
+!
+! Juha Ruokolainen CSC
+!
+! 17 Sep 1995
+!
+! code   index   red  green  blue
+!
+  knot     0     100   100   100  ! white

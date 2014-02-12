@@ -1,0 +1,23 @@
+#
+# Juha.Vierinen@csc.fi 5/2005
+# 
+# Something help tweek stuff without constantly reconfiguring
+#
+OBJ_EXT=.@OBJEXT@
+SHL_EXT=.@SHLEXT@
+LIB_EXT=.@LIBEXT@
+EXE_EXT=@EXEEXT@
+
+CP=@CP@
+CPP=@CPP@
+FC=@FC@
+FCFLAGS=@FCFLAGS@
+SH_LD=@SH_LD@
+SH_LD2=@SH_LD2@
+SH_LDFLAGS=@SH_LDFLAGS@
+
+CFLAGS=@CFLAGS@
+CXXFLAGS=@CXXFLAGS@
+FCPPFLAGS=@FCPPFLAGS@
+EXTRA_LIBS=@EXTRA_LIBS@
+ELMER_HOME=@ELMER_HOME@

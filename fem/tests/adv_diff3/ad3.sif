@@ -1,0 +1,110 @@
+Check Keywords Warn
+
+Header
+  Mesh DB "." "Step"
+End
+
+Simulation
+  Max Output level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 2
+  Timestep Sizes = 0.25
+  Timestep Intervals = 6
+  Output Intervals = 1
+  Steady State Max Iterations = 2
+! Output File = "ad3.result"
+! Post File = "ad3.ep"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+
+  Concentration Units = String Absolute Mass
+  Convection = Computed
+End
+
+Solver 2
+  Equation = Advection Diffusion
+  Variable = Poison
+  Variable DOFs = 1
+  Procedure = "AdvectionDiffusion" "AdvectionDiffusionSolver"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-03
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+!  Stabilize = False  ! tis is default
+!  Bubbles = True   ! is default also
+End
+
+Solver 1
+  Equation = "Navier-Stokes"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-5
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 2
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-2
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+Material 1
+  Density = 1.3
+  Poison Diffusivity = Real 1.0e-3
+
+  Viscosity = 2e-5
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Poison = Real 0.0
+
+  Velocity 1 = 0.1
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+  Velocity 2 = 0.0
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+
+  Poison = Real 1.0
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+$ fprintf( stderr, "TEST CASE 1\n" );
+RUN
+$ fprintf( stderr, "END TEST CASE 1, Target NRM=0.487877717334,EPS=1e-4\n" );
+
+!End Of File
+
+

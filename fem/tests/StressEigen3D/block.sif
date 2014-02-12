@@ -1,0 +1,130 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "block"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+!  Post File = "case.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Block"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Equation = "Stress Analysis"
+  Variable = "Displacement"
+  Variable Dofs = 3
+
+  Eigen Analysis = True
+  Eigen System Values = 10
+  Eigen System Convergence Tolerance = Real 1.0e-6
+  Eigen System Max Iterations = 1
+  
+!  Element = p:2
+!  Bubbles In Global System = False
+
+!-----------------------------------------
+  Linear System Scaling = Logical True
+!  Linear System Symmetric = Logical True
+  Linear System Solver = string "Iterative"
+  Linear System Convergence Tolerance = real 1e-8
+  Linear System Iterative Method = BiCGStabl
+  BiCGStabl Polynomial Degree = 4
+  Linear System Residual Output = integer 1
+  Linear System Max Iterations = integer 2000
+  Linear System Preconditioning = BILU1
+  Linear System Residual Output = 50
+
+  Eigen System Select = smallest magnitude
+  Solver Timing = Logical True
+
+! Without the shift the linear system is singular
+  Eigen System Shift = Real 1.0e3
+
+! For visualization purposes make amplitude one for all
+  Eigen System Normalize To Unity = Logical True
+
+! Save the linear system after assembly 
+!  Linear System Save = Logical True
+! At which slot should the linear system be saved
+!  Linear System Save Slot = String "assembly"
+!  Linear System Save Mass = Logical True
+!  Linear System Save Perm = Logical True
+! Just save
+!  Linear System Save And Stop = Logical True 
+End
+
+
+Solver 2
+  Exec Solver = never
+
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = block
+  Vtu Format = Logical True
+  Single Precision = Logical True 
+
+  Eigen Analysis = True
+End
+
+
+Solver 3
+  Equation = "SaveScalars"
+!  Filename = f.dat
+
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = Logical True
+
+! First eigenmode related to non-rigid modes
+  Show Norm Index = 7
+End
+
+
+Material 1
+  Name = "Structure"
+  Density = 1000.0
+  Youngs Modulus = 1.0e9
+  Poisson Ratio = 0.3
+End
+
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries(4) = 1 2 3 4
+End
+
+Boundary Condition 2
+  Name = "Bottom"
+  Target Boundaries = 5
+End 
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries = 6 
+End 
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1.631897886698E+005\n");

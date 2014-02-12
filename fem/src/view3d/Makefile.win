@@ -1,0 +1,17 @@
+OBJ_EXT	=	.obj
+
+include make.inc
+
+LIBDIR	=	$(ELMER_PREFIX_DBS)\\lib
+LIB	=	libview3d.lib
+
+CC	=	cl
+CP	=	copy
+
+.SUFFIXES: .obj
+
+.c.obj:
+	$(CC) -DWIN32 -c -I. -Gz -Ox $<
+
+$(LIB):	$(OBJS)
+	lib /out:$(LIBDIR)\\$(LIB) $(OBJS)

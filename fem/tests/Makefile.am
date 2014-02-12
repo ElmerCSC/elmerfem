@@ -1,0 +1,2 @@
+TESTS = runtests
+

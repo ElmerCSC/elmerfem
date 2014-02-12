@@ -1,0 +1,58 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam3d"
+End
+
+Simulation
+  Max Output Level = 4
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = "Linear Elasticity"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = -dofs 3 Displacement
+  Linear System Solver = Iterative
+  Linear System Iterative Method = CG
+  Linear System Max Iterations = 1500
+  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Preconditioning = ILU3
+End
+
+Solver 2
+  Equation = "Xdmf"
+  Procedure = "XdmfWriter" "XdmfWriter"
+  Base File Name = String "Results"
+  Vector Field 1 = String "Displacement"
+End
+
+
+Material 1
+  Heat expansion Coefficient = 23.1e-6
+  Heat Conductivity = 237.0
+  Sound speed = 5000.0
+  Heat Capacity = 897.0
+  Mesh Poisson ratio = 0.35
+  Density = 2700.0
+  Poisson ratio = 0.35
+  Youngs modulus = 70.0e9
+End
+
+Body Force 1
+  Stress Bodyforce 2 = -1.0e6
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 5
+  Displacement 1 = 0
+  Displacement 2 = 0
+  Displacement 3 = 0
+End

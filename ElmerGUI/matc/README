@@ -1,0 +1,12 @@
+This directory contains the source and a make file for compiling
+the MATC library with VC 2008 compiler.
+
+If you are using GNU compilers, please use the code in the directory
+trunk/matc instead.
+
+Compile the library "lib\matc.lib" by typing
+
+> qmake
+> nmake
+
+in a VC cmd-shell.

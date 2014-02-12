@@ -1,0 +1,71 @@
+Check Keywords Warn
+
+Header
+  Mesh DB "." "Step"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Steady State Max Iterations = 2
+!  Output File = "current.result"
+!  Post File = "current.ep"
+  Output Version Numbers = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers = 1
+End
+
+Solver 1
+  Equation = Static Current
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1000
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+Material 1
+  Electric Conductivity = Variable Time
+    Real
+     1   1.00e-3
+     2   1.00e-4
+     3   1.00e-4
+   End
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Current Density BC = Logical True
+  Current Density = 1.0e-3
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Potential = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=7.68119284219\n" );
+
+!End Of File
+

@@ -1,0 +1,1137 @@
+ELMER SOLVER (v 6.2) STARTED AT: 2012/02/27 14:46:11
+ELMER SOLVER (v 6.2) STARTED AT: 2012/02/27 14:46:11
+ELMER SOLVER (v 6.2) STARTED AT: 2012/02/27 14:46:11
+ELMER SOLVER (v 6.2) STARTED AT: 2012/02/27 14:46:11
+ParCommInit:  Initialize #PEs:            4
+MAIN: 
+MAIN: =============================================================
+MAIN: ElmerSolver finite element software, Welcome!
+MAIN: This program is free software; you can redistribute it and/or
+MAIN: modify it under the terms of the GNU General Public License
+MAIN: Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.
+MAIN: Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi
+MAIN: Library version: 6.2 (Rev: 5596M)
+MAIN:  Running in parallel using 4 tasks.
+MAIN:  HYPRE library linked in.
+MAIN:  Trilinos library linked in.
+MAIN:  MUMPS library linked in.
+MAIN:  CHOLMOD library linked in.
+MAIN: =============================================================
+MAIN: 
+MAIN: 
+MAIN: -----------------------
+MAIN: Reading Model ...
+
+
+TEST CASE 1
+
+
+TEST CASE 1
+
+
+TEST CASE 1
+
+
+TEST CASE 1
+Model Input:  Unlisted keyword: [linear system use trilinos] in section: [solver 1]
+Model Input:  Unlisted keyword: [trilinos parameter file] in section: [solver 1]
+
+
+TEST CASE 1
+
+
+TEST CASE 1
+Model Input:  Unlisted keyword: [temp] in section: [boundary condition 1]
+
+
+TEST CASE 1
+
+
+TEST CASE 1
+Loading user function library: [HeatSolve]...[HeatSolver_Init0]
+Loading user function library: [SaveData]...[SaveScalars_Init0]
+MAIN: Done
+MAIN: -----------------------
+Loading user function library: [HeatSolve]...[HeatSolver_Init]
+Loading user function library: [HeatSolve]...[HeatSolver]
+OptimizeBandwidth: ---------------------------------------------------------
+OptimizeBandwidth: Computing matrix structure for: heat...done.
+OptimizeBandwidth:  Half bandwidth without optimization:          255
+OptimizeBandwidth: 
+OptimizeBandwidth: Bandwidth Optimization ...done.
+OptimizeBandwidth:  Half bandwidth after optimization:          285
+OptimizeBandwidth: Bandwidth optimization rejected, using original ordering.
+OptimizeBandwidth: ---------------------------------------------------------
+Loading user function library: [SaveData]...[SaveScalars_Init]
+Loading user function library: [SaveData]...[SaveScalars]
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Time: 1/8  0.10000000000000001
+MAIN: -------------------------------------
+MAIN: 
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           1
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+starting Trilinos setup
+starting Trilinos setup
+starting Trilinos setup
+starting Trilinos setup
+matrix constructed
+reading parameters from '../belos_ml.xml'
+create ML Preconditioner...
+Trilinos parameter list: 
+Dump Matrix = 0
+Dump Vectors = 0   [unused]
+Iterative Solver = GMRES
+ML: Analyze Cycle = 0
+ML: Dump Matrices = 0   [default]
+ML: Test Smoothers = 0
+Preconditioner = ML
+Belos -> 
+ Block Size = 1
+ Convergence Tolerance = 1e-10
+ Implicit Residual Scaling = Norm of RHS
+ Maximum Iterations = 500
+ Maximum Restarts = 0
+ Output Frequency = 1
+ Output Stream = Teuchos::RCP<std::ostream>{ptr=0x7f312f29dd40,node=0x6167a00,count=4}
+ Output Style = 1
+ Show Maximum Residual Norm Only = 1
+ Verbosity = 63
+ML -> 
+ ML output = 0   [unused]
+ ML validate parameter list = 1   [unused]
+ PDE equations = 1   [unused]
+ aggregation: type = Uncoupled-MIS   [unused]
+ coarse: type = Amesos-KLU   [unused]
+ cycle applications = 1   [unused]
+ default values = SA   [unused]
+ max levels = 7   [unused]
+ prec type = MGV   [unused]
+ smoother: damping factor = 0.5   [unused]
+ smoother: pre or post = both   [unused]
+ smoother: sweeps = 1   [unused]
+ smoother: type = symmetric Gauss-Seidel   [unused]
+
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    1.000000e+00
+Iter   1, [ 1] :    9.999936e-01
+Iter   2, [ 1] :    8.100283e-01
+Iter   3, [ 1] :    8.098213e-01
+Iter   4, [ 1] :    6.461645e-01
+Iter   5, [ 1] :    2.976145e-01
+Iter   6, [ 1] :    1.614121e-01
+Iter   7, [ 1] :    7.024166e-02
+Iter   8, [ 1] :    3.222647e-02
+Iter   9, [ 1] :    1.562660e-02
+Iter  10, [ 1] :    7.444313e-03
+Iter  11, [ 1] :    3.431551e-03
+Iter  12, [ 1] :    1.424636e-03
+Iter  13, [ 1] :    6.491175e-04
+Iter  14, [ 1] :    2.766741e-04
+Iter  15, [ 1] :    1.181173e-04
+Iter  16, [ 1] :    5.615728e-05
+Iter  17, [ 1] :    2.327644e-05
+Iter  18, [ 1] :    8.031271e-06
+Iter  19, [ 1] :    3.111057e-06
+Iter  20, [ 1] :    1.199403e-06
+Iter  21, [ 1] :    4.805822e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 21 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 4.805822e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    4.029 (1)         4.029 (1)         4.029 (1)         
+Belos: Operation Op*x                       0.2099 (24)       0.2116 (24)       0.2133 (24)       
+Belos: Operation Prec*x                     2.011 (22)        2.014 (22)        2.016 (22)        
+Belos: Orthogonalization                    1.783 (22)        1.783 (22)        1.783 (22)        
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	4.80707e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	4.80707e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	4.80707e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	4.807071e-07
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.79740536E-02  2.0000000     ) :: heat
+HeatSolve: iter:    1 Assembly: (s)    3.67    3.67
+HeatSolve: iter:    1 Solve:    (s)    5.94    5.94
+HeatSolve:  Result Norm   :   7.97405359842324503E-003
+HeatSolve:  Relative Change :    2.0000000000000000
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           2
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    4.807071e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 0 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 4.807071e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    4.045 (2)         4.045 (2)         4.045 (2)         
+Belos: Operation Op*x                       0.2273 (26)       0.2287 (26)       0.2304 (26)       
+Belos: Operation Prec*x                     2.011 (22)        2.014 (22)        2.016 (22)        
+Belos: Orthogonalization                    1.785 (23)        1.786 (23)        1.786 (23)        
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	4.80707e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	4.80707e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	4.80707e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	4.807071e-07
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.79740536E-02  0.0000000     ) :: heat
+HeatSolve: iter:    2 Assembly: (s)    3.65    7.32
+HeatSolve: iter:    2 Solve:    (s)    0.08    6.02
+HeatSolve:  Result Norm   :   7.97405359842324503E-003
+HeatSolve:  Relative Change :    0.0000000000000000
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Time: 2/8  0.20000000000000001
+MAIN:  Estimated time left: 2 minutes.
+MAIN: -------------------------------------
+MAIN: 
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           1
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    6.237797e-01
+Iter   1, [ 1] :    6.237719e-01
+Iter   2, [ 1] :    4.983069e-01
+Iter   3, [ 1] :    4.968807e-01
+Iter   4, [ 1] :    3.966900e-01
+Iter   5, [ 1] :    1.848807e-01
+Iter   6, [ 1] :    1.000279e-01
+Iter   7, [ 1] :    4.665169e-02
+Iter   8, [ 1] :    2.373974e-02
+Iter   9, [ 1] :    1.172620e-02
+Iter  10, [ 1] :    5.633385e-03
+Iter  11, [ 1] :    2.510594e-03
+Iter  12, [ 1] :    9.655029e-04
+Iter  13, [ 1] :    4.500179e-04
+Iter  14, [ 1] :    2.029832e-04
+Iter  15, [ 1] :    9.033476e-05
+Iter  16, [ 1] :    4.339145e-05
+Iter  17, [ 1] :    1.679285e-05
+Iter  18, [ 1] :    5.917097e-06
+Iter  19, [ 1] :    2.277265e-06
+Iter  20, [ 1] :    8.678507e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 20 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 8.678507e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    7.846 (3)         7.846 (3)         7.846 (3)         
+Belos: Operation Op*x                       0.4268 (48)       0.4411 (48)       0.4503 (48)       
+Belos: Operation Prec*x                     3.935 (43)        3.945 (43)        3.961 (43)        
+Belos: Orthogonalization                    3.414 (44)        3.415 (44)        3.416 (44)        
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.68072e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.68072e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.68072e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.680722e-07
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.21960988E-01 0.93448570     ) :: heat
+HeatSolve: iter:    1 Assembly: (s)    3.72    3.72
+HeatSolve: iter:    1 Solve:    (s)    3.80    3.80
+HeatSolve:  Result Norm   :   2.19609875876371416E-002
+HeatSolve:  Relative Change :   0.93448570204253345
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           2
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    8.680722e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 0 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 8.680722e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    7.862 (4)         7.862 (4)         7.862 (4)         
+Belos: Operation Op*x                       0.4438 (50)       0.458 (50)        0.4674 (50)       
+Belos: Operation Prec*x                     3.935 (43)        3.945 (43)        3.961 (43)        
+Belos: Orthogonalization                    3.417 (45)        3.418 (45)        3.418 (45)        
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.68072e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.68072e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.68072e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.680722e-07
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.21960988E-01  0.0000000     ) :: heat
+HeatSolve: iter:    2 Assembly: (s)    3.92    7.64
+HeatSolve: iter:    2 Solve:    (s)    0.08    3.88
+HeatSolve:  Result Norm   :   2.19609875876371416E-002
+HeatSolve:  Relative Change :    0.0000000000000000
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Time: 3/8  0.30000000000000004
+MAIN:  Estimated time left: 1 minutes.
+MAIN: -------------------------------------
+MAIN: 
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           1
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    4.886864e-01
+Iter   1, [ 1] :    4.886787e-01
+Iter   2, [ 1] :    3.835433e-01
+Iter   3, [ 1] :    3.776160e-01
+Iter   4, [ 1] :    3.070705e-01
+Iter   5, [ 1] :    1.469983e-01
+Iter   6, [ 1] :    8.039675e-02
+Iter   7, [ 1] :    3.830162e-02
+Iter   8, [ 1] :    2.016563e-02
+Iter   9, [ 1] :    9.810636e-03
+Iter  10, [ 1] :    4.685860e-03
+Iter  11, [ 1] :    2.088666e-03
+Iter  12, [ 1] :    7.800374e-04
+Iter  13, [ 1] :    3.556596e-04
+Iter  14, [ 1] :    1.659948e-04
+Iter  15, [ 1] :    7.939899e-05
+Iter  16, [ 1] :    3.633284e-05
+Iter  17, [ 1] :    1.398228e-05
+Iter  18, [ 1] :    4.987823e-06
+Iter  19, [ 1] :    1.919132e-06
+Iter  20, [ 1] :    7.423970e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 20 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 7.423970e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    12.02 (5)         12.02 (5)         12.02 (5)         
+Belos: Operation Op*x                       0.6769 (72)       0.6979 (72)       0.7186 (72)       
+Belos: Operation Prec*x                     6.027 (64)        6.057 (64)        6.092 (64)        
+Belos: Orthogonalization                    5.18 (66)         5.194 (66)        5.202 (66)        
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.4258e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.4258e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.4258e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.425795e-07
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.43463851E-01 0.65733027     ) :: heat
+HeatSolve: iter:    1 Assembly: (s)    3.77    3.77
+HeatSolve: iter:    1 Solve:    (s)    3.89    3.89
+HeatSolve:  Result Norm   :   4.34638511062306818E-002
+HeatSolve:  Relative Change :   0.65733027235140806
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           2
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    7.425795e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 0 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 7.425795e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    12.03 (6)         12.03 (6)         12.03 (6)         
+Belos: Operation Op*x                       0.6938 (74)       0.7149 (74)       0.7356 (74)       
+Belos: Operation Prec*x                     6.027 (64)        6.057 (64)        6.092 (64)        
+Belos: Orthogonalization                    5.183 (67)        5.197 (67)        5.205 (67)        
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.4258e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.4258e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.4258e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.425795e-07
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.43463851E-01  0.0000000     ) :: heat
+HeatSolve: iter:    2 Assembly: (s)    3.67    7.44
+HeatSolve: iter:    2 Solve:    (s)    0.08    3.98
+HeatSolve:  Result Norm   :   4.34638511062306818E-002
+HeatSolve:  Relative Change :    0.0000000000000000
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Time: 4/8  0.40000000000000002
+MAIN:  Estimated time left: 1 minutes.
+MAIN: -------------------------------------
+MAIN: 
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           1
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    4.252282e-01
+Iter   1, [ 1] :    4.252217e-01
+Iter   2, [ 1] :    3.317402e-01
+Iter   3, [ 1] :    3.200013e-01
+Iter   4, [ 1] :    2.669755e-01
+Iter   5, [ 1] :    1.305799e-01
+Iter   6, [ 1] :    7.233057e-02
+Iter   7, [ 1] :    3.478516e-02
+Iter   8, [ 1] :    1.853813e-02
+Iter   9, [ 1] :    8.891969e-03
+Iter  10, [ 1] :    4.226242e-03
+Iter  11, [ 1] :    1.886911e-03
+Iter  12, [ 1] :    7.034207e-04
+Iter  13, [ 1] :    3.210957e-04
+Iter  14, [ 1] :    1.478896e-04
+Iter  15, [ 1] :    7.341884e-05
+Iter  16, [ 1] :    3.230549e-05
+Iter  17, [ 1] :    1.259053e-05
+Iter  18, [ 1] :    4.544264e-06
+Iter  19, [ 1] :    1.749059e-06
+Iter  20, [ 1] :    6.831423e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 20 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 6.831423e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    16.09 (7)         16.09 (7)         16.09 (7)         
+Belos: Operation Op*x                       0.9048 (96)       0.935 (96)        0.9658 (96)       
+Belos: Operation Prec*x                     8.058 (85)        8.101 (85)        8.145 (85)        
+Belos: Orthogonalization                    6.945 (88)        6.959 (88)        6.97 (88)         
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.83177e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.83177e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.83177e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.831769e-07
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.76002921E-01 0.54473842     ) :: heat
+HeatSolve: iter:    1 Assembly: (s)    3.67    3.67
+HeatSolve: iter:    1 Solve:    (s)    3.86    3.86
+HeatSolve:  Result Norm   :   7.60029213123512293E-002
+HeatSolve:  Relative Change :   0.54473841633741849
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           2
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    6.831769e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 0 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 6.831769e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    16.1 (8)          16.1 (8)          16.1 (8)          
+Belos: Operation Op*x                       0.9217 (98)       0.9519 (98)       0.9829 (98)       
+Belos: Operation Prec*x                     8.058 (85)        8.101 (85)        8.145 (85)        
+Belos: Orthogonalization                    6.948 (89)        6.962 (89)        6.972 (89)        
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.83177e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.83177e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.83177e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.831769e-07
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.76002921E-01  0.0000000     ) :: heat
+HeatSolve: iter:    2 Assembly: (s)    3.78    7.45
+HeatSolve: iter:    2 Solve:    (s)    0.08    3.94
+HeatSolve:  Result Norm   :   7.60029213123512293E-002
+HeatSolve:  Relative Change :    0.0000000000000000
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Time: 5/8  0.50000000000000000
+MAIN:  Estimated time left: 1 minutes.
+MAIN: -------------------------------------
+MAIN: 
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           1
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    3.917910e-01
+Iter   1, [ 1] :    3.917857e-01
+Iter   2, [ 1] :    3.055336e-01
+Iter   3, [ 1] :    2.884272e-01
+Iter   4, [ 1] :    2.464874e-01
+Iter   5, [ 1] :    1.225775e-01
+Iter   6, [ 1] :    6.858767e-02
+Iter   7, [ 1] :    3.316573e-02
+Iter   8, [ 1] :    1.777587e-02
+Iter   9, [ 1] :    8.446546e-03
+Iter  10, [ 1] :    4.002918e-03
+Iter  11, [ 1] :    1.790774e-03
+Iter  12, [ 1] :    6.739058e-04
+Iter  13, [ 1] :    3.114703e-04
+Iter  14, [ 1] :    1.391124e-04
+Iter  15, [ 1] :    6.982520e-05
+Iter  16, [ 1] :    3.001722e-05
+Iter  17, [ 1] :    1.183622e-05
+Iter  18, [ 1] :    4.310284e-06
+Iter  19, [ 1] :    1.659901e-06
+Iter  20, [ 1] :    6.523661e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 20 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 6.523661e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    20.84 (9)         20.84 (9)         20.84 (9)         
+Belos: Operation Op*x                       1.221 (120)       1.229 (120)       1.242 (120)       
+Belos: Operation Prec*x                     10.4 (106)        10.42 (106)       10.43 (106)       
+Belos: Orthogonalization                    9.052 (110)       9.061 (110)       9.068 (110)       
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.52229e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.52229e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.52229e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.522291e-07
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.12527824     0.48961681     ) :: heat
+HeatSolve: iter:    1 Assembly: (s)    3.70    3.70
+HeatSolve: iter:    1 Solve:    (s)    3.88    3.88
+HeatSolve:  Result Norm   :   0.12527824173068514
+HeatSolve:  Relative Change :   0.48961680937622803
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           2
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    6.522291e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 0 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 6.522291e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    20.85 (10)        20.85 (10)        20.85 (10)        
+Belos: Operation Op*x                       1.238 (122)       1.246 (122)       1.259 (122)       
+Belos: Operation Prec*x                     10.4 (106)        10.42 (106)       10.43 (106)       
+Belos: Orthogonalization                    9.054 (111)       9.064 (111)       9.071 (111)       
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.52229e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.52229e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.52229e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	6.522291e-07
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.12527824      0.0000000     ) :: heat
+HeatSolve: iter:    2 Assembly: (s)    3.66    7.37
+HeatSolve: iter:    2 Solve:    (s)    0.08    3.96
+HeatSolve:  Result Norm   :   0.12527824173068514
+HeatSolve:  Relative Change :    0.0000000000000000
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Time: 6/8  0.69999999999999996
+MAIN:  Estimated time left: 1 minutes.
+MAIN: -------------------------------------
+MAIN: 
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           1
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    6.615337e-02
+Iter   1, [ 1] :    6.615336e-02
+Iter   2, [ 1] :    5.487243e-02
+Iter   3, [ 1] :    4.195674e-02
+Iter   4, [ 1] :    3.951678e-02
+Iter   5, [ 1] :    2.769505e-02
+Iter   6, [ 1] :    1.647915e-02
+Iter   7, [ 1] :    7.376093e-03
+Iter   8, [ 1] :    4.062952e-03
+Iter   9, [ 1] :    1.806981e-03
+Iter  10, [ 1] :    8.469367e-04
+Iter  11, [ 1] :    4.096544e-04
+Iter  12, [ 1] :    1.723469e-04
+Iter  13, [ 1] :    7.239561e-05
+Iter  14, [ 1] :    2.718373e-05
+Iter  15, [ 1] :    1.374001e-05
+Iter  16, [ 1] :    5.459402e-06
+Iter  17, [ 1] :    2.078621e-06
+Iter  18, [ 1] :    8.851845e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 18 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 8.851845e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    24.23 (11)        24.24 (11)        24.24 (11)        
+Belos: Operation Op*x                       1.423 (142)       1.431 (142)       1.443 (142)       
+Belos: Operation Prec*x                     12.24 (125)       12.25 (125)       12.26 (125)       
+Belos: Orthogonalization                    10.4 (130)        10.41 (130)       10.42 (130)       
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.85179e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.85179e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.85179e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.851793e-07
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.13203682     0.52531508E-01 ) :: heat
+HeatSolve: iter:    1 Assembly: (s)    3.65    3.65
+HeatSolve: iter:    1 Solve:    (s)    3.27    3.27
+HeatSolve:  Result Norm   :   0.13203681578760015
+HeatSolve:  Relative Change :   5.25315084324961407E-002
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           2
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    8.851793e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 0 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 8.851793e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    24.25 (12)        24.25 (12)        24.26 (12)        
+Belos: Operation Op*x                       1.44 (144)        1.448 (144)       1.46 (144)        
+Belos: Operation Prec*x                     12.24 (125)       12.25 (125)       12.26 (125)       
+Belos: Orthogonalization                    10.41 (131)       10.41 (131)       10.42 (131)       
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.85179e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.85179e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.85179e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	8.851793e-07
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.13203682      0.0000000     ) :: heat
+HeatSolve: iter:    2 Assembly: (s)    3.70    7.35
+HeatSolve: iter:    2 Solve:    (s)    0.08    3.35
+HeatSolve:  Result Norm   :   0.13203681578760015
+HeatSolve:  Relative Change :    0.0000000000000000
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Time: 7/8  0.89999999999999991
+MAIN:  Estimated time left: less than a minute.
+MAIN: -------------------------------------
+MAIN: 
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           1
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    3.361777e-01
+Iter   1, [ 1] :    3.361720e-01
+Iter   2, [ 1] :    2.622991e-01
+Iter   3, [ 1] :    2.566930e-01
+Iter   4, [ 1] :    2.103185e-01
+Iter   5, [ 1] :    1.012349e-01
+Iter   6, [ 1] :    5.561350e-02
+Iter   7, [ 1] :    2.656826e-02
+Iter   8, [ 1] :    1.405294e-02
+Iter   9, [ 1] :    6.794938e-03
+Iter  10, [ 1] :    3.237707e-03
+Iter  11, [ 1] :    1.441273e-03
+Iter  12, [ 1] :    5.365732e-04
+Iter  13, [ 1] :    2.427873e-04
+Iter  14, [ 1] :    1.138308e-04
+Iter  15, [ 1] :    5.464747e-05
+Iter  16, [ 1] :    2.503668e-05
+Iter  17, [ 1] :    9.697853e-06
+Iter  18, [ 1] :    3.479697e-06
+Iter  19, [ 1] :    1.339849e-06
+Iter  20, [ 1] :    5.200603e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 20 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 5.200603e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    28.01 (13)        28.02 (13)        28.02 (13)        
+Belos: Operation Op*x                       1.635 (166)       1.642 (166)       1.654 (166)       
+Belos: Operation Prec*x                     14.17 (146)       14.18 (146)       14.19 (146)       
+Belos: Orthogonalization                    12.02 (152)       12.03 (152)       12.03 (152)       
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	5.2012e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	5.2012e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	5.2012e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	5.201201e-07
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.99096556E-01 0.28503249     ) :: heat
+HeatSolve: iter:    1 Assembly: (s)    3.68    3.68
+HeatSolve: iter:    1 Solve:    (s)    3.78    3.78
+HeatSolve:  Result Norm   :   9.90965560746690233E-002
+HeatSolve:  Relative Change :   0.28503248533543663
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           2
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    5.201201e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 0 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 5.201201e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    28.04 (14)        28.04 (14)        28.05 (14)        
+Belos: Operation Op*x                       1.656 (168)       1.662 (168)       1.671 (168)       
+Belos: Operation Prec*x                     14.17 (146)       14.18 (146)       14.19 (146)       
+Belos: Orthogonalization                    12.02 (153)       12.03 (153)       12.03 (153)       
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	5.2012e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	5.2012e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	5.2012e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	5.201201e-07
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.99096556E-01  0.0000000     ) :: heat
+HeatSolve: iter:    2 Assembly: (s)    3.88    7.55
+HeatSolve: iter:    2 Solve:    (s)    0.08    3.87
+HeatSolve:  Result Norm   :   9.90965560746690233E-002
+HeatSolve:  Relative Change :    0.0000000000000000
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Time: 8/8   1.0999999999999999
+MAIN:  Estimated time left: less than a minute.
+MAIN: -------------------------------------
+MAIN: 
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           1
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    4.637387e-01
+Iter   1, [ 1] :    4.637323e-01
+Iter   2, [ 1] :    3.610947e-01
+Iter   3, [ 1] :    3.430312e-01
+Iter   4, [ 1] :    2.910565e-01
+Iter   5, [ 1] :    1.438543e-01
+Iter   6, [ 1] :    8.026365e-02
+Iter   7, [ 1] :    3.876843e-02
+Iter   8, [ 1] :    2.073722e-02
+Iter   9, [ 1] :    9.878642e-03
+Iter  10, [ 1] :    4.685761e-03
+Iter  11, [ 1] :    2.091932e-03
+Iter  12, [ 1] :    7.833722e-04
+Iter  13, [ 1] :    3.598622e-04
+Iter  14, [ 1] :    1.630110e-04
+Iter  15, [ 1] :    8.150358e-05
+Iter  16, [ 1] :    3.539569e-05
+Iter  17, [ 1] :    1.390231e-05
+Iter  18, [ 1] :    5.052191e-06
+Iter  19, [ 1] :    1.945339e-06
+Iter  20, [ 1] :    7.624950e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 20 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 7.624950e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    32.66 (15)        32.67 (15)        32.67 (15)        
+Belos: Operation Op*x                       1.898 (190)       1.952 (190)       1.982 (190)       
+Belos: Operation Prec*x                     16.37 (167)       16.41 (167)       16.46 (167)       
+Belos: Orthogonalization                    14.1 (174)        14.11 (174)       14.12 (174)       
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.62449e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.62449e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.62449e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.624491e-07
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.67714481E-01 0.37625898     ) :: heat
+HeatSolve: iter:    1 Assembly: (s)    3.77    3.77
+HeatSolve: iter:    1 Solve:    (s)    3.98    3.98
+HeatSolve:  Result Norm   :   6.77144807550056071E-002
+HeatSolve:  Relative Change :   0.37625898041394756
+HeatSolve: 
+HeatSolve: 
+HeatSolve: -------------------------------------
+HeatSolve:  TEMPERATURE ITERATION           2
+HeatSolve: -------------------------------------
+HeatSolve: 
+HeatSolve: Starting Assembly...
+HeatSolve: Assembly done
+start iterative solver
+
+*******************************************************
+***** Belos Iterative Solver:  Block Gmres 
+***** Maximum Iterations: 100
+***** Block Size: 1
+***** Residual Test: 
+*****   Test 1 : Belos::StatusTestImpResNorm<>: (2-Norm Res Vec) / (2-Norm RHS ), tol = 1e-06
+*******************************************************
+Iter   0, [ 1] :    7.624491e-07
+Passed.......OR Combination -> 
+  OK...........Number of Iterations = 0 < 100
+  Converged....(2-Norm Res Vec) / (2-Norm RHS )
+               residual [ 0 ] = 7.624491e-07 < 1.000000e-06
+
+==================================================================================================
+
+                                       TimeMonitor Results
+
+Timer Name                                  Min over procs    Avg over procs    Max over procs    
+--------------------------------------------------------------------------------------------------
+Belos: BlockGmresSolMgr total solve time    32.68 (16)        32.69 (16)        32.69 (16)        
+Belos: Operation Op*x                       1.916 (192)       1.969 (192)       2 (192)           
+Belos: Operation Prec*x                     16.37 (167)       16.41 (167)       16.46 (167)       
+Belos: Orthogonalization                    14.1 (175)        14.11 (175)       14.12 (175)       
+==================================================================================================
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.62449e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.62449e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.62449e-07
+---------- Actual Residuals (normalized) ----------
+
+Problem 0 : 	7.624491e-07
+END TEST CASE 1: Target NRM=5.214225320136149E-002
+END TEST CASE 1: Target NRM=5.214225320136149E-002
+END TEST CASE 1: Target NRM=5.214225320136149E-002
+END TEST CASE 1: Target NRM=5.214225320136149E-002
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.67714481E-01  0.0000000     ) :: heat
+HeatSolve: iter:    2 Assembly: (s)    3.74    7.51
+HeatSolve: iter:    2 Solve:    (s)    0.08    4.06
+HeatSolve:  Result Norm   :   6.77144807550056071E-002
+HeatSolve:  Relative Change :    0.0000000000000000
+ElmerSolver: *** Elmer Solver: ALL DONE ***
+ElmerSolver: The end
+SOLVER TOTAL TIME(CPU,REAL):        94.68      103.34
+ELMER SOLVER FINISHED AT: 2012/02/27 14:47:55

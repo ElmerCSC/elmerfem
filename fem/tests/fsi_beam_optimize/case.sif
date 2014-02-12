@@ -1,0 +1,323 @@
+! Simple test case defined for the jucri.jyu.fi database in 2009
+! "Optimization of beam profile in fluid-structure interaction"
+! for more details Peter.Raback@csc.fi
+
+$viscosity = 1.0
+$density_fluid = 10.0
+$density_structure = 1.0
+$youngs = 1.0e9
+$poisson = 0.3
+$fileprefix = "case_b"
+
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = scanning
+  Steady State Max Iterations = 1
+
+! increase this number to allow for optimization
+  Timestep Intervals = 1
+  Timestep Sizes = 1
+  Output Intervals = 0
+
+  Post File = $fileprefix$.ep
+  Fixed Area = Logical True
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "fluid"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Target Bodies(1) = 2
+  Name = "structure"
+  Equation = 2
+  Material = 2
+End
+
+Solver 1
+  Equation = Navier-Stokes
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance = 1.0e-8
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack 
+
+!  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+End
+
+Solver 2
+!  Exec Solver = never
+
+  Equation = Elasticity Solver
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  Linear System Residual Output = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+
+Solver 3
+  Equation = String Optimize
+  Procedure = File "FindOptimum" "FindOptimum"
+
+  Variable Global = Logical True
+  Variable = Opt
+  Variable Dofs = 9
+  Cost Function Name = String "max: displacement"
+
+  Exec Solver = before timestep 
+
+  Scale Parameter 1 = Real 10.0
+  Scale Parameter 2 = Real 5.0
+  Scale Parameter 3 = Real 5.0
+  Scale Parameter 4 = Real 3.0
+  Scale Parameter 5 = Real 3.0
+  Scale Parameter 6 = Real 1.0
+  Scale Parameter 7 = Real 1.0
+  Scale Parameter 8 = Real 1.0
+  Scale Parameter 9 = Real 1.0
+
+!  Fixed Parameter 1 = Logical True
+!  Fixed Parameter 2 = Logical True
+!  Fixed Parameter 3 = Logical True
+!  Fixed Parameter 4 = Logical True
+!  Fixed Parameter 5 = Logical True
+!  Fixed Parameter 5 = Logical True
+!  Fixed Parameter 6 = Logical True
+!  Fixed Parameter 7 = Logical True
+!  Fixed Parameter 8 = Logical True
+!  Fixed Parameter 9 = Logical True
+
+  Best File = File $fileprefix$.best
+
+! This is a best file of previous computations
+  Guess File = File $fileprefix$.best0
+
+   Optimization Method = String "simplex"
+! Optimization Method = String "scanning"
+!  Optimization Method = String "bisect"
+
+  Simplex Relative Length Scale = Real 0.001
+
+  Optimal Finish = Logical True
+
+! Set restart to false if you do not wish to start from the previous best
+  Optimal Restart = Logical True
+
+! Optimization Accuracy = Real 0.0e-2
+!  Step Size = Real 0.01
+End
+
+
+Solver 4
+  Procedure = File "NonphysicalMeshSolve" "MeshSolver"
+  Variable = -nooutput MeshU
+  Variable DOFs = 2
+
+  Exec Solver = before timestep
+  Equation = MeshU
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+!  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+
+! This solver is used to compute the cost function and the parameters
+Solver 5
+  Exec Solver = after timestep
+  Equation = String SaveCost
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = $fileprefix$.dat
+
+  Variable 1 = Displacement 
+  Operator 1 = max
+  Variable 2 = Opt
+
+  Variable 3 = Displacement
+  Operator 3 = volume
+End 
+
+
+Solver 6
+!  Exec Solver = after all
+  Exec Solver = never
+
+  Equation = SaveLine
+  Procedure = File "SaveData" "SaveLine"
+  Filename = $fileprefix$.line
+End
+
+
+Solver 7
+!  Exec Solver = after all
+  Exec Solver = never
+
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = $fileprefix$
+
+!  Vtu format = Logical True
+  Vtk format = Logical True
+
+  Scalar Field 1 = String "Pressure"
+  Vector Field 1 = String "velocity"
+  Vector Field 2 = String "Displacement"
+End
+
+
+Equation 1
+  Name = "Flow eq"
+  NS Convect = True
+  Active Solvers(2) = 1 4
+End
+
+Equation 2
+  Name = "Structural eq"
+  Active Solvers(2) = 2 4
+  Plane Stress = True
+End
+
+Material 1
+  Name = "Fluid"
+  Viscosity = $ viscosity
+  Density = $ density_fluid
+End
+
+Material 2
+  Name = "Beam"
+  Youngs modulus = $ youngs 
+  Density = $density_structure
+  Poisson ratio = $ poisson
+End
+
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "bottom left"
+  Displacement 2 = 0
+  Noslip wall BC = True
+  MeshU 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = "beam left"
+  Noslip wall BC = True
+  MeshU 1 = Variable Time
+    Real Procedure "WallProfiles" "LeftWall"
+  MeshU 2 = Real 0.0
+  FSI BC = True
+  Normal Target Body = 1
+  Save Line = True
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name = "beam right"
+  Noslip wall BC = True
+
+  MeshU 1 = Variable Time
+    Real Procedure "WallProfiles" "RightWall"
+  MeshU 2 = Real 0.0
+  FSI BC = True
+  Normal Target Body = 1
+  Save Line = True
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 4
+  Name = "bottom right"
+  Noslip wall BC = True
+  MeshU 2 = Real 0.0
+End
+
+Boundary Condition 5
+  Target Boundaries(1) = 5
+  Name = "outlet"
+  Velocity 2 = 0
+  MeshU 1 = Real 0.0
+  MeshU 2 = Real 0.0
+End
+
+Boundary Condition 6
+  Target Boundaries(1) = 6
+  Name = "top"
+  Displacement 2 = 0
+  Noslip wall BC = True
+  MeshU 2 = Real 0.0
+End
+
+Boundary Condition 7
+  Target Boundaries(1) = 7
+  Name = "inlet"
+  Velocity 1 = Variable Coordinate 2
+    Real MATC "1.5*tx*(2-tx)"
+  Velocity 2 = 0
+  MeshU 1 = Real 0.0
+  MeshU 2 = Real 0.0
+End
+
+Boundary Condition 8
+  Target Boundaries(1) = 8
+  Name = "beam base"
+  Displacement 1 = 0
+  Displacement 2 = 0
+  MeshU 2 = Real 0.0
+End
+
+$ fprintf( stderr, "TEST CASE 1\n" );
+RUN
+$ fprintf( stderr, "END TEST CASE 1, Target NRM=0.45867336E-06\n");
+

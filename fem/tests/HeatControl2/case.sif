@@ -1,0 +1,101 @@
+! Heater control for the simplest case of heat conduction and external radiation
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+!  Post File = case.ep
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-8
+End 
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+Body Force 1
+  Heat Source = 1.0
+  Smart Heater Control = True
+  Smart Heater Temperature = 500.0
+  Smart Heater Control Point(3) = 0.5 0.5 0.0
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+  Emissivity = 0.7
+End 
+
+Initial Condition 1 
+  Temperature = 300.0
+End 
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.7
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End 
+
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Temperature
+  Operator 1 = max
+End
+
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Radiation = Idealized
+
+  External Temperature = 300.0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=428.79104150415753\n");
+
+

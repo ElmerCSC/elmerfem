@@ -1,0 +1,107 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "Mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+! Output File = "TempDist.dat"
+! Post File = "TempDist.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Exec Solver = "Always"
+
+  Equation = "he1"
+  Variable = "T1"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+
+  Namespace = string "heateq 1:"
+End
+
+Solver 2
+  Exec Solver = "Always"
+
+  Equation = "he2"
+  Variable = "T2"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+
+  Namespace = string "heateq 2:"
+End
+
+Material 1
+  Name = "Material1"
+
+  Density = real 1
+  heateq 1: Heat Conductivity = equals nonlin iter
+  heateq 2: Heat Conductivity = real 1
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = real 1
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries(6) = 1 2 3 4 5 6 
+
+  T1 = Real 0
+  T2 = Real 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.768016492512E-01\n ");
+!End Of File

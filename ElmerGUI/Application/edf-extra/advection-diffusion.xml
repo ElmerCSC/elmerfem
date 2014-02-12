@@ -1,0 +1,153 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Advection Diffusion Equation" >
+      <Name>Advection Diffusion Equation</Name>
+
+      <Equation>
+        <Parameter Widget="Label">
+          <Name> Options </Name>
+        </Parameter>
+
+        <Parameter Widget="Label" >
+           <Name> Concentration Units </Name>
+        </Parameter>
+        <Parameter Widget="Combo" >
+            <Type> String </Type>
+            <Name> Concentration Units </Name>
+            <Item Type="Active" > <Name> Absolute Mass </Name> </Item>
+            <Item> <Name> Mass To Max Solubility </Name> </Item>
+         </Parameter>
+        <Parameter Widget="Label" >
+           <Name> Convection </Name>
+        </Parameter>
+        <Parameter Widget="Combo" >
+            <Type> String </Type>
+            <Name> Convection </Name>
+            <SifName> Concentration Convection </SifName>
+            <Item Type="Active" > <Name> None </Name> </Item> <Item>
+               <Name> Constant </Name>
+               <Activate> /Advection Diffusion Equation/Equation/Convection Velocity 1 </Activate>
+               <Activate> /Advection Diffusion Equation/Equation/Convection Velocity 2 </Activate>
+               <Activate> /Advection Diffusion Equation/Equation/Convection Velocity 3 </Activate>
+            </Item>
+            <Item> <Name> Computed </Name> </Item>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Convection Velocity 1</Name>
+            <SifName> Concentration Convection velocity 1</SifName>
+            <Whatis> Convection velocity for 'Constant' convection model. Despite its association, may be space and time varying. </Whatis>
+            <StatusTip> Convection velocity </StatusTip>
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Convection Velocity 2</Name>
+            <SifName> Concentration Convection velocity 2</SifName>
+            <Whatis> Convection velocity for 'Constant' convection model. Despite its association, may be space and time varying. </Whatis>
+            
+         </Parameter>
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Convection Velocity 3</Name>
+            <SifName> Concentration Convection velocity 3</SifName>
+            <Whatis> Convection velocity for 'Constant' convection model. Despite its association, may be space and time varying. </Whatis>
+            <StatusTip> Convection velocity </StatusTip>
+         </Parameter>
+      </Equation>
+
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name > Procedure </Name>
+            <DefaultValue> "AdvectionDiffusion" "AdvectionDiffusionSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="True">
+           <Name> Variable </Name>
+           <DefaultValue> Concentration </DefaultValue>
+         </Parameter>
+      </Solver>
+
+      <BodyForce>
+         <Parameter Widget="Label" > <Name> Volume sources </Name> </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Concentration Diffusion Source </Name>
+           <Whatis> An additional source S for the diffusion equation may be given with this keyword. </Whatis>
+        </Parameter>
+
+         <Parameter  Widget="CheckBox" Enabled="True">
+           <Name> Physical Units </Name>
+           <Type> Logical </Type>
+           <Whatis> With this keyword, the source term can be given in absolute mass units regardless of scaling. </Whatis>
+         </Parameter>
+
+      </BodyForce>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Concentration Diffusivity </Name>
+            <StatusTip> Set value to oxygen diffusivity, can also be a tensor for anisotropy. </StatusTip>
+            <Whatis> Give value to diffusivity material property. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Concentration Soret Diffusivity </Name>
+            <StatusTip> Set value to Soret diffusivity, the thermal diffusivity coefficient. </StatusTip>
+            <Whatis> Give value to Soret diffusivity material property. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Concentration Maximum Solubility </Name>
+            <StatusTip> Set value to maximum solubility. </StatusTip>
+            <Whatis> Give value to maximum solubility of solute. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Ion Charge </Name>
+            <SifName> Concentration Ion Charge </SifName>
+            <StatusTip> Set value to charge of solute ions, e.g. 1, -2 etc. </StatusTip>
+            <Whatis> Give value of ion charge. </Whatis>
+         </Parameter>
+      </Material>
+
+      <InitialCondition>
+         <Parameter Widget="Label" > <Name> Variables </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Concentration </Name>
+           <Whatis> Give initial value to Concentration field. </Whatis>
+           <StatusTip> Give initial value to Concentration field. </StatusTip>
+         </Parameter>
+      </InitialCondition>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Dirichlet Conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Concentration </Name>
+           <Activate> /Advection Diffusion Equation/BoundaryCondition/Concentration Condition </Activate>
+           <Whatis> Give concentration value for this boundary. </Whatis>
+           <StatusTip> Give concentration value for this boundary. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False" Visible="False">
+           <Name> Concentration Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <StatusTip> Give temperature condition value for this boundary. </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Diffusion Flux conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Concentration Flux </Name>
+           <Whatis> Give diffusion flux. </Whatis>
+           <StatusTip> Give diffusion flux. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Mass Transfer Coeff. </Name>
+           <SifName> Mass Transfer Coefficient </SifName>
+           <Whatis> Give mass transfer coefficient. </Whatis>
+           <StatusTip> Give mass transfer flux. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> External Concentration </Name>
+           <Whatis> Give external concentration. </Whatis>
+           <StatusTip> Give external concentration. </StatusTip>
+         </Parameter>
+
+      </BoundaryCondition>
+   </PDE>
+</edf>

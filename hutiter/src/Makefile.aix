@@ -1,0 +1,154 @@
+#
+# Makefile for the HUT-Iter library, AIX version
+#
+# $Id: Makefile.aix,v 1.1.1.1 1998/07/31 10:19:08 jim Exp $
+#
+
+.SUFFIXES: .f90
+
+# Common
+
+SHELL	=	/bin/sh
+RM      =       /bin/rm -f
+MV      =       /bin/mv -f
+CP	=	/bin/cp
+CPP	= 	/lib/cpp
+AR	=	/usr/bin/ar
+
+CC	=	c89
+CLINKER	=	c89
+FC77	=	xlf
+FC90	=	xlf90
+FLINKER	=	xlf90
+INSTALL	=	/usr/bin/install
+
+# User configurable options
+
+PREFIX	=	..
+PRECS	=	S D C Z
+
+# These are for AIX
+
+OPSYS	= AIX
+CFLAGS	= -DXLF -g # -O3 -qstrict
+FFLAGS	= -O2 # -O3 -qstrict -qipa
+F90FLAGS= -WF,-DXLF -I$(PREFIX) -d
+OPTFLAGS= #-bmaxdata:2147483648 -bmaxstack:2147483648
+CPPFLAGS=	-P -DXLF
+ARFLAGS	=	vru
+
+LIBS	= -lblas -lxlf90 -lc -llapack
+
+# Must use quotes due to for-loops, if variable is empty
+
+libhuti_OTHEROBJS=huti_main.o
+precdf90=huti_cg huti_tfqmr huti_cgs huti_qmr huti_bicgstab \
+	huti_gmres huti_bicgstab_2 huti_aux
+precdf77=""
+precdc=huti_sfe_c
+
+#
+# Generic Section
+#
+
+all:	libhuti install
+	@echo
+	@echo Compilation and installation done.
+	@echo
+
+libhuti:
+	@echo
+	@echo 'Generating source files from *.src files...'
+	@echo
+#
+# First make the precision dependent Fortran90 files
+#
+	@if [ "$(precdf90)X" != "X" ]; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdf90); do \
+		$(RM) $${pd}_$${p}.f90; \
+		$(CPP) -P -D$(OPSYS) -D$${p}_PRE $${pd}.src $${pd}_$${p}.f90; \
+	    done; \
+	  done; \
+	fi 
+#
+# Second make the precision dependent FORTRAN 77 files
+#
+	@if [ "$(precdf77)X" != "X" ] ; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdf77); do \
+		$(RM) $${pd}_$${p}.f; \
+		$(CPP) -P -D$(OPSYS) -D$${p}_PRE $${pd}.src $${pd}_$${p}.f; \
+	    done; \
+	  done; \
+	fi
+#
+# Third make the precision dependent C files
+#
+	@if [ "$(precdc)X" != "X" ]; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdc); do \
+		$(RM) $${pd}_$${p}.c; \
+		$(CPP) -P -D$(OPSYS) -D$${p}_PRE $${pd}.src $${pd}_$${p}.c; \
+	    done; \
+	  done; \
+	fi 
+#
+# Last compile everything (modules must be first)
+#
+	@echo
+	@echo Compiling generated source files...
+	@echo
+
+	@if [ "$(precdf77)X" != "X" ]; then \
+	  for basen in $(precdf77); do \
+	    for precc in $(PRECS); do \
+		make -f Makefile.aix $${basen}_$${precc}.o ; \
+		$(AR) $(ARFLAGS) $@.a $${basen}_$${precc}.o ; \
+	    done; \
+	  done; \
+	fi
+	@if [ "$(precdf90)X" != "X" ]; then \
+	  for basen in $(precdf90); do \
+	    for precc in $(PRECS); do \
+		make -f Makefile.aix $${basen}_$${precc}.o ; \
+		$(AR) $(ARFLAGS) $@.a $${basen}_$${precc}.o ; \
+	    done; \
+	  done; \
+	fi
+	@if [ "$(precdc)X" != "X" ]; then \
+	  for basen in $(precdc); do \
+	    for precc in $(PRECS); do \
+		make -f Makefile.aix $${basen}_$${precc}.o ; \
+		$(AR) $(ARFLAGS) $@.a $${basen}_$${precc}.o ; \
+	    done; \
+	  done; \
+	fi
+
+	@if [ "$($@_OTHEROBJS)X" != "X" ]; then \
+		make -f Makefile.aix $($@_OTHEROBJS) ; \
+		$(AR) $(ARFLAGS) $@.a $($@_OTHEROBJS) ; \
+	fi
+
+install:
+	$(INSTALL) -f $(PREFIX)/lib/$(OPSYS) -M 644 libhuti.a
+	$(INSTALL) -f $(PREFIX)/include -M 644 huti_defs.h
+	$(INSTALL) -f $(PREFIX)/include -M 644 huti_fdefs.h
+
+# all compilation/linking.
+
+.c.o:
+	$(CC) $(CFLAGS) -c $<
+
+.f90.o:
+	$(RM) $*.F
+	$(CP) $< $*.F
+	$(FC90) $(FFLAGS) $(F90FLAGS) -c $*.F
+	$(RM) $*.F
+
+.f.o:
+	$(FC77) $(FFLAGS) -c $<
+
+clean:
+	$(RM) $(EXECS) *.o *~
+

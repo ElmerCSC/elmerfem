@@ -1,0 +1,101 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Simulation Type = Steady State
+  Output Intervals = 1
+!  Post File = "data.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers = 1 
+End
+
+Solver 1
+  Equation = "heat"
+  Variable = "Temp"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+End
+
+Solver 2 
+  Exec Solver = never
+  Equation = "save scalars"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Temp
+  Operator 1 = int mean
+  Variable 2 = Temp
+  Operator 2 = max
+  Variable 3 = Time
+  Filename = f.dat
+End 
+
+
+Material 1
+  Name = "Material"
+  Density = 1.0
+
+! Introduce a rather nonlinear material law (max temp ~3.4) 
+!
+!  1) MATC routine (generic but slow!)
+!  Heat Conductivity = Variable Temp
+!    Real MATC "1/(1+tx)"
+!
+! 2) given table with precalculate conductivity
+! You may use either cubic spline or linear (just drop the Cubic then)
+! Cubic table gives the same results closely as the MATC routine above.
+  Heat Conductivity = Variable Temp
+    Real Cubic
+      include cond.dat
+    End 
+  Heat Capacity = 1.0
+End
+
+Body Force 1
+  Name = "BodyForce"
+  Heat Source = 10.0
+End
+
+Boundary Condition 1
+  Name = "FixedTemp"
+  Target Boundaries = 1 
+  Temp = Real 0.0
+End
+
+$ fprintf( stderr, "\n\nTEST CASE 1\n");
+RUN
+$ fprintf( stderr, "END TEST CASE 1: Target NRM=1.5131000\n");

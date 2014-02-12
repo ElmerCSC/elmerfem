@@ -1,0 +1,310 @@
+! 2D arterial flow simulation where inlet is enforced with a physical 
+! pump and outlet is obtained from a 1D lumped model utilizing the method
+! of characteristics. 
+!
+! This test case is derived from the older tutorial case
+! "Blood ejection from a ventricle into aorta". 
+! Here the 1D mesh is created internally while in the old 
+! tutorial case it was done by modifying the mesh files directly.
+!
+! References for the methods used:
+!
+! 1) A method for partitioned fluid–structure interaction computation of flow in arteries 
+! Medical Engineering & Physics, Volume 30, Issue 7, September 2008, Pages 917-923
+! Esko Jarvinen, Peter Raback, Mikko Lyly, Juha-Pekka Salenius
+!
+! 2) Fluid-structure interaction boundary condition by artificial compressibility
+! CFD Eccomas 2001, Swansea
+! Peter Raback, Juha Ruokolainen, Mikko Lyly, and Esko Jarvinen
+!
+! 13.8.2013 / P.R.
+
+ Check Keywords Warn
+
+Header
+  Mesh DB "." "contra"
+End
+
+Constants
+  Gravity(4) = Real 0 -1 0 9.81
+  Stefan Boltzmann = Real 5.67e-8
+End
+
+Simulation
+  Coordinate System = Axi Symmetric
+  Simulation Type =Transient
+  Steady State Max Iterations = 250
+  TimeStepping Method = BDF  
+  BDF Order = 2              
+  Timestep Sizes = 0.001 
+  TimeStep Intervals = 2 !300 
+  Output Intervals = 1
+  Post File = "case.vtu"
+
+  Simulation Timing = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+End 
+
+Body 3
+  Equation = 1
+  Material = 2
+End
+
+Body 4
+  Equation = 2
+  Material = 3
+End
+
+Body 5
+  Equation = 3
+  Material = 4
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Wnodal = Variable Coordinate
+    Real Procedure "ArteryOutlet" "OutletInit"
+End
+
+Body Force 1
+  Source = Real 0.0
+End
+
+Material 1
+  Name = "Blood"
+  Density = 1000
+  Viscosity = 3.5e-3
+  Youngs Modulus = 1
+  Poisson Ratio = 0.3
+End
+
+Material 2
+  Name = "Blood with FSI"
+  Density = 1000
+  Viscosity = 3.5e-3
+  Youngs Modulus = 1
+  Poisson Ratio = 0.3
+  Compressibility Model = Artificial Compressible
+  Artificial Compressibility  = 2.4E-5 
+End
+
+Material 3
+  Name = "Elastic Wall"
+  Density = 1010
+  Youngs Modulus = 3.0e5
+  Poisson Ratio = 0.45
+End
+
+Material 4
+  Name = "1D Artery"
+  Density = 1010.0
+  Artery Wall Youngs Modulus = Real 3.0e5 
+  Artery Radius = Real 0.0135 
+  Artery Wall Thickness = Real 0.002
+  Artery Poisson Ratio  = Real 0.45
+End
+
+Solver 1
+  Equation = Artery Outlet Solver
+  Time Derivative Order = 1
+  Stabilize = Logical False
+  Variable = Wnodal
+  Variable DOFs = 1
+  Procedure = "ArteryOutlet" "OutletCompute"
+  Linear System Solver = Direct
+  Linear System Direct Method = Banded
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Max Iterations = 1000
+  Linear System Preconditioning = ILU0
+  Nonlinear System Max Iterations = Integer 1000
+  Nonlinear System Convergence Tolerance = Real 1.0e-8
+  Optimize Bandwidth = False
+
+! These define the 1D mesh that is created on-the-fly for this solver
+  1D Mesh Create = Logical True
+  1D Element Order = Integer 1
+  1D Number Of Elements = Integer 20
+  1D Mesh Length = Real 0.1
+  1D Active Direction = Integer 2
+  1D Body Id = Integer 5
+End
+
+
+$Relax = 1.0
+
+Solver 2
+  Equation = Navier-Stokes
+  Stabilize = Logical True
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-3
+  Nonlinear System Newton After Tolerance = 5.0e-2   
+  Nonlinear System Newton After IterationS = 0     
+  Steady State Convergence Tolerance = 1.0e-4
+  Nonlinear System Relaxation Factor = $Relax
+  Calculate Viscous Force = Logical True
+End
+
+Solver 3
+  Equation = Elasticity Solver
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Time Derivative Order = 2
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  Nonlinear System Newton After Tolerance = 5.0e-2
+  Nonlinear System Newton After Iterations = 0
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Steady State Convergence Tolerance = 1.0e-4
+  Nonlinear System Relaxation Factor = $Relax
+End
+
+Solver 4
+  Equation = Mesh Update
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  Linear System Symmetric = True
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+Solver 5 
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = never ! After timestep
+
+  Filename = f.dat
+  Variable 1 = coupled iter 
+End  
+
+Equation 1
+  Navier-Stokes = True
+  Mesh Update = True
+End
+
+Equation 2
+  Elasticity Solver = Logical True
+End
+
+Equation 3
+  Artery Outlet Solver = Logical True
+End
+
+Boundary Condition 1
+  Name = "PumpingBC"
+  Target Boundaries = 1
+  Velocity 1 = 0
+  Velocity 2 = Equals Mesh Velocity 2
+  Mesh Update 1 = Real 0
+  Mesh Update 2 = Variable Time
+       Real Procedure "./Motion" "Motion"
+End
+
+Boundary Condition 2
+  Name = "OutletBC"
+  Target Boundaries = 2
+  Flux Integrate = Logical True
+  Flow Force BC = True
+  Pressure 2 = Variable Time
+    Real Procedure "ArteryOutlet" "OutletPres"
+  Mesh Update 2 = Real 0
+
+  1D Fluid Coupling = Logical True
+End
+
+
+Boundary Condition 3
+  Name = "Symmetry3"
+  Target Boundaries = 3
+  Velocity 1 = 0
+  Mesh Update 1 = Real 0
+End
+
+Boundary Condition 4
+  Name = "BC4"
+  Target Boundaries = 4
+  Velocity 1 = 0
+  Mesh Update 1 = Real 0
+  Mesh Update 2 = Real 0
+End
+
+Boundary Condition 5
+  Name = "BC5"
+  Target Boundaries = 5
+  Velocity 1 = 0
+  Mesh Update 1 = Real 0
+End
+
+Boundary Condition 6
+  Name = "BC6"
+  Target Boundaries(2) = 6 7 
+  Mesh Update 1 = Real 0
+  Mesh Update 2 = Real 0
+End
+
+Boundary Condition 7
+  Name = "Wall"
+  Target Boundaries = 8
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+Boundary Condition 8
+  Name = "StructureEnd"
+  Target Boundaries = 9
+  Displacement 1 = Variable Time
+    Real Procedure "ArteryOutlet" "OutletdX"
+  Displacement 2 = 0 
+
+  1D Structure Coupling = Logical True
+End
+
+Boundary Condition 9
+  Name = "OuterWall"
+  Target Boundaries = 10
+End
+
+Boundary Condition 10
+  Name = "FSI"
+  Target Boundaries = 11
+  Velocity 1 = Equals Mesh Velocity 1
+  Velocity 2 = Equals Mesh Velocity 2
+  Mesh Update 1 = Equals Displacement 1
+  Mesh Update 2 = Equals Displacement 2
+  Force BC = Logical True
+End
+
+Boundary Condition 11
+  Name = "Wall"
+  Target Boundaries(3) = 12 13 14
+  Mesh Update 1 = Real 0
+  Mesh Update 2 = Real 0
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+Boundary Condition 12
+  Name = "BC12"
+  Target Boundaries = 15
+  Mesh Update 1 = Real 0
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.14981507E-05\n");
+

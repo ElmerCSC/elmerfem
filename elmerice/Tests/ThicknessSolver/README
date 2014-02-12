@@ -1,0 +1,8 @@
+Test case based on ISMIP-HOM set-up
+solve the stokes and thickness evolution equations
+
+To run the test:
+> ./RunTest
+
+
+For other examples with the thickness solver look in Test_SSA

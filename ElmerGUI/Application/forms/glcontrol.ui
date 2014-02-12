@@ -1,0 +1,377 @@
+<ui version="4.0" >
+ <class>glControlDialog</class>
+ <widget class="QDialog" name="glControlDialog" >
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>331</width>
+    <height>300</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>GL controls</string>
+  </property>
+  <widget class="QGroupBox" name="lightGroup" >
+   <property name="geometry" >
+    <rect>
+     <x>10</x>
+     <y>10</y>
+     <width>311</width>
+     <height>131</height>
+    </rect>
+   </property>
+   <property name="title" >
+    <string>Light</string>
+   </property>
+   <widget class="QLabel" name="ambientLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>10</x>
+      <y>90</y>
+      <width>45</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string>  Ambient</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="diffuseLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>80</x>
+      <y>90</y>
+      <width>43</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string>   Diffuse</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="specularLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>150</x>
+      <y>90</y>
+      <width>47</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string>  Specular</string>
+    </property>
+   </widget>
+   <widget class="QDial" name="ambientDial" >
+    <property name="geometry" >
+     <rect>
+      <x>10</x>
+      <y>30</y>
+      <width>50</width>
+      <height>64</height>
+     </rect>
+    </property>
+    <property name="value" >
+     <number>20</number>
+    </property>
+    <property name="notchesVisible" >
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QDial" name="diffuseDial" >
+    <property name="geometry" >
+     <rect>
+      <x>80</x>
+      <y>30</y>
+      <width>50</width>
+      <height>64</height>
+     </rect>
+    </property>
+    <property name="value" >
+     <number>60</number>
+    </property>
+    <property name="notchesVisible" >
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QDial" name="specularDial" >
+    <property name="geometry" >
+     <rect>
+      <x>150</x>
+      <y>30</y>
+      <width>50</width>
+      <height>64</height>
+     </rect>
+    </property>
+    <property name="value" >
+     <number>99</number>
+    </property>
+    <property name="notchesVisible" >
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QLabel" name="posyLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>221</x>
+      <y>60</y>
+      <width>22</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string>PosY</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="posxLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>221</x>
+      <y>30</y>
+      <width>22</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string>PosX</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="poszLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>221</x>
+      <y>90</y>
+      <width>22</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string>PosZ</string>
+    </property>
+   </widget>
+   <widget class="QSpinBox" name="posxSpinBox" >
+    <property name="geometry" >
+     <rect>
+      <x>250</x>
+      <y>30</y>
+      <width>51</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="minimum" >
+     <number>-10</number>
+    </property>
+    <property name="maximum" >
+     <number>10</number>
+    </property>
+    <property name="value" >
+     <number>0</number>
+    </property>
+   </widget>
+   <widget class="QSpinBox" name="posySpinBox" >
+    <property name="geometry" >
+     <rect>
+      <x>250</x>
+      <y>60</y>
+      <width>51</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="minimum" >
+     <number>-10</number>
+    </property>
+    <property name="maximum" >
+     <number>10</number>
+    </property>
+    <property name="value" >
+     <number>0</number>
+    </property>
+   </widget>
+   <widget class="QSpinBox" name="poszSpinBox" >
+    <property name="geometry" >
+     <rect>
+      <x>250</x>
+      <y>90</y>
+      <width>51</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="minimum" >
+     <number>-10</number>
+    </property>
+    <property name="maximum" >
+     <number>10</number>
+    </property>
+    <property name="value" >
+     <number>5</number>
+    </property>
+   </widget>
+  </widget>
+  <widget class="QPushButton" name="okButton" >
+   <property name="geometry" >
+    <rect>
+     <x>160</x>
+     <y>270</y>
+     <width>75</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Apply</string>
+   </property>
+   <property name="icon" >
+    <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-ok-apply.png</iconset>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="closeButton" >
+   <property name="geometry" >
+    <rect>
+     <x>240</x>
+     <y>270</y>
+     <width>75</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Close</string>
+   </property>
+   <property name="icon" >
+    <iconset resource="../ElmerGUI.qrc" >:/icons/dialog-close.png</iconset>
+   </property>
+  </widget>
+  <widget class="QGroupBox" name="materialGroup" >
+   <property name="geometry" >
+    <rect>
+     <x>10</x>
+     <y>150</y>
+     <width>311</width>
+     <height>111</height>
+    </rect>
+   </property>
+   <property name="title" >
+    <string>Material</string>
+   </property>
+   <widget class="QDial" name="matAmbientDial" >
+    <property name="geometry" >
+     <rect>
+      <x>10</x>
+      <y>20</y>
+      <width>50</width>
+      <height>64</height>
+     </rect>
+    </property>
+    <property name="value" >
+     <number>20</number>
+    </property>
+    <property name="notchesVisible" >
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QDial" name="matDiffuseDial" >
+    <property name="geometry" >
+     <rect>
+      <x>80</x>
+      <y>20</y>
+      <width>50</width>
+      <height>64</height>
+     </rect>
+    </property>
+    <property name="value" >
+     <number>99</number>
+    </property>
+    <property name="notchesVisible" >
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QDial" name="matSpecularDial" >
+    <property name="geometry" >
+     <rect>
+      <x>150</x>
+      <y>20</y>
+      <width>50</width>
+      <height>64</height>
+     </rect>
+    </property>
+    <property name="value" >
+     <number>90</number>
+    </property>
+    <property name="notchesVisible" >
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QDial" name="matShininessDial" >
+    <property name="geometry" >
+     <rect>
+      <x>240</x>
+      <y>20</y>
+      <width>50</width>
+      <height>64</height>
+     </rect>
+    </property>
+    <property name="value" >
+     <number>20</number>
+    </property>
+    <property name="notchesVisible" >
+     <bool>true</bool>
+    </property>
+   </widget>
+   <widget class="QLabel" name="matAmbientLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>10</x>
+      <y>80</y>
+      <width>45</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string>  Ambient</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="matDiffuseLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>90</x>
+      <y>80</y>
+      <width>34</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string>Diffuse</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="matSpecularLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>150</x>
+      <y>80</y>
+      <width>47</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string>  Specular</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="matShininessLabel" >
+    <property name="geometry" >
+     <rect>
+      <x>240</x>
+      <y>80</y>
+      <width>47</width>
+      <height>16</height>
+     </rect>
+    </property>
+    <property name="text" >
+     <string> Shininess</string>
+    </property>
+   </widget>
+  </widget>
+ </widget>
+ <resources>
+  <include location="../ElmerGUI.qrc" />
+ </resources>
+ <connections/>
+</ui>

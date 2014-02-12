@@ -1,0 +1,160 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test Shape Factor in 2D               !!
+!!                                       !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+echo on
+
+$nom = "Kspring"
+$L = 1.0e3
+$Slope = 0.5 * pi / 180.0
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = 9.81*yearinsec^2
+$Afactor = 80.0
+$n = 3.0
+$etai = 1.0/(2*Afactor)^(1.0/n)
+$W = 10.0e3
+$Kspring = etai* (n+1)^(1/n) / (rhoi * W^(1+(1/n))) 
+
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady 
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "$nom$.vtu"
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  Velocity 1 = Real 10.0 
+  Velocity 2 = Real 1.0 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Variable Coordinate 1
+    Real Procedure "ElmerIceUSF" "LateralFriction_x"
+  Flow BodyForce 2 = Variable Coordinate 1
+    Real Procedure "ElmerIceUSF" "LateralFriction_y"
+
+  Lateral Friction Gravity 1 = Real $gravity*sin(Slope)     
+  Lateral Friction Gravity 2 = Real $-gravity*cos(Slope)  
+  
+  Lateral Friction Coefficient =  Real $Kspring 
+  Lateral Friction Exponent = Real $1.0/n
+  Flow Solver Name = String Flow Solution
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi                      
+
+  Viscosity Model = String "power law"
+  Viscosity = Real $etai
+  Viscosity Exponent = Real $1.0/n 
+  Critical Shear Rate = Real 1.0e-10
+End
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Solver 1
+  Equation = "Navier-Stokes"
+  
+  Stabilization Method = String Bubbles
+  Flow Model = Stokes
+  Exported Variable 1 = "velocity"
+  Exported Variable 1 DOFS = 2
+  Exported Variable 2 = "pressure"
+  Exported Variable 2 DOFS = 2
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 100
+  Nonlinear System Newton After Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = 1.0
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+End
+
+Solver 2
+  Exec Solver =  After All
+  Procedure = File "SaveData" "SaveScalars"
+  Filename =  "results.dat"
+  File Append = Logical False
+
+  Variable 1 = String "pressure"
+  Operator 1 = String "int"
+  
+  Variable 2 = String "pressure"
+  Operator 2 = String "Max"
+
+  Variable 3 = String "pressure"
+  Operator 3 = String "min"
+
+  Operator 4 = String "cpu time"
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Bedrock
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Velocity 1 = Real 0.0e0
+  Velocity 2 = Real 0.0e0
+End
+
+! Periodic Right
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Translate(2) = Real $L 0.0  
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Pressure  = Logical True
+  Save Line = Logical True
+End
+
+! Upper Surface
+Boundary Condition 3
+  Target Boundaries = 3
+End
+
+! Periodic Left
+Boundary Condition 4
+  Target Boundaries = 4
+End

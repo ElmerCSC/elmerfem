@@ -1,0 +1,67 @@
+function loadfl(file)
+{
+  fp = fopen( file,"r" );
+  xx = fscanf( fp,"%lf %lf %lf %lf\n" );
+  rows = xx(2);
+  cols = xx(3);
+  str = fread( fp,rows*cols*4 );
+  fclose(fp);
+  _loadfl = rows cols % cvtmat( str,"float" );
+}
+
+
+function sicoreadfile(basename,slice,noftimes)
+   import nodes
+   export Velocity,Velocity_abs, Temperature, Height, Drainage, Melt, Mask, Ncts, Flux, Flux_abs, Age, times
+{
+
+   if ( ~exists("slice") ) slice = 1;
+
+
+      !
+      ! if you have filenames like file00,file01,file02, etc...
+      !
+      fname = sprintf( "%02g", slice );
+      suffix = ".dat"	
+      fname = basename fname suffix;
+
+      x = loadfl(fname);
+
+      ! after which you have f.ex. temp (after a modification of the original
+      ! extract function to change the names of the exported variables) for
+      ! current temperature, you can add this to overall temperature:
+
+      n = time(noftimes);
+      Height(n)=x(time(0),0); 
+      Velocity(0,n)=x(time(0),1);
+      Velocity(1,n)=x(time(0),2);
+      Velocity(2,n)=x(time(0),3);
+      Drainage(n)=x(time(0),4);
+      Melt(n)=x(time(0),5);
+      Mask(n)=x(time(0),6);
+      Ncts(n)=x(time(0),7);
+      Temperature(n)=x(time(0),8);
+      Age(n)=x(time(0),9);
+      Flux(0,n)=x(time(0),10);
+      Flux(1,n)=x(time(0),11);
+      Flux(2,n)=0.0;
+
+      ! set timestep info for timestep panel:
+      ! in principle first value here is meant to be a running index,
+      ! second value simulation timestep index and third simulation time
+      times(0:2,noftimes) = noftimes;
+
+
+   ! and recompute absolute values of vectors:
+   ! don't have to do this in the extract function anymore...
+
+   Velocity_abs = sqrt(vdot(Velocity,Velocity));
+   Flux_abs = sqrt(vdot(Flux, Flux));
+
+
+   str = sprintf("set NumberOfTimesteps %g", noftimes );
+   tcl( str );
+}
+
+
+

@@ -1,0 +1,74 @@
+! Set potential in the part of the body using Conditioal Dirichlet
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "test"
+End
+
+Simulation
+  Max Output Level =3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+! Output File = "elstat.result"
+! Post File = "elstat.ep"
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+Body Force 1 
+  Potential = Real 1.0
+  Potential Condition = Variable Coordinate 2
+    Real MATC "tx-0.5"
+End
+
+Solver 1
+  Equation = Stat Elec Solver
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatElecSolve" "StatElecSolver"
+  Calculate Electric Field = True
+  Calculate Electric Flux = False
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  Nonlinear System Max Iterations = 1
+End
+
+Material 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+!  Potential = 1.0
+End
+
+$ fprintf( stderr, "TEST CASE 1\n" );
+RUN
+$ fprintf( stderr, "END TEST CASE 1, Target NRM=0.739676801948\n" )
+
+!End Of File
+

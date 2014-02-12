@@ -1,0 +1,143 @@
+ Matrix key: WEST0067                      
+
+UMFPACK V4.4 (Jan. 28, 2005), Control:
+
+    Matrix entry defined as: double
+    Int (generic integer) defined as: int
+
+    0: print level: 2
+    1: dense row parameter:    0.2
+        "dense" rows have    > max (16, (0.2)*16*sqrt(n_col) entries)
+    2: dense column parameter: 0.2
+        "dense" columns have > max (16, (0.2)*16*sqrt(n_row) entries)
+    3: pivot tolerance: 0.1
+    4: block size for dense matrix kernels: 32
+    5: strategy: 0 (auto)
+    6: initial allocation ratio: 0.7
+    7: max iterative refinement steps: 2
+    12: 2-by-2 pivot tolerance: 0.01
+    13: Q fixed during numerical factorization: 0 (auto)
+    14: AMD dense row/col parameter:    10
+       "dense" rows/columns have > max (16, (10)*sqrt(n)) entries
+        Only used if the AMD ordering is used.
+    15: diagonal pivot tolerance: 0.001
+        Only used if diagonal pivoting is attempted.
+    16: scaling: 1 (divide each row by sum of abs. values in each row)
+    17: frontal matrix allocation ratio: 0.5
+    18: drop tolerance: 0
+    19: AMD and COLAMD aggressive absorption: 1 (yes)
+
+    The following options can only be changed at compile-time:
+    8: BLAS library used:  none.  UMFPACK will be slow.
+    9: compiled for ANSI C (uses malloc, free, realloc, and printf)
+    10: CPU timer is POSIX times ( ) routine.
+    11: compiled for normal operation (debugging disabled)
+    computer/operating system: Linux
+    size of int: 4 long: 4 Int: 4 pointer: 4 double: 8 Entry: 8 (in bytes)
+
+symbolic analysis:
+   status:     0.
+   time:      0.00E+00 (sec)
+   estimates (upper bound) for numeric LU:
+   size of LU:          0.02 (MB)
+   memory needed:       0.06 (MB)
+   flop count:      0.14E+05
+   nnz (L):             542.
+   nnz (U):             902.
+numeric factorization:
+   status:     0.
+   time:      0.00E+00
+   actual numeric LU statistics:
+   size of LU:          0.01 (MB)
+   memory needed:       0.04 (MB)
+   flop count:      0.26E+04
+   nnz (L):             329.
+   nnz (U):             340.
+
+UMFPACK V4.4 (Jan. 28, 2005), Info:
+    matrix entry defined as:          double
+    Int (generic integer) defined as: int
+    BLAS library used:                none.  UMFPACK will be slow.
+    MATLAB:                           no.
+    CPU timer:                        POSIX times ( ) routine.
+    number of rows in matrix A:       67
+    number of columns in matrix A:    67
+    entries in matrix A:              294
+    memory usage reported in:         8-byte Units
+    size of int:                      4 bytes
+    size of long:                     4 bytes
+    size of pointer:                  4 bytes
+    size of numerical entry:          8 bytes
+
+    strategy used:                    unsymmetric
+    ordering used:                    colamd on A
+    modify Q during factorization:    yes
+    prefer diagonal pivoting:         no
+    pivots with zero Markowitz cost:               1
+    submatrix S after removing zero-cost pivots:
+        number of "dense" rows:                    0
+        number of "dense" columns:                 0
+        number of empty rows:                      0
+        number of empty columns                    0
+        submatrix S not square or diagonal not preserved
+    symbolic factorization defragmentations:       1
+    symbolic memory usage (Units):                 1632
+    symbolic memory usage (MBytes):                0.0
+    Symbolic size (Units):                         245
+    Symbolic size (MBytes):                        0
+    symbolic factorization CPU time (sec):         0.00
+    symbolic factorization wallclock time(sec):    0.00
+
+    matrix scaled: yes (divided each row by sum of abs values in each row)
+    minimum sum (abs (rows of A)):              1.00000e+00
+    maximum sum (abs (rows of A)):              6.59006e+00
+
+    symbolic/numeric factorization:      upper bound               actual      %
+    variable-sized part of Numeric object:
+        initial size (Units)                    1643                 1574    96%
+        peak size (Units)                       6115                 3581    59%
+        final size (Units)                      1628                  685    42%
+    Numeric final size (Units)                  2101                 1125    54%
+    Numeric final size (MBytes)                  0.0                  0.0    54%
+    peak memory usage (Units)                   7462                 4928    66%
+    peak memory usage (MBytes)                   0.1                  0.0    66%
+    numeric factorization flops          1.41920e+04          2.58700e+03    18%
+    nz in L (incl diagonal)                      542                  329    61%
+    nz in U (incl diagonal)                      902                  340    38%
+    nz in L+U (incl diagonal)                   1377                  602    44%
+    largest front (# entries)                    483                   80    17%
+    largest # rows in front                       21                   10    48%
+    largest # columns in front                    23                   11    48%
+
+    initial allocation ratio used:                 0.7
+    # of forced updates due to frontal growth:     0
+    nz in L (incl diagonal), if none dropped       329
+    nz in U (incl diagonal), if none dropped       340
+    number of small entries dropped                0
+    nonzeros on diagonal of U:                     67
+    min abs. value on diagonal of U:               2.74e-02
+    max abs. value on diagonal of U:               2.28e+00
+    estimate of reciprocal of condition number:    1.20e-02
+    indices in compressed pattern:                 256
+    numerical values stored in Numeric object:     605
+    numeric factorization defragmentations:        1
+    numeric factorization reallocations:           1
+    costly numeric factorization reallocations:    0
+    numeric factorization CPU time (sec):          0.00
+    numeric factorization wallclock time (sec):    0.00
+    symbolic + numeric CPU time (sec):             0.00
+    symbolic + numeric wall clock time (sec):      0.00
+
+    solve flops:                                   1.20400e+03
+    iterative refinement steps taken:              0
+    iterative refinement steps attempted:          0
+    solve CPU time (sec):                          0.00
+    solve wall clock time (sec):                   0.00
+
+    total symbolic + numeric + solve flops:        3.79100e+03
+    total symbolic + numeric + solve CPU time:     0.00
+    total symbolic+numeric+solve wall clock time:  0.00
+
+ norm (A*x-b):   2.22044605E-15
+ norm (A*x-b):   1.05076538E-14
+ norm (A*x-b):   1.05076538E-14

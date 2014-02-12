@@ -1,0 +1,128 @@
+! Solver two ordinary & uncoupled Poisson equations of the same kind
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+!  Max Output Level = 4
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+
+   Post File = "case.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Material = 1
+  Equation = 2
+End
+
+Equation 1
+  Name = "TempA"
+  Active Variables(1) = Integer 2
+End
+
+Equation 2
+  Name = "Both"
+  Active Variables(2) = Integer 1 2
+End
+ 
+
+
+Solver 1
+  Block Solver = Logical True
+  Equation = "Poisson"
+
+  Variable 1 = TempA
+  Variable 2 = TempB
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Max Stepsize Tests = Integer 30
+  Nonlinear System Convergence Tolerance = Real 1.0e-6
+
+  Nonlinear System Convergence Measure = residual
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = bicgstab
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU1
+
+  Bulk Assembly Procedure 11 = File "./PoissonAssembly" "BulkAssembly"
+!  Bulk Assembly Procedure 12 = File "./ZeroAssembly" "BulkAssembly"
+!  Bulk Assembly Procedure 21 = File "./ZeroAssembly" "BulkAssembly"
+  Bulk Assembly Procedure 22 = File "./PoissonAssembly" "BulkAssembly"
+
+  Block Gauss Seidel = Logical True
+  Block Preconditioner = Logical False
+
+  Primary Variable = Integer 1
+End  
+
+Solver 2
+  Exec Solver = never
+
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = TempA
+  Operator 1 = min
+  Variable 2 = TempA
+  Operator 2 = max
+End 
+
+
+Material 1
+  Name = "Material1"
+ 
+  Conductivity = Real 1.0
+  Reaction = Real 0.0
+  Source = Real 1.0
+End
+
+Boundary Condition 1
+  Name = "BC1"
+  Target Boundaries(1) = 1 
+  TempB = Real 0
+End
+
+Boundary Condition 2
+  Name = "BC2"
+  Target Boundaries(1) = 2
+  TempA = Real 0
+  TempB = Real 0
+End
+
+Boundary Condition 3
+  Name = "BC3"
+  Target Boundaries(1) = 3
+  TempA = Real 0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.34560838E-01\n");
+
+

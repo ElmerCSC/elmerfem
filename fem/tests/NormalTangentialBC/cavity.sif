@@ -1,0 +1,102 @@
+check keywords warn
+
+Header
+  Mesh DB "." "sinus0"
+End
+
+Constants
+  Gas Constant = Real 8.314 !Joule/mol x  K 
+  Stefan Boltzmann = Real 6.78e-08
+End
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System  = Cartesian 2D 
+  
+  Set Dirichlet BCs by BC Numbering = Logical True
+
+  Simulation Type ="Steady State"
+  Timestepping Method = "bdf"
+  BDF Order = 2
+  Timestep Intervals =  1   
+  Output Intervals = 1  
+  Timestep Sizes = 0.2
+
+  Steady State Max Iterations = 2
+  Steady State Min Iterations = 1
+  Post File = "sinus_mesh.ep"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Pressure = Real 0.0
+End
+
+Material 1
+  Density = Real 1.0
+  Viscosity = Real 1.0
+End
+
+
+Solver 1
+  Equation = Navier-Stokes
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Stabilization Method = String P2P1
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-9
+  Nonlinear System Newton After Iterations = 100
+  Nonlinear System Newton After Tolerance = 1.0e-04
+  Nonlinear System Relaxation Factor = 1.0 
+
+  Steady State Convergence Tolerance = Real 1.0e-4
+End
+
+Equation 1
+  Active Solvers = 1
+  NS Convect = Logical False
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Normal-Tangential Velocity = Logical True
+  Velocity 1 = Real 0.0
+End
+
+!!! BC Outflow   
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4
+  Periodic BC Pressure = Logical True
+  Periodic BC Velocity 1 = Logical True
+  Periodic BC Velocity 2 = Logical True
+End
+
+!!! Top         
+Boundary Condition 3
+  Target Boundaries = 3
+  Pressure 2 = Real -1000.0
+  Velocity 1 = Real 0.1  
+  Flow Force BC = Logical True
+End
+
+!!! BC Inflow   
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.054621\n" );

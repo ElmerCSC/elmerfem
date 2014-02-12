@@ -1,0 +1,160 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "Mesh"
+End
+
+Simulation
+  Max Output Level = 3
+
+  Coordinate System = "Cartesian 2D"
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+
+  Solver Input File = "TempDist.sif"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1 :: Active Solvers = 1
+
+Solver 1
+  Equation = "Heat Equation"
+
+  Linear System Solver = "Direct"
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 3500
+  Linear System Residual Output = 1
+  Linear System Convergence Tolerance = 1.0e-12
+
+  Steady State Convergence Tolerance = 1.0e-05
+End
+
+
+Material 1
+  Density = 1
+  Heat Conductivity = 1
+End
+
+
+Boundary Condition 1 :: Target Boundaries(6) = $ 1:6
+
+
+$ fprintf( stderr, "\n\nTEST CASE 1 (Lapack Band solver)\n");
+Solver 1 :: Linear System Solver = Direct
+Solver 1 :: Linear System Direct Method = Banded
+
+Boundary Condition 1 :: Temperature = 1
+RUN
+$ fprintf( stderr, "END TEST CASE 1: Taget NRM=1\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 2 (UMFPack Sparse LU)\n");
+Solver 1 :: Linear System Solver = Direct
+Solver 1 :: Linear System Direct Method = UMFPack
+
+Boundary Condition 1 :: Temperature = 2
+RUN
+$ fprintf( stderr, "END TEST CASE 2: Taget NRM=2\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 3 (Jacobi)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = Jacobi
+
+Boundary Condition 1 :: Temperature = 3
+RUN
+$ fprintf( stderr, "END TEST CASE 3: Taget NRM=3\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 4 (SGS)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = SGS
+
+Boundary Condition 1 :: Temperature = 4
+RUN
+$ fprintf( stderr, "END TEST CASE 4: Taget NRM=4\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 5 (CG)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = CG
+
+Boundary Condition 1 :: Temperature = 5
+RUN
+$ fprintf( stderr, "END TEST CASE 5: Taget NRM=5\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 6 (CGS)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = CGS
+
+Boundary Condition 1 :: Temperature = 6
+RUN
+$ fprintf( stderr, "END TEST CASE 6: Taget NRM=6\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 7 (QMR)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = QMR
+
+Boundary Condition 1 :: Temperature = 7
+RUN
+$ fprintf( stderr, "END TEST CASE 7: Taget NRM=7\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 8 (TFQMR)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = TFQMR
+
+Boundary Condition 1 :: Temperature = 8
+RUN
+$ fprintf( stderr, "END TEST CASE 8: Taget NRM=8\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 9 (GMRES)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = GMRES
+
+Boundary Condition 1 :: Temperature = 9
+RUN
+$ fprintf( stderr, "END TEST CASE 9: Taget NRM=9\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 10 (BiCStab)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = BiCGStab
+
+Boundary Condition 1 :: Temperature = 10
+RUN
+$ fprintf( stderr, "END TEST CASE 10: Taget NRM=10\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 11 (BiCStab2)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = BiCGStab2
+
+Boundary Condition 1 :: Temperature = 11
+RUN
+$ fprintf( stderr, "END TEST CASE 11: Taget NRM=11\n ");
+
+
+$ fprintf( stderr, "\n\nTEST CASE 12 (BiCGStabL)\n");
+Solver 1 :: Linear System Solver = Iterative
+Solver 1 :: Linear System Iterative Method = BiCGStabL
+
+Boundary Condition 1 :: Temperature = 12
+RUN
+$ fprintf( stderr, "END TEST CASE 12: Taget NRM=12\n ");
+
+
+!End Of File

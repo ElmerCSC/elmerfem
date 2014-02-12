@@ -1,0 +1,14 @@
+#!/bin/tcsh
+# 
+
+foreach i (*.grd)
+  ElmerGrid 1 2 $i -out $i:r_test > out.txt
+  /bin/rm out.txt
+  cd $i:r
+  foreach j (*/part.*)
+    echo comparing: $i/$j $i:r_test/$j
+    diff $j ../$i:r_test/$j
+  end
+  cd ..
+  /bin/rm -r $i:r_test
+end  

@@ -1,0 +1,11 @@
+Compile with Qt4 as
+
+Linux:
+------
+qmake
+make
+
+Windows (VC++):
+---------------
+qmake
+nmake

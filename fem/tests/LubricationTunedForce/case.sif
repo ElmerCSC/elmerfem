@@ -1,0 +1,187 @@
+Header
+  Mesh DB "." "bump"
+End
+
+Constants
+End
+
+Simulation
+! to increase verbosity increase the value
+  Max Output Level = 4
+  Coordinate System = Cartesian 
+  Simulation Type = scanning
+
+! Roughly 10 steps are needed to determine the force, of course more could be used...
+  Timestep Intervals = 10
+
+! The steady state level could be used for multiphysics coupling
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 0
+!  Post File = "case.ep"
+End
+
+Body 1
+  Name = "Fluid"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Pressure = 0.0
+End
+
+Material 1
+  Name = "Oil"
+  Density = 912
+  Viscosity = 0.6384
+  Poisson Ratio = 0.3
+  Youngs Modulus = 1
+End
+
+
+Solver 1
+  Equation = String Optimize
+  Procedure = File "FindOptimum" "FindOptimum"
+
+! This is the name of the design variable
+  Variable = -global Dy
+  Variable Dofs = 1
+
+! This is a design task with the goal Fy=-1.0e-3
+  Cost Function = Equals Fy
+  Cost Function Target = Real -1.0e-3
+
+  Optimization Method = String "secant"
+  Step Size = Real 1.0e-8
+  Max Step Size = Real 1.0e-7
+  Relaxation Factor = Real 0.7
+End
+
+
+Solver 2
+! The solver adapts the geometry to accomodate for the moving boundary
+
+  Equation = MeshSolver
+
+  Procedure = "MeshSolve" "MeshSolver"
+  Variable = -dofs 2 Mesh Update 
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 50
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+Solver 3
+  Equation = FlowSolver
+
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+
+  Stabilize = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 50
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Convergence Measure = residual
+  Nonlinear System Newton After Tolerance = 0.0e-5
+  Nonlinear System Newton After Iterations = 100
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4
+  Calculate Loads = Logical True
+End
+
+
+Solver 4
+! Apart from writing forces on files this solver computes the forces and 
+! assigns them to the variables Fx and Fy
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+  Operator 1 = boundary sum
+  Variable 1 = Flow Solution Loads 1
+  Operator 2 = boundary sum
+  Variable 2 = Flow Solution Loads 2
+  Variable 3 = Dy
+
+  Target Variable 1 = String Fx
+  Target Variable 2 = String Fy
+End
+
+
+Solver 5
+!  Exec Solver = String "after timestep"	
+  Exec Solver = never
+
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "case" 
+  Output Format = "vtu"
+End
+
+Equation 1
+  Active Solvers(2) = 2 3
+End
+
+
+Boundary Condition 1
+  Name = "Sliding_wall"
+  Target Boundaries = 1
+  Velocity 1 = 0.1
+  Velocity 2 = 0.0
+  Mesh Update 1 = 0.0
+  Mesh Update 2 = 0.0
+
+  Save Scalars = Logical True
+End
+
+Boundary Condition 2
+  Name = "Outlet"
+  Target Boundaries = 2
+  Velocity 2 = 0.0
+  Mesh Update 1 = 0.0
+End
+
+Boundary Condition 3
+  Name = "Approaching_wall"
+  Target Boundaries = 3
+  Noslip wall BC = Logical True
+  Mesh Update 1 = 0.0
+  Mesh Update 2 = Equals Dy
+
+! Activating this one changes the design problem to just a parameter scan
+! Without coupling to optimization
+!
+!  Mesh Update 2 = Variable time
+!    Real MATC "-1.0e-8*(tx-1)"
+End
+
+Boundary Condition 4
+  Name = "Fluid_inlet"
+  Target Boundaries = 4
+  Velocity 2 = 0.0
+  Mesh Update 1 = 0.0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=3.71242647492795591E-002\n");
+
+
+
+

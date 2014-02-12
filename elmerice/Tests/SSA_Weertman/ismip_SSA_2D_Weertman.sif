@@ -1,0 +1,162 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! ISMIP-HOM D020 solved in Diagnostic   !!
+!! using SSA with Weertman friction law  !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+$Step = "SSA_2D_Weertman"
+$L = 20.0e3
+$Slope = 0.1 * pi / 180.0
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+! No constant Needed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady 
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  !Output File = "ismip_step$Step$.result"
+  Post File = "test_$Step$.vtu"
+
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+   SSAVelocity 1 = Real 0.0
+   SSAVelocity 2 = Real 0.0
+
+! Thickness
+  H = Real 1000.0
+! free surface elevation
+  Zs = Variable Coordinate 1
+    Real MATC "-tx*tan(Slope)"
+! bedrock elevation
+  Zb = Variable Coordinate 1
+    Real MATC "-tx*tan(Slope)-1000.0"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+
+! Material properties
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 1.0e-10
+
+  SSA Mean Viscosity = Real $eta
+  SSA Mean Density = Real $rhoi
+
+  SSA Friction Law = String "Weertman"
+
+  ! Needed for Linear, Weertman and Coulomb
+  SSA Friction Parameter = Variable coordinate 1 , Coordinate 2
+     Real  MATC "1.0e-3*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))                                  
+
+  ! Needed for Weertman and Coulomb
+  SSA Friction Exponent = Real $1.0/n
+  SSA Friction Linear Velocity = Real 0.0001
+End
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "SSA"
+  Variable = -dofs 2 "SSAVelocity"
+
+  Procedure = "ElmerIceSolvers" "SSABasalSolver"
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-10
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-03
+  Nonlinear System Relaxation Factor = 1.00
+
+  Exported Variable 1 = -dofs 1 "Zs"
+  Exported Variable 2 = -dofs 1 "Zb"
+End
+
+Solver 2
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical False
+
+  Variable 1 = String "SSAVelocity"
+  Operator 1 = String "int
+
+  Variable 2 = String "SSAVelocity"
+  Operator 2 = String "max"
+
+  Variable 3 = String "SSAVelocity"
+  Operator 3 = String "min"
+
+  Operator 4 = String "cpu time"
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 1
+End
+
+! Periodic Right
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Translate(2) = Real $L 0.0  
+  Periodic BC SSAVelocity 1  = Logical True
+  Periodic BC SSAVelocity 2  = Logical True
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Periodic BC = 1 
+  Periodic BC Translate(2) = Real 0.0 $L 
+  Periodic BC SSAVelocity 1  = Logical True
+  Periodic BC SSAVelocity 2  = Logical True
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+End

@@ -1,0 +1,55 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = "Cartesian 2D"
+  Simulation Type = Transient
+  Timestep Sizes = 0.01
+  Timestep Intervals = 10
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+  Max Output Level = 3
+
+! Post File   = "ptest.ep"
+! Output File = "ptest.dat"
+End
+
+Body 1
+  Equation = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Potential Velocity = Real 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Poisson"
+
+  Variable = "Potential"
+  Variable DOFs = 1
+  Procedure = "WaveEq" "WaveSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Potential = Real 0
+  Potential Velocity = Real 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.815834703788E-01\n" );

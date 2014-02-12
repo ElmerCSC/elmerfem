@@ -1,0 +1,214 @@
+$ trueloops = 3 ! number of the more costly loops
+$ aveorder = 1  ! best to fix this to one
+$ avemethod = 0 ! best to fix this to zero
+$ relax = 0.7   ! geometry relaxation factor
+$ vmax = 1.0   ! push velocity & initial guess
+
+Header
+  Mesh DB "." "slab"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System =  Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 20
+  Output Intervals = 0
+!  Post File = case.ep
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+Body 1
+  Name = "FluidBody"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Velocity 1 = 0
+  Velocity 2 = $ -0.5*vmax
+End
+
+Equation 1
+  Name = "Fluid"
+
+! The natural sequence of the solvers would be different but we want the 
+! norm of the N-S solver to appear last.
+  Active Solvers(3) = 1 2 3
+End
+
+! Body force may be used to take into account gravity, for example
+Body Force 1
+End 
+
+Solver 1 
+  Equation = "FlowLine"
+  Procedure = "StructuredFlowLine" "StructuredFlowLine"
+  
+! relaxation may be used to relax already the suggested displacement field
+  Nonlinear System Relaxation Factor = $ relax
+! The direction of the extrusion process: more costly & accurate
+  Active Coordinate = Integer 2
+! The velocity variable computed by the Navier-Stokes solver  
+  Velocity Variable Name = String "Flow Solution"
+
+! If this is true the displacement are set in the hard way, without smoothing  
+  Displacement Mode = Logical False 
+
+  True Flow Line Iterations = Integer $ trueloops
+  Averaging Order = Integer $ aveorder
+  Averaging Method = Integer $ avemethod   
+  Dot Product Tolerance = Real 0.001
+End
+
+
+Solver 2
+! In tests when setting "displacement mode" to true, this one should be turned off
+! Exec solver = never
+
+  Equation = IterativeMeshUpdate
+  Procedure = "NonphysicalMeshSolve" "MeshSolver"
+  Variable = TmpUpdate[MeshU:2]
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = none
+  Linear System Max Iterations = 500
+  Linear System Residual Output = 10
+  Linear System Convergence Tolerance = 1.0e-8
+  
+! Here the solution converges to zero and hence relative tolerance is not a good measure  
+  Steady State Convergence Tolerance = 1.0
+
+! In cumulative mode the original shape does not need to be known
+  Cumulative Displacement = Logical True
+
+! This refers to some other solver moving the mesh, not here
+  Moving Mesh = Logical False
+End
+
+
+Solver 3
+  Equation = "Navier-Stokes"
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+  Stabilization Method = String Stabilized
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 10
+  Linear System Abort Not Converged = False
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+! one is good for testing and low Re numbers   
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-2
+  Nonlinear System Relaxation Factor = 1.0
+
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+
+
+Solver 4
+! In auxiliary solver that currently mainly saves various convergence data
+! This may be used in comparing different methods.
+
+  Exec Solver = never 
+
+  Equation = SaveConvergenceInfo
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat 
+
+  Variable 1 = Flow Solution
+  Operator 1 = nonlin change
+  Operator 2 = steady state change
+  Operator 3 = norm
+
+  Variable 4 = MeshU
+  Operator 4 = nonlin change
+  Operator 5 = steady state change
+  Operator 6 = norm
+
+  Variable 7 = flow solution
+  Operator 7 = convective flux
+
+  Operator 8 = cpu time
+End  
+
+! The parameters have been fixed to result to rather small Re number 
+Material 1
+  Name = "Liquid"
+  Density = 10.0
+  Viscosity = 1.0
+End
+
+! Only herafter should there be a difference between the basic & 
+! symmetric case
+
+
+Boundary Condition 1
+  Name = "Free"  
+  Target Boundaries = 1
+
+  MeshU 1 = Equals FlowLineDisp 1
+  MeshU 2 = Real 0.0
+
+  Flow Line = Logical True
+End
+
+
+Boundary Condition 2
+  Name = "Walls"  
+  Target Boundaries = 2
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+
+  MeshU 1 = Real 0.0
+  MeshU 2 = Real 0.0
+End
+
+
+
+Boundary Condition 3
+  Name = "Outlet"
+  Target Boundaries = 3
+
+  MeshU 2 = Real 0.0
+  
+! with this flag the convective flux is saved for the boundary
+  Save Scalars = Logical True  
+End
+
+Boundary Condition 4
+  Name = "Inlet"
+  Target Boundaries = 4
+
+  Velocity 1 = 0
+  Velocity 2 = Variable Coordinate 1 
+    Real MATC "-4*(0.5+tx)*(0.5-tx)*vmax"
+
+  MeshU 1 = Real 0.0
+  MeshU 2 = Real 0.0
+  Save Scalars = Logical True  
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.42415125\n");
+
+

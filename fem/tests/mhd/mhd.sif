@@ -1,0 +1,146 @@
+Header
+  Mesh DB "." "mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+  Steady State Max Iterations = 20
+
+  Timestepping Method = BDF
+  BDF Order = 2
+  Timestep Sizes = 0.5
+  Timestep Intervals = 2
+
+  Output Intervals = 1
+! Post File = "mhd.ep"
+! Output File = "mhd.dat"
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Body Force 1
+  Lorentz Force = True
+  Magnetic Bodyforce 2
+    Variable Time
+      Real Procedure "exmag" "applieddBdt
+End
+
+Solver 1
+   Equation = "Navier-Stokes"
+
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 500
+
+   Linear System Convergence Tolerance = 1.0e-6
+   Linear System Preconditioning = ILU3
+   Linear System Residual Output = 10
+   Steady State Convergence Tolerance = 1.0e-4
+   Stabilize = True
+
+   Nonlinear System Convergence Tolerance = 1.0e-5
+   Nonlinear System Max Iterations = 1
+   Nonlinear System Newton After Iterations = 3
+   Nonlinear System Newton After Tolerance = 1.0e-2
+   Nonlinear System Relaxation Factor = 0.8
+End
+
+
+Solver 2
+!  Exec Solver = Never
+   Equation = "Magnetic field solver"
+
+   Procedure = "MagneticSolve" "MagneticSolver"
+   Variable = Magnetic Field
+   Variable DOFs = 3
+
+   Exported Variable 1 = -dofs 3 electric current
+
+   Linear System Solver = Direct
+   Linear System Direct Method = UMFPack
+   Linear System Iterative Method = BiCGStab
+   Linear System Max Iterations = 500
+
+   Linear System Convergence Tolerance = 1.03e-5
+   Linear System Preconditioning = ILU3
+   Linear System Residual Output = 1
+   Steady State Convergence Tolerance = 1.0e-4
+   Stabilize = True
+
+   Nonlinear System Convergence Tolerance = 1.0e-5
+   Nonlinear System Max Iterations = 1
+   Nonlinear System Newton After Iterations = 3
+   Nonlinear System Newton After Tolerance = 1.0e-2
+   Nonlinear System Relaxation Factor = 1.0
+End
+
+
+
+Material 1
+  Density = 1
+  Viscosity = 1e-2  
+
+  Magnetic Permeability = 1e-5
+  Electric Conductivity = 1000
+
+  Applied Magnetic Field 2
+    Variable Time
+      Real Procedure "exmag" "appliedB
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Velocity 1 = Variable Coordinate 1
+    Real
+      0    0
+      0.5  0.01
+      1    0
+    End
+
+  Velocity 2 = 0
+
+  Magnetic Field 1 = Real 0
+  Magnetic Field 2 = Real 0
+  Magnetic Field 3 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(3) = 2 3 4
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+
+  Magnetic Field 1 = Real 0
+  Magnetic Field 2 = Real 0
+  Magnetic Field 3 = Real 0
+
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.377841817699E-06\n" );
+!End of File

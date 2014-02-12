@@ -1,0 +1,119 @@
+check keywords warn
+echo on
+
+
+Header
+  Mesh DB "." "mesh"
+End
+
+Constants
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type = Steady State
+
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Post File = "integrate_vertically.vtu"
+  max output level = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! the ice core (3d)
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  VarToBeIntegrated =  Variable Coordinate 1, Coordinate 3
+    Real MATC "0.6*tx(0)*tx(1)/1.0e6"
+End
+
+Solver 1
+  Equation = "Flowdepth"
+   Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+   Variable = String "Depth"
+   Variable DOFs = 1
+   Linear System Solver = "Direct"
+   Linear System Direct Method = "UMFPACK"
+   Gradient = Real -1.0E00
+   Calc Free Surface = Logical False
+End
+
+Solver 2  
+  Equation = "IntegrateVertically"
+   Procedure = File "ElmerIceSolvers" "IntegrateVertically"
+   !Procedure = File "./IntegrateVertically" "IntegrateVertically"
+   Variable = String "Mean Var"
+   Variable DOFs = 1
+   
+   Exported Variable 1 = String "VarToBeIntegrated"
+   Exported Variable 1 DOFs = 1
+
+   ! We want it computed on the bed
+   On Surface = Logical False 
+   ! We want the mean value
+   ! We then need the Depth
+   Compute Mean = Logical True
+   Integrated Variable Name = String "VarToBeIntegrated"
+
+   Linear System Solver = "Direct"
+   Linear System Direct Method = umfpack
+End
+
+!Solver 3
+!  Exec Solver =  After All
+!  Procedure = File "SaveData" "SaveLine"
+!  Filename =  "date_bed.dat"
+!  File Append = Logical False
+!End
+
+Solver 3
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical True
+
+  Variable 1 = String "VarToBeIntegrated"
+  Operator 1 = String "int"
+  Variable 2 = String "VarToBeIntegrated"
+  Operator 2 = String "max"
+  Variable 3 = String "VarToBeIntegrated"
+  Operator 3 = String "min"
+
+  Variable 4 = String "Mean Var"
+  Operator 4 = String "int" 
+  Variable 5 = String "Mean Var"
+  Operator 5 = String "max" 
+  Variable 6 = String "Mean Var"
+  Operator 6 = String "min" 
+  Operator 7 = String "cpu time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (2) = 1 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!! bedrock
+Boundary Condition 1
+  Target Boundaries = 5
+  Save Line = Logical True
+End
+
+!!! free surface
+Boundary Condition 2
+  Target Boundaries = 6
+  Mean Var = Real 0.0 
+  Depth = Real 0.0
+End 

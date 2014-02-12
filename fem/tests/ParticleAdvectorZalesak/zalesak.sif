@@ -1,0 +1,212 @@
+! Simple test case where the Zalesak's disk is rotated with the 
+! semi-lagrangian particle tracker. 
+
+!check keywords abort
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = String Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Timestepping Method = String BDF
+  BDF Order = Integer 2
+
+$ n = 40
+  Timestep sizes = $ 2*pi/n
+  Timestep Intervals = 10
+  Steady State Max Iterations = Integer 1
+  Output Intervals(1) = Integer 1
+
+!  Output File = File "data.dat"
+!  Post File = File "data.ep"
+End
+
+Constants
+  Gravity(4) = Real 0.0 -1.0 0.0 9.82
+  Stefan Boltzmann = Real 5.67e-08
+End
+
+Body 1
+  Name = String "fluid"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+Initial Condition 1
+  Surface = Variable Coordinate 1
+       Real Procedure "Zalesak" "InitZalesak"
+
+  Renorm = Variable Coordinate 1
+       Real Procedure "Zalesak" "InitZalesak"
+
+  Velo 1 = Variable Coordinate 1
+    Real Procedure "Zalesak" "RotateVeloX"
+
+  Velo 2 = Variable Coordinate 1
+    Real Procedure "Zalesak" "RotateVeloY"
+End
+
+
+Equation 1
+  Name = String "LevelsetSolvers"
+  Active Solvers(4) = 1 2 3 4  
+End
+
+Solver 1
+! The diffusion equation based advector for levelset function which fails 
+! terribly for long timesteps.
+
+! now set passive
+  Exec Solver = never
+
+  Equation = String "Level Set"
+  Variable = String Surface
+  Variable DOFs = Integer 1
+  Procedure = File "LevelSet" "LevelSetSolver"
+  Steady State Convergence Tolerance = Real 1e-6
+
+  Stabilize = Logical True
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Convergence Tolerance = Real 1.0e-6
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+
+  Limit Timestep = Logical True
+  Limit Courant Number = Real 1.0
+
+  Exported Variable 1 = Renorm
+  Exported Variable 2 = -dofs 2 Velo
+End
+
+
+Solver 2
+! The semi-lagrangian particle advector that works the better the longer the timestep
+
+  Equation = ParticleAdvector
+  Procedure = "ParticleAdvector" "ParticleAdvector"
+
+  Particle Dt Constant = Logical False
+
+!!! defaults
+!  Time Order = Integer 0
+!  Particle Node Fraction = Real 1.0
+!  Coordinate Initialization Method = String "nodal ordered"
+!  Velocity Initialization Method = String "nodal velocity"
+!  Particle Accurate At Face = Logical True
+
+!!!! timestepping strategy
+  Simulation Timestep Sizes = Logical True
+  Max Timestep Intervals = Integer 5
+
+!!!! time integration 
+!  Runge Kutta = Logical True
+  Velocity Gradient Correction = Logical True
+  Velocity Variable Name = String Velo
+  
+!!!! Different operators
+!  Derivative Advection = Logical True
+!  Difference Advection = Logical True
+!  Cumulative Advection = Logical True
+
+! The variable to compute the norm for
+!  Norm Variable Index = Integer 1   
+
+! Show some info in the end
+  Particle Info = Logical True
+  Particle Time = Logical True
+
+! The variables, rather exhaustive list here
+  Variable 1 = String "Surface"
+  Result Variable 1 = String "Surface"
+
+! The internal variables for this solver
+  Variable 2 = String "Particle Distance"
+!  Variable 3 = String "Particle time"
+!  Variable 4 = String "Particle Status"
+!  Variable 5 = String "Particle Velocity_Abs"
+!  Variable 6 = String "Particle Number"
+End 
+
+
+Solver 3
+! Optional reinitialization / saving of levelset curve
+
+  Exec Solver = never
+  Equation = String "Reinitialize"
+
+!  Variable = String Renorm
+!  Variable DOFs = Integer 1
+  Procedure = File "LevelSet" "LevelSetDistance"
+
+  Extract Interval = Integer 1
+  Reinitialize Interval = Integer 0
+!  Reinitialize Passive = Logical True
+  Filename = File "ls.dat"
+  File Append = Logical True
+End
+
+
+
+Solver 4
+! optional postprocessing
+
+  Equation = String "Integrate"
+
+  Procedure = File "LevelSet" "LevelSetIntegrate"
+  Levelset Bandwidth = Real 0.02
+!  Conserve Volume = Logical True
+!  Conserve Volume Relaxation = Real 0.5
+End
+
+
+Solver 5
+! optional saving of results
+
+  Exec Solver = never
+  Equation = String "SaveScalars"
+
+  Exec Solver = After timestep
+  Procedure = File "SaveData" "SaveScalars"
+
+! saving is skipped for the tests
+!  Filename = File "f.dat"
+
+  Show Norm Index = Integer 1
+End
+
+
+Solver 6
+!  Exec Solver = after saving
+
+  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = zalezak
+
+  Vtu Format = Logical True
+  Binary Output = Logical True
+  Single Precision = Logical True
+End
+
+
+Material 1
+  Name = String "ideal"
+
+  Density = 1.0
+  Viscosity = 1.0
+
+  Levelset Velocity 1 = Equals Velo 1
+  Levelset Velocity 2 = Equals Velo 2 
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=5.761178188205E-002\n");

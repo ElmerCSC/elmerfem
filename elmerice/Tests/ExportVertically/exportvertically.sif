@@ -1,0 +1,62 @@
+check keywords warn
+echo on
+
+Header
+  Mesh DB "." "mesh"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type = Steady State
+
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Post File = "export_vertically.vtu"
+  max output level = 20
+End
+
+Body 1
+  Equation = 1
+End
+
+Solver 1  
+  Equation = "ExportVertically"
+
+  Procedure = File "ElmerIceSolvers" "ExportVertically"
+  Variable = String "ExportedVariable"
+  Variable DOFs = 1
+  Linear System Solver = "Direct"
+  Linear System Direct Method = umfpack
+End
+
+Solver 2
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  Variable 1 = String "ExportedVariable"
+  Operator 1 = String "int"
+  Variable 2 = String "ExportedVariable"
+  Operator 2 = String "max"
+  Variable 3 = String "ExportedVariable"
+  Operator 3 = String "min"
+  Operator 4 = String "cpu time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (2) = 1 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!! bedrock
+Boundary Condition 1
+  Target Boundaries = 5
+! Replace this by
+!   ExportedVariable = Equals MyVariableToBeExported
+    ExportedVariable = Variable Coordinate 1, Coordinate 2
+      Real MATC "cos(3*pi*tx(0)/1000.0)*cos(2*pi*tx(1)/1000.0)"

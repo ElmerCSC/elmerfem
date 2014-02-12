@@ -1,0 +1,67 @@
+Header
+  Mesh DB "." "heater"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System =  Cartesian
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+
+  Output Intervals = 1
+! Post File = "BEM_Temperature.ep"
+! Output File = "BEM_Temperature.result"
+End
+
+Body 1
+  Name = "medium"
+  Equation = 1
+End
+
+Equation 1
+  PoissonBEM = Logical True
+End
+
+Solver 1
+  Equation = PoissonBEM
+  Procedure = "PoissonBEM" "PoissonBEMSolver"
+  Variable = Temperature
+  Variable DOFs = 1
+
+  Optimize Bandwidth = False
+
+  Exported Variable 1 = String Flux
+  Exported Variable 1 DOFs = 1
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = Jacobi
+  Linear System Max Iterations = 100
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+Boundary Condition 1
+  Name = "heater_surface"
+  Target Boundaries = 1
+
+  Body Id = 1
+  Normal Target Body = Integer -1
+  Flux = Real 1
+End
+
+Boundary Condition 2
+  Name = "box_walls"
+  Target Boundaries = 2
+
+  Body Id = 1
+  Normal Target Body = Integer -1
+  Temperature = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.278822714363\n" );

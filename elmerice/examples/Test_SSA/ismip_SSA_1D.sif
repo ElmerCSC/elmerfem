@@ -1,0 +1,211 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                          !!
+!! ISMIP-HOM E020 (1D) solved in prognostic !!
+!!   using SSA and thickness solvers        !!
+!!                                          !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+$Step = "SSA_1D"
+$L = 20.0e3
+$Slope = 0.1 * pi / 180.0
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+! No constant Needed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Transient     
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Output Intervals = 1
+  Timestep Intervals =  100
+  Timestep Sizes = 1.0 
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "test_$Step$.vtu"
+
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+! bottom where SSA and Thickness equations are solved
+Body 2
+  Equation = 2
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  SSAVelocity  = Real 0.0
+
+  H = Real 1000.0
+
+  Zs = Variable Coordinate 1
+    Real MATC "-tx*tan(Slope)"
+  Zb = Variable Coordinate 1
+    Real MATC "-tx*tan(Slope)-1000.0"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real $gravity
+
+  Zs = Variable Zb , H
+     REAL MATC "tx(0)+tx(1)"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 1.0e-10
+
+
+  SSA Mean Viscosity = Real $eta
+  SSA Mean Density = Real $rhoi
+
+  SSA Friction Law = String "linear"
+  SSA Friction Parameter = Variable coordinate 1 
+     Real  MATC "1.0e-3*(1.0 + sin(2.0*pi* tx(0) / L))  
+
+End
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "SSA"
+  Variable = -dofs 1 "SSAVelocity"
+
+  Procedure = "ElmerIceSolvers" "SSABasalSolver"
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-10
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-06
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+End
+
+!! Thickness solver
+Solver 2
+
+   Equation = "Thickness"
+   Variable = -dofs 1 "H"
+
+   Exported Variable 1 = -dofs 1 "H Residual"
+
+   Exported Variable 2 = -dofs 1 "dHdt"
+
+   Compute dHdT = Logical True
+
+  Procedure = "ElmerIceSolvers" "ThicknessSolver"
+   Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+   Linear System Solver = Iterative
+   Linear System Max Iterations = 1500
+   Linear System Iterative Method = BiCGStab
+   Linear System Preconditioning = ILU0
+   Linear System Convergence Tolerance = Real 1.0e-12
+   Linear System Abort Not Converged = False
+   Linear System Residual Output = 1500
+
+   Nonlinear System Max Iterations = 50
+   Nonlinear System Convergence Tolerance  = 1.0e-6
+   Nonlinear System Relaxation Factor = 1.00
+
+   Steady State Convergence Tolerance = 1.0e-03
+
+  Stabilization Method = stabilized
+  Apply Dirichlet = Logical False
+
+  !! you can give the  name of the convection velocity (mean horizontal velocity)
+       Flow Solution Name = String "SSAVelocity"
+End
+
+
+!! This solver is just used to update Zs (look for the value of Zs in Body forces
+Solver 3
+   Equation = "UpdateExport"
+   Procedure = "ElmerIceSolvers" "UpdateExport"
+   Variable = -nooutput "dumy"
+
+   Exported Variable 1 = -dofs 1 "Zs"
+   Exported Variable 2 = -dofs 1 "Zb"
+End
+
+!!! dumy here, just to have a solver in body 1
+Solver 4
+  Exec Solver = never
+    Equation = "Navier-Stokes"
+
+      Stabilization Method = String Bubbles
+        Flow Model = Stokes
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(1) = 4
+End
+
+Equation 2
+  Active Solvers(3) = 1 2 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 1
+  
+  Body Id = 2
+
+End
+
+! Periodic Right
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Translate(2) = Real $L 0.0  
+  Periodic BC SSAVelocity   = Logical True
+  
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+

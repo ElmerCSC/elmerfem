@@ -1,0 +1,40 @@
+Elmergrid contains the METIS library.
+
+License lic_metis
+-----------------
+
+* Copyright 1997, Regents of the University of Minnesota
+
+Our policy regarding the distribution of METIS with third-party applications is as follows:
+
+    *  Non-commercial applications
+      METIS can be freely distributed provided that:
+          o Proper references are included.
+          o The original documentation and copyright notice is included.
+    * Commercial applications
+      METIS can be freely distributed provided that:
+          o Proper references are included.
+          o The original documentation and copyright notice is included.
+          o METIS is a relatively small portion of the overall application.
+
+
+elmergrid GPL Exception v. 1.0
+==============================
+
+Additional rights granted by the copyright holder, beyond GPL version 2.
+-------------------------------------------------------------------------
+
+As an exception to the conditions of Gnu General Public Licence version 2
+(GPL-2), CSC - IT Center for Science Ltd., the copyright holder of
+elmergrid, hereby grants you the right to link the source code within this
+directory against the libraries of
+
+"METIS" v. 4.0.1 by Regents of the University of Minnesota
+"Scotch" v. 5.0 by François Pellegrini
+
+You may also link ElmerGUI against any later versions of METIS or Scotch,
+provided that the license permits such usage. The license terms for the
+METIS library are above, and the CeCILL-C license terms for the Scotch
+library can be found from
+
+http://www.labri.fr/perso/pelegrin/scotch/

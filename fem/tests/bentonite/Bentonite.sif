@@ -1,0 +1,149 @@
+Check Keywords "Warn"
+
+
+Header
+  Mesh DB "." "1d"
+End
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = axi symmetric
+  Coordinate Mapping(3) = 1 2 3
+
+!  Simulation Type = "Transient"
+
+  Simulation Type = "Stationary"
+
+!  Simulation Type = "Steady"
+
+  BDF Order = 2
+  Timestepping Method = BDF
+
+!---------------------------------------------------------------------
+! Time Stepping
+!---------------------------------------------------------------------
+
+!--------------------------------------------
+! Period infinity:
+
+  Timestep Sizes(1) = 315360000
+  Output Intervals(1) = 1
+  Timestep Intervals(1) = 100
+!--------------------------------------------
+
+!---------------------------------------------------------------------
+
+  Steady State Max Iterations = 1
+
+!
+!  Adaptive Timestepping = True
+!  Adaptive Time Error = 1.0e-4
+!  Adaptive Keep Smallest = 1
+!  Adaptive Min Timestep  = 1
+!
+
+! Post File   = "CTZ.ep"
+! Output File = "CTZ.dat"
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+!-------------------------------------------------------------
+!-------------------------------------------------------------
+! INITIAL CONDITIONS
+!-------------------------------------------------------------
+!-------------------------------------------------------------
+
+!------------------------------------
+! Period infinity:
+
+Initial Condition 1
+  Bentonite 1 = Real 0.54
+  Bentonite 2 = Real 285.15
+  Bentonite 3 = Real 0.023
+End
+!------------------------------------
+
+
+!---------------------------------------------------------------------
+
+
+
+
+Equation 1
+  Bentonite = Logical True
+End
+
+
+Solver 1
+  Equation = "Bentonite"
+
+  Variable = "Bentonite"
+  Variable DOFs = 3
+  Procedure = "./BentoniteSolver" "BentoniteSolver"
+
+  Linear System Solver = "Direct"
+
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 350
+  Linear System Convergence Tolerance = 1e-06
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Linear System Abort Not Converged = True
+
+  Steady State Convergence Tolerance = 1e-09
+
+  Nonlinear System Convergence Tolerance = 1e-8
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Relaxation Factor = 0.9
+  Nonlinear System Newton After Tolerance = 0.01
+End
+
+
+Material 1
+  Name = "Material1"
+End
+
+
+
+!--------------------------------------------------------------------
+!--------------------------------------------------------------------
+! Boundary Conditions
+!--------------------------------------------------------------------
+!--------------------------------------------------------------------
+
+
+!-------------------------------------
+! Period infinity:
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Bentonite 2 = Real 373.15
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Bentonite 1 = Real 0.999
+  Robin Condition = Logical True
+End
+
+$ fprintf( stderr, "TEST CASE 1\n" );
+RUN
+$ fprintf( stderr, "END TEST CASE 1, Target NRM=195.29246682297156\n" );
+
+!-------------------------------------

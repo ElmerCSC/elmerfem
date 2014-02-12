@@ -1,0 +1,138 @@
+Check Keywords "Warn"
+Header
+  Mesh DB "." "rectangles"
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 2
+  Body Force = 2
+  Material = 2
+End
+
+
+Equation 1
+  Name = "Deform and Heat"
+  Active Solvers(2) = 1 2
+End
+
+Equation 2
+  Name = "Just Heat"
+  Active Solvers(1) = 2
+End
+
+Body Force 1
+  Mesh Rotate 3 = Real 30.0
+  Mesh Origin(3) = Real 1.5 1.25 0.0
+  Mesh Translate 2 = Real 0.1
+End
+
+Body Force 2
+  Heat Source = 1.0  
+
+  Mesh Rotate 3 = Real 30.0
+  Mesh Origin(3) = Real 1.5 1.25 0.0
+  Mesh Translate 2 = Real 0.1
+End
+
+Material 1
+  Name = "Insulation"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+ 
+Material 2
+  Name = "Heater"
+  Heat Conductivity = 100.0
+  Density = 1.0
+End 
+
+
+Solver 1
+! Solves the new mesh positions combining rigid mesh movement
+! and a computed relaxation field [0,1] computed from a Laplace equation.
+
+  Exec Solver = Before all
+
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical True
+
+  Variable = MeshRelax
+  Nonlinear Conductivity Coeffient = Real 1.0
+  Nonlinear System Relaxation Factor = Real 0.5
+  Nonlinear System Relaxation After = Integer 1
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Convergence Tolerance = 1.4e-4
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+  Optimize Bandwidth = False
+End
+
+Solver 2
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End 
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+! Special keyword when solving the MeshRelax field
+  Fixed Boundary = Logical True
+  Temperature = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+! Special keyword when solving the MeshRelax field
+  Moving Boundary = Logical True
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=4.41315423602793785E-002\n");

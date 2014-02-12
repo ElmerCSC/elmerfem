@@ -1,0 +1,283 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! ISMIP-HOM D020 solved in prognostic   !!
+!!   using Navier-Stokes and thickness solvers  !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+$Step = "NS_3D"
+$L = 20.0e3
+$Slope = 0.1 * pi / 180.0
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+
+Header
+  Mesh DB "." "cube"
+End
+
+Constants
+! No constant Needed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Simulation Type = Transient     
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Output Intervals = 1
+  Timestep Intervals =  10
+  Timestep Sizes = 1.0 
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "test_$Step$.vtu"
+
+  max output level = 10
+
+!  Extruded Mesh Levels = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The bulk
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+! the bottom BC where  Thickness is solved
+Body 2
+  Equation = 2
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+
+! Thickness
+  H = Real 1000.0
+
+! bedrock elevation
+  Zb = Variable Coordinate 1
+    Real MATC "-tx*tan(Slope)-1000.0"
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity 
+
+  Top Surface Accumulation = Real 0.0
+  Bottom Surface Accumulation = Real 0.0
+
+ !! Velocity used for the convection term of the Thickness eq. (here mean horizontal velocity)
+  Convection Velocity 1 = Variable int Velocity 1, thickness
+     REAL MATC "tx(0)/tx(1)"
+  Convection Velocity 2 = Variable int Velocity 2, thickness
+     REAL MATC "tx(0)/tx(1)"
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+
+  Density = Real $rhoi 
+  Viscosity Model = String "power law"
+  Viscosity = Real $eta                       
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 1.0e-10
+
+End
+
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+
+   Mesh Velocity Variable = String "dSdt"
+   Mesh Update Variable = String "dS"
+   Mesh Velocity First Zero = Logical True
+
+End
+
+Solver 2
+  Equation = "Navier-Stokes"
+
+   Stabilization Method = String Bubbles
+   Flow Model = Stokes
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-12
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.00
+  Nonlinear System Reset Newton = Logical True
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+
+   Exported Variable 1 = -dofs 1 "thickness"
+   Exported Variable 2 = -dofs 1 "int Velocity 1"
+   Exported Variable 3 = -dofs 1 "int Velocity 2"
+
+   Exported Variable 4 = -dofs 1 "dSdt"
+   Exported Variable 5 = -dofs 1 "dS"
+
+   Exported Variable 6 = -dofs 1 "Zb"
+End
+
+Solver 3
+!  StructuredProjectToPlane: used to compute integrated viscosity and density
+!   thickness will also be used to compute mean viscosity and density
+  Equation = "HeightDepth"
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 3
+
+  Operator 1 = depth
+  Operator 2 = height
+  Operator 3 = thickness
+
+  !! compute the integrated horizontal Viscosity and Density
+  Variable 4 = Velocity 1
+  Operator 4 = int
+
+  Variable 5 = Velocity 2
+  Operator 5 = int
+
+End
+
+!! Thickness solver
+Solver 4
+   Equation = "Thickness"
+   Variable = -dofs 1 "H"
+
+   Exported Variable 1 = -dofs 1 "H Residual"
+
+   Exported Variable 2 = -dofs 1 "dHdt"
+
+   Compute dHdT = Logical True
+
+  Procedure = "ElmerIceSolvers" "ThicknessSolver"
+   Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+   Linear System Solver = Iterative
+   Linear System Max Iterations = 1500
+   Linear System Iterative Method = BiCGStab
+   Linear System Preconditioning = ILU0
+   Linear System Convergence Tolerance = Real 1.0e-12
+   Linear System Abort Not Converged = False
+   Linear System Residual Output = 1500
+
+! equation is linear if no min/max
+   Nonlinear System Max Iterations = 50
+   Nonlinear System Convergence Tolerance  = 1.0e-6
+   Nonlinear System Relaxation Factor = 1.00
+
+
+  Stabilization Method = stabilized
+  Apply Dirichlet = Logical False
+
+  Convection Dimension = Integer 2
+End
+
+Solver 5
+  Exec Solver = After TimeStep
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical True
+ 
+  Variable 1 = String "Time"
+
+  Variable 2 = String "H"
+  Operator 2 = String "int"
+
+  Variable 3 = String "H"
+  Operator 3 = String "Max Abs"
+
+  Variable 4 = String "cpu time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+   Active Solvers(4) = 1 2 3 5
+End
+
+Equation 2
+  Active Solvers(1) = 4
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 1
+
+End
+
+! Periodic Right
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Translate(3) = Real $L 0.0 0.0
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Velocity 3  = Logical True
+  Periodic BC Pressure = Logical True
+  Periodic BC H  = Logical True
+  
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+
+  Periodic BC = 1 
+  Periodic BC Translate(3) = Real 0.0 $L 0.0
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Velocity 3  = Logical True
+  Periodic BC Pressure = Logical True
+  Periodic BC H  = Logical True
+
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+
+Boundary Condition 5
+  Target Boundaries = 5
+  Bottom Surface = Equals Zb
+
+  Normal-Tangential Velocity = Logical True
+ 
+  Velocity 1 = Real 0.0
+
+  Slip Coefficient 2 = Variable coordinate 1 , Coordinate 2
+     Real  MATC "1.0e-3*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))" 
+
+  Slip Coefficient 3 = Variable coordinate 1 , Coordinate 2
+     Real  MATC "1.0e-3*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))"                                  
+End
+
+Boundary Condition 6
+  Target Boundaries = 6
+  Body Id = 2
+  Top surface = Variable Zb , H
+     REAL MATC "tx(0)+tx(1)"
+End

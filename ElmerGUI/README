@@ -1,0 +1,54 @@
+Brief build instructions for ElmerGUI:
+--------------------------------------
+
+Prequisites:
+
+   - Qt 4             (4.8 or higher)
+
+Optional components:
+
+   - Qwt 6            (for qt 4.8)
+   - Vtk 5            (compiled with qt 4.8)
+   - Open Cascade     (programmed with 6.3, but versions 6.2-6.5 seems to work as well.)
+   - PythonQt         (see ./PythonQt/README for more details)
+   - Tetgen           (1.4.2 or newer)
+
+Please read the file LICENSES before using any of these software components.
+
+Tetgen should be installed as described in ../misc/tetgen_plugin/RAEDME
+
+In order to compile ElmerGUI, edit the file ElmerGUI.pri and select the
+optional components to build. You should also define the directories where
+the external libraries and their headers reside.
+
+If this is the first time you compile ElmerGUI, the following lines may be
+commented out in order to minimize possible compilation problems (add the
+lines gradually back later):
+
+#------------------------------------------------------------------------------
+# Optional components:
+#------------------------------------------------------------------------------
+# DEFINES += EG_QWT       # Use QWT for convergence monitor?
+# DEFINES += EG_VTKP      # Use VTK for postprocessing?
+# DEFINES += EG_MATC      # Use MATC for internal operations in postprocessing?
+# DEFINES += EG_OCC       # Use OpenCASCADE for importing CAD files?
+# DEFINES += EG_PYTHONQT  # Use PythonQt for scripting in post processor?
+
+Compile as:
+
+$ qmake
+$ make
+
+This should produce the executable "./ElmerGUI" or "./release/ElmerGUI.exe"
+
+If the plugin for tetgen is found in the path (LD_LIBRARY_PATH for Unix,
+and PATH for Windows), its functionality will be available when the program
+starts. If the library is not found, the main program will run, but with'
+some functionality disabled.
+
+Finally install the program by typing
+
+$ make install
+
+Finally set the environment variable ELMERGUI_HOME = $ELMER_HOME/bin
+and make sure it is in PATH (ELMER_HOME is defined in ElmerGUI.pri).

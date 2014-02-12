@@ -1,0 +1,4 @@
+This includes scalapack components: BLAS, LAPACK, ARPACK and PARPACK
+wrapped up in autoconf/automake build scripts.
+
+Juha Vierinen 2005

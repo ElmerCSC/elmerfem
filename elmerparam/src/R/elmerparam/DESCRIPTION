@@ -1,0 +1,9 @@
+Package: elmerparam
+Type: Package
+Title: What the package does (short line)
+Version: 1.0
+Date: 2006-08-17
+Author: Erik Edelmann
+Maintainer: Erik Edelmanna <Erik.Edelmann@csc.fi>
+Description: More about what it does (maybe more than one line)
+License: GPL-2

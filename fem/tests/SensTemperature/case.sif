@@ -1,0 +1,143 @@
+! Computes the sensitivity of temperature to a change in shape.
+! The top wall of a geometric shape is moved using rigid mesh
+! mapper with smooth transition. The derivative is computed numerically
+! using the steady state iteration loop. Exactly two iterations 
+! are used. The user should himself take care that the differential
+! is divided by the correct value. Here the $mesheps.  
+! 
+! Created 7.11.2013 / Peter Råback
+
+$mesheps = 1.0e-3
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "neck"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian"
+
+  Simulation Type = Scanning
+  Timestep Intervals = 1
+
+  Output Intervals = 1
+  Steady State Max Iterations = 2
+  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(2) = 1 2
+End
+
+Body Force 1
+  Heat Source = 1.0
+
+! Moves the mesh on the 2nd coupled iteration. 
+  Mesh Translate 2 = Variable "coupled iter"
+    Real MATC "mesheps*(tx-1)"
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+End 
+
+
+Solver 1
+! Solves the new mesh positions combining rigid mesh movement
+! and a computed relaxation field [0,1] computed from a Laplace equation.
+
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+  Cumulative Displacements = Logical False
+
+  Variable = MeshRelax
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.4e-4
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+  Optimize Bandwidth = False
+End
+
+
+Solver 2
+  Equation = HeatSolver
+  Variable = Temp
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+
+! These keywords only enable that a additional field 
+! (T1-T2)/eps is created. The user must provide eps and
+! take care that T1 and T2 are computed appropriately.  
+  Calculate Derivative = Logical True
+  Derivative Eps = Variable "coupled iter"
+    Real MATC "mesheps*(tx-1)"
+End 
+
+
+Boundary Condition 1
+  Name = "Fixed Walls"
+
+! Here no movement is accounted i.e. value is 0.
+  Fixed Boundary = Logical True
+  Target Boundaries = 1
+  Temp = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Stretching Walls"
+  Target Boundaries = 2
+  Temp = Real 0.0
+End
+
+Boundary Condition 3
+  Name = "Moving Wall"
+
+! Here the whole movement is accounted i.e. value is 1.
+  Moving Boundary = Logical True
+  Target Boundaries = 3
+  Temp = Real 0.0
+End
+
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.89874503E-01\n");

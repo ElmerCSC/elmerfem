@@ -1,0 +1,7 @@
+MATC = TRUE
+$ R = 2*R
+Input file = buu
+Execute = awk '{printf "%i\n", int($1)}' buu > umm
+Output file = umm
+$ I = I - 1
+$ O = sum(R - I)

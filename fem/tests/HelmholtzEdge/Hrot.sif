@@ -1,0 +1,54 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = "Cartesian 2D"
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body Force 1
+  F 1 = Real 0
+  F 2 = Real 0
+End
+
+Material 1
+  A 1 = Real 1
+  A 2 = Real 0
+End
+
+Equation 1
+  Active Solvers(1) = 1
+  Element = "n:0 e:1"
+End
+
+Solver 1
+  Equation = "Hrot"
+  Variable = "Tangent Component"
+  Variable DOFs = 2
+  Procedure = "Hrot" "HrotSolver"
+  Linear System Solver = "Direct"
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Tangent Component 1 = Real 1
+  Tangent Component 2 = Real 1
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.207762921730E-01, EPS=5e-3\n" );
+

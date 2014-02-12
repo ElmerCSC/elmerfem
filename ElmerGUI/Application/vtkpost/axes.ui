@@ -1,0 +1,31 @@
+<ui version="4.0" >
+ <class>axesDialog</class>
+ <widget class="QDialog" name="axesDialog" >
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>400</width>
+    <height>300</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>Axes</string>
+  </property>
+  <widget class="QLabel" name="nullLabel" >
+   <property name="geometry" >
+    <rect>
+     <x>160</x>
+     <y>140</y>
+     <width>111</width>
+     <height>18</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Null dialog form</string>
+   </property>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

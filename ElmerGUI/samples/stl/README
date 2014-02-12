@@ -1,0 +1,8 @@
+STL is a file format native to the stereolithography CAD software
+created by 3D Systems. This file format is supported by many other
+software packages; it is widely used for rapid prototyping and
+computer-aided manufacturing. STL files describe only the surface
+geometry of a three dimensional object without any representation of
+color, texture or other common CAD model attributes. (from wikipedia)
+
+Stl files may be read by netgen and tetgen mesh generators.

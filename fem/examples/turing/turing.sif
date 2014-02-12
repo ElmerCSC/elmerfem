@@ -1,0 +1,92 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = "Cartesian"
+  Simulation Type = Transient
+
+  Timestep Sizes(1) = 25
+  Timestep Intervals(1) = 80
+  Output Intervals(1) = 10
+
+  Timestepping Method = BDF
+  BDF Order = 2
+
+  Steady State Max Iterations = 50
+
+  Post File   = "turing.ep"
+  Output File = "turing.dat"
+
+  Max Output Level = 3
+  Output Caller = False
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material   = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Quant 1 = Real MATC "2e-3*(rand(1)-0.5)"
+  Quant 2 = Real MATC "2e-3*(rand(1)-0.5)"
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  nu = Real 0.45
+  alpha = Real  1.112
+  beta  = Real -1.01
+  gamma = Real -1
+  C     = Real  1
+  du = Real 0.516
+  dv = Real 1
+End
+
+Solver 1
+  Equation = "Turing"
+
+  Variable = "Quant"
+  Variable DOFs = 2
+  Procedure = "Turing" "TuringSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU2
+  Linear System Max Iterations  = 500
+  Steady State Convergence Tolerance = 1e-06
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+
+  Periodic BC = 3
+  Periodic BC Translate(3) = 100 0 0
+  Periodic BC Quant 1 = Logical True
+  Periodic BC Quant 2 = Logical True
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 4
+
+  Periodic BC = 2
+  Periodic BC Translate(3) = 0 100 0
+  Periodic BC Quant 1 = Logical True
+  Periodic BC Quant 2 = Logical True
+End

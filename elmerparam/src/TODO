@@ -1,0 +1,29 @@
+- Installation process (autoconf etc.):
+  * automatic build+install of R interface
+  * automatic build+install of Matlab interface
+  * Is separate Fortran library (elmerparamf) needed?
+  * testsuite
+
+- MATC:
+  * Check if MATC has vector/array support (and use it if it has).
+
+
+Ideas:
+
+- Configurable row vector delimiter when creating input files
+
+- Configurable error behaviour (exit(EXIT_FAILURE), set error variable,
+  ...).
+
+- More interfaces:
+  * Octave
+  * Phyton
+
+
+.).
+
+- More interfaces:
+  * Octave
+  * Phyton
+
+

@@ -1,0 +1,159 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test Shape Factor in 2D               !!
+!!                                       !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+echo on
+
+$nom = "shapefactor"
+$L = 1.0e3
+$Slope = 0.5 * pi / 180.0
+$shapefactor = 0.558	
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+! No constant needed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "$nom$.result"
+  Post File = "$nom$.vtu"
+  max output level = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  Velocity 1 = Real 10.0 
+  Velocity 2 = Real 0.0 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Variable Coordinate 1
+     Real Procedure "ElmerIceUSF" "ShapeFactorGravity_x"
+  Flow BodyForce 2 = Variable Coordinate 1
+     Real Procedure "ElmerIceUSF" "ShapeFactorGravity_y"
+  Shape Gravity 1 = Real  0.0              
+  Shape Gravity 2 = Real -9.7696e15       
+
+!! Rectangular valley type 
+! Rectangle Shape = Logical True
+! Rectangle Width = Real 2.0e3
+
+!! Parabola valley type
+! Parabola Shape = Logical True
+! Parabola afactor = Real 0.0005
+
+!! Given shape factor
+  Shape Factor = real $shapefactor
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real 9.1376e-19  
+
+  Viscosity Model = String "power law"
+  Viscosity = Real 0.170998e0  
+  Viscosity Exponent = Real $1.0/3.0   
+  Critical Shear Rate = Real 1.0e-10
+End
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "Navier-Stokes"
+  
+  Stabilization Method = String Bubbles
+  Flow Model = String Stokes
+  Exported Variable 1 = "velocity"
+  Exported Variable 1 DOFS = 2
+  Exported Variable 2 = "pressure"
+  Exported Variable 2 DOFS = 2
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 5 
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+End
+
+Solver 2
+  Exec Solver =  After All
+  Procedure = File "SaveData" "SaveScalars"
+  Filename =  "results.dat"
+  File Append = Logical False
+
+  Variable 1 = String "pressure"
+  Operator 1 = String "int"
+  
+  Variable 2 = String "pressure"
+  Operator 2 = String "Max"
+
+  Variable 3 = String "pressure"
+  Operator 3 = String "min"
+
+  Operator 4 = String "cpu time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Bedrock
+Boundary Condition 1
+  Target Boundaries = 1
+  Velocity 1 = Real 0.0e0
+  Velocity 2 = Real 0.0e0
+  
+  Shape Bedrock = Logical True
+End
+
+! Periodic Right
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Translate(2) = Real $L (-L*tan(Slope))   
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Pressure  = Logical True
+End
+
+! Upper Surface
+Boundary Condition 3
+  Target Boundaries = 3
+  Shape Surface = Logical True
+End
+
+! Periodic Left
+Boundary Condition 4
+  Target Boundaries = 4
+End

@@ -1,0 +1,181 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!  Solve for an analytical solution of the dating equation		   !
+! dA/dt + u.grad(A) = 1							   !
+! In 1D + steady							   !
+! u dA/dx = 1 => solution of the form A = ln(K v) with u = v/v'		   !
+!									   !
+! v = L^2 + x^2 => u = (L^2 + x^2)/(2x) and A = ln((L^2+x^2)/(L^2+1))	   ! 
+! Exx = 1/2*(1-(L/x)^2)                                    		   !
+!								  	   !
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "mesh"
+End
+
+$L = 100.0
+
+$ function Aana(x) \
+  import L {\
+  _Aana  = ln((L^2+x^2)/(L^2+1.0)) ;\
+}
+
+$ function Exx(x) \
+  import L {\
+  _Exx  = 0.5*(1.0-(L/x)^2)  ;\
+}
+
+$ function ux(x) \
+  import L {\
+  _ux  = (L^2+x^2)/(2.0*x) ;\
+}
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System = Cartesian 2D
+
+  Simulation Type = Steady State
+
+  Steady State Max Iterations  = 1
+  Steady State Min Iterations  = 1 
+  
+  Output Intervals = 10
+
+  Post File   = "age.vtu"
+  max output level = 4
+End  
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+   Equation = 1
+   Material = 1
+   Body Force = 1
+   Initial Condition = 1
+End
+
+Body Force 1
+  DGAge Source = Real 1.0 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+! minimum age is zero but should not be needed 
+   DGAge Lower Limit = Real 0.0
+
+!Reaction rate is equal to -tr(Eij) for compressible fluid
+   DGAge Gamma = Variable Coordinate 1
+     Real MATC "-Exx(tx)"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  DGAge  = REal 0.0 
+  Age = Real 0.0
+  Porous 1 = Variable Coordinate 1
+    Real MATC "ux(tx)"
+  Porous 2 = Real 0.0
+  Porous 3 = Real 0.0
+  AgeAna = Variable Coordinate 1
+    Real MATC "Aana(tx)"
+  Exx = Variable Coordinate 1
+    Real MATC "Exx(tx)"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Exec solver = Never 
+  Equation = String "PorousFlow"
+  Procedure = "ElmerIceSolvers" "PorousSolver"
+  Variable = "Porous"
+  Variable DOFs = 3
+
+  Exported Variable 1 = AgeAna
+  Exported Variable 1 DOFs = 1
+
+  Exported Variable 2 = Exx
+  Exported Variable 2 DOFs = 1
+
+  Optimize Bandwidth = False
+! Use p elements
+  Stablization Method = String pBubbles
+
+  Linear System Solver = "Direct"
+
+  Nonlinear System Convergence Tolerance = 1.0E-05
+  Nonlinear System Max Iterations = 50
+End
+
+Solver 2
+  Equation = "AdvReact"
+  Exec Solver = "After Timestep"
+  Procedure = File "AdvectionReaction" "AdvectionReactionSolver"
+! this is the DG variable, which is not part of the output
+  Variable =  -nooutput "DGAge"
+! this tells that the solver is run on DG mesh
+  Discontinuous Galerkin = Logical True
+! the solver can account for upper and lower limits of the variable
+! imposed by formulation of an variational inequality (VI)
+! next line switches the VI to be accounted for
+  Limit Solution = Logical True
+   
+  Linear System Solver = Direct
+! Variational inequality makes it a non-linear problem
+  Nonlinear System Max Iterations = 40
+  Nonlinear System Min Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-06
+  
+! This is the variable that is used to interpolate
+! the DG solution to the regular FEM mesh in order
+! to get a correct output
+  Exported Variable 1 = Age
+  Exported Variable 1 DOFS = 1
+End 
+
+!Solver 3
+!  Exec Solver =  After All
+!  Procedure = File "SaveData" "SaveLine"
+!  Filename =  "results.dat"
+!  File Append = Logical False
+!End
+
+
+Solver 3
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+
+  Variable 1 = String "Time"
+
+  Variable 2 = String "Porous"
+  Operator 2 = String "int"
+
+  Variable 3 = String "Porous"
+  Operator 3 = String "max"
+
+  Variable 4 = String "Porous"
+  Operator 4 = String "min"
+
+  Operator 5 = String "cpu time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+    Active Solvers(3) = Integer 1 2 3
+    Flow Solution Name = String "Porous"
+    Convection = Computed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+   Target Boundaries  = 4
+   DGAge = Real 0.0
+End
+
+Boundary Condition 2
+   Target Boundaries  = 1
+   Save Line = Logical True
+End
+

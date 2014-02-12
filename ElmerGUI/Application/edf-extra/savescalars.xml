@@ -1,0 +1,400 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Save Scalars" >
+      <Name>SaveScalars</Name>
+      <Solver>
+
+         <Parameter Widget="Edit" >
+           <Name> Procedure </Name>
+           <DefaultValue> "SaveData" "SaveScalars" </DefaultValue>
+         </Parameter>
+ 
+         <Parameter Widget="CheckBox" Enabled="True" Visible="False">
+           <Name> No Matrix Equation </Name>  
+           <DefaultValue> True </DefaultValue>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Filename </Name>
+            <Type> String </Type>
+            <Whatis> The name of the file to save results. Additionally a 
+	    file with a suffix ".names" describing the content will be saved.</Whatis>
+         </Parameter> 
+
+          <Parameter Widget="Edit" >
+            <Name> Comment </Name>
+            <Type> String </Type>
+            <Whatis> Free comment to be appended to the *.names file</Whatis>
+         </Parameter> 
+
+          <Parameter Widget="CheckBox" >
+            <Name> Filename Numbering </Name>
+            <Type> Logical </Type>
+            <Whatis> Number the files with continuous numbering so that existing filenames are not used.  False is the default. </Whatis>
+         </Parameter>
+
+          <Parameter Widget="CheckBox" >
+            <Name> File Append </Name>
+            <Type> Logical </Type>
+            <Whatis> Append files when calling multiple times.  False is the default. </Whatis>
+         </Parameter>
+
+          <Parameter Widget="CheckBox" >
+            <Name> Parallel Reduce </Name>
+            <Type> Logical </Type>
+            <Whatis> Reduce output to single file in parallel computation. False is the default. </Whatis>
+         </Parameter>
+
+          <Parameter Widget="CheckBox" >
+            <Name> Show Norm </Name>
+            <Type> Logical </Type>
+            <Whatis> Show result as a norm for convergence monitor. False is the default. </Whatis>
+            <Activate> /SaveScalars/Solver/Show Norm Index </Activate>
+         </Parameter>
+ 
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Show Norm Index</Name>
+            <Type> Integer </Type>
+            <Whatis> The index of the computed value to be shown. One is the default.</Whatis>
+         </Parameter>
+ 
+         <Parameter Widget="Edit" >
+            <Name> Save Points </Name>
+            <Type> Integer </Type>
+            <Whatis> Save data on given node indexes. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Edit" >
+            <Name> Save Coordinates </Name>
+            <Type> Real </Type>
+            <Whatis> Save data on given coordinates. </Whatis>
+            <Activate> /SaveScalars/Solver/Exact Coordinates </Activate>
+         </Parameter> 
+
+          <Parameter Widget="CheckBox" Enabled="False" Visible="False">
+            <Name> Exact Coordinates </Name>
+            <Type> Logical </Type>
+            <Whatis> Use exact coordinates for saving rather than nearest.  False is the default. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox" >
+            <Name> Save Flux </Name>
+            <Type> Logical </Type>
+            <Whatis> Save heat Flux.  False is the default. </Whatis>
+            <Activate> /SaveScalars/Solver/Flux Variable </Activate>
+            <Activate> /SaveScalars/Solver/Flux Coefficient </Activate>
+        </Parameter>
+
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Flux Variable </Name>
+            <Type> String </Type>
+            <Whatis> The variable for flux computation. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Flux Coefficient </Name>
+            <Type> String </Type>
+            <Whatis> The coefficient for flux computation. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Variable 1 </Name>
+            <Type> String </Type>
+            <Whatis> The name of the 1st object variable. </Whatis>
+            <Activate> /SaveScalars/Solver/Operator 1  </Activate>
+            <Activate> /SaveScalars/Solver/Coefficient 1 </Activate>
+            <Activate> /SaveScalars/Solver/Variable 2  </Activate>
+         </Parameter> 
+         <Parameter Widget="Combo" Enabled="False" Visible="False">
+            <Name> Operator 1 </Name>
+            <Type> String </Type>
+            <Whatis>Operator operating on the 1st variable.</Whatis>
+            <Item> <Name> </Name> </Item>
+            <Item> <Name> max </Name> </Item>
+            <Item> <Name> min </Name> </Item>
+            <Item> <Name> max abs </Name> </Item>
+            <Item> <Name> min abs </Name> </Item>
+            <Item> <Name> range </Name> </Item>
+            <Item> <Name> mean </Name> </Item>
+            <Item> <Name> variance </Name> </Item>
+            <Item> <Name> deviation </Name> </Item>
+            <Item> <Name> volume </Name> </Item>
+            <Item> <Name> int </Name> </Item>
+            <Item> <Name> int mean </Name> </Item>
+            <Item> <Name> int variance </Name> </Item>
+            <Item> <Name> potential energy </Name> </Item>
+            <Item> <Name> diffusive energy </Name> </Item>
+            <Item> <Name> convective energy </Name> </Item>
+            <Item> <Name> boundary sum </Name> </Item>
+            <Item> <Name> boundary dofs </Name> </Item>
+            <Item> <Name> boundary mean </Name> </Item>
+            <Item> <Name> boundary min </Name> </Item>
+            <Item> <Name> boundary max </Name> </Item>
+            <Item> <Name> boundary min abs </Name> </Item>
+            <Item> <Name> boundary max abs </Name> </Item>
+            <Item> <Name> boundary int </Name> </Item>
+            <Item> <Name> boundary int mean </Name> </Item>
+            <Item> <Name> area </Name> </Item>
+            <Item> <Name> diffusive flux </Name> </Item>
+            <Item> <Name> convective flux </Name> </Item>
+            <Item> <Name> cpu time </Name> </Item>
+            <Item> <Name> partitions </Name> </Item>
+            <Item> <Name> norm </Name> </Item>
+            <Item> <Name> nonlin change </Name> </Item>
+            <Item> <Name> steady state change </Name> </Item>
+            <Item> <Name> nonlin iter </Name> </Item>
+            <Item> <Name> nonlin converged </Name> </Item>
+            <Item> <Name> steady converged </Name> </Item>
+            <Item> <Name> nodes </Name> </Item>
+            <Item> <Name> elements </Name> </Item>
+            <Item> <Name> dofs </Name> </Item>
+         </Parameter>
+          <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Coefficient 1 </Name>
+            <Type> String </Type>
+            <Whatis> The name of the 1st coefficient (if needed). </Whatis>
+          </Parameter> 
+
+          <Parameter Widget="Edit" Visible="False" Enabled="False" >
+            <Name> Variable 2 </Name>
+            <Type> String </Type>
+            <Activate> /SaveScalars/Solver/Operator 2 </Activate>
+            <Activate> /SaveScalars/Solver/Coefficient 2 </Activate>
+            <Activate> /SaveScalars/Solver/Variable 3 </Activate>
+            <Whatis> The name of the 2nd object variable. </Whatis>
+          </Parameter> 
+          <Parameter Widget="Combo" Visible="False" Enabled="False">
+            <Name> Operator 2 </Name>
+            <Type> String </Type>
+            <Whatis>Operator operating on the 2nd variable.</Whatis>
+            <Item> <Name> </Name> </Item>
+            <Item> <Name> max </Name> </Item>
+            <Item> <Name> min </Name> </Item>
+            <Item> <Name> max abs </Name> </Item>
+            <Item> <Name> min abs </Name> </Item>
+            <Item> <Name> range </Name> </Item>
+            <Item> <Name> mean </Name> </Item>
+            <Item> <Name> variance </Name> </Item>
+            <Item> <Name> deviation </Name> </Item>
+            <Item> <Name> volume </Name> </Item>
+            <Item> <Name> int </Name> </Item>
+            <Item> <Name> int mean </Name> </Item>
+            <Item> <Name> int variance </Name> </Item>
+            <Item> <Name> potential energy </Name> </Item>
+            <Item> <Name> diffusive energy </Name> </Item>
+            <Item> <Name> convective energy </Name> </Item>
+            <Item> <Name> boundary sum </Name> </Item>
+            <Item> <Name> boundary dofs </Name> </Item>
+            <Item> <Name> boundary mean </Name> </Item>
+            <Item> <Name> boundary min </Name> </Item>
+            <Item> <Name> boundary max </Name> </Item>
+            <Item> <Name> boundary min abs </Name> </Item>
+            <Item> <Name> boundary max abs </Name> </Item>
+            <Item> <Name> boundary int </Name> </Item>
+            <Item> <Name> boundary int mean </Name> </Item>
+            <Item> <Name> area </Name> </Item>
+            <Item> <Name> diffusive flux </Name> </Item>
+            <Item> <Name> convective flux </Name> </Item>
+            <Item> <Name> cpu time </Name> </Item>
+            <Item> <Name> partitions </Name> </Item>
+            <Item> <Name> norm </Name> </Item>
+            <Item> <Name> nonlin change </Name> </Item>
+            <Item> <Name> steady state change </Name> </Item>
+            <Item> <Name> nonlin iter </Name> </Item>
+            <Item> <Name> nonlin converged </Name> </Item>
+            <Item> <Name> steady converged </Name> </Item>
+            <Item> <Name> nodes </Name> </Item>
+            <Item> <Name> elements </Name> </Item>
+            <Item> <Name> dofs </Name> </Item>
+          </Parameter>
+          <Parameter Widget="Edit"  Visible="False" Enabled="False">
+             <Name> Coefficient 2 </Name>
+             <Type> String </Type>
+             <Whatis> The name of the 2nd coefficient (if needed). </Whatis>
+          </Parameter> 
+
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Variable 3 </Name>
+            <Type> String </Type>
+            <Activate> /SaveScalars/Solver/Operator 3 </Activate>
+            <Activate> /SaveScalars/Solver/Coefficient 3 </Activate>
+            <Activate> /SaveScalars/Solver/Variable 4 </Activate>
+            <Whatis> The name of the 3rd object variable. </Whatis>
+         </Parameter> 
+          <Parameter Widget="Combo" Visible="False" Enabled="False">
+            <Name> Operator 3 </Name>
+            <Type> String </Type>
+            <Whatis>Operator operating on the 3rd variable.</Whatis>
+            <Item> <Name> </Name> </Item>
+            <Item> <Name> max </Name> </Item>
+            <Item> <Name> min </Name> </Item>
+            <Item> <Name> max abs </Name> </Item>
+            <Item> <Name> min abs </Name> </Item>
+            <Item> <Name> range </Name> </Item>
+            <Item> <Name> mean </Name> </Item>
+            <Item> <Name> variance </Name> </Item>
+            <Item> <Name> deviation </Name> </Item>
+            <Item> <Name> volume </Name> </Item>
+            <Item> <Name> int </Name> </Item>
+            <Item> <Name> int mean </Name> </Item>
+            <Item> <Name> int variance </Name> </Item>
+            <Item> <Name> potential energy </Name> </Item>
+            <Item> <Name> diffusive energy </Name> </Item>
+            <Item> <Name> convective energy </Name> </Item>
+            <Item> <Name> boundary sum </Name> </Item>
+            <Item> <Name> boundary dofs </Name> </Item>
+            <Item> <Name> boundary mean </Name> </Item>
+            <Item> <Name> boundary min </Name> </Item>
+            <Item> <Name> boundary max </Name> </Item>
+            <Item> <Name> boundary min abs </Name> </Item>
+            <Item> <Name> boundary max abs </Name> </Item>
+            <Item> <Name> boundary int </Name> </Item>
+            <Item> <Name> boundary int mean </Name> </Item>
+            <Item> <Name> area </Name> </Item>
+            <Item> <Name> diffusive flux </Name> </Item>
+            <Item> <Name> convective flux </Name> </Item>
+            <Item> <Name> cpu time </Name> </Item>
+            <Item> <Name> partitions </Name> </Item>
+            <Item> <Name> norm </Name> </Item>
+            <Item> <Name> nonlin change </Name> </Item>
+            <Item> <Name> steady state change </Name> </Item>
+            <Item> <Name> nonlin iter </Name> </Item>
+            <Item> <Name> nonlin converged </Name> </Item>
+            <Item> <Name> steady converged </Name> </Item>
+            <Item> <Name> nodes </Name> </Item>
+            <Item> <Name> elements </Name> </Item>
+            <Item> <Name> dofs </Name> </Item>
+          </Parameter>
+         <Parameter Widget="Edit"  Visible="False" Enabled="False">
+            <Name> Coefficient 3 </Name>
+            <Type> String </Type>
+            <Whatis> The name of the 3rd coefficient (if needed). </Whatis>
+         </Parameter> 
+
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Variable 4 </Name>
+            <Type> String </Type>
+            <Activate> /SaveScalars/Solver/Operator 4 </Activate>
+            <Activate> /SaveScalars/Solver/Coefficient 4 </Activate>
+           <Activate> /SaveScalars/Solver/Variable 5 </Activate>
+            <Whatis> The name of the 4th object variable. </Whatis>
+         </Parameter> 
+          <Parameter Widget="Combo" Visible="False" Enabled="False">
+            <Name> Operator 4 </Name>
+            <Type> String </Type>
+            <Whatis>Operator operating on the 4th variable.</Whatis>
+            <Item> <Name> </Name> </Item>
+            <Item> <Name> max </Name> </Item>
+            <Item> <Name> min </Name> </Item>
+            <Item> <Name> max abs </Name> </Item>
+            <Item> <Name> min abs </Name> </Item>
+            <Item> <Name> range </Name> </Item>
+            <Item> <Name> mean </Name> </Item>
+            <Item> <Name> variance </Name> </Item>
+            <Item> <Name> deviation </Name> </Item>
+            <Item> <Name> volume </Name> </Item>
+            <Item> <Name> int </Name> </Item>
+            <Item> <Name> int mean </Name> </Item>
+            <Item> <Name> int variance </Name> </Item>
+            <Item> <Name> potential energy </Name> </Item>
+            <Item> <Name> diffusive energy </Name> </Item>
+            <Item> <Name> convective energy </Name> </Item>
+            <Item> <Name> boundary sum </Name> </Item>
+            <Item> <Name> boundary dofs </Name> </Item>
+            <Item> <Name> boundary mean </Name> </Item>
+            <Item> <Name> boundary min </Name> </Item>
+            <Item> <Name> boundary max </Name> </Item>
+            <Item> <Name> boundary min abs </Name> </Item>
+            <Item> <Name> boundary max abs </Name> </Item>
+            <Item> <Name> boundary int </Name> </Item>
+            <Item> <Name> boundary int mean </Name> </Item>
+            <Item> <Name> area </Name> </Item>
+            <Item> <Name> diffusive flux </Name> </Item>
+            <Item> <Name> convective flux </Name> </Item>
+            <Item> <Name> cpu time </Name> </Item>
+            <Item> <Name> partitions </Name> </Item>
+            <Item> <Name> norm </Name> </Item>
+            <Item> <Name> nonlin change </Name> </Item>
+            <Item> <Name> steady state change </Name> </Item>
+            <Item> <Name> nonlin iter </Name> </Item>
+            <Item> <Name> nonlin converged </Name> </Item>
+            <Item> <Name> steady converged </Name> </Item>
+            <Item> <Name> nodes </Name> </Item>
+            <Item> <Name> elements </Name> </Item>
+            <Item> <Name> dofs </Name> </Item>
+          </Parameter>
+         <Parameter Widget="Edit"  Visible="False" Enabled="False">
+            <Name> Coefficient 4 </Name>
+            <Type> String </Type>
+            <Whatis> The name of the 4th coefficient (if needed). </Whatis>
+         </Parameter> 
+
+          <Parameter Widget="Edit" Visible="False" Enabled="False">
+            <Name> Variable 5 </Name>
+            <Type> String </Type>
+            <Activate> /SaveScalars/Solver/Operator 5 </Activate>
+            <Activate> /SaveScalars/Solver/Coefficient 5 </Activate>
+            <Whatis> The name of the 5th object variable. </Whatis>
+         </Parameter> 
+          <Parameter Widget="Combo" Visible="False" Enabled="False">
+            <Name> Operator 5 </Name>
+            <Type> String </Type>
+            <Whatis>Operator operating on the 5th variable.</Whatis>
+            <Item> <Name> </Name> </Item>
+            <Item> <Name> max </Name> </Item>
+            <Item> <Name> min </Name> </Item>
+            <Item> <Name> max abs </Name> </Item>
+            <Item> <Name> min abs </Name> </Item>
+            <Item> <Name> range </Name> </Item>
+            <Item> <Name> mean </Name> </Item>
+            <Item> <Name> variance </Name> </Item>
+            <Item> <Name> deviation </Name> </Item>
+            <Item> <Name> volume </Name> </Item>
+            <Item> <Name> int </Name> </Item>
+            <Item> <Name> int mean </Name> </Item>
+            <Item> <Name> int variance </Name> </Item>
+            <Item> <Name> potential energy </Name> </Item>
+            <Item> <Name> diffusive energy </Name> </Item>
+            <Item> <Name> convective energy </Name> </Item>
+            <Item> <Name> boundary sum </Name> </Item>
+            <Item> <Name> boundary dofs </Name> </Item>
+            <Item> <Name> boundary mean </Name> </Item>
+            <Item> <Name> boundary min </Name> </Item>
+            <Item> <Name> boundary max </Name> </Item>
+            <Item> <Name> boundary min abs </Name> </Item>
+            <Item> <Name> boundary max abs </Name> </Item>
+            <Item> <Name> boundary int </Name> </Item>
+            <Item> <Name> boundary int mean </Name> </Item>
+            <Item> <Name> area </Name> </Item>
+            <Item> <Name> diffusive flux </Name> </Item>
+            <Item> <Name> convective flux </Name> </Item>
+            <Item> <Name> cpu time </Name> </Item>
+            <Item> <Name> partitions </Name> </Item>
+            <Item> <Name> norm </Name> </Item>
+            <Item> <Name> nonlin change </Name> </Item>
+            <Item> <Name> steady state change </Name> </Item>
+            <Item> <Name> nonlin iter </Name> </Item>
+            <Item> <Name> nonlin converged </Name> </Item>
+            <Item> <Name> steady converged </Name> </Item>
+            <Item> <Name> nodes </Name> </Item>
+            <Item> <Name> elements </Name> </Item>
+            <Item> <Name> dofs </Name> </Item>
+          </Parameter>
+         <Parameter Widget="Edit"  Visible="False" Enabled="False">
+            <Name> Coefficient 5 </Name>
+            <Type> String </Type>
+            <Whatis> The name of the 5th coefficient (if needed). </Whatis>
+         </Parameter> 
+
+
+      </Solver>
+      <BoundaryCondition>
+       <Parameter Widget="Label" > <Name> Apply operators  </Name> </Parameter>
+          <Parameter Widget="CheckBox" >
+            <Name> Save Scalars </Name>
+	    <Type> Logical </Type>
+            <Whatis> Activate the computation of boundary related information. </Whatis>
+         </Parameter>
+      </BoundaryCondition>
+   </PDE>
+</edf>

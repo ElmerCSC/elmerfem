@@ -1,0 +1,356 @@
+check keywords warn
+
+echo on
+
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$rhow = 1000.0/(1.0e6*yearinsec^2) 
+
+Header
+  Mesh DB "." "mesh"
+End
+
+Constants
+! For the Buoyancy User function
+  Buoyancy Use Basal Melt = Logical True 
+  Bottom Surface Name = String "Zs Bottom"
+  Water Density = Real $rhow       
+End
+
+!---------------------------------------------------
+!---------------- SIMULATION -----------------------
+!---------------------------------------------------
+
+Simulation
+  Coordinate System  = Cartesian 2D
+  Simulation Type = Transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Timestep Intervals = 5
+  Output Intervals = 1        
+  Timestep Sizes = 1.0
+
+  Steady State Max Iterations = 1 !20
+  Steady State Min Iterations = 1
+
+  Post File = "buoyancy.vtu"
+
+  max output level = 3
+End
+
+!---------------------------------------------------
+!---------------- BODIES ---------------------------
+!---------------------------------------------------
+
+!! the ice core (3d)
+Body 1
+  Name = "ice"
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name= "top free surface"
+  Equation = 2
+  Material = 1
+  Body Force = 2
+  Initial Condition = 2
+End
+
+Body 3
+  Name= "free surface sea/ice-shelf"
+  Equation = 3
+  Material = 1
+  Body Force = 3
+  Initial Condition = 3
+End
+
+!---------------------------------------------------
+!---------------- INITIAL CONDITIONS ---------------
+!---------------------------------------------------
+
+!! for ice core
+Initial Condition 1
+  Pressure = Real 0.0e0
+  Velocity 1 = Real 0.0e0
+  Velocity 2 = Real 0.0e0
+End
+
+!! for top free surface
+Initial Condition 2
+  ZsTopIni = Equals Coordinate 2
+  Zs Top = Equals Coordinate 2
+End
+
+!! For free surface sea/ice-shelf
+Initial Condition 3
+  ZsBottomIni = Equals Coordinate 2
+  Zs Bottom = Equals Coordinate 2
+End
+
+!---------------------------------------------------
+!---------------- BODY FORCES ----------------------
+!---------------------------------------------------
+
+Body Force 1
+  Flow BodyForce 1 = Real 0.0
+  Flow BodyForce 2 = Real -9.746289e15  !MPa - a - m
+
+  Mesh Update 1 = Real 0.0
+End
+
+Body Force 2
+!! accumulation flux in m/year
+!! postive number
+  Zs Top Accumulation Flux 1 = Real 0.0e0
+  Zs Top Accumulation Flux 2 = Real 0.5e0
+End
+
+Body Force 3
+!! melting/accretion under ice/shelf
+!! positive for melting
+!! negative for accretion
+  Zs Bottom Accumulation = Real 0.5e0
+
+End
+
+!---------------------------------------------------
+!---------------- MATERIALS ------------------------
+!---------------------------------------------------
+
+!! ice material properties in MPa - m - a system 
+Material 1
+  Density = Real $rhoi     
+  Viscosity = Real 5.412374e-1
+  Viscosity Model = String "power law"
+  Viscosity Exponent = Real $1.0/3.0
+  Critical Shear Rate = Real 1.0e-10
+
+  Sea level = Real 0.0
+
+  !! Surface condition
+  Min Zs Top = REal -1.0e6
+  Max Zs Top = Real 1.0e6
+
+  !! Bed condition
+  Min Zs Bottom = Real -1.0e6
+  Max Zs Bottom = Real 1.0e6
+
+  !! for computeDevStress
+  Cauchy = Logical True
+
+End
+
+!---------------------------------------------------
+!---------------- SOLVERS --------------------------
+!---------------------------------------------------
+
+Solver 1
+  Equation = "Navier-Stokes"
+  Linear System Solver = Direct
+  Linear System Direct Method = Umfpack
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 100
+  Nonlinear System Newton After Tolerance = 1.0e-06
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = Real 1.0e-4
+
+  Stabilization Method = String Bubbles
+  Flow Model = String "Stokes"
+
+  Exported Variable 1 = Flow Solution Loads[Stress Vector:2 CEQ Residual:1] 
+  Calculate Loads = Logical True
+End
+
+Solver 2
+  Equation = "Free Surface Top"
+  Variable = "Zs Top"
+
+  Variable DOFs = 1
+  Exported Variable 1 = "Zs Top Residual"
+  Exported Variable 1 DOFs = 1
+  Exported Variable 2 = "ZsTopIni"
+  Exported Variable 2 DOFs = 1
+
+  Procedure =  "FreeSurfaceSolver" "FreeSurfaceSolver"
+  !Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-5
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Linear System Use Hypre = Logical False
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = 1.0e-03
+
+  Stabilization Method = Stabilized
+  Apply Dirichlet = Logical True
+
+! How much the free surface is relaxed
+!  Relaxation Factor = Real 1.0
+End
+
+Solver 3
+  Equation = "Free Surface Sea/Shelf"
+  Variable = "Zs Bottom"
+
+  Variable DOFS =  1
+  Exported Variable 1 = "Zs Bottom Residual"
+  Exported Variable 1 DOFs = 1
+  Exported Variable 2 = "ZsBottomIni"
+  Exported Variable 2 DOFs = 1
+
+  Procedure =  "FreeSurfaceSolver" "FreeSurfaceSolver"
+  !Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-9
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Linear System Use Hypre = Logical False
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = 1.0e-03
+
+  Stabilization Method = Stabilized
+  Apply Dirichlet = Logical True
+
+! How much the free surface is relaxed
+!  Relaxation Factor = Real 1.0
+End
+
+Solver 4
+  !Exec Solver = Never
+  Equation = "Mesh Update"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack
+
+  Steady State Convergence Tolerance = 1.0e-04
+End
+
+Solver 5 !la surface du haut ne doit pas bouger
+  Exec Solver = After TimeStep
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical True
+
+  Variable 1 = String "Time"
+
+  Variable 2 = String "Zs Top"
+  Operator 2 = String "int"
+
+  Variable 3 = String "Zs Top"
+  Operator 3 = String "max"
+
+  Variable 4 = String "Zs Top"
+  Operator 4 = String "min" 
+
+  Operator 5 = String "cpu time"
+End
+
+
+!---------------------------------------------------
+!---------------- EQUATIONS ------------------------
+!---------------------------------------------------
+
+Equation 1
+  Active Solvers(3) = 1 4 5
+End
+
+Equation 2
+  Active Solvers(1) = 2
+  !! options pour le free surface (top)
+  Flow Solution Name = String "Flow Solution"
+  Convection = String Computed
+End 
+
+Equation 3
+  Active Solvers(1) = 3
+  !! options pour le free surface (bottom)
+  Flow Solution Name = String "Flow Solution"
+  Convection = String Computed
+End
+
+!---------------------------------------------------
+!---------------- BOUNDARY CONDITIONS --------------
+!---------------------------------------------------
+
+!! BC  Bedrock + Shelf
+Boundary Condition 1
+  Name = "bottom"
+  Target Boundaries = 1
+  Body Id = 3
+
+  Flow Force BC = Logical True
+!
+! Shelf conditions
+!
+  External Pressure = Variable Coordinate 2
+   Real Procedure "ElmerIceUSF" "SeaPressure"
+  
+  Slip Coefficient 2 = Variable Coordinate 2
+    Real Procedure "ElmerIceUSF" "SeaSpring"
+
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Variable Zs Bottom, ZsBottomIni
+    Real MATC "tx(0)-tx(1)"
+
+  Compute Sea Pressure = Logical True
+  Compute Sea Spring = Logical True
+End
+
+!! BC Lateral Ice-Shelf (air or sea contact)
+Boundary Condition 2
+  Name = "front"
+  Target Boundaries = 2
+
+  Mesh Update 1 = Real 0.0
+  Velocity 1 = Real 0.0
+End
+
+!! BC  Free surface Top
+Boundary Condition 3
+  Name = "top"
+  Target Boundaries = 3
+  Body Id = 2
+
+  Mesh Update 1 = Real 0.0e0
+  Mesh Update 2 = Variable Zs Top, ZsTopIni
+    Real MATC "tx(0)-tx(1)"
+End
+
+!! Symetry axis
+Boundary Condition 4
+  Name = "back"
+  Target Boundaries = 4
+
+  Velocity 1 = Real 0.0
+  Mesh Update 1 = Real 0.0
+End
+
+
+

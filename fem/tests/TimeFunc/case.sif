@@ -1,0 +1,95 @@
+! Heat up a square using exponential timesteppinng
+! As the heating source is one, total time 20 s, the result should be 20 as well.
+
+Check Keywords "Warn"
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian"
+
+  Simulation Type = Transient 
+  Timestepping Method = BDF
+  BDF Order = 1
+
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+
+! These definitions set exponential time integration with 10 timesteps over 20 seconds.
+$tsum = 20.0
+$nsteps = 10
+$q=1.1
+$dt0=tsum*(q-1)/(q^nsteps-1)
+
+  Timestep Intervals = $ nsteps
+  Timestep Size = Variable TimeStep
+    Real MATC "dt0*q^(tx-1)"
+!  Post File = case.ep
+End
+
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(1) = 1
+End
+
+Body Force 1
+  Heat Source = 1.0
+End
+
+
+Material 1
+  Name = "Ideal"
+  Heat Conductivity = 1.0
+  Density = 1.0
+  Heat Capacity = 1.0
+End 
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temp
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Apply Limiter = Logical True
+  Limiter Load Tolerance = Real 1.0e-6
+  Limiter Value Tolerance = Real 1.0e-8
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End 
+
+
+Boundary Condition 1
+  Name = "Adiabatic Wall"
+  Target Boundaries = 1
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=20.0\n");
+

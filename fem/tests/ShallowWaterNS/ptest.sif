@@ -1,0 +1,90 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "1d"
+End
+
+Simulation
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Timestep Intervals=1000
+  Timestep Sizes=0.01
+  Timestepping Method = BDF
+  BDF Order=3
+  Output Intervals(1) = 10
+  Steady State Max Iterations = 1
+
+  Max Output Level=3
+
+! Post File   = "test.ep"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition=1
+End
+
+Initial Condition 1
+  F = Variable Coordinate 1;Real MATC "0.005*exp(-20*((tx-1)^2))"
+  Ground = Real -0.03
+end 
+
+
+Equation 1 :: Active Solvers(1) = 1
+Body Force 1 :: F Lower Limit = Equals Ground"
+
+Material 1
+  Wind-Stress Coefficient = Real 1
+  Wind 1 = Real 1
+
+  Coriolis Coefficient = Real 0
+
+  Graviational Acceleration = Real 0
+  Viscosity Coefficient = Real 1
+  Inverse Chezy Coefficient = Real 0
+End
+
+
+Solver 1
+  Equation = "Shallow"
+
+  Variable = POT[U:1 F:1]
+  Procedure = "ShallowWaterNS" "ShallowWaterNSSolver"
+
+  Element = "p:2"
+
+  Exported Variable 1 = Ground
+  Apply Limiter = True
+  Mass Flux Discretization = Logical False
+
+  Nonlinear System Convergence Tolerance=1e-6
+  Nonlinear System Max Iterations=25
+  Nonlinear System Newton After Iterations=1
+  Nonlinear System Newton After Tolerance=1e-9
+  Nonlinear System Relaxation Factor=1.0
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BicgstabL
+  Bicgstabl Polynomial Degree = 2
+  Linear System Max Iterations = 200
+  Linear System Residual Output = 40
+  Linear System Preconditioning = Ilu
+  Linear System Convergence Tolerance = 1e-8
+
+  Steady State Convergence Tolerance = 1e-6
+End
+
+Boundary Condition 1 :: Target Boundaries = 1
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 1
+  Periodic BC F = Logical True
+  Periodic BC U = Logical True
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.50124258833961899\n" );

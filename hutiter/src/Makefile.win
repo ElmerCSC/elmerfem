@@ -1,0 +1,174 @@
+#
+# Makefile for the HUT-Iter library, Microsoft NT version
+#
+# $Id: Makefile.win,v 1.3 1998/11/26 11:28:28 jim Exp $
+#
+
+.SUFFIXES: .f90 .c .obj
+
+# Common
+
+SHELL	=	sh
+RM 	=	../util/rm
+MV 	= 	mv
+CP	=	xcopy
+CPP	= 	cl
+AR	=	lib
+MAKE	=	gmake
+
+CC	=	cl
+CLINKER	=	link
+FC77	=	f77
+FC90	=	f90
+FLINKER	=	link
+INSTALL	=	$(CP)
+CHMOD	=	
+
+# User configurable options
+
+PREFIX	=	..
+#PRECS	=	D
+PRECS	=	S D C Z
+
+# These are for WIN32
+
+OPSYS	= WIN32
+CFLAGS	= -Gz
+FFLAGS	= -optimize:4 -inline:speed -unroll=8
+F90FLAGS= -optimize:4 -inline:speed -unroll=8
+OPTFLAGS=
+CPPFLAGS= 
+ARFLAGS	= 
+
+LIBS	= -lblas 
+
+TMPDIR	= \temp
+CTMPDIR	= \\temp
+
+# Must use quotes due to for-loops, if variable is empty
+
+otherobjs=huti_main.obj
+precdf90=huti_aux huti_tfqmr huti_cgs huti_bicgstab_2
+precdf90b=huti_cg huti_bicgstab huti_gmres huti_qmr
+precdf77=""
+precdc=huti_sfe_c
+
+space:=	$(empty) $(empty)
+#
+# Generic Section
+#
+
+all:	libhuti install
+	@echo
+	@echo Compilation and installation done.
+	@echo
+
+libhuti:
+	@echo
+	@echo 'Generating source files from *.src files'
+	@echo
+#
+# First make the precision dependent Fortran90 files
+#
+	@if [ ! -z $(subst $(space),$(empty),$(precdf90)) ]; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdf90); do \
+		$(RM) $${pd}_$${p}.f90; \
+		$(CPP) -EP -D$(OPSYS) -D$${p}_PRE $${pd}.src > $${pd}_$${p}.f90; \
+	    done; \
+	  done; \
+	fi
+	@if [ ! -z $(subst $(space),$(empty),$(precdf90b)) ]; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdf90b); do \
+		$(RM) $${pd}_$${p}.f90; \
+		$(CPP) -EP -D$(OPSYS) -D$${p}_PRE $${pd}.src > $${pd}_$${p}.f90; \
+	    done; \
+	  done; \
+	fi
+#
+# Second make the precision dependent FORTRAN 77 files
+#
+	@if [ ! -z $(subst $(space),$(empty),$(precdf77)) ] ; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdf77); do \
+		$(RM) $${pd}_$${p}.f; \
+		$(CPP) -EP -D$(OPSYS) -D$${p}_PRE $${pd}.src > $${pd}_$${p}.f; \
+	    done; \
+	  done; \
+	fi
+#
+# Third make the precision dependent C files
+#
+	@if [ ! -z $(subst $(space),$(empty),$(precdc)) ]; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdc); do \
+		$(RM) $${pd}_$${p}.c; \
+		$(CPP) -EP -D$(OPSYS) -D$${p}_PRE $${pd}.src > $${pd}_$${p}.c; \
+	    done; \
+	  done; \
+	fi 
+#
+# Last compile everything (modules must be first)
+#
+	echo Deleting all obj files
+	-$(RM) *.obj
+
+	@if [ ! -z $(subst $(space),$(empty),$(precdf77)) ]; then \
+	  for basen in $(precdf77); do \
+	    for precc in $(PRECS); do \
+		$(MAKE) -f Makefile.win $${basen}_$${precc}.obj ; \
+	    done; \
+	  done; \
+	fi
+
+	@if [ ! -z $(subst $(space),$(empty),$(precdf90)) ]; then \
+	  for basen in $(precdf90); do \
+	    for precc in $(PRECS); do \
+		$(MAKE) -f Makefile.win $${basen}_$${precc}.obj ; \
+	    done; \
+	  done; \
+	fi
+	@if [ ! -z $(subst $(space),$(empty),$(precdf90b)) ]; then \
+	  for basen in $(precdf90b); do \
+	    for precc in $(PRECS); do \
+		$(MAKE) -f Makefile.win $${basen}_$${precc}.obj ; \
+	    done; \
+	  done; \
+	fi
+
+	@if [ ! -z $(subst $(space),$(empty),$(precdc)) ]; then \
+	  for basen in $(precdc); do \
+	    for precc in $(PRECS); do \
+		$(MAKE) -f Makefile.win $${basen}_$${precc}.obj ; \
+	    done; \
+	  done; \
+	fi
+
+	@if [ ! -z $(subst $(space),$(empty),$(otherobjs)) ]; then \
+		$(MAKE) -f Makefile.win $(otherobjs) ; \
+	fi
+
+	@$(AR) $(ARFLAGS) -out:$@.lib *.obj
+
+install:
+	$(INSTALL) libhuti.lib $(ELMER_PREFIX_DBS)\\lib
+	$(INSTALL) huti_defs.h $(ELMER_PREFIX_DBS)\\include
+	$(INSTALL) huti_fdefs.h $(ELMER_PREFIX_DBS)\\include
+
+# all compilation/linking.
+
+.c.obj:
+	$(CC) $(CFLAGS) -c $<
+
+.f90.obj:
+	$(CPP) -EP $< > $(TMPDIR)\$*.f90
+	$(FC90) $(FFLAGS) $(F90FLAGS) -c $(TMPDIR)\$*.f90
+
+.f.obj:
+	$(CPP) -EP $< > $(TMPDIR)\$*.f
+	$(FC77) $(FFLAGS) -c $(TMPDIR)\$*.f
+
+clean:
+	$(RM) $(EXECS) *.obj *.mod *~
+

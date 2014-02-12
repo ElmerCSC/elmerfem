@@ -1,0 +1,11 @@
+Echo = True
+Input File = foo
+Execute = awk 'BEGIN{\
+                     print "x =";\
+                     print "5.678        1.0     4.5";\
+                     print "4.567        2.0     3.1";\
+                     print "23.78        3.0     7.9";\
+                     print "I = 1 2 3"; print "y = 5.0"\
+                    }' > bar
+Output File = bar
+save file = save.dat

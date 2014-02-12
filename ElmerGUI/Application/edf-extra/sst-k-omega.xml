@@ -1,0 +1,176 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="SST-K-Omega" >
+      <Name>SST K-Omega</Name>
+
+      <Equation>
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name > Procedure </Name>
+            <DefaultValue> "SSTKOmega" "SSTKOmega" </DefaultValue>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name>Additional Variables</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Exported Variable 1 </Name>
+           <Activate> /SST-K-Omega/Solver/Exported Variable 2</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 2 </Name>
+           <Activate> /SST-K-Omega/Solver/Exported Variable 3</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 3 </Name>
+           <Activate> /SST-K-Omega/Solver/Exported Variable 4</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 4 </Name>
+           <Activate> /SST-K-Omega/Solver/Exported Variable 5</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 5 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Solver>
+
+      <BodyForce>
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Body Force-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Body Force-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </BodyForce>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+         <Parameter Widget="Edit" >
+           <Name> Turbulent Prandtl Number  </Name>
+         </Parameter>
+         <Parameter Widget="Edit" >
+           <Name> Dissipation Buoancy Coefficient  </Name>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> KE Cmu </Name>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Material>
+
+      <InitialCondition>
+         <Parameter Widget="Label" > <Name> Variables </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Kinetic Energy </Name>
+         </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Kinetic Dissipation </Name>
+         </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Wall Distance </Name>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Initial Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Initial Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </InitialCondition>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Dirichlet Conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> Kinetic Energy </Name>
+           <Activate> /SST-K-Omega/BoundaryCondition/Kinetic Energy Condition </Activate>
+         </Parameter>
+
+         <Parameter  Widget="Edit">
+           <Name> Kinetic Dissipation </Name>
+           <SifName> Kinetic Dissipation </SifName>
+           <Activate> /SST-K-Omega/BoundaryCondition/Kinetic Dissipation Condition </Activate>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Kinetic Energy Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <StatusTip> Give kinetic energy condition value for this boundary. </StatusTip>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Kinetic Dissipation Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <StatusTip> Give kinetic energy dissipation condition value for this boundary. </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Wall law </Name> </Parameter>
+
+         <Parameter  Widget="CheckBox">
+           <Name> Komega Wall Law </Name>
+           <SifName> Wall Law </SifName>
+           <Activate> /SST-K-Omega/BoundaryCondition/Boundary Layer Thickness </Activate>
+           <Activate> /SST-K-Omega/BoundaryCondition/Su </Activate>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Boundary Layer Thickness </Name>
+         </Parameter>
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Boundary Layer Thickness </Name>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </BoundaryCondition>
+   </PDE>
+</edf>
+

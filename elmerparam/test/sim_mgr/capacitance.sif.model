@@ -1,0 +1,87 @@
+Check Keywords Warn
+
+Header
+  Mesh DB "." "mesh"
+End
+
+Simulation
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output File = "elstatics.result"
+  Post File = "elstatics.ep"
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+End
+
+Equation 1
+  Active Solvers = 1
+  Calculate Electric Energy = True
+End
+
+Solver 1
+  Equation = Stat Elec Solver
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatElecSolve" "StatElecSolver"
+  Calculate Electric Field = True
+  Calculate Electric Flux = False
+  Linear System Solver = Direct 
+  Linear System Direct Method = UMFPack
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1.0e-07
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-03
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+Solver 2
+  Equation = Electric Force
+  Procedure = "ElectricForce" "StatElecForce"
+End
+
+Solver 3
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "scalars.dat"
+End
+
+Material 1
+  Relative Permittivity = 1
+End
+
+Material 2
+  Relative Permittivity = <!R1!>
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential = 0.0
+  Calculate Electric Force = Logical True
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Potential = <!R0!>
+End
+
+!End Of File
+

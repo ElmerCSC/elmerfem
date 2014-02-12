@@ -1,0 +1,105 @@
+!# Solves a Laplace equation with given net charge. 
+!# This problem is like having a conductive body in a electric field
+!# without knowing its potential, only the surface charge.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "squares"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+!  Max Output Level = 4
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Variables(1) = Integer 1 
+End
+
+
+Solver 1
+  Coupled Solver = Logical True
+
+  Equation = "test"
+  Variable 1 = String T1
+  Bulk Assembly Procedure 11 = File "./PoissonAssembly" "BulkAssembly"
+
+  Constraint 1 = String "consa"
+  Constraint 1 Type = String "floating"
+  Constraint 1 Variables = Integer 1
+  Constraint 1 Value = Real 1.0
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "bicgstab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU2
+  Linear System Residual Output = 20
+End  
+
+
+Solver 2
+  Exec Solver = never
+
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = T1
+  Operator 1 = min
+  Variable 2 = T1
+  Operator 2 = max
+End 
+
+
+Material 1
+  Name = "Material1"
+
+  Density = real 1
+  Conductivity = Real 1.0
+  Reaction = Real 0.0
+  Source = Real 0.0
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = real 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+
+  T1 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2 
+
+  consa = Logical True
+End
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=2.40813\n");
+
+

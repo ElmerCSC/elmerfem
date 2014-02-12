@@ -1,0 +1,91 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "Step"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = "Cartesian 2D"
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 500
+! Post File   = "ptest.ep"
+! Output File = "ptest.dat"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Density   = 1
+  Viscosity = 0.1
+End
+
+Solver 1
+  Equation = "Pressure"
+
+  Variable = "PressureDelta"
+  Exported Variable 1 = PressureTot
+  Procedure = "Pressure" "PressureSolver"
+
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Max Iterations    = 1
+  Pressure Relax = Real 1
+  Steady State Convergence Tolerance = 1e-5
+  Use Absolute Norm For Convergence  = Logical True
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 100
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+End
+
+Solver 2
+  Equation = "Velocity"
+
+  Variable = "VelocityTot"
+  Variable DOFs = 2
+  Procedure = "Velocity" "VelocitySolver"
+
+  Nonlinear System Relaxation Factor = 0.75
+  Nonlinear System Max Iterations    = 1
+  Steady State Convergence Tolerance = 1e-5
+
+  Linear System Solver = "Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 100
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  VelocityTot 1 = Real 1
+  VelocityTot 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  VelocityTot 2 = Real 0
+  PressureDelta = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  VelocityTot 1 = Real 0
+  VelocityTot 2 = Real 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.379706751828\n" );

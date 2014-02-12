@@ -1,0 +1,127 @@
+!echo on
+Check Keywords Warn
+
+Header
+  Mesh DB "." "tmesh"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+
+  Timestepping Method = BDF
+  BDF Order = 2
+
+  Timestep Intervals = 6
+  Timestep Sizes = 1
+
+  Output Intervals = 1
+  Steady State Max Iterations = 10
+
+  Output Version Numbers = True
+!  Output File = heat.res
+!  Post File = heat.ep
+
+End
+
+Constants 
+  Stefan Boltzmann = Real 5.67e-08
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 2
+  Body Force = 2
+  Initial Condition = 1
+End
+
+Body 3
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Equation 1
+  Active Solvers = 1
+End
+
+
+Initial Condition 1
+  Temperature = Variable Coordinate 1
+    Real
+      0.0  0.0
+      1.0  0.1
+    End
+End
+
+
+Solver 1
+  Equation = heat equation
+
+  Linear System Solver = Iterative
+  Linear System Direct Method = UMFPack
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Abort Not Converged = Logical False
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+Material 1
+  Heat Capacity = 1
+  Heat Conductivity = 1
+  Density = 1
+End
+
+Material 2
+  Heat Capacity = 10
+  Heat Conductivity = 1
+  Density = 1
+End
+
+
+Body Force 1
+  Heat Source = 10
+End
+
+Body Force 2
+  Temperature Passive = Variable Time
+    Real
+      0.0    1.0
+      5.0    1.0
+      5.2   -1.0
+      8.0   -1.0
+    End
+
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Temperature = 1
+End
+
+Boundary Condition 2
+  Target Boundaries = 4
+
+  Temperature = 10
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=7.24228174780\n" );
+
+! End of File

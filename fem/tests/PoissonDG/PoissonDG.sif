@@ -1,0 +1,64 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+! Post File = "DGsolution.ep"
+End
+
+Constants
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body force = 1
+End
+
+Equation 1
+  Poisson DG = Logical True
+End
+
+Material 1
+  Density = 1
+End
+
+Solver 1
+  Equation = "Poisson DG"
+  Procedure = File "./PoissonDG" "PoissonSolver"
+  Variable = "Potential"
+  Variable Dofs = 1
+
+  Discontinuous Galerkin = Logical TRUE
+  gamma1 = Real 10    ! DG-stab
+  gamma2 = Real 0.001 ! BC-stab
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations  = 1000
+  Linear System Preconditioning = ILUT
+  Linear System ILUT Tolerance  = 0.005
+  Linear System Convergence Tolerance = 1.0e-6
+  Optimize Bandwidth = True
+End
+
+Body Force 1
+  Source = Real 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  g = Real 0
+  e = Real 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.412624027258E-01, EPS=1.0e-2\n" );

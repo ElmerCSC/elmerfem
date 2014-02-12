@@ -1,0 +1,73 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 30
+  Coordinate System = "Cartesian 2D"
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File = "rt.ep"
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+!------------------------------------------------------------
+! This solver uses an in-built source term to obtain a case
+! for which the solution is known in the closed form.
+! The following source term definition will have no effect on
+! the solution:
+!------------------------------------------------------------
+Body Force 1
+  Body Source 1 = Real 0
+  Body Source 2 = Real 0
+!  Body Source 3 = Real 0  
+End
+
+!----------------------------------------------------------
+! No material parameters needed to define the solution:
+!----------------------------------------------------------
+! Material 1
+!   Conductivity = Real 1.0
+! End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Mixed Poisson"
+  Variable = "MixedSol"
+  Variable DOFs = 1
+  Procedure = "BDMSolve" "BDMSolver"
+  !-------------------------------------------------------
+  ! Here the bubble dof is used for constructing
+  ! the piecewise constant approximation of the
+  ! variable of the Poisson equation in the standard form.
+  !-------------------------------------------------------
+  Element = "n:0 e:2 b:1"
+  Optimize Bandwidth = False
+  Bubbles in Global System = Logical True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Preconditioning = ILU0
+  Linear System Row Equilibration = Logical True
+  Linear System Max Iterations = 200
+  Linear System Convergence Tolerance = 1e-6
+End
+
+!---------------------------------------------------------------
+! Note: Do-nothing BC corresponds to the standard homogeneous 
+! Dirichlet constraint.
+!--------------------------------------------------------------
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.26619939,EPS=1.0E-5\n" );

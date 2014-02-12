@@ -1,0 +1,442 @@
+check keywords warn
+echo on
+
+$namerun = "cavity"
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)
+$rhow = 1000.0/(1.0e6*yearinsec^2)
+$rhor = 2000.0/(1.0e6*yearinsec^2)
+! Prefactor from Cuffey and Paterson (2010) in MPa^{-3} a^{-1}
+$A1 = 2.89165e-13*yearinsec*1.0e18
+$A2 = 2.42736e-02*yearinsec*1.0e18
+$gravity = -9.81*yearinsec^2
+
+
+! in MPa (1 MPa ~ 100 m of ice)
+! < 0 for External Pressure to be a compression
+$WaterPressure = -1.0  ! MPa
+$OverburdenPressure = WaterPressure * 1.2  
+$UpperVelocity = 10.0 ! m/a
+
+$GLTolerance = 1.0e-4
+
+$interval = 10
+
+Header
+  Mesh DB "." "ice"
+End
+
+Constants
+  Water Density = Real $rhow 
+End
+
+!---------------------------------------------------
+!---------------- SIMULATION -----------------------
+!---------------------------------------------------
+
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Timestep Intervals = 2
+  Output Intervals = $interval
+  Timestep Sizes = 0.005
+
+  Steady State Max Iterations = 1 !20
+  Steady State Min Iterations = 1
+
+  Initialize Dirichlet Conditions = Logical False
+  Output File = "$namerun".result"
+  Post File = "$namerun".vtu"
+  max output level = 3  
+End
+
+!---------------------------------------------------
+!---------------- BODIES ---------------------------
+!---------------------------------------------------
+
+!! the ice core (3d)
+Body 1
+  Name = "ice"
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+! This body is located on the free surface of the cavity (the cavity roof)
+! it is needed to solve for the GroundedMask and the free surface evolution
+Body 2
+  Name= "cavity free surface"
+  Equation = 2
+  Material = 1
+  Body Force = 2
+  Initial Condition = 2
+End
+
+
+!---------------------------------------------------
+!---------------- INITIAL CONDITIONS ---------------
+!---------------------------------------------------
+
+!! for ice
+Initial Condition 1
+  Pressure = Real 0.0
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = real 0.0
+End
+
+!! for free surface sea/ice-shelf
+Initial Condition 2
+  Zs Bottom = Variable Coordinate 1
+    Real Procedure "ElmerIceUSF" "ZsBottomIni"
+
+! If any change in the mesh, this has to be updated so that
+! bedrock is the equation of the rock topography
+! this will be used to impose the no-penetration conditon
+  bedrock = Variable Coordinate 1
+   Real  
+     0.0 0.0 
+     2.0 0.1
+     4.0 -0.3
+     10.0 0.0
+   End
+End
+
+!---------------------------------------------------
+!---------------- BODY FORCES ----------------------
+!---------------------------------------------------
+
+!! for ice
+Body Force 1
+! gravity neglected
+  Flow BodyForce 1 = Real 0.0 
+  Flow BodyForce 2 = Real 0.0 
+  Flow Solver Name = String Flow Solution
+  Mesh Update 1 = real 0.0
+End
+
+! no melting
+Body Force 2
+  Zs Bottom Accumulation = Real 0.0              
+End
+
+!---------------------------------------------------
+!---------------- MATERIALS ------------------------
+!---------------------------------------------------
+
+!! ice material properties in MPa - m - a system 
+Material 1
+  Density = Real $rhoi          
+  Viscosity Model = String "glen"
+  Viscosity = 1.0 ! Dummy but avoid warning output
+  Glen Exponent = Real 3.0
+
+  Limit Temperature = Real -10.0
+  Rate Factor 1 = Real $A1
+  Rate Factor 2 = Real $A2
+  Activation Energy 1 = Real 60e3
+  Activation Energy 2 = Real 115e3
+  Glen Enhancement Factor = Real 1.0
+  Critical Shear Rate = Real 1.0e-15
+
+  Constant Temperature = Real -1.0
+
+  !! Bed condition
+  Min Zs Bottom = Equals Bedrock
+
+  Max Zs Bottom = Real 1.0e6
+
+  !! Grounding line condition
+  GL_toler = Real $GLTolerance
+
+  Mesh Youngs Modulus = Real 1.0
+  Mesh Poisson Ratio = real 0.3
+   
+  Cauchy = Logical True
+End
+
+!---------------------------------------------------
+!---------------- SOLVERS --------------------------
+!---------------------------------------------------
+
+!! The mask is initialised from the geometry
+! GroundedMask = 1 if grounded
+!              = - 1 if floating
+!              = 0 if it is at the transition between grounded and floating
+Solver 1
+  Exec Solver = Before All
+  Procedure = "ElmerIceSolvers" "GroundedSolverInit"
+  Equation = GroundedMask
+  Variable = GroundedMask
+  Variable DOFs = 1
+
+  TolerInit = Real $GLTolerance 
+End
+
+Solver 2
+  Equation = "Mesh Update"
+  Variable = "Mesh Update"
+  Variable DOFs = 2
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = umfpack
+
+  Steady State Convergence Tolerance = 1.0e-04
+End
+
+!! GroundedMask is updated with the new mesh geometry
+Solver 3
+  Equation = GroundedMask
+  Procedure = "ElmerIceSolvers" "GroundedSolver"
+  Variable = GroundedMask
+  Variable DOFs = 1
+
+  Toler = Real $GLTolerance
+
+  SaveGL = Logical True
+  Save File Name = String "CavityLine$namerun".dat"!"
+End
+
+Solver 4
+  Equation = "NormalVector"
+  Procedure = "ElmerIceSolvers" "ComputeNormalSolver"
+  Variable = String "Normal Vector" 
+  Variable DOFs = 2
+  
+  Exported Variable 1 = BodyMask 
+  Exported Variable 1 DOFs = 1
+
+  ComputeAll = Logical False
+  Optimize Bandwidth = Logical False 
+End
+
+! Integrate the water presure to get the resulting nodal force (Fx, Fy)
+Solver 5
+  Equation = Fw
+  Procedure = "ElmerIceSolvers" "GetHydrostaticLoads"
+  Variable = Fw[Fwater:2]
+  Variable DOFs = 2
+End
+
+! Solve the Stokes system. The contact is tested after the non-linear iteration 
+! has slightly converged (1.0e-3) and this is done in USF_Contact when evaluating 
+! the slip coefficient (here equal to zero everywhere)
+Solver 6
+  Equation = "Navier-Stokes"
+
+  Linear System Solver = Direct     
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Newton After Iterations = 51  
+  Nonlinear System Newton After Tolerance = 1.0e-07
+  Nonlinear System Relaxation Factor = 1.00
+    
+  Steady State Convergence Tolerance = Real 1.0e-4
+
+  Stabilization Method = String Bubbles
+
+  Exported Variable 1 = Flow Solution Loads[Stress Vector:2 CEQ Residual:1]
+  Calculate Loads = Logical True
+  !Exported Variable 2 = -dofs 2 "Velocity"
+  Flow Model = String 'Stokes'
+End
+
+! Not really use, give the stress whithin the ice body
+Solver 7 
+  Equation = Sij          
+  Variable = -nooutput "Sij"
+  Variable DOFs = 1
+  Exported Variable 1 = ViscousStress
+  Exported Variable 1 DOFs = 4
+
+  Procedure = "ElmerIceSolvers" "ComputeDevStress"
+
+  Flow Solver Name = String "Flow Solution"
+  Stress Variable Name = String "ViscousStress"
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+End
+
+Solver 8 
+  Equation = "Free Surface cavity"
+  Variable = "Zs Bottom"
+
+  Variable DOFS =  1
+  Exported Variable 1 = "Zs Bottom Residual"
+  Exported Variable 1 DOFs = 1
+  Exported Variable 2 = "bedrock"
+  Exported Variable 2 DOFs = 1
+
+  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 100
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-9
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = 1.0e-03
+
+  Stabilization Method = Stabilized
+  Apply Dirichlet = Logical True
+
+! ALE Formulation = Logical True
+
+! How much the free surface is relaxed
+!  Relaxation Factor = Real 1.0
+
+! use/or not accumulation
+  Use Accumulation = Logical True  
+
+! take accumulation to be given normal to surface/as vector
+  Normal Flux = Logical False
+End
+
+!Solver 9  
+!  Procedure = File "SaveData" "SaveLine"
+!  Filename =  "results.dat"
+!  !Filename =  "$namerun"_surface.dat"
+!  File Append = Logical True
+!End
+
+Solver 9
+  Exec Solver = After TimeStep
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical True
+
+  Variable 1 = String "Time"
+
+  Variable 2 = String "ViscousStress"
+  Operator 2 = String "int"
+
+  Variable 3 = String "ViscousStress"
+  Operator 3 = String "max"
+
+  Variable 4 = String "ViscousStress"
+  Operator 4 = String "min" 
+
+  Operator 5 = String "cpu time"
+End
+
+!Solver 10 
+!  Exec Solver = After Timestep 
+!  Exec Interval = $interval
+!  Equation = "result output"
+!  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+!  Output File Name = String $namerun
+!  Output Format = String vtu
+!End
+
+!---------------------------------------------------
+!---------------- EQUATIONS ------------------------
+!---------------------------------------------------
+! Equation for the ice
+Equation 1
+  Active Solvers (5) = 2 4 6 7 9 ! 10
+End
+
+! Equation for the free surface of the cavity
+Equation 2
+  Active Solvers(4) = 1 3 5 8 
+  Flow Solution Name = String "Flow Solution"
+  Convection = String Computed
+End
+
+!---------------------------------------------------
+!---------------- BOUNDARY CONDITIONS --------------
+!---------------------------------------------------
+
+! ICE BC
+
+!! Cavity surface
+Boundary Condition 1
+  Name = "cavity"
+  Target Boundaries = 1
+  Body Id = 2
+
+  Normal-Tangential Velocity = Logical True
+  Flow Force BC = Logical True
+
+  Zs Bottom = Equals bedrock
+  Zs Bottom Condition = Variable Coordinate 1
+    Real MATC "2.0 - tx"
+
+  Slip Coefficient 2 = Variable Coordinate 1
+    Real Procedure "ElmerIceUSF" "SlidCoef_Contact"
+ 
+    Sliding Law = String weertman 
+    Weertman Friction Coefficient = Real 0.0 ! Pure sliding
+    Weertman Exponent = Real 1.0  
+    Weertman Linear Velocity = Real 1.0 
+
+  Velocity 1 = Real 0.0
+  Velocity 1 Condition = Variable GroundedMask
+     Real MATC "tx + 0.5"
+!
+! If ice in contact with water
+!
+  External Pressure = Real $WaterPressure   
+  
+  ComputeNormal = Logical True
+  ComputeNormal Condition = Variable GroundedMask
+    Real MATC "tx + 0.5"
+
+  Mesh Update 1 = Real 0.0e0
+  Mesh Update 2 = Variable Zs Bottom
+    Real Procedure "ElmerIceUSF" "ZsBottomMzsIni"
+   
+  Save Line = Logical True 
+End
+
+! Periodic BC
+Boundary Condition 2
+  Name = "ice right"
+  Target Boundaries = 2
+  Periodic BC = 4
+  Periodic BC Translate(2) = Real 10.0 0.0 
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Pressure  = Logical True
+  Periodic BC Zs Bottom = Logical True
+  Periodic BC Mesh Update 2 = Logical True
+End
+
+! Top BC
+Boundary Condition 3
+  Name = "ice top"
+  Target Boundaries = 3
+
+  Velocity 1 = Real $UpperVelocity
+
+  Flow Force BC = Logical True
+  External Pressure = Real $OverburdenPressure
+
+  Mesh Update 1 = real 0.0 
+  Mesh Update 2 = real 0.0 
+End
+
+! Periodic BC
+Boundary Condition 4
+  Name = "ice left"
+  Target Boundaries = 4
+End
+
+

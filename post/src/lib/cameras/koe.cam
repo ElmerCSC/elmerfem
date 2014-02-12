@@ -1,0 +1,12 @@
+!
+! camera configuration single view
+!
+
+camera      camera1
+from        0 0 5
+at          0 0 0
+up          0 1 0
+viewport    0 0 1 1
+projection  perspective
+field angle 30
+clip        5 50     ! near far

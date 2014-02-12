@@ -1,0 +1,10 @@
+
+INCLUDE(CheckIncludeFiles)
+
+CHECK_INCLUDE_FILES(inttypes.h HAVE_INTTYPES_H)
+
+CONFIGURE_FILE(config.h.cmake config.h)
+
+INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/matc/src")
+ADD_SUBDIRECTORY(src)
+

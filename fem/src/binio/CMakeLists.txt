@@ -1,0 +1,15 @@
+SET(OFF_KIND "selected_int_kind(18)")
+
+CONFIGURE_FILE(
+  "kinds.f90.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/kinds.f90"
+  )
+
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem 
+  ${CMAKE_CURRENT_BINARY_DIR})
+
+SET(biniolib_SOURCES binio.c biniomod.f90 ${CMAKE_CURRENT_BINARY_DIR}/kinds.f90)
+
+ADD_LIBRARY(binio SHARED ${biniolib_SOURCES})
+
+INSTALL(TARGETS binio LIBRARY DESTINATION lib)

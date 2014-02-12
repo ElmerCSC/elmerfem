@@ -1,0 +1,233 @@
+<html>
+<body>
+
+<img src=figs/elmer.gif>
+
+<h2> Edit menu </h2>
+
+<p>
+The edit menu provides access to several display properties settings
+etc.
+
+<p>
+<h5> Contents: </h4>
+  <ul>
+    <li> <a href=#Colormap> Colormap Editor</a>
+    <li> <a href=#Grouping> Grouping </a>
+    <li> <a href=#MaterialEditor> Material Editor </a>
+    <li> <a href=#BackgroundColor> Background Color Editor </a>
+    <li> <a href=#Timestep> Timestep Control </a>
+    <li> <a href=#MathModule> Math Module Window </a>
+    <li> <a href=#StopProcessing> Stop Processing </a>
+    <li> <a href=#CameraSettings> Camera Settings </a>
+    <li> <a href=#ObjectClipPlanes> Object Clip Planes </a>
+  </ul>
+<p>
+
+<p>
+
+<h4><a name="Colormap"> Colormap Editing </a></h4>
+<p>
+
+<img src=figs/colormap.gif><p>
+
+Colormap editor lets you read predifned colormaps or define
+and save your own colormap. Colormap is used by all the 
+data displaying functions in elmerpost to map scalar values
+to colors in display window.
+<p>
+
+Colormap editor is launched by selecting the menu item
+<em>Colormap</em> from the <em>Edit</em> menu at the main
+window.
+<p>
+
+When started the colormap editor 
+gives an picture of the current colormap in a window.
+The colormap indexes run from the top-left corner to 
+right and down. 
+<p>
+
+A number of knot points are shown with circles inside the color boxes.
+You can change a color of a box with a knot by clicking the box with
+left mouse button when pointer is inside the box and using the 
+slider at the bottom of the window. The current knot is shown with
+green circle whereas the other knots are red.  You can also add a knot
+to any of the boxes by clicking a box with the middle mouse button.
+You can move a knot around using left mouse button to click to
+a knot and dragging. When the pointer is above a knot you can delete
+the knot by pressing Shift key and middle mouse button simultaneously.
+<p>
+
+You can view the edited colormap without closing the editor by
+pressing the <em>Apply</em> button.
+
+<p>
+<h5> Colormap file format </h5>
+<p>
+
+In addition to editing colormap interactively colormap can be given
+from a definition file.
+
+<p>
+An example of a colormap file is given below:
+<pre>
+!
+!
+! Default colormap
+!
+! code   index   red  green  blue
+!
+  knot      0     0     0     100  ! start from blue
+  knot     42     0    100    100  ! to cyan
+  knot     85     0    100     0   ! to green
+  knot    128    100   100     0   ! to yellow
+  knot    170    100    0      0   ! to red
+  knot    213    100    0     100  ! to magenta
+  knot    255    100   100    100  ! to white
+</pre>
+
+The file is composed of rows beginning with the keyword <em>knot</em> 
+followed by an index to the colormap followed by red, green and
+blue values of an colormap entry with this index. The size of the
+colormap is given by the largest index to the colormap. The
+red, green and blue values are given in percentage values from 0 to 100.
+<p>
+<h4><a name="Grouping"> Grouping </a></h4>
+<p>
+Grouping of elements is given in the <a href=file.html#format>element model file</a>.
+Currently the only functional use of the grouping information is to
+restrict the display of elements to selected groups. This can be accomplished
+using the window given by the menu choice <em> Edit => Grouping </em>  shown
+below.
+<p>
+<img src=figs/groups.gif><p>
+<p>
+A known problem with the display of groups is that it doesn't
+apply to the line mode <a href=dspl#mesh> mesh display</a>.
+<p>
+<h4><a name="MaterialEditor"> MaterialEditor </a></h4>
+<p>
+<img src=figs/material.gif><p>
+Material editor lets you change the surface color settings.  It has two modes:
+<it>Ambient & Diffuse</it> and <it>Specular</it>.  In both modes you can use
+the color sliders to adjust the color of the diffuse reflection and specular
+reflection respectively.  The shininess slider is used to give value of the
+specular exponent and thus applies only to specular reflection.
+Lowering the value of the specular exponent increases the angle with which
+the specular reflection spot can be seen to eye and vice versa.
+<p>
+<img src=figs/diff.gif>  <img src=figs/spec1.gif> <img src=figs/spec2.gif>
+<p>
+In the leftmost picture only diffuse reflection is used (the specular
+color is black). In the middle picture the specular color is allmost
+white and the value of the shininess setting is 20. In the rightmost
+picture the shininess is 5. <p>
+<h4><a name="BackgroundColor"> Background Color Editor</a></h4>
+<p>
+<img src=figs/background.gif><p>
+The menu entry <em> Edit => Background Color</em> is used to set the
+color of graphics window background. Use the red, green, and blue
+sliders to set the color or pick one of the predifined colors in the
+list box at the bottom of the window.<p>
+<h4><a name="Timestep"> Controlling Timesteps </a></h4>
+<p>
+<img src=figs/timestep.gif><p>
+
+The menu entry <em>Edit => Timestep Control</em> launches a panel that 
+allows one to interactively view the timestep range read in from the model file.
+<p>
+At the top of the window is shown the current timestep as a number and a slider value.
+Both can be changed at will.<p>
+Below are the settings for looping over specified range of
+timesteps. You can set the minimum and maximum timestep to be looped over, 
+the increment of the timestep in between and also the number of times the loop is to be executed.<p>
+At the second line you can give any Elmerpost command which
+will be executed after each update of display has been done.
+This option can be used for example to save the current picture
+in a file. You can refer to current timestep as variable named "t".
+The loop will be executed when you press the <em>Loop</em> button
+and can be stopped prematurely by pressing the same button again.
+<p>
+<h4><a name="MathModule"> The Math Module  </a></h4>
+<p>
+<img src=figs/matc.gif>
+<p>
+The menu entry <em>Edit => Math Module Window</em> launcehes a text window
+with direct access to the Elmerpost MATC- matrix language. Refer to 
+<a href=matc/kirja.html>MATC-documentation</a>.<p>
+At the bottom of the created window there is a command line input window
+where you can give any MATC-command. The results, if any, are shown in the
+text window immediately above, and a list of previous commands given at 
+the topmost window.<p>
+<h4><a name="StopProcessing"> Stop Processing </a></h4>
+<p>
+<em>Edit => Stop Processing</em> tries to stop Elmerpost from doing whatever
+it is doing. This of cause requires that user interface loop is active at the time
+(otherwise you won't be able to select this item), refer to TCL/TK documentation.
+<p>
+<h4><a name="CameraSettings"> Camera Configurations </a></h4>
+<p>
+<img src=figs/camera.gif>
+<p>
+The menu entry <em>Edit => Load Camera Configurations</em> lets you define camera (viewing)
+settings. There are several parameters to consider. First of all there are
+the parameters related to viewer: the point in space where the
+viewer is located (From x,From y,From z), the point in space where the view
+is focused (To x,To y,To z) and the 'up' direction of for the viewer
+(Up x,Up y, Up z). Projection type of the camera, either perspective
+or orthogonal procjection can be selected. The parameter called
+'View Angle' acts like a zoom in a real camera: increasing the value gives
+a wider view and also 'zooms out' the model. The range of view in
+direcetion of the view can be set from the 'Near Clip' and 'Far Clip'
+settings. Finally one can set the viewport i.e. the part of the graphics window
+which is used for rendering this cameras view.
+<p>
+One can also read camera configurations from a file, an example of such a file
+is given below defining three cameras on the scene. The cameras are
+located at different angles with regard to the model and  divide the 
+drawing area between themselves.
+<pre>
+!
+! camera configuration three view
+!
+!
+camera      camera1
+from        0 0 5
+to          0 0 0
+up          0 1 0
+viewport    0 0 0.5 1.0
+projection  perspective
+field angle 30
+clip        0.1 20         ! near far
+
+camera      camera2
+from        5 0 0
+to          0 0 0
+up          0 1 0
+viewport    0.5 0 1 0.5
+projection  perspective
+field angle 30
+clip        0.1 20         ! near far
+
+camera      camera3
+from        3 3 3
+to          0 0 0
+up          0 1 0
+viewport    0.5 0.5 1 1
+projection  perspective
+field angle 30
+clip        0.1 20         ! near far
+</pre>
+<p>
+<h4><a name="ObjectClipPlanes"> Object Clip Planes </a></h4>
+<p>
+<img src=figs/clip.gif>
+<p>
+In addition to viewing clipping planes (see the Camera Settings previously), which are always
+aligned with viewing coordinate planes, you can interactively set six additional clipping planes
+in model coordinate space. The coordinates for the plane settings are scaled so that the
+largest coordinate direction for the model is scaled to range from minus one to plus one.
+
+</body>
+</html>

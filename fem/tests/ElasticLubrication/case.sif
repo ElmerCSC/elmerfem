@@ -1,0 +1,223 @@
+$ relax = 0.5
+
+Header
+  Mesh DB "." "bump"
+End
+
+Constants
+End
+
+Simulation
+! to increase verbosity increase the value
+  Max Output Level = 4
+  Coordinate System = Cartesian 
+  Simulation Type = scanning
+
+! About 50 timesteps converge nicely with the default mesh
+! Here only 3 steps are used to minimize cpu time
+  Timestep Intervals = 2
+  Timestep Sizes = 1
+  Steady State Max Iterations = 20
+  Steady State Min Iterations = 2
+  Output Intervals = 1
+!  Post File = "case.ep"
+End
+
+Body 1
+  Name = "Elastomer"
+  Equation = 1	
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "Fluid"
+  Equation = 2
+  Material = 2
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Pressure = 0.0
+End
+
+Material 1
+  Name = "Elastomer"
+  Density = 1000
+  Youngs Modulus = 6e6
+  Poisson Ratio = 0.48
+End
+
+Material 2
+  Name = "Oil"
+  Density = 912
+  Viscosity = 0.6384
+  Poisson Ratio = 0.3
+  Youngs Modulus = 1
+End
+
+Solver 1
+  Equation = Navier-Stokes
+  Stabilize = True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 10
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-3
+  Nonlinear System Newton After Tolerance = 0.0e-5
+  Nonlinear System Newton After Iterations = 100
+  Nonlinear System Relaxation Factor = $ relax
+  Steady State Convergence Tolerance = 1.0e-4
+  Calculate Loads = Logical True
+End
+
+Solver 2
+  Equation = Elasticity Solver
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 10
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  !Nonlinear System Max Iterations = 100
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = $ relax
+  Steady State Convergence Tolerance = 1.0e-4
+  !Calculate Stresses = Logical True
+  !Calculate Strains  = Logical True
+  !Calculate Loads = Logical True
+End
+
+Solver 3
+  Equation = Mesh Update
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+Solver 4
+! this one will plot you F(t) function
+!  Exec Solver = String "After timestep"
+  Exec Solver = never
+
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+  Variable 1 = time
+  Operator 2 = boundary sum
+  Variable 2 = Flow Solution Loads 1
+  Operator 3 = boundary sum
+  Variable 3 = Flow Solution Loads 2
+End
+
+
+Solver 5 
+!  Exec Solver = String "after timestep"	
+  Exec Solver = never
+
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = "case" 
+  Output Format = "vtu"
+End
+
+Equation 1
+  Active Solvers = 2
+  Plane Stress = True
+End
+
+Equation 2
+  Active Solvers(2) = 1 3
+End
+
+Boundary Condition 1
+  Name = "Elastomer_inlet"
+  Target Boundaries = 1 
+  Displacement 1 = 0.0
+End
+
+Boundary Condition 2
+  Name = "Elastimer_outlet"
+  Target Boundaries = 2 
+  Displacement 1 = 0.0
+End
+
+Boundary Condition 3
+  Name = "Elastomer_top"
+  Target Boundaries = 3
+  Displacement 1 = 0.0
+  Displacement 2 = Variable time
+    Real MATC "-1.0e-8*(tx-1)"
+End
+
+Boundary Condition 4
+  Name = "Fluid_inlet"
+  Target Boundaries = 4
+  Velocity 2 = 0.0
+  Pressure 1 = 0
+  Mesh Update 1 = 0.0
+End
+
+Boundary Condition 5
+  Name = "Fluid_outlet"
+  Target Boundaries = 5
+  Velocity 2 = 0.0
+  Pressure 1 = 0
+  Mesh Update 1 = 0.0
+End
+
+Boundary Condition 6
+  Name = "Sliding_wall"
+  Target Boundaries = 6
+  Velocity 1 = 0.1
+  Velocity 2 = 0
+  Mesh Update 1 = 0.0
+  Mesh Update 2 = 0.0
+End
+
+Boundary Condition 7
+  Name = "FSI_wall"
+  Target Boundaries = 7
+
+! continuous way of setting fsi conditions
+!  FSI BC = Logical True
+!  Normal Target Body = 2
+
+! discrete way
+  Displacement 1 Load = Variable Flow Solution Loads 1
+    Real MATC "-tx"
+  Displacement 2 Load = Variable Flow Solution Loads 2
+    Real MATC "-tx"
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+
+  Mesh Update 1 = Equals Displacement 1
+  Mesh Update 2 = Equals Displacement 2
+  Save Scalars = Logical True
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=3.43299851740606671E-008\n");
+
+
+
+

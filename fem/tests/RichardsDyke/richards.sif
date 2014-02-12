@@ -1,0 +1,123 @@
+Header
+  CHECK KEYWORDS Warn
+!  Mesh DB "." "dyke_303"
+  Mesh DB "." "land_dyke"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+!  Post File = richards.ep
+End
+
+Constants
+End
+
+Body 1
+  Name = "dyke"
+  Equation   = 1
+  Material   = 1
+  Body force = 1
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Porosity Model = "van Genuchten"
+  van Genuchten Alpha = 100.0
+  van Genuchten N = 1.4
+  van Genuchten M = 0.3
+  Saturated Hydraulic Conductivity = 5.0e-7
+End
+
+
+Solver 1
+  Equation = "RichardsSolver"
+  Procedure = File "RichardsSolver" "RichardsSolver"
+  Variable = Total Head
+
+!  Discontinuous Galerkin = Logical True ! not operational yet
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Bicgstabl polynomial Degree = 4
+  Linear System Max Iterations  = 1000
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Residual Output = 10
+!  Linear System Convergence Measure = String solution
+
+!  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Convergence Measure = solution
+  Nonlinear System Relaxation Factor = 1.0
+
+! Uses saturated conditions (pure Darcy flow) for the 1st iteration
+  Saturated Initial Guess = True
+
+!  Bubbles = Logical True
+End
+
+Solver 2
+  Exec Solver = never
+  Equation = "RichardsFlux"
+  Procedure = File "RichardsSolver" "RichardsPostprocess"
+
+  Flux Variable = String "Total Head"
+  Flux Multiplier = Real 1.0e9
+
+  Linear System Convergence Tolerance = 1.0e-12
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Name = "Bottom"
+End
+
+Boundary Condition 2
+  Target Boundaries = 2 
+  Name = "RightWall"
+End
+
+Boundary Condition 3
+  Target Boundaries = 3 
+  Name = "WetRight"
+  Total Head = Real 6.0
+End
+
+Boundary Condition 4
+  Target Boundaries = 4 
+  Name = "DryDyke"
+End
+
+Boundary Condition 5
+  Target Boundaries(2) = 5 6 
+  Name = "WetLeft"
+  
+  Total Head = Real 8.5
+End
+
+Boundary Condition 6
+  Target Boundaries = 7 
+  Name = "LeftWall"
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=7.5654956\n");
+
+
+
+
+

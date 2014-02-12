@@ -1,0 +1,102 @@
+check keywords warn
+echo on
+
+$name = "depth"
+
+
+Header
+  Mesh DB "." "mesh"
+End
+
+Constants
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type = Steady State
+
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output File = "elmer_$name".result"
+  Post File = "elmer_$name$.vtu"
+  max output level = 20
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! the ice core (3d)
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Solver 1  
+  Equation = "Flowdepth"
+
+   Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+   Variable = String "depth"
+   Variable DOFs = 1
+   Linear System Solver = "Direct"
+   Linear System Direct Method = umfpack
+   ! this sets the direction
+   ! -1 is negative z-direction (upside down)
+   ! +1 is positive (downside up)
+   Gradient = Real -1.0           
+  ! switch that to True, if you
+  ! want to have free surface gradients
+  ! to be computed
+  !------------------------------------
+  Calc Free Surface = Logical True
+  ! will contain the variable of the corresponding free surface position
+  !---------------------------------------------------------------------
+  FreeSurf Name = String "Zsurf"
+  Exported Variable 1 = String "Zsurf"
+  Exported Variable 1 DOFs = 1
+  ! next two will contain values of the free surface gradient
+  ! nice to be used in post-processing for evaluation of the
+  ! surface mass balance in diagnostic runs
+  !----------------------------------------------------------
+  Exported Variable 2 = String "ZsurfGrad1"
+  Exported Variable 2 DOFs = 1
+  Exported Variable 3 = String "ZsurfGrad2"
+  Exported Variable 3 DOFs = 1
+End
+
+Solver 2
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+
+  Variable 1 = String "Zsurf"
+  Operator 1 = String "int"
+  Variable 2 = String "Zsurf"
+  Operator 2 = String "max"
+  Variable 3 = String "Zsurf"
+  Operator 3 = String "min"
+
+  Operator 4 = String "cpu time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+  Active Solvers (2) = 1 2
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!! bedrock
+Boundary Condition 1
+  Target Boundaries = 5
+End
+
+!!! free surface
+Boundary Condition 2
+  Target Boundaries = 6
+  Depth = Real 0.0
+End 

@@ -1,0 +1,24 @@
+***** ElmerGrid input file for structured grid generation *****
+Version = 210903
+Coordinate System = Cartesian 2D
+Subcell Divisions in 2D = 6 1 
+Subcell Limits 1 = 0 1 2 3 4 5 6 
+Subcell Limits 2 = 0 2 
+Material Structure in 2D
+  1    1    1    1    1    1    
+End
+Geometry Mappings
+! mode  line  limits(2)   Np  params(Np)
+  58    0     1e+06   1e+06   14  0 0 1 60 2 120 3 180 4 240 5 300 6 360 
+End
+Materials Interval = 1 1
+Boundary Definitions
+! type     out      int      double   of the boundaries
+  1        -1       1        1       
+  2        -3       1        1       
+End
+Numbering = Vertical
+Element Degree = 1
+Element Innernodes = False
+Triangles = False
+Surface Elements = 200

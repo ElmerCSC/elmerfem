@@ -1,0 +1,29 @@
+#include "huti_fdefs.h"
+
+!------------------------------------------------------------------------------
+!> Backward error estimate e = ||Ax-b||/(||A|| ||x|| + ||b||)
+!------------------------------------------------------------------------------
+  FUNCTION BackwardError( x,b,r,ipar,dpar ) RESULT(err)
+!------------------------------------------------------------------------------
+     USE ParallelUtils
+
+     INTEGER :: ipar(*),n
+     DOUBLE PRECISION :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM),dpar(*),err,res(HUTI_NDIM)
+
+     n = HUTI_NDIM
+
+     IF(ParEnv % PEs>1) THEN
+       CALL SParMatrixVector(x,res,ipar)
+     ELSE
+       CALL CRS_MatrixVectorMultiply(GlobalMatrix,x,res)
+     END IF
+     res = res - b(1:n)
+
+     err = ParallelReduction(SQRT(SUM( res(1:n)**2) )) /  &
+        ( ParallelReduction(SQRT(SUM(GlobalMatrix % Values**2))) * &
+             ParallelReduction(SQRT(SUM(x(1:n)**2))) + &
+                ParallelReduction(SQRT(SUM(b(1:n)**2))) )
+
+  END FUNCTION BackwardError
+!------------------------------------------------------------------------------
+

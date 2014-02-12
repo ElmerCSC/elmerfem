@@ -1,0 +1,112 @@
+! Bending 2D beam under the influence of electrostatic forces
+! The forces are computed from a simple 1D model and the air mesh
+! is not needed at all. Compare to case ElastElstatBeam with 
+! more rigorous force computation.
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "beam_no_air"
+End
+
+Simulation
+  Max Output Level = 42
+  Coordinate System = Cartesian 
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Post File = "case.ep"
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Name = "beam"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers = 1
+  Plane Stress = FALSE
+End
+
+
+Solver 1
+  Equation = "LinearDisp"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "Displacement"
+  Variable DOFs = Integer 2
+  Displace Mesh = Logical FALSE
+
+  Linear System Solver = Direct
+  Linear System Symmetric = Logical True
+  Linear System Scaling = Logical False
+  Linear System Iterative Method = BiCGStab
+  Linear System Direct Method = UMFPACK
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 200
+  Linear System Preconditioning = ILU2
+
+  Nonlinear System Convergence Tolerance = Real 1.0e-7
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Relaxation Factor = Real 1
+
+  Steady State Convergence Tolerance= 1.0e-6
+  Optimize Bandwidth = True
+End
+
+
+Solver 2
+  Exec Solver = Never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+
+  Variable 1 = Displacement 2
+  Operator 1 = max abs  
+End
+
+Material 1
+  Density = Real 1
+  Youngs Modulus = Real 1e9
+  Poisson Ratio = Real 0.3
+End
+
+Material 2
+  Relative Permittivity = 1
+End
+
+
+Boundary Condition 1
+  Name = "beam_fixed"
+  Target Boundaries = 1
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 2
+  Name = "beam_bottom"
+  Target Boundaries = 2
+
+  Potential Difference = Real 1.0e6
+  Relative Permittivity = Real 1.0
+  Gap Height = Variable Displacement 2
+    Real MATC "0.1+tx"
+
+  Force 2 = Variable time 
+    Real Procedure "StatElecBoundary" "StatElecBoundaryForce" 
+
+End
+
+
+
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.22067041E-03\n");
+
+!End Of File
+

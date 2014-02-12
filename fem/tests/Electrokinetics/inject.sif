@@ -1,0 +1,174 @@
+! This is an old case of analyte transport with Helmholtz-Smoluchowski BCs.
+! Not perhaps particularly accurate as the advection-diffusion equation suffers
+! from high numerical diffusion. Particularly for purely advective transport
+! the particle based methods might be favorable. 
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "Tcross"
+End
+
+Simulation
+  Coordinate System = Cartesian 2D
+
+  Simulation Type = "Transient"
+  Steady State Max Iterations = 20
+
+! reduced for faster execution
+  Timestep Intervals = 50 ! 120
+  Timestep Sizes = 1e-5  
+  Output Intervals = 2
+
+  Timestepping Method = BDF
+  BDF Order = 2
+
+!  Output File = "diffusion1.res"
+!  Post File = "diffusion2.ep"
+  Binary Output = Logical True
+
+  Output Version Numbers = Logical True
+  Max Output Level = 32
+End
+
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12  ! C²/Nm²
+End
+
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+  Convection = Computed
+  NS Convect = False
+  Electric Field = String "computed"
+End
+
+
+Solver 1  
+  Exec Solver = before all
+
+  Equation = "Stat Elec Solver"
+  Procedure = "StatElecSolve" "StatElecSolver"
+  Variable = String "Potential"
+  Variable DOFs = 1
+
+  Calculate Electric Field = True
+  Calculate Electric Flux = False
+  Linear System Convergence Tolerance = 1.0E-10
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack 
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-10
+  Steady State Convergence Tolerance =  1.0E-10
+End
+
+Solver 2
+  Equation = "Navier-Stokes"
+
+  Linear System Convergence Tolerance = 1.0D-08
+  Linear System Solver = Iterative
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgStabl Polynomial Degree = Integer 4 
+  Linear System Max Iterations = 500
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = none 
+  Linear System Residual Output = 20  
+
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance =  Real 1.0D-8
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance =  1.0e-03
+
+  Stabilize = True
+End
+
+Solver 3
+  Exec Solver = After Timestep
+  Equation = "Analyte transfer"
+  Procedure = "AdvectionDiffusion" "AdvectionDiffusionSolver"
+  Variable = String "Analyte"
+  Variable DOFs = 1
+  Bubbles = True
+
+  Linear System Convergence Tolerance = 1.0E-06
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  BiCgstabl Polynomial Degree = Integer 4
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = none
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Steady State Convergence Tolerance =  1.0D-06
+End
+
+
+Material 1
+  Density = 1e3  
+  Viscosity = 1e-03
+  Relative Permittivity = 1.0    
+  Analyte Diffusivity = Real 1e-10 
+End
+
+
+Boundary Condition 1
+  Name = "channel-walls"
+  Target Boundaries(2) = 4 5
+
+  EO Mobility = Real 5e-08 
+
+  Velocity 1 = Variable Pressure
+      Real Procedure  "Electrokinetics" "helmholtz_smoluchowski1"
+  Velocity 2 = Variable Pressure
+      Real Procedure  "Electrokinetics" "helmholtz_smoluchowski2"
+End
+
+Boundary Condition 2
+  Name = "el_A"
+  Target Boundaries = 1
+
+  Potential = 100.0
+  Velocity 2 = 0.0
+
+  Analyte = Variable Time
+    Real
+      0.0      1.0
+      3.0e-5   1.0
+      4.0e-5   0.0
+      0.5      0.0
+    End
+End
+
+Boundary Condition 3
+  Name = "el_B"
+  Target Boundaries = 2
+
+  Potential = 30.0
+  Velocity 1 = 0.0
+End
+
+Boundary Condition 4
+  Name = "el_C"
+  Target Boundaries = 3
+
+  Potential = 0.0 
+  Velocity 1 = 0.0
+End
+
+$ fprintf( stderr, "TEST CASE 1\n" );
+RUN
+$ fprintf( stderr, "END TEST CASE 1, Target NRM=0.16145013E-01\n");

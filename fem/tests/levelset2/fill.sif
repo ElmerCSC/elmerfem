@@ -1,0 +1,153 @@
+$ bw=0.0002
+$ xinit=-0.001
+
+Header
+  Mesh DB "." "fill"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation 
+  Max Output Level = 3
+  coordinate system = "Cartesian 2D"
+  coordinate mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+  Timestepping Method = String BDF
+  BDF Order = Integer 2
+  Timestep sizes = Real 0.1
+  Timestep Intervals = Integer 3
+
+  Timestep Function 
+    Real Procedure "LevelSet" "LevelSetTimestep"
+  LevelSet Courant Number = Real 1.0
+
+  Steady State Max Iterations = Integer 2
+  Output Intervals = Integer 1
+
+! post file = "fill.ep"
+! output file = "fill.dat"
+End
+
+Body 1
+  name = "body1"
+  equation = 1
+  material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Velocity 1 = 1.0e-5
+  Velocity 2 = 0
+  Pressure = 0
+
+  Surface = Variable Coordinate 1
+     Real MATC "tx-xinit"
+End
+
+Equation 1
+  name = "Equation1"
+  Active Solvers(3) = 1 2 3
+End
+
+Material 1
+  name = "material1"
+
+  Viscosity = Variable Surface
+     Real Procedure "MyStuff" "Viscosity"
+
+  Density = Variable Surface
+     Real Procedure "MyStuff" "Viscosity"
+  
+  LevelSet Bandwidth = Real $ bw
+
+  Inside Viscosity = Real 1.0
+  Outside Viscosity = Real 0.1
+
+  Inside Density = Real 1.0
+  Outside Density = Real 0.1
+
+  Levelset Velocity 1 = Equals Velocity 1
+  Levelset Velocity 2 = Equals Velocity 2
+End
+
+
+Solver 1
+  Equation = "Level Set"
+  Variable = Surface
+  Variable DOFs = 1
+  Procedure = "LevelSet" "LevelSetSolver"
+  Steady State Convergence Tolerance = 1e-6
+
+  Stabilize = Logical True
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+End
+
+Solver 2
+  Equation = "Reinitialize"
+
+  Variable = Renorm
+  Variable DOFs = 1
+  Procedure = "LevelSet" "LevelSetDistance"
+
+  Extract Interval = Integer 2
+  Reinitialize Interval = Integer 10
+
+!  Filename = File "ls.dat"
+!  File Append = Logical True
+End
+
+
+Solver 3
+  equation = "Navier-Stokes"
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1.0e-5
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 15
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-2
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+Boundary Condition 1
+  name = "no-slip"
+  target boundaries =  1
+  velocity 1 = 0.0
+  velocity 2 = 0.0
+End
+
+Boundary Condition 2
+  name = "in-flow"
+  target boundaries = 2
+
+  Velocity 1 = Variable Coordinate 2
+     Real MATC "1e4*(tx-0.01)*(0.03-tx)"
+  velocity 2 = 0
+  Surface = Equals Surface  
+End
+
+! left wall condition
+Boundary Condition 3
+  name = "out-flow"
+  target boundaries = 3
+
+  Pressure = 0
+  velocity 2 = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.28510298\n");

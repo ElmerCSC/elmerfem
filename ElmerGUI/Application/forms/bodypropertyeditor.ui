@@ -1,0 +1,120 @@
+<ui version="4.0" >
+ <class>bodyPropertyDialog</class>
+ <widget class="QDialog" name="bodyPropertyDialog" >
+  <property name="enabled" >
+   <bool>true</bool>
+  </property>
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>465</width>
+    <height>236</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>Body</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout_2" >
+   <item>
+    <widget class="QGroupBox" name="groupBox" >
+     <property name="title" >
+      <string>Properties</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout" >
+      <item>
+       <layout class="QGridLayout" name="gridLayout" >
+        <item row="0" column="0" >
+         <widget class="QLabel" name="equationLabel" >
+          <property name="maximumSize" >
+           <size>
+            <width>70</width>
+            <height>16777215</height>
+           </size>
+          </property>
+          <property name="text" >
+           <string>Equation</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1" >
+         <widget class="QComboBox" name="equationCombo" />
+        </item>
+        <item row="1" column="0" >
+         <widget class="QLabel" name="materialLabel" >
+          <property name="text" >
+           <string>Material</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1" >
+         <widget class="QComboBox" name="materialCombo" />
+        </item>
+        <item row="2" column="0" >
+         <widget class="QLabel" name="bodyForceLabel" >
+          <property name="text" >
+           <string>Body force</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1" >
+         <widget class="QComboBox" name="bodyForceCombo" />
+        </item>
+        <item row="3" column="0" >
+         <widget class="QLabel" name="initialConditionLabel" >
+          <property name="text" >
+           <string>Initial condition</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1" >
+         <widget class="QComboBox" name="initialConditionCombo" />
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayout" >
+     <item>
+      <widget class="QLabel" name="nameLabel" >
+       <property name="text" >
+        <string>Name</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="nameEdit" />
+     </item>
+     <item>
+      <widget class="QPushButton" name="applyButton" >
+       <property name="text" >
+        <string>Apply</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >
+         <normaloff>:/icons/list-add.png</normaloff>:/icons/list-add.png</iconset>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="discardButton" >
+       <property name="text" >
+        <string>Discard</string>
+       </property>
+       <property name="icon" >
+        <iconset resource="../ElmerGUI.qrc" >
+         <normaloff>:/icons/list-remove.png</normaloff>:/icons/list-remove.png</iconset>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="../ElmerGUI.qrc" />
+ </resources>
+ <connections/>
+</ui>

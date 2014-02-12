@@ -1,0 +1,159 @@
+#
+# Makefile for the HUT-Iter library, LINUX (Absoft) version
+#
+# $Id: Makefile.linux_intell,v 1.1 2003/05/07 09:03:04 jpr Exp $
+#
+
+.SUFFIXES: .f90
+
+# Common
+
+SHELL	=	/bin/sh
+RM      =       /bin/rm -f
+MV      =       /bin/mv -f
+CP	=	/bin/cp
+CPP	= 	/lib/cpp
+AR	=	/usr/bin/ar
+
+CC	=	cc
+CLINKER	=	cc
+FC77	=	ifc
+FC90	=	ifc
+FLINKER	=	ifc
+INSTALL	=	$(CP)
+CHMOD	=	/bin/chmod
+
+# User configurable options
+
+PREFIX	=	..
+PRECS	=	S D C Z
+
+# These are for LINUX (Intell f90)
+
+OPSYS	= LINUX_PC
+CFLAGS	= -ansi -O
+FFLAGS	= -O
+F90FLAGS= -v -I.
+OPTFLAGS=
+CPPFLAGS= 
+ARFLAGS	= vru
+
+LIBS	= -lblas -lc
+
+# Must use quotes due to for-loops, if variable is empty
+
+otherobjs=huti_main.o
+precdf90=huti_cg huti_tfqmr huti_cgs huti_qmr huti_bicgstab \
+	 huti_gmres huti_bicgstab_2 huti_aux
+precdf77=""
+precdc=huti_sfe_c
+
+#
+# Generic Section
+#
+
+all:	libhuti install
+	@echo
+	@echo Compilation and installation done.
+	@echo
+
+libhuti:
+	@echo
+	@echo 'Generating source files from *.src files'
+	@echo
+#
+# First make the precision dependent Fortran90 files
+#
+	@if [ "$(precdf90)X" != "X" ]; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdf90); do \
+		$(RM) $${pd}_$${p}.f90; \
+		$(CPP) -P -D$(OPSYS) -D$${p}_PRE $${pd}.src $${pd}_$${p}.f90; \
+	    done; \
+	  done; \
+	fi 
+#
+# Second make the precision dependent FORTRAN 77 files
+#
+	@if [ "$(precdf77)X" != "X" ] ; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdf77); do \
+		$(RM) $${pd}_$${p}.f; \
+		$(CPP) -P -D$(OPSYS) -D$${p}_PRE $${pd}.src $${pd}_$${p}.f; \
+	    done; \
+	  done; \
+	fi
+#
+# Third make the precision dependent C files
+#
+	@if [ "$(precdc)X" != "X" ]; then \
+	  for p in $(PRECS); do \
+	    for pd in $(precdc); do \
+		$(RM) $${pd}_$${p}.c; \
+		$(CPP) -P -D$(OPSYS) -D$${p}_PRE $${pd}.src $${pd}_$${p}.c; \
+	    done; \
+	  done; \
+	fi 
+#
+# Last compile everything (modules must be first)
+#
+	@echo
+	@echo Compiling generated source files...
+	@echo
+
+	@if [ "$(precdf77)X" != "X" ]; then \
+	  for basen in $(precdf77); do \
+	    for precc in $(PRECS); do \
+		make -f Makefile.linux_intell $${basen}_$${precc}.o ; \
+		$(AR) $(ARFLAGS) $@.a $${basen}_$${precc}.o ; \
+	    done; \
+	  done; \
+	fi
+	@if [ "$(precdf90)X" != "X" ]; then \
+	  for basen in $(precdf90); do \
+	    for precc in $(PRECS); do \
+		make -f Makefile.linux_intell $${basen}_$${precc}.o ; \
+		$(AR) $(ARFLAGS) $@.a $${basen}_$${precc}.o ; \
+	    done; \
+	  done; \
+	fi
+	@if [ "$(precdc)X" != "X" ]; then \
+	  for basen in $(precdc); do \
+	    for precc in $(PRECS); do \
+		make -f Makefile.linux_intell $${basen}_$${precc}.o ; \
+		$(AR) $(ARFLAGS) $@.a $${basen}_$${precc}.o ; \
+	    done; \
+	  done; \
+	fi
+
+	@if [ "$(otherobjs)X" != "X" ]; then \
+		make -f Makefile.linux_intell $(otherobjs) ; \
+		$(AR) $(ARFLAGS) $@.a $(otherobjs) ; \
+	fi
+
+install:
+	$(INSTALL) libhuti.a $(ELMER_PREFIX)/lib
+	$(CHMOD) 644 $(ELMER_PREFIX)/lib/libhuti.a
+	$(INSTALL) huti_defs.h $(ELMER_PREFIX)/include
+	$(CHMOD) 644 $(ELMER_PREFIX)/include/huti_defs.h
+	$(INSTALL) huti_fdefs.h $(ELMER_PREFIX)/include
+	$(CHMOD) 644 $(ELMER_PREFIX)/include/huti_fdefs.h
+
+# all compilation/linking.
+
+.SUFFIXES:	.f90 .F90
+
+.c.o:
+	$(CC) $(CFLAGS) -c $<
+
+.f90.o:
+	sed -e 's/^ \#/\#/' $*.f90 > $*.fpp
+	$(CPP) -P  $*.fpp> $*.f90
+	$(FC90) $(FFLAGS) $(F90FLAGS) -c $*.f90
+
+.f.o:
+	$(FC77) $(FFLAGS) -c $<
+
+clean:
+	$(RM) $(EXECS) *.o *~
+

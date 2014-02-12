@@ -1,0 +1,88 @@
+Check Keywords Warn
+
+Header
+  Mesh DB "." "angle"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+!  Output File = "data.result"
+!  Post File = "data.ep"
+End
+
+Constants
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Heat Source = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Linear System Solver = iterative
+  Linear System Iterative Method = bicgstab
+  BiCGstabl Polynomial Degree = 4
+  Linear System Convergence Tolerance = 1.0e-08
+
+! This is exceptionally set to a value that for the consistency test 
+! just gives convergence. Otherwise use something like 500.
+  Linear System Max Iterations = 14
+
+! Clustering MG works better as a preconditioner than a solver 
+  Linear System Preconditioning = multigrid
+
+!--- generic AMG parameters 
+  MG Levels = Integer 10
+  MG Smoother = String sgs
+  MG Pre Smoothing Iterations = 1
+  MG Post Smoothing Iterations = 1
+  MG Determining Component = Integer 1
+!  MG Preconditioning = diagonal
+!  MG Max Iterations = Integer 100
+
+!--- cluster MG specific parameters 
+  MG Method = String cluster
+
+  MG Cluster Size = Integer 0
+  MG Cluster Alpha = Real 1.8
+  MG Strong Connection Limit = Real 0.01
+  MG Strong Connection Minimum = Integer 4
+
+
+End
+
+Material 1
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Temperature = 0.0
+End
+
+$ fprintf( stderr, "TEST CASE 1\n" );
+RUN
+$ fprintf( stderr, "END TEST CASE 1, Target NRM=8.28620105719781869E-002\n");
+
+!End Of File

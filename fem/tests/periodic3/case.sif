@@ -1,0 +1,104 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Timestepping Method = BDF
+  BDF Order = 1
+!  Post File = case.ep
+
+!  Use Quadrant Tree = Logical False
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+End
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = -dofs 1 Temperature
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-10
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+End
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Air (room temperature)"
+  Viscosity = 1.983e-5
+  Heat expansion Coefficient = 3.43e-3
+  Heat Conductivity = 0.0257
+  Sound speed = 343.0
+  Heat Capacity = 1005.0
+  Density = 1.205
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Name = "BoundaryCondition BC1"
+  Periodic BC = 2
+  Periodic BC Temperature = True
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Name = "BoundaryCondition BC2"
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 5
+  Name = "BoundaryCondition 300"
+  Temperature = 300
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = 7
+  Name = "BoundaryCondition 200"
+  Temperature = 200
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=250.71956539858445\n");

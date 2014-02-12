@@ -1,0 +1,17 @@
+OBJ_EXT	=	.o
+
+include make.inc
+
+LIBDIR	=	$(ELMER_PREFIX)/lib
+LIB	=	libview3d.a
+
+CC	=	cc
+CP	=	cp
+
+.c.o:
+	$(CC) -c -I. -O5 $<
+	ar r $(LIB) $@
+
+$(LIB):	$(OBJS)
+	cp $(LIB) $(LIBDIR)
+	chmod 660 $(LIBDIR)/$(LIB)  

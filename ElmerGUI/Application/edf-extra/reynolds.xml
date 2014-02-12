@@ -1,0 +1,250 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Reynolds Equation" >
+      <Name>Reynolds Equation</Name>
+
+      <Equation>
+         <Parameter Widget="Label" > <Name> Local velocity settings </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Normal Velocity </Name>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Tangent Velocity 1 </Name>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Tangent Velocity 2 </Name>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Tangent Velocity 3 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Global velocity settings </Name> </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Surface Velocity 1 </Name>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Surface Velocity 2 </Name>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Surface Velocity 3 </Name>
+         </Parameter>
+
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Equation>
+
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name > Procedure </Name>
+            <DefaultValue> "ReynoldsSolver" "ReynoldsSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False">
+           <Name> Variable </Name>
+           <DefaultValue> FilmPressure </DefaultValue>
+         </Parameter>
+ 
+       <Parameter Widget="Label"> <Name>Definitions for cavitation</Name> </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Apply Limiter </Name>
+           <Whatis> If checked the pressure may be given a soft limit as in cavitation. </Whatis>
+           <StatusTip> If checked the pressure may be given a soft limit as in cavitation. </StatusTip>
+           <Activate> /Reynolds Equation/BodyForce/Filmpressure Lower Limit</Activate>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+       </Solver>
+
+      <InitialCondition>
+         <Parameter Widget="Label" > <Name> Variables </Name> </Parameter>
+          <Parameter  Widget="Edit">
+           <Name> FilmPressure  </Name>
+         </Parameter>
+      </InitialCondition>
+
+      <BodyForce>
+         <Parameter Widget="Label" > <Name> Dirichlet Conditions - Cavitation</Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> FilmPressure  </Name>
+           <Activate> /Reynolds Equation/BodyForce/FilmPressure Condition </Activate>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> FilmPressure Condition </Name>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> Filmpressure Lower Limit </Name>
+           <Whatis> Soft limit for pressure that may be used to model cavitation</Whatis>
+           <StatusTip> Soft limit for pressure that may be used to model cavitation</StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Body Force-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Body Force-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </BodyForce>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Properties of gap</Name> </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Gap Height </Name>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Flow Admittance </Name>
+         </Parameter>
+
+
+        <Parameter Widget="Label" > <Name> Material properties </Name> </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Viscosity </Name>
+         </Parameter>
+
+         <Parameter Widget="Combo">
+            <Name>Viscosity Model</Name>
+            <Type>String </Type>
+            <Whatis> The newtionian and rarafied viscosity models. </Whatis>
+            <Item> <Name> None </Name> </Item>
+            <Item> <Name> Newtonian </Name></Item>
+            <Item> <Name> Rarefied </Name>
+              <Activate> /Reynolds Equation/Material/Mean Free Path</Activate>
+            </Item>
+          </Parameter>  
+
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Mean Free Path  </Name>
+         </Parameter>
+
+
+         <Parameter Widget="Combo" >
+            <Name> Compressibility Model </Name>
+           <Type>String </Type>
+            <Whatis> The incompressible or compressible models. </Whatis>
+            <Item> <Name> None </Name> </Item>
+            <Item> <Name> Incompressible </Name></Item>
+             <Item> <Name> Weakly compressible </Name>
+             <Activate> /Reynolds Equation/Material/Bulk Modulus</Activate>
+             </Item>
+             <Item> <Name> Isothermal ideal gas </Name>
+              <Activate> /Reynolds Equation/Material/Reference Pressure</Activate>
+             </Item>
+            <Item> <Name> Adiabatic ideal gas </Name>
+              <Activate> /Reynolds Equation/Material/Reference Pressure</Activate>
+             <Activate> /Reynolds Equation/Material/Specific Heat Ratio</Activate>
+            </Item>
+         </Parameter>
+
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Reference Pressure </Name>
+         </Parameter>
+
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Specific Heat Ratio </Name>
+         </Parameter>
+
+         <Parameter Widget="Edit"  Enabled="False" Visible="False">
+            <Name> Bulk Modulus </Name>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </Material>
+
+
+      <InitialCondition>
+         <Parameter Widget="Label" > <Name> Variables </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> FilmPressure </Name>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Initial Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Initial Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+
+      </InitialCondition>
+
+      <BoundaryCondition>
+         <Parameter Widget="Label" > <Name> Dirichlet Conditions </Name> </Parameter>
+         <Parameter  Widget="Edit">
+           <Name> FilmPressure  </Name>
+           <Activate> /Reynolds Equation/BoundaryCondition/FilmPressure Condition </Activate>
+         </Parameter>
+
+         <Parameter  Widget="Edit" Enabled="False">
+           <Name> FilmPressure Condition </Name>
+           <Whatis> If the given value is less than zero, apply flux condition insted of the Dirichlet Condition. To be generally useful space and/or time varying values may be given. </Whatis>
+           <StatusTip> Give FilmPressure condition value for this boundary. </StatusTip>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Effective Elongation </Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Open Side </Name>
+           <Whatis> If checked use effective elongation model for the side. </Whatis>
+         </Parameter>
+
+          <Parameter Widget="Label"> <Name> Periodic boundary condition </Name> </Parameter>
+          <Parameter Widget="CheckBox">
+              <Name> Filmpressure periodic </Name>
+              <SifName> Periodic BC Filmpressure </SifName>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+      </BoundaryCondition>
+   </PDE>
+</edf>

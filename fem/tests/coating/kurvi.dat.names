@@ -1,0 +1,14 @@
+Variables in file: kurvi.dat
+     34 nodes for each step
+  1: Iteration step
+  2: Boundary condition
+  3: Node index
+  4: velocity 1
+  5: velocity 2
+  6: pressure
+  7: dx
+  8: mesh update 1
+  9: mesh update 2
+ 10: coordinate 1
+ 11: coordinate 2
+ 12: coordinate 3

@@ -1,0 +1,239 @@
+<html>
+<body>
+
+<img src=figs/elmer.gif><p>
+
+<p>
+<h5> Contents: </h5>
+<ul>
+  <li> <a href=#MeshLines> Mesh Lines </a>
+  <li> <a href=#ColorMesh> Color Mesh </a>
+  <li> <a href=#ContourLines> Countour Lines </a>
+  <li> <a href=#ContourSurfaces> Contour Surfaces and Model Cuts </a>
+  <li> <a href=#Vectors> Vector Display </a>
+  <li> <a href=#Particles> Particle Dispaly </a>
+  <li> <a href=#Spheres> Shepre Display </a>
+  <li> <a href=#ColorScale> Color Scale Display </a>
+</ul>
+
+<p>
+<h4> <a name=MeshLines> Mesh Lines </a> </h4>
+<p>
+This is currently a on/off switch for displaying mesh lines, for more
+versatile version see <a href=#ColorMesh> Color Mesh display.
+<p>
+<h4> <a name=ColorMesh> Color Mesh Display </a></h4>
+<p>
+<img src=figs/mesh.gif>
+<p>
+The Color Mesh display entry lets you define mesh display settings.
+You can also select this entry by pressing the button labeled 
+'Color Mesh' in the main command window of Elmerpost. Selecting either
+the menu entry or pressing the button again will switch the display
+of mesh on or off depending on the previous state (the button in the
+main window is down if the display mode is on). 
+<p>
+At the bottom of the display window there is a button labeled: 'Color Variable'.
+Pressing this button gives you a list of variables present in Elmerpost which
+match current model size. You can select  a variable by double clicking its name
+in the. This variable will be used to colorize the element border if the 'Mesh Style'
+setting is 'Line' or the surface elements if the 'Mesh Style' is 'Surface'.
+The setting 'Surface' doesn't apply to volume elements.
+<p>
+The 'Edge Style' setting only affects the line display mode. If you select the
+value 'Free' for this setting, only the element sides which are connected to
+one and only one element are drawn.
+
+<p>
+<h4> <a name=ContourLines> Contour Line Display </a></h4>
+<p>
+<img src=figs/cont.gif>
+<p>
+Select the field variable for contours by pressing the button labeled 'Color Variable'.
+Double click the name to select a variable. The values where the contours are
+searched are generated automatically to cover the range of the variable.
+The minumum and maximum values of the variable are shown in the 'Min' and 'Max'
+entries. You can also set these values yourself. If you also click the keep
+button the minumum and maximum values are not changed when selecting a new variable.
+<p>
+It's also possible to directly change the contour values shown left of the color boxes.
+<p>
+
+<h4> <a name=ContourSurfaces> Contour Surfaces and Model Cuts </a> </h4>
+<p>
+<img src=figs/iso.gif>
+<p>
+This selection activates the display of isosurfaces or model cuts and gives a panel to edit the
+parameters. First the variable from which the isosurfaces are to be extracted must be selected
+pressing the button labeled 'Contour Variable'. You can color code the extracted surface by
+another variable (which of course might be the same...) by selecting it from the button
+'Color Variable'. The threshold values are selected from the top of the window in the
+same manner as in the Contour Line Display settings.
+<p>
+You can select the contour variable to be one of the node coordinate arrays which gives
+the capability to have cuts from the model aligned with the model coordinates planes.
+Advanced users can also create their own variables, which can be any
+functions of the coordinates, using the Math Module of Elmerpost.
+<p>
+If you want to have lighting effects on the extracted surfaces you must set the
+'Surface Normal Variable' to be a normal vector of the 'Contour Variable' at node
+points of the element model. Usually this variable can be created by the Math Module
+command <em>norm=grad(var)</em>.
+<p>
+<h4> <a name=Vectors> Vector Display </h4>
+<p>
+<img src=figs/vector.gif>
+<p>
+There are three primary variables controlling the display of vector fields.
+First is the 'Color Variable' which is used to color code the vectors.
+The second variable is the 'Length Variable' which is used to scale the vector
+lengths. Both of these are usually set to the length of the vector,
+but may be any other variable defined for the element model.
+When a vector field variable, say 'Velocity', is read in to Elmerpost there will also
+automatically be a scalar variable called 'Velocity_abs' containing the
+length of the vector. If you modify a vector field or generate a new
+vector inside Elmerpost, you can allways compute the length of the
+vector field by the Math Module command
+<em> Velocity_abs=sqrt(vdot(Velocity,Velocity))</em>.
+The third variable controlling the display of vectors is the 'Arrow Variable' which
+is the actual vector field.
+<p>
+You can also threshold the display of vectors by setting the 'Threshold Variable' to some
+field variable and changing the 'Min' and 'Max' values. This way you could display
+only vectors that are longer than some threshold value, or display velocity vectors only where
+temperature is above some threshold value.
+<p>
+<h4> <a name=Particles> Particle Display </h4>
+<p>
+<img src=figs/particle.gif>
+<p>
+For the particle display mode you need to set the vector field
+variable which is used to advect the particles, the 
+'Velocity Variable'. Dispite the name of the setting you can
+use any vector variable here. Secondly you need a Math Module variable,
+say 'part', which contains the following information:
+(nop = number of particles)
+
+<ul>
+  <li> part(0,0:nop-1) = initial x-coordinate of particles
+  <li> part(1,0:nop-1) = initial y-coordinate of particles
+  <li> part(2,0:nop-1) = initial z-coordinate of particles
+  <li> part(3,0:nop-1) = initial value of the color variable at the place of particles,
+initialize to whatever
+  <li> part(4,0:nop-1) = element numbers containing the particles, initialize
+to your best guess
+</ul>
+Use this variable for the 'Particle Variable' setting.
+<p>
+You can select the integration method used to advect the particles to be either 'Euler'
+(fast but inaccurate and potentially unstable), 'Runge Kutta' (slower but more accurate). Also you can
+set the 'Integration Policy' to either 'Fixed' or 'Adaptive'. With fixed timestep the
+'Maximum timestep' setting is used as timestep. With adaptive strategy the timestep is divided
+to two halves until the result with previous full step is the same as the
+result with two half steps to precision of the 'Absolute error' setting.
+<p>
+As an example below is a TCL-function 'Integrate', which takes as its argument
+the number of particles, the number of timesteps to use in integration
+and lastly a 0/1 flag wheter a trace should be leaved when displaying the particles. 
+<p>
+First in the script a variable 'part' is created which is initialized to contain
+requested number of particles randomly placed in the model volume. Secondly the
+particles are advected given number of times. A trace of the particle positions
+is also  kept in the variable 'ptrace', which may be used later to draw the particle
+paths or save the path to a file, etc.
+<pre>
+proc Integrate { n { nt 1 } { trace 0 } } {
+
+  global NumberOfTimesteps ParticleParticle
+
+  math n=$n
+  math {
+    part   = 0;
+    ptrace = 0;
+    t = 0:(n-1);
+
+    xmin=min(min(nodes(0,time(0))));
+    xmax=max(max(nodes(0,time(0))));
+
+    ymin=min(min(nodes(1,time(0))));
+    ymax=max(max(nodes(1,time(0))));
+
+    zmin=min(min(nodes(2,time(0))));
+    zmax=max(max(nodes(2,time(0))));
+
+    part(0,0:(n-1))   = (xmax-xmin)*rand(n) + xmin;
+    part(1,0:(n-1))   = (ymax-ymin)*rand(n) + ymin;
+    part(2,0:(n-1))   = (zmax-zmin)*rand(n) + zmin;
+    part(3:4,0:(n-1)) = 0.0;
+    _particle_last = part;
+  }
+
+  set ParticleParticle "part"
+  UpdateObject;
+
+  display
+  if { $trace == 1 } { clear off }
+  display
+
+  do i 0 [@ $nt-1] {
+    echo "Time: $i"
+    if { $i < $NumberOfTimesteps } { timestep $i }
+    pintegrate
+    math "i=$i; ptrace(0:4,i*n+t)=part"
+  } 1
+
+  if { $trace == 1 } { clear on }
+
+  echo "Integration ready"
+}
+</pre>
+<p>
+After the particle positions are known the following kind of script may
+be used to display the particle trace. The arguments are the same as for
+the 'Integrate'-function above.
+<pre>
+proc Showparticles { n { nt 1 } { trace 0 } } {
+  global NumberOfTimesteps
+
+  math n=$n
+  math {
+     t=0:(n-1);
+     part=ptrace(0:4,t);
+     _particle_last=ptrace(0:4,t);
+  }
+
+  display;
+  if { $trace == 1 } { clear off }
+  display;
+
+  do i 0 [@ $nt-1] {
+    echo "Time: $i"
+    math "i=$i; part=ptrace(0:4,i*n+t);"
+    display;
+    math _particle_last=part
+  }
+
+  if { $trace == 1 } { clear on }
+}
+</pre>
+
+<p>
+<h4> <a name=Spheres> Sphere Display </h4>
+<p>
+<img src=figs/sphere.gif>
+<p>
+<h4> <a name=ColorScale> Color Scale Display </h4>
+<p>
+<img src=figs/cols.gif>
+<p>
+Color scale display uses current colormap to draw a color scale to graphics window.
+You can set the lower left corner of the colorscale to a position
+by modifying the 'X Position' and 'Y Position' settings. 
+The size and shape of the colorscale may be set by modifying the 'Length' and
+'Thickness' settings. The numbers shown in the colorscale are taken from
+minimum and maximum of the the field variable which can be set by
+the 'Color Variable' setting. The number of labels may be set by modifying the
+the setting 'Labels'.
+<p>
+
+<a href=index.html> Back </a>

@@ -1,0 +1,62 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<!--Converted with LaTeX2HTML 96.1-d (Mar 10, 1996) by Nikos Drakos (nikos@cbl.leeds.ac.uk), CBLU, University of Leeds -->
+<HTML>
+<HEAD>
+<TITLE>MATC Function Statement</TITLE>
+<META NAME="description" CONTENT="MATC Function Statement">
+<META NAME="keywords" CONTENT="kirja">
+<META NAME="resource-type" CONTENT="document">
+<META NAME="distribution" CONTENT="global">
+<LINK REL=STYLESHEET HREF="kirja.css">
+</HEAD>
+<BODY LANG="EN">
+ <A NAME="tex2html94" HREF="node5.html"><IMG WIDTH=37 HEIGHT=24 ALIGN=BOTTOM ALT="next" SRC="lh-figs/next_motif.gif"></A> <A NAME="tex2html92" HREF="kirja.html"><IMG WIDTH=26 HEIGHT=24 ALIGN=BOTTOM ALT="up" SRC="lh-figs/up_motif.gif"></A> <A NAME="tex2html86" HREF="node3.html"><IMG WIDTH=63 HEIGHT=24 ALIGN=BOTTOM ALT="previous" SRC="lh-figs/previous_motif.gif"></A>   <BR>
+<B> Next:</B> <A NAME="tex2html95" HREF="node5.html">MATC Internal Functions</A>
+<B>Up:</B> <A NAME="tex2html93" HREF="kirja.html">MATC Matrix Language</A>
+<B> Previous:</B> <A NAME="tex2html87" HREF="node3.html">MATC Operators</A>
+<BR> <P>
+<H1><A NAME="SECTION00400000000000000000">MATC Function Statement</A></H1>
+<P>
+The syntax of the function definition is given below.
+<P>
+<PRE>function name(arg1,arg2,...)
+!
+! Optional function description (seen with help(&quot;name&quot;))
+!
+import var1,var2
+export var3,var4
+{
+    expr;
+     ...
+    expr;
+
+    _name = value
+}</PRE>
+<P>
+Functions have their own list of variables. Global variables are not seen
+in this function unless imported by import or given as arguments. Local
+variables can be made global by the export statement.
+<P>
+Functions, if returing matrices,  behave in many ways as variables do.  So if
+you have defined function mult as follows
+<P>
+<PRE>function mult(a,b)
+{
+   _mult = a*b;
+}</PRE>
+<P>
+you can get element (3,5) of the a times b matrix by the following statement
+<P>
+<PRE>mult(x,y)[3,5]</PRE>
+<P>
+or diagonal values of the same matrix by
+<P>
+<PRE>diag(mult(x,y)).</PRE>
+<P>
+<BR> <HR>
+<P><ADDRESS>
+<I>Juha Ruokolainen <BR>
+Fri Feb 14 15:59:30 EET 1997</I>
+</ADDRESS>
+</BODY>
+</HTML>

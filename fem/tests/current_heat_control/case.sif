@@ -1,0 +1,104 @@
+Check Keywords Warn
+
+Header
+  Mesh DB "." "Step"
+End
+
+Simulation
+!  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+!  Output File = "case.result"
+!  Post File = "case.ep"
+  Output Version Numbers = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Joule Heat = Logical True
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = Static Current
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+!  Linear System Direct Method = Mumps
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1000
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Current Control = Real 0.1
+End
+
+
+Solver 2
+  Exec Solver = "Always"
+
+  Equation = "Heat"
+  Variable = "Temperature"
+  Procedure = "HeatSolve" "HeatSolver"
+  Stabilize = True
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+End
+
+
+Material 1
+  Electric Conductivity = 1.0e-3
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Potential = 1
+  Temperature = 273
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Potential = 0
+  Temperature = 293
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=335.43279904398446\n");
+
+!End Of File
+

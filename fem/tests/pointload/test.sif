@@ -1,0 +1,95 @@
+! Set load in three nodes given by coordinates
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "test"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+! Output File = "elstat.result"
+! Post File = "elstat.ep"
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1 
+End
+
+Solver 1
+  Equation = Stat Elec Solver
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatElecSolve" "StatElecSolver"
+  Calculate Electric Field = True
+  Calculate Electric Flux = False
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  Nonlinear System Max Iterations = 1
+End
+
+Material 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+!  Potential = 1.0
+End
+
+Boundary Condition 3
+  Target Coordinates(1,2) = 1.0 1.0 
+  Potential Load = Real 1.0 
+End
+
+Boundary Condition 4
+  Target Coordinates(1,2) = 1.0 0.5
+  Potential Load = Real 2.0
+End
+
+Boundary Condition 5
+  Target Coordinates(1,2) = 1.0 0.0
+  Potential Load = Real 3.0
+End
+
+! The BC below defines the BCs 3-5 from above in a single block
+!
+!Boundary Condition 3
+!  Target Coordinates(3,2) = Real 1.0 1.0 1.0 0.5 1.0 0.0
+!
+!  Potential Load = Variable Coordinate 2
+!    Real
+!      0.0   3.0
+!      1.0   1.0
+!    End
+!End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=3.57232600383\n" );
+
+
+!End Of File
+

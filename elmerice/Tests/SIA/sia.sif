@@ -1,0 +1,185 @@
+check keywords warn
+
+
+Header
+  Mesh DB "." "mesh_A"
+End
+
+Constants
+  Gas Constant = Real 8.314 !Joule/mol x  K 
+  Stefan Boltzmann = Real 6.78e-08
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type = Steady State
+
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Post File = "result.vtu"
+  max output level = 3
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0                          
+  Flow BodyForce 3 = Real -9.7696e15  !MPa - a - m
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! ice material properties in MPa - m - a system 
+Material 1
+  Density = Real 9.1376e-19  
+  Viscosity = Real 0.170997595e0 
+  Viscosity Model = String "power law"
+  Viscosity Exponent = Real $1.0/3.0                          
+  Critical Shear Rate = Real 1.0e-10
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "Flowdepth"
+   Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+   Variable = String "Depth"
+   Variable DOFs = 1
+   Linear System Solver = "Direct"
+   Linear System Direct Method = umfpack
+   ! this sets the direction
+   ! -1 is negative z-direction (upside down)
+   ! +1 is positive (downside up)
+   Gradient = Real -1.0E00
+  ! switch that to True, if you
+  ! want to have free surface gradients
+  ! to be computed
+  !------------------------------------
+  Calc Free Surface = Logical True
+  ! will contain the variable of the corresponding free surface position
+  !---------------------------------------------------------------------
+  Exported Variable 1 = String "FreeSurf"
+  Exported Variable 1 DOFs = 1
+  FreeSurf Name = String "FreeSurf"
+  ! next two will contain values of the free surface gradient
+  ! nice to be used in post-processing for evaluation of the
+  ! surface mass balance in diagnostic runs
+  !----------------------------------------------------------
+  Exported Variable 2 = String "FreeSurfGrad1"
+  Exported Variable 2 DOFs = 1
+  Exported Variable 3 = String "FreeSurfGrad2"
+  Exported Variable 3 DOFs = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+! Dummy solver just here to declare SIAFlow 
+! as a true variable (not an exported variable)
+! to allow access to previous values
+Solver 2
+  Equation = "SIA Variable"
+  Procedure = File "ElmerIceSolvers" "SIAVariable"
+  !Variable = "SIAFlow"
+  !Variable DOFs = 4
+  Variable = "SIAFlow"[Velo:3 pres:1]
+  Variable DOFs = 4
+End
+
+Solver 3
+  Equation = "SIA"
+  Procedure = File "ElmerIceSolvers" "SIASolver"
+  Variable = -nooutput "SIAvar"
+  Variable DOFs = 1
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = umfpack
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+End
+
+!Solver 4
+!  Procedure = File "SaveData" "SaveLine"
+!  Filename =  "results.dat"
+!  File Append = Logical True
+!End
+
+Solver 4
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  Variable 1 = String "Time"
+  Variable 2 = String "Depth"
+  Operator 2 = String "int"
+  Variable 3 = String "Depth"
+  Operator 3 = String "max"
+  Variable 4 = String "Depth"
+  Operator 4 = String "min"
+  Operator 5 = String "cpu time"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers (4)= 1 2 3 4
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+!!! BC en bas (y=y0)    
+Boundary Condition 1
+  Target Boundaries = 1
+End
+
+!!! BC à droite (x=xmax) 
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Translate(3) =  1.60000000e+05  0.0  -1.39629885e+03  
+  Periodic BC SIAFlow 1  = Logical True
+  Periodic BC SIAFlow 2  = Logical True
+  Periodic BC SIAFlow 3  = Logical True
+  Periodic BC SIAFlow 4 = Logical True
+End
+
+!!! BC en haut (y=ymax)   
+Boundary Condition 3
+  Target Boundaries = 3
+  Periodic BC = 1 
+  Periodic BC Translate(3) = 0.0  1.60000000e+05  0.0 
+  Periodic BC SIAFlow 1  = Logical True
+  Periodic BC SIAFlow 2  = Logical True
+  Periodic BC SIAFlow 3  = Logical True
+  Periodic BC SIAFlwo 4 = Logical True
+End
+
+!!! BC à gauche  (x=x0) 
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+!!! bedrock
+Boundary Condition 5
+  Target Boundaries = 5
+  SIAFlow 1 = Real 0.0e0
+  SIAFlow 2 = Real 0.0e0
+  SIAFlow 3 = Real 0.0e0
+End
+
+!!! free surface
+Boundary Condition 6
+  Target Boundaries = 6
+  Save Line = Logical True
+  SIAFlow 4 = real 0.0
+  Depth = real 0.0
+End 

@@ -1,0 +1,142 @@
+! optimize the heat distribution of an object with four heaters
+! so that the temperature at the center of each heater is as 
+! desired. 
+
+Check Keywords warn
+
+Header
+  Mesh DB "." "spots"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Coordinate System = String Cartesian
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type = scanning
+  Steady State Max Iterations = 1
+  Timestep Intervals = 250
+  Output Intervals = 0
+  Post File = "case.ep"
+End
+
+Constants
+  Stefan Boltzmann = 1.0
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body2"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Name = "Body3"
+  Body Force = 2
+  Equation = 1
+  Material = 1
+End
+
+Body 4
+  Name = "Body4"
+  Body Force = 3
+  Equation = 1
+  Material = 1
+End
+
+Body 5
+  Name = "Body5"
+  Body Force = 4
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation"
+  Active Solvers = 2
+End
+
+Material 1
+  Name = "Unity"
+  Density = Real 1
+  Heat Conductivity = Real 1
+End
+
+Body Force 1
+  Name = "Heater1"
+  Heat Source = Equals Param 1
+End
+
+Body Force 2
+  Name = "Heater2"
+  Heat Source = Equals Param 2
+End
+
+Body Force 3
+  Name = "Heater3"
+  Heat Source = Equals Param 3
+End
+
+Body Force 4
+  Name = "Heater4"
+  Heat Source = Equals Param 4
+End
+
+Solver 1
+  Equation = String Optimize
+  Procedure = File "FindOptimum" "FindOptimum"
+
+  Variable = -global Param 
+  Variable Dofs = 4
+
+  Cost Function = Variable Time
+    Real Procedure "CostFunction" "CostFunction"   
+
+  Exec Solver = before timestep 
+  Simplex Relative Length Scale = Real 1.0 
+
+  Best File = File optimize-best.dat
+  History File = File optimize.dat
+  Optimization Method = String "simplex"
+  Optimal Finish = Logical True
+End
+
+Solver 2
+  Equation = Heat Equation
+  Variable = Temperature
+  Variable DOFs = 1
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 20
+  Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+Boundary Condition 1
+  Name = "Sides"
+  Target Boundaries = 1
+  Temperature = Real 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM= 22.027671047551930\n");
+
+

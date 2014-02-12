@@ -1,0 +1,12 @@
+!
+!
+! 32 gray levels
+!
+! Juha Ruokolainen CSC
+!
+! 17 Sep 1995
+!
+! code   index   red  green  blue
+!
+  knot      0     0     0      0   ! start from black
+  knot     31    100   100    100  ! to white

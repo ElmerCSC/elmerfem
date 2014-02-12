@@ -1,0 +1,128 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+  <PDE Name="Result Output" >
+    <Name> Result Output </Name>
+    
+    <Equation>
+      <Parameter Widget="Label">
+        <Name> Free text input </Name>
+      </Parameter>
+      
+      <Parameter Widget="TextEdit" Enabled="True">
+	<Name> Free text </Name>
+	<Type> String </Type>
+	<Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	<StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+      </Parameter>
+    </Equation>
+
+    <Solver>
+      <Parameter Widget="Edit" >
+        <Name> Procedure </Name>
+        <DefaultValue> "ResultOutputSolve" "ResultOutputSolver" </DefaultValue>
+      </Parameter>
+      
+      <Parameter Widget="CheckBox" Enabled="True" Visible="False">
+        <Name> No Matrix Equation </Name>  
+        <DefaultValue> True </DefaultValue>
+      </Parameter>
+
+      <Parameter Widget="Combo" >
+        <Name> Output Format </Name>
+        <Type> String </Type>
+        <Whatis>Result output file format.</Whatis>
+        <Item> <Name> Vtu </Name> </Item>
+        <Item> <Name> Vtk </Name> </Item>
+        <Item> <Name> Dx </Name> </Item>
+        <Item> <Name> Gmsh </Name> </Item>
+        <Item> <Name> GiD </Name> </Item>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Binary Output </Name>  
+        <DefaultValue> True </DefaultValue>
+        <Whatis> Use binary format when available (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Single Precision </Name>  
+        <DefaultValue> False </DefaultValue>
+        <Whatis> Use single precision when available (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Save Geometry Ids </Name>  
+        <DefaultValue> False </DefaultValue>
+        <Whatis> Save number of geometric entities when available (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Save Boundaries Only </Name>  
+        <DefaultValue> False </DefaultValue>
+        <Whatis> Save only boundaries when available (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Eigen Analysis </Name>  
+        <DefaultValue> False </DefaultValue>
+        <Whatis> Numbers files by eigenmodes when available (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="Edit" >
+        <Name> Output File Name </Name>
+	<DefaultValue> case </DefaultValue>
+        <Whatis> Name of the file in which results are exported. </Whatis>
+      </Parameter> 
+
+       <Parameter Widget="Label"> <Name>Scalar Fields</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name>Scalar Field 1 </Name>
+           <Activate> /Result Output/Solver/Scalar Field 2</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name>Scalar Field 2 </Name>
+           <Activate> /Result Output/Solver/Scalar Field 3</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name>Scalar Field 3 </Name>
+           <Activate> /Result Output/Solver/Scalar Field 4</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name>Scalar Field 4 </Name>
+           <Activate> /Result Output/Solver/Scalar Field 5</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name>Scalar Field 5 </Name>
+           <Activate> /Result Output/Solver/Scalar Field 6</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name>Scalar Field 6 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name>Vector Fields</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name>Vector Field 1 </Name>
+           <Activate> /Result Output/Solver/Vector Field 2</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name>Vector Field 2 </Name>
+           <Activate> /Result Output/Solver/Vector Field 3</Activate>
+         </Parameter>
+           <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name>Vector Field 3 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+    </Solver>    
+  </PDE>
+</edf>

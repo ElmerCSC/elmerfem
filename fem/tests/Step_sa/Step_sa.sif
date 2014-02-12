@@ -1,0 +1,202 @@
+Header
+  Mesh DB "." "Step"
+End
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+
+  Simulation Type = Steady
+
+  Steady State Max Iterations  = 200
+  Output Intervals = 1
+
+  Set Dirichlet BCs by BC Numbering = True
+
+  Post File = "Step_small.ep"
+! Output File = "Step_small.result"
+End
+
+
+Body 1
+  Name  = "Flow"
+  Equation  = 1
+  Material  = 1
+  Initial Condition = 1
+End
+
+
+Body 2
+  Name  = "Flow1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Velocity 1 = 1
+  Velocity 2 = 0
+  Turbulent Viscosity = Real 0.1
+End
+
+
+Solver 1
+  Equation = sp
+
+  Procedure = "Spalart-Allmaras" "SpalartAllmaras"
+  Variable = Turbulent Viscosity
+ 
+  Stabilization Method = String Bubbles
+  Nonlinear System Max Iterations = 5
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Relaxation Factor = Real 0.35
+  Nonlinear System Newton After Tolerance = 1.0e-3
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning  = ILU0
+  Linear System Max Iterations   = 500
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStabL
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 2
+  Equation = Navier-Stokes
+
+  Stabilization Method = Bubbles
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance  = 1.0e-2
+  Nonlinear System Relaxation Factor = 0.75
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning  = ILU0
+  Linear System Max Iterations   = 500
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStabL
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 3
+  Exec Solver = After Simulation
+  Equation = SaveLine
+  Procedure = "SaveData" "SaveLine"
+  Filename = "curve.dat"
+  Polyline Coordinates(2,2) = Real $ (14*0.0127) 0 (14*0.0127) 0.127
+End
+
+
+Solver 4
+  Exec Solver = Before Simulation
+  Equation = Distance
+
+  Procedure = "DistanceSolve" "DistanceSolver1"
+  Variable = "Wall Distance"
+
+  Nonlinear System Max Iterations = 2000
+  Nonlinear System Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Relaxation Factor = 1
+  Distance Pseudo DT = Real 0.00025
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning  = ILU0
+  Linear System Max Iterations   = 500
+  Linear System Convergence Tolerance = 1e-8
+  Linear System Iterative Method = BiCGStabL
+
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Equation 1 :: Active Solvers(3) = 1 2 4
+
+
+Material 1
+  Viscosity = 1.49691e-5
+  Density = 1
+  Viscosity Model = Spalart-Allmaras
+End
+ 
+
+Boundary Condition 1
+  Name
+    String "Inflow"
+
+   Target Boundaries = 1
+
+! y coordinate of the inlet
+$ y = 0.127000000000E-001 \
+ 0.142452305368E-001 \
+ 0.163058285753E-001 \
+ 0.190536802227E-001 \
+ 0.227179992870E-001 \
+ 0.276044472934E-001 \
+ 0.341206304371E-001 \
+ 0.428101003152E-001 \
+ 0.543976946317E-001 \
+ 0.698500000000E-001 \
+ 0.853023053683E-001 \
+ 0.968898996848E-001 \
+ 0.105579369563E+000 \
+ 0.112095552707E+000 \
+ 0.116982000713E+000 \
+ 0.120646319777E+000 \
+ 0.123394171425E+000 \
+ 0.125454769463E+000 \
+ 0.127000000000E+000
+
+
+! (V2 F K Epsilon U) at inlet as computed from channel flow
+$ v = 0 \
+ 0.994830E1 \
+ 0.124224E2 \
+ 0.144692E2 \
+ 0.166111E2 \
+ 0.186800E2 \
+ 0.207083E2 \
+ 0.226506E2 \
+ 0.241885E2 \
+ 0.247760E2 \
+ 0.241885E2 \
+ 0.226506E2 \
+ 0.207083E2 \
+ 0.186800E2 \
+ 0.166111E2 \
+ 0.144692E2 \
+ 0.124224E2 \
+ 0.994830E1 \
+ 0
+
+
+ Velocity 1 = Variable Coordinate 2
+ Real
+   $ for(i=0:18) { y(i) (44.2*v(i)/24.77) }
+ End
+
+ Velocity 2 = 0
+End
+
+
+Boundary Condition 2
+  Target Boundaries(2) = 2 3
+  Pressure   = 0
+  Velocity 2 = 0
+End
+
+
+Boundary Condition 3
+  Target Boundaries(4) = 4 5 6 7
+  Noslip Wall BC = Logical True
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=21.0423,EPS=1e-4\n" );

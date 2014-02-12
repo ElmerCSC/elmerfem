@@ -1,0 +1,104 @@
+ElmerIce Solver test case "How-to"
+==================================
+
+This How-to describes how to create and use test cases in software
+development and case definition.
+
+The test cases are used to check for possible bugs, and to ensure 
+backward compability. For that purpose they are currently around 
+30 repertories (Dec 2013) . The tests should be located in directory
+
+fem/elmerice/tests
+
+The results are compared with the version 6441 on
+ LGGE's cluster [proc  Intel Xeon, 4 cores/CPUs ].
+
+To run the cases in Unix you can go the the directory tests, update
+script with command line:
+
+chmod u+x runTest.sh
+runTest.sh (with options or not)
+
+A. Options
+===========
+See details for the 4 options and one default option ( "", --help , --all,
+--selection, --solvers).
+
+1) --all or -a
+it runs all tests, and there is possibility to send results by e-mail.
+
+2) --selection or -s
+it runs only selection of repertory with "space-separator", and there is 
+possibility to send results by e-mail.
+
+3) --solvers or -so
+You choose one ElmerIceSolver keyword and it runs all repertories with this 
+solver, and there is possibility to send results by e-mail.
+
+4) Default case: all test cases without mail option.
+
+B. How to create a test
+========================
+
+When a new feature has been verified it is often a good idea to
+create a test case that ensures the feature will be 
+maintained also in the future versions of Elmer. To do this:
+
+1) Create new directory in the "tests" directory under fem/elmerice. The folders
+   in this directory will be automatically scanned and tests run.
+
+2) Define your analysis write your .sif file, mesh files
+   etc. necessary to run the test analysis ELMERSOLVER_STARTINFO
+
+   ******
+   !   Note, for the outputs, files named "results.dat" and "result.dat.names" have to be created
+   !   If do not exist, you can write a script to configure their creation
+   !   see /tests/InvMeth_AdjBeta for example).
+   ******
+
+3) Define how to run the test write a Makefile (named Makefile), that
+   details two targets:
+	+ run: how to run the test
+	+ clean: how to clean up if successfull
+
+4) Define expected results and create repertory /DATA in wich will be put expected 
+   results in a file named "valid_$NameRepertory.txt" (See description in the template above:
+
+	Step1Data1 [space] Step1Data2 [space] Step1Data3 ....
+	Step2Data1 [space] Step2Data2 [space] Step2Data3 ....
+
+5 ) If you have access right to the svn you may also
+
+       svn add mytestcase
+       svn commit mytestcase
+
+
+D. Results 
+=====================
+	On screen
+	---------
+Test will print some informations for each test-case:
+<Test Number>		<Test Name>		[<Result>]
+In <Result>, [FAILED] in case where difference between results are upper 1E-8
+	     [PASSED] in case where there is no difference
+	     [PASSED - Diff Time-] where there is a difference with time CPU
+
+	In repertory File_log/
+	----------------------
+We will found 2 files per test if there is difference between results: 
+one is resume of your simulation and the other resume differences.
+
+
+E. How to use the test case as starting point
+==============================================
+
+One can take these tests as a starting point or copy-paste
+appropriate solver sections from there. These tests do not include
+any ElmerGUI project file and therefore the graphical user interface
+cannot be used to view these cases. You can look at the Makefile in
+each test to see what sequence of command is usually needed. Typically
+some simple ascii definition for the mesh is used and the running of
+the case could be something like
+
+ElmerGrid 1 2 square
+ElmerSolver mytest.sif

@@ -1,0 +1,23 @@
+OBJ_EXT	=	.o
+
+include make.inc
+
+LIBDIR	=	$(ELMER_PREFIX)/lib
+LIB	=	libviewaxis.a
+
+CC	=	CC
+CP	=	cp
+RM	=	rm -f
+
+.SUFFIXES:	.cxx
+
+.cxx.o:
+	$(CC) -c -I. -O3 $<
+	ar r $(LIB) $@
+
+$(LIB):	$(OBJS) install
+
+install:
+
+clean:
+	$(RM) *.o $(LIB)

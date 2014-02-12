@@ -1,0 +1,17 @@
+OBJ_EXT	=	.obj
+
+include make.inc
+
+LIBDIR	=	$(ELMER_PREFIX_DBS)\\lib
+LIB	=	libviewaxis.lib
+
+CC	=	cl
+CP	=	copy
+
+.SUFFIXES:	.cxx .obj
+
+.cxx.obj:
+	$(CC) -Gz -Ox -DWIN32 -c -I. $<
+
+$(LIB):	$(OBJS)
+	lib /out:$(LIBDIR)\\$(LIB) $(OBJS)

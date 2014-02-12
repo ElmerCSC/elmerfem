@@ -1,0 +1,82 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+End
+
+Simulation
+  Coordinate System = "Cartesian 2D"
+  Simulation Type = "Steady State"
+
+  Steady State Max Iterations = 1
+! Post File = "TempDist.ep"
+! Output File = "TempDist.dat"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+Equation 1 :: Active Solvers(1) = 1
+
+Body 2 :: Equation = 2
+Equation 2 :: Active Solvers(1) = 2
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 350
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+Solver 2
+  Equation = ComputeNormals
+  Procedure = "NormalSolver" "NormalSolver"
+
+  Variable = -nooutput nrm_temp
+  Exported Variable 1 = F[normal:2]
+  Normals Result Variable = String "F"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Conductivity = 3
+End
+
+Body Force 1 :: Heat Source = 1
+
+Boundary Condition 1
+  Body Id = 2
+  Temperature = 0
+  Target Boundaries(1) = 1 
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.707106949810\n" );

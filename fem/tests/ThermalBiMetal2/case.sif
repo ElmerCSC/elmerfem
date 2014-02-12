@@ -1,0 +1,147 @@
+! BiMetal under thermal stress resulting from a variable temperature difference
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "beams"
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+!  Post File = "case.ep"
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Name = "metal1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "metal2"
+  Equation = 1
+  Material = 2
+  Body Force = 1
+End
+
+Body Force 1
+  Heat Source = 1.0e6
+End 
+
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Plane Stress = FALSE
+End
+
+
+Solver 1
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+End 
+
+
+Solver 2
+  Equation = "LinearDisp"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = "Displacement"
+  Variable DOFs = Integer 2
+
+  Linear System Solver = Direct
+  Linear System Symmetric = Logical True
+  Linear System Scaling = Logical False
+  Linear System Iterative Method = BiCGStab
+  Linear System Direct Method = UMFPACK
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 200
+  Linear System Preconditioning = ILU2
+
+  Nonlinear System Convergence Tolerance = Real 1.0e-7
+  Nonlinear System Max Iterations = Integer 1
+  Nonlinear System Relaxation Factor = Real 1
+
+  Steady State Convergence Tolerance= 1.0e-6
+  Optimize Bandwidth = True
+End
+
+
+Solver 3
+  Exec Solver = Never
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+
+  Variable 1 = Displacement 2
+  Operator 1 = max abs  
+End
+
+Material 1
+  Density = Real 1
+  Youngs Modulus = 1e9
+  Poisson Ratio = Real 0.3
+  Reference Temperature = 300.0
+  Heat Expansion Coefficient = 1.0e-4
+  Heat Conductivity = 1.0
+End
+
+Material 2
+  Density = Real 1
+  Youngs Modulus = 1e9
+  Poisson Ratio = Real 0.3
+  Reference Temperature = 300.0
+  Heat Expansion Coefficient = 2.0e-4
+  Heat Conductivity = 10.0
+End
+
+
+Boundary Condition 1
+  Name = "beam_fixed"
+  Target Boundaries(2) = 4 7
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Temperature = 300.0
+End
+
+Boundary Condition 2
+  Name = "beam_free"
+  Target Boundaries(4) = 1 2 5 6
+  External Temperature = 300.0
+  Heat Transfer Coefficient = 100.0
+End 
+
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=6.43150800383692042E-004\n");
+
+!End Of File
+

@@ -1,0 +1,220 @@
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cube"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Coordinate System = Cartesian 3D
+
+  Simulation Type = Transient
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Timestep Intervals = 10
+  Output Intervals = 1
+  Timestep Sizes = 1.0 
+
+  Steady State Min Iterations  = 1
+  Steady State Max Iterations  = 1
+
+  Initialize Dirichlet Conditions = Logical True 
+  
+  Post File   = "test_dgsolver.vtu"
+  max output level = 4
+End  
+
+Constants
+  Density Name = String "Relative Density"
+End
+
+Body 1
+   Equation = 1
+   Material = 1
+   Body Force = 1
+   Initial Condition = 1
+End
+
+Body Force 1
+  Porous Force 1 = Real 0.0E00
+  Porous Force 2 = Real 0.0E00
+  Porous Force 3 = Real -0.008996e0 
+
+  DGDens Source = Real 0.0 
+End
+
+Material 1
+ Powerlaw Exponent = Real 3.0
+ Min Second Invariant = Real 1.0E-20
+ Fluidity Parameter = Real 20.0
+
+ DGDens Upper Limit = Real 1.0
+ DGDens Lower Limit = Real 0.2
+ DGDens Gamma = Real 0.0
+End
+
+Initial Condition 1
+  Porous 1 = Real 0.0
+  Porous 1 = Real 0.0
+  Porous 2 = Real 0.0
+  Porous 3 = Real 0.0 
+  Porous 4 = Real 0.0
+End
+
+Solver 1
+  Exec Solver = Before Simulation
+  Equation = "Flowdepth"
+  Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+  Variable = -dofs 1 "Depth"
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "UMFPACK"
+  Gradient = Real -1.0E00
+End
+
+! This solver is for the initial condition of the DG variable DGDens
+Solver 2
+  Exec Solver = Before Simulation
+  Equation = "InitializeDG"
+
+  ! It is important to declare it as a DG solver
+  Discontinuous Galerkin = Logical True
+  Initialized Variable Name = String "DGDens"
+
+  Procedure = File "./InitializeDGVariable" "InitializeDGVariable"
+  Variable = -nooutput  String "dummy"
+  Variable DOFs = 1  
+End
+
+! This solver is for the initial condition of the Exported variable in the DG solver
+! It should not be declared as a DG solver, else the Porous will not read correctly the 
+! variable values
+Solver 3
+  Exec Solver = Before Simulation
+  Equation = "InitializeDG"
+
+  Initialized Variable Name = String "Relative Density"
+
+  Procedure = File "./InitializeDGVariable" "InitializeDGVariable"
+  Variable = -nooutput  String "dummy2"
+  Variable DOFs = 1  
+End
+
+! This solver is to save the initial Density and can be use for the BC
+! It should not be a DG variable
+Solver 4
+  Exec Solver = Before Simulation
+  Equation = "InitializeDG"
+
+  Initialized Variable Name = String "Initial DGDens"
+
+  Procedure = File "./InitializeDGVariable" "InitializeDGVariable"
+  Variable =  String "Initial DGDens"
+  Variable DOFs = 1  
+End
+
+Solver 5
+  Equation = String "PorousFlow"
+  Procedure = "ElmerIceSolvers" "PorousSolver"
+  Variable = "Porous"
+  Variable DOFs = 4
+
+  Element = "p:1 b:4"
+  Bubbles in Global System = false
+
+  Linear System Solver = "Direct"
+
+  Nonlinear System Convergence Tolerance = 1.0E-05
+  Nonlinear System Max Iterations = 50
+
+  Steady State Convergence Tolerance = 1.0e-03
+End
+
+Solver 6
+  Equation = "AdvReact"
+  Procedure = File "AdvectionReaction" "AdvectionReactionSolver"
+  Variable =  "DGdens"
+  Variable DOFS = 1
+  Discontinuous Galerkin = Logical True
+  Limit Solution = Logical True
+   
+  Linear System Solver = Direct
+  Nonlinear System Min Iterations = 2 
+  Nonlinear System Max Iterations = 40
+  Nonlinear System Convergence Tolerance = 1.0e-06
+
+  Steady State Convergence Tolerance = 1.0e-03
+  
+  Exported Variable 1 = Relative Density
+  Exported Variable 1 DOFS = 1
+End 
+
+Solver 7
+  Exec Solver = Never
+  Equation = "DGtoNodal1"
+  Procedure = File "./DGtoNodalVariable" "DGtoNodalVariable1"
+  Variable = String "Nodal Density"
+  Variable DOFs = 1  
+
+  Input Variable Name = String "Relative Density"
+  Output Variable Name = String "Nodal Density"
+End
+
+Solver 8
+  Exec Solver = Never
+  Equation = "DGtoNodal2"
+  Procedure = File "./DGtoNodalVariable" "DGtoNodalVariable2"
+  Variable = -nooutput String "dummy3"
+  Variable DOFs = 1  
+
+  ! It is important to declare it as a DG solver
+  Discontinuous Galerkin = Logical True
+  Input Variable Name = String "Nodal Density"
+  Output Variable Name = String "DGDens"
+End
+
+Solver 9
+  Exec Solver = After TimeStep
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+
+  Variable 1 = String "Time"
+
+  Variable 2 = String "Relative Density"
+  Operator 2 = String "int"
+
+  Variable 3 = String "Relative Density"
+  Operator 3 = String "max"
+
+  Variable 4 = String "Relative Density"
+  Operator 4 = String "min"
+
+  Operator 5 = String "cpu time"
+End
+
+Equation 1
+    Active Solvers(9) = Integer 1 2 3 4 5 6 7 8 9
+    Flow Solution Name = String "Porous"
+    Convection = Computed
+End
+
+Boundary Condition 1
+   Target Boundaries  = 6
+  Depth = Real 0.0
+  DGDens = Equals Initial DGDens 
+End
+
+Boundary Condition 2
+   Target Boundaries  = 5
+  DGDens = Real 1.0 
+  Porous 1 = Real 0.0
+  Porous 2 = Real 0.0
+  Porous 3 = Real -1.0
+End
+
+Boundary Condition 3
+   Target Boundaries(4)  = 1 2 3 4
+   Normal-Tangential Porous = Logical True
+   Porous 1 = Real 0.0
+End

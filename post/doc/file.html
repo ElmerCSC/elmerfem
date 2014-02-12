@@ -1,0 +1,81 @@
+<html>
+<body>
+
+<img src=figs/elmer.gif><p>
+
+<h2> File Format </h2>
+<p>
+
+Input model file format consist of a header line and followed by node coordinates,
+followed by elements description and finally data for nodes.
+<p>
+
+<h3> Header </h3>
+<p>
+
+First in the file must be a one line header. The header consists of model dimensions:
+number of nodes (#nodes), number of elements (#elements), degrees of freedom (#dof),
+and number of timesteps (#timesteps). In the same line must follow description
+of the degrees of freedom with keywords 'scalar: ' or 'vector: ' (there  must
+be the space at the end of the keyword) followed by a name for the dof(s).
+<p>
+Example:
+<pre>
+4 1 4 1 vector: Velocity scalar: Pressure
+0 0 0
+1 0 0
+1 1 0
+0 1 0
+1 404 0 1 2 3
+1 0 0 1
+1 0 0 2
+1 0 0 3
+1 0 0 4
+</pre>
+<p>
+The previous file describes a  model with four node coordinates, one element, four dofs / node
+point, the first three being components of the vector Velocity, and the fourth scalar Pressure.
+<p>
+
+<h3> Node coordinates </h3>
+<p>
+
+Straight after the header begins the node coordinate array. The node points are given
+a running index starting from zero. Even if the model is 2D there <em>must</em> be
+three coordinates for each node.
+<p>
+
+<h3> Element description </h3>
+<p>
+
+The element description lines are as follows:
+<p>
+<pre>
+GroupName TypeCode Index0 Index1 Index2 ...
+</pre>
+<p>
+
+GroupName may be any string. TypeCode gives the element type:
+<p>
+<ul>
+  <li> 303: linear triangle
+  <li> 306: quadratic triangle
+  <li> 404: bilinear quad
+  <li> 408: quadratic quad
+  <li> 504: linear tetra
+  <li> 510: quadratic tetra
+  <li> 808: trilinear brick
+  <li> 820: quadratic brick
+</ul>
+<p>
+Indexe0, Index1, etc... are the pointers for element nodes (remember that the
+node points have been given a index starting from zero).
+<p>
+
+<h3> The data </h3>
+<p>
+The data must be given so that for each node there are values for every dof in one
+line. This data array is then repeated for each timestep.
+<p>
+
+<a href=index.html> Back </a>

@@ -1,0 +1,7 @@
+***** ElmerOptimize file  *****
+Comment = Run simulation with a set of parameters 
+Input File = capacitance.sif
+Execute = ElmerGrid 1 2 mesh.grd
+Execute = ElmerSolver capacitance.sif
+Output File = scalars.dat
+Save File = evals.dat

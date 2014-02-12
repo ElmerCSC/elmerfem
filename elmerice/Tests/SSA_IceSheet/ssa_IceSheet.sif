@@ -1,0 +1,197 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+$Step = "SSA_IceSheet"
+$L = 20.0e3
+$Slope = 0.1 * pi / 180.0
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+! No constant Needed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type = Transient     
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Output Intervals = 1
+  Timestep Intervals =  5
+  Timestep Sizes = 0.5 
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  !Output File = "ismip_step$Step".result"
+  Post File = "test_$Step$.vtu"
+
+  max output level = 10
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+   SSAVelocity 1 = Real 0.0
+   SSAVelocity 2 = Real 0.0
+
+! Thickness
+  H = Real 50.0
+! free surface elevation
+  Zs = Variable Coordinate 1 , Coordinate 2
+    Real MATC "100.0*sin(3*2.0*pi*tx(0)/L)*sin(2*2.0*pi*tx(1)/L)+50.0"
+! bedrock elevation
+  Zb = Variable Coordinate 1 , Coordinate 2
+    Real MATC "100.0*sin(3*2.0*pi*tx(0)/L)*sin(2*2.0*pi*tx(1)/L)"
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity 
+
+  Top Surface Accumulation = Real 0.5
+  Bottom Surface Accumulation = Real 0.0
+
+! to update Zs according to H evolution
+  Zs = Variable Zb , H
+     REAL MATC "tx(0)+tx(1)"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+
+! Material properties
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 1.0e-10
+
+  SSA Mean Viscosity = Real $eta
+  SSA Mean Density = Real $rhoi
+
+! slip coeff
+  SSA Friction Law = String "linear"
+  SSA Friction Parameter = Variable coordinate 1 , Coordinate 2
+     Real  MATC "if((tx(0)>5000.0) & (abs(tx(1)-10000.0) < 2500.0)) {10^(-6.0)} else {10.0^(-3.0)}"
+
+  Min H = Real 0.0
+End
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "SSA"
+  Variable = -dofs 2 "SSAVelocity"
+
+  Procedure = "ElmerIceSolvers" "SSABasalSolver"
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-12
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = 1.00
+
+End
+
+!! Thickness solver
+Solver 2
+   Equation = "Thickness"
+   Variable = -dofs 1 "H"
+
+   Exported Variable 1 = -dofs 1 "H Residual"
+
+   Exported Variable 2 = -dofs 1 "dHdt"
+
+   Compute dHdT = Logical True
+
+  Procedure = "ElmerIceSolvers" "ThicknessSolver"
+   Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+   Linear System Solver = Iterative
+   Linear System Max Iterations = 1500
+   Linear System Iterative Method = BiCGStab
+   Linear System Preconditioning = ILU0
+   Linear System Convergence Tolerance = Real 1.0e-12
+   Linear System Abort Not Converged = False
+   Linear System Residual Output = 1500
+
+! equation is linear if no min/max
+   Nonlinear System Max Iterations = 50
+   Nonlinear System Convergence Tolerance  = 1.0e-6
+   Nonlinear System Relaxation Factor = 1.00
+
+
+  Stabilization Method = stabilized
+  Apply Dirichlet = Logical True
+
+!!  the convection velocity (mean horizontal velocity)
+     Flow Solution Name = String "SSAVelocity"
+End
+
+!! This solver is just used to update Zs (look for the value of Zs in Body forces
+Solver 3
+   Equation = "UpdateExport"
+   Procedure = "ElmerIceSolvers" "UpdateExport"
+   Variable = -nooutput "dumy"
+
+   Exported Variable 1 = -dofs 1 "Zs"
+   Exported Variable 2 = -dofs 1 "Zb"
+End
+
+Solver 4
+  Exec Solver = After TimeStep
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical True
+
+  Variable 1 = String "Time"
+  
+  Variable 2 = String "SSAVelocity"
+  Operator 2 = String "int"
+
+  Variable 3 = String "SSAVelocity"
+  Operator 3 = String "max"
+
+  Variable 4 = String "SSAVelocity"
+  Operator 4 = String "min"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(4) = 1 2 3 4
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  
+  Calving Front = Logical True
+
+End
+
+

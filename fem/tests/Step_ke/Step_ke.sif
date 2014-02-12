@@ -1,0 +1,154 @@
+$ bndry_layer = 0.05
+
+Header
+  Mesh DB "." "Step_ke"
+End
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+
+  Simulation Type = Steady
+
+  Steady State Max Iterations  = 200
+  Output Intervals = 100
+
+! Output File = "Step_small.result"
+  Post File = "Step_small.ep"
+End
+
+
+Body 1
+  Name  = "Flow"
+  Equation  = 1
+  Material  = 1
+  Initial Condition = 1
+End
+
+
+Body 2
+  Name  = "Flow1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Velocity 1 = 0
+  Velocity 2 = 0
+
+  Kinetic Energy = 0.003
+  Kinetic Dissipation = 0.0001
+End
+
+
+
+Solver 1
+  Equation = Kepsilon
+
+  Procedure = "KESolver" "KESolver"
+ 
+  Stabilization Method = String Bubbles
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.75
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU3
+  Linear System Convergence Tolerance = 1.0e-7
+
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+Solver 2
+  Equation = Navier-Stokes
+
+  Stabilization Method = String Bubbles
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance  = 1.0e-2
+  Nonlinear System Relaxation Factor = 0.75
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU2
+  Linear System Convergence Tolerance = 1.0e-7
+
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+
+Equation 1 :: Active Solvers(2) = 1 2
+
+
+Material 1
+  Viscosity = $1/19000.0
+  Density = 1
+  KE SigmaK = 1.00
+  KE SigmaE = 1.30
+  KE C1     = 1.44
+  KE C2     = 1.92
+  KE Cmu    = 0.09
+  KE Clip   = Real 1.0e-6
+  Viscosity Model = ke
+End
+ 
+
+Boundary Condition 1
+  Name
+    String "Inflow"
+
+  Target Boundaries = 1
+
+  Velocity 1 = Variable Coordinate 2
+      Real
+        1.0000 $ bndry_layer^2
+        1.1250 0.4375
+        1.2500 0.7500
+        1.3750 0.9375
+        1.5000 1.0000
+        1.6250 0.9375
+        1.7500 0.7500
+        1.8750 0.4375
+        2.0000 $ bndry_layer^2
+      End
+
+   Velocity 2 = 0
+
+   Kinetic Energy = Real 0.003
+   Kinetic Dissipation = Real 0.001
+End
+
+
+Boundary Condition 2
+  Target Boundaries(3) = 2 4 5
+  Name = "Walls x"
+
+  Velocity 2 = 0
+
+  Wall Law = True
+  Boundary Layer Thickness =  $bndry_layer
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name =  "Walls y"
+
+  Velocity 1 = 0
+
+  Wall Law = True
+  Boundary Layer Thickness = $bndry_layer
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.23583018,EPS=1.0e-3\n" );

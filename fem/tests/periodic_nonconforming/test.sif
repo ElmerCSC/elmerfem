@@ -1,0 +1,91 @@
+! This test "misuses" periodicity to make computations in a nonconforming mesh
+! Note that this can work in parallel only if all the nonconforming nodes
+! are in the same partition. Nor should one be optimistic on using direct
+! solvers once the mesh structure has been spoiled by the additional
+! connections.
+
+Header
+  Mesh DB "." "test"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+  Post File = "test.ep"
+End
+
+Body 1
+  Target Bodies(2) = 1 2
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Heat Source = 1.0
+End
+
+Material 1
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = Heat Equation
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 1
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+Boundary Condition 1
+  Name = "Angle_out"
+  Target Boundaries = 1
+  Temperature = 0
+End
+
+Boundary Condition 2
+  Name = "Angle_periodic"
+  Target Boundaries = 2
+  Periodic BC = 4
+
+! When using periodicity in nonconforming meshes the translate and
+! scale vectors may be trivially given to be on the safe side
+! allthough the automatic definition seems to work as well.
+  Periodic BC Translate(3) =  0 0 0
+  Periodic BC Scale(3) = 1 1 1 
+  Periodic BC Temperature = Logical True
+End
+
+Boundary Condition 3
+  Name = "Square_out"
+  Target Boundaries = 3
+  Temperature = 0
+End
+
+Boundary Condition 4
+  Name = "Square_periodic"
+  Target Boundaries = 4
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=3.75473557189614573E-002\n");

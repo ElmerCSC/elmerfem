@@ -1,0 +1,274 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Test the grounded solver
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+
+echo on
+$L = 100.0
+
+Header
+  Mesh DB "." "Cube"
+End
+
+Constants
+End
+
+
+!---------------------------------------------------
+!---------------- SIMULATION -----------------------
+!---------------------------------------------------
+
+Simulation
+  Coordinate System  = Cartesian 3D
+  Simulation Type = Transient
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Timestep Intervals = 3
+  Output Intervals = 1  
+  Timestep Sizes = 1.0 
+
+  Steady State Max Iterations = 1 
+  Steady State Min Iterations = 1
+
+  Post File = "grounded.vtu"
+  max output level = 3
+End
+
+!---------------------------------------------------
+!---------------- BODIES ---------------------------
+!---------------------------------------------------
+
+!! the ice core (3d)
+Body 1
+  Name = "ice"
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name= "free surface sea/ice-shelf"
+  Equation = 2
+  Material = 1
+  Body Force = 2
+  Initial Condition = 2
+End
+
+!---------------------------------------------------
+!---------------- INITIAL CONDITIONS ---------------
+!---------------------------------------------------
+
+!! for ice core
+Initial Condition 1
+  Pressure = Real 0.0e0
+  Velocity 1 = Real 0.0e0
+  Velocity 2 = Real 0.0e0
+  Velocity 3 = Real 0.0e0
+End
+
+!! For free surface sea/ice-shelf
+Initial Condition 2
+  Zs Bottom = Variable Coordinate 1
+    Real Procedure "ElmerIceUSF" "ZsBottomIni"
+End
+
+!---------------------------------------------------
+!---------------- BODY FORCES ----------------------
+!---------------------------------------------------
+
+Body Force 1
+! g = 9.81
+  Flow BodyForce 1 = Real 0.0
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real -9.756234e15  !MPa - a - m
+End
+
+!! melting/accretion at the base
+Body Force 2
+  Zs Bottom Accumulation = Real -2.0
+End
+
+!---------------------------------------------------
+!---------------- MATERIALS ------------------------
+!---------------------------------------------------
+
+!! ice material properties in MPa - m - a system 
+Material 1
+  Density = Real 9.037214e-19 
+  Viscosity = Real 0.2321
+  Viscosity Model = String "power law"
+  Viscosity Exponent = Real 0.333333333333333
+  Critical Shear Rate = Real 1.0e-10
+  !! Bed condition
+  Min Zs Bottom = Equals bedrock
+ 
+  Max Zs Bottom = Real 1.0e6
+End
+
+!---------------------------------------------------
+!---------------- SOLVERS --------------------------
+!---------------------------------------------------
+
+Solver 1
+  Exec Solver = Before All
+  Equation = "bedrock"
+  Variable = "bedrock"
+  Variable DOFs = 1
+  Procedure = "./bedrock" "bedrock"
+End
+
+Solver 2
+  Exec Solver = Before All
+  Equation = "GroundedMask"
+  Variable = "GroundedMask"
+  Variable DOFs = 1
+  TolerInit = Real 1.0e-03
+  Procedure = "ElmerIceSolvers" "GroundedSolverInit"
+End
+
+Solver 3
+  Exec Solver = Never 
+  Equation = "Navier-Stokes"
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 300
+  Nonlinear System Newton After Tolerance = 1.0e-06
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = Real 1.0e-4
+
+  Stabilize = logical True
+  flow model = Stokes
+End
+
+Solver 4
+  Equation = "Free Surface Sea/Shelf"
+  Variable = "Zs Bottom"
+
+  Variable DOFS =  1
+  Exported Variable 1 = "Zs Bottom Residual"
+  Exported Variable 1 DOFs = 1
+
+  Procedure =  "FreeSurfaceSolver" "FreeSurfaceSolver"
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-9
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Linear System Use Hypre = Logical False
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = 1.0e-03
+
+  Stabilization Method = Stabilized
+  Apply Dirichlet = Logical True
+End
+
+Solver 5
+  Equation = "Mesh Update"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = umfpack
+
+  Steady State Convergence Tolerance = 1.0e-04
+End
+
+Solver 6
+  Equation = "GroundedMask"
+  Variable = "GroundedMask"
+  Variable DOFs = 1
+
+  Toler = Real 1.0e-3
+
+  Procedure = "ElmerIceSolvers" "GroundedSolver"
+End
+
+Solver 7
+  Exec Solver = After TimeStep
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical True
+
+  Variable 1 = String "Time"
+
+  Variable 2 = String "GroundedMask"
+  Operator 2 = String "int"
+
+  Variable 3 = String "GroundedMask"
+  Operator 3 = String "max"
+
+  Variable 4 = String "GroundedMask"
+  Operator 4 = String "min" 
+
+  Operator 5 = String "cpu time"
+End
+
+!---------------------------------------------------
+!---------------- EQUATIONS ------------------------
+!---------------------------------------------------
+
+Equation 1
+  Active Solvers(3) = 3 5 7
+End
+
+Equation 2
+  Active Solvers(4) = 1 2 4 6 
+  !! options pour le free surface (bottom)
+  Flow Solution Name = String "Flow Solution"
+  Convection = String Computed
+End 
+
+!---------------------------------------------------
+!---------------- BOUNDARY CONDITIONS --------------
+!---------------------------------------------------
+
+!! BC  Bedrock + Shelf
+Boundary Condition 1
+  Name = "bottom"
+  Target Boundaries = 5
+  Body Id = 2
+!
+! Condition where the bed is stuck
+!
+  Zs Bottom = Equals bedrock
+  Zs Bottom Condition = Variable GroundedMask
+    Real MATC "tx + 0.5"
+
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Real 0.0
+  Mesh Update 3 = Variable Zs Bottom
+    Real Procedure "ElmerIceUSF" "ZsBottomMzsIni"
+End
+
+!! BC  Free surface Top
+Boundary Condition 2
+  Name = "top"
+  Target Boundaries = 6
+
+  Mesh Update 1 = Real 0.0e0
+  Mesh Update 2 = Real 0.0e0
+  Mesh Update 3 = Real 0.0e0 
+End
+
+!! Sides
+Boundary Condition 3
+  Name = "front"
+  Target Boundaries(4) = 1 2 3 4
+
+  Mesh Update 1 = Real 0.0
+  Mesh Update 2 = Real 0.0
+End

@@ -1,0 +1,3 @@
+A .smesh file represents a piecewise linear complex (PLC) as well as some additional information. The .smesh file format is a simplified version of the .poly format, that each facet only has exactly one polygon, no holes, no segment and point inside. It is less flexible than the .poly file format but is much simpler and useful when the surface mesh is created by other programs. (from tetgen homepage)
+
+smesh files may be read by tetgen mesh generator.

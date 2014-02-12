@@ -1,0 +1,149 @@
+! This case demonstrates how conditional bulk conditions could 
+! be used to initiate flow fields. To save some time the conditions
+! are implemented as a UDF that has a common module. 
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "cross"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 42
+  Coordinate System = Cartesian
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady state
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = case.ep
+
+! The flow is initiated by max. to blowers that are read by the UDF.
+! The definitions for the 1st blower.
+  Blower 1 x = Real 3.5
+  Blower 1 y = Real 2.5
+  Blower 1 r = Real 0.2
+  Blower 1 vx = Real 1.0
+  Blower 1 vy = Real 0.0
+
+! With these defitions the 2nd blower is not active
+  Blower 2 x = Real 0.0
+  Blower 2 y = Real 0.0
+  Blower 2 r = Real 0.0
+  Blower 2 vx = Real 0.0
+  Blower 2 vy = Real 0.0
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Unit Charge = 1.602e-19
+  Boltzmann Constant = 1.3807e-23
+  Permittivity of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Target Bodies(1) = 1
+  Name = "Body 1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Solver 1
+  Equation = Navier-Stokes
+
+  Procedure = "FlowSolve" "FlowSolver"
+  Variable = Flow Solution[Velocity:2 Pressure:1]
+
+  Stabilize = True
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+  Linear System Precondition Recompute = 1
+End
+
+Equation 1
+  Name = "Equation 1"
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Viscosity = 0.1
+End
+
+! The following definitions for body forces are equivalent for this
+! case. However, the 1st method using Fortran routine is easier to 
+! apply for more complex cases. It is also a lot faster.
+! To compile it say:
+! > elmerf90 -o Blowers.so Blowers.f90
+
+Body Force 1 
+  Velocity 1 = Variable Coordinate 1 
+    Real Procedure "Blowers" "BlowerVelox"
+  Velocity 2 = Variable Coordinate 1 
+    Real Procedure "Blowers" "BlowerVeloy"
+  Velocity 1 Condition = Variable Coordinate 1 
+    Real Procedure "Blowers" "BlowerVeloCond"
+  Velocity 2 Condition = Variable Coordinate 1 
+    Real Procedure "Blowers" "BlowerVeloCond"
+End 
+
+!Body Force 1
+!  Velocity 1 = Real 1.0
+!  Velocity 2 = Real 0.0
+!  Velocity 1 Condition = Variable Coordinate 
+!    Real MATC "0.04-(tx(0)-3.5)^2-(tx(1)-2.5)^2" 
+!  Velocity 2 Condition = Variable Coordinate 
+!    Real MATC "0.04-(tx(0)-3.5)^2-(tx(1)-2.5)^2" 
+!End 
+
+Boundary Condition 1
+  Name = "NoSlip"
+  Target Boundaries(1) = 1 
+  Noslip Wall BC = Logical True
+End 
+
+Boundary Condition 2
+  Name = "BC_bottom"
+  Target Boundaries(1) = 2
+  Velocity 1 = 0.0
+End
+
+Boundary Condition 3
+  Name = "BC_right"
+  Target Boundaries(1) = 3
+  Velocity 2 = 0.0
+End
+Boundary Condition 4
+  Name = "BC_top"
+  Target Boundaries(1) = 4
+  Velocity 1 = 0.0
+End
+
+Boundary Condition 5
+  Name = "BC_left"
+  Target Boundaries(1) = 5
+  Velocity 2 = 0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.22958492\n");

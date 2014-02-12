@@ -1,0 +1,172 @@
+! A levelset example of curvature driven flow
+! Starting from a square the fluid evolves to a circle 
+! Reinitialization and volume conservation are applied.
+
+!check keywords abort
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = String Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Timestepping Method = String BDF
+  BDF Order = Integer 2
+  Timestep sizes = Real 0.1
+  Timestep Intervals = Integer 5
+
+  Timestep Function 
+    Real Procedure "LevelSet" "LevelSetTimestep"
+  LevelSet Courant Number = Real 1.0
+
+  Steady State Max Iterations = 2
+  Output Intervals = 0
+
+! Output File = File "data.dat"
+! Post File = File "data.ep"
+End
+
+Constants
+  Gravity(4) = Real 0.0 -1.0 0.0 9.82
+  Stefan Boltzmann = Real 5.67e-08
+End
+
+Body 1
+  Name = String "fluid"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+Body Force 1
+  Potential Force = Logical True
+  Potential Field = Equals Surface
+  Potential Coefficient = Equals Curvature
+End
+
+Initial Condition 1
+  Velocity 1 = 0.0e-3
+  Velocity 2 = 0.0e-3
+  Pressure = 0.0
+
+  Surface = Variable Coordinate 1
+       Real Procedure "InitSquare" "InitSquare"
+End
+
+Equation 1
+  Name = String "Equation1"
+  NS Convect = False
+  Active Solvers(5) = 1 2 3 4 5
+End
+
+Solver 1
+  Equation = "Level Set"
+  Variable = Surface
+  Variable DOFs = 1
+  Procedure = "LevelSet" "LevelSetSolver"
+  Steady State Convergence Tolerance = 1e-6
+
+  Stabilize = True
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+End
+
+Solver 2
+  Equation = "Reinitialize"
+  Variable = Renorm
+  Variable DOFs = 1
+  Procedure = "LevelSet" "LevelSetDistance"
+
+  Extract Interval = 5
+  Reinitialize Interval = 5
+
+!  Filename = File "ls.dat"
+!  File Append = Logical True
+End
+
+Solver 3
+  Equation = "Integrate"
+
+  Procedure = "LevelSet" "LevelSetIntegrate"
+  Levelset Bandwidth = Real 0.03
+  Conserve Volume = Logical True
+  Conserve Volume Relaxation = Real 0.5
+End
+
+Solver 4
+  Equation = "Curvature"
+  Variable = Curvature
+  Variable DOFs = Integer 1
+  Procedure = "LevelSet" "LevelSetCurvature"
+
+  Linear System Solver = direct
+  Linear System Direct Method = umfpack
+
+  Curvature Coefficient = Real 1.0
+  Curvature Diffusion = Real 0.0
+  Levelset Bandwidth = Real 0.03
+End
+
+Solver 5
+  Equation = Navier-Stokes
+  Stabilize = True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Relaxation Factor = 1.0
+  Steady State Convergence Tolerance = 1.0e-4  
+End
+
+
+Solver 6
+  Exec solver = never
+  Equation = String "SaveScalars"
+
+  Exec Solver = After timestep
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "f.dat"
+  Variable 1 = time
+End
+
+
+Material 1
+  Name = String "ideal"
+
+  Density = 1.0
+  Viscosity = 1.0
+  Levelset Velocity 1 = Equals Velocity 1
+  Levelset Velocity 2 = Equals Velocity 2
+End
+
+Boundary Condition 1
+  Name = String "Horizontal"
+  Target Boundaries(2) = 1 3 
+
+  Levelset Curvature BC = Logical True  
+  Velocity 1 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = String "Vertical"
+  Target Boundaries(2) = 2 4 
+
+  Levelset Curvature BC = Logical True
+  Velocity 2 = Real 0.0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.15146023E-01, EPS=1e-2\n");

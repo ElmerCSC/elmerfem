@@ -1,0 +1,86 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Save Line" >
+      <Name>SaveLine</Name>
+      <Solver>
+         <Parameter Widget="Edit" >
+           <Name> Procedure </Name>
+           <DefaultValue> "SaveData" "SaveLine" </DefaultValue>
+         </Parameter>
+
+          <Parameter Widget="Edit" >
+            <Name> Filename </Name>
+            <Type> String </Type>
+            <Whatis> The name of the file to save results in a matrix format. Additionally a 
+	    file with a suffix ".names" describing the content will be saved. </Whatis>
+         </Parameter> 
+
+         <Parameter Widget="Edit" >
+            <Name> Comment </Name>
+            <Type> String </Type>
+            <Whatis> Free comment to be appended to the *.names file</Whatis>
+         </Parameter> 
+
+         <Parameter Widget="CheckBox" >
+            <Name> Filename Numbering </Name>
+            <Type> Logical </Type>
+            <Whatis> Number the files with continuous numbering so that existing filenames are not used.  False is the default. </Whatis>
+         </Parameter>
+
+          <Parameter Widget="CheckBox" >
+            <Name> File Append </Name>
+            <Type> Logical </Type>
+            <Whatis> Append files when calling multiple times.  False is the default. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" >
+            <Name> Polyline Coordinates </Name>
+            <Type> Real </Type>
+            <Whatis> Save data on the line segments defined by two coordinate points. </Whatis>
+         </Parameter> 
+
+         <Parameter Widget="CheckBox" >
+            <Name> Save Axis </Name>
+            <Type> Logical </Type>
+            <Whatis> Save data on main axis.  False is the default. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox" >
+            <Name> Save Flux </Name>
+            <Type> Logical </Type>
+            <Whatis> Save a flux, e.g. the heat flux.  False is the default. </Whatis>
+            <Activate>/SaveLine/Solver/Flux Variable</Activate>
+            <Activate>/SaveLine/Solver/Flux Coefficient</Activate>
+         </Parameter>
+
+         <Parameter Widget="Edit" Visible="False" Enabled="False" >
+            <Name>Flux Variable </Name>
+            <Type> String </Type>
+            <Whatis> The variable for flux computation. Temperature is the default.</Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" Visible="False" Enabled="False" >
+             <Name>Flux Coefficient </Name>
+            <Type> String </Type>
+           <Whatis> The coefficient for flux computation. Heat conductivity is the default. </Whatis>
+         </Parameter>
+      </Solver>
+
+      <BoundaryCondition>
+        <Parameter Widget="Label" > <Name> Apply operators  </Name> </Parameter>
+         <Parameter Widget="CheckBox" >
+            <Name> Save Line </Name>
+	    <Type> Logical </Type>
+            <Whatis> Save the line on boundary where this is set true. </Whatis>
+         </Parameter>
+      </BoundaryCondition>
+   </PDE>
+</edf>
+
+
+
+
+
+
+

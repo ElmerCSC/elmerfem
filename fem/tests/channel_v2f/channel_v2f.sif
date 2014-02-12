@@ -1,0 +1,158 @@
+Header
+  Mesh DB "." "channel"
+End
+
+Simulation
+  Coordinate System = Cartesian 2D
+  Max Output Level = 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations  = 100
+
+  Initialize Dirichlet Conditions = False
+  Post File = "channel.ep"
+End
+
+
+Body 1
+  Name  = "Flow"
+  Equation  = 1
+  Material  = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Velocity 1 = Variable Coordinate 2
+    Real MATC "20*tx"
+
+  Velocity 2 = 0
+
+  V2 = Variable Coordinate 2
+    Real MATC "tx"
+
+  F  = Variable Coordinate 2
+    Real MATC "tx"
+
+  Kinetic Energy = Variable Coordinate 2
+    Real MATC "5*tx"
+
+  Kinetic Dissipation = Variable Coordinate 2
+    Real MATC "50*tx+20"
+End
+
+
+Solver 1
+  Equation = V2-F
+
+  Procedure = "V2FSolver" "V2F_LDM"
+  Variable = V2F[V2:1 F:1]
+ 
+  Stabilization Method = String Bubbles
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.75
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+
+Solver 2
+  Equation = K-Epsilon
+
+  Procedure = "KESolver" "KESolver"
+  Variable = KEpsilon[Kinetic Energy:1 Kinetic Dissipation:1]
+ 
+  Nonlinear System Max Iterations = 5
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.1
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 3
+  Equation = Navier-Stokes
+
+  Stabilization Method = String Bubbles
+  Nonlinear System Max Iterations = 2
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 0.75
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance  = 1.0e-3
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-4
+End
+
+
+Solver 4
+  Exec Solver = After Simulation
+  Equation = SaveLine
+  Procedure = "SaveData" "SaveLine"
+  Filename = "curve.dat"
+End
+
+
+Equation 1 :: Active Solvers(3) = 1 2 3
+
+
+Material 1
+  Viscosity = $ 1/395
+  Density = 1
+
+  KE Model = "V2-F"
+  Viscosity Model = ke
+  KE Clip = Real 1.0e-12
+End
+ 
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  Flow Force BC = True
+  Velocity 2 = 0
+  Pressure 1 = Real 32
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+  Periodic BC = 1
+  Periodic BC Velocity 1 = Logical True
+  Periodic BC Velocity 2 = Logical True
+  Periodic BC V2 = Logical True
+  Periodic BC F  = Logical True
+  Periodic BC Kinetic Energy = Logical True
+  Periodic BC Kinetic Dissipation = Logical True
+
+  Pressure   = 0
+  Velocity 2 = 0
+  Save Line = Logical True
+End
+
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Velocity 2 = 0
+End
+
+
+Boundary Condition 4
+  Target Boundaries = 4
+  Noslip Wall BC = Logical True
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=8.32632, EPS=1e-3\n" );

@@ -1,0 +1,17 @@
+!
+!
+! Default colormap
+!
+! Juha Ruokolainen CSC
+!
+! 17 Sep 1995
+!
+! code   index   red  green  blue
+!
+  knot      0     0     0     100  ! start from blue
+  knot      5     0    100    100  ! to cyan
+  knot     10     0    100     0   ! to green
+  knot     15    100   100     0   ! to yellow
+  knot     20    100    0      0   ! to red
+  knot     25    100    0     100  ! to magenta
+  knot     31    100   100    100  ! to white

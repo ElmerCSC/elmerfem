@@ -1,0 +1,4 @@
+SUBDIRS=include src
+EXTRA_DIST=GPL-2
+
+DISTCLEANFILES = aclocal.m4

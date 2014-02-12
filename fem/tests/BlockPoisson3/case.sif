@@ -1,0 +1,124 @@
+! Solver two ordinary & Poisson equations of the same kind
+!
+! We assume eq. -\nabla^2 f = 1 and -\nabla^2 g = -1 with {f,g}=0 at boundary.
+! The solution is rougly max(f)=-min(g)=0.073...
+
+! Then make a change of variables so that u=(f-cg)/(1+c^2) and 
+! v=(g+cf)/(1+c^2) and solve for u and v with given c. The resulting 
+! equation has cross terms with coefficient A12=c and A22=-c. 
+! The f=u+cg and g=v-cf does not depend on c but the 
+! difficulty of iteration does. Simple block schemes are stable
+! only for moderate values of c (|c| < 0.5).
+! 
+! Here is a routine for checking the results in MATC of ElmerPost:
+! math f=Tempa+c*Tempb    ( 0 <= f < 0.073...)
+! math g=Tempb-c*Tempa    ( -0.073... < g <= 0 )
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+!  Max Output Level = 4
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Both"
+  Active Variables(2) = Integer 1 2
+End
+
+
+Solver 1
+  Block Solver = Logical True
+  Equation = "Poisson"
+
+  Variable 1 = TempA
+  Variable 2 = TempB
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 30
+  Nonlinear System Max Stepsize Tests = Integer 5
+  Nonlinear System Convergence Tolerance = Real 1.0e-6
+  Nonlinear System Convergence Measure = String solution
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = bicgstab
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU1
+
+! The block is checked internally to allow nontrivial coefficients
+  Bulk Assembly Procedure 11 = File "./BlockPoissonAssembly" "BulkAssembly"
+  Bulk Assembly Procedure 12 = File "./BlockPoissonAssembly" "BulkAssembly"
+  Bulk Assembly Procedure 21 = File "./BlockPoissonAssembly" "BulkAssembly"
+  Bulk Assembly Procedure 22 = File "./BlockPoissonAssembly" "BulkAssembly"
+
+  Block Preconditioner = Logical False
+  Block Gauss-Seidel = Logical True
+!  Linear System Block Method = String "gauss-seidel"
+End  
+
+Solver 2
+  Exec Solver = never
+
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = TempA
+  Operator 1 = min
+  Variable 2 = TempA
+  Operator 2 = max
+End 
+
+
+Material 1
+  Name = "Material1"
+
+  $ coeff = 0.3
+
+  Conductivity 11 = Real 1.0
+  Conductivity 22 = Real 1.0
+  Conductivity 12 = Real $ coeff
+  Conductivity 21 = Real $ -coeff
+
+  Source 1 = Real 1.0
+  Source 2 = Real -1.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries(2) = 1 2
+  TempA = Real 0
+  TempB = Real 0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.46964473E-01\n");
+
+

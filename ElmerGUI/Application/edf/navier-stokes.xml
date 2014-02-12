@@ -1,0 +1,476 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="Navier-Stokes" >
+      <Name>Navier-Stokes</Name>
+      <Solver>
+         <Parameter Widget="Edit" >
+            <Name> Procedure </Name>
+            <DefaultValue> "FlowSolve" "FlowSolver" </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False">
+            <Name> Variable </Name>
+            <DefaultValue> Flow Solution[Velocity:cdim Pressure:1] </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Label"> <Name> Additional Variables</Name> </Parameter>
+         <Parameter Widget="Edit">
+           <Name> Exported Variable 1 </Name>
+           <Activate> /Navier-Stokes/Solver/Exported Variable 2</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 2 </Name>
+           <Activate> /Navier-Stokes/Solver/Exported Variable 3</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 3 </Name>
+           <Activate> /Navier-Stokes/Solver/Exported Variable 4</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 4 </Name>
+           <Activate> /Navier-Stokes/Solver/Exported Variable 5</Activate>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Exported Variable 5 </Name>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Miscellaneous options</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Loads </Name>
+           <Whatis> If checked compute boundary reaction forces. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Solver>
+
+      <InitialCondition>
+          <Parameter Widget="Label"> <Name> Variables </Name> </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Velocity 1 </Name>
+             <Whatis> Initial condition for the velocity in coordinate direction 1. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Velocity 2 </Name>
+             <Whatis> Initial condition for the velocity in coordinate direction 2. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Velocity 3 </Name>
+             <Whatis> Initial condition for the velocity in coordinate direction 3. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Pressure </Name>
+             <Whatis> Initial condition for the pressure. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Initial Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Initial Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </InitialCondition>
+
+      <Equation>
+          <Parameter Widget="Label"> <Name> Options </Name> </Parameter>
+
+          <Parameter Widget="CheckBox">
+            <Name> Convect </Name>
+            <SifName> NS Convect </SifName>
+            <DefaultValue> True </DefaultValue>
+            <Whatis> If checked, solve Navier-Stokes equations with convection. </Whatis>
+          </Parameter>
+        <Parameter Widget="Label" > <Name> This and that </Name> </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Element Codes </Name>
+           <SifName> Element </SifName>
+           <Whatis> Define element degrees of freedom (p:n d:n n:n e:n f:n b:n d:n). "p" is the p-element degree, "e" number of edge DOFs, "f" number of face DOFs, "b" number of bubble DOFs, and "d" the Discontinuous Galerkin DOFs (0 = element number of nodes). "p" and "b" may be entered together, "d" on its own, and the rest together. </Whatis>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
+      <BodyForce>
+          <Parameter Widget="Label"> <Name> Volume forces </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Force 1 </Name>
+             <SifName> Flow Bodyforce 1 </SifName>
+             <Whatis> Volume force in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Force 2 </Name>
+             <SifName> Flow Bodyforce 2 </SifName>
+             <Whatis> Volume force in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Force 3 </Name>
+             <SifName> Flow Bodyforce 3 </SifName>
+             <Whatis> Volume force in coordinate direction 3. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> ...other options </Name> </Parameter>
+          <Parameter Widget="CheckBox">
+            <Name> Boussinesq</Name>
+            <Whatis> Use Boussinesq body force for incompressible flow. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="CheckBox">
+            <Name> Hydrostatic pressure </Name>
+            <Whatis> If the Boussinesq model is on compute hydrostatic pressure field instead of the default deviation from the hydrostatic field. Otherwise also add the gravity force. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="CheckBox">
+            <Name> Potential Force </Name>
+            <Whatis> If checked, the force used for the electricstatic coupling is activated. </Whatis>
+            <Activate> /Navier-Stokes/BodyForce/Potential Field </Activate>
+            <Activate> /Navier-Stokes/BodyForce/Potential Coefficient </Activate>
+          </Parameter>
+            
+          <Parameter Widget="Edit" Enabled="False">
+            <Name> Potential Field </Name>
+            <Whatis> The field to which gradient the external force is proportional to. For example the electrostatic field. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Edit" Enabled="False">
+            <Name> Potential Coefficient </Name>
+            <Whatis> The coefficient that multiplies the gradient term. For example, the charge density.</Whatis>
+          </Parameter>
+
+          <Parameter Widget="Label"> <Name> Bodywise Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Velocity 1 </Name>
+             <Activate> /Navier-Stokes/BodyForce/Velocity 1 Condition </Activate>
+             <Whatis> Dirichlet condition for the velocity in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Velocity 2 </Name>
+             <Activate> /Navier-Stokes/BodyForce/Velocity 2 Condition </Activate>
+             <Whatis> Dirichlet condition for the velocity in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Velocity 3 </Name>
+             <Activate> /Navier-Stokes/BodyForce/Velocity 3 Condition </Activate>
+             <Whatis> Dirichlet condition for the velocity in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Velocity 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Velocity 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Velocity 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Body Force-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Body Force-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </BodyForce>
+
+      <Material>
+         <Parameter Widget="Label" > <Name> Visocity Settings </Name> </Parameter>
+
+         <Parameter Widget="Edit">
+            <Name>Viscosity</Name>
+            <Whatis> The molecular viscosity of the material. </Whatis>
+         </Parameter>
+
+
+         <Parameter Widget="Combo">
+            <Name>Viscosity Model</Name>
+            <Type>String </Type>
+            <Whatis> The non-newtionian and turbulent viscosity models. </Whatis>
+            <Item> <Name> None </Name> </Item>
+            <Item> <Name>Power law </Name>
+              <Activate> /Navier-Stokes/Material/Viscosity Exponent</Activate>
+              <Activate> /Navier-Stokes/Material/Critical Shear Rate</Activate>
+            </Item>
+            <Item> <Name>Power law too </Name>
+              <Activate> /Navier-Stokes/Material/Viscosity Exponent </Activate>
+            </Item>
+            <Item> <Name>Carreau </Name>
+              <Activate> /Navier-Stokes/Material/Viscosity Difference </Activate>
+              <Activate> /Navier-Stokes/Material/Viscosity Exponent </Activate>
+              <Activate> /Navier-Stokes/Material/Viscosity Transition </Activate>
+              <Activate> /Navier-Stokes/Material/Yasuda Coefficient </Activate>
+            </Item>
+            <Item> <Name>Cross </Name>
+              <Activate> /Navier-Stokes/Material/Viscosity Difference </Activate>
+              <Activate> /Navier-Stokes/Material/Viscosity Exponent </Activate>
+              <Activate> /Navier-Stokes/Material/Viscosity Transition </Activate>
+            </Item>
+            <Item> <Name>Powell Eyring </Name>
+              <Activate> /Navier-Stokes/Material/Viscosity Difference </Activate>
+              <Activate> /Navier-Stokes/Material/Viscosity Transition </Activate>
+            </Item>
+            <Item> <Name>Thermal Carreau </Name>
+               <Activate> /Navier-Stokes/Material/Viscosity Difference </Activate>
+               <Activate> /Navier-Stokes/Material/Viscosity Exponent </Activate>
+               <Activate> /Navier-Stokes/Material/Viscosity Transition </Activate>
+               <Activate> /Navier-Stokes/Material/Yasuda Coefficient </Activate>
+               <Activate> /Navier-Stokes/Material/Viscosity Temp Exp </Activate>
+               <Activate> /Navier-Stokes/Material/Viscosity Temp Ref </Activate>
+            </Item>
+            <Item> <Name>Smagorinsky </Name>
+               <Activate> /Navier-Stokes/Material/Smagorinsky Constant </Activate>
+            </Item>
+            <Item> <Name>K-Epsilon </Name>
+            </Item>
+            <Item> <Name>RNG K-Epsilon </Name>
+            </Item>
+            <Item> <Name>Spalart-Allmaras </Name>
+            </Item>
+            <Item> <Name>K-Omega </Name>
+            </Item>
+            <Item> <Name>SST K-Omega </Name>
+            </Item>
+            <Item> <Name>Levelset </Name>
+               <Activate> /Navier-Stokes/Material/Viscosity Difference </Activate>
+               <Activate> /Navier-Stokes/Material/Levelset Bandwidth </Activate>
+            </Item>
+            <Item> <Name>User Function </Name>
+            </Item>
+         </Parameter>
+
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Viscosity Exponent </Name>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Critical Shear Rate </Name>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Viscosity Difference </Name>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Viscosity Transition </Name>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Yasuda Coefficient </Name>
+           <DefaultValue> 2 </DefaultValue>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Viscosity Temp Ref </Name>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Viscosity Temp Exp </Name>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Smagorinsky Constant </Name>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+           <Name> Levelset Bandwidth </Name>
+         </Parameter>
+
+         <Parameter Widget="Label" > <Name> Compressibility models </Name> </Parameter>
+
+         <Parameter Widget="Combo" >
+            <Name>Compressibility Model</Name>
+            <Type> String </Type>
+            <Item> <Name> None </Name> </Item>
+            <Item> <Name> Incompressible </Name> </Item>
+            <Item> <Name> Thermal </Name> </Item>
+            <Item> <Name> Perfect Gas </Name> </Item>
+            <Item> <Name> User Defined </Name> </Item>
+            <Item> <Name> Artificial Compressible </Name>
+               <Activate> /Navier-Stokes/Material/Artificial Pressure </Activate>
+               <Activate> /Navier-Stokes/Material/Artificial Compressibility </Activate>
+            </Item>
+            <Whatis> Compressibility model for the flow computations. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Artificial Pressure </Name>
+         </Parameter>
+         <Parameter Widget="Edit" Enabled="False" Visible="False">
+            <Name> Artificial Compressibility </Name>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Porous media settings </Name> </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Porous Media </Name>
+           <Activate> /Navier-Stokes/Material/Porous Resistivity </Activate>
+           <Whatis> If checked, the porous model will be active in the material. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit" Enabled="False">
+           <Name> Porous Resistivity </Name>
+           <Whatis> This keyword may give a constant resistivity or also a orthotropic resistance where the resistance of each velocity component is given separately. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Material>
+
+     <BoundaryCondition>
+         <Parameter Widget="Label"> <Name> Normal-Tangential Coordinate System</Name> </Parameter>
+         <Parameter Widget="CheckBox">
+            <Name> Use normal-tangential coordinate system </Name>
+            <SifName> Normal-Tangential Velocity </SifName>
+            <Activate> /Navier-Stokes/BoundaryCondition/Change of variables</Activate>
+            <Whatis>  The Dirichlet conditions for the vector variables may be given in normal-tangential coordinate system instead of the coordinate axis directed system. The first component will in this case be the normal component and the components 2, 3 two orthogonal tangent directions. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox" Enabled="False">
+            <Name> Change of variables </Name>
+            <DefaultValue> True </DefaultValue>
+            <SifName> Normal-Tangential Velocity Rotate </SifName>
+            <Whatis> If checked, do change of variables from x,y,z -> n,t1,t2. This change of variables is only needed if Dirichlet conditions are present. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Dirichlet Conditions </Name> </Parameter>
+          <Parameter Widget="CheckBox">
+             <Name> Noslip wall BC </Name>
+             <Deactivate> /Navier-Stokes/BoundaryCondition/Velocity 1 </Deactivate>
+             <Deactivate> /Navier-Stokes/BoundaryCondition/Velocity 2 </Deactivate>
+             <Deactivate> /Navier-Stokes/BoundaryCondition/Velocity 3 </Deactivate>
+             <Whatis> Noslip condition for velocities + turbulence variables. </Whatis>
+          </Parameter>
+
+          <Parameter Widget="Edit">
+             <Name> Velocity 1 </Name>
+             <Activate> /Navier-Stokes/BoundaryCondition/Velocity 1 Condition </Activate>
+             <Whatis> Dirichlet condition for the velocity in coordinate direction 1. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Velocity 2 </Name>
+             <Activate> /Navier-Stokes/BoundaryCondition/Velocity 2 Condition </Activate>
+             <Whatis> Dirichlet condition for the velocity in coordinate direction 2. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit">
+             <Name> Velocity 3 </Name>
+             <Activate> /Navier-Stokes/BoundaryCondition/Velocity 3 Condition </Activate>
+             <Whatis> Dirichlet condition for the velocity in coordinate direction 3. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Velocity 1 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Velocity 2 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+          <Parameter Widget="Edit" Enabled="False">
+             <Name> Velocity 3 Condition </Name>
+             <Whatis> If the given value is less than zero, don't set the Dirichlet condition. To be generally useful space and/or time varying values may be given. </Whatis>
+          </Parameter>
+
+         <Parameter Widget="Label"> <Name> Traction boundary conditions </Name> </Parameter>
+
+         <Parameter Widget="Edit">
+            <Name> External Pressure </Name>
+            <Whatis> A pressure boundary condition directed normal to the surface. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit"> 
+            <Name> Pressure 1 </Name>
+            <Whatis> A pressure force in the coordinate direction 1. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit"> 
+            <Name> Pressure 2 </Name>
+            <Whatis> A pressure force in the coordinate direction 2. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit"> 
+            <Name> Pressure 3 </Name>
+            <Whatis> A pressure force in the coordinate direction 3. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+            <Name> Surface Tension Coefficient </Name>
+            <Whatis> Tangential derivative of this coefficient is used as (tangential) force. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Edit">
+            <Name> Surface Tension Expansion Coefficient </Name>
+            <Whatis> Triggers a tangetial stress boundary condition to be used. If the keyword Surface Tension Expansion Coefficient is given, a linear dependence of the surface tension coefficient on the temperature is assumed. Note that this boundary condition is the tangential derivative of the surface tension coefficient. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Slip Coefficient 1 </Name>
+            <Whatis> Apply friction type of boundary condition: slip_i*u_i - (tau,n)_i = f_i." </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Slip Coefficient 2 </Name>
+            <Whatis> Apply friction type of boundary condition: slip_i*u_i - (tau,n)_i = f_i." </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit">
+            <Name> Slip Coefficient 3 </Name>
+            <Whatis> Apply friction type of boundary condition: slip_i*u_i - (tau,n)_i = f_i." </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Periodic BCs </Name> </Parameter>
+         <Parameter Widget="CheckBox" Enabled="False">
+            <Name> Velocity 1 periodic </Name>
+            <SifName> Periodic BC Velocity 1 </SifName>
+            <Whatis> If checked treat velocity component 1 as a periodic. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" Enabled="False">
+            <Name> Velocity 2 periodic </Name>
+            <SifName> Periodic BC Velocity 2 </SifName>
+            <Whatis> If checked treat velocity component 2 as a periodic. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" Enabled="False">
+            <Name> Velocity 3 periodic </Name>
+            <SifName> Periodic BC Velocity 3 </SifName>
+            <Whatis> If checked, treat velocity component 3 as a periodic. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" Enabled="False">
+            <Name> Pressure periodic </Name>
+            <SifName> Periodic BC Pressure </SifName>
+            <Whatis> If checked, treat pressure as a periodic. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </BoundaryCondition>
+   </PDE>
+</edf>

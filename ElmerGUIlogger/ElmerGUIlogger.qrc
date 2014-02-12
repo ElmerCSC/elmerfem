@@ -1,0 +1,8 @@
+<!DOCTYPE RCC><RCC version="1.0">
+<qresource>
+   <file>./icons/ElmerGUI.png</file>
+   <file>./icons/document-save-as.png</file>
+   <file>./icons/document-print.png</file>
+   <file>./icons/application-exit.png</file>
+</qresource>
+</RCC>

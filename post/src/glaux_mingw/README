@@ -1,0 +1,6 @@
+Make & install glaux for MinGW (the package is useless on other platforms):
+---------------------------------------------------------------------------
+export CFLAGS=-O
+./configure --prefix=/mingw
+make
+make install

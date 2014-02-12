@@ -1,0 +1,152 @@
+! This case demonstrates the use of explicit periodic BCs 
+! The Temperature at inlet is obtained from that on the on outlet.
+! Iteratively the solution becomes periodic.
+
+Header
+  Mesh DB "." "beam"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady
+  Steady State Max Iterations = 100
+  Output Intervals = 1
+!  Post File = "periodic_ns.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+Body 1
+  Name = "Fluid"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Equation 1
+  Name = "Heat and Flow"
+  Active Solvers(2) = 1 2
+  Convection = Computed
+  NS Convect = Logical False
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1.0
+  Viscosity = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 1000.0
+End
+
+Initial Condition 1
+  Temperature = 1
+End 
+
+Solver 1
+  Equation = "Navier-Stokes"
+
+  Exec Solver = before all
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+
+  Stabilization Method = String Stabilized
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-2
+  Nonlinear System Relaxation Factor = 1.0
+
+!  Optimize Bandwidth = False
+End
+
+
+Solver 2
+  Equation = HeatSolver
+  Variable = Temperature
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-5
+
+  Nonlinear System Convergence Tolerance = 1.0e-4
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-5
+  Nonlinear System Relaxation Factor = 1
+  Nonlinear System Convergence Measure = solution   
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-3
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 10
+  Linear System Precondition Recompute = 1
+
+!  Optimize Bandwidth = False
+End 
+
+
+Boundary Condition 1
+  Name = "Bottom"
+
+  Target Boundaries = 1
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = 0
+End
+
+Boundary Condition 2
+  Name = "Outlet"
+  Target Boundaries = 2
+
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = 2.0
+End
+
+Boundary Condition 4
+  Name = "Inlet"
+  Target Boundaries = 4
+
+  Velocity 1 = Variable Coordinate 2
+    Real MATC "4*tx*(1-tx)"
+  Velocity 2 = 0
+
+
+  Periodic BC = 2
+
+ Periodic BC Explicit = True
+  Periodic BC Temperature = Logical True
+End
+
+
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1.1827223794148616, EPS=1e-2\n");

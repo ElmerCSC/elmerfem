@@ -1,0 +1,153 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "reference"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 100
+
+  Output Intervals = 0
+ Post File = "TempDist.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Frame"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Inside"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Heat"
+  Active Solvers(3) = 1 2 3
+End
+
+Solver 1
+! In order not to mix the norm of the multimesh system
+!  Exec Solver = Before Timestep
+  Equation = "localHeat"
+  Variable = "refT"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+End
+
+Solver 2
+  Mesh = "global"
+
+  Equation = "globalHeat"
+  Variable = "globalT"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+End
+
+Solver 3
+  Mesh = "local"
+
+  Equation = "localHeat"
+  Variable = "localT"
+  Procedure = "HeatSolve" "HeatSolver"
+ 
+  Linear System Solver = "Direct"
+  Linear System Direct Method = "umfpack"
+
+  Steady State Convergence Tolerance = 1.0e-05
+
+  Stabilize = True
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+End
+
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Body Force 1
+  Name = "Heating"
+  Heat Source = real 1
+End
+
+
+Boundary Condition 1
+  Name = "ExtBoxFrame"
+  Target Boundaries = 1
+
+  globalT = Real 0.0
+  refT = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Local2Global"
+  Target Boundaries = 2
+
+  globalT = Equals localT
+!  globalT = Real 1.0
+End
+
+Boundary Condition 3
+  Name = "Global2Local"
+  Target Boundaries = 3
+
+  localT = Equals globalT
+End
+
+Boundary Condition 4
+  Name = "InnerBoxFrame"
+  Target Boundaries = 4
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.14985852\n");
+!End Of File

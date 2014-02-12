@@ -1,0 +1,21 @@
+OBJ_EXT	=	.o
+
+include make.inc
+
+LIBDIR	=	$(ELMER_PREFIX)/lib
+LIB	=	libview3d.a
+
+CC	=	cc -DAIX
+CP	=	cp
+RM	=	rm -f
+
+.c.o:
+	$(CC) -c -I. -O3 $<
+	ar r $(LIB) $@
+
+$(LIB):	$(OBJS) install
+
+install:
+
+clean:
+	$(RM) *.o $(LIB)

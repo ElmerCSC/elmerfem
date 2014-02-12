@@ -1,0 +1,7 @@
+ComputeChange: NS (NRM,RELC): (   1.10449894671       2.00000000000     ) :: stress analysis
+ComputeChange: NS (NRM,RELC): (   1.10449894671      0.460715352081E-11 ) :: stress analysis
+ComputeChange: NS (NRM,RELC): (  0.333503680582E-02   1.98795835168     ) :: stress analysis
+ComputeChange: NS (NRM,RELC): (  0.152631638308       1.91446796430     ) :: stress analysis
+ComputeChange: NS (NRM,RELC): (  0.152631638308      0.477184198377E-11 ) :: stress analysis
+ComputeChange: NS (NRM,RELC): (  0.288933277194E-01   1.36332002475     ) :: stress analysis
+ComputeChange: SS (NRM,RELC): (  0.288933277194E-01   2.00000000000     ) :: stress analysis

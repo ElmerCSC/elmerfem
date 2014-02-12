@@ -1,0 +1,68 @@
+Header
+  Mesh DB "." "kulma"
+End
+
+Constants
+  Permittivity Of Vacuum = Real 8.8542e-12
+End
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 20
+  Mesh Input File = "kulma.mif"
+! Post File = "kulma.ep"
+End
+
+Body 1
+  Material = 1
+  Equation = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 2
+  Potential = 0
+
+  Capacitance Body = 1
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 5
+  Potential = 1
+
+  Capacitance Body = 2
+End
+
+Solver 1
+  Equation = Electrostatics
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatElecSolve" "StatElecSolver"
+
+  Calculate Electric Energy = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Electric Flux = Logical False
+
+  Linear System Solver = Direct
+
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-8
+
+  Adaptive Mesh Refinement = True
+  Adaptive Remesh = True
+  Adaptive Error Limit = 0.05
+  Adaptive Max H = 0.25
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.536205922533, EPS=1.0e-2\n" );

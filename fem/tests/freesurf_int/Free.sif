@@ -1,0 +1,95 @@
+Header
+  Check Keywords    Warn
+  Mesh DB "MESHDIR" "Mesh1"
+End
+
+
+Constants
+  Gravity(4)=  0 1 0 9.81
+  Stefan Boltzmann =  5.67e-8
+End
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System = Cartesian 2D
+  Simulation Type  = Steady
+  Steady State Max Iterations  = 200
+  Output Intervals = 1
+! Post File   = "Free.ep"
+! Output File = "Free.result"
+End
+
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+
+Solver 1
+  Equation = Navier-Stokes
+  Stabilize = True
+  Nonlinear System Max Iterations  = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 8
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.75
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-6
+  Free Surface Relaxation Factor = Real 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Viscosity = 1
+  Density = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Free Surface = True
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Velocity 2 = 0
+  Free Moving = True
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+
+  Velocity 1
+   Variable Coordinate 2
+     Real
+       0.00  1.0000
+       0.25  0.9372
+       0.50  0.7500
+       0.75  0.4375
+       1.00  0.0000
+     End
+
+  Velocity 2 = 0
+End
+
+Boundary Condition 5
+  Target Boundaries = 5
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.44262001\n");
+

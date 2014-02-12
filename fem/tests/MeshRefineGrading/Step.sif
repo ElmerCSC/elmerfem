@@ -1,0 +1,101 @@
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 3
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Steady
+  Steady State Max Iterations = 20
+
+  Output Intervals = 1
+! Post File = "Step.ep"
+! Output File = "Step.dat"
+
+  Mesh Levels=3
+  Mesh Keep=1
+  Mesh Grading Power=1
+  Mesh Keep Grading=True
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+   Navier-Stokes = True
+End
+
+
+Solver 1
+   Equation = "Navier-Stokes"
+
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BiCGStabL
+   Linear System Max Iterations = 500
+
+   Stabilization Method = String Stabilized
+
+   Linear System Convergence Tolerance = 1.0e-8
+   Linear System Preconditioning = ILU1
+   Linear System Residual Output = 10
+   Steady State Convergence Tolerance = 1.0e-5
+
+   Nonlinear System Convergence Tolerance = 1.0e-5
+   Nonlinear System Max Iterations = 1
+   Nonlinear System Newton After Iterations = 3
+   Nonlinear System Newton After Tolerance = 1.0e-2
+   Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Viscosity = 0.01
+End
+
+Boundary Condition 1
+  Name = "Constraint2"
+
+  Target Boundaries = 1
+
+   Velocity 1 = 1
+   Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "Constraint2"
+  Target Boundaries = 2
+
+   Pressure = 0
+   Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "Constraint3"
+  Target Boundaries = 3
+
+   Velocity 1 = 0
+   Velocity 2 = 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.54551710\n" );

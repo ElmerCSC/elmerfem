@@ -1,0 +1,84 @@
+! Computes the temperature distribution of a cube
+! given infinity BCs at the external boundaries.
+! Rather similar to elstat_infty except for the offset.
+!
+! P.R. / 17.6.2013
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "cubes"
+End
+
+Simulation
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Post File = "case.vtu"
+End
+
+Constants
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers = 1
+End
+
+
+Solver 1
+  Exec Solver = "Always"
+
+  Equation = "HeatEq"
+  Variable = "Temp"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU1
+  Linear System ILUT Tolerance = 1.0e-03
+  Linear System Residual Output = 10
+
+  Steady State Convergence Tolerance = 1.0e-05
+End
+
+
+Material 1
+  Name = "Ideal"
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Boundary Condition 1
+  Name = Bc_inner
+  Target Boundaries(2) = 2 6
+
+  Temp = Real 10.0
+End
+
+Boundary Condition 2
+  Name = bc_Symmetry
+  Target Boundaries(3) = 1 4 5
+End
+
+Boundary Condition 3
+  Name = bc_outer
+  Target Boundaries(2) = 3 7
+
+  Infinity BC Temp = Logical True
+  Infinity BC Temp Offset = Real 5.0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=7.2516458862548916\n");
+
+
+!End Of File
+

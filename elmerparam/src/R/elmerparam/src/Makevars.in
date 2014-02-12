@@ -1,0 +1,2 @@
+PKG_CPPFLAGS = -I@prefix@/include -I$(DESTDIR)@prefix@/include
+PKG_LIBS = -L@prefix@/lib -L$(DESTDIR)@prefix@/lib -lelmerparam -lmatc

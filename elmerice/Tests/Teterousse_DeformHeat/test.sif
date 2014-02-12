@@ -1,0 +1,382 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                November  2013         !!
+!!                                       !!
+!! DeformationHeat  - Prognostic         !! 
+!!          zero water pressure          !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Updated January 2014: comment Solver 5 (top freesurface)
+!    because of implementation problems when using 2 same solvers 
+!    whithout recompiling on of them
+
+check keywords warn
+echo on
+
+$Step = "step3a"
+
+! Define the parameter in MPa - a - m
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$rhow = 1000.0/(1.0e6*yearinsec^2) 
+! Prefactor from Cuffey and Paterson (2010) in MPa^{-3} a^{-1}
+$A1 = 2.89165e-13*yearinsec*1.0e18 
+$A2 = 2.42736e-02*yearinsec*1.0e18 
+$gravity = -9.81*yearinsec^2
+
+Header
+  Mesh DB "." "teterousse"
+End
+
+Constants
+  Water Density = Real $rhow
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  =  Cartesian 3D 
+  Simulation Type = Transient     
+
+  Extruded Mesh Levels = Integer 16
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  TimeStep intervals = 2
+  Timestep Sizes =  $10.0/365.            
+  Output Intervals = 1 
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "test.result"
+  Post File = "test.vtu"
+  max output level = 3  
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+! The Upper Free surface
+Body 2
+  Equation = 2
+  Body Force = 2
+  Material = 1
+  Initial Condition = 2
+End
+
+! The Cavity Free surface
+Body 3
+  Equation = 3
+  Body Force = 3
+  Material = 1
+  Initial Condition = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  Velocity 1 = Real 0.0 
+  Velocity 2 = Real 0.0 
+  Velocity 3 = Real 0.0 
+End
+
+Initial Condition 2
+  Zs Top = Variable Coordinate 1
+    Real Procedure "./USF_TR" "TopSurface"
+End
+
+Initial Condition 3
+  Zs Bottom = Variable Coordinate 1
+    Real Procedure "./USF_TR" "BottomSurface"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity 
+End
+
+!! accumulation flux in m/year
+Body Force 2
+   Zs Top Accumulation Flux 1 = Real 0.0e0
+   Zs Top Accumulation Flux 2 = Real 0.0e0 
+   Zs Top Accumulation Flux 3 = Real 0.0e0 
+End
+
+Body Force 3
+   Zs Bottom Accumulation Flux 1 = Real 0.0e0
+   Zs Bottom Accumulation Flux 2 = Real 0.0e0 
+   Zs Bottom Accumulation Flux 3 = Real 0.0e0 
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi   
+
+  Viscosity Model = String "glen"
+  Viscosity = 1.0 ! Dummy but avoid warning output
+  Glen Exponent = Real 3.0
+
+  Limit Temperature = Real -10.0
+  Rate Factor 1 = Real $A1
+  Rate Factor 2 = Real $A2
+  Activation Energy 1 = Real 60e3
+  Activation Energy 2 = Real 115e3
+  Glen Enhancement Factor = Real 1.0
+  Critical Shear Rate = Real 1.0e-10
+
+  Constant Temperature = Real -1.0
+
+  ! we want to have the Cauchy stress
+  !----------------------------------
+  Cauchy = Logical True 
+
+  ! Bed condition
+  Min Zs Bottom = Variable Coordinate 1
+    Real Procedure "./USF_TR" "Bedrock"
+  Max Zs Bottom = Real +1.0e10
+End
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1  
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+
+  Active Coordinate = Integer 3
+  Mesh Velocity Variable = String "dSdt"
+  Mesh Update Variable = String "dS"
+  Mesh Velocity First Zero = Logical True
+
+  Top Surface Variable Name = String "Zs Top"
+  Bottom Surface Variable Name = String "Zs Bottom"
+End
+ 
+Solver 2
+  Equation = "Navier-Stokes"
+  
+  Stabilization Method = String Stabilized
+  Flow Model = Stokes
+
+  Exported Variable 1 = -dofs 1 "dSdt" 
+  Exported Variable 2 = -dofs 1 "dS" 
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 5 
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.00
+  Nonlinear System Reset Newton = Logical True
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+End
+
+Solver 3
+  Equation = Sij
+  Procedure = "ElmerIceSolvers" "ComputeDevStress"          
+  Variable = -nooutput "Sij"
+  Variable DOFs = 1
+  ! the name of the variable containing the flow solution (U,V,W,Pressure)
+  !-----------------------------------------------------------------------
+  Flow Solver Name = String "Flow Solution"
+  Stress Variable Name = String "Stress"
+  Exported Variable 1 = -dofs 6 Stress[Sxx:1 Syy:1 Szz:1 Sxy:1 Syz:1 Szx:1]
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+End
+
+Solver 4
+   Equation = "EigenStresses"
+   Procedure = "ElmerIceSolvers" "ComputeEigenValues"
+   Variable = -nooutput dumy
+   Variable DOFs = 1
+ 
+   ! The 3 eigenvalues
+   Exported Variable 1 = EigenStress
+   Exported Variable 1 DOFS = 3!
+
+End
+
+Solver 5
+  Equation = DeformationalHeat
+  Variable = "W"
+  Variable DOFs = 1
+
+  procedure =  "ElmerIceSolvers" "DeformationalHeatSolver"
+
+  Linear System Solver = direct
+  Linear System direct Method = umfpack
+  
+  Flow Solver Name = String "Flow Solution"
+End
+
+Solver 6
+  Exec Solver = Never !!!!!!!!
+  Equation = "Free Surface Top"
+  Variable = String "Zs Top" 
+  Variable DOFs =  1
+  Exported Variable 1 = String "Zs Top Residual"
+  Exported Variable 1 DOFs = 1
+
+  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-9
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = 1.0e-03
+
+  Stabilization Method = Bubbles    
+  Apply Dirichlet = Logical False ! No limiter needed for the upper surface
+
+! How much the free surface is relaxed
+  Relaxation Factor = Real 1.00       
+
+! Is there a maximum step-size for the displacement
+! use/or not accumulation
+  Use Accumulation = Logical True
+
+! take accumulation to be given normal to surface/as vector
+  Normal Flux = Logical False
+End
+
+Solver 7
+  Equation = "Free Surface Bottom"
+  Variable = String "Zs Bottom" 
+  Variable DOFs =  1
+  Exported Variable 1 = String "Zs Bottom Residual"
+  Exported Variable 1 DOFs = 1
+
+  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-9
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = 1.0e-03
+
+  Stabilization Method = Bubbles    
+  Apply Dirichlet = Logical True  
+
+! How much the free surface is relaxed
+  Relaxation Factor = Real 1.00       
+
+! Is there a maximum step-size for the displacement
+! use/or not accumulation
+  Use Accumulation = Logical True
+
+! take accumulation to be given normal to surface/as vector
+   Normal Flux = Logical False
+End
+
+Solver 8
+  Exec Solver = After TimeStep
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+
+  Variable 1 = String "Time"
+
+  Variable 2 = String "Stress"
+  Operator 2 = String "max"
+
+  Variable 3 = String "Stress"
+  Operator 3 = String "mean"
+
+  Variable 4 = String "W"
+  Operator 4 = String "min"
+
+  Variable 5 = String "W"
+  Operator 5 = String "max"
+
+  Variable 6 = String "W"
+  Operator 6 = String "mean"
+
+  Operator 7 = String "cpu time"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Volume
+Equation 1
+  Active Solvers(6) = 1 2 3 4 5 8
+End
+! Top surface
+Equation 2
+  Active Solvers(1) = 6
+  Flow Solution Name = String "Flow Solution"
+  Convection = String Computed
+End
+! Bottom Surface
+Equation 3
+  Active Solvers(1) = 7        
+  Flow Solution Name = String "Flow Solution"
+  Convection = String Computed
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! lateral side of the glacier 
+Boundary Condition 1
+  Target Boundaries = 1
+  Velocity 1 = real 0.0
+  Velocity 2 = real 0.0
+End
+
+! cavity roof and Bedrock 
+Boundary Condition 2
+!!! this BC is equal to body no. 3 !!!
+  Body Id = 3
+
+  Velocity 1 = Real 0.0
+  Velocity 1 Condition = Variable Coordinate 3
+    Real Procedure "./USF_TR" "MaskCavity"
+
+  Velocity 2 = Real 0.0
+  Velocity 2 Condition = Variable Coordinate 3
+    Real Procedure "./USF_TR" "MaskCavity"
+  
+  Velocity 3 = Real 0.0
+  Velocity 3 Condition = Variable Coordinate 3
+    Real Procedure "./USF_TR" "MaskCavity"
+
+  Flux integrate = Logical True
+End
+
+! Upper Surface
+Boundary Condition 3
+!!! this BC is equal to body no. 2 !!!
+  Body Id = 2
+
+  !Save Line = Logical True
+  Flux integrate = Logical True
+End
+

@@ -1,0 +1,200 @@
+Check Keywords "Warn"
+INCLUDE toroidalcoil/mesh.names
+
+Header
+Mesh DB "." "toroidalcoil"
+End
+
+$ f = 500
+$ omega = 2*pi*f
+$ intervals = 5
+$ periods = 0.5
+$ tsize = periods/(f*intervals)
+
+Simulation
+  Max Output Level = 7
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF order = 1
+  Timestep Sizes = $ tsize
+  Timestep Intervals = $ intervals
+  Steady State Max Iterations = 1
+  Output Intervals(1) = 0
+
+End
+
+Initial Condition 1
+ P = Real 0
+ P {e} = Real 0
+End
+
+Solver 1
+   Equation = "MGDynamics"
+
+   Variable = "P"
+
+   Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+   Fix Input Current Density = Logical True
+
+   Linear System Symmetric = Logical false
+ 
+   Linear System Solver = "Direct"
+   Linear System Direct Method = "Umfpack"
+
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Convergence Tolerance = 1e-6
+   Linear System Residual Output = 100
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = BiCGStab
+   BiCGstabl polynomial degree = 2
+
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Abort Not Converged = False
+
+End
+
+
+Solver 2
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "P"
+
+   Calculate Magnetic Field Strength = Logical True
+   Steady State Convergence Tolerance = 0
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 0
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+
+Solver 3
+!  Exec Solver = after timestep
+  Exec Solver = never
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = lamstack
+  Vtu format = Logical True
+End
+
+Solver 4
+  Exec Solver = After Timestep
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = res/lamstack.dat
+  File Append = Logical False
+  Parallel Reduce = Logical True
+
+  Variable 1 = Time
+
+End
+
+Equation 1
+  Name = "Coupled Equations"
+  Active Solvers(2) = 1 2
+End
+
+Material 1
+  Name = "Air"
+  Electric Conductivity = 0
+  Relative Permeability = 1
+End
+
+Material 2
+  Name = "Iron"
+  Electric Conductivity = 0
+! one could choose to have anisotropic conductivity for modeling the macroscopic currents
+! in the laminate plane (in case of fringe fields for example.) The next line would activate
+! the conductivity in xz-plane
+!  Electric Conductivity(3) = 1e7 0 1e7
+  Relative Permeability = 1000
+
+  Laminate Stack Model = String "Low-Frequency Model"
+  Laminate Stack Conductivity = Real 1e7
+  Laminate Thickness = Real 3.5e-4
+End
+
+Material 3
+  Name = "Copper"
+  Electric Conductivity = 1
+  Relative Permeability = 1.0
+End
+
+Body 1
+   Name = "Air"
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = "Ring"
+   Target Bodies(1) = $ iron
+   Equation = 1
+   Material = 2
+End
+
+Body 3
+   Name = "Cable"
+   Target Bodies(1) = $ coil
+   Equation = 1
+   Material = 3
+   Body Force = 1
+End
+
+Body Force 1
+  Name = "Current Density"
+
+  Current Density 1 = Variable Coordinate 1, Coordinate 2, Coordinate 3, time
+   Real Procedure "currents.so" "currdens1"
+  Current Density 2 = Variable Coordinate 1, Coordinate 2, Coordinate 3, time
+   Real Procedure "currents.so" "currdens2"
+  Current Density 3 = Variable Coordinate 1, Coordinate 2, Coordinate 3, time
+   Real Procedure "currents.so" "currdens3"
+
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = $ FluxParallel
+  P {e} = real 0
+End
+
+
+$ currstep = 2
+$ startcurr = 10
+$ curr = startcurr
+
+Boundary Condition 2
+
+  Target Boundaries(1) = $ currentIn
+  P {e} = real 0
+  Current Density = real 1
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = $ Potential
+  P {e} = real 0
+  Potential = 0
+  P = real 0
+End
+
+Boundary Condition 4
+  Target Boundaries(1) = $ Flux
+
+  Magnetic Flux Average = Logical True
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=75.5195,EPS=1e-3\n" );
+
+
+
+
+
