@@ -25,10 +25,11 @@ SET(solverlib_SOURCES NavierStokes.F90 NavierStokesGeneral.F90
   Smoothers.F90 ClusteringMethods.F90 ParallelUtils.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
   DefUtils.F90 LUDecomposition.F90 RadiationFactors.F90 f_stubs.c
-  ExchangeCorrelations.F90 SolveHypre.c SolveTrilinos.cxx
-  SolveSuperLU.c iso_varying_string.F90 umf4_f77wrapper.c
-  VankaCreate.F90 ParticleUtils.F90 Feti.F90 cholmod.c
-  InterpolateMeshToMesh.F90 BackwardError.F90 ElmerSolver.F90)
+  ExchangeCorrelations.F90 SolveHypre.c SolverActivate_x.F90
+  SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
+  umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
+  cholmod.c InterpolateMeshToMesh.F90 BackwardError.F90
+  ElmerSolver.F90)
 
 FILE(GLOB SRC_FILES *.src)
 FOREACH(FNAME ${SRC_FILES})
