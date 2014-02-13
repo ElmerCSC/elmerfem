@@ -4199,10 +4199,11 @@ END IF
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
 !------------------------------------------------------------------------------------------------------------
-       INTEGER :: n, dim, q, i, j, ni, nj
-       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3)
+       INTEGER :: n, dim, q, i, j, k, l, ni, nj, A, I1, I2
+       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(2,3), WorkCurlBasis(2,3)
+       REAL(KIND=dp) :: D1, D2
        LOGICAL :: Create2ndKindBasis
-       INTEGER, POINTER :: EdgeMap(:,:)
+       INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
 !----------------------------------------------------------------------------------------------------------
        stat = .TRUE.
        Basis = 0.0d0
@@ -4233,24 +4234,24 @@ END IF
        ! Remark: Using reference elements having the edges of the same length
        ! simplifies the implementation of element assembly procedures.
        !-----------------------------------------------------------------------
-       ! Check first whether the given element type is supported...
-       !------------------------------------------------------------------------
-       IF (.NOT. (Element % TYPE % ElementCode == 303 .OR.  &
-            Element % TYPE % ElementCode == 504) ) &
-            CALL Fatal( 'EdgeElementInfo', &
-            'Edge element approximation supported only for element types 303 or 504')
-       !------------------------------------------------------------------------------
-       SELECT CASE(dim)
-       CASE(2)
+       SELECT CASE(Element % TYPE % ElementCode / 100)
+       CASE(3)
           DO q=1,n
              Basis(q) = TriangleNodalPBasis(q, u, v)
              dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v) 
           END DO
-       CASE(3)
+       CASE(5)
           DO q=1,n
              Basis(q) = TetraNodalPBasis(q, u, v, w)
              dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
           END DO
+       CASE(6)
+          DO q=1,n
+             Basis(q) = PyramidNodalPBasis(q, u, v, w)
+             dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
+          END DO
+       CASE DEFAULT
+          CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
        END SELECT
 
        !-----------------------------------------------------------------------
@@ -4273,10 +4274,10 @@ END IF
        ! it generalizes to other cases. For example general quadrilaterals may now 
        ! be handled in the same way.
        !---------------------------------------------------------------------------
-       SELECT CASE(dim)
-       CASE(2)
+       SELECT CASE(Element % TYPE % ElementCode / 100)
+       CASE(3)
           !--------------------------------------------------------------
-          ! This branch is currently for handling triangles. Note that
+          ! This branch is for handling triangles. Note that
           ! the global orientation of the edge tanget t is defined such that
           ! t points towards the node that has a larger global index.
           !--------------------------------------------------------------
@@ -4417,9 +4418,9 @@ END IF
              END IF
           END IF
 
-       CASE(3)
+       CASE(5)
           !--------------------------------------------------------------
-          ! This branch is currently for handling tetrahedra
+          ! This branch is for handling tetrahedra
           !--------------------------------------------------------------
           EdgeMap => LGetEdgeMap(5)
           CALL InvertMatrix3x3(F,G,detF)
@@ -4790,9 +4791,267 @@ END IF
                 EdgeBasis(6,:) = -EdgeBasis(6,:)
                 CurlBasis(6,:) = -CurlBasis(6,:)
              END IF
+             
+             ! -------------------------------------------------------------
+             ! Finally scale the basis functions so that (b,t) = 1 when
+             ! the integration is done over the element edge.
+             ! -------------------------------------------------------------
+             EdgeBasis(1:6,:) = 2.0d0 * EdgeBasis(1:6,:)
+             CurlBasis(1:6,:) = 2.0d0 * CurlBasis(1:6,:)
 
           END IF
 
+       CASE(6)
+          !--------------------------------------------------------------
+          ! This branch is for handling pyramidic elements
+          !--------------------------------------------------------------          
+          EdgeMap => LGetEdgeMap(6)
+          CALL InvertMatrix3x3(F,G,detF)
+          Ind => Element % Nodeindexes
+
+          i = EdgeMap(1,1)
+          j = EdgeMap(1,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(1,1) = (v*(-1 + (2*v)/(2 - Sqrt(2.0d0)*w)))/4.0d0
+          EdgeBasis(1,2) = 0.0d0
+          EdgeBasis(1,3) = (u*v*(-Sqrt(2.0d0) + Sqrt(2.0d0)*v + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(1,1) = (u*(-Sqrt(2.0d0) + 2*Sqrt(2.0d0)*v + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(1,2) = (v*(Sqrt(2.0d0) - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(1,3) = (-2 + 4*v + Sqrt(2.0d0)*w)/(-8 + 4*Sqrt(2.0d0)*w)
+          IF (nj<ni) THEN
+             EdgeBasis(1,:) = -EdgeBasis(1,:)
+             CurlBasis(1,:) = -CurlBasis(1,:)
+          END IF
+
+          i = EdgeMap(2,1)
+          j = EdgeMap(2,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(2,1) = 0.0d0
+          EdgeBasis(2,2) = (u*(1 + (2*u)/(2 - Sqrt(2.0d0)*w)))/4.0d0
+          EdgeBasis(2,3) = (u*v*(Sqrt(2.0d0) + Sqrt(2.0d0)*u - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(2,1) = (u*(Sqrt(2.0d0) - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(2,2) = -(v*(Sqrt(2.0d0) + 2*Sqrt(2.0d0)*u - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(2,3) = (2 + 4*u - Sqrt(2.0d0)*w)/(8 - 4*Sqrt(2.0d0)*w)
+          IF (nj<ni) THEN
+             EdgeBasis(2,:) = -EdgeBasis(2,:)
+             CurlBasis(2,:) = -CurlBasis(2,:)
+          END IF
+
+          i = EdgeMap(3,1)
+          j = EdgeMap(3,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(3,1) = (v*(1 + (2*v)/(2 - Sqrt(2.0d0)*w)))/4.0d0
+          EdgeBasis(3,2) = 0.0d0
+          EdgeBasis(3,3) = (u*v*(Sqrt(2.0d0) + Sqrt(2.0d0)*v - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(3,1) = (u*(Sqrt(2.0d0) + 2*Sqrt(2.0d0)*v - w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(3,2) = (v*(-Sqrt(2.0d0) + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(3,3) = (2 + 4*v - Sqrt(2.0d0)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+          IF (nj<ni) THEN
+             EdgeBasis(3,:) = -EdgeBasis(3,:)
+             CurlBasis(3,:) = -CurlBasis(3,:)
+          END IF
+
+          i = EdgeMap(4,1)
+          j = EdgeMap(4,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(4,1) = 0.0d0
+          EdgeBasis(4,2) = (u*(-1 + (2*u)/(2 - Sqrt(2.0d0)*w)))/4.0d0
+          EdgeBasis(4,3) = (u*v*(-Sqrt(2.0d0) + Sqrt(2.0d0)*u + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(4,1) = (u*(-Sqrt(2.0d0) + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(4,2) = -(v*(-Sqrt(2.0d0) + 2*Sqrt(2.0d0)*u + w))/(2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(4,3) = (2 - 4*u - Sqrt(2.0d0)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+          IF (nj<ni) THEN
+             EdgeBasis(4,:) = -EdgeBasis(4,:)
+             CurlBasis(4,:) = -CurlBasis(4,:)
+          END IF
+
+          i = EdgeMap(5,1)
+          j = EdgeMap(5,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(5,1) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*v + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+          EdgeBasis(5,2) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*u + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+          EdgeBasis(5,3) = (u*(-2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - 2*w) + 4*w - Sqrt(2.0d0)*w**2) - &
+               (-1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2))/(4.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(5,1) = (-2*Sqrt(2.0d0) + 2*u*(Sqrt(2.0d0) - w) + 4*w - Sqrt(2.0d0)*w**2)/ &
+               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(5,2) = (2*Sqrt(2.0d0) - 2*Sqrt(2.0d0)*v - 4*w + 2*v*w + Sqrt(2.0d0)*w**2)/ &
+               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(5,3) = 0.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(5,:) = -EdgeBasis(5,:)
+             CurlBasis(5,:) = -CurlBasis(5,:)
+          END IF
+
+          i = EdgeMap(6,1)
+          j = EdgeMap(6,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(6,1) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*v + w))/(8.0d0 - 4*Sqrt(2.0d0)*w)
+          EdgeBasis(6,2) = (w*(-Sqrt(2.0d0) - Sqrt(2.0d0)*u + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+          EdgeBasis(6,3) = (-((-1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2)) + & 
+               u*(2*Sqrt(2.0d0) - 2*Sqrt(2.0d0)*v - 4*w + 4*v*w + Sqrt(2.0d0)*w**2))/ &
+               (4.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(6,1) = -(2*Sqrt(2.0d0) + 2*u*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
+               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(6,2) = (-2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - w) + 4*w - Sqrt(2.0d0)*w**2)/ &
+               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2) 
+          CurlBasis(6,3) = 0.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(6,:) = -EdgeBasis(6,:)
+             CurlBasis(6,:) = -CurlBasis(6,:)
+          END IF
+
+          i = EdgeMap(7,1)
+          j = EdgeMap(7,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(7,1) = ((Sqrt(2.0d0) + Sqrt(2.0d0)*v - w)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+          EdgeBasis(7,2) = ((Sqrt(2.0d0) + Sqrt(2.0d0)*u - w)*w)/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+          EdgeBasis(7,3) = ((1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2) + &
+               u*(2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - 2*w) - 4*w + Sqrt(2.0d0)*w**2))/ &
+               (4.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(7,1) = (2*Sqrt(2.0d0) + 2*u*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
+               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(7,2) = -(2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
+               (2.0d0*(-2 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(7,3) = 0.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(7,:) = -EdgeBasis(7,:)
+             CurlBasis(7,:) = -CurlBasis(7,:)
+          END IF
+
+          i = EdgeMap(8,1)
+          j = EdgeMap(8,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(8,1) = (w*(-Sqrt(2.0d0) - Sqrt(2.0d0)*v + w))/(-8.0d0 + 4*Sqrt(2.0d0)*w)
+          EdgeBasis(8,2) = (w*(-Sqrt(2.0d0) + Sqrt(2.0d0)*u + w))/(8.0d0 - 4*Sqrt(2.0d0)*w)
+          EdgeBasis(8,3) = ((1 + v)*(2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2) - &
+               u*(2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - 2*w) - 4*w + Sqrt(2.0d0)*w**2))/ &
+               (4.0d0*(-2.0d0 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(8,1) = (2*Sqrt(2.0d0) - 2*Sqrt(2.0d0)*u - 4*w + 2*u*w + Sqrt(2.0d0)*w**2)/ &
+               (2.0d0*(-2.0d0 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(8,2) = (2*Sqrt(2.0d0) + 2*v*(Sqrt(2.0d0) - w) - 4*w + Sqrt(2.0d0)*w**2)/ &
+               (2.0d0*(-2.0d0 + Sqrt(2.0d0)*w)**2)
+          CurlBasis(8,3) = 0.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(8,:) = -EdgeBasis(8,:)
+             CurlBasis(8,:) = -CurlBasis(8,:)
+          END IF
+
+          ! ------------------------------------------------------------------
+          ! The last two basis functions are associated with the square face.
+          ! We first create the basis function in the default order without
+          ! sign reversions.
+          ! ------------------------------------------------------------------
+          WorkBasis(1,1) = (2.0d0 - 2*v**2 - 2*Sqrt(2.0d0)*w + w**2)/(4.0d0 - 2*Sqrt(2.0d0)*w)
+          WorkBasis(1,2) = 0.0d0
+          WorkBasis(1,3) = (u*(1.0d0 - (4*v**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2))/(2.0d0*Sqrt(2.0d0))
+          WorkCurlBasis(1,1) = (-2*Sqrt(2.0d0)*u*v)/(-2.0d0 + Sqrt(2.0d0)*w)**2
+          WorkCurlBasis(1,2) = (-2*Sqrt(2.0d0) + 4*w - Sqrt(2.0d0)*w**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2
+          WorkCurlBasis(1,3) = (2.0d0*v)/(2.0d0 - Sqrt(2.0d0)*w)
+
+          WorkBasis(2,1) = 0.0d0
+          WorkBasis(2,2) = (2.0d0 - 2*u**2 - 2*Sqrt(2.0d0)*w + w**2)/(4.0d0 - 2*Sqrt(2.0d0)*w)
+          WorkBasis(2,3) = (v*(1.0d0 - (4*u**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2))/(2.0d0*Sqrt(2.0d0))
+          WorkCurlBasis(2,1) = (2*Sqrt(2.0d0) - 4*w + Sqrt(2.0d0)*w**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2
+          WorkCurlBasis(2,2) = (2*Sqrt(2.0d0)*u*v)/(-2.0d0 + Sqrt(2.0d0)*w)**2
+          WorkCurlBasis(2,3) = (2*u)/(-2.0d0 + Sqrt(2.0d0)*w)
+
+          ! -------------------------------------------------------------------
+          ! Finally apply an order change and sign reversions if needed. To this end,
+          ! find nodes A, B, C such that A has the minimal global index,
+          ! AB and AC are edges, with C having the largest global index. 
+          ! Then AB gives the positive direction for the first face DOF and
+          ! AC gives the positive direction for the second face DOF.
+          ! REMARK: This convention must be followed when creating basis
+          ! functions for other element types which are intended to be compatible
+          ! with this pyramidic element.
+          ! -------------------------------------------------------------------
+          i = EdgeMap(1,1)
+          j = EdgeMap(1,2)
+          IF ( Ind(i) < Ind(j) ) THEN
+             k = i
+          ELSE
+             k = j
+          END IF
+          i = EdgeMap(3,1)
+          j = EdgeMap(3,2) 
+          IF ( Ind(i) < Ind(j) ) THEN
+             l = i
+          ELSE
+             l = j
+          END IF          
+          IF ( Ind(k) > Ind(l) ) THEN
+             k = l
+          END IF
+          A = k
+
+          SELECT CASE(A)
+          CASE(1)
+             IF ( Ind(2) < Ind(4) ) THEN
+                I1 = 1
+                I2 = 2
+                D1 = 1.0d0
+                D2 = 1.0d0
+             ELSE
+                I1 = 2
+                I2 = 1
+                D1 = 1.0d0
+                D2 = 1.0d0 
+             END IF
+          CASE(2)
+             IF ( Ind(3) < Ind(1) ) THEN
+                I1 = 2
+                I2 = 1
+                D1 = 1.0d0
+                D2 = -1.0d0
+             ELSE
+                I1 = 1
+                I2 = 2
+                D1 = -1.0d0
+                D2 = 1.0d0
+             END IF
+          CASE(3)
+             IF ( Ind(4) < Ind(2) ) THEN
+                I1 = 1
+                I2 = 2
+                D1 = -1.0d0
+                D2 = -1.0d0
+             ELSE
+                I1 = 2
+                I2 = 1
+                D1 = -1.0d0
+                D2 = -1.0d0
+             END IF
+          CASE(4)
+             IF ( Ind(1) < Ind(3) ) THEN
+                I1 = 2
+                I2 = 1
+                D1 = -1.0d0
+                D2 = 1.0d0
+             ELSE
+                I1 = 1
+                I2 = 2
+                D1 = 1.0d0
+                D2 = -1.0d0
+             END IF
+          CASE DEFAULT
+             CALL Fatal('ElementDescription::EdgeElementInfo','Erratic pyramid square face indeces')
+          END SELECT
+
+          EdgeBasis(9,:) = D1 * WorkBasis(I1,:)
+          CurlBasis(9,:) = D1 * WorkCurlBasis(I1,:)
+          EdgeBasis(10,:) = D2 * WorkBasis(I2,:)
+          CurlBasis(10,:) = D2 * WorkCurlBasis(I2,:)          
+
+       CASE DEFAULT
+          CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
        END SELECT
 !-----------------------------------------------------------------------------
      END FUNCTION EdgeElementInfo
