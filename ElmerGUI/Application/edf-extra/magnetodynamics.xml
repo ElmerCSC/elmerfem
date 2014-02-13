@@ -1,0 +1,277 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+   <PDE Name="MgDyn" >
+      <Name>MgDyn</Name>
+
+      <Equation>
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
+      <Material>
+        <Parameter Widget="Label" > <Name> Material properties </Name> </Parameter>
+        <Parameter Widget="Edit" >
+	  <Name> Reluctivity </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the reluctivitity (inverse of permeability). </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Relative Permeability </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the relative permeability compared to vacuum. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Electric Conductivity </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the electric conductivity. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Magnetization 1</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the magnetization in x-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Magnetization 2</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the magnetization in y-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Magnetization 3</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the magnetization in z-direction. </Whatis>
+	</Parameter>
+
+    <Parameter Widget="Label" > <Name> Nonlinear material law </Name> </Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> H-B Curve</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the H-B Curve as a cubic spline. </Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox" >
+	  <Name> Cubic spline for H-B curve </Name>
+	  <Type> Logical </Type>
+	  <Whatis> Should a cubic spline be applied to the H-B curve. </Whatis>
+	</Parameter>
+      </Material>
+
+      <BodyForce>
+        <Parameter Widget="Label" > <Name> Given current density </Name> </Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density 1 </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the current density in x-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density 2 </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the current density in y-direction. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Current Density 3 </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the current density in z-direction. </Whatis>
+	</Parameter>
+        <Parameter Widget="Label" > <Name> External electric potential </Name> </Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Electric Potential </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the externally defined electric potential. </Whatis>
+	</Parameter>
+      </BodyForce>
+
+      <InitialCondition>
+        <Parameter Widget="Label" > <Name> Initial values for potential(s) </Name> </Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> P </Name>
+	  <Type> String </Type>
+            <Whatis> Give the initial condition for the scalar potential. </Whatis>
+	</Parameter>
+    <Parameter Widget="Edit" >
+	  <Name> P {e}</Name>
+	  <Type> String </Type>
+            <Whatis> Give the initial condition for the vector potential. </Whatis>
+	</Parameter>
+      </InitialCondition>
+
+      <Solver>
+	     <Parameter Widget="Label" > <Name> A-V formulation solver </Name> </Parameter>
+         <Parameter Widget="Edit" Enabled="False">
+           <Name> Procedure </Name>
+           <DefaultValue> "MagnetoDynamics" "WhitneyAVSolver" </DefaultValue>
+         </Parameter>
+	     <Parameter Widget="Label" > <Name> Variable for vector (and scalar) potential </Name> </Parameter>
+	 <Parameter Widget="Edit" Enabled="False">
+           <Name> Variable </Name>
+           <DefaultValue> P </DefaultValue>
+	   <Whatis>Variable for vector (and scalar) potential(s)</Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+	   <Parameter Widget="Label" > <Name> Special options </Name> </Parameter>
+	   <Name> Fix Input Current Density </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Fix the given input current to be divergence free. </Whatis>
+         </Parameter>
+         <Parameter Widget="CheckBox" >
+	   <Name> Use Tree Gauge </Name>
+	   <Type> Logical </Type>
+	   <Whatis> Use tree gauge to eliminate redundant lines in the linear system. </Whatis>
+         </Parameter>
+      </Solver>
+
+      <BoundaryCondition>
+	<Parameter Widget="Label" > <Name> Dirichlet conditions for potential</Name> </Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> P </Name>
+	  <Whatis> Give the scalar potential value for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> P {e} </Name>
+	  <Whatis> Give the vector potential value for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> P {e} 1 </Name>
+	  <Whatis> Give the x-component of the vector potential value for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> P {e} 2 </Name>
+	  <Whatis> Give the y-component of the vector potential value for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> P {e} 3 </Name>
+	  <Whatis> Give the z-component of the vector potential value for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Jfix </Name>
+	  <Whatis> Set the value of the potential field used to make the current divergence free. </Whatis>
+	</Parameter>
+
+<Parameter Widget="Label" > <Name> Dirichlet conditions via magnetic flux density</Name> </Parameter>
+			<Parameter  Widget="Edit">
+	  <Name> Magnetic Flux Density 1 </Name>
+	  <Whatis> Give the x-component of the desired magnetic flux density. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Flux Density 2 </Name>
+	  <Whatis> Give the y-component of the desired magnetic flux density. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Flux Density 3 </Name>
+	  <Whatis> Give the z-component of the desired magnetic flux density. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Flux Density {n} </Name>
+	  <Whatis> Give the nodal component of the desired magnetic flux density. </Whatis>
+	</Parameter>
+
+	
+	<Parameter Widget="Label" > <Name> Flux conditions </Name> </Parameter>
+
+	<Parameter  Widget="Edit">
+	  <Name> Electric Current Density </Name>
+	  <Whatis> Give the electric current density for this boundary. </Whatis>
+	</Parameter>
+    <Parameter  Widget="Edit">
+	  <Name> Current Density </Name>
+	  <Whatis> Give the current density for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Field Strength 1 </Name>
+	  <Whatis> Give the x-component of the desired magnetic field value for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Field Strength 2 </Name>
+	  <Whatis> Give the y-component of the desired magnetic field value for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Field Strength 3 </Name>
+	  <Whatis> Give the z-component of the desired magnetic field value for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Magnetic Transfer Coefficient </Name>
+	  <Whatis> Give the magnetic transfer coefficient value for this boundary. </Whatis>
+	</Parameter>
+	<Parameter  Widget="Edit">
+	  <Name> Electric Transfer Coefficient </Name>
+	  <Whatis> Give the electric transfer coefficient value for this boundary. </Whatis>
+	</Parameter>
+
+
+      </BoundaryCondition>
+    </PDE>
+
+
+   <PDE Name="MgDynPost" >
+     <Name>MgDynPost</Name>
+
+     <Equation>
+       <Parameter Widget="Label">
+	 <Name> Free text input </Name>
+       </Parameter>
+
+       <Parameter Widget="TextEdit" Enabled="True">
+	 <Name> Free text </Name>
+	 <Type> String </Type>
+	 <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	 <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+       </Parameter>
+      </Equation>
+
+      <Solver>
+	<Parameter Widget="Label" > <Name> MagnetoDynamics field computation </Name> </Parameter>
+	<Parameter Widget="Edit" Enabled="False">
+	  <Name> Procedure </Name>
+	  <DefaultValue> "MagnetoDynamics" "MagnetoDynamicsCalcFields" </DefaultValue>
+	</Parameter>
+
+	<Parameter Widget="Label" > <Name> Target Variable </Name> </Parameter>
+	<Parameter Widget="Edit" Enabled="False">
+	  <Name> Potential Variable </Name>
+	  <DefaultValue> P </DefaultValue>
+	  <Whatis> Name of the vector (and scalar) potential field to apply the postprocessing computation. </Whatis>
+	</Parameter>
+
+
+	<Parameter Widget="Label" > <Name> Specify fields to compute </Name> </Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Calculate Magnetic Field Strength </Name>
+	  <Type> Logical </Type>
+	  <Whatis> Compute the magnetic field strength from the vector potential.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Calculate Electric Field  </Name>
+	  <Type> Logical </Type>
+	  <Whatis> Compute the electric field from the scalar potential.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Calculate Current Density </Name>
+	  <Type> Logical </Type>
+	  <Whatis> Compute the current density from the potential fields.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Calculate Maxwell Stress  </Name>
+	  <Type> Logical </Type>
+	  <Whatis> Compute the maxwell stress tensor from the potential fields.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Calculate Joule Heating </Name>
+	  <Type> Logical </Type>
+	  <Whatis> Compute the heating resulting from the induced currents.</Whatis>
+	</Parameter>
+    </Solver>
+   </PDE>
+
+</edf>
+
+
+
+
+
