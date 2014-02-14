@@ -20,8 +20,10 @@ export F77=mpif90
 # Parallel compilation variables
 # export MPI_HOME=/opt/openmpi-intel
 # export MPI_INCLUDE=-I/opt/openmpi-intel/include
-export MPI_HOME=/usr/lib64/openmpi
-export MPI_INCLUDE=-I/usr/include/openmpi-x86_64/
+# export MPI_HOME=/usr/lib64/openmpi
+# export MPI_INCLUDE=-I/usr/include/openmpi-x86_64/
+export MPI_HOME=/opt/mpich/3.0.4/
+export MPI_INCLUDE=$(MPI_HOME)/include
 
 # General compilation flags
 OPT_FLAGS=-O3 -g -m64 -fopenmp -ftree-vectorize -funroll-loops
@@ -57,15 +59,15 @@ endif
 # Scalapack related flags (uncomment SCALAPACKLIB to compile Scalapack)
 ifndef MKLLIB
 # SCALAPACKLIB=scalapack
-SCALAPACKPATH=/home/mbycklin/code/elmerfem_git/scalapack
-SCALAPACKLDFLAGS=
+# SCALAPACKPATH=/home/mbycklin/code/elmerfem_git/scalapack
+# SCALAPACKLDFLAGS=
 endif
 
 # Mumps related flags (uncomment MUMPSLIB to compile Mumps)
 # MUMPSLIB=mumps
-MUMPSPATH=/home/mbycklin/code/elmerfem_git/mumps
-MUMPSCFLAGS=-DHAVE_MUMPS
-MUMPSFCFLAGS=-I$(MUMPSPATH)/include
+# MUMPSPATH=/home/mbycklin/code/elmerfem_git/mumps
+# MUMPSCFLAGS=-DHAVE_MUMPS
+# MUMPSFCFLAGS=-I$(MUMPSPATH)/include
 ifdef MKLLIB
 MUMPSLDFLAGS=-L$(MUMPSPATH)/lib -ldmumps -lmumps_common \
              -lpord -mkl \
@@ -121,7 +123,7 @@ ELMERLDFLAGS=$(MKLLDFLAGS) $(MUMPSLDFLAGS) $(SCALAPACKLDFLAGS) $(SUITESPARSELDFL
 
 # Library names (required)
 # RLIBDIRS=matc umfpack mathlibs elmergrid meshgen2d eio hutiter umfpack
-RLIBDIRS=matc mathlibs elmergrid meshgen2d eio hutiter
+RLIBDIRS=matc umfpack mathlibs elmergrid meshgen2d eio hutiter
 # Library names (optional)
 OLIBDIRS=$(SCALAPACKLIB) $(MUMPSLIB) $(SUITESPARSELIB)
 
