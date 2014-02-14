@@ -1,6 +1,5 @@
 # Elmer gitignore file
 # Preprocessed sources, object files and modules
-*.f90
 *.o
 *.obj
 *.mod
