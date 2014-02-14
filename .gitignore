@@ -3,6 +3,7 @@
 *.o
 *.obj
 *.mod
+fem/src/*.f90
 
 # Temp files
 *~
@@ -21,3 +22,40 @@ core
 
 # Install directory
 /bin
+
+# Configure thrash
+*/Makefile
+*/*/Makefile
+*/*/*/Makefile
+*/.deps/
+*/*/.deps/
+*/*/*/.deps/
+*/config.h
+*/config.log
+*/config.status
+*/stamp-h1
+/fem/Makeconf
+/elmergrid                                            
+/fem/src/ElmerSolver
+/fem/src/ElmerSolver_mpi
+/fem/src/GebhardtFactors
+/fem/src/SC2Elmer
+/fem/src/ViewFactors
+/fem/src/binio/kinds.f90
+/fem/src/binio/test/Makefile
+/fem/src/elmerf90
+/fem/src/elmerf90-nosh
+/fem/src/elmerld
+/fem/src/mpif
+/fem/test.cpp
+/fem/src/*.f90
+/fem/modules/*.f90
+/fem/stamp-h1
+/umfpack
+/fem/tests/
+/matc
+/mathlibs
+/meshgen2d
+/elmergrid
+fem/stamp-h1
+fem/tests/runtests
