@@ -1,4 +1,3 @@
 #!/bin/bash
-
-ok=`./readtest`
-[ ""$ok = "OK" ]
+ok=`./readtest|sed -e "s/^ *//`
+[ "$ok" = " OK" ]
