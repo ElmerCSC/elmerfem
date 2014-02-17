@@ -158,7 +158,8 @@ END INTERFACE
        !$ nthreads = omp_get_max_threads()
        IF (nthreads > 1) THEN
          ! Check if OMP_NUM_THREADS environment variable is set
-         CALL envir( 'OMP_NUM_THREADS'//CHAR(0), threads, tlen )
+         ! CALL envir( 'OMP_NUM_THREADS'//CHAR(0), threads, tlen )
+         CALL envir( 'OMP_NUM_THREADS', threads, tlen )
          IF (tlen==0) THEN
            CALL Warn('MAIN','OMP_NUM_THREADS not set. Using only 1 thread.')
            nthreads = 1

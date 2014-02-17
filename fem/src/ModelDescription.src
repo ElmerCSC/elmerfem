@@ -1018,13 +1018,15 @@ CONTAINS
 !         ------------------------------------------------------
 #include "../config.h"
 
-          str(1:10) = 'ELMER_LIB'//CHAR(0)
+          ! str(1:10) = 'ELMER_LIB'//CHAR(0)
+          str(1:9) = 'ELMER_LIB'
           CALL envir( str,str1,k ) 
 
           IF ( k > 0  ) THEN
             str1 = str1(1:k) // '/SOLVER.KEYWORDS'
           ELSE
-             str(1:11) = 'ELMER_HOME'//CHAR(0)
+             ! str(1:11) = 'ELMER_HOME'//CHAR(0)
+             str(1:10) = 'ELMER_HOME'
              CALL envir( str,str1,k ) 
              IF ( k > 0 ) THEN
                str1 = str1(1:k) // '/share/elmersolver/lib/' // 'SOLVER.KEYWORDS'

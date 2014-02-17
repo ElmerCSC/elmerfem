@@ -37,8 +37,54 @@
 ! Module for wrapping and replacing functionality in Load.c
 
 MODULE LoadMod
+    USE Messages
+    IMPLICIT NONE
 
+    ! TODO: getsolverhome can be implemented with Fortran 2003
+    INTERFACE
+        SUBROUTINE getsolverhome(solverDir, len) BIND(C,name='getsolverhome')
+            USE, INTRINSIC :: iso_c_binding
+            CHARACTER(C_CHAR) :: solverDir(*)
+            INTEGER(C_INT) :: len
+        END SUBROUTINE getsolverhome
+    END INTERFACE
 
+    INTERFACE
+        SUBROUTINE makedirectory(name) BIND(C,name='makedirectory')
+            USE, INTRINSIC :: iso_c_binding
+            CHARACTER(C_CHAR) :: name(*)
+        END SUBROUTINE makedirectory
+    END INTERFACE
 
+    INTERFACE
+        SUBROUTINE matc(cmd,VALUE,len) BIND(C,name='matc')
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: len
+            CHARACTER(C_CHAR) :: cmd(*), VALUE(*)
+        END SUBROUTINE Matc
+    END INTERFACE
+
+    CONTAINS
+
+        SUBROUTINE systemc(cmd)
+            IMPLICIT NONE
+            CHARACTER(LEN=*) :: cmd
+            INTEGER :: estat, cstat
+
+            CALL EXECUTE_COMMAND_LINE(cmd,.TRUE.,CMDSTAT=cstat)
+            IF (cstat /= 0) THEN
+                CALL Error('systemc','Unable to execute system command')
+            END IF
+        END SUBROUTINE systemc
+
+        SUBROUTINE envir(name, value, len)
+            IMPLICIT NONE
+            CHARACTER(LEN=*) :: name
+            CHARACTER(LEN=*) :: value
+            INTEGER :: len
+            INTEGER :: estat
+
+            CALL GET_ENVIRONMENT_VARIABLE(name, value, len)
+        END SUBROUTINE envir
 
 END MODULE LoadMod

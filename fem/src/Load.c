@@ -44,6 +44,7 @@
 /* #include <elmer/matc.h> maybe in the future */
 
 /* eg. FC_CHAR_PTR and FC_FUNC is defined here */
+/* TODO: remove ../config.h as soon as move to LoadMod complete */
 #include "../config.h"
 
 #if defined(WIN32) | defined(MINGW32)
@@ -55,17 +56,6 @@
 #endif
 
 #define MAX_PATH_LEN 512
-
-#ifdef SGI64
-void corename_()
-{
-#include <sys/types.h>
-#include <sys/resource.h>
-#include <sys/prctl.h>
-
- prctl( PR_COREPID,0,0 );
-}
-#endif
 
 /* pc needs more bits on 64bit arch  */
 #ifdef ARCH_32_BITS
@@ -88,8 +78,7 @@ void STDCALLBULL FC_FUNC_(set_stdio_bufs,SET_STDIO_BUFS) ()
 /*--------------------------------------------------------------------------
   This routine will return the home directory of elmer solver.
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME) 
-     ( char *solverDir, int *len)
+void getsolverhome( char *solverDir, int *len)
 {
   *len = 0;
 
@@ -141,39 +130,16 @@ void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME)
 /*--------------------------------------------------------------------------
   This routine will create a directory given name of the directory.
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(makedirectory,MAKEDIRECTORY) 
-     (char *Name)
+void makedirectory(char *Name)
 {
 #if defined(WIN32) || defined(MINGW32)
     if ( _mkdir( Name ) != 0 ) {
+    }
 #else
     if ( mkdir( Name, 0700 ) != 0 ) {
       chmod( Name, 0700 );
+    }
 #endif
-    }
-}
-
-/*--------------------------------------------------------------------------
-  This routine execute a operating system command.
-  -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(systemc,SYSTEMC) ( char *str )
-{
-   system( str );
-}
-
-/*--------------------------------------------------------------------------
-  This routine will return value of a environment variable to a
-  given string variable.
-  -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(envir,ENVIR) (char *Name, char *Value, int *len)
-{
-    if ( getenv( Name ) ) {
-      strncpy( Value,(char *)getenv(Name), MAX_PATH_LEN );
-      *len = strlen( Value );
-    } else {
-      *len = 0;
-      *Value = '\0';
-    }
 }
 
 /*--------------------------------------------------------------------------
@@ -567,7 +533,7 @@ void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name,
 /*--------------------------------------------------------------------------
   This routine will call matc and return matc result
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(matc,MATC) ( char *cmd, char *Value, int *len )
+void matc( char *cmd, char *Value, int *len )
 {
 #define MAXLEN 8192
 

@@ -414,13 +414,15 @@ CONTAINS
 
       ! then the rest of them....
       !--------------------------
-      tstr = 'ELMER_LIB'//CHAR(0)
+      ! tstr = 'ELMER_LIB'//CHAR(0)
+      tstr = 'ELMER_LIB'
       CALL envir( tstr,elmer_home,k ) 
 
       IF (  k > 0 ) THEN
          WRITE( tstr, '(a,a)' ) elmer_home(1:k),'/elements.def'
       ELSE
-        tstr = 'ELMER_HOME'//CHAR(0)
+        ! tstr = 'ELMER_HOME'//CHAR(0)
+        tstr = 'ELMER_HOME'
         CALL envir( tstr,elmer_home,k ) 
         
 #include "../config.h"

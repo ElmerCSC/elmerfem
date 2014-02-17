@@ -88,30 +88,6 @@ MODULE Types
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
 !------------------------------------------------------------------------------
 
-INTERFACE
-  SUBROUTINE Envir(a,b,len)
-     USE, INTRINSIC :: ISO_C_BINDING
-     INTEGER(C_INT) :: len
-     CHARACTER(C_CHAR) :: a(*), b(*)
-  END SUBROUTINE Envir
-
-  SUBROUTINE SystemC(str)
-     USE, INTRINSIC :: ISO_C_BINDING
-     CHARACTER(C_CHAR) :: str(*)
-  END SUBROUTINE SystemC
-
-  SUBROUTINE MakeDirectory(str)
-     USE, INTRINSIC :: ISO_C_BINDING
-     CHARACTER(C_CHAR) :: str(*)
-  END SUBROUTINE MakeDirectory
-
-  SUBROUTINE Matc(cmd,VALUE,len)
-     USE, INTRINSIC :: ISO_C_BINDING
-     INTEGER(C_INT) :: len
-     CHARACTER(C_CHAR) :: cmd(*), VALUE(*)
-  END SUBROUTINE Matc
-END INTERFACE
-
 #ifdef HAVE_MUMPS
   INCLUDE 'dmumps_struc.h'
 #endif

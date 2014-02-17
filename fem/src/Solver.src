@@ -45,7 +45,8 @@ PROGRAM Solver
    CALL SET_STDIO_BUFS()
 #endif
 
-   CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL'//CHAR(0), toutput, tlen )
+   ! CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL'//CHAR(0), toutput, tlen )
+   CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL', toutput, tlen )
    Silent = toutput(1:1)=='0' .OR. toutput(1:5)=='false'
 
    CT = CPUtime()
