@@ -327,6 +327,7 @@ SOLVEROBJS = \
 		ElementUtils$(OBJ_EXT)				\
 		Radiation$(OBJ_EXT)				\
 		fft$(OBJ_EXT)					\
+		LoadMod$(OBJ_EXT)				\
 		Load$(OBJ_EXT)					\
 		Differentials$(OBJ_EXT)				\
 		FreeSurface$(OBJ_EXT)				\
@@ -445,6 +446,7 @@ EXTRA_DIST = \
 	LinearAlgebra.src \
 	ListMatrix.src \
 	Lists.src \
+	LoadMod.src \
 	Load.c \
 	LUDecomposition.src \
 	MagneticSolve.src \
@@ -997,6 +999,7 @@ IterSolve.$(OBJEXT): IterSolve.f90 ListMatrix.$(OBJEXT) SParIterGlobals.$(OBJEXT
 LinearAlgebra.$(OBJEXT): LinearAlgebra.f90 Types.$(OBJEXT)
 ListMatrix.$(OBJEXT): ListMatrix.f90 CRSMatrix.$(OBJEXT) GeneralUtils.$(OBJEXT)
 Lists.$(OBJEXT): Lists.f90 GeneralUtils.$(OBJEXT) Messages.$(OBJEXT) PElementMaps.$(OBJEXT) CoordinateSystems.$(OBJEXT) Types.$(OBJEXT) Interpolation.$(OBJEXT) SParIterComm.$(OBJEXT)
+LoadMod.$(OBJEXT): LoadMod.f90 Messages.$(OBJEXT)
 LUDecomposition.$(OBJEXT): LUDecomposition.f90 Types.$(OBJEXT)
 MagneticSolve.$(OBJEXT): MagneticSolve.f90 MaxwellGeneral.$(OBJEXT) Maxwell.$(OBJEXT) Differentials.$(OBJEXT) DefUtils.$(OBJEXT) MaxwellAxiS.$(OBJEXT)
 MainUtils.$(OBJEXT): MainUtils.f90 BlockSolve.$(OBJEXT) DefUtils.$(OBJEXT) ModelDescription.$(OBJEXT) Types.$(OBJEXT) SolverUtils.$(OBJEXT)
@@ -1039,7 +1042,7 @@ StressGeneral.$(OBJEXT): StressGeneral.f90 ElementDescription.$(OBJEXT) Coordina
 StressSolve.$(OBJEXT): StressSolve.f90 Stress.$(OBJEXT) DefUtils.$(OBJEXT) StressGeneral.$(OBJEXT) CoordinateSystems.$(OBJEXT) Adaptive.$(OBJEXT) Types.$(OBJEXT)
 Stress.$(OBJEXT): Stress.f90 ElementUtils.$(OBJEXT) ElementDescription.$(OBJEXT) Integration.$(OBJEXT) Lists.$(OBJEXT)
 TimeIntegrate.$(OBJEXT): TimeIntegrate.f90 Lists.$(OBJEXT) Types.$(OBJEXT)
-Types.$(OBJEXT): Types.f90 iso_varying_string.$(OBJEXT) Messages.$(OBJEXT)
+Types.$(OBJEXT): Types.f90 iso_varying_string.$(OBJEXT) Messages.$(OBJEXT) LoadMod.$(OBJEXT)
 V2FSolver.$(OBJEXT): V2FSolver.f90 DefUtils.$(OBJEXT) MaterialModels.$(OBJEXT)
 VankaCreate.$(OBJEXT): VankaCreate.f90 DefUtils.$(OBJEXT)
 ViewFactors.$(OBJEXT): ViewFactors.f90 DefUtils.$(OBJEXT) Types.$(OBJEXT)

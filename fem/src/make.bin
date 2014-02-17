@@ -111,6 +111,7 @@ SOLVEROBJS =    \
 		ElementUtils$(OBJ_EXT)				\
 		Radiation$(OBJ_EXT)				\
 		fft$(OBJ_EXT)					\
+		LoadMod$(OBJ_EXT)				\
 		Load$(OBJ_EXT)					\
 		Differentials$(OBJ_EXT)				\
 		FreeSurface$(OBJ_EXT)				\

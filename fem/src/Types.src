@@ -45,6 +45,7 @@
 MODULE Types
  
    USE Messages
+   USE LoadMod
    USE iso_varying_string
    USE iso_c_binding
 
