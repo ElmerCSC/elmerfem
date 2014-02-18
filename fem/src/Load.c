@@ -78,7 +78,7 @@ void STDCALLBULL FC_FUNC_(set_stdio_bufs,SET_STDIO_BUFS) ()
 /*--------------------------------------------------------------------------
   This routine will return the home directory of elmer solver.
   -------------------------------------------------------------------------*/
-void getsolverhome( char *solverDir, int *len)
+void STDCALLBULL getsolverhome( char *solverDir, int *len)
 {
   *len = 0;
 
@@ -130,7 +130,7 @@ void getsolverhome( char *solverDir, int *len)
 /*--------------------------------------------------------------------------
   This routine will create a directory given name of the directory.
   -------------------------------------------------------------------------*/
-void makedirectory(char *Name)
+void STDCALLBULL makedirectory(char *Name)
 {
 #if defined(WIN32) || defined(MINGW32)
     if ( _mkdir( Name ) != 0 ) {
@@ -146,7 +146,7 @@ void makedirectory(char *Name)
   Internal: convert function names into to fortran mangled form for dynamical
   loading
   ---------------------------------------------------------------------------*/
-static void fortranMangle(char *orig, char *mangled)
+static void STDCALLBULL fortranMangle(char *orig, char *mangled)
 {
   int uscore, i;
   
@@ -194,8 +194,7 @@ static void fortranMangle(char *orig, char *mangled)
   This routine will return address of a function given path to a dynamically
   loaded library and name of the routine.
   -------------------------------------------------------------------------*/
-void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet,
-      int *abort_not_found, char *Library, char *Name )
+void *STDCALLBULL loadfunction_c( int *Quiet, int *abort_not_found, char *Library, char *Name )
 {
 /*--------------------------------------------------------------------------*/
    void (*Function)(),*Handle;
@@ -408,7 +407,7 @@ static int IntExec( int (STDCALLBULL *Function)(),void *Model )
 /*--------------------------------------------------------------------------
    Execute given function returning integer value
    -------------------------------------------------------------------------*/
-int STDCALLBULL FC_FUNC(execintfunction,EXECINTFUNCTION) ( f_ptr Function,void *Model )
+int STDCALLBULL execintfunction_c( f_ptr Function,void *Model )
 {
   return IntExec( (int (STDCALLBULL *)())*Function,Model );
 }
@@ -425,9 +424,8 @@ static void DoubleArrayExec( double *(STDCALLBULL *Function)(), void *Model,
 /*--------------------------------------------------------------------------
    Execute given function returning double value
    -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(execrealarrayfunction,EXECREALARRAYFUNCTION)
-     ( f_ptr Function, void *Model,
-       int *Node, double *Value, double *Array )
+void STDCALLBULL execrealarrayfunction_c( f_ptr Function, void *Model,
+										int *Node, double *Value, double *Array )
 {
    DoubleArrayExec( (double*(STDCALLBULL *)())*Function,Model,Node,Value, Array );
 }
@@ -444,9 +442,8 @@ static double DoubleExec( double (STDCALLBULL *Function)(), void *Model,
 /*--------------------------------------------------------------------------
    Execute given function returning double value
    -------------------------------------------------------------------------*/
-double STDCALLBULL FC_FUNC(execrealfunction,EXECREALFUNCTION)
-     ( f_ptr Function, void *Model,
-       int *Node, double *Value )
+double STDCALLBULL execrealfunction_c( f_ptr Function, void *Model,
+									 int *Node, double *Value )
 {
    return DoubleExec( (double (STDCALLBULL *)())*Function,Model,Node,Value );
 }
@@ -463,9 +460,8 @@ static double ConstDoubleExec( double (STDCALLBULL *Function)(), void *Model,
 /*--------------------------------------------------------------------------
    Execute given function returning double value
    -------------------------------------------------------------------------*/
-double STDCALLBULL FC_FUNC(execconstrealfunction,EXECCONSTREALFUNCTION)
-     ( f_ptr Function, void *Model,
-       double *x, double *y, double *z )
+double STDCALLBULL execconstrealfunction_c( f_ptr Function, void *Model,
+										  double *x, double *y, double *z )
 {
    return ConstDoubleExec( (double (STDCALLBULL *)())*Function,Model,x,y,z );
 }
@@ -524,8 +520,7 @@ void mtc_init(FILE *,FILE *, FILE *);
 /*--------------------------------------------------------------------------
   This routine will call matc and return matc variable array values
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name, 
-           double *values, int *nrows, int *ncols )
+void STDCALLBULL matc_get_array(char *name, double *values, int *nrows, int *ncols )
 {
   var_copy_transpose(name,values,*nrows,*ncols);
 }
@@ -533,7 +528,7 @@ void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name,
 /*--------------------------------------------------------------------------
   This routine will call matc and return matc result
   -------------------------------------------------------------------------*/
-void matc( char *cmd, char *Value, int *len )
+void STDCALLBULL matc( char *cmd, char *Value, int *len )
 {
 #define MAXLEN 8192
 

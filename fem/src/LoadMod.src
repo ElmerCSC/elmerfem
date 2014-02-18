@@ -38,7 +38,17 @@
 
 MODULE LoadMod
     USE Messages
+    USE Types
+    USE, INTRINSIC :: ISO_C_BINDING
     IMPLICIT NONE
+
+#ifdef ARCH_32_BITS
+#define CAddrInt c_int32_t
+#else
+#define CAddrInt c_int64_t
+#endif
+
+    ! GENERAL ROUTINES
 
     ! TODO: getsolverhome can be implemented with Fortran 2003
     INTERFACE
@@ -56,13 +66,65 @@ MODULE LoadMod
         END SUBROUTINE makedirectory
     END INTERFACE
 
+    ! MATC
+
     INTERFACE
-        SUBROUTINE matc(cmd,VALUE,len) BIND(C,name='matc')
+        SUBROUTINE matc_get_array(name, values, nrows, ncols) &
+                   BIND(C,name='matc_get_array')
+            USE, INTRINSIC :: ISO_C_BINDING
+            CHARACTER(C_CHAR) :: name(*)
+            REAL(C_DOUBLE) :: values(*)
+            INTEGER(C_INT) :: nrows, ncols
+        END SUBROUTINE matc_get_array
+    END INTERFACE
+
+    INTERFACE
+        SUBROUTINE matc(cmd,value,len) BIND(C,name='matc')
             USE, INTRINSIC :: ISO_C_BINDING
             INTEGER(C_INT) :: len
-            CHARACTER(C_CHAR) :: cmd(*), VALUE(*)
-        END SUBROUTINE Matc
+            CHARACTER(C_CHAR) :: cmd(*), value(*)
+        END SUBROUTINE matc
     END INTERFACE
+
+
+
+!    INTERFACE
+!     FUNCTION ExecRealFunction( Proc,Md,Node,Temp ) RESULT(dbl)
+!       USE Types
+!
+!       INTEGER(KIND=AddrInt) :: Proc
+!       TYPE(Model_t) :: Md
+!       INTEGER :: Node
+!       REAL(KIND=dp) :: Temp(*)
+!
+!       REAL(KIND=dp) :: dbl
+!     END FUNCTION ExecRealFunction
+!   END INTERFACE
+
+!INTERFACE
+!     SUBROUTINE ExecRealArrayFunction( Proc,Md,Node,Temp,F )
+!       USE Types
+!
+!       INTEGER(KIND=AddrInt) :: Proc
+!       TYPE(Model_t) :: Md
+!       INTEGER :: Node,n1,n2
+!       REAL(KIND=dp) :: Temp(*)
+!
+!       REAL(KIND=dp) :: F(:,:)
+!     END SUBROUTINE ExecRealArrayFunction
+!   END INTERFACE
+!
+!   INTERFACE
+!     FUNCTION ExecConstRealFunction( Proc,Md,x,y,z ) RESULT(dbl)
+!       USE Types
+!
+!       INTEGER(KIND=AddrInt) :: Proc
+!       TYPE(Model_t) :: Md
+!
+!       REAL(KIND=dp) :: dbl,x,y,z
+!     END FUNCTION ExecConstRealFunction
+!   END INTERFACE
+
 
     CONTAINS
 
@@ -86,5 +148,130 @@ MODULE LoadMod
 
             CALL GET_ENVIRONMENT_VARIABLE(name, value, len)
         END SUBROUTINE envir
+
+        ! DYNAMIC LOADING  (wrapper via module procedure for typecasting)
+        FUNCTION loadfunction(quiet, abort_not_found, library, fname) RESULT(ptr)
+            IMPLICIT NONE
+            INTEGER :: quiet, abort_not_found
+            CHARACTER :: library(*), fname(*)
+            ! TYPE(C_FUNPTR) :: ptr
+            INTEGER(KIND=AddrInt) :: ptr
+            TYPE(C_FUNPTR) :: cptr
+
+            INTERFACE
+                FUNCTION loadfunction_c(quiet, abort_not_found, library, fname ) RESULT(cptr) &
+                    BIND(C,name='loadfunction_c')
+                    USE, INTRINSIC :: ISO_C_BINDING
+                    INTEGER(C_INT) :: quiet
+                    INTEGER(C_INT) :: abort_not_found
+                    CHARACTER(C_CHAR) :: library(*), fname(*)
+                    ! INTEGER(CAddrInt) :: fptr
+                    TYPE(C_FUNPTR) :: cptr
+                END FUNCTION loadfunction_c
+            END INTERFACE
+
+            ! Ugly hack, store C function pointer as integer
+            cptr = loadfunction_c(quiet, abort_not_found, library, fname)
+            ptr = TRANSFER(cptr, ptr)
+        END FUNCTION loadfunction
+
+        ! DYNAMIC FUNCTION CALLS (wrappers via module procedures)
+        FUNCTION execintfunction(fptr, model ) RESULT(intval)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t), POINTER :: model
+            INTEGER :: intval
+
+            INTERFACE
+                FUNCTION ElmerIntFn(model) RESULT(intval)
+                    IMPORT Model_t
+                    TYPE(Model_t) :: model
+                    INTEGER :: intval
+                END FUNCTION ElmerIntFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerIntFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            intval = pptr(model)
+        END FUNCTION execintfunction
+
+        FUNCTION execconstrealfunction(fptr, model, x, y, z) RESULT(realval)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t), POINTER :: model
+            REAL(KIND=dp) :: x, y, z
+            REAL(KIND=dp) :: realval
+
+            INTERFACE
+                FUNCTION ElmerConstRealFn(model, x, y, z) RESULT(realval)
+                    IMPORT Model_t, dp
+                    TYPE(Model_t) :: model
+                    REAL(KIND=dp) :: x, y, z
+                    REAL(KIND=dp) :: realval
+                END FUNCTION ElmerConstRealFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerConstRealFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            realval = pptr(model, x, y, z)
+        END FUNCTION execconstrealfunction
+
+        FUNCTION execrealfunction(fptr, model, node, val) RESULT(realval)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t), POINTER :: model
+            INTEGER :: node
+            REAL(KIND=dp) :: val(*)
+            REAL(KIND=dp) :: realval
+
+            INTERFACE
+                FUNCTION ElmerRealFn(model, node, val ) RESULT(realval)
+                    IMPORT Model_t, dp
+                    TYPE(Model_t) :: model
+                    INTEGER :: node
+                    REAL(KIND=dp) :: val(*)
+                    REAL(KIND=dp) :: realval
+                END FUNCTION ElmerRealFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerRealFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            realval = pptr(model, node, val)
+        END FUNCTION execrealfunction
+
+        SUBROUTINE execrealarrayfunction(fptr, model, node, val, arr )
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t), POINTER :: model
+            INTEGER :: node
+            REAL(KIND=dp) :: val(*)
+            REAL(KIND=dp) :: arr(:,:)
+
+            INTERFACE
+                SUBROUTINE ElmerRealArrFn(model, node, val, arr)
+                    IMPORT Model_t, dp
+                    TYPE(Model_t) :: model
+                    INTEGER :: node
+                    REAL(KIND=dp) :: val(*)
+                    REAL(KIND=dp) :: arr(:,:)
+                END SUBROUTINE ElmerRealArrFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerRealArrFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL pptr(model, node, val, arr)
+        END SUBROUTINE execrealarrayfunction
 
 END MODULE LoadMod

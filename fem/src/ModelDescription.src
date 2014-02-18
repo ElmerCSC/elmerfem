@@ -43,22 +43,13 @@
 
 MODULE ModelDescription
 
+    USE LoadMod
     USE MeshUtils
     USE ElementDescription
     USE BinIO
     USE Messages
  
     IMPLICIT NONE
-
-    INTERFACE
-      FUNCTION LoadFunction( Quiet,Abort_not_found,Libname,Procname ) RESULT(Proc)
-        USE, INTRINSIC :: ISO_C_BINDING
-        USE Types
-        CHARACTER(C_CHAR) :: Libname(*),Procname(*)
-        INTEGER(KIND=AddrInt) :: Proc
-        INTEGER(C_INT) :: Quiet, Abort_not_found
-      END FUNCTION LoadFunction
-    END INTERFACE
 
     CHARACTER(LEN=1024) :: IncludePath = ' ', OutputPath = ' ', SimulationId = ' '
 
