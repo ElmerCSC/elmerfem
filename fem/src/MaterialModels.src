@@ -227,19 +227,6 @@ this ise not in USE
 
      LOGICAL :: SetArrheniusFactor=.FALSE.
 
-     INTERFACE
-        FUNCTION MaterialUserFunction( Proc,Model,Element,Nodes,n,nd, &
-             Basis,dBasisdx,Viscosity,Velo, dVelodx ) RESULT(s)
-          USE Types
-          INTEGER(KIND=AddrInt) :: Proc
-          TYPE(Model_t) :: Model
-          TYPE(Nodes_t) :: Nodes
-          TYPE(Element_t), POINTER :: Element
-          INTEGER :: n,nd
-          REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
-               Velo(:), dVelodx(:,:), s
-        END FUNCTION MaterialUserFunction
-     END INTERFACE
      !------------------------------------------------------------------------------
      mu = Viscosity
      IF ( PRESENT(muder) ) muder=0
@@ -633,19 +620,6 @@ this ise not in USE
      INTEGER :: n,nd
      TYPE(Element_t),POINTER :: Element
 
-     INTERFACE
-       FUNCTION MaterialUserFunction( Proc,Model,Element,Nodes,n,nd, &
-          Basis,dBasisdx,Conductivity,Temp, dTempdx ) RESULT(s)
-       USE Types
-       INTEGER(KIND=AddrInt) :: Proc
-       TYPE(Model_t) :: Model
-       TYPE(Nodes_t) :: Nodes
-       TYPE(Element_t), POINTER :: Element
-       INTEGER :: n,nd
-       REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Conductivity, &
-                    Temp(:), dTempdx(:,:), s
-       END FUNCTION MaterialUserFunction
-     END INTERFACE
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
      LOGICAL :: stat,GotIt

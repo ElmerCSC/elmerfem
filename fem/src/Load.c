@@ -470,7 +470,7 @@ double STDCALLBULL execconstrealfunction_c( f_ptr Function, void *Model,
 /*--------------------------------------------------------------------------
    Return argument (just to fool Fortran type checking)
    -------------------------------------------------------------------------*/
-void *STDCALLBULL FC_FUNC(addrfunc,ADDRFUNC) ( void *Function )
+void *STDCALLBULL FC_FUNC(addrfunc,ADDRFUNC)( void *Function )
 {
    return (void *)Function;
 }
@@ -488,8 +488,8 @@ static void DoExecSolver(
 /*--------------------------------------------------------------------------
    Call solver routines at given address
    -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(execsolver,EXECSOLVER)
-     ( f_ptr *SolverProc, void *Model, void *Solver, void *dt, void *Transient )
+void STDCALLBULL execsolver_c( f_ptr *SolverProc, void *Model, void *Solver,
+								void *dt, void *Transient )
 {
   DoExecSolver( (void (STDCALLBULL *)())*SolverProc,Model,Solver,dt,Transient );
 }
@@ -508,8 +508,8 @@ static int DoLinSolveProcs(
 /*--------------------------------------------------------------------------
    Call lin. solver routines at given address
    -------------------------------------------------------------------------*/
-int STDCALLBULL FC_FUNC(execlinsolveprocs,EXECLINSOLVEPROCS)
-     ( f_ptr *SolverProc, void *Model, void *Solver, void *Matrix, void *b, void *x, void *n, void *DOFs, void *Norm )
+int STDCALLBULL execlinsolveprocs_c( f_ptr *SolverProc, void *Model, void *Solver,
+						void *Matrix, void *b, void *x, void *n, void *DOFs, void *Norm )
 {
    return DoLinSolveProcs( (int (STDCALLBULL *)())*SolverProc,Model,Solver,Matrix,b,x,n,DOFs,Norm );
 }
@@ -592,8 +592,8 @@ static double DoViscFunction(double (STDCALLBULL *SolverProc)(), void *Model, vo
 /*--------------------------------------------------------------------------
   This routine will call user defined material def. function
   -------------------------------------------------------------------------*/
-double STDCALLBULL FC_FUNC(materialuserfunction,MATERIALUSERFUNCTION)
-  ( f_ptr Function, void *Model, void *Element, void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
+double STDCALLBULL materialuserfunction_c( f_ptr Function, void *Model, void *Element,
+		void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
 {
    return DoViscFunction( (double (STDCALLBULL *)())*Function,Model,Element,Nodes,n,Basis,
                   GradBasis,Viscosity,Velo,gradV );
@@ -610,8 +610,7 @@ static void DoSimulationProc( void (STDCALLBULL *SimulationProc)(), void *Model 
 /*--------------------------------------------------------------------------
   This routine will call user defined material def. function
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(execsimulationproc,EXECSIMULATIONPROC)
-     ( f_ptr Function, void *Model )
+void STDCALLBULL execsimulationproc_c( f_ptr Function, void *Model )
 {
    DoSimulationProc( (void (STDCALLBULL *)())*Function,Model );
 }
@@ -661,8 +660,8 @@ static void DoLocalCall( void (STDCALLBULL *localProc)(),
 /*--------------------------------------------------------------------------
   This routine will call local matrix add-on
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(execlocalproc, EXECLOCALPROC )
-     ( f_ptr localProc, void *Model,void *Solver,void *G, void *F, void *Element,void *n,void *nd )
+void STDCALLBULL execlocalproc_c( f_ptr localProc, void *Model,void *Solver,
+								void *G, void *F, void *Element,void *n,void *nd )
 {
    DoLocalCall( (void (STDCALLBULL *)())*localProc,Model,Solver,G,F,Element,n,nd );
 }

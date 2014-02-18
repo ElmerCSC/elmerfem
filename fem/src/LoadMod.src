@@ -50,7 +50,7 @@ MODULE LoadMod
 
     ! GENERAL ROUTINES
 
-    ! TODO: getsolverhome can be implemented with Fortran 2003
+    ! TODO: getsolverhome and makedirectory can be implemented with Fortran
     INTERFACE
         SUBROUTINE getsolverhome(solverDir, len) BIND(C,name='getsolverhome')
             USE, INTRINSIC :: iso_c_binding
@@ -85,46 +85,6 @@ MODULE LoadMod
             CHARACTER(C_CHAR) :: cmd(*), value(*)
         END SUBROUTINE matc
     END INTERFACE
-
-
-
-!    INTERFACE
-!     FUNCTION ExecRealFunction( Proc,Md,Node,Temp ) RESULT(dbl)
-!       USE Types
-!
-!       INTEGER(KIND=AddrInt) :: Proc
-!       TYPE(Model_t) :: Md
-!       INTEGER :: Node
-!       REAL(KIND=dp) :: Temp(*)
-!
-!       REAL(KIND=dp) :: dbl
-!     END FUNCTION ExecRealFunction
-!   END INTERFACE
-
-!INTERFACE
-!     SUBROUTINE ExecRealArrayFunction( Proc,Md,Node,Temp,F )
-!       USE Types
-!
-!       INTEGER(KIND=AddrInt) :: Proc
-!       TYPE(Model_t) :: Md
-!       INTEGER :: Node,n1,n2
-!       REAL(KIND=dp) :: Temp(*)
-!
-!       REAL(KIND=dp) :: F(:,:)
-!     END SUBROUTINE ExecRealArrayFunction
-!   END INTERFACE
-!
-!   INTERFACE
-!     FUNCTION ExecConstRealFunction( Proc,Md,x,y,z ) RESULT(dbl)
-!       USE Types
-!
-!       INTEGER(KIND=AddrInt) :: Proc
-!       TYPE(Model_t) :: Md
-!
-!       REAL(KIND=dp) :: dbl,x,y,z
-!     END FUNCTION ExecConstRealFunction
-!   END INTERFACE
-
 
     CONTAINS
 
@@ -273,5 +233,155 @@ MODULE LoadMod
             CALL C_F_PROCPOINTER(cfptr, pptr)
             CALL pptr(model, node, val, arr)
         END SUBROUTINE execrealarrayfunction
+
+!       TODO
+!        FUNCTION addrfunc(?) RESULT(ptr)
+!            IMPLICIT NONE
+!
+!            PROCEDURE(?) :: proc
+!            INTEGER(KIND=AddrInt) :: ptr
+!
+!            ptr = TRANSFER(proc, ptr)
+!        END FUNCTION addrfunc
+
+        SUBROUTINE execsolver(fptr, model, solver, dt, transient)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t) :: model
+            TYPE(Solver_t) :: solver
+            REAL(KIND=dp) :: dt
+            LOGICAL :: transient
+
+            INTERFACE
+                SUBROUTINE ElmerSolverFn(model, solver, dt, transient)
+                    IMPORT Solver_t, Model_t, dp
+                    TYPE(Model_t) :: model
+                    TYPE(Solver_t) :: solver
+                    REAL(KIND=dp) :: dt
+                    LOGICAL :: transient
+                END SUBROUTINE ElmerSolverFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerSolverFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL pptr(model, solver, dt, transient)
+        END SUBROUTINE execsolver
+
+        FUNCTION materialuserfunction( fptr, model, element, nodes, n, nd, &
+                                       Basis, dBasisdx, Viscosity,Velo, dVelodx ) &
+                                       RESULT(realval)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t) :: model
+            TYPE(Element_t), POINTER :: element
+            TYPE(Nodes_t) :: nodes
+            INTEGER :: n,nd
+            REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
+                             Velo(:), dVelodx(:,:)
+            REAL(KIND=dp) :: realval
+
+            INTERFACE
+                FUNCTION ElmerMaterialFn(model, element, nodes, n, nd, &
+                               Basis, dBasisdx, Viscosity, Velo, dVelodx) RESULT(realval)
+                    IMPORT Model_t, Element_t, Nodes_t, dp
+                    TYPE(Model_t) :: model
+                    TYPE(Element_t), POINTER :: element
+                    TYPE(Nodes_t) :: nodes
+                    INTEGER :: n,nd
+                    REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),Viscosity, &
+                                     Velo(:), dVelodx(:,:)
+                    REAL(KIND=dp) :: realval
+                END FUNCTION ElmerMaterialFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerMaterialFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            realval = pptr(model, element, nodes, n, nd, &
+                           Basis, dBasisdx, Viscosity,Velo, dVelodx)
+        END FUNCTION materialuserfunction
+
+        SUBROUTINE execsimulationproc(fptr, model)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t) :: model
+
+            INTERFACE
+                SUBROUTINE ElmerSimulationFn(model)
+                    IMPORT Model_t
+                    TYPE(Model_t)   :: model
+                END SUBROUTINE ElmerSimulationFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerSimulationFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL pptr(model)
+        END SUBROUTINE execsimulationproc
+
+        FUNCTION execlinsolveprocs(fptr, model, solver, mtr, b, x, n, DOFs, nrm) RESULT(intval)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t) :: model
+            TYPE(Solver_t) :: solver
+            TYPE(Matrix_t), POINTER :: mtr
+            INTEGER :: n, DOFs
+            REAL(KIND=dp) :: x(n), b(n), nrm
+            INTEGER :: intval
+
+            INTERFACE
+                FUNCTION ElmerLinSolveFn(model, solver, mtr, b, x, n, DOFs, nrm) RESULT(intval)
+                    IMPORT Solver_t, Model_t, Matrix_t, dp
+                    TYPE(Model_t) :: model
+                    TYPE(Solver_t) :: solver
+                    TYPE(Matrix_t), POINTER :: mtr
+                    INTEGER :: n, DOFs
+                    REAL(KIND=dp) :: x(n),b(n), nrm
+                    INTEGER :: intval
+                END FUNCTION ElmerLinSolveFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerLinSolveFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            intval =  pptr(model, solver, mtr, b, x, n, DOFs, nrm)
+        END FUNCTION execlinsolveprocs
+
+        SUBROUTINE execlocalproc(fptr, model, solver, G, F, element, n, nd)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t)   :: model
+            TYPE(Solver_t)  :: solver
+            REAL(KIND=dp) :: G(:,:), F(:)
+            TYPE(Element_t) :: element
+            INTEGER :: n, nd
+
+            INTERFACE
+                SUBROUTINE ElmerLocalFn(model, solver, G, F, element, n, nd)
+                    IMPORT Model_t, Solver_t, Element_t, dp
+                    TYPE(Model_t)   :: model
+                    TYPE(Solver_t)  :: solver
+                    REAL(KIND=dp) :: G(:,:), F(:)
+                    TYPE(Element_t) :: element
+                    INTEGER :: n, nd
+                END SUBROUTINE ElmerLocalFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerLocalFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL pptr(model, solver, G, F, element, n, nd)
+        END SUBROUTINE execlocalproc
 
 END MODULE LoadMod

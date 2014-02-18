@@ -2460,18 +2460,6 @@ CONTAINS
      INTEGER(KIND=AddrInt) :: Proc
      INTEGER, POINTER :: Indexes(:)
 
-     INTERFACE 
-       SUBROUTINE ExecLocalProc( Proc, Model, Solver, G, F, Element, n, nd )
-         USE Types
-         INTEGER(KIND=AddrInt) :: Proc
-         TYPE(Model_t)   :: Model
-         TYPE(Solver_t)  :: Solver
-         TYPE(Element_t) :: Element
-         INTEGER :: n, nd
-         REAL(KIND=dp) :: G(:,:), F(:)
-       END SUBROUTINE ExecLocalProc
-     END INTERFACE
-
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
      ELSE
