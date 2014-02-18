@@ -11,7 +11,7 @@ win32 {
 }
 
 unix {
-  LIBS += -lavcodec -lavcore -lavutil -lswscale
+  LIBS += -lavcodec -lavutil -lswscale
 }
 
 CONFIG += release

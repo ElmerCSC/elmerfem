@@ -188,8 +188,6 @@ void Encoder::compressImages(int targetWidth)
 
   // Initialize avcodec:
   //---------------------
-  avcodec_init();
-
   avcodec_register_all();
 
   // Init encoder:
@@ -205,7 +203,7 @@ void Encoder::compressImages(int targetWidth)
 
   // Init context:
   //---------------
-  AVCodecContext *context = avcodec_alloc_context();
+  AVCodecContext *context = avcodec_alloc_context3(codec);
 
   if(!context) {
     emit information("ERROR: Unable to initialize encoder");
@@ -213,7 +211,7 @@ void Encoder::compressImages(int targetWidth)
   }
 
   context->codec_id = codec_id;
-  context->codec_type = CODEC_TYPE_VIDEO;
+  context->codec_type = AVMEDIA_TYPE_VIDEO;
   context->qmin = 2;
   context->qmax = qMax(2, qMin(31, quality));
   context->width = widthYUV;
@@ -224,7 +222,7 @@ void Encoder::compressImages(int targetWidth)
   context->max_b_frames = 2;
   context->pix_fmt = PIX_FMT_YUV420P;
 
-  if(avcodec_open(context, codec) < 0) {
+  if(avcodec_open2(context, codec, NULL) < 0) {
     emit information("ERROR: Unable to initialize encoder");
     avcodec_close(context);
     return;
