@@ -72,13 +72,15 @@ Solver 3
   Equation = SaveScalars
   Procedure = File "SaveData" "SaveScalars"
   Filename = "results.dat"
-  Variable 1 = String "StressAna"
-  Operator 1 = String "int"
-  Variable 2 = String "StressAna"
-  Operator 2 = String "max"
+  Variable 1 = String "Fz"
+  Operator 1 = String "max"
+  Variable 2 = String "Fz"
+  Operator 2 = String "min"
   Variable 3 = String "StressAna"
-  Operator 3 = String "min"
-  Operator 4 = String "cpu time"
+  Operator 3 = String "max"
+  Variable 4 = String "StressAna"
+  Operator 4 = String "min"
+  Operator 5 = String "cpu time"
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 

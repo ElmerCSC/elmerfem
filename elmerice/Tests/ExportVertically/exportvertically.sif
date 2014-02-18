@@ -39,12 +39,10 @@ Solver 2
   Procedure = File "SaveData" "SaveScalars"
   Filename = "results.dat"
   Variable 1 = String "ExportedVariable"
-  Operator 1 = String "int"
+  Operator 1 = String "max"
   Variable 2 = String "ExportedVariable"
-  Operator 2 = String "max"
-  Variable 3 = String "ExportedVariable"
-  Operator 3 = String "min"
-  Operator 4 = String "cpu time"
+  Operator 2 = String "min"
+  Operator 3 = String "cpu time"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

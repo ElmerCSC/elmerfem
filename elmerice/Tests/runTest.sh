@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 #
 
 ###------------------------------------------------------------------------------###
@@ -22,7 +22,6 @@ export EXE_EXT
 ###------------------------------------------------------------------------------###
 # PATH ?
 ###------------------------------------------------------------------------------###
-
 if test "$ELMER_HOME" = ""; then
     # assume that we are testing local version
     printf "\$ELMER_HOME undefined, setting it to ../src\n"
@@ -39,7 +38,6 @@ if test "$ELMER_HOME" = ""; then
     export PATH=/home/ltavard/Elmer/bin:$PATH
 else 
     # ELMER_HOME is defined, so we'll just use that
-    #printf "ELMER_HOME=%s\n" $ELMER_HOME
     export ELMER_HOME=`echo $ELMER_HOME | sed 's+.:+/&+' | sed 's.:..' | sed 's.\\\./.g'`
     export ELMER_LIB="$ELMER_HOME/share/elmersolver/lib"
     export ELMER_INCLUDE="$ELMER_HOME/share/elmersolver/include"
@@ -70,7 +68,17 @@ fi
 
 while true; do
     case "$1" in
-	--all | -a)
+	"")
+	    echo ""
+	    echo "Option [$1]: All tests without email option"
+	    echo "============================================================="
+	    echo ""
+	    dirs=`find . -type d |sed -e 's/\// /g' |awk '{print $2}' |uniq| grep -v .svn | sort`
+	    write_mail=NO
+	    break
+	    ;;
+	#Check for optional argument.
+	--all | -a) 
 	    echo ""
 	    echo "Option [$1]: All tests"
 	    echo ""
@@ -81,19 +89,10 @@ while true; do
 	    if (test $courriel != "N"); then
 		write_mail=YES
 	    fi
-	    dirs=`find . -type d |sed -e 's/\// /g' |awk '{print $2}' |uniq| sort`
+	    dirs=`find . -type d |sed -e 's/\// /g' |awk '{print $2}' |uniq| grep -v .svn | sort`
 	    break
 	    ;;
-	"")
-	    echo ""
-	    echo "Option [$1]: All tests without email option"
-	    echo "============================================================="
-	    echo ""
-	    dirs=`find . -type d |sed -e 's/\// /g' |awk '{print $2}' |uniq| sort`
-	    write_mail=NO
-	    break
-	    ;;
-	--selection | -s) #Check for optional argument.
+	--selection | -s) 
 	    echo ""
 	    echo "Option [$1]: Selection repertory"
 	    echo ""
@@ -101,7 +100,10 @@ while true; do
 	    read dirs
 	    for dir in $dirs; do
 		if (test ! -e $dir); then
-		    printf "Test case %s does not found \n" $dir
+		    echo ""
+		    printf "Test case [%s] does not found \n" $dir
+		    echo "============================================================="
+		    echo ""
 		    exit
 		fi
 	    done
@@ -129,8 +131,7 @@ while true; do
 	    if (test $courriel != "N"); then
 		write_mail="YES"
 	    fi
-	    find . -maxdepth 1 -mindepth 1 | grep -r --include="*.sif" $solver > ListingSolver.txt
-	    dirs=`cut -d / -f 1 ListingSolver.txt |uniq`
+	    dirs=`find . -name "*.sif" -print | xargs grep "$solver" |awk -F / '{print$2}'|uniq`
 	    rm ListingSolver.txt
 	    break
 	    ;;
@@ -157,6 +158,20 @@ while true; do
     shift
 done
 
+###------------------------------------------------------------------------------###
+# Elmer has been installed
+# Test if ElmerSolver_mpi has been intalled
+# If "yes", parrallel tests will run else parallel runs are ignored
+###------------------------------------------------------------------------------###
+if ( ! test -e $ELMER_HOME/bin/ElmerSolver_mpi); then
+    List_parallel_run=`find . -name "Makefile" -print | xargs grep "ElmerSolver_mpi" | awk -F / '{print$2}'`
+    for var in $List_parallel_run ; do
+	dirs=`echo $dirs | sed -e "s/$var//"`
+    done
+    echo "ElmerSolver_mpi not found, parallel test-cases are ignored:"
+    echo $List_parallel_run
+    echo ""
+fi
 
 ###------------------------------------------------------------------------------###
 # Loop on repertory to realise each test
@@ -165,134 +180,201 @@ done
 passed=0
 nbtest=0
 visited=0
-Error1=0
 iter_List=0
+List_Failed=( )
 
 # Compilation f90 -
 if (test -e Compare.f90); then
     elmerf90-nosh Compare.f90 -o Compare >  /dev/null
     chmod 775 Compare$EXE_EXT
 else
-    echo "File Compare.f90 not found"
+    echo "File Compare.f90 not found\n"
     exit
 fi
 
 # Test case
 for dir in $dirs; do
+
+    #initialisation
+    Error=0
+    n_files=0
+    success=0
+    Result=0
+    Result_True=0
+
+    #counter test
     nbtest=`expr $nbtest + 1`
     cwd=`pwd`
+
     # Move in repertory
     cd $dir
 
     # Delete old files
-    
-    if (test -e difference.txt); then #clean old file
+    if (test -e difference.txt); then
 	rm difference.txt
     fi
-    if (test -e Result_$dir.log); then
+    if (test -e OutputSIF_$dir.log); then
+	rm OutputSIF_$dir.log
+    fi
+    if (test -e Output_$dir.log); then
 	rm Output_$dir.log
     fi
 
     printf "test $nbtest : %25s " $dir
     
     # Run .sif and verification "all done"
-    make run  > OutputSIF_$dir.log 2>&1 
-    success=`grep "ALL DONE" OutputSIF_$dir.log | wc -l`
-    sleep 10
+    make run  > OutputSIF_$dir.log 2>&1
 
-    if (test -e results.dat); then
+    if (test -e OutputSIF_$dir.log); then
+	success=`grep "ALL DONE" OutputSIF_$dir.log | wc -l`
 	n_files=1
+	
+	if (test $success -ge 1) ; then
+	    
+	    if (test -f results.dat); then
+    	    # Transform file with only one " " between colomns
+		sed -e 's/^ *//' results.dat > $dir.txt
+		
+		if (test -f $dir.txt); then
+		    
+		    if (test -e results.dat.names ); then
+			n_arg=`tail -1 results.dat.names |  awk '{print $1}'| sed 's/://'`
+			n_line_cpu=`grep -n 'cpu time' results.dat.names | awk '{print $1}' | sed 's/://'`
+		    else
+			Error=5
+		    fi
+		else
+		    Error=4
+		fi
+	    else
+		Error=3
+	    fi
+	else
+	    Error=2
+	fi
     else
-	n_files=0
+	Error=1
     fi
     
-    if (test $success -ge 1) && (test ! $n_files -eq 0); then
-       	# Transform file with only one " " between colomns
-	if (test -f results.dat); then
-	    sed -e 's/^ *//' results.dat > $dir.txt
-	    #`mv results.dat $dir.txt`
-	else #Pbm creation file results
-	    Error1=1
-	fi
-	
-	# Comparison and print ERREUR if bad results
-	if (test -e results.dat.names ); then
-	    n_arg=`tail -1 results.dat.names |  awk '{print $1}'| sed 's/://'`
-	    n_line_cpu=`grep -n 'cpu time' results.dat.names | awk '{print $1}' | sed 's/://'`
-	else
-	    n_arg=0
-	fi
-	
-        
+    if (test $Error -eq 0) ; then #All conditions checked for comparison
 	if (test ! $n_arg -eq 0); then 
-            # Test how many arguments for comparison
-            #      anf if particular files for comparison exists
+            # Test how many arguments for comparison	
 	    if  (test -n "$n_line_cpu" ); then
 		nb_line_tot=`wc -l results.dat.names |awk '{print $1}'`
 		n_col_cpu=`head -$nb_line_tot results.dat.names |tail -1| awk '{print $1}' | sed 's/://'`
 	    else 
 		n_col_cpu=0
 	    fi
-	    # Results of comparison in file difference.txt and errors print in OutputTest_$dir.log
-	    `../Compare$EXE_EXT $dir valid_$dir $n_arg $n_col_cpu > OutputTest_$dir.log`
-	    FindError=`grep "ERROR" OutputTest_$dir.log | wc -l`
-	    FindDiff=`grep "DIFF-TIME" OutputTest_$dir.log | wc -l`
-	fi
-    fi
-    
-    #If comparison failed and difference.txt do not exist (created by Compare.f90)
-    if (test ! -e difference.txt); then
-	List_Failed[$iter_List]=$dir
-	((iter_List++))
-	printf "		[FAILED]\n"
-	printf "Comparison failed: look at [File_log/%s.log] for details\n" $dir
-	echo 'File difference.txt not found' >> Output_$dir.log
-	if (test $visited -eq 0); then
-	    `mkdir ../File_log`
-	    visited=1
-	fi
-	 #Copy files wich resume SIF, and problem
-	cp ./Output_$dir.log ../File_log
-	cp ./OutputSIF_$dir.log ../File_log
-	
-	make -i clean > /dev/null 2>&1
+	    # Tests if exists specific TARGET in *.sif else TARGET's value is 1E-6
+	    if (test `grep "TARGET" OutputSIF_$dir.log | uniq | awk -F = '{print$2}'`=""); then
+		TARGET=1e-6
+	    else
+		TARGET=`grep "TARGET" OutputSIF_$dir.log | uniq | awk -F = '{print$2}'`
+	    fi
+            # Results of comparison in file difference.txt and errors print in Output_$dir.log
+	    `../Compare$EXE_EXT $dir valid_$dir $n_arg $n_col_cpu $TARGET > Output_$dir.log`
+	    FindError=`grep "ERROR" Output_$dir.log | wc -l`
+	    FindDiff=`grep "DIFF-TIME" Output_$dir.log | wc -l`
+	    # Values for screen output
+	    Result=`tail -1 difference.txt | awk '{print $1}'`
+	    Result_Valid=`tail -1 difference.txt | awk '{print $2}'`
+	    Number_Argument=`tail -1 difference.txt | awk '{print $3}'`
+	    Number_concat="$Number_Argument"": "
+	    grep "$Number_concat" results.dat.names > temp_name.txt
+	    Name_Var=`cut -d : -f 2,3 temp_name.txt`
+	    rm temp_name.txt
 
-    #If bad results
-    elif (test ! $FindError -eq 0) || (test $Error1 -eq 1); then
-	if (test -e results.dat.names ); then
-	    cat results.dat.names OutputTest_$dir.log > Output_$dir.log
-	    rm OutputTest_$dir.log
+	    if (test ! -e difference.txt); then
+		List_Failed[$iter_List]=$dir
+		((iter_List++))
+		printf "		        [FAILED]\n"
+		printf "File [difference.txt] not found: look at [File_log/Output_%s.log] for details\n" $dir
+		if (test $visited -eq 0); then
+		    `mkdir ../File_log`
+		visited=1
+		fi
+		
+	       #Copy files wich resume SIF, and problem
+		cp ./Output_$dir.log ../File_log
+		cp ./OutputSIF_$dir.log ../File_log
+		rm ./Output_$dir.log  ./OutputSIF_$dir.log
+
+            #If bad results
+	    elif (test !  $FindError -eq 0) ; then
+		cat Output_$dir.log > tmp01.log
+   		cat results.dat.names tmp01.log > Output_$dir.log
+		rm tmp01.log 
+		
+		List_Failed[$iter_List]=$dir
+		((iter_List++))
+		printf "		        [FAILED]\n"
+		printf "Differences in results: look at [File_log/Output_%s.log] for details\n" $dir
+		printf "For variable [%s]:  Found result [%s] - Expected result [%s]\n" "$Name_Var" "$Result" "$Result_Valid"
+	
+		if (test $visited -eq 0); then
+		    mkdir ../File_log
+		    visited=1
+		fi
+                #Copy files wich resume difference
+		cp ./Output_$dir.log ../File_log
+		cp ./OutputSIF_$dir.log ../File_log
+		rm ./Output_$dir.log  ./OutputSIF_$dir.log
+		
+            # Difference between cpu-time is observed, test PASSED
+	    elif (test ! $FindDiff -eq 0 ); then
+		passed=`expr $passed + 1`
+		printf "		[PASSED - Diff Time-]\n"
+	    	
+            # Nothing appened, test PASSED
+	    else	
+		passed=`expr $passed + 1`
+		printf "		[PASSED]\n"
+	    fi
+	    make -i clean > /dev/null 2>&1
+	else
+	    printf "		        [FAILED]\n"
+	    printf "Problem in number of arguments for comparison\n"
+	    make -i clean > /dev/null 2>&1
 	fi
+    else
+	case $Error in
+	    1)
+		printf "		        [FAILED]\n"
+		printf "Simulation aborted: OutputSIF_$dir.log not found\n";;
+	    2)
+		printf "		        [FAILED]\n"
+		printf "Simulation aborted: look at [File_log/OutputSIF_%s.log] for details\n" $dir;;
+	    3)
+		printf "		        [FAILED]\n"
+		printf "File [results.dat] not found: look at [File_log/OutputSIF_%s.log] for details\n" $dir;;
+	    4)
+		printf "		        [FAILED]\n"
+		printf "Problems with transforming results.dat in $dir.txt\n";;
+	    5)
+		printf "		        [FAILED]\n"
+		printf "File [results.dat.names] not found: look at [File_log/OutputSIF_%s.log] for details\n" $dir;;
+	    
+	esac
 	List_Failed[$iter_List]=$dir
 	((iter_List++))
-	printf "		[FAILED]\n"
-	printf "look at [File_log/%s.log] for details\n" $dir
-	
 	if (test $visited -eq 0); then
 	    mkdir ../File_log
 	    visited=1
 	fi
         #Copy files wich resume difference
-	cp ./Output_$dir.log ../File_log
-
-	make -i clean > /dev/null 2>&1
-	
-    # Difference between cpu-time is observed, test PASSED
-    elif (test ! $FindDiff -eq 0 ); then
-	passed=`expr $passed + 1`
-	printf "		[PASSED - Diff Time-]\n"
-	make -i clean > /dev/null 2>&1
-
-    # Nothing appened, test PASSED
-    else	
-	passed=`expr $passed + 1`
-        printf "		[PASSED]\n"
+	if (test -e OutputSIF_$dir.log); then
+	    cp ./OutputSIF_$dir.log ../File_log
+	    rm ./OutputSIF_$dir.log
+	fi
+	if (test -e Output_$dir.log); then
+	    cp ./Output_$dir.log ../File_log
+	    rm ./Output_$dir.log
+	fi
 	make -i clean > /dev/null 2>&1
     fi
     
     # Then come-back to global repertory
     cd $cwd
-    
 done
 
 # Mail-option

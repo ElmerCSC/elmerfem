@@ -6,14 +6,13 @@ program Compare
   ! n = #caracteres
   ! m = nber digits
   !
-  ! parm1, parm2, parm3, pamr4 -> shell - inputs 
+  ! parm1, parm2, parm3, pamr4, parm5 -> shell - inputs 
   ! 
-  !
   ! Results in file difference.txt for each test-case:
-  ! if x<1E-08, Absolute deviation
-  !   if difference>1E-8 print "ERROR abs" end
+  ! if x<1E-06, Absolute deviation
+  !   if difference>1E-6 print "ERROR abs" end
   ! else relative gap
-  !   if difference>1E-8 print "ERROR " end
+  !   if difference>1E-6 print "ERROR " end
   ! end
   !
   !***************************************************
@@ -21,25 +20,35 @@ program Compare
   implicit none
   
   !Variables
-  CHARACTER(LEN=150) :: parm1,parm2,parm3,parm4,file1,file2
+  CHARACTER(LEN=150) :: parm1,parm2,parm3,parm4,parm5,file1,file2
   CHARACTER(LEN=2) :: str4
   CHARACTER(LEN=150) :: filename1, filename2, my_fmt
   INTEGER :: ios, ios2, ierr, ierr2
   INTEGER :: n_rows, n_rows2
   INTEGER :: i, j, n
-  INTEGER :: nb_arg, n_col_cpu
-  REAL :: read_value, read_value2, x_L_null
+  INTEGER :: nb_arg, n_col_cpu, n_rows_loc, nb_arg_loc
+  INTEGER, DIMENSION(2) :: Max_location
+  REAL :: read_value, read_value2
   REAL, DIMENSION(:,:), ALLOCATABLE :: X_L, X_m
-  DOUBLE PRECISION, DIMENSION(:,:), ALLOCATABLE :: ecart
+  REAL :: Target_Error
+  DOUBLE PRECISION, DIMENSION(:,:), ALLOCATABLE :: ecart, Mat_temp
 
   call getarg(1,parm1) !name file computer
   read (parm1,*) file1
-  call getarg(2,parm2) !name file
+  call getarg(2,parm2) !name file validation
   read (parm2,*) file2
   call getarg(3,parm3) !nber of inputs to compare
   read (parm3,*) nb_arg
   call getarg(4,parm4) !column nber of time_cpu
   read (parm4,*) n_col_cpu
+  call getarg(5,parm5) ! special TARGET
+  read (parm5,*) Target_Error
+
+  !Value of the TARGET
+  if (Target_Error > 0) then
+  else
+     Target_Error=1E-6
+  endif
 
   !Concatenation file.txt
   filename1=trim(file1)//'.txt'
@@ -77,6 +86,7 @@ program Compare
   Allocate(x_L(1:n_rows,1:nb_arg))
   Allocate(x_m(1:n_rows,1:nb_arg))
   Allocate(ecart(1:n_rows,1:nb_arg))
+  Allocate(Mat_temp(1:n_rows,1:nb_arg))
 
   !Reading File - 
   OPEN(unit=40,file='./DATA/'//trim(filename2),iostat=ierr)
@@ -93,7 +103,7 @@ program Compare
   !Reading File - your computer
   OPEN(unit=50,file=trim(filename1),iostat=ierr2)
   if (ierr2/=0) then
-     print*, 'ERROR: le fichier '
+     print*, 'ERROR: can not open file '
      stop
   endif
   rewind(unit=50,iostat=ierr2)
@@ -108,24 +118,40 @@ program Compare
      Do j=1,nb_arg
         if (j == n_col_cpu) then
            ecart(i,j)= abs((x_L(i,j)-x_m(i,j))/x_L(i,j))
-           if (ecart(i,j)>0.9) then
+           if (ecart(i,j)>1) then
               print*, 'DIFF-TIME'
            end if
         else
-           if (x_L(i,j)<1e-8) then
+           if (x_L(i,j)<TARGET_Error) then
               ecart(i,j)= abs(x_L(i,j)-x_m(i,j))
-              if (ecart(i,j) > 1e-8) then
+              if (ecart(i,j) > Target_Error ) then
                  print*, 'ERROR abs ',ecart(i,j),'ligne',i,'colonne ',j
               end if
            else
               ecart(i,j)= abs((x_L(i,j)-x_m(i,j))/x_L(i,j))
            end if
-           if (ecart(i,j) > 1e-8) then
+           if (ecart(i,j) > Target_Error) then
               print*, 'ERROR ',ecart(i,j),'ligne',i,'colonne ',j
            end if
         end if
      End do
      WRITE(60,my_fmt)(ecart(i,j), j=1,nb_arg)
   End Do
-  CLOSE(60)  
+  CLOSE(60)
+
+  !Scan file valid_test.txt and find value which coresponds to max loc
+  Mat_temp=ecart
+  If (n_col_cpu /= 0) then
+     Do i=1,n_rows
+        Mat_temp(i,n_col_cpu)=-9999
+     End do
+  End if
+  Max_location=maxloc(Mat_temp)
+  n_rows_loc=Max_location(1)
+  nb_arg_loc=Max_location(2)
+
+  OPEN(90, file='difference.txt', action='write', position='append')
+  WRITE(90,*) 'Found result       - Valid result       - Argument value'
+  WRITE(90,'(2E20.12,I2)') x_m(n_rows_loc,nb_arg_loc),x_L(n_rows_loc,nb_arg_loc),nb_arg_loc
+  CLOSE(90)
 end program Compare

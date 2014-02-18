@@ -44,7 +44,7 @@ Simulation
   Output File = "cube504_g.result"
   Post File = "cube504_g.vtu"
 
-  max output level = 3
+  max output level = 6
 End
 
 
@@ -54,8 +54,7 @@ Solver 1
   Equation = String "PorousFlow"
   Procedure = "ElmerIceSolvers" "PorousSolver"
   Variable = "Porous"
-  Variable DOFs = 4
-
+  Variable DOFs = 4 
   Optimize Bandwidth = False
 ! Use p elements
   Element = "p:1 b:1"
@@ -92,24 +91,22 @@ Solver 2
 
   Variable 1 = String "Time"
 
-  Variable 2 = String "StrainRate"
-  Operator 2 = String "int"
+  Variable 2 = String "Porous 1"
+  Operator 2 = String "max"
 
-  Variable 3 = String "StrainRate"
+  Variable 3 = String "Porous 2"
   Operator 3 = String "max"
+ 
+  Variable 3 = String "Porous 3"
+  Operator 3 = String "min"
 
-  Variable 4 = String "StrainRate"
-  Operator 4 = String "min"
+  Variable 4 = String "DeviatoricStress 1"
+  Operator 4 = String "max"
 
-  Variable 5 = String "DeviatoricStress"
-  Operator 5= String "int"
+  Variable 5 = String "StrainRate 1"
+  Operator 5= String "max"
 
-  Variable 6 = String "DeviatoricStress"
-  Operator 6 = String "max"
-
-  Variable 7 = String "DeviatoricStress"
-  Operator 7 = String "min"
-  Operator 8 = String "cpu time"
+  Operator 6 = String "cpu time"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

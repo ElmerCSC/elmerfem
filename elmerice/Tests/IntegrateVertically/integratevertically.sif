@@ -87,16 +87,11 @@ Solver 3
   Operator 1 = String "int"
   Variable 2 = String "VarToBeIntegrated"
   Operator 2 = String "max"
-  Variable 3 = String "VarToBeIntegrated"
-  Operator 3 = String "min"
-
+  Variable 3 = String "Mean Var"
+  Operator 3 = String "int"
   Variable 4 = String "Mean Var"
-  Operator 4 = String "int" 
-  Variable 5 = String "Mean Var"
-  Operator 5 = String "max" 
-  Variable 6 = String "Mean Var"
-  Operator 6 = String "min" 
-  Operator 7 = String "cpu time"
+  Operator 4 = String "max"  
+  Operator 5 = String "cpu time"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

@@ -5,18 +5,17 @@ This How-to describes how to create and use test cases in software
 development and case definition.
 
 The test cases are used to check for possible bugs, and to ensure 
-backward compability. For that purpose they are currently around 
+backward compatibility. For that purpose they are currently around 
 30 repertories (Dec 2013) . The tests should be located in directory
 
-fem/elmerice/tests
+fem/elmerice/Tests
 
-The results are compared with the version 6441 on
- LGGE's cluster [proc  Intel Xeon, 4 cores/CPUs ].
+The results are compared with the version 6441 on LGGE's cluster 
+[Intel(R) Xeon(R) CPU           E5640  @ 2.67GHz, 4 cores/CPUs ].
 
 To run the cases in Unix you can go the the directory tests, update
 script with command line:
 
-chmod u+x runTest.sh
 runTest.sh (with options or not)
 
 A. Options
@@ -25,15 +24,15 @@ See details for the 4 options and one default option ( "", --help , --all,
 --selection, --solvers).
 
 1) --all or -a
-it runs all tests, and there is possibility to send results by e-mail.
+it runs all tests with possibility to send results by e-mail.
 
 2) --selection or -s
-it runs only selection of repertory with "space-separator", and there is 
+it runs only selection of repertory with "space-separator" with
 possibility to send results by e-mail.
 
 3) --solvers or -so
 You choose one ElmerIceSolver keyword and it runs all repertories with this 
-solver, and there is possibility to send results by e-mail.
+solver (possibility to send results by e-mail).
 
 4) Default case: all test cases without mail option.
 
@@ -59,7 +58,7 @@ maintained also in the future versions of Elmer. To do this:
 3) Define how to run the test write a Makefile (named Makefile), that
    details two targets:
 	+ run: how to run the test
-	+ clean: how to clean up if successfull
+	+ clean: how to clean up if successful
 
 4) Define expected results and create repertory /DATA in wich will be put expected 
    results in a file named "valid_$NameRepertory.txt" (See description in the template above:
@@ -72,6 +71,10 @@ maintained also in the future versions of Elmer. To do this:
        svn add mytestcase
        svn commit mytestcase
 
+Note, test failed in case where difference between results are upper 1E-6.
+You can define your own TARGET in your *.sif with line:
+$fprintf( stderr, "TARGET=<target>\n" );
+
 
 D. Results 
 =====================
@@ -79,14 +82,15 @@ D. Results
 	---------
 Test will print some informations for each test-case:
 <Test Number>		<Test Name>		[<Result>]
-In <Result>, [FAILED] in case where difference between results are upper 1E-8
+In <Result>, [FAILED] in case where difference between results are upper 1E-6
 	     [PASSED] in case where there is no difference
 	     [PASSED - Diff Time-] where there is a difference with time CPU
 
 	In repertory File_log/
 	----------------------
 We will found 2 files per test if there is difference between results: 
-one is resume of your simulation and the other resume differences.
+one is the resume of your simulation (OutputSIF_<name>.log) and the other the 
+resume of difference between results (Output_<name>).log
 
 
 E. How to use the test case as starting point
