@@ -28,7 +28,7 @@ Author(s):  Harri Hakula 10.03.98
 
 extern void make_filename(char *buf, const char *model, const char *suffix);
 
-static char *extension[] = {
+static const char *extension[] = {
   "geometry.header",
   "geometry.nodes",
   "geometry.elements",

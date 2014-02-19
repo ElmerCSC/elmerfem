@@ -99,7 +99,7 @@ CONSTANTS, COORDINATES, BODIES};
 // Only first three are needed currently
 // Ref. the value of modelDataFiles in EIOModelDataAgent.h
 // Martti Verho 19.10.98
-static char *extension[] = {
+static const char *extension[] = {
   "modeldata.header",
   "modeldata.coordinates",
   "modeldata.mesh_parameters",

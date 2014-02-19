@@ -71,13 +71,13 @@ void make_filename(char *buf, const char *model, const char *suffix)
   strcat(buf, suffix);
 }
 
-static char *sequential_extensions[] = {
+static const char *sequential_extensions[] = {
   "/mesh.header",
   "/mesh.nodes",
   "/mesh.elements",
   "/mesh.boundary"
 };
-static char *parallel_extensions[] = {
+static const char *parallel_extensions[] = {
   "%s/part.%d.header",
   "%s/part.%d.nodes",
   "%s/part.%d.elements",
@@ -85,7 +85,7 @@ static char *parallel_extensions[] = {
   "%s/part.%d.shared"
 };
 
-static char **extension = (char **)0;
+static const char **extension = (const char **)0;
 
 enum { HEADER = 0, NODES, ELEMENTS, BOUNDARY, SHARED };
 
