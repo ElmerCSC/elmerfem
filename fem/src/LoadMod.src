@@ -86,6 +86,14 @@ MODULE LoadMod
         END SUBROUTINE matc
     END INTERFACE
 
+    ! Overloads for AddrFunc
+    INTERFACE AddrFunc
+        MODULE PROCEDURE AddrFuncSub, &
+                         AddrFuncInt, AddrFuncLong, &
+                         AddrFuncReal, AddrFuncDbl, &
+                         AddrFuncCmp, AddrFuncDblCmp
+    END INTERFACE AddrFunc
+
     CONTAINS
 
         SUBROUTINE systemc(cmd)
@@ -108,6 +116,77 @@ MODULE LoadMod
 
             CALL GET_ENVIRONMENT_VARIABLE(name, value, len)
         END SUBROUTINE envir
+
+        ! FUNCTION ADDRESS (overloaded methods for different function return values)
+        FUNCTION AddrFuncSub(fn) RESULT(addr)
+            IMPLICIT NONE
+            PROCEDURE() :: fn
+            INTEGER(KIND=AddrInt) :: addr
+
+            TYPE(C_FUNPTR) :: cptr
+            cptr = C_FUNLOC(fn)
+            addr = TRANSFER(cptr, addr)
+        END FUNCTION AddrFuncSub
+
+        FUNCTION AddrFuncInt(fn) RESULT(addr)
+            IMPLICIT NONE
+            PROCEDURE(INTEGER(KIND=selected_int_kind(9))) :: fn
+            INTEGER(KIND=AddrInt) :: addr
+
+            TYPE(C_FUNPTR) :: cptr
+            cptr = C_FUNLOC(fn)
+            addr = TRANSFER(cptr, addr)
+        END FUNCTION AddrFuncInt
+
+        FUNCTION AddrFuncLong(fn) RESULT(addr)
+            IMPLICIT NONE
+            PROCEDURE(INTEGER(KIND=selected_int_kind(18))) :: fn
+            INTEGER(KIND=AddrInt) :: addr
+
+            TYPE(C_FUNPTR) :: cptr
+            cptr = C_FUNLOC(fn)
+            addr = TRANSFER(cptr, addr)
+        END FUNCTION AddrFuncLong
+
+        FUNCTION AddrFuncReal(fn) RESULT(addr)
+            IMPLICIT NONE
+            PROCEDURE(REAL(KIND=SELECTED_REAL_KIND(6))) :: fn
+            INTEGER(KIND=AddrInt) :: addr
+
+            TYPE(C_FUNPTR) :: cptr
+            cptr = C_FUNLOC(fn)
+            addr = TRANSFER(cptr, addr)
+        END FUNCTION AddrFuncReal
+
+        FUNCTION AddrFuncDbl(fn) RESULT(addr)
+            IMPLICIT NONE
+            PROCEDURE(REAL(KIND=dp)) :: fn
+            INTEGER(KIND=AddrInt) :: addr
+
+            TYPE(C_FUNPTR) :: cptr
+            cptr = C_FUNLOC(fn)
+            addr = TRANSFER(cptr, addr)
+        END FUNCTION AddrFuncDbl
+
+        FUNCTION AddrFuncCmp(fn) RESULT(addr)
+            IMPLICIT NONE
+            PROCEDURE(COMPLEX(KIND=SELECTED_REAL_KIND(6))) :: fn
+            INTEGER(KIND=AddrInt) :: addr
+
+            TYPE(C_FUNPTR) :: cptr
+            cptr = C_FUNLOC(fn)
+            addr = TRANSFER(cptr, addr)
+        END FUNCTION AddrFuncCmp
+
+        FUNCTION AddrFuncDblCmp(fn) RESULT(addr)
+            IMPLICIT NONE
+            PROCEDURE(COMPLEX(KIND=dp)) :: fn
+            INTEGER(KIND=AddrInt) :: addr
+
+            TYPE(C_FUNPTR) :: cptr
+            cptr = C_FUNLOC(fn)
+            addr = TRANSFER(cptr, addr)
+        END FUNCTION AddrFuncDblCmp
 
         ! DYNAMIC LOADING  (wrapper via module procedure for typecasting)
         FUNCTION loadfunction(quiet, abort_not_found, library, fname) RESULT(ptr)
@@ -383,5 +462,69 @@ MODULE LoadMod
             CALL C_F_PROCPOINTER(cfptr, pptr)
             CALL pptr(model, solver, G, F, element, n, nd)
         END SUBROUTINE execlocalproc
+
+        SUBROUTINE execlocalassembly(fptr, model, solver, dt, transient, &
+                                     M, D, S, F, element, nrow, ncol)
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t)   :: model
+            TYPE(Solver_t)  :: solver
+            REAL(KIND=dp)   :: dt
+            LOGICAL :: transient
+            REAL(KIND=dp) :: M(:,:), D(:,:), S(:,:), F(:)
+            TYPE(Element_t) :: element
+            INTEGER :: nrow, ncol
+
+            INTERFACE
+                SUBROUTINE ElmerLocalAssemblyFn(model, solver, dt, transient, &
+                                                M, D, S, F, element, Nrow, Ncol )
+                    IMPORT Model_t, Solver_t, Element_t, dp
+                    TYPE(Model_t)   :: model
+                    TYPE(Solver_t)  :: solver
+                    REAL(KIND=dp)   :: dt
+                    LOGICAL :: transient
+                    REAL(KIND=dp) :: M(:,:), D(:,:), S(:,:), F(:)
+                    TYPE(Element_t) :: element
+                    INTEGER :: nrow, ncol
+                END SUBROUTINE ElmerLocalAssemblyFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerLocalAssemblyFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL pptr(model, solver, dt, transient, &
+                      M, D, S, F, element, nrow, ncol)
+        END SUBROUTINE execlocalassembly
+
+        SUBROUTINE matvecsubrext(fptr, spmv, n, rows, cols, vals, u, v, reinit)
+            IMPLICIT NONE
+
+            INTEGER(KIND=AddrInt) :: fptr
+            INTEGER(KIND=AddrInt) :: spmv
+            INTEGER :: n
+            INTEGER, POINTER  CONTIG :: rows(:), cols(:)
+            REAL(KIND=dp), POINTER  CONTIG :: vals(:)
+            REAL(KIND=dp), DIMENSION(*) :: u
+            REAL(KIND=dp), DIMENSION(*) :: v
+            INTEGER :: reinit
+
+            INTERFACE
+                SUBROUTINE matvecsubrext_c(fptr, spmv, n, rows, cols, vals, u, v, reinit) BIND(C,name='matvecsubrext_c')
+                    USE, INTRINSIC :: ISO_C_BINDING
+                    INTEGER(CAddrInt) :: fptr
+                    INTEGER(CAddrInt) :: spmv
+                    INTEGER(C_INT) :: n
+                    INTEGER(C_INT) :: rows(*), cols(*)
+                    REAL(C_DOUBLE) :: vals(*)
+                    REAL(C_DOUBLE) :: u(*),v(*)
+                    INTEGER(C_INT) :: reinit
+                END SUBROUTINE
+            END INTERFACE
+
+            CALL matvecsubrext_c(fptr, spmv, n, rows, cols, vals, u, v, reinit)
+        END SUBROUTINE matvecsubrext
+
 
 END MODULE LoadMod

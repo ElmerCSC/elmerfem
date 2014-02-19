@@ -1000,7 +1000,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
      Values => A % Values
 
     IF  ( A % MatvecSubr /= 0 ) THEN
-      CALL MatVecSubr(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
+      CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Values,u,v,0)
       RETURN
    END IF
 
@@ -3471,7 +3471,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Values => GlobalMatrix % Values
 
     IF  ( GlobalMatrix % MatVecSubr /= 0 ) THEN
-      CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
+      CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
                   GlobalMatrix % SpMV, n,Rows,Cols,Values,u,v,0)
       RETURN
    END IF

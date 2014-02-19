@@ -189,10 +189,10 @@ CONTAINS
     EXTERNAL :: zdotc
     
     
-    INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
-         pcondrProc=0, mvProc, AddrFunc, iterProc, StopcProc
     ! INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
-    !                          pcondrProc=0, mvProc, iterProc, StopcProc
+    !      pcondrProc=0, mvProc, AddrFunc, iterProc, StopcProc
+    INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
+                             pcondrProc=0, mvProc, iterProc, StopcProc
     
     INTERFACE
       SUBROUTINE VankaCreate(A,Solver)

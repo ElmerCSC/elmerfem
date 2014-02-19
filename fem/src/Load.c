@@ -470,7 +470,7 @@ double STDCALLBULL execconstrealfunction_c( f_ptr Function, void *Model,
 /*--------------------------------------------------------------------------
    Return argument (just to fool Fortran type checking)
    -------------------------------------------------------------------------*/
-void *STDCALLBULL FC_FUNC(addrfunc,ADDRFUNC)( void *Function )
+void *STDCALLBULL addrfunc_c( void *Function )
 {
    return (void *)Function;
 }
@@ -680,8 +680,10 @@ static void DoLocalAssembly( void (STDCALLBULL *LocalAssembly)(),
 /*--------------------------------------------------------------------------
   This routine will call complete local matrix add-on
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(execlocalassembly, EXECLOCALASSEMBLY )
-     ( f_ptr LocalAssembly, void *Model,void *Solver,void *dt,void *transient,void *M, void *D, void *S,void *F,void *Element,void *n,void *nd )
+void STDCALLBULL execlocalassembly_c( f_ptr LocalAssembly, void *Model,
+		         void *Solver,void *dt,void *transient,
+		         void *M, void *D, void *S,void *F,
+		         void *Element,void *n,void *nd )
 {
    DoLocalAssembly( (void (STDCALLBULL *)())*LocalAssembly,Model,Solver,dt,transient,M,D,S,F,Element,n,nd );
 }
@@ -700,8 +702,8 @@ static void DoMatVecSubr( void (STDCALLBULL *matvec)(),
 /*--------------------------------------------------------------------------
   This routine will call complete local matrix add-on
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(matvecsubr, MMATVECSUBR)
-     ( f_ptr matvec, void **SpMV, void *n, void *rows, void *cols, void *vals, void *u, void *v,void *reinit )
+void STDCALLBULL matvecsubrext_c( f_ptr matvec, void **SpMV, void *n, void *rows,
+		                          void *cols, void *vals, void *u, void *v,void *reinit )
 {
    DoMatVecSubr( (void (STDCALLBULL *)())*matvec,SpMV,n,rows,cols,vals,u,v,reinit);
 }

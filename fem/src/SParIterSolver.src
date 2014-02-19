@@ -2318,7 +2318,7 @@ REAL(kind=dp) :: s, RealTime
   Vals => InsideMatrix % Values
 
   IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
-    CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
+    CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
             GlobalMatrix % SpMV, n,Rows,Cols,Vals,u,v,0)
   ELSE
 !$omp parallel do private(j,rsum)
