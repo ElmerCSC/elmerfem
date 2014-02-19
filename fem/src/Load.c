@@ -635,8 +635,7 @@ static void DoIterCall( void (STDCALLBULL *iterProc)(),
 /*--------------------------------------------------------------------------
   This routine will call (Krylov) iterator
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(itercall,ITERCALL)
-     ( f_ptr iterProc, void *x, void *b, void *ipar, void *dpar, void *work, 
+void STDCALLBULL itercall_c( f_ptr iterProc, void *x, void *b, void *ipar, void *dpar, void *work,
        f_ptr mvProc, f_ptr pcondProc, f_ptr pcondrProc, f_ptr dotProc, f_ptr normProc, f_ptr STOPC )
 {
    DoIterCall( (void (STDCALLBULL *)())*iterProc,x,b,ipar,dpar,work,

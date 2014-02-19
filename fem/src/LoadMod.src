@@ -511,7 +511,8 @@ MODULE LoadMod
             INTEGER :: reinit
 
             INTERFACE
-                SUBROUTINE matvecsubrext_c(fptr, spmv, n, rows, cols, vals, u, v, reinit) BIND(C,name='matvecsubrext_c')
+                SUBROUTINE matvecsubrext_c(fptr, spmv, n, rows, cols, vals, u, v, reinit) &
+                    BIND(C,name='matvecsubrext_c')
                     USE, INTRINSIC :: ISO_C_BINDING
                     INTEGER(CAddrInt) :: fptr
                     INTEGER(CAddrInt) :: spmv
@@ -523,8 +524,38 @@ MODULE LoadMod
                 END SUBROUTINE
             END INTERFACE
 
+            ! TODO: interface should be properly tested
             CALL matvecsubrext_c(fptr, spmv, n, rows, cols, vals, u, v, reinit)
         END SUBROUTINE matvecsubrext
 
+        RECURSIVE SUBROUTINE itercall(fptr, x, b, ipar, dpar, work, &
+                            mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr )
+            IMPLICIT NONE
+
+            INTEGER(KIND=AddrInt) :: fptr
+            REAL(KIND=dp), DIMENSION(:) CONTIG :: x,b
+            INTEGER :: ipar(50)
+            REAL(KIND=dp) :: dpar(50)
+            REAL(KIND=dp) :: work(:,:)
+            INTEGER(KIND=Addrint) :: mvptr, pcondptr, pcondrptr, &
+                                     dotptr, normptr, stopcptr
+            INTERFACE
+                SUBROUTINE itercall_c(fptr, x, b, ipar, dpar, work, &
+                            mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr ) &
+                    BIND(C,name='itercall_c')
+                    USE, INTRINSIC :: ISO_C_BINDING
+                    INTEGER(CAddrInt) :: fptr
+                    REAL(C_DOUBLE) :: x(*), b(*)
+                    INTEGER(C_INT) :: ipar(50)
+                    REAL(C_DOUBLE) :: dpar(50)
+                    REAL(C_DOUBLE) :: work(*)
+                    INTEGER(CAddrInt) :: mvptr, pcondptr, pcondrptr, dotptr, &
+                                     normptr, stopcptr
+                END SUBROUTINE itercall_c
+            END INTERFACE
+
+            CALL itercall_c(fptr, x, b, ipar, dpar, work, &
+                            mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr)
+        END SUBROUTINE itercall
 
 END MODULE LoadMod
