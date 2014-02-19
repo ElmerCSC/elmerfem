@@ -30,7 +30,7 @@ Author(s):  Harri Hakula 10.03.98
 
 extern void make_filename(char *buf, const char *model, const char *suffix);
 
-static char *extension[] = {
+static const char *extension[] = {
   "%s/part.%d.header",
   "%s/part.%d.nodes",
   "%s/part.%d.shared",
