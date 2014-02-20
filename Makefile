@@ -27,7 +27,7 @@ export MPI_INCLUDE=$(MPI_HOME)/include
 
 # General compilation flags
 OPT_FLAGS=-O3 -g -m64 -fopenmp -ftree-vectorize -funroll-loops
-# OPT_FLAGS=-O0 -g -m64 -fopenmp -fbacktrace -Warray-bounds
+# OPT_FLAGS=-O0 -g -m64 -fopenmp -fbacktrace -Warray-bounds -Wuninitialized -Wall
 # OPT_FLAGS=-O0 -g -m64 -fopenmp -fbacktrace
 # OPT_FLAGS=-O3 -m64 -openmp
 
