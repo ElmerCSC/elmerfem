@@ -2143,8 +2143,8 @@ CONTAINS
       IF (tmp > norm) norm = tmp     
       s(i) = CMPLX( 1.0d0,0.0d0, kind=dp) / tmp
       DO j=Rows(2*i-1),Rows(2*i)-1,2
-        Values(j) = Values(j) * s(i) 
-        Values(j+1) = Values(j+1) * s(i) 
+        Values(j) = Values(j) * s(i)
+        Values(j+1) = Values(j+1) * s(i)
       END DO
     END DO
     !--------------------------------------------------------------
@@ -3413,7 +3413,7 @@ CONTAINS
       !-------------------------------------------------------------------
       ! Solve the Schur complement system...
       !-------------------------------------------------------------------
-      IF ( ANY( g /= CMPLX( 0.0d0,0.0d0 ) ) ) THEN     
+      IF ( ANY( g /= CMPLX( 0.0d0,0.0d0, KIND=dp ) ) ) THEN
         !-----------------------------------------------------------------
         CALL Info( 'AcousticsSolver', ' ', Level=4)
         CALL Info( 'AcousticsSolver', &
@@ -3459,7 +3459,7 @@ CONTAINS
           END DO
         END IF
 
-        IF ( ANY( VelRhs /= CMPLX( 0.0d0,0.0d0 ) ) ) THEN
+        IF ( ANY( VelRhs /= CMPLX( 0.0d0,0.0d0, KIND=dp ) ) ) THEN
           !-----------------------------------------------------------------
           CALL Info( 'AcousticsSolver', ' ', Level=4)
           CALL Info( 'AcousticsSolver', &
@@ -3475,7 +3475,7 @@ CONTAINS
 
       ELSE
 
-        IF ( ANY( VelRhs /= CMPLX( 0.0d0,0.0d0 ) ) ) THEN
+        IF ( ANY( VelRhs /= CMPLX( 0.0d0,0.0d0, KIND=dp ) ) ) THEN
           !-----------------------------------------------------------------
           CALL Info( 'AcousticsSolver', ' ', Level=4)
           CALL Info( 'AcousticsSolver', &
@@ -5737,10 +5737,10 @@ CONTAINS
           DO q=1,n
              DO j=1,dim
                 LSTIFF( (dim+2)*n+1, dim*n+1 ) = LSTIFF( (dim+2)*n+1, dim*n+1) + &
-                     CMPLX( 0.0d0, 1.0d0 ) * dBasisdx(n+1,j) * dBasisdx(q,j) * s                 
+                     CMPLX( 0.0d0, 1.0d0, kind=dp ) * dBasisdx(n+1,j) * dBasisdx(q,j) * s
 
                 LSTIFF( (dim+2)*n+1, dim*n+2 ) = LSTIFF( (dim+2)*n+1, dim*n+2) + &
-                     C1 * CMPLX( 0.0d0, 1.0d0 ) * dBasisdx(n+1,j) * dBasisdx(q,j) * s 
+                     C1 * CMPLX( 0.0d0, 1.0d0, kind=dp ) * dBasisdx(n+1,j) * dBasisdx(q,j) * s
                 
                 LSTIFF( (dim+2)*n+1, (q-1)*(dim+2)+j ) = LSTIFF( (dim+2)*n+1, (q-1)*(dim+2)+j ) - &
                   Basis(q) * dBasisdx(n+1,j)

@@ -138,14 +138,22 @@ END INTERFACE
        ! Print banner to output:
 #include "../config.h"
        ! -----------------------
+#ifdef USE_ISO_C_BINDINGS
+       NoArgs = COMMAND_ARGUMENT_COUNT()
+#else
        NoArgs = IARGC()
+#endif
        ! Info Level is always true until the model has been read!
        ! This makes it possible to cast something 
        Silent = .FALSE.
        Version = .FALSE.
        IF( NoArgs > 0 ) THEN 
          DO i = 1, NoArgs 
+#ifdef USE_ISO_C_BINDINGS
+           CALL GET_COMMAND_ARGUMENT(i, OptionString)
+#else
            CALL getarg( i,OptionString )
+#endif
            Silent = Silent .OR. &
                ( OptionString=='-s' .OR. OptionString=='--silent' ) 
            Version = Version .OR. &
@@ -158,7 +166,11 @@ END INTERFACE
        !$ nthreads = omp_get_max_threads()
        IF (nthreads > 1) THEN
          ! Check if OMP_NUM_THREADS environment variable is set
+#if USE_ISO_C_BINDINGS
+         CALL envir( 'OMP_NUM_THREADS', threads, tlen )
+#else
          CALL envir( 'OMP_NUM_THREADS'//CHAR(0), threads, tlen )
+#endif
          IF (tlen==0) THEN
            CALL Warn('MAIN','OMP_NUM_THREADS not set. Using only 1 thread.')
            nthreads = 1
@@ -227,10 +239,18 @@ END INTERFACE
      !----------------------------------------------------------------------
      GotModelName = .FALSE.
      IF ( ParEnv % PEs <= 1 .AND. NoArgs > 0 ) THEN
+#ifdef USE_ISO_C_BINDINGS
+       CALL GET_COMMAND_ARGUMENT(1, ModelName)
+#else
        CALL getarg( 1,ModelName )
+#endif
        IF( ModelName(1:1) /= '-') THEN 
          GotModelName = .TRUE.
+#ifdef USE_ISO_C_BINDINGS
+         IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
+#else
          IF ( NoArgs > 1 ) CALL getarg( 2,eq )
+#endif
        END IF
      END IF
          

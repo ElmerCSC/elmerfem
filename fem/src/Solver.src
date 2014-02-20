@@ -45,7 +45,11 @@ PROGRAM Solver
    CALL SET_STDIO_BUFS()
 #endif
 
+#ifdef USE_ISO_C_BINDINGS
+   CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL', toutput, tlen )
+#else
    CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL'//CHAR(0), toutput, tlen )
+#endif
    Silent = toutput(1:1)=='0' .OR. toutput(1:5)=='false'
 
    CT = CPUtime()

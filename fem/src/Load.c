@@ -44,7 +44,9 @@
 /* #include <elmer/matc.h> maybe in the future */
 
 /* eg. FC_CHAR_PTR and FC_FUNC is defined here */
+#ifndef USE_ISO_C_BINDINGS
 #include "../config.h"
+#endif
 
 #if defined(WIN32) | defined(MINGW32)
 #  include <direct.h>
@@ -56,6 +58,7 @@
 
 #define MAX_PATH_LEN 512
 
+#ifndef USE_ISO_C_BINDINGS
 #ifdef SGI64
 void corename_()
 {
@@ -65,6 +68,7 @@ void corename_()
 
  prctl( PR_COREPID,0,0 );
 }
+#endif
 #endif
 
 /* pc needs more bits on 64bit arch  */
@@ -88,8 +92,12 @@ void STDCALLBULL FC_FUNC_(set_stdio_bufs,SET_STDIO_BUFS) ()
 /*--------------------------------------------------------------------------
   This routine will return the home directory of elmer solver.
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL getsolverhome( char *solverDir, int *len)
+#else
 void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME) 
      ( char *solverDir, int *len)
+#endif
 {
   *len = 0;
 
@@ -141,8 +149,12 @@ void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME)
 /*--------------------------------------------------------------------------
   This routine will create a directory given name of the directory.
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC(makedirectory,MAKEDIRECTORY) 
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL makedirectory(char *Name)
+#else
+void STDCALLBULL FC_FUNC(makedirectory,MAKEDIRECTORY)
      (char *Name)
+#endif
 {
 #if defined(WIN32) || defined(MINGW32)
     if ( _mkdir( Name ) != 0 ) {
@@ -153,6 +165,7 @@ void STDCALLBULL FC_FUNC(makedirectory,MAKEDIRECTORY)
     }
 }
 
+#ifndef USE_ISO_C_BINDINGS
 /*--------------------------------------------------------------------------
   This routine execute a operating system command.
   -------------------------------------------------------------------------*/
@@ -175,6 +188,7 @@ void STDCALLBULL FC_FUNC(envir,ENVIR) (char *Name, char *Value, int *len)
       *Value = '\0';
     }
 }
+#endif
 
 /*--------------------------------------------------------------------------
   Internal: convert function names into to fortran mangled form for dynamical
@@ -228,8 +242,12 @@ static void fortranMangle(char *orig, char *mangled)
   This routine will return address of a function given path to a dynamically
   loaded library and name of the routine.
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void *STDCALLBULL loadfunction_c( int *Quiet, int *abort_not_found, char *Library, char *Name )
+#else
 void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet,
       int *abort_not_found, char *Library, char *Name )
+#endif
 {
 /*--------------------------------------------------------------------------*/
    void (*Function)(),*Handle;
@@ -442,7 +460,11 @@ static int IntExec( int (STDCALLBULL *Function)(),void *Model )
 /*--------------------------------------------------------------------------
    Execute given function returning integer value
    -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+int STDCALLBULL execintfunction_c( f_ptr Function,void *Model )
+#else
 int STDCALLBULL FC_FUNC(execintfunction,EXECINTFUNCTION) ( f_ptr Function,void *Model )
+#endif
 {
   return IntExec( (int (STDCALLBULL *)())*Function,Model );
 }
@@ -459,9 +481,14 @@ static void DoubleArrayExec( double *(STDCALLBULL *Function)(), void *Model,
 /*--------------------------------------------------------------------------
    Execute given function returning double value
    -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL execrealarrayfunction_c( f_ptr Function, void *Model,
+										int *Node, double *Value, double *Array )
+#else
 void STDCALLBULL FC_FUNC(execrealarrayfunction,EXECREALARRAYFUNCTION)
      ( f_ptr Function, void *Model,
        int *Node, double *Value, double *Array )
+#endif
 {
    DoubleArrayExec( (double*(STDCALLBULL *)())*Function,Model,Node,Value, Array );
 }
@@ -478,9 +505,14 @@ static double DoubleExec( double (STDCALLBULL *Function)(), void *Model,
 /*--------------------------------------------------------------------------
    Execute given function returning double value
    -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+double STDCALLBULL execrealfunction_c( f_ptr Function, void *Model,
+									 int *Node, double *Value )
+#else
 double STDCALLBULL FC_FUNC(execrealfunction,EXECREALFUNCTION)
      ( f_ptr Function, void *Model,
        int *Node, double *Value )
+#endif
 {
    return DoubleExec( (double (STDCALLBULL *)())*Function,Model,Node,Value );
 }
@@ -497,9 +529,14 @@ static double ConstDoubleExec( double (STDCALLBULL *Function)(), void *Model,
 /*--------------------------------------------------------------------------
    Execute given function returning double value
    -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+double STDCALLBULL execconstrealfunction_c( f_ptr Function, void *Model,
+										  double *x, double *y, double *z )
+#else
 double STDCALLBULL FC_FUNC(execconstrealfunction,EXECCONSTREALFUNCTION)
      ( f_ptr Function, void *Model,
        double *x, double *y, double *z )
+#endif
 {
    return ConstDoubleExec( (double (STDCALLBULL *)())*Function,Model,x,y,z );
 }
@@ -508,7 +545,11 @@ double STDCALLBULL FC_FUNC(execconstrealfunction,EXECCONSTREALFUNCTION)
 /*--------------------------------------------------------------------------
    Return argument (just to fool Fortran type checking)
    -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void *STDCALLBULL addrfunc_c( void *Function )
+#else
 void *STDCALLBULL FC_FUNC(addrfunc,ADDRFUNC) ( void *Function )
+#endif
 {
    return (void *)Function;
 }
@@ -526,8 +567,13 @@ static void DoExecSolver(
 /*--------------------------------------------------------------------------
    Call solver routines at given address
    -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL execsolver_c( f_ptr *SolverProc, void *Model, void *Solver,
+								void *dt, void *Transient )
+#else
 void STDCALLBULL FC_FUNC(execsolver,EXECSOLVER)
      ( f_ptr *SolverProc, void *Model, void *Solver, void *dt, void *Transient )
+#endif
 {
   DoExecSolver( (void (STDCALLBULL *)())*SolverProc,Model,Solver,dt,Transient );
 }
@@ -546,8 +592,13 @@ static int DoLinSolveProcs(
 /*--------------------------------------------------------------------------
    Call lin. solver routines at given address
    -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+int STDCALLBULL execlinsolveprocs_c( f_ptr *SolverProc, void *Model, void *Solver,
+						void *Matrix, void *b, void *x, void *n, void *DOFs, void *Norm )
+#else
 int STDCALLBULL FC_FUNC(execlinsolveprocs,EXECLINSOLVEPROCS)
      ( f_ptr *SolverProc, void *Model, void *Solver, void *Matrix, void *b, void *x, void *n, void *DOFs, void *Norm )
+#endif
 {
    return DoLinSolveProcs( (int (STDCALLBULL *)())*SolverProc,Model,Solver,Matrix,b,x,n,DOFs,Norm );
 }
@@ -558,8 +609,12 @@ void mtc_init(FILE *,FILE *, FILE *);
 /*--------------------------------------------------------------------------
   This routine will call matc and return matc variable array values
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL matc_get_array(char *name, double *values, int *nrows, int *ncols )
+#else
 void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name, 
            double *values, int *nrows, int *ncols )
+#endif
 {
   var_copy_transpose(name,values,*nrows,*ncols);
 }
@@ -567,7 +622,11 @@ void STDCALLBULL FC_FUNC_(matc_get_array,MATC_GET_ARRAY) (char *name,
 /*--------------------------------------------------------------------------
   This routine will call matc and return matc result
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL matc( char *cmd, char *Value, int *len )
+#else
 void STDCALLBULL FC_FUNC(matc,MATC) ( char *cmd, char *Value, int *len )
+#endif
 {
 #define MAXLEN 8192
 
@@ -631,8 +690,13 @@ static double DoViscFunction(double (STDCALLBULL *SolverProc)(), void *Model, vo
 /*--------------------------------------------------------------------------
   This routine will call user defined material def. function
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+double STDCALLBULL materialuserfunction_c( f_ptr Function, void *Model, void *Element,
+		void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
+#else
 double STDCALLBULL FC_FUNC(materialuserfunction,MATERIALUSERFUNCTION)
   ( f_ptr Function, void *Model, void *Element, void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
+#endif
 {
    return DoViscFunction( (double (STDCALLBULL *)())*Function,Model,Element,Nodes,n,Basis,
                   GradBasis,Viscosity,Velo,gradV );
@@ -649,8 +713,12 @@ static void DoSimulationProc( void (STDCALLBULL *SimulationProc)(), void *Model 
 /*--------------------------------------------------------------------------
   This routine will call user defined material def. function
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL execsimulationproc_c( f_ptr Function, void *Model )
+#else
 void STDCALLBULL FC_FUNC(execsimulationproc,EXECSIMULATIONPROC)
      ( f_ptr Function, void *Model )
+#endif
 {
    DoSimulationProc( (void (STDCALLBULL *)())*Function,Model );
 }
@@ -675,9 +743,14 @@ static void DoIterCall( void (STDCALLBULL *iterProc)(),
 /*--------------------------------------------------------------------------
   This routine will call (Krylov) iterator
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL itercall_c( f_ptr iterProc, void *x, void *b, void *ipar, void *dpar, void *work,
+       f_ptr mvProc, f_ptr pcondProc, f_ptr pcondrProc, f_ptr dotProc, f_ptr normProc, f_ptr STOPC )
+#else
 void STDCALLBULL FC_FUNC(itercall,ITERCALL)
      ( f_ptr iterProc, void *x, void *b, void *ipar, void *dpar, void *work, 
        f_ptr mvProc, f_ptr pcondProc, f_ptr pcondrProc, f_ptr dotProc, f_ptr normProc, f_ptr STOPC )
+#endif
 {
    DoIterCall( (void (STDCALLBULL *)())*iterProc,x,b,ipar,dpar,work,
        (void (STDCALLBULL *)())*mvProc, 
@@ -700,8 +773,13 @@ static void DoLocalCall( void (STDCALLBULL *localProc)(),
 /*--------------------------------------------------------------------------
   This routine will call local matrix add-on
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL execlocalproc_c( f_ptr localProc, void *Model,void *Solver,
+								void *G, void *F, void *Element,void *n,void *nd )
+#else
 void STDCALLBULL FC_FUNC(execlocalproc, EXECLOCALPROC )
      ( f_ptr localProc, void *Model,void *Solver,void *G, void *F, void *Element,void *n,void *nd )
+#endif
 {
    DoLocalCall( (void (STDCALLBULL *)())*localProc,Model,Solver,G,F,Element,n,nd );
 }
@@ -720,8 +798,15 @@ static void DoLocalAssembly( void (STDCALLBULL *LocalAssembly)(),
 /*--------------------------------------------------------------------------
   This routine will call complete local matrix add-on
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL execlocalassembly_c( f_ptr LocalAssembly, void *Model,
+		         void *Solver,void *dt,void *transient,
+		         void *M, void *D, void *S,void *F,
+		         void *Element,void *n,void *nd )
+#else
 void STDCALLBULL FC_FUNC(execlocalassembly, EXECLOCALASSEMBLY )
      ( f_ptr LocalAssembly, void *Model,void *Solver,void *dt,void *transient,void *M, void *D, void *S,void *F,void *Element,void *n,void *nd )
+#endif
 {
    DoLocalAssembly( (void (STDCALLBULL *)())*LocalAssembly,Model,Solver,dt,transient,M,D,S,F,Element,n,nd );
 }
@@ -740,8 +825,13 @@ static void DoMatVecSubr( void (STDCALLBULL *matvec)(),
 /*--------------------------------------------------------------------------
   This routine will call complete local matrix add-on
   -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL matvecsubrext_c( f_ptr matvec, void **SpMV, void *n, void *rows,
+		                          void *cols, void *vals, void *u, void *v,void *reinit )
+#else
 void STDCALLBULL FC_FUNC(matvecsubr, MMATVECSUBR)
      ( f_ptr matvec, void **SpMV, void *n, void *rows, void *cols, void *vals, void *u, void *v,void *reinit )
+#endif
 {
    DoMatVecSubr( (void (STDCALLBULL *)())*matvec,SpMV,n,rows,cols,vals,u,v,reinit);
 }

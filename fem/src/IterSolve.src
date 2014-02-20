@@ -190,8 +190,11 @@ CONTAINS
     
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
-        pcondrProc=0, mvProc, AddrFunc, iterProc, StopcProc
-    
+        pcondrProc=0, mvProc, iterProc, StopcProc
+#ifndef USE_ISO_C_BINDINGS
+    INTEGER(KIND=Addrint) :: AddrFunc
+#endif
+
     INTERFACE
       SUBROUTINE VankaCreate(A,Solver)
         USE Types

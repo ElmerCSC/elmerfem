@@ -2460,6 +2460,7 @@ CONTAINS
      INTEGER(KIND=AddrInt) :: Proc
      INTEGER, POINTER :: Indexes(:)
 
+#ifndef USE_ISO_C_BINDINGS
      INTERFACE 
        SUBROUTINE ExecLocalProc( Proc, Model, Solver, G, F, Element, n, nd )
          USE Types
@@ -2471,6 +2472,7 @@ CONTAINS
          REAL(KIND=dp) :: G(:,:), F(:)
        END SUBROUTINE ExecLocalProc
      END INTERFACE
+#endif
 
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver

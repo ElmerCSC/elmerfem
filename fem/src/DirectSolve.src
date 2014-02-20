@@ -1631,7 +1631,11 @@ CONTAINS
         nrhs      = 1
 
 !  ..   Numbers of Processors ( value of OMP_NUM_THREADS )
+#ifdef USE_ISO_C_BINDINGS
+        CALL envir( 'OMP_NUM_THREADS', threads, tlen )
+#else
         CALL envir( 'OMP_NUM_THREADS'//char(0), threads, tlen )
+#endif
         iparm(3) = 1
         IF ( tlen>0 ) &
           READ(threads(1:tlen),*) iparm(3)

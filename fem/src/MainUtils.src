@@ -1635,6 +1635,7 @@ CONTAINS
     LOGICAL :: BulkMode, AssemblySymmetric, AssemblyAntiSymmetric, IsListMatrix
     LOGICAL :: AllocationsDone = .FALSE., Diagonal
 
+#ifndef USE_ISO_C_BINDINGS
     INTERFACE 
       SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
           M, D, S, F, Element, Nrow, Ncol )
@@ -1649,7 +1650,7 @@ CONTAINS
         INTEGER :: Nrow, Ncol
       END SUBROUTINE ExecLocalAssembly
     END INTERFACE
-
+#endif
     SAVE :: AllocationsDone, AllocCols, AllocRows, &
         FORCE, STIFF, DAMP, MASS, ColInds, RowInds, indexes
 
@@ -1946,6 +1947,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: SolverParams
 
+#ifndef USE_ISO_C_BINDINGS
     INTERFACE 
       SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
           M, D, S, F, Element, Nrow, Ncol )
@@ -1960,7 +1962,7 @@ CONTAINS
         INTEGER :: Nrow, Ncol
       END SUBROUTINE ExecLocalAssembly
     END INTERFACE
-    
+#endif
 
     SolverParams => GetSolverParams()
 

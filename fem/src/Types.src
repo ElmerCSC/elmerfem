@@ -41,19 +41,21 @@
 !> Type definitions for Elmer library.
 !------------------------------------------------------------------------------
 
+#ifndef USE_ISO_C_BINDINGS
 #include "../config.h"
+#endif
 MODULE Types
  
    USE Messages
    USE iso_varying_string
-   USE iso_c_binding
+   USE, INTRINSIC :: ISO_C_BINDING
 
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
 
 #if defined(ARCH_32_BITS)
    INTEGER, PARAMETER :: AddrInt = SELECTED_INT_KIND(9)
 #else
-  INTEGER, PARAMETER :: AddrInt = SELECTED_INT_KIND(18)
+   INTEGER, PARAMETER :: AddrInt = SELECTED_INT_KIND(18)
 #endif
 
    INTEGER, PARAMETER :: dp = SELECTED_REAL_KIND(12)
@@ -87,6 +89,7 @@ MODULE Types
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
 !------------------------------------------------------------------------------
 
+#ifndef USE_ISO_C_BINDINGS
 INTERFACE
   SUBROUTINE Envir(a,b,len)
      USE, INTRINSIC :: ISO_C_BINDING
@@ -110,6 +113,7 @@ INTERFACE
      CHARACTER(C_CHAR) :: cmd(*), VALUE(*)
   END SUBROUTINE Matc
 END INTERFACE
+#endif
 
 #ifdef HAVE_MUMPS
   INCLUDE 'dmumps_struc.h'

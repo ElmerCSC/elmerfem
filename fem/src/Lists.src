@@ -61,6 +61,7 @@ MODULE Lists
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_SCALAR_STR = 10
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_TENSOR_STR = 11
 
+#ifndef USE_ISO_C_BINDINGS
    INTERFACE
      FUNCTION ExecIntFunction( Proc,Md ) RESULT(int)
        USE Types
@@ -123,7 +124,7 @@ MODULE Lists
        REAL(KIND=dp) :: dbl,x,y,z
      END FUNCTION ExecConstRealFunction
    END INTERFACE
-
+#endif
    TYPE(Varying_string), SAVE, PRIVATE :: Namespace
    !$OMP THREADPRIVATE(NameSpace)
 
@@ -1541,7 +1542,7 @@ CONTAINS
      IF ( ptr % PROCEDURE /= 0 ) THEN
        IValues = 0
        DO i=1,N
-         Ivalues(i) = ExecIntFunction( ptr % PROCEDURE,CurrentModel )
+         Ivalues(i) = ExecIntFunction( ptr % PROCEDURE, CurrentModel )
        END DO
      END IF
 !------------------------------------------------------------------------------
@@ -2041,7 +2042,7 @@ CONTAINS
      CASE( LIST_TYPE_VARIABLE_SCALAR )
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
-         F = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
+         F = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1:1) )
        ELSE
          IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
            WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -2270,7 +2271,7 @@ CONTAINS
          ! there is no node index, so use zero
          j = 0 
          IF ( ptr % PROCEDURE /= 0 ) THEN
-           val = ExecRealFunction( ptr % PROCEDURE,CurrentModel, j, T )              
+           val = ExecRealFunction( ptr % PROCEDURE,CurrentModel, j, T )
          ELSE
            val = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
                T(1), ptr % CubicCoeff )
@@ -2685,7 +2686,7 @@ CONTAINS
            READ( tmp_str(1:k1), * ) ((F(j,k,i),k=1,N2),j=1,N1)
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
            G => F(:,:,i)
-           CALL ExecRealArrayFunction( ptr % PROCEDURE,CurrentModel, &
+           CALL ExecRealArrayFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G )
          ELSE
            DO j=1,N1

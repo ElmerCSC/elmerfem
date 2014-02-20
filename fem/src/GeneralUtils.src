@@ -34,7 +34,9 @@
 ! *
 ! *****************************************************************************/
 
+#ifndef USE_ISO_C_BINDINGS
 #include "../config.h"
+#endif
 
 !> \ingroup ElmerLib
 !> \}
@@ -45,6 +47,9 @@
 MODULE GeneralUtils
 
 USE Types
+#ifdef USE_ISO_C_BINDINGS
+USE LoadMod
+#endif
 
 IMPLICIT NONE
 

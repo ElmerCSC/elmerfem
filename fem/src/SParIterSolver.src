@@ -2318,8 +2318,13 @@ REAL(kind=dp) :: s, RealTime
   Vals => InsideMatrix % Values
 
   IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
+#ifdef USE_ISO_C_BINDINGS
+    CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
+            GlobalMatrix % SpMV, n,Rows,Cols,Vals,u,v,0)
+#else
     CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
             GlobalMatrix % SpMV, n,Rows,Cols,Vals,u,v,0)
+#endif
   ELSE
 !$omp parallel do private(j,rsum)
     DO i = 1, n

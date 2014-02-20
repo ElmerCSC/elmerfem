@@ -227,6 +227,7 @@ this ise not in USE
 
      LOGICAL :: SetArrheniusFactor=.FALSE.
 
+#ifndef USE_ISO_C_BINDINGS
      INTERFACE
         FUNCTION MaterialUserFunction( Proc,Model,Element,Nodes,n,nd, &
              Basis,dBasisdx,Viscosity,Velo, dVelodx ) RESULT(s)
@@ -240,6 +241,7 @@ this ise not in USE
                Velo(:), dVelodx(:,:), s
         END FUNCTION MaterialUserFunction
      END INTERFACE
+#endif
      !------------------------------------------------------------------------------
      mu = Viscosity
      IF ( PRESENT(muder) ) muder=0
@@ -633,6 +635,7 @@ this ise not in USE
      INTEGER :: n,nd
      TYPE(Element_t),POINTER :: Element
 
+#ifndef USE_ISO_C_BINDINGS
      INTERFACE
        FUNCTION MaterialUserFunction( Proc,Model,Element,Nodes,n,nd, &
           Basis,dBasisdx,Conductivity,Temp, dTempdx ) RESULT(s)
@@ -646,6 +649,7 @@ this ise not in USE
                     Temp(:), dTempdx(:,:), s
        END FUNCTION MaterialUserFunction
      END INTERFACE
+#endif
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3)
      LOGICAL :: stat,GotIt
