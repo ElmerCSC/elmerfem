@@ -3,7 +3,7 @@ INCLUDE(CheckIncludeFiles)
 
 CHECK_INCLUDE_FILES(inttypes.h HAVE_INTTYPES_H)
 
-SET(FC_CHAR_PTR "(P,L) char *P")
+#SET(FC_CHAR_PTR "(P,L) char *P")
 
 CONFIGURE_FILE(config.h.cmake config.h)
 

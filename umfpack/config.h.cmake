@@ -1,7 +1,7 @@
 #ifndef CONFIG_H_UMFPACK
 #define CONFIG_H_UMFPACK
 
-#include "FCMangle.h"
+/* #include "FCMangle.h" */
 
 /* Couldn't determine. sticking with 32 bits. */
 #cmakedefine ARCH_32_BITS

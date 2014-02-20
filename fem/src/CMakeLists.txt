@@ -8,7 +8,7 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.cmake
 
 SET(solverlib_SOURCES NavierStokes.F90 NavierStokesGeneral.F90
   NavierStokesCylindrical.F90 Lists.F90
-  DiffuseConvectiveAnisotropic.F90
+  DiffuseConvectiveAnisotropic.F90 LoadMod.F90
   DiffuseConvectiveGeneralAnisotropic.F90 PElementMaps.F90
   PElementBase.F90 ElementDescription.F90 Integration.F90
   ModelDescription.F90 GeneralUtils.F90 Stress.F90 StressGeneral.F90

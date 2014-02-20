@@ -44,9 +44,9 @@
 /* #include <elmer/matc.h> maybe in the future */
 
 /* eg. FC_CHAR_PTR and FC_FUNC is defined here */
-#ifndef USE_ISO_C_BINDINGS
+
 #include "../config.h"
-#endif
+
 
 #if defined(WIN32) | defined(MINGW32)
 #  include <direct.h>
@@ -199,6 +199,8 @@ static void fortranMangle(char *orig, char *mangled)
   int uscore, i;
   
   strcpy( mangled, orig );
+
+#ifndef USE_ISO_C_BINDINGS  
   if(ELMER_LINKTYP == 1 || ELMER_LINKTYP == 3 || ELMER_LINKTYP == 4)
   {
     for( i=0 ; i<strlen(mangled) ; i++ ) /* to lower case */
@@ -236,6 +238,7 @@ static void fortranMangle(char *orig, char *mangled)
       strcat( mangled, "__" );
     }
   }
+#endif
 }
 
 /*--------------------------------------------------------------------------

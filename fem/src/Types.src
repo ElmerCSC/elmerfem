@@ -41,9 +41,8 @@
 !> Type definitions for Elmer library.
 !------------------------------------------------------------------------------
 
-#ifndef USE_ISO_C_BINDINGS
 #include "../config.h"
-#endif
+
 MODULE Types
  
    USE Messages

@@ -1,13 +1,14 @@
 #ifndef CONFIG_H_FEM
 #define CONFIG_H_FEM
 
-#include "FCMangle.h"
+/* This is for easier transition to new bindings */
+#ifdef USE_ISO_C_BINDINGS
+#define FC_FUNC(name, NAME) name
+#define FC_FUNC_(name, NAME) name
+#endif
 
 #cmakedefine VERSION "${VERSION}"
 #cmakedefine HAVE_INTTYPES_H
-#cmakedefine FC_FUNC ${FC_FUNC}
-#cmakedefine FC_FUNC_ ${FC_FUNC_}
-#cmakedefine FC_CHAR_PTR${FC_CHAR_PTR}
 #cmakedefine ELMER_SOLVER_HOME "${ELMER_SOLVER_HOME}"
 
 #cmakedefine OFF_KIND @OFF_KIND@
