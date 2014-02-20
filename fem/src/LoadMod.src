@@ -94,6 +94,11 @@ MODULE LoadMod
                          AddrFuncCmp, AddrFuncDblCmp
     END INTERFACE AddrFunc
 
+    ! Overloads for IterCall
+    INTERFACE IterCall
+        MODULE PROCEDURE IterCallR, IterCallC
+    END INTERFACE IterCall
+
     CONTAINS
 
         SUBROUTINE systemc(cmd)
@@ -215,7 +220,7 @@ MODULE LoadMod
         END FUNCTION loadfunction
 
         ! DYNAMIC FUNCTION CALLS (wrappers via module procedures)
-        FUNCTION execintfunction(fptr, model ) RESULT(intval)
+        RECURSIVE FUNCTION execintfunction(fptr, model ) RESULT(intval)
             IMPLICIT NONE
             INTEGER(KIND=AddrInt) :: fptr
             TYPE(Model_t), POINTER :: model
@@ -237,7 +242,7 @@ MODULE LoadMod
             intval = pptr(model)
         END FUNCTION execintfunction
 
-        FUNCTION execconstrealfunction(fptr, model, x, y, z) RESULT(realval)
+        RECURSIVE FUNCTION execconstrealfunction(fptr, model, x, y, z) RESULT(realval)
             IMPLICIT NONE
             INTEGER(KIND=AddrInt) :: fptr
             TYPE(Model_t), POINTER :: model
@@ -261,7 +266,7 @@ MODULE LoadMod
             realval = pptr(model, x, y, z)
         END FUNCTION execconstrealfunction
 
-        FUNCTION execrealfunction(fptr, model, node, val) RESULT(realval)
+        RECURSIVE FUNCTION execrealfunction(fptr, model, node, val) RESULT(realval)
             IMPLICIT NONE
             INTEGER(KIND=AddrInt) :: fptr
             TYPE(Model_t), POINTER :: model
@@ -287,7 +292,7 @@ MODULE LoadMod
             realval = pptr(model, node, val)
         END FUNCTION execrealfunction
 
-        SUBROUTINE execrealarrayfunction(fptr, model, node, val, arr )
+        RECURSIVE SUBROUTINE execrealarrayfunction(fptr, model, node, val, arr )
             IMPLICIT NONE
             INTEGER(KIND=AddrInt) :: fptr
             TYPE(Model_t), POINTER :: model
@@ -312,16 +317,6 @@ MODULE LoadMod
             CALL C_F_PROCPOINTER(cfptr, pptr)
             CALL pptr(model, node, val, arr)
         END SUBROUTINE execrealarrayfunction
-
-!       TODO
-!        FUNCTION addrfunc(?) RESULT(ptr)
-!            IMPLICIT NONE
-!
-!            PROCEDURE(?) :: proc
-!            INTEGER(KIND=AddrInt) :: ptr
-!
-!            ptr = TRANSFER(proc, ptr)
-!        END FUNCTION addrfunc
 
         SUBROUTINE execsolver(fptr, model, solver, dt, transient)
             IMPLICIT NONE
@@ -405,7 +400,7 @@ MODULE LoadMod
             CALL pptr(model)
         END SUBROUTINE execsimulationproc
 
-        FUNCTION execlinsolveprocs(fptr, model, solver, mtr, b, x, n, DOFs, nrm) RESULT(intval)
+        RECURSIVE FUNCTION execlinsolveprocs(fptr, model, solver, mtr, b, x, n, DOFs, nrm) RESULT(intval)
             IMPLICIT NONE
             INTEGER(KIND=AddrInt) :: fptr
             TYPE(Model_t) :: model
@@ -528,7 +523,7 @@ MODULE LoadMod
             CALL matvecsubrext_c(fptr, spmv, n, rows, cols, vals, u, v, reinit)
         END SUBROUTINE matvecsubrext
 
-        RECURSIVE SUBROUTINE itercall(fptr, x, b, ipar, dpar, work, &
+        RECURSIVE SUBROUTINE itercallR(fptr, x, b, ipar, dpar, work, &
                             mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr )
             IMPLICIT NONE
 
@@ -556,6 +551,36 @@ MODULE LoadMod
 
             CALL itercall_c(fptr, x, b, ipar, dpar, work, &
                             mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr)
-        END SUBROUTINE itercall
+        END SUBROUTINE itercallR
+
+        RECURSIVE SUBROUTINE itercallC(fptr, x, b, ipar, dpar, work, &
+                            mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr )
+            IMPLICIT NONE
+
+            INTEGER(KIND=AddrInt) :: fptr
+            COMPLEX(KIND=dp), DIMENSION(:) CONTIG :: x,b
+            INTEGER :: ipar(50)
+            REAL(KIND=dp) :: dpar(50)
+            REAL(KIND=dp) :: work(:,:)
+            INTEGER(KIND=Addrint) :: mvptr, pcondptr, pcondrptr, &
+                                     dotptr, normptr, stopcptr
+            INTERFACE
+                SUBROUTINE itercall_c(fptr, x, b, ipar, dpar, work, &
+                            mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr ) &
+                    BIND(C,name='itercall_c')
+                    USE, INTRINSIC :: ISO_C_BINDING
+                    INTEGER(CAddrInt) :: fptr
+                    COMPLEX(C_DOUBLE_COMPLEX) :: x(*), b(*)
+                    INTEGER(C_INT) :: ipar(50)
+                    REAL(C_DOUBLE) :: dpar(50)
+                    REAL(C_DOUBLE) :: work(*)
+                    INTEGER(CAddrInt) :: mvptr, pcondptr, pcondrptr, dotptr, &
+                                     normptr, stopcptr
+                END SUBROUTINE itercall_c
+            END INTERFACE
+
+            CALL itercall_c(fptr, x, b, ipar, dpar, work, &
+                            mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr)
+        END SUBROUTINE itercallC
 
 END MODULE LoadMod
