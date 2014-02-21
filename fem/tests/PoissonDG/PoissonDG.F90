@@ -69,7 +69,11 @@
 
      LOGICAL :: AllocationsDone = .FALSE., GotIt, Stat
      INTEGER :: k, n, t, istat, i, j, Indexes(128)
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: Norm, at, st, Gamma
+#else
      REAL(KIND=dp) :: Norm, at, st, CPUTime, Gamma
+#endif
      REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), &
               FORCE(:), EpsilonBoundary(:)
 

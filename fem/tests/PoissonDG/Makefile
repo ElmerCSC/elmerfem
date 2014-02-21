@@ -2,7 +2,7 @@
 #
 run:
 #	$(ELMER_GRID) 1 2 square
-	$(F90) -c PoissonDG.f90
+	$(F90) -c PoissonDG.F90
 	$(LD) -o PoissonDG$(SHL_EXT) PoissonDG$(OBJ_EXT) $(LIBS)
 	$(ELMER_SOLVER)
 
