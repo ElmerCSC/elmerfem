@@ -311,7 +311,105 @@ CONTAINS
 
 #include "../config.h"
 #ifdef HAVE_UMFPACK
+#ifdef USE_ISO_C_BINDINGS
+
+#ifdef ARCH_32_BITS
+#define CAddrInt c_int32_t
+#else
+#define CAddrInt c_int64_t
+#endif
+  ! Standard int version
   INTERFACE
+    SUBROUTINE umf4def( control ) &
+       BIND(C,name='umf4def')
+       USE, INTRINSIC :: ISO_C_BINDING
+       REAL(C_DOUBLE) :: control(*)
+    END SUBROUTINE umf4def
+
+    SUBROUTINE umf4sym( m,n,rows,cols,values,symbolic,control,iinfo ) &
+       BIND(C,name='umf4sym')
+       USE, INTRINSIC :: ISO_C_BINDING
+       INTEGER(C_INT) :: m,n,rows(*),cols(*)
+       INTEGER(CAddrInt) ::  symbolic
+       REAL(C_DOUBLE) :: Values(*), control(*),iinfo(*)
+    END SUBROUTINE umf4sym
+
+    SUBROUTINE umf4num( rows,cols,values,symbolic,numeric, control,iinfo ) &
+       BIND(C,name='umf4num')
+       USE, INTRINSIC :: ISO_C_BINDING
+       INTEGER(C_INT) :: rows(*),cols(*)
+       INTEGER(CAddrInt) ::  numeric, symbolic
+       REAL(C_DOUBLE) :: Values(*), control(*),iinfo(*)
+    END SUBROUTINE umf4num
+
+    SUBROUTINE umf4sol( sys, x, b, numeric, control, iinfo ) &
+       BIND(C,name='umf4sol')
+       USE, INTRINSIC :: ISO_C_BINDING
+       INTEGER(C_INT) :: sys
+       INTEGER(CAddrInt) :: numeric
+       REAL(C_DOUBLE) :: x(*), b(*), control(*), iinfo(*)
+    END SUBROUTINE umf4sol
+
+    SUBROUTINE umf4fsym(symbolic) &
+        BIND(C,name='umf4fsym')
+        USE, INTRINSIC :: ISO_C_BINDING
+        INTEGER(CAddrInt) :: symbolic
+    END SUBROUTINE umf4fsym
+
+    SUBROUTINE umf4fnum(numeric) &
+        BIND(C,name='umf4fnum')
+        USE, INTRINSIC :: ISO_C_BINDING
+        INTEGER(CAddrInt) :: numeric
+    END SUBROUTINE umf4fnum
+
+  END INTERFACE
+
+  ! Long int version
+  INTERFACE
+    SUBROUTINE umf4_l_def( control ) &
+       BIND(C,name='umf4_l_def')
+       USE, INTRINSIC :: ISO_C_BINDING
+       REAL(C_DOUBLE) :: control(*)
+    END SUBROUTINE umf4_l_def
+
+    SUBROUTINE umf4_l_sym( m,n,rows,cols,values,symbolic,control,iinfo ) &
+       BIND(C,name='umf4_l_sym')
+       USE, INTRINSIC :: ISO_C_BINDING
+       INTEGER(C_LONG) :: m,n,rows(*),cols(*)
+       INTEGER(CAddrInt) ::  symbolic
+       REAL(C_DOUBLE) :: Values(*), control(*),iinfo(*)
+    END SUBROUTINE umf4_l_sym
+
+    SUBROUTINE umf4_l_num( rows,cols,values,symbolic,numeric, control,iinfo ) &
+       BIND(C,name='umf4_l_num')
+       USE, INTRINSIC :: ISO_C_BINDING
+       INTEGER(C_LONG) :: rows(*),cols(*)
+       INTEGER(CAddrInt) ::  numeric, symbolic
+       REAL(C_DOUBLE) :: Values(*), control(*),iinfo(*)
+    END SUBROUTINE umf4_l_num
+
+    SUBROUTINE umf4_l_sol( sys, x, b, numeric, control, iinfo ) &
+       BIND(C,name='umf4_l_sol')
+       USE, INTRINSIC :: ISO_C_BINDING
+       INTEGER(C_LONG) :: sys
+       INTEGER(CAddrInt) :: numeric
+       REAL(C_DOUBLE) :: x(*), b(*), control(*), iinfo(*)
+    END SUBROUTINE umf4_l_sol
+
+    SUBROUTINE umf4_l_fnum(numeric) &
+        BIND(C,name='umf4_l_fnum')
+        USE, INTRINSIC :: ISO_C_BINDING
+        INTEGER(CAddrInt) :: numeric
+    END SUBROUTINE umf4_l_fnum
+
+    SUBROUTINE umf4_l_fsym(symbolic) &
+        BIND(C,name='umf4_l_fsym')
+        USE, INTRINSIC :: ISO_C_BINDING
+        INTEGER(CAddrInt) :: symbolic
+    END SUBROUTINE umf4_l_fsym
+  END INTERFACE
+#else
+    INTERFACE
     SUBROUTINE umf4def( control )
        USE Types
        REAL(KIND=dp) :: control(*) 
@@ -364,6 +462,7 @@ CONTAINS
        REAL(KIND=dp) :: x(*), b(*), control(*), iinfo(*)
     END SUBROUTINE umf4_l_sol
   END INTERFACE
+#endif
 
   INTEGER :: i, n, status, sys
   REAL(KIND=dp) :: iInfo(90), Control(20)
