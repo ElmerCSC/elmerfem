@@ -101,7 +101,11 @@
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Solver_t), POINTER :: Solver
 
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: CT0,RT0,tt
+#else
      REAL(KIND=dp) :: RealTime,CPUTime,CT0,RT0,tt
+#endif
 
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
      LOGICAL :: Silent, Version, GotModelName
@@ -1169,7 +1173,11 @@ END INTERFACE
 
      TYPE(Solver_t), POINTER :: Solver
 
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: newtime, prevtime=0, maxtime, exitcond
+#else
      REAL(KIND=dp) :: RealTime, newtime, prevtime=0, maxtime, exitcond
+#endif
      REAL(KIND=dp), ALLOCATABLE :: xx(:,:), xxnrm(:), yynrm(:), PrevXX(:,:,:)
 
 !$omp parallel

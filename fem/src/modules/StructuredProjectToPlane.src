@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Peter Råback
+! *  Authors: Peter Rï¿½back
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -72,7 +72,11 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
       Debug, MaskExist, GotVar, GotOldVar, GotOper, BottomTarget, ReducedDimensional
   REAL(KIND=dp) :: dx,UnitVector(3),ElemVector(3),DotPro,Eps,Length,Level,val,q,depth,height
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: at0,at1,at2
+#else
   REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
+#endif
   REAL(KIND=dp), POINTER :: FieldOut(:), FieldIn(:), Levelset(:), Coord(:),TopField(:)
   TYPE(Variable_t), POINTER :: Var, OldVar
   TYPE(Element_t), POINTER :: Element

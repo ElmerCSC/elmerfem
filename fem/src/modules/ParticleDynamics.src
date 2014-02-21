@@ -27,7 +27,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Peter Råback & Juha Ruokolainen
+! *  Authors: Peter Rï¿½back & Juha Ruokolainen
 ! *  Email:   Peter.Raback@csc.fi & Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -467,7 +467,11 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
        TimeOrder, TimeStepsTaken=0,estindexes(6),&
        ParticleStepsTaken=0
   REAL(KIND=dp) :: dtime, tottime = 0.0
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: cput1,cput2,dcput
+#else
   REAL(KIND=dp) :: cput1,cput2,dcput,CPUTime
+#endif
   REAL(KIND=dp), POINTER :: WeightVector(:),TmpValues(:)
   TYPE(Particle_t), POINTER :: Particles
 

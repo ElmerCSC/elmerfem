@@ -88,7 +88,11 @@ CONTAINS
     TYPE (SParIterSolverGlobalD_t), POINTER :: SParMatrixDesc
 
     TYPE (ParEnv_t), POINTER :: ParallelEnv
-REAL(kind=dp) :: tt,realtime
+#ifdef USE_ISO_C_BINDINGS
+    REAL(kind=dp) :: tt
+#else
+    REAL(kind=dp) :: tt,realtime
+#endif
     !******************************************************************
 
     IF ( .NOT. ParEnv % Initialized ) THEN
@@ -156,8 +160,11 @@ REAL(kind=dp) :: tt,realtime
 
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, GotNewCol, Found
 
-
-REAL(kind=dp) :: realtime,st
+#ifdef USE_ISO_C_BINDINGS
+    REAL(kind=dp) :: st
+#else
+    REAL(kind=dp) :: realtime,st
+#endif
   !******************************************************************
 st = realtime()
     ALLOCATE( SplittedMatrix )
@@ -2014,7 +2021,11 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   TYPE(Matrix_t), POINTER :: CM,SaveMatrix
   INTEGER, POINTER :: SPerm(:), SCols(:)
 
-REAL(kind=dp)::cputime,realtime,tt,rt
+#ifdef USE_ISO_C_BINDINGS
+  REAL(kind=dp)::tt,rt
+#else
+  REAL(kind=dp)::cputime,realtime,tt,rt
+#endif
 
   !*******************************************************************
 
@@ -2237,7 +2248,11 @@ END SUBROUTINE Solve
 
   INTEGER, ALLOCATABLE :: neigh(:), recv_size(:), requests(:)
 
-REAL(kind=dp) :: s, RealTime
+#ifdef USE_ISO_C_BINDINGS
+  REAL(kind=dp) :: s
+#else
+  REAL(kind=dp) :: s, RealTime
+#endif
   !*******************************************************************
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix

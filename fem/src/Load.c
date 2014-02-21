@@ -47,7 +47,6 @@
 
 #include "../config.h"
 
-
 #if defined(WIN32) | defined(MINGW32)
 #  include <direct.h>
 #  include <windows.h>
@@ -194,7 +193,7 @@ void STDCALLBULL FC_FUNC(envir,ENVIR) (char *Name, char *Value, int *len)
   Internal: convert function names into to fortran mangled form for dynamical
   loading
   ---------------------------------------------------------------------------*/
-static void fortranMangle(char *orig, char *mangled)
+static void STDCALLBULL fortranMangle(char *orig, char *mangled)
 {
   int uscore, i;
   

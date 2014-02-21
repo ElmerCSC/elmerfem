@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter Råback
+! *  Authors: Juha Ruokolainen, Peter Rï¿½back
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -84,7 +84,11 @@
 
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: at,at0
+#else
   REAL(KIND=dp) :: at,at0,CPUTime,RealTime
+#endif
 !------------------------------------------------------------------------------
 
  CALL Info( 'MeshSolve', '-------------------------------------', Level=4 )

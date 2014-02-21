@@ -1,7 +1,7 @@
 # advection-reaction equation by discontinuous galerkin & p element basis
 #
 run:
-	$(F90) -c AdvReactDG_P.f90
+	$(F90) -c AdvReactDG_P.F90
 	$(LD) -o AdvReactDG_P$(SHL_EXT) AdvReactDG_P$(OBJ_EXT) $(LIBS)
 	$(ELMER_GRID) 1 2 square
 	$(ELMER_SOLVER)

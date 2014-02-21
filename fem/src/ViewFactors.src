@@ -91,7 +91,11 @@
 
      INTEGER :: divide
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at0
+#else
      REAL(KIND=dp) :: at0, CPUTime
+#endif
 
      INTEGER, POINTER :: Timesteps(:)
      INTEGER :: TimeIntervals,interval,timestep,combineInt
@@ -619,7 +623,11 @@
         REAL(KIND=dp), ALLOCATABLE :: RHS(:),SOL(:),Areas(:),PSOL(:)
 
         REAL(KIND=dp) :: cum = 0.0D0,eps=1.0D-20,s,si,sj
-        REAL(KIND=dp) :: at1, CPUTime  
+#ifdef USE_ISO_C_BINDINGS
+        REAL(KIND=dp) :: at1
+#else
+        REAL(KIND=dp) :: at1, CPUTime
+#endif
 
 
         ALLOCATE( Areas(n),STAT=istat )

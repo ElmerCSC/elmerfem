@@ -89,7 +89,11 @@
 
      REAL(KIND=dp), ALLOCATABLE :: P1(:), P2(:)
  
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at,st,s, AngularFrequency, Work(1)
+#else
      REAL(KIND=dp) :: at,st,CPUTime,s, AngularFrequency, Work(1)
+#endif
      TYPE(Variable_t), POINTER :: Var
 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName

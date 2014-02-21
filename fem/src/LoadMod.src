@@ -86,6 +86,53 @@ MODULE LoadMod
         END SUBROUTINE matc
     END INTERFACE
 
+    ! CPUTime.c
+    INTERFACE
+        FUNCTION cputime() RESULT(dbl) BIND(C,name='cputime')
+            USE, INTRINSIC :: ISO_C_BINDING
+            REAL(C_DOUBLE) :: dbl
+        END FUNCTION cputime
+    END INTERFACE
+
+    INTERFACE
+        FUNCTION realtime() RESULT(dbl) BIND(C,name='realtime')
+            USE, INTRINSIC :: ISO_C_BINDING
+            REAL(C_DOUBLE) :: dbl
+        END FUNCTION realtime
+    END INTERFACE
+
+    INTERFACE
+        FUNCTION cpumemory() RESULT(dbl) BIND(C,name='cpumemory')
+            USE, INTRINSIC :: ISO_C_BINDING
+            REAL(C_DOUBLE) :: dbl
+        END FUNCTION cpumemory
+    END INTERFACE
+
+    ! fft.c
+    TYPE, BIND(C) :: C_FFTCMPLX
+        REAL(C_DOUBLE) :: rval
+        REAL(C_DOUBLE) :: ival
+    END TYPE C_FFTCMPLX
+
+    INTERFACE
+        SUBROUTINE frfftb( N, F, T ) BIND(C,name='frfftb')
+            USE, INTRINSIC :: ISO_C_BINDING
+            IMPORT C_FFTCMPLX
+            INTEGER(C_INT) :: N
+            TYPE(C_FFTCMPLX) :: F(*)
+            REAL(C_DOUBLE) :: T(*)
+        END SUBROUTINE frfftb
+    END INTERFACE
+
+    INTERFACE
+        SUBROUTINE fcfftb( N, F, T ) BIND(C,name='fcfftb')
+            USE, INTRINSIC :: ISO_C_BINDING
+            IMPORT C_FFTCMPLX
+            INTEGER(C_INT) :: N
+            TYPE(C_FFTCMPLX) :: F(*), T(*)
+        END SUBROUTINE fcfftb
+    END INTERFACE
+
     ! Overloads for AddrFunc
     INTERFACE AddrFunc
         MODULE PROCEDURE AddrFuncSub, &

@@ -85,6 +85,14 @@
 #endif
 #define NULL 0
 
+/* Use no name mangling when ISO_C_BINDING is being used */
+#ifdef USE_ISO_C_BINDINGS
+#undef FC_FUNC
+#define FC_FUNC(ARG1,ARG2) ARG1
+#undef FC_FUNC_
+#define FC_FUNC_(ARG1,ARG2) ARG1
+#endif
+
 /* -------------------------------------------------------------------------- */
 /* integer type: int or long */
 /* -------------------------------------------------------------------------- */
@@ -245,14 +253,12 @@ void STDCALLBULL FC_FUNC(umf4fsym,UMF4FSYM) (void **Symbolic)
 /* -------------------------------------------------------------------------- */
 
 /* call umf4def (control) */
-
 void STDCALLBULL FC_FUNC_(umf4_l_def,UMF4_L_DEF) (double Control[])
 {
 #ifdef HAVE_UMFPACK
     UMFPACK_defaults (Control) ;
 #endif
 }
-
 
 /* -------------------------------------------------------------------------- */
 /* umf4sym: pre-ordering and symbolic factorization */
@@ -304,7 +310,6 @@ void STDCALLBULL FC_FUNC_(umf4_l_solr,UMF4_L_SOLR) (Int *sys, Int Ap [ ], Int Ai
 /* -------------------------------------------------------------------------- */
 
 /* call umf4sol (sys, x, b, numeric, control, info) */
-
 void STDCALLBULL FC_FUNC_(umf4_l_sol,UMF4_L_SOL) (Int *sys, double x [ ], double b [ ], void **Numeric,
     double Control[], double Info[])
 {

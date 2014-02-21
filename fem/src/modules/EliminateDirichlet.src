@@ -63,7 +63,11 @@
 
   TYPE(Matrix_t), POINTER :: Bmatrix, Cmatrix, SaveMatrix
   REAL(KIND=dp), POINTER :: F(:), U(:)
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) ::  TotTime, LinTime, at,s,r, br, bi
+#else
   REAL(KIND=dp) ::  CPUtime, TotTime, LinTime, at,s,r, br, bi
+#endif
 
   LOGICAL :: stat, GotIt, EigAnal, DoChange
 
@@ -432,9 +436,9 @@ if ( .not. add ) zz=zz+1
   at = CPUTime()
 
   CALL ComputeChange(Solver, .FALSE.)
-  LinTime = LinTime + CPUTime() - at   
-  TotTime = CPUTime(Solver,.FALSE.) - TotTime
-
+  LinTime = LinTime + (CPUTime() - at)
+  ! TotTime = CPUTime(Solver,.FALSE.) - TotTime
+  TotTime = CPUTime() - TotTime
 
   WRITE( Message, * ) 'Total time spent in DirichletReduction (CPU): ', TotTime 
   CALL Info( 'Dirichlet', Message, Level=5 )

@@ -113,7 +113,11 @@
           EpsxxElement(:), EpsyyElement(:), EpszzElement(:), &
           EpsxyElement(:), EpsxzElement(:), EpsyzElement(:)
 
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at,st,at0
+#else
      REAL(KIND=dp) :: at,st,CPUTime,at0,RealTime
+#endif
 
      REAL(KIND=dp) :: StabParam1, StabParam2, S(3,3), PlyThick, &
           Tx(3), Ty(3), Tz(3), l, Weight3(3), Weight4(4), &
@@ -1609,7 +1613,7 @@
           Omega(1,6*p-0) =  Basis(p)             ! rotation
        END DO
 
-!      Venymä- ja käyristymävektorit lokaalissa koordinaatistossa:
+!      Venymï¿½- ja kï¿½yristymï¿½vektorit lokaalissa koordinaatistossa:
 !      -----------------------------------------------------------
        KappaVector = MATMUL( Curvature(1:3,1:6*n), LocalDeflection(1:6*n) )
        EPSILO = MATMUL( InPlaneStrain(1:3,1:6*n), LocalDeflection(1:6*n) )
@@ -1698,7 +1702,7 @@
      
        Gdrilling(1,1) = StabParam2*(Astarmatrix(1,1)+Astarmatrix(2,2))
 
-!      Normaalivoima- ja momenttivektorit (per pituusyksikkö) lokaalissa koord.:
+!      Normaalivoima- ja momenttivektorit (per pituusyksikkï¿½) lokaalissa koord.:
 !      -------------------------------------------------------------------------
        NVec = 0.0d0
        Mvec = 0.0d0

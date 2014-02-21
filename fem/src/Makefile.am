@@ -252,6 +252,7 @@ EXTRA_DIST = \
 	LinearAlgebra.src \
 	ListMatrix.src \
 	Lists.src \
+	LoadMod.src \
 	Load.c \
 	LUDecomposition.src \
 	MagneticSolve.src \

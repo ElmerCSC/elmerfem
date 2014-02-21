@@ -327,6 +327,7 @@ SOLVEROBJS = \
 		ElementUtils$(OBJ_EXT)				\
 		Radiation$(OBJ_EXT)				\
 		fft$(OBJ_EXT)					\
+		LoadMod$(OBJ_EXT)				\
 		Load$(OBJ_EXT)					\
 		Differentials$(OBJ_EXT)				\
 		FreeSurface$(OBJ_EXT)				\
@@ -445,6 +446,7 @@ EXTRA_DIST = \
 	LinearAlgebra.src \
 	ListMatrix.src \
 	Lists.src \
+	LoadMod.src \
 	Load.c \
 	LUDecomposition.src \
 	MagneticSolve.src \
@@ -969,7 +971,7 @@ BandwidthOptimize.$(OBJEXT): BandwidthOptimize.f90 SParIterGlobals.$(OBJEXT) Ele
 BlockSolve.$(OBJEXT): BlockSolve.f90 DefUtils.$(OBJEXT)
 CoordinateSystems.$(OBJEXT): CoordinateSystems.f90 Types.$(OBJEXT)
 CRSMatrix.$(OBJEXT): CRSMatrix.f90 GeneralUtils.$(OBJEXT)  Lists.$(OBJEXT)
-DefUtils.$(OBJEXT): DefUtils.f90 PElementMaps.$(OBJEXT) Adaptive.$(OBJEXT) Integration.$(OBJEXT) Types.$(OBJEXT) SolverUtils.$(OBJEXT)
+DefUtils.$(OBJEXT): DefUtils.f90 PElementMaps.$(OBJEXT) Adaptive.$(OBJEXT) Integration.$(OBJEXT) Types.$(OBJEXT) SolverUtils.$(OBJEXT) LoadMod.$(OBJEXT)
 Differentials.$(OBJEXT): Differentials.f90 ElementDescription.$(OBJEXT) LinearAlgebra.$(OBJEXT) Lists.$(OBJEXT) Types.$(OBJEXT)
 DiffuseConvectiveAnisotropic.$(OBJEXT): DiffuseConvectiveAnisotropic.f90 MaterialModels.$(OBJEXT) Differentials.$(OBJEXT) Integration.$(OBJEXT)
 DiffuseConvectiveGeneralAnisotropic.$(OBJEXT): DiffuseConvectiveGeneralAnisotropic.f90 MaterialModels.$(OBJEXT) Differentials.$(OBJEXT) Integration.$(OBJEXT)
@@ -986,7 +988,7 @@ FilterTimeSeries.$(OBJEXT): FilterTimeSeries.f90 DefUtils.$(OBJEXT)
 FindOptimum.$(OBJEXT): FindOptimum.f90 DefUtils.$(OBJEXT)
 FreeSurface.$(OBJEXT): FreeSurface.f90 DefUtils.$(OBJEXT) IterSolve.$(OBJEXT) ElementUtils.$(OBJEXT) DirectSolve.$(OBJEXT)
 GebhardtFactors.$(OBJEXT): GebhardtFactors.f90 ModelDescription.$(OBJEXT) Lists.$(OBJEXT) IterSolve.$(OBJEXT) ElementDescription.$(OBJEXT) CoordinateSystems.$(OBJEXT) CRSMatrix.$(OBJEXT) MainUtils.$(OBJEXT) Types.$(OBJEXT) SolverUtils.$(OBJEXT)
-GeneralUtils.$(OBJEXT): GeneralUtils.f90 Types.$(OBJEXT)
+GeneralUtils.$(OBJEXT): GeneralUtils.f90 Types.$(OBJEXT) LoadMod.$(OBJEXT)
 HashTable.$(OBJEXT): HashTable.f90 Lists.$(OBJEXT)
 Integration.$(OBJEXT): Integration.f90 LinearAlgebra.$(OBJEXT) Types.$(OBJEXT)
 InterpolateMeshToMesh.$(OBJEXT): InterpolateMeshToMesh.f90 DefUtils.$(OBJEXT)
@@ -997,6 +999,7 @@ IterSolve.$(OBJEXT): IterSolve.f90 ListMatrix.$(OBJEXT) SParIterGlobals.$(OBJEXT
 LinearAlgebra.$(OBJEXT): LinearAlgebra.f90 Types.$(OBJEXT)
 ListMatrix.$(OBJEXT): ListMatrix.f90 CRSMatrix.$(OBJEXT) GeneralUtils.$(OBJEXT)
 Lists.$(OBJEXT): Lists.f90 GeneralUtils.$(OBJEXT) Messages.$(OBJEXT) PElementMaps.$(OBJEXT) CoordinateSystems.$(OBJEXT) Types.$(OBJEXT) Interpolation.$(OBJEXT) SParIterComm.$(OBJEXT)
+LoadMod.$(OBJEXT): LoadMod.f90 Messages.$(OBJEXT) Types.$(OBJEXT)
 LUDecomposition.$(OBJEXT): LUDecomposition.f90 Types.$(OBJEXT)
 MagneticSolve.$(OBJEXT): MagneticSolve.f90 MaxwellGeneral.$(OBJEXT) Maxwell.$(OBJEXT) Differentials.$(OBJEXT) DefUtils.$(OBJEXT) MaxwellAxiS.$(OBJEXT)
 MainUtils.$(OBJEXT): MainUtils.f90 BlockSolve.$(OBJEXT) DefUtils.$(OBJEXT) ModelDescription.$(OBJEXT) Types.$(OBJEXT) SolverUtils.$(OBJEXT)
@@ -1007,7 +1010,7 @@ Maxwell.$(OBJEXT): Maxwell.f90 ElementDescription.$(OBJEXT) Integration.$(OBJEXT
 MeshUtils.$(OBJEXT): MeshUtils.f90 PElementBase.$(OBJEXT) ParallelUtils.$(OBJEXT) ElementUtils.$(OBJEXT) PElementMaps.$(OBJEXT) ElementDescription.$(OBJEXT) Types.$(OBJEXT)
 Messages.$(OBJEXT): Messages.f90
 MGPrec.$(OBJEXT): MGPrec.f90 Multigrid.$(OBJEXT)
-ModelDescription.$(OBJEXT): ModelDescription.f90 MeshUtils.$(OBJEXT) ElementDescription.$(OBJEXT) HashTable.$(OBJEXT) Types.$(OBJEXT)
+ModelDescription.$(OBJEXT): ModelDescription.f90 MeshUtils.$(OBJEXT) ElementDescription.$(OBJEXT) HashTable.$(OBJEXT) Types.$(OBJEXT)  LoadMod.$(OBJEXT)
 Multigrid.$(OBJEXT): Multigrid.f90 MeshUtils.$(OBJEXT) DirectSolve.$(OBJEXT) IterSolve.$(OBJEXT) ClusteringMethods.$(OBJEXT) Smoothers.$(OBJEXT) CoordinateSystems.$(OBJEXT) CRSMatrix.$(OBJEXT) ModelDescription.$(OBJEXT) Interpolation.$(OBJEXT)
 NavierStokesCylindrical.$(OBJEXT): NavierStokesCylindrical.f90 DefUtils.$(OBJEXT) MaterialModels.$(OBJEXT) Differentials.$(OBJEXT) ElementUtils.$(OBJEXT)
 NavierStokesGeneral.$(OBJEXT): NavierStokesGeneral.f90 MaterialModels.$(OBJEXT) Differentials.$(OBJEXT) CoordinateSystems.$(OBJEXT) Integration.$(OBJEXT)

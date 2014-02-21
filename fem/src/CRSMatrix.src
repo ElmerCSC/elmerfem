@@ -46,6 +46,9 @@
 MODULE CRSMatrix
 
   USE Lists
+#ifdef USE_ISO_C_BINDINGS
+  USE LoadMod
+#endif
 
   IMPLICIT NONE
 
@@ -2110,7 +2113,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
     REAL(KIND=dp), POINTER :: ILUValues(:), Values(:)
 
+#ifdef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: st, tx
+#else
     REAL(KIND=dp) :: CPUTime, st, tx
+#endif
 
     LOGICAL, ALLOCATABLE :: C(:), D(:)
     REAL(KIND=dp), ALLOCATABLE ::  S(:), T(:)
@@ -2460,7 +2467,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     TYPE(Matrix_t), POINTER :: A1
 
+#ifdef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: st
+#else
     REAL(KIND=dp) :: st, CPUTime
+#endif
 
     LOGICAL, ALLOCATABLE :: C(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: S(:), T(:)
@@ -2789,7 +2800,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status    !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     INTEGER :: n
+#ifdef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: t
+#else
     REAL(KIND=dp) :: CPUTime, t
+#endif
 !------------------------------------------------------------------------------
 
     CALL Info( 'CRS_ILUT', 'Starting factorization:', Level=5 )
@@ -2836,7 +2851,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
            ILUCols(:), ILURows(:), ILUDiag(:), IWork(:)
 
       LOGICAL :: C(n)
+#ifdef USE_ISO_C_BINDINGS
+      REAL(KIND=dp) :: S(n), cptime, ttime, t
+#else
       REAL(KIND=dp) :: S(n), CPUTime, cptime, ttime, t
+#endif
 !------------------------------------------------------------------------------
 
       ttime  = CPUTime()
@@ -2989,7 +3008,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     LOGICAL :: Status    !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     INTEGER :: n
+#ifdef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: t
+#else
     REAL(KIND=dp) :: CPUTime, t
+#endif
 !------------------------------------------------------------------------------
 
     CALL Info( 'CRS_ComplexILUT', 'ILU(T) (Complex), Starting factorization: ', Level=5 )
