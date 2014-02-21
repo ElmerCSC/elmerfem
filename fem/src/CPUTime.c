@@ -74,6 +74,25 @@ static struct rusage usage;
 static struct timeval tp;
 static struct timezone tzp;
 
+#ifdef USE_ISO_C_BINDINGS
+double cputime ()
+{
+  getrusage( RUSAGE_SELF, &usage );
+  return (double) usage.ru_utime.tv_sec + usage.ru_utime.tv_usec*1.0e-6;
+}
+
+double realtime()
+{
+  gettimeofday( &tp,&tzp );
+  return (double) tp.tv_sec + tp.tv_usec*1.0e-6;
+}
+
+double cpumemory()
+{
+  getrusage( RUSAGE_SELF, &usage );
+  return (double) 1.0 * usage.ru_maxrss;
+}
+#else
 double FC_FUNC(cputime,CPUTIME) ()
 {
   getrusage( RUSAGE_SELF, &usage );
@@ -91,5 +110,6 @@ double FC_FUNC(cpumemory,CPUMEMORY) ()
   getrusage( RUSAGE_SELF, &usage );
   return (double) 1.0 * usage.ru_maxrss;
 }
+#endif /* USE_ISO_C_BINDINGS*/
 
 #endif // WIN32

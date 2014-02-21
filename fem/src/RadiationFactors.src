@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter Råback
+! *  Authors: Juha Ruokolainen, Peter Rï¿½back
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -93,7 +93,11 @@
      REAL (KIND=dp) :: MinSum, MaxSum, SolSum, PrevSelf, FactorSum, &
          ImplicitSum, ImplicitLimit, NeglectLimit, SteadyChange, FactorsFixedTol, &
          GeometryFixedTol
+#ifdef USE_ISO_C_BINDINGS
+     REAL (KIND=dp) :: at, at0, st
+#else
      REAL (KIND=dp) :: at, at0, st, RealTime, CPUTime
+#endif
      INTEGER :: BandSize,SubbandSize,RadiationSurfaces, GeometryFixedAfter, &
          Row,Col,MatrixElements, MatrixFormat, maxind, TimesVisited=0, &
          RadiationBody, MaxRadiationBody, MatrixEntries, ImplicitEntries, &
@@ -558,7 +562,7 @@
 
 
      ! Check whether the element already sees itself, it will when 
-     ! gebhardt factors are com§1puted. Also compute matrix size.
+     ! gebhardt factors are comï¿½1puted. Also compute matrix size.
      DO i=1,RadiationSurfaces
        Cols => ViewFactors(i) % Elements
        n = ViewFactors(i) % NumberOfFactors

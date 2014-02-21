@@ -46,6 +46,9 @@ MODULE Lists
 
    USE Messages
    USE GeneralUtils
+#ifdef USE_ISO_C_BINDINGS
+   USE LoadMod
+#endif
 
    IMPLICIT NONE
 
@@ -628,7 +631,11 @@ CONTAINS
       LOGICAL :: Found, GlobalBubbles, UseProjector
       CHARACTER(LEN=LEN_TRIM(Name)) :: str
       CHARACTER(LEN=MAX_NAME_LEN) :: tmpname
+#ifdef USE_ISO_C_BINDINGS
+      DOUBLE PRECISION :: t1
+#else
       DOUBLE PRECISION :: t1,CPUTime
+#endif
 !------------------------------------------------------------------------------
       INTERFACE
         SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
@@ -3239,7 +3246,9 @@ CONTAINS
   SUBROUTINE ResetTimer(TimerName)
     CHARACTER(*) :: TimerName
     REAL(KIND=dp) :: ct, rt
+#ifndef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: RealTime, CPUTime
+#endif
     LOGICAL :: Found,FirstTime=.TRUE.
 
     IF( FirstTime ) THEN
@@ -3281,7 +3290,9 @@ CONTAINS
     LOGICAL, OPTIONAL :: Reset, Delete
     
     REAL(KIND=dp) :: ct0,rt0,ct, rt
+#ifndef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: RealTime, CPUTime
+#endif
     LOGICAL :: Found
 
     IF( TimerPassive ) RETURN

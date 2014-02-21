@@ -27,7 +27,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Mikko Lyly, Peter Råback
+! *  Authors: Juha Ruokolainen, Mikko Lyly, Peter Rï¿½back
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -217,7 +217,11 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
        CalcPrincipalAll, CalculateStrains
 !------------------------------------------------------------------------------
      INTEGER :: dim
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at,at0
+#else
      REAL(KIND=dp) :: at,at0,CPUTime,RealTime
+#endif
      REAL(KIND=dp) :: LumpedArea, LumpedCenter(3), LumpedMoments(3,3)
 
      INTERFACE

@@ -35,7 +35,11 @@ PROGRAM Solver
    USE GeneralUtils
    USE ParallelUtils
 
+#ifdef USE_ISO_C_BINDINGS
+   REAL(KIND=dp) :: CT, RT
+#else
    REAL(KIND=dp) :: CT, RT, CPUTime, RealTime
+#endif
    INTEGER, PARAMETER :: Initialize=0
    INTEGER :: tlen
    LOGICAL :: Silent

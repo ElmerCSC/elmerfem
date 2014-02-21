@@ -27,7 +27,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Peter Råback
+! *  Authors: Peter Rï¿½back
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -92,8 +92,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues=0, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat
+#ifdef USE_ISO_C_BINDINGS
+  REAL (KIND=DP) :: CT, RT
+#else
   REAL (KIND=DP) :: CPUTime, RealTime, CPUMemory, CT, RT
-
+#endif
 
   SAVE SubroutineVisited, NumberOfVars, FileAppend, ActiveBC, &
       NoPoints, PointIndex, CoordinateIndex, CoordinateDist, ResultPrefix, &

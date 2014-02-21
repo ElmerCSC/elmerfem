@@ -681,6 +681,15 @@ void cfftb( N, F, T )
     for( k = 0; k < N; k++ ) T[k].Imag = -T[k].Imag;
 }
 
+#ifdef USE_ISO_C_BINDINGS
+void fcfftb( N, F, T )
+    int *N;
+    COMPLEX *F;
+    COMPLEX *T;
+{
+    cfftb( *N, F, T );
+}
+#else
 void FC_FUNC(fcfftb,FCFFTB)( N, F, T )
     int *N;
     COMPLEX *F;
@@ -688,7 +697,7 @@ void FC_FUNC(fcfftb,FCFFTB)( N, F, T )
 {
     cfftb( *N, F, T );
 }
-
+#endif /* USE_ISO_C_BINDINGS */
 
 /*
  * rfftf: forward real FFT. First (N/2+1) coefficients returned.
@@ -873,7 +882,15 @@ rfftb( N, F, T )
     free( W );
 }
 
-
+#ifdef USE_ISO_C_BINDINGS
+frfftb( N, F, T )
+    int *N;
+    COMPLEX *F;
+    double   *T;
+{
+   rfftb( *N, F, T );
+}
+#else
 FC_FUNC(frfftb,FRFFTB)( N, F, T )
     int *N;
     COMPLEX *F;
@@ -881,6 +898,7 @@ FC_FUNC(frfftb,FRFFTB)( N, F, T )
 {
    rfftb( *N, F, T ); 
 }
+#endif /* USE_ISO_C_BINDINGS */
 
 /*
  *

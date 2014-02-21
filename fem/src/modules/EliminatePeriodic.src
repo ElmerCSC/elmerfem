@@ -64,7 +64,11 @@ INTEGER FUNCTION EliminatePeriodic( Model, Solver, A, b, x, n, DOFs, Norm )
   TYPE(Element_t),POINTER :: CurrentElement, Parent
   REAL(KIND=dp), POINTER :: LocalEigenVectorsReal(:,:), LocalEigenVectorsImag(:,:)
   REAL(KIND=dp), POINTER :: f(:), TempVectorReal(:), TempVectorImag(:),u(:)
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: CenterOfRigidBody(3), TotTime, at, Scale
+#else
   REAL(KIND=dp) :: CenterOfRigidBody(3), CPUtime, TotTime, at, Scale
+#endif
   LOGICAL, ALLOCATABLE :: PeriodicProj(:)
   LOGICAL :: stat, GotIt, Rigid, EigAnal
   INTEGER, ALLOCATABLE, TARGET :: ColN(:)
@@ -375,30 +379,30 @@ INTEGER FUNCTION EliminatePeriodic( Model, Solver, A, b, x, n, DOFs, Norm )
 CONTAINS
 
 
-!  Ideana oli tehdä matriisit Neumanin reunaehdoilla sekä taulukko
+!  Ideana oli tehdï¿½ matriisit Neumanin reunaehdoilla sekï¿½ taulukko
 !  R, jossa on solmuarvojen riippuvuudet tyyliin R(i,1) = R(i,2).
-!  Saa olla päällekkäisyyksiä ja missä tahansa järjestyksessä. 
+!  Saa olla pï¿½ï¿½llekkï¿½isyyksiï¿½ ja missï¿½ tahansa jï¿½rjestyksessï¿½. 
 !  Kutsuin sitten a.o. aliohjelmaa, joka palauttaa listat d ja
-!  Pperm siten, että projektori saadaan seuraavasti:
+!  Pperm siten, ettï¿½ projektori saadaan seuraavasti:
 !
 !   P( i, Pperm( d(i) ) ) = 1
 !
-!  Itseasiassa tuo d on tässä ainoa mikä oikeastaan sisältää 
+!  Itseasiassa tuo d on tï¿½ssï¿½ ainoa mikï¿½ oikeastaan sisï¿½ltï¿½ï¿½ 
 !  infoa, eli vapausasteiden lopulliset riippuvuudet tyyliin
 !
 !      i = d(i)
 !
-!  Ei ole enää N**2 luuppi, vaan ihan N. Testasin aika paljon ja
-!  näyttäisi toimivan kyllä ihan hienosti. 
+!  Ei ole enï¿½ï¿½ N**2 luuppi, vaan ihan N. Testasin aika paljon ja
+!  nï¿½yttï¿½isi toimivan kyllï¿½ ihan hienosti. 
 !
-!  Tuo 3d on sinänsä hankala, että ongelmia ei tule pelkästään
-!  nurkkapisteistä kuten 2d:ssä, vaan myös kaikista särmistä, 
-!  eli toiststaan riippuvia rajoitteita on itseasiassa läjäpäin.
+!  Tuo 3d on sinï¿½nsï¿½ hankala, ettï¿½ ongelmia ei tule pelkï¿½stï¿½ï¿½n
+!  nurkkapisteistï¿½ kuten 2d:ssï¿½, vaan myï¿½s kaikista sï¿½rmistï¿½, 
+!  eli toiststaan riippuvia rajoitteita on itseasiassa lï¿½jï¿½pï¿½in.
 !
-!  Tuskin tosta edelleenkään on mitään lopullista iloa, heitä
-!  roskiin jos siltä tuntuu. Ja eihän toi edes toimi muuten kuin
-!  kahden solmun välisille rajoitteille, mitään yleisempää sillä
-!  ei voi tehdä.
+!  Tuskin tosta edelleenkï¿½ï¿½n on mitï¿½ï¿½n lopullista iloa, heitï¿½
+!  roskiin jos siltï¿½ tuntuu. Ja eihï¿½n toi edes toimi muuten kuin
+!  kahden solmun vï¿½lisille rajoitteille, mitï¿½ï¿½n yleisempï¿½ï¿½ sillï¿½
+!  ei voi tehdï¿½.
 !
 !  Mikko
 

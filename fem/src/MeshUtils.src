@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter Råback
+! *  Authors: Juha Ruokolainen, Peter Rï¿½back
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -43,6 +43,9 @@
 
 MODULE MeshUtils
 
+#ifdef USE_ISO_C_BINDINGS
+    USE LoadMod
+#endif
     USE ElementUtils
     USE ElementDescription
     USE Interpolation
@@ -7989,8 +7992,13 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
+#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
-	             ElemVector(3), DotPro, Eps, CPUTime
+                 ElemVector(3), DotPro, Eps
+#else
+    REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
+                 ElemVector(3), DotPro, Eps, CPUTime
+#endif
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CoordTransform

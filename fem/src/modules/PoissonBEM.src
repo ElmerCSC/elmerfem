@@ -89,8 +89,11 @@
  
      REAL(KIND=dp), ALLOCATABLE ::  Flx(:), Pot(:), VolumeForce(:), &
        LocalMassMatrix(:,:),LocalStiffMatrix(:,:),Load(:),LocalForce(:)
- 
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at,st,s
+#else
      REAL(KIND=dp) :: at,st,CPUTime,s
+#endif
      TYPE(Variable_t), POINTER :: Var
 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName

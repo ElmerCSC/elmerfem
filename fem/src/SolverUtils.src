@@ -47,6 +47,9 @@
 
 MODULE SolverUtils
 
+#ifdef USE_ISO_C_BINDINGS
+   USE LoadMod
+#endif
    USE DirectSolve
    USE Multigrid
    USE IterSolve
@@ -6084,7 +6087,11 @@ END FUNCTION SearchNodeL
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp) :: Relaxation,Beta,Gamma
     REAL(KIND=dp), ALLOCATABLE :: Diag(:), TempVector(:)
+#ifdef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: t0,rt0,rst,st,ct
+#else
     REAL(KIND=dp) :: t0,rt0,rst,st,ct,CPUTime,RealTime
+#endif
     TYPE(ValueList_t), POINTER :: Params
 
 

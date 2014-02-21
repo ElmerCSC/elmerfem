@@ -74,7 +74,11 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   SAVE STIFF, Work, Load, FORCE, &
        SoundSpeed, Density, Damping, Impedance, AllocationsDone, ConvVelo
 
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: at,at0,totat,st,totst,t1
+#else
   REAL(KIND=dp) :: at,at0,totat,st,totst,t1,CPUTime,RealTime
+#endif
 
 !-----------------------------------------------------------------------------
 ! Local variables for performing analyses with harmonic interfaces

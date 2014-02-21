@@ -48,6 +48,9 @@ MODULE MainUtils
   USE SolverUtils
   USE BlockSolve
   USE ModelDescription
+#ifdef USE_ISO_C_BINDINGS
+  USE LoadMod
+#endif
 
 !------------------------------------------------------------------------------
   IMPLICIT NONE
@@ -219,7 +222,11 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     TYPE(Variable_t), POINTER :: NewVariable
 
+#ifdef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: tt, InitValue
+#else
     REAL(KIND=dp) :: tt, CPUTime, InitValue
+#endif
     REAL(KIND=dp), POINTER :: Component(:)
 
     EXTERNAL FlowSolver, HeatSolver, MagneticSolver, StressSolver, MeshSolver
@@ -3480,7 +3487,11 @@ CONTAINS
          UpdateExported, CoordTransform
      INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct
+#else
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct, CPUTime,RealTime
+#endif
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: str
      TYPE(ValueList_t), POINTER :: Params

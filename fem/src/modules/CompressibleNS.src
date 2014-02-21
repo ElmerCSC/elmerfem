@@ -70,9 +70,15 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: OuterIterationMethod, NonlinearIterationMethod
   INTEGER :: i,j,k,n, nb, nd, t, istat, dim, m, p, q, &
        MaxIterations, NumberOfNormalTractionNodes, BDOFs=0, NormalDir
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: Norm = 0, PrevNorm, RelC, Tolerance, ToleranceRatio, &
+       atime, stime, at0, SlipCoefficient, &
+       gamma, cv, kcoeff, rho0, T0, lambda, bulkvisc
+#else
   REAL(KIND=dp) :: Norm = 0, PrevNorm, RelC, Tolerance, ToleranceRatio, &
        atime, stime, CPUTime, RealTime, at0, SlipCoefficient, &
        gamma, cv, kcoeff, rho0, T0, lambda, bulkvisc
+#endif
 
   TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:,:), Mass(:,:), &

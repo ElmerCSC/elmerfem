@@ -84,8 +84,11 @@
 
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
      LOGICAL :: GotIt, GotHoleType
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at,st
+#else
      REAL(KIND=dp) :: at,st,CPUTime
-
+#endif
      SAVE STIFF, MASS, Load, Load2, FORCE, ElementNodes, &
           Poisson, Density, Young, Thickness, Tension, AllocationsDone, &
           DAMP, DampingCoef, HoleFraction, HoleSize, SpringCoef

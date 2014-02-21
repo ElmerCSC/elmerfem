@@ -48,7 +48,7 @@ fi
 #
 # Autoconf substitutes these variables with correct values.
 #
-#export F90="mpif90 -O3 -g -m64 -fopenmp -ftree-vectorize -funroll-loops      -m64 -fPIC -fPIC -I. -Ibinio -I../binio -I/opt/mpich/3.0.4//include -I. -I$ELMER_INCLUDE"
+#export F90="mpif90 -O3 -g -m64 -fopenmp -ftree-vectorize -funroll-loops -DUSE_ISO_C_BINDINGS      -m64 -fPIC -fPIC -I. -Ibinio -I../binio -I/opt/mpich/3.0.4//include -I. -I$ELMER_INCLUDE"
 #export LD="mpif90 -shared -m64 -fPIC "
 export LD=elmerld
 export F90=elmerf90-nosh

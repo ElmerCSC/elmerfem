@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Leila Puska, Antti Pursula, Peter Råback
+! *  Authors: Juha Ruokolainen, Leila Puska, Antti Pursula, Peter Rï¿½back
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -161,8 +161,13 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: RelPerm1, RelPerm2
   REAL(KIND=dp) :: PermittivityOfVacuum, Norm, RelativeChange
   
+#ifdef USE_ISO_C_BINDINGS
+  REAL (KIND=DP) :: Wetot, at0, ss
+  REAL (KIND=DP) :: at, st, PotentialDifference, Capacitance
+#else
   REAL (KIND=DP) :: Wetot, at0, RealTime, ss
   REAL (KIND=DP) :: at, st, CPUTime, PotentialDifference, Capacitance
+#endif
   REAL (KIND=DP) :: MinPotential, MaxPotential
   
   INTEGER, POINTER :: NodeIndexes(:), CapBodyIndex(:), Ivals(:)

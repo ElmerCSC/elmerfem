@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Thomas Zwinger, Peter Råback, Juha Ruokolainen, Mikko Lyly
+! *  Authors: Thomas Zwinger, Peter Rï¿½back, Juha Ruokolainen, Mikko Lyly
 ! *  Email:   Thomas.Zwinger@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -72,11 +72,17 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER ::&
        FreeSurfPerm(:), FlowPerm(:), NodeIndexes(:), EdgeMap(:,:)
 
-
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: &
+       at,st,totat,totst,Norm,PrevNorm,LocalBottom, cv, &
+       Relax, MaxDisp, maxdh,LinearTol,NonlinearTol,RelativeChange,&
+       smallestpossiblenumber, rr, ss
+#else
   REAL(KIND=dp) :: &
        at,st,totat,totst,CPUTime,Norm,PrevNorm,LocalBottom, cv, &
        Relax, MaxDisp, maxdh,LinearTol,NonlinearTol,RelativeChange,&
        smallestpossiblenumber, rr, ss
+#endif
 
   REAL(KIND=dp), POINTER :: ForceVector(:), FreeSurf(:), PreFreeSurf(:,:), &
        FlowSolution(:), PrevFlowSol(:,:), PointerToResidualVector(:)

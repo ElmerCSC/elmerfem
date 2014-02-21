@@ -43,7 +43,9 @@
 
 MODULE ModelDescription
 
+#ifdef USE_ISO_C_BINDINGS
     USE LoadMod
+#endif
     USE MeshUtils
     USE ElementDescription
     USE BinIO
@@ -2799,7 +2801,11 @@ CONTAINS
     INTEGER(KIND=IntOff_k) :: Pos
     INTEGER :: iostat
     CHARACTER(1) :: E
+#ifdef USE_ISO_C_BINDINGS
+    REAL(dp) :: tstart, tstop
+#else
     REAL(dp) :: tstart, tstop, CPUTime
+#endif
     SAVE TotalDOFs
 
     tstart = CPUTime()

@@ -199,8 +199,11 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
           NodalStrain, NodalStress, VonMises, PrincipalStress, PrincipalStrain, Tresca, &
           PrincipalAngle, PrincipalAngleComp, CalcPrincipalAngle, CalcPrincipalAll
 !-----------------------------------------------------------------------------------------------------
-
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at,at0
+#else
      REAL(KIND=dp) :: at,at0,CPUTime,RealTime
+#endif
      INTEGER :: TotalSteps,LoadStep, dim
 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
@@ -475,7 +478,7 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
          CurrentElement => GetActiveElement(t)
 !
-!        Ok, we´ve got one for stress computations
+!        Ok, weï¿½ve got one for stress computations
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -704,7 +707,7 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
         IF ( ANY( StressPerm( NodeIndexes ) <= 0 ) ) CYCLE
 !
 !       The element type 101 (point element) can only be used
-!       to set Dirichlet BCs, so skip ´em.
+!       to set Dirichlet BCs, so skip ï¿½em.
 !
         IF ( CurrentElement % TYPE % ElementCode /= 101 ) THEN
 

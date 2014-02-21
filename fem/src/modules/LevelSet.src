@@ -28,7 +28,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter Råback
+! *  Authors: Juha Ruokolainen, Peter Rï¿½back
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -85,7 +85,11 @@
          TimeForce, LocalForce, ElementNodes,AllocationsDone, &
          ElemVelo, Surf, SurfaceFlux
 
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at,totat,st,totst
+#else
      REAL(KIND=dp) :: at,totat,st,totst,CPUTime
+#endif
 
 
 !------------------------------------------------------------------------------
@@ -546,7 +550,11 @@ CONTAINS
      LOGICAL :: Reinitialize, Extrct
      REAL(KIND=dp) :: Relax, dt, r, NarrowBand, DsMax
      REAL(KIND=dp), ALLOCATABLE :: ElemVelo(:,:), SurfaceFlux(:)
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at,totat,st,totst
+#else
      REAL(KIND=dp) :: at,totat,st,totst,CPUTime
+#endif
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
 
      SAVE ElementNodes, ElemVelo, Direction, ZeroNodes, TimesVisited, &
@@ -1469,7 +1477,11 @@ CONTAINS
      INTEGER, POINTER :: CurvPerm(:), SurfPerm(:)
      REAL(KIND=dp), POINTER :: Curvature(:),ForceVector(:), Curv(:),Surface(:) 
      REAL(KIND=dp), ALLOCATABLE :: LocalStiffMatrix(:,:),LocalForce(:),Surf(:)
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at,totat,st,totst
+#else
      REAL(KIND=dp) :: at,totat,st,totst,CPUTime
+#endif
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
      LOGICAL :: GotIt, Stat, AllocationsDone = .FALSE.
 
