@@ -2263,8 +2263,9 @@ CONTAINS
 
      TYPE(Solver_t), POINTER :: Solver, SlaveSolver
      TYPE(ValueList_t), POINTER :: Params
+     TYPE(Variable_t), POINTER :: iterV
      INTEGER, POINTER :: SlaveSolverIndexes(:)
-     INTEGER :: j,k
+     INTEGER :: j,k,iter
      REAL(KIND=dp) :: dt
      LOGICAL :: Transient, Found
 
@@ -2293,6 +2294,11 @@ CONTAINS
      IF( Found ) THEN
        dt = GetTimeStep()
        Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
+
+       ! store the nonlinear iteration at the outer loop
+       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+       iter = NINT(iterV % Values(1))
+
        DO j=1,SIZE(SlaveSolverIndexes)
          k = SlaveSolverIndexes(j)
          SlaveSolver => CurrentModel % Solvers(k)
@@ -2300,6 +2306,7 @@ CONTAINS
          CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
        END DO
        CurrentModel % Solver => Solver
+       iterV % Values = iter       
      END IF
 
      IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
@@ -2395,10 +2402,10 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:)
     LOGICAL :: ReduceStep
 
-    LOGICAL :: stat, First
+    LOGICAL :: stat, First, Last
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Variable_t), POINTER :: iterV
-    INTEGER :: iter, previter
+    INTEGER :: iter, previter, MaxIter
 
     SAVE :: previter
 
@@ -2418,20 +2425,27 @@ CONTAINS
     
     IF( PRESENT( FirstIter ) ) THEN
       First = FirstIter
+      Last = .FALSE.
     ELSE
       ! This is the first trial if we are the first nonlinear iteration
       ! for the first time. 
       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       iter = NINT(iterV % Values(1))
+      MaxIter = ListGetInteger( Solver % Values,'Nonlinear System Max Iterations',Stat) 
       First = (iter == 1 ) .AND. (iter /= previter)
+      Last = (iter == MaxIter )
       previter = iter
     END IF
 
     ReduceStep = CheckStepSize(Solver,First,&
         nsize,values,values0) 
 
+    IF( Last .AND. .NOT. ReduceStep ) THEN
+      CALL Info('DefaultLinesearch','Maximum number of nonlinear iterations reached, giving up after linesearch')
+    END IF
+
     IF( PRESENT( Converged ) ) THEN
-      Converged = ( Solver % Variable % NonlinConverged == 1 ) 
+      Converged = ( Solver % Variable % NonlinConverged == 1 )  .OR. Last
     END IF
 
   END FUNCTION DefaultLinesearch
@@ -3987,6 +4001,7 @@ INTEGER::iii=0
     END IF
 
     Params => GetSolverParams( PSolver ) 
+
 
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
