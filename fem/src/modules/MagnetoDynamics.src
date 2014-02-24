@@ -1471,14 +1471,15 @@ CONTAINS
 
     CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
     siz = 0
+    Cval => Null()
     IF ( HBCurve ) THEN
       siz = SIZE(HB,1)
       IF(siz>1) THEN
         Bval=>HB(:,1)
         Hval=>HB(:,2)
         Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
-        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff) ) THEN
-          ALLOCATE(Cval(siz))
+        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff)) THEN
+          ALLOCATE(CubicCoeff(siz))
           CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
         END IF
         Cval=>CubicCoeff
