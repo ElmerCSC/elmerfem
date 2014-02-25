@@ -1,0 +1,215 @@
+! Test case for adiabatic compression.
+! There is no convection initiated so 
+! should obey the adiabatic process pV^g = const.
+! where p is the pressure, V is the volume and g is
+! the ratio of specific heats. 
+! 
+! 25.2.2014 / P.R.
+
+
+Header
+  Mesh DB "." "square"
+End
+
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Steady State Max Iterations = 50
+
+  Timestepping Method = newmark ! bdf
+  Newmark Beta = 0.5
+  BDF Order = 2
+
+  Timestep Sizes = 0.1
+  Timestep Intervals = 10
+  Output Intervals = 0
+
+!  Post File =  "case.vtu"
+End
+
+
+Body 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+$ RefT = 300.0
+$ RefP = 1.0e5 
+
+Initial Condition 1
+  Name = "AtmosphericState"
+  Temperature = $RefT
+  Pressure = $RefP
+End
+
+
+Body Force 1
+!  Heat Source = 1.0e5
+End 
+
+
+Solver 1
+  Equation = MeshSolver
+  Exec Solver = before timestep
+
+  Procedure = "MeshSolve" "MeshSolver"
+  Variable = -dofs 2 "Mesh Update" 
+
+  Linear System Solver = Iterative
+
+  Linear System Iterative Method = BiCGStabL
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 50
+
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+
+Solver 3
+  Equation = Navier-Stokes
+  Stabilize = True
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = Iterative
+
+  Linear System Iterative Method = BiCGStabL
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 50
+
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Nonlinear Timestepping = Logical True
+End
+
+
+Solver 2
+!  Exec Solver = never
+
+  Equation = Heat Equation
+  Stabilize = True
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = Iterative
+
+  Linear System Iterative Method = BiCGStabL
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 50
+
+  Steady State Convergence Tolerance = 1.0e-4
+
+  Nonlinear Timestepping = Logical True
+End
+
+
+
+Solver 4
+  Equation = SaveScalars
+  Exec Solver = Never
+!After timestep
+
+  Procedure = "SaveData" "SaveScalars"
+
+  Filename = f.dat
+  Filename Numbering = Logical True
+
+  Variable 1 = Pressure
+  Operator 1 = min
+  Operator 2 = max
+  Variable 3 = Temperature
+  Operator 3 = min
+  Operator 4 = max
+
+  Operator 5 = cpu time
+  Variable 6 = time
+End
+
+
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+  Convection = Computed
+End
+
+Material 1
+  Density = 1
+  Viscosity = 1
+  Heat Capacity = 1000
+  Heat Conductivity  = 1.0
+
+  Compressibility Model = perfect gas
+  Specific Heat Ratio = $ 5.0/3.0
+
+! incompressible
+! thermal : account for temperature in N-S only in boyancy
+! perfect gas (perfect gas equation 1) : 
+! user defined
+! pressure dependent
+! artificial compressible
+
+! Ignoring natural convection for simplicity
+  Heat Expansion Coefficient = 0.0
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Name = "Bottom"
+
+  Velocity 1 = 0.0
+  Velocity 2 = 0.0
+  Mesh Update 1 = 0.0
+  Mesh Update 2 = 0.0
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Name = "Right"
+
+  Velocity 1 = 0.0
+  Mesh Update 1 = 0.0
+End
+
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Name = "Top"
+
+  Velocity 1 = 0.0
+  Velocity 2 = Equals "Mesh Velocity 2"
+
+  Mesh Update 1 = 0.0
+  Mesh Update 2 = Variable time
+    Real MATC "-0.5*tx"
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+  Name = "Left"
+
+  Velocity 1 = 0.0
+  Mesh Update 1 = 0.0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.206857940\n");
