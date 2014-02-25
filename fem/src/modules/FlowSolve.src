@@ -112,7 +112,7 @@
      LOGICAL :: Stabilize,NewtonLinearization = .FALSE., GotForceBC, GotIt, &
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
-                  Transient, Rotating
+                  Transient, Rotating, AnyRotating
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
@@ -186,6 +186,8 @@
 !------------------------------------------------------------------------------
 !    Get variables needed for solving the system
 !------------------------------------------------------------------------------
+     CALL Info('FlowSolver','Solving the Navier-Stokes equations',Level=6)
+
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
@@ -379,6 +381,14 @@
        Gravity    =  0.00D0
        Gravity(2) = -9.81D0
      END IF
+
+     AnyRotating = ListCheckPresentAnyBodyForce(Model,'Angular Velocity') .OR. &
+         ListCheckPresentAnyBodyForce(Model,'Angular Velocity 1') .OR. &
+         ListCheckPresentAnyBodyForce(Model,'Angular Velocity 2') .OR. &
+         ListCheckPresentAnyBodyForce(Model,'Angular Velocity 3') 
+         
+
+
 !------------------------------------------------------------------------------
 
      Bubbles   = ListGetLogical( Solver % Values,'Bubbles',GotIt )
@@ -935,6 +945,10 @@
                    MagneticForce, divDiscretization, gradpDiscretization, NewtonLinearization, &
                    Element,n,ElementNodes )
 !------------------------------------------------------------------------------
+             CASE DEFAULT
+               CALL Fatal('FlowSolver','Missing compressibility model in cylindrical coordinates')
+               
+
            END SELECT
 !------------------------------------------------------------------------------
 
@@ -942,10 +956,19 @@
          CASE DEFAULT
 !------------------------------------------------------------------------------
 
-           CALL NavierStokesGeneralCompose( &
-               MASS,STIFF,FORCE, &
-               LoadVector, Viscosity,Density,U,V,W,MU,MV,MW,Stabilize, &
-               NewtonLinearization,Element,n,ElementNodes )
+           SELECT CASE( CompressibilityModel )
+!------------------------------------------------------------------------------
+           CASE( Incompressible,PerfectGas1)
+             
+             CALL NavierStokesGeneralCompose( &
+                 MASS,STIFF,FORCE, &
+                 LoadVector, Viscosity,Density,U,V,W,MU,MV,MW,Stabilize, &
+                 NewtonLinearization,Element,n,ElementNodes )
+             
+           CASE DEFAULT
+             CALL Fatal('FlowSolver','Missing compressibility model in general coordinates')
+             
+           END SELECT
            
 !------------------------------------------------------------------------------
          END SELECT
