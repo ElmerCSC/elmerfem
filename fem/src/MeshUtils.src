@@ -45,6 +45,7 @@ MODULE MeshUtils
 
 #ifdef USE_ISO_C_BINDINGS
     USE LoadMod
+    USE EIOFortranAPI
 #endif
     USE ElementUtils
     USE ElementDescription
@@ -307,7 +308,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Model_t) :: Model
 
      INTERFACE
-       SUBROUTINE eio_open_mesh(dir,info)
+       SUBROUTINE eio_open_mesh(dir,info) BIND(C, NAME="eio_open_mesh")
          USE, INTRINSIC :: ISO_C_BINDING
          INTEGER(C_INT) :: info
          CHARACTER(C_CHAR) :: dir(*)

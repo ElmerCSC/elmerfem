@@ -1,32 +1,30 @@
+!
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! * This library is free software; you can redistribute it and/or
+! * modify it under the terms of the GNU Lesser General Public
+! * License as published by the Free Software Foundation; either
+! * version 2.1 of the License, or (at your option) any later version.
+! *
+! * This library is distributed in the hope that it will be useful,
+! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! * Lesser General Public License for more details.
+! * 
+! * You should have received a copy of the GNU Lesser General Public
+! * License along with this library (in file ../LGPL-2.1); if not, write 
+! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 
 !
 ! Subroutine to implement BiConjugate Gradient Stabilised (2) iteration
 !
-! $Id: huti_bicgstab_2_C.F90,v 1.5 2005/05/04 09:57:28 vierinen Exp $
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+! $Id: huti_bicgstab_2.src,v 1.1.1.1 2005/04/15 10:31:18 vierinen Exp $
 
 
 
@@ -97,14 +95,15 @@ subroutine  huti_cbicgstab_2solv  ( ndim, wrkdim, xvec, rhsvec, &
                             ipar, dpar, work, matvecsubr, pcondlsubr, &
                             pcondrsubr, dotprodfun, normfun, stopcfun )
 
-
+  use huti_interfaces
   implicit none
 
-  external matvecsubr, pcondlsubr, pcondrsubr
-  external dotprodfun, normfun, stopcfun
-  complex :: dotprodfun
-  real :: normfun
-  real :: stopcfun
+  procedure( mv_iface_c ), pointer :: matvecsubr => NULL()
+  procedure( pc_iface_c ), pointer :: pcondlsubr => NULL()
+  procedure( pc_iface_c ), pointer :: pcondrsubr => NULL()
+  procedure( dotp_iface_c ), pointer :: dotprodfun => NULL()
+  procedure( norm_iface_c ), pointer :: normfun => NULL()
+  procedure( stopc_iface_c ), pointer :: stopcfun => NULL()
 
   ! Parameters
 

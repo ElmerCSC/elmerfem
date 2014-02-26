@@ -13,5 +13,5 @@ INCLUDE_DIRECTORIES("${PROJECT_SOURCE_DIR}/eio/include")
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}")
 
 ADD_LIBRARY(eioc eio_api_c.cpp ${COMMON_SRCS})
-ADD_LIBRARY(eiof eio_api_f.cpp ${COMMON_SRCS})
+ADD_LIBRARY(eiof eio_api_f.cpp ${COMMON_SRCS} eio_api_f.f90)
 

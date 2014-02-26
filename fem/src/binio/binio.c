@@ -12,15 +12,15 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program (in file fem/GPL-2); if not, write to the 
- * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+ * along with this program (in file fem/GPL-2); if not, write to the
+ * Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
  * Boston, MA 02110-1301, USA.
  */
 
 /*
  * Bunch of Fortran callable functions to read/write binary data. They can be
  * called from Fortran directly, but there are some wrapper procedures in
- * biniomod.f90 that are generally more programmer friendly and has 
+ * biniomod.f90 that are generally more programmer friendly and has
  * explicit interfaces.
  */
 
@@ -70,7 +70,7 @@ static char endianess()
 }
 
 
-void FC_FUNC(binendianess,BINENDIANESS)(char *e)
+void FC_FUNC(binendianess_c,BINENDIANESS_C)(char *e)
 {
     *e = endianess();
 }
@@ -92,7 +92,7 @@ static void swap_bytes(void *o, size_t n)
 }
 
 
-void FC_FUNC(binsetinputendianess,BINSETINPUTENDIANESS)(const int *unit,
+void FC_FUNC(binsetinputendianess_c,BINSETINPUTENDIANESS_C)(const int *unit,
                                                         const char *e )
 {
     assert(units[*unit].fd);
@@ -100,7 +100,7 @@ void FC_FUNC(binsetinputendianess,BINSETINPUTENDIANESS)(const int *unit,
 }
 
 
-void FC_FUNC_(binopen_,BINOPEN_)(const int *unit, const char *file,
+void FC_FUNC(binopen_c,BINOPEN_C)(const int *unit, const char *file,
                                  const int *file_len,
                                  const char *action,
                                  int *status)
@@ -131,7 +131,7 @@ void FC_FUNC_(binopen_,BINOPEN_)(const int *unit, const char *file,
 }
 
 
-void FC_FUNC_(binclose_,BINCLOSE_)(const int *unit, int *status)
+void FC_FUNC(binclose_c,BINCLOSE_C)(const int *unit, int *status)
 {
     int s;
 
@@ -143,7 +143,7 @@ void FC_FUNC_(binclose_,BINCLOSE_)(const int *unit, int *status)
 }
 
 
-void FC_FUNC_(binwriteint4_,BINWRITEINT4_)(const int *unit, const uint32_t *n,
+void FC_FUNC(binwriteint4_c,BINWRITEINT4_C)(const int *unit, const uint32_t *n,
                                         int *status)
 {
     size_t s;
@@ -154,7 +154,7 @@ void FC_FUNC_(binwriteint4_,BINWRITEINT4_)(const int *unit, const uint32_t *n,
 }
 
 
-void FC_FUNC_(binwriteint8_,BINWRITEINT8_)(const int *unit, const uint64_t *n, 
+void FC_FUNC(binwriteint8_c,BINWRITEINT8_C)(const int *unit, const uint64_t *n,
                                         int *status)
 {
     size_t s;
@@ -165,7 +165,7 @@ void FC_FUNC_(binwriteint8_,BINWRITEINT8_)(const int *unit, const uint64_t *n,
 }
 
 
-void FC_FUNC_(binreadint8_,BINREADINT8_)(const int *unit, uint64_t *n, int *status)
+void FC_FUNC(binreadint8_c,BINREADINT8_C)(const int *unit, uint64_t *n, int *status)
 {
     size_t r;
 
@@ -181,7 +181,7 @@ void FC_FUNC_(binreadint8_,BINREADINT8_)(const int *unit, uint64_t *n, int *stat
 }
 
 
-void FC_FUNC_(binwritedouble_,BINWRITEDOUBLE_)(const int *unit, const double *a,
+void FC_FUNC(binwritedouble_c,BINWRITEDOUBLE_C)(const int *unit, const double *a,
                                             int *status)
 {
     size_t s;
@@ -192,7 +192,7 @@ void FC_FUNC_(binwritedouble_,BINWRITEDOUBLE_)(const int *unit, const double *a,
 }
 
 
-void FC_FUNC_(binreadint4_,BINREADINT4_)(const int *unit, uint32_t *n, int *status)
+void FC_FUNC(binreadint4_c,BINREADINT4_C)(const int *unit, uint32_t *n, int *status)
 {
     size_t r;
 
@@ -208,14 +208,14 @@ void FC_FUNC_(binreadint4_,BINREADINT4_)(const int *unit, uint32_t *n, int *stat
 }
 
 
-void FC_FUNC_(binreaddouble_,BINREADDOUBLE_)(const int *unit, double *a,
+void FC_FUNC(binreaddouble_c,BINREADDOUBLE_C)(const int *unit, double *a,
                                           int *status)
 {
-    FC_FUNC_(binreadint8_,BINREADINT8_)(unit, (uint64_t *)a, status);
+    FC_FUNC(binreadint8_c,BINREADINT8_C)(unit, (uint64_t *)a, status);
 }
 
 
-void FC_FUNC_(binwritestring_,BINWRITESTRING_)(const int *unit,
+void FC_FUNC(binwritestring_c,BINWRITESTRING_C)(const int *unit,
                                                const char *s,
                                                const int *s_len,
                                                int *status)
@@ -231,7 +231,7 @@ void FC_FUNC_(binwritestring_,BINWRITESTRING_)(const int *unit,
 }
 
 
-void FC_FUNC_(binreadstring_,BINREADSTRING_)(const int *unit,char *s,
+void FC_FUNC(binreadstring_c,BINREADSTRING_C)(const int *unit,char *s,
                                              const int *s_len, int *status)
 {
     int i, c;
@@ -251,7 +251,7 @@ void FC_FUNC_(binreadstring_,BINREADSTRING_)(const int *unit,char *s,
 }
 
 
-void FC_FUNC_(binwritechar_,BINWRITECHAR_)(const int *unit,char *c,
+void FC_FUNC(binwritechar_c,BINWRITECHAR_C)(const int *unit,char *c,
                                            int *status)
 {
     assert(units[*unit].fd);
@@ -263,13 +263,13 @@ void FC_FUNC_(binwritechar_,BINWRITECHAR_)(const int *unit,char *c,
 
 
 #ifdef HAVE_FTELLO
-off_t FC_FUNC(binftell,BINFTELL)(const int *unit)
+off_t FC_FUNC(binftell_c,BINFTELL_C)(const int *unit)
 {
     assert(units[*unit].fd);
     return ftello(units[*unit].fd);
 }
 #else
-long FC_FUNC(binftell,BINFTELL)(const int *unit)
+long FC_FUNC(binftell_c,BINFTELL_C)(const int *unit)
 {
     assert(units[*unit].fd);
     return ftell(units[*unit].fd);
@@ -278,7 +278,7 @@ long FC_FUNC(binftell,BINFTELL)(const int *unit)
 
 
 #ifdef HAVE_FSEEKO
-void FC_FUNC(binfseek,BINFSEEK)(const int *unit, const off_t *offset,
+void FC_FUNC(binfseek_c,BINFSEEK_C)(const int *unit, const off_t *offset,
                                 const int *whence)
 {
     assert(units[*unit].fd);
@@ -292,7 +292,7 @@ void FC_FUNC(binfseek,BINFSEEK)(const int *unit, const off_t *offset,
     }
 }
 #else
-void FC_FUNC(binfseek,BINFSEEK)(const int *unit, const long *offset,
+void FC_FUNC(binfseek_c,BINFSEEK_C)(const int *unit, const long *offset,
                                 const int *whence)
 {
     assert(units[*unit].fd);
@@ -308,7 +308,7 @@ void FC_FUNC(binfseek,BINFSEEK)(const int *unit, const long *offset,
 #endif
 
 
-void FC_FUNC_(strerrorf_,STRERRORF_)(const int *e, char *s,
+void FC_FUNC(strerrorf_c,STRERRORF_C)(const int *e, char *s,
                                      const int *s_len)
 {
     char *t;

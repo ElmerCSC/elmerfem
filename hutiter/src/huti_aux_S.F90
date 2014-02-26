@@ -1,31 +1,29 @@
+!
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! * This library is free software; you can redistribute it and/or
+! * modify it under the terms of the GNU Lesser General Public
+! * License as published by the Free Software Foundation; either
+! * version 2.1 of the License, or (at your option) any later version.
+! *
+! * This library is distributed in the hope that it will be useful,
+! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! * Lesser General Public License for more details.
+! * 
+! * You should have received a copy of the GNU Lesser General Public
+! * License along with this library (in file ../LGPL-2.1); if not, write 
+! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 
 ! Auxiliary routines for HUTI
 !
-! $Id: huti_aux_S.F90,v 1.5 2005/05/04 09:57:26 vierinen Exp $
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+! $Id: huti_aux.src,v 1.1.1.1 2005/04/15 10:31:18 vierinen Exp $
 
 
 
@@ -85,7 +83,6 @@ subroutine  huti_srandvec  ( u, ipar )
   do i = 1, HUTI_NDIM
      call random_number( harvest )
      u(i) = harvest
-
   end do
 
   return

@@ -105,16 +105,17 @@ MAKE_DEFINE(#,define, R_ind, 14 )
 subroutine MAKE_SUBRN( huti_,qmrsolv ) ( ndim, wrkdim, xvec, rhsvec, &
                           ipar, dpar, work, matvecsubr, pcondlsubr, &
                           pcondrsubr, dotprodfun, normfun, stopcfun )
-
+  use huti_interfaces
   implicit none
+ 
+  procedure(MAKE_SUBRN( mv_iface_, )), pointer :: matvecsubr => NULL()
+  procedure(MAKE_SUBRN( pc_iface_, )), pointer :: pcondlsubr => NULL()
+  procedure(MAKE_SUBRN( pc_iface_, )), pointer :: pcondrsubr => NULL()
+  procedure(MAKE_SUBRN( dotp_iface_, )), pointer :: dotprodfun => NULL()
+  procedure(MAKE_SUBRN( norm_iface_, )), pointer :: normfun => NULL()
+  procedure(MAKE_SUBRN( stopc_iface_, )), pointer :: stopcfun => NULL()
 
-  ! Parameters
-
-  external matvecsubr, pcondlsubr, pcondrsubr
-  external dotprodfun, normfun, stopcfun
-  F_PRECISION_TYPE :: dotprodfun
-  NORMFUN_PREC_TYPE :: normfun
-  NORMFUN_PREC_TYPE :: stopcfun
+ ! Parameters
 
   integer :: ndim, wrkdim
   F_PRECISION_TYPE, dimension(ndim) :: xvec, rhsvec

@@ -86,14 +86,15 @@ subroutine MAKE_SUBRN( huti_,bicgstab_2solv ) ( ndim, wrkdim, xvec, rhsvec, &
                             ipar, dpar, work, matvecsubr, pcondlsubr, &
                             pcondrsubr, dotprodfun, normfun, stopcfun )
 
-
+  use huti_interfaces
   implicit none
 
-  external matvecsubr, pcondlsubr, pcondrsubr
-  external dotprodfun, normfun, stopcfun
-  F_PRECISION_TYPE :: dotprodfun
-  NORMFUN_PREC_TYPE :: normfun
-  NORMFUN_PREC_TYPE :: stopcfun
+  procedure(MAKE_SUBRN( mv_iface_, )), pointer :: matvecsubr => NULL()
+  procedure(MAKE_SUBRN( pc_iface_, )), pointer :: pcondlsubr => NULL()
+  procedure(MAKE_SUBRN( pc_iface_, )), pointer :: pcondrsubr => NULL()
+  procedure(MAKE_SUBRN( dotp_iface_, )), pointer :: dotprodfun => NULL()
+  procedure(MAKE_SUBRN( norm_iface_, )), pointer :: normfun => NULL()
+  procedure(MAKE_SUBRN( stopc_iface_, )), pointer :: stopcfun => NULL()
 
   ! Parameters
 

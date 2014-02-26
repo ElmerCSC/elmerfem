@@ -34,6 +34,7 @@ SET(LIBSRC
 	huti_tfqmr_S.F90 
 	huti_tfqmr_Z.F90
 	huti_defs.h 
+	huti_interfaces.F90
 	huti_main.c 
 	huti_sfe_c_C.c 
 	huti_sfe_c_D.c 

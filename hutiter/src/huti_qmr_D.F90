@@ -1,32 +1,30 @@
+!
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! * This library is free software; you can redistribute it and/or
+! * modify it under the terms of the GNU Lesser General Public
+! * License as published by the Free Software Foundation; either
+! * version 2.1 of the License, or (at your option) any later version.
+! *
+! * This library is distributed in the hope that it will be useful,
+! * but WITHOUT ANY WARRANTY; without even the implied warranty of
+! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! * Lesser General Public License for more details.
+! * 
+! * You should have received a copy of the GNU Lesser General Public
+! * License along with this library (in file ../LGPL-2.1); if not, write 
+! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
 
 !
 ! Subroutine to implement QMR iterative method (double complex)
 !
-! $Id: huti_qmr_D.F90,v 1.8 2005/06/02 15:35:27 vierinen Exp $
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+! $Id: huti_qmr.src,v 1.1.1.1 2005/04/15 10:31:18 vierinen Exp $
 
 
 
@@ -116,16 +114,17 @@
 subroutine  huti_dqmrsolv  ( ndim, wrkdim, xvec, rhsvec, &
                           ipar, dpar, work, matvecsubr, pcondlsubr, &
                           pcondrsubr, dotprodfun, normfun, stopcfun )
-
+  use huti_interfaces
   implicit none
+ 
+  procedure( mv_iface_d ), pointer :: matvecsubr => NULL()
+  procedure( pc_iface_d ), pointer :: pcondlsubr => NULL()
+  procedure( pc_iface_d ), pointer :: pcondrsubr => NULL()
+  procedure( dotp_iface_d ), pointer :: dotprodfun => NULL()
+  procedure( norm_iface_d ), pointer :: normfun => NULL()
+  procedure( stopc_iface_d ), pointer :: stopcfun => NULL()
 
-  ! Parameters
-
-  external matvecsubr, pcondlsubr, pcondrsubr
-  external dotprodfun, normfun, stopcfun
-  double precision :: dotprodfun
-  double precision :: normfun
-  double precision :: stopcfun
+ ! Parameters
 
   integer :: ndim, wrkdim
   double precision, dimension(ndim) :: xvec, rhsvec
@@ -151,8 +150,6 @@ subroutine  huti_dqmrsolv  ( ndim, wrkdim, xvec, rhsvec, &
   ! First the initialization part
   !
 
-  oldgamma = 0
-  oldtheta = 0
   iter_count = 1
 
   ! Norms of right-hand side vector are used in convergence tests
