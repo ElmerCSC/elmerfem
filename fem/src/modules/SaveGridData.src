@@ -237,7 +237,7 @@ CONTAINS
     INTEGER :: t,i,j,k,n,nx,ny,nz,imin,imax,jmin,jmax,kmin,kmax, &
         imintot,imaxtot,jmintot,jmaxtot,kmintot,kmaxtot,&
         meshdim, griddim, ActiveCoordinate
-    INTEGER :: ioff,joff,koff,cands1, cands2
+    INTEGER :: ioff,joff,koff,cands1, cands2, ierr, totcount(3),tmpcount(3)
     INTEGER :: ParallelNodes, NumberOfNodes
     TYPE(Nodes_t) :: Nodes
     TYPE(ValueList_t), POINTER :: Params
@@ -507,21 +507,33 @@ CONTAINS
       DEALLOCATE( MaskPerm )
     END IF
 
-
-    WRITE( Message,'(A,I8)') 'Number of candidate nodes:',cands1
-    CALL Info('CreateGridParticles',Message,Level=5)
-
     IF( CheckForDuplicates ) THEN
-      WRITE( Message,'(A,I8)') 'Number of duplicate nodes:',cands1-cands2
-      CALL Info('CreateGridParticles',Message,Level=5)
       DEALLOCATE( GridPointActive )
     END IF
 
-    WRITE( Message,'(A,I8)') 'Number of created nodes:',Particles % NumberOfParticles
+    totcount(1) = cands1
+    totcount(2) = cands2
+    totcount(3) = Particles % NumberOfParticles
+    tmpcount = totcount
+
+    CALL MPI_ALLREDUCE( tmpcount, totcount, 3, MPI_INTEGER, &
+        MPI_SUM, MPI_COMM_WORLD, ierr ) 
+
+    WRITE( Message,'(A,I8)') 'Number of candidate nodes:',totcount(1)
+    CALL Info('CreateGridParticles',Message,Level=5)
+       
+    IF( CheckForDuplicates ) THEN
+      WRITE( Message,'(A,I8)') 'Number of duplicate nodes:',totcount(1)-totcount(2)
+      CALL Info('CreateGridParticles',Message,Level=5)
+    END IF
+
+    WRITE( Message,'(A,I8)') 'Number of created nodes:',totcount(3)
     CALL Info('CreateGridParticles',Message,Level=5)
     
-    WRITE( Message,'(A,F8.2)') 'Search hit fraction:',1.0_dp * Particles % NumberOfParticles / cands1
-    CALL Info('CreateGridParticles',Message,Level=5)
+    IF( totcount(3) > 0 ) THEN
+      WRITE( Message,'(A,F8.2)') 'Search hit fraction:',1.0_dp * totcount(3) / totcount(1)
+      CALL Info('CreateGridParticles',Message,Level=5)
+    END IF
 
 
   END SUBROUTINE CreateGridParticles
