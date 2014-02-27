@@ -236,7 +236,7 @@ CONTAINS
     INTEGER, POINTER :: MaskPerm(:)
     INTEGER :: t,i,j,k,n,nx,ny,nz,imin,imax,jmin,jmax,kmin,kmax, &
         imintot,imaxtot,jmintot,jmaxtot,kmintot,kmaxtot,&
-        meshdim, griddim
+        meshdim, griddim, ActiveCoordinate
     INTEGER :: ioff,joff,koff,cands1, cands2
     INTEGER :: ParallelNodes, NumberOfNodes
     TYPE(Nodes_t) :: Nodes
@@ -247,6 +247,8 @@ CONTAINS
     INTEGER :: ElemStart, ElemFin
     CHARACTER(MAX_NAME_LEN) :: Str
 
+
+    CALL Info('SaveGridData','Saving data on uniform grid')
 
     Mesh => GetMesh()
     IF( .NOT. ASSOCIATED( Mesh ) ) THEN
@@ -267,10 +269,10 @@ CONTAINS
           .FALSE., MaskPerm, NumberOfNodes, MaskOnBulk )
       ParallelNodes = NINT( ParallelReduction( 1.0_dp * NumberOfNodes ) )
       IF( ParallelNodes == 0 ) THEN
-        CALL Fatal('ElmerPostOutputSolver','Given mask not active: '//TRIM(Str) )
+        CALL Fatal('SaveGridData','Given mask not active: '//TRIM(Str) )
       ELSE
         MaskExist = .TRUE.
-        CALL Info('SaveGridData','Using > '// TRIM(Str) // ' < as mask variable')
+        CALL Info('SaveGridData','Using > '// TRIM(Str) // ' < as mask variable',Level=5)
         LowerDimensional = .NOT. MaskOnBulk
       END IF
     END IF
@@ -279,11 +281,14 @@ CONTAINS
       griddim = meshdim - 1
       ElemStart = Mesh % NumberOfBulkElements + 1
       ElemFin = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      CALL Info('SaveGridData','Assuming reduced coordinate to be: '//TRIM(I2S(meshdim)),Level=5)
     ELSE
       griddim = meshdim
       ElemStart = 1
       ElemFin = Mesh % NumberOfBulkElements 
+      ActiveCoordinate = 0
     END IF
+    CALL Info('SaveGridData','Saving data on '//TRIM(I2S(griddim))//'D grid',Level=5)
 
 
     ! The bounding box may be given, otherwise it is taken to include the whole mesh
@@ -504,19 +509,19 @@ CONTAINS
 
 
     WRITE( Message,'(A,I8)') 'Number of candidate nodes:',cands1
-    CALL Info('CreateGridParticles',Message)
+    CALL Info('CreateGridParticles',Message,Level=5)
 
     IF( CheckForDuplicates ) THEN
       WRITE( Message,'(A,I8)') 'Number of duplicate nodes:',cands1-cands2
-      CALL Info('CreateGridParticles',Message)
+      CALL Info('CreateGridParticles',Message,Level=5)
       DEALLOCATE( GridPointActive )
     END IF
 
     WRITE( Message,'(A,I8)') 'Number of created nodes:',Particles % NumberOfParticles
-    CALL Info('CreateGridParticles',Message)
+    CALL Info('CreateGridParticles',Message,Level=5)
     
     WRITE( Message,'(A,F8.2)') 'Search hit fraction:',1.0_dp * Particles % NumberOfParticles / cands1
-    CALL Info('CreateGridParticles',Message)
+    CALL Info('CreateGridParticles',Message,Level=5)
 
 
   END SUBROUTINE CreateGridParticles
