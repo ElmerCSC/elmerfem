@@ -43,18 +43,19 @@ ADD_CUSTOM_COMMAND(
 ENDFOREACH()
 
 INCLUDE_DIRECTORIES("${CMAKE_BINARY_DIR}/fem/src")
-INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/hutiter/src")
+INCLUDE_DIRECTORIES("${CMAKE_SOURCE_DIR}/fhutiter/src")
 INCLUDE_DIRECTORIES("${CMAKE_CURRENT_BINARY_DIR}/binio")
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/eio/src")
+INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/fhutiter/src")
 
 ADD_LIBRARY(elmersolver SHARED ${solverlib_SOURCES})
 TARGET_LINK_LIBRARIES(elmersolver ${MPI_Fortran_LIBRARIES} matc eioc
-  eiof umfpack amd huti ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack
+  eiof umfpack amd fhuti ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack
   parpack binio)
 
 ADD_EXECUTABLE(ElmerSolver_mpi Solver.F90)
 
-TARGET_LINK_LIBRARIES(ElmerSolver_mpi elmersolver matc huti eioc eiof
+TARGET_LINK_LIBRARIES(ElmerSolver_mpi elmersolver matc fhuti eioc eiof
   umfpack amd ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack parpack binio
   ${CMAKE_DL_LIBS})
 

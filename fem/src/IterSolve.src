@@ -53,6 +53,10 @@ MODULE IterSolve
    USE BandMatrix
    USE IterativeMethods
 
+#ifdef USE_ISO_C_BINDINGS
+   USE huti_sfe
+#endif
+
    IMPLICIT NONE
 
    !/*
