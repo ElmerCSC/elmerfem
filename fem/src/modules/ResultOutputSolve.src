@@ -1547,7 +1547,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
       IF( Found ) THEN
         WRITE(10,'(I8,A)') i,'"'//TRIM(Txt)//'"'
       ELSE
-        WRITE(10,'(I8,A,I0)') i,'"Body ',i,'"'       
+        WRITE(10,'(I8,A,I0,A)') i,'"Body ',i,'"'       
       END IF
     END DO
     DO i=1,Model % NumberOfBCs
@@ -1555,7 +1555,7 @@ SUBROUTINE GmshOutputSolver( Model,Solver,dt,TransientSimulation )
       IF( Found ) THEN
         WRITE(10,'(I8,A)') i+BCOffset,'"'//TRIM(Txt)//'"'
       ELSE
-        WRITE(10,'(I8,A,I0)') i+BCOffset,'"Boundary Condition ',i,'"'               
+        WRITE(10,'(I8,A,I0,A)') i+BCOffset,'"Boundary Condition ',i,'"'               
       END IF
     END DO
     WRITE(10,'(A)') '$EndPhysicalNames'
