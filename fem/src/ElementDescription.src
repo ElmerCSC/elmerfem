@@ -4204,7 +4204,7 @@ END IF
        REAL(KIND=dp) :: D1, D2
        LOGICAL :: Create2ndKindBasis
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
-       INTEGER :: BrickFaceMap(6,4)      
+       INTEGER :: BrickFaceMap(6,4), PrismSquareFaceMap(3,4)
 !----------------------------------------------------------------------------------------------------------
        stat = .TRUE.
        Basis = 0.0d0
@@ -4251,6 +4251,11 @@ END IF
              Basis(q) = PyramidNodalPBasis(q, u, v, w)
              dLBasisdx(q,1:3) = dPyramidNodalPBasis(q, u, v, w)
           END DO
+       CASE(7)
+           DO q=1,n
+             Basis(q) = WedgeNodalPBasis(q, u, v, w)
+             dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
+          END DO         
        CASE(8)
           DO q=1,n
              Basis(q) = BrickNodalPBasis(q, u, v, w)
@@ -5055,6 +5060,235 @@ END IF
           CurlBasis(9,:) = D1 * WorkCurlBasis(I1,:)
           EdgeBasis(10,:) = D2 * WorkBasis(I2,:)
           CurlBasis(10,:) = D2 * WorkCurlBasis(I2,:)          
+
+       CASE(7)
+          !--------------------------------------------------------------
+          ! This branch is for handling prismatic (or wedge) elements
+          !--------------------------------------------------------------           
+          EdgeMap => LGetEdgeMap(7)
+          CALL InvertMatrix3x3(F,G,detF)
+          Ind => Element % Nodeindexes
+
+          ! -------------------------------------------------------------
+          ! First nine basis functions associated with the edges
+          ! -------------------------------------------------------------
+          i = EdgeMap(1,1)
+          j = EdgeMap(1,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(1,1) = -((-3.0d0 + Sqrt(3.0d0)*v)*(-1.0d0 + w)*w)/12.0d0
+          EdgeBasis(1,2) = (u*(-1.0d0 + w)*w)/(4.0d0*Sqrt(3.0d0))
+          EdgeBasis(1,3) = 0.0d0
+          CurlBasis(1,1) = (u*(1.0d0 - 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(1,2) = -((-3.0d0 + Sqrt(3.0d0)*v)*(-1.0d0 + 2*w))/12.0d0
+          CurlBasis(1,3) = ((-1.0d0 + w)*w)/(2.0d0*Sqrt(3.0d0))
+          IF (nj<ni) THEN
+             EdgeBasis(1,:) = -EdgeBasis(1,:)
+             CurlBasis(1,:) = -CurlBasis(1,:)
+          END IF
+
+          i = EdgeMap(2,1)
+          j = EdgeMap(2,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(2,1) = -(v*(-1.0d0 + w)*w)/(4.0d0*Sqrt(3.0d0))
+          EdgeBasis(2,2) = ((1.0d0 + u)*(-1.0d0 + w)*w)/(4.0d0*Sqrt(3.0d0)) 
+          EdgeBasis(2,3) = 0.0d0
+          CurlBasis(2,1) = ((1.0d0 + u)*(1.0d0 - 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(2,2) = (v*(1.0d0 - 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(2,3) = ((-1.0d0 + w)*w)/(2.0d0*Sqrt(3.0d0))
+          IF (nj<ni) THEN
+             EdgeBasis(2,:) = -EdgeBasis(2,:)
+             CurlBasis(2,:) = -CurlBasis(2,:)
+          END IF
+
+          i = EdgeMap(3,1)
+          j = EdgeMap(3,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(3,1) = -(v*(-1.0d0 + w)*w)/(4.0d0*Sqrt(3.0d0))
+          EdgeBasis(3,2) = ((-1.0d0 + u)*(-1.0d0 + w)*w)/(4.0d0*Sqrt(3.0d0))
+          EdgeBasis(3,3) = 0.0d0
+          CurlBasis(3,1) = ((-1.0d0 + u)*(1.0d0 - 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(3,2) = (v*(1.0d0 - 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(3,3) = ((-1.0d0 + w)*w)/(2.0d0*Sqrt(3.0d0))
+          IF (nj<ni) THEN
+             EdgeBasis(3,:) = -EdgeBasis(3,:)
+             CurlBasis(3,:) = -CurlBasis(3,:)
+          END IF
+
+          i = EdgeMap(4,1)
+          j = EdgeMap(4,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(4,1) = -((-3.0d0 + Sqrt(3.0d0)*v)*w*(1.0d0 + w))/12.0d0
+          EdgeBasis(4,2) = (u*w*(1.0d0 + w))/(4.0d0*Sqrt(3.0d0))
+          EdgeBasis(4,3) = 0.0d0
+          CurlBasis(4,1) = -(u*(1.0d0 + 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(4,2) = -((-3.0d0 + Sqrt(3.0d0)*v)*(1.0d0 + 2.0d0*w))/12.0d0
+          CurlBasis(4,3) = (w*(1.0d0 + w))/(2.0d0*Sqrt(3.0d0))
+          IF (nj<ni) THEN
+             EdgeBasis(4,:) = -EdgeBasis(4,:)
+             CurlBasis(4,:) = -CurlBasis(4,:)
+          END IF
+
+          i = EdgeMap(5,1)
+          j = EdgeMap(5,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(5,1) = -(v*w*(1.0d0 + w))/(4.0d0*Sqrt(3.0d0))
+          EdgeBasis(5,2) = ((1.0d0 + u)*w*(1.0d0 + w))/(4.0d0*Sqrt(3.0d0))
+          EdgeBasis(5,3) = 0.0d0
+          CurlBasis(5,1) = -((1.0d0 + u)*(1.0d0 + 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(5,2) = -(v*(1.0d0 + 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(5,3) = (w*(1.0d0 + w))/(2.0d0*Sqrt(3.0d0))
+          IF (nj<ni) THEN
+             EdgeBasis(5,:) = -EdgeBasis(5,:)
+             CurlBasis(5,:) = -CurlBasis(5,:)
+          END IF
+
+          i = EdgeMap(6,1)
+          j = EdgeMap(6,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(6,1) = -(v*w*(1.0d0 + w))/(4.0d0*Sqrt(3.0d0))
+          EdgeBasis(6,2) = ((-1.0d0 + u)*w*(1.0d0 + w))/(4.0d0*Sqrt(3.0d0))
+          EdgeBasis(6,3) = 0.0d0
+          CurlBasis(6,1) = -((-1.0d0 + u)*(1.0d0 + 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(6,2) = -(v*(1.0d0 + 2.0d0*w))/(4.0d0*Sqrt(3.0d0))
+          CurlBasis(6,3) = (w*(1.0d0 + w))/(2.0d0*Sqrt(3.0d0))
+          IF (nj<ni) THEN
+             EdgeBasis(6,:) = -EdgeBasis(6,:)
+             CurlBasis(6,:) = -CurlBasis(6,:)
+          END IF
+
+          i = EdgeMap(7,1)
+          j = EdgeMap(7,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(7,1) = 0.0d0
+          EdgeBasis(7,2) = 0.0d0
+          EdgeBasis(7,3) = (3*u**2 + v*(-Sqrt(3.0d0) + v) + u*(-3.0d0 + 2*Sqrt(3.0d0)*v))/12.0d0
+          CurlBasis(7,1) = (-Sqrt(3.0d0) + 2*Sqrt(3.0d0)*u + 2*v)/12.0d0
+          CurlBasis(7,2) = (3.0d0 - 6*u - 2*Sqrt(3.0d0)*v)/12.0d0
+          CurlBasis(7,3) = 0.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(7,:) = -EdgeBasis(7,:)
+             CurlBasis(7,:) = -CurlBasis(7,:)
+          END IF
+
+          i = EdgeMap(8,1)
+          j = EdgeMap(8,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(8,1) = 0.0d0
+          EdgeBasis(8,2) = 0.0d0
+          EdgeBasis(8,3) = (3*u**2 + v*(-Sqrt(3.0d0) + v) + u*(3.0d0 - 2*Sqrt(3.0d0)*v))/12.0d0
+          CurlBasis(8,1) = (-Sqrt(3.0d0) - 2*Sqrt(3.0d0)*u + 2*v)/12.0d0
+          CurlBasis(8,2) = (-3.0d0 - 6*u + 2*Sqrt(3.0d0)*v)/12.0d0 
+          CurlBasis(8,3) = 0.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(8,:) = -EdgeBasis(8,:)
+             CurlBasis(8,:) = -CurlBasis(8,:)
+          END IF
+
+          i = EdgeMap(9,1)
+          j = EdgeMap(9,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(9,1) = 0.0d0
+          EdgeBasis(9,2) = 0.0d0
+          EdgeBasis(9,3) = (v*(-Sqrt(3.0d0) + 2*v))/6.0d0
+          CurlBasis(9,1) = (-Sqrt(3.0d0) + 4*v)/6.0d0
+          CurlBasis(9,2) = 0.0d0
+          CurlBasis(9,3) = 0.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(9,:) = -EdgeBasis(9,:)
+             CurlBasis(9,:) = -CurlBasis(9,:)
+          END IF
+
+          ! ---------------------------------------------------------------------
+          ! Additional six basis functions on the square faces (two per face).
+          ! ---------------------------------------------------------------------         
+          PrismSquareFaceMap(1,:) = (/ 1,2,5,4 /)
+          PrismSquareFaceMap(2,:) = (/ 2,3,6,5 /)
+          PrismSquareFaceMap(3,:) = (/ 3,1,4,6 /)
+          
+          ! The first square face:
+          WorkBasis(1,1) = ((-3.0d0 + Sqrt(3.0d0)*v)*(-1.0d0 + w**2))/6.0d0
+          WorkBasis(1,2) = -(u*(-1.0d0 + w**2))/(2.0d0*Sqrt(3.0d0))
+          WorkBasis(1,3) = 0.0d0
+          WorkCurlBasis(1,1) = (u*w)/Sqrt(3.0d0)
+          WorkCurlBasis(1,2) = (-1.0d0 + v/Sqrt(3.0d0))*w
+          WorkCurlBasis(1,3) = -((-1.0d0 + w**2)/Sqrt(3.0d0)) 
+
+          WorkBasis(2,1) = 0.0d0
+          WorkBasis(2,2) = 0.0d0
+          WorkBasis(2,3) = (3.0d0 - 3*u**2 - 2*Sqrt(3.0d0)*v + v**2)/6.0d0
+          WorkCurlBasis(2,1) = (-Sqrt(3.0d0) + v)/3.0d0
+          WorkCurlBasis(2,2) = u
+          WorkCurlBasis(2,3) = 0.0d0
+
+          DO j=1,4
+             FaceIndeces(j) = Ind(PrismSquareFaceMap(1,j))
+          END DO
+          CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+          EdgeBasis(10,:) = D1 * WorkBasis(I1,:)
+          CurlBasis(10,:) = D1 * WorkCurlBasis(I1,:)
+          EdgeBasis(11,:) = D2 * WorkBasis(I2,:)
+          CurlBasis(11,:) = D2 * WorkCurlBasis(I2,:) 
+
+          ! The second square face:
+          WorkBasis(1,1) = (v*(-1.0d0 + w**2))/(2.0d0*Sqrt(3.0d0))
+          WorkBasis(1,2) = -((1.0d0 + u)*(-1.0d0 + w**2))/(2.0d0*Sqrt(3.0d0))
+          WorkBasis(1,3) = 0.0d0
+          WorkCurlBasis(1,1) = ((1.0d0 + u)*w)/Sqrt(3.0d0)
+          WorkCurlBasis(1,2) = (v*w)/Sqrt(3.0d0)
+          WorkCurlBasis(1,3) = -((-1.0d0 + w**2)/Sqrt(3.0d0))
+
+          WorkBasis(2,1) = 0.0d0
+          WorkBasis(2,2) = 0.0d0
+          WorkBasis(2,3) = ((Sqrt(3.0d0) + Sqrt(3.0d0)*u - v)*v)/3.0d0
+          WorkCurlBasis(2,1) = (Sqrt(3.0d0) + Sqrt(3.0d0)*u - 2*v)/3.0d0
+          WorkCurlBasis(2,2) = -(v/Sqrt(3.0d0))
+          WorkCurlBasis(2,3) = 0.0d0 
+
+          DO j=1,4
+             FaceIndeces(j) = Ind(PrismSquareFaceMap(2,j))
+          END DO
+          CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+          EdgeBasis(12,:) = D1 * WorkBasis(I1,:)
+          CurlBasis(12,:) = D1 * WorkCurlBasis(I1,:)
+          EdgeBasis(13,:) = D2 * WorkBasis(I2,:)
+          CurlBasis(13,:) = D2 * WorkCurlBasis(I2,:) 
+
+          ! The third square face:
+          WorkBasis(1,1) = (v*(-1.0d0 + w**2))/(4.0d0*Sqrt(3.0d0))
+          WorkBasis(1,2) = -((-1.0d0 + u)*(-1.0d0 + w**2))/(4.0d0*Sqrt(3.0d0))
+          WorkBasis(1,3) = 0.0d0
+          WorkCurlBasis(1,1) = ((-1.0d0 + u)*w)/(2.0d0*Sqrt(3.0d0))
+          WorkCurlBasis(1,2) = (v*w)/(2.0d0*Sqrt(3.0d0))
+          WorkCurlBasis(1,3) = -(-1.0d0 + w**2)/(2.0d0*Sqrt(3.0d0))
+
+          WorkBasis(2,1) = 0.0d0
+          WorkBasis(2,2) = 0.0d0
+          WorkBasis(2,3) = -(v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v))/3.0d0
+          WorkCurlBasis(2,1) = (Sqrt(3.0d0) - Sqrt(3.0d0)*u - 2*v)/3.0d0
+          WorkCurlBasis(2,2) = v/Sqrt(3.0d0)
+          WorkCurlBasis(2,3) = 0.0d0
+
+          DO j=1,4
+             FaceIndeces(j) = Ind(PrismSquareFaceMap(3,j))
+          END DO
+          CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+          EdgeBasis(14,:) = D1 * WorkBasis(I1,:)
+          CurlBasis(14,:) = D1 * WorkCurlBasis(I1,:)
+          EdgeBasis(15,:) = D2 * WorkBasis(I2,:)
+          CurlBasis(15,:) = D2 * WorkCurlBasis(I2,:) 
+
 
        CASE(8)
           !--------------------------------------------------------------
