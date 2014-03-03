@@ -491,7 +491,7 @@ static FFTInit( )
     int n;
 
     if ( InitDone ) {
-        return;
+        return 0;
         }
 
     n = ( 1 << _FFT_MAX_LEVELS );
@@ -576,7 +576,7 @@ static FFTKernel( N, F, T )
         T[_FFT_I].Imag = TempI - F[3].Imag;
         _FFT_I++;
 
-        return;
+        return 0;
         }
    
     N /= 2;
