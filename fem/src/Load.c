@@ -199,7 +199,6 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
   
   strcpy( mangled, orig );
 
-#ifndef USE_ISO_C_BINDINGS  
   if(ELMER_LINKTYP == 1 || ELMER_LINKTYP == 3 || ELMER_LINKTYP == 4)
   {
     for( i=0 ; i<strlen(mangled) ; i++ ) /* to lower case */
@@ -237,7 +236,7 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
       strcat( mangled, "__" );
     }
   }
-#endif
+
 }
 
 /*--------------------------------------------------------------------------
@@ -355,6 +354,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet,
 
    if ( (Function = (void(*)())dlsym( Handle,NewName)) == NULL && *abort_not_found )
    {
+       printf("XXX: %s\n", NewName);
       fprintf( stderr, "Load: FATAL: Can't find procedure [%s]\n", NewName );
       exit(0);
    }
