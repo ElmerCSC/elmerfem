@@ -173,14 +173,12 @@ MODULE NavierStokesCylindrical
      INTEGER :: IMap(3) = (/ 1,2,4 /)
 !------------------------------------------------------------------------------
 
-     CylindricSymmetry = ( CurrentCoordinateSystem() == CylindricSymmetric .OR. &
-                 CurrentCoordinateSystem() == AxisSymmetric )
+     CylindricSymmetry = ( CurrentCoordinateSystem() == CylindricSymmetric )
 
-     IF ( CylindricSymmetry ) THEN
-       dim = 3
-     ELSE
-       dim = CoordinateSystemDimension()
-     END IF
+! Assembly assuming cylindric symmetry and then pick the entries for axi symmetric case
+! Hence dimension is assumed to be zero
+!--------------------------------------------------------------------------------------
+     dim = 3
      c = dim + 1
      N = element % TYPE % NumberOfNodes
 
@@ -199,7 +197,7 @@ MODULE NavierStokesCylindrical
        IF ( PBubbles ) THEN
           NBasis = n + Element % BDOFs
        ELSE IF ( StabilizeFlag == 'bubbles' .OR. &
-              Element % Type % BasisFunctionDegree<=1 ) THEN
+              Element % TYPE % BasisFunctionDegree<=1 ) THEN
           NBasis    = 2 * n
           Bubbles   = .TRUE.
        ELSE
@@ -210,14 +208,14 @@ MODULE NavierStokesCylindrical
 
      LinearBasis = 0
      IF ( P2P1 ) THEN
-        SaveType => Element % Type
+        SaveType => Element % TYPE
         j = GetElementFamily()
         LinearType => GetElementType(LinearCode(j))
         LinearBasis = LinearType % NumberOfNodes
      END IF
 
      IF ( Bubbles ) THEN
-       IntegStuff = GaussPoints( Element, Element % Type % GaussPoints2 )
+       IntegStuff = GaussPoints( Element, Element % TYPE % GaussPoints2 )
      ELSE
        IntegStuff = GaussPoints( Element )
      END IF
@@ -236,9 +234,9 @@ MODULE NavierStokesCylindrical
 
        dNodalBasisdx = 0._dp
        DO p=1,n
-         u = Element % Type % NodeU(p)
-         v = Element % Type % NodeV(p)
-         w = Element % Type % NodeW(p)
+         u = Element % TYPE % NodeU(p)
+         v = Element % TYPE % NodeV(p)
+         w = Element % TYPE % NodeW(p)
          stat = ElementInfo( Element, Nodes, u,v,w, detJ, Basis, dBasisdx )
          dNodalBasisdx(1:n,p,:) = dBasisdx(1:n,:)
        END DO
@@ -259,9 +257,9 @@ MODULE NavierStokesCylindrical
 !     Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
       IF ( P2P1 ) THEN
-         Element % Type => LinearType
+         Element % TYPE => LinearType
          stat = ElementInfo( Element, Nodes, u, v, w, detJ,pBasis,pdBasisdx )
-         Element % Type => SaveType
+         Element % TYPE => SaveType
       END IF
 
       stat = ElementInfo( Element,Nodes,u,v,w,detJ, &
@@ -270,17 +268,14 @@ MODULE NavierStokesCylindrical
 !------------------------------------------------------------------------------
 !      Coordinatesystem dependent info
 !------------------------------------------------------------------------------
-      IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-        x = SUM( Nodes % x(1:n) * Basis(1:n) )
-        y = SUM( Nodes % y(1:n) * Basis(1:n) )
-        z = SUM( Nodes % z(1:n) * Basis(1:n) )
-      END IF
+      x = SUM( Nodes % x(1:n) * Basis(1:n) )
+      y = SUM( Nodes % y(1:n) * Basis(1:n) )
+      z = SUM( Nodes % z(1:n) * Basis(1:n) )
 
       CALL CoordinateSystemInfo( GMetric,SqrtMetric,Symb,dSymb,x,y,z )
       DO i=1,3
         Metric(i) = GMetric(i,i)
       END DO
-
       s = SqrtMetric * detJ * S_Integ(t)
 
 !------------------------------------------------------------------------------
@@ -316,15 +311,15 @@ MODULE NavierStokesCylindrical
         Compress = Density * SUM(NodalCompressibility(1:n)*Basis(1:n))      
       END IF
 
-
 !------------------------------------------------------------------------------
 !     Velocity from previous iteration at the integration point
 !------------------------------------------------------------------------------
-      Velo    = 0.0D0
       Velo(1) = SUM( (Ux(1:n)-MUx(1:n))*Basis(1:n) )
       Velo(2) = SUM( (Uy(1:n)-MUy(1:n))*Basis(1:n) )
-      IF ( DIM > 2 .AND. CurrentCoordinateSystem() /= AxisSymmetric ) THEN
+      IF ( CylindricSymmetry ) THEN
         Velo(3) = SUM( (Uz(1:n)-MUz(1:n))*Basis(1:n) )
+      ELSE
+        Velo(3) = 0.0_dp
       END IF
 
       IF ( NewtonLinearization ) THEN
@@ -332,8 +327,7 @@ MODULE NavierStokesCylindrical
         DO i=1,3
           dVelodx(1,i) = SUM( Ux(1:n)*dBasisdx(1:n,i) )
           dVelodx(2,i) = SUM( Uy(1:n)*dBasisdx(1:n,i) )
-
-          IF ( DIM > 2 .AND. CurrentCoordinateSystem() /= AxisSymmetric ) THEN
+          IF ( CylindricSymmetry ) THEN
             dVelodx(3,i) = SUM( Uz(1:n)*dBasisdx(1:n,i) )
           END IF
         END DO
@@ -353,28 +347,32 @@ MODULE NavierStokesCylindrical
 #ifdef LORENTZ_AVE
       Force(1) = SUM( LoadVector(1,1:n)*Basis(1:n) )/Density
       Force(2) = SUM( LoadVector(2,1:n)*Basis(1:n) )/Density
-      Force(3) = SUM( LoadVector(3,1:n)*Basis(1:n) )/(Density*x)
+      IF( CylindricSymmetry ) THEN
+        Force(3) = SUM( LoadVector(3,1:n)*Basis(1:n) )/(Density*x)
+        Force(4) = SUM( LoadVector(4,1:n)*Basis(1:n) )
+      ELSE 
+        Force(3) = 0.0_dp
+        Force(4) = SUM( LoadVector(3,1:n)*Basis(1:n) )
+      END IF
 #else
       Force(1) = SUM( LoadVector(1,1:n)*Basis(1:n) )
       Force(2) = SUM( LoadVector(2,1:n)*Basis(1:n) )
-      Force(3) = SUM( LoadVector(3,1:n)*Basis(1:n) )
+      IF( CylindricSymmetry ) THEN
+        Force(3) = SUM( LoadVector(3,1:n)*Basis(1:n) )
+        Force(4) = SUM( LoadVector(4,1:n)*Basis(1:n) )
+      ELSE
+        Force(3) = 0.0_dp
+        Force(4) = SUM( LoadVector(3,1:n)*Basis(1:n) )
+      END IF
 #endif
 
-      IF ( DIM > 2 .AND. CurrentCoordinateSystem() /= AxisSymmetric ) THEN
-        Force(1:3) = Force(1:3) + LrF / Density
-        Force(4)   = SUM( LoadVector(4,1:n)*Basis(1:n) )
+      IF ( CylindricSymmetry ) THEN
+        Force(1:3) = Force(1:3) + LrF(1:3) / Density
       ELSE
         Force(1:2) = Force(1:2) + LrF(1:2) / Density
       END IF
-
-#if 0
-!
-!     NOTE: convert unit base vector, to contravariant base !
-!
-      DO i=1,3
-        Force(i) = Force(i) * SQRT(Metric(i))
-      END DO
-#endif
+      
+      IF ( Compressible ) Force(4) = Force(4) / Temperature
 
 !------------------------------------------------------------------------------
 !     Additional forces due to gradient forces (electrokinetic flow) and
@@ -386,10 +384,6 @@ MODULE NavierStokesCylindrical
             SUM(  PotentialField(1:n) * dBasisdx(1:n,1) )
         Force(2) = Force(2) - SUM( PotentialCoefficient(1:n) * Basis(1:n) ) * &
             SUM(  PotentialField(1:n) * dBasisdx(1:n,2) ) / x
-        IF(DIM == 2 .AND. CurrentCoordinateSystem() /= AxisSymmetric ) THEN
-          Force(3) = Force(3) - SUM( PotentialCoefficient(1:n) * Basis(1:n) ) * &
-              SUM(  PotentialField(1:n) * dBasisdx(1:n,3) )
-        END IF
       END IF
       
       IF(Porous) THEN
@@ -401,7 +395,7 @@ MODULE NavierStokesCylindrical
 !------------------------------------------------------------------------------
 !     Effective viscosity & derivatives at integration point
 !------------------------------------------------------------------------------
-      Viscosity = SUM( NodalViscosity(1:n)*Basis(1:n) )
+      Viscosity = SUM( NodalViscosity(1:n) * Basis(1:n) )
       Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
                     Element, Nodes, n, n, u, v, w )
 
@@ -547,7 +541,7 @@ MODULE NavierStokesCylindrical
               END DO
            END DO
 
-           IF ( CurrentCoordinateSystem() == AxisSymmetric ) THEN
+           IF ( .NOT. CylindricSymmetry ) THEN
              SU(p,i,3) = 0.0_dp
              SW(p,i,3) = 0.0_dp
            END IF
@@ -640,7 +634,7 @@ MODULE NavierStokesCylindrical
        END IF
 !------------------------------------------------------------------------------
 
-       IF ( .NOT.CylindricSymmetry ) THEN
+       IF ( .NOT. CylindricSymmetry ) THEN
          A(1,3) = A(1,3) - 2 * Viscosity * Metric(3) * Symb(3,3,1) * Basis(p) * dBasisdx(q,3)
          A(3,1) = A(3,1) + 2 * Viscosity * Metric(3) * Symb(1,3,3) * Basis(q) * dBasisdx(p,3)
          A(3,1) = A(3,1) - 2 * Viscosity * Metric(3) * Symb(1,3,3) * Basis(p) * dBasisdx(q,3)
@@ -776,17 +770,7 @@ MODULE NavierStokesCylindrical
 ! Add nodal matrix to element matrix
 !------------------------------------------------------------------------------
 !
-       IF ( CurrentCoordinateSystem() == AxisSymmetric ) THEN
-         DO i=1,3
-           DO j=1,3
-             StiffMatrix( 3*(p-1)+i,3*(q-1)+j ) = &
-                StiffMatrix( 3*(p-1)+i,3*(q-1)+j ) + s*A(IMap(i),IMap(j))
-
-             MassMatrix(  3*(p-1)+i,3*(q-1)+j ) =  &
-                MassMatrix(  3*(p-1)+i,3*(q-1)+j ) + s*Mass(IMap(i),IMap(j))
-            END DO
-         END DO
-       ELSE
+       IF ( CylindricSymmetry ) THEN
          DO i=1,c
            DO j=1,c
              StiffMatrix( c*(p-1)+i,c*(q-1)+j ) = &
@@ -794,6 +778,16 @@ MODULE NavierStokesCylindrical
 
              MassMatrix(  c*(p-1)+i,c*(q-1)+j ) = &
                  MassMatrix(  c*(p-1)+i,c*(q-1)+j ) + s*Mass(i,j)
+           END DO
+         END DO
+       ELSE
+         DO i=1,3
+           DO j=1,3
+             StiffMatrix( 3*(p-1)+i,3*(q-1)+j ) = &
+                 StiffMatrix( 3*(p-1)+i,3*(q-1)+j ) + s*A(IMap(i),IMap(j))
+             
+             MassMatrix(  3*(p-1)+i,3*(q-1)+j ) =  &
+                MassMatrix(  3*(p-1)+i,3*(q-1)+j ) + s*Mass(IMap(i),IMap(j))
            END DO
          END DO
        END IF
@@ -808,10 +802,13 @@ MODULE NavierStokesCylindrical
 !
      IF (  Convect .AND. NewtonLinearization ) THEN
 
-       Uvelo = 0.0_dp
        Uvelo(1) = SUM( Basis(1:n) * Ux(1:n) )
        Uvelo(2) = SUM( Basis(1:n) * Uy(1:n) )
-       IF ( DIM > 2 ) Uvelo(3) = SUM( Basis(1:n) * Uz(1:n) )
+       IF ( CylindricSymmetry ) THEN
+         Uvelo(3) = SUM( Basis(1:n) * Uz(1:n) )
+       ELSE
+         Uvelo(3) = 0.0_dp
+       END IF
 
        DO i=1,dim
          DO j=1,dim
@@ -819,7 +816,7 @@ MODULE NavierStokesCylindrical
          END DO
        END DO
 
-       IF ( CurrentCoordinateSystem() /= AxisSymmetric ) THEN
+       IF ( CylindricSymmetry ) THEN
          Force(1) = Force(1) + Symb(3,3,1) * UVelo(3) * UVelo(3)
          Force(3) = Force(3) + Symb(3,1,3) * UVelo(1) * UVelo(3)
          Force(3) = Force(3) + Symb(1,3,3) * UVelo(3) * UVelo(1)
@@ -831,7 +828,6 @@ MODULE NavierStokesCylindrical
        DO i=1,c
          Load(i) = Load(i) + Density * Force(i) * Basis(p)
        END DO
-       IF ( Compressible ) Load(c) = Load(c) / Temperature
 
        IF(PseudoCompressible) THEN
          Load(c) = Load(c) + Pressure * Basis(p) * Compress
@@ -845,21 +841,24 @@ MODULE NavierStokesCylindrical
           END DO
        END IF
 
-       IF ( CurrentCoordinateSystem() == AxisSymmetric ) THEN
-         DO i=1,3
-           ForceVector(3*(p-1)+i) = ForceVector(3*(p-1)+i) + s*Load(IMap(i))
-         END DO
-       ELSE
+       IF ( CylindricSymmetry ) THEN
          DO i=1,c
            ForceVector( c*(p-1)+i ) = ForceVector( c*(p-1)+i ) + s*Load(i)
+         END DO
+       ELSE
+         DO i=1,3
+           ForceVector(3*(p-1)+i) = ForceVector(3*(p-1)+i) + s*Load(IMap(i))
          END DO
        END IF
      END DO
 
    END DO 
 
-   k = c
-   IF ( Coordinates == AxisSymmetric ) k=3
+   IF ( CylindricSymmetry ) THEN
+     k = 4
+   ELSE
+     k = 3
+   END IF
 
    IF ( P2P1 ) THEN
      j = GetElementFamily()
@@ -1049,7 +1048,7 @@ MODULE NavierStokesCylindrical
      Alpha = SUM( NodalAlpha(1:n)*Basis(1:n) )
 !
 
-     SELECT CASE( Element % Type % Dimension )
+     SELECT CASE( Element % TYPE % DIMENSION )
         CASE(1)
            Tangent(1) =  Normal(2)
            Tangent(2) = -Normal(1)

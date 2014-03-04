@@ -87,7 +87,7 @@ Solver 4
   Exec Solver = After Timestep
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
-  Filename = res/lamstack.dat
+  Filename = lamstack.dat
   File Append = Logical False
   Parallel Reduce = Logical True
 

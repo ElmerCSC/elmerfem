@@ -438,6 +438,14 @@ MODULE NavierStokes
         Force(i) = SUM( LoadVector(i,1:n) * Basis(1:n) )
       END DO
 
+      ! The relative change in temperature is the source term 
+      ! for continuity equation.
+      !------------------------------------------------------
+      IF ( Compressible .AND. Cmodel==PerfectGas1 ) THEN
+        Force(c) = Force(c) / Temperature
+      END IF
+
+
       IF ( MagneticForce ) THEN
          LrF = LorentzForce( Element,Nodes,u,v,w,n )
          Force(1:DIM) = Force(1:DIM) + Lrf(1:DIM) / rho
@@ -938,7 +946,6 @@ MODULE NavierStokes
        DO i=1,c
          Load(i) = Load(i) + s * rho * Force(i) * Basis(p)
        END DO
-       IF ( Compressible.AND.Cmodel==PerfectGas1 ) Load(c) = Load(c) / Temperature
 
 !#ifdef LES
 !       DO i=1,dim
