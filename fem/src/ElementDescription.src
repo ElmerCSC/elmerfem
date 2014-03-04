@@ -4241,6 +4241,11 @@ END IF
              Basis(q) = TriangleNodalPBasis(q, u, v)
              dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v) 
           END DO
+       CASE(4)
+          DO q=1,n
+             Basis(q) = QuadNodalPBasis(q, u, v)
+             dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v) 
+          END DO
        CASE(5)
           DO q=1,n
              Basis(q) = TetraNodalPBasis(q, u, v, w)
@@ -4428,6 +4433,79 @@ END IF
                 CurlBasis(3,3) = -CurlBasis(3,3)
              END IF
           END IF
+
+       CASE(4)
+          !--------------------------------------------------------------
+          ! This branch is for handling quadrilaterals
+          !--------------------------------------------------------------
+          EdgeMap => LGetEdgeMap(4)
+
+          G(1,1) = 1.0d0/detF * F(2,2)
+          G(1,2) = -1.0d0/detF * F(1,2)
+          G(2,1) = -1.0d0/detF * F(2,1)
+          G(2,2) = 1.0d0/detF * F(1,1)
+          
+          !-------------------------------------------------
+          ! Four basis functions defined on the edges
+          !-------------------------------------------------
+          i = EdgeMap(1,1)
+          j = EdgeMap(1,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(1,1) = ((-1.0d0 + v)*v)/4.0d0
+          EdgeBasis(1,2) = 0.0d0
+          CurlBasis(1,3) = (1.0d0 - 2*v)/4.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(1,:) = -EdgeBasis(1,:)
+             CurlBasis(1,3) = -CurlBasis(1,3)
+          END IF
+
+          i = EdgeMap(2,1)
+          j = EdgeMap(2,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(2,1) = 0.0d0
+          EdgeBasis(2,2) = (u*(1.0d0 + u))/4.0d0
+          CurlBasis(2,3) = (1.0d0 + 2*u)/4.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(2,:) = -EdgeBasis(2,:)
+             CurlBasis(2,3) = -CurlBasis(2,3)
+          END IF
+
+          i = EdgeMap(3,1)
+          j = EdgeMap(3,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(3,1) = -(v*(1.0d0 + v))/4.0d0
+          EdgeBasis(3,2) = 0.0d0
+          CurlBasis(3,3) = (1.0d0 + 2*v)/4.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(3,:) = -EdgeBasis(3,:)
+             CurlBasis(3,3) = -CurlBasis(3,3)
+          END IF
+
+          i = EdgeMap(4,1)
+          j = EdgeMap(4,2)
+          ni = Element % NodeIndexes(i)
+          nj = Element % NodeIndexes(j)
+          EdgeBasis(4,1) = 0.0d0
+          EdgeBasis(4,2) = -((-1 + u)*u)/4.0d0
+          CurlBasis(4,3) = (1.0d0 - 2*u)/4.0d0
+          IF (nj<ni) THEN
+             EdgeBasis(4,:) = -EdgeBasis(4,:)
+             CurlBasis(4,3) = -CurlBasis(4,3)
+          END IF
+
+          !--------------------------------------------------------------------
+          ! Additional two basis functions associated with the element interior
+          !-------------------------------------------------------------------
+          EdgeBasis(5,1) = (1.0d0 - v**2)/2.0d0
+          EdgeBasis(5,2) = 0.0d0
+          CurlBasis(5,3) = v
+
+          EdgeBasis(6,1) = 0.0d0
+          EdgeBasis(6,2) = (1.0d0 - u**2)/2.0d0
+          CurlBasis(6,3) = -u
 
        CASE(5)
           !--------------------------------------------------------------
