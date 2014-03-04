@@ -1,5 +1,6 @@
 module huti_bicgstab_2
-
+  use huti_aux
+  implicit none
 !
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems

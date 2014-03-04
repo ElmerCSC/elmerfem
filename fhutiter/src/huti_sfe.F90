@@ -14,6 +14,13 @@ MODULE huti_sfe
   IMPLICIT NONE
 
   INTERFACE
+  
+     FUNCTION zdotc(n, x, xinc, y, yinc) RESULT(res)
+       INTEGER :: n, xinc, yinc
+       DOUBLE COMPLEX :: x(*), y(*)
+       DOUBLE COMPLEX :: res
+     END FUNCTION zdotc
+
      FUNCTION zdotu(n, x, xinc, y, yinc) RESULT(res)
        INTEGER :: n, xinc, yinc
        DOUBLE COMPLEX :: x(*), y(*)
@@ -400,6 +407,40 @@ CONTAINS
          & work, matvecsubr, pcondlsubr, pcondrsubr, dotprodfun, &
          & normfun, mstopfun)
   END SUBROUTINE huti_d_bicgstab
+
+
+  SUBROUTINE huti_d_tfqmr(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
+       & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
+    
+    PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
+    PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
+    PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
+    PROCEDURE( dotp_iface_d ), POINTER :: dotprodfun
+    PROCEDURE( norm_iface_d ), POINTER :: normfun
+    PROCEDURE( stopc_iface_d ), POINTER :: mstopfun
+
+    DOUBLE PRECISION, DIMENSION(:) :: xvec, rhsvec
+    INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
+    DOUBLE PRECISION, DIMENSION(:,:) :: work
+
+    IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
+       pcondrsubr => huti_ddummy_pcondfun
+    END IF
+    IF(.NOT. ASSOCIATED(pcondlsubr) ) THEN
+       pcondlsubr => huti_ddummy_pcondfun
+    END IF
+    IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
+       dotprodfun => ddot
+    END IF
+    IF(.NOT. ASSOCIATED(normfun) ) THEN
+       normfun => dnrm2
+    END IF
+
+    CALL huti_dtfqmrsolv(HUTI_NDIM, HUTI_WRKDIM, xvec, rhsvec, ipar, dpar, &
+         & work, matvecsubr, pcondlsubr, pcondrsubr, dotprodfun, &
+         & normfun, mstopfun)
+  END SUBROUTINE huti_d_tfqmr
 
 
   SUBROUTINE huti_d_qmr(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
@@ -841,7 +882,7 @@ CONTAINS
        normfun => dznrm2
     END IF
 
-    CALL huti_zbigstabsolv(HUTI_NDIM, HUTI_WRKDIM, xvec, rhsvec, ipar, dpar, &
+    CALL huti_zbicgstabsolv(HUTI_NDIM, HUTI_WRKDIM, xvec, rhsvec, ipar, dpar, &
          & work, matvecsubr, pcondlsubr, pcondrsubr, dotprodfun, &
          & normfun, mstopfun)
   END SUBROUTINE huti_z_bicgstab

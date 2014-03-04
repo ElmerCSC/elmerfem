@@ -148,7 +148,9 @@ CONTAINS
   RECURSIVE SUBROUTINE IterSolver( A,x,b,Solver,ndim,DotF, &
               NormF,MatvecF,PrecF,StopcF )
 !------------------------------------------------------------------------------
-
+#ifdef USE_ISO_C_BINDINGS
+    USE huti_sfe
+#endif
     USE ListMatrix
     USE SParIterGlobals
     IMPLICIT NONE
@@ -175,7 +177,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 
     EXTERNAL MultigridPrec, BackwardError
-
+#ifndef USE_ISO_C_BINDINGS
     INTEGER  :: HUTI_D_BICGSTAB, HUTI_D_BICGSTAB_2, HUTI_D_TFQMR, &
         HUTI_D_CG, HUTI_D_CGS, HUTI_D_GMRES
     EXTERNAL :: HUTI_D_BICGSTAB, HUTI_D_BICGSTAB_2, HUTI_D_TFQMR, &
@@ -191,7 +193,7 @@ CONTAINS
     
     COMPLEX(KIND=dp) :: zdotc
     EXTERNAL :: zdotc
-    
+#endif
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
         pcondrProc=0, mvProc, iterProc, StopcProc

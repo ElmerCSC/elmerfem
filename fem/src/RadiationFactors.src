@@ -1046,7 +1046,9 @@
 
 #include "huti_fdefs.h"
      SUBROUTINE FIterSolver( N,x,b,SolverParam )
-  
+#ifdef USE_ISO_C_BINDINGS
+       USE huti_sfe
+#endif
        IMPLICIT NONE
        
        TYPE(Solver_t) :: SolverParam
@@ -1057,8 +1059,10 @@
        INTEGER :: ipar(50),wsize,N
        REAL (KIND=dp), ALLOCATABLE :: work(:,:)
 !------------------------------------------------------------------------------
+#ifndef USE_ISO_C_BINDINGS
        INTEGER  :: HUTI_D_CGS
        EXTERNAL :: HUTI_D_CGS
+#endif
        INTEGER(KIND=addrInt) :: AddrFunc, iterProc, mvProc, dProc=0
 !------------------------------------------------------------------------------
        

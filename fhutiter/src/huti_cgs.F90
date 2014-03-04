@@ -1,5 +1,6 @@
 module huti_cgs
-
+  use huti_aux
+  implicit none
   !
   ! *
   ! *  Elmer, A Finite Element Software for Multiphysical Problems

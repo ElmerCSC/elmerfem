@@ -1,4 +1,6 @@
 module huti_bicgstab
+  use huti_aux
+  implicit none
 
   !
   ! *
