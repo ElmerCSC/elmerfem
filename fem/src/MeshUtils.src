@@ -986,673 +986,1300 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
-!------------------------------------------------------------------------------
-!> Function to load mesh from disk.
-!------------------------------------------------------------------------------
-  FUNCTION LoadMesh2( Model, MeshDirPar, MeshNamePar,&
-    BoundariesOnly, NumProcs,MyPE, Def_Dofs ) RESULT( Mesh )
-!------------------------------------------------------------------------------
-    USE PElementMaps, ONLY : GetRefPElementNodes
+ ! Fortran reader for Elmer ascii mesh file format.
+ ! This might be a Fortran replacement for the C++ eio library. 
+ !------------------------------------------------------------------------
+ SUBROUTINE ElmerAsciiMesh(Step, PMesh, MeshNamePar, ThisPe, IsParallel )
 
-    IMPLICIT NONE
-    
-    CHARACTER(LEN=*) :: MeshDirPar,MeshNamePar
-    LOGICAL :: BoundariesOnly
-    
-    INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:)
-    
-    TYPE(Mesh_t),  POINTER :: Mesh
-    TYPE(Model_t) :: Model
+   IMPLICIT NONE
 
-!------------------------------------------------------------------------------
+   INTEGER :: Step
+   CHARACTER(LEN=*), OPTIONAL :: MeshNamePar
+   TYPE(Mesh_t), POINTER, OPTIONAL :: PMesh
+   INTEGER, OPTIONAL :: ThisPe
+   LOGICAL, OPTIONAL :: IsParallel
 
-    INTEGER :: eio_info
- 
-    REAL(KIND=dp), POINTER :: coord(:,:), Wrk(:,:), TmpCoord(:)
-    REAL(KIND=dp) :: CoordScale(3), Ccoord(3)
-    
-    INTEGER :: i,j,k,l,m,code,tag,body,ElemType,nodes(MAX_ELEMENT_NODES), &
-        left,right,fields,npart,parts(1024)
-    
-    INTEGER :: bodies,body_forces,body_equations,materials, &
-        boundary_conditions,initial_conditions, mesh_parameters,bndry, &
-        name,n,linsys,procs,CountByType(64),Types(64),TypeCount,partn,id, &
-        NodeTag, iostat, BaseNameLen
-    
-    LOGICAL :: GotIt, NeedEdges, FoundDG, Found
-    
-    INTEGER :: MinIndex,MaxIndex,MinEIndex,MaxEIndex, DefaultTargetBC, &
-        TargetBC, BDOFs, EDOFs,FDOFs,inDOFs(7), DGIndex, istat, mesh_dim, save_dim
-    INTEGER, POINTER :: NodeTags(:),CoordMap(:),BList(:)
-    INTEGER, POINTER :: LocalPerm(:),LocalEPerm(:), &
-        ElementTags(:), EdgeDOFs(:), FaceDOFs(:)
-    
-    
-    LOGICAL, POINTER :: iface(:)
-    TYPE(ValueList_t), POINTER :: Vlist
-    
-    CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef, FileName
-    TYPE(Nodes_t) :: ElementNodes
-    TYPE(Element_t), POINTER :: Element, Edge, Face, Parent
-    
-    TYPE(Matrix_t), POINTER :: Projector
-    
-    REAL(KIND=dp) :: pCoord(3)
-    
-    TYPE(NeighbourList_t), POINTER :: nlist(:)
-    
-    LOGICAL :: parallel
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName, str
-
-    CALL Info('LoadMesh','Starting',Level=8)
-!------------------------------------------------------------------------------
-!   call spariterbarrier
-    Mesh => AllocateMesh()
-    parallel = .FALSE.
-    
-    MeshDir(1:LEN_TRIM(MeshDirPar)+1)   = TRIM(MeshDirPar)  // CHAR(0)
-    MeshName(1:LEN_TRIM(MeshNamePar)+1) = TRIM(MeshNamePar) // CHAR(0)
-    !------------------------------------------------------------------------------
-!    IF ( PRESENT(numprocs) .AND. PRESENT(mype) ) THEN
-!      IF ( numprocs > 1 ) THEN
-!        CALL eio_init( eio_info )
-!#ifdef  EIO_GET_TOTAL
-!#define EIO_GET_TOTAL
-!           CALL eio_open_mesh( MeshName,eio_info )
-        !           IF ( eio_info /= 0 ) THEN
-        !              WRITE( Message, * ) 'Unable to load mesh: ', TRIM( MeshNamePar )
-        !              CALL Fatal( 'LoadMesh', Message )
-        !           END IF
-        
-        !           CALL eio_get_mesh_description( Mesh % Nodes % TotalNodes,i,j, &
-        !                    Typecount,Types,CountByType,eio_info )
-        
-        !           CALL eio_close_mesh( eio_info )
-        !        CALL eio_close( eio_info )
-!#endif
-!        parallel = .TRUE.
-        !        CALL eio_init_parallel( numprocs,mype+1,eio_info )
-!      ELSE
-        !        CALL eio_init( eio_info )
-!      END IF
-!    ELSE
-      !      CALL eio_init( eio_info )
-!    END IF
-    
-!------------------------------------------------------------------------------
-!   Mesh
-!------------------------------------------------------------------------------
-    ! The filename
-    !--------------------------------------------------------------------------    
-
-    i = LEN_TRIM(MeshNamePar)
-    DO WHILE(MeshNamePar(i:i)==CHAR(0))
-      i=i-1
-    END DO
-    BaseNameLen = i
-    PRINT *,'Base mesh name:',MeshNamePar(1:BaseNameLen)
-
-    FileName = MeshNamePar(1:BaseNameLen)//'/mesh.header'
-    OPEN( Unit=10, File=FileName, STATUS='OLD', IOSTAT = iostat )
-    IF( iostat /= 0 ) THEN
-      CALL Fatal('LoadMesh','Could not open file: '//TRIM(Filename))
-    END IF
-    READ(10,*,IOSTAT=iostat) Mesh % NumberOfNodes, &
-        Mesh % NumberOfBulkElements,&
-        Mesh % NumberOfBoundaryElements
-    IF( iostat /= 0 ) THEN
-      CALL Fatal('LoadMesh','Could not read header 1st line in file: '//TRIM(FileName))
-    END IF
-    READ(10,*,IOSTAT=iostat) TypeCount
-    IF( iostat /= 0 ) THEN
-      CALL Fatal('LoadMesh','Could not read the type count in file: '//TRIM(FileName))
-    END IF
-    DO i=1,TypeCount
-      READ(10,*,IOSTAT=iostat) Types(i),CountByType(i)
-      IF( iostat /= 0 ) THEN
-        CALL Fatal('LoadMesh','Could not read type count '&
-            //TRIM(I2S(i))//'in file: '//TRIM(FileName))
-      END IF
-    END DO
-    CLOSE(10)
-    
-    IF( Mesh % NumberOfNodes == 0 ) THEN
-      CALL Fatal('LoadMesh','Mesh has zero nodes!')
-    END IF
-    IF( Mesh % NumberOfBulkElements == 0 ) THEN
-      CALL Fatal('LoadMesh','Mesh has zero bulk elements!')
-    END IF
+   TYPE(Mesh_t), POINTER :: Mesh
+   INTEGER :: PrevStep=0, iostat
+   INTEGER, PARAMETER :: FileUnit = 10
+   CHARACTER(MAX_NAME_LEN) :: BaseName, FileName
+   INTEGER :: i,j,k,n,BaseNameLen, SharedNodes, mype
+   INTEGER, POINTER :: NodeTags(:), ElementTags(:), LocalPerm(:)
+   INTEGER :: MinNodeTag, MaxNodeTag, istat
+   LOGICAL :: ElementPermutation, NodePermutation, Parallel
 
 
-    Mesh % Nodes % NumberOfNodes = Mesh % NumberOfNodes    
+   SAVE PrevStep, BaseName, BaseNameLen, Mesh, mype, Parallel, &
+       NodeTags, ElementTags, LocalPerm
 
-    IF ( BoundariesOnly ) Mesh % NumberOfBulkElements = 0
+   CALL Info('ElmerAsciiMesh','Performing step: '//TRIM(I2S(Step)),Level=8)
 
-    Mesh % MaxElementNodes = 0
-    Mesh % MaxElementDOFs  = 0
-    Mesh % MaxEdgeDOFs     = 0
-    Mesh % MaxFaceDOFs     = 0
-    Mesh % MaxBDOFs        = 0
-    DO i=1,TypeCount
-      Mesh % MaxElementNodes = MAX( &
-                 Mesh % MaxElementNodes, MODULO( Types(i), 100) )
-    END DO
+   IF( Step - PrevStep /= 1 ) THEN
+     CALL Fatal('ElmerAsciiMesh','The routine should be called in sequence: '// &
+         TRIM(I2S(PrevStep))//' : '//TRIM(I2S(Step)) )
+   END IF
+   PrevStep = Step
+   IF( PrevStep == 6 ) PrevStep = 0 
 
-    CALL AllocateVector( Mesh % Elements, Mesh % NumberOfBulkElements + &
-        Mesh % NumberOfBoundaryElements, 'LoadMesh' )
+   IF( Step == 1 ) THEN
+     IF(.NOT. PRESENT( MeshNamePar ) ) THEN
+       CALL Fatal('ElmerAsciiMesh','When calling in mode one give MeshNamePar!')
+     END IF
+     BaseName = TRIM( MeshNamePar ) 
+     IF(.NOT. PRESENT( PMesh ) ) THEN
+       CALL Fatal('ElmerAsciiMesh','When calling in mode one give PMesh!')
+     END IF
+     Mesh => PMesh
+     IF(.NOT. PRESENT( ThisPe ) ) THEN
+       CALL Fatal('ElmerAsciiMesh','When calling in mode one give ThisPe!')
+     END IF
+     mype = ThisPe 
+     IF(.NOT. PRESENT( IsParallel ) ) THEN
+       CALL Fatal('ElmerAsciiMesh','When calling in mode one give IsParallel!')
+     END IF
+     Parallel = IsParallel
 
-!------------------------------------------------------------------------------
-!   Read the mesh nodes
-!------------------------------------------------------------------------------
-    CALL AllocateVector( Mesh % Nodes % x, Mesh % NumberOfNodes, 'LoadMesh' )
-    CALL AllocateVector( Mesh % Nodes % y, Mesh % NumberOfNodes, 'LoadMesh' )
-    CALL AllocateVector( Mesh % Nodes % z, Mesh % NumberOfNodes, 'LoadMesh' )
-    CALL AllocateVector( NodeTags, Mesh % NumberOfNodes, 'LoadMesh' )
-
-    ! Read nodes from file
-    !--------------------------------------------------------------------------
-    FileName = MeshNamePar(1:BaseNameLen)//'/mesh.nodes'
-    OPEN( Unit=10, File=FileName, STATUS='OLD', IOSTAT = iostat )
-    IF( iostat /= 0 ) THEN
-      CALL Fatal('LoadMesh','Could not open file: '//TRIM(Filename))
-    END IF
-    DO j = 1, Mesh % NumberOfNodes
-      READ(10,*,IOSTAT=iostat) NodeTag, k, Ccoord(1:3)
-      IF( iostat /= 0 ) THEN
-        CALL Fatal('LoadMesh','Problem load node '//TRIM(I2S(j))//' in file: '//TRIM(Filename))
-      END IF
-
-      NodeTags(j) = NodeTag
-      Mesh % Nodes % x(j) = cCoord(1)
-      Mesh % Nodes % y(j) = cCoord(2)
-      Mesh % Nodes % z(j) = cCoord(3)
-    END DO
-    CLOSE(10)
-
-    ! Perform coordinate mapping
-    !------------------------------------------------------------
-    CoordMap => ListGetIntegerArray( Model % Simulation, &
-             'Coordinate Mapping',GotIt )
-    IF ( GotIt ) THEN
-      IF ( SIZE( CoordMap ) /= 3 ) THEN
-        WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
-        CALL Error( 'LoadMesh', Message )
-        WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
-        CALL Fatal( 'LoadMesh', Message )
-      END IF
-      
-      IF ( MINVAL( CoordMap ) < 1 .OR. MAXVAL( CoordMap ) > 3 ) THEN
-        WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
-        CALL Error( 'LoadMesh', Message )
-        WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
-        CALL Fatal( 'LoadMesh', Message )
-      END IF
-      DO j=1, Mesh % NumberOfNodes
-        cCoord(1) = Mesh % Nodes % x(j)
-        cCoord(2) = Mesh % Nodes % y(j)
-        cCoord(3) = Mesh % Nodes % z(j)
-        
-        Mesh % Nodes % x(j) = cCoord(CoordMap(1))
-        Mesh % Nodes % y(j) = cCoord(CoordMap(2))
-        Mesh % Nodes % z(j) = cCoord(CoordMap(3))
-      END DO
-    END IF
-    
-
-    ! Determine the mesh dimension 
-    !----------------------------------------------------------------------------
-    mesh_dim = 0
-    IF ( ANY( Mesh % Nodes % x /= Mesh % Nodes % x(1) ) ) mesh_dim = mesh_dim + 1
-    IF ( ANY( Mesh % Nodes % y /= Mesh % Nodes % y(1) ) ) mesh_dim = mesh_dim + 1
-    IF ( ANY( Mesh % Nodes % z /= Mesh % Nodes % z(1) ) ) mesh_dim = mesh_dim + 1
-    Mesh % MeshDim = mesh_dim
-
-    save_dim = Model % DIMENSION
-    IF ( Model % DIMENSION <= 0 ) Model % DIMENSION = mesh_dim
-    
-    MinIndex = MINVAL( NodeTags )
-    MaxIndex = MAXVAL( NodeTags )
-
-    CALL AllocateVector( LocalPerm, MaxIndex-MinIndex+1, 'LoadMesh' )
-    LocalPerm = 0
-    DO i=1,Mesh % NumberOfNodes
-      LocalPerm(NodeTags(i) - MinIndex + 1) = i
-    END DO
-
-!-----------------------------------------------------------------------------
-! Scaling of coordinates
-!-----------------------------------------------------------------------------
-    Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',GotIt )    
-    IF( GotIt ) THEN            
-      CoordScale = 1.0_dp
-      DO i=1,mesh_dim
-        j = MIN( i, SIZE(Wrk,1) )
-        CoordScale(i) = Wrk(j,1)
-      END DO
-      WRITE(Message,'(A,3ES10.3)') 'Scaling coordinates:',CoordScale(1:mesh_dim)
-      CALL Info('LoadMesh',Message) 
-      Mesh % Nodes % x = CoordScale(1) * Mesh % Nodes % x
-      IF( mesh_dim > 1) Mesh % Nodes % y = CoordScale(2) * Mesh % Nodes % y
-      IF( mesh_dim > 2) Mesh % Nodes % z = CoordScale(3) * Mesh % Nodes % z
-    END IF
-
-    
-!-----------------------------------------------------------------------------
-!   Mesh elements
-!------------------------------------------------------------------------------
-    CALL AllocateVector( ElementTags, Mesh % NumberOfBulkElements+1, 'LoadMesh' )
-    
-    EdgeDOFs => NULL()
-    CALL AllocateVector( EdgeDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
-    
-    FaceDOFs => NULL()
-    CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
-    
-    ElementTags = 0
-    DGIndex = 0
-    NeedEdges = .FALSE.
-    
-    
-    
-    ! Read elements from file
-    !--------------------------------------------------------------------------
-    CALL ReadElementsFile(MeshNamePar(1:BaseNameLen), Mesh, ElementTags) 
-    
-    InDofs = 0
-    IF ( PRESENT(Def_Dofs) ) THEN
-      DO j=1,6
-        IF ( Indofs(j) <= 0 ) inDOFs(j) = Def_Dofs(j)
-      END DO
-    END IF
-
-    
-    DO i=1,Mesh % NumberOfBulkElements
-
-      ! Make a local numberin of nodes
-      Element => Mesh % Elements(i)
-      n = Element % TYPE % NumberOfNodes
-      DO j=1,n
-        k = Element % NodeIndexes(j) 
-        Element % NodeIndexes(j) = LocalPerm(k - MinIndex + 1)
-      END DO
-
-      ! If target bodeis are used map the bodies accordingly
-      body = Element % BodyId 
-      Found = .FALSE.
-      DO id=1,Model % NumberOfBodies
-        BList => ListGetIntegerArray( Model % Bodies(id) % Values, &
-            'Target Bodies', GotIt ) 
-        IF ( Gotit ) THEN
-          DO k=1,SIZE(BList)
-            IF ( body == Blist(k) ) THEN
-              Found = .TRUE.
-              EXIT
-            END IF
-          END DO
-        END IF
-        IF( Found ) EXIT
-      END DO
-     
-      ! Check that element index is ok
-      IF( Found ) THEN
-        Element % BodyId = id 
-      END IF
-
-      id = Element % BodyId
-      IF( id > Model % NumberOfBodies ) THEN
-        CALL Fatal('LoadMesh','Body id larger than the number of of bodies in sif file!')
-      END IF
-
-      NULLIFY( Element % EdgeIndexes )
-      NULLIFY( Element % FaceIndexes )
-      NULLIFY( Element % BubbleIndexes )
-
-      ! Check the Solver specific element types
-      Vlist => Model % Bodies(id) % Values
-
-      j = ListGetInteger(Vlist,'Equation',gotIt)
-
-      IF( gotIt ) THEN
-        Vlist => Model % Equations(j) % Values
-        ElementDef0 = ListGetString(Vlist,'Element',Found )
-        DO j=1,Model % NumberOfSolvers
-          IF (.NOT. Found) ElementDef0=ListGetString(Model % Solvers(j) % Values,'Element',GotIt)
-          ElementDef=ListGetString(Vlist,'Element{'//TRIM(i2s(j))//'}',GotIt)
-          IF ( GotIt ) THEN
-            CALL GetMaxDefs( Model, Mesh, Element, ElementDef, j, id, Indofs )
-          ELSE
-            CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, j, id, Indofs )
-          END IF
-        END DO
-      END IF
-
-      ! Apply the elementtypes
-      IF ( inDOFs(1) /= 0 ) THEN
-        Element % NDOFs = n
-      ELSE
-        Element % NDOFs = 0
-      END IF
-      
-      EdgeDOFs(i) = MAX(0,inDOFs(2))
-      FaceDOFs(i) = MAX(0,inDOFs(3))
-      
-      IF ( PRESENT(Def_Dofs) ) THEN
-        IF ( Def_Dofs(4) == 0 ) inDOFs(4) = n
-      END IF
-      
-      NULLIFY( Element % DGIndexes )
-      IF ( inDOFs(4)>0 ) THEN
-        CALL AllocateVector( Element % DGIndexes, inDOFs(4))
-        DO j=1,inDOFs(4)
-          DGIndex = DGIndex + 1
-          Element % DGIndexes(j) = DGIndex
-        END DO
-      ELSE
-        NULLIFY( Element % DGIndexes )
-      END IF
-      Element % DGDOFs = MAX(0,inDOFs(4))
-      NeedEdges = NeedEdges .OR. ANY( inDOFs(2:4)>0 )
-      
-
-      ! Check if given element is a p element
-      IF (inDOFs(6) > 0) THEN
-        CALL AllocatePDefinitions(Element)
-        
-        NeedEdges = .TRUE.
-        
-        ! Calculate element bubble dofs and set element p
-        Element % PDefs % P = inDOFs(6)
-        IF ( inDOFs(5) > 0 ) THEN
-          Element % BDOFs = inDOFs(5)
-        ELSE
-          Element % BDOFs = getBubbleDOFs(Element, Element % PDefs % P)
-        END IF
-        
-        ! All elements in actual mesh are not edges
-        Element % PDefs % pyramidQuadEdge = .FALSE.
-        Element % PDefs % isEdge = .FALSE.
-        
-        ! If element is of type tetrahedron and is a p element, 
-        ! do the Ainsworth & Coyle trick
-        IF (Element % TYPE % ElementCode == 504) CALL ConvertToACTetra(Element)
-        CALL GetRefPElementNodes( Element,  Element % TYPE % NodeU, &
-            Element % TYPE % NodeV, Element % TYPE % NodeW )
-      ELSE 
-        ! Clear P element definitions and set manual bubbles
-        Element % PDefs => NULL()
-        Element % BDOFs = MAX(0,inDOFs(5))
-        ! WRITE (*,*) Element % BDOFs
-      END IF
-      
-      Mesh % MaxElementNodes = MAX( &
-          Mesh % MaxElementNodes,Element % TYPE % NumberOfNodes )
-    END DO
-
-!------------------------------------------------------------------------------
-    MinEIndex = MINVAL( ElementTags(1:Mesh % NumberOfBulkElements) )
-    MaxEIndex = MAXVAL( ElementTags(1:Mesh % NumberOfBulkElements) )
-    
-    CALL AllocateVector( LocalEPerm, MaxEIndex - MinEIndex + 1, 'LoadMesh' )
-    LocalEPerm = 0
-    DO i=1,Mesh % NumberOfBulkElements
-       LocalEPerm( ElementTags(i) - MinEIndex + 1 ) = i
-    END DO
-
-    FileName = MeshNamePar(1:BaseNameLen)//'/mesh.elements.data'
-    CALL ReadElementPropertyFile( FileName, Mesh )
-
-    ALLOCATE( coord(3,Mesh % MaxElementNodes) )
-!------------------------------------------------------------------------------
-!            Mesh boundary elements
-!------------------------------------------------------------------------------
-    CALL ReadBoundaryFile( MeshNamePar(1:BaseNameLen), Mesh, &
-        LocalEPerm, MinEIndex, MaxEIndex )
-
-    DO j=1,Model % NumberOfBCs
-      IF(ListGetLogical( Model % BCs(j) % Values, &
-          'Default Target', GotIt)) DefaultTargetBC = j
-    END DO
-
-    
-    DO i=Mesh % NumberOfBulkElements + 1, &
-        Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
-
-      Element => Mesh % Elements(i)
-
-      n = Element % TYPE % NumberOfNodes
-      bndry = Element % BoundaryInfo % Constraint 
-      
-      TargetBC = 0 
-      DO j=1,Model % NumberOfBCs
-        BList => ListGetIntegerArray( Model % BCs(j) % Values, &
-            'Target Boundaries', GotIt ) 
-        IF ( GotIt ) THEN
-          DO k=1,SIZE(BList)
-            IF ( BList(k) == bndry ) THEN
-              TargetBC = j
-              EXIT
-            END IF
-          END DO
-        END IF
-      END DO
-
-      ! BC not found in list, check for default 
-      IF( TargetBC == 0 ) TargetBC = DefaultTargetBC
-      
-      IF( TargetBC > 0 ) THEN
-        Element % BoundaryInfo % Constraint = TargetBC
-        Element % BodyId  = ListGetInteger( &
-            Model % BCs(TargetBC) % Values, 'Body Id', Gotit, 1, Model % NumberOfBodies )
-        Element % BoundaryInfo % OutBody = &
-            ListGetInteger( Model % BCs(TargetBC) % Values, &
-            'Normal Target Body', GotIt, maxv=Model % NumberOFBodies ) 
-      END IF
-      
-      ! Set local to global mapping for boundary element
-      DO j=1,n
-        k = Element % NodeIndexes(j)
-        Element % NodeIndexes(j) = LocalPerm(k - MinIndex + 1)
-      END DO
-      
-      
-      Element % NDOFs  = n
-      IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
-        IF( Element % BoundaryInfo % Left % NDOFs == 0 )  &
-            Element % NDOFs = 0
-        
-        IF ( Element % TYPE % DIMENSION == 1 ) THEN
-          Element % BDOFs = &
-              EdgeDOFs(Element % BoundaryInfo % Left % ElementIndex)
-        ELSE
-          Element % BDOFs = &
-              FaceDOFs(Element % BoundaryInfo % Left % ElementIndex)
-        END IF
-      END IF
-      
-      IF ( ASSOCIATED(Element % BoundaryInfo % Right) ) THEN
-        IF ( Element % BoundaryInfo % Right % NDOFs == 0 )  &
-            Element % NDOFs = 0
-        
-        IF ( Element % TYPE % DIMENSION == 1 ) THEN
-          Element % BDOFs = &
-              EdgeDOFs(Element % BoundaryInfo % Right % ElementIndex)
-        ELSE
-          Element % BDOFs = &
-              FaceDOFs(Element % BoundaryInfo % Right % ElementIndex)
-        END IF
-      END IF
-      
-      Element % DGDOFs = 0
-      Element % PDefs => NULL()
-      Element % DGIndexes => NULL()
-      Element % EdgeIndexes => NULL()
-      Element % FaceIndexes => NULL()
-      Element % BubbleIndexes => NULL()
-    END DO
-    
-    IF ( Mesh % MaxElementDOFs <= 0 ) Mesh % MaxElementDOFs = Mesh % MaxElementNodes 
-
-    DEALLOCATE( Coord, LocalEPerm )
-    Model % FreeSurfaceNodes => NULL()
-    Model % BoundaryCurvatures => NULL()
-!------------------------------------------------------------------------------
-
-    IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs)
-    CALL SetMeshMaxDOFs(Mesh)
-
-   IF ( ASSOCIATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs, FaceDOFs)
-
-   ! Reallocate coordinate arrays for iso-parametric p-elements:
-   ! -----------------------------------------------------------
-   n = Mesh % NumberOfNodes + &
-       Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
-       Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
-       Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
-
-
-   IF ( n > Mesh % NumberOfNodes ) THEN
-     TmpCoord => Mesh % Nodes % x
-
-     ALLOCATE( Mesh % Nodes % x(n) )
-     Mesh % Nodes % x = 0.0d0
-     Mesh % Nodes % x(1:Mesh % NumberOFNodes) = TmpCoord
-     DEALLOCATE( TmpCoord )
-
-     TmpCoord => Mesh % Nodes % y
-     ALLOCATE( Mesh % Nodes % y(n) )
-     Mesh % Nodes % y = 0.0d0
-     Mesh % Nodes % y(1:Mesh % NumberOFNodes) = TmpCoord
-     DEALLOCATE( TmpCoord )
- 
-     TmpCoord => Mesh % Nodes % z
-     ALLOCATE( Mesh % Nodes % z(n) )
-     Mesh % Nodes % z = 0.0d0
-     Mesh % Nodes % z(1:Mesh % NumberOFNodes) = TmpCoord
-     DEALLOCATE( TmpCoord )
+     i = LEN_TRIM(MeshNamePar)
+     DO WHILE(MeshNamePar(i:i) == CHAR(0))
+       i=i-1
+     END DO
+     BaseNameLen = i
+     CALL Info('LoadMesh','Base mesh name: '//TRIM(MeshNamePar(1:BaseNameLen)))
    END IF
 
-   Mesh % ParallelInfo % NumberOfIfDOFs = 0
-   Mesh % ParallelInfo % GlobalDOFs => NodeTags
 
-   IF ( parallel ) THEN
+   SELECT CASE( Step ) 
+
+   CASE(1)       
+     CALL ReadHeaderFile()
+
+   CASE(2)
+     CALL ReadNodesFile()
+
+   CASE(3)
+     CALL ReadElementsFile()
+
+   CASE(4)
+     CALL ReadBoundaryFile()
+     CALL PermuteNodeNumbering()
+
+   CASE(5)
+     CALL InitParallelInfo()
+     CALL ReadSharedFile()
+
+   CASE(6) 
+     IF( ASSOCIATED( LocalPerm) ) DEALLOCATE( LocalPerm ) 
+     IF( ASSOCIATED( ElementTags) ) DEALLOCATE( ElementTags )
+
+   END SELECT
+
+
+ CONTAINS
+
+   !---------------------------------------------------
+   ! Read header file and allocate some mesh structures
+   !---------------------------------------------------
+   SUBROUTINE ReadHeaderFile()
+
+     INTEGER :: TypeCount
+     INTEGER :: Types(64),CountByType(64)
+
+     IF( Parallel ) THEN
+       FileName = BaseName(1:BaseNameLen)//&
+           '/part.'//TRIM(I2S(mype+1))//'.header'
+     ELSE
+       FileName = BaseName(1:BaseNameLen)//'/mesh.header'
+     END IF
+
+     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT = iostat )
+     IF( iostat /= 0 ) THEN
+       CALL Fatal('LoadMesh','Could not open file: '//TRIM(Filename))
+     ELSE
+       CALL Info('LoadMesh','Reading header info from file: '//TRIM(FileName),Level=10)
+     END IF
+
+     READ(FileUnit,*,IOSTAT=iostat) Mesh % NumberOfNodes, &
+         Mesh % NumberOfBulkElements,&
+         Mesh % NumberOfBoundaryElements
+     IF( iostat /= 0 ) THEN
+       CALL Fatal('LoadMesh','Could not read header 1st line in file: '//TRIM(FileName))
+     END IF
+
+     Types = 0
+     CountByType = 0
+     READ(FileUnit,*,IOSTAT=iostat) TypeCount
+     IF( iostat /= 0 ) THEN
+       CALL Fatal('LoadMesh','Could not read the type count in file: '//TRIM(FileName))
+     END IF
+     DO i=1,TypeCount
+       READ(FileUnit,*,IOSTAT=iostat) Types(i),CountByType(i)
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('LoadMesh','Could not read type count '&
+             //TRIM(I2S(i))//'in file: '//TRIM(FileName))
+       END IF
+     END DO
+
+     IF( Parallel ) THEN
+       READ(FileUnit,*,IOSTAT=iostat) SharedNodes
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('LoadMesh','Could not read shared nodes in file: '//TRIM(FileName))
+       END IF
+     ELSE
+       SharedNodes = 0
+     END IF
+
+     Mesh % MaxElementNodes = 0
+     DO i=1,TypeCount
+       Mesh % MaxElementNodes = MAX( &
+           Mesh % MaxElementNodes, MODULO( Types(i), 100) )
+     END DO
+
+     CLOSE(FileUnit)
+
+   END SUBROUTINE ReadHeaderFile
+
+
+   !-----------------------------------------------------------------------
+   ! Read nodes file and create nodal permutation if needed
+   !-----------------------------------------------------------------------
+   SUBROUTINE ReadNodesFile()
+
+     REAL(KIND=dp) :: Coords(3)
+     INTEGER :: NodeTag
+
+     IF( Parallel ) THEN
+       FileName = BaseName(1:BaseNameLen)//&
+           '/part.'//TRIM(I2S(mype+1))//'.nodes'
+     ELSE
+       FileName = BaseName(1:BaseNameLen)//'/mesh.nodes'
+     END IF
+
+     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT = iostat )
+     IF( iostat /= 0 ) THEN
+       CALL Fatal('LoadMesh','Could not open file: '//TRIM(Filename))
+     ELSE
+       CALL Info('LoadMesh','Reading nodes from file: '//TRIM(FileName),Level=10)
+     END IF
+
+     ALLOCATE( NodeTags(Mesh % NumberOfNodes ) ) 
+     NodeTags = 0
+
+     NodePermutation = .FALSE.
+     DO j = 1, Mesh % NumberOfNodes
+       READ(FileUnit,*,IOSTAT=iostat) NodeTag, k, Coords
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('LoadMesh','Problem load node '//TRIM(I2S(j))//' in file: '//TRIM(Filename))
+       END IF
+
+       IF( NodeTags(j) /= j ) NodePermutation = .TRUE.
+ 
+       NodeTags(j) = NodeTag
+       Mesh % Nodes % x(j) = Coords(1)
+       Mesh % Nodes % y(j) = Coords(2)
+       Mesh % Nodes % z(j) = Coords(3)
+     END DO
+
+     CLOSE(FileUnit)
+
+   END SUBROUTINE ReadNodesFile
+
+
+   !------------------------------------------------------------------------------
+   ! Read elements file and create elemental permutation if needed 
+   !------------------------------------------------------------------------------
+   SUBROUTINE ReadElementsFile()
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: ReadLoop, ElemType, Body, ElemNo, ElemInds(64)
+
+     CALL AllocateVector( ElementTags, Mesh % NumberOfBulkElements+1, 'LoadMesh')   
+     ElementTags = 0
+     ElementPermutation = .FALSE.
+
+     IF( Parallel ) THEN
+       FileName = BaseName(1:BaseNameLen)//'/part.//TRIM(I2S(mype+1))//.elements'
+     ELSE
+       FileName = BaseName(1:BaseNameLen)//'/mesh.elements'
+     END IF
+
+     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', iostat=IOSTAT )
+     IF( iostat /= 0 ) THEN
+       CALL Fatal('ReadElementsFile','Could not open file: '//TRIM(Filename))
+     ELSE
+       CALL Info('LoadMesh','Reading bulk elements from file: '//TRIM(FileName),Level=10)
+     END IF
+
+
+     DO j=1,Mesh % NumberOfBulkElements
+
+       Element => Mesh % Elements(j)
+       IF(.NOT. ASSOCIATED( Element ) ) THEN
+         CALL Fatal('ReadElementsFile','Element '//TRIM(I2S(i))//' not associated!')
+       END IF
+
+       READ( FileUnit, *, IOSTAT=iostat ) elemno,body,&
+           ElemType,ElemInds(1:MOD(ElemType,100))
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('ReadElementsFile','Could not read start of element entry: '//TRIM(I2S(j)))
+       END IF
+
+       ElementTags(j) = elemno
+       IF( j /= elemno ) ElementPermutation = .TRUE.             
+
+       Element % ElementIndex = j
+       Element % BodyId = body
+
+       !Element % PartIndex = partn-1
+       !IF( Element % PartIndex < 0 ) Element % PartIndex = mype
+       Element % PartIndex = mype
+
+       Element % TYPE => GetElementType( ElemType )
+
+       IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
+         CALL Fatal('ReadElementsFile','Element of type '&
+             //TRIM(I2S(ElemType))//' could not be associated!')
+       END IF
+
+       n = Element % TYPE % NumberOfNodes
+       CALL AllocateVector( Element % NodeIndexes, n )
+
+       Element % NodeIndexes(1:n) = ElemInds(1:n)
+     END DO
+     CLOSE( FileUnit ) 
+
+   END SUBROUTINE ReadElementsFile
+   !------------------------------------------------------------------------------
+
+
+   !------------------------------------------------------------------------------
+   ! Read boundary elements file and remap the parents if needed.  
+   !------------------------------------------------------------------------------
+   SUBROUTINE ReadBoundaryFile()
+     INTEGER, POINTER :: LocalEPerm(:)
+     INTEGER :: MinEIndex, MaxEIndex, ElemNodes
+     INTEGER :: Left, Right, bndry, tag, ElemType, ElemInds(64)
+     TYPE(Element_t), POINTER :: Element
+
+     IF( Parallel ) THEN
+       FileName = BaseName(1:BaseNameLen)//&
+           '/part.'//TRIM(I2S(mype+1))//'.boundary'
+     ELSE
+       FileName = BaseName(1:BaseNameLen)//'/mesh.boundary'
+     END IF
+
+     ! Create permutation for the elements. This is needed when the element 
+     ! parents are mapped to the new order. This is needed for mapping of the 
+     ! parents. Otherwise the element numbering is arbitrary. 
+     !------------------------------------------------------------------------------
+     IF( ElementPermutation ) THEN
+       MinEIndex = MINVAL( ElementTags(1:Mesh % NumberOfBulkElements) )
+       MaxEIndex = MAXVAL( ElementTags(1:Mesh % NumberOfBulkElements) )
+
+       LocalEPerm => NULL()
+       CALL AllocateVector( LocalEPerm, MaxEIndex - MinEIndex + 1, 'LoadMesh' )
+       LocalEPerm = 0
+       DO j=1,Mesh % NumberOfBulkElements
+         LocalEPerm( ElementTags(i) - MinEIndex + 1 ) = j
+       END DO
+     ELSE
+       MinEIndex = 1 
+       MaxEIndex = Mesh % NumberOfBulkElements
+     END IF
+
+
+     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', iostat=IOSTAT )
+     IF( iostat /= 0 ) THEN
+       CALL Fatal('ReadBoundaryFile','Could not open file: '//TRIM(Filename))
+     ELSE
+       CALL Info('LoadMesh','Reading boundary elements from file: '//TRIM(FileName),Level=10)
+     END IF
+
+
+     DO j=Mesh % NumberOfBulkElements+1, &
+         Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+
+       Element => Mesh % Elements(j)
+       IF(.NOT. ASSOCIATED( Element ) ) THEN
+         CALL Fatal('ReadElementsFile','Element '//TRIM(I2S(i))//' not associated!')
+       END IF
+
+       READ( FileUnit, *, IOSTAT=iostat ) tag, bndry, left, right, &
+           ElemType, ElemInds(1:MOD(ElemType,100))
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('ReadBoundaryFile','Could not read start boundary entry '&
+             //TRIM(I2S(j)))
+       END IF
+
+       Element % ElementIndex = j
+
+       Element % TYPE => GetElementType( ElemType )
+       IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
+         CALL Fatal('ReadBoundaryFile','Element of type '//TRIM(I2S(ElemType))//'could not be associated!')
+       END IF
+
+       ElemNodes = Element % TYPE % NumberOfNodes
+       Mesh % MaxElementNodes = MAX( Mesh % MaxElementNodes, ElemNodes )
+
+       !Element % PartIndex = partn-1
+       !IF( Element % PartIndex < 0 ) Element % PartIndex = mype
+       Element % PartIndex = mype
+
+       CALL AllocateBoundaryInfo( Element ) 
+
+       Element % BoundaryInfo % Constraint = bndry
+       Element % BoundaryInfo % Left => NULL()
+       Element % BoundaryInfo % Right => NULL()
+
+       IF ( Left >= MinEIndex .AND. Left <= MaxEIndex ) THEN
+         IF( ElementPermutation ) THEN
+           Left  = LocalEPerm(Left - MinEIndex + 1)
+         END IF
+       ELSE IF ( Left > 0 ) THEN
+         WRITE( Message, * ) mype,'BOUNDARY PARENT out of range: ', Tag, Left
+         CALL Error( 'ReadBoundaryFile', Message )
+         Left = 0
+       END IF
+
+       IF ( Right >= MinEIndex .AND. Right <= MaxEIndex ) THEN
+         IF( ElementPermutation ) THEN
+           Right = LocalEPerm(Right - MinEIndex + 1)
+         END IF
+       ELSE IF ( Right > 0 ) THEN
+         WRITE( Message, * ) mype,'BOUNDARY PARENT out of range: ', Tag,Right
+         CALL Error( 'ReadBoundaryFile', Message )
+         Right = 0
+       END IF
+
+       IF ( Left >= 1 ) THEN
+         Element % BoundaryInfo % Left => Mesh % Elements(left)
+       END IF
+
+       IF ( Right >= 1 ) THEN
+         Element % BoundaryInfo % Right => Mesh % Elements(right)
+       END IF
+
+       n = Element % TYPE % NumberOfNodes
+       CALL AllocateVector( Element % NodeIndexes, n )
+
+       Element % NodeIndexes(1:n) = ElemInds(1:n)
+     END DO
+     CLOSE( FileUnit )
+
+
+     IF( ElementPermutation ) THEN
+       DEALLOCATE( LocalEPerm ) 
+     END IF
+
+   END SUBROUTINE ReadBoundaryFile
+   !------------------------------------------------------------------------------
+
+
+
+   ! Make a permutation for the bulk and boundary element topology if 
+   ! the nodes are permuted. This is always the case in parallel.
+   ! The initial numbering is needed only when the nodes are loaded and 
+   ! hence this is a local subroutine. 
+   !----------------------------------------------------------------------
+   SUBROUTINE PermuteNodeNumbering()
+
+     TYPE(Element_t), POINTER :: Element
+
+     IF( NodePermutation ) THEN
+       CALL Info('LoadMesh','Performing node mapping',Level=6)
+
+       MinNodeTag = MINVAL( NodeTags )
+       MaxNodeTag = MAXVAL( NodeTags )
+
+       CALL AllocateVector( LocalPerm, MaxNodeTag-MinNodeTag+1, 'LoadMesh' )
+       LocalPerm = 0
+       DO i=1,Mesh % NumberOfNodes
+         LocalPerm(NodeTags(i) - MinNodeTag + 1) = i
+       END DO
+
+       DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements       
+         Element => Mesh % Elements(i)
+         n = Element % TYPE % NumberOfNodes
+
+         DO j=1,n
+           k = Element % NodeIndexes(j) 
+           Element % NodeIndexes(j) = LocalPerm(k - MinNodeTag + 1)
+         END DO
+       END DO
+     ELSE
+       CALL Info('LoadMesh','Node mapping is continuous',Level=8)
+     END IF
+
+   END SUBROUTINE PermuteNodeNumbering
+
+
+   ! Initialize some prallel sructures once the non-nodal 
+   ! element types are known. 
+   ! Currently this is here mainly because the 
+   ! Elemental and Nodal tags are local
+   !-------------------------------------------------------
+   SUBROUTINE InitParallelInfo()
+
+     Mesh % ParallelInfo % NumberOfIfDOFs = 0
+     Mesh % ParallelInfo % GlobalDOFs => NodeTags
+
+     IF(.NOT. Parallel ) RETURN
+
      DO i=1,Mesh % NumberOfBulkElements
        Mesh % Elements(i) % GElementIndex = ElementTags(i)
      END DO
+
+     n = Mesh % NumberOfNodes + &
+         Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
+         Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
+         Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
 
      ALLOCATE( Mesh % ParallelInfo % GlobalDOFs(n) )
      Mesh % ParallelInfo % GlobalDOFs = 0
      Mesh % ParallelInfo % GlobalDOFs(1:Mesh % NumberOfNodes) = NodeTags
 
      ALLOCATE(Mesh % ParallelInfo % NeighbourList(n), STAT=istat)
-     IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate mesh arrays.')
+     IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate NeighbourList array.')
 
      DO i=1,n
        NULLIFY( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
      END DO
 
      CALL AllocateVector( Mesh % ParallelInfo % INTERFACE, n, 'LoadMesh')
-     Mesh % ParallelInfo % INTERFACE = .FALSE.
+     Mesh % ParallelInfo % INTERFACE = .FALSE.       
 
-     CALL eio_get_part_description( fields,eio_info )
-     DO i=1,fields
-       CALL eio_get_part_node( tag,bndry,pCoord,npart,parts,eio_info )
-       IF ( eio_info /= 0 ) &
-          CALL Fatal( 'LoadMesh', 'Error in shared nodes definition.' )
-       k = LocalPerm( tag-MinIndex+1 )
+   END SUBROUTINE InitParallelInfo
 
+
+   ! Read the file that shows the shared nodes.
+   !------------------------------------------------------------------------
+   SUBROUTINE ReadSharedFile()
+
+     INTEGER :: parts(64)
+     INTEGER :: npart, tag
+
+     IF(.NOT. Parallel) RETURN
+
+     FileName = BaseName(1:BaseNameLen)//&
+         '/part.'//TRIM(I2S(mype+1))//'.shared'
+
+     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT = iostat )
+     IF( iostat /= 0 ) THEN
+       CALL Fatal('LoadMesh','Could not open file: '//TRIM(Filename))
+     ELSE
+       CALL Info('LoadMesh','Reading nodes from file: '//TRIM(FileName),Level=10)
+     END IF
+
+     ! This loop could be made more effective, for example
+     ! by reading tags and nparts to a temporal vector
+     ! The operation using the str takes much more time.
+     !-----------------------------------------------------
+     DO i=1,SharedNodes          
+       READ( FileUnit, *, IOSTAT = iostat ) tag,npart,parts(1:npart)
+
+       k = LocalPerm( tag-MinNodeTag+1 )
        Mesh % ParallelInfo % INTERFACE(k) = .TRUE.
        CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(k) % Neighbours,npart)
-       Mesh % ParallelInfo % NeighbourList(k) % Neighbours = parts(1:npart) - 1
 
-       IF ( parts(1)-1 /= mype ) Mesh % ParallelInfo % NumberOfIfDOFs = &
-                 Mesh % ParallelInfo % NumberOfIfDOFs + 1
-     END DO
+       Mesh % ParallelInfo % NeighbourList(k) % Neighbours = parts(1:npart) - 1            
 
-     DO i=1,n
-       IF (.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
-          CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(i) % Neighbours,1)
-          Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = mype
+       ! this partition does not own the node
+       IF ( parts(1)-1 /= mype ) THEN
+         Mesh % ParallelInfo % NumberOfIfDOFs = &
+             Mesh % ParallelInfo % NumberOfIfDOFs + 1
        END IF
      END DO
- 
-     CALL SParFaceNumbering(Mesh)
 
+     CLOSE( FileUnit )
+
+   END SUBROUTINE ReadSharedFile
+
+ END SUBROUTINE ElmerAsciiMesh
+
+
+
+ SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, IsParallel ) 
+
+   IMPLICIT NONE
+
+   INTEGER :: Step
+   CHARACTER(LEN=*), OPTIONAL :: MeshNamePar
+   TYPE(Mesh_t), POINTER, OPTIONAL :: PMesh
+   INTEGER, OPTIONAL :: ThisPe
+   LOGICAL, OPTIONAL :: IsParallel
+
+   ! Currently only one strategy to get the mesh is implemented 
+   ! but there could be others.
+   !
+   ! This has not yet been tested in parallel and for sure
+   ! it does not work for halo elements. 
+   !-----------------------------------------------------------------
+   CALL ElmerAsciiMesh( Step, PMesh, MeshNamePar, ThisPe, IsParallel ) 
+
+ END SUBROUTINE LoadMeshStep
+
+
+
+ !------------------------------------------------------------------------------
+ !> Function to load mesh from disk.
+ !------------------------------------------------------------------------------
+ FUNCTION LoadMesh2( Model, MeshDirPar, MeshNamePar,&
+     BoundariesOnly, NumProcs,MyPE, Def_Dofs ) RESULT( Mesh )
+   !------------------------------------------------------------------------------
+   USE PElementMaps, ONLY : GetRefPElementNodes
+
+   IMPLICIT NONE
+
+   CHARACTER(LEN=*) :: MeshDirPar,MeshNamePar
+   LOGICAL :: BoundariesOnly    
+   INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:)    
+   TYPE(Mesh_t),  POINTER :: Mesh
+   TYPE(Model_t) :: Model
+   !------------------------------------------------------------------------------    
+   INTEGER :: i,j,k,n
+   INTEGER :: BaseNameLen, Save_Dim
+   LOGICAL :: GotIt, Found
+   CHARACTER(MAX_NAME_LEN) :: FileName
+   TYPE(Element_t), POINTER :: Element
+   TYPE(Matrix_t), POINTER :: Projector
+   LOGICAL :: parallel
+
+   CALL Info('LoadMesh','Starting',Level=8)
+   !------------------------------------------------------------------------------
+   CALL spariterbarrier()
+
+   Parallel = .FALSE.
+   IF ( PRESENT(numprocs) .AND. PRESENT(mype) ) THEN
+     IF ( numprocs > 1 ) Parallel = .TRUE.
+   END IF
+
+   Mesh => AllocateMesh()
+
+   ! Get sizes of mesh structures for allocation
+   !--------------------------------------------------------------------
+   CALL LoadMeshStep( 1, Mesh, MeshNamePar, mype, Parallel ) 
+
+   ! Initilize and allocate mesh stuctures
+   !---------------------------------------------------------------------
+   CALL InitializeMesh()
+
+   ! Get the (x,y,z) coordinates
+   !--------------------------------------------------------------------------
+   CALL LoadMeshStep( 2 )
+
+   ! Permute and scale the coordinates.
+   ! This also finds the mesh dimension. It is needed prior to getting the 
+   ! elementtypes since wrong permutation or dimension may spoil that. 
+   !-------------------------------------------------------------------
+   CALL MapCoordinates()
+
+   ! Get the bulk elements: element types, body index, topology
+   !--------------------------------------------------------------------------
+   CALL LoadMeshStep( 3 )
+
+   ! Get the boundary elements: boundary types, boundary index, parents, topology
+   !------------------------------------------------------------------------------
+   CALL LoadMeshStep( 4 )
+
+   ! Read elemental data - this is rarely used, parallel implementation lacking?
+   !--------------------------------------------------------------------------
+   FileName = MeshNamePar(1:BaseNameLen)//'/mesh.elements.data'
+   CALL ReadElementPropertyFile( FileName, Mesh )
+
+   ! Map bodies using Target Bodies and boundaries using Target Boundaries.
+   ! This must be done before the element definitions are studied since
+   ! then the pointer should be to the correct body index. 
+   !------------------------------------------------------------------------
+   CALL MapBodiesAndBCs()
+
+   ! Study the non-nodal elements (face, edge, DG, and p-elements)
+   ! This must be done before parallel communication since it will 
+   ! affect what needs to be communicated. 
+   !-------------------------------------------------------------------
+   CALL NonNodalElements()
+
+   ! Read parallel mesh information: shared nodes
+   !------------------------------------------------------------------
+   CALL LoadMeshStep( 5 )
+
+   ! Create parallel info for the non-nodal elements
+   !------------------------------------------------------------------
+   CALL ParallelNonNodalElements()
+
+   ! Deallocate some stuff no longer needed
+   !------------------------------------------------------------------
+   CALL LoadMeshStep( 6 )
+
+   ! Enlarge the coordinate vectors.
+   ! This must be done after the advanced elements have been detected.
+   ! Currently increase is applied only for p-elements. 
+   !-------------------------------------------------------------------
+   CALL EnlargeCoordinates()       
+
+   ! Some physics related historical initializations
+   !-----------------------------------------------------
+   Model % FreeSurfaceNodes => NULL()
+   Model % BoundaryCurvatures => NULL()
+
+   ! If periodic BC given, compute boundary mesh projector:
+   ! ------------------------------------------------------
+   DO i = 1,Model % NumberOfBCs
+     NULLIFY( Model % BCs(i) % PMatrix )
+     k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt, &
+         minv=1, maxv=Model % NumberOFBCs )
+     Projector =>  PeriodicProjector( Model, Mesh, i, k )
+     IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
+   END DO
+
+   ! Don't know why this is saved really...
+   Model % DIMENSION = save_dim
+
+   CALL Info('LoadMesh','Loading mesh done',Level=8)
+
+ CONTAINS
+
+
+   ! Initialize mesh structures after the size information has been 
+   ! retrieved.
+   !----------------------------------------------------------------
+   SUBROUTINE InitializeMesh()
+
+     INTEGER :: i,j,k,NoElems
+     TYPE(Element_t), POINTER :: Element
+
+     IF( Mesh % NumberOfNodes == 0 ) THEN
+       CALL Fatal('LoadMesh','Mesh has zero nodes!')
+     ELSE
+       CALL Info('LoadMesh','Number of nodes in mesh: '&
+           //TRIM(I2S(Mesh % NumberOfNodes)),Level=8)
+     END IF
+     IF( Mesh % NumberOfBulkElements == 0 ) THEN
+       CALL Fatal('LoadMesh','Mesh has zero bulk elements!')
+     ELSE
+       CALL Info('LoadMesh','Number of bulk elements in mesh: '&
+           //TRIM(I2S(Mesh % NumberOfBulkElements)),Level=8)        
+     END IF
+
+     CALL Info('LoadMesh','Number of boundary elements in mesh: '&
+         //TRIM(I2S(Mesh % NumberOfBoundaryElements)),Level=8)        
+
+     Mesh % Nodes % NumberOfNodes = Mesh % NumberOfNodes          
+     IF ( BoundariesOnly ) Mesh % NumberOfBulkElements = 0
+
+     Mesh % MaxElementDOFs  = 0
+     Mesh % MaxEdgeDOFs     = 0
+     Mesh % MaxFaceDOFs     = 0
+     Mesh % MaxBDOFs        = 0
+
+     CALL Info('LoadMesh','Initial number of max element nodes: '&
+         //TRIM(I2S(Mesh % MaxElementNodes)),Level=10) 
+
+     ! Allocate the elements
+     NoElems = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+     !-------------------------------------------------------------------------
+     CALL AllocateVector( Mesh % Elements, NoElems, 'LoadMesh' )
+
+     DO j=1,NoElems        
+       Element => Mesh % Elements(j)        
+
+       Element % DGDOFs = 0
+       Element % BodyId = 0
+       Element % TYPE => NULL()
+       Element % BoundaryInfo => NULL()
+       Element % PDefs => NULL()
+       Element % DGIndexes => NULL()
+       Element % EdgeIndexes => NULL()
+       Element % FaceIndexes => NULL()
+       Element % BubbleIndexes => NULL()
+     END DO
+
+     ! Allocate the nodes
+     !-------------------------------------------------------------------------
+     CALL AllocateVector( Mesh % Nodes % x, Mesh % NumberOfNodes, 'LoadMesh' )
+     CALL AllocateVector( Mesh % Nodes % y, Mesh % NumberOfNodes, 'LoadMesh' )
+     CALL AllocateVector( Mesh % Nodes % z, Mesh % NumberOfNodes, 'LoadMesh' )
+
+   END SUBROUTINE InitializeMesh
+
+
+
+   !------------------------------------------------------------------------------
+   ! Map bodies and boundaries as prescirbed by the 'Target Bodies' and 
+   ! 'Target Boundaries' keywords.
+   !------------------------------------------------------------------------------    
+   SUBROUTINE MapBodiesAndBCs()
+
+     TYPE(Element_t), POINTER :: Element
+     INTEGER, ALLOCATABLE :: IndexMap(:), TmpIndexMap(:)
+     INTEGER, POINTER :: Blist(:)
+     INTEGER :: id,minid,maxid,body,bndry,DefaultTargetBC
+
+
+     ! If "target bodies" is used map the bodies accordingly
+     !------------------------------------------------------
+     Found = .FALSE. 
+     DO id=1,Model % NumberOfBodies
+       IF( ListCheckPresent( Model % Bodies(id) % Values,'Target Bodies') ) THEN
+         Found = .TRUE.
+         EXIT
+       END IF
+     END DO
+
+     IF( Found ) THEN
+       CALL Info('LoadMesh','Remapping bodies',Level=8)      
+       minid = HUGE( minid ) 
+       maxid = -HUGE( maxid ) 
+       DO i=1,Mesh % NumberOfBulkElements
+         Element => Mesh % Elements(i)
+         id = Element % BodyId
+         minid = MIN( id, minid ) 
+         maxid = MAX( id, maxid )
+       END DO
+       IF( minid > maxid ) THEN
+         CALL Fatal('LoadMesh','Body indexes are screwed!')
+       END IF
+       CALL Info('LoadMesh','Minimum initial body index: '//TRIM(I2S(minid)),Level=6 )
+       CALL Info('LoadMesh','Maximum initial body index: '//TRIM(I2S(maxid)),Level=6 )
+
+       minid = MIN( 1, minid ) 
+       maxid = MAX( Model % NumberOfBodies, maxid ) 
+       ALLOCATE( IndexMap(minid:maxid) )
+       IndexMap = 0
+
+       DO id=1,Model % NumberOfBodies
+         BList => ListGetIntegerArray( Model % Bodies(id) % Values, &
+             'Target Bodies', GotIt ) 
+         IF ( Gotit ) THEN
+           DO k=1,SIZE(BList)
+             body = Blist(k)
+
+             IF( body > maxid ) THEN
+               CALL Warn('LoadMesh','Unused body entry in > Target Bodies <  : '&
+                   //TRIM(I2S(body)) )              
+             ELSE IF( IndexMap( body ) /= 0 ) THEN
+               CALL Warn('LoadMesh','Multiple bodies have same > Target Bodies < entry : '&
+                   //TRIM(I2S(body)))
+             ELSE
+               IndexMap( body ) = id 
+             END IF
+           END DO
+         ELSE
+           IF( IndexMap( id ) /= 0 ) THEN
+             CALL Warn('LoadMesh','Unset body already set by > Target Boundaries < : '&
+                 //TRIM(I2S(id)) )
+           ELSE 
+             IndexMap( id ) = id
+           END IF
+         END IF
+
+       END DO
+
+       IF( .TRUE. ) THEN
+         PRINT *,'Body mapping'
+         DO id=minid,maxid
+           IF( IndexMap( id ) /= 0 ) PRINT *,id,' : ',IndexMap(id)
+         END DO
+       END IF
+
+       DO i=1,Mesh % NumberOfBulkElements
+         Element => Mesh % Elements(i)
+         id = Element % BodyId
+         IF( IndexMap( id ) == 0 ) THEN
+           PRINT *,'Unmapped body: ',id
+           IndexMap(id) = id
+         END IF
+         Element % BodyId = IndexMap( id ) 
+       END DO
+
+       DEALLOCATE( IndexMap )
+     ELSE
+       CALL Info('LoadMesh','Skipping remapping of bodies',Level=10)      
+     END IF
+
+
+     IF( Mesh % NumberOfBoundaryElements == 0 ) RETURN
+
+     ! Target boundaries are usually given so this is not conditional
+     !---------------------------------------------------------------
+     CALL Info('LoadMesh','Remapping boundaries',Level=8)      
+     minid = HUGE( minid ) 
+     maxid = -HUGE( maxid ) 
+     DO i=Mesh % NumberOfBulkElements+1,&
+         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+       Element => Mesh % Elements(i)
+       id = Element % BoundaryInfo % Constraint
+       minid = MIN( id, minid ) 
+       maxid = MAX( id, maxid )
+     END DO
+
+
+     IF( minid > maxid ) THEN
+       PRINT *,'minid',minid,maxid
+       CALL Fatal('LoadMesh','Boundary indexes are screwed')
+     END IF
+     CALL Info('LoadMesh','Minimum initial boundary index: '//TRIM(I2S(minid)),Level=6 )
+     CALL Info('LoadMesh','Maximum initial boundary index: '//TRIM(I2S(maxid)),Level=6 )
+
+     minid = MIN( minid, 1 ) 
+     maxid = MAX( maxid, Model % NumberOfBCs ) 
+     ALLOCATE( IndexMap(minid:maxid) )
+     IndexMap = 0
+
+
+     DO j=1,Model % NumberOfBoundaries
+       id = ListGetInteger( Model % Boundaries(j) % Values, &
+           'Boundary Condition',GotIt, minv=1, maxv=Model % NumberOFBCs )
+       IF( id == 0 ) CYCLE
+       bndry = Model % BoundaryId(j)
+       IF( bndry > maxid ) THEN
+         CALL Warn('LoadMesh','BoundaryId exceeds range')
+       ELSE IF( bndry == 0 ) THEN
+         CALL Warn('LoadMesh','BoundaryId is zero')
+       ELSE
+         IndexMap( bndry ) = id
+       END IF
+     END DO
+
+     DefaultTargetBC = 0
+     DO id=1,Model % NumberOfBCs
+       IF(ListGetLogical( Model % BCs(j) % Values, &
+           'Default Target', GotIt)) DefaultTargetBC = id       
+       BList => ListGetIntegerArray( Model % BCs(id) % Values, &
+           'Target Boundaries', GotIt ) 
+       IF ( Gotit ) THEN
+         DO k=1,SIZE(BList)
+           bndry = Blist(k)
+           IF( bndry > maxid ) THEN
+             CALL Warn('LoadMesh','Unused BC entry in > Target Boundaries <  : '&
+                 //TRIM(I2S(bndry)) )              
+           ELSE IF( IndexMap( bndry ) /= 0 ) THEN
+             CALL Warn('LoadMesh','Multiple BCs have same > Target Boundaries < entry : '&
+                 //TRIM(I2S(bndry)) )
+           ELSE 
+             IndexMap( bndry ) = id 
+           END IF
+         END DO
+       ELSE
+         IF( IndexMap( id ) /= 0 ) THEN
+           CALL Warn('LoadMesh','Unset BC already set by > Target Boundaries < : '&
+               //TRIM(I2S(id)) )
+         ELSE 
+           ! IndexMap( id ) = id
+         END IF
+       END IF
+     END DO
+
+     IF( .TRUE. ) THEN
+       PRINT *,'Boundary mapping',minid,maxid
+       DO id=minid,maxid
+         IF( IndexMap( id ) /= 0 ) PRINT *,id,' : ',IndexMap(id)
+       END DO
+     END IF
+
+     IF( DefaultTargetBC /= 0 ) THEN
+       CALL Info('LoadMesh','Default Target BC: '&
+           //TRIM(I2S(DefaultTargetBC)),Level=8)
+     END IF
+
+
+     DO i=Mesh % NumberOfBulkElements + 1, &
+         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+
+       Element => Mesh % Elements(i)
+
+       n = Element % TYPE % NumberOfNodes
+       bndry = Element % BoundaryInfo % Constraint 
+
+       IF( bndry > maxid .OR. bndry < minid ) THEN
+         PRINT *,'this should not happen',bndry,maxid
+       END IF
+
+       IF( IndexMap( bndry ) < 0 ) THEN
+         Element % BoundaryInfo % Constraint = 0
+         CYCLE
+
+       ELSE IF( IndexMap( bndry ) == 0 ) THEN
+         IF( DefaultTargetBC /= 0 ) THEN
+           PRINT *,'Default boundary map: ',bndry,DefaultTargetBC
+           IndexMap( bndry ) = DefaultTargetBC
+         ELSE 
+           IF( bndry <= Model % NumberOfBCs ) THEN            
+             PRINT *,'Unmapped boundary: ',bndry
+           ELSE
+             PRINT *,'Unused boundary: ',bndry
+           END IF
+           IndexMap( bndry ) = -1 
+           Element % BoundaryInfo % Constraint = 0           
+           CYCLE
+         END IF
+       END IF
+
+       bndry = IndexMap( bndry ) 
+       Element % BoundaryInfo % Constraint = bndry 
+
+       IF( bndry <= Model % NumberOfBCs ) THEN
+         Element % BodyId  = ListGetInteger( &
+             Model % BCs(bndry) % Values, 'Body Id', Gotit, 1, Model % NumberOfBodies )
+         Element % BoundaryInfo % OutBody = &
+             ListGetInteger( Model % BCs(bndry) % Values, &
+             'Normal Target Body', GotIt, maxv=Model % NumberOFBodies ) 
+       END IF
+     END DO
+
+     DEALLOCATE( IndexMap ) 
+
+   END SUBROUTINE MapBodiesAndBCs
+
+
+   ! Check for the non-nodal element basis
+   !--------------------------------------------------------
+   SUBROUTINE NonNodalElements()
+
+     INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
+     INTEGER :: DGIndex, id
+     LOGICAL :: NeedEdges
+     TYPE(Element_t), POINTER :: Element
+     TYPE(ValueList_t), POINTER :: Vlist
+     INTEGER :: inDOFs(7)
+     CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
+
+     EdgeDOFs => NULL()
+     CALL AllocateVector( EdgeDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
+     FaceDOFs => NULL()
+     CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
+
+     DGIndex = 0
+     NeedEdges = .FALSE.
+
+     InDofs = 0
+     IF ( PRESENT(Def_Dofs) ) THEN
+       DO j=1,6
+         IF ( Indofs(j) <= 0 ) inDOFs(j) = Def_Dofs(j)
+       END DO
+     END IF
+
+     ! non-nodal elements in bulk elements
+     !------------------------------------------------------------
+     DO i=1,Mesh % NumberOfBulkElements
+       Element => Mesh % Elements(i)
+
+       id = Element % BodyId
+       n = Element % TYPE % NumberOfNodes
+
+       ! Check the Solver specific element types
+       Vlist => Model % Bodies(id) % Values
+
+       j = ListGetInteger(Vlist,'Equation',gotIt)
+
+       IF( gotIt ) THEN
+         Vlist => Model % Equations(j) % Values
+         ElementDef0 = ListGetString(Vlist,'Element',Found )
+         DO j=1,Model % NumberOfSolvers
+           IF (.NOT. Found) ElementDef0 = ListGetString(Model % Solvers(j) % Values,'Element',GotIt)
+           ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(j))//'}',GotIt)
+           IF ( GotIt ) THEN
+             CALL GetMaxDefs( Model, Mesh, Element, ElementDef, j, id, Indofs )
+           ELSE
+             CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, j, id, Indofs )
+           END IF
+         END DO
+       END IF
+
+       ! Apply the elementtypes
+       IF ( inDOFs(1) /= 0 ) THEN
+         Element % NDOFs = n
+       ELSE
+         Element % NDOFs = 0
+       END IF
+
+       EdgeDOFs(i) = MAX(0,inDOFs(2))
+       FaceDOFs(i) = MAX(0,inDOFs(3))
+
+       IF ( PRESENT(Def_Dofs) ) THEN
+         IF ( Def_Dofs(4) == 0 ) inDOFs(4) = n
+       END IF
+
+       NULLIFY( Element % DGIndexes )
+       IF ( inDOFs(4) > 0 ) THEN
+         CALL AllocateVector( Element % DGIndexes, inDOFs(4))
+         DO j=1,inDOFs(4)
+           DGIndex = DGIndex + 1
+           Element % DGIndexes(j) = DGIndex
+         END DO
+       ELSE
+         NULLIFY( Element % DGIndexes )
+       END IF
+       Element % DGDOFs = MAX(0,inDOFs(4))
+       NeedEdges = NeedEdges .OR. ANY( inDOFs(2:4)>0 )
+
+
+       ! Check if given element is a p element
+       IF (inDOFs(6) > 0) THEN
+         CALL AllocatePDefinitions(Element)
+
+         NeedEdges = .TRUE.
+
+         ! Calculate element bubble dofs and set element p
+         Element % PDefs % P = inDOFs(6)
+         IF ( inDOFs(5) > 0 ) THEN
+           Element % BDOFs = inDOFs(5)
+         ELSE
+           Element % BDOFs = getBubbleDOFs(Element, Element % PDefs % P)
+         END IF
+
+         ! All elements in actual mesh are not edges
+         Element % PDefs % pyramidQuadEdge = .FALSE.
+         Element % PDefs % isEdge = .FALSE.
+
+         ! If element is of type tetrahedron and is a p element, 
+         ! do the Ainsworth & Coyle trick
+         IF (Element % TYPE % ElementCode == 504) CALL ConvertToACTetra(Element)
+         CALL GetRefPElementNodes( Element,  Element % TYPE % NodeU, &
+             Element % TYPE % NodeV, Element % TYPE % NodeW )
+       ELSE 
+         ! Clear P element definitions and set manual bubbles
+         Element % PDefs => NULL()
+         Element % BDOFs = MAX(0,inDOFs(5))
+         ! WRITE (*,*) Element % BDOFs
+       END IF
+
+       Mesh % MaxElementNodes = MAX( &
+           Mesh % MaxElementNodes,Element % TYPE % NumberOfNodes )
+     END DO
+
+     ! non-nodal elements in boundary elements
+     !------------------------------------------------------------    
+     DO i = Mesh % NumberOfBulkElements + 1, &
+         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+
+       Element => Mesh % Elements(i)
+
+       n = Element % TYPE % NumberOfNodes
+
+       Element % NDOFs  = n
+       IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
+         IF( Element % BoundaryInfo % Left % NDOFs == 0 ) THEN
+           Element % NDOFs = 0
+         END IF
+
+         IF ( Element % TYPE % DIMENSION == 1 ) THEN
+           Element % BDOFs = &
+               EdgeDOFs(Element % BoundaryInfo % Left % ElementIndex)
+         ELSE
+           Element % BDOFs = &
+               FaceDOFs(Element % BoundaryInfo % Left % ElementIndex)
+         END IF
+       END IF
+
+       IF ( ASSOCIATED(Element % BoundaryInfo % Right) ) THEN
+         IF ( Element % BoundaryInfo % Right % NDOFs == 0 ) THEN
+           Element % NDOFs = 0
+         END IF
+
+         IF ( Element % TYPE % DIMENSION == 1 ) THEN
+           Element % BDOFs = &
+               EdgeDOFs(Element % BoundaryInfo % Right % ElementIndex)
+         ELSE
+           Element % BDOFs = &
+               FaceDOFs(Element % BoundaryInfo % Right % ElementIndex)
+         END IF
+       END IF
+     END DO
+
+     IF ( Mesh % MaxElementDOFs <= 0 ) Mesh % MaxElementDOFs = Mesh % MaxElementNodes 
+
+     IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs)
+
+     CALL SetMeshMaxDOFs(Mesh)
+
+     IF( ASSOCIATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs )
+     IF( ASSOCIATED(FaceDOFs) ) DEALLOCATE(FaceDOFs)
+
+   END SUBROUTINE NonNodalElements
+
+
+   !------------------------------------------------------------------------------
+   ! Map and scale coordinates, and increase the size of the coordinate
+   ! vectors, if requested.
+   !------------------------------------------------------------------------------    
+   SUBROUTINE MapCoordinates()
+
+     REAL(KIND=dp), POINTER :: NodesX(:), NodesY(:), NodesZ(:), Wrk(:,:)
+     INTEGER, POINTER :: CoordMap(:)
+     REAL(KIND=dp) :: CoordScale(3)
+     INTEGER :: mesh_dim
+
+     ! Perform coordinate mapping
+     !------------------------------------------------------------
+     CoordMap => ListGetIntegerArray( Model % Simulation, &
+         'Coordinate Mapping',GotIt )
+     IF ( GotIt ) THEN
+       CALL Info('LoadMesh','Performing coordinate mapping',Level=8)
+
+       IF ( SIZE( CoordMap ) /= 3 ) THEN
+         WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
+         CALL Error( 'LoadMesh', Message )
+         WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
+         CALL Fatal( 'LoadMesh', Message )
+       END IF
+
+       IF ( ALL( CoordMap(1:3) /= 1 ) .OR. ALL( CoordMap(1:3) /= 2 ) .OR. ALL( CoordMap(1:3) /= 3 ) ) THEN
+         WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
+         CALL Error( 'LoadMesh', Message )
+         WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
+         CALL Fatal( 'LoadMesh', Message )
+       END IF
+
+       IF( CoordMap(1) == 1 ) THEN
+         NodesX => Mesh % Nodes % x
+       ELSE IF( CoordMap(1) == 2 ) THEN
+         NodesX => Mesh % Nodes % y
+       ELSE
+         NodesX => Mesh % Nodes % z
+       END IF
+
+       IF( CoordMap(2) == 1 ) THEN
+         NodesY => Mesh % Nodes % x
+       ELSE IF( CoordMap(2) == 2 ) THEN
+         NodesY => Mesh % Nodes % y
+       ELSE
+         NodesY => Mesh % Nodes % z
+       END IF
+
+       IF( CoordMap(3) == 1 ) THEN
+         NodesZ => Mesh % Nodes % x
+       ELSE IF( CoordMap(3) == 2 ) THEN
+         NodesZ => Mesh % Nodes % y
+       ELSE
+         NodesZ => Mesh % Nodes % z
+       END IF
+
+       Mesh % Nodes % x => NodesX
+       Mesh % Nodes % y => NodesY
+       Mesh % Nodes % z => NodesZ
+     END IF
+
+     ! Determine the mesh dimension 
+     !----------------------------------------------------------------------------
+     mesh_dim = 0
+     IF ( ANY( Mesh % Nodes % x /= Mesh % Nodes % x(1) ) ) mesh_dim = mesh_dim + 1
+     IF ( ANY( Mesh % Nodes % y /= Mesh % Nodes % y(1) ) ) mesh_dim = mesh_dim + 1
+     IF ( ANY( Mesh % Nodes % z /= Mesh % Nodes % z(1) ) ) mesh_dim = mesh_dim + 1
+     Mesh % MeshDim = mesh_dim
+
+     CALL Info('LoadMesh','Dimension of mesh is: '//TRIM(I2S(mesh_dim)),Level=8)
+
+
+     save_dim = Model % DIMENSION
+     IF ( Model % DIMENSION <= 0 ) Model % DIMENSION = mesh_dim
+
+
+     ! Scaling of coordinates
+     !-----------------------------------------------------------------------------
+     Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',GotIt )    
+     IF( GotIt ) THEN            
+       CoordScale = 1.0_dp
+       DO i=1,mesh_dim
+         j = MIN( i, SIZE(Wrk,1) )
+         CoordScale(i) = Wrk(j,1)
+       END DO
+       WRITE(Message,'(A,3ES10.3)') 'Scaling coordinates:',CoordScale(1:mesh_dim)
+       CALL Info('LoadMesh',Message) 
+       Mesh % Nodes % x = CoordScale(1) * Mesh % Nodes % x
+       IF( mesh_dim > 1) Mesh % Nodes % y = CoordScale(2) * Mesh % Nodes % y
+       IF( mesh_dim > 2) Mesh % Nodes % z = CoordScale(3) * Mesh % Nodes % z
+     END IF
+
+   END SUBROUTINE MapCoordinates
+
+
+   ! Reallocate coordinate arrays for iso-parametric p-elements:
+   ! This does not seem to be necessary for other types of 
+   ! elements (face, edge, etc.)
+   ! -----------------------------------------------------------    
+   SUBROUTINE EnlargeCoordinates()
+
+     REAL(KIND=dp), POINTER :: TmpCoord(:)
+
+     n = Mesh % NumberOfNodes + &
+         Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
+         Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
+         Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
+
+     IF ( n > SIZE( Mesh % Nodes % x ) .AND. Mesh % MaxBDOFs > 0 ) THEN
+       CALL Info('LoadMesh','Increasing mesh size from '&
+           //TRIM(I2S(Mesh % NumberOfNodes))//' to '//TRIM(I2S(n)),Level=8)
+
+       TmpCoord => Mesh % Nodes % x
+
+       ALLOCATE( Mesh % Nodes % x(n) )
+       Mesh % Nodes % x(1:Mesh % NumberOFNodes) = TmpCoord
+       Mesh % Nodes % x(Mesh % NumberOfNodes + 1::1) = 0.0_dp
+       DEALLOCATE( TmpCoord )
+
+       TmpCoord => Mesh % Nodes % y
+       ALLOCATE( Mesh % Nodes % y(n) )
+       Mesh % Nodes % y(1:Mesh % NumberOFNodes) = TmpCoord
+       Mesh % Nodes % y(Mesh % NumberOfNodes + 1::1) = 0.0_dp
+       DEALLOCATE( TmpCoord )
+
+       TmpCoord => Mesh % Nodes % z
+       ALLOCATE( Mesh % Nodes % z(n) )
+       Mesh % Nodes % z(1:Mesh % NumberOFNodes) = TmpCoord
+       Mesh % Nodes % z(Mesh % NumberOfNodes + 1::1) = 0.0_dp
+       DEALLOCATE( TmpCoord )
+     END IF
+
+   END SUBROUTINE EnlargeCoordinates
+
+
+   ! When the parallel nodal neighbours have been found 
+   ! perform numbering for face and edge elements as well.
+   !-------------------------------------------------------------------    
+   SUBROUTINE ParallelNonNodalElements()
+
+     TYPE(Element_t), POINTER :: Element
+     IF(.NOT. Parallel ) RETURN
+
+     n = SIZE( Mesh % ParallelInfo % NeighbourList )
+
+     ! For unset neighbours just set the this partition to be the only owner
+     DO i=1,n
+       IF (.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
+         CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(i) % Neighbours,1)
+         Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = mype
+       END IF
+     END DO
+
+     ! Create parallel numbering of faces
+     CALL SParFaceNumbering(Mesh)
      DO i=1,Mesh % NumberOfFaces
        Mesh % MaxFaceDOFs = MAX(Mesh % MaxFaceDOFs,Mesh % Faces(i) % BDOFs)
      END DO
 
+     ! Create parallel numbering for edges
      CALL SParEdgeNumbering(Mesh)
      DO i=1,Mesh % NumberOfEdges
        Mesh % MaxEdgeDOFs = MAX(Mesh % MaxEdgeDOFs,Mesh % Edges(i) % BDOFs)
      END DO
 
+     ! Set max element dofs here (because element size may have changed
+     ! when edges and faces have been set). This is the absolute worst case.
+     ! Element which has MaxElementDOFs may not even be present as a 
+     ! real element
      DO i=1,Mesh % NumberOfBulkElements
-       Element => Mesh % Elements(i)
-
-       ! Set max element dofs here (because element size may have changed
-       ! when edges and faces have been set). This is the absolute worst case.
-       ! Element which has MaxElementDOFs may not even be present as a 
-       ! real element
+       Element => Mesh % Elements(i)        
        Mesh % MaxElementDOFs = MAX( Mesh % MaxElementDOFs, &
-            Element % TYPE % NumberOfNodes + &
-            Element % TYPE % NumberOfEdges * Mesh % MaxEdgeDOFs + &
-            Element % TYPE % NumberOfFaces * Mesh % MaxFaceDOFs + &
-            Element % BDOFs, &
-            Element % DGDOFs )
+           Element % TYPE % NumberOfNodes + &
+           Element % TYPE % NumberOfEdges * Mesh % MaxEdgeDOFs + &
+           Element % TYPE % NumberOfFaces * Mesh % MaxFaceDOFs + &
+           Element % BDOFs, &
+           Element % DGDOFs )
      END DO
-   END IF
 
-   ! Reallocate coordinate arrays for iso-parametric p-elements:
-   ! -----------------------------------------------------------
-   n = Mesh % NumberOfNodes + &
-       Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
-       Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
-       Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
+   END SUBROUTINE ParallelNonNodalElements
 
-
-   IF ( n > Mesh % NumberOfNodes ) THEN
-     TmpCoord => Mesh % Nodes % x
-     ALLOCATE( Mesh % Nodes % x(n) )
-     Mesh % Nodes % x = 0.0d0
-     Mesh % Nodes % x(1:Mesh % NumberOFNodes) = TmpCoord
-     DEALLOCATE( TmpCoord )
-
-     TmpCoord => Mesh % Nodes % y
-     ALLOCATE( Mesh % Nodes % y(n) )
-     Mesh % Nodes % y = 0.0d0
-     Mesh % Nodes % y(1:Mesh % NumberOFNodes) = TmpCoord
-     DEALLOCATE( TmpCoord )
-
-     TmpCoord => Mesh % Nodes % z
-     ALLOCATE( Mesh % Nodes % z(n) )
-     Mesh % Nodes % z = 0.0d0
-     Mesh % Nodes % z(1:Mesh % NumberOFNodes) = TmpCoord
-     DEALLOCATE( TmpCoord )
-   END IF
-
-   DEALLOCATE( LocalPerm, ElementTags )
-
-
-   ! If periodic BC given, compute boundary mesh projector:
-   ! ------------------------------------------------------
-   DO i = 1,Model % NumberOfBCs
-      NULLIFY( Model % BCs(i) % PMatrix )
-   END DO
-
-   DO i = 1,Model % NumberOfBCs
-      k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt, &
-                    minv=1, maxv=Model % NumberOFBCs )
-      Projector =>  PeriodicProjector( Model, Mesh, i, k )
-      IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
-   END DO
-
-   Model % DIMENSION = save_dim
-
-   PRINT *,'dim:',save_dim
-
-!------------------------------------------------------------------------------
-  END FUNCTION LoadMesh2
-!------------------------------------------------------------------------------
+   !------------------------------------------------------------------------------
+ END FUNCTION LoadMesh2
+ !------------------------------------------------------------------------------
 
 
 
@@ -1672,7 +2299,7 @@ END SUBROUTINE GetMaxDefs
     ! all elements
     DO i=1,Mesh % NumberOFBulkElements
        Element => Mesh % Elements(i)
-       
+
        ! Iterate each edge of element
        DO j = 1,Element % TYPE % NumberOfEdges
           Edge => Mesh % Edges( Element % EdgeIndexes(j) ) 
@@ -1896,265 +2523,6 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadElementPropertyFile
 !------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE ReadElementsFile(MeshName,Mesh,ElementTags)
-     CHARACTER(LEN=*) :: MeshName
-     TYPE(Mesh_t) :: Mesh
-     INTEGER :: ElementTags(:)
-!------------------------------------------------------------------------------
-    INTEGER, PARAMETER :: MAXLEN=1024
-    INTEGER :: MeshNameLen
-    CHARACTER(MAX_NAME_LEN) :: FileName
-#ifdef ALLOC_CHAR
-    CHARACTER(LEN=:), ALLOCATABLE :: str
-#else
-    CHARACTER(LEN=MAX_STRING_LEN) :: str
-#endif
-    INTEGER :: i,j,n,len,noentry,iostat,ElemType,ElemNodes,body,mype,iwork
-    REAL(KIND=dp) :: x
-    TYPE(Element_t), POINTER :: Element
-    TYPE(ElementData_t), POINTER :: PD,PD1
-    INTEGER :: Nodes(MAX_ELEMENT_NODES)
-
-
-#ifdef ALLOC_CHAR
-    ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
-#endif
-
-    MeshNameLen = LEN_TRIM( MeshName ) 
-    FileName = MeshName(1:MeshNameLen)//'/mesh.elements'
-
-    OPEN( Unit=10, File=FileName, STATUS='OLD', iostat=IOSTAT )
-    IF( iostat /= 0 ) THEN
-      CALL Fatal('ReadElementsFile','Could not open file: '//TRIM(Filename))
-    END IF
-    
-
-    i = 0
-    DO WHILE( ReadAndTrim(10,str) )    
-      len = LEN_TRIM(str)
-      i = i + 1
-
-      !CALL eio_get_mesh_element_conns( ElementTags(i),partn,body, &
-      !            ElemType, inDOFs, nodes, eio_info )
-
-      j = 1
-      noentry = 0
-      DO WHILE(.TRUE.) 
-        noentry = noentry + 1
-        READ( str(j:), *, IOSTAT=iostat ) iwork
-        IF( iostat /= 0 ) THEN
-          CALL Fatal('ReadElementsFile','Could not read entry '&
-              //TRIM(I2S(noentry))//' in: '//TRIM(str))
-        END IF
-
-        IF( noentry == 1 ) THEN
-          IF ( iwork < 0 .OR. iwork > Mesh % NumberOFBulkElements ) THEN
-            CALL Fatal( 'ReadElementFile', 'Element id '//TRIM(I2S(i))//' out of range.' )
-          END IF
-          ElementTags(i) = iwork
-        ELSE IF( noentry == 2 ) THEN          
-          body = iwork
-        ELSE IF( noentry == 3 ) THEN
-          ElemType = iwork
-          ElemNodes = MODULO( ElemType, 100 ) 
-        ELSE 
-          Nodes(noentry-3) = iwork
-          IF( noentry-3 == ElemNodes ) THEN
-            Element => Mesh % Elements(i)
-            IF(.NOT. ASSOCIATED( Element ) ) THEN
-              CALL Fatal('ReadElementsFile','Element '//TRIM(I2S(i))//' not associated!')
-            END IF
-
-            Element % ElementIndex = i
-
-            !      Element % PartIndex = partn-1
-            !      IF ( Element % PartIndex < 0 ) Element % PartIndex = mype
-            Element % PartIndex = mype
-            
-            NULLIFY( Element % TYPE )
-            NULLIFY( Element % BoundaryInfo )
-            Element % TYPE => GetElementType( ElemType )
-            
-            IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
-              CALL Fatal('ReadElementsFile','Element of type '//TRIM(I2S(ElemType))//'could not be associated!')
-            END IF
-            
-            n = Element % TYPE % NumberOfNodes
-            CALL AllocateVector( Element % NodeIndexes, n )
-            Element % NodeIndexes(1:n) = Nodes(1:n)
-            Element % BodyId = body
-            
-            EXIT          
-          END IF
-        END IF
-
-        DO WHILE(j<=len .AND. str(j:j)/=' ')
-          j = j + 1
-        END DO
-        DO WHILE(j<=len .AND. str(j:j)==' ')
-          j = j + 1
-        END DO
-
-      END DO
-    END DO
-
-    CLOSE(10)
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE ReadElementsFile
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE ReadBoundaryFile(MeshName,Mesh,LocalEPerm,MinEIndex,MaxEIndex)
-    CHARACTER(LEN=*) :: MeshName
-    TYPE(Mesh_t) :: Mesh
-    INTEGER :: LocalEPerm(:)
-    INTEGER :: MinEIndex, MaxEIndex
-!------------------------------------------------------------------------------
-    INTEGER :: MeshNameLen
-    CHARACTER(MAX_NAME_LEN) :: FileName
-    INTEGER, PARAMETER :: MAXLEN=1024
-#ifdef ALLOC_CHAR
-    CHARACTER(LEN=:), ALLOCATABLE :: str
-#else
-    CHARACTER(LEN=MAX_STRING_LEN) :: str
-#endif
-    INTEGER :: i,j,n,len,noentry,body,left,right,&
-        ElemType,ElemNodes,iostat,istat,partn,mype,tag,bndry,Iwork
-    REAL(KIND=dp) :: x
-    TYPE(Element_t), POINTER :: Element
-    TYPE(ElementData_t), POINTER :: PD,PD1
-    INTEGER :: Nodes(MAX_ELEMENT_NODES)
-
-#ifdef ALLOC_CHAR
-    ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
-#endif
-
-    MeshNameLen = LEN_TRIM( MeshName ) 
-    FileName = MeshName(1:MeshNameLen)//'/mesh.boundary'
-
-    OPEN( Unit=10, File=FileName, STATUS='OLD', iostat=IOSTAT )
-    IF( iostat /= 0 ) THEN
-      CALL Fatal('ReadBoundaryFile','Could not open file: '//TRIM(Filename))
-    END IF
-
-    i = Mesh % NumberOfBulkElements
-
-    DO WHILE( ReadAndTrim(10,str) )    
-      i = i + 1
-      len = LEN_TRIM(str)
-      j = 1
-      noentry = 0
-      DO WHILE(.TRUE.) 
-        noentry = noentry + 1
-        READ( str(j:), *, IOSTAT=iostat ) iwork
-        IF( iostat /= 0 ) THEN
-          CALL Fatal('ReadBoundaryFile','Could not read entry '&
-              //TRIM(I2S(noentry))//' in: '//TRIM(str))
-        END IF
-       
-        ! Read line in mesh.boundary file
-        IF( noentry == 1 ) THEN
-          tag = iwork
-          IF ( tag < 0 .OR. tag > Mesh % NumberOFBulkElements ) THEN
-            CALL Fatal( 'ReadBoundaryFile', 'Element id out of range.' )
-          END IF
-        ELSE IF( noentry == 2 ) THEN          
-          bndry = iwork
-        ELSE IF( noentry == 3 ) THEN          
-          left = iwork
-        ELSE IF( noentry == 4 ) THEN          
-          right = iwork
-        ELSE IF( noentry == 5 ) THEN
-          Elemtype = iwork
-          ElemNodes = MODULO( ElemType, 100 ) 
-        ELSE 
-
-          Nodes(noentry-5) = Iwork
-          IF( noentry-5 == ElemNodes ) THEN
-            Element => Mesh % Elements(i)
-            Element % ElementIndex = i
-            
-            Element % TYPE => GetElementType( ElemType )
-            IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
-              CALL Fatal('ReadBoundaryFile','Element of type '//TRIM(I2S(ElemType))//'could not be associated!')
-            END IF
-            
-            Mesh % MaxElementNodes = MAX( &
-                Mesh % MaxElementNodes, ElemNodes )
-            
-            !IF ( partn >= 1 ) THEN
-            !  Element % PartIndex = partn-1
-            !ELSE
-            !  Element % PartIndex = mype
-            !END IF
-            
-            ! Allocating boundary element 
-            CALL AllocateBoundaryInfo( Element ) 
-            
-            Element % BodyId = 0
-            Element % DGDOFs = 0
-            Element % PDefs => NULL()
-            Element % DGIndexes => NULL()
-            Element % EdgeIndexes => NULL()
-            Element % FaceIndexes => NULL()
-            Element % BubbleIndexes => NULL()
-            
-            Element % BoundaryInfo % Constraint = bndry
-
-            IF ( Left >= MinEIndex .AND. Left <= MaxEIndex ) THEN
-              Left  = LocalEPerm(Left - MinEIndex + 1)
-            ELSE IF ( Left > 0 ) THEN
-              WRITE( Message, * ) mype,'BOUNDARY PARENT out of range: ', Tag, Left
-              CALL Error( 'ReadBoundaryFile', Message )
-              Left = 0
-            END IF
-            
-            IF ( Right >= MinEIndex .AND. Right <= MaxEIndex ) THEN
-              Right = LocalEPerm(Right - MinEIndex + 1)
-            ELSE IF ( Right > 0 ) THEN
-              WRITE( Message, * ) mype,'BOUNDARY PARENT out of range: ', Tag,Right
-              CALL Error( 'ReadBoundaryFile', Message )
-              Right = 0
-            END IF
-            
-            IF ( Left >= 1 ) &
-                Element % BoundaryInfo % Left => Mesh % Elements(left)
-            IF ( Right >= 1 ) &
-                Mesh % Elements(i) % BoundaryInfo % Right => Mesh % Elements(right)
-            
-            n = Element % TYPE % NumberOfNodes
-            CALL AllocateVector( Element % NodeIndexes, n )
-            Element % NodeIndexes(1:n) = Nodes(1:n)
-            Element % BodyId = body
-
-            EXIT          
-          END IF
-        END IF
-
-        DO WHILE(j<=len .AND. str(j:j)/=' ')
-          j = j + 1
-        END DO
-        DO WHILE(j<=len .AND. str(j:j)==' ')
-          j = j + 1
-        END DO
-
-      END DO
-    END DO
-
-    CLOSE(10)
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE ReadBoundaryFile
-!------------------------------------------------------------------------------
-
-
-
-
-
 
 
 !------------------------------------------------------------------------------
