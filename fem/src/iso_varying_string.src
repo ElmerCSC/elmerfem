@@ -764,6 +764,27 @@ contains
 
 !****
 
+  elemental function len_ (string) result (length)
+
+    type(varying_string), intent(in) :: string
+    integer                          :: length
+
+! Get the length of a varying string
+
+    if(ALLOCATED(string%chars)) then
+       length = SIZE(string%chars)
+    else
+       length = 0
+    endif
+
+! Finish
+
+    return
+
+  end function len_
+
+!****
+
   pure function char_auto (string) result (char_string)
 
     type(varying_string), intent(in) :: string
@@ -901,26 +922,6 @@ contains
 
 !****
 
-  elemental function len_ (string) result (length)
-
-    type(varying_string), intent(in) :: string
-    integer                          :: length
-
-! Get the length of a varying string
-
-    if(ALLOCATED(string%chars)) then
-       length = SIZE(string%chars)
-    else
-       length = 0
-    endif
-
-! Finish
-
-    return
-
-  end function len_
-
-!****
 
   elemental function len_trim_ (string) result (length)
 
