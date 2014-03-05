@@ -1692,6 +1692,36 @@ CONTAINS
   END FUNCTION ListGetCReal
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Returns a scalar real value, that may depend on other scalar values such as 
+!> time or timestep size etc.
+!------------------------------------------------------------------------------
+  RECURSIVE FUNCTION ListGetRealAtNode( List, Name, Node, Found ) RESULT(s)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*)  :: Name
+     INTEGER :: Node
+     LOGICAL, OPTIONAL :: Found
+     REAL(KIND=dp) :: s
+!-----------------------------------------------------------------------------
+     INTEGER, TARGET, SAVE :: Dnodes(1)
+     INTEGER, POINTER :: NodeIndexes(:) 
+     REAL(KIND=dp) :: x(1)
+     INTEGER, PARAMETER :: one = 1
+
+     IF ( PRESENT( Found ) ) Found = .FALSE.
+
+     IF ( .NOT. ASSOCIATED(List) ) RETURN
+
+     NodeIndexes => Dnodes
+     NodeIndexes(one) = Node
+
+     x(1:one) = ListGetReal( List, Name, one, NodeIndexes, Found )
+     s = x(one)
+
+!------------------------------------------------------------------------------
+  END FUNCTION ListGetRealAtNode
+!------------------------------------------------------------------------------
 
 #define MAX_FNC 32
 
@@ -1956,6 +1986,7 @@ CONTAINS
          F(2:n) = F(1)
 
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
+
        TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
        WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
        k = LEN_TRIM(cmd)
@@ -1964,6 +1995,7 @@ CONTAINS
        DO i=1,n
          k = NodeIndexes(i)
          CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
+
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            DO l=1,j
              WRITE( cmd, * ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
