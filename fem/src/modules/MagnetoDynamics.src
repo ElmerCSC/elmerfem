@@ -4526,7 +4526,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), RotM(:,:,:)
 
-   REAL(KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:)   
+   REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>Null(), Cwrk_im(:,:,:)=>Null()
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
 
    Mesh => GetMesh()
