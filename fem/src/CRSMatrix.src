@@ -1716,7 +1716,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END DO
     END DO
 
-    WRITE( Message,'(A,I0,A,I0,A)'),'Positive diagonals ',pcount,' (out of ',n,')'
+    WRITE( Message,'(A,I0,A,I0,A)') 'Positive diagonals ',pcount,' (out of ',n,')'
     CALL Info('CRS_FCTLowOrder',Message,Level=8)
 
     A % Values = A % Values + A % FCT_D
