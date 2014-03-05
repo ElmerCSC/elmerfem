@@ -1711,13 +1711,15 @@ CONTAINS
 
      IF ( PRESENT( Found ) ) Found = .FALSE.
 
-     IF ( .NOT. ASSOCIATED(List) ) RETURN
-
-     NodeIndexes => Dnodes
-     NodeIndexes(one) = Node
-
-     x(1:one) = ListGetReal( List, Name, one, NodeIndexes, Found )
-     s = x(one)
+     IF ( ASSOCIATED(List) ) THEN
+       NodeIndexes => Dnodes
+       NodeIndexes(one) = Node
+       
+       x(1:one) = ListGetReal( List, Name, one, NodeIndexes, Found )
+       s = x(one)
+     ELSE
+       s = 0.0_dp
+     END IF
 
 !------------------------------------------------------------------------------
   END FUNCTION ListGetRealAtNode
