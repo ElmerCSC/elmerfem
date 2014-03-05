@@ -2857,15 +2857,15 @@ CONTAINS
 
      CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
          rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
-     kappa0 = SQRT( ZABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
+     kappa0 = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
      CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
          rwork(1:l+1,yl), 1, zzero, rwork(1:l+1,y), 1)
-     kappal = SQRT( ZABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )
+     kappal = SQRT( ABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )
      CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
          rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
      varrho = zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) / &
          (kappa0*kappal)
-     hatgamma = varrho/ZABS(varrho) * MAX(ZABS(varrho),7d-1) * &
+     hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
          kappa0/kappal
      rwork(1:l+1,y0) = rwork(1:l+1,y0) - hatgamma * rwork(1:l+1,yl)
 
@@ -2881,7 +2881,7 @@ CONTAINS
 
      CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
          rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
-     rnrm = SQRT( ZABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
+     rnrm = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
 
       !---------------------------------------
       !  --- The reliable update part ---
@@ -3816,15 +3816,15 @@ CONTAINS
 
       CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
           rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
-      kappa0 = SQRT( ZABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
+      kappa0 = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
       CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
           rwork(1:l+1,yl), 1, zzero, rwork(1:l+1,y), 1)
-      kappal = SQRT( ZABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )
+      kappal = SQRT( ABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )
       CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
           rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
       varrho = zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) / &
           (kappa0*kappal)
-      hatgamma = varrho/ZABS(varrho) * MAX(ZABS(varrho),7d-1) * &
+      hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
           kappa0/kappal
       rwork(1:l+1,y0) = rwork(1:l+1,y0) - hatgamma * rwork(1:l+1,yl)
 
@@ -3840,7 +3840,7 @@ CONTAINS
 
       CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
           rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
-      rnrm = SQRT( ZABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
+      rnrm = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
 
       !---------------------------------------
       !  --- The reliable update part ---
@@ -4318,15 +4318,15 @@ CONTAINS
 
       CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
           rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
-      kappa0 = SQRT( ZABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
+      kappa0 = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
       CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
           rwork(1:l+1,yl), 1, zzero, rwork(1:l+1,y), 1)
-      kappal = SQRT( ZABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )
+      kappal = SQRT( ABS(zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1)) )
       CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
           rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
       varrho = zdotc(l+1, rwork(1:l+1,yl), 1, rwork(1:l+1,y), 1) / &
           (kappa0*kappal)
-      hatgamma = varrho/ZABS(varrho) * MAX(ZABS(varrho),7d-1) * &
+      hatgamma = varrho/ABS(varrho) * MAX(ABS(varrho),7d-1) * &
           kappa0/kappal
       rwork(1:l+1,y0) = rwork(1:l+1,y0) - hatgamma * rwork(1:l+1,yl)
 
@@ -4342,7 +4342,7 @@ CONTAINS
 
       CALL zhemv ('u', l+1, zone, rwork(1:l+1,z:z+l), l+1, &
           rwork(1:l+1,y0), 1, zzero, rwork(1:l+1,y), 1)
-      rnrm = SQRT( ZABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
+      rnrm = SQRT( ABS(zdotc(l+1, rwork(1:l+1,y0), 1, rwork(1:l+1,y), 1)) )
 
       !---------------------------------------
       !  --- The reliable update part ---

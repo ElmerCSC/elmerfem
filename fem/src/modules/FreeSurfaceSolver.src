@@ -121,7 +121,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   IF ( COUNT(FreeSurfPerm/=0)==0) THEN
      IF (ParEnv % PEs > 1) THEN
-        WRITE(Message,'(A,I0,A)'), 'Partition ', ParEnv % myPE, ' has no free surface'
+        WRITE(Message,'(A,I0,A)')  'Partition ', ParEnv % myPE, ' has no free surface'
         CALL Warn(SolverName,Message)
         CALL Warn(SolverName,'This is not good for load balance!')
      ELSE
