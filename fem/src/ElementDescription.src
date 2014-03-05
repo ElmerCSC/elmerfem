@@ -4204,7 +4204,7 @@ END IF
        REAL(KIND=dp) :: D1, D2
        LOGICAL :: Create2ndKindBasis
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
-       INTEGER :: BrickFaceMap(6,4), PrismSquareFaceMap(3,4)
+       INTEGER :: SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4)
 !----------------------------------------------------------------------------------------------------------
        stat = .TRUE.
        Basis = 0.0d0
@@ -4499,13 +4499,31 @@ END IF
           !--------------------------------------------------------------------
           ! Additional two basis functions associated with the element interior
           !-------------------------------------------------------------------
-          EdgeBasis(5,1) = (1.0d0 - v**2)/2.0d0
-          EdgeBasis(5,2) = 0.0d0
-          CurlBasis(5,3) = v
+          SquareFaceMap(:) = (/ 1,2,3,4 /)          
+          Ind => Element % Nodeindexes
 
-          EdgeBasis(6,1) = 0.0d0
-          EdgeBasis(6,2) = (1.0d0 - u**2)/2.0d0
-          CurlBasis(6,3) = -u
+          WorkBasis(1,:) = 0.0d0
+          WorkBasis(2,:) = 0.0d0
+          WorkCurlBasis(1,:) = 0.0d0
+          WorkCurlBasis(2,:) = 0.0d0         
+          
+          WorkBasis(1,1) = (1.0d0 - v**2)/2.0d0
+          WorkBasis(1,2) = 0.0d0
+          WorkCurlBasis(1,3) = v
+
+          WorkBasis(2,1) = 0.0d0
+          WorkBasis(2,2) = (1.0d0 - u**2)/2.0d0
+          WorkCurlBasis(2,3) = -u
+          
+          DO j=1,4
+             FaceIndeces(j) = Ind(SquareFaceMap(j))
+          END DO
+          CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+          EdgeBasis(5,:) = D1 * WorkBasis(I1,:)
+          CurlBasis(5,:) = D1 * WorkCurlBasis(I1,:)
+          EdgeBasis(6,:) = D2 * WorkBasis(I2,:)
+          CurlBasis(6,:) = D2 * WorkCurlBasis(I2,:)         
 
        CASE(5)
           !--------------------------------------------------------------
@@ -5038,6 +5056,9 @@ END IF
           ! We first create the basis function in the default order without
           ! sign reversions.
           ! ------------------------------------------------------------------
+          SquareFaceMap(:) = (/ 1,2,3,4 /)
+          Ind => Element % Nodeindexes          
+
           WorkBasis(1,1) = (2.0d0 - 2*v**2 - 2*Sqrt(2.0d0)*w + w**2)/(4.0d0 - 2*Sqrt(2.0d0)*w)
           WorkBasis(1,2) = 0.0d0
           WorkBasis(1,3) = (u*(1.0d0 - (4*v**2)/(-2.0d0 + Sqrt(2.0d0)*w)**2))/(2.0d0*Sqrt(2.0d0))
@@ -5053,86 +5074,12 @@ END IF
           WorkCurlBasis(2,3) = (2*u)/(-2.0d0 + Sqrt(2.0d0)*w)
 
           ! -------------------------------------------------------------------
-          ! Finally apply an order change and sign reversions if needed. To this end,
-          ! find nodes A, B, C such that A has the minimal global index,
-          ! AB and AC are edges, with C having the largest global index. 
-          ! Then AB gives the positive direction for the first face DOF and
-          ! AC gives the positive direction for the second face DOF.
-          ! REMARK: This convention must be followed when creating basis
-          ! functions for other element types which are intended to be compatible
-          ! with this pyramidic element.
+          ! Finally apply an order change and sign reversions if needed. 
           ! -------------------------------------------------------------------
-          i = EdgeMap(1,1)
-          j = EdgeMap(1,2)
-          IF ( Ind(i) < Ind(j) ) THEN
-             k = i
-          ELSE
-             k = j
-          END IF
-          i = EdgeMap(3,1)
-          j = EdgeMap(3,2) 
-          IF ( Ind(i) < Ind(j) ) THEN
-             l = i
-          ELSE
-             l = j
-          END IF          
-          IF ( Ind(k) > Ind(l) ) THEN
-             k = l
-          END IF
-          A = k
-
-          SELECT CASE(A)
-          CASE(1)
-             IF ( Ind(2) < Ind(4) ) THEN
-                I1 = 1
-                I2 = 2
-                D1 = 1.0d0
-                D2 = 1.0d0
-             ELSE
-                I1 = 2
-                I2 = 1
-                D1 = 1.0d0
-                D2 = 1.0d0 
-             END IF
-          CASE(2)
-             IF ( Ind(3) < Ind(1) ) THEN
-                I1 = 2
-                I2 = 1
-                D1 = 1.0d0
-                D2 = -1.0d0
-             ELSE
-                I1 = 1
-                I2 = 2
-                D1 = -1.0d0
-                D2 = 1.0d0
-             END IF
-          CASE(3)
-             IF ( Ind(4) < Ind(2) ) THEN
-                I1 = 1
-                I2 = 2
-                D1 = -1.0d0
-                D2 = -1.0d0
-             ELSE
-                I1 = 2
-                I2 = 1
-                D1 = -1.0d0
-                D2 = -1.0d0
-             END IF
-          CASE(4)
-             IF ( Ind(1) < Ind(3) ) THEN
-                I1 = 2
-                I2 = 1
-                D1 = -1.0d0
-                D2 = 1.0d0
-             ELSE
-                I1 = 1
-                I2 = 2
-                D1 = 1.0d0
-                D2 = -1.0d0
-             END IF
-          CASE DEFAULT
-             CALL Fatal('ElementDescription::EdgeElementInfo','Erratic pyramid square face indeces')
-          END SELECT
+          DO j=1,4
+             FaceIndeces(j) = Ind(SquareFaceMap(j))
+          END DO
+          CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
 
           EdgeBasis(9,:) = D1 * WorkBasis(I1,:)
           CurlBasis(9,:) = D1 * WorkCurlBasis(I1,:)
