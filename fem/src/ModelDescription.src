@@ -2028,8 +2028,17 @@ CONTAINS
     NULLIFY( Model % Meshes )
     IF ( MeshDir(1:1) /= ' ' ) THEN
 
-      Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
-          BoundariesOnly, numprocs, mype, Def_Dofs )
+
+      CALL ResetTimer('LoadMesh') 
+      IF( ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) ) THEN
+        Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+            BoundariesOnly, numprocs, mype, Def_Dofs )
+      ELSE
+        Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
+            BoundariesOnly, numprocs, mype, Def_Dofs )
+      END IF
+      CALL CheckTimer('LoadMesh',Level=5,Delete=.TRUE.)
+
 
       CALL SetCoordinateSystem( Model )
 
@@ -2974,17 +2983,28 @@ CONTAINS
         FullName = VarName
       ELSE IF( FmtVersion == 3 ) THEN
 
-        ! read the full field name
+        ! read the field names
+        ! the full name includes the possible info behind bracets [...]
         j = INDEX( Row,']')
         IF( j == 0 ) THEN
-          j = INDEX( Row,':') - 1
+          ! names are the same
+          j = INDEX( Row,':') 
+          IF( j > 1 ) THEN
+            VarName = TRIM(Row(1:j-1))
+            FullName = VarName
+          ELSE
+            CALL Warn('LoadRestartFile','Cannot read variable name: '//TRIM(Row))
+          END IF
+        ELSE
+          FullName = TRIM(Row(1:j))
+          j = INDEX( Row,'[')
+          IF( j == 0 ) THEN
+            CALL Warn('LoadRestartFile','Missing left parenthesis: '//TRIM(Row))
+            VarName = FullName
+          ELSE
+            VarName = TRIM(Row(1:j-1))
+          END IF
         END IF
-        FullName = TRIM(Row(1:j))
-
-        ! read the field name
-        j = INDEX( Row,'[')
-        IF( j == 0 ) j = INDEX( Row,':')
-        VarName = TRIM(Row(1:j-1))
 
         ! read the size of field, size or perm and number of dofs per node
         !-----------------------------------------------------------------
@@ -3051,6 +3071,13 @@ CONTAINS
           IF( Dofs == 1 ) RestartVariableSizes(DofCount) = FieldSize
         END IF
       END IF
+
+      IF( LEN_TRIM( VarName ) == 0 ) THEN
+        CALL Warn('LoadRestartFile','Could not deduce variable name!')
+        LoadThis = .FALSE.
+      END IF
+
+
       IF(.NOT. LoadThis) CYCLE
 
       ! Check whether a variable exists or not. If it does not exist then 
