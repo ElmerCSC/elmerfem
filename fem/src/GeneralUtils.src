@@ -1149,11 +1149,11 @@ END FUNCTION ComponentNameVar
       INTEGER :: i
 
       DO i=1,n-1
-         h(i) = x(i+1) - x(i)
+        h(i) = x(i+1) - x(i)
       END DO
 
-      r(1) = (y(2) - y(1) )
-      r(n) = (y(n) - y(n-1) )
+      r(1) = (y(2) - y(1) )  / h(1)
+      r(n) = (y(n) - y(n-1) ) / h(n-1)
 
       CALL SolveTriDiag( n,y,h,r )
 !------------------------------------------------------------------------------
