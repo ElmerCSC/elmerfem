@@ -1477,6 +1477,8 @@ CONTAINS
          'Periodic BC ' // Name(1:nlen), GotIt ) ) ActivePart(BC) = .TRUE.
      IF ( ListGetLogical( Model % BCs(BC) % Values, &
          'Anti Periodic BC ' // Name(1:nlen), GotIt ) ) ActivePart(BC) = .TRUE.
+     IF ( ListCheckPresent( Model % BCs(BC) % Values, &
+         'Periodic BC Scale ' // Name(1:nlen) ) ) ActivePart(BC) = .TRUE.
    END DO
 
    IF( ANY(ActivePart) ) THEN    
