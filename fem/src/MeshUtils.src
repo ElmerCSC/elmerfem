@@ -993,17 +993,18 @@ END SUBROUTINE GetMaxDefs
 !> of the nodes is needed by other bulk elements than those directly 
 !> associated with the discontinuous boundaries. 
 !------------------------------------------------------------------------------
- SUBROUTINE CreateDiscontMesh( Model, Mesh )
+ SUBROUTINE CreateDiscontMesh( Model, Mesh, DiscontPerm )
 
    TYPE(Model_t) :: Model
    TYPE(Mesh_t), POINTER :: Mesh
+   INTEGER, POINTER, OPTIONAL :: DisContPerm(:)
 
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContParent(:)
    LOGICAL :: Found, DisCont
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElements, NoDisContNodes, &
        TargetBody, NoBulkElems, NoBoundElems, NoParentElems
-   INTEGER, ALLOCATABLE :: NodePerm(:)
+   INTEGER, POINTER :: NodePerm(:)
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, ParentElem
 
@@ -1104,6 +1105,7 @@ END SUBROUTINE GetMaxDefs
    END IF
 
    ! Ok, we have marked discontinuous nodes, now give them an index. 
+   NodePerm => NULL()
    ALLOCATE( NodePerm(NoNodes) ) 
    NodePerm = 0    
    j = 0
@@ -1111,7 +1113,7 @@ END SUBROUTINE GetMaxDefs
      IF( DisContNode(i) ) THEN
        j = j + 1
        NodePerm(i) = j
-       !       PRINT *,'node:',i,j,Mesh % Nodes % x(i),Mesh % Nodes % y(i)
+!              PRINT *,'node:',i,j,Mesh % Nodes % x(i),Mesh % Nodes % y(i)
      END IF
    END DO
 
@@ -1219,7 +1221,13 @@ END SUBROUTINE GetMaxDefs
      END IF
    END DO
 
-   DEALLOCATE( DisContNode, NodePerm, DiscontParent )
+   DEALLOCATE( DisContNode, DiscontParent )
+   IF( PRESENT( DisContPerm ) ) THEN
+     DisContPerm => NodePerm 
+   ELSE
+     DEALLOCATE( NodePerm ) 
+   END IF
+
 
  END SUBROUTINE CreateDiscontMesh
 
@@ -1823,6 +1831,7 @@ END SUBROUTINE GetMaxDefs
    !------------------------------------------------------------------------------    
    INTEGER :: i,j,k,n
    INTEGER :: BaseNameLen, Save_Dim
+   INTEGER, POINTER :: DiscontPerm(:) => NULL()
    LOGICAL :: GotIt, Found
    CHARACTER(MAX_NAME_LEN) :: FileName
    TYPE(Element_t), POINTER :: Element
@@ -1882,7 +1891,8 @@ END SUBROUTINE GetMaxDefs
    ! bodies and bcs have been mapped to full operation.
    ! To consider non-nodal elements it must be done before them.
    !--------------------------------------------------------------------
-   CALL CreateDiscontMesh(Model,Mesh)
+   DiscontPerm => NULL()
+   CALL CreateDiscontMesh(Model,Mesh,DiscontPerm)
 
    ! Study the non-nodal elements (face, edge, DG, and p-elements)
    ! This must be done before parallel communication since it will 
@@ -1915,13 +1925,33 @@ END SUBROUTINE GetMaxDefs
 
    ! If periodic BC given, compute boundary mesh projector:
    ! ------------------------------------------------------
-   DO i = 1,Model % NumberOfBCs
-     NULLIFY( Model % BCs(i) % PMatrix )
-     k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt, &
-         minv=1, maxv=Model % NumberOFBCs )
-     Projector =>  PeriodicProjector( Model, Mesh, i, k )
-     IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
-   END DO
+   IF( ASSOCIATED( DiscontPerm ) ) THEN
+     DO i = 1,Model % NumberOfBCs
+       NULLIFY( Model % BCs(i) % PMatrix )
+       IF( ListGetLogical( Model % BCs(i) % Values, 'Discontinuous Boundary', GotIt ))THEN
+! This does not work, the projector should be treated differently if it a Galerkin projector
+!         IF( ListGetLogical( Model % BCs(i) % Values, 'Galerkin Projector', GotIt ))THEN
+!           Projector =>  GalerkinProjectorDiscont( Mesh, DiscontPerm )
+!         ELSE
+           Projector =>  NodalProjectorDiscont( Mesh, DiscontPerm )
+!         END IF
+         IF ( ASSOCIATED( Projector ) ) THEN
+           Model % BCs(i) % PMatrix => Projector
+           EXIT
+         END IF
+       END IF
+     END DO
+     DEALLOCATE( DiscontPerm )
+   ELSE
+     DO i = 1,Model % NumberOfBCs
+       NULLIFY( Model % BCs(i) % PMatrix )
+       k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt, &
+           minv=1, maxv=Model % NumberOFBCs )
+       Projector =>  PeriodicProjector( Model, Mesh, i, k )
+       IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
+     END DO
+   END IF
+
 
    ! Don't know why this is saved really...
    Model % DIMENSION = save_dim
@@ -3587,6 +3617,172 @@ END SUBROUTINE GetMaxDefs
   END FUNCTION NodalProjector2
 !------------------------------------------------------------------------------
 
+  !---------------------------------------------------------------------------
+  !> Create a nodal projector related to discontinous interface.
+  !---------------------------------------------------------------------------
+   FUNCTION NodalProjectorDiscont(Mesh, NodePerm ) RESULT ( Projector )
+  !---------------------------------------------------------------------------
+    USE Lists
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: NodePerm(:)
+    TYPE(Matrix_t), POINTER :: Projector
+    !--------------------------------------------------------------------------
+    INTEGER :: i,j,n,m
+    INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
+    REAL(KIND=dp), POINTER :: Values(:)
+
+    CALL Info('NodalProjectorDiscont','Creating nodal projector for discontinuous boundary',Level=7)
+
+    n = SIZE( NodePerm ) 
+    m = COUNT( NodePerm > 0 ) 
+
+    ALLOCATE( Projector )
+    ALLOCATE( Projector % Cols(m) )
+    ALLOCATE( Projector % Values(m) )
+    ALLOCATE( Projector % Rows(m+1) )
+    ALLOCATE( Projector % InvPerm(m) )
+
+    Cols => Projector % Cols
+    Values => Projector % Values
+    Rows => Projector % Rows
+    InvPerm => Projector % InvPerm
+    Projector % NumberOfRows = m
+
+    Values = 1.0_dp
+    DO i=1,m+1
+      Rows(i) = i
+    END DO
+
+    DO i=1,n
+      j = NodePerm(i)
+      IF( j == 0 ) CYCLE
+      Cols(j) = n + j
+      InvPerm(j) = i
+    END DO
+
+  END FUNCTION NodalProjectorDiscont
+!------------------------------------------------------------------------------
+
+
+
+!---------------------------------------------------------------------------
+!> Create a Galerkin projector related to discontinous interface.
+!---------------------------------------------------------------------------
+  FUNCTION GalerkinProjectorDiscont(Mesh, NodePerm ) RESULT ( Projector )
+    !---------------------------------------------------------------------------
+    USE Lists
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: NodePerm(:)
+    TYPE(Matrix_t), POINTER :: Projector
+    !--------------------------------------------------------------------------
+    TYPE(Model_t), POINTER :: Model
+    TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+    INTEGER :: p,q,i,j,n,m,t,bc,NoOrigNodes, NoDiscontNodes
+    INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
+    REAL(KIND=dp), POINTER :: Values(:), Basis(:)
+    REAL(KIND=dp) :: u,v,w,val,detJ,Scale
+    INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
+    TYPE(Nodes_t) :: ElementNodes
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: Stat,DisCont
+
+    CALL Info('NodalProjectorDiscont','Creating Galerkin projector for discontinuous boundary',Level=7)
+
+    Model => CurrentModel
+
+    ! Create a list matrix that allows for unspecified entries in the matrix 
+    ! structure to be introduced.
+    Projector => AllocateMatrix()
+    Projector % FORMAT = MATRIX_LIST
+
+    n = Mesh % MaxElementNodes
+    ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
+    ALLOCATE( Indexes(n), DisContIndexes(n), Basis(n) )
+    Indexes = 0
+    DiscontIndexes = 0
+    Basis = 0.0_dp
+
+    NoOrigNodes = SIZE( NodePerm ) 
+    NoDiscontNodes = COUNT( NodePerm > 0 ) 
+
+    ALLOCATE( Projector % InvPerm( NoDiscontNodes ) )
+    InvPerm => Projector % InvPerm
+
+    DO i=1,NoOrigNodes
+      j = NodePerm(i)
+      IF( j == 0 ) CYCLE
+      InvPerm(j) = i
+    END DO
+
+    DO t = 1, Mesh % NumberOfBoundaryElements
+
+      Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+
+      DisCont = .FALSE.
+      DO bc = 1,Model % NumberOfBCs
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+          DisCont = ListGetLogical( Model % BCs(bc) % Values,'Discontinuous Boundary',Stat )
+          IF( DisCont ) THEN
+            Scale = ListGetCReal( Model % BCs(bc) % Values,'Periodic BC Scale',Stat )  
+            IF(.NOT. Stat) Scale = -1.0_dp
+            EXIT
+          END IF
+        END IF
+      END DO
+      IF(.NOT. DisCont ) CYCLE
+
+      n = Element % TYPE % NumberOfNodes        
+      Indexes(1:n) = Element % NodeIndexes
+
+      ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
+      ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
+      ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
+
+      DO i=1,n
+        j = NodePerm( Indexes(i) ) 
+        IF( j == 0 ) THEN
+          DiscontIndexes(i) = Indexes(i)
+        ELSE
+          DiscontIndexes(i) = j + NoOrigNodes
+        END IF
+      END DO
+
+      IntegStuff = GaussPoints( Element )
+      DO j=1,IntegStuff % n
+        u = IntegStuff % u(j)
+        v = IntegStuff % v(j)
+        w = IntegStuff % w(j)
+        
+        Stat = ElementInfo(Element, ElementNodes, u, v, w, detJ, Basis)
+
+        DO p=1,n
+
+          IF( Indexes(p) == DiscontIndexes(p) ) CYCLE
+          val = detJ * IntegStuff % s(j) * Basis(p)
+
+          DO q=1,n
+            IF( Indexes(q) == DiscontIndexes(q) ) CYCLE
+
+            CALL List_AddToMatrixElement(Projector % ListMatrix, NodePerm(Indexes(p)),&
+                Indexes(q), Basis(q) * val ) 
+            CALL List_AddToMatrixElement(Projector % ListMatrix, NodePerm(Indexes(p)),&
+                DiscontIndexes(q), Scale * Basis(q) * val ) 
+          END DO
+        END DO
+      END DO
+    END DO
+
+    CALL List_ToCRSMatrix(Projector)
+    CALL CRS_SortMatrix(Projector)
+    
+    DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
+    DEALLOCATE( Indexes, DisContIndexes, Basis )
+
+           
+  END FUNCTION GalerkinProjectorDiscont
+  !------------------------------------------------------------------------------
 
 
 
@@ -3826,7 +4022,8 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,dim
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
-        Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating
+        Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
+        Discontinuous
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -3851,6 +4048,9 @@ END SUBROUTINE GetMaxDefs
     DIM = CoordinateSystemDimension()
     
     Projector => NULL()
+    
+    
+
     IF ( This <= 0 .OR. Trgt <= 0 ) RETURN    
 
     CALL ResetTimer('PeriodicProjector')
