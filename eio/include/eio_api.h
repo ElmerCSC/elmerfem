@@ -131,8 +131,14 @@ void eio_get_mesh_description (IREF nodeCount, IREF elementCount,
 				IREF usedElementTypes, int* elementTypeTags,
 				int *elementCountByType, 
 				IREF info);
-void eio_get_mesh_element_conns (IREF tag, IREF body, IREF type, 
-		int *pdofs, int *nodes, IREF info);
+  /* Header different from actual implementation
+     void eio_get_mesh_element_conns (IREF tag, IREF body, IREF type, 
+     int *pdofs, int *nodes, IREF info); 
+  */
+void eio_get_mesh_element_conns
+  (IREF tag, IREF part, IREF body, IREF type, int *pdofs, int *nodes, 
+   IREF info)
+
 void eio_get_mesh_element_coords (IREF tag, IREF body, IREF type, 
 					int *nodes, 
 					double *coord, IREF info);

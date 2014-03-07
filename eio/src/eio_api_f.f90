@@ -165,11 +165,11 @@ MODULE EIOFortranAPI
             & usedElementTypes, elementTypeTags(*), elementCountByType(*), info
      END SUBROUTINE eio_get_mesh_description
 
-    SUBROUTINE eio_get_mesh_element_conns(tag, body, typedef, &
+    SUBROUTINE eio_get_mesh_element_conns(tag, part, body, typedef, &
                 pdofs, nodes, info) &
         BIND(c, name="eio_get_mesh_element_conns")
         USE, INTRINSIC :: ISO_C_BINDING
-    INTEGER(C_INT) :: tag, body, typedef, pdofs(*), nodes(*), info
+        INTEGER(C_INT) :: tag, part, body, typedef, pdofs(*), nodes(*), info
     END SUBROUTINE eio_get_mesh_element_conns
 
     SUBROUTINE eio_get_mesh_nodes(tags, coord, info) &

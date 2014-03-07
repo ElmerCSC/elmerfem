@@ -517,10 +517,10 @@ END SUBROUTINE GetMaxDefs
        ! Clear indofs
 
       inDOFs = 0
-      ! CALL eio_get_mesh_element_conns( ElementTags(i),partn,body, &
-      !             TYPE, inDOFs, nodes, eio_info )
-      CALL eio_get_mesh_element_conns( ElementTags(i), body, &
+      CALL eio_get_mesh_element_conns( ElementTags(i),partn,body, &
                    TYPE, inDOFs, nodes, eio_info )
+      ! CALL eio_get_mesh_element_conns( ElementTags(i), body, &
+      !              TYPE, inDOFs, nodes, eio_info )
 
       IF(inDOFs(6)>0) THEN
         CALL Fatal('LoadMesh', 'Mesh defined p-degree obsolite, use "Element=p:n" instead.')
