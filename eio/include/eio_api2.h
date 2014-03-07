@@ -34,7 +34,7 @@ extern "C"
   
 
 //#if defined(__cplusplus)
-//#define EIOFUN extern "C" void
+#define EIOFUN extern "C" STDCALLBULL void
 #define IREF int&
 #define DREF double&
   //#else

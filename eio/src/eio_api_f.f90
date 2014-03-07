@@ -127,6 +127,12 @@ MODULE EIOFortranAPI
        INTEGER(c_int) :: tag, field, nodes, info
      END SUBROUTINE eio_set_geometry_body_loop
 
+    SUBROUTINE eio_open_mesh(dir, info) &
+        BIND(C, name="eio_open_mesh")
+        USE, INTRINSIC :: ISO_C_BINDING
+        CHARACTER(C_CHAR), INTENT(IN) :: dir(*)
+        INTEGER(c_int) :: info
+    END SUBROUTINE eio_open_mesh
 
      SUBROUTINE eio_close_mesh(info) BIND(c, name="eio_close_mesh")
        USE, INTRINSIC :: ISO_C_BINDING
@@ -159,14 +165,14 @@ MODULE EIOFortranAPI
             & usedElementTypes, elementTypeTags(*), elementCountByType(*), info
      END SUBROUTINE eio_get_mesh_description
 
-     SUBROUTINE eio_get_mesh_element_conns(tag, part, body, typedef, pdofs, &
-          & nodes, info) &
-          & BIND(c, name="eio_get_mesh_element_conns")
-       USE, INTRINSIC :: ISO_C_BINDING
-       INTEGER(c_int) :: tag, part, body, typedef, pdofs(*), nodes(*), info
-     END SUBROUTINE eio_get_mesh_element_conns
+    SUBROUTINE eio_get_mesh_element_conns(tag, body, typedef, &
+                pdofs, nodes, info) &
+        BIND(c, name="eio_get_mesh_element_conns")
+        USE, INTRINSIC :: ISO_C_BINDING
+    INTEGER(C_INT) :: tag, body, typedef, pdofs(*), nodes(*), info
+    END SUBROUTINE eio_get_mesh_element_conns
 
-     SUBROUTINE eio_get_mesh_nodes(tags, coord, info) &
+    SUBROUTINE eio_get_mesh_nodes(tags, coord, info) &
           & BIND(c, name="eio_get_mesh_nodes")
        USE, INTRINSIC :: ISO_C_BINDING
        INTEGER(c_int) :: tags(*), info
