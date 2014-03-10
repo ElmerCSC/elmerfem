@@ -160,7 +160,7 @@ END INTERFACE
     INTEGER :: Subband, FORMAT, SolveCount, Comm=-1
     LOGICAL :: Ordered, Lumped, Symmetric, COMPLEX, DGMatrix, Cholesky
 
-    TYPE(ListMatrix_t), POINTER :: ListMatrix(:) => Null()
+    TYPE(ListMatrix_t), POINTER :: ListMatrix(:) => NULL()
 
     INTEGER, POINTER :: Perm(:),InvPerm(:), Gorder(:), EPerm(:)
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
@@ -395,6 +395,7 @@ END INTERFACE
    TYPE BoundaryConditionArray_t
      INTEGER :: TYPE,Tag
      TYPE(Matrix_t), POINTER :: PMatrix => NULL()
+     LOGICAL :: PMatrixGalerkin = .FALSE.
      TYPE(ValueList_t), POINTER :: Values
    END TYPE BoundaryConditionArray_t
 
@@ -620,6 +621,10 @@ END INTERFACE
      TYPE(Nodes_t), POINTER :: Nodes
      TYPE(Element_t), DIMENSION(:), POINTER :: Elements, Edges, Faces
      TYPE(Nodes_t), POINTER :: NodesMapped, NodesOrig
+
+     LOGICAL :: DisContMesh 
+     INTEGER, POINTER :: DisContPerm(:)
+     INTEGER :: DisContNodes
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim, PassBCcnt=0
