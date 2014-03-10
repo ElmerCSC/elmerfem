@@ -125,28 +125,31 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
 !------------------------------------------------------------------------------
-  PURE FUNCTION i2s(VALUE) RESULT(string)
+!> Converts integer to string. Handy when writing output with integer data.
 !------------------------------------------------------------------------------
-    INTEGER, INTENT(in) :: VALUE
-    CHARACTER(LEN=12) :: string
+  PURE FUNCTION i2s(ival) RESULT(str)
+!------------------------------------------------------------------------------
+    INTEGER, INTENT(in) :: ival
+    CHARACTER(LEN=12) :: str
 !------------------------------------------------------------------------------
     INTEGER :: i,j,n,m,t,v
     CHARACTER, PARAMETER :: DIGITS(0:9)=['0','1','2','3','4','5','6','7','8','9']
 !------------------------------------------------------------------------------
-     string = ' '
+     str = ' '
 
-     IF ( VALUE>=0 ) THEN
+     IF ( ival >= 0 ) THEN
        j=0
-       v=VALUE
+       v=ival
      ELSE
-       string(1:1)='-'
+       str(1:1)='-'
        j=1
-       v=-VALUE
+       v=-ival
      END IF
 
      IF (v<10) THEN
-       string(j+1:j+1)=DIGITS(v)
+       str(j+1:j+1)=DIGITS(v)
      ELSE
        n=2
        m=10
@@ -157,7 +160,7 @@ CONTAINS
 
        DO i=j+1,j+n
          t = v / m
-         string(i:i) = DIGITS(t)
+         str(i:i) = DIGITS(t)
          v = v - t*m
          m = m / 10
        END DO
@@ -166,6 +169,32 @@ CONTAINS
   END FUNCTION i2s
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Converts string of length n to an integer number. 
+!------------------------------------------------------------------------------
+  FUNCTION s2i(str,n) RESULT(ival)
+!------------------------------------------------------------------------------
+    INTEGER, INTENT(IN) :: n
+    CHARACTER(LEN=n), INTENT(IN) :: str
+    INTEGER :: ival
+!------------------------------------------------------------------------------
+    LOGICAL :: neg
+    INTEGER :: j,k    
+    INTEGER, PARAMETER :: ic0 = ICHAR('0')
+    
+    neg = str(1:1)=='-'
+    k=1
+    IF ( neg ) k=2
+    
+    ival = 0
+    DO j=k,n
+      ival = 10*ival + ICHAR(str(j:j)) - ic0
+    END DO
+    IF(neg) ival=-ival
+  END FUNCTION s2i
+!------------------------------------------------------------------------------
+  
 
 !------------------------------------------------------------------------------
   SUBROUTINE SystemCommand( cmd ) 
@@ -771,7 +800,7 @@ CONTAINS
      l = .TRUE.
 
 #ifdef ALLOC_CHAR
-     IF(.NOT.ALLOCATED(str)) ALLOCATE(character(512)::str)
+     IF(.NOT.ALLOCATED(str)) ALLOCATE(CHARACTER(512)::str)
 #endif
      outlen = LEN(str)
 
@@ -968,7 +997,7 @@ CONTAINS
              temp = str
              DEALLOCATE(str)
              outlen=LEN(temp)+512
-             ALLOCATE(character(outlen)::str)
+             ALLOCATE(CHARACTER(outlen)::str)
              str(1:LEN(temp))=temp; str(LEN(temp)+1:)=''
              DEALLOCATE(temp)
 #else
@@ -1431,7 +1460,7 @@ INCLUDE "mpif.h"
       Matrix % SolveCount   = 0
       Matrix % NumberOfRows = 0
 
-      Matrix % Solver => Null()
+      Matrix % Solver => NULL()
 
       Matrix % DGMatrix = .FALSE.
       Matrix % Comm = MPI_COMM_WORLD
