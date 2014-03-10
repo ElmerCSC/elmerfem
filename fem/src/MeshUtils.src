@@ -976,7 +976,7 @@ END SUBROUTINE GetMaxDefs
                     minv=1, maxv=Model % NumberOFBCs )
       Projector =>  PeriodicProjector( Model, Mesh, i, k )
       IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
-
+      
 !     Projector => PeriodicProjector( Model, Mesh, k, i )
 !     IF ( ASSOCIATED( Projector ) ) Model % BCs(k) % PMatrix => Projector
    END DO
@@ -993,18 +993,17 @@ END SUBROUTINE GetMaxDefs
 !> of the nodes is needed by other bulk elements than those directly 
 !> associated with the discontinuous boundaries. 
 !------------------------------------------------------------------------------
- SUBROUTINE CreateDiscontMesh( Model, Mesh, DiscontPerm )
+ SUBROUTINE CreateDiscontMesh( Model, Mesh )
 
    TYPE(Model_t) :: Model
    TYPE(Mesh_t), POINTER :: Mesh
-   INTEGER, POINTER, OPTIONAL :: DisContPerm(:)
 
+   INTEGER, POINTER :: DisContPerm(:)
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContParent(:)
    LOGICAL :: Found, DisCont
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElements, NoDisContNodes, &
        TargetBody, NoBulkElems, NoBoundElems, NoParentElems
-   INTEGER, POINTER :: NodePerm(:)
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, ParentElem
 
@@ -1105,14 +1104,14 @@ END SUBROUTINE GetMaxDefs
    END IF
 
    ! Ok, we have marked discontinuous nodes, now give them an index. 
-   NodePerm => NULL()
-   ALLOCATE( NodePerm(NoNodes) ) 
-   NodePerm = 0    
+   DisContPerm => NULL()
+   ALLOCATE( DisContPerm(NoNodes) ) 
+   DisContPerm = 0    
    j = 0
    DO i=1,NoNodes
      IF( DisContNode(i) ) THEN
        j = j + 1
-       NodePerm(i) = j
+       DisContPerm(i) = j
 !              PRINT *,'node:',i,j,Mesh % Nodes % x(i),Mesh % Nodes % y(i)
      END IF
    END DO
@@ -1163,8 +1162,8 @@ END SUBROUTINE GetMaxDefs
      ParentIndexes => ParentElem % NodeIndexes
      DO i=1,SIZE(ParentIndexes) 
        j = ParentIndexes(i)
-       IF( NodePerm(j) > 0 ) THEN
-         ParentIndexes(i) = NoNodes + NodePerm(j)
+       IF( DisContPerm(j) > 0 ) THEN
+         ParentIndexes(i) = NoNodes + DisContPerm(j)
        END IF
      END DO
    END DO
@@ -1198,7 +1197,7 @@ END SUBROUTINE GetMaxDefs
        ParentIndexes => ParentElem % NodeIndexes
        DO i=1, SIZE(Indexes) 
          IF( ALL( ParentIndexes /= Indexes(i) ) ) THEN
-           Indexes(i) = NoNodes + NodePerm(Indexes(i))
+           Indexes(i) = NoNodes + DisContPerm(Indexes(i))
          END IF
        END DO
      END IF
@@ -1212,7 +1211,7 @@ END SUBROUTINE GetMaxDefs
    CALL EnlargeCoordinates( Mesh ) 
 
    DO i=1, NoNodes
-     j = NodePerm(i)
+     j = DisContPerm(i)
      IF( j > 0 ) THEN
        k = NoNodes + j
        Mesh % Nodes % x(k) = Mesh % Nodes % x(i)
@@ -1222,12 +1221,10 @@ END SUBROUTINE GetMaxDefs
    END DO
 
    DEALLOCATE( DisContNode, DiscontParent )
-   IF( PRESENT( DisContPerm ) ) THEN
-     DisContPerm => NodePerm 
-   ELSE
-     DEALLOCATE( NodePerm ) 
-   END IF
 
+   Mesh % DisContMesh = .TRUE.
+   Mesh % DisContPerm => DisContPerm
+   Mesh % DisContNodes = NoDisContNodes 
 
  END SUBROUTINE CreateDiscontMesh
 
@@ -1369,6 +1366,49 @@ END SUBROUTINE GetMaxDefs
 
  CONTAINS
 
+
+   FUNCTION read_ints(s,j,halo) RESULT(n)
+     INTEGER :: j(:)
+     CHARACTER(LEN=*) :: s
+     LOGICAL :: halo
+     
+     INTEGER :: i,k,l,m,n,ic
+     INTEGER, PARAMETER :: ic0 = ICHAR('0'), ic9 = ICHAR('9'), icm = ICHAR('-'), &
+         icd = ICHAR('/'), ics = ICHAR(' ')
+     
+     k = LEN_TRIM(s)
+     l = 1
+     n = 0
+     halo = .FALSE.
+     DO WHILE(l<=k.AND.n<SIZE(j))
+       DO WHILE(l<=k)
+         ic = ICHAR(s(l:l))
+         IF( ic == ics ) THEN
+           CONTINUE
+         ELSE IF( ic == icd ) THEN
+           halo = .TRUE.
+         ELSE
+           EXIT
+         END IF
+         l=l+1
+       END DO
+       IF(l>k) EXIT
+       IF(.NOT.(ic==icm .OR. ic>=ic0 .AND. ic<=ic9)) EXIT
+       
+       m = l+1
+       DO WHILE(m<=k)
+         ic = ICHAR(s(m:m))
+         IF(ic<ic0 .OR. ic>ic9) EXIT
+         m=m+1
+       END DO
+       
+       n = n + 1
+       j(n) = s2i(s(l:m-1),m-l)
+       l = m
+     END DO
+   END FUNCTION read_ints
+   
+
    !---------------------------------------------------
    ! Read header file and allocate some mesh structures
    !---------------------------------------------------
@@ -1482,7 +1522,10 @@ END SUBROUTINE GetMaxDefs
    !------------------------------------------------------------------------------
    SUBROUTINE ReadElementsFile()
      TYPE(Element_t), POINTER :: Element
-     INTEGER :: ReadLoop, ElemType, Body, ElemNo, ElemInds(64)
+     INTEGER :: ElemType, Tag, Body, ElemNo, Ivals(64),nread, ioffset, partn
+     CHARACTER(256) :: str
+     LOGICAL :: halo
+
 
      CALL AllocateVector( ElementTags, Mesh % NumberOfBulkElements+1, 'LoadMesh')   
      ElementTags = 0
@@ -1509,21 +1552,35 @@ END SUBROUTINE GetMaxDefs
          CALL Fatal('ReadElementsFile','Element '//TRIM(I2S(i))//' not associated!')
        END IF
 
-       READ( FileUnit, *, IOSTAT=iostat ) elemno,body,&
-           ElemType,ElemInds(1:MOD(ElemType,100))
+       READ(FileUnit, '(a)', IOSTAT=iostat) str
        IF( iostat /= 0 ) THEN
          CALL Fatal('ReadElementsFile','Could not read start of element entry: '//TRIM(I2S(j)))
        END IF
 
-       ElementTags(j) = elemno
-       IF( j /= elemno ) ElementPermutation = .TRUE.             
+       nread = read_ints(str,ivals,halo)
 
+       tag = ivals(1)
+
+       IF( halo ) THEN
+         ioffset = 1
+         partn = ivals(2) 
+       ELSE
+         ioffset = 0
+         partn = 0 
+       END IF
+       body = ivals(ioffset+2)
+       ElemType = ivals(ioffset+3)
+
+       ElementTags(j) = tag
+       IF( j /= tag ) ElementPermutation = .TRUE.             
        Element % ElementIndex = j
        Element % BodyId = body
 
-       !Element % PartIndex = partn-1
-       !IF( Element % PartIndex < 0 ) Element % PartIndex = mype
-       Element % PartIndex = mype
+       IF( partn > 0 ) THEN
+         Element % PartIndex = partn-1
+       ELSE
+         Element % PartIndex = mype
+       END IF
 
        Element % TYPE => GetElementType( ElemType )
 
@@ -1533,9 +1590,13 @@ END SUBROUTINE GetMaxDefs
        END IF
 
        n = Element % TYPE % NumberOfNodes
+       IF( nread < n + ioffset + 3 ) THEN
+         CALL Fatal('ReadElementsFile','Line '//TRIM(I2S(j))//' does not contain enough entries')
+       END IF
+
        CALL AllocateVector( Element % NodeIndexes, n )
 
-       Element % NodeIndexes(1:n) = ElemInds(1:n)
+       Element % NodeIndexes(1:n) = IVals(4+ioffset:nread)
      END DO
      CLOSE( FileUnit ) 
 
@@ -1549,8 +1610,10 @@ END SUBROUTINE GetMaxDefs
    SUBROUTINE ReadBoundaryFile()
      INTEGER, POINTER :: LocalEPerm(:)
      INTEGER :: MinEIndex, MaxEIndex, ElemNodes
-     INTEGER :: Left, Right, bndry, tag, ElemType, ElemInds(64)
+     INTEGER :: Left, Right, bndry, tag, ElemType, IVals(64), nread, ioffset, partn
      TYPE(Element_t), POINTER :: Element
+     CHARACTER(256) :: str
+     LOGICAL :: halo
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
@@ -1595,15 +1658,28 @@ END SUBROUTINE GetMaxDefs
          CALL Fatal('ReadElementsFile','Element '//TRIM(I2S(i))//' not associated!')
        END IF
 
-       READ( FileUnit, *, IOSTAT=iostat ) tag, bndry, left, right, &
-           ElemType, ElemInds(1:MOD(ElemType,100))
+       READ(FileUnit, '(a)', IOSTAT=iostat) str
        IF( iostat /= 0 ) THEN
-         CALL Fatal('ReadBoundaryFile','Could not read start boundary entry '&
-             //TRIM(I2S(j)))
+         CALL Fatal('ReadElementsFile','Could not read boundary element entry: '//TRIM(I2S(j)))
+       END IF
+       nread = read_ints(str,ivals,halo)
+       
+       tag = ivals(1)
+
+       IF( halo ) THEN
+         partn = ivals(2)
+         ioffset = 1
+       ELSE
+         partn = 0
+         ioffset = 0
        END IF
 
+       bndry = ivals(ioffset+2)
+       left = ivals(ioffset+3)
+       right = ivals(ioffset+4)
+       ElemType = ivals(ioffset+5)
+       
        Element % ElementIndex = j
-
        Element % TYPE => GetElementType( ElemType )
        IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
          CALL Fatal('ReadBoundaryFile','Element of type '//TRIM(I2S(ElemType))//'could not be associated!')
@@ -1612,9 +1688,11 @@ END SUBROUTINE GetMaxDefs
        ElemNodes = Element % TYPE % NumberOfNodes
        Mesh % MaxElementNodes = MAX( Mesh % MaxElementNodes, ElemNodes )
 
-       !Element % PartIndex = partn-1
-       !IF( Element % PartIndex < 0 ) Element % PartIndex = mype
-       Element % PartIndex = mype
+       IF( partn == 0 ) THEN
+         Element % PartIndex = mype
+       ELSE
+         Element % PartIndex = partn-1
+       END IF
 
        CALL AllocateBoundaryInfo( Element ) 
 
@@ -1653,7 +1731,10 @@ END SUBROUTINE GetMaxDefs
        n = Element % TYPE % NumberOfNodes
        CALL AllocateVector( Element % NodeIndexes, n )
 
-       Element % NodeIndexes(1:n) = ElemInds(1:n)
+       IF( nread < 5 + n + ioffset ) THEN
+         CALL Fatal('ReadBoundaryFile','Line '//TRIM(I2S(j))//' does not contain enough entries')
+       END IF
+       Element % NodeIndexes(1:n) = Ivals(6+ioffset:nread)
      END DO
      CLOSE( FileUnit )
 
@@ -1746,8 +1827,11 @@ END SUBROUTINE GetMaxDefs
    !------------------------------------------------------------------------
    SUBROUTINE ReadSharedFile()
 
-     INTEGER :: parts(64)
-     INTEGER :: npart, tag
+     INTEGER :: Ivals(64)
+     INTEGER :: npart, tag, nread
+     CHARACTER(256) :: str
+     LOGICAL :: halo
+
 
      IF(.NOT. Parallel) RETURN
 
@@ -1766,16 +1850,27 @@ END SUBROUTINE GetMaxDefs
      ! The operation using the str takes much more time.
      !-----------------------------------------------------
      DO i=1,SharedNodes          
-       READ( FileUnit, *, IOSTAT = iostat ) tag,npart,parts(1:npart)
+       READ(FileUnit, '(a)', IOSTAT=iostat) str
+       IF( iostat /= 0 ) THEN
+         CALL Fatal('ReadElementsFile','Could not read shared nodes entry: '//TRIM(I2S(i)))
+       END IF
+       nread = read_ints(str,ivals,halo)
+
+       tag = ivals(1)
+       npart = ivals(2)       
 
        k = LocalPerm( tag-MinNodeTag+1 )
        Mesh % ParallelInfo % INTERFACE(k) = .TRUE.
        CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(k) % Neighbours,npart)
 
-       Mesh % ParallelInfo % NeighbourList(k) % Neighbours = parts(1:npart) - 1            
+       IF( nread < 2 + npart ) THEN
+         CALL Fatal('ReadSharedFile','Line '//TRIM(I2S(j))//' does not contain enough entries')
+       END IF
+       
+       Mesh % ParallelInfo % NeighbourList(k) % Neighbours = ivals(3:nread) - 1
 
        ! this partition does not own the node
-       IF ( parts(1)-1 /= mype ) THEN
+       IF ( ivals(3)-1 /= mype ) THEN
          Mesh % ParallelInfo % NumberOfIfDOFs = &
              Mesh % ParallelInfo % NumberOfIfDOFs + 1
        END IF
@@ -1831,7 +1926,6 @@ END SUBROUTINE GetMaxDefs
    !------------------------------------------------------------------------------    
    INTEGER :: i,j,k,n
    INTEGER :: BaseNameLen, Save_Dim
-   INTEGER, POINTER :: DiscontPerm(:) => NULL()
    LOGICAL :: GotIt, Found
    CHARACTER(MAX_NAME_LEN) :: FileName
    TYPE(Element_t), POINTER :: Element
@@ -1891,8 +1985,7 @@ END SUBROUTINE GetMaxDefs
    ! bodies and bcs have been mapped to full operation.
    ! To consider non-nodal elements it must be done before them.
    !--------------------------------------------------------------------
-   DiscontPerm => NULL()
-   CALL CreateDiscontMesh(Model,Mesh,DiscontPerm)
+   CALL CreateDiscontMesh(Model,Mesh)
 
    ! Study the non-nodal elements (face, edge, DG, and p-elements)
    ! This must be done before parallel communication since it will 
@@ -1925,33 +2018,15 @@ END SUBROUTINE GetMaxDefs
 
    ! If periodic BC given, compute boundary mesh projector:
    ! ------------------------------------------------------
-   IF( ASSOCIATED( DiscontPerm ) ) THEN
-     DO i = 1,Model % NumberOfBCs
-       NULLIFY( Model % BCs(i) % PMatrix )
-       IF( ListGetLogical( Model % BCs(i) % Values, 'Discontinuous Boundary', GotIt ))THEN
-! This does not work, the projector should be treated differently if it a Galerkin projector
-!         IF( ListGetLogical( Model % BCs(i) % Values, 'Galerkin Projector', GotIt ))THEN
-!           Projector =>  GalerkinProjectorDiscont( Mesh, DiscontPerm )
-!         ELSE
-           Projector =>  NodalProjectorDiscont( Mesh, DiscontPerm )
-!         END IF
-         IF ( ASSOCIATED( Projector ) ) THEN
-           Model % BCs(i) % PMatrix => Projector
-           EXIT
-         END IF
-       END IF
-     END DO
-     DEALLOCATE( DiscontPerm )
-   ELSE
-     DO i = 1,Model % NumberOfBCs
-       NULLIFY( Model % BCs(i) % PMatrix )
-       k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt, &
-           minv=1, maxv=Model % NumberOFBCs )
+   DO i = 1,Model % NumberOfBCs
+     NULLIFY( Model % BCs(i) % PMatrix )
+     k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt, &
+         minv=1, maxv=Model % NumberOFBCs )
+     IF( GotIt ) THEN
        Projector =>  PeriodicProjector( Model, Mesh, i, k )
        IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
-     END DO
-   END IF
-
+     END IF
+   END DO
 
    ! Don't know why this is saved really...
    Model % DIMENSION = save_dim
@@ -1992,6 +2067,10 @@ END SUBROUTINE GetMaxDefs
      Mesh % MaxEdgeDOFs     = 0
      Mesh % MaxFaceDOFs     = 0
      Mesh % MaxBDOFs        = 0
+
+     Mesh % DisContMesh = .FALSE.
+     Mesh % DisContPerm => NULL()
+     Mesh % DisContNodes = 0
 
      CALL Info('LoadMesh','Initial number of max element nodes: '&
          //TRIM(I2S(Mesh % MaxElementNodes)),Level=10) 
@@ -3620,24 +3699,48 @@ END SUBROUTINE GetMaxDefs
   !---------------------------------------------------------------------------
   !> Create a nodal projector related to discontinous interface.
   !---------------------------------------------------------------------------
-   FUNCTION NodalProjectorDiscont(Mesh, NodePerm ) RESULT ( Projector )
+   FUNCTION NodalProjectorDiscont( Mesh, bc ) RESULT ( Projector )
   !---------------------------------------------------------------------------
     USE Lists
 
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, POINTER :: NodePerm(:)
+    INTEGER :: bc
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
+    TYPE(Model_t), POINTER :: Model
+    INTEGER, POINTER :: NodePerm(:)
     INTEGER :: i,j,n,m
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:)
+    LOGICAL :: Found
 
     CALL Info('NodalProjectorDiscont','Creating nodal projector for discontinuous boundary',Level=7)
 
+    IF( .NOT. Mesh % DisContMesh ) THEN
+      CALL Warn('NodalProjectorDiscont','Discontinuous mesh not created?')
+      RETURN
+    END IF
+
+    Model => CurrentModel
+    j = 0
+    DO i=1,Model % NumberOfBCs
+      IF( ListGetLogical(Model % BCs(i) % Values,'Discontinuous Boundary',Found) ) THEN
+        j = j + 1
+      END IF
+    END DO
+    ! This is a temporal limitations
+    IF( j > 1 ) THEN
+      CALL Warn('NodalProjectorDiscont','One BC (not '&
+          //TRIM(I2S(j))//') only for discontinuous boundary!')
+    END IF
+
+
+    NodePerm => Mesh % DisContPerm
     n = SIZE( NodePerm ) 
     m = COUNT( NodePerm > 0 ) 
 
-    ALLOCATE( Projector )
+    Projector => AllocateMatrix()
+
     ALLOCATE( Projector % Cols(m) )
     ALLOCATE( Projector % Values(m) )
     ALLOCATE( Projector % Rows(m+1) )
@@ -3669,28 +3772,47 @@ END SUBROUTINE GetMaxDefs
 !---------------------------------------------------------------------------
 !> Create a Galerkin projector related to discontinous interface.
 !---------------------------------------------------------------------------
-  FUNCTION GalerkinProjectorDiscont(Mesh, NodePerm ) RESULT ( Projector )
+  FUNCTION WeightedProjectorDiscont(Mesh, bc ) RESULT ( Projector )
     !---------------------------------------------------------------------------
     USE Lists
 
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, POINTER :: NodePerm(:)
+    INTEGER :: bc
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
+    INTEGER, POINTER :: NodePerm(:)
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    INTEGER :: p,q,i,j,n,m,t,bc,NoOrigNodes, NoDiscontNodes
+    INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Basis(:)
     REAL(KIND=dp) :: u,v,w,val,detJ,Scale
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: Stat,DisCont
+    LOGICAL :: Stat,DisCont,Found
 
-    CALL Info('NodalProjectorDiscont','Creating Galerkin projector for discontinuous boundary',Level=7)
+    CALL Info('WeightedProjectorDiscont','Creating Galerkin projector for discontinuous boundary',Level=7)
+
+    IF( .NOT. Mesh % DisContMesh ) THEN
+      CALL Warn('WeightedProjectorDiscont','Discontinuous mesh not created?')
+      RETURN
+    END IF
+
 
     Model => CurrentModel
+
+    j = 0
+    DO i=1,Model % NumberOfBCs
+      IF( ListGetLogical(Model % BCs(i) % Values,'Discontinuous Boundary',Found) ) THEN
+        j = j + 1
+      END IF
+    END DO
+    IF( j > 1 ) THEN
+      CALL Warn('WeightedProjectorDiscont','One BC (not '&
+          //TRIM(I2S(j))//') only for discontinuous boundary!')
+    END IF
+
 
     ! Create a list matrix that allows for unspecified entries in the matrix 
     ! structure to be introduced.
@@ -3704,8 +3826,12 @@ END SUBROUTINE GetMaxDefs
     DiscontIndexes = 0
     Basis = 0.0_dp
 
+    NodePerm => Mesh % DisContPerm
     NoOrigNodes = SIZE( NodePerm ) 
     NoDiscontNodes = COUNT( NodePerm > 0 ) 
+
+    Scale = ListGetCReal( Model % BCs(bc) % Values,'Periodic BC Scale',Stat )  
+    IF(.NOT. Stat) Scale = -1.0_dp
 
     ALLOCATE( Projector % InvPerm( NoDiscontNodes ) )
     InvPerm => Projector % InvPerm
@@ -3720,18 +3846,7 @@ END SUBROUTINE GetMaxDefs
 
       Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
 
-      DisCont = .FALSE.
-      DO bc = 1,Model % NumberOfBCs
-        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-          DisCont = ListGetLogical( Model % BCs(bc) % Values,'Discontinuous Boundary',Stat )
-          IF( DisCont ) THEN
-            Scale = ListGetCReal( Model % BCs(bc) % Values,'Periodic BC Scale',Stat )  
-            IF(.NOT. Stat) Scale = -1.0_dp
-            EXIT
-          END IF
-        END IF
-      END DO
-      IF(.NOT. DisCont ) CYCLE
+      IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
 
       n = Element % TYPE % NumberOfNodes        
       Indexes(1:n) = Element % NodeIndexes
@@ -3781,7 +3896,7 @@ END SUBROUTINE GetMaxDefs
     DEALLOCATE( Indexes, DisContIndexes, Basis )
 
            
-  END FUNCTION GalerkinProjectorDiscont
+  END FUNCTION WeightedProjectorDiscont
   !------------------------------------------------------------------------------
 
 
@@ -4016,7 +4131,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Model_t) :: Model
     INTEGER :: This, Trgt
     INTEGER, OPTIONAL :: cdim
-    TYPE(Mesh_t) :: Mesh
+    TYPE(Mesh_t), TARGET :: Mesh
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL, OPTIONAL :: Galerkin
 !------------------------------------------------------------------------------
@@ -4044,16 +4159,44 @@ END SUBROUTINE GetMaxDefs
     END INTERFACE
 !------------------------------------------------------------------------------
     
+    IF ( This <= 0  ) RETURN    
 
     DIM = CoordinateSystemDimension()
+
+    CALL ResetTimer('PeriodicProjector')
     
     Projector => NULL()
     
+    ! Whether to choose nodal or Galerkin projector is determined by an optional
+    ! flag. The default is the nodal projector.
+    !--------------------------------------------------------------------------
+    IF( PRESENT( Galerkin) ) THEN
+      IntGalerkin = Galerkin
+    ELSE
+      IntGalerkin = ListGetLogical( Model % BCs(This) % Values, 'Galerkin Projector', GotIt )
+    END IF
+
+
+    ! If the boundary is discontinuous then we have the luxury of creating the projector
+    ! very cheaply using the permutation vector. This does not need the target as the 
+    ! boundary is self-contained.
+    !------------------------------------------------------------------------------------
+    IF( ListGetLogical( Model % BCs(This) % Values, 'Discontinuous Boundary', GotIt ))THEN
+      PMesh => Mesh
+      IF( IntGalerkin ) THEN
+        Projector =>  WeightedProjectorDiscont( PMesh, This )
+      ELSE
+        Projector =>  NodalProjectorDiscont( PMesh, This )
+      END IF
+      IF ( ASSOCIATED( Projector ) ) THEN
+        Model % BCs(i) % PMatrix => Projector
+        GOTO 100
+      ELSE        
+        RETURN
+      END IF
+    END IF
     
-
-    IF ( This <= 0 .OR. Trgt <= 0 ) RETURN    
-
-    CALL ResetTimer('PeriodicProjector')
+    IF ( Trgt <= 0 ) RETURN    
 
     ! Check whether to use (anti)rotational projector.
     ! We don't really know on which side the projector was called so 
@@ -4078,14 +4221,6 @@ END SUBROUTINE GetMaxDefs
     PeriodicScale = ListGetConstReal( Model % BCs(This) % Values, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) PeriodicScale = 1._dp
 
-    ! Whether to choose nodal or Galerkin projector is determined by an optional
-    ! flag. The default is the nodal projector.
-    !--------------------------------------------------------------------------
-    IF( PRESENT( Galerkin) ) THEN
-      IntGalerkin = Galerkin
-    ELSE
-      IntGalerkin = .FALSE.
-    END IF
 
     ! Create temporal mesh structures that are utilized when making the 
     ! projector between "This" and "Trgt" boundary.
@@ -4146,7 +4281,7 @@ END SUBROUTINE GetMaxDefs
 
     DEALLOCATE( InvPerm1, InvPerm2 )
 
-    CALL CheckTimer('PeriodicProjector',Delete=.TRUE.)
+100 CALL CheckTimer('PeriodicProjector',Delete=.TRUE.)
     CALL Info('PeriodicProjector','Projector created, now exiting...',Level=8)
 
 
