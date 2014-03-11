@@ -2176,27 +2176,29 @@ CONTAINS
     INTEGER :: This               !< Number of the current boundary.
     INTEGER :: DOF                !< The order number of the dof
     INTEGER :: NDOFs              !< the total number of DOFs for this equation
-    INTEGER :: Perm(:)            !< The node reordering info, this has been generated at the
+    INTEGER, TARGET :: Perm(:)    !< The node reordering info, this has been generated at the
                                   !< beginning of the simulation for bandwidth optimization
 !------------------------------------------------------------------------------
-
-    INTEGER :: p,q,i,j,k,l,m,n,nn,ii,nlen
-    LOGICAL :: GotIt, Found
-    REAL(KIND=dp) :: Scale
+    INTEGER :: p,q,i,j,k,l,m,n,nn,ii,nlen,jmp,size0
+    INTEGER, POINTER :: PPerm(:)
+    LOGICAL :: GotIt, Found, Jump
+    REAL(KIND=dp) :: Scale, weight, coeff
     TYPE(Matrix_t), POINTER :: F, G, Projector, Projector1
-    TYPE(Variable_t), POINTER :: Var
+    TYPE(Variable_t), POINTER :: Var, WeightVar
+    TYPE(ValueList_t), POINTER :: BC
 !------------------------------------------------------------------------------
 
     nlen = LEN_TRIM(Name)
+    BC => Model % BCs(This) % Values
 
-    IF ( ListGetLogical( Model % BCs(This) % Values, &
+    IF ( ListGetLogical( BC,& 
        'Periodic BC ' // Name(1:nlen), GotIt ) ) THEN
       Scale = -1.0_dp
-    ELSE IF ( ListGetLogical( Model % BCs(This) % Values, &
+    ELSE IF ( ListGetLogical( BC, &
         'Anti Periodic BC ' // Name(1:nlen), GotIt ) ) THEN
       Scale = 1.0d0
     ELSE 
-      Scale = ListGetConstReal( Model % BCs(This) % Values, &
+      Scale = ListGetConstReal( BC, &
           'Periodic BC Scale ' // Name(1:nlen), GotIt) 
       IF(.NOT. GotIt ) RETURN      
     END IF
@@ -2207,7 +2209,7 @@ CONTAINS
 !   For explicit conditions just create the dependency almost like a normal Dirichlet BC, 
 !   For implicit one (otherwise) do the assembly of the projector:
 !   ---------------------------------
-    IF ( ListGetLogical( Model % BCs(This) % Values,  &
+    IF ( ListGetLogical( BC, &
         'Periodic BC Explicit', Found ) ) THEN
 
       Var => VariableGet( Model % Variables,Name(1:nlen) ) 
@@ -2235,8 +2237,20 @@ CONTAINS
         END IF
       END DO
 
-    ELSE IF ( ListGetLogical( Model % BCs(This) % Values,  &
+    ELSE IF ( ListGetLogical( BC, &
          'Periodic BC Use Lagrange Coefficient', Found ) ) THEN
+
+      Jump = ListCheckPresent( BC, &
+         'Periodic BC Coefficient '//Name(1:nlen))
+      IF( Jump ) THEN
+        PPerm => Perm
+        CALL CalculateNodalWeights(Model % Solver,.TRUE.,&
+            PPerm,'Periodic BC Coefficient '//Name(1:nlen),WeightVar )
+        IF(.NOT. ASSOCIATED( WeightVar ) ) THEN
+          CALL Fatal('SetPeriodicBoundariesPass1','Nodal weights needed for setting jumps!')
+        END IF
+      END IF
+
 
       G => NULL()
       F => A % ConstraintMatrix
@@ -2261,16 +2275,24 @@ CONTAINS
         n = NDOFs*Projector % NumberOfRows
         F % NumberOfRows = n
 
+        ! If there is a jump in the future allocate also the diagonal
+        IF( Jump ) THEN
+          jmp = 1
+          size0 = NDOFs * MAXVAL( Perm ) 
+        ELSE
+          jmp = 0
+        END IF
+
         ALLOCATE( F % RHS(n), F % Rows(n+1), &
-            F % Cols(SIZE(Projector % Cols)*NDOFs**2+n),  &
-            F % Values(SIZE(Projector % Values)*NDOFs**2+n) )
+            F % Cols(SIZE(Projector % Cols)*NDOFs**2+n*(1+jmp)),  &
+            F % Values(SIZE(Projector % Values)*NDOFs**2+n*(1+jmp)) )
 
          F % Rows(1) = 1
          DO i=1,Projector % NumberOfRows
            n = Projector % Rows(i+1)-Projector % Rows(i)
            DO j=1,NDOFs
              k = NDOFs*(i-1)+j
-             F % Rows(k+1)=F % Rows(k)+NDOFs*n+1
+             F % Rows(k+1)=F % Rows(k)+NDOFs*n+1+jmp
            END DO
          END DO
 
@@ -2279,6 +2301,11 @@ CONTAINS
            DO p=1,NDOFs
              n = F % Rows(NDOFs*(i-1)+p)
              F % Cols(n) = NDOFs*(k-1)+p
+
+             IF( Jump ) THEN
+               n = n + 1
+               F % Cols(n) = size0 + NDOFs*(i-1)+p
+             END IF
 
              DO j=Projector % Rows(i),Projector % Rows(i+1)-1
                m = Perm(Projector % Cols(j))
@@ -2301,10 +2328,27 @@ CONTAINS
         k = Perm(Projector % InvPerm(i))
         IF ( k<=0 ) CYCLE
 
+        ! Add the diagonal unity projector (scaled)
         CALL ZeroRow(F,NDOFS*(i-1)+DOF)
         CALL SetMatrixElement( F, NDOFs*(i-1)+DOF, &
                NDOFs*(k-1)+DOF, Scale )
 
+        ! Add the diagonal unity projector (scaled)
+        IF( Jump ) THEN
+          weight = WeightVar % Values( k )
+          coeff = ListGetRealAtNode( BC,'Periodic BC Coefficient '&
+              //Name(1:nlen),Projector % InvPerm(i), Found )
+          IF( Found ) THEN
+            ! The factor 0.5 comes from the fact that the 
+            ! contribution is summed twice, 2nd time as transpose
+            ! For Nodal projector the entry is 1/(weight*coeff)
+            ! For Galerkin projector the is weight/coeff 
+            CALL SetMatrixElement( F, NDOFs*(i-1)+DOF, &
+                size0 + NDOFs*(i-1)+DOF, -0.5/(weight*coeff) )
+          END IF
+        END IF
+
+        ! Add the original nodal projector values
         DO j=Projector % Rows(i),Projector % Rows(i+1)-1
           m = Perm(Projector % Cols(j))
           IF ( m>0 ) THEN
@@ -2371,39 +2415,56 @@ CONTAINS
     INTEGER :: This               !< Number of the current boundary.
     INTEGER :: DOF                !< The order number of the dof
     INTEGER :: NDOFs              !< the total number of DOFs for this equation
-    INTEGER :: Perm(:)            !< The node reordering info, this has been generated at the
+    INTEGER, TARGET :: Perm(:)    !< The node reordering info, this has been generated at the
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m,n,nn,ii,nlen
-    LOGICAL :: GotIt
-    REAL(KIND=dp) :: Scale,s,ValueOffset
+    LOGICAL :: GotIt, Jump, Found
+    REAL(KIND=dp) :: Scale,s,ValueOffset,val,coeff,weight
     TYPE(Matrix_t), POINTER :: Projector
+    INTEGER, POINTER :: PPerm(:)
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Variable_t), POINTER :: WeightVar
 !------------------------------------------------------------------------------
+
+
+    BC =>  Model % BCs(This) % Values
+    IF ( ListGetLogical( BC, &
+         'Periodic BC Use Lagrange Coefficient', GotIt ) ) RETURN
+
+    IF ( ListGetLogical( BC, &
+         'Periodic BC Explicit', GotIt ) ) RETURN
 
     nlen = LEN_TRIM(Name)
 
-    IF ( ListGetLogical( Model % BCs(This) % Values, &
+    IF ( ListGetLogical( BC, &
        'Periodic BC ' // Name(1:nlen), GotIt ) ) THEN
       Scale = -1.0_dp
-    ELSE IF ( ListGetLogical( Model % BCs(This) % Values, &
+    ELSE IF ( ListGetLogical( BC, &
         'Anti Periodic BC ' // Name(1:nlen), GotIt ) ) THEN
       Scale = 1.0d0
     ELSE 
-      Scale = ListGetCReal( Model % BCs(This) % Values, &
+      Scale = ListGetCReal( BC, &
           'Periodic BC Scale ' // Name(1:nlen), GotIt) 
       IF(.NOT. GotIt ) RETURN      
     END IF
 
-    ValueOffset = ListGetCReal( Model % BCs(This) % Values, &
+    ValueOffset = ListGetCReal( BC, &
           'Periodic BC Offset ' // Name(1:nlen), GotIt) 
+
+    Jump = ListCheckPresent( BC, &
+        'Periodic BC Coefficient '//Name(1:nlen))
+    IF( Jump ) THEN
+      PPerm => Perm
+      CALL CalculateNodalWeights(Model % Solver,.TRUE.,&
+          PPerm,'Periodic BC Coefficient '//Name(1:nlen),WeightVar )
+      IF(.NOT. ASSOCIATED( WeightVar ) ) THEN
+        CALL Fatal('SetPeriodicBoundariesPass1','Nodal weights needed for setting jumps!')
+      END IF
+    END IF
 
     Projector => Model % BCs(This) % PMatrix
     IF ( .NOT. ASSOCIATED(Projector) ) RETURN
 
-    IF ( ListGetLogical( Model % BCs(This) % Values,  &
-         'Periodic BC Use Lagrange Coefficient', GotIt ) ) RETURN
-
-    IF ( ListGetLogical( Model % BCs(This) % Values,  &
-         'Periodic BC Explicit', GotIt ) ) RETURN
 
 !   Do the assembly of the projector:
 !   ---------------------------------
@@ -2412,20 +2473,35 @@ CONTAINS
 
        k = Perm( ii )
        IF ( .NOT. Done(ii) .AND. k > 0 ) THEN
+
+         IF( Jump ) THEN
+           weight = WeightVar % Values( k )
+           coeff = ListGetRealAtNode( BC,'Periodic BC Coefficient '&
+               //Name(1:nlen),Projector % InvPerm(i), Found )
+           val = -weight * coeff * DiagScaling(k)
+           scale = -1.0
+         ELSE         
+           val = 1.0_dp
+         END IF
+
           k = NDOFs * (k-1) + DOF
-          CALL ZeroRow( A,k )
+          IF(.NOT. Jump) THEN
+            CALL ZeroRow( A,k )
+            b(k) = 0.0_dp
+          END IF
+
           DO l = Projector % Rows(i), Projector % Rows(i+1)-1
              IF ( Projector % Cols(l) <= 0 ) CYCLE
              m = Perm( Projector % Cols(l) )
              IF ( m > 0 ) THEN
                m = NDOFs * (m-1) + DOF
-               CALL AddToMatrixElement( A,k,m,Projector % Values(l) * &
-                    DiagScaling(m) / DiagScaling(k))
+               CALL AddToMatrixElement( A,k,m,val * Projector % Values(l) * &
+                   ( DiagScaling(m) / DiagScaling(k) ) )
              END IF
           END DO
 
-          b(k) = -ValueOffset / DiagScaling(k)
-          CALL AddToMatrixElement( A,k,k,scale )
+          b(k) = b(k) - ValueOffset / DiagScaling(k)
+          CALL AddToMatrixElement( A,k,k,scale*val )
        END IF
        Done(ii) = .TRUE.
     END DO
@@ -2433,10 +2509,10 @@ CONTAINS
    END SUBROUTINE SetPeriodicBoundariesPass2
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
   END SUBROUTINE SetDirichletBoundaries
 !------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
@@ -5105,13 +5181,15 @@ END FUNCTION SearchNodeL
 !> solver, or for a permutation vector defined by an optional flag that
 !> is used as a mask to define the set of active nodes.
 !------------------------------------------------------------------------------
-  SUBROUTINE CalculateNodalWeights(Solver,WeightAtBoundary,Perm,VarName)
+  SUBROUTINE CalculateNodalWeights(Solver,WeightAtBoundary,&
+      Perm,VarName,Var)
 !------------------------------------------------------------------------------
     IMPLICIT NONE 
     TYPE(Solver_t) :: Solver
     LOGICAL :: WeightAtBoundary
     INTEGER, POINTER, OPTIONAL :: Perm(:)
     CHARACTER(*), OPTIONAL :: VarName
+    TYPE(Variable_t), POINTER, OPTIONAL :: Var
 !------------------------------------------------------------------------------
     CHARACTER(LEN=MAX_NAME_LEN) :: IntVarName
     TYPE(Mesh_t), POINTER :: Mesh
@@ -5125,7 +5203,7 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: IntPerm(:), Indexes(:),LocalIndexes(:)
     REAL(KIND=dp) :: u,v,w,s,detJ
     REAL(KIND=dp), ALLOCATABLE :: Basis(:)
-    LOGICAL :: GotIt, stat, VariableOutput, UseMask
+    LOGICAL :: GotIt, stat, VariableOutput, UseMask, RequireLogical, Hit
     REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3)
 
 
@@ -5152,6 +5230,7 @@ END FUNCTION SearchNodeL
       UseMask = ListCheckPresentAnyBodyForce( CurrentModel, IntVarName )
     END IF
 
+    RequireLogical = .FALSE.
     NULLIFY( IntPerm ) 
     IF ( .NOT. ASSOCIATED(WeightsVar) ) THEN
       IF( PRESENT( Perm ) ) THEN
@@ -5174,11 +5253,16 @@ END FUNCTION SearchNodeL
       WeightsVar => VariableGet( Mesh % Variables, IntVarName )
     END IF
 
+    IF( .NOT. ASSOCIATED( WeightsVar ) ) THEN
+      CALL Fatal('CalculateNodalWeights','Solution variable not present?')
+    END IF
     Weights => WeightsVar % Values
     IntPerm => WeightsVar % Perm
     IF ( .NOT. ASSOCIATED(Weights) ) THEN
       CALL Warn('CalculateNodalWeights','Solution vector not present?')
       RETURN
+    ELSE
+      IF( PRESENT( Var) ) Var => WeightsVar
     END IF
 
     CALL Info('ComputeNodalWeights',&
@@ -5199,15 +5283,24 @@ END FUNCTION SearchNodeL
       IF( ANY( LocalIndexes(1:n) == 0 ) ) CYCLE
 
       IF( UseMask ) THEN
+        Hit = .FALSE.
         IF( WeightAtBoundary ) THEN
           DO k=1,CurrentModel % NumberOfBCs
-            IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(k) % Tag ) EXIT
+            IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(k) % Tag ) THEN
+              Hit = .TRUE.
+              EXIT
+            END IF
           END DO
+          IF( .NOT. Hit ) CYCLE
           ElemParams => CurrentModel % BCs(k) % Values
         ELSE
           ElemParams => CurrentModel % Bodies(Element % BodyId) % Values
         END IF
-        IF( .NOT. ListGetLogical( ElemParams, IntVarName, Stat ) ) CYCLE
+        IF( RequireLogical ) THEN
+          IF( .NOT. ListGetLogical( ElemParams, IntVarName, Stat ) ) CYCLE
+        ELSE
+          IF( .NOT. ListCheckPresent( ElemParams, IntVarName ) ) CYCLE
+        END IF
       END IF
 
       n = Element % TYPE % NumberOfNodes
@@ -6080,7 +6173,7 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: Var, NodalLoads
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
     LOGICAL :: Relax, Found, NeedPrevSol, Timing
-    INTEGER :: n,i,j,k,l,istat,nrows,ncols,ConstrainedSolve
+    INTEGER :: n,i,j,k,l,istat,nrows,ncols,ConstrainedSolve,colsj,rowoffset
     TYPE(Matrix_t), POINTER :: SaveMatrix, Atmp, Btmp
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, ProcName, VariableName
     INTEGER(KIND=AddrInt) :: Proc
@@ -6184,6 +6277,7 @@ END FUNCTION SearchNodeL
           Atmp => A % ConstraintMatrix
           k = 0
           n = 1
+          rowoffset = 0
           Btmp % Rows(n) = 1
           DO WHILE(ASSOCIATED(Atmp))
             DO i=1,Atmp % NumberOfRows
@@ -6192,12 +6286,19 @@ END FUNCTION SearchNodeL
                 Btmp % InvPerm(n) = Atmp % InvPerm(i)
               DO j=Atmp % Rows(i),Atmp % Rows(i+1)-1
                 k = k + 1
-                Btmp % Cols(k)   = Atmp % Cols(j)
+                colsj = Atmp % Cols(j)
+
+                ! This is an entry related to the Lagrange coefficient
+                ! that must be manipulated if the row index is changed.
+                IF( colsj > A % NumberOfRows) colsj = colsj + rowoffset
+
+                Btmp % Cols(k)   = colsj
                 Btmp % Values(k) = Atmp % Values(j)
               END DO
               n = n + 1
               Btmp % Rows(n) = k + 1
             END DO
+            rowoffset = rowoffset + Atmp % NumberOfRows
             Atmp => Atmp % ConstraintMatrix
           END DO
           Atmp => A % ConstraintMatrix
