@@ -1570,9 +1570,6 @@ CONTAINS
 
                IF ( SUM(C) /= 0._dp ) THEN
                  STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
-               ELSE
-!                STIFF(p,q) = STIFF(p,q) + &
-!                       Basis(q)*Basis(p)*detJ*IP % s(t)
                END IF
              END DO
              DO j=1,nd-np
@@ -3057,7 +3054,7 @@ CONTAINS
     IF (ParEnv % PEs>1) CALL ParallelSumVector(A, dDiag)
 
     n = Mesh % NumberOfNodes
-    DO i=1,Mesh % NumberOfNodes
+    DO i=1,SIZE(Solver % Variable % Perm) !n
       j = Solver % Variable % Perm(i)
       IF (j==0) CYCLE
 
@@ -3072,6 +3069,11 @@ CONTAINS
         A % RHS(j+2) = 0._dp
         CALL ZeroRow(A,j+2)
         A % Values(A % Diag(j+2)) = 1._dp
+
+        IF(ALLOCATED(A % ConstrainedDOF)) THEN
+          A % ConstrainedDOF(j+1) = .TRUE.
+          A % ConstrainedDOF(j+2) = .TRUE.
+        END IF
       END IF
     END DO
 !------------------------------------------------------------------------------
