@@ -2478,7 +2478,7 @@ CONTAINS
            weight = WeightVar % Values( k )
            coeff = ListGetRealAtNode( BC,'Periodic BC Coefficient '&
                //Name(1:nlen),Projector % InvPerm(i), Found )
-           val = -weight * coeff * DiagScaling(k)
+           val = -weight * coeff * DiagScaling(k)**2
            scale = -1.0
          ELSE         
            val = 1.0_dp
