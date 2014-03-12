@@ -1154,11 +1154,12 @@ CONTAINS
             IF(.FALSE.) THEN
               OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
                   STATUS='UNKNOWN',POSITION='APPEND' )
-              WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(Section)
+              WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
 
+              i = INDEX( str,':' )
               OPEN( 10,File='../SOLVER.KEYWORDS.bysection',&
                   STATUS='UNKNOWN',POSITION='APPEND' )
-              WRITE( 10,'(A,T25,A)') TRIM(Section),TRIM(Name)
+              WRITE( 10,'(A,T22,A)') str(1:i)//TRIM(TYPE)//':',"'"//TRIM(Name)//"'"
               CLOSE(10 )
             END IF
           END IF
@@ -2038,7 +2039,6 @@ CONTAINS
             BoundariesOnly, numprocs, mype, Def_Dofs )
       END IF
       CALL CheckTimer('LoadMesh',Level=5,Delete=.TRUE.)
-
 
       CALL SetCoordinateSystem( Model )
 
