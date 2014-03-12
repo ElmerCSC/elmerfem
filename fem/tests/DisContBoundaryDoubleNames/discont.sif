@@ -6,12 +6,14 @@
 ! This case has demonstrates also how to create two different BCs of the
 ! one initial BC and use other conditions for that.
 !
+! Additionally this case shows how to use mesh.names to define the 
+! 'Target Boundaries' and 'Target Bodies'
+!
 ! P.R. / 12.3.2014
 
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "circle_in_square"
-!  Mesh DB "." "rect"
   Include Path ""
   Results Directory ""
 End
@@ -40,7 +42,7 @@ End
 
 Body 1
   Name = "Square"
-  Target Bodies(1) = 1
+!  Target Bodies(1) = 1
   Equation = 1
   Material = 1
   Body Force = 1
@@ -133,35 +135,48 @@ End
 
 Boundary Condition 1
   Name = "Bottom"
-  Target Boundaries(1) = 1
+!  Target Boundaries(1) = 1
 End
 
 Boundary Condition 2
   Name = "Right"
-  Target Boundaries(1) = 2
+!  Target Boundaries(1) = 2
   Temperature = 1.0
 End
 
 Boundary Condition 3
   Name = "Top"
-  Target Boundaries(1) = 3
+!  Target Boundaries(1) = 3
 End
 
 Boundary Condition 4
   Name = "Left"
-  Target Boundaries(1) = 4
+!  Target Boundaries(1) = 4
   Temperature = -1.0
 End
 
 Boundary Condition 5
   Name = "Jump"
-  Target Boundaries(4) = 5 6 7 8 
+!  Target Boundaries(4) = 5 6 7 8 
 
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
 
 ! This keyword makes two different boundaries
   Discontinuous Target Boundary = Integer 6
+
+!  Periodic BC = 3
+!  Periodic BC Temperature = Logical True
+
+! This can be turned optionally off
+!  Periodic BC Use Lagrange Coefficient = Logical True
+
+!  Periodic BC Scale Temperature = Real -0.5
+! Request a small jump (does not work with Lagrange coeff.)
+!  Periodic BC Offset Temperature = Real 0.2
+
+! This does not yey work
+!  Galerkin Projector = Logical True
 End
 
 
@@ -172,7 +187,6 @@ Boundary Condition 6
   
   Temperature = -1.0
 End 
-
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
