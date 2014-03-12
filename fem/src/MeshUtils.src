@@ -1293,10 +1293,10 @@ END SUBROUTINE GetMaxDefs
    INTEGER :: PrevStep=0, iostat
    INTEGER, PARAMETER :: FileUnit = 10
    CHARACTER(MAX_NAME_LEN) :: BaseName, FileName
-   INTEGER :: i,j,k,n,BaseNameLen, SharedNodes, mype
+   INTEGER :: i,j,k,n,BaseNameLen, SharedNodes = 0, mype
    INTEGER, POINTER :: NodeTags(:), ElementTags(:), LocalPerm(:)
-   INTEGER :: MinNodeTag, MaxNodeTag, istat
-   LOGICAL :: ElementPermutation, NodePermutation, Parallel
+   INTEGER :: MinNodeTag = 0, MaxNodeTag = 0, istat
+   LOGICAL :: ElementPermutation=.FALSE., NodePermutation=.FALSE., Parallel
 
 
    SAVE PrevStep, BaseName, BaseNameLen, Mesh, mype, Parallel, &
@@ -1613,7 +1613,7 @@ END SUBROUTINE GetMaxDefs
    !------------------------------------------------------------------------------
    SUBROUTINE ReadBoundaryFile()
      INTEGER, POINTER :: LocalEPerm(:)
-     INTEGER :: MinEIndex, MaxEIndex, ElemNodes
+     INTEGER :: MinEIndex, MaxEIndex, ElemNodes, i
      INTEGER :: Left, Right, bndry, tag, ElemType, IVals(64), nread, ioffset, partn
      TYPE(Element_t), POINTER :: Element
      CHARACTER(256) :: str
@@ -1638,8 +1638,8 @@ END SUBROUTINE GetMaxDefs
        LocalEPerm => NULL()
        CALL AllocateVector( LocalEPerm, MaxEIndex - MinEIndex + 1, 'LoadMesh' )
        LocalEPerm = 0
-       DO j=1,Mesh % NumberOfBulkElements
-         LocalEPerm( ElementTags(i) - MinEIndex + 1 ) = j
+       DO i=1,Mesh % NumberOfBulkElements
+         LocalEPerm( ElementTags(i) - MinEIndex + 1 ) = i
        END DO
      ELSE
        MinEIndex = 1 
