@@ -1288,7 +1288,7 @@ END SUBROUTINE GetMaxDefs
        END IF
 
        OtherElem = Element 
-       OtherElem % Type => Element % Type
+       OtherElem % TYPE => Element % TYPE
 
        NULLIFY( OtherElem % BoundaryInfo ) 
        ALLOCATE( OtherElem % BoundaryInfo ) 
@@ -2121,8 +2121,20 @@ END SUBROUTINE GetMaxDefs
 
    ! Read elemental data - this is rarely used, parallel implementation lacking?
    !--------------------------------------------------------------------------
+   i = LEN_TRIM(MeshNamePar)
+   DO WHILE(MeshNamePar(i:i) == CHAR(0))
+     i=i-1
+   END DO
+   BaseNameLen = i
+   
    FileName = MeshNamePar(1:BaseNameLen)//'/mesh.elements.data'
    CALL ReadElementPropertyFile( FileName, Mesh )
+
+   ! Read mesh.names - this could be saved by some mesh formats
+   !--------------------------------------------------------------------------
+   FileName = MeshNamePar(1:BaseNameLen)//'/mesh.names'
+   CALL ReadTargetNames( Model, FileName )
+
 
    ! Map bodies using Target Bodies and boundaries using Target Boundaries.
    ! This must be done before the element definitions are studied since
@@ -2949,6 +2961,108 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
  END SUBROUTINE SetMeshMaxDOFs
 !------------------------------------------------------------------------------
+ 
+ SUBROUTINE ReadTargetNames(Model,Filename)
+     CHARACTER(LEN=*) :: FileName
+     TYPE(Model_t) :: Model
+!------------------------------------------------------------------------------
+   INTEGER, PARAMETER :: FileUnit = 10
+   INTEGER, PARAMETER :: A=ICHAR('A'),Z=ICHAR('Z'),U2L=ICHAR('a')-ICHAR('A')
+   INTEGER :: i,j,k,iostat,i1,i2,i3,n
+   INTEGER :: ivals(40)
+   CHARACTER(LEN=128) :: str, name0, name1
+   TYPE(ValueList_t), POINTER :: Vlist
+   LOGICAL :: Found, AlreadySet
+
+   OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT=iostat )
+   IF( iostat /= 0 ) THEN
+     RETURN
+   ELSE
+     CALL Info('ReadTargetNames','Reading names info from file: '//TRIM(FileName))
+   END IF
+
+   DO WHILE( .TRUE. ) 
+     READ(FileUnit,'(A)',IOSTAT=iostat) str
+     IF( iostat /= 0 ) EXIT
+     i = INDEX( str,'$')     
+     j = INDEX( str,'=')
+     IF( i == 0 .OR. j == 0 ) CYCLE
+
+     i = i + 1
+     DO WHILE(i<=LEN_TRIM(str) .AND. str(i:i)==' ')
+       i = i + 1
+     END DO     
+     
+     i1 = i
+     i2 = j-1
+     i3 = j+1
+
+     ! Move to lowercase since the "name" in sif file is also
+     ! always in lowercase. 
+     DO i=i1,i2
+       j = i+1-i1
+       k = ICHAR(str(i:i))
+       IF ( k >= A .AND. k<= Z ) THEN
+         name0(j:j) = CHAR(k+U2L)
+       ELSE
+         name0(j:j) = str(i:i)
+       END IF
+     END DO
+
+     n = str2ints( str(i3:),ivals )
+     IF( n == 0 ) THEN
+       CALL Fatal('ReadTargetNames','Could not find arguments for: '//str(i1:i2))
+     END IF
+
+     AlreadySet = .FALSE.
+
+     DO i=1,Model % NumberOfBCs
+       Vlist => Model % BCs(i) % Values
+       name1 = ListGetString( Vlist,'Name',Found )
+       IF(.NOT. Found ) CYCLE
+       IF( name0(1:i2-i1+1) == TRIM(name1) ) THEN
+         PRINT *,'Name > '//TRIM(name1)//' < matches BC '//TRIM(I2S(i))
+         IF( AlreadySet ) THEN
+           CALL Fatal('ReadTargetNames','Mapping of name is not unique: '//TRIM(name1) )
+         ELSE IF( ListCheckPresent( Vlist,'Target Boundaries') ) THEN
+           CALL Info('ReadTargetNames','> Target Boundaries < already defined for BC '&
+               //TRIM(I2S(i)))
+         ELSE
+           CALL ListAddIntegerArray( Vlist,'Target Boundaries',n,ivals(1:n))
+           AlreadySet = .TRUE.
+         END IF
+       END IF
+     END DO
+
+     DO i=1,Model % NumberOfBodies
+       Vlist => Model % Bodies(i) % Values
+       name1 = ListGetString( Vlist,'Name',Found )
+       IF(.NOT. Found ) CYCLE
+       IF( name0(1:i2-i1+1) == TRIM(name1) ) THEN
+         PRINT *,'Name > '//TRIM(name1)//' < matches body '//TRIM(I2S(i))
+         IF( AlreadySet ) THEN
+           CALL Fatal('ReadTargetNames','Mapping of name is not unique: '//TRIM(name1) )
+         ELSE IF( ListCheckPresent( Vlist,'Target Bodies') ) THEN
+           CALL Info('ReadTargetNames','> Target Bodies < already defined for Body '&
+               //TRIM(I2S(i)))
+         ELSE
+           CALL ListAddIntegerArray( Vlist,'Target Bodies',n,ivals(1:n))
+           AlreadySet = .TRUE.
+         END IF
+       END IF
+     END DO
+     
+     IF(.NOT. AlreadySet ) THEN
+       CALL Warn('ReadTargetNames','Could not map name to Body nor BC: '//name0(1:i2-i1+1) )
+     END IF
+
+   END DO
+
+   CLOSE(FileUnit)
+   
+ END SUBROUTINE ReadTargetNames
+
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE ReadElementPropertyFile(FileName,Mesh)
@@ -2962,6 +3076,7 @@ END SUBROUTINE GetMaxDefs
     CHARACTER(LEN=MAX_STRING_LEN) :: str
 #endif
     INTEGER :: i,j,n
+    INTEGER, PARAMETER :: FileUnit = 10
     REAL(KIND=dp) :: x
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementData_t), POINTER :: PD,PD1
@@ -2970,9 +3085,9 @@ END SUBROUTINE GetMaxDefs
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
 #endif
 
-    OPEN( Unit=10, File=FileName, STATUS='OLD', ERR=10 )
+    OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', ERR=10 )
 
-    DO WHILE( ReadAndTrim(10,str) )
+    DO WHILE( ReadAndTrim(FileUnit,str) )
       READ( str(9:),*) i
       IF ( i < 0 .OR. i > Mesh % NumberOFBulkElements ) THEN
         CALL Fatal( 'ReadElementProperties', 'Element id out of range.' )
@@ -2982,7 +3097,7 @@ END SUBROUTINE GetMaxDefs
         Element => Mesh % Elements(i)
         PD => Element % PropertyData
 
-        DO WHILE(ReadAndTrim(10,str))
+        DO WHILE(ReadAndTrim(FileUnit,str))
           IF ( str(1:3) == 'end' ) EXIT
 
           i = INDEX(str, ':')
@@ -3039,7 +3154,7 @@ END SUBROUTINE GetMaxDefs
       END IF
     END DO
 
-    CLOSE(10)
+    CLOSE(FileUnit)
 
 10  CONTINUE
 

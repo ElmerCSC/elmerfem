@@ -197,6 +197,61 @@ CONTAINS
   
 
 !------------------------------------------------------------------------------
+!> Converts a string into a number of integer numbers
+!> It is assumed that the integers may also be separated by 
+!> the given separator. 
+!------------------------------------------------------------------------------
+  FUNCTION str2ints(str,ints,sep) RESULT(n)
+!------------------------------------------------------------------------------
+    INTEGER :: ints(:)
+    CHARACTER(LEN=*) :: str
+    CHARACTER, OPTIONAL :: sep
+
+    INTEGER :: i,k,l,m,n,ic, icsep
+    INTEGER, PARAMETER :: ic0 = ICHAR('0'), ic9 = ICHAR('9'), icm = ICHAR('-'), &
+        ics = ICHAR(' ')
+
+    IF( PRESENT( sep ) ) THEN
+      icsep = ICHAR(sep)
+    ELSE
+      icsep = ics
+    END IF
+
+
+    k = LEN_TRIM(str)
+    l = 1
+    n = 0
+    DO WHILE(l<=k.AND.n<SIZE(ints))
+      DO WHILE(l<=k)
+        ic = ICHAR(str(l:l))
+        IF( ic == ics .OR. ic == icsep ) THEN
+          CONTINUE
+        ELSE
+          EXIT
+        END IF
+        l=l+1
+      END DO
+      IF(l>k) EXIT
+      IF(.NOT.(ic==icm .OR. ic>=ic0 .AND. ic<=ic9)) EXIT
+
+      m = l+1
+      DO WHILE(m<=k)
+        ic = ICHAR(str(m:m))
+        IF(ic<ic0 .OR. ic>ic9) EXIT
+        m=m+1
+      END DO
+
+      n = n + 1
+      ints(n) = s2i(str(l:m-1),m-l)
+      l = m
+    END DO
+  END FUNCTION str2ints
+!------------------------------------------------------------------------------
+
+
+
+
+!------------------------------------------------------------------------------
   SUBROUTINE SystemCommand( cmd ) 
 !------------------------------------------------------------------------------
     CHARACTER(LEN=*) :: cmd
