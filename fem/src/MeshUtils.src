@@ -1419,6 +1419,7 @@ END SUBROUTINE GetMaxDefs
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
+          '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
            '/part.'//TRIM(I2S(mype+1))//'.header'
      ELSE
        FileName = BaseName(1:BaseNameLen)//'/mesh.header'
@@ -1482,6 +1483,7 @@ END SUBROUTINE GetMaxDefs
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
+          '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
            '/part.'//TRIM(I2S(mype+1))//'.nodes'
      ELSE
        FileName = BaseName(1:BaseNameLen)//'/mesh.nodes'
@@ -1532,7 +1534,9 @@ END SUBROUTINE GetMaxDefs
      ElementPermutation = .FALSE.
 
      IF( Parallel ) THEN
-       FileName = BaseName(1:BaseNameLen)//'/part.//TRIM(I2S(mype+1))//.elements'
+       FileName = BaseName(1:BaseNameLen)// &
+          '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
+             '/part.'//TRIM(I2S(mype+1))//'.elements'
      ELSE
        FileName = BaseName(1:BaseNameLen)//'/mesh.elements'
      END IF
@@ -1617,6 +1621,7 @@ END SUBROUTINE GetMaxDefs
 
      IF( Parallel ) THEN
        FileName = BaseName(1:BaseNameLen)//&
+          '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
            '/part.'//TRIM(I2S(mype+1))//'.boundary'
      ELSE
        FileName = BaseName(1:BaseNameLen)//'/mesh.boundary'
@@ -1836,6 +1841,7 @@ END SUBROUTINE GetMaxDefs
      IF(.NOT. Parallel) RETURN
 
      FileName = BaseName(1:BaseNameLen)//&
+       '/partitioning.'//TRIM(I2S(ParEnv % PEs))//&
          '/part.'//TRIM(I2S(mype+1))//'.shared'
 
      OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', IOSTAT = iostat )
