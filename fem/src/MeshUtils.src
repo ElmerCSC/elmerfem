@@ -999,13 +999,15 @@ END SUBROUTINE GetMaxDefs
    TYPE(Mesh_t), POINTER :: Mesh
 
    INTEGER, POINTER :: DisContPerm(:)
-   LOGICAL, ALLOCATABLE :: DisContNode(:), DisContParent(:)
-   LOGICAL :: Found, DisCont
+   LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:)
+   LOGICAL :: Found, DisCont, Greedy
    INTEGER :: i,j,k,n,t,bc
-   INTEGER :: NoNodes, NoDisContElements, NoDisContNodes, &
-       TargetBody, NoBulkElems, NoBoundElems, NoParentElems
+   INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
+       TargetBody, NoBulkElems, NoBoundElems, NoParentElems, &
+       DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:)
-   TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, ParentElem
+   TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
+       ParentElem, OtherElem
 
 
    IF( .NOT. ListGetLogicalAnyBC( Model,'Discontinuous Boundary' ) ) THEN
@@ -1017,10 +1019,10 @@ END SUBROUTINE GetMaxDefs
    NoBoundElems = Mesh % NumberOfBoundaryElements
 
    ALLOCATE( DisContNode(NoNodes))
-   ALLOCATE( DisContParent(NoBulkElems))
+   ALLOCATE( DisContElem(NoBulkElems+NoBoundElems))
    DisContNode = .FALSE.
-   DisContParent = .FALSE.
-   NoDisContElements = 0
+   DisContElem = .FALSE.
+   NoDisContElems = 0
 
    ! Go over all boundary elements and mark nodes that should be 
    ! discontinuous and nodes that should be continuous 
@@ -1037,55 +1039,53 @@ END SUBROUTINE GetMaxDefs
        END IF
      END DO
 
+     IF(.NOT. DisCont ) CYCLE
+
      ! Boundary element cannot be discontinuous if it is not an interface element
-     IF( DisCont ) THEN
-       LeftElem => Element % BoundaryInfo % Left
-       IF( .NOT. ASSOCIATED( LeftElem ) ) THEN
-         CALL Warn('CreateDiscontMesh','Left parent not associated! : '//TRIM(I2S(t)))
-         CYCLE
-       END IF
-
-       RightElem => Element % BoundaryInfo % Right
-       IF( .NOT. ASSOCIATED( RightElem ) ) THEN
-         CALL Warn('CreateDiscontMesh','Left parent not associated! : '//TRIM(I2S(t)))
-         CYCLE
-       END IF
+     LeftElem => Element % BoundaryInfo % Left
+     IF( .NOT. ASSOCIATED( LeftElem ) ) THEN
+       CALL Warn('CreateDiscontMesh','Left parent not associated! : '//TRIM(I2S(t)))
+       CYCLE
+     END IF
+     
+     RightElem => Element % BoundaryInfo % Right
+     IF( .NOT. ASSOCIATED( RightElem ) ) THEN
+       CALL Warn('CreateDiscontMesh','Left parent not associated! : '//TRIM(I2S(t)))
+       CYCLE
      END IF
 
-     IF( DisCont ) THEN
-       DisContNode( Indexes ) = .TRUE.
-       NoDisContElements = NoDisContElements + 1
-
-       DisContParent( RightElem % ElementIndex ) = .TRUE.
-       DisContParent( LeftElem % ElementIndex ) = .TRUE.
-     END IF
+     DisContNode( Indexes ) = .TRUE.
+     DisContElem( NoBulkElems + t ) = .TRUE.
+     DisContElem( RightElem % ElementIndex ) = .TRUE.
+     DisContElem( LeftElem % ElementIndex ) = .TRUE.
    END DO
 
    ! Calculate the number of discontinuous nodes and the number of bulk elements 
    ! associated to them. 
-   NoParentElems = COUNT( DiscontParent )
+   NoDisContElems = COUNT( DiscontElem(NoBulkElems+1:NoBulkElems+NoBoundElems) )
+   NoParentElems = COUNT( DiscontElem(1:NoBulkElems) )
    NoDisContNodes = COUNT( DisContNode ) 
 
-   CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '//TRIM(I2S(NoDisContElements)) )
+   CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '//TRIM(I2S(NoDisContElems)) )
    CALL Info('CreateDiscontMesh','Number of discontinuous parent elements: '//TRIM(I2S(NoParentElems)) )
    CALL Info('CreateDiscontMesh','Number of candicate nodes: '//TRIM(I2S(NoDisContNodes)) )
 
    IF( NoDiscontNodes == 0) THEN
      CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
-     DEALLOCATE( DiscontNode, DiscontParent )
+     DEALLOCATE( DiscontNode, DiscontElem )
      RETURN
    END IF
+
 
    ! By default only nodes that are associated only to elements immediately at the discontinuous 
    ! boundary are treated as discontinuous. However, the user may be greedy and use all candidate nodes.  
    n = NoDiscontNodes
-   IF( .NOT. ListGetLogical( Model % Simulation,'Discontinuous Boundaries Greedy',Found ) ) THEN
+   Greedy = ListGetLogical( Model % Simulation,'Discontinuous Boundaries Greedy',Found ) 
+   IF( .NOT. Greedy ) THEN
      DO t = 1, NoBulkElems
-
+       IF( DiscontElem(t) ) CYCLE
        Element => Mesh % Elements(t)
        Indexes => Element % NodeIndexes
-
-       IF( DiscontParent(t) ) CYCLE
        DisContNode( Indexes ) = .FALSE.
      END DO
      NoDisContNodes = COUNT( DisContNode ) 
@@ -1098,8 +1098,11 @@ END SUBROUTINE GetMaxDefs
    END IF
 
    IF( NoDiscontNodes == 0 ) THEN
+     IF( n > 0 ) THEN
+       CALL Info('CreateDiscontMesh','You might want to try the Greedy strategy',Level=3)
+     END IF
      CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
-     DEALLOCATE( DiscontNode, DiscontParent )
+     DEALLOCATE( DiscontNode, DiscontElem )
      RETURN
    END IF
 
@@ -1116,46 +1119,59 @@ END SUBROUTINE GetMaxDefs
      END IF
    END DO
 
+   ! Create a table showing nodes that are related to the moving nodes by
+   ! the moving elements. 
+   ALLOCATE( MovingNode( NoNodes ), StayingNode( NoNodes ) ) 
+   MovingNode = .FALSE.
+   StayingNode = .FALSE.
+
    ! Go through all the boundary elements and now really manipulate the boundary 
    ! elements on the other side. The user may choose which of the parent elements
    ! gets the additional node, or otheriwse the bigger parent index is chosen for
    ! consistency. 
    DO t=1, NoBoundElems
 
+     IF(.NOT. DisContElem(NoBulkElems + t) ) CYCLE
+
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
 
-     DisCont = .FALSE.
+     TargetBody = 0
      DO bc = 1,Model % NumberOfBCs
        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-         DisCont = ListGetLogical( Model % BCs(bc) % Values,'Discontinuous Boundary',Found )
-         IF( DisCont ) EXIT
+         TargetBody = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous Target Body',Found )
+         EXIT
        END IF
      END DO
-     IF( .NOT. DisCont ) CYCLE     
 
      LeftElem => Element % BoundaryInfo % Left 
-     IF( .NOT. ASSOCIATED( LeftElem ) ) CYCLE
-
      RightElem => Element % BoundaryInfo % Right
-     IF( .NOT. ASSOCIATED( RightElem ) ) CYCLE
 
-     TargetBody = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous Target Body',Found )
-     IF( Found ) THEN
+     IF( TargetBody > 0 ) THEN
        IF( LeftElem % BodyId == TargetBody ) THEN
          ParentElem => LeftElem
+         OtherElem => RightElem
        ELSE IF( RightElem % BodyId == TargetBody ) THEN
          ParentElem => RightElem 
+         OtherElem => LeftElem
        ELSE
-         CALL Fatal('CreateDiscontMesh','Either parent is > Discontinuous Target Body < !')
+         CALL Fatal('CreateDiscontMesh','Neither parent is > Discontinuous Target Body < !')
        END IF
      ELSE
        IF( LeftElem % BodyId > RightElem % BodyId ) THEN
          ParentElem => LeftElem 
+         OtherElem => RightElem
        ELSE
          ParentElem => RightElem
+         OtherElem => LeftElem
        END IF
      END IF
+
+     ! Mark the nodes in elements that have been set
+     ! These related nodes are used to determine whether other
+     ! elements are on the discontinuous side. 
+     MovingNode( ParentElem % NodeIndexes ) = .TRUE.
+     StayingNode( OtherElem % NodeIndexes ) = .TRUE. 
 
      ! Ok, we found the element to manipulate the indexes. 
      ! The new index is numbered on top of the old indexes. 
@@ -1166,43 +1182,51 @@ END SUBROUTINE GetMaxDefs
          ParentIndexes(i) = NoNodes + DisContPerm(j)
        END IF
      END DO
+
+     ! Then set in a consistent manner the elements
+     Element % BoundaryInfo % Left => OtherElem
+     Element % BoundaryInfo % Right => ParentElem    
    END DO
 
 
-   ! Go over all boundary elements that are not discontinuous but 
+   ! Go over all other elements that are not discontinuous but 
    ! do have some node on the discontinuous boundary. They should 
-   ! change their node index together with their parent element.
-   ! Only one parent element is considered. 
-   DO t=1, NoBoundElems
+   ! change their node index together with the dominating destiny 
+   ! of the related nodes.
+   NoStayingElems = 0
+   NoMovingElems = 0
+   DO t=1, NoBulkElems + NoBoundElems
 
-     Element => Mesh % Elements(NoBulkElems + t)
+     IF( DisContElem(t) ) CYCLE
+
+     Element => Mesh % Elements(t)
      Indexes => Element % NodeIndexes
 
-     DisCont = .FALSE.
-     DO bc = 1,Model % NumberOfBCs
-       IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-         DisCont = ListGetLogical( Model % BCs(bc) % Values,'Discontinuous Boundary',Found )
-         IF( DisCont ) EXIT
-       END IF
-     END DO
+     IF( ALL( DisContPerm( Indexes ) == 0 ) ) CYCLE
 
-     IF( DisCont ) CYCLE
-     IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
+     NoMoving = COUNT( MovingNode(Indexes)) 
+     NoStaying = COUNT( StayingNode(Indexes)) 
 
-     ParentElem => Element % BoundaryInfo % Left 
-     IF(.NOT. ASSOCIATED( ParentElem ) ) THEN
-       ParentElem => Element % BoundaryInfo % Right
-     END IF
-     IF( ASSOCIATED( ParentElem ) ) THEN
-       ParentIndexes => ParentElem % NodeIndexes
+     IF( NoMoving == 0 .AND. NoStaying == 0 ) CYCLE
+
+     IF( NoStaying > NoMoving ) THEN
+       NoStayingElems = NoStayingElems + 1
+       CYCLE
+     ELSE IF( NoMoving > NoStaying ) THEN
+       NoMovingElems = NoMovingElems + 1 
        DO i=1, SIZE(Indexes) 
-         IF( ALL( ParentIndexes /= Indexes(i) ) ) THEN
-           Indexes(i) = NoNodes + DisContPerm(Indexes(i))
-         END IF
+         j = DisContPerm(Indexes(i))
+         IF( j > 0 ) Indexes(i) = NoNodes + j
        END DO
+     ELSE
+       PRINT *,'Undecided element:',t,NoMoving
      END IF
    END DO
+   CALL Info('CreateDiscontMesh','Number of related elements moving: '//TRIM(I2S(NoMovingElems)) )
+   CALL Info('CreateDiscontMesh','Number of related elements staying: '//TRIM(I2S(NoStayingElems)) )
 
+   DEALLOCATE( MovingNode )
+   DEALLOCATE( StayingNode )
 
    ! Now add the new nodes also to the nodes structure
    ! and give the new nodes the same coordinates as the ones
@@ -1220,11 +1244,95 @@ END SUBROUTINE GetMaxDefs
      END IF
    END DO
 
-   DEALLOCATE( DisContNode, DiscontParent )
+   ! If the discontinuous boundary is duplicated then no information of it 
+   ! is saved. The periodic and mortar conditions now need to perform
+   ! searches. On the other hand the meshes may now freely move.,
+   IF( ListCheckPresentAnyBC( Model,'Discontinuous Target Boundary') ) THEN
 
-   Mesh % DisContMesh = .TRUE.
-   Mesh % DisContPerm => DisContPerm
-   Mesh % DisContNodes = NoDisContNodes 
+     CALL EnlargeBoundaryElements( Mesh, NoDiscontElems ) 
+
+     NoDisContElems = 0
+     DO t=1, NoBoundElems
+
+       ! This includes already the sanity tests
+       IF(.NOT. DisContElem(NoBulkElems+t) ) CYCLE
+
+       Element => Mesh % Elements(NoBulkElems + t)
+       IF(.NOT. ASSOCIATED(Element) ) THEN
+         CALL Fatal('CreateDiscontMesh','Element '//TRIM(I2S(NoBulkElems+t))//' not associated!')
+       END IF
+       Indexes => Element % NodeIndexes
+
+       DisContTarget = 0
+       DO bc = 1,Model % NumberOfBCs
+         IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+           DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
+               'Discontinuous Target Boundary',Found )
+           IF( Found ) EXIT
+         END IF
+       END DO
+
+       IF( DisContTarget == 0 ) THEN
+         CALL Fatal('CreateDiscontMesh','> Discontinuous Boundary Target < must be given for all, if any bc!')
+       END IF
+
+       RightElem => Element % BoundaryInfo % Right
+       LeftElem => Element % BoundaryInfo % Left 
+
+       NoDisContElems = NoDisContElems + 1              
+       j = NoBulkElems + NoBoundElems + NoDisContElems 
+
+       OtherElem => Mesh % Elements( j )
+       IF(.NOT. ASSOCIATED(OtherElem) ) THEN
+         CALL Fatal('CreateDiscontMesh','Other elem '//TRIM(I2S(j))//' not associated!')
+       END IF
+
+       OtherElem = Element 
+       OtherElem % Type => Element % Type
+
+       NULLIFY( OtherElem % BoundaryInfo ) 
+       ALLOCATE( OtherElem % BoundaryInfo ) 
+       OtherElem % BoundaryInfo % Left => Element % BoundaryInfo % Right
+       NULLIFY( Element % BoundaryInfo % Right ) 
+       NULLIFY( OtherElem % BoundaryInfo % Right )
+
+       NULLIFY( OtherElem % NodeIndexes )
+       n = SIZE( Element % NodeIndexes ) 
+       ALLOCATE( OtherElem % NodeIndexes( n ) ) 
+
+       ! Ok, we found the element to manipulate the indexes. 
+       ! The new index is numbered on top of the old indexes. 
+       DO i=1,n
+         j = Element % NodeIndexes(i) 
+         IF( DisContPerm(j) > 0 ) THEN
+           OtherElem % NodeIndexes(i) = NoNodes + DisContPerm(j)
+         ELSE 
+           OtherElem % NodeIndexes(i) = j
+         END IF
+       END DO
+
+       OtherElem % BoundaryInfo % Constraint = DisContTarget
+     END DO
+
+     CALL Info('CreateDiscontMesh','Number of original bulk elements: '&
+         //TRIM(I2S(Mesh % NumberOfBulkElements)),Level=10)
+     CALL Info('CreateDiscontMesh','Number of original boundary elements: '&
+         //TRIM(I2S(Mesh % NumberOfBoundaryElements)),Level=10)
+     CALL Info('CreateDiscontMesh','Number of additional boundary elements: '&
+         //TRIM(I2S(NoDisContElems)))
+
+
+     CALL Info('CreateDiscontMesh','Total number of all elements: '&
+         //TRIM(I2S(n)),Level=10)
+
+     DEALLOCATE( DisContPerm ) 
+   ELSE
+     Mesh % DisContMesh = .TRUE.
+     Mesh % DisContPerm => DisContPerm
+     Mesh % DisContNodes = NoDisContNodes 
+   END IF
+
+   DEALLOCATE( DisContNode, DiscontElem )
 
  END SUBROUTINE CreateDiscontMesh
 
@@ -1249,7 +1357,7 @@ END SUBROUTINE GetMaxDefs
 
    IF ( ( Mesh % NumberOfNodes > n0 .OR. &
        ( n > n0 .AND. Mesh % MaxBDOFs > 0 ) ) ) THEN
-     CALL Info('EnlargeCoordinates','Increasing mesh size from '&
+     CALL Info('EnlargeCoordinates','Increasing number of nodes from '&
          //TRIM(I2S(n0))//' to '//TRIM(I2S(n)),Level=8)
 
      TmpCoord => Mesh % Nodes % x
@@ -1273,6 +1381,42 @@ END SUBROUTINE GetMaxDefs
    END IF
 
  END SUBROUTINE EnlargeCoordinates
+
+
+ 
+ SUBROUTINE EnlargeBoundaryElements(Mesh, DoubleElements )
+
+   TYPE(Mesh_t) :: Mesh
+   INTEGER :: DoubleElements
+   INTEGER :: n,n0,i,j
+   REAL(KIND=dp), POINTER :: TmpCoord(:)
+   TYPE(Element_t), POINTER :: NewElements(:),OldElements(:)
+
+   IF( DoubleElements == 0 ) RETURN
+
+   n0 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+   n = n0 + DoubleElements
+
+   CALL Info('EnlargeBoundaryElements','Increasing number of elements from '&
+       //TRIM(I2S(n0))//' to '//TRIM(I2S(n)),Level=8)
+
+   OldElements => Mesh % Elements
+   NULLIFY( Mesh % Elements ) 
+   CALL AllocateVector( Mesh % Elements, n, 'EnlargeBoundaryElements' )
+   DO i=1,n0
+     Mesh % Elements(i) = OldElements(i)
+   END DO
+
+! In principle we should be able to deallocate this??
+!   DEALLOCATE( OldElements ) 
+
+   Mesh % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements + &
+       DoubleElements
+
+ END SUBROUTINE EnlargeBoundaryElements
+
+
+
 
 
 
@@ -2460,9 +2604,17 @@ END SUBROUTINE GetMaxDefs
 
        Element => Mesh % Elements(i)
 
-       n = Element % TYPE % NumberOfNodes
+       IF(.NOT. ASSOCIATED( Element ) ) THEN
+         CALL Fatal('NonNodalElements','Element '//TRIM(I2S(i))//' not associated!')
+       END IF
 
+       IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
+         CALL Fatal('NonNodalElements','Type in Element '//TRIM(I2S(i))//' not associated!')
+       END IF
+
+       n = Element % TYPE % NumberOfNodes
        Element % NDOFs  = n
+
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
          IF( Element % BoundaryInfo % Left % NDOFs == 0 ) THEN
            Element % NDOFs = 0
