@@ -2431,7 +2431,7 @@ END SUBROUTINE GetMaxDefs
        END IF
      END DO
 
-     IF( .TRUE. ) THEN
+     IF( .FALSE. ) THEN
        PRINT *,'Boundary mapping'
        DO id=minid,maxid
          IF( IndexMap( id ) /= 0 ) PRINT *,id,' : ',IndexMap(id)
@@ -2462,14 +2462,14 @@ END SUBROUTINE GetMaxDefs
 
        ELSE IF( IndexMap( bndry ) == 0 ) THEN
          IF( DefaultTargetBC /= 0 ) THEN
-           PRINT *,'Default boundary map: ',bndry,DefaultTargetBC
+!          PRINT *,'Default boundary map: ',bndry,DefaultTargetBC
            IndexMap( bndry ) = DefaultTargetBC
          ELSE 
-           IF( bndry <= Model % NumberOfBCs ) THEN            
-             PRINT *,'Unmapped boundary: ',bndry
-           ELSE
-             PRINT *,'Unused boundary: ',bndry
-           END IF
+!          IF( bndry <= Model % NumberOfBCs ) THEN            
+!            PRINT *,'Unmapped boundary: ',bndry
+!          ELSE
+!            PRINT *,'Unused boundary: ',bndry
+!          END IF
            IndexMap( bndry ) = -1 
            Element % BoundaryInfo % Constraint = 0           
            CYCLE
@@ -3021,7 +3021,7 @@ END SUBROUTINE GetMaxDefs
        name1 = ListGetString( Vlist,'Name',Found )
        IF(.NOT. Found ) CYCLE
        IF( name0(1:i2-i1+1) == TRIM(name1) ) THEN
-         PRINT *,'Name > '//TRIM(name1)//' < matches BC '//TRIM(I2S(i))
+!        PRINT *,'Name > '//TRIM(name1)//' < matches BC '//TRIM(I2S(i))
          IF( AlreadySet ) THEN
            CALL Fatal('ReadTargetNames','Mapping of name is not unique: '//TRIM(name1) )
          ELSE IF( ListCheckPresent( Vlist,'Target Boundaries') ) THEN
@@ -3039,7 +3039,7 @@ END SUBROUTINE GetMaxDefs
        name1 = ListGetString( Vlist,'Name',Found )
        IF(.NOT. Found ) CYCLE
        IF( name0(1:i2-i1+1) == TRIM(name1) ) THEN
-         PRINT *,'Name > '//TRIM(name1)//' < matches body '//TRIM(I2S(i))
+!        PRINT *,'Name > '//TRIM(name1)//' < matches body '//TRIM(I2S(i))
          IF( AlreadySet ) THEN
            CALL Fatal('ReadTargetNames','Mapping of name is not unique: '//TRIM(name1) )
          ELSE IF( ListCheckPresent( Vlist,'Target Bodies') ) THEN
