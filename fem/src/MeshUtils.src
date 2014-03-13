@@ -2406,7 +2406,7 @@ END SUBROUTINE GetMaxDefs
 
      DefaultTargetBC = 0
      DO id=1,Model % NumberOfBCs
-       IF(ListGetLogical( Model % BCs(j) % Values, &
+       IF(ListGetLogical( Model % BCs(id) % Values, &
            'Default Target', GotIt)) DefaultTargetBC = id       
        BList => ListGetIntegerArray( Model % BCs(id) % Values, &
            'Target Boundaries', GotIt ) 
