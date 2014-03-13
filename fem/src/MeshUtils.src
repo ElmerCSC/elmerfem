@@ -2336,7 +2336,7 @@ END SUBROUTINE GetMaxDefs
 
        END DO
 
-       IF( .TRUE. ) THEN
+       IF( .FALSE. ) THEN
          PRINT *,'Body mapping'
          DO id=minid,maxid
            IF( IndexMap( id ) /= 0 ) PRINT *,id,' : ',IndexMap(id)
@@ -2347,7 +2347,7 @@ END SUBROUTINE GetMaxDefs
          Element => Mesh % Elements(i)
          id = Element % BodyId
          IF( IndexMap( id ) == 0 ) THEN
-           PRINT *,'Unmapped body: ',id
+!          PRINT *,'Unmapped body: ',id
            IndexMap(id) = id
          END IF
          Element % BodyId = IndexMap( id ) 
@@ -2412,8 +2412,11 @@ END SUBROUTINE GetMaxDefs
          DO k=1,SIZE(BList)
            bndry = Blist(k)
            IF( bndry > maxid ) THEN
+#if 0
+  in my opinion, this is quite usual ... Juha
              CALL Warn('LoadMesh','Unused BC entry in > Target Boundaries <  : '&
                  //TRIM(I2S(bndry)) )              
+#endif
            ELSE IF( IndexMap( bndry ) /= 0 ) THEN
              CALL Warn('LoadMesh','Multiple BCs have same > Target Boundaries < entry : '&
                  //TRIM(I2S(bndry)) )
