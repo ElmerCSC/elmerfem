@@ -161,8 +161,11 @@ PROGRAM  MshGlacierDEM
 
       ! Find zbed for that point from the Bedrock MNT 
       ix = INT((x-xb0)/dbx)+1
+      IF (x.EQ.(xb0+lbx)) ix=ix-1
       iy = INT((y-yb0)/dby)+1
+      IF (y.EQ.(yb0+lby)) iy=iy-1
       ib = Nbx * (iy - 1) + ix
+
         
       x1 = xb(ib)
       x2 = xb(ib+1)
@@ -173,7 +176,7 @@ PROGRAM  MshGlacierDEM
       zi(2,1) = zb(ib+1)
       zi(2,2) = zb(ib + Nbx + 1)
       zi(1,2) = zb(ib + Nbx)
-        
+
       IF ((zi(1,1)<-9990.0).OR.(zi(1,2)<-9990.0).OR.(zi(2,1)<-9990.0).OR.(zi(2,2)<-9990.0)) THEN
          IF ((zi(1,1)<-9990.0).AND.(zi(1,2)<-9990.0).AND.(zi(2,1)<-9990.0).AND.(zi(2,2)<-9990.0)) THEN
             ! Find the nearest point avalable
@@ -211,7 +214,9 @@ PROGRAM  MshGlacierDEM
 
       ! Find zsurf for that point from the Surface MNT
       ix = INT((x-xs0)/dsx)+1
+      IF (x.EQ.(xs0+lsx)) ix=ix-1
       iy = INT((y-ys0)/dsy)+1
+      IF (y.EQ.(ys0+lsy)) iy=iy-1
       is = Nsx * (iy - 1) + ix
         
       x1 = xs(is)
