@@ -1390,7 +1390,7 @@ END SUBROUTINE GetMaxDefs
    INTEGER :: DoubleElements
    INTEGER :: n,n0,i,j
    REAL(KIND=dp), POINTER :: TmpCoord(:)
-   TYPE(Element_t), POINTER :: NewElements(:),OldElements(:)
+   TYPE(Element_t), POINTER :: NewElements(:),OldElements(:), Element
 
    IF( DoubleElements == 0 ) RETURN
 
@@ -1404,13 +1404,33 @@ END SUBROUTINE GetMaxDefs
    CALL AllocateVector( Mesh % Elements, n, 'EnlargeBoundaryElements' )
    DO i=1,n0
      Mesh % Elements(i) = OldElements(i)
+    IF(ASSOCIATED(Mesh % Elements(i) % BoundaryInfo)) THEN
+        IF (ASSOCIATED(OldElements(i) % BoundaryInfo % Left)) &
+          Mesh % Elements(i) % BoundaryInfo % Left => &
+            Mesh % Elements(OldElements(i) % BoundaryInfo % Left % ElementIndex)
+
+        IF (ASSOCIATED(OldElements(i) % BoundaryInfo % Right)) &
+          Mesh % Elements(i) % BoundaryInfo % Right => &
+            Mesh % Elements(OldElements(i) % BoundaryInfo % Right % ElementIndex)
+     END IF
    END DO
 
-! In principle we should be able to deallocate this??
-    DEALLOCATE( OldElements ) 
+   DO j=n0+1,n
+     Element => Mesh % Elements(j)
 
-   Mesh % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements + &
-       DoubleElements
+     Element % DGDOFs = 0
+     Element % BodyId = 0
+     Element % TYPE => NULL()
+     Element % BoundaryInfo => NULL()
+     Element % PDefs => NULL()
+     Element % DGIndexes => NULL()
+     Element % EdgeIndexes => NULL()
+     Element % FaceIndexes => NULL()
+     Element % BubbleIndexes => NULL()
+   END DO
+
+   DEALLOCATE( OldElements ) 
+   Mesh % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements + DoubleElements
 
  END SUBROUTINE EnlargeBoundaryElements
 
