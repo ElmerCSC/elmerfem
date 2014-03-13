@@ -2316,8 +2316,10 @@ END SUBROUTINE GetMaxDefs
            DO k=1,SIZE(BList)
              body = Blist(k)
              IF( body > maxid ) THEN
+#if 0
                CALL Warn('LoadMesh','Unused body entry in > Target Bodies <  : '&
                    //TRIM(I2S(body)) )              
+#endif
              ELSE IF( IndexMap( body ) /= 0 ) THEN
                CALL Warn('LoadMesh','Multiple bodies have same > Target Bodies < entry : '&
                    //TRIM(I2S(body)))
