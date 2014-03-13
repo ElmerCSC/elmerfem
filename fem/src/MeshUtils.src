@@ -1401,14 +1401,13 @@ END SUBROUTINE GetMaxDefs
        //TRIM(I2S(n0))//' to '//TRIM(I2S(n)),Level=8)
 
    OldElements => Mesh % Elements
-   NULLIFY( Mesh % Elements ) 
    CALL AllocateVector( Mesh % Elements, n, 'EnlargeBoundaryElements' )
    DO i=1,n0
      Mesh % Elements(i) = OldElements(i)
    END DO
 
 ! In principle we should be able to deallocate this??
-!   DEALLOCATE( OldElements ) 
+    DEALLOCATE( OldElements ) 
 
    Mesh % NumberOfBoundaryElements = Mesh % NumberOfBoundaryElements + &
        DoubleElements
