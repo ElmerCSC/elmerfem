@@ -1404,7 +1404,7 @@ END SUBROUTINE GetMaxDefs
    CALL AllocateVector( Mesh % Elements, n, 'EnlargeBoundaryElements' )
    DO i=1,n0
      Mesh % Elements(i) = OldElements(i)
-    IF(ASSOCIATED(Mesh % Elements(i) % BoundaryInfo)) THEN
+     IF(ASSOCIATED(OldElements(i) % BoundaryInfo)) THEN
         IF (ASSOCIATED(OldElements(i) % BoundaryInfo % Left)) &
           Mesh % Elements(i) % BoundaryInfo % Left => &
             Mesh % Elements(OldElements(i) % BoundaryInfo % Left % ElementIndex)
@@ -1415,8 +1415,8 @@ END SUBROUTINE GetMaxDefs
      END IF
    END DO
 
-   DO j=n0+1,n
-     Element => Mesh % Elements(j)
+   DO i=n0+1,n
+     Element => Mesh % Elements(i)
 
      Element % DGDOFs = 0
      Element % BodyId = 0
@@ -2123,7 +2123,6 @@ END SUBROUTINE GetMaxDefs
    ! Get the (x,y,z) coordinates
    !--------------------------------------------------------------------------
    CALL LoadMeshStep( 2 )
-
    ! Permute and scale the coordinates.
    ! This also finds the mesh dimension. It is needed prior to getting the 
    ! elementtypes since wrong permutation or dimension may spoil that. 
@@ -2522,8 +2521,9 @@ END SUBROUTINE GetMaxDefs
    SUBROUTINE NonNodalElements()
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
-     INTEGER :: DGIndex, id
-     LOGICAL :: NeedEdges
+     INTEGER :: DGIndex, body_id, body_id0, eq_id, solver_id
+     LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
+                FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers)
      TYPE(Element_t), POINTER :: Element
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(7)
@@ -2544,32 +2544,99 @@ END SUBROUTINE GetMaxDefs
        END DO
      END IF
 
+    !
+    ! Check whether the "Element" definitions can depend on mesh
+    ! -----------------------------------------------------------
+    MeshDeps = .FALSE.; FoundEqDefs = .FALSE.
+    DO eq_id=1,Model % NumberOFEquations
+      Vlist => Model % Equations(eq_id) % Values
+      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
+      FoundEqDefs = FoundEqDefs .OR. FoundDef0
+      j = Index(ElementDef0,'p:')
+      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+    END DO
+
+    FoundSolverDefs = .FALSE.
+    DO solver_id=1,Model % NumberOFSolvers
+      Vlist => Model % Solvers(solver_id) % Values
+
+      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
+      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
+
+      ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef0)
+      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
+
+      j = Index(ElementDef0,'p:')
+      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
+    END DO
+
+    IF(.NOT.MeshDeps) THEN
+      ElementDef = ' '
+      DO body_id=1,Model % NumberOfBodies
+        ElementDef0 = ' '
+        Vlist => Model % Bodies(body_id) % Values
+        eq_id = ListGetInteger(Vlist,'Equation',FoundEq)
+        IF( FoundEq ) THEN
+          Vlist => Model % Equations(eq_id) % Values
+          IF(FoundEqDefs) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
+
+          DO solver_id=1,Model % NumberOfSolvers
+            FoundDef = .FALSE.
+            IF(FoundSolverDefs(solver_id)) &
+                ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
+ 
+            IF ( FoundDef ) THEN
+              CALL GetMaxDefs( Model, Mesh, Element, ElementDef, solver_id, body_id, Indofs )
+            ELSE
+              IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) &
+                 ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
+              CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
+            END IF
+          END DO
+        END IF
+      END DO
+    END IF
+
      ! non-nodal elements in bulk elements
      !------------------------------------------------------------
+     body_id0 = -1; FoundDef=.FALSE.; FoundEq=.FALSE.
+     ElementDef = ' '
+
      DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
 
-       id = Element % BodyId
+       body_id = Element % BodyId
        n = Element % TYPE % NumberOfNodes
 
        ! Check the Solver specific element types
-       Vlist => Model % Bodies(id) % Values
+       IF( Meshdeps ) THEN
+         IF ( body_id/=body_id0 ) THEN
+           Vlist => Model % Bodies(body_id) % Values
+           eq_id = ListGetInteger(Vlist,'Equation',FoundEq)
+         END IF
 
-       j = ListGetInteger(Vlist,'Equation',gotIt)
+         ElementDef0 = ' '
+         IF( FoundEq ) THEN
+           Vlist => Model % Equations(eq_id) % Values
+           IF( FoundEqDefs.AND.body_id/=body_id0 ) ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
 
-       IF( gotIt ) THEN
-         Vlist => Model % Equations(j) % Values
-         ElementDef0 = ListGetString(Vlist,'Element',Found )
-         DO j=1,Model % NumberOfSolvers
-           IF (.NOT. Found) ElementDef0 = ListGetString(Model % Solvers(j) % Values,'Element',GotIt)
-           ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(j))//'}',GotIt)
-           IF ( GotIt ) THEN
-             CALL GetMaxDefs( Model, Mesh, Element, ElementDef, j, id, Indofs )
-           ELSE
-             CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, j, id, Indofs )
-           END IF
-         END DO
-       END IF
+           DO solver_id=1,Model % NumberOfSolvers
+             FoundDef = .FALSE.
+             IF (FoundSolverDefs(solver_id)) &
+                ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef)
+
+             IF ( FoundDef ) THEN
+               CALL GetMaxDefs( Model, Mesh, Element, ElementDef, solver_id, body_id, Indofs )
+             ELSE
+               IF(.NOT. FoundDef0.AND.FoundSolverDefs(solver_id)) &
+                  ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
+
+               CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
+             END IF
+           END DO
+         END IF
+         body_id0 = body_id
+      END IF
 
        ! Apply the elementtypes
        IF ( inDOFs(1) /= 0 ) THEN
