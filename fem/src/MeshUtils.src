@@ -2572,6 +2572,7 @@ END SUBROUTINE GetMaxDefs
 
     IF(.NOT.MeshDeps) THEN
       ElementDef = ' '
+      FoundDef0 = .FALSE.
       DO body_id=1,Model % NumberOfBodies
         ElementDef0 = ' '
         Vlist => Model % Bodies(body_id) % Values
@@ -2590,7 +2591,10 @@ END SUBROUTINE GetMaxDefs
             ELSE
               IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) &
                  ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
+
               CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
+
+              IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
             END IF
           END DO
         END IF
@@ -2632,6 +2636,8 @@ END SUBROUTINE GetMaxDefs
                   ElementDef0 = ListGetString(Model % Solvers(solver_id) % Values,'Element',GotIt)
 
                CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, solver_id, body_id, Indofs )
+
+               IF(.NOT. FoundDef0.AND.FoundSolverDefs(Solver_id)) ElementDef0 = ' '
              END IF
            END DO
          END IF
