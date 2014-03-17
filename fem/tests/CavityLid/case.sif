@@ -67,7 +67,7 @@ Boundary Condition 1
   Velocity 2 = 0.0
 End	
 
-Boundary Condition 3
+Boundary Condition 2
   Target Boundaries(1) = 3
   Name = "Top"
   Velocity 1 = 1.0
