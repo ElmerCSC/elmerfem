@@ -4131,8 +4131,10 @@ END IF
        DO i=1,dim
           F(1,i) = SUM( x(1:n) * dLBasisdx(1:n,i) )
           F(2,i) = SUM( y(1:n) * dLBasisdx(1:n,i) )
-          IF (dim == 3) &
-               F(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
+          !IF (dim == 3) &
+          ! In addition to the case dim = 3, the following entries may be useful  
+          ! with dim=2 when natural BCs in 3-D are handled. 
+          F(3,i) = SUM( z(1:n) * dLBasisdx(1:n,i) )
        END DO
 
        SELECT CASE( dim )    
@@ -4178,29 +4180,31 @@ END IF
 !>  the associated assembly procedure.
 !---------------------------------------------------------------------------------
      FUNCTION EdgeElementInfo( Element, Nodes, u, v, w, F, G, detF, &
-          Basis, EdgeBasis, CurlBasis, SecondFamily, BasisDegree ) RESULT(stat)
+          Basis, EdgeBasis, CurlBasis, dBasisdx, SecondFamily, BasisDegree ) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
-       TYPE(Element_t), TARGET :: Element     !< Element structure
-       TYPE(Nodes_t) :: Nodes                 !< Data corresponding to the classic element nodes
-       REAL(KIND=dp) :: u                     !< 1st reference element coordinate at which the basis functions are evaluated
-       REAL(KIND=dp) :: v                     !< 2nd local coordinate
-       REAL(KIND=dp) :: w                     !< 3rd local coordinate
-       REAL(KIND=dp) :: F(3,3)                !< The gradient F=Grad f, with f the element map f:k->K
-       REAL(KIND=dp) :: G(3,3)                !< The inverse of the gradient F
-       REAL(KIND=dp) :: detF                  !< The determinant of the gradient matrix F
-       REAL(KIND=dp) :: Basis(:)              !< Standard nodal basis functions evaluated at (u,v,w)
-       REAL(KIND=dp) :: EdgeBasis(:,:)        !< The basis functions spanning the reference element space
-       REAL(KIND=dp) :: CurlBasis(:,:)        !< The curl of the edge basis functions with respect to the local coordinates
-       LOGICAL, OPTIONAL :: SecondFamily      !< If .TRUE., a Nedelec basis of the second kind is returned
-       INTEGER, OPTIONAL :: BasisDegree(:)    !< This is a dummy parameter at the moment
-       LOGICAL :: Stat                        !< Should be .FALSE. for a degenerate element but this is not yet checked
+       TYPE(Element_t), TARGET :: Element        !< Element structure
+       TYPE(Nodes_t) :: Nodes                    !< Data corresponding to the classic element nodes
+       REAL(KIND=dp) :: u                        !< 1st reference element coordinate at which the basis functions are evaluated
+       REAL(KIND=dp) :: v                        !< 2nd local coordinate
+       REAL(KIND=dp) :: w                        !< 3rd local coordinate
+       REAL(KIND=dp) :: F(3,3)                   !< The gradient F=Grad f, with f the element map f:k->K
+       REAL(KIND=dp) :: G(3,3)                   !< The inverse of the gradient F
+       REAL(KIND=dp) :: detF                     !< The determinant of the gradient matrix F
+       REAL(KIND=dp) :: Basis(:)                 !< Standard nodal basis functions evaluated at (u,v,w)
+       REAL(KIND=dp) :: EdgeBasis(:,:)           !< The basis functions spanning the reference element space
+       REAL(KIND=dp) :: CurlBasis(:,:)           !< The curl of the edge basis functions with respect to the local coordinates
+       REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)  !< The first derivatives of the nodal basis functions at (u,v,w)
+       LOGICAL, OPTIONAL :: SecondFamily         !< If .TRUE., a Nedelec basis of the second kind is returned
+       INTEGER, OPTIONAL :: BasisDegree(:)       !< This is a dummy parameter at the moment
+       LOGICAL :: Stat                           !< Should be .FALSE. for a degenerate element but this is not yet checked
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
 !------------------------------------------------------------------------------------------------------------
-       INTEGER :: n, dim, q, i, j, k, l, ni, nj, A, I1, I2, FaceIndeces(4)
+       INTEGER :: n, dim, cdim, q, i, j, k, l, ni, nj, A, I1, I2, FaceIndeces(4)
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(2,3), WorkCurlBasis(2,3)
+       REAL(KIND=dp) :: ElmMetric(3,3), detJ, LtoGMap(3,3)
        REAL(KIND=dp) :: D1, D2
        LOGICAL :: Create2ndKindBasis
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
@@ -4220,10 +4224,12 @@ END IF
        dLbasisdx = 0.0d0      
        n    = Element % TYPE % NumberOfNodes
        dim  = Element % TYPE % DIMENSION
+       cdim = CoordinateSystemDimension()
 
        IF ( Element % TYPE % ElementCode == 101 ) THEN
           detF = 1.0d0
           Basis(1) = 1.0d0
+          IF ( PRESENT(dBasisdx) ) dBasisdx(1,:) = 0.0d0
           RETURN
        END IF
 
@@ -5693,6 +5699,26 @@ END IF
        CASE DEFAULT
           CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
        END SELECT
+
+       ! ----------------------------------------------------------------------
+       ! Get global first derivatives of the nodal basis functions if wanted:
+       ! ----------------------------------------------------------------------
+       IF ( PRESENT(dBasisdx) ) THEN
+          IF ( .NOT. ElementMetric( n, Element, Nodes, &
+               ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
+             stat = .FALSE.
+             RETURN
+          END IF
+
+          dBasisdx = 0.0d0
+          DO i=1,n
+             DO j=1,cdim
+                DO k=1,dim
+                   dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LtoGMap(j,k)
+                END DO
+             END DO
+          END DO
+       END IF
 !-----------------------------------------------------------------------------
      END FUNCTION EdgeElementInfo
 !------------------------------------------------------------------------------
