@@ -1582,7 +1582,7 @@ CONTAINS
                ! -------------------------------------------
 
                IF ( SUM(C) /= 0._dp ) THEN
-                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
+                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
                END IF
              END DO
              DO j=1,nd-np
@@ -1614,7 +1614,7 @@ CONTAINS
                  ! Compute the conductivity term <C grad V,grad v> for stiffness 
                  ! matrix (anisotropy taken into account)
                  ! -------------------------------------------
-                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(i,:)) * dBasisdx(j,:))*detJ*IP % s(t)
+                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(j,:)) * dBasisdx(i,:))*detJ*IP % s(t)
                END DO
 
                DO j=1,nd-np
@@ -1652,7 +1652,7 @@ CONTAINS
            ! This is not used in the case of stranded coil:
            ! ----------------------------------------------
            IF (CoilType /= 'stranded') MASS(p,q) = MASS(p,q) + & 
-               SUM(MATMUL(C, WBasis(i,:))*WBasis(j,:) )*detJ*IP % s(t)
+               SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
 
            ! Compute the low frequency eddy term for laminate stack model.
            ! Note that the conductivity term <C A, eta> above can be used to 
@@ -3983,7 +3983,7 @@ CONTAINS
            ! matrix (anisotropy taken into account)
            ! -------------------------------------------
            IF ( SUM(C) /= 0._dp ) THEN
-             STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
+             STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
            END IF
          END DO
          DO j=1,nd-np
@@ -4026,7 +4026,7 @@ CONTAINS
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
            STIFF(p,q) = STIFF(p,q) + im*Omega* &
-                        SUM(MATMUL(C, WBasis(i,:))*WBasis(j,:))*detJ*IP % s(t)
+                        SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO
     END DO
