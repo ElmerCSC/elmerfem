@@ -1605,7 +1605,7 @@ CONTAINS
            ! is reasonable only in the case where
            ! the electrical conductivity is nonzero.
            ! ------------------------------------------------------------------
-           IF (FixJ .and. .not. LaminateStack ) THEN
+           IF (.not. LaminateStack ) THEN
              DO i=1,np
                p = i
                DO j=1,np
@@ -1883,7 +1883,7 @@ CONTAINS
              ! solver as done in the following is reasonable only in the case 
              ! where the electrical conductivity is nonzero.
              ! ---------------------------------------------------------------
-             IF (FixJ .AND. .NOT. LaminateStack ) THEN
+             IF (.NOT. LaminateStack ) THEN
                 ! -------------------------------------------------------------
                 ! Compute the conductivity term <C grad V,grad v> for stiffness 
                 ! matrix (anisotropy taken into account)
