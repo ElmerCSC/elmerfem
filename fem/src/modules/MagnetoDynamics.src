@@ -4691,6 +4691,16 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
+  ! The steady current density may also be computed if the scalar potential
+  ! is taken to be an unknown:
+  IF ( .NOT. Transient .AND. Vdofs==1 ) THEN
+     IF ( GetLogical( Solver % Values, 'Calculate Current Density', Found ) ) THEN
+        i = i + 1
+        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+             "Current Density E[Current Density E:3]" )   
+     END IF
+  END IF
+
   DEALLOCATE(Model % Solvers)
   Model % Solvers => Solvers
   Model % NumberOfSolvers = n+1
@@ -4850,6 +4860,16 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     END IF
   END IF
 
+  ! The steady current density may also be computed if the scalar potential is 
+  ! taken to be an unknown:
+  IF (.NOT. Transient .AND. Var % DOFs==1) THEN
+    IF ( GetLogical( SolverParams, 'Calculate Current Density', Found ) ) THEN
+      i = i + 1
+      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+           "Current Density[Current Density:3]" )
+    END IF
+  END IF
+
   ! add these in the beginning, so that SaveData sees these existing, even
   ! if executed before the actual computations...
   ! -----------------------------------------------------------------------
@@ -4980,6 +5000,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      EL_EF => VariableGet( Mesh % Variables, 'Electric Field E' )
      EL_CD => VariableGet( Mesh % Variables, 'Current Density E' )
      EL_FWP => VariableGet( Mesh % Variables, 'Winding Voltage E' )
+   END IF
+
+   IF (.NOT. Transient .AND. VDOFs==1) THEN
+      CD => VariableGet( Mesh % Variables, 'Current Density' )
+      EL_CD => VariableGet( Mesh % Variables, 'Current Density E' )
    END IF
 
    MST => variableGet( Mesh % Variables, 'Maxwell stress' )
@@ -5202,6 +5227,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      ! Calculate "on nodes on elements" fields:
      ! ----------------------------------------
+     E = 0.0d0
      DO j=1,n
        u = Element % TYPE % NodeU(j)
        v = Element % TYPE % NodeV(j)
