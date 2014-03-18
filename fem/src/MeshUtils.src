@@ -972,11 +972,12 @@ END SUBROUTINE GetMaxDefs
    END DO
 
    DO i = 1,Model % NumberOfBCs
-      k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt, &
-                    minv=1, maxv=Model % NumberOFBCs )
-      Projector =>  PeriodicProjector( Model, Mesh, i, k )
-      IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
-      
+      k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt )
+      IF( GotIt ) THEN
+        Projector =>  PeriodicProjector( Model, Mesh, i, k )
+        IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
+      END IF
+
 !     Projector => PeriodicProjector( Model, Mesh, k, i )
 !     IF ( ASSOCIATED( Projector ) ) Model % BCs(k) % PMatrix => Projector
    END DO
@@ -1320,10 +1321,6 @@ END SUBROUTINE GetMaxDefs
          //TRIM(I2S(Mesh % NumberOfBoundaryElements)),Level=10)
      CALL Info('CreateDiscontMesh','Number of additional boundary elements: '&
          //TRIM(I2S(NoDisContElems)))
-
-
-     CALL Info('CreateDiscontMesh','Total number of all elements: '&
-         //TRIM(I2S(n)),Level=10)
 
      DEALLOCATE( DisContPerm ) 
    ELSE
@@ -2200,13 +2197,13 @@ END SUBROUTINE GetMaxDefs
    ! ------------------------------------------------------
    DO i = 1,Model % NumberOfBCs
      NULLIFY( Model % BCs(i) % PMatrix )
-     k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt, &
-         minv=1, maxv=Model % NumberOFBCs )
+     k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt )
      IF( GotIt ) THEN
        Projector =>  PeriodicProjector( Model, Mesh, i, k )
        IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
      END IF
    END DO
+
 
    ! Don't know why this is saved really...
    Model % DIMENSION = save_dim
@@ -2552,7 +2549,7 @@ END SUBROUTINE GetMaxDefs
       Vlist => Model % Equations(eq_id) % Values
       ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
       FoundEqDefs = FoundEqDefs .OR. FoundDef0
-      j = Index(ElementDef0,'p:')
+      j = INDEX(ElementDef0,'p:')
       IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
     END DO
 
@@ -2566,7 +2563,7 @@ END SUBROUTINE GetMaxDefs
       ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef0)
       FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
 
-      j = Index(ElementDef0,'p:')
+      j = INDEX(ElementDef0,'p:')
       IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
     END DO
 
@@ -3445,13 +3442,18 @@ END SUBROUTINE GetMaxDefs
                  InvPerm1(:), InvPerm2(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     REAL(KIND=dp) :: RadCoeff,Rad0
-    LOGICAL :: SetRadius
+    LOGICAL :: SetRadius, OnTheFlyBC
 
     CALL Info('CreateInterfaceMeshes','Making a list of elements at interface',Level=9)
 
     IF ( This <= 0 .OR. Trgt <= 0 ) THEN
       CALL Fatal('CreateInterfaceMeshes','Invalid target boundaries')
     END IF
+
+    ! If the target is larger than number of BCs givem then 
+    ! it has probably been created on-the-fly from a discontinuous boundary.
+    OnTheFlyBC = ( Trgt > Model % NumberOfBCs )
+
 
 ! Interface meshes consist of boundary elements only    
     Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
@@ -3465,7 +3467,11 @@ END SUBROUTINE GetMaxDefs
       IF (Elements(i) % TYPE % ElementCode<=200) CYCLE
       Constraint = Elements(i) % BoundaryInfo % Constraint
       IF ( Model % BCs(This) % Tag == Constraint ) n1 = n1 + 1
-      IF ( Model % BCs(Trgt) % Tag == Constraint ) n2 = n2 + 1
+      IF( OnTheFlyBC ) THEN
+        IF( Trgt == Constraint ) n2 = n2 + 1
+      ELSE
+        IF ( Model % BCs(Trgt) % Tag == Constraint ) n2 = n2 + 1
+      END IF
     END DO
 
     IF ( n1 <= 0 .OR. n2 <= 0 ) THEN
@@ -3493,10 +3499,10 @@ END SUBROUTINE GetMaxDefs
 
     Rad0 = ListGetConstReal( Model % BCs(This) % Values, &
         'Mortar Projector Radius',SetRadius)
-    IF(.NOT. SetRadius ) THEN
-      Rad0 = ListGetConstReal( Model % BCs(Trgt) % Values, &
-          'Mortar Projector Radius',SetRadius)  
-    END IF
+!    IF(.NOT. SetRadius ) THEN
+!      Rad0 = ListGetConstReal( Model % BCs(Trgt) % Values, &
+!          'Mortar Projector Radius',SetRadius)  
+!    END IF
 
  
 !   Fill in the mesh element structures with the
@@ -3516,8 +3522,12 @@ END SUBROUTINE GetMaxDefs
       Constraint = Element % BoundaryInfo % Constraint
       
       ThisActive = ( Model % BCs(This) % Tag == Constraint )
-      TargetActive = ( Model % BCs(Trgt) % Tag == Constraint ) 
-      
+      IF( OnTheFlyBC ) THEN
+        TargetActive = ( Trgt == Constraint )
+      ELSE
+        TargetActive = ( Model % BCs(Trgt) % Tag == Constraint ) 
+      END IF
+
       IF(.NOT. (ThisActive .OR. TargetActive ) ) CYCLE
       IF( ThisActive .AND. TargetActive ) NoBothActive = NoBothActive + 1
       
@@ -4551,7 +4561,8 @@ END SUBROUTINE GetMaxDefs
     ! very cheaply using the permutation vector. This does not need the target as the 
     ! boundary is self-contained.
     !------------------------------------------------------------------------------------
-    IF( ListGetLogical( Model % BCs(This) % Values, 'Discontinuous Boundary', GotIt ))THEN
+    IF( ListGetLogical( Model % BCs(This) % Values, 'Discontinuous Boundary', GotIt ) &
+        .AND. Mesh % DisContMesh )THEN
       PMesh => Mesh
       IF( IntGalerkin ) THEN
         Projector =>  WeightedProjectorDiscont( PMesh, This )
@@ -4574,12 +4585,12 @@ END SUBROUTINE GetMaxDefs
     !--------------------------------------------------------------------------
     Rotational = ListGetLogical( Model % BCs(This) % Values,&
         'Rotational Projector',GotIt )
-    IF(.NOT. GotIt ) Rotational = ListGetLogical( Model % BCs(Trgt) % Values,&
-          'Rotational Projector',GotIt )
+    !IF(.NOT. GotIt ) Rotational = ListGetLogical( Model % BCs(Trgt) % Values,&
+    !      'Rotational Projector',GotIt )
     AntiRotational = ListGetLogical( Model % BCs(This) % Values,&
         'Anti Rotational Projector',GotIt )
-    IF(.NOT. GotIt ) AntiRotational = ListGetLogical( Model % BCs(Trgt) % Values,&
-          'Anti Rotational Projector',GotIt )      
+    !IF(.NOT. GotIt ) AntiRotational = ListGetLogical( Model % BCs(Trgt) % Values,&
+    !      'Anti Rotational Projector',GotIt )      
     IF( AntiRotational ) Rotational = .TRUE.
 
     Sliding = ListGetLogical( Model % BCs(This) % Values,&
@@ -7814,10 +7825,11 @@ END SUBROUTINE FindNeighbourNodes
 !   ------------------------------------------------------
 !
     DO i = 1,CurrentModel % NumberOfBCs
-       k = ListGetInteger(CurrentModel % BCs(i) % Values, 'Periodic BC', Found, &
-               minv=1, maxv=CurrentModel % NumberOFBCs )
-       CurrentModel % BCs(i) % PMatrix => &
-                 PeriodicProjector( CurrentModel, Mesh, i, k )
+       k = ListGetInteger(CurrentModel % BCs(i) % Values, 'Periodic BC', Found )
+       IF( Found ) THEN
+         CurrentModel % BCs(i) % PMatrix => &
+             PeriodicProjector( CurrentModel, Mesh, i, k )
+       END IF
     END DO
 !
 !   Finalize:
