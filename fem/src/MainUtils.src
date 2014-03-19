@@ -3376,7 +3376,7 @@ CONTAINS
        CM => NULL()
        DO i=1,Model % NumberOFBCs
          j=GetInteger(Model % BCs(i) % Values,'Mortar BC',FoundMortar)
-         IF(FoundMortar) THEN
+         IF(FoundMortar) THEN           
            CM0 => PeriodicProjector(Model,Solver % Mesh,i,j,CoordinateSystemDimension(),.TRUE.)
            IF(ASSOCIATED(CM0)) THEN
              CM0 % ConstraintMatrix => CM
@@ -3390,7 +3390,14 @@ CONTAINS
          CM0 => CM
          CMP => NULL()
          DO WHILE(ASSOCIATED(CM0))
-           CM0 % Cols = Solver % Variable % Perm(CM0 % Cols)
+
+           n = SIZE( Solver % Variable % Perm )
+           DO i=1,SIZE(CM0 % Cols ) 
+             j = CM0 % Cols(i)
+             IF( j <= n ) CM0 % Cols(i) = Solver % Variable % Perm(j)
+           END DO
+
+           !CM0 % Cols = Solver % Variable % Perm(CM0 % Cols)
 
            IF(ASSOCIATED(CM0 % InvPerm)) THEN
              DO i=1,SIZE(CM0 % InvPerm)
@@ -3401,6 +3408,9 @@ CONTAINS
            END IF
 
            n = Solver % Variable % DOFs
+
+           ! In case of a vector valued problem create a projector that acts on all 
+           ! components of the vector.
            IF (n>1) THEN
              CM1 => AllocateMatrix()
              CM1 % NumberOfRows = n*CM0 % NumberOfRows

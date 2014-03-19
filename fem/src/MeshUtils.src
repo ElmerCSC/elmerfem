@@ -977,9 +977,6 @@ END SUBROUTINE GetMaxDefs
         Projector =>  PeriodicProjector( Model, Mesh, i, k )
         IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
       END IF
-
-!     Projector => PeriodicProjector( Model, Mesh, k, i )
-!     IF ( ASSOCIATED( Projector ) ) Model % BCs(k) % PMatrix => Projector
    END DO
 
    Model % DIMENSION = save_dim
@@ -4047,6 +4044,7 @@ END SUBROUTINE GetMaxDefs
     ! This corresponds to numerical integration of the collocation method.
     !-----------------------------------------------------------------
     Projector => MeshProjector( BMesh2, BMesh1, UseQuadrantTree )    
+    Projector % ConstraintType = CONSTRAINT_TYPE_NODAL
 
     Values => Projector % Values
     Cols => Projector % Cols
@@ -4120,6 +4118,8 @@ END SUBROUTINE GetMaxDefs
     m = COUNT( NodePerm > 0 ) 
 
     Projector => AllocateMatrix()
+    Projector % ConstraintType = CONSTRAINT_TYPE_NODAL
+    Projector % ConstraintBC = bc
 
     ALLOCATE( Projector % Cols(m) )
     ALLOCATE( Projector % Values(m) )
@@ -4155,6 +4155,7 @@ END SUBROUTINE GetMaxDefs
   FUNCTION WeightedProjectorDiscont(Mesh, bc ) RESULT ( Projector )
     !---------------------------------------------------------------------------
     USE Lists
+    USE ListMatrix
 
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: bc
@@ -4163,14 +4164,14 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodePerm(:)
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes
+    INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes, size0
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Basis(:)
     REAL(KIND=dp) :: u,v,w,val,detJ,Scale
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: Stat,DisCont,Found
+    LOGICAL :: Stat,DisCont,Found,Jump
 
     CALL Info('WeightedProjectorDiscont','Creating Galerkin projector for discontinuous boundary',Level=7)
 
@@ -4198,7 +4199,9 @@ END SUBROUTINE GetMaxDefs
     ! structure to be introduced.
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
-
+    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
+    Projector % ConstraintBC = bc
+    
     n = Mesh % MaxElementNodes
     ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
     ALLOCATE( Indexes(n), DisContIndexes(n), Basis(n) )
@@ -4210,17 +4213,26 @@ END SUBROUTINE GetMaxDefs
     NoOrigNodes = SIZE( NodePerm ) 
     NoDiscontNodes = COUNT( NodePerm > 0 ) 
 
-    Scale = ListGetCReal( Model % BCs(bc) % Values,'Periodic BC Scale',Stat )  
+    Scale = ListGetCReal( Model % BCs(bc) % Values,'Mortar BC Scaling',Stat )  
     IF(.NOT. Stat) Scale = -1.0_dp
+
+    Jump = ListCheckPresent( Model % BCs(bc) % Values,'Mortar BC Coefficient')
+    size0 = Mesh % NumberOfNodes
 
     ALLOCATE( Projector % InvPerm( NoDiscontNodes ) )
     InvPerm => Projector % InvPerm
+    InvPerm = 0
 
     DO i=1,NoOrigNodes
       j = NodePerm(i)
       IF( j == 0 ) CYCLE
-      InvPerm(j) = i
+      IF( InvPerm(j) > 0 ) THEN
+        print *,'This should not happen'
+      ELSE
+        InvPerm(j) = i
+      END IF
     END DO
+
 
     DO t = 1, Mesh % NumberOfBoundaryElements
 
@@ -4229,7 +4241,8 @@ END SUBROUTINE GetMaxDefs
       IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
 
       n = Element % TYPE % NumberOfNodes        
-      Indexes(1:n) = Element % NodeIndexes
+
+      Indexes(1:n) = Element % NodeIndexes(1:n)
 
       ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
       ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
@@ -4244,6 +4257,7 @@ END SUBROUTINE GetMaxDefs
         END IF
       END DO
 
+
       IntegStuff = GaussPoints( Element )
       DO j=1,IntegStuff % n
         u = IntegStuff % u(j)
@@ -4254,27 +4268,32 @@ END SUBROUTINE GetMaxDefs
 
         DO p=1,n
 
-          IF( Indexes(p) == DiscontIndexes(p) ) CYCLE
+          IF( NodePerm(Indexes(p)) == 0 ) CYCLE
           val = detJ * IntegStuff % s(j) * Basis(p)
 
           DO q=1,n
-            IF( Indexes(q) == DiscontIndexes(q) ) CYCLE
+            IF( NodePerm(Indexes(q)) == 0 ) CYCLE
 
             CALL List_AddToMatrixElement(Projector % ListMatrix, NodePerm(Indexes(p)),&
                 Indexes(q), Basis(q) * val ) 
             CALL List_AddToMatrixElement(Projector % ListMatrix, NodePerm(Indexes(p)),&
                 DiscontIndexes(q), Scale * Basis(q) * val ) 
+
+            ! Add entry to the diagonal-to-be if jump condition is to be used
+            IF( Jump ) THEN
+              CALL List_AddToMatrixElement(Projector % ListMatrix, NodePerm(Indexes(p)),&
+                  size0 + NodePerm(Indexes(q)), 0.0_dp ) 
+            END IF
+
           END DO
         END DO
       END DO
     END DO
 
     CALL List_ToCRSMatrix(Projector)
-    CALL CRS_SortMatrix(Projector)
     
     DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
     DEALLOCATE( Indexes, DisContIndexes, Basis )
-
            
   END FUNCTION WeightedProjectorDiscont
   !------------------------------------------------------------------------------
@@ -4518,23 +4537,26 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,k,n,dim
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
-        Discontinuous
+        Discontinuous, Jump
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
     REAL(KIND=dp) :: rowsum, PeriodicScale
+    TYPE(ValueList_t), POINTER :: BC
 
     INTERFACE
       FUNCTION WeightedProjector2(BMesh2, BMesh1, InvPerm2, InvPerm1, &
-          UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale ) &
+          UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, &
+          NodalJump ) &
          RESULT ( Projector )
         USE Types
         TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
         REAL(KIND=dp) :: PeriodicScale
         INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
         LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
-         TYPE(Matrix_t), POINTER :: Projector
+        TYPE(Matrix_t), POINTER :: Projector
+        LOGICAL :: NodalJump
       END FUNCTION WeightedProjector2
     END INTERFACE
 !------------------------------------------------------------------------------
@@ -4546,6 +4568,7 @@ END SUBROUTINE GetMaxDefs
     CALL ResetTimer('PeriodicProjector')
     
     Projector => NULL()
+    BC => Model % BCs(This) % Values
     
     ! Whether to choose nodal or Galerkin projector is determined by an optional
     ! flag. The default is the nodal projector.
@@ -4553,7 +4576,7 @@ END SUBROUTINE GetMaxDefs
     IF( PRESENT( Galerkin) ) THEN
       IntGalerkin = Galerkin
     ELSE
-      IntGalerkin = ListGetLogical( Model % BCs(This) % Values, 'Galerkin Projector', GotIt )
+      IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', GotIt )
     END IF
 
 
@@ -4561,7 +4584,7 @@ END SUBROUTINE GetMaxDefs
     ! very cheaply using the permutation vector. This does not need the target as the 
     ! boundary is self-contained.
     !------------------------------------------------------------------------------------
-    IF( ListGetLogical( Model % BCs(This) % Values, 'Discontinuous Boundary', GotIt ) &
+    IF( ListGetLogical( BC, 'Discontinuous Boundary', GotIt ) &
         .AND. Mesh % DisContMesh )THEN
       PMesh => Mesh
       IF( IntGalerkin ) THEN
@@ -4583,24 +4606,26 @@ END SUBROUTINE GetMaxDefs
     ! We don't really know on which side the projector was called so 
     ! let's check both sides.
     !--------------------------------------------------------------------------
-    Rotational = ListGetLogical( Model % BCs(This) % Values,&
+    Rotational = ListGetLogical( BC,&
         'Rotational Projector',GotIt )
     !IF(.NOT. GotIt ) Rotational = ListGetLogical( Model % BCs(Trgt) % Values,&
     !      'Rotational Projector',GotIt )
-    AntiRotational = ListGetLogical( Model % BCs(This) % Values,&
+    AntiRotational = ListGetLogical( BC,&
         'Anti Rotational Projector',GotIt )
     !IF(.NOT. GotIt ) AntiRotational = ListGetLogical( Model % BCs(Trgt) % Values,&
     !      'Anti Rotational Projector',GotIt )      
     IF( AntiRotational ) Rotational = .TRUE.
 
-    Sliding = ListGetLogical( Model % BCs(This) % Values,&
+    Sliding = ListGetLogical( BC, &
         'Sliding Projector',GotIt )
-    AntiSliding = ListGetLogical( Model % BCs(This) % Values,&
+    AntiSliding = ListGetLogical( BC, &
         'Anti Sliding Projector',GotIt )
     IF( AntiSliding ) Sliding = .TRUE. 
 
-    PeriodicScale = ListGetConstReal( Model % BCs(This) % Values, 'Mortar BC Scaling',GotIt)
+    PeriodicScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) PeriodicScale = 1._dp
+
+    Jump = ListCheckPresent( BC,'Mortar BC Coefficient')
 
 
     ! Create temporal mesh structures that are utilized when making the 
@@ -4647,12 +4672,13 @@ END SUBROUTINE GetMaxDefs
 
     IF( IntGalerkin ) THEN
       Projector => WeightedProjector2( BMesh2, BMesh1, InvPerm2, InvPerm1, &
-          UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale )
+          UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, Jump )
     ELSE
       Projector => NodalProjector2( BMesh2, BMesh1, InvPerm2, InvPerm1, &
                  UseQuadrantTree, Repeating, AntiRepeating )
     END IF
-      
+    Projector % ConstraintBC = This
+
 
     ! Deallocate mesh structures:
     !---------------------------------------------------------------

@@ -83,6 +83,10 @@ MODULE Types
 	                SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
 	                SOLVER_MODE_MATRIXFREE = 6    ! normal field, no matrix
 
+  INTEGER, PARAMETER :: CONSTRAINT_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
+                        CONSTRAINT_TYPE_NODAL = 1, &    ! nodal projector
+                        CONSTRAINT_TYPE_GALERKIN = 2    ! Galerkin projector
+  
 !------------------------------------------------------------------------------
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
 !------------------------------------------------------------------------------
@@ -159,6 +163,8 @@ END INTERFACE
 
     INTEGER :: Subband, FORMAT, SolveCount, Comm=-1
     LOGICAL :: Ordered, Lumped, Symmetric, COMPLEX, DGMatrix, Cholesky
+
+    INTEGER :: ConstraintBC,ConstraintType
 
     TYPE(ListMatrix_t), POINTER :: ListMatrix(:) => NULL()
 

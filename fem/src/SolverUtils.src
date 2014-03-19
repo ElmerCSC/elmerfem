@@ -56,6 +56,8 @@ MODULE SolverUtils
    USE MeshUtils
    USE ParallelUtils
    USE ParallelEigenSolve
+   USE ListMatrix
+   USE CRSMatrix
 
    IMPLICIT NONE
 
@@ -1505,6 +1507,15 @@ CONTAINS
      DEALLOCATE( DonePeriodic ) 
    END IF
 
+
+! Add the possible nodal jump in case of mortar projectors
+!---------------------------------------------------------------
+   IF( ListGetLogical( Model % Solver % Values,'Apply Mortar BCs',GotIt ) ) THEN
+     CALL SetWeightedProjectorJump( Model, A, b, &
+                      DOF, NDOFs, Perm )
+   END IF
+
+
 !------------------------------------------------------------------------------
 ! Go through the normal Dirichlet BCs applied on the boundaries
 !------------------------------------------------------------------------------
@@ -2508,6 +2519,130 @@ CONTAINS
 !------------------------------------------------------------------------------
    END SUBROUTINE SetPeriodicBoundariesPass2
 !------------------------------------------------------------------------------
+
+
+!> Set the diagonal entry related to mortar BCs.
+!> This implements the jump condition. 
+!------------------------------------------------------------------------------
+   SUBROUTINE SetWeightedProjectorJump( Model, A, b, &
+       DOF, NDOFs, Perm )
+     !------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model        !< The current model structure
+     TYPE(Matrix_t), POINTER :: A  !< The global matrix
+     REAL(KIND=dp) :: b(:)         !< The global RHS vector
+     INTEGER :: DOF                !< The order number of the dof
+     INTEGER :: NDOFs              !< the total number of DOFs for this equation
+     INTEGER, TARGET :: Perm(:)    !< The node reordering info
+     !------------------------------------------------------------------------------
+     INTEGER :: i,j,k,i2,j2,k2,n,node,totsize,nodesize
+     INTEGER, POINTER :: PPerm(:)
+     INTEGER, ALLOCATABLE :: InvInvPerm(:)
+     LOGICAL :: Found
+     REAL(KIND=dp) :: coeff, weight
+     TYPE(Matrix_t), POINTER :: Projector
+     TYPE(ValueList_t), POINTER :: BC
+     !------------------------------------------------------------------------------
+
+     ! If there is no mortar projector then nothing to do
+     Projector => A % ConstraintMatrix
+     IF(.NOT. ASSOCIATED( Projector ) ) RETURN
+
+     nodesize = Model % Mesh % NumberOfNodes 
+     totsize = SIZE( Perm )
+
+     ! Go through the projectors and check for jumps
+     ! If there is a jump add an entry to the diagonal-to-be
+     DO WHILE(ASSOCIATED(Projector))
+
+       ! The projector must be associated to some boundary 
+       ! condition when it is created.
+       i = Projector % ConstraintBC
+       IF( i == 0 ) THEN
+         Projector => Projector % ConstraintMatrix
+         CYCLE
+       END IF
+
+       ! For this boundary there should also be a coefficient 
+       ! otherwise nothing needs to be done. 
+       BC => Model % BCs(i) % Values
+       IF( .NOT. ListCheckPresent( BC,'Mortar BC Coefficient') ) THEN
+         Projector => Projector % ConstraintMatrix
+         CYCLE
+       END IF
+
+       CALL Info('SetWeightedProjectorJump','Setting jump to mortar projector in BC '&
+           //TRIM(I2S(i)),Level=7)
+
+       IF( .NOT. ASSOCIATED( Projector % InvPerm ) ) THEN
+         CALL Fatal('SetWeightedProjectorJump','The > Projector % InvPerm < is really needed here!')
+       END IF
+       
+       ! Create a table that shows how the additional degrees of freedom map
+       ! to the nodal edgrees of freedom. This is needed when creating the jump.
+       ! The sole purpose of this is to define the index "i2" later in the code. 
+       n = MAXVAL( Projector % Cols )
+       ALLOCATE( InvInvPerm( n ) ) 
+       InvInvPerm = 0
+       DO i=1,SIZE( Projector % InvPerm )
+         j = Projector % InvPerm(i) 
+         IF( j <= nodesize ) InvInvPerm( j ) = i
+       END DO
+
+       DO i=1,Projector % NumberOfRows
+
+         ! So far done only for nodal dofs
+         ! There does not seem to be any physical relevance in having 
+         ! an edge element jump condition.           
+         ! Therefore cycle through all entries related to non-nodal projector.
+         IF( Projector % InvPerm(i) > nodesize ) CYCLE
+
+         DO j = Projector % Rows(i),Projector % Rows(i+1)-1
+           k = Projector % Cols(j)
+           IF( k > nodesize ) CYCLE
+
+           ! Find the new degree of freedom associated with the 
+           ! column index of the mass matrix. 
+           i2 = InvInvPerm( k )
+           IF( i2 == 0 ) CYCLE
+
+           ! Now find the entry in the sparse matrix. 
+           Found = .FALSE.
+           DO j2 = Projector % Rows(i),Projector % Rows(i+1)-1
+             k2 = Projector % Cols(j2)
+             IF( k2 == i2 + totsize ) THEN
+               ! Ok, found it. Now set the value. 
+               node = Projector % InvPerm(i)
+               coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient',node, Found )        
+
+               IF( Found ) THEN
+                 ! The factor 0.5 comes from the fact that the 
+                 ! contribution is summed twice, 2nd time as transpose
+                 ! For Nodal projector the entry is 1/(weight*coeff)
+                 ! For Galerkin projector the is weight/coeff 
+                 weight = Projector % Values(j)
+                 Projector % Values(j2) = -0.5 * weight / coeff
+               END IF
+
+               EXIT
+             END IF
+           END DO
+           IF( .NOT. Found ) THEN
+             CALL Fatal('SetWeigtedProjectorJump','Could not find entry corresponding: '&
+                 //TRIM(I2S(i))//','//TRIM(I2S(k)))
+           END IF
+
+         END DO
+       END DO
+
+       DEALLOCATE( InvInvPerm )
+
+       Projector => Projector % ConstraintMatrix
+     END DO
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetWeightedProjectorJump
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   END SUBROUTINE SetDirichletBoundaries

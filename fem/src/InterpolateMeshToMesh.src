@@ -823,8 +823,8 @@ CONTAINS
                 Parent => Element % BoundaryInfo% Left
                 IF (ASSOCIATED(Parent)) THEN
                   Element => Find_Face(Parent,Element)
-                  k  = Element % Type % NumberOfNodes
-                  np = Parent  % Type % NumberOfNodes
+                  k  = Element % TYPE % NumberOfNodes
+                  np = Parent  % TYPE % NumberOfNodes
                 END IF
               END IF
             ELSE
@@ -1046,22 +1046,26 @@ CONTAINS
   !> coordinates.   
   !---------------------------------------------------------------------------
    FUNCTION WeightedProjector2(BMesh2, BMesh1, InvPerm2, InvPerm1, &
-       UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale ) &
+       UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, & 
+       NodalJump ) &
       RESULT ( Projector )
   !---------------------------------------------------------------------------
     USE DefUtils
+    IMPLICIT NONE
 
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
     REAL(KIND=dp) :: PeriodicScale
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
     TYPE(Matrix_t), POINTER :: Projector
+    LOGICAL :: NodalJump
     !--------------------------------------------------------------------------
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Matrix_t), POINTER :: GaussProjector
     TYPE(Nodes_t), POINTER :: GaussNodes, RealNodes, ElementNodes
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: i,j,k,l,n,p,q,NoNodes, NoGaussPoints,Indexes(100)
+    INTEGER :: i,j,k,l,n,p,q,NoNodes, NoGaussPoints,Indexes(100),&
+        nodesize, totsize, eqindsize
     INTEGER, POINTER :: NodeIndexes(:),Rows(:),Cols(:)
     REAL(KIND=dp), POINTER :: Basis(:), Values(:)
     REAL(KIND=dp) :: u,v,w,val,detJ
@@ -1101,13 +1105,19 @@ CONTAINS
       EdgeBasis = ListGetLogical(CurrentModel % Solver % Values,'Edge Basis',Found)
     END IF
 
+    nodesize = BMesh1 % Parent % NumberOfNodes
+    totsize = BMesh1 % Parent % NumberOfNodes + BMesh1 % Parent % NumberOfEdges
+    
+
     IF(EdgeBasis) THEN
       n = BMesh1 % Parent % MaxElementDOFs
       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
                 Basis(n), dBasisdx(n,3), WBasis(n,3), RotWBasis(n,3) )
+      eqindsize = totsize
     ELSE
       n = BMesh1 % MaxElementNodes
       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), Basis(n) )
+      eqindsize = BMesh1 % NumberOfNodes
     END IF
 
     ! Create the nodal coordinates for all Gaussian integration points
@@ -1167,15 +1177,14 @@ CONTAINS
     !-----------------------------------------------------------
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
+    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
 
-    IF(EdgeBasis) THEN
-      ALLOCATE(Eqind(BMesh1 % Parent % NumberOfNodes+BMesh1 % Parent % NumberOfEdges))
-      ALLOCATE(Projector % InvPerm(SIZE(EQInd)))
-      Projector % InvPerm = 0
-    ELSE
-      ALLOCATE(Eqind(BMesh1 % NumberOfNodes));
-    END IF
-    Eqind = 0
+    ALLOCATE(Eqind(eqindsize))
+    EqInd = 0
+
+    ALLOCATE(Projector % InvPerm(eqindsize))
+    Projector % InvPerm = 0
+
     Ind   = 0
 
     NoGaussPoints = 0
@@ -1210,13 +1219,24 @@ CONTAINS
           Stat = ElementInfo(Element, ElementNodes, u, v, w, detJ, Basis)
         END IF
 
+        ! Do the numbering of new dofs
+        ! This needs to be done here because the nodal jump 
+        ! needs the index related to (p,q) pair.  
         DO p=1,np
           IF (EQind(Indexes(p))==0) THEN
-            Ind  = Ind+1
-            EQind(Indexes(p))=Ind
-            IF(EdgeBasis) Projector % InvPerm(Ind)=Indexes(p)
+            Ind = Ind+1
+            EQind(Indexes(p)) = Ind
+            IF( EdgeBasis ) THEN
+              Projector % InvPerm(Ind) = Indexes(p)
+            ELSE
+              Projector % InvPerm(Ind) = InvPerm1(Indexes(p))
+            END IF
           END IF
- 
+        END DO
+
+
+        DO p=1,np
+
           val = detJ * IntegStuff % s(j) * Basis(p)
  
           DO q=1,np
@@ -1224,8 +1244,18 @@ CONTAINS
             IF(.NOT.EdgeBasis) qq=InvPerm1(qq)
             CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
                   qq, Basis(q) * val ) 
+
+            ! Add a diagonal entry to the future constrained system.
+            ! This will enable a jump to the discontinuous boundary.
+            ! So far no value is added just the sparse matrix entry.
+            IF( NodalJump ) THEN
+              IF( Indexes(p) <= nodesize .AND. Indexes(q) <= nodesize ) THEN 
+                CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
+                    totsize + EQInd(Indexes(q)), 0.0_dp )
+              END IF
+            END IF
           END DO
- 
+
           DO q = Rows(NoGaussPoints), Rows(NoGaussPoints+1)-1
             qq = Cols(q)
             IF (qq<=0) EXIT
@@ -1272,6 +1302,8 @@ CONTAINS
         ENDIF
       END DO
     END DO
+
+
     CALL List_ToCRSMatrix(Projector)
 
     BMesh1 % Nodes => RealNodes
