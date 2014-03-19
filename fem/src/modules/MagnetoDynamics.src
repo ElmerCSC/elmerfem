@@ -1692,14 +1692,15 @@ CONTAINS
     INTEGER :: n, nd, nb
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
+    REAL(KIND=dp) :: Aloc(nd+nb), JAC(nd+nb,nd+nb), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: EBasis(nd+nb,3), CurlEBasis(nd+nb,3), WBasis(3), SBasis(3)
+    REAL(KIND=dp) :: TrialFunCurl(3), TestFunCurl(3) 
     REAL(KIND=dp) :: ActiveEBasis(nd+nb,3)
     REAL(KIND=dp) :: ActiveCurlEBasis(nd+nb,3)
     REAL(KIND=dp) :: dBasisdx(n,3)
     REAL(KIND=dp) :: Basis(n), DetF, F(3,3), G(3,3), GT(3,3), CM(3,3), L(3), M(3), D(3,3)
-    REAL(KIND=dp) :: A, Acoefder(n), C(3,3), RotMLoc(3,3)
-    REAL(KIND=dp) :: FixJPot(nd)
+    REAL(KIND=dp) :: C(3,3), RotMLoc(3,3)
+    REAL(KIND=dp) :: FixJPot(n)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond
 
     LOGICAL :: Stat, Found, Newton, Cubic, HBCurve
@@ -1777,8 +1778,7 @@ CONTAINS
        CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
             Element % TYPE % ElementCode / 100 )
 
-       A = SUM( Basis(1:n) * Acoef(1:n) )
-       mu = A
+       mu = SUM( Basis(1:n) * Acoef(1:n) )
 
        ! Compute the conductivity tensor
        ! -------------------------------
@@ -1809,14 +1809,18 @@ CONTAINS
        LocalLamThick = SUM( Basis(1:n) * LamThick(1:n) )
        LocalLamCond = SUM( Basis(1:n) * LamCond(1:n) )
 
-       ! Compute C * grad(V), where C is a tensor
+       ! Add -C * grad(V^s), where C is a tensor
        ! -----------------------------------------
        L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
 
        IF ( HBCurve ) THEN
-          CALL Fatal('MagnetoDynamics',&
-               'Piola transformed version not finished for H-B curve')            
-          B_ip = MATMUL( Aloc(np+1:nd), CurlEBasis(1:nd-np,:) )
+          B_ip = 0.0d0
+          DO j=1,nd+nb-np
+             DO k=1,dim
+                WBasis(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(j,1:dim) )
+             END DO
+             B_ip = B_ip + ALoc(np+j) * WBasis(:)
+          END DO
           babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
           mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/babs
           IF ( Newton ) THEN
@@ -1967,11 +1971,12 @@ CONTAINS
              END IF
 
              IF ( Newton ) THEN
-                ! THIS HAS NOT BEEN REVISED YET:
-                CALL Fatal('MagnetoDynamics',&
-                     'Piola transformed version not finished for Newton iteration')            
-                !JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
-                !     SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+                DO k=1,dim
+                   TrialFunCurl(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(q,1:dim) )
+                   TestFunCurl(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(p,1:dim) )
+                END DO
+                JAC(i,j) = JAC(i,j) + muder * SUM(B_ip(:)*TrialFunCurl(:)) * &
+                     SUM(B_ip(:)*TestFunCurl(:)) * ABS(DetF) * IP % s(t) / Babs
              END IF
              ! ----------------------------------------------
              ! Compute the conductivity term <C A,eta> for 
@@ -1988,9 +1993,8 @@ CONTAINS
     END DO
 
     IF ( Newton ) THEN
-       ! THIS HAS NOT BEEN REVISED YET:
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
-      FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+      STIFF(1:nd+nb,1:nd+nb) = STIFF(1:nd+nb,1:nd+nb) + JAC
+      FORCE(1:nd+nb) = FORCE(1:nd+nb) + MATMUL(JAC,Aloc)
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixPiolaVersion
