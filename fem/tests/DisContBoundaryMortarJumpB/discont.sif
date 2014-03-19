@@ -1,0 +1,158 @@
+! Testing for the discontinuous boundary creation.
+! Discontinuity is used just to create full insulation within a mesh.
+! There is a 2D and a 3D case of this that differ only on the mesh used. 
+!
+! This is a modified test of the discontinuity that implements a jump condition
+! for the heat flux.  
+!
+! P.R. / 18.3.2014
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 32
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "discont.vtu"
+
+! Normally we dont want to apply this
+!  Discontinuous Boundaries Greedy = Logical True
+
+! Here the discontinuity loader is currently active
+! This will become the default in future. 
+  New Load Mesh = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+! The bodies should not all be renumbered to one
+! since the information is used to set the discontinuity
+! consistently. 
+Body 1
+  Name = "Body"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Body"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 1
+End
+
+Body 3
+  Name = "Body"
+  Target Bodies(1) = 3
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "iterative"
+  Linear System Iterative Method = "BiCGStabl"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+  
+!  Linear System Scaling = False
+!  Linear System Dirichlet Scaling = Logical False
+!  Optimize Bandwidth = False
+
+  Linear System Abort Not Converged = False
+  Apply Mortar BCs = True
+End
+
+
+Solver 2
+  Exec Solver = never
+
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = f.dat
+End
+
+ 
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+
+
+
+Boundary Condition 1
+  Name = "Jump"
+  Target Boundaries(1) = 1
+
+! This activates the discontinuous boundary creation
+  Discontinuous Boundary = Logical True
+
+! If this keyword is active then two BCs are crated and
+! standard mortar projector is used.
+!  Discontinuous Target Boundary = Integer 10
+  Mortar BC = 10 
+
+  Mortar BC Coefficient = Real 1.0
+End
+
+
+
+Boundary Condition 2
+  Name = "Cold"
+  Target Boundaries(1) = 4 
+  Temperature = 0.0
+End
+
+Boundary Condition 3
+  Name = "Hot"
+  Target Boundaries(1) = 6 
+  Temperature = 1.0
+End
+
+Boundary Condition 4
+  Name = "Bottom"
+  Target Boundaries(2) = 2 5
+  Save Line = Logical True
+End 
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=  0.61010021\n");
+!End Of File
