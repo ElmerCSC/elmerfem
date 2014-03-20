@@ -1390,6 +1390,40 @@ END FUNCTION GaussPointsPTetra
      END SELECT
 
    END FUNCTION GaussPoints
+
+
+!----------------------------------------------------------------------------------
+!>  Return a suitable version of the Gaussian numerical integration method for
+!>  H(curl)-conforming finite elements obtained via calling the function
+!>  EdgeElementInfo. With these elements the reference element is chosen to be 
+!>  that used for p-approximation.
+!------------------------------------------------------------------------------
+   FUNCTION EdgeElementGaussPoints(ElementFamily) RESULT(IP)
+!------------------------------------------------------------------------------
+     INTEGER :: ElementFamily
+     TYPE(GaussIntegrationPoints_t) :: IP   
+!------------------------------------------------------------------------------
+     SELECT CASE(ElementFamily)
+     CASE(3)
+        IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
+     CASE(4)
+        IP = GaussPointsQuad(9)
+     CASE(5)
+        IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
+     CASE(6)
+        IP = GaussPointsPPyramid(8)
+     CASE(7)
+        IP = GaussPointsPWedge(27)
+     CASE(8)
+        IP = GaussPointsPBrick(3,3,3)         
+     CASE DEFAULT
+        CALL Fatal('Integration::EdgeElementGaussPoints','Unsupported element type')
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION EdgeElementGaussPoints
+!------------------------------------------------------------------------------
+
+
 !---------------------------------------------------------------------------
 END MODULE Integration
 !---------------------------------------------------------------------------

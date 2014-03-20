@@ -366,10 +366,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone
 !------------------------------------------------------------------------------
   PiolaVersion = .FALSE. ! DO NOT CHANGE THIS! (A FEATURE UNDER DEVELOPMENT)
-  !IF (PiolaVersion) THEN
-  !   CALL Info('WhitneyAVSolver', &
-  !        'USING A TEST VERSION FOR PIOLA TRASFORMED ELEMENTS',Level=2)
-  !END IF
+  IF (PiolaVersion) THEN
+     CALL Info('WhitneyAVSolver', &
+          'USING A TEST VERSION FOR PIOLA TRASFORMED ELEMENTS',Level=2)
+  END IF
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
@@ -2000,39 +2000,6 @@ CONTAINS
   END SUBROUTINE LocalMatrixPiolaVersion
 !------------------------------------------------------------------------------
 
-
-
-
-!----------------------------------------------------------------------------------
-!>  Return a suitable version of the Gaussian numerical integration method for
-!>  H(curl)-conforming finite elements obtained via calling the function
-!>  EdgeElementInfo. With these elements the reference element is chosen to be 
-!>  that used for p-approximation.
-!------------------------------------------------------------------------------
-  FUNCTION EdgeElementGaussPoints(ElementFamily) RESULT(IP)
-!------------------------------------------------------------------------------
-    INTEGER :: ElementFamily
-    TYPE(GaussIntegrationPoints_t) :: IP   
-!------------------------------------------------------------------------------
-    SELECT CASE(ElementFamily)
-    CASE(3)
-       IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
-    CASE(4)
-       IP = GaussPointsQuad(9)
-    CASE(5)
-       IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
-    CASE(6)
-       IP = GaussPointsPPyramid(8)
-    CASE(7)
-       IP = GaussPointsPWedge(27)
-    CASE(8)
-       IP = GaussPointsPBrick(3,3,3)         
-    CASE DEFAULT
-       CALL Fatal('EdgeElementGaussPoints','Unsupported element type')
-    END SELECT
-!------------------------------------------------------------------------------
-  END FUNCTION EdgeElementGaussPoints
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
@@ -4966,6 +4933,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>Null(), Cwrk_im(:,:,:)=>Null()
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
 
+   LOGICAL :: PiolaVersion
+   REAL(KIND=dp), ALLOCATABLE :: NodesU(:), NodesV(:), NodesW(:), EBasis(:,:), CurlEBasis(:,:) 
+   REAL(KIND=dp), ALLOCATABLE :: ActiveEBasis(:,:), ActiveCurlEBasis(:,:)
+   REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
+   
+!-------------------------------------------------------------------------------------------
+   PiolaVersion = .FALSE. ! DO NOT CHANGE THIS! (A FEATURE UNDER DEVELOPMENT)
+   IF (PiolaVersion) THEN
+      CALL Info('MagnetoDynamicsCalcFields', &
+           'USING A TEST VERSION FOR PIOLA TRASFORMED ELEMENTS',Level=2)
+   END IF
+
    Mesh => GetMesh()
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
 
@@ -5027,7 +5006,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),DOFs)); Gforce=0._dp
 
    n = Mesh % MaxElementDOFs
-   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n) ) 
+   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n) )
+   IF (PiolaVersion) ALLOCATE( NodesU(n), NodesV(n), NodesW(n), &
+        EBasis(n,3), CurlEBasis(n,3), ActiveEBasis(n,3), ActiveCurlEBasis(n,3) ) 
    SOL = 0._dp; PSOL=0._dp
 
    Omega = GetAngularFrequency(Found=Found)
@@ -5229,16 +5210,46 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      dim = 3
 
+     IF (PiolaVersion) CALL GetRefPElementNodes(Element, NodesU, NodesV, NodesW, .FALSE.)
+
      ! Calculate "on nodes on elements" fields:
      ! ----------------------------------------
      E = 0.0d0
      DO j=1,n
-       u = Element % TYPE % NodeU(j)
-       v = Element % TYPE % NodeV(j)
-       w = Element % TYPE % NodeW(j)
+       IF (PiolaVersion) THEN       
 
-       stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-       CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+          stat = EdgeElementInfo( Element, Nodes, NodesU(j), NodesV(j), &
+            NodesW(j), F, G, DetF, Basis, ActiveEBasis, ActiveCurlEBasis, dBasisdx)
+
+          !--------------------------------------------------------------------------
+          ! Map the active basis vectors to their locations in the larger basis
+          ! vector array that corresponds to the element definition in the sif file.
+          ! -------------------------------------------------------------------------
+          CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+               Element % TYPE % ElementCode / 100 )
+          !-------------------------------------------------------------------------
+          ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
+          ! vector B_j(x), with the place x related to the reference element 
+          ! coordinates p via the element mapping x = f(p). Additionally, 
+          ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
+          ! TO DO: THE FIXED-SIZE ALLOCATION OF WBasis(:,:) AND RotWBasis(:,:)
+          ! MAY NOT BE LARGE ENOUGH 
+          !-------------------------------------------------------------------------
+          GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
+          DO l = 1,nd-np 
+             DO k=1,dim
+                WBasis(l,k) = SUM( GT(k,1:dim) * EBasis(l,1:dim) )
+                RotWBasis(l,k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(l,1:dim) )
+             END DO
+          END DO
+       ELSE
+          u = Element % TYPE % NodeU(j)
+          v = Element % TYPE % NodeV(j)
+          w = Element % TYPE % NodeW(j)
+
+          stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
+          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+       END IF
 
        DO k=1,vDOFs
          B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
@@ -5463,18 +5474,50 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      ! Calculate nodal fields:
      ! -----------------------
-     IP = GaussPoints(Element)
+     IF (PiolaVersion) THEN
+        IP = EdgeElementGaussPoints(Element % TYPE % ElementCode / 100)
+     ELSE
+        IP = GaussPoints(Element)
+     END IF
+
      MASS  = 0._dp
      FORCE = 0._dp
-
      E = 0._dp; B=0._dp
      DO j = 1,IP % n
        u = IP % U(j)
        v = IP % V(j)
        w = IP % W(j)
 
-       stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-       CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+       IF (PiolaVersion) THEN
+          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+               F, G, DetF, Basis, ActiveEBasis, ActiveCurlEBasis, dBasisdx)
+
+          !--------------------------------------------------------------------------
+          ! Map the active basis vectors to their locations in the larger basis
+          ! vector array that corresponds to the element definition in the sif file.
+          ! -------------------------------------------------------------------------
+          CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+               Element % TYPE % ElementCode / 100 )
+          !-------------------------------------------------------------------------
+          ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
+          ! vector B_j(x), with the place x related to the reference element 
+          ! coordinates p via the element mapping x = f(p). Additionally, 
+          ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
+          ! TO DO: THE FIXED-SIZE ALLOCATION OF WBasis(:,:) AND RotWBasis(:,:)
+          ! MAY NOT BE LARGE ENOUGH 
+          !-------------------------------------------------------------------------
+          GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
+          DO l = 1,nd-np 
+             DO k=1,dim
+                WBasis(l,k) = SUM( GT(k,1:dim) * EBasis(l,1:dim) )
+                RotWBasis(l,k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(l,1:dim) )
+             END DO
+          END DO
+          DetJ = ABS(DetF)
+       ELSE
+          stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
+          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+       END IF
 
        DO k=1,vDOFs
          B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
@@ -5872,6 +5915,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CALL Info( 'MagnetoDynamics', Message )
    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
    DEALLOCATE( Gforce,MASS,FORCE,Tcoef,RotM )
+   IF (PiolaVersion) DEALLOCATE( NodesU,NodesV,NodesW, &
+        EBasis, CurlEBasis, ActiveEBasis, ActiveCurlEBasis )
 
    IF (LossEstimation) THEN
       CALL ListAddConstReal( Model % Simulation,'res: fourier loss',TotalLoss )
@@ -5908,6 +5953,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
   AverageFluxDensity = 0._dp
 
   IF (ListGetLogicalAnyBC( Model,'Magnetic Flux Average')) THEN
+    IF (PiolaVersion) CALL Fatal ('MagnetoDynamicsCalcFields', &
+         'Magnetic Flux Average: The feature is not yet available for Piola transformed basis functions')
     DO i=1,GetNOFBoundaryElements()
        Element => GetBoundaryElement(i)
        IF (.NOT. ActiveBoundaryElement()) CYCLE
@@ -6153,6 +6200,52 @@ CONTAINS
       END DO
 
     END SUBROUTINE calcAverageFlux
+
+
+
+!------------------------------------------------------------------------------
+    SUBROUTINE IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+         ElementFamily)
+!------------------------------------------------------------------------------
+!  This is for temporary use. This routine maps the active basis functions
+!  to their locations in a larger basis vector array corresponding to the element 
+!  definition in the sif file.
+!------------------------------------------------------------------------------
+      REAL(KIND=dp) :: ActiveEBasis(:,:), ActiveCurlEBasis(:,:), &
+           EBasis(:,:), CurlEBasis(:,:)  
+      INTEGER :: ElementFamily
+!------------------------------------------------------------------------------
+      EBasis = 0.0d0
+      CurlEBasis = 0.0d0
+      SELECT CASE(ElementFamily)
+      CASE(3)
+         ! TO DO: Enable the Nedelec second family
+         EBasis(1:3,:) = ActiveEBasis(1:3,:)
+         CurlEBasis(1:3,:) = ActiveCurlEBasis(1:3,:)
+      CASE(4)
+         EBasis(1:6,:) = ActiveEBasis(1:6,:)
+         CurlEBasis(1:6,:) = ActiveCurlEBasis(1:6,:)
+      CASE(5)
+         ! TO DO: Enable the Nedelec second family
+         EBasis(1:6,:) = ActiveEBasis(1:6,:)
+         CurlEBasis(1:6,:) = ActiveCurlEBasis(1:6,:)        
+      CASE(6)
+         EBasis(1:10,:) = ActiveEBasis(1:10,:)
+         CurlEBasis(1:10,:) = ActiveCurlEBasis(1:10,:)      
+      CASE(7)
+         EBasis(1:9,:) = ActiveEBasis(1:9,:)
+         CurlEBasis(1:9,:) = ActiveCurlEBasis(1:9,:)
+         EBasis(14:19,:) = ActiveEBasis(10:15,:)
+         CurlEBasis(14:19,:) = ActiveCurlEBasis(10:15,:)
+      CASE(8)
+         EBasis(1:27,:) = ActiveEBasis(1:27,:)
+         CurlEBasis(1:27,:) = ActiveCurlEBasis(1:27,:)      
+      CASE DEFAULT
+         CALL Fatal('IncludeDummyDOFs','Unsupported element type')
+      END SELECT
+!------------------------------------------------------------------------------
+    END SUBROUTINE IncludeDummyDOFs
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------
