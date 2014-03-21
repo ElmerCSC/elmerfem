@@ -1173,17 +1173,19 @@ END SUBROUTINE GetMaxDefs
 
      ! Ok, we found the element to manipulate the indexes. 
      ! The new index is numbered on top of the old indexes. 
+
      ParentIndexes => ParentElem % NodeIndexes
      DO i=1,SIZE(ParentIndexes) 
        j = ParentIndexes(i)
+       IF( j > NoNodes ) CYCLE
        IF( DisContPerm(j) > 0 ) THEN
          ParentIndexes(i) = NoNodes + DisContPerm(j)
        END IF
      END DO
 
      ! Then set in a consistent manner the elements
-     Element % BoundaryInfo % Left => OtherElem
-     Element % BoundaryInfo % Right => ParentElem    
+     Element % BoundaryInfo % Left => ParentElem
+     Element % BoundaryInfo % Right => OtherElem
    END DO
 
 
@@ -1193,6 +1195,7 @@ END SUBROUTINE GetMaxDefs
    ! of the related nodes.
    NoStayingElems = 0
    NoMovingElems = 0
+
    DO t=1, NoBulkElems + NoBoundElems
 
      IF( DisContElem(t) ) CYCLE
@@ -1219,6 +1222,7 @@ END SUBROUTINE GetMaxDefs
      ELSE
        PRINT *,'Undecided element:',t,NoMoving
      END IF
+
    END DO
    CALL Info('CreateDiscontMesh','Number of related elements moving: '//TRIM(I2S(NoMovingElems)) )
    CALL Info('CreateDiscontMesh','Number of related elements staying: '//TRIM(I2S(NoStayingElems)) )
@@ -4167,11 +4171,11 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes, size0
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Basis(:)
-    REAL(KIND=dp) :: u,v,w,val,detJ,Scale
+    REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: Stat,DisCont,Found,Jump
+    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym
 
     CALL Info('WeightedProjectorDiscont','Creating Galerkin projector for discontinuous boundary',Level=7)
 
@@ -4194,6 +4198,23 @@ END SUBROUTINE GetMaxDefs
           //TRIM(I2S(j))//') only for discontinuous boundary!')
     END IF
 
+    Scale = ListGetCReal( Model % BCs(bc) % Values,'Mortar BC Scaling',Stat )  
+    IF(.NOT. Stat) Scale = -1.0_dp
+
+    NodalJump = ListCheckPresent( Model % BCs(bc) % Values,'Mortar BC Coefficient')
+    size0 = Mesh % NumberOfNodes
+
+    AxisSym = .FALSE.
+    IF ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+        CurrentCoordinateSystem() == CylindricSymmetric ) THEN
+      IF( NodalJump ) THEN
+        AxisSym = .TRUE.
+      ELSE IF (ASSOCIATED(CurrentModel % Solver)) THEN
+        AxisSym = ListGetLogical(CurrentModel % Solver % Values,'Projector Metrics',Found)
+      END IF
+      IF( AxisSym ) CALL Info('weightedProjectorDiscont','Projector will be weighted for axi symmetry',Level=7)
+    END IF
+
 
     ! Create a list matrix that allows for unspecified entries in the matrix 
     ! structure to be introduced.
@@ -4213,12 +4234,6 @@ END SUBROUTINE GetMaxDefs
     NoOrigNodes = SIZE( NodePerm ) 
     NoDiscontNodes = COUNT( NodePerm > 0 ) 
 
-    Scale = ListGetCReal( Model % BCs(bc) % Values,'Mortar BC Scaling',Stat )  
-    IF(.NOT. Stat) Scale = -1.0_dp
-
-    Jump = ListCheckPresent( Model % BCs(bc) % Values,'Mortar BC Coefficient')
-    size0 = Mesh % NumberOfNodes
-
     ALLOCATE( Projector % InvPerm( NoDiscontNodes ) )
     InvPerm => Projector % InvPerm
     InvPerm = 0
@@ -4227,7 +4242,7 @@ END SUBROUTINE GetMaxDefs
       j = NodePerm(i)
       IF( j == 0 ) CYCLE
       IF( InvPerm(j) > 0 ) THEN
-        print *,'This should not happen'
+        PRINT *,'This should not happen'
       ELSE
         InvPerm(j) = i
       END IF
@@ -4266,10 +4281,16 @@ END SUBROUTINE GetMaxDefs
         
         Stat = ElementInfo(Element, ElementNodes, u, v, w, detJ, Basis)
 
+        weight = detJ * IntegStuff % s(j)
+        IF( AxisSym ) THEN
+          x = SUM( Basis(1:n) * ElementNodes % x(1:n) )
+          weight = weight * x
+        END IF
+
         DO p=1,n
 
           IF( NodePerm(Indexes(p)) == 0 ) CYCLE
-          val = detJ * IntegStuff % s(j) * Basis(p)
+          val = weight * Basis(p)
 
           DO q=1,n
             IF( NodePerm(Indexes(q)) == 0 ) CYCLE
@@ -4280,7 +4301,7 @@ END SUBROUTINE GetMaxDefs
                 DiscontIndexes(q), Scale * Basis(q) * val ) 
 
             ! Add entry to the diagonal-to-be if jump condition is to be used
-            IF( Jump ) THEN
+            IF( NodalJump ) THEN
               CALL List_AddToMatrixElement(Projector % ListMatrix, NodePerm(Indexes(p)),&
                   size0 + NodePerm(Indexes(q)), 0.0_dp ) 
             END IF
@@ -4537,7 +4558,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,k,n,dim
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
-        Discontinuous, Jump
+        Discontinuous, NodalJump
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -4625,7 +4646,7 @@ END SUBROUTINE GetMaxDefs
     PeriodicScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) PeriodicScale = 1._dp
 
-    Jump = ListCheckPresent( BC,'Mortar BC Coefficient')
+    NodalJump = ListCheckPresent( BC,'Mortar BC Coefficient')
 
 
     ! Create temporal mesh structures that are utilized when making the 
@@ -4672,7 +4693,7 @@ END SUBROUTINE GetMaxDefs
 
     IF( IntGalerkin ) THEN
       Projector => WeightedProjector2( BMesh2, BMesh1, InvPerm2, InvPerm1, &
-          UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, Jump )
+          UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, NodalJump )
     ELSE
       Projector => NodalProjector2( BMesh2, BMesh1, InvPerm2, InvPerm1, &
                  UseQuadrantTree, Repeating, AntiRepeating )

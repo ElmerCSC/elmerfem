@@ -1068,10 +1068,9 @@ CONTAINS
         nodesize, totsize, eqindsize
     INTEGER, POINTER :: NodeIndexes(:),Rows(:),Cols(:)
     REAL(KIND=dp), POINTER :: Basis(:), Values(:)
-    REAL(KIND=dp) :: u,v,w,val,detJ
+    REAL(KIND=dp) :: u,v,w,val,detJ,weight,x
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
-
-    LOGICAL :: Stat, EdgeBasis,Found
+    LOGICAL :: Stat, EdgeBasis,Found,AxisSym
     TYPE(Nodes_t), SAVE :: Nodes
 
     REAL(KIND=dp) :: vq(3),wq(3)
@@ -1079,6 +1078,9 @@ CONTAINS
 
     INTEGER :: ind,np,qq,pp
     INTEGER, ALLOCATABLE :: Eqind(:)
+
+
+    CALL Info('WeightedProjector','Creating Galerkin projector between two boundaries',Level=7)
 
     ALLOCATE( GaussNodes, ElementNodes )
     RealNodes => Bmesh1 % Nodes
@@ -1096,7 +1098,7 @@ CONTAINS
     
     WRITE( Message,'(A,I0,A,I0)') 'Number of nodes and gauss points:'&
         ,NoNodes,' and ',NoGaussPoints
-    CALL Info('WeightedProjector',Message)
+    CALL Info('WeightedProjector',Message,Level=10)
 
     ALLOCATE( GaussNodes % x(NoGaussPoints), GaussNodes % y(NoGaussPoints), GaussNodes % z(NoGaussPoints))
 
@@ -1104,10 +1106,24 @@ CONTAINS
     IF (ASSOCIATED(CurrentModel % Solver)) THEN
       EdgeBasis = ListGetLogical(CurrentModel % Solver % Values,'Edge Basis',Found)
     END IF
+    IF( EdgeBasis ) THEN
+      CALL Info('weightedProjector','Accounting for edge elements in projector.',Level=7)
+    END IF
+
+    AxisSym = .FALSE.
+    IF ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+        CurrentCoordinateSystem() == CylindricSymmetric ) THEN
+      IF( NodalJump ) THEN
+        AxisSym = .TRUE.
+      ELSE IF (ASSOCIATED(CurrentModel % Solver)) THEN
+        AxisSym = ListGetLogical(CurrentModel % Solver % Values,'Projector Metrics',Found)
+      END IF
+      IF( AxisSym ) CALL Info('weightedProjector','Projector will be weighted for axi symmetry',Level=7)
+    END IF
+
 
     nodesize = BMesh1 % Parent % NumberOfNodes
-    totsize = BMesh1 % Parent % NumberOfNodes + BMesh1 % Parent % NumberOfEdges
-    
+    totsize = BMesh1 % Parent % NumberOfNodes + BMesh1 % Parent % NumberOfEdges    
 
     IF(EdgeBasis) THEN
       n = BMesh1 % Parent % MaxElementDOFs
@@ -1219,6 +1235,18 @@ CONTAINS
           Stat = ElementInfo(Element, ElementNodes, u, v, w, detJ, Basis)
         END IF
 
+        ! Modify weight so that the projector is consistent with the coordinate system.
+        weight = detJ * IntegStuff % s(j)
+        IF( AxisSym ) THEN
+          IF( EdgeBasis ) THEN
+            x = SUM( Basis(1:np) * Nodes % x(1:np) )
+          ELSE
+            x = SUM( Basis(1:np) * ElementNodes % x(1:np) )
+          END IF
+          weight = weight * x
+        END IF
+
+
         ! Do the numbering of new dofs
         ! This needs to be done here because the nodal jump 
         ! needs the index related to (p,q) pair.  
@@ -1237,7 +1265,7 @@ CONTAINS
 
         DO p=1,np
 
-          val = detJ * IntegStuff % s(j) * Basis(p)
+          val = weight * Basis(p)
  
           DO q=1,np
             qq = Indexes(q)
@@ -1284,7 +1312,7 @@ CONTAINS
 
               vq = Wbasis(qq,:)
               CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
-                       Indexes(q), DetJ*IntegStuff % s(j)*SUM(vq*wq))
+                       Indexes(q), weight * SUM(vq*wq))
             END DO
 
 
@@ -1296,7 +1324,7 @@ CONTAINS
               vq(3) = Values(q+2)
 
               CALL List_AddToMatrixElement( Projector % ListMatrix,&
-                  EQind(Indexes(p)), -Cols(q), -PeriodicScale*DetJ*IntegStuff % s(j)*SUM(vq*wq))
+                  EQind(Indexes(p)), -Cols(q), -PeriodicScale * weight * SUM(vq*wq))
             END DO
           END DO
         ENDIF

@@ -2534,13 +2534,15 @@ CONTAINS
      INTEGER :: NDOFs              !< the total number of DOFs for this equation
      INTEGER, TARGET :: Perm(:)    !< The node reordering info
      !------------------------------------------------------------------------------
-     INTEGER :: i,j,k,i2,j2,k2,n,node,totsize,nodesize
+     INTEGER :: i,j,k,i2,j2,k2,n,u,v,node,totsize,nodesize,bc_ind,nnodes
      INTEGER, POINTER :: PPerm(:)
      INTEGER, ALLOCATABLE :: InvInvPerm(:)
      LOGICAL :: Found
+     LOGICAL, ALLOCATABLE :: NodeDone(:)
      REAL(KIND=dp) :: coeff, weight
      TYPE(Matrix_t), POINTER :: Projector
      TYPE(ValueList_t), POINTER :: BC
+     TYPE(Element_t), POINTER :: Element
      !------------------------------------------------------------------------------
 
      ! If there is no mortar projector then nothing to do
@@ -2556,15 +2558,15 @@ CONTAINS
 
        ! The projector must be associated to some boundary 
        ! condition when it is created.
-       i = Projector % ConstraintBC
-       IF( i == 0 ) THEN
+       bc_ind = Projector % ConstraintBC
+       IF( bc_ind == 0 ) THEN
          Projector => Projector % ConstraintMatrix
          CYCLE
        END IF
 
        ! For this boundary there should also be a coefficient 
        ! otherwise nothing needs to be done. 
-       BC => Model % BCs(i) % Values
+       BC => Model % BCs(bc_ind) % Values
        IF( .NOT. ListCheckPresent( BC,'Mortar BC Coefficient') ) THEN
          Projector => Projector % ConstraintMatrix
          CYCLE
@@ -2588,57 +2590,83 @@ CONTAINS
          IF( j <= nodesize ) InvInvPerm( j ) = i
        END DO
 
-       DO i=1,Projector % NumberOfRows
+       ALLOCATE( NodeDone( SIZE( Projector % InvPerm ) ) )
+       NodeDone = .FALSE.
+       
 
-         ! So far done only for nodal dofs
-         ! There does not seem to be any physical relevance in having 
-         ! an edge element jump condition.           
-         ! Therefore cycle through all entries related to non-nodal projector.
-         IF( Projector % InvPerm(i) > nodesize ) CYCLE
+       ! Looping through elements rather than looping through projector rows directly
+       ! is done in order to be able to refer to boundary properties associated 
+       ! with the element. 
+       DO t=1,Model % Mesh % NumberOfBoundaryElements
+         Element => Model % Mesh % Elements( t + Model % Mesh % NumberOfBulkElements )
 
-         DO j = Projector % Rows(i),Projector % Rows(i+1)-1
-           k = Projector % Cols(j)
-           IF( k > nodesize ) CYCLE
+         IF( Element % BoundaryInfo % Constraint /= Model % BCs(bc_ind) % Tag ) CYCLE
 
-           ! Find the new degree of freedom associated with the 
-           ! column index of the mass matrix. 
-           i2 = InvInvPerm( k )
-           IF( i2 == 0 ) CYCLE
+         ! Outside code this tells the active element
+         Model % CurrentElement => Element
+         
+         nnodes = Element % Type % NumberOfNodes
+         DO u=1, nnodes
+           node = Element % NodeIndexes(u)
+           IF( node > nodesize ) CYCLE
 
-           ! Now find the entry in the sparse matrix. 
-           Found = .FALSE.
-           DO j2 = Projector % Rows(i),Projector % Rows(i+1)-1
-             k2 = Projector % Cols(j2)
-             IF( k2 == i2 + totsize ) THEN
-               ! Ok, found it. Now set the value. 
-               node = Projector % InvPerm(i)
-               coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient',node, Found )        
+           v = Perm( node )
+           IF( v == 0 ) CYCLE
 
-               IF( Found ) THEN
-                 ! The factor 0.5 comes from the fact that the 
-                 ! contribution is summed twice, 2nd time as transpose
-                 ! For Nodal projector the entry is 1/(weight*coeff)
-                 ! For Galerkin projector the is weight/coeff 
-                 weight = Projector % Values(j)
-                 Projector % Values(j2) = -0.5 * weight / coeff
+           i = InvInvPerm( v ) 
+           IF( i == 0 ) CYCLE
+
+           IF( NodeDone( i ) ) CYCLE
+           NodeDone( i ) = .TRUE. 
+
+           ! So far done only for nodal dofs
+           ! There does not seem to be any physical relevance in having 
+           ! an edge element jump condition.           
+           ! Therefore cycle through all entries related to non-nodal projector.
+           IF( Projector % InvPerm(i) > nodesize ) CYCLE
+
+           DO j = Projector % Rows(i),Projector % Rows(i+1)-1
+             k = Projector % Cols(j)
+             IF( k > nodesize ) CYCLE
+
+             ! Find the new degree of freedom associated with the 
+             ! column index of the mass matrix. 
+             i2 = InvInvPerm( k )
+             IF( i2 == 0 ) CYCLE
+
+             ! Now find the entry in the sparse matrix. 
+             Found = .FALSE.
+             DO j2 = Projector % Rows(i),Projector % Rows(i+1)-1
+               k2 = Projector % Cols(j2)
+               IF( k2 == i2 + totsize ) THEN
+                 ! Ok, found it. Now set the value. 
+
+                 coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient',node, Found )        
+                 IF( Found ) THEN
+                   ! The factor 0.5 comes from the fact that the 
+                   ! contribution is summed twice, 2nd time as transpose
+                   ! For Nodal projector the entry is 1/(weight*coeff)
+                   ! For Galerkin projector the is weight/coeff 
+                   weight = Projector % Values(j)
+                   Projector % Values(j2) = -0.5 * weight / coeff
+                 END IF
+
+                 EXIT
                END IF
-
-               EXIT
+             END DO
+             IF( .NOT. Found ) THEN
+               CALL Fatal('SetWeigtedProjectorJump','Could not find entry corresponding: '&
+                   //TRIM(I2S(i))//','//TRIM(I2S(k)))
              END IF
-           END DO
-           IF( .NOT. Found ) THEN
-             CALL Fatal('SetWeigtedProjectorJump','Could not find entry corresponding: '&
-                 //TRIM(I2S(i))//','//TRIM(I2S(k)))
-           END IF
 
+           END DO
          END DO
        END DO
 
-       DEALLOCATE( InvInvPerm )
-
+       DEALLOCATE( InvInvPerm, NodeDone )
        Projector => Projector % ConstraintMatrix
      END DO
-
+ 
 !------------------------------------------------------------------------------
    END SUBROUTINE SetWeightedProjectorJump
 !------------------------------------------------------------------------------
