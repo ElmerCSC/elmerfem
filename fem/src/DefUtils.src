@@ -3340,14 +3340,18 @@ CONTAINS
 
 
 !> Sets the Dirichlet conditions related to the variables of the active solver.
-!------------------------------------------------------------------------------
-  SUBROUTINE DefaultDirichletBCs( USolver,Ux,UOffset,OffDiagonalMatrix )
-!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------------------
+  SUBROUTINE DefaultDirichletBCs( USolver,Ux,UOffset,OffDiagonalMatrix,PiolaCurlTransform)
+!------------------------------------------------------------------------------------------
      INTEGER, OPTIONAL :: UOffset
      LOGICAL, OPTIONAL :: OffDiagonalMatrix
      TYPE(Variable_t), OPTIONAL, TARGET :: Ux
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
-
+     LOGICAL, OPTIONAL :: PiolaCurlTransform  ! An additional argument for indicating that
+                                              ! the solution is expanded in terms of H(curl)-
+                                              ! conforming basis functions defined via the 
+                                              ! Piola transform.  
+!--------------------------------------------------------------------------------------------     
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Solver_t), POINTER :: Solver
@@ -3368,7 +3372,7 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: name
      LOGICAL :: BUpd
 
-INTEGER::iii=0
+     INTEGER::iii=0
 
      SAVE gInd, lInd, STIFF, Work
 
@@ -3618,21 +3622,70 @@ INTEGER::iii=0
                  END DO
                END SELECT
              END IF
-           ELSE IF ( ListCheckPresent(BC, TRIM(Name)//' {f}') ) THEN
-             n = Element % TYPE % NumberOfNodes
-!            CALL LocalBcIntegral( BC, Element, n, Name//' {f}', Work(1),Work(2) )
+           END IF
 
-             n=GetElementDOFs(gInd)
-             DO k=1,n
-               nb = x % Perm(gInd(k))
-               IF ( nb <= 0 ) CYCLE
-               nb = Offset + x % DOFs*(nb-1) + DOF
+           IF ( ListCheckPresent(BC, TRIM(Name)//' {f}') ) THEN
+              IF (PiolaCurlTransform) THEN
+                 !---------------------------------------------------------------------
+                 ! How the "f"-DOFs are defined depends on the type of basis functions. 
+                 ! This branch is for handling H(curl)-conforming approximations 
+                 ! defined via applying the Piola transform. The fully functional 
+                 ! version is not yet implemented. The current version just sets the 
+                 ! homogeneous Dirichlet constraint, which is typically applied when
+                 ! the vector potential of an AV-solution is constrained. Note that now
+                 ! the related function EdgeElementInfo returns basis functions associated
+                 ! with faces only when the associated reference element k has at least
+                 ! one square face (that is, k is a cube, prism or pyramid).
+                 !-----------------------------------------------------------------------
+                 SELECT CASE(GetElementFamily())
+                 CASE(4)
+                    DO j=1,Parent % TYPE % NumberOfFaces
+                       Face => Solver % Mesh % Faces(Parent % FaceIndexes(j))
+                       IF (Element % TYPE % ElementCode==Face % TYPE % ElementCode) THEN
+                          n = 0
+                          DO k=1,Element % TYPE % NumberOfNodes
+                             DO l=1,Face % TYPE % NumberOfNodes
+                                IF ( Element % NodeIndexes(k)==Face % NodeIndexes(l)) n=n+1
+                             END DO
+                          END DO
+                          IF ( n==Element % TYPE % NumberOfNodes ) EXIT
+                       END IF
+                    END DO
 
-               CALL ZeroRow( A, nb )
-               CALL SetMatrixElement(A,nb,nb,1._dp)
-               A % ConstrainedDOF(nb) = .TRUE.
-               A % RHS(nb) = Work(1)/DiagScaling(nb)
-             END DO
+                    n=GetElementDOFs(GInd,Face)
+
+                    DO j=1,Face % BDOFs
+                       nb = x % Perm(GInd(n-Face % BDOFs+j))
+                       IF ( nb <= 0 ) CYCLE
+                       nb = Offset + x % DOFs*(nb-1) + DOF
+                       ! THE FOLLOWING SETS ONLY HOMOGENEOUS BCs:
+                       IF ( A % Symmetric ) THEN
+                          CALL CRS_SetSymmDirichlet(A,A % RHS,nb,0.0d0)
+                       ELSE
+                          CALL ZeroRow(A,nb)
+                          A % ConstrainedDOF(nb) = .TRUE.
+                          A % RHS(nb) = 0.0d0
+                          CALL SetMatrixElement(A,nb,nb,1._dp)
+                       END IF
+                    END DO
+
+                 END SELECT
+              ELSE
+                 n = Element % TYPE % NumberOfNodes
+                 !            CALL LocalBcIntegral( BC, Element, n, Name//' {f}', Work(1),Work(2) )
+
+                 n=GetElementDOFs(gInd)
+                 DO k=1,n
+                    nb = x % Perm(gInd(k))
+                    IF ( nb <= 0 ) CYCLE
+                    nb = Offset + x % DOFs*(nb-1) + DOF
+
+                    CALL ZeroRow( A, nb )
+                    CALL SetMatrixElement(A,nb,nb,1._dp)
+                    A % ConstrainedDOF(nb) = .TRUE.
+                    A % RHS(nb) = Work(1)/DiagScaling(nb)
+                 END DO
+              END IF
            END IF
 
            IF (.NOT.isActivePElement(Parent)) CYCLE

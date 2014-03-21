@@ -724,7 +724,11 @@ CONTAINS
   !
   ! Dirichlet BCs in terms of vector potential A:
   ! ---------------------------------------------
-  CALL DefaultDirichletBCs()
+  IF (PiolaVersion) THEN
+     CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
+  ELSE
+     CALL DefaultDirichletBCs()
+  END IF
 
   ! Dirichlet BCs in terms of magnetic flux density B:
   ! --------------------------------------------------
@@ -1765,7 +1769,7 @@ CONTAINS
     !-------------------------------------
     IP = EdgeElementGaussPoints(Element % TYPE % ElementCode / 100)
 
-    np = n*Solver % Def_Dofs(Element % BodyId,1)   
+    np = n*Solver % Def_Dofs(Element % BodyId,1)
     DO t=1,IP % n
 
        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -4890,14 +4894,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
   
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w,WBasis(32,3), SOL(2,32), PSOL(32), R(32), C(32), Norm
-   REAL(KIND=dp) :: RotWBasis(32,3), Basis(32), dBasisdx(32,3), B(2,3), E(2,3), JatIP(2,3), &
-                    VP_ip(2,3), Wbase(32), alpha(32), JXBatIP(2,3)
+   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), PSOL(35), R(35), C(35), Norm
+   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3), JatIP(2,3), &
+                    VP_ip(2,3), Wbase(35), alpha(35), JXBatIP(2,3)
    REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, ComponentLoss(2), LossCoeff, ValAtIP
    REAL(KIND=dp) :: Coeff, TotalLoss, localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3)
-   COMPLEX(KIND=dp) ::  Magnetization(3,32), MG_ip(3)
+   COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3)
 
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
@@ -5232,8 +5236,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           ! vector B_j(x), with the place x related to the reference element 
           ! coordinates p via the element mapping x = f(p). Additionally, 
           ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
-          ! TO DO: THE FIXED-SIZE ALLOCATION OF WBasis(:,:) AND RotWBasis(:,:)
-          ! MAY NOT BE LARGE ENOUGH 
           !-------------------------------------------------------------------------
           GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
           DO l = 1,nd-np 
@@ -5503,8 +5505,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           ! vector B_j(x), with the place x related to the reference element 
           ! coordinates p via the element mapping x = f(p). Additionally, 
           ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
-          ! TO DO: THE FIXED-SIZE ALLOCATION OF WBasis(:,:) AND RotWBasis(:,:)
-          ! MAY NOT BE LARGE ENOUGH 
           !-------------------------------------------------------------------------
           GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
           DO l = 1,nd-np 
