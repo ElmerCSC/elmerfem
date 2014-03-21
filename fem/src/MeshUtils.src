@@ -997,12 +997,14 @@ END SUBROUTINE GetMaxDefs
    TYPE(Mesh_t), POINTER :: Mesh
 
    INTEGER, POINTER :: DisContPerm(:)
-   LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:)
+   LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
+       NewMovingNode(:),NewStayingNode(:)
    LOGICAL :: Found, DisCont, Greedy
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        TargetBody, NoBulkElems, NoBoundElems, NoParentElems, &
-       DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems
+       DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
+       NoUndecided
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
        ParentElem, OtherElem
@@ -1193,8 +1195,14 @@ END SUBROUTINE GetMaxDefs
    ! do have some node on the discontinuous boundary. They should 
    ! change their node index together with the dominating destiny 
    ! of the related nodes.
-   NoStayingElems = 0
+
+   ALLOCATE( NewMovingNode( NoNodes ), NewStayingNode( NoNodes ) ) 
+
+10 NoStayingElems = 0
    NoMovingElems = 0
+   NoUndecided = 0
+   NewMovingNode = .FALSE.
+   NewStayingNode = .FALSE.
 
    DO t=1, NoBulkElems + NoBoundElems
 
@@ -1211,24 +1219,54 @@ END SUBROUTINE GetMaxDefs
      IF( NoMoving == 0 .AND. NoStaying == 0 ) CYCLE
 
      IF( NoStaying > NoMoving ) THEN
+       DisContElem(t) = .TRUE.
        NoStayingElems = NoStayingElems + 1
+       IF( t <= NoBulkElems ) THEN
+         NewStayingNode( Indexes ) = .TRUE. 
+       END IF
        CYCLE
      ELSE IF( NoMoving > NoStaying ) THEN
+       DisContElem(t) = .TRUE.
        NoMovingElems = NoMovingElems + 1 
+       IF( t <= NoBulkElems ) THEN
+         NewMovingNode( Indexes ) = .TRUE.
+       END IF
        DO i=1, SIZE(Indexes) 
          j = DisContPerm(Indexes(i))
          IF( j > 0 ) Indexes(i) = NoNodes + j
        END DO
      ELSE
-       PRINT *,'Undecided element:',t,NoMoving
+       NoUndecided = NoUndecided + 1
+       IF(.FALSE.) THEN
+         PRINT *,'Undecided element: ',t,NoMoving
+         PRINT *,'Indexes: ',Indexes
+         PRINT *,'x: ',Mesh % Nodes % x(Indexes)
+         PRINT *,'y: ',Mesh % Nodes % y(Indexes)
+         PRINT *,'z: ',Mesh % Nodes % z(Indexes)
+         PRINT *,'staying:',StayingNode(Indexes)
+         PRINT *,'moving: ',MovingNode(Indexes)
+       END IF
      END IF
 
    END DO
+
    CALL Info('CreateDiscontMesh','Number of related elements moving: '//TRIM(I2S(NoMovingElems)) )
    CALL Info('CreateDiscontMesh','Number of related elements staying: '//TRIM(I2S(NoStayingElems)) )
+   IF( NoUndecided > 0 ) THEN
+     MovingNode = MovingNode .OR. NewMovingNode
+     StayingNode = StayingNode .OR. NewStayingNode
+     CALL Info('CreateDiscontMesh','Number of related undecided elements: '//TRIM(I2S(NoUndecided)) )
+     IF( NoStayingElems + NoMovingElems == 0 ) THEN
+       CALL Warn('CreateDiscontMesh','Could not decide what to do with all elements!')
+     ELSE
+       CALL Info('CreateDiscontMesh','Reiterating the undecided elements')
+       GOTO 10
+     END IF
+   END IF
 
-   DEALLOCATE( MovingNode )
-   DEALLOCATE( StayingNode )
+
+   DEALLOCATE( MovingNode, StayingNode, NewMovingNode, NewStayingNode )
+
 
    ! Now add the new nodes also to the nodes structure
    ! and give the new nodes the same coordinates as the ones
@@ -1256,7 +1294,7 @@ END SUBROUTINE GetMaxDefs
      NoDisContElems = 0
      DO t=1, NoBoundElems
 
-       ! This includes already the sanity tests
+       ! This includes already the main sanity tests
        IF(.NOT. DisContElem(NoBulkElems+t) ) CYCLE
 
        Element => Mesh % Elements(NoBulkElems + t)
@@ -1268,11 +1306,17 @@ END SUBROUTINE GetMaxDefs
        DisContTarget = 0
        DO bc = 1,Model % NumberOfBCs
          IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+           ! Ok, to be on the safe side check that this really is a discontinuous BC 
+           ! and not one related boundary element that was flagged being close to boundary.
+           ! One could use an extra vector for this, this is not that pretty.
+           IF( .NOT. ListGetLogical( Model % BCs(bc) % Values,&
+               'Discontinuous Boundary',Found ) ) CYCLE
            DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
                'Discontinuous Target Boundary',Found )
            IF( Found ) EXIT
          END IF
        END DO
+       IF(.NOT. Found ) CYCLE
 
        IF( DisContTarget == 0 ) THEN
          CALL Fatal('CreateDiscontMesh','> Discontinuous Boundary Target < must be given for all, if any bc!')
