@@ -24,10 +24,10 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
-!  Post File = "discont.vtu"
+  Post File = "discont.vtu"
 
 ! Normally we dont want to apply this
-!  Discontinuous Boundaries Greedy = Logical True
+  Discontinuous Boundaries Greedy = Logical False
 
 ! Here the discontinuity loader is currently active
 ! This will become the default in future. 
@@ -98,7 +98,7 @@ End
 
 
 Solver 2
-  Exec Solver = never
+!  Exec Solver = never
 
   Equation = "SaveLine"
   Procedure = "SaveData" "SaveLine"

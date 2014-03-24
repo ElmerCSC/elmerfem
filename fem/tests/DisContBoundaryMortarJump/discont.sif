@@ -88,9 +88,9 @@ Solver 1
   Nonlinear System Newton After Tolerance = 1.0e-02
   Nonlinear System Relaxation Factor = 1.0
   
-  Linear System Scaling = False
-  Linear System Dirichlet Scaling = Logical False
-  Optimize Bandwidth = False
+!  Linear System Scaling = False
+!  Linear System Dirichlet Scaling = Logical False
+!  Optimize Bandwidth = False
 
   Linear System Abort Not Converged = False
   Apply Mortar BCs = True
@@ -105,7 +105,7 @@ Solver 2
   Filename = f.dat
 End
 
-
+ 
 
 Material 1
   Name = "Material"
