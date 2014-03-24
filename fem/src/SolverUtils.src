@@ -1512,7 +1512,7 @@ CONTAINS
 !---------------------------------------------------------------
    IF( ListGetLogical( Model % Solver % Values,'Apply Mortar BCs',GotIt ) ) THEN
      CALL SetWeightedProjectorJump( Model, A, b, &
-                      DOF, NDOFs, Perm )
+                      Name, DOF, NDOFs, Perm )
    END IF
 
 
@@ -2525,16 +2525,18 @@ CONTAINS
 !> This implements the jump condition. 
 !------------------------------------------------------------------------------
    SUBROUTINE SetWeightedProjectorJump( Model, A, b, &
-       DOF, NDOFs, Perm )
+       Name, DOF, NDOFs, Perm )
      !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model        !< The current model structure
      TYPE(Matrix_t), POINTER :: A  !< The global matrix
      REAL(KIND=dp) :: b(:)         !< The global RHS vector
+     CHARACTER(LEN=*) :: Name      !< name of the dof to be set
      INTEGER :: DOF                !< The order number of the dof
      INTEGER :: NDOFs              !< the total number of DOFs for this equation
      INTEGER, TARGET :: Perm(:)    !< The node reordering info
      !------------------------------------------------------------------------------
-     INTEGER :: i,j,k,i2,j2,k2,n,u,v,node,totsize,nodesize,bc_ind,nnodes
+     INTEGER :: i,j,k,i2,j2,k2,n,u,v,node,totsize,nodesize,bc_ind,&
+         nnodes,nlen
      INTEGER, POINTER :: PPerm(:)
      INTEGER, ALLOCATABLE :: InvInvPerm(:)
      LOGICAL :: Found
@@ -2563,14 +2565,16 @@ CONTAINS
          Projector => Projector % ConstraintMatrix
          CYCLE
        END IF
-
+      
        ! For this boundary there should also be a coefficient 
        ! otherwise nothing needs to be done. 
+       nlen = LEN_TRIM(Name)
        BC => Model % BCs(bc_ind) % Values
-       IF( .NOT. ListCheckPresent( BC,'Mortar BC Coefficient') ) THEN
+       IF( .NOT. ListCheckPresent( BC,'Mortar BC Coefficient '//Name(1:nlen)) ) THEN
          Projector => Projector % ConstraintMatrix
          CYCLE
        END IF
+
 
        CALL Info('SetWeightedProjectorJump','Setting jump to mortar projector in BC '&
            //TRIM(I2S(i)),Level=7)
@@ -2605,7 +2609,7 @@ CONTAINS
          ! Outside code this tells the active element
          Model % CurrentElement => Element
          
-         nnodes = Element % Type % NumberOfNodes
+         nnodes = Element % TYPE % NumberOfNodes
          DO u=1, nnodes
            node = Element % NodeIndexes(u)
            IF( node > nodesize ) CYCLE
@@ -2641,7 +2645,8 @@ CONTAINS
                IF( k2 == i2 + totsize ) THEN
                  ! Ok, found it. Now set the value. 
 
-                 coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient',node, Found )        
+                 coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
+                     //Name(1:nlen),node, Found )        
                  IF( Found ) THEN
                    ! The factor 0.5 comes from the fact that the 
                    ! contribution is summed twice, 2nd time as transpose

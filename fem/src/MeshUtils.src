@@ -4259,7 +4259,7 @@ END SUBROUTINE GetMaxDefs
     Scale = ListGetCReal( Model % BCs(bc) % Values,'Mortar BC Scaling',Stat )  
     IF(.NOT. Stat) Scale = -1.0_dp
 
-    NodalJump = ListCheckPresent( Model % BCs(bc) % Values,'Mortar BC Coefficient')
+    NodalJump = ListCheckPrefix( Model % BCs(bc) % Values,'Mortar BC Coefficient')
     size0 = Mesh % NumberOfNodes
 
     AxisSym = .FALSE.
@@ -4704,7 +4704,7 @@ END SUBROUTINE GetMaxDefs
     PeriodicScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) PeriodicScale = 1._dp
 
-    NodalJump = ListCheckPresent( BC,'Mortar BC Coefficient')
+    NodalJump = ListCheckPrefix( BC,'Mortar BC Coefficient')
 
 
     ! Create temporal mesh structures that are utilized when making the 
