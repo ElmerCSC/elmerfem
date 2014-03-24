@@ -3060,7 +3060,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(Element_t),POINTER :: Element, Edge
 
   REAL(KIND=dp) :: Norm, Omega
-  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
+  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0
   INTEGER :: NoIterationsMin, NoIterationsMax
@@ -3070,6 +3070,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
 
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
 
@@ -3078,9 +3079,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
   TYPE(Variable_t), POINTER :: fixJpot
 
-  CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel
+  CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack
+  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
@@ -3090,7 +3091,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
-       LamThick, AllocationsDone
+       LamThick, AllocationsDone, RotM
 !------------------------------------------------------------------------------
 
 
@@ -3103,6 +3104,10 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   A => GetMatrix()
 
   IF ( .NOT. AllocationsDone ) THEN
+
+     IF (Solver % Variable % dofs /= 2) CALL Fatal ('WhitneyAVHarmonicSolver_Init', &
+       'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
+
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), Acoef(N), LamCond(N), &
@@ -3297,11 +3302,32 @@ CONTAINS
          END SELECT
        END IF
 
+       BodyParams => GetBodyParams( Element )
+       IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
+
+       CoilBody = .False.
+       CoilType = GetString(BodyParams, 'Coil Type', Found)
+       IF (.NOT. Found) THEN
+          CoilType = ''
+       ELSE
+          SELECT CASE (CoilType)
+          CASE ('stranded')
+             CoilBody = .True.
+          CASE ('massive')
+             CoilBody = .True.
+          CASE ('foil winding')
+             CoilBody = .True.
+             CALL GetElementRotM(Element, RotM, n)
+          CASE DEFAULT
+             CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
+          END SELECT
+        END IF
+
        !Get element local matrix and rhs vector:
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
-          LamCond, Element, n, nd )
+          LamCond, CoilBody, CoilType, RotM, Element, n, nd )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
@@ -3813,7 +3839,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
-            LamThick, LamCond, Element, n, nd )
+            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
@@ -3824,14 +3850,15 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n)
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,FixJPot(2,nd)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,FixJPot(2,nd), &
+                     RotMLoc(3,3), RotM(3,3,n)
 
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd)
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
 
-    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve
+    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody
     INTEGER :: t, i, j, p, q, np, siz
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -3907,8 +3934,13 @@ CONTAINS
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
+           IF(CoilType == 'foil winding') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
+
+       ! Transform the conductivity tensor (in case of a foil winding):
+       ! --------------------------------------------------------------
+       IF (CoilType == 'foil winding') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
@@ -3946,36 +3978,40 @@ CONTAINS
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
-       !
-       ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
-       ! --------------------------------------------------------
-       DO i=1,np
-         p = i
-         DO j=1,np
-           q = j
+       ! If we calculate a coil, the nodal degrees of freedom are not used:
+       ! ------------------------------------------------------------------
+       IF (.NOT. CoilBody) THEN
+          !
+          ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
+          ! --------------------------------------------------------
+          DO i=1,np
+            p = i
+            DO j=1,np
+              q = j
 
-           ! Compute the conductivity term <C grad V,grad v> for stiffness 
-           ! matrix (anisotropy taken into account)
-           ! -------------------------------------------
-           IF ( SUM(C) /= 0._dp ) THEN
-             STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
-           END IF
-         END DO
-         DO j=1,nd-np
-           q = j+np
+              ! Compute the conductivity term <C grad V,grad v> for stiffness 
+              ! matrix (anisotropy taken into account)
+              ! -------------------------------------------
+              IF ( SUM(C) /= 0._dp ) THEN
+                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
+              END IF
+            END DO
+            DO j=1,nd-np
+              q = j+np
 
-           ! Compute the conductivity term <j * omega * C A,grad v> for 
-           ! stiffness matrix (anisotropy taken into account)
-           ! -------------------------------------------
-           STIFF(p,q) = STIFF(p,q) + im * Omega * &
-               SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
+              ! Compute the conductivity term <j * omega * C A,grad v> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! -------------------------------------------
+              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+                  SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
 
-           ! Compute the conductivity term <C grad V, eta> for 
-           ! stiffness matrix (anisotropy taken into account)
-           ! ------------------------------------------------
-           STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
-         END DO
-       END DO
+              ! Compute the conductivity term <C grad V, eta> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! ------------------------------------------------
+              STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
+            END DO
+          END DO
+       END IF ! (.NOT. CoilBody)
 
        !
        ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
@@ -4000,7 +4036,7 @@ CONTAINS
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           STIFF(p,q) = STIFF(p,q) + im*Omega* &
+           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + im*Omega* &
                         SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO
@@ -4492,6 +4528,38 @@ CONTAINS
     Found=.TRUE.; RETURN
 !------------------------------------------------------------------------------
   END FUNCTION FloodFill
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ SUBROUTINE GetElementRotM(Element,RotM,n)
+!------------------------------------------------------------------------------
+   TYPE(Element_t) :: Element
+   INTEGER :: k, l, m, j, n
+   REAL(KIND=dp) :: RotM(3,3,n)
+   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
+   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
+   TYPE(Variable_t), POINTER, SAVE :: RotMvar
+   LOGICAL, SAVE :: visited = .FALSE.
+ 
+
+   IF(.NOT. visited) THEN
+     visited = .TRUE.
+     RotMvar => VariableGet( Mesh % Variables, 'RotM E')
+     IF(.NOT. ASSOCIATED(RotMVar)) THEN
+       CALL Fatal('GetElementRotM','RotM E variable not found')
+     END IF
+   END IF
+
+   RotM = 0._dp
+   DO j = 1, n
+     DO k=1,RotMvar % DOFs
+       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
+             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
+     END DO
+   END DO
+
+!------------------------------------------------------------------------------
+ END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
