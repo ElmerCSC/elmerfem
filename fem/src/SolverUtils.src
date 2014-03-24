@@ -2034,8 +2034,8 @@ CONTAINS
                 ELSE
                   CALL ZeroRow( A,k )
                   IF( .NOT. OffDiagonal ) THEN
-                    CALL SetMatrixElement( A,k,k,1.0d0 )
-                    b(k) = Work(j)/DiagScaling(k)
+                    CALL SetMatrixElement( A,k,k,1._dp )
+                    b(k) = Work(j) / DiagScaling(k)
                     IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
                   END IF
                 END IF
@@ -7064,6 +7064,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet
   SAVE MultiplierValues, SolverPointer
   CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
+
 !------------------------------------------------------------------------------
   CALL Info( 'SolveWithLinearRestriction ', ' ', Level=5 )
   SolverPointer => Solver
@@ -7156,6 +7157,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   EnforceDirichlet = ListGetLogical( Solver % Values, 'Enforce Exact Dirichlet BCs',Found)
   IF(.NOT.Found) EnforceDirichlet = .TRUE.
+  EnforceDirichlet = EnforceDirichlet .AND. ALLOCATED(StiffMatrix % ConstrainedDOF)
 
   IF(ASSOCIATED(RestMatrix)) THEN
     DO i=RestMatrix % NumberOfRows,1,-1
@@ -7166,9 +7168,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       CALL AddToMatrixElement( CollectionMatrix,k,k,0._dp )
 
       DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
-        Found = ALLOCATED(StiffMAtrix % ConstrainedDOF)
-        IF(Found) Found=.NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
-        IF(.NOT.EnforceDirichlet.OR.Found) THEN
+        Found = .TRUE.
+        IF (EnforceDirichlet) &
+          Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
+
+        IF(Found) THEN
           CALL AddToMatrixElement( CollectionMatrix, &
              RestMatrix % Cols(j), k, RestMatrix % Values(j))
         END IF
@@ -7186,10 +7190,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(ASSOCIATED(AddMatrix)) THEN
     DO i=AddMatrix % NumberOfRows,1,-1
       Found = .TRUE.
-      IF (i<=StiffMatrix % NumberOFRows.AND.ALLOCATED(StiffMatrix % ConstrainedDOF)) &
+      IF (EnforceDirichlet .AND. i<=StiffMatrix % NumberOFRows) &
          Found = .NOT.StiffMatrix % ConstrainedDOF(i)
 
-      IF(.NOT.EnforceDirichlet.OR.Found) THEN
+      IF(Found) THEN
         DO j=AddMatrix % Rows(i+1)-1,AddMatrix % Rows(i),-1
             CALL AddToMatrixElement( CollectionMatrix, &
                i, AddMatrix % Cols(j), AddMatrix % Values(j))
