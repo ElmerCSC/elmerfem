@@ -998,8 +998,8 @@ END SUBROUTINE GetMaxDefs
 
    INTEGER, POINTER :: DisContPerm(:)
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
-       NewMovingNode(:),NewStayingNode(:)
-   LOGICAL :: Found, DisCont, Greedy
+       NewMovingNode(:),NewStayingNode(:),DecidedElem(:)
+   LOGICAL :: Found, DisCont, Greedy, Debug
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        TargetBody, NoBulkElems, NoBoundElems, NoParentElems, &
@@ -1019,9 +1019,11 @@ END SUBROUTINE GetMaxDefs
    NoBoundElems = Mesh % NumberOfBoundaryElements
 
    ALLOCATE( DisContNode(NoNodes))
-   ALLOCATE( DisContElem(NoBulkElems+NoBoundElems))
+   ALLOCATE( DisContElem(NoBoundElems))
+   ALLOCATE( DecidedElem(NoBulkElems+NoBoundElems))
    DisContNode = .FALSE.
    DisContElem = .FALSE.
+   DecidedElem = .FALSE.
    NoDisContElems = 0
 
    ! Go over all boundary elements and mark nodes that should be 
@@ -1055,15 +1057,16 @@ END SUBROUTINE GetMaxDefs
      END IF
 
      DisContNode( Indexes ) = .TRUE.
-     DisContElem( NoBulkElems + t ) = .TRUE.
-     DisContElem( RightElem % ElementIndex ) = .TRUE.
-     DisContElem( LeftElem % ElementIndex ) = .TRUE.
+     DisContElem( t ) = .TRUE.
+     DecidedElem( NoBulkElems + t ) = .TRUE.
+     DecidedElem( RightElem % ElementIndex ) = .TRUE.
+     DecidedElem( LeftElem % ElementIndex ) = .TRUE.
    END DO
 
    ! Calculate the number of discontinuous nodes and the number of bulk elements 
    ! associated to them. 
-   NoDisContElems = COUNT( DiscontElem(NoBulkElems+1:NoBulkElems+NoBoundElems) )
-   NoParentElems = COUNT( DiscontElem(1:NoBulkElems) )
+   NoDisContElems = COUNT( DiscontElem(1:NoBoundElems) )
+   NoParentElems = COUNT( DecidedElem(1:NoBulkElems) )
    NoDisContNodes = COUNT( DisContNode ) 
 
    CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '//TRIM(I2S(NoDisContElems)) )
@@ -1072,7 +1075,7 @@ END SUBROUTINE GetMaxDefs
 
    IF( NoDiscontNodes == 0) THEN
      CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
-     DEALLOCATE( DiscontNode, DiscontElem )
+     DEALLOCATE( DiscontNode, DiscontElem, DecidedElem )
      RETURN
    END IF
 
@@ -1081,9 +1084,10 @@ END SUBROUTINE GetMaxDefs
    ! boundary are treated as discontinuous. However, the user may be greedy and use all candidate nodes.  
    n = NoDiscontNodes
    Greedy = ListGetLogical( Model % Simulation,'Discontinuous Boundaries Greedy',Found ) 
+   IF(.NOT. Found ) Greedy = .TRUE.
    IF( .NOT. Greedy ) THEN
      DO t = 1, NoBulkElems
-       IF( DiscontElem(t) ) CYCLE
+       IF( DecidedElem(t) ) CYCLE
        Element => Mesh % Elements(t)
        Indexes => Element % NodeIndexes
        DisContNode( Indexes ) = .FALSE.
@@ -1098,11 +1102,11 @@ END SUBROUTINE GetMaxDefs
    END IF
 
    IF( NoDiscontNodes == 0 ) THEN
-     IF( n > 0 ) THEN
+     IF( n > 0 .AND. .NOT. Greedy ) THEN
        CALL Info('CreateDiscontMesh','You might want to try the Greedy strategy',Level=3)
      END IF
      CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
-     DEALLOCATE( DiscontNode, DiscontElem )
+     DEALLOCATE( DiscontNode, DiscontElem, DecidedElem )
      RETURN
    END IF
 
@@ -1131,7 +1135,7 @@ END SUBROUTINE GetMaxDefs
    ! consistency. 
    DO t=1, NoBoundElems
 
-     IF(.NOT. DisContElem(NoBulkElems + t) ) CYCLE
+     IF(.NOT. DisContElem(t) ) CYCLE
 
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
@@ -1176,6 +1180,15 @@ END SUBROUTINE GetMaxDefs
      ! Ok, we found the element to manipulate the indexes. 
      ! The new index is numbered on top of the old indexes. 
 
+     IF( .FALSE. ) THEN
+       PRINT *,'this:',Indexes
+       PRINT *,'other:',OtherElem % ElementIndex
+       PRINT *,'Indexes:',OtherElem % NodeIndexes
+
+       PRINT *,'parent:',ParentElem % ElementIndex
+       PRINT *,'Indexes:',ParentElem % NodeIndexes
+     END IF
+
      ParentIndexes => ParentElem % NodeIndexes
      DO i=1,SIZE(ParentIndexes) 
        j = ParentIndexes(i)
@@ -1185,9 +1198,15 @@ END SUBROUTINE GetMaxDefs
        END IF
      END DO
 
+     IF( .FALSE. ) THEN
+       PRINT *,'Indexes2:',ParentElem % NodeIndexes
+     END IF
+
      ! Then set in a consistent manner the elements
-     Element % BoundaryInfo % Left => ParentElem
-     Element % BoundaryInfo % Right => OtherElem
+     ! Now the "right" parent includes the new indexes
+     ! and the "left" the original ones.
+     Element % BoundaryInfo % Left => OtherElem
+     Element % BoundaryInfo % Right => ParentElem
    END DO
 
 
@@ -1206,7 +1225,7 @@ END SUBROUTINE GetMaxDefs
 
    DO t=1, NoBulkElems + NoBoundElems
 
-     IF( DisContElem(t) ) CYCLE
+     IF( DecidedElem(t) ) CYCLE
 
      Element => Mesh % Elements(t)
      Indexes => Element % NodeIndexes
@@ -1219,14 +1238,14 @@ END SUBROUTINE GetMaxDefs
      IF( NoMoving == 0 .AND. NoStaying == 0 ) CYCLE
 
      IF( NoStaying > NoMoving ) THEN
-       DisContElem(t) = .TRUE.
+       DecidedElem(t) = .TRUE.
        NoStayingElems = NoStayingElems + 1
        IF( t <= NoBulkElems ) THEN
          NewStayingNode( Indexes ) = .TRUE. 
        END IF
        CYCLE
      ELSE IF( NoMoving > NoStaying ) THEN
-       DisContElem(t) = .TRUE.
+       DecidedElem(t) = .TRUE.
        NoMovingElems = NoMovingElems + 1 
        IF( t <= NoBulkElems ) THEN
          NewMovingNode( Indexes ) = .TRUE.
@@ -1294,8 +1313,8 @@ END SUBROUTINE GetMaxDefs
      NoDisContElems = 0
      DO t=1, NoBoundElems
 
-       ! This includes already the main sanity tests
-       IF(.NOT. DisContElem(NoBulkElems+t) ) CYCLE
+       ! Is this a boundary to be doubled?
+       IF(.NOT. DisContElem(t) ) CYCLE
 
        Element => Mesh % Elements(NoBulkElems + t)
        IF(.NOT. ASSOCIATED(Element) ) THEN
@@ -1306,11 +1325,6 @@ END SUBROUTINE GetMaxDefs
        DisContTarget = 0
        DO bc = 1,Model % NumberOfBCs
          IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-           ! Ok, to be on the safe side check that this really is a discontinuous BC 
-           ! and not one related boundary element that was flagged being close to boundary.
-           ! One could use an extra vector for this, this is not that pretty.
-           IF( .NOT. ListGetLogical( Model % BCs(bc) % Values,&
-               'Discontinuous Boundary',Found ) ) CYCLE
            DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
                'Discontinuous Target Boundary',Found )
            IF( Found ) EXIT
@@ -1374,7 +1388,7 @@ END SUBROUTINE GetMaxDefs
      Mesh % DisContNodes = NoDisContNodes 
    END IF
 
-   DEALLOCATE( DisContNode, DiscontElem )
+   DEALLOCATE( DisContNode, DiscontElem, DecidedElem )
 
  END SUBROUTINE CreateDiscontMesh
 
