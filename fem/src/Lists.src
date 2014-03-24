@@ -1191,6 +1191,62 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Finds an entry in the list by its name and returns a handle to it.
+!> This one just finds a keyword with the same start as specified by 'name'.
+!------------------------------------------------------------------------------
+   FUNCTION ListFindPrefix( list, name, Found) RESULT(ptr)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list, ptr
+     CHARACTER(LEN=*) :: name
+     LOGICAL, OPTIONAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(Varying_string) :: strn
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+!------------------------------------------------------------------------------
+     INTEGER :: k, k1, n, m
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+     
+     ptr => NULL()
+     IF ( ListGetNamespace(strn) ) THEN
+       strn = strn //' '//str(1:k)
+       k1 = LEN(strn)
+       ptr => List
+       DO WHILE( ASSOCIATED(ptr) )
+          n = ptr % NameLen
+          IF ( n >= k1 ) THEN
+            IF ( ptr % Name(1:k1) == strn ) EXIT
+          END IF
+          ptr => ptr % Next
+       END DO
+     END IF
+
+     IF ( .NOT. ASSOCIATED(ptr) ) THEN
+       Ptr => List
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         IF ( n >= k ) THEN
+           IF ( ptr % Name(1:k) == str(1:k) ) EXIT
+         END IF
+         ptr => ptr % Next
+       END DO
+     END IF
+
+     IF ( PRESENT(Found) ) THEN
+       Found = ASSOCIATED(ptr)
+     ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
+       CALL Warn( 'ListFindPrefix', ' ' )
+       WRITE(Message,*) 'Requested prefix: ', '[',TRIM(Name),'], not found'
+       CALL Warn( 'ListFindPrefix', Message )
+       CALL Warn( 'ListFindPrefix', ' ' )
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ListFindPrefix
+!------------------------------------------------------------------------------
+
+
+  
+!------------------------------------------------------------------------------
 !> Just checks if a entry is present in the list.
 !------------------------------------------------------------------------------
    FUNCTION ListCheckPresent( List,Name ) RESULT(Found)
@@ -1205,6 +1261,24 @@ CONTAINS
 !------------------------------------------------------------------------------
    END FUNCTION ListCheckPresent
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Just checks if a prefix is present in the list.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPrefix( List,Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     ptr => ListFindPrefix(List,Name,Found)
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPrefix
+!------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
