@@ -3110,8 +3110,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
-          MASS(N,N), Tcoef(3,3,N), Acoef(N), LamCond(N), &
-          LamThick(N), STAT=istat )
+          MASS(N,N), Tcoef(3,3,N), RotM(3,3,N), &
+          Acoef(N), LamCond(N), LamThick(N), &
+          STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
      END IF
