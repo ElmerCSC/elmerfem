@@ -1,0 +1,22 @@
+! Name of the mesh directory (should exist)
+WithOutCavity
+! Surface DEM name file
+DEM_TR_surf.dat
+! Nsx, Nsy
+268  118
+! xs0, ys0
+947700.0 2104850.0
+! lsx, lsy
+800.0 350.0
+! Bedrock DEM name file
+DEM_TR_bed.dat
+! Nbx, Nby
+301  176
+! xb0, yb0
+947700.0 2104850.0
+! lbx, lby
+600.0 350.0
+! Minimum ice thickness
+1.0
+! Number of Partitions 
+6

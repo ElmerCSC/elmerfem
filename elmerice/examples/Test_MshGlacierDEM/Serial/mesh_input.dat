@@ -18,3 +18,5 @@ DEM_TR_bed.dat
 600.0 350.0
 ! Minimum ice thickness
 1.0
+! Number of Partitions 
+1
