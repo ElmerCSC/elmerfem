@@ -3793,6 +3793,7 @@ CONTAINS
           sdofs = 1
         END IF
 
+
         !---------------------------------------------------------------------
         ! Finally save the field values 
         !---------------------------------------------------------------------
@@ -3936,6 +3937,12 @@ CONTAINS
         Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
         ComponentVector = .FALSE.
 
+        ! If we are looking for a vector just one dofs wont do!
+        ! This circumvents a problem somewhere else in the code. 
+        IF( ASSOCIATED( Solution ) ) THEN
+          IF( Rank > 0 .AND. Solution % Dofs <= 1 ) NULLIFY( Solution ) 
+        END IF
+
         IF(.NOT. ASSOCIATED(Solution)) THEN
           Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
           IF( ASSOCIATED(Solution)) THEN 
@@ -3960,7 +3967,7 @@ CONTAINS
         ELSE
           sdofs = 1
         END IF
-        
+
         !---------------------------------------------------------------------
         ! Finally save the field values 
         !---------------------------------------------------------------------
