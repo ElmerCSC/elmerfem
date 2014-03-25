@@ -16,6 +16,3 @@ ExtrudeMesh teterousse WithOutCavity 14 1 6 0 0 0 0
 % Input data are in mesh_input.dat
 elmerf90-nosh MshGlacier.f90 -o MshGlacier
 ./MshGlacierDEM
-
-% Make a .ep to visualize in ElmerPost the mesh
-ElmerGrid 2 3 WithOutCavity
