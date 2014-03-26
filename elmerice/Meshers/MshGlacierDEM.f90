@@ -318,7 +318,7 @@ DO k = 1, Np
         
       znew = zbed + z * MAX((zsurf - zbed),hmin) 
         
-      WRITE(12,1200)Node(i),j,x,y,znew
+      WRITE(12,1200)Node(n),j,x,y,znew
    END DO ! NtN
    CLOSE(12)
    DEALLOCATE (Node, xnode, ynode, znode)
