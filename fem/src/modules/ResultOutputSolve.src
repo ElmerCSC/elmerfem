@@ -4026,13 +4026,15 @@ CONTAINS
               IF (.NOT.ASSOCIATED(Parent) ) &
                 Parent => CurrentElement % BoundaryInfo % Right
 
-              IF ( ASSOCIATED(Parent) .AND. ASSOCIATED(Parent % DGIndexes) ) THEN
-                DO j=1,n
-                  DO k=1,Parent % Type % NumberOfNodes
-                    IF(Currentelement % NodeIndexes(j) == Parent % NodeIndexes(k)) &
-                    ElemInd(j) = Perm( Parent % DGIndexes(k) )
+              IF ( ASSOCIATED(Parent) ) THEN
+                IF (ASSOCIATED(Parent % DGIndexes) ) THEN
+                  DO j=1,n
+                    DO k=1,Parent % Type % NumberOfNodes
+                      IF(Currentelement % NodeIndexes(j) == Parent % NodeIndexes(k)) &
+                      ElemInd(j) = Perm( Parent % DGIndexes(k) )
+                    END DO
                   END DO
-                END DO
+                END IF
               END IF
             ELSE
               ElemInd(1:n) = Perm( CurrentElement % DGIndexes(1:n) )
