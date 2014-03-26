@@ -181,8 +181,7 @@ Solver 2
   Linear System Max Iterations=1000
   Linear System Residual Output=10
   Linear System Abort not Converged=False
-  Linear System preconditioning=ilu
-  Linear System ILUT Tolerance=1e-8
+  Linear System preconditioning=ilu2
   Linear System Iterative Method = BicgstabL
 
 ! Linear System Solver = "Direct"
@@ -193,7 +192,7 @@ End
 
 ! Lasketaan magneetivuontiheys vektoripotentiaalista
 Solver 3
-  Exec Solver = Always
+  Exec Solver = never
   Equation = ComputeB
   Variable = -nooutput temp
 
@@ -205,12 +204,13 @@ Solver 3
   Linear System Iterative Method = BicgstabL
   Linear System Symmetric = True
   Linear System Max Iterations = 100
-  Linear System Preconditioning = ILU
+  Linear System Preconditioning = ILU2
   Linear System Convergence Tolerance = 1.0e-8
 End
 
 ! Tallennetaan jännitteet ja vääntömomentti
 Solver 4
+  Exec Solver = never
   Procedure = "SaveData" "SaveScalars"
   Filename = "l.dat"
 End
@@ -245,5 +245,5 @@ Boundary Condition 6:: Target Boundaries(1) = 6
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.58245765\n ");
+$fprintf( stderr, "END TEST CASE 1: Target NRM= 77.630006\n");
 !End Of File

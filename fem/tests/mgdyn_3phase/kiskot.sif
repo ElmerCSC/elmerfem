@@ -57,7 +57,7 @@ Solver 1
 
   Linear System Preconditioning = None
   Linear System Solver = "Iterative"
-  Linear System Residual Output = 5
+  Linear System Residual Output = 10
   Linear System Max Iterations = 5000
 
   Linear System Iterative Method = Bicgstabl
@@ -69,6 +69,7 @@ Solver 1
 End
 
 Solver 2
+  Exec Solver = never
   Equation = "MGDynamicsCalc"
 
   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
@@ -196,4 +197,4 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=1589.9049\n ");
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.55302509E-01\n");
