@@ -3589,7 +3589,8 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Solution
     INTEGER, POINTER :: Perm(:), Perm2(:), DispPerm(:), Disp2Perm(:)
     REAL(KIND=dp), POINTER :: Values(:), DispValues(:), Disp2Values(:), Values2(:), Values3(:)
-    REAL(KIND=dp) :: x,y,z, ElemVectVal(3),val
+    REAL(KIND=dp) :: x,y,z, val
+    REAL(KIND=dp), ALLOCATABLE :: ElemVectVal(:)
     COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: CurrentElement
@@ -3961,11 +3962,23 @@ CONTAINS
         Perm => Solution % Perm
         Dofs = Solution % DOFs
         Values => Solution % Values
+
         
-        IF( dofs > 1 ) THEN
-          sdofs = MAX(dofs,dim)
-        ELSE
-          sdofs = 1
+       !---------------------------------------------------------------------
+        ! Some vectors are defined by a set of components (either 2 or 3)
+        !---------------------------------------------------------------------
+        sdofs = 1
+        IF( ComponentVector ) THEN
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+          IF( ASSOCIATED(Solution)) THEN
+            Values2 => Solution % Values
+            sdofs = 2
+          END IF
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+          IF( ASSOCIATED(Solution)) THEN
+            Values3 => Solution % Values
+            sdofs = 3
+          END IF
         END IF
 
         !---------------------------------------------------------------------
@@ -3995,31 +4008,35 @@ CONTAINS
 
         
         IF( WriteData ) THEN
-
           IF( BinaryOutput ) WRITE( VtuUnit ) k
 
+          ALLOCATE(ElemVectVal(sdofs))
           DO i = ElemFirst, ElemLast
             IF( .NOT. ActiveElem(i) ) CYCLE
-
-            ElemVectVal = 0.0
             CurrentElement => Model % Elements(i)
 
             IF (i <= Mesh % NumberOfBulkElements) THEN
               IF ( ALL(Perm(CurrentElement % DGIndexes)>0)) THEN
                 n = GetElementNOFNodes(CurrentElement)
-                DO j=1,dofs
-                  ElemVectVal(j) = SUM(Values(dofs*(perm(CurrentElement % DGIndexes)-1)+j))/n
+                DO k=1,sdofs
+                  IF(ComponentVector) THEN
+                    IF (k==1) ElemVectVal(k) = SUM(Values(dofs*(perm(CurrentElement % DGIndexes)-1)+k))/n
+                    IF (k==2) ElemVectVal(k) = SUM(Values2(dofs*(perm(CurrentElement % DGIndexes)-1)+k))/n
+                    IF (k==3) ElemVectVal(k) = SUM(Values3(dofs*(perm(CurrentElement % DGIndexes)-1)+k))/n
+                  ELSE
+                    ElemVectVal(k) = SUM(Values(dofs*(perm(CurrentElement % DGIndexes)-1)+k))/n
+                  END IF
                 END DO
               END IF
             END IF
-            
-            DO j=1,sdofs                
-              CALL RealWrite( ElemVectVal(j) )
-            END DO            
+
+            DO k=1,sdofs
+              CALL RealWrite( ElemVectVal(k) )
+            END DO
           END DO
 
           CALL RealWrite( 0.0_dp, .TRUE. )
-
+          DEALLOCATE(ElemVectVal)
         END IF
         
         IF( AsciiOutput ) THEN
