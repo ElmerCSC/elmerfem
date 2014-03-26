@@ -4021,9 +4021,9 @@ CONTAINS
                 n = GetElementNOFNodes(CurrentElement)
                 DO k=1,sdofs
                   IF(ComponentVector) THEN
-                    IF (k==1) ElemVectVal(k) = SUM(Values(dofs*(perm(CurrentElement % DGIndexes)-1)+k))/n
-                    IF (k==2) ElemVectVal(k) = SUM(Values2(dofs*(perm(CurrentElement % DGIndexes)-1)+k))/n
-                    IF (k==3) ElemVectVal(k) = SUM(Values3(dofs*(perm(CurrentElement % DGIndexes)-1)+k))/n
+                    IF (k==1) ElemVectVal(k) = SUM(Values(perm(CurrentElement % DGIndexes)))/n
+                    IF (k==2) ElemVectVal(k) = SUM(Values2(perm(CurrentElement % DGIndexes)))/n
+                    IF (k==3) ElemVectVal(k) = SUM(Values3(perm(CurrentElement % DGIndexes)))/n
                   ELSE
                     ElemVectVal(k) = SUM(Values(dofs*(perm(CurrentElement % DGIndexes)-1)+k))/n
                   END IF
