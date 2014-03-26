@@ -4015,6 +4015,7 @@ CONTAINS
             IF( .NOT. ActiveElem(i) ) CYCLE
             CurrentElement => Model % Elements(i)
 
+            ElemVectVal = 0._dp
             IF (i <= Mesh % NumberOfBulkElements) THEN
               IF ( ALL(Perm(CurrentElement % DGIndexes)>0)) THEN
                 n = GetElementNOFNodes(CurrentElement)
