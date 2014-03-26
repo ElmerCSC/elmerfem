@@ -2539,7 +2539,7 @@ CONTAINS
          nnodes,nlen
      INTEGER, POINTER :: PPerm(:)
      INTEGER, ALLOCATABLE :: InvInvPerm(:)
-     LOGICAL :: Found
+     LOGICAL :: Found, AddRhs, AddCoeff
      LOGICAL, ALLOCATABLE :: NodeDone(:)
      REAL(KIND=dp) :: coeff, weight
      TYPE(Matrix_t), POINTER :: Projector
@@ -2570,7 +2570,19 @@ CONTAINS
        ! otherwise nothing needs to be done. 
        nlen = LEN_TRIM(Name)
        BC => Model % BCs(bc_ind) % Values
-       IF( .NOT. ListCheckPresent( BC,'Mortar BC Coefficient '//Name(1:nlen)) ) THEN
+
+       AddCoeff = ListCheckPresent( BC,'Mortar BC Coefficient '//Name(1:nlen))
+
+       AddRhs = ListCheckPresent( BC,'Mortar BC Offset '//Name(1:nlen))
+       IF( AddRhs ) THEN
+         IF( .NOT. ASSOCIATED( Projector % Rhs ) ) THEN
+           CALL Info('SetWeightedProjectorJump','Allocating projector rhs')
+           ALLOCATE( Projector % Rhs( Projector % NumberOfRows ) )
+         END IF
+         Projector % Rhs = 0.0_dp
+       END IF
+
+       IF( .NOT. (AddCoeff .OR. AddRhs) ) THEN
          Projector => Projector % ConstraintMatrix
          CYCLE
        END IF
@@ -2638,30 +2650,43 @@ CONTAINS
              i2 = InvInvPerm( k )
              IF( i2 == 0 ) CYCLE
 
-             ! Now find the entry in the sparse matrix. 
-             Found = .FALSE.
-             DO j2 = Projector % Rows(i),Projector % Rows(i+1)-1
-               k2 = Projector % Cols(j2)
-               IF( k2 == i2 + totsize ) THEN
-                 ! Ok, found it. Now set the value. 
-
-                 coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
-                     //Name(1:nlen),node, Found )        
-                 IF( Found ) THEN
-                   ! The factor 0.5 comes from the fact that the 
-                   ! contribution is summed twice, 2nd time as transpose
-                   ! For Nodal projector the entry is 1/(weight*coeff)
-                   ! For Galerkin projector the is weight/coeff 
-                   weight = Projector % Values(j)
-                   Projector % Values(j2) = -0.5 * weight / coeff
-                 END IF
-
-                 EXIT
+             ! Weight is inhereted from the Galerkin projector
+             weight = Projector % Values(j)
+ 
+             IF( AddRhs ) THEN
+               coeff = ListGetRealAtNode( BC,'Mortar BC Offset '&
+                   //Name(1:nlen),node, Found )        
+               IF( Found ) THEN
+                 Projector % Rhs(i) = Projector % Rhs(i) + weight * coeff 
                END IF
-             END DO
-             IF( .NOT. Found ) THEN
-               CALL Fatal('SetWeigtedProjectorJump','Could not find entry corresponding: '&
-                   //TRIM(I2S(i))//','//TRIM(I2S(k)))
+             END IF
+
+             IF( AddCoeff ) THEN
+               ! Now find the entry in the sparse matrix. 
+               Found = .FALSE.
+               DO j2 = Projector % Rows(i),Projector % Rows(i+1)-1
+                 k2 = Projector % Cols(j2)
+                 IF( k2 == i2 + totsize ) THEN
+                   ! Ok, found it. Now set the value. 
+                   
+                   coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
+                       //Name(1:nlen),node, Found )        
+                   IF( Found ) THEN
+                     ! The factor 0.5 comes from the fact that the 
+                     ! contribution is summed twice, 2nd time as transpose
+                     ! For Nodal projector the entry is 1/(weight*coeff)
+                     ! For Galerkin projector the is weight/coeff 
+                     weight = Projector % Values(j)
+                     Projector % Values(j2) = -0.5 * weight / coeff
+                   END IF
+                   
+                   EXIT
+                 END IF
+               END DO               
+               IF( .NOT. Found ) THEN
+                 CALL Fatal('SetWeigtedProjectorJump','Could not find entry corresponding: '&
+                     //TRIM(I2S(i))//','//TRIM(I2S(k)))
+               END IF
              END IF
 
            END DO
