@@ -55,20 +55,29 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.cmake
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerld)
 
+ADD_LIBRARY(mpi_stubs SHARED mpif_stubs.F90)
+
 ADD_LIBRARY(elmersolver SHARED ${solverlib_SOURCES})
-TARGET_LINK_LIBRARIES(elmersolver ${MPI_Fortran_LIBRARIES} matc 
-  eiof umfpack amd fhuti ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack
-  parpack binio)
+TARGET_LINK_LIBRARIES(elmersolver matc eiof umfpack amd fhuti
+  ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack parpack binio)
 
 ADD_EXECUTABLE(ElmerSolver_mpi Solver.F90)
 
-TARGET_LINK_LIBRARIES(ElmerSolver_mpi elmersolver matc fhuti eiof
-  umfpack amd ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack parpack binio
-  ${CMAKE_DL_LIBS})
+TARGET_LINK_LIBRARIES(ElmerSolver_mpi ${MPI_Fortran_LIBRARIES}
+  elmersolver matc fhuti eiof umfpack amd ${BLAS_LIBRARIES}
+  ${LAPACK_LIBRARIES} arpack parpack binio ${CMAKE_DL_LIBS})
+
+ADD_EXECUTABLE(ElmerSolver Solver.F90)
+
+TARGET_LINK_LIBRARIES(ElmerSolver mpi_stubs elmersolver matc fhuti eiof
+  umfpack amd ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack
+  binio ${CMAKE_DL_LIBS})
 
 INSTALL(FILES elements.def SOLVER.KEYWORDS DESTINATION "share/elmersolver/lib")
-INSTALL(TARGETS ElmerSolver_mpi elmersolver RUNTIME DESTINATION "bin" LIBRARY DESTINATION "lib") 
+INSTALL(TARGETS ElmerSolver_mpi ElmerSolver elmersolver mpi_stubs 
+  RUNTIME DESTINATION "bin" LIBRARY DESTINATION "lib")
+INSTALL(TARGETS ElmerSolver elmersolver RUNTIME DESTINATION "bin" LIBRARY DESTINATION "lib")
 INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerf90 DESTINATION "bin")
-INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld DESTINATION "bin")
+INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld DESTINATION  "bin")
 
 INSTALL(CODE "EXECUTE_PROCESS (COMMAND \"${CMAKE_COMMAND}\" -E copy_directory \"${CMAKE_Fortran_MODULE_DIRECTORY}/\${BUILD_TYPE}\" \"${CMAKE_INSTALL_PREFIX}/share/elmersolver/include\")")
