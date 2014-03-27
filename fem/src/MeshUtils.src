@@ -999,7 +999,7 @@ END SUBROUTINE GetMaxDefs
    INTEGER, POINTER :: DisContPerm(:)
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
        NewMovingNode(:),NewStayingNode(:),DecidedElem(:)
-   LOGICAL :: Found, DisCont, Greedy, Debug
+   LOGICAL :: Found, DisCont, Greedy, Debug, DoubleBC
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        TargetBody, NoBulkElems, NoBoundElems, NoParentElems, &
@@ -1010,14 +1010,28 @@ END SUBROUTINE GetMaxDefs
        ParentElem, OtherElem
 
 
-   IF( .NOT. ListGetLogicalAnyBC( Model,'Discontinuous Boundary' ) ) THEN
-     RETURN
-   END IF
+
+   Discont = .FALSE.
+   DoubleBC = .FALSE.
+   DO bc = 1,Model % NumberOfBCs
+     DisCont = ListGetLogical( Model % BCs(bc) % Values,'Discontinuous Boundary',Found )
+     ! If the target boundary / periodic bc / mortar bc is zero
+     ! it refers to itself. Otherwise the boundary will be doubled.
+     IF( DisCont ) THEN
+       i = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous BC',Found )
+       j = ListGetInteger( Model % BCs(bc) % Values,'Periodic BC',Found )
+       k = ListGetInteger( Model % BCs(bc) % Values,'Mortar BC',Found )
+       DoubleBC = ( i + j + k > 0 )
+       EXIT
+     END IF
+   END DO
+   
+   IF(.NOT. DisCont ) RETURN
 
    NoNodes = Mesh % NumberOfNodes
    NoBulkElems = Mesh % NumberOfBulkElements
    NoBoundElems = Mesh % NumberOfBoundaryElements
-
+   
    ALLOCATE( DisContNode(NoNodes))
    ALLOCATE( DisContElem(NoBoundElems))
    ALLOCATE( DecidedElem(NoBulkElems+NoBoundElems))
@@ -1025,14 +1039,14 @@ END SUBROUTINE GetMaxDefs
    DisContElem = .FALSE.
    DecidedElem = .FALSE.
    NoDisContElems = 0
-
+   
    ! Go over all boundary elements and mark nodes that should be 
    ! discontinuous and nodes that should be continuous 
    DO t = 1, NoBoundElems
-
+     
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
-
+     
      DisCont = .FALSE.
      DO bc = 1,Model % NumberOfBCs
        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
@@ -1040,9 +1054,9 @@ END SUBROUTINE GetMaxDefs
          IF( DisCont ) EXIT
        END IF
      END DO
-
+     
      IF(.NOT. DisCont ) CYCLE
-
+     
      ! Boundary element cannot be discontinuous if it is not an interface element
      LeftElem => Element % BoundaryInfo % Left
      IF( .NOT. ASSOCIATED( LeftElem ) ) THEN
@@ -1122,7 +1136,7 @@ END SUBROUTINE GetMaxDefs
 !              PRINT *,'node:',i,j,Mesh % Nodes % x(i),Mesh % Nodes % y(i)
      END IF
    END DO
-
+   
    ! Create a table showing nodes that are related to the moving nodes by
    ! the moving elements. 
    ALLOCATE( MovingNode( NoNodes ), StayingNode( NoNodes ) ) 
@@ -1136,10 +1150,10 @@ END SUBROUTINE GetMaxDefs
    DO t=1, NoBoundElems
 
      IF(.NOT. DisContElem(t) ) CYCLE
-
+     
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
-
+     
      TargetBody = 0
      DO bc = 1,Model % NumberOfBCs
        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
@@ -1306,8 +1320,7 @@ END SUBROUTINE GetMaxDefs
    ! If the discontinuous boundary is duplicated then no information of it 
    ! is saved. The periodic and mortar conditions now need to perform
    ! searches. On the other hand the meshes may now freely move.,
-   IF( ListCheckPresentAnyBC( Model,'Discontinuous Target Boundary') ) THEN
-
+   IF( DoubleBC ) THEN
      CALL EnlargeBoundaryElements( Mesh, NoDiscontElems ) 
 
      NoDisContElems = 0
@@ -1323,17 +1336,22 @@ END SUBROUTINE GetMaxDefs
        Indexes => Element % NodeIndexes
 
        DisContTarget = 0
+       Found = .FALSE.
        DO bc = 1,Model % NumberOfBCs
          IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
            DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
-               'Discontinuous Target Boundary',Found )
+               'Discontinuous BC',Found )
+           IF( Found ) EXIT
+           DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
+               'Mortar BC',Found )
+           IF( Found ) EXIT
+           DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
+               'Periodic BC',Found )
            IF( Found ) EXIT
          END IF
        END DO
-       IF(.NOT. Found ) CYCLE
-
-       IF( DisContTarget == 0 ) THEN
-         CALL Fatal('CreateDiscontMesh','> Discontinuous Boundary Target < must be given for all, if any bc!')
+       IF( .NOT. Found .OR. DisContTarget == 0 ) THEN
+         CALL Fatal('CreateDiscontMesh','Nonzero target boundary must be given for all, if any bc!')
        END IF
 
        RightElem => Element % BoundaryInfo % Right
