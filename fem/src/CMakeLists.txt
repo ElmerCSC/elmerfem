@@ -1,3 +1,8 @@
+# For the installer process we need a single directory
+# where we put all module files
+SET(CMAKE_Fortran_MODULE_DIRECTORY
+  ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
+
 ADD_SUBDIRECTORY(binio)
 ADD_SUBDIRECTORY(modules)
 
@@ -65,3 +70,5 @@ INSTALL(FILES elements.def SOLVER.KEYWORDS DESTINATION "share/elmersolver/lib")
 INSTALL(TARGETS ElmerSolver_mpi elmersolver RUNTIME DESTINATION "bin" LIBRARY DESTINATION "lib") 
 INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerf90 DESTINATION "bin")
 INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld DESTINATION "bin")
+
+INSTALL(CODE "EXECUTE_PROCESS (COMMAND \"${CMAKE_COMMAND}\" -E copy_directory \"${CMAKE_Fortran_MODULE_DIRECTORY}/\${BUILD_TYPE}\" \"${CMAKE_INSTALL_PREFIX}/share/elmersolver/include\")")
