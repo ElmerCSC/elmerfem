@@ -71,7 +71,11 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
        DeTangle, ComputeTangledMask = .FALSE.
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, ElemVector(3),DotPro,Eps,Length, MinHeight
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: at0,at1,at2,Heps
+#else
   REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime,Heps
+#endif
   REAL(KIND=dp), POINTER :: Coord(:),BotField(:),TopField(:),TangledMask(:)
   REAL(KIND=dp), ALLOCATABLE :: OrigCoord(:), Field(:), Surface(:)
   TYPE(Variable_t), POINTER :: Var, VeloVar, UpdateVar, TangledMaskVar
