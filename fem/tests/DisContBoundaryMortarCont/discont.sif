@@ -145,7 +145,7 @@ Boundary Condition 3
 
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
-  Mortar BC = 3
+  Mortar BC = 0
 End
 
 

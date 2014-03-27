@@ -123,11 +123,8 @@ Boundary Condition 1
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
 
-! If this keyword is active then two BCs are crated and
-! standard mortar projector is used.
-!  Discontinuous Target Boundary = Integer 10
-  Mortar BC = 10 
-
+! If this keyword is zero then the BC refers to itself.
+  Mortar BC = 0 
   Mortar BC Coefficient Temperature = Real 1.0
 End
 

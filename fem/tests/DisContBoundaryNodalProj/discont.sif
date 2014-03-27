@@ -10,7 +10,6 @@
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "square"
-!  Mesh DB "." "rect"
   Include Path ""
   Results Directory ""
 End
@@ -142,7 +141,7 @@ Boundary Condition 3
 
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
-  Periodic BC = 3
+  Periodic BC = 0
   Periodic BC Temperature = Logical True
 
 ! This can be turned optionally off
