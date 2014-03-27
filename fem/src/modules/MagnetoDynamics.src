@@ -487,7 +487,7 @@ CONTAINS
   LOGICAL FUNCTION DoSolve(IterNo) RESULT(Converged)
 !------------------------------------------------------------------------------
    CHARACTER(LEN=MAX_NAME_LEN) :: potname
-   INTEGER :: i,j,k,t,n,nd,IterNo
+   INTEGER :: i,j,k,t,n,nd,nb,IterNo
 
    REAL(KIND=dp)::TOL,Norm,PrevNorm
    LOGICAL :: Found, FoundMagnetization
@@ -512,6 +512,7 @@ CONTAINS
      Element => GetActiveElement(t)
      n  = GetElementNOFNodes() ! kulmat
      nd = GetElementNOFDOFs()  ! vapausasteet
+     nb = GetElementNOFBDOFs()  ! sisäiset vapausasteet
 
      LOAD = 0.0d0
      BodyForce => GetBodyForce()
@@ -618,7 +619,7 @@ CONTAINS
         CALL LocalMatrixPiolaVersion( MASS, STIFF, FORCE, LOAD, &
              Tcoef, Acoef, LaminateStack, LaminateStackModel, &
              LamThick, LamCond, CoilBody, CoilType, RotM, &
-             Element, n, nd, 0 )
+             Element, n, nd+nb )
      ELSE
         CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
              Tcoef, Acoef, LaminateStack, LaminateStackModel, &
@@ -1521,7 +1522,7 @@ CONTAINS
     !Numerical integration:
     !----------------------
     IP = GaussPoints(Element)
-    np = n*Solver % Def_Dofs(Element % BodyId,1)
+    np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -1686,21 +1687,21 @@ CONTAINS
   SUBROUTINE LocalMatrixPiolaVersion( MASS, STIFF, FORCE, LOAD, &
        Tcoef, Acoef, LaminateStack, LaminateStackModel, &
        LamThick, LamCond, CoilBody, CoilType, RotM, &
-       Element, n, nd, nb)
+       Element, n, nd)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
          LamThick(:), LamCond(:), RotM(3,3,n)
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
     LOGICAL :: LaminateStack, CoilBody
-    INTEGER :: n, nd, nb
+    INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Aloc(nd+nb), JAC(nd+nb,nd+nb), mu, muder, B_ip(3), Babs
-    REAL(KIND=dp) :: EBasis(nd+nb,3), CurlEBasis(nd+nb,3), WBasis(3), SBasis(3)
+    REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
+    REAL(KIND=dp) :: EBasis(nd,3), CurlEBasis(nd,3), WBasis(3), SBasis(3)
     REAL(KIND=dp) :: TrialFunCurl(3), TestFunCurl(3) 
-    REAL(KIND=dp) :: ActiveEBasis(nd+nb,3)
-    REAL(KIND=dp) :: ActiveCurlEBasis(nd+nb,3)
+    REAL(KIND=dp) :: ActiveEBasis(nd,3)
+    REAL(KIND=dp) :: ActiveCurlEBasis(nd,3)
     REAL(KIND=dp) :: dBasisdx(n,3)
     REAL(KIND=dp) :: Basis(n), DetF, F(3,3), G(3,3), GT(3,3), CM(3,3), L(3), M(3), D(3,3)
     REAL(KIND=dp) :: C(3,3), RotMLoc(3,3)
@@ -1769,18 +1770,18 @@ CONTAINS
     !-------------------------------------
     IP = EdgeElementGaussPoints(Element % TYPE % ElementCode / 100)
 
-    np = n*Solver % Def_Dofs(Element % BodyId,1)
+    np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
 
        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), F, G, detF, Basis, ActiveEBasis, ActiveCurlEBasis, dBasisdx)
+            IP % W(t), F, G, detF, Basis, EBasis, CurlEBasis, dBasisdx)
 
        !------------------------------------------------------------------
        ! Map the active basis vectors to their locations in the larger basis
        ! vector array that corresponds to the element definition in the sif file.
        ! -------------------------------------------------------------------
-       CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
-            Element % TYPE % ElementCode / 100 )
+!      CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+!           Element % TYPE % ElementCode / 100 )
 
        mu = SUM( Basis(1:n) * Acoef(1:n) )
 
@@ -1819,7 +1820,7 @@ CONTAINS
 
        IF ( HBCurve ) THEN
           B_ip = 0.0d0
-          DO j=1,nd+nb-np
+          DO j=1,nd-np
              DO k=1,dim
                 WBasis(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(j,1:dim) )
              END DO
@@ -1854,7 +1855,7 @@ CONTAINS
                    END IF
                 END DO
 
-                DO q = 1,nd+nb-np
+                DO q = 1,nd-np
                    j = np + q               
                    ! ------------------------------------------------
                    ! Compute the conductivity term <C A,grad v> for 
@@ -1873,7 +1874,7 @@ CONTAINS
              ! Compute the conductivity term <C grad V, eta> for 
              ! stiffness matrix (anisotropy taken into account)
              ! ------------------------------------------------
-             DO p = 1,nd+nb-np
+             DO p = 1,nd-np
                 i = np + p
 
                 DO k=1,dim
@@ -1909,7 +1910,7 @@ CONTAINS
                 ! stiffness matrix (anisotropy taken into account)
                 ! ------------------------------------------------
                 IF (np > 0) THEN
-                   DO p = 1,nd+nb-np
+                   DO p = 1,nd-np
                       i = np + p
 
                       DO k=1,dim
@@ -1933,7 +1934,7 @@ CONTAINS
        !    J^s + curl(M^s) - C*grad(V^s),
        ! with the term C*grad(V) already handled above.
        !---------------------------------------------------------------
-       DO p = 1,nd+nb-np
+       DO p = 1,nd-np
           i = np + p    
           !------------------------------------------
           ! RHS as split into two parts: 
@@ -1954,7 +1955,7 @@ CONTAINS
              SBasis(k) = SUM( CM(k,1:dim) * EBasis(p,1:dim) )
           END DO
 
-          DO q = 1,nd+nb-np
+          DO q = 1,nd-np
              j = np + q
              !-------------------------------------------------------
              ! The weighted inner product nu * <curl A,curl eta>
@@ -1997,8 +1998,8 @@ CONTAINS
     END DO
 
     IF ( Newton ) THEN
-      STIFF(1:nd+nb,1:nd+nb) = STIFF(1:nd+nb,1:nd+nb) + JAC
-      FORCE(1:nd+nb) = FORCE(1:nd+nb) + MATMUL(JAC,Aloc)
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
+      FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixPiolaVersion
@@ -2077,7 +2078,7 @@ CONTAINS
     !-----------------------
     IP = GaussPoints(Element)
 
-    np = n*MAXVAL(Solver % Def_Dofs(:,1))
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -2178,7 +2179,7 @@ CONTAINS
     !-----------------------
     IP = GaussPoints(Element)
 
-    np = n*MAXVAL(Solver % Def_Dofs(:,1))
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -2588,12 +2589,12 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 !    Local variables
 !------------------------------------------------------------------------------
   TYPE(ValueList_t),POINTER :: SolverParams
-  INTEGER :: i,j,n,m,dim,dofs
+  INTEGER :: i,j,k,n,m,dim,dofs
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER :: A,B
   REAL(KIND=dp) :: Norm
   LOGICAL:: AutomatedBCs, Found
-  INTEGER, ALLOCATABLE :: Def_Dofs(:,:)
+  INTEGER, ALLOCATABLE :: Def_Dofs(:,:,:)
   CHARACTER(LEN=MAX_NAME_LEN):: Equation
   INTEGER, POINTER :: Perm(:)
   REAL(KIND=dp), POINTER :: fixpot(:)
@@ -2612,10 +2613,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 
   n=SIZE(Solver % Def_Dofs,1)
   m=SIZE(Solver % Def_Dofs,2)
-  ALLOCATE(Def_Dofs(n,m))
+  k=SIZE(Solver % Def_Dofs,3)
+  ALLOCATE(Def_Dofs(n,m,k))
   Def_Dofs=Solver % Def_Dofs
   Solver % Def_Dofs=0
-  Solver % Def_Dofs(:,1)=1
+  Solver % Def_Dofs(:,:,1)=1
 
   A => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
      Perm, dofs, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.)
@@ -3920,7 +3922,7 @@ CONTAINS
     !Numerical integration:
     !----------------------
     IP = GaussPoints( Element )
-    np = n*Solver % Def_Dofs(Element % BodyId,1)
+    np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
 
     DO t=1,IP % n
        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -4079,7 +4081,7 @@ CONTAINS
     !-----------------------
     IP = GaussPoints(Element)
 
-    np = n*MAXVAL(Solver % Def_Dofs(:,1))
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -5111,7 +5113,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
-     np = n*pSolver % Def_Dofs(Element % BodyId,1)
+     np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
      nd = GetElementNOFDOFs(uSolver=pSolver)
 
      CALL GetElementNodes( Nodes )
@@ -5292,14 +5294,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        IF (PiolaVersion) THEN       
 
           stat = EdgeElementInfo( Element, Nodes, NodesU(j), NodesV(j), &
-            NodesW(j), F, G, DetF, Basis, ActiveEBasis, ActiveCurlEBasis, dBasisdx)
+            NodesW(j), F, G, DetF, Basis, EBasis, CurlEBasis, dBasisdx)
 
           !--------------------------------------------------------------------------
           ! Map the active basis vectors to their locations in the larger basis
           ! vector array that corresponds to the element definition in the sif file.
           ! -------------------------------------------------------------------------
-          CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
-               Element % TYPE % ElementCode / 100 )
+!         CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+!              Element % TYPE % ElementCode / 100 )
           !-------------------------------------------------------------------------
           ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
           ! vector B_j(x), with the place x related to the reference element 
@@ -5561,14 +5563,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        IF (PiolaVersion) THEN
           stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-               F, G, DetF, Basis, ActiveEBasis, ActiveCurlEBasis, dBasisdx)
+               F, G, DetF, Basis, EBasis, CurlEBasis, dBasisdx)
 
           !--------------------------------------------------------------------------
           ! Map the active basis vectors to their locations in the larger basis
           ! vector array that corresponds to the element definition in the sif file.
           ! -------------------------------------------------------------------------
-          CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
-               Element % TYPE % ElementCode / 100 )
+!         CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+!              Element % TYPE % ElementCode / 100 )
           !-------------------------------------------------------------------------
           ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
           ! vector B_j(x), with the place x related to the reference element 
@@ -6048,7 +6050,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
 
        n = GetElementNOFNodes()
-       np = n*pSolver % Def_Dofs(BodyId,1)
+       np = n*pSolver % Def_Dofs(GetElementFamily(Element),BodyId,1)
        nd = GetElementNOFDOFs(uElement=Element, uSolver=pSolver)
        CALL GetVectorLocalSolution(SOL,Pname,uElement=Element,uSolver=pSolver)
 

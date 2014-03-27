@@ -145,7 +145,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Equation
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
 !------------------------------------------------------------------------------
-     INTEGER i,j,l,t,n,e, EDOFs, FDOFs, BDOFs, ndofs
+     INTEGER i,j,l,t,n,e, EDOFs, FDOFs, BDOFs, ndofs, el_id
      INTEGER :: Indexes(128)
      INTEGER, POINTER :: Def_Dofs(:)
      INTEGER, ALLOCATABLE :: EdgeDOFs(:), FaceDOFs(:)
@@ -237,7 +237,7 @@ CONTAINS
      END IF
 
 
-     IF ( ANY(Solver % Def_Dofs(:,6)>=0) ) THEN
+     IF ( ANY(Solver % Def_Dofs(:,:,6)>=0) ) THEN
        IF ( Mesh % NumberOFEdges>0 ) THEN
           ALLOCATE(EdgeDOFs(Mesh % NumberOfEdges))
           EdgeDOFs=0;
@@ -258,7 +258,9 @@ CONTAINS
          END DO
          IF ( t>n ) EXIT
 
-         Def_Dofs => Solver % Def_Dofs(Element % BodyId,:)
+         el_id = Element % Type % ElementCode / 100
+
+         Def_Dofs => Solver % Def_Dofs(el_id,Element % BodyId,:)
          IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
            DO i=1,Element % TYPE % NumberOfEdges
              j = Element % EdgeIndexes(i)
@@ -288,7 +290,8 @@ CONTAINS
 
        IF ( t > n ) EXIT
 
-       Def_Dofs => Solver % Def_Dofs(Element % BodyId,:)
+       el_id = Element % Type % ElementCode / 100
+       Def_Dofs => Solver % Def_Dofs(el_id,Element % BodyId,:)
        ndofs = Element % NDOFs
        IF ( Def_Dofs(1) >= 0 ) ndofs=Def_Dofs(1)*Element % TYPE % NumberOfNodes
        DO i=1,ndofs
@@ -324,14 +327,27 @@ CONTAINS
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
           DO i=1,Element % TYPE % NumberOfFaces
              Face => Mesh % Faces( Element % FaceIndexes(i) )
+             l = MAX(0,Def_Dofs(3))
+             j = Face % Type % ElementCode/100
+             IF(l==0) THEN
+               IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
+                 e = Face % BoundaryInfo % Left % BodyId
+                 l = MAX(0,Solver % Def_Dofs(j+6,e,5))
+               END IF
+               IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                 e = Face % BoundaryInfo % Right % BodyId
+                 l = MAX(l,Solver % Def_Dofs(j+6,e,5))
+               END IF
+             END IF
              ndofs = 0
-             IF ( Def_Dofs(3) >= 0) THEN
-               ndofs = Def_Dofs(3)
+             IF ( l >= 0) THEN
+               ndofs = l
              ELSE IF (Def_Dofs(6)>=0) THEN
                ndofs = FaceDOFs(Element % FaceIndexes(i))
 !              IF ( Def_Dofs(6)==0 ) ndofs = MAX(Face % BDOFs,ndofs)
                ndofs = MAX(Face % BDOFs,ndofs)
              END IF
+
              DO e=1,ndofs
                 j = Mesh % NumberOfNodes + EDOFs*Mesh % NumberOfEdges + &
                           FDOFs*(Element % FaceIndexes(i)-1) + e
@@ -1437,10 +1453,10 @@ CONTAINS
      ptr => ListAdd( List, Name )
      IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
 
-     ALLOCATE( ptr % FValues(1,1,N),ptr % TValues(N) )
+     ALLOCATE( ptr % FValues(1,1,n),ptr % TValues(n) )
 
-     ptr % TValues = TValues(1:N)
-     ptr % FValues(1,1,:) = FValues(1:N)
+     ptr % TValues = TValues(1:n)
+     ptr % FValues(1,1,:) = FValues(1:n)
      ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
 
      IF ( n>3 .AND. PRESENT(CubicTable)) THEN

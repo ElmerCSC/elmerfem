@@ -894,7 +894,7 @@ CONTAINS
 
     CALL SystemCommand( MeshCommand )
 
-    NewMesh => LoadMesh( Model, OutPutPath, Path, .FALSE., 1, 0 )
+    NewMesh => LoadMesh2( Model, OutPutPath, Path, .FALSE., 1, 0 )
 
     IF ( Solver % Variable % Name == 'temperature' ) THEN
        Name = ListGetString( Model % Simulation, 'Gebhardt Factors', Found )

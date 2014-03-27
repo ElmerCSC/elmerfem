@@ -198,11 +198,11 @@ CONTAINS
      TYPE(Model_t) :: Model
      TYPE(MEsh_t) :: Mesh
      TYPE(Element_t) :: Element
-     INTEGER :: SolverId, BodyId, Def_Dofs(:)
+     INTEGER :: SolverId, BodyId, Def_Dofs(:,:)
 
      TYPE(ValueList_t), POINTER :: Params
      INTEGER :: i, j,k,l, n, slen
-     INTEGER, POINTER :: Body_Dofs(:)
+     INTEGER, POINTER :: Body_Dofs(:,:)
      LOGICAL  :: stat
      REAL(KIND=dp) :: x,y,z
      TYPE(Solver_t), POINTER  :: Solver
@@ -212,52 +212,54 @@ CONTAINS
      Params => Solver % Values
 
      IF ( .NOT. ALLOCATED(Solver % Def_Dofs) ) THEN
-       ALLOCATE(Solver % Def_Dofs(Model % NumberOfBodies,6))
+       ALLOCATE(Solver % Def_Dofs(10,Model % NumberOfBodies,6))
        Solver % Def_Dofs=-1
-       Solver % Def_Dofs(:,1)=1
+       Solver % Def_Dofs(:,:,1)=1
      END IF
-     Body_Dofs => Solver % Def_Dofs(BodyId,:)
+     Body_Dofs => Solver % Def_Dofs(:,BodyId,:)
 
+     j = INDEX(ElementDef, '-') ! FIX this to include elementtypewise defs...
+     IF ( j>0 ) RETURN
 
      j = INDEX( ElementDef, 'n:' )
      IF ( j>0 ) THEN
        READ( ElementDef(j+2:), * ) l
-       Body_Dofs(1) = l
-       Def_Dofs(1) = MAX(Def_Dofs(1), l)
+       Body_Dofs(:,1) = l
+       Def_Dofs(:,1) = MAX(Def_Dofs(:,1), l)
      END IF
           
       j = INDEX( ElementDef, 'e:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
-        Body_Dofs(2) = l
-        Def_Dofs(2) = MAX(Def_Dofs(2), l )
+        Body_Dofs(:,2) = l
+        Def_Dofs(:,2) = MAX(Def_Dofs(:,2), l )
       END IF
           
       j = INDEX( ElementDef, 'f:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
-        Body_Dofs(3) = l
-        Def_Dofs(3) = MAX(Def_Dofs(3), l )
+        Body_Dofs(:,3) = l
+        Def_Dofs(:,3) = MAX(Def_Dofs(:,3), l )
       END IF
           
       j = INDEX( ElementDef, 'd:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
-        Body_Dofs(4) = l
-        Def_Dofs(4) = MAX(Def_Dofs(4), l )
+        Body_Dofs(:,4) = l
+        Def_Dofs(:,4) = MAX(Def_Dofs(:,4), l )
       ELSE 
         IF ( ListGetLogical( Solver % Values, &
             'Discontinuous Galerkin', stat ) ) THEN
-          Body_Dofs(4) = 0
-          Def_Dofs(4) = MAX(Def_Dofs(4),0 )
+          Body_Dofs(:,4) = 0
+          Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
         END IF
       END IF
           
       j = INDEX( ElementDef, 'b:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
-        Body_Dofs(5) = l
-        Def_Dofs(5) = MAX(Def_Dofs(5), l )
+        Body_Dofs(:,5) = l
+        Def_Dofs(:,5) = MAX(Def_Dofs(:,5), l )
       END IF
           
       j = INDEX( ElementDef, 'p:' )
@@ -272,12 +274,12 @@ CONTAINS
           slen = LEN_TRIM(str)
           CALL matc(str,RESULT,slen)
           READ(RESULT,*) x
-          Body_Dofs(6) = 0
-          Def_Dofs(6)  = MAX(Def_Dofs(6),NINT(x))
+          Body_Dofs(:,6) = 0
+          Def_Dofs(:,6)  = MAX(Def_Dofs(:,6),NINT(x))
         ELSE
           READ( ElementDef(j+2:), * ) l
-          Body_Dofs(6) = l
-          Def_Dofs(6) = MAX(Def_Dofs(6), l )
+          Body_Dofs(:,6) = l
+          Def_Dofs(:,6) = MAX(Def_Dofs(:,6), l )
         END IF
       END IF
 
@@ -327,7 +329,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, NeedEdges, FoundDG, Found
 
     INTEGER :: MinIndex,MaxIndex,MinEIndex,MaxEIndex, DefaultTargetBC, &
-        BDOFs, EDOFs,FDOFs,inDOFs(7), DGIndex, istat, mesh_dim, save_dim
+        BDOFs, EDOFs,FDOFs,inDOFs(10,6), DGIndex, istat, mesh_dim, save_dim
     INTEGER, POINTER :: NodeTags(:),CoordMap(:),BList(:)
     INTEGER, POINTER :: LocalPerm(:),LocalEPerm(:), &
            ElementTags(:), EdgeDOFs(:), FaceDOFs(:)
@@ -516,7 +518,7 @@ END SUBROUTINE GetMaxDefs
       CALL eio_get_mesh_element_conns( ElementTags(i),partn,body, &
                   TYPE, inDOFs, nodes, eio_info )
 
-      IF(inDOFs(6)>0) THEN
+      IF(inDOFs(1,6)>0) THEN
         CALL Fatal('LoadMesh', 'Mesh defined p-degree obsolite, use "Element=p:n" instead.')
       END IF
 
@@ -524,7 +526,7 @@ END SUBROUTINE GetMaxDefs
 
       IF ( PRESENT(Def_Dofs) ) THEN
         DO j=1,6
-          IF ( Indofs(j) <= 0 ) inDOFs(j)=Def_Dofs(j)
+          IF ( Indofs(1,j) <= 0 ) inDOFs(:,j)=Def_Dofs(j)
         END DO
       END IF
 
@@ -579,46 +581,46 @@ END SUBROUTINE GetMaxDefs
           END DO
         END IF
 
-        IF ( inDOFs(1) /= 0 ) THEN
+        IF ( inDOFs(1,1) /= 0 ) THEN
           Element % NDOFs = n
         ELSE
           Element % NDOFs = 0
         END IF
 
-        EdgeDOFs(i) = MAX(0,inDOFs(2))
-        FaceDOFs(i) = MAX(0,inDOFs(3))
+        EdgeDOFs(i) = MAX(0,inDOFs(1,2))
+        FaceDOFs(i) = MAX(0,inDOFs(1,3))
 
         IF ( PRESENT(Def_Dofs) ) THEN
-          IF ( Def_Dofs(4) == 0 ) inDOFs(4) = n
+          IF ( Def_Dofs(4) == 0 ) inDOFs(1,4) = n
         END IF
 
         NULLIFY( Element % DGIndexes )
-        IF ( inDOFs(4)>0 ) THEN
-          CALL AllocateVector( Element % DGIndexes, inDOFs(4))
-          DO j=1,inDOFs(4)
+        IF ( inDOFs(1,4)>0 ) THEN
+          CALL AllocateVector( Element % DGIndexes, inDOFs(1,4))
+          DO j=1,inDOFs(1,4)
              DGIndex = DGIndex + 1
              Element % DGIndexes(j) = DGIndex
           END DO
         ELSE
           NULLIFY( Element % DGIndexes )
         END IF
-        Element % DGDOFs = MAX(0,inDOFs(4))
-        NeedEdges = NeedEdges .OR. ANY( inDOFs(2:4)>0 )
+        Element % DGDOFs = MAX(0,inDOFs(1,4))
+        NeedEdges = NeedEdges .OR. ANY( inDOFs(1,2:4)>0 )
 
         NULLIFY( Element % EdgeIndexes )
         NULLIFY( Element % FaceIndexes )
         NULLIFY( Element % BubbleIndexes )
 
         ! Check if given element is a p element
-        IF (inDOFs(6) > 0) THEN
+        IF (inDOFs(1,6) > 0) THEN
            CALL AllocatePDefinitions(Element)
 
            NeedEdges = .TRUE.
               
            ! Calculate element bubble dofs and set element p
-           Element % PDefs % P = inDOFs(6)
-           IF ( inDOFs(5) > 0 ) THEN
-              Element % BDOFs = inDOFs(5)
+           Element % PDefs % P = inDOFs(1,6)
+           IF ( inDOFs(1,5) > 0 ) THEN
+              Element % BDOFs = inDOFs(1,5)
            ELSE
               Element % BDOFs = getBubbleDOFs(Element, Element % PDefs % P)
            END IF
@@ -635,7 +637,7 @@ END SUBROUTINE GetMaxDefs
         ELSE 
            ! Clear P element definitions and set manual bubbles
            Element % PDefs => NULL()
-           Element % BDOFs = MAX(0,inDOFs(5))
+           Element % BDOFs = MAX(0,inDOFs(1,5))
            ! WRITE (*,*) Element % BDOFs
         END IF
 
@@ -968,14 +970,16 @@ END SUBROUTINE GetMaxDefs
    ! If periodic BC given, compute boundary mesh projector:
    ! ------------------------------------------------------
    DO i = 1,Model % NumberOfBCs
-      NULLIFY( Model % BCs(i) % PMatrix )
+     Model % BCs(i) % PMatrix => Null()
    END DO
 
    DO i = 1,Model % NumberOfBCs
       k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt )
       IF( GotIt ) THEN
         Projector =>  PeriodicProjector( Model, Mesh, i, k )
-        IF ( ASSOCIATED( Projector ) ) Model % BCs(i) % PMatrix => Projector
+        IF ( ASSOCIATED( Projector ) ) THEN
+          Model % BCs(i) % PMatrix => Projector
+        END IF
       END IF
    END DO
 
@@ -1004,7 +1008,7 @@ END SUBROUTINE GetMaxDefs
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        TargetBody, NoBulkElems, NoBoundElems, NoParentElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
-       NoUndecided
+       NoUndecided, NoEdges
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
        ParentElem, OtherElem
@@ -1124,9 +1128,12 @@ END SUBROUTINE GetMaxDefs
      RETURN
    END IF
 
+!  CALL FindMeshEdges(Mesh)
+!  NoEdges = Mesh % NUmberOfEdges
+
    ! Ok, we have marked discontinuous nodes, now give them an index. 
    DisContPerm => NULL()
-   ALLOCATE( DisContPerm(NoNodes) ) 
+   ALLOCATE( DisContPerm(NoNodes) )
    DisContPerm = 0    
    j = 0
    DO i=1,NoNodes
@@ -2163,7 +2170,7 @@ END SUBROUTINE GetMaxDefs
 
    CHARACTER(LEN=*) :: MeshDirPar,MeshNamePar
    LOGICAL :: BoundariesOnly    
-   INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:)    
+   INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:,:)
    TYPE(Mesh_t),  POINTER :: Mesh
    TYPE(Model_t) :: Model
    !------------------------------------------------------------------------------    
@@ -2273,7 +2280,7 @@ END SUBROUTINE GetMaxDefs
    ! If periodic BC given, compute boundary mesh projector:
    ! ------------------------------------------------------
    DO i = 1,Model % NumberOfBCs
-     NULLIFY( Model % BCs(i) % PMatrix )
+     Model % BCs(i) % PMatrix => Null()
      k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt )
      IF( GotIt ) THEN
        Projector =>  PeriodicProjector( Model, Mesh, i, k )
@@ -2595,12 +2602,12 @@ END SUBROUTINE GetMaxDefs
    SUBROUTINE NonNodalElements()
 
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
-     INTEGER :: DGIndex, body_id, body_id0, eq_id, solver_id
+     INTEGER :: DGIndex, body_id, body_id0, eq_id, solver_id, el_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
                 FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers)
      TYPE(Element_t), POINTER :: Element
      TYPE(ValueList_t), POINTER :: Vlist
-     INTEGER :: inDOFs(7)
+     INTEGER :: inDOFs(10,6)
      CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
 
      EdgeDOFs => NULL()
@@ -2612,12 +2619,10 @@ END SUBROUTINE GetMaxDefs
      NeedEdges = .FALSE.
 
      InDofs = 0
+     InDofs(:,1) = 1
      IF ( PRESENT(Def_Dofs) ) THEN
-       DO j=1,6
-         IF ( Indofs(j) <= 0 ) inDOFs(j) = Def_Dofs(j)
-       END DO
+       inDofs = Def_Dofs
      END IF
-
     !
     ! Check whether the "Element" definitions can depend on mesh
     ! -----------------------------------------------------------
@@ -2718,44 +2723,45 @@ END SUBROUTINE GetMaxDefs
          body_id0 = body_id
       END IF
 
+       el_id = Element % Type % ElementCode / 100
+
        ! Apply the elementtypes
-       IF ( inDOFs(1) /= 0 ) THEN
+       IF ( inDOFs(el_id,1) /= 0 ) THEN
          Element % NDOFs = n
        ELSE
          Element % NDOFs = 0
        END IF
 
-       EdgeDOFs(i) = MAX(0,inDOFs(2))
-       FaceDOFs(i) = MAX(0,inDOFs(3))
+       EdgeDOFs(i) = MAX(0,inDOFs(el_id,2))
+       FaceDOFs(i) = MAX(0,inDOFs(el_id,3))
 
        IF ( PRESENT(Def_Dofs) ) THEN
-         IF ( Def_Dofs(4) == 0 ) inDOFs(4) = n
+         IF ( Def_Dofs(el_id,4) == 0 ) inDOFs(el_id,4) = n
        END IF
 
        NULLIFY( Element % DGIndexes )
-       IF ( inDOFs(4) > 0 ) THEN
-         CALL AllocateVector( Element % DGIndexes, inDOFs(4))
-         DO j=1,inDOFs(4)
+       IF ( inDOFs(el_id,4) > 0 ) THEN
+         CALL AllocateVector( Element % DGIndexes, inDOFs(el_id,4))
+         DO j=1,inDOFs(el_id,4)
            DGIndex = DGIndex + 1
            Element % DGIndexes(j) = DGIndex
          END DO
        ELSE
          NULLIFY( Element % DGIndexes )
        END IF
-       Element % DGDOFs = MAX(0,inDOFs(4))
-       NeedEdges = NeedEdges .OR. ANY( inDOFs(2:4)>0 )
-
+       Element % DGDOFs = MAX(0,inDOFs(el_id,4))
+       NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
 
        ! Check if given element is a p element
-       IF (inDOFs(6) > 0) THEN
+       IF (inDOFs(el_id,6) > 0) THEN
          CALL AllocatePDefinitions(Element)
 
          NeedEdges = .TRUE.
 
          ! Calculate element bubble dofs and set element p
-         Element % PDefs % P = inDOFs(6)
-         IF ( inDOFs(5) > 0 ) THEN
-           Element % BDOFs = inDOFs(5)
+         Element % PDefs % P = inDOFs(el_id,6)
+         IF ( inDOFs(el_id,5) > 0 ) THEN
+           Element % BDOFs = inDOFs(el_id,5)
          ELSE
            Element % BDOFs = getBubbleDOFs(Element, Element % PDefs % P)
          END IF
@@ -2772,7 +2778,7 @@ END SUBROUTINE GetMaxDefs
        ELSE 
          ! Clear P element definitions and set manual bubbles
          Element % PDefs => NULL()
-         Element % BDOFs = MAX(0,inDOFs(5))
+         Element % BDOFs = MAX(0,inDOFs(el_id,5))
          ! WRITE (*,*) Element % BDOFs
        END IF
 
@@ -2797,6 +2803,7 @@ END SUBROUTINE GetMaxDefs
 
        n = Element % TYPE % NumberOfNodes
        Element % NDOFs  = n
+       el_id = ELement % Type % ElementCode / 100
 
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
          IF( Element % BoundaryInfo % Left % NDOFs == 0 ) THEN
@@ -2807,8 +2814,8 @@ END SUBROUTINE GetMaxDefs
            Element % BDOFs = &
                EdgeDOFs(Element % BoundaryInfo % Left % ElementIndex)
          ELSE
-           Element % BDOFs = &
-               FaceDOFs(Element % BoundaryInfo % Left % ElementIndex)
+           Element % BDOFs = FaceDOFs(Element % BoundaryInfo % Left % ElementIndex)
+           Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
          END IF
        END IF
 
@@ -2821,15 +2828,15 @@ END SUBROUTINE GetMaxDefs
            Element % BDOFs = &
                EdgeDOFs(Element % BoundaryInfo % Right % ElementIndex)
          ELSE
-           Element % BDOFs = &
-               FaceDOFs(Element % BoundaryInfo % Right % ElementIndex)
+           Element % BDOFs = FaceDOFs(Element % BoundaryInfo % Right % ElementIndex)
+           Element % BDOFs = MAX(Element % BDOFs, MAX(0,InDOFs(el_id+6,5)))
          END IF
        END IF
      END DO
 
      IF ( Mesh % MaxElementDOFs <= 0 ) Mesh % MaxElementDOFs = Mesh % MaxElementNodes 
 
-     IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs)
+     IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs)
 
      CALL SetMeshMaxDOFs(Mesh)
 
@@ -2990,12 +2997,13 @@ END SUBROUTINE GetMaxDefs
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs)
+  SUBROUTINE SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs)
 !------------------------------------------------------------------------------
     INTEGER, OPTIONAL :: EdgeDOFs(:), FaceDOFs(:)
     TYPE(Mesh_t) :: Mesh
+    INTEGER, OPTIONAL :: indofs(:,:)
 !------------------------------------------------------------------------------
-    INTEGER :: i,j
+    INTEGER :: i,j,el_id
     TYPE(Element_t), POINTER :: Element, Edge, Face
 !------------------------------------------------------------------------------
 
@@ -3053,7 +3061,9 @@ END SUBROUTINE GetMaxDefs
                CALL AssignLocalNumber(Face, Face % BoundaryInfo % Right, Mesh)
              END IF
           ELSE IF (PRESENT(FaceDOFs)) THEN
+             el_id = face % Type % ElementCode / 100
              Face % BDOFs = MAX(FaceDOFs(i), Face % BDOFs)
+             IF ( PRESENT(inDOFs) ) Face % BDOFs = MAX(Face % BDOFs, InDOFs(el_id+6,5))
           END IF
              
           ! Get maximum dof for faces
@@ -4324,7 +4334,6 @@ END SUBROUTINE GetMaxDefs
       END IF
     END DO
 
-
     DO t = 1, Mesh % NumberOfBoundaryElements
 
       Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
@@ -4681,8 +4690,7 @@ END SUBROUTINE GetMaxDefs
     ! very cheaply using the permutation vector. This does not need the target as the 
     ! boundary is self-contained.
     !------------------------------------------------------------------------------------
-    IF( ListGetLogical( BC, 'Discontinuous Boundary', GotIt ) &
-        .AND. Mesh % DisContMesh )THEN
+    IF( ListGetLogical( BC, 'Discontinuous Boundary', GotIt ) .AND. Mesh % DisContMesh )THEN
       PMesh => Mesh
       IF( IntGalerkin ) THEN
         Projector =>  WeightedProjectorDiscont( PMesh, This )

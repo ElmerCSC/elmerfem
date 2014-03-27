@@ -663,7 +663,7 @@ END INTERFACE
 
       INTEGER, POINTER :: ActiveElements(:) => NULL()
       INTEGER :: NumberOfActiveElements
-      INTEGER, ALLOCATABLE ::  Def_Dofs(:,:)
+      INTEGER, ALLOCATABLE ::  Def_Dofs(:,:,:)
 
       TYPE(BlockMatrix_t), POINTER :: BlockMatrix => NULL()
       TYPE(Matrix_t),   POINTER :: Matrix => NULL()
