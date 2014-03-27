@@ -118,13 +118,13 @@ MODULE EIOFortranAPI
      SUBROUTINE eio_get_geometry_body(tag, meshControl, loopC, &
           & loops, info) BIND(c, name="eio_get_geometry_body")
        USE, INTRINSIC :: ISO_C_BINDING
-       INTEGER(c_int) :: tag, meshControl, loopC, loops, info
+       INTEGER(c_int) :: tag, meshControl, loopC, loops(*), info
      END SUBROUTINE eio_get_geometry_body
 
      SUBROUTINE eio_set_geometry_body_loop(tag, field, nodes, info) &
           & BIND(c, name="eio_set_geometry_body_loop")
        USE, INTRINSIC :: ISO_C_BINDING
-       INTEGER(c_int) :: tag, field, nodes, info
+       INTEGER(c_int) :: tag, field, nodes(*), info
      END SUBROUTINE eio_set_geometry_body_loop
 
     SUBROUTINE eio_open_mesh(dir, info) &

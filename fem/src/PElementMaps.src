@@ -459,6 +459,10 @@ CONTAINS
       END IF
 
       SELECT CASE (Element % TYPE % ElementCode / 100)
+!      CASE (3)
+!         facemap => TriangleEdgeMap
+!      CASE (4)
+!         facemap => QuadEdgeMap
       CASE (5)
          SELECT CASE( Element % PDefs % TetraType )
          CASE (1)
@@ -1199,28 +1203,25 @@ CONTAINS
 !>     Subroutine for getting reference p element nodes (because these are NOT
 !>     yet defined in element description files)
 !------------------------------------------------------------------------------
-  SUBROUTINE GetRefPElementNodes( Element, U,V,W )
-!------------------------------------------------------------------------------
-!
-!  ARGUMENTS:
-!
-!    Type(Nodes_t) :: ElementNodes
-!      INOUT: Nodes of element
-!
-!    Type(Element_t) :: Element
-!      INPUT: Element to get nodes for
-!
+  SUBROUTINE GetRefPElementNodes(Element, U, V, W, PerformCheck)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    
     TYPE(Element_t) :: Element
-    INTEGER :: n
     REAL(KIND=dp) :: U(:), V(:), W(:)
-
-    ! If element is not p element return
-    IF ( .NOT. isPElement(Element) ) THEN 
-       CALL Warn('PElementMaps::GetRefPElementNodes','Element given not a p element')
-       RETURN
+    LOGICAL, OPTIONAL :: PerformCheck
+!--------------------------------------------------------------------------------
+    INTEGER :: n
+!--------------------------------------------------------------------------------
+    LOGICAL :: PElementRequired
+!--------------------------------------------------------------------------------    
+    PElementRequired = .TRUE.
+    IF ( PRESENT(PerformCheck) ) PElementRequired = PerformCheck
+    IF (PElementRequired) THEN
+       ! If element is not p element return
+       IF ( .NOT. isPElement(Element) ) THEN 
+          CALL Warn('PElementMaps::GetRefPElementNodes','Element given not a p element')
+          RETURN
+       END IF
     END IF
 
     ! Reserve space for element nodes

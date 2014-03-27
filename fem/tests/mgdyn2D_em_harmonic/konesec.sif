@@ -195,7 +195,7 @@ End
 
 ! Lasketaan magneetivuontiheys vektoripotentiaalista
 Solver 3
-! Exec Solver =NeverNever
+  Exec Solver = Never
   Equation = ComputeB
   Variable = -nooutput temp
 
@@ -213,6 +213,7 @@ End
 
 ! Tallennetaan jännitteet ja vääntömomentti
 Solver 4
+  Exec Solver = never
   Procedure = "SaveData" "SaveScalars"
   Filename = "l.dat"
 End
@@ -249,5 +250,5 @@ Boundary Condition 6:: Target Boundaries(1) = 6
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.68074643\n ");
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.20475283E-01\n");
 !End Of File
