@@ -348,7 +348,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
   LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
-         SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax
+         SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
+         PiolaVersion
+  
 
   REAL(KIND=dp) :: Relax
 
@@ -363,6 +365,11 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone
 !------------------------------------------------------------------------------
+  PiolaVersion = .FALSE. ! DO NOT CHANGE THIS! (A FEATURE UNDER DEVELOPMENT)
+  IF (PiolaVersion) THEN
+     CALL Info('WhitneyAVSolver', &
+          'USING A TEST VERSION FOR PIOLA TRASFORMED ELEMENTS',Level=2)
+  END IF
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
@@ -607,11 +614,17 @@ CONTAINS
 
      !Get element local matrix and rhs vector:
      !----------------------------------------
-     CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
-        Tcoef, Acoef, LaminateStack, LaminateStackModel, &
-        LamThick, LamCond, CoilBody, CoilType, RotM, &
-        Element, n, nd )
-
+     IF (PiolaVersion) THEN
+        CALL LocalMatrixPiolaVersion( MASS, STIFF, FORCE, LOAD, &
+             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
+             LamThick, LamCond, CoilBody, CoilType, RotM, &
+             Element, n, nd, 0 )
+     ELSE
+        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
+             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
+             LamThick, LamCond, CoilBody, CoilType, RotM, &
+             Element, n, nd )    
+     END IF
 
     !Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
@@ -711,7 +724,11 @@ CONTAINS
   !
   ! Dirichlet BCs in terms of vector potential A:
   ! ---------------------------------------------
-  CALL DefaultDirichletBCs()
+  IF (PiolaVersion) THEN
+     CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
+  ELSE
+     CALL DefaultDirichletBCs()
+  END IF
 
   ! Dirichlet BCs in terms of magnetic flux density B:
   ! --------------------------------------------------
@@ -1569,10 +1586,7 @@ CONTAINS
                ! -------------------------------------------
 
                IF ( SUM(C) /= 0._dp ) THEN
-                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
-               ELSE
-!                STIFF(p,q) = STIFF(p,q) + &
-!                       Basis(q)*Basis(p)*detJ*IP % s(t)
+                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
                END IF
              END DO
              DO j=1,nd-np
@@ -1595,7 +1609,7 @@ CONTAINS
            ! is reasonable only in the case where
            ! the electrical conductivity is nonzero.
            ! ------------------------------------------------------------------
-           IF (FixJ .and. .not. LaminateStack ) THEN
+           IF (.not. LaminateStack ) THEN
              DO i=1,np
                p = i
                DO j=1,np
@@ -1604,7 +1618,7 @@ CONTAINS
                  ! Compute the conductivity term <C grad V,grad v> for stiffness 
                  ! matrix (anisotropy taken into account)
                  ! -------------------------------------------
-                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(i,:)) * dBasisdx(j,:))*detJ*IP % s(t)
+                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(j,:)) * dBasisdx(i,:))*detJ*IP % s(t)
                END DO
 
                DO j=1,nd-np
@@ -1642,7 +1656,7 @@ CONTAINS
            ! This is not used in the case of stranded coil:
            ! ----------------------------------------------
            IF (CoilType /= 'stranded') MASS(p,q) = MASS(p,q) + & 
-               SUM(MATMUL(C, WBasis(i,:))*WBasis(j,:) )*detJ*IP % s(t)
+               SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
 
            ! Compute the low frequency eddy term for laminate stack model.
            ! Note that the conductivity term <C A, eta> above can be used to 
@@ -1666,6 +1680,375 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
+
+
+!-----------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixPiolaVersion( MASS, STIFF, FORCE, LOAD, &
+       Tcoef, Acoef, LaminateStack, LaminateStackModel, &
+       LamThick, LamCond, CoilBody, CoilType, RotM, &
+       Element, n, nd, nb)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
+    REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
+         LamThick(:), LamCond(:), RotM(3,3,n)
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
+    LOGICAL :: LaminateStack, CoilBody
+    INTEGER :: n, nd, nb
+    TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Aloc(nd+nb), JAC(nd+nb,nd+nb), mu, muder, B_ip(3), Babs
+    REAL(KIND=dp) :: EBasis(nd+nb,3), CurlEBasis(nd+nb,3), WBasis(3), SBasis(3)
+    REAL(KIND=dp) :: TrialFunCurl(3), TestFunCurl(3) 
+    REAL(KIND=dp) :: ActiveEBasis(nd+nb,3)
+    REAL(KIND=dp) :: ActiveCurlEBasis(nd+nb,3)
+    REAL(KIND=dp) :: dBasisdx(n,3)
+    REAL(KIND=dp) :: Basis(n), DetF, F(3,3), G(3,3), GT(3,3), CM(3,3), L(3), M(3), D(3,3)
+    REAL(KIND=dp) :: C(3,3), RotMLoc(3,3)
+    REAL(KIND=dp) :: FixJPot(n)
+    REAL(KIND=dp) :: LocalLamThick, LocalLamCond
+
+    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve
+    INTEGER :: t, i, j, k, p, q, np, siz, dim
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    TYPE(Nodes_t), SAVE :: Nodes
+
+    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
+           CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
+    TYPE(ValueList_t), POINTER :: Lst
+!------------------------------------------------------------------------------
+    dim = 3
+    CALL GetElementNodes( Nodes )
+
+    STIFF = 0.0d0
+    MASS = 0.0d0
+    FORCE = 0.0d0
+   
+    JAC = 0._dp
+    Newton = .FALSE.
+
+    FixJpot = 0._dp
+    IF (FixJ) THEN
+       FixJPot(1:n) = FixJVar % Values(FixJVar % Perm(Element % NodeIndexes))
+    END IF
+
+    CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
+    siz = 0
+    Cval => Null()
+    IF ( HBCurve ) THEN
+       siz = SIZE(HB,1)
+       IF(siz>1) THEN
+          Bval=>HB(:,1)
+          Hval=>HB(:,2)
+          Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
+          IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff)) THEN
+             ALLOCATE(CubicCoeff(siz))
+             CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
+          END IF
+          Cval=>CubicCoeff
+          HBCurve = .TRUE.
+       END IF
+    END IF
+
+    IF(siz<=1) THEN
+       Lst => ListFind(Material,'H-B Curve',HBcurve)
+       IF(HBcurve) THEN
+          Cval => Lst % CubicCoeff
+          Bval => Lst % TValues
+          Hval => Lst % FValues(1,1,:)
+       END IF
+    END IF
+
+    IF(HBCurve) THEN
+       CALL GetScalarLocalSolution(Aloc)
+       Newton = GetLogical( GetSolverParams(),'Newton-Raphson iteration',Found)
+    END IF
+ 
+    !-------------------------------------
+    ! Numerical integration over element:
+    !-------------------------------------
+    IP = EdgeElementGaussPoints(Element % TYPE % ElementCode / 100)
+
+    np = n*Solver % Def_Dofs(Element % BodyId,1)
+    DO t=1,IP % n
+
+       stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), F, G, detF, Basis, ActiveEBasis, ActiveCurlEBasis, dBasisdx)
+
+       !------------------------------------------------------------------
+       ! Map the active basis vectors to their locations in the larger basis
+       ! vector array that corresponds to the element definition in the sif file.
+       ! -------------------------------------------------------------------
+       CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+            Element % TYPE % ElementCode / 100 )
+
+       mu = SUM( Basis(1:n) * Acoef(1:n) )
+
+       ! Compute the conductivity tensor
+       ! -------------------------------
+       DO i=1,3
+          DO j=1,3
+             C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
+             IF(CoilType == 'foil winding') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
+          END DO
+       END DO
+
+       ! Transform the conductivity tensor (in case of a foil winding):
+       ! --------------------------------------------------------------
+       IF (CoilType == 'foil winding') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc)) 
+
+       !----------------------------------------------------------------------
+       ! The following matrices relate to the use of the Piola transformation
+       !----------------------------------------------------------------------
+       GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
+       D(1:dim,1:dim) = MATMUL( TRANSPOSE(F(1:dim,1:dim)), F(1:dim,1:dim) )
+       CM(1:dim,1:dim) = MATMUL( C(1:dim,1:dim), GT(1:dim,1:dim) )
+       CM(1:dim,1:dim) = MATMUL( TRANSPOSE(CM(1:dim,1:dim)), GT(1:dim,1:dim) )       
+
+ 
+       M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
+       L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
+       L = L-MATMUL(FixJPot(1:n), dBasisdx(1:n,:))
+
+       LocalLamThick = SUM( Basis(1:n) * LamThick(1:n) )
+       LocalLamCond = SUM( Basis(1:n) * LamCond(1:n) )
+
+       ! Add -C * grad(V^s), where C is a tensor
+       ! -----------------------------------------
+       L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
+
+       IF ( HBCurve ) THEN
+          B_ip = 0.0d0
+          DO j=1,nd+nb-np
+             DO k=1,dim
+                WBasis(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(j,1:dim) )
+             END DO
+             B_ip = B_ip + ALoc(np+j) * WBasis(:)
+          END DO
+          babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
+          mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/babs
+          IF ( Newton ) THEN
+             muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
+          END IF
+       END IF
+
+       ! ------------------------------------------------------------------
+       ! Compute element stiffness matrix and force vector.
+       ! If we calculate a coil, the nodal degrees of freedom are not used.
+       ! ------------------------------------------------------------------
+       IF (.NOT. CoilBody) THEN
+          ! --------------------------------------------------------
+          ! The constraint equation involving the scalar potential:
+          !     -div(C*(dA/dt+grad(V)))=0
+          ! --------------------------------------------------------
+          IF ( Transient ) THEN
+             DO p=1,np
+                ! -------------------------------------------------------------
+                ! Compute the conductivity term <C grad V,grad v> for stiffness 
+                ! matrix (anisotropy taken into account)
+                ! ------------------------------------------------------------                
+                DO q=1,np
+                   IF ( SUM(C) /= 0._dp ) THEN
+                      STIFF(p,q) = STIFF(p,q) + &
+                           SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:)) * ABS(DetF) * IP % s(t)
+                   END IF
+                END DO
+
+                DO q = 1,nd+nb-np
+                   j = np + q               
+                   ! ------------------------------------------------
+                   ! Compute the conductivity term <C A,grad v> for 
+                   ! mass matrix (anisotropy taken into account)
+                   ! ---------------------------------------------------
+                   DO k=1,dim
+                      WBasis(k) = SUM( GT(k,1:dim) * EBasis(q,1:dim) )
+                   END DO
+                   MASS(p,j) = MASS(p,j) + &
+                        SUM(MATMUL(C, Wbasis(:))*dBasisdx(p,:)) * ABS(DetF) * IP % s(t)
+                END DO
+             END DO
+             
+             ! ----------------------------------------------------
+             ! The equation for the vector potential:
+             ! Compute the conductivity term <C grad V, eta> for 
+             ! stiffness matrix (anisotropy taken into account)
+             ! ------------------------------------------------
+             DO p = 1,nd+nb-np
+                i = np + p
+
+                DO k=1,dim
+                   WBasis(k) = SUM( GT(k,1:dim) * EBasis(p,1:dim) )
+                END DO
+
+                DO q = 1,np
+                   STIFF(i,q) = STIFF(i,q) + &
+                        SUM(MATMUL(C, dBasisdx(q,:))*WBasis(:)) * ABS(DetF) * IP % s(t)
+                END DO
+             END DO
+          ELSE 
+             ! ---------------------------------------------------------------
+             ! This is the steady state branch. Adding the scalar pontential 
+             ! solver as done in the following is reasonable only in the case 
+             ! where the electrical conductivity is nonzero.
+             ! ---------------------------------------------------------------
+             IF (.NOT. LaminateStack ) THEN
+                ! -------------------------------------------------------------
+                ! Compute the conductivity term <C grad V,grad v> for stiffness 
+                ! matrix (anisotropy taken into account)
+                ! ------------------------------------------------------------
+                DO p=1,np
+                   DO q=1,np
+                      STIFF(p,q) = STIFF(p,q) + &
+                           SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:)) * ABS(DetF) * IP % s(t)
+                   END DO
+                END DO
+
+                ! ----------------------------------------------------
+                ! The equation for the vector potential:
+                ! Compute the conductivity term <C grad V, eta> for 
+                ! stiffness matrix (anisotropy taken into account)
+                ! ------------------------------------------------
+                IF (np > 0) THEN
+                   DO p = 1,nd+nb-np
+                      i = np + p
+
+                      DO k=1,dim
+                         WBasis(k) = SUM( GT(k,1:dim) * EBasis(p,1:dim) )
+                      END DO
+
+                      DO q = 1,np
+                         STIFF(i,q) = STIFF(i,q) + &
+                              SUM(MATMUL(C, dBasisdx(q,:))*WBasis(:)) * ABS(DetF) * IP % s(t)
+                      END DO
+                   END DO
+                END IF
+             END IF
+          END IF
+       END IF  ! (.NOT. CoilBody)
+
+       !-----------------------------------------------------------------
+       ! The equations for the H(curl)-conforming part, i.e. the equation 
+       ! for the vector potential
+       !    C*dA/dt + curl(nu*curl(A)) + C*grad(V) =  
+       !    J^s + curl(M^s) - C*grad(V^s),
+       ! with the term C*grad(V) already handled above.
+       !---------------------------------------------------------------
+       DO p = 1,nd+nb-np
+          i = np + p    
+          !------------------------------------------
+          ! RHS as split into two parts: 
+          !------------------------------------------
+          DO k=1,dim
+             WBasis(k) = SUM( GT(k,1:dim) * EBasis(p,1:dim) ) 
+          END DO
+          FORCE(i) = FORCE(i) + SUM(L*WBasis) * ABS(DetF) * IP % s(t)
+
+          DO k=1,dim
+             WBasis(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(p,1:dim) )
+          END DO
+          FORCE(i) = FORCE(i) + SUM(M*WBasis) * ABS(DetF) * IP % s(t)
+          
+
+          DO k=1,dim
+             WBasis(k) = SUM( D(k,1:dim) * CurlEBasis(p,1:dim) )
+             SBasis(k) = SUM( CM(k,1:dim) * EBasis(p,1:dim) )
+          END DO
+
+          DO q = 1,nd+nb-np
+             j = np + q
+             !-------------------------------------------------------
+             ! The weighted inner product nu * <curl A,curl eta>
+             !-------------------------------------------------------
+             STIFF(i,j) = STIFF(i,j) + mu * &
+                  SUM( CurlEBasis(q,1:dim) * WBasis(1:dim) ) * 1.0d0/ABS(DetF) * IP % s(t)
+
+             ! -----------------------------------------------------------------
+             ! Compute the low frequency eddy term for laminate stack model.
+             ! Note that the conductivity term <C A, eta> below can be used to 
+             ! introduce the anisotropic effect in the laminate stack. However, 
+             ! in classical approach of the Low-Frequency model it is set 
+             ! to zero (this is left to the user to deside).
+             ! -----------------------------------------------------------------
+             IF (LaminateStackModel=='low-frequency model') THEN
+                MASS(i,j) = MASS(i,j) + LocalLamCond * LocalLamthick**2/12d0 * &
+                     SUM( CurlEBasis(q,1:dim) * WBasis(1:dim) ) * 1.0d0/ABS(DetF) * IP % s(t)
+             END IF
+
+             IF ( Newton ) THEN
+                DO k=1,dim
+                   TrialFunCurl(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(q,1:dim) )
+                   TestFunCurl(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(p,1:dim) )
+                END DO
+                JAC(i,j) = JAC(i,j) + muder * SUM(B_ip(:)*TrialFunCurl(:)) * &
+                     SUM(B_ip(:)*TestFunCurl(:)) * ABS(DetF) * IP % s(t) / Babs
+             END IF
+             ! ----------------------------------------------
+             ! Compute the conductivity term <C A,eta> for 
+             ! mass matrix (anisotropy taken into account)
+             ! This is not used in the case of stranded coil:
+             ! ----------------------------------------------
+             IF (CoilType /= 'stranded') THEN
+                MASS(i,j) = MASS(i,j) + & 
+                     SUM( EBasis(q,1:dim) * SBasis(1:dim) ) * ABS(DetF) * IP % s(t)
+             END IF
+          END DO
+       END DO
+
+    END DO
+
+    IF ( Newton ) THEN
+      STIFF(1:nd+nb,1:nd+nb) = STIFF(1:nd+nb,1:nd+nb) + JAC
+      FORCE(1:nd+nb) = FORCE(1:nd+nb) + MATMUL(JAC,Aloc)
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixPiolaVersion
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+       ElementFamily)
+!------------------------------------------------------------------------------
+!  This is for temporary use. This routine maps the active basis functions
+!  to their locations in a larger basis vector array corresponding to the element 
+!  definition in the sif file.
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: ActiveEBasis(:,:), ActiveCurlEBasis(:,:), &
+         EBasis(:,:), CurlEBasis(:,:)  
+    INTEGER :: ElementFamily
+!------------------------------------------------------------------------------
+    EBasis = 0.0d0
+    CurlEBasis = 0.0d0
+    SELECT CASE(ElementFamily)
+    CASE(3)
+       ! TO DO: Enable the Nedelec second family
+       EBasis(1:3,:) = ActiveEBasis(1:3,:)
+       CurlEBasis(1:3,:) = ActiveCurlEBasis(1:3,:)
+    CASE(4)
+       EBasis(1:6,:) = ActiveEBasis(1:6,:)
+       CurlEBasis(1:6,:) = ActiveCurlEBasis(1:6,:)
+    CASE(5)
+       ! TO DO: Enable the Nedelec second family
+       EBasis(1:6,:) = ActiveEBasis(1:6,:)
+       CurlEBasis(1:6,:) = ActiveCurlEBasis(1:6,:)        
+    CASE(6)
+        EBasis(1:10,:) = ActiveEBasis(1:10,:)
+        CurlEBasis(1:10,:) = ActiveCurlEBasis(1:10,:)      
+    CASE(7)
+       EBasis(1:9,:) = ActiveEBasis(1:9,:)
+       CurlEBasis(1:9,:) = ActiveCurlEBasis(1:9,:)
+       EBasis(14:19,:) = ActiveEBasis(10:15,:)
+       CurlEBasis(14:19,:) = ActiveCurlEBasis(10:15,:)
+    CASE(8)
+       EBasis(1:27,:) = ActiveEBasis(1:27,:)
+       CurlEBasis(1:27,:) = ActiveCurlEBasis(1:27,:)      
+    CASE DEFAULT
+       CALL Fatal('IncludeDummyDOFs','Unsupported element type')
+    END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE IncludeDummyDOFs
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
@@ -2677,7 +3060,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(Element_t),POINTER :: Element, Edge
 
   REAL(KIND=dp) :: Norm, Omega
-  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
+  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0
   INTEGER :: NoIterationsMin, NoIterationsMax
@@ -2687,6 +3070,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
 
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
 
@@ -2695,9 +3079,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
   TYPE(Variable_t), POINTER :: fixJpot
 
-  CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel
+  CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack
+  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
@@ -2707,7 +3091,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
-       LamThick, AllocationsDone
+       LamThick, AllocationsDone, RotM
 !------------------------------------------------------------------------------
 
 
@@ -2720,10 +3104,15 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   A => GetMatrix()
 
   IF ( .NOT. AllocationsDone ) THEN
+
+     IF (Solver % Variable % dofs /= 2) CALL Fatal ('WhitneyAVHarmonicSolver_Init', &
+       'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
+
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
-          MASS(N,N), Tcoef(3,3,N), Acoef(N), LamCond(N), &
-          LamThick(N), STAT=istat )
+          MASS(N,N), Tcoef(3,3,N), RotM(3,3,N), &
+          Acoef(N), LamCond(N), LamThick(N), &
+          STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
      END IF
@@ -2914,11 +3303,32 @@ CONTAINS
          END SELECT
        END IF
 
+       BodyParams => GetBodyParams( Element )
+       IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
+
+       CoilBody = .False.
+       CoilType = GetString(BodyParams, 'Coil Type', Found)
+       IF (.NOT. Found) THEN
+          CoilType = ''
+       ELSE
+          SELECT CASE (CoilType)
+          CASE ('stranded')
+             CoilBody = .True.
+          CASE ('massive')
+             CoilBody = .True.
+          CASE ('foil winding')
+             CoilBody = .True.
+             CALL GetElementRotM(Element, RotM, n)
+          CASE DEFAULT
+             CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
+          END SELECT
+        END IF
+
        !Get element local matrix and rhs vector:
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
-          LamCond, Element, n, nd )
+          LamCond, CoilBody, CoilType, RotM, Element, n, nd )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
@@ -3057,7 +3467,7 @@ CONTAINS
     IF (ParEnv % PEs>1) CALL ParallelSumVector(A, dDiag)
 
     n = Mesh % NumberOfNodes
-    DO i=1,Mesh % NumberOfNodes
+    DO i=1,SIZE(Solver % Variable % Perm) !n
       j = Solver % Variable % Perm(i)
       IF (j==0) CYCLE
 
@@ -3072,6 +3482,11 @@ CONTAINS
         A % RHS(j+2) = 0._dp
         CALL ZeroRow(A,j+2)
         A % Values(A % Diag(j+2)) = 1._dp
+
+        IF(ALLOCATED(A % ConstrainedDOF)) THEN
+          A % ConstrainedDOF(j+1) = .TRUE.
+          A % ConstrainedDOF(j+2) = .TRUE.
+        END IF
       END IF
     END DO
 !------------------------------------------------------------------------------
@@ -3425,7 +3840,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
-            LamThick, LamCond, Element, n, nd )
+            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
@@ -3436,14 +3851,15 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n)
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,FixJPot(2,nd)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,FixJPot(2,nd), &
+                     RotMLoc(3,3), RotM(3,3,n)
 
     COMPLEX(KIND=dp) :: LocalLamCond, JAC(nd,nd), B_ip(3), Aloc(nd)
     REAL(KIND=dp) :: LocalLamThick, skind, babs, muder, AlocR(2,nd)
 
-    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel
+    CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve
+    LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody
     INTEGER :: t, i, j, p, q, np, siz
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -3519,8 +3935,13 @@ CONTAINS
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
+           IF(CoilType == 'foil winding') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
+
+       ! Transform the conductivity tensor (in case of a foil winding):
+       ! --------------------------------------------------------------
+       IF (CoilType == 'foil winding') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
@@ -3558,36 +3979,40 @@ CONTAINS
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
 
-       !
-       ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
-       ! --------------------------------------------------------
-       DO i=1,np
-         p = i
-         DO j=1,np
-           q = j
+       ! If we calculate a coil, the nodal degrees of freedom are not used:
+       ! ------------------------------------------------------------------
+       IF (.NOT. CoilBody) THEN
+          !
+          ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
+          ! --------------------------------------------------------
+          DO i=1,np
+            p = i
+            DO j=1,np
+              q = j
 
-           ! Compute the conductivity term <C grad V,grad v> for stiffness 
-           ! matrix (anisotropy taken into account)
-           ! -------------------------------------------
-           IF ( SUM(C) /= 0._dp ) THEN
-             STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
-           END IF
-         END DO
-         DO j=1,nd-np
-           q = j+np
+              ! Compute the conductivity term <C grad V,grad v> for stiffness 
+              ! matrix (anisotropy taken into account)
+              ! -------------------------------------------
+              IF ( SUM(C) /= 0._dp ) THEN
+                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
+              END IF
+            END DO
+            DO j=1,nd-np
+              q = j+np
 
-           ! Compute the conductivity term <j * omega * C A,grad v> for 
-           ! stiffness matrix (anisotropy taken into account)
-           ! -------------------------------------------
-           STIFF(p,q) = STIFF(p,q) + im * Omega * &
-               SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
+              ! Compute the conductivity term <j * omega * C A,grad v> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! -------------------------------------------
+              STIFF(p,q) = STIFF(p,q) + im * Omega * &
+                  SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
 
-           ! Compute the conductivity term <C grad V, eta> for 
-           ! stiffness matrix (anisotropy taken into account)
-           ! ------------------------------------------------
-           STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
-         END DO
-       END DO
+              ! Compute the conductivity term <C grad V, eta> for 
+              ! stiffness matrix (anisotropy taken into account)
+              ! ------------------------------------------------
+              STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
+            END DO
+          END DO
+       END IF ! (.NOT. CoilBody)
 
        !
        ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
@@ -3612,8 +4037,8 @@ CONTAINS
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           STIFF(p,q) = STIFF(p,q) + im*Omega* &
-                        SUM(MATMUL(C, WBasis(i,:))*WBasis(j,:))*detJ*IP % s(t)
+           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + im*Omega* &
+                        SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO
     END DO
@@ -4107,6 +4532,38 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+ SUBROUTINE GetElementRotM(Element,RotM,n)
+!------------------------------------------------------------------------------
+   TYPE(Element_t) :: Element
+   INTEGER :: k, l, m, j, n
+   REAL(KIND=dp) :: RotM(3,3,n)
+   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
+   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
+   TYPE(Variable_t), POINTER, SAVE :: RotMvar
+   LOGICAL, SAVE :: visited = .FALSE.
+ 
+
+   IF(.NOT. visited) THEN
+     visited = .TRUE.
+     RotMvar => VariableGet( Mesh % Variables, 'RotM E')
+     IF(.NOT. ASSOCIATED(RotMVar)) THEN
+       CALL Fatal('GetElementRotM','RotM E variable not found')
+     END IF
+   END IF
+
+   RotM = 0._dp
+   DO j = 1, n
+     DO k=1,RotMvar % DOFs
+       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
+             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
+     END DO
+   END DO
+
+!------------------------------------------------------------------------------
+ END SUBROUTINE GetElementRotM
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
  END SUBROUTINE WhitneyAVHarmonicSolver
 !------------------------------------------------------------------------------
 
@@ -4278,6 +4735,16 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
+  ! The steady current density may also be computed if the scalar potential
+  ! is taken to be an unknown:
+  IF ( .NOT. Transient .AND. Vdofs==1 ) THEN
+     IF ( GetLogical( Solver % Values, 'Calculate Current Density', Found ) ) THEN
+        i = i + 1
+        CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+             "Current Density E[Current Density E:3]" )   
+     END IF
+  END IF
+
   DEALLOCATE(Model % Solvers)
   Model % Solvers => Solvers
   Model % NumberOfSolvers = n+1
@@ -4437,6 +4904,16 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     END IF
   END IF
 
+  ! The steady current density may also be computed if the scalar potential is 
+  ! taken to be an unknown:
+  IF (.NOT. Transient .AND. Var % DOFs==1) THEN
+    IF ( GetLogical( SolverParams, 'Calculate Current Density', Found ) ) THEN
+      i = i + 1
+      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+           "Current Density[Current Density:3]" )
+    END IF
+  END IF
+
   ! add these in the beginning, so that SaveData sees these existing, even
   ! if executed before the actual computations...
   ! -----------------------------------------------------------------------
@@ -4486,14 +4963,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
   
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w,WBasis(32,3), SOL(2,32), PSOL(32), R(32), C(32), Norm
-   REAL(KIND=dp) :: RotWBasis(32,3), Basis(32), dBasisdx(32,3), B(2,3), E(2,3), JatIP(2,3), &
-                    VP_ip(2,3), Wbase(32), alpha(32), JXBatIP(2,3)
+   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), PSOL(35), R(35), C(35), Norm
+   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3), JatIP(2,3), &
+                    VP_ip(2,3), Wbase(35), alpha(35), JXBatIP(2,3)
    REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, ComponentLoss(2), LossCoeff, ValAtIP
    REAL(KIND=dp) :: Coeff, TotalLoss, localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3)
-   COMPLEX(KIND=dp) ::  Magnetization(3,32), MG_ip(3)
+   COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3)
 
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
@@ -4528,6 +5005,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>Null(), Cwrk_im(:,:,:)=>Null()
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
+
+   LOGICAL :: PiolaVersion
+   REAL(KIND=dp), ALLOCATABLE :: NodesU(:), NodesV(:), NodesW(:), EBasis(:,:), CurlEBasis(:,:) 
+   REAL(KIND=dp), ALLOCATABLE :: ActiveEBasis(:,:), ActiveCurlEBasis(:,:)
+   REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
+   
+!-------------------------------------------------------------------------------------------
+   PiolaVersion = .FALSE. ! DO NOT CHANGE THIS! (A FEATURE UNDER DEVELOPMENT)
+   IF (PiolaVersion) THEN
+      CALL Info('MagnetoDynamicsCalcFields', &
+           'USING A TEST VERSION FOR PIOLA TRASFORMED ELEMENTS',Level=2)
+   END IF
 
    Mesh => GetMesh()
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
@@ -4569,6 +5058,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      EL_FWP => VariableGet( Mesh % Variables, 'Winding Voltage E' )
    END IF
 
+   IF (.NOT. Transient .AND. VDOFs==1) THEN
+      CD => VariableGet( Mesh % Variables, 'Current Density' )
+      EL_CD => VariableGet( Mesh % Variables, 'Current Density E' )
+   END IF
+
    MST => variableGet( Mesh % Variables, 'Maxwell stress' )
    EL_MST => variableGet( Mesh % Variables, 'Maxwell stress E' )
 
@@ -4585,7 +5079,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),DOFs)); Gforce=0._dp
 
    n = Mesh % MaxElementDOFs
-   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n) ) 
+   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n) )
+   IF (PiolaVersion) ALLOCATE( NodesU(n), NodesV(n), NodesW(n), &
+        EBasis(n,3), CurlEBasis(n,3), ActiveEBasis(n,3), ActiveCurlEBasis(n,3) ) 
    SOL = 0._dp; PSOL=0._dp
 
    Omega = GetAngularFrequency(Found=Found)
@@ -4787,15 +5283,44 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      dim = 3
 
+     IF (PiolaVersion) CALL GetRefPElementNodes(Element, NodesU, NodesV, NodesW, .FALSE.)
+
      ! Calculate "on nodes on elements" fields:
      ! ----------------------------------------
+     E = 0.0d0
      DO j=1,n
-       u = Element % TYPE % NodeU(j)
-       v = Element % TYPE % NodeV(j)
-       w = Element % TYPE % NodeW(j)
+       IF (PiolaVersion) THEN       
 
-       stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-       CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+          stat = EdgeElementInfo( Element, Nodes, NodesU(j), NodesV(j), &
+            NodesW(j), F, G, DetF, Basis, ActiveEBasis, ActiveCurlEBasis, dBasisdx)
+
+          !--------------------------------------------------------------------------
+          ! Map the active basis vectors to their locations in the larger basis
+          ! vector array that corresponds to the element definition in the sif file.
+          ! -------------------------------------------------------------------------
+          CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+               Element % TYPE % ElementCode / 100 )
+          !-------------------------------------------------------------------------
+          ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
+          ! vector B_j(x), with the place x related to the reference element 
+          ! coordinates p via the element mapping x = f(p). Additionally, 
+          ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
+          !-------------------------------------------------------------------------
+          GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
+          DO l = 1,nd-np 
+             DO k=1,dim
+                WBasis(l,k) = SUM( GT(k,1:dim) * EBasis(l,1:dim) )
+                RotWBasis(l,k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(l,1:dim) )
+             END DO
+          END DO
+       ELSE
+          u = Element % TYPE % NodeU(j)
+          v = Element % TYPE % NodeV(j)
+          w = Element % TYPE % NodeW(j)
+
+          stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
+          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+       END IF
 
        DO k=1,vDOFs
          B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
@@ -5020,18 +5545,48 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      ! Calculate nodal fields:
      ! -----------------------
-     IP = GaussPoints(Element)
+     IF (PiolaVersion) THEN
+        IP = EdgeElementGaussPoints(Element % TYPE % ElementCode / 100)
+     ELSE
+        IP = GaussPoints(Element)
+     END IF
+
      MASS  = 0._dp
      FORCE = 0._dp
-
      E = 0._dp; B=0._dp
      DO j = 1,IP % n
        u = IP % U(j)
        v = IP % V(j)
        w = IP % W(j)
 
-       stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-       CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+       IF (PiolaVersion) THEN
+          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+               F, G, DetF, Basis, ActiveEBasis, ActiveCurlEBasis, dBasisdx)
+
+          !--------------------------------------------------------------------------
+          ! Map the active basis vectors to their locations in the larger basis
+          ! vector array that corresponds to the element definition in the sif file.
+          ! -------------------------------------------------------------------------
+          CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+               Element % TYPE % ElementCode / 100 )
+          !-------------------------------------------------------------------------
+          ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
+          ! vector B_j(x), with the place x related to the reference element 
+          ! coordinates p via the element mapping x = f(p). Additionally, 
+          ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
+          !-------------------------------------------------------------------------
+          GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
+          DO l = 1,nd-np 
+             DO k=1,dim
+                WBasis(l,k) = SUM( GT(k,1:dim) * EBasis(l,1:dim) )
+                RotWBasis(l,k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(l,1:dim) )
+             END DO
+          END DO
+          DetJ = ABS(DetF)
+       ELSE
+          stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
+          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+       END IF
 
        DO k=1,vDOFs
          B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
@@ -5429,6 +5984,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CALL Info( 'MagnetoDynamics', Message )
    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
    DEALLOCATE( Gforce,MASS,FORCE,Tcoef,RotM )
+   IF (PiolaVersion) DEALLOCATE( NodesU,NodesV,NodesW, &
+        EBasis, CurlEBasis, ActiveEBasis, ActiveCurlEBasis )
 
    IF (LossEstimation) THEN
       CALL ListAddConstReal( Model % Simulation,'res: fourier loss',TotalLoss )
@@ -5465,6 +6022,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
   AverageFluxDensity = 0._dp
 
   IF (ListGetLogicalAnyBC( Model,'Magnetic Flux Average')) THEN
+    IF (PiolaVersion) CALL Fatal ('MagnetoDynamicsCalcFields', &
+         'Magnetic Flux Average: The feature is not yet available for Piola transformed basis functions')
     DO i=1,GetNOFBoundaryElements()
        Element => GetBoundaryElement(i)
        IF (.NOT. ActiveBoundaryElement()) CYCLE
@@ -5710,6 +6269,52 @@ CONTAINS
       END DO
 
     END SUBROUTINE calcAverageFlux
+
+
+
+!------------------------------------------------------------------------------
+    SUBROUTINE IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
+         ElementFamily)
+!------------------------------------------------------------------------------
+!  This is for temporary use. This routine maps the active basis functions
+!  to their locations in a larger basis vector array corresponding to the element 
+!  definition in the sif file.
+!------------------------------------------------------------------------------
+      REAL(KIND=dp) :: ActiveEBasis(:,:), ActiveCurlEBasis(:,:), &
+           EBasis(:,:), CurlEBasis(:,:)  
+      INTEGER :: ElementFamily
+!------------------------------------------------------------------------------
+      EBasis = 0.0d0
+      CurlEBasis = 0.0d0
+      SELECT CASE(ElementFamily)
+      CASE(3)
+         ! TO DO: Enable the Nedelec second family
+         EBasis(1:3,:) = ActiveEBasis(1:3,:)
+         CurlEBasis(1:3,:) = ActiveCurlEBasis(1:3,:)
+      CASE(4)
+         EBasis(1:6,:) = ActiveEBasis(1:6,:)
+         CurlEBasis(1:6,:) = ActiveCurlEBasis(1:6,:)
+      CASE(5)
+         ! TO DO: Enable the Nedelec second family
+         EBasis(1:6,:) = ActiveEBasis(1:6,:)
+         CurlEBasis(1:6,:) = ActiveCurlEBasis(1:6,:)        
+      CASE(6)
+         EBasis(1:10,:) = ActiveEBasis(1:10,:)
+         CurlEBasis(1:10,:) = ActiveCurlEBasis(1:10,:)      
+      CASE(7)
+         EBasis(1:9,:) = ActiveEBasis(1:9,:)
+         CurlEBasis(1:9,:) = ActiveCurlEBasis(1:9,:)
+         EBasis(14:19,:) = ActiveEBasis(10:15,:)
+         CurlEBasis(14:19,:) = ActiveCurlEBasis(10:15,:)
+      CASE(8)
+         EBasis(1:27,:) = ActiveEBasis(1:27,:)
+         CurlEBasis(1:27,:) = ActiveCurlEBasis(1:27,:)      
+      CASE DEFAULT
+         CALL Fatal('IncludeDummyDOFs','Unsupported element type')
+      END SELECT
+!------------------------------------------------------------------------------
+    END SUBROUTINE IncludeDummyDOFs
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------

@@ -3589,10 +3589,12 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Solution
     INTEGER, POINTER :: Perm(:), Perm2(:), DispPerm(:), Disp2Perm(:)
     REAL(KIND=dp), POINTER :: Values(:), DispValues(:), Disp2Values(:), Values2(:), Values3(:)
-    REAL(KIND=dp) :: x,y,z, ElemVectVal(3),val
+    REAL(KIND=dp) :: x,y,z, val
+    INTEGER(KIND=dp), ALLOCATABLE :: ElemInd(:)
+    REAL(KIND=dp), ALLOCATABLE :: ElemVectVal(:)
     COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)
     TYPE(Solver_t), POINTER :: Solver
-    TYPE(Element_t), POINTER :: CurrentElement
+    TYPE(Element_t), POINTER :: CurrentElement, Parent
     TYPE(ValueList_t), POINTER :: Params
 
     ! Linefeed character
@@ -3793,6 +3795,7 @@ CONTAINS
           sdofs = 1
         END IF
 
+
         !---------------------------------------------------------------------
         ! Finally save the field values 
         !---------------------------------------------------------------------
@@ -3936,6 +3939,12 @@ CONTAINS
         Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
         ComponentVector = .FALSE.
 
+        ! If we are looking for a vector just one dofs wont do!
+        ! This circumvents a problem somewhere else in the code. 
+        IF( ASSOCIATED( Solution ) ) THEN
+          IF( Rank > 0 .AND. Solution % Dofs <= 1 ) NULLIFY( Solution ) 
+        END IF
+
         IF(.NOT. ASSOCIATED(Solution)) THEN
           Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
           IF( ASSOCIATED(Solution)) THEN 
@@ -3954,13 +3963,25 @@ CONTAINS
         Perm => Solution % Perm
         Dofs = Solution % DOFs
         Values => Solution % Values
+
         
-        IF( dofs > 1 ) THEN
-          sdofs = MAX(dofs,dim)
-        ELSE
-          sdofs = 1
+       !---------------------------------------------------------------------
+        ! Some vectors are defined by a set of components (either 2 or 3)
+        !---------------------------------------------------------------------
+        sdofs = 1
+        IF( ComponentVector ) THEN
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
+          IF( ASSOCIATED(Solution)) THEN
+            Values2 => Solution % Values
+            sdofs = 2
+          END IF
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
+          IF( ASSOCIATED(Solution)) THEN
+            Values3 => Solution % Values
+            sdofs = 3
+          END IF
         END IF
-        
+
         !---------------------------------------------------------------------
         ! Finally save the field values 
         !---------------------------------------------------------------------
@@ -3988,31 +4009,56 @@ CONTAINS
 
         
         IF( WriteData ) THEN
-
           IF( BinaryOutput ) WRITE( VtuUnit ) k
 
+          ALLOCATE(ElemVectVal(sdofs), ElemInd(Model % Mesh % MaxElementDOFS))
           DO i = ElemFirst, ElemLast
             IF( .NOT. ActiveElem(i) ) CYCLE
-
-            ElemVectVal = 0.0
             CurrentElement => Model % Elements(i)
 
-            IF (i <= Mesh % NumberOfBulkElements) THEN
-              IF ( ALL(Perm(CurrentElement % DGIndexes)>0)) THEN
-                n = GetElementNOFNodes(CurrentElement)
-                DO j=1,dofs
-                  ElemVectVal(j) = SUM(Values(dofs*(perm(CurrentElement % DGIndexes)-1)+j))/n
-                END DO
+            ElemVectVal = 0._dp; ElemInd = 0
+            n = GetElementNOFNodes(CurrentElement)
+
+            IF ( ASSOCIATED(CurrentElement % BoundaryInfo) .AND. .NOT. &
+                 ASSOCIATED(CurrentElement % DGIndexes) ) THEN
+
+              Parent => CurrentElement % BoundaryInfo % Left
+              IF (.NOT.ASSOCIATED(Parent) ) &
+                Parent => CurrentElement % BoundaryInfo % Right
+
+              IF ( ASSOCIATED(Parent) ) THEN
+                IF (ASSOCIATED(Parent % DGIndexes) ) THEN
+                  DO j=1,n
+                    DO k=1,Parent % Type % NumberOfNodes
+                      IF(Currentelement % NodeIndexes(j) == Parent % NodeIndexes(k)) &
+                      ElemInd(j) = Perm( Parent % DGIndexes(k) )
+                    END DO
+                  END DO
+                END IF
               END IF
+            ELSE
+              ElemInd(1:n) = Perm( CurrentElement % DGIndexes(1:n) )
             END IF
-            
-            DO j=1,sdofs                
-              CALL RealWrite( ElemVectVal(j) )
-            END DO            
+
+            IF ( ALL(ElemInd(1:n)>0)) THEN
+              DO k=1,sdofs
+                IF(ComponentVector) THEN
+                  IF (k==1) ElemVectVal(k) = SUM(Values(ElemInd(1:n)))/n
+                  IF (k==2) ElemVectVal(k) = SUM(Values2(ElemInd(1:n)))/n
+                  IF (k==3) ElemVectVal(k) = SUM(Values3(ElemInd(1:n)))/n
+                ELSE
+                  ElemVectVal(k) = SUM(Values(dofs*(ElemInd(1:n)-1)+k))/n
+                END IF
+              END DO
+            END IF
+
+            DO k=1,sdofs
+              CALL RealWrite( ElemVectVal(k) )
+            END DO
           END DO
 
           CALL RealWrite( 0.0_dp, .TRUE. )
-
+          DEALLOCATE(ElemVectVal,ElemInd)
         END IF
         
         IF( AsciiOutput ) THEN

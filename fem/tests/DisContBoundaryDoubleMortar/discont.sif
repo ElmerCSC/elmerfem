@@ -1,0 +1,184 @@
+! Testing for the discontinuous boundary creation.
+! This test case has Delaunay triangularization which requires 
+! some special tricks compared to structured meshes. This is due 
+! to the single nodes on the boundary.
+!
+! This case has demonstrates also how to create two different boundaries and
+! use mortar condition to ensure continuity of the solution. The other
+! boundary does not need to be created.
+!
+! P.R. / 18.3.2014
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "circle_in_square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 32
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "discont.vtu"
+
+! This will become the default in future. 
+  New Load Mesh = Logical True
+  Discontinuous Boundaries Greedy = Logical True
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Square"
+!  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Circle"
+  Target Bodies(1) = 2
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Body Force 1
+  Name = "SquareSource"
+End 
+
+Body Force 2
+  Name = "CircleSource"
+  Mesh Rotate 3 = 30.0
+!  Mesh Translate 1 = 4.0
+  Heat Source = 1.0e1
+End 
+
+Equation 1
+  Name = "Equations"
+  Active Solvers(3) = 1 2 3
+End
+
+! Moves the inner circle as defined in the body force section
+Solver 1
+  Exec Solver = Before all
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+End
+
+
+Solver 2
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-08
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+  Stabilize = True
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Abort Not Converged = False
+!  Optimize Bandwidth = False
+
+  Apply Mortar BCs = Logical True
+End
+
+
+Solver 3
+  Exec Solver = never
+
+  Equation = ComputeFlux
+  Procedure = "FluxSolver" "FluxSolver"
+
+  Calculate Flux = Logical True
+  Target Variable = String Temperature
+  Flux Coefficient = String "Heat Conductivity"
+
+! these are taken care by the defaults
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BIcgstab"
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-8
+
+!  Optimize Bandwidth = False
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Heat Conductivity = 1
+End
+
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries(1) = 1
+End
+
+Boundary Condition 2
+  Name = "Right"
+  Target Boundaries(1) = 2
+  Temperature = 0.0
+End
+
+Boundary Condition 3
+  Name = "Top"
+  Target Boundaries(1) = 3
+End
+
+Boundary Condition 4
+  Name = "Left"
+  Target Boundaries(1) = 4
+  Temperature = 0.0
+End
+
+Boundary Condition 5
+  Name = "Jump"
+  Target Boundaries(4) = 5 6 7 8 
+
+! This activates the discontinuous boundary creation
+  Discontinuous Boundary = Logical True
+
+! This keyword makes two different boundaries
+! If this is only present as motar or periodic target 
+! it does not need to exist as a BC. 
+  Discontinuous Target Boundary = Integer 6
+
+  Mortar BC = 6
+
+!  Periodic BC = 6
+!  Periodic BC Temperature = Logical True
+
+! This can be turned optionally off
+!  Periodic BC Use Lagrange Coefficient = Logical True
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM= 4.7643712\n");
+!End Of File
