@@ -3,9 +3,6 @@ ADD_SUBDIRECTORY(modules)
 
 SET(prefix "${CMAKE_INSTALL_PREFIX}")
 
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90)
-
 SET(solverlib_SOURCES NavierStokes.F90 NavierStokesGeneral.F90
   NavierStokesCylindrical.F90 Lists.F90
   DiffuseConvectiveAnisotropic.F90 LoadMod.F90
@@ -48,6 +45,11 @@ INCLUDE_DIRECTORIES("${CMAKE_CURRENT_BINARY_DIR}/binio")
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/eio/src")
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/fhutiter/src")
 
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90)
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.in.cmake
+  ${CMAKE_CURRENT_BINARY_DIR}/elmerld)
+
 ADD_LIBRARY(elmersolver SHARED ${solverlib_SOURCES})
 TARGET_LINK_LIBRARIES(elmersolver ${MPI_Fortran_LIBRARIES} matc 
   eiof umfpack amd fhuti ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack
@@ -62,3 +64,4 @@ TARGET_LINK_LIBRARIES(ElmerSolver_mpi elmersolver matc fhuti eiof
 INSTALL(FILES elements.def SOLVER.KEYWORDS DESTINATION "share/elmersolver/lib")
 INSTALL(TARGETS ElmerSolver_mpi elmersolver RUNTIME DESTINATION "bin" LIBRARY DESTINATION "lib") 
 INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerf90 DESTINATION "bin")
+INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld DESTINATION "bin")
