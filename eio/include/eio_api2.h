@@ -34,7 +34,7 @@ extern "C"
   
 
 //#if defined(__cplusplus)
-//#define EIOFUN extern "C" void
+#define EIOFUN extern "C" STDCALLBULL void
 #define IREF int&
 #define DREF double&
   //#else
@@ -131,8 +131,13 @@ void FC_FUNC_(eio_get_mesh_description,eio_get_mesh_description) (IREF nodeCount
 				IREF usedElementTypes, int* elementTypeTags,
 				int *elementCountByType, 
 				IREF info);
-void FC_FUNC_(eio_get_mesh_element_conns,eio_get_mesh_element_conns) (IREF tag, IREF body, IREF type, 
-		int *pdofs, int *nodes, IREF info);
+  /* Header different from actual implementation
+     void FC_FUNC_(eio_get_mesh_element_conns,eio_get_mesh_element_conns)
+     (IREF tag, IREF body, IREF type, int *pdofs, int *nodes, IREF info); */
+void FC_FUNC_(eio_get_mesh_element_conns,EIO_GET_MESH_ELEMENT_CONNS)
+  (IREF tag, IREF part, IREF body, IREF type, int *pdofs, int *nodes, 
+   IREF info)
+
 void FC_FUNC_(eio_get_mesh_element_coords,eio_get_mesh_element_coords) (IREF tag, IREF body, IREF type, 
 					int *nodes, 
 					double *coord, IREF info);

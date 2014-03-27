@@ -49,13 +49,13 @@ INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/eio/src")
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/fhutiter/src")
 
 ADD_LIBRARY(elmersolver SHARED ${solverlib_SOURCES})
-TARGET_LINK_LIBRARIES(elmersolver ${MPI_Fortran_LIBRARIES} matc eioc
+TARGET_LINK_LIBRARIES(elmersolver ${MPI_Fortran_LIBRARIES} matc 
   eiof umfpack amd fhuti ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack
   parpack binio)
 
 ADD_EXECUTABLE(ElmerSolver_mpi Solver.F90)
 
-TARGET_LINK_LIBRARIES(ElmerSolver_mpi elmersolver matc fhuti eioc eiof
+TARGET_LINK_LIBRARIES(ElmerSolver_mpi elmersolver matc fhuti eiof
   umfpack amd ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack parpack binio
   ${CMAKE_DL_LIBS})
 
