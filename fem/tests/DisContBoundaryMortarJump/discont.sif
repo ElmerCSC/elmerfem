@@ -128,7 +128,7 @@ Boundary Condition 1
   Discontinuous Target Boundary = Integer 10
   Mortar BC = 10 
 
-  Mortar BC Coefficient = Real 1.0
+  Mortar BC Coefficient Temperature = Real 1.0
 End
 
 
