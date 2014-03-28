@@ -27,7 +27,15 @@ win32 {
    pythonqtdll.files = lib\PythonQt.dll
    INSTALLS += pythonqtdll
 }
+#------------------------------------------------------------------------------
+# Compiler flags:
+#------------------------------------------------------------------------------
+QMAKE_CXXFLAGS_DEBUG += -g
+QMAKE_CXXFLAGS += -g
 
+#------------------------------------------------------------------------------
+# Input files:
+#------------------------------------------------------------------------------
 HEADERS += src/PythonQt.h \
            src/PythonQtStdDecorators.h \
            src/PythonQtClassInfo.h \
