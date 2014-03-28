@@ -1,0 +1,77 @@
+subroutine mpi_init(ierr)
+  integer :: ierr
+  ierr = 0
+end subroutine mpi_init
+
+subroutine mpi_finalize(ierr)
+  integer :: ierr
+  ierr = 0
+end subroutine mpi_finalize
+
+subroutine mpi_comm_size(comm, csize, ierr)
+  integer :: comm, csize, ierr
+  ierr = 0
+  csize = 1
+end subroutine mpi_comm_size
+
+subroutine mpi_comm_rank(comm, rank, ierr)
+  integer :: comm, rank, ierr
+  rank = 0
+  ierr = 0
+end subroutine mpi_comm_rank
+
+subroutine mpi_allreduce
+  return
+end subroutine mpi_allreduce
+
+subroutine mpi_buffer_detach
+  return
+end subroutine mpi_buffer_detach
+
+subroutine mpi_recv
+  return
+end subroutine mpi_recv
+
+subroutine mpi_buffer_attach
+  return
+end subroutine mpi_buffer_attach
+
+subroutine mpi_send
+  return
+end subroutine mpi_send
+
+subroutine mpi_barrier
+  return
+end subroutine mpi_barrier
+
+subroutine mpi_waitany
+  return
+end subroutine mpi_waitany
+
+subroutine mpi_bsend
+  return
+end subroutine mpi_bsend
+
+subroutine mpi_comm_free
+  return
+end subroutine mpi_comm_free
+
+subroutine mpi_waitall
+  return
+end subroutine mpi_waitall
+
+subroutine mpi_comm_group
+  return
+end subroutine mpi_comm_group
+
+subroutine mpi_group_incl
+  return
+end subroutine mpi_group_incl
+
+subroutine mpi_comm_create
+  return
+end subroutine mpi_comm_create
+
+subroutine mpi_irecv
+  return
+end subroutine mpi_irecv
