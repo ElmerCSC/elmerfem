@@ -2282,10 +2282,10 @@ CONTAINS
 !------------------------------------------------------------------------------
       CHARACTER(LEN=*) :: ElementDef
 !------------------------------------------------------------------------------
-      INTEGER  :: ind(10),i,j
+      INTEGER  :: ind(8),i,j,n
       INTEGER, POINTER :: gdofs(:,:), sdofs(:,:,:)
 
-      ind = [1,2,3,4,5,6,7,8,9,10]
+      ind = [1,2,3,4,5,6,7,8]
 
       IF (ElementDef(1:5) == 'point' )     ind=1
       IF (ElementDef(1:4) == 'line' )      ind=2
@@ -2297,29 +2297,32 @@ CONTAINS
       IF (ElementDef(1:5) == 'brick' )     ind=8
       IF (ElementDef(1:8) == 'tri_face' )  ind=9
       IF (ElementDef(1:9) == 'quad_face' ) ind=10
+
+      n = INDEX(ElementDef,'-')
+      IF (n<=0) n=LEN_TRIM(ElementDef)
           
-      j = INDEX( ElementDef, 'n:' )
+      j = INDEX( ElementDef(1:n), 'n:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
         Solver % Def_Dofs(ind,:,1) = l
         IF (.NOT. GotMesh ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
       END IF
           
-      j = INDEX( ElementDef, 'e:' )
+      j = INDEX( ElementDef(1:n), 'e:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
         Solver % Def_Dofs(ind,:,2) = l
         IF ( .NOT. GotMesh ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
       END IF
           
-      j = INDEX( ElementDef, 'f:' )
+      j = INDEX( ElementDef(1:n), 'f:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
         Solver % Def_Dofs(ind,:,3) = l
         IF ( .NOT. GotMesh ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
       END IF
           
-      j = INDEX( ElementDef, 'd:' )
+      j = INDEX( ElementDef(1:n), 'd:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
         Solver % Def_Dofs(ind,:,4) = l
@@ -2332,14 +2335,14 @@ CONTAINS
         END IF
       END IF
           
-      j = INDEX( ElementDef, 'b:' )
+      j = INDEX( ElementDef(1:n), 'b:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
         Solver % Def_Dofs(ind,:,5) = l
         IF ( .NOT. GotMesh ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
       END IF
           
-      j = INDEX( ElementDef, 'p:' )
+      j = INDEX( ElementDef(1:n), 'p:' )
       IF ( j>0 ) THEN
         IF ( ElementDef(j+2:j+2)=='%' ) THEN
           Solver % Def_Dofs(ind,:,6) = 0

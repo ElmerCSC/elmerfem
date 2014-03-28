@@ -216,7 +216,7 @@ CONTAINS
        Solver % Def_Dofs=-1
        Solver % Def_Dofs(:,:,1)=1
      END IF
-     Body_Dofs => Solver % Def_Dofs(:,BodyId,:)
+     Body_Dofs => Solver % Def_Dofs(1:8,BodyId,:)
 
      j = INDEX(ElementDef, '-') ! FIX this to include elementtypewise defs...
      IF ( j>0 ) RETURN
@@ -232,34 +232,34 @@ CONTAINS
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
         Body_Dofs(:,2) = l
-        Def_Dofs(:,2) = MAX(Def_Dofs(:,2), l )
+        Def_Dofs(1:8,2) = MAX(Def_Dofs(:,2), l )
       END IF
           
       j = INDEX( ElementDef, 'f:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
         Body_Dofs(:,3) = l
-        Def_Dofs(:,3) = MAX(Def_Dofs(:,3), l )
+        Def_Dofs(1:8,3) = MAX(Def_Dofs(:,3), l )
       END IF
           
       j = INDEX( ElementDef, 'd:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
         Body_Dofs(:,4) = l
-        Def_Dofs(:,4) = MAX(Def_Dofs(:,4), l )
+        Def_Dofs(1:8,4) = MAX(Def_Dofs(:,4), l )
       ELSE 
         IF ( ListGetLogical( Solver % Values, &
             'Discontinuous Galerkin', stat ) ) THEN
           Body_Dofs(:,4) = 0
-          Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
+          Def_Dofs(1:8,4) = MAX(Def_Dofs(:,4),0 )
         END IF
       END IF
           
       j = INDEX( ElementDef, 'b:' )
       IF ( j>0 ) THEN
         READ( ElementDef(j+2:), * ) l
-        Body_Dofs(:,5) = l
-        Def_Dofs(:,5) = MAX(Def_Dofs(:,5), l )
+        Body_Dofs(1:8,5) = l
+        Def_Dofs(1:8,5) = MAX(Def_Dofs(:,5), l )
       END IF
           
       j = INDEX( ElementDef, 'p:' )
@@ -275,11 +275,11 @@ CONTAINS
           CALL matc(str,RESULT,slen)
           READ(RESULT,*) x
           Body_Dofs(:,6) = 0
-          Def_Dofs(:,6)  = MAX(Def_Dofs(:,6),NINT(x))
+          Def_Dofs(1:88,6)  = MAX(Def_Dofs(:,6),NINT(x))
         ELSE
           READ( ElementDef(j+2:), * ) l
           Body_Dofs(:,6) = l
-          Def_Dofs(:,6) = MAX(Def_Dofs(:,6), l )
+          Def_Dofs(1:8,6) = MAX(Def_Dofs(:,6), l )
         END IF
       END IF
 
