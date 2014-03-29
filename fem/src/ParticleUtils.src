@@ -5279,23 +5279,26 @@ RETURN
     USE DefUtils 
     USE MeshUtils
     USE ElementDescription
+    USE AscBinOutputUtils
     
     IMPLICIT NONE
     TYPE(Particle_t), POINTER :: Particles  
     
     TYPE(ValueList_t),POINTER :: Params
     INTEGER, SAVE :: nTime = 0
-    LOGICAL :: GotIt, Parallel, FixedMeshend
+    LOGICAL :: GotIt, Parallel, FixedMeshend,SinglePrec
     
     CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
     CHARACTER(MAX_NAME_LEN) :: VtuFile, PvtuFile 
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i, j, k, Partitions, Part, ExtCount, FileindexOffSet, &
-        Status, MinSaveStatus, MaxSaveStatus
+        Status, MinSaveStatus, MaxSaveStatus, PrecBits, PrecSize, IntSize
     CHARACTER(MAX_NAME_LEN) :: Dir
-    REAL(KIND=dp) :: SaveNodeFraction
-    LOGICAL :: Found,Visited = .FALSE.
+    REAL(KIND=dp) :: SaveNodeFraction, LocalVal(3)
+    LOGICAL :: BinaryOutput,AsciiOutput,Found,Visited = .FALSE.,SaveFields
+    REAL(KIND=dp) :: DoubleWrk
+    REAL :: SingleWrk
 
     CHARACTER(MAX_NAME_LEN) :: Str
     INTEGER :: NumberOfNodes, ParallelNodes, Dim
@@ -5325,9 +5328,34 @@ RETURN
       IF(.NOT. Found ) MaxSaveStatus = PARTICLE_LOST-1      
     END IF
     
+    BinaryOutput = GetLogical( Params,'Binary Output',GotIt)
+    IF( GotIt ) THEN
+      AsciiOutput = .NOT. BinaryOutput
+    ELSE
+      AsciiOutput = GetLogical( Params,'Ascii Output',GotIt)
+      BinaryOutput = .NOT. AsciiOutput
+    END IF
+    
+    SaveFields = GetLogical( Params,'Save Fields',GotIt)
+    IF(.NOT. GotIt) SaveFields = .TRUE.
+
+    SinglePrec = GetLogical( Params,'Single Precision',GotIt) 
+    IF( SinglePrec ) THEN
+      CALL Info('VtuOutputSolver','Using single precision arithmetics in output!',Level=7)
+    END IF
+    
+    IF( SinglePrec ) THEN
+      PrecBits = 32
+      PrecSize = KIND( SingleWrk ) 
+    ELSE
+      PrecBits = 64
+      PrecSize = KIND( DoubleWrk ) 
+    END IF
+    IntSize = KIND(i)
+    
     Partitions = ParEnv % PEs
     Part = ParEnv % MyPE
-    Parallel = (Partitions > 1) .OR. ListGetLogical(Params,'Enforce Parallel format',GotIt)
+    Parallel = (Partitions > 1) .OR. GetLogical(Params,'Enforce Parallel format',GotIt)
     
     Dim = Particles % dim
 
@@ -5379,435 +5407,572 @@ RETURN
       INTEGER, PARAMETER :: VtuUnit = 58
       TYPE(Variable_t), POINTER :: Var, Solution
       CHARACTER(LEN=512) :: str
-      INTEGER :: i,j,k,dofs,Rank,cumn,n,vari,sdofs
+      INTEGER :: i,j,k,dofs,Rank,cumn,n,vari,sdofs,IsVector,Offset
       CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
-          FieldName2
+          FieldName2, BaseString, OutStr
+      CHARACTER :: lf
       LOGICAL :: ScalarsExist, VectorsExist, Found, ParticleMode, ComponentVector, &
           ComplementExists, ThisOnly, Stat
+      LOGICAL :: WriteData, WriteXML, Buffered   
       INTEGER, POINTER :: Perm(:), Perm2(:), Indexes(:)
-      REAL(KIND=dp), POINTER :: ScalarValues(:), VectorValues(:,:),Values(:),Values2(:),&
-          Values3(:),Basis(:)
+      INTEGER(KIND=dp), ALLOCATABLE :: ElemInd(:),ElemInd2(:)
+      REAL(KIND=dp), POINTER :: Values(:),Values2(:),&
+          Values3(:),VecValues(:,:),Basis(:)
       REAL(KIND=dp) :: x,y,z,u,v,w,DetJ,val
       TYPE(Nodes_t) :: Nodes      
       TYPE(Element_t), POINTER :: Element
       TYPE(Variable_t), POINTER :: ParticleVar
 
+      ! Initialize the auxiliary module for buffered writing
+      !--------------------------------------------------------------
+      CALL AscBinWriteInit( AsciiOutput, SinglePrec, VtuUnit, NumberOfNodes )
 
       n = Mesh % MaxElementNodes
       ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-      ThisOnly = .TRUE.
 
+      n = Mesh % MaxElementDOFS
+      ALLOCATE( ElemInd(n), ElemInd2(n) )
+
+      ThisOnly = .TRUE.
 
       ParticleMode = .NOT. ASSOCIATED( Particles % UVW ) 
 
+      ! Linefeed character
+      !-----------------------------------
+      lf = CHAR(10)
+      dim = 3
       
-      OPEN( UNIT=VtuUnit, FILE=VtuFile, STATUS='UNKNOWN' )
+      WriteXML = .TRUE.
+      WriteData = AsciiOutput
+      Params => GetSolverParams()
+      Buffered = .TRUE.
       
-      IF ( LittleEndian() ) THEN
-        WRITE( VtuUnit,'(A)') '<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian">'
-      ELSE
-        WRITE( VtuUnit,'(A)') '<VTKFile type="UnstructuredGrid" version="0.1" byte_order="BigEndian">'
+      ! This is a hack to ensure that the streamed saving will cover the whole file
+      !----------------------------------------------------------------------------
+      IF(.TRUE.) THEN
+        OPEN( UNIT=VtuUnit, FILE=VtuFile, FORM = 'formatted', STATUS='unknown' )
+        WRITE( VtuUnit,'(A)') ' '
+        CLOSE( VtuUnit ) 
       END IF
-      WRITE( VtuUnit,'(A)') '  <UnstructuredGrid>'
-      WRITE( VtuUnit,'(A,I0,A)') '    <Piece NumberOfPoints="',NumberOfNodes,&
-          '" NumberOfCells="0">'
+      
+      ! This format works both for ascii and binary output
+      !-------------------------------------------------------------------------
+      OPEN( UNIT=VtuUnit, FILE=VtuFile, FORM = 'unformatted', ACCESS = 'stream', STATUS='unknown' )
+      
+      WRITE( OutStr,'(A)') '<?xml version="1.0"?>'//lf
+      CALL AscBinStrWrite( OutStr ) 
+
+      IF ( LittleEndian() ) THEN
+        OutStr = '<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian">'//lf
+      ELSE
+        OutStr = '<VTKFile type="UnstructuredGrid" version="0.1" byte_order="BigEndian">'//lf
+      END IF
+      CALL AscBinStrWrite( OutStr )
+      WRITE( OutStr,'(A)') '  <UnstructuredGrid>'//lf
+      CALL AscBinStrWrite( OutStr )
+      WRITE( OutStr,'(A,I0,A,I0,A)') '    <Piece NumberOfPoints="',NumberOfNodes,&
+          '" NumberOfCells="',NumberOfNodes,'">'//lf
+      CALL AscBinStrWrite( OutStr )
     
       !---------------------------------------------------------------------
       ! Header information for nodewise data
       !---------------------------------------------------------------------
       ScalarFieldName = ListGetString( Params,'Scalar Field 1',ScalarsExist)
       VectorFieldName = ListGetString( Params,'Vector Field 1',VectorsExist)
-      IF( ScalarsExist .AND. VectorsExist) THEN
-        WRITE( VtuUnit,'(A)') '      <PointData Scalars="'//TRIM(ScalarFieldName)&
-            //'" Vectors="'//TRIM(VectorFieldName)//'">'
-      ELSE IF( ScalarsExist ) THEN
-        WRITE( VtuUnit,'(A)') '      <PointData Scalars="'//TRIM(ScalarFieldName)//'">'
-      ELSE IF( VectorsExist ) THEN
-        WRITE( VtuUnit,'(A)') '      <PointData Vectors="'//TRIM(VectorFieldName)//'">'
+      IF( .NOT. ( ScalarsExist .OR. VectorsExist) ) THEN
+        CALL Warn('WriteVtuFile','Are there really no scalars or vectors?')
       END IF
+
+      WRITE( OutStr,'(A)') '      <PointData>'//lf
+      CALL AscBinStrWrite( OutStr )
       
-
       !---------------------------------------------------------------------
-      ! do the scalars
+      ! do the scalars & vectors
       !--------------------------------- -----------------------------------
-      DO Vari = 1, 99
-        WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
-        FieldName = ListGetString( Params, TRIM(Txt), Found )
-        IF(.NOT. Found) EXIT
+100   Offset = 0
+
+      IF( SaveFields ) THEN
         
-        !---------------------------------------------------------------------
-        ! Find the variable with the given name in the normal manner 
-        !---------------------------------------------------------------------
-        
-        IF(.NOT. ParticleMode ) THEN
+        DO IsVector = 0, 1
 
-          Solution => VariableGet( Mesh % Variables, &
-              TRIM(FieldName),ThisOnly )
-          ComponentVector = .FALSE.
-          IF(.NOT. ASSOCIATED(Solution)) THEN
-            WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-            CALL Warn('WriteVtuXMLFile', Txt)
-            CYCLE
-          END IF
-          
-          IF( ASSOCIATED(Solution % EigenVectors)) THEN
-            CALL Warn('WriteVtuXMLFile','Do the eigen values')
-          END IF
-          
-          Perm => Solution % Perm
-          dofs = Solution % DOFs
-          Values => Solution % Values
+          DO Vari = 1, 999
 
-          !---------------------------------------------------------------------
-          ! There may be special complementary variables such as 
-          ! displacement & mesh update 
-          !---------------------------------------------------------------------
-          ComplementExists = .FALSE.
-          WRITE(Txt,'(A,I0,A)') 'Scalar Field ',Vari,' Complement'
-
-          FieldName2 = ListGetString( Params, TRIM(Txt), Found )
-          IF( Found ) THEN
-            Solution => VariableGet( Mesh % Variables, &
-                TRIM(FieldName2), ThisOnly )
-            IF( ASSOCIATED(Solution)) THEN 
-              Values2 => Solution % Values
-              Perm2 => Solution % Perm 
-              ComplementExists = .TRUE.
+            IF( IsVector == 0 ) THEN
+              BaseString = 'Scalar Field'
             ELSE
-              CALL Warn('WriteVTUFile','Complement does not exist:'//TRIM(FieldName2))
-            END IF
-          END IF
-        END IF
-
-        !---------------------------------------------------------------------
-        ! Get the values assuming particle mode
-        !---------------------------------------------------------------------
-        IF( ParticleMode ) THEN
-          IF( FieldName == 'particle distance') THEN
-            ParticleVar => ParticleVariableGet( Particles,'particle distance' )
-            IF( .NOT. ASSOCIATED( ParticleVar ) ) THEN
-              CALL Fatal('WriteVTUFile','> Particle Distance < does not exist!')
-            END IF
-            ScalarValues => ParticleVar % Values
-          ELSE IF( FieldName == 'particle time') THEN
-            ParticleVar => ParticleVariableGet( Particles,'particle time' )
-            IF( .NOT. ASSOCIATED( ParticleVar ) ) THEN
-              CALL Fatal('WriteVTUFile','> Particle Time < does not exist!')
-            END IF
-            ScalarValues => ParticleVar % Values
-	  ELSE IF( FieldName == 'particle dt') THEN
-             ParticleVar => ParticleVariableGet( Particles,'particle dt' )
-            IF( .NOT. ASSOCIATED( ParticleVar ) ) THEN
-              CALL Fatal('WriteVTUFile','> Particle Dt < does not exist!')
-            END IF
-           ScalarValues => ParticleVar % Values
-          ELSE
-            WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-            CALL Warn('WriteVtuXMLFile', Txt)
-            CYCLE
-          END IF
-        END IF
-
-        !---------------------------------------------------------------------
-        ! Finally save the field values for scalars
-        !---------------------------------------------------------------------
-        j = 0
-        WRITE( VtuUnit,'(A)') '<DataArray type="Float64" Name="'//TRIM(FieldName)&
-            //'" NumberOfComponents="1" format="ascii">'    
-
-        DO i = 1, Particles % NumberOfParticles
-
-          IF ( Particles % Status(i) > MaxSaveStatus .OR. &
-              Particles % Status(i) < MinSaveStatus )  CYCLE
-          j = j + 1
-          
-          IF( ParticleMode ) THEN
-            WRITE( VtuUnit,'(ES16.7E3)', ADVANCE='no') ScalarValues(i)              
-          ELSE
-
-            Element => Mesh % Elements( Particles % ElementIndex(i) )            
-            n = Element % TYPE % NumberOfNodes
-            Indexes => Element % NodeIndexes
-            
-            Nodes % x(1:n) = Mesh % Nodes % x( Indexes ) 
-            Nodes % y(1:n) = Mesh % Nodes % y( Indexes ) 
-            Nodes % z(1:n) = Mesh % Nodes % z( Indexes ) 
-            
-            u = Particles % uvw(i,1)
-            v = Particles % uvw(i,2)
-            IF( dim == 3 ) THEN
-              w = Particles % uvw(i,3)
-            ELSE
-              w = 0.0_dp
+              BaseString = 'Vector Field'
             END IF
 
-            stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
-            
-            val = 0.0_dp
-            IF( ALL( Perm( Indexes ) > 0 ) ) THEN
-              val = SUM( Basis(1:n) * Values(Perm(Indexes)) )
-            ELSE IF( ALL( Perm2( Indexes ) > 0 ) ) THEN
-              val = SUM( Basis(1:n) * Values2(Perm(Indexes)) )
-            END IF
-          END IF
-          
-          IF( ABS( val ) > TINY( val ) ) THEN
-            WRITE( VtuUnit,'(ES16.7E3)', ADVANCE='no') val             
-          ELSE
-            WRITE( VtuUnit,'(A)', ADVANCE='no') ' 0.0'  
-          END IF
+            WRITE(Txt,'(A)') TRIM(BaseString)//' '//TRIM(I2S(Vari))
+            FieldName = ListGetString( Params, TRIM(Txt), Found )
+            IF(.NOT. Found) EXIT
 
-          IF( j == NumberOfNodes ) EXIT            
+            !---------------------------------------------------------------------
+            ! Find the variable with the given name in the normal manner 
+            !---------------------------------------------------------------------
+            IF( .NOT. ParticleMode ) THEN
+              Solution => VariableGet( Mesh % Variables,TRIM(FieldName),ThisOnly )
+              IF( ASSOCIATED( Solution ) ) THEN
+                IF( IsVector == 1 .AND. Solution % Dofs <= 1 ) NULLIFY( Solution ) 
+              END IF
 
-        END DO
-        WRITE( VtuUnit,'(A)') ' '
-        WRITE( VtuUnit,'(A)') '        </DataArray>'
-      END DO
-      
-
-      !---------------------------------------------------------------------
-      ! do the vectors
-      !--------------------------------- -----------------------------------
-      DO Vari = 1, 99
-        WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
-        FieldName = ListGetString( Params, TRIM(Txt), Found )
-        IF(.NOT. Found) EXIT
-        
-        !---------------------------------------------------------------------
-        ! Find the variable with the given name in the normal manner 
-        !---------------------------------------------------------------------
-        IF( .NOT. ParticleMode ) THEN
-          Solution => VariableGet( Mesh % Variables, TRIM(FieldName), ThisOnly )
-          ComponentVector = .FALSE.
-          IF(.NOT. ASSOCIATED(Solution)) THEN
-            Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 1', ThisOnly )
-            IF( ASSOCIATED(Solution)) THEN 
-              ComponentVector = .TRUE.
-            ELSE
-              WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-              CALL Warn('WriteVtuXMLFile', Txt)
-              CYCLE
-            END IF
-          END IF
-          
-          IF( ASSOCIATED(Solution % EigenVectors)) THEN
-            CALL Warn('WriteVtuXMLFile','Do the eigen values')
-          END IF
-          
-          Perm => Solution % Perm
-          dofs = Solution % DOFs
-          Values => Solution % Values
-          
-          !---------------------------------------------------------------------
-          ! Some vectors are defined by a set of components (either 2 or 3)
-          !---------------------------------------------------------------------
-          IF( ComponentVector ) THEN
-            Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly )
-            IF( ASSOCIATED(Solution)) THEN
-              Values2 => Solution % Values
-              dofs = 2
-            END IF
-            Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly )
-            IF( ASSOCIATED(Solution)) THEN
-              Values3 => Solution % Values
-              dofs = 3
-            END IF
-          END IF
-          
-          !---------------------------------------------------------------------
-          ! There may be special complementary variables such as 
-          ! displacement & mesh update 
-          !---------------------------------------------------------------------
-          ComplementExists = .FALSE.
-          WRITE(Txt,'(A,I0,A)') 'Vector Field ',Vari,' Complement'
-
-          FieldName2 = ListGetString( Params, TRIM(Txt), Found )
-          IF( Found ) THEN
-            Solution => VariableGet( Mesh % Variables, TRIM(FieldName2), ThisOnly )
-            IF( ASSOCIATED(Solution)) THEN 
-              Values2 => Solution % Values
-              Perm2 => Solution % Perm 
-              ComplementExists = .TRUE.
-            ELSE
-              CALL Warn('WriteVTUFile','Complement does not exist:'//TRIM(FieldName2))
-            END IF
-          END IF
-        END IF
-
-
-        !---------------------------------------------------------------------
-        ! Get the values assuming particle mode
-        !---------------------------------------------------------------------
-        IF( ParticleMode ) THEN
-          IF( FieldName == 'velocity' ) THEN
-            VectorValues => Particles % Velocity
-          ELSE IF( FieldName == 'force') THEN
-            VectorValues => Particles % Force 
-          ELSE
-            WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
-            CALL Warn('WriteVtuXMLFile', Txt)
-            CYCLE
-          END IF
-        END IF
-        
-
-        !---------------------------------------------------------------------
-        ! Finally save the field values for vectors
-        !---------------------------------------------------------------------
-        j = 0
-        sdofs = MAX(dofs,3)
-        WRITE( VtuUnit,'(A,I1,A)') '        <DataArray type="Float64" Name="'//TRIM(FieldName)&
-            //'" NumberOfComponents="',sdofs,'" format="ascii">'    
-        
-        DO i = 1, Particles % NumberOfParticles                
-          IF ( Particles % Status(i) > MaxSaveStatus .OR. &
-              Particles % Status(i) < MinSaveStatus )  CYCLE
-          j = j + 1
-          
-          IF( ParticleMode ) THEN
-            IF( dim == 2 ) THEN
-              WRITE( VtuUnit,'(2ES16.7E3,A)', ADVANCE='no') VectorValues(i,1:dim),' 0.0'
-            ELSE
-              WRITE( VtuUnit,'(ES16.7E3)', ADVANCE='no') VectorValues(i,1:dim)
-            END IF
-          ELSE
-            Element => Mesh % Elements( Particles % ElementIndex(i) )
-            
-            Indexes => Element % NodeIndexes
-            n = Element % TYPE % NumberOfNodes
- 
-            Nodes % x(1:n) = Mesh % Nodes % x( Indexes ) 
-            Nodes % y(1:n) = Mesh % Nodes % y( Indexes ) 
-            Nodes % z(1:n) = Mesh % Nodes % z( Indexes ) 
-            
-            u = Particles % uvw(i,1)
-            v = Particles % uvw(i,2)
-            IF( dim == 3 ) THEN
-              w = Particles % uvw(i,3)
-            ELSE
-              w = 0.0_dp
-            END IF
-            
-            stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
-
-            DO k=1,sdofs                  
-              val = 0.0_dp
-              IF( k <= dofs ) THEN
-                IF( ComponentVector ) THEN
-                  IF( ALL( Perm( Indexes ) > 0 ) ) THEN
-                    IF( k == 1 ) THEN
-                      val = SUM( Basis(1:n) * Values(Perm(Indexes)) )
-                    ELSE IF( k == 2 ) THEN
-                      val = SUM( Basis(1:n) * Values2(Perm(Indexes)) )
-                    ELSE
-                      val = SUM( Basis(1:n) * Values3(Perm(Indexes)) )
-                    END IF
-                  END IF
-                ELSE 
-                  IF( ALL( Perm( Indexes ) > 0 ) ) THEN
-                    val = SUM( Basis(1:n) * Values(dofs*(Perm(Indexes)-1)+k) )
-                  ELSE IF ( ComplementExists ) THEN
-                    IF( ALL( Perm2( Indexes ) > 0 ) ) THEN
-                      val = SUM( Basis(1:n) * Values2(dofs*(Perm(Indexes)-1)+k) )
-                    END IF
-                  END IF
+              ComponentVector = .FALSE.
+              IF( IsVector == 1 ) THEN
+                IF(.NOT. ASSOCIATED(Solution)) THEN
+                  Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 1', ThisOnly )
+                  ComponentVector = ASSOCIATED( Solution ) 
                 END IF
               END IF
-              
-              IF( ABS( val ) < TINY( val ) ) THEN
-                WRITE( VtuUnit,'(A)', ADVANCE='no') ' 0.0'  
-              ELSE 
-                WRITE( VtuUnit,'(ES16.7E3)', ADVANCE='no') val
+              IF( .NOT. ASSOCIATED( Solution ) ) THEN
+                WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
+                CALL Warn('WriteVtuXMLFile', Txt)
+                CYCLE
               END IF
-              
-            END DO
-          END IF
 
-          IF( j == NumberOfNodes ) EXIT            
+              IF( ASSOCIATED(Solution % EigenVectors)) THEN
+                CALL Warn('WriteVtuXMLFile','Do the eigen values')
+              END IF
+
+              Perm => Solution % Perm
+              dofs = Solution % DOFs
+              Values => Solution % Values
+
+              !---------------------------------------------------------------------
+              ! Some vectors are defined by a set of components (either 2 or 3)
+              !---------------------------------------------------------------------
+              IF( ComponentVector ) THEN
+                Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly )
+                IF( ASSOCIATED(Solution)) THEN
+                  Values2 => Solution % Values
+                  dofs = 2
+                END IF
+                Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly )
+                IF( ASSOCIATED(Solution)) THEN
+                  Values3 => Solution % Values
+                  dofs = 3
+                END IF
+              END IF
+
+              !---------------------------------------------------------------------
+              ! There may be special complementary variables such as 
+              ! displacement & mesh update 
+              !---------------------------------------------------------------------
+              ComplementExists = .FALSE.
+              WRITE(Txt,'(A,I0,A)') TRIM(BaseString)//' ',Vari,' Complement'
+
+              FieldName2 = ListGetString( Params, TRIM(Txt), Found )
+              IF( Found ) THEN
+                Solution => VariableGet( Mesh % Variables, &
+                    TRIM(FieldName2), ThisOnly )
+                IF( ASSOCIATED(Solution)) THEN 
+                  Values2 => Solution % Values
+                  Perm2 => Solution % Perm 
+                  ComplementExists = .TRUE.
+                ELSE
+                  CALL Warn('WriteVTUFile','Complement does not exist:'//TRIM(FieldName2))
+                END IF
+              END IF
+            END IF
+
+            !---------------------------------------------------------------------
+            ! Get the values assuming particle mode
+            !---------------------------------------------------------------------
+            IF( ParticleMode ) THEN
+              IF( IsVector == 1) THEN
+                dofs = 3
+                IF( FieldName == 'velocity' ) THEN
+                  VecValues => Particles % Velocity
+                ELSE IF( FieldName == 'force') THEN
+                  VecValues => Particles % Force 
+                ELSE
+                  WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
+                  CALL Warn('WriteVtuXMLFile', Txt)
+                  CYCLE
+                END IF
+              ELSE
+                dofs = 1
+                IF( FieldName == 'particle distance') THEN
+                  ParticleVar => ParticleVariableGet( Particles,'particle distance' )
+                  IF( .NOT. ASSOCIATED( ParticleVar ) ) THEN
+                    CALL Fatal('WriteVTUFile','> Particle Distance < does not exist!')
+                  END IF
+                  Values => ParticleVar % Values
+                ELSE IF( FieldName == 'particle time') THEN
+                  ParticleVar => ParticleVariableGet( Particles,'particle time' )
+                  IF( .NOT. ASSOCIATED( ParticleVar ) ) THEN
+                    CALL Fatal('WriteVTUFile','> Particle Time < does not exist!')
+                  END IF
+                  Values => ParticleVar % Values
+                ELSE IF( FieldName == 'particle dt') THEN
+                  ParticleVar => ParticleVariableGet( Particles,'particle dt' )
+                  IF( .NOT. ASSOCIATED( ParticleVar ) ) THEN
+                    CALL Fatal('WriteVTUFile','> Particle Dt < does not exist!')
+                  END IF
+                  Values => ParticleVar % Values
+                ELSE
+                  WRITE(Txt, '(A,A)') 'Nonexistent variable: ',TRIM(FieldName)
+                  CALL Warn('WriteVtuXMLFile', Txt)
+                  CYCLE
+                END IF
+              END IF
+            END IF
+
+            !---------------------------------------------------------------------
+            ! Finally save the field values for scalars
+            !---------------------------------------------------------------------
+            IF( dofs == 1 ) THEN
+              sdofs = 1
+            ELSE
+              sdofs = MAX(dofs,3)
+            END IF
+
+
+            IF( WriteXML ) THEN
+              WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
+              CALL AscBinStrWrite( OutStr )
+
+              WRITE( OutStr,'(A,I0,A)') '" NumberOfComponents="',sdofs,'"'          
+              CALL AscBinStrWrite( OutStr ) 
+
+              IF( AsciiOutput ) THEN
+                WRITE( OutStr,'(A)') ' format="ascii">'//lf
+                CALL AscBinStrWrite( OutStr ) 
+              ELSE
+                WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
+                CALL AscBinStrWrite( OutStr ) 
+              END IF
+            END IF
+
+
+            IF( BinaryOutput ) THEN
+              k = NumberOfNodes * PrecSize * sdofs
+              Offset = Offset + IntSize + k
+            END IF
+
+            j = 0
+            IF( WriteData ) THEN
+              IF( BinaryOutput ) WRITE( VtuUnit ) k
+
+              DO i = 1, Particles % NumberOfParticles
+
+                IF ( Particles % Status(i) > MaxSaveStatus .OR. &
+                    Particles % Status(i) < MinSaveStatus )  CYCLE
+                j = j + 1
+
+                LocalVal = 0.0_dp
+                IF( ParticleMode ) THEN
+                  IF( IsVector == 1) THEN
+                    dofs = dim
+                    LocalVal(1:dofs) = VecValues(i,1:dim)
+                  ELSE
+                    dofs = 1
+                    LocalVal(1) = Values(i)
+                  END IF
+                ELSE
+                  Element => Mesh % Elements( Particles % ElementIndex(i) )            
+                  n = Element % TYPE % NumberOfNodes
+                  Indexes => Element % NodeIndexes
+
+                  Nodes % x(1:n) = Mesh % Nodes % x( Indexes ) 
+                  Nodes % y(1:n) = Mesh % Nodes % y( Indexes ) 
+                  Nodes % z(1:n) = Mesh % Nodes % z( Indexes ) 
+
+                  u = Particles % uvw(i,1)
+                  v = Particles % uvw(i,2)
+                  IF( dim == 3 ) THEN
+                    w = Particles % uvw(i,3)
+                  ELSE
+                    w = 0.0_dp
+                  END IF
+
+                  stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
+
+                  IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+                    ElemInd(1:n) = Perm( Element % DGIndexes(1:n) )
+                    IF( ComplementExists ) THEN
+                      ElemInd2(1:n) = Perm2( Element % DGIndexes(1:n) )
+                    END IF
+                  ELSE 
+                    ElemInd(1:n) = Perm( Indexes(1:n) )
+                    IF( ComplementExists ) THEN
+                      ElemInd2(1:n) = Perm2( Indexes(1:n) )
+                    END IF
+                  END IF
+
+                  DO k=1,sdofs                  
+                    val = 0.0_dp
+                    IF( k <= dofs ) THEN
+                      IF( ComponentVector ) THEN
+                        IF( ALL( Perm( Indexes ) > 0 ) ) THEN
+                          IF( k == 1 ) THEN
+                            LocalVal(1) = SUM( Basis(1:n) * Values(ElemInd(1:n)) )
+                          ELSE IF( k == 2 ) THEN
+                            LocalVal(2) = SUM( Basis(1:n) * Values2(ElemInd(1:n)) )
+                          ELSE
+                            LocalVal(3) = SUM( Basis(1:n) * Values3(ElemInd(1:n)) )
+                          END IF
+                        END IF
+                      ELSE 
+                        IF( ALL( ElemInd(1:n) > 0 ) ) THEN
+                          LocalVal(k) = SUM( Basis(1:n) * Values(dofs*(ElemInd(1:n)-1)+k) )
+                        ELSE IF ( ComplementExists ) THEN
+                          IF( ALL( ElemInd2(1:n) > 0 ) ) THEN
+                            LocalVal(k) = SUM( Basis(1:n) * Values2(dofs*(ElemInd2(1:n)-1)+k) )
+                          END IF
+                        END IF
+                      END IF
+                    END IF
+                  END DO
+                END IF
+
+                DO k=1,sdofs
+                  CALL AscBinRealWrite( LocalVal(k) )
+                END DO
+
+                IF( j == NumberOfNodes ) EXIT
+              END DO
+              CALL AscBinRealWrite( 0.0_dp, .TRUE.)
+            END IF
+
+            IF( AsciiOutput ) THEN
+              WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
+              CALL AscBinStrWrite( OutStr ) 
+            END IF
+          END DO
         END DO
-        WRITE( VtuUnit,'(A)') ' '
-        WRITE( VtuUnit,'(A)') '        </DataArray>'
-      END DO
-      
-      IF( ScalarsExist .OR. VectorsExist) THEN
-        WRITE( VtuUnit,'(A)') '      </PointData>'
       END IF
-          
+
+      
+
+      IF( WriteXML ) THEN
+        WRITE( OutStr,'(A)') '      </PointData>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+
+        WRITE( OutStr,'(A)') '      <CellData>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+        WRITE( OutStr,'(A)') '      </CellData>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+      END IF
+     
+
       ! Coordinates of each point
       !-------------------------------------
-      WRITE( VtuUnit,'(A)') '      <Points>'
-      WRITE( VtuUnit,'(A)') '        <DataArray type="Float64" NumberOfComponents="3" format="ascii">'    
-      
-      j = 0
-      DO i = 1, Particles % NumberOfParticles
-        IF ( Particles % Status(i) > MaxSaveStatus .OR. &
-            Particles % Status(i) < MinSaveStatus )  CYCLE
-        j = j + 1
-
-
-	IF( ParticleMode ) THEN
-          DO k=1,dim
-            WRITE(VtuUnit,'(ES16.7E3)', ADVANCE='no') Particles % Coordinate(i,k)
-          END DO
+      IF( WriteXML ) THEN
+        WRITE( OutStr,'(A)') '      <Points>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+        
+        WRITE( OutStr,'(A,I0,A,I0,A)') '        <DataArray type="Float',PrecBits,'" NumberOfComponents="',dim,'"'
+        CALL AscBinStrWrite( OutStr )       
+        
+        IF( AsciiOutput ) THEN
+          WRITE( OutStr,'(A)') ' format="ascii">'//lf
+          CALL AscBinStrWrite( OutStr ) 
         ELSE
-	  Element => Mesh % Elements( Particles % ElementIndex(i) )
-          Indexes => Element % NodeIndexes
-          n = Element % TYPE % NumberOfNodes
- 
-          Nodes % x(1:n) = Mesh % Nodes % x( Indexes ) 
-          Nodes % y(1:n) = Mesh % Nodes % y( Indexes ) 
-          Nodes % z(1:n) = Mesh % Nodes % z( Indexes ) 
-            
-          u = Particles % uvw(i,1)
-          v = Particles % uvw(i,2)
-          IF( dim == 3 ) THEN
-            w = Particles % uvw(i,3)
+          WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
+          CALL AscBinStrWrite( OutStr ) 
+        END IF
+      END IF
+
+
+      IF( BinaryOutput ) THEN
+        k = dim * NumberOfNodes * PrecSize
+        Offset = Offset + IntSize + k
+      END IF
+      
+      IF( WriteData ) THEN        
+        IF( BinaryOutput ) WRITE( VtuUnit ) k
+        
+        j = 0
+        DO i = 1, Particles % NumberOfParticles
+          
+          IF ( Particles % Status(i) > MaxSaveStatus .OR. &
+              Particles % Status(i) < MinSaveStatus )  CYCLE
+          j = j + 1
+          
+          IF( ParticleMode ) THEN
+            DO k=1,dim
+              LocalVal(k) = Particles % Coordinate(i,k)
+            END DO
           ELSE
-            w = 0.0_dp
-          END IF
+            Element => Mesh % Elements( Particles % ElementIndex(i) )
+            Indexes => Element % NodeIndexes
+            n = Element % TYPE % NumberOfNodes
             
-          stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
-
-          val = SUM( Basis(1:n) * Nodes % x(1:n) )
-          WRITE(VtuUnit,'(ES16.7E3)', ADVANCE='no') val
-
-          val = SUM( Basis(1:n) * Nodes % y(1:n) )
-          WRITE(VtuUnit,'(ES16.7E3)', ADVANCE='no') val
-
-	  IF( dim == 3 ) THEN
-            val = SUM( Basis(1:n) * Nodes % z(1:n) )
-            WRITE(VtuUnit,'(ES16.7E3)', ADVANCE='no') val
+            Nodes % x(1:n) = Mesh % Nodes % x( Indexes ) 
+            Nodes % y(1:n) = Mesh % Nodes % y( Indexes ) 
+            Nodes % z(1:n) = Mesh % Nodes % z( Indexes ) 
+            
+            u = Particles % uvw(i,1)
+            v = Particles % uvw(i,2)
+            IF( dim == 3 ) THEN
+              w = Particles % uvw(i,3)
+            ELSE
+              w = 0.0_dp
+            END IF
+            
+            stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
+            
+            LocalVal(1) = SUM( Basis(1:n) * Nodes % x(1:n) )
+            LocalVal(2) = SUM( Basis(1:n) * Nodes % y(1:n) )
+            LocalVal(3)  = SUM( Basis(1:n) * Nodes % z(1:n) )
           END IF
-        END IF
+          
+          CALL AscBinRealWrite( LocalVal(1) )
+          CALL AscBinRealWrite( LocalVal(2) )
+          CALL AscBinRealWrite( LocalVal(3) )
 
-        IF( dim == 3 ) THEN
-          WRITE(VtuUnit,'(A)') ' '
+          IF( j == NumberOfNodes ) EXIT
+        END DO
+        
+        CALL AscBinRealWrite( 0.0_dp, .TRUE.)
+      END IF
+
+      IF( AsciiOutput ) THEN   
+        WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+      END IF
+      IF( WriteXML ) THEN
+        WRITE( OutStr,'(A)') '      </Points>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+      END IF
+
+
+      ! Write out the mesh
+      !-------------------------------------
+      IF( WriteXML ) THEN
+        WRITE( OutStr,'(A)') '      <Cells>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+        
+        WRITE( OutStr,'(A)') '        <DataArray type="Int32" Name="connectivity"'
+        CALL AscBinStrWrite( OutStr ) 
+        
+        IF( AsciiOutput ) THEN
+          WRITE( OutStr,'(A)') ' format="ascii">'//lf
+          CALL AscBinStrWrite( OutStr ) 
         ELSE
-          WRITE(VtuUnit,'(A)') ' 0.0'
+          WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
+          CALL AscBinStrWrite( OutStr ) 
         END IF
-        IF( j == NumberOfNodes ) EXIT
-      END DO
+      END IF
       
-      WRITE( VtuUnit,'(A)') '        </DataArray>'
-      WRITE( VtuUnit,'(A)') '      </Points>'
-      
+      IF( BinaryOutput ) THEN
+        ! The offset needs to be summed over all nodes
+        k = NumberOfNodes * IntSize
+        Offset = Offset + k + IntSize
+      END IF
+            
+      IF( WriteData ) THEN
+        IF( BinaryOutput ) WRITE( VtuUnit ) k        
+        DO i = 1, NumberOfNodes
+          CALL AscBinIntegerWrite( i - 1)
+        END DO
+        CALL AscBinIntegerWrite( 0, .TRUE. ) 
+      END IF
 
-      WRITE( VtuUnit,'(A)') '      <Cells>'
-      WRITE( VtuUnit,'(A)') '        <DataArray type="Int32" Name="connectivity" format="ascii">'
-      WRITE( VtuUnit,'(A)') '        </DataArray>'
-      WRITE( VtuUnit,'(A)') '        <DataArray type="Int32" Name="offsets" format="ascii">'
-      WRITE( VtuUnit,'(A)') '        </DataArray>'
-      WRITE( VtuUnit,'(A)') '        <DataArray type="Int32" Name="types" format="ascii">'
-      WRITE( VtuUnit,'(A)') '        </DataArray>'
-      WRITE( VtuUnit,'(A)') '      </Cells>'
+      IF( AsciiOutput ) THEN
+        WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+      END IF
+
+      ! Offsets for element indexes 
+      !-------------------------------------------------------------------
+      IF( WriteXML ) THEN
+        WRITE( OutStr,'(A)') '        <DataArray type="Int32" Name="offsets"'
+        CALL AscBinStrWrite( OutStr ) 
+        
+        IF( AsciiOutput ) THEN
+          WRITE( OutStr,'(A)') ' format="ascii">'//lf
+          CALL AscBinStrWrite( OutStr ) 
+        ELSE
+          WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
+          CALL AscBinStrWrite( OutStr ) 
+        END IF
+      END IF
       
-      WRITE( VtuUnit,'(A)') '    </Piece>'
-      WRITE( VtuUnit,'(A)') '  </UnstructuredGrid>'
-      WRITE( VtuUnit,'(A)') '</VTKFile>'
+      IF( BinaryOutput ) THEN
+        k = NumberOfNodes * IntSize
+        Offset = Offset + IntSize + k
+      END IF
+      
+      IF( WriteData ) THEN
+        IF( BinaryOutput ) WRITE( VtuUnit ) k         
+        DO i = 1, NumberOfNodes
+          CALL AscBinIntegerWrite( i )
+        END DO
+        CALL AscBinIntegerWrite( 0, .TRUE.)        
+      END IF
+
+      IF( AsciiOutput ) THEN   
+        WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+      END IF
+      IF( WriteXML ) THEN
+        WRITE( OutStr,'(A)') '        <DataArray type="Int32" Name="types"'
+        CALL AscBinStrWrite( OutStr ) 
+        
+        IF( AsciiOutput ) THEN
+          WRITE( OutStr,'(A)') ' FORMAT="ascii">'//lf
+          CALL AscBinStrWrite( OutStr ) 
+        ELSE
+          WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
+          CALL AscBinStrWrite( OutStr ) 
+        END IF
+      END IF
+
+      IF( BinaryOutput ) THEN
+        k = NumberOfNodes * IntSize
+        Offset = Offset + IntSize + k
+      END IF
+
+      IF( WriteData ) THEN
+        IF( BinaryOutput ) WRITE( VtuUnit ) k
+        ! elementtype is fixed to single nodes (==1)
+        DO i = 1, NumberOfNodes
+          CALL AscBinIntegerWrite( 1 )
+        END DO        
+        CALL AscBinIntegerWrite( 0, .TRUE. )     
+      END IF
+
+      IF( AsciiOutput ) THEN
+        WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+      END IF
+      IF( WriteXml ) THEN
+        WRITE( OutStr,'(A)') '      </Cells>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+        WRITE( OutStr,'(A)') '    </Piece>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+        WRITE( OutStr,'(A)') '  </UnstructuredGrid>'//lf
+        CALL AscBinStrWrite( OutStr ) 
+      END IF
+
+
+      IF( BinaryOutput ) THEN
+        IF( WriteXML ) THEN
+          WRITE( OutStr,'(A)') '<AppendedData encoding="raw">'//lf                    
+          CALL AscBinStrWrite( OutStr )           
+          WRITE( VtuUnit ) '_'
+          
+          WriteXML = .FALSE.
+          WriteData = .TRUE.
+          GOTO 100
+        ELSE
+          WRITE( OutStr,'(A)') lf//'</AppendedData>'//lf
+          CALL AscBinStrWrite( OutStr ) 
+        END IF
+      END IF
+      
+      WRITE( OutStr,'(A)') '</VTKFile>'//lf
+      CALL AscBinStrWrite( OutStr ) 
+        
+      WRITE( OutStr,'(A)') ' '
+      CALL AscBinStrWrite( OutStr ) 
       
       CLOSE( VtuUnit )
+      
+      DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z )
 
-     DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z )
+      CALL AscBinWriteFree()
       
     END SUBROUTINE WriteVtuFile
     
@@ -5964,7 +6129,8 @@ RETURN
     USE DefUtils 
     USE MeshUtils
     USE ElementDescription
-    
+    USE AscBinOutputUtils    
+
     IMPLICIT NONE
     TYPE(Particle_t), POINTER :: Particles  
     INTEGER :: GridExtent(6)
@@ -6004,7 +6170,7 @@ RETURN
     AsciiOutput = .NOT. BinaryOutput
     SinglePrec = GetLogical( Params,'Single Precision',GotIt) 
     NoFileindex = GetLogical( Params,'No Fileindex',GotIt)
- 
+
     IF ( nTime == 1 ) THEN
       FilePrefix = ListGetString( Params,'Filename Prefix')
       CALL Info('ParticleOutputVti','Saving in ImageData VTK XML format to file: ' &
@@ -6018,6 +6184,7 @@ RETURN
     Dim = Particles % dim
     
     NumberOfNodes = Particles % NumberOfParticles
+    
     
     IF (LEN_TRIM(Mesh % Name) > 0 ) THEN
       Dir = TRIM(Mesh % Name) // "/"
@@ -6054,21 +6221,6 @@ RETURN
   CONTAINS
 
 
-    ! The writing of xml strings is done here to allow easier modification
-    ! of output strategies.
-    !-------------------------------------------------------------------------
-
-    SUBROUTINE StrWrite( Str )
-      
-      CHARACTER(LEN=1024) :: Str 
-      INTEGER, PARAMETER :: VtiUnit = 58
-
-      WRITE( VtiUnit ) TRIM(Str)        
-
-    END SUBROUTINE StrWrite
-
-
-
     SUBROUTINE WriteVtiFile( VtiFile )
       CHARACTER(LEN=*), INTENT(IN) :: VtiFile
       INTEGER, PARAMETER :: VtiUnit = 58
@@ -6081,6 +6233,7 @@ RETURN
       LOGICAL :: ScalarsExist, VectorsExist, Found, ParticleMode, ComponentVector, &
           ComplementExists, ThisOnly, Stat, WriteData, WriteXML
       INTEGER, POINTER :: Perm(:), Perm2(:), Indexes(:)
+      INTEGER(KIND=dp), ALLOCATABLE :: ElemInd(:),ElemInd2(:)
       REAL(KIND=dp), POINTER :: ScalarValues(:), VectorValues(:,:),Values(:),Values2(:),&
           Values3(:),Basis(:)
       REAL(KIND=dp) :: x,y,z,u,v,w,DetJ,val
@@ -6088,9 +6241,16 @@ RETURN
       TYPE(Nodes_t) :: Nodes      
       TYPE(Element_t), POINTER :: Element
 
+
+      ! Initialize the auxiliary module for buffered writing
+      !--------------------------------------------------------------
+      CALL AscBinWriteInit( AsciiOutput, SinglePrec, VtiUnit, NumberOfNodes )
       
       n = Mesh % MaxElementNodes
       ALLOCATE( Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+
+      n = Mesh % MaxElementDOFS
+      ALLOCATE( ElemInd(n), ElemInd2(n) )
       ThisOnly = .TRUE.
 
       ! Linefeed character
@@ -6104,23 +6264,23 @@ RETURN
 
 
       WRITE( OutStr,'(A)') '<?xml version="1.0"?>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
             
       IF ( LittleEndian() ) THEN
         WRITE( OutStr,'(A)') '<VTKFile type="ImageData" version="0.1" byte_order="LittleEndian">'//lf
       ELSE
         WRITE( OutStr,'(A)') '<VTKFile type="ImageData" version="0.1" byte_order="BigEndian">'//lf
       END IF
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
 
       WRITE( OutStr,'(A,6I4,A,3ES16.7E3,A,3ES16.7E3,A)') &
           '<ImageData WholeExtent = "',GridExtent,&          
           '"  Origin = "',GridOrigin(1:3), &          
           '"  Spacing = "',GridDx(1:3),'">'//lf
-      CALL StrWrite( OutStr )  
+      CALL AscBinStrWrite( OutStr )  
 
       WRITE( OutStr,'(A,6I4,A)') '  <Piece Extent="',GridExtent,'">'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
 
       
       !---------------------------------------------------------------------
@@ -6139,7 +6299,7 @@ RETURN
         CALL Warn('WriteVtiFile','Are there really no scalars or vectors?')
       END IF
       IF( ScalarsExist .OR. VectorsExist ) THEN
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       END IF
       
       Offset = 0
@@ -6165,12 +6325,7 @@ RETURN
             BaseString = 'Vector Field'
           END IF
           
-          IF( Vari < 10 ) THEN
-            WRITE(Txt,'(A,I2)') TRIM(BaseString),Vari
-          ELSE
-            WRITE(Txt,'(A,I3)') TRIM(BaseString),Vari
-          END IF
-          
+          WRITE(Txt,'(A)') TRIM(BaseString)//' '//TRIM(I2S(Vari))          
           FieldName = ListGetString( Params, TRIM(Txt), Found )
           IF(.NOT. Found) EXIT
           
@@ -6178,6 +6333,10 @@ RETURN
           ! Find the variable with the given name in the normal manner 
           !---------------------------------------------------------------------
           Solution => VariableGet( Mesh % Variables,TRIM(FieldName),ThisOnly )
+          IF( ASSOCIATED( Solution ) ) THEN
+            IF( IsVector == 1 .AND. Solution % Dofs <= 1 ) NULLIFY( Solution ) 
+          END IF
+
           ComponentVector = .FALSE.
           IF( IsVector == 1 ) THEN
             IF(.NOT. ASSOCIATED(Solution)) THEN
@@ -6223,11 +6382,8 @@ RETURN
           ! displacement & mesh update 
           !---------------------------------------------------------------------
           ComplementExists = .FALSE.
-          IF( Vari < 10 ) THEN
-            WRITE(Txt,'(A,I2,A)') TRIM(BaseString),Vari,' Complement'
-          ELSE
-            WRITE(Txt,'(A,I3,A)') TRIM(BaseString),Vari,' Complement'
-          END IF
+          WRITE(Txt,'(A,I0,A)') TRIM(BaseString),Vari,' Complement'
+
           FieldName2 = ListGetString( Params, TRIM(Txt), Found )
           IF( Found ) THEN
             Solution => VariableGet( Mesh % Variables, &
@@ -6243,7 +6399,7 @@ RETURN
           
           
           !---------------------------------------------------------------------
-          ! Finally save the field values for scalars
+          ! Finally save the field values for scalars and vectors
           !---------------------------------------------------------------------
           j = 0
           
@@ -6259,19 +6415,19 @@ RETURN
             ELSE
               WRITE( OutStr,'(A)') '      <DataArray type="Float64" Name="'//TRIM(FieldName)//'"'
             END IF
-            CALL StrWrite( OutStr ) 
+            CALL AscBinStrWrite( OutStr ) 
 
             WRITE( OutStr,'(A,I1,A)') ' NumberOfComponents="',sdofs,'"'          
-            CALL StrWrite( OutStr ) 
+            CALL AscBinStrWrite( OutStr ) 
 
             IF( AsciiOutput ) THEN
               WRITE( OutStr,'(A)') ' format="ascii">'//lf
-              CALL StrWrite( OutStr ) 
+              CALL AscBinStrWrite( OutStr ) 
             ELSE
               WRITE( OutStr,'(A)') ' format="appended"'
-              CALL StrWrite( OutStr ) 
+              CALL AscBinStrWrite( OutStr ) 
               WRITE( OutStr,'(A,I8,A)') ' offset="',Offset,'"/>'//lf
-              CALL StrWrite( OutStr ) 
+              CALL AscBinStrWrite( OutStr ) 
             END IF
           END IF
           
@@ -6297,7 +6453,7 @@ RETURN
                     DO l=1,sdofs                  
                       IF( AsciiOutput ) THEN
                         WRITE( OutStr,'(A)') ' 0.0'  
-                        CALL StrWrite( OutStr )
+                        CALL AscBinStrWrite( OutStr )
                       ELSE IF( SinglePrec ) THEN
                         fvalue = 0.0
                         WRITE( VtiUnit ) fvalue                          
@@ -6324,27 +6480,37 @@ RETURN
                     END IF
                     
                     stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
-                    
+                                        
+                    IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+                      ElemInd(1:n) = Perm( Element % DGIndexes(1:n) )
+                      IF( ComplementExists ) THEN
+                        ElemInd2(1:n) = Perm2( Element % DGIndexes(1:n) )
+                      END IF
+                    ELSE 
+                      ElemInd(1:n) = Perm( Indexes(1:n) )
+                      IF( ComplementExists ) THEN
+                        ElemInd2(1:n) = Perm2( Indexes(1:n) )
+                      END IF
+                    END IF
+
                     DO l=1,sdofs                  
                       val = 0.0_dp
                       IF( l <= dofs ) THEN
-                        IF( ComponentVector ) THEN
-                          IF( ALL( Perm( Indexes ) > 0 ) ) THEN
+                        IF( ALL( ElemInd(1:n) > 0 ) ) THEN
+                          IF( ComponentVector ) THEN
                             IF( l == 1 ) THEN
-                              val = SUM( Basis(1:n) * Values(Perm(Indexes)) )
+                              val = SUM( Basis(1:n) * Values(ElemInd(1:n)) )
                             ELSE IF( l == 2 ) THEN
-                              val = SUM( Basis(1:n) * Values2(Perm(Indexes)) )
+                              val = SUM( Basis(1:n) * Values2(ElemInd(1:n)) )
                             ELSE
-                              val = SUM( Basis(1:n) * Values3(Perm(Indexes)) )
+                              val = SUM( Basis(1:n) * Values3(ElemInd(1:n)) )
                             END IF
+                          ELSE 
+                            val = SUM( Basis(1:n) * Values(dofs*(ElemInd(1:n)-1)+l) )
                           END IF
-                        ELSE 
-                          IF( ALL( Perm( Indexes ) > 0 ) ) THEN
-                            val = SUM( Basis(1:n) * Values(dofs*(Perm(Indexes)-1)+l) )
-                          ELSE IF( ComplementExists ) THEN
-                            IF( ALL( Perm2( Indexes ) > 0 ) ) THEN
-                              val = SUM( Basis(1:n) * Values2(dofs*(Perm(Indexes)-1)+l) )
-                            END IF
+                        ELSE IF( ComplementExists ) THEN
+                          IF( ALL( ElemInd2(1:n) > 0 ) ) THEN
+                            val = SUM( Basis(1:n) * Values2(dofs*(ElemInd2(1:n)-1)+l) )
                           END IF
                         END IF
                       END IF
@@ -6355,7 +6521,7 @@ RETURN
                         ELSE 
                           WRITE( OutStr,'(ES16.7E3)') val
                         END IF
-                        CALL StrWrite( OutStr )
+                        CALL AscBinStrWrite( OutStr )
                       ELSE IF( SinglePrec ) THEN
                         fvalue = val
                         WRITE( VtiUnit ) fvalue
@@ -6373,7 +6539,7 @@ RETURN
 
           IF( AsciiOutput ) THEN
             WRITE( OutStr,'(A)') lf//'      </DataArray>'//lf
-            CALL StrWrite( OutStr ) 
+            CALL AscBinStrWrite( OutStr ) 
           END IF
 
         END DO
@@ -6383,26 +6549,26 @@ RETURN
       IF( WriteXML ) THEN
         IF( ScalarsExist .OR. VectorsExist) THEN
           WRITE( OutStr,'(A)') '    </PointData>'//lf
-          CALL StrWrite( OutStr ) 
+          CALL AscBinStrWrite( OutStr ) 
         END IF
         
         WRITE( OutStr,'(A)') '    <CellData>'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
 
         WRITE( OutStr,'(A)') '    </CellData>'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
        
         WRITE( OutStr,'(A)') '  </Piece>'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
 
         WRITE( OutStr,'(A)') '</ImageData>'//lf
-        CALL StrWrite( OutStr )         
+        CALL AscBinStrWrite( OutStr )         
       END IF
 
       IF( BinaryOutput ) THEN
         IF( WriteXML ) THEN
           WRITE( OutStr,'(A)') '<AppendedData encoding="raw">'//lf                    
-          CALL StrWrite( OutStr )           
+          CALL AscBinStrWrite( OutStr )           
           WRITE( VtiUnit ) '_'
           
           WriteXML = .FALSE.
@@ -6410,17 +6576,20 @@ RETURN
           GOTO 100
         ELSE
           WRITE( OutStr,'(A)') lf//'</AppendedData>'//lf
-          CALL StrWrite( OutStr ) 
+          CALL AscBinStrWrite( OutStr ) 
         END IF
       END IF
 
 
       WRITE( OutStr,'(A)') '</VTKFile>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
       
       CLOSE( VtiUnit )
       
-      DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z )
+      DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z, ElemInd, ElemInd2 )
+
+      CALL AscBinWriteFree()
+
       
     END SUBROUTINE WriteVtiFile
       
