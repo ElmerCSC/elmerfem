@@ -323,13 +323,13 @@
 
          <Parameter Widget="CheckBox">
            <Name> Porous Media </Name>
-           <Activate> /Navier-Stokes/Material/Porous Resistance </Activate>
+           <Activate> /Navier-Stokes/Material/Porous Resistivity </Activate>
            <Whatis> If checked, the porous model will be active in the material. </Whatis>
          </Parameter>
 
          <Parameter Widget="Edit" Enabled="False">
-           <Name> Porous Resistance </Name>
-           <Whatis> This keyword may give a constant resistance or also a orthotropic resistance where the resistance of each velocity component is given separately. </Whatis>
+           <Name> Porous Resistivity </Name>
+           <Whatis> This keyword may give a constant resistivity or also a orthotropic resistance where the resistance of each velocity component is given separately. </Whatis>
          </Parameter>
 
          <Parameter Widget="Label">

@@ -4,7 +4,7 @@
 # semi-valid test script
 # 
 if test "$SHL_EXT" = ""; then
-    SHL_EXT=".so"
+    SHL_EXT=".dylib"
 fi
 if test "$OBJ_EXT" = ""; then
     OBJ_EXT=".o"
@@ -29,9 +29,9 @@ if test "$ELMER_HOME" = ""; then
     export ELMER_SOLVER="../../src/ElmerSolver"
     # elmergrid must be in path
     export ELMER_MESH2D="Mesh2D"
-    export LD_LIBRARY_PATH=".:$ELMER_HOME:$ELMER_HOME/modules:$LD_LIBRARY_PATH"
+    export DYLD_LIBRARY_PATH=".:$ELMER_HOME:$ELMER_HOME/modules:$DYLD_LIBRARY_PATH"
     # assume that stuff has been installed here
-    export PATH=/opt/elmer/bin:$PATH
+    export PATH=/Users/ogagliardini/Simulations/elmer_latest/bin:$PATH
 else 
     # ELMER_HOME is defined, so we'll just use that
     printf "ELMER_HOME=%s\n" $ELMER_HOME
@@ -41,20 +41,20 @@ else
     export ELMER_GRID="$ELMER_HOME/bin/ElmerGrid"
     export ELMER_SOLVER="$ELMER_HOME/bin/ElmerSolver"
     export ELMER_MESH2D="$ELMER_HOME/bin/Mesh2D"
-    export LD_LIBRARY_PATH=".:$ELMER_HOME/lib:$LD_LIBRARY_PATH"
+    export DYLD_LIBRARY_PATH=".:$ELMER_HOME/lib:$DYLD_LIBRARY_PATH"
     export PATH=$ELMER_HOME/bin:$PATH
 fi
 
 #
 # Autoconf substitutes these variables with correct values.
 #
-#export F90="/opt/openmpi/bin/mpif90 -fPIC -O3 -march=x86-64 -ftree-vectorize -funroll-loops -ffast-math -I/usr/local/lib/MUMPS_4.10.0/include -m64 -fPIC -fPIC -I. -Ibinio -I../binio -I/opt/openmpi/include -I. -I$ELMER_INCLUDE"
-#export LD="/opt/openmpi/bin/mpif90 -fPIC -shared -m64 -fPIC "
+#export F90="gfortran -O   -I. -Ibinio -I../binio -I. -I$ELMER_INCLUDE"
+#export LD="gcc -dynamiclib -undefined dynamic_lookup -single_module ${LDFLAGS}  "
 export LD=elmerld
 export F90=elmerf90-nosh
-export LIBS="-L$ELMER_LIB "
+export LIBS="-L$ELMER_LIB    -L/opt/lib/ -L/opt/X11/lib -L/sw/lib -L/opt/X11/lib/ -L/usr/local/lib/gcc/x86_64-apple-darwin11.4.0/4.8.0 -L/usr/local/lib/gcc/x86_64-apple-darwin11.4.0/4.8.0/../../.. -lfreetype -lz -lbz2 -lGL -lGLU -lX11 -lgfortran -lquadmath -lm"
 
-/opt/openmpi/bin/mpicc -fPIC -o findnorm$EXE_EXT findnorm.c -lm
+gcc -o findnorm$EXE_EXT findnorm.c -lm
 chmod 775 findnorm$EXE_EXT
 
 total=0

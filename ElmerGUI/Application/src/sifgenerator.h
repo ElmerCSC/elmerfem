@@ -44,7 +44,6 @@
 #include <QTextEdit>
 #include <QHash>
 #include <QScriptEngine>
-#include <QVector> /* Added 4.4.2013 */
 
 #include "meshtype.h"
 #include "maxlimits.h"

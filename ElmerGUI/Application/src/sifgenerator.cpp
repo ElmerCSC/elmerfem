@@ -921,8 +921,15 @@ bool SifGenerator::parseSolverSpecificTab(DynamicEditor *solEditor, const QStrin
           dof = dofsplit.at(0).trimmed();
           dofs = engine.evaluate(dof).toInt32();
         }
-        if ( dofs <= 0 ) dofs = 1;
-        addSifLine( "  "+labelName+" = -dofs ",  QString::number(dofs) + " " + varName );
+	// Don't write the the trivial dof==1 case as this leaves possibility to define the number of
+	// dofs internally within the solver. 
+        if ( dofs <= 1 ) {
+	  addSifLine( "  "+labelName+" = ", varName );
+	  dofs = 1;
+	}
+	else {
+	  addSifLine( "  "+labelName+" = -dofs ",  QString::number(dofs) + " " + varName );
+	}
       }
       continue;
     }
