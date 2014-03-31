@@ -970,7 +970,7 @@ END SUBROUTINE GetMaxDefs
    ! If periodic BC given, compute boundary mesh projector:
    ! ------------------------------------------------------
    DO i = 1,Model % NumberOfBCs
-     Model % BCs(i) % PMatrix => Null()
+     Model % BCs(i) % PMatrix => NULL()
    END DO
 
    DO i = 1,Model % NumberOfBCs
@@ -2180,10 +2180,10 @@ END SUBROUTINE GetMaxDefs
    CHARACTER(MAX_NAME_LEN) :: FileName
    TYPE(Element_t), POINTER :: Element
    TYPE(Matrix_t), POINTER :: Projector
-   LOGICAL :: parallel
+   LOGICAL :: parallel, LoadNewMesh
 
    CALL Info('LoadMesh','Starting',Level=8)
-   !------------------------------------------------------------------------------
+
    CALL spariterbarrier()
 
    Parallel = .FALSE.
@@ -2231,8 +2231,10 @@ END SUBROUTINE GetMaxDefs
 
    ! Read mesh.names - this could be saved by some mesh formats
    !--------------------------------------------------------------------------
-   FileName = MeshNamePar(1:BaseNameLen)//'/mesh.names'
-   CALL ReadTargetNames( Model, FileName )
+   IF( ListGetLogical( Model % Simulation,'Use Mesh Names',Found ) ) THEN
+     FileName = MeshNamePar(1:BaseNameLen)//'/mesh.names'
+     CALL ReadTargetNames( Model, FileName )
+   END IF
 
 
    ! Map bodies using Target Bodies and boundaries using Target Boundaries.
@@ -2280,7 +2282,7 @@ END SUBROUTINE GetMaxDefs
    ! If periodic BC given, compute boundary mesh projector:
    ! ------------------------------------------------------
    DO i = 1,Model % NumberOfBCs
-     Model % BCs(i) % PMatrix => Null()
+     Model % BCs(i) % PMatrix => NULL()
      k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt )
      IF( GotIt ) THEN
        Projector =>  PeriodicProjector( Model, Mesh, i, k )
@@ -2723,7 +2725,7 @@ END SUBROUTINE GetMaxDefs
          body_id0 = body_id
       END IF
 
-       el_id = Element % Type % ElementCode / 100
+       el_id = Element % TYPE % ElementCode / 100
 
        ! Apply the elementtypes
        IF ( inDOFs(el_id,1) /= 0 ) THEN
@@ -2803,7 +2805,7 @@ END SUBROUTINE GetMaxDefs
 
        n = Element % TYPE % NumberOfNodes
        Element % NDOFs  = n
-       el_id = ELement % Type % ElementCode / 100
+       el_id = ELement % TYPE % ElementCode / 100
 
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) THEN
          IF( Element % BoundaryInfo % Left % NDOFs == 0 ) THEN
@@ -3061,7 +3063,7 @@ END SUBROUTINE GetMaxDefs
                CALL AssignLocalNumber(Face, Face % BoundaryInfo % Right, Mesh)
              END IF
           ELSE IF (PRESENT(FaceDOFs)) THEN
-             el_id = face % Type % ElementCode / 100
+             el_id = face % TYPE % ElementCode / 100
              Face % BDOFs = MAX(FaceDOFs(i), Face % BDOFs)
              IF ( PRESENT(inDOFs) ) Face % BDOFs = MAX(Face % BDOFs, InDOFs(el_id+6,5))
           END IF
