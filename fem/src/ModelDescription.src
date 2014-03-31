@@ -2001,7 +2001,7 @@ CONTAINS
             BoundariesOnly, numprocs, mype, Def_Dofs )
       ELSE
         Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs(:,1) )
+            BoundariesOnly, numprocs, mype, Def_Dofs(1,:) )
       END IF
 
       CALL CheckTimer('LoadMesh',Level=5,Delete=.TRUE.)
