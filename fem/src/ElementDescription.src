@@ -5296,12 +5296,12 @@ END IF
           CurlBasis(13,:) = D2 * WorkCurlBasis(I2,:) 
 
           ! The third square face:
-          WorkBasis(1,1) = (v*(-1.0d0 + w**2))/(4.0d0*Sqrt(3.0d0))
-          WorkBasis(1,2) = -((-1.0d0 + u)*(-1.0d0 + w**2))/(4.0d0*Sqrt(3.0d0))
+          WorkBasis(1,1) = (v*(-1.0d0 + w**2))/(2.0d0*SQRT(3.0d0))
+          WorkBasis(1,2) = -((-1.0d0 + u)*(-1.0d0 + w**2))/(2.0d0*SQRT(3.0d0))
           WorkBasis(1,3) = 0.0d0
-          WorkCurlBasis(1,1) = ((-1.0d0 + u)*w)/(2.0d0*Sqrt(3.0d0))
-          WorkCurlBasis(1,2) = (v*w)/(2.0d0*Sqrt(3.0d0))
-          WorkCurlBasis(1,3) = -(-1.0d0 + w**2)/(2.0d0*Sqrt(3.0d0))
+          WorkCurlBasis(1,1) = ((-1.0d0 + u)*w)/SQRT(3.0d0)
+          WorkCurlBasis(1,2) = (v*w)/SQRT(3.0d0)
+          WorkCurlBasis(1,3) = -(-1.0d0 + w**2)/SQRT(3.0d0)
 
           WorkBasis(2,1) = 0.0d0
           WorkBasis(2,2) = 0.0d0
