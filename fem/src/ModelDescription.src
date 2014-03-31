@@ -1852,7 +1852,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh
     INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
-    LOGICAL :: stat, single, MeshGrading
+    LOGICAL :: stat, single, MeshGrading, NewLoadMesh
     TYPE(Solver_t), POINTER :: Solver
     INTEGER(KIND=AddrInt) :: InitProc
     INTEGER, TARGET :: Def_Dofs(10,6)
@@ -1994,13 +1994,16 @@ CONTAINS
     IF ( MeshDir(1:1) /= ' ' ) THEN
 
       CALL ResetTimer('LoadMesh') 
-      IF( ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) ) THEN
+      NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) 
+      IF( .NOT. GotIt ) NewLoadMesh = .TRUE.
+      IF( NewLoadMesh ) THEN
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs )
       ELSE
         Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs(1,:) )
+            BoundariesOnly, numprocs, mype, Def_Dofs(:,1) )
       END IF
+
       CALL CheckTimer('LoadMesh',Level=5,Delete=.TRUE.)
 
       CALL SetCoordinateSystem( Model )
@@ -2165,8 +2168,10 @@ CONTAINS
           END DO
         END DO
 
+        NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt)
+        IF(.NOT. GotIt) NewLoadMesh = .TRUE.
         IF ( Single ) THEN
-          IF( ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) ) THEN
+          IF( NewLoadMesh ) THEN
             Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
           ELSE
@@ -2174,7 +2179,7 @@ CONTAINS
               LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs(1,:) )
           END IF
         ELSE
-          IF( ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) ) THEN
+          IF( NewLoadMesh ) THEN
             Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs )
           ELSE

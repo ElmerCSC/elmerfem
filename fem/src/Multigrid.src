@@ -286,7 +286,7 @@ CONTAINS
 
           WRITE( Path,'(a,i1)' ) TRIM(OutputPath) // '/' // TRIM(mgname), Level - 1
 
-          Mesh2 => LoadMesh( CurrentModel, OutputPath, Path, &
+          Mesh2 => LoadMesh2( CurrentModel, OutputPath, Path, &
                .FALSE., ParEnv % PEs, ParEnv % MyPE )
 
           CALL UpdateSolverMesh( Solver, Mesh2 )

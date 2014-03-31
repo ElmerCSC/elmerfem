@@ -193,7 +193,7 @@ CONTAINS
 
     DO i=1,RefMesh % NumberOfBulkElements
        RefElement => RefMesh % Elements(i)
-       n = RefElement % Type % NumberOfNodes
+       n = RefElement % TYPE % NumberOfNodes
 
        Nodes % x(1:n) = RefMesh % Nodes % x(RefElement % NodeIndexes)
        Nodes % y(1:n) = RefMesh % Nodes % y(RefElement % NodeIndexes)
@@ -263,7 +263,7 @@ CONTAINS
     NodalError = 0.0d0
     Referenced = 0
     DO i = 1, RefMesh % NumberOfBulkElements
-       DO j=1,RefMesh % Elements(i) % Type % NumberOfNodes
+       DO j=1,RefMesh % Elements(i) % TYPE % NumberOfNodes
           k = RefMesh % Elements(i) % NodeIndexes(j)
           Referenced(k) = Referenced(k) + 1
           NodalError(k) = NodalError(k) + ErrorIndicator(i)
@@ -284,7 +284,7 @@ CONTAINS
           Referenced = 0
           NodalError = 0
           DO i=1,RefMesh % NumberOfBulkElements
-             n = RefMesh % Elements(i) % Type % NumberOfNodes
+             n = RefMesh % Elements(i) % TYPE % NumberOfNodes
              NodalError(RefMesh % Elements(i) % NodeIndexes) = &
                 NodalError(RefMesh % Elements(i) % NodeIndexes) + &
                    SUM( eRef(RefMesh % Elements(i) % NodeIndexes) ) / n
@@ -364,7 +364,7 @@ CONTAINS
     IF ( .NOT.Found .OR. MaxChangeFactor <= AEPS ) MaxChangeFactor = 3.0d0
 
     Coarsening = ListGetLogical( Solver % Values, 'Adaptive Coarsening', Found )
-    if( .not.Found ) Coarsening = .TRUE.
+    IF( .NOT.Found ) Coarsening = .TRUE.
 !
 !   Compute local convergence of the solution with respect to h:
 !   ------------------------------------------------------------
@@ -795,7 +795,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
            ErrorLimit, minH, maxH, MaxChange, HValue(:)
-    LOGICAL :: Coarsening
+    LOGICAL :: Coarsening, NewLoadMesh
     TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
@@ -817,7 +817,7 @@ CONTAINS
              Lambda = HValue(i) * MAX(MIN(Lambda, MaxChange), 1.0d0/MaxChange)
           END IF
 
-          IF( .not.Coarsening ) Lambda = MIN( Lambda, Hvalue(i) )
+          IF( .NOT.Coarsening ) Lambda = MIN( Lambda, Hvalue(i) )
 
           IF ( maxH > 0 ) Lambda = MIN( Lambda, maxH )
           IF ( minH > 0 ) Lambda = MAX( Lambda, minH )
@@ -894,7 +894,14 @@ CONTAINS
 
     CALL SystemCommand( MeshCommand )
 
-    NewMesh => LoadMesh2( Model, OutPutPath, Path, .FALSE., 1, 0 )
+    NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',Found )
+    IF(.NOT. Found ) NewLoadMesh = .TRUE.
+
+    IF( NewLoadMesh ) THEN
+      NewMesh => LoadMesh2( Model, OutPutPath, Path, .FALSE., 1, 0 )
+    ELSE
+      NewMesh => LoadMesh( Model, OutPutPath, Path, .FALSE., 1, 0 )
+    END IF
 
     IF ( Solver % Variable % Name == 'temperature' ) THEN
        Name = ListGetString( Model % Simulation, 'Gebhardt Factors', Found )
@@ -939,11 +946,11 @@ CONTAINS
     DO i = 1,RefMesh % NumberOfBulkElements
        RefElement => RefMesh % Elements(i)
 
-       IF ( RefElement % Type % ElementCode /= 303 ) THEN
+       IF ( RefElement % TYPE % ElementCode /= 303 ) THEN
           CALL Fatal( 'SplitMesh', 'Internal splitting implemented only for linear triangles.' )
        END IF
 
-       n = RefElement % Type % NumberOfNodes
+       n = RefElement % TYPE % NumberOfNodes
 
        IF( RefMesh % AdaptiveDepth < 1 ) THEN
           EhConvergence = 1.0d0 ! First round: Assume full convergence speed
@@ -1142,7 +1149,7 @@ CONTAINS
     NewElCnt    = 0
     DO i = 1,RefMesh % NumberOfBulkElements
        RefElement => RefMesh % Elements(i)
-       n = RefElement % Type % NumberOfNodes
+       n = RefElement % TYPE % NumberOfNodes
 
        MarkedEdges = 0
        DO j = 1,3
@@ -1296,7 +1303,7 @@ CONTAINS
              END IF
           END DO
           k = LongestEdge
-if ( k <= 0 .or. k > 3 ) print*,k
+IF ( k <= 0 .OR. k > 3 ) PRINT*,k
 
           IF ( RefMesh % Edges(RefElement % EdgeIndexes(j)) % NodeIndexes(1) ==  &
                RefMesh % Edges(RefElement % EdgeIndexes(k)) % NodeIndexes(1) .OR.&
@@ -1446,7 +1453,7 @@ if ( k <= 0 .or. k > 3 ) print*,k
           EdgeNumber = RefElement % EdgeIndexes(i)
 
           RefElement => RefMesh % Elements(j)
-          n = RefElement % Type % NumberOfNodes
+          n = RefElement % TYPE % NumberOfNodes
             
           IF ( EdgeSplitted(EdgeNumber) ) THEN
 !
@@ -1526,7 +1533,7 @@ if ( k <= 0 .or. k > 3 ) print*,k
 !         -------------------------------------
           NewElCnt = NewElCnt + 1
           RefElement => RefMesh % Elements(j)
-          n = RefElement % Type % NumberOfNodes
+          n = RefElement % TYPE % NumberOfNodes
 
           NewMesh % Elements(NewElCnt) = RefElement
           NewMesh % Elements(NewElCnt) % ElementIndex = NewElCnt
@@ -1713,7 +1720,7 @@ if ( k <= 0 .or. k > 3 ) print*,k
 
     TYPE(Element_t), POINTER :: Child
 
-    n = Element % Type % NumberOfNodes
+    n = Element % TYPE % NumberOfNodes
 
     k = Edge % BoundaryInfo % Left % ElementIndex
     NULLIFY( Child )
@@ -1722,7 +1729,7 @@ if ( k <= 0 .or. k > 3 ) print*,k
           Child => Mesh % Elements( Children(k,l) )
           i0 = 0
           DO j0=1,n
-             DO k0=1,Child % Type % NumberOfNodes
+             DO k0=1,Child % TYPE % NumberOfNodes
                 IF ( Child % NodeIndexes(k0) == Element % NodeIndexes(j0) ) THEN
                    i0 = i0 + 1 
                    EXIT
@@ -1746,7 +1753,7 @@ if ( k <= 0 .or. k > 3 ) print*,k
              Child => Mesh % Elements( Children(k,l) )
              i0 = 0
              DO j0=1,n
-                DO k0=1,Child % Type % NumberOfNodes
+                DO k0=1,Child % TYPE % NumberOfNodes
                    IF ( Child % NodeIndexes(k0) == Element % NodeIndexes(j0) ) THEN
                       i0 = i0 + 1 
                       EXIT
@@ -1770,7 +1777,7 @@ if ( k <= 0 .or. k > 3 ) print*,k
     TYPE(Mesh_t), POINTER :: RefMesh,NewMesh
     INTEGER :: Children(:,:)
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,n,NewFactors,Target
+    INTEGER :: i,j,k,n,NewFactors,TARGET
     REAL(KIND=dp) :: AreaParent,AreaChild
     TYPE(Factors_t), POINTER :: Factors,ChildFactors
 !------------------------------------------------------------------------------
@@ -1785,8 +1792,8 @@ if ( k <= 0 .or. k > 3 ) print*,k
 
        NewFactors = 0
        DO k=1,Factors % NumberOfFactors
-          Target = Factors % Elements(k)
-          IF ( Children(Target,2) > 0 ) THEN
+          TARGET = Factors % Elements(k)
+          IF ( Children(TARGET,2) > 0 ) THEN
              NewFactors = NewFactors + 2
           ELSE
              NewFactors = NewFactors + 1
@@ -1820,12 +1827,12 @@ if ( k <= 0 .or. k > 3 ) print*,k
        IF ( .NOT. ASSOCIATED( Factors ) ) CYCLE
 
        AreaParent = ElementArea( RefMesh, RefMesh % Elements(i), &
-            RefMesh % Elements(i) % Type % NumberOfNodes )
+            RefMesh % Elements(i) % TYPE % NumberOfNodes )
 
        n = Children(i,1)
 
        AreaChild  = ElementArea( NewMesh, NewMesh % Elements(n), &
-            NewMesh % Elements(n) % Type % NumberOfNodes )
+            NewMesh % Elements(n) % TYPE % NumberOfNodes )
 
        ChildFactors => NewMesh % Elements(n) % BoundaryInfo % GebhardtFactors
 
@@ -1836,7 +1843,7 @@ if ( k <= 0 .or. k > 3 ) print*,k
 
        IF ( n > 0 ) THEN
           AreaChild = ElementArea( NewMesh, NewMesh % Elements(n), &
-               NewMesh % Elements(n) % Type % NumberOfNodes )
+               NewMesh % Elements(n) % TYPE % NumberOfNodes )
 
           ChildFactors => NewMesh % Elements(n) % &
                BoundaryInfo % GebhardtFactors
@@ -1857,25 +1864,25 @@ if ( k <= 0 .or. k > 3 ) print*,k
     INTEGER :: Children(:,:)
     TYPE(Factors_t), POINTER :: Factors, NewFactors
 !------------------------------------------------------------------------------
-    INTEGER k,n,Target,New
+    INTEGER k,n,TARGET,NEW
 !------------------------------------------------------------------------------
     ALLOCATE( NewFactors % Factors(  NewFactors % NumberOfFactors ) )
     CALL AllocateVector( NewFactors % Elements, NewFactors % NumberOfFactors )
 
-    New = 0
+    NEW = 0
     DO k=1,Factors % NumberOfFactors
-       Target = Factors % Elements(k)
-       n = Children(Target,1)
+       TARGET = Factors % Elements(k)
+       n = Children(TARGET,1)
 
-       New = New + 1
-       NewFactors % Elements(New) = n
-       NewFactors % Factors(New)  = AreaNew * Factors % Factors(k) / Area
+       NEW = NEW + 1
+       NewFactors % Elements(NEW) = n
+       NewFactors % Factors(NEW)  = AreaNew * Factors % Factors(k) / Area
             
-       n = Children(Target,2)
+       n = Children(TARGET,2)
        IF ( n > 0 ) THEN
-          New = New + 1
-          NewFactors % Elements(New) = n
-          NewFactors % Factors(New)  = AreaNew * Factors % Factors(k) / Area
+          NEW = NEW + 1
+          NewFactors % Elements(NEW) = n
+          NewFactors % Factors(NEW)  = AreaNew * Factors % Factors(k) / Area
        END IF
     END DO
 !------------------------------------------------------------------------------
@@ -1891,7 +1898,7 @@ if ( k <= 0 .or. k > 3 ) print*,k
   FUNCTION ComputeError( Model, ErrorIndicator, RefMesh,  &
        Quant, Perm, InsideResidual, EdgeResidual, BoundaryResidual ) RESULT(MaxError)
 !------------------------------------------------------------------------------
-use crsmatrix
+USE crsmatrix
     IMPLICIT NONE
 
     TYPE(Mesh_t), POINTER :: RefMesh
@@ -2010,7 +2017,7 @@ use crsmatrix
        Edge => RefMesh % Elements(i)
        CurrentModel % CurrentElement => Edge
 
-       IF ( Edge % Type % ElementCode == 101 ) CYCLE
+       IF ( Edge % TYPE % ElementCode == 101 ) CYCLE
 
        LocalIndicator = BoundaryResidual( Model, Edge, &
              RefMesh, Quant, Perm, LocalFnorm )
