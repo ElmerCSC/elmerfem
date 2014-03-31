@@ -11,53 +11,36 @@ DEFINES += EG_QWT      # Use QWT for convergence monitor?
 DEFINES += EG_VTK      # Use VTK for postprocessing?
 DEFINES += EG_PARAVIEW # Use ParaView for postprocessing?
 DEFINES += EG_MATC     # Use MATC for internal operations in postprocessing?
-DEFINES += EG_OCC      # Use OpenCASCADE 6.5 for importing CAD files? Needs VTK.
+DEFINES += EG_OCC      # Use OpenCASCADE 6.3 for importing CAD files? Needs VTK.
 DEFINES -= EG_PYTHONQT # Use PythonQt for scripting in post processor?
 
 #------------------------------------------------------------------------------
 # 64 bit system?
 #------------------------------------------------------------------------------
-BITS = 64
+BITS = 32
 
 
 #------------------------------------------------------------------------------
 # Installation directory:
 #------------------------------------------------------------------------------
-#ELMERGUI_HOME = /home/ssillanp/elmer/ElmerGUI/Installation/ElmerGUI/bin
-#ELMERGUI_HOME = $$(ELMERGUI_HOME)
-ELMERGUI_HOME = /opt/elmer/bin
+ELMERGUI_HOME = $$(ELMERGUI_HOME)
 isEmpty(ELMERGUI_HOME) {
    ELMER_HOME = $$(ELMER_HOME)
    isEmpty(ELMER_HOME) {
-      unix: ELMER_HOME = /opt/elmer
+      unix: ELMER_HOME = /usr/local
       win32: ELMER_HOME = c:/Elmer7
       macx: ELMER_HOME = /usr/local
    }
-#  ELMERGUI_HOME = $${ELMER_HOME}/bin
+   ELMERGUI_HOME = $${ELMER_HOME}/bin
 }
-
-
-#------------------------------------------------------------------------------
-# Paraview directory
-#------------------------------------------------------------------------------
-PARAVIEW_HOME = /opt/ParaView
-isEmpty(PARAVIEW_HOME) {
-   PARAVIEW_HOME = $$(PARAVIEW_HOME)
-   isEmpty(PARAVIEW_HOME) {
-      unix: PARAVIEW_HOME = /opt/ParaView
-      win32: PARAVIEW_HOME = c:/ParaView
-      macx: PARAVIEW_HOME = /usr/local/ParaView
-   }
-}
-
 
 #------------------------------------------------------------------------------
 # Python library:
 #------------------------------------------------------------------------------
 unix {
-   PY_INCLUDEPATH = /home/ssillanp/elmer/ElmerGUI/Installation/Python-2.7.3/include/python2.7
-   PY_LIBPATH = /home/ssillanp/elmer/ElmerGUI/Installation/Python-2.7.3/lib
-   PY_LIBS = -lpython2.7
+   PY_INCLUDEPATH = /usr/include/python2.5
+   PY_LIBPATH = /usr/lib
+   PY_LIBS = -lpython2.5
 }
 
 win32 {
@@ -73,9 +56,9 @@ macx {
 # QWT library:
 #------------------------------------------------------------------------------
 unix {
-  QWT_INCLUDEPATH = /home/ssillanp/elmer/ElmerGUI/Installation/qwt/include
-  QWT_LIBPATH = /home/ssillanp/elmer/ElmerGUI/Installation/qwt/lib
-  QWT_LIBS = -lqwt
+  QWT_INCLUDEPATH = /usr/include/qwt-qt4
+  QWT_LIBPATH = /usr/lib
+  QWT_LIBS = -lqwt-qt4
 }
 
 win32 {
@@ -94,8 +77,8 @@ macx {
 # VTK library:
 #------------------------------------------------------------------------------
 unix {
-   VTK_INCLUDEPATH = /home/ssillanp/elmer/ElmerGUI/Installation/vtk/include/vtk-5.10
-   VTK_LIBPATH = /home/ssillanp/elmer/ElmerGUI/Installation/vtk/lib/vtk-5.10
+   VTK_INCLUDEPATH = /usr/include/vtk-5.2
+   VTK_LIBPATH = /usr/lib
    VTK_LIBS = -lQVTK \
               -lvtkCommon \
               -lvtkDICOMParser \
@@ -158,8 +141,8 @@ macx {
 # OpenCASCADE library:
 #------------------------------------------------------------------------------
 unix {
-   OCC_INCLUDEPATH = /home/ssillanp/elmer/ElmerGUI/Installation/occt/inc
-   OCC_LIBPATH = /home/ssillanp/elmer/ElmerGUI/Installation/occt/lib
+   OCC_INCLUDEPATH = /usr/include/opencascade
+   OCC_LIBPATH = /usr/lib
    OCC_LIBS = -lTKSTL \
               -lTKBRep \
               -lTKernel \
