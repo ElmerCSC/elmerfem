@@ -5949,8 +5949,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
    END DO
 
-print*,minval(el_cd % values),maxval(el_cd % values)
-
    Power  = ParallelReduction(Power)
    Energy = ParallelReduction(Energy)
 
