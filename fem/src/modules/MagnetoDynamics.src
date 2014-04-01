@@ -5391,16 +5391,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        DO k=1,vDOFs
          B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
        END DO
-       !-------------------------------
-       ! The conductivity as a tensor
-       ! -------------------------------
-       !C_ip  = SUM( Basis(1:n)*C(1:n) )
-       DO k=1,3
-         DO l=1,3
-           CMat_ip(k,l) = SUM( Tcoef(k,l,1:np) * Basis(1:np) )
-         END DO
-       END DO
-
        IF ( Transient ) THEN
          IF (CoilType /= 'stranded') THEN
            E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
@@ -5635,12 +5625,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           stat = EdgeElementInfo( Element, Nodes, u, v, w, &
                F, G, DetF, Basis, EBasis, CurlEBasis, dBasisdx)
 
-          !--------------------------------------------------------------------------
-          ! Map the active basis vectors to their locations in the larger basis
-          ! vector array that corresponds to the element definition in the sif file.
-          ! -------------------------------------------------------------------------
-!         CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
-!              Element % TYPE % ElementCode / 100 )
           !-------------------------------------------------------------------------
           ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
           ! vector B_j(x), with the place x related to the reference element 
@@ -5663,6 +5647,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        DO k=1,vDOFs
          B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
        END DO
+
+       !-------------------------------
+       ! The conductivity as a tensor
+       ! -------------------------------
+       !C_ip  = SUM( Basis(1:n)*C(1:n) )
+       DO k=1,3
+         DO l=1,3
+           CMat_ip(k,l) = SUM( Tcoef(k,l,1:np) * Basis(1:np) )
+         END DO
+       END DO
+
        IF ( Transient ) THEN
          IF (CoilType /= 'stranded') THEN 
            E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
@@ -5953,6 +5948,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
      END IF
    END DO
+
+print*,minval(el_cd % values),maxval(el_cd % values)
 
    Power  = ParallelReduction(Power)
    Energy = ParallelReduction(Energy)
