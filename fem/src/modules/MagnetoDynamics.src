@@ -5318,15 +5318,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      DO j=1,n
        IF (PiolaVersion) THEN       
 
-          stat = EdgeElementInfo( Element, Nodes, NodesU(j), NodesV(j), &
-            NodesW(j), F, G, DetF, Basis, EBasis, CurlEBasis, dBasisdx)
+          u = NodesU(j)
+          v = NodesV(j)
+          w = NodesW(j)
 
-          !--------------------------------------------------------------------------
-          ! Map the active basis vectors to their locations in the larger basis
-          ! vector array that corresponds to the element definition in the sif file.
-          ! -------------------------------------------------------------------------
-!         CALL IncludeDummyDOFs(ActiveEBasis, ActiveCurlEBasis, EBasis, CurlEBasis, &
-!              Element % TYPE % ElementCode / 100 )
+          IF ( GetElementFamily() == 6 .AND. j==5 ) w=w-0.001_dp
+
+          stat = EdgeElementInfo( Element, Nodes, u, v, w,  &
+             F, G, DetF, Basis, EBasis, CurlEBasis, dBasisdx)
+
           !-------------------------------------------------------------------------
           ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
           ! vector B_j(x), with the place x related to the reference element 
@@ -5352,7 +5352,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        DO k=1,vDOFs
          B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
        END DO
-
        !-------------------------------
        ! The conductivity as a tensor
        ! -------------------------------
@@ -5577,7 +5576,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ! Calculate nodal fields:
      ! -----------------------
      IF (PiolaVersion) THEN
-        IP = EdgeElementGaussPoints(Element % TYPE % ElementCode / 100)
+        IP = EdgeElementGaussPoints(GetElementFamily())
      ELSE
         IP = GaussPoints(Element)
      END IF
@@ -5896,6 +5895,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END DO
      Solver % Matrix % RHS => Fsave
    END DO
+
    Power  = ParallelReduction(Power)
    Energy = ParallelReduction(Energy)
 
@@ -6057,8 +6057,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
   AverageFluxDensity = 0._dp
 
   IF (ListGetLogicalAnyBC( Model,'Magnetic Flux Average')) THEN
-    IF (PiolaVersion) CALL Fatal ('MagnetoDynamicsCalcFields', &
-         'Magnetic Flux Average: The feature is not yet available for Piola transformed basis functions')
+    IF (PiolaVersion) THEN
+         CALL Warn('MagnetoDynamicsCalcFields', &
+          'Magnetic Flux Average: The feature is not yet available for Piola transformed basis functions')
+    ELSE
     DO i=1,GetNOFBoundaryElements()
        Element => GetBoundaryElement(i)
        IF (.NOT. ActiveBoundaryElement()) CYCLE
@@ -6126,6 +6128,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     WRITE(Message,*) 'Magnetic Flux Area: ', Area
     CALL Info( 'MagnetoDynamics', Message )
     CALL ListAddConstReal( Model % Simulation,'res: Magnetic Flux Area', Area )
+    END IF
   END IF
 
 
