@@ -4167,7 +4167,7 @@ END IF
 
 
 !----------------------------------------------------------------------------------
-!>  Return H(curl)-conforming edge element basis function values and their curl  
+!>  Return H(curl)-conforming edge element basis function values and their Curl  
 !>  with respect to the reference element coordinates at a given point on the
 !>  reference element. Here the basis for a real element K is constructed by  
 !>  transforming the basis functions defined on the reference element k via a version
@@ -4178,9 +4178,13 @@ END IF
 !>  Note that the reference element is chosen as in the p-approximation so that
 !>  the reference element edges/faces have the same lenghth/area. This choice simplifies 
 !>  the associated assembly procedure.
+!>     With giving the optional argument ApplyPiolaTransform = .TRUE., this function
+!>  also performs the Piola transform, so that the basis functions and their spatial
+!>  curl as defined on the physical element are returned.
 !---------------------------------------------------------------------------------
      FUNCTION EdgeElementInfo( Element, Nodes, u, v, w, F, G, detF, &
-          Basis, EdgeBasis, CurlBasis, dBasisdx, SecondFamily, BasisDegree ) RESULT(stat)
+          Basis, EdgeBasis, CurlBasis, dBasisdx, SecondFamily, BasisDegree, &
+          ApplyPiolaTransform) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
@@ -4193,11 +4197,15 @@ END IF
        REAL(KIND=dp) :: G(3,3)                   !< The inverse of the gradient F
        REAL(KIND=dp) :: detF                     !< The determinant of the gradient matrix F
        REAL(KIND=dp) :: Basis(:)                 !< Standard nodal basis functions evaluated at (u,v,w)
-       REAL(KIND=dp) :: EdgeBasis(:,:)           !< The basis functions spanning the reference element space
-       REAL(KIND=dp) :: CurlBasis(:,:)           !< The curl of the edge basis functions with respect to the local coordinates
+       REAL(KIND=dp) :: EdgeBasis(:,:)           !< The basis functions b spanning the reference element space
+       REAL(KIND=dp) :: CurlBasis(:,:)           !< The Curl of the edge basis functions with respect to the local coordinates
        REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)  !< The first derivatives of the nodal basis functions at (u,v,w)
        LOGICAL, OPTIONAL :: SecondFamily         !< If .TRUE., a Nedelec basis of the second kind is returned
        INTEGER, OPTIONAL :: BasisDegree(:)       !< This is a dummy parameter at the moment
+       LOGICAL, OPTIONAL :: ApplyPiolaTransform  !< If  .TRUE., perform the Piola transform so that, instead of b
+                                                 !> and Curl b, return  B(f(p)) and (curl B)(f(p)) with B(x) the basis 
+                                                 !> functions on the physical element and curl the spatial curl operator.
+                                                 !> In this case the absolute value of detF is returned.
        LOGICAL :: Stat                           !< Should be .FALSE. for a degenerate element but this is not yet checked
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
@@ -4205,10 +4213,10 @@ END IF
        INTEGER :: n, dim, cdim, q, i, j, k, l, ni, nj, A, I1, I2, FaceIndeces(4)
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(2,3), WorkCurlBasis(2,3)
        REAL(KIND=dp) :: ElmMetric(3,3), detJ, LtoGMap(3,3)
-       REAL(KIND=dp) :: D1, D2
-       LOGICAL :: Create2ndKindBasis
+       REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3)
+       LOGICAL :: Create2ndKindBasis, PerformPiolaTransform
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
-       INTEGER :: SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4)
+       INTEGER :: SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs
 !----------------------------------------------------------------------------------------------------------
        stat = .TRUE.
        Basis = 0.0d0
@@ -4216,10 +4224,13 @@ END IF
        CurlBasis = 0.0d0
        G = 0.0d0
        !------------------------------------------------------------------------------------------
-       ! Check whether the Nedelec basis functions of the second kind should be created
+       ! Check whether the Nedelec basis functions of the second kind should be created and
+       ! whether the Piola transform is already applied within this function.
        !------------------------------------------------------------------------------------------
        Create2ndKindBasis = .FALSE.
        IF ( PRESENT(SecondFamily) ) Create2ndKindBasis = SecondFamily
+       PerformPiolaTransform = .FALSE.
+       IF ( PRESENT(ApplyPiolaTransform) ) PerformPiolaTransform = ApplyPiolaTransform
        !-------------------------------------------------------------------------------------------
        dLbasisdx = 0.0d0      
        n    = Element % TYPE % NumberOfNodes
@@ -4311,7 +4322,8 @@ END IF
           G(2,1) = -1.0d0/detF * F(2,1)
           G(2,2) = 1.0d0/detF * F(1,1)
 
-          IF (Create2ndKindBasis) THEN      
+          IF (Create2ndKindBasis) THEN
+             DOFs = 6
              !-------------------------------------------------
              ! Two basis functions defined on the edge 12.
              !-------------------------------------------------
@@ -4400,6 +4412,7 @@ END IF
              END IF
 
           ELSE
+             DOFs = 3
              !-------------------------------------------------------
              ! the Nedelec basis functions of the first kind
              !-------------------------------------------------------
@@ -4441,6 +4454,7 @@ END IF
           END IF
 
        CASE(4)
+          DOFs = 6
           !--------------------------------------------------------------
           ! This branch is for handling quadrilaterals
           !--------------------------------------------------------------
@@ -4539,6 +4553,7 @@ END IF
           CALL InvertMatrix3x3(F,G,detF)
 
           IF (Create2ndKindBasis) THEN
+             DOFs = 12
              !-------------------------------------------------
              ! Two basis functions defined on the edge 12.
              !-------------------------------------------------
@@ -4812,6 +4827,7 @@ END IF
              END IF
 
           ELSE
+             DOFs = 6
              !-------------------------------------------------------
              ! the Nedelec basis functions of the first kind
              !-------------------------------------------------------
@@ -4918,6 +4934,7 @@ END IF
           !--------------------------------------------------------------
           ! This branch is for handling pyramidic elements
           !--------------------------------------------------------------          
+          DOFs = 10
           EdgeMap => LGetEdgeMap(6)
           CALL InvertMatrix3x3(F,G,detF)
           Ind => Element % Nodeindexes
@@ -5096,6 +5113,7 @@ END IF
           !--------------------------------------------------------------
           ! This branch is for handling prismatic (or wedge) elements
           !--------------------------------------------------------------           
+          DOFs = 15
           EdgeMap => LGetEdgeMap(7)
           CALL InvertMatrix3x3(F,G,detF)
           Ind => Element % Nodeindexes
@@ -5325,6 +5343,7 @@ END IF
           !--------------------------------------------------------------
           ! This branch is for handling brick elements
           !--------------------------------------------------------------           
+          DOFs = 27
           EdgeMap => LGetEdgeMap(8)
           CALL InvertMatrix3x3(F,G,detF)
           Ind => Element % Nodeindexes
@@ -5695,10 +5714,36 @@ END IF
           CurlBasis(27,1) = (-1.0d0 + u**2)*v
           CurlBasis(27,2) = u - u*v**2
           CurlBasis(27,3) = 0.0d0
-
+                
        CASE DEFAULT
           CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
        END SELECT
+
+       IF (PerformPiolaTransform) THEN
+          GT = TRANSPOSE(G(1:dim,1:dim))
+          DO j=1,DOFs
+             DO k=1,dim
+                B(k) = SUM( GT(k,1:dim) * EdgeBasis(j,1:dim) )
+             END DO
+             DO k=1,dim
+                EdgeBasis(j,k) = B(k)
+             END DO            
+             
+             IF (dim == 2) THEN
+                CurlBasis(j,3) = 1.0d0/DetF * CurlBasis(j,3)
+             ELSE
+                DO k=1,dim
+                   curlB(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlBasis(j,1:dim) )
+                END DO
+                DO k=1,dim
+                   CurlBasis(j,k) = curlB(k)
+                END DO
+             END IF
+          END DO
+          ! Make the returned value DetF to act as a metric term for integration
+          ! over the volume of the element: 
+          DetF = ABS(DetF)
+       END IF
 
        ! ----------------------------------------------------------------------
        ! Get global first derivatives of the nodal basis functions if wanted:
