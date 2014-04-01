@@ -40,6 +40,7 @@ MODULE LoadMod
     USE Messages
     USE Types
     USE, INTRINSIC :: ISO_C_BINDING
+    USE huti_interfaces
     IMPLICIT NONE
 
 #ifdef ARCH_32_BITS
@@ -49,78 +50,6 @@ MODULE LoadMod
 #endif
 
 #include "huti_fdefs.h"
-
-    ! Interfaces
-    ABSTRACT INTERFACE
-        SUBROUTINE ElmerMatVecOp(u, v, ipar)
-            IMPORT :: dp
-            IMPLICIT NONE
-            INTEGER, INTENT(IN) :: ipar(*)
-            REAL(KIND=dp), INTENT(IN) :: u(HUTI_NDIM)
-            REAL(KIND=dp) :: v(HUTI_NDIM)
-        END SUBROUTINE ElmerMatVecOp
-    END INTERFACE
-
-    ABSTRACT INTERFACE
-        SUBROUTINE ElmerPrecondOp(u, v, ipar)
-            IMPORT :: dp
-            IMPLICIT NONE
-            INTEGER :: ipar(*)
-            REAL(KIND=dp) :: u(HUTI_NDIM), v(HUTI_NDIM)
-        END SUBROUTINE ElmerPrecondOp
-    END INTERFACE
-
-    ABSTRACT INTERFACE
-        SUBROUTINE ElmerDotProdOp(n, x, incx, y, incy)
-            IMPORT :: dp
-            IMPLICIT NONE
-            INTEGER :: n
-            REAL(KIND=dp) :: x(*)
-            INTEGER :: incx
-            REAL(KIND=dp) :: y(*)
-            INTEGER :: incy
-        END SUBROUTINE ElmerDotProdOp
-    END INTERFACE
-
-    ABSTRACT INTERFACE
-        FUNCTION ElmerNormOp(n, x, incx) RESULT(nrm)
-            IMPORT :: dp
-            IMPLICIT NONE
-            INTEGER :: n
-            REAL(KIND=dp) :: x(*)
-            INTEGER :: incx
-            REAL(KIND=dp) :: nrm
-        END FUNCTION ElmerNormOp
-    END INTERFACE
-
-    ABSTRACT INTERFACE
-        FUNCTION ElmerStopCOp(x, b, r, ipar, dpar) RESULT(res)
-            IMPORT :: dp
-            IMPLICIT NONE
-            INTEGER :: ipar(*)
-            REAL(KIND=dp) :: x(HUTI_NDIM),b(HUTI_NDIM),r(HUTI_NDIM)
-            REAL(KIND=dp) :: dpar(*)
-            REAL(KIND=dp) :: res
-        END FUNCTION ElmerStopCOp
-    END INTERFACE
-
-    ABSTRACT INTERFACE
-        SUBROUTINE ElmerIterCall(x, b, ipar, dpar, work, &
-                    mvfun, pcondfun, pcondrfun, dotfun, normfun, stopcfun )
-            IMPORT :: dp, ElmerMatVecOp, ElmerPrecondOp, ElmerDotProdOp, &
-                      ElmerNormOp, ElmerStopCOp
-            IMPLICIT NONE
-            INTEGER :: ipar(*)
-            REAL(KIND=dp) :: x(HUTI_NDIM), b(HUTI_NDIM)
-            REAL(KIND=dp) :: dpar(*)
-            REAL(KIND=dp) :: work(HUTI_NDIM, HUTI_WRKDIM)
-            PROCEDURE(ElmerMatVecOp), POINTER :: mvfun
-            PROCEDURE(ElmerPrecondOp), POINTER :: pcondfun, pcondrfun
-            PROCEDURE(ElmerDotProdOp), POINTER :: dotfun
-            PROCEDURE(ElmerNormOp), POINTER :: normfun
-            PROCEDURE(ElmerStopCOp), POINTER :: stopcfun
-        END SUBROUTINE ElmerIterCall
-    END INTERFACE
 
     ! GENERAL ROUTINES
 
@@ -217,7 +146,7 @@ MODULE LoadMod
 
     ! Overloads for IterCall
     INTERFACE IterCall
-        MODULE PROCEDURE IterCallR, IterCallC
+        MODULE PROCEDURE IterCallFTNR, IterCallFTNC
     END INTERFACE IterCall
 
     CONTAINS
@@ -704,7 +633,7 @@ MODULE LoadMod
                             mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr)
         END SUBROUTINE itercallC
 
-        RECURSIVE SUBROUTINE itercallFTN(fptr, x, b, ipar, dpar, work, &
+        RECURSIVE SUBROUTINE itercallFTNR(fptr, x, b, ipar, dpar, work, &
                             mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr )
             IMPLICIT NONE
 
@@ -718,12 +647,12 @@ MODULE LoadMod
 
 
             TYPE(C_FUNPTR) :: cfptr
-            PROCEDURE(ElmerMatVecOp), POINTER :: mvfun
-            PROCEDURE(ElmerPrecondOp), POINTER :: pcondfun, pcondrfun
-            PROCEDURE(ElmerDotProdOp), POINTER :: dotfun
-            PROCEDURE(ElmerNormOp), POINTER :: normfun
-            PROCEDURE(ElmerStopCOp), POINTER :: stopcfun
-            PROCEDURE(ElmerIterCall), POINTER :: iterfun
+            PROCEDURE(mv_iface_d), POINTER :: mvfun
+            PROCEDURE(pc_iface_d), POINTER :: pcondfun, pcondrfun
+            PROCEDURE(dotp_iface_d), POINTER :: dotfun
+            PROCEDURE(norm_iface_d), POINTER :: normfun
+            PROCEDURE(stopc_iface_d), POINTER :: stopcfun
+            PROCEDURE(huti_itercall_d), POINTER :: iterfun
 
             ! Initialize pointers
             mvfun => NULL()
@@ -742,22 +671,78 @@ MODULE LoadMod
             cfptr = TRANSFER(pcondptr, cfptr)
             IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, pcondfun)
             cfptr = TRANSFER(pcondrptr, cfptr)
-            IF (C_ASSOCIATED(C_NULL_FUNPTR)) CALL C_F_PROCPOINTER(cfptr, pcondrfun)
+            IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, pcondrfun)
             ! Dot product operator
             cfptr = TRANSFER(dotptr, cfptr)
             IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, dotfun)
             ! Norm operator
             cfptr = TRANSFER(normptr, cfptr)
-            IF (C_ASSOCIATED(C_NULL_FUNPTR)) CALL C_F_PROCPOINTER(cfptr, normfun)
+            IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, normfun)
             ! Stopping criterion operator
             cfptr = TRANSFER(stopcptr, cfptr)
-            IF (C_ASSOCIATED(C_NULL_FUNPTR)) CALL C_F_PROCPOINTER(cfptr, stopcfun)
+            IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, stopcfun)
 
             ! Finally, do the itercall
             cfptr = TRANSFER(fptr, cfptr)
             CALL C_F_PROCPOINTER(cfptr, iterfun)
             CALL iterfun(x, b, ipar, dpar, work, &
                          mvfun, pcondfun, pcondrfun, dotfun, normfun, stopcfun)
-        END SUBROUTINE itercallFTN
+        END SUBROUTINE itercallFTNR
+
+        RECURSIVE SUBROUTINE itercallFTNC(fptr, x, b, ipar, dpar, work, &
+                            mvptr, pcondptr, pcondrptr, dotptr, normptr, stopcptr )
+            IMPLICIT NONE
+
+            INTEGER(KIND=AddrInt) :: fptr
+            COMPLEX(KIND=dp), DIMENSION(:) CONTIG :: x,b
+            INTEGER :: ipar(50)
+            REAL(KIND=dp) :: dpar(50)
+            COMPLEX(KIND=dp) :: work(:,:)
+            INTEGER(KIND=Addrint) :: mvptr, pcondptr, pcondrptr, &
+                                     dotptr, normptr, stopcptr
+
+
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(mv_iface_z), POINTER :: mvfun
+            PROCEDURE(pc_iface_z), POINTER :: pcondfun, pcondrfun
+            PROCEDURE(dotp_iface_z), POINTER :: dotfun
+            PROCEDURE(norm_iface_z), POINTER :: normfun
+            PROCEDURE(stopc_iface_z), POINTER :: stopcfun
+            PROCEDURE(huti_itercall_z), POINTER :: iterfun
+
+            ! Initialize pointers
+            mvfun => NULL()
+            pcondfun => NULL()
+            pcondrfun => NULL()
+            dotfun => NULL()
+            normfun => NULL()
+            iterfun => NULL()
+
+            ! Transfer address integers back to Fortran function pointers
+
+            ! Matrix-vector operator
+            cfptr = TRANSFER(mvptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, mvfun)
+            ! Preconditioner operators
+            cfptr = TRANSFER(pcondptr, cfptr)
+            IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, pcondfun)
+            cfptr = TRANSFER(pcondrptr, cfptr)
+            IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, pcondrfun)
+            ! Dot product operator
+            cfptr = TRANSFER(dotptr, cfptr)
+            IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, dotfun)
+            ! Norm operator
+            cfptr = TRANSFER(normptr, cfptr)
+            IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, normfun)
+            ! Stopping criterion operator
+            cfptr = TRANSFER(stopcptr, cfptr)
+            IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, stopcfun)
+
+            ! Finally, do the itercall
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, iterfun)
+            CALL iterfun(x, b, ipar, dpar, work, &
+                         mvfun, pcondfun, pcondrfun, dotfun, normfun, stopcfun)
+        END SUBROUTINE itercallFTNC
 
 END MODULE LoadMod

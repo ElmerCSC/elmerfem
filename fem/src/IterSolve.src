@@ -187,7 +187,7 @@ CONTAINS
         HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
     EXTERNAL :: HUTI_Z_BICGSTAB, HUTI_Z_BICGSTAB_2, HUTI_Z_TFQMR, &
         HUTI_Z_CG, HUTI_Z_CGS, HUTI_Z_GMRES
-    
+
     REAL(KIND=dp) :: ddot, dnrm2, dznrm2
     EXTERNAL :: ddot, dnrm2, dznrm2
     
@@ -708,6 +708,7 @@ CONTAINS
 
     SaveGlobalM => GlobalMatrix
     GlobalMatrix => A
+
     CALL IterCall( iterProc, x, b, ipar, dpar, work, &
         mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
     GlobalMatrix => SaveGlobalM

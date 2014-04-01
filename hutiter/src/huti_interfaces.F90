@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Sami Ilvonen
+! *  Authors: Sami Ilvonen, Mikko Byckling
 ! *  Email:   sami.ilvonen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -42,7 +42,6 @@ MODULE huti_interfaces
   IMPLICIT NONE
 
   INTERFACE
-
      SUBROUTINE mv_iface_s(x, r, ipar)
        REAL, DIMENSION(*) :: x, r
        INTEGER, DIMENSION(*) :: ipar
@@ -154,6 +153,68 @@ MODULE huti_interfaces
        INTEGER, DIMENSION(*) :: ipar
        DOUBLE PRECISION, DIMENSION(*) :: dpar
      END FUNCTION stopc_iface_z
+    END INTERFACE
 
-  END INTERFACE
+    ! Iterator call, single precision
+    INTERFACE
+        SUBROUTINE huti_itercall_s(x, b, ipar, dpar, work, &
+                             mvfun, pcondfun, pcondrfun, dotfun, normfun, stopcfun )
+            IMPORT :: mv_iface_s, pc_iface_s, dotp_iface_s, norm_iface_s, stopc_iface_s
+            IMPLICIT NONE
+            INTEGER :: ipar(:)
+            REAL, DIMENSION(:) :: x, b
+            REAL :: dpar(:)
+            REAL, DIMENSION(:,:) :: work
+            PROCEDURE(mv_iface_s), POINTER :: mvfun
+            PROCEDURE(pc_iface_s), POINTER :: pcondfun, pcondrfun
+            PROCEDURE(dotp_iface_s), POINTER :: dotfun
+            PROCEDURE(norm_iface_s), POINTER :: normfun
+            PROCEDURE(stopc_iface_s), POINTER :: stopcfun
+        END SUBROUTINE huti_itercall_s
+
+        SUBROUTINE huti_itercall_d(x, b, ipar, dpar, work, &
+                             mvfun, pcondfun, pcondrfun, dotfun, normfun, stopcfun )
+            IMPORT :: mv_iface_d, pc_iface_d, dotp_iface_d, norm_iface_d, stopc_iface_d
+            IMPLICIT NONE
+            INTEGER :: ipar(:)
+            DOUBLE PRECISION, DIMENSION(:) :: x, b
+            REAL :: dpar(:)
+            DOUBLE PRECISION, DIMENSION(:) :: work
+            PROCEDURE(mv_iface_d), POINTER :: mvfun
+            PROCEDURE(pc_iface_d), POINTER :: pcondfun, pcondrfun
+            PROCEDURE(dotp_iface_d), POINTER :: dotfun
+            PROCEDURE(norm_iface_d), POINTER :: normfun
+            PROCEDURE(stopc_iface_d), POINTER :: stopcfun
+        END SUBROUTINE huti_itercall_d
+
+        SUBROUTINE huti_itercall_c(x, b, ipar, dpar, work, &
+                             mvfun, pcondfun, pcondrfun, dotfun, normfun, stopcfun )
+            IMPORT :: mv_iface_c, pc_iface_c, dotp_iface_c, norm_iface_c, stopc_iface_c
+            IMPLICIT NONE
+            INTEGER :: ipar(:)
+            COMPLEX, DIMENSION(:) :: x, b
+            REAL :: dpar(:)
+            COMPLEX, DIMENSION(:) :: work
+            PROCEDURE(mv_iface_c), POINTER :: mvfun
+            PROCEDURE(pc_iface_c), POINTER :: pcondfun, pcondrfun
+            PROCEDURE(dotp_iface_c), POINTER :: dotfun
+            PROCEDURE(norm_iface_c), POINTER :: normfun
+            PROCEDURE(stopc_iface_c), POINTER :: stopcfun
+        END SUBROUTINE huti_itercall_c
+
+        SUBROUTINE huti_itercall_z(x, b, ipar, dpar, work, &
+                             mvfun, pcondfun, pcondrfun, dotfun, normfun, stopcfun )
+            IMPORT :: mv_iface_z, pc_iface_z, dotp_iface_z, norm_iface_z, stopc_iface_z
+            IMPLICIT NONE
+            INTEGER :: ipar(:)
+            DOUBLE COMPLEX, DIMENSION(:) :: x, b
+            REAL :: dpar(:)
+            DOUBLE COMPLEX, DIMENSION(:) :: work
+            PROCEDURE(mv_iface_z), POINTER :: mvfun
+            PROCEDURE(pc_iface_z), POINTER :: pcondfun, pcondrfun
+            PROCEDURE(dotp_iface_z), POINTER :: dotfun
+            PROCEDURE(norm_iface_z), POINTER :: normfun
+            PROCEDURE(stopc_iface_z), POINTER :: stopcfun
+        END SUBROUTINE huti_itercall_z
+    END INTERFACE
 END MODULE huti_interfaces
