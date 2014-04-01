@@ -5042,7 +5042,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
    REAL(KIND=dp), ALLOCATABLE :: NodesU(:), NodesV(:), NodesW(:), EBasis(:,:), CurlEBasis(:,:) 
-   REAL(KIND=dp), ALLOCATABLE :: ActiveEBasis(:,:), ActiveCurlEBasis(:,:)
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    
 !-------------------------------------------------------------------------------------------
@@ -5999,7 +5998,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
    DEALLOCATE( Gforce,MASS,FORCE,Tcoef,RotM )
    IF (PiolaVersion) DEALLOCATE( NodesU,NodesV,NodesW, &
-        EBasis, CurlEBasis, ActiveEBasis, ActiveCurlEBasis )
+        EBasis, CurlEBasis )
 
    IF (LossEstimation) THEN
       CALL ListAddConstReal( Model % Simulation,'res: fourier loss',TotalLoss )
