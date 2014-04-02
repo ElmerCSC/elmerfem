@@ -5288,6 +5288,7 @@ END SUBROUTINE GetMaxDefs
       bcid = max_bid + Mesh_out % Elements(cnt) % BodyId
       Mesh_out % Elements(cnt) % BoundaryInfo % Constraint = bcid
 
+      Mesh_out % Elements(cnt) % BodyId = 0
       IF( bcid<=CurrentModel % NumberOfBCs) THEN
         j=ListGetInteger(CurrentModel % BCs(bcid) % Values,'Body Id',Found)
         IF(Found) Mesh_out % Elements(cnt) % BodyId=j
@@ -5299,7 +5300,6 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % ElementIndex = cnt
       Mesh_out % Elements(cnt) % TYPE => &
         Mesh_in % Elements(i) % TYPE
-      Mesh_out % Elements(cnt) % BodyId = 0
       Mesh_out % Elements(cnt) % DGDOFs = 0
       Mesh_out % Elements(cnt) % DGIndexes => Null()
       Mesh_out % Elements(cnt) % PDefs => NULL()
@@ -5326,6 +5326,7 @@ END SUBROUTINE GetMaxDefs
       bcid = max_bid + Mesh_out % Elements(cnt) % BodyId + max_body
       Mesh_out % Elements(cnt) % BoundaryInfo % Constraint = bcid
 
+      Mesh_out % Elements(cnt) % BodyId = 0
       IF( bcid<=CurrentModel % NumberOfBCs) THEN
         j=ListGetInteger(CurrentModel % BCs(bcid) % Values,'Body Id',Found)
         IF(Found) Mesh_out % Elements(cnt) % BodyId=j
@@ -5337,7 +5338,6 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % ElementIndex = cnt
       Mesh_out % Elements(cnt) % TYPE => &
         Mesh_in % Elements(i) % TYPE
-      Mesh_out % Elements(cnt) % BodyId = 0
       Mesh_out % Elements(cnt) % DGDOFs = 0
       Mesh_out % Elements(cnt) % DGIndexes => Null()
       Mesh_out % Elements(cnt) % PDefs => NULL()
