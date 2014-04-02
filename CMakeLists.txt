@@ -49,6 +49,10 @@ SET(ELMER_LINKTYP 1)
 #SET(FC_FUNC FC_GLOBAL)
 #SET(FC_FUNC_ FC_GLOBAL_)
 
+# TODO: Check that arpack really exists
+# Add support for arpack
+ADD_DEFINITIONS(-DUSE_ARPACK)
+
 #INCLUDE(FortranCInterface)
 #FortranCInterface_HEADER(FCMangle.h MACRO_NAMESPACE "FC_")
 #FortranCInterface_VERIFY(CXX)
