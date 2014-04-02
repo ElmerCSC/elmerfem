@@ -5007,6 +5007,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
+   COMPLEX(KIND=dp) :: imag_value
 
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
@@ -5016,7 +5017,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
                                 EL_MST, EL_JH, EL_VP, EL_FWP, EL_JXB
 
-   INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,VvarDofs,VvarId,IvarId
+   INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
+              VvarDofs,VvarId,IvarId,Reindex,Imindex
 
    TYPE(Solver_t), POINTER :: pSolver
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType
@@ -5074,16 +5076,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END DO
    vDOFs = pSolver % Variable % DOFs
 
-   FWP=>NULL(); EL_FWP => NULL()
-
 
    EF => NULL(); EL_EF => NULL(); 
    CD => NULL(); EL_CD => NULL();
    JH => NULL(); EL_JH => NULL();
+   FWP=>NULL(); EL_FWP => NULL();
+   JXB =>NULL(); EL_JXB => NULL();
+
    IF ( Transient .OR. vDOFs==2 ) THEN
      JH => VariableGet( Mesh % Variables, 'Joule Field' )
      EF => VariableGet( Mesh % Variables, 'Electric Field' )
      CD => VariableGet( Mesh % Variables, 'Current Density' )
+     FWP => VariableGet( Mesh % Variables, 'Winding Voltage' )
+     JXB => VariableGet( Mesh % Variables, 'JxB')
 
      EL_JH => VariableGet( Mesh % Variables, 'Joule Field E' )
      EL_EF => VariableGet( Mesh % Variables, 'Electric Field E' )
@@ -5389,8 +5394,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        DO k=1,vDOFs
          B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
        END DO
+
        IF ( Transient ) THEN
-         IF (CoilType /= 'stranded') THEN
+         IF (CoilType /= 'stranded') THEN 
            E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
          ELSE
            E(1,:) = 0._dp
@@ -5399,27 +5405,60 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          SELECT CASE (CoilType)
          CASE ('stranded')
            wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-           wvec = wvec/SQRT(wvec**2._dp)
-           localV(1) = 0._dp
+           wvec = wvec/SQRT(SUM(wvec**2._dp))
            E(1,:) = E(1,:)+LagrangeVar % Values(IvarId) * N_j * wvec / REAL(CMat_ip(1,1))
          CASE ('massive')
-           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
-           E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
          CASE ('foil winding')
            localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
            DO k = 1, VvarDofs-1
              localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
            END DO
            E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+
          CASE DEFAULT
            E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
          END SELECT
        ELSE
           IF (vDOFs > 1) THEN
-             E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)) - &
-                  MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-             E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)) - &
-                  MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+             IF (CoilType /= 'stranded') THEN
+                ! -j * Omega A
+                E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
+                E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
+             ELSE
+                E(1,:) = 0._dp
+                E(2,:) = 0._dp
+             END IF
+
+             localV=0._dp
+             SELECT CASE (CoilType)
+             CASE ('stranded')
+                wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                wvec = wvec/SQRT(SUM(wvec**2._dp))
+                imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
+                E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(1,1))
+                E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(1,1))
+             CASE ('massive')
+                localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+                localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
+                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             CASE ('foil winding')
+                localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
+                DO k = 1, VvarDofs-1
+                  Reindex = 2*k
+                  Imindex = Reindex+1
+                  localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
+                  localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
+                END DO
+                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             CASE DEFAULT
+                ! -Grad(V)
+                E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+                E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+             END SELECT
           ELSE
              IF (np > 0) THEN
                E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
@@ -5666,8 +5705,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          SELECT CASE (CoilType)
          CASE ('stranded')
            wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-           wvec = wvec/SQRT(wvec**2._dp)
-           localV(1) = 0._dp
+           wvec = wvec/SQRT(SUM(wvec**2._dp))
            E(1,:) = E(1,:)+LagrangeVar % Values(IvarId) * N_j * wvec / REAL(CMat_ip(1,1))
          CASE ('massive')
              localV(1) = localV(1) + LagrangeVar % Values(VvarId)
@@ -5684,10 +5722,43 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END SELECT
        ELSE
           IF (vDOFs > 1) THEN
-             E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)) - &
-                  MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-             E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)) - &
-                  MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+             IF (CoilType /= 'stranded') THEN
+                ! -j * Omega A
+                E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
+                E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
+             ELSE
+                E(1,:) = 0._dp
+                E(2,:) = 0._dp
+             END IF
+
+             localV=0._dp
+             SELECT CASE (CoilType)
+             CASE ('stranded')
+                wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                wvec = wvec/SQRT(SUM(wvec**2._dp))
+                imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
+                E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(1,1))
+                E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(1,1))
+             CASE ('massive')
+                localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+                localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
+                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             CASE ('foil winding')
+                localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
+                DO k = 1, VvarDofs-1
+                  Reindex = 2*k
+                  Imindex = Reindex+1
+                  localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
+                  localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
+                END DO
+                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             CASE DEFAULT
+                ! -Grad(V)
+                E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+                E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+             END SELECT
           ELSE
              IF (np > 0) THEN
                E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
