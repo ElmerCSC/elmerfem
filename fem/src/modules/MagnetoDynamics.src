@@ -5041,8 +5041,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
-   REAL(KIND=dp), ALLOCATABLE :: NodesU(:), NodesV(:), NodesW(:), EBasis(:,:), CurlEBasis(:,:) 
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
+   REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
    
 !-------------------------------------------------------------------------------------------
    PiolaVersion = GetLogical( GetSolverParams(), &
@@ -5141,8 +5141,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    n = Mesh % MaxElementDOFs
    ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n) )
-   IF (PiolaVersion) ALLOCATE( NodesU(n), NodesV(n), NodesW(n), &
-        EBasis(n,3), CurlEBasis(n,3) )
+   IF (PiolaVersion) ALLOCATE( EBasis(n,3), CurlEBasis(n,3) )
    SOL = 0._dp; PSOL=0._dp
 
    Omega = GetAngularFrequency(Found=Found)
@@ -5996,9 +5995,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    WRITE(Message,*) '(Electro)Magnetic Field Energy: ', Energy
    CALL Info( 'MagnetoDynamics', Message )
    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
-   DEALLOCATE( Gforce,MASS,FORCE,Tcoef,RotM )
-   IF (PiolaVersion) DEALLOCATE( NodesU,NodesV,NodesW, &
-        EBasis, CurlEBasis )
+   IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
+   DEALLOCATE( MASS,FORCE,Tcoef,RotM )
+   IF (PiolaVersion) DEALLOCATE( EBasis, CurlEBasis )
 
    IF (LossEstimation) THEN
       CALL ListAddConstReal( Model % Simulation,'res: fourier loss',TotalLoss )
