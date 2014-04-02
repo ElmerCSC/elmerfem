@@ -1,0 +1,91 @@
+!--------------------------------------------------------------------------------------
+!  THE DESCRIPTION OF THIS TEST:  
+!
+!  Solve the best approximation of the vector field U = (1+z-y,1-z+x,1-x+y)
+!  with respect to the L2 norm using H(curl)-conforming basis functions. 
+!  Additionally, compute the relative error of the solution using
+!  the energy norm corresponding to the operator I - curl curl.
+!  For the basis functions obtained here via the function EdgeElementInfo the exact 
+!  solution should be in the FE solution space. This solver thus offers
+!  a consistency check for creating discretizations based on the basis functions 
+!  provided by the function EdgeElementInfo. This test can be performed basically
+!  on any 3-D mesh if the element definition of the sif file is adjusted accordingly.
+!--------------------------------------------------------------------------------------
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "toroidalcoil"
+End
+
+Simulation
+  Max Output Level = 6
+  Coordinate System = "Cartesian 3D"
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+!  Post File = "interpolationtest.ep"
+  New Load Mesh = Logical True
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 3
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+!------------------------------------------------------------
+! This solver uses an in-built source term to obtain a case
+! for which the solution is known in the closed form.
+! There is no need for giving a source term.
+!------------------------------------------------------------
+Body Force 1
+!  Body Source 1 = Real 0
+!  Body Source 2 = Real 0
+!  Body Source 3 = Real 0  
+End
+
+!----------------------------------------------------------
+! No material parameters needed to define the solution:
+!----------------------------------------------------------
+ Material 1
+!   Conductivity = Real 1.0
+ End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Interpolation test"
+  Variable = "P"
+  Variable DOFs = 1
+  Procedure = "EdgeElementSolve" "EdgeElementSolver"
+
+  Element = "n:0 e:1 -brick b:3 -quad_face b:2"
+
+  Optimize Bandwidth = False
+  Bubbles in Global System = Logical True
+  Linear System Solver = Iterative
+  Linear System Iterative Method = GCR
+  Linear System Preconditioning = diagonal
+  Linear System Row Equilibration = Logical True
+  Linear System Max Iterations = 100
+  Linear System Convergence Tolerance = 1e-11
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.28209923E-02\n" );
