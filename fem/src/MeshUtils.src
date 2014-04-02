@@ -4941,9 +4941,9 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: in_levels
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,n,cnt,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
-        ExtrudedCoord
+        ExtrudedCoord,dg_n
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
-    INTEGER :: nnodes,gnodes,ierr
+    INTEGER :: nnodes,gnodes,gelements,ierr
     LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline
     REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
@@ -4964,6 +4964,7 @@ END SUBROUTINE GetMaxDefs
     ALLOCATE( Mesh_out % Nodes % y(nnodes) )
     ALLOCATE( Mesh_out % Nodes % z(nnodes) )
 
+    gelements = Mesh_in % NumberOfBulkElements
     IF (isParallel) THEN
       PI_in  => Mesh_in % ParallelInfo
       PI_out => Mesh_out % ParallelInfo
@@ -4978,6 +4979,13 @@ END SUBROUTINE GetMaxDefs
             Neighbours(1) == ParEnv % MyPE ) j=j+1
       END DO
       CALL MPI_ALLREDUCE(j,gnodes,1, &
+           MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,ierr)
+
+      j=0
+      DO i=1,Mesh_in % NumberOfBulkElements
+        IF (Mesh_in % Elements(i) % PartIndex == ParEnv % MyPE) j=j+1
+      END DO
+      CALL MPI_ALLREDUCE(j,gelements,1, &
            MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,ierr)
     END IF
 
@@ -5051,9 +5059,9 @@ END SUBROUTINE GetMaxDefs
 
     Mesh_out % MaxElementNodes = 0
 
-    cnt=0
     NeedEdges=.FALSE.
     n=Mesh_in % NumberOfNodes
+    cnt=0; dg_n  = 0
     DO i=0,in_levels
       DO j=1,Mesh_in % NumberOfBulkElements
 
@@ -5079,12 +5087,30 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % TYPE => GetElementType(808)
         END SELECT
 
+        Mesh_out % Elements(cnt) % GElementIndex = &
+         Mesh_in % Elements(j) % GelementIndex + gelements*(i-1)
+
         Mesh_out % Elements(cnt) % ElementIndex = cnt
         ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n)) 
+        Mesh_out % Elements(cnt) % DGIndexes => Null()
         Mesh_out % Elements(cnt) % NodeIndexes = ind(1:l_n)
-        Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
-        Mesh_out % Elements(cnt) % FaceIndexes => NULL()
-        Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+        Mesh_out % Elements(cnt) % EdgeIndexes => Null()
+        Mesh_out % Elements(cnt) % FaceIndexes => Null()
+        Mesh_out % Elements(cnt) % BubbleIndexes => Null()
+
+        k = Mesh_out % Elements(cnt) % DGDOFs
+        IF(k>0) THEN
+          Mesh_out % Elements(cnt) % DGDOFs = &
+                Mesh_out % Elements(cnt) % Type % NumberOFNodes
+          k = Mesh_out % Elements(cnt) % DGDOFs
+          ALLOCATE(Mesh_out % Elements(cnt) % DGIndexes(k))
+          DO l=1,k
+            dg_n = dg_n + 1
+            Mesh_out % Elements(cnt) % DGIndexes(l) = dg_n
+          END DO
+          NeedEdges=.TRUE.
+        END IF
+
         IF(ASSOCIATED(Mesh_in % Elements(j) % PDefs)) THEN
           NeedEdges=.TRUE.
           ALLOCATE(Mesh_out % Elements(cnt) % PDefs)
@@ -5142,6 +5168,8 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % TYPE => &
              Mesh_in % Elements(k) % TYPE
         END IF 
+        Mesh_out % Elements(cnt) % DGDOFs = 0
+        Mesh_out % Elements(cnt) % DGIndexes => Null()
         Mesh_out % Elements(cnt) % ElementIndex = cnt + &
                 Mesh_out % NumberOfBulkElements
         Mesh_out % Elements(cnt) % PDefs => NULL()
@@ -5214,6 +5242,8 @@ END SUBROUTINE GetMaxDefs
         END IF 
         Mesh_out % Elements(cnt) % ElementIndex = cnt + &
                 Mesh_out % NumberOfBulkElements
+        Mesh_out % Elements(cnt) % DGDOFs = 0
+        Mesh_out % Elements(cnt) % DGIndexes => Null()
         Mesh_out % Elements(cnt) % PDefs => NULL()
         Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
         Mesh_out % Elements(cnt) % FaceIndexes => NULL()
@@ -5269,6 +5299,9 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % ElementIndex = cnt
       Mesh_out % Elements(cnt) % TYPE => &
         Mesh_in % Elements(i) % TYPE
+      Mesh_out % Elements(cnt) % BodyId = 0
+      Mesh_out % Elements(cnt) % DGDOFs = 0
+      Mesh_out % Elements(cnt) % DGIndexes => Null()
       Mesh_out % Elements(cnt) % PDefs => NULL()
       Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
       Mesh_out % Elements(cnt) % FaceIndexes => NULL()
@@ -5304,6 +5337,9 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % ElementIndex = cnt
       Mesh_out % Elements(cnt) % TYPE => &
         Mesh_in % Elements(i) % TYPE
+      Mesh_out % Elements(cnt) % BodyId = 0
+      Mesh_out % Elements(cnt) % DGDOFs = 0
+      Mesh_out % Elements(cnt) % DGIndexes => Null()
       Mesh_out % Elements(cnt) % PDefs => NULL()
       Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
       Mesh_out % Elements(cnt) % FaceIndexes => NULL()
