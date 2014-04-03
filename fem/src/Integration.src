@@ -1297,20 +1297,28 @@ END FUNCTION GaussPointsPTetra
 !------------------------------------------------------------------------------
 !>    Given element structure return gauss integration points for the element.
 !------------------------------------------------------------------------------
-   FUNCTION GaussPoints( elm, np, RelOrder ) RESULT(IntegStuff)
+   FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis ) RESULT(IntegStuff)
 !------------------------------------------------------------------------------
      USE PElementMaps, ONLY : isActivePElement
      TYPE( Element_t ) :: elm   !< Structure holding element description
      INTEGER, OPTIONAL :: np    !< Number of requested points
-     INTEGER, OPTIONAL :: RelOrder !< Relative order of Gauss points (-1,0,+1)
+     LOGICAL, OPTIONAL :: EdgeBasis !< Number of requested points
+     INTEGER, OPTIONAL :: RelOrder  !< Relative order of Gauss points (-1,0,+1)
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
      LOGICAL :: pElement
      INTEGER :: n, eldim, p1d
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
-
      elmt => elm % TYPE
+
+     IF(PRESENT(EdgeBasis)) THEN
+       IF (EdgeBasis) THEN
+         IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100)
+         RETURN
+       END IF
+     END IF
+
      pElement = isActivePElement(elm)
 
      IF ( PRESENT(np) ) THEN
