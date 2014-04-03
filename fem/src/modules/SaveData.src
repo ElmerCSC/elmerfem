@@ -560,7 +560,18 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CASE ('dofs')
         Val = 1.0_dp * SIZE(Var % Values)
         CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.TRUE.,ParOper)
-        
+
+      CASE ('nans')  ! number of NaN:s in vector
+        GotIt = .FALSE.
+        j = 0
+        DO i=1,SIZE(Var % Values)
+          IF( Var % Values(i) /= Var % Values(i) ) THEN
+            j = j + 1
+          END IF
+        END DO
+        Val = 1.0_dp * j
+        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.TRUE.,ParOper)
+       
       CASE ('sum','sum abs','mean abs','max','max abs','min','min abs','mean','variance','range')
         Val = VectorStatistics(Var,Oper)
         CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.FALSE.,ParOper)
@@ -1227,7 +1238,7 @@ CONTAINS
       
     CASE('nodes','elements','dofs','sum','sum abs','int','volume','potential energy','convective energy',&
         'diffusive energy','boundary sum','boundary dofs','boundary int','area','diffusive flux',&
-        'convective flux')
+        'convective flux','nans')
       ParOper = 'sum'
             
     CASE('max','max abs','boundary max','boundary max abs')

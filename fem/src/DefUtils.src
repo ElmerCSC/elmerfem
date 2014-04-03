@@ -1159,6 +1159,7 @@ CONTAINS
         IF ( n>0 ) RETURN
      END IF
 
+
      id =Element % BodyId
      IF ( Id==0 .AND. ASSOCIATED(Element % BoundaryInfo) ) THEN
        IF ( ASSOCIATED(Element % BoundaryInfo % Left) ) &
@@ -1169,8 +1170,8 @@ CONTAINS
      END IF
      IF ( Id==0 ) id=1
 
-     IF ( Solver % Def_Dofs(id,1)>0 ) n = Element % NDOFs
-     IF ( ALL(Solver % Def_Dofs(id,2:)<0) ) RETURN
+     IF ( Solver % Def_Dofs(GetElementFamily(Element),id,1)>0 ) n = Element % NDOFs
+     IF ( ALL(Solver % Def_Dofs(GetElementFamily(Element),id,2:)<0) ) RETURN
 
      IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
         DO j=1,Element % TYPE % NumberOFEdges
@@ -1250,13 +1251,13 @@ CONTAINS
      END IF
      IF ( id == 0 ) id=1
 
-     IF ( Solver % Def_Dofs(id,1)>0 ) THEN
+     IF ( Solver % Def_Dofs(GetElementFamily(Element),id,1)>0 ) THEN
        DO i=1,Element % NDOFs
           NB = NB + 1
           Indexes(NB) = Element % NodeIndexes(i)
        END DO
      END IF
-     IF ( ALL(Solver % Def_Dofs(id,2:)<0) ) RETURN
+     IF ( ALL(Solver % Def_Dofs(GetElementFamily(Element),id,2:)<0) ) RETURN
 
      FaceDOFs   = Solver % Mesh % MaxFaceDOFs
      EdgeDOFs   = Solver % Mesh % MaxEdgeDOFs
@@ -3571,7 +3572,7 @@ CONTAINS
                  CALL LocalBcIntegral(BC,Edge,n,Parent,nb,TRIM(Name)//' {e}',Work(1))
 
                  n=GetElementDOFs(gInd,Edge)
-                 DO k=Solver % Def_Dofs(Parent % BodyId,1)*Edge % NDOFs+1,n
+                 DO k=Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs+1,n
                    nb = x % Perm(gInd(k))
                    IF ( nb <= 0 ) CYCLE
                    nb = Offset + x % DOFs*(nb-1) + DOF
@@ -3606,7 +3607,7 @@ CONTAINS
                           n, TRIM(Name)//' {e}', Work(1) )
 
                    n=GetElementDOFs(gInd,Edge)
-                   DO k=Solver % Def_Dofs(Parent % BodyId,1)*Edge % NDOFs+1,n
+                   DO k=Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs+1,n
                      nb = x % Perm(gInd(k))
                      IF ( nb <= 0 ) CYCLE
                      nb = Offset + x % DOFs*(nb-1) + DOF
@@ -4911,6 +4912,8 @@ CONTAINS
          RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))/n
          RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))/n
          RotWBasis(i,3)=(dBase(1)*du(2) - dBase(2)*du(1))/n
+       CASE DEFAULT
+         CALL Fatal( 'Edge Basis', 'Not implemented for this element type.')
        END SELECT
 
        IF( nk < nj ) THEN

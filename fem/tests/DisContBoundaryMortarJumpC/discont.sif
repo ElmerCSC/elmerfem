@@ -2,15 +2,14 @@
 ! Discontinuity is used just to create full insulation within a mesh.
 ! There is a 2D and a 3D case of this that differ only on the mesh used. 
 !
-! This is a modified test of the discontinuity that reintroduces continuity
-! using a weighted projector. 
+! This is a modified test of the discontinuity that implements a jump condition
+! for the heat flux. This case involves an absolute jump.
 !
-! P.R. / 10.3.2014
+! P.R. / 27.3.2014
 
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "square"
-!  Mesh DB "." "rect"
   Include Path ""
   Results Directory ""
 End
@@ -25,7 +24,7 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
-  Post File = "discont.vtu"
+!  Post File = "discont.vtu"
 
 ! Normally we dont want to apply this
   Discontinuous Boundaries Greedy = Logical False
@@ -66,7 +65,7 @@ End
 
 Equation 1
   Name = "Equations"
-  Active Solvers(2) = 1 2
+  Active Solvers(1) = 1
 End
 
 Solver 1
@@ -75,7 +74,7 @@ Solver 1
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "iterative"
-  Linear System Iterative Method = "BiCGStab"
+  Linear System Iterative Method = "BiCGStabl"
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1.0e-08
   Linear System Abort Not Converged = True
@@ -88,36 +87,25 @@ Solver 1
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-02
   Nonlinear System Relaxation Factor = 1.0
-
-  Apply Mortar BCs = Logical True  
+  
+  Linear System Scaling = False
+  Linear System Dirichlet Scaling = Logical False
+  Optimize Bandwidth = False
 
   Linear System Abort Not Converged = False
-!  Optimize Bandwidth = False
+  Apply Mortar BCs = True
 End
 
 
 Solver 2
   Exec Solver = never
 
-  Equation = ComputeFlux
-  Procedure = "FluxSolver" "FluxSolver"
-
-  Calculate Flux = Logical True
-  Target Variable = String Temperature
-  Flux Coefficient = String "Heat Conductivity"
-
-! these are taken care by the defaults
-  Linear System Solver = "Iterative"
-  Linear System Iterative Method = "BIcgstab"
-  Linear System Preconditioning = ILU1
-  Linear System Residual Output = 0
-  Linear System Max Iterations = Integer 1000
-  Linear System Convergence Tolerance = 1.0e-8
-
-
-!  Optimize Bandwidth = False
+  Equation = "SaveLine"
+  Procedure = "SaveData" "SaveLine"
+  Filename = f.dat
 End
 
+ 
 
 Material 1
   Name = "Material"
@@ -126,65 +114,50 @@ Material 1
 End
 
 
+
+
 Boundary Condition 1
-  Name = "Cold"
-  Target Boundaries(1) = 2 
-!  Temperature = -1.0
-End
-
-Boundary Condition 2
-  Name = "Hot"
-  Target Boundaries(1) = 5 
-!  Temperature = 1.0
-End
-
-Boundary Condition 3
   Name = "Jump"
-  Target Boundaries(1) = 3 
+  Target Boundaries(1) = 1
 
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
 
+! If this keyword is nonzero then two BCs are created and
+! standard mortar projector is used.
+  Mortar BC = 10 
 
-  Mortar BC = 3
-!  Periodic BC = 3
-  Periodic BC Temperature = Logical True
-
-! This can be turned optionally off
-  Periodic BC Use Lagrange Coefficient = Logical True
-
-!  Periodic BC Scale Temperature = Real -0.5
-! Request a small jump (does not work with Lagrange coeff.)
-!  Periodic BC Offset Temperature = Real 0.2
-
-! This does not yey work
-!  Galerkin Projector = Logical True
+!  Mortar BC Coefficient Temperature = Variable "Coordinate 2"
+!   Real MATC "1.0+tx"
+!  Mortar BC Offset Temperature = Variable "Coordinate 2"
+!   Real MATC "-tx(0)*0.5"
+  Mortar BC Temperature = Logical True
+  Mortar BC Offset Temperature = Variable "Coordinate 2"
+   Real MATC "-0.33333"
 End
 
 
-! This set of Dirichlet BCs is easier than the one
-! involving a singularity at the center. 
-! So it is used alternatively in some tests. 
-Boundary Condition 4
-  Name = "Alternative Cold"
+
+Boundary Condition 2
+  Name = "Cold"
   Target Boundaries(1) = 4 
   Temperature = 0.0
 End
 
-Boundary Condition 5
-  Name = "Alternative Hot"
+Boundary Condition 3
+  Name = "Hot"
   Target Boundaries(1) = 6 
   Temperature = 1.0
 End
 
-
-Boundary Condition 6
-  Name = "Adiabatic"
-  Default Target = Logical True
-End
+Boundary Condition 4
+  Name = "Bottom"
+  Target Boundaries(2) = 2 5
+  Save Line = Logical True
+End 
 
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.54992101\n");
+$fprintf( stderr, "END TEST CASE 1: Target NRM=  0.61010021\n");
 !End Of File

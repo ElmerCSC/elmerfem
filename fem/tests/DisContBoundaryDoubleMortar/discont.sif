@@ -163,18 +163,10 @@ Boundary Condition 5
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
 
-! This keyword makes two different boundaries
-! If this is only present as motar or periodic target 
-! it does not need to exist as a BC. 
-  Discontinuous Target Boundary = Integer 6
-
+! This keyword makes two different boundaries and 
+! creates a standard mortar projector for it. 
+! The number of mortar projector must be an unused BC.
   Mortar BC = 6
-
-!  Periodic BC = 6
-!  Periodic BC Temperature = Logical True
-
-! This can be turned optionally off
-!  Periodic BC Use Lagrange Coefficient = Logical True
 End
 
 

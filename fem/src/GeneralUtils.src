@@ -1955,5 +1955,220 @@ INCLUDE "mpif.h"
 
 END MODULE GeneralUtils
 
+
+!---------------------------------------------------------
+!> Module mainly for writing xml based vtk files. 
+!> The idea is that same routines save both the ascii 
+!> and binary format. 
+!---------------------------------------------------------
+MODULE AscBinOutputUtils
+  
+  
+  USE Types
+  IMPLICIT NONE
+  
+  LOGICAL, PRIVATE :: AsciiOutput, SinglePrec
+  INTEGER, PRIVATE :: VtuUnit = 0, BufferSize = 0
+  REAL, POINTER, PRIVATE :: FVals(:)
+  REAL(KIND=dp), POINTER, PRIVATE :: DVals(:)
+  INTEGER, POINTER, PRIVATE :: IVals(:)
+  INTEGER, PRIVATE :: INoVals, NoVals
+
+  SAVE :: AsciiOutput, SinglePrec, VtuUnit,  BufferSize, &
+      FVals, DVals, IVals
+  
+
+
+CONTAINS
+
+
+  ! Initialize the buffer for writing, choose mode etc.
+  !-----------------------------------------------------------------
+  SUBROUTINE AscBinWriteInit( IsAscii, IsSingle, UnitNo, BufSize )
+    
+    LOGICAL :: IsAscii, IsSingle
+    INTEGER :: UnitNo, BufSize
+    
+    AsciiOutput =  IsAscii
+    SinglePrec = IsSingle
+    VtuUnit = UnitNo
+    BufferSize = BufSize
+
+    CALL Info('AscBinWriteInit','Initializing buffered ascii/binary writing',Level=8)
+    IF( AsciiOutput ) THEN
+      CALL Info('AscBinWriteInit','Writing in ascii',Level=10)
+    ELSE
+      CALL Info('AscBinWriteInit','Writing in binary',Level=10)
+    END IF
+
+    IF( SinglePrec ) THEN
+      CALL Info('AscBinWriteInit','Writing in single precision',Level=10)
+    ELSE
+      CALL Info('AscBinWriteInit','Writing in double precision',Level=10)
+    END IF
+
+    WRITE(Message,'(A,I0)')  'Writing to unit number: ',VtuUnit
+    CALL Info('AscBinWriteInit',Message,Level=10)
+
+    WRITE(Message,'(A,I0)')  'Size of buffer is: ',BufferSize
+    CALL Info('AscBinWriteInit',Message,Level=10)
+
+    ALLOCATE( Ivals( BufferSize ) ) 
+    IF( SinglePrec ) THEN
+      ALLOCATE( FVals( BufferSize ) ) 
+    ELSE
+      ALLOCATE( Dvals( BufferSize ) ) 
+    END IF
+
+    INoVals = 0 
+    NoVals = 0
+
+  END SUBROUTINE AscBinWriteInit
+
+
+  ! Free the buffer, next buffer can be different in size and type
+  !---------------------------------------------------------------
+  SUBROUTINE AscBinWriteFree()
+
+    CALL Info('AscBinWriteInit','Terminating buffered ascii/binary writing',Level=10)
+    IF( SinglePrec ) THEN
+      DEALLOCATE( FVals )
+    ELSE
+      DEALLOCATE( DVals ) 
+    END IF
+    DEALLOCATE( IVals ) 
+
+    BufferSize = 0
+    VtuUnit = 0
+
+  END SUBROUTINE AscBinWriteFree
+
+
+
+  ! The writing of xml strings is done here to allow easier modification
+  ! of output strategies.
+  !-------------------------------------------------------------------------
+  SUBROUTINE AscBinStrWrite( Str )
+    
+    CHARACTER(LEN=1024) :: Str 
+    INTEGER, PARAMETER :: VtuUnit = 58
+    
+    WRITE( VtuUnit ) TRIM(Str)        
+    
+  END SUBROUTINE AscBinStrWrite
+  
+
+  ! Write a binary value, either in single or double precision
+  !------------------------------------------------------------------------
+  SUBROUTINE AscBinRealWrite( val, EmptyBuffer )
+    
+    INTEGER, PARAMETER :: VtuUnit = 58
+    REAL(KIND=dp) :: val
+    LOGICAL, OPTIONAL :: EmptyBuffer
+    LOGICAL :: Empty
+    CHARACTER(LEN=1024) :: Str 
+
+    IF( VtuUnit == 0 ) THEN
+      CALL Fatal('AscBinRealWrite','Buffer not initialized for writing')
+    END IF
+
+    IF( PRESENT( EmptyBuffer ) ) THEN
+      Empty = EmptyBuffer
+    ELSE
+      Empty = .FALSE.
+    END IF
+
+    ! Ascii output is not buffered
+    IF( AsciiOutput ) THEN
+      IF( Empty ) RETURN
+      IF( ABS( val ) <= TINY ( val ) ) THEN
+        WRITE(Str,'(A)') " 0.0"
+      ELSE IF( SinglePrec ) THEN
+        WRITE( Str,'(ES12.3E3)') val       
+      ELSE
+        WRITE( Str,'(ES16.7E3)') val
+      END IF
+      WRITE( VtuUnit ) TRIM(Str)        
+      RETURN
+    END IF
+
+    ! Buffered binary output
+    IF( Empty .OR. NoVals == BufferSize ) THEN
+      IF( NoVals == 0 ) THEN
+        RETURN
+      ELSE IF( SinglePrec ) THEN
+!        PRINT *,'writing floats:',NoVals
+        WRITE( VtuUnit ) Fvals(1:NoVals)
+      ELSE
+        WRITE( VtuUnit ) DVals(1:NoVals) 
+!        PRINT *,'writing doubles:',NoVals
+      END IF
+      NoVals = 0
+      IF( Empty ) RETURN 
+    END IF
+    
+    ! Save values in the buffer (either single or double prec.)
+    NoVals = NoVals + 1
+    IF( SinglePrec ) THEN
+      Fvals(NoVals) = val
+    ELSE
+      DVals(NoVals) = val
+    END IF
+
+!    PRINT *,'val:',NoVals,val
+
+
+  END SUBROUTINE AscBinRealWrite
+
+
+  ! Write an integer value 
+  !-------------------------------------------------
+  SUBROUTINE AscBinIntegerWrite( ival, EmptyBuffer )
+    
+    INTEGER, PARAMETER :: VtuUnit = 58
+    INTEGER :: ival
+    LOGICAL, OPTIONAL :: EmptyBuffer
+    LOGICAL :: Empty
+    CHARACTER(LEN=1024) :: Str 
+
+    IF( VtuUnit == 0 ) THEN
+      CALL Fatal('AscBinIntegerWrite','Buffer not initialized for writing')
+    END IF
+
+    IF( PRESENT( EmptyBuffer ) ) THEN
+      Empty = EmptyBuffer
+    ELSE
+      Empty = .FALSE.
+    END IF
+
+    IF( AsciiOutput ) THEN
+      IF( Empty ) RETURN
+      WRITE( Str, '(" ",I0)') ival
+      WRITE( VtuUnit ) TRIM(Str)        
+      RETURN
+    END IF
+
+    IF( Empty .OR. INoVals == BufferSize ) THEN
+      IF( INoVals == 0 ) THEN
+        RETURN
+      ELSE 
+        WRITE( VtuUnit ) Ivals(1:INoVals)
+!        PRINT *,'writing integers:',INoVals
+      END IF
+      INoVals = 0
+      IF( Empty ) RETURN 
+    END IF
+
+    INoVals = INoVals + 1
+    Ivals(INoVals) = ival
+
+ !   PRINT *,'ival:',iNoVals,ival
+        
+  END SUBROUTINE AscBinIntegerWrite
+  
+  
+END MODULE AscBinOutputUtils
+
+
 !> \}
 

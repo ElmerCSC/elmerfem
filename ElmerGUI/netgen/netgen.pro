@@ -12,8 +12,17 @@ OBJECTS_DIR = obj
 DEFINES += NO_PARALLEL_THREADS
 INCLUDEPATH = libsrc/include
 
+#------------------------------------------------------------------------------
+# Compiler flags:
+#------------------------------------------------------------------------------
+QMAKE_CXXFLAGS_DEBUG += -g
+QMAKE_CXXFLAGS += -g
+
 unix: QMAKE_CXXFLAGS += -ffriend-injection
 
+#------------------------------------------------------------------------------
+# Input files:
+#------------------------------------------------------------------------------
 SOURCES = libsrc/opti/linopt.cpp \
           libsrc/opti/bfgs.cpp \
           libsrc/opti/linsearch.cpp \

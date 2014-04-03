@@ -895,7 +895,7 @@ CONTAINS
     FluidicAreas = 0.0_dp
     FluidicFluxes = 0.0_dp
 
-!    CALL SetCurrentMesh( Model, Mesh )
+    CALL SetCurrentMesh( Model, Mesh3D )
     
     VariableName = GetString( Solver % Values, 'Velocity Field Name', stat )
     IF ( .NOT. stat )  THEN
@@ -1095,7 +1095,7 @@ CONTAINS
       
     END DO
 
-!   CALL SetCurrentMesh( Model, 1DMesh )
+    CALL SetCurrentMesh( Model, Mesh1D )
     
   END SUBROUTINE LumpedFluidicForce
   

@@ -352,7 +352,7 @@ CONTAINS
       IF(.NOT. GotIt ) THEN
         nx = GetInteger( Params,'Grid nz',GotIt) 
         IF( GotIt) THEN
-          dx(3) = ( MaxCoord(1) - MinCoord(1) ) / nx
+          dx(3) = ( MaxCoord(3) - MinCoord(3) ) / nx
         ELSE
           dx(3) = dx(1)
         END IF
@@ -382,7 +382,10 @@ CONTAINS
       kmaxtot = 0
     END IF
 
-    ! PRINT *,'indexes:',imintot,imaxtot,jmintot,jmaxtot,kmintot,kmaxtot
+    !PRINT *,'MinCoord: ',MinCoord
+    !PRINT *,'MaxCoord: ',MaxCoord
+    !PRINT *,'dX: ',dX
+    !PRINT *,'Indexes: ',imintot,imaxtot,jmintot,jmaxtot,kmintot,kmaxtot
 
     ! Create a table for checking active gridpoints
     !----------------------------------------------------------------------------

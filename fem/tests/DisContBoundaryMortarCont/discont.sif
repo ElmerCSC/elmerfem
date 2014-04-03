@@ -2,14 +2,15 @@
 ! Discontinuity is used just to create full insulation within a mesh.
 ! There is a 2D and a 3D case of this that differ only on the mesh used. 
 !
-! This is a modified test of the discontinuity that implements a jump condition
-! for the heat flux.  
+! This is a modified test of the discontinuity that reintroduces continuity
+! using a weighted projector. 
 !
-! P.R. / 18.3.2014
+! P.R. / 10.3.2014
 
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "square"
+!  Mesh DB "." "rect"
   Include Path ""
   Results Directory ""
 End
@@ -65,7 +66,7 @@ End
 
 Equation 1
   Name = "Equations"
-  Active Solvers(1) = 1
+  Active Solvers(2) = 1 2
 End
 
 Solver 1
@@ -74,7 +75,7 @@ Solver 1
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "iterative"
-  Linear System Iterative Method = "BiCGStabl"
+  Linear System Iterative Method = "BiCGStab"
   Linear System Max Iterations = 1000
   Linear System Convergence Tolerance = 1.0e-08
   Linear System Abort Not Converged = True
@@ -87,25 +88,37 @@ Solver 1
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-02
   Nonlinear System Relaxation Factor = 1.0
+
+  Apply Mortar BCs = Logical True  
+
   
-!  Linear System Scaling = False
-!  Linear System Dirichlet Scaling = Logical False
-!  Optimize Bandwidth = False
 
   Linear System Abort Not Converged = False
-  Apply Mortar BCs = True
+!  Optimize Bandwidth = False
 End
 
 
 Solver 2
-!  Exec Solver = never
+  Exec Solver = never
 
-  Equation = "SaveLine"
-  Procedure = "SaveData" "SaveLine"
-  Filename = f.dat
+  Equation = ComputeFlux
+  Procedure = "FluxSolver" "FluxSolver"
+
+  Calculate Flux = Logical True
+  Target Variable = String Temperature
+  Flux Coefficient = String "Heat Conductivity"
+
+! these are taken care by the defaults
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BIcgstab"
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 0
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-8
+
+!  Optimize Bandwidth = False
 End
 
- 
 
 Material 1
   Name = "Material"
@@ -114,42 +127,51 @@ Material 1
 End
 
 
-
-
 Boundary Condition 1
+  Name = "Cold"
+  Target Boundaries(1) = 2 
+!  Temperature = -1.0
+End
+
+Boundary Condition 2
+  Name = "Hot"
+  Target Boundaries(1) = 5 
+!  Temperature = 1.0
+End
+
+Boundary Condition 3
   Name = "Jump"
-  Target Boundaries(1) = 1
+  Target Boundaries(1) = 3 
 
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
-
-! If this keyword is zero then the BC refers to itself.
-  Mortar BC = 0 
-  Mortar BC Coefficient Temperature = Real 1.0
+  Mortar BC = 0
 End
 
 
-
-Boundary Condition 2
-  Name = "Cold"
+! This set of Dirichlet BCs is easier than the one
+! involving a singularity at the center. 
+! So it is used alternatively in some tests. 
+Boundary Condition 4
+  Name = "Alternative Cold"
   Target Boundaries(1) = 4 
   Temperature = 0.0
 End
 
-Boundary Condition 3
-  Name = "Hot"
+Boundary Condition 5
+  Name = "Alternative Hot"
   Target Boundaries(1) = 6 
   Temperature = 1.0
 End
 
-Boundary Condition 4
-  Name = "Bottom"
-  Target Boundaries(2) = 2 5
-  Save Line = Logical True
-End 
+
+Boundary Condition 6
+  Name = "Adiabatic"
+  Default Target = Logical True
+End
 
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=  0.61010021\n");
+$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.54992101\n");
 !End Of File
