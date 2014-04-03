@@ -5719,42 +5719,39 @@ END IF
           CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
        END SELECT
 
+       IF(PerformPiolaTransform.OR.PRESENT(dBasisdx)) THEN
+          IF ( .NOT. ElementMetric( n, Element, Nodes, &
+               ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
+            stat = .FALSE.
+            RETURN
+          END IF
+       END IF
+
        IF (PerformPiolaTransform) THEN
-          GT = TRANSPOSE(G(1:dim,1:dim))
           DO j=1,DOFs
-             DO k=1,dim
-                B(k) = SUM( GT(k,1:dim) * EdgeBasis(j,1:dim) )
+             DO k=1,cdim
+                B(k) = SUM( LtoGMap(k,1:dim) * EdgeBasis(j,1:dim) )
              END DO
-             DO k=1,dim
-                EdgeBasis(j,k) = B(k)
-             END DO            
+             EdgeBasis(j,1:cdim) = B(1:cdim)
              
              IF (dim == 2) THEN
-                CurlBasis(j,3) = 1.0d0/DetF * CurlBasis(j,3)
+               CurlBasis(j,3) = 1.0d0/DetF * CurlBasis(j,3)
              ELSE
                 DO k=1,dim
-                   curlB(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlBasis(j,1:dim) )
+                   B(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlBasis(j,1:dim) )
                 END DO
-                DO k=1,dim
-                   CurlBasis(j,k) = curlB(k)
-                END DO
+                CurlBasis(j,1:dim) = B(1:dim)
              END IF
           END DO
           ! Make the returned value DetF to act as a metric term for integration
           ! over the volume of the element: 
-          DetF = ABS(DetF)
+          DetF = DetJ
        END IF
 
        ! ----------------------------------------------------------------------
        ! Get global first derivatives of the nodal basis functions if wanted:
        ! ----------------------------------------------------------------------
        IF ( PRESENT(dBasisdx) ) THEN
-          IF ( .NOT. ElementMetric( n, Element, Nodes, &
-               ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
-             stat = .FALSE.
-             RETURN
-          END IF
-
           dBasisdx = 0.0d0
           DO i=1,n
              DO j=1,cdim

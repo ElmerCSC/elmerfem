@@ -482,13 +482,13 @@ CONTAINS
        
        REAL(KIND=dp), ALLOCATABLE :: Basis(:),Vals(:),dVals(:,:), &
                           RotWBasis(:,:), WBasis(:,:)
-       REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum
+       REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum, F(3,3), G(3,3)
        
-       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis
+       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
        INTEGER, POINTER   :: Rows(:), Cols(:), Diag(:)
-       
+
        TYPE Epntr_t
          TYPE(Element_t), POINTER :: Element
        END TYPE Epntr_t
@@ -590,6 +590,15 @@ CONTAINS
        QTreeFails = 0
        TotFails = 0
 
+       EdgeBasis = .FALSE.
+       IF (ASSOCIATED(CurrentModel % Solver)) &
+           EdgeBasis = ListGetLogical(CurrentModel % Solver % Values,'Edge Basis',Found)
+
+       PiolaT = .FALSE.
+       IF (EdgeBasis) THEN
+         PiolaT = ListGetLogical(CurrentModel % Solver % Values,'Use Piola Trasnsform',Found)
+       END IF
+
 !------------------------------------------------------------------------------
 ! Loop over all nodes in the new mesh
 !------------------------------------------------------------------------------
@@ -640,7 +649,7 @@ CONTAINS
                  ElementNodes % z(1:n) = OldMesh % Nodes % z(Indexes)
                  
                  Found = PointInElement( Element, ElementNodes, &
-                     Point, LocalCoordinates, Eps1, Eps2, NumericEps=eps_numeric )
+                     Point, LocalCoordinates, Eps1, Eps2, NumericEps=eps_numeric,EdgeBasis=PiolaT)
                  IF ( Found ) EXIT
                END DO
                IF ( Found ) EXIT  
@@ -805,9 +814,6 @@ CONTAINS
                  'Interpolation Basis Epsilon', Stat )
           IF(.NOT. Stat) eps_basis = 0.0d-12
 
-          EdgeBasis = .FALSE.
-          IF (ASSOCIATED(CurrentModel % Solver)) &
-             EdgeBasis = ListGetLogical(CurrentModel % Solver % Values,'Edge Basis',Found)
 
           ALLOCATE( Rows(n+1) )
           Rows(1) = 1
@@ -853,8 +859,7 @@ CONTAINS
                 CALL GetElementNodes(Nodes,Element,UMesh=OldMesh)
               END IF
 
-              k = GetElementDOFs( Indexes, Element, & 
-                       NotDG=ASSOCIATED(CurrentModel % Solver))
+              k = GetElementDOFs( Indexes, Element, NotDG=ASSOCIATED(CurrentModel % Solver))
 
               np = GetElementNOFNodes(Element)
               IF (ANY(Indexes(1:np)>Element % NodeIndexes)) np=0
@@ -867,8 +872,13 @@ CONTAINS
                   ALLOCATE(dVals(k,3),WBasis(k,3),RotWBasis(k,3))
                 END IF
 
-                stat=ElementInfo(Element,Nodes,u,v,w,detJ,Vals,dVals)
-                CALL GetEdgeBasis(Element,WBasis,RotWBasis,Vals,dVals)
+                IF(PiolaT) THEN 
+                  stat = EdgeElementInfo( Element, Nodes, u,v,w, &
+                         F, G, detJ, Vals, WBasis, RotWBasis, ApplyPiolaTransform=.TRUE. )
+                ELSE
+                  stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals,dVals)
+                  CALL GetEdgeBasis(Element,WBasis,RotWBasis,Vals,dVals)
+                END IF
               ELSE
                 stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals)
               END IF
@@ -932,7 +942,7 @@ CONTAINS
             NewMesh % Projector => Projector
             NewMesh % Projector % Mesh => OldMesh
             
-            IF(.NOT.EdgeBasis) THEN
+            IF( .NOT.EdgeBasis) THEN
               ALLOCATE(Rind(OldMesh % NumberOfNodes)); Rind = 0
             END IF
 
@@ -1070,10 +1080,10 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Basis(:), Values(:)
     REAL(KIND=dp) :: u,v,w,val,detJ,weight,x
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
-    LOGICAL :: Stat, EdgeBasis,Found,AxisSym
+    LOGICAL :: Stat, EdgeBasis,Found,AxisSym, PiolaT
     TYPE(Nodes_t), SAVE :: Nodes
 
-    REAL(KIND=dp) :: vq(3),wq(3)
+    REAL(KIND=dp) :: vq(3),wq(3),f(3,3),g(3,3)
     REAL(KIND=dp), ALLOCATABLE ::WBasis(:,:),RotWbasis(:,:),dBasisdx(:,:)
 
     INTEGER :: ind,np,qq,pp
@@ -1086,13 +1096,24 @@ CONTAINS
     RealNodes => Bmesh1 % Nodes
     NoNodes = Bmesh1 % NumberOfNodes
 
+    EdgeBasis = .FALSE.
+    IF (ASSOCIATED(CurrentModel % Solver)) THEN
+      EdgeBasis = ListGetLogical(CurrentModel % Solver % Values,'Edge Basis',Found)
+    END IF
+
+    PiolaT = .FALSE.
+    IF( EdgeBasis ) THEN
+      PiolaT = ListGetLogical( CurrentModel % Solver % Values, 'Use Piola Transform', Found)
+      CALL Info('weightedProjector','Accounting for edge elements in projector.',Level=7)
+    END IF
+
     ! Calculate the total number of Gaussian integration points
     ! and allocate space for the node structures. 
     !----------------------------------------------------------
     NoGaussPoints = 0
     DO i=1, BMesh1 % NumberOfBulkElements
       Element => BMesh1 % Elements(i)
-      IntegStuff = GaussPoints( Element )
+      IntegStuff = GaussPoints( Element, EdgeBasis=PiolaT )
       NoGaussPoints = NoGaussPoints + IntegStuff % n
     END DO
     
@@ -1102,13 +1123,6 @@ CONTAINS
 
     ALLOCATE( GaussNodes % x(NoGaussPoints), GaussNodes % y(NoGaussPoints), GaussNodes % z(NoGaussPoints))
 
-    EdgeBasis = .FALSE.
-    IF (ASSOCIATED(CurrentModel % Solver)) THEN
-      EdgeBasis = ListGetLogical(CurrentModel % Solver % Values,'Edge Basis',Found)
-    END IF
-    IF( EdgeBasis ) THEN
-      CALL Info('weightedProjector','Accounting for edge elements in projector.',Level=7)
-    END IF
 
     AxisSym = .FALSE.
     IF ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -1147,13 +1161,18 @@ CONTAINS
       ElementNodes % y(1:n) = RealNodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = RealNodes % z(NodeIndexes(1:n))
       
-      IntegStuff = GaussPoints( Element )
+      IntegStuff = GaussPoints( Element, EdgeBasis=PiolaT )
       DO j=1,IntegStuff % n
         NoGaussPoints = NoGaussPoints + 1
         u = IntegStuff % u(j)
         v = IntegStuff % v(j)
         w = IntegStuff % w(j)
-        Stat = ElementInfo( Element, ElementNodes, u, v, w, detJ, Basis )
+        IF(PiolaT) THEN
+          stat = EdgeElementInfo( Element, ElementNodes, u,v,w, &
+                    F, G, detJ, Basis, WBasis, RotWBasis, ApplyPiolaTransform=.TRUE. )
+        ELSE
+           Stat = ElementInfo( Element, ElementNodes, u, v, w, detJ, Basis )
+        END IF
         GaussNodes % x(NoGaussPoints) = SUM( Basis(1:n) * ElementNodes % x(1:n) )
         GaussNodes % y(NoGaussPoints) = SUM( Basis(1:n) * ElementNodes % y(1:n) )
         GaussNodes % z(NoGaussPoints) = SUM( Basis(1:n) * ElementNodes % z(1:n) )
@@ -1222,7 +1241,7 @@ CONTAINS
         ElementNodes % z(1:n) = RealNodes % z(Indexes(1:n))
       END IF
 
-      IntegStuff = GaussPoints(Element)
+      IntegStuff = GaussPoints(Element, EdgeBasis=PiolaT )
       DO j=1,IntegStuff % n
         NoGaussPoints = NoGaussPoints + 1
         u = IntegStuff % u(j)
@@ -1230,7 +1249,13 @@ CONTAINS
         w = IntegStuff % w(j)
 
         IF(EdgeBasis) THEN
-          Stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis,dBasisdx)
+          IF(PiolaT) THEN
+            stat = EdgeElementInfo( Element, Nodes, u,v,w, &
+                F, G, detJ, Basis, WBasis, RotWBasis,ApplyPiolaTransform=.TRUE. )
+          ELSE
+            Stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis,dBasisdx)
+            CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+          END IF
         ELSE
           Stat = ElementInfo(Element, ElementNodes, u, v, w, detJ, Basis)
         END IF
@@ -1262,16 +1287,13 @@ CONTAINS
           END IF
         END DO
 
-
         DO p=1,np
-
           val = weight * Basis(p)
  
           DO q=1,np
             qq = Indexes(q)
             IF(.NOT.EdgeBasis) qq=InvPerm1(qq)
-            CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
-                  qq, Basis(q) * val ) 
+            CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)), qq, Basis(q) * val ) 
 
             ! Add a diagonal entry to the future constrained system.
             ! This will enable a jump to the discontinuous boundary.
@@ -1292,10 +1314,7 @@ CONTAINS
                 EQind(Indexes(p)), qq, -PeriodicScale * Values(q) * val ) 
           END DO
         END DO
-
         IF(EdgeBasis)THEN
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis,dBasisdx)
-
           DO p=np+1,n
             pp=p-np
 
