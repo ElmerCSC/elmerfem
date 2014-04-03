@@ -258,7 +258,7 @@ CONTAINS
          END DO
          IF ( t>n ) EXIT
 
-         el_id = Element % Type % ElementCode / 100
+         el_id = Element % TYPE % ElementCode / 100
 
          Def_Dofs => Solver % Def_Dofs(el_id,Element % BodyId,:)
          IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
@@ -290,7 +290,7 @@ CONTAINS
 
        IF ( t > n ) EXIT
 
-       el_id = Element % Type % ElementCode / 100
+       el_id = Element % TYPE % ElementCode / 100
        Def_Dofs => Solver % Def_Dofs(el_id,Element % BodyId,:)
        ndofs = Element % NDOFs
        IF ( Def_Dofs(1) >= 0 ) ndofs=Def_Dofs(1)*Element % TYPE % NumberOfNodes
@@ -328,7 +328,7 @@ CONTAINS
           DO i=1,Element % TYPE % NumberOfFaces
              Face => Mesh % Faces( Element % FaceIndexes(i) )
              l = MAX(0,Def_Dofs(3))
-             j = Face % Type % ElementCode/100
+             j = Face % TYPE % ElementCode/100
              IF(l==0) THEN
                IF (ASSOCIATED(Face % BoundaryInfo % Left)) THEN
                  e = Face % BoundaryInfo % Left % BodyId
@@ -2131,19 +2131,22 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in one single point with value x.
+!> Optionally also computes the derivative at that point. 
 !> Note that this uses same logical on sif file as ListGetReal 
 !> but the variable is just a dummy as the dependent function is 
 !> assumed to be set inside the code. This should be used with caution
-!> is it sets some confusing limitations to the user. 
+!> is it sets some confusing limitations to the user. The main limitation
+!> is the use of just one dependent variable. 
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetFun( List,Name,x,Found,minv,maxv ) RESULT(F)
+   RECURSIVE FUNCTION ListGetFun( List,Name,x,Found,minv,maxv,dFdx,eps ) RESULT(F)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
-     CHARACTER(LEN=*)  :: Name
-     REAL(KIND=dp) :: x     
-     REAL(KIND=dp)  :: f
+     REAL(KIND=dp), OPTIONAL :: x     
+     REAL(KIND=dp) :: f
+     CHARACTER(LEN=*), OPTIONAL  :: Name
      LOGICAL, OPTIONAL :: Found
      REAL(KIND=dp), OPTIONAL :: minv,maxv
+     REAL(KIND=dp), OPTIONAL :: dFdx, eps
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
      TYPE(ValueList_t), POINTER :: ptr
@@ -2151,12 +2154,22 @@ CONTAINS
      INTEGER :: i,j,k,k1,l,l0,l1,lsize
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
      LOGICAL :: AllGlobal
+     REAL(KIND=dp) :: xeps, F2, F1
 !------------------------------------------------------------------------------
 
      F = 0.0_dp
-     ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF( PRESENT( Name ) ) THEN
+       ptr => ListFind(List,Name,Found)
+       IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     ELSE
+       ptr => List
+       IF ( .NOT.ASSOCIATED(ptr) ) THEN
+         CALL Warn('ListGetFun','List entry not associated')
+         RETURN
+       END IF
+     END IF
 
+     ! Node number not applicable, hence set to zero
      k = 0
      T(1) = x
 
@@ -2166,6 +2179,22 @@ CONTAINS
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
          F = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
+
+         ! Compute derivative at the point if requested
+         ! Numerical central difference scheme is used for accuracy. 
+         IF( PRESENT( dFdx ) ) THEN
+           IF( PRESENT( eps ) ) THEN
+             xeps = eps
+           ELSE
+             xeps = 1.0e-8
+           END IF
+           T(1) = x - xeps
+           F1 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
+           T(1) = x + xeps
+           F2 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
+           dFdx = ( F2 - F1 ) / (2*xeps)
+         END IF
+
        ELSE
          IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
            WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -2174,8 +2203,14 @@ CONTAINS
            RETURN
          END IF
          F = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
-             X, ptr % CubicCoeff )
+             x, ptr % CubicCoeff )
+         ! Compute the derivative symbolically from the table values. 
+         IF( PRESENT( dFdx ) ) THEN
+           dFdx = DerivateCurve(ptr % TValues,ptr % FValues(1,1,:), &
+               x, ptr % CubicCoeff )
+         END IF
        END IF
+
 
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
        WRITE( cmd, * ) 'tx=', X
@@ -2186,6 +2221,36 @@ CONTAINS
        k1 = LEN_TRIM(cmd)
        CALL matc( cmd, tmp_str, k1 )
        READ( tmp_str(1:k1), * ) F
+
+       ! This is really expensive. 
+       ! For speed also one sided difference could be considered. 
+       IF( PRESENT( dFdx ) ) THEN
+         IF( PRESENT( eps ) ) THEN
+           xeps = eps
+         ELSE
+           xeps = 1.0e-8
+         END IF
+         
+         WRITE( cmd, * ) 'tx=', x-xeps
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         
+         cmd = ptr % CValue
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         READ( tmp_str(1:k1), * ) F1
+         
+         WRITE( cmd, * ) 'tx=', x+xeps
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         
+         cmd = ptr % CValue
+         k1 = LEN_TRIM(cmd)
+         CALL matc( cmd, tmp_str, k1 )
+         READ( tmp_str(1:k1), * ) F2
+
+         dFdx = (F2-F1) / (2*xeps)
+       END IF
 
      CASE DEFAULT
        CALL Fatal('ListGetFun','LIST_TYPE not implemented!')
