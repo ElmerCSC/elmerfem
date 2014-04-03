@@ -2584,7 +2584,7 @@ END IF
 !>  of element coordinate system metrics determinant (=sqrt(det(J^TJ))).
 !------------------------------------------------------------------------------
    RECURSIVE FUNCTION ElementInfo( Element, Nodes, u, v, w, detJ, &
-     Basis, dBasisdx, ddBasisddx, SecondDerivatives, Bubbles, BasisDegree ) RESULT(stat)
+     Basis, dBasisdx, ddBasisddx, SecondDerivatives, Bubbles, BasisDegree, EdgeBasis, CurlBasis ) RESULT(stat)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -2602,6 +2602,8 @@ END IF
      LOGICAL, OPTIONAL :: SecondDerivatives         !< Are the second derivatives needed? (still present for historical reasons)
      LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be avaluated.
      LOGICAL :: Stat                                !< If .FALSE. element is degenerate.
+
+     REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:), CurlBasis(:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -2618,6 +2620,12 @@ END IF
      TYPE(Element_t) :: Bubble
      TYPE(Element_t), POINTER :: Edge, Face
 !------------------------------------------------------------------------------
+     IF(PRESENT(EdgeBasis)) THEN
+       stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
+            EdgeBasis=EdgeBasis,RotBasis=CurlBasis,dBasisdx=dBasisdx,ApplyPiolaTransform=.TRUE.)
+       RETURN
+     END IF
+
      stat = .TRUE.
      n    = Element % TYPE % NumberOfNodes
      dim  = Element % TYPE % DIMENSION
@@ -4183,7 +4191,7 @@ END IF
 !>  curl as defined on the physical element are returned.
 !---------------------------------------------------------------------------------
      FUNCTION EdgeElementInfo( Element, Nodes, u, v, w, F, G, detF, &
-          Basis, EdgeBasis, CurlBasis, dBasisdx, SecondFamily, BasisDegree, &
+          Basis, EdgeBasis, RotBasis, dBasisdx, SecondFamily, BasisDegree, &
           ApplyPiolaTransform) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
@@ -4193,12 +4201,12 @@ END IF
        REAL(KIND=dp) :: u                        !< 1st reference element coordinate at which the basis functions are evaluated
        REAL(KIND=dp) :: v                        !< 2nd local coordinate
        REAL(KIND=dp) :: w                        !< 3rd local coordinate
-       REAL(KIND=dp) :: F(3,3)                   !< The gradient F=Grad f, with f the element map f:k->K
-       REAL(KIND=dp) :: G(3,3)                   !< The inverse of the gradient F
+       REAL(KIND=dp), OPTIONAL :: F(3,3)         !< The gradient F=Grad f, with f the element map f:k->K
+       REAL(KIND=dp), OPTIONAL :: G(3,3)         !< The inverse of the gradient F
        REAL(KIND=dp) :: detF                     !< The determinant of the gradient matrix F
        REAL(KIND=dp) :: Basis(:)                 !< Standard nodal basis functions evaluated at (u,v,w)
        REAL(KIND=dp) :: EdgeBasis(:,:)           !< The basis functions b spanning the reference element space
-       REAL(KIND=dp) :: CurlBasis(:,:)           !< The Curl of the edge basis functions with respect to the local coordinates
+       REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)  !< The Curl of the edge basis functions with respect to the local coordinates
        REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)  !< The first derivatives of the nodal basis functions at (u,v,w)
        LOGICAL, OPTIONAL :: SecondFamily         !< If .TRUE., a Nedelec basis of the second kind is returned
        INTEGER, OPTIONAL :: BasisDegree(:)       !< This is a dummy parameter at the moment
@@ -4212,8 +4220,8 @@ END IF
 !------------------------------------------------------------------------------------------------------------
        INTEGER :: n, dim, cdim, q, i, j, k, l, ni, nj, A, I1, I2, FaceIndeces(4)
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(2,3), WorkCurlBasis(2,3)
-       REAL(KIND=dp) :: ElmMetric(3,3), detJ, LtoGMap(3,3)
-       REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3)
+       REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3), LG(3,3), LF(3,3)
+       REAL(KIND=dp) :: ElmMetric(3,3), detJ, LtoGMap(3,3), CurlBasis(27,3)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
        INTEGER :: SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs
@@ -4222,7 +4230,7 @@ END IF
        Basis = 0.0d0
        EdgeBasis = 0.0d0
        CurlBasis = 0.0d0
-       G = 0.0d0
+       LG = 0.0d0
        !------------------------------------------------------------------------------------------
        ! Check whether the Nedelec basis functions of the second kind should be created and
        ! whether the Piola transform is already applied within this function.
@@ -4290,7 +4298,7 @@ END IF
        !-----------------------------------------------------------------------
        ! Get data for performing the Piola transformation...
        !-----------------------------------------------------------------------
-       stat = PiolaTransformationData(n, Element, Nodes, F, detF, dLBasisdx) 
+       stat = PiolaTransformationData(n, Element, Nodes, LF, detF, dLBasisdx) 
        !------------------------------------------------------------------------
        ! ... in order to define the basis for the element space X(K) via 
        ! applying a version of the Piola transformation as
@@ -4317,10 +4325,10 @@ END IF
           EdgeMap => LGetEdgeMap(3)
           !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
-          G(1,1) = 1.0d0/detF * F(2,2)
-          G(1,2) = -1.0d0/detF * F(1,2)
-          G(2,1) = -1.0d0/detF * F(2,1)
-          G(2,2) = 1.0d0/detF * F(1,1)
+          LG(1,1) = 1.0d0/detF * LF(2,2)
+          LG(1,2) = -1.0d0/detF * LF(1,2)
+          LG(2,1) = -1.0d0/detF * LF(2,1)
+          LG(2,2) = 1.0d0/detF * LF(1,1)
 
           IF (Create2ndKindBasis) THEN
              DOFs = 6
@@ -4460,10 +4468,10 @@ END IF
           !--------------------------------------------------------------
           EdgeMap => LGetEdgeMap(4)
 
-          G(1,1) = 1.0d0/detF * F(2,2)
-          G(1,2) = -1.0d0/detF * F(1,2)
-          G(2,1) = -1.0d0/detF * F(2,1)
-          G(2,2) = 1.0d0/detF * F(1,1)
+          LG(1,1) = 1.0d0/detF * LF(2,2)
+          LG(1,2) = -1.0d0/detF * LF(1,2)
+          LG(2,1) = -1.0d0/detF * LF(2,1)
+          LG(2,2) = 1.0d0/detF * LF(1,1)
           
           !-------------------------------------------------
           ! Four basis functions defined on the edges
@@ -4550,7 +4558,7 @@ END IF
           ! This branch is for handling tetrahedra
           !--------------------------------------------------------------
           EdgeMap => LGetEdgeMap(5)
-          CALL InvertMatrix3x3(F,G,detF)
+          CALL InvertMatrix3x3(LF,LG,detF)
 
           IF (Create2ndKindBasis) THEN
              DOFs = 12
@@ -4936,7 +4944,7 @@ END IF
           !--------------------------------------------------------------          
           DOFs = 10
           EdgeMap => LGetEdgeMap(6)
-          CALL InvertMatrix3x3(F,G,detF)
+          CALL InvertMatrix3x3(LF,LG,detF)
           Ind => Element % Nodeindexes
 
           i = EdgeMap(1,1)
@@ -5115,7 +5123,7 @@ END IF
           !--------------------------------------------------------------           
           DOFs = 15
           EdgeMap => LGetEdgeMap(7)
-          CALL InvertMatrix3x3(F,G,detF)
+          CALL InvertMatrix3x3(LF,LG,detF)
           Ind => Element % Nodeindexes
 
           ! -------------------------------------------------------------
@@ -5345,7 +5353,7 @@ END IF
           !--------------------------------------------------------------           
           DOFs = 27
           EdgeMap => LGetEdgeMap(8)
-          CALL InvertMatrix3x3(F,G,detF)
+          CALL InvertMatrix3x3(LF,LG,detF)
           Ind => Element % Nodeindexes
 
           ! -------------------------------------------------------------
@@ -5719,7 +5727,7 @@ END IF
           CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
        END SELECT
 
-       IF(PerformPiolaTransform.OR.PRESENT(dBasisdx)) THEN
+       IF (PerformPiolaTransform.OR.PRESENT(dBasisdx)) THEN
           IF ( .NOT. ElementMetric( n, Element, Nodes, &
                ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
             stat = .FALSE.
@@ -5738,7 +5746,7 @@ END IF
                CurlBasis(j,3) = 1.0d0/DetF * CurlBasis(j,3)
              ELSE
                 DO k=1,dim
-                   B(k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlBasis(j,1:dim) )
+                   B(k) = 1.0d0/DetF * SUM( LF(k,1:dim) * CurlBasis(j,1:dim) )
                 END DO
                 CurlBasis(j,1:dim) = B(1:dim)
              END IF
@@ -5761,6 +5769,10 @@ END IF
              END DO
           END DO
        END IF
+
+       IF(PRESENT(F)) F = LF
+       IF(PRESENT(G)) G = LG
+       IF(PRESENT(RotBasis)) RotBasis(1:DOFs,:) = CurlBasis(1:DOFs,:)
 !-----------------------------------------------------------------------------
      END FUNCTION EdgeElementInfo
 !------------------------------------------------------------------------------

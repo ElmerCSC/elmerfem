@@ -873,8 +873,7 @@ CONTAINS
                 END IF
 
                 IF(PiolaT) THEN 
-                  stat = EdgeElementInfo( Element, Nodes, u,v,w, &
-                         F, G, detJ, Vals, WBasis, RotWBasis, ApplyPiolaTransform=.TRUE. )
+                  stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals,EdgeBasis=WBasis )
                 ELSE
                   stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals,dVals)
                   CALL GetEdgeBasis(Element,WBasis,RotWBasis,Vals,dVals)
@@ -1168,8 +1167,8 @@ CONTAINS
         v = IntegStuff % v(j)
         w = IntegStuff % w(j)
         IF(PiolaT) THEN
-          stat = EdgeElementInfo( Element, ElementNodes, u,v,w, &
-                    F, G, detJ, Basis, WBasis, RotWBasis, ApplyPiolaTransform=.TRUE. )
+          stat = ElementInfo( Element, ElementNodes, u,v,w, &
+                    detJ, Basis, EdgeBasis=WBasis )
         ELSE
            Stat = ElementInfo( Element, ElementNodes, u, v, w, detJ, Basis )
         END IF
@@ -1250,8 +1249,7 @@ CONTAINS
 
         IF(EdgeBasis) THEN
           IF(PiolaT) THEN
-            stat = EdgeElementInfo( Element, Nodes, u,v,w, &
-                F, G, detJ, Basis, WBasis, RotWBasis,ApplyPiolaTransform=.TRUE. )
+            stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis,EdgeBasis=WBasis)
           ELSE
             Stat = ElementInfo(Element, Nodes, u, v, w, detJ, Basis,dBasisdx)
             CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
