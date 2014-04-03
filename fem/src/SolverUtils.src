@@ -2588,7 +2588,7 @@ CONTAINS
        END IF
 
        CALL Info('SetWeightedProjectorJump','Setting jump to mortar projector in BC '&
-           //TRIM(I2S(i)),Level=7)
+           //TRIM(I2S(bc_ind)),Level=7)
 
        IF( .NOT. ASSOCIATED( Projector % InvPerm ) ) THEN
          CALL Fatal('SetWeightedProjectorJump','The > Projector % InvPerm < is really needed here!')
