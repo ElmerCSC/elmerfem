@@ -1,0 +1,4 @@
+#ifndef CONFIG_H_MESHGEN2D
+#define CONFIG_H_MESHGEN2D
+
+#endif /* CONFIG_H_MESHGEN2D */

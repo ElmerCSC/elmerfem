@@ -79,10 +79,10 @@ CONTAINS
     PROCEDURE( norm_iface_s ), POINTER :: normfun
     PROCEDURE( stopc_iface_s ), POINTER :: mstopfun
 
-    REAL, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    REAL, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL, DIMENSION(:,:) :: work
+    REAL, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_sdummy_pcondfun
@@ -113,10 +113,10 @@ CONTAINS
     PROCEDURE( norm_iface_s ), POINTER :: normfun
     PROCEDURE( stopc_iface_s ), POINTER :: mstopfun
 
-    REAL, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    REAL, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL, DIMENSION(:,:) :: work
+    REAL, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_sdummy_pcondfun
@@ -147,10 +147,10 @@ CONTAINS
     PROCEDURE( norm_iface_s ), POINTER :: normfun
     PROCEDURE( stopc_iface_s ), POINTER :: mstopfun
 
-    REAL, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    REAL, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL, DIMENSION(:,:) :: work
+    REAL, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_sdummy_pcondfun
@@ -181,10 +181,10 @@ CONTAINS
     PROCEDURE( norm_iface_s ), POINTER :: normfun
     PROCEDURE( stopc_iface_s ), POINTER :: mstopfun
 
-    REAL, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    REAL, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL, DIMENSION(:,:) :: work
+    REAL, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_sdummy_pcondfun
@@ -215,10 +215,10 @@ CONTAINS
     PROCEDURE( norm_iface_s ), POINTER :: normfun
     PROCEDURE( stopc_iface_s ), POINTER :: mstopfun
 
-    REAL, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    REAL, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL, DIMENSION(:,:) :: work
+    REAL, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_sdummy_pcondfun
@@ -249,10 +249,10 @@ CONTAINS
     PROCEDURE( norm_iface_s ), POINTER :: normfun
     PROCEDURE( stopc_iface_s ), POINTER :: mstopfun
 
-    REAL, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    REAL, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL, DIMENSION(:,:) :: work
+    REAL, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_sdummy_pcondfun
@@ -283,10 +283,10 @@ CONTAINS
     PROCEDURE( norm_iface_s ), POINTER :: normfun
     PROCEDURE( stopc_iface_s ), POINTER :: mstopfun
 
-    REAL, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    REAL, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    REAL, DIMENSION(:,:) :: work
+    REAL, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_sdummy_pcondfun
@@ -317,10 +317,10 @@ CONTAINS
     PROCEDURE( norm_iface_d ), POINTER :: normfun
     PROCEDURE( stopc_iface_d ), POINTER :: mstopfun
 
-    DOUBLE PRECISION, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE PRECISION, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE PRECISION, DIMENSION(:,:) :: work
+    DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_ddummy_pcondfun
@@ -351,10 +351,10 @@ CONTAINS
     PROCEDURE( norm_iface_d ), POINTER :: normfun
     PROCEDURE( stopc_iface_d ), POINTER :: mstopfun
 
-    DOUBLE PRECISION, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE PRECISION, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE PRECISION, DIMENSION(:,:) :: work
+    DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_ddummy_pcondfun
@@ -385,10 +385,10 @@ CONTAINS
     PROCEDURE( norm_iface_d ), POINTER :: normfun
     PROCEDURE( stopc_iface_d ), POINTER :: mstopfun
 
-    DOUBLE PRECISION, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE PRECISION, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE PRECISION, DIMENSION(:,:) :: work
+    DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_ddummy_pcondfun
@@ -419,10 +419,10 @@ CONTAINS
     PROCEDURE( norm_iface_d ), POINTER :: normfun
     PROCEDURE( stopc_iface_d ), POINTER :: mstopfun
 
-    DOUBLE PRECISION, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE PRECISION, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE PRECISION, DIMENSION(:,:) :: work
+    DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_ddummy_pcondfun
@@ -453,10 +453,10 @@ CONTAINS
     PROCEDURE( norm_iface_d ), POINTER :: normfun
     PROCEDURE( stopc_iface_d ), POINTER :: mstopfun
 
-    DOUBLE PRECISION, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE PRECISION, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE PRECISION, DIMENSION(:,:) :: work
+    DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_ddummy_pcondfun
@@ -487,10 +487,10 @@ CONTAINS
     PROCEDURE( norm_iface_d ), POINTER :: normfun
     PROCEDURE( stopc_iface_d ), POINTER :: mstopfun
 
-    DOUBLE PRECISION, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE PRECISION, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE PRECISION, DIMENSION(:,:) :: work
+    DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_ddummy_pcondfun
@@ -521,10 +521,10 @@ CONTAINS
     PROCEDURE( norm_iface_d ), POINTER :: normfun
     PROCEDURE( stopc_iface_d ), POINTER :: mstopfun
 
-    DOUBLE PRECISION, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE PRECISION, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE PRECISION, DIMENSION(:,:) :: work
+    DOUBLE PRECISION, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_ddummy_pcondfun
@@ -555,10 +555,10 @@ CONTAINS
     PROCEDURE( norm_iface_c ), POINTER :: normfun
     PROCEDURE( stopc_iface_c ), POINTER :: mstopfun
 
-    COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    COMPLEX, DIMENSION(:,:) :: work
+    COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_cdummy_pcondfun
@@ -589,10 +589,10 @@ CONTAINS
     PROCEDURE( norm_iface_c ), POINTER :: normfun
     PROCEDURE( stopc_iface_c ), POINTER :: mstopfun
 
-    COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    COMPLEX, DIMENSION(:,:) :: work
+    COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_cdummy_pcondfun
@@ -623,10 +623,10 @@ CONTAINS
     PROCEDURE( norm_iface_c ), POINTER :: normfun
     PROCEDURE( stopc_iface_c ), POINTER :: mstopfun
 
-    COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    COMPLEX, DIMENSION(:,:) :: work
+    COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_cdummy_pcondfun
@@ -657,10 +657,10 @@ CONTAINS
     PROCEDURE( norm_iface_c ), POINTER :: normfun
     PROCEDURE( stopc_iface_c ), POINTER :: mstopfun
 
-    COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    COMPLEX, DIMENSION(:,:) :: work
+    COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_cdummy_pcondfun
@@ -691,10 +691,10 @@ CONTAINS
     PROCEDURE( norm_iface_c ), POINTER :: normfun
     PROCEDURE( stopc_iface_c ), POINTER :: mstopfun
 
-    COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    COMPLEX, DIMENSION(:,:) :: work
+    COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_cdummy_pcondfun
@@ -725,10 +725,10 @@ CONTAINS
     PROCEDURE( norm_iface_c ), POINTER :: normfun
     PROCEDURE( stopc_iface_c ), POINTER :: mstopfun
 
-    COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    COMPLEX, DIMENSION(:,:) :: work
+    COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_cdummy_pcondfun
@@ -759,10 +759,10 @@ CONTAINS
     PROCEDURE( norm_iface_c ), POINTER :: normfun
     PROCEDURE( stopc_iface_c ), POINTER :: mstopfun
 
-    COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    COMPLEX, DIMENSION(:,:) :: work
+    COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_cdummy_pcondfun
@@ -794,10 +794,10 @@ CONTAINS
     PROCEDURE( stopc_iface_z ), POINTER :: mstopfun
 
     INTEGER :: ndim, wrkdim
-    DOUBLE COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE COMPLEX, DIMENSION(:,:) :: work
+    DOUBLE COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_zdummy_pcondfun
@@ -829,10 +829,10 @@ CONTAINS
     PROCEDURE( stopc_iface_z ), POINTER :: mstopfun
 
     INTEGER :: ndim, wrkdim
-    DOUBLE COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE COMPLEX, DIMENSION(:,:) :: work
+    DOUBLE COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_zdummy_pcondfun
@@ -864,10 +864,10 @@ CONTAINS
     PROCEDURE( stopc_iface_z ), POINTER :: mstopfun
 
     INTEGER :: ndim, wrkdim
-    DOUBLE COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE COMPLEX, DIMENSION(:,:) :: work
+    DOUBLE COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_zdummy_pcondfun
@@ -899,10 +899,10 @@ CONTAINS
     PROCEDURE( stopc_iface_z ), POINTER :: mstopfun
 
     INTEGER :: ndim, wrkdim
-    DOUBLE COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE COMPLEX, DIMENSION(:,:) :: work
+    DOUBLE COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_zdummy_pcondfun
@@ -934,10 +934,10 @@ CONTAINS
     PROCEDURE( stopc_iface_z ), POINTER :: mstopfun
 
     INTEGER :: ndim, wrkdim
-    DOUBLE COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE COMPLEX, DIMENSION(:,:) :: work
+    DOUBLE COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_zdummy_pcondfun
@@ -969,10 +969,10 @@ CONTAINS
     PROCEDURE( stopc_iface_z ), POINTER :: mstopfun
 
     INTEGER :: ndim, wrkdim
-    DOUBLE COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE COMPLEX, DIMENSION(:,:) :: work
+    DOUBLE COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_zdummy_pcondfun
@@ -1004,10 +1004,10 @@ CONTAINS
     PROCEDURE( stopc_iface_z ), POINTER :: mstopfun
 
     INTEGER :: ndim, wrkdim
-    DOUBLE COMPLEX, DIMENSION(:) :: xvec, rhsvec
     INTEGER, DIMENSION(HUTI_IPAR_DFLTSIZE) :: ipar
+    DOUBLE COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
-    DOUBLE COMPLEX, DIMENSION(:,:) :: work
+    DOUBLE COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_zdummy_pcondfun

@@ -722,7 +722,8 @@
        REAL(KIND=dp) :: dpar(50)
 
        INTEGER :: ipar(50),wsize
-       REAL(KIND=dp), ALLOCATABLE :: Work(:,:)
+       ! REAL(KIND=dp), ALLOCATABLE :: Work(:,:)
+       COMPLEX(KIND=dp), ALLOCATABLE :: Work(:,:)
 
        COMPLEX :: s
 
@@ -737,7 +738,8 @@
        HUTI_WRKDIM = HUTI_BICGSTAB_WORKSIZE
        wsize = HUTI_WRKDIM
        HUTI_NDIM = N
-       ALLOCATE( Work(wsize,2*N) )
+       ! ALLOCATE( Work(wsize,2*N) )
+       ALLOCATE( Work(wsize,N) )
 
        IF ( ALL(x == 0.0) ) THEN
           HUTI_INITIALX = HUTI_RANDOMX

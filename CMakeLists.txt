@@ -51,15 +51,35 @@ SET(ELMER_LINKTYP 1)
 #SET(FC_FUNC FC_GLOBAL)
 #SET(FC_FUNC_ FC_GLOBAL_)
 
+# TODO: Check that arpack really exists
+# Add support for arpack
+ADD_DEFINITIONS(-DUSE_ARPACK)
+
 #INCLUDE(FortranCInterface)
 #FortranCInterface_HEADER(FCMangle.h MACRO_NAMESPACE "FC_")
 #FortranCInterface_VERIFY(CXX)
+
+# Rpath settings (do not use rpath)
+SET(CMAKE_SKIP_BUILD_RPATH  FALSE)
+SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE) 
+SET(CMAKE_INSTALL_RPATH "")
+SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH FALSE)
+
+# Uncomment these to use rpath with linked libraries
+# SET(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE) 
+# SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+# Remove system directories (from the CMake guide)
+# LIST(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib" isSystemDir)
+# IF("${isSystemDir}" STREQUAL "-1")
+#    SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+# ENDIF("${isSystemDir}" STREQUAL "-1")
 
 ADD_SUBDIRECTORY(umfpack)
 ADD_SUBDIRECTORY(hutiter)
 ADD_SUBDIRECTORY(fhutiter)
 ADD_SUBDIRECTORY(eio)
 ADD_SUBDIRECTORY(matc)
+ADD_SUBDIRECTORY(meshgen2d)
 ADD_SUBDIRECTORY(fem)
 ADD_SUBDIRECTORY(mathlibs)
 ADD_SUBDIRECTORY(elmergrid)

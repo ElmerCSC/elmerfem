@@ -1,17 +1,17 @@
-#!/bin/sh
+#!/bin/sh -f
 #
-# Autoconf substitutes @VAR@ definitions to come up with a 
+# cmake substitutes @VAR@ definitions to come up with a 
 # semi-valid test script
 # 
 if test "$SHL_EXT" = ""; then
-    SHL_EXT=".dylib"
+    SHL_EXT="@CMAKE_SHARED_LIBRARY_SUFFIX@"
 fi
 if test "$OBJ_EXT" = ""; then
-    OBJ_EXT=".o"
+    OBJ_EXT="@CMAKE_C_OUTPUT_EXTENSION@"
 fi
 
 if test "$EXE_EXT" = ""; then
-    EXE_EXT=""
+    EXE_EXT="@CMAKE_EXECUTABLE_SUFFIX@"
 fi
 
 export SHL_EXT
@@ -29,9 +29,10 @@ if test "$ELMER_HOME" = ""; then
     export ELMER_SOLVER="../../src/ElmerSolver"
     # elmergrid must be in path
     export ELMER_MESH2D="Mesh2D"
-    export DYLD_LIBRARY_PATH=".:$ELMER_HOME:$ELMER_HOME/modules:$DYLD_LIBRARY_PATH"
+    # @TODO: LD_LIBRARY_PATH works only in unix
+    export LD_LIBRARY_PATH=".:$ELMER_HOME:$ELMER_HOME/modules:$LD_LIBRARY_PATH"
     # assume that stuff has been installed here
-    export PATH=/Users/ogagliardini/Simulations/elmer_latest/bin:$PATH
+    export PATH=@CMAKE_INSTALL_PREFIX@/bin:$PATH
 else 
     # ELMER_HOME is defined, so we'll just use that
     printf "ELMER_HOME=%s\n" $ELMER_HOME
@@ -41,20 +42,22 @@ else
     export ELMER_GRID="$ELMER_HOME/bin/ElmerGrid"
     export ELMER_SOLVER="$ELMER_HOME/bin/ElmerSolver"
     export ELMER_MESH2D="$ELMER_HOME/bin/Mesh2D"
-    export DYLD_LIBRARY_PATH=".:$ELMER_HOME/lib:$DYLD_LIBRARY_PATH"
+    # @TODO: LD_LIBRARY_PATH works only in unix
+    export LD_LIBRARY_PATH=".:$ELMER_HOME/lib:$LD_LIBRARY_PATH"
     export PATH=$ELMER_HOME/bin:$PATH
 fi
 
 #
 # Autoconf substitutes these variables with correct values.
 #
-#export F90="gfortran -O   -I. -Ibinio -I../binio -I. -I$ELMER_INCLUDE"
-#export LD="gcc -dynamiclib -undefined dynamic_lookup -single_module ${LDFLAGS}  "
+#export F90="@FC@ @TESTS_FCFLAGS@ @INCLUDE_MODULE_FLAG@$ELMER_INCLUDE"
+#export LD="@SH_LD@ @SH_LDFLAGS@ @SH_LINKING_TO_FLAGS@ @B64FLAGS@"
 export LD=elmerld
-export F90=elmerf90-nosh
-export LIBS="-L$ELMER_LIB    -L/opt/lib/ -L/opt/X11/lib -L/sw/lib -L/opt/X11/lib/ -L/usr/local/lib/gcc/x86_64-apple-darwin11.4.0/4.8.0 -L/usr/local/lib/gcc/x86_64-apple-darwin11.4.0/4.8.0/../../.. -lfreetype -lz -lbz2 -lGL -lGLU -lX11 -lgfortran -lquadmath -lm"
+export F90=elmerf90
+export LIBS="-L$ELMER_LIB @EXTRA_LIBS@"
 
-gcc -o findnorm$EXE_EXT findnorm.c -lm
+# @TODO: -m works only in unix
+@CMAKE_C_COMPILER@ -o findnorm$EXE_EXT findnorm.c -lm
 chmod 775 findnorm$EXE_EXT
 
 total=0
