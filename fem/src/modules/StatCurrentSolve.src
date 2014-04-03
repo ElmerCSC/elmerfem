@@ -111,7 +111,8 @@ END SUBROUTINE StatCurrentSolver_Init
 
      INTEGER, POINTER :: NodeIndexes(:)
      INTEGER, POINTER :: PotentialPerm(:)
-     INTEGER :: i, j, k, n, t, istat, bf_id, LocalNodes, Dim
+     INTEGER :: i, j, k, n, t, istat, bf_id, LocalNodes, Dim, &
+         iter, NonlinearIter
  
      LOGICAL :: AllocationsDone = .FALSE., gotIt, FluxBC
      LOGICAL :: CalculateField = .FALSE., ConstantWeights
@@ -160,6 +161,11 @@ END SUBROUTINE StatCurrentSolver_Init
        Potential = Potential / ControlScaling
        Solver % Variable % Norm = Solver % Variable % Norm / ControlScaling
      END IF
+
+     NonlinearIter = ListGetInteger( Params, &
+         'Nonlinear System Max Iterations', GotIt )
+     IF ( .NOT. GotIt ) NonlinearIter = 1
+     
 
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
@@ -233,201 +239,214 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
 
      EquationName = ListGetString( Params, 'Equation' )
-     
-     at = CPUTime()
-     at0 = RealTime()
 
-     CALL DefaultInitialize()
-
-!------------------------------------------------------------------------------
      CALL Info( 'StatCurrentSolve', '-------------------------------------',Level=4 )
      CALL Info( 'StatCurrentSolve', 'STAT CURRENT SOLVER:  ', Level=4 )
      CALL Info( 'StatCurrentSolve', '-------------------------------------',Level=4 )
-     CALL Info( 'StatCurrentSolve', 'Starting Assembly...', Level=4 )
 
-!------------------------------------------------------------------------------
-!    Do the assembly
-!------------------------------------------------------------------------------
+     DO iter = 1, NonlinearIter
+       at  = CPUTime()
+       at0 = RealTime()
 
-     DO t = 1, Solver % NumberOfActiveElements
+       IF ( NonlinearIter > 1 ) THEN
+         WRITE( Message, '(a,I0)' ) 'Static current iteration: ', iter
+         CALL Info( 'StatCurrentSolve', Message, LEVEL=4 )
+       END IF
+       CALL Info( 'StatElecSolve', 'Starting Assembly...', Level=6 )
 
-        IF ( RealTime() - at0 > 1.0 ) THEN
+       CALL DefaultInitialize()
+
+       !------------------------------------------------------------------------------
+
+       !------------------------------------------------------------------------------
+       !    Do the assembly
+       !------------------------------------------------------------------------------
+
+       DO t = 1, Solver % NumberOfActiveElements
+
+         IF ( RealTime() - at0 > 1.0 ) THEN
            WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
-            (Solver % NumberOfActiveElements-t) / &
+               (Solver % NumberOfActiveElements-t) / &
                (1.0*Solver % NumberOfActiveElements)), ' % done'
-                       
+
            CALL Info( 'StatCurrentSolve', Message, Level=5 )
 
            at0 = RealTime()
-        END IF
+         END IF
 
-!------------------------------------------------------------------------------
-!        Check if this element belongs to a body where potential
-!        should be calculated
-!------------------------------------------------------------------------------
-       CurrentElement => GetActiveElement(t)
-       NodeIndexes => CurrentElement % NodeIndexes
+         !------------------------------------------------------------------------------
+         !        Check if this element belongs to a body where potential
+         !        should be calculated
+         !------------------------------------------------------------------------------
+         CurrentElement => GetActiveElement(t)
+         NodeIndexes => CurrentElement % NodeIndexes
 
-       n = GetElementNOFNodes()
- 
-       ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
-       ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
-       ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
-!------------------------------------------------------------------------------
+         n = GetElementNOFNodes()
 
-       bf_id = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
-                Values, 'Body Force', gotIt, minv=1, maxv=Model % NumberOfBodyForces )
+         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
+         ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+         ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
+         !------------------------------------------------------------------------------
 
-       Load  = 0.0d0
-       IF ( gotIt ) THEN
-          Load(1:n) = ListGetReal( Model % BodyForces(bf_id) % Values, &
+         bf_id = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
+             Values, 'Body Force', gotIt, minv=1, maxv=Model % NumberOfBodyForces )
+
+         Load  = 0.0d0
+         IF ( gotIt ) THEN
+           Load(1:n) = ListGetReal( Model % BodyForces(bf_id) % Values, &
                'Current Source',n,NodeIndexes, Gotit )
-       END IF
+         END IF
 
-       k = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
-            Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
+         k = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
+             Values, 'Material', minv=1, maxv=Model % NumberOfMaterials )
 
-!------------------------------------------------------------------------------
-!      Read conductivity values (might be a tensor)
-!------------------------------------------------------------------------------
+         !------------------------------------------------------------------------------
+         !      Read conductivity values (might be a tensor)
+         !------------------------------------------------------------------------------
 
-       CALL ListGetRealArray( Model % Materials(k) % Values, &
-              'Electric Conductivity', Cwrk, n, NodeIndexes )
-       
-       Conductivity = 0.0d0
-       IF ( SIZE(Cwrk,1) == 1 ) THEN
-          DO i=1,3
+         CALL ListGetRealArray( Model % Materials(k) % Values, &
+             'Electric Conductivity', Cwrk, n, NodeIndexes )
+
+         Conductivity = 0.0d0
+         IF ( SIZE(Cwrk,1) == 1 ) THEN
+           DO i=1,3
              Conductivity( i,i,1:n ) = Cwrk( 1,1,1:n )
-          END DO
-       ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-          DO i=1,MIN(3,SIZE(Cwrk,1))
+           END DO
+         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+           DO i=1,MIN(3,SIZE(Cwrk,1))
              Conductivity(i,i,1:n) = Cwrk(i,1,1:n)
-          END DO
-       ELSE
-          DO i=1,MIN(3,SIZE(Cwrk,1))
+           END DO
+         ELSE
+           DO i=1,MIN(3,SIZE(Cwrk,1))
              DO j=1,MIN(3,SIZE(Cwrk,2))
-                Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
+               Conductivity( i,j,1:n ) = Cwrk(i,j,1:n)
              END DO
-          END DO
-       END IF
+           END DO
+         END IF
 
-!------------------------------------------------------------------------------
-!      Get element local matrix, and rhs vector
-!------------------------------------------------------------------------------
-       CALL StatCurrentCompose( LocalStiffMatrix,LocalForce, &
-            Conductivity,Load,CurrentElement,n,ElementNodes )
-!------------------------------------------------------------------------------
-!      Update global matrix and rhs vector from local matrix & vector
-!------------------------------------------------------------------------------
+         !------------------------------------------------------------------------------
+         !      Get element local matrix, and rhs vector
+         !------------------------------------------------------------------------------
+         CALL StatCurrentCompose( LocalStiffMatrix,LocalForce, &
+             Conductivity,Load,CurrentElement,n,ElementNodes )
+         !------------------------------------------------------------------------------
+         !      Update global matrix and rhs vector from local matrix & vector
+         !------------------------------------------------------------------------------
 
-       CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
+         CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
 
-!------------------------------------------------------------------------------
-    END DO
-    CALL DefaultFinishBulkAssembly()
+         !------------------------------------------------------------------------------
+       END DO
+       CALL DefaultFinishBulkAssembly()
 
 
-    MinPotential = HUGE(MinPotential)
-    MaxPotential = -HUGE(MaxPotential)
+       MinPotential = HUGE(MinPotential)
+       MaxPotential = -HUGE(MaxPotential)
 
-!------------------------------------------------------------------------------
-!     Neumann boundary conditions
-!------------------------------------------------------------------------------
-      DO t=Solver % Mesh % NumberOfBulkElements + 1, &
-         Solver % Mesh % NumberOfBulkElements + &
-         Solver % Mesh % NumberOfBoundaryElements
+       !------------------------------------------------------------------------------
+       !     Neumann boundary conditions
+       !------------------------------------------------------------------------------
+       DO t=Solver % Mesh % NumberOfBulkElements + 1, &
+           Solver % Mesh % NumberOfBulkElements + &
+           Solver % Mesh % NumberOfBoundaryElements
 
-        CurrentElement => Solver % Mesh % Elements(t)
-		
-        DO i=1,Model % NumberOfBCs
-          IF ( CurrentElement % BoundaryInfo % Constraint == &
-              Model % BCs(i) % Tag ) THEN
-            
-!------------------------------------------------------------------------------
-!             Set the current element pointer in the model structure to
-!             reflect the element being processed
-!------------------------------------------------------------------------------
-            Model % CurrentElement => CurrentElement
-!------------------------------------------------------------------------------
-            n = CurrentElement % TYPE % NumberOfNodes
-            NodeIndexes => CurrentElement % NodeIndexes
-            IF ( ANY( PotentialPerm(NodeIndexes) <= 0 ) ) CYCLE
+         CurrentElement => Solver % Mesh % Elements(t)
 
-!------------------------------------------------------------------------------
-!         Memorize the min and max potential as given by Dirichtlet BCs
-!------------------------------------------------------------------------------          
-            Load(1:n) = ListGetReal(Model % BCs(i) % Values, &
-                ComponentName(Solver % Variable), n, NodeIndexes, gotIt)
-            IF(GotIt) THEN
-              MinPotential = MIN(MinPotential, MINVAL(Load(1:n)))
-              MaxPotential = MAX(MaxPotential, MAXVAL(Load(1:n)))             
-            END IF
+         DO i=1,Model % NumberOfBCs
+           IF ( CurrentElement % BoundaryInfo % Constraint == &
+               Model % BCs(i) % Tag ) THEN
 
-            IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
+             !------------------------------------------------------------------------------
+             !             Set the current element pointer in the model structure to
+             !             reflect the element being processed
+             !------------------------------------------------------------------------------
+             Model % CurrentElement => CurrentElement
+             !------------------------------------------------------------------------------
+             n = CurrentElement % TYPE % NumberOfNodes
+             NodeIndexes => CurrentElement % NodeIndexes
+             IF ( ANY( PotentialPerm(NodeIndexes) <= 0 ) ) CYCLE
 
-            FluxBC = ListGetLogical(Model % BCs(i) % Values, &
+             !------------------------------------------------------------------------------
+             !         Memorize the min and max potential as given by Dirichtlet BCs
+             !------------------------------------------------------------------------------          
+             Load(1:n) = ListGetReal(Model % BCs(i) % Values, &
+                 ComponentName(Solver % Variable), n, NodeIndexes, gotIt)
+             IF(GotIt) THEN
+               MinPotential = MIN(MinPotential, MINVAL(Load(1:n)))
+               MaxPotential = MAX(MaxPotential, MAXVAL(Load(1:n)))             
+             END IF
+
+             IF( .NOT. PossibleFluxElement(CurrentElement) ) CYCLE
+
+             FluxBC = ListGetLogical(Model % BCs(i) % Values, &
                  'Current Density BC',gotIt) 
-            IF(GotIt .AND. .NOT. FluxBC) CYCLE
+             IF(GotIt .AND. .NOT. FluxBC) CYCLE
 
-!------------------------------------------------------------------------------
-!             BC: cond@Phi/@n = g
-!------------------------------------------------------------------------------
-            Load = 0.0d0
-            Load(1:n) = ListGetReal( Model % BCs(i) % Values,'Current Density', &
-                n,NodeIndexes,gotIt )
-            IF(.NOT. GotIt) CYCLE
+             !------------------------------------------------------------------------------
+             !             BC: cond@Phi/@n = g
+             !------------------------------------------------------------------------------
+             Load = 0.0d0
+             Load(1:n) = ListGetReal( Model % BCs(i) % Values,'Current Density', &
+                 n,NodeIndexes,gotIt )
+             IF(.NOT. GotIt) CYCLE
 
-            ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
-            ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
-            ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
+             ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
+             ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+             ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
 
-!------------------------------------------------------------------------------
-!             Get element matrix and rhs due to boundary conditions ...
-!------------------------------------------------------------------------------
-            CALL StatCurrentBoundary( LocalStiffMatrix, LocalForce,  &
-                Load, CurrentElement, n, ElementNodes )
-!------------------------------------------------------------------------------
-!             Update global matrices from local matrices
-!------------------------------------------------------------------------------
+             !------------------------------------------------------------------------------
+             !             Get element matrix and rhs due to boundary conditions ...
+             !------------------------------------------------------------------------------
+             CALL StatCurrentBoundary( LocalStiffMatrix, LocalForce,  &
+                 Load, CurrentElement, n, ElementNodes )
+             !------------------------------------------------------------------------------
+             !             Update global matrices from local matrices
+             !------------------------------------------------------------------------------
 
 	     CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
 
-!------------------------------------------------------------------------------
-          END IF ! of currentelement bc == bcs(i)
-        END DO ! of i=1,model bcs
-      END DO   ! Neumann BCs
-!------------------------------------------------------------------------------
+      !------------------------------------------------------------------------------
+           END IF ! of currentelement bc == bcs(i)
+         END DO ! of i=1,model bcs
+       END DO   ! Neumann BCs
+       !------------------------------------------------------------------------------
 
-     ! parallel reduction needed
-     IF ( ParEnv % PEs > 1) THEN
-       MinPotential = ParallelReduction(MinPotential,1)
-       MaxPotential = ParallelReduction(MaxPotential,2)
-     END IF
+       ! parallel reduction needed
+       IF ( ParEnv % PEs > 1) THEN
+         MinPotential = ParallelReduction(MinPotential,1)
+         MaxPotential = ParallelReduction(MaxPotential,2)
+       END IF
 
-!------------------------------------------------------------------------------
-!    FinishAssembly must be called after all other assembly steps, but before
-!    Dirichlet boundary settings. Actually no need to call it except for
-!    transient simulations.
-!------------------------------------------------------------------------------
-      CALL DefaultFinishAssembly()
+       !------------------------------------------------------------------------------
+       !    FinishAssembly must be called after all other assembly steps, but before
+       !    Dirichlet boundary settings. Actually no need to call it except for
+       !    transient simulations.
+       !------------------------------------------------------------------------------
+       CALL DefaultFinishAssembly()
 
-!------------------------------------------------------------------------------
-!    Dirichlet boundary conditions
-!------------------------------------------------------------------------------
-     CALL DefaultDirichletBCs()
+       !------------------------------------------------------------------------------
+       !    Dirichlet boundary conditions
+       !------------------------------------------------------------------------------
+       CALL DefaultDirichletBCs()
 
-     at = CPUTime() - at
-     WRITE( Message, * ) 'Assembly (s)          :',at
-     CALL Info( 'StatCurrentSolve', Message, Level=4 )
-!------------------------------------------------------------------------------
-!    Solve the system and we are done.
-!------------------------------------------------------------------------------
-     st = CPUTime()
-     Norm = DefaultSolve()
+       at = CPUTime() - at
+       WRITE( Message, * ) 'Assembly (s)          :',at
+       CALL Info( 'StatCurrentSolve', Message, Level=5 )
+       !------------------------------------------------------------------------------
+       !    Solve the system and we are done.
+       !------------------------------------------------------------------------------
+       st = CPUTime()
+       Norm = DefaultSolve()
 
-     st = CPUTime() - st
-     WRITE( Message, * ) 'Solve (s)             :',st
-     CALL Info( 'StatCurrentSolve', Message, Level=4 )
+       st = CPUTime() - st
+       WRITE( Message, * ) 'Solve (s)             :',st
+       CALL Info( 'StatCurrentSolve', Message, Level=5 )
+
+       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+
+     END DO
+
+
 
 !------------------------------------------------------------------------------
 !    Compute the electric field from the potential: E = -grad Phi
