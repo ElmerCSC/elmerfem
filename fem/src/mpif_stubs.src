@@ -1,77 +1,77 @@
-subroutine mpi_init(ierr)
-  integer :: ierr
+SUBROUTINE mpi_init(ierr)
+  INTEGER :: ierr
   ierr = 0
-end subroutine mpi_init
+END SUBROUTINE mpi_init
 
-subroutine mpi_finalize(ierr)
-  integer :: ierr
+SUBROUTINE mpi_finalize(ierr)
+  INTEGER :: ierr
   ierr = 0
-end subroutine mpi_finalize
+END SUBROUTINE mpi_finalize
 
-subroutine mpi_comm_size(comm, csize, ierr)
-  integer :: comm, csize, ierr
+SUBROUTINE mpi_comm_size(comm, csize, ierr)
+  INTEGER :: comm, csize, ierr
   ierr = 0
   csize = 1
-end subroutine mpi_comm_size
+END SUBROUTINE mpi_comm_size
 
-subroutine mpi_comm_rank(comm, rank, ierr)
-  integer :: comm, rank, ierr
+SUBROUTINE mpi_comm_rank(comm, rank, ierr)
+  INTEGER :: comm, rank, ierr
   rank = 0
   ierr = 0
-end subroutine mpi_comm_rank
+END SUBROUTINE mpi_comm_rank
 
-subroutine mpi_allreduce
-  return
-end subroutine mpi_allreduce
+SUBROUTINE mpi_allreduce
+  RETURN
+END SUBROUTINE mpi_allreduce
 
-subroutine mpi_buffer_detach
-  return
-end subroutine mpi_buffer_detach
+SUBROUTINE mpi_buffer_detach
+  RETURN
+END SUBROUTINE mpi_buffer_detach
 
-subroutine mpi_recv
-  return
-end subroutine mpi_recv
+SUBROUTINE mpi_recv
+  RETURN
+END SUBROUTINE mpi_recv
 
-subroutine mpi_buffer_attach
-  return
-end subroutine mpi_buffer_attach
+SUBROUTINE mpi_buffer_attach
+  RETURN
+END SUBROUTINE mpi_buffer_attach
 
-subroutine mpi_send
-  return
-end subroutine mpi_send
+SUBROUTINE mpi_send
+  RETURN
+END SUBROUTINE mpi_send
 
-subroutine mpi_barrier
-  return
-end subroutine mpi_barrier
+SUBROUTINE mpi_barrier
+  RETURN
+END SUBROUTINE mpi_barrier
 
-subroutine mpi_waitany
-  return
-end subroutine mpi_waitany
+SUBROUTINE mpi_waitany
+  RETURN
+END SUBROUTINE mpi_waitany
 
-subroutine mpi_bsend
-  return
-end subroutine mpi_bsend
+SUBROUTINE mpi_bsend
+  RETURN
+END SUBROUTINE mpi_bsend
 
-subroutine mpi_comm_free
-  return
-end subroutine mpi_comm_free
+SUBROUTINE mpi_comm_free
+  RETURN
+END SUBROUTINE mpi_comm_free
 
-subroutine mpi_waitall
-  return
-end subroutine mpi_waitall
+SUBROUTINE mpi_waitall
+  RETURN
+END SUBROUTINE mpi_waitall
 
-subroutine mpi_comm_group
-  return
-end subroutine mpi_comm_group
+SUBROUTINE mpi_comm_group
+  RETURN
+END SUBROUTINE mpi_comm_group
 
-subroutine mpi_group_incl
-  return
-end subroutine mpi_group_incl
+SUBROUTINE mpi_group_incl
+  RETURN
+END SUBROUTINE mpi_group_incl
 
-subroutine mpi_comm_create
-  return
-end subroutine mpi_comm_create
+SUBROUTINE mpi_comm_create
+  RETURN
+END SUBROUTINE mpi_comm_create
 
-subroutine mpi_irecv
-  return
-end subroutine mpi_irecv
+SUBROUTINE mpi_irecv
+  RETURN
+END SUBROUTINE mpi_irecv
