@@ -4290,6 +4290,9 @@ END SUBROUTINE GetMaxDefs
     IF(.NOT. Stat) Scale = -1.0_dp
 
     NodalJump = ListCheckPrefix( Model % BCs(bc) % Values,'Mortar BC Coefficient')
+    IF(.NOT. NodalJump ) THEN
+      NodalJump = ListCheckPrefix( Model % BCs(bc) % Values,'Mortar BC Resistivity')
+    END IF
     size0 = Mesh % NumberOfNodes
 
     AxisSym = .FALSE.
@@ -4733,7 +4736,9 @@ END SUBROUTINE GetMaxDefs
     IF(.NOT.Gotit ) PeriodicScale = 1._dp
 
     NodalJump = ListCheckPrefix( BC,'Mortar BC Coefficient')
-
+    IF(.NOT. NodalJump ) THEN
+      NodalJump = ListCheckPrefix( BC,'Mortar BC Resistivity')
+    END IF
 
     ! Create temporal mesh structures that are utilized when making the 
     ! projector between "This" and "Trgt" boundary.
@@ -5092,16 +5097,16 @@ END SUBROUTINE GetMaxDefs
 
         Mesh_out % Elements(cnt) % ElementIndex = cnt
         ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n)) 
-        Mesh_out % Elements(cnt) % DGIndexes => Null()
+        Mesh_out % Elements(cnt) % DGIndexes => NULL()
         Mesh_out % Elements(cnt) % NodeIndexes = ind(1:l_n)
-        Mesh_out % Elements(cnt) % EdgeIndexes => Null()
-        Mesh_out % Elements(cnt) % FaceIndexes => Null()
-        Mesh_out % Elements(cnt) % BubbleIndexes => Null()
+        Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
+        Mesh_out % Elements(cnt) % FaceIndexes => NULL()
+        Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
 
         k = Mesh_out % Elements(cnt) % DGDOFs
         IF(k>0) THEN
           Mesh_out % Elements(cnt) % DGDOFs = &
-                Mesh_out % Elements(cnt) % Type % NumberOFNodes
+                Mesh_out % Elements(cnt) % TYPE % NumberOFNodes
           k = Mesh_out % Elements(cnt) % DGDOFs
           ALLOCATE(Mesh_out % Elements(cnt) % DGIndexes(k))
           DO l=1,k
@@ -5169,7 +5174,7 @@ END SUBROUTINE GetMaxDefs
              Mesh_in % Elements(k) % TYPE
         END IF 
         Mesh_out % Elements(cnt) % DGDOFs = 0
-        Mesh_out % Elements(cnt) % DGIndexes => Null()
+        Mesh_out % Elements(cnt) % DGIndexes => NULL()
         Mesh_out % Elements(cnt) % ElementIndex = cnt + &
                 Mesh_out % NumberOfBulkElements
         Mesh_out % Elements(cnt) % PDefs => NULL()
@@ -5243,7 +5248,7 @@ END SUBROUTINE GetMaxDefs
         Mesh_out % Elements(cnt) % ElementIndex = cnt + &
                 Mesh_out % NumberOfBulkElements
         Mesh_out % Elements(cnt) % DGDOFs = 0
-        Mesh_out % Elements(cnt) % DGIndexes => Null()
+        Mesh_out % Elements(cnt) % DGIndexes => NULL()
         Mesh_out % Elements(cnt) % PDefs => NULL()
         Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
         Mesh_out % Elements(cnt) % FaceIndexes => NULL()
@@ -5301,7 +5306,7 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % TYPE => &
         Mesh_in % Elements(i) % TYPE
       Mesh_out % Elements(cnt) % DGDOFs = 0
-      Mesh_out % Elements(cnt) % DGIndexes => Null()
+      Mesh_out % Elements(cnt) % DGIndexes => NULL()
       Mesh_out % Elements(cnt) % PDefs => NULL()
       Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
       Mesh_out % Elements(cnt) % FaceIndexes => NULL()
@@ -5339,7 +5344,7 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % TYPE => &
         Mesh_in % Elements(i) % TYPE
       Mesh_out % Elements(cnt) % DGDOFs = 0
-      Mesh_out % Elements(cnt) % DGIndexes => Null()
+      Mesh_out % Elements(cnt) % DGIndexes => NULL()
       Mesh_out % Elements(cnt) % PDefs => NULL()
       Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
       Mesh_out % Elements(cnt) % FaceIndexes => NULL()

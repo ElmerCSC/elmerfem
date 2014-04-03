@@ -2539,9 +2539,9 @@ CONTAINS
          nnodes,nlen
      INTEGER, POINTER :: PPerm(:)
      INTEGER, ALLOCATABLE :: InvInvPerm(:)
-     LOGICAL :: Found, AddRhs, AddCoeff
+     LOGICAL :: Found, Found2, AddRhs, AddCoeff, AddRes
      LOGICAL, ALLOCATABLE :: NodeDone(:)
-     REAL(KIND=dp) :: coeff, weight
+     REAL(KIND=dp) :: coeff, weight, voff, res
      TYPE(Matrix_t), POINTER :: Projector
      TYPE(ValueList_t), POINTER :: BC
      TYPE(Element_t), POINTER :: Element
@@ -2572,7 +2572,7 @@ CONTAINS
        BC => Model % BCs(bc_ind) % Values
 
        AddCoeff = ListCheckPresent( BC,'Mortar BC Coefficient '//Name(1:nlen))
-
+       AddRes = ListCheckPresent( BC,'Mortar BC Resistivity '//Name(1:nlen))
        AddRhs = ListCheckPresent( BC,'Mortar BC Offset '//Name(1:nlen))
        IF( AddRhs ) THEN
          IF( .NOT. ASSOCIATED( Projector % Rhs ) ) THEN
@@ -2582,11 +2582,10 @@ CONTAINS
          Projector % Rhs = 0.0_dp
        END IF
 
-       IF( .NOT. (AddCoeff .OR. AddRhs) ) THEN
+       IF( .NOT. (AddCoeff .OR. AddRes .OR. AddRhs) ) THEN
          Projector => Projector % ConstraintMatrix
          CYCLE
        END IF
-
 
        CALL Info('SetWeightedProjectorJump','Setting jump to mortar projector in BC '&
            //TRIM(I2S(i)),Level=7)
@@ -2641,6 +2640,13 @@ CONTAINS
            ! Therefore cycle through all entries related to non-nodal projector.
            IF( Projector % InvPerm(i) > nodesize ) CYCLE
 
+           IF( AddCoeff ) coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
+               //Name(1:nlen),node, Found )        
+           IF( AddRes ) res = ListGetRealAtNode( BC,'Mortar BC Resistance '&
+               //Name(1:nlen),node, Found )
+           IF( AddRhs ) voff = ListGetRealAtNode( BC,'Mortar BC Offset '&
+               //Name(1:nlen),node, Found )        
+
            DO j = Projector % Rows(i),Projector % Rows(i+1)-1
              k = Projector % Cols(j)
              IF( k > nodesize ) CYCLE
@@ -2654,14 +2660,10 @@ CONTAINS
              weight = Projector % Values(j)
  
              IF( AddRhs ) THEN
-               coeff = ListGetRealAtNode( BC,'Mortar BC Offset '&
-                   //Name(1:nlen),node, Found )        
-               IF( Found ) THEN
-                 Projector % Rhs(i) = Projector % Rhs(i) + weight * coeff 
-               END IF
+               Projector % Rhs(i) = Projector % Rhs(i) + weight * voff
              END IF
 
-             IF( AddCoeff ) THEN
+             IF( AddCoeff .OR. AddRes ) THEN
                ! Now find the entry in the sparse matrix. 
                Found = .FALSE.
                DO j2 = Projector % Rows(i),Projector % Rows(i+1)-1
@@ -2669,17 +2671,21 @@ CONTAINS
                  IF( k2 == i2 + totsize ) THEN
                    ! Ok, found it. Now set the value. 
                    
-                   coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
-                       //Name(1:nlen),node, Found )        
-                   IF( Found ) THEN
-                     ! The factor 0.5 comes from the fact that the 
-                     ! contribution is summed twice, 2nd time as transpose
-                     ! For Nodal projector the entry is 1/(weight*coeff)
-                     ! For Galerkin projector the is weight/coeff 
-                     weight = Projector % Values(j)
+                   !coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
+                   !    //Name(1:nlen),node, Found )        
+
+                   ! The factor 0.5 comes from the fact that the 
+                   ! contribution is summed twice, 2nd time as transpose
+                   ! For Nodal projector the entry is 1/(weight*coeff)
+                   ! For Galerkin projector the is weight/coeff 
+                   weight = Projector % Values(j)
+                   IF( AddCoeff ) THEN
                      Projector % Values(j2) = -0.5 * weight / coeff
+                   ELSE                   
+                     Projector % Values(j2) = -0.5 * weight * res
                    END IF
-                   
+
+                   Found = .TRUE.
                    EXIT
                  END IF
                END DO               
