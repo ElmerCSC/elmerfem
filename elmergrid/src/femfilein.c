@@ -1345,6 +1345,7 @@ static void ReorderAnsysNodes(struct FemType *data,int *oldtopology,
   int order306[]={1,2,3,5,6,8};
   int order510[]={1,2,3,5,9,10,12,17,18,19};
   int order613[]={1,2,3,4,5,9,10,11,12,17,18,19,20};
+  int order706[]={1,2,3,5,6,7};
     
   elementtype = 0;
   if(dim == 3) {
@@ -1354,7 +1355,12 @@ static void ReorderAnsysNodes(struct FemType *data,int *oldtopology,
       else elementtype = 820;
     }
     if(nodes == 8) {
-      if(oldtopology[2] == oldtopology[3]) elementtype = 504;
+      if(oldtopology[2] == oldtopology[3] &&
+         oldtopology[4] == oldtopology[7] &&
+         oldtopology[5] == oldtopology[7] &&
+         oldtopology[6] == oldtopology[7]) elementtype = 504;
+      else if(oldtopology[2] == oldtopology[3]  && 
+              oldtopology[6] == oldtopology[7]) elementtype = 706;
       else if(oldtopology[4] == oldtopology[5]) elementtype = 605;
       else elementtype = 808;
     }
@@ -1396,6 +1402,10 @@ static void ReorderAnsysNodes(struct FemType *data,int *oldtopology,
     break;
 
   case 504:
+    if(nodes == 4)
+      for(i=0;i<elementtype%100;i++)
+         topology[i] = oldtopology[i];
+    else
     for(i=0;i<elementtype%100;i++) 
       topology[i] = oldtopology[order504[i]-1];
     break;
@@ -1432,6 +1442,12 @@ static void ReorderAnsysNodes(struct FemType *data,int *oldtopology,
       else 
 	topology[i] = oldtopology[i];
     }
+    break;
+
+  case 706:
+    for(i=0;i<elementtype%100;i++) {
+	topology[i] = oldtopology[order706[i]-1];
+    }	
     break;
 
   default:
