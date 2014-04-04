@@ -2584,7 +2584,7 @@ END IF
 !>  of element coordinate system metrics determinant (=sqrt(det(J^TJ))).
 !------------------------------------------------------------------------------
    RECURSIVE FUNCTION ElementInfo( Element, Nodes, u, v, w, detJ, &
-     Basis, dBasisdx, ddBasisddx, SecondDerivatives, Bubbles, BasisDegree, EdgeBasis, CurlBasis ) RESULT(stat)
+     Basis, dBasisdx, ddBasisddx, SecondDerivatives, Bubbles, BasisDegree, EdgeBasis, RotBasis ) RESULT(stat)
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -2603,7 +2603,7 @@ END IF
      LOGICAL, OPTIONAL :: Bubbles                   !< Are the bubbles to be avaluated.
      LOGICAL :: Stat                                !< If .FALSE. element is degenerate.
 
-     REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:), CurlBasis(:,:)
+     REAL(KIND=dp), OPTIONAL :: EdgeBasis(:,:), RotBasis(:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -2622,7 +2622,7 @@ END IF
 !------------------------------------------------------------------------------
      IF(PRESENT(EdgeBasis)) THEN
        stat = EdgeElementInfo(Element,Nodes,u,v,w,detF=Detj,Basis=Basis, &
-            EdgeBasis=EdgeBasis,RotBasis=CurlBasis,dBasisdx=dBasisdx,ApplyPiolaTransform=.TRUE.)
+            EdgeBasis=EdgeBasis,RotBasis=RotBasis,dBasisdx=dBasisdx,ApplyPiolaTransform=.TRUE.)
        RETURN
      END IF
 
