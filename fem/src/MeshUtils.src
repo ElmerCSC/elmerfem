@@ -9639,7 +9639,8 @@ CONTAINS
       Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
       Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
 
-      IF (.NOT. (Element % PartIndex == Parenv % Mype) ) CYCLE
+      ! This is probably a copy-paste error, I comment it away for time being.   
+      ! IF (.NOT. (Element % PartIndex == Parenv % Mype) ) CYCLE
 
       IF( MaskExists ) THEN
         IF( ANY(MaskPerm(NodeIndexes) == 0) ) CYCLE
