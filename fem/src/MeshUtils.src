@@ -3152,8 +3152,8 @@ END SUBROUTINE GetMaxDefs
    INTEGER, PARAMETER :: FileUnit = 10
    INTEGER, PARAMETER :: A=ICHAR('A'),Z=ICHAR('Z'),U2L=ICHAR('a')-ICHAR('A')
    INTEGER :: i,j,k,iostat,i1,i2,i3,n
-   INTEGER :: ivals(40)
-   CHARACTER(LEN=128) :: str, name0, name1
+   INTEGER :: ivals(256)
+   CHARACTER(LEN=1024) :: str, name0, name1
    TYPE(ValueList_t), POINTER :: Vlist
    LOGICAL :: Found, AlreadySet
 
