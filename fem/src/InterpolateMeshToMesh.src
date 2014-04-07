@@ -1136,7 +1136,11 @@ CONTAINS
 
 
     nodesize = BMesh1 % Parent % NumberOfNodes
-    totsize = BMesh1 % Parent % NumberOfNodes + BMesh1 % Parent % NumberOfEdges    
+    totsize  = BMesh1 % Parent % NumberOfNodes + BMesh1 % Parent % NumberOfEdges
+    IF(ASSOCIATED(CurrentModel % Solver)) THEN
+      totsize = CurrentModel % Solver % Matrix % NumberOfRows / &
+         CurrentModel % Solver % Variable % Dofs
+    END IF
 
     IF(EdgeBasis) THEN
       n = BMesh1 % Parent % MaxElementDOFs
@@ -1148,6 +1152,23 @@ CONTAINS
       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), Basis(n) )
       eqindsize = BMesh1 % NumberOfNodes
     END IF
+
+    eqindsize = 0
+    DO i=1, BMesh1 % NumberOfBulkElements
+      IF(EdgeBasis) THEN
+         Element => BMesh1 % Parent % Elements(BMesh1 % Elements(i) % ElementIndex)
+         Element => Find_Face(Element % BoundaryInfo % Left,Element)
+         n  = GetElementDOFs(Indexes,Element)
+         np = GetElementNOFNodes(Element)
+       ELSE
+         Element => BMesh1 % Elements(i)
+         n = Element % TYPE % NumberOfNodes
+         np = n
+         Indexes(1:n) = Element % NodeIndexes
+       END IF
+       eqindsize = MAX( eqindsize, MAXVAL(Indexes(1:n)) )
+    END DO
+
 
     ! Create the nodal coordinates for all Gaussian integration points
     !-----------------------------------------------------------------    
@@ -1312,6 +1333,7 @@ CONTAINS
                 EQind(Indexes(p)), qq, -PeriodicScale * Values(q) * val ) 
           END DO
         END DO
+
         IF(EdgeBasis)THEN
           DO p=np+1,n
             pp=p-np
@@ -1321,7 +1343,7 @@ CONTAINS
             IF (EQind(Indexes(p))==0) THEN
               Ind  = Ind+1
               EQind(Indexes(p)) = Ind
-              Projector % InvPerm(Ind)=Indexes(p)
+              Projector % InvPerm(Ind) = Indexes(p)
             END IF
 
             DO q=np+1,n
