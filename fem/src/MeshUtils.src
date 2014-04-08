@@ -2528,7 +2528,7 @@ END SUBROUTINE GetMaxDefs
            END IF
          END DO
        ELSE
-         IF( IndexMap( id ) /= 0 ) THEN
+         IF( IndexMap( id ) /= 0 .AND. id /= DefaultTargetBC ) THEN
            CALL Warn('LoadMesh','Unset BC already set by > Target Boundaries < : '&
                //TRIM(I2S(id)) )
          ELSE 
@@ -5274,6 +5274,10 @@ END SUBROUTINE GetMaxDefs
       CALL MPI_ALLREDUCE(j,max_body,1, &
           MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
     END IF
+
+    WRITE( Message,'(A,I0)') 'Number of new BCs for layers: ',max_body
+    CALL Info('ExtrudeMesh',Message,Level=8)
+
 
     ! Add bottom boundary:
     ! --------------------
