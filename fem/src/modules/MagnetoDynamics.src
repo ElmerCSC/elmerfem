@@ -475,7 +475,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
               'Nonlinear System Relaxation Factor', FoundRelax)
   IF(.NOT.FoundRelax) Relax = 1._dp
 
-  IF(Relax/=1._dp) THEN
+  IF(ABS(Relax-1._dp)>1.d-8) THEN
     ALLOCATE(PrevSol(SIZE(Solver % Variable % Values)))
     CALL ListAddConstReal( GetSolverParams(), &
               'Nonlinear System Relaxation Factor', 1._dp) 
@@ -636,6 +636,7 @@ CONTAINS
        END SELECT
      END IF
 
+
      !Get element local matrix and rhs vector:
      !----------------------------------------
      CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
@@ -696,7 +697,7 @@ CONTAINS
        CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
      END IF
 
-     CALL DefaultUpdateEquations( STIFF,FORCE,Element)
+     CALL DefaultUpdateEquations(STIFF,FORCE,Element)
   END DO
 
   CALL DefaultFinishBoundaryAssembly(BulkUpdate=ConstantSystem)
@@ -781,11 +782,13 @@ CONTAINS
 
   PrevNorm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
 
-  IF(Relax/=1._dp) PrevSol = Solver % Variable % Values
+  IF(ABS(Relax-1._dp)>1.d-8) THEN
+    PrevSol = Solver % Variable % Values
+  END IF
 
   norm = DefaultSolve()
 
-  IF(Relax/=1._dp) THEN
+  IF(ABS(Relax-1._dp)>1.d-8) THEN
     Solver % Variable % Values = (1-Relax)*PrevSol + Relax*Solver % Variable % Values
   END IF
 
@@ -867,10 +870,10 @@ CONTAINS
   END DO
   IF (ParEnv % PEs>1) CALL ParallelSumVector(A, dDiag)
 
-  n = Mesh % NumberOfNodes
+  n = SIZE(Solver % Variable % Perm)
   DO i=1,n
     J = Solver % Variable % Perm(i)
-    IF(J>0) THEN
+    IF(j>0) THEN
       IF ( dDiag(j)==0._dp ) THEN
         CALL ZeroRow(A,j)
         CALL SetMatrixElement(A,j,j,1._dp)
@@ -1736,6 +1739,8 @@ CONTAINS
     STIFF = 0.0_dp
     FORCE = 0.0_dp
     MASS  = 0.0_dp
+
+    IF(PiolaVersion) RETURN
 
     ! Numerical integration:
     !-----------------------
