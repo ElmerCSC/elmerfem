@@ -1037,10 +1037,14 @@ CONTAINS
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                IP % W(t), detJ, Basis, dBasisdx )
-
-      CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+      IF (PiolaVersion) THEN
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+      END IF
 
       x = SUM(Nodes % x(1:n)*Basis(1:n))
       y = SUM(Nodes % y(1:n)*Basis(1:n))
@@ -1096,12 +1100,16 @@ CONTAINS
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis,dBasisdx )
+      IF (PiolaVersion) THEN
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+      END IF
 
       IF(WBaseFound) W = MATMUL(Wpot(1:n),dBasisdx(1:n,:))
-
-      CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
 
       A = A + IP % s(t) * detJ
       U = U + IP % s(t) * detJ * SUM(dPot(n+1:nd)*MATMUL(WBasis(1:nd-n,:),w))
