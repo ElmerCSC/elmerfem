@@ -1033,13 +1033,13 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element)
+    IP = GaussPoints(Element, EdgeBasis=PiolaVersion)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -1096,13 +1096,13 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element)
+    IP = GaussPoints(Element, EdgeBasis=PiolaVersion)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-          IP % W(t), detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
