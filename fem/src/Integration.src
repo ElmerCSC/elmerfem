@@ -1158,6 +1158,196 @@ END FUNCTION GaussPointsPTetra
    END FUNCTION GaussPointsWedge
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!>  Return an optimized number of Gaussian points for integrating over prisms.
+!>  Here the reference element can also be that of the p-approximation. 
+!>  A rule with m x n points is returned.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsWedge2(m,n,PReferenceElement) RESULT(p)
+!------------------------------------------------------------------------------
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+      INTEGER :: m     !< The number of points over a triangular face
+      INTEGER :: n     !< The number of points in the orthogonal direction to the triangular faces
+      LOGICAL, OPTIONAL ::  PReferenceElement !< Used for switching the reference element      
+!------------------------------------------------------------------------------
+      INTEGER :: i,j,k,t
+      LOGICAL :: ConvertToPPrism
+      REAL(KIND=dp) :: uq(20), vq(20), sq(20)
+      REAL(KIND=dp) :: uh,vh,wh,sh    
+!-----------------------------------------------------------------------------
+      ConvertToPPrism = .FALSE.
+      IF ( PRESENT(PReferenceElement) ) THEN
+         ConvertToPPrism =  PReferenceElement
+      END IF
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+      p => IntegStuff
+
+      SELECT CASE (m)
+      CASE (1)
+         IF (ConvertToPPrism) THEN
+            uq(1) = -1.0d0 + 2.0d0*UTriangle1P(i) + VTriangle1P(i)
+            vq(1) = SQRT(3.0d0) * VTriangle1P(i)
+            sq(1) = SQRT(3.0d0) * STriangle1P(i)
+         ELSE
+            uq(1:m) = UTriangle1P
+            vq(1:m) = VTriangle1P
+            sq(1:m) = STriangle1P / 2.0D0
+         END IF
+      CASE (3)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle3P(i) + VTriangle3P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle3P(i)
+               sq(i) = SQRT(3.0d0) * STriangle3P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle3P
+            vq(1:m) = VTriangle3P
+            sq(1:m) = STriangle3P / 2.0D0
+         END IF
+      CASE (4)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle4P(i) + VTriangle4P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle4P(i)
+               sq(i) = SQRT(3.0d0) * STriangle4P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle4P
+            vq(1:m) = VTriangle4P
+            sq(1:m) = STriangle4P / 2.0D0
+         END IF
+      CASE (6)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle6P(i) + VTriangle6P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle6P(i)
+               sq(i) = SQRT(3.0d0) * STriangle6P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle6P
+            vq(1:m) = VTriangle6P
+            sq(1:m) = STriangle6P / 2.0D0
+         END IF
+      CASE (7)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle7P(i) + VTriangle7P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle7P(i)
+               sq(i) = SQRT(3.0d0) * STriangle7P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle7P
+            vq(1:m) = VTriangle7P
+            sq(1:m) = STriangle7P / 2.0D0
+         END IF
+      CASE (11)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle11P(i) + VTriangle11P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle11P(i)
+               sq(i) = SQRT(3.0d0) * 2.0d0 * STriangle11P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle11P
+            vq(1:m) = VTriangle11P
+            sq(1:m) = STriangle11P
+         END IF
+      CASE (12)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle12P(i) + VTriangle12P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle12P(i)
+               sq(i) = SQRT(3.0d0) * 2.0d0 * STriangle12P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle12P
+            vq(1:m) = VTriangle12P
+            sq(1:m) = STriangle12P
+         END IF
+      CASE (17)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle17P(i) + VTriangle17P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle17P(i)
+               sq(i) = SQRT(3.0d0) * 2.0d0 * STriangle17P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle17P
+            vq(1:m) = VTriangle17P
+            sq(1:m) = STriangle17P
+         END IF
+      CASE (20)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle20P(i) + VTriangle20P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle20P(i)
+               sq(i) = SQRT(3.0d0) * 2.0d0 * STriangle20P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle20P
+            vq(1:m) = VTriangle20P
+            sq(1:m) = STriangle20P
+         END IF
+      CASE DEFAULT
+         !-------------------------------------------------------------------------------------
+         ! The requested number of integration points associated with the triangular face 
+         ! cannot be created. Therefore use the given number of points in the third direction
+         ! and generate silently n x n x n rule. 
+         !-----------------------------------------------------------------------------------
+         IF (ConvertToPPrism) THEN
+            p = GaussPointsBrick(n*n*n)
+            DO i=1,p % n
+               uh = p % u(i)
+               vh = p % v(i)
+               wh = p % w(i)
+               sh = p % s(i)
+
+               p % u(i)= 1d0/2*(uh-uh*vh)
+               p % v(i)= SQRT(3d0)/2*(1d0+vh)
+               p % w(i)= wh
+               p % s(i)= sh * SQRT(3d0)*(1-vh)/4
+            END DO
+         ELSE
+            t = 0
+            DO i=1,n
+               DO j=1,n
+                  DO k=1,n
+                     t = t + 1
+                     p % u(t) = Points(k,n)
+                     p % v(t) = Points(j,n)
+                     p % w(t) = Points(i,n)
+                     p % s(t) = Weights(i,n)*Weights(j,n)*Weights(k,n)
+                  END DO
+               END DO
+            END DO
+            p % n = t
+
+            DO i=1,p % n
+               p % v(i) = (p % v(i) + 1)/2
+               p % u(i) = (p % u(i) + 1)/2 * (1 - p % v(i))
+               p % s(i) = p % s(i) * (1-p % v(i))/4
+            END DO
+         END IF
+         RETURN
+      END SELECT
+
+      t = 0
+      DO i=1,m
+         DO j=1,n
+            t = t + 1
+            p % u(t) = uq(i)
+            p % v(t) = vq(i)
+            p % w(t) = Points(j,n)
+            p % s(t) = sq(i)*Weights(j,n)
+         END DO
+      END DO
+      p % n = t
+!------------------------------------------------------------------------------
+    END FUNCTION GaussPointsWedge2
+!------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
 !>    Return gaussian integration points for 2D quad element
@@ -1421,7 +1611,8 @@ END FUNCTION GaussPointsPTetra
      CASE(6)
         IP = GaussPointsPPyramid(8)
      CASE(7)
-        IP = GaussPointsPWedge(27)
+        !IP = GaussPointsPWedge(27)
+        IP = GaussPointsWedge2(6,3,PReferenceElement=.TRUE.)
      CASE(8)
         IP = GaussPointsPBrick(3,3,3)         
      CASE DEFAULT
