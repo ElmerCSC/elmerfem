@@ -1074,7 +1074,7 @@ CONTAINS
     TYPE(Nodes_t), POINTER :: GaussNodes, RealNodes, ElementNodes
     TYPE(Element_t), POINTER :: Element
     INTEGER :: i,j,k,l,n,p,q,NoNodes, NoGaussPoints,Indexes(100),&
-        nodesize, totsize, eqindsize
+        nodesize, totsize, eqindsize, RelOrder
     INTEGER, POINTER :: NodeIndexes(:),Rows(:),Cols(:)
     REAL(KIND=dp), POINTER :: Basis(:), Values(:)
     REAL(KIND=dp) :: u,v,w,val,detJ,weight,x
@@ -1106,13 +1106,16 @@ CONTAINS
       CALL Info('weightedProjector','Accounting for edge elements in projector.',Level=7)
     END IF
 
+    RelOrder = ListGetInteger( CurrentModel % Solver % Values, &
+        'Projector Relative Integration Order', Found, minv=-1,maxv=1)
+
     ! Calculate the total number of Gaussian integration points
     ! and allocate space for the node structures. 
     !----------------------------------------------------------
     NoGaussPoints = 0
     DO i=1, BMesh1 % NumberOfBulkElements
       Element => BMesh1 % Elements(i)
-      IntegStuff = GaussPoints( Element, EdgeBasis=PiolaT )
+      IntegStuff = GaussPoints( Element, RelOrder=RelOrder, EdgeBasis=PiolaT )
       NoGaussPoints = NoGaussPoints + IntegStuff % n
     END DO
     
@@ -1181,7 +1184,7 @@ CONTAINS
       ElementNodes % y(1:n) = RealNodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = RealNodes % z(NodeIndexes(1:n))
       
-      IntegStuff = GaussPoints( Element, EdgeBasis=PiolaT )
+      IntegStuff = GaussPoints( Element, RelOrder=RelOrder, EdgeBasis=PiolaT )
       DO j=1,IntegStuff % n
         NoGaussPoints = NoGaussPoints + 1
         u = IntegStuff % u(j)
@@ -1261,7 +1264,7 @@ CONTAINS
         ElementNodes % z(1:n) = RealNodes % z(Indexes(1:n))
       END IF
 
-      IntegStuff = GaussPoints(Element, EdgeBasis=PiolaT )
+      IntegStuff = GaussPoints(Element, RelOrder=RelOrder, EdgeBasis=PiolaT )
       DO j=1,IntegStuff % n
         NoGaussPoints = NoGaussPoints + 1
         u = IntegStuff % u(j)
