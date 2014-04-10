@@ -1,16 +1,17 @@
-!--------------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
 !  THE DESCRIPTION OF THIS TEST:  
 !
 !  Solve the best approximation of the vector field U = (1+z-y,1-z+x,1-x+y)
 !  with respect to the L2 norm using H(curl)-conforming basis functions. 
 !  Additionally, compute the relative error of the solution using
 !  the energy norm corresponding to the operator I - curl curl.
-!  For the basis functions obtained here via the function EdgeElementInfo the exact 
-!  solution should be in the FE solution space. This solver thus offers
-!  a consistency check for creating discretizations based on the basis functions 
-!  provided by the function EdgeElementInfo. This test can be performed basically
-!  on any 3-D mesh if the element definition of the sif file is adjusted accordingly.
-!--------------------------------------------------------------------------------------
+!  For the basis functions obtained here via the function EdgeElementInfo 
+!  the exact solution should be in the FE solution space. This solver thus 
+!  offers a consistency check for creating discretizations based on the basis 
+!  functions provided by the function EdgeElementInfo. This test can be 
+!  performed basically on any 3-D mesh if the element definition of the sif 
+!  file is adjusted accordingly.
+!------------------------------------------------------------------------------
 
 Check Keywords "Warn"
 
@@ -84,6 +85,10 @@ Solver 1
   Linear System Row Equilibration = Logical True
   Linear System Max Iterations = 100
   Linear System Convergence Tolerance = 1e-11
+
+  Error Computation = Logical True
+  Use Energy Norm = Logical True
+  Tabulate Basis = Logical True
 End
 
 $fprintf( stderr, "TEST CASE 1\n");
