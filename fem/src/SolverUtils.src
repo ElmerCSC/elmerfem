@@ -6134,8 +6134,17 @@ END FUNCTION SearchNodeL
       IF( .NOT. ALLOCATED( TempVector ) ) THEN
         ALLOCATE( TempVector(A % NumberOfRows) )
       END IF
-      CALL MatrixVectorMultiply( A, x, TempVector )
-      
+
+     IF ( ParEnv % PEs > 1 ) THEN
+        IF( .NOT. ALLOCATED( TempRHS ) ) THEN
+          ALLOCATE( TempRHS(A % NumberOfRows) ); TempRHS=0._dp
+        END IF
+        CALL ParallelInitSolve( A, x, TempRHS, Tempvector )
+        CALL ParallelMatrixVector( A, x, TempVector, .TRUE. )
+      ELSE
+        CALL MatrixVectorMultiply( A, x, TempVector )
+      END IF
+
       xn = SUM( TempVector(1:n)**2 ) 
       xn = ParallelReduction(xn) 
       IF( xn > TINY( xn ) ) THEN
