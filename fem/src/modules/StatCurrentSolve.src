@@ -581,7 +581,7 @@ END SUBROUTINE StatCurrentSolver_Init
 
        IF ( ANY(Reorder(NodeIndexes) == 0) ) CYCLE
 
-       ElementPot = Potential( Reorder( NodeIndexes ) )
+       ElementPot(1:n) = Potential( Reorder( NodeIndexes(1:n) ) )
        
        Nodes % x(1:n) = Model % Nodes % x( NodeIndexes )
        Nodes % y(1:n) = Model % Nodes % y( NodeIndexes )
