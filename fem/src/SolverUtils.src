@@ -5966,7 +5966,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
                 SkipZeroRhs, ComplexSystem
-    INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this
+    INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp), POINTER :: SaveValues(:)
@@ -5975,7 +5975,8 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: Diag(:)
     REAL(KIND=dp) :: s,Relaxation,Beta,Gamma,bnorm,Energy,xn,bn
     TYPE(ValueList_t), POINTER :: Params
-    TYPE(Matrix_t), POINTER :: Aaid, Projector
+    TYPE(Matrix_t), POINTER :: Aaid, Projector, MP
+    REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
 
     INTERFACE 
        SUBROUTINE VankaCreate(A,Solver)
@@ -6135,18 +6136,29 @@ END FUNCTION SearchNodeL
         ALLOCATE( TempVector(A % NumberOfRows) )
       END IF
 
-     IF ( ParEnv % PEs > 1 ) THEN
+      IF ( ParEnv % PEs > 1 ) THEN
         IF( .NOT. ALLOCATED( TempRHS ) ) THEN
           ALLOCATE( TempRHS(A % NumberOfRows) ); TempRHS=0._dp
         END IF
+
+        Tempvector = 0._dp
+        TempRHS(1:n) = b(1:n)
         CALL ParallelInitSolve( A, x, TempRHS, Tempvector )
-        CALL ParallelMatrixVector( A, x, TempVector, .TRUE. )
+
+        MP => ParallelMatrix(A,mx,mb,mr)
+        mn = MP % NumberOfRows
+
+        TempVector = 0._dp
+        CALL ParallelMatrixVector( A, mx, TempVector )
+
+        bn = ParallelDot( mn, TempVector, mb )
+        xn = ParallelDot( mn, TempVector, TempVector )
       ELSE
         CALL MatrixVectorMultiply( A, x, TempVector )
+        xn = SUM( TempVector(1:n)**2 )
+        bn = SUM( TempVector(1:n) * b(1:n) )
       END IF
 
-      xn = SUM( TempVector(1:n)**2 ) 
-      xn = ParallelReduction(xn) 
       IF( xn > TINY( xn ) ) THEN
         bn = SUM( TempVector(1:n) * b(1:n) ) 
         bn = ParallelReduction(bn) 
