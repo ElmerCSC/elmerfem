@@ -6160,10 +6160,7 @@ END FUNCTION SearchNodeL
       END IF
 
       IF( xn > TINY( xn ) ) THEN
-        bn = SUM( TempVector(1:n) * b(1:n) ) 
-        bn = ParallelReduction(bn) 
         x(1:n) = x(1:n) * ( bn / xn )
-
         WRITE( Message,'(A,ES12.3)') 'Linear System Normalizing Factor: ',bn/xn
         CALL Info('SolveLinearSystem',Message,Level=8) 
       END IF
