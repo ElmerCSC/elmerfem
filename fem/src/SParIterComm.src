@@ -1195,7 +1195,8 @@ real(kind=dp) :: realtime,tt
             k=Iedges(k_intf)
             IF(gdofs(k)==gi) EXIT
           END DO
-          Mesh % Edges(k) % BDOFs=MAX(Mesh % Edges(k) % BDOFs,bd)
+          if ( k_intf<=n_intf) &
+            Mesh % Edges(k) % BDOFs=MAX(Mesh % Edges(k) % BDOFs,bd)
         END DO
         DEALLOCATE(buf)
       END IF
@@ -1732,10 +1733,11 @@ real(kind=dp) :: realtime,tt
           gi = buf(2*j-1)
           bd = buf(2*j)
           DO k_intf=1,n_intf
-            k=Ifaces(k_intf)
-            IF(gdofs(k)==gi) EXIT
+            k = Ifaces(k_intf)
+            IF (gdofs(k)==gi) EXIT
           END DO
-          Mesh % Faces(k) % BDOFs = MAX(Mesh % Faces(k) % BDOFs,bd)
+          if ( k_intf<=n_intf) &
+            Mesh % Faces(k) % BDOFs = MAX(Mesh % Faces(k) % BDOFs,bd)
         END DO
         DEALLOCATE(buf)
       END IF
