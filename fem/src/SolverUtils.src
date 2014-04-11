@@ -4394,7 +4394,7 @@ END FUNCTION SearchNodeL
 
       Relaxation = ListGetCReal( SolverParams, &
           'Steady State Relaxation Factor', Relax )
-      Relax = Relax .AND. (Relaxation /= 1.0d0)
+      Relax = Relax .AND. ABS(Relaxation-1.0_dp) > TINY(Relaxation)
 
       iterV => VariableGet( Solver % Mesh % Variables, 'coupled iter' )
       IterNo = iterV % Values(1)
@@ -6151,6 +6151,9 @@ END FUNCTION SearchNodeL
         bn = SUM( TempVector(1:n) * b(1:n) ) 
         bn = ParallelReduction(bn) 
         x(1:n) = x(1:n) * ( bn / xn )
+
+        WRITE( Message,'(A,ES12.3)') 'Linear System Normalizing Factor: ',bn/xn
+        CALL Info('SolveLinearSystem',Message,Level=8) 
       END IF
     END IF
 
