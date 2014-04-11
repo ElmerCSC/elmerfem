@@ -4,6 +4,7 @@
 # Authors:
 #  Sami Ilvonen, CSC - IT Center for Science, Ltd.
 #  Phil Weir, NUMA Engineering Services, Ltd.
+#  Mikko Byckling, CSC - IT Center for Science Ltd.
 #
 # First public beta release 11th of October, 2013
 #
@@ -27,24 +28,35 @@ SET(ELMER_FEM_VERSION
 SET(VERSION ${ELMER_FEM_VERSION})
 SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
-FIND_PACKAGE(MPI QUIET)
+IF(WITH_MPI)
+  FIND_PACKAGE(MPI QUIET)
+ENDIF()
 IF(MPI_FOUND)
   ADD_DEFINITIONS(${MPI_Fortran_COMPILE_FLAGS})
   INCLUDE_DIRECTORIES(${MPI_Fortran_INCLUDE_PATH})
   LINK_DIRECTORIES(${MPI_Fortran_LIBRARIES})
 ENDIF()
 
-IF(MPI_FOUND)
-  FIND_PACKAGE(Mumps QUIET)
-ENDIF()
-IF(MUMPS_FOUND)
-  ADD_DEFINITIONS(-DHAVE_MUMPS)
-  INCLUDE_DIRECTORIES(${MUMPS_INCLUDE_PATH})
-  LINK_DIRECTORIES(${MUMPS_LIBRARIES})
-ENDIF()
-
+# MPI and LAPACK
 FIND_PACKAGE(BLAS REQUIRED)
 FIND_PACKAGE(LAPACK REQUIRED)
+
+# Mumps
+IF(MPI_FOUND)
+  FIND_PACKAGE(Mumps)
+ENDIF()
+IF(MUMPS_FOUND)
+  FIND_PACKAGE(SCALAPACK)
+  IF(SCALAPACK_FOUND)
+     # Add Mumps compilation flags and libraries 
+     ADD_DEFINITIONS(-DHAVE_MUMPS)
+     INCLUDE_DIRECTORIES(${MUMPS_INCLUDE_PATH})
+     SET(MUMPS_LIBRARIES ${MUMPS_LIBRARIES} ${SCALAPACK_LIBRARIES})
+     LINK_DIRECTORIES(${MUMPS_LIBRARIES} ${SCALAPACK_LIBRARIES})
+  ELSE()
+     MESSAGE(STATUS "SCALAPACK library not found. Mumps not in use.")
+  ENDIF()
+ENDIF()
 
 # Check if Fortran compiler supports contiguous keyword
 INCLUDE(testContiguous)
@@ -105,6 +117,7 @@ MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  BLAS library:   " ${BLAS_LIBRARIES})
 MESSAGE(STATUS "  LAPACK library: " ${LAPACK_LIBRARIES})
 MESSAGE(STATUS "------------------------------------------------")
+IF(WITH_MPI)
 MESSAGE(STATUS "  MPI Fortran:    " ${MPI_Fortran_FOUND})
 MESSAGE(STATUS "  MPI Fortran compiler:    " ${MPI_Fortran_COMPILER} 
   ${MPI_Fortran_COMPILER_FLAGS})
@@ -119,3 +132,15 @@ MESSAGE(STATUS "  MPI C include dir: " ${MPI_C_INCLUDE_PATH})
 MESSAGE(STATUS "  MPI C libraries:   " ${MPI_C_LIBRARIES})
 MESSAGE(STATUS "  MPI C flags:       " ${MPI_C_LINK_FLAGS})
 MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "  Mumps:             " ${MUMPS_FOUND})
+MESSAGE(STATUS "  Mumps include:     " ${MUMPS_INCLUDE_PATH})
+MESSAGE(STATUS "  Mumps libraries:   " ${MUMPS_LIBRARIES})
+MESSAGE(STATUS "------------------------------------------------")
+ELSE()
+MESSAGE(STATUS "  Fortran compiler:  " ${CMAKE_Fortran_COMPILER})
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "  C compiler:        " ${CMAKE_C_COMPILER})
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "  C++ compiler:      " ${CMAKE_CXX_COMPILER})
+MESSAGE(STATUS "------------------------------------------------")
+ENDIF()

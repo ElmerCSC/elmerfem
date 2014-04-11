@@ -61,29 +61,42 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerf90)
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerld)
+IF (NOT MPI_FOUND)
+  FILE(COPY ${CMAKE_CURRENT_SOURCE_DIR}/mpif_stub.h 
+            DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
+  FILE(RENAME ${CMAKE_CURRENT_BINARY_DIR}/mpif_stub.h
+              ${CMAKE_CURRENT_BINARY_DIR}/mpif.h)
+ENDIF()
 
 ADD_LIBRARY(mpi_stubs SHARED mpif_stubs.F90)
-
 ADD_LIBRARY(elmersolver SHARED ${solverlib_SOURCES})
-TARGET_LINK_LIBRARIES(elmersolver matc eiof umfpack amd fhuti
-  ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} ${MUMPS_LIBRARIES} 
-  arpack parpack binio)
+
+# ElmerSolver libraries 
+SET(ELMERSOLVER_LIBRARIES elmersolver matc eiof umfpack 
+                          amd fhuti binio arpack
+  	                  ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
+                          ${CMAKE_DL_LIBS})
 
 IF(MPI_FOUND)
+  # Add parpack and possibly others
+  SET(ELMERSOLVER_LIBRARIES ${ELMERSOLVER_LIBRARIES} 
+  			    ${MUMPS_LIBRARIES})
+
+  # ElmerSolver_mpi
   ADD_EXECUTABLE(ElmerSolver_mpi Solver.F90)
-
   TARGET_LINK_LIBRARIES(ElmerSolver_mpi ${MPI_Fortran_LIBRARIES}
-  elmersolver matc fhuti eiof umfpack amd ${BLAS_LIBRARIES}
-  ${LAPACK_LIBRARIES} arpack parpack binio ${CMAKE_DL_LIBS}
-  ${MUMPS_LIBRARIES})
-ENDIF()  
+                                        parpack ${ELMERSOLVER_LIBRARIES})
+ENDIF()
 
+# elmersolver -library
+TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES})
+
+# ElmerSolver
 ADD_EXECUTABLE(ElmerSolver Solver.F90)
+TARGET_LINK_LIBRARIES(ElmerSolver mpi_stubs 
+				  ${ELMERSOLVER_LIBRARIES})
 
-TARGET_LINK_LIBRARIES(ElmerSolver mpi_stubs elmersolver matc fhuti eiof
-  umfpack amd ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} arpack
-  binio ${MUMPS_LIBRARIES} ${CMAKE_DL_LIBS})
-
+# Installation rules
 INSTALL(FILES elements.def SOLVER.KEYWORDS DESTINATION "share/elmersolver/lib")
 
 IF(MPI_FOUND)
@@ -91,8 +104,11 @@ IF(MPI_FOUND)
 ENDIF()
 
 INSTALL(TARGETS ElmerSolver elmersolver mpi_stubs RUNTIME DESTINATION "bin" 
-  LIBRARY DESTINATION "lib")
+                LIBRARY DESTINATION "lib")
 INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerf90 DESTINATION "bin")
 INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld DESTINATION  "bin")
+# Fortran module files
+INSTALL(DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/.
+		  DESTINATION ${CMAKE_INSTALL_PREFIX}/share/elmersolver/include)
 
-INSTALL(CODE "EXECUTE_PROCESS (COMMAND \"${CMAKE_COMMAND}\" -E copy_directory \"${CMAKE_Fortran_MODULE_DIRECTORY}/\${BUILD_TYPE}\" \"${CMAKE_INSTALL_PREFIX}/share/elmersolver/include\")")
+# INSTALL(CODE "EXECUTE_PROCESS (COMMAND \"${CMAKE_COMMAND}\" -E copy_directory \"${CMAKE_Fortran_MODULE_DIRECTORY}/\${BUILD_TYPE}\" \"${CMAKE_INSTALL_PREFIX}/share/elmersolver/include\")")

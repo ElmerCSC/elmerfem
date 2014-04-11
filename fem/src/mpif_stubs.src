@@ -75,3 +75,28 @@ END SUBROUTINE mpi_comm_create
 SUBROUTINE mpi_irecv
   RETURN
 END SUBROUTINE mpi_irecv
+
+! Parpack 
+SUBROUTINE pdseupd
+  RETURN
+END SUBROUTINE pdseupd
+
+SUBROUTINE pdneupd
+  RETURN
+END SUBROUTINE pdneupd
+
+SUBROUTINE pzneupd
+  RETURN
+END SUBROUTINE pzneupd
+
+SUBROUTINE pdsaupd
+  RETURN
+END SUBROUTINE pdsaupd
+
+SUBROUTINE pdnaupd
+  RETURN
+END SUBROUTINE pdnaupd
+
+SUBROUTINE pznaupd
+  RETURN
+END SUBROUTINE pznaupd
