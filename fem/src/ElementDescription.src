@@ -5908,47 +5908,90 @@ END IF
           END SELECT
        END IF
 
-       IF (PerformPiolaTransform .OR. PRESENT(dBasisdx)) THEN
-          IF ( .NOT. ElementMetric( n, Element, Nodes, &
-               ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
-            stat = .FALSE.
-            RETURN
+       IF (cdim == dim) THEN
+          !--------------------------------------------------------------------------------
+          ! To optimize computation, this branch avoids calling the ElementMetric function
+          ! since all necessary data has already been found via PiolaTransformationData.
+          !-------------------------------------------------------------------------------
+          IF (PerformPiolaTransform) THEN
+             DO j=1,DOFs
+                DO k=1,dim
+                   B(k) = SUM( LG(1:dim,k) * EdgeBasis(j,1:dim) )
+                END DO
+                EdgeBasis(j,1:dim) = B(1:dim)
+
+                IF (dim == 2) THEN
+                   CurlBasis(j,3) = 1.0d0/DetF * CurlBasis(j,3)
+                ELSE
+                   DO k=1,dim
+                      B(k) = 1.0d0/DetF * SUM( LF(k,1:dim) * CurlBasis(j,1:dim) )
+                   END DO
+                   CurlBasis(j,1:dim) = B(1:dim)
+                END IF
+             END DO
+             ! Make the returned value DetF to act as a metric term for integration
+             ! over the volume of the element: 
+             DetF = ABS(DetF)
           END IF
-       END IF
 
-       IF (PerformPiolaTransform) THEN
-          DO j=1,DOFs
-             DO k=1,cdim
-                B(k) = SUM( LtoGMap(k,1:dim) * EdgeBasis(j,1:dim) )
-             END DO
-             EdgeBasis(j,1:cdim) = B(1:cdim)
-             
-             IF (dim == 2) THEN
-               CurlBasis(j,3) = 1.0d0/DetF * CurlBasis(j,3)
-             ELSE
-                DO k=1,dim
-                   B(k) = 1.0d0/DetF * SUM( LF(k,1:dim) * CurlBasis(j,1:dim) )
+          ! ----------------------------------------------------------------------
+          ! Get global first derivatives of the nodal basis functions if wanted:
+          ! ----------------------------------------------------------------------
+          IF ( PRESENT(dBasisdx) ) THEN
+             dBasisdx = 0.0d0
+             DO i=1,n
+                DO j=1,dim
+                   DO k=1,dim
+                      dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LG(k,j)
+                   END DO
                 END DO
-                CurlBasis(j,1:dim) = B(1:dim)
+             END DO
+          END IF
+       ELSE
+
+          IF (PerformPiolaTransform .OR. PRESENT(dBasisdx)) THEN
+             IF ( .NOT. ElementMetric( n, Element, Nodes, &
+                  ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
+                stat = .FALSE.
+                RETURN
              END IF
-          END DO
-          ! Make the returned value DetF to act as a metric term for integration
-          ! over the volume of the element: 
-          DetF = DetJ
-       END IF
+          END IF
 
-       ! ----------------------------------------------------------------------
-       ! Get global first derivatives of the nodal basis functions if wanted:
-       ! ----------------------------------------------------------------------
-       IF ( PRESENT(dBasisdx) ) THEN
-          dBasisdx = 0.0d0
-          DO i=1,n
-             DO j=1,cdim
-                DO k=1,dim
-                   dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LtoGMap(j,k)
+          IF (PerformPiolaTransform) THEN
+             DO j=1,DOFs
+                DO k=1,cdim
+                   B(k) = SUM( LtoGMap(k,1:dim) * EdgeBasis(j,1:dim) )
+                END DO
+                EdgeBasis(j,1:cdim) = B(1:cdim)
+
+                IF (dim == 2) THEN
+                   CurlBasis(j,3) = 1.0d0/DetF * CurlBasis(j,3)
+                ELSE
+                   DO k=1,dim
+                      B(k) = 1.0d0/DetF * SUM( LF(k,1:dim) * CurlBasis(j,1:dim) )
+                   END DO
+                   CurlBasis(j,1:dim) = B(1:dim)
+                END IF
+             END DO
+             ! Make the returned value DetF to act as a metric term for integration
+             ! over the volume of the element: 
+             DetF = DetJ
+          END IF
+
+          ! ----------------------------------------------------------------------
+          ! Get global first derivatives of the nodal basis functions if wanted:
+          ! ----------------------------------------------------------------------
+          IF ( PRESENT(dBasisdx) ) THEN
+             dBasisdx = 0.0d0
+             DO i=1,n
+                DO j=1,cdim
+                   DO k=1,dim
+                      dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LtoGMap(j,k)
+                   END DO
                 END DO
              END DO
-          END DO
+          END IF
+
        END IF
 
        IF(PRESENT(F)) F = LF
