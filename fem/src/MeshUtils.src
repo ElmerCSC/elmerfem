@@ -2184,8 +2184,6 @@ END SUBROUTINE GetMaxDefs
 
    CALL Info('LoadMesh','Starting',Level=8)
 
-   CALL spariterbarrier()
-
    Parallel = .FALSE.
    IF ( PRESENT(numprocs) .AND. PRESENT(mype) ) THEN
      IF ( numprocs > 1 ) Parallel = .TRUE.
@@ -2413,6 +2411,7 @@ END SUBROUTINE GetMaxDefs
        DO id=1,Model % NumberOfBodies
          BList => ListGetIntegerArray( Model % Bodies(id) % Values, &
              'Target Bodies', GotIt ) 
+print*,'tbodies', id, blist
          IF ( Gotit ) THEN
            DO k=1,SIZE(BList)
              body = Blist(k)
