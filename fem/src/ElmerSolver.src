@@ -289,7 +289,7 @@ END INTERFACE
              CurrentModel % BCs(i) % PMatrix => NULL()
              k = ListGetInteger( CurrentModel % BCs(i) % Values, 'Periodic BC', GotIt )
              IF( GotIt ) THEN
-               CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, Mesh, i, k )
+               CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, i, k )
              END IF
            END DO
          END IF
