@@ -280,6 +280,18 @@ END INTERFACE
            END DO
            ExtrudedMesh % Next => CurrentModel % Meshes % Next
            CurrentModel % Meshes => ExtrudedMesh
+
+           ! If periodic BC given, compute boundary mesh projector:
+           ! ------------------------------------------------------
+           DO i = 1,CurrentModel % NumberOfBCs
+             IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
+               CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
+             CurrentModel % BCs(i) % PMatrix => NULL()
+             k = ListGetInteger( CurrentModel % BCs(i) % Values, 'Periodic BC', GotIt )
+             IF( GotIt ) THEN
+               CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, Mesh, i, k )
+             END IF
+           END DO
          END IF
          
          ! If requested perform coordinate transformation directly after is has been obtained.
