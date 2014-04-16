@@ -512,11 +512,18 @@ CONTAINS
    CHARACTER(LEN=MAX_NAME_LEN) :: potname
    INTEGER :: i,j,k,t,n,nd,nb,IterNo
 
-   REAL(KIND=dp)::TOL,Norm,PrevNorm
-   LOGICAL :: Found, FoundMagnetization
+   REAL(KIND=dp)::TOL,Norm,PrevNorm, NonLinError
+   LOGICAL :: Found, FoundMagnetization, CalculateNonlinearResidual
 
+   TYPE(Matrix_t), POINTER :: MMatrix
+   REAL(KIND=dp), POINTER :: Mx(:), Mb(:), Mr(:)
+   REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpRVec, TmpRHSVec   
+   CHARACTER(LEN=MAX_NAME_LEN) :: ConvergenceType
+
+   SAVE TmpRHSVec, TmpRVec
+  !-----------------
   !System assembly:
-  !----------------
+  !-----------------
 
   A => GetMatrix()
 
@@ -786,6 +793,49 @@ CONTAINS
     PrevSol = Solver % Variable % Values
   END IF
 
+  TOL = GetCReal(GetSolverParams(),'Nonlinear system Convergence Tolerance', Found)
+  ConvergenceType = ListGetString(GetSolverParams(),&
+          'Nonlinear System Convergence Measure', Found)
+  CalculateNonlinearResidual = ConvergenceType == 'residual' .AND. ParEnv % Pes > 1
+
+  IF (CalculateNonlinearResidual) THEN
+     !------------------------------------------------------------------------------------------
+     ! Test whether the nonlinear residual is small enough to terminate the nonlinear iteration
+     !------------------------------------------------------------------------------------------
+     IF (IterNo > 1) THEN
+        n = A % NumberOfRows
+        IF (.NOT. ALLOCATED(TmpRVec)) ALLOCATE( TmpRVec(n) )
+        IF (.NOT. ALLOCATED(TmpRHSVec)) ALLOCATE( TmpRHSVec(n) )
+        TmpRVec = 0.0d0
+        TmpRHSVec(1:n) = A % RHS(1:n)
+        CALL ParallelInitSolve(A, Solver % Variable % Values, TmpRHSVec, TmpRVec, .TRUE.) 
+        MMatrix => ParallelMatrix( A, Mx, Mb, Mr )
+        n = MMatrix % NumberOfRows
+        CALL ParallelMatrixVector( A, Mx, Mr)
+        DO i=1,SIZE(Mr)
+           Mr(i) = Mb(i) - Mr(i)
+        END DO
+
+        NonLinError = ParallelNorm( n, Mr ) / ParallelNorm( n, Mb )
+        WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
+             IterNo-1, NonLinError
+        CALL Info('MagnetoDynamics', Message, Level=3)
+        Converged = NonLinError < TOL
+        IF (Converged) THEN
+           DEALLOCATE( TmpRVec, TmpRHSVec )
+           IF ( ALLOCATED(FluxMap) ) DEALLOCATE(FluxMap)
+           IF ( ALLOCATED(TreeEdges) ) DEALLOCATE(TreeEdges)          
+           RETURN
+        END IF
+     ELSE
+        Converged = .FALSE.
+        ! Deny unnecessary ComputeChange calls as the nonlinear residual is estimated
+        ! within this solver:
+        CALL ListAddLogical( GetSolverParams(), 'Skip Compute Nonlinear Change', .TRUE. )    
+     END IF
+
+  END IF
+
   norm = DefaultSolve()
 
   IF(ABS(Relax-1._dp)>1.d-8) THEN
@@ -803,16 +853,17 @@ CONTAINS
 
 ! CALL WriteResults  ! debugging helper
 
-  TOL = GetCReal(GetSolverParams(),'Nonlinear system Convergence Tolerance',Found)
-  Norm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
+  IF (.NOT. CalculateNonlinearResidual) THEN
+     Norm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
 
-  WRITE( Message, '(a,g15.8,g15.8,a)') &
-      'NS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, &
-            2*ABS(Norm-PrevNorm)/(Norm+PrevNorm),&
-               ' ) :: '// 'magnetodynamics'
-  CALL Info( 'ComputeChange', Message, Level=3)
+     WRITE( Message, '(a,g15.8,g15.8,a)') &
+          'NS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, &
+          2*ABS(Norm-PrevNorm)/(Norm+PrevNorm),&
+          ' ) :: '// 'magnetodynamics'
+     CALL Info( 'ComputeChange', Message, Level=3)
 
-  Converged = 2*ABS(Norm-PrevNorm)/(Norm+PrevNorm)<TOL
+     Converged = 2*ABS(Norm-PrevNorm)/(Norm+PrevNorm)<TOL
+  END IF
 
 !------------------------------------------------------------------------------
  END FUNCTION DoSolve
@@ -2274,7 +2325,7 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN):: Equation
   INTEGER, POINTER :: Perm(:)
   REAL(KIND=dp), POINTER :: fixpot(:)
-  TYPE(Variable_t), POINTER :: fixJpot, svar
+  TYPE(Variable_t), POINTER :: fixJpot, svar, IterV 
   
   dim = CoordinateSystemDimension()
   Mesh => GetMesh()
@@ -2353,6 +2404,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   CALL FreeMatrix(A)
   Solver % Def_Dofs=Def_Dofs
   
+  IterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+  IterV % Values(1) = 1
 CONTAINS
 
 !------------------------------------------------------------------------------
