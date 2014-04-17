@@ -4351,12 +4351,13 @@ END FUNCTION SearchNodeL
 !> Different convergence measures may be used. 
 !> Also performs relaxation if a non-unity relaxation factor is given.
 !------------------------------------------------------------------------------
-  SUBROUTINE ComputeChange(Solver,SteadyState,nsize,values,values0)
+  SUBROUTINE ComputeChange(Solver,SteadyState,nsize,values,values0,Matrix,RHS)
 !------------------------------------------------------------------------------
     TYPE(Solver_t), TARGET :: Solver
     LOGICAL :: SteadyState
+    TYPE(Matrix_t), OPTIONAL, TARGET :: Matrix
     INTEGER, OPTIONAL :: nsize
-    REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:)
+    REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:), RHS(:)
 !------------------------------------------------------------------------------
     INTEGER :: i, n, nn, RelaxAfter, IterNo
     TYPE(Matrix_t), POINTER :: A
@@ -4523,17 +4524,41 @@ END FUNCTION SearchNodeL
       ! x is solution of A(x0)x=b(x0), thus residual should be reall r=b(x)-A(x)x 
       ! Instead we use r=b(x0)-A(x0)x0 which unfortunately is one step behind.
       !--------------------------------------------------------------------------
-      A => Solver % Matrix
-      b => Solver % Matrix % rhs
+      IF(PRESENT(Matrix)) THEN
+        A => Matrix
+      ELSE
+        A => Solver % Matrix
+      END IF
+
+      IF(PRESENT(RHS)) THEN
+        b => RHS
+      ELSE
+        b => Solver % Matrix % rhs
+      END IF
       
       ALLOCATE(r(n))
-      CALL MatrixVectorMultiply( A, x0, r)
-      DO i=1,n
-        r(i) = r(i) - b(i)
-      END DO
-      Change = ComputeNorm(Solver, n, r)
+
+      IF (Parenv % Pes>1) THEN
+        nn = A % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows
+        ALLOCATE( TmpRHSVec(n), TmpXVec(n) )
+        TmpRHSVec(1:n) = b(1:n)
+        TmpXVec(1:n)   = x0(1:n)
+        CALL ParallelVector(A, TmpRHSVec)
+        CALL ParallelVector(A, TmpXVec)       
+        CALL ParallelMatrixVector(A, TmpXVec, r)
+        Change = ParallelNorm(nn, r)
+        bNorm  = ParallelNorm(nn, TmpRHSVec)
+      ELSE
+        CALL MatrixVectorMultiply( A, x0, r)
+        DO i=1,n
+          r(i) = r(i) - b(i)
+        END DO
+        Change = ComputeNorm(Solver, n, r)
+        bNorm  = ComputeNorm(Solver, n, b)
+      END IF
+
+
       IF(.NOT. ConvergenceAbsolute) THEN
-        bNorm = ComputeNorm(Solver, n, b)
         IF(bNorm > 0.0) THEN
           Change = Change / bNorm
         END IF
@@ -4756,6 +4781,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     
 
+
 !------------------------------------------------------------------------------
 !> Checks stepsize of a linear system so that the error has decreased.
 !> Various indicatators and search algorithms have been implemented,
@@ -4772,12 +4798,13 @@ END FUNCTION SearchNodeL
     INTEGER :: MaxTests=0,tests,MaxNonlinIter,NonlinIter
     REAL(KIND=dp) :: Residual0, Residual1, Residual
     INTEGER :: i,n,m,ForceInd, ForceDofs, SearchMode, CostMode, iter = 0
-    TYPE(Matrix_t), POINTER :: A
+    TYPE(Matrix_t), POINTER :: A, MP
     TYPE(Variable_t), POINTER :: IterVar
-    REAL(KIND=dp), POINTER :: b(:), x(:), x0(:), r(:), x1(:), x2(:)
+    REAL(KIND=dp), POINTER :: b(:), x(:), x0(:), r(:), x1(:), x2(:), mr(:), mx(:), mb(:)
     REAL(KIND=dp) :: Norm, PrevNorm, rNorm, bNorm, Relaxation, Alpha, Myy, &
         NonlinTol, LineTol, Cost0, Cost1, Cost, OrthoCoeff, x0norm, x1norm, Change, &
         LinTol
+    REAL(KIND=dp), ALLOCATABLE :: TempRHS(:)
     INTEGER, POINTER :: Indexes(:)
     LOGICAL :: Stat, Init, Newton, Ortho, Debug 
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, ConvergenceType
@@ -4907,9 +4934,23 @@ END FUNCTION SearchNodeL
     b => Solver % Matrix % rhs
 
     ALLOCATE(r(n))
-    CALL MatrixVectorMultiply( A, x, r)
-    r(1:n) = r(1:n) - b(1:n)
-    Residual = ComputeNorm(Solver, n, r)
+    IF (Parenv % Pes>1) THEN
+      ALLOCATE(TempRHS(n))
+      r = 0._dp
+      TempRHS(1:n) = b(1:n)
+      CALL ParallelInitSolve( A, x, TempRHS, r )
+
+      MP => ParallelMatrix(A,mx,mb,mr)
+      m = MP % NumberOfRows
+
+      CALL ParallelMatrixVector( A, mx, r)
+      r(1:m) = r(1:m) - TempRHS(1:m)
+      Residual= ParallelNorm(n,r)
+    ELSE
+      CALL MatrixVectorMultiply( A, x, r)
+      r(1:n) = r(1:n) - b(1:n)
+      Residual = ComputeNorm(Solver, n, r)
+    END IF
 
     IF( CostMode == 1 ) THEN
       Cost = Residual
@@ -5615,6 +5656,7 @@ END FUNCTION SearchNodeL
       END IF
     END IF    
 
+
     ! Optionally we may just create the diag and leave the scaling undone
     !--------------------------------------------------------------------
     IF( PRESENT( ApplyScaling ) ) THEN
@@ -6318,7 +6360,9 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 ! Compute the change of the solution with different methods 
 !------------------------------------------------------------------------------
-   CALL ComputeChange(Solver,.FALSE.,n, x)
+
+   CALL ComputeChange(Solver,.FALSE.,n, x, &
+               Solver % Variable % NonlinValues, A, b )
    Norm = Solver % Variable % Norm
 
  ! Create soft limiters to be later applied by the Dirichlet conditions
@@ -6430,7 +6474,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     Relaxation = ListGetConstReal( Params, &
       'Nonlinear System Relaxation Factor', Found )
-    NeedPrevSol = Found .AND. (Relaxation /= 1.0d0)
+    NeedPrevSol = Found .AND. (Relaxation /= 1.0_dp)
 
     IF(.NOT. NeedPrevSol ) THEN
       Method = ListGetString( Params, &
@@ -6466,8 +6510,7 @@ END FUNCTION SearchNodeL
     END IF
 
     IF ( ASSOCIATED(A % AddMatrix) )  THEN
-      IF ( A % AddMatrix % NumberOFRows>=1 ) & 
-        ConstrainedSolve = 1
+      IF ( A % AddMatrix % NumberOFRows>=1 ) ConstrainedSolve = 1
     END IF
 
     ConstrainedSolve = ParallelReduction(ConstrainedSolve*1._dp)
@@ -6525,7 +6568,6 @@ END FUNCTION SearchNodeL
           A % ConstraintMatrix => Btmp
         END IF
       END IF
-
       CALL SolveWithLinearRestriction( A,b,x,Norm,DOFs,Solver )
 
       IF ( ASSOCIATED(Btmp) ) THEN
@@ -7159,6 +7201,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   NumberOfRows = StiffMatrix % NumberOfRows
   IF(ASSOCIATED(AddMatrix)) NumberOfRows = MAX(NumberOfRows,AddMatrix % NumberOfRows)
   IF(ASSOCIATED(RestMatrix)) NumberOfRows = NumberOFRows + RestMatrix % NumberOfRows
+
   
   ALLOCATE( CollectionMatrix % RHS( NumberOfRows ), &
        CollectionSolution( NumberOfRows ), STAT = istat )
@@ -7184,21 +7227,28 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      END IF
 
      MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
-     IF ( .NOT. ASSOCIATED(MultVar) ) THEN
-       j=NumberOfRows-StiffMatrix % NumberOfRows
+     j=NumberOfRows-StiffMatrix % NumberOfRows
 
-! This old hack was to allow restart with the old restart format
-! now it is no longer needed.
-!       j=MAX(j,StiffMatrix % NumberOfRows/DOFs)
+     IF ( .NOT. ASSOCIATED(MultVar) ) THEN
 
        ALLOCATE( MultiplierValues(j), STAT=istat )
        IF ( istat /= 0 ) CALL Fatal('SolveWithLinearRestriction','Memory allocation error.')
+
        MultiplierValues = 0.0_dp
        CALL VariableAdd(Solver % Mesh % Variables, Solver % Mesh, SolverPointer, &
                   MultiplierName, 1, MultiplierValues)
      END IF
      MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
+
      MultiplierValues => MultVar % Values
+
+     IF (j>SIZE(MultiplierValues)) THEN
+       ALLOCATE(MultiplierValues(j)); MultiplierValues=0._dp
+       MultiplierValues(1:SIZE(MultVar % Values)) = MultVar % Values
+       DEALLOCATE(MultVar % Values)
+       MultVar % Values => MultiplierValues
+     END IF
+
   ELSE
      MultiplierValues => NULL()
   END IF
@@ -7246,18 +7296,20 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
          Found = .NOT.StiffMatrix % ConstrainedDOF(i)
 
       IF(Found) THEN
+        Found = .FALSE.
         DO j=AddMatrix % Rows(i+1)-1,AddMatrix % Rows(i),-1
             CALL AddToMatrixElement( CollectionMatrix, &
                i, AddMatrix % Cols(j), AddMatrix % Values(j))
+            IF (i == AddMatrix % Cols(j)) Found = .TRUE.
         END DO
         CollectionVector(i) = CollectionVector(i) + AddVector(i)
+        IF (.NOT.Found) CALL AddToMatrixElement( CollectionMatrix, i, i, 0._dp )
       END IF
     END DO
   END IF
 !------------------------------------------------------------------------------
 ! Put the StiffMatrix to upper part of CollectionMatrix
 !------------------------------------------------------------------------------
-
   DO i=StiffMatrix % NumberOfRows,1,-1
     DO j=StiffMatrix % Rows(i+1)-1,StiffMatrix % Rows(i),-1
       CALL AddToMatrixElement( CollectionMatrix, &
@@ -7281,6 +7333,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
 
   CALL Info( 'SolveWithLinearRestriction', 'CollectionMatrix done', Level=5 )
+
 
 
 !------------------------------------------------------------------------------
@@ -7310,6 +7363,20 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 !------------------------------------------------------------------------------
 
 ! Collectionmatrix % Complex = StiffMatrix % Complex
+
+   !------------------------------------------------------------------------------
+   ! Look at the nonlinear system previous values again, not taking the constrained
+   ! system into account...
+   !------------------------------------------------------------------------------
+   Found = ASSOCIATED(Solver % Variable % NonlinValues)
+   IF( Found ) THEN
+     k = CollectionMatrix % NumberOfRows
+     IF ( SIZE(Solver % Variable % NonlinValues) /= k) THEN
+       DEALLOCATE(Solver % Variable % NonlinValues)
+       ALLOCATE(Solver % Variable % NonlinValues(k))
+     END IF
+     Solver % Variable % NonlinValues (1:k)= CollectionSolution(1:k)
+  END IF
 
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )

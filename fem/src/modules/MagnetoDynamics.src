@@ -360,7 +360,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
          SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
          PiolaVersion
-  
 
   REAL(KIND=dp) :: Relax
 
@@ -438,7 +437,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      AllocationsDone = .TRUE.
   END IF
 
-
   
   ConstantSystem = GetLogical( GetSolverParams(), &
        'Constant System', Found )
@@ -471,28 +469,13 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 	      'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
-  Relax = GetCReal( GetSolverParams(), &
-              'Nonlinear System Relaxation Factor', FoundRelax)
-  IF(.NOT.FoundRelax) Relax = 1._dp
-
-  IF(ABS(Relax-1._dp)>1.d-8) THEN
-    ALLOCATE(PrevSol(SIZE(Solver % Variable % Values)))
-    CALL ListAddConstReal( GetSolverParams(), &
-              'Nonlinear System Relaxation Factor', 1._dp) 
-  END IF
-
   DO i=1,NoIterationsMax
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
   END DO
 
-  IF(FoundRelax) &
-    CALL ListAddConstReal( GetSolverParams(), &
-              'Nonlinear System Relaxation Factor', Relax) 
-
   CALL CalculateLumped(Model % NumberOfBodyForces)
-
 
   CoordVar => VariableGet(Mesh % Variables,'Coordinates')
   IF(ASSOCIATED(CoordVar)) THEN
@@ -789,58 +772,12 @@ CONTAINS
 
   PrevNorm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
 
-  IF(ABS(Relax-1._dp)>1.d-8) THEN
-    PrevSol = Solver % Variable % Values
-  END IF
-
   TOL = GetCReal(GetSolverParams(),'Nonlinear system Convergence Tolerance', Found)
-  ConvergenceType = ListGetString(GetSolverParams(),&
-          'Nonlinear System Convergence Measure', Found)
-  CalculateNonlinearResidual = ConvergenceType == 'residual' .AND. ParEnv % Pes > 1
 
-  IF (CalculateNonlinearResidual) THEN
-     !------------------------------------------------------------------------------------------
-     ! Test whether the nonlinear residual is small enough to terminate the nonlinear iteration
-     !------------------------------------------------------------------------------------------
-     IF (IterNo > 1) THEN
-        n = A % NumberOfRows
-        IF (.NOT. ALLOCATED(TmpRVec)) ALLOCATE( TmpRVec(n) )
-        IF (.NOT. ALLOCATED(TmpRHSVec)) ALLOCATE( TmpRHSVec(n) )
-        TmpRVec = 0.0d0
-        TmpRHSVec(1:n) = A % RHS(1:n)
-        CALL ParallelInitSolve(A, Solver % Variable % Values, TmpRHSVec, TmpRVec, .TRUE.) 
-        MMatrix => ParallelMatrix( A, Mx, Mb, Mr )
-        n = MMatrix % NumberOfRows
-        CALL ParallelMatrixVector( A, Mx, Mr)
-        DO i=1,SIZE(Mr)
-           Mr(i) = Mb(i) - Mr(i)
-        END DO
-
-        NonLinError = ParallelNorm( n, Mr ) / ParallelNorm( n, Mb )
-        WRITE(Message,'(a,I4,ES12.3)') 'Residual for nonlinear iterate', &
-             IterNo-1, NonLinError
-        CALL Info('MagnetoDynamics', Message, Level=3)
-        Converged = NonLinError < TOL
-        IF (Converged) THEN
-           DEALLOCATE( TmpRVec, TmpRHSVec )
-           IF ( ALLOCATED(FluxMap) ) DEALLOCATE(FluxMap)
-           IF ( ALLOCATED(TreeEdges) ) DEALLOCATE(TreeEdges)          
-           RETURN
-        END IF
-     ELSE
-        Converged = .FALSE.
-        ! Deny unnecessary ComputeChange calls as the nonlinear residual is estimated
-        ! within this solver:
-        CALL ListAddLogical( GetSolverParams(), 'Skip Compute Nonlinear Change', .TRUE. )    
-     END IF
-
-  END IF
+  IF (DefaultLineSearch(Converged)) RETURN
+  IF ( Converged ) RETURN
 
   norm = DefaultSolve()
-
-  IF(ABS(Relax-1._dp)>1.d-8) THEN
-    Solver % Variable % Values = (1-Relax)*PrevSol + Relax*Solver % Variable % Values
-  END IF
 
   IF ( Found .AND. dt /= PrevDT ) THEN
     CALL ListAddLogical( GetSolverParams(), &
@@ -853,17 +790,7 @@ CONTAINS
 
 ! CALL WriteResults  ! debugging helper
 
-  IF (.NOT. CalculateNonlinearResidual) THEN
-     Norm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
-
-     WRITE( Message, '(a,g15.8,g15.8,a)') &
-          'NS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, &
-          2*ABS(Norm-PrevNorm)/(Norm+PrevNorm),&
-          ' ) :: '// 'magnetodynamics'
-     CALL Info( 'ComputeChange', Message, Level=3)
-
-     Converged = 2*ABS(Norm-PrevNorm)/(Norm+PrevNorm)<TOL
-  END IF
+  Converged = Solver % Variable % NonlinConverged==1
 
 !------------------------------------------------------------------------------
  END FUNCTION DoSolve
