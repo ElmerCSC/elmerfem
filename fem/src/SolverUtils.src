@@ -4536,18 +4536,29 @@ END FUNCTION SearchNodeL
         b => Solver % Matrix % rhs
       END IF
       
-      ALLOCATE(r(n))
+      ALLOCATE(r(n)); r=0._dp
 
       IF (Parenv % Pes>1) THEN
-        nn = A % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows
         ALLOCATE( TmpRHSVec(n), TmpXVec(n) )
-        TmpRHSVec(1:n) = b(1:n)
-        TmpXVec(1:n)   = x0(1:n)
-        CALL ParallelVector(A, TmpRHSVec)
-        CALL ParallelVector(A, TmpXVec)       
-        CALL ParallelMatrixVector(A, TmpXVec, r)
-        Change = ParallelNorm(nn, r)
-        bNorm  = ParallelNorm(nn, TmpRHSVec)
+
+        nn = A % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows
+
+        CALL ParallelInitSolve( A, tmpXVec, TmpRhsVec, r)
+
+        tmpXvec = x0(1:n)
+        CALL ParallelVector(a,TmpXvec)
+
+        TmpRhsvec = b(1:n)
+        call parallelvector(a,tmpRhsvec)
+
+        CALL ParallelMatrixVector(A, TmpXvec, r)
+        DO i=1,nn
+          r(i) = r(i) - tmprhsvec(i)
+        END DO
+
+        Change = ParallelNorm(nn,r)
+        bNorm =  ParallelNorm(nn,tmpRhsVec)
+
       ELSE
         CALL MatrixVectorMultiply( A, x0, r)
         DO i=1,n
@@ -6361,8 +6372,8 @@ END FUNCTION SearchNodeL
 ! Compute the change of the solution with different methods 
 !------------------------------------------------------------------------------
 
-   CALL ComputeChange(Solver,.FALSE.,n, x, &
-               Solver % Variable % NonlinValues, A, b )
+   CALL ComputeChange(Solver,.FALSE.,n, x,  &
+                   Solver % Variable % NonlinValues, A, b )
    Norm = Solver % Variable % Norm
 
  ! Create soft limiters to be later applied by the Dirichlet conditions
