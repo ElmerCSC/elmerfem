@@ -44,7 +44,7 @@ End
 Solver 1
 ! In order not to mix the norm of the multimesh system
 !  Exec Solver = Before Timestep
-  Equation = "localHeat"
+  Equation = "refHeat"
   Variable = "refT"
   Procedure = "HeatSolve" "HeatSolver"
 

@@ -43,7 +43,7 @@ End
 
 Solver 2
   Mesh = "msh2"
-  Equation = Linear elasticity
+  Equation = Linear elasticity two
   Procedure = "StressSolve" "StressSolver"
   Variable = -dofs 3 Displacement2
   Steady State Convergence Tolerance = 1.0e-8
