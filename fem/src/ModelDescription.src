@@ -821,7 +821,6 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
 
-
     IF ( .NOT. ScanOnly )  THEN
 
       ! Make some sanity checks that all the entries have been defined
@@ -877,6 +876,21 @@ CONTAINS
         END IF
       END DO
 
+      ! Check that the same name is not used twice,
+      ! each solver should be uniquely defined by its name.
+      ! If the same equation name is used twice it may lead to difficult-to-find 
+      ! problems later on. 
+      DO i = 1, Model % NumberOfSolvers
+        str = ListGetString( Model % Solvers(i) % Values,'Equation',Found )
+        IF(.NOT. Found ) CYCLE
+        DO j = i+1, Model % NumberOfSolvers
+          IF( TRIM(str) == TRIM( ListGetString( Model % Solvers(j) % Values,'Equation',Found ))) THEN
+            CALL Fatal('LoadInputFile','Solvers '//TRIM(I2S(i))//' and '//TRIM(I2S(j))//&
+                ' have the same Equation name!')
+          END IF
+        END DO
+      END DO
+
       ! Make sanity check that all Material, Body Force and Equation is associated to some
       ! body. This is not detrimental so a warning suffices. The 2nd time there is the 
       ! default setting so apply this only on the first time.
@@ -918,10 +932,10 @@ CONTAINS
             CALL Warn('LoadInputFile','> Equation '// TRIM(I2S(i)) //' < not used in any Body!')
           END IF
         END DO
+
         DEALLOCATE( EntryUsed ) 
       END IF
       !--- sanity checks done
-
 
       ! Add default equation, material, ic, bodyforce, and body if not given:
       ! ---------------------------------------------------------------------
@@ -967,7 +981,10 @@ CONTAINS
        END IF
       ! -- done adding default fields
 
-    END IF
+
+       
+
+     END IF
     !--------------------------------------------------------------------
 
     FirstTime = .FALSE.
