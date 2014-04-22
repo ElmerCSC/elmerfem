@@ -496,7 +496,7 @@ CONTAINS
    INTEGER :: i,j,k,t,n,nd,nb,IterNo
 
    REAL(KIND=dp)::TOL,Norm,PrevNorm, NonLinError
-   LOGICAL :: Found, FoundMagnetization, CalculateNonlinearResidual
+   LOGICAL :: Found, FoundMagnetization, CalculateNonlinearResidual, LFactFound
 
    TYPE(Matrix_t), POINTER :: MMatrix
    REAL(KIND=dp), POINTER :: Mx(:), Mb(:), Mr(:)
@@ -763,9 +763,9 @@ CONTAINS
   ! -----------------------
   IF ( dt /= PrevDT ) THEN
     LFact = GetLogical( GetSolverParams(),  &
-      'Linear System Refactorize', Found )
+      'Linear System Refactorize', LFactFound )
 
-    IF ( Found ) &
+    IF ( LFactFound ) &
       CALL ListAddLogical( getSolverParams(), &
         'Linear System Refactorize', .TRUE. )
   END IF
@@ -775,11 +775,14 @@ CONTAINS
   TOL = GetCReal(GetSolverParams(),'Nonlinear system Convergence Tolerance', Found)
 
   IF (DefaultLineSearch(Converged)) RETURN
-  IF ( Converged ) RETURN
+  IF ( Converged ) GOTO 10
 
   norm = DefaultSolve()
+  Converged = Solver % Variable % NonlinConverged==1
 
-  IF ( Found .AND. dt /= PrevDT ) THEN
+10 CONTINUE
+
+  IF ( LFactFound .AND. dt /= PrevDT ) THEN
     CALL ListAddLogical( GetSolverParams(), &
        'Linear System Refactorize', LFact )
   END IF
@@ -790,7 +793,6 @@ CONTAINS
 
 ! CALL WriteResults  ! debugging helper
 
-  Converged = Solver % Variable % NonlinConverged==1
 
 !------------------------------------------------------------------------------
  END FUNCTION DoSolve
