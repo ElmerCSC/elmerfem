@@ -6373,12 +6373,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 ! Compute the change of the solution with different methods 
 !------------------------------------------------------------------------------
-    IF (ASSOCIATED(Solver % Variable % NonlinValues)) THEN
-       CALL ComputeChange(Solver,.FALSE.,n, x,  &
-            Solver % Variable % NonlinValues, A, b )
-    ELSE
-       CALL ComputeChange(Solver,.FALSE.,n, x, Matrix=A, RHS=b )       
-    END IF
+    CALL ComputeChange(Solver,.FALSE.,n, x, Matrix=A, RHS=b )
     Norm = Solver % Variable % Norm
 
  ! Create soft limiters to be later applied by the Dirichlet conditions
