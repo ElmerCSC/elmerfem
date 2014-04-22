@@ -4482,7 +4482,9 @@ END FUNCTION SearchNodeL
         Stat = .TRUE.
       END IF
     END IF
-    IF(Stat .AND. SIZE(x0) /= SIZE(x)) CALL Warn('ComputeChange','Possible mismatch in length of vectors!')
+    IF(Stat) THEN
+      IF (SIZE(x0) /= SIZE(x)) CALL Warn('ComputeChange','Possible mismatch in length of vectors!')
+    END IF
 
     IF(Relax .AND. RelaxBefore) THEN
       x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
