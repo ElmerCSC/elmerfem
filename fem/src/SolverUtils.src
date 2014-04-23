@@ -2642,12 +2642,15 @@ CONTAINS
 
            IF( AddCoeff ) coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
                //Name(1:nlen),node, Found )        
-           IF( AddRes ) res = ListGetRealAtNode( BC,'Mortar BC Resistance '&
+           IF( AddRes ) res = ListGetRealAtNode( BC,'Mortar BC Resistivity '&
                //Name(1:nlen),node, Found )
            IF( AddRhs ) voff = ListGetRealAtNode( BC,'Mortar BC Offset '&
                //Name(1:nlen),node, Found )        
 
            DO j = Projector % Rows(i),Projector % Rows(i+1)-1
+
+             ! Apply jump condition only to nodal dofs, 
+             ! edge dofs or any other non-nodal dofs cannot be handled for jumps. 
              k = Projector % Cols(j)
              IF( k > nodesize ) CYCLE
 
@@ -2668,7 +2671,9 @@ CONTAINS
                Found = .FALSE.
                DO j2 = Projector % Rows(i),Projector % Rows(i+1)-1
                  k2 = Projector % Cols(j2)
-                 IF( k2 == i2 + totsize ) THEN
+                 Found = ( k2 == i2 + totsize )
+                   
+                 IF( Found ) THEN
                    ! Ok, found it. Now set the value. 
                    
                    !coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
@@ -2684,10 +2689,9 @@ CONTAINS
                    ELSE                   
                      Projector % Values(j2) = -0.5 * weight * res
                    END IF
-
-                   Found = .TRUE.
                    EXIT
                  END IF
+
                END DO               
                IF( .NOT. Found ) THEN
                  CALL Fatal('SetWeigtedProjectorJump','Could not find entry corresponding: '&
@@ -4551,7 +4555,7 @@ END FUNCTION SearchNodeL
         CALL ParallelVector(a,TmpXvec)
 
         TmpRhsvec = b(1:n)
-        call parallelvector(a,tmpRhsvec)
+        CALL parallelvector(a,tmpRhsvec)
 
         CALL ParallelMatrixVector(A, TmpXvec, r)
         DO i=1,nn
