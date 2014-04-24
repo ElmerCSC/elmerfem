@@ -1906,8 +1906,7 @@ integer::inside
 
            RowInd = -1
            IF ( CurrIf % NumberOfRows > 0 ) THEN
-              RowInd = SearchIAItem( CurrIf % NumberOfRows, &
-                            CurrIf % GRows, GRow )
+              RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
            END IF
 
            IF ( RowInd /= -1 ) THEN
@@ -1937,8 +1936,7 @@ integer::inside
                 
            RowInd = -1
            IF ( CurrIf % NumberOfRows > 0 ) THEN
-              RowInd = SearchIAItem( CurrIf % NumberOfRows, &
-                          CurrIf % GRows, GRow )
+              RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
            END IF
 
            IF ( RowInd /= -1 ) THEN
@@ -2040,6 +2038,7 @@ REAL(kind=dp)::cputime,realtime,tt,rt
 
    EdgeBasis = ListGetLogical( Solver % Values, 'Edge Basis', stat )
    EdgeBasis = EdgeBasis .AND. .NOT. SourceMatrix % Complex
+
    IF ( EdgeBasis ) THEN
      IF( ASSOCIATED( SplittedMatrix % InsideMatrix % Eperm) ) &
        DEALLOCATE( SplittedMatrix % InsideMatrix % EPerm )
@@ -2332,6 +2331,8 @@ REAL(kind=dp) :: s, RealTime
 !omp end parallel do
   END IF
 
+  CALL SParIterActiveBarrier 
+
   CALL Recv_LocIf_Wait( GlobalData % SplittedMatrix, n, v,  &
        nneigh, neigh, recv_size, requests, buffer )
 
@@ -2341,6 +2342,7 @@ REAL(kind=dp) :: s, RealTime
     DEALLOCATE( buffer(i) % rbuf )
   END DO
   DEALLOCATE( buffer )
+
   CALL SParIterActiveBarrier 
 !----------------------------------------------------------------------
 END SUBROUTINE SParMatrixVector
@@ -2863,10 +2865,8 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
               DO k = RecvdIfMatrix(i) % Rows(j), RecvdIfMatrix(i) % Rows(j+1) - 1
                  l = RecvdIfMatrix(i) % Cols(k)
                  ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
-                 IF (ColIndA>0) THEN
-! XXXX             ColIndA = SourceMatrix % Perm(ColIndA)
-                   IF (ColIndA>0) ColIndA = RevDOFList(ColIndA)
-                 END IF
+                 IF (ColIndA>0) ColIndA = RevDOFList(ColIndA)
+
                  IF ( ColIndA  <= 0 ) CYCLE
 
                  Found = .FALSE.
@@ -2889,10 +2889,11 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
                  END DO
 
                  IF ( .NOT. Found ) THEN
-                    PRINT*,ParEnv % MyPE,  'GlueFinalize: This should not happen 0'
-                    PRINT*,ParEnv % MyPE, i-1, RecvdIfMatrix(i) % GRows(j), RowInd, &
-                                RecvdIfMatrix(i) % Cols(k), ColIndA
-                    CALL FLUSH(6)
+                   IF(RecvdIfMatrix(i) % Values(k) /= 0._dp ) THEN
+                     PRINT*,ParEnv % MyPE,  'GlueFinalize: This should not happen 0'
+                     PRINT*,ParEnv % MyPE, i-1, RecvdIfMatrix(i) % GRows(j), RowInd, &
+                                 RecvdIfMatrix(i) % Cols(k), ColIndA
+                   END IF
                  END IF
               END DO
            ELSE
