@@ -4436,7 +4436,6 @@ SUBROUTINE Recv_LocIf_Wait( SplittedMatrix, ndim, v, n, neigh, &
     CALL MPI_Waitany( active_cnt, active_req, ni, status, ierr )
 
     ni = active_n(ni)
-    active_n(ni)=-1
     i = neigh(ni) + 1
     RevInd => SplittedMatrix % VecIndices(i) % RevInd
     DO k = 1, sizes(ni)
