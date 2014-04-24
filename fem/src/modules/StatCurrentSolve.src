@@ -442,11 +442,6 @@ END SUBROUTINE StatCurrentSolver_Init
        WRITE( Message, * ) 'Solve (s)             :',st
        CALL Info( 'StatCurrentSolve', Message, Level=5 )
 
-       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
-
-     END DO
-
-
 
 !------------------------------------------------------------------------------
 !    Compute the electric field from the potential: E = -grad Phi
@@ -457,54 +452,59 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
 !    Compute the Joule heating: H,tot = Integral (E . D)dV
 !------------------------------------------------------------------------------
+       
+       IF ( Control .OR. CalculateCurrent .OR. CalculateHeating ) THEN 
+         CALL GeneralCurrent( Model, Potential, PotentialPerm )
 
-     IF ( Control .OR. CalculateCurrent .OR. CalculateHeating ) THEN 
-       CALL GeneralCurrent( Model, Potential, PotentialPerm )
-
-       WRITE( Message, * ) 'Total Heating Power   :', Heatingtot
-       CALL Info( 'StatCurrentSolve', Message, Level=4 )
-       CALL ListAddConstReal( Model % Simulation, &
-           'RES: Total Joule Heating', Heatingtot )
-
-       IF( MaxPotential > MinPotential) THEN
-         Resistance = (MaxPotential - MinPotential)**2 / HeatingTot
-         WRITE( Message, * ) 'Effective Resistance  :', Resistance
+         WRITE( Message, * ) 'Total Heating Power   :', Heatingtot
          CALL Info( 'StatCurrentSolve', Message, Level=4 )
          CALL ListAddConstReal( Model % Simulation, &
-             'RES: Effective Resistance', Resistance )
+             'RES: Total Joule Heating', Heatingtot )
+
+         IF( MaxPotential > MinPotential) THEN
+           Resistance = (MaxPotential - MinPotential)**2 / HeatingTot
+           WRITE( Message, * ) 'Effective Resistance  :', Resistance
+           CALL Info( 'StatCurrentSolve', Message, Level=4 )
+           CALL ListAddConstReal( Model % Simulation, &
+               'RES: Effective Resistance', Resistance )
+         END IF
        END IF
-     END IF
 
-     IF(Control ) THEN
-        WRITE( Message, * ) 'Total Volume          :', VolTot
-        CALL Info( 'StatCurrentSolve', Message, Level=4 )
+       IF(Control ) THEN
+         WRITE( Message, * ) 'Total Volume          :', VolTot
+         CALL Info( 'StatCurrentSolve', Message, Level=4 )
 
-        ControlScaling = 1.0_dp
-        IF( ControlPower ) THEN
+         ControlScaling = 1.0_dp
+         IF( ControlPower ) THEN
            ControlScaling = SQRT( ControlTarget / HeatingTot )
-        ELSE IF( ControlCurrent ) THEN
+         ELSE IF( ControlCurrent ) THEN
            IF( MaxPotential - MinPotential > 0.0d0 ) THEN
-              CurrentTot = HeatingTot / (MaxPotential - MinPotential)
-              ControlScaling = ControlTarget / CurrentTot
-              WRITE( Message, * ) 'Total Current         :', CurrentTot
+             CurrentTot = HeatingTot / (MaxPotential - MinPotential)
+             ControlScaling = ControlTarget / CurrentTot
+             WRITE( Message, * ) 'Total Current         :', CurrentTot
              CALL Info( 'StatCurrentSolve', Message, Level=4 )
-              CALL ListAddConstReal( Model % Simulation, &
-                   'RES: TotalCurrent', CurrentTot )
+             CALL ListAddConstReal( Model % Simulation, &
+                 'RES: TotalCurrent', CurrentTot )
            ELSE
-              CALL Warn('StatCurrentSolver','Current cannot be determined without pot. difference')
+             CALL Warn('StatCurrentSolver','Current cannot be determined without pot. difference')
            END IF
-        END IF
+         END IF
 
-        WRITE( Message, * ) 'Control Scaling       :', ControlScaling
-        CALL Info( 'StatCurrentSolve', Message, Level=4 )
-        CALL ListAddConstReal( Model % Simulation, &
+         WRITE( Message, * ) 'Control Scaling       :', ControlScaling
+         CALL Info( 'StatCurrentSolve', Message, Level=4 )
+         CALL ListAddConstReal( Model % Simulation, &
              'RES: CurrentSolver Scaling', ControlScaling )
-        Potential = ControlScaling * Potential
-        Solver % Variable % Norm = ControlScaling * Solver % Variable % Norm
+         Potential = ControlScaling * Potential
+!         Solver % Variable % Norm = ControlScaling * Solver % Variable % Norm
 
-        IF ( CalculateHeating )  Heating = ControlScaling**2 * Heating
-        IF ( CalculateCurrent )  VolCurrent = ControlScaling * VolCurrent
-     END IF
+         IF ( CalculateHeating )  Heating = ControlScaling**2 * Heating
+         IF ( CalculateCurrent )  VolCurrent = ControlScaling * VolCurrent
+       END IF
+
+       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+
+     END DO
+
 
 !------------------------------------------------------------------------------
 
@@ -556,9 +556,12 @@ END SUBROUTINE StatCurrentSolver_Init
     ALLOCATE( Nodes % x( Model % MaxElementNodes ) )
     ALLOCATE( Nodes % y( Model % MaxElementNodes ) )
     ALLOCATE( Nodes % z( Model % MaxElementNodes ) )
-    ALLOCATE( SumOfWeights( Model % NumberOfNodes ) )
 
-    SumOfWeights = 0.0d0
+    IF( CalculateHeating .OR. CalculateCurrent ) THEN
+      ALLOCATE( SumOfWeights( Model % NumberOfNodes ) )
+      SumOfWeights = 0.0d0
+    END IF
+
     HeatingTot = 0.0d0
     VolTot = 0.0d0
     IF ( CalculateHeating )  Heating = 0.0d0
@@ -647,17 +650,16 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
 !      Coordinatesystem dependent info
 !------------------------------------------------------------------------------
-          s = 1
-          IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-             x = SUM( Nodes % x(1:n)*Basis(1:n) )
-             y = SUM( Nodes % y(1:n)*Basis(1:n) )
-             z = SUM( Nodes % z(1:n)*Basis(1:n) )
-             s = 2*PI
-          END IF
+          s = SqrtElementMetric * S_Integ(tg)
 
-          CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
- 
-          s = s * SqrtMetric * SqrtElementMetric * S_Integ(tg)
+          IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+            x = SUM( Nodes % x(1:n)*Basis(1:n) )
+            y = SUM( Nodes % y(1:n)*Basis(1:n) )
+            z = SUM( Nodes % z(1:n)*Basis(1:n) )
+            
+            CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
+            s = s * SqrtMetric * 2 * PI
+          END IF
 
 !------------------------------------------------------------------------------
 
@@ -675,14 +677,16 @@ END SUBROUTINE StatCurrentSolver_Init
           HeatingTot = HeatingTot + &
                s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) )
 
-          HeatingDensity = HeatingDensity + &
-             s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) ) 
-          DO j = 1,DIM
-             Current(j) = Current(j) - EpsGrad(j) * s
-          END DO
-          ECond = ECond + SUM( Conductivity(1,1,1:n) * Basis(1:n) ) * s
-
-          ElemVol = ElemVol + s
+          IF( CalculateHeating .OR. CalculateCurrent ) THEN
+            HeatingDensity = HeatingDensity + &
+                s * SUM( Grad(1:DIM) * EpsGrad(1:DIM) ) 
+            DO j = 1,DIM
+              Current(j) = Current(j) - EpsGrad(j) * s
+            END DO
+            ECond = ECond + SUM( Conductivity(1,1,1:n) * Basis(1:n) ) * s
+            
+            ElemVol = ElemVol + s
+          END IF
 
        END DO! of the Gauss integration points
 
@@ -690,30 +694,30 @@ END SUBROUTINE StatCurrentSolver_Init
 !   Weight with element area if required
 !------------------------------------------------------------------------------
 
-       IF ( ConstantWeights ) THEN
-         HeatingDensity = HeatingDensity / ElemVol
-         Current(1:Dim) = Current(1:Dim) / ElemVol
-         ECond = Econd / ElemVol
-         SumOfWeights( Reorder( NodeIndexes(1:n) ) ) = &
-             SumOfWeights( Reorder( NodeIndexes(1:n) ) ) + 1
-       ELSE
-         SumOfWeights( Reorder( NodeIndexes(1:n) ) ) = &
-             SumOfWeights( Reorder( NodeIndexes(1:n) ) ) + ElemVol
-       END IF
+       IF( CalculateHeating .OR. CalculateCurrent ) THEN
+         IF ( ConstantWeights ) THEN
+           HeatingDensity = HeatingDensity / ElemVol
+           Current(1:Dim) = Current(1:Dim) / ElemVol
+           ECond = Econd / ElemVol
+           SumOfWeights( Reorder( NodeIndexes(1:n) ) ) = &
+               SumOfWeights( Reorder( NodeIndexes(1:n) ) ) + 1
+         ELSE
+           SumOfWeights( Reorder( NodeIndexes(1:n) ) ) = &
+               SumOfWeights( Reorder( NodeIndexes(1:n) ) ) + ElemVol
+         END IF
 
-!------------------------------------------------------------------------------
-
-       IF ( CalculateHeating ) THEN
-          Heating( Reorder(NodeIndexes(1:n)) ) = &
+         IF ( CalculateHeating ) THEN
+           Heating( Reorder(NodeIndexes(1:n)) ) = &
                Heating( Reorder(NodeIndexes(1:n)) ) + HeatingDensity
-       END IF
-
-       IF ( CalculateCurrent ) THEN
-          DO j=1,DIM 
+         END IF
+         
+         IF ( CalculateCurrent ) THEN
+           DO j=1,DIM 
              VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) = &
-                  VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) + &
-                  Current(j)
-          END DO
+                 VolCurrent(DIM*(Reorder(NodeIndexes(1:n))-1)+j) + &
+                 Current(j)
+           END DO
+         END IF
        END IF
 
     END DO! of the bulk elements
@@ -727,17 +731,20 @@ END SUBROUTINE StatCurrentSolver_Init
 !   Finally, compute average of the fluxes at nodes
 !------------------------------------------------------------------------------
 
-    DO i = 1, Model % NumberOfNodes
-       IF ( ABS( SumOfWeights(i) ) > 0.0D0 ) THEN
+    IF( CalculateHeating .OR. CalculateCurrent ) THEN
+      DO i = 1, Model % NumberOfNodes
+        IF ( ABS( SumOfWeights(i) ) > 0.0D0 ) THEN
           IF ( CalculateHeating )  Heating(i) = Heating(i) / SumOfWeights(i)
           DO j = 1, DIM
-             IF ( CalculateCurrent )  VolCurrent(DIM*(i-1)+j) = &
-                  VolCurrent(DIM*(i-1)+j) /  SumOfWeights(i)
+            IF ( CalculateCurrent )  VolCurrent(DIM*(i-1)+j) = &
+                VolCurrent(DIM*(i-1)+j) /  SumOfWeights(i)
           END DO
-       END IF
-    END DO
+        END IF
+      END DO
+      DEALLOCATE( SumOfWeights ) 
+    END IF
 
-   DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, SumOfWeights )
+    DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
 
 !------------------------------------------------------------------------------
    END SUBROUTINE GeneralCurrent
