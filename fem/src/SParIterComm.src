@@ -4304,7 +4304,7 @@ SUBROUTINE Send_LocIf( SplittedMatrix,n,neigh )
   DO nj=1,n
      IF ( L(nj) > 0 ) THEN
        CALL MPI_BSEND( VecL(nj) % rbuf, L(nj), MPI_DOUBLE_PRECISION, &
-                neigh(nj), 6001, MPI_COMM_WORLD, Ierr )
+                Neigh(nj), 6001, MPI_COMM_WORLD, Ierr )
      END IF
   END DO
 !*********************************************************************
@@ -4333,7 +4333,6 @@ SUBROUTINE Recv_LocIf_size( n, neigh, sizes )
   DO i=1, ParEnv % NumOfNeighbours
      CALL MPI_RECV( Veclen, 1, MPI_INTEGER, neigh(i), &
             6000, MPI_COMM_WORLD, status, ierr )
-
      sizes(i) = Veclen
   END DO
 !*********************************************************************
@@ -4346,10 +4345,8 @@ END SUBROUTINE Recv_LocIf_size
 !
 !> Receive interface block contributions to vector from neighbours
 !
-SUBROUTINE Recv_LocIf( SplittedMatrix, n, neigh, &
-              sizes, requests, buffer )
-
-  USE Types
+SUBROUTINE Recv_LocIf( SplittedMatrix, n, neigh, sizes, requests, buffer )
+  uSE Types
   IMPLICIT NONE
 
   TYPE (SplittedMatrixT) :: SplittedMatrix
@@ -4422,11 +4419,25 @@ SUBROUTINE Recv_LocIf_Wait( SplittedMatrix, ndim, v, n, neigh, &
     END IF
   END DO
 
+#if 1
+  CALL MPI_Waitall( active_cnt, active_req, MPI_STATUSES_IGNORE, ierr )
+
+  DO j=1,active_cnt
+    ni = active_n(j)
+    i = neigh(ni)+1
+    RevInd => SplittedMatrix % VecIndices(i) % RevInd
+    DO k = 1, sizes(ni)
+      IF ( RevInd(k) > 0 ) &
+         v(RevInd(k)) = v(RevInd(k))+buffer(ni) % rbuf(k)
+    END DO
+  END DO
+#else
   DO WHILE( completed<n )
     CALL MPI_Waitany( active_cnt, active_req, ni, status, ierr )
 
     ni = active_n(ni)
-    i = neigh(ni)+1
+    active_n(ni)=-1
+    i = neigh(ni) + 1
     RevInd => SplittedMatrix % VecIndices(i) % RevInd
     DO k = 1, sizes(ni)
       IF ( RevInd(k) > 0 ) &
@@ -4434,6 +4445,7 @@ SUBROUTINE Recv_LocIf_Wait( SplittedMatrix, ndim, v, n, neigh, &
     END DO
     completed = completed + 1
   END DO
+#endif
 !*********************************************************************
 END SUBROUTINE Recv_LocIf_Wait
 !*********************************************************************

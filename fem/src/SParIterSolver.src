@@ -2284,17 +2284,7 @@ REAL(kind=dp) :: s, RealTime
 
         IfV % IfVec(1:CurrIf % NumberOfRows) = 0.0
         DO j = 1, CurrIf % NumberOfRows
-           IF ( Currif % RowOwner(j) == ParEnv % MyPE ) THEN
-!
-! This is now dealt with in the matrix initialization, by adding the entries
-! to 'InsideMatrix'...
-!            rowind = IfO % IfVec(j)
-!            DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
-!              Colind = IfL % IfVec(k)
-!              IF ( ColInd > 0 ) &
-!                v(rowind)=v(rowind)+CurrIf % Values(k)*u(colind)
-!            END DO
-           ELSE
+           IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) THEN
              DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
                Colind = IfL % IfVec(k)
                IF ( ColInd > 0 ) &
@@ -2331,7 +2321,6 @@ REAL(kind=dp) :: s, RealTime
 !omp end parallel do
   END IF
 
-  CALL SParIterActiveBarrier 
 
   CALL Recv_LocIf_Wait( GlobalData % SplittedMatrix, n, v,  &
        nneigh, neigh, recv_size, requests, buffer )
