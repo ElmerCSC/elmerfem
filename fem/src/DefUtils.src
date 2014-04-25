@@ -4093,6 +4093,10 @@ CONTAINS
       END IF
     END IF
 
+    IF( ListGetLogical( Params,'Linear System Remove Zeros',Found ) ) THEN
+      CALL CRS_RemoveZeros( PSolver % Matrix )
+    END IF	
+
 
   END SUBROUTINE DefaultFinishBulkAssembly
 
