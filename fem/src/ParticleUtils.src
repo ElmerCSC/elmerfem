@@ -5293,7 +5293,8 @@ RETURN
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: i, j, k, Partitions, Part, ExtCount, FileindexOffSet, &
-        Status, MinSaveStatus, MaxSaveStatus, PrecBits, PrecSize, IntSize
+        Status, MinSaveStatus, MaxSaveStatus, PrecBits, PrecSize, IntSize, &
+        iTime 
     CHARACTER(MAX_NAME_LEN) :: Dir
     REAL(KIND=dp) :: SaveNodeFraction, LocalVal(3)
     LOGICAL :: BinaryOutput,AsciiOutput,Found,Visited = .FALSE.,SaveFields
@@ -5315,7 +5316,8 @@ RETURN
       nTime = nTime + 1
     END IF
     FileIndexOffset = ListGetInteger( Params,'Fileindex offset',GotIt)
-    
+    iTime = nTime + FileIndexOffset
+
     IF ( nTime == 1 ) THEN
       FilePrefix = ListGetString( Params,'Filename Prefix')
       CALL Info('ParticleOutputVtu','Saving in VTK XML unstructured format to file: ' &
@@ -5384,15 +5386,28 @@ RETURN
     END IF
     
     IF(Parallel .AND. Part == 0) THEN
-      WRITE( PvtuFile,'(A,A,I4.4,".pvtu")' ) TRIM(Dir),TRIM(FilePrefix),nTime+FileIndexOffset
+      IF( iTime < 10000 ) THEN
+        WRITE( PvtuFile,'(A,A,I4.4,".pvtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+      ELSE
+        WRITE( PvtuFile,'(A,A,I0,".pvtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+      END IF
       CALL WritePvtuFile( PvtuFile )
     END IF
     
     IF ( Parallel ) THEN
-      WRITE( VtuFile,'(A,A,I4.4,A,I4.4,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),Part+1,"par",&
-          nTime+FileindexOffset
+      IF( iTime < 10000 ) THEN
+        WRITE( VtuFile,'(A,A,I4.4,A,I4.4,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),Part+1,"par",&
+            iTime
+      ELSE
+        WRITE( VtuFile,'(A,A,I4.4,A,I0,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),Part+1,"par",&
+            iTime
+      END IF
     ELSE
-      WRITE( VtuFile,'(A,A,I4.4,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),nTime+FileIndexOffset
+      IF( iTime < 10000 ) THEN
+        WRITE( VtuFile,'(A,A,I4.4,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+      ELSE
+        WRITE( VtuFile,'(A,A,I0,".vtu")' ) TRIM(Dir),TRIM(FilePrefix),iTime
+      END IF
     END IF
 
     CALL Info('ParticleOutputVtu','Saving particles to file: '//TRIM(VtuFile),Level=8)
@@ -6100,8 +6115,13 @@ RETURN
       WRITE( VtuUnit,'(A)') '      </PPoints>' 
       
       DO i=1,Partitions
-        WRITE( VtuUnit,'(A,I4.4,A,I4.4,A)' ) '    <Piece Source="'//&
-            TRIM(FilePrefix),i,"par",nTime+FileIndexOffset,'.vtu"/>'
+        IF( iTime < 10000 ) THEN
+          WRITE( VtuUnit,'(A,I4.4,A,I4.4,A)' ) '    <Piece Source="'//&
+              TRIM(FilePrefix),i,"par",iTime,'.vtu"/>'
+        ELSE
+          WRITE( VtuUnit,'(A,I4.4,A,I0,A)' ) '    <Piece Source="'//&
+              TRIM(FilePrefix),i,"par",iTime,'.vtu"/>'
+        END IF
       END DO
       
       WRITE( VtuUnit,'(A)') '  </PUnstructuredGrid>'
@@ -6145,7 +6165,7 @@ RETURN
     CHARACTER(MAX_NAME_LEN) :: VtiFile, PvtiFile 
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: Var
-    INTEGER :: i, j, k, Partitions, Part, ExtCount, FileindexOffSet
+    INTEGER :: i, j, k, Partitions, Part, ExtCount, FileindexOffSet, iTime
     CHARACTER(MAX_NAME_LEN) :: Dir
     REAL(KIND=dp) :: SaveNodeFraction
     LOGICAL :: Found,BinaryOutput,AsciiOutput,SinglePrec,NoFileIndex, &
@@ -6165,7 +6185,8 @@ RETURN
       nTime = nTime + 1
     END IF
     FileIndexOffset = ListGetInteger( Params,'Fileindex offset',GotIt)
-    
+    iTime = nTime + FileIndexOffset
+
     BinaryOutput = GetLogical( Params,'Binary Output',GotIt)
     AsciiOutput = .NOT. BinaryOutput
     SinglePrec = GetLogical( Params,'Single Precision',GotIt) 
@@ -6195,7 +6216,7 @@ RETURN
     IF(Parallel .AND. Part == 0) THEN
       CALL Warn('WriteVtiFile','VTK ImageFile not yet in parallel')
       IF(.FALSE.) THEN
-        WRITE( PvtiFile,'(A,A,I4.4,".pvti")' ) TRIM(Dir),TRIM(FilePrefix),nTime+FileIndexOffset
+        WRITE( PvtiFile,'(A,A,I4.4,".pvti")' ) TRIM(Dir),TRIM(FilePrefix),iTime
         CALL WritePvtiFile( PvtiFile )
       END IF
     END IF
@@ -6205,13 +6226,13 @@ RETURN
         WRITE( VtiFile,'(A,A,I4.4,A,".vti")' ) TRIM(Dir),TRIM(FilePrefix),Part+1,"par"
       ELSE
         WRITE( VtiFile,'(A,A,I4.4,A,I4.4,".vti")' ) TRIM(Dir),TRIM(FilePrefix),Part+1,"par",&
-            nTime+FileIndexOffset
+            iTime
       END IF
     ELSE
       IF( NoFileIndex ) THEN
         WRITE( VtiFile,'(A,A,".vti")' ) TRIM(Dir),TRIM(FilePrefix)
       ELSE
-        WRITE( VtiFile,'(A,A,I4.4,".vti")' ) TRIM(Dir),TRIM(FilePrefix),nTime+FileIndexOffset
+        WRITE( VtiFile,'(A,A,I4.4,".vti")' ) TRIM(Dir),TRIM(FilePrefix),iTime
       END IF
     END IF
 
@@ -6703,7 +6724,7 @@ RETURN
               TRIM(FilePrefix),i,"par",'.vti"/>'
         ELSE
           WRITE( VtiUnit,'(A,I4.4,A,I4.4,A)' ) '    <Piece Source="'//&
-              TRIM(FilePrefix),i,"par",nTime+FileindexOffset,'.vti"/>'
+              TRIM(FilePrefix),i,"par",iTime,'.vti"/>'
         END IF
       END DO
       
