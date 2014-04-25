@@ -2608,7 +2608,6 @@ CONTAINS
        ALLOCATE( NodeDone( SIZE( Projector % InvPerm ) ) )
        NodeDone = .FALSE.
        
-
        ! Looping through elements rather than looping through projector rows directly
        ! is done in order to be able to refer to boundary properties associated 
        ! with the element. 
@@ -2640,8 +2639,11 @@ CONTAINS
            ! Therefore cycle through all entries related to non-nodal projector.
            IF( Projector % InvPerm(i) > nodesize ) CYCLE
 
-           IF( AddCoeff ) coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
-               //Name(1:nlen),node, Found )        
+           IF( AddCoeff ) THEN
+             coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
+                 //Name(1:nlen),node, Found )        
+             res = 1.0_dp / coeff
+           END IF
            IF( AddRes ) res = ListGetRealAtNode( BC,'Mortar BC Resistivity '&
                //Name(1:nlen),node, Found )
            IF( AddRhs ) voff = ListGetRealAtNode( BC,'Mortar BC Offset '&
@@ -2671,24 +2673,17 @@ CONTAINS
                Found = .FALSE.
                DO j2 = Projector % Rows(i),Projector % Rows(i+1)-1
                  k2 = Projector % Cols(j2)
-                 Found = ( k2 == i2 + totsize )
-                   
-                 IF( Found ) THEN
-                   ! Ok, found it. Now set the value. 
-                   
-                   !coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
-                   !    //Name(1:nlen),node, Found )        
 
-                   ! The factor 0.5 comes from the fact that the 
-                   ! contribution is summed twice, 2nd time as transpose
-                   ! For Nodal projector the entry is 1/(weight*coeff)
-                   ! For Galerkin projector the is weight/coeff 
+                 Found = ( k2 == i2 + totsize )
+
+                 ! Ok, found it. Now set the value.                    
+                 ! The factor 0.5 comes from the fact that the 
+                 ! contribution is summed twice, 2nd time as transpose
+                 ! For Nodal projector the entry is 1/(weight*coeff)
+                 ! For Galerkin projector the is weight/coeff 
+                 IF( Found ) THEN
                    weight = Projector % Values(j)
-                   IF( AddCoeff ) THEN
-                     Projector % Values(j2) = -0.5 * weight / coeff
-                   ELSE                   
-                     Projector % Values(j2) = -0.5 * weight * res
-                   END IF
+                   Projector % Values(j2) = -0.5 * weight * res
                    EXIT
                  END IF
 

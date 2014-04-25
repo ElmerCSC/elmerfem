@@ -4254,14 +4254,14 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodePerm(:)
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes, size0
+    INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes, size0, indp, indq
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Basis(:)
     REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym
+    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag
 
     CALL Info('WeightedProjectorDiscont','Creating Galerkin projector for discontinuous boundary',Level=7)
 
@@ -4292,6 +4292,8 @@ END SUBROUTINE GetMaxDefs
       NodalJump = ListCheckPrefix( Model % BCs(bc) % Values,'Mortar BC Resistivity')
     END IF
     size0 = Mesh % NumberOfNodes
+
+    SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found )
 
     AxisSym = .FALSE.
     IF ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -4377,30 +4379,48 @@ END SUBROUTINE GetMaxDefs
 
         DO p=1,n
 
-          IF( NodePerm(Indexes(p)) == 0 ) CYCLE
+          indp = NodePerm( Indexes(p) )
+          IF( indp == 0 ) CYCLE
           val = weight * Basis(p)
 
-          DO q=1,n
-            IF( NodePerm(Indexes(q)) == 0 ) CYCLE
-
-            CALL List_AddToMatrixElement(Projector % ListMatrix, NodePerm(Indexes(p)),&
-                Indexes(q), Basis(q) * val ) 
-            CALL List_AddToMatrixElement(Projector % ListMatrix, NodePerm(Indexes(p)),&
-                DiscontIndexes(q), Scale * Basis(q) * val ) 
-
+          IF( SetDiag ) THEN
+            CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                Indexes(p), val ) 
+            CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                DiscontIndexes(p), Scale * val )             
             ! Add entry to the diagonal-to-be if jump condition is to be used
             IF( NodalJump ) THEN
-              CALL List_AddToMatrixElement(Projector % ListMatrix, NodePerm(Indexes(p)),&
-                  size0 + NodePerm(Indexes(q)), 0.0_dp ) 
-            END IF
+              CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                  size0 + indp, 0.0_dp ) 
+            END IF            
+          ELSE
+            DO q=1,n
 
-          END DO
+              indq = NodePerm(Indexes(q))
+              IF( indq == 0 ) CYCLE
+              
+              CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                  Indexes(q), Basis(q) * val ) 
+              CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                  DiscontIndexes(q), Scale * Basis(q) * val ) 
+              
+              ! Add entry to the diagonal-to-be if jump condition is to be used
+              IF( NodalJump ) THEN
+                CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                    size0 + indq, 0.0_dp ) 
+              END IF
+            END DO
+            
+          END IF
         END DO
       END DO
     END DO
 
     CALL List_ToCRSMatrix(Projector)
     
+    CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
+        TRIM(I2S(SIZE(Projector % Cols)) ), Level=9)
+
     DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
     DEALLOCATE( Indexes, DisContIndexes, Basis )
            
