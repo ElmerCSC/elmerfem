@@ -495,8 +495,8 @@ CONTAINS
     i = NINT( ParallelReduction( 1.0_dp * i ) )
     j = NINT( ParallelReduction( 1.0_dp * j ) )
 
-    PRINT *,'Internal Elements',i
-    PRINT *,'Interface Elements',j    
+    CALL Info('MarkInternalElements','Internal Elements: '//TRIM(I2S(i)),Level=8 )
+    CALL Info('MarkInternalElements','Interface Elements: '//TRIM(I2S(j)),Level=8 )    
     
   END SUBROUTINE MarkInternalElements
   
@@ -950,7 +950,9 @@ RETURN
         ReleaseSet = NINT( ReleaseFraction * NoParticles ) 
       END IF
     END IF
-    PRINT *,'Releasing:',NoParticles,ReleaseCount, ReleaseSet
+    CALL Info('ReleaseWaitingParticles','Releasing number of particles: '&
+        //TRIM(I2S(ReleaseCount)),Level=8)
+!    PRINT *,'Releasing:',NoParticles,ReleaseCount, ReleaseSet
     
     
     IF( ReleaseSet <= 0 ) RETURN
@@ -1685,23 +1687,25 @@ RETURN
     INTEGER, OPTIONAL :: InitParticles
     LOGICAL, OPTIONAL :: AppendParticles
     
-    TYPE(ValueList_t), POINTER :: Params 
+    TYPE(ValueList_t), POINTER :: Params, BodyForce 
     TYPE(Variable_t), POINTER :: Var
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Nodes_t) :: Nodes
     INTEGER :: Offset, NewParticles,LastParticle,NoElements
-    INTEGER :: dim, ElementIndex
+    INTEGER :: dim, ElementIndex, body_id, bf_id
     REAL(KIND=dp), POINTER :: rWork(:,:),Coordinate(:,:), Velocity(:,:)
     REAL(KIND=dp) :: Velo(3), Coord(3), Center(3), time0, dist
     CHARACTER(LEN=MAX_NAME_LEN) :: InitMethod
     INTEGER :: i,j,k,l,n,vdofs,nonodes, InitStatus, TotParticles
     INTEGER, POINTER :: MaskPerm(:), InvPerm(:), NodeIndexes(:)
-    LOGICAL :: GotIt, GotMask, RequirePositivity, ContinuousNumbering
+    LOGICAL :: GotIt, GotMask, RequirePositivity, ContinuousNumbering, GotWeight
     REAL(KIND=dp), POINTER :: InitialValues(:,:)
     REAL(KIND=dp) :: mass,boltz,temp,coeff,eps,frac,meanval 
-    REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), Diam, DetJ, MinDetJ, MaxDetJ
+    REAL(KIND=dp) :: MinCoord(3), MaxCoord(3), Diam, DetJ, MinDetJ, MaxDetJ, &
+        MinWeight, MaxWeight, MeanWeight
     REAL(KIND=dp), POINTER :: MaskVal(:)
+    REAL(KIND=dp), ALLOCATABLE :: Weight(:)
     INTEGER :: nx,ny,nz,nmax,ix,iy,iz,ind
     LOGICAL :: CheckForSize    
     LOGICAL, POINTER :: DoneParticle(:)
@@ -1728,7 +1732,7 @@ RETURN
       Particles % DtSign = -1
     END IF
 
-
+    
 
     !------------------------------------------------------------------------
     ! The user may use a mask to initialize the particles only at a part of the 
@@ -1814,7 +1818,15 @@ RETURN
       noelements = Mesh % NumberOfBulkElements
     END IF
     
-    
+    GotWeight = ListCheckPresentAnyBodyForce(CurrentModel, &
+        'Particle Initialization Weight')
+    IF( GotWeight ) THEN
+      CALL Info('InitializeParticles','Using weight when creating particles',Level=8)
+      ALLOCATE( Weight( Mesh % MaxElementNodes ) )
+      Weight = 0.0_dp
+    END IF
+
+
     !------------------------------------------------------------------------
     ! Use a simple bounding box for initializatin
     ! By default a local bounding box is used...
@@ -1908,7 +1920,7 @@ RETURN
     IF( TotParticles == 0 ) THEN
       CALL Fatal('InitializeParticles','No Particles to Initialize')
     ELSE
-      WRITE( Message,'(A,I0)') 'Number of Particles:',TotParticles
+      WRITE( Message,'(A,I0)') 'Number of Particles: ',TotParticles
       CALL Info('InitializeParticles',Message,Level=6)
     END IF
 
@@ -1990,17 +2002,41 @@ RETURN
       ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
 
       Particles % NumberOfParticles = NewParticles
-      PRINT *,'Initializing particles in elements:',NewParticles,noelements
+      !PRINT *,'Initializing particles in elements:',NewParticles,noelements
 
       MaxDetJ = 0.0_dp
       MinDetJ = HUGE( MinDetJ )
+      MaxWeight = -HUGE( MaxWeight ) 
+      MinWeight = HUGE( MinWeight )
+
       DO i = 1, NoElements
+
         j = i
         IF( GotMask ) j = InvPerm(j)
+
         CurrentElement => Mesh % Elements(j)
         NodeIndexes =>  CurrentElement % NodeIndexes
         n = CurrentElement % TYPE % NumberOfNodes
 
+        ! If weight is used see that we have a weight, and that it is positive
+        IF( GotWeight ) THEN
+          IF( j > Mesh % NumberOfBulkElements ) CYCLE
+
+          body_id = CurrentElement % BodyId
+          bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values,&
+              'Body Force',minv=1)
+          BodyForce => CurrentModel % BodyForces(bf_id) % Values
+          Weight(1:n) = ListGetReal( BodyForce,'Particle Initialization Weight',&
+              n, NodeIndexes, GotIt)
+          IF(.NOT. GotIt) CYCLE
+
+          MeanWeight = SUM( Weight(1:n) ) / n
+          MaxWeight = MAX( MaxWeight, MeanWeight )
+          MinWeight = MIN( MinWeight, MeanWeight ) 
+          IF( MeanWeight <= 0.0_dp ) CYCLE
+        END IF
+
+        ! Compute the size of the element if this is an active element.
         Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
         Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
         Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -2009,11 +2045,29 @@ RETURN
         MaxDetJ = MAX( MaxDetJ, DetJ ) 
         MinDetJ = MIN( MinDetJ, DetJ )
       END DO
-      PRINT *,'Maximum size of elements:',MaxDetJ
-      PRINT *,'Minimum size of elements:',MinDetJ
+
+      WRITE( Message,'(A,ES12.3)') 'Maximum size of elements:',MaxDetJ
+      CALL Info('InitializeParticle',Message,Level=8)
+      WRITE( Message,'(A,ES12.3)') 'Minimum size of elements:',MinDetJ
+      CALL Info('InitializeParticle',Message,Level=8)
+      IF( GotWeight ) THEN
+        WRITE( Message,'(A,ES12.3)') 'Maximum weight in elements:',MaxWeight
+        CALL Info('InitializeParticle',Message,Level=8)
+        WRITE( Message,'(A,ES12.3)') 'Minimum weight in elements:',MinWeight
+        CALL Info('InitializeParticle',Message,Level=8)
+      END IF
+
+      IF( MaxWeight < 0.0 ) THEN
+        CALL Info('InitializeParticle','No positive weight!')
+        RETURN
+      END IF
 
       ! If all elements are of same size then no need to check for size
       CheckForSize = ( MinDetJ < (1-EPSILON(MaxDetJ))*MaxDetJ )
+      IF( GotWeight ) THEN
+        CheckForSize = CheckForSize .OR. &
+            ( MinWeight < (1-EPSILON(MaxWeight))*MaxWeight )
+      END IF
 
       i = 0      
       DO WHILE(.TRUE.) 
@@ -2031,11 +2085,34 @@ RETURN
         
         IF( CheckForSize ) THEN
           DetJ = ElementSize( CurrentElement, Nodes ) 
-          IF( EvenRandom() * MaxDetJ > DetJ ) CYCLE
+
+          ! The weight could be computed really using the integration point
+          ! Here we assumes constant weight within the whole element. 
+          IF( GotWeight ) THEN
+            IF( j > Mesh % NumberOfBulkElements ) CYCLE
+
+            body_id = CurrentElement % BodyId
+            bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values,&
+                'Body Force',minv=1)
+            BodyForce => CurrentModel % BodyForces(bf_id) % Values
+            Weight(1:n) = ListGetReal( BodyForce,'Particle Initialization Weight',&
+                n, NodeIndexes, GotIt)
+            IF(.NOT. GotIt ) CYCLE
+
+            MeanWeight = SUM( Weight(1:n) ) / n
+            IF( MeanWeight <= 0.0_dp ) CYCLE
+
+            ! Do importance samping for the particles
+            IF( EvenRandom() * MaxDetJ * MaxWeight > DetJ * MeanWeight ) CYCLE
+          ELSE          
+            IF( EvenRandom() * MaxDetJ > DetJ ) CYCLE
+          END IF
         END IF
 
-        i = i + 1
+        ! Create a random particle within the element
         Coord = RandomPointInElement( CurrentElement, Nodes )
+
+        i = i + 1
         k = Offset + i
         Coordinate(k,1:dim) = Coord(1:dim)
 
@@ -2047,7 +2124,7 @@ RETURN
         IF( i == NewParticles ) EXIT
       END DO
       DEALLOCATE(Nodes % x, Nodes % y, Nodes % z)
-      PRINT *,'done init'
+      !PRINT *,'done init'
 
     CASE ('elemental ordered')
       NewParticles = MIN(NoElements,NewParticles)
@@ -5422,7 +5499,7 @@ RETURN
       INTEGER, PARAMETER :: VtuUnit = 58
       TYPE(Variable_t), POINTER :: Var, Solution
       CHARACTER(LEN=512) :: str
-      INTEGER :: i,j,k,dofs,Rank,cumn,n,vari,sdofs,IsVector,Offset
+      INTEGER :: i,j,k,dofs,Rank,cumn,n,vari,sdofs,IsVector,Offset,PartDim
       CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, FieldName, &
           FieldName2, BaseString, OutStr
       CHARACTER :: lf
@@ -5456,6 +5533,8 @@ RETURN
       !-----------------------------------
       lf = CHAR(10)
       dim = 3
+
+      PartDim = Particles % Dim
       
       WriteXML = .TRUE.
       WriteData = AsciiOutput
@@ -5594,7 +5673,7 @@ RETURN
             !---------------------------------------------------------------------
             IF( ParticleMode ) THEN
               IF( IsVector == 1) THEN
-                dofs = 3
+                dofs = PartDim
                 IF( FieldName == 'velocity' ) THEN
                   VecValues => Particles % Velocity
                 ELSE IF( FieldName == 'force') THEN
@@ -5675,6 +5754,7 @@ RETURN
                 j = j + 1
 
                 LocalVal = 0.0_dp
+
                 IF( ParticleMode ) THEN
                   IF( IsVector == 1) THEN
                     dofs = dim
@@ -5739,7 +5819,7 @@ RETURN
                     END IF
                   END DO
                 END IF
-
+                
                 DO k=1,sdofs
                   CALL AscBinRealWrite( LocalVal(k) )
                 END DO
@@ -5796,7 +5876,8 @@ RETURN
       
       IF( WriteData ) THEN        
         IF( BinaryOutput ) WRITE( VtuUnit ) k
-        
+
+        LocalVal = 0.0_dp
         j = 0
         DO i = 1, Particles % NumberOfParticles
           
@@ -5805,7 +5886,7 @@ RETURN
           j = j + 1
           
           IF( ParticleMode ) THEN
-            DO k=1,dim
+            DO k=1,PartDim
               LocalVal(k) = Particles % Coordinate(i,k)
             END DO
           ELSE
@@ -5831,6 +5912,8 @@ RETURN
             LocalVal(2) = SUM( Basis(1:n) * Nodes % y(1:n) )
             LocalVal(3)  = SUM( Basis(1:n) * Nodes % z(1:n) )
           END IF
+
+          !PRINT *,'ParticleMode:',ParticleMode,j,dim,LocalVal
           
           CALL AscBinRealWrite( LocalVal(1) )
           CALL AscBinRealWrite( LocalVal(2) )
