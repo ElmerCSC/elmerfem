@@ -2681,7 +2681,8 @@ static void ReorderComsolNodes(int elementtype,int *topo)
   int i,tmptopo[MAXNODESD2];
   int order404[]={1,2,4,3};
   int order808[]={1,2,4,3,5,6,8,7};
- 
+  int order605[]={1,2,4,3,5};
+
    
   switch (elementtype) {
  
@@ -2698,6 +2699,14 @@ static void ReorderComsolNodes(int elementtype,int *topo)
     for(i=0;i<elementtype%100;i++) 
       topo[i] = tmptopo[order808[i]-1];
     break;
+
+  case 605:
+    for(i=0;i<elementtype%100;i++) 
+      tmptopo[i] = topo[i];
+    for(i=0;i<elementtype%100;i++) 
+      topo[i] = tmptopo[order605[i]-1];
+    break;
+
 
   default:
     break;
