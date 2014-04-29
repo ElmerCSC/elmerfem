@@ -386,8 +386,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     CALL Info('WhitneyAVSolver', &
         '- THE OPTION Use Tree Gauge IS NOT AVAILABLE',Level=2)
     CALL Info('WhitneyAVSolver', &
-        '- THE SIMULATION SECTION MUST CONTAIN New Load Mesh = Logical True',Level=2)
-    CALL Info('WhitneyAVSolver', &
         '- USING THE DEFAULT Element = n:1 e:1 -brick b:3 -quad_face b:2 SHOULD WORK', Level=2)
   END IF
 
@@ -2708,10 +2706,17 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
+  LOGICAL :: Found, PiolaVersion
 
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+    PiolaVersion = GetLogical(SolverParams, &
+        'Use Piola Transform', Found )   
+    IF (PiolaVersion) THEN    
+       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+    ELSE
+       CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+    END IF
   END IF
 ! CALL ListAddString( SolverParams, "Exported Variable 1", &
 !              "-dofs 2 -nooutput Jfix" )
@@ -2768,7 +2773,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody
+  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, PiolaVersion
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
@@ -2780,7 +2785,20 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
        Acoef, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM
 !------------------------------------------------------------------------------
-
+  PiolaVersion = GetLogical( GetSolverParams(), &
+      'Use Piola Transform', Found )
+  IF (PiolaVersion) THEN
+    CALL Info('WhitneyAVSolver', &
+        'USING NEW PIOLA TRASFORMED FINITE ELEMENTS',Level=2)
+    CALL Info('WhitneyAVSolver', &
+        'DEVELOPMENT IS ONGOING. CURRENTLY RESPECT THE FOLLOWING RESTRICTIONS:',Level=2)    
+    CALL Info('WhitneyAVSolver', &
+        '- ONLY HOMOGENEOUS DIRICHLET AND NEUMANN BSC FOR THE VECTOR POTENTIAL A SUPPORTED',Level=2)     
+    CALL Info('WhitneyAVSolver', &
+        '- THE OPTION Use Tree Gauge IS NOT AVAILABLE',Level=2)
+    CALL Info('WhitneyAVSolver', &
+        '- USING THE DEFAULT Element = n:1 e:1 -brick b:3 -quad_face b:2 SHOULD WORK', Level=2)
+  END IF
 
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
@@ -3015,7 +3033,7 @@ CONTAINS
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
-          LamCond, CoilBody, CoilType, RotM, Element, n, nd )
+          LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
@@ -3084,7 +3102,11 @@ CONTAINS
     !
     ! Dirichlet BCs in terms of vector potential A:
     ! ---------------------------------------------
-    CALL DefaultDirichletBCs()
+    IF (PiolaVersion) THEN
+       CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
+    ELSE
+       CALL DefaultDirichletBCs()
+    END IF
 
     !
     ! Dirichlet BCs in terms of magnetic flux density B:
@@ -3527,7 +3549,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
-            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd )
+            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
@@ -3535,6 +3557,7 @@ CONTAINS
     REAL(KIND=dp) :: LamThick(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
+    LOGICAL :: PiolaVersion
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n)
@@ -3606,14 +3629,26 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints( Element )
+    IF (PiolaVersion) THEN
+       IP = EdgeElementGaussPoints( GetElementFamily(Element) )
+    ELSE    
+       IP = GaussPoints( Element )
+    END IF
+
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
 
     DO t=1,IP % n
-       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
+       IF (PiolaVersion) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+               RotBasis = RotWBasis, dBasisdx = dBasisdx, &
+               ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
 
-       CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
 
        mu = SUM( Basis(1:n) * Acoef(1:n) )
 
