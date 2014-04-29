@@ -495,8 +495,9 @@ CONTAINS
    CHARACTER(LEN=MAX_NAME_LEN) :: potname
    INTEGER :: i,j,k,t,n,nd,nb,IterNo
 
-   REAL(KIND=dp)::TOL,Norm,PrevNorm, NonLinError
+   REAL(KIND=dp)::TOL,Norm,PrevNorm, NonLinError, LinTol, RelTol, BaseTol
    LOGICAL :: Found, FoundMagnetization, CalculateNonlinearResidual, LFactFound
+   LOGICAL :: AdaptiveTols
 
    TYPE(Matrix_t), POINTER :: MMatrix
    REAL(KIND=dp), POINTER :: Mx(:), Mb(:), Mr(:)
@@ -776,6 +777,32 @@ CONTAINS
 
   IF (DefaultLineSearch(Converged)) RETURN
   IF ( Converged ) GOTO 10
+
+  ! The following gives the user an option to adapt the linear system convergence tolerance
+  ! adaptively:
+  !-------------------------------------------------------------------------------------------
+  AdaptiveTols = ListGetLogical(GetSolverParams(), 'Linear System Adaptive Tolerance', Found)
+  IF (AdaptiveTols) THEN
+     IF (iterno == 1) THEN
+        BaseTol = ListGetConstReal(GetSolverParams(), 'Linear System Base Tolerance', Found)
+        IF (Found) CALL ListAddConstReal(GetSolverParams(), &
+             'Linear System Convergence Tolerance', BaseTol)
+     ELSE
+        IF (.NOT. ListCheckPresent(GetSolverParams(), 'Linear System Relative Tolerance')) THEN
+           RelTol = 1.0d-2
+        ELSE
+           RelTol = ListGetConstReal(GetSolverParams(), 'Linear System Relative Tolerance')
+        END IF
+        IF (.NOT. ListCheckPresent(GetSolverParams(), 'Linear System Base Tolerance')) THEN
+           BaseTol = 1.0d-3
+        ELSE
+           BaseTol = ListGetConstReal(GetSolverParams(), 'Linear System Base Tolerance')
+        END IF
+        LinTol = MIN(BaseTol, RelTol * Solver % Variable % NonlinChange)
+        CALL ListAddConstReal(GetSolverParams(),'Linear System Convergence Tolerance', &
+             LinTol)
+     END IF
+  END IF
 
   norm = DefaultSolve()
   Converged = Solver % Variable % NonlinConverged==1
