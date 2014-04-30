@@ -3129,8 +3129,8 @@ CONTAINS
         LoadThis = .FALSE.
         k = LEN_TRIM( VarName )
         DO j=1,1000
-          VarName2 = ListGetString(CurrentModel % Simulation,&
-              'Restart Variable '//I2S(j), Found )
+          VarName2 = ListGetString(CurrentModel % Simulation, &
+                  'Restart Variable '//I2S(j), Found )
           IF( .NOT. Found ) EXIT
           k2 = LEN_TRIM(VarName2)
 
@@ -3170,7 +3170,7 @@ CONTAINS
         ! The old format (ver. < 3) does not include information on vector sizes prior to loading
         ! thus make an educated guess.
         !----------------------------------------------------------------------------------------
-        IF( FieldSize == 0 ) THEN
+        IF( FieldSize == 0 .AND. FmtVersion<3 ) THEN
           FieldSize = Mesh % NumberOfNodes * DOFs
           PermSize = Mesh % NumberOfNodes
         END IF
@@ -3242,7 +3242,6 @@ CONTAINS
               FullName,DOFs,Var % Values,Var % Perm )
         END IF
       END IF
-
     END DO
 
     IF ( Binary ) THEN
@@ -3347,7 +3346,8 @@ CONTAINS
              CALL Warn('LoadRestartFile','Variable is not present for reading: '//TRIM(Row))
            END IF
            IF( GotPerm .NEQV. ASSOCIATED( Var % Perm ) ) THEN
-             CALL Fatal('LoadRestartFile','Permutation should either exist or not!')
+             DEALLOCATE( Var % Perm ) ; Var % Perm => Null()
+!            CALL Fatal('LoadRestartFile','Permutation should either exist or not!')
            END IF
 
            IF ( ASSOCIATED(Var % Perm) .AND. FmtVersion > 0 ) THEN
