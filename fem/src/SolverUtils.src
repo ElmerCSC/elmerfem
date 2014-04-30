@@ -6019,13 +6019,13 @@ END FUNCTION SearchNodeL
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
-                SkipZeroRhs, ComplexSystem
+                SkipZeroRhs, ComplexSystem, ComputeChangeScaled
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp), POINTER :: SaveValues(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Px(:), &
-                TempVector(:), TempRHS(:)
+                TempVector(:), TempRHS(:), NonlinVals(:)
     REAL(KIND=dp), POINTER :: Diag(:)
     REAL(KIND=dp) :: s,Relaxation,Beta,Gamma,bnorm,Energy,xn,bn
     TYPE(ValueList_t), POINTER :: Params
@@ -6181,6 +6181,14 @@ END FUNCTION SearchNodeL
     END IF
 
 
+    ComputeChangeScaled = ListGetLogical(Params,'Nonlinear System Compute Change in Scaled System',GotIt)
+    IF(.NOT.GotIt) ComputeChangeScaled = .FALSE.
+
+    IF(ComputeChangeScaled) THEN
+      ALLOCATE(NonlinVals(size(x)))
+      NonlinVals = x
+    END IF
+
     ! Sometimes the r.h.s. may abruptly diminish in value resulting to significant 
     ! convergence issues or it may be that the system scales linearly with the source. 
     ! This flag tries to improve on the initial guess of the linear solvers, and may 
@@ -6259,6 +6267,10 @@ END FUNCTION SearchNodeL
       END SELECT
     END IF
 
+    IF(ComputeChangeScaled) THEN
+      CALL ComputeChange(Solver,.FALSE.,n, x, NonlinVals, Matrix=A, RHS=b )
+      DEALLOCATE(NonlinVals)
+    END IF
 
     IF ( ScaleSystem ) THEN
       IF ( ApplyRowEquilibration ) THEN
@@ -6368,11 +6380,12 @@ END FUNCTION SearchNodeL
     IF (BackRotation) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
 ! Compute the change of the solution with different methods 
 !------------------------------------------------------------------------------
-    CALL ComputeChange(Solver,.FALSE.,n, x, Matrix=A, RHS=b )
+    IF(.NOT.ComputeChangeScaled) THEN
+      CALL ComputeChange(Solver,.FALSE.,n, x, Matrix=A, RHS=b )
+    END IF
     Norm = Solver % Variable % Norm
 
  ! Create soft limiters to be later applied by the Dirichlet conditions
@@ -6383,7 +6396,6 @@ END FUNCTION SearchNodeL
      CALL DetermineSoftLimiter( Solver ) 	
    END IF
 
- 
 !------------------------------------------------------------------------------
  
    Solver % Variable % PrimaryMesh => Solver % Mesh
