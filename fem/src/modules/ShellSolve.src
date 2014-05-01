@@ -170,12 +170,10 @@
 !    Allocate some permanent storage, this is done first time only:
 !    --------------------------------------------------------------
      IF ( .NOT. AllocationsDone ) THEN
-       N = Model % MaxElementNodes
 
-       ! The upper causes problems later on if the mesh includes volume elements.
-       ! Hence this is for time being fixed to three. 
-       N = 3
- 
+       ! Only triangles and quads may be used for the shell solver
+       N = MIN( Model % MaxElementNodes, 4 )
+
        ALLOCATE( ElementNodes % x( N ),   &
                  ElementNodes % y( N ),   &
                  ElementNodes % z( N ),   &
@@ -398,8 +396,9 @@
 !-----------------------------------------------------------------------------
        CurrentElement => GetActiveElement( t )
 
-       IF( CurrentElement % TYPE % ElementCode /= 303 ) THEN
-         CALL Warn('ShellSolver','Implemented only for element 303!')
+       IF( CurrentElement % TYPE % ElementCode /= 303 .AND. &
+           CurrentElement % TYPE % ElementCode /= 404 ) THEN
+         CALL Warn('ShellSolver','Implemented only for elements 303 and 404!')
          CYCLE
        END IF
 
@@ -987,7 +986,7 @@
              END DO
           END DO
        END DO
-       LocalDeflection = MATMUL( Tblock, LocalDeflection )
+       LocalDeflection = MATMUL( Tblock, LocalDeflection(1:6*n) )
 
 !      Exchange rotations r1 and -r2:
 !      ------------------------------
@@ -1000,7 +999,7 @@
           Tblock( 6*i-1, 6*i-2 ) = -1.0d0
           Tblock( 6*i-0, 6*i-0 ) =  1.0d0
        END DO
-       LocalDeflection = MATMUL( Tblock, LocalDeflection )
+       LocalDeflection = MATMUL( Tblock, LocalDeflection(1:6*n) )
 
 !      Select the appropriate quadrature:
 !      ----------------------------------
