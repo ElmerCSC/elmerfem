@@ -2037,7 +2037,7 @@ REAL(kind=dp)::cputime,realtime,tt,rt
   !----------------------------------------------------------------------
 
    EdgeBasis = ListGetLogical( Solver % Values, 'Edge Basis', stat )
-   EdgeBasis = EdgeBasis .AND. .NOT. SourceMatrix % Complex
+!  EdgeBasis = EdgeBasis .AND. .NOT. SourceMatrix % Complex
 
    IF ( EdgeBasis ) THEN
      IF( ASSOCIATED( SplittedMatrix % InsideMatrix % Eperm) ) &
@@ -2063,7 +2063,8 @@ REAL(kind=dp)::cputime,realtime,tt,rt
 
       IF( EdgeBasis) THEN
         k = SourceMatrix % InvPerm(i)
-        IF(k>Solver % Mesh % NumberOfNodes) SplittedMatrix % InsideMatrix % EPerm(j)=1
+        IF( k>Solver % Variable % DOFs*Solver % Mesh % NumberOfNodes ) &
+             SplittedMatrix % InsideMatrix % EPerm(j)=1
       END IF
     END IF
   END DO
@@ -2115,39 +2116,39 @@ REAL(kind=dp)::cputime,realtime,tt,rt
  !
  !----------------------------------------------------------------------
 
-  IF ( .NOT. SourceMatrix % COMPLEX ) THEN
-    CM => SourceMatrix % ConstraintMatrix
-    IF (ASSOCIATED(CM)) THEN
-      ALLOCATE(SPerm(SourceMatrix % NumberOfRows)); SPerm=0
-      j = 0
-      DO i = 1, SourceMatrix % NumberOfRows
-        IF (ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % MyPE) THEN
-           j = j + 1
-           SPerm(i)=j
-        END IF
-      END DO
-      SCols => CM % Cols
-      ALLOCATE(CM % Cols(SIZE(SCols)))
-      CM % Cols = SPerm(SCols)
-      SplittedMatrix % InsideMatrix % Perm => SPerm
-      SplittedMatrix % InsideMatrix % ConstraintMatrix => CM
-     END IF
+  CM => SourceMatrix % ConstraintMatrix
+  IF (ASSOCIATED(CM)) THEN
+    ALLOCATE(SPerm(SourceMatrix % NumberOfRows)); SPerm=0
+    j = 0
+    DO i = 1, SourceMatrix % NumberOfRows
+      IF (ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % MyPE) THEN
+         j = j + 1
+         SPerm(i)=j
+      END IF
+    END DO
+    SCols => CM % Cols
+    ALLOCATE(CM % Cols(SIZE(SCols)))
+    CM % Cols = SPerm(SCols)
+    SplittedMatrix % InsideMatrix % Perm => SPerm
+    SplittedMatrix % InsideMatrix % ConstraintMatrix => CM
+  END IF
 
+  IF ( .NOT. SourceMatrix % COMPLEX ) THEN
      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
         TmpRHSVec, Solver, DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm), &
           matVecF=AddrFunc(SParMatrixVector) )
-
-    IF (ASSOCIATED(CM)) THEN
-      DEALLOCATE(CM % Cols)
-      CM % Cols => SCols
-      DEALLOCATE(SPerm)
-      SplittedMatrix % InsideMatrix % Perm => Null()
-      SplittedMatrix % InsideMatrix % ConstraintMatrix => Null()
-    END IF
   ELSE
      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
        TmpRHSVec, Solver, DotF=AddrFunc(SParCDotProd), NormF=AddrFunc(SParCNorm), &
          MatVecF=AddrFunc(SParCMatrixVector) )
+  END IF
+
+  IF (ASSOCIATED(CM)) THEN
+    DEALLOCATE(CM % Cols)
+    CM % Cols => SCols
+    DEALLOCATE(SPerm)
+    SplittedMatrix % InsideMatrix % Perm => Null()
+    SplittedMatrix % InsideMatrix % ConstraintMatrix => Null()
   END IF
 
   GlobalMatrix => SaveMatrix
