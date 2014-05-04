@@ -3750,7 +3750,7 @@ CONTAINS
 
            IF ( Newton ) THEN
              JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
-                 SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+                 SUM(CONJG(B_ip(:))*RotWBasis(i,:))*detJ*IP % s(t)/Babs
            END IF
 
            STIFF(p,q) = STIFF(p,q) + mu * &
