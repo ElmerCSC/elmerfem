@@ -4487,7 +4487,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Matrix_t), POINTER :: Projector    
     !--------------------------------------------------------------------------
     INTEGER :: i,j,n,m,k1,k2,km1,km2,ncoeff,sgn0,ind,Nfii,Nfii2,nrow,ncol,&
-        SectorMax,Offset,Nelim,NoNodes1,NoNodes2
+        SectorMax,Nelim,NoNodes1,NoNodes2
     INTEGER, POINTER :: Rows(:),Cols(:),TmpCols(:),TmpRows(:)
     REAL(KIND=dp), POINTER :: Values(:),TmpValues(:)
     REAL(KIND=dp) :: coeff(100), Xtol, Ytol, XRange, YRange, Xmin, Xmax, &
@@ -4555,13 +4555,10 @@ END SUBROUTINE GetMaxDefs
     Nelim = 0
     coeffi = 0
         
-    Offset = CurrentModel % Mesh % NumberOfNodes
-
     ! Given the inverse permutation compute the initial number of
     ! nodes in both cases. 
     NoNodes1 = BMesh1 % NumberOfNodes
     NoNodes2 = BMesh2 % NumberOfNodes
-
 
     ! Compute a distance measure (c*r+z) for the master nodes
     !-----------------------------------------------------------------
@@ -4741,9 +4738,12 @@ END SUBROUTINE GetMaxDefs
         x2 = BMesh1 % Nodes % x(k2)
         y2 = BMesh1 % Nodes % y(k2)
         
-        IF(ParEnv % PEs>1 ) THEN
-          k1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(k1)
-          k2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(k2)
+        ! Numbering of global indexes is needed to ensure correct direction 
+        ! of the edge dofs. Basically the InvPerm could be used also in serial
+        ! but the order of numbering is maintained when the reduced mesh is created. 
+        IF(ParEnv % PEs > 1 ) THEN
+          k1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm1(k1))
+          k2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm1(k2))
         END IF
         
 
@@ -4812,9 +4812,9 @@ END SUBROUTINE GetMaxDefs
           xminm = MIN( xm1, xm2 ) 
           xmaxm = MAX( xm1, xm2 ) 
 
-          IF(ParEnv % PEs>1 ) THEN
-            km1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(km1)
-            km2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(km2)
+          IF(ParEnv % PEs > 1 ) THEN
+            km1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km1))
+            km2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km2))
           END IF
 
           
