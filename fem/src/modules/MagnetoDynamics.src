@@ -807,9 +807,11 @@ CONTAINS
 
 10 CONTINUE
 
-  IF ( LFactFound .AND. dt /= PrevDT ) THEN
-    CALL ListAddLogical( GetSolverParams(), &
-       'Linear System Refactorize', LFact )
+  IF ( dt /= PrevDT ) THEN
+    IF ( LFactFound ) THEN
+      CALL ListAddLogical( GetSolverParams(), &
+         'Linear System Refactorize', LFact )
+    END IF
   END IF
   PrevDT = dt
 
