@@ -1,4 +1,4 @@
-<?xml version='1.0' encoding='UTF-8'?>
+in<?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE edf>
 <edf version="1.0" >
    <PDE Name="MgDyn" >
@@ -91,12 +91,12 @@
       <InitialCondition>
         <Parameter Widget="Label" > <Name> Initial values for potential(s) </Name> </Parameter>
 	<Parameter Widget="Edit" >
-	  <Name> P </Name>
+	  <Name> AV </Name>
 	  <Type> String </Type>
             <Whatis> Give the initial condition for the scalar potential. </Whatis>
 	</Parameter>
     <Parameter Widget="Edit" >
-	  <Name> P {e}</Name>
+	  <Name> AV {e}</Name>
 	  <Type> String </Type>
             <Whatis> Give the initial condition for the vector potential. </Whatis>
 	</Parameter>
@@ -111,7 +111,7 @@
 	     <Parameter Widget="Label" > <Name> Variable for vector (and scalar) potential </Name> </Parameter>
 	 <Parameter Widget="Edit" Enabled="False">
            <Name> Variable </Name>
-           <DefaultValue> P </DefaultValue>
+           <DefaultValue> AV </DefaultValue>
 	   <Whatis>Variable for vector (and scalar) potential(s)</Whatis>
          </Parameter>
          <Parameter Widget="CheckBox" >
@@ -130,23 +130,23 @@
       <BoundaryCondition>
 	<Parameter Widget="Label" > <Name> Dirichlet conditions for potential</Name> </Parameter>
 	<Parameter  Widget="Edit">
-	  <Name> P </Name>
+	  <Name> AV </Name>
 	  <Whatis> Give the scalar potential value for this boundary. </Whatis>
 	</Parameter>
 	<Parameter  Widget="Edit">
-	  <Name> P {e} </Name>
+	  <Name> AV {e} </Name>
 	  <Whatis> Give the vector potential value for this boundary. </Whatis>
 	</Parameter>
 	<Parameter  Widget="Edit">
-	  <Name> P {e} 1 </Name>
+	  <Name> AV {e} 1 </Name>
 	  <Whatis> Give the x-component of the vector potential value for this boundary. </Whatis>
 	</Parameter>
 	<Parameter  Widget="Edit">
-	  <Name> P {e} 2 </Name>
+	  <Name> AV {e} 2 </Name>
 	  <Whatis> Give the y-component of the vector potential value for this boundary. </Whatis>
 	</Parameter>
 	<Parameter  Widget="Edit">
-	  <Name> P {e} 3 </Name>
+	  <Name> AV {e} 3 </Name>
 	  <Whatis> Give the z-component of the vector potential value for this boundary. </Whatis>
 	</Parameter>
 	<Parameter  Widget="Edit">
@@ -235,7 +235,7 @@
 	<Parameter Widget="Label" > <Name> Target Variable </Name> </Parameter>
 	<Parameter Widget="Edit" Enabled="False">
 	  <Name> Potential Variable </Name>
-	  <DefaultValue> P </DefaultValue>
+	  <DefaultValue> AV </DefaultValue>
 	  <Whatis> Name of the vector (and scalar) potential field to apply the postprocessing computation. </Whatis>
 	</Parameter>
 

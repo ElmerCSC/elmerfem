@@ -205,8 +205,9 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
         AngularFrequency = SQRT( DispSol % EigenValues(NoEigen))
 	GotFrequency = .TRUE.
       END IF
-      IF( DispDofs /= dim ) THEN
-        CALL Fatal('HelmholtzSolver','Eigenmode displacement field should have 1*dim components')
+PRINT *,'dispdofs',dispdofs,dim
+      IF( DispDofs < dim ) THEN
+        CALL Fatal('HelmholtzSolver','Eigenmode displacement field should have at least 1*dim components')
       END IF
     ELSE
       IF( DispDofs /= 2*dim ) THEN

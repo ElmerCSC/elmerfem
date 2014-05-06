@@ -1906,8 +1906,7 @@ integer::inside
 
            RowInd = -1
            IF ( CurrIf % NumberOfRows > 0 ) THEN
-              RowInd = SearchIAItem( CurrIf % NumberOfRows, &
-                            CurrIf % GRows, GRow )
+              RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
            END IF
 
            IF ( RowInd /= -1 ) THEN
@@ -1937,8 +1936,7 @@ integer::inside
                 
            RowInd = -1
            IF ( CurrIf % NumberOfRows > 0 ) THEN
-              RowInd = SearchIAItem( CurrIf % NumberOfRows, &
-                          CurrIf % GRows, GRow )
+              RowInd = SearchIAItem( CurrIf % NumberOfRows, CurrIf % GRows, GRow )
            END IF
 
            IF ( RowInd /= -1 ) THEN
@@ -2039,7 +2037,8 @@ REAL(kind=dp)::cputime,realtime,tt,rt
   !----------------------------------------------------------------------
 
    EdgeBasis = ListGetLogical( Solver % Values, 'Edge Basis', stat )
-   EdgeBasis = EdgeBasis .AND. .NOT. SourceMatrix % Complex
+!  EdgeBasis = EdgeBasis .AND. .NOT. SourceMatrix % Complex
+
    IF ( EdgeBasis ) THEN
      IF( ASSOCIATED( SplittedMatrix % InsideMatrix % Eperm) ) &
        DEALLOCATE( SplittedMatrix % InsideMatrix % EPerm )
@@ -2064,7 +2063,8 @@ REAL(kind=dp)::cputime,realtime,tt,rt
 
       IF( EdgeBasis) THEN
         k = SourceMatrix % InvPerm(i)
-        IF(k>Solver % Mesh % NumberOfNodes) SplittedMatrix % InsideMatrix % EPerm(j)=1
+        IF( k>Solver % Variable % DOFs*Solver % Mesh % NumberOfNodes ) &
+             SplittedMatrix % InsideMatrix % EPerm(j)=1
       END IF
     END IF
   END DO
@@ -2116,39 +2116,39 @@ REAL(kind=dp)::cputime,realtime,tt,rt
  !
  !----------------------------------------------------------------------
 
-  IF ( .NOT. SourceMatrix % COMPLEX ) THEN
-    CM => SourceMatrix % ConstraintMatrix
-    IF (ASSOCIATED(CM)) THEN
-      ALLOCATE(SPerm(SourceMatrix % NumberOfRows)); SPerm=0
-      j = 0
-      DO i = 1, SourceMatrix % NumberOfRows
-        IF (ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % MyPE) THEN
-           j = j + 1
-           SPerm(i)=j
-        END IF
-      END DO
-      SCols => CM % Cols
-      ALLOCATE(CM % Cols(SIZE(SCols)))
-      CM % Cols = SPerm(SCols)
-      SplittedMatrix % InsideMatrix % Perm => SPerm
-      SplittedMatrix % InsideMatrix % ConstraintMatrix => CM
-     END IF
+  CM => SourceMatrix % ConstraintMatrix
+  IF (ASSOCIATED(CM)) THEN
+    ALLOCATE(SPerm(SourceMatrix % NumberOfRows)); SPerm=0
+    j = 0
+    DO i = 1, SourceMatrix % NumberOfRows
+      IF (ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % MyPE) THEN
+         j = j + 1
+         SPerm(i)=j
+      END IF
+    END DO
+    SCols => CM % Cols
+    ALLOCATE(CM % Cols(SIZE(SCols)))
+    CM % Cols = SPerm(SCols)
+    SplittedMatrix % InsideMatrix % Perm => SPerm
+    SplittedMatrix % InsideMatrix % ConstraintMatrix => CM
+  END IF
 
+  IF ( .NOT. SourceMatrix % COMPLEX ) THEN
      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
         TmpRHSVec, Solver, DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm), &
           matVecF=AddrFunc(SParMatrixVector) )
-
-    IF (ASSOCIATED(CM)) THEN
-      DEALLOCATE(CM % Cols)
-      CM % Cols => SCols
-      DEALLOCATE(SPerm)
-      SplittedMatrix % InsideMatrix % Perm => Null()
-      SplittedMatrix % InsideMatrix % ConstraintMatrix => Null()
-    END IF
   ELSE
      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
        TmpRHSVec, Solver, DotF=AddrFunc(SParCDotProd), NormF=AddrFunc(SParCNorm), &
          MatVecF=AddrFunc(SParCMatrixVector) )
+  END IF
+
+  IF (ASSOCIATED(CM)) THEN
+    DEALLOCATE(CM % Cols)
+    CM % Cols => SCols
+    DEALLOCATE(SPerm)
+    SplittedMatrix % InsideMatrix % Perm => Null()
+    SplittedMatrix % InsideMatrix % ConstraintMatrix => Null()
   END IF
 
   GlobalMatrix => SaveMatrix
@@ -2285,17 +2285,7 @@ REAL(kind=dp) :: s, RealTime
 
         IfV % IfVec(1:CurrIf % NumberOfRows) = 0.0
         DO j = 1, CurrIf % NumberOfRows
-           IF ( Currif % RowOwner(j) == ParEnv % MyPE ) THEN
-!
-! This is now dealt with in the matrix initialization, by adding the entries
-! to 'InsideMatrix'...
-!            rowind = IfO % IfVec(j)
-!            DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
-!              Colind = IfL % IfVec(k)
-!              IF ( ColInd > 0 ) &
-!                v(rowind)=v(rowind)+CurrIf % Values(k)*u(colind)
-!            END DO
-           ELSE
+           IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) THEN
              DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
                Colind = IfL % IfVec(k)
                IF ( ColInd > 0 ) &
@@ -2332,6 +2322,7 @@ REAL(kind=dp) :: s, RealTime
 !omp end parallel do
   END IF
 
+
   CALL Recv_LocIf_Wait( GlobalData % SplittedMatrix, n, v,  &
        nneigh, neigh, recv_size, requests, buffer )
 
@@ -2341,6 +2332,7 @@ REAL(kind=dp) :: s, RealTime
     DEALLOCATE( buffer(i) % rbuf )
   END DO
   DEALLOCATE( buffer )
+
   CALL SParIterActiveBarrier 
 !----------------------------------------------------------------------
 END SUBROUTINE SParMatrixVector
@@ -2863,10 +2855,8 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
               DO k = RecvdIfMatrix(i) % Rows(j), RecvdIfMatrix(i) % Rows(j+1) - 1
                  l = RecvdIfMatrix(i) % Cols(k)
                  ColIndA = SearchNode(ParallelInfo,l,Order=SourceMatrix % Perm)
-                 IF (ColIndA>0) THEN
-! XXXX             ColIndA = SourceMatrix % Perm(ColIndA)
-                   IF (ColIndA>0) ColIndA = RevDOFList(ColIndA)
-                 END IF
+                 IF (ColIndA>0) ColIndA = RevDOFList(ColIndA)
+
                  IF ( ColIndA  <= 0 ) CYCLE
 
                  Found = .FALSE.
@@ -2889,10 +2879,11 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
                  END DO
 
                  IF ( .NOT. Found ) THEN
-                    PRINT*,ParEnv % MyPE,  'GlueFinalize: This should not happen 0'
-                    PRINT*,ParEnv % MyPE, i-1, RecvdIfMatrix(i) % GRows(j), RowInd, &
-                                RecvdIfMatrix(i) % Cols(k), ColIndA
-                    CALL FLUSH(6)
+                   IF(RecvdIfMatrix(i) % Values(k) /= 0._dp ) THEN
+                     PRINT*,ParEnv % MyPE,  'GlueFinalize: This should not happen 0'
+                     PRINT*,ParEnv % MyPE, i-1, RecvdIfMatrix(i) % GRows(j), RowInd, &
+                                 RecvdIfMatrix(i) % Cols(k), ColIndA
+                   END IF
                  END IF
               END DO
            ELSE

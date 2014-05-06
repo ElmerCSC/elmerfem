@@ -3945,10 +3945,10 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: LocalParam(:), Field(:)
   CHARACTER(LEN=MAX_NAME_LEN) ::  ParamName(99), Name
   LOGICAL :: SubroutineVisited=.FALSE.,FirstTime=.TRUE., GotCoeff, &
-       GotIt, GotOper, GotVar, ParamsExist
+       GotIt, GotOper, GotVar
 
   SAVE SubroutineVisited, DIM, LocalNodes, ParamName, NoParams, LocalParam, &
-       ParamsExist, BodyForceParams
+       BodyForceParams
 
 
   CALL Info('SaveMaterials','Creating selected material parameters as fields')
@@ -3974,7 +3974,6 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
      ! Find out how many variables should we saved
      NoParams = 0
      GotVar = .TRUE.
-     ParamsExist = .FALSE.
 
      DO WHILE(GotVar)  
        NoParams = NoParams + 1
@@ -4045,7 +4044,6 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
            
            CALL VariableAdd( Mesh % Variables, Mesh, PointerToSolver, &
                TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )         
-           ParamsExist = .TRUE.
            
            NULLIFY( Field )
          END IF
@@ -4057,11 +4055,6 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
      SubroutineVisited = .TRUE.
    END IF
 
-   IF( .NOT. ParamsExist ) THEN
-     CALL WARN( 'SaveMaterials', 'Parameters are not to be found. Nothing will be written')       
-     RETURN
-   END IF
-   
   !-----------------------------------
   ! loop all parameters to be exported
   !-------------------------------------
@@ -4139,9 +4132,9 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: LocalParam(:), Field(:)
   CHARACTER(LEN=MAX_NAME_LEN) ::  ParamName(99), Name
   LOGICAL :: SubroutineVisited=.FALSE.,FirstTime=.TRUE., GotCoeff, &
-       GotIt, GotOper, GotVar, ExactCoordinates, ParamsExist
+       GotIt, GotOper, GotVar, ExactCoordinates
 
-  SAVE SubroutineVisited, DIM, LocalNodes, ParamName, NoParams, LocalParam, ParamsExist
+  SAVE SubroutineVisited, DIM, LocalNodes, ParamName, NoParams, LocalParam
 
 
   CALL Info('SaveBoundaryValues','Creating selected boundary values as fields')
@@ -4167,7 +4160,6 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
      ! Find out how many variables should we saved
      NoParams = 0
      GotVar = .TRUE.
-     ParamsExist = .FALSE.
 
      DO WHILE(GotVar)  
        NoParams = NoParams + 1
@@ -4233,7 +4225,6 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
            
            CALL VariableAdd( Mesh % Variables, Mesh, PointerToSolver, &
                TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )         
-           ParamsExist = .TRUE.
            
            NULLIFY( Field )
          END IF
@@ -4244,16 +4235,13 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
 
      SubroutineVisited = .TRUE.
    END IF
+   
 
-   IF( .NOT. ParamsExist ) THEN
-     CALL WARN( 'SaveBoundaryValues', 'Parameters are not to be found. Nothing will be written')       
-     RETURN
-   END IF
-
-  !-----------------------------------
-  ! loop all parameters to be exported
-  !-------------------------------------
-  DO ParamNo=1,NoParams 
+   !-------------------------------------------------------
+   ! Loop all parameters to be exported and update their values.
+   ! NoParams is set the 1st time the suboutine is visited. 
+   !--------------------------------------------------------
+   DO ParamNo=1,NoParams 
     
     Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
     Field => Var % Values

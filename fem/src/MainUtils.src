@@ -3415,9 +3415,9 @@ CONTAINS
              CM1 => AllocateMatrix()
              CM1 % NumberOfRows = n*CM0 % NumberOfRows
              ALLOCATE(CM1 % Rows(n*CM0 % NumberOfRows+1))
-             ALLOCATE(CM1 % Cols(n*SIZE(CM0 % Cols))); CM1 % Cols = 0._dp
+             ALLOCATE(CM1 % Cols(n*n*SIZE(CM0 % Cols))); CM1 % Cols = 0._dp
              ALLOCATE(CM1 % Diag(CM1 % NumberOfRows)); CM1 % Diag = 0._dp
-             ALLOCATE(CM1 % Values(n*SIZE(CM0 % Values))); CM1 % Values = 0._dp
+             ALLOCATE(CM1 % Values(n*n*SIZE(CM0 % Values))); CM1 % Values = 0._dp
 
              CM1 % Rows(1) = 1
              col = 0
@@ -3425,13 +3425,12 @@ CONTAINS
              DO i=1,CM0 % NumberOfRows
                DO j=1,n
                  DO k=CM0 % Rows(i),CM0 % Rows(i+1)-1
-#if 0
+#if 1
                    DO l=1,n
                      col = col + 1
-                     CM1 % Values(col) = CM0 % Values(k)
-                     IF(j==l) THEN
-                       CM1 % Cols(col) = n*(CM0 % Cols(k)-1)+l
-                     END IF
+                     CM1 % Cols(col) = n*(CM0 % Cols(k)-1)+l
+                     IF(j==l) &
+                       CM1 % Values(col) = CM0 % Values(k)
                    END DO
 #else
                    col = col + 1

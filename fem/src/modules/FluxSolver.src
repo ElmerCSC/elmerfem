@@ -60,8 +60,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   TYPE(ValueList_t),POINTER :: SolverParams
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CondName, PotName
   INTEGER :: i,j,k,dim,DOFs,firstmag
-  LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry
-  LOGICAL :: GotIt, Visited = .FALSE.
+  LOGICAL :: ConstantBulkMatrix, ConstantBulkMatrixInUse, CSymmetry, GotIt  
   LOGICAL :: CalculateFluxMag, CalculateFlux, CalculateGradMag, CalculateGrad, &
       EnforcePositiveMagnitude, UsePot
   REAL(KIND=dp) :: Unorm, Totnorm, val
@@ -74,8 +73,6 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
   END TYPE FieldTable_t
   TYPE(FieldTable_t) :: Fields(8)
   
-  SAVE Visited
-
  
   CALL Info( 'FluxSolver', '-------------------------------------',Level=4 )
   CALL Info( 'FluxSolver', 'Computing the flux and/or gradient',Level=4 )
@@ -575,7 +572,7 @@ END SUBROUTINE FluxSolver
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: SolverParams
     INTEGER :: dim
-    CHARACTER(LEN=MAX_NAME_LEN) :: VarName, FluxName, GradName
+    CHARACTER(LEN=MAX_NAME_LEN) :: EqName, VarName, FluxName, GradName
     LOGICAL :: GotIt, CalculateFluxMag, CalculateFlux, CalculateGrad, &
         CalculateGradMag
 !------------------------------------------------------------------------------
@@ -619,7 +616,8 @@ END SUBROUTINE FluxSolver
     END IF
 
     IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-      CALL ListAddString( SolverParams, 'Variable','-nooutput fluxsolver_temp' )
+      EqName = ListGetString( SolverParams,'Equation')
+      CALL ListAddString( SolverParams, 'Variable','-nooutput '//TRIM(EqName)//'_temp' )
     END IF
     
 
