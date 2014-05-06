@@ -4494,16 +4494,17 @@ END SUBROUTINE GetMaxDefs
         Xmaxm, Xminm, x1, x2, y1, y2, xm1, xm2, ym1, ym2, dx, dxNeg, dxPos, &
         FiiMax, FiiMin, wsum
     INTEGER :: coeffi(100),signs(100)
-    LOGICAL :: Yconst, YConstM, DoEdges, DoNodes, SelfProject, EliminateUnneeded, Found
+    LOGICAL :: Yconst, YConstM, DoEdges, DoNodes, SelfProject, EliminateUnneeded, Found, Parallel
     TYPE(Element_t), POINTER :: Element, ElementM
 
     CALL Info('StrideProjector','Creating simple projector along 1D strides',Level=7)
+
+    Parallel = ParEnv % PEs>1
     
     BMesh1 % Parent => NULL()
     BMesh2 % Parent => NULL()
 
     ! Create projector
-    Projector => AllocateMatrix()
 
     !Projector % ConstraintType = CONSTRAINT_TYPE_EDGE
     !    Projector % ConstraintBC = bc
@@ -4525,28 +4526,30 @@ END SUBROUTINE GetMaxDefs
     n = BMesh1 % NumberOfNodes + BMesh1 % NumberOfBulkElements
     m = 4*n
     
+    Projector => AllocateMatrix()
     ALLOCATE( Projector % Rows(n+1) )
     ALLOCATE( Projector % Cols(m) )
     ALLOCATE( Projector % Values(m) )
+    ALLOCATE( Projector % InvPerm(n) )
     
-    Cols => Projector % Cols
+    Cols   => Projector % Cols
+    Rows   => Projector % Rows
     Values => Projector % Values
-    Rows => Projector % Rows
     Projector % NumberOfRows = n
 
-    FiiMax = MAXVAL( BMesh2 % Nodes % x)
-    FiiMin = MINVAL( BMesh2 % Nodes % x)
+    FiiMax = MAXVAL(BMesh2 % Nodes % x)
+    FiiMin = MINVAL(BMesh2 % Nodes % x)
     XRange = FiiMax - FiiMin
-    YRange = MAXVAL( BMesh2 % Nodes % y) - MINVAL( BMesh2 % Nodes % y )
-    
+    YRange = MAXVAL(BMesh2 % Nodes % y) - MINVAL(BMesh2 % Nodes % y)
+
     IF( Repeating ) THEN
       SectorMax = CEILING( 360.0 / XRange ) 
       WRITE( Message,'(A,I0)') 'Maximum number of sectors: ',SectorMax
       CALL Info('PreRotationalProjector',Message,Level=8)
     END IF
     
-    YTol = 1.0e-3 * YRange
-    XTol = 1.0e-3 * XRange
+    YTol = 1.0d-3 * YRange
+    XTol = 1.0d-3 * XRange
     
     Rows(1) = 1
     ncol = 0
@@ -4603,7 +4606,7 @@ END SUBROUTINE GetMaxDefs
         Found = .FALSE.
         x1 = BMesh1 % Nodes % x(i)
         y1 = BMesh1 % Nodes % y(i)
-        
+
         IF( Repeating ) THEN
           Nfii = FLOOR( (x1-FiiMin) / XRange )
           x1 = x1 - Nfii * XRange
@@ -4668,20 +4671,22 @@ END SUBROUTINE GetMaxDefs
             IF( EliminateUnneeded ) THEN
               CYCLE
             ELSE
-              nrow = nrow + 1
-              ncol = ncol + 1
-              Cols(ncol) = InvPerm1(i)
-              Values(ncol) = 0.0_dp
-              CYCLE
+!             nrow = nrow + 1
+!             ncol = ncol + 1
+!             Cols(ncol) = InvPerm1(i)
+!             Values(ncol) = 0.0_dp
+!             Projector % InvPerm(nrow) = InvPerm1(i)
+!             CYCLE
             END IF
           END IF
               
           nrow = nrow + 1
+          Projector % InvPerm(nrow) = InvPerm1(i)
       
           IF( SelfProject ) THEN
             ncol = ncol + 1
-            Cols(ncol) = InvPerm1(i) 
             Values(ncol) = 1.0_dp      
+            Cols(ncol) = InvPerm1(i) 
           END IF
                     
           IF( PRESENT( NodeScale ) ) THEN
@@ -4691,7 +4696,7 @@ END SUBROUTINE GetMaxDefs
           ! The projection weights
           DO j=1,ncoeff 
             
-            IF( ABS( Coeff(j) ) < 1.0e-12 ) CYCLE
+            IF( ABS( Coeff(j) ) < 1.0d-12 ) CYCLE
             
             ncol = ncol + 1
             IF( ncol > m ) THEN
@@ -4706,7 +4711,7 @@ END SUBROUTINE GetMaxDefs
             IF( SelfProject ) THEN
               Values(ncol) = -sgn0 * Coeff(j) 
             ELSE
-              Values(ncol) = sgn0 * Coeff(j)
+              Values(ncol) =  sgn0 * Coeff(j)
             END IF
           END DO
           
@@ -4741,11 +4746,10 @@ END SUBROUTINE GetMaxDefs
         ! Numbering of global indexes is needed to ensure correct direction 
         ! of the edge dofs. Basically the InvPerm could be used also in serial
         ! but the order of numbering is maintained when the reduced mesh is created. 
-        IF(ParEnv % PEs > 1 ) THEN
+        IF(Parallel) THEN
           k1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm1(k1))
           k2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm1(k2))
         END IF
-        
 
         IF( Repeating ) THEN
           Nfii = FLOOR( (x1-FiiMin) / XRange )
@@ -4812,11 +4816,10 @@ END SUBROUTINE GetMaxDefs
           xminm = MIN( xm1, xm2 ) 
           xmaxm = MAX( xm1, xm2 ) 
 
-          IF(ParEnv % PEs > 1 ) THEN
+          IF(Parallel) THEN
             km1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km1))
             km2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km2))
           END IF
-
           
           IF( YConst ) THEN
             ! If they are lateral is y must be the same
@@ -4947,15 +4950,17 @@ END SUBROUTINE GetMaxDefs
           IF( EliminateUnneeded ) THEN
             CYCLE
           ELSE
-            nrow = nrow + 1
-            ncol = ncol + 1
-            Cols(ncol) = InvPerm1(i+NoNodes1)
-            Values(ncol) = 0.0_dp
-            CYCLE
+!           nrow = nrow + 1
+!           ncol = ncol + 1
+!           Cols(ncol) = InvPerm1(i+NoNodes1)
+!           Values(ncol) = 0.0_dp
+!           Projector % InvPerm(nrow) = InvPerm1(i)
+!           CYCLE
           END IF
         END IF
         
         nrow = nrow + 1
+        Projector % InvPerm(nrow) = InvPerm1(i+NoNodes1)
         
         ! The reference to the edge to be projected
         IF( SelfProject ) THEN
@@ -5004,9 +5009,15 @@ END SUBROUTINE GetMaxDefs
       CALL Info('StrideProjector','Reducing number of rows from '&
           //TRIM(I2S(Projector % NumberOfRows))//' to '//TRIM(I2S(nrow)),Level=12 )
       ALLOCATE( TmpRows(nrow+1) )
-      TmpRows = Rows(nrow+1)
+      TmpRows = Rows(1:nrow+1)
       DEALLOCATE( Projector % Rows )
       Projector % Rows => TmpRows 
+
+      ALLOCATE( TmpRows(nrow) )
+      TmpRows = Projector % InvPerm(1:nrow)
+      DEALLOCATE( Projector % InvPerm )
+      Projector % InvPerm => TmpRows 
+
       Projector % NumberOfRows = nrow
     END IF
 
