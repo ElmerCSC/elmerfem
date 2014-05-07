@@ -85,7 +85,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
        TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
        INTEGER :: i, j, k, l, m, n, DOFs
-       LOGICAL :: DGSolver, Found, GB, Global_dof
+       LOGICAL :: DGSolver, Found, GB, Global_dof, StrideProj
        TYPE(Mesh_t), POINTER :: Mesh
        TYPE(Element_t), POINTER :: Element
        TYPE(NeighbourList_t), POINTER :: MtrxN, MeshN
@@ -95,9 +95,11 @@ CONTAINS
 
        INTEGER, POINTER :: Perm(:)
 
+       INTEGER, ALLOCATABLE :: Owneddofs(:), Owneddofs2(:)
        INTEGER :: pardofs_bef, pardofs_all
        INTEGER, ALLOCATABLE :: pardofs_in(:), pardofs_out(:), ind(:)
        REAL(KIND=dp) :: realtime,tt
+
 !-------------------------------------------------------------------------------
 
 !tt = realtime()
@@ -272,6 +274,17 @@ CONTAINS
          g_beg = NINT(ParallelReduction(1._dp*MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2))
          pardofs_all = NINT(ParallelReduction(Matrix % ParallelDOFs*1._dp,2))
 
+         StrideProj = ListGetLogicalAnyBC(CurrentModel,'Stride Projector' )
+
+         IF(StrideProj) THEN
+           ALLOCATE(OwnedDofs(ParEnv % PEs), OwnedDofs2(ParEnv % PEs))
+           owneddofs = 0
+           owneddofs(ParEnv % Mype+1) = Matrix % ExtraDofs
+           CALL MPI_ALLREDUCE( Owneddofs, Owneddofs2, ParEnv % PEs, &
+                MPI_INTEGER, MPI_SUM, Solver % Matrix % Comm, i )
+           l_beg = SUM(owneddofs2(1:ParEnv % myPE))
+         END IF
+
          Found = ASSOCIATED(Solver % Matrix % ConstraintMatrix)
          IF(Found) Found = ASSOCIATED(Solver % Matrix % ConstraintMatrix % InvPerm)
 
@@ -287,20 +300,13 @@ CONTAINS
              IF(proc_ind<=0) proc_ind=ParEnv % PEs
              proc_ind=proc_ind-1
 
-!            Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1)=proc_ind
-!            l = -1
-!            DO k=2,ParEnv % PEs
-!              l = l + 1
-!              IF(l==proc_ind) l = l + 1
-!              Matrix % ParallelInfo % NeighbourList(i) % Neighbours(k)=l
-!            END DO
              DO k=1,ParEnv % PEs
                Matrix % ParallelInfo % NeighbourList(i) % Neighbours(k)=ParEnv % PEs-k
              END DO
              k = j + g_beg
            ELSE IF(Found) THEN
              k = Solver % Matrix % ConstraintMatrix % InvPerm(j-Matrix % ParallelDOFs)
-             IF(k<=0) CYCLE
+             IF( k<=0 ) CYCLE
              Matrix % Parallelinfo % Interface(i) = Matrix % ParallelInfo % Interface(k)
 
              l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
@@ -312,7 +318,11 @@ CONTAINS
              Matrix % Parallelinfo % NeighbourList(i) % Neighbours = &
                 Matrix % ParallelInfo % NeighbourList(k) % Neighbours
 
-             k = Matrix % ParallelInfo % GlobalDOFs(k) + g_beg + pardofs_all
+             IF ( StrideProj ) THEN
+               k = j + g_beg + l_beg + pardofs_all
+             ELSE
+               k = Matrix % ParallelInfo % GlobalDOFs(k) + g_beg + pardofs_all
+             END IF
            ELSE
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
              Matrix % Parallelinfo % NeighbourList(i) % Neighbours(1)=ParEnv % myPE
@@ -320,6 +330,13 @@ CONTAINS
            END IF
            Matrix % ParallelInfo % GlobalDofs(i) = k
          END DO
+
+         IF ( StrideProj) THEN
+           DO k=1,SIZE(Matrix % ParallelInfo % NeighbourList)
+             l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
+             CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
+           END DO
+         END IF
 
          l=Matrix % ExtraDOFs
          n=SIZE(Perm)

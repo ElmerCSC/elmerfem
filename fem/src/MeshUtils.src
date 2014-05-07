@@ -2083,7 +2083,6 @@ END SUBROUTINE GetMaxDefs
      CHARACTER(256) :: str
      LOGICAL :: halo
 
-
      IF(.NOT. Parallel) RETURN
 
      FileName = BaseName(1:BaseNameLen)//&
@@ -4518,7 +4517,7 @@ END SUBROUTINE GetMaxDefs
     ! This is otherwise probably ok, but it then results to the InvPerm being 
     ! longer than the actual size of the projection matrix.
     ! For some reason .FALSE. does not work at the moment.
-    EliminateUnneeded = .FALSE.
+    EliminateUnneeded = .TRUE.
     
     ! We don't know how many entries we will have so make it big enough
     ! For edge elements using strides the typical number of needed target edges is two.
@@ -4575,7 +4574,7 @@ END SUBROUTINE GetMaxDefs
       IF( Element % TYPE % NumberOfNodes > 2 ) THEN
         CALL Fatal('StrideProjector','This should not happen')
       END IF
-      
+
       k1 = Element % NodeIndexes(1)
       Dist1 = AngleCoeff *  Mesh % Nodes % x(k1) + Mesh % Nodes % y(k1)
       k2 = Element % NodeIndexes(2)
@@ -4956,10 +4955,9 @@ END SUBROUTINE GetMaxDefs
             ncol = ncol + 1
             Cols(ncol) = InvPerm1(i+NoNodes1)
             Values(ncol) = 0.0_dp
-
             coeffi(1:ncoeff) = 0
             Rows(nrow+1) = ncol + 1      
-            Projector % InvPerm(nrow) = InvPerm1(i)
+            Projector % InvPerm(nrow) = InvPerm1(i+NoNodes1)
             CYCLE
           END IF
         END IF
@@ -5006,7 +5004,6 @@ END SUBROUTINE GetMaxDefs
       END DO
     END IF
 
-
     CALL Info('StrideProjector','Number of eliminated mappings: '//TRIM(I2S(Nelim)),Level=8)
 
     ! For some reason this results to core dump    
@@ -5037,6 +5034,8 @@ END SUBROUTINE GetMaxDefs
       Projector % Cols => TmpCols
       Projector % Values => TmpValues
     END IF
+
+!call crs_sortmatrix(projector,.true.)
 
   END FUNCTION StrideProjector
 !------------------------------------------------------------------------------
@@ -5821,14 +5820,16 @@ END SUBROUTINE GetMaxDefs
 
 
     IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
-      OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
-!     CALL CRS_PrintMatrix( Projector )
-      do i=1,projector % numberofrows
-        do j=projector % rows(i), projector % rows(i+1)-1
-          write(1,*) projector % invperm(i), projector % cols(j), projector % values(j)
+      IF(ParEnv % Mype == 0 ) THEN
+         OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
+!        CALL CRS_PrintMatrix( Projector )
+        do i=1,projector % numberofrows
+          do j=projector % rows(i), projector % rows(i+1)-1
+            write(1,*) projector % invperm(i), projector % cols(j), projector % values(j)
+          end do
         end do
-      end do
-      CLOSE(1)
+        CLOSE(1)
+      END IF
       IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
     END IF
 
