@@ -180,7 +180,9 @@ CONTAINS
     EXTERNAL :: PROCEDURE
     INTEGER  :: PROCEDURE
 !------------------------------------------------------------------------------
-    INTEGER(KIND=AddrInt) :: AddrFunc
+#ifndef USE_ISO_C_BINDINGS
+   INTEGER(KIND=AddrInt) :: AddrFunc
+#endif
 !------------------------------------------------------------------------------
     Solver % PROCEDURE = AddrFunc( PROCEDURE )
 !------------------------------------------------------------------------------

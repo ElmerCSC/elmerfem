@@ -1949,7 +1949,10 @@ END SUBROUTINE FetiProject
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL  :: Found, Floating=.FALSE., FetiInit, QR, MumpsLU, MumpsNS
     REAL(KIND=dp), POINTER :: xtmp(:),btmp(:),rtmp(:)
-    INTEGER(KIND=AddrInt) :: mvProc, dotProc, nrmProc, stopcProc, precProc, AddrFunc
+    INTEGER(KIND=AddrInt) :: mvProc, dotProc, nrmProc, stopcProc, precProc
+#ifndef USE_ISO_C_BINDINGS 
+    INTEGER(KIND=AddrInt) :: AddrFunc
+#endif
 
     REAL(KIND=dp), POINTER :: SaveValues(:)
     INTEGER, POINTER :: SaveCols(:),SaveRows(:),p(:)

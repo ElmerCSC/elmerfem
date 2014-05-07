@@ -1062,8 +1062,9 @@
 #ifndef USE_ISO_C_BINDINGS
        INTEGER  :: HUTI_D_CGS
        EXTERNAL :: HUTI_D_CGS
+       INTEGER(KIND=AddrInt) :: AddrFunc
 #endif
-       INTEGER(KIND=addrInt) :: AddrFunc, iterProc, mvProc, dProc=0
+       INTEGER(KIND=addrInt) :: iterProc, mvProc, dProc=0
 !------------------------------------------------------------------------------
        
        ipar = 0

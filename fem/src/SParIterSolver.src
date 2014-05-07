@@ -2012,8 +2012,9 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   INTEGER :: ipar(HUTI_IPAR_DFLTSIZE)
   REAL(KIND=dp), DIMENSION(:,:), POINTER :: Work
   REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRHSVec, r(:)
-
+#ifndef USE_ISO_C_BINDINGS
   INTEGER(KIND=AddrInt) :: AddrFunc
+#endif
   REAL(KIND=dp) :: ILUT_TOL
   INTEGER :: ILUn
   CHARACTER(LEN=MAX_NAME_LEN) :: Preconditioner

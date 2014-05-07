@@ -677,7 +677,9 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     LOGICAL :: GotOrder, BlockGS, Found, NS, SkipCompChange
     TYPE(Varying_string) :: namesp
     CHARACTER(LEN=MAX_NAME_LEN) :: str
+#ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
+#endif
 
     CALL Info('BlockMatrixPrec','Starting preconditioning',Level=6)
     
