@@ -2036,8 +2036,8 @@ REAL(kind=dp)::cputime,realtime,tt,rt
   !
   !----------------------------------------------------------------------
 
-   EdgeBasis = ListGetLogical( Solver % Values, 'Edge Basis', stat )
-!  EdgeBasis = EdgeBasis .AND. .NOT. SourceMatrix % Complex
+   EdgeBasis = .NOT.ListGetLogicalAnyBC( CurrentModel, 'Stride Projector' )
+   EdgeBasis = EdgeBasis.AND.ListGetLogical( Solver % Values, 'Edge Basis', stat )
 
    IF ( EdgeBasis ) THEN
      IF( ASSOCIATED( SplittedMatrix % InsideMatrix % Eperm) ) &
