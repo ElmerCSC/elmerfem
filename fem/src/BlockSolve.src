@@ -988,7 +988,10 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     TYPE(Solver_t) :: Solver
     REAL(KIND=dp) :: MaxChange
 
-    INTEGER(KIND=AddrInt) :: AddrFunc, iterProc,precProc, mvProc,dotProc,nmrProc, zero=0
+#ifndef USE_ISO_C_BINDINGS
+    INTEGER(KIND=AddrInt) :: AddrFunc
+#endif
+    INTEGER(KIND=AddrInt) :: iterProc,precProc, mvProc,dotProc,nmrProc, zero=0
     REAL(KIND=dp) :: dpar(20), xnorm,prevxnorm
     REAL(KIND=dp), ALLOCATABLE :: x(:),b(:),r(:)
     
