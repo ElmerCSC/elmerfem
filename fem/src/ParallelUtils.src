@@ -281,7 +281,7 @@ CONTAINS
            owneddofs = 0
            owneddofs(ParEnv % Mype+1) = Matrix % ExtraDofs
            CALL MPI_ALLREDUCE( Owneddofs, Owneddofs2, ParEnv % PEs, &
-                MPI_INTEGER, MPI_SUM, Solver % Matrix % Comm, i )
+                MPI_INTEGER, MPI_SUM, Matrix % Comm, i )
            l_beg = SUM(owneddofs2(1:ParEnv % myPE))
          END IF
 
@@ -312,7 +312,7 @@ CONTAINS
              l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l))
 
-             IF (Matrix % Parallelinfo % Interface(i)) &
+             IF (Matrix % Parallelinfo % Interface(k)) s&
                CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
 
              Matrix % Parallelinfo % NeighbourList(i) % Neighbours = &
@@ -320,6 +320,12 @@ CONTAINS
 
              IF ( StrideProj ) THEN
                k = j + g_beg + l_beg + pardofs_all
+               DO m=Matrix % Rows(i), Matrix % Rows(i+1)-1
+                 IF (Matrix % Parallelinfo % Interface(Matrix % Cols(m))) THEN
+                    l = SIZE(Matrix % ParallelInfo % NeighbourList(Matrix % Cols(m)) % Neighbours)
+                   CALL Sort(l,Matrix % ParallelInfo % NeighbourList(Matrix % Cols(m)) % Neighbours)
+                 END IF
+               END DO
              ELSE
                k = Matrix % ParallelInfo % GlobalDOFs(k) + g_beg + pardofs_all
              END IF
@@ -331,12 +337,12 @@ CONTAINS
            Matrix % ParallelInfo % GlobalDofs(i) = k
          END DO
 
-         IF ( StrideProj) THEN
-           DO k=1,SIZE(Matrix % ParallelInfo % NeighbourList)
-             l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
-             CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
-           END DO
-         END IF
+!        IF ( StrideProj) THEN
+!          DO k=1,SIZE(Matrix % ParallelInfo % NeighbourList)
+!            l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
+!            CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
+!          END DO
+!        END IF
 
          l=Matrix % ExtraDOFs
          n=SIZE(Perm)
