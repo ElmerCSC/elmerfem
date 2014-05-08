@@ -312,7 +312,7 @@ CONTAINS
              l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l))
 
-             IF (Matrix % Parallelinfo % Interface(k)) s&
+             IF (Matrix % Parallelinfo % Interface(k)) &
                CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
 
              Matrix % Parallelinfo % NeighbourList(i) % Neighbours = &
