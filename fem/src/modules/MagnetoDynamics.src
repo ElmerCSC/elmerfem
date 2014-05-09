@@ -1755,18 +1755,22 @@ CONTAINS
     FORCE = 0.0_dp
     MASS  = 0.0_dp
 
-    IF(PiolaVersion) RETURN
+!   IF(PiolaVersion) RETURN
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element)
+    IP = GaussPoints(Element,EdgeBasis=PiolaVersion)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-
-       CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       IF ( PiolaVersion ) THEN
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx, EdgeBasis=WBasis )
+       ELSE
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                    IP % W(t), detJ, Basis, dBasisdx )
+         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
 
        B  = SUM(Basis(1:n) * Bcoef(1:n))
        L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
