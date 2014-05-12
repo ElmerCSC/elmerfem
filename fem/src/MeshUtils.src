@@ -1003,13 +1003,13 @@ END SUBROUTINE GetMaxDefs
    INTEGER, POINTER :: DisContPerm(:)
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
        NewMovingNode(:),NewStayingNode(:),DecidedElem(:)
-   LOGICAL :: Found, DisCont, Greedy, Debug, DoubleBC
+   LOGICAL :: Found, DisCont, Greedy, Debug, DoubleBC, UseTargetBodies, LeftHit, RightHit
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        TargetBody, NoBulkElems, NoBoundElems, NoParentElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
-       NoUndecided, NoEdges
-   INTEGER, POINTER :: Indexes(:),ParentIndexes(:)
+       NoUndecided, NoEdges, Iter, DecidedByFamily(8), UndecidedByFamily(8)
+   INTEGER, POINTER :: Indexes(:),ParentIndexes(:),TargetBodies(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
        ParentElem, OtherElem
 
@@ -1150,6 +1150,9 @@ END SUBROUTINE GetMaxDefs
    MovingNode = .FALSE.
    StayingNode = .FALSE.
 
+   UseTargetBodies = ListCheckPresentAnyBC( Model,&
+       'Discontinuous Target Bodies')
+
    ! Go through all the boundary elements and now really manipulate the boundary 
    ! elements on the other side. The user may choose which of the parent elements
    ! gets the additional node, or otheriwse the bigger parent index is chosen for
@@ -1161,18 +1164,52 @@ END SUBROUTINE GetMaxDefs
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
      
-     TargetBody = 0
-     DO bc = 1,Model % NumberOfBCs
-       IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-         TargetBody = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous Target Body',Found )
-         EXIT
+     ! For historical reasons there is both single 'body' and multiple 'bodies'
+     ! that define on which side of the discontinuity the new nodes will be. 
+     IF( UseTargetBodies ) THEN
+       DO bc = 1,Model % NumberOfBCs
+         IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+           TargetBodies => ListGetIntegerArray( Model % BCs(bc) % Values,&
+               'Discontinuous Target Bodies',Found )
+           EXIT
+         END IF
+       END DO
+       IF(.NOT. Found ) THEN
+         CALL Fatal('CreateDiscontMesh','Use > Discontinuous Target Bodies < in all, if any bc.')
        END IF
-     END DO
+     ELSE
+       TargetBody = 0
+       DO bc = 1,Model % NumberOfBCs
+         IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+           TargetBody = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous Target Body',Found )
+           EXIT
+         END IF
+       END DO
+     END IF
 
      LeftElem => Element % BoundaryInfo % Left 
      RightElem => Element % BoundaryInfo % Right
 
-     IF( TargetBody > 0 ) THEN
+     IF( UseTargetBodies ) THEN
+       LeftHit = ANY( TargetBodies == LeftElem % BodyId )
+       RightHit = ANY( TargetBodies == RightElem % BodyId )
+       IF( LeftHit .AND. RightHit ) THEN
+         CALL Warn('CreateDiscontMesh','Both left and right parent belong to target bcs')
+       END IF
+       IF( LeftHit ) THEN
+         ParentElem => LeftElem
+         OtherElem => RightElem
+       ELSE IF( RightHit ) THEN
+         ParentElem => RightElem 
+         OtherElem => LeftElem
+       ELSE
+         PRINT *,'bc:',bc,'boundary elem',t,'bulk elems',&
+             LeftElem % ElementIndex,RightElem % ElementIndex
+         CALL Fatal('CreateDiscontMesh','Neither parent ('//TRIM(I2S(LeftElem % BodyId))//','&
+             //TRIM(I2S(RightElem % BodyId))//') belongs to > Discontinuous Target Bodies <')
+       END IF
+
+     ELSE IF( TargetBody > 0 ) THEN
        IF( LeftElem % BodyId == TargetBody ) THEN
          ParentElem => LeftElem
          OtherElem => RightElem
@@ -1180,9 +1217,13 @@ END SUBROUTINE GetMaxDefs
          ParentElem => RightElem 
          OtherElem => LeftElem
        ELSE
-         CALL Fatal('CreateDiscontMesh','Neither parent is > Discontinuous Target Body < !')
+         PRINT *,'bc:',bc,'boundary elem',t,'bulk elems',&
+             LeftElem % ElementIndex,RightElem % ElementIndex
+         CALL Fatal('CreateDiscontMesh','Neither parent ('//TRIM(I2S(LeftElem % BodyId))//','&
+             //TRIM(I2S(RightElem % BodyId))//') is > Discontinuous Target Body < ('&
+             //TRIM(I2S(TargetBody))//')')
        END IF
-     ELSE
+     ELSE ! Just use a consistent rule, if no target body specified
        IF( LeftElem % BodyId > RightElem % BodyId ) THEN
          ParentElem => LeftElem 
          OtherElem => RightElem
@@ -1230,6 +1271,12 @@ END SUBROUTINE GetMaxDefs
      Element % BoundaryInfo % Right => ParentElem
    END DO
 
+   IF(.FALSE.) THEN
+     PRINT *,'Staying0:',StayingNode(1:50)
+     PRINT *,'Moving0: ',MovingNode(1:50)
+     PRINT *,'Discont: ',DiscontPerm(1:50) > 0
+   END IF
+
 
    ! Go over all other elements that are not discontinuous but 
    ! do have some node on the discontinuous boundary. They should 
@@ -1238,9 +1285,12 @@ END SUBROUTINE GetMaxDefs
 
    ALLOCATE( NewMovingNode( NoNodes ), NewStayingNode( NoNodes ) ) 
 
+   Iter = 1
 10 NoStayingElems = 0
    NoMovingElems = 0
    NoUndecided = 0
+   DecidedByFamily = 0
+   UndecidedByFamily = 0
    NewMovingNode = .FALSE.
    NewStayingNode = .FALSE.
 
@@ -1260,6 +1310,8 @@ END SUBROUTINE GetMaxDefs
 
      IF( NoStaying > NoMoving ) THEN
        DecidedElem(t) = .TRUE.
+       i = Element % TYPE % ElementCode / 100 
+       DecidedByFamily( i ) = DecidedByFamily( i ) + 1 
        NoStayingElems = NoStayingElems + 1
        IF( t <= NoBulkElems ) THEN
          NewStayingNode( Indexes ) = .TRUE. 
@@ -1267,6 +1319,8 @@ END SUBROUTINE GetMaxDefs
        CYCLE
      ELSE IF( NoMoving > NoStaying ) THEN
        DecidedElem(t) = .TRUE.
+       i = Element % TYPE % ElementCode / 100 
+       DecidedByFamily( i ) = DecidedByFamily( i ) + 1 
        NoMovingElems = NoMovingElems + 1 
        IF( t <= NoBulkElems ) THEN
          NewMovingNode( Indexes ) = .TRUE.
@@ -1277,11 +1331,16 @@ END SUBROUTINE GetMaxDefs
        END DO
      ELSE
        NoUndecided = NoUndecided + 1
-       IF(.TRUE.) THEN
+       i = Element % TYPE % ElementCode / 100 
+       DecidedByFamily( i ) = DecidedByFamily( i ) + 1 
+
+       IF(.FALSE.) THEN
+!Iter > 2 .AND. ANY( Indexes < 10 )) THEN
          PRINT *,'Undecided element: ',t,Element % TYPE % ElementCode 
          PRINT *,'staying:',NoStaying,StayingNode(Indexes)
          PRINT *,'moving: ',NoMoving,MovingNode(Indexes)
          PRINT *,'Indexes: ',Indexes
+         PRINT *,'DiscontPerm: ',DiscontPerm(Indexes)
          PRINT *,'x: ',Mesh % Nodes % x(Indexes)
          PRINT *,'y: ',Mesh % Nodes % y(Indexes)
          PRINT *,'z: ',Mesh % Nodes % z(Indexes)
@@ -1289,6 +1348,16 @@ END SUBROUTINE GetMaxDefs
      END IF
 
    END DO
+
+   DO i=1,8
+     IF( DecidedByFamily(i) + UndecidedByFamily(i) == 0 ) CYCLE
+     CALL Info('CreateDiscontMesh','Family: '//TRIM(I2S(100*i))//&
+         ' Decided: '//TRIM(I2S(DecidedByFamily(i)))//&
+         ', Undecided: '//TRIM(I2S(UndecidedByFamily(i))),Level=8)
+   END DO
+       
+!   PRINT *,'DecidedByFamily  : ',DecidedByFamily
+!   PRINT *,'UndecidedByFamily: ',UndecidedByFamily
 
    CALL Info('CreateDiscontMesh','Number of related elements moving: '//TRIM(I2S(NoMovingElems)) )
    CALL Info('CreateDiscontMesh','Number of related elements staying: '//TRIM(I2S(NoStayingElems)) )
@@ -1301,7 +1370,8 @@ END SUBROUTINE GetMaxDefs
      IF( NoStayingElems + NoMovingElems == 0 ) THEN
        CALL Warn('CreateDiscontMesh','Could not decide what to do with all elements!')
      ELSE
-       CALL Info('CreateDiscontMesh','Reiterating the undecided elements')
+       Iter = Iter + 1
+       CALL Info('CreateDiscontMesh','Reiterating the undecided elements: '//TRIM(I2S(Iter)))
        GOTO 10
      END IF
    END IF
@@ -5698,9 +5768,9 @@ END SUBROUTINE GetMaxDefs
     IF( ListGetLogical( BC, 'Discontinuous Boundary', GotIt ) .AND. Mesh % DisContMesh )THEN
       PMesh => Mesh
       IF( IntGalerkin ) THEN
-        Projector =>  WeightedProjectorDiscont( PMesh, This )
+        Projector => WeightedProjectorDiscont( PMesh, This )
       ELSE
-        Projector =>  NodalProjectorDiscont( PMesh, This )
+        Projector => NodalProjectorDiscont( PMesh, This )
       END IF
       IF ( ASSOCIATED( Projector ) ) THEN
         Model % BCs(This) % PMatrix => Projector
