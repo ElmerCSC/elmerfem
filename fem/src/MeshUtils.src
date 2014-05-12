@@ -5041,7 +5041,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes, size0, indp, indq, &
-        e1, e2, i1, i2, j1, j2
+        e1, e2, i1, i2, j1, j2, sgn
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Basis(:)
     REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight
@@ -5263,16 +5263,18 @@ END SUBROUTINE GetMaxDefs
             
             IF( i1 == j1 .AND. i2 == j2 ) THEN
               Found = .TRUE.
+	      sgn = 1
             ELSE IF( i1 == j2 .AND. i2 == j1 ) THEN
               Found = .TRUE.
+	      sgn = -1
             END IF
                       
             IF( Found ) THEN
               indp = indp + 1
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                  n + e1, val ) 
+                  n + e1, sgn * val ) 
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                  n + e2, Scale * val ) 
+                  n + e2, Scale * sgn * val ) 
               EdgeDone(e1) = .TRUE.
               EdgeDone(e2) = .TRUE.
             END IF
