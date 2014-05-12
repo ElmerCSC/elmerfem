@@ -4464,6 +4464,8 @@ END SUBROUTINE GetMaxDefs
   !> Create a nodal and edge projector for cases when the edges form a nice cartesian 
   !> grid with the 2nd coordinate always on the same level i.e. there are
   !> always strides along which node and edge projector may be easily created.
+  !> Along the strides the node projector is computed using linear interpolation
+  !> whereas the edge projector is computed using the overlap fraction of the edges.
   !---------------------------------------------------------------------------
    FUNCTION StrideProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
        InvPerm1, InvPerm2, DoNodes, DoEdges, NodeScale, EdgeScale ) &
@@ -5027,6 +5029,11 @@ END SUBROUTINE GetMaxDefs
 
 !---------------------------------------------------------------------------
 !> Create a Galerkin projector related to discontinous interface.
+!> This uses the information stored when the discontinuous interface 
+!> was first coined. This enables simple one-to-one mapping. Integration
+!> weight is used for the nodel projector to allow physical jump conditions.
+!> For the edge dofs there is no such jumps and hence the projector uses
+!> weights of one. 
 !---------------------------------------------------------------------------
   FUNCTION WeightedProjectorDiscont(Mesh, bc ) RESULT ( Projector )
     !---------------------------------------------------------------------------
@@ -5059,7 +5066,6 @@ END SUBROUTINE GetMaxDefs
       RETURN
     END IF
 
-
     Model => CurrentModel
 
     j = 0
@@ -5082,8 +5088,10 @@ END SUBROUTINE GetMaxDefs
     END IF
     size0 = Mesh % NumberOfNodes
 
+    ! Should the projector be diagonal or mass matrix type 
     SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found )
 
+    ! Integration weights should follow the metrix if we want physical nodal jumps. 
     AxisSym = .FALSE.
     IF ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
         CurrentCoordinateSystem() == CylindricSymmetric ) THEN
@@ -5128,6 +5136,8 @@ END SUBROUTINE GetMaxDefs
       END IF
     END DO
 
+    ! Projector for the nodal dofs. 
+    !------------------------------------------------------------------------
     DO t = 1, Mesh % NumberOfBoundaryElements
 
       Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
@@ -5206,7 +5216,7 @@ END SUBROUTINE GetMaxDefs
     END DO
 
 
-    ! Create the projector also for edge dofs
+    ! Create the projector also for edge dofs if they exist
     !----------------------------------------------------------------
     IF( Mesh % NumberOfEdges > 0 ) THEN
 
@@ -5284,6 +5294,7 @@ END SUBROUTINE GetMaxDefs
       DEALLOCATE( EdgeDone ) 
     END IF
 
+    ! Convert from list matrix to CRS matrix format
     CALL List_ToCRSMatrix(Projector)
     
     CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
