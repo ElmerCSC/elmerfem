@@ -334,7 +334,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found, Lfact
+  LOGICAL :: AllocationsDone = .FALSE., Found
   TYPE(Element_t),POINTER :: Element, Edge
 
   REAL(KIND=dp) :: Norm, PrevDT=-1, RelChange
@@ -359,7 +359,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
   LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
          SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
-         PiolaVersion
+         PiolaVersion, LFact, LFactFound, EdgeBasis
 
   REAL(KIND=dp) :: Relax
 
@@ -467,11 +467,25 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 	      'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
+
+  LFact = GetLogical( GetSolverParams(),'Linear System Refactorize', LFactFound )
+  IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN
+    CALL ListAddLogical( getSolverParams(), 'Linear System Refactorize', .TRUE. )
+  END IF
+  EdgeBasis = .NOT.LFactFound .AND. GetLogical( GetSolverParams(), 'Edge Basis', Found )
+
   DO i=1,NoIterationsMax
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
+    IF( EdgeBasis ) CALL ListAddLogical(GetSolverParams(),'Linear System Refactorize',.FALSE.)
   END DO
+  IF ( EdgeBasis ) CALL ListRemove( GetSolverParams(), 'Linear System Refactorize' )
+
+  IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN
+    CALL ListAddLogical( GetSolverParams(), 'Linear System Refactorize', .FALSE. )
+  END IF
+  PrevDT = dt
 
   CALL CalculateLumped(Model % NumberOfBodyForces)
 
@@ -757,22 +771,6 @@ CONTAINS
     CALL Info('WhitneyAVSolver: ', Message, Level=5)
   END IF
 
-  !
-  ! Linear system solution:
-  ! -----------------------
-  IF ( dt /= PrevDT ) THEN
-    LFact = GetLogical( GetSolverParams(),  &
-      'Linear System Refactorize', LFactFound )
-
-    IF ( LFactFound ) &
-      CALL ListAddLogical( getSolverParams(), &
-        'Linear System Refactorize', .TRUE. )
-  END IF
-
-  PrevNorm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
-
-  TOL = GetCReal(GetSolverParams(),'Nonlinear system Convergence Tolerance', Found)
-
   IF (DefaultLineSearch(Converged)) RETURN
   IF ( Converged ) GOTO 10
 
@@ -806,14 +804,6 @@ CONTAINS
   Converged = Solver % Variable % NonlinConverged==1
 
 10 CONTINUE
-
-  IF ( dt /= PrevDT ) THEN
-    IF ( LFactFound ) THEN
-      CALL ListAddLogical( GetSolverParams(), &
-         'Linear System Refactorize', LFact )
-    END IF
-  END IF
-  PrevDT = dt
 
   IF ( ALLOCATED(FluxMap) ) DEALLOCATE(FluxMap)
   IF ( ALLOCATED(TreeEdges) ) DEALLOCATE(TreeEdges)
