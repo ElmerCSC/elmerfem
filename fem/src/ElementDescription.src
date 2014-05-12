@@ -7036,6 +7036,9 @@ END IF
       EdgeMap => Wedge
     CASE(8) 
       EdgeMap => Brick
+    CASE DEFAULT
+      WRITE( Message,'(A,I0,A)') 'Element family ',ElementFamily,' is not known!'
+      CALL Fatal( 'ElementMetric', Message )
     END SELECT
  
     IF ( .NOT. Initialized(ElementFamily) ) THEN

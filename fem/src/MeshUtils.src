@@ -5235,8 +5235,8 @@ END SUBROUTINE GetMaxDefs
           CYCLE
         END IF
         
-        LeftMap => LGetEdgeMap( Left % TYPE % ElementCode )
-        RightMap => LGetEdgeMap( Left % TYPE % ElementCode )
+        LeftMap => LGetEdgeMap( Left % TYPE % ElementCode / 100)
+        RightMap => LGetEdgeMap( Right % TYPE % ElementCode / 100)
         
         ! Go through combinations of edges and find the edges for which the 
         ! indexes are the same. 
@@ -5259,7 +5259,7 @@ END SUBROUTINE GetMaxDefs
             IF( i1 < NoOrigNodes ) i1 = Indexes(i1) + NoOrigNodes
             IF( i2 < NoOrigNodes ) i2 = Indexes(i2) + NoOrigNodes
             IF( j1 < NoOrigNodes ) j1 = Indexes(j1) + NoOrigNodes
-            IF( j1 < NoOrigNodes ) j2 = Indexes(j2) + NoOrigNodes
+            IF( j2 < NoOrigNodes ) j2 = Indexes(j2) + NoOrigNodes
             
             IF( i1 == j1 .AND. i2 == j2 ) THEN
               Found = .TRUE.
