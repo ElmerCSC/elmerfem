@@ -3600,15 +3600,12 @@ CONTAINS
     IF( .NOT. GotIt ) THEN
       IF(PRESENT(UElement)) THEN
         Element => UElement
-      ELSE
-        elem_id = CurrentModel % Solver % ActiveElements(1)
-        Element => CurrentModel % Elements(elem_id)
+        eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
+        w = 2 * PI * ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
+        IF(.NOT. GotIt) w = ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
       END IF
-      eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
-      w = 2 * PI * ListGetCReal( &
-          CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
-      IF(.NOT. GotIt) w = ListGetCReal( &
-          CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
     END IF
 
     ! Check also the material section...
@@ -3616,15 +3613,12 @@ CONTAINS
     IF( .NOT. GotIt ) THEN
       IF(PRESENT(UElement)) THEN
         Element => UElement
-      ELSE
-        elem_id = CurrentModel % Solver % ActiveElements(1)
-        Element => CurrentModel % Elements(elem_id)
-      END IF
-      mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
-      w = 2 * PI * ListGetCReal( &
+        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
+        w = 2 * PI * ListGetCReal( &
           CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
-      IF(.NOT. GotIt) w = ListGetCReal( &
-          CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+        IF(.NOT. GotIt) w = ListGetCReal( &
+            CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+      END IF
     END IF
 
     ! Normally the constant frequency is given in Simulation (or solver) block
@@ -3639,12 +3633,35 @@ CONTAINS
     IF(.NOT. GotIt ) w = ListGetCReal( &
         CurrentModel % Solver % Values,'Angular Frequency',GotIt)
 
+    ! It seems that the equation section is used to allow compliance with ElmerGUI
+    !------------------------------------------------------------------------------
+    IF( .NOT. GotIt ) THEN
+       elem_id = CurrentModel % Solver % ActiveElements(1)
+       Element => CurrentModel % Elements(elem_id)
+       eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
+       w = 2 * PI * ListGetCReal( &
+           CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
+       IF(.NOT. GotIt) w = ListGetCReal( &
+           CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+    END IF
+
+    ! Check also the material section...
+    !------------------------------------------------------------------------------
+    IF( .NOT. GotIt ) THEN
+      elem_id = CurrentModel % Solver % ActiveElements(1)
+      Element => CurrentModel % Elements(elem_id)
+      mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
+      w = 2 * PI * ListGetCReal( &
+        CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
+      IF(.NOT. GotIt) w = ListGetCReal( &
+          CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+    END IF
+
     IF( PRESENT( Found ) ) THEN
       Found = GotIt
     ELSE IF(.NOT. GotIt ) THEN
       CALL Warn('ListGetAngularFrequency','Angular frequency could not be determined!')
     END IF
-
   END FUNCTION ListGetAngularFrequency
 
 
