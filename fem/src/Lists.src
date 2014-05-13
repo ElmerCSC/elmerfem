@@ -3573,13 +3573,14 @@ CONTAINS
 
 
 !> Returns the angular frequency  
-  FUNCTION ListGetAngularFrequency(ValueList,Found) RESULT(w)
+  FUNCTION ListGetAngularFrequency(ValueList,Found,UElement) RESULT(w)
     REAL(KIND=dp) :: w
     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
     LOGICAL, OPTIONAL :: Found
     LOGICAL :: GotIt
-    TYPE(Element_t), POINTER :: Element
-    INTEGER :: elem_id,eq_id
+    TYPE(Element_t), POINTER :: Element, UElement
+    OPTIONAL :: UElement
+    INTEGER :: elem_id,eq_id,mat_id
 
     ! This is rather complicated since it should replace all the various strategies
     ! that have been used in different solvers.
@@ -3594,6 +3595,38 @@ CONTAINS
       GotIt = .FALSE.
     END IF
 
+    ! It seems that the equation section is used to allow compliance with ElmerGUI
+    !------------------------------------------------------------------------------
+    IF( .NOT. GotIt ) THEN
+      IF(PRESENT(UElement)) THEN
+        Element => UElement
+      ELSE
+        elem_id = CurrentModel % Solver % ActiveElements(1)
+        Element => CurrentModel % Elements(elem_id)
+      END IF
+      eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
+      w = 2 * PI * ListGetCReal( &
+          CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
+      IF(.NOT. GotIt) w = ListGetCReal( &
+          CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+    END IF
+
+    ! Check also the material section...
+    !------------------------------------------------------------------------------
+    IF( .NOT. GotIt ) THEN
+      IF(PRESENT(UElement)) THEN
+        Element => UElement
+      ELSE
+        elem_id = CurrentModel % Solver % ActiveElements(1)
+        Element => CurrentModel % Elements(elem_id)
+      END IF
+      mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
+      w = 2 * PI * ListGetCReal( &
+          CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
+      IF(.NOT. GotIt) w = ListGetCReal( &
+          CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+    END IF
+
     ! Normally the constant frequency is given in Simulation (or solver) block
     !-------------------------------------------------------------------------
     IF(.NOT. GotIt) w = 2 * PI * ListGetCReal( &
@@ -3605,18 +3638,6 @@ CONTAINS
         CurrentModel % Solver % Values,'Frequency',GotIt)
     IF(.NOT. GotIt ) w = ListGetCReal( &
         CurrentModel % Solver % Values,'Angular Frequency',GotIt)
-
-    ! It seems that the equation section is used to allow compliance with ElmerGUI
-    !------------------------------------------------------------------------------
-    IF( .NOT. GotIt ) THEN
-      elem_id = CurrentModel % Solver % ActiveElements(1)
-      Element => CurrentModel % Elements(elem_id)
-      eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
-      w = 2 * PI * ListGetCReal( &
-          CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
-      IF(.NOT. GotIt) w = ListGetCReal( &
-          CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
-    END IF
 
     IF( PRESENT( Found ) ) THEN
       Found = GotIt

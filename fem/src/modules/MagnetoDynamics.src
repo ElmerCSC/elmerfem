@@ -2824,7 +2824,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
      AllocationsDone = .TRUE.
   END IF
   
-  Omega = GetAngularFrequency()
+  Omega = GetAngularFrequency(Found=Found)
 
   FixJ=GetLogical(GetSolverParams(),'Fix input Current Density', Found)
   IF (.NOT. Found ) FixJ=.TRUE.
@@ -3025,7 +3025,7 @@ CONTAINS
           END SELECT
         END IF
 
-       Omega = GetAngularFrequency()
+       Omega = GetAngularFrequency(Found=Found,UElement=Element)
 
        !Get element local matrix and rhs vector:
        !----------------------------------------
@@ -4877,7 +4877,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
      END IF
 
-     Omega = GetAngularFrequency(Found=Found)
+     Omega = GetAngularFrequency(Found=Found,UElement=Element)
      Freq = Omega / (2*PI)
 
      BodyId = GetBody()
