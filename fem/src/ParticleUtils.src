@@ -6188,9 +6188,11 @@ RETURN
         WRITE( VtuUnit,'(A,I1,A)') '      <PDataArray type="Float64" Name="'//TRIM(FieldName)&
             //'" NumberOfComponents="',sdofs,'" format="ascii"/>'    
       END DO
-  
-      WRITE( VtuUnit,'(A)') '    </PPointData>'
-      
+
+      IF ( ScalarsExist .OR. VectorsExist) THEN
+        WRITE( VtuUnit,'(A)') '    </PPointData>'
+      END IF
+    
       ! Coordinates of each point
       !-------------------------------------
       WRITE( VtuUnit,'(A)') '      <PPoints>'
