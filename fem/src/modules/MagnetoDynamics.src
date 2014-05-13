@@ -3025,6 +3025,8 @@ CONTAINS
           END SELECT
         END IF
 
+       Omega = GetAngularFrequency()
+
        !Get element local matrix and rhs vector:
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
@@ -4840,11 +4842,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF (PiolaVersion) ALLOCATE( EBasis(n,3), CurlEBasis(n,3) )
    SOL = 0._dp; PSOL=0._dp
 
-   Omega = GetAngularFrequency(Found=Found)
-
    LossEstimation = GetLogical(GetSolverParams(),'Loss Estimation',Found)
    IF (LossEstimation) THEN
-      Freq = Omega / (2*PI)
 
       FreqPower = GetCReal( GetSolverParams(),'Fourier Loss Frequency Exponent',Found )
       IF( .NOT. Found ) FreqPower = 2.0_dp
@@ -4877,6 +4876,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
        PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
      END IF
+
+     Omega = GetAngularFrequency(Found=Found)
+     Freq = Omega / (2*PI)
 
      BodyId = GetBody()
      Material => GetMaterial()
