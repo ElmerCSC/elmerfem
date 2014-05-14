@@ -467,7 +467,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 	      'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
-
   LFact = GetLogical( GetSolverParams(),'Linear System Refactorize', LFactFound )
   IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN
     CALL ListAddLogical( getSolverParams(), 'Linear System Refactorize', .TRUE. )
@@ -2769,7 +2768,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, PiolaVersion
+  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, PiolaVersion, EdgeBasis,LFact,LFactFound
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
@@ -2841,11 +2840,15 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
               'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
+  LFact = GetLogical( GetSolverParams(),'Linear System Refactorize', LFactFound )
+  EdgeBasis = .NOT.LFactFound .AND. GetLogical( GetSolverParams(), 'Edge Basis', Found )
   DO i=1,NoIterationsMax
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
+    IF( EdgeBasis ) CALL ListAddLogical(GetSolverParams(),'Linear System Refactorize',.FALSE.)
   END DO
+  IF ( EdgeBasis ) CALL ListRemove( GetSolverParams(), 'Linear System Refactorize' )
 
 CONTAINS
 
@@ -3135,19 +3138,8 @@ CONTAINS
     !
     ! Linear system solution:
     ! -----------------------
-    PrevNorm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
     Norm = DefaultSolve()
-
-    TOL = GetCReal(GetSolverParams(),'Nonlinear system Convergence Tolerance',Found)
-    Norm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
-
-    WRITE( Message, '(a,g15.8,g15.8,a)') &
-        'NS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, &
-              2*ABS(Norm-PrevNorm)/(Norm+PrevNorm),&
-                 ' ) :: '// 'magnetodynamics'
-    CALL Info( 'ComputeChange', Message, Level=3)
-
-    Converged = 2*ABS(Norm-PrevNorm)/(Norm+PrevNorm)<TOL
+    Converged = Solver % Variable % NonlinConverged==1
 !------------------------------------------------------------------------------
   END FUNCTION DoSolve
 !------------------------------------------------------------------------------
