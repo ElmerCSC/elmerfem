@@ -374,6 +374,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone
 !------------------------------------------------------------------------------
+
+  CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
+  CALL Info('WhitneyAVSolver','Solving the AV equations with edge elements',Level=5 )
+
   PiolaVersion = GetLogical( GetSolverParams(), &
       'Use Piola Transform', Found )
   IF (PiolaVersion) THEN
@@ -474,6 +478,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   EdgeBasis = .NOT.LFactFound .AND. GetLogical( GetSolverParams(), 'Edge Basis', Found )
 
   DO i=1,NoIterationsMax
+    IF( NoIterationsMax > 1 ) THEN
+      CALL Info('WhitneyAVSolver','Nonlinear iteration: '//TRIM(I2S(i)),Level=8 )
+    END IF
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
@@ -497,6 +504,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CoordVar % Values(j+3) = Mesh % Nodes % z(i)
     END DO
   END IF
+
+  CALL Info('WhitneyAVSolver','All done',Level=8 )
+  CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
+
 
 CONTAINS
 
