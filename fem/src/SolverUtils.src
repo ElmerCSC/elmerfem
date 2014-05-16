@@ -2545,14 +2545,17 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: Projector
      TYPE(ValueList_t), POINTER :: BC
      TYPE(Element_t), POINTER :: Element
+     LOGICAL :: SomethingDone
      !------------------------------------------------------------------------------
 
      ! If there is no mortar projector then nothing to do
      Projector => A % ConstraintMatrix
      IF(.NOT. ASSOCIATED( Projector ) ) RETURN
 
-     nodesize = Model % Mesh % NumberOfNodes 
-     totsize = SIZE( Perm )
+     totsize = MAXVAL( Perm )
+     nodesize = MAXVAL( Perm(1:Model % Mesh % NumberOfNodes ) )
+
+     SomethingDone = .FALSE.
 
      ! Go through the projectors and check for jumps
      ! If there is a jump add an entry to the diagonal-to-be
@@ -2595,14 +2598,16 @@ CONTAINS
        END IF
        
        ! Create a table that shows how the additional degrees of freedom map
-       ! to the nodal edgrees of freedom. This is needed when creating the jump.
+       ! to their corresponding regular dof. This is needed when creating the jump.
        ! The sole purpose of this is to define the index "i2" later in the code. 
-       n = MAXVAL( Projector % Cols )
-       ALLOCATE( InvInvPerm( n ) ) 
+       n = MAXVAL( Projector % InvPerm )
+       ALLOCATE( InvInvPerm( nodesize ) ) 
        InvInvPerm = 0
        DO i=1,SIZE( Projector % InvPerm )
          j = Projector % InvPerm(i) 
-         IF( j <= nodesize ) InvInvPerm( j ) = i
+         IF( j <= nodesize ) THEN
+           InvInvPerm( j ) = i
+         END IF
        END DO
 
        ALLOCATE( NodeDone( SIZE( Projector % InvPerm ) ) )
@@ -2622,7 +2627,6 @@ CONTAINS
          nnodes = Element % TYPE % NumberOfNodes
          DO u=1, nnodes
            node = Element % NodeIndexes(u)
-           IF( node > nodesize ) CYCLE
 
            v = Perm( node )
            IF( v == 0 ) CYCLE
@@ -2632,12 +2636,6 @@ CONTAINS
 
            IF( NodeDone( i ) ) CYCLE
            NodeDone( i ) = .TRUE. 
-
-           ! So far done only for nodal dofs
-           ! There does not seem to be any physical relevance in having 
-           ! an edge element jump condition.           
-           ! Therefore cycle through all entries related to non-nodal projector.
-           IF( Projector % InvPerm(i) > nodesize ) CYCLE
 
            IF( AddCoeff ) THEN
              coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
@@ -2649,11 +2647,15 @@ CONTAINS
            IF( AddRhs ) voff = ListGetRealAtNode( BC,'Mortar BC Offset '&
                //Name(1:nlen),node, Found )        
 
+
            DO j = Projector % Rows(i),Projector % Rows(i+1)-1
 
              ! Apply jump condition only to nodal dofs, 
              ! edge dofs or any other non-nodal dofs cannot be handled for jumps. 
              k = Projector % Cols(j)
+
+             ! In this loop skip the entries associated with the jump and
+             ! find them in the nested loop corresponding to regular k. 
              IF( k > nodesize ) CYCLE
 
              ! Find the new degree of freedom associated with the 
@@ -2671,10 +2673,13 @@ CONTAINS
              IF( AddCoeff .OR. AddRes ) THEN
                ! Now find the entry in the sparse matrix. 
                Found = .FALSE.
+
                DO j2 = Projector % Rows(i),Projector % Rows(i+1)-1
                  k2 = Projector % Cols(j2)
 
-                 Found = ( k2 == i2 + totsize )
+                 ! This condition ensures that this is the jump corresponding to 
+                 ! the dof under study. 
+                 Found = ( k2-totsize == i2 )
 
                  ! Ok, found it. Now set the value.                    
                  ! The factor 0.5 comes from the fact that the 
@@ -2698,9 +2703,15 @@ CONTAINS
          END DO
        END DO
 
+       SomethingDone = .TRUE.
+
        DEALLOCATE( InvInvPerm, NodeDone )
        Projector => Projector % ConstraintMatrix
      END DO
+
+     IF( SomethingDone ) THEN
+       CALL Info('setWeightedProjectorJump','Created a jump for weighted projector',Level=7)
+     END IF
  
 !------------------------------------------------------------------------------
    END SUBROUTINE SetWeightedProjectorJump
@@ -6185,7 +6196,7 @@ END FUNCTION SearchNodeL
     IF(.NOT.GotIt) ComputeChangeScaled = .FALSE.
 
     IF(ComputeChangeScaled) THEN
-      ALLOCATE(NonlinVals(size(x)))
+      ALLOCATE(NonlinVals(SIZE(x)))
       NonlinVals = x
     END IF
 

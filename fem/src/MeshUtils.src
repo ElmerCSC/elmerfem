@@ -1203,8 +1203,6 @@ END SUBROUTINE GetMaxDefs
          ParentElem => RightElem 
          OtherElem => LeftElem
        ELSE
-         PRINT *,'bc:',bc,'boundary elem',t,'bulk elems',&
-             LeftElem % ElementIndex,RightElem % ElementIndex
          CALL Fatal('CreateDiscontMesh','Neither parent ('//TRIM(I2S(LeftElem % BodyId))//','&
              //TRIM(I2S(RightElem % BodyId))//') belongs to > Discontinuous Target Bodies <')
        END IF
@@ -1217,8 +1215,6 @@ END SUBROUTINE GetMaxDefs
          ParentElem => RightElem 
          OtherElem => LeftElem
        ELSE
-         PRINT *,'bc:',bc,'boundary elem',t,'bulk elems',&
-             LeftElem % ElementIndex,RightElem % ElementIndex
          CALL Fatal('CreateDiscontMesh','Neither parent ('//TRIM(I2S(LeftElem % BodyId))//','&
              //TRIM(I2S(RightElem % BodyId))//') is > Discontinuous Target Body < ('&
              //TRIM(I2S(TargetBody))//')')
@@ -5125,7 +5121,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element, Left, Right
-    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag
+    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, DoNodes, DoEdges, EdgeBasis
     INTEGER, POINTER :: LeftMap(:,:), RightMap(:,:)
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
 
@@ -5156,7 +5152,26 @@ END SUBROUTINE GetMaxDefs
     IF(.NOT. NodalJump ) THEN
       NodalJump = ListCheckPrefix( Model % BCs(bc) % Values,'Mortar BC Resistivity')
     END IF
-    size0 = Mesh % NumberOfNodes
+
+    IF( NodalJump ) THEN
+      ! Just have a conservative upper limit for the size of the future matrix "A" so that
+      ! for sure the projector columns values won't include it. 
+      ! We will fix the entries then later.
+      IF( ASSOCIATED( Model % Solver % Variable ) ) THEN
+        size0 = SIZE( Model % Solver % Variable % perm ) 
+      ELSE
+        CALL Fatal('WeightedProjectorDiscont','Dont know offset for projector diagonal')
+        size0 = Model % Mesh % NumberOfNodes
+      END IF
+    ELSE
+      size0 = 0
+    END IF
+
+    EdgeBasis = ListGetLogical( Model % Solver % Values,'Edge Basis',Found ) 
+
+    DoNodes = .TRUE.
+    DoEdges = EdgeBasis
+
 
     ! Should the projector be diagonal or mass matrix type 
     SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found )
@@ -5205,86 +5220,89 @@ END SUBROUTINE GetMaxDefs
         InvPerm(j) = i
       END IF
     END DO
-
+    
     ! Projector for the nodal dofs. 
     !------------------------------------------------------------------------
-    DO t = 1, Mesh % NumberOfBoundaryElements
+    IF( DoNodes ) THEN
+      DO t = 1, Mesh % NumberOfBoundaryElements
 
-      Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
 
-      IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
+        IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
 
-      n = Element % TYPE % NumberOfNodes        
+        n = Element % TYPE % NumberOfNodes        
 
-      Indexes(1:n) = Element % NodeIndexes(1:n)
+        Indexes(1:n) = Element % NodeIndexes(1:n)
 
-      ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
-      ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
-      ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
+        ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
+        ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
+        ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
 
-      DO i=1,n
-        j = NodePerm( Indexes(i) ) 
-        IF( j == 0 ) THEN
-          DiscontIndexes(i) = Indexes(i)
-        ELSE
-          DiscontIndexes(i) = j + NoOrigNodes
-        END IF
-      END DO
-
-
-      IntegStuff = GaussPoints( Element )
-      DO j=1,IntegStuff % n
-        u = IntegStuff % u(j)
-        v = IntegStuff % v(j)
-        w = IntegStuff % w(j)
-        
-        Stat = ElementInfo(Element, ElementNodes, u, v, w, detJ, Basis)
-
-        weight = detJ * IntegStuff % s(j)
-        IF( AxisSym ) THEN
-          x = SUM( Basis(1:n) * ElementNodes % x(1:n) )
-          weight = weight * x
-        END IF
-
-        DO p=1,n
-
-          indp = NodePerm( Indexes(p) )
-          IF( indp == 0 ) CYCLE
-          val = weight * Basis(p)
-
-          IF( SetDiag ) THEN
-            CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                Indexes(p), val ) 
-            CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                DiscontIndexes(p), Scale * val )             
-            ! Add entry to the diagonal-to-be if jump condition is to be used
-            IF( NodalJump ) THEN
-              CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                  size0 + indp, 0.0_dp ) 
-            END IF            
+        ! Get the indexes on the other side of the discontinuous boundary
+        DO i=1,n
+          j = NodePerm( Indexes(i) ) 
+          IF( j == 0 ) THEN
+            DiscontIndexes(i) = Indexes(i)
           ELSE
-            DO q=1,n
+            DiscontIndexes(i) = j + NoOrigNodes
+          END IF
+        END DO
+        
+        IntegStuff = GaussPoints( Element )
+        DO j=1,IntegStuff % n
+          u = IntegStuff % u(j)
+          v = IntegStuff % v(j)
+          w = IntegStuff % w(j)
 
-              indq = NodePerm(Indexes(q))
-              IF( indq == 0 ) CYCLE
-              
+          Stat = ElementInfo(Element, ElementNodes, u, v, w, detJ, Basis)
+
+          weight = detJ * IntegStuff % s(j)
+          IF( AxisSym ) THEN
+            x = SUM( Basis(1:n) * ElementNodes % x(1:n) )
+            weight = weight * x
+          END IF
+
+          DO p=1,n
+
+            indp = NodePerm( Indexes(p) )
+            IF( indp == 0 ) CYCLE
+            val = weight * Basis(p)
+
+            IF( SetDiag ) THEN
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                  Indexes(q), Basis(q) * val ) 
+                  Indexes(p), val ) 
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                  DiscontIndexes(q), Scale * Basis(q) * val ) 
-              
+                  DiscontIndexes(p), Scale * val )             
               ! Add entry to the diagonal-to-be if jump condition is to be used
               IF( NodalJump ) THEN
                 CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                    size0 + indq, 0.0_dp ) 
+                    size0 + indp, 0.0_dp ) 
+                !CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                !    indp, 0.0_dp ) 
               END IF
-            END DO
-            
-          END IF
+            ELSE
+              DO q=1,n
+
+                indq = NodePerm(Indexes(q))
+                IF( indq == 0 ) CYCLE
+
+                CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                    Indexes(q), Basis(q) * val ) 
+                CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                    DiscontIndexes(q), Scale * Basis(q) * val ) 
+
+                ! Add entry to the diagonal-to-be if jump condition is to be used
+                IF( NodalJump ) THEN
+                  CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                      size0 + indq, 0.0_dp ) 
+                END IF
+              END DO
+
+            END IF
+          END DO
         END DO
       END DO
-    END DO
-
+    END IF
 
     ! Create the projector also for edge dofs if they exist
     !----------------------------------------------------------------
@@ -5366,7 +5384,7 @@ END SUBROUTINE GetMaxDefs
 
     ! Convert from list matrix to CRS matrix format
     CALL List_ToCRSMatrix(Projector)
-    
+   
     CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
         TRIM(I2S(SIZE(Projector % Cols)) ), Level=9)
 
