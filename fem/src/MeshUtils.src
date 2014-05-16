@@ -4329,7 +4329,7 @@ END SUBROUTINE GetMaxDefs
 
 !------------------------------------------------------------------------------
 !> Postprocess projector so that it changes the sign of the anti-periodic
-!> entries as assignes by the MirrorNode flag.
+!> entries as assigns by the MirrorNode flag.
 !------------------------------------------------------------------------------
   SUBROUTINE PostRotationalProjector( Proj, MirrorNode )
 !------------------------------------------------------------------------------
@@ -5325,28 +5325,28 @@ END SUBROUTINE GetMaxDefs
           e1 = Left % EdgeIndexes(i)
           IF( EdgeDone(e1) ) CYCLE
 
-          Found = .FALSE.
-          DO j = i,Right % TYPE % NumberOfEdges
-            e2 = Left % EdgeIndexes(j)
+          DO j = 1,Right % TYPE % NumberOfEdges
+            e2 = Right % EdgeIndexes(j)
             IF( EdgeDone(e2) ) CYCLE
             IF( e1 == e2 ) CYCLE
             
             i1 = Left % NodeIndexes( LeftMap(i,1) )
             i2 = Left % NodeIndexes( LeftMap(i,2) )
-            j1 = Right % NodeIndexes( RightMap(i,1) ) 
-            j2 = Right % NodeIndexes( RightMap(i,2) )
-            
-            IF( i1 < NoOrigNodes ) i1 = Indexes(i1) + NoOrigNodes
-            IF( i2 < NoOrigNodes ) i2 = Indexes(i2) + NoOrigNodes
-            IF( j1 < NoOrigNodes ) j1 = Indexes(j1) + NoOrigNodes
-            IF( j2 < NoOrigNodes ) j2 = Indexes(j2) + NoOrigNodes
-            
+            j1 = Right % NodeIndexes( RightMap(j,1) ) 
+            j2 = Right % NodeIndexes( RightMap(j,2) )
+
+            IF( i1 < NoOrigNodes .AND. NodePerm(i1) /= 0 ) i1 = NoOrigNodes + NodePerm(i1)
+            IF( i2 < NoOrigNodes .AND. NodePerm(i2) /= 0 ) i2 = NoOrigNodes + NodePerm(i2)
+            IF( j1 < NoOrigNodes .AND. NodePerm(j1) /= 0 ) j1 = NoOrigNodes + NodePerm(j1)
+            IF( j2 < NoOrigNodes .AND. NodePerm(j2) /= 0 ) j2 = NoOrigNodes + NodePerm(j2)
+
+            Found = .FALSE.
             IF( i1 == j1 .AND. i2 == j2 ) THEN
               Found = .TRUE.
-	      sgn = 1
+              sgn = 1
             ELSE IF( i1 == j2 .AND. i2 == j1 ) THEN
               Found = .TRUE.
-	      sgn = -1
+              sgn = -1
             END IF
                       
             IF( Found ) THEN
