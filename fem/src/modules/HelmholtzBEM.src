@@ -713,6 +713,9 @@
 !------------------------------------------------------------------------------
      SUBROUTINE FullIterSolver( N,x,b,SolverParam )
 !------------------------------------------------------------------------------
+#ifdef USE_ISO_C_BINDINGS
+    USE huti_sfe
+#endif
        IMPLICIT NONE
 !------------------------------------------------------------------------------
        TYPE(Solver_t) :: SolverParam
@@ -729,11 +732,15 @@
 
        LOGICAL :: AbortNotConverged
 
+#ifndef USE_ISO_C_BINDINGS
        INTEGER  :: HUTI_Z_BICGSTAB
        EXTERNAL :: HUTI_Z_BICGSTAB
-       INTEGER(KIND=addrInt) :: AddrFunc, iterProc, mvProc, pcondProc, dProc=0
+       INTEGER(KIND=addrInt) :: AddrFunc
+#endif 
+       INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc
 !------------------------------------------------------------------------------
        ipar = 0; dpar = 0
+       dProc = 0
 
        HUTI_WRKDIM = HUTI_BICGSTAB_WORKSIZE
        wsize = HUTI_WRKDIM

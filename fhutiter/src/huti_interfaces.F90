@@ -112,7 +112,7 @@ MODULE huti_interfaces
      FUNCTION dotp_iface_c(n, x, xinc, y, yinc) RESULT(res)
        INTEGER :: n, xinc, yinc
        COMPLEX, DIMENSION(*) :: x, y
-       REAL :: res
+       COMPLEX :: res
      END FUNCTION dotp_iface_c
 
      FUNCTION norm_iface_c(n, b, k) RESULT(res)
@@ -140,7 +140,7 @@ MODULE huti_interfaces
      FUNCTION dotp_iface_z(n, x, xinc, y, yinc) RESULT(res)
        INTEGER :: n, xinc, yinc
        DOUBLE COMPLEX, DIMENSION(*) :: x, y
-       DOUBLE PRECISION :: res
+       DOUBLE COMPLEX :: res
      END FUNCTION dotp_iface_z
 
      FUNCTION norm_iface_z(n, b, k) RESULT(res)

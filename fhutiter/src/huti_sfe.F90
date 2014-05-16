@@ -24,13 +24,19 @@ MODULE huti_sfe
      FUNCTION zdotu(n, x, xinc, y, yinc) RESULT(res)
        INTEGER :: n, xinc, yinc
        DOUBLE COMPLEX :: x(*), y(*)
-       DOUBLE PRECISION :: res
+       DOUBLE COMPLEX :: res
      END FUNCTION zdotu
+
+     FUNCTION cdotc(n, x, xinc, y, yinc) RESULT(res)
+       INTEGER :: n, xinc, yinc
+       COMPLEX :: x(*), y(*)
+       COMPLEX :: res
+     END FUNCTION cdotc
 
      FUNCTION cdotu(n, x, xinc, y, yinc) RESULT(res)
        INTEGER :: n, xinc, yinc
        COMPLEX :: x(*), y(*)
-       REAL :: res
+       COMPLEX :: res
      END FUNCTION cdotu
 
      FUNCTION sdot(n, x, xinc, y, yinc) RESULT(res)
@@ -737,7 +743,7 @@ CONTAINS
        pcondlsubr => huti_cdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => cdotu
+       dotprodfun => cdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => scnrm2
@@ -981,7 +987,7 @@ CONTAINS
        pcondlsubr => huti_zdummy_pcondfun
     END IF
     IF(.NOT. ASSOCIATED(dotprodfun) ) THEN
-       dotprodfun => zdotu
+       dotprodfun => zdotc
     END IF
     IF(.NOT. ASSOCIATED(normfun) ) THEN
        normfun => dznrm2

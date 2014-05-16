@@ -157,7 +157,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
-    REAL(KIND=dp), DIMENSION(:) CONTIG :: x,b
+    REAL(KIND=dp), DIMENSION(:), TARGET CONTIG :: x,b
     TYPE(Matrix_t), TARGET :: A
     INTEGER, OPTIONAL :: ndim
     INTEGER(KIND=AddrInt), OPTIONAL :: DotF, NormF, MatVecF, PrecF, StopcF
@@ -199,6 +199,10 @@ CONTAINS
         pcondrProc=0, mvProc, iterProc, StopcProc
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=Addrint) :: AddrFunc
+#else
+    REAL(KIND=dp), POINTER :: felem
+    COMPLEX(KIND=dp), POINTER CONTIG :: xC(:), bC(:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)    
 #endif
 
     INTERFACE
@@ -343,12 +347,28 @@ CONTAINS
     HUTI_MAXIT = ListGetInteger( Params, &
         'Linear System Max Iterations', minv=1 )
     
+#ifdef USE_ISO_C_BINDINGS
+    IF (A % COMPLEX) THEN
+        ALLOCATE(workC(N/2,wsize), stat=istat)
+        IF ( istat /= 0 ) THEN
+            CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
+        END IF
+        workC = cmplx(0,0,dp)
+    ELSE
+        ALLOCATE(work(N,wsize), stat=istat)
+        IF ( istat /= 0 ) THEN
+            CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
+        END IF
+        work = real(0,dp)
+    END IF
+#else
     ALLOCATE( work(N,wsize),stat=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'IterSolve', 'Memory allocation failure.' )
     END IF
     work=0._dp
-    
+#endif
+
     IF ( ALL(x == 0.0) ) x = 1.0d-8
     HUTI_INITIALX = HUTI_USERSUPPLIEDX
     
@@ -709,8 +729,24 @@ CONTAINS
     SaveGlobalM => GlobalMatrix
     GlobalMatrix => A
 
+#ifdef USE_ISO_C_BINDINGS
+    IF (A % Complex) THEN
+        ! Associate xC and bC with the correct values
+        felem => x(1)
+        CALL C_F_POINTER(c_loc(felem), xC, (/ HUTI_NDIM /) )
+        felem => b(1)
+        CALL C_F_POINTER(c_loc(felem), bC, (/ HUTI_NDIM /) )
+        ! write (*,*) xC(1:3), bC(1:3)
+        CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
+                       mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+    ELSE
+        CALL IterCall( iterProc, x, b, ipar, dpar, work, &
+                       mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+    ENDIF
+#else
     CALL IterCall( iterProc, x, b, ipar, dpar, work, &
-        mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+                       mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+#endif
     GlobalMatrix => SaveGlobalM
 
     stack_pos=stack_pos-1
@@ -727,8 +763,15 @@ CONTAINS
       END IF
     END IF
 !------------------------------------------------------------------------------
+#ifdef USE_ISO_C_BINDINGS
+    IF (A % COMPLEX) THEN
+        DEALLOCATE( workC )
+    ELSE
+        DEALLOCATE( work )
+    END IF
+#else 
     DEALLOCATE( work )
-    
+#endif
 
 !------------------------------------------------------------------------------
   END SUBROUTINE IterSolver

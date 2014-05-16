@@ -1178,6 +1178,11 @@ CONTAINS
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
     IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
    
+#ifdef USE_ISO_C_BINDINGS
+    DO i=1,ndim
+      xvec(i) = y(i)
+    END DO
+#else
     !----------------------------------------------
     ! Return the solution as a real vector...
     !----------------------------------------------
@@ -1185,7 +1190,7 @@ CONTAINS
       xvec( 2*i-1 ) = REAL( y(i) )
       xvec( 2*i ) = AIMAG( y(i) )
     END DO
-
+#endif
 
 
   CONTAINS 
@@ -1372,14 +1377,19 @@ CONTAINS
     IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
     IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
 
+#ifdef USE_ISO_C_BINDINGS
+    DO i=1,ndim
+      xvec(i) = y(i)
+    END DO
+#else
     !----------------------------------------------
     ! Return the solution as a real vector...
     !----------------------------------------------
     DO i=1,ndim
-       xvec( 2*i-1 ) = REAL( y(i) )
-       xvec( 2*i ) = AIMAG( y(i) )
+      xvec( 2*i-1 ) = REAL( y(i) )
+      xvec( 2*i ) = AIMAG( y(i) )
     END DO
-
+#endif
 
   CONTAINS 
 
