@@ -5121,7 +5121,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element, Left, Right
-    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, DoNodes, DoEdges, EdgeBasis
+    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, DoNodes, DoEdges, EdgeBasis, NodeBasis
     INTEGER, POINTER :: LeftMap(:,:), RightMap(:,:)
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
 
@@ -5167,11 +5167,22 @@ END SUBROUTINE GetMaxDefs
       size0 = 0
     END IF
 
+    DoEdges = ( Mesh % NumberOfEdges > 0 ) 
     EdgeBasis = ListGetLogical( Model % Solver % Values,'Edge Basis',Found ) 
-
-    DoNodes = .TRUE.
-    DoEdges = EdgeBasis
-
+    IF( Found ) THEN
+      IF( EdgeBasis .AND. Mesh % NumberOfEdges == 0 ) THEN
+        CALL Info('WeightedProjectorDiscont','Edge basis requested but mesh has no edges!')
+      ELSE
+        DoEdges = EdgeBasis
+      END IF
+    END IF
+      
+    NodeBasis = ListGetLogical( Model % Solver % Values,'Node Basis',Found ) 
+    IF( Found ) THEN
+      DoNodes = NodeBasis
+    ELSE
+      DoNodes = .TRUE.
+    END IF
 
     ! Should the projector be diagonal or mass matrix type 
     SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found )
@@ -5302,11 +5313,14 @@ END SUBROUTINE GetMaxDefs
           END DO
         END DO
       END DO
+      CALL Info('WeightedProjectorDiscont','Created projector for '&
+          //TRIM(I2S(NoDiscontNodes))//' discontinuous nodes',Level=10)
     END IF
 
-    ! Create the projector also for edge dofs if they exist
+    ! Create the projector also for edge dofs if they exist and are
+    ! requested. 
     !----------------------------------------------------------------
-    IF( Mesh % NumberOfEdges > 0 ) THEN
+    IF( DoEdges ) THEN
 
       val = 1.0_dp
       Scale = -1.0_dp
@@ -5343,20 +5357,35 @@ END SUBROUTINE GetMaxDefs
           e1 = Left % EdgeIndexes(i)
           IF( EdgeDone(e1) ) CYCLE
 
+          i1 = Left % NodeIndexes( LeftMap(i,1) )
+          i2 = Left % NodeIndexes( LeftMap(i,2) )
+          
+          IF( i1 < NoOrigNodes ) THEN
+            IF( NodePerm(i1) == 0 ) CYCLE
+            i1 = NoOrigNodes + NodePerm(i1)
+          END IF
+          IF( i2 < NoOrigNodes ) THEN
+            IF( NodePerm(i2) == 0 ) CYCLE
+            i2 = NoOrigNodes + NodePerm(i2)
+          END IF
+
+
           DO j = 1,Right % TYPE % NumberOfEdges
             e2 = Right % EdgeIndexes(j)
             IF( EdgeDone(e2) ) CYCLE
             IF( e1 == e2 ) CYCLE
             
-            i1 = Left % NodeIndexes( LeftMap(i,1) )
-            i2 = Left % NodeIndexes( LeftMap(i,2) )
             j1 = Right % NodeIndexes( RightMap(j,1) ) 
             j2 = Right % NodeIndexes( RightMap(j,2) )
 
-            IF( i1 < NoOrigNodes .AND. NodePerm(i1) /= 0 ) i1 = NoOrigNodes + NodePerm(i1)
-            IF( i2 < NoOrigNodes .AND. NodePerm(i2) /= 0 ) i2 = NoOrigNodes + NodePerm(i2)
-            IF( j1 < NoOrigNodes .AND. NodePerm(j1) /= 0 ) j1 = NoOrigNodes + NodePerm(j1)
-            IF( j2 < NoOrigNodes .AND. NodePerm(j2) /= 0 ) j2 = NoOrigNodes + NodePerm(j2)
+            IF( j1 < NoOrigNodes ) THEN
+              IF( NodePerm(j1) == 0 ) CYCLE
+              j1 = NoOrigNodes + NodePerm(j1)
+            END IF
+            IF( j2 < NoOrigNodes ) THEN
+              IF( NodePerm(j2) == 0 ) CYCLE
+              j2 = NoOrigNodes + NodePerm(j2)
+            END IF
 
             Found = .FALSE.
             IF( i1 == j1 .AND. i2 == j2 ) THEN
@@ -5370,7 +5399,7 @@ END SUBROUTINE GetMaxDefs
             IF( Found ) THEN
               indp = indp + 1
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                  n + e1, sgn * val ) 
+                  n + e1, val ) 
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                   n + e2, Scale * sgn * val ) 
               EdgeDone(e1) = .TRUE.
@@ -5380,6 +5409,8 @@ END SUBROUTINE GetMaxDefs
         END DO
       END DO
       DEALLOCATE( EdgeDone ) 
+      CALL Info('WeightedProjectorDiscont','Created projector for '&
+          //TRIM(I2S(indp-NoDiscontNodes))//' discontinuous edges',Level=10)
     END IF
 
     ! Convert from list matrix to CRS matrix format
