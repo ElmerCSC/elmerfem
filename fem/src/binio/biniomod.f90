@@ -62,25 +62,25 @@ MODULE BinIO
           CHARACTER(KIND=C_CHAR) :: e(*)
         END SUBROUTINE BinSetInputEndianess
 
-        SUBROUTINE BinOpen_C(Unit,File,FileLen,Action,Status)
+        SUBROUTINE BinOpen_C(Unit,File,FileLen,Action,Status) BIND(C)
           USE, INTRINSIC :: ISO_C_BINDING
           CHARACTER(KIND=C_CHAR) :: File(*), Action(*)
           INTEGER(C_INT) :: Unit,FileLen,Status
         END SUBROUTINE BinOpen_C
 
-        SUBROUTINE BinWriteChar_C( Unit, c, Status )
+        SUBROUTINE BinWriteChar_C( Unit, c, Status ) BIND(C)
           USE, INTRINSIC :: ISO_C_BINDING
           CHARACTER(C_CHAR) :: c(*)
           INTEGER(C_INT) :: Unit, Status
         END SUBROUTINE BinWriteChar_C
 
-        SUBROUTINE BinWriteString_C( Unit, s, len, Status )
+        SUBROUTINE BinWriteString_C( Unit, s, len, Status ) BIND(C)
           USE, INTRINSIC :: ISO_C_BINDING
           CHARACTER(C_CHAR) :: s(*)
           INTEGER(C_INT) :: Unit, len, Status
         END SUBROUTINE BinWriteString_C
 
-        SUBROUTINE BinReadString_C( Unit, s, len, Status )
+        SUBROUTINE BinReadString_C( Unit, s, len, Status ) BIND(C)
           USE, INTRINSIC :: ISO_C_BINDING
           CHARACTER(C_CHAR) :: s(*)
           INTEGER(C_INT) :: Unit, len, Status
