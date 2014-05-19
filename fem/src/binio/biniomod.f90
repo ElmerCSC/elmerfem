@@ -62,29 +62,69 @@ MODULE BinIO
           CHARACTER(KIND=C_CHAR) :: e(*)
         END SUBROUTINE BinSetInputEndianess
 
-        SUBROUTINE BinOpen_C(Unit,File,FileLen,Action,Status) BIND(C)
+        SUBROUTINE BinOpen_C(Unit,File,FileLen,Action,Status) BIND(C, NAME='binopen_c')
           USE, INTRINSIC :: ISO_C_BINDING
           CHARACTER(KIND=C_CHAR) :: File(*), Action(*)
           INTEGER(C_INT) :: Unit,FileLen,Status
         END SUBROUTINE BinOpen_C
 
-        SUBROUTINE BinWriteChar_C( Unit, c, Status ) BIND(C)
+        SUBROUTINE BinClose_C(unit, stat) BIND(C, NAME="binclose_c")
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: unit, stat
+        END SUBROUTINE BinClose_C
+
+        SUBROUTINE BinWriteChar_C( Unit, c, Status ) BIND(C, NAME='binwritechar_c')
           USE, INTRINSIC :: ISO_C_BINDING
           CHARACTER(C_CHAR) :: c(*)
           INTEGER(C_INT) :: Unit, Status
         END SUBROUTINE BinWriteChar_C
 
-        SUBROUTINE BinWriteString_C( Unit, s, len, Status ) BIND(C)
+        SUBROUTINE BinReadInt4_C(Unit, a, Status_) BIND(C, NAME="binreadint4_c")
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: Unit, a, Status_
+        END SUBROUTINE BinReadInt4_C
+
+        SUBROUTINE BinWriteInt4_C( Unit, a, Status_ ) BIND(C, NAME="binwriteint4_c")
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: Unit, Status_, a ! Note that this assumes LP64!
+        END SUBROUTINE BinWriteInt4_c
+
+        SUBROUTINE BinReadInt8_C(unit, a, stat) BIND(C, NAME="binreadint8_c")
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: unit, stat
+            INTEGER(C_INT_LEAST64_T) :: a
+        END SUBROUTINE BinReadInt8_C
+
+        SUBROUTINE BinWriteInt8_C(unit, a, stat) BIND(C, NAME="binwriteint8_c")
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: unit, stat
+            INTEGER(C_INT_LEAST64_T) :: a
+        END SUBROUTINE BinWriteInt8_C
+
+        SUBROUTINE BinReadDouble_C(unit, a, stat) BIND(C, NAME="binreaddouble_c")
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: unit, stat
+            REAL(C_DOUBLE) :: a
+        END SUBROUTINE BinReadDouble_C
+
+        SUBROUTINE BinWriteDouble_C(unit, a, stat) BIND(C, NAME="binwritedouble_c")
+            USE, INTRINSIC :: ISO_C_BINDING
+            INTEGER(C_INT) :: unit, stat
+            REAL(C_DOUBLE) :: a
+        END SUBROUTINE BinWriteDouble_C
+
+        SUBROUTINE BinWriteString_C( Unit, s, len, Status ) BIND(C, NAME='binwritestring_c')
           USE, INTRINSIC :: ISO_C_BINDING
           CHARACTER(C_CHAR) :: s(*)
           INTEGER(C_INT) :: Unit, len, Status
         END SUBROUTINE BinWriteString_C
 
-        SUBROUTINE BinReadString_C( Unit, s, len, Status ) BIND(C)
+        SUBROUTINE BinReadString_C( Unit, s, len, Status ) BIND(C, NAME='binreadstring_c')
           USE, INTRINSIC :: ISO_C_BINDING
           CHARACTER(C_CHAR) :: s(*)
           INTEGER(C_INT) :: Unit, len, Status
         END SUBROUTINE BinReadString_C
+
 
         SUBROUTINE StrErrorF_C( e,s,len) BIND(C, NAME="strerrorf_c")
           USE, INTRINSIC :: ISO_C_BINDING
@@ -124,15 +164,7 @@ CONTAINS
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
 
-        INTERFACE
-           SUBROUTINE BinOpen_C(unit, file, action, stat) BIND(C, NAME="binopen_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: unit, stat
-             CHARACTER(KIND=C_CHAR) :: file(*), action(*)
-           END SUBROUTINE BinOpen_C
-        END INTERFACE
-
-        CALL BinOpen_C( Unit,TRIM(File)//C_NULL_CHAR,Action,Status_ )
+        CALL BinOpen_C( Unit, TRIM(File)//C_NULL_CHAR, LEN(TRIM(File))+1, Action, Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Can't open file " &
                                             // TRIM(File) )
     END SUBROUTINE BinOpen
@@ -142,13 +174,6 @@ CONTAINS
         INTEGER, INTENT(IN) :: Unit
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
-
-        INTERFACE
-           SUBROUTINE BinClose_C(unit, stat) BIND(C, NAME="binclose_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: unit, stat
-           END SUBROUTINE BinClose_C
-        END INTERFACE
 
         CALL BinClose_C( Unit, Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Can't close file" )
@@ -161,13 +186,6 @@ CONTAINS
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
 
-        INTERFACE
-            SUBROUTINE BinWriteInt4_C( Unit, a, Status_ ) BIND(C, NAME="binwriteint4_c")
-                USE, INTRINSIC :: ISO_C_BINDING
-                INTEGER(C_INT) :: Unit, Status_, a ! Note that this assumes LP64!
-            END SUBROUTINE BinWriteInt4_c
-        END INTERFACE
-
         CALL BinWriteInt4_C( Unit, a, Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Error writing Int4" )
     END SUBROUTINE BinWriteInt4
@@ -178,13 +196,6 @@ CONTAINS
         INTEGER(Int4_k), INTENT(OUT) :: a
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
-
-        INTERFACE
-           SUBROUTINE BinReadInt4_C(Unit, a, Status_) BIND(C, NAME="binreadint4_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: Unit, a, Status_
-           END SUBROUTINE BinReadInt4_C
-        END INTERFACE
 
         CALL BinReadInt4_C( Unit, a, Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Error reading Int4" )
@@ -197,14 +208,6 @@ CONTAINS
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
 
-        INTERFACE
-           SUBROUTINE BinWriteInt8_C(unit, a, stat) BIND(C, NAME="binwriteint8_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: unit, stat
-             INTEGER(C_INT_LEAST64_T) :: a
-           END SUBROUTINE BinWriteInt8_C
-        END INTERFACE
-
         CALL BinWriteInt8_C( Unit, a, Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Error writing Int8" )
     END SUBROUTINE BinWriteInt8
@@ -215,14 +218,6 @@ CONTAINS
         INTEGER(Int8_k), INTENT(OUT) :: a
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
-
-        INTERFACE
-           SUBROUTINE BinReadInt8_C(unit, a, stat) BIND(C, NAME="binreadint8_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: unit, stat
-             INTEGER(C_INT_LEAST64_T) :: a
-           END SUBROUTINE BinReadInt8_C
-        END INTERFACE
 
         CALL BinReadInt8_C( Unit, a, Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Error reading Int8" )
@@ -235,14 +230,6 @@ CONTAINS
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
 
-        INTERFACE
-           SUBROUTINE BinWriteDouble_C(unit, a, stat) BIND(C, NAME="binwritedouble_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: unit, stat
-             REAL(C_DOUBLE) :: a
-           END SUBROUTINE BinWriteDouble_C
-        END INTERFACE
-
         CALL BinWriteDouble_C( Unit, a, Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Error writing Double" )
     END SUBROUTINE BinWriteDouble
@@ -253,14 +240,6 @@ CONTAINS
         DOUBLE PRECISION, INTENT(OUT) :: a
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
-
-        INTERFACE
-           SUBROUTINE BinReadDouble_C(unit, a, stat) BIND(C, NAME="binreaddouble_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: unit, stat
-             REAL(C_DOUBLE) :: a
-           END SUBROUTINE BinReadDouble_C
-        END INTERFACE
 
         CALL BinReadDouble_C( Unit, a, Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Error reading Double" )
@@ -275,14 +254,6 @@ CONTAINS
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
 
-        INTERFACE
-           SUBROUTINE BinWriteChar_C( unit, c, stat ) BIND(C, NAME="binwritechar_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: unit, stat
-             CHARACTER(C_CHAR) :: c
-           END SUBROUTINE BinWriteChar_C
-        END INTERFACE
-
         CALL BinWriteChar_C( Unit, c, Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Error writing char" )
     END SUBROUTINE BinWriteChar
@@ -294,14 +265,6 @@ CONTAINS
         CHARACTER(*), INTENT(IN) :: s
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
-
-        INTERFACE
-           SUBROUTINE BinWriteString_C( unit, c, l, stat ) BIND(C, NAME="binwritestring_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: unit, stat, l
-             CHARACTER(KIND=C_CHAR) :: c(*)
-           END SUBROUTINE BinWriteString_C
-        END INTERFACE
 
         CALL BinWriteString_C( Unit, s, LEN(s), Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Error writing string" )
@@ -315,14 +278,6 @@ CONTAINS
         CHARACTER(*), INTENT(OUT) :: s
         INTEGER, OPTIONAL, INTENT(OUT) :: Status
         INTEGER :: Status_
-
-        INTERFACE
-           SUBROUTINE BinReadString_C( unit, c, l, stat ) BIND(C, NAME="binreadstring_c")
-             USE, INTRINSIC :: ISO_C_BINDING
-             INTEGER(C_INT) :: unit, stat, l
-             CHARACTER(KIND=C_CHAR) :: c(*)
-           END SUBROUTINE BinReadString_C
-        END INTERFACE
 
         CALL BinReadString_C( Unit, s, LEN(s), Status_ )
         CALL HandleStatus( Status, Status_, "BINIO: Error reading string" )
