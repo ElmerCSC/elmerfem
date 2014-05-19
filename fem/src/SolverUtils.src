@@ -7184,11 +7184,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                  MultiplierValues(:),AddVector(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:)
   INTEGER, ALLOCATABLE :: TmpRow(:)
-  INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat
+  INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
   INTEGER :: i, j, k, l
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl
-  LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet
+  LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EmptyRow
   SAVE MultiplierValues, SolverPointer
   CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
 
@@ -7281,7 +7281,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        DEALLOCATE(MultVar % Values)
        MultVar % Values => MultiplierValues
      END IF
-
   ELSE
      MultiplierValues => NULL()
   END IF
@@ -7294,16 +7293,26 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(.NOT.Found) EnforceDirichlet = .TRUE.
   EnforceDirichlet = EnforceDirichlet .AND. ALLOCATED(StiffMatrix % ConstrainedDOF)
 
+
   IF(ASSOCIATED(RestMatrix)) THEN
+    NoEmptyRows = 0
+
     DO i=RestMatrix % NumberOfRows,1,-1
       k=StiffMatrix % NumberOfRows
       IF(ASSOCIATED(AddMatrix)) k=MAX(k,AddMatrix % NumberOfRows)
       k=k+i
 
       CALL AddToMatrixElement( CollectionMatrix,k,k,0._dp )
+      EmptyRow = .TRUE.
 
       DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
         Found = .TRUE.
+
+        ! Skip non-positive column indexes
+        IF( RestMatrix % Cols(j) <= 0 ) CYCLE
+
+        EmptyRow = .FALSE.
+
         IF (EnforceDirichlet) &
           Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
 
@@ -7315,8 +7324,19 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         CALL AddToMatrixElement( CollectionMatrix, &
              k, RestMatrix % Cols(j), RestMatrix % Values(j))
       END DO
-      CollectionVector(k) = RestVector(i)
+      
+      ! If there is no matrix entry, there can be no non-zero r.h.s.
+      IF( EmptyRow ) THEN
+        NoEmptyRows = NoEmptyRows + 1
+      ELSE
+        CollectionVector(k) = RestVector(i)
+      END IF
     END DO
+    IF( NoEmptyRows > 0 ) THEN
+      CALL Warn('SolveWithLinearRestriction',&
+          'Constraint Matrix included empty rows: &
+          '//TRIM(I2S(NoEmptyRows))//' vs. '//TRIM(I2S(RestMatrix % NumberOfRows)) )
+    END IF
   END IF
 
 !------------------------------------------------------------------------------
