@@ -5,6 +5,8 @@ SET(CMAKE_Fortran_MODULE_DIRECTORY
 
 ADD_SUBDIRECTORY(binio)
 ADD_SUBDIRECTORY(modules)
+ADD_SUBDIRECTORY(view3d)
+ADD_SUBDIRECTORY(viewaxis)
 
 SET(prefix "${CMAKE_INSTALL_PREFIX}")
 
@@ -97,6 +99,23 @@ TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES})
 ADD_EXECUTABLE(ElmerSolver Solver.F90)
 TARGET_LINK_LIBRARIES(ElmerSolver ${ELMERSOLVER_LIBRARIES} 
                                   mpi_stubs)
+# ViewFactors
+ADD_EXECUTABLE(ViewFactors ViewFactors.F90)
+# TARGET_INCLUDE_DIRECTORIES(ViewFactors PUBLIC ${CMAKE_BINARY_DIR}/fem/src/view3d)
+# TARGET_INCLUDE_DIRECTORIES(ViewFactors PUBLIC ${CMAKE_BINARY_DIR}/fem/src/viewfactors)
+# FIND_LIBRARY(VIEW3D_LIBRARIES PATHS ${CMAKE_CURRENT_BINARY_DIR}/view3d)
+# FIND_LIBRARY(VIEWAXIS_LIBRARIES PATHS ${CMAKE_CURRENT_BINARY_DIR}/viewaxis)
+TARGET_LINK_LIBRARIES(ViewFactors ${ELMERSOLVER_LIBRARIES} 
+                                  mpi_stubs
+				  view3d
+				  viewaxis)
+INSTALL(TARGETS ViewFactors RUNTIME DESTINATION "bin")
+
+# GebhardFactors
+ADD_EXECUTABLE(GebhardtFactors GebhardtFactors.F90) 
+TARGET_LINK_LIBRARIES(GebhardtFactors ${ELMERSOLVER_LIBRARIES} 
+                                      mpi_stubs)
+INSTALL(TARGETS GebhardtFactors RUNTIME DESTINATION "bin")
 
 # Installation rules
 INSTALL(FILES elements.def SOLVER.KEYWORDS DESTINATION "share/elmersolver/lib")

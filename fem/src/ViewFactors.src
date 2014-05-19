@@ -56,7 +56,7 @@
 !------------------------------------------------------------------------------
       
    PROGRAM ViewFactors
-
+   
      USE DefUtils
      USE ViewFactorGlobals
 
@@ -93,6 +93,37 @@
      REAL(KIND=dp) :: AreaEPS, RayEPS, FactEPS
 #ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at0
+
+     INTERFACE
+        ! void viewfactors3d
+        ! ( int *EL_N,  int *EL_Topo, int *EL_Type, double *EL_Coord, double *EL_Normals,
+        ! int *RT_N0, int *RT_Topo0, int *RT_Type, double *RT_Coord, double *RT_Normals,
+        ! double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, 
+        ! int *NInteg,int *NInteg3, int  *Combine )
+        SUBROUTINE viewfactors3d(EL_N,  EL_Topo, EL_Type, EL_Coord, EL_Normals, &
+                                 RT_N0, RT_Topo0, RT_Type, RT_Coord, RT_Normals, &
+                                 Factors, Feps, Aeps, Reps, Nr, NInteg, NInteg3, Combine) BIND(C)
+            USE, INTRINSIC :: ISO_C_BINDING
+            IMPLICIT NONE
+            INTEGER(C_INT) :: EL_N, EL_Topo(*), EL_Type(*)
+            REAL(KIND=C_DOUBLE) :: EL_Coord(*), EL_Normals(*)
+            INTEGER(C_INT) :: RT_N0, RT_Topo0(*), RT_Type(*)
+            REAL(KIND=C_DOUBLE) :: RT_Coord(*), RT_Normals(*), Factors(*)
+            REAL(KIND=C_DOUBLE) :: Feps, Aeps, Reps
+            INTEGER(C_INT) :: Nr, NInteg, NInteg3, Combine
+        END SUBROUTINE viewfactors3d
+        
+        ! extern "C" void STDCALLBULL viewfactorsaxis
+        ! (int *n,int *surf, Real *crd, Real *vf, int *idiv, int *fast)
+        ! CALL ViewFactorsAxis( N, Surfaces, Coords, Factors, divide, CombineInt )
+        SUBROUTINE viewfactorsaxis(n, surf, crd, vf, idiv, fast) BIND(C)
+            USE, INTRINSIC :: ISO_C_BINDING
+            IMPLICIT NONE 
+            INTEGER(C_INT) :: n, surf(*)
+            REAL(KIND=C_DOUBLE) :: crd(*), vf(*)
+            INTEGER :: idiv, fast 
+        END SUBROUTINE viewfactorsaxis
+     END INTERFACE
 #else
      REAL(KIND=dp) :: at0, CPUTime
 #endif
@@ -752,15 +783,16 @@
       INTEGER :: N,ipar(50),wsize
       REAL(KIND=dp), ALLOCATABLE :: work(:,:)
 
+      INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc
+#ifndef USE_ISO_C_BINDINGS
       INTEGER  :: HUTI_D_CG
       EXTERNAL :: HUTI_D_CG
-      INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc=0
-#ifndef USE_ISO_C_BINDINGS
       INTEGER(KIND=AddrInt) :: AddrFunc
 #endif
 !------------------------------------------------------------------------------
       HUTI_NDIM = N
-
+      dProc = 0
+    
       ipar = 0
       dpar = 0.0_dp
 

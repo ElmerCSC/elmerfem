@@ -1,5 +1,5 @@
 /* This subroutine computes the viewfactors for an axisymmetric
-   geometry. The code is written by Juha Katajamäki while
+   geometry. The code is written by Juha Katajamï¿½ki while
    working for CSC. */
 
 #include <math.h>
@@ -26,12 +26,17 @@ static int *surfEltop, *surfEltopShade, * shadeParent;
 
 static int compact = 1, verify = 0, selfshading = 1;
 
+#ifdef USE_ISO_C_BINDINGS
+extern "C" void STDCALLBULL viewfactorsaxis
+  (int *n,int *surf, Real *crd, Real *vf, int *idiv, int *fast)
+#else
 extern "C" void STDCALLBULL FC_FUNC(viewfactorsaxis,VIEWFACTORSAXIS) 
   (int *n,int *surf, Real *crd, Real *vf, int *idiv, int *fast)
+#endif
 {
   int i, j, ii, jj,div;
   Real a, sum, viewint, viewint2, vf2, sumdvf;
-  Real c1, c2;    /* Kiertokulman kosinin ylä- ja alaraja */
+  Real c1, c2;    /* Kiertokulman kosinin ylï¿½- ja alaraja */
   Real _r1, _r2, _r3, _r4, _z1, _z2, _z3, _z4;
   Real ds1,ds2,dp1,dz1,dz2,dr1,dr2,err,maxerr;
   Real epsilon = 1.0e-5;
@@ -339,8 +344,8 @@ extern "C" void STDCALLBULL FC_FUNC(viewfactorsaxis,VIEWFACTORSAXIS)
 	  }	      	    
 
 	  vf[i*nsurf+j] += 4. * viewint;
-	  /* Kerroin 4 koostuu tekijöistä 2 (peilisymmetria), 2pi */
-	  /* (kiertosymmetria) ja 1/pi (integraalin lausekkeessa esiintyvä */
+	  /* Kerroin 4 koostuu tekijï¿½istï¿½ 2 (peilisymmetria), 2pi */
+	  /* (kiertosymmetria) ja 1/pi (integraalin lausekkeessa esiintyvï¿½ */
 	  /* vakio) */
 	}
       }
@@ -375,11 +380,11 @@ extern "C" void STDCALLBULL FC_FUNC(viewfactorsaxis,VIEWFACTORSAXIS)
 
 BOOL InitialInterval(Real *c1, Real *c2)
 {
-  /* Määrää rajat katseltavan pisteen kiertokulman kosinille ehdosta, että */
-  /* yhdysjanan ja pintojen normaalien välisten kulmien on oltava < pi/2.  */
-  /* Palauta FALSE, jos ratkaisujoukko on tyhjä tai nollamittainen, */
+  /* Mï¿½ï¿½rï¿½ï¿½ rajat katseltavan pisteen kiertokulman kosinille ehdosta, ettï¿½ */
+  /* yhdysjanan ja pintojen normaalien vï¿½listen kulmien on oltava < pi/2.  */
+  /* Palauta FALSE, jos ratkaisujoukko on tyhjï¿½ tai nollamittainen, */
   /* muutoin TRUE. */
-  /* Funktio olettaa, että r12 ja r34 eivät ole nollia. */ 
+  /* Funktio olettaa, ettï¿½ r12 ja r34 eivï¿½t ole nollia. */ 
   
   Real cc1, cc3; 
   
@@ -399,7 +404,7 @@ BOOL InitialInterval(Real *c1, Real *c2)
       if ( sgn(rd3) && sgn(rd3) == -sgn(zd) ) {
 	if (zd1 > 0.) *c1 = cc1;
 	else *c2 = cc1;
-      } else { *c1 = 1.; *c2 = -1.; } /* Joukko tyhjä */
+      } else { *c1 = 1.; *c2 = -1.; } /* Joukko tyhjï¿½ */
     }
   } else {
     if ( fabs(zd3) > eps ) {
@@ -407,7 +412,7 @@ BOOL InitialInterval(Real *c1, Real *c2)
       if ( sgn(rd1) && sgn(rd1) == sgn(zd) ) {
 	if (zd3 > 0.) *c1 = cc3;
 	else *c2 = cc3;
-      } else { *c1 = 1.; *c2 = -1.; } /* Joukko tyhjä */
+      } else { *c1 = 1.; *c2 = -1.; } /* Joukko tyhjï¿½ */
     } else {
       if ( !sgn(rd1) || sgn(rd1) != sgn(zd) || sgn(rd1) != -sgn(rd3) )
 	{ *c1 = 1.; *c2 = -1.; }  /* Muutoin joukko = [-1, 1] */
@@ -415,7 +420,7 @@ BOOL InitialInterval(Real *c1, Real *c2)
   }
   
   *c1 = max(-1.+eps, *c1); *c2 = min(1.-eps, *c2);
-  /* Epsilonilla estetään nollalla jako integroinnissa */
+  /* Epsilonilla estetï¿½ï¿½n nollalla jako integroinnissa */
   if (*c2 - *c1 < eps) return FALSE;
   return TRUE;
 }
@@ -424,11 +429,11 @@ BOOL InitialInterval(Real *c1, Real *c2)
 Real ViewIntegral (Real c1, Real c2, int k)
 {
   /*
-    Tämä funktio laskee view factorin yhdelle elementtiparille.
+    Tï¿½mï¿½ funktio laskee view factorin yhdelle elementtiparille.
     Integrointialuetta rajoitetaan tutkimalla kartiopintojen aiheuttama
     varjostus. Jos integrointialue jakautuu kahtia, suoritetaan rekursiivinen
-    kutsu molemmille osille. Jos integrointialue kutistuu mitättömäksi
-    tai tyhjäksi, palautetaan nolla.
+    kutsu molemmille osille. Jos integrointialue kutistuu mitï¿½ttï¿½mï¿½ksi
+    tai tyhjï¿½ksi, palautetaan nolla.
     Funktio olettaa globaalit muuttujat r12 ja r34 nollasta poikkeaviksi.
     */
 
@@ -465,8 +470,8 @@ Real ViewIntegral (Real c1, Real c2, int k)
     if ( fabs(zd5) < eps ) {
       /* Varjostava pinta on tasorengas */
       
-      /* Tasorengas ei voi varjostaa itseään */
-      /* Tämä lisäys korjaa alirutiinissa pitkään ollen bugin (P.R. 23.4.2004) */
+      /* Tasorengas ei voi varjostaa itseï¿½ï¿½n */
+      /* Tï¿½mï¿½ lisï¿½ys korjaa alirutiinissa pitkï¿½ï¿½n ollen bugin (P.R. 23.4.2004) */
       if(nsurf == nsurfShade && inode == k-1) continue;
 
       if ( fabs(zd) < eps ) continue;
@@ -483,8 +488,8 @@ Real ViewIntegral (Real c1, Real c2, int k)
       if (cc1 > cc2) { t = cc1; cc1 = cc2; cc2 = t; }
     } 
     else  {
-      /* Varjostava pinta on kartio tai lieriö       */
-      /* Laske yhdysjanasta varjoon jäävä väli z-suunnassa  */
+      /* Varjostava pinta on kartio tai lieriï¿½       */
+      /* Laske yhdysjanasta varjoon jï¿½ï¿½vï¿½ vï¿½li z-suunnassa  */
 
       if ( fabs(zd) < eps ) {
 	if ( (z12-z5 < eps && z12-z6 > eps) ||
@@ -501,21 +506,21 @@ Real ViewIntegral (Real c1, Real c2, int k)
       tt1 = 1.-t1; 
       tt2 = 1.-t2;
       
-      /* Laske, mitä arvoja kiertokulman kosini saa välillä [t1, t2] */
+      /* Laske, mitï¿½ arvoja kiertokulman kosini saa vï¿½lillï¿½ [t1, t2] */
       cc1 = 1.; cc2 = -1.;
       g1 = (r5 * (z12-z6) - r6 * (z12-z5)) / (r12 * zd5);
       g3 = (r5 * (z34-z6) - r6 * (z34-z5)) / (r34 * zd5);
       d1 = g1*g1 - 1; 
       d3 = g3*g3 - 1;  
-      /* Nämä ilmaisevat, kummalla */
+      /* Nï¿½mï¿½ ilmaisevat, kummalla */
       /* puolen kartiota ovat katseleva ja katseltava piste */
 
-      /* Tutki välin päätepiste */
+      /* Tutki vï¿½lin pï¿½ï¿½tepiste */
       ExaminePoint (t1, &cc1, &cc2);
       ExaminePoint (t2, &cc1, &cc2);
 
       /* Jos kumpikin piste kartion ulkopuolella, tutki derivaatan */
-      /* nollakohta, mikäli se on välillä [t1, t2] */
+      /* nollakohta, mikï¿½li se on vï¿½lillï¿½ [t1, t2] */
       if (d1 <= -eps && d3 <= -eps) {
 	t0 = 1. / (1. + sqrt(rratio * d3/d1));
 	if (t0 - t1 > eps && t2 - t0 > eps) {
@@ -523,7 +528,7 @@ Real ViewIntegral (Real c1, Real c2, int k)
 	}
       }
       if (cc1 > cc2) {
-	cc1 = cc2; /* Näin voi käydä pyöristysvirheiden takia */
+	cc1 = cc2; /* Nï¿½in voi kï¿½ydï¿½ pyï¿½ristysvirheiden takia */
       }
 
     }
@@ -553,8 +558,8 @@ Real ViewIntegral (Real c1, Real c2, int k)
 
 BOOL IntervalIsect(Real x1, Real x2, Real y1, Real y2, Real *z1, Real *z2)
 {
-  /* Laske välien [x1, x2] ja [y1, y2] leikkaus ja palauta FALSE, jos */
-  /* tämä on tyhjä tai mitätön. Input-parametrien järjestyksen on oltava */
+  /* Laske vï¿½lien [x1, x2] ja [y1, y2] leikkaus ja palauta FALSE, jos */
+  /* tï¿½mï¿½ on tyhjï¿½ tai mitï¿½tï¿½n. Input-parametrien jï¿½rjestyksen on oltava */
   /* oikea.*/
   
   *z1 = x1; *z2 = x2;
@@ -586,11 +591,11 @@ void ExaminePoint (Real x, Real *mi, Real *ma)
 
 Real Integrate(Real c1, Real c2)
 {
-  /* c1 ja c2 ovat integrointivälin kulman kosinin rajat. */ 
-  /* Integraali lasketaan ilman nimittäjän pi-tekijää. */
+  /* c1 ja c2 ovat integrointivï¿½lin kulman kosinin rajat. */ 
+  /* Integraali lasketaan ilman nimittï¿½jï¿½n pi-tekijï¿½ï¿½. */
   
-  /* Ensimmäinen ja viimeinen integrointipiste eivät saa olla tasan */
-  /* 0 ja 1, jottei vierekkäisten elementtien tapauksessa tule */
+  /* Ensimmï¿½inen ja viimeinen integrointipiste eivï¿½t saa olla tasan */
+  /* 0 ja 1, jottei vierekkï¿½isten elementtien tapauksessa tule */
   /* nollalla jakoa */
   /*	static const Real qp[] = { 1e-6, .25, .5, .75, 1.-1e-6 }, */
   /*    					w[] = { 1./12., 1./3., 1./6., 1./3., 1./12. }; */
@@ -602,8 +607,8 @@ Real Integrate(Real c1, Real c2)
     
   int i;
   Real c = zd1*zd1 + rd1*rd1;
-  if (c < eps2) return 0.; /* Pinta kutistunut ympyränkaareksi; tämä testi */
-  /* tarvitaan nollalla jaon välttämiseksi */
+  if (c < eps2) return 0.; /* Pinta kutistunut ympyrï¿½nkaareksi; tï¿½mï¿½ testi */
+  /* tarvitaan nollalla jaon vï¿½lttï¿½miseksi */
   
   Real z, r, h, hh1, hh2, g1, g2, gg1, gg2, value, integral;
   Real d1, d2, e1, e2, f1, f2;
@@ -611,7 +616,7 @@ Real Integrate(Real c1, Real c2)
   Real a1 = rd3*r1, a2 = rd3*r2;
   Real b1 = zd3*z1, b2 = zd3*z2; 
   Real s1 = sqrt(1. - c1*c1), s2 = sqrt(1. - c2*c2);
-  /* kosineissa ja sineissä indeksit 1 ja 2 toisin päin kuin */
+  /* kosineissa ja sineissï¿½ indeksit 1 ja 2 toisin pï¿½in kuin */
   /* muissa muuttujissa! */
   Real cs = (1.+c1)*(1.+c2), cd = (1.-c1)*(1.-c2);
 
