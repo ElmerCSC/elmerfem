@@ -5822,7 +5822,7 @@ END SUBROUTINE GetMaxDefs
         Projector => NodalProjectorDiscont( PMesh, This )
       END IF
       IF ( ASSOCIATED( Projector ) ) THEN
-        Model % BCs(This) % PMatrix => Projector
+        !Model % BCs(This) % PMatrix => Projector
         GOTO 100
       ELSE        
         RETURN

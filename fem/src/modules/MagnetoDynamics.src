@@ -2307,7 +2307,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   Solver % Def_Dofs(:,:,1)=1
 
   A => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
-     Perm, dofs, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.)
+     Perm, dofs, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.,&
+     NodalDofsOnly = .TRUE.)
   n = A % NumberOfRows
   IF (dofs>1) A % COMPLEX = .TRUE.
 
