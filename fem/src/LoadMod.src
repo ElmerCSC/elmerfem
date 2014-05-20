@@ -157,7 +157,27 @@ MODULE LoadMod
             CHARACTER(LEN=40) :: buf
             INTEGER :: estat, cstat
 
+            INTERFACE 
+                ! int system(const char *command)
+                FUNCTION system(command) RESULT(retval)
+                    USE, INTRINSIC :: ISO_C_BINDING
+                    CHARACTER(C_CHAR) :: command(*)
+                    INTEGER(C_INT) :: retval
+                END FUNCTION system
+            END INTERFACE
+
+#ifdef HAVE_EXECUTECOMMANDLINE
             CALL EXECUTE_COMMAND_LINE(cmd, .TRUE., EXITSTAT=estat, CMDSTAT=cstat)
+#else
+            ! Workaround for Fortran compilers which do not 
+            ! support EXECUTE_COMMAND_LINE intrinsic function
+            cstat = 0
+            estat = system(TRIM(cmd) // C_NULL_CHAR)
+            IF (estat == -1) THEN
+                cstat = estat
+                estat = 0
+            END IF
+#endif
             IF (estat /= 0) THEN
                 WRITE (buf, '(A,I0)') 'Command exit status was ', estat
                 CALL Error('systemc',TRIM(BUF))
