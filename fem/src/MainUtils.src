@@ -182,6 +182,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 #ifndef USE_ISO_C_BINDINGS
    INTEGER(KIND=AddrInt) :: AddrFunc
+#else
+    INTEGER(KIND=AddrInt) :: AddrFunc
+    EXTERNAL :: AddrFunc
 #endif
 !------------------------------------------------------------------------------
     Solver % PROCEDURE = AddrFunc( PROCEDURE )

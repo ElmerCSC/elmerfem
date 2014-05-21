@@ -10,7 +10,7 @@ ADD_SUBDIRECTORY(viewaxis)
 
 SET(prefix "${CMAKE_INSTALL_PREFIX}")
 
-SET(solverlib_SOURCES NavierStokes.F90 NavierStokesGeneral.F90
+SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   NavierStokesCylindrical.F90 Lists.F90
   DiffuseConvectiveAnisotropic.F90 LoadMod.F90
   DiffuseConvectiveGeneralAnisotropic.F90 PElementMaps.F90

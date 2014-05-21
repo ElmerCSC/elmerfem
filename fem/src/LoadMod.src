@@ -136,6 +136,7 @@ MODULE LoadMod
         END SUBROUTINE fcfftb
     END INTERFACE
 
+#if 0
     ! Overloads for AddrFunc
     INTERFACE AddrFunc
         MODULE PROCEDURE AddrFuncSub, &
@@ -143,6 +144,7 @@ MODULE LoadMod
                          AddrFuncReal, AddrFuncDbl, &
                          AddrFuncCmp, AddrFuncDblCmp
     END INTERFACE AddrFunc
+#endif
 
     ! Overloads for IterCall
     INTERFACE IterCall
@@ -197,6 +199,7 @@ MODULE LoadMod
             CALL GET_ENVIRONMENT_VARIABLE(name, value, len)
         END SUBROUTINE envir
 
+#if 0
         ! FUNCTION ADDRESS (overloaded methods for different function return values)
         FUNCTION AddrFuncSub(fn) RESULT(addr)
             IMPLICIT NONE
@@ -267,6 +270,7 @@ MODULE LoadMod
             cptr = C_FUNLOC(fn)
             addr = TRANSFER(cptr, addr)
         END FUNCTION AddrFuncDblCmp
+#endif
 
         ! DYNAMIC LOADING  (wrapper via module procedure for typecasting)
         FUNCTION loadfunction(quiet, abort_not_found, library, fname) RESULT(ptr)

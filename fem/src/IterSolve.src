@@ -202,7 +202,9 @@ CONTAINS
 #else
     REAL(KIND=dp), POINTER :: felem
     COMPLEX(KIND=dp), POINTER CONTIG :: xC(:), bC(:)
-    COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)    
+    COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
+    INTEGER(KIND=Addrint) :: AddrFunc
+    EXTERNAL :: AddrFunc    
 #endif
 
     INTERFACE

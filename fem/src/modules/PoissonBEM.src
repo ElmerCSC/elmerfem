@@ -682,6 +682,9 @@ at = CPUTime()
        INTEGER  :: HUTI_D_CGS
        EXTERNAL :: HUTI_D_CGS
        INTEGER(KIND=addrInt) :: AddrFunc
+#else
+       INTEGER(KIND=AddrInt) :: AddrFunc
+       EXTERNAL :: AddrFunc
 #endif
        INTEGER(KIND=addrInt) :: iterProc, mvProc, pcondProc, dProc
 !------------------------------------------------------------------------------

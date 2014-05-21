@@ -2014,6 +2014,9 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRHSVec, r(:)
 #ifndef USE_ISO_C_BINDINGS
   INTEGER(KIND=AddrInt) :: AddrFunc
+#else
+  INTEGER(KIND=AddrInt) :: AddrFunc
+  EXTERNAL :: AddrFunc
 #endif
   REAL(KIND=dp) :: ILUT_TOL
   INTEGER :: ILUn

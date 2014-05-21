@@ -1952,6 +1952,9 @@ END SUBROUTINE FetiProject
     INTEGER(KIND=AddrInt) :: mvProc, dotProc, nrmProc, stopcProc, precProc
 #ifndef USE_ISO_C_BINDINGS 
     INTEGER(KIND=AddrInt) :: AddrFunc
+#else
+    INTEGER(KIND=AddrInt) :: AddrFunc
+    EXTERNAL :: AddrFunc
 #endif
 
     REAL(KIND=dp), POINTER :: SaveValues(:)

@@ -788,6 +788,9 @@
       INTEGER  :: HUTI_D_CG
       EXTERNAL :: HUTI_D_CG
       INTEGER(KIND=AddrInt) :: AddrFunc
+#else
+      INTEGER(KIND=AddrInt) :: AddrFunc
+      EXTERNAL :: AddrFunc
 #endif
 !------------------------------------------------------------------------------
       HUTI_NDIM = N

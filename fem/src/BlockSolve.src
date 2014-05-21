@@ -679,6 +679,9 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
+#else
+    INTEGER(KIND=AddrInt) :: AddrFunc
+    EXTERNAL :: AddrFunc
 #endif
 
     CALL Info('BlockMatrixPrec','Starting preconditioning',Level=6)
@@ -990,6 +993,9 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
 
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
+#else
+    INTEGER(KIND=AddrInt) :: AddrFunc
+    EXTERNAL :: AddrFunc
 #endif
     INTEGER(KIND=AddrInt) :: iterProc,precProc, mvProc,dotProc,nmrProc, zero=0
     REAL(KIND=dp) :: dpar(20), xnorm,prevxnorm
