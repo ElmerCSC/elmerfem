@@ -5431,17 +5431,18 @@ END SUBROUTINE GetMaxDefs
   !> accuracy is not limited by the curvilinear coordinates. Also ensure
   !> that the master nodes manipulated so they for sure hit the target nodes.
   !---------------------------------------------------------------------------
-  SUBROUTINE RotationalInterfaceMeshes2(BMesh1, BMesh2, BParams )
+  SUBROUTINE RotationalInterfaceMeshes2(BMesh1, BMesh2, BParams, UseArcLength )
   !---------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
+    LOGICAL, OPTIONAL :: UseArcLength
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: PMesh
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: x1_min(3),x1_max(3),x2_min(3),x2_max(3),&
         x1r_min(3),x1r_max(3),x2r_min(3),x2r_max(3)
-    REAL(KIND=dp) :: x(3), xcyl(3),rad2deg,F1min,F1max,F2min,F2max,dFii1,dFii2,eps_rad,rad,&
-        err1,err2,dF,dFMax,Fii,Nsymmetry
+    REAL(KIND=dp) :: x(3), xcyl(3),rad2deg,F1min,F1max,F2min,F2max,dFii1,dFii2,eps_rad,&
+        Radius,err1,err2,dF,dFMax,Fii,Nsymmetry
     REAL(KIND=dp), POINTER :: TmpCoord(:)
     REAL(KIND=dp),ALLOCATABLE :: Angles(:)
     INTEGER, POINTER :: NodeIndexes(:)
@@ -5500,12 +5501,14 @@ END SUBROUTINE GetMaxDefs
       DO i=1,PMesh % NumberOfNodes
         x(1) = PMesh % Nodes % x(i)
         x(2) = PMesh % Nodes % y(i)
+        x(3) = PMesh % Nodes % z(i)
         
         ! Set the angle to be the first coordinate as it may sometimes be the 
         ! only nonzero coordinate. Z-coordinate is always unchanged. 
         !------------------------------------------------------------------------
         PMesh % Nodes % x(i) = rad2deg * ATAN2( x(2), x(1)  )
-        PMesh % Nodes % y(i) = SQRT( x(1)**2 + x(2)**2)
+        PMesh % Nodes % y(i) = x(3)
+        PMesh % Nodes % z(i) = SQRT( x(1)**2 + x(2)**2)
       END DO
 
       dFii1 = 0.0_dp
@@ -5539,17 +5542,17 @@ END SUBROUTINE GetMaxDefs
       
       IF( k == 1 ) THEN
         CALL Info('RotationalInterfaceMeshes',&
-            'Transformed extrema for this boundary (phi,r,z)',Level=8)
+            'Transformed extrema for this boundary (phi,z,r)',Level=8)
       ELSE IF( k == 2 ) THEN
         CALL Info('RotationalInterfaceMeshes',&
-            'Transformed extrema for target boundary (phi,r,z)',Level=8)
+            'Transformed extrema for target boundary (phi,z,r)',Level=8)
       END IF
       DO i=1,3
         WRITE(Message,'(A,I0,A,2ES12.3)') 'Coordinate ',i,': ',x2r_min(i),x2r_max(i)
         CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
       END DO
 
-      IF( x2r_min(2) < EPSILON( rad ) ) THEN
+      IF( x2r_min(3) < EPSILON( Radius ) ) THEN
         CALL Fatal('RotationalInterfaceMeshes','Radius cannot be almost zero!')
       END IF
 
@@ -5563,10 +5566,10 @@ END SUBROUTINE GetMaxDefs
     eps_rad = 1.0d-3 
 
     ! Choose radius to be max radius of this boundary
-    rad = x1r_max(2) 
+    Radius = x1r_max(3) 
     
-    err1 = ( x1r_max(2) - x1r_min(2) ) / rad
-    err2 = ( x2r_max(2) - x2r_min(2) ) / rad
+    err1 = ( x1r_max(3) - x1r_min(3) ) / Radius
+    err2 = ( x2r_max(3) - x2r_min(3) ) / Radius
 
     WRITE(Message,'(A,ES12.3)') 'Discrepancy from constant radius:',err1
     CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
@@ -5581,27 +5584,21 @@ END SUBROUTINE GetMaxDefs
     ! Ok, so we have concluded that the interface has constant radius
     ! therefore the constant radius may be removed from the mesh description.
     !---------------------------------------------------------------------------
-    Bmesh1 % Nodes % y = 0.0_dp
-    BMesh2 % Nodes % y = 0.0_dp
+    Bmesh1 % Nodes % z = 0.0_dp
+    BMesh2 % Nodes % z = 0.0_dp
 
     ! Check whether the z-coordinate is constant or not.
     ! Constant z-coordinate implies 1D system, otherwise 2D system.
     !---------------------------------------------------------------------------
-    err1 = ( x1r_max(3) - x1r_min(3) ) / rad
-    err2 = ( x2r_max(3) - x2r_min(3) ) / rad
+    err1 = ( x1r_max(2) - x1r_min(2) ) / Radius
+    err2 = ( x2r_max(2) - x2r_min(2) ) / Radius
     
     IF( err1 < eps_rad .AND. err2 < eps_rad ) THEN
       CALL Info('RotationalInterfaceMeshes','The effective interface meshes are 1D')
-      Bmesh1 % Nodes % z = 0.0_dp
-      Bmesh2 % Nodes % z = 0.0_dp
+      Bmesh1 % Nodes % y = 0.0_dp
+      Bmesh2 % Nodes % y = 0.0_dp
     ELSE
       CALL Info('RotationalInterfaceMeshes','The effective interface meshes are 2D')
-      TmpCoord => Bmesh1 % Nodes % Z
-      Bmesh1 % Nodes % Z => Bmesh1 % Nodes % Y
-      BMesh1 % Nodes % Y => TmpCoord
-      TmpCoord => Bmesh2 % Nodes % Z
-      Bmesh2 % Nodes % Z => Bmesh2 % Nodes % Y
-      BMesh2 % Nodes % Y => TmpCoord
     END IF
 
     ! Some pieces of the code cannot work with 1D meshes, this choice is ok for all steps
@@ -5632,6 +5629,19 @@ END SUBROUTINE GetMaxDefs
       END IF
       CALL Fatal('RotationalInterfaceMeshes','Check your settings, this cannot be periodic!')
     END IF   
+
+    ! Go to using arc length, s, as the unit instead of angles.
+    ! This has the advantage that then (s,z) plane can be used also for skewed 
+    ! elements. 
+    IF( PRESENT( UseArcLength ) ) THEN
+      IF( UseArcLength ) THEN
+        BMesh1 % Nodes % x = (Radius/rad2deg) * BMesh1 % Nodes % x 
+        BMesh2 % Nodes % x = (Radius/rad2deg) * BMesh2 % Nodes % x 
+      END IF
+      !PRINT *,'ArcLength1:',MINVAL(BMesh1 % Nodes %x),MAXVAL(BMesh1%Nodes%x)
+      !PRINT *,'ArcLength2:',MINVAL(BMesh2 % Nodes %x),MAXVAL(BMesh2%Nodes%x)
+    END IF
+
 
   END SUBROUTINE RotationalInterfaceMeshes2
 !------------------------------------------------------------------------------
@@ -5747,6 +5757,58 @@ END SUBROUTINE GetMaxDefs
   END SUBROUTINE RadialInterfaceMeshes
 !------------------------------------------------------------------------------
 
+  !---------------------------------------------------------------------------
+  !> Given two interface meshes flatten them to (x,y) plane.
+  !---------------------------------------------------------------------------
+  SUBROUTINE FlatInterfaceMeshes(BMesh1, BMesh2, BParams )
+  !---------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Valuelist_t), POINTER :: BParams
+    !--------------------------------------------------------------------------
+    INTEGER :: FlatDim, MeshDim
+    LOGICAL :: Found
+
+    CALL Info('FlatInterfaceMeshes','Flattening interface meshes to 2D',Level=8)    
+    
+    MeshDim = CurrentModel % Dimension
+    FlatDim = ListGetInteger( BParams,'Flat Projector Coordinate',Found,minv=1,maxv=3) 
+    IF(.NOT. Found ) FlatDim = MeshDim
+
+    ! Some pieces of the code cannot work with 1D meshes, this choice is ok for all steps
+    IF( FlatDim == 3 ) THEN
+      BMesh1 % Nodes % z = 0.0_dp
+      Bmesh2 % Nodes % z = 0.0_dp
+    ELSE IF( FlatDim == 2 ) THEN
+      IF( MeshDim == 3 ) THEN
+        BMesh1 % Nodes % y = BMesh1 % Nodes % z
+        Bmesh2 % Nodes % y = BMesh2 % Nodes % z
+        BMesh1 % Nodes % z = 0.0_dp
+        Bmesh2 % Nodes % z = 0.0_dp
+      ELSE
+        BMesh1 % Nodes % y = 0.0_dp
+        BMesh2 % Nodes % y = 0.0_dp
+      END IF
+    ELSE
+      IF( MeshDim == 3 ) THEN
+        BMesh1 % Nodes % x = BMesh1 % Nodes % z
+        Bmesh2 % Nodes % x = BMesh2 % Nodes % z
+        BMesh1 % Nodes % z = 0.0_dp
+        Bmesh2 % Nodes % z = 0.0_dp
+      ELSE 
+        BMesh1 % Nodes % x = BMesh1 % Nodes % y
+        Bmesh2 % Nodes % x = BMesh2 % Nodes % y
+        BMesh1 % Nodes % y = 0.0_dp
+        Bmesh2 % Nodes % y = 0.0_dp
+      END IF
+    END IF
+
+    Bmesh1 % MeshDim = 2
+    Bmesh2 % MeshDim = 2      
+
+  END SUBROUTINE FlatInterfaceMeshes
+!------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
 !> Create a projector between Master and Target boundaries.
@@ -5767,7 +5829,8 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,k,n,dim
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
-        Discontinuous, NodalJump, Stride, Radial, AntiRadial, DoNodes, DoEdges
+        Discontinuous, NodalJump, Stride, Radial, AntiRadial, DoNodes, DoEdges, &
+        UseArcLength, Flat
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -5853,8 +5916,14 @@ END SUBROUTINE GetMaxDefs
         'Anti Sliding Projector',GotIt )
     IF( AntiSliding ) Sliding = .TRUE. 
 
+    Flat = ListGetLogical( BC, &
+        'Flat Projector',GotIt )
+
     Repeating = Rotational .OR. Sliding 
     AntiRepeating = AntiRotational .OR. AntiSliding 
+
+    UseArcLength = ListGetLogical( BC, &
+        'Rotational Projector Use Arc Length',GotIt )
     
     PeriodicScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) THEN
@@ -5920,11 +5989,14 @@ END SUBROUTINE GetMaxDefs
     ! scaling. 
     !---------------------------------------------------------------------------------
     IF( Rotational ) THEN
-      CALL RotationalInterfaceMeshes2( BMesh1, BMesh2, Model % BCs(This) % Values )
+      CALL RotationalInterfaceMeshes2( BMesh1, BMesh2, Model % BCs(This) % Values, &
+          UseArcLength )
     ELSE IF( Radial ) THEN
       CALL RadialInterfaceMeshes( BMesh1, BMesh2, Model % BCs(This) % Values )
     ELSE IF( Sliding ) THEN
       CONTINUE
+    ELSE IF( Flat ) THEN
+      CALL FlatInterfaceMeshes( BMesh1, BMesh2, Model % BCs(This) % Values )
     ELSE
       CALL OverlayIntefaceMeshes( BMesh1, BMesh2, Model % BCs(This) % Values )
     END IF
@@ -5947,8 +6019,7 @@ END SUBROUTINE GetMaxDefs
 
     IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
       IF(ParEnv % Mype == 0 ) THEN
-         OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
-!        CALL CRS_PrintMatrix( Projector )
+        OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
         DO i=1,projector % numberofrows
           DO j=projector % rows(i), projector % rows(i+1)-1
             WRITE(1,*) projector % invperm(i), projector % cols(j), projector % values(j)
