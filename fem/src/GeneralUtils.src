@@ -1224,12 +1224,13 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 !> Solver for the coefficients of a cubic spline.
 !------------------------------------------------------------------------------
-    SUBROUTINE CubicSpline( n,x,y,r )
+    SUBROUTINE CubicSpline( n,x,y,r, monotone )
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: x(:),y(:),r(:)
       INTEGER :: n
+      LOGICAL, OPTIONAL :: monotone
 
-      REAL(KIND=dp) ::  t,h(n)
+      REAL(KIND=dp) ::  t,h(n),tau
       INTEGER :: i
 
       DO i=1,n-1
@@ -1239,7 +1240,36 @@ END FUNCTION ComponentNameVar
       r(1) = (y(2) - y(1) )  / h(1)
       r(n) = (y(n) - y(n-1) ) / h(n-1)
 
-      CALL SolveTriDiag( n,y,h,r )
+      IF (Monotone) THEN
+        DO i=1,n-1
+          h(i) = (y(i+1) - y(i) ) / h(i)
+        END DO
+
+        DO i=2,n-1
+          r(i) = (h(i-1) + h(i))/2
+        END DO
+
+        DO i=1,n-1
+          IF(ABS(h(i))<10*AEPS) THEN
+            r(i) = 0._dp; r(i+1) = 0._dp
+            CYCLE
+          END IF
+
+          alpha = r(i) / h(i); beta = r(i+1) / h(i)
+          IF ( alpha < 0._dp .OR. beta < 0._dp ) THEN
+            r(i) = 0._dp;
+            CYCLE
+          END IF
+ 
+          tau = SQRT(alpha**2 + beta**2)
+          IF(tau > 3) THEN
+            tau = 3._dp / tau
+            r(i) = alpha*tau*h(i); r(i+1)=beta*tau*h(i)
+          END IF
+        END DO
+      ELSE
+        CALL SolveTriDiag( n,y,h,r )
+      END IF
 !------------------------------------------------------------------------------
     END SUBROUTINE CubicSpline
 !------------------------------------------------------------------------------
