@@ -72,6 +72,10 @@ ENDIF()
 
 ADD_LIBRARY(mpi_stubs SHARED mpif_stubs.F90)
 ADD_LIBRARY(elmersolver SHARED ${solverlib_SOURCES})
+SET_TARGET_PROPERTIES(mpi_stubs
+                      PROPERTIES LINKER_LANGUAGE Fortran)
+SET_TARGET_PROPERTIES(elmersolver
+                      PROPERTIES LINKER_LANGUAGE Fortran)
 
 # ElmerSolver libraries 
 SET(ELMERSOLVER_LIBRARIES elmersolver matc eiof umfpack 
@@ -115,6 +119,18 @@ INSTALL(TARGETS ViewFactors RUNTIME DESTINATION "bin")
 ADD_EXECUTABLE(GebhardtFactors GebhardtFactors.F90) 
 TARGET_LINK_LIBRARIES(GebhardtFactors ${ELMERSOLVER_LIBRARIES} 
                                       mpi_stubs)
+
+# Use Fortran to link ElmerSolver, GebhardtFactors, ViewFactors
+SET_TARGET_PROPERTIES(ElmerSolver 
+                      GebhardtFactors 
+                      ViewFactors 
+		      PROPERTIES LINKER_LANGUAGE Fortran)
+IF(MPI_FOUND)
+  SET_TARGET_PROPERTIES(ElmerSolver_mpi
+                        PROPERTIES LINKER_LANGUAGE Fortran)
+ENDIF()
+
+
 INSTALL(TARGETS GebhardtFactors RUNTIME DESTINATION "bin")
 
 # Installation rules

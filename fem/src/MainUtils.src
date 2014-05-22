@@ -1611,291 +1611,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveEquations
 !------------------------------------------------------------------------------
-
-
-!---------------------------------------------------
-!> Perform assembly for the block system linear
-!> system of equations.
-!---------------------------------------------------
-  SUBROUTINE BlockSystemAssembly(Solver,dt,Transient,RowVar,ColVar,&
-      RowIndOffset,ColIndOffset)
-!---------------------------------------------------
-    USE DefUtils
-
-    TYPE(Solver_t), POINTER :: Solver
-    REAL(KIND=dp) :: dt
-    LOGICAL :: Transient
-    INTEGER :: RowVar, ColVar
-    INTEGER, OPTIONAL :: RowIndOffset,ColIndOffset
-
-    INTEGER :: RowInd0, ColInd0
-    REAL(KIND=dp) :: SymmCoeff
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Variable_t), POINTER :: Var
-    TYPE(Matrix_t), POINTER :: Amat
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Valuelist_t), POINTER :: SolverParams
-    INTEGER :: i,j,t,n,nd,istat
-    INTEGER :: ElementsFirst, ElementsLast, Row, Col, RowDofs, ColDofs, Ncol, Nrow
-    INTEGER :: AllocCols, AllocRows
-    INTEGER, POINTER :: ColPerm(:), RowPerm(:), Indexes(:),ColInds(:),RowInds(:) 
-    LOGICAL :: GotIt
-    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), DAMP(:,:), MASS(:,:), FORCE(:)
-    REAL(KIND=dp), POINTER :: ForceVector(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: ProcName, RowName, ColName, str
-    INTEGER(KIND=AddrInt) :: ProcPntr    
-    LOGICAL :: BulkMode, AssemblySymmetric, AssemblyAntiSymmetric, IsListMatrix
-    LOGICAL :: AllocationsDone = .FALSE., Diagonal
-
-#ifndef USE_ISO_C_BINDINGS
-    INTERFACE 
-      SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
-          M, D, S, F, Element, Nrow, Ncol )
-        USE Types
-        INTEGER(KIND=AddrInt) :: Proc
-        TYPE(Model_t)   :: Model
-        TYPE(Solver_t)  :: Solver
-        REAL(KIND=dp)   :: dt
-        LOGICAL :: Transient
-        REAL(KIND=dp) :: S(:,:), D(:,:), M(:,:), F(:)
-        TYPE(Element_t) :: Element
-        INTEGER :: Nrow, Ncol
-      END SUBROUTINE ExecLocalAssembly
-    END INTERFACE
-#endif
-    SAVE :: AllocationsDone, AllocCols, AllocRows, &
-        FORCE, STIFF, DAMP, MASS, ColInds, RowInds, indexes
-
-    Mesh => Solver % Mesh
-    SolverParams => Solver % Values
-    Amat => Solver % Matrix
-    ForceVector => Amat % rhs
-
-    RowInd0 = 0
-    ColInd0 = 0
-    IF( PRESENT( RowIndOffset ) ) RowInd0 = RowIndOffset
-    IF( PRESENT( ColIndOffset ) ) ColInd0 = ColIndOffset
-
-    ! Row Variable
-    !-------------------------------------------
-    WRITE (str,'(A,I0)') 'Variable ',RowVar
-    RowName = ListGetString( SolverParams, TRIM(str), GotIt )
-    Var => VariableGet( Mesh % Variables, TRIM(RowName) ) 
-    IF(.NOT. ASSOCIATED( Var ) .AND. RowVar == 1 .AND. ColVar == 1 ) THEN
-      Var => Solver % Variable
-    END IF
-    RowDofs = Var % Dofs
-    RowPerm => Var % Perm
-    
-    ! Column variable
-    !------------------------------------------
-    IF( ColVar /= RowVar ) THEN
-      WRITE (str,'(A,I0)') 'Variable ',ColVar
-      ColName = ListGetString( SolverParams, TRIM(str), GotIt )
-      Var => VariableGet( Mesh % Variables, TRIM(ColName) )
-    END IF          
-    ColDofs = Var % Dofs
-    ColPerm => Var % Perm
-
-    ! These could be user provided for each block
-    !-----------------------------------------
-    AssemblySymmetric = ListGetLogical( SolverParams,'Symmetric Assembly',GotIt)
-    AssemblyAntiSymmetric = ListGetLogical( SolverParams,'AntiSymmetric Assembly',GotIt)
-
-    IsListMatrix = ( Solver % Matrix % FORMAT == MATRIX_LIST ) 
-    N = Mesh % MaxElementDOFs    
-
-    IF( AllocationsDone ) THEN
-      IF( RowDofs * n > AllocRows .OR. ColDofs * n > AllocCols )  THEN
-        DEALLOCATE( FORCE, STIFF, DAMP, MASS, ColInds, RowInds )        
-        AllocationsDone = .FALSE.
-      END IF
-    END IF
-    
-    IF( .NOT. AllocationsDone ) THEN
-      AllocRows = RowDofs * n
-      AllocCols = ColDofs * n
-      ALLOCATE(Indexes(AllocRows))
-
-      ALLOCATE( FORCE( AllocRows ),      &
-          STIFF( AllocRows, AllocCols ), &
-          DAMP( AllocRows, AllocCols ),  &
-          MASS( AllocRows, AllocCols ), &
-          ColInds( N ), RowInds( N ),    &
-          STAT=istat )
-      IF ( istat /= 0 ) CALL FATAL('BlockSystemAssembly','Memory allocation error')
-      AllocationsDone = .TRUE.
-    END IF
-      
-    CALL Info('BlockSystemAssembly','Starting block system assembly',Level=5)
-    
-    BulkMode = .TRUE.
-    
-100 IF(BulkMode) THEN
-      ! CALL Info('BlockSystemAssembly','Starting bulk assembly',Level=5)
-      ElementsFirst = 1
-      ElementsLast = Mesh % NumberOFBulkElements
-    ELSE
-      ! CALL Info('BlockSystemAssembly','Starting boundary assembly',Level=5)
-      ElementsFirst = Mesh % NumberOFBulkElements+1
-      ElementsLast = Mesh % NumberOfBulkElements + &
-          Mesh % NumberOFBoundaryElements
-    END IF
-        
-      
-    ! Load the assembly procudure
-    !-----------------------------------------
-    IF( BulkMode ) THEN
-      WRITE (str,'(A,I0,I0)') 'Bulk Assembly Procedure ',RowVar,ColVar
-    ELSE
-      WRITE (str,'(A,I0,I0)') 'Boundary Assembly Procedure ',RowVar,ColVar
-    END IF    
-    ProcName = ListGetString( SolverParams, TRIM(str), GotIt )
-
-    ! Test if the 11 block is not given with 'ij' indexes
-    !--------------------------------------------------------
-    IF(.NOT. GotIt .AND. RowVar == 1 .AND. ColVar == 1) THEN
-      IF( BulkMode ) THEN
-        WRITE (str,'(A)') 'Bulk Assembly Procedure'
-      ELSE
-        WRITE (str,'(A)') 'Boundary Assembly Procedure'
-      END IF
-      ProcName = ListGetString( SolverParams, TRIM(str), GotIt )
-      IF(.NOT. GotIt) THEN
-         CALL Fatal('BlockSystemAssembly','Bulk Assembly Precedure not given!')
-      END IF
-    END IF
-
-    Diagonal = (RowVar == ColVar) 
-    
-    IF( .NOT. GotIt ) THEN
-      IF( BulkMode .AND. Diagonal ) THEN
-        CALL Warn('BlockSystemAssembly','Diagonal bulk entries should be assembled!')
-      END IF
-      RETURN
-    END IF
-
-    ProcPntr = GetProcAddr( TRIM(ProcName), abort=.FALSE.)
-    IF ( ProcPntr == 0 ) THEN
-      CALL Fatal('BlockSystemAssembly','Assembly routine not found: '//TRIM(ProcName))
-    ELSE
-      CALL Info('BlockSystemAssembly','Using assembly routine: '//TRIM(ProcName))
-    END IF
-    
-    ! These may be fetched within the assembly routine, if needed
-    CALL ListAddInteger( SolverParams,'Block Matrix Row',RowVar )
-    CALL ListAddInteger( SolverParams,'Block Matrix Column',ColVar )
-
-
-    ! The assembly loop for a submatrix starts here
-    !------------------------------------------------------------------------------             
-    DO t=ElementsFirst,ElementsLast
-      
-      Element => Mesh % Elements(t)
-      CurrentModel % CurrentElement => Element
-      
-      !-----------------------------------------------------------------
-      n  = GetElementNOFNodes()
-      nd = GetElementDOFs(Indexes)
-!     Indexes => Element % NodeIndexes
-!     n = Element % TYPE % NumberOfnodes
-!     nd = n
-      Nrow = nd
-
-      RowInds(1:Nrow) = RowPerm(Indexes(1:nd))
-      IF(.NOT. ALL(RowInds(1:Nrow) > 0)) CYCLE
-
-      Ncol = nd
-      ColInds(1:Ncol) = ColPerm(Indexes(1:nd))
-      IF(.NOT. ALL(ColInds(1:Ncol) > 0)) CYCLE                 
-
-      ! Here just the matrix structure is set, no values
-      !---------------------------------------------------------------
-      IF( IsListMatrix ) THEN
-        CALL GlueLocalSubMatrix( Amat, &
-            RowInd0,ColInd0,Nrow,Ncol,RowInds,ColInds,&
-            RowDofs,ColDofs,STIFF )
-        IF( AssemblySymmetric .OR. AssemblyAntiSymmetric ) THEN
-          CALL GlueLocalSubMatrix( Amat, &
-              ColInd0,RowInd0,Ncol,Nrow,ColInds,RowInds,&
-              ColDofs,RowDofs,STIFF )          
-        END IF
-        CYCLE
-      END IF
-      
-      ! Do the assembly, now really
-      !---------------------------------------------------------------
-      STIFF = 0.0_dp
-      DAMP = 0.0_dp
-      MASS = 0.0_dp
-      FORCE = 0.0_dp
-      
-      CALL ExecLocalAssembly( ProcPntr, CurrentModel, Solver, &
-          dt, Transient, MASS, DAMP, STIFF, FORCE, Element, &
-          Nrow, Ncol )
-
-      IF ( Transient ) THEN
-        IF( Solver % TimeOrder == 1 ) THEN
-          CALL Default1stOrderTime( MASS,STIFF,FORCE)
-        ELSE IF( Solver % TimeOrder == 2) THEN
-          CALL Default2ndOrderTime( MASS,DAMP,STIFF,FORCE )
-        END IF
-      END IF
-      
-      IF ( Solver % NOFEigenValues > 0 ) THEN
-        IF( Solver % TimeOrder == 1 ) THEN
-          CALL DefaultUpdateMass(MASS)
-        ELSE IF( Solver % TimeOrder == 2) THEN
-          CALL DefaultUpdateDamp(DAMP)
-          CALL DefaultUpdateMass(MASS)
-        END IF
-      END IF
-
-      
-      ! Assemble the matrix with offset
-      !-----------------------------------------------
-      IF( .TRUE. .OR. ColInd0 > 0 .OR. RowInd0 > 0 ) THEN
-        CALL GlueLocalSubMatrix( Amat, &
-            RowInd0,ColInd0,Nrow,Ncol,RowInds,ColInds,&
-            RowDofs,ColDofs,STIFF )
-        
-        ! Assemble the r.h.s with offset
-        !-----------------------------------------------
-        DO i=1,Nrow
-          DO j=1,RowDofs
-            Row = RowInd0 + RowDofs * (RowInds(i)-1) + j
-            ForceVector(Row) = ForceVector(Row) + &
-                FORCE(RowDofs*(i-1)+j)
-          END DO
-        END DO
-        
-        ! For some constraints assemble also the transpose
-        !--------------------------------------------------
-        IF( AssemblySymmetric ) THEN
-          CALL GlueLocalSubMatrix( Amat, &
-              ColInd0,RowInd0,Ncol,Nrow,ColInds,RowInds,&
-              ColDofs,RowDofs,TRANSPOSE(STIFF) )               
-        ELSE IF( AssemblyAntisymmetric ) THEN
-          CALL GlueLocalSubMatrix( Amat, &
-              ColInd0,RowInd0,Ncol,Nrow,ColInds,RowInds,&
-              ColDofs,RowDofs,-TRANSPOSE(STIFF) )               
-        END IF
-      ELSE              
-        CALL DefaultUpdateEquations( STIFF, FORCE )
-      END IF
-      
-    END DO
-    
-    IF(BulkMode) THEN
-      ! CALL Info( 'BlockSystemAssembly', 'Bulk assembly done for blocks', Level=4 )
-      BulkMode = .FALSE.
-!      GOTO 100
-    ELSE 
-      ! CALL Info( 'BlockSystemAssembly', 'Boundary assembly done for blocks', Level=4 )
-    END IF
-
-  END SUBROUTINE BlockSystemAssembly
-  !-----------------------------------------------------------------------------------
   
 
 !------------------------------------------------------------------------------
@@ -3029,7 +2744,7 @@ CONTAINS
     !> The routine assumes that the r.h.s. of the off diagonal matrices is zero.
     !----------------------------------------------------------------------------------
     SUBROUTINE BlockSystemDirichlet(BlockMatrix,NoRow,NoCol)
-
+      
       TYPE(BlockMatrix_t) :: BlockMatrix
       INTEGER :: NoRow, NoCol
 
@@ -3259,7 +2974,289 @@ CONTAINS
   END SUBROUTINE BlockSolver
 !------------------------------------------------------------------------------
  
-  
+!---------------------------------------------------
+!> Perform assembly for the block system linear
+!> system of equations.
+!---------------------------------------------------
+  SUBROUTINE BlockSystemAssembly(Solver,dt,Transient,RowVar,ColVar,&
+      RowIndOffset,ColIndOffset)
+!---------------------------------------------------
+    USE DefUtils
+
+    TYPE(Solver_t), POINTER :: Solver
+    REAL(KIND=dp) :: dt
+    LOGICAL :: Transient
+    INTEGER :: RowVar, ColVar
+    INTEGER, OPTIONAL :: RowIndOffset,ColIndOffset
+
+    INTEGER :: RowInd0, ColInd0
+    REAL(KIND=dp) :: SymmCoeff
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Matrix_t), POINTER :: Amat
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Valuelist_t), POINTER :: SolverParams
+    INTEGER :: i,j,t,n,nd,istat
+    INTEGER :: ElementsFirst, ElementsLast, Row, Col, RowDofs, ColDofs, Ncol, Nrow
+    INTEGER :: AllocCols, AllocRows
+    INTEGER, POINTER :: ColPerm(:), RowPerm(:), Indexes(:),ColInds(:),RowInds(:) 
+    LOGICAL :: GotIt
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), DAMP(:,:), MASS(:,:), FORCE(:)
+    REAL(KIND=dp), POINTER :: ForceVector(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: ProcName, RowName, ColName, str
+    INTEGER(KIND=AddrInt) :: ProcPntr    
+    LOGICAL :: BulkMode, AssemblySymmetric, AssemblyAntiSymmetric, IsListMatrix
+    LOGICAL :: AllocationsDone = .FALSE., Diagonal
+
+#ifndef USE_ISO_C_BINDINGS
+    INTERFACE 
+      SUBROUTINE ExecLocalAssembly( Proc, Model, Solver, dt, Transient, &
+          M, D, S, F, Element, Nrow, Ncol )
+        USE Types
+        INTEGER(KIND=AddrInt) :: Proc
+        TYPE(Model_t)   :: Model
+        TYPE(Solver_t)  :: Solver
+        REAL(KIND=dp)   :: dt
+        LOGICAL :: Transient
+        REAL(KIND=dp) :: S(:,:), D(:,:), M(:,:), F(:)
+        TYPE(Element_t) :: Element
+        INTEGER :: Nrow, Ncol
+      END SUBROUTINE ExecLocalAssembly
+    END INTERFACE
+#endif
+    SAVE :: AllocationsDone, AllocCols, AllocRows, &
+        FORCE, STIFF, DAMP, MASS, ColInds, RowInds, indexes
+
+    Mesh => Solver % Mesh
+    SolverParams => Solver % Values
+    Amat => Solver % Matrix
+    ForceVector => Amat % rhs
+
+    RowInd0 = 0
+    ColInd0 = 0
+    IF( PRESENT( RowIndOffset ) ) RowInd0 = RowIndOffset
+    IF( PRESENT( ColIndOffset ) ) ColInd0 = ColIndOffset
+
+    ! Row Variable
+    !-------------------------------------------
+    WRITE (str,'(A,I0)') 'Variable ',RowVar
+    RowName = ListGetString( SolverParams, TRIM(str), GotIt )
+    Var => VariableGet( Mesh % Variables, TRIM(RowName) ) 
+    IF(.NOT. ASSOCIATED( Var ) .AND. RowVar == 1 .AND. ColVar == 1 ) THEN
+      Var => Solver % Variable
+    END IF
+    RowDofs = Var % Dofs
+    RowPerm => Var % Perm
+    
+    ! Column variable
+    !------------------------------------------
+    IF( ColVar /= RowVar ) THEN
+      WRITE (str,'(A,I0)') 'Variable ',ColVar
+      ColName = ListGetString( SolverParams, TRIM(str), GotIt )
+      Var => VariableGet( Mesh % Variables, TRIM(ColName) )
+    END IF          
+    ColDofs = Var % Dofs
+    ColPerm => Var % Perm
+
+    ! These could be user provided for each block
+    !-----------------------------------------
+    AssemblySymmetric = ListGetLogical( SolverParams,'Symmetric Assembly',GotIt)
+    AssemblyAntiSymmetric = ListGetLogical( SolverParams,'AntiSymmetric Assembly',GotIt)
+
+    IsListMatrix = ( Solver % Matrix % FORMAT == MATRIX_LIST ) 
+    N = Mesh % MaxElementDOFs    
+
+    IF( AllocationsDone ) THEN
+      IF( RowDofs * n > AllocRows .OR. ColDofs * n > AllocCols )  THEN
+        DEALLOCATE( FORCE, STIFF, DAMP, MASS, ColInds, RowInds )        
+        AllocationsDone = .FALSE.
+      END IF
+    END IF
+    
+    IF( .NOT. AllocationsDone ) THEN
+      AllocRows = RowDofs * n
+      AllocCols = ColDofs * n
+      ALLOCATE(Indexes(AllocRows))
+
+      ALLOCATE( FORCE( AllocRows ),      &
+          STIFF( AllocRows, AllocCols ), &
+          DAMP( AllocRows, AllocCols ),  &
+          MASS( AllocRows, AllocCols ), &
+          ColInds( N ), RowInds( N ),    &
+          STAT=istat )
+      IF ( istat /= 0 ) CALL FATAL('BlockSystemAssembly','Memory allocation error')
+      AllocationsDone = .TRUE.
+    END IF
+      
+    CALL Info('BlockSystemAssembly','Starting block system assembly',Level=5)
+    
+    BulkMode = .TRUE.
+    
+100 IF(BulkMode) THEN
+      ! CALL Info('BlockSystemAssembly','Starting bulk assembly',Level=5)
+      ElementsFirst = 1
+      ElementsLast = Mesh % NumberOFBulkElements
+    ELSE
+      ! CALL Info('BlockSystemAssembly','Starting boundary assembly',Level=5)
+      ElementsFirst = Mesh % NumberOFBulkElements+1
+      ElementsLast = Mesh % NumberOfBulkElements + &
+          Mesh % NumberOFBoundaryElements
+    END IF
+        
+      
+    ! Load the assembly procudure
+    !-----------------------------------------
+    IF( BulkMode ) THEN
+      WRITE (str,'(A,I0,I0)') 'Bulk Assembly Procedure ',RowVar,ColVar
+    ELSE
+      WRITE (str,'(A,I0,I0)') 'Boundary Assembly Procedure ',RowVar,ColVar
+    END IF    
+    ProcName = ListGetString( SolverParams, TRIM(str), GotIt )
+
+    ! Test if the 11 block is not given with 'ij' indexes
+    !--------------------------------------------------------
+    IF(.NOT. GotIt .AND. RowVar == 1 .AND. ColVar == 1) THEN
+      IF( BulkMode ) THEN
+        WRITE (str,'(A)') 'Bulk Assembly Procedure'
+      ELSE
+        WRITE (str,'(A)') 'Boundary Assembly Procedure'
+      END IF
+      ProcName = ListGetString( SolverParams, TRIM(str), GotIt )
+      IF(.NOT. GotIt) THEN
+         CALL Fatal('BlockSystemAssembly','Bulk Assembly Precedure not given!')
+      END IF
+    END IF
+
+    Diagonal = (RowVar == ColVar) 
+    
+    IF( .NOT. GotIt ) THEN
+      IF( BulkMode .AND. Diagonal ) THEN
+        CALL Warn('BlockSystemAssembly','Diagonal bulk entries should be assembled!')
+      END IF
+      RETURN
+    END IF
+
+    ProcPntr = GetProcAddr( TRIM(ProcName), abort=.FALSE.)
+    IF ( ProcPntr == 0 ) THEN
+      CALL Fatal('BlockSystemAssembly','Assembly routine not found: '//TRIM(ProcName))
+    ELSE
+      CALL Info('BlockSystemAssembly','Using assembly routine: '//TRIM(ProcName))
+    END IF
+    
+    ! These may be fetched within the assembly routine, if needed
+    CALL ListAddInteger( SolverParams,'Block Matrix Row',RowVar )
+    CALL ListAddInteger( SolverParams,'Block Matrix Column',ColVar )
+
+
+    ! The assembly loop for a submatrix starts here
+    !------------------------------------------------------------------------------             
+    DO t=ElementsFirst,ElementsLast
+      
+      Element => Mesh % Elements(t)
+      CurrentModel % CurrentElement => Element
+      
+      !-----------------------------------------------------------------
+      n  = GetElementNOFNodes()
+      nd = GetElementDOFs(Indexes)
+!     Indexes => Element % NodeIndexes
+!     n = Element % TYPE % NumberOfnodes
+!     nd = n
+      Nrow = nd
+
+      RowInds(1:Nrow) = RowPerm(Indexes(1:nd))
+      IF(.NOT. ALL(RowInds(1:Nrow) > 0)) CYCLE
+
+      Ncol = nd
+      ColInds(1:Ncol) = ColPerm(Indexes(1:nd))
+      IF(.NOT. ALL(ColInds(1:Ncol) > 0)) CYCLE                 
+
+      ! Here just the matrix structure is set, no values
+      !---------------------------------------------------------------
+      IF( IsListMatrix ) THEN
+        CALL GlueLocalSubMatrix( Amat, &
+            RowInd0,ColInd0,Nrow,Ncol,RowInds,ColInds,&
+            RowDofs,ColDofs,STIFF )
+        IF( AssemblySymmetric .OR. AssemblyAntiSymmetric ) THEN
+          CALL GlueLocalSubMatrix( Amat, &
+              ColInd0,RowInd0,Ncol,Nrow,ColInds,RowInds,&
+              ColDofs,RowDofs,STIFF )          
+        END IF
+        CYCLE
+      END IF
+      
+      ! Do the assembly, now really
+      !---------------------------------------------------------------
+      STIFF = 0.0_dp
+      DAMP = 0.0_dp
+      MASS = 0.0_dp
+      FORCE = 0.0_dp
+      
+      CALL ExecLocalAssembly( ProcPntr, CurrentModel, Solver, &
+          dt, Transient, MASS, DAMP, STIFF, FORCE, Element, &
+          Nrow, Ncol )
+
+      IF ( Transient ) THEN
+        IF( Solver % TimeOrder == 1 ) THEN
+          CALL Default1stOrderTime( MASS,STIFF,FORCE)
+        ELSE IF( Solver % TimeOrder == 2) THEN
+          CALL Default2ndOrderTime( MASS,DAMP,STIFF,FORCE )
+        END IF
+      END IF
+      
+      IF ( Solver % NOFEigenValues > 0 ) THEN
+        IF( Solver % TimeOrder == 1 ) THEN
+          CALL DefaultUpdateMass(MASS)
+        ELSE IF( Solver % TimeOrder == 2) THEN
+          CALL DefaultUpdateDamp(DAMP)
+          CALL DefaultUpdateMass(MASS)
+        END IF
+      END IF
+
+      
+      ! Assemble the matrix with offset
+      !-----------------------------------------------
+      IF( .TRUE. .OR. ColInd0 > 0 .OR. RowInd0 > 0 ) THEN
+        CALL GlueLocalSubMatrix( Amat, &
+            RowInd0,ColInd0,Nrow,Ncol,RowInds,ColInds,&
+            RowDofs,ColDofs,STIFF )
+        
+        ! Assemble the r.h.s with offset
+        !-----------------------------------------------
+        DO i=1,Nrow
+          DO j=1,RowDofs
+            Row = RowInd0 + RowDofs * (RowInds(i)-1) + j
+            ForceVector(Row) = ForceVector(Row) + &
+                FORCE(RowDofs*(i-1)+j)
+          END DO
+        END DO
+        
+        ! For some constraints assemble also the transpose
+        !--------------------------------------------------
+        IF( AssemblySymmetric ) THEN
+          CALL GlueLocalSubMatrix( Amat, &
+              ColInd0,RowInd0,Ncol,Nrow,ColInds,RowInds,&
+              ColDofs,RowDofs,TRANSPOSE(STIFF) )               
+        ELSE IF( AssemblyAntisymmetric ) THEN
+          CALL GlueLocalSubMatrix( Amat, &
+              ColInd0,RowInd0,Ncol,Nrow,ColInds,RowInds,&
+              ColDofs,RowDofs,-TRANSPOSE(STIFF) )               
+        END IF
+      ELSE              
+        CALL DefaultUpdateEquations( STIFF, FORCE )
+      END IF
+      
+    END DO
+    
+    IF(BulkMode) THEN
+      ! CALL Info( 'BlockSystemAssembly', 'Bulk assembly done for blocks', Level=4 )
+      BulkMode = .FALSE.
+!      GOTO 100
+    ELSE 
+      ! CALL Info( 'BlockSystemAssembly', 'Boundary assembly done for blocks', Level=4 )
+    END IF
+
+  END SUBROUTINE BlockSystemAssembly
+!-----------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> This executes the original line of solvers (legacy solvers) where each solver 
