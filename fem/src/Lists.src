@@ -1437,13 +1437,13 @@ CONTAINS
 !> Adds a linear dependency defined by a table of values, [x,y] to the list.
 !------------------------------------------------------------------------------
     SUBROUTINE ListAddDepReal(List,Name,DependName,N,TValues, &
-               FValues,Proc,CValue,CubicTable)
+               FValues,Proc,CValue,CubicTable, Monotone)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name,DependName
      CHARACTER(LEN=*), OPTIONAL :: Cvalue
      INTEGER :: N
-     LOGICAL, OPTIONAL :: CubicTable
+     LOGICAL, OPTIONAL :: CubicTable, Monotone
      REAL(KIND=dp) :: FValues(N)
      REAL(KIND=dp) :: TValues(N)
      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
@@ -1463,7 +1463,7 @@ CONTAINS
        IF ( CubicTable ) THEN
          ALLOCATE(ptr % CubicCoeff(n))
          CALL CubicSpline(n,ptr % TValues,Ptr % Fvalues(1,1,:), &
-                    Ptr % CubicCoeff )
+                    Ptr % CubicCoeff, Monotone )
        END IF
      END IF
 

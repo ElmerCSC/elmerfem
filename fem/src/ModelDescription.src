@@ -1235,7 +1235,7 @@ CONTAINS
 #else
       CHARACTER(LEN=MAX_STRING_LEN) :: Name,str, Depname
 #endif
-      LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, Cubic, AllInt
+      LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, Cubic, AllInt, Monotone
 
       INTEGER(KIND=AddrInt) :: Proc
       INTEGER :: i,j,k,l,n,slen, str_beg, str_end, n1,n2, TYPE, &
@@ -1410,6 +1410,7 @@ CONTAINS
                  END IF
  
                  Cubic = str(str_beg:str_beg+4)=='cubic'
+                 monotone = str(str_beg+5:str_beg+12)=='monotone'
                  n = 0
                  DO WHILE( ReadAndTrim(InFileUnit,str,Echo) )
 
@@ -1467,7 +1468,7 @@ CONTAINS
                               N1,N2,ATx(1:N1,1:N2,1:n) )
                    ELSE
                      CALL ListAddDepReal( List,Name,Depname,n,ATt(1:n), &
-                                   ATx(1,1,1:n),CubicTable=Cubic )
+                         ATx(1,1,1:n),CubicTable=Cubic, Monotone=monotone )
                    END IF
                  END IF
                  MaxBufLen = MAX(MaxBuflen, Abuflen)
