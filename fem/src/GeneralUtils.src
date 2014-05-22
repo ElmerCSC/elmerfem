@@ -1230,7 +1230,7 @@ END FUNCTION ComponentNameVar
       INTEGER :: n
       LOGICAL, OPTIONAL :: monotone
 
-      REAL(KIND=dp) ::  t,h(n),tau
+      REAL(KIND=dp) ::  t,h(n),tau, alpha, beta
       INTEGER :: i
 
       DO i=1,n-1
