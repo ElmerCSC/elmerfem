@@ -2412,7 +2412,6 @@ RETURN
     Particles % PrevCoordinate = Coordinate
     Particles % PrevVelocity = Velocity
 
- 
     
   END SUBROUTINE InitializeParticles
 
@@ -2533,7 +2532,6 @@ RETURN
     PosEps = 1.0e-10
     NegEps = -1.0e-7
     
-
     ElemDim = BulkElement % TYPE % DIMENSION
     MinLambda = -HUGE( MinLambda ) 
 
@@ -2575,6 +2573,7 @@ RETURN
     
   END SUBROUTINE SegmentElementIntersection2
   
+  
   !---------------------------------------------------------------------------
   !> This subroutine tests whether a particle is within element using the 
   !> consistant strategy with the above algorithm.
@@ -2586,7 +2585,7 @@ RETURN
     REAL(KIND=dp) :: Rfin(3)
     LOGICAL :: Inside
     !---------------------------------------------------------------------------
-    REAL(KIND=dp) :: Rinit(3), MaxLambda
+    REAL(KIND=dp) :: Rinit(3), MinLambda
     TYPE(Element_t), POINTER   :: BoundaryElement
     TYPE(Nodes_t), SAVE :: Nodes
     REAL(KIND=dp) :: Lambda, Eps, Lambdas(6)
@@ -2594,17 +2593,18 @@ RETURN
     INTEGER, POINTER :: NodeIndexes(:)
     LOGICAL :: Success, AtBoundary, AtFace, Visited = .FALSE.
     REAL(KIND=dp) :: minx,maxx,dx,mindist,dist
-
     Inside = .FALSE.
-   
-    Eps = 1.0e-12
+
+    MinLambda = HUGE(MinLambda)   
+    Eps = EPSILON(Eps) !Eps =1.0e-12
 
     n = GetElementNOFNOdes(BulkElement)
     CALL GetElementNodes(Nodes,BulkElement)
-  
+    ElemDim = BulkElement % TYPE % DIMENSION  
+
     ! First make a quick and dirty test to save time
     !--------------------------------------------------------------------------
-    DO i=1,3
+    DO i=1,ElemDim
       IF( i == 1 ) THEN
         maxx = MAXVAL( Nodes % x(1:n) )
         minx = MINVAL( Nodes % x(1:n) )
@@ -2615,11 +2615,12 @@ RETURN
         maxx = MAXVAL( Nodes % z(1:n) )
         minx = MINVAL( Nodes % z(1:n) )
       END IF
-      
+
       dx = Eps * (maxx-minx) 
       IF( Rfin(i) < minx - dx ) RETURN
       IF( Rfin(i) > maxx + dx ) RETURN
     END DO
+
 
     ! Then the more laborious test where intersections with the faces are determined
     !-------------------------------------------------------------------------------
@@ -2627,9 +2628,8 @@ RETURN
     Rinit(2) = SUM( Nodes % y(1:n) ) / n
     Rinit(3) = SUM( Nodes % z(1:n) ) / n
 
-    ElemDim = BulkElement % TYPE % DIMENSION
     Hits = 0
-    
+
     IF( ElemDim == 3 ) THEN
       NoFaces = BulkElement % TYPE % NumberOfFaces 
     ELSE
@@ -2637,31 +2637,30 @@ RETURN
     END IF
 
     DO i=1, NoFaces          
-     IF( ElemDim == 3 ) THEN
+      IF( ElemDim == 3 ) THEN
         j = BulkElement % FaceIndexes(i)
         BoundaryElement => Mesh % Faces( j )
       ELSE
         j = BulkElement % EdgeIndexes(i)
         BoundaryElement => Mesh % Edges(j)
       END IF
-      
+
       CALL GetElementNodes(Nodes,BoundaryElement)
-      
+
       Lambda = LineFaceIntersection2(BoundaryElement,Nodes,&
           Rinit,Rfin,Success)
       IF(.NOT. Success ) CYCLE 
 
       Hits = Hits + 1
       Lambdas(Hits) = Lambda
+      IF (Lambda > 0.0_dp .AND. MinLambda > Lambda) MinLambda = Lambda
     END DO
 
     IF( Hits == 0 ) THEN
       Inside = .FALSE.
     ELSE 
-      MaxLambda = MAXVAL( Lambdas(1:Hits) )
-      Inside = MaxLambda < 1.0 + Eps .AND. MaxLambda > -Eps 
+      Inside = MinLambda > 1.0 - Eps .AND. MinLambda > -Eps 
 
-! I don't really get it how there can be other than 0 or 2 hits 
       IF( .FALSE. .AND. Hits /= 2 ) THEN
         MinDist = HUGE(MinDist)
         DO i=1,n
@@ -2677,7 +2676,7 @@ RETURN
     END IF
 
   END FUNCTION SegmentElementInside
-  
+
 
   
   !------------------------------------------------------------------------
