@@ -1410,7 +1410,7 @@ CONTAINS
                  END IF
  
                  Cubic = str(str_beg:str_beg+4)=='cubic'
-                 monotone = str(str_beg+5:str_beg+12)=='monotone'
+                 monotone = str(str_beg+6:str_beg+13)=='monotone'
                  n = 0
                  DO WHILE( ReadAndTrim(InFileUnit,str,Echo) )
 
