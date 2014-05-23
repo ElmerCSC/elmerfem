@@ -27,7 +27,7 @@
 !------------------------------------------------------------------------------
 !> Module containing various clustering methods that may be used in conjunction
 !> with algebraic multigrid methods, for example.
-! author Peter Råback
+! author Peter Rï¿½back
 !------------------------------------------------------------------------------
 
 
@@ -909,7 +909,9 @@ CONTAINS
         
         ! Shorten the list from top in case the node is already set
         Refcon = 0
-        DO WHILE( anods > 0 .AND. CF(RevConInd(anods)) /= 0 )
+        DO WHILE( anods > 0)
+        ! DO WHILE( anods > 0 .AND. CF(RevConInd(anods)) /= 0)
+          IF (CF(RevConInd(anods)) == 0) EXIT
           MaxCon = Con(RevConInd(anods))          
           Refcon = MAX(MaxCon,RefCon)
           anods = anods - 1
