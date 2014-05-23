@@ -1906,6 +1906,7 @@ END INTERFACE
 
    IF (ASSOCIATED(Model % BCs)) THEN
      DO i=1,Model % NumberOfBCs
+#if 0
        IF (ASSOCIATED(Model % BCs(i) % PMatrix)) THEN
          A => Model % BCs(i) % PMatrix
          DO WHILE( ASSOCIATED(A) )
@@ -1915,6 +1916,7 @@ END INTERFACE
          END DO
          CALL FreeMatrix(Model % BCs(i) % PMatrix)
        END IF
+#endif
        CALL FreeValueList( Model % BCs(i) % Values)
      END DO
      DEALLOCATE(Model % BCs)
