@@ -304,6 +304,18 @@ END INTERFACE
            END DO
            ExtrudedMesh % Next => CurrentModel % Meshes % Next
            CurrentModel % Meshes => ExtrudedMesh
+
+           ! If periodic BC given, compute boundary mesh projector:
+           ! ------------------------------------------------------
+           DO i = 1,CurrentModel % NumberOfBCs
+             IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
+               CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
+             CurrentModel % BCs(i) % PMatrix => NULL()
+             k = ListGetInteger( CurrentModel % BCs(i) % Values, 'Periodic BC', GotIt )
+             IF( GotIt ) THEN
+               CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, i, k )
+             END IF
+           END DO
          END IF
          
          ! If requested perform coordinate transformation directly after is has been obtained.
@@ -577,7 +589,7 @@ END INTERFACE
      SUBROUTINE AddVtuOutputSolverHack()     
        TYPE(Solver_t), POINTER :: ABC(:), PSolver
        CHARACTER(LEN=MAX_NAME_LEN) :: str
-       INTEGER :: i,j,j2,k,n
+       INTEGER :: i,j,j2,j3,k,n
        TYPE(ValueList_t), POINTER :: Params
        LOGICAL :: gotIt, VtuFormat
 
@@ -599,7 +611,8 @@ END INTERFACE
          IF( ALLOCATED( CurrentModel % Solvers(i) % Def_Dofs ) ) THEN
            j = SIZE(CurrentModel % Solvers(i) % Def_Dofs,1)
            j2 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,2)
-           ALLOCATE( ABC(i) % Def_Dofs(j,j2) )
+           j3 = SIZE(CurrentModel % Solvers(i) % Def_Dofs,3)
+           ALLOCATE( ABC(i) % Def_Dofs(j,j2,j3) )
          END IF
 
          ! Copy the content of the Solver structure
@@ -630,8 +643,8 @@ END INTERFACE
        CurrentModel % Solvers(n) % NumberOfActiveElements = 0
        NULLIFY( CurrentModel % Solvers(n) % Values )
        j = CurrentModel % NumberOfBodies
-       ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(j,6))
-       CurrentModel % Solvers(n) % Def_Dofs(j,6) = -1
+       ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6))
+       CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
        
        ! Add some keywords to the list
        CALL ListAddString(CurrentModel % Solvers(n) % Values,&
@@ -1011,15 +1024,10 @@ END INTERFACE
            Var => Mesh % Variables
            DO WHILE( ASSOCIATED(Var) ) 
              
-             IF ( ASSOCIATED( Var % Solver ) ) THEN
-               DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
-             ELSE
-               DOFs = GetElementDOFs( Indexes )
-             END IF
              
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
-             
+
              str = ListGetString( Solver % Values, 'Namespace', Found )
              IF (Found) CALL ListSetNamespace(TRIM(str))
              
@@ -1031,6 +1039,7 @@ END INTERFACE
                
                Work(1:n) = GetReal( IC, Var % Name, GotIt )
                IF ( GotIt ) THEN
+                 DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
                  DO k=1,n
                    k1 = Indexes(k)
                    IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
@@ -1041,6 +1050,7 @@ END INTERFACE
                IF ( Transient .AND. Solver % TimeOrder==2 ) THEN
                  Work(1:n) = GetReal( IC, TRIM(Var % Name) // ' Velocity', GotIt )
                  IF ( GotIt ) THEN
+                   DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
                    DO k=1,n
                      k1 = Indexes(k)
                      IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
@@ -1049,6 +1059,7 @@ END INTERFACE
                  END IF
                  Work(1:n) = GetReal( IC, TRIM(Var % Name) // ' Acceleration', GotIt )
                  IF ( GotIt ) THEN
+                   DOFs = GetElementDOFs( Indexes, USolver=Var % Solver )
                    DO k=1,n
                      k1 = Indexes(k)
                      IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
@@ -1907,8 +1918,8 @@ END INTERFACE
    IF (ASSOCIATED(Model % BCs)) THEN
      DO i=1,Model % NumberOfBCs
 #if 0
-       IF (ASSOCIATED(Model % BCs(i) % PMatrix)) THEN
-         A => Model % BCs(i) % PMatrix
+       A => Model % BCs(i) % PMatrix
+       IF (ASSOCIATED(A)) THEN
          DO WHILE( ASSOCIATED(A) )
            B => A % Child
            A % Child => NULL()

@@ -11,7 +11,6 @@
 Header
   CHECK KEYWORDS Warn
   Mesh DB "." "circle_in_square"
-!  Mesh DB "." "rect"
   Include Path ""
   Results Directory ""
 End
@@ -161,12 +160,14 @@ Boundary Condition 5
   Discontinuous Boundary = Logical True
 
 ! This keyword makes two different boundaries
-  Discontinuous Target Boundary = Integer 6
+! without creating a projector. The BC may be referred to 
+! as in below.
+  Discontinuous BC = Integer 6
 End
 
 
 ! This is created on-the-fly due to the keyword 
-! > Discontinuous Target Boundary < 
+! > Discontinuous BC < 
 Boundary Condition 6
   Name = "Jump-Second"
   

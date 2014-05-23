@@ -147,6 +147,8 @@
           EpsyzNodal, LoadVector
 !==================================================================================
 
+     CALL Info('ShellSolver','-----------------------------------------',Level=6)
+     CALL Info('ShellSolver','Reissner-Mindlin facet shell solver',Level=4)
 
 !    Get variables needed for solution:
 !    ----------------------------------
@@ -172,8 +174,10 @@
 !    Allocate some permanent storage, this is done first time only:
 !    --------------------------------------------------------------
      IF ( .NOT. AllocationsDone ) THEN
-       N = Model % MaxElementNodes
- 
+
+       ! Only triangles and quads may be used for the shell solver
+       N = MIN( Model % MaxElementNodes, 4 )
+
        ALLOCATE( ElementNodes % x( N ),   &
                  ElementNodes % y( N ),   &
                  ElementNodes % z( N ),   &
@@ -250,16 +254,16 @@
       StabParam1 = GetConstReal( SolverParams, &
            'Shear Stabilization Parameter', GotIt )
       IF( .NOT.GotIt ) THEN
-         CALL Info( 'ShellSolver', 'Shear stabilization parameter undefined.' )
-         CALL Info( 'ShellSolver', 'Using default value 1.0' )
+         CALL Info( 'ShellSolver', 'Shear stabilization parameter undefined.',Level=6 )
+         CALL Info( 'ShellSolver', 'Using default value 1.0',Level=6 )
          StabParam1 = 1.0d0
       END IF
 
       StabParam2 = GetConstReal( SolverParams, &
            'Drilling Stabilization Parameter', GotIt )
       IF( .NOT.GotIt ) THEN
-         CALL Info( 'ShellSolver', 'Drilling stabilization parameter undefined' )
-         CALL Info( 'ShellSolver', 'Using default value 1.0' )
+         CALL Info( 'ShellSolver', 'Drilling stabilization parameter undefined',Level=6)
+         CALL Info( 'ShellSolver', 'Using default value 1.0',Level=6 )
          StabParam2 = 1.0d0
       END IF
        
@@ -271,6 +275,10 @@
 !----------------------------------------------------------------------------------------
 
       CALL SolveNonLinear()
+
+      CALL Info('ShellSolver','All done',Level=6)
+      CALL Info('ShellSolver','-----------------------------------------',Level=6)
+
 
 !------------------------------------------------------------------------------
  
@@ -391,6 +399,13 @@
 
 !-----------------------------------------------------------------------------
        CurrentElement => GetActiveElement( t )
+
+       IF( CurrentElement % TYPE % ElementCode /= 303 .AND. &
+           CurrentElement % TYPE % ElementCode /= 404 ) THEN
+         CALL Warn('ShellSolver','Implemented only for elements 303 and 404!')
+         CYCLE
+       END IF
+
        n = GetElementNOFNodes()
        NodeIndexes => CurrentElement % NodeIndexes
 
@@ -416,15 +431,24 @@
 
 !      Nodal loads:
 !      ------------
-       BodyForce => GetBodyForce()
+       BodyForce => GetBodyForce(CurrentElement, GotIt)
 
        LoadVector = 0.0d0
 
-       LoadX(1:n) = GetReal( BodyForce, 'Body Force 1', GotIt )
-       LoadY(1:n) = GetReal( BodyForce, 'Body Force 2', GotIt )
-       LoadZ(1:n) = GetReal( BodyForce, 'Body Force 3', GotIt )
-       LoadN(1:n) = GetReal( BodyForce, 'Pressure', GotIt )
-       LoadN(1:n) = LoadN(1:n) + GetReal( BodyForce, 'Normal Pressure', GotIt )
+       IF( GotIt ) THEN
+         LoadX(1:n) = GetReal( BodyForce, 'Body Force 1', GotIt )
+         LoadY(1:n) = GetReal( BodyForce, 'Body Force 2', GotIt )
+         LoadZ(1:n) = GetReal( BodyForce, 'Body Force 3', GotIt )
+         LoadN(1:n) = GetReal( BodyForce, 'Pressure', GotIt )
+         LoadN(1:n) = LoadN(1:n) + GetReal( BodyForce, 'Normal Pressure', GotIt )
+       ELSE         
+         LoadX(1:n) = 0.0_dp
+         LoadY(1:n) = 0.0_dp
+         LoadZ(1:n) = 0.0_dp
+         LoadN(1:n) = 0.0_dp
+         LoadN(1:n) = 0.0_dp
+       END IF
+         
 
 !      Material data:
 !      --------------
@@ -524,51 +548,48 @@
 !-----------------------------------------------------------------------------
     SUBROUTINE ConcentratedLoads()
 !-----------------------------------------------------------------------------
-     bf_id = ListGetInteger( Model % Bodies(1) % Values, 'Body Force' )
-     PointLoad => ListGetConstRealArray( Model % BodyForces( bf_id ) % Values, &
-          'Point Load', GotIt)
-
-     IF( .NOT.GotIt ) THEN
-        nPL = 0
-     ELSE
-        nPL = SIZE( PointLoad ) / 9
+     bf_id = ListGetInteger( Model % Bodies(1) % Values, 'Body Force',GotIt )
+     IF( GotIt ) THEN
+       PointLoad => ListGetConstRealArray( Model % BodyForces( bf_id ) % Values, &
+           'Point Load', GotIt)
      END IF
 
-     IF ( nPL > 0 ) THEN
+     IF( .NOT. GotIt ) RETURN
+
+     nPL = SIZE( PointLoad ) / 9
        
-       WRITE( Message,'(A,I9)' ) 'Number of point loads set',nPL
-       CALL Info('ShellSolve',Message)
+     WRITE( Message,'(A,I9)' ) 'Number of point loads set',nPL
+     CALL Info('ShellSolve',Message)
 
-       DO iPL = 1, nPL
-          xp = PointLoad(iPL, 1)
-          yp = PointLoad(iPL, 2)
-          zp = PointLoad(iPL, 3)
-          Fx = PointLoad(iPL, 4)
-          Fy = PointLoad(iPL, 5)
-          Fz = PointLoad(iPL, 6)
-          Mx = PointLoad(iPL, 7)
-          My = PointLoad(iPL, 8)
-          Mz = PointLoad(iPL, 9)
+     DO iPL = 1, nPL
+       xp = PointLoad(iPL, 1)
+       yp = PointLoad(iPL, 2)
+       zp = PointLoad(iPL, 3)
+       Fx = PointLoad(iPL, 4)
+       Fy = PointLoad(iPL, 5)
+       Fz = PointLoad(iPL, 6)
+       Mx = PointLoad(iPL, 7)
+       My = PointLoad(iPL, 8)
+       Mz = PointLoad(iPL, 9)
 
-          DO i = 1, Solver % Mesh % NumberOfNodes
-             xn = Solver % Mesh % Nodes % x(i)
-             yn = Solver % Mesh % Nodes % y(i)
-             zn = Solver % Mesh % Nodes % z(i)
-             r = SQRT( (xn-xp)**2 + (yn-yp)**2 + (zn-zp)**2 )
-             
-             IF ( r < 1.0d-8 ) THEN
-                k = DeflectionPerm( i )
-                IF(k < 1) CYCLE
-                ForceVector( 6*k-5 ) = ForceVector( 6*k-5 ) + Fx
-                ForceVector( 6*k-4 ) = ForceVector( 6*k-4 ) + Fy
-                ForceVector( 6*k-3 ) = ForceVector( 6*k-3 ) + Fz
-                ForceVector( 6*k-2 ) = ForceVector( 6*k-2 ) + Mx
-                ForceVector( 6*k-1 ) = ForceVector( 6*k-1 ) + My
-                ForceVector( 6*k-0 ) = ForceVector( 6*k-0 ) + Mz
-             END IF             
-          END DO
+       DO i = 1, Solver % Mesh % NumberOfNodes
+         xn = Solver % Mesh % Nodes % x(i)
+         yn = Solver % Mesh % Nodes % y(i)
+         zn = Solver % Mesh % Nodes % z(i)
+         r = SQRT( (xn-xp)**2 + (yn-yp)**2 + (zn-zp)**2 )
+
+         IF ( r < 1.0d-8 ) THEN
+           k = DeflectionPerm( i )
+           IF(k < 1) CYCLE
+           ForceVector( 6*k-5 ) = ForceVector( 6*k-5 ) + Fx
+           ForceVector( 6*k-4 ) = ForceVector( 6*k-4 ) + Fy
+           ForceVector( 6*k-3 ) = ForceVector( 6*k-3 ) + Fz
+           ForceVector( 6*k-2 ) = ForceVector( 6*k-2 ) + Mx
+           ForceVector( 6*k-1 ) = ForceVector( 6*k-1 ) + My
+           ForceVector( 6*k-0 ) = ForceVector( 6*k-0 ) + Mz
+         END IF
        END DO
-     END IF
+     END DO
 !-----------------------------------------------------------------------------
    END SUBROUTINE ConcentratedLoads
 !-----------------------------------------------------------------------------
@@ -969,7 +990,7 @@
              END DO
           END DO
        END DO
-       LocalDeflection = MATMUL( Tblock, LocalDeflection )
+       LocalDeflection = MATMUL( Tblock, LocalDeflection(1:6*n) )
 
 !      Exchange rotations r1 and -r2:
 !      ------------------------------
@@ -982,7 +1003,7 @@
           Tblock( 6*i-1, 6*i-2 ) = -1.0d0
           Tblock( 6*i-0, 6*i-0 ) =  1.0d0
        END DO
-       LocalDeflection = MATMUL( Tblock, LocalDeflection )
+       LocalDeflection = MATMUL( Tblock, LocalDeflection(1:6*n) )
 
 !      Select the appropriate quadrature:
 !      ----------------------------------

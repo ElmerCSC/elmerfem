@@ -838,13 +838,16 @@ CONTAINS
     IMPLICIT NONE
 
     TYPE(Element_t), INTENT(IN) :: Element
+    INTEGER :: c
     LOGICAL :: retVal
 
     retVal = isPelement(Element)
 
     IF(ASSOCIATED(CurrentModel % Solver)) THEN
-      IF(ALLOCATED(CurrentModel % Solver % Def_Dofs)) &
-        retVal = retVal.AND.ANY(CurrentModel % Solver % Def_Dofs(:,6)>0)
+      IF(ALLOCATED(CurrentModel % Solver % Def_Dofs)) THEN
+        c = Element % Type % ElementCode / 100
+        retVal = retVal.AND.ANY(CurrentModel % Solver % Def_Dofs(c,:,6)>0)
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END FUNCTION isActivePElement

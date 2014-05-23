@@ -825,7 +825,6 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
 
-
     IF ( .NOT. ScanOnly )  THEN
 
       ! Make some sanity checks that all the entries have been defined
@@ -881,6 +880,21 @@ CONTAINS
         END IF
       END DO
 
+      ! Check that the same name is not used twice,
+      ! each solver should be uniquely defined by its name.
+      ! If the same equation name is used twice it may lead to difficult-to-find 
+      ! problems later on. 
+      DO i = 1, Model % NumberOfSolvers
+        str = ListGetString( Model % Solvers(i) % Values,'Equation',Found )
+        IF(.NOT. Found ) CYCLE
+        DO j = i+1, Model % NumberOfSolvers
+          IF( TRIM(str) == TRIM( ListGetString( Model % Solvers(j) % Values,'Equation',Found ))) THEN
+            CALL Fatal('LoadInputFile','Solvers '//TRIM(I2S(i))//' and '//TRIM(I2S(j))//&
+                ' have the same Equation name!')
+          END IF
+        END DO
+      END DO
+
       ! Make sanity check that all Material, Body Force and Equation is associated to some
       ! body. This is not detrimental so a warning suffices. The 2nd time there is the 
       ! default setting so apply this only on the first time.
@@ -922,10 +936,10 @@ CONTAINS
             CALL Warn('LoadInputFile','> Equation '// TRIM(I2S(i)) //' < not used in any Body!')
           END IF
         END DO
+
         DEALLOCATE( EntryUsed ) 
       END IF
       !--- sanity checks done
-
 
       ! Add default equation, material, ic, bodyforce, and body if not given:
       ! ---------------------------------------------------------------------
@@ -971,7 +985,10 @@ CONTAINS
        END IF
       ! -- done adding default fields
 
-    END IF
+
+       
+
+     END IF
     !--------------------------------------------------------------------
 
     FirstTime = .FALSE.
@@ -1864,13 +1881,13 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh
     INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
-    LOGICAL :: stat, single, MeshGrading
+    LOGICAL :: stat, single, MeshGrading, NewLoadMesh
     TYPE(Solver_t), POINTER :: Solver
     INTEGER(KIND=AddrInt) :: InitProc
-    INTEGER :: Def_Dofs(6)
+    INTEGER, TARGET :: Def_Dofs(10,6)
     REAL(KIND=dp) :: MeshPower
     REAL(KIND=dp), POINTER :: h(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name,ElementDef
+    CHARACTER(LEN=MAX_NAME_LEN) :: Name,ElementDef,ElementDef0
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir,MeshName
     TYPE(valuelist_t), POINTER :: lst
     INTEGER, ALLOCATABLE :: EdgeDOFs(:),FaceDOFs(:)
@@ -1905,7 +1922,7 @@ CONTAINS
     Transient=ListGetString(Model % Simulation, &
         'Simulation Type',Found)=='transient'
 
-    Def_Dofs = -1; Def_Dofs(1)=1
+    Def_Dofs = -1; Def_Dofs(:,1)=1
 
     i = 1
     DO WHILE(i<=Model % NumberOFSolvers)
@@ -1928,8 +1945,8 @@ CONTAINS
       GotMesh = ListCheckPresent(Solver % Values, 'Mesh')
 
       IF(.NOT.ALLOCATED(Solver % Def_Dofs)) THEN
-        ALLOCATE(Solver % Def_Dofs(Model % NumberOfBodies,6))
-        Solver % Def_Dofs = -1; Solver % Def_Dofs(:,1)=1
+        ALLOCATE(Solver % Def_Dofs(10,Model % NumberOfBodies,6))
+        Solver % Def_Dofs = -1; Solver % Def_Dofs(:,:,1)=1
       END IF
 
       ! Define what kind of element we are working with in this solver
@@ -1939,66 +1956,30 @@ CONTAINS
       IF ( .NOT. stat ) THEN
         IF ( ListGetLogical( Solver % Values, &
              'Discontinuous Galerkin', stat ) ) THEN
-           Solver % Def_Dofs(:,4) = 0
-           IF ( .NOT. GotMesh ) Def_Dofs(4) = MAX(Def_Dofs(4),0 )
+           Solver % Def_Dofs(:,:,4) = 0
+           IF ( .NOT. GotMesh ) Def_Dofs(:,4) = MAX(Def_Dofs(:,4),0 )
            i=i+1
            CYCLE
         ELSE
            ElementDef = "n:1"
         END IF
       END IF
-          
-      j = INDEX( ElementDef, 'n:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver % Def_Dofs(:,1) = l
-        IF (.NOT. GotMesh ) Def_Dofs(1) = MAX(Def_Dofs(1), l)
-      END IF
-          
-      j = INDEX( ElementDef, 'e:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver % Def_Dofs(:,2) = l
-        IF ( .NOT. GotMesh ) Def_Dofs(2) = MAX(Def_Dofs(2), l )
-      END IF
-          
-      j = INDEX( ElementDef, 'f:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver % Def_Dofs(:,3) = l
-        IF ( .NOT. GotMesh ) Def_Dofs(3) = MAX(Def_Dofs(3), l )
-      END IF
-          
-      j = INDEX( ElementDef, 'd:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver % Def_Dofs(:,4) = l
-        IF ( .NOT. GotMesh ) Def_Dofs(4) = MAX(Def_Dofs(4), l )
-      ELSE 
-        IF ( ListGetLogical( Solver % Values, &
-            'Discontinuous Galerkin', stat ) ) THEN
-          Solver % Def_Dofs(:,4) = 0
-          IF ( .NOT. GotMesh ) Def_Dofs(4) = MAX(Def_Dofs(4),0 )
-        END IF
-      END IF
-          
-      j = INDEX( ElementDef, 'b:' )
-      IF ( j>0 ) THEN
-        READ( ElementDef(j+2:), * ) l
-        Solver % Def_Dofs(:,5) = l
-        IF ( .NOT. GotMesh ) Def_Dofs(5) = MAX(Def_Dofs(5), l )
-      END IF
-          
-      j = INDEX( ElementDef, 'p:' )
-      IF ( j>0 ) THEN
-        IF ( ElementDef(j+2:j+2)=='%' ) THEN
-          Solver % Def_Dofs(:,6) = 0
+
+      ElementDef0 = ElementDef
+      DO WHILE(.TRUE.)
+        j = INDEX( ElementDef0, '-' )
+        IF (j>0) THEN
+          ElementDef = ElementDef0(1:j-1)
         ELSE
-          READ( ElementDef(j+2:), * ) l
-          Solver % Def_Dofs(:,6) = l
-          IF ( .NOT. GotMesh ) Def_Dofs(6) = MAX(Def_Dofs(6), l )
-         END IF
-      END IF
+          ElementDef = ElementDef0
+        END IF
+        CALL GetDefs( ElementDef )
+        IF(j>0) THEN
+          ElementDef0 = ElementDef0(j+1:)
+         ELSE
+          EXIT
+        END IF
+      END DO
 
       i = i + 1
     END DO
@@ -2041,15 +2022,17 @@ CONTAINS
     NULLIFY( Model % Meshes )
     IF ( MeshDir(1:1) /= ' ' ) THEN
 
-
       CALL ResetTimer('LoadMesh') 
-      IF( ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) ) THEN
+      NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) 
+      IF( .NOT. GotIt ) NewLoadMesh = .TRUE.
+      IF( NewLoadMesh ) THEN
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs )
       ELSE
         Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs )
+            BoundariesOnly, numprocs, mype, Def_Dofs(1,:) )
       END IF
+
       CALL CheckTimer('LoadMesh',Level=5,Delete=.TRUE.)
 
       CALL SetCoordinateSystem( Model )
@@ -2081,8 +2064,8 @@ CONTAINS
 
           ALLOCATE( EdgeDOFs(NewMesh % NumberOfBulkElements))
           ALLOCATE( FaceDOFs(NewMesh % NumberOfBulkElements))
-          EdgeDOFs = MAX(0,Def_Dofs(2))
-          FaceDOFs = MAX(0,Def_Dofs(3))
+          EdgeDOFs = MAX(0,MAXVAL(Def_Dofs(:,2)))
+          FaceDOFs = MAX(0,MAXVAL(Def_Dofs(:,3)))
           CALL SetMeshEdgeFaceDofs(NewMesh,EdgeDOFs,FaceDOFs)
           DEALLOCATE(EdgeDOFs,FaceDOFs)
 
@@ -2209,15 +2192,29 @@ CONTAINS
         END IF
 
         DO i=1,6
-          Def_Dofs(i) = MAXVAL(Model % Solvers(s) % Def_Dofs(:,i))
+          DO j=1,8
+            Def_Dofs(j,i) = MAXVAL(Model % Solvers(s) % Def_Dofs(j,:,i))
+          END DO
         END DO
 
+        NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt)
+        IF(.NOT. GotIt) NewLoadMesh = .TRUE.
         IF ( Single ) THEN
-          Model % Solvers(s) % Mesh => &
-            LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
+          IF( NewLoadMesh ) THEN
+            Model % Solvers(s) % Mesh => &
+              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
+          ELSE
+            Model % Solvers(s) % Mesh => &
+              LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs(1,:) )
+          END IF
         ELSE
-          Model % Solvers(s) % Mesh => &
-            LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs )
+          IF( NewLoadMesh ) THEN
+            Model % Solvers(s) % Mesh => &
+              LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs )
+          ELSE
+            Model % Solvers(s) % Mesh => &
+              LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs(1,:) )
+          END IF
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 
@@ -2250,8 +2247,8 @@ CONTAINS
 
             ALLOCATE( EdgeDOFs(NewMesh % NumberOfBulkElements))
             ALLOCATE( FaceDOFs(NewMesh % NumberOfBulkElements))
-            EdgeDOFs = MAX(0,Def_Dofs(2))
-            FaceDOFs = MAX(0,Def_Dofs(3))
+            EdgeDOFs = MAX(0,MAXVAL(Def_Dofs(:,2)))
+            FaceDOFs = MAX(0,MAXVAL(Def_Dofs(:,3)))
             CALL SetMeshEdgeFaceDofs(NewMesh,EdgeDOFs,FaceDOFs)
             DEALLOCATE(EdgeDOFs,FaceDOFs)
 
@@ -2313,6 +2310,87 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   CONTAINS
+
+!------------------------------------------------------------------------------
+    SUBROUTINE GetDefs(ElementDef)
+!------------------------------------------------------------------------------
+      CHARACTER(LEN=*) :: ElementDef
+!------------------------------------------------------------------------------
+      INTEGER  :: ind(8),i,j,n
+      INTEGER, POINTER :: gdofs(:,:), sdofs(:,:,:)
+
+      ind = [1,2,3,4,5,6,7,8]
+
+      IF (ElementDef(1:5) == 'point' )     ind=1
+      IF (ElementDef(1:4) == 'line' )      ind=2
+      IF (ElementDef(1:3) == 'tri' )       ind=3
+      IF (ElementDef(1:4) == 'quad' )      ind=4
+      IF (ElementDef(1:5) == 'tetra' )     ind=5
+      IF (ElementDef(1:7) == 'pyramid' )   ind=6
+      IF (ElementDef(1:5) == 'prism' )     ind=7
+      IF (ElementDef(1:5) == 'brick' )     ind=8
+      IF (ElementDef(1:8) == 'tri_face' )  ind=9
+      IF (ElementDef(1:9) == 'quad_face' ) ind=10
+
+      n = INDEX(ElementDef,'-')
+      IF (n<=0) n=LEN_TRIM(ElementDef)
+          
+      j = INDEX( ElementDef(1:n), 'n:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver % Def_Dofs(ind,:,1) = l
+        IF (.NOT. GotMesh ) Def_Dofs(ind,1) = MAX(Def_Dofs(ind,1), l)
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'e:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver % Def_Dofs(ind,:,2) = l
+        IF ( .NOT. GotMesh ) Def_Dofs(ind,2) = MAX(Def_Dofs(ind,2), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'f:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver % Def_Dofs(ind,:,3) = l
+        IF ( .NOT. GotMesh ) Def_Dofs(ind,3) = MAX(Def_Dofs(ind,3), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'd:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver % Def_Dofs(ind,:,4) = l
+        IF ( .NOT. GotMesh ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4), l )
+      ELSE 
+        IF ( ListGetLogical( Solver % Values, &
+            'Discontinuous Galerkin', stat ) ) THEN
+          Solver % Def_Dofs(ind,:,4) = 0
+          IF ( .NOT. GotMesh ) Def_Dofs(ind,4) = MAX(Def_Dofs(ind,4),0 )
+        END IF
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'b:' )
+      IF ( j>0 ) THEN
+        READ( ElementDef(j+2:), * ) l
+        Solver % Def_Dofs(ind,:,5) = l
+        IF ( .NOT. GotMesh ) Def_Dofs(ind,5) = MAX(Def_Dofs(ind,5), l )
+      END IF
+          
+      j = INDEX( ElementDef(1:n), 'p:' )
+      IF ( j>0 ) THEN
+        IF ( ElementDef(j+2:j+2)=='%' ) THEN
+          Solver % Def_Dofs(ind,:,6) = 0
+        ELSE
+          READ( ElementDef(j+2:), * ) l
+          Solver % Def_Dofs(ind,:,6) = l
+          IF ( .NOT. GotMesh ) Def_Dofs(ind,6) = MAX(Def_Dofs(ind,6), l )
+         END IF
+      END IF
+
+!------------------------------------------------------------------------------
+    END SUBROUTINE GetDefs
+!------------------------------------------------------------------------------
+
     
     !------------------------------------------------------------------------------
     !      Initialize the log file output system for Messages
@@ -3067,8 +3145,8 @@ CONTAINS
         LoadThis = .FALSE.
         k = LEN_TRIM( VarName )
         DO j=1,1000
-          VarName2 = ListGetString(CurrentModel % Simulation,&
-              'Restart Variable '//I2S(j), Found )
+          VarName2 = ListGetString(CurrentModel % Simulation, &
+                  'Restart Variable '//I2S(j), Found )
           IF( .NOT. Found ) EXIT
           k2 = LEN_TRIM(VarName2)
 
@@ -3108,7 +3186,7 @@ CONTAINS
         ! The old format (ver. < 3) does not include information on vector sizes prior to loading
         ! thus make an educated guess.
         !----------------------------------------------------------------------------------------
-        IF( FieldSize == 0 ) THEN
+        IF( FieldSize == 0 .AND. FmtVersion<3 ) THEN
           FieldSize = Mesh % NumberOfNodes * DOFs
           PermSize = Mesh % NumberOfNodes
         END IF
@@ -3180,7 +3258,6 @@ CONTAINS
               FullName,DOFs,Var % Values,Var % Perm )
         END IF
       END IF
-
     END DO
 
     IF ( Binary ) THEN
@@ -3285,7 +3362,8 @@ CONTAINS
              CALL Warn('LoadRestartFile','Variable is not present for reading: '//TRIM(Row))
            END IF
            IF( GotPerm .NEQV. ASSOCIATED( Var % Perm ) ) THEN
-             CALL Fatal('LoadRestartFile','Permutation should either exist or not!')
+             DEALLOCATE( Var % Perm ) ; Var % Perm => Null()
+!            CALL Fatal('LoadRestartFile','Permutation should either exist or not!')
            END IF
 
            IF ( ASSOCIATED(Var % Perm) .AND. FmtVersion > 0 ) THEN

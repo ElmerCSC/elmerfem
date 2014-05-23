@@ -51,6 +51,7 @@ EgIni::EgIni(QWidget *parent)
   // Determine ini-file location and name:
   //--------------------------------------
   QString elmerGuiHome;
+  QString paraViewHome;
   
 #ifdef __APPLE__
   QString iniFileName = this->homePath +  "/edf/egini.xml";          
@@ -61,6 +62,8 @@ EgIni::EgIni(QWidget *parent)
 
   if(!elmerGuiHome.isEmpty()) 
     iniFileName = elmerGuiHome + "/edf/egini.xml";
+
+  paraViewHome = QString(getenv("PARAVIEW_HOME"))+"/bin";
 #endif
   
   // Load initialization file:

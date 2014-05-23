@@ -84,7 +84,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: VariableValues(:), Zs(:), Zb(:), Nval(:)
                             
   REAL(KIND=dp) :: UNorm, cn, dd, NonlinearTol, NewtonTol, MinSRInv, MinH, rhow, sealevel, &
-                   PrevUNorm, relativeChange, minv, fm, PostPeak
+                   PrevUNorm, relativeChange, minv, fm, PostPeak, MinN
 
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
            NodalGravity(:), NodalViscosity(:), NodalDensity(:), &
@@ -323,6 +323,13 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
         fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found )
         IF (.NOT.Found) &
            CALL FATAL(SolverName,'Could not find Material prop. >SSA Friction Exponent<')
+
+        MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found )
+        IF (.NOT.Found) THEN
+           MinN = 1.0e-6_dp
+           WRITE( Message, * ) 'Parameter >SSA Min Effective Pressure< not found. Set to 10E-6'
+           CALL Info(SolverName, Message, Level=20 )
+        END IF
 
         NodalLinVelo = 0.0_dp
         NodalLinVelo(1:n) = ListGetReal( &
@@ -569,6 +576,8 @@ DO t=1,IP % n
    IF (iFriction==3) THEN
       fC = SUM( LocalC(1:n) * Basis(1:n) )
       fN = SUM( LocalN(1:n) * Basis(1:n) )
+      ! Effective pressure should be >0 (for the friction law)
+      fN = MAX(fN, MinN)
    END IF
        
    IF (iFriction==1) THEN
@@ -1539,5 +1548,4 @@ CONTAINS
 !------------------------------------------------------------------------------
 END SUBROUTINE SSASolver
 !------------------------------------------------------------------------------
-
 

@@ -46,6 +46,9 @@
 #include <QSystemTrayIcon>
 #include <QContextMenuEvent>
 #include <QTimeLine>
+#include <QFileInfo>
+#include <QStringList>
+#include <QDir>
 
 #include <iostream>
 #include <fstream>
@@ -726,6 +729,11 @@ void MainWindow::createActions()
   showVtkPostAct->setStatusTip(tr("Invokes the ElmerGUI postprocessor"));
   connect(showVtkPostAct, SIGNAL(triggered()), this, SLOT(showVtkPostSlot()));
 
+  // Solver -> Show ParaView postprocessor
+  paraviewAct = new QAction(QIcon(), tr("ParaView"), this);
+  paraviewAct->setStatusTip(tr("Invokes ParaView for visualization"));
+  connect(paraviewAct, SIGNAL(triggered()), this, SLOT(showParaViewSlot()));
+
   // Solver -> Compiler...
   compileSolverAct = new QAction(QIcon(""), tr("Compiler..."), this);
   compileSolverAct->setStatusTip(tr("Compile Elmer specific source code (f90) into a shared library (dll)"));
@@ -908,6 +916,10 @@ void MainWindow::createMenus()
   solverMenu->addSeparator();
   solverMenu->addAction(showVtkPostAct);
 #endif
+#ifdef EG_PARAVIEW
+  solverMenu->addSeparator();
+  solverMenu->addAction(paraviewAct);
+#endif
   solverMenu->addSeparator();
   solverMenu->addAction(compileSolverAct);
 
@@ -960,7 +972,7 @@ void MainWindow::createMenus()
   }
   testProcess.waitForFinished(2000);
 
-  cout << "Checking for ElmerPost... ";
+  cout << "Checking for ... ";
   updateSplash("Checking for ElmerPost...");
   args << "-v";
   testProcess.start("ElmerPost", args);
@@ -4668,6 +4680,43 @@ void MainWindow::showVtkPostSlot()
 }
 
 
+// View -> Paraview
+//-----------------------------------------------------------------------------
+void MainWindow::showParaViewSlot()
+{
+#ifdef EG_PARAVIEW
+  QString postFileName = generalSetup->ui.postFileEdit->text().trimmed();
+  QString pvFileName;
+  QFileInfo pvFile(postFileName);
+
+  Ui::parallelDialog ui = parallel->ui;
+  bool parallelActive = ui.parallelActiveCheckBox->isChecked();
+
+  // Serial solution
+  //================
+  if(!parallelActive) {
+    pvFileName = pvFile.baseName() + "????.vtu";
+  }
+
+  // Parallel solution
+  //==================
+  if(parallelActive) {
+     pvFileName = pvFile.baseName() + "????.pvtu";
+  }
+
+  // Launch ParaView
+  //================
+  QDir currentDir;
+
+  currentDir = QDir(saveDirName);
+  QStringList pvFiles;
+
+  pvFiles = currentDir.entryList(QStringList(pvFileName), QDir::Files | QDir::NoSymLinks);
+
+  post->start("paraview", pvFiles);
+#endif
+}
+
 
 //*****************************************************************************
 //
@@ -6400,7 +6449,7 @@ void MainWindow::solverFinishedSlot(int)
   logMessage("Solver ready");
   runsolverAct->setIcon(QIcon(":/icons/Solver.png"));
   updateSysTrayIcon("ElmerSolver has finished",
-		    "Use Run->Start postprocessor to view results");
+            "Use Run->Start postprocessor to view results");
   killsolverAct->setEnabled(false);
 }
 
@@ -6695,6 +6744,13 @@ void MainWindow::showaboutSlot()
 			"http://www.vtk.org/\n\n"
 #endif
 
+#ifdef EG_PARAVIEW
+            "This version of ElmerGUI has been linked "
+            "against ParaView visualization software."
+            "\n\n"
+            "http://www.paraview.org\n\n"
+#endif
+
 #ifdef EG_OCC
 			"This version of ElmerGUI has been compiled with "
 			"the OpenCascade solids modeling library:\n\n"
@@ -6713,8 +6769,8 @@ void MainWindow::showaboutSlot()
 			"The GPL-licensed source code of ElmerGUI is available "
 			"from the SVN repository at Sourceforge.net\n\n"
 			"http://sourceforge.net/projects/elmerfem/\n\n"
-			"Written by Mikko Lyly, Juha Ruokolainen, and "
-			"Peter RÂback, 2008"));
+            "Written by Mikko Lyly, Juha Ruokolainen, "
+            "Peter RÂback and Sampo Sillanp‰‰ 2008-2014"));
 }
 
 

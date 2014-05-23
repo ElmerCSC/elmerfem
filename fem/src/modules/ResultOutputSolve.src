@@ -3044,6 +3044,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils 
   USE MeshUtils
   USE ElementDescription
+  USE AscBinOutputUtils
   
   IMPLICIT NONE
   TYPE(Solver_t) :: Solver
@@ -3080,9 +3081,6 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
 ! Parameters for buffered binary output
   INTEGER :: BufferSize
-  INTEGER, ALLOCATABLE :: IVals(:)
-  REAL, ALLOCATABLE :: FVals(:)
-  REAL(KIND=dp), ALLOCATABLE :: DVals(:)
 
   Params => GetSolverParams()
 
@@ -3316,12 +3314,6 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   IF( BinaryOutput ) THEN
     BufferSize = GetInteger( Params,'Binary Output Buffer Size',GotIt)
     IF( .NOT. GotIt ) BufferSize = MAX( NumberOfNodes, NumberOfElements )
-    ALLOCATE( Ivals( BufferSize ) ) 
-    IF( SinglePrec ) THEN
-      ALLOCATE( FVals( BufferSize ) ) 
-    ELSE
-      ALLOCATE( Dvals( BufferSize ) ) 
-    END IF
   END IF
 
   BaseFile = FilePrefix
@@ -3445,130 +3437,12 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     DEALLOCATE( ActiveElem ) 
   END IF
 
-  IF( BinaryOutput ) THEN
-    DEALLOCATE( IVals ) 
-    IF( SinglePrec ) THEN
-      DEALLOCATE( FVals ) 
-    ELSE
-      DEALLOCATE( DVals ) 
-    END IF
-  END IF
-
   CALL Info('VtuOutputSolver','All done for now',Level=10)     
 
 
 CONTAINS
 
 
-  ! The writing of xml strings is done here to allow easier modification
-  ! of output strategies.
-  !-------------------------------------------------------------------------
-  
-  SUBROUTINE StrWrite( Str )
-    
-    CHARACTER(LEN=1024) :: Str 
-    INTEGER, PARAMETER :: VtuUnit = 58
-    
-    WRITE( VtuUnit ) TRIM(Str)        
-    
-  END SUBROUTINE StrWrite
-
-
-  SUBROUTINE RealWrite( val, EmptyBuffer )
-    
-    INTEGER, PARAMETER :: VtuUnit = 58
-    REAL(KIND=dp) :: val
-    LOGICAL, OPTIONAL :: EmptyBuffer
-    LOGICAL :: Empty
-    INTEGER :: NoVals = 0
-    CHARACTER(LEN=1024) :: Str 
-
-    SAVE NoVals
-    
-    IF( PRESENT( EmptyBuffer ) ) THEN
-      Empty = EmptyBuffer
-    ELSE
-      Empty = .FALSE.
-    END IF
-
-    ! Ascii output is not buffered
-    !------------------------------
-    IF( AsciiOutput ) THEN
-      IF( Empty ) RETURN
-      IF( ABS( val ) <= TINY ( val ) ) THEN
-        WRITE(Str,'(A)') " 0.0"
-      ELSE IF( SinglePrec ) THEN
-        WRITE( Str,'(ES12.3E3)') val       
-      ELSE
-        WRITE( Str,'(ES16.7E3)') val
-      END IF
-      WRITE( VtuUnit ) TRIM(Str)        
-      RETURN
-    END IF
-
-    ! Buffered binary output
-    !-----------------------
-    IF( Empty .OR. NoVals == BufferSize ) THEN
-      IF( NoVals == 0 ) THEN
-        RETURN
-      ELSE IF( SinglePrec ) THEN
-        WRITE( VtuUnit ) Fvals(1:NoVals)
-      ELSE
-        WRITE( VtuUnit ) DVals(1:NoVals) 
-      END IF
-      NoVals = 0
-      IF( Empty ) RETURN 
-    END IF
-    
-    NoVals = NoVals + 1
-    IF( SinglePrec ) THEN
-      Fvals(NoVals) = val
-    ELSE
-      DVals(NoVals) = val
-    END IF
-
-  END SUBROUTINE RealWrite
-
-
-  SUBROUTINE IntegerWrite( ival, EmptyBuffer )
-    
-    INTEGER, PARAMETER :: VtuUnit = 58
-    INTEGER :: ival
-    LOGICAL, OPTIONAL :: EmptyBuffer
-    LOGICAL :: Empty
-    INTEGER :: NoVals = 0
-    CHARACTER(LEN=1024) :: Str 
-
-    SAVE NoVals
-    
-    IF( PRESENT( EmptyBuffer ) ) THEN
-      Empty = EmptyBuffer
-    ELSE
-      Empty = .FALSE.
-    END IF
-
-    IF( AsciiOutput ) THEN
-      IF( Empty ) RETURN
-      WRITE( Str, '(" ",I0)') ival
-      WRITE( VtuUnit ) TRIM(Str)        
-      RETURN
-    END IF
-
-    IF( Empty .OR. NoVals == BufferSize ) THEN
-      IF( NoVals == 0 ) THEN
-        RETURN
-      ELSE 
-        WRITE( VtuUnit ) Ivals(1:NoVals)
-      END IF
-      NoVals = 0
-      IF( Empty ) RETURN 
-    END IF
-    
-    NoVals = NoVals + 1
-    Ivals(NoVals) = ival
-
-  END SUBROUTINE IntegerWrite
-  
 
 
   SUBROUTINE WriteVtuFile( VtuFile, Model, RemoveDisp )
@@ -3597,10 +3471,14 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement, Parent
     TYPE(ValueList_t), POINTER :: Params
 
+
+    ! Initialize the auxiliary module for buffered writing
+    !--------------------------------------------------------------
+    CALL AscBinWriteInit( AsciiOutput, SinglePrec, VtuUnit, BufferSize )
+    
     ! Linefeed character
     !-----------------------------------
     lf = CHAR(10)
-
 
     Offset = 0
     WriteXML = .TRUE.
@@ -3629,33 +3507,30 @@ CONTAINS
 
     
     WRITE( OutStr,'(A)') '<?xml version="1.0"?>'//lf
-    CALL StrWrite( OutStr ) 
+    CALL AscBinStrWrite( OutStr ) 
 
     IF ( LittleEndian() ) THEN
       OutStr = '<VTKFile type="UnstructuredGrid" version="0.1" byte_order="LittleEndian">'//lf
     ELSE
       OutStr = '<VTKFile type="UnstructuredGrid" version="0.1" byte_order="BigEndian">'//lf
     END IF
-    CALL StrWrite( OutStr )
+    CALL AscBinStrWrite( OutStr )
     WRITE( OutStr,'(A)') '  <UnstructuredGrid>'//lf
-    CALL StrWrite( OutStr )
+    CALL AscBinStrWrite( OutStr )
     WRITE( OutStr,'(A,I0,A,I0,A)') '    <Piece NumberOfPoints="',NumberOfNodes,&
         '" NumberOfCells="',NumberOfElements,'">'//lf
-    CALL StrWrite( OutStr )
+    CALL AscBinStrWrite( OutStr )
     
     ! nodewise information
     !-------------------------------------
     ScalarFieldName = GetString( Params,'Scalar Field 1',ScalarsExist)
     VectorFieldName = GetString( Params,'Vector Field 1',VectorsExist)
-
-  IF( SaveNodal ) THEN
-    IF( ScalarsExist .OR. VectorsExist) THEN
-      WRITE( OutStr,'(A)') '      <PointData>'//lf
-      CALL StrWrite( OutStr )
-    ELSE
+    IF( .NOT. ( ScalarsExist .OR. VectorsExist) ) THEN
       CALL Warn('WriteVtuFile','Are there really no scalars or vectors?')
     END IF
-  END IF
+    
+    WRITE( OutStr,'(A)') '      <PointData>'//lf
+    CALL AscBinStrWrite( OutStr )
 
     DispDofs = 0
     Disp2Dofs = 0
@@ -3816,17 +3691,17 @@ CONTAINS
               WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
                   TRIM(FieldName)//' mode',IndField
             END IF
-            CALL StrWrite( OutStr )
+            CALL AscBinStrWrite( OutStr )
             
             WRITE( OutStr,'(A,I0,A)') '" NumberOfComponents="',sdofs,'"'          
-            CALL StrWrite( OutStr ) 
+            CALL AscBinStrWrite( OutStr ) 
             
             IF( AsciiOutput ) THEN
               WRITE( OutStr,'(A)') ' format="ascii">'//lf
-              CALL StrWrite( OutStr ) 
+              CALL AscBinStrWrite( OutStr ) 
             ELSE
               WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
-              CALL StrWrite( OutStr ) 
+              CALL AscBinStrWrite( OutStr ) 
             END IF
           END IF
           
@@ -3878,36 +3753,34 @@ CONTAINS
                   val = Values(dofs*(j-1)+k)              
                 END IF
                 
-                CALL RealWrite( val )
+                CALL AscBinRealWrite( val )
 
               END DO
             END DO
 
-            CALL RealWrite( 0.0_dp, .TRUE. )
+            CALL AscBinRealWrite( 0.0_dp, .TRUE. )
 
           END IF
         
           IF( AsciiOutput ) THEN
             WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
-            CALL StrWrite( OutStr ) 
+            CALL AscBinStrWrite( OutStr ) 
           END IF
         END DO
       END DO
     END DO
-    
+  END IF ! IF( SaveNodal )
+  
     IF( WriteXML ) THEN
-      IF( ScalarsExist .OR. VectorsExist) THEN
-        WRITE( OutStr,'(A)') '      </PointData>'//lf
-        CALL StrWrite( OutStr ) 
-      END IF
+      WRITE( OutStr,'(A)') '      </PointData>'//lf
+      CALL AscBinStrWrite( OutStr ) 
     END IF
-  END IF
     
     ! Elementwise information
     !-------------------------------------
     IF( WriteXML ) THEN
       WRITE( OutStr,'(A)') '      <CellData>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
     END IF
     
   IF( SaveElemental ) THEN
@@ -3964,22 +3837,26 @@ CONTAINS
         Dofs = Solution % DOFs
         Values => Solution % Values
 
-        
        !---------------------------------------------------------------------
         ! Some vectors are defined by a set of components (either 2 or 3)
         !---------------------------------------------------------------------
-        sdofs = 1
         IF( ComponentVector ) THEN
           Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
           IF( ASSOCIATED(Solution)) THEN
             Values2 => Solution % Values
-            sdofs = 2
+            dofs = 2
           END IF
           Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 3')
           IF( ASSOCIATED(Solution)) THEN
             Values3 => Solution % Values
-            sdofs = 3
+            dofs = 3
           END IF
+        END IF
+
+        IF( dofs > 1 ) THEN
+          sdofs = MAX(dofs,dim)
+        ELSE
+          sdofs = 1
         END IF
 
         !---------------------------------------------------------------------
@@ -3988,17 +3865,17 @@ CONTAINS
         IF( WriteXML ) THEN
           CALL Info('WriteVtuFile','Writing variable: '//TRIM(FieldName) )
           WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
-          CALL StrWrite( OutStr )
+          CALL AscBinStrWrite( OutStr )
           
           WRITE( OutStr,'(A,I0,A)') '" NumberOfComponents="',sdofs,'"'          
-          CALL StrWrite( OutStr ) 
+          CALL AscBinStrWrite( OutStr ) 
           
           IF( AsciiOutput ) THEN
             WRITE( OutStr,'(A)') ' format="ascii">'//lf
-            CALL StrWrite( OutStr ) 
+            CALL AscBinStrWrite( OutStr ) 
           ELSE
             WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
-            CALL StrWrite( OutStr ) 
+            CALL AscBinStrWrite( OutStr ) 
           END IF
         END IF
         
@@ -4029,7 +3906,7 @@ CONTAINS
               IF ( ASSOCIATED(Parent) ) THEN
                 IF (ASSOCIATED(Parent % DGIndexes) ) THEN
                   DO j=1,n
-                    DO k=1,Parent % Type % NumberOfNodes
+                    DO k=1,Parent % TYPE % NumberOfNodes
                       IF(Currentelement % NodeIndexes(j) == Parent % NodeIndexes(k)) &
                       ElemInd(j) = Perm( Parent % DGIndexes(k) )
                     END DO
@@ -4042,7 +3919,9 @@ CONTAINS
 
             IF ( ALL(ElemInd(1:n)>0)) THEN
               DO k=1,sdofs
-                IF(ComponentVector) THEN
+                IF( k > dofs ) THEN
+                  ElemVectVal(k) = 0.0_dp
+                ELSE IF(ComponentVector) THEN
                   IF (k==1) ElemVectVal(k) = SUM(Values(ElemInd(1:n)))/n
                   IF (k==2) ElemVectVal(k) = SUM(Values2(ElemInd(1:n)))/n
                   IF (k==3) ElemVectVal(k) = SUM(Values3(ElemInd(1:n)))/n
@@ -4053,21 +3932,21 @@ CONTAINS
             END IF
 
             DO k=1,sdofs
-              CALL RealWrite( ElemVectVal(k) )
+              CALL AscBinRealWrite( ElemVectVal(k) )
             END DO
           END DO
 
-          CALL RealWrite( 0.0_dp, .TRUE. )
+          CALL AscBinRealWrite( 0.0_dp, .TRUE. )
           DEALLOCATE(ElemVectVal,ElemInd)
         END IF
         
         IF( AsciiOutput ) THEN
           WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
-          CALL StrWrite( OutStr ) 
+          CALL AscBinStrWrite( OutStr ) 
         END IF
       END DO
     END DO
-  END IF
+  END IF  ! IF( SaveElemental )
 
     !---------------------------------------------------------------------
     ! If requested write the body and bc indexes
@@ -4080,14 +3959,14 @@ CONTAINS
         CALL Info('WriteVtuFile','Writing body and BC indexes')
 
         WRITE( OutStr,'(A)') '        <DataArray type="Int32" Name="GeometryIds"'
-        CALL StrWrite( OutStr )
+        CALL AscBinStrWrite( OutStr )
           
         IF( AsciiOutput ) THEN
           WRITE( OutStr,'(A)') ' format="ascii">'//lf
-          CALL StrWrite( OutStr ) 
+          CALL AscBinStrWrite( OutStr ) 
         ELSE
           WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
-          CALL StrWrite( OutStr ) 
+          CALL AscBinStrWrite( OutStr ) 
         END IF
       END IF
         
@@ -4110,37 +3989,37 @@ CONTAINS
             j = GetBCId( CurrentElement ) + BCOffset
           END IF
           
-          CALL IntegerWrite( j )
+          CALL AscBinIntegerWrite( j )
         END DO        
-        CALL IntegerWrite( 0, .TRUE. )
+        CALL AscBinIntegerWrite( 0, .TRUE. )
       END IF
         
       IF( AsciiOutput ) THEN
         WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       END IF
     END IF
 
     IF( WriteXML ) THEN
       WRITE( OutStr,'(A)') '      </CellData>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
     END IF        
 
     ! Coordinates of each point
     !-------------------------------------
     IF( WriteXML ) THEN
       WRITE( OutStr,'(A)') '      <Points>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
 
       WRITE( OutStr,'(A,I0,A,I0,A)') '        <DataArray type="Float',PrecBits,'" NumberOfComponents="',dim,'"'
-      CALL StrWrite( OutStr )       
+      CALL AscBinStrWrite( OutStr )       
 
       IF( AsciiOutput ) THEN
         WRITE( OutStr,'(A)') ' format="ascii">'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       ELSE
         WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       END IF
     END IF
 
@@ -4185,38 +4064,38 @@ CONTAINS
           END IF
         END IF
         
-        CALL RealWrite( x )
-        CALL RealWrite( y )
-        IF( dim > 2 ) CALL RealWrite( z )
+        CALL AscBinRealWrite( x )
+        CALL AscBinRealWrite( y )
+        CALL AscBinRealWrite( z )
       END DO
 
-      CALL RealWrite( 0.0_dp, .TRUE.)
+      CALL AscBinRealWrite( 0.0_dp, .TRUE.)
     END IF
 
     IF( AsciiOutput ) THEN   
       WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
     END IF
     IF( WriteXML ) THEN
       WRITE( OutStr,'(A)') '      </Points>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
     END IF
 
     ! Write out the mesh
     !-------------------------------------
     IF( WriteXML ) THEN
       WRITE( OutStr,'(A)') '      <Cells>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
       
       WRITE( OutStr,'(A)') '        <DataArray type="Int32" Name="connectivity"'
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
 
       IF( AsciiOutput ) THEN
         WRITE( OutStr,'(A)') ' format="ascii">'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       ELSE
         WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       END IF
     END IF
 
@@ -4245,19 +4124,19 @@ CONTAINS
        
         DO j=1,n
           IF( AllNodesUsed ) THEN
-            CALL IntegerWrite( CurrentElement % NodeIndexes(j) - 1 )
+            CALL AscBinIntegerWrite( CurrentElement % NodeIndexes(j) - 1 )
           ELSE
-            CALL IntegerWrite( NodePerm( CurrentElement % NodeIndexes(j)) - 1 )
+            CALL AscBinIntegerWrite( NodePerm( CurrentElement % NodeIndexes(j)) - 1 )
           END IF
         END DO
 
       END DO
-      CALL IntegerWrite( 0, .TRUE. ) 
+      CALL AscBinIntegerWrite( 0, .TRUE. ) 
     END IF
 
     IF( AsciiOutput ) THEN
       WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
     END IF
 
 
@@ -4266,14 +4145,14 @@ CONTAINS
 
     IF( WriteXML ) THEN
       WRITE( OutStr,'(A)') '        <DataArray type="Int32" Name="offsets"'
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
       
       IF( AsciiOutput ) THEN
         WRITE( OutStr,'(A)') ' format="ascii">'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       ELSE
         WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       END IF
     END IF
 
@@ -4294,28 +4173,28 @@ CONTAINS
         n = CurrentElement % TYPE % NumberOfNodes
         cumn = cumn + n
 
-        CALL IntegerWrite( cumn )
+        CALL AscBinIntegerWrite( cumn )
       END DO
         
-      CALL IntegerWrite( 0, .TRUE.)
+      CALL AscBinIntegerWrite( 0, .TRUE.)
       
     END IF
 
 
     IF( AsciiOutput ) THEN   
       WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
     END IF
     IF( WriteXML ) THEN
       WRITE( OutStr,'(A)') '        <DataArray type="Int32" Name="types"'
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
 
       IF( AsciiOutput ) THEN
         WRITE( OutStr,'(A)') ' FORMAT="ascii">'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       ELSE
         WRITE( OutStr,'(A,I0,A)') ' format="appended" offset="',Offset,'"/>'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       END IF
     END IF
 
@@ -4334,29 +4213,29 @@ CONTAINS
         CurrentElement => Model % Elements(i)
         n = Elmer2VTKElement(CurrentElement % TYPE % ElementCode)
 
-        CALL IntegerWrite( n )
+        CALL AscBinIntegerWrite( n )
       END DO
 
-      CALL IntegerWrite( 0, .TRUE. )     
+      CALL AscBinIntegerWrite( 0, .TRUE. )     
     END IF
 
     IF( AsciiOutput ) THEN
       WRITE( OutStr,'(A)') lf//'        </DataArray>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
     END IF
     IF( WriteXml ) THEN
       WRITE( OutStr,'(A)') '      </Cells>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
       WRITE( OutStr,'(A)') '    </Piece>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
       WRITE( OutStr,'(A)') '  </UnstructuredGrid>'//lf
-      CALL StrWrite( OutStr ) 
+      CALL AscBinStrWrite( OutStr ) 
     END IF
 
     IF( BinaryOutput ) THEN
       IF( WriteXML ) THEN
         WRITE( OutStr,'(A)') '<AppendedData encoding="raw">'//lf                    
-        CALL StrWrite( OutStr )           
+        CALL AscBinStrWrite( OutStr )           
         WRITE( VtuUnit ) '_'
         
         WriteXML = .FALSE.
@@ -4364,17 +4243,20 @@ CONTAINS
         GOTO 100
       ELSE
         WRITE( OutStr,'(A)') lf//'</AppendedData>'//lf
-        CALL StrWrite( OutStr ) 
+        CALL AscBinStrWrite( OutStr ) 
       END IF
     END IF
 
     WRITE( OutStr,'(A)') '</VTKFile>'//lf
-    CALL StrWrite( OutStr ) 
+    CALL AscBinStrWrite( OutStr ) 
 
     WRITE( OutStr,'(A)') ' '
-    CALL StrWrite( OutStr ) 
+    CALL AscBinStrWrite( OutStr ) 
 
     CLOSE( VtuUnit )
+
+    CALL AscBinWriteFree()
+
   
   END SUBROUTINE WriteVtuFile
     
@@ -4523,8 +4405,6 @@ CONTAINS
       WRITE( VtuUnit,'(A)') '    <PPointData Vectors="'//TRIM(VectorFieldName)//'">'
     ELSE
       CALL Warn('WritePvtuFile','Are there really no scalars or vectors?')
-      PRINT *,'Names:',TRIM(ScalarFieldName),'  ',TRIM(VectorFieldName), &
-               ScalarsExist, VectorsExist
     END IF
 
     

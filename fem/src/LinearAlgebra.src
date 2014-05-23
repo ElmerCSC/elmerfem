@@ -62,13 +62,6 @@ MODULE LinearAlgebra
    !  */
    CALL LUDecomp( a,n,pivot )
 
-   DO i=1,n
-     IF ( ABS(A(i,i)) == 0.0d0 ) THEN
-       CALL Error( 'InvertMatrix', 'Matrix is singular.' )
-       RETURN       
-     END IF
-     A(i,i) = 1.0d0 / A(i,i)
-   END DO
 
    ! /*  
    !  *  INV(U)
@@ -129,10 +122,11 @@ MODULE LinearAlgebra
  END SUBROUTINE InvertMatrix
 
 
- SUBROUTINE LUSolve( n,A,x )
-   REAL(KIND=dp) :: A(n,n)
+ SUBROUTINE LUSolve( n,A,x,pivot_in )
+   REAL(KIND=dp) :: A(:,:)
    REAL(KIND=dp) :: x(n)
    INTEGER :: n 
+   INTEGER, OPTIONAL :: pivot_in(:)
 
    REAL(KIND=dp) :: s
    INTEGER :: i,j
@@ -141,17 +135,12 @@ MODULE LinearAlgebra
    ! /*
    !  *  AP = LU
    !  */
-   CALL LUDecomp( A,n,pivot )
+   IF(PRESENT(pivot_in)) THEN
+     Pivot(1:n) = Pivot_in(1:n)
+   ELSE
+     CALL LUDecomp( A,n,pivot )
+   END IF
 
-   DO i=1,n
-     IF ( ABS(A(i,i)) == 0.0d0 ) THEN
-       CALL Error( 'LUSolve', 'Matrix is singular.' )
-       RETURN       
-     END IF
-     A(i,i) = 1.0d0 / A(i,i)
-   END DO
-
-   !
    ! Forward substitute
    DO i=1,n
       s = x(i)
@@ -241,6 +230,14 @@ MODULE LinearAlgebra
     IF ( ABS(A(n,n)) == 0.0d0 ) THEN
       CALL Error( 'LUDecomp',  'Matrix is (at least almost) singular.' )
     END IF
+
+    DO i=1,n
+      IF ( ABS(A(i,i)) == 0.0d0 ) THEN
+        CALL Error( 'LUSolve', 'Matrix is singular.' )
+        RETURN       
+      END IF
+      A(i,i) = 1.0_dp / A(i,i)
+    END DO
 
   END SUBROUTINE LUDecomp
 

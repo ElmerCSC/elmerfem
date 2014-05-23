@@ -134,7 +134,7 @@ MODULE Interpolation
 !------------------------------------------------------------------------------
      FUNCTION PointInElement( Element, ElementNodes, Point, &
 	  LocalCoordinates, GlobalEps, LocalEps, NumericEps, &
-          GlobalDistance, LocalDistance ) RESULT(IsInElement)
+          GlobalDistance, LocalDistance, EdgeBasis ) RESULT(IsInElement)
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element  !< Bulk element we are checking
     TYPE(Nodes_t) :: ElementNodes        !< The nodal points of the bulk element
@@ -146,10 +146,11 @@ MODULE Interpolation
     REAL(KIND=dp), OPTIONAL :: NumericEps !< Accuracy of numberical operations
     REAL(KIND=dp), OPTIONAL :: GlobalDistance !< Returns the distance from the element in global coordinates.
     REAL(KIND=dp), OPTIONAL :: LocalDistance  !< Returns the distance from the element in local coordinates.
+    LOGICAL, OPTIONAL :: EdgeBasis
 !------------------------------------------------------------------------------
     INTEGER :: n
     INTEGER :: i
-    LOGICAL :: ComputeDistance
+    LOGICAL :: ComputeDistance, trans
     REAL(KIND=dp) :: ug,vg,wg,xdist,ydist,zdist,sumdist,eps0,eps1,eps2,escale,&
         minx,maxx,miny,maxy,minz,maxz
 !------------------------------------------------------------------------------
@@ -283,30 +284,11 @@ MODULE Interpolation
       END IF
         
 
-!      CASE(2)
-!         IsInElement = (ug<=1.d0 + eps2) .AND. (ug>=-1.d0 - eps2) 
-!
-!      CASE(3)
-!         IsInElement = (ug+vg <= 1.d0 + eps2) .AND. &
-!                       (ug<=1.d0 + eps2) .AND. (ug>=0.d0 - eps2) .AND. &
-!                       (vg<=1.d0 + eps2) .AND. (vg>=0.d0 - eps2)
-!
-!      CASE(4)
-!         IsInElement = ug>=-1.d0-eps2 .AND. ug<=1.d0+eps2 .AND. &
-!                       vg>=-1.d0-eps2 .AND. vg<=1.d0+eps2
-!
-!      CASE(5)
-!         IsInElement = (ug+vg+wg <= 1.d0+eps2) .AND. &
-!                       (ug<=1.d0+eps2) .AND. (ug>=0.d0-eps2) .AND. &
-!                       (vg<=1.d0+eps2) .AND. (vg>=0.d0-eps2) .AND. &
-!                       (wg<=1.d0+eps2) .AND. (wg>=0.d0-eps2)
-!
-!      CASE(8)
-!         IsInElement = ug>=-1.d0-eps2 .AND. ug<=1.d0+eps2 .AND. &
-!                       vg>=-1.d0-eps2 .AND. vg<=1.d0+eps2 .AND. &
-!                       wg>=-1.d0-eps2 .AND. wg<=1.d0+eps2
+    trans = PRESENT(EdgeBasis)
+    IF(trans) trans=EdgeBasis
+    trans = trans .OR. isPElement(Element)
 
-    IF (isPElement(Element)) THEN
+    IF (trans) THEN
       SELECT CASE(Element % Type % ElementCode/100)
       CASE(3)
          ug = 2*ug + vg - 1
