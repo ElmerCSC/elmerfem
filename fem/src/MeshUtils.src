@@ -1064,13 +1064,13 @@ END SUBROUTINE GetMaxDefs
      ! Boundary element cannot be discontinuous if it is not an interface element
      LeftElem => Element % BoundaryInfo % Left
      IF( .NOT. ASSOCIATED( LeftElem ) ) THEN
-       CALL Warn('CreateDiscontMesh','Left parent not associated! : '//TRIM(I2S(t)))
+       CALL Fatal('CreateDiscontMesh','Left parent not associated! : '//TRIM(I2S(t)))
        CYCLE
      END IF
      
      RightElem => Element % BoundaryInfo % Right
      IF( .NOT. ASSOCIATED( RightElem ) ) THEN
-       CALL Warn('CreateDiscontMesh','Left parent not associated! : '//TRIM(I2S(t)))
+       CALL Fatal('CreateDiscontMesh','Right parent not associated! : '//TRIM(I2S(t)))
        CYCLE
      END IF
 
@@ -1140,10 +1140,10 @@ END SUBROUTINE GetMaxDefs
      IF( DisContNode(i) ) THEN
        j = j + 1
        DisContPerm(i) = j
-!              PRINT *,'node:',i,j,Mesh % Nodes % x(i),Mesh % Nodes % y(i)
      END IF
    END DO
    
+
    ! Create a table showing nodes that are related to the moving nodes by
    ! the moving elements. 
    ALLOCATE( MovingNode( NoNodes ), StayingNode( NoNodes ) ) 
@@ -1163,7 +1163,7 @@ END SUBROUTINE GetMaxDefs
      
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
-     
+
      ! For historical reasons there is both single 'body' and multiple 'bodies'
      ! that define on which side of the discontinuity the new nodes will be. 
      IF( UseTargetBodies ) THEN
@@ -1188,7 +1188,10 @@ END SUBROUTINE GetMaxDefs
      END IF
 
      LeftElem => Element % BoundaryInfo % Left 
+     IF(.NOT. ASSOCIATED(LeftElem)) CALL Fatal('CreateDiscontMesh','Left element not associated!')
+
      RightElem => Element % BoundaryInfo % Right
+     IF(.NOT. ASSOCIATED(RightElem)) CALL Fatal('CreateDiscontMesh','Right element not associated!')
 
      IF( UseTargetBodies ) THEN
        LeftHit = ANY( TargetBodies == LeftElem % BodyId )
@@ -1232,8 +1235,18 @@ END SUBROUTINE GetMaxDefs
      ! Mark the nodes in elements that have been set
      ! These related nodes are used to determine whether other
      ! elements are on the discontinuous side. 
-     MovingNode( ParentElem % NodeIndexes ) = .TRUE.
-     StayingNode( OtherElem % NodeIndexes ) = .TRUE. 
+     ! It may be that the parent element is a parent element 
+     ! of another boundary element in which case the nodal indexes 
+     ! might already have been manipulated. 
+     DO j=1,SIZE(ParentElem % NodeIndexes)
+       k = ParentElem % NodeIndexes(j)
+       IF( k <= NoNodes ) MovingNode( k ) = .TRUE.
+     END DO
+
+     DO j=1,SIZE(OtherElem % NodeIndexes)
+       k = OtherElem % NodeIndexes(j)
+       IF( k <= NoNodes ) StayingNode( k ) = .TRUE.
+     END DO
 
      ! Ok, we found the element to manipulate the indexes. 
      ! The new index is numbered on top of the old indexes. 
@@ -1256,10 +1269,6 @@ END SUBROUTINE GetMaxDefs
        END IF
      END DO
 
-     IF( .FALSE. ) THEN
-       PRINT *,'Indexes2:',ParentElem % NodeIndexes
-     END IF
-
      ! Then set in a consistent manner the elements
      ! Now the "right" parent includes the new indexes
      ! and the "left" the original ones.
@@ -1278,7 +1287,6 @@ END SUBROUTINE GetMaxDefs
    ! do have some node on the discontinuous boundary. They should 
    ! change their node index together with the dominating destiny 
    ! of the related nodes.
-
    ALLOCATE( NewMovingNode( NoNodes ), NewStayingNode( NoNodes ) ) 
 
    Iter = 1
@@ -1328,7 +1336,7 @@ END SUBROUTINE GetMaxDefs
      ELSE
        NoUndecided = NoUndecided + 1
        i = Element % TYPE % ElementCode / 100 
-       DecidedByFamily( i ) = DecidedByFamily( i ) + 1 
+       UnDecidedByFamily( i ) = UnDecidedByFamily( i ) + 1 
 
        IF(.FALSE.) THEN
 !Iter > 2 .AND. ANY( Indexes < 10 )) THEN
@@ -1344,6 +1352,7 @@ END SUBROUTINE GetMaxDefs
      END IF
 
    END DO
+
 
    DO i=1,8
      IF( DecidedByFamily(i) + UndecidedByFamily(i) == 0 ) CYCLE
@@ -1474,6 +1483,7 @@ END SUBROUTINE GetMaxDefs
      CALL Info('CreateDiscontMesh','Number of additional boundary elements: '&
          //TRIM(I2S(NoDisContElems)))
 
+     Mesh % DiscontMesh = .FALSE.
      DEALLOCATE( DisContPerm ) 
    ELSE
      Mesh % DisContMesh = .TRUE.
@@ -1483,6 +1493,25 @@ END SUBROUTINE GetMaxDefs
 
    DEALLOCATE( DisContNode, DiscontElem, DecidedElem )
 
+   IF(.FALSE.) THEN
+     i = 0
+     PRINT *,'Checking element indexes:',Mesh % NumberOfBulkElements, Mesh % NumberOfBoundaryElements
+     NoNodes = Mesh % NumberOfNodes
+     DO t=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+       Element => Mesh % Elements(t)
+       IF( ANY( Element % NodeIndexes > NoNodes ) .OR. ANY( Element % NodeIndexes <= 0 ) ) THEN
+         PRINT *,'Indexes:',t,Element % NodeIndexes
+         i = i + 1
+       END IF
+     END DO
+     IF( i > 0 ) THEN
+       CALL Fatal('CreateDiscontMesh','Indexes out of bound in elements: '//TRIM(I2S(i)))
+     END IF
+   END IF
+
+   CALL EnlargeParallelInfo(Mesh)
+
+   
  END SUBROUTINE CreateDiscontMesh
 
 
@@ -1584,6 +1613,31 @@ END SUBROUTINE GetMaxDefs
  END SUBROUTINE EnlargeBoundaryElements
 
 
+ SUBROUTINE EnlargeParallelInfo( Mesh )
+
+   TYPE(Mesh_t) :: Mesh
+   INTEGER :: nmax,n0,n1,i,j,istat
+   INTEGER, POINTER :: TmpGlobalDofs(:)
+ 
+   n0 = SIZE( Mesh % ParallelInfo % GlobalDofs )
+   n1 = Mesh % NumberOfNodes 
+   IF( n0 >= n1 ) RETURN
+   
+   CALL Info('EnlargeParallelInfo','Increasing global numbering size from '&
+         //TRIM(I2S(n0))//' to '//TRIM(I2S(n1)),Level=8)
+
+   ALLOCATE( TmpGlobalDofs(n1), STAT=istat )
+   IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate TmpGlobalDofs array.')
+   TmpGlobalDofs = 0
+   TmpGlobalDofs(1:n0) = Mesh % ParallelInfo % GlobalDofs
+   nmax = MAXVAL( Mesh % ParallelInfo % GlobalDofs(1:n0) )
+   DO i=n0+1,n1
+     TmpGlobalDofs(i) = i-n0+nmax
+   END DO
+   DEALLOCATE( Mesh % ParallelInfo % GlobalDofs )
+   Mesh % ParallelInfo % GlobalDOfs => TmpGlobalDofs
+
+ END SUBROUTINE EnlargeParallelInfo
 
 
 
@@ -2099,18 +2153,27 @@ END SUBROUTINE GetMaxDefs
        CALL Info('LoadMesh','Node mapping is continuous',Level=8)
      END IF
 
+     ! Set the for now, if the case is truly parallel we'll have to revisit these
+     ! when reading the parallel information. 
+     Mesh % ParallelInfo % NumberOfIfDOFs = 0
+     Mesh % ParallelInfo % GlobalDOFs => NodeTags
+
    END SUBROUTINE PermuteNodeNumbering
 
 
-   ! Initialize some prallel sructures once the non-nodal 
+   ! Initialize some parallel structures once the non-nodal 
    ! element types are known. 
    ! Currently this is here mainly because the 
    ! Elemental and Nodal tags are local
    !-------------------------------------------------------
    SUBROUTINE InitParallelInfo()
 
-     Mesh % ParallelInfo % NumberOfIfDOFs = 0
-     Mesh % ParallelInfo % GlobalDOFs => NodeTags
+     INTEGER, POINTER :: TmpGlobalDofs(:)
+
+     ! These two have already been set, and if the case is serial
+     ! case they can be as is.
+     !Mesh % ParallelInfo % NumberOfIfDOFs = 0
+     !Mesh % ParallelInfo % GlobalDOFs => NodeTags
 
      IF(.NOT. Parallel ) RETURN
 
@@ -2123,9 +2186,12 @@ END SUBROUTINE GetMaxDefs
          Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
          Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
 
-     ALLOCATE( Mesh % ParallelInfo % GlobalDOFs(n) )
-     Mesh % ParallelInfo % GlobalDOFs = 0
-     Mesh % ParallelInfo % GlobalDOFs(1:Mesh % NumberOfNodes) = NodeTags
+     ALLOCATE( TmpGlobalDOFs(n) )
+     TmpGlobalDOFs = 0
+     TmpGlobalDOFs(1:Mesh % NumberOfNodes) = &
+         Mesh % ParallelInfo % GlobalDOFs(1:Mesh % NumberOfNodes)
+     DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs ) 
+     Mesh % ParallelInfo % GlobalDofs => TmpGlobalDofs
 
      ALLOCATE(Mesh % ParallelInfo % NeighbourList(n), STAT=istat)
      IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate NeighbourList array.')
@@ -2624,7 +2690,8 @@ END SUBROUTINE GetMaxDefs
        bndry = Element % BoundaryInfo % Constraint 
 
        IF( bndry > maxid .OR. bndry < minid ) THEN
-         PRINT *,'this should not happen',bndry,maxid
+         CALL Warn('LoadMesh','Boundary index '//TRIM(I2S(bndry))&
+             //' not in range: '//TRIM(I2S(minid))//','//TRIM(I2S(maxid)) )
        END IF
 
        IF( IndexMap( bndry ) < 0 ) THEN
@@ -5226,7 +5293,7 @@ END SUBROUTINE GetMaxDefs
       j = NodePerm(i)
       IF( j == 0 ) CYCLE
       IF( InvPerm(j) > 0 ) THEN
-        PRINT *,'This should not happen'
+        PRINT *,'This should not happen: ',i,j,InvPerm(j)
       ELSE
         InvPerm(j) = i
       END IF
@@ -5770,7 +5837,7 @@ END SUBROUTINE GetMaxDefs
 
     CALL Info('FlatInterfaceMeshes','Flattening interface meshes to 2D',Level=8)    
     
-    MeshDim = CurrentModel % Dimension
+    MeshDim = CurrentModel % DIMENSION
     FlatDim = ListGetInteger( BParams,'Flat Projector Coordinate',Found,minv=1,maxv=3) 
     IF(.NOT. Found ) FlatDim = MeshDim
 
