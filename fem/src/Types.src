@@ -155,12 +155,12 @@ END INTERFACE
 
 
   TYPE Matrix_t
-    TYPE(Matrix_t), POINTER :: Child, Parent, &
-        ConstraintMatrix, EMatrix, AddMatrix=>NULL(), CollectionMatrix=>NULL()
+    TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), &
+        ConstraintMatrix=>NULL(), EMatrix=>NULL(), AddMatrix=>NULL(), CollectionMatrix=>NULL()
 
     INTEGER :: NumberOfRows, ExtraDOFs=0, ParallelDOFs=0
 
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Solver_t), POINTER :: Solver => NULL()
 
     LOGICAL, ALLOCATABLE :: ConstrainedDOF(:)
 
@@ -171,19 +171,19 @@ END INTERFACE
 
     TYPE(ListMatrix_t), POINTER :: ListMatrix(:) => NULL()
 
-    INTEGER, POINTER :: Perm(:),InvPerm(:), Gorder(:), EPerm(:)
+    INTEGER, POINTER :: Perm(:)=>NULL(),InvPerm(:)=>NULL(), Gorder(:)=>NULL(), EPerm(:)=>NULL()
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
-    INTEGER, POINTER CONTIG :: Rows(:),Cols(:), Diag(:)
+    INTEGER, POINTER CONTIG :: Rows(:)=>NULL(),Cols(:)=>NULL(), Diag(:)=>NULL()
 
-    REAL(KIND=dp), POINTER CONTIG :: RHS(:),BulkRHS(:),RHS_im(:),Force(:,:)
-    REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)
+    REAL(KIND=dp), POINTER CONTIG :: RHS(:)=>NULL(),BulkRHS(:)=>NULL(),RHS_im(:)=>NULL(),Force(:,:)=>NULL()
+    REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)=>NULL()
 
-    REAL(KIND=dp),  POINTER CONTIG :: Values(:), ILUValues(:), &
+    REAL(KIND=dp),  POINTER CONTIG :: Values(:)=>NULL(), ILUValues(:)=>NULL(), &
                DiagScaling(:) => NULL()
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling
-    REAL(KIND=dp),  POINTER CONTIG :: MassValues(:),DampValues(:),BulkValues(:)
+    REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(),BulkValues(:)=>NULL()
 
 #ifdef HAVE_MUMPS
     TYPE(dmumps_struc), POINTER :: MumpsID => NULL() ! Global distributed Mumps
@@ -212,13 +212,13 @@ END INTERFACE
 
     INTEGER(KIND=AddrInt) :: MatVecSubr = 0
 
-    INTEGER, POINTER CONTIG :: ILURows(:),ILUCols(:),ILUDiag(:)
+    INTEGER, POINTER CONTIG :: ILURows(:)=>NULL(),ILUCols(:)=>NULL(),ILUDiag(:)=>NULL()
 
 !   For Complex systems, not used yet!:
 !   -----------------------------------
-    COMPLEX(KIND=dp), POINTER :: CRHS(:),CForce(:,:)
-    COMPLEX(KIND=dp),  POINTER :: CValues(:),CILUValues(:)
-    COMPLEX(KIND=dp),  POINTER :: CMassValues(:),CDampValues(:)
+    COMPLEX(KIND=dp), POINTER :: CRHS(:)=>NULL(),CForce(:,:)=>NULL()
+    COMPLEX(KIND=dp),  POINTER :: CValues(:)=>NULL(),CILUValues(:)=>NULL()
+    COMPLEX(KIND=dp),  POINTER :: CMassValues(:)=>NULL(),CDampValues(:)=>NULL()
 
 ! For Flux Corrected Transport 
     REAL(KIND=dp), POINTER :: FCT_D(:) => NULL()
@@ -318,8 +318,8 @@ END INTERFACE
    !
    TYPE BasisFunctions_t 
       INTEGER :: n
-      INTEGER, POINTER :: p(:),q(:),r(:)
-      REAL(KIND=dp), POINTER :: coeff(:)
+      INTEGER, POINTER :: p(:)=>NULL(),q(:)=>NULL(),r(:)=>NULL()
+      REAL(KIND=dp), POINTER :: coeff(:)=>NULL()
    END TYPE BasisFunctions_t
 
 
