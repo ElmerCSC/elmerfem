@@ -402,7 +402,8 @@ CONTAINS
         Refactorize = ListGetLogical( Params, 'Linear System Refactorize', Gotit )
         IF ( .NOT. Gotit ) Refactorize = .TRUE.
         
-        IF (.NOT. ASSOCIATED(A % ILUValues).OR.(Refactorize.AND.MOD(A % SolveCount, n)==0) ) THEN
+        IF (.NOT.(ASSOCIATED(A % ILUValues).OR.ASSOCIATED(A % CILUValues)).OR. &
+                  (Refactorize.AND.MOD(A % SolveCount, n)==0) ) THEN
 
 
           IF ( A % FORMAT == MATRIX_CRS ) THEN
@@ -491,7 +492,7 @@ CONTAINS
                     DO j=A % Rows(i+1)-1,A % Rows(i),-1
                       IF (i>k .OR. A % Cols(j)>k .OR. .NOT.NullEdges) THEN
                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
-                      ELSE IF (NullEdges .AND. ASSOCIATED(A % Eperm)) THEN
+                      ELSE IF (NullEdges .AND. ASSOCIATED(A % EPerm)) THEN
                         IF ( A % Eperm(i)==0.AND.A % EPerm(A % Cols(j))==0) THEN
                           CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
                         END IF
@@ -550,10 +551,10 @@ CONTAINS
 
                   k = A % NumberOfRows - A % ExtraDOFs
                   DO i=A % NumberOfRows,1,-1
-                     IF(i>k) THEN
+                    IF(i>k) THEN
                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 0._dp)
                     ELSE IF (NullEdges) THEN
-                       IF( ASSOCIATED( A % Eperm) ) THEN
+                       IF(ASSOCIATED( A % EPerm) ) THEN
                          IF( A % Eperm(i)/=0 ) &
                            CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
                        ELSE
@@ -570,7 +571,7 @@ CONTAINS
                     DO j=A % Rows(i+1)-1,A % Rows(i),-1
                       IF (i>k .OR. A % Cols(j)>k .OR. .NOT.NullEdges) THEN
                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
-                      ELSE IF (NullEdges .AND. ASSOCIATED(A % Eperm)) THEN
+                      ELSE IF (NullEdges .AND. ASSOCIATED(A % EPerm)) THEN
                         IF ( A % Eperm(i)==0.AND.A % EPerm(A % Cols(j))==0) THEN
                           CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
                         END IF

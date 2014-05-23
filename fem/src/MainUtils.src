@@ -3261,7 +3261,7 @@ CONTAINS
      REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
      LOGICAL :: stat, Found, GB, MeActive, GotIt
-     INTEGER :: i, j, k, l, col, row, n, SolverAddr, BDOFs, maxdim
+     INTEGER :: i, j, k, l, col, row, n, SolverAddr, BDOFs, maxdim, dsize, size0
      TYPE(Element_t), POINTER :: CurrentElement
      TYPE(ValueList_t), POINTER :: SolverParams
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, str, Message, Equation
@@ -3270,7 +3270,7 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: M
      INTEGER :: comm_active, group_active, group_world, ierr
 
-     LOGICAL :: FoundMortar
+     LOGICAL :: ApplyMortar, FoundMortar
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
 
 !------------------------------------------------------------------------------
@@ -3372,7 +3372,15 @@ CONTAINS
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      FoundMortar = .FALSE.
-     IF (GetLogical(Solver % Values,'Apply Mortar BCs',Found)) THEN
+     ApplyMortar = GetLogical(Solver % Values,'Apply Mortar BCs',Found) 
+     IF( ApplyMortar ) THEN
+       IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
+         CALL Warn('SingeSolver','> Apply Mortar BCs < can only be set if there is a matrix equation')
+         ApplyMortar = .FALSE.
+       END IF
+     END IF
+
+     IF( ApplyMortar ) THEN
        CM => NULL()
        DO i=1,Model % NumberOFBCs
          j=GetInteger(Model % BCs(i) % Values,'Mortar BC',FoundMortar)
@@ -3385,23 +3393,29 @@ CONTAINS
          END IF
        END DO
        FoundMortar = ASSOCIATED(CM)
-
+       
        IF(FoundMortar) THEN
          CM0 => CM
          CMP => NULL()
          DO WHILE(ASSOCIATED(CM0))
 
            n = SIZE( Solver % Variable % Perm )
+           size0 = MAXVAL( Solver % Variable % Perm ) 
+           dsize = n - size0
+
            DO i=1,SIZE(CM0 % Cols ) 
              j = CM0 % Cols(i)
-             IF( j <= n ) CM0 % Cols(i) = Solver % Variable % Perm(j)
-           END DO
 
-           !CM0 % Cols = Solver % Variable % Perm(CM0 % Cols)
+             IF( j <= n ) THEN
+               CM0 % Cols(i) = Solver % Variable % Perm(j)
+             ELSE 
+               CM0 % Cols(i) = j - dsize
+             END IF
+           END DO
 
            IF(ASSOCIATED(CM0 % InvPerm)) THEN
              DO i=1,SIZE(CM0 % InvPerm)
-               IF(CM0 % InvPerm(i)>0) THEN
+               IF(CM0 % InvPerm(i) > 0) THEN
                  CM0 % InvPerm(i) = Solver % Variable % Perm(CM0 % InvPerm(i))
                END IF
              END DO

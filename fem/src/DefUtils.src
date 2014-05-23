@@ -298,13 +298,13 @@ CONTAINS
   END FUNCTION GetTimestepSize
  
 !> Returns the angular frequency  
-  FUNCTION GetAngularFrequency(ValueList,Found) RESULT(w)
+  FUNCTION GetAngularFrequency(ValueList,Found, UElement) RESULT(w)
     REAL(KIND=dp) :: w
     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
     LOGICAL, OPTIONAL :: Found
+    TYPE(Element_t), POINTER, OPTIONAL :: UElement
 
-    w = ListGetAngularFrequency( ValueList, Found )
-
+    w = ListGetAngularFrequency( ValueList, Found, UElement )
   END FUNCTION GetAngularFrequency
 
 !> Returns the current coupled system iteration loop count
@@ -2438,8 +2438,7 @@ CONTAINS
       previter = iter
     END IF
 
-    ReduceStep = CheckStepSize(Solver,First,&
-        nsize,values,values0) 
+    ReduceStep = CheckStepSize(Solver,First,nsize,values,values0) 
 
     IF( Last .AND. .NOT. ReduceStep ) THEN
       CALL Info('DefaultLinesearch','Maximum number of nonlinear iterations reached, giving up after linesearch')
@@ -3403,6 +3402,7 @@ CONTAINS
      END IF
 
 
+
      IF ( GetString(Params,'Linear System Solver',Found)=='feti') THEN
        IF ( GetLogical(Params,'Total FETI', Found)) RETURN
      END IF
@@ -3455,7 +3455,6 @@ CONTAINS
 !       CALL DetermineSoftLimiter( Solver )	
 !     END IF
 
-	
      IF ( x % DOFs > 1 ) THEN
         ! TEMP!!!
         CALL SetDirichletBoundaries( CurrentModel,A, b, GetVarName(x),-1,x % DOFs,x % Perm )
@@ -3655,8 +3654,7 @@ CONTAINS
                        END IF
                     END DO
 
-                    n=GetElementDOFs(GInd,Face)
-
+                    n = GetElementDOFs(GInd,Face)
                     DO j=1,Face % BDOFs
                        nb = x % Perm(GInd(n-Face % BDOFs+j))
                        IF ( nb <= 0 ) CYCLE
