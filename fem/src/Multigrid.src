@@ -3098,7 +3098,9 @@ CONTAINS
 
         ! Shorten the list from top in case the node is already set
         Refcon = 0
-        DO WHILE( anods > 0 .AND. CF(RevConInd(anods)) /= 0 )
+        ! DO WHILE( anods > 0 .AND. CF(RevConInd(anods)) /= 0 )
+        DO WHILE( anods > 0)
+          IF (CF(RevConInd(anods)) == 0) EXIT
           MaxCon = Con(RevConInd(anods))          
           Refcon = MAX(MaxCon,RefCon)
           anods = anods - 1
