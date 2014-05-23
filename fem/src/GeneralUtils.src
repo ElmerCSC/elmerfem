@@ -1232,6 +1232,7 @@ END FUNCTION ComponentNameVar
 
       REAL(KIND=dp) ::  t,h(n),tau, alpha, beta
       INTEGER :: i
+      LOGICAL :: mono
 
       DO i=1,n-1
         h(i) = x(i+1) - x(i)
@@ -1240,7 +1241,10 @@ END FUNCTION ComponentNameVar
       r(1) = (y(2) - y(1) )  / h(1)
       r(n) = (y(n) - y(n-1) ) / h(n-1)
 
-      IF (Monotone) THEN
+      mono = .FALSE.
+      IF(PRESENT(monotone)) mono = Monotone
+
+      IF (mono) THEN
         DO i=1,n-1
           h(i) = (y(i+1) - y(i) ) / h(i)
         END DO
