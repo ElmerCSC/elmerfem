@@ -1,8 +1,6 @@
 Check Keywords "Warn"
 
-Header
-  Mesh DB "." "square"
-End
+Header :: Mesh DB "." "square"
 
 Simulation
   Max Output Level = 9
@@ -10,7 +8,7 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-!  Post File   = "ptest.ep"
+  Post File   = "ptest.ep"
 End
 
 Body 1
@@ -19,19 +17,13 @@ Body 1
   Body Force = 1
 End
 
-Body 2
-  Equation = 1
-  Material = 1
-  Body Force = 1
-End
-
 Material 1
- a 1 = Real 1
- a 2 = Real 0
+  a 1 = Real 1
+  a 2 = Real 0
 
- time derivative coefficient = Real 0
- diffusion  coefficient = Real 1
- convection coefficient = Real 90
+  diffusion  coefficient = Real 1
+  convection coefficient = Real 9
+  time derivative coefficient = Real 0
 End
 
 Body Force 1 :: Source = Real 1
@@ -39,26 +31,29 @@ Equation 1 :: Active Solvers(1) = 1
 
 Solver 1
   Equation = "Poisson"
-
   Variable = "Potential"
-  Variable DOFs = 1
   Procedure = "AdvDiff" "AdvDiffSolver"
-
   Element = "p:2"
-
-  Linear System Solver = "Iterative"
-  Linear System Preconditioning = ilu
-  Linear System Max Iterations=100
-  Linear System Convergence Tolerance=1e-8
-  Linear System Iterative Method = BiCGStabL
+  Linear System Solver = Direct
   Steady State Convergence Tolerance = 1e-09
 End
 
 Boundary Condition 1
-  Target Boundaries(4) = 1 2 3 4
+  Target Boundaries(1) = 1
   Potential = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  coeff = Real 10
+  ext_t = Real  5
+End
+
+Boundary Condition 3
+  Target Boundaries(2) = 3 4
+  flux = Real 10
 End
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.32138081E-02,EPS=1.0E-5\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1.0578593,EPS=1.0E-5\n" );
