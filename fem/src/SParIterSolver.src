@@ -2036,16 +2036,15 @@ REAL(kind=dp)::cputime,realtime,tt,rt
   !
   !----------------------------------------------------------------------
 
-   EdgeBasis = .NOT.ListGetLogicalAnyBC( CurrentModel, 'Stride Projector' )
-   EdgeBasis = EdgeBasis.AND.ListGetLogical( Solver % Values, 'Edge Basis', stat )
-
-   IF ( EdgeBasis ) THEN
-     IF( ASSOCIATED( SplittedMatrix % InsideMatrix % Eperm) ) &
-       DEALLOCATE( SplittedMatrix % InsideMatrix % EPerm )
- 
-     ALLOCATE( SplittedMatrix % InsideMatrix % EPerm(SplittedMatrix % InsideMatrix % NumberOfRows) )
-     SplittedMatrix % InsideMatrix % EPerm = 0
-   END IF
+!  EdgeBasis = .NOT.ListGetLogicalAnyBC( CurrentModel, 'Stride Projector' )
+!  EdgeBasis = EdgeBasis.AND.ListGetLogical( Solver % Values, 'Edge Basis', stat )
+!  IF ( EdgeBasis ) THEN
+!    IF( ASSOCIATED( SplittedMatrix % InsideMatrix % Eperm) ) &
+!      DEALLOCATE( SplittedMatrix % InsideMatrix % EPerm )
+!
+!    ALLOCATE( SplittedMatrix % InsideMatrix % EPerm(SplittedMatrix % InsideMatrix % NumberOfRows) )
+!    SplittedMatrix % InsideMatrix % EPerm = 0
+!  END IF
  
  
   ALLOCATE( TmpXVec(SplittedMatrix % InsideMatrix % NumberOfRows) )
@@ -2882,7 +2881,7 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
                    IF(RecvdIfMatrix(i) % Values(k) /= 0._dp ) THEN
                      PRINT*,ParEnv % MyPE,  'GlueFinalize: This should not happen 0'
                      PRINT*,ParEnv % MyPE, i-1, RecvdIfMatrix(i) % GRows(j), RowInd, &
-                                 RecvdIfMatrix(i) % Cols(k), ColIndA
+                                 RecvdIfMatrix(i) % Cols(k), ColIndA, recvdifmatrix(i) % values(k)
                    END IF
                  END IF
               END DO
