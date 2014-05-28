@@ -1003,7 +1003,8 @@ END SUBROUTINE GetMaxDefs
    INTEGER, POINTER :: DisContPerm(:)
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
        NewMovingNode(:),NewStayingNode(:),DecidedElem(:)
-   LOGICAL :: Found, DisCont, Greedy, Debug, DoubleBC, UseTargetBodies, LeftHit, RightHit
+   LOGICAL :: Found, DisCont, GreedyBulk, GreedyBC, Debug, DoubleBC, UseTargetBodies, &
+       LeftHit, RightHit
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        TargetBody, NoBulkElems, NoBoundElems, NoParentElems, &
@@ -1101,9 +1102,12 @@ END SUBROUTINE GetMaxDefs
    ! By default only nodes that are associated only to elements immediately at the discontinuous 
    ! boundary are treated as discontinuous. However, the user may be greedy and use all candidate nodes.  
    n = NoDiscontNodes
-   Greedy = ListGetLogical( Model % Simulation,'Discontinuous Boundaries Greedy',Found ) 
-   IF(.NOT. Found ) Greedy = .TRUE.
-   IF( .NOT. Greedy ) THEN
+   GreedyBulk = ListGetLogical( Model % Simulation,'Discontinuous Bulk Greedy',Found ) 
+   IF(.NOT. Found ) GreedyBulk = .TRUE.
+   GreedyBC = ListGetLogical( Model % Simulation,'Discontinuous Boundary Greedy',Found ) 
+   IF(.NOT. Found ) GreedyBC = .TRUE.
+
+   IF( .NOT. GreedyBulk ) THEN
      DO t = 1, NoBulkElems
        IF( DecidedElem(t) ) CYCLE
        Element => Mesh % Elements(t)
@@ -1113,6 +1117,17 @@ END SUBROUTINE GetMaxDefs
      NoDisContNodes = COUNT( DisContNode ) 
    END IF
 
+   IF( .NOT. GreedyBC ) THEN
+     DO t = NoBulkElems+1,NoBulkElems+NoBoundElems
+       IF( DecidedElem(t) ) CYCLE
+       Element => Mesh % Elements(t)
+       Indexes => Element % NodeIndexes
+       DisContNode( Indexes ) = .FALSE.
+     END DO
+     NoDisContNodes = COUNT( DisContNode ) 
+   END IF
+
+
    IF( NoDiscontNodes < n ) THEN
      CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '//TRIM(I2S(NoDisContNodes)) )
    ELSE
@@ -1120,8 +1135,8 @@ END SUBROUTINE GetMaxDefs
    END IF
 
    IF( NoDiscontNodes == 0 ) THEN
-     IF( n > 0 .AND. .NOT. Greedy ) THEN
-       CALL Info('CreateDiscontMesh','You might want to try the Greedy strategy',Level=3)
+     IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
+       CALL Info('CreateDiscontMesh','You might want to try the Greedy bulk strategy',Level=3)
      END IF
      CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
      DEALLOCATE( DiscontNode, DiscontElem, DecidedElem )
@@ -4592,7 +4607,7 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
-
+ 
   !---------------------------------------------------------------------------
   !> Create a nodal and edge projector for cases when the edges form a nice cartesian 
   !> grid with the 2nd coordinate always on the same level i.e. there are
@@ -5897,7 +5912,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Stride, Radial, AntiRadial, DoNodes, DoEdges, &
-        UseArcLength, Flat
+        UseArcLength, Flat, LevelProj
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -6009,7 +6024,8 @@ END SUBROUTINE GetMaxDefs
     ! There is a simple edge projector tailored for the AV solver
     !-------------------------------------------------------------
     Stride = ListGetLogical( BC,'Stride Projector',GotIt) 
-    IF( Stride ) THEN
+    LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
+    IF( Stride .OR. LevelProj ) THEN
       IF( ListGetLogical( BC,'Projector Skip Nodes',GotIt) ) THEN
         DoNodes = .FALSE.
       ELSE
@@ -6074,6 +6090,9 @@ END SUBROUTINE GetMaxDefs
     IF( Stride ) THEN
       Projector => StrideProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
           InvPerm1, InvPerm2, DoNodes, DoEdges, PeriodicScale )
+!    ELSE IF( LevelProj ) THEN
+!      Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
+!          InvPerm1, InvPerm2, DoNodes, DoEdges, PeriodicScale )
     ELSE IF( IntGalerkin ) THEN
       Projector => WeightedProjector2( BMesh2, BMesh1, InvPerm2, InvPerm1, &
           UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, NodalJump )
