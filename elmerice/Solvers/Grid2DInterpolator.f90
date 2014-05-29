@@ -152,6 +152,7 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
          WRITE(message,'(A,A,A)')'Keyword <',Trim(ParaName),'> not found'
          CALL FATAL(Trim(SolverName),Trim(message))
       END IF
+
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' Invert'
       InvertOrder = GetLogical( Params, TRIM(ParaName), Found )
       IF (.NOT.Found) THEN
@@ -169,6 +170,7 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
          WRITE(message,'(A,A,I0)')'Filling empty entries for ', 'Variable ',NoVar
          CALL INFO(Trim(SolverName),Trim(message),Level=1)
       END IF
+
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' no data'
       noDataVal = ListGetConstReal( Params, TRIM(ParaName), Found )
       IF (.NOT.Found) then
@@ -359,7 +361,9 @@ SUBROUTINE InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby, Rmin,
      zi(2,2) = noDataVal
   ELSE
      zi(2,1) = zb(ib+1)
+     IF ( (ib+1).gt.size(zb) ) zi(2,1) = noDataVal
      zi(2,2) = zb(ib + Nbx + 1)
+     IF ( (ib+Nbx+1).gt.size(zb) ) zi(2,2) = noDataVal
   END IF
 
   x1 = xb(ib)
@@ -368,14 +372,15 @@ SUBROUTINE InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby, Rmin,
   y2 = yb(ib + Nbx)
 
   zi(1,1) = zb(ib)
+  IF ( (ib).gt.size(zb) ) zi(1,1) = noDataVal
   zi(1,2) = zb(ib + Nbx)
+  IF ( (ib+Nbx).gt.size(zb) ) zi(1,2) = noDataVal
 
-  !   IF ((zi(1,1)<-9990.0).OR.(zi(1,2)<-9990.0).OR.(zi(2,1)<-9990.0).OR.(zi(2,2)<-9990.0)) THEN
-  !      IF ((zi(1,1)<-9990.0).AND.(zi(1,2)<-9990.0).AND.(zi(2,1)<-9990.0).AND.(zi(2,2)<-9990.0)) THEN
   IF ( (isNoData(zi(1,1))).OR. &
        (isNoData(zi(1,2))).OR. &
        (isNoData(zi(2,1))).OR. &
        (isNoData(zi(2,2))) ) THEN
+
      IF ( (isNoData(zi(1,1))).AND. &
           (isNoData(zi(1,2))).AND. &
           (isNoData(zi(2,1))).AND. &
