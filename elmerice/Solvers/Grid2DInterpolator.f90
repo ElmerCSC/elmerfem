@@ -157,7 +157,8 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
       InvertOrder = GetLogical( Params, TRIM(ParaName), Found )
       IF (.NOT.Found) THEN
          InvertOrder = .FALSE.
-      ELSE
+      END IF
+      IF (InvertOrder) THEN
          WRITE(message,'(A,A,I0)')'Inverting order (row major) for variable ', 'Variable ',NoVar
          CALL INFO(Trim(SolverName),Trim(message),Level=1)
       END IF
@@ -166,7 +167,8 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
       FillIn = GetLogical( Params, TRIM(ParaName), Found )
       IF (.NOT.Found) THEN
          FillIn = .FALSE.
-      ELSE
+      END IF
+      IF (FillIn) THEN
          WRITE(message,'(A,A,I0)')'Filling empty entries for ', 'Variable ',NoVar
          CALL INFO(Trim(SolverName),Trim(message),Level=1)
       END IF
