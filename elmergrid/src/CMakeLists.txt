@@ -14,4 +14,5 @@ ADD_EXECUTABLE(ElmerGrid ${elmergrid_SRCS})
 
 TARGET_LINK_LIBRARIES(ElmerGrid matc metis)
 
-INSTALL(PROGRAMS ${CMAKE_BINARY_DIR}/elmergrid/src/ElmerGrid DESTINATION "bin")
+#INSTALL(PROGRAMS ${CMAKE_BINARY_DIR}/elmergrid/src/ElmerGrid DESTINATION "bin")
+INSTALL(TARGETS ElmerGrid RUNTIME DESTINATION "bin")

@@ -943,7 +943,8 @@ gfftb( nF, freq, nT, time )
      * to end of the routine.
      */ 
     F = (COMPLEX *)time;
-    bzero( F, ( nT / 2 + 1 ) * sizeof( COMPLEX ) );
+    /* bzero( F, ( nT / 2 + 1 ) * sizeof( COMPLEX ) ); */
+    memset( F, 0, ( nT / 2 + 1 ) * sizeof( COMPLEX ) );
         
     for( k = 0; k < nF; k++ ) {
         F[freq[k].FBin].Real = freq[k].Real;
