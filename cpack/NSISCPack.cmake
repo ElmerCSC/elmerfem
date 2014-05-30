@@ -9,17 +9,24 @@ IF(WIN32)
    ; HKLM (all users) vs HKCU (current user) defines
    !define env_hklm 'HKLM \\\"SYSTEM\\\\CurrentControlSet\\\\Control\\\\Session Manager\\\\Environment\\\"'
    !define env_hkcu 'HKCU \\\"Environment\\\"'
-   ; set variable
-   WriteRegExpandStr \\\${WriteEnvStr_RegKey} ELMER_HOME \\\$INSTDIR
-   ; WriteRegExpandStr \\\${env_hkcu} ELMER_HOME \\\$INSTDIR
-   ; make sure windows knows about the change
+   StrCmp \\\$ADD_TO_PATH_ALL_USERS \\\"1\\\" WriteAllElmerHomeKey
+     DetailPrint \\\"Selected environment for current user\\\"
+     WriteRegExpandStr \\\${env_hkcu} ELMER_HOME \\\$INSTDIR
+     Goto DoSendElmerHome
+   WriteAllElmerHomeKey:
+     DetailPrint \\\"Selected environment for all users\\\"
+     WriteRegExpandStr \\\${env_hklm} ELMER_HOME \\\$INSTDIR
+     DoSendElmerHome:
    SendMessage \\\${HWND_BROADCAST} \\\${WM_WININICHANGE} 0 \\\"STR:Environment\\\" /TIMEOUT=5000 ")
   SET(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
 "   ; delete variable
-   DeleteRegValue \\\${WriteEnvStr_RegKey} ELMER_HOME 
-   ; DeleteRegValue \\\${env_hkcu} ELMER_HOME
-   ; make sure windows knows about the change
-   SendMessage \\\${HWND_BROADCAST} \\\${WM_WININICHANGE} 0 \\\"STR:Environment\\\" /TIMEOUT=5000")
+   StrCmp \\\${ADD_TO_PATH_ALL_USERS} \\\"1\\\" unWriteAllElmerHome
+     DeleteRegValue \\\${env_hkcu} ELMER_HOME 
+     Goto unDoSendElmerHome
+   unWriteAllElmerHome:
+     DeleteRegValue \\\${env_hklm} ELMER_HOME
+   unDoSendElmerHome:
+     SendMessage \\\${HWND_BROADCAST} \\\${WM_WININICHANGE} 0 \\\"STR:Environment\\\" /TIMEOUT=5000")
   SET(CPACK_NSIS_MODIFY_PATH "ON")
   # @TODO: This is build-bot specific hack to find runtime libraries
   INSTALL(FILES ${LAPACK_LIBRARIES} DESTINATION "bin")
