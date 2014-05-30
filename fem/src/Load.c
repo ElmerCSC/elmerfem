@@ -77,16 +77,17 @@ void corename_()
 #define f_ptr int64_t *
 #endif
 
-#if defined(MINGW32)
+/*#if defined(MINGW32)*/
 /*--------------------------------------------------------------------------
   work around mingw rxvt shell stdio/err buffering troubles
   -------------------------------------------------------------------------*/
-void STDCALLBULL FC_FUNC_(set_stdio_bufs,SET_STDIO_BUFS) ()
-{
-   setvbuf( stdout, NULL, _IOLBF, 2048 );
-   setvbuf( stderr, NULL, _IONBF, 2048 );
-}
-#endif
+/*void STDCALLBULL FC_FUNC_(set_stdio_bufs,SET_STDIO_BUFS) ()*/
+/*[>void set_stdio_bufs_()<]*/
+/*{*/
+   /*setvbuf( stdout, NULL, _IOLBF, 2048 );*/
+   /*setvbuf( stderr, NULL, _IONBF, 2048 );*/
+/*}*/
+/*#endif*/
 
 /*--------------------------------------------------------------------------
   This routine will return the home directory of elmer solver.

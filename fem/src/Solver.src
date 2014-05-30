@@ -45,9 +45,9 @@ PROGRAM Solver
    LOGICAL :: Silent
    CHARACTER(LEN=MAX_NAME_LEN) :: DateStr, toutput
 
-#if defined(MINGW32)
-   CALL SET_STDIO_BUFS()
-#endif
+!#if defined(MINGW32)
+!   CALL SET_STDIO_BUFS()
+!#endif
 
 #ifdef USE_ISO_C_BINDINGS
    CALL envir( 'ELMERSOLVER_OUTPUT_TOTAL', toutput, tlen )
