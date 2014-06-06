@@ -54,6 +54,9 @@ enum ListTypes {
 #ifndef WIN32
 #include <GL/glu.h>
 #endif
+#ifdef __MINGW32__
+#include <GL/glu.h>
+#endif
 #include <QGLWidget>
 #include <QHash>
 #include <QVector>

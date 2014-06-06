@@ -79,8 +79,8 @@ int CheckMpi::findSmpd()
     if(hProcess != NULL)
       GetModuleBaseName(hProcess, NULL, szProcessName, 
 			sizeof(szProcessName)/sizeof(TCHAR));
-    
-    if(!wcscmp(szProcessName, TEXT("smpd.exe"))) {
+    //if(!wcscmp(szProcessName, TEXT("smpd.exe"))) {
+    if(!_tcscmp(szProcessName, TEXT("smpd.exe"))) {
       found = true;
       cout << "yes (PID " << ProcessesIDs[i] << ")" << endl;
     }

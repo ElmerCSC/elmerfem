@@ -57,6 +57,10 @@
 #include <qwt_scale_engine.h>
 
 #define MAX_NOF_PENS 25
+#if QWT_VERSION >= 0x060100
+#define QwtLog10ScaleEngine QwtLogScaleEngine
+#endif
+
 
 class CurveData
 {

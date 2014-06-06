@@ -108,8 +108,13 @@ ConvergenceView::ConvergenceView(Limit *limit, QWidget *parent)
   // grid
   grid = new QwtPlotGrid;
   grid->enableXMin(true);
+#if QWT_VERSION >= 0x060100
+  grid->setMajorPen(QPen(Qt::black, 0, Qt::DotLine));
+  grid->setMinorPen(QPen(Qt::gray, 0 , Qt::DotLine));
+#else
   grid->setMajPen(QPen(Qt::black, 0, Qt::DotLine));
   grid->setMinPen(QPen(Qt::gray, 0 , Qt::DotLine));
+#endif 
   grid->attach(plot);
 
   // axis

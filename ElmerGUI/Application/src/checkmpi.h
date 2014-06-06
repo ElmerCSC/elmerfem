@@ -44,6 +44,7 @@
 #ifdef WIN32
 #include <windows.h>
 #include <psapi.h>
+#include <TCHAR.h>
 #endif
 
 #define MAX_PROCIDS 1000

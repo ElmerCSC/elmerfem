@@ -11,6 +11,11 @@ SET_TARGET_PROPERTIES(Source PROPERTIES PREFIX "")
 ADD_DEPENDENCIES(Poisson elmersolver ElmerSolver_mpi ElmerGrid)
 ADD_DEPENDENCIES(Source elmersolver ElmerSolver_mpi ElmerGrid)
 
+IF(APPLE)
+  TARGET_LINK_LIBRARIES(Poisson elmersolver)
+  TARGET_LINK_LIBRARIES(Source elmersolver)
+ENDIF()
+
 IF(CMAKE_SYSTEM_NAME STREQUAL "Windows")
   TARGET_LINK_LIBRARIES(Poisson elmersolver)
   TARGET_LINK_LIBRARIES(Source elmersolver)

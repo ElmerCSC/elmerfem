@@ -33,7 +33,7 @@ CONFIG += warn_off
 # QMAKE_LFLAGS += -Wl,-rpath,$$(VTKHOME)/lib/vtk-5.2
 
 win32 {
-  QMAKE_LFLAGS += /NODEFAULTLIB:library
+  QMAKE_LFLAGS += #/NODEFAULTLIB:library
 }
 
 QMAKE_CXXFLAGS_DEBUG += -g
