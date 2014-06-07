@@ -1,4 +1,7 @@
-
+!-----------------------------------------------------------------------------
+!> A prototype solver for advection-diffusion-reaction equation,
+!> This equation is generic and intended for education purposes
+!> but may also serve as a starting point for more complex solvers.
 !------------------------------------------------------------------------------
 SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -16,24 +19,34 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: Element
   REAL(KIND=dp) :: Norm
   INTEGER :: n, nb, nd, t, active
+  INTEGER :: iter, maxiter
+  LOGICAL :: Found
 !------------------------------------------------------------------------------
+  
+  maxiter = ListGetInteger( GetSolverParams(),&
+      'Nonlinear System Max Iterations',Found,minv=1)
+  IF(.NOT. Found ) maxiter = 1
 
-   ! System assembly:
-   !----------------
-   CALL DefaultInitialize()
-   Active = GetNOFActive()
-   DO t=1,Active
+  ! Nonlinear iteration loop:
+  !--------------------------
+  DO iter=1,maxiter
+
+    ! System assembly:
+    !----------------
+    CALL DefaultInitialize()
+    Active = GetNOFActive()
+    DO t=1,Active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes()
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
       CALL LocalMatrix(  Element, n, nd+nb )
-   END DO
+    END DO
 
-   CALL DefaultFinishBulkAssembly()
+    CALL DefaultFinishBulkAssembly()
 
-   Active = GetNOFBoundaryElements()
-   DO t=1,Active
+    Active = GetNOFBoundaryElements()
+    DO t=1,Active
       Element => GetBoundaryElement(t)
       IF(ActiveBoundaryElement()) THEN
         n  = GetElementNOFNodes()
@@ -41,15 +54,19 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
         nb = GetElementNOFBDOFs()
         CALL LocalMatrixBC(  Element, n, nd+nb )
       END IF
-   END DO
+    END DO
 
-   CALL DefaultFinishBoundaryAssembly()
-   CALL DefaultFinishAssembly()
-   CALL DefaultDirichletBCs()
+    CALL DefaultFinishBoundaryAssembly()
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
 
-   ! And finally, solve:
-   !--------------------
-   Norm = DefaultSolve()
+    ! And finally, solve:
+    !--------------------
+    Norm = DefaultSolve()
+
+    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+
+  END DO
 
 CONTAINS
 
