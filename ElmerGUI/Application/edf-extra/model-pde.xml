@@ -1,0 +1,85 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+  <PDE Name="Model PDE" >
+    <Name>Model PDE</Name>
+
+    <Solver>
+      <Parameter Widget="Edit" >
+        <Name > Procedure </Name>
+        <DefaultValue> "ModelPDE" "AdvDiffSolver" </DefaultValue>
+      </Parameter>
+      <Parameter Widget="Edit">
+        <Name> Variable </Name>
+        <DefaultValue> Field </DefaultValue>
+      </Parameter>
+    </Solver>
+
+    <BodyForce>
+      <Parameter Widget="Label" > <Name> Source term </Name> </Parameter>
+      <Parameter Widget="Edit">
+        <Name> Field Source </Name>
+        <Whatis> A source for the advection-diffusion-reaction equation may be given with this keyword. </Whatis>
+      </Parameter>
+    </BodyForce>
+
+    <Material>
+      <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
+      <Parameter Widget="Edit" >
+        <Name> Diffusion Coefficient </Name>
+        <Whatis> Give value to diffusivity material property. </Whatis>
+      </Parameter>
+      <Parameter Widget="Edit" >
+        <Name> Reaction Coefficient </Name>
+        <Whatis> Give value to reaction coefficient. </Whatis>
+      </Parameter>
+      <Parameter Widget="Edit" >
+        <Name> Time Derivative Coefficient </Name>
+        <Whatis> Give the multiplier to the time-derivative term for transient cases. </Whatis>
+      </Parameter>
+      <Parameter Widget="Edit">
+        <Name> Advection Velocity 1</Name>
+        <WhatIs> Convection velocity in direction x.</WhatIs>
+      </Parameter>
+      <Parameter Widget="Edit">
+        <Name> Advection Velocity 2</Name>
+        <WhatIs> Convection velocity in direction y.</WhatIs>
+      </Parameter>
+      <Parameter Widget="Edit">
+        <Name> Advection Velocity 3</Name>
+        <WhatIs> Convection velocity in direction z.</WhatIs>
+      </Parameter>
+    </Material>
+
+    <InitialCondition>
+      <Parameter Widget="Label" > <Name> Variables </Name> </Parameter>
+      <Parameter  Widget="Edit">
+        <Name> Field </Name>
+        <Whatis> Give initial field value. </Whatis>
+      </Parameter>
+    </InitialCondition>
+
+    <BoundaryCondition>
+      <Parameter Widget="Label" > <Name> Dirichlet Conditions </Name> </Parameter>
+      <Parameter  Widget="Edit">
+        <Name> Field </Name>
+        <Whatis> Give the field value for this boundary. </Whatis>
+      </Parameter>
+
+      <Parameter Widget="Label" > <Name> Neumann and Robin conditions </Name> </Parameter>
+      <Parameter  Widget="Edit">
+        <Name> Field Flux </Name>
+        <Whatis> Neumann condition for the field. </Whatis>
+      </Parameter>
+      <Parameter  Widget="Edit">
+        <Name> Robin Coefficient </Name>
+        <Whatis> Multiplier of the Robin Boundary Condition. </Whatis>
+      </Parameter>
+      <Parameter  Widget="Edit">
+        <Name> External Field </Name>
+        <Whatis> External field value for Robin boundary condition. </Whatis>
+      </Parameter>
+
+    </BoundaryCondition>
+  </PDE>
+</edf>
