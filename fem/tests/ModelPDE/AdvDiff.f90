@@ -8,7 +8,6 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
@@ -19,7 +18,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: n, nb, nd, t, active
 !------------------------------------------------------------------------------
 
-   !System assembly:
+   ! System assembly:
    !----------------
    CALL DefaultInitialize()
    Active = GetNOFActive()
@@ -56,6 +55,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 
 CONTAINS
 
+! Assembly of the matrix entries arising from the bulk elements
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd )
 !------------------------------------------------------------------------------
@@ -69,9 +69,7 @@ CONTAINS
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
-
     TYPE(ValueList_t), POINTER :: BodyForce
-
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
 !------------------------------------------------------------------------------
@@ -152,6 +150,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+! Assembly of the matrix entries arising from the Neumann and Robin conditions
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC( Element, n, nd )
 !------------------------------------------------------------------------------
@@ -221,6 +220,7 @@ CONTAINS
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
 
+! Perform static condensation in case bubble dofs are present
 !------------------------------------------------------------------------------
   SUBROUTINE LCondensate( N, Nb, K, F )
 !------------------------------------------------------------------------------
