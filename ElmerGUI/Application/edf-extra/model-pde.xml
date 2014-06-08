@@ -36,17 +36,20 @@
       <Parameter Widget="Edit" >
         <Name> Time Derivative Coefficient </Name>
         <Whatis> Give the multiplier to the time-derivative term for transient cases. </Whatis>
+      <Parameter Widget="Edit" >
+        <Name> Convection Coefficient </Name>
+        <Whatis> Give the multiplier to the convection velocity.</Whatis>
       </Parameter>
       <Parameter Widget="Edit">
-        <Name> Advection Velocity 1</Name>
+        <Name> Convection Velocity 1</Name>
         <WhatIs> Convection velocity in direction x.</WhatIs>
       </Parameter>
       <Parameter Widget="Edit">
-        <Name> Advection Velocity 2</Name>
+        <Name> Convection Velocity 2</Name>
         <WhatIs> Convection velocity in direction y.</WhatIs>
       </Parameter>
       <Parameter Widget="Edit">
-        <Name> Advection Velocity 3</Name>
+        <Name> Convection Velocity 3</Name>
         <WhatIs> Convection velocity in direction z.</WhatIs>
       </Parameter>
     </Material>
