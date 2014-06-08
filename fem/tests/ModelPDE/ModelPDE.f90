@@ -1,4 +1,7 @@
-
+!-----------------------------------------------------------------------------
+!> A prototype solver for advection-diffusion-reaction equation,
+!> This equation is generic and intended for education purposes
+!> but may also serve as a starting point for more complex solvers.
 !------------------------------------------------------------------------------
 SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -16,24 +19,34 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: Element
   REAL(KIND=dp) :: Norm
   INTEGER :: n, nb, nd, t, active
+  INTEGER :: iter, maxiter
+  LOGICAL :: Found
 !------------------------------------------------------------------------------
+  
+  maxiter = ListGetInteger( GetSolverParams(),&
+      'Nonlinear System Max Iterations',Found,minv=1)
+  IF(.NOT. Found ) maxiter = 1
 
-   ! System assembly:
-   !----------------
-   CALL DefaultInitialize()
-   Active = GetNOFActive()
-   DO t=1,Active
+  ! Nonlinear iteration loop:
+  !--------------------------
+  DO iter=1,maxiter
+
+    ! System assembly:
+    !----------------
+    CALL DefaultInitialize()
+    Active = GetNOFActive()
+    DO t=1,Active
       Element => GetActiveElement(t)
       n  = GetElementNOFNodes()
       nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
       CALL LocalMatrix(  Element, n, nd+nb )
-   END DO
+    END DO
 
-   CALL DefaultFinishBulkAssembly()
+    CALL DefaultFinishBulkAssembly()
 
-   Active = GetNOFBoundaryElements()
-   DO t=1,Active
+    Active = GetNOFBoundaryElements()
+    DO t=1,Active
       Element => GetBoundaryElement(t)
       IF(ActiveBoundaryElement()) THEN
         n  = GetElementNOFNodes()
@@ -41,17 +54,19 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
         nb = GetElementNOFBDOFs()
         CALL LocalMatrixBC(  Element, n, nd+nb )
       END IF
-   END DO
+    END DO
 
-   CALL DefaultFinishBoundaryAssembly()
+    CALL DefaultFinishBoundaryAssembly()
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
 
-   CALL DefaultFinishAssembly()
-   CALL DefaultDirichletBCs()
+    ! And finally, solve:
+    !--------------------
+    Norm = DefaultSolve()
 
+    IF( Solver % Variable % NonlinConverged == 1 ) EXIT
 
-   ! And finally, solve:
-   !--------------------
-   Norm = DefaultSolve()
+  END DO
 
 CONTAINS
 
@@ -69,7 +84,7 @@ CONTAINS
     LOGICAL :: Stat,Found
     INTEGER :: i,t,p,q,dim
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(ValueList_t), POINTER :: BodyForce
+    TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
 !------------------------------------------------------------------------------
@@ -80,24 +95,26 @@ CONTAINS
     MASS  = 0._dp
     STIFF = 0._dp
     FORCE = 0._dp
-
     LOAD = 0._dp
+
     BodyForce => GetBodyForce()
     IF ( ASSOCIATED(BodyForce) ) &
-       Load(1:n) = GetReal( BodyForce, 'Source', Found )
+       Load(1:n) = GetReal( BodyForce,'field source', Found )
 
-    diff_coeff(1:n)=GetReal(GetMaterial(),'diffusion coefficient',Found)
-    react_coeff(1:n)=GetReal(GetMaterial(),'reaction coefficient',Found)
-    conv_coeff(1:n)=GetReal(GetMaterial(),'convection coefficient',Found)
-    time_coeff(1:n)=GetReal(GetMaterial(),'time derivative coefficient',Found)
+    Material => GetMaterial()
+    diff_coeff(1:n)=GetReal(Material,'diffusion coefficient',Found)
+    react_coeff(1:n)=GetReal(Material,'reaction coefficient',Found)
+    conv_coeff(1:n)=GetReal(Material,'convection coefficient',Found)
+    time_coeff(1:n)=GetReal(Material,'time derivative coefficient',Found)
 
     Velo = 0._dp
     DO i=1,dim
-      Velo(i,1:n)=GetReal(GetMaterial(),'a '//TRIM(I2S(i)),Found)
+      Velo(i,1:n)=GetReal(Material,&
+          'convection velocity '//TRIM(I2S(i)),Found)
     END DO
 
-    !Numerical integration:
-    !----------------------
+    ! Numerical integration:
+    !-----------------------
     IP = GaussPoints( Element )
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
@@ -177,15 +194,14 @@ CONTAINS
     CALL GetElementNodes( Nodes )
     STIFF = 0._dp
     FORCE = 0._dp
-
     LOAD = 0._dp
 
-    Flux(1:n) = GetReal( BC, 'flux', Found )
-    Coeff(1:n) = GetReal( BC, 'coeff', Found )
-    Ext_t(1:n) = GetReal( BC, 'ext_t', Found )
+    Flux(1:n)  = GetReal( BC,'field flux', Found )
+    Coeff(1:n) = GetReal( BC,'robin coefficient', Found )
+    Ext_t(1:n) = GetReal( BC,'external field', Found )
 
-    !Numerical integration:
-    !----------------------
+    ! Numerical integration:
+    !-----------------------
     IP = GaussPoints( Element )
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
@@ -244,8 +260,7 @@ CONTAINS
     CALL InvertMatrix( Kbb,nb )
 
     F(1:n) = F(1:n) - MATMUL( Klb, MATMUL( Kbb, Fb  ) )
-    K(1:n,1:n) = &
-         K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
+    K(1:n,1:n) = K(1:n,1:n) - MATMUL( Klb, MATMUL( Kbb, Kbl ) )
 !------------------------------------------------------------------------------
   END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------

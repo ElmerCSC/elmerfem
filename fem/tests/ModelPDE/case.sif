@@ -8,7 +8,7 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-  Post File   = "ptest.ep"
+!  Post File   = "case.vtu"
 End
 
 Body 1
@@ -18,40 +18,40 @@ Body 1
 End
 
 Material 1
-  a 1 = Real 1
-  a 2 = Real 0
+  Convection Velocity 1 = 1
+  Convection Velocity 2 = 0
 
-  diffusion  coefficient = Real 1
-  convection coefficient = Real 9
-  time derivative coefficient = Real 0
+  diffusion coefficient = 1.0
+  convection coefficient = 9.0
+  time derivative coefficient = 0.0
 End
 
-Body Force 1 :: Source = Real 1
+Body Force 1 :: Field Source = Real 1
 Equation 1 :: Active Solvers(1) = 1
 
 Solver 1
-  Equation = "Poisson"
-  Variable = "Potential"
-  Procedure = "AdvDiff" "AdvDiffSolver"
+  Equation = "ModelPDE"
+  Variable = "Field"
+  Procedure = "ModelPDE" "AdvDiffSolver"
   Element = "p:2"
   Linear System Solver = Direct
-  Steady State Convergence Tolerance = 1e-09
+  Steady State Convergence Tolerance = 1e-9
 End
 
 Boundary Condition 1
   Target Boundaries(1) = 1
-  Potential = Real 0
+  Field = 0.0
 End
 
 Boundary Condition 2
   Target Boundaries(1) = 2
-  coeff = Real 10
-  ext_t = Real  5
+  Robin Coefficient = 10.0
+  External Field = 5.0
 End
 
 Boundary Condition 3
   Target Boundaries(2) = 3 4
-  flux = Real 10
+  Field Flux = 10.0
 End
 
 $fprintf( stderr, "TEST CASE 1\n");
