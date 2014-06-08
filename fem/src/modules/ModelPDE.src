@@ -99,7 +99,7 @@ CONTAINS
 
     BodyForce => GetBodyForce()
     IF ( ASSOCIATED(BodyForce) ) &
-       Load(1:n) = GetReal( BodyForce, 'source', Found )
+       Load(1:n) = GetReal( BodyForce,'field source', Found )
 
     Material => GetMaterial()
     diff_coeff(1:n)=GetReal(Material,'diffusion coefficient',Found)
