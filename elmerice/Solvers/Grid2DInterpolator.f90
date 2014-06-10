@@ -81,6 +81,8 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
 
    LOGICAL :: GotVar, Found, InvertOrder, FillIn
 
+   NULLIFY(Params,Var,Values,Perm)
+
    Params => GetSolverParams()
 
    ! Read variable to initialize and Data
@@ -307,6 +309,7 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
          y = Model % Mesh % Nodes % y(i)
          Rmin = 0.0
          CALL InterpolateDEM(x,y,xb,yb,zb,Nx,Ny,x0,y0,lx,ly,Rmin,z,noDataVal,noDataTol)
+         if ( perm(i) .eq. 0 ) CYCLE
          Values(Perm(i)) = z
          IF (Rmin > 0.0) THEN
             OutNode = OutNode + 1
@@ -362,21 +365,42 @@ SUBROUTINE InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby, Rmin,
      zi(2,1) = noDataVal
      zi(2,2) = noDataVal
   ELSE
-     zi(2,1) = zb(ib+1)
-     IF ( (ib+1).gt.size(zb) ) zi(2,1) = noDataVal
-     zi(2,2) = zb(ib + Nbx + 1)
-     IF ( (ib+Nbx+1).gt.size(zb) ) zi(2,2) = noDataVal
+     IF ( (ib+1).gt.size(zb) ) THEN
+        zi(2,1) = noDataVal
+     ELSE
+        zi(2,1) = zb(ib+1)
+     END IF
+     IF ( (ib+Nbx+1).gt.size(zb) ) THEN 
+        zi(2,2) = noDataVal
+     ELSE
+        zi(2,2) = zb(ib + Nbx + 1)
+     END IF
   END IF
 
   x1 = xb(ib)
-  x2 = xb(ib+1)
-  y1 = yb(ib)
-  y2 = yb(ib + Nbx)
+  IF ( (ib+1).gt.size(xb) ) THEN 
+     x2 = noDataVal
+  ELSE
+     x2 = xb(ib+1)
+  END IF
 
-  zi(1,1) = zb(ib)
-  IF ( (ib).gt.size(zb) ) zi(1,1) = noDataVal
-  zi(1,2) = zb(ib + Nbx)
-  IF ( (ib+Nbx).gt.size(zb) ) zi(1,2) = noDataVal
+  y1 = yb(ib)
+  IF ( (ib+Nbx).gt.size(yb) ) THEN 
+     y2 = noDataVal
+  ELSE
+     y2 = yb(ib + Nbx)
+  END IF
+  
+  IF ( (ib).gt.size(zb) ) THEN
+     zi(1,1) = noDataVal
+  ELSE  
+     zi(1,1) = zb(ib)
+  END IF
+  IF ( (ib+Nbx).gt.size(zb) ) THEN
+     zi(1,2) = noDataVal
+  ELSE
+     zi(1,2) = zb(ib + Nbx)
+  END IF
 
   IF ( (isNoData(zi(1,1))).OR. &
        (isNoData(zi(1,2))).OR. &
