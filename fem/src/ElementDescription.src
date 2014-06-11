@@ -3896,8 +3896,8 @@ END IF
           WorkDivBasis(:) = 0.0d0
 
           WorkBasis(1,1) = 0.0d0
-          WorkBasis(1,2) = (1.0d0 - v**2)/2.0d0
-          WorkDivBasis(1) = -v
+          WorkBasis(1,2) = (-1.0d0 + v**2)/2.0d0
+          WorkDivBasis(1) = v
 
           WorkBasis(2,1) = (1.0d0 - u**2)/2.0d0
           WorkBasis(2,2) = 0.0d0
