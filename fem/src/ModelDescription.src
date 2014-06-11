@@ -2083,6 +2083,8 @@ CONTAINS
          DO WHILE( i>0 )
             IF (MeshName(i:i) /= '/' ) THEN
                i = i-1
+            ELSE	       
+               EXIT
             END IF
          END DO
       END IF
@@ -3349,7 +3351,7 @@ CONTAINS
              CALL Warn('LoadRestartFile','Variable is not present for reading: '//TRIM(Row))
            END IF
            IF( GotPerm .NEQV. ASSOCIATED( Var % Perm ) ) THEN
-             DEALLOCATE( Var % Perm ) ; Var % Perm => Null()
+             DEALLOCATE( Var % Perm ) ; Var % Perm => NULL()
 !            CALL Fatal('LoadRestartFile','Permutation should either exist or not!')
            END IF
 
