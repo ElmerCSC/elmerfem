@@ -2080,8 +2080,10 @@ CONTAINS
          i = 0
       ELSE
          i = LEN_TRIM(MeshName)
-         DO WHILE( i>0 .AND. MeshName(i:i) /= '/' )
-           i = i-1
+         DO WHILE( i>0 )
+            IF (MeshName(i:i) /= '/' ) THEN
+               i = i-1
+            END IF
          END DO
       END IF
 
@@ -4685,6 +4687,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
 !------------------------------------------------------------------------------
+
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 
