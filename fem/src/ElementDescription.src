@@ -3565,60 +3565,68 @@ END IF
 
 
 !----------------------------------------------------------------------------------
-!>  Return RT/BDM basis function values and their divergence at the integration point.
-!>  The data for performing the Piola transformation is also returned.
+!>  Return H(div)-conforming face element basis function values and their divergence 
+!>  with respect to the reference element coordinates at a given point on the
+!>  reference element. Here the basis for a real element K is constructed by  
+!>  transforming the basis functions defined on the reference element k via the 
+!>  Piola transformation. The data for performing the Piola transformation is also returned.
 !>  Note that the reference element is chosen as in the p-approximation so that
-!>  the reference element faces have the same area. This choice simplifies 
+!>  the reference element edges/faces have the same length/area. This choice simplifies 
 !>  the associated assembly procedure.
 !---------------------------------------------------------------------------------
-     RECURSIVE FUNCTION RTandBDMElementInfo( Element, Nodes, u, v, w, F, detF, &
-          Basis, RTBasis, DivRTBasis, BDM, BasisDegree ) RESULT(stat)
+     RECURSIVE FUNCTION FaceElementInfo( Element, Nodes, u, v, w, F, detF, &
+          Basis, FBasis, DivFBasis, BDM, BasisDegree ) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
        TYPE(Element_t), TARGET :: Element     !< Element structure
        TYPE(Nodes_t) :: Nodes                 !< Data corresponding to the classic element nodes
-       REAL(KIND=dp) :: u                     !< 1st Local coordinate at which the basis functions are evaluated
-       REAL(KIND=dp) :: v                     !< 2nd local coordinate
-       REAL(KIND=dp) :: w                     !< 3rd local coordinate
-       REAL(KIND=dp) :: F(3,3)                !< The gradient of the element map K=f(k), with k the reference element
-       REAL(KIND=dp) :: detF                  !< The determinant of the gradient matrix (or the Jacobian matrix)
+       REAL(KIND=dp) :: u                     !< 1st reference element coordinate at which the basis functions are evaluated
+       REAL(KIND=dp) :: v                     !< 2nd reference element coordinate
+       REAL(KIND=dp) :: w                     !< 3rd reference element coordinate
+       REAL(KIND=dp) :: F(3,3)                !< The gradient F=Grad f, with f the element map f:k->K
+       REAL(KIND=dp) :: detF                  !< The determinant of the gradient matrix F
        REAL(KIND=dp) :: Basis(:)              !< Standard nodal basis functions evaluated at (u,v,w)
-       REAL(KIND=dp) :: RTBasis(:,:)          !< Basis functions for spanning RT/BDM approximation on reference element    
-       REAL(KIND=dp) :: DivRTBasis(:)         !< The divergence of RT/BDM basis functions with respect to the local coordinates
+       REAL(KIND=dp) :: FBasis(:,:)           !< Face element basis functions spanning the reference element space   
+       REAL(KIND=dp) :: DivFBasis(:)          !< The divergence of basis functions with respect to the local coordinates
        LOGICAL, OPTIONAL :: BDM               !< If .TRUE., a basis for BDM space is constructed
        INTEGER, OPTIONAL :: BasisDegree(:)    !< This a dummy parameter at the moment
        LOGICAL :: Stat                        !< Should be .FALSE. for a degenerate element but this is not yet checked
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
 !------------------------------------------------------------------------------------------------------------
-       INTEGER :: n, dim, q, i, j, k, ni, nj, A, B, C, D
-       INTEGER :: FDofMap(4,3), DofsPerFace
-       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), t1(3), t2(3), m(3), e(3), S
-       REAL(KIND=dp) :: BDMBasis(12,3), BDMDivBasis(12)       
+       INTEGER :: n, dim, q, i, j, k, ni, nj, nk, A, B, C, D, I1, I2
+       INTEGER :: FDofMap(4,3), DofsPerFace, FaceIndeces(4)
+       REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), t1(3), t2(3), m(3), e(3), S, D1, D2
+       REAL(KIND=dp) :: BDMBasis(12,3), BDMDivBasis(12), WorkBasis(2,3), WorkDivBasis(2)     
        INTEGER, POINTER :: EdgeMap(:,:), FaceMap(:,:), Ind(:)
        INTEGER, TARGET :: TetraFaceMap(4,3)
-       LOGICAL :: RevertSign(4), RevertSign2(4), CheckSignReversions, CreateBDMBasis
+       INTEGER :: SquareFaceMap(4)
+       LOGICAL :: RevertSign(4), RevertSign2(4), CheckSignReversions, CreateBDMBasis, Parallel
+       TYPE(Mesh_t), POINTER :: Mesh
 !-----------------------------------------------------------------------------------------------------
+       Mesh => CurrentModel % Solver % Mesh
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)
+
        TetraFaceMap(1,:) = (/ 2, 1, 3 /)
        TetraFaceMap(2,:) = (/ 1, 2, 4 /)
        TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
        TetraFaceMap(4,:) = (/ 3, 1, 4 /)
-       !------------------------------------------------------------------------------------------
-       ! Check whether BDM basis functions should be created (RT basis is constructed by default)
-       !------------------------------------------------------------------------------------------
+       !-----------------------------------------------------
+       ! Check whether BDM basis functions should be created 
+       !-----------------------------------------------------
        CreateBDMBasis = .FALSE.
        IF ( PRESENT(BDM) ) CreateBDMBasis = BDM
        !-----------------------------------------------------------------------------------------------------
        stat = .TRUE.
        Basis = 0.0d0
-       RTBasis = 0.0d0
-       DivRTBasis = 0.0d0
+       FBasis = 0.0d0
+       DivFBasis = 0.0d0
        F = 0.0d0
 
        dLbasisdx = 0.0d0      
-       n    = Element % TYPE % NumberOfNodes
-       dim  = Element % TYPE % DIMENSION
+       n = Element % TYPE % NumberOfNodes
+       dim = Element % TYPE % DIMENSION
 
        IF ( Element % TYPE % ElementCode == 101 ) THEN
           detF = 1.0d0
@@ -3630,60 +3638,59 @@ END IF
        ! The standard nodal basis functions on the reference element and
        ! their derivatives with respect to the local coordinates. These define 
        ! the mapping of the reference element to an actual element on the 
-       ! background mesh but are not the basis functions for RT/BDM approximation.
+       ! background mesh but are not the basis functions for face element approximation.
        ! Remark: Using reference elements having the faces of the same area
        ! simplifies the implementation of element assembly procedures.
        !-----------------------------------------------------------------------
-       ! Check first whether the given element type is supported...
-       !------------------------------------------------------------------------
-       IF (.NOT. (Element % TYPE % ElementCode == 303 .OR.  &
-            Element % TYPE % ElementCode == 504) ) &
-            CALL Fatal( 'RTElementInfo', &
-            'RT approximation supported only for element types 303 or 504')
-       !---------------------------------------------------------------------------
-       SELECT CASE(dim)
-       CASE(2)
+       SELECT CASE(Element % TYPE % ElementCode / 100)
+       CASE(3)
           DO q=1,n
              Basis(q) = TriangleNodalPBasis(q, u, v)
              dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v) 
           END DO
-       CASE(3)
+       CASE(4)
+          DO q=1,n
+             Basis(q) = QuadNodalPBasis(q, u, v)
+             dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v) 
+          END DO
+       CASE(5)
           DO q=1,n
              Basis(q) = TetraNodalPBasis(q, u, v, w)
              dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
           END DO
-       END SELECT
+       CASE DEFAULT
+          CALL Fatal('ElementDescription::FaceElementInfo','Unsupported element type')
+       END SELECT          
 
        !-----------------------------------------------------------------------
        ! Get data for performing the Piola transformation...
        !-----------------------------------------------------------------------
        stat = PiolaTransformationData(n, Element, Nodes, F, detF, dLBasisdx) 
        !------------------------------------------------------------------------
-       ! ... in order to define RT basis via applying the Piola transformation as
-       !    RT(K) = { B | B = 1/(det F) F b(f^{-1}(x)) }
-       ! with b giving the RT basis function on the reference element k,
-       ! f mapping k to the actual element K, i.e. K = f(k) and F = grad f. This 
+       ! ... in order to define the basis for the element space X(K) via 
+       ! applying the Piola transformation as
+       !    X(K) = { B | B = 1/(det F) F b(f^{-1}(x)) }
+       ! with b giving the face element basis function on the reference element k,
+       ! f mapping k to the actual element K, i.e. K = f(k) and F = Grad f. This 
        ! function returns the local basis functions b and their divergence (with respect
        ! to local coordinates) evaluated at the integration point. The effect of 
        ! the Piola transformation need to be considered when integrating, so we 
        ! shall return also the values of F and det F.
        !
-       ! The construction of RT bases could be done in an easier way for 
+       ! The construction of face element bases could be done in an alternate way for 
        ! triangles and tetrahedra, while the chosen approach has the benefit that
        ! it generalizes to other cases. For example general quadrilaterals may now 
        ! be handled in the same way.
-       !
-       ! The Piola transform is applied to the BDM case in the same way
        !---------------------------------------------------------------------------
-       SELECT CASE(dim)
-       CASE(2)
-          !-----------------------------------------------------------
-          ! This branch is currently for handling triangles. Note that
-          ! the global orientation of face normal is taken to be
+
+       SELECT CASE(Element % TYPE % ElementCode / 100)
+       CASE(3)
+          !----------------------------------------------------------------
+          ! Note that the global orientation of face normal is taken to be
           ! n = t x e_z where the tangent vector t is aligned with
           ! the element edge and points towards the node that has
           ! a larger global index.
-          !---------------------------------------------------
+          !---------------------------------------------------------------
           EdgeMap => LGetEdgeMap(3)
           !EdgeMap => GetEdgeMap(GetElementFamily(Element))
 
@@ -3695,71 +3702,77 @@ END IF
              i = EdgeMap(1,1)
              j = EdgeMap(1,2)
              ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
              nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
                 ! The sign and order of basis functions are reverted as
                 ! compared with the other possibility
-                RTBasis(1,1) = -sqrt(3.0d0)/6.0d0 * (sqrt(3.0d0) + u - v)             
-                RTBasis(1,2) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) - 3.0d0 * u + v)
-                DivRTBasis(1) = -sqrt(3.0d0)/3.0d0 
+                FBasis(1,1) = -sqrt(3.0d0)/6.0d0 * (sqrt(3.0d0) + u - v)             
+                FBasis(1,2) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) - 3.0d0 * u + v)
+                DivFBasis(1) = -sqrt(3.0d0)/3.0d0 
 
-                RTBasis(2,1) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + u + v)             
-                RTBasis(2,2) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + 3.0d0 * u + v)
-                DivRTBasis(2) = -sqrt(3.0d0)/3.0d0
+                FBasis(2,1) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + u + v)             
+                FBasis(2,2) = -sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + 3.0d0 * u + v)
+                DivFBasis(2) = -sqrt(3.0d0)/3.0d0
              ELSE
-                RTBasis(1,1) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + u + v)             
-                RTBasis(1,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + 3.0d0 * u + v)
-                DivRTBasis(1) = sqrt(3.0d0)/3.0d0
+                FBasis(1,1) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + u + v)             
+                FBasis(1,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) + 3.0d0 * u + v)
+                DivFBasis(1) = sqrt(3.0d0)/3.0d0
 
-                RTBasis(2,1) = sqrt(3.0d0)/6.0d0 * (sqrt(3.0d0) + u - v)             
-                RTBasis(2,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) - 3.0d0 * u + v)
-                DivRTBasis(2) = sqrt(3.0d0)/3.0d0
+                FBasis(2,1) = sqrt(3.0d0)/6.0d0 * (sqrt(3.0d0) + u - v)             
+                FBasis(2,2) = sqrt(3.0d0)/6.0d0 * (-sqrt(3.0d0) - 3.0d0 * u + v)
+                DivFBasis(2) = sqrt(3.0d0)/3.0d0
              END IF
 
              ! Two basis functions defined on face 23
              i = EdgeMap(2,1)
              j = EdgeMap(2,2)
              ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
              nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-                RTBasis(3,1) = -1.0d0/6.0d0 * (-3.0d0+sqrt(3.0d0)+(-3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
-                RTBasis(3,2) = -1.0d0/6.0d0 * ( 3.0d0+sqrt(3.0d0) ) * v
-                DivRTBasis(3) = -sqrt(3.0d0)/3.0d0
+                FBasis(3,1) = -1.0d0/6.0d0 * (-3.0d0+sqrt(3.0d0)+(-3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
+                FBasis(3,2) = -1.0d0/6.0d0 * ( 3.0d0+sqrt(3.0d0) ) * v
+                DivFBasis(3) = -sqrt(3.0d0)/3.0d0
 
-                RTBasis(4,1) = -1.0d0/(3.0d0+sqrt(3.0d0)) * (2.0d0+sqrt(3.0d0)+(2.0d0+sqrt(3.0d0))*u-(1.0d0+sqrt(3.0d0))*v)
-                RTBasis(4,2) = -1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivRTBasis(4) = -sqrt(3.0d0)/3.0d0
+                FBasis(4,1) = -1.0d0/(3.0d0+sqrt(3.0d0)) * (2.0d0+sqrt(3.0d0)+(2.0d0+sqrt(3.0d0))*u-(1.0d0+sqrt(3.0d0))*v)
+                FBasis(4,2) = -1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
+                DivFBasis(4) = -sqrt(3.0d0)/3.0d0
              ELSE
-                RTBasis(3,1) = 1.0d0/(3.0d0+sqrt(3.0d0)) * (2.0d0+sqrt(3.0d0)+(2.0d0+sqrt(3.0d0))*u-(1.0d0+sqrt(3.0d0))*v)
-                RTBasis(3,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivRTBasis(3) = sqrt(3.0d0)/3.0d0
+                FBasis(3,1) = 1.0d0/(3.0d0+sqrt(3.0d0)) * (2.0d0+sqrt(3.0d0)+(2.0d0+sqrt(3.0d0))*u-(1.0d0+sqrt(3.0d0))*v)
+                FBasis(3,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
+                DivFBasis(3) = sqrt(3.0d0)/3.0d0
 
-                RTBasis(4,1) = 1.0d0/6.0d0 * (-3.0d0+sqrt(3.0d0)+(-3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
-                RTBasis(4,2) = 1.0d0/6.0d0 * ( 3.0d0+sqrt(3.0d0) ) * v
-                DivRTBasis(4) = sqrt(3.0d0)/3.0d0
+                FBasis(4,1) = 1.0d0/6.0d0 * (-3.0d0+sqrt(3.0d0)+(-3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
+                FBasis(4,2) = 1.0d0/6.0d0 * ( 3.0d0+sqrt(3.0d0) ) * v
+                DivFBasis(4) = sqrt(3.0d0)/3.0d0
              END IF
 
              ! Two basis functions defined on face 31
              i = EdgeMap(3,1)
              j = EdgeMap(3,2)
              ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
              nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
              IF (nj<ni) THEN
-                RTBasis(5,1) = -1.0d0/6.0d0 * (-3.0d0-sqrt(3.0d0)+(3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
-                RTBasis(5,2) = -1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivRTBasis(5) = -sqrt(3.0d0)/3.0d0
+                FBasis(5,1) = -1.0d0/6.0d0 * (-3.0d0-sqrt(3.0d0)+(3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
+                FBasis(5,2) = -1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
+                DivFBasis(5) = -sqrt(3.0d0)/3.0d0
 
-                RTBasis(6,1) = -1.0d0/( 3.0d0+sqrt(3.0d0) ) * ( 1.0d0 - u - v - sqrt(3.0d0)*v )
-                RTBasis(6,2) = -( 3.0d0+2.0d0*sqrt(3.0d0) ) * v /(3.0d0*(1.0d0+sqrt(3.0d0)))
-                DivRTBasis(6) = -sqrt(3.0d0)/3.0d0
+                FBasis(6,1) = -1.0d0/( 3.0d0+sqrt(3.0d0) ) * ( 1.0d0 - u - v - sqrt(3.0d0)*v )
+                FBasis(6,2) = -( 3.0d0+2.0d0*sqrt(3.0d0) ) * v /(3.0d0*(1.0d0+sqrt(3.0d0)))
+                DivFBasis(6) = -sqrt(3.0d0)/3.0d0
              ELSE
-                RTBasis(5,1) = 1.0d0/( 3.0d0+sqrt(3.0d0) ) * ( 1.0d0 - u - v - sqrt(3.0d0)*v ) 
-                RTBasis(5,2) = ( 3.0d0+2.0d0*sqrt(3.0d0) ) * v /(3.0d0*(1.0d0+sqrt(3.0d0)))
-                DivRTBasis(5) = sqrt(3.0d0)/3.0d0
+                FBasis(5,1) = 1.0d0/( 3.0d0+sqrt(3.0d0) ) * ( 1.0d0 - u - v - sqrt(3.0d0)*v ) 
+                FBasis(5,2) = ( 3.0d0+2.0d0*sqrt(3.0d0) ) * v /(3.0d0*(1.0d0+sqrt(3.0d0)))
+                DivFBasis(5) = sqrt(3.0d0)/3.0d0
 
-                RTBasis(6,1) = 1.0d0/6.0d0 * (-3.0d0-sqrt(3.0d0)+(3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
-                RTBasis(6,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
-                DivRTBasis(6) = sqrt(3.0d0)/3.0d0
+                FBasis(6,1) = 1.0d0/6.0d0 * (-3.0d0-sqrt(3.0d0)+(3.0d0+sqrt(3.0d0))*u + 2.0d0*sqrt(3.0d0)*v)
+                FBasis(6,2) = 1.0d0/6.0d0 * ( -3.0d0+sqrt(3.0d0) ) * v
+                DivFBasis(6) = sqrt(3.0d0)/3.0d0
              END IF
 
           ELSE
@@ -3767,42 +3780,145 @@ END IF
              i = EdgeMap(1,1)
              j = EdgeMap(1,2)
              ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
              nj = Element % NodeIndexes(j)
-             RTBasis(1,1) = SQRT(3.0d0)/6.0d0 * u
-             RTBasis(1,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
-             DivRTBasis(1) =  SQRT(3.0d0)/3.0d0
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(1,1) = SQRT(3.0d0)/6.0d0 * u
+             FBasis(1,2) = -0.5d0 + SQRT(3.0d0)/6.0d0 * v
+             DivFBasis(1) =  SQRT(3.0d0)/3.0d0
              IF (nj<ni) THEN
-                RTBasis(1,:) = -RTBasis(1,:)
-                DivRTBasis(1) = -DivRTBasis(1)
+                FBasis(1,:) = -FBasis(1,:)
+                DivFBasis(1) = -DivFBasis(1)
              END IF
 
              i = EdgeMap(2,1)
              j = EdgeMap(2,2)
              ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
              nj = Element % NodeIndexes(j)
-             RTBasis(2,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
-             RTBasis(2,2) = SQRT(3.0d0)/6.0d0 * v
-             DivRTBasis(2) =  SQRT(3.0d0)/3.0d0        
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(2,1) = SQRT(3.0d0)/6.0d0 * (1.0d0 + u)
+             FBasis(2,2) = SQRT(3.0d0)/6.0d0 * v
+             DivFBasis(2) =  SQRT(3.0d0)/3.0d0        
              IF (nj<ni) THEN
-                RTBasis(2,:) = -RTBasis(2,:)
-                DivRTBasis(2) = -DivRTBasis(2)
+                FBasis(2,:) = -FBasis(2,:)
+                DivFBasis(2) = -DivFBasis(2)
              END IF
 
              i = EdgeMap(3,1)
              j = EdgeMap(3,2)
              ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
              nj = Element % NodeIndexes(j)
-             RTBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
-             RTBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
-             DivRTBasis(3) =  SQRT(3.0d0)/3.0d0          
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(3,1) = SQRT(3.0d0)/6.0d0 * (-1.0d0 + u)
+             FBasis(3,2) = SQRT(3.0d0)/6.0d0 * v
+             DivFBasis(3) =  SQRT(3.0d0)/3.0d0          
              IF (nj<ni) THEN
-                RTBasis(3,:) = -RTBasis(3,:)
-                DivRTBasis(3) = -DivRTBasis(3)
+                FBasis(3,:) = -FBasis(3,:)
+                DivFBasis(3) = -DivFBasis(3)
              END IF
 
           END IF
+          
+       CASE(4)
+          !--------------------------------------------------------------------
+          ! Quadrilateral Arnold-Boffi-Falk (ABF) element basis of degree k=0
+          !--------------------------------------------------------------------
+          EdgeMap => LGetEdgeMap(4)         
+          !-------------------------------------------------
+          ! Four basis functions defined on the edges
+          !-------------------------------------------------
+          i = EdgeMap(1,1)
+          j = EdgeMap(1,2)
+          ni = Element % NodeIndexes(i)
+          IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+          nj = Element % NodeIndexes(j)
+          IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+          FBasis(1,1) = 0.0d0
+          FBasis(1,2) = -((-1.0d0 + v)*v)/4.0d0
+          DivFBasis(1) = (1.0d0 - 2*v)/4.0d0
+          IF (nj<ni) THEN
+             FBasis(1,:) = -FBasis(1,:)
+             DivFBasis(1) = -DivFBasis(1)
+          END IF
 
-       CASE(3)
+          i = EdgeMap(2,1)
+          j = EdgeMap(2,2)
+          ni = Element % NodeIndexes(i)
+          IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+          nj = Element % NodeIndexes(j)
+          IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+          FBasis(2,1) = (u*(1.0d0 + u))/4.0d0
+          FBasis(2,2) = 0.0d0
+          DivFBasis(2) = (1 + 2.0d0*u)/4.0d0
+          IF (nj<ni) THEN
+             FBasis(2,:) = -FBasis(2,:)
+             DivFBasis(2) = -DivFBasis(2)
+          END IF
+
+          i = EdgeMap(3,1)
+          j = EdgeMap(3,2)
+          ni = Element % NodeIndexes(i)
+          IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+          nj = Element % NodeIndexes(j)
+          IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+          FBasis(3,1) = 0.0d0
+          FBasis(3,2) = (v*(1.0d0 + v))/4.0d0
+          DivFBasis(3) = (1.0d0 + 2.0d0*v)/4.0d0
+          IF (nj<ni) THEN
+             FBasis(3,:) = -FBasis(3,:)
+             DivFBasis(3) = -DivFBasis(3)
+          END IF
+
+          i = EdgeMap(4,1)
+          j = EdgeMap(4,2)
+          ni = Element % NodeIndexes(i)
+          IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+          nj = Element % NodeIndexes(j)
+          IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+          FBasis(4,1) = -((-1.0d0 + u)*u)/4.0d0
+          FBasis(4,2) = 0.0d0
+          DivFBasis(4) = (1.0d0 - 2.0d0*u)/4.0d0
+          IF (nj<ni) THEN
+             FBasis(4,:) = -FBasis(4,:)
+             DivFBasis(4) = -DivFBasis(4)
+          END IF
+
+          !--------------------------------------------------------------------
+          ! Additional two basis functions associated with the element interior
+          !-------------------------------------------------------------------
+          SquareFaceMap(:) = (/ 1,2,3,4 /)          
+          Ind => Element % Nodeindexes
+
+          WorkBasis(1,:) = 0.0d0
+          WorkBasis(2,:) = 0.0d0
+          WorkDivBasis(:) = 0.0d0
+
+          WorkBasis(1,1) = 0.0d0
+          WorkBasis(1,2) = (1.0d0 - v**2)/2.0d0
+          WorkDivBasis(1) = -v
+
+          WorkBasis(2,1) = (1.0d0 - u**2)/2.0d0
+          WorkBasis(2,2) = 0.0d0
+          WorkDivBasis(2) = -u
+
+          DO j=1,4
+             FaceIndeces(j) = Ind(SquareFaceMap(j))
+          END DO
+          IF (Parallel) THEN
+             DO j=1,4
+                FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+             END DO
+          END IF
+          CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+          FBasis(5,:) = D1 * WorkBasis(I1,:)
+          DivFBasis(5) = D1 * WorkDivBasis(I1)
+          FBasis(6,:) = D2 * WorkBasis(I2,:)
+          DivFBasis(6) = D2 * WorkDivBasis(I2)   
+
+       CASE(5)
           !-----------------------------------------
           ! This branch is for handling tetrahedra
           !-----------------------------------------
@@ -3816,43 +3932,29 @@ END IF
              ! positive outward flux from the element through the face handled.
              !-----------------------------------------------------------------------------------
              RevertSign(q) = .FALSE.
-             i = FaceMap(q,1)
-             j = FaceMap(q,2)
-             k = FaceMap(q,3)
 
-             SELECT CASE(q)
-
-             !CASE(1)
-             !   IF ( (Ind(i) < Ind(j)) .AND. (Ind(i) < Ind(k)) ) THEN
-             !      IF (Ind(j) < Ind(k)) THEN
-             !         RevertSign(q) = .TRUE.
-             !      END IF
-             !   ELSE IF ( ( Ind(j) < Ind(i) ) .AND. ( Ind(j) < Ind(k) ) ) THEN
-             !      IF ( Ind(k) < Ind(i) ) THEN
-             !         RevertSign(q) = .TRUE.
-             !      END IF
-             !   ELSE  
-             !      IF ( Ind(i) < Ind(j) ) THEN
-             !         RevertSign(q) = .TRUE.
-             !      END IF
-             !   END IF
-
-             CASE(1,2,3,4)
-                IF ( (Ind(i) < Ind(j)) .AND. (Ind(i) < Ind(k)) ) THEN
-                   IF (Ind(k) < Ind(j)) THEN
-                      RevertSign(q) = .TRUE.
-                   END IF
-                ELSE IF ( ( Ind(j) < Ind(i) ) .AND. ( Ind(j) < Ind(k) ) ) THEN
-                   IF ( Ind(i) < Ind(k) ) THEN
-                      RevertSign(q) = .TRUE.
-                   END IF
-                ELSE  
-                   IF ( Ind(j) < Ind(i) ) THEN
-                      RevertSign(q) = .TRUE.
-                   END IF
+             DO j=1,3
+                FaceIndeces(j) = Ind(FaceMap(q,j))
+             END DO
+             IF (Parallel) THEN
+                DO j=1,3
+                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                END DO
+             END IF
+             
+             IF ( (FaceIndeces(1) < FaceIndeces(2)) .AND. (FaceIndeces(1) < FaceIndeces(3)) ) THEN
+                IF (FaceIndeces(3) < FaceIndeces(2)) THEN
+                   RevertSign(q) = .TRUE.
                 END IF
-
-             END SELECT
+             ELSE IF ( ( FaceIndeces(2) < FaceIndeces(1) ) .AND. ( FaceIndeces(2) < FaceIndeces(3) ) ) THEN
+                IF ( FaceIndeces(1) < FaceIndeces(3) ) THEN
+                   RevertSign(q) = .TRUE.
+                END IF
+             ELSE  
+                IF ( FaceIndeces(2) < FaceIndeces(1) ) THEN
+                   RevertSign(q) = .TRUE.
+                END IF
+             END IF
 
           END DO
 
@@ -3992,14 +4094,23 @@ END IF
              !-----------------------------------------------------------------------
              FDofMap = 0
              DO q=1,4
-                i = FaceMap(q,1)
-                j = FaceMap(q,2)
-                k = FaceMap(q,3)
+                !i = FaceMap(q,1)
+                !j = FaceMap(q,2)
+                !k = FaceMap(q,3)
+
+                DO j=1,3
+                   FaceIndeces(j) = Ind(FaceMap(q,j))
+                END DO
+                IF (Parallel) THEN
+                   DO j=1,3
+                      FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                   END DO
+                END IF
                 
-                IF ( ( Ind(i) < Ind(j) ) .AND. ( Ind(i) < Ind(k) ) ) THEN
+                IF ( ( FaceIndeces(1) < FaceIndeces(2) ) .AND. ( FaceIndeces(1) < FaceIndeces(3) ) ) THEN
                    ! A = i
                    FDofMap(q,1) = 1
-                   IF (Ind(j) < Ind(k)) THEN
+                   IF (FaceIndeces(2) < FaceIndeces(3)) THEN
                       !B = j
                       !C = k
                       FDofMap(q,2) = 2
@@ -4010,10 +4121,10 @@ END IF
                       FDofMap(q,2) = 3
                       FDofMap(q,3) = 2
                    END IF
-                ELSE IF ( ( Ind(j) < Ind(i) ) .AND. ( Ind(j) < Ind(k) ) ) THEN
+                ELSE IF ( ( FaceIndeces(2) < FaceIndeces(1) ) .AND. ( FaceIndeces(2) < FaceIndeces(3) ) ) THEN
                    !A = j
                    FDofMap(q,1) = 2
-                   IF (Ind(i) < Ind(k)) THEN
+                   IF (FaceIndeces(1) < FaceIndeces(3)) THEN
                       !B = i
                       !C = k
                       FDofMap(q,2) = 1
@@ -4027,7 +4138,7 @@ END IF
                 ELSE
                    !A = k
                    FDofMap(q,1) = 3
-                   IF (Ind(i) < Ind(j)) THEN
+                   IF (FaceIndeces(1) < FaceIndeces(2)) THEN
                       !B = i
                       !C = j
                       FDofMap(q,2) = 1
@@ -4054,8 +4165,8 @@ END IF
                 DO j=1,DofsPerFace
                    k = FDofMap(q,j)
                    i = (q-1)*DofsPerFace + j
-                   RTBasis(i,:) = S * BDMBasis((q-1)*DofsPerFace+k,:)
-                   DivRTBasis(i) = S * sqrt(3.0d0)/(2.0d0*sqrt(2.0d0))
+                   FBasis(i,:) = S * BDMBasis((q-1)*DofsPerFace+k,:)
+                   DivFBasis(i) = S * sqrt(3.0d0)/(2.0d0*sqrt(2.0d0))
                 END DO
              END DO
 
@@ -4063,46 +4174,48 @@ END IF
              !-------------------------------------------------------------------------
              ! The basis functions that define RT space on reference element
              !-----------------------------------------------------------------------
-             RTBasis(1,1) = SQRT(2.0d0)/4.0d0 * u
-             RTBasis(1,2) = -SQRT(6.0d0)/12.0d0 + SQRT(2.0d0)/4.0d0 * v
-             RTBasis(1,3) = -1.0d0/SQRT(3.0d0) + SQRT(2.0d0)/4.0d0 * w
-             DivRTBasis(1) = 3.0d0*SQRT(2.0d0)/4.0d0
+             FBasis(1,1) = SQRT(2.0d0)/4.0d0 * u
+             FBasis(1,2) = -SQRT(6.0d0)/12.0d0 + SQRT(2.0d0)/4.0d0 * v
+             FBasis(1,3) = -1.0d0/SQRT(3.0d0) + SQRT(2.0d0)/4.0d0 * w
+             DivFBasis(1) = 3.0d0*SQRT(2.0d0)/4.0d0
              IF ( RevertSign(1) ) THEN
-                RTBasis(1,:) = -RTBasis(1,:)
-                DivRTBasis(1) = -DivRTBasis(1)
+                FBasis(1,:) = -FBasis(1,:)
+                DivFBasis(1) = -DivFBasis(1)
              END IF
 
-             RTBasis(2,1) = SQRT(2.0d0)/4.0d0 * u
-             RTBasis(2,2) = -SQRT(6.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * v
-             RTBasis(2,3) = SQRT(2.0d0)/4.0d0 * w
-             DivRTBasis(2) = 3.0d0*SQRT(2.0d0)/4.0d0
+             FBasis(2,1) = SQRT(2.0d0)/4.0d0 * u
+             FBasis(2,2) = -SQRT(6.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * v
+             FBasis(2,3) = SQRT(2.0d0)/4.0d0 * w
+             DivFBasis(2) = 3.0d0*SQRT(2.0d0)/4.0d0
              IF ( RevertSign(2) ) THEN
-                RTBasis(2,:) = -RTBasis(2,:)
-                DivRTBasis(2) = -DivRTBasis(2)
+                FBasis(2,:) = -FBasis(2,:)
+                DivFBasis(2) = -DivFBasis(2)
              END IF
 
-             RTBasis(3,1) = SQRT(2.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * u
-             RTBasis(3,2) = SQRT(2.0d0)/4.0d0 * v
-             RTBasis(3,3) = SQRT(2.0d0)/4.0d0 * w
-             DivRTBasis(3) = 3.0d0*SQRT(2.0d0)/4.0d0
+             FBasis(3,1) = SQRT(2.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * u
+             FBasis(3,2) = SQRT(2.0d0)/4.0d0 * v
+             FBasis(3,3) = SQRT(2.0d0)/4.0d0 * w
+             DivFBasis(3) = 3.0d0*SQRT(2.0d0)/4.0d0
              IF ( RevertSign(3) ) THEN
-                RTBasis(3,:) = -RTBasis(3,:)
-                DivRTBasis(3) = -DivRTBasis(3)
+                FBasis(3,:) = -FBasis(3,:)
+                DivFBasis(3) = -DivFBasis(3)
              END IF
 
-             RTBasis(4,1) = -SQRT(2.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * u
-             RTBasis(4,2) = SQRT(2.0d0)/4.0d0 * v
-             RTBasis(4,3) = SQRT(2.0d0)/4.0d0 * w
-             DivRTBasis(4) = 3.0d0*SQRT(2.0d0)/4.0d0
+             FBasis(4,1) = -SQRT(2.0d0)/4.0d0 + SQRT(2.0d0)/4.0d0 * u
+             FBasis(4,2) = SQRT(2.0d0)/4.0d0 * v
+             FBasis(4,3) = SQRT(2.0d0)/4.0d0 * w
+             DivFBasis(4) = 3.0d0*SQRT(2.0d0)/4.0d0
              IF ( RevertSign(4) ) THEN
-                RTBasis(4,:) = -RTBasis(4,:)
-                DivRTBasis(4) = -DivRTBasis(4)
+                FBasis(4,:) = -FBasis(4,:)
+                DivFBasis(4) = -DivFBasis(4)
              END IF
           END IF
+       CASE DEFAULT
+          CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
        END SELECT
     
 !-----------------------------------------------------------------------------
-     END FUNCTION RTandBDMElementInfo
+     END FUNCTION FaceElementInfo
 !------------------------------------------------------------------------------
 
 
