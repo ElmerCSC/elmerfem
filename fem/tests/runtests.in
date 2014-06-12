@@ -54,7 +54,7 @@ export LD=elmerld
 export F90=elmerf90-nosh
 export LIBS="-L$ELMER_LIB @EXTRA_LIBS@"
 
-@CC@ -o findnorm$EXE_EXT findnorm.c @UNIX_MATH_LIB@
+@FC@ -o findnorm$EXE_EXT findnorm.f90 @UNIX_MATH_LIB@
 chmod 775 findnorm$EXE_EXT
 
 total=0
@@ -85,12 +85,12 @@ for dir in $dirs; do
 	  cputime=`../findnorm$EXE_EXT test.log $cputime`
       fi
 
-      if test $success -ge 1; then
+      if test "$success"==1; then
 	  passed=`expr $passed + 1`
           printf "		[PASSED], CPU time=$cputime\n"
 	  make -i clean > /dev/null 2>&1
       else
-          printf "look at [%s/test.log] for details\n" $dir
+          printf "$success, look at [%s/test.log] for details\n" $dir
       fi
       cd $cwd
 done
