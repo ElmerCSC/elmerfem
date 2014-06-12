@@ -117,7 +117,7 @@
 #cmakedefine PACKAGE_VERSION @PACKAGE_VERSION@
 
 /* Shared lib filename extension */
-#define SHL_EXTENSION ".so"
+#cmakedefine SHL_EXTENSION "@SHL_EXTENSION@"
 
 
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
