@@ -85,7 +85,7 @@ for dir in $dirs; do
 	  cputime=`../findnorm$EXE_EXT test.log $cputime`
       fi
 
-      if test "$success"==1; then
+      if test "$success"="1"; then
 	  passed=`expr $passed + 1`
           printf "		[PASSED], CPU time=$cputime\n"
 	  make -i clean > /dev/null 2>&1
