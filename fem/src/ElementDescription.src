@@ -3575,7 +3575,7 @@ END IF
 !>  the associated assembly procedure.
 !---------------------------------------------------------------------------------
      RECURSIVE FUNCTION FaceElementInfo( Element, Nodes, u, v, w, F, detF, &
-          Basis, FBasis, DivFBasis, BDM, BasisDegree ) RESULT(stat)
+          Basis, FBasis, DivFBasis, BDM, Dual, BasisDegree ) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
@@ -3590,6 +3590,7 @@ END IF
        REAL(KIND=dp) :: FBasis(:,:)           !< Face element basis functions spanning the reference element space   
        REAL(KIND=dp) :: DivFBasis(:)          !< The divergence of basis functions with respect to the local coordinates
        LOGICAL, OPTIONAL :: BDM               !< If .TRUE., a basis for BDM space is constructed
+       LOGICAL, OPTIONAL :: Dual              !< If .TRUE., create an alternate dual basis
        INTEGER, OPTIONAL :: BasisDegree(:)    !< This a dummy parameter at the moment
        LOGICAL :: Stat                        !< Should be .FALSE. for a degenerate element but this is not yet checked
 !-----------------------------------------------------------------------------------------------------------------
@@ -3603,6 +3604,7 @@ END IF
        INTEGER, TARGET :: TetraFaceMap(4,3)
        INTEGER :: SquareFaceMap(4)
        LOGICAL :: RevertSign(4), RevertSign2(4), CheckSignReversions, CreateBDMBasis, Parallel
+       LOGICAL :: CreateDualBasis
        TYPE(Mesh_t), POINTER :: Mesh
 !-----------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
@@ -3612,11 +3614,13 @@ END IF
        TetraFaceMap(2,:) = (/ 1, 2, 4 /)
        TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
        TetraFaceMap(4,:) = (/ 3, 1, 4 /)
-       !-----------------------------------------------------
-       ! Check whether BDM basis functions should be created 
-       !-----------------------------------------------------
+       !--------------------------------------------------------------
+       ! Check whether BDM or dual basis functions should be created 
+       !--------------------------------------------------------------
        CreateBDMBasis = .FALSE.
        IF ( PRESENT(BDM) ) CreateBDMBasis = BDM
+       CreateDualBasis = .FALSE.
+       IF ( PRESENT(Dual) ) CreateDualBasis = Dual
        !-----------------------------------------------------------------------------------------------------
        stat = .TRUE.
        Basis = 0.0d0
@@ -3825,98 +3829,192 @@ END IF
           !--------------------------------------------------------------------
           ! Quadrilateral Arnold-Boffi-Falk (ABF) element basis of degree k=0
           !--------------------------------------------------------------------
-          EdgeMap => LGetEdgeMap(4)         
-          !-------------------------------------------------
-          ! Four basis functions defined on the edges
-          !-------------------------------------------------
-          i = EdgeMap(1,1)
-          j = EdgeMap(1,2)
-          ni = Element % NodeIndexes(i)
-          IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-          nj = Element % NodeIndexes(j)
-          IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-          FBasis(1,1) = 0.0d0
-          FBasis(1,2) = -((-1.0d0 + v)*v)/4.0d0
-          DivFBasis(1) = (1.0d0 - 2*v)/4.0d0
-          IF (nj<ni) THEN
-             FBasis(1,:) = -FBasis(1,:)
-             DivFBasis(1) = -DivFBasis(1)
-          END IF
-
-          i = EdgeMap(2,1)
-          j = EdgeMap(2,2)
-          ni = Element % NodeIndexes(i)
-          IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-          nj = Element % NodeIndexes(j)
-          IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-          FBasis(2,1) = (u*(1.0d0 + u))/4.0d0
-          FBasis(2,2) = 0.0d0
-          DivFBasis(2) = (1 + 2.0d0*u)/4.0d0
-          IF (nj<ni) THEN
-             FBasis(2,:) = -FBasis(2,:)
-             DivFBasis(2) = -DivFBasis(2)
-          END IF
-
-          i = EdgeMap(3,1)
-          j = EdgeMap(3,2)
-          ni = Element % NodeIndexes(i)
-          IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-          nj = Element % NodeIndexes(j)
-          IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-          FBasis(3,1) = 0.0d0
-          FBasis(3,2) = (v*(1.0d0 + v))/4.0d0
-          DivFBasis(3) = (1.0d0 + 2.0d0*v)/4.0d0
-          IF (nj<ni) THEN
-             FBasis(3,:) = -FBasis(3,:)
-             DivFBasis(3) = -DivFBasis(3)
-          END IF
-
-          i = EdgeMap(4,1)
-          j = EdgeMap(4,2)
-          ni = Element % NodeIndexes(i)
-          IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
-          nj = Element % NodeIndexes(j)
-          IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-          FBasis(4,1) = -((-1.0d0 + u)*u)/4.0d0
-          FBasis(4,2) = 0.0d0
-          DivFBasis(4) = (1.0d0 - 2.0d0*u)/4.0d0
-          IF (nj<ni) THEN
-             FBasis(4,:) = -FBasis(4,:)
-             DivFBasis(4) = -DivFBasis(4)
-          END IF
-
-          !--------------------------------------------------------------------
-          ! Additional two basis functions associated with the element interior
-          !-------------------------------------------------------------------
+          EdgeMap => LGetEdgeMap(4)
           SquareFaceMap(:) = (/ 1,2,3,4 /)          
           Ind => Element % Nodeindexes
 
-          WorkBasis(1,:) = 0.0d0
-          WorkBasis(2,:) = 0.0d0
-          WorkDivBasis(:) = 0.0d0
+          IF (.NOT. CreateDualBasis) THEN
+             !-------------------------------------------------
+             ! Four basis functions defined on the edges
+             !-------------------------------------------------
+             i = EdgeMap(1,1)
+             j = EdgeMap(1,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(1,1) = 0.0d0
+             FBasis(1,2) = -((-1.0d0 + v)*v)/4.0d0
+             DivFBasis(1) = (1.0d0 - 2*v)/4.0d0
+             IF (nj<ni) THEN
+                FBasis(1,:) = -FBasis(1,:)
+                DivFBasis(1) = -DivFBasis(1)
+             END IF
 
-          WorkBasis(1,1) = 0.0d0
-          WorkBasis(1,2) = (-1.0d0 + v**2)/2.0d0
-          WorkDivBasis(1) = v
+             i = EdgeMap(2,1)
+             j = EdgeMap(2,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(2,1) = (u*(1.0d0 + u))/4.0d0
+             FBasis(2,2) = 0.0d0
+             DivFBasis(2) = (1 + 2.0d0*u)/4.0d0
+             IF (nj<ni) THEN
+                FBasis(2,:) = -FBasis(2,:)
+                DivFBasis(2) = -DivFBasis(2)
+             END IF
 
-          WorkBasis(2,1) = (1.0d0 - u**2)/2.0d0
-          WorkBasis(2,2) = 0.0d0
-          WorkDivBasis(2) = -u
+             i = EdgeMap(3,1)
+             j = EdgeMap(3,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(3,1) = 0.0d0
+             FBasis(3,2) = (v*(1.0d0 + v))/4.0d0
+             DivFBasis(3) = (1.0d0 + 2.0d0*v)/4.0d0
+             IF (nj<ni) THEN
+                FBasis(3,:) = -FBasis(3,:)
+                DivFBasis(3) = -DivFBasis(3)
+             END IF
 
-          DO j=1,4
-             FaceIndeces(j) = Ind(SquareFaceMap(j))
-          END DO
-          IF (Parallel) THEN
+             i = EdgeMap(4,1)
+             j = EdgeMap(4,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(4,1) = -((-1.0d0 + u)*u)/4.0d0
+             FBasis(4,2) = 0.0d0
+             DivFBasis(4) = (1.0d0 - 2.0d0*u)/4.0d0
+             IF (nj<ni) THEN
+                FBasis(4,:) = -FBasis(4,:)
+                DivFBasis(4) = -DivFBasis(4)
+             END IF
+
+             !--------------------------------------------------------------------
+             ! Additional two basis functions associated with the element interior
+             !-------------------------------------------------------------------
+             WorkBasis(1,:) = 0.0d0
+             WorkBasis(2,:) = 0.0d0
+             WorkDivBasis(:) = 0.0d0
+
+             WorkBasis(1,1) = 0.0d0
+             WorkBasis(1,2) = (-1.0d0 + v**2)/2.0d0
+             WorkDivBasis(1) = v
+
+             WorkBasis(2,1) = (1.0d0 - u**2)/2.0d0
+             WorkBasis(2,2) = 0.0d0
+             WorkDivBasis(2) = -u
+
              DO j=1,4
-                FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                FaceIndeces(j) = Ind(SquareFaceMap(j))
              END DO
-          END IF
-          CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+             IF (Parallel) THEN
+                DO j=1,4
+                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                END DO
+             END IF
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
 
-          FBasis(5,:) = D1 * WorkBasis(I1,:)
-          DivFBasis(5) = D1 * WorkDivBasis(I1)
-          FBasis(6,:) = D2 * WorkBasis(I2,:)
-          DivFBasis(6) = D2 * WorkDivBasis(I2)   
+             FBasis(5,:) = D1 * WorkBasis(I1,:)
+             DivFBasis(5) = D1 * WorkDivBasis(I1)
+             FBasis(6,:) = D2 * WorkBasis(I2,:)
+             DivFBasis(6) = D2 * WorkDivBasis(I2)   
+          ELSE
+             !---------------------------------------------------------------------------
+             ! Create alternate basis functions for the ABF space so that these basis
+             ! functions are dual to the standard basis functions when the mesh is regular.
+             ! First four basis functions which are dual to the standard edge basis 
+             ! functions:
+             !----------------------------------------------------------------------------
+             i = EdgeMap(1,1)
+             j = EdgeMap(1,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(1,1) = 0.0d0
+             FBasis(1,2) = (-3.0d0*(-1.0d0 - 2.0d0*v + 5.0d0*v**2))/4.0d0
+             DivFBasis(1) = (-3.0d0*(-1.0d0 + 5.0d0*v))/2.0d0
+             IF (nj<ni) THEN
+                FBasis(1,:) = -FBasis(1,:)
+                DivFBasis(1) = -DivFBasis(1)
+             END IF
+
+             i = EdgeMap(2,1)
+             j = EdgeMap(2,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(2,1) = (3.0d0*(-1.0d0 + 2.0d0*u + 5.0d0*u**2))/4.0d0
+             FBasis(2,2) = 0.0d0
+             DivFBasis(2) = (3.0d0*(1.0d0 + 5.0d0*u))/2.0d0
+             IF (nj<ni) THEN
+                FBasis(2,:) = -FBasis(2,:)
+                DivFBasis(2) = -DivFBasis(2)
+             END IF
+
+             i = EdgeMap(3,1)
+             j = EdgeMap(3,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(3,1) = 0.0d0
+             FBasis(3,2) = (3.0d0*(-1.0d0 + 2.0d0*v + 5.0d0*v**2))/4.0d0
+             DivFBasis(3) = (3.0d0*(1.0d0 + 5.0d0*v))/2.0d0
+             IF (nj<ni) THEN
+                FBasis(3,:) = -FBasis(3,:)
+                DivFBasis(3) = -DivFBasis(3)
+             END IF
+
+             i = EdgeMap(4,1)
+             j = EdgeMap(4,2)
+             ni = Element % NodeIndexes(i)
+             IF (Parallel) ni=Mesh % ParallelInfo % GlobalDOFs(ni)
+             nj = Element % NodeIndexes(j)
+             IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+             FBasis(4,1) = (-3.0d0*(-1.0d0 - 2.0d0*u + 5.0d0*u**2))/4.0d0
+             FBasis(4,2) = 0.0d0
+             DivFBasis(4) = (-3.0d0*(-1.0d0 + 5.0d0*u))/2.0d0
+             IF (nj<ni) THEN
+                FBasis(4,:) = -FBasis(4,:)
+                DivFBasis(4) = -DivFBasis(4)
+             END IF
+
+             !-------------------------------------------------------------------------
+             ! Additional two dual basis functions associated with the element interior
+             !-------------------------------------------------------------------------
+             WorkBasis(1,:) = 0.0d0
+             WorkBasis(2,:) = 0.0d0
+             WorkDivBasis(:) = 0.0d0
+
+             WorkBasis(1,1) = 0.0d0
+             WorkBasis(1,2) = (3.0d0*(-3.0d0 + 5.0d0*v**2))/8.0d0
+             WorkDivBasis(1) = 15.0d0*v/4.0d0
+
+             WorkBasis(2,1) = (3.0d0*(3.0d0 - 5.0d0*u**2))/8.0d0
+             WorkBasis(2,2) = 0.0d0
+             WorkDivBasis(2) = -15.0d0*u/4.0d0
+
+             DO j=1,4
+                FaceIndeces(j) = Ind(SquareFaceMap(j))
+             END DO
+             IF (Parallel) THEN
+                DO j=1,4
+                   FaceIndeces(j) = Mesh % ParallelInfo % GlobalDOFs(FaceIndeces(j))
+                END DO
+             END IF
+             CALL SquareFaceDofsOrdering(I1,I2,D1,D2,FaceIndeces)
+
+             FBasis(5,:) = D1 * WorkBasis(I1,:)
+             DivFBasis(5) = D1 * WorkDivBasis(I1)
+             FBasis(6,:) = D2 * WorkBasis(I2,:)
+             DivFBasis(6) = D2 * WorkDivBasis(I2)
+          END IF
 
        CASE(5)
           !-----------------------------------------
