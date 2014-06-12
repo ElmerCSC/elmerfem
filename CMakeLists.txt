@@ -22,6 +22,9 @@ ENDIF()
 
 SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
 
+SET(WITH_MPI TRUE CACHE BOOL "Link against real MPI")
+SET(WITH_ELMERGUI TRUE CACHE BOOL "Include ElmerGUI")
+
 IF(NOT(CMAKE_BUILD_TYPE MATCHES "Release"))
   ENABLE_TESTING()
 ENDIF()
@@ -73,7 +76,7 @@ ELSE()
   ADD_DEFINITIONS(-DCONTIG=)
 ENDIF()
 
-# Check if this is mingw toolchain
+# Check if this is mingw toolchain. @TODO: kludge, mingw should define __MINGW32__ and windows __WIN32__
 IF(MINGW)
   ADD_DEFINITIONS(-DMINGW32)
 ENDIF()
@@ -187,11 +190,12 @@ MESSAGE(STATUS "  C++ compiler:      " ${CMAKE_CXX_COMPILER})
 MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 IF(CMAKE_BUILD_TYPE STREQUAL "Release")
-MESSAGE(STATUS "  Building release  ")
-MESSAGE(STATUS "  Elmer lib dir:     " "${CMAKE_INSTALL_PREFIX}/${ELMER_INSTALL_LIB_DIR}")
-MESSAGE(STATUS "  Install rpath:     " "${CMAKE_INSTALL_RPATH}")
-MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "  Building release")
 ENDIF()
+IF(WITH_MPI)
+  MESSAGE(STATUS "  Building ElmerGUI")
+ENDIF()
+MESSAGE(STATUS "------------------------------------------------")
 
 # Packaging
 INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/cpack/ElmerCPack.cmake)

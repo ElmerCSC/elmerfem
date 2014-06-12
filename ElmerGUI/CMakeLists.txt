@@ -2,7 +2,14 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 SET(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules")
 PROJECT(ElmerGUI CXX C)
 SET(APPLICATION_INCLUDE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}/netgen/libsrc/interface")
-  
+
+SET(WITH_PYTHONQT FALSE CACHE BOOL "ElmerGUI: Use PythonQt for scripting in post processor?")
+SET(WITH_OCC FALSE CACHE BOOL "ElmerGUI: Use OpenCASCADE 6.3 for importing CAD files? Needs VTK.")
+SET(WITH_MATC FALSE CACHE BOOL "ElmerGUI: Use MATC for internal operations in postprocessing?")
+SET(WITH_PARAVIEW FALSE CACHE BOOL "ElmerGUI: Use ParaView for postprocessing?")
+SET(WITH_VTK FALSE CACHE BOOL "ElmerGUI: Use VTK for postprocessing?")
+SET(WITH_QWT FALSE CACHE BOOL "ElmerGUI: Use QWT for convergence monitor?")
+
 IF(WITH_PYTHONQT)
   ADD_DEFINITIONS(-DEG_PYTHONQT)
   ADD_SUBDIRECTORY(PythonQt)
