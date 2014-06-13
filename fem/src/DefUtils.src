@@ -2268,7 +2268,7 @@ CONTAINS
      INTEGER, POINTER :: SlaveSolverIndexes(:)
      INTEGER :: j,k,iter
      REAL(KIND=dp) :: dt
-     LOGICAL :: Transient, Found
+     LOGICAL :: Transient, Found, alloc_parenv
 
      INTERFACE
         SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
@@ -2303,8 +2303,32 @@ CONTAINS
        DO j=1,SIZE(SlaveSolverIndexes)
          k = SlaveSolverIndexes(j)
          SlaveSolver => CurrentModel % Solvers(k)
+
+         IF(ParEnv % PEs>1) THEN
+           alloc_parenv = .FALSE.
+           IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
+             IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
+               ParEnv = SlaveSolver % Matrix % ParMatrix % ParEnv
+             ELSE
+               ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+             END IF
+           ELSE
+             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+           END IF
+         END IF
+
          CurrentModel % Solver => SlaveSolver
          CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
+
+         IF(ParEnv % PEs>1) THEN
+
+           IF(alloc_parenv) DEALLOCATE(ParEnv % ACtive)
+
+           IF(ASSOCIATED(Solver % Matrix)) THEN
+             IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
+               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+           END IF
+         END IF
        END DO
        CurrentModel % Solver => Solver
        iterV % Values = iter       
