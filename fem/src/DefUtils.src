@@ -2322,7 +2322,10 @@ CONTAINS
 
          IF(ParEnv % PEs>1) THEN
 
-           IF(alloc_parenv) DEALLOCATE(ParEnv % ACtive)
+           IF(alloc_parenv) THEN
+             DEALLOCATE(ParEnv % Active)
+             ParEnv % Active => Null()
+           END IF
 
            IF(ASSOCIATED(Solver % Matrix)) THEN
              IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
