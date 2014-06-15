@@ -1004,18 +1004,20 @@ END SUBROUTINE GetMaxDefs
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
        DecidedElem(:)
    LOGICAL :: Found, DisCont, GreedyBulk, GreedyBC, Debug, DoubleBC, UseTargetBodies, &
-       LeftHit, RightHit, Moving, Moving2, Set
+       LeftHit, RightHit, Moving, Moving2, Set, Parallel
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
-       TargetBody, NoBulkElems, NoBoundElems, NoParentElems, &
+       NoBulkElems, NoBoundElems, NoParentElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
        NoUndecided, PrevUndecided, NoEdges, Iter, ElemFamily, DecideLimit, &
        DecidedByFamily(8), UndecidedByFamily(8), ActiveBCs
+   INTEGER, TARGET :: TargetBody(1)
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:),TargetBodies(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
        ParentElem, OtherElem
 
 
+   Parallel = ( ParEnv % PEs > 1 )
 
    Discont = .FALSE.
    DoubleBC = .FALSE.
@@ -1035,7 +1037,7 @@ END SUBROUTINE GetMaxDefs
    END DO
    
    IF(.NOT. DisCont ) RETURN
-
+   
    NoNodes = Mesh % NumberOfNodes
    NoBulkElems = Mesh % NumberOfBulkElements
    NoBoundElems = Mesh % NumberOfBoundaryElements
@@ -1065,92 +1067,97 @@ END SUBROUTINE GetMaxDefs
      
      IF(.NOT. DisCont ) CYCLE
      
-     ! Boundary element cannot be discontinuous if it is not an interface element
-     LeftElem => Element % BoundaryInfo % Left
-     IF( .NOT. ASSOCIATED( LeftElem ) ) THEN
-       CALL Fatal('CreateDiscontMesh','Left parent not associated! : '//TRIM(I2S(t)))
-       CYCLE
-     END IF
-     
-     RightElem => Element % BoundaryInfo % Right
-     IF( .NOT. ASSOCIATED( RightElem ) ) THEN
-       CALL Fatal('CreateDiscontMesh','Right parent not associated! : '//TRIM(I2S(t)))
-       CYCLE
-     END IF
-
      DisContNode( Indexes ) = .TRUE.
      DisContElem( t ) = .TRUE.
      DecidedElem( NoBulkElems + t ) = .TRUE.
-     DecidedElem( RightElem % ElementIndex ) = .TRUE.
-     DecidedElem( LeftElem % ElementIndex ) = .TRUE.
+     
+     LeftElem => Element % BoundaryInfo % Left
+     IF( ASSOCIATED( LeftElem ) ) THEN
+       DecidedElem( LeftElem % ElementIndex ) = .TRUE.
+     END IF
+     
+     RightElem => Element % BoundaryInfo % Right
+     IF( ASSOCIATED( RightElem ) ) THEN
+       DecidedElem( RightElem % ElementIndex ) = .TRUE.
+     END IF
    END DO
-
+   
    ! Calculate the number of discontinuous nodes and the number of bulk elements 
    ! associated to them. 
    NoDisContElems = COUNT( DiscontElem(1:NoBoundElems) )
    NoParentElems = COUNT( DecidedElem(1:NoBulkElems) )
    NoDisContNodes = COUNT( DisContNode ) 
 
-   CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '&
-       //TRIM(I2S(NoDisContElems)),Level=7)
-   CALL Info('CreateDiscontMesh','Number of discontinuous parent elements: '&
-       //TRIM(I2S(NoParentElems)),Level=7 )
-   CALL Info('CreateDiscontMesh','Number of candicate nodes: '&
-       //TRIM(I2S(NoDisContNodes)),Level=7)
-
-   IF( NoDiscontNodes == 0) THEN
-     CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
-     DEALLOCATE( DiscontNode, DiscontElem, DecidedElem )
-     RETURN
+   IF( .NOT. Parallel ) THEN
+     ! Print more information when operating in serial mode since in parallel
+     ! this results to additional communication.
+     CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '&
+         //TRIM(I2S(NoDisContElems)),Level=7)
+     CALL Info('CreateDiscontMesh','Number of discontinuous parent elements: '&
+         //TRIM(I2S(NoParentElems)),Level=7 )
+     CALL Info('CreateDiscontMesh','Number of candicate nodes: '&
+         //TRIM(I2S(NoDisContNodes)),Level=7)
    END IF
+
 
    ! By default only nodes that are associated only to elements immediately at the discontinuous 
    ! boundary are treated as discontinuous. However, the user may be greedy and use all candidate nodes.  
-   n = NoDiscontNodes
-   GreedyBulk = ListGetLogical( Model % Simulation,'Discontinuous Bulk Greedy',Found ) 
-   IF(.NOT. Found ) GreedyBulk = .TRUE.
-   GreedyBC = ListGetLogical( Model % Simulation,'Discontinuous Boundary Greedy',Found ) 
-   IF(.NOT. Found ) GreedyBC = .TRUE.
-
-   IF( .NOT. GreedyBulk ) THEN
-     DO t = 1, NoBulkElems
-       IF( DecidedElem(t) ) CYCLE
-       Element => Mesh % Elements(t)
-       Indexes => Element % NodeIndexes
-       DisContNode( Indexes ) = .FALSE.
-     END DO
-     NoDisContNodes = COUNT( DisContNode ) 
-   END IF
-
-   IF( .NOT. GreedyBC ) THEN
-     DO t = NoBulkElems+1,NoBulkElems+NoBoundElems
-       IF( DecidedElem(t) ) CYCLE
-       Element => Mesh % Elements(t)
-       IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
-       IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right) ) CYCLE
-       Indexes => Element % NodeIndexes
-       DisContNode( Indexes ) = .FALSE.
-     END DO
-     NoDisContNodes = COUNT( DisContNode ) 
-   END IF
-
-
-   IF( NoDiscontNodes < n ) THEN
-     CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '//TRIM(I2S(NoDisContNodes)) )
-   ELSE
-     CALL Info('CreateDiscontMesh','All candidate nodes used')
-   END IF
-
-   IF( NoDiscontNodes == 0 ) THEN
-     IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
-       CALL Info('CreateDiscontMesh','You might want to try the Greedy bulk strategy',Level=3)
+   IF( NoDiscontNodes > 0 ) THEN
+     n = NoDiscontNodes
+     GreedyBulk = ListGetLogical( Model % Simulation,'Discontinuous Bulk Greedy',Found ) 
+     IF(.NOT. Found ) GreedyBulk = .TRUE.
+     GreedyBC = ListGetLogical( Model % Simulation,'Discontinuous Boundary Greedy',Found ) 
+     IF(.NOT. Found ) GreedyBC = .TRUE.
+     
+     IF( .NOT. GreedyBulk ) THEN
+       DO t = 1, NoBulkElems
+         IF( DecidedElem(t) ) CYCLE
+         Element => Mesh % Elements(t)
+         Indexes => Element % NodeIndexes
+         DisContNode( Indexes ) = .FALSE.
+       END DO
+       NoDisContNodes = COUNT( DisContNode ) 
      END IF
+     
+     IF( .NOT. GreedyBC ) THEN
+       DO t = NoBulkElems+1,NoBulkElems+NoBoundElems
+         IF( DecidedElem(t) ) CYCLE
+         Element => Mesh % Elements(t)
+         IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
+         IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right) ) CYCLE
+         Indexes => Element % NodeIndexes
+         DisContNode( Indexes ) = .FALSE.
+       END DO
+       NoDisContNodes = COUNT( DisContNode ) 
+     END IF
+     
+     IF(.NOT. Parallel ) THEN
+       IF( NoDiscontNodes < n ) THEN
+         CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '//TRIM(I2S(NoDisContNodes)) )
+       ELSE
+         CALL Info('CreateDiscontMesh','All candidate nodes used')
+       END IF
+
+       IF( NoDiscontNodes == 0 ) THEN
+         IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
+           CALL Info('CreateDiscontMesh','You might want to try the Greedy bulk strategy',Level=3)
+         END IF
+       END IF
+     END IF
+   END IF
+
+   i = NINT( ParallelReduction( 1.0_dp * NoDiscontNodes ) )
+   CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '&
+       //TRIM(I2S(i)),Level=7)
+
+   IF( i == 0 ) THEN
      CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
      DEALLOCATE( DiscontNode, DiscontElem, DecidedElem )
      RETURN
    END IF
 
    ! Ok, we have marked discontinuous nodes, now give them an index. 
+   ! This should also create the indexes in parallel.
    DisContPerm => NULL()
    ALLOCATE( DisContPerm(NoNodes) )
    DisContPerm = 0    
@@ -1161,6 +1168,13 @@ END SUBROUTINE GetMaxDefs
        DisContPerm(i) = j
      END IF
    END DO
+
+   ! We could end up here on an parallel case only
+   ! Then we must make the parallel numbering 
+   IF( NoDisContNodes == 0 ) THEN
+     DEALLOCATE( DiscontNode, DiscontElem, DecidedElem )
+     GOTO 200
+   END IF
    
    ! Create a table showing nodes that are related to the moving nodes by
    ! the moving elements. 
@@ -1175,19 +1189,16 @@ END SUBROUTINE GetMaxDefs
    ! elements on the other side. The user may choose which of the parent elements
    ! gets the additional node, or otheriwse the bigger parent index is chosen for
    ! consistency. 
-   TargetBody = 0
+   TargetBody(1) = 0
    NoMovingElems = 0
    NoStayingElems = 0
 
    DO t=1, NoBoundElems
 
      IF(.NOT. DisContElem(t) ) CYCLE
-     
+
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
-
-     LeftElem => Element % BoundaryInfo % Left
-     RightElem => Element % BoundaryInfo % Right
 
      ! For historical reasons there is both single 'body' and multiple 'bodies'
      ! that define on which side of the discontinuity the new nodes will be. 
@@ -1203,45 +1214,66 @@ END SUBROUTINE GetMaxDefs
          CALL Fatal('CreateDiscontMesh','Use > Discontinuous Target Bodies < in all, if any bc.')
        END IF
      ELSE
-       TargetBody = 0
+       TargetBody(1) = 0
        DO bc = 1,Model % NumberOfBCs
          IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-           TargetBody = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous Target Body',Found )
+           TargetBody(1) = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous Target Body',Found )
            EXIT
          END IF
        END DO
+       IF( TargetBody(1) > 0 ) THEN
+         UseTargetBodies = .TRUE.
+         TargetBodies => TargetBody
+       END IF
+     END IF
+
+     NULLIFY( LeftElem ) 
+     NULLIFY( RightElem ) 
+     NULLIFY( ParentElem ) 
+     NULLIFY( OtherElem ) 
+
+     IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
+       LeftElem => Element % BoundaryInfo % Left 
+     END IF
+     IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+       RightElem => Element % BoundaryInfo % Right
      END IF
 
      IF( UseTargetBodies ) THEN
-       LeftHit = ANY( TargetBodies == LeftElem % BodyId )
-       RightHit = ANY( TargetBodies == RightElem % BodyId )
-       IF( LeftHit .AND. RightHit ) THEN
-         CALL Warn('CreateDiscontMesh','Both left and right parent belong to target bcs')
-       END IF
-       IF( LeftHit ) THEN
-         ParentElem => LeftElem
-         OtherElem => RightElem
-       ELSE IF( RightHit ) THEN
-         ParentElem => RightElem 
-         OtherElem => LeftElem
+
+       ! This has been modified so that only information from either side of the discontinuous
+       ! node is needed to be able to handle with partitioned meshes. 
+       IF( ASSOCIATED( LeftElem ) .AND. ASSOCIATED( RightElem ) ) THEN
+         LeftHit = ANY( TargetBodies == LeftElem % BodyId )
+         RightHit = ANY( TargetBodies == RightElem % BodyId )
+         IF( LeftHit .AND. RightHit ) THEN
+           CALL Warn('CreateDiscontMesh','Both left and right parent belong to target bcs')
+         END IF
+       ELSE IF( ASSOCIATED( LeftElem ) ) THEN
+         LeftHit = ANY( TargetBodies == LeftElem % BodyId )
+         RightHit = .NOT. LeftHit
+       ELSE IF( ASSOCIATED( RightElem ) ) THEN
+         RightHit = ANY( TargetBodies == RightElem % BodyId )
+         LeftHit = .NOT. RightHit 
        ELSE
-         CALL Fatal('CreateDiscontMesh','Neither parent ('//TRIM(I2S(LeftElem % BodyId))//','&
-             //TRIM(I2S(RightElem % BodyId))//') belongs to > Discontinuous Target Bodies <')
+         CALL Fatal('CreateDiscontMesh','Either parent is needed!')
        END IF
 
-     ELSE IF( TargetBody > 0 ) THEN
-       IF( LeftElem % BodyId == TargetBody ) THEN
-         ParentElem => LeftElem
-         OtherElem => RightElem
-       ELSE IF( RightElem % BodyId == TargetBody ) THEN
-         ParentElem => RightElem 
-         OtherElem => LeftElem
+       IF( LeftHit ) THEN
+         IF( ASSOCIATED( LeftElem ) ) ParentElem => LeftElem
+         IF( ASSOCIATED( RightElem ) ) OtherElem => RightElem
+       ELSE IF( RightHit ) THEN
+         IF( ASSOCIATED( RightElem ) ) ParentElem => RightElem 
+         IF( ASSOCIATED( LeftElem ) ) OtherElem => LeftElem
        ELSE
          CALL Fatal('CreateDiscontMesh','Neither parent ('//TRIM(I2S(LeftElem % BodyId))//','&
-             //TRIM(I2S(RightElem % BodyId))//') is > Discontinuous Target Body < ('&
-             //TRIM(I2S(TargetBody))//')')
+             //TRIM(I2S(RightElem % BodyId))//') is discontinuous target body!')
        END IF
+
      ELSE ! Just use a consistent rule, if no target body specified
+       IF( .NOT. ( ASSOCIATED( LeftElem ) .AND. ASSOCIATED( RightElem ) ) ) THEN
+         CALL Fatal('CreateDiscontMesh','This method of creating discont bc requires parents!')
+       END IF
        IF( LeftElem % BodyId > RightElem % BodyId ) THEN
          ParentElem => LeftElem 
          OtherElem => RightElem
@@ -1257,41 +1289,42 @@ END SUBROUTINE GetMaxDefs
      ! It may be that the parent element is a parent element 
      ! of another boundary element in which case the nodal indexes 
      ! might already have been manipulated. 
-     DO j=1,SIZE(ParentElem % NodeIndexes)
-       k = ParentElem % NodeIndexes(j)
-       IF( k <= NoNodes ) MovingNode( k ) = .TRUE.
-     END DO
+     IF( ASSOCIATED( ParentElem ) ) THEN
+       DO j=1,SIZE(ParentElem % NodeIndexes)
+         k = ParentElem % NodeIndexes(j)
+         IF( k <= NoNodes ) MovingNode( k ) = .TRUE.
+       END DO
 
-     DO j=1,SIZE(OtherElem % NodeIndexes)
-       k = OtherElem % NodeIndexes(j)
-       IF( k <= NoNodes ) StayingNode( k ) = .TRUE.
-     END DO
+       ! Ok, we found the element to manipulate the indexes. 
+       ! The new index is numbered on top of the old indexes. 
+       ParentIndexes => ParentElem % NodeIndexes
+       DO i=1,SIZE(ParentIndexes) 
+         j = ParentIndexes(i)
+         IF( j > NoNodes ) CYCLE
+         IF( DisContPerm(j) > 0 ) THEN
+           ParentIndexes(i) = NoNodes + DisContPerm(j)
+         END IF
+       END DO
+       Element % BoundaryInfo % Right => ParentElem
+       NoMovingElems = NoMovingElems + 1
+     END IF
 
-     ! Ok, we found the element to manipulate the indexes. 
-     ! The new index is numbered on top of the old indexes. 
-     ParentIndexes => ParentElem % NodeIndexes
-     DO i=1,SIZE(ParentIndexes) 
-       j = ParentIndexes(i)
-       IF( j > NoNodes ) CYCLE
-       IF( DisContPerm(j) > 0 ) THEN
-         ParentIndexes(i) = NoNodes + DisContPerm(j)
-       END IF
-     END DO
-
-     ! Then set in a consistent manner the elements
-     ! Now the "right" parent includes the new indexes
-     ! and the "left" the original ones.
-     Element % BoundaryInfo % Left => OtherElem
-     Element % BoundaryInfo % Right => ParentElem
-
-     NoMovingElems = NoMovingElems + 1
-     NoStayingElems = NoStayingElems + 1
+     IF( ASSOCIATED( OtherElem ) ) THEN
+       DO j=1,SIZE(OtherElem % NodeIndexes)
+         k = OtherElem % NodeIndexes(j)
+         IF( k <= NoNodes ) StayingNode( k ) = .TRUE.
+       END DO
+       Element % BoundaryInfo % Left => OtherElem
+       NoStayingElems = NoStayingElems + 1
+     END IF
    END DO
 
-   CALL Info('CreateDiscontMesh','Number of primary staying nodes: '&
-       //TRIM(I2S(COUNT(StayingNode))) )
-   CALL Info('CreateDiscontMesh','Number of primary moving nodes:  '&
-       //TRIM(I2S(COUNT(MovingNode))) )
+   IF(.NOT. Parallel ) THEN
+     CALL Info('CreateDiscontMesh','Number of primary staying nodes: '&
+         //TRIM(I2S(COUNT(StayingNode))) )
+     CALL Info('CreateDiscontMesh','Number of primary moving nodes:  '&
+         //TRIM(I2S(COUNT(MovingNode))) )
+   END IF
 
    ! Assume we have only one active BC and we know the list of discontinuous 
    ! target bodies there. Hence we have all the info needed to set the 
@@ -1302,7 +1335,7 @@ END SUBROUTINE GetMaxDefs
    DecidedByFamily = 0
    UnDecidedByFamily = 0
 
-   IF( ActiveBCs == 1 .AND. ( UseTargetBodies .OR. TargetBody > 0 ) ) THEN
+   IF( ActiveBCs == 1 .AND. UseTargetBodies  ) THEN
      DO t=1, NoBulkElems
 
        IF( DecidedElem(t) ) CYCLE
@@ -1314,11 +1347,7 @@ END SUBROUTINE GetMaxDefs
 
        ElemFamily = Element % TYPE % ElementCode / 100 
 
-       IF( UseTargetBodies ) THEN
-         Moving = ANY( TargetBodies == Element % BodyId )
-       ELSE 
-         Moving = ( TargetBody == Element % BodyId )
-       END IF
+       Moving = ANY( TargetBodies == Element % BodyId )
 
        DecidedElem(t) = .TRUE.
        IF( Moving ) THEN
@@ -1332,8 +1361,10 @@ END SUBROUTINE GetMaxDefs
        END IF
        DecidedByFamily( ElemFamily ) = DecidedByFamily( ElemFamily ) + 1
      END DO
-     CALL Info('CreateDiscontMesh','Number of bulk elements moving: '//TRIM(I2S(NoMovingElems)) )
-     CALL Info('CreateDiscontMesh','Number of bulk elements staying: '//TRIM(I2S(NoStayingElems)) )
+     IF(.NOT. Parallel ) THEN
+       CALL Info('CreateDiscontMesh','Number of bulk elements moving: '//TRIM(I2S(NoMovingElems)) )
+       CALL Info('CreateDiscontMesh','Number of bulk elements staying: '//TRIM(I2S(NoStayingElems)) )
+     END IF
 
    ELSE
 
@@ -1398,17 +1429,6 @@ END SUBROUTINE GetMaxDefs
        ELSE
          NoUndecided = NoUndecided + 1
          UnDecidedByFamily( ElemFamily ) = UnDecidedByFamily( ElemFamily ) + 1 
-
-         IF( .FALSE. ) THEN
-           PRINT *,'Undecided element: ',t,Element % TYPE % ElementCode, DecidedElem(t) 
-           PRINT *,'staying:',NoStaying,StayingNode(Indexes)
-           PRINT *,'moving: ',NoMoving,MovingNode(Indexes)
-           PRINT *,'Indexes: ',Indexes
-           PRINT *,'DiscontPerm: ',DiscontPerm(Indexes)
-           PRINT *,'x: ',Mesh % Nodes % x(Indexes)
-           PRINT *,'y: ',Mesh % Nodes % y(Indexes)
-           PRINT *,'z: ',Mesh % Nodes % z(Indexes)
-         END IF
        END IF
      END DO
      IF( NoUndecided /= PrevUndecided .AND. Iter <= 100 ) THEN
@@ -1418,14 +1438,15 @@ END SUBROUTINE GetMaxDefs
      END IF
    END IF
 
-   DO i=1,8
-     IF( DecidedByFamily(i) + UndecidedByFamily(i) == 0 ) CYCLE
-     CALL Info('CreateDiscontMesh','Family: '//TRIM(I2S(100*i))//&
-         ' Decided: '//TRIM(I2S(DecidedByFamily(i)))//&
-         ', Undecided: '//TRIM(I2S(UndecidedByFamily(i))),Level=8)
-   END DO
-
-   
+   IF( .NOT. Parallel ) THEN
+     DO i=1,8
+       IF( DecidedByFamily(i) + UndecidedByFamily(i) == 0 ) CYCLE
+       CALL Info('CreateDiscontMesh','Family: '//TRIM(I2S(100*i))//&
+           ' Decided: '//TRIM(I2S(DecidedByFamily(i)))//&
+           ', Undecided: '//TRIM(I2S(UndecidedByFamily(i))),Level=8)
+     END DO
+   END IF
+     
 
    ! Now set also the unset boundary elements by following the ownership of the parent elements
    ! or the majority opinion if this is conflicting.
@@ -1488,24 +1509,26 @@ END SUBROUTINE GetMaxDefs
      END IF
    END DO
 
-   DO i=1,8
-     IF( DecidedByFamily(i) + UndecidedByFamily(i) == 0 ) CYCLE
-     CALL Info('CreateDiscontMesh','Undecied boundary elements by family: '//TRIM(I2S(100*i))//&
-         ' Decided: '//TRIM(I2S(DecidedByFamily(i)))//&
-         ', Undecided: '//TRIM(I2S(UndecidedByFamily(i))),Level=8)
-   END DO
-
-   CALL Info('CreateDiscontMesh','Number of related elements moving: '&
-       //TRIM(I2S(NoMovingElems)), Level=8 )
-   CALL Info('CreateDiscontMesh','Number of related elements staying: '&
-       //TRIM(I2S(NoStayingElems)), Level=8 )
-   IF( NoUndecided == 0 ) THEN
-     CALL Info('CreateDiscontMesh','All elements marked either moving or staying')
-   ELSE
-     CALL Info('CreateDiscontMesh','Number of related undecided elements: '//TRIM(I2S(NoUndecided)) )
-     CALL Warn('CreateDiscontMesh','Could not decide what to do with some boundary elements!')
+   IF(.NOT. Parallel ) THEN
+     DO i=1,8
+       IF( DecidedByFamily(i) + UndecidedByFamily(i) == 0 ) CYCLE
+       CALL Info('CreateDiscontMesh','Undecied boundary elements by family: '//TRIM(I2S(100*i))//&
+           ' Decided: '//TRIM(I2S(DecidedByFamily(i)))//&
+           ', Undecided: '//TRIM(I2S(UndecidedByFamily(i))),Level=8)
+     END DO
+     
+     CALL Info('CreateDiscontMesh','Number of related elements moving: '&
+         //TRIM(I2S(NoMovingElems)), Level=8 )
+     CALL Info('CreateDiscontMesh','Number of related elements staying: '&
+         //TRIM(I2S(NoStayingElems)), Level=8 )
+     IF( NoUndecided == 0 ) THEN
+       CALL Info('CreateDiscontMesh','All elements marked either moving or staying')
+     ELSE
+       CALL Info('CreateDiscontMesh','Number of related undecided elements: '//TRIM(I2S(NoUndecided)) )
+       CALL Warn('CreateDiscontMesh','Could not decide what to do with some boundary elements!')
+     END IF
    END IF
-    
+
    DEALLOCATE( MovingNode, StayingNode )
 
    ! Now add the new nodes also to the nodes structure
@@ -1616,7 +1639,7 @@ END SUBROUTINE GetMaxDefs
 
    DEALLOCATE( DisContNode, DiscontElem, DecidedElem )
 
-   CALL EnlargeParallelInfo(Mesh)
+200 CALL EnlargeParallelInfo(Mesh)
    
  END SUBROUTINE CreateDiscontMesh
 
@@ -1737,6 +1760,10 @@ END SUBROUTINE GetMaxDefs
    TmpGlobalDofs = 0
    TmpGlobalDofs(1:n0) = Mesh % ParallelInfo % GlobalDofs
    nmax = MAXVAL( Mesh % ParallelInfo % GlobalDofs(1:n0) )
+
+! currently the new discontinuous dofs have just been ordered on top of the 
+! existing ones. When the discontinuous nodes are shared then this is not 
+! good enough.
    DO i=n0+1,n1
      TmpGlobalDofs(i) = i-n0+nmax
    END DO
