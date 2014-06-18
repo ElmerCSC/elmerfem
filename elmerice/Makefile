@@ -49,7 +49,8 @@ Solvers/Grid2DInterpolator.f90 \
 Solvers/Optimize_m1qn3Parallel.f90 \
 Solvers/OutputStrainHeating.f90 \
 Solvers/UpdateExport.f90 \
-Solvers/IntegrateVertically.f90
+Solvers/IntegrateVertically.f90\
+Solvers/EnthalpySolver.f90
 USFSOURCE := \
 UserFunctions/Buoyancy.f90 \
 UserFunctions/USF_Contact.f90 \
