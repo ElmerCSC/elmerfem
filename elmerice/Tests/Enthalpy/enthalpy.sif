@@ -1,0 +1,191 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test of the Enthalpy solver           !!
+!!                                       !!
+!! Adrien Gilbert (LGGE, June 2014)      !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+echo on
+
+$Step = "test_enthalpy"
+
+Header
+ Mesh DB "." "WithOutCavity"
+End
+
+Constants
+ T_ref_enthalpy = real 200.0
+ L_heat = real 334000.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  =  Cartesian 3D 
+  Simulation Type = Steady
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Output File = "$Step".result"
+  Post File = "$Step".vtu"
+  max output level = 3    
+
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The ice 
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Pressure = Real 0.0 
+  Velocity 1 = Real 0.0 
+  Velocity 2 = Real 0.0 
+  Velocity 3 = Real 0.0 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real -9.7562e15  !MPa - a - m
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real 9.150149e-19  ! MPa - a - m (910kg/m3) 
+
+  Viscosity Model = String "power law"
+  Viscosity = Real 0.170998e0   ! MPa - a - m
+  Viscosity Exponent = Real $1.0/3.0 
+  Critical Shear Rate = Real 1.0e-10
+
+  Enthalpy Density = real 917.0
+  enthalpy heat diffusivity = Real $2.1/2050.0 ! = k / Cp
+  Enthalpy Water Diffusivity = real 1.045e-4
+
+  Convection Velocity 1 = variable Velocity 1
+   Real MATC "tx/3600.0/24/365.25"
+  Convection Velocity 2 = variable Velocity 2
+   Real MATC "tx/3600.0/24/365.25"
+  Convection Velocity 3 = variable Velocity 3
+   Real MATC "tx/3600.0/24/365.25"
+
+End
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Solver 1
+  Equation = "Navier-Stokes"
+  
+  Stabilization Method = String Stabilized
+  Flow model = String "Stokes"
+
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 5 
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = Real 1.0e-3
+End
+
+Solver 2
+  Equation = String "Enthalpy Equation"
+  Procedure = File "ElmerIceSolvers" "EnthalpySolver"
+  Variable = String "Enthalpy_h"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0E-07
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0E-04
+  Nonlinear System Convergence Tolerance = 1.0E-03
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Relaxation Factor = Real 1.0 
+
+  Apply Dirichlet = Logical True
+  Stabilize = True
+ 
+  Exported Variable 1 = String "Phase Change Enthalpy"
+  Exported Variable 1 DOFs = 1
+
+  Exported Variable 2 = String "water_content"
+  Exported Variable 2 DOFs = 1
+
+  Exported Variable 3 = String "temperature"
+  Exported Variable 3 DOFs = 1
+End
+
+Solver 3
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical True
+
+  Variable 1 = String "Time"
+
+  Variable 2 = String "enthalpy_h"
+  Operator 2 = String "max"
+
+  Variable 3 = String "enthalpy_h"
+  Operator 3 = String "min"
+
+  Variable 4 = String "Phase Change Enthalpy"
+  Operator 4 = String "max"
+
+  Variable 5 = String "water_content"
+  Operator 5 = String "max"
+
+  Variable 6 = String "temperature"
+  Operator 6 = String "min" 
+
+  Variable 7 = String "temperature"
+  Operator 7 = String "int mean"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+  Convection = string "constant"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! Bedrock 
+Boundary Condition 1
+  Target Boundaries = 1
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Velocity 3 = Real 0.0
+
+  Enthalpy Heat Flux BC = logical True
+  Enthalpy Heat Flux = real 0.02
+End
+
+! Upper Surface
+Boundary Condition 2
+  Target Boundaries = 2
+  Enthalpy_h = variable coordinate 3
+    real MATC "25000.0/150.0*(tx-3250)+140000.0"
+End
+
+! lateral side of the glacier 
+Boundary Condition 3
+  Target Boundaries = 3
+  Normal-Tangential Velocity = Logical True
+  Velocity 1 = real 0.0
+End
+
