@@ -2972,7 +2972,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
      SaveNodes = 0
 
      OptimizeOrder = ListGetLogical(Params,'Optimize Node Ordering',GotIt)
-     IF(.NOT. GotIt) OptimizeOrder = .TRUE.
+     IF(.NOT. GotIt) OptimizeOrder = .NOT. Parallel
 
      CALL MakePermUsingMask( Model,Solver,Mesh,MaskName, &
           OptimizeOrder, SavePerm, SaveNodes, RequireLogical = .TRUE. )
