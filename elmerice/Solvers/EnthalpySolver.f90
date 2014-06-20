@@ -107,7 +107,7 @@
      REAL(KIND=dp), ALLOCATABLE :: vals(:)
      REAL(KIND=dp) :: Jx,Jy,Jz,JAbs, Power, MeltPoint, IntHeatSource
 
-     REAL(KIND=dp) :: Tref,Tm,P,hm,hi,L_heat,A_cap,B_cap
+     REAL(KIND=dp) :: Tref,Tm,P,hm,hi,L_heat,A_cap,B_cap,Ptriple,Psurf,beta
 
      CHARACTER(LEN=MAX_NAME_LEN) :: PressureName,WaterName,PhaseEnthName,TempName
 
@@ -579,13 +579,15 @@
 
 	  A_cap = GetConstReal(Model % Constants, "Enthalpy Heat Capacity A",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >Enthalpy Heat Capacity A< defined in model constants. Using >7.253< as default (Paterson, 1994).')
+         CALL WARN('EnthalpySolver', 'No Keyword >Enthalpy Heat Capacity A< &
+         & defined in model constants. Using >7.253< as default (Paterson, 1994).')
          A_cap = 7.253
       END IF
 	  
 	  B_cap = GetConstReal(Model % Constants, "Enthalpy Heat Capacity B",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >Enthalpy Heat Capacity B< defined in model constants. Using >146.3< as default (Paterson, 1994).')
+         CALL WARN('EnthalpySolver', 'No Keyword >Enthalpy Heat Capacity B< & 
+         & defined in model constants. Using >146.3< as default (Paterson, 1994).')
          B_cap = 146.3
       END IF
 
@@ -602,6 +604,24 @@
       IF (.NOT.GotIt) THEN
          CALL WARN('EnthalpySolver', 'No Keyword >Reference Enthalpy< defined. Using >200K< as default.')
          Tref = 200.0
+      END IF
+	  
+	  beta = GetConstReal(Model % Constants, "beta_clapeyron",GotIt)
+      IF (.NOT.GotIt) THEN
+         CALL WARN('EnthalpySolver', 'No Keyword >beta_clapeyron< defined. Using >9.74 10-2 K Mpa-1< as default.')
+         beta = 0.0974
+      END IF
+	  
+	  Psurf = GetConstReal(Model % Constants, "P_surf",GotIt)
+      IF (.NOT.GotIt) THEN
+         CALL WARN('EnthalpySolver', 'No Keyword >Psurf< defined. Using >1.013 10-1 MPa < as default.')
+         Psurf = 0.1013
+      END IF
+	  
+	  Ptriple = GetConstReal(Model % Constants,"P_triple",GotIt)
+      IF (.NOT.GotIt) THEN
+         CALL WARN('EnthalpySolver', 'No Keyword >P_triple< defined. Using >0.061173 MPa < as default.')
+         Ptriple = 0.061173
       END IF
 
       PressureVariable => VariableGet(Solver % Mesh %Variables,PressureName)
@@ -626,8 +646,8 @@
       END IF
 
 do i=1,model % NumberOfNodes
-  P=PressureValues (PressurePerm(i))+0.1013
-  Tm=273.16-7.42e-5*(P-0.000611)*1.0e3! Clapeyron, P en MPa
+  P=PressureValues (PressurePerm(i))+Psurf
+  Tm=273.16-beta*(P-Ptriple)! Clapeyron
   PhaseChangeEnthValues (PhaseChangeEnthPerm(i)) = A_cap*0.5*Tm*Tm+B_cap*Tm-Tref*(A_cap*0.5*Tref+B_cap) ! use CP(T)=B_cap+A_cap*T
 enddo
 
@@ -1358,9 +1378,11 @@ hm = PhaseChangeEnthValues (PhaseChangeEnthPerm(i))
 
   if (hi<hm) then
     WaterVar % values ( WaterVar % perm (i) ) = 0.0
-    TemphomoVar % values ( TemphomoVar % perm (i) ) = (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hi))**0.5 ) / A_cap - 273.15 ! Use CP(T)=B_cap+A_cap*T
+    TemphomoVar % values ( TemphomoVar % perm (i) ) = &
+    & (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hi))**0.5 ) / A_cap - 273.15 ! Use CP(T)=B_cap+A_cap*T
   else
-    TemphomoVar % values ( TemphomoVar % perm (i) ) =  (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hm))**0.5 ) / A_cap - 273.15 ! Use CP(T)=B_cap+A_cap*T
+    TemphomoVar % values ( TemphomoVar % perm (i) ) =  &
+    & (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hm))**0.5 ) / A_cap - 273.15 ! Use CP(T)=B_cap+A_cap*T
     WaterVar % values ( WaterVar % perm (i) ) = (hi-hm)/L_heat
   endif
 

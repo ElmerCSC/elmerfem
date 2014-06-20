@@ -21,6 +21,9 @@ Constants
 ! Cp(T) = A*T + B
  Enthalpy Heat Capacity A = real 7.253 
  Enthalpy Heat Capacity B = real 146.3
+ P_triple = real 0.061173 !Triple point pressure for water (MPa)
+ P_surf = real 0.1013 ! Surface atmospheric pressure(MPa)
+ beta_clapeyron = real 0.0974 ! clausus clapeyron relationship (K MPa-1)
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
