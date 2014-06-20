@@ -18,6 +18,9 @@ End
 Constants
  T_ref_enthalpy = real 200.0
  L_heat = real 334000.0
+! Cp(T) = A*T + B
+ Enthalpy Heat Capacity A = real 7.253 
+ Enthalpy Heat Capacity B = real 146.3
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

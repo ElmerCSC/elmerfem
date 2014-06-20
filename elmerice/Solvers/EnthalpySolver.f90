@@ -27,7 +27,7 @@
 ! *
 ! *  Authors: Adrien Gilbert, 
 ! *
-! *  Original Date: June 2014
+! *  Original Date: Jun 2014
 ! *
 ! *****************************************************************************/
 
@@ -107,7 +107,7 @@
      REAL(KIND=dp), ALLOCATABLE :: vals(:)
      REAL(KIND=dp) :: Jx,Jy,Jz,JAbs, Power, MeltPoint, IntHeatSource
 
-     REAL(KIND=dp) :: Tref,Tm,P,hm,hi,L_heat
+     REAL(KIND=dp) :: Tref,Tm,P,hm,hi,L_heat,A_cap,B_cap
 
      CHARACTER(LEN=MAX_NAME_LEN) :: PressureName,WaterName,PhaseEnthName,TempName
 
@@ -577,6 +577,18 @@
 !Calculate Phase change enthalpy ==================================================================
 !==================================================================================================
 
+	  A_cap = GetConstReal(Model % Constants, "Enthalpy Heat Capacity A",GotIt)
+      IF (.NOT.GotIt) THEN
+         CALL WARN('EnthalpySolver', 'No Keyword >Enthalpy Heat Capacity A< defined in model constants. Using >7.253< as default (Paterson, 1994).')
+         A_cap = 7.253
+      END IF
+	  
+	  B_cap = GetConstReal(Model % Constants, "Enthalpy Heat Capacity B",GotIt)
+      IF (.NOT.GotIt) THEN
+         CALL WARN('EnthalpySolver', 'No Keyword >Enthalpy Heat Capacity B< defined in model constants. Using >146.3< as default (Paterson, 1994).')
+         B_cap = 146.3
+      END IF
+
   PressureName = GetString(Constants,'Pressure Variable', GotIt)
       IF (.NOT.GotIt) THEN
          CALL WARN('EnthalpySolver', 'No Keyword >Pressure Variable< defined. Using >Pressure< as default.')
@@ -616,7 +628,7 @@
 do i=1,model % NumberOfNodes
   P=PressureValues (PressurePerm(i))+0.1013
   Tm=273.16-7.42e-5*(P-0.000611)*1.0e3! Clapeyron, P en MPa
-  PhaseChangeEnthValues (PhaseChangeEnthPerm(i)) = 3.626*Tm*Tm+146.3*Tm-Tref*(3.626*Tref+146.3) ! use CP(T)=146.3+7.253*T
+  PhaseChangeEnthValues (PhaseChangeEnthPerm(i)) = A_cap*0.5*Tm*Tm+B_cap*Tm-Tref*(A_cap*0.5*Tref+B_cap) ! use CP(T)=B_cap+A_cap*T
 enddo
 
 !=====================================================================================================================
@@ -1335,10 +1347,10 @@ ENDIF
 
       L_heat = GetConstReal(Model % Constants, "L_heat",GotIt)
       IF (.NOT.GotIt) THEN
-         CALL WARN('EnthalpySolver', 'No Keyword >Reference Enthalpy< defined in model constants. Using >334000Jkg-1< as default.')
+         CALL WARN('EnthalpySolver', 'No Keyword >L_heat< defined in model constants. Using >334000Jkg-1< as default.')
          L_heat = 334000.0
       END IF
-
+	  
 do i=1,Model % NumberOfNodes
 
 hi = Enthalpy_h (EnthalpyPerm (i) )
@@ -1346,9 +1358,9 @@ hm = PhaseChangeEnthValues (PhaseChangeEnthPerm(i))
 
   if (hi<hm) then
     WaterVar % values ( WaterVar % perm (i) ) = 0.0
-    TemphomoVar % values ( TemphomoVar % perm (i) ) = (-146.3+(146.3**2+14.506*(3.626*Tref**2+146.3*Tref+hi))**0.5 ) / 7.253 - 273.15 ! Use CP(T) 146.3+7.253*T
+    TemphomoVar % values ( TemphomoVar % perm (i) ) = (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hi))**0.5 ) / A_cap - 273.15 ! Use CP(T)=B_cap+A_cap*T
   else
-    TemphomoVar % values ( TemphomoVar % perm (i) ) =  (-146.3+(146.3**2+14.506*(3.626*Tref**2+146.3*Tref+hm))**0.5 ) / 7.253 - 273.15 ! Use CP(T) 146.3+7.253*T
+    TemphomoVar % values ( TemphomoVar % perm (i) ) =  (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hm))**0.5 ) / A_cap - 273.15 ! Use CP(T)=B_cap+A_cap*T
     WaterVar % values ( WaterVar % perm (i) ) = (hi-hm)/L_heat
   endif
 
