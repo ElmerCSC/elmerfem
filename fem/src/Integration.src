@@ -1194,9 +1194,9 @@ END FUNCTION GaussPointsPTetra
       SELECT CASE (m)
       CASE (1)
          IF (ConvertToPPrism) THEN
-            uq(1) = -1.0d0 + 2.0d0*UTriangle1P(i) + VTriangle1P(i)
-            vq(1) = SQRT(3.0d0) * VTriangle1P(i)
-            sq(1) = SQRT(3.0d0) * STriangle1P(i)
+            uq(1) = -1.0d0 + 2.0d0*UTriangle1P(1) + VTriangle1P(1)
+            vq(1) = SQRT(3.0d0) * VTriangle1P(1)
+            sq(1) = SQRT(3.0d0) * STriangle1P(1)
          ELSE
             uq(1:m) = UTriangle1P
             vq(1:m) = VTriangle1P

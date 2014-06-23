@@ -19,7 +19,7 @@ ADD_SUBDIRECTORY(adaptivity2)
 INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/. 
 		  DESTINATION ${CMAKE_BINARY_DIR}/elmertests
 		  FILES_MATCHING REGEX 
-		  ".+\\.(f90|F90|sif|mif|grd|eg|msh|good|dat|pos|result|in2d)|HB|Makefile|TEST\\.RESULT|ELMERSOLVER_STARTINFO|mesh\\.*")
+		  ".+\\.(f90|F90|sif|mif|grd|eg|msh|good|dat|pos|result|in2d|best0)|HB|Makefile|TEST\\.RESULT|ELMERSOLVER_STARTINFO|mesh\\.*")
 
 # Misc. directories for meshes etc.
 INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/diffuser_sa/diffuser/.

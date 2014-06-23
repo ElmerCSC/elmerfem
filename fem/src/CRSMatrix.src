@@ -415,6 +415,7 @@ CONTAINS
     Diag   => A % Diag
     Values => A % Values
 
+    Value = REAL(0,dp)
     IF ( .NOT.ASSOCIATED(Diag).OR.i /= j .OR. .NOT. A % Ordered ) THEN
        k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
       IF ( k==0 ) THEN
@@ -452,6 +453,7 @@ CONTAINS
     Diag   => A % Diag
     Values => A % Values
 
+    OldValue = REAL(0, dp)
     IF ( .NOT.ASSOCIATED(Diag).OR.i /= j .OR. .NOT. A % Ordered ) THEN
        k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
       IF ( k==0 ) THEN

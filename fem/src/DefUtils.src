@@ -592,6 +592,9 @@ CONTAINS
 
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
+     
+     IsComplex = .FALSE.
+     IF( PRESENT( ComplexPart) ) IsComplex = ComplexPart
 
      x = 0.0d0
 
@@ -2341,7 +2344,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
 
     Solver => CurrentModel % Solver
-
+    Norm = REAL(0, dp)
     IF ( PRESENT( USolver ) ) Solver => USolver
     IF ( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) RETURN
 

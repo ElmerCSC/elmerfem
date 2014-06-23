@@ -3866,7 +3866,7 @@ CONTAINS
            refbond, posmax, negmax, x0, y0, z0, x1, y1, z1, s2, Pow
 
        Debug = .FALSE.
-
+       Components = 1
        IF(Debug) CALL Info('InterpolateF2CDistance','Starting interpolation')
        
        ProjLim = ListGetConstReal(Params,'MG Projection Limit',GotIt)

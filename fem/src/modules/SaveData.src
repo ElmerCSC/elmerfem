@@ -2312,6 +2312,7 @@ CONTAINS
 
 
     n = Model % MaxElementNodes
+    DIM = CoordinateSystemDimension()
 
     ALLOCATE(ParentNodes % x(n), ParentNodes % y(n), ParentNodes % z(n), PermIndexes(n), &
 	SideNodes % x(n), SideNodes % y(n), SideNodes % z(n), SideIndexes(n), &

@@ -74,7 +74,7 @@ CONTAINS
     REAL(KIND=dp) :: dist,dr(3),dv(3),eta,rn(3),vn(3),speed,tn1(3),tn2(3)
     REAL(KIND=dp) :: damp_force, spring_force
     TYPE(ValueList_t), POINTER :: Params
-    LOGICAL :: Found, Visited
+    LOGICAL :: Found, Visited = .FALSE.
     
     SAVE :: Rad, Mass, Spring, Damping, Friction, Visited
     
@@ -293,7 +293,7 @@ CONTAINS
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER :: MeshDim
-    LOGICAL :: Visited, Found, Stat
+    LOGICAL :: Visited=.FALSE., Found, Stat
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: Var 
     TYPE(Solver_t), POINTER :: Solver
@@ -306,7 +306,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
 
     SAVE Params, Solver, Mesh, MeshDim, ParticleBunch, ElementNodes, Particles, &
-        Basis, Reflectivity, Indexes
+        Basis, Reflectivity, Indexes, Visited
 
     ! when photon reflection visited the first time, do some initialization
     IF ( .NOT. Visited ) THEN 
@@ -360,6 +360,7 @@ CONTAINS
           CALL Fatal( 'ParticleUtils', 'PhotonBunchivity, Memory allocation error' )
         END IF
       END IF
+      Visited = .TRUE.
     END IF
 
     IF( MeshDim == 2 ) THEN
@@ -737,7 +738,7 @@ CONTAINS
     REAL(KIND=dp) :: dt,dt0,Angle,VeloAbs,Pscatter,&
         Velo(3),Ptest,MFP
     INTEGER :: No,NoParticles,NoScattered,Status
-    LOGICAL :: Visited,Scatter,Found
+    LOGICAL :: Visited=.FALSE.,Scatter,Found
     
     SAVE Visited,MFP
     

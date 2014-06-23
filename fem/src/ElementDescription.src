@@ -6316,6 +6316,7 @@ END IF
      dim  = Element % TYPE % DIMENSION
      cdim = CoordinateSystemDimension()
 
+     stat = .TRUE.
      IF ( (dim /= 3) .OR. (cdim /= 3 ) ) THEN
        stat = .FALSE.
        CALL Error( 'WhitheyElementInfo', 'Whitney elements implemented only in 3D' )
@@ -8424,6 +8425,7 @@ END FUNCTION PointFaceDistance
      dim  = Element % TYPE % DIMENSION
      cdim = CoordinateSystemDimension()
 
+     stat = .TRUE.
      IF ( (dim /= 3) .OR. (cdim /= 3 ) ) THEN
        stat = .FALSE.
        CALL Error( 'Whitney2ElementInfo', &

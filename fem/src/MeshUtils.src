@@ -4420,6 +4420,7 @@ END SUBROUTINE GetMaxDefs
 
     CALL Info('NodalProjectorDiscont','Creating nodal projector for discontinuous boundary',Level=7)
 
+    Projector => Null()
     IF( .NOT. Mesh % DisContMesh ) THEN
       CALL Warn('NodalProjectorDiscont','Discontinuous mesh not created?')
       RETURN
@@ -5077,6 +5078,7 @@ END SUBROUTINE GetMaxDefs
 
     CALL Info('WeightedProjectorDiscont','Creating Galerkin projector for discontinuous boundary',Level=7)
 
+    Projector => NULL()
     IF( .NOT. Mesh % DisContMesh ) THEN
       CALL Warn('WeightedProjectorDiscont','Discontinuous mesh not created?')
       RETURN
@@ -5683,7 +5685,7 @@ END SUBROUTINE GetMaxDefs
       END FUNCTION WeightedProjector2
     END INTERFACE
 !------------------------------------------------------------------------------
-    
+    Projector => NULL()
     IF ( This <= 0  ) RETURN    
 
     DIM = CoordinateSystemDimension()
@@ -10395,6 +10397,7 @@ CONTAINS
       CALL BuildQuadrantTree( Mesh,BoundingBox,Mesh % RootQuadrant)
       RootQuadrant => Mesh % RootQuadrant
       IF (.NOT. ASSOCIATED(RootQuadrant) ) THEN
+        Hit = .FALSE.
         CALL Warn('PointInMesh','No RootQuadrant associated')
         RETURN
       END IF
@@ -11735,6 +11738,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshName
 
 !------------------------------------------------------------------------------
+    Mesh => NULL()
     IF ( .NOT. ASSOCIATED( Params ) ) RETURN
     Mesh => AllocateMesh()
 

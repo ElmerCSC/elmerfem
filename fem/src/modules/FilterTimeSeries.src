@@ -94,6 +94,7 @@ SUBROUTINE FilterTimeSeries( Model,Solver,dtime,TransientSimulation )
   
   DO NoVar = 1,99
 
+    GotOper = .FALSE.
     GotStuff = .FALSE.
     EndRatio = .FALSE.
 

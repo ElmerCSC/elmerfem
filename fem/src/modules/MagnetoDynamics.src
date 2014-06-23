@@ -2995,7 +2995,7 @@ CONTAINS
   
            LamCond(1:n) = GetReal( Material, 'Laminate Stack Conductivity', Found )
            IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Stack Conductivity not found!')
-           LamCond = CMPLX( REAL(LamCond(1:n)), &
+           LamCond(1:n) = CMPLX( REAL(LamCond(1:n)), &
                   GetReal( Material, 'Electric Conductivity im',  Found), KIND=dp)
          CASE('wide-frequency-band model')
            LamThick(1:n) = GetReal( Material, 'Laminate Thickness', Found )
@@ -3003,7 +3003,7 @@ CONTAINS
 
            LamCond(1:n) = GetReal( Material, 'Laminate Stack Conductivity', Found )
            IF (.NOT. Found) CALL Fatal('WhitneyAVSolver', 'Laminate Stack Conductivity not found!')
-           LamCond = CMPLX( REAL(LamCond(1:n)), &
+           LamCond(1:n) = CMPLX( REAL(LamCond(1:n)), &
                   GetReal( Material, 'Electric Conductivity im',  Found), KIND=dp)
          CASE DEFAULT
            CALL WARN('WhitneyAVSolver', 'Nonexistent Laminate Stack Model chosen!')

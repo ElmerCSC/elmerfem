@@ -647,6 +647,9 @@ CONTAINS
     ch = ElementDiameter(Element, Nodes)
     rotterm = 0.0d0
 
+    w1 = REAL(0,dp)
+    w2 = REAL(0,dp)
+    w3 = REAL(0,dp)
     DO t=1,IP % n
        !--------------------------------------------------------------
        ! Basis function values & derivatives at the integration point:

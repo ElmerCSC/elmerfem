@@ -748,7 +748,7 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: x0,y0,x1,y1,t,nx(3),ny(3),nz(3),srf(3),w0(3),w1(3),fval,dt, &
+    REAL(KIND=dp) :: x0,y0,x1,y1,t,nx(3),ny(3),nz(3),srf(3),w0(3),w1(3),fval, &
         r1x, r1y, r2x, r2y, aid, Maxsrf, ds1, ds2
     LOGICAL :: FileCreated = .FALSE., FileAppend, GotIt, FileSave, Found, FileNumber
     TYPE(ValueList_t),POINTER :: Material
