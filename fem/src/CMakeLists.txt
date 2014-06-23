@@ -8,6 +8,14 @@ ADD_SUBDIRECTORY(modules)
 ADD_SUBDIRECTORY(view3d)
 ADD_SUBDIRECTORY(viewaxis)
 
+#IF(WITH_MPI)
+  ##SET(ELMERSOLVER_FILENAME ElmerSolver_mpi)
+  #SET(ELMERSOLVER_TARGETNAME ElmerSolver_mpi_)
+#ELSE()
+  ##SET(ELMERSOLVER_FILENAME ElmerSolver)
+  #SET(ELMERSOLVER_TARGETNAME ElmerSolver_)
+#ENDIF()
+
 SET(prefix "${CMAKE_INSTALL_PREFIX}")
 
 SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
@@ -59,10 +67,17 @@ FOREACH( d ${ELMER_CDEFS} )
 ENDFOREACH()
 
 # Output elmerf90 and elmerld
+IF(WIN32)
+  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.bat.in.cmake
+	  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90.bat)
+  CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.bat.in.cmake
+	  ${CMAKE_CURRENT_BINARY_DIR}/elmerld.bat)
+ENDIF()
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerf90)
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerld.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/elmerld)
+
 IF (NOT MPI_FOUND)
   FILE(COPY ${CMAKE_CURRENT_SOURCE_DIR}/mpif_stub.h 
             DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
@@ -83,26 +98,77 @@ SET(ELMERSOLVER_LIBRARIES elmersolver matc eiof umfpack
   	                  ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
 
-IF(MPI_FOUND)
-  # Add parpack and possibly others
-  SET(ELMERSOLVER_LIBRARIES ${ELMERSOLVER_LIBRARIES} 
-  			    ${MUMPS_LIBRARIES})
 
-  # ElmerSolver_mpi
-  ADD_EXECUTABLE(ElmerSolver_mpi Solver.F90)
- 
-  TARGET_LINK_LIBRARIES(ElmerSolver_mpi ${ELMERSOLVER_LIBRARIES} 
-                                        ${MPI_Fortran_LIBRARIES} 
-                                        parpack)
+
+ADD_EXECUTABLE(Solver_TGT Solver.F90)
+SET_TARGET_PROPERTIES(Solver_TGT PROPERTIES OUTPUT_NAME ${ELMERSOLVER_OUTPUT_NAME})
+
+IF(NOT(WITH_MPI))
+  TARGET_LINK_LIBRARIES(elmersolver mpi_stubs ${ELMERSOLVER_LIBRARIES})
+  TARGET_LINK_LIBRARIES(Solver_TGT elmersolver)
+ENDIF()
+
+# ElmerSolver libraries 
+IF(WITH_MPI)
+  #ADD_LIBRARY(elmersolver_mpi SHARED ${solverlib_SOURCES})
+
+  # Add parpack and possibly others
+  SET(ELMERSOLVER_LIBRARIES ${ELMERSOLVER_LIBRARIES} ${MUMPS_LIBRARIES})    
+   
+  # Executable
+  GET_TARGET_PROPERTY(CURRENT_LINK_FLAGS Solver_TGT LINK_FLAGS)
+  GET_TARGET_PROPERTY(CURRENT_COMPILE_FLAGS Solver_TGT COMPILE_FLAGS)
+
+  IF(CURRENT_LINK_FLAGS)
+    SET(CURR_LFLAGS "${CURRENT_LINK_FLAGS};${MPI_Fortran_LINK_FLAGS}")
+  ELSE()
+    SET(CURR_LFLAGS "${MPI_Fortran_LINK_FLAGS}")
+  ENDIF()
+
+  IF(CURRENT_COMPILE_FLAGS)
+    SET(CURR_CFLAGS "${CURRENT_COMPILE_FLAGS};${MPI_Fortran_COMPILE_FLAGS}")
+  ELSE()
+    SET(CURR_CFLAGS "${MPI_Fortran_COMPILE_FLAGS}")
+  ENDIF()
+
+  SET_TARGET_PROPERTIES(Solver_TGT PROPERTIES LINK_FLAGS "${CURR_LFLAGS}")
+  SET_TARGET_PROPERTIES(Solver_TGT PROPERTIES COMPILE_FLAGS "${CURR_CFLAGS}")
+  TARGET_LINK_LIBRARIES(Solver_TGT elmersolver)
+
+  # Library object
+  GET_TARGET_PROPERTY(CURRENT_LINK_FLAGS elmersolver LINK_FLAGS) 
+  GET_TARGET_PROPERTY(CURRENT_COMPILE_FLAGS elmersolver COMPILE_FLAGS)
+
+  IF(CURRENT_LINK_FLAGS)
+    SET(CURR_LFLAGS "${CURRENT_LINK_FLAGS};${MPI_Fortran_LINK_FLAGS}")
+  ELSE()
+    SET(CURR_LFLAGS "${MPI_Fortran_LINK_FLAGS}")
+  ENDIF()
+  IF(CURRENT_COMPILE_FLAGS)
+    SET(CURR_CFLAGS "${CURRENT_COMPILE_FLAGS};${MPI_Fortran_COMPILE_FLAGS}")
+  ELSE()
+    SET(CURR_CFLAGS "${MPI_Fortran_COMPILE_FLAGS}")
+  ENDIF()
+
+  SET_TARGET_PROPERTIES(elmersolver PROPERTIES LINK_FLAGS "${CURR_LFLAGS}")
+  SET_TARGET_PROPERTIES(elmersolver PROPERTIES COMPILE_FLAGS "${CURR_CFLAGS}")
+  TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES} parpack ${MPI_Fortran_LIBRARIES})
 ENDIF()
 
 # elmersolver -library
-TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES})
+#TARGET_LINK_LIBRARIES(elmersolver ${ELMERSOLVER_LIBRARIES})
+
+## ElmerSolver serial
+#IF(NOT(NO_SERIAL_BINARY))
+  #TARGET_LINK_LIBRARIES(elmersolver mpi_stubs ${ELMERSOLVER_LIBRARIES})
+  #TARGET_LINK_LIBRARIES(ElmerSolver elmersolver)
+#ENDIF()
 
 # ElmerSolver
-ADD_EXECUTABLE(ElmerSolver Solver.F90)
-TARGET_LINK_LIBRARIES(ElmerSolver ${ELMERSOLVER_LIBRARIES} 
-                                  mpi_stubs)
+#ADD_EXECUTABLE(ElmerSolver Solver.F90)
+#TARGET_LINK_LIBRARIES(ElmerSolver ${ELMERSOLVER_LIBRARIES} 
+                                  #mpi_stubs)
+
 # ViewFactors
 ADD_EXECUTABLE(ViewFactors ViewFactors.F90)
 # TARGET_INCLUDE_DIRECTORIES(ViewFactors PUBLIC ${CMAKE_BINARY_DIR}/fem/src/view3d)
@@ -112,40 +178,48 @@ ADD_EXECUTABLE(ViewFactors ViewFactors.F90)
 TARGET_LINK_LIBRARIES(ViewFactors ${ELMERSOLVER_LIBRARIES} 
                                   mpi_stubs
 				  view3d
-				  viewaxis)
+				  viewaxis elmersolver)
 INSTALL(TARGETS ViewFactors RUNTIME DESTINATION "bin")
 
 # GebhardFactors
-ADD_EXECUTABLE(GebhardtFactors GebhardtFactors.F90) 
+ADD_EXECUTABLE(GebhardtFactors GebhardtFactors.F90)
 TARGET_LINK_LIBRARIES(GebhardtFactors ${ELMERSOLVER_LIBRARIES} 
-                                      mpi_stubs)
+                                      mpi_stubs elmersolver)
 
-# Use Fortran to link ElmerSolver, GebhardtFactors, ViewFactors
-SET_TARGET_PROPERTIES(ElmerSolver 
-                      GebhardtFactors 
-                      ViewFactors 
-		      PROPERTIES LINKER_LANGUAGE Fortran)
-IF(MPI_FOUND)
-  SET_TARGET_PROPERTIES(ElmerSolver_mpi
-                        PROPERTIES LINKER_LANGUAGE Fortran)
-ENDIF()
-
-
-INSTALL(TARGETS GebhardtFactors RUNTIME DESTINATION "bin")
+INSTALL(TARGETS GebhardtFactors mpi_stubs RUNTIME DESTINATION "bin"
+  LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
 
 # Installation rules
 INSTALL(FILES elements.def SOLVER.KEYWORDS DESTINATION "share/elmersolver/lib")
 
-IF(MPI_FOUND)
-  INSTALL(TARGETS ElmerSolver_mpi RUNTIME DESTINATION "bin")
+
+IF(NOT(WIN32))
+  IF(WITH_MPI)
+    INSTALL(TARGETS Solver_TGT elmersolver RUNTIME DESTINATION "bin"
+      LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
+    INSTALL(TARGETS Solver_TGT RUNTIME DESTINATION "bin"
+      LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
+  ELSE()
+    INSTALL(TARGETS Solver_TGT elmersolver mpi_stubs RUNTIME DESTINATION "bin" 
+      LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
+  ENDIF()
+ELSE()
+  INSTALL(TARGETS elmersolver mpi_stubs RUNTIME DESTINATION "${ELMER_INSTALL_LIB_DIR}" 
+    LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
+  INSTALL(TARGETS Solver_TGT elmersolver mpi_stubs RUNTIME DESTINATION "bin" 
+    LIBRARY DESTINATION "${ELMER_INSTALL_LIB_DIR}")
 ENDIF()
 
-INSTALL(TARGETS ElmerSolver elmersolver mpi_stubs RUNTIME DESTINATION "bin" 
-                LIBRARY DESTINATION "lib")
+IF(WIN32)
+  INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerf90.bat DESTINATION "bin")
+  INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld.bat DESTINATION  "bin")
+ENDIF()
 INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerf90 DESTINATION "bin")
 INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/elmerld DESTINATION  "bin")
-# Fortran module files
-INSTALL(DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/.
-		  DESTINATION ${CMAKE_INSTALL_PREFIX}/share/elmersolver/include)
 
-# INSTALL(CODE "EXECUTE_PROCESS (COMMAND \"${CMAKE_COMMAND}\" -E copy_directory \"${CMAKE_Fortran_MODULE_DIRECTORY}/\${BUILD_TYPE}\" \"${CMAKE_INSTALL_PREFIX}/share/elmersolver/include\")")
+# Fortran module files
+#INSTALL(DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/.
+		  #DESTINATION ${CMAKE_INSTALL_PREFIX}/share/elmersolver/include)
+
+INSTALL(DIRECTORY ${CMAKE_Fortran_MODULE_DIRECTORY}/.
+                  DESTINATION "share/elmersolver/include")

@@ -31,13 +31,16 @@
 
 /* Define if your system has dlopen, dlsym, dlerror, and dlclose for dynamic
    linking */
-#define HAVE_DLOPEN_API
+#cmakedefine HAVE_DLOPEN_API
+
+/* Define if your system has LoadLibrary API (e.g. WIN32)*/
+#cmakedefine HAVE_LOADLIBRARY_API
 
 /* Define to 1 if you have the `dlsym' function. */
-#define HAVE_DLSYM
+#cmakedefine HAVE_DLSYM
 
 /* Define if your system has dyld for dynamic linking */
-#define HAVE_DYLD_API
+#cmakedefine HAVE_DYLD_API
 
 /* Define if you have a EIOF library. */
 #define HAVE_EIOF
@@ -114,7 +117,7 @@
 #cmakedefine PACKAGE_VERSION @PACKAGE_VERSION@
 
 /* Shared lib filename extension */
-#define SHL_EXTENSION ".so"
+#cmakedefine SHL_EXTENSION "@SHL_EXTENSION@"
 
 
 #define ELMER_LINKTYP ${ELMER_LINKTYP}

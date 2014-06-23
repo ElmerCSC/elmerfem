@@ -152,11 +152,11 @@ Body Force 1
   Name = "Current Density"
 
   Current Density 1 = Variable Coordinate 1, Coordinate 2, Coordinate 3, time
-   Real Procedure "currents.so" "currdens1"
+   Real Procedure "currents" "currdens1"
   Current Density 2 = Variable Coordinate 1, Coordinate 2, Coordinate 3, time
-   Real Procedure "currents.so" "currdens2"
+   Real Procedure "currents" "currdens2"
   Current Density 3 = Variable Coordinate 1, Coordinate 2, Coordinate 3, time
-   Real Procedure "currents.so" "currdens3"
+   Real Procedure "currents" "currdens3"
 
 End
 

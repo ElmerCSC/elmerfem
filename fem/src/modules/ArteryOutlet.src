@@ -1046,6 +1046,7 @@ CONTAINS
 
           Stress = 0.0d0
           Div = 0.0d0
+          Visc = 0.0d0
           
           NormalVelo = 0.0d0
           DO j = 1,DIM

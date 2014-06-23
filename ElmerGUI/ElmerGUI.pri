@@ -8,11 +8,12 @@
 # Optional components (undefine or comment out to exclude from compilation):
 #------------------------------------------------------------------------------
 DEFINES += EG_QWT      # Use QWT for convergence monitor?
-DEFINES += EG_VTK      # Use VTK for postprocessing?
+#DEFINES += EG_VTK      # Use VTK for postprocessing?
 DEFINES += EG_PARAVIEW # Use ParaView for postprocessing?
 DEFINES += EG_MATC     # Use MATC for internal operations in postprocessing?
-DEFINES += EG_OCC      # Use OpenCASCADE 6.3 for importing CAD files? Needs VTK.
+#DEFINES += EG_OCC      # Use OpenCASCADE 6.3 for importing CAD files? Needs VTK.
 DEFINES -= EG_PYTHONQT # Use PythonQt for scripting in post processor?
+CONFIG += static
 
 #------------------------------------------------------------------------------
 # 64 bit system?
@@ -28,7 +29,7 @@ isEmpty(ELMERGUI_HOME) {
    ELMER_HOME = $$(ELMER_HOME)
    isEmpty(ELMER_HOME) {
       unix: ELMER_HOME = /usr/local
-      win32: ELMER_HOME = c:/Elmer7
+      win32: ELMER_HOME = c:/Elmer7_gui
       macx: ELMER_HOME = /usr/local
    }
    ELMERGUI_HOME = $${ELMER_HOME}/bin
@@ -62,9 +63,9 @@ unix {
 }
 
 win32 {
-  QWT_INCLUDEPATH = c:/Source/Qwt/include
-  QWT_LIBPATH = c:/Source/Qwt/lib
-  QWT_LIBS = -lqwt5
+  QWT_INCLUDEPATH = c:/ElmerBuild/opt/qwt-6.1.0/include
+  QWT_LIBPATH = c:/ElmerBuild/opt/qwt-6.1.0/lib
+  QWT_LIBS = -lqwt
 }
 
 macx {
@@ -97,8 +98,8 @@ unix {
 }
 
 win32 {
-   VTK_INCLUDEPATH = c:/Source/VTK/include/vtk-5.4
-   VTK_LIBPATH = c:/Source/VTK/lib/vtk-5.4
+   VTK_INCLUDEPATH = c:/ElmerBuild/opt/vtk/include/vtk-5.6
+   VTK_LIBPATH = c:/ElmerBuild/opt/vtk/lib/vtk-5.6
    VTK_LIBS = -lQVTK \
               -lvtkCommon \
               -lvtkDICOMParser \
@@ -162,25 +163,48 @@ unix {
               -lTKXSBase
 }
 
+#win32 {
+#   CASROOT = c:/ElmerBuild/opt/OpenCASCADE/OpenCASCADE6.3.0/ros
+#   OCC_INCLUDEPATH = $$CASROOT/inc
+#   OCC_LIBPATH = $$CASROOT/win32/lib
+#   OCC_LIBS = $$CASROOT/win32/lib/TKBRep.lib \
+#              $$CASROOT/win32/lib/TKernel.lib \
+#              $$CASROOT/win32/lib/TKG2d.lib \
+#              $$CASROOT/win32/lib/TKG3d.lib \
+#              $$CASROOT/win32/lib/TKGeomAlgo.lib \
+#              $$CASROOT/win32/lib/TKGeomBase.lib \
+#              $$CASROOT/win32/lib/TKMath.lib \
+#              $$CASROOT/win32/lib/TKMesh.lib \
+#              $$CASROOT/win32/lib/TKShHealing.lib \
+#              $$CASROOT/win32/lib/TKSTEP.lib \
+#              $$CASROOT/win32/lib/TKSTEP209.lib \
+#              $$CASROOT/win32/lib/TKSTEPAttr.lib \
+#              $$CASROOT/win32/lib/TKSTEPBase.lib \
+#              $$CASROOT/win32/lib/TKIGES.lib \
+#              $$CASROOT/win32/lib/TKTopAlgo.lib \
+#              $$CASROOT/win32/lib/TKXSBase.lib
+#}
+
 win32 {
-   OCC_INCLUDEPATH = $(CASROOT)/inc
-   OCC_LIBPATH = $(CASROOT)/win32/lib
-   OCC_LIBS = $(CASROOT)/win32/lib/TKBRep.lib \
-              $(CASROOT)/win32/lib/TKernel.lib \
-              $(CASROOT)/win32/lib/TKG2d.lib \
-              $(CASROOT)/win32/lib/TKG3d.lib \
-              $(CASROOT)/win32/lib/TKGeomAlgo.lib \
-              $(CASROOT)/win32/lib/TKGeomBase.lib \
-              $(CASROOT)/win32/lib/TKMath.lib \
-              $(CASROOT)/win32/lib/TKMesh.lib \
-              $(CASROOT)/win32/lib/TKShHealing.lib \
-              $(CASROOT)/win32/lib/TKSTEP.lib \
-              $(CASROOT)/win32/lib/TKSTEP209.lib \
-              $(CASROOT)/win32/lib/TKSTEPAttr.lib \
-              $(CASROOT)/win32/lib/TKSTEPBase.lib \
-              $(CASROOT)/win32/lib/TKIGES.lib \
-              $(CASROOT)/win32/lib/TKTopAlgo.lib \
-              $(CASROOT)/win32/lib/TKXSBase.lib
+   CASROOT = c:/ElmerBuild/opt/OpenCASCADE/OpenCASCADE6.3.0/ros
+   OCC_INCLUDEPATH = $$CASROOT/inc
+   OCC_LIBPATH = $$CASROOT/win32/lib
+   OCC_LIBS = -lTKBRep \
+              -lTKernel \
+              -lTKG2d \
+              -lTKG3d \
+              -lTKGeomAlgo \
+              -lTKGeomBase \
+              -lTKMath \
+              -lTKMesh \
+              -lTKShHealing \
+              -lTKSTEP \
+              -lTKSTEP209 \
+              -lTKSTEPAttr \
+              -lTKSTEPBase \
+              -lTKIGES \
+              -lTKTopAlgo \
+              -lTKXSBase
 }
 
 macx {
