@@ -474,11 +474,13 @@ CONTAINS
         DO p = 1,nd
           DO q = 1,nd
             STIFF(p,q) = STIFF(p,q) + IP % s(t) * DetJ * &
-                (mu/x)*Basis(p)*dBasisdx(q,1)
+                (mu/x) * ( Basis(p)*dBasisdx(q,1) + &
+                Basis(q)*dBasisdx(p,1) + Basis(p)*Basis(q)/x )              
           END DO
         END DO
       END IF
 
+      ! Csymmetry is not yet considered in the Newton linearization
       IF (HBcurve .AND. NewtonRaphson) THEN
         DO p=1,nd
           DO q=1,nd
@@ -1076,7 +1078,8 @@ CONTAINS
         DO p = 1,nd
           DO q = 1,nd
             STIFF(p,q) = STIFF(p,q) + IP % s(t) * DetJ * &
-                (mu/x)*Basis(p)*dBasisdx(q,1)
+                 (mu/x) * ( Basis(p)*dBasisdx(q,1) + &
+                 Basis(q)*dBasisdx(p,1) + Basis(p)*Basis(q)/x )              
           END DO
         END DO
       END IF
@@ -1543,17 +1546,25 @@ CONTAINS
         END IF
 
         ! magnetic flux density components
-        ! curl in cylindrically symmetric case has really different sign convention...
-        BAtIp(1) =  SUM( POT(1,1:nd) * dBasisdx(1:nd,2) )
-        BAtIp(2) = -SUM( POT(1,1:nd) * dBasisdx(1:nd,1) )
-        ! IF( CSymmetry ) BAtIp(2) = BAtIP(2) - SUM( POT(1,1:nd) * Basis(1:nd) ) / x
-
-        IF(FluxDofs==4) THEN
-          BAtIp(3) =  SUM( POT(2,1:nd) * dBasisdx(1:nd,2) )
-          BAtIp(4) = -SUM( POT(2,1:nd) * dBasisdx(1:nd,1) )
-          ! IF( CSymmetry ) BAtIp(4) = BAtIP(4) - SUM( POT(2,1:nd) * Basis(1:nd) ) / x
+        ! curl in cylindrically symmetric case has different sign convention.
+        IF( CSymmetry ) THEN
+          BAtIp(1) = -SUM( POT(1,1:nd) * dBasisdx(1:nd,2) )
+          BAtIp(2) = SUM( POT(1,1:nd) * dBasisdx(1:nd,1) ) &
+              + SUM( POT(1,1:nd) * Basis(1:nd) ) / x
+          IF(FluxDofs == 4) THEN
+            BAtIp(3) = -SUM( POT(2,1:nd) * dBasisdx(1:nd,2) )
+            BAtIp(4) = SUM( POT(2,1:nd) * dBasisdx(1:nd,1) ) &
+                + SUM( POT(2,1:nd) * Basis(1:nd) ) / x
+          END IF
+        ELSE
+          BAtIp(1) =  SUM( POT(1,1:nd) * dBasisdx(1:nd,2) )
+          BAtIp(2) = -SUM( POT(1,1:nd) * dBasisdx(1:nd,1) )
+          IF(FluxDofs == 4) THEN
+            BAtIp(3) =  SUM( POT(2,1:nd) * dBasisdx(1:nd,2) )
+            BAtIp(4) = -SUM( POT(2,1:nd) * dBasisdx(1:nd,1) )
+          END IF
         END IF
-
+  
         ! Joule heating fields
         IF( TotDofs > 4 ) THEN
           CondAtIp = SUM( Basis(1:n) * Cond(1:n) )

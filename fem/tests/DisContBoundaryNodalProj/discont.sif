@@ -27,7 +27,7 @@ Simulation
 !  Post File = "discont.vtu"
 
 ! Normally we dont want to apply this
-  Discontinuous Boundaries Greedy = Logical False
+  Discontinuous Bulk Greedy = Logical False
 
 ! Here the discontinuity loader is currently active
 ! This will become the default in future. 

@@ -23,14 +23,14 @@ Simulation
 
   Timestepping Method = "bdf"
   BDF Order = 1
-  Timestep Intervals = 20
+  Timestep Intervals = 5
   Timestep Sizes = 0.002
 
   Steady State Min Iterations = 1
   Steady State Max Iterations = 100
 
   Output File = "HydroTestCase_$Name".result" !"
-  max output level = 9
+  max output level = 15
 
 End
 
@@ -194,22 +194,22 @@ Solver 5
   Exec Solver = After TimeStep
 
   Procedure = File "SaveData" "SaveScalars"
-  Filename =  "hydro_scalars_$Name".dat" !"
+  Filename =  results.dat !"hydro_scalars_$Name".dat" !"
   File Append = Logical True     ! For transient simualtion
 
   Variable 1 = String "Time"
-  Operator 2 = String "cpu time"
-  Operator 3 = String "cpu memory"
+  !Operator 2 = String "cpu time"
+  !Operator 3 = String "cpu memory"
   
-  Variable 4 = String "IDSHead"
-  Operator 4 = String "sum"
-  Operator 5 = String "max"
-  Operator 6 = String "min"
+  Variable 2 = String "IDSHead"
+  Operator 2 = String "sum"
+  Operator 3 = String "max"
+  Operator 4 = String "min"
 
-  Variable 7 = String "EPLHead"
-  Operator 7 = String "sum"
-  Operator 8 = String "Max"
-  Operator 9 = String "Min"
+  Variable 5 = String "EPLHead"
+  Operator 5 = String "sum"
+  Operator 6 = String "Max"
+  Operator 7 = String "Min"
 
 End
 

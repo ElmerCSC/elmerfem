@@ -164,14 +164,32 @@ done
 # If "yes", parrallel tests will run else parallel runs are ignored
 ###------------------------------------------------------------------------------###
 if ( ! test -e $ELMER_HOME/bin/ElmerSolver_mpi); then
-    List_parallel_run=`find . -name "Makefile" -print | xargs grep "ElmerSolver_mpi" | awk -F / '{print$2}'`
+    List_parallel_run=`find . -name "Makefile" -print | xargs grep "ElmerSolver_mpi" . | awk -F / '{print$2}'`
     for var in $List_parallel_run ; do
 	dirs=`echo $dirs | sed -e "s/$var//"`
     done
-    echo "ElmerSolver_mpi not found, parallel test-cases are ignored:"
+    List_Ignored=$List_parallel_run
+    echo "ElmerSolver_mpi not found, parallel test-cases are switched off:"
     echo $List_parallel_run
     echo ""
 fi
+
+###------------------------------------------------------------------------------###
+# Test if gmsh has been intalled
+# If "No", tests with gmsh are ignored
+###------------------------------------------------------------------------------###
+if ( test $(which gmsh | wc -l) -eq 0) ; then
+    List_gmsh_run=`find . -name "Makefile" | xargs grep "GMSH" . |   awk -F / '{print$2}'`
+    for var in $List_gmsh_run ; do
+	dirs=`echo $dirs | sed -e "s/$var//"`
+    done
+    echo "gmsh not found, tests with gmsh are switched off:"
+    echo $List_gmsh_run
+    echo ""
+else
+    export GMSH=$(which gmsh)
+fi
+
 
 ###------------------------------------------------------------------------------###
 # Loop on repertory to realise each test
@@ -388,9 +406,4 @@ fi
 #Print Screen
 echo ""
 printf "Tests completed, passed: $passed out of total $nbtest tests \n"
-echo ""
-if [ ${#List_Failed[@]} != 0 ]; then
-    echo "Tests FAILED:"
-    for elt in "${List_Failed[*]}"; do echo $elt ;done
-fi
 echo ""

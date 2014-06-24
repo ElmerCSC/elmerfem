@@ -2080,8 +2080,12 @@ CONTAINS
          i = 0
       ELSE
          i = LEN_TRIM(MeshName)
-         DO WHILE( i>0 .AND. MeshName(i:i) /= '/' )
-           i = i-1
+         DO WHILE( i>0 )
+            IF (MeshName(i:i) /= '/' ) THEN
+               i = i-1
+            ELSE	       
+               EXIT
+            END IF
          END DO
       END IF
 
@@ -3347,7 +3351,7 @@ CONTAINS
              CALL Warn('LoadRestartFile','Variable is not present for reading: '//TRIM(Row))
            END IF
            IF( GotPerm .NEQV. ASSOCIATED( Var % Perm ) ) THEN
-             DEALLOCATE( Var % Perm ) ; Var % Perm => Null()
+             DEALLOCATE( Var % Perm ) ; Var % Perm => NULL()
 !            CALL Fatal('LoadRestartFile','Permutation should either exist or not!')
            END IF
 
@@ -4685,6 +4689,7 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
 !------------------------------------------------------------------------------
+
     STIFF = 0.0_dp
     FORCE = 0.0_dp
 

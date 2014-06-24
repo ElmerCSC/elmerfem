@@ -2,14 +2,12 @@
 #
 
 #Post-procesing on files to obtain file:  results.dat
-`tail -5 Cost_Adj_Beta.dat | awk '{print$0}' > foo1.dat`
-`tail -5 gradientnormadjoint_adj_beta.dat | awk '{print$2}' > foo2.dat`
-`paste foo1.dat foo2.dat > results.dat`
-`rm foo1.dat foo2.dat`
+`tail -5 Cost_Adj_Beta.dat | awk '{print$1}' > foo1.dat`
+#Recuperation de la norme de la vitesse: (nrm iter 2 de chaque time step)
+`grep "ComputeChange: NS (ITER=2) (NRM,RELC): (" OutputSIF_InvMeth_AdjBeta.log | grep "navier-stokes" | awk '{print$6}'  > NRMvel.dat`
+`paste foo1.dat NRMvel.dat > results.dat`
+`rm foo1.dat NRMvel.dat`
 
 #Creation of file:  results.dat.names
 `echo   1: value: time scalar variable > results.dat.names`
-`echo   2:  >> results.dat.names`
-`echo   3: >> results.dat.names`
-`echo   4: >> results.dat.names`
-`echo   5: >> results.dat.names`
+`echo   2: NRM: velocity >> results.dat.names`

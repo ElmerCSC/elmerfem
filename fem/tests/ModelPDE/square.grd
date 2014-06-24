@@ -5,18 +5,17 @@ Subcell Divisions in 2D = 3 3
 Subcell Limits 1 = -1 0 1 2
 Subcell Limits 2 = -1 0 1 2
 Material Structure in 2D
-  0  0  0
-  0  1  0
-  0  0  0
+  2  4  3
+  2  1  3
+  2  5  3
 End
 Materials Interval = 1 1
 Boundary Definitions
 ! type     out      int     
-  1        0        1        1       
-End
-Advanced Elements
-! mat n e f d b
-  1   1 1 0 0 1
+  1        2        1        1       
+  2        3        1        1       
+  3        4        1        1       
+  4        5        1        1       
 End
 Numbering = Horizontal
 Element Degree = 1
