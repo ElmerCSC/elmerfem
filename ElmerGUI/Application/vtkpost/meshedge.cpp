@@ -91,7 +91,11 @@ void MeshEdge::draw(VtkPost* vtkPost, Preferences* preferences)
   if(grid->GetNumberOfCells() < 1) return;
 
   vtkExtractEdges* edges = vtkExtractEdges::New();
+#if VTK_MAJOR_VERSION <= 5
   edges->SetInput(grid);
+#else
+  edges->SetInputData(grid);
+#endif
 
   vtkTubeFilter* tubes = vtkTubeFilter::New();
   if(useTubeFilter) {

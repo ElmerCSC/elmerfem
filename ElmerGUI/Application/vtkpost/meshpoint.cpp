@@ -95,7 +95,11 @@ void MeshPoint::draw(VtkPost* vtkPost, Preferences* preferences)
   if(grid->GetNumberOfPoints() < 1) return;
 
   vtkGlyph3D* glyph = vtkGlyph3D::New();
+#if VTK_MAJOR_VERSION <= 5
   glyph->SetInput(grid);
+#else
+  glyph->SetInputData(grid);
+#endif
   glyph->SetSourceConnection(sphere->GetOutputPort());
 
   vtkClipPolyData* clipper = vtkClipPolyData::New();

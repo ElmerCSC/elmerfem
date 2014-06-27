@@ -163,8 +163,16 @@ void Surface::draw(VtkPost* vtkPost, TimeStep* timeStep)
   //-------------------------------------------------
   vtkGeometryFilter* filter = vtkGeometryFilter::New();
 
+#if VTK_MAJOR_VERSION <= 5
   filter->SetInput(vtkPost->GetSurfaceGrid());
+#else
+  filter->SetInputData(vtkPost->GetSurfaceGrid());
+#endif
+#if VTK_MAJOR_VERSION <= 5
   filter->GetOutput()->ReleaseDataFlagOn();
+#else
+  filter->ReleaseDataFlagOn();
+#endif
 
   // Apply the clip plane:
   //-----------------------
@@ -200,7 +208,11 @@ void Surface::draw(VtkPost* vtkPost, TimeStep* timeStep)
     if(useClip) {
       mapper->SetInputConnection(clipper->GetOutputPort());
     } else {
+#if VTK_MAJOR_VERSION <= 5
       mapper->SetInput(vtkPost->GetSurfaceGrid());
+#else
+      mapper->SetInputData(vtkPost->GetSurfaceGrid());
+#endif
     }
   }
 

@@ -287,7 +287,11 @@ void Vector::draw(VtkPost* vtkPost, TimeStep* timeStep)
   // Mask points:
   //-------------
   vtkMaskPoints* maskPoints = vtkMaskPoints::New();
+#if VTK_MAJOR_VERSION <= 5
   maskPoints->SetInput(vtkPost->GetVolumeGrid());
+#else
+  maskPoints->SetInputData(vtkPost->GetVolumeGrid());
+#endif
   if(randomMode) {
     maskPoints->RandomModeOn();
   } else {

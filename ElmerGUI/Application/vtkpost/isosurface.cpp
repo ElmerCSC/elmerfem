@@ -226,7 +226,11 @@ void IsoSurface::draw(VtkPost* vtkPost, TimeStep* timeStep)
   //--------------
   vtkContourFilter* iso = vtkContourFilter::New();
   vtkPost->GetVolumeGrid()->GetPointData()->SetActiveScalars("IsoSurface");
+#if VTK_MAJOR_VERSION <= 5
   iso->SetInput(vtkPost->GetVolumeGrid());
+#else
+  iso->SetInputData(vtkPost->GetVolumeGrid());
+#endif
   iso->ComputeScalarsOn();
   if(useListValues) {
     iso->SetNumberOfContours(contourValues);

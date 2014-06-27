@@ -2,8 +2,9 @@
 
 IF(WIN32)
   SET(CPACK_NSIS_DISPLAY_NAME "${CPACK_PACKAGE_INSTALL_DIRECTORY} Elmer")
-  SET(CPACK_NSIS_HELP_LINK "TODO: http://www.elmerfem.org")
-  SET(CPACK_NSIS_CONTACT "TODO: elmeradm@csc.fi")
+  SET(CPACK_NSIS_HELP_LINK "http://www.elmerfem.org")
+  #SET(CPACK_NSIS_CONTACT "TODO: elmeradm@csc.fi")
+  SET(CPACK_NSIS_CONTACT "")
   SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
 "   !include \\\"winmessages.nsh\\\"
    ; HKLM (all users) vs HKCU (current user) defines
@@ -32,7 +33,6 @@ IF(WIN32)
    unDoSendElmerHome:
      SendMessage \\\${HWND_BROADCAST} \\\${WM_WININICHANGE} 0 \\\"STR:Environment\\\" /TIMEOUT=5000")
   SET(CPACK_NSIS_MODIFY_PATH "ON")
-  # @TODO: This is build-bot specific hack to find runtime libraries
 
   SET(CPACK_COMPONENT_UNSPECIFIED_DISPLAY_NAME "Elmerfem solver")
   SET(CPACK_COMPONENT_UNSPECIFIED_DESCRIPTION "The main application: ElmerSolver, ElmerGrid, matc and runtime binaries.")

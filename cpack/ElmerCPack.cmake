@@ -1,4 +1,4 @@
-# Use CPack only if it really found
+# Use CPack only if its cmake script exists
 IF(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
 
   SET(CPACK_PACKAGE_NAME "Elmer")
@@ -21,7 +21,7 @@ IF(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
 
   #SET(CPACK_PACKAGE_FILE_NAME "elmerfem-${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
   STRING(TIMESTAMP DATE "%Y%m%d")
-  SET(CPACK_PACKAGE_FILE_NAME "elmerfem-snapshot-${DATE}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+  SET(CPACK_PACKAGE_FILE_NAME "elmerfem-${DATE}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
   SET(CPACK_PACKAGE_VENDOR "CSC")
   SET(CPACK_PACAKGE_VERSION "${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION}")
   SET(CPACK_PACKAGE_CONTACT "elmeradm@csc.fi")
@@ -63,19 +63,10 @@ IF(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
       FIND_FILE(GCC_LIB libgcc_s_sjlj-1.dll)
       FIND_FILE(STDCPP_LIB libstdc++-6.dll)
 
-      # Qt4 dynamic link libraries for ElmerGUI
-      IF(WITH_ELMERGUI)
-        FIND_FILE(QTCORE_DLL QtCore4.dll PATH_SUFFIXES "bin")
-        FIND_FILE(QTGUI_DLL QtGui4.dll PATH_SUFFIXES "bin")
-        FIND_FILE(QTOPENGL_DLL QtOpenGL4.dll PATH_SUFFIXES "bin")
-        FIND_FILE(QTSCRIPT_DLL QtScript4.dll PATH_SUFFIXES "bin")
-        FIND_FILE(QTXML_DLL QtXml4.dll PATH_SUFFIXES "bin")
-        INSTALL(FILES ${QTCORE_DLL} ${QTGUI_DLL} ${QTOPENGL_DLL} ${QTSCRIPT_DLL} ${QTXML_DLL} DESTINATION "bin" COMPONENT "elmergui")
-      ENDIF()
-
       INSTALL(FILES ${MINGW_GFORT_LIB} ${QUADMATH_LIB} ${WINPTHREAD_LIB} ${GCC_LIB} ${STDCPP_LIB} ${BLAS_LIB} ${LAPACK_LIB} DESTINATION "bin")
 
       IF(BUNDLE_STRIPPED_GFORTRAN)
+        # TODO: This will make the windows package to be GPL3
         INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stripped_gfortran" DESTINATION "." COMPONENT "stripped_gfortran")
         SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DESCRIPTION "A stripped version of x86_64-w64-mingw32-gfortran 4.8.3 (sjlj) compiler for compiling Elmer modules.")
         SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 4.8.3")

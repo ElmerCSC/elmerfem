@@ -751,6 +751,7 @@ void TrilinosCleanup(void)
   containerListHead = Teuchos::null;
   }
 
+
 }//extern "C"
 
 // creates the map without overlap

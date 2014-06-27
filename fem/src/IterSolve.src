@@ -831,11 +831,9 @@ CONTAINS
         ! Associate xC and bC with the correct values
         felem => x(1)
         felem_c_ptr = C_LOC(felem)
-        !CALL C_F_POINTER(c_loc(felem), xC, (/ HUTI_NDIM /) ) ! @TODO: doesn't compile on gfortran-4.9
         CALL C_F_POINTER(felem_c_ptr, xC, (/ HUTI_NDIM /) )
         felem => b(1)
         felem_c_ptr = C_LOC(felem)
-        !CALL C_F_POINTER(c_loc(felem), bC, (/ HUTI_NDIM /) )
         CALL C_F_POINTER(felem_c_ptr, bC, (/ HUTI_NDIM /) )
         ! write (*,*) xC(1:3), bC(1:3)
         CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &

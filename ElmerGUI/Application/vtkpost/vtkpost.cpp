@@ -185,7 +185,11 @@ static void pEventHandler(vtkObject* caller, unsigned long eid,
     line->GetPointIds()->SetId(1, 5);
     cross->InsertNextCell(line->GetCellType(), line->GetPointIds());
 
+#if VTK_MAJOR_VERSION <= 5
     mapper->SetInput(cross);
+#else
+    mapper->SetInputData(cross);
+#endif
 
     pickedPointActor->SetMapper(mapper);
     pickedPointActor->SetPosition(pickPos);
@@ -812,16 +816,23 @@ void VtkPost::savePovraySlot()
   // Convert to vtkPolyData with normals:
   //======================================
   vtkGeometryFilter *geometry = vtkGeometryFilter::New();
+#if VTK_MAJOR_VERSION <= 5
   geometry->SetInput(surfaceGrid);
+#else
+  geometry->SetInputData(surfaceGrid);
+#endif
   
   vtkPolyDataNormals *normals = vtkPolyDataNormals::New();
   normals->SetInputConnection(geometry->GetOutputPort());
-  
+
   vtkPolyData *polyData = normals->GetOutput();
-
+#if VTK_MAJOR_VERSION <= 5
   polyData->Update();
-
+#else
+  normals->Update();
+#endif
   polyData->ComputeBounds();
+
   
   double *bounds = polyData->GetBounds();
 

@@ -1,0 +1,5 @@
+OCE has the same license as OCCT; since OCCT 6.7.0, you can redistribute it
+and/or modify it under the terms of the GNU Lesser General Public License
+version 2.1 as published by the Free Software Foundation, with special
+exception defined in the file OCCT_LGPL_EXCEPTION.txt. See LICENSE_LGPL_21.txt
+for the full license text.

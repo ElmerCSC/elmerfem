@@ -119,6 +119,11 @@
 /* Shared lib filename extension */
 #cmakedefine SHL_EXTENSION "@SHL_EXTENSION@"
 
+/* Trilinos */
+#cmakedefine HAVE_TRILINOS
+
+/* This remove calls to EIO library */
+#cmakedefine HAVE_EIO
 
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1

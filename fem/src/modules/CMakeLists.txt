@@ -34,7 +34,8 @@ FOREACH(FNAME ${SRC_FILES})
         LIBRARY DESTINATION "share/elmersolver/lib")
     ENDIF()
   ELSE()
-    INSTALL(TARGETS ${BASENAME} LIBRARY DESTINATION "share/elmersolver/lib")
+    INSTALL(TARGETS ${BASENAME} LIBRARY DESTINATION "share/elmersolver/lib"
+	    RUNTIME DESTINATION "share/elmersolver/lib")
   ENDIF()
 ENDFOREACH()
 

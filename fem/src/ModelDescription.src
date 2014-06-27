@@ -2021,7 +2021,7 @@ CONTAINS
 
     NULLIFY( Model % Meshes )
     IF ( MeshDir(1:1) /= ' ' ) THEN
-
+      ! @TODO: Don't forget funny define
       CALL ResetTimer('LoadMesh') 
       NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) 
       IF( .NOT. GotIt ) NewLoadMesh = .TRUE.

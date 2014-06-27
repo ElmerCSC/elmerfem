@@ -95,7 +95,12 @@ void FeatureEdge::draw(VtkPost* vtkPost, Preferences* preferences)
 
   // Convert from vtkUnstructuredGrid to vtkPolyData:
   vtkGeometryFilter* filter = vtkGeometryFilter::New();
+#if VTK_MAJOR_VERSION <= 5
   filter->SetInput(grid);
+#else
+  filter->SetInputData(grid);
+#endif
+
   // filter->GetOutput()->ReleaseDataFlagOn();
 
   vtkFeatureEdges* edges = vtkFeatureEdges::New();

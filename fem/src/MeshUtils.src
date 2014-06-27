@@ -45,7 +45,9 @@ MODULE MeshUtils
 
 #ifdef USE_ISO_C_BINDINGS
     USE LoadMod
+#ifdef HAVE_EIO
     USE EIOFortranAPI
+#endif
 #endif
     USE ElementUtils
     USE ElementDescription
@@ -294,6 +296,7 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 !> Function to load mesh from disk.
 !------------------------------------------------------------------------------
+#ifdef HAVE_EIO
   FUNCTION LoadMesh( Model, MeshDirPar, MeshNamePar,&
     BoundariesOnly, NumProcs,MyPE, Def_Dofs ) RESULT( Mesh )
 !------------------------------------------------------------------------------
@@ -993,6 +996,67 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
  END FUNCTION LoadMesh
 !------------------------------------------------------------------------------
+#else
+  FUNCTION LoadMesh( Model, MeshDirPar, MeshNamePar,&
+    BoundariesOnly, NumProcs,MyPE, Def_Dofs ) RESULT( Mesh )
+    IMPLICIT NONE
+
+    CHARACTER(LEN=*) :: MeshDirPar,MeshNamePar
+    LOGICAL :: BoundariesOnly
+
+    INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:)
+
+    TYPE(Mesh_t),  POINTER :: Mesh
+    TYPE(Model_t) :: Model
+
+    !  INTERFACE
+    !    SUBROUTINE eio_open_mesh(dir,info) BIND(C, NAME="eio_open_mesh")
+    !      USE, INTRINSIC :: ISO_C_BINDING
+    !      INTEGER(C_INT) :: info
+    !      CHARACTER(C_CHAR) :: dir(*)
+    !    END SUBROUTINE eio_open_mesh
+    !  END INTERFACE
+!------------------------------------------------------------------------------
+
+    INTEGER :: eio_info
+ 
+    REAL(KIND=dp), POINTER :: cCoord(:), coord(:,:), Wrk(:,:)
+    REAL(KIND=dp) :: CoordScale(3)
+
+    INTEGER :: i,j,k,l,m,code,tag,body,TYPE,nodes(MAX_ELEMENT_NODES), &
+             left,right,fields,npart,parts(1024),n0
+
+    INTEGER :: bodies,body_forces,body_equations,materials, &
+      boundary_conditions,initial_conditions, mesh_parameters,bndry, &
+       name,n,linsys,procs,CountByType(64),Types(64),TypeCount,partn,id
+
+    LOGICAL :: GotIt, NeedEdges, FoundDG, Found
+
+    INTEGER :: MinIndex,MaxIndex,MinEIndex,MaxEIndex, DefaultTargetBC, &
+        BDOFs, EDOFs,FDOFs,inDOFs(10,6), DGIndex, istat, mesh_dim, save_dim
+    INTEGER, POINTER :: NodeTags(:),CoordMap(:),BList(:)
+    INTEGER, POINTER :: LocalPerm(:),LocalEPerm(:), &
+           ElementTags(:), EdgeDOFs(:), FaceDOFs(:)
+
+
+    LOGICAL, POINTER :: iface(:)
+    TYPE(ValueList_t), POINTER :: Vlist
+
+    CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
+    TYPE(Nodes_t) :: ElementNodes
+    TYPE(Element_t), POINTER :: Element, Edge, Face, Parent
+
+    TYPE(Matrix_t), POINTER :: Projector
+
+    REAL(KIND=dp) :: pCoord(3)
+
+    TYPE(NeighbourList_t), POINTER :: nlist(:)
+
+    LOGICAL :: parallel
+    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName, str
+    CALL Fatal('LoadMesh', 'Not implemented due to lack of EIO.') ! TODO: better error message.
+  END FUNCTION LoadMesh
+#endif
 
  
 !> Create a discontinuous mesh over requested boundaries.

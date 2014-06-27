@@ -380,7 +380,12 @@ bool CadView::readFile(QString fileName)
     // Draw part:
     //-----------
     vtkCleanPolyData* partCleaner = vtkCleanPolyData::New();
+#if VTK_MAJOR_VERSION <= 5
     partCleaner->SetInput(partGrid);
+#else
+    partCleaner->SetInputData(partGrid);
+    partCleaner->Update();
+#endif
     if(mergePoints) {
       partCleaner->PointMergingOn();
     } else {
@@ -423,8 +428,13 @@ bool CadView::readFile(QString fileName)
 
     // Add triangles and edges to STL structures:
     //--------------------------------------------
+#if VTK_MAJOR_VERSION <= 5
     stlSurfaceData->AddInput(partCleaner->GetOutput());
     stlEdgeData->AddInput(partFeature->GetOutput());
+#else
+    stlSurfaceData->AddInputData(partCleaner->GetOutput());
+    stlEdgeData->AddInputData(partFeature->GetOutput());
+#endif
 
     // Clean up:
     //----------
@@ -444,6 +454,7 @@ bool CadView::readFile(QString fileName)
     cout << "Cad import: error: no surface triangulation was generated. Aborting." << endl;
     return false;
   }
+
 
   stlSurfaceData->Update();
   stlEdgeData->Update();
@@ -492,7 +503,12 @@ void CadView::generateSTLSlot()
   //--------------------------------
   vtkCleanPolyData* stlSurface = vtkCleanPolyData::New();
   stlSurface->PointMergingOn();
+#if VTK_MAJOR_VERSION <= 5
   stlSurface->SetInput(stlSurfaceData->GetOutput());
+#else
+  stlSurface->SetInputData(stlSurfaceData->GetOutput());
+#endif
+
   stlSurface->Update();
 
   if(stlSurface->GetOutput()->GetNumberOfCells() < 1) {
@@ -518,7 +534,12 @@ void CadView::generateSTLSlot()
   //----------------------------
   vtkCleanPolyData* stlEdge = vtkCleanPolyData::New();
   stlEdge->PointMergingOn();
+#if VTK_MAJOR_VERSION <= 5
   stlEdge->SetInput(stlEdgeData->GetOutput());
+#else
+  stlEdge->SetInputData(stlEdgeData->GetOutput());
+#endif
+
   stlEdge->Update();
 
   for(int i = 0; i < stlEdge->GetOutput()->GetNumberOfCells(); i++) {

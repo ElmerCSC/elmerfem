@@ -292,12 +292,24 @@ void StreamLine::draw(VtkPost* vtkPost, TimeStep* timeStep)
   vtkStreamLine* streamer = vtkStreamLine::New();
   vtkRungeKutta4* integrator = vtkRungeKutta4::New();
 
+#if VTK_MAJOR_VERSION <= 5
   streamer->SetInput(grid);
+#else
+  streamer->SetInputData(grid);
+#endif
 
   if(lineSource) {
+#if VTK_MAJOR_VERSION <= 5
     streamer->SetSource(line->GetOutput());
+#else
+    streamer->SetSourceConnection(line->GetOutputPort());
+#endif
   } else {
+#if VTK_MAJOR_VERSION <= 5
     streamer->SetSource(point->GetOutput());
+#else
+    streamer->SetSourceConnection(point->GetOutputPort());
+#endif
   }
 
   streamer->SetIntegrator(integrator);
