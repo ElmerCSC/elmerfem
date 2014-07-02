@@ -100,7 +100,6 @@ void FeatureEdge::draw(VtkPost* vtkPost, Preferences* preferences)
 #else
   filter->SetInputData(grid);
 #endif
-
   // filter->GetOutput()->ReleaseDataFlagOn();
 
   vtkFeatureEdges* edges = vtkFeatureEdges::New();

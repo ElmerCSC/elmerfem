@@ -506,7 +506,7 @@ void CadView::generateSTLSlot()
 #if VTK_MAJOR_VERSION <= 5
   stlSurface->SetInput(stlSurfaceData->GetOutput());
 #else
-  stlSurface->SetInputData(stlSurfaceData->GetOutput());
+  stlSurface->SetInputConnection(stlSurfaceData->GetOutputPort());
 #endif
 
   stlSurface->Update();
@@ -537,7 +537,7 @@ void CadView::generateSTLSlot()
 #if VTK_MAJOR_VERSION <= 5
   stlEdge->SetInput(stlEdgeData->GetOutput());
 #else
-  stlEdge->SetInputData(stlEdgeData->GetOutput());
+  stlEdge->SetInputConnection(stlEdgeData->GetOutputPort());
 #endif
 
   stlEdge->Update();

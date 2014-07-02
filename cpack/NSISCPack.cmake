@@ -36,7 +36,10 @@ IF(WIN32)
 
   SET(CPACK_COMPONENT_UNSPECIFIED_DISPLAY_NAME "Elmerfem solver")
   SET(CPACK_COMPONENT_UNSPECIFIED_DESCRIPTION "The main application: ElmerSolver, ElmerGrid, matc and runtime binaries.")
+  SET(CPACK_COMPONENT_ELMERGUI_DISPLAY_NAME "ElmerGUI")
+  SET(CPACK_COMPONENT_ELMERGUI_SAMPLES_DISPLAY_NAME "ElmerGUI samples")
+  SET(CPACK_COMPONENT_ELMERGUI_SAMPLES_DESCRIPTION "Geometry samples for ElmerGUI")
 
   SET(CPACK_NSIS_COMPONENT_INSTALL TRUE)
-  SET(CPACK_COMPONENT_INSTALL_ALL "elmergui gfortran_minimal Unspecified")
+  SET(CPACK_COMPONENT_INSTALL_ALL "elmergui gfortran_minimal Unspecified elmergui_samples")
 ENDIF(WIN32)

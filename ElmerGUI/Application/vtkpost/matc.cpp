@@ -102,16 +102,28 @@ void Matc::grad(VtkPost* vtkPost, double *in, double *out)
   vtkCellDerivatives *cd = vtkCellDerivatives::New();
   if ( volumeGrid->GetNumberOfCells()>0 ) {
     volumeGrid->GetPointData()->SetScalars(s);
+#if VTK_MAJOR_VERSION <= 5
     cd->SetInput(volumeGrid);
+#else
+    cd->SetInputData(volumeGrid);
+#endif
   } else {
     surfaceGrid->GetPointData()->SetScalars(s);
+#if VTK_MAJOR_VERSION <= 5
     cd->SetInput(surfaceGrid);
+#else
+    cd->SetInputData(surfaceGrid);
+#endif
   }
   cd->SetVectorModeToComputeGradient();
   cd->Update();
   
   vtkCellDataToPointData *nd = vtkCellDataToPointData::New();
+#if VTK_MAJOR_VERSION <= 5
   nd->SetInput(cd->GetOutput());
+#else
+  nd->SetInputConnection(cd->GetOutputPort());
+#endif
   nd->Update();
   
   vtkDataArray *da = nd->GetOutput()->GetPointData()->GetVectors();
@@ -144,16 +156,28 @@ void Matc::div(VtkPost* vtkPost, double *in, double *out)
   vtkCellDerivatives *cd = vtkCellDerivatives::New();
   if ( n>0 ) {
     volumeGrid->GetPointData()->SetVectors(s);
+#if VTK_MAJOR_VERSION <= 5
     cd->SetInput(volumeGrid);
+#else
+    cd->SetInputData(volumeGrid);
+#endif
   } else {
     surfaceGrid->GetPointData()->SetVectors(s);
+#if VTK_MAJOR_VERSION <= 5
     cd->SetInput(surfaceGrid);
+#else
+    cd->SetInputData(surfaceGrid);
+#endif
   }
   cd->SetTensorModeToComputeGradient();
   cd->Update();
   
   vtkCellDataToPointData *nd = vtkCellDataToPointData::New();
+#if VTK_MAJOR_VERSION <= 5
   nd->SetInput(cd->GetOutput());
+#else
+  nd->SetInputConnection(cd->GetOutputPort()); 
+#endif
   nd->Update();
   
   vtkDataArray *da = nd->GetOutput()->GetPointData()->GetTensors();
@@ -189,16 +213,28 @@ void Matc::curl(VtkPost* vtkPost, double *in, double *out)
   vtkCellDerivatives *cd = vtkCellDerivatives::New();
   if ( n>0 ) {
     volumeGrid->GetPointData()->SetVectors(s);
+#if VTK_MAJOR_VERSION <= 5
     cd->SetInput(volumeGrid);
+#else
+    cd->SetInputData(volumeGrid);
+#endif
   } else {
     surfaceGrid->GetPointData()->SetVectors(s);
+#if VTK_MAJOR_VERSION <= 5
     cd->SetInput(surfaceGrid);
+#else
+    cd->SetInputData(surfaceGrid);
+#endif
   }
   cd->SetTensorModeToComputeGradient();
   cd->Update();
   
   vtkCellDataToPointData *nd = vtkCellDataToPointData::New();
+#if VTK_MAJOR_VERSION <= 5
   nd->SetInput(cd->GetOutput());
+#else
+  nd->SetInputConnection(cd->GetOutputPort());
+#endif
   nd->Update();
   
   vtkDataArray *da = nd->GetOutput()->GetPointData()->GetTensors();
