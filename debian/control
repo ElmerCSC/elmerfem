@@ -2,7 +2,7 @@ Source: elmerfem-csc
 Section: science
 Priority: optional
 Maintainer: Juhani Kataja <juhmat@gmail.com>
-Build-Depends: cmake, build-essential, liblapack-dev, liblapack3, libblas-dev, libblas3, liboce-foundation-dev, libvtk5-dev, libvtk5.8, libqwt-dev, mpi-default-dev, mpi-default-bin, libmumps-dev, libqt4-dev, libqt4-gui, gfortran-4.8
+Build-Depends: cmake, build-essential, liblapack-dev, liblapack3, libblas-dev, libblas3, libblas3gf,  liboce-foundation-dev, libvtk5-dev, libvtk5.8, libqwt-dev, mpi-default-dev, mpi-default-bin, libmumps-dev, libqt4-dev, libqt4-gui, gfortran-4.8, gcc-4.8, g++-4.8
 Homepage: http://www.elmerfem.org
 
 Package: elmerfem-csc
