@@ -172,14 +172,13 @@ End
 Solver 1
   Exec Solver = Before All
   Procedure = "ElmerIceSolvers" "GroundedSolverInit"
-  Equation = GroundedMask
-  Variable = GroundedMask
+  Equation = "GroundedMaskInit"
+  Variable = "GroundedMask"
   Variable DOFs = 1
-
   TolerInit = Real $GLTolerance 
 End
 
-Solver 2
+Solver2
   Equation = "Mesh Update"
   Variable = "Mesh Update"
   Variable DOFs = 2
@@ -192,9 +191,9 @@ End
 
 !! GroundedMask is updated with the new mesh geometry
 Solver 3
-  Equation = GroundedMask
+  Equation = "GroundedMask"
   Procedure = "ElmerIceSolvers" "GroundedSolver"
-  Variable = GroundedMask
+  Variable = "GroundedMask"
   Variable DOFs = 1
 
   Toler = Real $GLTolerance
@@ -355,7 +354,7 @@ End
 
 ! Equation for the free surface of the cavity
 Equation 2
-  Active Solvers(4) = 1 3 5 8 
+  Active Solvers(4) = 1 3 5 8
   Flow Solution Name = String "Flow Solution"
   Convection = String Computed
 End

@@ -334,7 +334,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found, Lfact
+  LOGICAL :: AllocationsDone = .FALSE., Found
   TYPE(Element_t),POINTER :: Element, Edge
 
   REAL(KIND=dp) :: Norm, PrevDT=-1, RelChange
@@ -359,7 +359,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
   LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
          SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
-         PiolaVersion
+         PiolaVersion, LFact, LFactFound, EdgeBasis
 
   REAL(KIND=dp) :: Relax
 
@@ -374,6 +374,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone
 !------------------------------------------------------------------------------
+
+  CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
+  CALL Info('WhitneyAVSolver','Solving the AV equations with edge elements',Level=5 )
+
   PiolaVersion = GetLogical( GetSolverParams(), &
       'Use Piola Transform', Found )
   IF (PiolaVersion) THEN
@@ -467,11 +471,27 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 	      'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
+  LFact = GetLogical( GetSolverParams(),'Linear System Refactorize', LFactFound )
+  IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN
+    CALL ListAddLogical( getSolverParams(), 'Linear System Refactorize', .TRUE. )
+  END IF
+  EdgeBasis = .NOT.LFactFound .AND. GetLogical( GetSolverParams(), 'Edge Basis', Found )
+
   DO i=1,NoIterationsMax
+    IF( NoIterationsMax > 1 ) THEN
+      CALL Info('WhitneyAVSolver','Nonlinear iteration: '//TRIM(I2S(i)),Level=8 )
+    END IF
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
+    IF( EdgeBasis ) CALL ListAddLogical(GetSolverParams(),'Linear System Refactorize',.FALSE.)
   END DO
+  IF ( EdgeBasis ) CALL ListRemove( GetSolverParams(), 'Linear System Refactorize' )
+
+  IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN
+    CALL ListAddLogical( GetSolverParams(), 'Linear System Refactorize', .FALSE. )
+  END IF
+  PrevDT = dt
 
   CALL CalculateLumped(Model % NumberOfBodyForces)
 
@@ -484,6 +504,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       CoordVar % Values(j+3) = Mesh % Nodes % z(i)
     END DO
   END IF
+
+  CALL Info('WhitneyAVSolver','All done',Level=8 )
+  CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
+
 
 CONTAINS
 
@@ -757,22 +781,6 @@ CONTAINS
     CALL Info('WhitneyAVSolver: ', Message, Level=5)
   END IF
 
-  !
-  ! Linear system solution:
-  ! -----------------------
-  IF ( dt /= PrevDT ) THEN
-    LFact = GetLogical( GetSolverParams(),  &
-      'Linear System Refactorize', LFactFound )
-
-    IF ( LFactFound ) &
-      CALL ListAddLogical( getSolverParams(), &
-        'Linear System Refactorize', .TRUE. )
-  END IF
-
-  PrevNorm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
-
-  TOL = GetCReal(GetSolverParams(),'Nonlinear system Convergence Tolerance', Found)
-
   IF (DefaultLineSearch(Converged)) RETURN
   IF ( Converged ) GOTO 10
 
@@ -806,14 +814,6 @@ CONTAINS
   Converged = Solver % Variable % NonlinConverged==1
 
 10 CONTINUE
-
-  IF ( dt /= PrevDT ) THEN
-    IF ( LFactFound ) THEN
-      CALL ListAddLogical( GetSolverParams(), &
-         'Linear System Refactorize', LFact )
-    END IF
-  END IF
-  PrevDT = dt
 
   IF ( ALLOCATED(FluxMap) ) DEALLOCATE(FluxMap)
   IF ( ALLOCATED(TreeEdges) ) DEALLOCATE(TreeEdges)
@@ -1755,18 +1755,22 @@ CONTAINS
     FORCE = 0.0_dp
     MASS  = 0.0_dp
 
-    IF(PiolaVersion) RETURN
+!   IF(PiolaVersion) RETURN
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element)
+    IP = GaussPoints(Element,EdgeBasis=PiolaVersion)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
-
-       CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       IF ( PiolaVersion ) THEN
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+            IP % W(t), detJ, Basis, dBasisdx, EdgeBasis=WBasis )
+       ELSE
+         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                    IP % W(t), detJ, Basis, dBasisdx )
+         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+      END IF
 
        B  = SUM(Basis(1:n) * Bcoef(1:n))
        L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
@@ -2303,7 +2307,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   Solver % Def_Dofs(:,:,1)=1
 
   A => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
-     Perm, dofs, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.)
+     Perm, dofs, MATRIX_CRS, .TRUE., Equation, .FALSE., .FALSE.,&
+     NodalDofsOnly = .TRUE.)
   n = A % NumberOfRows
   IF (dofs>1) A % COMPLEX = .TRUE.
 
@@ -2775,7 +2780,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, PiolaVersion
+  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, PiolaVersion, EdgeBasis,LFact,LFactFound
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
@@ -2830,7 +2835,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
      AllocationsDone = .TRUE.
   END IF
   
-  Omega = GetAngularFrequency()
+  Omega = GetAngularFrequency(Found=Found)
 
   FixJ=GetLogical(GetSolverParams(),'Fix input Current Density', Found)
   IF (.NOT. Found ) FixJ=.TRUE.
@@ -2847,11 +2852,17 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
               'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
+  LFact = GetLogical( GetSolverParams(),'Linear System Refactorize', LFactFound )
+  EdgeBasis = .NOT.LFactFound .AND. GetLogical( GetSolverParams(), 'Edge Basis', Found )
   DO i=1,NoIterationsMax
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
+    IF( EdgeBasis ) CALL ListAddLogical(GetSolverParams(),'Linear System Refactorize',.FALSE.)
   END DO
+  IF ( EdgeBasis ) CALL ListRemove( GetSolverParams(), 'Linear System Refactorize' )
+
+  CALL CalculateLumped(Model % NumberOfBodyForces)
 
 CONTAINS
 
@@ -3031,6 +3042,8 @@ CONTAINS
           END SELECT
         END IF
 
+       Omega = GetAngularFrequency(Found=Found,UElement=Element)
+
        !Get element local matrix and rhs vector:
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
@@ -3139,19 +3152,8 @@ CONTAINS
     !
     ! Linear system solution:
     ! -----------------------
-    PrevNorm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
     Norm = DefaultSolve()
-
-    TOL = GetCReal(GetSolverParams(),'Nonlinear system Convergence Tolerance',Found)
-    Norm = ParallelReduction(SQRT(SUM(Solver % Variable % Values**2)))
-
-    WRITE( Message, '(a,g15.8,g15.8,a)') &
-        'NS (ITER='//TRIM(i2s(IterNo))//') (NRM,RELC): (',Norm, &
-              2*ABS(Norm-PrevNorm)/(Norm+PrevNorm),&
-                 ' ) :: '// 'magnetodynamics'
-    CALL Info( 'ComputeChange', Message, Level=3)
-
-    Converged = 2*ABS(Norm-PrevNorm)/(Norm+PrevNorm)<TOL
+    Converged = Solver % Variable % NonlinConverged==1
 !------------------------------------------------------------------------------
   END FUNCTION DoSolve
 !------------------------------------------------------------------------------
@@ -3204,6 +3206,240 @@ CONTAINS
   END SUBROUTINE ConstrainUnused
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+ SUBROUTINE CalculateLumped(nbf)
+!------------------------------------------------------------------------------
+   INTEGER::nbf
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: a(nbf),IMoment,IA
+   INTEGER :: i,bfid,n,nd
+   COMPLEX(KIND=dp) :: torq, U(nbf)
+   LOGICAL :: Found, CalcTorque,CalcPotential,CalcInertia
+   TYPE(ValueList_t),POINTER::Params
+!------------------------------------------------------------------------------
+
+   CalcTorque = ListCheckPresentAnyBody(Model,'r inner')
+   CalcPotential = ListGetLogicalAnyBodyForce( Model,'Calculate Potential')
+   CalcInertia = ListGetLogicalAnyBody( Model,'Calculate Inertial Moment')
+
+   IF(.NOT. (CalcTorque .OR. CalcPotential .OR. CalcInertia ) ) RETURN
+
+   U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0
+   DO i=1,GetNOFActive()
+     Element => GetActiveElement(i)
+     nd = GetElementNOFDOFs(Element)
+     n  = GetElementNOFNodes(Element)
+
+     IF( CalcTorque ) THEN
+       CALL Torque(Torq,Element,n,nd)
+     END IF
+
+     IF( CalcPotential ) THEN
+       Params=>GetBodyForce(Element)
+       IF(ASSOCIATED(Params)) THEN
+         bfid=GetBodyForceId(Element)
+         IF(GetLogical(Params,'Calculate Potential',Found)) &
+             CALL Potential(u(bfid),a(bfid),Element,n,nd)
+       END IF
+     END IF
+
+     IF( CalcInertia ) THEN
+       Params=>GetBodyParams(Element)
+       IF(ASSOCIATED(Params)) THEN
+         IF(GetLogical(Params,'Calculate Inertial Moment',Found)) &
+             CALL InertialMoment(IMoment,IA,Element,n,nd)
+       END IF
+     END IF
+   END DO
+
+   IF( CalcPotential ) THEN
+     DO i=1,nbf
+       a(i) = ParallelReduction(a(i))
+       u(i) = CMPLX( ParallelReduction(REAL(u(i))),ParallelReduction(AIMAG(u(i))) )
+     END DO
+     
+     DO i=1,nbf
+       IF(a(i)>0) THEN
+         CALL ListAddConstReal(Model % Simulation,'res: Potential re / bodyforce ' &
+             //TRIM(i2s(i)),REAL(u(i))/a(i))
+         CALL ListAddConstReal(Model % Simulation,'res: Potential im / bodyforce ' &
+             //TRIM(i2s(i)),AIMAG(u(i))/a(i))
+         CALL ListAddConstReal(Model % Simulation,'res: area / bodyforce ' &
+             //TRIM(i2s(i)),a(i))
+       END IF
+     END DO
+   END IF
+
+   IF( CalcTorque ) THEN
+     Torq = CMPLX( ParallelReduction(REAL(Torq)), ParallelReduction(AIMAG(Torq)) )
+     CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque re', REAL(Torq))
+     CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque im', AIMAG(Torq))
+   END IF
+
+   IF( CalcInertia ) THEN
+     IMoment = ParallelReduction(IMoment)
+     IA = ParallelReduction(IA)
+     CALL ListAddConstReal(Model % Simulation,'res: Inertial Volume', IA)
+     CALL ListAddConstReal(Model % Simulation,'res: Inertial Moment', IMoment)
+   END IF
+
+!------------------------------------------------------------------------------
+ END SUBROUTINE CalculateLumped
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE InertialMoment(U,A,Element,n,nd)
+!------------------------------------------------------------------------------
+    INTEGER :: n,nd
+    REAL(KIND=dp)::U,a
+    TYPE(Element_t)::Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n), DetJ,x,y,r,Density(n)
+    INTEGER :: t
+    LOGICAL :: stat,Found
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+	!$OMP THREADPRIVATE(Nodes)
+
+    Density(1:n) = GetReal(GetMaterial(),'Density',Found,Element)
+    IF(.NOT.Found) RETURN
+
+    CALL GetElementNodes( Nodes, Element )
+  
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element)
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                IP % W(t), detJ, Basis )
+
+      x = SUM(Nodes % x(1:n)*Basis(1:n))
+      y = SUM(Nodes % y(1:n)*Basis(1:n))
+      r = SQRT(x**2+y**2)
+      A = A + IP % s(t)*detJ
+      U = U + IP % s(t)*detJ*R*SUM(Density(1:n)*Basis(1:n))
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE InertialMoment
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE Torque(U,Element,n,nd)
+!------------------------------------------------------------------------------
+    INTEGER :: n,nd
+    COMPLEX(KIND=dp)::U
+    TYPE(Element_t)::Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: dBasisdx(nd,3),Basis(nd), DetJ, &
+             POT(2,nd),x,y,r,r0,r1,Wbasis(nd,3),RotWBasis(nd,3)
+    COMPLEX(KIND=dp) :: B(3,nd), POTC(nd), Br, Bp, Bx, By
+    INTEGER :: t
+    LOGICAL :: stat, Found
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+	!$OMP THREADPRIVATE(Nodes)
+
+    r0 = GetCReal(GetBodyParams(),'r inner',Found)
+    r1 = GetCReal(GetBodyParams(),'r outer',Found)
+    IF (.NOT.Found) RETURN
+
+    CALL GetElementNodes( Nodes, Element )
+
+    x = SUM(Nodes % x(1:n))/n
+    y = SUM(Nodes % y(1:n))/n
+    r = SQRT(x**2+y**2)
+    IF (r<r0.OR.r>r1) RETURN
+
+    CALL GetLocalSolution(POT, UElement=Element)
+    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd) )
+  
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element, EdgeBasis=PiolaVersion)
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      IF (PiolaVersion) THEN
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+      END IF
+
+      x = SUM(Nodes % x(1:n)*Basis(1:n))
+      y = SUM(Nodes % y(1:n)*Basis(1:n))
+      r = SQRT(x**2+y**2)
+
+      Bx =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,1))
+      By =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,2))
+      Br =  x/r*Bx + y/r*By
+      Bp = -y/r*Bx + x/r*By
+      U = U + IP % s(t) * detJ * r * &
+           CMPLX(REAL(Br)*REAL(Bp),AIMAG(Br)*AIMAG(Bp))/(PI*4.0d-7*(r1-r0))
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE Torque
+!------------------------------------------------------------------------------
+
+
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE Potential( U, A, Element,n,nd)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: A
+    COMPLEX(KIND=dp) :: U
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+
+    REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3),DetJ,POT(2,nd), &
+          wBasis(nd,3),rotWBasis(nd,3),Wpot(nd),w(3), Omega
+    COMPLEX(KIND=dp) :: POTC(nd)
+    INTEGER :: t
+    LOGICAL :: stat, WbaseFound
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+	!$OMP THREADPRIVATE(Nodes)
+
+    CALL GetElementNodes( Nodes )
+
+    Omega = GetAngularFrequency(UElement=Element)
+    CALL GetLocalSolution(POT,UElement=Element)
+    POTC = Omega*CMPLX( POT(2,1:nd), POT(1,1:nd) )
+
+    CALL GetLocalSolution(Wpot,'W',UElement=Element)
+    W = [0._dp, 0._dp, 1._dp]
+    WbaseFound = ANY(Wpot(1:n)/=0._dp)
+
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element, EdgeBasis=PiolaVersion)
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      IF (PiolaVersion) THEN
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+      END IF
+
+      IF(WBaseFound) W = MATMUL(Wpot(1:n),dBasisdx(1:n,:))
+
+      A = A + IP % s(t) * detJ
+      U = U + IP % s(t) * detJ * SUM(PotC(n+1:nd)*MATMUL(WBasis(1:nd-n,:),w))
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE Potential
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE GaugeTree()
@@ -4846,11 +5082,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF (PiolaVersion) ALLOCATE( EBasis(n,3), CurlEBasis(n,3) )
    SOL = 0._dp; PSOL=0._dp
 
-   Omega = GetAngularFrequency(Found=Found)
-
    LossEstimation = GetLogical(GetSolverParams(),'Loss Estimation',Found)
    IF (LossEstimation) THEN
-      Freq = Omega / (2*PI)
 
       FreqPower = GetCReal( GetSolverParams(),'Fourier Loss Frequency Exponent',Found )
       IF( .NOT. Found ) FreqPower = 2.0_dp
@@ -4883,6 +5116,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
        PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
      END IF
+
+     Omega = GetAngularFrequency(Found=Found,UElement=Element)
+     Freq = Omega / (2*PI)
 
      BodyId = GetBody()
      Material => GetMaterial()

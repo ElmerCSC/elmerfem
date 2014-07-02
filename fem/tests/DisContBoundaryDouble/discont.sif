@@ -27,9 +27,7 @@ Simulation
 
 !  Post File = "discont.vtu"
 
-! This will become the default in future. 
-  New Load Mesh = Logical True
-  Discontinuous Boundaries Greedy = Logical True	
+  Discontinuous Bulk Greedy = Logical True	
 End
 
 Constants
