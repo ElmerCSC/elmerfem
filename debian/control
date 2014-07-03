@@ -2,11 +2,11 @@ Source: elmerfem-csc
 Section: science
 Priority: optional
 Maintainer: Juhani Kataja <juhmat@gmail.com>
-Build-Depends: cmake, build-essential, liblapack-dev, liblapack3, libblas-dev, libblas3, libblas3gf,  liboce-foundation-dev, libvtk5-dev, libvtk5.8, libqwt-dev, mpi-default-dev, mpi-default-bin, libmumps-dev, libqt4-dev, libqt4-gui, gfortran-4.8, gcc-4.8, g++-4.8
+Build-Depends: cmake, build-essential, liblapack-dev, liblapack3, libblas-dev, libblas3, libblas3gf,  liboce-foundation-dev, libvtk5-dev, libvtk5.8, libqwt-dev, mpi-default-dev, mpi-default-bin, libmumps-dev, libqt4-dev, libqt4-gui, gfortran-4.8, gcc-4.8, g++-4.8, libqt4-opengl-dev
 Homepage: http://www.elmerfem.org
 
 Package: elmerfem-csc
 Architecture: any
-Depends: liblapack3, libblas3, liboce-foundation8, libvtk5.8, libqwt6, mpi-default-bin, libqt4-gui
+Depends: liblapack3, libblas3, liboce-foundation8, libvtk5.8, libqwt6, mpi-default-bin, libqt4-gui, libqt4-opengl
 Description: Elmer finite element modeling monolithic suite
  Contains ElmerGUI
