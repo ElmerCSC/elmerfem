@@ -17,7 +17,7 @@ binary-indep:
 binary-arch:
 	cd $(BUILDDIR); cmake -P cmake_install.cmake
 	mkdir debian/tmp/DEBIAN
-	dpkg-gencontrol -phello-tester
+	dpkg-gencontrol -pelmerfem-csc
 	dpkg --build debian/tmp ..
 
 # firstly called by launchpad
