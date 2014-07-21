@@ -54,14 +54,14 @@ EgIni::EgIni(QWidget *parent)
   QString paraViewHome;
   
 #ifdef __APPLE__
-  QString iniFileName = this->homePath +  "/edf/egini.xml";          
+  QString iniFileName = this->homePath +  "/edf/egini.xml";  
 #else
-  QString iniFileName = QCoreApplication::applicationDirPath() + "/edf/egini.xml";
+  QString iniFileName = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf/egini.xml";  // @TODO: fix path to share/ElmerGUI/edf
 
   elmerGuiHome = QString(getenv("ELMERGUI_HOME"));
 
   if(!elmerGuiHome.isEmpty()) 
-    iniFileName = elmerGuiHome + "/edf/egini.xml";
+    iniFileName = elmerGuiHome + "/edf/egini.xml";  
 
   paraViewHome = QString(getenv("PARAVIEW_HOME"))+"/bin";
 #endif
