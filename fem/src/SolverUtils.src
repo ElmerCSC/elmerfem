@@ -5670,7 +5670,7 @@ END FUNCTION SearchNodeL
         END DO
       ELSE
         DO i=1,n
-          IF ( ABS(Diag(i)) /= 0.0_dp ) THEN
+          IF ( ABS(Diag(i)) > 100*AEPS ) THEN
             Diag(i) = 1.0_dp / SQRT(ABS(Diag(i)))
           ELSE
             Diag(i) = 1.0_dp
@@ -5685,7 +5685,6 @@ END FUNCTION SearchNodeL
     IF( PRESENT( ApplyScaling ) ) THEN
       IF(.NOT. ApplyScaling ) RETURN
     END IF
-    
     
     DO i=1,n
       DO j = A % Rows(i), A % Rows(i+1)-1
@@ -6075,6 +6074,7 @@ END FUNCTION SearchNodeL
      IF ( ParEnv % Pes>1.AND..NOT. ASSOCIATED(A % ParMatrix) ) THEN
       CALL ParallelInitMatrix( Solver, A )
     END IF
+
 !------------------------------------------------------------------------------
 
     Params => Solver % Values
@@ -6470,7 +6470,7 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: Var, NodalLoads
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
     LOGICAL :: Relax, Found, NeedPrevSol, Timing
-    INTEGER :: n,i,j,k,l,istat,nrows,ncols,ConstrainedSolve,colsj,rowoffset
+    INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,ConstrainedSolve,colsj,rowoffset
     TYPE(Matrix_t), POINTER :: SaveMatrix, Atmp, Btmp
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, ProcName, VariableName
     INTEGER(KIND=AddrInt) :: Proc
@@ -6572,14 +6572,18 @@ END FUNCTION SearchNodeL
 
           Atmp => A % ConstraintMatrix
           k = 0
+          m = 0
           n = 1
           rowoffset = 0
           Btmp % Rows(n) = 1
           DO WHILE(ASSOCIATED(Atmp))
             DO i=1,Atmp % NumberOfRows
               Btmp % RHS(n)=Atmp % RHS(i)
-              IF(ASSOCIATED(Atmp % Invperm)) &
-                Btmp % InvPerm(n) = Atmp % InvPerm(i)
+
+              IF(ASSOCIATED(Atmp % Invperm)) THEN
+                Btmp % InvPerm(n) = Atmp % InvPerm(i) + m * A % NumberOfRows
+              END IF
+
               DO j=Atmp % Rows(i),Atmp % Rows(i+1)-1
                 k = k + 1
                 colsj = Atmp % Cols(j)
@@ -6595,6 +6599,7 @@ END FUNCTION SearchNodeL
               Btmp % Rows(n) = k + 1
             END DO
             rowoffset = rowoffset + Atmp % NumberOfRows
+            m = m + 1
             Atmp => Atmp % ConstraintMatrix
           END DO
           Atmp => A % ConstraintMatrix
@@ -7188,7 +7193,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   INTEGER :: i, j, k, l
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl
-  LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EmptyRow
+  LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
+              EmptyRow, ComplexSystem
   SAVE MultiplierValues, SolverPointer
   CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
 
@@ -7263,7 +7269,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      j=NumberOfRows-StiffMatrix % NumberOfRows
 
      IF ( .NOT. ASSOCIATED(MultVar) ) THEN
-
        ALLOCATE( MultiplierValues(j), STAT=istat )
        IF ( istat /= 0 ) CALL Fatal('SolveWithLinearRestriction','Memory allocation error.')
 
@@ -7293,6 +7298,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(.NOT.Found) EnforceDirichlet = .TRUE.
   EnforceDirichlet = EnforceDirichlet .AND. ALLOCATED(StiffMatrix % ConstrainedDOF)
 
+  ComplexSystem = StiffMatrix % Complex
+  ComplexSystem = ComplexSystem .OR. ListGetLogical( Solver % Values, &
+           'Linear System Complex', Found )
+
 
   IF(ASSOCIATED(RestMatrix)) THEN
     NoEmptyRows = 0
@@ -7303,6 +7312,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       k=k+i
 
       CALL AddToMatrixElement( CollectionMatrix,k,k,0._dp )
+      IF(ComplexSystem) THEN
+        IF(MOD(k,2)==0) THEN
+          CALL AddToMatrixElement( CollectionMatrix,k,k-1,0._dp )
+        ELSE
+          CALL AddToMatrixElement( CollectionMatrix,k,k+1,0._dp )
+        END IF
+      END IF
       EmptyRow = .TRUE.
 
       DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
@@ -7356,7 +7372,16 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             IF (i == AddMatrix % Cols(j)) Found = .TRUE.
         END DO
         CollectionVector(i) = CollectionVector(i) + AddVector(i)
-        IF (.NOT.Found) CALL AddToMatrixElement( CollectionMatrix, i, i, 0._dp )
+        IF (.NOT.Found) THEN
+          CALL AddToMatrixElement( CollectionMatrix, i, i, 0._dp )
+          IF(ComplexSystem) THEN
+            IF(MOD(i,2)==0) THEN
+              CALL AddToMatrixElement( CollectionMatrix,i,i-1,0._dp )
+            ELSE
+              CALL AddToMatrixElement( CollectionMatrix,i,i+1,0._dp )
+            END IF
+          END IF
+        END IF
       END IF
     END DO
   END IF

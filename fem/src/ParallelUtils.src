@@ -305,8 +305,11 @@ CONTAINS
              END DO
              k = j + g_beg
            ELSE IF(Found) THEN
-             k = Solver % Matrix % ConstraintMatrix % InvPerm(j-Matrix % ParallelDOFs)
-             IF( k<=0 ) CYCLE
+             n = Solver % Matrix % ConstraintMatrix % InvPerm(j-Matrix % ParallelDOFs)
+             IF( n<=0 ) CYCLE
+             k = MOD(n-1,Solver % Matrix % NumberOfRows)+1
+             n = (n-1) / Solver % Matrix % NumberOfRows
+
              Matrix % Parallelinfo % Interface(i) = Matrix % ParallelInfo % Interface(k)
 
              l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
@@ -322,12 +325,12 @@ CONTAINS
                k = j + g_beg + l_beg + pardofs_all
                DO m=Matrix % Rows(i), Matrix % Rows(i+1)-1
                  IF (Matrix % Parallelinfo % Interface(Matrix % Cols(m))) THEN
-                    l = SIZE(Matrix % ParallelInfo % NeighbourList(Matrix % Cols(m)) % Neighbours)
+                   l = SIZE(Matrix % ParallelInfo % NeighbourList(Matrix % Cols(m)) % Neighbours)
                    CALL Sort(l,Matrix % ParallelInfo % NeighbourList(Matrix % Cols(m)) % Neighbours)
                  END IF
                END DO
              ELSE
-               k = Matrix % ParallelInfo % GlobalDOFs(k) + g_beg + pardofs_all
+               k = Matrix % ParallelInfo % GlobalDOFs(k) + (n+1)*g_beg + pardofs_all
              END IF
            ELSE
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1))

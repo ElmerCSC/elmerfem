@@ -192,6 +192,10 @@
          </Parameter>
 
          <Parameter Widget="Label" > <Name> Flux conditions </Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Plane wave outlet condition </Name>
+           <SifName> Plane Wave BC </SifName>
+         </Parameter>
          <Parameter  Widget="Edit">
            <Name> Real part of the flux</Name>
            <SifName> Wave Flux 1 </SifName>

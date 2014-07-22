@@ -55,7 +55,7 @@ SUBROUTINE HelmholtzSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t),POINTER :: Element
 
   LOGICAL :: AllocationsDone = .FALSE., Bubbles, Found, UseConvection, &
-      UseDensity
+      UseDensity, PlaneWave
 
   INTEGER :: iter, i, j, k, l, n, nd, t, istat, eq, LocalNodes
   REAL(KIND=dp) :: Norm, AngularFrequency, s
@@ -348,7 +348,13 @@ PRINT *,'dispdofs',dispdofs,dim
           Impedance(2,1:n) = GetReal( BC, 'Wave Impedance 2', Found )
                  
           IF( UseDensity ) THEN
-            Density(1:n) = GetParentMatProp( 'Density', Element, Found )
+            Density(1:n) = GetParentMatProp( 'Density', Element )
+          END IF
+
+          PlaneWave = GetLogical( BC,'Plane Wave BC',Found )
+          IF( PlaneWave ) THEN 
+            Impedance(1,1:n) = GetParentMatProp( 'Sound Speed', Element )
+            Impedance(2,1:n) = 0.0_dp
           END IF
 
 	  IF( UseConvection ) THEN
@@ -359,6 +365,7 @@ PRINT *,'dispdofs',dispdofs,dim
             END IF
           END IF
           
+
           CALL LocalMatrixBoundary(  STIFF, FORCE, AngularFrequency, &
               Impedance, Load, Element, n, nd, ConvVelo )
 

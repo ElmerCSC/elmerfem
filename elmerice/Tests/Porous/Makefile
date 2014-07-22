@@ -1,7 +1,7 @@
 # Test for Porous Solvers
 #
 run:	
-	gmsh ./PROG/mesh_504.geo -3 -o mesh_504.msh
+	$(GMSH) ./PROG/mesh_504.geo -3 -o mesh_504.msh
 	$(ELMER_GRID) 14 2 mesh_504.msh -autoclean
 	$(ELMER_SOLVER) cube504_g.sif
 
