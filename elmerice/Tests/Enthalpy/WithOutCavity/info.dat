@@ -1,0 +1,22 @@
+command line was: ExtrudeMesh teterousse WithOutCavity 14     1.00 1 0   0.00 0.00  (null)     0.00 0.00     0.00
+(ExtrudeMesh) was invoked with following inputs ...
+    ... input directory: teterousse 
+    ... output directory: WithOutCavity
+    ... levels: 14
+    ... depth:     1.0000
+
+    ... partitions: 1
+    ... baseline: 0
+    ... GL: 0
+
+    ... percentage:     0.0000
+
+    ... ratio:     0.0000
+
+    ... total poitns in 2d mesh: 383 
+    ... total elements in 2d mesh: 691 
+    ... total boundary elements in 2d mesh: 73 
+    ... no of element type 101: 0 
+    ... no of element type 202: 73 
+    ... no of element type 303: 691 
+    ... no of element type 404: 0 

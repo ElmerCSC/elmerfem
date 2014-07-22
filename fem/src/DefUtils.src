@@ -298,13 +298,13 @@ CONTAINS
   END FUNCTION GetTimestepSize
  
 !> Returns the angular frequency  
-  FUNCTION GetAngularFrequency(ValueList,Found) RESULT(w)
+  FUNCTION GetAngularFrequency(ValueList,Found, UElement) RESULT(w)
     REAL(KIND=dp) :: w
     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
     LOGICAL, OPTIONAL :: Found
+    TYPE(Element_t), POINTER, OPTIONAL :: UElement
 
-    w = ListGetAngularFrequency( ValueList, Found )
-
+    w = ListGetAngularFrequency( ValueList, Found, UElement )
   END FUNCTION GetAngularFrequency
 
 !> Returns the current coupled system iteration loop count
@@ -2271,7 +2271,7 @@ CONTAINS
      INTEGER, POINTER :: SlaveSolverIndexes(:)
      INTEGER :: j,k,iter
      REAL(KIND=dp) :: dt
-     LOGICAL :: Transient, Found
+     LOGICAL :: Transient, Found, alloc_parenv
 
      INTERFACE
         SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
@@ -2306,8 +2306,35 @@ CONTAINS
        DO j=1,SIZE(SlaveSolverIndexes)
          k = SlaveSolverIndexes(j)
          SlaveSolver => CurrentModel % Solvers(k)
+
+         IF(ParEnv % PEs>1) THEN
+           alloc_parenv = .FALSE.
+           IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
+             IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
+               ParEnv = SlaveSolver % Matrix % ParMatrix % ParEnv
+             ELSE
+               ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+             END IF
+           ELSE
+             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+           END IF
+         END IF
+
          CurrentModel % Solver => SlaveSolver
          CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
+
+         IF(ParEnv % PEs>1) THEN
+
+           IF(alloc_parenv) THEN
+             DEALLOCATE(ParEnv % Active)
+             ParEnv % Active => Null()
+           END IF
+
+           IF(ASSOCIATED(Solver % Matrix)) THEN
+             IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
+               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+           END IF
+         END IF
        END DO
        CurrentModel % Solver => Solver
        iterV % Values = iter       
@@ -2441,8 +2468,7 @@ CONTAINS
       previter = iter
     END IF
 
-    ReduceStep = CheckStepSize(Solver,First,&
-        nsize,values,values0) 
+    ReduceStep = CheckStepSize(Solver,First,nsize,values,values0) 
 
     IF( Last .AND. .NOT. ReduceStep ) THEN
       CALL Info('DefaultLinesearch','Maximum number of nonlinear iterations reached, giving up after linesearch')
@@ -3408,6 +3434,7 @@ CONTAINS
      END IF
 
 
+
      IF ( GetString(Params,'Linear System Solver',Found)=='feti') THEN
        IF ( GetLogical(Params,'Total FETI', Found)) RETURN
      END IF
@@ -3460,7 +3487,6 @@ CONTAINS
 !       CALL DetermineSoftLimiter( Solver )	
 !     END IF
 
-	
      IF ( x % DOFs > 1 ) THEN
         ! TEMP!!!
         CALL SetDirichletBoundaries( CurrentModel,A, b, GetVarName(x),-1,x % DOFs,x % Perm )
@@ -3660,8 +3686,7 @@ CONTAINS
                        END IF
                     END DO
 
-                    n=GetElementDOFs(GInd,Face)
-
+                    n = GetElementDOFs(GInd,Face)
                     DO j=1,Face % BDOFs
                        nb = x % Perm(GInd(n-Face % BDOFs+j))
                        IF ( nb <= 0 ) CYCLE

@@ -97,16 +97,16 @@ Solver 2
   Variable 3 = String "Porous 2"
   Operator 3 = String "max"
  
-  Variable 3 = String "Porous 3"
-  Operator 3 = String "min"
+  Variable 4 = String "Porous 3"
+  Operator 4 = String "min"
 
-  Variable 4 = String "DeviatoricStress 1"
-  Operator 4 = String "max"
+  Variable 5 = String "DeviatoricStress 1"
+  Operator 5 = String "max"
 
-  Variable 5 = String "StrainRate 1"
-  Operator 5= String "max"
+  Variable 6 = String "StrainRate 1"
+  Operator 6 = String "max"
 
-  Operator 6 = String "cpu time"
+  Operator 7 = String "cpu time"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

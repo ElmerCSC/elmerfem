@@ -1445,13 +1445,13 @@ CONTAINS
 !> Adds a linear dependency defined by a table of values, [x,y] to the list.
 !------------------------------------------------------------------------------
     SUBROUTINE ListAddDepReal(List,Name,DependName,N,TValues, &
-               FValues,Proc,CValue,CubicTable)
+               FValues,Proc,CValue,CubicTable, Monotone)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name,DependName
      CHARACTER(LEN=*), OPTIONAL :: Cvalue
      INTEGER :: N
-     LOGICAL, OPTIONAL :: CubicTable
+     LOGICAL, OPTIONAL :: CubicTable, Monotone
      REAL(KIND=dp) :: FValues(N)
      REAL(KIND=dp) :: TValues(N)
      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
@@ -1471,7 +1471,7 @@ CONTAINS
        IF ( CubicTable ) THEN
          ALLOCATE(ptr % CubicCoeff(n))
          CALL CubicSpline(n,ptr % TValues,Ptr % Fvalues(1,1,:), &
-                    Ptr % CubicCoeff )
+                    Ptr % CubicCoeff, Monotone )
        END IF
      END IF
 
@@ -3584,13 +3584,14 @@ CONTAINS
 
 
 !> Returns the angular frequency  
-  FUNCTION ListGetAngularFrequency(ValueList,Found) RESULT(w)
+  FUNCTION ListGetAngularFrequency(ValueList,Found,UElement) RESULT(w)
     REAL(KIND=dp) :: w
     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
     LOGICAL, OPTIONAL :: Found
     LOGICAL :: GotIt
-    TYPE(Element_t), POINTER :: Element
-    INTEGER :: elem_id,eq_id
+    TYPE(Element_t), POINTER :: Element, UElement
+    OPTIONAL :: UElement
+    INTEGER :: elem_id,eq_id,mat_id
 
     ! This is rather complicated since it should replace all the various strategies
     ! that have been used in different solvers.
@@ -3603,6 +3604,32 @@ CONTAINS
       IF(.NOT. GotIt) w = ListGetCReal( ValueList,'Angular Frequency',GotIt)
     ELSE
       GotIt = .FALSE.
+    END IF
+
+    ! It seems that the equation section is used to allow compliance with ElmerGUI
+    !------------------------------------------------------------------------------
+    IF( .NOT. GotIt ) THEN
+      IF(PRESENT(UElement)) THEN
+        Element => UElement
+        eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
+        w = 2 * PI * ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
+        IF(.NOT. GotIt) w = ListGetCReal( &
+            CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+      END IF
+    END IF
+
+    ! Check also the material section...
+    !------------------------------------------------------------------------------
+    IF( .NOT. GotIt ) THEN
+      IF(PRESENT(UElement)) THEN
+        Element => UElement
+        mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
+        w = 2 * PI * ListGetCReal( &
+          CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
+        IF(.NOT. GotIt) w = ListGetCReal( &
+            CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
+      END IF
     END IF
 
     ! Normally the constant frequency is given in Simulation (or solver) block
@@ -3620,13 +3647,25 @@ CONTAINS
     ! It seems that the equation section is used to allow compliance with ElmerGUI
     !------------------------------------------------------------------------------
     IF( .NOT. GotIt ) THEN
+       elem_id = CurrentModel % Solver % ActiveElements(1)
+       Element => CurrentModel % Elements(elem_id)
+       eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
+       w = 2 * PI * ListGetCReal( &
+           CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
+       IF(.NOT. GotIt) w = ListGetCReal( &
+           CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+    END IF
+
+    ! Check also the material section...
+    !------------------------------------------------------------------------------
+    IF( .NOT. GotIt ) THEN
       elem_id = CurrentModel % Solver % ActiveElements(1)
       Element => CurrentModel % Elements(elem_id)
-      eq_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Equation')
+      mat_id = ListGetInteger( CurrentModel % Bodies(Element % bodyid) % Values,'Material')
       w = 2 * PI * ListGetCReal( &
-          CurrentModel % Equations(eq_id) % Values,'Frequency',GotIt)
+        CurrentModel % Materials(mat_id) % Values,'Frequency',GotIt)
       IF(.NOT. GotIt) w = ListGetCReal( &
-          CurrentModel % Equations(eq_id) % Values,'Angular Frequency',GotIt)
+          CurrentModel % Materials(mat_id) % Values,'Angular Frequency',GotIt)
     END IF
 
     IF( PRESENT( Found ) ) THEN
@@ -3634,7 +3673,6 @@ CONTAINS
     ELSE IF(.NOT. GotIt ) THEN
       CALL Warn('ListGetAngularFrequency','Angular frequency could not be determined!')
     END IF
-
   END FUNCTION ListGetAngularFrequency
 
 

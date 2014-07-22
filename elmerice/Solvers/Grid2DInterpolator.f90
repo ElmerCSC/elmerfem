@@ -81,6 +81,8 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
 
    LOGICAL :: GotVar, Found, InvertOrder, FillIn
 
+   NULLIFY(Params,Var,Values,Perm)
+
    Params => GetSolverParams()
 
    ! Read variable to initialize and Data
@@ -152,11 +154,13 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
          WRITE(message,'(A,A,A)')'Keyword <',Trim(ParaName),'> not found'
          CALL FATAL(Trim(SolverName),Trim(message))
       END IF
+
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' Invert'
       InvertOrder = GetLogical( Params, TRIM(ParaName), Found )
       IF (.NOT.Found) THEN
          InvertOrder = .FALSE.
-      ELSE
+      END IF
+      IF (InvertOrder) THEN
          WRITE(message,'(A,A,I0)')'Inverting order (row major) for variable ', 'Variable ',NoVar
          CALL INFO(Trim(SolverName),Trim(message),Level=1)
       END IF
@@ -165,10 +169,12 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
       FillIn = GetLogical( Params, TRIM(ParaName), Found )
       IF (.NOT.Found) THEN
          FillIn = .FALSE.
-      ELSE
+      END IF
+      IF (FillIn) THEN
          WRITE(message,'(A,A,I0)')'Filling empty entries for ', 'Variable ',NoVar
          CALL INFO(Trim(SolverName),Trim(message),Level=1)
       END IF
+
       WRITE (ParaName,'(A,I0,A)') 'Variable ',NoVar,' no data'
       noDataVal = ListGetConstReal( Params, TRIM(ParaName), Found )
       IF (.NOT.Found) then
@@ -303,6 +309,7 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
          y = Model % Mesh % Nodes % y(i)
          Rmin = 0.0
          CALL InterpolateDEM(x,y,xb,yb,zb,Nx,Ny,x0,y0,lx,ly,Rmin,z,noDataVal,noDataTol)
+         if ( perm(i) .eq. 0 ) CYCLE
          Values(Perm(i)) = z
          IF (Rmin > 0.0) THEN
             OutNode = OutNode + 1
@@ -358,24 +365,48 @@ SUBROUTINE InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby, Rmin,
      zi(2,1) = noDataVal
      zi(2,2) = noDataVal
   ELSE
-     zi(2,1) = zb(ib+1)
-     zi(2,2) = zb(ib + Nbx + 1)
+     IF ( (ib+1).gt.size(zb) ) THEN
+        zi(2,1) = noDataVal
+     ELSE
+        zi(2,1) = zb(ib+1)
+     END IF
+     IF ( (ib+Nbx+1).gt.size(zb) ) THEN 
+        zi(2,2) = noDataVal
+     ELSE
+        zi(2,2) = zb(ib + Nbx + 1)
+     END IF
   END IF
 
   x1 = xb(ib)
-  x2 = xb(ib+1)
+  IF ( (ib+1).gt.size(xb) ) THEN 
+     x2 = noDataVal
+  ELSE
+     x2 = xb(ib+1)
+  END IF
+
   y1 = yb(ib)
-  y2 = yb(ib + Nbx)
+  IF ( (ib+Nbx).gt.size(yb) ) THEN 
+     y2 = noDataVal
+  ELSE
+     y2 = yb(ib + Nbx)
+  END IF
+  
+  IF ( (ib).gt.size(zb) ) THEN
+     zi(1,1) = noDataVal
+  ELSE  
+     zi(1,1) = zb(ib)
+  END IF
+  IF ( (ib+Nbx).gt.size(zb) ) THEN
+     zi(1,2) = noDataVal
+  ELSE
+     zi(1,2) = zb(ib + Nbx)
+  END IF
 
-  zi(1,1) = zb(ib)
-  zi(1,2) = zb(ib + Nbx)
-
-  !   IF ((zi(1,1)<-9990.0).OR.(zi(1,2)<-9990.0).OR.(zi(2,1)<-9990.0).OR.(zi(2,2)<-9990.0)) THEN
-  !      IF ((zi(1,1)<-9990.0).AND.(zi(1,2)<-9990.0).AND.(zi(2,1)<-9990.0).AND.(zi(2,2)<-9990.0)) THEN
   IF ( (isNoData(zi(1,1))).OR. &
        (isNoData(zi(1,2))).OR. &
        (isNoData(zi(2,1))).OR. &
        (isNoData(zi(2,2))) ) THEN
+
      IF ( (isNoData(zi(1,1))).AND. &
           (isNoData(zi(1,2))).AND. &
           (isNoData(zi(2,1))).AND. &

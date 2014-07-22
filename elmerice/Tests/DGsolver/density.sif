@@ -22,7 +22,7 @@ Simulation
   Initialize Dirichlet Conditions = Logical True 
   
   Post File   = "test_dgsolver.vtu"
-  max output level = 4
+  max output level = 100
 End  
 
 Constants
@@ -75,7 +75,7 @@ End
 ! This solver is for the initial condition of the DG variable DGDens
 Solver 2
   Exec Solver = Before Simulation
-  Equation = "InitializeDG"
+  Equation = "InitializeDG1"
 
   ! It is important to declare it as a DG solver
   Discontinuous Galerkin = Logical True
@@ -91,7 +91,7 @@ End
 ! variable values
 Solver 3
   Exec Solver = Before Simulation
-  Equation = "InitializeDG"
+  Equation = "InitializeDG2"
 
   Initialized Variable Name = String "Relative Density"
 
@@ -104,7 +104,7 @@ End
 ! It should not be a DG variable
 Solver 4
   Exec Solver = Before Simulation
-  Equation = "InitializeDG"
+  Equation = "InitializeDG3"
 
   Initialized Variable Name = String "Initial DGDens"
 
