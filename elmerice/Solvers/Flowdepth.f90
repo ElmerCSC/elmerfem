@@ -59,7 +59,7 @@ SUBROUTINE FlowdepthSolver( Model,Solver,dt,TransientSimulation )
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
+  TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
 
   REAL(KIND=dp) :: dt
@@ -86,7 +86,8 @@ SUBROUTINE FlowdepthSolver( Model,Solver,dt,TransientSimulation )
        
 
   SAVE STIFF, LOAD, FORCE, AllocationsDone, DIM, SolverName, NumberOfVisits
-!------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
+  PointerToSolver => Solver
   PointerToVariable => Solver % Variable
   Permutation  => PointerToVariable % Perm
   VariableValues => PointerToVariable % Values

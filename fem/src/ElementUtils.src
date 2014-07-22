@@ -72,7 +72,7 @@ CONTAINS
       !! destroy the data structures (should be called when the matrix has
       !! to be updated and SolveHYPRE1 has to be called again).
       SUBROUTINE SolveHYPRE4(hypreContainer)
-        USE, intrinsic :: iso_c_binding
+        USE, INTRINSIC :: iso_c_binding
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPRE4
 
@@ -82,8 +82,8 @@ CONTAINS
      INTERFACE
       !! destroy the data structures (should be called when the matrix has
       !! to be updated and SolveTrilinos1 has to be called again).
-      SUBROUTINE SolveTrilinos4(triliContainer) bind(C,name='SolveTrilinos4')
-        USE, intrinsic :: iso_c_binding
+      SUBROUTINE SolveTrilinos4(triliContainer) BIND(C,name='SolveTrilinos4')
+        USE, INTRINSIC :: iso_c_binding
         INTEGER(KIND=C_INTPTR_T) :: triliContainer
       END SUBROUTINE SolveTrilinos4
 
@@ -147,7 +147,7 @@ CONTAINS
 
      IF(ASSOCIATED(Matrix % ParallelInfo)) THEN
        DEALLOCATE(Matrix % ParallelInfo % GlobalDOFs)
-       DEALLOCATE(Matrix % ParallelInfo % Interface)
+       DEALLOCATE(Matrix % ParallelInfo % INTERFACE)
        DO i=1,SIZE(Matrix % ParallelInfo % NeighbourList)
          DEALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours)
        END DO
@@ -159,7 +159,7 @@ CONTAINS
      IF(ASSOCIATED(p)) THEN
        s => Matrix % ParMatrix % SplittedMatrix
 
-       s % InsideMatrix % EMatrix => Null()
+       s % InsideMatrix % EMatrix => NULL()
        CALL FreeMatrix(s % InsideMatrix)
 
        DO i=1,SIZE(s % IfMatrix)
@@ -277,7 +277,8 @@ CONTAINS
 !> in the list matrix topology.
 !------------------------------------------------------------------------------
   SUBROUTINE MakeListMatrix( Model,Solver,Mesh,List,Reorder, &
-        LocalNodes,Equation, DGSolver, GlobalBubbles )
+        LocalNodes,Equation, DGSolver, GlobalBubbles, &
+        NodalDofsOnly, ProjectorDofs )
 !------------------------------------------------------------------------------
     TYPE(Model_t)  :: Model
     TYPE(Mesh_t)   :: Mesh
@@ -288,11 +289,13 @@ CONTAINS
     INTEGER, OPTIONAL ::Reorder(:)
     LOGICAL, OPTIONAL :: DGSolver
     LOGICAL, OPTIONAL :: GlobalBubbles
+    LOGICAL, OPTIONAL :: NodalDofsOnly
+    LOGICAL, OPTIONAL :: ProjectorDofs
     CHARACTER(LEN=*), OPTIONAL :: Equation
 !------------------------------------------------------------------------------
     INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This
 
-    LOGICAL :: Flag, FoundDG, GB, Found, Radiation
+    LOGICAL :: Flag, FoundDG, GB, Found, Radiation, DoProjectors
 
     TYPE(Matrix_t), POINTER :: Projector
 
@@ -314,9 +317,35 @@ CONTAINS
     EDOFs = Mesh % MaxEdgeDOFs
     FDOFs = Mesh % MaxFaceDOFs
 
+    IF( PRESENT( NodalDofsOnly ) ) THEN
+      IF( NodalDofsOnly ) THEN
+        EDOFS = 0
+        FDOFS = 0
+      END IF
+    END IF
+
+    IF( PRESENT( ProjectorDofs ) ) THEN
+      DoProjectors = ProjectorDofs 
+    ELSE
+      DoProjectors = .TRUE.
+    END IF
+
+    IF( EDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Edges) ) THEN
+      CALL Warn('MakeListMatrix','Edge dofs requested but not edges exist in mesh!')
+      EDOFS = 0
+    END IF
+
+    IF( FDOFS > 0 .AND. .NOT. ASSOCIATED(Mesh % Faces) ) THEN
+      CALL Warn('MakeListMatrix','Face dofs requested but not faces exist in mesh!')
+      FDOFS = 0
+    END IF
+
+
     IndexSize = 128
     ALLOCATE( Indexes(IndexSize) )
- 
+
+    ! Create the permutation for the Discontinuous Galerkin solver 
+    !-------------------------------------------------------------------
     FoundDG = .FALSE.
     IF ( DGSolver ) THEN
        DO t=1,Mesh % NumberOfEdges
@@ -353,7 +382,6 @@ CONTAINS
             END DO
          END DO
       END DO
-
       DO t=1,Mesh % NumberOfFaces
          n = 0
          Elm => Mesh % Faces(t) % BoundaryInfo % Left
@@ -390,6 +418,9 @@ CONTAINS
       END DO
     END IF
 
+    ! If this is not a GD solver then create permutation considering 
+    ! nodal, edge, face and bubble dofs. 
+    !-------------------------------------------------------------------
     IF ( .NOT. FoundDG ) THEN
       t = 1
       DO WHILE( t<=Mesh % NumberOfBulkElements+Mesh % NumberOFBoundaryElements )
@@ -404,10 +435,9 @@ CONTAINS
            IF ( t > Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements ) EXIT
          END IF
 
-         n = Element % NDOFs + &
-             Element % TYPE % NumberOfEdges * EDOFs + &
-             Element % TYPE % NumberOfFaces * FDOFs
-
+         n = Element % NDOFs 
+         IF( EDOFS > 0 ) n = n + Element % TYPE % NumberOfEdges * EDOFs 
+         IF( FDOFS > 0 ) n = n + Element % TYPE % NumberOfFaces * FDOFs
          IF ( GB ) n = n + Element % BDOFs
 
          IF ( n > IndexSize ) THEN
@@ -422,7 +452,7 @@ CONTAINS
             Indexes(n) = Element % NodeIndexes(i)
          END DO
 
-         IF ( ASSOCIATED(Mesh % Edges) ) THEN
+         IF ( EDOFs > 0 ) THEN
             IF ( ASSOCIATED(Element % EdgeIndexes) ) THEN
               DO j=1,Element % TYPE % NumberOFEdges
                  DO i=1, Mesh % Edges(Element % EdgeIndexes(j)) % BDOFs
@@ -434,7 +464,7 @@ CONTAINS
            END IF
          END IF
 
-         IF ( ASSOCIATED( Mesh % Faces ) ) THEN
+         IF ( FDOFS > 0 ) THEN
            IF ( ASSOCIATED(Element % FaceIndexes) ) THEN
              DO j=1,Element % TYPE % NumberOFFaces
                DO i=1, Mesh % Faces(Element % FaceIndexes(j)) % BDOFs
@@ -486,8 +516,6 @@ CONTAINS
 
                 NumberOfFactors = Element % BoundaryInfo % &
                   GebhardtFactors % NumberOfImplicitFactors
-!                IF(NumberOfFactors == 0) NumberOfFactors = Element % BoundaryInfo % &
-!                  GebhardtFactors % NumberOfFactors
 
                 DO n=1,NumberOfFactors
 
@@ -520,48 +548,52 @@ CONTAINS
           END DO
         END IF
 
+        ! This is a connection element, make a matrix connection for that 
         IF ( Mesh % Elements(i) % TYPE % ElementCode == 102 ) THEN
           k2 = Reorder( Mesh % Elements(i) % NodeIndexes(2) )
           IF ( k2 > 0 ) Lptr => List_GetMatrixIndex( List,k2,k2 )
         END IF
       END DO
 
-!------------------------------------------------------------------------------
 
-      DO This=1,Model % NumberOfBCs
-        Projector => Model % BCs(This) % PMatrix
-        IF ( .NOT. ASSOCIATED(Projector) ) CYCLE
+      ! Add connection from projectors. These are only needed if the projector is treated
+      ! implicely. For explicit projectors or when using Lagrange coefficients the 
+      ! connections are not needed. 
+      !----------------------------------------------------------------------------------
+      IF( DoProjectors ) THEN
+        DO This=1,Model % NumberOfBCs
+          Projector => Model % BCs(This) % PMatrix
+          IF ( .NOT. ASSOCIATED(Projector) ) CYCLE
 
-	IF( ListGetLogical( Model % BCs(This) % Values,'Periodic BC Explicit',Found ) ) &
-	  CYCLE
+          IF( ListGetLogical( Model % BCs(This) % Values,&
+              'Periodic BC Explicit',Found)) CYCLE
+          IF( ListGetLogical( Model % BCs(This) % Values,&
+              'Periodic BC Use Lagrange Coefficient',Found)) CYCLE
 
-        DO i=1,Projector % NumberOfRows
-          k = Reorder( Projector % InvPerm(i) )
-          IF ( k > 0 ) THEN
-            DO l=Projector % Rows(i),Projector % Rows(i+1)-1
-              IF ( Projector % Cols(l) <= 0 ) CYCLE
-              m = Reorder( Projector % Cols(l) )
-              IF ( m > 0 ) THEN
-!               Lptr => List_GetMatrixIndex( List,m,k )
-!               CList => List(m) % Head
-!               DO WHILE( ASSOCIATED( CList ) )
-!                  Lptr => List_GetMatrixIndex( List,k,CList % Index )
-!                  CList => CList % Next
-!               END DO
+          CALL Info('MakeListMatrix','Adding matrix topology for BC: '//TRIM(I2S(This)),Level=10)
 
-                Lptr => List_GetMatrixIndex( List,k,m )
-                Lptr => List_GetMatrixIndex( List,m,k ) ! keep structure symm.
-                CList => List(k) % Head
-                DO WHILE( ASSOCIATED( CList ) )
-                  Lptr => List_GetMatrixIndex( List,m,CList % Index )
-                  Lptr => List_GetMatrixIndex( List,CList % Index,m ) ! keep structure symm.
-                  CList => CList % Next
-                END DO
-              END IF
-            END DO
-          END IF
+          DO i=1,Projector % NumberOfRows
+            k = Reorder( Projector % InvPerm(i) )
+            IF ( k > 0 ) THEN
+              DO l=Projector % Rows(i),Projector % Rows(i+1)-1
+                IF ( Projector % Cols(l) <= 0 ) CYCLE
+                m = Reorder( Projector % Cols(l) )
+                IF ( m > 0 ) THEN
+                  Lptr => List_GetMatrixIndex( List,k,m )
+                  Lptr => List_GetMatrixIndex( List,m,k ) ! keep structure symm.
+                  CList => List(k) % Head
+                  DO WHILE( ASSOCIATED( CList ) )
+                    Lptr => List_GetMatrixIndex( List,m,CList % Index )
+                    Lptr => List_GetMatrixIndex( List,CList % Index,m ) ! keep structure symm.
+                    CList => CList % Next
+                  END DO
+                END IF
+              END DO
+            END IF
+          END DO
         END DO
-      END DO
+      END IF ! DoProjectors
+
     END IF
 
     k = 0
@@ -579,6 +611,7 @@ CONTAINS
        Model % TotalMatrixElements =  &
            Model % TotalMatrixElements + List(i) % Degree
     END DO
+
 !------------------------------------------------------------------------------
   END SUBROUTINE MakeListMatrix
 !------------------------------------------------------------------------------
@@ -663,7 +696,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
    FUNCTION CreateMatrix( Model, Solver, Mesh, Perm, DOFs, MatrixFormat, &
-          OptimizeBW, Equation, DGSolver, GlobalBubbles ) RESULT(Matrix)
+          OptimizeBW, Equation, DGSolver, GlobalBubbles, &
+          NodalDofsOnly, ProjectorDofs ) RESULT(Matrix)
 !------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
      TYPE(Mesh_t) :: Mesh
@@ -672,6 +706,8 @@ CONTAINS
      INTEGER, TARGET :: Perm(:)
      LOGICAL :: OptimizeBW
      LOGICAL, OPTIONAL :: DGSolver, GlobalBubbles
+     LOGICAL, OPTIONAL :: NodalDofsOnly, ProjectorDofs 
+
      CHARACTER(LEN=*), OPTIONAL :: Equation
 
      TYPE(Matrix_t),POINTER :: Matrix
@@ -744,7 +780,7 @@ CONTAINS
      UseOptimized = ListGetLogical( Solver % Values, &
        'Optimize Bandwidth Use Always', GotIt )
 
-     Matrix => Null()
+     Matrix => NULL()
 
      ! check if matrix structures really need to be created:
      ! -----------------------------------------------------
@@ -757,12 +793,14 @@ CONTAINS
      NULLIFY( ListMatrix )
 
      IF ( PRESENT(Equation) ) THEN
-        CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB )
+        CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
+            NodalDofsOnly, ProjectorDofs )
         n = OptimizeBandwidth( ListMatrix, Perm, InvInitialReorder, &
                    k, OptimizeBW, UseOptimized, Eq )
      ELSE 
         CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, &
-                DGSolver=DG, GlobalBubbles=GB )
+                DGSolver=DG, GlobalBubbles=GB, NodalDofsOnly=NodalDofsOnly, &
+                ProjectorDofs=ProjectorDofs)
         n = OptimizeBandwidth( ListMatrix, Perm, InvInitialReorder, &
                       k, OptimizeBW,UseOptimized, ' ' )
      ENDIF
@@ -873,7 +911,7 @@ CONTAINS
              Element => Solver % Mesh % Elements(k)
              IF ( ALL(ivals /= Element % Boundaryinfo % Constraint) ) CYCLE
              IF ( ALL(Perm(Element % NodeIndexes) > 0) ) THEN
-               DO p=1,Element % Type % NumberOfNodes
+               DO p=1,Element % TYPE % NumberOfNodes
                  l = Perm(Element % NodeIndexes(p))
                  DO m=1,DOFs 
                    k1 = DOFs*(l-1)+m

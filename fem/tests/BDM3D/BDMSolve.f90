@@ -230,7 +230,7 @@ CONTAINS
     np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
 
     DO t=1,IP % n
-       stat = RTandBDMElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+       stat = FaceElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), F, detJ, Basis, RTBasis, DivRTBasis, BDM = .TRUE.)
 
        C = MATMUL( TRANSPOSE(F(1:3,1:3)), F(1:3,1:3) )
@@ -337,7 +337,7 @@ CONTAINS
 
 
     DO t=1,IP % n
-       stat = RTandBDMElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+       stat = FaceElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), F, detJ, Basis, RTBasis, DivRTBasis, BDM = .TRUE.)
        
        xq = SUM( Nodes % x(1:n) * Basis(1:n) )

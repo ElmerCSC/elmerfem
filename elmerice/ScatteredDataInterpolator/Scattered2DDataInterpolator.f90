@@ -60,6 +60,7 @@
 
         REAL(KIND=DP) :: Win,NaNVal,fillv
         REAL(KIND=DP) :: x,y,z,MinD,D
+        REAL(KIND=DP) :: xmin,xmax,ymin,ymax,BBoxdx
         REAL(KIND=DP),allocatable :: xx(:),yy(:),DEM(:,:)
 
         INTEGER,parameter :: io=20
@@ -67,7 +68,7 @@
         INTEGER :: i,j,k,kmin,NoVar
         INTEGER :: nppcin,csakin
         INTEGER :: NetcdfStatus,varid,ncid
-        INTEGER :: compt,nx,ny
+        INTEGER :: compt,nx,ny,nval
 
         CHARACTER(LEN=MAX_NAME_LEN) :: VariableName,DataF
         CHARACTER(LEN=MAX_NAME_LEN) :: Name,FName,WName,MName,CSVName,tmpName
@@ -77,13 +78,14 @@
         CHARACTER(2) :: method
 
         LOGICAL :: GotVar,Found
-        LOGICAL :: CheckNaN,ReplaceNaN,NETCDFFormat
+        LOGICAL :: CheckBBox,CheckNaN,ReplaceNaN,NETCDFFormat
         LOGICAL :: GoodVal,HaveFillv
         LOGICAL,dimension(:,:), allocatable :: mask
+        LOGICAL,dimension(:), allocatable :: BBox
         LOGICAL :: Debug=.False.
 
         ! Variables to pass to the nn C library
-        type(POINT),dimension(:),allocatable :: pout,pin
+        type(POINT),dimension(:),allocatable :: pout,pin,ptmp
         INTEGER(C_INT) :: nout,nin,nppc,csak
         REAL(C_DOUBLE) :: W
 
@@ -91,6 +93,16 @@
            '-----Initialise Variables using nn Library----------',Level=5)
 
        Params => GetSolverParams()
+       
+       CheckBBox=.False.
+       BBoxdx = 0._dp
+       BBoxdx = ListGetConstReal(Params, 'Bounding Box dx', Found)
+       If (Found) CheckBBox=.True.
+ 
+       xmin=MINVAL(Model%Mesh%Nodes%x)-BBoxdx
+       xmax=MAXVAL(Model%Mesh%Nodes%x)+BBoxdx
+       ymin=MINVAL(Model%Mesh%Nodes%y)-BBoxdx
+       ymax=MAXVAL(Model%Mesh%Nodes%y)+BBoxdx
 
        CheckNaN = ListGetLogical(Params, 'Look For NaN',Found)
        If(.NOT.Found) CheckNaN=.True.
@@ -324,6 +336,33 @@
                if (compt.ne.nin) CALL Fatal(Trim(SolverName),&
                        'sorry I didn t found the good number of values')
                deallocate(xx,yy,DEM,mask)
+           ENDIF
+
+           IF (CheckBBox) THEN
+            allocate(Bbox(nin),ptmp(nin))
+            ptmp=pin
+            deallocate(pin)
+            Bbox(:)=((ptmp(:)%x.ge.xmin).and.(ptmp(:)%x.le.xmax)& 
+                       .and.(ptmp(:)%y.ge.ymin).and.(ptmp(:)%y.le.ymax))
+            nval=COUNT(Bbox)
+            if (nval.eq.0) CALL Fatal(Trim(SolverName), &
+                                  'no data within bounding box??')
+            write(message,'(A,I0,A,I0)') 'I Found ',nval,&
+                     ' data points within bounding box over ',nin
+              CALL INFO(Trim(SolverName),Trim(message),Level=5)
+            allocate(pin(nval))
+            compt=0
+            Do i=1,nin
+               if ((ptmp(i)%x.ge.xmin).and.(ptmp(i)%x.le.xmax)&
+                   .and.(ptmp(i)%y.ge.ymin).and.(ptmp(i)%y.le.ymax)) then
+                  compt=compt+1
+                  pin(compt)=ptmp(i)
+                endif
+            End do
+            nin=nval
+            if (compt.ne.nin) CALL Fatal(Trim(SolverName),&
+                 'BBox: sorry I didn t found the good number of values')
+            deallocate(Bbox,ptmp)
            ENDIF
 
             ! call the nn C library

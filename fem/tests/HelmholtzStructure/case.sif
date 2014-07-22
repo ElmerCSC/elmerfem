@@ -145,7 +145,7 @@ End
 Boundary Condition 1
   Name = "outlet"
   Target Boundaries(2) = 1 2
-  Wave Impedance 1 = Real $ c
+  Plane Wave BC = True
 End
 
 Boundary Condition 2
