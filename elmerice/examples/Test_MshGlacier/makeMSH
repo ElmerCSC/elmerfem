@@ -1,4 +1,4 @@
-elmerf90-nosh $ElmerIceLGGE/Meshers/MshGlacier.f90 $ELMER_HOME/lib/libelmersolver.dylib -o MshGlacier
+elmerf90-nosh MshGlacier.f90 -o MshGlacier
 ElmerGrid 1 2 mismip.grd
 ./MshGlacier
 ElmerGrid 2 3 mismip

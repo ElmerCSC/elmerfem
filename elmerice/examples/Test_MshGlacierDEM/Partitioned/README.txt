@@ -14,5 +14,5 @@ ExtrudeMesh teterousse WithOutCavity 14 1 6 0 0 0 0
 
 % Deform vertically using the surface and bedrock DEM
 % Input data are in mesh_input.dat
-elmerf90-nosh MshGlacier.f90 -o MshGlacier
+elmerf90-nosh MshGlacierDEM.f90 -o MshGlacierDEM
 ./MshGlacierDEM
