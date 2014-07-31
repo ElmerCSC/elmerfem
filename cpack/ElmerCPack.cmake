@@ -21,7 +21,8 @@ IF(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
 
   #SET(CPACK_PACKAGE_FILE_NAME "elmerfem-${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
   STRING(TIMESTAMP DATE "%Y%m%d")
-  SET(CPACK_PACKAGE_FILE_NAME "elmerfem-${DATE}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+  SET(CPACK_PACKAGE_BASE_FILE_NAME "elmerfem" CACHE STRING "")
+  SET(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_BASE_FILE_NAME}-${DATE}_${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
   SET(CPACK_PACKAGE_VENDOR "CSC")
   SET(CPACK_PACAKGE_VERSION "${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION}")
   SET(CPACK_PACKAGE_CONTACT "elmeradm@csc.fi")
@@ -70,6 +71,19 @@ IF(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
         INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stripped_gfortran" DESTINATION "." COMPONENT "stripped_gfortran")
         SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DESCRIPTION "A stripped version of x86_64-w64-mingw32-gfortran 4.8.3 (sjlj) compiler for compiling Elmer modules.")
         SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 4.8.3")
+      ENDIF()
+      IF(WITH_MPI)
+        IF(BUNDLE_MSMPI_REDIST)
+          INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/MSMpiSetup.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
+          SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DESCRIPTION "Install HPC Pack 2012 R2 MS-MPI Redistributable Package")
+          SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DISPLAY_NAME "MS-MPI")
+          LIST(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
+          IfFileExists '$INSTDIR\\\\redist\\\\MSMpiSetup.exe' MSMpiSetupExists MsMpiSetupNotExist
+            MsMpiSetupExists:
+             ExecWait '$INSTDIR\\\\redist\\\\MSMpiSetup.exe'
+            MsMpiSetupNotExist:
+             ")
+        ENDIF()
       ENDIF()
     ENDIF()
 
