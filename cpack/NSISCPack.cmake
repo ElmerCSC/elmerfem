@@ -5,7 +5,7 @@ IF(WIN32)
   SET(CPACK_NSIS_HELP_LINK "http://www.elmerfem.org")
   #SET(CPACK_NSIS_CONTACT "TODO: elmeradm@csc.fi")
   SET(CPACK_NSIS_CONTACT "")
-  SET(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+  LIST(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS
 "   !include \\\"winmessages.nsh\\\"
    ; HKLM (all users) vs HKCU (current user) defines
    !define env_hklm 'HKLM \\\"SYSTEM\\\\CurrentControlSet\\\\Control\\\\Session Manager\\\\Environment\\\"'
@@ -13,12 +13,12 @@ IF(WIN32)
    StrCmp \\\$ADD_TO_PATH_ALL_USERS \\\"1\\\" WriteAllElmerHomeKey
      DetailPrint \\\"Selected environment for current user\\\"
      WriteRegExpandStr \\\${env_hkcu} ELMER_HOME \\\$INSTDIR
-     WriteRegExpandStr \\\${env_hkcu} ELMERGUI_HOME \\\$INSTDIR
+     WriteRegExpandStr \\\${env_hkcu} ELMERGUI_HOME \\\$INSTDIR\\\\share\\\\ElmerGUI
      Goto DoSendElmerHome
    WriteAllElmerHomeKey:
      DetailPrint \\\"Selected environment for all users\\\"
      WriteRegExpandStr \\\${env_hklm} ELMER_HOME \\\$INSTDIR
-     WriteRegExpandStr \\\${env_hklm} ELMERGUI_HOME \\\$INSTDIR  
+     WriteRegExpandStr \\\${env_hklm} ELMERGUI_HOME \\\$INSTDIR\\\\share\\\\ElmerGUI 
      DoSendElmerHome:
    SendMessage \\\${HWND_BROADCAST} \\\${WM_WININICHANGE} 0 \\\"STR:Environment\\\" /TIMEOUT=5000 ")
   SET(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
