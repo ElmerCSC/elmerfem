@@ -2092,7 +2092,7 @@ CONTAINS
       ELSE
          i = LEN_TRIM(MeshName)
          ! DO WHILE( i>0 .AND. MeshName(i:i) /= '/')
-         DO WHILE( i>0)
+         DO WHILE( i>0 )
            IF (MeshName(i:i) == '/') EXIT 
            i = i-1
          END DO

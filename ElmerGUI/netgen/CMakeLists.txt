@@ -125,4 +125,4 @@ SET(SOURCES libsrc/opti/linopt.cpp
           libsrc/general/profiler.cpp)
 
 ADD_LIBRARY(ng ${SOURCES})
-INSTALL(TARGETS ng RUNTIME DESTINATION "bin" LIBRARY DESTINATION "ngcore" ARCHIVE DESTINATION "ngcore" COMPONENT "elmergui")
+INSTALL(TARGETS ng RUNTIME DESTINATION "bin" LIBRARY DESTINATION "lib/ElmerGUI/ngcore" ARCHIVE DESTINATION "lib/ElmerGUI/ngcore" COMPONENT "elmergui")

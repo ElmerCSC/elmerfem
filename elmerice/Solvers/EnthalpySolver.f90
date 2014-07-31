@@ -798,7 +798,6 @@ enddo
 
 IF (.NOT.Found) THEN
          CALL FATAL('EnthalpySolver', 'No value for >Enthalpy Water Diffusivity< defined in material.')
-         WRITE(PressureName,'(A)') 'Pressure'
 ENDIF
 	
 
@@ -1379,10 +1378,10 @@ hm = PhaseChangeEnthValues (PhaseChangeEnthPerm(i))
   if (hi<hm) then
     WaterVar % values ( WaterVar % perm (i) ) = 0.0
     TemphomoVar % values ( TemphomoVar % perm (i) ) = &
-    & (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hi))**0.5 ) / A_cap - 273.15 ! Use CP(T)=B_cap+A_cap*T
+    & (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hi))**0.5 ) / A_cap - 273.16 ! Use CP(T)=B_cap+A_cap*T
   else
     TemphomoVar % values ( TemphomoVar % perm (i) ) =  &
-    & (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hm))**0.5 ) / A_cap - 273.15 ! Use CP(T)=B_cap+A_cap*T
+    & (-B_cap+(B_cap**2+A_cap*2*(A_cap*0.5*Tref**2+B_cap*Tref+hm))**0.5 ) / A_cap - 273.16 ! Use CP(T)=B_cap+A_cap*T
     WaterVar % values ( WaterVar % perm (i) ) = (hi-hm)/L_heat
   endif
 
@@ -2956,3 +2955,4 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION HeatInsideResidual
 !------------------------------------------------------------------------------
+

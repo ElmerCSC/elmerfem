@@ -6,7 +6,7 @@ BUILDDIR = build_dir
 build:
 	mkdir $(BUILDDIR);
 	cd $(BUILDDIR); cmake -C ../cmake/buildopts_debian.cmake -DCMAKE_INSTALL_PREFIX=../debian/tmp/usr ..
-	make -C $(BUILDDIR)
+	make -j4 -C $(BUILDDIR)
 
 # thirdly called by launchpad
 binary: binary-indep binary-arch
