@@ -5,6 +5,7 @@
 #  Sami Ilvonen, CSC - IT Center for Science, Ltd.
 #  Phil Weir, NUMA Engineering Services, Ltd.
 #  Mikko Byckling, CSC - IT Center for Science Ltd.
+#  Juhani Kataja, CSC - IT Center for Science Ltd.
 #
 # First public beta release 11th of October, 2013
 #
