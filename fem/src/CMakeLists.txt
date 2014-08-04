@@ -61,7 +61,6 @@ ENDIF()
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}/fhutiter/src")
 
 IF(WITH_TRILINOS)
-  MESSAGE(WARNING "Trilinos support not tested and probably will not work.")
   INCLUDE_DIRECTORIES("${Epetra_INCLUDE_DIRS}")
   INCLUDE_DIRECTORIES("${ML_INCLUDE_DIRS}")
 ENDIF()
