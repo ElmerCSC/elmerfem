@@ -1468,7 +1468,7 @@ END SUBROUTINE GetMaxDefs
      IF( ASSOCIATED( LeftElem ) .AND. ASSOCIATED( RightElem ) ) THEN
        Moving = ANY( LeftElem % NodeIndexes > NoNodes )  
        Moving2 = ANY( RightElem % NodeIndexes > NoNodes )
-       IF( XOR(Moving, Moving2)  ) THEN
+       IF( (Moving .AND. .NOT. Moving2) .OR. (Moving2 .AND. .NOT. Moving)  ) THEN
          CALL Warn('CreateDiscontMesh','Conflicting moving information')
          Set = .FALSE.
        END IF
@@ -5028,7 +5028,9 @@ END SUBROUTINE GetMaxDefs
           YConstM = ( ABS(ym2-ym1) < YTol )
 
           ! Are both either lateral or not lateral
-          IF( XOR( YConst, YConstM) ) CYCLE
+          ! XOR was used here before but it had some portability issues
+          IF( YConst .AND. .NOT. YConstM ) CYCLE
+          IF( YConstM .AND. .NOT. YConst ) CYCLE
 
           ! y is constant and x varies for both edges
           IF( YConst ) THEN
@@ -10628,7 +10630,8 @@ CONTAINS
     END DO
     LocalNodes = k
 
-    IF( .NOT. OptimizeBW ) RETURN
+    ! Don't optimize bandwidth for parallel cases
+    IF( ParEnv % PEs > 1 .OR. .NOT. OptimizeBW ) RETURN
 
     IF(FirstRound) THEN
        ! Allocate space 
