@@ -61,6 +61,7 @@
 
 /* Define if you have a HYPRE library. */
 /* define HAVE_HYPRE */
+#cmakedefine HAVE_HYPRE
 
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK
@@ -76,6 +77,7 @@
 
 /* Define if you have a MUMPS library. */
 /* define HAVE_MUMPS */
+#cmakedefine HAVE_MUMPS
 
 /* Define if you have a PARPACK library. */
 #define HAVE_PARPACK

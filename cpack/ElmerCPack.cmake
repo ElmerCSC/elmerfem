@@ -76,11 +76,15 @@ IF(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
       IF(WITH_MPI)
         IF(BUNDLE_MSMPI_REDIST)
           INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/MSMpiSetup.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
+          INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x64.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
+          INSTALL(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../msmpi_redist/vcredist_x86.exe" DESTINATION "redist" COMPONENT "MS_MPI_Redistributable")
           SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DESCRIPTION "Install HPC Pack 2012 R2 MS-MPI Redistributable Package")
           SET(CPACK_COMPONENT_MS_MPI_REDISTRIBUTABLE_DISPLAY_NAME "MS-MPI")
           LIST(APPEND CPACK_NSIS_EXTRA_INSTALL_COMMANDS "
           IfFileExists '$INSTDIR\\\\redist\\\\MSMpiSetup.exe' MSMpiSetupExists MsMpiSetupNotExist
             MsMpiSetupExists:
+             ExecWait '$INSTDIR\\\\redist\\\\vcredist_x64.exe'
+             ExecWait '$INSTDIR\\\\redist\\\\vcredist_x86.exe'
              ExecWait '$INSTDIR\\\\redist\\\\MSMpiSetup.exe'
             MsMpiSetupNotExist:
              ")

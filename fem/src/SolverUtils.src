@@ -7307,7 +7307,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(.NOT.Found) EnforceDirichlet = .TRUE.
   EnforceDirichlet = EnforceDirichlet .AND. ALLOCATED(StiffMatrix % ConstrainedDOF)
 
-  ComplexSystem = StiffMatrix % Complex
+  ComplexSystem = StiffMatrix % COMPLEX
   ComplexSystem = ComplexSystem .OR. ListGetLogical( Solver % Values, &
            'Linear System Complex', Found )
 
@@ -7359,8 +7359,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END DO
     IF( NoEmptyRows > 0 ) THEN
       CALL Warn('SolveWithLinearRestriction',&
-          'Constraint Matrix included empty rows: &
-          '//TRIM(I2S(NoEmptyRows))//' vs. '//TRIM(I2S(RestMatrix % NumberOfRows)) )
+          'Constraint Matrix included empty rows:' &
+          //TRIM(I2S(NoEmptyRows))//' vs. '//TRIM(I2S(RestMatrix % NumberOfRows)) )
     END IF
   END IF
 

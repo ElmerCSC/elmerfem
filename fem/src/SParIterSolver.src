@@ -1388,7 +1388,7 @@ integer::inside
       SUBROUTINE SolveHYPRE1( n, Rows, Cols, Vals, GDOFs, &
            Owner, ILUn, BILU, &
            hypremethod, hypre_intpara, hypre_dppara, rounds, TOL, &
-           verbosity, hypreContainer, fcomm )
+           verbosity, hypreContainer, fcomm ) BIND(C,name="solvehypre1")
         USE, INTRINSIC :: iso_c_binding
         INTEGER(KIND=c_int) :: n, Rows(n), Cols(n), GDOFs(n), &
                    PE, Owner(n), ILUn, BILU, hypremethod, &
@@ -1400,7 +1400,7 @@ integer::inside
 
       !! solve linear system with same matrix as in SolveHYPRE1
       SUBROUTINE SolveHYPRE2( n, GDOFs, &
-           Owner, Xvec, RHSVec, Rounds, TOL, verbosity, hypreContainer, fcomm)
+           Owner, Xvec, RHSVec, Rounds, TOL, verbosity, hypreContainer, fcomm) BIND(C,name="solvehypre2")
         USE, INTRINSIC :: iso_c_binding
         INTEGER(KIND=c_int) :: n, GDOFs(n), Owner(n), Rounds, verbosity, fcomm
         REAL(KIND=c_double) :: Xvec(n),RHSvec(n),TOL
@@ -1412,7 +1412,7 @@ integer::inside
 
       !! destroy the data structures (should be called when the matrix has
       !! to be updated and SolveHYPRE1 has to be called again).
-      SUBROUTINE SolveHYPRE4(hypreContainer)
+      SUBROUTINE SolveHYPRE4(hypreContainer) BIND(C,name="solvehypre4")
         USE, INTRINSIC :: iso_c_binding
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPRE4
@@ -1420,7 +1420,8 @@ integer::inside
 
       SUBROUTINE SolveHypreAMS(nrows,rows,cols,vals,n,grows,gcols,gvals, &
          perm, invperm, globaldofs, owner, Bperm,nodeowner,xvec, rhsvec, pe, ILUn, rounds, &
-            TOL, xx_d, yy_d, zz_d, hypremethod, hypre_intpara, hypre_dppara,verbosity,hyprecontainer,fcomm )
+            TOL, xx_d, yy_d, zz_d, hypremethod, hypre_intpara, hypre_dppara,verbosity,hyprecontainer,fcomm ) & 
+            BIND(C,name="solvehypreams")
 
         USE, INTRINSIC :: iso_c_binding
         INTEGER(KIND=c_int) :: nrows, n, Rows(*), Cols(*), Perm(*), INVPerm(*), &
