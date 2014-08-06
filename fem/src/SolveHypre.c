@@ -49,6 +49,9 @@
 #include "HYPRE.h"
 #include "HYPRE_parcsr_ls.h"
 
+#ifdef USE_ISO_C_BINDINGS
+#define realtime_ FC_FUNC_(realtime,REALTIME)
+#endif
 typedef struct {
 
 int ilower, iupper;
