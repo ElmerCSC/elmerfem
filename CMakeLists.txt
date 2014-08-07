@@ -15,7 +15,7 @@
 #
 
 PROJECT(Elmer Fortran C CXX)
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
 
 IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1)
@@ -30,7 +30,10 @@ SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
 SET(WITH_TRILINOS FALSE CACHE BOOL "Use Trilinos")
 
-CMAKE_POLICY(SET CMP0022 OLD)
+if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
+  CMAKE_POLICY(SET CMP0022 OLD)
+ENDIF()
+
 MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
 IF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
@@ -67,10 +70,15 @@ ENDIF()
 FIND_PACKAGE(BLAS REQUIRED)
 FIND_PACKAGE(LAPACK REQUIRED)
 
-# Mumps
 IF(MPI_FOUND)
-  FIND_PACKAGE(Mumps)
-  FIND_PACKAGE(Hypre COMPONENTS Euclid parcsr_ls ParaSails IJ_mv QUIET)
+  # Mumps
+  IF(WITH_MUMPS)
+    FIND_PACKAGE(Mumps)
+  ENDIF()
+  # Hypre
+  IF(WITH_Hypre)
+    FIND_PACKAGE(Hypre COMPONENTS Euclid parcsr_ls ParaSails IJ_mv QUIET)
+  ENDIF()
 ENDIF()
 
 IF(MUMPS_FOUND)
@@ -202,16 +210,18 @@ MESSAGE(STATUS "  MPI C include dir: " "${MPI_C_INCLUDE_PATH}")
 MESSAGE(STATUS "  MPI C libraries:   " "${MPI_C_LIBRARIES}")
 MESSAGE(STATUS "  MPI C flags:       " "${MPI_C_LINK_FLAGS}")
 MESSAGE(STATUS "------------------------------------------------")
-IF(HAVE_MUMPS)
+IF(WITH_MUMPS)
 MESSAGE(STATUS "  Mumps:             " "${MUMPS_FOUND}")
 MESSAGE(STATUS "  Mumps include:     " "${MUMPS_INCLUDE_PATH}")
 MESSAGE(STATUS "  Mumps libraries:   " "${MUMPS_LIBRARIES}")
 MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
+IF(WITH_Hypre)
 MESSAGE(STATUS "  Hypre:             " "${Hypre_FOUND}")
 MESSAGE(STATUS "  Hypre include:     " "${Hypre_INCLUDE_DIR}")
 MESSAGE(STATUS "  Hypre libraries:   " "${Hypre_LIBRARIES}")
 MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
 ELSE()
 MESSAGE(STATUS "  Fortran compiler:  " "${CMAKE_Fortran_COMPILER}")
 MESSAGE(STATUS "------------------------------------------------")
