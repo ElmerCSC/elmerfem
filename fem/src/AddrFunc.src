@@ -5,7 +5,7 @@ FUNCTION AddrFunc(fn) RESULT(faddr)
     USE Types, ONLY : AddrInt
     IMPLICIT NONE
     INTERFACE
-        SUBROUTINE dummysubr() 
+        SUBROUTINE dummysubr() bind(C)
         END SUBROUTINE
     END INTERFACE
     PROCEDURE(dummysubr) :: fn  
