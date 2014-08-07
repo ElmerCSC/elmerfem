@@ -17,7 +17,13 @@ find_library(Hypre_LIBRARIES NAMES HYPRE
 IF(${Hypre_LIBRARIES} MATCHES NOTFOUND)
   IF(${Hypre_FIND_REQUIRED})
     MESSAGE(FATAL_ERROR "HYPRE: ${Hypre_LIBRARIES}")
+  ELSE()
+    IF(NOT Hypre_FIND_QUIETLY)
+      MESSAGE(STATUS "Hypre not found.")
+    ENDIF()
   ENDIF()
+  SET(Hypre_FOUND FALSE)
+  RETURN()
 ENDIF()
 
 foreach(_comp ${Hypre_FIND_COMPONENTS})
