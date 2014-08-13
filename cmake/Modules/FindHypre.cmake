@@ -6,12 +6,14 @@ set(Hypre_FOUND FALSE)
 
 find_path(Hypre_INCLUDE_DIR NAMES HYPRE.h
   HINTS
-  ${Hypre_DIR}
+  "${Hypre_DIR}/include"
+  "$ENV{HYPREROOT}/include"
   )
 
 find_library(Hypre_LIBRARIES NAMES HYPRE
   HINTS
-  ${Hypre_DIR}
+  "${Hypre_DIR}/lib"
+  "$ENV{HYPREROOT}/lib"
   )
 
 IF(${Hypre_LIBRARIES} MATCHES NOTFOUND)
