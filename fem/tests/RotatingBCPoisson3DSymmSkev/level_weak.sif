@@ -4,6 +4,9 @@
 ! This case includes 4-fold symmetry in the rotations and 
 ! a skew of 20 degrees in the rotor. 
 ! Increse number of extruded layers for better accuracy. 
+!
+! This is a variation of the test case using weak version of the 
+! Level Projector.
 
 Header
   CHECK KEYWORDS Warn
@@ -13,7 +16,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 4
+  Max Output Level = 32
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -26,7 +29,7 @@ Simulation
   Timestep Intervals = 2
   Output Intervals = 1
 
-!  Post File = case.vtu
+  Post File = weak.vtu
 !  Output File = case.result
 
   Simulation Timing = Logical True
@@ -189,7 +192,6 @@ Body Force 1
   Mesh Translate 1 = -4.0
 End
 
-
 $omega=20.0
 $skew=10.0
 
@@ -225,7 +227,16 @@ Boundary Condition 3
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
 
-!  Save Projector = Logical True
+  Level Projector = Logical True
+
+!  Projector Skip Nodes = Logical False
+!  Projector Skip Edges = Logical False
+
+  Level Projector Nodes Strong = Logical False
+!  Level Projector Plane Edges Strong = Logical False
+!  Level Projector Extruded Edges Strong = Logical False 
+
+  Save Projector = Logical True
 End
 
 Boundary Condition 4
@@ -264,5 +275,5 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=1.3948370669927004\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM=1.3444902712590778\n");
  
