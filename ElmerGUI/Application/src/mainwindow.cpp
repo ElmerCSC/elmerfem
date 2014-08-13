@@ -6899,7 +6899,7 @@ void MainWindow::loadDefinitions()
   //--------------------------------------
   QString elmerGuiHome;
 
-#ifdef __APPLE__
+#ifdef __APPLE__DONTGO_HERE_TODO
   QString generalDefs = this->homePath +  "/edf/edf.xml";            
 #else
   QString generalDefs = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf/edf.xml";  // @TODO: fix path to share/ElmerGUI/edf

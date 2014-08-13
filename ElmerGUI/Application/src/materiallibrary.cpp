@@ -58,8 +58,9 @@ MaterialLibrary::MaterialLibrary(QWidget *parent)
   //--------------
   QString elmerGuiHome;
 
-#ifdef __APPLE__
-  QString matFileName = this->homePath +  "/edf/egmaterials.xml";            
+#ifdef __APPLE__DONTGOHERE_TODO
+  //QString matFileName = this->homePath +  "/edf/egmaterials.xml";          
+  QString matFileName = QDir::homePath() +  "/edf/egmaterials.xml";          
 #else
   QString matFileName = QCoreApplication::applicationDirPath()
     + "/../share/ElmerGUI/edf/egmaterials.xml";  // @TODO: fix path to share/ElmerGUI/edf

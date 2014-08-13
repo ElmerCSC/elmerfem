@@ -52,11 +52,17 @@ enum ListTypes {
 };
 
 #ifndef WIN32
+#ifndef __APPLE__
 #include <GL/glu.h>
+#else
+#include <OpenGL/glu.h>
 #endif
+#endif
+
 #ifdef __MINGW32__
 #include <GL/glu.h>
 #endif
+
 #include <QGLWidget>
 #include <QHash>
 #include <QVector>
