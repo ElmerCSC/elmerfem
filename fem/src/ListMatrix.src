@@ -135,8 +135,8 @@ CONTAINS
       END DO
     END DO
 
-    WRITE(Message,'(A,I8)') 'Number of entries in coupled matrix: ',Rows(n+1)-1
-    CALL Info('ListMatrixToCRS',Message)
+    CALL Info('List_ToCRS',&
+        'Number of entries in CRS matrix: '//TRIM(I2S(Rows(n+1)-1)),Level=7)
 
     A => AllocateMatrix()
     A % NumberOfRows = n
@@ -173,7 +173,7 @@ CONTAINS
 
     IF( .NOT. ASSOCIATED( L ) ) THEN
 !     CALL Warn('ListToCRSMatrix','List not associated')
-      A % Format = MATRIX_CRS      
+      A % FORMAT = MATRIX_CRS      
       A % NumberOfRows = 0
       RETURN
     END IF 
@@ -189,8 +189,8 @@ CONTAINS
       Rows(i+1) = Rows(i) + L(i) % Degree
     END DO
 
-    WRITE(Message,'(A,I8)') 'Number of entries in coupled matrix: ',Rows(n+1)-1
-    CALL Info('ListToCRSMatrix',Message)
+    CALL Info('List_ToCRSMatrix',&
+        'Number of entries in CRS matrix: '//TRIM(I2S(Rows(n+1)-1)),Level=7)
 
     ALLOCATE( Cols(Rows(n+1)-1)) 
     ALLOCATE( Values(Rows(n+1)-1) )
@@ -216,7 +216,7 @@ CONTAINS
     CALL CRS_SortMatrix( A )
 
     CALL List_FreeMatrix( SIZE(L), L )
-    A % ListMatrix => Null()
+    A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
     CALL Info('ListToCRSMatrix','Matrix format changed from List to CRS', Level=5)
@@ -265,7 +265,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
-     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, ENTRY
+     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
 !-------------------------------------------------------------------------------
 
      INTEGER :: i
@@ -280,12 +280,12 @@ CONTAINS
      Clist => List(k1) % Head
 
      IF ( .NOT. ASSOCIATED(Clist) ) THEN
-        ALLOCATE( ENTRY )
+        ALLOCATE( Entry )
         Entry % Value = 0._dp
-        ENTRY % INDEX = k2
-        NULLIFY( ENTRY % Next )
+        Entry % INDEX = k2
+        NULLIFY( Entry % Next )
         List(k1) % Degree = 1
-        List(k1) % Head => ENTRY
+        List(k1) % Head => Entry
         RETURN
      END IF
 
@@ -303,14 +303,14 @@ CONTAINS
         END IF
      END IF
 
-     ALLOCATE( ENTRY )
+     ALLOCATE( Entry )
      Entry % Value = 0._dp
-     ENTRY % INDEX = k2
-     ENTRY % Next => Clist
+     Entry % INDEX = k2
+     Entry % Next => Clist
      IF ( ASSOCIATED( Prev ) ) THEN
-         Prev % Next => ENTRY
+         Prev % Next => Entry
      ELSE
-        List(k1) % Head => ENTRY
+        List(k1) % Head => Entry
      END IF
  
      List(k1) % Degree = List(k1) % Degree + 1
@@ -327,7 +327,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      TYPE(ListMatrixEntry_t), POINTER :: Clist,Prev
 
-     Prev => Null()
+     Prev => NULL()
      Clist => List(k1) % Head
      DO WHILE(ASSOCIATED(Clist))
        IF (Clist % Index >= k2) EXIT
@@ -371,7 +371,7 @@ CONTAINS
      
      List(k1:n-1)=List(k1+1:n)
      List(n) % Degree=0
-     List(n) % Head=>Null()
+     List(n) % Head=>NULL()
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_DeleteRow
 !-------------------------------------------------------------------------------
@@ -389,7 +389,7 @@ CONTAINS
      n=SIZE(List)
 
      DO i=1,n
-       Prev => Null()
+       Prev => NULL()
        Clist => List(i) % Head
        DO WHILE(ASSOCIATED(Clist))
          IF(Clist % Index>=k1) EXIT
@@ -422,7 +422,7 @@ CONTAINS
      REAL(KIND=dp) :: Value
      LOGICAL, OPTIONAL :: SetValue 
 !-------------------------------------------------------------------------------
-     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, ENTRY
+     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
      LOGICAL :: Set     
 
      Set = .FALSE.
@@ -444,7 +444,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
-     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, ENTRY
+     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
      REAL(KIND=dp) :: Value
      LOGICAL, OPTIONAL :: SetValue 
 
@@ -459,7 +459,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
-     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, ENTRY
+     TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
      REAL(KIND=dp) :: Value
 !-------------------------------------------------------------------------------
 
