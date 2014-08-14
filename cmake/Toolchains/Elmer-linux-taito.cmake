@@ -18,25 +18,15 @@ SET(MPI_CXX_COMPILER mpiicpc)
 SET(MPI_Fortran_COMPILER mpiifort)
 
 # Compilation flags (i.e. with optimization)
-SET(CMAKE_C_FLAGS "-O3 -g -openmp" CACHE STRING "")
-SET(CMAKE_CXX_FLAGS "-O3 -g -openmp" CACHE STRING "")
-SET(CMAKE_Fortran_FLAGS "-O3 -g -openmp -align all -align array64byte" CACHE STRING "")
+SET(CMAKE_C_FLAGS "-O3 -g" CACHE STRING "")
+SET(CMAKE_CXX_FLAGS "-O3 -g" CACHE STRING "")
+SET(CMAKE_Fortran_FLAGS "-O3 -g -fma -align all -align array64byte" CACHE STRING "")
 
-# Setting root path should not be needed
-# SET(CMAKE_FIND_ROOT_PATH $ENV{MKLROOT}/lib/mic
-# 			 $ENV{I_MPI_ROOT}/mic)
-
-# Search for programs in the build host directories
-# SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-# Search for libraries and headers only in the target environment
-# SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-# SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-
-# BLAS and LAPACK (from MKL)
+# BLAS and LAPACK (from MKL), no threading
 SET(BLAS_LIBRARIES $ENV{MKLROOT}/lib/intel64/libmkl_scalapack_lp64.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_lp64.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_core.so
-		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_thread.so
+		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_sequential.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_blacs_intelmpi_lp64.so
 		   /usr/lib64/libpthread.so
 		   /usr/lib64/libm.so
@@ -44,10 +34,25 @@ SET(BLAS_LIBRARIES $ENV{MKLROOT}/lib/intel64/libmkl_scalapack_lp64.so
 SET(LAPACK_LIBRARIES $ENV{MKLROOT}/lib/intel64/libmkl_scalapack_lp64.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_lp64.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_core.so
-		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_thread.so
+		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_sequential.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_blacs_intelmpi_lp64.so
 		   /usr/lib64/libpthread.so
 		   /usr/lib64/libm.so
 		   CACHE STRING "")
 
+SET(SCALAPACK_LIBRARIES $ENV{MKLROOT}/lib/intel64/libmkl_scalapack_lp64.so
+		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_lp64.so
+		   $ENV{MKLROOT}/lib/intel64/libmkl_core.so
+		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_sequential.so
+		   $ENV{MKLROOT}/lib/intel64/libmkl_blacs_intelmpi_lp64.so
+		   /usr/lib64/libpthread.so
+		   /usr/lib64/libm.so
+		   CACHE STRING "")
+
+# Mumps
+SET(MUMPSROOT /appl/opt/mumps/intel-13.1.0/intelmpi-4.1.0/4.10.0/ CACHE STRING "")
+# Hypre
+SET(HYPREROOT /appl/opt/hypre/intel-13.1.0/intelmpi-4.1.0/2.9.0b CACHE STRING "")
+
 ADD_DEFINITIONS(-I$ENV{MKLROOT}/include)
+
