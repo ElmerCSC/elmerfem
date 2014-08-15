@@ -5603,7 +5603,7 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
       EdgePerm = 0
       DO i=1, BMesh1 % NumberOfBulkElements
-        DO j=1, BMesh1 % Elements(i) % Type % NumberOfEdges
+        DO j=1, BMesh1 % Elements(i) % TYPE % NumberOfEdges
           EdgePerm( BMesh1 % Elements(i) % EdgeIndexes(j) ) = 1
         END DO
       END DO
@@ -6358,7 +6358,7 @@ END SUBROUTINE GetMaxDefs
         Indexes => Element % NodeIndexes
 
         n = Element % TYPE % NumberOfNodes
-        ne = Element % Type % NumberOfEdges
+        ne = Element % TYPE % NumberOfEdges
         IF( PiolaVersion ) THEN
           nf = 2
         ELSE
@@ -6591,7 +6591,7 @@ END SUBROUTINE GetMaxDefs
           ! This should be ok as the polygon is always convex.
           NodesT % x(1) = x(1)
           NodesT % y(1) = y(1)
-          IP = GaussPoints( ElementT, ElementT % Type % GaussPoints2 ) 
+          IP = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
 
           !PRINT *,'X0:',x(1:4)
           !PRINT *,'Y0:',y(1:4)
@@ -6692,22 +6692,29 @@ END SUBROUTINE GetMaxDefs
                     Projector % InvPerm( nrow ) = jj
                   END IF
                  
-                  val = Wtemp * SUM( WBasis(j,:) * Wbasis(j,:) ) 
-                  CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                      jj, val ) 
-
+                  
                   DO i=1,ne+nf
                     IF( i <= ne ) THEN
-                      ii = ElementM % EdgeIndexes(i) + EdgeCol0
+                      ii = Element % EdgeIndexes(i) + EdgeCol0
                     ELSE
                       ii = 2 * ( Element % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
                     END IF
-                    
-                    !************* don't know where factor 1.5 comes but it seems to fix the discrepancy in rowsum
-                    val = -Wtemp * SUM( WBasis(j,:) * WBasis(i,:) ) / 1.5_dp
-                    IF( ABS( val ) < 1.0e-12 ) CYCLE
-                    CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                        ii, val  ) 
+                    val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
+                    IF( ABS( val ) > 1.0e-12 ) THEN
+                      CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                          ii, val ) 
+                    END IF
+
+                    IF( i <= ne ) THEN
+                      ii = ElementM % EdgeIndexes(i) + EdgeCol0
+                    ELSE
+                      ii = 2 * ( ElementM % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
+                    END IF                    
+                    val = -Wtemp * SUM( WBasis(j,:) * WBasisM(i,:) ) 
+                    IF( ABS( val ) > 1.0e-12 ) THEN
+                      CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                          ii, val  ) 
+                    END IF
                   END DO
                 END DO
               END IF
