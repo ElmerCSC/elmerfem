@@ -3908,6 +3908,10 @@ END SUBROUTINE GetMaxDefs
         q => Find_Face(Parent,Element)
         PMesh % Elements(ind) % NodeIndexes(1:n) = q % NodeIndexes(1:n)
 
+        ! set the elementindex to be faceindex as it may be needed
+        ! for the edge elements.
+        PMesh % Elements(ind) % ElementIndex = q % ElementIndex
+
         en = q % TYPE % NumberOfEdges
         ALLOCATE(PMesh % Elements(ind) % EdgeIndexes(en))
         Pmesh % Elements(ind) % EdgeIndexes(1:en) = q % EdgeIndexes(1:en)
@@ -4574,7 +4578,7 @@ END SUBROUTINE GetMaxDefs
       n=0
       DO j=1,Ptr % TYPE % NumberOfNodes
         DO k=1,Element % TYPE % NumberOfNodes
-          IF (Ptr % NodeIndexes(j) == Element % NodeIndexes(k))n=n+1
+          IF (Ptr % NodeIndexes(j) == Element % NodeIndexes(k)) n=n+1
         END DO
       END DO
       IF (n==Ptr % TYPE % NumberOfNodes) EXIT
@@ -5298,6 +5302,195 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
+
+
+! >Returns basis functions for Whitney elements of lowest degree (edge elements)
+! ----------------------------------------------------------------------
+!------------------------------------------------------------------------
+   SUBROUTINE GetEdgeBasisLocal( Element, WBasis, RotWBasis, Basis, dBasisdx )
+!------------------------------------------------------------------------
+     TYPE(Element_t),TARGET :: Element
+     REAL(KIND=dp) :: WBasis(:,:), RotWBasis(:,:), Basis(:), dBasisdx(:,:)
+!------------------------------------------------------------------------
+     TYPE(Element_t),POINTER :: Edge
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Nodes_t), SAVE :: Nodes
+     REAL(KIND=dp) :: u,v,w,dudx(3,3),du(3),Base,dBase(3),tBase(3), &
+                rBase(3),triBase(3),dtriBase(3,3)
+     LOGICAL :: Parallel,stat
+     INTEGER :: i,j,k,n,nj,nk,i1,i2, ElemFam
+     INTEGER, POINTER :: EdgeMap(:,:)
+!------------------------------------------------------------------------
+     Mesh => CurrentModel % Mesh
+!GetMesh()
+     Parallel = ParEnv % PEs>1
+
+     IF (Element % TYPE % BasisFunctionDegree>1) THEN
+       CALL Fatal('GetEdgeBasis',"Can't handle but linear elements, sorry.") 
+     END IF
+
+     ElemFam = Element % TYPE % ElementCode / 100
+
+     SELECT CASE( ElemFam ) 
+     CASE(4,7,8)
+       n = Element % TYPE % NumberOfNodes
+       u = SUM(Basis(1:n)*Element % TYPE % NodeU(1:n))
+       v = SUM(Basis(1:n)*Element % TYPE % NodeV(1:n))
+       w = SUM(Basis(1:n)*Element % TYPE % NodeW(1:n))
+
+       dudx(1,:) = MATMUL(Element % TYPE % NodeU(1:n),dBasisdx(1:n,:))
+       dudx(2,:) = MATMUL(Element % TYPE % NodeV(1:n),dBasisdx(1:n,:))
+       dudx(3,:) = MATMUL(Element % TYPE % NodeW(1:n),dBasisdx(1:n,:))
+
+       triBase(1) = 1-u-v
+       triBase(2) = u
+       triBase(3) = v
+
+       dtriBase(1,:) = -dudx(1,:)-dudx(2,:) 
+       dtriBase(2,:) =  dudx(1,:)
+       dtriBase(3,:) =  dudx(2,:)
+     END SELECT
+
+     EdgeMap => LGetEdgeMap( ElemFam )
+
+
+     DO i=1,SIZE(Edgemap,1)
+       j = EdgeMap(i,1); k = EdgeMap(i,2)
+
+       nj = Element % Nodeindexes(j)
+       IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+       nk = Element % Nodeindexes(k)
+       IF (Parallel) nk=Mesh % ParallelInfo % GlobalDOFs(nk)
+
+       SELECT CASE(ElemFam)
+       CASE(3,5)
+         WBasis(i,:) = Basis(j)*dBasisdx(k,:) - Basis(k)*dBasisdx(j,:)
+
+         RotWBasis(i,1) = 2.0_dp * ( dBasisdx(j,2) * dBasisdx(k,3) - &
+                       dBasisdx(j,3) * dBasisdx(k,2) )
+         RotWBasis(i,2) = 2.0_dp * ( dBasisdx(j,3) * dBasisdx(k,1) - &
+                       dBasisdx(j,1) * dBasisdx(k,3) )
+         RotWBasis(i,3) = 2.0_dp * ( dBasisdx(j,1) * dBasisdx(k,2) - &
+                       dBasisdx(j,2) * dBasisdx(k,1) )
+       CASE(7)
+         SELECT CASE(i)
+          CASE(1)
+            j=1;k=2; Base=(1-w)/2; dBase=-dudx(3,:)/2
+          CASE(2)
+            j=2;k=3; Base=(1-w)/2; dBase=-dudx(3,:)/2
+          CASE(3)
+            j=3;k=1; Base=(1-w)/2; dBase=-dudx(3,:)/2
+          CASE(4)
+            j=1;k=2; Base=(1+w)/2; dBase= dudx(3,:)/2
+          CASE(5)
+            j=2;k=3; Base=(1+w)/2; dBase= dudx(3,:)/2
+          CASE(6)
+            j=3;k=1; Base=(1+w)/2; dBase= dudx(3,:)/2
+          CASE(7)
+            Base=triBase(1); dBase=dtriBase(1,:); du=dudx(3,:)/2
+          CASE(8)
+            Base=triBase(2); dBase=dtriBase(2,:); du=dudx(3,:)/2
+          CASE(9)
+            Base=triBase(3); dBase=dtriBase(3,:); du=dudx(3,:)/2
+         END SELECT
+
+         IF(i<=6) THEN
+            tBase = (triBase(j)*dtriBase(k,:)-triBase(k)*dtriBase(j,:))
+            rBase(1) = 2*Base*(dtriBase(j,2)*dtriBase(k,3)-dtriBase(k,2)*dtriBase(j,3)) + &
+                              dBase(2)*tBase(3) - dBase(3)*tBase(2)
+
+            rBase(2) = 2*Base*(dtriBase(j,3)*dtriBase(k,1)-dtriBase(k,3)*dtriBase(j,1)) + &
+                              dBase(3)*tBase(1) - dBase(1)*tBase(3)
+
+            rBase(3) = 2*Base*(dtriBase(j,1)*dtriBase(k,2)-dtriBase(k,1)*dtriBase(j,2)) + &
+                              dBase(1)*tBase(2) - dBase(2)*tBase(1)
+
+            RotWBasis(i,:)=rBase
+            WBasis(i,:)=tBase*Base
+         ELSE
+            WBasis(i,:)=Base*du
+            RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))
+            RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))
+            RotWBasis(i,3)=(dBase(1)*du(2) - dBase(2)*du(1))
+         END IF
+       CASE(4)
+         SELECT CASE(i)
+          CASE(1)
+             du=dudx(1,:); Base=(1-v)*(1-w)
+             dBase(:)=-dudx(2,:)*(1-w)-(1-v)*dudx(3,:)
+          CASE(2)
+             du=dudx(2,:); Base=(1+u)*(1-w)
+             dBase(:)= dudx(1,:)*(1-w)-(1+u)*dudx(3,:)
+          CASE(3)
+             du=-dudx(1,:); Base=(1+v)*(1-w)
+             dBase(:)= dudx(2,:)*(1-w)-(1+v)*dudx(3,:)
+          CASE(4)
+             du=-dudx(2,:); Base=(1-u)*(1-w)
+             dBase(:)=-dudx(1,:)*(1-w)-(1-u)*dudx(3,:)
+         END SELECT
+
+         wBasis(i,:) = Base*du/n
+         RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))/n
+         RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))/n
+         RotWBasis(i,3) = (dBase(1)*du(2) - dBase(2)*du(1))/n
+       CASE(8)
+         SELECT CASE(i)
+          CASE(1)
+             du=dudx(1,:); Base=(1-v)*(1-w)
+             dBase(:)=-dudx(2,:)*(1-w)-(1-v)*dudx(3,:)
+          CASE(2)
+             du=dudx(2,:); Base=(1+u)*(1-w)
+             dBase(:)= dudx(1,:)*(1-w)-(1+u)*dudx(3,:)
+          CASE(3)
+             du=dudx(1,:); Base=(1+v)*(1-w)
+             dBase(:)= dudx(2,:)*(1-w)-(1+v)*dudx(3,:)
+          CASE(4)
+             du=dudx(2,:); Base=(1-u)*(1-w)
+             dBase(:)=-dudx(1,:)*(1-w)-(1-u)*dudx(3,:)
+          CASE(5)
+             du=dudx(1,:); Base=(1-v)*(1+w)
+             dBase(:)=-dudx(2,:)*(1+w)+(1-v)*dudx(3,:)
+          CASE(6)
+             du=dudx(2,:); Base=(1+u)*(1+w)
+             dBase(:)= dudx(1,:)*(1+w)+(1+u)*dudx(3,:)
+          CASE(7)
+             du=dudx(1,:); Base=(1+v)*(1+w)
+             dBase(:)= dudx(2,:)*(1+w)+(1+v)*dudx(3,:)
+          CASE(8)
+             du=dudx(2,:); Base=(1-u)*(1+w)
+             dBase(:)=-dudx(1,:)*(1+w)+(1-u)*dudx(3,:)
+          CASE(9)
+             du=dudx(3,:); Base=(1-u)*(1-v)
+             dBase(:)=-dudx(1,:)*(1-v)-(1-u)*dudx(2,:)
+          CASE(10)
+             du=dudx(3,:); Base=(1+u)*(1-v)
+             dBase(:)= dudx(1,:)*(1-v)-(1+u)*dudx(2,:)
+          CASE(11)
+             du=dudx(3,:); Base=(1+u)*(1+v)
+             dBase(:)= dudx(1,:)*(1+v)+(1+u)*dudx(2,:)
+          CASE(12)
+             du=dudx(3,:); Base=(1-u)*(1+v)
+             dBase(:)=-dudx(1,:)*(1+v)+(1-u)*dudx(2,:)
+         END SELECT
+
+         wBasis(i,:)=Base*du/n
+         RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))/n
+         RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))/n
+         RotWBasis(i,3)=(dBase(1)*du(2) - dBase(2)*du(1))/n
+       CASE DEFAULT
+         CALL Fatal( 'Edge Basis', 'Not implemented for this element type.')
+       END SELECT
+
+       IF( nk < nj ) THEN
+         WBasis(i,:) = -WBasis(i,:); RotWBasis(i,:) = -RotWBasis(i,:)
+       END IF
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE GetEdgeBasisLocal
+!------------------------------------------------------------------------------
+
+
+
   !---------------------------------------------------------------------------
   !> Create a projector for mixes nodal / edge problems assuming constant level
   !> in the 2nd direction. This kind of projector is suitable for 2D meshes where
@@ -5323,14 +5516,30 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: Radius, NodeScale
     TYPE(Matrix_t), POINTER :: Projector    
     !--------------------------------------------------------------------------
-    LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone
+    LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
+        EdgeBasis, PiolaVersion
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTol, XTol, YTol, EdgeScale
-    INTEGER :: NoNodes1, NoNodes2, AllNodes
-    LOGICAL, ALLOCATABLE :: StrongProj(:)
+    INTEGER :: NoNodes1, NoNodes2
     INTEGER :: i,j,n,m,Nrange,Nrange2, nrow
+    INTEGER, ALLOCATABLE :: EdgePerm(:)
+    INTEGER :: EdgeRow0, FaceRow0, EdgeCol0, FaceCol0
+
+!    INTERFACE 
+!      SUBROUTINE GetEdgeBasisLocal( Element, WBasis, RotWBasis, Basis, dBasisdx )
+!        USE Types
+!        TYPE(Element_t),TARGET :: Element
+!        REAL(KIND=dp) :: WBasis(:,:), RotWBasis(:,:), Basis(:), dBasisdx(:,:)
+!      END SUBROUTINE GetEdgeBasisLocal
+!    END INTERFACE
+
 
     CALL Info('LevelProjector','Creating projector for a mesh with constant levels',Level=7)
+
+    IF(.NOT. (DoEdges .OR. DoNodes ) ) THEN
+      CALL Warn('LevelProjector','Nothing to do, no nonodes, no edges!')
+      RETURN
+    END IF
 
     Parallel = ( ParEnv % PEs > 1 )
 
@@ -5347,15 +5556,6 @@ END SUBROUTINE GetMaxDefs
     ! Eliminate the unneeded entries. This is currently fixed to .TRUE.
     ! The other possibility is to make the corresponding rows to be zero. 
     EliminateUnneeded = .TRUE.
-
-    ! Create a list matrix that allows for unspecified entries in the matrix 
-    ! structure to be introduced.
-    Projector => AllocateMatrix()
-    Projector % FORMAT = MATRIX_LIST
-
-    n = SIZE( InvPerm1 ) 
-    ALLOCATE( Projector % InvPerm(5*n) )
-    Projector % InvPerm = 0
 
     ! Range is needed to define tolerances, and to map the angle in case 
     ! the master mesh is treated as a repeating structure. 
@@ -5379,10 +5579,51 @@ END SUBROUTINE GetMaxDefs
     ! nodes in both cases. 
     NoNodes1 = BMesh1 % NumberOfNodes
     NoNodes2 = BMesh2 % NumberOfNodes
-    AllNodes = Mesh % NumberOfNodes
 
-    ALLOCATE( StrongProj( AllNodes + Mesh % NumberOfEdges ) )
-    StrongProj = .FALSE. 
+    ! Create a list matrix that allows for unspecified entries in the matrix 
+    ! structure to be introduced.
+    Projector => AllocateMatrix()
+    Projector % FORMAT = MATRIX_LIST
+
+    n = 0
+    PiolaVersion = ListGetLogical( CurrentModel % Solver % Values, &
+        'Use Piola Transform', Found)
+
+    ! At the 1st stage determine the maximum size of the projector
+    ! If the strong projector is used then the numbering is done as we go
+    ! this way we can eliminate unneeded rows. 
+    ! For the weak projector there is no need to eliminate rows. 
+    IF( DoNodes ) THEN      
+      n = SIZE( InvPerm1 )
+      CALL Info('LevelProjector',&
+          'Number of active nodes in projector: '//TRIM(I2S(n)),Level=12)
+    END IF
+
+    IF( DoEdges ) THEN
+      ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
+      EdgePerm = 0
+      DO i=1, BMesh1 % NumberOfBulkElements
+        DO j=1, BMesh1 % Elements(i) % Type % NumberOfEdges
+          EdgePerm( BMesh1 % Elements(i) % EdgeIndexes(j) ) = 1
+        END DO
+      END DO
+      m = SUM( EdgePerm )
+      CALL Info('LevelProjector',&
+          'Number of active edges in projector: '//TRIM(I2S(m)),Level=12)
+      n = n + m
+      
+      IF( PiolaVersion ) THEN
+        CALL Info('LevelProjector',&
+            'Number of active faces in projector: '//TRIM(I2S(m)),Level=12)
+        n = n + m
+      END IF
+    END IF
+
+    CALL Info('LevelProjector',&
+        'Max number of rows in projector: '//TRIM(I2S(n)),Level=10)
+    ALLOCATE( Projector % InvPerm(n) )
+    Projector % InvPerm = 0
+
     SomethingUndone = .FALSE.
 
     ! If requested, create mapping for node dofs
@@ -5392,22 +5633,46 @@ END SUBROUTINE GetMaxDefs
         CALL AddNodalProjectorStrong()
       ELSE
         SomethingUndone = .TRUE.
+        nrow = SIZE( InvPerm1 ) 
       END IF
+      EdgeRow0 = nrow 
+      PRINT *,'nrow of nodes:',nrow
     END IF
 
     ! If requested, create mapping for edge dofs
     !-------------------------------------------------------------
     IF( DoEdges ) THEN
+      EdgeBasis = PiolaVersion 
+
+      EdgeCol0 = Mesh % NumberOfNodes
+      FaceCol0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
       IF( StrongLevelEdges .OR. StrongExtrudedEdges ) THEN
         CALL AddEdgeProjectorStrong()
-      ELSE
-        SomethingUndone = .TRUE.
+        EdgeRow0 = nrow
+        PRINT *,'1st weak end row:',EdgeRow0
       END IF
+
+      m = 0
+      DO i=1, Mesh % NumberOfEdges
+        IF( EdgePerm(i) > 0 ) THEN
+          m = m + 1
+          EdgePerm(i) = m
+        END IF
+      END DO      
+      IF( m > 0 ) THEN
+        SomethingUndone = .TRUE.
+        EdgeBasis = .TRUE.
+      END IF
+      
+      CALL Info('LevelProjector',&
+          'Number of weak edges in projector: '//TRIM(I2S(m)),Level=12)      
+      FaceRow0 = EdgeRow0 + m
     END IF
 
     ! And the the rest
     !-------------------------------------------------------------
-    IF( SomethingUndone ) THEN
+    IF( SomethingUndone ) THEN      
+      PRINT *,'Offsets:',EdgeCol0,FaceCol0,EdgeRow0,FaceRow0
       CALL AddLevelProjectorWeak()
     END IF
 
@@ -5580,9 +5845,6 @@ END SUBROUTINE GetMaxDefs
           CYCLE
         END IF
 
-        ! Mark that this projector entry is now found and need not to be treated later on
-        StrongProj(InvPerm1(ind)) = .TRUE. 
-
         ! If the projector of the node refers to itself then the continuity is a trivial
         ! thing and will not be enforced by a projector. This could happen in the origin,
         ! for example. 
@@ -5654,7 +5916,7 @@ END SUBROUTINE GetMaxDefs
     SUBROUTINE AddEdgeProjectorStrong()
 
       INTEGER :: ind, indm, eind, eindm, k1, k2, km1, km2, sgn0, coeffi(100), &
-          ncoeff, Nelim, j1, j2, Nundefined 
+          ncoeff, Nelim, j1, j2, Nundefined, NoSkewed
       TYPE(Element_t), POINTER :: Element, ElementM
       INTEGER, POINTER :: IndexesM(:)
       TYPE(Nodes_t) :: NodesM 
@@ -5667,7 +5929,7 @@ END SUBROUTINE GetMaxDefs
       n = Mesh % NumberOfEdges
       IF( n == 0 ) RETURN      
 
-      ALLOCATE( EdgeDone( n ) )
+      ALLOCATE( EdgeDone(n) )
       EdgeDone = .FALSE.
 
       n = Mesh % MaxElementNodes
@@ -5677,6 +5939,7 @@ END SUBROUTINE GetMaxDefs
       minwsum = HUGE( minwsum ) 
       maxwsum = 0.0_dp
       Nelim = 0
+      NoSkewed = 0
       Nundefined = 0
       LeftCircle = .FALSE.
 
@@ -5713,7 +5976,7 @@ END SUBROUTINE GetMaxDefs
           ELSE IF( XConst ) THEN
             IF( .NOT. StrongExtrudedEdges ) CYCLE
           ELSE
-            CALL Warn('LevelProjector','There is some skew that we cannot handle!')
+            NoSkewed = NoSkewed + 1
             CYCLE
           END IF
 
@@ -5947,7 +6210,6 @@ END SUBROUTINE GetMaxDefs
 
           IF( ABS(wsum-1.0) > 1.0e-3 ) THEN
             PRINT *,'*********************'
-            PRINT *,'col',AllNodes + eind, AllNodes + coeffi(1:ncoeff) 
             PRINT *,'wsum',eind,ncoeff,wsum,Repeated
             PRINT *,'x coords:',x1,x2
             PRINT *,'y coords:',y1,y2
@@ -5960,7 +6222,7 @@ END SUBROUTINE GetMaxDefs
           END IF
 
           ! Mark the edge done using strong projector
-          StrongProj(AllNodes+eind) = .TRUE. 
+          EdgePerm(eind) = 0
 
           ! Cycle (or write an empty row) if reference to itself is needed in the mapping.
           ! Mapping to itself results in to a zero row which is not needed and can 
@@ -5970,9 +6232,9 @@ END SUBROUTINE GetMaxDefs
             IF( .NOT. EliminateUnneeded ) THEN
               nrow = nrow + 1
               val = 0.0_dp
-              Projector % InvPerm(nrow) = AllNodes + eind
+              Projector % InvPerm(nrow) = EdgeCol0 + eind
               CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                  AllNodes + eind, val ) 
+                  EdgeCol0 + eind, val ) 
             END IF
             CYCLE
           END IF
@@ -5981,16 +6243,15 @@ END SUBROUTINE GetMaxDefs
           ! Register the initiating index of the row. 
           nrow = nrow + 1
           IF( nrow > SIZE( Projector % InvPerm ) ) THEN
-            CALL Warn('LevelProjector','Projector % InvPerm is too small!')
-          ELSE
-            Projector % InvPerm(nrow) = AllNodes + eind
+            CALL Fatal('LevelProjector','Projector % InvPerm is too small!')
           END IF
+          Projector % InvPerm(nrow) = EdgeCol0 + eind
 
           ! The reference to the edge to be projected
           IF( SelfProject ) THEN
             val = 1.0_dp
             CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                AllNodes + eind, val ) 
+                EdgeCol0 + eind, val ) 
           END IF
 
           ! The scaling can be used to create antiperiodic projectors, for example. 
@@ -6009,7 +6270,7 @@ END SUBROUTINE GetMaxDefs
             END IF
 
             CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                AllNodes + coeffi(j), val )
+                EdgeCol0 + coeffi(j), val )
           END DO
         END DO
       END DO
@@ -6028,6 +6289,9 @@ END SUBROUTINE GetMaxDefs
       IF( Nelim > 0 ) THEN
         CALL Info('LevelProjector','Number of eliminated edge mappings: '//TRIM(I2S(Nelim)),Level=8)
       END IF
+      IF( NoSkewed > 0 ) THEN
+        CALL Info('LevelProjector','Number of skewed edge mappings: '//TRIM(I2S(NoSkewed)),Level=8)
+      END IF
       CALL Info('LevelProjector','Created strong constraints for edge dofs: '//TRIM(I2S(nrow)),Level=8)      
 
       DEALLOCATE( EdgeDone, NodesM % x, NodesM % y, NodesM % z )
@@ -6045,7 +6309,7 @@ END SUBROUTINE GetMaxDefs
 
       INTEGER, TARGET :: IndexesT(3)
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
-      INTEGER :: j1,j2,j3,j4,jj,sgn0,k,kmax,ind,indM,nip
+      INTEGER :: j1,j2,j3,j4,jj,ii,sgn0,k,kmax,ind,indM,nip,nn,ne,nf
       TYPE(Element_t), POINTER :: Element, ElementM
       TYPE(Element_t) :: ElementT
       TYPE(GaussIntegrationPoints_t) :: IP
@@ -6055,8 +6319,8 @@ END SUBROUTINE GetMaxDefs
           Wtemp,q,ArcCoeff,ArcTol,u,v,w,um,vm,wm,val,Overlap,RefArea,dArea,SumOverlap,SumArea,&
           DotProd, DotProdM, qleft, qright, qleft2, qright2, MaxErr
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
-      REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),RotWbasis(:,:),dBasisdx(:,:)
-      LOGICAL :: LeftCircle, UseRadius, EdgeBasis, PiolaVersion, Stat
+      REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
+      LOGICAL :: LeftCircle, Stat
       TYPE(Mesh_t), POINTER :: Mesh
 
       Mesh => CurrentModel % Solver % Mesh 
@@ -6066,6 +6330,8 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n) )
       ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
       ALLOCATE( Basis(n), BasisM(n) )
+      ALLOCATE( dBasisdx(n,3), WBasis(n,3), WBasisM(n,3), RotWBasis(n,3) )
+
 
       Nodes % z  = 0.0_dp
       NodesM % z = 0.0_dp
@@ -6075,8 +6341,6 @@ END SUBROUTINE GetMaxDefs
       zt = 0.0_dp
       n = 4
       LeftCircle = .FALSE.
-      EdgeBasis = .FALSE.
-      PiolaVersion = .FALSE.
 
       ArcCoeff = (2*PI*Radius)/360.0
       ArcTol = ArcCoeff * Xtol
@@ -6094,7 +6358,14 @@ END SUBROUTINE GetMaxDefs
         Indexes => Element % NodeIndexes
 
         n = Element % TYPE % NumberOfNodes
+        ne = Element % Type % NumberOfEdges
+        IF( PiolaVersion ) THEN
+          nf = 2
+        ELSE
+          nf = 0
+        END IF
 
+!        PRINT *,'Element n:',n,ne,nf
 !        n = GetElementNOFNodes( Element ) 
 !        nd = GetElementNOFDOFs( Element )  
 !        nb = GetElementNOFBDOFs( Element ) 
@@ -6320,7 +6591,7 @@ END SUBROUTINE GetMaxDefs
           ! This should be ok as the polygon is always convex.
           NodesT % x(1) = x(1)
           NodesT % y(1) = y(1)
-          IP = GaussPoints( ElementT ) 
+          IP = GaussPoints( ElementT, ElementT % Type % GaussPoints2 ) 
 
           !PRINT *,'X0:',x(1:4)
           !PRINT *,'Y0:',y(1:4)
@@ -6361,7 +6632,9 @@ END SUBROUTINE GetMaxDefs
                 ELSE
                   stat = ElementInfo( Element, Nodes, u, v, w, &
                       detJ, Basis, dBasisdx )
-                  CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+                  ! This is defined in DefUtils which depends on MeshUtils...
+                  ! therefore an interface is decleared.
+                  CALL GetEdgeBasisLocal(Element,WBasis,RotWBasis,Basis,dBasisdx)
                 END IF
               ELSE
                 stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
@@ -6372,36 +6645,72 @@ END SUBROUTINE GetMaxDefs
               IF( EdgeBasis ) THEN
                 IF (PiolaVersion) THEN
                   stat = ElementInfo( ElementM, NodesM, um, vm, wm, &
-                      detJ, Basis, dBasisdx, EdgeBasis=WBasis)
+                      detJ, Basis, dBasisdx, EdgeBasis=WBasisM)
                 ELSE
                   stat = ElementInfo( ElementM, NodesM, um, vm, wm, &
-                      detJ, Basis, dBasisdx )
-                  CALL GetEdgeBasis(ElementM,WBasis,RotWBasis,BasisM,dBasisdx)
+                      detJ, BasisM, dBasisdx )
+                  CALL GetEdgeBasisLocal(ElementM,WBasisM,RotWBasis,BasisM,dBasisdx)
                 END IF
               ELSE
                 stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
               END IF
 
-              DO j=1,n
-                jj = Indexes(j)
-
-                ! When adding the contributions remember to cycle the strong ones
-                ! that are already set.
-                !IF( StrongProj(jj) ) CYCLE
-
-                nrow = jj
-
-                Projector % InvPerm(nrow) = InvPerm1(jj)
-                val = Basis(j) * Wtemp
-                CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                    InvPerm1(jj), val ) 
-                DO i=1,n
-                  IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
+              ! Add the nodal dofs
+              IF( DoNodes .AND. .NOT. StrongNodes ) THEN
+                DO j=1,n 
+                  jj = Indexes(j)                                    
+                  nrow = jj                  
+                  Projector % InvPerm(nrow) = InvPerm1(jj)
+                  val = Basis(j) * Wtemp
                   CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                      InvPerm2(IndexesM(i)), -BasisM(i) * val )                   
+                      InvPerm1(jj), val ) 
+                  DO i=1,n
+                    IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
+                    CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                        InvPerm2(IndexesM(i)), -BasisM(i) * val )                   
+                  END DO
                 END DO
-              END DO
+              END IF
 
+              IF( DoEdges ) THEN
+                ! Dofs are numbered as follows:
+                ! 1....number of nodes
+                ! + ( 1 ... number of edges )
+                ! + ( 1 ... 2 x number of faces )
+                !-------------------------------------------
+                DO j=1,ne+nf
+                  
+                  IF( j <= ne ) THEN
+                    jj = Element % EdgeIndexes(j) 
+                    nrow = EdgeRow0 + EdgePerm(jj)
+                    jj = jj + EdgeCol0
+                    Projector % InvPerm( nrow ) = jj
+                  ELSE
+                    jj = 2 * ( Element % ElementIndex - 1 ) + ( j - 4 )
+                    nrow = FaceRow0 + jj
+                    jj = jj + FaceCol0
+                    Projector % InvPerm( nrow ) = jj
+                  END IF
+                 
+                  val = Wtemp * SUM( WBasis(j,:) * Wbasis(j,:) ) 
+                  CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                      jj, val ) 
+
+                  DO i=1,ne+nf
+                    IF( i <= ne ) THEN
+                      ii = ElementM % EdgeIndexes(i) + EdgeCol0
+                    ELSE
+                      ii = 2 * ( Element % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
+                    END IF
+                    
+                    !************* don't know where factor 1.5 comes but it seems to fix the discrepancy in rowsum
+                    val = -Wtemp * SUM( WBasis(j,:) * WBasis(i,:) ) / 1.5_dp
+                    IF( ABS( val ) < 1.0e-12 ) CYCLE
+                    CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                        ii, val  ) 
+                  END DO
+                END DO
+              END IF
             END DO
           END DO
         END DO
@@ -7205,7 +7514,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
-    REAL(KIND=dp) :: rowsum, PeriodicScale, Radius
+    REAL(KIND=dp) :: rowsum, dia, PeriodicScale, Radius
     TYPE(ValueList_t), POINTER :: BC
 
     INTERFACE
@@ -7308,6 +7617,10 @@ END SUBROUTINE GetMaxDefs
     Stride = ListGetLogical( BC,'Stride Projector',GotIt) 
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
 
+!    IF( Stride ) THEN
+!      Stride = .FALSE.; LevelProj = .TRUE.
+!    END IF
+
     IF( Stride .OR. LevelProj ) THEN
       IF( ListGetLogical( BC,'Projector Skip Nodes',GotIt) ) THEN
         DoNodes = .FALSE.
@@ -7385,14 +7698,21 @@ END SUBROUTINE GetMaxDefs
       ! levels it can be quite optimal, except for the edges with a skew. 
       ! If strong projector is used for all edges then "StrideProjector" should 
       ! be recovered.
-      StrongNodes = ListGetLogical( BC, 'Level Projector Nodes Strong', GotIt )
-      StrongLevelEdges = ListGetLogical( BC,'Level Projector Plane Edges Strong',GotIt )
-      IF(.NOT. GotIt) StrongLevelEdges = &
-          ListGetLogical( BC,'Level Projector Edges Strong',GotIt )
-      StrongExtrudedEdges = ListGetLogical( BC,&
-          'Level Projector Extruded Edges Strong',GotIt )
-      IF(.NOT. GotIt) StrongExtrudedEdges = &
-          ListGetLogical( BC,'Level Projector Edges Strong',GotIt )
+      IF( ListGetLogical( BC,'Level Projector Strong',GotIt ) ) THEN
+        StrongNodes = .TRUE.
+        StrongLevelEdges = .TRUE.
+        StrongExtrudedEdges = .TRUE.
+      ELSE
+        StrongNodes = ListGetLogical( BC, 'Level Projector Nodes Strong', GotIt )
+        IF( ListGetLogical( BC,'Level Projector Edges Strong',GotIt ) ) THEN
+          StrongLevelEdges = .TRUE.
+          StrongExtrudedEdges = .TRUE.
+        ELSE
+          StrongLevelEdges = ListGetLogical( BC,'Level Projector Plane Edges Strong',GotIt )
+          StrongExtrudedEdges = ListGetLogical( BC,&
+              'Level Projector Extruded Edges Strong',GotIt )
+        END IF
+      END IF
 
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
           FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &
@@ -7411,12 +7731,21 @@ END SUBROUTINE GetMaxDefs
       IF(ParEnv % Mype == 0 ) THEN
         OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
         DO i=1,projector % numberofrows
+          rowsum = 0.0_dp
           DO j=projector % rows(i), projector % rows(i+1)-1
             WRITE(1,*) projector % invperm(i), projector % cols(j), projector % values(j)
+            IF( projector % invperm(i) == projector % cols(j) ) THEN
+              dia = projector % values(j)
+            ELSE
+              rowsum = rowsum + projector % values(j)
+            END IF
           END DO
+          PRINT *,'rowsum i:',i,dia,rowsum,rowsum/dia
         END DO
         CLOSE(1)
       END IF
+      
+
       IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
     END IF
 
