@@ -163,7 +163,7 @@ MODULE LoadMod
                 ! int system(const char *command)
                 FUNCTION system(command) RESULT(retval)
                     USE, INTRINSIC :: ISO_C_BINDING
-                    CHARACTER(C_CHAR) :: command(*)
+                    CHARACTER(C_CHAR), INTENT(IN) :: command(*)
                     INTEGER(C_INT) :: retval
                 END FUNCTION system
             END INTERFACE

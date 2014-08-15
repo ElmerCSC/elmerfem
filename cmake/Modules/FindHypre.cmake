@@ -6,12 +6,14 @@ set(Hypre_FOUND FALSE)
 
 find_path(Hypre_INCLUDE_DIR NAMES HYPRE.h
   HINTS
-  ${Hypre_DIR}
+  "${HYPREROOT}/include"
+  "$ENV{HYPREROOT}/include"
   )
 
 find_library(Hypre_LIBRARIES NAMES HYPRE
   HINTS
-  ${Hypre_DIR}
+  "${HYPREROOT}/lib"
+  "$ENV{HYPREROOT}/lib"
   )
 
 IF(${Hypre_LIBRARIES} MATCHES NOTFOUND)
@@ -29,15 +31,21 @@ ENDIF()
 foreach(_comp ${Hypre_FIND_COMPONENTS})
   find_library(_Hypre_LIB NAMES HYPRE_${_comp}
     HINTS
-    ${Hypre_DIR})
+    "${HYPREROOT}/lib"
+    "$ENV{HYPREROOT}/lib"
+    )
   
   IF(NOT _Hypre_LIB)
-    IF(${Hypre_FIND_REQUIRED_${_comp}})
-      MESSAGE(FATAL_ERROR "HYPRE_${_comp}: ${_Hypre_LIB_${_comp}}")
+    IF(${Hypre_FIND_REQUIRED})
+      IF(${Hypre_FIND_REQUIRED_${_comp}})
+        MESSAGE(FATAL_ERROR "HYPRE_${_comp}: ${_Hypre_LIB_${_comp}}")
+      ENDIF()
     ENDIF()
   ENDIF()
 
-  list(APPEND Hypre_LIBRARIES ${_Hypre_LIB})
+  IF(_Hypre_LIB)
+    list(APPEND Hypre_LIBRARIES ${_Hypre_LIB})
+  ENDIF()
   unset(_Hypre_LIB CACHE)
 endforeach()
 
