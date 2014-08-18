@@ -8,12 +8,16 @@ find_path(Hypre_INCLUDE_DIR NAMES HYPRE.h
   HINTS
   "${HYPREROOT}/include"
   "$ENV{HYPREROOT}/include"
+  "$ENV{HYPRE_ROOT}/include"
+  "${CMAKE_SOURCE_DIR}/hypre/include"
   )
 
 find_library(Hypre_LIBRARIES NAMES HYPRE
   HINTS
   "${HYPREROOT}/lib"
   "$ENV{HYPREROOT}/lib"
+  "$ENV{HYPRE_ROOT}/lib"
+  "${CMAKE_SOURCE_DIR}/hypre/lib"
   )
 
 IF(${Hypre_LIBRARIES} MATCHES NOTFOUND)
@@ -65,7 +69,7 @@ ELSE()
    ENDIF()
 ENDIF()
 
-MARK_AS_ADVANCED(Hypre_INCLUDE_PATH Hypre_LIBRARIES)
+MARK_AS_ADVANCED(Hypre_INCLUDE_DIR Hypre_LIBRARIES)
 
 
 
