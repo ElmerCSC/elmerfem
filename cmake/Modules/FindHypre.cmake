@@ -2,6 +2,7 @@
 # Juhani Kataja, CSC - IT Center for Science Ltd.
 # 2014/08
 
+message(STATUS "Finding Hypre")
 set(Hypre_FOUND FALSE)
 
 find_path(Hypre_INCLUDE_DIR NAMES HYPRE.h
