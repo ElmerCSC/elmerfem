@@ -8,6 +8,7 @@
 # ENDIF()
 
 SET(ParMetis_FOUND FALSE)
+MESSAGE(STATUS "Finding ParMetis")
 
 SET(PARMETISINCLUDE 
   "${PARMETISROOT}/include"

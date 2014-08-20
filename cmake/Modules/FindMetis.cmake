@@ -8,6 +8,7 @@
 # ENDIF()
 
 SET(Metis_FOUND FALSE)
+MESSAGE(STATUS "Finding Metis")
 
 # Try to find Metis
 SET(METISINCLUDE 
