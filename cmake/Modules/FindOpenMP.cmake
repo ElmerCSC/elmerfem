@@ -1,7 +1,7 @@
 # FindOpenMP
-# Stolen from a CMake patch to the upcoming version 3.1. 
-# To be removed from Elmer distribution as soon as CMake 
-# version 3.1 is widely available
+# Derived (with some modifications) from a CMake patch to the 
+# upcoming version 3.1. To be removed from the Elmer distribution 
+# as soon as CMake version 3.1 is widely available
 # ----------
 #
 # Finds OpenMP support
@@ -251,7 +251,7 @@ if(CMAKE_Fortran_COMPILER_LOADED)
     unset(OpenMP_Fortran_FLAG_CANDIDATES)
   else()
     _OPENMP_FLAG_CANDIDATES("Fortran")
-    include(${CMAKE_ROOT}/Modules/CheckFortranSourceCompiles.cmake)
+    include(${CMAKE_CURRENT_LIST_DIR}/CheckFortranSourceCompiles.cmake)
   endif()
 
   foreach(FLAG IN LISTS OpenMP_Fortran_FLAG_CANDIDATES)

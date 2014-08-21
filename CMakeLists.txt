@@ -21,7 +21,7 @@ IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1)
 ENDIF()
 
-SET(CMAKE_MODULE_PATH ${CMAKE_ROOT}/Modules "${PROJECT_SOURCE_DIR}/cmake/Modules")
+SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
 
 # Defaults to cache variables
 SET(WITH_MPI TRUE CACHE BOOL "Link against MPI")
@@ -48,6 +48,7 @@ SET(ELMER_FEM_VERSION
 SET(VERSION ${ELMER_FEM_VERSION})
 SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
 
+# MESSAGE("Fortran: ${CMAKE_Fortran_COMPILER_LOADED}")
 IF(WITH_OpenMP)
   # Advanced properties
   MARK_AS_ADVANCED(
@@ -213,17 +214,23 @@ MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  BLAS library:   " "${BLAS_LIBRARIES}")
 MESSAGE(STATUS "  LAPACK library: " "${LAPACK_LIBRARIES}")
 MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "  Fortran compiler:        " "${CMAKE_Fortran_COMPILER}")
+MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS}")
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "  C compiler:              " "${CMAKE_C_COMPILER}")
+MESSAGE(STATUS "  C flags:                 " "${CMAKE_C_FLAGS}")
+MESSAGE(STATUS "------------------------------------------------")
 IF(WITH_MPI)
 MESSAGE(STATUS "  MPI Fortran:             " "${MPI_Fortran_FOUND}")
-MESSAGE(STATUS "  MPI Fortran compiler:    " "${MPI_Fortran_COMPILER}" 
-  "${MPI_Fortran_COMPILER_FLAGS}")
+MESSAGE(STATUS "  MPI Fortran compiler:    " "${MPI_Fortran_COMPILER}")
+MESSAGE(STATUS "  MPI Fortran flags:       " "${MPI_Fortran_COMPILE_FLAGS}")
 MESSAGE(STATUS "  MPI Fortran include dir: " "${MPI_Fortran_INCLUDE_PATH}")
 MESSAGE(STATUS "  MPI Fortran libraries:   " "${MPI_Fortran_LIBRARIES}")
 MESSAGE(STATUS "  MPI Fortran link flags:  " "${MPI_Fortran_LINK_FLAGS}")
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  MPI C:             " "${MPI_C_FOUND}")
-MESSAGE(STATUS "  MPI C compiler:    " "${MPI_C_COMPILER}" 
-  "${MPI_C_COMPILER_FLAGS}")
+MESSAGE(STATUS "  MPI C compiler:    " "${MPI_C_COMPILER}")
+MESSAGE(STATUS "  MPI C flags:       " "${MPI_C_COMPILE_FLAGS}")
 MESSAGE(STATUS "  MPI C include dir: " "${MPI_C_INCLUDE_PATH}")
 MESSAGE(STATUS "  MPI C libraries:   " "${MPI_C_LIBRARIES}")
 MESSAGE(STATUS "  MPI C flags:       " "${MPI_C_LINK_FLAGS}")
