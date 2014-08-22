@@ -5623,6 +5623,7 @@ END SUBROUTINE GetMaxDefs
 
     ! If requested, create mapping for node dofs
     !------------------------------------------------------------------
+    EdgeRow0 = 0
     IF( DoNodes ) THEN
       IF( StrongNodes ) THEN
         CALL AddNodalProjectorStrong()
@@ -5637,6 +5638,9 @@ END SUBROUTINE GetMaxDefs
 
     ! If requested, create mapping for edge dofs
     !-------------------------------------------------------------
+    EdgeCol0 = 0
+    FaceCol0 = 0
+    FaceRow0 = 0
     IF( DoEdges ) THEN
       EdgeBasis = PiolaVersion 
 
