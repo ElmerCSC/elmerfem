@@ -5499,7 +5499,8 @@ END SUBROUTINE GetMaxDefs
   !---------------------------------------------------------------------------
   FUNCTION LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
       FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &
-      StrongNodes, StrongLevelEdges, StrongExtrudedEdges, NodeScale ) &
+      StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges, &
+      NodeScale ) &
       RESULT ( Projector )
     !---------------------------------------------------------------------------
     USE Lists
@@ -5511,7 +5512,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2, Mesh
     LOGICAL :: DoNodes, DoEdges
     LOGICAL :: Repeating, AntiRepeating, FullCircle
-    LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges
+    LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     REAL(KIND=dp) :: Radius, NodeScale
     TYPE(Matrix_t), POINTER :: Projector    
@@ -5925,7 +5926,7 @@ END SUBROUTINE GetMaxDefs
           x1o, y1o, x2o, y2o, cskew, sedge, ArcCoeff
       REAL(KIND=dp) :: x1, y1, x2, y2, xmin, xmax, xminm, xmaxm, ymin, ymax, yminm, ymaxm, xmean
       LOGICAL :: YConst, YConstM, XConst, XConstM, EdgeReady, Repeated, LeftCircle, &
-          SkewEdge, StrongSkewEdges
+          SkewEdge
       LOGICAL, ALLOCATABLE :: EdgeDone(:)
 
       n = Mesh % NumberOfEdges
@@ -5944,7 +5945,6 @@ END SUBROUTINE GetMaxDefs
       NoSkewed = 0
       Nundefined = 0
       LeftCircle = .FALSE.
-      StrongSkewEdges = .FALSE. !.TRUE. 
       ArcCoeff = (2*PI*Radius)/360.0
 
       DO ind=1,BMesh1 % NumberOfBulkElements
@@ -6281,7 +6281,8 @@ END SUBROUTINE GetMaxDefs
 
           ! In skewed edges the sum of weights may be different from 1 but otherwise
           ! it should be very close to one. 
-          IF( ABS(wsum) < 0.999 .OR. ( ABS(wsum) > 1.001 .AND. .NOT. SkewEdge ) ) THEN
+!          IF( ABS(wsum) < 0.999 .OR. ( ABS(wsum) > 1.001 .AND. .NOT. SkewEdge ) ) THEN
+          IF(.FALSE.) THEN
             PRINT *,'*********************'
             PRINT *,'wsum',eind,ncoeff,wsum,Repeated
             PRINT *,'x coords:',x1,x2
@@ -6756,10 +6757,10 @@ END SUBROUTINE GetMaxDefs
                     jj = jj + EdgeCol0
                     Projector % InvPerm( nrow ) = jj
                   ELSE
-                    jj = 2 * ( Element % ElementIndex - 1 ) + ( j - 4 )
+                    jj = 2 * ( ind - 1 ) + ( j - 4 )
                     nrow = FaceRow0 + jj
-                    jj = jj + FaceCol0
-                    Projector % InvPerm( nrow ) = jj
+                    jj = 2 * ( Element % ElementIndex - 1) + ( j - 4 ) 
+                    Projector % InvPerm( nrow ) = FaceCol0 + jj
                   END IF
                  
                   
@@ -7586,7 +7587,8 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Stride, Radial, AntiRadial, DoNodes, DoEdges, &
-        Flat, LevelProj, FullCircle, StrongNodes, StrongLevelEdges, StrongExtrudedEdges
+        Flat, LevelProj, FullCircle, StrongNodes, StrongLevelEdges, StrongExtrudedEdges, &
+        StrongSkewEdges
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -7775,21 +7777,26 @@ END SUBROUTINE GetMaxDefs
         StrongNodes = .TRUE.
         StrongLevelEdges = .TRUE.
         StrongExtrudedEdges = .TRUE.
+        StrongSkewEdges = .FALSE.
       ELSE
         StrongNodes = ListGetLogical( BC, 'Level Projector Nodes Strong', GotIt )
         IF( ListGetLogical( BC,'Level Projector Edges Strong',GotIt ) ) THEN
           StrongLevelEdges = .TRUE.
           StrongExtrudedEdges = .TRUE.
+          StrongSkewEdges = .FALSE.
         ELSE
           StrongLevelEdges = ListGetLogical( BC,'Level Projector Plane Edges Strong',GotIt )
           StrongExtrudedEdges = ListGetLogical( BC,&
               'Level Projector Extruded Edges Strong',GotIt )
+          StrongSkewEdges = ListGetLogical( BC,&
+              'Level Projector Skew Edges Strong',GotIt )
         END IF
       END IF
 
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
           FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &
-          StrongNodes, StrongLevelEdges, StrongExtrudedEdges, PeriodicScale )
+          StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges, &
+          PeriodicScale )
     ELSE IF( IntGalerkin ) THEN
       Projector => WeightedProjector2( BMesh2, BMesh1, InvPerm2, InvPerm1, &
           UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, NodalJump )
