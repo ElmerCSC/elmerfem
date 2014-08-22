@@ -3699,6 +3699,8 @@ CONTAINS
 
                  END SELECT
               ELSE
+! not really doing anything useful
+#if 0
                  n = Element % TYPE % NumberOfNodes
                  !            CALL LocalBcIntegral( BC, Element, n, Name//' {f}', Work(1),Work(2) )
 
@@ -3713,6 +3715,7 @@ CONTAINS
                     A % ConstrainedDOF(nb) = .TRUE.
                     A % RHS(nb) = Work(1)/DiagScaling(nb)
                  END DO
+#endif
               END IF
            END IF
 
