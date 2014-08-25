@@ -143,8 +143,11 @@
          BoundaryTangent1(:,:), BoundaryTangent2(:,:)
      CHARACTER(LEN=MAX_NAME_LEN) :: viscosityFile
 
+#ifdef USE_ISO_C_BINDINGS
+     REAL(KIND=dp) :: at, at0
+#else
      REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-
+#endif
 
 !------------------------------------------------------------------------------
      SAVE NumberOfBoundaryNodes,BoundaryReorder,BoundaryNormals, &

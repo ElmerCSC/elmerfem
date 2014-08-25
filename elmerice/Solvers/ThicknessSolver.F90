@@ -63,11 +63,17 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER ::&
        ThickPerm(:), DHDTPrem(:),FlowPerm(:), NodeIndexes(:), EdgeMap(:,:)
 
-
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: &
+       at,st,totat,totst,Norm,PrevNorm,LocalBottom, cv, &
+       Relax, MaxDisp, maxdh,LinearTol,NonlinearTol,RelativeChange,&
+       smallestpossiblenumber, rr, ss
+#else
   REAL(KIND=dp) :: &
        at,st,totat,totst,CPUTime,Norm,PrevNorm,LocalBottom, cv, &
        Relax, MaxDisp, maxdh,LinearTol,NonlinearTol,RelativeChange,&
        smallestpossiblenumber, rr, ss
+#endif
 
   REAL(KIND=dp), POINTER :: ForceVector(:), Thick(:),DHDT(:),PreH(:,:), &
        FlowSolution(:),  PointerToResidualVector(:)

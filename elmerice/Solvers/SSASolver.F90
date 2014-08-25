@@ -93,8 +93,12 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
            
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, Friction
+#ifdef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: at, at0
+#else
   REAL(KIND=dp) :: at, at0, CPUTime, RealTime
-       
+#endif     
+  
   SAVE rhow,sealevel
   SAVE STIFF, LOAD, FORCE, AllocationsDone, DIM, SolverName, ElementNodes
   SAVE NodalGravity, NodalViscosity, NodalDensity, &
