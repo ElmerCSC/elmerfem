@@ -16,6 +16,7 @@ MESSAGE(STATUS "Finding Mumps")
 SET(MUMPSINCLUDE
   "${MUMPSROOT}/include"
   "$ENV{MUMPSROOT}/include"
+  "${MUMPS_ROOT}/include"
   "$ENV{MUMPS_ROOT}/include"
   "${CMAKE_SOURCE_DIR}/mumps/include"
   INTERNAL
@@ -30,6 +31,7 @@ FIND_PATH(Mumps_INCLUDE_DIR
 SET(MUMPSLIB 
   "${MUMPSROOT}/lib"
   "$ENV{MUMPSROOT}/lib"
+  "${MUMPS_ROOT}/lib"
   "$ENV{MUMPS_ROOT}/lib"
   "${CMAKE_SOURCE_DIR}/mumps/lib"
   INTERNAL)
