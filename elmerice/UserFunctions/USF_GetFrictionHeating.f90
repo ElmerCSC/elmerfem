@@ -27,7 +27,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Thomas Zwinger, Juha Ruokolainen, Hakime Seddik, Joe Todd
+! *  Authors: Thomas Zwinger, Juha Ruokolainen,  Joe Todd
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -46,65 +46,7 @@
 ! usage:
 
 
-! Solver 1
-!   Equation = "Normal vector"
-!   Variable = "Normal Vector"   
-!   ! in 3dimensional simulations we have 3 entries
-!   Variable DOFs = 3 
-!   !NB: does not need to actually solve a matrix
-!   !    hence no BW optimization needed
-!   Optimize Bandwidth = Logical False 
-!   Procedure = "ComputeNormal" "ComputeNormalSolver"
-!   ! if set to True, all boundary normals would be computed by default
-!   ComputeAll = Logical False
-!End
-!Solver 2
-!  Equation = String "StressSolver"
-!  Procedure =  File "ComputeDevStressNS" "ComputeDevStress"
-!  ! this is just a dummy, hence no output is needed
-!  !-----------------------------------------------------------------------
-!  Variable = -nooutput "Sij"
-!  Variable DOFs = 1
-!  ! the name of the variable containing the flow solution (U,V,W,Pressure)
-!  !-----------------------------------------------------------------------
-!  Flow Solver Name = String "Flow Solution"
-!  Exported Variable 1 = "Stress" ! [Sxx, Syy, Szz, Sxy] in 2D
-!                                 ! [Sxx, Syy, Szz, Sxy, Syz, Szx] in 3D
-!  Exported Variable 1 DOFs = 6   ! 4 in 2D, 6 in 3D
-!  Linear System Solver = "Iterative"
-!  Linear System Iterative Method = "BiCGStab"
-!  Linear System Max Iterations = 300
-!  Linear System Convergence Tolerance = 1.0E-09
-!  Linear System Abort Not Converged = True
-!  Linear System Preconditioning = "ILU0"
-!  Linear System Residual Output = 1
-!End
-!Solver 3
-!  Equation = "Dummy"
-!  Procedure = File "DummySolver" "DummySolver"
-!  Variable = String "friction"
-!  Variable DOFs = 1
-!End
 
-!Material 1
-! ...
-!   Cauchy = Logical True !needed for ComputeDevStressNS
-! ...
-!End
-
-!Boundary Condition 1
-!  Name = "bed"
-!  ComputeNormal = Logical True !needed for ComputeNormal
-! ....
-!  Temp Flux BC = Logical True
-!  friction = Variable Coordinate 1
-!       Real Procedure "./USF_GetFrictionHeating" "getFrictionHeat"
-!  Temp Heat Flux = Variable friction
-!      Real MATC "0.063*(31556926.0)*1.0E-06 +tx" !assuming 63mW/m2 as geothermal heatflux
-!End
-
-!-----------
-!function to export and define FrictionHeat at bedrock
 
 FUNCTION getFrictionHeat(  Model, Node, DummyInput)RESULT(frictionheat)
   
@@ -197,5 +139,112 @@ FUNCTION getFrictionHeat(  Model, Node, DummyInput)RESULT(frictionheat)
   frictionHeat =ut*Snt
 END FUNCTION getFrictionHeat
 
+!/******************************************************************************
+! *
+! *  Module containing a functions for friction heat based
+! *       on residuals from (Navier-)Stokes solver
+! *  This function should be preferrably used to compute the heat production
+! *  at the base, as it utilizes the natural way to couple the flow
+! *  and temperature solution
+! *
+! ******************************************************************************
+! *
+! *  Authors: Thomas Zwinger, Juha Ruokolainen, Martina Schäfer, Olivier Gagliardini
+! *  Email:   Juha.Ruokolainen@csc.fi
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *  Original Date: 08 Jun 1997
+! *  Current date:  28 August 2014 (Martina/Thomas)
+! *
+! *****************************************************************************/
 
+FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
+  
+  USE DefUtils
 
+  IMPLICIT NONE
+  
+  !------------------------------------------------------------------------------
+  TYPE(Model_t) :: Model
+  INTEGER :: Node
+  REAL(KIND=dp) :: DummyInput, frictionLoad
+  !----------------------------------------------------------------------------
+
+  INTEGER :: DIM, i
+  REAL(KIND=dp), POINTER :: FlowValues(:),FlowLoadValues(:),NormalValues(:)
+  REAL(KIND=dp) :: normal(3), velo(3), normalvelocity, flowload(3), tangvelocity(3)  
+  INTEGER, POINTER :: FlowPerm(:),FlowLoadPerm(:), NormalPerm(:)
+  LOGICAL :: FirstTime=.TRUE., GotIt
+  TYPE(Variable_t), POINTER :: FlowSol,FlowLoadSol, NormalVar
+  CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName, FlowSolutionName, FlowLoadsName
+
+  SAVE FirstTime, FunctionName, DIM
+
+  IF (FirstTime) THEN
+     WRITE(FunctionName,'(A)') 'USF_GetFrictionHeating(getFrictionLoads)'
+     FirstTime = .FALSE.    
+     DIM = CoordinateSystemDimension()
+  END IF
+  ! Get the variable velocity
+  !---------------------------
+  FlowSolutionName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt ) 
+  IF (.NOT. GotIt) THEN
+     WRITE(FlowSolutionName,'(A)') 'Flow Solution'
+     WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
+          FlowSolutionName
+     CALL WARN(FunctionName,Message)
+  END IF
+  FlowSol => VariableGet( Model % Variables, TRIM(FlowSolutionName) )
+  IF ( ASSOCIATED( FlowSol ) ) THEN
+     FlowPerm    => FlowSol % Perm
+     FlowValues  => FlowSol % Values
+  ELSE
+     CALL FATAL(FunctionName, 'Need NS Solver, Flow Solution not found')
+  END IF
+  ! Get the Stokes loads
+  !---------------------------
+  FlowLoadsName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt )  
+  IF (.NOT. GotIt) THEN
+     WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
+     WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
+         FlowLoadsName
+     CALL WARN(FunctionName,Message)
+  END IF
+ FlowLoadSol => VariableGet( Model % Variables, TRIM(FlowLoadsName) )
+  IF ( ASSOCIATED( FlowLoadSol ) ) THEN
+     FlowLoadPerm    => FlowLoadSol % Perm
+     FlowLoadValues  => FlowLoadSol % Values
+  ELSE
+     CALL FATAL(FunctionName,&
+          'Need >Calculate Loads = Logical True<. Flow Load not found')
+  END IF
+
+  ! Get the variable for normal vector
+  !-----------------------------------
+  NormalVar =>  VariableGet(Model % Variables,'Normal Vector')
+  IF ( ASSOCIATED( NormalVar ) ) THEN
+     NormalPerm => NormalVar % Perm
+     NormalValues => NormalVar % Values
+  ELSE
+     CALL FATAL(FunctionName, 'Normal Vector variable not found')
+  END IF
+  
+
+  DO i=1, DIM
+     normal(i) = NormalValues(DIM*(NormalPerm(Node)-1) + i)      
+     velo(i) = FlowValues( (DIM+1)*(FlowPerm(Node)-1) + i )
+     flowload(i) = FlowLoadValues( (DIM+1)*(FlowLoadPerm(Node)-1) + i )
+  END DO
+ 
+  normalvelocity    = SUM( velo(1:DIM) * normal(1:DIM) )
+
+  DO i=1, DIM
+     tangvelocity(i) = velo(i) - normalvelocity * normal(i)
+  END DO
+
+  frictionLoad = &
+       MAX( (-1.0_dp * (SUM(tangvelocity(1:DIM) * flowLoad(1:DIM)))), 0.0_dp)
+END FUNCTION getFrictionLoads
