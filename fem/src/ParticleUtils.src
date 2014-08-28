@@ -67,13 +67,13 @@ MODULE ParticleUtils
     REAL(KIND=dp), POINTER :: Velocity(:,:) => NULL()
     REAL(KIND=dp), POINTER :: PrevVelocity(:,:) => NULL()
     REAL(KIND=dp), POINTER :: Force(:,:) => NULL()
-!    REAL(KIND=dp), POINTER :: Dt(:) => Null()     
     REAL(KIND=dp), POINTER :: uvw(:,:) => NULL()
     
     INTEGER, POINTER :: FaceIndex(:) => NULL()
     INTEGER, POINTER :: Status(:) => NULL()
     INTEGER, POINTER :: ElementIndex(:) => NULL()
     INTEGER, POINTER :: NodeIndex(:) => NULL()
+    INTEGER, POINTER :: Partition(:) => NULL()
     
     ! Data structure for the particle-particle interaction 
     INTEGER :: MaxClosestParticles
@@ -125,7 +125,6 @@ CONTAINS
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: i,j,k,NoParticles
     INTEGER :: StatusCount(PARTICLE_GHOST)
-!    CHARACTER (len=12), PARAMETER :: StatusString(14) = [CHARACTER(len=12) :: &
     CHARACTER (len=12), PARAMETER :: StatusString(14) = [ &
         "Allocated   ", &
  	"Waiting     ", &
@@ -157,8 +156,7 @@ CONTAINS
       j = StatusCount(i)
       k = NINT( ParallelReduction( 1.0_dp * j ) )
       IF( k == 0 ) CYCLE
-      WRITE(Message,'(A,T18,I0)') TRIM(StatusString(i))//': ',k
-      CALL Info('ParticleStatusCount',Message)
+      CALL Info('ParticleStatusCount',TRIM(StatusString(i))//': '//TRIM(I2S(k)))
     END DO
   END SUBROUTINE ParticleStatusCount
 
@@ -220,25 +218,25 @@ CONTAINS
   END SUBROUTINE SetParticleCoord
 
   !> Sets the particle velocity.
-  SUBROUTINE SetParticleVelo(Particles,No,Coord)
+  SUBROUTINE SetParticleVelo(Particles,No,Velo)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
-    REAL(KIND=dp) :: Coord(3)     
+    REAL(KIND=dp) :: Velo(3)     
     INTEGER :: dim
     
     dim = Particles % dim    
-    Particles % Velocity(no,:) = Coord(1:dim)
+    Particles % Velocity(no,:) = Velo(1:dim)
   END SUBROUTINE SetParticleVelo
 
   !> Sets the particle force.
-  SUBROUTINE SetParticleForce(Particles,No,Coord)
+  SUBROUTINE SetParticleForce(Particles,No,Force)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No
-    REAL(KIND=dp) :: Coord(3)     
+    REAL(KIND=dp) :: Force(3)     
     INTEGER :: dim
     
     dim = Particles % dim    
-    Particles % Force(no,:) = Coord(1:dim)
+    Particles % Force(no,:) = Force(1:dim)
   END SUBROUTINE SetParticleForce
 
 
@@ -293,7 +291,7 @@ CONTAINS
     Particles % UVW(no,2) = v
     IF( PRESENT( w ) ) THEN
       IF( dim == 3 ) THEN
-        Particles % UVW(no,1) = w
+        Particles % UVW(no,3) = w
       END IF
     END IF
   END SUBROUTINE SetParticleUVW
@@ -321,14 +319,14 @@ CONTAINS
   END SUBROUTINE AddParticleVelo
  
 !> Adds to the force acting on the particle.
-   SUBROUTINE AddParticleForce(Particles,No,Coord)
+   SUBROUTINE AddParticleForce(Particles,No,Force)
     TYPE(Particle_t), POINTER :: Particles
     INTEGER :: No, DerOrder
-    REAL(KIND=dp) :: Coord(3)     
+    REAL(KIND=dp) :: Force(3)     
     INTEGER :: dim    
     dim = Particles % dim   
     Particles % Force(no,:) = &
-        Particles % Force(no,:) + Coord(1:dim)
+        Particles % Force(no,:) + Force(1:dim)
   END SUBROUTINE AddParticleForce
 
 !> Gets the status of the particle.  
@@ -564,8 +562,7 @@ CONTAINS
     
     Particles % GlobalMinCoord = MinCoord
     Particles % GlobalMaxCoord = MaxCoord
-    
-    
+        
     ! Create list of faces / edges 
     !-------------------------------------------------------------------------
     Mesh => GetMesh()
@@ -592,10 +589,11 @@ CONTAINS
     INTEGER :: NoParticles
     
     REAL(KIND=dp), POINTER :: Velocity(:,:), Force(:,:), &
-        Coordinate(:,:), PrevCoordinate(:,:), PrevVelocity(:,:),Dt(:)
+        Coordinate(:,:), PrevCoordinate(:,:), PrevVelocity(:,:)
     INTEGER, POINTER :: Status(:), ElementIndex(:), FaceIndex(:), NodeIndex(:), &
-	Closest(:)
-    INTEGER :: PrevNoParticles, dofs, No, n, dim, TimeOrder
+	Closest(:),Partition(:)
+    INTEGER :: PrevNoParticles, dofs, No, n, dim, TimeOrder, n1, n2
+    INTEGER, ALLOCATABLE :: Perm(:)
     
     IF( NoParticles <= Particles % MaxNumberOfParticles ) THEN
       CALL Info('AllocateParticles','There are already enough particles')
@@ -608,127 +606,123 @@ CONTAINS
     TimeOrder = Particles % TimeOrder
     dim = Particles % dim 
     dofs = dim
+
+    PrevNoParticles = Particles % NumberOfParticles
+
+    ! Set pointers to the old stuff, these are needed
+    ! if growing an already existing list of particles. 
+    Coordinate => Particles % Coordinate
+    PrevCoordinate => Particles % PrevCoordinate
+    PrevVelocity => Particles % PrevVelocity
+    Velocity => Particles % Velocity
+    Force => Particles % Force
+    Status => Particles % Status
+    FaceIndex => Particles % FaceIndex
+    ElementIndex => Particles % ElementIndex
+    NodeIndex => Particles % NodeIndex
+    Partition => Particles % Partition
+
+    ! Allocate the desired number of particles
+    ALLOCATE( Particles % Coordinate(NoParticles,dofs))
+    ALLOCATE( Particles % Velocity(NoParticles,dofs))
+    ALLOCATE( Particles % Force(NoParticles,dofs) )
+    ALLOCATE( Particles % PrevCoordinate(NoParticles,dofs) )
+    ALLOCATE( Particles % PrevVelocity(NoParticles,dofs) )
+
+    ALLOCATE( Particles % Status(NoParticles))
+    ALLOCATE( Particles % ElementIndex(NoParticles))
+    ALLOCATE( Particles % FaceIndex(NoParticles))
+
+    IF( Particles % NeighbourTable ) THEN
+      Closest => Particles % ClosestNode        
+      ALLOCATE( Particles % ClosestNode(NoParticles) )
+    END IF
     
-    IF( Particles % MaxNumberOfParticles == 0 ) THEN
-      ALLOCATE( Particles % Coordinate(NoParticles,dofs))
-!      ALLOCATE( Particles % Dt(NoParticles))
-      ALLOCATE( Particles % Status(NoParticles))
-      ALLOCATE( Particles % ElementIndex(NoParticles))
-      
-      Particles % Coordinate = 0.0_dp
-!      Particles % Dt = 0.0_dp
-      Particles % Status = PARTICLE_ALLOCATED
-      Particles % ElementIndex = 0
-      Particles % MaxNumberOfParticles = NoParticles
-      
-      ALLOCATE( Particles % Velocity(NoParticles,dofs))
-      Particles % Velocity = 0.0_dp
-      
-      ALLOCATE( Particles % Force(NoParticles,dofs) )
-      Particles % Force = 0.0_dp
+    IF( ASSOCIATED( NodeIndex ) ) THEN
+      ALLOCATE( Particles % NodeIndex(NoParticles) )
+    END IF
 
-      ALLOCATE( Particles % PrevCoordinate(NoParticles,dofs) )
-      Particles % PrevCoordinate = 0.0_dp
-
-      ALLOCATE( Particles % PrevVelocity(NoParticles,dofs) )
-      Particles % PrevVelocity = 0.0_dp
+    IF( ASSOCIATED( Partition ) ) THEN
+      ALLOCATE( Particles % Partition(NoParticles) )
+    END IF
       
-      ALLOCATE( Particles % FaceIndex(NoParticles))
-      Particles % FaceIndex = 0
-    ELSE 
-      PrevNoParticles = Particles % NumberOfParticles 
-      
-      Coordinate => Particles % Coordinate
-      PrevCoordinate => Particles % PrevCoordinate
-      PrevVelocity => Particles % PrevVelocity
-      Velocity => Particles % Velocity
-      Force => Particles % Force
-      Status => Particles % Status
-      FaceIndex => Particles % FaceIndex
-      ElementIndex => Particles % ElementIndex
-      NodeIndex => Particles % NodeIndex
-      
-      ALLOCATE( Particles % Coordinate(NoParticles,dofs) )
-      IF ( ASSOCIATED(Velocity) ) &
-          ALLOCATE( Particles % Velocity(NoParticles,dofs) )
-      
-      IF ( ASSOCIATED(Force) ) &
-          ALLOCATE( Particles % Force(NoParticles,dofs) )
-
-      IF ( ASSOCIATED(PrevCoordinate) ) &
-          ALLOCATE( Particles % PrevCoordinate(NoParticles,dofs) )
-
-      IF ( ASSOCIATED(PrevVelocity) ) &
-          ALLOCATE( Particles % PrevVelocity(NoParticles,dofs) )
-
-      IF( Particles % NeighbourTable ) THEN
-        Closest => Particles % ClosestNode        
-        ALLOCATE( Particles % ClosestNode(NoParticles) )
-      END IF 	
-      
-      IF( ASSOCIATED( NodeIndex ) ) &
-          ALLOCATE( Particles % NodeIndex(NoParticles) )
-
-      ALLOCATE( Particles % Status(NoParticles) )
-      ALLOCATE( Particles % FaceIndex(NoParticles))
-      ALLOCATE( Particles % ElementIndex(NoParticles) )
-      
-      ! Delete lost particles...
-      ! ------------------------
+    ! Delete lost particles and move the remaining ones so that each 
+    ! empty slot is used.
+    ! ---------------------------------------------------------------
+    IF( PrevNoParticles > 0 ) THEN
       n = 0
+      ALLOCATE( Perm( PrevNoParticles ) )
+      Perm = 0
+      
       DO No=1,PrevNoParticles
         IF ( Status(No) == PARTICLE_LOST ) CYCLE
         n=n+1
-        Particles % Coordinate(n,:) = Coordinate(No,:)
-        IF ( ASSOCIATED(Velocity) ) Particles % Velocity(n,:)=Velocity(No,:)
-        IF ( ASSOCIATED(Force) ) Particles % Force(n,:)=Force(No,:)
-        IF ( ASSOCIATED(PrevCoordinate) ) Particles % PrevCoordinate(n,:)=PrevCoordinate(No,:)
-        IF ( ASSOCIATED(PrevVelocity) ) Particles % PrevVelocity(n,:)=PrevVelocity(No,:)
-        IF ( ASSOCIATED(NodeIndex) ) Particles % NodeIndex(n)=NodeIndex(No)
-
-        IF( Particles % NeighbourTable ) THEN
-          Particles % ClosestNode(n)=Closest(No)
-        END IF
-        Particles % Status(n) = Status(No)
-        Particles % FaceIndex(n) = FaceIndex(No)
-        Particles % ElementIndex(n) = ElementIndex(No)
+        Perm(n) = No
       END DO
+      n1 = 1
+      n2 = n
+      
+      Particles % Coordinate(n1:n2,:) = Coordinate(Perm(n1:n2),:)
+      Particles % Velocity(n1:n2,:) = Velocity(Perm(n1:n2),:)
+      Particles % Force(n1:n2,:) = Force(Perm(n1:n2),:)
+      Particles % PrevCoordinate(n1:n2,:) = PrevCoordinate(Perm(n1:n2),:)
+      Particles % PrevVelocity(n1:n2,:) = PrevVelocity(Perm(n1:n2),:)
+
+      Particles % Status(n1:n2) = Status(Perm(n1:n2))
+      Particles % FaceIndex(n1:n2) = FaceIndex(Perm(n1:n2))
+      Particles % ElementIndex(n1:n2) = ElementIndex(Perm(n1:n2))
+
+      IF( Particles % NeighbourTable ) &
+          Particles % ClosestNode(n1:n2)=Closest(Perm(n1:n2))
+      IF ( ASSOCIATED(NodeIndex) ) Particles % NodeIndex(n1:n2)=NodeIndex(Perm(n1:n2))
+      IF ( ASSOCIATED(Partition) ) Particles % Partition(n1:n2)=Partition(Perm(n1:n2))
+            
       PrevNoParticles = n
       Particles % NumberOfParticles = n
       
-      IF ( ASSOCIATED(Force) ) DEALLOCATE(Force)
-      IF ( ASSOCIATED(Velocity) ) DEALLOCATE(Velocity)
-      IF( Particles % NeighbourTable ) THEN
-        DEALLOCATE(Closest)
-      END IF
-      DEALLOCATE(Coordinate, Status, ElementIndex, Dt, FaceIndex )
-      
-      IF ( ASSOCIATED(Particles % Velocity) ) & 
-          Particles % Velocity(PrevNoParticles+1:NoParticles,:) = 0.0_dp
-      
-      IF ( ASSOCIATED(Particles % Force) ) &
-          Particles % Force(PrevNoParticles+1:NoParticles,:) = 0.0_dp
+      ! Deallocate the old stuff
+      DEALLOCATE(Coordinate, Velocity, Force, PrevCoordinate, PrevVelocity )
+      DEALLOCATE( Status, FaceIndex, ElementIndex ) 
 
-      IF ( ASSOCIATED(Particles % PrevCoordinate) ) &
-          Particles % PrevCoordinate(PrevNoParticles+1:NoParticles,:) = 0.0_dp
-
-     IF ( ASSOCIATED(Particles % PrevVelocity) ) &
-          Particles % PrevVelocity(PrevNoParticles+1:NoParticles,:) = 0.0_dp
-
-      IF( Particles % NeighbourTable ) THEN
-        Particles % ClosestNode(PrevNoParticles+1:NoParticles) = 0
-      END IF
-
-      IF( ASSOCIATED( Particles % NodeIndex) ) &
-          Particles % NodeIndex( PrevNoParticles+1:NoParticles) = 0
-
-      Particles % Coordinate(PrevNoParticles+1:NoParticles,:) = 0.0_dp
-!      Particles % Dt(PrevNoParticles+1:NoParticles) = 0.0_dp
-      Particles % ElementIndex(PrevNoParticles+1:NoParticles) = 0
-      Particles % Status(PrevNoParticles+1:NoParticles) = PARTICLE_ALLOCATED
-      
-      Particles % MaxNumberOfParticles = NoParticles
+      IF( Particles % NeighbourTable ) DEALLOCATE(Closest)
+      IF ( ASSOCIATED(NodeIndex) ) DEALLOCATE(NodeIndex)
+      IF ( ASSOCIATED(Partition) ) DEALLOCATE(Partition)
     END IF
+
+    ! Initialize the newly allocated particles with default values
+    !-------------------------------------------------------------
+    n1 = PrevNoParticles+1
+    n2 = NoParticles 
+
+    Particles % Coordinate(n1:n2,:) = 0.0_dp
+    Particles % Velocity(n1:n2,:) = 0.0_dp    
+    Particles % Force(n1:n2,:) = 0.0_dp
+    Particles % PrevCoordinate(n1:n2,:) = 0.0_dp
+    Particles % PrevVelocity(n1:n2,:) = 0.0_dp
+
+    Particles % Status(n1:n2) = PARTICLE_ALLOCATED
+    Particles % ElementIndex(n1:n2) = 0
+    Particles % FaceIndex(n1:n2) = 0
+    
+    IF( Particles % NeighbourTable ) &
+        Particles % ClosestNode(n1:n2) = 0
+    
+    IF( ASSOCIATED( Particles % NodeIndex) ) &
+        Particles % NodeIndex(n1:n2) = 0
+    
+    IF( ASSOCIATED( Particles % Partition) ) &
+        Particles % Partition(n1:n2) = ParEnv % MyPe + 1
+
+    Particles % MaxNumberOfParticles = NoParticles
+
+    ! Finally resize the generic variables related to the particles
+    !--------------------------------------------------------------
+    CALL ParticleVariablesResize( Particles, NoParticles, Perm )
+
+    IF( PrevNoParticles > 0 ) THEN
+      DEALLOCATE( Perm )
+    END IF
+
   END SUBROUTINE AllocateParticles
   
 
@@ -739,62 +733,74 @@ CONTAINS
   SUBROUTINE DeleteLostParticles(Particles)
     TYPE(Particle_t), POINTER :: Particles
     
-    INTEGER :: No, n, PrevNoParticles
-    
+    INTEGER :: No, n, PrevNoParticles, n1, n2
+    INTEGER, ALLOCATABLE :: Perm(:)
+
     PrevNoParticles = Particles % NumberOfParticles
-    
+    IF( PrevNoParticles == 0 ) RETURN
+
+    ALLOCATE( Perm( PrevNoParticles ) )
+    Perm = 0
+
     n = 0
+    n1 = 0 
     DO No=1,PrevNoParticles
       IF ( Particles % Status(No) == PARTICLE_LOST ) CYCLE
-      
-      n=n+1
-      IF ( n==No ) CYCLE
-      
-      Particles % Coordinate(n,:) = Particles % Coordinate(No,:)
-      IF ( ASSOCIATED(Particles % Velocity) ) &
-          Particles % Velocity(n,:) = Particles % Velocity(No,:)
-      IF ( ASSOCIATED(Particles % Force) ) &
-          Particles % Force(n,:) = Particles % Force(No,:)
-      IF ( ASSOCIATED(Particles % PrevCoordinate) ) &
-          Particles % PrevCoordinate(n,:) = Particles % PrevCoordinate(No,:)
-      IF ( ASSOCIATED(Particles % PrevVelocity) ) &
-          Particles % PrevVelocity(n,:) = Particles % PrevVelocity(No,:)
-      IF( Particles % NeighbourTable ) THEN
-        Particles % ClosestNode(n) = Particles % ClosestNode(No)
-      END IF
-      IF ( ASSOCIATED(Particles % NodeIndex) ) &
-          Particles % NodeIndex(n) = Particles % NodeIndex(No)
-      Particles % Status(n) = Particles % Status(No)
-      Particles % FaceIndex(n) = Particles % FaceIndex(No)
-      Particles % ElementIndex(n) = Particles % ElementIndex(No)
+      n = n + 1
+      IF( n1 == 0 .AND. n /= No ) n1 = n
+      Perm(n) = No
     END DO
-    Particles % NumberOfParticles = n
+
+    n2 = n
+    IF(n1 == 0 ) RETURN
+
+    Particles % Coordinate(n1:n2,:) = &
+        Particles % Coordinate(Perm(n1:n2),:)
+    Particles % Velocity(n1:n2,:) = Particles % Velocity(Perm(n1:n2),:)
+    Particles % Force(n1:n2,:) = Particles % Force(Perm(n1:n2),:)
+    Particles % PrevCoordinate(n1:n2,:) = &
+        Particles % PrevCoordinate(Perm(n1:n2),:)
+    Particles % PrevVelocity(n1:n2,:) = &
+        Particles % PrevVelocity(Perm(n1:n2),:)
+
+    Particles % Status(n1:n2) = Particles % Status(Perm(n1:n2))
+    Particles % FaceIndex(n1:n2) = Particles % FaceIndex(Perm(n1:n2))
+    Particles % ElementIndex(n1:n2) = Particles % ElementIndex(Perm(n1:n2))
+
+    IF( Particles % NeighbourTable ) &
+        Particles % ClosestNode(n1:n2) = Particles % ClosestNode(Perm(n1:n2))
+    IF ( ASSOCIATED(Particles % NodeIndex) ) &
+        Particles % NodeIndex(n1:n2) = Particles % NodeIndex(Perm(n1:n2))
+    IF ( ASSOCIATED(Particles % Partition) ) &
+        Particles % Partition(n1:n2) = Particles % Partition(Perm(n1:n2))
+
+    Particles % NumberOfParticles = n2
     
-    IF ( n<PrevNoParticles ) THEN
-      IF ( ASSOCIATED(Particles % Velocity) ) & 
-          Particles % Velocity(n+1:PrevNoParticles,:) = 0.0_dp
+    IF ( n2 < PrevNoParticles ) THEN
+       Particles % Coordinate(n2+1:PrevNoParticles,:) = 0._dp
+       Particles % Velocity(n2+1:PrevNoParticles,:) = 0.0_dp
+       Particles % Force(n2+1:PrevNoParticles,:) = 0._dp
+       Particles % PrevCoordinate(n2+1:PrevNoParticles,:) = 0._dp      
+       Particles % PrevVelocity(n2+1:PrevNoParticles,:) = 0._dp
       
-      IF ( ASSOCIATED(Particles % Force) ) &
-          Particles % Force(n+1:PrevNoParticles,:) = 0._dp
+       Particles % Status(n2+1:PrevNoParticles) = PARTICLE_ALLOCATED
+       Particles % FaceIndex(n2+1:PrevNoParticles) = 0
+       Particles % ElementIndex(n2+1:PrevNoParticles) = 0
 
-      IF ( ASSOCIATED(Particles % PrevCoordinate) ) &
-          Particles % PrevCoordinate(n+1:PrevNoParticles,:) = 0._dp
+       IF( Particles % NeighbourTable ) THEN
+         Particles % ClosestNode(n2+1:PrevNoParticles) = 0
+       END IF      
+       IF ( ASSOCIATED(Particles % NodeIndex) ) &
+          Particles % NodeIndex(n2+1:PrevNoParticles) = 0
+       IF ( ASSOCIATED(Particles % Partition) ) &
+           Particles % Partition(n2+1:PrevNoParticles) = 0
       
-      IF ( ASSOCIATED(Particles % PrevVelocity) ) &
-          Particles % PrevVelocity(n+1:PrevNoParticles,:) = 0._dp
-      
-      IF( Particles % NeighbourTable ) THEN
-        Particles % ClosestNode(n+1:PrevNoParticles) = 0
-      END IF
-
-      IF ( ASSOCIATED(Particles % NodeIndex) ) &
-          Particles % NodeIndex(n+1:PrevNoParticles) = 0
-      
-      Particles % Coordinate(n+1:PrevNoParticles,:) = 0._dp
-!      Particles % Dt(n+1:PrevNoParticles) = 0._dp
-      Particles % ElementIndex(n+1:PrevNoParticles) = 0
-      Particles % Status(n+1:PrevNoParticles) = PARTICLE_ALLOCATED
     END IF
+
+    ! Rorders the variables accordingly to Perm, no resize is needed since number of particles is not changed
+    CALL ParticleVariablesResize( Particles, PrevNoParticles, Perm )
+
+
   END SUBROUTINE DeleteLostParticles
   
 
@@ -905,6 +911,9 @@ RETURN
 
     IF ( ASSOCIATED(Particles % NodeIndex) ) &
         DEALLOCATE( Particles % NodeIndex )
+
+    IF ( ASSOCIATED(Particles % Partition) ) &
+        DEALLOCATE( Particles % Partition )
     
     DEALLOCATE( Particles % Coordinate ) 
     DEALLOCATE( Particles % Status ) 
@@ -985,11 +994,13 @@ RETURN
     TYPE(Element_t), POINTER :: Face, Parent, Faces(:)
     
     INTEGER i,j,k,l,m,n,dim,NoPartitions, nextPart, nFaces, &
-        Proc, ierr, status(MPI_STATUS_SIZE), n_part, nReceived
+        Proc, ierr, status(MPI_STATUS_SIZE), n_part, nReceived, &
+        ncomp, ncompInt
     
     INTEGER, ALLOCATABLE :: Perm(:), Indexes(:), Neigh(:), &
         Recv_parts(:), Requests(:)
     TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Variable_t), POINTER :: Var
     
     INTEGER, POINTER :: Neighbours(:)
     LOGICAL, POINTER :: FaceInterface(:), IsNeighbour(:)
@@ -1000,6 +1011,7 @@ RETURN
     END TYPE ExchgInfo_t
     
     REAL(KIND=dp), ALLOCATABLE :: Buf(:)
+    INTEGER(KIND=dp), ALLOCATABLE :: BufInt(:)
     TYPE(ExchgInfo_t), ALLOCATABLE :: Info(:)
     !---------------------------------------------------------
     
@@ -1141,7 +1153,27 @@ RETURN
     DO i=1,NoPartitions
       n = n + Info(i) % n
     END DO
-    n = 2*(n + 2*(2*n*dim+n) + MPI_BSEND_OVERHEAD*2*NoPartitions)
+
+    ncomp = dim ! coordinate
+    IF( ASSOCIATED( Particles % Velocity ) ) ncomp = ncomp + dim
+    IF( ASSOCIATED( Particles % PrevCoordinate ) ) ncomp = ncomp + dim
+    IF( ASSOCIATED( Particles % PrevVelocity ) ) ncomp = ncomp + dim
+    IF( ASSOCIATED( Particles % Force ) ) ncomp = ncomp + dim
+    Var => Particles % Variables
+    DO WHILE( ASSOCIATED(Var) )
+      ncomp = ncomp + Var % Dofs 
+      IF( Var % Dofs /= 1 ) CALL Warn('ChangeParticlePartition','Implement for vectors!')
+      Var => Var % Next 
+    END DO
+
+
+    ncompInt = 0
+    IF ( ASSOCIATED(Particles % NodeIndex) ) ncompInt = ncompInt + 1
+    IF ( ASSOCIATED(Particles % Partition) ) ncompInt = ncompInt + 1
+    ! status, elementindex & closestnode are recomputed, and hence not communicated
+
+
+    n = 2*(n + 2*ncomp + MPI_BSEND_OVERHEAD*2*NoPartitions)
     CALL CheckBuffer(n)
     
     ! Send particles:
@@ -1153,7 +1185,7 @@ RETURN
       CALL MPI_BSEND( Info(j) % Gindex, n, MPI_INTEGER, Neigh(j), &
           1001, MPI_COMM_WORLD, ierr )
       
-      ALLOCATE(Buf(2*n*dim+n))
+      ALLOCATE(Buf(n*ncomp))
       m = 0
       DO k=1,dim
         DO l=1,n
@@ -1161,10 +1193,6 @@ RETURN
           Buf(m) = Particles % Coordinate(Info(j) % Particles(l),k)
         END DO
       END DO
-!      DO l=1,n
-!        m = m + 1
-!        Buf(m) = Particles % Dt(Info(j) % Particles(l))
-!      END DO
       
       IF ( ASSOCIATED(Particles % Velocity) ) THEN
         DO k=1,dim
@@ -1175,10 +1203,73 @@ RETURN
         END DO
       END IF
       
+      IF ( ASSOCIATED(Particles % Force) ) THEN
+        DO k=1,dim
+          DO l=1,n
+            m = m + 1
+            Buf(m) = Particles % Force(Info(j) % Particles(l),k)
+          END DO
+        END DO
+      END IF
+
+      IF ( ASSOCIATED(Particles % PrevCoordinate) ) THEN
+        DO k=1,dim
+          DO l=1,n
+            m = m + 1
+            Buf(m) = Particles % PrevCoordinate(Info(j) % Particles(l),k)
+          END DO
+        END DO
+      END IF
+      
+      IF ( ASSOCIATED(Particles % PrevVelocity) ) THEN
+        DO k=1,dim
+          DO l=1,n
+            m = m + 1
+            Buf(m) = Particles % PrevVelocity(Info(j) % Particles(l),k)
+          END DO
+        END DO
+      END IF
+      
+      Var => Particles % Variables
+      DO WHILE( ASSOCIATED(Var) )
+        IF( Var % Dofs == 1 ) THEN
+          DO l=1,n
+            m = m + 1
+            Buf(m) = Var % Values(Info(j) % Particles(l))
+          END DO
+        END IF
+        Var => Var % Next 
+      END DO
+     
       CALL MPI_BSEND( Buf, m, MPI_DOUBLE_PRECISION, &
           Neigh(j), 1002, MPI_COMM_WORLD, ierr )
       
       DEALLOCATE(Buf)
+
+      IF( ncompInt >  0 ) THEN
+        ! Sent integers also 
+        ALLOCATE(BufInt(n*ncompInt))
+        
+        m = 0
+        IF ( ASSOCIATED(Particles % NodeIndex) ) THEN
+          DO l=1,n
+            m = m + 1
+            BufInt(m) = Particles % NodeIndex(Info(j) % Particles(l))
+          END DO
+        END IF
+        
+        IF ( ASSOCIATED(Particles % Partition) ) THEN
+          DO l=1,n
+            m = m + 1
+            BufInt(m) = Particles % Partition(Info(j) % Particles(l))
+          END DO
+        END IF
+        
+        CALL MPI_BSEND( BufInt, m, MPI_INTEGER, &
+            Neigh(j), 1003, MPI_COMM_WORLD, ierr )
+        
+        DEALLOCATE(BufInt)
+      END IF
     END DO
     
 
@@ -1235,9 +1326,9 @@ RETURN
         Particles % ElementIndex(n_part) = Parent % ElementIndex
       END DO
       
-      ALLOCATE(Buf(2*n*dim+n))
+      ALLOCATE(Buf(n*ncomp))
       
-      m = n*dim+n
+      m = n*ncomp
       IF ( ASSOCIATED(Particles % Velocity) ) m=m+n*dim
       CALL MPI_RECV( Buf, m, MPI_DOUBLE_PRECISION, proc, &
           1002, MPI_COMM_WORLD, status, ierr )
@@ -1251,11 +1342,6 @@ RETURN
         END DO
       END DO
       
-!      DO l=1,n
-!        m = m + 1
-!        Particles % Dt(n_part+l) = Buf(m)
-!      END DO
-      
       IF ( ASSOCIATED(Particles % Velocity) ) THEN
         DO k=1,dim
           DO l=1,n
@@ -1264,7 +1350,70 @@ RETURN
           END DO
         END DO
       END IF
+
+      IF ( ASSOCIATED(Particles % Force) ) THEN
+        DO k=1,dim
+          DO l=1,n
+            m = m + 1
+            Particles % Force(n_part+l,k) = Buf(m)
+          END DO
+        END DO
+      END IF
+
+      IF ( ASSOCIATED(Particles % PrevCoordinate) ) THEN
+        DO k=1,dim
+          DO l=1,n
+            m = m + 1
+            Particles % PrevCoordinate(n_part+l,k) = Buf(m)
+          END DO
+        END DO
+      END IF
+
+      IF ( ASSOCIATED(Particles % PrevVelocity) ) THEN
+        DO k=1,dim
+          DO l=1,n
+            m = m + 1
+            Particles % PrevVelocity(n_part+l,k) = Buf(m)
+          END DO
+        END DO
+      END IF
+
+      Var => Particles % Variables
+      DO WHILE( ASSOCIATED(Var) )
+        IF( Var % Dofs == 1 ) THEN
+          DO l=1,n
+            m = m + 1
+            Var % Values(n_part+l) = Buf(m)
+          END DO
+        END IF
+        Var => Var % Next 
+      END DO
+
       DEALLOCATE(Buf)
+
+      IF( ncompInt > 0 ) THEN
+
+        ALLOCATE(BufInt(n*ncompInt))      
+        m = n*ncompInt
+        
+        CALL MPI_RECV( BufInt, m, MPI_DOUBLE_PRECISION, proc, &
+            1003, MPI_COMM_WORLD, status, ierr )
+        
+        n_part=Particles % NumberOfParticles
+        m = 0
+        IF( ASSOCIATED( Particles % NodeIndex ) ) THEN
+          DO l=1,n
+            m = m + 1
+            Particles % NodeIndex(n_part+l) = BufInt(m)
+          END DO
+        END IF
+        IF( ASSOCIATED( Particles % Partition ) ) THEN
+          DO l=1,n
+            m = m + 1
+            Particles % Partition(n_part+l) = BufInt(m)
+          END DO
+        END IF
+      END IF
       
       Particles % NumberOfParticles = Particles % NumberOfParticles + n
       DEALLOCATE(Indexes)
@@ -1323,6 +1472,150 @@ RETURN
     END FUNCTION SearchElement
   END FUNCTION ChangeParticlePartition
   
+
+  !---------------------------------------------------------
+  !> Subroutine for advecting back to given partition and 
+  !> node index.
+  !---------------------------------------------------------
+  SUBROUTINE ParticleAdvectParallel(Particles, SentField, RecvField, dofs ) 
+    !---------------------------------------------------------
+    TYPE(Particle_t), POINTER :: Particles
+    REAL(KIND=dp), POINTER :: SentField(:), RecvField(:)
+    INTEGER :: Dofs
+    !---------------------------------------------------------
+    INTEGER i,j,k,l,m,n,dim,NoPartitions,NoParticles,part, &
+        ierr, status(MPI_STATUS_SIZE), nReceived 
+    INTEGER, ALLOCATABLE :: RecvParts(:), SentParts(:), Requests(:)
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), ALLOCATABLE :: SentReal(:),RecvReal(:)
+    INTEGER(KIND=dp), ALLOCATABLE :: SentInt(:),RecvInt(:)
+    !---------------------------------------------------------
+    
+    nReceived = 0
+    IF( ParEnv% PEs == 1 ) RETURN
+    
+    Mesh => GetMesh()
+    dim = Particles % dim
+    
+    NoPartitions = ParEnv % PEs
+    NoParticles = Particles % NumberOfParticles
+
+    IF( .NOT. ASSOCIATED( Particles % Partition ) ) THEN
+      CALL Fatal('ParticleAdvectParallel','Partition must be present!')
+    END IF
+    IF( .NOT. ASSOCIATED( Particles % NodeIndex ) ) THEN
+      CALL Fatal('ParticleAdvectParallel','NodeIndex must be present!')
+    END IF
+    IF( Dofs /= 1 ) THEN
+      CALL Fatal('ParticleAdvectParallel','Implement for more than one dof!')
+    END IF
+
+    ! First take the components of the field that lie in the present partition. 
+    !-------------------------------------------------------------------------
+    DO i=1,Particles % NumberOfParticles
+      Part = Particles % Partition(i)
+      IF( Part-1 == ParEnv % MyPe ) THEN
+        j = Particles % NodeIndex(i)
+        RecvField(j) = SentField(i)
+      END IF
+    END DO
+
+    ! Count particles to be sent to neighbours:
+    ! -----------------------------------------
+    ALLOCATE(SentParts(NoPartitions), RecvParts(NoPartitions), &
+        Requests(NoPartitions))
+    SentParts = 0
+    RecvParts = 0
+    
+    DO i=1,Particles % NumberOfParticles
+      Part = Particles % Partition(i)
+      IF( Part-1 == ParEnv % MyPe ) CYCLE
+      SentParts(Part) = SentParts(Part) + 1
+    END DO
+    
+    ! Receive interface sizes:
+    !--------------------------
+    DO i=1,NoPartitions
+      CALL MPI_iRECV( RecvParts(i), 1, MPI_INTEGER, i-1, &
+          1000, MPI_COMM_WORLD, requests(i), ierr )
+    END DO
+    
+    DO i=1,NoPartitions
+      CALL MPI_BSEND( SentParts(i), 1, MPI_INTEGER, i-1, &
+          1000, MPI_COMM_WORLD, ierr )
+    END DO
+    CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
+    
+    n = SUM(RecvParts)
+    CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
+        MPI_SUM, MPI_COMM_WORLD, ierr )
+    IF ( nReceived==0 ) THEN
+      DEALLOCATE(RecvParts, SentParts, Requests )
+      RETURN
+    END IF
+    
+    n = 2*(n + MPI_BSEND_OVERHEAD*2*NoPartitions)
+    CALL CheckBuffer(n)
+
+    ! Allocate sent and recieve buffers based on the maximum needed size.
+    !--------------------------------------------------------------------
+    n = MAXVAL( SentParts )
+    ALLOCATE( SentReal(n), SentInt(n) )
+
+    n = MAXVAL( RecvParts ) 
+    ALLOCATE( RecvReal(n), RecvInt(n) )
+
+   
+    ! Send particles:
+    ! ---------------
+    DO j=1,NoPartitions
+      
+      IF( SentParts(j) == 0 ) CYCLE
+
+      m = 0
+      DO l=1,NoParticles
+        IF( Particles % Partition(l) == j ) THEN
+          m = m + 1
+          SentReal(m) = SentField(l)
+          SentInt(m) = Particles % NodeIndex(l)
+        END IF
+      END DO
+      
+      CALL MPI_BSEND( SentInt, m, MPI_INTEGER, j-1, &
+          1001, MPI_COMM_WORLD, ierr )
+     
+      CALL MPI_BSEND( SentReal, m, MPI_DOUBLE_PRECISION, j-1, &
+          1002, MPI_COMM_WORLD, ierr )
+    END DO
+
+
+    ! Recv particles:
+    ! ---------------   
+    DO j=1,NoPartitions
+
+      m = RecvParts(j)
+      IF ( m == 0 ) CYCLE
+      
+      CALL MPI_RECV( RecvInt, m, MPI_INTEGER, j-1, &
+          1001, MPI_COMM_WORLD, status, ierr )
+
+      CALL MPI_RECV( RecvReal, m, MPI_DOUBLE_PRECISION, j-1, &
+          1002, MPI_COMM_WORLD, status, ierr )
+      
+      DO l=1,m
+        k = RecvInt(l)
+        RecvField(k) = RecvReal(l)
+      END DO
+    END DO
+        
+    CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+
+    DEALLOCATE(SentParts, RecvParts, Requests, SentInt, SentReal, RecvInt, RecvReal )
+   
+  END SUBROUTINE ParticleAdvectParallel
+
+
+
 
   !---------------------------------------------------------
   !> Subroutine computes the means of coordinates / velocities / force.
@@ -1707,7 +2000,7 @@ RETURN
     REAL(KIND=dp), POINTER :: MaskVal(:)
     REAL(KIND=dp), ALLOCATABLE :: Weight(:)
     INTEGER :: nx,ny,nz,nmax,ix,iy,iz,ind
-    LOGICAL :: CheckForSize    
+    LOGICAL :: CheckForSize, Parallel    
     LOGICAL, POINTER :: DoneParticle(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName
     
@@ -1717,6 +2010,7 @@ RETURN
     Mesh => GetMesh()
     Params => GetSolverParams()
     dim = Particles % Dim
+    Parallel = ( ParEnv % PEs > 1 )
     
     !------------------------------------------------------------------------
     ! Initialize the timestepping strategy stuff
@@ -1733,7 +2027,6 @@ RETURN
     END IF
 
     
-
     !------------------------------------------------------------------------
     ! The user may use a mask to initialize the particles only at a part of the 
     ! domain, or to utilize the ordeing of the permutation vector.
@@ -1993,6 +2286,14 @@ RETURN
             Particles % NodeIndex(k) = NodeIndexes(j)
           END DO
         END DO
+
+        IF( Parallel ) THEN
+          IF(.NOT. ASSOCIATED( Particles % Partition ) ) THEN
+            ALLOCATE( Particles % Partition( NewParticles ) )
+            Particles % Partition = ParEnv % MyPe + 1
+          END IF
+        END IF
+
       END IF
 
 
@@ -3970,12 +4271,7 @@ RETURN
           Particles % Coordinate(n_part+l,k)=Buf(m)
         END DO
       END DO
-      
-!      DO l=1,n
-!        m = m + 1
-!        Particles % Dt(n_part+l) = Buf(m)
-!      END DO
-      
+            
       IF ( ASSOCIATED(Particles % Velocity) ) THEN
         DO k=1,dim
           DO l=1,n
@@ -4796,10 +5092,82 @@ RETURN
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!>  Given a variable name, get a handle to its values.
+!------------------------------------------------------------------------------
+  FUNCTION ParticleVariableValues( Particles, Name ) RESULT ( Values )
+    
+    TYPE(Particle_t), POINTER :: Particles
+    CHARACTER(LEN=*) :: Name
+    REAL(KIND=dp), POINTER :: Values(:)
+!------------------------------------------------------------------------------
+    TYPE(Variable_t), POINTER :: Var
+    Var => VariableGet( Particles % Variables, Name )
+    Values => Var % Values
+
+  END FUNCTION ParticleVariableValues
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Resize the existing variables and optionally repack the old variables 
+!> so that they lost ones are eliminated. This is controlled by the Perm
+!> vector that includes only the indexes of the particles to be saved.
+!------------------------------------------------------------------------------
+    SUBROUTINE ParticleVariablesResize( Particles, Newsize, Perm) 
+!------------------------------------------------------------------------------
+      TYPE(Particle_t), POINTER :: Particles
+      INTEGER :: Newsize
+      INTEGER, OPTIONAL :: Perm(:)
+!------------------------------------------------------------------------------
+      TYPE(Variable_t), POINTER :: Var
+      REAL(KIND=dp), POINTER :: Values(:)
+      INTEGER :: i,j,k, OldSize
+!------------------------------------------------------------------------------
+      
+      IF( PRESENT( Perm ) ) THEN
+        DO i=1,SIZE(Perm)
+          IF( Perm(i) == 0 ) THEN
+            oldsize = i-1
+            EXIT
+          END IF
+        END DO
+      END IF
+
+      Var => Particles % Variables
+      DO WHILE( ASSOCIATED(Var) )
+        k = Var % NameLen
+        IF( k > 0 ) THEN
+          ! print *,'Increasing size of: '//TRIM(tmp % name(1:k))
+          IF( Var % Dofs > 1 ) THEN
+            CALL Fatal('ParticleVariableResize','Implement for vectors!')
+          END IF
+          Values => Var % Values
+          IF( SIZE( Var % Values ) < newsize ) THEN            
+            NULLIFY( Var % Values ) 
+            ALLOCATE( Var % Values(newsize) )
+            IF( PRESENT( Perm ) ) THEN
+              Var % Values(1:oldsize) = Values(Perm(1:oldsize))
+            ELSE
+              OldSize = SIZE( Values ) 
+              Var % Values(1:oldsize) = Values(1:oldsize)
+            END IF
+            Var % Values(oldsize+1:newsize) = 0.0_dp
+            DEALLOCATE( Values ) 
+          ELSE IF( PRESENT( Perm ) ) THEN
+            Var % Values(1:oldsize) = Values(Perm(1:oldsize))
+            Var % Values(oldsize+1:newsize) = 0.0_dp
+          END IF
+        END IF
+        Var => Var % Next
+      END DO
+
+!------------------------------------------------------------------------------
+    END SUBROUTINE ParticleVariablesResize
+!------------------------------------------------------------------------------
 
 
   
-
   !------------------------------------------------------------------------
   !> Write particles to an external file in simple ascii format matrix.
   !-------------------------------------------------------------------------

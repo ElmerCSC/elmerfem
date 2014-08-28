@@ -470,22 +470,21 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Valuelist_t), POINTER :: Params
     LOGICAL :: Stat, Visited = .FALSE.
-    INTEGER :: i,j,k,l,n,nsize,dim,wallcount,NoVar,NoNorm,dofs
+    INTEGER :: i,j,k,l,n,nsize,dim,wallcount,NoVar,NoNorm,dofs,maxdim
     INTEGER, POINTER :: NodeIndexes(:)
-    REAL(KIND=dp) :: SqrtElementMetric, Norm
+    REAL(KIND=dp) :: SqrtElementMetric, Norm, PrevNorm = 0.0_dp, Change
     REAL(KIND=dp), POINTER :: Basis(:)
-    LOGICAL :: GotIt, Difference,Cumulative,Derivative,Age,GotVar,GotRes,Debug,&
-        UsePerm,InternalVariable
+    LOGICAL :: GotIt, Difference,Cumulative,Derivative,GotVar,GotRes,GotOper,Debug,&
+        UsePerm,InternalVariable,Initiated, Parallel
     CHARACTER(LEN=MAX_NAME_LEN) :: VariableName, ResultName, OperName, Name
     TYPE(Variable_t), POINTER :: TargetVar, ResultVar, Var
     TYPE(Variable_t), POINTER :: ParticleVar
-    REAL(KIND=dp), ALLOCATABLE :: NewValues(:)
-    REAL(KIND=dp), POINTER :: TmpValues(:)
-    INTEGER, POINTER :: TmpPerm(:)
+    REAL(KIND=dp), POINTER :: TmpValues(:), NodeValues(:), NewValues(:)
+    INTEGER, POINTER :: TmpPerm(:), UnitPerm(:)
     REAL(KIND=dp) :: x,y,z
     
     
-    SAVE :: Visited
+    SAVE :: Visited, PrevNorm, UnitPerm
     
     Mesh => GetMesh()
     dim = Mesh % MeshDim
@@ -497,8 +496,12 @@ CONTAINS
     Params => GetSolverParams()
     NoNorm = GetInteger( Params,'Norm Variable Index',GotIt)
     NoParticles = Particles % NumberOfParticles
+    maxdim = 0
 
-    NoVar = 0 
+    Parallel = ( ParEnv % PEs > 1 ) 
+
+    Initiated = .FALSE.
+100 NoVar = 0 
     DO WHILE(.TRUE.)
       NoVar = NoVar + 1
 
@@ -507,70 +510,62 @@ CONTAINS
       IF(.NOT. GotVar ) EXIT
 
       ! Get the target variables
-      !------------------------------------------------
-      IF( VariableName == 'particle status' .OR. &
-          VariableName == 'particle number' .OR. &
-          VariableName == 'particle distance' .OR. &
-          VariableName == 'particle coordinate_abs' .OR. &
-          VariableName == 'particle velocity_abs' .OR. &
-	  VariableName == 'particle time' .OR. &
-	  VariableName == 'particle dt' ) THEN
+      ! Variables starting with 'particle' as associated with particles
+      !----------------------------------------------------------------
+      IF( VariableName == 'particle coordinate' .OR. &
+          VariableName == 'particle velocity' .OR. &
+          VariableName == 'particle force') THEN
+        dofs = dim 
+        InternalVariable = .TRUE.
+        maxdim = MAX( dim, maxdim )
+      ELSE IF( VariableName(1:8) == 'particle' ) THEN
         dofs = 1
         InternalVariable = .TRUE.
-      ELSE IF( VariableName == 'particle coordinate' .OR. &
-          VariableName == 'particle velocity') THEN
-        dofs = dim
-        InternalVariable = .TRUE.
+        maxdim = MAX( 1, maxdim )
       ELSE
         TargetVar => VariableGet( Mesh % Variables, TRIM(VariableName) )
         IF( .NOT. ASSOCIATED(TargetVar)) THEN
           CALL Fatal('ParticleAdvector','Could not obtain target variable:'&
               //TRIM(VariableName))
+          CYCLE
         END IF
         dofs = TargetVar % dofs
         IF( dofs > 1 ) THEN
           CALL Fatal('ParticleAdvector','Advection implemented so far only for scalars')
         END IF
         InternalVariable = .FALSE.
+        maxdim = MAX( dofs, maxdim ) 
       END IF
+
+      IF(.NOT. Initiated ) CYCLE
+
 
       ! For internal variables the target name is the field name
       !---------------------------------------------------------      
-      IF( InternalVariable ) THEN
-        ResultName = VariableName
+      Difference = .FALSE.
+      Derivative = .FALSE.
+      Cumulative = .FALSE.
+
+      WRITE (Name,'(A,I0)') 'Operator ',NoVar
+      OperName = GetString( Params,Name,GotOper)
+      IF( GotOper ) THEN
+        IF( OperName == 'difference' ) THEN
+          Difference = .TRUE.
+        ELSE IF( OperName == 'derivative') THEN
+          Derivative = .TRUE.
+        ELSE IF( OperName == 'cumulative' .OR. OperName == 'age' ) THEN
+          Cumulative = .TRUE.
+        ELSE
+          CALL Fatal('SetAdvectedField','Unknown operator: '//TRIM(OperName))
+        END IF
       ELSE
-        WRITE (Name,'(A,I0)') 'Operator ',NoVar
-        OperName = GetString( Params,Name,GotIt)
-        Difference = .FALSE.
-        Derivative = .FALSE.
-        Cumulative = .FALSE.
-        Age = .FALSE.
-        IF( GotIt ) THEN
-          IF( OperName == 'difference' ) THEN
-            Difference = .TRUE.
-          ELSE IF( OperName == 'derivative') THEN
-            Derivative = .TRUE.
-          ELSE IF( OperName == 'cumulative') THEN
-            Cumulative = .TRUE.
-          ELSE IF( OperName == 'age') THEN
-            Age = .TRUE.
-          END IF
-        END IF
-
-        PTimeVar => ParticleVariableGet( Particles,'particle time')
-	IF( .NOT. ASSOCIATED( PTimeVar ) ) THEN
-          CALL Fatal('ParticleAdvector','Operator > Age < requires > Particle Time < !')
-	END IF
-
-        WRITE (Name,'(A,I0)') 'Result Variable ',NoVar
-        ResultName = GetString( Params,Name,GotRes)
-        IF( .NOT. GotRes ) THEN
-	  IF( Age .OR. Cumulative ) THEN
-            ResultName = VariableName
-          ELSE
-            ResultName = 'Adv '//TRIM(VariableName)
-          END IF
-        END IF
+        OperName = 'adv'
+      END IF
+      
+      WRITE (Name,'(A,I0)') 'Result Variable ',NoVar
+      ResultName = GetString( Params,Name,GotRes)
+      IF( .NOT. GotRes ) THEN
+        ResultName = TRIM(OperName)//' '//TRIM(VariableName)
       END IF
 
       ! Create variables if they do not exist
@@ -580,15 +575,26 @@ CONTAINS
         IF( InternalVariable ) THEN
           UsePerm = .FALSE.
         ELSE
+          ! Inherit the Perm from the target variable
           UsePerm = ASSOCIATED( TargetVar % Perm ) 
+        END IF
+
+        ! This trick is done to allow postprocessing routines to work better
+        IF(.NOT. UsePerm ) THEN
+          IF(.NOT. ASSOCIATED(UnitPerm)) THEN
+            ALLOCATE( UnitPerm(Mesh % NumberOfNodes ) )
+            DO i=1,Mesh % NumberOfNodes
+              UnitPerm(i) = i
+            END DO
+          END IF
         END IF
 
         IF(UsePerm) THEN
           CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,ResultName,dofs,&
-              Perm = TargetVar % Perm)
+              Perm = TargetVar % Perm )
         ELSE
-          n = NoParticles
-          CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,ResultName,dofs)
+          CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,ResultName,dofs, &
+              Perm = UnitPerm )
         END IF
         IF( dofs == 1 ) THEN
           CALL Info('ParticleAdvector','Created a scalar variable: '//TRIM(ResultName) )
@@ -603,17 +609,13 @@ CONTAINS
       ! Finally, set the values
       !---------------------------------------------------------      
       IF( InternalVariable ) THEN
-        IF( VariableName == 'particle status') THEN
-          ResultVar % Values = 1.0_dp * Particles % Status
-        ELSE IF( VariableName == 'particle number') THEN
-          ResultVar % Values = 1.0_dp * Particles % NodeIndex
-        ELSE IF( VariableName == 'particle coordinate') THEN
+        IF( VariableName == 'particle coordinate') THEN
           IF( ResultVar % Dofs /= dim ) THEN
             CALL Fatal('ParticleAdvector','Variable should have dim dofs: '//TRIM(VariableName))
           END IF
           DO i=1,NoParticles
             DO j=1,dim
-              ResultVar % Values(dim*(i-1)+j) = Particles % Coordinate(i,j)
+              NewValues(dim*(i-1)+j) = Particles % Coordinate(i,j)
             END DO
           END DO
         ELSE IF( VariableName == 'particle coordinate_abs') THEN
@@ -622,7 +624,7 @@ CONTAINS
             DO j=1,dim
               val = val + Particles % Coordinate(i,j)**2
             END DO
-            ResultVar % Values(i) = SQRT( val )
+            NewValues(i) = SQRT( val )
           END DO
         ELSE IF( VariableName == 'particle velocity') THEN
           IF( ResultVar % Dofs /= dim ) THEN
@@ -630,125 +632,137 @@ CONTAINS
           END IF
           DO i=1,NoParticles
             DO j=1,dim
-              ResultVar % Values(dim*(i-1)+j) = Particles % Velocity(i,j)
+              NewValues(dim*(i-1)+j) = Particles % Velocity(i,j)
             END DO
           END DO
-
+          
         ELSE IF( VariableName == 'particle velocity_abs') THEN
           DO i=1,NoParticles
             val = 0.0_dp
             DO j=1,dim
               val = val + Particles % Velocity(i,j)**2
             END DO
-            ResultVar % Values(i) = SQRT( val )
+            NewValues(i) = SQRT( val )
           END DO
-        ELSE IF( VariableName == 'particle time' .OR. &
-                 VariableName == 'particle dt'   .OR. &
-                 VariableName == 'particle distance' ) THEN
+
+        ELSE IF( VariableName == 'particle force') THEN
+          IF( ResultVar % Dofs /= dim ) THEN
+            CALL Fatal('ParticleAdvector','Variable should have dim dofs: '//TRIM(VariableName))
+          END IF
+          DO i=1,NoParticles
+            DO j=1,dim
+              NewValues(dim*(i-1)+j) = Particles % Force(i,j)
+            END DO
+          END DO
+
+        ELSE IF( VariableName == 'particle status') THEN
+          DO i=1,NoParticles
+            NewValues(i) = 1.0_dp * Particles % Status(i)
+          END DO
+          
+        ELSE IF( VariableName(1:8) == 'particle' ) THEN
           ParticleVar => ParticleVariableGet( Particles, VariableName )
           IF( ASSOCIATED( ParticleVar ) ) THEN
-            ResultVar % Values = ParticleVar % Values
+            NewValues = ParticleVar % Values
           ELSE
-            CALL Warn('ParticleAdvector','Field does not exist:'//TRIM(VariableName))
+            CALL Warn('ParticleAdvector','Field does not exist: '//TRIM(VariableName))
           END IF
-        ELSE	
-          CALL Warn('ParticleAdvector','Unknown field:'//TRIM(VariableName))
         END IF
+        
       ELSE 
 
-        IF( ( Cumulative .OR. Age ) .AND. Visited ) TargetVar => ResultVar 
-        
-        n = SIZE( TargetVar % Values ) 
-        IF( ALLOCATED( NewValues ) ) THEN
-          IF( SIZE(NewValues) < n ) DEALLOCATE( NewValues ) 
-        END IF
-        IF( .NOT. ALLOCATED( NewValues ) ) THEN
-          ALLOCATE( NewValues( n ) ) 
-          NewValues = 0.0_dp
-        END IF
-
-        DO No = 1, NoParticles
-          Status = GetParticleStatus( Particles, No )
+        DO i = 1, NoParticles
+          Status = GetParticleStatus( Particles, i )
           
           IF( Status >= PARTICLE_LOST ) CYCLE
           IF( Status <= PARTICLE_INITIATED ) CYCLE
           
-          ElementIndex = GetParticleElement( Particles, No )
-	  IF( ElementIndex == 0 ) CYCLE
-
+          ElementIndex = GetParticleElement( Particles, i )
+          IF( ElementIndex == 0 ) CYCLE
+          
           BulkElement => Mesh % Elements( ElementIndex )      
           
-          Coord(1:dim) = Particles % Coordinate(No, 1:dim) 
-          Velo(1:dim) = Particles % Velocity(No, 1:dim) 
+          Coord(1:dim) = Particles % Coordinate(i, 1:dim) 
+          Velo(1:dim) = Particles % Velocity(i, 1:dim) 
           
           stat = ParticleElementInfo( BulkElement, Coord, SqrtElementMetric, Basis )
           IF(.NOT. stat) CYCLE
-
-          i = Particles % NodeIndex(No)
-          j = i
-          IF( ASSOCIATED( ResultVar % Perm)) j = ResultVar % Perm(i)
- 
           
           IF( dofs == 1 ) THEN
             CALL GetScalarFieldInMesh(TargetVar, BulkElement, Basis, val ) 
-            IF( Difference .OR. Derivative ) THEN
-              k = i
-              IF( ASSOCIATED( TargetVar % Perm ) ) k = TargetVar % Perm( k )
-              NewValues( j ) =  val - TargetVar % Values( k ) 
-	    ELSE IF( Age ) THEN
-              NewValues( j ) = val + PTimeVar % Values( No )
-            ELSE
-              NewValues( j ) = val     
-            END IF
+            NewValues( i ) =  val 
           ELSE
             CALL GetVectorFieldInMesh(TargetVar, BulkElement, Basis, vals ) 
-            IF( Difference .OR. Derivative ) THEN
-              k = i
-              IF( ASSOCIATED( TargetVar % Perm ) ) k = TargetVar % Perm( k )
-              DO l=1,dofs
-                NewValues( dofs*(j-1)+l ) =  vals(l) - TargetVar % Values( dofs*(k-1)+l ) 
-              END DO
-            ELSE
-              DO l=1,dofs             
-                NewValues( dofs*(j-1)+l ) = vals(l)     
-              END DO
-            END IF
+            DO j=1,dofs             
+              NewValues( dofs*(i-1)+j ) = vals(j)     
+            END DO
           END IF
         END DO
-        
-        IF( Derivative ) NewValues = NewValues / dertime
-        
-        ! To allow computation of change in the standard manner the Variable
-        ! is set to point to the one of interest.
-        !---------------------------------------------------------------
-        IF( NoVar == NoNorm ) THEN
-          Solver % Variable => ResultVar 
-          CALL ComputeChange(Solver,.FALSE.,NoParticles,NewValues,ResultVar % Values)
-        END IF
-        
-        ! There most be a temporal vector for the values in case it would point 
-        ! to itself. 
-        !---------------------------------------------------------------
-        j = SIZE( NewValues )
-        k = SIZE( ResultVar % Values )
-	IF( j /= k ) THEN
-	  CALL Warn('ParticleAdvector','Vectors of different size!')
-          j = MIN(j,k)
-        END IF
-        ResultVar % Values(1:j) = NewValues(1:j)
       END IF
 
+      ! In a serial case the nodes and particles are directly associated. 
+      ! In a parallel case we need to transfer the values from particles in 
+      ! different partitions to nodes. 
+      !---------------------------------------------------------------------
+      IF( Parallel ) THEN
+        CALL ParticleAdvectParallel( Particles, NewValues, NodeValues, dofs )
+      END IF
 
+      ! Finally move the nodal values to the target variable 
+      !---------------------------------------------------------------------
+      DO j=1,Mesh % NumberOfNodes 
+        k = j
+        IF( ASSOCIATED( ResultVar % Perm ) ) k = ResultVar % Perm( k )
+        IF( k == 0 ) CYCLE
+        IF( Difference .OR. Derivative ) THEN
+          ResultVar % Values( k ) = NodeValues( j ) - TargetVar % Values( k ) 
+        ELSE IF( Cumulative ) THEN
+          ResultVar % Values( k ) = NodeValues( j ) + ResultVar % Values( k )
+        ELSE
+          ResultVar % Values( k ) = NodeValues( j ) 
+        END IF
+      END DO
+      IF( Derivative ) ResultVar % Values = ResultVar % Values / dertime 
 
+      ! To allow computation of change in the standard manner the Variable
+      ! is set to point to the one of interest. This is mainly used in the 
+      ! tests, or could be used in for convergence monitoring also. 
+      !---------------------------------------------------------------
+      IF( NoVar == NoNorm ) THEN
+        n = SIZE( ResultVar % Values ) 
+!        Norm = ComputeNorm( Solver, n, ResultVar % Values ) 
+        Norm = SQRT( SUM( ResultVar % Values ** 2) / n )
+        Change = 2.0 * ABS( Norm-PrevNorm ) / ( Norm + PrevNorm )
+        PrevNorm = Norm
+        ! Here the name is ComputeChange in order to get the change also to ElmerGUI
+        ! albeit in a very dirt style. One could also edit ElmerGUI....
+        WRITE( Message, '(a,g15.8,g15.8,a)') &
+            'SS (ITER=1) (NRM,RELC): (',Norm, Change,' ) :: '//TRIM( ResultName )
+        CALL Info( 'ComputeChange', Message, Level=3 )
+      END IF
     END DO
 
-    NoVar = NoVar - 1
-    IF( NoVar < 1 ) THEN
-      CALL Fatal('ParticleAdvector','No target and result variables exist!')
-    END IF
-    
-    IF( ALLOCATED( NewValues ) ) DEALLOCATE( NewValues ) 
 
+    ! Allocate the local new temporal values
+    IF(.NOT. Initiated ) THEN
+      NoVar = NoVar - 1
+      IF( NoVar < 1 ) THEN
+        CALL Fatal('ParticleAdvector','No target and result variables exist!')
+      END IF
+      ALLOCATE( NewValues( maxdim * Particles % NumberOfParticles ) ) 
+      NewValues = 0.0_dp
+      IF( Parallel ) THEN
+        ALLOCATE( NodeValues( maxdim * Mesh % NumberOfNodes ) )
+        NodeValues = 0.0_dp
+      ELSE
+        NodeValues => NewValues
+      END IF
+      Initiated = .TRUE.
+      GOTO 100
+    END IF
+
+    DEALLOCATE( NewValues ) 
+    IF( Parallel ) DEALLOCATE( NodeValues ) 
     Visited = .TRUE.
 
   END SUBROUTINE SetAdvectedField
