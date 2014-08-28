@@ -73,8 +73,8 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        FlowSolution(:),  PointerToResidualVector(:)
 
   REAL(KIND=dp), ALLOCATABLE :: ResidualVector(:), &
-       STIFF(:,:),SourceFunc(:),FORCE(:), TimeForce(:), LOAD(:),&
-       MASS(:,:), Velo(:,:), Flux(:,:), LowerLimit(:), UpperLimit(:), &
+       STIFF(:,:),FORCE(:), TimeForce(:), LOAD(:),&
+       MASS(:,:), Velo(:,:),  LowerLimit(:), UpperLimit(:), &
        OldValues(:), OldRHS(:),StiffVector(:),MeshVelocity(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, EquationName, FlowSolName, StabilizeFlag
@@ -201,8 +201,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
              LOAD,&
              Velo,  &
              MeshVelocity, &
-             Flux, &
-             SourceFunc, &
              LowerLimit,                      &
              UpperLimit, &
              LimitedSolution,  &
@@ -231,8 +229,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           LOAD(NMAX) , &
           Velo( 3, NMAX ), &
           MeshVelocity( 3,NMAX ), &
-          Flux( 3, NMAX), &
-          SourceFunc( NMAX ), &
           LowerLimit( MMAX ), &
           UpperLimit( MMAX ), &
           LimitedSolution( MMAX, 2 ),  &
