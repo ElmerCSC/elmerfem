@@ -21,14 +21,14 @@ Simulation
 
   Simulation Type = Transient
   Timestep sizes = 0.2
-  Timestep Intervals = 100
+  Timestep Intervals = 50
   Timestepping Method = BDF
   BDF Order = 1
-
+ 
   Steady State Max Iterations = 1
   Output Intervals = 5
 
-!  Post File = case.ep
+!  Post File = case_c.vtu
 End
 
 Constants
@@ -83,9 +83,8 @@ Solver 1
   Linear System Residual Output = 20
   Linear System Precondition Recompute = 1
 
-  Optimize bandwidth = True
+!  Optimize bandwidth = False
   Exported Variable 1 = Strides
-  Exported Variable 2 = Particle Age
 End
 
 
@@ -93,7 +92,7 @@ Solver 2
   Equation = ParticleAdvector
   Procedure = "ParticleAdvector" "ParticleAdvector"
 
-  Particle Accurate At Face = Logical True
+!  Particle Accurate At Face = Logical False
 
   Max Timestep Intervals = Integer 500
   Particle Dt Constant = Logical False
@@ -104,11 +103,11 @@ Solver 2
 
 ! Time in average 5 steps in each element 
   Timestep Courant Number = Real 0.25
-
+ 
 !!!! time integration 
 !  Runge Kutta = Logical True
   Velocity Gradient Correction = Logical True
-  Velocity Variable Name = String Flow Solution
+  Velocity Variable Name = String Flow Solution 
 
 ! The variable to compute the norm for
   Norm Variable Index = Integer 3
@@ -117,17 +116,15 @@ Solver 2
 !  Particle Info = Logical True
   Particle Time = Logical True
 
-! The field variables being advected
-
-  Variable 1 = String "Strides"
-  Result Variable 1 = String "Strides"
-  
 ! The internal variables for this solver
-  Variable 2 = String "Particle Distance"
+  Variable 1 = String "Particle Distance"
 
-  Variable 3 = String "Particle age"
-! Adds 'particle time' cumulatively to any variable 
-  Operator 3 = String "age"
+  Variable 2 = String "Particle time"
+  Operator 2 = "cumulative"
+
+! The field variables being advected
+  Variable 3 = String "Strides"
+  Result Variable 3 = String "Strides"  
 
 !  Variable 4 = String "Particle time"
 !  Variable 5 = String "Particle Number"
@@ -196,5 +193,6 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 13.582009\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.48786999\n");
+
 

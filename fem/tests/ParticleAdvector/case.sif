@@ -114,7 +114,6 @@ Solver 2
   Variable 5 = String "Particle Distance"
   Variable 6 = String "Particle time"
   Variable 7 = String "Particle Velocity_Abs"
-  Variable 8 = String "Particle Number"
 End 
 
 
