@@ -3,7 +3,7 @@ PROGRAM FindParents
 ! Determines parents for boundary elements in Elmer mesh files.
 !
 ! Written by: Mikko Lyly 18 May 2004
-! Modified by:
+! Modified by: Mark Smith 7 March 2014
 !----------------------------------------------------------------------------
   IMPLICIT NONE
 
@@ -111,7 +111,7 @@ PROGRAM FindParents
         BoundaryDim = 1
      CASE( 3, 4 )
         BoundaryDim = 2
-     CASE( 5, 8 )
+     CASE( 5, 6, 7, 8 )
         BoundaryDim = 3
      CASE DEFAULT
         PRINT *,'Cant detect dimension for bounbdary element',A(1)
@@ -152,7 +152,7 @@ PROGRAM FindParents
               ElementDim = 1
            CASE( 3, 4 )
               ElementDim = 2
-           CASE( 5, 8 )
+           CASE( 5, 6, 7, 8 )
               ElementDim = 3
            CASE DEFAULT
               PRINT *,'Cant detect dimension for element',Candidate

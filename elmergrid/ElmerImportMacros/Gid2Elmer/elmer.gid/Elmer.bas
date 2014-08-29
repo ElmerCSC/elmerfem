@@ -110,6 +110,34 @@ mesh.elements: *Elemsnum *ElemsMat 510 *ElemsConec
 *endif
 *endif
 *end elems
+*set var Bulk605=0
+*set var Bulk613=0
+*set elems(Pyramid)
+*loop elems
+*if(ElemsMat>0)
+*if(IsQuadratic==0)
+*set var Bulk605=Operation(Bulk605+1)
+mesh.elements: *Elemsnum *ElemsMat 605 *ElemsConec
+*else
+*set var Bulk613=Operation(Bulk613+1)
+mesh.elements: *Elemsnum *ElemsMat 613 *ElemsConec
+*endif
+*endif
+*end elems
+*set var Bulk706=0
+*set var Bulk715=0
+*set elems(Prism)
+*loop elems
+*if(ElemsMat>0)
+*if(IsQuadratic==0)
+*set var Bulk706=Operation(Bulk706+1)
+mesh.elements: *Elemsnum *ElemsMat 706 *ElemsConec
+*else
+*set var Bulk715=Operation(Bulk715+1)
+mesh.elements: *Elemsnum *ElemsMat 715 *ElemsConec
+*endif
+*endif
+*end elems
 *set var Bulk808=0
 *set var Bulk820=0
 *set elems(Hexahedra)
@@ -126,7 +154,7 @@ mesh.elements: *Elemsnum *ElemsMat 820 *ElemsConec
 *end elems
 
 *set var Boundary=Operation(Boundary202+Boundary203+Boundary303+Boundary306+Boundary404+Boundary408)
-*set var Bulk=Operation(Bulk202+Bulk203+Bulk303+Bulk306+Bulk404+Bulk408+Bulk504+Bulk510+Bulk808+Bulk820)
+*set var Bulk=Operation(Bulk202+Bulk203+Bulk303+Bulk306+Bulk404+Bulk408+Bulk504+Bulk510+Bulk605+Bulk613+Bulk706+Bulk715+Bulk808+Bulk820)
 mesh.header:*npoin *Bulk *Boundary
 *set var Types=0
 *if((Boundary202>0)||(Bulk202>0))
@@ -151,6 +179,18 @@ mesh.header:*npoin *Bulk *Boundary
 *set var Types=Operation(Types+1)
 *endif
 *if(Bulk510>0)
+*set var Types=Operation(Types+1)
+*endif
+*if(Bulk605>0)
+*set var Types=Operation(Types+1)
+*endif
+*if(Bulk613>0)
+*set var Types=Operation(Types+1)
+*endif
+*if(Bulk706>0)
+*set var Types=Operation(Types+1)
+*endif
+*if(Bulk715>0)
 *set var Types=Operation(Types+1)
 *endif
 *if(Bulk808>0)
@@ -183,6 +223,18 @@ mesh.header:    504 *Bulk504
 *endif
 *if(Bulk510>0)
 mesh.header:    510 *Bulk510
+*endif
+*if(Bulk605>0)
+mesh.header:    605 *Bulk605
+*endif
+*if(Bulk613>0)
+mesh.header:    613 *Bulk613
+*endif
+*if(Bulk706>0)
+mesh.header:    706 *Bulk706
+*endif
+*if(Bulk715>0)
+mesh.header:    715 *Bulk715
 *endif
 *if(Bulk808>0)
 mesh.header:    808 *Bulk808
