@@ -1,0 +1,19 @@
+!-------------------------------------------------------------!
+!                                                             !
+!  Ansys56 startup file. Copying this file into your working  !
+!  directory prior starting Ansys56 adds the buttons          ! 
+!  ELMER_AU and ELMER_CH into the ANSYS Toolbar. This         ! 
+!  requires also the macro files elmer_au.mac and             ! 
+!  elmer_ch.mac in the working directory.                     !
+!  If you are resuming a previous project done without the    !
+!  ELMER buttons you have to enter the commands               !
+!  below manually into the ANSYS Input command line and,      !
+!  after that, to select the Utility menu command MenuCtrls   !
+!  -> Update Toolbar.                                         !
+!  Saving the project now, and resuming later will preserve   !
+!  the ELMER buttons.                                         !
+!                                                             !
+!-------------------------------------------------------------!
+
+*ABBR,ELMER_AU,elmer_au
+*ABBR,ELMER_CH,elmer_ch
