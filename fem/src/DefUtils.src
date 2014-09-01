@@ -4790,7 +4790,8 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Nodes_t), SAVE :: Nodes
      REAL(KIND=dp) :: u,v,w,dudx(3,3),du(3),Base,dBase(3),tBase(3), &
-                rBase(3),triBase(3),dtriBase(3,3)
+                rBase(3),triBase(3),dtriBase(3,3), G(3,3), F(3,3), detF, detG, &
+                EdgeBasis(8,3), CurlBasis(8,3)
      LOGICAL :: Parallel,stat
      INTEGER :: i,j,k,n,nj,nk,i1,i2
      INTEGER, POINTER :: EdgeMap(:,:)
@@ -4820,6 +4821,86 @@ CONTAINS
        dtriBase(1,:) = -dudx(1,:)-dudx(2,:) 
        dtriBase(2,:) =  dudx(1,:)
        dtriBase(3,:) =  dudx(2,:)
+     CASE(6)
+       n = Element % TYPE % NumberOfNodes
+       u = SUM(Basis(1:n)*Element % TYPE % NodeU(1:n))
+       v = SUM(Basis(1:n)*Element % TYPE % NodeV(1:n))
+       w = SUM(Basis(1:n)*Element % TYPE % NodeW(1:n))
+
+       G(1,:) = MATMUL(Element % TYPE % NodeU(1:n),dBasisdx(1:n,:))
+       G(2,:) = MATMUL(Element % TYPE % NodeV(1:n),dBasisdx(1:n,:))
+       G(3,:) = MATMUL(Element % TYPE % NodeW(1:n),dBasisdx(1:n,:))            
+
+       detG =  G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
+                  G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
+                  G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
+       detF = 1.0d0/detG
+       CALL InvertMatrix3x3(G,F,detG)
+       
+       !------------------------------------------------------------
+       ! The basis functions spanning the reference element space and
+       ! their Curl with respect to the local coordinates
+       ! ------------------------------------------------------------
+       EdgeBasis(1,1) = (1.0d0 - v - w)/4.0d0
+       EdgeBasis(1,2) = 0.0d0
+       EdgeBasis(1,3) = (u*(-1.0d0 + v + w))/(4.0d0*(-1.0d0 + w))
+       CurlBasis(1,1) = u/(4.0d0*(-1.0d0 + w))
+       CurlBasis(1,2) = -(-2.0d0 + v + 2.0d0*w)/(4.0d0*(-1.0d0 + w))
+       CurlBasis(1,3) = 0.25d0
+
+       EdgeBasis(2,1) = 0.0d0
+       EdgeBasis(2,2) = (1.0d0 + u - w)/4.0d0
+       EdgeBasis(2,3) = (v*(1.0d0 + u - w))/(4.0d0 - 4.0d0*w)
+       CurlBasis(2,1) = (2.0d0 + u - 2.0d0*w)/(4.0d0 - 4.0d0*w)
+       CurlBasis(2,2) = v/(4.0d0*(-1.0d0 + w))
+       CurlBasis(2,3) = 0.25d0       
+
+       EdgeBasis(3,1) = (1.0d0 + v - w)/4.0d0
+       EdgeBasis(3,2) = 0.0d0
+       EdgeBasis(3,3) = (u*(1.0d0 + v - w))/(4.0d0 - 4.0d0*w)
+       CurlBasis(3,1) = u/(4.0d0 - 4.0d0*w)
+       CurlBasis(3,2) = (2.0d0 + v - 2.0d0*w)/(4.0d0*(-1.0d0 + w))
+       CurlBasis(3,3) = -0.25d0
+
+       EdgeBasis(4,1) = 0.0d0
+       EdgeBasis(4,2) = (1.0d0 - u - w)/4.0d0
+       EdgeBasis(4,3) = (v*(-1.0d0 + u + w))/(4.0d0*(-1.0d0 + w))
+       CurlBasis(4,1) = (-2.0d0 + u + 2.0d0*w)/(4.0d0*(-1.0d0 + w))
+       CurlBasis(4,2) = v/(4.0d0 - 4.0d0*w)
+       CurlBasis(4,3) = -0.25d0
+
+       EdgeBasis(5,1) = (w*(-1.0d0 + v + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(5,2) = (w*(-1.0d0 + u + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(5,3) = (-((-1.0d0 + v)*(-1.0d0 + w)**2) + u*(v - (-1.0d0 + w)**2 - 2.0d0*v*w))/&
+            (4.0d0*(-1.0d0 + w)**2)
+       CurlBasis(5,1) = -(-1.0d0 + u + w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(5,2) = (-1.0d0 + v + w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(5,3) = 0.0d0
+
+       EdgeBasis(6,1) = -(w*(-1.0d0 + v + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(6,2) = (w*(-1.0d0 - u + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(6,3) = (-((-1.0d0 + v)*(-1.0d0 + w)**2) + u*((-1.0d0 + w)**2 + v*(-1.0d0 + 2.0d0*w)))/&
+            (4.0d0*(-1.0d0 + w)**2)
+       CurlBasis(6,1) = (1.0d0 + u - w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(6,2) = -(-1.0d0 + v + w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(6,3) = 0.0d0    
+
+       EdgeBasis(7,1) = ((1.0d0 + v - w)*w)/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(7,2) = ((1.0d0 + u - w)*w)/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(7,3) = ((1.0d0 + v)*(-1.0d0 + w)**2 + u*(v + (-1.0d0 + w)**2 - 2.0d0*v*w))/&
+            (4.0d0*(-1.0d0 + w)**2)
+       CurlBasis(7,1) = (1.0d0 + u - w)/(2.0d0 - 2.0d0*w)
+       CurlBasis(7,2) = (1.0d0 + v - w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(7,3) = 0.0d0
+
+       EdgeBasis(8,1) = (w*(-1.0d0 - v + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(8,2) = -(w*(-1.0d0 + u + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(8,3) = ((1.0d0 + v)*(-1.0d0 + w)**2 - u*(v + (-1.0d0 + w)**2 - 2.0d0*v*w))/&
+            (4.0d0*(-1.0d0 + w)**2)
+       CurlBasis(8,1) = (-1.0d0 + u + w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(8,2) = (1.0d0 + v - w)/(2.0d0 - 2.0d0*w)
+       CurlBasis(8,3) = 0.0d0
+
      END SELECT
 
      EdgeMap => GetEdgeMap(GetElementFamily(Element))
@@ -4841,6 +4922,19 @@ CONTAINS
                        dBasisdx(j,1) * dBasisdx(k,3) )
          RotWBasis(i,3) = 2.0_dp * ( dBasisdx(j,1) * dBasisdx(k,2) - &
                        dBasisdx(j,2) * dBasisdx(k,1) )
+
+       CASE(6)
+          !-----------------------------------------------------------------------
+          ! Create the referential description of basis functions and their 
+          ! spatial curl on the physical element via applying the Piola transform:
+          !-----------------------------------------------------------------------
+          DO k=1,3
+             WBasis(i,k) = SUM( G(1:3,k) * EdgeBasis(i,1:3) )
+          END DO
+          DO k=1,3
+             RotWBasis(i,k) = 1.0d0/DetF * SUM( F(k,1:3) * CurlBasis(i,1:3) )
+          END DO
+
        CASE(7)
          SELECT CASE(i)
           CASE(1)
