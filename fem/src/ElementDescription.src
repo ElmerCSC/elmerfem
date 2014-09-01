@@ -6471,154 +6471,282 @@ END IF
 !----------------------------------------------------------
 
 
-!------------------------------------------------------------------------------
-!>  Returns Whitney basis vector functions (edge elements W1 in 3D) values
-!>  and Whitney basis function global first derivatives at given point in
-!>  local coordinates.
-!------------------------------------------------------------------------------
-   FUNCTION WhitneyElementInfo( Element,Basis,dBasisdx, &
-      nedges, WhitneyBasis,dWhitneyBasisdx ) RESULT(stat)
-!------------------------------------------------------------------------------
-!
-! ARGUMENTS:
-!  Type(Element_t) :: element
-!    INPUT: element structure
-!     
-!  REAL(KIND=dp) :: u,v,w
-!    INPUT: Point at which to evaluate the basis functions
-!
-!  REAL(KIND=dp) :: Basis(:)
-!    INPUT: Barycentric basis function (#nodes) values at (u,v,w)
-!
-!  REAL(KIND=dp) :: WhitneyBasis(:,:)
-!    OUTPUT: Basis vector function (#edges,3) values at (u,v,w)
-!
-!  REAL(KIND=dp) :: dWhitneyBasisdx(:,:,:)
-!    OUTPUT: Global first derivatives of basis functions at (u,v,w)
-!
-! FUNCTION VALUE:
-!    LOGICAL :: stat
-!      If .FALSE. element is degenerate or not a Whitney element
-!   
-!------------------------------------------------------------------------------
+! --------------------------------------------------------------------------------------
+!> This subroutine contains an older design for providing edge element basis functions
+!> of the lowest-degree. Obtaining optimal accuracy with these elements may require that 
+!> the element map is affine, while the edge basis functions given by the newer design 
+!> (the function EdgeElementInfo) should also work on general meshes. 
+!------------------------------------------------------------------------
+   SUBROUTINE GetEdgeBasis( Element, WBasis, RotWBasis, Basis, dBasisdx )
+!------------------------------------------------------------------------
+     TYPE(Element_t),TARGET :: Element
+     REAL(KIND=dp) :: WBasis(:,:), RotWBasis(:,:), Basis(:), dBasisdx(:,:)
+!------------------------------------------------------------------------
+     TYPE(Element_t),POINTER :: Edge
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Nodes_t), SAVE :: Nodes
+     REAL(KIND=dp) :: u,v,w,dudx(3,3),du(3),Base,dBase(3),tBase(3), &
+                rBase(3),triBase(3),dtriBase(3,3), G(3,3), F(3,3), detF, detG, &
+                EdgeBasis(8,3), CurlBasis(8,3)
+     LOGICAL :: Parallel,stat
+     INTEGER :: i,j,k,n,nj,nk,i1,i2
+     INTEGER, POINTER :: EdgeMap(:,:)
+!------------------------------------------------------------------------
+     Mesh => CurrentModel % Solver % Mesh
+     Parallel = ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)
 
-     TYPE(Element_t) :: Element
-
-     REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),WhitneyBasis(:,:),dWhitneyBasisdx(:,:,:)
-     INTEGER :: nedges
-     LOGICAL :: stat
-!------------------------------------------------------------------------------
-!    Local variables
-!------------------------------------------------------------------------------
-
-     INTEGER :: i,j,k,l,q,n,dim,cdim
-
-!------------------------------------------------------------------------------
-
-     n    = Element % TYPE % NumberOfNodes
-     dim  = Element % TYPE % DIMENSION
-     cdim = CoordinateSystemDimension()
-
-     IF ( (dim /= 3) .OR. (cdim /= 3 ) ) THEN
-       stat = .FALSE.
-       CALL Error( 'WhitheyElementInfo', 'Whitney elements implemented only in 3D' )
-       RETURN
+     IF (Element % TYPE % BasisFunctionDegree>1) THEN
+       CALL Fatal('GetEdgeBasis',"Can't handle but linear elements, sorry.") 
      END IF
 
-     nedges = 6 ! tetras, 12 for bricks
+     SELECT CASE(Element % TYPE % ElementCode / 100)
+     CASE(4,7,8)
+       n = Element % TYPE % NumberOfNodes
+       u = SUM(Basis(1:n)*Element % TYPE % NodeU(1:n))
+       v = SUM(Basis(1:n)*Element % TYPE % NodeV(1:n))
+       w = SUM(Basis(1:n)*Element % TYPE % NodeW(1:n))
 
-     DO q=1,nedges
-! Find appropriate end nodes (i,j) for edge q
-       IF (nedges == 6) THEN
-! For tetras
-         SELECT CASE (q)
-           CASE(1)
-           i=1
-           j=2
-           CASE(2)
-           i=2
-           j=3
-           CASE(3)
-           i=3
-           j=1
-           CASE(4)
-           i=4
-           j=1
-           CASE(5)
-           i=4
-           j=2
-           CASE(6)
-           i=3
-           j=4
+       dudx(1,:) = MATMUL(Element % TYPE % NodeU(1:n),dBasisdx(1:n,:))
+       dudx(2,:) = MATMUL(Element % TYPE % NodeV(1:n),dBasisdx(1:n,:))
+       dudx(3,:) = MATMUL(Element % TYPE % NodeW(1:n),dBasisdx(1:n,:))
+
+       triBase(1) = 1-u-v
+       triBase(2) = u
+       triBase(3) = v
+
+       dtriBase(1,:) = -dudx(1,:)-dudx(2,:) 
+       dtriBase(2,:) =  dudx(1,:)
+       dtriBase(3,:) =  dudx(2,:)
+     CASE(6)
+       n = Element % TYPE % NumberOfNodes
+       u = SUM(Basis(1:n)*Element % TYPE % NodeU(1:n))
+       v = SUM(Basis(1:n)*Element % TYPE % NodeV(1:n))
+       w = SUM(Basis(1:n)*Element % TYPE % NodeW(1:n))
+
+       G(1,:) = MATMUL(Element % TYPE % NodeU(1:n),dBasisdx(1:n,:))
+       G(2,:) = MATMUL(Element % TYPE % NodeV(1:n),dBasisdx(1:n,:))
+       G(3,:) = MATMUL(Element % TYPE % NodeW(1:n),dBasisdx(1:n,:))            
+
+       detG =  G(1,1) * ( G(2,2)*G(3,3) - G(2,3)*G(3,2) ) + &
+                  G(1,2) * ( G(2,3)*G(3,1) - G(2,1)*G(3,3) ) + &
+                  G(1,3) * ( G(2,1)*G(3,2) - G(2,2)*G(3,1) )
+       detF = 1.0d0/detG
+       CALL InvertMatrix3x3(G,F,detG)
+       
+       !------------------------------------------------------------
+       ! The basis functions spanning the reference element space and
+       ! their Curl with respect to the local coordinates
+       ! ------------------------------------------------------------
+       EdgeBasis(1,1) = (1.0d0 - v - w)/4.0d0
+       EdgeBasis(1,2) = 0.0d0
+       EdgeBasis(1,3) = (u*(-1.0d0 + v + w))/(4.0d0*(-1.0d0 + w))
+       CurlBasis(1,1) = u/(4.0d0*(-1.0d0 + w))
+       CurlBasis(1,2) = -(-2.0d0 + v + 2.0d0*w)/(4.0d0*(-1.0d0 + w))
+       CurlBasis(1,3) = 0.25d0
+
+       EdgeBasis(2,1) = 0.0d0
+       EdgeBasis(2,2) = (1.0d0 + u - w)/4.0d0
+       EdgeBasis(2,3) = (v*(1.0d0 + u - w))/(4.0d0 - 4.0d0*w)
+       CurlBasis(2,1) = (2.0d0 + u - 2.0d0*w)/(4.0d0 - 4.0d0*w)
+       CurlBasis(2,2) = v/(4.0d0*(-1.0d0 + w))
+       CurlBasis(2,3) = 0.25d0       
+
+       EdgeBasis(3,1) = (1.0d0 + v - w)/4.0d0
+       EdgeBasis(3,2) = 0.0d0
+       EdgeBasis(3,3) = (u*(1.0d0 + v - w))/(4.0d0 - 4.0d0*w)
+       CurlBasis(3,1) = u/(4.0d0 - 4.0d0*w)
+       CurlBasis(3,2) = (2.0d0 + v - 2.0d0*w)/(4.0d0*(-1.0d0 + w))
+       CurlBasis(3,3) = -0.25d0
+
+       EdgeBasis(4,1) = 0.0d0
+       EdgeBasis(4,2) = (1.0d0 - u - w)/4.0d0
+       EdgeBasis(4,3) = (v*(-1.0d0 + u + w))/(4.0d0*(-1.0d0 + w))
+       CurlBasis(4,1) = (-2.0d0 + u + 2.0d0*w)/(4.0d0*(-1.0d0 + w))
+       CurlBasis(4,2) = v/(4.0d0 - 4.0d0*w)
+       CurlBasis(4,3) = -0.25d0
+
+       EdgeBasis(5,1) = (w*(-1.0d0 + v + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(5,2) = (w*(-1.0d0 + u + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(5,3) = (-((-1.0d0 + v)*(-1.0d0 + w)**2) + u*(v - (-1.0d0 + w)**2 - 2.0d0*v*w))/&
+            (4.0d0*(-1.0d0 + w)**2)
+       CurlBasis(5,1) = -(-1.0d0 + u + w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(5,2) = (-1.0d0 + v + w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(5,3) = 0.0d0
+
+       EdgeBasis(6,1) = -(w*(-1.0d0 + v + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(6,2) = (w*(-1.0d0 - u + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(6,3) = (-((-1.0d0 + v)*(-1.0d0 + w)**2) + u*((-1.0d0 + w)**2 + v*(-1.0d0 + 2.0d0*w)))/&
+            (4.0d0*(-1.0d0 + w)**2)
+       CurlBasis(6,1) = (1.0d0 + u - w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(6,2) = -(-1.0d0 + v + w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(6,3) = 0.0d0    
+
+       EdgeBasis(7,1) = ((1.0d0 + v - w)*w)/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(7,2) = ((1.0d0 + u - w)*w)/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(7,3) = ((1.0d0 + v)*(-1.0d0 + w)**2 + u*(v + (-1.0d0 + w)**2 - 2.0d0*v*w))/&
+            (4.0d0*(-1.0d0 + w)**2)
+       CurlBasis(7,1) = (1.0d0 + u - w)/(2.0d0 - 2.0d0*w)
+       CurlBasis(7,2) = (1.0d0 + v - w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(7,3) = 0.0d0
+
+       EdgeBasis(8,1) = (w*(-1.0d0 - v + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(8,2) = -(w*(-1.0d0 + u + w))/(4.0d0*(-1.0d0 + w))
+       EdgeBasis(8,3) = ((1.0d0 + v)*(-1.0d0 + w)**2 - u*(v + (-1.0d0 + w)**2 - 2.0d0*v*w))/&
+            (4.0d0*(-1.0d0 + w)**2)
+       CurlBasis(8,1) = (-1.0d0 + u + w)/(2.0d0*(-1.0d0 + w))
+       CurlBasis(8,2) = (1.0d0 + v - w)/(2.0d0 - 2.0d0*w)
+       CurlBasis(8,3) = 0.0d0
+
+     END SELECT
+
+     EdgeMap => LGetEdgeMap(Element % TYPE % ElementCode / 100)
+     DO i=1,SIZE(Edgemap,1)
+       j = EdgeMap(i,1); k = EdgeMap(i,2)
+
+       nj = Element % Nodeindexes(j)
+       IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
+       nk = Element % Nodeindexes(k)
+       IF (Parallel) nk=Mesh % ParallelInfo % GlobalDOFs(nk)
+
+       SELECT CASE(Element % TYPE % ElementCode / 100)
+       CASE(3,5)
+         WBasis(i,:) = Basis(j)*dBasisdx(k,:) - Basis(k)*dBasisdx(j,:)
+
+         RotWBasis(i,1) = 2.0_dp * ( dBasisdx(j,2) * dBasisdx(k,3) - &
+                       dBasisdx(j,3) * dBasisdx(k,2) )
+         RotWBasis(i,2) = 2.0_dp * ( dBasisdx(j,3) * dBasisdx(k,1) - &
+                       dBasisdx(j,1) * dBasisdx(k,3) )
+         RotWBasis(i,3) = 2.0_dp * ( dBasisdx(j,1) * dBasisdx(k,2) - &
+                       dBasisdx(j,2) * dBasisdx(k,1) )
+
+       CASE(6)
+          !-----------------------------------------------------------------------
+          ! Create the referential description of basis functions and their 
+          ! spatial curl on the physical element via applying the Piola transform:
+          !-----------------------------------------------------------------------
+          DO k=1,3
+             WBasis(i,k) = SUM( G(1:3,k) * EdgeBasis(i,1:3) )
+          END DO
+          DO k=1,3
+             RotWBasis(i,k) = 1.0d0/DetF * SUM( F(k,1:3) * CurlBasis(i,1:3) )
+          END DO
+
+       CASE(7)
+         SELECT CASE(i)
+          CASE(1)
+            j=1;k=2; Base=(1-w)/2; dBase=-dudx(3,:)/2
+          CASE(2)
+            j=2;k=3; Base=(1-w)/2; dBase=-dudx(3,:)/2
+          CASE(3)
+            j=3;k=1; Base=(1-w)/2; dBase=-dudx(3,:)/2
+          CASE(4)
+            j=1;k=2; Base=(1+w)/2; dBase= dudx(3,:)/2
+          CASE(5)
+            j=2;k=3; Base=(1+w)/2; dBase= dudx(3,:)/2
+          CASE(6)
+            j=3;k=1; Base=(1+w)/2; dBase= dudx(3,:)/2
+          CASE(7)
+            Base=triBase(1); dBase=dtriBase(1,:); du=dudx(3,:)/2
+          CASE(8)
+            Base=triBase(2); dBase=dtriBase(2,:); du=dudx(3,:)/2
+          CASE(9)
+            Base=triBase(3); dBase=dtriBase(3,:); du=dudx(3,:)/2
          END SELECT
-       ELSE
-         IF (nedges == 12) THEN
-! For bricks
-           SELECT CASE (q)
-             CASE(1)
-             i=1
-             j=2
-             CASE(2)
-             i=2
-             j=3
-             CASE(3)
-             i=3
-             j=4
-             CASE(4)
-             i=4
-             j=1
-             CASE(5)
-             i=5
-             j=6
-             CASE(6)
-             i=6
-             j=7
-             CASE(7)
-             i=7
-             j=8
-             CASE(8)
-             i=8
-             j=5
-             CASE(9)
-             i=1
-             j=5
-             CASE(10)
-             i=2
-             j=6
-             CASE(11)
-             i=3
-             j=7
-             CASE(12)
-             i=4
-             j=8
-           END SELECT
+
+         IF(i<=6) THEN
+            tBase = (triBase(j)*dtriBase(k,:)-triBase(k)*dtriBase(j,:))
+            rBase(1) = 2*Base*(dtriBase(j,2)*dtriBase(k,3)-dtriBase(k,2)*dtriBase(j,3)) + &
+                              dBase(2)*tBase(3) - dBase(3)*tBase(2)
+
+            rBase(2) = 2*Base*(dtriBase(j,3)*dtriBase(k,1)-dtriBase(k,3)*dtriBase(j,1)) + &
+                              dBase(3)*tBase(1) - dBase(1)*tBase(3)
+
+            rBase(3) = 2*Base*(dtriBase(j,1)*dtriBase(k,2)-dtriBase(k,1)*dtriBase(j,2)) + &
+                              dBase(1)*tBase(2) - dBase(2)*tBase(1)
+
+            RotWBasis(i,:)=rBase
+            WBasis(i,:)=tBase*Base
          ELSE
-           CALL Fatal( 'WhitneyElementInfo', &
-               'Not appropriate number of edges for Whitney elements' )
+            WBasis(i,:)=Base*du
+            RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))
+            RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))
+            RotWBasis(i,3)=(dBase(1)*du(2) - dBase(2)*du(1))
          END IF
+       CASE(4)
+         SELECT CASE(i)
+          CASE(1)
+             du=dudx(1,:); Base=(1-v)*(1-w)
+             dBase(:)=-dudx(2,:)*(1-w)-(1-v)*dudx(3,:)
+          CASE(2)
+             du=dudx(2,:); Base=(1+u)*(1-w)
+             dBase(:)= dudx(1,:)*(1-w)-(1+u)*dudx(3,:)
+          CASE(3)
+             du=-dudx(1,:); Base=(1+v)*(1-w)
+             dBase(:)= dudx(2,:)*(1-w)-(1+v)*dudx(3,:)
+          CASE(4)
+             du=-dudx(2,:); Base=(1-u)*(1-w)
+             dBase(:)=-dudx(1,:)*(1-w)-(1-u)*dudx(3,:)
+         END SELECT
+
+         wBasis(i,:) = Base*du/n
+         RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))/n
+         RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))/n
+         RotWBasis(i,3) = (dBase(1)*du(2) - dBase(2)*du(1))/n
+       CASE(8)
+         SELECT CASE(i)
+          CASE(1)
+             du=dudx(1,:); Base=(1-v)*(1-w)
+             dBase(:)=-dudx(2,:)*(1-w)-(1-v)*dudx(3,:)
+          CASE(2)
+             du=dudx(2,:); Base=(1+u)*(1-w)
+             dBase(:)= dudx(1,:)*(1-w)-(1+u)*dudx(3,:)
+          CASE(3)
+             du=dudx(1,:); Base=(1+v)*(1-w)
+             dBase(:)= dudx(2,:)*(1-w)-(1+v)*dudx(3,:)
+          CASE(4)
+             du=dudx(2,:); Base=(1-u)*(1-w)
+             dBase(:)=-dudx(1,:)*(1-w)-(1-u)*dudx(3,:)
+          CASE(5)
+             du=dudx(1,:); Base=(1-v)*(1+w)
+             dBase(:)=-dudx(2,:)*(1+w)+(1-v)*dudx(3,:)
+          CASE(6)
+             du=dudx(2,:); Base=(1+u)*(1+w)
+             dBase(:)= dudx(1,:)*(1+w)+(1+u)*dudx(3,:)
+          CASE(7)
+             du=dudx(1,:); Base=(1+v)*(1+w)
+             dBase(:)= dudx(2,:)*(1+w)+(1+v)*dudx(3,:)
+          CASE(8)
+             du=dudx(2,:); Base=(1-u)*(1+w)
+             dBase(:)=-dudx(1,:)*(1+w)+(1-u)*dudx(3,:)
+          CASE(9)
+             du=dudx(3,:); Base=(1-u)*(1-v)
+             dBase(:)=-dudx(1,:)*(1-v)-(1-u)*dudx(2,:)
+          CASE(10)
+             du=dudx(3,:); Base=(1+u)*(1-v)
+             dBase(:)= dudx(1,:)*(1-v)-(1+u)*dudx(2,:)
+          CASE(11)
+             du=dudx(3,:); Base=(1+u)*(1+v)
+             dBase(:)= dudx(1,:)*(1+v)+(1+u)*dudx(2,:)
+          CASE(12)
+             du=dudx(3,:); Base=(1-u)*(1+v)
+             dBase(:)=-dudx(1,:)*(1+v)+(1-u)*dudx(2,:)
+         END SELECT
+
+         wBasis(i,:)=Base*du/n
+         RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))/n
+         RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))/n
+         RotWBasis(i,3)=(dBase(1)*du(2) - dBase(2)*du(1))/n
+       CASE DEFAULT
+         CALL Fatal( 'Edge Basis', 'Not implemented for this element type.')
+       END SELECT
+
+       IF( nk < nj ) THEN
+         WBasis(i,:) = -WBasis(i,:); RotWBasis(i,:) = -RotWBasis(i,:)
        END IF
-
-       IF (Element % NodeIndexes (i) < Element % NodeIndexes (j) ) THEN
-         k = i
-         i = j
-         j = k
-       END IF
-
-       DO k=1, dim !or cdim=3, kth component of the basis function q
-         WhitneyBasis(q,k) = Basis(i)*dBasisdx(j,k) &
-             - Basis(j)*dBasisdx(i,k)
-         DO l=1,dim
-           dWhitneyBasisdx(q,k,l) = &
-               dBasisdx(i,l)*dBasisdx(j,k) - dBasisdx(j,l)*dBasisdx(i,k)
-         END DO
-       END DO
-
      END DO
 !------------------------------------------------------------------------------
-   END FUNCTION WhitneyElementInfo
+   END SUBROUTINE GetEdgeBasis
 !------------------------------------------------------------------------------
-
-
 
 
 !------------------------------------------------------------------------------
@@ -7249,7 +7377,7 @@ END IF
       EdgeMap => Brick
     CASE DEFAULT
       WRITE( Message,'(A,I0,A)') 'Element family ',ElementFamily,' is not known!'
-      CALL Fatal( 'ElementMetric', Message )
+      CALL Fatal( 'LGetEdgeMap', Message )
     END SELECT
  
     IF ( .NOT. Initialized(ElementFamily) ) THEN
@@ -8572,159 +8700,6 @@ END FUNCTION PointFaceDistance
        retVal = .TRUE.
     END IF
   END FUNCTION wedgeOrdering
-
-
-!------------------------------------------------------------------------------
-!>  Returns Whitney basis vector functions (face elements W2 in 3D) values
-!>  and Whitney basis function global first derivatives at given point in
-!>  local coordinates.
-!>  IMPORTANT NOTE: For performing approximation by using face elements consider
-!>  utilizing the function RTElementInfo which is newer, offers better
-!>  extendability and is expected to be the place where future developments
-!>  are directed.
-!------------------------------------------------------------------------------
-   FUNCTION Whitney2ElementInfo( Element,Basis,dBasisdx, &
-      nfaces, WhitneyBasis,dWhitneyBasisdx ) RESULT(stat)
-!------------------------------------------------------------------------------
-!
-! ARGUMENTS:
-!  Type(Element_t) :: element
-!    INPUT: element structure
-!
-!  Type(Nodes_t) :: Nodes
-!    INPUT: element nodal coordinates
-!     
-!  REAL(KIND=dp) :: u,v,w
-!    INPUT: Point at which to evaluate the basis functions
-!
-!  REAL(KIND=dp) :: Basis(:)
-!    INPUT: Barycentric basis function (#nodes) values at (u,v,w)
-!
-!  REAL(KIND=dp) :: WhitneyBasis(:,:)
-!    OUTPUT: Basis vector function (#faces,3) values at (u,v,w)
-!
-!  REAL(KIND=dp) :: dWhitneyBasisdx(:,:,:)
-!    OUTPUT: Global first derivatives of basis functions at (u,v,w)
-!
-! FUNCTION VALUE:
-!    LOGICAL :: stat
-!      If .FALSE. element is degenerate or not a Whitney element
-!   
-!------------------------------------------------------------------------------
-
-     TYPE(Element_t) :: Element
-     REAL(KIND=dp) :: Basis(:),dBasisdx(:,:),WhitneyBasis(:,:),dWhitneyBasisdx(:,:,:)
-     INTEGER :: nfaces
-     LOGICAL :: stat
-!------------------------------------------------------------------------------
-!    Local variables
-!------------------------------------------------------------------------------
-
-     INTEGER :: i,j,k,l,q,n,dim,cdim,ip,jp,kp
-     INTEGER, DIMENSION(:), POINTER :: Ind
-     REAL(KIND=dp), DIMENSION(3,3) :: apu
-     REAL (KIND=dp) :: Edge(3,3)
-!------------------------------------------------------------------------------
-
-     n    = Element % TYPE % NumberOfNodes
-     dim  = Element % TYPE % DIMENSION
-     cdim = CoordinateSystemDimension()
-
-     IF ( (dim /= 3) .OR. (cdim /= 3 ) ) THEN
-       stat = .FALSE.
-       CALL Error( 'Whitney2ElementInfo', &
-              'Whitney elements implemented only in 3D' )
-       RETURN
-     END IF
-
-     nfaces = 4 ! tetras, 6 for bricks not supported
-
-     DO q=1,nfaces
-! Find appropriate end nodes (i,j,k) for face q
-       IF (nfaces == 4) THEN
-! For tetras
-         SELECT CASE (q)
-           CASE(1)
-           i=1
-           j=2
-           k=3
-           CASE(2)
-           i=1
-           j=2
-           k=4
-           CASE(3)
-           i=1
-           j=3
-           k=4
-           CASE(4)
-           i=2
-           j=3
-           k=4
-         END SELECT
-       ELSE
-         CALL Fatal( 'Whitney2ElementInfo', &
-              'Not appropriate number of edges for W2 elements' )
-         STOP
-       END IF
-
-! Guess the face direction is defined between elements (not internal)
-     Ind => Element % Nodeindexes
-     IF ( (Ind(i) < Ind(j)) .AND. (Ind(i) < Ind(k)) ) THEN
-       ip = i
-       IF  ( Ind(j) < Ind(k) ) THEN
-         jp = j
-         kp = k
-       ELSE
-         jp = k
-         kp = j
-       END IF
-     ELSE IF ( ( Ind(j) < Ind(i) ) .AND. ( Ind(j) < Ind(k) ) ) THEN
-       ip = j
-       IF ( Ind(i) < Ind(k) ) THEN
-         jp = i
-         kp = k
-       ELSE
-         jp = k
-         kp = i
-       END IF
-     ELSE
-       ip = k
-       IF  ( Ind(i) < Ind(j) ) THEN
-         jp = i
-         kp = j
-       ELSE
-         jp = j
-         kp = i
-       END IF
-     END IF
-
-! Put the beef in here
-! Components of the basis function q
-       apu(1,1) = dBasisdx(jp,2)*dBasisdx(kp,3) - dBasisdx(jp,3)*dBasisdx(kp,2)
-       apu(1,2) = dBasisdx(kp,2)*dBasisdx(ip,3) - dBasisdx(kp,3)*dBasisdx(ip,2)
-       apu(1,3) = dBasisdx(ip,2)*dBasisdx(jp,3) - dBasisdx(ip,3)*dBasisdx(jp,2)
-       apu(2,1) = dBasisdx(jp,3)*dBasisdx(kp,1) - dBasisdx(jp,1)*dBasisdx(kp,3)
-       apu(2,2) = dBasisdx(kp,3)*dBasisdx(ip,1) - dBasisdx(kp,1)*dBasisdx(ip,3)
-       apu(2,3) = dBasisdx(ip,3)*dBasisdx(jp,1) - dBasisdx(ip,1)*dBasisdx(jp,3)
-       apu(3,1) = dBasisdx(jp,1)*dBasisdx(kp,2) - dBasisdx(jp,2)*dBasisdx(kp,1)
-       apu(3,2) = dBasisdx(kp,1)*dBasisdx(ip,2) - dBasisdx(kp,2)*dBasisdx(ip,1)
-       apu(3,3) = dBasisdx(ip,1)*dBasisdx(jp,2) - dBasisdx(ip,2)*dBasisdx(jp,1)
-! Component k
-       DO k=1,dim
-         WhitneyBasis(q,k) = 2._dp * ( Basis(ip) * apu(k,1) + &
-             Basis(jp) * apu(k,2) + Basis(kp) * apu(k,3) )
-!         WhitneyBasis(q,k) = WhitneyBasis(q,k) / SQRT(SUM(CrossProduct(Edge(1,:),Edge(2,:))**2)) * 2._dp
-! And its derivative l
-         DO l=1,dim
-           dWhitneyBasisdx(q,k,l) = 2._dp * ( dBasisdx(ip,l) * apu(k,1) + &
-               dBasisdx(jp,l) * apu(k,2) + dBasisdx(kp,l) * apu(k,3) )
-         END DO
-       END DO
-     END DO
-   END FUNCTION Whitney2ElementInfo
-!------------------------------------------------------------------------------
-
-
 
 
 END MODULE ElementDescription

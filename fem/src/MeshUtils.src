@@ -5302,195 +5302,6 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
-
-
-! >Returns basis functions for Whitney elements of lowest degree (edge elements)
-! ----------------------------------------------------------------------
-!------------------------------------------------------------------------
-   SUBROUTINE GetEdgeBasisLocal( Element, WBasis, RotWBasis, Basis, dBasisdx )
-!------------------------------------------------------------------------
-     TYPE(Element_t),TARGET :: Element
-     REAL(KIND=dp) :: WBasis(:,:), RotWBasis(:,:), Basis(:), dBasisdx(:,:)
-!------------------------------------------------------------------------
-     TYPE(Element_t),POINTER :: Edge
-     TYPE(Mesh_t), POINTER :: Mesh
-     TYPE(Nodes_t), SAVE :: Nodes
-     REAL(KIND=dp) :: u,v,w,dudx(3,3),du(3),Base,dBase(3),tBase(3), &
-                rBase(3),triBase(3),dtriBase(3,3)
-     LOGICAL :: Parallel,stat
-     INTEGER :: i,j,k,n,nj,nk,i1,i2, ElemFam
-     INTEGER, POINTER :: EdgeMap(:,:)
-!------------------------------------------------------------------------
-     Mesh => CurrentModel % Mesh
-!GetMesh()
-     Parallel = ParEnv % PEs>1
-
-     IF (Element % TYPE % BasisFunctionDegree>1) THEN
-       CALL Fatal('GetEdgeBasis',"Can't handle but linear elements, sorry.") 
-     END IF
-
-     ElemFam = Element % TYPE % ElementCode / 100
-
-     SELECT CASE( ElemFam ) 
-     CASE(4,7,8)
-       n = Element % TYPE % NumberOfNodes
-       u = SUM(Basis(1:n)*Element % TYPE % NodeU(1:n))
-       v = SUM(Basis(1:n)*Element % TYPE % NodeV(1:n))
-       w = SUM(Basis(1:n)*Element % TYPE % NodeW(1:n))
-
-       dudx(1,:) = MATMUL(Element % TYPE % NodeU(1:n),dBasisdx(1:n,:))
-       dudx(2,:) = MATMUL(Element % TYPE % NodeV(1:n),dBasisdx(1:n,:))
-       dudx(3,:) = MATMUL(Element % TYPE % NodeW(1:n),dBasisdx(1:n,:))
-
-       triBase(1) = 1-u-v
-       triBase(2) = u
-       triBase(3) = v
-
-       dtriBase(1,:) = -dudx(1,:)-dudx(2,:) 
-       dtriBase(2,:) =  dudx(1,:)
-       dtriBase(3,:) =  dudx(2,:)
-     END SELECT
-
-     EdgeMap => LGetEdgeMap( ElemFam )
-
-
-     DO i=1,SIZE(Edgemap,1)
-       j = EdgeMap(i,1); k = EdgeMap(i,2)
-
-       nj = Element % Nodeindexes(j)
-       IF (Parallel) nj=Mesh % ParallelInfo % GlobalDOFs(nj)
-       nk = Element % Nodeindexes(k)
-       IF (Parallel) nk=Mesh % ParallelInfo % GlobalDOFs(nk)
-
-       SELECT CASE(ElemFam)
-       CASE(3,5)
-         WBasis(i,:) = Basis(j)*dBasisdx(k,:) - Basis(k)*dBasisdx(j,:)
-
-         RotWBasis(i,1) = 2.0_dp * ( dBasisdx(j,2) * dBasisdx(k,3) - &
-                       dBasisdx(j,3) * dBasisdx(k,2) )
-         RotWBasis(i,2) = 2.0_dp * ( dBasisdx(j,3) * dBasisdx(k,1) - &
-                       dBasisdx(j,1) * dBasisdx(k,3) )
-         RotWBasis(i,3) = 2.0_dp * ( dBasisdx(j,1) * dBasisdx(k,2) - &
-                       dBasisdx(j,2) * dBasisdx(k,1) )
-       CASE(7)
-         SELECT CASE(i)
-          CASE(1)
-            j=1;k=2; Base=(1-w)/2; dBase=-dudx(3,:)/2
-          CASE(2)
-            j=2;k=3; Base=(1-w)/2; dBase=-dudx(3,:)/2
-          CASE(3)
-            j=3;k=1; Base=(1-w)/2; dBase=-dudx(3,:)/2
-          CASE(4)
-            j=1;k=2; Base=(1+w)/2; dBase= dudx(3,:)/2
-          CASE(5)
-            j=2;k=3; Base=(1+w)/2; dBase= dudx(3,:)/2
-          CASE(6)
-            j=3;k=1; Base=(1+w)/2; dBase= dudx(3,:)/2
-          CASE(7)
-            Base=triBase(1); dBase=dtriBase(1,:); du=dudx(3,:)/2
-          CASE(8)
-            Base=triBase(2); dBase=dtriBase(2,:); du=dudx(3,:)/2
-          CASE(9)
-            Base=triBase(3); dBase=dtriBase(3,:); du=dudx(3,:)/2
-         END SELECT
-
-         IF(i<=6) THEN
-            tBase = (triBase(j)*dtriBase(k,:)-triBase(k)*dtriBase(j,:))
-            rBase(1) = 2*Base*(dtriBase(j,2)*dtriBase(k,3)-dtriBase(k,2)*dtriBase(j,3)) + &
-                              dBase(2)*tBase(3) - dBase(3)*tBase(2)
-
-            rBase(2) = 2*Base*(dtriBase(j,3)*dtriBase(k,1)-dtriBase(k,3)*dtriBase(j,1)) + &
-                              dBase(3)*tBase(1) - dBase(1)*tBase(3)
-
-            rBase(3) = 2*Base*(dtriBase(j,1)*dtriBase(k,2)-dtriBase(k,1)*dtriBase(j,2)) + &
-                              dBase(1)*tBase(2) - dBase(2)*tBase(1)
-
-            RotWBasis(i,:)=rBase
-            WBasis(i,:)=tBase*Base
-         ELSE
-            WBasis(i,:)=Base*du
-            RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))
-            RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))
-            RotWBasis(i,3)=(dBase(1)*du(2) - dBase(2)*du(1))
-         END IF
-       CASE(4)
-         SELECT CASE(i)
-          CASE(1)
-             du=dudx(1,:); Base=(1-v)*(1-w)
-             dBase(:)=-dudx(2,:)*(1-w)-(1-v)*dudx(3,:)
-          CASE(2)
-             du=dudx(2,:); Base=(1+u)*(1-w)
-             dBase(:)= dudx(1,:)*(1-w)-(1+u)*dudx(3,:)
-          CASE(3)
-             du=-dudx(1,:); Base=(1+v)*(1-w)
-             dBase(:)= dudx(2,:)*(1-w)-(1+v)*dudx(3,:)
-          CASE(4)
-             du=-dudx(2,:); Base=(1-u)*(1-w)
-             dBase(:)=-dudx(1,:)*(1-w)-(1-u)*dudx(3,:)
-         END SELECT
-
-         wBasis(i,:) = Base*du/n
-         RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))/n
-         RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))/n
-         RotWBasis(i,3) = (dBase(1)*du(2) - dBase(2)*du(1))/n
-       CASE(8)
-         SELECT CASE(i)
-          CASE(1)
-             du=dudx(1,:); Base=(1-v)*(1-w)
-             dBase(:)=-dudx(2,:)*(1-w)-(1-v)*dudx(3,:)
-          CASE(2)
-             du=dudx(2,:); Base=(1+u)*(1-w)
-             dBase(:)= dudx(1,:)*(1-w)-(1+u)*dudx(3,:)
-          CASE(3)
-             du=dudx(1,:); Base=(1+v)*(1-w)
-             dBase(:)= dudx(2,:)*(1-w)-(1+v)*dudx(3,:)
-          CASE(4)
-             du=dudx(2,:); Base=(1-u)*(1-w)
-             dBase(:)=-dudx(1,:)*(1-w)-(1-u)*dudx(3,:)
-          CASE(5)
-             du=dudx(1,:); Base=(1-v)*(1+w)
-             dBase(:)=-dudx(2,:)*(1+w)+(1-v)*dudx(3,:)
-          CASE(6)
-             du=dudx(2,:); Base=(1+u)*(1+w)
-             dBase(:)= dudx(1,:)*(1+w)+(1+u)*dudx(3,:)
-          CASE(7)
-             du=dudx(1,:); Base=(1+v)*(1+w)
-             dBase(:)= dudx(2,:)*(1+w)+(1+v)*dudx(3,:)
-          CASE(8)
-             du=dudx(2,:); Base=(1-u)*(1+w)
-             dBase(:)=-dudx(1,:)*(1+w)+(1-u)*dudx(3,:)
-          CASE(9)
-             du=dudx(3,:); Base=(1-u)*(1-v)
-             dBase(:)=-dudx(1,:)*(1-v)-(1-u)*dudx(2,:)
-          CASE(10)
-             du=dudx(3,:); Base=(1+u)*(1-v)
-             dBase(:)= dudx(1,:)*(1-v)-(1+u)*dudx(2,:)
-          CASE(11)
-             du=dudx(3,:); Base=(1+u)*(1+v)
-             dBase(:)= dudx(1,:)*(1+v)+(1+u)*dudx(2,:)
-          CASE(12)
-             du=dudx(3,:); Base=(1-u)*(1+v)
-             dBase(:)=-dudx(1,:)*(1+v)+(1-u)*dudx(2,:)
-         END SELECT
-
-         wBasis(i,:)=Base*du/n
-         RotWBasis(i,1)=(dBase(2)*du(3) - dBase(3)*du(2))/n
-         RotWBasis(i,2)=(dBase(3)*du(1) - dBase(1)*du(3))/n
-         RotWBasis(i,3)=(dBase(1)*du(2) - dBase(2)*du(1))/n
-       CASE DEFAULT
-         CALL Fatal( 'Edge Basis', 'Not implemented for this element type.')
-       END SELECT
-
-       IF( nk < nj ) THEN
-         WBasis(i,:) = -WBasis(i,:); RotWBasis(i,:) = -RotWBasis(i,:)
-       END IF
-     END DO
-!------------------------------------------------------------------------------
-   END SUBROUTINE GetEdgeBasisLocal
-!------------------------------------------------------------------------------
-
-
-
   !---------------------------------------------------------------------------
   !> Create a projector for mixes nodal / edge problems assuming constant level
   !> in the 2nd direction. This kind of projector is suitable for 2D meshes where
@@ -6771,9 +6582,7 @@ END SUBROUTINE GetMaxDefs
                 ELSE
                   stat = ElementInfo( Element, Nodes, u, v, w, &
                       detJ, Basis, dBasisdx )
-                  ! This is defined in DefUtils which depends on MeshUtils...
-                  ! therefore a local version is copied to this module. 
-                  CALL GetEdgeBasisLocal(Element,WBasis,RotWBasis,Basis,dBasisdx)
+                  CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
                 END IF
               ELSE
                 stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
@@ -6788,7 +6597,7 @@ END SUBROUTINE GetMaxDefs
                 ELSE
                   stat = ElementInfo( ElementM, NodesM, um, vm, wm, &
                       detJ, BasisM, dBasisdx )
-                  CALL GetEdgeBasisLocal(ElementM,WBasisM,RotWBasis,BasisM,dBasisdx)
+                  CALL GetEdgeBasis(ElementM,WBasisM,RotWBasis,BasisM,dBasisdx)
                 END IF
               ELSE
                 stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
