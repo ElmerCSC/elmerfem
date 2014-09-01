@@ -2,14 +2,19 @@
 ADD_EXECUTABLE(findnorm findnorm_cmake.c)
 
 SET(ELMERGRID_BIN "${CMAKE_BINARY_DIR}/elmergrid/src/ElmerGrid")
-SET(ELMERSOLVER_BIN "${CMAKE_BINARY_DIR}/fem/src/ElmerSolver")
+IF(WITH_MPI)
+  SET(ELMERSOLVER_BIN "${CMAKE_BINARY_DIR}/fem/src/ElmerSolver_mpi")
+ELSE()
+  SET(ELMERSOLVER_BIN "${CMAKE_BINARY_DIR}/fem/src/ElmerSolver")
+ENDIF()
 SET(FINDNORM_BIN "${CMAKE_CURRENT_BINARY_DIR}/findnorm")
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/runtests.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/runtests)
 
-SET(ENV{ELMER_LIB} "{CMAKE_BINARY_DIR}/fem/src")
-SET(ENV{ELMER_HOME} "{CMAKE_BINARY_DIR}/fem/src")
+# Environment variables for ElmerSolver
+# SET(ENV{ELMER_LIB} "${CMAKE_BINARY_DIR}/fem/src")
+# SET(ENV{ELMER_HOME} "${CMAKE_BINARY_DIR}/fem/src")
 
 ADD_SUBDIRECTORY(1dtests)
 ADD_SUBDIRECTORY(1sttime)

@@ -387,7 +387,7 @@ CONTAINS
 
       TYPE(ElementType_t) :: element
 
-      LOGICAL :: gotit
+      LOGICAL :: gotit, fexist
 !------------------------------------------------------------------------------
 !     PRINT*,' '
 !     PRINT*,'----------------------------------------------'
@@ -420,29 +420,41 @@ CONTAINS
       tstr = 'ELMER_LIB'//CHAR(0)
 #endif
       CALL envir( tstr,elmer_home,k ) 
-
+      
+      fexist = .FALSE.
       IF (  k > 0 ) THEN
          WRITE( tstr, '(a,a)' ) elmer_home(1:k),'/elements.def'
-      ELSE
+	 INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
+      END IF
+      IF (.NOT. fexist) THEN
 #ifdef USE_ISO_C_BINDINGS
         tstr = 'ELMER_HOME'
 #else
         tstr = 'ELMER_HOME'//CHAR(0)
 #endif
         CALL envir( tstr,elmer_home,k ) 
-        
 #include "../config.h"
-
         IF ( k > 0 ) THEN
            WRITE( tstr, '(a,a)' ) elmer_home(1:k),&
 '/share/elmersolver/lib/elements.def'
-        ELSE
-	   CALL GetSolverHome(elmer_home, n)
-	   WRITE(tstr, '(a,a)') elmer_home(1:n), &
-              '/lib/elements.def'
-           
+           INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
         END IF
-      END IF
+        IF ((.NOT. fexist) .AND. k > 0) THEN
+           WRITE( tstr, '(a,a)' ) elmer_home(1:k),&
+                '/elements.def'
+           INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
+        END IF
+     END IF
+     IF (.NOT. fexist) THEN
+        CALL GetSolverHome(elmer_home, n)
+        WRITE(tstr, '(a,a)') elmer_home(1:n), &
+                             '/lib/elements.def'
+        INQUIRE(FILE=TRIM(tstr), EXIST=fexist)
+     END IF
+     IF (.NOT. fexist) THEN
+        CALL Fatal('InitializeElementDescriptions', &
+             'elements.def not found')
+     END IF
 
       OPEN( 1,FILE=TRIM(tstr), STATUS='OLD' )
 

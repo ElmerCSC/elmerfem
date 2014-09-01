@@ -13,10 +13,26 @@ macro(ADD_ELMER_TEST test_name)
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
 endmacro()
 
+macro(ADD_ELMERTEST_MODULE test_name module_name file_name)
+  SET(ELMERTEST_CMAKE_NAME "${test_name}_${module_name}")
+  ADD_LIBRARY(${ELMERTEST_CMAKE_NAME} MODULE ${file_name})
+  SET_TARGET_PROPERTIES(${ELMERTEST_CMAKE_NAME}
+    PROPERTIES PREFIX "")
+  SET_TARGET_PROPERTIES(${ELMERTEST_CMAKE_NAME}
+    PROPERTIES OUTPUT_NAME ${module_name})
+  IF(WITH_MPI)
+    ADD_DEPENDENCIES(${ELMERTEST_CMAKE_NAME} 
+      elmersolver ElmerSolver_mpi ElmerGrid)
+  ELSE()
+    ADD_DEPENDENCIES(${ELMERTEST_CMAKE_NAME} 
+      elmersolver ElmerSolver ElmerGrid)
+  ENDIF()
+  UNSET(ELMERTEST_CMAKE_NAME)
+endmacro()
 
 macro(RUN_ELMER_TEST)
   set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
-  set(ENV{ELMER_LIB} "${PROJECT_SOURCE_DIR}/fem/src")
+  set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
   execute_process(COMMAND ${ELMERSOLVER_BIN} OUTPUT_FILE "test.log"
     ERROR_FILE "test.log")
   execute_process(COMMAND ${FINDNORM_BIN} ${CMAKE_CURRENT_BINARY_DIR}/test.log

@@ -43,7 +43,7 @@ else
     export ELMER_SOLVER="$ELMER_HOME/bin/ElmerSolver"
     export ELMER_MESH2D="$ELMER_HOME/bin/Mesh2D"
     # @TODO: LD_LIBRARY_PATH works only in unix
-    export LD_LIBRARY_PATH=".:$ELMER_HOME/lib:$LD_LIBRARY_PATH"
+    export LD_LIBRARY_PATH=".:$ELMER_HOME/lib/elmersolver:$LD_LIBRARY_PATH"
     export PATH=$ELMER_HOME/bin:$PATH
 fi
 
