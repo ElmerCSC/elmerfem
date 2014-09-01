@@ -5561,10 +5561,16 @@ END SUBROUTINE GetMaxDefs
     YRange = YMaxAll - YMinAll
 
     ! Fix here the relative tolerance used to define the whether and edge has constant coordinate
-    RelTol = 1.0e-6
+    RelTol = 1.0e-5
     YTol = RelTol * YRange
     XTol = RelTol * XRange
-    
+
+    ! It is assumed that that the target mesh is always un-skewed 
+    ! Make a test here to be able to skip it later. 
+    IF( Mesh % MeshDim == 3 ) THEN
+      CALL CheckTargetMesh()
+    END IF
+
     ! initialize the row of the projector
     nrow = 0
 
@@ -5608,9 +5614,11 @@ END SUBROUTINE GetMaxDefs
       n = n + m
       
       IF( PiolaVersion ) THEN
+        m = BMesh1 % NumberOfBulkElements
         CALL Info('LevelProjector',&
             'Number of active faces in projector: '//TRIM(I2S(m)),Level=12)
-        n = n + m
+        ! There are two additional dofs associated with each face
+        n = n + 2*m
       END IF
     END IF
 
@@ -5682,9 +5690,71 @@ END SUBROUTINE GetMaxDefs
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(projector,.TRUE.)
 
+    CALL Info('LevelProjector','Projector created',Level=10)
+
 
   CONTAINS
 
+    ! Currently the target mesh is assumed to be include only cartesian elements
+    ! Check the angle in the elements. When we know the target mesh is cartesian
+    ! we can reduce the error control in the other parts of the code. 
+    !----------------------------------------------------------------------------
+    SUBROUTINE CheckTargetMesh() 
+
+      INTEGER :: i,j,n,indM
+      TYPE(Element_t), POINTER :: ElementM
+      TYPE(Nodes_t) :: NodesM
+      REAL(KIND=dp) :: e1(2),e2(2),DotProdM, PhiM, MaxSkew, ArcCoeff, SkewTol
+      INTEGER, POINTER :: IndexesM(:)
+
+      n = 4
+      ALLOCATE( NodesM % x(n), NodesM % y(n) )
+      MaxSkew = 0.0_dp
+      ArcCoeff = (2*PI*Radius)/360.0           
+      SkewTol = 0.1 ! degrees 
+
+      DO indM=1,BMesh2 % NumberOfBulkElements
+        
+        ElementM => BMesh2 % Elements(indM)        
+        IF( ElementM % TYPE % ElementCode / 100 /= 4 ) THEN
+          CALL Fatal('PlaneProjector','Assuming quads on the target surface!')
+        END IF
+        IndexesM => ElementM % NodeIndexes
+        NodesM % y(1:n) = BMesh2 % Nodes % y(IndexesM(1:n))
+        NodesM % x(1:n) = BMesh2 % Nodes % x(IndexesM(1:n))
+        
+        ! Transfer into real length units instead of angles
+        ! This gives right balance between x and y -directions. 
+        NodesM % x(1:n) = ArcCoeff * NodesM % x(1:n)
+        
+        ! Make unit vectors of the edge
+        e1(1) = NodesM % x(2) - NodesM % x(1) 
+        e1(2) = NodesM % y(2) - NodesM % y(1) 
+ 
+        e2(1) = NodesM % x(4) - NodesM % x(1) 
+        e2(2) = NodesM % y(4) - NodesM % y(1) 
+
+        e1 = e1 / SQRT( SUM( e1**2) )
+        e2 = e2 / SQRT( SUM( e2**2) )
+
+        ! dot product of the unit vectors
+        DotProdM = SUM( e1 * e2 )
+
+        ! Cosine angle in degrees        
+        PhiM = ACOS( SUM( e1 * e2 ) ) 
+        MaxSkew = MAX( MaxSkew, ABS ( ABS( PhiM ) - PI/2 ) )
+      END DO
+
+      ! Move to degrees and give the tolerance in them
+      MaxSkew = MaxSkew * 180.0 / PI
+      WRITE( Message,'(A,ES12.3)') 'Maximum skew in target mesh: ',MaxSkew
+      CALL Info('LevelProjector',Message,Level=8)
+      IF( MaxSkew > SkewTol ) THEN
+        CALL Fatal('LevelProjector','Target mesh has too much skew!')
+      END IF
+        
+    END SUBROUTINE CheckTargetMesh
+      
 
     !-------------------------------------------------------------------------------------
     ! Create projector for nodes on the strides directly from a linear 
@@ -6398,7 +6468,7 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: x(6),y(6),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,xminm,yminm,DetJ,&
           Wtemp,q,ArcCoeff,ArcTol,u,v,w,um,vm,wm,val,Overlap,RefArea,dArea,SumOverlap,SumArea,&
-          DotProdM, qleft, qright, qleft2, qright2, MaxErr
+          qleft, qright, qleft2, qright2, MaxErr
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
       LOGICAL :: LeftCircle, Stat
@@ -6549,12 +6619,6 @@ END SUBROUTINE GetMaxDefs
           ! This gives right balance between x and y -directions. 
           NodesM % x(1:n) = ArcCoeff * NodesM % x(1:n)
 
-          DotProdM = (NodesM % x(2) - NodesM % x(1) )*(NodesM % x(4) - NodesM % x(1)) + &
-              (NodesM % y(2) - NodesM % y(1) )*(NodesM % y(4) - NodesM % y(1))
-          IF( ABS( DotProdM ) > 1.0e-12 ) THEN
-            CALL Fatal('LevelProjector','Master element should not be skewed!')
-          END IF
-          
           xminm = MINVAL( NodesM % x(1:n))
           xmaxm = MAXVAL( NodesM % x(1:n))
                     
