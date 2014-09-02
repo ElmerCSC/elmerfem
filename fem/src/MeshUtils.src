@@ -5331,7 +5331,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
         EdgeBasis, PiolaVersion
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
-        RelTol, XTol, YTol, EdgeScale 
+        RelTol, XTol, YTol, EdgeScale, MaxSkew, SkewTol
     INTEGER :: NoNodes1, NoNodes2
     INTEGER :: i,j,n,m,Nrange,Nrange2, nrow
     INTEGER, ALLOCATABLE :: EdgePerm(:)
@@ -5379,7 +5379,16 @@ END SUBROUTINE GetMaxDefs
     ! It is assumed that that the target mesh is always un-skewed 
     ! Make a test here to be able to skip it later. 
     IF( Mesh % MeshDim == 3 ) THEN
-      CALL CheckTargetMesh()
+      SkewTol = 0.1
+      MaxSkew = CheckMeshSkew( BMesh1 )
+      WRITE( Message,'(A,ES12.3)') 'Maximum skew in this mesh: ',MaxSkew
+      CALL Info('LevelProjector',Message,Level=8)
+      MaxSkew = CheckMeshSkew( BMesh2 )
+      WRITE( Message,'(A,ES12.3)') 'Maximum skew in target mesh: ',MaxSkew
+      CALL Info('LevelProjector',Message,Level=8)
+      IF( MaxSkew > SkewTol ) THEN
+        CALL Fatal('LevelProjector','Target mesh has too much skew!')
+      END IF
     END IF
 
     ! initialize the row of the projector
@@ -5510,29 +5519,32 @@ END SUBROUTINE GetMaxDefs
     ! Check the angle in the elements. When we know the target mesh is cartesian
     ! we can reduce the error control in the other parts of the code. 
     !----------------------------------------------------------------------------
-    SUBROUTINE CheckTargetMesh() 
+    FUNCTION CheckMeshSkew(BMesh) RESULT( MaxSkew ) 
+
+      TYPE(Mesh_t),POINTER :: BMesh
+      REAL(KIND=dp) :: MaxSkew
 
       INTEGER :: i,j,n,indM
       TYPE(Element_t), POINTER :: ElementM
       TYPE(Nodes_t) :: NodesM
-      REAL(KIND=dp) :: e1(2),e2(2),DotProdM, PhiM, MaxSkew, ArcCoeff, SkewTol
+      REAL(KIND=dp) :: e1(2),e2(2),DotProdM, PhiM, ArcCoeff
       INTEGER, POINTER :: IndexesM(:)
 
       n = 4
       ALLOCATE( NodesM % x(n), NodesM % y(n) )
       MaxSkew = 0.0_dp
       ArcCoeff = (2*PI*Radius)/360.0           
-      SkewTol = 0.1 ! degrees 
 
-      DO indM=1,BMesh2 % NumberOfBulkElements
+      j = 0
+      DO indM=1,BMesh % NumberOfBulkElements
         
-        ElementM => BMesh2 % Elements(indM)        
+        ElementM => BMesh % Elements(indM)        
         IF( ElementM % TYPE % ElementCode / 100 /= 4 ) THEN
           CALL Fatal('PlaneProjector','Assuming quads on the target surface!')
         END IF
         IndexesM => ElementM % NodeIndexes
-        NodesM % y(1:n) = BMesh2 % Nodes % y(IndexesM(1:n))
-        NodesM % x(1:n) = BMesh2 % Nodes % x(IndexesM(1:n))
+        NodesM % y(1:n) = BMesh % Nodes % y(IndexesM(1:n))
+        NodesM % x(1:n) = BMesh % Nodes % x(IndexesM(1:n))
         
         ! Transfer into real length units instead of angles
         ! This gives right balance between x and y -directions. 
@@ -5552,19 +5564,14 @@ END SUBROUTINE GetMaxDefs
         DotProdM = SUM( e1 * e2 )
 
         ! Cosine angle in degrees        
-        PhiM = ACOS( SUM( e1 * e2 ) ) 
+        PhiM = ACOS( DotProdM ) 
         MaxSkew = MAX( MaxSkew, ABS ( ABS( PhiM ) - PI/2 ) )
       END DO
 
       ! Move to degrees and give the tolerance in them
       MaxSkew = MaxSkew * 180.0 / PI
-      WRITE( Message,'(A,ES12.3)') 'Maximum skew in target mesh: ',MaxSkew
-      CALL Info('LevelProjector',Message,Level=8)
-      IF( MaxSkew > SkewTol ) THEN
-        CALL Fatal('LevelProjector','Target mesh has too much skew!')
-      END IF
         
-    END SUBROUTINE CheckTargetMesh
+    END FUNCTION CheckMeshSkew
       
 
     !-------------------------------------------------------------------------------------
@@ -6264,22 +6271,22 @@ END SUBROUTINE GetMaxDefs
     ! This uses the generic way to introduce the weights. The resulting 
     ! matrix is more dense but should be numerically favourable. 
     ! The integration is done by making an on-the-fly triangularization 
-    ! into 1,3,4 or 4 triangles. This is not generic - it assumes constant
+    ! into several triangles. This is not generic - it assumes constant
     ! y levels, and cartesian mesh where the search is done.  
     !----------------------------------------------------------------------
     SUBROUTINE AddLevelProjectorWeak()
 
       INTEGER, TARGET :: IndexesT(3)
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
-      INTEGER :: j1,j2,j3,j4,jj,ii,sgn0,k,kmax,ind,indM,nip,nn,ne,nf
+      INTEGER :: j1,j2,j3,j4,jj,ii,sgn0,k,kmax,ind,indM,nip,nn,ne,nf,inds(10),Ninteg,NintegGen
       TYPE(Element_t), POINTER :: Element, ElementM
       TYPE(Element_t) :: ElementT
       TYPE(GaussIntegrationPoints_t) :: IP
-      LOGICAL :: RightSplit, LeftSplit, LeftSplit2, RightSplit2
+      LOGICAL :: RightSplit, LeftSplit, LeftSplit2, RightSplit2, TopEdge, BottomEdge
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
-      REAL(KIND=dp) :: x(6),y(6),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,xminm,yminm,DetJ,&
-          Wtemp,q,ArcCoeff,ArcTol,u,v,w,um,vm,wm,val,Overlap,RefArea,dArea,SumOverlap,SumArea,&
-          qleft, qright, qleft2, qright2, MaxErr
+      REAL(KIND=dp) :: x(10),y(10),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
+          xminm,yminm,DetJ,Wtemp,q,ArcCoeff,ArcTol,u,v,w,um,vm,wm,val,Overlap,RefArea,dArea,&
+          SumOverlap,SumArea,qleft, qright, qleft2, qright2, MaxErr,Err,phi(10)
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
       LOGICAL :: LeftCircle, Stat
@@ -6307,6 +6314,9 @@ END SUBROUTINE GetMaxDefs
       ArcCoeff = (2*PI*Radius)/360.0
       ArcTol = ArcCoeff * Xtol
      
+      Ninteg = 0
+      NintegGen = 0
+
       ! The temporal triangle used in the numerical integration
       ElementT % TYPE => GetElementType( 303, .FALSE. )
       ElementT % NodeIndexes => IndexesT
@@ -6441,62 +6451,30 @@ END SUBROUTINE GetMaxDefs
           IF( Overlap < RelTol ) CYCLE 
           
           SumOverlap = SumOverlap + Overlap
+          Ninteg = Ninteg + 1
           
           ! Then if this is a possible element create a list of the corner nodes
           ! for a temporal mesh. There will be 3 to 6 corner nodes. 
           ! Check the crossings between the edges of the quadrilaters. These will
           ! be used as new points when creating the virtual triangle mesh. 
-          qleft =  ( Nodes % x(j1) - xminm ) / ( Nodes % x(j1) - Nodes % x(j4) )
-          qright = ( Nodes % x(j2) - xmaxm ) / ( Nodes % x(j2) - Nodes % x(j3) )
-          
-          LeftSplit = ( qleft > 0.0_dp .AND. qleft < 1.0_dp ) 
-          RightSplit = ( qright > 0.0_dp .AND. qright < 1.0_dp )
+          LeftSplit = ( ( Nodes % x(j1) - xminm ) * ( xminm - Nodes % x(j4) ) > 0.0_dp )
+          IF(LeftSplit) qleft =  ( Nodes % x(j1) - xminm ) / ( Nodes % x(j1) - Nodes % x(j4) )
 
-          qleft2 =  ( Nodes % x(j2) - xminm ) / ( Nodes % x(j2) - Nodes % x(j3) )
-          qright2 = ( Nodes % x(j1) - xmaxm ) / ( Nodes % x(j1) - Nodes % x(j4) )
+          RightSplit = ( ( Nodes % x(j2) - xmaxm ) * ( xmaxm - Nodes % x(j3) ) > 0.0_dp )
+          IF(RightSplit) qright = ( Nodes % x(j2) - xmaxm ) / ( Nodes % x(j2) - Nodes % x(j3) )
 
-          LeftSplit2 = ( qleft2 > 0.0_dp .AND. qleft2 < 1.0_dp ) 
-          RightSplit2 = ( qright2 > 0.0_dp .AND. qright2 < 1.0_dp )
+          LeftSplit2 = ( ( Nodes % x(j2) - xminm ) * ( xminm - Nodes % x(j3) ) > 0.0_dp )
+          IF(LeftSplit2) qleft2 =  ( Nodes % x(j2) - xminm ) / ( Nodes % x(j2) - Nodes % x(j3) )
 
-          ! Just one triangle element on the left
-          IF( LeftSplit2 ) THEN            
-            x(1) = xminm
-            y(1) = Nodes % y(j2) + qleft2 * ( Nodes % y(j3) - Nodes % y(j2))
-            
-            x(2) = x(1)
-            IF( Nodes % x(j2) > Nodes % x(j3) ) THEN              
-              y(2) = yminm
-              x(3) = Nodes % x(j2)
-            ELSE
-              y(2) = ymaxm
-              x(3) = Nodes % x(j3)
-            END IF
-            y(3) = y(2) 
-            
-            IF( RightSplit .OR. LeftSplit ) CALL Fatal('LevelProjector','Untreated multisplit case 1')
-            kmax = 3
+          RightSplit2 = ( ( Nodes % x(j1) - xmaxm ) * ( xmaxm - Nodes % x(j4) ) > 0.0_dp )
+          IF(RightSplit2) qright2 = ( Nodes % x(j1) - xmaxm ) / ( Nodes % x(j1) - Nodes % x(j4) )
 
-          ! Just one triangle element on the right
-          ELSE IF( RightSplit2 ) THEN
-
-            x(1) = xmaxm
-            y(1) = Nodes % y(j1) + qright2 * ( Nodes % y(j4) - Nodes % y(j1))
-
-            x(2) = x(1)
-            IF( Nodes % x(j1) < Nodes % x(j4) ) THEN              
-              y(2) = yminm
-              x(3) = Nodes % x(j1)
-            ELSE
-              y(2) = ymaxm
-              x(3) = Nodes % x(j4)
-            END IF
-            y(3) = y(2) 
-            
-            IF( RightSplit .OR. LeftSplit ) CALL Fatal('LevelProjector','Untreated multisplit case 2')
-            kmax = 3 
-            
+          ! There is an old way of defining the polygon that may be optionally be activated 
+          ! This is rather limited and therefore was replaced by a generic routine. 
+#define OLDPOLYGON 0
+#if OLDPOLYGON
           ! A polygon with 4, 5 or 6 corners is created.  
-          ELSE
+          IF(.NOT. (LeftSplit2 .OR. RightSplit2 ) ) THEN
             ! bottom-left corner
             k = 1
             x(k) = MAX( xminm, Nodes % x(j1) ) 
@@ -6532,9 +6510,121 @@ END SUBROUTINE GetMaxDefs
             END IF
             
             kmax = k
-          END IF
 
-          ! Deal the case with 3,4,5 or 6 corners by making a temporal
+          ! Pure left corner split
+          ELSE IF( LeftSplit2 .AND. .NOT. (RightSplit .OR. LeftSplit .OR. RightSplit2) ) THEN            
+            
+            x(1) = xminm
+            y(1) = Nodes % y(j2) + qleft2 * ( Nodes % y(j3) - Nodes % y(j2))
+            
+            x(2) = x(1)
+            IF( Nodes % x(j2) > Nodes % x(j3) ) THEN              
+              y(2) = yminm
+              x(3) = Nodes % x(j2)
+            ELSE
+              y(2) = ymaxm
+              x(3) = Nodes % x(j3)
+            END IF
+            y(3) = y(2) 
+            kmax = 3
+
+          ! Pure right corner split
+          ELSE IF( RightSplit2 .AND. .NOT. (LeftSplit .OR. RightSplit .OR. LeftSplit2)) THEN
+
+            x(1) = xmaxm
+            y(1) = Nodes % y(j1) + qright2 * ( Nodes % y(j4) - Nodes % y(j1))
+
+            x(2) = x(1)
+            IF( Nodes % x(j1) < Nodes % x(j4) ) THEN              
+              y(2) = yminm
+              x(3) = Nodes % x(j1)
+            ELSE
+              y(2) = ymaxm
+              x(3) = Nodes % x(j4)
+            END IF
+            y(3) = y(2) 
+            kmax = 3 
+
+
+          ELSE
+            NintegGen = NintegGen + 1
+#endif
+            
+            ! Mark the splits on the vertical edges aligned with the y-axis
+            k = 0
+            IF( LeftSplit ) THEN
+              k = k + 1
+              x(k) = xminm
+              qleft = MAX( 0.0, MIN( 1.0, qleft ) )
+              y(k) = Nodes % y(j1) + qleft * ( Nodes % y(j4) - Nodes % y(j1))
+            END IF
+            IF( RightSplit2 ) THEN
+              k = k + 1
+              x(k) = xmaxm
+              qright2 = MAX( 0.0, MIN( 1.0, qright2 ) )
+              y(k) = Nodes % y(j1) + qright2 * ( Nodes % y(j4) - Nodes % y(j1))
+            END IF
+            IF( RightSplit ) THEN
+              k = k + 1
+              x(k) = xmaxm
+              qright = MAX( 0.0, MIN( 1.0, qright ) )
+              y(k) = Nodes % y(j2) + qright * ( Nodes % y(j3) - Nodes % y(j2))
+            END IF
+            IF( LeftSplit2 ) THEN
+              k = k + 1
+              x(k) = xminm
+              qleft2 = MAX( 0.0, MIN( 1.0, qleft2 ) )
+              y(k) = Nodes % y(j2) + qleft2 * ( Nodes % y(j3) - Nodes % y(j2))
+            END IF
+
+            ! Mark the splits on the horizontal axis
+            BottomEdge = .NOT. ( ( Nodes % x(j2) < xminm ) .OR. ( Nodes % x(j1) > xmaxm ) )
+            TopEdge    = .NOT. ( ( Nodes % x(j3) < xminm ) .OR. ( Nodes % x(j4) > xmaxm ) )
+
+            IF( BottomEdge ) THEN
+              k = k + 1
+              x(k) = MAX( xminm, Nodes % x(j1) )
+              y(k) = yminm
+              k = k + 1
+              x(k) = MIN( xmaxm, Nodes % x(j2) )
+              y(k) = yminm
+            END IF
+            IF( TopEdge ) THEN
+              k = k + 1
+              x(k) = MIN( xmaxm, Nodes % x(j3) )
+              y(k) = ymaxm
+              k = k + 1
+              x(k) = MAX( xminm, Nodes % x(j4) )
+              y(k) = ymaxm
+            END IF
+            kmax = k 
+
+            IF( kmax < 3 ) THEN
+              CALL Warn('LevelProjector','Cannot integrate over '//TRIM(I2S(kmax))//' nodes')
+              CYCLE
+            END IF
+            
+            ! The polygon is convex and hence its center lies inside the polygon
+            xt = SUM(x(1:kmax)) / kmax
+            yt = SUM(y(1:kmax)) / kmax
+
+            ! Set the angle from the center and order the nodes so that they 
+            ! can be easily triangulated.
+            DO k=1,kmax
+              phi(k) = ATAN2( y(k)-yt, x(k)-xt )
+              inds(k) = k
+            END DO
+                       
+            CALL SortR(kmax,inds,phi)
+            x(1:kmax) = x(inds(1:kmax))
+            y(1:kmax) = y(inds(1:kmax))
+
+            !PRINT *,'Polygon: ',ind,indm,LeftSplit, RightSplit, LeftSplit2, RightSplit2, TopEdge, BottomEdge, kmax 
+#if OLDPOLYGON
+          END IF
+#endif
+
+          ! Deal the case with multiple corners by making 
           ! triangulariation using one corner point.
           ! This should be ok as the polygon is always convex.
           NodesT % x(1) = x(1)
@@ -6543,13 +6633,11 @@ END SUBROUTINE GetMaxDefs
           ! Use somewhat higher integration rules than the default
           IP = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
 
-          !PRINT *,'X0:',x(1:4)
-          !PRINT *,'Y0:',y(1:4)
-          !PRINT *,'IP:',IP % s(1:IP % n)
-
           DO k=1,kmax-2                         
-            dArea = 0.5*ABS( (x(k+1)-x(1))*(y(k+2)-y(1))-(x(k+2)-x(1))*(y(k+1)-y(k)))
 
+            ! This check over area also automatically elimiates redundant nodes
+            ! that were detected twice.
+            dArea = 0.5*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
             IF( dArea < RelTol * RefArea ) CYCLE
 
             NodesT % x(2) = x(k+1)
@@ -6681,13 +6769,23 @@ END SUBROUTINE GetMaxDefs
           END IF
         END IF
 
-        MaxErr = MAX( MaxErr,ABS(SumArea/RefArea-1))
+        Err = SumArea/RefArea-1.0_dp
+        !IF( ABS(err) > 1.0e-4) PRINT *,'Err ind:',ind,Err,j1,j2,j3,j4
+        MaxErr = MAX( MaxErr,ABS(Err))
       END DO
 
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
       DEALLOCATE( NodesM % x, NodesM % y, NodesM % z )
       DEALLOCATE( NodesT % x, NodesT % y, NodesT % z )
       DEALLOCATE( Basis, BasisM )
+
+      CALL Info('LevelProjector','Number of integration pairs: '&
+          //TRIM(I2S(Ninteg)),Level=10)
+
+#if OLDPOLYGON
+      CALL Info('LevelProjector','Number of general integration pairs: '&
+          //TRIM(I2S(NintegGen)),Level=10)
+#endif
 
       WRITE( Message,'(A,ES12.3)') 'Maximum error in area integration:',MaxErr 
       CALL Info('LevelProjector',Message,Level=8)
