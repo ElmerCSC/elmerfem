@@ -4,11 +4,10 @@ INCLUDE(${CMAKE_ROOT}/Modules/FindPackageHandleStandardArgs.cmake)
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 
 # If Mumps libraries are already defined, do nothing
-# TODO: Temporarily disabled for debugging
-# IF(MUMPS_LIBRARIES AND MUMPS_INCLUDE_DIR)
-#   SET(MUMPS_FOUND TRUE)
-#   RETURN()
-# ENDIF()
+IF(Mumps_LIBRARIES AND Mumps_INCLUDE_DIR)
+   SET(Mumps_FOUND TRUE)
+   RETURN()
+ENDIF()
 
 SET(Mumps_FOUND FALSE)
 MESSAGE(STATUS "Finding Mumps")

@@ -1,11 +1,10 @@
 # CMake script for finding ParMetis
 
 # If libraries are already defined, do nothing 
-# TODO: disabled for debugging purposes
-# IF(ParMetis_LIBRARIES AND ParMetis_INCLUDE_DIR)
-#   SET(ParMetis_FOUND TRUE)
-#   RETURN()
-# ENDIF()
+IF(ParMetis_LIBRARIES AND ParMetis_INCLUDE_DIR)
+  SET(ParMetis_FOUND TRUE)
+  RETURN()
+ENDIF()
 
 SET(ParMetis_FOUND FALSE)
 MESSAGE(STATUS "Finding ParMetis")

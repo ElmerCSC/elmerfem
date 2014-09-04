@@ -2,6 +2,12 @@
 # Juhani Kataja, CSC - IT Center for Science Ltd.
 # 2014/08
 
+# If Hypre libraries are already defined, do nothing
+IF(Hypre_LIBRARIES AND Hypre_INCLUDE_DIR)
+   SET(Hypre_FOUND TRUE)
+   RETURN()
+ENDIF()
+
 message(STATUS "Finding Hypre")
 set(Hypre_FOUND FALSE)
 

@@ -1,11 +1,10 @@
 # CMake script for finding Metis
 
 # If libraries are already defined, do nothing 
-# TODO: disabled for debugging purposes
-# IF(Metis_LIBRARIES AND Metis_INCLUDE_DIR)
-#   SET(Metis_FOUND TRUE)
-#   RETURN()
-# ENDIF()
+IF(Metis_LIBRARIES AND Metis_INCLUDE_DIR)
+  SET(Metis_FOUND TRUE)
+  RETURN()
+ENDIF()
 
 SET(Metis_FOUND FALSE)
 MESSAGE(STATUS "Finding Metis")

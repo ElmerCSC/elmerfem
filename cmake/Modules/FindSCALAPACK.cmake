@@ -1,6 +1,12 @@
 # cmake script for finding MUMPS sparse direct solver
 cmake_minimum_required(VERSION 2.8)
 
+# If libraries are already defined, do nothing 
+IF(SCALAPACK_LIBRARIES)
+  SET(SCALAPACK_FOUND TRUE)
+  RETURN()
+ENDIF()
+
 message(STATUS "Finding SCALAPACK")
 
 SET(SCALAPACKLIB 
