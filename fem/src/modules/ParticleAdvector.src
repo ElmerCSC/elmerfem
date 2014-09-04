@@ -181,6 +181,10 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
       !------------------------------------------------------------------------    
       CALL LocateParticles( Particles ) 
 
+      ! Integrate over the particle path (\int f(r) ds or \int f(r) dt )
+      !------------------------------------------------------------------
+      CALL ParticlePathIntegral( Particles, istep )
+
       InitTimestep = .FALSE.
     END DO 
 
@@ -188,8 +192,8 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
 	Particles % NumberOfMovingParticles,' moving particles'
     CALL Info('ParticleAdvector',Message,Level=6)
 
-!    CALL ParticleInformation(Particles, ParticleStepsTaken, &
-!	TimeStepsTaken, tottime )
+    !CALL ParticleInformation(Particles, ParticleStepsTaken, &
+    !	TimeStepsTaken, tottime )
 
   END DO
 
@@ -678,8 +682,9 @@ CONTAINS
           IF( Status <= PARTICLE_INITIATED ) CYCLE
           
           ElementIndex = GetParticleElement( Particles, i )
+
           IF( ElementIndex == 0 ) CYCLE
-          
+
           BulkElement => Mesh % Elements( ElementIndex )      
           
           Coord(1:dim) = Particles % Coordinate(i, 1:dim) 
