@@ -1,0 +1,178 @@
+! Simple test case where path integrals are taken over a circular path
+! with the semi-lagrangian particle tracker. 
+
+!check keywords abort
+
+! The mesh is uniformly meshed for purpose to eliminate 
+! some lucky flukes. 
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = String Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Transient
+  Timestepping Method = String BDF
+  BDF Order = Integer 1
+
+$omega=1.0
+$n=20
+  Timestep sizes = $ 2*pi/n
+  Timestep Intervals = $ n
+  Steady State Max Iterations = Integer 1
+  Output Intervals(1) = Integer 1
+
+  Output Level = 32
+
+!  Output File = File "case.dat"
+!  Post File = File "case.ep"
+End
+
+Constants
+  Gravity(4) = Real 0.0 -1.0 0.0 9.82
+  Stefan Boltzmann = Real 5.67e-08
+End
+
+Body 1
+  Name = String "fluid"
+  Target Bodies(2) = 1 2
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+  Body Force = 1
+End
+
+Initial Condition 1
+  Surface = Variable Coordinate 1, Coordinate 2 
+       Real MATC "sin(3*pi*tx(0))*sin(3*pi*tx(1))"
+
+  Velo 1 = Variable Coordinate 2
+    Real MATC "-omega*tx"
+
+  Velo 2 = Variable Coordinate 1
+    Real MATC "omega*tx"
+End
+
+
+Body Force 1 
+! The user can experiment here how different quantities i.e.
+! here the x-coordinate is integrated over the path. As the 
+! center is at origin the known solution is zero. 
+!  Particle Time Integral Source = Equals "Coordinate 1"
+  Particle Distance Integral Source = Equals "Coordinate 1"
+
+! These are for getting a positive norm for error checking
+  Particle Time Integral Source = Variable "Coordinate 1"
+    Real MATC "tx*tx"
+End 
+
+Equation 1
+  Name = String "Particles"
+  Active Solvers(1) = 1 
+End
+
+
+
+Solver 1
+  Name = "Advector"
+! The semi-lagrangian particle advector that works the better the longer the timestep 
+
+  Equation = ParticleAdvector
+  Procedure = "ParticleAdvector" "ParticleAdvector"
+
+  Reinitialize Particles = Logical False
+  Particle Dt Constant = Logical False
+
+!!! defaults
+!  Time Order = Integer 0
+!  Particle Node Fraction = Real 1.0
+!  Coordinate Initialization Method = String "nodal ordered"
+!  Velocity Initialization Method = String "nodal velocity"
+!  Particle Accurate At Face = Logical True
+
+!!!! timestepping strategy
+  Simulation Timestep Sizes = Logical True
+  Max Timestep Intervals = Integer 5
+  Velocity Variable Name = String Velo
+
+! time integration choices (2nd order R-K)
+  Runge Kutta = Logical False
+! If R-K is used these should be False, otherwise True if possible
+  Velocity Gradient Correction = Logical True
+  Source Gradient Correction = Logical True
+
+! The variable to compute the norm for
+!  Norm Variable Index = Integer 1   
+
+! Show some info in the end
+  Particle Info = Logical True
+  Particle Time = Logical True
+
+! The variables to be advected back to nodes
+  Variable 1 = String "Surface"
+  Variable 2 = String "Particle Distance"
+  Variable 3 = String "Particle time"
+  Variable 4 = String "Particle time integral"
+  Variable 5 = String "Particle distance integral"
+!  Variable 6 = String "Particle Status"
+!  Variable 7 = String "Particle Velocity_Abs"
+!  Variable 8 = String "Particle Number"
+
+! These are used in a dirty way to just introduce necessary vectors
+! in the FE mesh
+  Variable = Surface
+  Exported Variable 1 = -dofs 2 Velo
+End 
+
+
+Solver 2
+! This is used just to provide a norm for consistency test
+  Equation = String "SaveScalars"
+
+  Exec Solver = after all 
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = File "f.dat"
+
+  Variable 1 = "Adv Particle Time Integral"
+  Operator 1 = int 
+  Show Norm Index = Integer 1
+End
+
+Solver 3
+  Equation = String "SaveLine"
+  Exec Solver = After all
+  Procedure = File "SaveData" "SaveLine"
+  Filename = File "f2.dat"
+End
+
+
+Solver 4
+  Exec Solver = after timestep
+
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+
+  Vtu Format = Logical True
+End
+
+
+Material 1
+  Name = String "ideal"
+
+  Density = 1.0
+  Viscosity = 1.0
+End
+
+
+Boundary Condition 1 
+  Name = "Internal BC"
+  Target Boundaries(1) = 3
+  Save Line = True
+End 
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.31289829\n");
