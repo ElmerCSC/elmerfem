@@ -5510,6 +5510,10 @@ END SUBROUTINE GetMaxDefs
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(projector,.TRUE.)
 
+    IF( DoEdges ) THEN
+      DEALLOCATE( EdgePerm ) 
+    END IF
+
     CALL Info('LevelProjector','Projector created',Level=10)
 
 
@@ -5571,6 +5575,8 @@ END SUBROUTINE GetMaxDefs
       ! Move to degrees and give the tolerance in them
       MaxSkew = MaxSkew * 180.0 / PI
         
+      DEALLOCATE( NodesM % x, NodesM % y )
+
     END FUNCTION CheckMeshSkew
       
 
@@ -6778,6 +6784,7 @@ END SUBROUTINE GetMaxDefs
       DEALLOCATE( NodesM % x, NodesM % y, NodesM % z )
       DEALLOCATE( NodesT % x, NodesT % y, NodesT % z )
       DEALLOCATE( Basis, BasisM )
+      DEALLOCATE( dBasisdx, WBasis, WBasisM, RotWBasis )
 
       CALL Info('LevelProjector','Number of integration pairs: '&
           //TRIM(I2S(Ninteg)),Level=10)

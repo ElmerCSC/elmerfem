@@ -252,7 +252,8 @@ CONTAINS
     END DO
     A % FORMAT = MATRIX_LIST
 
-    DEALLOCATE(A % Rows, A % Cols, A % Diag, A % Values)
+    DEALLOCATE(A % Rows, A % Cols, A % Values)
+    IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
     CALL Info('ListToCRSMatrix','Matrix format changed from CRS to List', Level=5)
 
 !-------------------------------------------------------------------------------
