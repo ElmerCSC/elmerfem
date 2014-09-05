@@ -105,9 +105,14 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
 
   ! Initialize particles always since we just advance -dt each time
   !-------------------------------------------------------------------------
-  CALL InitializeParticles( Particles ) 
-  CALL ReleaseWaitingParticles(Particles) 
-  Particles % Status = PARTICLE_LOCATED
+  IF( VisitedTimes == 1 .OR. GetLogical( Params,'Reinitialize Particles',GotIt ) ) THEN
+    CALL InitializeParticles( Particles ) 
+    CALL ReleaseWaitingParticles(Particles) 
+    Particles % Status = PARTICLE_LOCATED
+  ELSE
+    ! in case the velocity field is changed update also the particle velocities
+    CALL SetParticleVelocities()
+  END IF
 
   IF( VisitedTimes == 1 ) THEN
     IF( GetLogical( Params,'Particle Time',Found) ) THEN
@@ -165,21 +170,24 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
 
     DO istep = 1, iorder
 
-      ! Set velocity field at points.
-      ! This is not done the first time. 
+      ! Set velocity field at points. This is not done the first time. 
+      ! This has to be here since the velocity field could have changed
+      ! between calls. 
       !------------------------------------------------------------------
-      IF( .NOT. InitTimestep ) CALL SetParticleVelocities()
+      !IF( .NOT. InitTimestep ) CALL SetParticleVelocities()
 
       ! Advance the coordinate, r = r0 + v * dt
       ! either with 2nd order Runge-Kutta, or with 1st order explicit scheme.
       !------------------------------------------------------------------
       CALL ParticleAdvanceTimestep( Particles, istep )
 
-!    CALL ParticleStatusCount( Particles )
+      !    CALL ParticleStatusCount( Particles )
 
       ! Find the elements (and only the elements) in which the particles are in. 
       !------------------------------------------------------------------------    
       CALL LocateParticles( Particles ) 
+
+      CALL SetParticleVelocities()
 
       ! Integrate over the particle path (\int f(r) ds or \int f(r) dt )
       !------------------------------------------------------------------
@@ -354,6 +362,11 @@ CONTAINS
       END IF
       UseGradVelo = GetLogical( Params,'Velocity Gradient Correction',Found)
 
+      IF(UseGradVelo .AND. Particles % RK2 ) THEN
+        CALL Warn('ParticlePathIntegral','Quadratic source correction incompatibe with Runge-Kutta')
+        UseGradVelo = .FALSE.
+      END IF
+
       IF( .NOT. Particles % DtConstant ) THEN
         DtVar => ParticleVariableGet( Particles,'particle dt')
         IF( .NOT. ASSOCIATED( DtVar ) ) THEN
@@ -420,7 +433,6 @@ CONTAINS
         NewLost(2) = NewLost(2) + 1
         CYCLE
       END IF
-
 
       IF( UseGradVelo ) THEN
         CALL GetVectorFieldInMesh(VeloVar,BulkElement, Basis, VeloAtPoint, &

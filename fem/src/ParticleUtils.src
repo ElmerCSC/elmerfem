@@ -4666,7 +4666,7 @@ RETURN
     TYPE(Variable_t), POINTER :: TimeIntegVar, DistIntegVar, DtVar
     LOGICAL :: GotVar, RK2
     REAL(KIND=dp) :: ds,dtime,Coord(3),PrevCoord(3),LocalCoord(3),Velo(3),u,v,w,&
-        SourceAtPath,detJ
+        SourceAtPath,detJ,RKCoeff
     INTEGER :: dim, Status
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: NoParticles, No, n, NoVar, i, j, bf_id
@@ -4708,6 +4708,11 @@ RETURN
       dBasisdx = 0.0_dp
 
       UseGradSource = GetLogical( Params,'Source Gradient Correction',Found)
+      ! If the correction is not given follow the logic of velocity estimation
+      IF(UseGradSource .AND. Particles % RK2 ) THEN
+        CALL Warn('ParticlePathIntegral','Quadratic source correction incompatibe with Runge-Kutta')
+        UseGradSource = .FALSE.
+      END IF
 
       IF( .NOT. Particles % DtConstant ) THEN
         DtVar => ParticleVariableGet( Particles,'particle dt')
@@ -4728,10 +4733,16 @@ RETURN
 
     NoParticles = Particles % NumberOfParticles
     RK2 = Particles % RK2
+    IF( RK2 ) THEN
+      RKCoeff = 2.0
+    ELSE
+      RKCoeff = 1.0
+    END IF
+
     IF( dim < 3 ) w = 0.0_dp
 
     IF( Particles % DtConstant ) THEN
-      dtime = Particles % dTime
+      dtime = RKCoeff * Particles % dTime
     END IF
 
     DO No=1, NoParticles
@@ -4745,7 +4756,7 @@ RETURN
       ! Local timestep size
       !-----------------------------------------------------------------       
       IF( .NOT. Particles % DtConstant ) THEN
-        dtime = DtVar % Values(No)
+        dtime = RKCoeff * DtVar % Values(No)
       END IF
 
       Coord(1:dim) = Particles % Coordinate(No,:) 
@@ -4793,7 +4804,7 @@ RETURN
           SourceAtPath = SUM( Basis(1:n) * Source(1:n) )
           IF( UseGradSource ) THEN
             DO i=1,dim
-              SourceAtPath = SourceAtPath + SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
+              SourceAtPath = SourceAtPath + 0.5*SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
                   ( PrevCoord(i) - Coord(i) )
             END DO
           END IF          
@@ -4803,14 +4814,24 @@ RETURN
 
       ! Path integral over distance
       IF( DistInteg ) THEN
-        ds = dtime * SQRT( SUM( Velo(1:dim)**2) )
+        IF( RK2 ) THEN
+          ! for R-K the velocity has been updated to the midpoint and this is used
+          ! to determine the differential path. 
+          ds = dtime * SQRT( SUM( Velo(1:dim)**2) )
+        ELSE
+          ! If we have used quadtatic velocity correction at the previous point
+          ! the current (or previous) velocity alone does not give the correct 
+          ! ds, but this does.
+          ds = SQRT(SUM((PrevCoord(1:dim) - Coord(1:dim))**2))
+        END IF
+      
         Source(1:n) = ListGetReal( BodyForce,'Particle Distance Integral Source', &
             n, Indexes, Found ) 
         IF( Found ) THEN
           SourceAtPath = SUM( Basis(1:n) * Source(1:n) )
           IF( UseGradSource ) THEN
             DO i=1,dim
-              SourceAtPath = SourceAtPath + SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
+              SourceAtPath = SourceAtPath + 0.5*SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
                   ( PrevCoord(i) - Coord(i) )
             END DO
           END IF          
