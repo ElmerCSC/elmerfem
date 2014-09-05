@@ -132,7 +132,7 @@ Solver 2
 
   Exec Solver = after all 
   Procedure = File "SaveData" "SaveScalars"
-  Filename = File "f.dat"
+!  Filename = File "f.dat"
 
   Variable 1 = "Adv Particle Time Integral"
   Operator 1 = int 
@@ -141,14 +141,14 @@ End
 
 Solver 3
   Equation = String "SaveLine"
-  Exec Solver = After all
+  Exec Solver = never !After all
   Procedure = File "SaveData" "SaveLine"
-  Filename = File "f2.dat"
+  Filename = File "g.dat"
 End
 
 
 Solver 4
-  Exec Solver = after timestep
+  Exec Solver = never !after timestep
 
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
