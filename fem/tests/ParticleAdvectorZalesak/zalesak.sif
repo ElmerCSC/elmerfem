@@ -92,6 +92,8 @@ Solver 2
   Equation = ParticleAdvector
   Procedure = "ParticleAdvector" "ParticleAdvector"
 
+  Reinitialize Particles = Logical True
+
   Particle Dt Constant = Logical False
 
 !!! defaults

@@ -92,6 +92,8 @@ Solver 2
   Equation = ParticleAdvector
   Procedure = "ParticleAdvector" "ParticleAdvector"
 
+  Reinitialize Particles = Logical True
+
 !  Particle Accurate At Face = Logical False
 
   Max Timestep Intervals = Integer 500
@@ -193,6 +195,7 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.48786999\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.48789314\n");
+
 
 
