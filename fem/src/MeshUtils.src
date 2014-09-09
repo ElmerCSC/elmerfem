@@ -5590,7 +5590,7 @@ END SUBROUTINE GetMaxDefs
       TYPE(Element_t), POINTER :: ElementM
       INTEGER, POINTER :: IndexesM(:)
       INTEGER :: ncoeff, coeffi(2),sgn0, Nelim, ind, indm, j1, j2, j3, Nundefined
-      REAL(KIND=dp) :: x1, y1, x2, y2, xmin, xmax, xminm, xmaxm
+      REAL(KIND=dp) :: x1, y1, x2, y2, xmin, xmax, xminm, xmaxm, Dist, MinDist
       REAL(KIND=dp) :: coeff(2), val, xm1, xm2, xm3
       INTEGER, POINTER :: EdgeMap(:,:)
       TYPE(Nodes_t) :: NodesM
@@ -5618,6 +5618,7 @@ END SUBROUTINE GetMaxDefs
         y1 = BMesh1 % Nodes % y(ind)
         sgn0 = 1
         coeff = 0.0_dp
+        MinDist = HUGE( MinDist )
 
         IF( Repeating ) THEN
           Nrange = FLOOR( (x1-XMinAll) / XRange )
@@ -5666,13 +5667,19 @@ END SUBROUTINE GetMaxDefs
           xmaxm = MAXVAL( NodesM % x(1:n) )
           xminm = MINVAL( NodesM % x(1:n) )
 
-          IF( xminm > x1 + Xtol ) CYCLE
-          IF( xmaxm < x1 - Xtol ) CYCLE
-
           ! Eliminate this special case since it could otherwise give a faulty hit
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
             IF( xmaxm - xminm > 180.0 ) CYCLE
           END IF
+
+          Dist = MAX( x1-xmaxm, xminm-x1 ) 
+
+          ! Mark the minimum distance if this would happen to be a problematic node
+          MinDist = MIN( Dist, MinDist )
+
+          !IF( xminm > x1 + Xtol ) CYCLE
+          !IF( xmaxm < x1 - Xtol ) CYCLE
+          IF( Dist > Xtol ) CYCLE
 
           ! Ok, this may be a proper element, now just find the two nodes
           ! needed for the mapping on the same stride. Basically this means 
@@ -5692,7 +5699,7 @@ END SUBROUTINE GetMaxDefs
                 j2 = j
               ELSE
                 j3 = j
-                ! This means that for higher order edges only end nodes only three nore are used
+                ! This means that for higher order edges only three nodes are used
                 EXIT
               END IF
             END DO
@@ -5700,21 +5707,28 @@ END SUBROUTINE GetMaxDefs
           END IF
 
           ! The node to map must be in interval, x1 \in [xm1,xm2]
+          IF( NodesM % x(j1) > NodesM % x(j2) ) THEN
+             j = j2; j2 = j1; j1 = j
+          END IF
           xm1 = NodesM % x(j1)
           xm2 = NodesM % x(j2)          
 
+          ! We are at interval [xm1,xm2] now choose either [xm1,xm3] or [xm3,xm2]
           IF( j3 > 0 ) THEN
-            xm3 = NodesM % x(j3)          
-            IF( (xm1 - xm3)*(xm3 -x1) >= 0.0 ) THEN
-              j1 = j3; xm1 = xm3
-            ELSE IF( (xm2 - xm3)*(xm3 -x1) >= 0.0 ) THEN
-              j2 = j3; xm2 = xm3;
-            END IF
+             xm3 = NodesM % x(j3)          
+             IF( x1 > xm3 ) THEN
+                j1 = j3; xm1 = xm3
+             ELSE 
+                j2 = j3; xm2 = xm3
+             END IF
           END IF
-
+          
           ! Ok, the last check, this might fail if the element had skew even though the 
           ! quick test is successfull! Then the left and right edge may have different range.
-          IF( (xm1 - x1 ) * (xm2 - x1 ) > 0.0 ) CYCLE
+          Dist = MAX( x1-xm2, xm1-x1 )
+          IF( Dist > Xtol ) CYCLE
+
+          !IF( (xm1 - x1 ) * (xm2 - x1 ) > 0.0 ) CYCLE
 
           ! When we have the correct edge, the mapping is trivial.
           ! The sum of weights of the projectors is set to one. 
@@ -5725,7 +5739,7 @@ END SUBROUTINE GetMaxDefs
             PRINT *,'y:',NodesM % y(1:n)
             coeff(1) = 0.5_dp
           ELSE
-            coeff(1) = ABS( (x1-xm2)/(xm1-xm2) )
+            coeff(1) = (xm2-x1)/(xm2-xm1) 
           END IF
           coeff(2) = 1.0_dp - coeff(1)
 
@@ -5733,11 +5747,15 @@ END SUBROUTINE GetMaxDefs
           coeffi(2) = IndexesM(j2)
 
           Found = .TRUE.
-          EXIT
+          
+          ! If we really exactly between [xm1,xm2] then we may finish the search for good
+          IF( Dist < EPSILON( Dist ) ) EXIT
         END DO
 
         IF(.NOT. Found ) THEN
           Nundefined = Nundefined + 1
+          WRITE( Message,'(A,3ES12.3)') 'Problematic node: ',x1,y1,MinDist
+          CALL Info('LevelProjector',Message,Level=4)
           CYCLE
         END IF
 
@@ -5794,7 +5812,7 @@ END SUBROUTINE GetMaxDefs
       CALL Info('LevelProjector','Created strong constraints for nodal dofs: '//TRIM(I2S(nrow)),Level=8)
 
       IF( Nundefined > 0 ) THEN
-        CALL Fatal('LevelProjector',&
+        CALL Warn('LevelProjector',&
             'Nodes could not be determined by any edge: '//TRIM(I2S(Nundefined)))          
       END IF
 
