@@ -1,12 +1,12 @@
-! Test case for 3D nonconforming mortar elements using the AV solver.
+! Test case for 3D nonconforming mortar elements
+! Some timing settings inhereted from benchmark computations
 ! 
 ! This case includes 4-fold symmetry in the rotations and 
-! an optional skew of 20 degrees in the rotor. 
+! a skew of 20 degrees in the rotor. 
 ! Increse number of extruded layers for better accuracy. 
-
-$skew=0.0  ! does not yet work with skew
-$omega=20.0 
-$t0=0
+!
+! This is a variation of the test case using strong version of the 
+! Level Projector.
 
 Header
   CHECK KEYWORDS Warn
@@ -16,7 +16,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 5
+  Max Output Level = 32
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -26,8 +26,11 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 1
   Timestep Sizes = 0.1
-  Output Intervals = 1
   Timestep Intervals = 2
+  Output Intervals = 1
+
+  Post File = strong.vtu
+!  Output File = case.result
 
   Simulation Timing = Logical True
 End  
@@ -67,85 +70,73 @@ Body 3
   Initial Condition = 1
 End
 
-Solver 7
-  Exec Solver = never
-
-  Procedure = "HeatSolve" "HeatSolver"
-  Equation = export
-  Variable = x
-  Exported Variable 1 = Coordinates[Coordinates:3]
-End
 
 Solver 1
+!  Exec Solver = Before all
   Exec Solver = Before Timestep
   Equation = MeshDeform
   Procedure = "RigidMeshMapper" "RigidMeshMapper"
-  Translate Before Rotate = Logical True
   Cumulative Displacements = Logical False
+  Translate Before Rotate = Logical True
 End
 
 
 Solver 2
-  Equation = "MGDynamics"
-  Variable = "P"
-  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = -dofs 1 Temperature
+  Exec Solver = Always
+  Stabilize = True
+  Bubbles = False
+  Lumped Mass Matrix = False
+  Optimize Bandwidth = True
+  Steady State Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-3
 
-! Fix Input Current Density = Logical True
-
-  Linear System Solver = "Iterative"
-  Linear System Preconditioning = ILU1
-  Linear System Residual Output = 20
-  Linear System Max Iterations = 3000
-  Linear System Iterative Method = BiCGStab2 
-  BicGStabL Polynomial Degree = 4
-  Linear System GCR Restart = 600
-  Linear System Convergence Tolerance = 1e-10
+  Nonlinear System Relaxation Factor = 1.0  
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabl
+  Linear System Max Iterations = 5000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+  Linear System ILUT Tolerance = 1.0e-3
   Linear System Abort Not Converged = False
-
-  Steady State Convergence Tolerance = 1e-09
-
-  Edge Basis = Logical True
-  Apply Mortar BCs = Logical True
+  Linear System Residual Output = 20
+  Linear System Precondition Recompute = 1
+ 
   Optimize Bandwidth = False
+
+  Apply Mortar BCs = Logical True
+  Export Lagrange Multiplier = Logical True
+
+!  No Explicit Constrained Matrix = Logical True
+
+  Linear System Timing = Logical True
+  Solver Timing = Logical True
+  Linear System Timing Cumulative = Logical True
+  Solver Timing Cumulative = Logical True
 End
 
 Solver 3
-  Exec Solver = never
-  Equation = "MGDynamicsCalc"
-
-  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
-  Linear System Symmetric = True
-  Potential Variable = String "P"
-
-  Calculate Current Density = Logical True
-! Calculate Electric Field = Logical True
-! Calculate Magnetic Field Strength = Logical True
-  Calculate Magnetic Vector Potential = Logical True
-  Steady State Convergence Tolerance = 0
-  Linear System Solver = "Iterative"
-  Linear System Preconditioning = None
-  Linear System Residual Output = 0
-  Linear System Max Iterations = 5000
-  Linear System Iterative Method = CG
-  Linear System Convergence Tolerance = 1.0e-8
-End
-
-
-Solver 4
 ! Settings mainly for timing and verification
   Exec Solver = never
 
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
+
   Filename = scalars.dat
 
-  Variable 1 = P
+  Variable 1 = Temperature
   Operator 1 = dofs
-  Operator 2 = min
-  Operator 3 = max
-  Operator 4 = norm
-  Operator 5 = cpu time
-  Operator 6 = wall time
+  Operator 2 = partitions
+  Operator 3 = min
+  Operator 4 = max
+  Operator 5 = norm
+  Operator 6 = cpu time
+  Operator 7 = wall time
 
 !  File Append = Logical True
 
@@ -156,7 +147,7 @@ Solver 4
 End 
 
 
-Solver 5
+Solver 4
   Exec Solver = never
 
   Equation = "SaveLine"
@@ -175,51 +166,53 @@ Solver 5
 End
 
 
-Solver 6
+Solver 5
   Exec Solver = never
   Equation = VtuOutput
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = f
+  Output File Name = case
   Vtu Format = True
   Single Precision = True
 End 
 
 Equation 1
-  Name = "MagFields"
-  Active Solvers(3) = 2 3 7
+  Name = "Heat"
+  Active Solvers(1) = 2
 End
 
 Material 1
-  Reluctivity  = Real 1.0
-  Electric Conductivity = Real 0.0
+  Name = "Ideal"
+  Heat Conductivity = 1
+  Heat Capacity = 1
+  Density = 1
 End
-
 
 Body Force 1
   Name = "MoveToLeft"
   Mesh Translate 1 = -4.0
 End
 
+$omega=20.0
+$skew=10.0
+
 Body Force 2 
   Name = "Hot Move"
+  Heat Source = 100.0
   Mesh Rotate 3 = Variable time, Coordinate 3 
-    Real MATC "omega*(t0+tx(0))+skew*tx(1)"
-
-   Current Density 3 = Real 1.0
+    Real MATC "omega*tx(0)+skew*tx(1)"
 End 
 
 Body Force 3
   Name = "Cold Move"
+  Heat Source = -100.0
   Mesh Rotate 3 = Variable time, Coordinate 3 
-    Real MATC "omega*(t0+tx(0))+skew*tx(1)"
-
-   Current Density 3 = Real -1.0
+    Real MATC "omega*tx(0)+skew*tx(1)"
 End 
 
 Boundary Condition 1
   Target Boundaries(2) = 8 9
   Name = "Ambient"
-  P {e} = Real 0
+  Temperature = 0
 End
 
 Boundary Condition 2
@@ -233,16 +226,26 @@ Boundary Condition 3
 
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
-  Stride Projector = Logical True
+
+  Level Projector = Logical True
+
+!  Projector Skip Nodes = Logical False
+!  Projector Skip Edges = Logical False
+
+  Level Projector Nodes Strong = Logical True
+!  Level Projector Plane Edges Strong = Logical False
+!  Level Projector Extruded Edges Strong = Logical False 
+
+  Save Projector = Logical True
 End
 
 Boundary Condition 4
   Name = "Periodic Rotor Master"
   Target Boundaries(1) = 4
-
-  Mortar BC = 5
-  Radial Projector = Logical True
-  Stride Projector = Logical True
+  Periodic BC Use Lagrange Coefficient = Logical True
+  Periodic BC = 5
+  Periodic BC Rotate(3) = 0 0 90
+  Periodic BC Temperature = Logical True
 End
 
 Boundary Condition 5
@@ -253,10 +256,10 @@ End
 Boundary Condition 6
   Name = "Periodic Stator Master"
   Target Boundaries(1) = 10
-
-  Mortar BC = 7
-  Radial Projector = Logical True
-  Stride Projector = Logical True
+  Periodic BC Use Lagrange Coefficient = Logical True
+  Periodic BC = 7
+  Periodic BC Rotate(3) = 0 0 90
+  Periodic BC Temperature = Logical True
 End
 
 Boundary Condition 7
@@ -269,19 +272,8 @@ Boundary Condition 8
   Name = "DummyBC"
 End 
 
-Boundary Condition 9
-  Name = "StartZ"
-  Target Boundaries(3) = 11 12 13
-  P {e} = Real 0
-End 
-
-Boundary Condition 10
-  Name = "EndZ"
-  Target Boundaries(3) = 14 15 16
-  P {e} = real 0
-End 
-
 
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.11344121E-02\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM=1.3444902712590778\n");
+ 

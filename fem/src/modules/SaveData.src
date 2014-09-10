@@ -1358,7 +1358,11 @@ CONTAINS
 ! normal operators but then this loop is never reached.
 !------------------------------------------------------------------------------------------------
 
-        WRITE (Name,'(A,I0)') 'Parallel Operator ',n
+! ET: The following line ended up in a seqfault:
+!        WRITE (Name,'(A,I0)') 'Parallel Operator ',n 
+! Here is a workaround:
+        WRITE (*,'(A,I0)') 'Parallel Operator ',n
+
         ParOper = ListGetString(Params,TRIM(Name),GotParOper)
       END IF
 

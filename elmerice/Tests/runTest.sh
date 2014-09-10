@@ -35,7 +35,7 @@ if test "$ELMER_HOME" = ""; then
     export ELMER_MESH2D="Mesh2D"
     export LD_LIBRARY_PATH=".:$ELMER_HOME:$ELMER_HOME/modules:$LD_LIBRARY_PATH"
     # assume that stuff has been installed here
-    export PATH=/home/ltavard/Elmer/bin:$PATH
+    export PATH=$ELMER_HOME/bin:$PATH
 else 
     # ELMER_HOME is defined, so we'll just use that
     export ELMER_HOME=`echo $ELMER_HOME | sed 's+.:+/&+' | sed 's.:..' | sed 's.\\\./.g'`

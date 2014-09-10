@@ -1,0 +1,168 @@
+Ascii-muotoiset geometriatiedostot Ansys-ohjelmistosta.
+
+
+Ansysiin on lis‰tty nappulat ELMER_AU ja ELMER_CH (paremmatkin nimet
+olisi voinut valita kahdeksalla merkill‰). Ensimm‰inen kirjoittaa
+ansys-geometrian kaikki reunat ja j‰lkimm‰inen vain k‰ytt‰j‰n
+graafisesti valitsemat reunat tiedostoon.
+
+Makrot tekev‰t 4 tiedostoa:
+ExportMesh.header .node .elem ja .boundary
+Kolme ensimm‰ist‰ tiedostoa kirjoitetaan samalla tavalla molemmista
+makroista ja vain .boundary tiedostossa on eroa.
+
+
+Tiedostojen formaatti on seuraava
+
+ExportMesh.header
+
+sis‰lt‰‰ v‰h. 2 rivi‰. Ensimm‰isell‰ rivill‰ on kolme lukua:
+Elementtien lkm, Solmujen lkm, Kirjoitettujen reunojen lkm.
+Toisella rivill‰ kerrotaan elementtityyppi kolmella luvulla:
+Dimensio, elementin solmujen lkm, elementtityypin indeksi.
+
+Vastaavia rivej‰ kuin edellinen on niin monta kuin mallissa on
+erilaisia elementtityyppej‰. Huom n‰m‰ voivat olla Elmerin kannalta
+samoja elementtej‰, vaikka Ansys erottelisikin ne toisistaan.
+
+Esim:
+     35.    145.     19.
+      3.     20.      1.
+      3.      8.      2.
+
+
+ExportMesh.elem
+
+sis‰lt‰‰ joko n-2n rivi‰, miss‰ n on elementtien
+lukum‰‰r‰. Elementtien m‰‰r‰ selvi‰‰ .header tiedostosta.
+Formaatti yht‰ elementti‰ kohti on seuraava
+
+a  b  c  d  e  f  g  h  mat  typ  ?  ?  ?  ind 
+i  j  k  l  m  n  o  p  q  r  s  t
+
+miss‰ a-t ovat solmupisteit‰ (enint‰‰n 20) mat on materiaalinumero (ei
+merkityst‰ verkon kannalta), typ on elementtityypin indeksi (sama kuin
+.header tiedoston rivien 2- kolmas sarake), ? ovat jotain, ind on
+elementin indeksi, joita voi puuttua v‰list‰. Rivi, jolla solmujen 1-t
+indeksit ovat, esiintyy vain niiden elementtien kohdalla, joilla on
+yli 8 solmua.
+
+Huom!
+Kahdeksan ensimm‰ist‰ kentt‰‰ kirjoitetaan aina, vaikka solmuja olisi
+alle kahdeksan. Koskee seuraavia elementtej‰:
+
+- 4-solmuinen suorakaide
+a  b  c  d  0  0  0  0  mat  typ  ?  ?  ?  ind
+
+- 6-solmuinen kolmio
+a  b  c  d  e  f  0  0  mat  typ  ?  ?  ?  ind
+
+
+Huom!
+Ansys tulkitsee usein kolmiot ja tetraedrit degeneroituneiksi
+elementeiksi. T‰st‰ johtuen seuraavilla elementtityypeill‰
+yo. formaatti on hieman erilainen.
+
+- 4-solmuinen tetraedri:
+a  b  c  c  d  d  d  d  mat  typ  ?  ?  ?  ind
+
+- 3-solmuinen kolmio:
+a  b  c  c  0  0  0  0  mat  typ  ?  ?  ?  ind
+
+- 6-solmuinen kolmio:
+a  b  c  c  d  e  c  f  mat  typ  ?  ?  ?  ind
+
+- 10-solmuinen tetraedri:
+a  b  c  c  d  d  d  d  mat  typ  ?  ?  ?  ind
+e  f  c  g  d  d  d  d  h  i  j  j
+
+
+Huom!
+
+6-solmuinen kolmio voi siis olla koodattuna kahdella eri tavalla
+riippuen siit‰, miten kyseiset elementit on luotu.
+
+
+Huom! 
+
+10-solmuinen tetraedri voi siis olla koodattuna kafdella eri tavalla 
+riippuen siit‰, miten kyseiset elementit on luotu. Toinen mahdollisuus 
+on perusformaatin mukainen, eli yli kahdeksansolmuisilla elementeill‰
+jokainen solmu kirjoitetaan vain kerran:
+- 10-solmuinen tetraedri:
+a  b  c  d  e  f  g  h  mat  typ  ?  ?  ?  ind
+i  j
+
+
+Esim.
+
+    51    47    72    78    25    23    29    40     2     1     1     1     0     6
+    52    71    81    76    26    28    42    39    49    48    70    79
+    67    78    62    58    36    40    33    31     2     1     1     1     0     7
+    75    80    60    69    38    41    34    35    66    79    61    57
+    78    72    55    62    40    29    27    33     2     1     1     1     0     8
+    81    73    64    80    42    30    32    41    79    70    56    61
+    83    92    94    85   115   120   138   131     1     2     1     1     0     9
+    92    93    95    94   120   121   142   138     1     2     1     1     0    10
+    93    89    90    95   121   116   136   142     1     2     1     1     0    11
+
+
+
+ExportMesh.node
+
+sis‰lt‰‰ solmupisteiden koordinaatit riveitt‰in. Rivien lukum‰‰r‰
+selvi‰‰ .header tiedostosta.
+Formaatti on seuraava:
+ind  nd_x  nd_y  nd_z  (?  ?  ?)
+
+Nollia ei kirjoiteta, jos ne ovat rivin lopussa. Jotain eksoottisempaa
+koordinaatistoa k‰ytett‰ess‰ samalla rivill‰ saattaa olla viel‰ kolme
+lukua jotain kulmia (ovat siis usein nollia, joten niit‰ ei kirjoiteta).
+
+Indeksi hyppii, joten uudelleen numerointi on tarpeen.
+
+Esim.
+
+      16 0.7500000000000    
+      17 0.5000000000000     0.2500000000000    
+      19 0.5000000000000     0.5000000000000    
+      20 0.7500000000000     0.5000000000000    
+      22 0.0000000000000E+00 0.0000000000000E+00  1.000000000000    
+      23  1.000000000000     0.0000000000000E+00  1.000000000000    
+      24 0.2500000000000     0.0000000000000E+00  1.000000000000    
+
+
+
+ExportMesh.boundary
+
+sis‰lt‰‰ reunojen solmupisteet reunoittain jaoteltuina. Reunojen
+lukum‰‰r‰ selvi‰‰ .header tiedostosta. Formaatti on seuraava:
+
+Otsikkorivi:  n. boundary
+Solmum‰‰rittelyt:  ind  nd_x  nd_y  nd_z
+
+Ind vastaa .node tiedoston indeksi‰, joten nd_i kent‰t ovat
+redundanttia informaatiota. Kaksiulotteisessa mallissa reunat ovat
+k‰yri‰ (1D) ja kolmiulotteisessa mallissa pintoja (2D).
+
+Esim.
+
+
+      10  1.000000000000    
+      3. Boundary
+      14 0.2500000000000    
+      15 0.5000000000000    
+      16 0.7500000000000    
+      22 0.0000000000000E+00 0.0000000000000E+00  1.000000000000    
+      23  1.000000000000     0.0000000000000E+00  1.000000000000    
+      24 0.2500000000000     0.0000000000000E+00  1.000000000000    
+      53 0.5000000000000     0.0000000000000E+00 0.2500000000000    
+      4. Boundary
+       1 0.0000000000000E+00  1.000000000000    
+       6  1.000000000000      1.000000000000    
+       7 0.7500000000000      1.000000000000    
+
+--------
+
+Antti Pursula
+1.6.2001

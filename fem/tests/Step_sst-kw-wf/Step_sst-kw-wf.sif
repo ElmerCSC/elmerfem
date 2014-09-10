@@ -15,7 +15,7 @@ Simulation
   Output Intervals = 1
 
 ! Output File = "Step_small.result"
-  Post File = "Step_small.ep"
+!  Post File = "Step_small.ep"
 End
 
 
