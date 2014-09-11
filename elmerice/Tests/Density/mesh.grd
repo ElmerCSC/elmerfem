@@ -21,4 +21,4 @@ Element Innernodes = False
 Element Degree = 1
 Triangles = True 
 Element Divisions 1 = 2
-Element Divisions 2 = 100
+Element Divisions 2 = 6000

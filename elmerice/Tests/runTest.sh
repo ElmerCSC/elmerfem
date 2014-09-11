@@ -284,13 +284,14 @@ for dir in $dirs; do
 		n_col_cpu=0
 	    fi
 	    # Tests if exists specific TARGET in *.sif else TARGET's value is 1E-6
-	    if (test `grep "TARGET" OutputSIF_$dir.log | uniq | awk -F = '{print$2}'`=""); then
+	    retval=`grep 'TARGET' OutputSIF_$dir.log`
+	    if [ "$retval" = "" ]; then
 		TARGET=1e-6
 	    else
-		TARGET=`grep "TARGET" OutputSIF_$dir.log | uniq | awk -F = '{print$2}'`
+		TARGET="$(sed -n 's/TARGET=\(.*\)\r/\1/p' OutputSIF_$dir.log | head -n1)"
 	    fi
             # Results of comparison in file difference.txt and errors print in Output_$dir.log
-	    `../Compare$EXE_EXT $dir valid_$dir $n_arg $n_col_cpu $TARGET > Output_$dir.log`
+	    ../Compare$EXE_EXT "$dir" "valid_$dir" "$n_arg" "$n_col_cpu" "$TARGET" > Output_$dir.log
 	    FindError=`grep "ERROR" Output_$dir.log | wc -l`
 	    FindDiff=`grep "DIFF-TIME" Output_$dir.log | wc -l`
 	    # Values for screen output

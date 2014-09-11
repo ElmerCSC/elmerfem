@@ -149,16 +149,19 @@ Solver 3
 
   Variable 1 = String "Time"
 
-  Variable 2 = String "Porous"
-  Operator 2 = String "int"
+  Variable 2 = String "Age"
+  Operator 2 = String "max"
 
-  Variable 3 = String "Porous"
-  Operator 3 = String "max"
+  Variable 3 = String "Age"
+  Operator 3 = String "min"
+  
+!Variable for comparison
+  !Variable 2 = String "AgeAna"
+  !Operator 2 = String "max"
 
-  Variable 4 = String "Porous"
-  Operator 4 = String "min"
+  !Variable 3 = String "AgeAna"
+  !Operator 3 = String "min"
 
-  Operator 5 = String "cpu time"
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
