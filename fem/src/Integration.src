@@ -1486,27 +1486,30 @@ END FUNCTION GaussPointsPTetra
 
 !------------------------------------------------------------------------------
 !>    Given element structure return gauss integration points for the element.
-!------------------------------------------------------------------------------
-   FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis ) RESULT(IntegStuff)
-!------------------------------------------------------------------------------
+!----------------------------------------------------------------------------------------------
+   FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis, PReferenceElement ) RESULT(IntegStuff)
+!---------------------------------------------------------------------------------------------
      USE PElementMaps, ONLY : isActivePElement
      TYPE( Element_t ) :: elm   !< Structure holding element description
      INTEGER, OPTIONAL :: np    !< Number of requested points
-     LOGICAL, OPTIONAL :: EdgeBasis !< Number of requested points
      INTEGER, OPTIONAL :: RelOrder  !< Relative order of Gauss points (-1,0,+1)
+     LOGICAL, OPTIONAL :: EdgeBasis !< For choosing quadrature suitable for edge elements
+     LOGICAL, OPTIONAL :: PReferenceElement !< For switching to the p-version reference element     
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
-     LOGICAL :: pElement
+     LOGICAL :: pElement, UsePRefElement
      INTEGER :: n, eldim, p1d
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
      elmt => elm % TYPE
 
-     IF(PRESENT(EdgeBasis)) THEN
-       IF (EdgeBasis) THEN
-         IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100)
-         RETURN
-       END IF
+     IF (PRESENT(EdgeBasis)) THEN
+        IF (EdgeBasis) THEN
+           UsePRefElement = .TRUE.
+           IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
+           IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
+           RETURN
+        END IF
      END IF
 
      pElement = isActivePElement(elm)
@@ -1592,29 +1595,60 @@ END FUNCTION GaussPointsPTetra
 
 !----------------------------------------------------------------------------------
 !>  Return a suitable version of the Gaussian numerical integration method for
-!>  H(curl)-conforming finite elements obtained via calling the function
-!>  EdgeElementInfo. With these elements the reference element is chosen to be 
-!>  that used for p-approximation.
+!>  H(curl)-conforming finite elements. The default here is that the edge basis 
+!>  functions are obtained via calling the function EdgeElementInfo, so that
+!>  the reference element is chosen to be that used for p-approximation. 
+!>  By giving the optional argument PiolaVersion = .FALSE. this function returns
+!>  an alternate (usually smaller) set of integration points on the classic 
+!>  reference element. This option may be useful when the edge basis functions are 
+!>  obtained via calling the alternate subroutine GetEdgeBasis.
 !------------------------------------------------------------------------------
-   FUNCTION EdgeElementGaussPoints(ElementFamily) RESULT(IP)
+   FUNCTION EdgeElementGaussPoints(ElementFamily, PiolaVersion) RESULT(IP)
 !------------------------------------------------------------------------------
      INTEGER :: ElementFamily
-     TYPE(GaussIntegrationPoints_t) :: IP   
+     LOGICAL, OPTIONAL :: PiolaVersion
+     TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
+     LOGICAL :: PRefElement
+!------------------------------------------------------------------------------
+     PRefElement = .TRUE.
+     IF ( PRESENT(PiolaVersion) ) PRefElement = PiolaVersion
+
      SELECT CASE(ElementFamily)
+     CASE (1)
+        IntegStuff = GaussPoints0D(1)
+     CASE (2)
+        IntegStuff = GaussPoints1D(2)
      CASE(3)
-        IP = GaussPointsTriangle(3, PReferenceElement=.TRUE.)
+        IP = GaussPointsTriangle(3, PReferenceElement=PRefElement)
      CASE(4)
-        IP = GaussPointsQuad(9)
+        IF (PRefElement) THEN
+           IP = GaussPointsQuad(9)
+        ELSE
+           IP = GaussPointsQuad(4)
+        END IF
      CASE(5)
-        IP = GaussPointsTetra(4, PReferenceElement=.TRUE.)
+        IP = GaussPointsTetra(4, PReferenceElement=PRefElement)
      CASE(6)
-        IP = GaussPointsPPyramid(8)
+        IF (PRefElement) THEN
+           IP = GaussPointsPPyramid(27)
+        ELSE
+           IP = GaussPointsPyramid(27)
+        END IF
      CASE(7)
-        !IP = GaussPointsPWedge(27)
-        IP = GaussPointsWedge2(6,3,PReferenceElement=.TRUE.)
+        IF (PRefElement) THEN
+           !IP = GaussPointsPWedge(27)
+           IP = GaussPointsWedge2(6,3,PReferenceElement=PRefElement)
+        ELSE
+           IP = GaussPointsWedge2(3,3,PReferenceElement=PRefElement)
+	   !IP = GaussPointsWedge(8)    ! The line above should be used!
+        END IF
      CASE(8)
-        IP = GaussPointsPBrick(3,3,3)         
+        IF (PRefElement) THEN
+           IP = GaussPointsPBrick(3,3,3)
+        ELSE
+           IP = GaussPointsBrick(8)
+        END IF
      CASE DEFAULT
         CALL Fatal('Integration::EdgeElementGaussPoints','Unsupported element type')
      END SELECT

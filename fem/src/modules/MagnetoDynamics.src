@@ -1040,7 +1040,7 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -1103,7 +1103,7 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -1556,11 +1556,7 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IF (PiolaVersion) THEN
-       IP = EdgeElementGaussPoints( GetElementFamily(Element) )
-    ELSE    
-       IP = GaussPoints(Element)
-    END IF
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
@@ -1759,7 +1755,7 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element,EdgeBasis=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
@@ -3359,7 +3355,7 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -3419,7 +3415,7 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
@@ -3867,11 +3863,7 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IF (PiolaVersion) THEN
-       IP = EdgeElementGaussPoints( GetElementFamily(Element) )
-    ELSE    
-       IP = GaussPoints( Element )
-    END IF
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
 
@@ -5577,11 +5569,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      ! Calculate nodal fields:
      ! -----------------------
-     IF (PiolaVersion) THEN
-        IP = EdgeElementGaussPoints(GetElementFamily())
-     ELSE
-        IP = GaussPoints(Element)
-     END IF
+     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
 
      MASS  = 0._dp
      FORCE = 0._dp
