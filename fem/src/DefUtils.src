@@ -1446,6 +1446,78 @@ CONTAINS
      END IF
   END SUBROUTINE GetElementNodes
 
+!> Returns the nodal coordinate values in the active element
+    SUBROUTINE GetElementNodesVec( ElementNodes, UElement, USolver, UMesh )
+        TYPE(Nodes_t) :: ElementNodes
+        TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+        TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
+        TYPE(Element_t), OPTIONAL, TARGET :: UElement
+
+        INTEGER :: padn, dum
+        ! Count number of integers in 64 bytes in order to
+        ! pad columns to 64-byte boundaries
+        INTEGER, PARAMETER :: INT_ALIGN = 64/kind(dum)
+        INTEGER :: i,n,nd,sz,sz1
+        INTEGER, POINTER :: Indexes(:)
+
+        TYPE(Solver_t),  POINTER  :: Solver
+        TYPE(Mesh_t),  POINTER  :: Mesh
+        TYPE(Element_t), POINTER :: Element
+
+        Solver => CurrentModel % Solver
+        IF ( PRESENT( USolver ) ) Solver => USolver
+
+        Element => GetCurrentElement(UElement)
+
+        IF ( PRESENT( UMesh ) ) THEN
+            Mesh => UMesh
+        ELSE
+            Mesh => Solver % Mesh
+        END IF
+
+        n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
+        ! Pad beginning of columns of xyz to 64-byte boundaries
+        padn=((n-1)/INT_ALIGN)*INT_ALIGN+INT_ALIGN
+        IF (.NOT. ASSOCIATED( ElementNodes % xyz)) THEN
+            ALLOCATE(ElementNodes % xyz(padn,3))
+            ElementNodes % xyz = REAL(0,dp)
+            ElementNodes % x => ElementNodes % xyz(1:n,1)
+            ElementNodes % y => ElementNodes % xyz(1:n,2)
+            ElementNodes % z => ElementNodes % xyz(1:n,3)
+        ELSE IF (SIZE(ElementNodes % xyz, 1)<n) THEN
+            DEALLOCATE(ElementNodes % xyz)
+            ALLOCATE(ElementNodes % xyz(padn,3))
+            ElementNodes % xyz = REAL(0,dp)
+            ElementNodes % x => ElementNodes % xyz(1:n,1)
+            ElementNodes % y => ElementNodes % xyz(1:n,2)
+            ElementNodes % z => ElementNodes % xyz(1:n,3)
+        END IF
+
+        n = Element % TYPE % NumberOfNodes
+        ElementNodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
+        ElementNodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
+        ElementNodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+
+        sz = SIZE(ElementNodes % x)
+        IF ( sz > n ) THEN
+            ElementNodes % x(n+1:sz) = 0.0d0
+            ElementNodes % y(n+1:sz) = 0.0d0
+            ElementNodes % z(n+1:sz) = 0.0d0
+        END IF
+
+        sz1 = SIZE(Mesh % Nodes % x)
+        IF (sz1 > Mesh % NumberOfNodes) THEN
+            Indexes => GetIndexStore()
+            nd = GetElementDOFs(Indexes,Element,NotDG=.TRUE.)
+            DO i=n+1,nd
+                IF ( Indexes(i)>0 .AND. Indexes(i)<=sz1 ) THEN
+                    ElementNodes % x(i) = Mesh % Nodes % x(Indexes(i))
+                    ElementNodes % y(i) = Mesh % Nodes % y(Indexes(i))
+                    ElementNodes % z(i) = Mesh % Nodes % z(Indexes(i))
+                END IF
+            END DO
+        END IF
+    END SUBROUTINE GetElementNodesVec
 
 !> Get element body id
 !------------------------------------------------------------------------------

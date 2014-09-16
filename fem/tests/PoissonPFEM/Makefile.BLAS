@@ -1,0 +1,29 @@
+ELMERF90=elmerf90
+ELMERLD=elmerld
+
+SRC=LocalTypes.F90 ElementBasisFunctions.F90 PoissonOMPBLAS.F90
+OBJS=$(patsubst %.F90, %.o, $(SRC))
+# OBJS=$(patsubst %.o, %.so, $(_OBJS))
+
+# A poisson equation solver using p elements
+#
+
+.SECONDARY: $(_OBJS) $(OBJS)
+default: PoissonOMPBLAS.so
+
+ElementBasisFunctions.o: LocalTypes.o
+PoissonOMPBLAS.o: LocalTypes.o ElementBasisFunctions.o 
+
+%.o: %.F90
+	$(ELMERF90) -c $< -o $@
+
+PoissonOMPBLAS.so: PoissonOMPBLAS.o ElementBasisFunctions.o LocalTypes.o
+	$(ELMERLD) -o $@ $^
+
+%.so: %.o
+	$(ELMERLD) -o $@ $<    
+
+all: $(OBJS)
+	
+clean:
+	rm -f *.so *.o

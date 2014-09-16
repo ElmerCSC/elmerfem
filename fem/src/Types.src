@@ -566,6 +566,7 @@ END INTERFACE
    !
    TYPE Nodes_t
      INTEGER :: NumberOfNodes
+     REAL(KIND=dp), POINTER :: xyz(:,:) => NULL()
      REAL(KIND=dp), POINTER :: x(:)=>NULL()
      REAL(KIND=dp), POINTER :: y(:)=>NULL()
      REAL(KIND=dp), POINTER :: z(:)=>NULL()
