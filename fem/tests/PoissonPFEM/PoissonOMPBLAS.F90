@@ -2377,10 +2377,10 @@ CONTAINS
 #ifdef _OPENMP
         INTEGER(KIND=OMP_LOCK_KIND), ALLOCATABLE :: vertexlock(:)
 #endif
-        TYPE(Element_t), POINTER :: Elements
+        TYPE(Element_t), POINTER :: Elements(:)
         INTEGER :: i, j, v, nelem, nvertex, allocstat
 
-        nelem = Mesh % NumberOfElements
+        nelem = Mesh % NumberOfBulkElements
         nvertex = Mesh % NumberOfNodes
         Elements => Mesh % Elements
 
@@ -2395,8 +2395,8 @@ CONTAINS
         ALLOCATE(vertexlock(nvertex), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap','Memory allocation failed!')
 
-        !$OMP PARALLEL SHARED(Elements, Element, vertexlock, nvertex) &
-        !$OMP PRIVATE(i, j, v, elem) DEFAULT(NONE)
+        !$OMP PARALLEL SHARED(Elements, Element, vertexlock, nvertex, nelem) &
+        !$OMP PRIVATE(i, j, v) DEFAULT(NONE)
 
         !$OMP DO
         DO i=1,nvertex
@@ -2409,23 +2409,21 @@ CONTAINS
         DO i=1,nelem
             ASSOCIATE(Element => Elements(i))
 #ifdef _OPENMP
-                ! Copy NodeIndexes to local store
-                ! Sort NodeIndexes
-                DO j=1, Element % TYPE % NumberOfNodes
-                    ! Lock map(v)
-                    ! Add i to map(v)
-                    ! Release map(v)
-                END DO
+            ! Copy NodeIndexes to local store
+            ! Sort NodeIndexes
+            DO j=1, Element % TYPE % NumberOfNodes
+                ! Lock map(v)
+                ! Add i to map(v)
+                ! Release map(v)
+            END DO
 #else
-                DO j=1, Element % TYPE % NumberOfNodes
-                    v = Element % NodeIndexes(j)
-                    ! Add i to map(v)
-                    IF (.NOT. ALLOCATED(VertexToElementMap)) THEN
-
-                    END IF
-                END DO
+            DO j=1, Element % TYPE % NumberOfNodes
+                v = Element % NodeIndexes(j)
+                ! Add i to map(v)
+                IF (.NOT. ALLOCATED(VertexToElementMap)) THEN
+                END IF
+            END DO
 #endif
-
             END ASSOCIATE
         END DO
         !$OMP END DO
