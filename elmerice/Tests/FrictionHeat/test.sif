@@ -1,0 +1,320 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! ISMIP-HOM D020 solved in diagnostic   !!
+!!   using Navier-Stokes                 !!
+!! adapted to test friction heating      !!
+!! calculation (version with loads       !!
+!! revision 6834                         !! 
+!! + comparison to the earlier)          !! 
+!! authors: Thomas Zwinger,              !!
+!! Olivier Gagliardi, Martina Schäfer    !!
+!! August 2014                           !!  
+!! includes variables for output purpose !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!setup of the geometry
+$Step = "NS_3D"
+$L = 20.0e3
+$Slope = 1.0 * pi / 180.0
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+$H=1000.0
+
+Header
+  Mesh DB "." "cube"
+End
+
+Constants
+! No constant Needed
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Simulation Type = Steady State
+
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Post File = "test_$Step$.vtu"
+
+  max output level = 10
+
+  Initialize Dirichlet Conditions = Logical False
+!  Extruded Mesh Levels = 3
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! The bulk
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+! the bottom BC
+Body 2
+  Equation = 2
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+! bedrock elevation
+  Zb = Variable Coordinate 1
+    Real MATC "-tx*tan(Slope)-1000.0"
+  Friction Load = Real 0.0 !Friction Load is only need for output
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Material 1
+  Density = Real $rhoi 
+  Viscosity Model = String "power law"
+  Viscosity = Real $eta                       
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 1.0e-10
+  FrictionOld =  Variable Coordinate 1 !for output purpose
+      Real Procedure "ElmerIceUSF" "getFrictionHeat"
+  Cauchy= Logical True
+End
+
+ 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!meshing
+Solver 1
+  Equation = "MapCoordinate"
+  Exec Solver = Before Simulation
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+  Mesh Velocity Variable = String "dSdt"
+  Mesh Update Variable = String "dS"
+  Mesh Velocity First Zero = Logical True
+End
+
+!needed to calculate friction heat
+Solver 2
+  Equation = "NormalVector" 
+  Exec Solver = Before Simulation
+  Procedure = "ElmerIceSolvers" "ComputeNormalSolver"
+  Variable = String "Normal Vector" 
+  Variable DOFs = 3
+  ComputeAll = Logical False
+  Optimize Bandwidth = Logical False 
+End
+
+Solver 3
+  Equation = "Navier-Stokes"
+  Stabilization Method = String Bubbles
+  Flow Model = Stokes
+  Linear System Solver = Direct         
+  Linear System Direct Method = umfpack
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance  = 1.0e-12
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.00
+  Nonlinear System Reset Newton = Logical True
+  Steady State Convergence Tolerance = Real 1.0e-3
+  Exported Variable 1 = -dofs 1 "thickness"
+  Exported Variable 2 = -dofs 1 "dSdt"
+  Exported Variable 3 = -dofs 1 "dS"
+  Exported Variable 4 = -dofs 1 "Zb"
+  Exported Variable 5 = Flow Solution Loads[Fx:1 Fy:1 Fz:1 CEQ Residual:1 ]
+  Calculate Loads = Logical True !needed for new friction heating version
+End
+
+Solver 4
+!  StructuredProjectToPlane: used to compute integrated viscosity and density
+!   thickness will also be used to compute mean viscosity and density
+  Equation = "HeightDepth"
+  Procedure = "StructuredProjectToPlane" "StructuredProjectToPlane"
+  Active Coordinate = Integer 3
+  Operator 1 = depth
+  Operator 2 = height
+  Operator 3 = thickness
+End
+
+!needed for old friction heat
+Solver 5
+  Equation = String "StressSolver"
+  !Exec Solver = "Before Simulation"
+  Procedure =  File "ElmerIceSolvers" "ComputeDevStress"
+  ! this is just a dummy, hence no output is needed
+  !-----------------------------------------------------------------------
+  Variable = -nooutput "Sij"
+  Variable DOFs = 1
+  ! the name of the variable containing the flow solution (U,V,W,Pressure)
+  !-----------------------------------------------------------------------
+  Stress Variable Name = String "Stress"
+  Flow Solver Name = String "Flow Solution"
+  Exported Variable 1 = "Stress" ! [Sxx, Syy, Szz, Sxy] in 2D
+                                 ! [Sxx, Syy, Szz, Sxy, Syz, Szx] in 3D
+  Exported Variable 1 DOFs = 6   ! 4 in 2D, 6 in 3D
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0E-09
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+End
+
+!creates output
+Solver 6
+  Equation = "DummyRoutine"
+  Procedure = File "DummySolver" "DummySolver"
+  Variable =  -dofs 1 "Friction Load"
+End
+
+!creates output
+Solver 7
+    Equation = "ForceToStress"
+    Procedure = File "ElmerIceSolvers" "ForceToStress"
+    Variable = String "Friction Heating"
+    Variable DOFs = 1
+    Force Variable Name = String "Friction Load"
+    Linear System Solver = Direct
+    Linear System Direct Method = umfpack
+End
+
+!creates output
+Solver 8
+  Equation = "SaveMaterials"
+  Procedure = File "SaveData" "SaveMaterials"
+  Parameter 1 = String "FrictionOld"
+End
+
+!write dat file
+Solver 9
+  Exec Solver = After All
+  Equation = SaveScalars
+  Procedure = File "SaveData" "SaveScalars"
+  Filename = "results.dat"
+  File Append = Logical True
+
+  Variable 1 = String "Time"
+
+  Variable 2 = String "pressure"
+  Operator 2 = String "mean"
+  Operator 3 = String "min"
+  Operator 4 = String "max"
+
+  Variable 5 = String "depth"
+  Operator 5 = String "max"
+
+  Variable 6 = String "ds"
+  Operator 6 = String "min"
+
+  Variable 7 = String "friction heating"
+  Operator 7 = String "mean"
+  Operator 8 = String "min"
+  Operator 9 = String "max"
+
+  Variable 10 = String "friction load"
+  Operator 10 = String "mean" 
+  Operator 11 = String "min" 
+  Operator 12 = String "max" 
+
+  Variable 13 = String "frictionold"
+  Operator 13 = String "mean"
+  Operator 14 = String "min"
+  Operator 15 = String "max"
+
+  Variable 16 = String "Velocity 1"
+  Operator 16 = String "mean"
+  Operator 17 = String "min"
+  Operator 18 = String "max"
+
+  Variable 19 = String "Velocity 2"
+  Operator 19 = String "mean"
+  Operator 20 = String "min"
+  Operator 21 = String "max"
+
+  Variable 22 = String "Velocity 3"
+  Operator 22 = String "mean"
+  Operator 23 = String "min"
+  Operator 24 = String "max"
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1
+   Active Solvers(7) = 1 2 3 4 5 8 9
+End
+
+Equation 2
+  Active Solvers(2) = 6 7
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Boundary Condition 1
+  Target Boundaries = 1
+End
+
+! Periodic Right
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Translate(3) = Real $L 0.0 0.0
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Velocity 3  = Logical True
+  Periodic BC Pressure = Logical True
+  Periodic BC Normal = Logical True
+  Periodic BC Friction Load = Logical True
+  Periodic BC Friction Heating = Logical True
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+
+  Periodic BC = 1 
+  Periodic BC Translate(3) = Real 0.0 $L 0.0
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Velocity 3  = Logical True
+  Periodic BC Pressure = Logical True
+  Periodic BC Normal = Logical True
+  Periodic BC Friction Load = Logical True
+  Periodic BC Friction Heating = Logical True
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+
+Boundary Condition 5
+  Target Boundaries = 5
+  Body Id = 2
+  Bottom Surface = Equals Zb
+  Normal-Tangential Velocity = Logical True
+  Velocity 1 = Real 0.0
+  Slip Coefficient 2 = Variable coordinate 1 , Coordinate 2
+     Real  MATC "1.0e-3*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))" 
+  Slip Coefficient 3 = Variable coordinate 1 , Coordinate 2
+     Real  MATC "1.0e-3*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))"       
+  Friction Load = Variable Velocity 1                
+    Real Procedure  "ElmerIceUSF" "getFrictionLoads"  
+  ComputeNormal = Logical True      
+End
+
+Boundary Condition 6
+  Target Boundaries = 6
+  Top surface = Variable Zb
+     REAL MATC "tx(0)+H"
+End

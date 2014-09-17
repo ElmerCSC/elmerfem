@@ -159,25 +159,12 @@ Solver 3
   File Append = Logical False
   Variable 1 = String "Time"
 
-  Variable 2 = String "Porous"
-  Operator 2 = String "int"
-  
-  Variable 3 = String "Porous"
-  Operator 3 = String "max"
+  Variable 2 = String "Relative Density"
+  Operator 2 = String "max"
 
-  Variable 4 = String "Porous"
-  Operator 4 = String "min"
-
-  Variable 5 = String "Relative Density"
-  Operator 5 = String "int"
-
-  Variable 6 = String "Relative Density"
-  Operator 6 = String "max"
-
-  Variable 7 = String "Relative Density"
-  Operator 7 = String "min"
-
-  Operator 8 = String "cpu time"
+  Variable 3 = String "Relative Density"
+  Operator 3 = String "min"
+ ! Comparison with DensAna : max/min  
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

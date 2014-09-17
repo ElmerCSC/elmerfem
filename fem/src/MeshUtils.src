@@ -8130,7 +8130,7 @@ END SUBROUTINE GetMaxDefs
         END SELECT
 
         Mesh_out % Elements(cnt) % GElementIndex = &
-         Mesh_in % Elements(j) % GelementIndex + gelements*(i-1)
+             Mesh_in % Elements(j) % GelementIndex + gelements*i
 
         Mesh_out % Elements(cnt) % ElementIndex = cnt
         ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n)) 
