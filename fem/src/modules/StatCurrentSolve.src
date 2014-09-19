@@ -537,7 +537,7 @@ END SUBROUTINE StatCurrentSolver_Init
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
     REAL(KIND=dp), POINTER :: U_Integ(:), V_Integ(:), W_Integ(:), S_Integ(:)
-    REAL(KIND=dp), ALLOCATABLE :: SumOfWeights(:)
+    REAL(KIND=dp), ALLOCATABLE :: SumOfWeights(:), tmp(:)
     REAL(KIND=dp) :: Conductivity(3,3,Model % MaxElementNodes)
     REAL(KIND=dp) :: Basis(Model % MaxElementNodes)
     REAL(KIND=dp) :: dBasisdx(Model % MaxElementNodes,3)
@@ -725,6 +725,16 @@ END SUBROUTINE StatCurrentSolver_Init
     IF ( ParEnv % PEs > 1) THEN
       VolTot     = ParallelReduction(VolTot)
       HeatingTot = ParallelReduction(HeatingTot)
+
+      IF ( CalculateCurrent) THEN
+        DO i=1,dim
+          tmp = VolCurrent(i::dim)
+          CALL ParallelSumVector(Solver % Matrix, tmp)
+          Volcurrent(i::dim) = tmp
+        END DO
+      END IF
+      IF (CalculateHeating ) CALL ParallelSumVector(Solver % Matrix, Heating)
+      CALL ParallelSumVector(Solver % Matrix, SumOfWeights)
     END IF
 
 !------------------------------------------------------------------------------
