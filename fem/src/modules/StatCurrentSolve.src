@@ -580,6 +580,8 @@ END SUBROUTINE StatCurrentSolver_Init
        Model % CurrentElement => Element
        NodeIndexes => Element % NodeIndexes
 
+       IF ( Element % PartIndex /= ParEnv % MyPE ) CYCLE
+
        n = Element % TYPE % NumberOfNodes
 
        IF ( ANY(Reorder(NodeIndexes) == 0) ) CYCLE
