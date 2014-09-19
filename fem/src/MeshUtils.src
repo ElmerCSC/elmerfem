@@ -1745,9 +1745,17 @@ END SUBROUTINE GetMaxDefs
  SUBROUTINE EnlargeParallelInfo( Mesh )
 
    TYPE(Mesh_t) :: Mesh
-   INTEGER :: nmax,n0,n1,i,j,istat
+   INTEGER :: nmax,n0,n1,i,j,istat, goffset
    INTEGER, POINTER :: TmpGlobalDofs(:)
  
+   INTEGER, ALLOCATABLE :: Perm(:)
+   LOGICAL, ALLOCATABLE :: Intf(:)
+   TYPE(NeighbourList_t), POINTER :: Nlist(:)
+
+   IF ( ParEnv % PEs <= 1 ) RETURN
+
+   goffset = ParallelReduction( MAXVAL(Mesh % ParallelInfo % GlobalDofs)*1._dp,2 )
+
    n0 = SIZE( Mesh % ParallelInfo % GlobalDofs )
    n1 = Mesh % NumberOfNodes 
    IF( n0 >= n1 ) RETURN
@@ -1759,16 +1767,58 @@ END SUBROUTINE GetMaxDefs
    IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate TmpGlobalDofs array.')
    TmpGlobalDofs = 0
    TmpGlobalDofs(1:n0) = Mesh % ParallelInfo % GlobalDofs
-   nmax = MAXVAL( Mesh % ParallelInfo % GlobalDofs(1:n0) )
 
-! currently the new discontinuous dofs have just been ordered on top of the 
-! existing ones. When the discontinuous nodes are shared then this is not 
-! good enough.
+   ALLOCATE(Perm(n1)); Perm  = 0
+
+   IF(ASSOCIATED(Mesh % DisContPerm)) THEN
+     DO i=1,n0
+       IF ( Mesh % DiscontPerm(i) > 0 ) THEN
+         Perm(Mesh % DiscontPerm(i)+n0) = i
+       END IF
+     END DO
+   END IF
+
    DO i=n0+1,n1
-     TmpGlobalDofs(i) = i-n0+nmax
+     j = Perm(i)
+     IF(j>0) THEN
+       TmpGlobalDofs(i) =  TmpGlobalDOfs(j) + goffset
+     END IF
    END DO
-   DEALLOCATE( Mesh % ParallelInfo % GlobalDofs )
+
+   DEALLOCATE(Mesh % ParallelInfo % GlobalDofs)
    Mesh % ParallelInfo % GlobalDOfs => TmpGlobalDofs
+
+   ALLOCATE(Nlist(n1))
+   DO i=1,n0
+    Nlist(i) % Neighbours => &
+      Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+   END DO
+
+   DO i=n0+1,n1
+    j = Perm(i)
+    IF ( j>0 ) THEN
+      Nlist(i) % Neighbours => Nlist(j) % Neighbours
+    ELSE
+      Nlist(i) % Neighbours => Null()
+    END IF
+   end do
+
+   DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
+   Mesh % ParallelInfo % NeighbourList => Nlist
+
+   ALLOCATE(Intf(n0))
+   Intf = Mesh % ParallelInfo % Interface
+   DEALLOCATE(Mesh % ParallelInfo % Interface)
+   ALLOCATE(Mesh % ParallelInfo % Interface(n1)) 
+   Mesh % ParallelInfo % Interface(1:n0) = Intf
+   DO i=n0+1,n1
+     j = Perm(i)
+     IF(j>0) THEN
+       Mesh % ParallelInfo % Interface(i) = Intf(j)
+     ELSE
+       Mesh % ParallelInfo % Interface(i) = .FALSE.
+     END IF
+   END DO
 
  END SUBROUTINE EnlargeParallelInfo
 
@@ -2507,6 +2557,10 @@ END SUBROUTINE GetMaxDefs
    !------------------------------------------------------------------------
    CALL MapBodiesAndBCs()
 
+   ! Read parallel mesh information: shared nodes
+   !------------------------------------------------------------------
+   CALL LoadMeshStep( 5 )
+
    ! Create the discontinuous mesh that accounts for the jumps in BCs
    ! This must be created after the whole mesh has been read in and 
    ! bodies and bcs have been mapped to full operation.
@@ -2520,9 +2574,6 @@ END SUBROUTINE GetMaxDefs
    !-------------------------------------------------------------------
    CALL NonNodalElements()
 
-   ! Read parallel mesh information: shared nodes
-   !------------------------------------------------------------------
-   CALL LoadMeshStep( 5 )
 
    ! Create parallel info for the non-nodal elements
    !------------------------------------------------------------------

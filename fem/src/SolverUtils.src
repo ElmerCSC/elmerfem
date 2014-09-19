@@ -2605,7 +2605,7 @@ CONTAINS
        InvInvPerm = 0
        DO i=1,SIZE( Projector % InvPerm )
          j = Projector % InvPerm(i) 
-         IF( j <= nodesize ) THEN
+         IF( j > 0 .AND. j <= nodesize ) THEN
            InvInvPerm( j ) = i
          END IF
        END DO

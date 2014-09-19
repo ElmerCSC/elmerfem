@@ -85,7 +85,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
        TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
        INTEGER :: i, j, k, l, m, n, DOFs
-       LOGICAL :: DGSolver, Found, GB, Global_dof, StrideProj
+       LOGICAL :: DGSolver, Found, GB, Global_dof, StrideProj, DiscontBC
        TYPE(Mesh_t), POINTER :: Mesh
        TYPE(Element_t), POINTER :: Element
        TYPE(NeighbourList_t), POINTER :: MtrxN, MeshN
@@ -275,6 +275,7 @@ CONTAINS
          pardofs_all = NINT(ParallelReduction(Matrix % ParallelDOFs*1._dp,2))
 
          StrideProj = ListGetLogicalAnyBC(CurrentModel,'Stride Projector' )
+         DiscontBC  = ListGetLogicalAnyBC(CurrentModel,'Discontinuous Boundary' )
 
          IF(StrideProj) THEN
            ALLOCATE(OwnedDofs(ParEnv % PEs), OwnedDofs2(ParEnv % PEs))
@@ -315,8 +316,10 @@ CONTAINS
              l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l))
 
-             IF (Matrix % Parallelinfo % Interface(k)) &
-               CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
+             IF(.NOT.DiscontBC) THEN
+               IF (Matrix % Parallelinfo % Interface(k)) &
+                 CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
+             END IF
 
              Matrix % Parallelinfo % NeighbourList(i) % Neighbours = &
                 Matrix % ParallelInfo % NeighbourList(k) % Neighbours
