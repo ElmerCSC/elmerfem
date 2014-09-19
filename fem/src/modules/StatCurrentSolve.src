@@ -131,7 +131,6 @@ END SUBROUTINE StatCurrentSolver_Init
           CalculateField, ConstantWeights, &
           Cwrk, ControlScaling
      
- 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
@@ -166,7 +165,6 @@ END SUBROUTINE StatCurrentSolver_Init
          'Nonlinear System Max Iterations', GotIt )
      IF ( .NOT. GotIt ) NonlinearIter = 1
      
-
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -410,6 +408,7 @@ END SUBROUTINE StatCurrentSolver_Init
          END DO ! of i=1,model bcs
        END DO   ! Neumann BCs
        !------------------------------------------------------------------------------
+
 
        ! parallel reduction needed
        IF ( ParEnv % PEs > 1) THEN
@@ -729,6 +728,7 @@ END SUBROUTINE StatCurrentSolver_Init
       HeatingTot = ParallelReduction(HeatingTot)
 
       IF ( CalculateCurrent) THEN
+        ALLOCATE(tmp(SIZE(VolCurrent))/dimi)
         DO i=1,dim
           tmp = VolCurrent(i::dim)
           CALL ParallelSumVector(Solver % Matrix, tmp)
