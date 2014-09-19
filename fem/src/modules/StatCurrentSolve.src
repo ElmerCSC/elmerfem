@@ -728,7 +728,7 @@ END SUBROUTINE StatCurrentSolver_Init
       HeatingTot = ParallelReduction(HeatingTot)
 
       IF ( CalculateCurrent) THEN
-        ALLOCATE(tmp(SIZE(VolCurrent))/dimi)
+        ALLOCATE(tmp(SIZE(VolCurrent)/dim))
         DO i=1,dim
           tmp = VolCurrent(i::dim)
           CALL ParallelSumVector(Solver % Matrix, tmp)
