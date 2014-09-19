@@ -4921,7 +4921,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
   
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), PSOL(35), R(35), C(35), Norm
+   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), PSOL(35), R(35), C(35), Norm, ElPotSol(1,8)
    REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3), JatIP(2,3), &
                     VP_ip(2,3), Wbase(35), alpha(35), JXBatIP(2,3)
    REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy
@@ -4945,12 +4945,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
               VvarDofs,VvarId,IvarId,Reindex,Imindex
 
-   TYPE(Solver_t), POINTER :: pSolver
-   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType
+   TYPE(Solver_t), POINTER :: pSolver, ElPotSolver
+   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
-              CalcFluxLogical, CoilBody
+              CalcFluxLogical, CoilBody, PreComputedElectricPot
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -4991,8 +4991,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential')
    EL_VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential E')
 
-   JXB => VariableGet( Mesh % Variables, 'JxB')
-   EL_JXB => VariableGet( Mesh % Variables, 'JxB E')
 
    Pname = GetString(GetSolverParams(), 'Potential Variable')
    DO i=1,Model % NumberOfSolvers
@@ -5000,6 +4998,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      IF ( Pname==getVarName(pSolver % Variable)) EXIT
    END DO
    vDOFs = pSolver % Variable % DOFs
+
+   ElectricPotName = GetString(GetSolverParams(), 'Precomputed Electric Potential', PrecomputedElectricPot)
+   IF (PrecomputedElectricPot) THEN
+      DO i=1,Model % NumberOfSolvers
+         ElPotSolver => Model % Solvers(i)
+         IF (ElectricPotName==getVarName(ElPotSolver % Variable)) EXIT
+      END DO
+   END IF
 
 
    EF => NULL(); EL_EF => NULL(); 
@@ -5011,20 +5017,18 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( Transient .OR. vDOFs==2 ) THEN
      JH => VariableGet( Mesh % Variables, 'Joule Field' )
      EF => VariableGet( Mesh % Variables, 'Electric Field' )
-     CD => VariableGet( Mesh % Variables, 'Current Density' )
      FWP => VariableGet( Mesh % Variables, 'Winding Voltage' )
-     JXB => VariableGet( Mesh % Variables, 'JxB')
 
      EL_JH => VariableGet( Mesh % Variables, 'Joule Field E' )
      EL_EF => VariableGet( Mesh % Variables, 'Electric Field E' )
-     EL_CD => VariableGet( Mesh % Variables, 'Current Density E' )
      EL_FWP => VariableGet( Mesh % Variables, 'Winding Voltage E' )
    END IF
 
-   IF (.NOT. Transient .AND. VDOFs==1) THEN
-      CD => VariableGet( Mesh % Variables, 'Current Density' )
-      EL_CD => VariableGet( Mesh % Variables, 'Current Density E' )
-   END IF
+   CD => VariableGet( Mesh % Variables, 'Current Density' )
+   EL_CD => VariableGet( Mesh % Variables, 'Current Density E' )
+
+   JXB => VariableGet( Mesh % Variables, 'JxB')
+   EL_JXB => VariableGet( Mesh % Variables, 'JxB E')
 
    MST => variableGet( Mesh % Variables, 'Maxwell stress' )
    EL_MST => variableGet( Mesh % Variables, 'Maxwell stress E' )
@@ -5104,6 +5108,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GetElementNodes( Nodes )
 
      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
+     IF (PrecomputedElectricPot) &
+          CALL GetScalarLocalSolution(ElPotSol(1,:),ElectricPotName,uSolver=ElPotSolver)
+
      IF ( Transient ) THEN
        CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
        PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
@@ -5612,7 +5619,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        !C_ip  = SUM( Basis(1:n)*C(1:n) )
        DO k=1,3
          DO l=1,3
-           CMat_ip(k,l) = SUM( Tcoef(k,l,1:np) * Basis(1:np) )
+           CMat_ip(k,l) = SUM( Tcoef(k,l,1:n) * Basis(1:n) )
          END DO
        END DO
 
@@ -5684,7 +5691,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              IF (np > 0) THEN
                E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              ELSE
-               E(1,:) = 0.0d0
+               IF (PrecomputedElectricPot) THEN
+                 E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+               ELSE
+                 E(1,:) = 0.0d0
+               END IF
              END IF
           END IF
        END IF
