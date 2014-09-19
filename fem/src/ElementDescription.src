@@ -8701,6 +8701,44 @@ END FUNCTION PointFaceDistance
     END IF
   END FUNCTION wedgeOrdering
 
+  !---------------------------------------------------------
+  !> Computes the 3D rotation matrix for a given 
+  !> surface normal vector
+  !---------------------------------------------------------
+  FUNCTION ComputeRotationMatrix(PlaneVector) RESULT ( RotMat )
+
+    REAL(KIND=dp) :: PlaneVector(3), RotMat(3,3), ex(3), ey(3), ez(3)
+    INTEGER :: i, MinIndex, MidIndex, MaxIndex
+
+    !Ensure PlaneVector is the unit normal
+    PlaneVector = PlaneVector / SQRT( SUM(PlaneVector ** 2) )
+    
+    !The new z-axis is normal to the defined surface
+    ez = PlaneVector
+
+    MaxIndex = MAXLOC(ez,1)
+    MinIndex = MINLOC(ez,1)
+
+    DO i=1,3
+       IF(i == MaxIndex .OR. i == MinIndex) CYCLE
+       MidIndex = i
+    END DO
+
+    ex(MinIndex) = 1.0
+    ex(MidIndex) = 0.0
+    
+    ex(MaxIndex) = -ez(MinIndex)/ez(MaxIndex)
+    ex = ex / SQRT( SUM(ex ** 2) )
+
+    !The new y-axis is orthogonal to new x and z axes
+    ey = CrossProduct(ez, ex)
+    ey = ey / SQRT( SUM(ey ** 2) ) !just in case...
+
+    RotMat(1,:) = ex
+    RotMat(2,:) = ey
+    RotMat(3,:) = ez
+
+  END FUNCTION ComputeRotationMatrix
 
 END MODULE ElementDescription
 
