@@ -4137,8 +4137,9 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) ::  ParamName(99), Name
   LOGICAL :: SubroutineVisited=.FALSE.,FirstTime=.TRUE., GotCoeff, &
        GotIt, GotOper, GotVar, ExactCoordinates
+  LOGICAL, ALLOCATABLE :: Valid(:)
 
-  SAVE SubroutineVisited, DIM, LocalNodes, ParamName, NoParams, LocalParam
+  SAVE SubroutineVisited, DIM, LocalNodes, ParamName, NoParams, LocalParam, Valid
 
 
   CALL Info('SaveBoundaryValues','Creating selected boundary values as fields')
@@ -4177,6 +4178,9 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
        RETURN
      END IF     
      
+     ALLOCATE(Valid(NoParams)) !Prevent seg faults when missing
+     Valid = .TRUE.
+
      !------------------
      ! Add new Variables
      ! -----------------
@@ -4217,7 +4221,8 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
 
          IF( j == 0 ) THEN
            CALL Warn('SaveBoundaryValues',&
-               'Parameter '//TRIM(ParamName(ParamNo))//' not present in any material')
+                'Parameter '//TRIM(ParamName(ParamNo))//' not present in any material')
+           Valid(ParamNo) = .FALSE.
          ELSE
            WRITE( Message,'(A,I0,A)') 'Parameter > '//TRIM(ParamName(ParamNo))&
                //' < defined with ',j,' dofs'
@@ -4246,7 +4251,8 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
    ! NoParams is set the 1st time the suboutine is visited. 
    !--------------------------------------------------------
    DO ParamNo=1,NoParams 
-    
+    IF(.NOT. Valid(ParamNo)) CYCLE !prevents segfaults...
+        
     Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
     Field => Var % Values
     FieldPerm => Var % Perm
