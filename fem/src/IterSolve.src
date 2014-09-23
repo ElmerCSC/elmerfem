@@ -163,14 +163,17 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: work(:,:)
     INTEGER :: i,j,k,N,ipar(50),wsize,istat,IterType,PCondType,ILUn,Blocks
     LOGICAL :: Internal, NullEdges
+    LOGICAL :: ComponentwiseStopC, NormwiseStopC
+    LOGICAL :: Condition,GotIt,AbortNotConverged, Refactorize,Found,GotDiagFactor
 
     REAL(KIND=dp) :: ILUT_TOL, DiagFactor
-    LOGICAL :: Condition,GotIt,AbortNotConverged, Refactorize,Found,GotDiagFactor
+
     TYPE(ValueList_t), POINTER :: Params
 
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 
-    EXTERNAL MultigridPrec, BackwardError
+    EXTERNAL MultigridPrec
+    EXTERNAL NormwiseBackwardError2, NormwiseBackwardError, ComponentwiseBackwardError
 
     INTEGER  :: HUTI_D_BICGSTAB, HUTI_D_BICGSTAB_2, HUTI_D_TFQMR, &
         HUTI_D_CG, HUTI_D_CGS, HUTI_D_GMRES
@@ -311,13 +314,22 @@ CONTAINS
     
     wsize = HUTI_WRKDIM
     
-    
     IF (PRESENT(StopcF)) THEN
       StopcProc = StopcF
       HUTI_STOPC = HUTI_USUPPLIED_STOPC
     ELSE
-      IF(ListGetLogical(Params,'Linear System Use Backward Error Estimate',GotIt)) THEN
-        StopcProc = AddrFunc(BackwardError)
+      ComponentwiseStopC = ListGetLogical(Params,'Linear System Componentwise Backward Error',GotIt)
+      NormwiseStopC = ListGetLogical(Params,'Linear System Normwise Backward Error',GotIt)
+      IF (ComponentwiseStopC .OR. NormwiseStopC) THEN
+        IF (ComponentwiseStopC) THEN
+          StopcProc = AddrFunc(ComponentwiseBackwardError)
+        ELSE
+          IF (ListGetLogical(Params,'Linear System Row Equilibration',GotIt)) THEN
+            StopcProc = AddrFunc(NormwiseBackwardError)
+          ELSE
+            StopcProc = AddrFunc(NormwiseBackwardError2)
+          END IF
+        END IF
         HUTI_STOPC = HUTI_USUPPLIED_STOPC
       ELSE
         HUTI_STOPC = HUTI_TRESID_SCALED_BYB
@@ -432,7 +444,7 @@ CONTAINS
 
                   PrecMat => AllocateMatrix()
                   PrecMat % FORMAT = MATRIX_LIST
-                  PrecMat % CIluValues => Null()
+                  PrecMat % CIluValues => NULL()
 
                   IF(ASSOCIATED(CM)) THEN
                     DO i=CM % NumberOfRows,1,-1

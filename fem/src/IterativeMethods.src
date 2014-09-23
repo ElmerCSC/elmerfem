@@ -497,7 +497,7 @@ CONTAINS
     INTEGER :: ndim,i,j,k
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged
+    LOGICAL :: Converged, Diverged, UseStopCFun
 
     TYPE(Matrix_t),POINTER :: A
 
@@ -531,6 +531,7 @@ CONTAINS
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL 
     PolynomialDegree = HUTI_BICGSTABL_L 
+    UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
     CALL RealBiCGStabl(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
         Converged, Diverged, OutputInterval, PolynomialDegree )
@@ -607,7 +608,7 @@ CONTAINS
       rnrm0 = normfun(n, work(1:n,r), 1 )
 
       !-------------------------------------------------------------------
-      ! Check whether the initial guess is already converged, divergeda or NaN
+      ! Check whether the initial guess is already converged, diverged or NaN
       !--------------------------------------------------------------------
       Diverged = .FALSE.
       IF (bnrm /= bnrm) THEN
@@ -808,6 +809,7 @@ CONTAINS
         END IF
       
         errorind = rnrm / bnrm
+
         IF( MOD(Round,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
         END IF
@@ -862,7 +864,7 @@ CONTAINS
     INTEGER :: ndim, RestartN
     INTEGER :: Rounds, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged
+    LOGICAL :: Converged, Diverged, UseStopCFun
 
     TYPE(Matrix_t),POINTER::A
 
@@ -874,6 +876,7 @@ CONTAINS
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL
     RestartN = HUTI_GCR_RESTART 
+    UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
     x => xvec
     b => rhsvec
@@ -948,7 +951,11 @@ CONTAINS
       bnorm = normfun(n, b, 1)
       rnorm = normfun(n, r, 1)
       
-      Residual = rnorm / bnorm
+      IF (UseStopCFun) THEN
+        Residual = stopcfun(x,b,r,ipar,dpar)
+      ELSE
+        Residual = rnorm / bnorm
+      END IF
       Converged = (Residual < MinTolerance) 
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)
       IF( Converged .OR. Diverged) RETURN
@@ -999,12 +1006,19 @@ CONTAINS
          ! Check whether the convergence criterion is met 
          !--------------------------------------------------------------
          rnorm = normfun(n, r, 1)
-         Residual = rnorm / bnorm
-        
-         IF( MOD(k,OutputInterval) == 0) THEN
-            WRITE (*, '(I8, E11.4)') k, residual
+         
+         IF (UseStopCFun) THEN
+           Residual = stopcfun(x,b,r,ipar,dpar)
+           IF( MOD(k,OutputInterval) == 0) THEN
+             WRITE (*, '(I8, 2E11.4)') k, rnorm / bnorm, residual
+           END IF           
+         ELSE
+           Residual = rnorm / bnorm
+           IF( MOD(k,OutputInterval) == 0) THEN
+             WRITE (*, '(I8, E11.4)') k, residual
+           END IF
          END IF
-        
+           
          Converged = (Residual < MinTolerance) 
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT
