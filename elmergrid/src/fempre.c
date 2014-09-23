@@ -170,7 +170,8 @@ static void Instructions()
   printf("-metis int[2]        : the mesh will be partitioned with Metis\n");
 #endif
   printf("-partdual            : use the dual graph in the partitioning\n");
-  printf("-halo                : create halo for the partitioning\n");
+  printf("-halo                : create halo for the partitioning for DG\n");
+  printf("-halobc              : create halo for the partitioning at boundaries only\n");
   printf("-indirect            : create indirect connections in the partitioning\n");
   printf("-periodic int[3]     : decleare the periodic coordinate directions for parallel meshes\n");
   printf("-partjoin int        : number of partitions in the data to be joined\n");
@@ -181,7 +182,9 @@ static void Instructions()
   printf("-partbw              : minimize the bandwidth of partition-partion couplings\n");
   printf("-parthypre           : number the nodes continuously partitionwise\n");
   printf("-partconnect         : partition connected BCs separately to partitions in z-direction\n");
+#if PARTMETIS
   printf("-metisconnect        : partition connected BCs separately to partitions by Metis\n");
+#endif
   printf("-partlayers          : extended boundary partitioning by element layers\n");
 
   if(0) printf("-names               : conserve name information where applicable\n");

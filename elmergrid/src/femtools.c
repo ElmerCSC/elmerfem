@@ -36,7 +36,7 @@
 #include "femdef.h"
 #include "femtools.h"
 
-
+#if 0
 
 void Squad404(Real *xi,Real *eta,Real *sfun, Real *lder)
 /*     Computes shape function and its derivatives in local 
@@ -416,5 +416,5 @@ int GlobalToLocalD2Complicated(Real *coord,Real xglobal,Real yglobal,
   return(hit);
 }
 
-
+#endif
 

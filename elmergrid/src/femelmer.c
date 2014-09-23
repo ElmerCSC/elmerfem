@@ -5482,29 +5482,17 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
     if(info) {
       if(part == 1) {
-	printf("   %-5s %-10s %-10s %-8s %-8s %-8s",
-			   "part","elements","nodes","shared","bc elems","orphan");
-	if(indirect) printf(" %-8s","indirect");
-	printf("\n");
+	printf("   %-5s %-10s %-10s %-8s %-8s %-8s %-8s\n",
+	       "part","elements","nodes","shared","bc elems","orphan","indirect");
       }
-      printf("   %-5d %-10d %-10d %-8d %-8d %-8d",
-	     part,elementsinpart[part],ownnodes[part],sharednodes[part],sidesinpart[part],orphannodes[part]);
-      if(indirect) printf(" %-8d",indirectinpart[part]);
-      printf("\n");
+      printf("   %-5d %-10d %-10d %-8d %-8d %-8d %-8d\n",
+	     part,elementsinpart[part],ownnodes[part],sharednodes[part],sidesinpart[part],
+	     orphannodes[part],indirectinpart[part]);
     }
   }
   /*********** end of part.n.header *********************/
 
   
-  if(splitsides) {
-    printf("********************** Warning *************************\n");
-    printf("Number or boundary elements split at between parents: %d\n",splitsides);
-    printf("This could be a problem for internal flux conditions\n");
-    printf("You could try to use '-halobc' flag as remedy\n");
-    printf("********************************************************\n");
-  }
-
-
   sumelementsinpart = sumownnodes = sumsharednodes = sumsidesinpart = sumorphannodes = 0;
   for(i=1;i<=partitions;i++) {
     sumelementsinpart += elementsinpart[i];
@@ -5520,6 +5508,15 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	 1.0*sumelementsinpart/n,1.0*sumownnodes/n,1.0*sumsharednodes/n,
 	 1.0*sumsidesinpart/n,1.0*sumorphannodes/n,1.0*sumindirect/n);
  
+  if(splitsides) {
+    printf("************************* Warning ****************************\n");
+    printf("Number or boundary elements split at between parents: %d\n",splitsides);
+    printf("This could be a problem for internal flux conditions\n");
+    printf("You could try to use '-halobc' flag as remedy with ElmerSolver.\n");
+    printf("**************************************************************\n");
+  }
+
+
   free_Ivector(bcnodesaved2,1,noknots);
   if(halomode) free_Ivector(neededtimes2,1,noknots);
   

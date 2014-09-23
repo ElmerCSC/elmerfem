@@ -1999,8 +1999,6 @@ int CreateBoundaries(struct CellType *cell,struct FemType *data,
       CreateBoundary(cell,data,&boundaries[j],
 		     data->boundext[i],data->boundint[i],
 		     data->boundsolid[i],data->boundtype[i]);
-
-      printf("i=%d\n",i);
     }
   return(0);
 }
@@ -9729,37 +9727,10 @@ int CreateInverseTopology(struct FemType *data,int info)
 
 
 
-int DestroySpMatrix(struct FemType *data,int info) {
-
-}
-
-
-int DestroyInverseTopology(struct FemType *data,int info)
-{
-  int i,maxcon,noknots;  
-  struct CRSType *invtopo;
-
-  invtopo = &data->invtopo;
-
-  if(invtopo->created) {
-    printf("You tried to destroy a non-existing inverse topology\n");
-    return(1);
-  }
-
-  free_Ivector( invtopo->rows, 0, invtopo->rowsize );
-  free_Ivector( invtopo->cols, 0, invtopo->colsize-1 );
-  invtopo->created = FALSE;
-
-  if(info) printf("The nodal inverse topology was destroyed\n");
-  return(0);
-}
-
-
-
 int CreateDualGraph(struct FemType *data,int unconnected,int info)
 {
   int totcon,dcon,noelements,noknots,elemtype,nonodes,i,j,k,l,i2,m,ind,hit,ci,ci2;
-  int dualmaxcon,invmaxcon,showgraph,freeelements,step;
+  int dualmaxcon,invmaxcon,showgraph,freeelements,step,orphanelements;
   int *elemconnect,*neededby;
   int *dualrow,*dualcol,dualsize,dualmaxelem,allocated;
   int *invrow,*invcol;
@@ -9767,9 +9738,8 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
 
   printf("Creating a dual graph of the finite element mesh\n");  
 
-  /* dual = data->dual; */
-
-  if(data->dualexists) {
+  dualgraph = &data->dualgraph;
+  if(dualgraph->created) {
     printf("The dual graph already exists!\n");
     return(1);
   }
@@ -9779,6 +9749,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   noelements = data->noelements;
   noknots = data->noknots;
   freeelements = noelements;
+  orphanelements = 0;
   
   /* If a dual graph only for the unconnected nodes is requested do that.
      Basically the connected nodes are omitted in the graph. */
@@ -9881,7 +9852,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
       }
     }
     if( dcon == 0 && allocated ) {
-      printf("Element %d of type %d is not connected in dual mesh!\n",i,elemtype);
+      orphanelements += 1;
     }
   }	
 
@@ -9898,7 +9869,6 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
     for(i=0;i<totcon;i++) 
       dualcol[i] = 0;
 
-    dualgraph = &data->dualgraph;
     dualgraph->cols = dualcol;
     dualgraph->rows = dualrow;
     dualgraph->rowsize = dualsize;
@@ -9909,6 +9879,11 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
 
     goto omstart;
   } 
+
+  if( orphanelements ) {
+    printf("There are %d elements in the dual mesh that are not connected!\n",orphanelements);
+    if(unconnected) printf("The orphan elements are likely caused by the hybrid partitioning\n");
+  }
 
 
 #if 0
@@ -9944,6 +9919,36 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
 
   return(0);
 }
+
+
+int DestroyCRSMatrix(struct CRSType *sp) {
+
+  if(sp->created) {
+    if(0) printf("You tried to destroy a non-existing sparse matrix\n");
+    return(1);
+  }
+
+  free_Ivector( sp->rows, 0, sp->rowsize );
+  free_Ivector( sp->cols, 0, sp->colsize-1);
+  sp->rowsize = 0;
+  sp->colsize = 0;
+  sp->created = FALSE;
+
+  return(0);
+}
+
+
+int DestroyInverseTopology(struct FemType *data,int info)
+{
+  DestroyCRSMatrix( &data->invtopo );
+}
+
+int DestroyDualGraph(struct FemType *data,int info)
+{
+  DestroyCRSMatrix( &data->dualgraph );
+}
+
+
 
 
 int MeshTypeStatistics(struct FemType *data,int info)

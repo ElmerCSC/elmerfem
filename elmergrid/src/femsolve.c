@@ -37,7 +37,7 @@
 #include "femdef.h"
 #include "femsolve.h"
 
-
+#if 0
 
 /*******************************************************************************/
 
@@ -128,7 +128,7 @@ void Normalize(Real **vf, const Real *b,int sides)
   free_Rvector(diag,1,sides);
   free_Ivector(indx,1,sides);
 }
-
+#endif
 
 
 /*
@@ -199,5 +199,4 @@ void SortIndex( int N, double *Key, int *Ord )
         }
 
 }
-
 
