@@ -28,6 +28,12 @@
 #define CONPERIODIC 2
 #define CONCONSTRAINT 3
 
+struct CRSType {
+  int *rows, *cols;
+  int rowsize,colsize; 
+  int created;
+};
+
 /* Struture GridType includes the subcell structure of the 
    geometry and the meshing information. The elements may be 
    directly derived from this structures but it takes some 
@@ -178,16 +184,10 @@ struct FemType {
     *nodalgraph[MAXCONNECTIONS],  
     nodalmaxconnections,
     nodalexists,
-    *dualgraph[MAXCONNECTIONS],  
-    dualmaxconnections,
     dualexists,
     *partitiontable[MAXCONNECTIONS],  
     maxpartitiontable,
     partitiontableexists, 
-
-    *invtopo[MAXCONNECTIONS],
-    maxinvtopo,
-    invtopoexists,
 
     nocorners,     /* number material corners in the mesh */
     timesteps,     /* number of timesteps */
@@ -227,6 +227,10 @@ struct FemType {
       boundext[MAXBOUNDARIES],   /* external material in the boundary */
       boundsolid[MAXBOUNDARIES], /* which one is solid? */
       boundtype[MAXBOUNDARIES];  /* type of the boundary */
+
+  struct CRSType dualgraph,      /* The dual graph of the finite element mesh */
+    nodalgraph2,                  /* The nodal graph of the finite element mesh */
+    invtopo;                      /* The inverse of the finite element mesh topology */
 };
 
 /* The boundaries between different materials or domains
@@ -241,10 +245,7 @@ struct BoundaryType {
     maxsidenodes,  /* number of sidenodes on the element */
     fixedpoints,     /* number of fixed points allowed */
     coordsystem,     /* coordinate system flag */
-    vfcreated,       /* are view factors created */
-    gfcreated,       /* are Gephart factors created */
     maparea,         /* mappings of the area */
-    mapvf,           /* mappings of the view factors */ 
     open,            /* is the closure partially open? */
     echain,          /* does the chain exist? */
     ediscont,        /* does the discontinous boundary exist */
@@ -265,8 +266,6 @@ struct BoundaryType {
   Real totalarea,       /* total area of the side */
     areasexist,
     *areas,             /* side areas */
-    **vf,               /* view factors */
-    **gf,               /* Gephart factors */
     *vars[MAXVARS];     /* variables on the sides */
   char varname[MAXVARS][MAXNAMESIZE]; /* variable name */
 };
@@ -366,7 +365,9 @@ struct ElmergridType {
     partbw, /* minimize bandwidth for partitions */
     parthypre, /* renumber for hypre */
     partdual, 
-    partz, 
+    partbcz,
+    partbcmetis,
+    partbclayers,
     nofilesin,
     saveinterval[3],
     elementsredone,
