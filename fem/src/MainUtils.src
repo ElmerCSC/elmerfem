@@ -3272,7 +3272,7 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: M
      INTEGER :: comm_active, group_active, group_world, ierr
 
-     LOGICAL :: ApplyMortar, FoundMortar
+     LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
 
 !------------------------------------------------------------------------------
@@ -3306,12 +3306,14 @@ CONTAINS
      END IF
 !------------------------------------------------------------------------------
 
+     SlaveNotParallel = ListGetLogical( Solver % Values, 'Slave not parallel',Found )
+
      MeActive = ASSOCIATED(Solver % Matrix)
      IF ( MeActive ) &
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
-     CALL ParallelActive( MeActive )
+     IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     IF ( ParEnv % PEs>1 ) THEN
+     IF ( ParEnv % PEs>1 .AND. .NOT.SlaveNotParallel ) THEN
        DO i=1,ParEnv % PEs
          IF ( ParEnv % Active(i) ) THEN
            EXIT
@@ -3356,6 +3358,7 @@ CONTAINS
          END DO
        END IF
      END IF
+
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        ParEnv % ActiveComm = Solver % Matrix % Comm
        IF ( ParEnv % PEs>1 .AND. MeActive ) THEN
@@ -3368,6 +3371,8 @@ CONTAINS
            ParEnv = Solver % Matrix % ParMatrix % ParEnv
          END IF
        END IF
+     ELSE
+       Parenv % ActiveComm = MPI_COMM_WORLD
      END IF
 
 

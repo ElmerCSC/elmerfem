@@ -2300,11 +2300,15 @@ CONTAINS
        iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
        iter = NINT(iterV % Values(1))
 
+
        DO j=1,SIZE(SlaveSolverIndexes)
          k = SlaveSolverIndexes(j)
          SlaveSolver => CurrentModel % Solvers(k)
 
          IF(ParEnv % PEs>1) THEN
+           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .TRUE.)
+
            alloc_parenv = .FALSE.
            IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
              IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
@@ -2321,6 +2325,8 @@ CONTAINS
          CALL SolverActivate_x( CurrentModel,SlaveSolver,dt,Transient)
 
          IF(ParEnv % PEs>1) THEN
+           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+             CALL ListAddLogical( SlaveSolver % Values, 'Slave not parallel', .FALSE.)
 
            IF(alloc_parenv) THEN
              DEALLOCATE(ParEnv % Active)
