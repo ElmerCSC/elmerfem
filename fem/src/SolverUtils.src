@@ -6164,7 +6164,7 @@ END FUNCTION SearchNodeL
     END IF
 
 
-! If whether b=0 since then equation Ax=b has only the trivial solution, x=0. 
+! Check whether b=0 since then equation Ax=b has only the trivial solution, x=0. 
 ! In case of a limiter one still may need to check the limiter for contact.
 !-----------------------------------------------------------------------------
     bnorm = ParallelReduction(SQRT(SUM(b(1:n)**2)))
@@ -7455,6 +7455,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      END IF
      Solver % Variable % NonlinValues (1:k)= CollectionSolution(1:k)
   END IF
+
+  CollectionMatrix % Comm = StiffMatrix % Comm
 
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
