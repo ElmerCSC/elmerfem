@@ -5493,7 +5493,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   /*********** end of part.n.header *********************/
 
   
-  sumelementsinpart = sumownnodes = sumsharednodes = sumsidesinpart = sumorphannodes = 0;
+  sumelementsinpart = sumownnodes = sumsharednodes = sumsidesinpart = sumorphannodes = sumindirect = 0;
   for(i=1;i<=partitions;i++) {
     sumelementsinpart += elementsinpart[i];
     sumownnodes += ownnodes[i];
