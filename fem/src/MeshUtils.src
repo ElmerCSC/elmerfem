@@ -2764,10 +2764,10 @@ END SUBROUTINE GetMaxDefs
        DO i=1,Mesh % NumberOfBulkElements
          Element => Mesh % Elements(i)
          id = Element % BodyId
-         IF( IndexMap( id ) == 0 ) THEN
+!        IF( IndexMap( id ) == 0 ) THEN
 !          PRINT *,'Unmapped body: ',id
-           IndexMap(id) = id
-         END IF
+!          IndexMap(id) = id
+!        END IF
          Element % BodyId = IndexMap( id ) 
        END DO
 
