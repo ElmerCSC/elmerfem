@@ -1,9 +1,10 @@
-ECHO OFF
-SET LIBDIR=%ELMER_HOME%/share/elmersolver/lib
-SET INCLUDE=%LIBDIR%/../include
+@ECHO OFF
+SET LIBDIR=%ELMER_HOME%/bin
+SET INCLUDE=%ELMER_HOME%/share/elmersolver/include
 
-SET LD=%ELMER_HOME%/stripped_gfortran/bin/@NSIS_GFORTRAN_RUNTIME_FILENAME@
+SET LD="%ELMER_HOME%/stripped_gfortran/bin/@NSIS_GFORTRAN_RUNTIME_FILENAME@"
 
-SET cmd=%LD% -shared %* -L%ELMER_HOME%/bin -L%LIBDIR% -lelmersolver
+REM SET CMD=%LD% -shared %* -L"%LIBDIR%" -L"%ELMER_HOME%/bin" -lelmersolver
+SET CMD=%LD% @CMAKE_Fortran_FLAGS@ @CMAKE_SHARED_LIBRARY_Fortran_FLAGS@ @CMAKE_SHARED_LIBRARY_CREATE_Fortran_FLAGS@ %* -L"@CMAKE_INSTALL_PREFIX@/@ELMER_INSTALL_LIB_DIR@" -L"%LIBDIR%" -lelmersolver
 echo %cmd%
-%LD% -shared %* -L%ELMER_HOME%/bin -L%LIBDIR% -lelmersolver
+%cmd%
