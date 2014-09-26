@@ -936,10 +936,21 @@ CONTAINS
             DO k=1,Solver % Variable % DOFs-1
               str = 'Velocity ' // CHAR(k+ICHAR('0'))
               Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
+              IF(.NOT. ASSOCIATED(Var)) THEN
+                 WRITE (Message, '(a,a,a)')  "Failed to get variable:&
+                      & ",TRIM(str), ". Try specifying Variable =&
+                      & Flow Solution[velocity:DIM pressure:1] in .SIF"
+                 CALL Fatal("AddEquationSolution",Message)
+              END IF
               Var % PrevValues =>  &
                   Solver % Variable % PrevValues(k::Solver % Variable % DOFs,:)
             END DO
             Var => VariableGet( Solver % Mesh % Variables, 'Pressure', .TRUE. )
+            IF(.NOT. ASSOCIATED(Var)) THEN
+               CALL Fatal("AddEquationSolution","Failed to get variable: &
+                    &pressure. Try specifying Variable = Flow Solution &
+                    &[velocity:DIM pressure:1] in .SIF")
+            END IF
             Var % PrevValues =>  &
                 Solver % Variable % PrevValues(k::Solver % Variable % DOFs,:)
           ELSE
