@@ -2544,7 +2544,7 @@ CONTAINS
      REAL(KIND=dp) :: coeff, weight, voff, res
      TYPE(Matrix_t), POINTER :: Projector
      TYPE(ValueList_t), POINTER :: BC
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), POINTER :: Element, Left, Right
      LOGICAL :: SomethingDone
      !------------------------------------------------------------------------------
 
@@ -2623,6 +2623,20 @@ CONTAINS
 
          ! Outside code this tells the active element
          Model % CurrentElement => Element
+
+         Left => Element % BoundaryInfo % Left
+         Right => Element % BoundaryInfo % Right 
+        
+         ! In short these are the conditions that resulted to creation of the 
+         ! constraint matrix entries.
+         IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
+           CYCLE
+         END IF         
+         IF( Left % PartIndex /= ParEnv % myPE .AND. &
+             Right % PartIndex /= ParEnv % myPe ) THEN
+           CYCLE
+         END IF
+
          
          nnodes = Element % TYPE % NumberOfNodes
          DO u=1, nnodes
@@ -7350,7 +7364,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END DO
     IF( NoEmptyRows > 0 ) THEN
       CALL Warn('SolveWithLinearRestriction',&
-          'Constraint Matrix included empty rows:' &
+          'Constraint Matrix included empty rows: ' &
           //TRIM(I2S(NoEmptyRows))//' vs. '//TRIM(I2S(RestMatrix % NumberOfRows)) )
     END IF
   END IF

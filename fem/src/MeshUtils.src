@@ -1256,7 +1256,7 @@ END SUBROUTINE GetMaxDefs
          RightHit = ANY( TargetBodies == RightElem % BodyId )
          LeftHit = .NOT. RightHit 
        ELSE
-         CALL Fatal('CreateDiscontMesh','Either parent is needed!')
+         CALL Fatal('CreateDiscontMesh','Either parent is needed (try partitioning with halobc)!')
        END IF
 
        IF( LeftHit ) THEN
@@ -6544,87 +6544,6 @@ END SUBROUTINE GetMaxDefs
           RightSplit2 = ( ( Nodes % x(j1) - xmaxm ) * ( xmaxm - Nodes % x(j4) ) > 0.0_dp )
           IF(RightSplit2) qright2 = ( Nodes % x(j1) - xmaxm ) / ( Nodes % x(j1) - Nodes % x(j4) )
 
-          ! There is an old way of defining the polygon that may be optionally be activated 
-          ! This is rather limited and therefore was replaced by a generic routine. 
-#define OLDPOLYGON 0
-#if OLDPOLYGON
-          ! A polygon with 4, 5 or 6 corners is created.  
-          IF(.NOT. (LeftSplit2 .OR. RightSplit2 ) ) THEN
-            ! bottom-left corner
-            k = 1
-            x(k) = MAX( xminm, Nodes % x(j1) ) 
-            y(k) = yminm
-
-            ! bottom-right corner
-            k = k + 1
-            x(k) = MIN( xmaxm, Nodes % x(j2) )
-            y(k) = yminm 
-
-            ! possible right-edge corner
-            IF( RightSplit ) THEN
-              k = k + 1
-              x(k) = xmaxm
-              y(k) = Nodes % y(j2) + qright * ( Nodes % y(j3) - Nodes % y(j2)) 
-            END IF
-            
-            ! top-right corner
-            k = k + 1
-            x(k) = MIN( xmaxm, Nodes % x(j3) )
-            y(k) = ymaxm 
-
-            ! top-left corner
-            k = k + 1
-            x(k) = MAX( xminm, Nodes % x(j4) )
-            y(k) = ymaxm 
-
-            ! possible mid-edge corner at the left
-            IF( LeftSplit ) THEN
-              k = k + 1
-              x(k) = xminm
-              y(k) = Nodes % y(j1) + qleft * ( Nodes % y(j4) - Nodes % y(j1) )
-            END IF
-            
-            kmax = k
-
-          ! Pure left corner split
-          ELSE IF( LeftSplit2 .AND. .NOT. (RightSplit .OR. LeftSplit .OR. RightSplit2) ) THEN            
-            
-            x(1) = xminm
-            y(1) = Nodes % y(j2) + qleft2 * ( Nodes % y(j3) - Nodes % y(j2))
-            
-            x(2) = x(1)
-            IF( Nodes % x(j2) > Nodes % x(j3) ) THEN              
-              y(2) = yminm
-              x(3) = Nodes % x(j2)
-            ELSE
-              y(2) = ymaxm
-              x(3) = Nodes % x(j3)
-            END IF
-            y(3) = y(2) 
-            kmax = 3
-
-          ! Pure right corner split
-          ELSE IF( RightSplit2 .AND. .NOT. (LeftSplit .OR. RightSplit .OR. LeftSplit2)) THEN
-
-            x(1) = xmaxm
-            y(1) = Nodes % y(j1) + qright2 * ( Nodes % y(j4) - Nodes % y(j1))
-
-            x(2) = x(1)
-            IF( Nodes % x(j1) < Nodes % x(j4) ) THEN              
-              y(2) = yminm
-              x(3) = Nodes % x(j1)
-            ELSE
-              y(2) = ymaxm
-              x(3) = Nodes % x(j4)
-            END IF
-            y(3) = y(2) 
-            kmax = 3 
-
-
-          ELSE
-            NintegGen = NintegGen + 1
-#endif
-            
             ! Mark the splits on the vertical edges aligned with the y-axis
             k = 0
             IF( LeftSplit ) THEN
@@ -6695,9 +6614,6 @@ END SUBROUTINE GetMaxDefs
             y(1:kmax) = y(inds(1:kmax))
 
             !PRINT *,'Polygon: ',ind,indm,LeftSplit, RightSplit, LeftSplit2, RightSplit2, TopEdge, BottomEdge, kmax 
-#if OLDPOLYGON
-          END IF
-#endif
 
           ! Deal the case with multiple corners by making 
           ! triangulariation using one corner point.
@@ -6858,11 +6774,6 @@ END SUBROUTINE GetMaxDefs
       CALL Info('LevelProjector','Number of integration pairs: '&
           //TRIM(I2S(Ninteg)),Level=10)
 
-#if OLDPOLYGON
-      CALL Info('LevelProjector','Number of general integration pairs: '&
-          //TRIM(I2S(NintegGen)),Level=10)
-#endif
-
       WRITE( Message,'(A,ES12.3)') 'Maximum error in area integration:',MaxErr 
       CALL Info('LevelProjector',Message,Level=8)
 
@@ -6897,10 +6808,10 @@ END SUBROUTINE GetMaxDefs
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes, size0, indp, indq, &
-        e1, e2, i1, i2, j1, j2, sgn
+        e1, e2, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Basis(:)
-    REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight
+    REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight,Coeff
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element, Left, Right
@@ -6908,7 +6819,8 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: LeftMap(:,:), RightMap(:,:)
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
 
-    CALL Info('WeightedProjectorDiscont','Creating Galerkin projector for discontinuous boundary',Level=7)
+    CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
+         //TRIM(I2S(bc)),Level=7)
 
     IF( .NOT. Mesh % DisContMesh ) THEN
       CALL Warn('WeightedProjectorDiscont','Discontinuous mesh not created?')
@@ -6954,7 +6866,7 @@ END SUBROUTINE GetMaxDefs
     EdgeBasis = ListGetLogical( Model % Solver % Values,'Edge Basis',Found ) 
     IF( Found ) THEN
       IF( EdgeBasis .AND. Mesh % NumberOfEdges == 0 ) THEN
-        CALL Info('WeightedProjectorDiscont','Edge basis requested but mesh has no edges!')
+        CALL Warn('WeightedProjectorDiscont','Edge basis requested but mesh has no edges!')
       ELSE
         DoEdges = EdgeBasis
       END IF
@@ -6966,7 +6878,6 @@ END SUBROUTINE GetMaxDefs
     ELSE
       DoNodes = .TRUE.
     END IF
-
 
     ! Should the projector be diagonal or mass matrix type 
     SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found )
@@ -7019,15 +6930,50 @@ END SUBROUTINE GetMaxDefs
     ! Projector for the nodal dofs. 
     !------------------------------------------------------------------------
     IF( DoNodes ) THEN
+      ParentMissing = 0
+      ParentFound = 0
       DO t = 1, Mesh % NumberOfBoundaryElements
 
         Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )
+        n = Element % TYPE % NumberOfNodes        
+        Indexes(1:n) = Element % NodeIndexes(1:n)
 
         IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
+        
+        Left => Element % BoundaryInfo % Left
+        Right => Element % BoundaryInfo % Right 
 
-        n = Element % TYPE % NumberOfNodes        
+        ! Here we really need both sides to be able to continue!
+        IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
+          ParentMissing = ParentMissing + 1
+          CYCLE
+        END IF
 
-        Indexes(1:n) = Element % NodeIndexes(1:n)
+        ! Add always a zero to a constraint that exists for a node
+        ! This gets rid of some complants about empty rows in constraint matrix
+        DO p=1,n             
+           indp = NodePerm( Indexes(p) )
+           IF( indp > 0 ) THEN
+              CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                   Indexes(p), 0.0_dp ) 
+           END IF
+        END DO
+
+        PosSides = 0
+        ActSides = 0
+        IF( ASSOCIATED( Left ) ) THEN
+          PosSides = PosSides + 1
+          IF( Left % PartIndex == ParEnv % myPE ) ActSides = ActSides + 1
+        END IF
+        IF( ASSOCIATED( Right ) ) THEN
+          PosSides = PosSides + 1
+          IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
+        END IF 
+
+        IF( ActSides == 0 ) CYCLE
+
+        Coeff = 1.0_dp * ActSides / PosSides 
+        ParentFound = ParentFound + 1
 
         ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
         ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
@@ -7051,16 +6997,16 @@ END SUBROUTINE GetMaxDefs
 
           Stat = ElementInfo(Element, ElementNodes, u, v, w, detJ, Basis)
 
-          weight = detJ * IntegStuff % s(j)
+          weight = Coeff * detJ * IntegStuff % s(j)
           IF( AxisSym ) THEN
             x = SUM( Basis(1:n) * ElementNodes % x(1:n) )
             weight = weight * x
           END IF
 
-          DO p=1,n
-
+          DO p=1,n             
             indp = NodePerm( Indexes(p) )
             IF( indp == 0 ) CYCLE
+
             val = weight * Basis(p)
 
             IF( SetDiag ) THEN
@@ -7072,8 +7018,6 @@ END SUBROUTINE GetMaxDefs
               IF( NodalJump ) THEN
                 CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                     size0 + indp, 0.0_dp ) 
-                !CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                !    indp, 0.0_dp ) 
               END IF
             ELSE
               DO q=1,n
@@ -7097,14 +7041,23 @@ END SUBROUTINE GetMaxDefs
           END DO
         END DO
       END DO
+      IF( ParentMissing > 0 ) THEN
+        CALL Warn('WeightedProjectorDiscont','Number of half-sided discontinuous BC elements in partition '&
+           //TRIM(I2S(ParEnv % myPE))//': '//TRIM(I2S(ParentMissing)) )
+        CALL Warn('WeightedProjectorDiscont','Number of proper discontinuous BC elements in partition '&
+           //TRIM(I2S(ParEnv % myPE))//': '//TRIM(I2S(ParentFound)) )
+      END IF
       CALL Info('WeightedProjectorDiscont','Created projector for '&
           //TRIM(I2S(NoDiscontNodes))//' discontinuous nodes',Level=10)
     END IF
+
 
     ! Create the projector also for edge dofs if they exist and are
     ! requested. 
     !----------------------------------------------------------------
     IF( DoEdges ) THEN
+      ParentMissing = 0
+      ParentFound = 0
 
       val = 1.0_dp
       Scale = -1.0_dp
@@ -7122,14 +7075,27 @@ END SUBROUTINE GetMaxDefs
         Left => Element % BoundaryInfo % Left
         Right => Element % BoundaryInfo % Right 
         
-        IF(.NOT. ASSOCIATED( Left ) ) THEN
-          CALL Warn('WeightedProjectorDiscont','Left element not associated!')
+        ! Here we really need both sides to be able to continue!
+        IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
+          ParentMissing = ParentMissing + 1
           CYCLE
         END IF
-        IF(.NOT. ASSOCIATED( Right ) ) THEN
-          CALL Warn('WeightedProjectorDiscont','Right element not associated!')
-          CYCLE
+
+        PosSides = 0
+        ActSides = 0
+        IF( ASSOCIATED( Left ) ) THEN
+          PosSides = PosSides + 1
+          IF( Left % PartIndex == ParEnv % myPE ) ActSides = ActSides + 1
         END IF
+        IF( ASSOCIATED( Right ) ) THEN
+          PosSides = PosSides + 1
+          IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
+        END IF 
+        IF( ActSides == 0 ) CYCLE
+
+
+        Coeff = 1.0_dp * ActSides / PosSides 
+        ParentFound = ParentFound + 1
         
         LeftMap => LGetEdgeMap( Left % TYPE % ElementCode / 100)
         RightMap => LGetEdgeMap( Right % TYPE % ElementCode / 100)
@@ -7180,6 +7146,7 @@ END SUBROUTINE GetMaxDefs
               sgn = -1
             END IF
                       
+            ! These are 1-to-1 mappings, no addtive as for the nodes
             IF( Found ) THEN
               indp = indp + 1
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
@@ -7193,6 +7160,12 @@ END SUBROUTINE GetMaxDefs
         END DO
       END DO
       DEALLOCATE( EdgeDone ) 
+      IF( .NOT. DoNodes .AND. ParentMissing > 0 ) THEN
+        CALL Warn('WeightedProjectorDiscont','Number of half-sided discontinuous BC elements in partition '&
+           //TRIM(I2S(ParEnv % myPE))//': '//TRIM(I2S(ParentMissing)) )
+        CALL Warn('WeightedProjectorDiscont','Number of proper discontinuous BC elements in partition '&
+           //TRIM(I2S(ParEnv % myPE))//': '//TRIM(I2S(ParentFound)) )
+      END IF
       CALL Info('WeightedProjectorDiscont','Created projector for '&
           //TRIM(I2S(indp-NoDiscontNodes))//' discontinuous edges',Level=10)
     END IF
@@ -7208,7 +7181,7 @@ END SUBROUTINE GetMaxDefs
            
   END FUNCTION WeightedProjectorDiscont
   !------------------------------------------------------------------------------
-
+ 
   !---------------------------------------------------------------------------
   !> Given two interface meshes for nonconforming rotating boundaries make 
   !> a coordinate transformation to (phi,z) level where the interpolation
