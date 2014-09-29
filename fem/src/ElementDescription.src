@@ -8716,8 +8716,8 @@ END FUNCTION PointFaceDistance
     !The new z-axis is normal to the defined surface
     ez = PlaneVector
 
-    MaxIndex = MAXLOC(ez,1)
-    MinIndex = MINLOC(ez,1)
+    MaxIndex = MAXLOC(ABS(ez),1)
+    MinIndex = MINLOC(ABS(ez),1)
 
     DO i=1,3
        IF(i == MaxIndex .OR. i == MinIndex) CYCLE
