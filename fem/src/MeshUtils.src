@@ -5423,7 +5423,7 @@ END SUBROUTINE GetMaxDefs
     YRange = YMaxAll - YMinAll
 
     ! Fix here the relative tolerance used to define the whether and edge has constant coordinate
-    RelTol = 1.0e-5
+    RelTol = 1.0d-4
     YTol = RelTol * YRange
     XTol = RelTol * XRange
 
