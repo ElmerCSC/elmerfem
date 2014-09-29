@@ -64,6 +64,7 @@ Boundary Condition 2
 !  Potential = 1.0
 End
 
+Solver 1 :: Reference Norm = Real 118.960628510
 $ fprintf( stderr, "TEST CASE 1\n" );
 RUN
 $ fprintf( stderr, "END TEST CASE 1, Target NRM=118.960628510\n" );

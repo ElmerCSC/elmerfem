@@ -93,6 +93,7 @@ Boundary Condition 2
 !  Displacement 2 = Real 0.001
 End
 
+Solver 1 :: Reference Norm = Real 1.8965057
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=1.8965057\n");

@@ -655,7 +655,7 @@ END INTERFACE
          
          Norm = Solver % Variable % Norm 
          Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
-         IF(.NOT. Found ) Tol = 1.0d-6
+         IF(.NOT. Found ) Tol = 1.0d-5
 
          IF( ABS( Norm - RefNorm ) > Tol * RefNorm ) THEN
            ! Normally warning is done for every partition but this time it is the same for all

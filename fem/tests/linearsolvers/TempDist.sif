@@ -49,6 +49,7 @@ End
 Boundary Condition 1 :: Target Boundaries(6) = $ 1:6
 
 
+Solver 1 :: Reference Norm = Real 1
 $ fprintf( stderr, "\n\nTEST CASE 1 (Lapack Band solver)\n");
 Solver 1 :: Linear System Solver = Direct
 Solver 1 :: Linear System Direct Method = Banded
@@ -60,6 +61,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 1: Taget NRM=1\n ");
 
 
+Solver 1 :: Reference Norm = Real 2
 $ fprintf( stderr, "\n\nTEST CASE 2 (UMFPack Sparse LU)\n");
 Solver 1 :: Linear System Solver = Direct
 Solver 1 :: Linear System Direct Method = UMFPack
@@ -70,6 +72,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 2: Taget NRM=2\n ");
 
 
+Solver 1 :: Reference Norm = Real 3
 $ fprintf( stderr, "\n\nTEST CASE 3 (Jacobi)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = Jacobi
@@ -80,6 +83,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 3: Taget NRM=3\n ");
 
 
+Solver 1 :: Reference Norm = Real 4
 $ fprintf( stderr, "\n\nTEST CASE 4 (SGS)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = SGS
@@ -90,6 +94,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 4: Taget NRM=4\n ");
 
 
+Solver 1 :: Reference Norm = Real 5
 $ fprintf( stderr, "\n\nTEST CASE 5 (CG)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = CG
@@ -100,6 +105,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 5: Taget NRM=5\n ");
 
 
+Solver 1 :: Reference Norm = Real 6
 $ fprintf( stderr, "\n\nTEST CASE 6 (CGS)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = CGS
@@ -110,6 +116,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 6: Taget NRM=6\n ");
 
 
+Solver 1 :: Reference Norm = Real 7
 $ fprintf( stderr, "\n\nTEST CASE 7 (QMR)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = QMR
@@ -120,6 +127,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 7: Taget NRM=7\n ");
 
 
+Solver 1 :: Reference Norm = Real 8
 $ fprintf( stderr, "\n\nTEST CASE 8 (TFQMR)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = TFQMR
@@ -130,6 +138,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 8: Taget NRM=8\n ");
 
 
+Solver 1 :: Reference Norm = Real 9
 $ fprintf( stderr, "\n\nTEST CASE 9 (GMRES)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = GMRES
@@ -140,6 +149,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 9: Taget NRM=9\n ");
 
 
+Solver 1 :: Reference Norm = Real 10
 $ fprintf( stderr, "\n\nTEST CASE 10 (BiCStab)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = BiCGStab
@@ -150,6 +160,7 @@ RUN
 $ fprintf( stderr, "END TEST CASE 10: Taget NRM=10\n ");
 
 
+Solver 1 :: Reference Norm = Real 11
 $ fprintf( stderr, "\n\nTEST CASE 11 (BiCStab2)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = BiCGStab2
@@ -160,10 +171,11 @@ RUN
 $ fprintf( stderr, "END TEST CASE 11: Taget NRM=11\n ");
 
 
+Solver 1 :: Reference Norm = Real 12
 $ fprintf( stderr, "\n\nTEST CASE 12 (BiCGStabL)\n");
 Solver 1 :: Linear System Solver = Iterative
 Solver 1 :: Linear System Iterative Method = BiCGStabL
-Solver 1 :: Reference Norm = Real 12.1
+Solver 1 :: Reference Norm = Real 12
 
 
 Boundary Condition 1 :: Temperature = 12

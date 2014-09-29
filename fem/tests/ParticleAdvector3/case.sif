@@ -193,6 +193,7 @@ End
 ! Note that the target norm depends on how long we integrate as it is the 
 ! L2 norm of particle age.
 
+Solver 2 :: Reference Norm = Real 13.582009
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
 $fprintf( stderr,"END TEST CASE 1: Target NRM= 0.48789314\n");

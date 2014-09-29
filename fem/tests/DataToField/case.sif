@@ -132,6 +132,7 @@ Boundary Condition 2
 End
 
 
+Solver 1 :: Reference Norm = Real 2.5877452
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
 $fprintf( stderr,"END TEST CASE 1: Target NRM=2.5877452\n");
