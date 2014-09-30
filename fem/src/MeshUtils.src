@@ -5433,7 +5433,6 @@ END SUBROUTINE GetMaxDefs
     YTol = RelTolY * YRange
     XTol = RelTolX * XRange
 
-
     ! It is assumed that that the target mesh is always un-skewed 
     ! Make a test here to be able to skip it later. 
     IF( Mesh % MeshDim == 3 ) THEN
@@ -5453,8 +5452,8 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     ! This is the tolerance used to define constant direction in radians
-    ! For consistancy it should be related to the SkewTol like this
-    RadTol = PI * SkewTol / 180.0_dp
+    ! For consistancy it should not be sloppier than the SkewTol
+    RadTol = 0.01 * PI * SkewTol / 180.0_dp
 
     ! initialize the row of the projector
     nrow = 0
@@ -6361,7 +6360,8 @@ END SUBROUTINE GetMaxDefs
       END IF
       CALL Info('LevelProjector','Created strong constraints for edge dofs: '//TRIM(I2S(nrow)),Level=8)      
 
-      DEALLOCATE( EdgeDone, Nodes % x, Nodes % y, Nodes % z, NodesM % x, NodesM % y, NodesM % z )
+      DEALLOCATE( EdgeDone, Nodes % x, Nodes % y, Nodes % z, &
+          NodesM % x, NodesM % y, NodesM % z )
 
     END SUBROUTINE AddEdgeProjectorStrong
     !----------------------------------------------------------------------
