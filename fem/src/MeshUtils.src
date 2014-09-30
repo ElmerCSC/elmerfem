@@ -6230,8 +6230,8 @@ END SUBROUTINE GetMaxDefs
               END IF
             END IF
           ELSE
-            ! Here there can be no second part assuming horizontal edge
-            ! So far coordinates where registered, transform them into weights.
+            ! Here there can be a second part if a proper hit was not found 
+            ! due to some epsilon rules.
             IF( dncoeff == 2 ) THEN
               xm1 = coeff(ncoeff-1)
               xm2 = coeff(ncoeff)
@@ -6245,6 +6245,15 @@ END SUBROUTINE GetMaxDefs
               coeff(ncoeff) = cskew * 1.0_dp - coeff(1)
             ELSE IF( dncoeff == 1 ) THEN
               coeff(ncoeff) = cskew * 1.0_dp
+            ELSE IF( dncoeff == 0 ) THEN
+              IF( NRange2 /= 0 ) THEN
+                x1 = x1 - NRange2 * XRange
+                x2 = x2 - NRange2 * XRange
+                NRange = NRange + NRange2
+                NRange2 = 0
+                Repeated = .TRUE.
+                GOTO 100
+              END IF
             END IF
 
             wsum = SUM( coeff(1:ncoeff) )
@@ -6263,6 +6272,9 @@ END SUBROUTINE GetMaxDefs
             Nundefined = Nundefined + 1
             WRITE( Message,'(A,2I8,4ES12.3)') 'Problematic edge: ',&
                 eind,ParEnv % MyPe,x1,x2,y1,y2
+            CALL Warn('LevelProjector', Message )
+            WRITE( Message,'(A,I8,3L4,4ES12.3)') 'Bounding box: ',&
+                eind,XConst,YConst,Repeating,XminAll,XmaxAll,YminAll,YmaxAll
             CALL Warn('LevelProjector', Message )
             CYCLE
           END IF
