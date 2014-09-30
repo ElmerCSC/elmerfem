@@ -1799,24 +1799,24 @@ END SUBROUTINE GetMaxDefs
     IF ( j>0 ) THEN
       Nlist(i) % Neighbours => Nlist(j) % Neighbours
     ELSE
-      Nlist(i) % Neighbours => Null()
+      Nlist(i) % Neighbours => NULL()
     END IF
-   end do
+   END DO
 
    DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
    Mesh % ParallelInfo % NeighbourList => Nlist
 
    ALLOCATE(Intf(n0))
-   Intf = Mesh % ParallelInfo % Interface
-   DEALLOCATE(Mesh % ParallelInfo % Interface)
-   ALLOCATE(Mesh % ParallelInfo % Interface(n1)) 
-   Mesh % ParallelInfo % Interface(1:n0) = Intf
+   Intf = Mesh % ParallelInfo % INTERFACE
+   DEALLOCATE(Mesh % ParallelInfo % INTERFACE)
+   ALLOCATE(Mesh % ParallelInfo % INTERFACE(n1)) 
+   Mesh % ParallelInfo % INTERFACE(1:n0) = Intf
    DO i=n0+1,n1
      j = Perm(i)
      IF(j>0) THEN
-       Mesh % ParallelInfo % Interface(i) = Intf(j)
+       Mesh % ParallelInfo % INTERFACE(i) = Intf(j)
      ELSE
-       Mesh % ParallelInfo % Interface(i) = .FALSE.
+       Mesh % ParallelInfo % INTERFACE(i) = .FALSE.
      END IF
    END DO
 
@@ -5382,7 +5382,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
         EdgeBasis, PiolaVersion
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
-        RelTol, XTol, YTol, EdgeScale, MaxSkew, SkewTol
+        RelTolX, RelTolY, XTol, YTol, RadTol, EdgeScale, MaxSkew1, MaxSkew2, SkewTol
     INTEGER :: NoNodes1, NoNodes2
     INTEGER :: i,j,n,m,Nrange,Nrange2, nrow
     INTEGER, ALLOCATABLE :: EdgePerm(:)
@@ -5422,25 +5422,39 @@ END SUBROUTINE GetMaxDefs
     YMinAll = MINVAL(BMesh2 % Nodes % y)
     YRange = YMaxAll - YMinAll
 
-    ! Fix here the relative tolerance used to define the whether and edge has constant coordinate
-    RelTol = 1.0d-4
-    YTol = RelTol * YRange
-    XTol = RelTol * XRange
+    ! Fix here the relative tolerance used to define the search tolerance
+    RelTolY = 1.0d-4
+    ! In the case of infinite target we can have tighter criteria
+    IF( FullCircle .OR. Repeating ) THEN
+      RelTolX = 1.0d-6
+    ELSE
+      RelTolX = RelTolY
+    END IF
+    YTol = RelTolY * YRange
+    XTol = RelTolX * XRange
+
 
     ! It is assumed that that the target mesh is always un-skewed 
     ! Make a test here to be able to skip it later. 
     IF( Mesh % MeshDim == 3 ) THEN
-      SkewTol = 0.1
-      MaxSkew = CheckMeshSkew( BMesh1 )
-      WRITE( Message,'(A,ES12.3)') 'Maximum skew in this mesh: ',MaxSkew
+      SkewTol = 0.1  ! in degrees
+      MaxSkew1 = CheckMeshSkew( BMesh1 )
+      WRITE( Message,'(A,ES12.3)') 'Maximum skew in this mesh: ',MaxSkew1
       CALL Info('LevelProjector',Message,Level=8)
-      MaxSkew = CheckMeshSkew( BMesh2 )
-      WRITE( Message,'(A,ES12.3)') 'Maximum skew in target mesh: ',MaxSkew
+      MaxSkew2 = CheckMeshSkew( BMesh2 )
+      WRITE( Message,'(A,ES12.3)') 'Maximum skew in target mesh: ',MaxSkew2
       CALL Info('LevelProjector',Message,Level=8)
-      IF( MaxSkew > SkewTol ) THEN
+      IF( MaxSkew2 > SkewTol ) THEN
+        IF( MaxSkew2 > MaxSkew1 ) THEN
+          CALL Warn('LevelProjector','You could try switching the master and target BC!')
+        END IF
         CALL Fatal('LevelProjector','Target mesh has too much skew!')
       END IF
     END IF
+
+    ! This is the tolerance used to define constant direction in radians
+    ! For consistancy it should be related to the SkewTol like this
+    RadTol = PI * SkewTol / 180.0_dp
 
     ! initialize the row of the projector
     nrow = 0
@@ -5728,8 +5742,6 @@ END SUBROUTINE GetMaxDefs
           ! Mark the minimum distance if this would happen to be a problematic node
           MinDist = MIN( Dist, MinDist )
 
-          !IF( xminm > x1 + Xtol ) CYCLE
-          !IF( xmaxm < x1 - Xtol ) CYCLE
           IF( Dist > Xtol ) CYCLE
 
           ! Ok, this may be a proper element, now just find the two nodes
@@ -5778,8 +5790,6 @@ END SUBROUTINE GetMaxDefs
           ! quick test is successfull! Then the left and right edge may have different range.
           Dist = MAX( x1-xm2, xm1-x1 )
           IF( Dist > Xtol ) CYCLE
-
-          !IF( (xm1 - x1 ) * (xm2 - x1 ) > 0.0 ) CYCLE
 
           ! When we have the correct edge, the mapping is trivial.
           ! The sum of weights of the projectors is set to one. 
@@ -5886,8 +5896,8 @@ END SUBROUTINE GetMaxDefs
       INTEGER :: ind, indm, eind, eindm, k1, k2, km1, km2, sgn0, coeffi(100), &
           ncoeff, dncoeff, ncoeff0, Nelim, j1, j2, Nundefined, NoSkewed, SkewPart
       TYPE(Element_t), POINTER :: Element, ElementM
-      INTEGER, POINTER :: IndexesM(:)
-      TYPE(Nodes_t) :: NodesM 
+      INTEGER, POINTER :: Indexes(:), IndexesM(:)
+      TYPE(Nodes_t) :: NodesM, Nodes 
       INTEGER, POINTER :: EdgeMap(:,:),EdgeMapM(:,:)
       REAL(KIND=dp) :: xm1, xm2, ym1, ym2, coeff(100), signs(100), wsum, minwsum, maxwsum, val, &
           x1o, y1o, x2o, y2o, cskew, sedge, ArcCoeff
@@ -5903,7 +5913,9 @@ END SUBROUTINE GetMaxDefs
       EdgeDone = .FALSE.
 
       n = Mesh % MaxElementNodes
+      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
       ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n) )
+      Nodes % z = 0.0_dp
       NodesM % z = 0.0_dp
 
       minwsum = HUGE( minwsum ) 
@@ -5918,6 +5930,17 @@ END SUBROUTINE GetMaxDefs
         
         Element => BMesh1 % Elements(ind)        
         EdgeMap => LGetEdgeMap( Element % TYPE % ElementCode / 100)
+
+        Indexes => Element % NodeIndexes
+
+        n = Element % TYPE % NumberOfNodes
+        Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
+        Nodes % y(1:n) = BMesh1 % Nodes % y(Indexes(1:n))
+
+        xmin = MINVAL(Nodes % x(1:n))
+        xmax = MAXVAL(Nodes % x(1:n))
+        ymin = MINVAL(Nodes % y(1:n))
+        ymax = MAXVAL(Nodes % y(1:n))
 
         ! Go through combinations of edges and find the edges for which the 
         ! indexes are the same. 
@@ -5939,8 +5962,9 @@ END SUBROUTINE GetMaxDefs
           x2 = BMesh1 % Nodes % x(k2)
           y2 = BMesh1 % Nodes % y(k2)
 
-          YConst = ( ABS(y2-y1) < YTol )
-          XConst = ( ABS(x2-x1) < XTol )
+          YConst = ( ABS(y2-y1) < RadTol * (ymax-ymin) )
+          XConst = ( ABS(x2-x1) < RadTol * (xmax-xmin) )
+
           SkewEdge = .FALSE.
           cskew = 1.0_dp
           
@@ -6088,6 +6112,9 @@ END SUBROUTINE GetMaxDefs
             IF( FullCircle .AND. .NOT. LeftCircle ) THEN
               IF( xmaxm - xminm > 180.0 ) CYCLE
             END IF
+
+            yminm = MINVAL( NodesM % y(1:n) ) 
+            ymaxm = MAXVAL( NodesM % y(1:n) ) 
             
             ! Ok, we have found a candicate face that will probably have some hits       
             EdgeMapM => LGetEdgeMap( ElementM % TYPE % ElementCode / 100)        
@@ -6114,13 +6141,10 @@ END SUBROUTINE GetMaxDefs
               xm1 = NodesM % x(j1)
               xm2 = NodesM % x(j2)
               
-              YConstM = ( ABS(ym2-ym1) < YTol )
-              XConstM = ( ABS(xm2-xm1) < Xtol )
-              
-              IF(.NOT. (XConstM .OR. YConstM ) ) THEN
-                CALL Warn('LevelProjector','Target edge is skewed!')
-                CYCLE
-              END IF
+              ! The target mesh has already been checked that the elements are rectangular so 
+              ! the edges must be have either constant y or x.
+              YConstM = ( ABS(ym2-ym1) / (ymaxm-yminm) < ABS(xm2-xm1) / (xmaxm-xminm) )
+              XConstM = .NOT. YConstM
               
               ! Either both are lateral edges, or both are vertical
               IF( .NOT. ( ( YConst .AND. YConstM ) .OR. ( XConst .AND. XConstM ) ) ) THEN
@@ -6222,9 +6246,8 @@ END SUBROUTINE GetMaxDefs
               coeff(ncoeff) = cskew * 1.0_dp - coeff(1)
             ELSE IF( dncoeff == 1 ) THEN
               coeff(ncoeff) = cskew * 1.0_dp
-            ELSE
-              CALL Fatal('LevelProjector','Invalid number of hits: '//TRIM(I2S(dncoeff)))
-            END IF              
+            END IF
+
             wsum = SUM( coeff(1:ncoeff) )
           END IF
 
@@ -6335,7 +6358,7 @@ END SUBROUTINE GetMaxDefs
       END IF
       CALL Info('LevelProjector','Created strong constraints for edge dofs: '//TRIM(I2S(nrow)),Level=8)      
 
-      DEALLOCATE( EdgeDone, NodesM % x, NodesM % y, NodesM % z )
+      DEALLOCATE( EdgeDone, Nodes % x, Nodes % y, Nodes % z, NodesM % x, NodesM % y, NodesM % z )
 
     END SUBROUTINE AddEdgeProjectorStrong
     !----------------------------------------------------------------------
@@ -6375,7 +6398,6 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
       ALLOCATE( Basis(n), BasisM(n) )
       ALLOCATE( dBasisdx(n,3), WBasis(n,3), WBasisM(n,3), RotWBasis(n,3) )
-
 
       Nodes % z  = 0.0_dp
       NodesM % z = 0.0_dp
@@ -6523,7 +6545,7 @@ END SUBROUTINE GetMaxDefs
           END IF
           
           Overlap = (MIN(xmax, xmaxm)- MAX(xmin,xminm))/(xmax-xmin)
-          IF( Overlap < RelTol ) CYCLE 
+          IF( Overlap < RelTolX ) CYCLE 
           
           SumOverlap = SumOverlap + Overlap
           Ninteg = Ninteg + 1
@@ -6629,7 +6651,7 @@ END SUBROUTINE GetMaxDefs
             ! This check over area also automatically elimiates redundant nodes
             ! that were detected twice.
             dArea = 0.5*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
-            IF( dArea < RelTol * RefArea ) CYCLE
+            IF( dArea < RelTolY**2 * RefArea ) CYCLE
 
             NodesT % x(2) = x(k+1)
             NodesT % y(2) = y(k+1)
