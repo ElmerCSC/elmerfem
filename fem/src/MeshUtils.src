@@ -5894,7 +5894,8 @@ END SUBROUTINE GetMaxDefs
     SUBROUTINE AddEdgeProjectorStrong()
 
       INTEGER :: ind, indm, eind, eindm, k1, k2, km1, km2, sgn0, coeffi(100), &
-          ncoeff, dncoeff, ncoeff0, Nelim, j1, j2, Nundefined, NoSkewed, SkewPart
+          ncoeff, dncoeff, ncoeff0, Nelim, i1, i2, j1, j2, Nundefined, NoSkewed, SkewPart, &
+          aidi
       TYPE(Element_t), POINTER :: Element, ElementM
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
       TYPE(Nodes_t) :: NodesM, Nodes 
@@ -5951,15 +5952,18 @@ END SUBROUTINE GetMaxDefs
           EdgeDone(eind) = .TRUE.
           
           ! Get the nodes of the edge
-          k1 = Indexes( EdgeMap(i,1) )
-          k2 = Indexes( EdgeMap(i,2) )
+          i1 = EdgeMap(i,1) 
+          i2 = EdgeMap(i,2)
+
+          k1 = Indexes( i1 )
+          k2 = Indexes( i2 )
 
           ! The coordinates of the edge
-          x1 = BMesh1 % Nodes % x(k1)
-          y1 = BMesh1 % Nodes % y(k1)
+          x1 = Nodes % x(i1)
+          y1 = Nodes % y(i1)
 
-          x2 = BMesh1 % Nodes % x(k2)
-          y2 = BMesh1 % Nodes % y(k2)
+          x2 = Nodes % x(i2)
+          y2 = Nodes % y(i2)
 
           YConst = ( ABS(y2-y1) < RadTol * dy )
           XConst = ( ABS(x2-x1) < RadTol * dx )
@@ -6104,8 +6108,8 @@ END SUBROUTINE GetMaxDefs
             xminm = MINVAL( NodesM % x(1:n) ) 
             xmaxm = MAXVAL( NodesM % x(1:n) ) 
             
-            IF( xminm > xmax ) CYCLE
-            IF( xmaxm < xmin ) CYCLE 
+            IF( xminm > xmax + Xtol ) CYCLE
+            IF( xmaxm < xmin - Xtol ) CYCLE 
             
             ! Eliminate this special case since it could otherwise give a faulty hit
             IF( FullCircle .AND. .NOT. LeftCircle ) THEN
@@ -6131,8 +6135,8 @@ END SUBROUTINE GetMaxDefs
               j1 = EdgeMap(j,1)
               j2 = EdgeMap(j,2)
               
-              km1 = ElementM % NodeIndexes( j1 )
-              km2 = ElementM % NodeIndexes( j2 )
+              km1 = IndexesM( j1 )
+              km2 = IndexesM( j2 )
               
               ym1 = NodesM % y(j1)
               ym2 = NodesM % y(j2)
@@ -6190,6 +6194,7 @@ END SUBROUTINE GetMaxDefs
               ELSE
                 dncoeff = dncoeff + 1
                 ncoeff = ncoeff + 1
+
                 IF( (y1-y2)*(ym1-ym2)*(k1-k2)*(km1-km2) > 0.0_dp ) THEN
                   signs(ncoeff) = sgn0 
                 ELSE
@@ -6197,7 +6202,6 @@ END SUBROUTINE GetMaxDefs
                 END IF
 
                 coeffi(ncoeff) = eindm
-
                 ! note: temporarily save the coordinate to the coefficient!
                 coeff(ncoeff) = ( xm1 + xm2 ) / 2.0_dp
               END IF
@@ -6210,7 +6214,7 @@ END SUBROUTINE GetMaxDefs
                 EdgeReady = ( 1.0_dp - wsum < 1.0d-12 ) 
               ELSE IF( XConst ) THEN                       
                 ! If edge was found both on left and right there is no need to continue search
-                EdgeReady = ( dncoeff == 2 ) 
+                !EdgeReady = ( dncoeff == 2 ) 
               END IF
               IF( EdgeReady ) EXIT
             END IF
@@ -6232,27 +6236,84 @@ END SUBROUTINE GetMaxDefs
           ELSE
             ! Here there can be a second part if a proper hit was not found 
             ! due to some epsilon rules.
-            IF( dncoeff == 2 ) THEN
-              xm1 = coeff(ncoeff-1)
-              xm2 = coeff(ncoeff)
-
-              IF( ABS( xm2-xm1) < TINY( xm2 ) ) THEN
-                CALL Warn('LevelProjector','Degenerated edge 3?')
-                coeff(ncoeff-1) = cskew * 0.5_dp
-              ELSE
-                coeff(ncoeff-1) = cskew * ABS((xm2-xmean)/(xm2-xm1))
+            IF( SkewEdge ) THEN
+              IF( dncoeff == 1 ) THEN
+                coeff(ncoeff) = cskew * 1.0_dp
+              ELSE IF( dncoeff == 2 ) THEN
+                xm1 = coeff(ncoeff-1)
+                xm2 = coeff(ncoeff)
+                
+                IF( ABS( xm2-xm1) < TINY( xm2 ) ) THEN
+                  CALL Warn('LevelProjector','Degenerated edge 3?')
+                  coeff(ncoeff-1) = cskew * 0.5_dp
+                ELSE
+                  coeff(ncoeff-1) = cskew * ABS((xm2-xmean)/(xm2-xm1))
+                END IF
+                coeff(ncoeff) = cskew * 1.0_dp - coeff(1)
               END IF
-              coeff(ncoeff) = cskew * 1.0_dp - coeff(1)
-            ELSE IF( dncoeff == 1 ) THEN
-              coeff(ncoeff) = cskew * 1.0_dp
-            ELSE IF( dncoeff == 0 ) THEN
-              IF( NRange2 /= 0 ) THEN
-                x1 = x1 - NRange2 * XRange
-                x2 = x2 - NRange2 * XRange
-                NRange = NRange + NRange2
-                NRange2 = 0
-                Repeated = .TRUE.
-                GOTO 100
+            ELSE
+              IF( ncoeff == 2 ) THEN
+                xm1 = coeff(1)
+                xm2 = coeff(2)
+              ELSE IF( ncoeff > 2 ) THEN
+                ! If there are several hits then find the closest ones. 
+                ! Find edges just smaller and just bigger than the 'xmean'
+                ! based on the coordinates that were saved.
+                j1 = 0
+                j2 = 0
+                DO j=1,ncoeff
+                  IF( coeff(j) < xmean ) THEN
+                    IF( j1 == 0 ) THEN
+                      j1 = j
+                    ELSE IF( coeff(j) > coeff(j1) ) THEN
+                      j1 = j
+                    END IF
+                  ELSE 
+                    IF( j2 == 0 ) THEN
+                      j2 = j
+                    ELSE IF( coeff(j) < coeff(j2) )THEN
+                      j2 = j 
+                    END IF                     
+                  END IF
+                END DO
+
+                IF( j1 > 0 .AND. j2 > 0 ) THEN
+                  ncoeff = 2
+                  xm1 = coeff(j1)
+                  xm2 = coeff(j2)
+
+                  aidi =  coeffi(j2)                 
+                  coeffi(1) = coeffi(j1)
+                  coeffi(2) = aidi
+
+                  aidi = signs(j2)
+                  signs(1) = signs(j1)
+                  signs(2) = aidi                  
+                ELSE IF( j1 > 0 ) THEN
+                  ncoeff = 1
+                  xm1 = coeff(j1)
+                  coeffi(1) = coeffi(j1)
+                  signs(1) = signs(j1)
+                ELSE IF( j2 > 0 ) THEN                  
+                  ncoeff = 1 
+                  xm1 = coeff(j2)
+                  coeffi(1) = coeffi(j2)
+                  signs(1) = signs(j2)
+                ELSE 
+                  ncoeff = 0
+                END IF
+              END IF
+
+              IF( ncoeff == 1 ) THEN
+                coeff(1) = 1.0_dp
+              ELSE IF( ncoeff == 2 ) THEN
+                IF( ABS( xm2-xm1) < TINY( xm2 ) ) THEN
+                  CALL Warn('LevelProjector','Degenerated edge 3?')
+                  coeff(1) = 0.5_dp
+                ELSE
+                  coeff(1) = ABS((xm2-xmean)/(xm2-xm1))
+                END IF
+                coeff(2) = 1.0_dp - coeff(1)
               END IF
             END IF
 
