@@ -5453,7 +5453,8 @@ END SUBROUTINE GetMaxDefs
 
     ! This is the tolerance used to define constant direction in radians
     ! For consistancy it should not be sloppier than the SkewTol
-    RadTol = 0.01 * PI * SkewTol / 180.0_dp
+    ! but it could be equally sloppy as below. 
+    RadTol = PI * SkewTol / 180.0_dp
 
     ! initialize the row of the projector
     nrow = 0
@@ -5894,8 +5895,7 @@ END SUBROUTINE GetMaxDefs
     SUBROUTINE AddEdgeProjectorStrong()
 
       INTEGER :: ind, indm, eind, eindm, k1, k2, km1, km2, sgn0, coeffi(100), &
-          ncoeff, dncoeff, ncoeff0, Nelim, i1, i2, j1, j2, Nundefined, NoSkewed, SkewPart, &
-          aidi
+          ncoeff, dncoeff, ncoeff0, Nelim, i1, i2, j1, j2, Nundefined, NoSkewed, SkewPart
       TYPE(Element_t), POINTER :: Element, ElementM
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
       TYPE(Nodes_t) :: NodesM, Nodes 
@@ -5903,9 +5903,9 @@ END SUBROUTINE GetMaxDefs
       REAL(KIND=dp) :: xm1, xm2, ym1, ym2, coeff(100), signs(100), wsum, minwsum, maxwsum, val, &
           x1o, y1o, x2o, y2o, cskew, sedge, ArcCoeff
       REAL(KIND=dp) :: x1, y1, x2, y2, xmin, xmax, xminm, xmaxm, ymin, ymax, yminm, ymaxm, xmean, &
-          dx,dy
+          dx,dy,Xeps
       LOGICAL :: YConst, YConstM, XConst, XConstM, EdgeReady, Repeated, LeftCircle, &
-          SkewEdge
+          SkewEdge, AtRangeLimit
       LOGICAL, ALLOCATABLE :: EdgeDone(:)
 
       n = Mesh % NumberOfEdges
@@ -5927,6 +5927,8 @@ END SUBROUTINE GetMaxDefs
       Nundefined = 0
       LeftCircle = .FALSE.
       ArcCoeff = (2*PI*Radius)/360.0
+      Xeps = EPSILON( Xeps )
+      AtRangeLimit = .FALSE.
 
       DO ind=1,BMesh1 % NumberOfBulkElements
         
@@ -5976,6 +5978,9 @@ END SUBROUTINE GetMaxDefs
           ELSE IF( XConst ) THEN
             IF( .NOT. StrongExtrudedEdges ) CYCLE
           ELSE
+            !print *,'skewed edge: ',ParEnv % MyPe,x1,x2,y1,y2,dx,dy
+            !print *,'tol:',ABS(y2-y1)/dy,ABS(x2-x1)/dx,RadTol
+
             NoSkewed = NoSkewed + 1
             SkewEdge = .TRUE.
             IF(.NOT. StrongSkewEdges) CYCLE
@@ -6077,6 +6082,18 @@ END SUBROUTINE GetMaxDefs
           ymin = MIN(y1,y2)
           ymax = MAX(y1,y2)
           xmean = (x1+x2) / 2.0_dp
+
+
+          ! If the mesh is not repeating there is a risk that we don't exactly hit the start 
+          ! or end of the range. Therefore grow the tolerance close to the ends. 
+          IF(.NOT. ( Repeating .OR. FullCircle ) ) THEN
+            IF ( xmax < XminAll + Xtol .OR. xmin > XmaxAll - Xtol ) THEN
+              Xeps = Xtol 
+            ELSE
+              Xeps = EPSILON( Xeps ) 
+            END IF
+          END IF
+
           
           ! Currently a n^2 loop but it could be improved
           !--------------------------------------------------------------------
@@ -6108,8 +6125,8 @@ END SUBROUTINE GetMaxDefs
             xminm = MINVAL( NodesM % x(1:n) ) 
             xmaxm = MAXVAL( NodesM % x(1:n) ) 
             
-            IF( xminm > xmax + Xtol ) CYCLE
-            IF( xmaxm < xmin - Xtol ) CYCLE 
+            IF( xminm > xmax + Xeps ) CYCLE
+            IF( xmaxm < xmin - Xeps ) CYCLE 
             
             ! Eliminate this special case since it could otherwise give a faulty hit
             IF( FullCircle .AND. .NOT. LeftCircle ) THEN
@@ -6214,7 +6231,7 @@ END SUBROUTINE GetMaxDefs
                 EdgeReady = ( 1.0_dp - wsum < 1.0d-12 ) 
               ELSE IF( XConst ) THEN                       
                 ! If edge was found both on left and right there is no need to continue search
-                !EdgeReady = ( dncoeff == 2 ) 
+                EdgeReady = ( dncoeff == 2 ) 
               END IF
               IF( EdgeReady ) EXIT
             END IF
@@ -6252,61 +6269,15 @@ END SUBROUTINE GetMaxDefs
                 coeff(ncoeff) = cskew * 1.0_dp - coeff(1)
               END IF
             ELSE
-              IF( ncoeff == 2 ) THEN
-                xm1 = coeff(1)
-                xm2 = coeff(2)
-              ELSE IF( ncoeff > 2 ) THEN
-                ! If there are several hits then find the closest ones. 
-                ! Find edges just smaller and just bigger than the 'xmean'
-                ! based on the coordinates that were saved.
-                j1 = 0
-                j2 = 0
-                DO j=1,ncoeff
-                  IF( coeff(j) < xmean ) THEN
-                    IF( j1 == 0 ) THEN
-                      j1 = j
-                    ELSE IF( coeff(j) > coeff(j1) ) THEN
-                      j1 = j
-                    END IF
-                  ELSE 
-                    IF( j2 == 0 ) THEN
-                      j2 = j
-                    ELSE IF( coeff(j) < coeff(j2) )THEN
-                      j2 = j 
-                    END IF                     
-                  END IF
-                END DO
-
-                IF( j1 > 0 .AND. j2 > 0 ) THEN
-                  ncoeff = 2
-                  xm1 = coeff(j1)
-                  xm2 = coeff(j2)
-
-                  aidi =  coeffi(j2)                 
-                  coeffi(1) = coeffi(j1)
-                  coeffi(2) = aidi
-
-                  aidi = signs(j2)
-                  signs(1) = signs(j1)
-                  signs(2) = aidi                  
-                ELSE IF( j1 > 0 ) THEN
-                  ncoeff = 1
-                  xm1 = coeff(j1)
-                  coeffi(1) = coeffi(j1)
-                  signs(1) = signs(j1)
-                ELSE IF( j2 > 0 ) THEN                  
-                  ncoeff = 1 
-                  xm1 = coeff(j2)
-                  coeffi(1) = coeffi(j2)
-                  signs(1) = signs(j2)
-                ELSE 
-                  ncoeff = 0
-                END IF
-              END IF
-
               IF( ncoeff == 1 ) THEN
                 coeff(1) = 1.0_dp
-              ELSE IF( ncoeff == 2 ) THEN
+              ELSE IF( ncoeff >= 2 ) THEN
+                IF( ncoeff > 2 ) THEN
+                  CALL Warn('LevelProjector',&
+                       'There should not be more than two target edges: '//TRIM(I2S(ncoeff))) 
+                END IF
+                xm1 = coeff(1)
+                xm2 = coeff(2)
                 IF( ABS( xm2-xm1) < TINY( xm2 ) ) THEN
                   CALL Warn('LevelProjector','Degenerated edge 3?')
                   coeff(1) = 0.5_dp
