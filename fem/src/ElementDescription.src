@@ -6479,7 +6479,6 @@ END IF
 !------------------------------------------------------------------------
    SUBROUTINE GetEdgeBasis( Element, WBasis, RotWBasis, Basis, dBasisdx )
 !------------------------------------------------------------------------
-use spariterglobals
      TYPE(Element_t),TARGET :: Element
      REAL(KIND=dp) :: WBasis(:,:), RotWBasis(:,:), Basis(:), dBasisdx(:,:)
 !------------------------------------------------------------------------
