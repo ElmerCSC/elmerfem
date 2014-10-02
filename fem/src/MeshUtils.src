@@ -6878,7 +6878,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes, size0, indp, indq, &
         e1, e2, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides, &
-        InvPermSize
+        InvPermSize, indpoffset
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Basis(:)
     REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight,Coeff
@@ -6990,9 +6990,9 @@ END SUBROUTINE GetMaxDefs
     NoDiscontNodes = COUNT( NodePerm > 0 ) 
 
     IF( DoNodes ) THEN
-      InvPermSize = NoDiscontNodes
+      indpoffset = NoDiscontNodes
     ELSE
-      InvPermSize = 0
+      indpoffset = 0
     END IF
     
     ! Compute the number of potential edges. This mimics the loop that really creates the projector 
@@ -7000,7 +7000,7 @@ END SUBROUTINE GetMaxDefs
     IF( DoEdges ) THEN
       ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )
       EdgeDone = .FALSE.
-      indp = InvPermSize 
+      indp = indpoffset
 
       DO t = 1, Mesh % NumberOfBoundaryElements
         
@@ -7206,12 +7206,9 @@ END SUBROUTINE GetMaxDefs
 
       val = 1.0_dp
       Scale = -1.0_dp
+
       EdgeDone = .FALSE.
-      IF( DoNodes ) THEN
-        indp = NoDiscontNodes      
-      ELSE
-        indp = 0
-      END IF
+      indp = indpoffset
 
       DO t = 1, Mesh % NumberOfBoundaryElements
         
@@ -7269,7 +7266,7 @@ END SUBROUTINE GetMaxDefs
           i2 = OldFace % NodeIndexes( OldMap(i,2) )
           
           IF( NodePerm(i1) == 0 ) CYCLE
-          IF( NodePerm(i2) == 0 ) CYCLE
+          IF( NodePerm(i2) == 0 ) CYCLE          
 
           ! To be able to compare edges use the corresponding new indexes
           i1 = NoOrigNodes + NodePerm(i1)
@@ -7306,6 +7303,9 @@ END SUBROUTINE GetMaxDefs
             ! These are 1-to-1 mappings, no addtive as for the nodes
             IF( Found ) THEN
               indp = indp + 1
+
+              !PRINT *,'indp',indp,sgn,Scale,e1,e2
+
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                   n + e1, val ) 
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
@@ -7320,7 +7320,7 @@ END SUBROUTINE GetMaxDefs
         END DO
       END DO
 
-      DEALLOCATE( EdgeDone ) 
+      DEALLOCATE( EdgeDone )
       IF( .NOT. DoNodes .AND. ParentMissing > 0 ) THEN
         CALL Warn('WeightedProjectorDiscont','Number of half-sided discontinuous BC elements in partition '&
            //TRIM(I2S(ParEnv % myPE))//': '//TRIM(I2S(ParentMissing)) )
@@ -7333,6 +7333,7 @@ END SUBROUTINE GetMaxDefs
 
     ! Convert from list matrix to CRS matrix format
     CALL List_ToCRSMatrix(Projector)
+    CALL CRS_SortMatrix(Projector,.TRUE.)
    
     CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
         TRIM(I2S(SIZE(Projector % Cols)) ), Level=9)
@@ -7751,6 +7752,114 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
+  !---------------------------------------------------------------------------
+  !> Given a permutation map the (x,y,z) such that the projector can better 
+  !> be applied. E.g. if boundary has constant x, take that as the last coordinate.
+  !---------------------------------------------------------------------------
+  SUBROUTINE MapInterfaceCoordinate(BMesh1, BMesh2, BParams )
+  !---------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Valuelist_t), POINTER :: BParams
+    !--------------------------------------------------------------------------
+    LOGICAL :: Found
+    REAL(KIND=dp), POINTER :: NodesX(:), NodesY(:), NodesZ(:), Wrk(:,:)
+    INTEGER, POINTER :: CoordMap(:)
+    INTEGER :: MeshNo
+    TYPE(Mesh_t), POINTER :: BMesh
+    
+    ! Perform coordinate mapping
+    !------------------------------------------------------------
+    CoordMap => ListGetIntegerArray( BParams, & 
+        'Projector Coordinate Mapping',Found )
+    IF( .NOT. Found ) RETURN
+
+    CALL Info('MapInterfaceCoordinates','Performing coordinate mapping',Level=8)
+    
+    IF ( SIZE( CoordMap ) /= 3 ) THEN
+      WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
+      CALL Error( 'MapInterfaceCoordinates', Message )
+      WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
+      CALL Fatal( 'MapInterfaceCoordinates', Message )
+    END IF
+    
+    IF ( ALL( CoordMap(1:3) /= 1 ) .OR. ALL( CoordMap(1:3) /= 2 ) .OR. ALL( CoordMap(1:3) /= 3 ) ) THEN
+      WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
+      CALL Error( 'MapInterfaceCoordinates', Message )
+      WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
+      CALL Fatal( 'MapInterfaceCoordinates', Message )
+    END IF
+
+    DO MeshNo = 1,2
+      IF( MeshNo == 1 ) THEN
+        BMesh => BMesh1
+      ELSE
+        BMesh => BMesh2 
+      END IF
+
+      IF( CoordMap(1) == 1 ) THEN
+        NodesX => BMesh % Nodes % x
+      ELSE IF( CoordMap(1) == 2 ) THEN
+        NodesX => BMesh % Nodes % y
+      ELSE
+        NodesX => BMesh % Nodes % z
+      END IF
+    
+      IF( CoordMap(2) == 1 ) THEN
+        NodesY => BMesh % Nodes % x
+      ELSE IF( CoordMap(2) == 2 ) THEN
+        NodesY => BMesh % Nodes % y
+      ELSE
+        NodesY => BMesh % Nodes % z
+      END IF
+      
+      IF( CoordMap(3) == 1 ) THEN
+        NodesZ => BMesh % Nodes % x
+      ELSE IF( CoordMap(3) == 2 ) THEN
+        NodesZ => BMesh % Nodes % y
+      ELSE
+        NodesZ => BMesh % Nodes % z
+      END IF
+
+      BMesh % Nodes % x => NodesX
+      BMesh % Nodes % y => NodesY
+      BMesh % Nodes % z => NodesZ
+    END DO
+
+  END SUBROUTINE MapInterfaceCoordinate
+
+
+  ! Save projector, mainly a utility for debugging purposes
+  !--------------------------------------------------------
+  SUBROUTINE SaveProjector(Projector)
+    TYPE(Matrix_t), POINTER :: Projector
+    INTEGER :: i,j,This
+    REAL(KIND=dp) :: rowsum, dia
+
+    This = Projector % ConstraintBC
+
+    IF(ParEnv % PEs == 1 ) THEN
+      OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
+    ELSE
+      OPEN(1,FILE='p'//TRIM(I2S(This))//'_part'//&
+          TRIM(I2S(ParEnv % MyPe))//'.dat',STATUS='Unknown')
+    END IF
+    
+    DO i=1,projector % numberofrows
+      rowsum = 0.0_dp
+      DO j=projector % rows(i), projector % rows(i+1)-1
+        WRITE(1,*) projector % invperm(i), projector % cols(j), projector % values(j)
+        IF( projector % invperm(i) == projector % cols(j) ) THEN
+          dia = projector % values(j)
+        ELSE
+          rowsum = rowsum + projector % values(j)
+        END IF
+      END DO
+      !          PRINT *,'rowsum i:',i,dia,rowsum,rowsum/dia
+    END DO
+    CLOSE(1)     
+
+  END SUBROUTINE SaveProjector
+
 
 !------------------------------------------------------------------------------
 !> Create a projector between Master and Target boundaries.
@@ -7778,7 +7887,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
-    REAL(KIND=dp) :: rowsum, dia, PeriodicScale, Radius
+    REAL(KIND=dp) :: PeriodicScale, Radius
     TYPE(ValueList_t), POINTER :: BC
 
     INTERFACE
@@ -7827,12 +7936,9 @@ END SUBROUTINE GetMaxDefs
       ELSE
         Projector => NodalProjectorDiscont( PMesh, This )
       END IF
-      IF ( ASSOCIATED( Projector ) ) THEN
-        !Model % BCs(This) % PMatrix => Projector
-        GOTO 100
-      ELSE        
-        RETURN
-      END IF
+      
+      IF ( .NOT. ASSOCIATED( Projector ) ) RETURN
+      GOTO 100
     END IF
     
     IF ( Trgt <= 0 ) RETURN    
@@ -7875,6 +7981,7 @@ END SUBROUTINE GetMaxDefs
     IF(.NOT. NodalJump ) THEN
       NodalJump = ListCheckPrefix( BC,'Mortar BC Resistivity')
     END IF
+
 
     ! There is a simple edge projector tailored for the AV solver
     !-------------------------------------------------------------
@@ -7931,6 +8038,10 @@ END SUBROUTINE GetMaxDefs
     WRITE( Message,'(A,I0,A,I0)') 'Creating projector between BCs ',This,' and ',Trgt
     CALL Info('PeriodicProjector',Message,Level=8)
 
+    ! If requested map the interface coordinate from (x,y,z) to any permutation
+    ! of these. 
+    CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
+
     ! If the interface is rotational move to (phi,z) plane and alter the phi coordinate 
     ! so that the meshes coinside. 
     ! Otherwise make the two meshes to coinside using rotation, translation &
@@ -7939,16 +8050,16 @@ END SUBROUTINE GetMaxDefs
     Radius = 1.0_dp
     FullCircle = .FALSE.
     IF( Rotational ) THEN
-      CALL RotationalInterfaceMeshes( BMesh1, BMesh2, Model % BCs(This) % Values, &
+      CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, &
           Radius, FullCircle )
     ELSE IF( Radial ) THEN
-      CALL RadialInterfaceMeshes( BMesh1, BMesh2, Model % BCs(This) % Values )
+      CALL RadialInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( Sliding ) THEN
       CONTINUE
     ELSE IF( Flat ) THEN
-      CALL FlatInterfaceMeshes( BMesh1, BMesh2, Model % BCs(This) % Values )
+      CALL FlatInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE
-      CALL OverlayIntefaceMeshes( BMesh1, BMesh2, Model % BCs(This) % Values )
+      CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
     END IF
 
     Repeating = ( Rotational .AND. .NOT. FullCircle ) .OR. Sliding 
@@ -7998,34 +8109,6 @@ END SUBROUTINE GetMaxDefs
       Projector => NodalProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
                  UseQuadrantTree, Repeating, AntiRepeating )
     END IF
-    Projector % ConstraintBC = This
-
-
-    IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
-       IF(ParEnv % PEs == 1 ) THEN
-          OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
-       ELSE
-          OPEN(1,FILE='p'//TRIM(I2S(This))//'_part'//&
-               TRIM(I2S(ParEnv % MyPe))//'.dat',STATUS='Unknown')
-       END IF
-       
-       DO i=1,projector % numberofrows
-          rowsum = 0.0_dp
-          DO j=projector % rows(i), projector % rows(i+1)-1
-             WRITE(1,*) projector % invperm(i), projector % cols(j), projector % values(j)
-             IF( projector % invperm(i) == projector % cols(j) ) THEN
-                dia = projector % values(j)
-             ELSE
-                rowsum = rowsum + projector % values(j)
-             END IF
-          END DO
-          !          PRINT *,'rowsum i:',i,dia,rowsum,rowsum/dia
-       END DO
-       CLOSE(1)
-      
-      IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
-    END IF
-
 
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
@@ -8035,9 +8118,14 @@ END SUBROUTINE GetMaxDefs
 
     DEALLOCATE( InvPerm1, InvPerm2 )
 
-100 CALL CheckTimer('PeriodicProjector',Delete=.TRUE.)
-    CALL Info('PeriodicProjector','Projector created, now exiting...',Level=8)
+100 Projector % ConstraintBC = This
+    IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
+      CALL SaveProjector( Projector ) 
+      IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
+    END IF    
 
+    CALL CheckTimer('PeriodicProjector',Delete=.TRUE.)
+    CALL Info('PeriodicProjector','Projector created, now exiting...',Level=8)
 
 !------------------------------------------------------------------------------
   END FUNCTION PeriodicProjector
