@@ -725,7 +725,7 @@ st = realtime()
   NULLIFY( A % DampValues )
   IF ( NeedDamp ) ALLOCATE(A % DampValues(sz))
 
-  A % ILUValues => Null()
+  A % ILUValues => NULL()
   IF ( NeedPrec ) ALLOCATE(A % ILUValues(sz))
 
 
@@ -1355,8 +1355,8 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   
   INTEGER :: nrows, ncols, nnz
   TYPE(ValueList_t), POINTER :: Params
-integer,allocatable::revdoflist(:)
-integer::inside
+INTEGER,ALLOCATABLE::revdoflist(:)
+INTEGER::inside
 
 #ifdef HAVE_HYPRE
     TYPE(Matrix_t), POINTER :: GM
@@ -1682,7 +1682,7 @@ integer::inside
              NodePerm, BPerm, NodeOwner, nnd, Solver % Mesh)
 
         GM => AllocateMatrix()
-        GM % Format = MATRIX_LIST
+        GM % FORMAT = MATRIX_LIST
 
         DO i=Solver % Mesh % NumberofEdges,1,-1
           ind=Solver % Mesh % Edges(i) % NodeIndexes
@@ -1692,7 +1692,7 @@ integer::inside
           END IF
           CALL List_AddToMatrixElement(gm%listmatrix,i,ind(1),-1._dp)
           CALL List_AddToMatrixElement(gm%listmatrix,i,ind(2), 1._dp)
-        end do
+        END DO
         CALL List_tocrsMatrix(gm)
 
         nnd = Solver % Mesh % NumberOfEdges
@@ -2146,8 +2146,8 @@ REAL(kind=dp)::cputime,realtime,tt,rt
     DEALLOCATE(CM % Cols)
     CM % Cols => SCols
     DEALLOCATE(SPerm)
-    SplittedMatrix % InsideMatrix % Perm => Null()
-    SplittedMatrix % InsideMatrix % ConstraintMatrix => Null()
+    SplittedMatrix % InsideMatrix % Perm => NULL()
+    SplittedMatrix % InsideMatrix % ConstraintMatrix => NULL()
   END IF
 
   GlobalMatrix => SaveMatrix
@@ -2335,6 +2335,146 @@ REAL(kind=dp) :: s, RealTime
   CALL SParIterActiveBarrier 
 !----------------------------------------------------------------------
 END SUBROUTINE SParMatrixVector
+!----------------------------------------------------------------------
+
+
+!---------------------------------------------------------------------
+!> External Matrix - Vector operations (Parallel real, version)
+!> Multiply vector u with the matrix which has as entries the absolute
+!> values of the global matrix entries, return the result in v.
+!> (HUTIter library convention)
+!----------------------------------------------------------------------
+  SUBROUTINE SParABSMatrixVector( u,v,ipar )
+!----------------------------------------------------------------------
+
+  IMPLICIT NONE
+
+  ! Input parameters
+
+  INTEGER, DIMENSION(*) :: ipar
+  REAL(KIND=dp), DIMENSION(*) :: u, v
+
+  ! Local parameters
+
+  INTEGER :: i, j, k, l, n, ii, colind, rowind
+  TYPE( IfVecT), POINTER :: IfV
+  TYPE( IfLColsT), POINTER :: IfL, IfO
+  TYPE (BasicMatrix_t), POINTER :: CurrIf
+  TYPE (Matrix_t), POINTER :: InsideMatrix
+
+  INTEGER :: nneigh
+
+  TYPE(Buff_t), POINTER ::  buffer(:)
+
+  REAL(KIND=dp) :: rsum
+
+  REAL(KIND=dp), POINTER CONTIG :: Vals(:)
+! REAL(KIND=dp), POINTER :: Vals(:)
+
+  INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
+! INTEGER, POINTER :: Cols(:),Rows(:)
+
+  INTEGER, ALLOCATABLE :: neigh(:), recv_size(:), requests(:)
+
+REAL(kind=dp) :: s, RealTime
+  !*******************************************************************
+
+  InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
+  n = InsideMatrix % NumberOfRows
+
+  !----------------------------------------------------------------------
+  !
+  ! Compute the interface contribution for each neighbour
+  !
+  !----------------------------------------------------------------------
+
+  nneigh = ParEnv % NumOfNeighbours
+  ALLOCATE( neigh(nneigh) )
+
+  j = 0
+  DO i=1,Parenv % Pes
+    IF ( ParEnv % IsNeighbour(i) ) THEN
+      j = j + 1
+      neigh(j) = i-1
+      IF ( j==nneigh ) EXIT
+    END IF
+  END DO
+
+  CALL Send_LocIf_size( GlobalData % SplittedMatrix, nneigh, neigh )
+  ALLOCATE( recv_size(nneigh) )
+  CALL Recv_LocIf_size( nneigh, neigh, recv_size )
+
+  ALLOCATE( buffer(nneigh) )
+  DO i=1,nneigh
+    ALLOCATE( buffer(i) % rbuf(recv_size(i)) ) 
+  END DO
+
+  ALLOCATE( requests(nneigh) )
+  CALL Recv_LocIf( GlobalData % SplittedMatrix, &
+      nneigh, neigh, recv_size, requests, buffer )
+
+  v(1:n) = 0.0
+  DO i = 1, ParEnv % PEs
+     CurrIf => GlobalData % SplittedMatrix % IfMatrix(i)
+
+     IF ( CurrIf % NumberOfRows /= 0 ) THEN
+       IfV => GlobalData % SplittedMatrix % IfVecs(i)
+       IfL => GlobalData % SplittedMatrix % IfLCols(i)
+       IfO => GlobalData % SplittedMatrix % IfORows(i)
+
+        IfV % IfVec(1:CurrIf % NumberOfRows) = 0.0
+        DO j = 1, CurrIf % NumberOfRows
+           IF ( Currif % RowOwner(j) /= ParEnv % MyPE ) THEN
+             DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
+               Colind = IfL % IfVec(k)
+               IF ( ColInd > 0 ) &
+                 IfV % IfVec(j)=IfV % IfVec(j)+ABS(CurrIf % Values(k))*u(colind)
+             END DO
+           END IF
+        END DO
+     END IF
+  END DO
+
+  CALL Send_LocIf( GlobalData % SplittedMatrix, nneigh, neigh )
+  !----------------------------------------------------------------------
+  !
+  ! Compute the local part
+  !
+  !----------------------------------------------------------------------
+
+  Rows => InsideMatrix % Rows
+  Cols => InsideMatrix % Cols
+  Vals => InsideMatrix % Values
+
+  IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
+    CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
+            GlobalMatrix % SpMV, n,Rows,Cols,ABS(Vals),u,v,0)
+  ELSE
+!$omp parallel do private(j,rsum)
+    DO i = 1, n
+      rsum = 0._dp
+      DO j = Rows(i), Rows(i+1) - 1
+        rsum = rsum + ABS(Vals(j)) * u(Cols(j))
+      END DO
+      v(i)=v(i)+rsum
+    END DO
+!omp end parallel do
+  END IF
+
+
+  CALL Recv_LocIf_Wait( GlobalData % SplittedMatrix, n, v,  &
+       nneigh, neigh, recv_size, requests, buffer )
+
+  DEALLOCATE( neigh, recv_size, requests )
+
+  DO i=1,SIZE(buffer)
+    DEALLOCATE( buffer(i) % rbuf )
+  END DO
+  DEALLOCATE( buffer )
+
+  CALL SParIterActiveBarrier 
+!----------------------------------------------------------------------
+END SUBROUTINE SParABSMatrixVector
 !----------------------------------------------------------------------
 
 

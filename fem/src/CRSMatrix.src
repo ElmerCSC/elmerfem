@@ -1024,6 +1024,66 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
 !------------------------------------------------------------------------------
+!>  Matrix-vector product v = |A|u with A a matrix in the CRS format and
+!>  |.| the matrix function giving the absolute values of the argument 
+!>  components. This special mv subroutine may be needed in connection with
+!>  certain stopping criteria for iterative linear solvers. 
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_ABSMatrixVectorMultiply( A,u,v )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), DIMENSION(*), INTENT(IN) :: u   !< The vector u
+    REAL(KIND=dp), DIMENSION(*), INTENT(OUT) :: v  !< The result vector v
+    TYPE(Matrix_t), INTENT(IN) :: A                !< The structure holding the matrix A
+!------------------------------------------------------------------------------
+    INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    
+    INTEGER :: i,j,n
+    REAL(KIND=dp) :: rsum
+#ifdef HAVE_MKL
+    INTERFACE
+      SUBROUTINE mkl_dcsrgemv(transa, m, a, ia, ja, x, y)
+        USE Types
+        CHARACTER :: transa
+        INTEGER :: m
+        REAL(KIND=dp) :: a(*)
+        INTEGER :: ia(*), ja(*)
+        REAL(KIND=dp) :: x(*), y(*)
+      END SUBROUTINE mkl_dcsrgemv
+    END INTERFACE
+#endif
+!------------------------------------------------------------------------------
+
+    n = A % NumberOfRows
+    Rows   => A % Rows
+    Cols   => A % Cols
+    Values => A % Values
+
+    IF  ( A % MatvecSubr /= 0 ) THEN
+      CALL MatVecSubr(A % MatVecSubr,A % SpMV, n,Rows,Cols,ABS(Values),u,v,0)
+      RETURN
+    END IF
+
+    ! Use MKL to perform mvp if it is available
+#ifdef HAVE_MKL
+    CALL mkl_dcsrgemv('N', n, ABS(Values), Rows, Cols, u, v)
+#else
+!$omp parallel do private(j,rsum)
+    DO i=1,n
+      rsum = 0.0d0
+      DO j=Rows(i),Rows(i+1)-1
+        rsum = rsum + u(Cols(j)) * ABS(Values(j))
+      END DO
+      v(i) = rsum
+    END DO
+!$omp end parallel do
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE CRS_ABSMatrixVectorMultiply
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !>  Calculate transpose of A in CRS format: B = A^T
 !------------------------------------------------------------------------------
      FUNCTION CRS_Transpose( A ) RESULT(B)

@@ -35,6 +35,186 @@
 ! *
 ! ****************************************************************************/
 
+!-----------------------------------------------------------------------------
+!>  Initialisation routine to set initial free surface height 
+!>  when the surface normal is not aligned to Z axis (rotated FS)
+!> \ingroup Solvers
+!-----------------------------------------------------------------------------
+SUBROUTINE FreeSurfaceSolver_RotInit( Model,Solver,dt,TransientSimulation )
+  USE DefUtils  
+  USE ElementDescription
+  IMPLICIT NONE
+
+  TYPE(Model_t)  :: Model
+  TYPE(Solver_t), TARGET :: Solver
+  LOGICAL ::  TransientSimulation
+  REAL(KIND=dp) :: dt
+
+  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(Variable_t), POINTER :: VarFS, OrientVar
+
+  INTEGER :: DIM, i
+  INTEGER, POINTER ::  RefFSPerm(:), FreeSurfPerm(:)
+
+  REAL(KIND=dp), POINTER :: RefFS(:), FreeSurf(:), OrientVarPointer(:), PArray(:,:) => NULL()
+  REAL(KIND=dp) :: NodeHolder(3), Orientation(3),  RotationMatrix(3,3)
+
+  LOGICAL :: RotateFS, Found
+  CHARACTER(LEN=MAX_NAME_LEN)  :: VariableName, SolverName, OrientVarName
+
+  SolverParams => GetSolverParams()
+  DIM = CoordinateSystemDimension()
+  SolverName = "FreeSurfaceSolver_RotInit"
+
+  VariableName = ListGetString( SolverParams, 'Free Surface Variable Name', Found)
+  IF ( .NOT.Found ) THEN
+     CALL Fatal(SolverName, "Can't find 'Free Surface Variable Name'")
+  END IF
+  CALL ListAddString(Model % Constants, 'Free Surface Variable Name',TRIM(VariableName))
+
+  PArray => ListGetConstRealArray( SolverParams,TRIM(VariableName)//' Orientation', Found)
+  IF ( .NOT.Found ) THEN
+     WRITE(Message, '(a,a,a)') "Solver to Initialize Rotated Free Surface is present but &
+          &can't find ",VariableName," Orientation"
+     CALL Fatal(SolverName, Message)
+  END IF
+  DO i=1,3
+     Orientation(i) = PArray(i,1)
+  END DO
+
+  !Push to globals
+  WRITE(OrientVarName, '(a,a,a)') TRIM(VariableName),' Orientation' 
+  ALLOCATE(OrientVarPointer(3))
+
+  CALL VariableAdd(Model % Mesh % Variables, Model % Mesh, Solver, OrientVarName,3,OrientVarPointer)
+  OrientVar => VariableGet(Model %  Mesh % Variables, OrientVarName, Found)
+  IF(.NOT. Found) CALL FATAL(SolverName, "Internal problem set/getting Orientation Variable")
+  OrientVar % Values = Orientation
+
+  RotationMatrix = ComputeRotationMatrix(Orientation)
+
+  !Get Variables
+  !--------------------------------------------
+  RefFS     => Solver % Variable % Values
+  IF (.NOT.ASSOCIATED(RefFS)) CALL Fatal(SolverName,'Variable values not associated')
+  RefFSPerm => Solver % Variable % Perm
+
+  VarFS => VariableGet( Model % Mesh % Variables, TRIM(VariableName) )
+  IF (.NOT.ASSOCIATED(VarFS)) THEN
+     WRITE (Message, '(a,a)') "Can't get variable: ",VariableName
+     CALL Fatal( SolverName, Message)
+  END IF
+  FreeSurf => VarFS % Values
+  FreeSurfPerm => VarFS % Perm
+
+
+  DO i=1,Model % Mesh % NumberOfNodes
+     IF(RefFSPerm(i) == 0) CYCLE
+
+     NodeHolder(1) = Model % Mesh % Nodes % x(i)
+     NodeHolder(2) = Model % Mesh % Nodes % y(i)
+     NodeHolder(3) = Model % Mesh % Nodes % z(i)
+
+     NodeHolder = MATMUL(RotationMatrix, NodeHolder)
+
+     RefFS(RefFSPerm(i)) = NodeHolder(3)
+     FreeSurf(FreeSurfPerm(i)) = NodeHolder(3)
+  END DO
+
+END SUBROUTINE FreeSurfaceSolver_RotInit
+
+!-----------------------------------------------------------------------------
+!>  Functions to compute Mesh Update components from scalar free surface
+!>  in cases when free surface is not aligned to z axis (Rotated FS)
+!> \ingroup Solvers
+!-----------------------------------------------------------------------------
+FUNCTION FreeSurfaceToMeshUpdate1( Model, nodenumber,inarray ) RESULT(mu)
+  USE Types
+  USE Defutils
+  IMPLICIT NONE
+  TYPE(Model_t) :: Model
+  INTEGER :: NodeNumber
+  REAL(KIND=dp) ::inarray(*), y, mu, FreeSurfaceToMeshUpdate
+
+  mu = FreeSurfaceToMeshUpdate(Model, nodenumber,inarray, 1)
+END FUNCTION
+
+FUNCTION FreeSurfaceToMeshUpdate2( Model, nodenumber,inarray ) RESULT(mu)
+  USE Types
+  USE Defutils
+  IMPLICIT NONE
+  TYPE(Model_t) :: Model
+  INTEGER :: NodeNumber
+  REAL(KIND=dp) ::inarray(*), mu, FreeSurfaceToMeshUpdate
+
+  mu = FreeSurfaceToMeshUpdate(Model, nodenumber,inarray, 2)
+END FUNCTION
+
+FUNCTION FreeSurfaceToMeshUpdate3( Model, nodenumber,inarray ) RESULT(mu)
+  USE Types
+  USE Defutils
+  IMPLICIT NONE
+  TYPE(Model_t) :: Model
+  INTEGER :: NodeNumber
+  REAL(KIND=dp) ::inarray(*), mu, FreeSurfaceToMeshUpdate
+
+  mu = FreeSurfaceToMeshUpdate(Model, nodenumber,inarray, 3)
+END FUNCTION
+
+FUNCTION FreeSurfaceToMeshUpdate( Model, nodenumber, inarray, axis ) RESULT(mu)
+  USE Types
+  USE Defutils
+  USE ElementDescription
+  IMPLICIT NONE
+
+  TYPE(Model_t) :: Model
+  TYPE(Variable_t), POINTER :: OrientVar, TimeVar
+  INTEGER :: NodeNumber, axis, i
+  REAL(KIND=dp) :: t0, FS, RefFS, Diff, inarray(*), mu, UnRotationMatrix(3,3), &
+       Orientation(3), DiffVect(3), MuVect(3)
+  CHARACTER(LEN=MAX_NAME_LEN)  :: USF_Name, VariableName
+  LOGICAL :: Found, FirstTime
+
+  SAVE :: FirstTime, t0
+  
+  FS = inarray(1)
+  RefFS = inarray(2)
+  USF_Name = "FreeSurfaceToMeshUpdate"
+
+  TimeVar => VariableGet(Model % Mesh % Variables, 'time' )
+
+  IF(FirstTime) THEN
+     IF(.NOT. Found) CALL FATAL(USF_Name, "Can't get time variable")
+     t0 = TimeVar % Values(1)
+     FirstTime = .FALSE.
+  END IF
+  
+  VariableName = ListGetString( Model % Constants, 'Free Surface Variable Name', Found)
+  IF(.NOT. Found) THEN
+     IF(t0 == TimeVar % Values(1)) THEN !Isn't set when first called before simulation
+        mu = 0
+        RETURN
+     ELSE
+        CALL FATAL(USF_Name, "Couldn't find Free Surface Variable Name")
+     END IF
+  END IF
+
+  OrientVar => VariableGet(Model % Mesh % Variables, TRIM(VariableName)//' Orientation', Found)
+  IF ( .NOT.Found ) THEN
+     WRITE(Message, '(a,a,a)') "Can't find ",VariableName," Orientation"
+     CALL Fatal(USF_Name, Message)
+  END IF
+
+  Orientation = OrientVar % Values
+  UnRotationMatrix = TRANSPOSE(ComputeRotationMatrix(Orientation))
+
+  Diff = FS - RefFS
+  DiffVect = [0.0_dp, 0.0_dp, Diff]
+
+  MuVect = MATMUL(UnRotationMatrix, DiffVect)
+  mu = MuVect(axis)
+
+END FUNCTION FreeSurfaceToMeshUpdate
 
 !-----------------------------------------------------------------------------
 !>  Solver for free surface evolution in 2d and 3d flows
@@ -43,6 +223,7 @@
 !-----------------------------------------------------------------------------
 SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   USE DefUtils
+  USE ElementDescription
   USE Differentials
   USE MaterialModels
   IMPLICIT NONE
@@ -62,7 +243,8 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        firstTime=.TRUE., Found, AllocationsDone = .FALSE., stat, &
        NeedOldValues, LimitDisp,  Bubbles = .TRUE.,&
        NormalFlux = .TRUE., SubstantialSurface = .TRUE.,&
-       UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE.
+       UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE.,&
+       RotateFS
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
@@ -76,7 +258,8 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: &
        at,st,totat,totst,CPUTime,Norm,PrevNorm,LocalBottom, cv, &
        Relax, MaxDisp, maxdh,LinearTol,NonlinearTol,RelativeChange,&
-       smallestpossiblenumber, rr, ss
+       smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
+       NodeHolder(3)
 
   REAL(KIND=dp), POINTER :: ForceVector(:), FreeSurf(:), PreFreeSurf(:,:), &
        FlowSolution(:), PrevFlowSol(:,:), PointerToResidualVector(:)
@@ -90,7 +273,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 
   TYPE(Nodes_t)   :: ElementNodes
   TYPE(Element_t),POINTER :: CurrentElement
-  TYPE(Variable_t), POINTER :: FlowSol, VarSurfResidual
+  TYPE(Variable_t), POINTER :: FlowSol, VarSurfResidual, RotVar
   TYPE(ValueList_t), POINTER :: BodyForce, SolverParams, Material, Equation
   TYPE(Matrix_t), POINTER :: Systemmatrix
   !-----------------------------------------------------------------------------
@@ -197,6 +380,22 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      CALL Info(SolverName, 'Using residual free bubble stabilization',Level=6 )
   END SELECT
 
+  RotVar => VariableGet( Model % Mesh % Variables,TRIM(VariableName)//' Orientation')
+  IF(ASSOCIATED(RotVar)) THEN
+     RotateFS = .TRUE.
+     DO i=1,3
+        Orientation(i) = RotVar % Values(i)
+     END DO
+
+     RotationMatrix = ComputeRotationMatrix(Orientation)
+
+     WRITE(Message,'(A,f8.2,f8.2,f8.2)') 'Rotated Free Surface defined using vector: ',Orientation
+     CALL Info(SolverName, Message,Level=6 )
+  ELSE 
+     RotateFS = .FALSE.
+     CALL Info(SolverName, 'No Free Surface Orientation Vector found, assuming normal to z-axis',&
+          Level=6 )
+  END IF
 
   WRITE(Message,'(A,I0)') 'Mesh dimension: ', DIM
   CALL Info( SolverName, Message, Level=8 )
@@ -339,23 +538,38 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
         n = GetElementNOFNodes()
         NodeIndexes => CurrentElement % NodeIndexes
 
+        ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
+        ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
+        ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
+
+        ! rotate element nodes round to reference direction
+        !------------------------------------------------------------------------------
+        IF(RotateFS) THEN
+           DO i=1,n
+              NodeHolder(1) = ElementNodes % x(i)
+              NodeHolder(2) = ElementNodes % y(i)
+              NodeHolder(3) = ElementNodes % z(i)
+
+              NodeHolder = MATMUL(RotationMatrix,NodeHolder)
+              
+              ElementNodes % x(i) = NodeHolder(1)
+              ElementNodes % y(i) = NodeHolder(2)
+              ElementNodes % z(i) = NodeHolder(3)
+           END DO
+        END IF
+
         ! set coords of highest occuring dimension to zero (to get correct path element)
         !-------------------------------------------------------------------------------
-        ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
+        ElementNodes % z(1:n) = 0.0_dp
         IF (DIM == 2) THEN
            ElementNodes % y(1:n) = 0.0
-           ElementNodes % z(1:n) = 0.0
-        ELSE IF (DIM == 3) THEN
-           ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
-           ElementNodes % z(1:n) = 0.0_dp
-        ELSE
+        ELSE IF(DIM .NE. 3) THEN
            WRITE(Message,'(a,i0,a)')&
                 'It is not possible to compute free-surface problems in DIM=',&
                 DIM, ' dimensions. Aborting'
            CALL Fatal( SolverName, Message) 
            STOP   
         END IF
-
 
         ! get pointers on Equation, Material and body-Force section input
         !----------------------------------------------------------------
@@ -467,6 +681,11 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
            Velo=0.0_dp  
         END IF
 
+        IF(RotateFS) THEN
+           DO i=1,n
+              Velo(:,i) = MATMUL(RotationMatrix,Velo(:,i))
+           END DO
+        END IF
         !------------------------------------------------------------------------------
         ! Get mesh velocity
         !------------------------------------------------------------------------------
@@ -504,6 +723,12 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
                  Flux(3,1:n) = 0.0_dp
               END IF
               SourceFunc = 0.0_dp
+
+              IF(RotateFS) THEN
+                 DO i=1,n
+                    Flux(:,i) = MATMUL(RotationMatrix, Flux(:,i))
+                 END DO
+              END IF
            END IF
         END IF
 

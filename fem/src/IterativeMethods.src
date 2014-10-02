@@ -497,7 +497,7 @@ CONTAINS
     INTEGER :: ndim,i,j,k
     INTEGER :: Rounds, OutputInterval, PolynomialDegree
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged
+    LOGICAL :: Converged, Diverged, UseStopCFun
 
     TYPE(Matrix_t),POINTER :: A
 
@@ -531,6 +531,7 @@ CONTAINS
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL 
     PolynomialDegree = HUTI_BICGSTABL_L 
+    UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
     CALL RealBiCGStabl(ndim+nc, A,x,b, Rounds, MinTol, MaxTol, &
         Converged, Diverged, OutputInterval, PolynomialDegree )
@@ -607,7 +608,7 @@ CONTAINS
       rnrm0 = normfun(n, work(1:n,r), 1 )
 
       !-------------------------------------------------------------------
-      ! Check whether the initial guess is already converged, divergeda or NaN
+      ! Check whether the initial guess is already converged, diverged or NaN
       !--------------------------------------------------------------------
       Diverged = .FALSE.
       IF (bnrm /= bnrm) THEN
@@ -808,6 +809,7 @@ CONTAINS
         END IF
       
         errorind = rnrm / bnrm
+
         IF( MOD(Round,OutputInterval) == 0) THEN
           WRITE (*, '(I8, 2E11.4)') Round, rnrm, errorind
         END IF
@@ -862,7 +864,7 @@ CONTAINS
     INTEGER :: ndim, RestartN
     INTEGER :: Rounds, OutputInterval
     REAL(KIND=dp) :: MinTol, MaxTol, Residual
-    LOGICAL :: Converged, Diverged
+    LOGICAL :: Converged, Diverged, UseStopCFun
 
     TYPE(Matrix_t),POINTER::A
 
@@ -874,6 +876,7 @@ CONTAINS
     MaxTol = HUTI_MAXTOLERANCE
     OutputInterval = HUTI_DBUGLVL
     RestartN = HUTI_GCR_RESTART 
+    UseStopCFun = HUTI_STOPC == HUTI_USUPPLIED_STOPC
 
     x => xvec
     b => rhsvec
@@ -929,7 +932,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
-      REAL(KIND=dp) :: alpha, beta
+      REAL(KIND=dp) :: alpha, beta, trueres(n), trueresnorm, normerr
 !------------------------------------------------------------------------------
       
       Converged = .FALSE.
@@ -948,7 +951,11 @@ CONTAINS
       bnorm = normfun(n, b, 1)
       rnorm = normfun(n, r, 1)
       
-      Residual = rnorm / bnorm
+      IF (UseStopCFun) THEN
+        Residual = stopcfun(x,b,r,ipar,dpar)
+      ELSE
+        Residual = rnorm / bnorm
+      END IF
       Converged = (Residual < MinTolerance) 
       Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)
       IF( Converged .OR. Diverged) RETURN
@@ -956,16 +963,24 @@ CONTAINS
       DO k=1,Rounds
 	 !----------------------------------------------
 	 ! Check for restarting
-         !--------------------------------------------- 
-	 IF ( MOD(k,m)==0 ) THEN
-	    j = m
-	 ELSE
-	    j = MOD(k,m)
-	 END IF
+         !----------------------------------------------
+         IF ( MOD(k,m)==0 ) THEN
+            j = m
+         ELSE
+            j = MOD(k,m)
+            !--------------------------------------------
+            ! Compute the true residual when restarting:
+            !--------------------------------------------
+            IF ( (j==1) .AND. (k>1) ) THEN
+               CALL C_matvec( x, r, ipar, matvecsubr )
+               r(1:n) = b(1:n) - r(1:n)
+            END IF
+         END IF
+
          !----------------------------------------------------------
          ! Perform the preconditioning...
          !---------------------------------------------------------------
-         CALL C_lpcond( T1, r, ipar,pcondlsubr )         
+         CALL C_lpcond( T1, r, ipar,pcondlsubr )
          CALL C_matvec( T1, T2, ipar, matvecsubr )
 
          !--------------------------------------------------------------
@@ -990,22 +1005,45 @@ CONTAINS
 	 IF ( j /= m ) THEN
             S(1:n,j) = T1(1:n)
             V(1:n,j) = T2(1:n)
-	 ! else
-	 !    CALL matvecsubr( x, r, ipar )
-         !    r(1:n) = b(1:n) - r(1:n)
 	 END IF       
 
          !--------------------------------------------------------------
          ! Check whether the convergence criterion is met 
          !--------------------------------------------------------------
          rnorm = normfun(n, r, 1)
-         Residual = rnorm / bnorm
-        
-         IF( MOD(k,OutputInterval) == 0) THEN
-            WRITE (*, '(I8, E11.4)') k, residual
+         !CALL C_matvec( x, trueres, ipar, matvecsubr )
+         !trueres(1:n) = b(1:n) - trueres(1:n)
+         !trueresnorm = normfun(n, trueres, 1)
+         IF (UseStopCFun) THEN
+           Residual = stopcfun(x,b,r,ipar,dpar)
+           IF( MOD(k,OutputInterval) == 0) THEN
+             WRITE (*, '(I8, 3E11.4)') k, rnorm / bnorm, residual
+           END IF           
+         ELSE
+           Residual = rnorm / bnorm
+           IF( MOD(k,OutputInterval) == 0) THEN
+             WRITE (*, '(I8, E11.4)') k, residual
+           END IF
          END IF
-        
+           
          Converged = (Residual < MinTolerance) 
+         !-----------------------------------------------------------------
+         ! Make an additional check that the true residual agrees with 
+         ! the iterated residual:
+         !-----------------------------------------------------------------
+         IF (Converged ) THEN
+            CALL C_matvec( x, trueres, ipar, matvecsubr )
+            trueres(1:n) = b(1:n) - trueres(1:n)
+            TrueResNorm = normfun(n, trueres, 1)
+            NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
+            IF ( NormErr > 1.0d-1 ) THEN
+               CALL Info('WARNING', 'Iterated GCR solution may not be accurate', Level=2)
+               WRITE( Message, * ) 'Iterated GCR residual norm = ', rnorm
+               CALL Info('WARNING', Message, Level=2)
+               WRITE( Message, * ) 'True residual norm = ', TrueResNorm
+               CALL Info('WARNING', Message, Level=2)   
+            END IF
+         END IF
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT
         
@@ -1106,7 +1144,8 @@ CONTAINS
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k
       COMPLEX(KIND=dp) :: beta
-      REAL(KIND=dp) :: alpha
+      REAL(KIND=dp) :: alpha, trueresnorm, normerr
+      COMPLEX(KIND=dp) :: trueres(n)
 !------------------------------------------------------------------------------
       
       Converged = .FALSE.
@@ -1134,11 +1173,18 @@ CONTAINS
 	 !----------------------------------------------
 	 ! Check for restarting
          !--------------------------------------------- 
-	 IF ( MOD(k,m)==0 ) THEN
-	    j = m
-	 ELSE
-	    j = MOD(k,m)
-	 END IF
+         IF ( MOD(k,m)==0 ) THEN
+            j = m
+         ELSE
+            j = MOD(k,m)
+            !--------------------------------------------
+            ! Compute the true residual when restarting:
+            !--------------------------------------------
+            IF ( (j==1) .AND. (k>1) ) THEN
+               CALL matvecsubr( x, r, ipar ) 
+               r(1:n) = b(1:n) - r(1:n)
+            END IF
+         END IF
          !----------------------------------------------------------
          ! Perform the preconditioning...
          !---------------------------------------------------------------
@@ -1166,9 +1212,6 @@ CONTAINS
 	 IF ( j /= m ) THEN
             S(1:n,j) = T1(1:n)
             V(1:n,j) = T2(1:n)
-	 ! else
-	 !    CALL matvecsubr( x, r, ipar )
-         !    r(1:n) = b(1:n) - r(1:n)
 	 END IF       
 
          !--------------------------------------------------------------
@@ -1181,7 +1224,24 @@ CONTAINS
             WRITE (*, '(I8, E11.4)') k, residual
          END IF
         
-         Converged = (Residual < MinTolerance) 
+         Converged = (Residual < MinTolerance)
+         !-----------------------------------------------------------------
+         ! Make an additional check that the true residual agrees with 
+         ! the iterated residual:
+         !-----------------------------------------------------------------
+         IF (Converged ) THEN
+            CALL matvecsubr( x, trueres, ipar )
+            trueres(1:n) = b(1:n) - trueres(1:n)
+            TrueResNorm = normfun(n, trueres, 1)
+            NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
+            IF ( NormErr > 1.0d-1 ) THEN
+               CALL Info('WARNING', 'Iterated GCR solution may not be accurate', Level=2)
+               WRITE( Message, * ) 'Iterated GCR residual norm = ', rnorm
+               CALL Info('WARNING', Message, Level=2)
+               WRITE( Message, * ) 'True residual norm = ', TrueResNorm
+               CALL Info('WARNING', Message, Level=2)   
+            END IF
+         END IF 
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
          IF( Converged .OR. Diverged) EXIT
         

@@ -2544,7 +2544,7 @@ CONTAINS
      REAL(KIND=dp) :: coeff, weight, voff, res
      TYPE(Matrix_t), POINTER :: Projector
      TYPE(ValueList_t), POINTER :: BC
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), POINTER :: Element, Left, Right
      LOGICAL :: SomethingDone
      !------------------------------------------------------------------------------
 
@@ -2605,7 +2605,7 @@ CONTAINS
        InvInvPerm = 0
        DO i=1,SIZE( Projector % InvPerm )
          j = Projector % InvPerm(i) 
-         IF( j <= nodesize ) THEN
+         IF( j > 0 .AND. j <= nodesize ) THEN
            InvInvPerm( j ) = i
          END IF
        END DO
@@ -2623,6 +2623,20 @@ CONTAINS
 
          ! Outside code this tells the active element
          Model % CurrentElement => Element
+
+         Left => Element % BoundaryInfo % Left
+         Right => Element % BoundaryInfo % Right 
+        
+         ! In short these are the conditions that resulted to creation of the 
+         ! constraint matrix entries.
+         IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
+           CYCLE
+         END IF         
+         IF( Left % PartIndex /= ParEnv % myPE .AND. &
+             Right % PartIndex /= ParEnv % myPe ) THEN
+           CYCLE
+         END IF
+
          
          nnodes = Element % TYPE % NumberOfNodes
          DO u=1, nnodes
@@ -6164,7 +6178,7 @@ END FUNCTION SearchNodeL
     END IF
 
 
-! If whether b=0 since then equation Ax=b has only the trivial solution, x=0. 
+! Check whether b=0 since then equation Ax=b has only the trivial solution, x=0. 
 ! In case of a limiter one still may need to check the limiter for contact.
 !-----------------------------------------------------------------------------
     bnorm = ParallelReduction(SQRT(SUM(b(1:n)**2)))
@@ -7350,7 +7364,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END DO
     IF( NoEmptyRows > 0 ) THEN
       CALL Warn('SolveWithLinearRestriction',&
-          'Constraint Matrix included empty rows:' &
+          'Constraint Matrix included empty rows: ' &
           //TRIM(I2S(NoEmptyRows))//' vs. '//TRIM(I2S(RestMatrix % NumberOfRows)) )
     END IF
   END IF
@@ -7455,6 +7469,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      END IF
      Solver % Variable % NonlinValues (1:k)= CollectionSolution(1:k)
   END IF
+
+  CollectionMatrix % Comm = StiffMatrix % Comm
 
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )

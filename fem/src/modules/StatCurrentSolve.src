@@ -131,7 +131,6 @@ END SUBROUTINE StatCurrentSolver_Init
           CalculateField, ConstantWeights, &
           Cwrk, ControlScaling
      
- 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
@@ -166,7 +165,6 @@ END SUBROUTINE StatCurrentSolver_Init
          'Nonlinear System Max Iterations', GotIt )
      IF ( .NOT. GotIt ) NonlinearIter = 1
      
-
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -411,6 +409,7 @@ END SUBROUTINE StatCurrentSolver_Init
        END DO   ! Neumann BCs
        !------------------------------------------------------------------------------
 
+
        ! parallel reduction needed
        IF ( ParEnv % PEs > 1) THEN
          MinPotential = ParallelReduction(MinPotential,1)
@@ -537,7 +536,7 @@ END SUBROUTINE StatCurrentSolver_Init
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
     REAL(KIND=dp), POINTER :: U_Integ(:), V_Integ(:), W_Integ(:), S_Integ(:)
-    REAL(KIND=dp), ALLOCATABLE :: SumOfWeights(:)
+    REAL(KIND=dp), ALLOCATABLE :: SumOfWeights(:), tmp(:)
     REAL(KIND=dp) :: Conductivity(3,3,Model % MaxElementNodes)
     REAL(KIND=dp) :: Basis(Model % MaxElementNodes)
     REAL(KIND=dp) :: dBasisdx(Model % MaxElementNodes,3)
@@ -579,6 +578,8 @@ END SUBROUTINE StatCurrentSolver_Init
        Element => Solver % Mesh % Elements( Solver % ActiveElements( t ) )
        Model % CurrentElement => Element
        NodeIndexes => Element % NodeIndexes
+
+       IF ( Element % PartIndex /= ParEnv % MyPE ) CYCLE
 
        n = Element % TYPE % NumberOfNodes
 
@@ -725,6 +726,17 @@ END SUBROUTINE StatCurrentSolver_Init
     IF ( ParEnv % PEs > 1) THEN
       VolTot     = ParallelReduction(VolTot)
       HeatingTot = ParallelReduction(HeatingTot)
+
+      IF ( CalculateCurrent) THEN
+        ALLOCATE(tmp(SIZE(VolCurrent)/dim))
+        DO i=1,dim
+          tmp = VolCurrent(i::dim)
+          CALL ParallelSumVector(Solver % Matrix, tmp)
+          Volcurrent(i::dim) = tmp
+        END DO
+      END IF
+      IF (CalculateHeating ) CALL ParallelSumVector(Solver % Matrix, Heating)
+      CALL ParallelSumVector(Solver % Matrix, SumOfWeights)
     END IF
 
 !------------------------------------------------------------------------------
