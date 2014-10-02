@@ -6937,7 +6937,7 @@ END SUBROUTINE GetMaxDefs
       IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Edges',Found ) ) THEN
         DoEdges = .FALSE.
       ELSE
-        DoEdges = ( Mesh % NumberOfNodes > 0 )
+        DoEdges = ( Mesh % NumberOfEdges > 0 )
       END IF
     END IF
     IF( DoEdges .AND. Mesh % NumberOfEdges == 0 ) THEN
@@ -6950,7 +6950,7 @@ END SUBROUTINE GetMaxDefs
       IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Nodes',Found ) ) THEN
         DoNodes = .FALSE.
       ELSE
-        DoNodes = .TRUE.
+        DoNodes = ( Mesh % NumberOfNodes > 0 )
       END IF
     END IF
 
