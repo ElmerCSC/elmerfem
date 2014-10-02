@@ -3608,7 +3608,7 @@ END IF
        TYPE(Mesh_t), POINTER :: Mesh
 !-----------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
 
        TetraFaceMap(1,:) = (/ 2, 1, 3 /)
        TetraFaceMap(2,:) = (/ 1, 2, 4 /)
@@ -4442,7 +4442,7 @@ END IF
 !----------------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
        !Parallel = ParEnv % PEs>1
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
 
        stat = .TRUE.
        Basis = 0.0d0
@@ -6331,7 +6331,7 @@ END IF
 !---------------------------------------------------------------------------------------------------
        Mesh => CurrentModel % Solver % Mesh
        !Parallel = ParEnv % PEs>1       
-       Parallel = ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)
+       Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
 
        SignVec = 1.0d0
        Ind => Element % Nodeindexes
@@ -6479,6 +6479,7 @@ END IF
 !------------------------------------------------------------------------
    SUBROUTINE GetEdgeBasis( Element, WBasis, RotWBasis, Basis, dBasisdx )
 !------------------------------------------------------------------------
+use spariterglobals
      TYPE(Element_t),TARGET :: Element
      REAL(KIND=dp) :: WBasis(:,:), RotWBasis(:,:), Basis(:), dBasisdx(:,:)
 !------------------------------------------------------------------------
@@ -6493,7 +6494,7 @@ END IF
      INTEGER, POINTER :: EdgeMap(:,:)
 !------------------------------------------------------------------------
      Mesh => CurrentModel % Solver % Mesh
-     Parallel = ASSOCIATED(Mesh % ParallelInfo % GlobalDOFs)
+     Parallel = ASSOCIATED(Mesh % ParallelInfo % Interface)
 
      IF (Element % TYPE % BasisFunctionDegree>1) THEN
        CALL Fatal('GetEdgeBasis',"Can't handle but linear elements, sorry.") 
