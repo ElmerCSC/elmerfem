@@ -6877,15 +6877,16 @@ END SUBROUTINE GetMaxDefs
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes, size0, indp, indq, &
-        e1, e2, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides
+        e1, e2, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides, &
+        InvPermSize
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Basis(:)
     REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight,Coeff
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
-    TYPE(Element_t), POINTER :: Element, Left, Right
+    TYPE(Element_t), POINTER :: Element, Left, Right, OldFace, NewFace
     LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, DoNodes, DoEdges
-    INTEGER, POINTER :: LeftMap(:,:), RightMap(:,:)
+    INTEGER, POINTER :: OldMap(:,:), NewMap(:,:)
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
 
     CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
@@ -6988,10 +6989,79 @@ END SUBROUTINE GetMaxDefs
     NoOrigNodes = SIZE( NodePerm ) 
     NoDiscontNodes = COUNT( NodePerm > 0 ) 
 
-    ALLOCATE( Projector % InvPerm( NoDiscontNodes ) )
+    IF( DoNodes ) THEN
+      InvPermSize = NoDiscontNodes
+    ELSE
+      InvPermSize = 0
+    END IF
+    
+    ! Compute the number of potential edges. This mimics the loop that really creates the projector 
+    ! below. 
+    IF( DoEdges ) THEN
+      ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )
+      EdgeDone = .FALSE.
+      indp = InvPermSize 
+
+      DO t = 1, Mesh % NumberOfBoundaryElements
+        
+        Element => Mesh % Elements(Mesh % NumberOfBulkElements + t )        
+        IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
+        
+        Left => Element % BoundaryInfo % Left
+        Right => Element % BoundaryInfo % Right 
+        
+        IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
+          CYCLE
+        END IF
+
+        ActSides = 0
+        IF( ASSOCIATED( Left ) ) THEN
+          IF( Left % PartIndex == ParEnv % myPE ) ActSides = ActSides + 1
+        END IF
+        IF( ASSOCIATED( Right ) ) THEN
+          IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
+        END IF 
+        IF( ActSides == 0 ) CYCLE
+        
+        ! Consistently choose the face with the old edges 
+        IF( ALL( Left % NodeIndexes <= NoOrigNodes ) ) THEN
+          OldFace => Left
+        ELSE IF( ALL( Right % NodeIndexes <= NoOrigNodes ) ) THEN
+          OldFace => Right
+        ELSE
+          CALL Warn('WeightedProjectorDiscont','Neither face is purely old!')
+          CYCLE
+        END IF
+
+        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100)
+
+        DO i = 1,OldFace % TYPE % NumberOfEdges          
+          e1 = OldFace % EdgeIndexes(i)
+          IF( EdgeDone(e1) ) CYCLE
+
+          i1 = OldFace % NodeIndexes( OldMap(i,1) )
+          i2 = OldFace % NodeIndexes( OldMap(i,2) )
+                    
+          ! i1 and i2 were already checked to be "old" nodes
+          IF( NodePerm(i1) == 0 ) CYCLE
+          IF( NodePerm(i2) == 0 ) CYCLE
+
+          indp = indp + 1
+          EdgeDone(e1) = .TRUE.
+        END DO
+      END DO
+      InvPermSize = indp
+      CALL Info('WeightedProjectorDiscont',&
+          'Size of InvPerm estimated to be: '//TRIM(I2S(InvPermSize)),Level=8)
+    END IF
+
+    ! Create the inverse permutation needed when the projector matrix is added to the global 
+    ! matrix. 
+    ALLOCATE( Projector % InvPerm( InvPermSize ) )
     InvPerm => Projector % InvPerm
     InvPerm = 0
 
+    ! The number of nodes
     DO i=1,NoOrigNodes
       j = NodePerm(i)
       IF( j == 0 ) CYCLE
@@ -7044,7 +7114,6 @@ END SUBROUTINE GetMaxDefs
           PosSides = PosSides + 1
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF 
-
         IF( ActSides == 0 ) CYCLE
 
         Coeff = 1.0_dp * ActSides / PosSides 
@@ -7133,13 +7202,16 @@ END SUBROUTINE GetMaxDefs
     IF( DoEdges ) THEN
       ParentMissing = 0
       ParentFound = 0
+      n = Mesh % NumberOfNodes
 
       val = 1.0_dp
       Scale = -1.0_dp
-      ALLOCATE( EdgeDone( Mesh % NumberOfEdges ) )
       EdgeDone = .FALSE.
-      n = Mesh % NumberOfNodes
-      indp = NoDiscontNodes      
+      IF( DoNodes ) THEN
+        indp = NoDiscontNodes      
+      ELSE
+        indp = 0
+      END IF
 
       DO t = 1, Mesh % NumberOfBoundaryElements
         
@@ -7168,40 +7240,51 @@ END SUBROUTINE GetMaxDefs
         END IF 
         IF( ActSides == 0 ) CYCLE
 
+        ! Consistently choose the face with the old edges 
+        IF( ALL( Left % NodeIndexes <= NoOrigNodes ) ) THEN
+          OldFace => Left
+          NewFace => Right
+        ELSE IF( ALL( Right % NodeIndexes <= NoOrigNodes ) ) THEN
+          OldFace => Right
+          NewFace => Left
+        ELSE
+          ! We already complained once
+          CYCLE
+        END IF
 
         Coeff = 1.0_dp * ActSides / PosSides 
         ParentFound = ParentFound + 1
         
-        LeftMap => LGetEdgeMap( Left % TYPE % ElementCode / 100)
-        RightMap => LGetEdgeMap( Right % TYPE % ElementCode / 100)
+        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100)
+        NewMap => LGetEdgeMap( NewFace % TYPE % ElementCode / 100)
         
         ! Go through combinations of edges and find the edges for which the 
         ! indexes are the same. 
-        DO i = 1,Left % TYPE % NumberOfEdges
+        DO i = 1,OldFace % TYPE % NumberOfEdges
           
-          e1 = Left % EdgeIndexes(i)
+          e1 = OldFace % EdgeIndexes(i)
           IF( EdgeDone(e1) ) CYCLE
 
-          i1 = Left % NodeIndexes( LeftMap(i,1) )
-          i2 = Left % NodeIndexes( LeftMap(i,2) )
+          i1 = OldFace % NodeIndexes( OldMap(i,1) )
+          i2 = OldFace % NodeIndexes( OldMap(i,2) )
           
-          IF( i1 < NoOrigNodes ) THEN
-            IF( NodePerm(i1) == 0 ) CYCLE
-            i1 = NoOrigNodes + NodePerm(i1)
-          END IF
-          IF( i2 < NoOrigNodes ) THEN
-            IF( NodePerm(i2) == 0 ) CYCLE
-            i2 = NoOrigNodes + NodePerm(i2)
-          END IF
+          IF( NodePerm(i1) == 0 ) CYCLE
+          IF( NodePerm(i2) == 0 ) CYCLE
 
+          ! To be able to compare edges use the corresponding new indexes
+          i1 = NoOrigNodes + NodePerm(i1)
+          i2 = NoOrigNodes + NodePerm(i2)
 
-          DO j = 1,Right % TYPE % NumberOfEdges
-            e2 = Right % EdgeIndexes(j)
-            IF( EdgeDone(e2) ) CYCLE
+          Found = .FALSE.
+
+          DO j = 1,NewFace % TYPE % NumberOfEdges
+            e2 = NewFace % EdgeIndexes(j)
+            !IF( EdgeDone(e2) ) CYCLE
+
             IF( e1 == e2 ) CYCLE
             
-            j1 = Right % NodeIndexes( RightMap(j,1) ) 
-            j2 = Right % NodeIndexes( RightMap(j,2) )
+            j1 = NewFace % NodeIndexes( NewMap(j,1) ) 
+            j2 = NewFace % NodeIndexes( NewMap(j,2) )
 
             IF( j1 < NoOrigNodes ) THEN
               IF( NodePerm(j1) == 0 ) CYCLE
@@ -7212,7 +7295,6 @@ END SUBROUTINE GetMaxDefs
               j2 = NoOrigNodes + NodePerm(j2)
             END IF
 
-            Found = .FALSE.
             IF( i1 == j1 .AND. i2 == j2 ) THEN
               Found = .TRUE.
               sgn = 1
@@ -7229,11 +7311,15 @@ END SUBROUTINE GetMaxDefs
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                   n + e2, Scale * sgn * val ) 
               EdgeDone(e1) = .TRUE.
-              EdgeDone(e2) = .TRUE.
+              InvPerm(indp) = n + e1
+              EXIT
             END IF
           END DO
+
+          IF(.NOT. Found ) PRINT *,'could not locate company for edge: ',e1
         END DO
       END DO
+
       DEALLOCATE( EdgeDone ) 
       IF( .NOT. DoNodes .AND. ParentMissing > 0 ) THEN
         CALL Warn('WeightedProjectorDiscont','Number of half-sided discontinuous BC elements in partition '&
