@@ -1037,9 +1037,11 @@ CONTAINS
             TrueResNorm = normfun(n, trueres, 1)
             NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
             IF ( NormErr > 1.0d-1 ) THEN
-               WRITE( Message, * ) 'Relative error of iterated residual norm = ', NormErr
-               CALL Warn('IterativeMethods', 'Iterated solution may not be accurate')
-               CALL Warn('IterativeMethods', Message)
+               CALL Info('WARNING', 'Iterated GCR solution may not be accurate', Level=2)
+               WRITE( Message, * ) 'Iterated GCR residual norm = ', rnorm
+               CALL Info('WARNING', Message, Level=2)
+               WRITE( Message, * ) 'True residual norm = ', TrueResNorm
+               CALL Info('WARNING', Message, Level=2)   
             END IF
          END IF
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
@@ -1233,9 +1235,11 @@ CONTAINS
             TrueResNorm = normfun(n, trueres, 1)
             NormErr = ABS(TrueResNorm - rnorm)/TrueResNorm
             IF ( NormErr > 1.0d-1 ) THEN
-               WRITE( Message, * ) 'Relative error of iterated residual norm = ', NormErr
-               CALL Warn('IterativeMethods', 'Iterated solution may not be accurate')
-               CALL Warn('IterativeMethods', Message)
+               CALL Info('WARNING', 'Iterated GCR solution may not be accurate', Level=2)
+               WRITE( Message, * ) 'Iterated GCR residual norm = ', rnorm
+               CALL Info('WARNING', Message, Level=2)
+               WRITE( Message, * ) 'True residual norm = ', TrueResNorm
+               CALL Info('WARNING', Message, Level=2)   
             END IF
          END IF 
          Diverged = (Residual > MaxTolerance) .OR. (Residual /= Residual)    
