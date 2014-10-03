@@ -824,7 +824,7 @@ CONTAINS
           DO i=1,n
 
             IF(EdgeBasis.AND.ASSOCIATED(OldMesh % Parent)) THEN
-              Element => OldMesh % Faces(ElemPtrs(i) % Element % ElementIndex)
+              Element => OldMesh % Parent % Faces(ElemPtrs(i) % Element % ElementIndex)
               IF(ASSOCIATED(Element % BoundaryInfo)) THEN
                 Parent => Element % BoundaryInfo% Left
                 IF (ASSOCIATED(Parent)) THEN
