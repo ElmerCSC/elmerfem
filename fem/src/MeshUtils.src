@@ -1334,6 +1334,7 @@ END SUBROUTINE GetMaxDefs
    NoStayingElems = 0
    DecidedByFamily = 0
    UnDecidedByFamily = 0
+   NoUndecided = 0
 
    IF( ActiveBCs == 1 .AND. UseTargetBodies  ) THEN
      DO t=1, NoBulkElems
@@ -6994,6 +6995,7 @@ END SUBROUTINE GetMaxDefs
     ELSE
       indpoffset = 0
     END IF
+    InvPermSize = indpoffset
     
     ! Compute the number of potential edges. This mimics the loop that really creates the projector 
     ! below. 
