@@ -596,7 +596,7 @@ CONTAINS
 
        PiolaT = .FALSE.
        IF (EdgeBasis) THEN
-         PiolaT = ListGetLogical(CurrentModel % Solver % Values,'Use Piola Trasnsform',Found)
+         PiolaT = ListGetLogical(CurrentModel % Solver % Values,'Use Piola Transform',Found)
        END IF
 
 !------------------------------------------------------------------------------
@@ -824,11 +824,10 @@ CONTAINS
           DO i=1,n
 
             IF(EdgeBasis.AND.ASSOCIATED(OldMesh % Parent)) THEN
-              Element => OldMesh % Parent % Elements(ElemPtrs(i) % Element % ElementIndex)
+              Element => OldMesh % Faces(ElemPtrs(i) % Element % ElementIndex)
               IF(ASSOCIATED(Element % BoundaryInfo)) THEN
                 Parent => Element % BoundaryInfo% Left
                 IF (ASSOCIATED(Parent)) THEN
-                  Element => Find_Face(Parent,Element)
                   k  = Element % TYPE % NumberOfNodes
                   np = Parent  % TYPE % NumberOfNodes
                 END IF
@@ -1086,7 +1085,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE ::WBasis(:,:),RotWbasis(:,:),dBasisdx(:,:)
 
     INTEGER :: ind,np,qq,pp
-    INTEGER, ALLOCATABLE :: Eqind(:)
+    INTEGER, ALLOCATABLE :: Eqind(:), xPerm(:)
 
 
     CALL Info('WeightedProjector','Creating Galerkin projector between two boundaries',Level=7)
@@ -1125,6 +1124,19 @@ CONTAINS
 
     ALLOCATE( GaussNodes % x(NoGaussPoints), GaussNodes % y(NoGaussPoints), GaussNodes % z(NoGaussPoints))
 
+   ! Change the local coordinates of the BMesh2 to match to corresponding faces:
+    ! ---------------------------------------------------------------------------
+    IF(EdgeBasis) THEN
+      ALLOCATE(xPerm(Bmesh2 % Parent % NumberofNodes)); xPerm=0
+      DO i=1,SIZE(InvPerm2)
+        xPerm(InvPerm2(i)) = i
+      END DO
+
+      DO i=1, BMesh2 % NumberOfBulkElements
+        Element => BMesh2 % Parent % Faces(BMesh2 % Elements(i) % ElementIndex)
+        BMesh2 % Elements(i) % NodeIndexes = xPerm(Element % NodeIndexes)
+      END DO
+    END IF
 
     AxisSym = .FALSE.
     IF ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -1159,8 +1171,7 @@ CONTAINS
     eqindsize = 0
     DO i=1, BMesh1 % NumberOfBulkElements
       IF(EdgeBasis) THEN
-         Element => BMesh1 % Parent % Elements(BMesh1 % Elements(i) % ElementIndex)
-         Element => Find_Face(Element % BoundaryInfo % Left,Element)
+         Element => BMesh1 % Parent % Faces(BMesh1 % Elements(i) % ElementIndex)
          n  = GetElementDOFs(Indexes,Element)
          np = GetElementNOFNodes(Element)
        ELSE
@@ -1248,8 +1259,7 @@ CONTAINS
     NoGaussPoints = 0
     DO i=1, BMesh1 % NumberOfBulkElements
       IF(EdgeBasis) THEN
-        Element => BMesh1 % Parent % Elements(BMesh1 % Elements(i) % ElementIndex)
-        Element => Find_Face(Element % BoundaryInfo % Left,Element)
+        Element => BMesh1 % Parent % Faces(BMesh1 % Elements(i) % ElementIndex)
         n  = GetElementDOFs(Indexes,Element)
         np = GetElementNOFNodes(Element)
         IF(ANY(Indexes(1:np)>Element % NodeIndexes)) np=0
