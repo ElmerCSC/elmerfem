@@ -7255,6 +7255,9 @@ END SUBROUTINE GetMaxDefs
 
         ParentFound = ParentFound + 1
 
+        OldMap => LGetEdgeMap( OldFace % Type % ElementCode / 100 )
+        NewMap => LGetEdgeMap( NewFace % Type % ElementCode / 100 )
+
         IntegStuff = GaussPoints( oldface )
         DO it = 1,IntegStuff % n
           u = integstuff % u(it)
@@ -7297,14 +7300,24 @@ END SUBROUTINE GetMaxDefs
               InvPerm(indp) = n + e1
             END IF
 
+            i1 = OldFace % NodeIndexes( OldMap(i,1) )
+            i1 = NoOrigNodes + NodePerm(i1)
+            i2 = OldFace % NodeIndexes( OldMap(i,2) )
+            i2 = NoOrigNodes + NodePerm(i2)
+
             IF( SetDiagEdges ) THEN
-              e2  = NewFace % EdgeIndexes(i)
-              e12 = OldFace % EdgeIndexes(i)
+
+              DO j = 1,NewFace % TYPE % NumberOfEdges
+                j1 = NewFace % NodeIndexes( NewMap(j,1) )
+                j2 = NewFace % NodeIndexes( NewMap(j,2) )
+                IF (i1==j1 .and. i2==j2 .or. i1==j2 .and. i2==j1 ) EXIT
+              END DO
               val = Weight * SUM(WBasis(i,:) * Wbasis(i,:))
               IF ( ABS(Val)>= AEPS ) &
-                  CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e12, Val )
+                  CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e1, Val )
               
-              val = Weight * SUM(WBasis(i,:) * Wbasis2(i,:))
+              e2  = NewFace % EdgeIndexes(j)
+              val = Weight * SUM(WBasis(i,:) * Wbasis2(j,:))
               IF ( ABS(val) >= AEPS ) &
                   CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e2, -Val )              
             ELSE
