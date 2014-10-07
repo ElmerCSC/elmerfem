@@ -6958,8 +6958,10 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     ! Should the projector be diagonal or mass matrix type 
-    SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found )
+    SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found ) 
     SetDiagEdges = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag Edges',Found )
+    IF(.NOT. Found ) SetDiagEdges = SetDiag
+
 
     ! Integration weights should follow the metrix if we want physical nodal jumps. 
     AxisSym = .FALSE.
@@ -7060,26 +7062,31 @@ END SUBROUTINE GetMaxDefs
           'Size of InvPerm estimated to be: '//TRIM(I2S(InvPermSize)),Level=8)
     END IF
 
+    ! Ok, nothing to do just go end tidy things up
+    IF( InvPermSize == 0 ) GOTO 100
+
+
     ! Create the inverse permutation needed when the projector matrix is added to the global 
     ! matrix. 
     ALLOCATE( Projector % InvPerm( InvPermSize ) )
     InvPerm => Projector % InvPerm
     InvPerm = 0
 
-    ! The number of nodes
-    DO i=1,NoOrigNodes
-      j = NodePerm(i)
-      IF( j == 0 ) CYCLE
-      IF( InvPerm(j) > 0 ) THEN
-        PRINT *,'This should not happen: ',i,j,InvPerm(j)
-      ELSE
-        InvPerm(j) = i
-      END IF
-    END DO
     
     ! Projector for the nodal dofs. 
     !------------------------------------------------------------------------
     IF( DoNodes ) THEN
+      ! Number the degrees of freedom related to the nodal constraint
+      DO i=1,NoOrigNodes
+        j = NodePerm(i)
+        IF( j == 0 ) CYCLE
+        IF( InvPerm(j) > 0 ) THEN
+          PRINT *,'This should not happen: ',i,j,InvPerm(j)
+        ELSE
+          InvPerm(j) = i
+        END IF
+      END DO
+            
       ParentMissing = 0
       ParentFound = 0
       DO t = 1, Mesh % NumberOfBoundaryElements
@@ -7255,8 +7262,8 @@ END SUBROUTINE GetMaxDefs
 
         ParentFound = ParentFound + 1
 
-        OldMap => LGetEdgeMap( OldFace % Type % ElementCode / 100 )
-        NewMap => LGetEdgeMap( NewFace % Type % ElementCode / 100 )
+        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100 )
+        NewMap => LGetEdgeMap( NewFace % TYPE % ElementCode / 100 )
 
         IntegStuff = GaussPoints( oldface )
         DO it = 1,IntegStuff % n
@@ -7309,7 +7316,7 @@ END SUBROUTINE GetMaxDefs
               DO j = 1,NewFace % TYPE % NumberOfEdges
                 j1 = NewFace % NodeIndexes( NewMap(j,1) )
                 j2 = NewFace % NodeIndexes( NewMap(j,2) )
-                IF (i1==j1 .and. i2==j2 .or. i1==j2 .and. i2==j1 ) EXIT
+                IF (i1==j1 .AND. i2==j2 .OR. i1==j2 .AND. i2==j1 ) EXIT
               END DO
               val = Weight * SUM(WBasis(i,:) * Wbasis(i,:))
               IF ( ABS(Val)>= AEPS ) &
@@ -7356,10 +7363,10 @@ END SUBROUTINE GetMaxDefs
       CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
           TRIM(I2S(SIZE(Projector % Cols)) ), Level=9)
     ELSE
-      DEALLOCATE(Projector); Projector=>Null()
+      DEALLOCATE(Projector); Projector=>NULL()
     END IF
 
-    DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
+100 DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
     DEALLOCATE( Indexes, DisContIndexes, Basis, dBasisdx, WBasis, WBasis2, RotWBasis )
            
   END FUNCTION WeightedProjectorDiscont
