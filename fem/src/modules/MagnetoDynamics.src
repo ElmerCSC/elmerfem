@@ -2313,7 +2313,8 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
     ALLOCATE(fixpot(n)); fixpot=0._dp
 
     CALL VariableAddVector( Mesh % Variables, Mesh, &
-          Solver,'Jfix',dofs,fixpot,Perm,Output=.FALSE. )
+          Solver,'Jfix',dofs,fixpot,Perm)
+!,Output=.FALSE. )
 
     fixJpot => VariableGet(Mesh % Variables, 'Jfix')
   END IF
