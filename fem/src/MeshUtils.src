@@ -1334,7 +1334,6 @@ END SUBROUTINE GetMaxDefs
    NoStayingElems = 0
    DecidedByFamily = 0
    UnDecidedByFamily = 0
-   NoUndecided = 0
 
    IF( ActiveBCs == 1 .AND. UseTargetBodies  ) THEN
      DO t=1, NoBulkElems
@@ -6877,18 +6876,20 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodePerm(:)
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    INTEGER :: p,q,i,j,n,m,t,NoOrigNodes, NoDiscontNodes, size0, indp, indq, &
-        e1, e2, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides, &
+    INTEGER :: p,q,i,j,it,nn,n,m,t,NoOrigNodes, NoDiscontNodes, size0, indp, indq, &
+        e1, e2, e12, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides, &
         InvPermSize, indpoffset
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
-    REAL(KIND=dp), POINTER :: Values(:), Basis(:)
+    REAL(KIND=dp), POINTER :: Values(:), Basis(:), WBasis(:,:),Wbasis2(:,:),RotWBasis(:,:),dBasisdx(:,:)
     REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight,Coeff
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
-    TYPE(Element_t), POINTER :: Element, Left, Right, OldFace, NewFace
-    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, DoNodes, DoEdges
-    INTEGER, POINTER :: OldMap(:,:), NewMap(:,:)
+    TYPE(Element_t), POINTER :: Element, Left, Right, OldFace, NewFace, Swap
+    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, SetDiagEdges, DoNodes, DoEdges
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
+    REAL(KIND=dp) :: point(3), uvw(3)
+    INTEGER, ALLOCATABLE :: EQind(:)
+    INTEGER, POINTER :: OldMap(:,:), NewMap(:,:)
 
     CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
          //TRIM(I2S(bc)),Level=7)
@@ -6958,6 +6959,7 @@ END SUBROUTINE GetMaxDefs
 
     ! Should the projector be diagonal or mass matrix type 
     SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found )
+    SetDiagEdges = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag Edges',Found )
 
     ! Integration weights should follow the metrix if we want physical nodal jumps. 
     AxisSym = .FALSE.
@@ -6979,9 +6981,10 @@ END SUBROUTINE GetMaxDefs
     Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
     Projector % ConstraintBC = bc
     
-    n = Mesh % MaxElementNodes
+    n = Mesh % MaxElementDOFs
     ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
-    ALLOCATE( Indexes(n), DisContIndexes(n), Basis(n) )
+    ALLOCATE( Indexes(n), DisContIndexes(n), Basis(n), Wbasis(n,3), &
+            Wbasis2(n,3), dBasisdx(n,3), RotWBasis(n,3) )
     Indexes = 0
     DiscontIndexes = 0
     Basis = 0.0_dp
@@ -7096,16 +7099,6 @@ END SUBROUTINE GetMaxDefs
           CYCLE
         END IF
 
-        ! Add always a zero to a constraint that exists for a node
-        ! This gets rid of some complants about empty rows in constraint matrix
-        DO p=1,n             
-           indp = NodePerm( Indexes(p) )
-           IF( indp > 0 ) THEN
-              CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                   Indexes(p), 0.0_dp ) 
-           END IF
-        END DO
-
         PosSides = 0
         ActSides = 0
         IF( ASSOCIATED( Left ) ) THEN
@@ -7158,8 +7151,10 @@ END SUBROUTINE GetMaxDefs
             IF( SetDiag ) THEN
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                   Indexes(p), val ) 
+
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                   DiscontIndexes(p), Scale * val )             
+
               ! Add entry to the diagonal-to-be if jump condition is to be used
               IF( NodalJump ) THEN
                 CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
@@ -7207,10 +7202,10 @@ END SUBROUTINE GetMaxDefs
       n = Mesh % NumberOfNodes
 
       val = 1.0_dp
-      Scale = -1.0_dp
+      Scale = 1.0_dp
 
-      EdgeDone = .FALSE.
       indp = indpoffset
+      ALLOCATE( Eqind(Mesh % NumberOfEdges) ); EQind = 0
 
       DO t = 1, Mesh % NumberOfBoundaryElements
         
@@ -7238,87 +7233,96 @@ END SUBROUTINE GetMaxDefs
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF 
         IF( ActSides == 0 ) CYCLE
+        Coeff = (1.0_dp * ActSides) / (1.0_dp * PosSides)
 
-        ! Consistently choose the face with the old edges 
+        ! Consistently choose the face with the old edges
         IF( ALL( Left % NodeIndexes <= NoOrigNodes ) ) THEN
-          OldFace => Left
-          NewFace => Right
         ELSE IF( ALL( Right % NodeIndexes <= NoOrigNodes ) ) THEN
-          OldFace => Right
-          NewFace => Left
+          swap  => Left
+          Left  => Right
+          Right => swap
         ELSE
           ! We already complained once
           CYCLE
         END IF
 
-        Coeff = 1.0_dp * ActSides / PosSides 
+        OldFace => Find_Face( Left, Element )
+        nn = SIZE(Element % NodeIndexes)
+        Indexes(1:nn) = Element % NodeIndexes
+        Element % NodeIndexes = NodePerm(Indexes(1:nn)) + NoOrigNodes
+        NewFace => Find_Face( Right, Element )
+        Element % NodeIndexes = Indexes(1:nn)
+
         ParentFound = ParentFound + 1
+
+        IntegStuff = GaussPoints( oldface )
+        DO it = 1,IntegStuff % n
+          u = integstuff % u(it)
+          v = integstuff % v(it)
+          w = integstuff % w(it)
+
+          nn = OldFace % TYPE % NumberOfNodes
+          ElementNodes % x(1:nn) = Mesh % Nodes % x(oldface % NodeIndexes(1:nn))
+          ElementNodes % y(1:nn) = Mesh % Nodes % y(oldface % NodeIndexes(1:nn))
+          ElementNodes % z(1:nn) = Mesh % Nodes % z(oldface % NodeIndexes(1:nn))
+
+          Stat = ElementInfo( OldFace, ElementNodes,u,v,w, DetJ, Basis,dBasisdx )
+          CALL GetEdgeBasis( OldFace, Wbasis, RotWbasis, Basis, dBasisdx )
+
+          Point(1) = SUM(Basis(1:nn) * ElementNodes % x(1:nn))
+          Point(2) = SUM(Basis(1:nn) * ElementNodes % y(1:nn))
+          Point(3) = SUM(Basis(1:nn) * ElementNodes % z(1:nn))
+
+          nn = NewFace % TYPE % NumberOfNodes
+          ElementNodes % x(1:nn) = Mesh % Nodes % x(newface % NodeIndexes(1:nn))
+          ElementNodes % y(1:nn) = Mesh % Nodes % y(newface % NodeIndexes(1:nn))
+          ElementNodes % z(1:nn) = Mesh % Nodes % z(newface % NodeIndexes(1:nn))
+
+          Found = PointInElement( NewFace, ElementNodes, Point, uvw )
+          u = uvw(1); v=uvw(2); w=uvw(3)
+          Stat = ElementInfo(NewFace, ElementNodes,u,v,w, detj, Basis,dbasisdx )
+          CALL GetEdgeBasis( NewFace, Wbasis2, RotwBasis, Basis, dBasisdx )
+
+          Weight = detJ * IntegStuff % s(it) * Coeff
+
         
-        OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100)
-        NewMap => LGetEdgeMap( NewFace % TYPE % ElementCode / 100)
-        
-        ! Go through combinations of edges and find the edges for which the 
-        ! indexes are the same. 
-        DO i = 1,OldFace % TYPE % NumberOfEdges
-          
-          e1 = OldFace % EdgeIndexes(i)
-          IF( EdgeDone(e1) ) CYCLE
+          ! Go through combinations of edges and find the edges for which the 
+          ! indexes are the same. 
+          DO i = 1,OldFace % TYPE % NumberOfEdges
+            e1 = OldFace % EdgeIndexes(i)
 
-          i1 = OldFace % NodeIndexes( OldMap(i,1) )
-          i2 = OldFace % NodeIndexes( OldMap(i,2) )
-          
-          IF( NodePerm(i1) == 0 ) CYCLE
-          IF( NodePerm(i2) == 0 ) CYCLE          
-
-          ! To be able to compare edges use the corresponding new indexes
-          i1 = NoOrigNodes + NodePerm(i1)
-          i2 = NoOrigNodes + NodePerm(i2)
-
-          Found = .FALSE.
-
-          DO j = 1,NewFace % TYPE % NumberOfEdges
-            e2 = NewFace % EdgeIndexes(j)
-            !IF( EdgeDone(e2) ) CYCLE
-
-            IF( e1 == e2 ) CYCLE
-            
-            j1 = NewFace % NodeIndexes( NewMap(j,1) ) 
-            j2 = NewFace % NodeIndexes( NewMap(j,2) )
-
-            IF( j1 < NoOrigNodes ) THEN
-              IF( NodePerm(j1) == 0 ) CYCLE
-              j1 = NoOrigNodes + NodePerm(j1)
-            END IF
-            IF( j2 < NoOrigNodes ) THEN
-              IF( NodePerm(j2) == 0 ) CYCLE
-              j2 = NoOrigNodes + NodePerm(j2)
-            END IF
-
-            IF( i1 == j1 .AND. i2 == j2 ) THEN
-              Found = .TRUE.
-              sgn = 1
-            ELSE IF( i1 == j2 .AND. i2 == j1 ) THEN
-              Found = .TRUE.
-              sgn = -1
-            END IF
-                      
-            ! These are 1-to-1 mappings, no addtive as for the nodes
-            IF( Found ) THEN
+            IF ( EQind(e1) == 0 ) THEN
               indp = indp + 1
-
-              !PRINT *,'indp',indp,sgn,Scale,e1,e2
-
-              CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                  n + e1, val ) 
-              CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                  n + e2, Scale * sgn * val ) 
-              EdgeDone(e1) = .TRUE.
+              EQind(e1) = indp
               InvPerm(indp) = n + e1
-              EXIT
             END IF
-          END DO
 
-          IF(.NOT. Found ) PRINT *,'could not locate company for edge: ',e1
+            IF( SetDiagEdges ) THEN
+              e2  = NewFace % EdgeIndexes(i)
+              e12 = OldFace % EdgeIndexes(i)
+              val = Weight * SUM(WBasis(i,:) * Wbasis(i,:))
+              IF ( ABS(Val)>= AEPS ) &
+                  CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e12, Val )
+              
+              val = Weight * SUM(WBasis(i,:) * Wbasis2(i,:))
+              IF ( ABS(val) >= AEPS ) &
+                  CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e2, -Val )              
+            ELSE
+              DO j = 1,NewFace % TYPE % NumberOfEdges
+                e2  = NewFace % EdgeIndexes(j)
+                e12 = OldFace % EdgeIndexes(j)
+                
+                val = Weight * SUM(WBasis(i,:) * Wbasis(j,:))
+                IF ( ABS(Val)>= AEPS ) &
+                    CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e12, Val )
+                
+                val = Weight * SUM(WBasis(i,:) * Wbasis2(j,:))
+                IF ( ABS(val) >= AEPS ) &
+                    CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e2, -Val )
+              END DO
+            END IF
+
+          END DO
         END DO
       END DO
 
@@ -7341,7 +7345,7 @@ END SUBROUTINE GetMaxDefs
         TRIM(I2S(SIZE(Projector % Cols)) ), Level=9)
 
     DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
-    DEALLOCATE( Indexes, DisContIndexes, Basis )
+    DEALLOCATE( Indexes, DisContIndexes, Basis, dBasisdx, WBasis, WBasis2, RotWBasis )
            
   END FUNCTION WeightedProjectorDiscont
   !------------------------------------------------------------------------------
@@ -7856,7 +7860,7 @@ END SUBROUTINE GetMaxDefs
           rowsum = rowsum + projector % values(j)
         END IF
       END DO
-      !          PRINT *,'rowsum i:',i,dia,rowsum,rowsum/dia
+!               PRINT *,'rowsum i:',i,dia,rowsum,rowsum/dia
     END DO
     CLOSE(1)     
 
