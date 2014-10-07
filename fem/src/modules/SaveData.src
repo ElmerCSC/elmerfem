@@ -41,6 +41,37 @@
 !> \ingroup Solvers
 !> \{
 
+SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  USE Interpolation
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+  INTEGER :: NormInd
+  LOGICAL :: GotIt
+
+  ! If we want to show a pseudonorm add a variable for which the norm
+  ! is associated with.
+  NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
+  IF( NormInd > 0 ) THEN
+    IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
+      CALL ListAddString( Solver % Values,'Variable','-nooutput -global savescalars_var')
+    END IF
+  END IF
+
+END SUBROUTINE SaveScalars_init
+
+
+
 !------------------------------------------------------------------------------
 !> This subroutine saves scalar values in ascii format to an external file.
 !> This is a dynamically loaded solver with a standard interface.
@@ -1176,39 +1207,23 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(No)))
     END IF
    END DO
-
+ 
   !------------------------------------------------------------------------------
   ! For consistancy checks one may print out a value imitating ComputeChange
   !------------------------------------------------------------------------------
-
   NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
-  IF( WriteCore .AND. NormInd > 0 .AND. NormInd <= NoValues ) THEN
-    PrevNorm = Norm
+  IF( NormInd > 0 .AND. NormInd <= NoValues ) THEN
     Norm = Values( NormInd )
-    IF( ABS( Norm ) + ABS( PrevNorm ) > 0.0_dp ) THEN
-      Change = 2.0*(ABS(Norm-PrevNorm))/(ABS(Norm)+ABS(PrevNorm))
-    ELSE
-      Change = 0.0_dp
-    END IF
-
-    Name = ListGetString( Params, 'Equation',GotIt)
-    IF(.NOT. GotIt) Name = Solver % Variable % Name
-
-    ! Here the name is ComputeChange in order to get the change also to ElmerGUI
-    ! albeit in a very dirt style. One could also edit ElmerGUI....
-    WRITE( Message, '(a,g15.8,g15.8,a)') &
-        'SS (ITER=1) (NRM,RELC): (',Norm, Change,&
-        ' ) :: '//TRIM( Name )
-    CALL Info( 'ComputeChange', Message, Level=3 )
+    Solver % Variable % Values = Values( NormInd )
+    Solver % Variable % Norm = ABS( Values ( NormInd ) ) 
   END IF
   
   !------------------------------------------------------------------------------
   ! One may also export desired data as a cost function for FindOptimum solver
   !------------------------------------------------------------------------------
-
-  CostInd = ListGetInteger( Params,'Cost FUNCTION Index',GotIt)
+  CostInd = ListGetInteger( Params,'Cost Function Index',GotIt)
   IF( CostInd > 0 .AND. CostInd <= NoValues ) THEN
-    CALL ListAddConstReal( Model % Simulation,'Cost FUNCTION',Values(CostInd) )
+    CALL ListAddConstReal( Model % Simulation,'Cost Function',Values(CostInd) )
   END IF
 
 
