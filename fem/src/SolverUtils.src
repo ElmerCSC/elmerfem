@@ -7340,7 +7340,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         rowsum = rowsum + ABS(RestMatrix % Values(j))
       END DO
 
-      IF(rowsum>EPSILON(1._dp) THEN
+      IF(rowsum>EPSILON(1._dp)) THEN
         DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
           Found = .TRUE.
 
