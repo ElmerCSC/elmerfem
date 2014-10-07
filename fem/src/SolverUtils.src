@@ -5684,7 +5684,7 @@ END FUNCTION SearchNodeL
         END DO
       ELSE
         DO i=1,n
-          IF ( ABS(Diag(i)) > 100*AEPS ) THEN
+          IF ( ABS(Diag(i)) > TINY(bnorm) ) THEN
             Diag(i) = 1.0_dp / SQRT(ABS(Diag(i)))
           ELSE
             Diag(i) = 1.0_dp
@@ -7206,7 +7206,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
   INTEGER :: i, j, k, l
   TYPE(Variable_t), POINTER :: MultVar
-  REAL(KIND=dp) :: scl
+  REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
               EmptyRow, ComplexSystem
   SAVE MultiplierValues, SolverPointer
@@ -7335,29 +7335,46 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       END IF
       EmptyRow = .TRUE.
 
+      rowsum = 0._dp
       DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
-        Found = .TRUE.
-
-        ! Skip non-positive column indexes
-        IF( RestMatrix % Cols(j) <= 0 ) CYCLE
-
-        EmptyRow = .FALSE.
-
-        IF (EnforceDirichlet) &
-          Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
-
-        IF(Found) THEN
-          CALL AddToMatrixElement( CollectionMatrix, &
-             RestMatrix % Cols(j), k, RestMatrix % Values(j))
-        END IF
-
-        CALL AddToMatrixElement( CollectionMatrix, &
-             k, RestMatrix % Cols(j), RestMatrix % Values(j))
+        rowsum = rowsum + ABS(RestMatrix % Values(j))
       END DO
+
+      IF(rowsum>EPSILON(1._dp) THEN
+        DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
+          Found = .TRUE.
+
+          ! Skip non-positive column indexes
+          IF( RestMatrix % Cols(j) <= 0 ) CYCLE
+          IF( ABS(RestMatrix % Values(j)) < EPSILON(1._dp)*rowsum ) CYCLE
+
+          EmptyRow = .FALSE.
+
+          IF (EnforceDirichlet) &
+            Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
+
+          IF(Found) THEN
+            CALL AddToMatrixElement( CollectionMatrix, &
+               RestMatrix % Cols(j), k, RestMatrix % Values(j))
+          END IF
+
+          CALL AddToMatrixElement( CollectionMatrix, &
+               k, RestMatrix % Cols(j), RestMatrix % Values(j))
+        END DO
+      END IF
       
       ! If there is no matrix entry, there can be no non-zero r.h.s.
       IF( EmptyRow ) THEN
         NoEmptyRows = NoEmptyRows + 1
+         CALL AddToMatrixElement( CollectionMatrix,k,k,1._dp )
+         IF(ComplexSystem) THEN
+           IF(MOD(k,2)==0) THEN
+             CALL AddToMatrixElement( CollectionMatrix,k,k-1,0._dp )
+           ELSE
+             CALL AddToMatrixElement( CollectionMatrix,k,k+1,0._dp )
+           END IF
+        END IF
+        CollectionVector(k) = 0._dp
       ELSE
         CollectionVector(k) = RestVector(i)
       END IF
