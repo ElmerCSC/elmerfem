@@ -7300,12 +7300,11 @@ END SUBROUTINE GetMaxDefs
               InvPerm(indp) = n + e1
             END IF
 
-            i1 = OldFace % NodeIndexes( OldMap(i,1) )
-            i1 = NoOrigNodes + NodePerm(i1)
-            i2 = OldFace % NodeIndexes( OldMap(i,2) )
-            i2 = NoOrigNodes + NodePerm(i2)
-
             IF( SetDiagEdges ) THEN
+              i1 = OldFace % NodeIndexes( OldMap(i,1) )
+              i1 = NoOrigNodes + NodePerm(i1)
+              i2 = OldFace % NodeIndexes( OldMap(i,2) )
+              i2 = NoOrigNodes + NodePerm(i2)
 
               DO j = 1,NewFace % TYPE % NumberOfEdges
                 j1 = NewFace % NodeIndexes( NewMap(j,1) )
@@ -7352,10 +7351,13 @@ END SUBROUTINE GetMaxDefs
 
     ! Convert from list matrix to CRS matrix format
     CALL List_ToCRSMatrix(Projector)
-    CALL CRS_SortMatrix(Projector,.TRUE.)
-   
-    CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
-        TRIM(I2S(SIZE(Projector % Cols)) ), Level=9)
+    IF( Projector % NumberOfRows > 0) THEN
+      CALL CRS_SortMatrix(Projector,.TRUE.)
+      CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
+          TRIM(I2S(SIZE(Projector % Cols)) ), Level=9)
+    ELSE
+      DEALLOCATE(Projector); Projector=>Null()
+    END IF
 
     DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
     DEALLOCATE( Indexes, DisContIndexes, Basis, dBasisdx, WBasis, WBasis2, RotWBasis )
