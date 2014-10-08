@@ -122,7 +122,7 @@ $fprintf( stderr, "END TEST CASE 6: Target NRM=981.0, EPS=1e-4\n" );
 $fprintf( stderr, "TEST CASE 7\n");
 Solver 2 :: Operator 1 = diffusive flux
 RUN
-$fprintf( stderr, "END TEST CASE 7: Target NRM=-2.9582406, EPS=1e-4\n" );
+$fprintf( stderr, "END TEST CASE 7: Target NRM=2.9582406, EPS=1e-4\n" );
 
 
 !End Of File
