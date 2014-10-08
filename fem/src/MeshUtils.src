@@ -7062,7 +7062,6 @@ END SUBROUTINE GetMaxDefs
 
     ! Create the inverse permutation needed when the projector matrix is added to the global 
     ! matrix. 
-print*,'xxx: ', parenv % mype, invpermsize, donodes; flush(6)
 
     ! Create a list matrix that allows for unspecified entries in the matrix 
     ! structure to be introduced.
