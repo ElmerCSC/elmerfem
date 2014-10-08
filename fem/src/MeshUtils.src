@@ -6880,7 +6880,8 @@ END SUBROUTINE GetMaxDefs
         e1, e2, e12, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides, &
         InvPermSize, indpoffset
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
-    REAL(KIND=dp), POINTER :: Values(:), Basis(:), WBasis(:,:),Wbasis2(:,:),RotWBasis(:,:),dBasisdx(:,:)
+    REAL(KIND=dp), POINTER :: Values(:), Basis(:), WBasis(:,:), &
+                 Wbasis2(:,:),RotWBasis(:,:),dBasisdx(:,:)
     REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight,Coeff
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
@@ -6994,6 +6995,7 @@ END SUBROUTINE GetMaxDefs
     ELSE
       indpoffset = 0
     END IF
+    InvPerm => Null()
     InvPermSize = indpoffset
     
     ! Compute the number of potential edges. This mimics the loop that really creates the projector 
@@ -7060,9 +7062,6 @@ END SUBROUTINE GetMaxDefs
     ! Ok, nothing to do just go end tidy things up
     IF( InvPermSize == 0 ) GOTO 100
 
-    ! Create the inverse permutation needed when the projector matrix is added to the global 
-    ! matrix. 
-
     ! Create a list matrix that allows for unspecified entries in the matrix 
     ! structure to be introduced.
     Projector => AllocateMatrix()
@@ -7070,7 +7069,8 @@ END SUBROUTINE GetMaxDefs
     Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
     Projector % ConstraintBC = bc
     
-
+    ! Create the inverse permutation needed when the projector matrix is added to the global 
+    ! matrix. 
     ALLOCATE( Projector % InvPerm( InvPermSize ) )
     InvPerm => Projector % InvPerm
     InvPerm = 0
@@ -7137,7 +7137,7 @@ END SUBROUTINE GetMaxDefs
             DiscontIndexes(i) = j + NoOrigNodes
           END IF
         END DO
-        
+
         IntegStuff = GaussPoints( Element )
         DO j=1,IntegStuff % n
           u = IntegStuff % u(j)
@@ -7187,7 +7187,6 @@ END SUBROUTINE GetMaxDefs
                       size0 + indq, 0.0_dp ) 
                 END IF
               END DO
-
             END IF
           END DO
         END DO
@@ -7365,7 +7364,7 @@ END SUBROUTINE GetMaxDefs
       CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
           TRIM(I2S(SIZE(Projector % Cols)) ), Level=9)
     ELSE
-      DEALLOCATE(Projector); Projector=>NULL()
+      CALL FreeMatrix(Projector); Projector=>NULL()
     END IF
 
 100 DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
