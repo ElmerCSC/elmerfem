@@ -6894,6 +6894,8 @@ END SUBROUTINE GetMaxDefs
     CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
          //TRIM(I2S(bc)),Level=7)
 
+    Projector => Null()
+
     IF( .NOT. Mesh % DisContMesh ) THEN
       CALL Warn('WeightedProjectorDiscont','Discontinuous mesh not created?')
       RETURN
@@ -6962,7 +6964,6 @@ END SUBROUTINE GetMaxDefs
     SetDiagEdges = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag Edges',Found )
     IF(.NOT. Found ) SetDiagEdges = SetDiag
 
-
     ! Integration weights should follow the metrix if we want physical nodal jumps. 
     AxisSym = .FALSE.
     IF ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
@@ -6976,20 +6977,13 @@ END SUBROUTINE GetMaxDefs
     END IF
 
 
-    ! Create a list matrix that allows for unspecified entries in the matrix 
-    ! structure to be introduced.
-    Projector => AllocateMatrix()
-    Projector % FORMAT = MATRIX_LIST
-    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
-    Projector % ConstraintBC = bc
-    
     n = Mesh % MaxElementDOFs
     ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
     ALLOCATE( Indexes(n), DisContIndexes(n), Basis(n), Wbasis(n,3), &
             Wbasis2(n,3), dBasisdx(n,3), RotWBasis(n,3) )
     Indexes = 0
-    DiscontIndexes = 0
     Basis = 0.0_dp
+    DiscontIndexes = 0
 
     NodePerm => Mesh % DisContPerm
     NoOrigNodes = SIZE( NodePerm ) 
@@ -7062,12 +7056,22 @@ END SUBROUTINE GetMaxDefs
           'Size of InvPerm estimated to be: '//TRIM(I2S(InvPermSize)),Level=8)
     END IF
 
+
     ! Ok, nothing to do just go end tidy things up
     IF( InvPermSize == 0 ) GOTO 100
 
-
     ! Create the inverse permutation needed when the projector matrix is added to the global 
     ! matrix. 
+print*,'xxx: ', parenv % mype, invpermsize, donodes; flush(6)
+
+    ! Create a list matrix that allows for unspecified entries in the matrix 
+    ! structure to be introduced.
+    Projector => AllocateMatrix()
+    Projector % FORMAT = MATRIX_LIST
+    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
+    Projector % ConstraintBC = bc
+    
+
     ALLOCATE( Projector % InvPerm( InvPermSize ) )
     InvPerm => Projector % InvPerm
     InvPerm = 0
@@ -7294,7 +7298,6 @@ END SUBROUTINE GetMaxDefs
           CALL GetEdgeBasis( NewFace, Wbasis2, RotwBasis, Basis, dBasisdx )
 
           Weight = detJ * IntegStuff % s(it) * Coeff
-
         
           ! Go through combinations of edges and find the edges for which the 
           ! indexes are the same. 
@@ -7319,12 +7322,12 @@ END SUBROUTINE GetMaxDefs
                 IF (i1==j1 .AND. i2==j2 .OR. i1==j2 .AND. i2==j1 ) EXIT
               END DO
               val = Weight * SUM(WBasis(i,:) * Wbasis(i,:))
-              IF ( ABS(Val)>= AEPS ) &
+              IF ( ABS(Val)>= 10*AEPS ) &
                   CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e1, Val )
               
               e2  = NewFace % EdgeIndexes(j)
               val = Weight * SUM(WBasis(i,:) * Wbasis2(j,:))
-              IF ( ABS(val) >= AEPS ) &
+              IF ( ABS(val) >= 10*AEPS ) &
                   CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e2, -Val )              
             ELSE
               DO j = 1,NewFace % TYPE % NumberOfEdges
@@ -7332,11 +7335,11 @@ END SUBROUTINE GetMaxDefs
                 e12 = OldFace % EdgeIndexes(j)
                 
                 val = Weight * SUM(WBasis(i,:) * Wbasis(j,:))
-                IF ( ABS(Val)>= AEPS ) &
+                IF ( ABS(Val)>= 10*AEPS ) &
                     CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e12, Val )
                 
                 val = Weight * SUM(WBasis(i,:) * Wbasis2(j,:))
-                IF ( ABS(val) >= AEPS ) &
+                IF ( ABS(val) >= 10*AEPS ) &
                     CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(e1), n + e2, -Val )
               END DO
             END IF
