@@ -63,7 +63,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
 !    Local variables
 !------------------------------------------------------------------------------
   TYPE(ValueList_t),POINTER :: SolverParams, BC
-  INTEGER :: i,j,k,n,m,t,dim,elem,bf_id,istat,node,nodei
+  INTEGER :: i,j,k,n,m,t,dim,elem,bf_id,istat,node,nodei,RotateOrder(3)
   INTEGER, TARGET :: CurrentNode(1)
   INTEGER :: NonlinIter, MaxNonlinIter, NoNodes
   INTEGER, POINTER :: RelaxPerm(:), VeloPerm(:), NodeIndex(:)
@@ -140,6 +140,22 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   TranslateBeforeRotate = GetLogical( SolverParams,&
       'Translate Before Rotate',Found )
 
+  ! Permit the user to specify the order of rotation
+  ! The order is reversed because the order of matrix 
+  ! multiplication is such that current default order is
+  ! 3, 2, 1
+  !----------------------------------------------------------
+  RotateOrder = (/1, 2, 3/)
+  PArray => ListGetConstRealArray( SolverParams,'Mesh Rotation Axis Order', Found)
+  IF(Found) THEN
+     j = SIZE(PArray, 1)
+     IF(j /= dim) THEN
+        CALL Fatal("RigidMeshMapper","Size of Mesh Rotation Axis Order must match dimension.")
+     END IF
+     DO i=1,j
+        RotateOrder(i) = PArray((j+1-i),1) !reverse the order
+     END DO
+  END IF
 
   ! If using original mesh as a reference mesh it must be saved,
   ! otherwise the analytic mapping does not require two meshes
@@ -366,12 +382,13 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
             RotMatrix = Identity
             
             DO i=1,3
-              Alpha = Angles(i) * PI / 180.0_dp
+              j = RotateOrder(i)
+              Alpha = Angles(j) * PI / 180.0_dp
               
               IF( ABS(Alpha) < TINY(Alpha) ) CYCLE
               TrfMatrix = Identity
               
-              SELECT CASE(i)
+              SELECT CASE(j)
               CASE(1)
                 TrfMatrix(2,2) =  COS(Alpha)
                 TrfMatrix(2,3) = -SIN(Alpha)
