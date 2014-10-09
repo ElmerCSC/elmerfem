@@ -1016,6 +1016,10 @@ END SUBROUTINE GetMaxDefs
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
        ParentElem, OtherElem
 
+   LOGICAL :: DoneThisAlready = .FALSE.
+
+   IF (DoneThisAlready) RETURN
+   DoneThisAlready = .TRUE.
 
    Parallel = ( ParEnv % PEs > 1 )
 
