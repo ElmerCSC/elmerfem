@@ -2409,7 +2409,6 @@ CONTAINS
       n  = GetElementNOFNodes()
       nd = n
 
-
       IF (A % COMPLEX ) THEN
         Load_C =0._dp
         STIFF_C=0._dp
@@ -2479,8 +2478,9 @@ CONTAINS
       END IF
     END DO
 
+
     Jfluxeps = GetCReal(GetSolverParams(), 'J normal eps', Found)
-    IF (.NOT. Found) Jfluxeps = 1.0d-2
+    IF (.NOT. Found) Jfluxeps = 1.0d-6
 
     IF (ParEnv%Pes>1) THEN
       gm => AllocateMatrix()
@@ -4537,7 +4537,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
   LOGICAL :: Found, ElementalFields
   INTEGER, POINTER :: Active(:)
-  INTEGER :: mysolver,i,j,k,l,n,m,vDOFs
+  INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
@@ -4567,7 +4567,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
     J=INDEX(sname,'[')-1
     IF ( j<=0 ) j=LEN_TRIM(sname)
-    IF ( sname(1:j) == pname(1:j) )THEN
+    IF ( sname(1:j) == pname(1:LEN_TRIM(pname)) )THEN
       k = 0
       vDofs = 0
       j=INDEX(sname,':')
@@ -4579,6 +4579,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
       EXIT
     END IF
   END DO
+  soln = i
   IF ( Vdofs==0 ) Vdofs=1
 
   ALLOCATE(Solvers(n+1))
@@ -4595,6 +4596,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
               'MagnetoDynamics MagnetoDynamics_Dummy',.FALSE. )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput cf_dummy' )
 
+  pname = ListGetString( Model % Solvers(soln) % Values, 'Mesh', Found )
+  IF(Found) THEN
+    CALL ListAddString( SolverParams, 'Mesh', pname )
+  END IF
 
   i = 1
 
@@ -4962,7 +4967,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
         'USING NEW PIOLA TRASFORMED FINITE ELEMENTS',Level=2)
 
    Mesh => GetMesh()
-   LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
+   LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier', ThisOnly=.TRUE.)
 
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
    IF ( .NOT. ASSOCIATED(MFD) ) RETURN
