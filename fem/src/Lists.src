@@ -61,6 +61,7 @@ MODULE Lists
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_SCALAR_STR = 10
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_TENSOR_STR = 11
 
+
    INTERFACE
      FUNCTION ExecIntFunction( Proc,Md ) RESULT(int)
        USE Types
@@ -1832,10 +1833,12 @@ CONTAINS
      AllGlobal = .TRUE.
      count=0
      l0=1
+     IF(slen<=0) RETURN
 
      DO WHILE( .TRUE. )
        DO WHILE( str(l0:l0) == ' ' )
          l0 = l0 + 1
+         IF ( l0 > slen ) EXIT
        END DO
        IF ( l0 > slen ) EXIT
 

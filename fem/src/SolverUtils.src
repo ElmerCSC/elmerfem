@@ -7350,8 +7350,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
           EmptyRow = .FALSE.
 
-          IF (EnforceDirichlet) &
-            Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
+          IF (EnforceDirichlet .AND. RestMatrix % Cols(j) <= StiffMatrix % NumberOfRows) &
+                  Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
 
           IF(Found) THEN
             CALL AddToMatrixElement( CollectionMatrix, &
@@ -7366,15 +7366,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       ! If there is no matrix entry, there can be no non-zero r.h.s.
       IF( EmptyRow ) THEN
         NoEmptyRows = NoEmptyRows + 1
-         CALL AddToMatrixElement( CollectionMatrix,k,k,1._dp )
-         IF(ComplexSystem) THEN
-           IF(MOD(k,2)==0) THEN
-             CALL AddToMatrixElement( CollectionMatrix,k,k-1,0._dp )
-           ELSE
-             CALL AddToMatrixElement( CollectionMatrix,k,k+1,0._dp )
-           END IF
-        END IF
         CollectionVector(k) = 0._dp
+        CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
       ELSE
         CollectionVector(k) = RestVector(i)
       END IF
