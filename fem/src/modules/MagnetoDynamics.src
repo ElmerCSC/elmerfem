@@ -2480,7 +2480,7 @@ CONTAINS
 
 
     Jfluxeps = GetCReal(GetSolverParams(), 'J normal eps', Found)
-    IF (.NOT. Found) Jfluxeps = 1.0d-6
+    IF (.NOT. Found) Jfluxeps = 1.0d-2
 
     IF (ParEnv%Pes>1) THEN
       gm => AllocateMatrix()
