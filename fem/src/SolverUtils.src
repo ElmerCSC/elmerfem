@@ -7367,7 +7367,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       IF( EmptyRow ) THEN
         NoEmptyRows = NoEmptyRows + 1
         CollectionVector(k) = 0._dp
-        CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
+!        might not be the right thing to do in parallel!!
+!       CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
       ELSE
         CollectionVector(k) = RestVector(i)
       END IF
@@ -7423,20 +7424,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(CollectionMatrix % FORMAT==MATRIX_LIST) &
     CALL List_toCRSMatrix(CollectionMatrix)
 
-  ! if zero=zero constraint, solve lambda_i=0 instead:
-  ! -------------------------------------------------
-! DO i=stiffmatrix % numberofrows+1,collectionmatrix % numberofrows
-!    IF ( ALL(collectionmatrix % values( &
-!          collectionmatrix % rows(i):collectionmatrix % rows(i+1)-1)==0) ) &
-!      collectionmatrix % values(collectionmatrix % diag(i)) = 1
-! END DO
-! ! try not to interfere with dirichlet conditions:
-! ! -----------------------------------------------
-
 
   CALL Info( 'SolveWithLinearRestriction', 'CollectionMatrix done', Level=5 )
-
-
 
 !------------------------------------------------------------------------------
 ! Assign values to CollectionVector
