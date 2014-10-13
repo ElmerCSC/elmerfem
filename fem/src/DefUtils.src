@@ -2330,7 +2330,7 @@ CONTAINS
 
            IF(alloc_parenv) THEN
              DEALLOCATE(ParEnv % Active)
-             ParEnv % Active => Null()
+             ParEnv % Active => NULL()
            END IF
 
            IF(ASSOCIATED(Solver % Matrix)) THEN
@@ -3401,7 +3401,7 @@ CONTAINS
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem
      TYPE(ValueList_t), POINTER :: BC, ptr, Params
      TYPE(Element_t), POINTER :: Element, Parent, Edge, Face, SaveElement
-
+     TYPE(Variable_t), POINTER :: IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: name
      LOGICAL :: BUpd, PiolaTransform
 
@@ -3448,6 +3448,20 @@ CONTAINS
        x => Solver % Variable
      END IF
 
+
+     ! Create soft limiters to be later applied by the Dirichlet conditions
+     !---------------------------------------------------------------------
+     IF( ListGetLogical( Solver % Values,'Nonlinear Apply Limiter',Found) ) THEN
+       iterV => VariableGet( Solver % Mesh % Variables,'nonlin iter')
+       IF( ASSOCIATED( iterV ) ) THEN
+         PRINT *,'Iters:',NINT( IterV % Values )
+         IF( NINT( iterV % Values(1) ) > 1 ) THEN
+           CALL DetermineSoftLimiter( Solver, .TRUE. )	
+         END IF
+       END IF
+     END IF
+
+
      IF(.NOT.ALLOCATED(A % ConstrainedDOF)) &
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
      A % ConstrainedDOF = .FALSE.
@@ -3482,14 +3496,8 @@ CONTAINS
      END IF
 
 
-     ! Create soft limiters to be later applied by the Dirichlet conditions
-     !---------------------------------------------------------------------
-!     IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
-!       CALL DetermineSoftLimiter( Solver )	
-!     END IF
 
      IF ( x % DOFs > 1 ) THEN
-        ! TEMP!!!
         CALL SetDirichletBoundaries( CurrentModel,A, b, GetVarName(x),-1,x % DOFs,x % Perm )
      END IF
 
