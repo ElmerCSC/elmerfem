@@ -1739,6 +1739,8 @@ INTEGER::inside
       CALL ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
       DEALLOCATE( VecEPerNB )
 
+      CALL ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
+                ParallelInfo, RHSVec )
       RETURN
    END IF
 #endif
@@ -1849,7 +1851,9 @@ INTEGER::inside
 
       CALL ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
       DEALLOCATE( VecEPerNB )
-
+   
+      CALL ExchangeSourceVec( SourceMatrix, SplittedMatrix, &
+                ParallelInfo, RHSVec )
       RETURN
    END IF
 #endif
@@ -2025,7 +2029,6 @@ REAL(kind=dp)::cputime,realtime,tt,rt
   !----------------------------------------------------------------------
   ALLOCATE(TmpRHSVec(SplittedMatrix % InsideMatrix % NumberOfRows))
   TmpRHSVec = 0
-
   CALL ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
          ParallelInfo, RHSVec, TmpRHSVec )
 
