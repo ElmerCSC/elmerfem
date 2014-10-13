@@ -3451,7 +3451,7 @@ CONTAINS
 
      ! Create soft limiters to be later applied by the Dirichlet conditions
      !---------------------------------------------------------------------
-     IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
+     IF( ListGetLogical( Solver % Values,'Nonlinear Apply Limiter',Found) ) THEN
        iterV => VariableGet( Solver % Mesh % Variables,'nonlin iter')
        Found = .FALSE.
        i = 0; j = 0

@@ -1822,8 +1822,8 @@ CONTAINS
 !   Go through soft upper and lower limits
 !------------------------------------------------------------------------------
     Params => Model % Solver % Values
-    ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt) .OR. &
-        ListGetLogical( Params,'Linear Apply Limiter',GotIt) 
+    ApplyLimiter = ListGetLogical( Params,'Nonlinear Apply Limiter',GotIt) .OR. &
+        ListGetLogical( Params,'Apply Limiter',GotIt) 
 
     IF( Dof/=0 .AND. ApplyLimiter ) THEN
       CALL Info('SetDirichletBoundaries','Applying limiters',Level=10)
@@ -6258,8 +6258,8 @@ END FUNCTION SearchNodeL
     HarmonicAnalysis = Solver % NOFEigenValues>0 .AND. &
         ListGetLogical( Params, 'Harmonic Analysis',GotIt )
 
-    ApplyLimiter = ListGetLogical( Params,'Linear Apply Limiter',GotIt ) 
-    NonlinApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
+    ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
+    NonlinApplyLimiter = ListGetLogical( Params,'Nonlinear Apply Limiter',GotIt ) 
     SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt ) 
 
     IF ( .NOT. ( HarmonicAnalysis .OR. EigenAnalysis .OR. ApplyLimiter &
