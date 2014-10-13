@@ -7346,7 +7346,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
           ! Skip non-positive column indexes
           IF( RestMatrix % Cols(j) <= 0 ) CYCLE
-          IF( ABS(RestMatrix % Values(j)) < EPSILON(1._dp)*rowsum ) CYCLE
+          IF ( .NOT. ComplexSystem ) THEN
+            IF( ABS(RestMatrix % Values(j)) < EPSILON(1._dp)*rowsum ) CYCLE
+          END IF
 
           EmptyRow = .FALSE.
 
