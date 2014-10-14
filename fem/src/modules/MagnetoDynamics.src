@@ -943,7 +943,7 @@ CONTAINS
 
    zzforce = 0
    IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
-     do i=1,Mesh % NumberOFBoundaryElements
+     DO i=1,Mesh % NumberOFBoundaryElements
        Element => GetBoundaryElement(i)
        IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
 
@@ -1178,7 +1178,7 @@ CONTAINS
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
         CALL Warn('AxialForceSurf', 'Surface force not implemented for Piola Elements')
-        return
+        RETURN
 !       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
 !           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
       ELSE
@@ -1186,7 +1186,7 @@ CONTAINS
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
 
-        Call GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
         stat = ElementInfo( Parent, PNodes, uu,v,w, pdetJ, Basis, dBasisdx )
 
         CALL GetEdgeBasis(Parent,WBasis,RotWBasis,Basis,dBasisdx)
@@ -3391,7 +3391,7 @@ CONTAINS
 
    zzforce = 0
    IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
-     do i=1,Mesh % NumberOFBoundaryElements
+     DO i=1,Mesh % NumberOFBoundaryElements
        Element => GetBoundaryElement(i)
        IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
 
@@ -3431,7 +3431,7 @@ CONTAINS
 
    zzforce = 0
    IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
-     do i=1,Mesh % NumberOFBoundaryElements
+     DO i=1,Mesh % NumberOFBoundaryElements
        Element => GetBoundaryElement(i)
        IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
 
@@ -3560,7 +3560,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AialForce(U,Element,n,nd)
+  SUBROUTINE AxialForce(U,Element,n,nd)
 !------------------------------------------------------------------------------
     INTEGER :: n,nd
     COMPLEX(KIND=dp)::U
@@ -3654,7 +3654,7 @@ CONTAINS
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
         CALL Warn('AxialForceSurf', 'Surface force not implemented for Piola Elements')
-        return
+        RETURN
 !       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
 !           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
       ELSE
@@ -3662,7 +3662,7 @@ CONTAINS
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
 
-        Call GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
         stat = ElementInfo( Parent, PNodes, uu,v,w, pdetJ, Basis, dBasisdx )
 
         CALL GetEdgeBasis(Parent,WBasis,RotWBasis,Basis,dBasisdx)
