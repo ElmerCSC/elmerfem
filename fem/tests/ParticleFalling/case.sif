@@ -13,11 +13,11 @@ Header
 End
  
 Simulation
-  Max Output Level = 40
+  Max Output Level = 4
   Coordinate System = Cartesian 
   Simulation Type = transient
   Steady State Max Iterations = 1
-!  Post File = "square.ep"
+!  Post File = "square.vtu"
   Timestep Intervals = 10
   Output Intervals = 1
   Timestep Sizes = 0.1
