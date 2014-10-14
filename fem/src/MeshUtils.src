@@ -5437,6 +5437,10 @@ END SUBROUTINE GetMaxDefs
         END IF
         CALL Fatal('LevelProjector','Target mesh has too much skew!')
       END IF
+    ELSE
+      ! For 2D meshes currently only the strong method works
+      StrongNodes = .TRUE.
+      DoEdges = .FALSE.
     END IF
 
     ! This is the tolerance used to define constant direction in radians
@@ -5503,7 +5507,7 @@ END SUBROUTINE GetMaxDefs
     SomethingUndone = .FALSE.
 
     ! If requested, create mapping for node dofs
-    !------------------------------------------------------------------
+    !------------------------------------------------------------------   
     EdgeRow0 = 0
     IF( DoNodes ) THEN
       IF( StrongNodes ) THEN
@@ -5587,6 +5591,8 @@ END SUBROUTINE GetMaxDefs
       REAL(KIND=dp) :: e1(2),e2(2),DotProdM, PhiM, ArcCoeff
       INTEGER, POINTER :: IndexesM(:)
 
+      CALL Info('LevelProjector','Checking mesh skew')
+
       n = 4
       ALLOCATE( NodesM % x(n), NodesM % y(n) )
       MaxSkew = 0.0_dp
@@ -5597,7 +5603,7 @@ END SUBROUTINE GetMaxDefs
         
         ElementM => BMesh % Elements(indM)        
         IF( ElementM % TYPE % ElementCode / 100 /= 4 ) THEN
-          CALL Fatal('PlaneProjector','Assuming quads on the target surface!')
+          CALL Fatal('LevelProjector','Assuming quads on the target surface!')
         END IF
         IndexesM => ElementM % NodeIndexes
         NodesM % y(1:n) = BMesh % Nodes % y(IndexesM(1:n))
@@ -6456,9 +6462,6 @@ END SUBROUTINE GetMaxDefs
       DO ind=1,BMesh1 % NumberOfBulkElements
 
         Element => BMesh1 % Elements(ind)        
-        IF( Element % TYPE % ElementCode / 100 /= 4 ) THEN
-          CALL Fatal('PlaneProjector','Assuming quads on the surface1')
-        END IF
         Indexes => Element % NodeIndexes
 
         n = Element % TYPE % NumberOfNodes
@@ -6468,11 +6471,6 @@ END SUBROUTINE GetMaxDefs
         ELSE
           nf = 0
         END IF
-
-!        PRINT *,'Element n:',n,ne,nf
-!        n = GetElementNOFNodes( Element ) 
-!        nd = GetElementNOFDOFs( Element )  
-!        nb = GetElementNOFBDOFs( Element ) 
         
         Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
         Nodes % y(1:n) = BMesh1 % Nodes % y(Indexes(1:n))
@@ -6543,9 +6541,6 @@ END SUBROUTINE GetMaxDefs
         DO indM=1,BMesh2 % NumberOfBulkElements
           
           ElementM => BMesh2 % Elements(indM)        
-          IF( ElementM % TYPE % ElementCode / 100 /= 4 ) THEN
-            CALL Fatal('PlaneProjector','Assuming quads on the surface1')
-          END IF
           IndexesM => ElementM % NodeIndexes
           
           NodesM % y(1:n) = BMesh2 % Nodes % y(IndexesM(1:n))
