@@ -4580,13 +4580,12 @@ END FUNCTION SearchNodeL
 
         nn = A % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows
 
+        TmpRhsVec = b
         CALL ParallelInitSolve( A, tmpXVec, TmpRhsVec, r)
 
         tmpXvec = x0(1:n)
         CALL ParallelVector(a,TmpXvec)
-
-        TmpRhsvec = b(1:n)
-        CALL parallelvector(a,tmpRhsvec)
+        CALL ParallelVector(A,tmpRhsvec)
 
         CALL ParallelMatrixVector(A, TmpXvec, r)
         DO i=1,nn
@@ -4595,7 +4594,6 @@ END FUNCTION SearchNodeL
 
         Change = ParallelNorm(nn,r)
         bNorm =  ParallelNorm(nn,tmpRhsVec)
-
       ELSE
         CALL MatrixVectorMultiply( A, x0, r)
         DO i=1,n
@@ -8374,4 +8372,3 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 END MODULE SolverUtils
 
 !> \}
-
