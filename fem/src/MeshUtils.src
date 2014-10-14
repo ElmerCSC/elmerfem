@@ -3850,8 +3850,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:), &
         InvPerm1(:), InvPerm2(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
-    REAL(KIND=dp) :: RadCoeff,Rad0
-    LOGICAL :: SetRadius, OnTheFlyBC
+    LOGICAL :: OnTheFlyBC
 
     TYPE(Element_t), POINTER :: Parent,q
     INTEGER :: en, in
@@ -3903,9 +3902,6 @@ END SUBROUTINE GetMaxDefs
     CALL AllocateVector( BMesh2 % Elements,n2 )
     CALL AllocateVector( Perm1, Mesh % NumberOfNodes )
     CALL AllocateVector( Perm2, Mesh % NumberOfNodes )
-
-    Rad0 = ListGetConstReal( Model % BCs(This) % Values, &
-        'Mortar Projector Radius',SetRadius)
 
  
 !   Fill in the mesh element structures with the
@@ -4020,12 +4016,6 @@ END SUBROUTINE GetMaxDefs
         BMesh1 % Nodes % x(k1) = Mesh % Nodes % x(i)
         BMesh1 % Nodes % y(k1) = Mesh % Nodes % y(i)
         BMesh1 % Nodes % z(k1) = Mesh % Nodes % z(i)
-
-        IF( SetRadius ) THEN
-          RadCoeff = Rad0 / SQRT( BMesh1 % Nodes % x(k1)**2 +  BMesh1 % Nodes % y(k1)**2) 
-          BMesh1 % Nodes % x(k1) = RadCoeff * BMesh1 % Nodes % x(k1)
-          BMesh1 % Nodes % y(k1) = RadCoeff * BMesh1 % Nodes % y(k1)
-        END IF
       END IF
       
       IF ( Perm2(i) > 0 ) THEN
@@ -4036,12 +4026,6 @@ END SUBROUTINE GetMaxDefs
         BMesh2 % Nodes % x(k2)= Mesh % Nodes % x(i)
         BMesh2 % Nodes % y(k2)= Mesh % Nodes % y(i)
         BMesh2 % Nodes % z(k2)= Mesh % Nodes % z(i)
-
-        IF( SetRadius ) THEN
-          RadCoeff = Rad0 / SQRT( BMesh2 % Nodes % x(k2)**2 +  BMesh2 % Nodes % y(k2)**2) 
-          BMesh2 % Nodes % x(k2) = RadCoeff * BMesh2 % Nodes % x(k2)
-          BMesh2 % Nodes % y(k2) = RadCoeff * BMesh2 % Nodes % y(k2)
-        END IF
       END IF
     END DO
 
@@ -6899,7 +6883,7 @@ END SUBROUTINE GetMaxDefs
     CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
          //TRIM(I2S(bc)),Level=7)
 
-    Projector => Null()
+    Projector => NULL()
 
     IF( .NOT. Mesh % DisContMesh ) THEN
       CALL Warn('WeightedProjectorDiscont','Discontinuous mesh not created?')
@@ -6999,7 +6983,7 @@ END SUBROUTINE GetMaxDefs
     ELSE
       indpoffset = 0
     END IF
-    InvPerm => Null()
+    InvPerm => NULL()
     InvPermSize = indpoffset
     
     ! Compute the number of potential edges. This mimics the loop that really creates the projector 
