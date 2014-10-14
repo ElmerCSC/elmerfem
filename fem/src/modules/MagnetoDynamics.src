@@ -920,7 +920,7 @@ CONTAINS
 
      IF( CalcTorque ) THEN
        CALL Torque(Torq,Element,n,nd)
-       CALL RadialForce(zforce,Element,n,nd)
+       CALL AxialForce(zforce,Element,n,nd)
      END IF
 
      IF( CalcPotential ) THEN
@@ -942,15 +942,15 @@ CONTAINS
    END DO
 
    zzforce = 0
-   IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+   IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
      do i=1,Mesh % NumberOFBoundaryElements
        Element => GetBoundaryElement(i)
-       IF (.NOT.GetLogical(GetBC(), 'Calculate Radial Force', Found ) ) CYCLE
+       IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
 
        Parent => Element % BoundaryInfo % Left
        n  = GetELementNofNodes(Parent)
        nd = GetELementNofDOFs(Parent)
-       CALL RadialForceSurf(zzforce,Element,n,nd)
+       CALL AxialForceSurf(zzforce,Element,n,nd)
      END DO
    END IF
 
@@ -974,11 +974,11 @@ CONTAINS
      Torq = ParallelReduction(Torq)
      CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque', Torq)
      zforce = ParallelReduction(zforce)
-     CALL ListAddConstReal(Model % Simulation,'res: Radial Force(vol)', zforce)
+     CALL ListAddConstReal(Model % Simulation,'res: Axial Force(vol)', zforce)
 
-     IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+     IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
        zzforce = ParallelReduction(zzforce)
-       CALL ListAddConstReal(Model % Simulation,'res: Radial force(surf)', zzforce )
+       CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf)', zzforce )
      END IF
    END IF
 
@@ -1090,7 +1090,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE RadialForce(U,Element,n,nd)
+  SUBROUTINE AxialForce(U,Element,n,nd)
 !------------------------------------------------------------------------------
     INTEGER :: n,nd
     REAL(KIND=dp)::U
@@ -1143,12 +1143,12 @@ CONTAINS
       U = U + IP % s(t)*detJ*1*(Bx*Bz*x+By*Bz*y)/(PI*4.0d-7*(r1-r0))
     END DO
 !------------------------------------------------------------------------------
-  END SUBROUTINE RadialForce
+  END SUBROUTINE AxialForce
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE RadialForceSurf(U,Element,n,nd)
+  SUBROUTINE AxialForceSurf(U,Element,n,nd)
 !------------------------------------------------------------------------------
     INTEGER :: n,nd
     REAL(KIND=dp)::U
@@ -1177,7 +1177,7 @@ CONTAINS
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        CALL Warn('RadialForceSurf', 'Surface force not implemented for Piola Elements')
+        CALL Warn('AxialForceSurf', 'Surface force not implemented for Piola Elements')
         return
 !       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
 !           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
@@ -1203,7 +1203,7 @@ CONTAINS
       U = U + IP % s(t) * detJ * (Bx*Bz + By*Bz) /(PI*4.0d-7) !/ 2
     END DO
 !------------------------------------------------------------------------------
-  END SUBROUTINE RadialForceSurf
+  END SUBROUTINE AxialForceSurf
 !------------------------------------------------------------------------------
 
 
@@ -3368,7 +3368,7 @@ CONTAINS
 
      IF( CalcTorque ) THEN
        CALL Torque(Torq,Element,n,nd)
-       CALL RadialForce(zforce,Element,n,nd)
+       CALL AxialForce(zforce,Element,n,nd)
      END IF
 
      IF( CalcPotential ) THEN
@@ -3390,15 +3390,15 @@ CONTAINS
    END DO
 
    zzforce = 0
-   IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+   IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
      do i=1,Mesh % NumberOFBoundaryElements
        Element => GetBoundaryElement(i)
-       IF (.NOT.GetLogical(GetBC(), 'Calculate Radial Force', Found ) ) CYCLE
+       IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
 
        Parent => Element % BoundaryInfo % Left
        n  = GetELementNofNodes(Parent)
        nd = GetELementNofDOFs(Parent)
-       CALL RadialForceSurf(zzforce,Element,n,nd)
+       CALL AxialForceSurf(zzforce,Element,n,nd)
      END DO
    END IF
 
@@ -3426,25 +3426,25 @@ CONTAINS
      CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque im', AIMAG(Torq))
 
      zforce = CMPLX( ParallelReduction(REAL(zforce)), ParallelReduction(AIMAG(zforce)) )
-     CALL ListAddConstReal(Model % Simulation,'res: Radial force(vol) re', REAL(zforce))
-     CALL ListAddConstReal(Model % Simulation,'res: Radial force(vol) im', AIMAG(zforce))
+     CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) re', REAL(zforce))
+     CALL ListAddConstReal(Model % Simulation,'res: Axial force(vol) im', AIMAG(zforce))
 
    zzforce = 0
-   IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+   IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
      do i=1,Mesh % NumberOFBoundaryElements
        Element => GetBoundaryElement(i)
-       IF (.NOT.GetLogical(GetBC(), 'Calculate Radial Force', Found ) ) CYCLE
+       IF (.NOT.GetLogical(GetBC(), 'Calculate Axial Force', Found ) ) CYCLE
 
        Parent => Element % BoundaryInfo % Left
        n  = GetELementNofNodes(Parent)
        nd = GetELementNofDOFs(Parent)
-       CALL RadialForceSurf(zzforce,Element,n,nd)
+       CALL AxialForceSurf(zzforce,Element,n,nd)
      END DO
    END IF
-     IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+     IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
        zzforce = CMPLX( ParallelReduction(REAL(zzforce)), ParallelReduction(AIMAG(zzforce)) )
-       CALL ListAddConstReal(Model % Simulation,'res: Radial force(surf) re', REAL(zzforce))
-       CALL ListAddConstReal(Model % Simulation,'res: Radial force(surf) im', AIMAG(zzforce))
+       CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) re', REAL(zzforce))
+       CALL ListAddConstReal(Model % Simulation,'res: Axial force(surf) im', AIMAG(zzforce))
      END IF
    END IF
 
@@ -3560,7 +3560,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE RadialForce(U,Element,n,nd)
+  SUBROUTINE AialForce(U,Element,n,nd)
 !------------------------------------------------------------------------------
     INTEGER :: n,nd
     COMPLEX(KIND=dp)::U
@@ -3618,12 +3618,12 @@ CONTAINS
                /(PI*4.0d-7*(r1-r0))
     END DO
 !------------------------------------------------------------------------------
-  END SUBROUTINE RadialForce
+  END SUBROUTINE AxialForce
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE RadialForceSurf(U,Element,n,nd)
+  SUBROUTINE AxialForceSurf(U,Element,n,nd)
 !------------------------------------------------------------------------------
     INTEGER :: n,nd
     COMPLEX(KIND=dp)::U
@@ -3653,7 +3653,7 @@ CONTAINS
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        CALL Warn('RadialForceSurf', 'Surface force not implemented for Piola Elements')
+        CALL Warn('AxialForceSurf', 'Surface force not implemented for Piola Elements')
         return
 !       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
 !           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
@@ -3681,7 +3681,7 @@ CONTAINS
                 (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y)) /(PI*4.0d-7)
     END DO
 !------------------------------------------------------------------------------
-  END SUBROUTINE RadialForceSurf
+  END SUBROUTINE AxialForceSurf
 !------------------------------------------------------------------------------
 
 
