@@ -899,10 +899,11 @@ CONTAINS
 !------------------------------------------------------------------------------
    INTEGER::nbf
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: torq,a(nbf),u(nbf),IMoment,IA
+   REAL(KIND=dp) :: torq,a(nbf),u(nbf),IMoment,IA,zforce,zzforce
    INTEGER :: i,bfid,n,nd
    LOGICAL :: Found, CalcTorque,CalcPotential,CalcInertia
    TYPE(ValueList_t),POINTER::Params
+   TYPE(ELement_t), POINTER :: Element, Parent
 !------------------------------------------------------------------------------
 
    CalcTorque = ListCheckPresentAnyBody(Model,'r inner')
@@ -911,7 +912,7 @@ CONTAINS
 
    IF(.NOT. (CalcTorque .OR. CalcPotential .OR. CalcInertia ) ) RETURN
 
-   U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0
+   U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0; zforce=0
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
      nd = GetElementNOFDOFs(Element)
@@ -919,6 +920,7 @@ CONTAINS
 
      IF( CalcTorque ) THEN
        CALL Torque(Torq,Element,n,nd)
+       CALL RadialForce(zforce,Element,n,nd)
      END IF
 
      IF( CalcPotential ) THEN
@@ -939,6 +941,19 @@ CONTAINS
      END IF
    END DO
 
+   zzforce = 0
+   IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+     do i=1,Mesh % NumberOFBoundaryElements
+       Element => GetBoundaryElement(i)
+       IF (.NOT.GetLogical(GetBC(), 'Calculate Radial Force', Found ) ) CYCLE
+
+       Parent => Element % BoundaryInfo % Left
+       n  = GetELementNofNodes(Parent)
+       nd = GetELementNofDOFs(Parent)
+       CALL RadialForceSurf(zzforce,Element,n,nd)
+     END DO
+   END IF
+
    IF( CalcPotential ) THEN
      DO i=1,nbf
        a(i) = ParallelReduction(a(i))
@@ -958,6 +973,13 @@ CONTAINS
    IF( CalcTorque ) THEN
      Torq = ParallelReduction(Torq)
      CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque', Torq)
+     zforce = ParallelReduction(zforce)
+     CALL ListAddConstReal(Model % Simulation,'res: Radial Force(vol)', zforce)
+
+     IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+       zzforce = ParallelReduction(zzforce)
+       CALL ListAddConstReal(Model % Simulation,'res: Radial force(surf)', zzforce )
+     END IF
    END IF
 
    IF( CalcInertia ) THEN
@@ -1067,7 +1089,122 @@ CONTAINS
   END SUBROUTINE Torque
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE RadialForce(U,Element,n,nd)
+!------------------------------------------------------------------------------
+    INTEGER :: n,nd
+    REAL(KIND=dp)::U
+    TYPE(Element_t)::Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: dBasisdx(nd,3),Basis(nd), DetJ, &
+             POT(nd),x,y,r,r0,r1,Bx,By,Bz,B(3,nd),Wbasis(nd,3),RotWBasis(nd,3)
+    INTEGER :: t
+    LOGICAL :: stat, Found
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+	!$OMP THREADPRIVATE(Nodes)
 
+    r0 = GetCReal(GetBodyParams(),'r inner',Found)
+    r1 = GetCReal(GetBodyParams(),'r outer',Found)
+    IF (.NOT.Found) RETURN
+
+    CALL GetElementNodes( Nodes, Element )
+
+    x = SUM(Nodes % x(1:n))/n
+    y = SUM(Nodes % y(1:n))/n
+    r = SQRT(x**2+y**2)
+    IF (r<r0.OR.r>r1) RETURN
+
+    CALL GetLocalSolution(POT, UElement=Element)
+  
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      IF (PiolaVersion) THEN
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+      END IF
+
+      x = SUM(Nodes % x(1:n)*Basis(1:n))
+      y = SUM(Nodes % y(1:n)*Basis(1:n))
+      r = SQRT(x**2+y**2)
+      x = x/r; y = y/r
+
+      Bx =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,1))
+      By =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,2))
+      Bz =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,3))
+      U = U + IP % s(t)*detJ*1*(Bx*Bz*x+By*Bz*y)/(PI*4.0d-7*(r1-r0))
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE RadialForce
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE RadialForceSurf(U,Element,n,nd)
+!------------------------------------------------------------------------------
+    INTEGER :: n,nd
+    REAL(KIND=dp)::U
+    TYPE(Element_t)::Element
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Parent
+    REAL(KIND=dp) :: dBasisdx(nd,3),Basis(nd), DetJ, Pdetj, uu,v,w, &
+             POT(nd),x,y,r,r0,r1,Wbasis(nd,3),RotWBasis(nd,3)
+    REAL(KIND=dp) :: B(3,nd), Bx, By, Bz
+    INTEGER :: t
+    LOGICAL :: stat, Found
+    TYPE(Nodes_t), SAVE :: Nodes, PNodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+	!$OMP THREADPRIVATE(Nodes)
+
+    CALL GetElementNodes( Nodes, Element )
+    Parent => Element % BoundaryInfo % Left
+    CALL GetElementNodes( PNodes, Parent )
+
+    CALL GetLocalSolution(POT, UElement=Parent )
+  
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      IF (PiolaVersion) THEN
+        CALL Warn('RadialForceSurf', 'Surface force not implemented for Piola Elements')
+        return
+!       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+!           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+      ELSE
+
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+
+        Call GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+        stat = ElementInfo( Parent, PNodes, uu,v,w, pdetJ, Basis, dBasisdx )
+
+        CALL GetEdgeBasis(Parent,WBasis,RotWBasis,Basis,dBasisdx)
+      END IF
+
+      x = SUM(Basis(1:n) * PNodes % x(1:n))
+      y = SUM(Basis(1:n) * PNodes % y(1:n))
+      r = SQRT(x**2 + y**2)
+      x=x/r; y=y/r
+
+      Bx =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,1)) 
+      By =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,2))
+      Bz =  SUM(POT(n+1:nd) * RotWBasis(1:nd-n,3))
+      U = U + IP % s(t) * detJ * (Bx*Bz + By*Bz) /(PI*4.0d-7) !/ 2
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE RadialForceSurf
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -1602,7 +1739,7 @@ CONTAINS
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
          babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
-         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/babs
+         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
          IF ( Newton ) THEN
            muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
          END IF
@@ -3211,7 +3348,8 @@ CONTAINS
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: a(nbf),IMoment,IA
    INTEGER :: i,bfid,n,nd
-   COMPLEX(KIND=dp) :: torq, U(nbf)
+   TYPE(Element_t), POINTER :: Element, Parent
+   COMPLEX(KIND=dp) :: torq, U(nbf), zforce, zzforce
    LOGICAL :: Found, CalcTorque,CalcPotential,CalcInertia
    TYPE(ValueList_t),POINTER::Params
 !------------------------------------------------------------------------------
@@ -3222,7 +3360,7 @@ CONTAINS
 
    IF(.NOT. (CalcTorque .OR. CalcPotential .OR. CalcInertia ) ) RETURN
 
-   U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0
+   U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0; zforce=0
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
      nd = GetElementNOFDOFs(Element)
@@ -3230,6 +3368,7 @@ CONTAINS
 
      IF( CalcTorque ) THEN
        CALL Torque(Torq,Element,n,nd)
+       CALL RadialForce(zforce,Element,n,nd)
      END IF
 
      IF( CalcPotential ) THEN
@@ -3249,6 +3388,19 @@ CONTAINS
        END IF
      END IF
    END DO
+
+   zzforce = 0
+   IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+     do i=1,Mesh % NumberOFBoundaryElements
+       Element => GetBoundaryElement(i)
+       IF (.NOT.GetLogical(GetBC(), 'Calculate Radial Force', Found ) ) CYCLE
+
+       Parent => Element % BoundaryInfo % Left
+       n  = GetELementNofNodes(Parent)
+       nd = GetELementNofDOFs(Parent)
+       CALL RadialForceSurf(zzforce,Element,n,nd)
+     END DO
+   END IF
 
    IF( CalcPotential ) THEN
      DO i=1,nbf
@@ -3272,6 +3424,28 @@ CONTAINS
      Torq = CMPLX( ParallelReduction(REAL(Torq)), ParallelReduction(AIMAG(Torq)) )
      CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque re', REAL(Torq))
      CALL ListAddConstReal(Model % Simulation,'res: Air Gap Torque im', AIMAG(Torq))
+
+     zforce = CMPLX( ParallelReduction(REAL(zforce)), ParallelReduction(AIMAG(zforce)) )
+     CALL ListAddConstReal(Model % Simulation,'res: Radial force(vol) re', REAL(zforce))
+     CALL ListAddConstReal(Model % Simulation,'res: Radial force(vol) im', AIMAG(zforce))
+
+   zzforce = 0
+   IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+     do i=1,Mesh % NumberOFBoundaryElements
+       Element => GetBoundaryElement(i)
+       IF (.NOT.GetLogical(GetBC(), 'Calculate Radial Force', Found ) ) CYCLE
+
+       Parent => Element % BoundaryInfo % Left
+       n  = GetELementNofNodes(Parent)
+       nd = GetELementNofDOFs(Parent)
+       CALL RadialForceSurf(zzforce,Element,n,nd)
+     END DO
+   END IF
+     IF(ListGetLogicalAnyBC(Model,'Calculate Radial Force')) THEN
+       zzforce = CMPLX( ParallelReduction(REAL(zzforce)), ParallelReduction(AIMAG(zzforce)) )
+       CALL ListAddConstReal(Model % Simulation,'res: Radial force(surf) re', REAL(zzforce))
+       CALL ListAddConstReal(Model % Simulation,'res: Radial force(surf) im', AIMAG(zzforce))
+     END IF
    END IF
 
    IF( CalcInertia ) THEN
@@ -3385,6 +3559,130 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+  SUBROUTINE RadialForce(U,Element,n,nd)
+!------------------------------------------------------------------------------
+    INTEGER :: n,nd
+    COMPLEX(KIND=dp)::U
+    TYPE(Element_t)::Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: dBasisdx(nd,3),Basis(nd), DetJ, &
+             POT(2,nd),x,y,r,r0,r1,Wbasis(nd,3),RotWBasis(nd,3)
+    COMPLEX(KIND=dp) :: B(3,nd), POTC(nd), Bx, By, Bz, Br, Bp
+    INTEGER :: t
+    LOGICAL :: stat, Found
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+	!$OMP THREADPRIVATE(Nodes)
+
+    r0 = GetCReal(GetBodyParams(),'r inner',Found)
+    r1 = GetCReal(GetBodyParams(),'r outer',Found)
+    IF (.NOT.Found) RETURN
+
+    CALL GetElementNodes( Nodes, Element )
+
+    x = SUM(Nodes % x(1:n))/n
+    y = SUM(Nodes % y(1:n))/n
+    r = SQRT(x**2+y**2)
+    IF (r<r0.OR.r>r1) RETURN
+
+    CALL GetLocalSolution(POT, UElement=Element)
+    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd) )
+  
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      IF (PiolaVersion) THEN
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+      ELSE
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+      END IF
+
+      x = SUM(Nodes % x(1:n)*Basis(1:n))
+      y = SUM(Nodes % y(1:n)*Basis(1:n))
+      r = SQRT(x**2+y**2)
+      x = x/r; y=y/r
+
+      Bx =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,1))
+      By =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,2))
+      Bz =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,3))
+      U = U + IP % s(t) * detJ * 1 * &
+           CMPLX((REAL(Bx)*REAL(Bz)*x + REAL(By)*REAL(Bz)*y), &
+                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y)) &
+               /(PI*4.0d-7*(r1-r0))
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE RadialForce
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE RadialForceSurf(U,Element,n,nd)
+!------------------------------------------------------------------------------
+    INTEGER :: n,nd
+    COMPLEX(KIND=dp)::U
+    TYPE(Element_t)::Element
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER ::PARENT
+    REAL(KIND=dp) :: dBasisdx(nd,3),Basis(nd), DetJ, Pdetj, uu,v,w, &
+             POT(2,nd),x,y,r,r0,r1,Wbasis(nd,3),RotWBasis(nd,3)
+    COMPLEX(KIND=dp) :: B(3,nd), POTC(nd), Bx, By, Bz
+    INTEGER :: t
+    LOGICAL :: stat, Found
+    TYPE(Nodes_t), SAVE :: Nodes, PNodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+	!$OMP THREADPRIVATE(Nodes)
+
+    CALL GetElementNodes( Nodes, Element )
+    Parent => Element % BoundaryInfo % Left
+    CALL GetElementNodes( PNodes, Parent )
+
+    CALL GetLocalSolution(POT, UElement=Parent )
+    POTC = CMPLX( POT(1,1:nd), POT(2,1:nd) )
+  
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      IF (PiolaVersion) THEN
+        CALL Warn('RadialForceSurf', 'Surface force not implemented for Piola Elements')
+        return
+!       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+!           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+      ELSE
+
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+
+        Call GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+        stat = ElementInfo( Parent, PNodes, uu,v,w, pdetJ, Basis, dBasisdx )
+
+        CALL GetEdgeBasis(Parent,WBasis,RotWBasis,Basis,dBasisdx)
+      END IF
+
+      x = SUM(Basis(1:n) * PNodes % x(1:n))
+      y = SUM(Basis(1:n) * PNodes % y(1:n))
+      r = SQRT(x**2 + y**2)
+      x=x/r; y=y/r
+
+      Bx =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,1))
+      By =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,2))
+      Bz =  SUM(POTC(n+1:nd) * RotWBasis(1:nd-n,3))
+      U = U + IP % s(t) * detJ * &
+           CMPLX((REAL(Bx)*REAL(Bz)*x + REAL(By)*REAL(Bz)*y), &
+                (AIMAG(Bx)*AIMAG(Bz)*x + AIMAG(By)*AIMAG(Bz)*y)) /(PI*4.0d-7)
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE RadialForceSurf
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
@@ -6298,3 +6596,4 @@ CONTAINS
 !------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamicsCalcFields
 !------------------------------------------------------------------------
+
