@@ -1,55 +1,63 @@
 MODULE LocalTypes
-	USE Types
+    USE Types
     IMPLICIT NONE
 
-	TYPE ElementCache_t
-		TYPE(ElementType_t), POINTER :: Type => NULL()
-		INTEGER :: nc = 0
-		REAL(Kind=dp), POINTER :: U(:)=>NULL(),V(:)=>NULL(),W(:)=>NULL()
-	END TYPE ElementCache_t
-
+    TYPE ElementCache_t
+        TYPE(ElementType_t), POINTER :: Type => NULL()
+        INTEGER :: nc = 0
+        REAL(Kind=dp), POINTER :: U(:)=>NULL(),V(:)=>NULL(),W(:)=>NULL()
+    END TYPE ElementCache_t
+    
     TYPE VertexMap_t
         INTEGER, ALLOCATABLE :: vlist(:)
     END TYPE VertexMap_t
-
+    
     TYPE IntegerList_t
         INTEGER :: nelem = 0
         INTEGER, ALLOCATABLE :: entries(:)
     END TYPE IntegerList_t
-
+    
     TYPE IntegerHashBucket_t
+        ! Bucket elements
         TYPE(IntegerList_t), ALLOCATABLE :: list
-        TYPE(IntegerList_t), ALLOCATABLE :: entryloc
     END TYPE IntegerHashBucket_t
 
     TYPE IntegerHashSet_t
         TYPE(IntegerHashBucket_t), ALLOCATABLE :: set(:)
         TYPE(IntegerList_t), ALLOCATABLE :: entries
+        REAL(KIND=dp) :: fratio
     END TYPE IntegerHashSet_t
 
     INTEGER, PARAMETER :: INTEGERLIST_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_CHAIN_DEFAULT_SIZE = 8
-    REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = 0.75
+    REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = REAL(0.75, dp)
 
 CONTAINS
 
-    SUBROUTINE IntegerHashSetInit(iset, isize)
+    SUBROUTINE IntegerHashSetInit(iset, isize, fratio)
         IMPLICIT NONE
 
         TYPE(IntegerHashSet_t) :: iset
         INTEGER, INTENT(IN), OPTIONAL :: isize
+        REAL(KIND=dp), INTENT(IN), OPTIONAL :: fratio
 
         INTEGER :: i, n, cn, allocstat
 
         n = INTEGERHASHSET_DEFAULT_SIZE
         IF (PRESENT(isize)) n = isize
+        iset % fratio = INTEGERHASHSET_FILLRATIO
+        IF (PRESENT(fratio) .AND. fratio > 0 & 
+              .AND. fratio <= REAL(1,dp)) iset % fratio = fratio
+        write (*,*) isize, iset % fratio, ALLOCATED(iset % set), ALLOCATED(iset % entries)
 
         IF (ALLOCATED(iset % set)) DEALLOCATE(iset % set)
+        IF (ALLOCATED(iset % entries)) DEALLOCATE(iset % entries)
 
-        ALLOCATE(iset % set(FLOOR(n/INTEGERHASHSET_FILLRATIO)), &
+        ALLOCATE(iset % set(FLOOR(n/iset % fratio)), &
                  iset % entries, STAT=allocstat)
-        IF (allocstat /= 0) CALL Fatal('IntegerHashSetInit', 'Memory allocation error!')
+        IF (allocstat /= 0) CALL Fatal('IntegerHashSetInit', &
+                                       'Memory allocation error!')
 
         CALL IntegerListInit(iset % entries, n)
     END SUBROUTINE IntegerHashSetInit
@@ -60,63 +68,87 @@ CONTAINS
         TYPE(IntegerHashSet_t) :: iset
         INTEGER, INTENT(IN) :: key
 
-        INTEGER :: hkey, lind, allocstat
+        INTEGER :: i, n, nelem, hkey, lind, allocstat
+        REAL(KIND=dp) :: fratio
+        INTEGER, ALLOCATABLE :: elementsold(:)
 
         ! Check for overfill and rehash if necessary
-        ! TODO!
+        n = SIZE(iset % set)
+        fratio = iset % fratio
+        IF ((iset % entries % nelem + 1) > FLOOR(iset % fratio * n)) THEN
+            ! Store elements of old hash table
+            nelem = iset % entries % nelem
+            ALLOCATE(elementsold(nelem), STAT=allocstat)
+            IF (allocstat /= 0) CALL Fatal('IntegerHashSetAdd', &
+                                           'Memory allocation error!')
+            elementsold(1:nelem) = iset % entries % entries(1:nelem)
 
-        ! Add entry to Hash table
+            ! Reinitialize hashset (if pointers were used, we would need
+            ! to call deleteall before the init)
+            CALL IntegerHashSetInit(iset, 2*n, fratio)
+            ! Rehash elements to new hashset
+            DO i=1,nelem
+                CALL IntegerHashSetAddHashEntry(iset, elementsold(i))
+            END DO
+            DEALLOCATE(elementsold)
+        END IF
+
+        ! Add the requested entry to the hashset
+        CALL IntegerHashSetAddHashEntry(iset, key)
+    END SUBROUTINE IntegerHashSetAdd
+   
+    SUBROUTINE IntegerHashSetAddHashEntry(iset, key)
+        IMPLICIT NONE
+        TYPE(IntegerHashSet_t) :: iset
+        INTEGER, INTENT(IN) :: key
+        
+        INTEGER :: n, hkey, lind, allocstat
+        
         hkey = IntegerHashSetHashFunction(iset, key)
         IF (.NOT. ALLOCATED(iset % set(hkey) % list)) THEN
             ! Add new chain and entry
-            ALLOCATE(iset % set(hkey) % list, iset % set(hkey) % entryloc, STAT=allocstat)
-            IF (allocstat /= 0) CALL Fatal('IntegerHashSetAdd', 'Memory allocation error!')
+            ALLOCATE(iset % set(hkey) % list, STAT=allocstat)
+            IF (allocstat /= 0) CALL Fatal('IntegerHashSetAddHashEntry', &
+                  'Memory allocation error!')
 
             CALL IntegerListInit(iset % set(hkey) % list, INTEGERHASHSET_CHAIN_DEFAULT_SIZE)
-            CALL IntegerListInit(iset % set(hkey) % entryloc, INTEGERHASHSET_CHAIN_DEFAULT_SIZE)
 
             CALL IntegerListAdd(iset % set(hkey) % list, key)
             CALL IntegerListAdd(iset % entries, key)
-            CALL IntegerListAdd(iset % set(hkey) % entryloc, iset % entries % nelem)
         ELSE
             ! Old chain, just add entry
             ASSOCIATE(chain => iset % set(hkey))
-                lind = IntegerListFind(chain % list, key)
+              lind = IntegerListFind(chain % list, key)
 
-                ! A set can only contain one reference to each item
-                IF (lind < 0) THEN
-                    CALL IntegerListAdd(chain % list, key)
-                    CALL IntegerListAdd(iset % entries, key)
-                    CALL IntegerListAdd(chain % entryloc, iset % entries % nelem)
-                END IF
+              ! A set can only contain one reference to each item
+              IF (lind < 0) THEN
+                  CALL IntegerListAdd(chain % list, key)
+                  CALL IntegerListAdd(iset % entries, key)
+              END IF
             END ASSOCIATE
         END IF
-    END SUBROUTINE IntegerHashSetAdd
-
+        
+    END SUBROUTINE IntegerHashSetAddHashEntry
+    
     SUBROUTINE IntegerHashSetDelete(iset, key)
         IMPLICIT NONE
 
         TYPE(IntegerHashSet_t) :: iset
         INTEGER, INTENT(IN) :: key
 
-        INTEGER :: hkey, lind, ekey
+        INTEGER :: hkey, lind
 
         hkey = IntegerHashSetHashFunction(iset, key)
-        ASSOCIATE(chain => iset % set(hkey))
-
-            IF (ALLOCATED(chain % list)) THEN
-                lind = IntegerListFind(chain % list, key)
-
-                IF (lind > 0) THEN
-                    ! Delete values from chain and store index of entry
-                    CALL IntegerListDeleteAt(chain % list, lind)
-                    ekey = IntegerListAt(chain % entryloc, lind)
-                    CALL IntegerListDeleteAt(chain % entryloc, lind)
-                    ! Delete entry from entry list
-                    CALL IntegerListDeleteAt(iset % entries, ekey)
-                END IF
+        IF (ALLOCATED(iset % set(hkey) % list)) THEN
+            lind = IntegerListFind(iset % set(hkey) % list, key)
+            IF (lind > 0) THEN
+                ! Delete values from chain
+                CALL IntegerListDeleteAt(iset % set(hkey) % list, lind)
+            
+                ! Delete entry from entry list (O(n) operation)
+                CALL IntegerListDelete(iset % entries, key)
             END IF
-        END ASSOCIATE
+        END IF
     END SUBROUTINE IntegerHashSetDelete
 
     SUBROUTINE IntegerHashSetDeleteAll(iset)
@@ -127,13 +159,11 @@ CONTAINS
 
         DO ent=1, iset % entries % nelem
             hkey = IntegerHashSetHashFunction(iset, iset % entries % entries(ent))
-
-            ! Elements of chain may not be allocated
-            ! if they have been removed before
+            ! Elements of chain may not be allocated if they have been 
+            ! previously deallocated by this routine
             IF (ALLOCATED(iset % set(hkey) % list)) THEN
                 CALL IntegerListDeleteAll(iset % set(hkey) % list)
-                CALL IntegerListDeleteAll(iset % set(hkey) % entryloc)
-                DEALLOCATE(iset % set(hkey) % list, iset % set(hkey) % entryloc)
+                DEALLOCATE(iset % set(hkey) % list)
             END IF
         END DO
 
@@ -164,8 +194,9 @@ CONTAINS
 
         INTEGER :: hkey
 
-        ! NIY
-        hkey = 0
+        ! TODO: Make a proper implementation of a hash function
+        ! Now just take modulo of the table size to get key
+        hkey = MOD(key,SIZE(iset % set))+1
     END FUNCTION IntegerHashSetHashFunction
 
     SUBROUTINE IntegerListInit(ilist, isize)
@@ -194,7 +225,7 @@ CONTAINS
         INTEGER :: key
 
         key = 0
-        IF (ind < 0 .AND. ind > SIZE(ilist % entries)) RETURN
+        IF (ind < 0 .OR. ind > SIZE(ilist % entries)) RETURN
         key = ilist % entries(ind)
     END FUNCTION IntegerListAt
 
@@ -224,6 +255,36 @@ CONTAINS
         ilist % entries(ilist % nelem)=item
     END SUBROUTINE IntegerListAdd
 
+    SUBROUTINE IntegerListAddAll(ilist, alist)
+      IMPLICIT NONE
+
+      TYPE(IntegerList_t) :: ilist
+      TYPE(IntegerList_t) :: alist
+      
+      INTEGER :: i, isize, ni, na, allocstat
+      INTEGER, ALLOCATABLE :: elementsnew(:)
+
+      isize = SIZE(ilist % entries)
+      ni = ilist % nelem
+      na = alist % nelem 
+      ! Check if reallocation of ilist is needed
+      IF (isize < ni + na) THEN
+          ! Reallocate a list structure with enough space
+          ALLOCATE(elementsnew(2*isize+na), STAT=allocstat)
+          IF (allocstat /= 0) CALL Fatal('IntegerListAddAll',&
+                                         'Memory allocation error!')
+          
+          ! Copy elements, deallocate old element vector and move allocation
+          elementsnew(1:ni)=ilist % entries(1:ni)
+          DEALLOCATE(ilist % entries)
+          CALL MOVE_ALLOC(elementsnew, ilist % entries)
+      END IF
+
+      ! ilist has space to hold all elements in alist
+      ilist % entries(ni+1:ni+na) = alist % entries(1:na)
+      ilist % nelem = ilist % nelem + na
+    END SUBROUTINE IntegerListAddAll
+
     SUBROUTINE IntegerListDelete(ilist, item)
         IMPLICIT NONE
 
@@ -244,7 +305,7 @@ CONTAINS
 
         INTEGER :: i
 
-        IF (ind < 0 .AND. ind > SIZE(ilist % entries)) RETURN
+        IF (ind < 0 .OR. ind > SIZE(ilist % entries)) RETURN
 
         DO i=ind, ilist % nelem-1
             ilist % entries(i) = ilist % entries(i+1)

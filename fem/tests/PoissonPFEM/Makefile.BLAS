@@ -25,10 +25,15 @@ PoissonOMPBLAS.so: PoissonOMPBLAS.o ElementBasisFunctions.o LocalTypes.o
 
 all: $(OBJS)
 
-test: $(OBJS)
-	$(ELMERF90) ListTest.F90 -o ListTest.o
+listtest: $(OBJS)
+	$(ELMERF90) -c ListTest.F90 -o ListTest.o
 	$(ELMERLD) LocalTypes.o ListTest.o -o ListTest.so
 	gfortran ListTest.so -o ListTest 
+
+settest: $(OBJS)
+	$(ELMERF90) -c SetTest.F90 -o SetTest.o
+	$(ELMERLD) LocalTypes.o SetTest.o -o SetTest.so
+	gfortran SetTest.so -o SetTest 
 	
 clean:
 	rm -f *.so *.o
