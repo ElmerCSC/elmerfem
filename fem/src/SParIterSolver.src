@@ -1739,6 +1739,7 @@ INTEGER::inside
       CALL ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
       DEALLOCATE( VecEPerNB )
 
+!     CALL ExchangeSourceVec( SourceMatrix, SplittedMatrix, ParallelInfo, RHSVec )
       RETURN
    END IF
 #endif
@@ -1849,7 +1850,8 @@ INTEGER::inside
 
       CALL ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, XVec )
       DEALLOCATE( VecEPerNB )
-
+   
+!     CALL ExchangeSourceVec( SourceMatrix, SplittedMatrix, ParallelInfo, RHSVec )
       RETURN
    END IF
 #endif
@@ -2002,7 +2004,7 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
   REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE)
   INTEGER :: ipar(HUTI_IPAR_DFLTSIZE)
   REAL(KIND=dp), DIMENSION(:,:), POINTER :: Work
-  REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRHSVec, r(:)
+  REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRHSVec, r
 
   INTEGER(KIND=AddrInt) :: AddrFunc
   REAL(KIND=dp) :: ILUT_TOL
@@ -2026,8 +2028,11 @@ REAL(kind=dp)::cputime,realtime,tt,rt
   ALLOCATE(TmpRHSVec(SplittedMatrix % InsideMatrix % NumberOfRows))
   TmpRHSVec = 0
 
+  ALLOCATE(r(SIZE(rhsvec)))
+  r = RHSvec
   CALL ExchangeRHSIf( SourceMatrix, SplittedMatrix, &
-         ParallelInfo, RHSVec, TmpRHSVec )
+         ParallelInfo, r, TmpRHSVec )
+  DEALLOCATE(r)
 
   !----------------------------------------------------------------------
   !

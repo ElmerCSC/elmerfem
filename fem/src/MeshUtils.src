@@ -1016,6 +1016,10 @@ END SUBROUTINE GetMaxDefs
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
        ParentElem, OtherElem
 
+   LOGICAL :: DoneThisAlready = .FALSE.
+
+   IF (DoneThisAlready) RETURN
+   DoneThisAlready = .TRUE.
 
    Parallel = ( ParEnv % PEs > 1 )
 
@@ -3846,8 +3850,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:), &
         InvPerm1(:), InvPerm2(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
-    REAL(KIND=dp) :: RadCoeff,Rad0
-    LOGICAL :: SetRadius, OnTheFlyBC
+    LOGICAL :: OnTheFlyBC
 
     TYPE(Element_t), POINTER :: Parent,q
     INTEGER :: en, in
@@ -3899,9 +3902,6 @@ END SUBROUTINE GetMaxDefs
     CALL AllocateVector( BMesh2 % Elements,n2 )
     CALL AllocateVector( Perm1, Mesh % NumberOfNodes )
     CALL AllocateVector( Perm2, Mesh % NumberOfNodes )
-
-    Rad0 = ListGetConstReal( Model % BCs(This) % Values, &
-        'Mortar Projector Radius',SetRadius)
 
  
 !   Fill in the mesh element structures with the
@@ -4016,12 +4016,6 @@ END SUBROUTINE GetMaxDefs
         BMesh1 % Nodes % x(k1) = Mesh % Nodes % x(i)
         BMesh1 % Nodes % y(k1) = Mesh % Nodes % y(i)
         BMesh1 % Nodes % z(k1) = Mesh % Nodes % z(i)
-
-        IF( SetRadius ) THEN
-          RadCoeff = Rad0 / SQRT( BMesh1 % Nodes % x(k1)**2 +  BMesh1 % Nodes % y(k1)**2) 
-          BMesh1 % Nodes % x(k1) = RadCoeff * BMesh1 % Nodes % x(k1)
-          BMesh1 % Nodes % y(k1) = RadCoeff * BMesh1 % Nodes % y(k1)
-        END IF
       END IF
       
       IF ( Perm2(i) > 0 ) THEN
@@ -4032,12 +4026,6 @@ END SUBROUTINE GetMaxDefs
         BMesh2 % Nodes % x(k2)= Mesh % Nodes % x(i)
         BMesh2 % Nodes % y(k2)= Mesh % Nodes % y(i)
         BMesh2 % Nodes % z(k2)= Mesh % Nodes % z(i)
-
-        IF( SetRadius ) THEN
-          RadCoeff = Rad0 / SQRT( BMesh2 % Nodes % x(k2)**2 +  BMesh2 % Nodes % y(k2)**2) 
-          BMesh2 % Nodes % x(k2) = RadCoeff * BMesh2 % Nodes % x(k2)
-          BMesh2 % Nodes % y(k2) = RadCoeff * BMesh2 % Nodes % y(k2)
-        END IF
       END IF
     END DO
 
@@ -5449,6 +5437,10 @@ END SUBROUTINE GetMaxDefs
         END IF
         CALL Fatal('LevelProjector','Target mesh has too much skew!')
       END IF
+    ELSE
+      ! For 2D meshes currently only the strong method works
+      StrongNodes = .TRUE.
+      DoEdges = .FALSE.
     END IF
 
     ! This is the tolerance used to define constant direction in radians
@@ -5515,7 +5507,7 @@ END SUBROUTINE GetMaxDefs
     SomethingUndone = .FALSE.
 
     ! If requested, create mapping for node dofs
-    !------------------------------------------------------------------
+    !------------------------------------------------------------------   
     EdgeRow0 = 0
     IF( DoNodes ) THEN
       IF( StrongNodes ) THEN
@@ -5599,6 +5591,8 @@ END SUBROUTINE GetMaxDefs
       REAL(KIND=dp) :: e1(2),e2(2),DotProdM, PhiM, ArcCoeff
       INTEGER, POINTER :: IndexesM(:)
 
+      CALL Info('LevelProjector','Checking mesh skew')
+
       n = 4
       ALLOCATE( NodesM % x(n), NodesM % y(n) )
       MaxSkew = 0.0_dp
@@ -5609,7 +5603,7 @@ END SUBROUTINE GetMaxDefs
         
         ElementM => BMesh % Elements(indM)        
         IF( ElementM % TYPE % ElementCode / 100 /= 4 ) THEN
-          CALL Fatal('PlaneProjector','Assuming quads on the target surface!')
+          CALL Fatal('LevelProjector','Assuming quads on the target surface!')
         END IF
         IndexesM => ElementM % NodeIndexes
         NodesM % y(1:n) = BMesh % Nodes % y(IndexesM(1:n))
@@ -6468,9 +6462,6 @@ END SUBROUTINE GetMaxDefs
       DO ind=1,BMesh1 % NumberOfBulkElements
 
         Element => BMesh1 % Elements(ind)        
-        IF( Element % TYPE % ElementCode / 100 /= 4 ) THEN
-          CALL Fatal('PlaneProjector','Assuming quads on the surface1')
-        END IF
         Indexes => Element % NodeIndexes
 
         n = Element % TYPE % NumberOfNodes
@@ -6480,11 +6471,6 @@ END SUBROUTINE GetMaxDefs
         ELSE
           nf = 0
         END IF
-
-!        PRINT *,'Element n:',n,ne,nf
-!        n = GetElementNOFNodes( Element ) 
-!        nd = GetElementNOFDOFs( Element )  
-!        nb = GetElementNOFBDOFs( Element ) 
         
         Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
         Nodes % y(1:n) = BMesh1 % Nodes % y(Indexes(1:n))
@@ -6555,9 +6541,6 @@ END SUBROUTINE GetMaxDefs
         DO indM=1,BMesh2 % NumberOfBulkElements
           
           ElementM => BMesh2 % Elements(indM)        
-          IF( ElementM % TYPE % ElementCode / 100 /= 4 ) THEN
-            CALL Fatal('PlaneProjector','Assuming quads on the surface1')
-          END IF
           IndexesM => ElementM % NodeIndexes
           
           NodesM % y(1:n) = BMesh2 % Nodes % y(IndexesM(1:n))
@@ -6880,7 +6863,8 @@ END SUBROUTINE GetMaxDefs
         e1, e2, e12, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides, &
         InvPermSize, indpoffset
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
-    REAL(KIND=dp), POINTER :: Values(:), Basis(:), WBasis(:,:),Wbasis2(:,:),RotWBasis(:,:),dBasisdx(:,:)
+    REAL(KIND=dp), POINTER :: Values(:), Basis(:), WBasis(:,:), &
+                 Wbasis2(:,:),RotWBasis(:,:),dBasisdx(:,:)
     REAL(KIND=dp) :: u,v,w,val,detJ,Scale,x,weight,Coeff
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
@@ -6894,7 +6878,7 @@ END SUBROUTINE GetMaxDefs
     CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
          //TRIM(I2S(bc)),Level=7)
 
-    Projector => Null()
+    Projector => NULL()
 
     IF( .NOT. Mesh % DisContMesh ) THEN
       CALL Warn('WeightedProjectorDiscont','Discontinuous mesh not created?')
@@ -6994,6 +6978,7 @@ END SUBROUTINE GetMaxDefs
     ELSE
       indpoffset = 0
     END IF
+    InvPerm => NULL()
     InvPermSize = indpoffset
     
     ! Compute the number of potential edges. This mimics the loop that really creates the projector 
@@ -7060,9 +7045,6 @@ END SUBROUTINE GetMaxDefs
     ! Ok, nothing to do just go end tidy things up
     IF( InvPermSize == 0 ) GOTO 100
 
-    ! Create the inverse permutation needed when the projector matrix is added to the global 
-    ! matrix. 
-
     ! Create a list matrix that allows for unspecified entries in the matrix 
     ! structure to be introduced.
     Projector => AllocateMatrix()
@@ -7070,7 +7052,8 @@ END SUBROUTINE GetMaxDefs
     Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
     Projector % ConstraintBC = bc
     
-
+    ! Create the inverse permutation needed when the projector matrix is added to the global 
+    ! matrix. 
     ALLOCATE( Projector % InvPerm( InvPermSize ) )
     InvPerm => Projector % InvPerm
     InvPerm = 0
@@ -7137,7 +7120,7 @@ END SUBROUTINE GetMaxDefs
             DiscontIndexes(i) = j + NoOrigNodes
           END IF
         END DO
-        
+
         IntegStuff = GaussPoints( Element )
         DO j=1,IntegStuff % n
           u = IntegStuff % u(j)
@@ -7187,7 +7170,6 @@ END SUBROUTINE GetMaxDefs
                       size0 + indq, 0.0_dp ) 
                 END IF
               END DO
-
             END IF
           END DO
         END DO
@@ -7365,7 +7347,7 @@ END SUBROUTINE GetMaxDefs
       CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
           TRIM(I2S(SIZE(Projector % Cols)) ), Level=9)
     ELSE
-      DEALLOCATE(Projector); Projector=>NULL()
+      CALL FreeMatrix(Projector); Projector=>NULL()
     END IF
 
 100 DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )

@@ -114,7 +114,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   REAL (KIND=DP), POINTER :: PointCoordinates(:,:), LineCoordinates(:,:), WrkPntr(:)
   INTEGER, ALLOCATABLE :: BoundaryHits(:)
   INTEGER, POINTER :: PointIndex(:), CoordinateIndex(:), CoordinatesElemNo(:), &
-      NodeIndexes(:), MPIOper(:)
+      NodeIndexes(:)
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: ScalarsFile, ScalarNamesFile, DateStr, &
       VariableName, OldVariableName, ResultPrefix, Suffix, Oper, ParOper, Name, &
@@ -133,7 +133,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       ElementValues, CoordinatesBasis, PointCoordinates, NoDims, SaveToFile, &
       BoundaryFluxes, BoundaryAreas, BoundaryHits, VariablesExist, NoLines, &
       LineCoordinates, ScalarParFile, IsParallel, ParallelWrite, ParSolver, PrevNoValues, &
-      LiveGraph, Norm, ParallelReduce, WriteCore, MPIOper, EpsAbs, GotEpsAbs
+      LiveGraph, Norm, ParallelReduce, WriteCore, EpsAbs, GotEpsAbs
 
 !------------------------------------------------------------------------------
 
@@ -723,20 +723,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
 
-  !------------------------------------------------------------------------------
-  !   Add free form expressions with GetCReal
-  !------------------------------------------------------------------------------
-
-
-  NoVar = 0
-  GotVar = .TRUE.
-  DO WHILE( GotVar )
-    NoVar = NoVar + 1    
-    WRITE (Name,'(A,I0)') 'Expression ',NoVar
-    Val = ListGetCReal( Params, TRIM(Name), GotVar )
-    IF( GotVar ) CALL AddToSaveList(TRIM(Name),Val)
-  END DO
-
 
   !------------------------------------------------------------------------------
   !   Add eigenvalues on the list if told to
@@ -972,7 +958,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
   !------------------------------------------------------------------------------
-  ! Update time elapsaed from start if requested
+  ! Update time elapsed from start if requested
   !------------------------------------------------------------------------------
   IF( ListGetLogical( Model % Simulation,'Simulation Timing',GotIt ) ) THEN
     CT = CPUTime() - ListGetConstReal( Model % Simulation,'cputime0',GotIt)
@@ -980,7 +966,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     CALL AddToSaveList('simulation: cpu time (s)',CT )
     CALL AddToSaveList('simulation: real time (s)',RT )
   END IF
-
 
   !------------------------------------------------------------------------------
   ! Read the scalars defined in other modules
@@ -1000,6 +985,18 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
   !------------------------------------------------------------------------------
+  !   Add free form expressions with GetCReal
+  !------------------------------------------------------------------------------
+  NoVar = 0
+  GotVar = .TRUE.
+  DO WHILE( GotVar )
+    NoVar = NoVar + 1    
+    WRITE (Name,'(A,I0)') 'Expression ',NoVar
+    Val = ListGetCReal( Params, TRIM(Name), GotVar )
+    IF( GotVar ) CALL AddToSaveList(TRIM(Name),Val)
+  END DO
+
+  !------------------------------------------------------------------------------
   ! If there are no values 
   !------------------------------------------------------------------------------
   IF( NoValues == 0 ) THEN
@@ -1011,38 +1008,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
   !------------------------------------------------------------------------------
-  ! Reduce data in parallel computations
-  !------------------------------------------------------------------------------
-
-  IF( ParallelReduce ) THEN
-    l = 0
-    DO No=1,NoValues
-      Val = Values(No)
-
-      IF( MPIOper(No) > 0 ) THEN
-        l = l + 1
-        CALL MPI_ALLREDUCE(Val,Val2,1,&
-            MPI_DOUBLE_PRECISION,MPIOper(No),MPI_COMM_WORLD,ierr)
-        Values(No) = Val2
-	IF( MPIOper(No) == MPI_MIN ) THEN
-	  WRITE( ValueNames(No),'(A)') TRIM( ValueNames(No) )//' : mpi_min'
-	ELSE IF( MPIOper(No) == MPI_MAX ) THEN
-	  WRITE( ValueNames(No),'(A)') TRIM( ValueNames(No) )//' : mpi_max'
-	ELSE IF( MPIOper(No) == MPI_SUM ) THEN
-	  WRITE( ValueNames(No),'(A)') TRIM( ValueNames(No) )//' : mpi_sum'
-	END IF	
-      END IF
-    END DO
-    IF(l > 0 ) THEN
-      WRITE (Message,'(A,I0,A)') 'Performed ',l,' parallel reduction operations'
-      CALL Info('SaveScalars',Message)
-    END IF
-  END IF
-
-  !------------------------------------------------------------------------------
   ! Finally save all the scalars into a file 
   !------------------------------------------------------------------------------
-
   IF( SaveToFile ) THEN
 
     LineInd = ListGetInteger( Params,'Line Marker',GotIt)
@@ -1185,28 +1152,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   DO No=1,NoValues
     CALL ListAddConstReal(Model % Simulation,TRIM(ValueNames(No)),Values(No))
   END DO
-
-  !------------------------------------------------------------------------------
-  ! If requested, create variable of the result
-  !------------------------------------------------------------------------------
-  DO No=1,NoValues	
-    WRITE (Name,'(A,I0)') 'Target Variable ',No
-    VariableName = ListGetString( Params, TRIM(Name), GotIt )
-    IF( GotIt ) THEN
-      Var => VariableGet( Model % Variables, TRIM(VariableName) )
-      IF(.NOT. ASSOCIATED(Var)) THEN
-        NULLIFY(WrkPntr)
-        ALLOCATE(WrkPntr(1),STAT=istat)
-	IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 5') 	
-
-        CALL VariableAdd( Model % Variables, Mesh, Solver, &
-               TRIM(VariableName), 1, WrkPntr )
-        Var => VariableGet( Model % Variables, TRIM(VariableName) )       
-      END IF
-      Var % Values(1) = Values(No)
-      CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(No)))
-    END IF
-   END DO
  
   !------------------------------------------------------------------------------
   ! For consistancy checks one may print out a value imitating ComputeChange
@@ -1216,6 +1161,16 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     Norm = Values( NormInd )
     Solver % Variable % Values = Values( NormInd )
     Solver % Variable % Norm = ABS( Values ( NormInd ) ) 
+
+    Name = ListGetString( Params, 'Equation',GotIt)
+    IF(.NOT. GotIt) Name = 'SaveScalars'
+    
+    ! Here the name is ComputeChange in order to get the change also to ElmerGUI
+    ! albeit in a very dirt style. One could also edit ElmerGUI....
+    WRITE( Message, '(a,g15.8,g15.8,a)') &
+        'SS (ITER=1) (NRM,RELC): (',Norm, Change,&
+        ' ) :: '//TRIM( Name )
+    CALL Info( 'ComputeChange', Message, Level=3 )
   END IF
   
   !------------------------------------------------------------------------------
@@ -1283,22 +1238,23 @@ CONTAINS
 
 
 
-    SUBROUTINE AddToSaveList(Name, Val, ValueIsInteger, ParallelOperator )
+  SUBROUTINE AddToSaveList(Name, Val, ValueIsInteger, ParallelOperator )
 
     INTEGER :: n
     CHARACTER(LEN=*) :: Name
-    REAL(KIND=dp) :: Val
+    REAL(KIND=dp) :: Val, ParVal
     LOGICAL, OPTIONAL :: ValueIsInteger
     CHARACTER(LEN=MAX_NAME_LEN), OPTIONAL :: ParallelOperator
-    CHARACTER(LEN=MAX_NAME_LEN) :: ParOper
+    !------------------------------------------------------------------------
+    CHARACTER(LEN=MAX_NAME_LEN) :: Str, ParOper
     REAL, ALLOCATABLE :: TmpValues(:)
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: TmpValueNames(:)
     LOGICAL, POINTER :: TmpValuesInteger(:)     
-    INTEGER, POINTER :: TmpMPIOper(:)
+    INTEGER :: MPIOper
     INTEGER :: istat
     LOGICAL :: GotParOper
 
-    SAVE TmpValues, TmpValueNames, TmpMPIOper
+    SAVE TmpValues, TmpValueNames
 
 
     ! For the first time allocate some space
@@ -1306,11 +1262,6 @@ CONTAINS
       n = 20
       ALLOCATE( Values(n), ValueNames(n), ValuesInteger(n), STAT=istat )
       IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 6') 	
-      IF( ParallelReduce ) THEN
-        ALLOCATE( MPIOper(n),STAT = istat )
-        IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 7') 		
-        MPIOper = 0
-      END IF
     END IF
 
     n = NoValues
@@ -1332,21 +1283,6 @@ CONTAINS
       ValuesInteger(1:n) = TmpValuesInteger(1:n)
       ValueNames(1:n) = TmpValueNames(1:n)
       DEALLOCATE(TmpValues,TmpValueNames,TmpValuesInteger)
-
-      IF( ParallelReduce ) THEN
-        ALLOCATE(TmpMPIOper(n),STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 10') 		
-
-        TmpMPIOper(1:n) = MPIOper(1:n)
-        DEALLOCATE(MPIOper)
-        ALLOCATE(MPIOper(n+10),STAT=istat)
-        IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 11') 		
-
-        MPIOper(1:n) = TmpMPIOper(1:n)
-        MPIOper(n+1:n+10) = 0
-        DEALLOCATE(TmpMPIOper)
-      END IF
-
     END IF
 
     n = n + 1
@@ -1373,31 +1309,62 @@ CONTAINS
 ! normal operators but then this loop is never reached.
 !------------------------------------------------------------------------------------------------
 
-! ET: The following line ended up in a seqfault:
-!        WRITE (Name,'(A,I0)') 'Parallel Operator ',n 
-! Here is a workaround:
-        WRITE (*,'(A,I0)') 'Parallel Operator ',n
-
-        ParOper = ListGetString(Params,TRIM(Name),GotParOper)
+        WRITE (Str,'(A,I0)') 'Parallel Operator ',n 
+        ParOper = ListGetString(Params,TRIM(Str),GotParOper)
       END IF
 
       IF( GotParOper ) THEN
         SELECT CASE( ParOper )
           
         CASE('max' )
-          MPIOper(n) = MPI_MAX
+          MPIOper = MPI_MAX
         CASE('min' )
-          MPIOper(n) = MPI_MIN
+          MPIOper = MPI_MIN
         CASE('sum' )
-          MPIOper(n) = MPI_SUM
+          MPIOper = MPI_SUM
 
         CASE DEFAULT
-          MPIOper(n) = 0
-
+          MPIOper = 0
+          
         END SELECT
+        
+        IF( MPIOper > 0 ) THEN
+          CALL MPI_ALLREDUCE(Val,ParVal,1,&
+              MPI_DOUBLE_PRECISION,MPIOper,MPI_COMM_WORLD,ierr)
+          Values(n) = ParVal
+          IF( MPIOper == MPI_MIN ) THEN
+            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_min'
+          ELSE IF( MPIOper == MPI_MAX ) THEN
+            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_max'
+          ELSE IF( MPIOper == MPI_SUM ) THEN
+            WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_sum'
+          END IF
+        END IF
       END IF
     END IF
 
+
+    !------------------------------------------------------------------------------
+    ! If requested, create variable of the result
+    ! This is performed already here so the variable can be used 
+    ! in subsequent definitions within SaveScalars.
+    !------------------------------------------------------------------------------
+    WRITE (Str,'(A,I0)') 'Target Variable ',n
+    VariableName = ListGetString( Params, TRIM(Str), GotIt )
+    IF( GotIt ) THEN
+      Var => VariableGet( Model % Variables, TRIM(VariableName) )
+      IF(.NOT. ASSOCIATED(Var)) THEN
+        NULLIFY(WrkPntr)
+        ALLOCATE(WrkPntr(1),STAT=istat)
+	IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 5') 	
+ 
+        CALL VariableAdd( Model % Variables, Mesh, Solver, &
+            TRIM(VariableName), 1, WrkPntr )
+        Var => VariableGet( Model % Variables, TRIM(VariableName) )       
+      END IF
+      Var % Values(1) = Values(n)
+      CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(n)))
+    END IF
 
   END SUBROUTINE AddToSaveList
 

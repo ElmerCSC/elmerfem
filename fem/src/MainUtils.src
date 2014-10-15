@@ -880,6 +880,33 @@ CONTAINS
       END IF
     END IF
 
+    IF ( ListGetLogical( Solver % Values,'Nonlinear Apply Limiter', Found ) ) THEN
+      Var_name = GetVarName(Solver % Variable) // ' Contact Load'
+      Var => VariableGet( Solver % Mesh % Variables, var_name )
+      IF ( .NOT. ASSOCIATED(Var) ) THEN
+        ALLOCATE( Solution(SIZE(Solver % Variable % Values)) )
+        DOFs = Solver % Variable % DOFs
+        Solution = 0.0d0
+        nrows = SIZE( Solution ) 
+        Perm => Solver % Variable % Perm
+        VariableOutput = Solver % Variable % Output
+
+        CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+            var_name, Solver % Variable % DOFs, Solution, &
+            Solver % Variable % Perm, Output=VariableOutput )
+
+        IF ( DOFs > 1 ) THEN
+          n = LEN_TRIM( Var_name )
+          DO j=1,DOFs
+            tmpname = ComponentName( var_name(1:n), j )
+            Component => Solution( j:nRows-DOFs+j:DOFs )
+            CALL VariableAdd( Solver % Mesh % Variables, Solver % Mesh, Solver,&
+                tmpname, 1, Component, Perm, Output=VariableOutput )
+          END DO
+        END IF
+        NULLIFY( Solution )
+      END IF
+    END IF
 
     Solver % NOFEigenValues = 0
     Solver % MultiGridLevel = 1

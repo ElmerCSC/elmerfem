@@ -36,6 +36,7 @@
       <Parameter Widget="Edit" >
         <Name> Time Derivative Coefficient </Name>
         <Whatis> Give the multiplier to the time-derivative term for transient cases. </Whatis>
+      </Parameter>
       <Parameter Widget="Edit" >
         <Name> Convection Coefficient </Name>
         <Whatis> Give the multiplier to the convection velocity.</Whatis>
