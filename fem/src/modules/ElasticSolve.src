@@ -188,6 +188,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: AllocationsDone = .FALSE.
   LOGICAL :: CompressibilityDefined = .FALSE.
   LOGICAL :: NormalSpring, NormalTangential
+  LOGICAL :: Converged
 
 
   INTEGER, POINTER :: TempPerm(:),StressPerm(:),PressPerm(:),NodeIndexes(:), &
@@ -212,7 +213,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        ReferenceTemperature(:),BoundaryDispl(:),LocalDisplacement(:,:), PrevSOL(:), &
        PrevLocalDisplacement(:,:), SpringCoeff(:,:,:)
          
-  REAL(KIND=dp) :: RelativeChange, UNorm, TransformMatrix(3,3), &
+  REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), &
        Tdiff,Normal(3),s, UnitNorm
   REAL(KIND=dp) :: at,at0,CPUTime,RealTime
 
@@ -525,7 +526,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      CALL Info( 'ElasticSolve', 'Starting assembly...', Level=4 )
 
      !------------------------------------------------------------------------------
-     CALL DefaultInitialize()
+100  CALL DefaultInitialize()
      !------------------------------------------------------------------------------
      DO t=1,GetNOFActive()
 
@@ -553,7 +554,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
         IF (UseUMAT) THEN
            CALL GetConstRealArray( Material, MaterialConstants, 'Material Constants', GotIt)
-           IF ( size(MaterialConstants,1) /= NPROPS) &
+           IF ( SIZE(MaterialConstants,1) /= NPROPS) &
                 CALL Fatal('ElasticSolve','Check the size of Material Constants array')
         ELSE
            IF (NeoHookeanMaterial) THEN
@@ -722,7 +723,6 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END DO
 
      CALL DefaultFinishBulkAssembly()
-     CALL Info( 'ElasticSolve', 'Bulk assembly done', Level=5 )
 
      !------------------------------------------------------------------------------
      !     Neumann & Newton boundary conditions
@@ -902,20 +902,18 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         END IF
      END DO
      !------------------------------------------------------------------------------
-
+     CALL DefaultFinishBoundaryAssembly()
      CALL DefaultFinishAssembly()
      CALL DefaultDirichletBCs()
-
-     !------------------------------------------------------------------------------
-
-     CALL Info( 'ElasticSolve', 'BCs are now set', Level=5 )
 
      !------------------------------------------------------------------------------
      !     Solve the system and check for convergence
      !------------------------------------------------------------------------------
 
+     IF( DefaultLinesearch( Converged ) ) GOTO 100
+     IF( Converged ) EXIT
+
      UNorm = DefaultSolve()
-     RelativeChange = Solver % Variable % NonlinChange
 
      !----------------------------------------------------------------------------------
 
