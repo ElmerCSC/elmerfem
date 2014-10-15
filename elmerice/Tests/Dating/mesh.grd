@@ -20,5 +20,5 @@ Coordinate Ratios = 1
 Element Innernodes = False 
 Element Degree = 1
 Triangles = True 
-Element Divisions 1 = 100
-Element Divisions 2 = 10
+Element Divisions 1 = 1500
+Element Divisions 2 = 2

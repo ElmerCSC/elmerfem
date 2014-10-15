@@ -3065,14 +3065,15 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: DoubleWrk
   REAL :: SingleWrk
 
-  LOGICAL :: MaskExists, BinaryOutput, AsciiOutput, SinglePrec, NoFileindex
+  LOGICAL :: MaskExists, BinaryOutput, AsciiOutput, SinglePrec, NoFileindex, &
+      SkipHalo, SaveOnlyHalo, IsHalo, IsBoundaryElement
   CHARACTER(MAX_NAME_LEN) :: Str, MaskName
   TYPE(Variable_t), POINTER :: MaskVar
   INTEGER, POINTER :: MaskPerm(:), NodePerm(:),NodeOrder(:)
   INTEGER :: NumberOfNodes, NumberOfElements, ParallelNodes, ParallelElements
-  TYPE(Element_t), POINTER :: CurrentElement
+  TYPE(Element_t), POINTER :: CurrentElement, LeftElem, RightElem
   TYPE(ValueList_t),POINTER :: Params
-  INTEGER :: MaxModes, BCOffset, ElemFirst, ElemLast
+  INTEGER :: MaxModes, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex
   INTEGER, POINTER :: ActiveModes(:), Indexes(:)
   LOGICAL :: GotActiveModes, EigenAnalysis, WriteIds, SaveBoundariesOnly, SaveBulkOnly, &
       GotMaskName, AllNodesUsed, SaveElemental, SaveNodal, GotMaskCond
@@ -3144,6 +3145,15 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Initialize stuff for masked saving
   !------------------------------------------------------------------------------
+  ! Halo exists only in parallel
+  IF( Parallel ) THEN
+    SkipHalo = GetLogical( Params,'Skip Halo Elements', GotIt )
+    SaveOnlyHalo = GetLogical( Params,'Save Halo Elements Only', GotIt )
+  ELSE
+    SkipHalo = .FALSE.
+    SaveOnlyHalo = .FALSE.
+  END IF
+
   GotMaskName = .FALSE.
   Str = GetString( Params,'Mask Variable',MaskExists)
   IF( MaskExists ) THEN
@@ -3196,7 +3206,9 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     !-----------------------------------------------------------------------
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       
-      IF( i > Mesh % NumberOfBulkElements ) THEN
+      IsBoundaryElement = ( i > Mesh % NumberOfBulkElements )
+
+      IF( IsBoundaryElement ) THEN
         IF( SaveBulkOnly ) CYCLE
       ELSE
         IF( SaveBoundariesOnly ) CYCLE
@@ -3207,6 +3219,38 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
       IF( GetElementFamily( CurrentElement ) == 1 ) CYCLE          
       
+      IF( SkipHalo .OR. SaveOnlyHalo ) THEN
+        IF( IsBoundaryElement ) THEN
+          LeftElem => CurrentElement % BoundaryInfo % Left
+          IF( ASSOCIATED( LeftElem ) ) THEN
+            LeftIndex = LeftElem % ElementIndex
+            IF( LeftIndex > 0 ) THEN
+              IF( Mesh % Elements(LeftIndex) % PartIndex /= ParEnv % MyPe ) LeftIndex = 0
+            END IF
+          ELSE
+            LeftIndex = 0
+          END IF
+          RightElem => CurrentElement % BoundaryInfo % Right
+          IF( ASSOCIATED( RightElem ) ) THEN
+            RightIndex = RightElem % ElementIndex
+            IF( RightIndex > 0 ) THEN
+              IF( Mesh % Elements(RightIndex) % PartIndex /= ParEnv % MyPe ) RightIndex = 0
+            END IF
+          ELSE
+            RightIndex = 0
+          END IF
+          IsHalo = ( LeftIndex == 0 .AND. RightIndex == 0 )
+        ELSE
+          IsHalo = ( CurrentElement % PartIndex /= ParEnv % MyPe )
+        END IF
+        IF( IsHalo ) THEN
+          IF( SkipHalo ) CYCLE
+        ELSE
+          IF( SaveOnlyHalo ) CYCLE
+        END IF
+      END IF
+
+
       IF( MaskExists ) THEN
         IF( ANY(MaskPerm(CurrentElement % NodeIndexes) <= 0) ) CYCLE
       END IF
@@ -3463,9 +3507,10 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Solution
     INTEGER, POINTER :: Perm(:), Perm2(:), DispPerm(:), Disp2Perm(:)
     REAL(KIND=dp), POINTER :: Values(:), DispValues(:), Disp2Values(:), Values2(:), Values3(:)
-    REAL(KIND=dp) :: x,y,z, val
+    REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3)
     INTEGER(KIND=dp), ALLOCATABLE :: ElemInd(:)
-    REAL(KIND=dp), ALLOCATABLE :: ElemVectVal(:)
+!    REAL(KIND=dp), ALLOCATABLE :: ElemVectVal(:)
+    
     COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: CurrentElement, Parent
@@ -3784,6 +3829,8 @@ CONTAINS
     END IF
     
   IF( SaveElemental ) THEN
+    ALLOCATE( ElemInd(Model % Mesh % MaxElementDOFS))
+
     DO Rank = 0,1
       DO Vari = 1, 999
 
@@ -3888,12 +3935,12 @@ CONTAINS
         IF( WriteData ) THEN
           IF( BinaryOutput ) WRITE( VtuUnit ) k
 
-          ALLOCATE(ElemVectVal(sdofs), ElemInd(Model % Mesh % MaxElementDOFS))
           DO i = ElemFirst, ElemLast
             IF( .NOT. ActiveElem(i) ) CYCLE
             CurrentElement => Model % Elements(i)
 
-            ElemVectVal = 0._dp; ElemInd = 0
+            ElemVectVal = 0._dp
+            ElemInd = 0
             n = GetElementNOFNodes(CurrentElement)
 
             IF ( ASSOCIATED(CurrentElement % BoundaryInfo) .AND. .NOT. &
@@ -3918,17 +3965,21 @@ CONTAINS
             END IF
 
             IF ( ALL(ElemInd(1:n)>0)) THEN
-              DO k=1,sdofs
-                IF( k > dofs ) THEN
-                  ElemVectVal(k) = 0.0_dp
-                ELSE IF(ComponentVector) THEN
-                  IF (k==1) ElemVectVal(k) = SUM(Values(ElemInd(1:n)))/n
-                  IF (k==2) ElemVectVal(k) = SUM(Values2(ElemInd(1:n)))/n
-                  IF (k==3) ElemVectVal(k) = SUM(Values3(ElemInd(1:n)))/n
-                ELSE
-                  ElemVectVal(k) = SUM(Values(dofs*(ElemInd(1:n)-1)+k))/n
-                END IF
-              END DO
+              IF( sdofs == 1 ) THEN
+                ElemVectVal(1) = SUM(Values(ElemInd(1:n))) / n
+              ELSE
+                DO k=1,sdofs
+                  IF( k > dofs ) THEN
+                    ElemVectVal(k) = 0.0_dp
+                  ELSE IF(ComponentVector) THEN
+                    IF (k==1) ElemVectVal(k) = SUM(Values(ElemInd(1:n)))/n
+                    IF (k==2) ElemVectVal(k) = SUM(Values2(ElemInd(1:n)))/n
+                    IF (k==3) ElemVectVal(k) = SUM(Values3(ElemInd(1:n)))/n
+                  ELSE
+                    ElemVectVal(k) = SUM(Values(dofs*(ElemInd(1:n)-1)+k))/n
+                  END IF
+                END DO
+              END IF
             END IF
 
             DO k=1,sdofs
@@ -3937,7 +3988,6 @@ CONTAINS
           END DO
 
           CALL AscBinRealWrite( 0.0_dp, .TRUE. )
-          DEALLOCATE(ElemVectVal,ElemInd)
         END IF
         
         IF( AsciiOutput ) THEN
@@ -3946,6 +3996,7 @@ CONTAINS
         END IF
       END DO
     END DO
+    DEALLOCATE(ElemInd)
   END IF  ! IF( SaveElemental )
 
     !---------------------------------------------------------------------
@@ -3978,6 +4029,7 @@ CONTAINS
       IF( WriteData ) THEN        
         IF( BinaryOutput ) WRITE( VtuUnit ) k
         
+
         DO i = ElemFirst, ElemLast
           IF(.NOT. ActiveElem(i)) CYCLE
 
@@ -4271,6 +4323,7 @@ CONTAINS
     REAL(KIND=dp) :: time
     CHARACTER :: lf
     CHARACTER(LEN=MAX_NAME_LEN) :: Str
+    LOGICAL :: Found
 
     SAVE RecLen
 
@@ -4280,7 +4333,7 @@ CONTAINS
       IF( ParEnv % MyPE > 0 ) RETURN
     END IF
     time = GetTime()
-    IF( GetLogical( Params,'Vtu time previous') ) THEN
+    IF( GetLogical( Params,'Vtu time previous',Found) ) THEN
       time = time - GetTimestepSize()
     END IF
 

@@ -2070,6 +2070,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
   FILE *in;
   char *cp,line[MAXLINESIZE],elemfile[MAXFILESIZE],nodefile[MAXFILESIZE], 
     polyfile[MAXLINESIZE];
+  int *invrow,*invcol;
 
 
   if(info) printf("Loading mesh in Triangle format from file %s.*\n",prefix);
@@ -2176,6 +2177,8 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     sscanf(line,"%d %d",&bcelems,&markers);
 
     CreateInverseTopology(data,info);
+    invrow = data->invtopo.rows;
+    invcol = data->invtopo.cols;
 
     AllocateBoundary(bound,bcelems);
 
@@ -2188,6 +2191,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 	sscanf(line,"%d %d %d",&j,&ind1,&ind2);
      
       /* find an element which owns both the nodes */
+#if 0
       for(j=1;j<=data->maxinvtopo;j++) {
 	hit = FALSE;
 	k = data->invtopo[j][ind1];
@@ -2204,6 +2208,24 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 	}
 	if(hit) break;
       }
+#else
+      for(j=invrow[ind1-1];j<invrow[ind1];j++) {
+	k = invcol[j]+1;
+	hit = FALSE;
+
+	for(j2=invrow[ind2-1];j2<invrow[ind2];j2++) {
+	  k2 = invcol[j2]+1;
+	  if(k == k2) {
+	    hit = TRUE;
+	    elemind = k;
+	    break;
+	  }
+	}
+	if(hit) break;
+      }
+#endif
+
+
       if(!hit) return(1);
 
 

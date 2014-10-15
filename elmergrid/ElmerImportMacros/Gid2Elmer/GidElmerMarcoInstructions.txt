@@ -1,0 +1,58 @@
+Instructions for importing meshes into Elmer from GiD
+=====================================================
+
+Note: these procedures have been originally written long ago and may not work with the current version of GiD. 
+
+It is possible to use GiD as a pre processor and mesh generator for Elmer in 2d and 3d analysis. 
+
+Copy the folder elmer.gid under in GiD's problem type folder \GiD\Problemtypes. The folder contains all necessary templates GiD to run under linux- and windows (and possibly Mac) platforms. It may be that the directory also includes the binaries, if not you should compile them from the source codes to stand-alone executables. 
+
+
+Update from Mark Smith in 2014: The updated Elmer problem type for GiD which now handles prism and pyramid elements, though not extensively tested it seems to do the job on windows.
+Included are the original files : findparents.f90.orig and Elmer.bas.orig. (note that the mac type has not been updated). 
+
+
+
+
+
+Elmer/GiD tutorial in 2D                                     ML 16.5.2004
+--------------------------------------------------------------------------
+
+1) Make sure that the folder elmer.gid is copied in \GiD\ProblemTypes.
+   Then, "elmer" should be a valid problem type for GiD and visible in
+   Data -> Problem type.
+
+2) Invoke GiD and choose File -> New 
+
+3) Create a square: Geometry -> Create -> Object -> Rectangle. Give:
+
+       First corner point: 0 0
+       Second corner point: 1 1
+
+4) Right-click the mouse and choose a) Render -> Flat lighting b) Rotate ->
+   Trackball. Select a nice view point and give the command "zoom frame".
+
+5) Choose Data -> Problem type -> elmer
+
+6) Assing boundary conditions to the boundary lines by choosing Data -> 
+   Condition. Select "LineCondition" with Index=1 and assign it to all four
+   boundary lines of the rectangle. NOTE: Only the boundary elements with
+   Index>0 will be written in the mesh file "mesh.boundary".
+
+7) Choose Data -> Materials and assign Index=1 to the surface of the
+   rectangle. NOTE: Only the bulk elements with material Index>0 will be
+   written in the mesh file "mesh.elements".
+
+8) Set Utilities -> Preferences -> Meshing -> Mesh always by default: lines
+   This option is needed to generate the mesh.boundary file.
+
+9) Select Meshing -> Generate. Give size=0.14. As a result, we should
+   get 28 linear boundary elements, 104 triangular bulk elements, and 67
+   nodes.
+
+10) Save the project: File -> Save as. 
+
+11) Save the mesh in elmer-format by choosing Calculate -> Calculate. The
+    mesh.* files written by GiD can be found from the project-folder.
+
+Any questions? Write a message to: mikko.lyly@csc.fi

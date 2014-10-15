@@ -10,9 +10,6 @@ backward compatibility. For that purpose they are currently around
 
 fem/elmerice/Tests
 
-The results are compared with the version 6441 on LGGE's cluster 
-[Intel(R) Xeon(R) CPU           E5640  @ 2.67GHz, 4 cores/CPUs ].
-
 To run the cases in Unix you can go the the directory tests, update
 script with command line:
 
@@ -65,6 +62,13 @@ maintained also in the future versions of Elmer. To do this:
 
 	Step1Data1 [space] Step1Data2 [space] Step1Data3 ....
 	Step2Data1 [space] Step2Data2 [space] Step2Data3 ....
+
+   Create a file named version to describe author and date of the test, Research Institute & Cluster, Elmer(/Ice) version:
+	Example		file established:
+			30.01.2014
+			Laure Tavard,LGGE
+			LGGE Lachouf cluster
+			Revision 6515 
 
 5 ) If you have access right to the svn you may also
 
