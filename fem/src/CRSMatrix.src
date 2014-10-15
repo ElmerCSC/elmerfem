@@ -1045,7 +1045,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     TYPE(Matrix_t), INTENT(IN) :: A                !< The structure holding the matrix A
 !------------------------------------------------------------------------------
     INTEGER, POINTER  CONTIG :: Cols(:),Rows(:)
-    REAL(KIND=dp), POINTER  CONTIG :: Values(:)
+    REAL(KIND=dp), POINTER  CONTIG :: Values(:), Abs_Values(:)
+
     
     INTEGER :: i,j,n
     REAL(KIND=dp) :: rsum
@@ -1069,7 +1070,14 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Values => A % Values
 
     IF  ( A % MatvecSubr /= 0 ) THEN
+#ifdef USE_ISO_C_BINDINGS
+      ALLOCATE(Abs_Values(SIZE(A % Values)))
+      Abs_Values = ABS(Values)
+      CALL MatVecSubrExt(A % MatVecSubr,A % SpMV, n,Rows,Cols,Abs_Values,u,v,0) ! TODO: (bug) must be ABS(Values)
+      DEALLOCATE(Abs_Values)
+#else
       CALL MatVecSubr(A % MatVecSubr,A % SpMV, n,Rows,Cols,ABS(Values),u,v,0)
+#endif
       RETURN
     END IF
 

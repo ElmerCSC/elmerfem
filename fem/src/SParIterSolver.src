@@ -2393,7 +2393,7 @@ END SUBROUTINE SParMatrixVector
 
   REAL(KIND=dp) :: rsum
 
-  REAL(KIND=dp), POINTER CONTIG :: Vals(:)
+  REAL(KIND=dp), POINTER CONTIG :: Vals(:), Abs_Vals(:)
 ! REAL(KIND=dp), POINTER :: Vals(:)
 
   INTEGER, POINTER CONTIG :: Cols(:),Rows(:)
@@ -2467,13 +2467,22 @@ REAL(kind=dp) :: s, RealTime
   !
   !----------------------------------------------------------------------
 
+
   Rows => InsideMatrix % Rows
   Cols => InsideMatrix % Cols
   Vals => InsideMatrix % Values
 
   IF  ( GlobalMatrix % MatvecSubr /= 0 ) THEN
+#ifdef USE_ISO_C_BINDINGS
+  ALLOCATE(Abs_Vals(size(InsideMatrix % Values)))
+  Abs_Vals = ABS(Vals)
+    CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
+            GlobalMatrix % SpMV, n,Rows,Cols,Abs_Vals,u,v,0)
+  DEALLOCATE(Abs_Vals)
+#else
     CALL MatVecSubr(GlobalMatrix % MatVecSubr, &
             GlobalMatrix % SpMV, n,Rows,Cols,ABS(Vals),u,v,0)
+#endif
   ELSE
 !$omp parallel do private(j,rsum)
     DO i = 1, n
