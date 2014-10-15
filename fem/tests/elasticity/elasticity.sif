@@ -42,6 +42,7 @@ Solver 1
   Nonlinear System Newton After Iterations = 20
   Nonlinear System Max Iterations = 1000
   Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Measure = Residual
   Nonlinear System Relaxation Factor = 1.0
   Steady State Convergence Tolerance = 1.0e-4
 
@@ -65,4 +66,4 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.275359863061\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.27899341\n" );
