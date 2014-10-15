@@ -3084,6 +3084,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: BufferSize
 
   Params => GetSolverParams()
+  Mesh => Model % Mesh
+  MeshDim = Mesh % MeshDim
 
   ExtCount = GetInteger( Params,'Output Count',GotIt)
   IF( GotIt ) THEN
@@ -3132,15 +3134,13 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   IF ( nTime == 1 ) THEN
     FilePrefix = GetString( Params,'Output File Name',GotIt )
     IF ( .NOT.GotIt ) FilePrefix = "Output"
+    IF( Mesh % DiscontMesh ) FilePrefix = TRIM(FilePrefix)//'_discont'    
     CALL Info('VtuOutputSolver','Saving results in VTK XML format with prefix: '//TRIM(FilePrefix))
     WRITE( Message,'(A,I0)') 'Saving number of partitions: ',Partitions
     CALL Info('VtuOutputSolver', Message )
   END IF
 
   FixedMesh = ListGetLogical(Params,'Fixed Mesh',GotIt)
-  Mesh => Model % Mesh
-  MeshDim = Mesh % MeshDim
-
 
   !------------------------------------------------------------------------------
   ! Initialize stuff for masked saving
