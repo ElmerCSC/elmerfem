@@ -4063,7 +4063,8 @@ CONTAINS
       WRITE( OutStr,'(A)') '      <Points>'//lf
       CALL AscBinStrWrite( OutStr ) 
 
-      WRITE( OutStr,'(A,I0,A,I0,A)') '        <DataArray type="Float',PrecBits,'" NumberOfComponents="',dim,'"'
+      WRITE( OutStr,'(A,I0,A,I0,A)') '        <DataArray type="Float',&
+          PrecBits,'" NumberOfComponents="',dim,'"'
       CALL AscBinStrWrite( OutStr )       
 
       IF( AsciiOutput ) THEN
@@ -4548,7 +4549,8 @@ CONTAINS
             WRITE( VtuUnit,'(A,A,I1,A)') '      <PDataArray type="Float64" Name="'//TRIM(FullName), &
                 '" NumberOfComponents="',sdofs,'" format="ascii"/>'  
           ELSE 
-            WRITE( VtuUnit,'(A,I0,A,A,I0,A)') '      <PDataArray type="Float',PrecBits,'" Name="'//TRIM(FullName), &
+            WRITE( VtuUnit,'(A,I0,A,A,I0,A)') '      <PDataArray type="Float',&
+                PrecBits,'" Name="'//TRIM(FullName), &
                 '" NumberOfComponents="',sdofs,'" format="appended"/>'  
           END IF
         END DO
@@ -4683,7 +4685,8 @@ CONTAINS
     IF( AsciiOutput ) THEN
       WRITE( VtuUnit,'(A,I0,A)') '      <DataArray type="Float64" NumberOfComponents="',dim,'" format="ascii"/>'    
     ELSE 
-      WRITE( VtuUnit,'(A,I0,A,I0,A)') '      <DataArray type="Float',PrecBits,'" NumberOfComponents="',dim,'" format="appended"/>'    
+      WRITE( VtuUnit,'(A,I0,A,I0,A)') '      <DataArray type="Float',PrecBits,'&
+          " NumberOfComponents="',dim,'" format="appended"/>'    
     END IF
     WRITE( VtuUnit,'(A)') '    </PPoints>' 
 
