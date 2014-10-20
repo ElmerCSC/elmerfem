@@ -3119,7 +3119,7 @@ CONTAINS
              DO j=1,4
                 q = 4 * (Perm(i)-1) + j
                 IF (j==4) THEN
-                   PriCache(1,3) = 0.5d0 * NodalStrain(q)
+                   PriCache(1,3) = NodalStrain(q)
                 ELSE
                    PriCache(j,j) = NodalStrain(q)
                 END IF
@@ -3130,11 +3130,11 @@ CONTAINS
                 IF (j>3) THEN
                    SELECT CASE(j)
                    CASE(4)
-                      PriCache(1,2) = 0.5d0 * NodalStrain(q)
+                      PriCache(1,2) = NodalStrain(q)
                    CASE(5)
-                      PriCache(2,3) = 0.5d0 * NodalStrain(q)
+                      PriCache(2,3) = NodalStrain(q)
                    CASE(6)
-                      PriCache(1,3) = 0.5d0 * NodalStrain(q)
+                      PriCache(1,3) = NodalStrain(q)
                    END SELECT
                 ELSE
                    PriCache(j,j) = NodalStrain(q)
