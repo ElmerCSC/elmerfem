@@ -1,4 +1,4 @@
-/*  
+/*   
    ElmerGrid - A simple mesh generation and manipulation utility  
    Copyright (C) 1995- , CSC - IT Center for Science Ltd.   
 
@@ -4567,6 +4567,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   int *bcnodesaved,*bcnodesaved2,*orphannodes,*bcnode;
   int *bcnodedummy,*elementhalo,*neededtimes2;
   int partstart,partfin,filesetsize,nofile,nofile2;
+  int halobulkelems,halobcs;
   FILE *out,*outfiles[MAXPARTITIONS+1];
   int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart,sumorphannodes,sumindirect;
 
@@ -4590,6 +4591,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   minelemtype = 101;
   maxelemtype = GetMaxElementType(data);
   indirecttype = 0;
+  halobulkelems = 0;
 
   needednodes = Ivector(1,partitions);
   neededtwice = Ivector(1,partitions);
@@ -4775,10 +4777,11 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
 	  if(sidehits == sideelemtype % 100 && elementhalo[part2] != i) {
 	    if(0) printf("Adding halo for partition %d and element %d\n",part2,i);
-	      
+	    halobulkelems += 1;
+
 	    /* Remember that this element is saved for this partition */
 	    elementhalo[part2] = i;
-	      
+	      	   
 	    fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part2,data->material[i],elemtype);
 	      
 	    for(j=0;j < nodesd2;j++) {
@@ -4831,17 +4834,20 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	for(k=1;k<=neededtimes[ind];k++) {
 	  part2 = data->partitiontable[k][ind]; 
 
+	  /* This element is already saved to its primary partition */
 	  if( part == part2 ) continue;
-	  if( part2 < partstart || part2 > partfin ) continue; 
+	  /* if( part2 < partstart || part2 > partfin ) continue;  */
 	  
 	  if( elementhalo[part2] != i ) {
+	    halobulkelems += 1;
+	    
 	    if(0) printf("saving %d in partition %d / %d\n",i,part,part2);
 	    /* Save this element as a halo element for part2 as well */
 	    elementhalo[part2] = i;
 
 	    nofile2 = part2 - partstart + 1; 
 	    bulktypes[part2][elemtype] += 1;
-	    elementsinpart[part2] += 1;
+	    elementsinpart[part2] += 1; 
 	
 	    fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);	
 	    for(l=0;l < nodesd2;l++) {
@@ -4882,6 +4888,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     } /* if( halomode == ... ) */
   }  
 
+  if( halomode ) {
+    if(info) printf("There are %d bulk elements in the halo.\n",halobulkelems);
+  }	  
+	  
 
   for(part=partstart;part<=partfin;part++) {
     nofile = part - partstart + 1;
@@ -5065,6 +5075,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   discont = FALSE;
   splitsides = 0;
 
+  halobcs = 0;
   for(part=1;part<=partitions;part++) { 
     int bcneeded2,step;
 
@@ -5123,11 +5134,22 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    trueparent2 = FALSE;
 
 	  if( step == 1 ) {
-	    /* Either parent must be associated with this partition, otherwise do not save this */
-	    if(!trueparent && !trueparent2) continue;
 
 	    /* Halo elements ensure that both parents exist even if they are not trueparents */
-	    if(!halomode) {
+	    if(halomode) {
+	      if( bcneeded2 < nodesd1 ) {
+		if( halomode == 2 ) {
+		  printf("Warning: side element %d of type %d is halo but nodes are not in partition: %d %d\n",
+			 i,sideelemtype,bcneeded2,nodesd1);
+		}
+		continue;
+	      }
+	      if(!trueparent && !trueparent2) halobcs += 1;
+	    }
+	    else {	     
+	      /* Either parent must be associated with this partition, otherwise do not save this */
+	      if(!trueparent && !trueparent2) continue;
+
 	      if( parent && !trueparent ) {	  
 		splitsides++;
 		parent = 0;
@@ -5179,11 +5201,16 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    /* These are orphan nodes that are saved as 101 points and may be given 
 	       Dirichlet conditions in the code. If the node is already saved in respect to 
 	       this partition no saving is done. */
+
 	    /* This partition must own at least one of the nodes so that this could be a problem,
 	       but not all the nodes */
-
-	    if(halomode) continue;
 	    if(bcneeded == nodesd1) continue;
+
+	    /* For halo elements some additional BC elements have been saved */
+	    if( halomode ) {
+	      if( bcneeded2 == nodesd1 ) continue;
+	    }
+
 	    /* Check whether the side is such that it belongs to the domain,
 	       if it does it cannot be an orphan node. */
 	    if( trueparent || trueparent2 ) continue;
@@ -5221,8 +5248,6 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       }
     }
 
-
-
     /* The discontinuous stuff is more or less obsolite as these things can now be made also 
        within ElmerSolver. */
     /* The second side for discontinuous boundary conditions.
@@ -5248,6 +5273,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	}
 	if(bcneeded < nodesd1) continue;
 	
+	
+
+
 	trueparent = (elempart[bound[j].parent2[i]] == part);
 	if(!trueparent) continue;
 	
@@ -5493,7 +5521,6 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     }
   }
   /*********** end of part.n.header *********************/
-
   
   sumelementsinpart = sumownnodes = sumsharednodes = sumsidesinpart = sumorphannodes = sumindirect = 0;
   for(i=1;i<=partitions;i++) {
@@ -5509,6 +5536,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   printf("   ave   %-10.1f %-10.1f %-8.1f %-8.1f %-8.1f %-8.1f\n",
 	 1.0*sumelementsinpart/n,1.0*sumownnodes/n,1.0*sumsharednodes/n,
 	 1.0*sumsidesinpart/n,1.0*sumorphannodes/n,1.0*sumindirect/n);
+
+  if( info && halobcs ) {
+    printf("Number of boundary elements associated with halo: %d\n",halobcs);
+  }
  
   if(splitsides) {
     printf("************************* Warning ****************************\n");
