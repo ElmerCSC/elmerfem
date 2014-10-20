@@ -3316,12 +3316,12 @@ CONTAINS
       ! Skip if variable is otherwise strange in size
       IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
         IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
-          IF( SIZE( Var % Values ) / Var % Dofs /= Model % Mesh % NumberOfNodes ) THEN
+          IF( SIZE( Var % Values ) /= Var % Dofs * Model % Mesh % NumberOfNodes ) THEN
             Var => Var % Next
             CYCLE
           END IF
         ELSE
-          IF( SIZE( Var % Values ) / Var % Dofs /= Model % Mesh % NumberOfBulkElements ) THEN
+          IF( SIZE( Var % Values ) /= Var % Dofs * Model % Mesh % NumberOfBulkElements ) THEN
             Var => Var % Next
             CYCLE
           END IF         

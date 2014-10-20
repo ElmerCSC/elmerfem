@@ -2889,6 +2889,19 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
         Var => Var % Next        
         CYCLE
       END IF
+
+      IF( Var % TYPE /= Variable_on_nodes_on_elements ) THEN
+        var => Var % Next 
+        CYCLE
+      END IF
+
+      IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
+        IF( SIZE( Var % Values ) /= Var % Dofs * Mesh % NumberOfNodes ) THEN
+          Var => Var % Next
+          CYCLE
+        END IF
+      END IF
+
       NoVar = NoVar + 1
       WRITE (Name,'(A,I0)') 'Variable ',NoVar
       
