@@ -1406,11 +1406,11 @@ CONTAINS
 
       IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
 
-      IF( ParEnv % PEs > 1 .AND. ASSOCIATED(nlist) ) THEN
-        IF( nlist(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
-      END IF
-
       IF(j > 0) THEN
+        IF( ParEnv % PEs > 1 .AND. ASSOCIATED(nlist) ) THEN
+          IF( nlist(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+        END IF
+
         IF(NoDofs <= 1) THEN
           x = Var % Values(j)
         ELSE
