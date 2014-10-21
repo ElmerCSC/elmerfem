@@ -1404,11 +1404,12 @@ CONTAINS
     DO i=1,Nonodes
       j = i
 
+      IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
+
       IF( ParEnv % PEs > 1 .AND. ASSOCIATED(nlist) ) THEN
         IF( nlist(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
       END IF
-      
-      IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
+
       IF(j > 0) THEN
         IF(NoDofs <= 1) THEN
           x = Var % Values(j)
@@ -2099,7 +2100,7 @@ CONTAINS
             
           CASE ('convective flux')
             
-            Normal = NormalVector( Element,ElementNodes,U,V,.TRUE. )
+            Normal = NormalVector( Element,ElementNodes,u,v,.TRUE. )
             coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))
             
             IF(NoDofs == 1) THEN
