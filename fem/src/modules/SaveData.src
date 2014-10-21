@@ -1393,8 +1393,8 @@ CONTAINS
     nlist => Null()
     IF(ParEnv % PEs>1) THEN
       IF(ASSOCIATED(Var % Solver)) THEN
-        IF(ASSOCIATED(Solver % Matrix)) THEN
-          IF(ASSOCIATED(Solver % Matrix % ParallelInfo)) THEN
+        IF(ASSOCIATED(Var % Solver % Matrix)) THEN
+          IF(ASSOCIATED(Var % Solver % Matrix % ParallelInfo)) THEN
             nlist => Var % Solver % Matrix % ParallelInfo % NeighbourList
           END IF
         END IF
