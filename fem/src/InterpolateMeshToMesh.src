@@ -24,7 +24,7 @@
        LOGICAL, ALLOCATABLE :: FoundNodes(:)
        TYPE(Mesh_t), POINTER :: nMesh
        TYPE(VAriable_t), POINTER :: Var, nVar
-       INTEGER :: i,j,k,l,nfound,n,ierr,nvars,npart,proc,status(MPI_STATUS_SIZE)
+       INTEGER :: i,j,k,l,nfound,maxrecv,n,ierr,nvars,npart,proc,status(MPI_STATUS_SIZE)
        REAL(KIND=dp) :: myBB(6), eps2, dn
        REAL(KIND=dp), POINTER :: store(:)
        REAL(KIND=dp), ALLOCATABLE, TARGET :: astore(:),vstore(:,:), BB(:,:), &
@@ -101,6 +101,8 @@
         proc = status(MPI_SOURCE)
         BB(:,proc+1) = myBB
       END DO
+
+      CALL CheckBuffer((n*(3 * 2)) + 2) !3 x double precision coord, 2 x count
 
       IF ( n==0 ) THEN
         DEALLOCATE(FoundNodes, BB)
@@ -203,6 +205,25 @@
         CALL MPI_RECV( ProcRecv(proc+1) % nodes_z, n, MPI_DOUBLE_PRECISION, proc, &
                1004, MPI_COMM_WORLD, status, ierr )
       END DO
+
+      ! Count variables and received nodes, and check MPI buffer is 
+      ! sufficiently large:
+      ! -----------------------------------------------------------
+      Var => OldVariables
+      nvars = 0
+      DO WHILE(ASSOCIATED(Var))
+         nvars = nvars + 1
+         Var => Var % Next
+      END DO
+
+      maxrecv = 0
+      DO i=1,SIZE(ProcRecv)
+         maxrecv = MAX(maxrecv, ProcRecv(i) % n)
+      END DO
+      
+      !For each node, we send a single integer perm and 
+      !a real(dp) per variable. Also sending two counts
+      CALL CheckBuffer(maxrecv * ((2 * nvars) + 1) + 2) 
 
       ! Check the received points and extract values for the to-be-interpolated-
       ! variables, if we have the points within our domain: 
