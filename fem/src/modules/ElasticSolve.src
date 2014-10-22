@@ -182,6 +182,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: GotForceBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
        CauchyResponseFunction  = .FALSE., UseUMAT = .FALSE., AxialSymmetry
+  LOGICAL :: PseudoTraction
   LOGICAL :: PlaneStress, CalculateStrains, CalculateStresses
   LOGICAL :: CalcPrincipalAngle, CalcPrincipal
   LOGICAL :: CalcPrincipalStress, CalcPrincipalStrain
@@ -748,7 +749,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            Beta       = 0.0D0
            SpringCoeff = 0.0d0
            !------------------------------------------------------------------------------
-           !           The components of the true surface force 
+           ! The components of surface forces 
            !------------------------------------------------------------------------------
            GotForceBC = .FALSE.
            LoadVector(1,1:n) =  GetReal( BC, 'Force 1', gotIt )
@@ -781,6 +782,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            END IF
 
            IF ( .NOT. GotForceBC .AND. ALL( SpringCoeff==0.0d0 ) ) CYCLE
+           PseudoTraction = GetLogical( BC, 'Pseudo-Traction', GotIt)
            !------------------------------------------------------------------------------
 
            ParentElement => CurrentElement % BoundaryInfo % Left
@@ -878,7 +880,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                    n, ElementNodes, ParentElement, ParentElement % TYPE % NumberOfNodes, &
                    ParentNodes, FlowElement, FlowNOFNodes, FlowNodes, Velocity,  &
                    Pressure, Viscosity, Density, CompressibilityDefined, AxialSymmetry, &
-                   NormalTangential)
+                   NormalTangential, PseudoTraction)
 
            ELSE
               CALL Fatal('ElasticSolve', 'Unsupported coordinate system')
@@ -910,9 +912,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      !     Solve the system and check for convergence
      !------------------------------------------------------------------------------
 
-     IF( DefaultLinesearch( Converged ) ) GOTO 100
+     IF ( DefaultLinesearch( Converged ) ) GOTO 100
      IF( Converged ) EXIT
-
+ 
      UNorm = DefaultSolve()
 
      !----------------------------------------------------------------------------------
@@ -1732,7 +1734,8 @@ CONTAINS
   SUBROUTINE LocalBoundaryMatrix( BoundaryMatrix,BoundaryVector,LoadVector, &
        NodalSpringCoeff,NormalSpring,NodalAlpha,NodalBeta,NodalDisplacement,Element,n,Nodes, &
        Parent,pn,ParentNodes,Flow,fn,FlowNodes,Velocity,Pressure,NodalViscosity, &
-       NodalDensity, CompressibilityDefined, AxialSymmetry, NormalTangential)
+       NodalDensity, CompressibilityDefined, AxialSymmetry, NormalTangential, &
+       PseudoTraction)
 !------------------------------------------------------------------------------
     USE Integration
     USE LinearAlgebra
@@ -1744,6 +1747,7 @@ CONTAINS
     TYPE(Nodes_t)    :: Nodes,ParentNodes,FlowNodes
     INTEGER :: n,pn,fn
     LOGICAL :: NormalSpring, CompressibilityDefined, AxialSymmetry, NormalTangential
+    LOGICAL :: PseudoTraction
     !-----------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n)
     REAL(KIND=dp) :: dBasisdx(n,3),SqrtElementMetric, MetricTerm
@@ -1812,9 +1816,7 @@ CONTAINS
     W_Integ => IntegStuff % w
     S_Integ => IntegStuff % s
     N_Integ =  IntegStuff % n
-    !
-    !  Now we start integrating
-    !
+
     DO t=1,N_Integ
 
        u = U_Integ(t)
@@ -1842,8 +1844,8 @@ CONTAINS
        Pstat= ElementInfo( Parent,ParentNodes,ParentU,ParentV,ParentW, &
             PSqrtElementMetric,PBasis,PdBasisdx )
 
-       !     Compute the cofactor matrix of the deformation gradient from the previous step:
-       !     --------------------------------------------------------------------------------
+       ! Compute the cofactor matrix of the deformation gradient from the previous step:
+       ! --------------------------------------------------------------------------------
        Grad = 0.0d0
        DefG = 0.0d0
        Grad = MATMUL(NodalDisplacement(:,1:pn),PdBasisdx)
@@ -1865,8 +1867,8 @@ CONTAINS
        CofDefG = 0.0d0
        CofDefG(1:dim,1:dim) = DetDefG*TRANSPOSE( DefG(1:dim,1:dim) )   ! Cofactor of the deformation gradient
 
-       !     Calculate traction from the flow solution:
-       !     ------------------------------------------
+       ! Calculate traction from the flow solution:
+       ! ------------------------------------------
        IF ( ASSOCIATED( Flow ) ) THEN
           ParentU = SUM( Basis(1:n)*fx(1:n) )
           ParentV = SUM( Basis(1:n)*fy(1:n) )
@@ -1891,57 +1893,69 @@ CONTAINS
                 FlowStress(i,i) = FlowStress(i,i) - Viscosity * (2.0d0/3.0d0)*TRACE(Grad,dim)
              END IF
           END DO
-
        END IF
 
-       !     -----------------------------------------------------------------------
-       !     Normal vector and its transformation:
-       !     --------------------------------------
+       ! -------------------------------------------------------
+       ! Normal vector and its transformation:
+       ! -------------------------------------------------------
        RefNormal = NormalVector( Element,Nodes,u,v,.TRUE. )
        Normal = MATMUL(CofDefG,RefNormal)
-       !     The metric term that relates the surface area elements in the deformed and
-       !     the reference configuration (this is unrelated to the finite element mapping):
-       !     -----------------------------------------------------------------------------
+       ! ----------------------------------------------------------------------------------
+       ! The metric term that relates the surface area elements in the deformed and
+       ! the reference configuration (this is unrelated to the finite element mapping):
+       !  -----------------------------------------------------------------------------
        MetricTerm = SQRT( SUM( Normal(1:dim)*Normal(1:dim) ) ) 
-
-       !     Note that basically all traction BCs yield nonlinear contributions. Here all
-       !     dependencies on the solution are estimated simply by using the previous iterate.
-       !     First the surface force that is normal to the deformed surface, i.e.
-       !     T(x,t)m(x) = beta * m(x):
-       !     -----------------------------------------------------------------------------------
-       Force = 0.0D0
+       ! -----------------------------------------------------------------------------------
+       ! Note that basically all traction BCs yield nonlinear contributions. Here all
+       ! dependencies on the solution are estimated simply by using the previous iterate.
+       ! First the surface force that is normal to the deformed surface, i.e.
+       ! T(x,t)m(x) = beta * m(x) yielding the condition s = beta * cof(F)n for the
+       ! pseudo-traction s corresponding to the first Piola-Kirchhoff stress:
+       ! -----------------------------------------------------------------------------------
+       Force = SUM( NodalBeta(1:n)*Basis ) * Normal
        IF ( ASSOCIATED( Flow ) ) THEN
           Force = Force + MATMUL( FlowStress, Normal )
        END IF
-       Force = Force + SUM( NodalBeta(1:n)*Basis ) * Normal
-
        DO q=1,N
           DO i=1,dim
              BoundaryVector((q-1)*dim+i) = BoundaryVector((q-1)*dim+i) + &
                   s * Basis(q) * Force(i)
           END DO
        END DO
-
-       !     The true surface force the material description of which is given componentwise with 
-       !     respect to the frame of reference (the metric term arises here as the pseudo-traction
-       !     vector corresponding to the first Piola-Kirchhoff stress expresses surface force per unit
-       !     area in the reference configuration):
-       !     ---------------------------------------------------------------------------------------
-       Force = 0.0D0
+       
        DO i=1,dim
           Force(i) = SUM( LoadVector(i,1:n)*Basis )
        END DO
-
-       DO q=1,N
-          DO i=1,dim
-             BoundaryVector((q-1)*dim+i) = BoundaryVector((q-1)*dim+i) + &
-                  s * Basis(q) * Force(i) * MetricTerm
+       IF (PseudoTraction) THEN
+          ! ----------------------------------------------------------------------------
+          ! The pseudo-traction which corresponds to the first Piola-Kirchhoff stress
+          ! and measures the true force per unit undeformed area:
+          ! ----------------------------------------------------------------------------
+          DO q=1,N
+             DO i=1,dim
+                BoundaryVector((q-1)*dim+i) = BoundaryVector((q-1)*dim+i) + &
+                     s * Basis(q) * Force(i)
+             END DO
           END DO
-       END DO
+       ELSE
+          ! ------------------------------------------------------------------------------------------
+          ! The true surface force the material description of which is given componentwise with 
+          ! respect to the frame of reference (the metric term arises here as the pseudo-traction
+          ! vector corresponding to the first Piola-Kirchhoff stress expresses surface force per unit
+          ! area in the reference configuration):
+          ! ---------------------------------------------------------------------------------------
+          DO q=1,N
+             DO i=1,dim
+                BoundaryVector((q-1)*dim+i) = BoundaryVector((q-1)*dim+i) + &
+                     s * Basis(q) * Force(i) * MetricTerm
+             END DO
+          END DO
+       END IF
 
-       !     Spring terms on the boundary: These contributions are defined with respect the undeformed 
-       !     configuration.
-       !     -------------------------------------------------------------------------------------------
+       ! ---------------------------------------------------------------------------------------------
+       ! Spring terms on the boundary: These contributions are defined with respect the undeformed 
+       ! configuration.
+       ! -------------------------------------------------------------------------------------------
        DO i=1,dim
           DO j=1,dim
              SpringCoeff(i,j) = SUM(Basis(1:n)*NodalSpringCoeff(1:n,i,j))
@@ -1979,7 +1993,6 @@ CONTAINS
        END DO
 
     END DO
-
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalBoundaryMatrix
 !------------------------------------------------------------------------------
