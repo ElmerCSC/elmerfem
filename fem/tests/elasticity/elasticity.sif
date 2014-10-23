@@ -61,7 +61,7 @@ End
 
 Boundary Condition 2
   Target Boundaries = 2
-  Force 2 = -5.0e7
+  Surface Traction 2 = Real -5.0e7
 End
 
 $fprintf( stderr, "TEST CASE 1\n");

@@ -752,17 +752,21 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            ! The components of surface forces 
            !------------------------------------------------------------------------------
            GotForceBC = .FALSE.
-           LoadVector(1,1:n) =  GetReal( BC, 'Force 1', gotIt )
-           GotForceBC = GotForceBC .OR. gotIt
+           LoadVector(1,1:n) = GetReal( BC, 'Surface Traction 1', GotIt )
+           IF (.NOT. GotIt) LoadVector(1,1:n) = GetReal( BC, 'Force 1', GotIt )
+           GotForceBC = GotForceBC .OR. GotIt
 
-           LoadVector(2,1:n) =  GetReal( BC, 'Force 2', gotIt )
-           GotForceBC = GotForceBC .OR. gotIt
+           LoadVector(2,1:n) = GetReal( BC, 'Surface Traction 2', GotIt )
+           IF (.NOT. GotIt) LoadVector(2,1:n) = GetReal( BC, 'Force 2', GotIt )
+           GotForceBC = GotForceBC .OR. GotIt
 
-           LoadVector(3,1:n) =  GetReal( BC, 'Force 3', gotIt )
-           GotForceBC = GotForceBC .OR. gotIt
+           LoadVector(3,1:n) = GetReal( BC, 'Surface Traction 3', GotIt )
+           IF (.NOT. GotIt) LoadVector(3,1:n) = GetReal( BC, 'Force 3', GotIt )
+           GotForceBC = GotForceBC .OR. GotIt
 
-           Beta(1:n) =  GetReal( BC, 'Normal Force', gotIt )
-           GotForceBC = GotForceBC .OR. gotIt
+           Beta(1:n) = GetReal( BC, 'Normal Surface Traction', GotIt )
+           IF (.NOT. GotIt) Beta(1:n) = GetReal( BC, 'Normal Force', gotIt )
+           GotForceBC = GotForceBC .OR. GotIt
 
            GotForceBC = GotForceBC .OR. GetLogical( BC, 'Force BC', GotIt )
            GotForceBC = GotForceBC .OR. GetLogical( BC, 'FSI BC', GotIt )
