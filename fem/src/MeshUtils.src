@@ -1334,6 +1334,7 @@ END SUBROUTINE GetMaxDefs
    ! target bodies there. Hence we have all the info needed to set the 
    ! discontinuous elements also for other bulk elements. 
    ! This could be made more generic...
+   NoUndecided = 0
    NoMovingElems = 0 
    NoStayingElems = 0
    DecidedByFamily = 0
