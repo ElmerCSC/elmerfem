@@ -8832,7 +8832,7 @@ CONTAINS
     SUBROUTINE AssignConstraints()
 
       INTEGER, POINTER :: FaceInd(:)
-      INTEGER :: i,j,k,l,n,nfound
+      INTEGER :: i,j,k,l,n,nd,nfound
       TYPE(Element_t), POINTER :: Element, Boundary, Face, Faces(:)
 
       DO i=1,Mesh % NumberOfBoundaryElements
@@ -8845,9 +8845,11 @@ CONTAINS
 
         SELECT CASE(Boundary % TYPE % DIMENSION)
         CASE(1)
+          nd = Element % Type % NumberOfEdges
           Faces   => Mesh % Edges
           FaceInd => Element % EdgeIndexes
         CASE(2)
+          nd = Element % Type % NumberOfFaces
           Faces   => Mesh % Faces
           FaceInd => Element % FaceIndexes
         CASE DEFAULT
@@ -8857,7 +8859,7 @@ CONTAINS
 
         IF ( .NOT. ASSOCIATED(Faces) .OR. .NOT. ASSOCIATED(FaceInd) ) CYCLE
 
-        DO j=1,SIZE(FaceInd)
+        DO j=1,nd
           Face => Faces(FaceInd(j))
           IF ( .NOT.ASSOCIATED(Face % TYPE,Boundary % TYPE) ) CYCLE
 
@@ -8912,15 +8914,8 @@ CONTAINS
     DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
 
-       SELECT CASE( Element % TYPE % ElementCode / 100 )
-         CASE(3)
-            n = 3
-         CASE(4)
-            n = 4
-       END SELECT
-
        IF ( .NOT. ASSOCIATED( Element % EdgeIndexes ) ) &
-          CALL AllocateVector( Element % EdgeIndexes, n )
+          CALL AllocateVector( Element % EdgeIndexes, Element % Type % NumberOfEdges )
        Element % EdgeIndexes = 0
     END DO
 
@@ -9123,7 +9118,7 @@ CONTAINS
     DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
        IF ( .NOT. ASSOCIATED( Element % FaceIndexes ) ) &
-          CALL AllocateVector(Element % FaceIndexes, 6)
+          CALL AllocateVector(Element % FaceIndexes, Element % Type % NumberOfFaces )
        Element % FaceIndexes = 0
     END DO
 
@@ -9478,7 +9473,7 @@ CONTAINS
     DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
        IF ( .NOT. ASSOCIATED( Element % EdgeIndexes ) ) &
-          CALL AllocateVector(Element % EdgeIndexes, 12 )
+          CALL AllocateVector(Element % EdgeIndexes, Element % Type % NumberOfEdges )
        Element % EdgeIndexes = 0
     END DO
 
