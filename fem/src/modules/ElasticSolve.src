@@ -1960,23 +1960,25 @@ CONTAINS
        ! Spring terms on the boundary: These contributions are defined with respect the undeformed 
        ! configuration.
        ! -------------------------------------------------------------------------------------------
-       DO i=1,dim
-          DO j=1,dim
-             SpringCoeff(i,j) = SUM(Basis(1:n)*NodalSpringCoeff(1:n,i,j))
-          END DO
-       END DO
        IF (NormalSpring) THEN
+          SpringCoeff(1,1) = SUM(Basis(1:n)*NodalSpringCoeff(1:n,1,1))
           DO p=1,N
              DO i=1,dim 
                 DO q=1,N
                    DO j=1,dim 
                       BoundaryMatrix((p-1)*dim+i,(q-1)*dim+j) = BoundaryMatrix((p-1)*dim+i,(q-1)*dim+j) + &
-                           SpringCoeff(1,1) * Basis(q) * RefNormal(j) * Basis(p) * RefNormal(i) * &
-                           s * MetricTerm
+                           SpringCoeff(1,1) * Basis(q) * RefNormal(j) * Basis(p) * RefNormal(i) * s
                    END DO
                 END DO
              END DO
           END DO
+       ELSE
+          DO i=1,dim
+             DO j=1,dim
+                SpringCoeff(i,j) = SUM(Basis(1:n)*NodalSpringCoeff(1:n,i,j))
+             END DO
+          END DO
+          ! TO DO: More general spring conditions should be treated here
        END IF
 
 
