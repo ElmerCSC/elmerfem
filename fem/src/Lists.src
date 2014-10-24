@@ -575,6 +575,66 @@ CONTAINS
     END SUBROUTINE VariableAdd
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Deletes a variable (by name) from list of variables
+!------------------------------------------------------------------------------
+  SUBROUTINE VariableRemove(Variables, NameIn)
+    
+    USE MeshUtils, ONLY: ReleaseVariableList
+
+    IMPLICIT NONE
+!-----------------------------------------------
+    TYPE(Variable_t), POINTER :: Variables, Var, Prev, RmVar
+    CHARACTER(LEN=*) :: NameIn
+    CHARACTER(LEN=MAX_NAME_LEN) :: Name
+!-----------------------------------------------    
+    LOGICAL :: GotIt
+    INTEGER :: dummyInt
+
+    GotIt = .FALSE.
+
+    Var => Variables
+    Prev => NULL()
+    dummyInt = StringToLowerCase(Name, NameIn,.TRUE.)
+
+    WRITE(Message,'(a,a)') "Removing variable: ",Name
+    CALL Info("VariableRemove",Message, Level=10)
+
+    !Find variable by name, and hook up % Next appropriately
+    DO WHILE(ASSOCIATED(Var))
+       IF(TRIM(Var % Name) == TRIM(Name)) THEN
+          GotIt = .TRUE.
+          RmVar => Var
+          IF(ASSOCIATED(Prev)) THEN
+             !Link up variables either side of removed var
+             Prev % Next => Var % Next
+          ELSE
+             !If this was the first variable, we point Variables
+             !at the next one...
+             Variables => Var % Next
+          END IF
+          EXIT
+       END IF
+       Prev => Var
+       Var => Prev % Next
+    END DO
+
+    IF(.NOT. GotIt) THEN
+       CALL Warn("VariableRemove","Couldn't find the variable, returning...")
+       RETURN
+    END IF
+
+    RmVar % Next => NULL()
+
+    !ReleaseVariableList was intended to deallocate an entire list of variables,
+    !but by nullifying RmVar % Next, we have effectively isolated RmVar in 
+    !its own variable list.
+    CALL ReleaseVariableList( RmVar )
+!------------------------------------------------------------------------------
+  END SUBROUTINE VariableRemove
+!------------------------------------------------------------------------------
+
  
 
 !------------------------------------------------------------------------------
