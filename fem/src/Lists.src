@@ -577,12 +577,149 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+  SUBROUTINE ReleaseVariableList( VariableList )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t), POINTER :: VariableList
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: Ptr(:)
+    LOGICAL :: GotValues
+    INTEGER :: i, n, m
+    TYPE(Variable_t), POINTER :: Var, Var1
+!------------------------------------------------------------------------------
+
+    Var => VariableList
+    DO WHILE( ASSOCIATED( Var ) ) 
+
+!      This is used to skip variables such as time, timestep, timestep size etc.
+       IF( SIZE( Var % Values ) == Var % DOFs ) THEN
+         Var => Var % Next
+         CYCLE
+       END IF 
+
+       SELECT CASE( Var % Name )
+       CASE( 'coordinate 1', 'coordinate 2', 'coordinate 3' )
+         Var => Var % Next
+         CYCLE
+       END SELECT
+
+	IF( Var % Secondary ) THEN
+          Var => Var % Next
+          CYCLE
+        END IF
+
+       IF (Var % DOFs > 1) THEN
+         Var => Var % Next
+         CYCLE
+       END IF
+!
+!      Check that the variable is actually allocated,
+!      not pointer to some other variables memory:
+!      ----------------------------------------------
+
+       GotValues = .TRUE.
+       Var1 => VariableList
+       DO WHILE( ASSOCIATED( Var1 ) )
+          IF (.NOT.ASSOCIATED(Var,Var1)) THEN
+             IF ( ASSOCIATED(Var1 % Values) ) THEN
+                DO i=1,Var1 % DOFs
+                   ptr => Var1 % Values(i::Var1 % DOFs)
+                   IF ( ASSOCIATED(Var % Values,ptr) ) THEN
+                      GotValues = .FALSE.
+                      EXIT
+                   END IF
+                END DO
+             END IF
+          END IF
+          IF (.NOT. GotValues) EXIT
+          Var1 => Var1 % Next
+       END DO
+
+       IF (ASSOCIATED(Var % Perm)) THEN
+         Var1 => VariableList
+         DO WHILE(ASSOCIATED(Var1))
+           IF (.NOT.ASSOCIATED(Var,Var1)) THEN
+             IF (ASSOCIATED(Var % Perm,Var1 % Perm)) &
+               Var1 % Perm => NULL()
+           END IF
+           Var1 => Var1 % Next
+         END DO
+
+         DEALLOCATE( Var % Perm)
+       END IF
+
+       IF ( GotValues ) THEN
+
+        IF ( ASSOCIATED( Var % Values ) ) &
+            DEALLOCATE( Var % Values )
+
+         IF ( ASSOCIATED( Var % PrevValues ) ) &
+	   DEALLOCATE( Var % PrevValues )
+
+         IF ( ASSOCIATED( Var % EigenValues ) ) &
+            DEALLOCATE( Var % EigenValues )
+
+         IF ( ASSOCIATED( Var % EigenVectors ) ) &
+            DEALLOCATE( Var % EigenVectors )
+
+         IF ( ASSOCIATED( Var % SteadyValues ) ) &
+            DEALLOCATE( Var % SteadyValues )
+
+         IF ( ASSOCIATED( Var % NonlinValues ) ) &
+            DEALLOCATE( Var % NonlinValues )
+       END IF
+       NULLIFY( Var % EigenVectors, Var % EigenValues )
+       NULLIFY( Var % Values, Var % PrevValues, Var % Perm )
+       NULLIFY( Var % SteadyValues, Var % NonlinValues )
+
+       Var => Var % Next
+    END DO
+
+    Var => VariableList
+    DO WHILE( ASSOCIATED( Var ) )
+       IF ( Var % DOFs > 1 ) THEN
+         IF ( ASSOCIATED( Var % Values ) ) &
+            DEALLOCATE( Var % Values )
+
+         IF ( ASSOCIATED( Var % Perm ) ) &
+            DEALLOCATE( Var % Perm )
+
+         IF ( ASSOCIATED( Var % PrevValues ) ) &
+            DEALLOCATE( Var % PrevValues )
+
+         IF ( ASSOCIATED( Var % EigenValues ) ) &
+            DEALLOCATE( Var % EigenValues )
+
+         IF ( ASSOCIATED( Var % EigenVectors ) ) &
+            DEALLOCATE( Var % EigenVectors )
+
+         IF ( ASSOCIATED( Var % NonlinValues ) ) &
+            DEALLOCATE( Var % NonlinValues )
+       END IF
+       NULLIFY( Var % EigenVectors, Var % EigenValues )
+       NULLIFY( Var % Values, Var % PrevValues, Var % Perm )
+       NULLIFY( Var % SteadyValues, Var % NonlinValues )
+
+       Var => Var % Next
+    END DO
+
+!   Deallocate mesh variable list:
+!   ------------------------------
+    Var => VariableList
+    DO WHILE( ASSOCIATED( Var ) )
+       Var1 => Var % Next
+       DEALLOCATE( Var )
+       Var => Var1
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE ReleaseVariableList
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> Deletes a variable (by name) from list of variables
 !------------------------------------------------------------------------------
   SUBROUTINE VariableRemove(Variables, NameIn)
     
-    USE MeshUtils, ONLY: ReleaseVariableList
-
     IMPLICIT NONE
 !-----------------------------------------------
     TYPE(Variable_t), POINTER :: Variables, Var, Prev, RmVar
