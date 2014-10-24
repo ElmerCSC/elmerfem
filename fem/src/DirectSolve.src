@@ -674,6 +674,14 @@ CONTAINS
     A % MumpsID % Comm = A % Comm
     A % MumpsID % par  =  1
     A % MumpsID % job  = -1
+
+    IF ( ListGetLogical(Solver % Values, &
+        'Linear System Positive Definite', stat) ) THEN
+      A % MumpsID % sym = 1
+    ELSE
+      A % MumpsID % sym = 0
+    END IF
+
     CALL DMumps(A % MumpsID)
 
     IF(ASSOCIATED(A % Gorder)) DEALLOCATE(A % Gorder)
@@ -714,13 +722,6 @@ CONTAINS
     A % MumpsID % a_loc   => A % values
 
     ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
-
-    IF ( ListGetLogical(Solver % Values, &
-        'Linear System Positive Definite', stat) ) THEN
-      A % MumpsID % sym = 1
-    ELSE
-      A % MumpsID % sym = 0
-    END IF
 
     A % MumpsID % icntl(2)  = 0 ! supress printing of diagnostics and warnings
     A % MumpsID % icntl(3)  = 0 ! supress statistics
