@@ -8,7 +8,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 10
+  Max Output Level = 4
   Coordinate System = Cartesian
   Simulation Type = Steady State
   Timestep Intervals = 1
@@ -16,7 +16,7 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
   Output Intervals = 1
-  Post File = case.ep
+!  Post File = case.vtu
 End
 
 Constants

@@ -23,7 +23,7 @@ $n=20
   Steady State Max Iterations = Integer 1
   Output Intervals(1) = Integer 1
 
-  Output Level = 32
+  Output Level = 4
 
 !  Output File = File "case.dat"
 !  Post File = File "case.ep"

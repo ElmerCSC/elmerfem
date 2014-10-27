@@ -5123,9 +5123,11 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    trueparent2 = FALSE;
 
 	  if( step == 1 ) {
-	    /* For this to be needed at least one node must be owned by this partition */
+	    /* Either parent must be associated with this partition, otherwise do not save this */
+	    if(!trueparent && !trueparent2) continue;
+
+	    /* Halo elements ensure that both parents exist even if they are not trueparents */
 	    if(!halomode) {
-	      if(!trueparent && !trueparent2) continue;
 	      if( parent && !trueparent ) {	  
 		splitsides++;
 		parent = 0;
