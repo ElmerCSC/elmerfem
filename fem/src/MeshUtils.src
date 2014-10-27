@@ -5351,7 +5351,7 @@ END SUBROUTINE GetMaxDefs
   FUNCTION LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
       FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &
       StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges, &
-      NodeScale ) &
+      NodeScale, EdgeScale ) &
       RESULT ( Projector )
     !---------------------------------------------------------------------------
     USE Lists
@@ -5365,13 +5365,13 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: Repeating, AntiRepeating, FullCircle
     LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
-    REAL(KIND=dp) :: Radius, NodeScale
+    REAL(KIND=dp) :: Radius, NodeScale, EdgeScale
     TYPE(Matrix_t), POINTER :: Projector    
     !--------------------------------------------------------------------------
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
         EdgeBasis, PiolaVersion
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
-        RelTolX, RelTolY, XTol, YTol, RadTol, EdgeScale, MaxSkew1, MaxSkew2, SkewTol
+        RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol
     INTEGER :: NoNodes1, NoNodes2
     INTEGER :: i,j,n,m,Nrange,Nrange2, nrow
     INTEGER, ALLOCATABLE :: EdgePerm(:)
@@ -5394,9 +5394,6 @@ END SUBROUTINE GetMaxDefs
     ! Create a projector in style P=I-Q, or rather just P=Q. 
     SelfProject = .TRUE.
     
-    ! Edges are always scaled one-to-one
-    EdgeScale = 1.0_dp
-
     ! Eliminate the unneeded entries. This is currently fixed to .TRUE.
     ! The other possibility is to make the corresponding rows to be zero. 
     EliminateUnneeded = .TRUE.
@@ -5841,7 +5838,7 @@ END SUBROUTINE GetMaxDefs
 
         ! The scaling of the projector entries is used, for example, 
         ! to allow antiperiodic projectors. 
-        Coeff(1:ncoeff) = sgn0 * NodeScale * Coeff(1:ncoeff)
+        Coeff(1:ncoeff) = sgn0 * Coeff(1:ncoeff)
 
         ! The projection weights
         DO j=1,ncoeff 
@@ -5858,7 +5855,7 @@ END SUBROUTINE GetMaxDefs
           
           ! Use the permutation to revert to original dofs
           CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-              InvPerm2(coeffi(j)), val ) 
+              InvPerm2(coeffi(j)), NodeScale * val ) 
         END DO
 
       END DO
@@ -6747,7 +6744,7 @@ END SUBROUTINE GetMaxDefs
                   DO i=1,n
                     IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                        InvPerm2(IndexesM(i)), -BasisM(i) * val )                   
+                        InvPerm2(IndexesM(i)), -NodeScale * BasisM(i) * val )                   
                   END DO
                 END DO
               END IF
@@ -6793,7 +6790,7 @@ END SUBROUTINE GetMaxDefs
                     val = -Wtemp * SUM( WBasis(j,:) * WBasisM(i,:) ) 
                     IF( ABS( val ) > 1.0e-12 ) THEN
                       CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                          ii, val  ) 
+                          ii, EdgeScale * val  ) 
                     END IF
                   END DO
                 END DO
@@ -7900,7 +7897,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
-    REAL(KIND=dp) :: PeriodicScale, Radius
+    REAL(KIND=dp) :: NodeScale, EdgeScale, Radius
     TYPE(ValueList_t), POINTER :: BC
 
     INTERFACE
@@ -7981,14 +7978,16 @@ END SUBROUTINE GetMaxDefs
     Flat = ListGetLogical( BC, &
         'Flat Projector',GotIt )
 
-    PeriodicScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
+    NodeScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) THEN
       IF( AntiRadial ) THEN
-        PeriodicScale = -1._dp
+        NodeScale = -1._dp
       ELSE
-        PeriodicScale = 1.0_dp
+        NodeScale = 1.0_dp
       END IF
     END IF
+    EdgeScale = NodeScale
+
 
     NodalJump = ListCheckPrefix( BC,'Mortar BC Coefficient')
     IF(.NOT. NodalJump ) THEN
@@ -8083,7 +8082,7 @@ END SUBROUTINE GetMaxDefs
 
     IF( Stride ) THEN
       Projector => StrideProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
-          InvPerm1, InvPerm2, DoNodes, DoEdges, PeriodicScale )
+          InvPerm1, InvPerm2, DoNodes, DoEdges, NodeScale )
     ELSE IF( LevelProj ) THEN
 
       ! The projectors for nodes and edges can be created either in a strong way 
@@ -8114,10 +8113,10 @@ END SUBROUTINE GetMaxDefs
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
           FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &
           StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges, &
-          PeriodicScale )
+          NodeScale, EdgeScale )
     ELSE IF( IntGalerkin ) THEN
       Projector => WeightedProjector2( BMesh2, BMesh1, InvPerm2, InvPerm1, &
-          UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, NodalJump )
+          UseQuadrantTree, Repeating, AntiRepeating, NodeScale, NodalJump )
     ELSE
       Projector => NodalProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
                  UseQuadrantTree, Repeating, AntiRepeating )
@@ -8846,11 +8845,11 @@ CONTAINS
 
         SELECT CASE(Boundary % TYPE % DIMENSION)
         CASE(1)
-          nd = Element % Type % NumberOfEdges
+          nd = Element % TYPE % NumberOfEdges
           Faces   => Mesh % Edges
           FaceInd => Element % EdgeIndexes
         CASE(2)
-          nd = Element % Type % NumberOfFaces
+          nd = Element % TYPE % NumberOfFaces
           Faces   => Mesh % Faces
           FaceInd => Element % FaceIndexes
         CASE DEFAULT
@@ -8916,7 +8915,7 @@ CONTAINS
        Element => Mesh % Elements(i)
 
        IF ( .NOT. ASSOCIATED( Element % EdgeIndexes ) ) &
-          CALL AllocateVector( Element % EdgeIndexes, Element % Type % NumberOfEdges )
+          CALL AllocateVector( Element % EdgeIndexes, Element % TYPE % NumberOfEdges )
        Element % EdgeIndexes = 0
     END DO
 
@@ -9119,7 +9118,7 @@ CONTAINS
     DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
        IF ( .NOT. ASSOCIATED( Element % FaceIndexes ) ) &
-          CALL AllocateVector(Element % FaceIndexes, Element % Type % NumberOfFaces )
+          CALL AllocateVector(Element % FaceIndexes, Element % TYPE % NumberOfFaces )
        Element % FaceIndexes = 0
     END DO
 
@@ -9474,7 +9473,7 @@ CONTAINS
     DO i=1,Mesh % NumberOfBulkElements
        Element => Mesh % Elements(i)
        IF ( .NOT. ASSOCIATED( Element % EdgeIndexes ) ) &
-          CALL AllocateVector(Element % EdgeIndexes, Element % Type % NumberOfEdges )
+          CALL AllocateVector(Element % EdgeIndexes, Element % TYPE % NumberOfEdges )
        Element % EdgeIndexes = 0
     END DO
 
