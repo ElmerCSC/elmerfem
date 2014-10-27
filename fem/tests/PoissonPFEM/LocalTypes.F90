@@ -49,7 +49,6 @@ CONTAINS
         iset % fratio = INTEGERHASHSET_FILLRATIO
         IF (PRESENT(fratio) .AND. fratio > 0 & 
               .AND. fratio <= REAL(1,dp)) iset % fratio = fratio
-        write (*,*) isize, iset % fratio, ALLOCATED(iset % set), ALLOCATED(iset % entries)
 
         IF (ALLOCATED(iset % set)) DEALLOCATE(iset % set)
         IF (ALLOCATED(iset % entries)) DEALLOCATE(iset % entries)
@@ -192,11 +191,16 @@ CONTAINS
         TYPE(IntegerHashSet_t), INTENT(IN) :: iset
         INTEGER, INTENT(IN) :: key
 
+        INTEGER :: m
         INTEGER :: hkey
-
-        ! TODO: Make a proper implementation of a hash function
-        ! Now just take modulo of the table size to get key
-        hkey = MOD(key,SIZE(iset % set))+1
+        REAL(kind=dp), PARAMETER :: hA = (SQRT(REAL(5,dp))-1)/2
+                
+        ! Use a multiplicative hash function with Knuth's choice of
+        ! A, i.e., 
+        ! h(k) = floor(m*(k*hA mod 1)), with hA=(sqrt(5)-1)/2
+        m = SIZE(iset % set)
+        ! hkey = FLOOR(REAL(m,dp)*(key*hA-FLOOR(key*hA)))+1
+        hkey = FLOOR(REAL(m,dp)*MOD(key*hA,REAL(1,dp)))+1
     END FUNCTION IntegerHashSetHashFunction
 
     SUBROUTINE IntegerListInit(ilist, isize)
