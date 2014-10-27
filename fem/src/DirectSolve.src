@@ -630,8 +630,8 @@ CONTAINS
   INCLUDE 'mpif.h'
 
   INTEGER, ALLOCATABLE :: Owner(:)
-  INTEGER :: i,j,n,ip,ierr,icntlft
-  LOGICAL :: Factorize, FreeFactorize, stat
+  INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
+  LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled
 
   INTEGER, ALLOCATABLE :: memb(:)
   INTEGER :: Comm_active, Group_active, Group_world
@@ -674,10 +674,25 @@ CONTAINS
     A % MumpsID % Comm = A % Comm
     A % MumpsID % par  =  1
     A % MumpsID % job  = -1
+    A % MumpsID % Keep =  0
 
-    IF ( ListGetLogical(Solver % Values, &
-        'Linear System Positive Definite', stat) ) THEN
-      A % MumpsID % sym = 1
+    matsym = ListGetLogical( Solver % Values, 'Linear System Symmetric', stat)
+    matspd = ListGetLogical( Solver % Values, 'Linear System Positive Definite', stat)
+
+    ! force unsymmetric mode when "row equilibration" is used
+    scaled = ListGetLogical( Solver % Values, 'Linear System Scaling', stat)
+    IF(.NOT.stat) scaled = .TRUE.
+    IF(scaled) THEN
+      IF(ListGetLogical( Solver % Values, 'Linear System Row Equilibration',stat)) matsym=.FALSE.
+    END IF
+
+    IF(matsym) THEN
+      IF ( matspd) THEN
+        A % MumpsID % sym = 1
+      ELSE
+        A % MumpsID % sym = 0 ! 2=symmetric, but unsymmetric solver seems faster, at least in a few
+                              ! simple cases...  more testing needed...
+      END IF
     ELSE
       A % MumpsID % sym = 0
     END IF
@@ -706,20 +721,51 @@ CONTAINS
       END DO
     END IF
 
-    A % MumpsID % nz_loc = A % Rows(A % NumberOfRows+1)-1
-    ALLOCATE( A % MumpsID % irn_loc(A % MumpsID % nz_loc) )
-    DO i=1,A % NumberOfRows
-      ip = A % Gorder(i)
-      DO j=A % Rows(i),A % Rows(i+1)-1
-        A % MumpsID % irn_loc(j) = ip
-      END DO
-    END DO
+   ! Set matrix for Mumps (unsymmetric case)
+    IF (A % mumpsID % sym == 0) THEN
+      A % MumpsID % nz_loc = A % Rows(A % NumberOfRows+1)-1
 
-    ALLOCATE( A % MumpsID % jcn_loc(A % MumpsId % nz_loc) )
-    DO i=1,A % MumpsID % nz_loc
-      A % MumpsID % jcn_loc(i) = A % Gorder(A % Cols(i))
-    END DO
-    A % MumpsID % a_loc   => A % values
+      ALLOCATE( A % MumpsID % irn_loc(A % MumpsID % nz_loc) )
+      DO i=1,A % NumberOfRows
+        ip = A % Gorder(i)
+        DO j=A % Rows(i),A % Rows(i+1)-1
+          A % MumpsID % irn_loc(j) = ip
+        END DO
+      END DO
+
+      ALLOCATE( A % MumpsID % jcn_loc(A % MumpsId % nz_loc) )
+      DO i=1,A % MumpsID % nz_loc
+        A % MumpsID % jcn_loc(i) = A % Gorder(A % Cols(i))
+      END DO
+      A % MumpsID % a_loc   => A % values
+    ELSE
+      ! Set matrix for Mumps (symmetric case)
+      nzloc = 0
+      DO i=1,A % NumberOfRows
+        ! Only output lower triangular part to Mumps
+        DO j=A % Rows(i),A % Diag(i)
+          nzloc = nzloc + 1
+        END DO
+      END DO
+
+      A % MumpsID % nz_loc = nzloc
+
+      ALLOCATE( A % MumpsID % irn_loc(A % MumpsID % nz_loc) )
+      ALLOCATE( A % MumpsID % jcn_loc(A % MumpsId % nz_loc) )
+      ALLOCATE( A % MumpsID % A_loc(A % MumpsId % nz_loc) )
+
+      nzloc = 0
+      DO i=1,A % NumberOfRows
+        ! Only output lower triangular part to Mumps
+        DO j=A % Rows(i),A % Diag(i)
+          nzloc = nzloc + 1
+          A % mumpsID % IRN_loc(nzloc) = A % Gorder(i)
+          A % mumpsID % A_loc(nzloc) = A % Values(j)
+          A % mumpsID % JCN_loc(nzloc) = A % Gorder(A % Cols(j))
+        END DO
+      END DO
+    END IF
+
 
     ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
 
@@ -791,6 +837,8 @@ CONTAINS
     DEALLOCATE( A % MumpsID % irn_loc, &
        A % MumpsID % jcn_loc, A % MumpsID % Rhs,  &
          A % MumpsID % isol_loc, A % MumpsID % sol_loc, A % Gorder)
+
+    IF ( A % MumpsID % Sym/=0 ) DEALLOCATE( A % MumpsID % A_loc )
 
     A % Gorder=>Null()
 
