@@ -3,6 +3,6 @@ INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( TempDist.sif TempDist.sif COPYONLY)
 
-file(COPY corona-mpi64.sh Mesh ELMERSOLVER_STARTINFO Mesh1.mif solver TEST.RESULT mpd.hosts corona-mpi32.sh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+file(COPY corona-mpi64.sh Mesh ELMERSOLVER_STARTINFO Mesh1.mif solver  mpd.hosts corona-mpi32.sh DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(heateq-par)
