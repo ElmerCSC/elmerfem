@@ -4549,7 +4549,7 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
 
 int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 			      char *prefix,int decimals,int halomode,int indirect,
-			      int parthypre,int info)
+			      int parthypre,int partlayers,int info)
 /* Saves the mesh in a form that may be used as input 
    in Elmer calculations in parallel platforms. 
    */
@@ -4580,6 +4580,11 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   partitions = data->nopartitions;
   if(!partitions) {
     printf("Tried to save partiotioned format without partitions!\n");
+    bigerror("No Elmer mesh files saved!");
+  }
+
+  if( partlayers < 1 && halomode == 3) {
+    printf("There can be no layer halo since there are no layers!\n");
     bigerror("No Elmer mesh files saved!");
   }
 
@@ -4724,8 +4729,55 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       fprintf(outfiles[nofile],"\n");    
     }
 
+    /* This creates a simple halo when the elements have been partitioned such
+       that they are in number of "partlayers" intervals of z coordinate. */
+    if( halomode == 3 && part <= partlayers ) {
+      int leftright;
+      for(leftright=-1;leftright <=1;leftright += 2) {
+	part2 = part+leftright;
+	nofile2 = nofile+leftright;
+
+	if( part2 < 1 || part2 > partlayers ) continue;	
+	halobulkelems += 1;
+
+	fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);
+	for(j=0;j < nodesd2;j++) {
+	  ind = data->topology[i][j];
+	  if(reorder) ind = order[ind];
+	  fprintf(outfiles[nofile2],"%d ",ind);
+	}
+	fprintf(outfiles[nofile2],"\n");    
+
+	bulktypes[part2][elemtype] += 1;
+	elementsinpart[part2] += 1;	
+	
+	for(j=0;j < nodesd2;j++) {
+	  ind = data->topology[i][j];
+	  hit = FALSE;
+	  for(k=1;k<=maxneededtimes;k++) {
+	    part3 = data->partitiontable[k][ind];
+	    if(part3 == part2) hit = TRUE;
+	    if(!part3) break;
+	  }
+	  if(!hit) {
+	    if(k <= maxneededtimes) {
+	      data->partitiontable[k][ind] = part2;
+	    } 
+	    else {
+	      maxneededtimes++;
+	      if(0) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
+	      data->partitiontable[maxneededtimes] = Ivector(1,noknots);
+	      for(m=1;m<=noknots;m++)
+		data->partitiontable[maxneededtimes][m] = 0;
+	      data->partitiontable[maxneededtimes][ind] = part2;
+	    }
+	  }
+	}
+      }
+    }
+	
     /* If there is no halo we are done */
-    if(!halomode) continue;
+    if(halomode != 1 && halomode != 2 ) continue;
 
     /* The face can be shared only if there are enough shared nodes */
     otherpart = 0;
@@ -5077,7 +5129,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
   halobcs = 0;
   for(part=1;part<=partitions;part++) { 
-    int bcneeded2,step;
+    int bcneeded2,step,closeparent,closeparent2;
 
     sprintf(filename,"%s.%d.%s","part",part,"boundary");
     out = fopen(filename,"w");
@@ -5133,10 +5185,23 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	  else
 	    trueparent2 = FALSE;
 
+	  if( halomode == 3 ) {
+	    closeparent = closeparent2 = FALSE;
+	    if( part <= partlayers ) {
+	      if( parent ) 
+		if( elempart[parent] <= partlayers) 
+		  closeparent = ( ABS( elempart[parent]-part) == 1 );
+	      if( parent2 ) 
+		if( elempart[parent2] <= partlayers ) 
+		  closeparent2 = ( ABS( elempart[parent2]-part) == 1 );
+	    }
+	  }
+
+
 	  if( step == 1 ) {
 
 	    /* Halo elements ensure that both parents exist even if they are not trueparents */
-	    if(halomode) {
+	    if(halomode == 1 || halomode == 2) {
 	      if( bcneeded2 < nodesd1 ) {
 		if( halomode == 2 ) {
 		  printf("Warning: side element %d of type %d is halo but nodes are not in partition: %d %d\n",
@@ -5144,6 +5209,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 		}
 		continue;
 	      }
+	      if(!trueparent && !trueparent2) halobcs += 1;
+	    }
+	    else if( halomode == 3 ) {
+	      if(!(trueparent || trueparent2 || closeparent || closeparent2 )) continue;
 	      if(!trueparent && !trueparent2) halobcs += 1;
 	    }
 	    else {	     
@@ -5207,8 +5276,12 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    if(bcneeded == nodesd1) continue;
 
 	    /* For halo elements some additional BC elements have been saved */
-	    if( halomode ) {
+	    if( halomode == 1 || halomode == 2) {
 	      if( bcneeded2 == nodesd1 ) continue;
+	    }
+	    /* For layer halo the BCs in the closeby partition have been saved */
+	    else if( halomode == 3 ) {
+	      if( closeparent || closeparent2 ) continue;
 	    }
 
 	    /* Check whether the side is such that it belongs to the domain,

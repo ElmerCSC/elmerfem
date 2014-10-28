@@ -172,6 +172,7 @@ static void Instructions()
   printf("-partdual            : use the dual graph in the partitioning\n");
   printf("-halo                : create halo for the partitioning for DG\n");
   printf("-halobc              : create halo for the partitioning at boundaries only\n");
+  printf("-haloz               : create halo for the the special z-partitioning\n");
   printf("-indirect            : create indirect connections in the partitioning\n");
   printf("-periodic int[3]     : decleare the periodic coordinate directions for parallel meshes\n");
   printf("-partjoin int        : number of partitions in the data to be joined\n");
@@ -960,7 +961,8 @@ int main(int argc, char *argv[])
     for(k=0;k<nomeshes;k++) {
       if(data[k].nopartitions > 1) 
 	SaveElmerInputPartitioned(&data[k],boundaries[k],eg.filesout[k],eg.decimals,
-				  eg.partitionhalo,eg.partitionindirect,eg.parthypre,info);
+				  eg.partitionhalo,eg.partitionindirect,eg.parthypre,
+				  eg.partbclayers,info);
       else
 	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,info);
     }

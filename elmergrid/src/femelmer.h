@@ -43,6 +43,6 @@ int OptimizePartitioningAtBoundary(struct FemType *data,struct BoundaryType *bou
 int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noopt,
 			 int partbw,int info);
 int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
-			      char *prefix,int decimals,int halo,int indirect,
-			      int parthypre,int info);
+			      char *prefix,int decimals,int halomode,int indirect,
+			      int parthypre,int partlayers,int info);
 
