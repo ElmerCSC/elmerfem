@@ -55,9 +55,15 @@ macro(RUN_ELMER_TEST_NEW)
   execute_process(COMMAND ${ELMERSOLVER_BIN} OUTPUT_FILE "test-stdout.log"
     ERROR_FILE "test-stderr.log")
   file(READ "TEST.PASSED" RES)
-
   if (NOT RES EQUAL "1")
     message(FATAL_ERROR "Test failed")
   endif()
 endmacro()
 
+macro(EXECUTE_ELMER_SOLVER SIFNAME)
+  set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
+  set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
+  set(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
+  execute_process(COMMAND ${ELMERSOLVER_BIN} ${SIFNAME} OUTPUT_FILE "${SIFNAME}-stdout.log"
+    ERROR_FILE "${SIFNAME}-stderr.log")
+endmacro()
