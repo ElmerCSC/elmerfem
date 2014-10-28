@@ -1840,10 +1840,12 @@ CONTAINS
      AllGlobal = .TRUE.
      count=0
      l0=1
+     IF(slen<=0) RETURN
 
      DO WHILE( .TRUE. )
        DO WHILE( str(l0:l0) == ' ' )
          l0 = l0 + 1
+         IF ( l0 > slen ) EXIT
        END DO
        IF ( l0 > slen ) EXIT
 

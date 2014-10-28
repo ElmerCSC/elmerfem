@@ -1156,11 +1156,11 @@ CONTAINS
 !> Determine soft limiters set. This is called after the solution.
 !> and can therefore be active only on the 2nd nonlinear iteration round.
 !------------------------------------------------------------------------------
-   SUBROUTINE DetermineSoftLimiter( Solver )
+   SUBROUTINE DetermineSoftLimiter( Solver, Nonlinear )
 !------------------------------------------------------------------------------
      TYPE(Solver_t) :: Solver
-     LOGICAL :: NewLimiter 
-
+     LOGICAL :: Nonlinear ! is the limiter nonlinear and requires updating of loads vector
+!-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
      TYPE(variable_t), POINTER :: Var, LoadVar
      TYPE(Element_t), POINTER :: Element
@@ -1176,13 +1176,21 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName
 
 
-     ! CALL Info('DetermineSoftLimiter','Starting')
 
      Model => CurrentModel
      Var => Solver % Variable
      
-     LoadVar => VariableGet( Model % Variables, &
-         GetVarName(Var) // ' Loads',ThisOnly = .TRUE. )
+     IF( Nonlinear ) THEN
+       CALL Info('DetermineSoftLimiter','Determining soft limiter for nonlinear problems',Level=8)
+       LoadVar => VariableGet( Model % Variables, &
+           GetVarName(Var) // ' Contact Load',ThisOnly = .TRUE. )
+       CALL CalculateLoads( Solver, Solver % Matrix, Var % Values, Var % DOFs, .FALSE., LoadVar ) 
+     ELSE
+       CALL Info('DetermineSoftLimiter','Determining soft limiter using nodal loads',Level=8)
+       LoadVar => VariableGet( Model % Variables, &
+           GetVarName(Var) // ' Loads',ThisOnly = .TRUE. )
+     END IF
+
      IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
        CALL Fatal('DetermineSoftLimiter', &
            'No Loads associated with variable '//GetVarName(Var) )
@@ -1190,11 +1198,11 @@ CONTAINS
      END IF
      LoadValues => LoadVar % Values
 
+
      dofs = Var % Dofs
      FieldValues => Var % Values
      FieldPerm => Var % Perm
      totsize = SIZE( FieldValues )
-     NewLimiter = .FALSE.
 
      Params => Solver % Values
      
@@ -1394,6 +1402,7 @@ CONTAINS
        DEALLOCATE( LimitDone, ElemLimit ) 
      END IF
 
+
      ! CALL Info('DetermineSoftLimiter','All done')
 
   END SUBROUTINE DetermineSoftLimiter
@@ -1445,7 +1454,7 @@ CONTAINS
     REAL(KIND=dp) :: GlobalMinDist,Dist, Eps
     LOGICAL, ALLOCATABLE :: ActivePart(:), ActiveCond(:), ActivePartAll(:)
     TYPE(ValueList_t), POINTER :: ValueList, Params
-    LOGICAL :: NodesFound, Passive, OffDiagonal
+    LOGICAL :: NodesFound, Passive, OffDiagonal, ApplyLimiter
     LOGICAL, POINTER :: LimitActive(:)
     TYPE(Variable_t), POINTER :: Var
 
@@ -1816,8 +1825,10 @@ CONTAINS
 !   Go through soft upper and lower limits
 !------------------------------------------------------------------------------
     Params => Model % Solver % Values
-    IF( Dof/=0 .AND. ListGetLogical( Params,'Apply Limiter',GotIt) ) THEN
+    ApplyLimiter = ListGetLogical( Params,'Nonlinear Apply Limiter',GotIt) .OR. &
+        ListGetLogical( Params,'Apply Limiter',GotIt) 
 
+    IF( Dof/=0 .AND. ApplyLimiter ) THEN
       CALL Info('SetDirichletBoundaries','Applying limiters',Level=10)
 
       DO Upper=0,1
@@ -2547,7 +2558,7 @@ CONTAINS
      REAL(KIND=dp) :: coeff, weight, voff, res
      TYPE(Matrix_t), POINTER :: Projector
      TYPE(ValueList_t), POINTER :: BC
-     TYPE(Element_t), POINTER :: Element
+     TYPE(Element_t), POINTER :: Element, Left, Right
      LOGICAL :: SomethingDone
      !------------------------------------------------------------------------------
 
@@ -2608,7 +2619,7 @@ CONTAINS
        InvInvPerm = 0
        DO i=1,SIZE( Projector % InvPerm )
          j = Projector % InvPerm(i) 
-         IF( j <= nodesize ) THEN
+         IF( j > 0 .AND. j <= nodesize ) THEN
            InvInvPerm( j ) = i
          END IF
        END DO
@@ -2626,6 +2637,20 @@ CONTAINS
 
          ! Outside code this tells the active element
          Model % CurrentElement => Element
+
+         Left => Element % BoundaryInfo % Left
+         Right => Element % BoundaryInfo % Right 
+        
+         ! In short these are the conditions that resulted to creation of the 
+         ! constraint matrix entries.
+         IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
+           CYCLE
+         END IF         
+         IF( Left % PartIndex /= ParEnv % myPE .AND. &
+             Right % PartIndex /= ParEnv % myPe ) THEN
+           CYCLE
+         END IF
+
          
          nnodes = Element % TYPE % NumberOfNodes
          DO u=1, nnodes
@@ -4558,13 +4583,12 @@ END FUNCTION SearchNodeL
 
         nn = A % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows
 
+        TmpRhsVec = b
         CALL ParallelInitSolve( A, tmpXVec, TmpRhsVec, r)
 
         tmpXvec = x0(1:n)
         CALL ParallelVector(a,TmpXvec)
-
-        TmpRhsvec = b(1:n)
-        CALL parallelvector(a,tmpRhsvec)
+        CALL ParallelVector(A,tmpRhsvec)
 
         CALL ParallelMatrixVector(A, TmpXvec, r)
         DO i=1,nn
@@ -4573,7 +4597,6 @@ END FUNCTION SearchNodeL
 
         Change = ParallelNorm(nn,r)
         bNorm =  ParallelNorm(nn,tmpRhsVec)
-
       ELSE
         CALL MatrixVectorMultiply( A, x0, r)
         DO i=1,n
@@ -5673,7 +5696,7 @@ END FUNCTION SearchNodeL
         END DO
       ELSE
         DO i=1,n
-          IF ( ABS(Diag(i)) > 100*AEPS ) THEN
+          IF ( ABS(Diag(i)) > TINY(bnorm) ) THEN
             Diag(i) = 1.0_dp / SQRT(ABS(Diag(i)))
           ELSE
             Diag(i) = 1.0_dp
@@ -6014,6 +6037,122 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 
 
+  SUBROUTINE CalculateLoads( Solver, Aaid, x, DOFs, UseBulkValues, NodalLoads ) 
+
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t), POINTER  :: Aaid
+    REAL(KIND=dp) CONTIG :: x(:)
+    INTEGER :: DOFs
+    LOGICAL :: UseBulkValues
+    TYPE(Variable_t), POINTER :: NodalLoads
+
+    REAL(KIND=dp), POINTER :: LoadValues(:)
+    INTEGER :: i,j,k,l,m,ii,This,DOF
+    REAL(KIND=dp), POINTER :: TempRHS(:), TempVector(:), SaveValues(:), Rhs(:)
+    REAL(KIND=dp) :: Energy
+    TYPE(Matrix_t), POINTER :: Projector
+    LOGICAL :: Found
+
+
+    IF( .NOT. ASSOCIATED(NodalLoads) ) RETURN
+    ALLOCATE( TempVector(Aaid % NumberOfRows) )
+
+    IF( UseBulkValues ) THEN
+      SaveValues => Aaid % Values
+      Aaid % Values => Aaid % BulkValues
+      Rhs => Aaid % BulkRHS
+    ELSE
+      Rhs => Aaid % Rhs
+    END IF
+
+
+    IF ( ParEnv % PEs > 1 ) THEN
+      ALLOCATE(TempRHS(SIZE(Rhs)))
+      TempRHS = Rhs 
+      CALL ParallelInitSolve( Aaid, x, TempRHS, Tempvector )
+      CALL ParallelMatrixVector( Aaid, x, TempVector, .TRUE. )
+    ELSE
+      CALL MatrixVectorMultiply( Aaid, x, TempVector )
+    END IF
+
+
+    IF( ListGetLogical(Solver % Values, 'Calculate Energy Norm', Found) ) THEN
+      Energy = 0._dp
+      DO i=1,Aaid % NumberOfRows
+        IF ( ParEnv % Pes>1 ) THEN
+          IF ( Aaid % ParMatrix % ParallelInfo % &
+              NeighbourList(i) % Neighbours(1) /= Parenv % MyPE ) CYCLE
+        END IF
+        Energy = Energy + x(i)*TempVector(i)
+      END DO
+      Energy = ParallelReduction(Energy)
+      CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy )
+
+      WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+      CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
+
+      WRITE( Message, * ) 'Energy Norm: ', Energy
+      CALL Info( 'SolveLinearSystem', Message )
+    END IF
+
+    IF ( ParEnv % PEs>1 ) THEN
+      DO i=1,Aaid % NumberOfRows
+        IF ( AAid % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % Mype ) THEN
+          TempVector(i) = TempVector(i) - TempRHS(i)
+        ELSE
+          TempVector(i) = 0
+        END IF
+      END DO
+      CALL ParallelSumVector( AAid, Tempvector )
+      DEALLOCATE( TempRhs ) 
+    ELSE
+      TempVector = TempVector - RHS
+    END IF
+
+
+    DO This=1,CurrentModel % NumberOfBCs
+      Projector => CurrentModel  % BCs(This) % PMatrix
+      IF (ASSOCIATED(Projector))THEN
+        DO DOF=1,DOFs
+          DO i=1,Projector % NumberOfRows
+            ii = Projector % InvPerm(i)
+            k = Solver % Variable % Perm(ii)
+            IF(k<=0) CYCLE
+            k = DOFs * (k-1) + DOF
+            TempVector(k)=0
+
+            DO l = Projector % Rows(i), Projector % Rows(i+1)-1
+              IF ( Projector % Cols(l) <= 0 ) CYCLE
+              m = Solver % Variable % Perm( Projector % Cols(l) )
+              IF ( m > 0 ) THEN
+                m = DOFs * (m-1) + DOF
+                TempVector(k) = TempVector(k) + Projector % Values(l)*TempVector(m)
+              END IF
+            END DO
+          END DO
+        END DO
+      END IF
+    END DO
+
+    DO i=1,SIZE( NodalLoads % Perm )
+      IF ( NodalLoads % Perm(i)>0 .AND. Solver % Variable % Perm(i)>0 ) THEN
+        DO j=1,DOFs
+          NodalLoads % Values(DOFs*(NodalLoads % Perm(i)-1)+j) =  &
+              TempVector(DOFs*(Solver % Variable % Perm(i)-1)+j)
+        END DO
+      END IF
+    END DO
+    DEALLOCATE( TempVector )
+
+    IF( UseBulkValues ) THEN
+      Aaid % Values => SaveValues
+    END IF
+
+  END SUBROUTINE CalculateLoads
+
+
+
+
 
 !------------------------------------------------------------------------------
 !> Solves a linear system and also calls the necessary preconditioning routines.
@@ -6032,11 +6171,10 @@ END FUNCTION SearchNodeL
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
-                SkipZeroRhs, ComplexSystem, ComputeChangeScaled
+               SkipZeroRhs, ComplexSystem, ComputeChangeScaled, NonlinApplyLimiter
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName
     INTEGER(KIND=AddrInt) :: Proc
-    REAL(KIND=dp), POINTER :: SaveValues(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Px(:), &
                 TempVector(:), TempRHS(:), NonlinVals(:)
     REAL(KIND=dp), POINTER :: Diag(:)
@@ -6044,6 +6182,7 @@ END FUNCTION SearchNodeL
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Matrix_t), POINTER :: Aaid, Projector, MP
     REAL(KIND=dp), POINTER :: mx(:), mb(:), mr(:)
+    TYPE(Variable_t), POINTER :: IterV
 
     INTERFACE 
        SUBROUTINE VankaCreate(A,Solver)
@@ -6121,9 +6260,11 @@ END FUNCTION SearchNodeL
         ListGetLogical( Params, 'Harmonic Analysis',GotIt )
 
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
+    NonlinApplyLimiter = ListGetLogical( Params,'Nonlinear Apply Limiter',GotIt ) 
     SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt ) 
 
-    IF ( .NOT. ( HarmonicAnalysis .OR. EigenAnalysis .OR. ApplyLimiter .OR. SkipZeroRhs ) ) THEN
+    IF ( .NOT. ( HarmonicAnalysis .OR. EigenAnalysis .OR. ApplyLimiter &
+        .OR. NonlinApplyLimiter .OR. SkipZeroRhs ) ) THEN
       bnorm = ParallelReduction(SQRT(SUM(b(1:n)**2)))      
       IF ( bnorm <= TINY( bnorm) ) THEN
         CALL Info('SolveSystem','Solution trivially zero!')
@@ -6131,7 +6272,6 @@ END FUNCTION SearchNodeL
         RETURN
       END IF
     END IF
-
     
     IF ( Solver % MultiGridLevel == -1  ) RETURN
 
@@ -6167,16 +6307,23 @@ END FUNCTION SearchNodeL
     END IF
 
 
-! If whether b=0 since then equation Ax=b has only the trivial solution, x=0. 
+! Check whether b=0 since then equation Ax=b has only the trivial solution, x=0. 
 ! In case of a limiter one still may need to check the limiter for contact.
 !-----------------------------------------------------------------------------
     bnorm = ParallelReduction(SQRT(SUM(b(1:n)**2)))
     IF ( bnorm <= TINY( bnorm) .AND..NOT.SkipZeroRhs) THEN
+      IF( ApplyLimiter ) THEN
+        CALL DetermineSoftLimiter( Solver, .FALSE. ) 	 
+      END IF
       CALL Info('SolveSystem','Solution trivially zero!')
       x = 0.0d0
-      IF( ApplyLimiter ) THEN
-        CALL DetermineSoftLimiter( Solver ) 	 
-      END IF
+
+      ! Increase the nonlinear counter since otherwise some stuff may stagnate
+      ! Normally this is done within ComputeChange
+      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+      Solver % Variable % NonlinIter = iterV % Values(1)
+      iterV % Values(1) = iterV % Values(1) + 1 
+
       RETURN
     END IF
 
@@ -6208,9 +6355,7 @@ END FUNCTION SearchNodeL
     ! This flag tries to improve on the initial guess of the linear solvers, and may 
     ! sometimes even result to the exact solution.
     IF( ListGetLogical( Params,'Linear System Normalize Guess',GotIt ) ) THEN
-      IF( .NOT. ALLOCATED( TempVector ) ) THEN
-        ALLOCATE( TempVector(A % NumberOfRows) )
-      END IF
+      ALLOCATE( TempVector(A % NumberOfRows) )
 
       IF ( ParEnv % PEs > 1 ) THEN
         IF( .NOT. ALLOCATED( TempRHS ) ) THEN
@@ -6229,6 +6374,7 @@ END FUNCTION SearchNodeL
 
         bn = ParallelDot( mn, TempVector, mb )
         xn = ParallelDot( mn, TempVector, TempVector )
+        DEALLOCATE( TempRHS )
       ELSE
         CALL MatrixVectorMultiply( A, x, TempVector )
         xn = SUM( TempVector(1:n)**2 )
@@ -6240,6 +6386,7 @@ END FUNCTION SearchNodeL
         WRITE( Message,'(A,ES12.3)') 'Linear System Normalizing Factor: ',bn/xn
         CALL Info('SolveLinearSystem',Message,Level=8) 
       END IF
+      DEALLOCATE( TempVector )
     END IF
 
     Method = ListGetString(Params,'Linear System Solver',GotIt)
@@ -6294,104 +6441,24 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
-    NodalLoads => VariableGet( Solver % Mesh % Variables, &
-       GetVarName(Solver % Variable) // ' Loads' )
-
     Aaid => A
     IF (PRESENT(BulkMatrix)) THEN
       IF (ASSOCIATED(BulkMatrix) ) Aaid=>BulkMatrix
     END IF
-
-    IF ( ASSOCIATED(NodalLoads) .AND. ASSOCIATED(Aaid % BulkValues) ) THEN
-      IF( .NOT. ALLOCATED( TempVector ) ) THEN
-        ALLOCATE( TempVector(Aaid % NumberOfRows) )
-      END IF
-      SaveValues => Aaid % Values
-      Aaid % Values => Aaid % BulkValues
-
-      IF ( ParEnv % PEs > 1 ) THEN
-        ALLOCATE(TempRHS(SIZE(AAid % BulkRHS)))
-        TempRHS = Aaid % BulkRHS
-        CALL ParallelInitSolve( Aaid, x, TempRHS, Tempvector )
-        CALL ParallelMatrixVector( Aaid, x, TempVector, .TRUE. )
-      ELSE
-        CALL MatrixVectorMultiply( Aaid, x, TempVector )
-      END IF
-
-
-      IF( ListGetLogical(Params, 'Calculate Energy Norm', gotIt) ) THEN
-        Energy = 0._dp
-        DO i=1,Aaid % NumberOfRows
-          IF ( ParEnv % Pes>1 ) THEN
-            IF ( Aaid % ParMatrix % ParallelInfo % &
-                  NeighbourList(i) % Neighbours(1) /= Parenv % MyPE ) CYCLE
-          END IF
-          Energy = Energy + x(i)*TempVector(i)
-        END DO
-        Energy = ParallelReduction(Energy)
-        CALL ListAddConstReal( Params, 'Energy norm', Energy )
-
-        WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
-        CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
-
-        WRITE( Message, * ) 'Energy Norm: ', Energy
-        CALL Info( 'SolveLinearSystem', Message )
-      END IF
-
-      Aaid % Values => SaveValues
-      IF ( ParEnv % PEs>1 ) THEN
-        DO i=1,Aaid % NumberOfRows
-          IF ( AAid % ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % Mype ) THEN
-            TempVector(i) = TempVector(i)-TempRHS(i)
-          ELSE
-            TempVector(i) = 0
-          END IF
-        END DO
-        CALL ParallelSumVector( AAid, Tempvector )
-        DEALLOCATE( TempRhs ) 
-      ELSE
-        TempVector = TempVector - Aaid % BulkRHS
-      END IF
-
-
-      DO This=1,CurrentModel % NumberOfBCs
-        Projector=>CurrentModel  % BCs(This) % PMatrix
-        IF (ASSOCIATED(Projector))THEN
-          DO DOF=1,DOFs
-            DO i=1,Projector % NumberOfRows
-              ii = Projector % InvPerm(i)
-              k = Solver % Variable % Perm(ii)
-              IF(k<=0) CYCLE
-              k = DOFs * (k-1) + DOF
-              TempVector(k)=0
-
-              DO l = Projector % Rows(i), Projector % Rows(i+1)-1
-                IF ( Projector % Cols(l) <= 0 ) CYCLE
-                m = Solver % Variable % Perm( Projector % Cols(l) )
-                IF ( m > 0 ) THEN
-                  m = DOFs * (m-1) + DOF
-                  TempVector(k) = TempVector(k) + Projector % Values(l)*TempVector(m)
-                 END IF
-              END DO
-            END DO
-          END DO
-        END IF
-      END DO
-
-      DO i=1,SIZE( NodalLoads % Perm )
-        IF ( NodalLoads % Perm(i)>0 .AND. Solver % Variable % Perm(i)>0 ) THEN
-           DO j=1,DOFs
-             NodalLoads % Values(DOFs*(NodalLoads % Perm(i)-1)+j) =  &
-                TempVector(DOFs*(Solver % Variable % Perm(i)-1)+j)
-           END DO
-         END IF
-      END DO
-
-      IF (BackRotation) CALL BackRotateNTSystem(NodalLoads % Values,NodalLoads % Perm,DOFs)
-
+    
+    NodalLoads => VariableGet( Solver % Mesh % Variables, &
+        GetVarName(Solver % Variable) // ' Loads' )
+    IF( ASSOCIATED( NodalLoads ) ) THEN
+      CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
     END IF
-    IF( ALLOCATED( TempVector ) ) DEALLOCATE( TempVector )
-    IF (BackRotation) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
+
+    IF (BackRotation) THEN
+      CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
+      IF( ASSOCIATED( NodalLoads ) ) THEN
+        CALL BackRotateNTSystem(NodalLoads % Values,NodalLoads % Perm,DOFs)
+      END IF
+    END IF
+
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -6407,7 +6474,7 @@ END FUNCTION SearchNodeL
  ! determined.
  !---------------------------------------------------------------------
    IF( ApplyLimiter ) THEN
-     CALL DetermineSoftLimiter( Solver ) 	
+     CALL DetermineSoftLimiter( Solver, .FALSE. ) 	
    END IF
 
 !------------------------------------------------------------------------------
@@ -6415,12 +6482,11 @@ END FUNCTION SearchNodeL
    Solver % Variable % PrimaryMesh => Solver % Mesh
    CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
          GetVarName(Solver % Variable) )
-
+   
    IF ( ASSOCIATED( NodalLoads ) ) THEN
      NodalLoads % PrimaryMesh => Solver % Mesh
      CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
                   GetVarName(NodalLoads) )
-
    END IF
 
 !------------------------------------------------------------------------------
@@ -7201,7 +7267,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
   INTEGER :: i, j, k, l
   TYPE(Variable_t), POINTER :: MultVar
-  REAL(KIND=dp) :: scl
+  REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
               EmptyRow, ComplexSystem
   SAVE MultiplierValues, SolverPointer
@@ -7330,36 +7396,49 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       END IF
       EmptyRow = .TRUE.
 
+      rowsum = 0._dp
       DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
-        Found = .TRUE.
-
-        ! Skip non-positive column indexes
-        IF( RestMatrix % Cols(j) <= 0 ) CYCLE
-
-        EmptyRow = .FALSE.
-
-        IF (EnforceDirichlet) &
-          Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
-
-        IF(Found) THEN
-          CALL AddToMatrixElement( CollectionMatrix, &
-             RestMatrix % Cols(j), k, RestMatrix % Values(j))
-        END IF
-
-        CALL AddToMatrixElement( CollectionMatrix, &
-             k, RestMatrix % Cols(j), RestMatrix % Values(j))
+        rowsum = rowsum + ABS(RestMatrix % Values(j))
       END DO
+
+      IF(rowsum>EPSILON(1._dp)) THEN
+        DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
+          Found = .TRUE.
+
+          ! Skip non-positive column indexes
+          IF( RestMatrix % Cols(j) <= 0 ) CYCLE
+          IF ( .NOT. ComplexSystem ) THEN
+            IF( ABS(RestMatrix % Values(j)) < EPSILON(1._dp)*rowsum ) CYCLE
+          END IF
+
+          EmptyRow = .FALSE.
+
+          IF (EnforceDirichlet .AND. RestMatrix % Cols(j) <= StiffMatrix % NumberOfRows) &
+                  Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
+
+          IF(Found) THEN
+            CALL AddToMatrixElement( CollectionMatrix, &
+               RestMatrix % Cols(j), k, RestMatrix % Values(j))
+          END IF
+
+          CALL AddToMatrixElement( CollectionMatrix, &
+               k, RestMatrix % Cols(j), RestMatrix % Values(j))
+        END DO
+      END IF
       
       ! If there is no matrix entry, there can be no non-zero r.h.s.
       IF( EmptyRow ) THEN
         NoEmptyRows = NoEmptyRows + 1
+        CollectionVector(k) = 0._dp
+!        might not be the right thing to do in parallel!!
+!       CALL SetMatrixElement( CollectionMatrix,k,k,1._dp )
       ELSE
         CollectionVector(k) = RestVector(i)
       END IF
     END DO
     IF( NoEmptyRows > 0 ) THEN
       CALL Warn('SolveWithLinearRestriction',&
-          'Constraint Matrix included empty rows:' &
+          'Constraint Matrix included empty rows: ' &
           //TRIM(I2S(NoEmptyRows))//' vs. '//TRIM(I2S(RestMatrix % NumberOfRows)) )
     END IF
   END IF
@@ -7408,20 +7487,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(CollectionMatrix % FORMAT==MATRIX_LIST) &
     CALL List_toCRSMatrix(CollectionMatrix)
 
-  ! if zero=zero constraint, solve lambda_i=0 instead:
-  ! -------------------------------------------------
-! DO i=stiffmatrix % numberofrows+1,collectionmatrix % numberofrows
-!    IF ( ALL(collectionmatrix % values( &
-!          collectionmatrix % rows(i):collectionmatrix % rows(i+1)-1)==0) ) &
-!      collectionmatrix % values(collectionmatrix % diag(i)) = 1
-! END DO
-! ! try not to interfere with dirichlet conditions:
-! ! -----------------------------------------------
-
 
   CALL Info( 'SolveWithLinearRestriction', 'CollectionMatrix done', Level=5 )
-
-
 
 !------------------------------------------------------------------------------
 ! Assign values to CollectionVector
@@ -7464,6 +7531,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      END IF
      Solver % Variable % NonlinValues (1:k)= CollectionSolution(1:k)
   END IF
+
+  CollectionMatrix % Comm = StiffMatrix % Comm
 
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
@@ -8312,4 +8381,3 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 END MODULE SolverUtils
 
 !> \}
-

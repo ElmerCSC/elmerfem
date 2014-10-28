@@ -1,0 +1,15 @@
+CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/runTest.sh.cmake
+               ${CMAKE_CURRENT_BINARY_DIR}/runTest.sh)
+
+IF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
+INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/. 
+		  DESTINATION ${CMAKE_BINARY_DIR}/elmericetests
+		  FILES_MATCHING REGEX 
+		  ".+\\.(f90|F90|sif|mif|grd|eg|msh|good|dat|pos|result|in2d|best0|txt)|HB|Makefile|TEST\\.RESULT|ELMERSOLVER_STARTINFO|mesh\\.*|DATA|PROG")
+
+INSTALL(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Compare.f90
+	      ${CMAKE_CURRENT_SOURCE_DIR}/ElmerIceSolver_test_how-to.txt
+	     	  DESTINATION ${CMAKE_BINARY_DIR}/elmericetests)
+INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/runTest.sh
+		  DESTINATION ${CMAKE_BINARY_DIR}/elmericetests)
+ENDIF()

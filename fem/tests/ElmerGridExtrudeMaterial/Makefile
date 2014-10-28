@@ -1,4 +1,4 @@
-# A simple test for Reynolds equation on a cylinder
+# A case demonstrating permutated extrusion with ElmerGrid
 #
 run:
 	$(ELMER_GRID) 1 2 cubes.grd

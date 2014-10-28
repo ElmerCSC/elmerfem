@@ -21,14 +21,18 @@ IF(APPLE)
   SET(CMAKE_MACOSX_RPATH 1)
 ENDIF()
 
-SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/cmake/Modules")
+SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Modules)
 
 # Defaults to cache variables
-SET(WITH_MPI TRUE CACHE BOOL "Link against MPI")
-SET(WITH_ELMERGUI TRUE CACHE BOOL "Include ElmerGUI")
+SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
+SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread parallelization")
+SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
+SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
+SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
+SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
-SET(WITH_TRILINOS FALSE CACHE BOOL "Use Trilinos")
+SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
 
 if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
   CMAKE_POLICY(SET CMP0022 OLD)
@@ -44,24 +48,57 @@ SET(ELMER_FEM_MAJOR_VERSION 7)
 SET(ELMER_FEM_MINOR_VERSION 0)
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
-
+IF(NOT ELMER_FEM_REVISION)
+    execute_process(
+      COMMAND "git" "--no-pager" "log" "-1" "--pretty=format:%h"
+      WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+      OUTPUT_VARIABLE ELMER_FEM_REVISION
+      RESULT_VARIABLE RUN_RETURN_VALUE)
+  IF(NOT(RUN_RETURN_VALUE EQUAL 0))
+    SET(ELMER_FEM_REVISION "")
+  ENDIF()
+ENDIF()
+    
 SET(VERSION ${ELMER_FEM_VERSION})
-IF(${CMAKE_VERSION} VERSION_GREATER 2.8.9)
-  SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
-ELSE()
-  ADD_DEFINITIONS(-fPIC)
+SET(REVISION ${ELMER_FEM_REVISION})
+SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
+
+# MESSAGE("Fortran: ${CMAKE_Fortran_COMPILER_LOADED}")
+IF(WITH_OpenMP)
+  # Advanced properties
+  MARK_AS_ADVANCED(
+    OpenMP_C_FLAGS
+    OpenMP_Fortran_FLAGS
+    OpenMP_CXX_FLAGS
+    )
+  
+  FIND_PACKAGE(OpenMP REQUIRED)
+  # Add OpenMP flags to compilation flags
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
 ENDIF()
 
 IF(WITH_MPI)
+  # Advanced properties
+  MARK_AS_ADVANCED(
+    MPI_EXTRA_LIBRARY
+    MPI_LIBRARY
+    )
+
   FIND_PACKAGE(MPI REQUIRED)
   # Workaround if MPI is found but MPI_FOUND is not set (windows+msmpi+findmpi)
   SET(MPI_FOUND TRUE CACHE BOOL "")
   MARK_AS_ADVANCED(MPI_FOUND)
   INCLUDE_DIRECTORIES(${MPI_Fortran_INCLUDE_PATH})
+  # MPI libraries may be needed for testing
+  SET(CMAKE_C_REQUIRED_LIBRARIES ${MPI_C_LIBRARIES})
+  SET(CMAKE_CXX_REQUIRED_LIBRARIES ${MPI_CXX_LIBRARIES})
+  SET(CMAKE_Fortran_REQUIRED_LIBRARIES ${MPI_Fortran_LIBRARIES})
 ENDIF(WITH_MPI)
 
-MARK_AS_ADVANCED(WITH_TRILINOS)
-IF(WITH_TRILINOS)
+# MARK_AS_ADVANCED(WITH_Trilinos)
+IF(WITH_Trilinos)
   FIND_PACKAGE(ML REQUIRED) 
   FIND_PACKAGE(Trilinos REQUIRED)
   FIND_PACKAGE(Belos REQUIRED)
@@ -73,11 +110,14 @@ ENDIF()
 # MPI and LAPACK
 FIND_PACKAGE(BLAS REQUIRED)
 FIND_PACKAGE(LAPACK REQUIRED)
+# BLAS and LAPACK libraries may be needed for testing
+SET(CMAKE_REQUIRED_LIBRARIES 
+  ${CMAKE_REQUIRED_LIBRARIES} ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES})
 
 IF(MPI_FOUND)
   # Mumps
-  IF(WITH_MUMPS)
-    FIND_PACKAGE(Mumps)
+  IF(WITH_Mumps)
+    FIND_PACKAGE(Mumps REQUIRED)
   ENDIF()
   # Hypre
   IF(WITH_Hypre)
@@ -85,29 +125,18 @@ IF(MPI_FOUND)
   ENDIF()
 ENDIF()
 
-IF(MUMPS_FOUND)
-  FIND_PACKAGE(SCALAPACK)
-  IF(SCALAPACK_FOUND)
-     # Add Mumps compilation flags and libraries 
-     #ADD_DEFINITIONS(-DHAVE_MUMPS)
-     SET(HAVE_MUMPS TRUE)
-     MARK_AS_ADVANCED(HAVE_MUMPS)
-     INCLUDE_DIRECTORIES(${MUMPS_INCLUDE_PATH})
-     IF(${SCALAPACK_LIBRARIES})
-       LIST(APPEND MUMPS_LIBRARIES ${SCALAPACK_LIBRARIES})
-     ENDIF()
-     LIST(REMOVE_DUPLICATES MUMPS_LIBRARIES)
-     LINK_DIRECTORIES(${MUMPS_LIBRARIES} ${SCALAPACK_LIBRARIES})
-  ELSE()
-     MESSAGE(STATUS "SCALAPACK library not found. Mumps not in use.")
-  ENDIF()
+IF(Mumps_FOUND)
+  SET(HAVE_MUMPS TRUE)
+  MARK_AS_ADVANCED(HAVE_MUMPS)
+  INCLUDE_DIRECTORIES(${Mumps_INCLUDE_DIR})
+  # LINK_DIRECTORIES(${MUMPS_LIBRARIES})
 ENDIF()
 
 IF(Hypre_FOUND)
-  #ADD_DEFINITIONS(-DHAVE_HYPRE)
-  INCLUDE_DIRECTORIES(${HYPRE_INCLUDE_PATH})
   SET(HAVE_HYPRE TRUE)
   MARK_AS_ADVANCED(HAVE_HYPRE)
+  INCLUDE_DIRECTORIES(${Hypre_INCLUDE_DIR})
+  # LINK_DIRECTORIES(${Hypre_LIBRARIES})
 ENDIF()
 
 # Check if Fortran compiler supports contiguous keyword
@@ -169,8 +198,11 @@ IF(WITH_EIO)
   SET(HAVE_EIO TRUE)
   MARK_AS_ADVANCED(HAVE_EIO)
 ENDIF()
+IF(WITH_ElmerIce)
+  MESSAGE(STATUS "Adding optional package ElmerIce")
+  ADD_SUBDIRECTORY(elmerice)
+ENDIF()
 ADD_SUBDIRECTORY(umfpack)
-# ADD_SUBDIRECTORY(hutiter)
 ADD_SUBDIRECTORY(fhutiter)
 ADD_SUBDIRECTORY(meshgen2d)
 ADD_SUBDIRECTORY(fem)
@@ -202,25 +234,31 @@ MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  BLAS library:   " "${BLAS_LIBRARIES}")
 MESSAGE(STATUS "  LAPACK library: " "${LAPACK_LIBRARIES}")
 MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "  Fortran compiler:        " "${CMAKE_Fortran_COMPILER}")
+MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS}")
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "  C compiler:              " "${CMAKE_C_COMPILER}")
+MESSAGE(STATUS "  C flags:                 " "${CMAKE_C_FLAGS}")
+MESSAGE(STATUS "------------------------------------------------")
 IF(WITH_MPI)
 MESSAGE(STATUS "  MPI Fortran:             " "${MPI_Fortran_FOUND}")
-MESSAGE(STATUS "  MPI Fortran compiler:    " "${MPI_Fortran_COMPILER}" 
-  "${MPI_Fortran_COMPILER_FLAGS}")
+MESSAGE(STATUS "  MPI Fortran compiler:    " "${MPI_Fortran_COMPILER}")
+MESSAGE(STATUS "  MPI Fortran flags:       " "${MPI_Fortran_COMPILE_FLAGS}")
 MESSAGE(STATUS "  MPI Fortran include dir: " "${MPI_Fortran_INCLUDE_PATH}")
 MESSAGE(STATUS "  MPI Fortran libraries:   " "${MPI_Fortran_LIBRARIES}")
 MESSAGE(STATUS "  MPI Fortran link flags:  " "${MPI_Fortran_LINK_FLAGS}")
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  MPI C:             " "${MPI_C_FOUND}")
-MESSAGE(STATUS "  MPI C compiler:    " "${MPI_C_COMPILER}" 
-  "${MPI_C_COMPILER_FLAGS}")
+MESSAGE(STATUS "  MPI C compiler:    " "${MPI_C_COMPILER}")
+MESSAGE(STATUS "  MPI C flags:       " "${MPI_C_COMPILE_FLAGS}")
 MESSAGE(STATUS "  MPI C include dir: " "${MPI_C_INCLUDE_PATH}")
 MESSAGE(STATUS "  MPI C libraries:   " "${MPI_C_LIBRARIES}")
 MESSAGE(STATUS "  MPI C flags:       " "${MPI_C_LINK_FLAGS}")
 MESSAGE(STATUS "------------------------------------------------")
-IF(WITH_MUMPS)
-MESSAGE(STATUS "  Mumps:             " "${MUMPS_FOUND}")
-MESSAGE(STATUS "  Mumps include:     " "${MUMPS_INCLUDE_PATH}")
-MESSAGE(STATUS "  Mumps libraries:   " "${MUMPS_LIBRARIES}")
+IF(WITH_Mumps)
+MESSAGE(STATUS "  Mumps:             " "${Mumps_FOUND}")
+MESSAGE(STATUS "  Mumps include:     " "${Mumps_INCLUDE_DIR}")
+MESSAGE(STATUS "  Mumps libraries:   " "${Mumps_LIBRARIES}")
 MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 IF(WITH_Hypre)
@@ -238,7 +276,7 @@ MESSAGE(STATUS "  C++ compiler:      " "${CMAKE_CXX_COMPILER}")
 MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 
-IF(WITH_TRILINOS)
+IF(WITH_Trilinos)
 MESSAGE(STATUS "  Trilinos:           " "${Trilinos_FOUND}")
 MESSAGE(STATUS "  Trilinos_DIR:       " "${Trilinos_DIR}")
 MESSAGE(STATUS "  Trilinos_LIBRARIES: " "${Trilinos_LIBRARIES}")
@@ -251,4 +289,6 @@ MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 
 # Packaging
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/cpack/ElmerCPack.cmake)
+if(NOT BYPASS_CPACK)
+  INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/cpack/ElmerCPack.cmake)
+endif()

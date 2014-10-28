@@ -12,58 +12,58 @@ INSTALLED := $(ELMERICE_HOME)/include/defgrid.mod
 MODULES := defgrid.mod
 MKDIR_P := mkdir -p
 SOLVERSOURCE := \
-Solvers/AIFlowSolve_nlD2.f90 \
-Solvers/AIFlowSolve_nlS2.f90 \
-Solvers/CaffeSolver.f90 \
-Solvers/ComputeDevStressNS.f90 \
-Solvers/ComputeEigenValues.f90 \
-Solvers/ComputeNormal.f90 \
-Solvers/ComputeStrainRate.f90 \
-Solvers/DeformationalHeat.f90 \
-Solvers/EPLSolver.f90 \
-Solvers/fAandfB_in.f90 \
-Solvers/FabricSolve.f90 \
-Solvers/Flowdepth.f90 \
-Solvers/ForceToStress.f90 \
-Solvers/GetHydrostaticLoads.f90 \
-Solvers/GolfLaw.f90 \
-Solvers/GroundedSolver.f90 \
-Solvers/IntegratedVelocity.f90 \
-Solvers/IDSSolver.f90 \
-Solvers/PorousSolve.f90 \
-Solvers/pointwise.f90 \
-Solvers/SIASolver.f90 \
-Solvers/SSASolver.f90 \
-Solvers/ThicknessSolver.f90 \
-Solvers/TemperateIce.f90 \
-Solvers/ExportVertically.f90 \
-Solvers/AdjointSolver.f90 \
-Solvers/DJDBeta_Adjoint.f90 \
-Solvers/DJDmu_Adjoint.f90 \
-Solvers/CostSolver_Adjoint.f90 \
-Solvers/DJDBeta_Robin.f90 \
-Solvers/DJDmu_Robin.f90 \
-Solvers/CostSolver_Robin.f90 \
-Solvers/m1qn3.f \
-Solvers/Grid2DInterpolator.f90 \
-Solvers/Optimize_m1qn3Parallel.f90 \
-Solvers/OutputStrainHeating.f90 \
-Solvers/UpdateExport.f90 \
-Solvers/IntegrateVertically.f90\
-Solvers/EnthalpySolver.f90
+Solvers/AIFlowSolve_nlD2.F90 \
+Solvers/AIFlowSolve_nlS2.F90 \
+Solvers/CaffeSolver.F90 \
+Solvers/ComputeDevStressNS.F90 \
+Solvers/ComputeEigenValues.F90 \
+Solvers/ComputeNormal.F90 \
+Solvers/ComputeStrainRate.F90 \
+Solvers/DeformationalHeat.F90 \
+Solvers/EPLSolver.F90 \
+Solvers/fAandfB_in.F90 \
+Solvers/FabricSolve.F90 \
+Solvers/Flowdepth.F90 \
+Solvers/ForceToStress.F90 \
+Solvers/GetHydrostaticLoads.F90 \
+Solvers/GolfLaw.F90 \
+Solvers/GroundedSolver.F90 \
+Solvers/IntegratedVelocity.F90 \
+Solvers/IDSSolver.F90 \
+Solvers/PorousSolve.F90 \
+Solvers/pointwise.F90 \
+Solvers/SIASolver.F90 \
+Solvers/SSASolver.F90 \
+Solvers/ThicknessSolver.F90 \
+Solvers/TemperateIce.F90 \
+Solvers/ExportVertically.F90 \
+Solvers/AdjointSolver.F90 \
+Solvers/DJDBeta_Adjoint.F90 \
+Solvers/DJDmu_Adjoint.F90 \
+Solvers/CostSolver_Adjoint.F90 \
+Solvers/DJDBeta_Robin.F90 \
+Solvers/DJDmu_Robin.F90 \
+Solvers/CostSolver_Robin.F90 \
+Solvers/m1qn3.F \
+Solvers/Grid2DInterpolator.F90 \
+Solvers/Optimize_m1qn3Parallel.F90 \
+Solvers/OutputStrainHeating.F90 \
+Solvers/UpdateExport.F90 \
+Solvers/IntegrateVertically.F90\
+Solvers/EnthalpySolver.F90
 USFSOURCE := \
-UserFunctions/Buoyancy.f90 \
-UserFunctions/USF_Contact.f90 \
-UserFunctions/CaffeFlow.f90 \
-UserFunctions/USF_LateralFriction.f90 \
-UserFunctions/USF_ShapeFactor.f90 \
-UserFunctions/USF_Sliding.f90 \
-UserFunctions/USF_Zs.f90\
-UserFunctions/USF_GetFrictionHeating.f90 \
-UserFunctions/USF_WaterTransfer.f90
+UserFunctions/Buoyancy.F90 \
+UserFunctions/USF_Contact.F90 \
+UserFunctions/CaffeFlow.F90 \
+UserFunctions/USF_LateralFriction.F90 \
+UserFunctions/USF_ShapeFactor.F90 \
+UserFunctions/USF_Sliding.F90 \
+UserFunctions/USF_Zs.F90\
+UserFunctions/USF_GetFrictionHeating.F90 \
+UserFunctions/USF_WaterTransfer.F90
 
-solverobjects := $(filter %.o,$(patsubst %.f90,%.o,$(SOLVERSOURCE))) $(filter %.o,$(patsubst %.f,%.o,$(SOLVERSOURCE)))
-usfobjects := $(patsubst %.f90,%.o,$(USFSOURCE))
+solverobjects := $(filter %.o,$(patsubst %.F90,%.o,$(SOLVERSOURCE))) $(filter %.o,$(patsubst %.f,%.o,$(SOLVERSOURCE)))
+usfobjects := $(patsubst %.F90,%.o,$(USFSOURCE))
 
 all: compile
 
@@ -142,8 +142,8 @@ purge: clean
 
 	rm -f $(INSTALLED)
 
-%.o: %.f90 
+%.o: %.F90 
 	elmerf90-nosh -c $< -o $@
 
-%.o: %.f
+%.o: %.F
 	elmerf90-nosh -c $< -o $@

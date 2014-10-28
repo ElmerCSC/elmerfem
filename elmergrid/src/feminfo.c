@@ -298,7 +298,9 @@ void InitParameters(struct ElmergridType *eg)
   eg->findsides = FALSE;
   eg->parthypre = FALSE;
   eg->partdual = FALSE;
-  eg->partz = 0;
+  eg->partbcz = 0;
+  eg->partbclayers = 1;
+  eg->partbcmetis = 0;
   eg->partbw = FALSE;
   eg->saveboundaries = TRUE;
   eg->timeron = FALSE;
@@ -453,7 +455,10 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     }
 
     if(strcmp(argv[arg],"-halo") == 0) {
-      eg->partitionhalo = TRUE;
+      eg->partitionhalo = 1;
+    }
+    if(strcmp(argv[arg],"-halobc") == 0) {
+      eg->partitionhalo = 2;
     }
      if(strcmp(argv[arg],"-indirect") == 0) {
       eg->partitionindirect = TRUE;
@@ -718,12 +723,34 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 
     if(strcmp(argv[arg],"-partconnect") == 0) {
       if(arg+1 >= argc) {
-	printf("The number of partitions is required as a parameter\n");
+	printf("The number of 1D partitions is required as a parameter\n");
 	return(15);
       }
       else {
-	eg->partz = atoi(argv[arg+1]);
-	printf("The connected elements will be joined to %d partitions.\n",eg->partz);
+	eg->partbcz = atoi(argv[arg+1]);
+	printf("The connected BCs will be partitioned to %d partitions in 1D.\n",eg->partbcz);
+      }
+    }
+
+    if(strcmp(argv[arg],"-partlayers") == 0) {
+      if(arg+1 >= argc) {
+	printf("The number of layers to be extended is required as a parameter\n");
+	return(15);
+      }
+      else {
+	eg->partbclayers = atoi(argv[arg+1]);
+	printf("The boundary partitioning will be extended by %d layers.\n",eg->partbcz);
+      }
+    }
+
+    if(strcmp(argv[arg],"-metisconnect") == 0) {
+      if(arg+1 >= argc) {
+	printf("The number of Metis partitions is required as a parameter\n");
+	return(15);
+      }
+      else {
+	eg->partbcmetis = atoi(argv[arg+1]);
+	printf("The connected BCs will be partitioned to %d partitions by Metis.\n",eg->partbcmetis);
       }
     }
 
@@ -764,6 +791,27 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	}
       }
     } 
+
+    if(strcmp(argv[arg],"-connectall") == 0) {
+      eg->connectboundsnosets += 1;
+      eg->connectbounds[eg->connect] = -1;
+      eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
+      eg->connect++;
+    }
+
+    if(strcmp(argv[arg],"-connectint") == 0) {
+      eg->connectboundsnosets += 1;
+      eg->connectbounds[eg->connect] = -2;
+      eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
+      eg->connect++;
+    }
+
+    if(strcmp(argv[arg],"-connectfree") == 0) {
+      eg->connectboundsnosets += 1;
+      eg->connectbounds[eg->connect] = -3;
+      eg->connectboundsset[eg->connect] = eg->connectboundsnosets;
+      eg->connect++;
+    }
  
     if(strcmp(argv[arg],"-boundbound") == 0) {
       for(i=arg+1;i<=arg+3 && i<argc; i++) {
@@ -1133,6 +1181,10 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       printf("This version of ElmerGrid was compiled without Metis library!\n");
 #endif
     }
+    else if(strstr(command,"PARTITION DUAL")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->partdual = TRUE;      
+    }
     else if(strstr(command,"PARTJOIN")) {
       sscanf(params,"%d",&eg->partjoin);
     }
@@ -1158,7 +1210,11 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     }
     else if(strstr(command,"HALO")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
-      if(strstr(params,"TRUE")) eg->partitionhalo = TRUE;      
+      if(strstr(params,"TRUE")) eg->partitionhalo = 1;      
+    }
+    else if(strstr(command,"BOUNDARY HALO")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->partitionhalo = 2;
     }
     else if(strstr(command,"PARTBW")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);

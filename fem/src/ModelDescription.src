@@ -1012,7 +1012,7 @@ CONTAINS
        INTEGER :: i,j, k,n, istat
        TYPE(HashTable_t), POINTER, SAVE :: Hash =>NULL()
        TYPE(HashValue_t), POINTER :: Val
-       LOGICAL :: FirstTime = .TRUE.,lstat
+       LOGICAL :: FirstTime = .TRUE.,lstat, fexist
 #ifdef ALLOC_CHAR
        CHARACTER(LEN=:), ALLOCATABLE :: str
 #else
@@ -1046,9 +1046,12 @@ CONTAINS
 #endif
           CALL envir( str,str1,k ) 
 
+	  fexist = .FALSE.
           IF ( k > 0  ) THEN
-            str1 = str1(1:k) // '/SOLVER.KEYWORDS'
-          ELSE
+             str1 = str1(1:k) // '/SOLVER.KEYWORDS'
+             INQUIRE(FILE=TRIM(str1), EXIST=fexist)
+          END IF
+          IF (.NOT. fexist) THEN
 #ifdef USE_ISO_C_BINDINGS
              str(1:10) = 'ELMER_HOME'
 #else
@@ -1056,11 +1059,21 @@ CONTAINS
 #endif
              CALL envir( str,str1,k ) 
              IF ( k > 0 ) THEN
-               str1 = str1(1:k) // '/share/elmersolver/lib/' // 'SOLVER.KEYWORDS'
-             ELSE
-               CALL GetSolverHome(str, n)
-               WRITE(str1, '(a,a)') str(1:n), '/lib/SOLVER.KEYWORDS'
+                str1 = str1(1:k) // '/share/elmersolver/lib/' // 'SOLVER.KEYWORDS'
+                INQUIRE(FILE=TRIM(str1), EXIST=fexist)
              END IF
+             IF ((.NOT. fexist) .AND. k>0) THEN
+                str1 = str1(1:k) // '/SOLVER.KEYWORDS'
+                INQUIRE(FILE=TRIM(str1), EXIST=fexist)
+             END IF
+          END IF
+          IF (.NOT. fexist) THEN
+             CALL GetSolverHome(str, n)
+             WRITE(str1, '(a,a)') str(1:n), '/lib/SOLVER.KEYWORDS'
+             INQUIRE(FILE=TRIM(str1), EXIST=fexist)
+          END IF
+          IF (.NOT. fexist) THEN
+             CALL Fatal('CheckKeyWord', 'SOLVER.KEYWORDS not found')
           END IF
 
           OPEN( 1, FILE=TRIM(str1), STATUS='OLD', ERR=10 )

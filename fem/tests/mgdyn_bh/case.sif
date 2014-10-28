@@ -196,6 +196,7 @@ Body Force 1
   Current Density 3 = Equals Volume current 3
 End
 
+Solver 3 :: Reference Norm = Real 17.869450
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=17.869450\n ");

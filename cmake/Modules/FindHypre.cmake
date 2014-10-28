@@ -2,18 +2,31 @@
 # Juhani Kataja, CSC - IT Center for Science Ltd.
 # 2014/08
 
+# If Hypre libraries are already defined, do nothing
+IF(Hypre_LIBRARIES AND Hypre_INCLUDE_DIR)
+   SET(Hypre_FOUND TRUE)
+   RETURN()
+ENDIF()
+
+message(STATUS "Finding Hypre")
 set(Hypre_FOUND FALSE)
 
 find_path(Hypre_INCLUDE_DIR NAMES HYPRE.h
   HINTS
   "${HYPREROOT}/include"
   "$ENV{HYPREROOT}/include"
+  "${HYPRE_ROOT}/include"
+  "$ENV{HYPRE_ROOT}/include"
+  "${CMAKE_SOURCE_DIR}/hypre/include"
   )
 
 find_library(Hypre_LIBRARIES NAMES HYPRE
   HINTS
   "${HYPREROOT}/lib"
   "$ENV{HYPREROOT}/lib"
+  "${HYPRE_ROOT}/lib"
+  "$ENV{HYPRE_ROOT}/lib"
+  "${CMAKE_SOURCE_DIR}/hypre/lib"
   )
 
 IF(${Hypre_LIBRARIES} MATCHES NOTFOUND)
@@ -65,7 +78,7 @@ ELSE()
    ENDIF()
 ENDIF()
 
-MARK_AS_ADVANCED(Hypre_INCLUDE_PATH Hypre_LIBRARIES)
+MARK_AS_ADVANCED(Hypre_INCLUDE_DIR Hypre_LIBRARIES)
 
 
 

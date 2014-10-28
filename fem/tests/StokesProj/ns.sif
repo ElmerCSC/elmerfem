@@ -86,6 +86,7 @@ Boundary Condition 3
   VelocityTot 2 = Real 0
 End
 
+Solver 2 :: Reference Norm = Real 0.379706751828
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=0.379706751828\n" );

@@ -1,0 +1,344 @@
+!--------------------------------------------------------------!
+!                                                              !
+!  Ansys macro file for writing general information about the  !
+!  mesh created using Ansys Preprocessor in ASCII format.      !
+!                                                              !
+!  Author:   Antti Pursula                                     !
+!            CSC - Scientific Computing Ltd.                   !
+!            tel +358-9-4572026                                !
+!            email antti.pursula@csc.fi                        !
+!                                                              !
+!  Last Modified:   Jan 24 2007                                !
+!                                                              !
+!--------------------------------------------------------------!
+
+*MSG,INFO,
+%/  *** Entering Ansys mesh export macro ***
+/PMACRO
+/NOPR
+
+*GET,a_state,ACTIVE,0,ROUT	! Move into /prep7 state
+*IF,a_state,NE,17,THEN
+   *IF,a_state,NE,0,THEN
+      /QUIT
+   *ENDIF
+   /PREP7
+*ENDIF
+/NOPR
+
+*MSG,INFO,
+%/Moving into Preprocessor state
+
+ALLSELL,ALL,ALL			! Select all entities of all types
+
+! Tutkitaanpa onko geometriassa 3d ja 2d -elementtejä sekaisin
+
+nd_el3 =
+nd_el2 =
+*GET,etypes,ETYP,0,NUM,MAX
+*DIM,nd_el3,ARRAY,etypes
+*DIM,nd_el2,ARRAY,etypes
+K = 0
+L = 0
+M = 0
+*DO,I,1,etypes
+   !/GOPR
+   VSEL,S,TYPE,,I,,,0
+   ASEL,S,TYPE,,I,,,0
+   LSEL,S,TYPE,,I,,,0
+   *GET,flag3d,VOLU,0,COUNT
+   *GET,flag2d,AREA,0,COUNT
+   *GET,flag1d,LINE,0,COUNT
+   *IF,flag3d,GT,0,THEN
+      K = K+1
+      ESLV,S
+      *GET,test,ELEM,0,NUM,MIN
+      ESEL,R,ELEM,,test
+      NSLE,S
+      *GET,test,NODE,,COUNT
+      nd_el3(I) = test
+   *ELSEIF,flag2d,GT,0,THEN
+      L = L+1
+      ESLA,S
+      *GET,test,ELEM,0,NUM,MIN
+      ESEL,R,ELEM,,test
+      NSLE,S
+      *GET,test,NODE,,COUNT
+      nd_el2(I) = test
+   *ELSEIF,flag1d,GT,0,THEN
+      M = M+1
+   *ENDIF
+*ENDDO
+
+ALLSELL,ALL,ALL
+
+*IF,K,GT,0,THEN
+   bc_type = 'AREA'
+   bulk_tp = 'VOLU'
+   dims = 3
+   *MSG,INFO,
+   %/Converting a 3D-geometry
+   VSEL,ALL
+   ESLV,S
+   NSLE,S,ALL
+   *IF,L,GT,0,THEN
+      *MSG,INFO
+      Found also 2D-elements which will be ignored
+   *ENDIF
+*ELSEIF,L,GT,0,THEN
+   bc_type = 'LINE'
+   bulk_tp = 'AREA'
+   dims = 2
+   *MSG,INFO,
+   %/Converting a 2D-geometry
+   ASEL,ALL
+   ESLA,S
+   NSLE,S,ALL
+*ELSE
+   *MSG,INFO,
+   %/Did not found any 3D or 2D elements
+   dims = 0
+*ENDIF
+
+*IF,dims,GT,0,THEN            ! If bulk elements not found go to end
+
+*IF,M,GT,0,THEN
+   *MSG,INFO
+   Found also 1D-elements which will be ignored
+*ENDIF
+
+*GET,total_e,ELEM,0,COUNT
+EWRITE,ExportMesh,elem,,0,SHORT
+*MSG,INFO,total_e
+%/Wrote %I bulk elements in ExportMesh.elem
+*GET,total_n,NODE,0,COUNT
+NWRITE,ExportMesh,node,,0
+*MSG,INFO,total_n
+Wrote %I bulk nodes in ExportMesh.node
+
+*GET,tot_a,bc_type,0,COUNT	! Number of areas/lines
+
+*CFOPEN,ExportMesh,header,,
+*VWRITE,total_e,total_n,tot_a
+(F8.0,F8.0,F8.0)
+*IF,dims,EQ,3,THEN
+   *DO,I,1,etypes
+      !/GOPR
+      test = nd_el3(I)
+      *IF,test,NE,0,THEN
+         *VWRITE,dims,test,I
+         (F8,F8,F8)
+      *ENDIF
+   *ENDDO
+*ELSE
+   *DO,I,1,etypes
+      !/GOPR
+      test = nd_el2(I)
+      *IF,test,NE,0,THEN
+         *VWRITE,dims,test,I
+         (F8.0,F8.0,F8.0)
+      *ENDIF
+   *ENDDO
+*ENDIF
+*CFCLOS
+*MSG,INFO
+Wrote mesh information in ExportMesh.header
+
+test = tot_a+1
+*IF,tot_a,GT,20,THEN
+   *ABSET,'Writing boundaries...',BAR
+   *ABCHECK,0,
+   test = nint(tot_a/10)-1
+*ENDIF
+*MSG,INFO,tot_a
+Processing the %I boundaries...
+
+*GET,nbr_a,bc_type,0,NUM,MIN	! Current area = min label of areas/lines
+
+wr_style =
+*DO,I,1,tot_a
+   *IF,mod(I,test),EQ,0,THEN
+      *ABCHECK,I/tot_a*100
+   *ENDIF
+   *IF,dims,EQ,3,THEN
+      ASEL,S,AREA,,nbr_a,,,1	! Select area labeled nbr_a
+      VSLA,S,0
+      ESLV,S
+      NSLE,S,ALL
+      NSLA,R,1
+   *ELSE
+      LSEL,S,LINE,,nbr_a,,,1	! Select line labeled nbr_a
+      ASLL,S,0
+      ESLA,S
+      NSLE,S,ALL
+      NSLL,R,1
+   *ENDIF
+
+   *CFOPEN,ExportMesh,boundary,,wr_style
+   *VWRITE,nbr_a
+   (F8.0,' Boundary')
+   *CFCLOS
+   NWRITE,ExportMesh,boundary,,1
+   wr_style = 'APPEND'
+
+   ALLSELL,ALL,ALL		! Select all entities of all types
+   *GET,nbr_a,bc_type,nbr_a,NXTH   ! Take next area as current
+*ENDDO
+
+*MSG,INFO,tot_a
+Wrote %I boundaries in ExportMesh.boundary
+
+*IF,tot_a,GT,20,THEN
+   *ABFINI
+*ENDIF
+
+
+! Start writing name information
+
+*GET,nbrcomp,COMP,0,NCOMP
+
+*IF,nbrcomp,GT,0,THEN
+
+  *MSG,INFO,nbrcomp
+  Writing %I component names into ExportMesh.names
+
+  *CFOPEN,ExportMesh,names,,
+  *IF, dims, EQ, 3, THEN
+
+    nbr_fnd=0
+    *DO,ind,1,nbrcomp
+
+      *GET,compname,COMP,ind,NAME
+      *GET,comptype,COMP,compname,TYPE
+
+      *IF, comptype, EQ, 9, THEN     !!  9 = VOLU
+
+        nbr_fnd = nbr_fnd+1
+        CMSEL,S,compname,,
+        
+        *VWRITE,nbr_fnd,compname,'BODY',1
+        %I %C %C %I
+
+        *GET,nbr,VOLU,0,NUM,MIN
+        *GET,curr_mat,VOLU,nbr,ATTR,MAT
+
+!  if material value not assigned for volume, then get it from element
+
+        *IF,curr_mat,LE,0,THEN
+          ESLV,S
+          *GET,nbr,ELEM,0,NUM,MIN
+          *GET,curr_mat,ELEM,nbr,ATTR,MAT
+        *ENDIF
+
+        *VWRITE,1,curr_mat
+        %I %I
+
+      *ENDIF
+    *ENDDO
+
+    nbr_fnd=0
+    *DO,ind,1,nbrcomp
+
+      *GET,compname,COMP,ind,NAME
+      *GET,comptype,COMP,compname,TYPE
+
+      *IF, comptype, EQ, 8, THEN     !!  8 = AREA
+
+        nbr_fnd = nbr_fnd+1
+        CMSEL,S,compname,,
+        
+        *GET,nbritems,AREA,0,COUNT
+
+        *VWRITE,nbr_fnd,compname,'BOUNDARY',nbritems
+        %I %C %C %I
+
+        comps =
+        *DIM,comps,ARRAY,nbritems
+        *GET,nbr,AREA,0,NUM,MIN
+        *DO,jj,1,nbritems
+          comps(jj) = nbr
+          *GET,nbr,AREA,nbr,NXTH
+        *ENDDO
+        *VWRITE,SEQU,comps(1)
+        %I %I
+
+      *ENDIF
+    *ENDDO
+  *ENDIF
+
+  *IF, dims, EQ, 2, THEN
+
+    nbr_fnd=0
+    *DO,ind,1,nbrcomp
+
+      *GET,compname,COMP,ind,NAME
+      *GET,comptype,COMP,compname,TYPE
+
+      *IF, comptype, EQ, 8, THEN     !!  8 = AREA
+
+        nbr_fnd = nbr_fnd+1
+        CMSEL,S,compname,,
+        
+        *VWRITE,nbr_fnd,compname,'BODY',1
+        %I %C %C %I
+
+        *GET,nbr,AREA,0,NUM,MIN
+        *GET,curr_mat,AREA,nbr,ATTR,MAT
+
+!  if material value not assigned for area, then get it from element
+
+        *IF,curr_mat,LE,0,THEN
+          ESLA,S
+          *GET,nbr,ELEM,0,NUM,MIN
+          *GET,curr_mat,ELEM,nbr,ATTR,MAT
+        *ENDIF
+
+        *VWRITE,1,curr_mat
+        %I %I
+
+      *ENDIF
+    *ENDDO
+
+    nbr_fnd=0
+    *DO,ind,1,nbrcomp
+
+      *GET,compname,COMP,ind,NAME
+      *GET,comptype,COMP,compname,TYPE
+
+      *IF, comptype, EQ, 7, THEN     !!  7 = LINE
+
+        nbr_fnd = nbr_fnd+1
+        CMSEL,S,compname,,
+        
+        *GET,nbritems,LINE,0,COUNT
+
+        *VWRITE,nbr_fnd,compname,'BOUNDARY',nbritems
+        %I %C %C %I
+
+        comps =
+        *DIM,comps,ARRAY,nbritems
+        *GET,nbr,LINE,0,NUM,MIN
+        *DO,jj,1,nbritems
+          comps(jj) = nbr
+          *GET,nbr,LINE,nbr,NXTH
+        *ENDDO
+        *VWRITE,SEQU,comps(1)
+        %I %I
+
+      *ENDIF
+    *ENDDO
+  *ENDIF
+
+  *CFCLOS
+
+*ENDIF
+
+! End name information write
+
+
+*ENDIF        ! If found bulk elements
+
+*MSG,INFO,
+%/  *** Exiting Ansys mesh export macro ***
+
+/GOPR

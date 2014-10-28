@@ -223,11 +223,7 @@ CONTAINS
     !-------------------------------------
     ! Numerical integration over element:
     !-------------------------------------
-    IF (PiolaVersion) THEN
-       IP = EdgeElementGaussPoints( GetElementFamily() )
-    ELSE
-       IP = GaussPoints(Element,RelOrder=1)
-    END IF
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)    
 
     IF (UseTabulatedBasis .AND. PiolaVersion) THEN
        !----------------------------------------------------------------------------
@@ -442,11 +438,7 @@ CONTAINS
     !-------------------------------------
     ! Numerical integration over element:
     !-------------------------------------
-    IF (PiolaVersion) THEN
-       IP = EdgeElementGaussPoints( GetElementFamily() )
-    ELSE
-       IP = GaussPoints(Element,RelOrder=1)
-    END IF
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion) 
 
     np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
 

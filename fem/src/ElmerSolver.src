@@ -553,8 +553,15 @@ END INTERFACE
          END DO
        END IF
 
+       CALL CompareToReferenceSolution( )
+
        IF ( Initialize >= 2 ) EXIT
      END DO
+
+
+     CALL CompareToReferenceSolution( Finalize = .TRUE. )
+
+
 !------------------------------------------------------------------------------
 !    THIS IS THE END (...,at last, the end, my friend,...)
 !------------------------------------------------------------------------------
@@ -580,6 +587,96 @@ END INTERFACE
 
    CONTAINS 
      
+
+     ! The user may request unit tests to be performed. 
+     ! This will be done if any reference norm is given.
+     ! The success will be written to file TEST.PASSED as 0/1. 
+     !--------------------------------------------------------
+     SUBROUTINE CompareToReferenceSolution( Finalize ) 
+       LOGICAL, OPTIONAL :: Finalize 
+
+       INTEGER :: i, TestCount=0, PassCount=0, FailCount
+       REAL(KIND=dp) :: Norm, RefNorm, Tol
+       TYPE(Solver_t), POINTER :: Solver
+       LOGICAL :: Found, Success = .TRUE., FinalizeOnly
+
+       SAVE TestCount, PassCount 
+
+
+       ! Write the success to a file for further use e.g. by cmake
+       !----------------------------------------------------------
+       FinalizeOnly = .FALSE.
+       IF( PRESENT( Finalize ) ) FinalizeOnly = .TRUE.
+
+       IF( FinalizeOnly ) THEN
+
+         ! Nothing tested
+         IF( TestCount == 0 ) RETURN
+         
+         Success = ( PassCount == TestCount )  
+         FailCount = TestCount - PassCount
+         
+         IF( Success ) THEN
+           CALL Info('CompareToReferenceSolution',&
+               'PASSED all '//TRIM(I2S(TestCount))//' tests!',Level=4)
+         ELSE         
+           CALL Warn('CompareToReferenceSolution','FAILED '//TRIM(I2S(FailCount))//&
+               ' tests out of '//TRIM(I2S(TestCount))//'!')
+         END IF
+         
+         IF( FinalizeOnly ) THEN
+           IF( ParEnv % MyPe == 0 ) THEN
+             OPEN( 10, FILE = 'TEST.PASSED' )
+             IF( Success ) THEN
+               WRITE( 10,'(I1)' ) 1
+             ELSE
+               WRITE( 10,'(I1)' ) 0
+             END IF
+           END IF
+         END IF
+
+         RETURN
+       END IF
+
+
+       DO i=1,CurrentModel % NumberOfSolvers
+         Solver => CurrentModel % Solvers(i)
+
+         RefNorm = ListGetConstReal( Solver % Values,'Reference Norm', Found )
+         IF(.NOT. Found ) CYCLE
+         
+         TestCount = TestCount + 1
+
+         IF( .NOT. ASSOCIATED( Solver % Variable ) ) THEN
+           CALL Warn('CompareToReferenceSolution','Variable in Solver '&
+               //TRIM(I2S(i))//' not associated, cannot compare')
+           CYCLE
+         END IF
+         
+         Norm = Solver % Variable % Norm 
+         Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
+         IF(.NOT. Found ) Tol = 1.0d-5
+
+         IF( ABS( Norm - RefNorm ) > Tol * RefNorm ) THEN
+           ! Normally warning is done for every partition but this time it is the same for all
+           IF( ParEnv % MyPe == 0 ) THEN
+             WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
+                 'Solver ',i,' FAILED:  Norm = ',Norm,'  RefNorm = ',RefNorm
+             CALL Warn('CompareToReferenceSolution',Message)
+           END IF
+         ELSE         
+           WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
+               'Solver ',i,' PASSED:  Norm = ',Norm,'  RefNorm = ',RefNorm
+           CALL Info('CompareToReferenceSolution',Message,Level=4)
+           PassCount = PassCount + 1
+         END IF
+       END DO
+      
+
+     END SUBROUTINE CompareToReferenceSolution
+
+     
+
 
      ! This is a dirty hack that adds an instance of ResultOutputSolver to the list of Solvers.
      ! The idea is that it is much easier for the end user to take into use the vtu output this way.

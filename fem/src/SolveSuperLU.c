@@ -134,7 +134,8 @@ FC_FUNC_(solve_superlu,SOLVE_SUPERLU)(int *iopt, int *nprocs, int *n,
 
 	/* Free un-wanted storage */
 	Destroy_SuperMatrix_Store(&A);
-	Destroy_CompCol_Permuted(&AC);
+/*	Destroy_CompCol_Permuted(&AC); Instead, as Fabien suggested (untested): */
+        pxgstrf_finalize(&options, &AC);
   	StatFree(&stat);
 
     } else if ( *iopt == 2 ) { /* Triangular solve */
@@ -163,8 +164,12 @@ FC_FUNC_(solve_superlu,SOLVE_SUPERLU)(int *iopt, int *nprocs, int *n,
 	LUfactors = (factors_t*)*f_factors;
 	SUPERLU_FREE (LUfactors->perm_r);
 	SUPERLU_FREE (LUfactors->perm_c);
+/*
 	Destroy_CompCol_Matrix(LUfactors->U);
 	Destroy_SuperNode_Matrix(LUfactors->L);
+Instead,  as Fabien suggested (untested): */
+        Destroy_SuperNode_SCP(LUfactors->L);
+        Destroy_CompCol_NCP(LUfactors->U);
         SUPERLU_FREE (LUfactors->L);
         SUPERLU_FREE (LUfactors->U);
 	SUPERLU_FREE (LUfactors);

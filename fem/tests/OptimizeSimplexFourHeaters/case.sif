@@ -135,6 +135,7 @@ Boundary Condition 1
   Temperature = Real 0
 End
 
+Solver 2 :: Reference Norm = Real 22.027671047551930
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM= 22.027671047551930\n");

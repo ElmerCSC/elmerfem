@@ -1,0 +1,25 @@
+Two APDL (Ansys parametric design language) macros has been created which allow writing geometry data in ASCII format out of Ansys. The macros can be activated from Ansys GUI using custom added buttons in the Ansys Toolbar. The ASCII format files can further be converted in the Elmer format by using a separate C-program ElmerGrid.
+
+The information written out by the macros consists of four files that are named ExportMesh.extension (extension = header, node, elem, boundary, or names). The files include all the information Elmer needs for using the mesh ie., besides the obvious node and element definitions, also information about the boundary nodes etc. Detailed information of the file formats is found here (in Finnish), but this information is not needed in any way when using Ansys to Elmer interface.
+
+In Ansys, the geometry model is often created combining several elementary geometries. This means that the model usually includes boundaries, that have no physical meaning. These do not disturb the analysis neither in Ansys nor in Elmer, but they can make the definition of boundary conditions quite cumbersome in Elmer. Therefore, there are two possible macros for exporting data from Ansys: ELMER_AU and ELMER_CH. The first writes all the boundaries of the model automatically while the second asks the user to graphically pick the boundaries that have physical meaning. It is worthwile to notice that Elmer does not necessarily need boundary information for all the physical boundaries, but only those on which a boundary condition is to be applied.
+
+Also component name information can be used for assigning boundary conditions and equations to entities in Elmer. The saving of these names is included only into the ELMER_AU macro, at the moment.
+
+To use Ansys to Elmer interface you need to download two macro files and an Ansys start-up file, and copy them into your working directory. After the files have been copied, start Ansys and the buttons ELMER_AU and ELMER_CH appear in the Toolbar. The conversion of the resulting ASCII files into Elmer format is done by the ElmerGrid program. The files as well as ElmerGrid can be downloaded from the Elmer download page.
+
+ElmerGrid is controlled through command line arguments. The syntax is ElmerGrid input_format output_format filename [options]. The input and output formats are numbers. The Ansys input format is 4 and output format can be Elmer mesh format (2) or ElmerPost format (3). So, creating Elmer meshes from Ansys input is done with the command: ElmerGrid 4 2 ExportMesh. There are also many options available. The most important ones in this case are:
+
+-out name for saving output with the name specified.
+-order a b c for reordering nodes and elements using a*x+b*y+c*z
+-scale a b c for scaling the mesh using a, b, and c for coordinate axes.
+-merge epsilon for merging nodes that are at most distance epsilon apart.
+The -merge option is important in a case where Ansys creates multiple nodes on a boundary of two elementary geometries. These nodes are often noticed only when Elmer is not able to use a mesh created from Ansys. In such a case, use -merge option with a suitable value of epsilon.
+
+
+
+Please send bug-reports and comments to the authors:
+
+APDL-macros: Antti.Pursula@csc.fi
+ElmerGrid: Peter.Raback@csc.fi
+
