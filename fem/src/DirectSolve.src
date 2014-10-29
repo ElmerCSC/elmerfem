@@ -1398,7 +1398,6 @@ CONTAINS
 
       matpd = ListGetLogical(Solver % Values, &
                     'Linear System Positive Definite', Found)
-      IF(matpd) matsym = .TRUE.
 
       IF (matsym) THEN
         IF (matpd) THEN
