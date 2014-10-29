@@ -1124,7 +1124,7 @@ CONTAINS
 
       ! Refactorize local matrix if needed
       IF ( Factorize .OR. (.NOT. ASSOCIATED(A % mumpsIDL)) ) THEN
-      	CALL MumpsLocal_Factorize(Solver, A)
+            CALL MumpsLocal_Factorize(Solver, A)
       END IF
 
       ! Check symmetry condition
@@ -1139,8 +1139,8 @@ CONTAINS
       nz = A % mumpsIDL % INFOG(28)
 
       IF (nz == 0) THEN
-      	ALLOCATE(z(nz,n))
-    	RETURN
+            ALLOCATE(z(nz,n))
+          RETURN
       END IF
 
       ALLOCATE(nspace(n*nz), STAT=allocstat)
@@ -1184,9 +1184,9 @@ CONTAINS
 
       ! Copy computed nullspace to z and deallocate nspace
       DO j=1,nz
-      	! z is row major, cannot use DCOPY here
+            ! z is row major, cannot use DCOPY here
         DO k=1,n
-        	z(j,k)=nspace(n*(j-1)+k)
+              z(j,k)=nspace(n*(j-1)+k)
         END DO
       END DO
       DEALLOCATE(nspace)
@@ -1333,9 +1333,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Pardiso_SolveSystem( Solver,A,x,b,Free_fact )
 !------------------------------------------------------------------------------
-	IMPLICIT NONE
+      IMPLICIT NONE
 
-	TYPE(Solver_t) :: Solver
+      TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp), TARGET :: x(*), b(*)
     LOGICAL, OPTIONAL :: Free_fact
@@ -1343,15 +1343,15 @@ CONTAINS
 ! MKL version of Pardiso (interface is different)
 #if defined(HAVE_MKL)
     INTERFACE
-    	SUBROUTINE pardiso(pt, maxfct, mnum, mtype, phase, n, &
+          SUBROUTINE pardiso(pt, maxfct, mnum, mtype, phase, n, &
                            values, rows, cols, perm, nrhs, iparm, msglvl, b, x, ierror)
-        	USE Types
-          	REAL(KIND=dp) :: values(*), b(*), x(*)
-          	INTEGER(KIND=AddrInt) :: pt(*)
-          	INTEGER :: perm(*), nrhs, iparm(*), msglvl, ierror
-          	INTEGER :: maxfct, mnum, mtype, phase, n, rows(*), cols(*)
+              USE Types
+                REAL(KIND=dp) :: values(*), b(*), x(*)
+                INTEGER(KIND=AddrInt) :: pt(*)
+                INTEGER :: perm(*), nrhs, iparm(*), msglvl, ierror
+                INTEGER :: maxfct, mnum, mtype, phase, n, rows(*), cols(*)
         END SUBROUTINE pardiso
-	END INTERFACE
+      END INTERFACE
 
     INTEGER maxfct, mnum, mtype, phase, n, nrhs, ierror, msglvl
     INTEGER, POINTER :: Iparm(:)
@@ -1361,197 +1361,208 @@ CONTAINS
 
     LOGICAL :: Factorize, FreeFactorize
     INTEGER :: tlen, allocstat
-    CHARACTER(LEN=MAX_NAME_LEN) :: threads
+    CHARACTER(LEN=MAX_NAME_LEN) :: threads, mat_type
 
-	REAL(KIND=dp), POINTER :: values(:)
+    REAL(KIND=dp), POINTER :: values(:)
     INTEGER, POINTER  :: rows(:), cols(:)
 
-	INTEGER, EXTERNAL :: MKL_GET_MAX_THREADS
+    INTEGER, EXTERNAL :: MKL_GET_MAX_THREADS
 
 
-	! Free factorization if requested
-    IF ( PRESENT(Free_Fact) ) THEN
-    	IF ( Free_Fact ) THEN
-        	IF(ASSOCIATED(A % PardisoId)) THEN
-            	phase     = -1           ! release internal memory
-            	n = A % NumberOfRows
-            	mtype  = 11
-            	maxfct = 1
-            	mnum   = 1
-            	nrhs   = 1
-            	msglvl = 0
-            	CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
-             				 ddum, idum, idum, idum, nrhs, A % PardisoParam, &
-             				 msglvl, ddum, ddum, ierror)
-            	DEALLOCATE(A % PardisoId, A % PardisoParam)
-            	A % PardisoId => NULL()
-            	A % PardisoParam => NULL()
-          	END IF
-        RETURN
-
-        END IF
-	END IF
-
-	! Check if system needs to be refactorized
-	Factorize = ListGetLogical( Solver % Values, &
-								'Linear System Refactorize', Found )
+    ! Check if system needs to be refactorized
+    Factorize = ListGetLogical( Solver % Values, &
+                  'Linear System Refactorize', Found )
     IF ( .NOT. Found ) Factorize = .TRUE.
 
-	! Check if matrix is symmetric or spd
-    matsym = ListGetLogical(Solver % Values, &
-                            'Linear System Symmetric', Found)
-    matpd = ListGetLogical(Solver % Values, &
-                           'Linear System Positive Definite', Found)
-
-	! Set matrix type for Pardiso
-	! TODO: implement complex support
-    IF (matsym) THEN
-    	IF (matpd) THEN
-        	! Matrix is symmetric positive definite
-        	mtype = 2
-      	ELSE
-        	! Matrix is symmetric
-        	mtype = 1
-     	END IF
+    ! Set matrix type for Pardiso
+    ! TODO: implement complex support
+    mat_type = ListGetString( Solver % Values, 'Linear System Matrix Type', Found )
+    
+    IF (Found) THEN
+      SELECT CASE(mat_type)
+      CASE('positive definite')
+        mtype = 2
+      CASE('symmetric indefinite')
+        mtype = -2
+      CASE('structurally symmetric')
+        mtype = 1
+      CASE('nonsymmetric', 'general')
+        mtype = 11
+      CASE DEFAULT
+        mtype = 11
+      END SELECT
     ELSE
-    	! Matrix is unsymmetric
-      	mtype = 11
+      ! Check if matrix is symmetric or spd
+      matsym = ListGetLogical(Solver % Values, &
+                            'Linear System Symmetric', Found)
+
+      matpd = ListGetLogical(Solver % Values, &
+                    'Linear System Positive Definite', Found)
+      IF(matpd) matsym = .TRUE.
+
+      IF (matsym) THEN
+        IF (matpd) THEN
+          ! Matrix is symmetric positive definite
+           mtype = 2
+         ELSE
+          ! Matrix is structurally symmetric (can't handle indefinite systems!!!!)
+          mtype = 1
+        END IF
+      ELSE
+        ! Matrix is unsymmetric
+        mtype = 11
+      END IF
     END IF
 
-	! Get number of rows and number of nonzero elements
-	n = A % Numberofrows
-	nz = A % rows(n+1)-1
-
-	! Copy upper triangular part of symmetric positive definite system
-	IF ( mtype == 2 ) THEN
-		nzutd = (nz-n)/2 + n
-
-        ALLOCATE( values(nzutd), cols(nzutd), rows(n+1), STAT=allocstat)
-        IF (allocstat /= 0) THEN
-        	CALL Fatal('Pardiso_SolveSystem', &
-        	           'Memory allocation for row and column indices failed')
+    ! Free factorization if requested
+    IF ( PRESENT(Free_Fact) ) THEN
+      IF ( Free_Fact ) THEN
+        IF(ASSOCIATED(A % PardisoId)) THEN
+          phase     = -1           ! release internal memory
+          n = A % NumberOfRows
+          maxfct = 1
+          mnum   = 1
+          nrhs   = 1
+          msglvl = 0
+          CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
+              ddum, idum, idum, idum, nrhs, A % PardisoParam, msglvl, ddum, ddum, ierror)
+          DEALLOCATE(A % PardisoId, A % PardisoParam)
+          A % PardisoId => NULL()
+          A % PardisoParam => NULL()
         END IF
+        RETURN
+      END IF
+    END IF
 
-		! Copy upper triangular part of A to Pardiso structure
-        k = 1
-        DO i=1,n
-        	rows(i)=k
-         	DO j=a % rows(i), a % rows(i+1)-1
-           		IF ( A % cols(j)>=i .AND. A % values(j) /= 0._dp ) THEN
-             		cols(k) = A % cols(j)
-             		values(k) = A % values(j)
-             		k = k + 1
-           		END IF
+    ! Get number of rows and number of nonzero elements
+    n = A % Numberofrows
+    nz = A % Rows(n+1)-1
 
-        	END DO
+    ! Copy upper triangular part of symmetric positive definite system
+    IF ( ABS(mtype) == 2 ) THEN
+      nzutd = 0
+      DO i=1,n
+        DO j=A % Diag(i), a % Rows(i+1)-1
+          IF ( A % Values(j) /= 0._dp ) nzutd=nzutd+1
+        END DO
+      END DO
 
-        	rows(n+1)=k
-     	END DO
+      ALLOCATE( values(nzutd), cols(nzutd), rows(n+1), STAT=allocstat)
+      IF (allocstat /= 0) THEN
+        CALL Fatal('Pardiso_SolveSystem', &
+           'Memory allocation for row and column indices failed')
+      END IF
 
-	ELSE
-    	cols => a % cols
-    	rows => a % rows
-   		values => a % values
-	END IF
+      ! Copy upper triangular part of A to Pardiso structure
+      k = 1
+      DO i=1,n
+        Rows(i) = k
+        DO j=A % Diag(i), A % Rows(i+1)-1
+          IF ( A % Values(j) /= 0._dp ) THEN
+            Cols(k) = A % Cols(j)
+            Values(k) = A % Values(j)
+            k = k + 1
+          END IF
+        END DO
+        Rows(n+1) = k
+      END DO
+    ELSE
+      Cols => A % Cols
+      Rows => A % Rows
+      Values => A % Values
+    END IF
 
-	! Set up parameters
+    ! Set up parameters
     msglvl    = 0 ! Do not write out any info
     maxfct    = 1 ! Set up space for 1 matrix at most
     mnum      = 1 ! Matrix to use in the solution phase (1st and only one)
     nrhs      = 1 ! Use only one RHS
     iparm => A % PardisoParam
 
-	! Compute factorization if necessary
-	IF ( Factorize .OR. .NOT.ASSOCIATED(A % PardisoID) ) THEN
-		! Free factorization
-    	IF (ASSOCIATED(A % PardisoId)) THEN
-        	phase = -1 ! release internal memory
-        	CALL pardiso (A % PardisoId, maxfct, mnum, mtype, phase, n, &
-                          ddum, idum, idum, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
-          	DEALLOCATE(A % PardisoId, A % PardisoParam)
-          	A % PardisoId => NULL()
-          	A % PardisoParam => NULL()
-        END IF
-
-		! Allocate pardiso internal structures
-        ALLOCATE(A % PardisoId(64), A % PardisoParam(64), STAT=allocstat)
-        IF (allocstat /= 0) THEN
-        	CALL Fatal('Pardiso_SolveSystem', &
-        	           'Memory allocation for Pardiso failed')
-        END IF
-        iparm => A % PardisoParam
-        ! Initialize control parameters and solver Id's
-        DO i=1,64
-        	iparm(i)=0
-        END DO
-        DO i=1,64
-        	A % PardisoId(i)=0
-        END DO
-
-        ! Set up parameters explicitly
-        iparm(1)=1		! Do not use solver default parameters
-        iparm(2)=2      ! Minimize fill-in with nested dissection from Metis
-		iparm(3)=MKL_GET_MAX_THREADS() ! Get value of MKL_NUM_THREADS
-		iparm(4)=0      ! Always compute factorization
-		iparm(5)=0      ! No user input permutation
-		iparm(6)=0      ! Write solution vector to x
-		iparm(8)=5      ! Number of iterative refinement steps
-		iparm(10)=13    ! Perturbation value 10^-iparm(10) in case of small pivots
-		iparm(11)=1     ! Use scalings from symmetric weighted matching
-		iparm(13)=1     ! Use permutations from symmetric weighted matching
-		iparm(18)=-1    ! Report nnz(L) and nnz(U)
-		iparm(19)=0     ! Do not report Mflops
-		iparm(27)=0     ! Do not check sparse matrix representation
-		iparm(60)=0     ! Use in-core version of Pardiso
-
-		! Perform analysis
-		phase = 11		! Analysis
-        CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
-                     	values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
-
-        IF (ierror .NE. 0) THEN
-        	WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
-        	CALL Fatal('Pardiso_SolveSystem','Error during analysis phase')
-        END IF
-
-		! Perform factorization
-        phase = 22		! Factorization
-        CALL pardiso (A % pardisoId, maxfct, mnum, mtype, phase, n, &
-        				values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
-
-		IF (ierror .NE. 0) THEN
-        	WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
-        	CALL Fatal('Pardiso_SolveSystem','Error during factorization phase')
-        END IF
-
-	END IF ! Compute factorization
-
-	! Perform solve
-	phase = 33		! Solve, iterative refinement
-	CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
-						values, rows, cols, idum, nrhs, iparm, msglvl, b, x, ierror)
-
-	IF (ierror .NE. 0) THEN
-    	WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
-        CALL Fatal('Pardiso_SolveSystem','Error during solve phase')
-	END IF
-
-	! Release memory if needed
-	FreeFactorize = ListGetLogical( Solver % Values, &
-          							'Linear System Free Factorization', Found )
-    IF ( .NOT. Found ) FreeFactorize = .TRUE.
-
-	IF ( Factorize .AND. FreeFactorize ) THEN
-    	phase     = -1           ! release internal memory
+    ! Compute factorization if necessary
+    IF ( Factorize .OR. .NOT.ASSOCIATED(A % PardisoID) ) THEN
+      ! Free factorization
+      IF (ASSOCIATED(A % PardisoId)) THEN
+        phase = -1 ! release internal memory
         CALL pardiso (A % PardisoId, maxfct, mnum, mtype, phase, n, &
-        				ddum, idum, idum, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
-
+                    ddum, idum, idum, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
         DEALLOCATE(A % PardisoId, A % PardisoParam)
         A % PardisoId => NULL()
         A % PardisoParam => NULL()
-	END IF
+      END IF
 
-	IF (mtype == 2) DEALLOCATE( values, rows, cols )
+      ! Allocate pardiso internal structures
+      ALLOCATE(A % PardisoId(64), A % PardisoParam(64), STAT=allocstat)
+      IF (allocstat /= 0) THEN
+        CALL Fatal('Pardiso_SolveSystem', &
+                     'Memory allocation for Pardiso failed')
+      END IF
+      iparm => A % PardisoParam
+      iparm = 0
+      A % PardisoId = 0
+ 
+      ! Set up parameters explicitly
+      iparm(1)=1      ! Do not use solver default parameters
+      iparm(2)=2      ! Minimize fill-in with nested dissection from Metis
+      iparm(3)=MKL_GET_MAX_THREADS() ! Get value of MKL_NUM_THREADS
+      iparm(4)=0      ! Always compute factorization
+      iparm(5)=0      ! No user input permutation
+      iparm(6)=0      ! Write solution vector to x
+      iparm(8)=5      ! Number of iterative refinement steps
+      iparm(10)=13    ! Perturbation value 10^-iparm(10) in case of small pivots
+      iparm(11)=1     ! Use scalings from symmetric weighted matching
+      iparm(13)=1     ! Use permutations from symmetric weighted matching
+      iparm(18)=-1    ! Report nnz(L) and nnz(U)
+      iparm(19)=0     ! Do not report Mflops
+      iparm(27)=0     ! Do not check sparse matrix representation
+      iparm(60)=0     ! Use in-core version of Pardiso
+
+      ! Perform analysis
+      phase = 11            ! Analysis
+      CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
+            values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
+
+      IF (ierror .NE. 0) THEN
+        WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
+        CALL Fatal('Pardiso_SolveSystem','Error during analysis phase')
+      END IF
+
+      ! Perform factorization
+      phase = 22            ! Factorization
+      CALL pardiso (A % pardisoId, maxfct, mnum, mtype, phase, n, &
+           values, rows, cols, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
+
+      IF (ierror .NE. 0) THEN
+        WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
+        CALL Fatal('Pardiso_SolveSystem','Error during factorization phase')
+      END IF
+    END IF ! Compute factorization
+
+    ! Perform solve
+    phase = 33            ! Solve, iterative refinement
+    CALL pardiso(A % PardisoId, maxfct, mnum, mtype, phase, n, &
+                values, rows, cols, idum, nrhs, iparm, msglvl, b, x, ierror)
+
+    IF (ierror .NE. 0) THEN
+      WRITE(*,'(A,I0)') 'MKL Pardiso: ERROR=', ierror
+      CALL Fatal('Pardiso_SolveSystem','Error during solve phase')
+    END IF
+
+    ! Release memory if needed
+    FreeFactorize = ListGetLogical( Solver % Values, &
+                       'Linear System Free Factorization', Found )
+    IF ( .NOT. Found ) FreeFactorize = .TRUE.
+
+    IF ( Factorize .AND. FreeFactorize ) THEN
+      phase     = -1           ! release internal memory
+      CALL pardiso (A % PardisoId, maxfct, mnum, mtype, phase, n, &
+            ddum, idum, idum, idum, nrhs, iparm, msglvl, ddum, ddum, ierror)
+
+      DEALLOCATE(A % PardisoId, A % PardisoParam)
+      A % PardisoId => NULL()
+      A % PardisoParam => NULL()
+    END IF
+    IF (ABS(mtype) == 2) DEALLOCATE(Values, Rows, Cols)
 
 ! Distribution version of Pardiso
 #elif defined(HAVE_PARDISO)
@@ -1731,7 +1742,7 @@ CONTAINS
 
       IF(posdef) DEALLOCATE( values, rows, cols )
 #else
-	CALL Fatal( 'Parsido_SolveSystem', 'Pardiso solver has not been installed.' )
+      CALL Fatal( 'Parsido_SolveSystem', 'Pardiso solver has not been installed.' )
 #endif
 
 !------------------------------------------------------------------------------
