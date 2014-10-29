@@ -11,6 +11,7 @@ macro(ADD_ELMER_TEST test_name)
       -DTEST_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
       -DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}
       -DBINARY_DIR=${CMAKE_BINARY_DIR}
+      -DCMAKE_Fortran_COMPILER=${CMAKE_Fortran_COMPILER}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
 endmacro()
 
@@ -37,12 +38,17 @@ endmacro()
 macro(RUN_ELMER_TEST)
   set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
   set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
-  set(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/")
-  execute_process(COMMAND ${ELMERSOLVER_BIN} OUTPUT_FILE "test.log"
-    ERROR_FILE "test.log")
-  execute_process(COMMAND ${FINDNORM_BIN} ${CMAKE_CURRENT_BINARY_DIR}/test.log
-    OUTPUT_FILE norm.log ERROR_FILE norm.log RESULT_VARIABLE RES)
+  set(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src;c:/elmer_stuff/mingw64/bin;$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
 
+  #MESSAGE(STATUS "\$Env:path=\"$ENV{PATH}\"")
+  execute_process(COMMAND ${ELMERSOLVER_BIN} OUTPUT_FILE "elmersolver-stdout.log"
+    ERROR_FILE "elmersolver-stderr.log" OUTPUT_VARIABLE TESTOUTPUT)
+  execute_process(COMMAND ${FINDNORM_BIN} ${CMAKE_CURRENT_BINARY_DIR}/elmersolver-stdout.log
+    OUTPUT_FILE "findnorm-stdout.log" ERROR_FILE "findnorm-stderr.log" RESULT_VARIABLE RES OUTPUT_VARIABLE FINDNORM_OUTPUT)
+
+  MESSAGE(STATUS "findnorm res.......: ${RES}")
+  MESSAGE(STATUS "testoutput.........: ${TESTOUTPUT}")
+  MESSAGE(STATUS "findnorm output....: ${FINDNORM_OUTPUT}")
   if (RES)
     message(FATAL_ERROR "Test failed")
   endif()
@@ -51,9 +57,14 @@ endmacro()
 macro(RUN_ELMER_TEST_NEW)
   set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
   set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
-  set(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
+  set(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
+  IF(WIN32)
+    GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
+    set(ENV{PATH} "$ENV{PATH};${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+  ENDIF(WIN32)
   execute_process(COMMAND ${ELMERSOLVER_BIN} OUTPUT_FILE "test-stdout.log"
-    ERROR_FILE "test-stderr.log")
+    ERROR_FILE "test-stderr.log" OUTPUT_VARIABLE TESTOUTPUT)
+  MESSAGE(STATUS "testoutput.........: ${TESTOUTPUT}")
   file(READ "TEST.PASSED" RES)
   if (NOT RES EQUAL "1")
     message(FATAL_ERROR "Test failed")
@@ -64,6 +75,10 @@ macro(EXECUTE_ELMER_SOLVER SIFNAME)
   set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
   set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
   set(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
+  IF(WIN32)
+    GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
+    set(ENV{PATH} "${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+  ENDIF(WIN32)
   execute_process(COMMAND ${ELMERSOLVER_BIN} ${SIFNAME} OUTPUT_FILE "${SIFNAME}-stdout.log"
     ERROR_FILE "${SIFNAME}-stderr.log")
 endmacro()
