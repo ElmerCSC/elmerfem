@@ -2638,11 +2638,13 @@ CONTAINS
          Left => Element % BoundaryInfo % Left
          Right => Element % BoundaryInfo % Right 
         
-         ! In short these are the conditions that resulted to creation of the 
-         ! constraint matrix entries.
+         ! These are conditions that resulted to creation of zero 
+         ! constraint matrix entries in this partition so no need to do them.
          IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
            CYCLE
          END IF         
+
+         ! For this we have a zero mass matrix entry so don't bother to add zero
          IF( Left % PartIndex /= ParEnv % myPE .AND. &
              Right % PartIndex /= ParEnv % myPe ) THEN
            CYCLE
@@ -2713,6 +2715,7 @@ CONTAINS
                  ! For Galerkin projector the is weight/coeff 
                  IF( Found ) THEN
                    weight = Projector % Values(j)
+                   ! IF( ABS( weight ) < 1.0d-20 ) weight = 1.0d-20
                    Projector % Values(j2) = -0.5 * weight * res
                    EXIT
                  END IF
@@ -7429,8 +7432,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END DO
     IF( NoEmptyRows > 0 ) THEN
       CALL Warn('SolveWithLinearRestriction',&
-          'Constraint Matrix included empty rows: ' &
-          //TRIM(I2S(NoEmptyRows))//' vs. '//TRIM(I2S(RestMatrix % NumberOfRows)) )
+          'Constraint Matrix in partition '//TRIM(I2S(ParEnv % MyPe))// &
+          ' has '//TRIM(I2S(NoEmptyRows))// &
+          ' empty rows out of '//TRIM(I2S(RestMatrix % NumberOfRows)) )
     END IF
   END IF
 

@@ -1007,7 +1007,7 @@ END SUBROUTINE GetMaxDefs
        LeftHit, RightHit, Moving, Moving2, Set, Parallel
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
-       NoBulkElems, NoBoundElems, NoParentElems, &
+       NoBulkElems, NoBoundElems, NoParentElems, NoMissingElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
        NoUndecided, PrevUndecided, NoEdges, Iter, ElemFamily, DecideLimit, &
        DecidedByFamily(8), UndecidedByFamily(8), ActiveBCs
@@ -1053,7 +1053,8 @@ END SUBROUTINE GetMaxDefs
    DisContElem = .FALSE.
    DecidedElem = .FALSE.
    NoDisContElems = 0
-   
+   NoMissingElems = 0
+
    ! Go over all boundary elements and mark nodes that should be 
    ! discontinuous and nodes that should be continuous 
    DO t = 1, NoBoundElems
@@ -1078,14 +1079,23 @@ END SUBROUTINE GetMaxDefs
      LeftElem => Element % BoundaryInfo % Left
      IF( ASSOCIATED( LeftElem ) ) THEN
        DecidedElem( LeftElem % ElementIndex ) = .TRUE.
+     ELSE
+       NoMissingElems = NoMissingElems + 1 
      END IF
      
      RightElem => Element % BoundaryInfo % Right
      IF( ASSOCIATED( RightElem ) ) THEN
        DecidedElem( RightElem % ElementIndex ) = .TRUE.
+     ELSE
+       NoMissingElems = NoMissingElems + 1
      END IF
    END DO
    
+   IF( NoMissingElems > 0 ) THEN
+     CALL Warn('CreateDiscontMesh',TRIM(I2S(NoMissingElems))// &
+     ' parent elements in partition '//TRIM(I2S(ParEnv % MyPe))) 
+   END IF
+
    ! Calculate the number of discontinuous nodes and the number of bulk elements 
    ! associated to them. 
    NoDisContElems = COUNT( DiscontElem(1:NoBoundElems) )
@@ -1104,8 +1114,9 @@ END SUBROUTINE GetMaxDefs
    END IF
 
 
-   ! By default only nodes that are associated only to elements immediately at the discontinuous 
-   ! boundary are treated as discontinuous. However, the user may be greedy and use all candidate nodes.  
+   ! By default all nodes that are associated to elements immediately at the discontinuous 
+   ! boundary are treated as discontinuous. However, the user may be not be greedy and release
+   ! some nodes from the list that are associated also with other non-discontinuous elements.   
    IF( NoDiscontNodes > 0 ) THEN
      n = NoDiscontNodes
      GreedyBulk = ListGetLogical( Model % Simulation,'Discontinuous Bulk Greedy',Found ) 
@@ -1188,6 +1199,8 @@ END SUBROUTINE GetMaxDefs
 
    UseTargetBodies = ListCheckPresentAnyBC( Model,&
        'Discontinuous Target Bodies')
+
+
 
    ! Go through all the boundary elements and now really manipulate the boundary 
    ! elements on the other side. The user may choose which of the parent elements
@@ -1304,7 +1317,11 @@ END SUBROUTINE GetMaxDefs
        ParentIndexes => ParentElem % NodeIndexes
        DO i=1,SIZE(ParentIndexes) 
          j = ParentIndexes(i)
+
+         ! If a bulk element is parent to several boundary elements 
+         ! the numbering could already have been tampered so check for that.
          IF( j > NoNodes ) CYCLE
+
          IF( DisContPerm(j) > 0 ) THEN
            ParentIndexes(i) = NoNodes + DisContPerm(j)
          END IF
@@ -1436,6 +1453,8 @@ END SUBROUTINE GetMaxDefs
          UnDecidedByFamily( ElemFamily ) = UnDecidedByFamily( ElemFamily ) + 1 
        END IF
      END DO
+
+     ! If there are still undecided elements and we are getting somewhere loop again
      IF( NoUndecided /= PrevUndecided .AND. Iter <= 100 ) THEN
        Iter = Iter + 1
        PrevUndecided = NoUndecided 
@@ -1496,6 +1515,7 @@ END SUBROUTINE GetMaxDefs
        END IF
      END IF
 
+     ! Ok, finally set whether boundary element is moving or staying
      IF( Set ) THEN
        DecidedElem(NoBulkElems + t) = .TRUE.
        IF( Moving ) THEN
@@ -1785,8 +1805,8 @@ END SUBROUTINE GetMaxDefs
 
    DO i=n0+1,n1
      j = Perm(i)
-     IF(j>0) THEN
-       TmpGlobalDofs(i) =  TmpGlobalDOfs(j) + goffset
+     IF(j > 0) THEN
+       TmpGlobalDofs(i) = TmpGlobalDOfs(j) + goffset
      END IF
    END DO
 
@@ -7362,7 +7382,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Element_t), POINTER :: Element, Left, Right, OldFace, NewFace, Swap
     LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, SetDiagEdges, DoNodes, DoEdges
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
-    REAL(KIND=dp) :: point(3), uvw(3)
+    REAL(KIND=dp) :: point(3), uvw(3), DiagEps
     INTEGER, ALLOCATABLE :: EQind(:)
     INTEGER, POINTER :: OldMap(:,:), NewMap(:,:)
 
@@ -7438,8 +7458,9 @@ END SUBROUTINE GetMaxDefs
     SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found ) 
     SetDiagEdges = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag Edges',Found )
     IF(.NOT. Found ) SetDiagEdges = SetDiag
+    DiagEps = ListGetConstReal( Model % BCs(bc) % Values,'Mortar BC Diag Eps',Found ) 
 
-    ! Integration weights should follow the metrix if we want physical nodal jumps. 
+    ! Integration weights should follow the metrics if we want physical nodal jumps. 
     AxisSym = .FALSE.
     IF ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
         CurrentCoordinateSystem() == CylindricSymmetric ) THEN
@@ -7498,7 +7519,7 @@ END SUBROUTINE GetMaxDefs
         IF( ASSOCIATED( Right ) ) THEN
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF 
-        IF( ActSides == 0 ) CYCLE
+        !IF( ActSides == 0 ) CYCLE
         
         ! Consistently choose the face with the old edges 
         IF( ALL( Left % NodeIndexes <= NoOrigNodes ) ) THEN
@@ -7593,7 +7614,7 @@ END SUBROUTINE GetMaxDefs
           PosSides = PosSides + 1
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF 
-        IF( ActSides == 0 ) CYCLE
+        ! IF( ActSides == 0 ) CYCLE
 
         Coeff = 1.0_dp * ActSides / PosSides 
         ParentFound = ParentFound + 1
@@ -7642,7 +7663,7 @@ END SUBROUTINE GetMaxDefs
               ! Add entry to the diagonal-to-be if jump condition is to be used
               IF( NodalJump ) THEN
                 CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                    size0 + indp, 0.0_dp ) 
+                    size0 + indp, DiagEps ) 
               END IF
             ELSE
               DO q=1,n
@@ -7658,7 +7679,7 @@ END SUBROUTINE GetMaxDefs
                 ! Add entry to the diagonal-to-be if jump condition is to be used
                 IF( NodalJump ) THEN
                   CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                      size0 + indq, 0.0_dp ) 
+                      size0 + indq, DiagEps ) 
                 END IF
               END DO
             END IF
@@ -7715,7 +7736,7 @@ END SUBROUTINE GetMaxDefs
           PosSides = PosSides + 1
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF 
-        IF( ActSides == 0 ) CYCLE
+        !IF( ActSides == 0 ) CYCLE
         Coeff = (1.0_dp * ActSides) / (1.0_dp * PosSides)
 
         ! Consistently choose the face with the old edges
