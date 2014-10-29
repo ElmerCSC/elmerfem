@@ -11,7 +11,7 @@ Simulation
   Timestepping Method = BDF
   BDF Order = 2
 
-  Timestep Intervals(1) = 3001
+  Timestep Intervals(1) = 3000
   Timestep Sizes(1)   = 0.001
   Output Intervals(1) = 1000
 
