@@ -150,7 +150,7 @@ Boundary Condition 1
   Potential Im = Real 0.0
 End
 
-Solver 1 :: Reference Norm = Real 0.11526857E-04
+Solver 1 :: Reference Norm = Real 0.88822024E-05
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=0.88822024E-05\n");
