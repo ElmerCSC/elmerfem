@@ -6896,7 +6896,8 @@ END SUBROUTINE GetMaxDefs
       INTEGER, TARGET :: IndexesT(3)
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2
-      INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits
+      INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
+          MaxErrInd, MinErrInd
       TYPE(Element_t), POINTER :: Element, ElementM
       TYPE(Element_t) :: ElementT
       TYPE(GaussIntegrationPoints_t) :: IP
@@ -6912,6 +6913,14 @@ END SUBROUTINE GetMaxDefs
       LOGICAL :: LeftCircle, Stat
       TYPE(Mesh_t), POINTER :: Mesh
 
+      ! These are used temporarely for debugging purposes
+      INTEGER :: SaveInd
+      LOGICAL :: SaveElem
+      CHARACTER(LEN=20) :: FileName
+
+      SaveInd = ListGetInteger( CurrentModel % Solver % Values,&
+          'Save Element Index',Found )
+      
       Mesh => CurrentModel % Solver % Mesh 
 
       n = Mesh % MaxElementNodes
@@ -6927,6 +6936,8 @@ END SUBROUTINE GetMaxDefs
 
       MaxErr = 0.0_dp
       MinErr = HUGE( MinErr )
+      MaxErrInd = 0
+      MinErrInd = 0
       zt = 0.0_dp
       LeftCircle = .FALSE.
       ArcCoeff = (2*PI*Radius)/360.0
@@ -6944,6 +6955,8 @@ END SUBROUTINE GetMaxDefs
       Point = 0.0_dp
 
       DO ind=1,BMesh1 % NumberOfBulkElements
+
+        SaveElem = ( SaveInd == ind )
 
         Element => BMesh1 % Elements(ind)        
         Indexes => Element % NodeIndexes
@@ -6990,7 +7003,7 @@ END SUBROUTINE GetMaxDefs
         Nodes % x(1:n) = ArcCoeff * Nodes % x(1:n)
         xmin = MINVAL(Nodes % x(1:n))
         xmax = MAXVAL(Nodes % x(1:n))
-
+                
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
@@ -6998,6 +7011,15 @@ END SUBROUTINE GetMaxDefs
         RefArea = detJ * SUM( IP % s(1:IP % n) )
         SumArea = 0.0_dp
         
+        IF( SaveElem ) THEN
+          OPEN( 10,FILE='a.dat')
+          DO i=1,n
+            WRITE( 10, * ) Nodes % x(i), Nodes % y(i)
+          END DO
+          CLOSE( 10 )
+        END IF
+
+
 200     sgn0 = 1
         IF( AntiRepeating ) THEN
           IF ( MODULO(Nrange,2) /= 0 ) sgn0 = -1
@@ -7023,11 +7045,12 @@ END SUBROUTINE GetMaxDefs
           NodesM % y(1:nM) = BMesh2 % Nodes % y(IndexesM(1:nM))
           
           ! Make the quick and dirty search first
+          ! This requires some minimal width of the cut
           yminm = MINVAL( NodesM % y(1:nM))
-          IF( yminm > ymax + Ytol ) CYCLE
+          IF( yminm > ymax - Ytol ) CYCLE
           
           ymaxm = MAXVAL( NodesM % y(1:nM))
-          IF( ymaxm < ymin - Ytol ) CYCLE
+          IF( ymaxm < ymin + Ytol ) CYCLE
           
           NodesM % x(1:nM) = BMesh2 % Nodes % x(IndexesM(1:nM))
           ! Treat the left circle differently. 
@@ -7050,8 +7073,8 @@ END SUBROUTINE GetMaxDefs
             IF( xmaxm - xminm > ArcCoeff * 180.0 ) CYCLE
           END IF
           
-          IF( xminm > xmax + ArcTol ) CYCLE
-          IF( xmaxm < xmin - ArcTol ) CYCLE
+          IF( xminm > xmax - ArcTol ) CYCLE
+          IF( xmaxm < xmin + ArcTol ) CYCLE
 
           k = 0
           ElemCands = ElemCands + 1
@@ -7060,20 +7083,23 @@ END SUBROUTINE GetMaxDefs
           DO i=1,ne
             x1 = Nodes % x(i)
             y1 = Nodes % y(i)
-            i2 = MODULO(i,ne) + 1 
+            i2 = i + 1 
+            if( i2 > ne ) i2 = 1
             x2 = Nodes % x(i2)
             y2 = Nodes % y(i2)
 
-            A(1,1) = x2 - x1
-            A(2,1) = y2 - y1
-           
             DO iM=1,neM
               x1M = NodesM % x(iM)
               y1M = NodesM % y(iM)
-              i2 = MODULO(iM,neM) + 1 
+              i2 = iM + 1
+              IF( i2 > neM ) i2 = 1
               x2M = NodesM % x(i2)
               y2M = NodesM % y(i2)
               
+              ! Upon solution this is tampered so it must be initialized 
+              ! before each solution. 
+              A(1,1) = x2 - x1
+              A(2,1) = y2 - y1           
               A(1,2) = x1M - x2M
               A(2,2) = y1M - y2M
 
@@ -7108,7 +7134,7 @@ END SUBROUTINE GetMaxDefs
             Point(2) = Nodes % y(i)
          
             ! The edge intersections should catch the sharp hits so here we can use hard criteria
-            Found = PointInElement( ElementM, NodesM, Point, uvw, LocalEps = 0.0_dp )
+            Found = PointInElement( ElementM, NodesM, Point, uvw, LocalEps = 1.0d-8 )
             IF( Found ) THEN
               k = k + 1
               x(k) = Point(1)
@@ -7121,7 +7147,7 @@ END SUBROUTINE GetMaxDefs
             Point(1) = NodesM % x(i)
             Point(2) = NodesM % y(i)
          
-            Found = PointInElement( Element, Nodes, Point, uvw, LocalEps = 0.0_dp )
+            Found = PointInElement( Element, Nodes, Point, uvw, LocalEps = 1.0d-8 )
             IF( Found ) THEN
               k = k + 1
               x(k) = Point(1)
@@ -7134,8 +7160,25 @@ END SUBROUTINE GetMaxDefs
           IF( kmax < 3 ) CYCLE
 
           ElemHits = ElemHits + 1
-          CALL Info('LevelProjector','Integrating a '&
-              //TRIM(I2S(kmax))//'-node polygon',Level=12)            
+
+          IF( SaveElem ) THEN
+            FileName = 'b'//TRIM(I2S(ElemHits))//'.dat'
+            OPEN( 10,FILE=FileName)
+            DO i=1,nM
+              WRITE( 10, * ) NodesM % x(i), NodesM % y(i)
+            END DO
+            CLOSE( 10 )
+
+            FileName = 'c'//TRIM(I2S(ElemHits))//'.dat'
+            OPEN( 10,FILE=FileName)
+            DO i=1,kmax
+              WRITE( 10, * ) x(i), y(i)
+            END DO
+            CLOSE( 10 )           
+          END IF
+
+          !CALL Info('LevelProjector','Integrating a '&
+          !    //TRIM(I2S(kmax))//'-node polygon',Level=12)            
 
           ! The polygon is convex and hence its center lies inside the polygon
           xt = SUM(x(1:kmax)) / kmax
@@ -7151,6 +7194,23 @@ END SUBROUTINE GetMaxDefs
           CALL SortR(kmax,inds,phi)
           x(1:kmax) = x(inds(1:kmax))
           y(1:kmax) = y(inds(1:kmax))
+
+          IF( SaveElem ) THEN
+            FileName = 'd'//TRIM(I2S(ElemHits))//'.dat'
+            OPEN( 10,FILE=FileName)
+            DO i=1,nM
+              WRITE( 10, * ) xt, yt
+            END DO
+            CLOSE( 10 )
+
+            FileName = 'e'//TRIM(I2S(ElemHits))//'.dat'
+            OPEN( 10,FILE=FileName)
+            DO i=1,kmax
+              WRITE( 10, * ) x(i), y(i)
+            END DO
+            CLOSE( 10 )           
+          END IF
+
           
           ! Deal the case with multiple corners by making 
           ! triangulariation using one corner point.
@@ -7305,8 +7365,15 @@ END SUBROUTINE GetMaxDefs
 
         Err = SumArea / RefArea
         !PRINT *,'Area Error:',ind,Err,kmax,SumArea,RefArea,ElemCands,ElemHits
-        MaxErr = MAX( MaxErr,ABS(Err))
-        MinErr = MIN( MinErr,ABS(Err))
+        IF( Err > MaxErr ) THEN
+          MaxErr = Err
+          MaxErrInd = Err
+        END IF
+        IF( Err < MinErr ) THEN
+          MinErr = Err
+          MinErrInd = ind
+        END IF
+
       END DO
 
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
@@ -7334,9 +7401,11 @@ END SUBROUTINE GetMaxDefs
       WRITE( Message,'(A,ES12.3)') 'Average ratio in area integration:',Err 
       CALL Info('LevelProjector',Message,Level=8)
 
-      WRITE( Message,'(A,ES12.3)') 'Maximum ratio in area integration:',MaxErr 
+      WRITE( Message,'(A,I0,A,ES12.3)') &
+          'Maximum ratio in areas (',MaxErrInd,'):',MaxErr 
       CALL Info('LevelProjector',Message,Level=8)
-      WRITE( Message,'(A,ES12.3)') 'Minimum ratio in area integration:',MinErr 
+      WRITE( Message,'(A,I0,A,ES12.3)') &
+          'Minimum ratio in areas (',MinErrInd,'):',MinErr 
       CALL Info('LevelProjector',Message,Level=8)
 
       CALL Info('LevelProjector','Created weak constraints for remaining dofs',Level=8)      
