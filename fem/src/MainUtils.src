@@ -1348,7 +1348,6 @@ CONTAINS
             RungeKutta = ListGetString( Solver % Values, &
                'Timestepping Method', Found ) == 'runge-kutta'
         END IF
-
         IF ( .NOT. RungeKutta ) CYCLE
 
         IF ( .NOT. ALLOCATED(RGCoeff) ) ALLOCATE(RGCoeff(nSolvers))
@@ -1357,18 +1356,12 @@ CONTAINS
         ALLOCATE(RGCoeff(i) % k1(n), RGCoeff(i) % k2(n), RGCoeff(i) % k3(n), &
                   RGCoeff(i) % k4(n) )
 
+        RGorder = Solver % Order
         k1 => RGCoeff(i) % k1
         k1 = Solver % Variable % PrevValues(:,1)-Solver % Variable % PrevValues(:,2)
-        k1 = dt * k1 / PrevDT
-        RGorder = Solver % Order
-        SELECT CASE(RGOrder)
-        CASE(2)
-          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k1
-        CASE(4)
-          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k1/2
-        END SELECT
+        Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k1/2
       END DO
-      IF ( RGorder==4 ) dt = dt/2
+      IF(RGorder==4) dt = dt / 2
     END IF
 
     CALL SolveCoupled()
@@ -1378,20 +1371,9 @@ CONTAINS
         Solver => Model % Solvers(i)
         IF ( .NOT. ALLOCATED(RGCoeff(i) % k1)) CYCLE
 
-        k1 => RGCoeff(i) % k1
         k2 => RGCoeff(i) % k2
-        RGorder = Solver % Order
-        SELECT CASE(RGorder)
-        CASE(2)
-          k2 = Solver % Variable % Values - Solver % Variable % PrevValues(:,1)
-          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + &
-                         ( k1 + k2 )/2
-          Solver % Variable % Norm = &
-              ComputeNorm(Solver, n, Solver % Variable % Values)
-        CASE(4)
-          k2 = 2*(Solver % Variable % Values - Solver % Variable % PrevValues(:,1))
-          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k2/2
-        END SELECT
+        k2 = 2*(Solver % Variable % Values - Solver % Variable % PrevValues(:,1))
+        Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k2/2
       END DO
 
       IF ( RGorder>2 ) THEN
@@ -1420,9 +1402,6 @@ CONTAINS
 
           Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + &
                              ( k1 + 2*k2 + 2*k3 + k4 ) / 6
-
-          Solver % Variable % Norm = &
-              ComputeNorm(Solver, n, Solver % Variable % Values)
         END DO
       END IF
         
@@ -1431,6 +1410,7 @@ CONTAINS
         IF ( ALLOCATED(RGCoeff(i) % k1) ) THEN
           DEALLOCATE(RGCoeff(i) % k1, RGCoeff(i) % k2, RGCoeff(i) % k3, RGCoeff(i) % k4)
         END IF
+        Solver % Variable % Norm = ComputeNorm(Solver, n, Solver % Variable % Values)
       END DO
       DEALLOCATE(RgCoeff)
     END IF
