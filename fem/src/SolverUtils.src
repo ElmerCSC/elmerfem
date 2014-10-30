@@ -6228,13 +6228,25 @@ END FUNCTION SearchNodeL
     IF ( Solver % Matrix % Lumped .AND. Solver % TimeOrder == 1 ) THEN
        Method = ListGetString( Params, 'Timestepping Method', GotIt)
        IF (  Method == 'runge-kutta' .OR. Method == 'explicit euler' ) THEN
-          DO i=1,n
-             IF ( ABS( A % Values(A % Diag(i)) ) > 0.0d0 ) &
-                  x(i) = b(i) / A % Values(A % Diag(i))
-          END DO
-          IF (BackRotation) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
-          Norm = ComputeNorm(Solver, n, x) 
-          RETURN
+         ALLOCATE(Diag(n), TempRHS(n))
+
+         TempRHS= b(1:n)
+         Diag = A % Values(A % Diag)
+
+         IF(ParEnv % Pes>1) THEN
+           CALL ParallelSumVector(A,Diag)
+           CALL ParallelSumVector(A,TempRHS)
+         END IF
+
+         DO i=1,n
+            IF ( ABS(Diag(i)) /= 0._dp ) x(i) = TempRHS(i) / Diag(i)
+         END DO
+
+         DEALLOCATE(Diag, TempRHS)
+
+         IF (BackRotation) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
+         Norm = ComputeNorm(Solver, n, x) 
+         RETURN
        END IF
     END IF
     
