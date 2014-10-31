@@ -13,20 +13,22 @@ Simulation
   Simulation Type = Transient
 
   Timestepping Method = Runge-Kutta
+  BDF Order = 1
+  Runge-Kutta Order = 2
   Timestep Sizes  = 0.01
   Timestep Intervals = 1
   Output Intervals   = 1
   Steady State Max Iterations = 2
 
   Adaptive Timestepping  = True
-  Adaptive Time Error    = 1.0e-2
+  Adaptive Time Error    = 0.05
   Adaptive Keep Smallest = 3
-  Adaptive Min Timestep  = 1.0e-3
+  Adaptive Min Timestep  = 1.0e-6
   Adaptive Max Timestep  = Real 0.01
 
-  Solver Input File = "TempDist.sif"
 ! Output File = "TempDist.dat"
   Post File = "TempDist.ep"
+  Solver Input File = "TempDist.sif"
 End
 
 Constants
@@ -78,7 +80,6 @@ End
 
 Body Force 1
   Name = "BodyForce1"
-
   Heat Source = 1
 End
 
@@ -91,6 +92,6 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.66387327E-02\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.78785622E-02\n" );
 
 !End Of File
