@@ -5,4 +5,4 @@ file(COPY mesh.boundary mesh.elements mesh.header mesh.nodes
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Ldomain)
 file(REMOVE mesh.boundary mesh.elements mesh.header mesh.nodes)
 file(COPY Ldomain.mif DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/Ldomain)
-RUN_ELMER_TEST_NEW()
+RUN_ELMER_TEST()

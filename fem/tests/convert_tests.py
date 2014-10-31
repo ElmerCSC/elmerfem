@@ -30,7 +30,7 @@ ADD_ELMER_TEST(%s)
 runtests_Template = """\
 include(${TEST_SOURCE}/../test_macros.cmake)
 %s
-RUN_ELMER_TEST_NEW()
+RUN_ELMER_TEST()
 """
 
 failed_tests = []

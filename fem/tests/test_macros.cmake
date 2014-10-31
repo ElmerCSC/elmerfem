@@ -35,26 +35,26 @@ macro(ADD_ELMERTEST_MODULE test_name module_name file_name)
   UNSET(ELMERTEST_CMAKE_NAME)
 endmacro()
 
+#macro(RUN_ELMER_TEST)
+  #set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
+  #set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
+  #set(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src;c:/elmer_stuff/mingw64/bin;$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+
+  ##MESSAGE(STATUS "\$Env:path=\"$ENV{PATH}\"")
+  #execute_process(COMMAND ${ELMERSOLVER_BIN} OUTPUT_FILE "elmersolver-stdout.log"
+    #ERROR_FILE "elmersolver-stderr.log" OUTPUT_VARIABLE TESTOUTPUT)
+  #execute_process(COMMAND ${FINDNORM_BIN} ${CMAKE_CURRENT_BINARY_DIR}/elmersolver-stdout.log
+    #OUTPUT_FILE "findnorm-stdout.log" ERROR_FILE "findnorm-stderr.log" RESULT_VARIABLE RES OUTPUT_VARIABLE FINDNORM_OUTPUT)
+
+  #MESSAGE(STATUS "findnorm res.......: ${RES}")
+  #MESSAGE(STATUS "testoutput.........: ${TESTOUTPUT}")
+  #MESSAGE(STATUS "findnorm output....: ${FINDNORM_OUTPUT}")
+  #if (RES)
+    #message(FATAL_ERROR "Test failed")
+  #endif()
+#endmacro()
+
 macro(RUN_ELMER_TEST)
-  set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
-  set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
-  set(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src;c:/elmer_stuff/mingw64/bin;$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
-
-  #MESSAGE(STATUS "\$Env:path=\"$ENV{PATH}\"")
-  execute_process(COMMAND ${ELMERSOLVER_BIN} OUTPUT_FILE "elmersolver-stdout.log"
-    ERROR_FILE "elmersolver-stderr.log" OUTPUT_VARIABLE TESTOUTPUT)
-  execute_process(COMMAND ${FINDNORM_BIN} ${CMAKE_CURRENT_BINARY_DIR}/elmersolver-stdout.log
-    OUTPUT_FILE "findnorm-stdout.log" ERROR_FILE "findnorm-stderr.log" RESULT_VARIABLE RES OUTPUT_VARIABLE FINDNORM_OUTPUT)
-
-  MESSAGE(STATUS "findnorm res.......: ${RES}")
-  MESSAGE(STATUS "testoutput.........: ${TESTOUTPUT}")
-  MESSAGE(STATUS "findnorm output....: ${FINDNORM_OUTPUT}")
-  if (RES)
-    message(FATAL_ERROR "Test failed")
-  endif()
-endmacro()
-
-macro(RUN_ELMER_TEST_NEW)
   set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
   set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
   set(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
