@@ -503,7 +503,6 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: x(:),b(:)
 
-
     A => GlobalMatrix
     CM => A % ConstraintMatrix
     Constrained = ASSOCIATED(CM)
@@ -573,10 +572,10 @@ CONTAINS
           delta = 1.0d-2, bnrm, bw_errorind, tottime
       INTEGER :: i, j, rr, r, u, xp, bp, z, zz, y0, yl, y, k, iwork(l-1), stat, Round, &
           IluOrder
-      REAL(KIND=dp) :: work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)), &
-          alpha, beta, omega, rho0, rho1, sigma, ddot, varrho, hatgamma
+      REAL(KIND=dp) :: alpha, beta, omega, rho0, rho1, sigma, ddot, varrho, hatgamma
       LOGICAL rcmp, xpdt, GotIt, BackwardError, EarlyExit
       CHARACTER(LEN=MAX_NAME_LEN) :: str
+      REAL(KIND=dp), ALLOCATABLE :: work(:,:), rwork(:,:)
 !------------------------------------------------------------------------------
     
       IF ( l < 2) CALL Fatal( 'RealBiCGStabl', 'Polynomial degree < 2' )
@@ -586,6 +585,7 @@ CONTAINS
       zero = 0.0d0
       one =  1.0d0
 
+      ALLOCATE( work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)) )
       work = 0.0d0
       rwork = 0.0d0
     
@@ -1345,8 +1345,8 @@ CONTAINS
       REAL(KIND=dp) :: rnrm0, rnrm, mxnrmx, mxnrmr, errorind, &
            delta = 1.0d-2, bnrm
       INTEGER :: i, j, rr, r, u, xp, bp, z, zz, y0, yl, y, k, iwork(l-1), stat, Round
-      COMPLEX(KIND=dp) :: work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)), &
-           alpha, beta, omega, rho0, rho1, sigma, zdotc, varrho, hatgamma
+      COMPLEX(KIND=dp) :: alpha, beta, omega, rho0, rho1, sigma, zdotc, varrho, hatgamma
+      COMPLEX(KIND=dp), ALLOCATABLE :: work(:,:), rwork(:,:)
       LOGICAL rcmp, xpdt, EarlyExit
       !------------------------------------------------------------------------------
 
@@ -1356,6 +1356,8 @@ CONTAINS
 
       zzero = CMPLX( 0.0d0,0.0d0, KIND=dp)
       zone =  CMPLX( 1.0d0,0.0d0, KIND=dp)
+
+      ALLOCATE( work(n,3+2*(l+1)), rwork(l+1,3+2*(l+1)) )
       work = CMPLX( 0.0d0, 0.0d0, KIND=dp )
       rwork = CMPLX( 0.0d0, 0.0d0, KIND=dp )
 
