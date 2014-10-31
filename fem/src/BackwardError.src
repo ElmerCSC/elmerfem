@@ -21,10 +21,10 @@ FUNCTION NormwiseBackwardError2( x,b,r,ipar,dpar ) RESULT(err)
   END IF
   res = res - b(1:n)
 
-  err = ParallelReduction(SQRT(SUM( res(1:n)**2) )) /  &
-      (ParallelReduction(SQRT(SUM(GlobalMatrix % Values**2))) * &
-      ParallelReduction(SQRT(SUM(x(1:n)**2))) + &
-      ParallelReduction(SQRT(SUM(b(1:n)**2))) )
+  err = SQRT(ParallelReduction(SUM( res(1:n)**2) )) /  &
+      SQRT(ParallelReduction(SUM(GlobalMatrix % Values**2))) * &
+      SQRT(ParallelReduction(SUM(x(1:n)**2))) + &
+      SQRT(ParallelReduction((SUM(b(1:n)**2))) )
 
 !------------------------------------------------------------------------------
 END FUNCTION NormwiseBackwardError2

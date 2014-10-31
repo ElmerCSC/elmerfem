@@ -634,7 +634,7 @@ CONTAINS
      INTEGER :: i,j,k,l,m,Order
      REAL(KIND=dp) :: s, t
      CHARACTER(LEN=MAX_NAME_LEN) :: Method
-     REAL(KIND=dp) :: PrevSol(DOFs*n,Solver % Order), LForce(n*DOFs)
+     REAL(KIND=dp) :: PrevSol(DOFs*n,Solver % Order), CurSol(DOFs*n), LForce(n*DOFs)
      TYPE(Variable_t), POINTER :: DtVar
      REAL(KIND=dp) :: Dts(Solver % Order)
      LOGICAL :: ConstantDt
@@ -698,6 +698,7 @@ CONTAINS
          DO m=1, Order
            PrevSol(K,m) = Solver % Variable % PrevValues(L,m)
          END DO
+         CurSol(K) = Solver % Variable % Values(L)
        END DO
      END DO
 
@@ -731,6 +732,10 @@ CONTAINS
                          Order )
        END IF
 
+     CASE('runge-kutta')
+       CALL RungeKutta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
+                PrevSol(:,1), CurSol )
+
      CASE DEFAULT
        CALL NewmarkBeta( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
                  PrevSol(:,1), Solver % Beta )
@@ -756,7 +761,7 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: Method
      TYPE(Variable_t), POINTER :: DtVar
      REAL(KIND=dp) :: Dts(Solver % Order)
-     REAL(KIND=dp), POINTER :: PrevSol(:,:), ML(:)
+     REAL(KIND=dp), POINTER :: PrevSol(:,:), ML(:), CurrSol(:)
      INTEGER, POINTER :: Rows(:), Cols(:)
      LOGICAL :: ConstantDt, Lumped, Found
 !------------------------------------------------------------------------------
@@ -766,6 +771,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      Order = MIN(Solver % DoneTime, Solver % Order)
      Method = ListGetString( Solver % Values, 'Timestepping Method', GotIt )
+     CurrSol => Solver % Variable % Values
      PrevSol => Solver % Variable % PrevValues
 
      SELECT CASE( Method )
@@ -789,6 +795,9 @@ CONTAINS
        ELSE     
          CALL VBDF_CRS( dts, Matrix, Force, PrevSol, Order )
        END IF
+
+     CASE('runge-kutta')
+       CALL RungeKutta_CRS( dt, Matrix, Force, PrevSol(:,1), CurrSol )
 
      CASE DEFAULT
        CALL NewmarkBeta_CRS( dt, Matrix, Force, PrevSol(:,1), &
@@ -5763,7 +5772,7 @@ END FUNCTION SearchNodeL
       DoRHS = .TRUE.
       IF (PRESENT(RhsScaling)) DoRHS = RhsScaling
       IF (DoRHS) THEN
-        bnorm = ParallelReduction(SQRT(SUM(b(1:n)**2)))
+        bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
       ELSE
         bnorm = 1._dp
       END IF
@@ -6277,7 +6286,7 @@ END FUNCTION SearchNodeL
 
     IF ( .NOT. ( HarmonicAnalysis .OR. EigenAnalysis .OR. ApplyLimiter &
         .OR. NonlinApplyLimiter .OR. SkipZeroRhs ) ) THEN
-      bnorm = ParallelReduction(SQRT(SUM(b(1:n)**2)))      
+      bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))      
       IF ( bnorm <= TINY( bnorm) ) THEN
         CALL Info('SolveSystem','Solution trivially zero!')
         x = 0.0d0
@@ -6322,7 +6331,7 @@ END FUNCTION SearchNodeL
 ! Check whether b=0 since then equation Ax=b has only the trivial solution, x=0. 
 ! In case of a limiter one still may need to check the limiter for contact.
 !-----------------------------------------------------------------------------
-    bnorm = ParallelReduction(SQRT(SUM(b(1:n)**2)))
+    bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
     IF ( bnorm <= TINY( bnorm) .AND..NOT.SkipZeroRhs) THEN
       IF( ApplyLimiter ) THEN
         CALL DetermineSoftLimiter( Solver, .FALSE. ) 	 

@@ -1270,7 +1270,7 @@ CONTAINS
     LOGICAL :: TransientSimulation, SteadyStateReached, TransientSolver
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: RelativeChange, Tolerance, PrevDT = 0.0d0, Relaxation, SSCond
-    INTEGER :: i,j,k,l,n,ierr,istat,Visited=0, RGorder=0, nSolvers
+    INTEGER :: i,j,k,l,n,ierr,istat,Visited=0, RKorder=0, nSolvers
     LOGICAL :: Found, Stat, AbsNorm, Scanning, Convergence, RungeKutta, MeActive, &
        NeedSol, CalculateDerivative, TestConvergence
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
@@ -1279,12 +1279,14 @@ CONTAINS
     CHARACTER(LEN=max_name_len) :: When
     TYPE(Variable_t), POINTER :: IterV, TimestepV
     REAL(KIND=dp), POINTER :: steadyIt,nonlnIt
-    REAL(KIND=dp), POINTER :: k1(:), k2(:), k3(:), k4(:)
+    REAL(KIND=dp), POINTER :: k1(:), k2(:), k3(:), k4(:), sTime
 
+    TYPE(Variable_t), POINTER :: TimeVar
+    REAL(KIND=dp) :: RK2_ErrorEstimate
     TYPE RungeKutta_t
       REAL(KIND=dp), ALLOCATABLE :: k1(:),k2(:),k3(:),k4(:)
     END TYPE RungeKutta_t
-    TYPE(RungeKutta_t), ALLOCATABLE, TARGET :: RGCoeff(:)
+    TYPE(RungeKutta_t), ALLOCATABLE, TARGET :: RKCoeff(:)
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1336,68 +1338,94 @@ CONTAINS
              'Coupled System After Others Converged', Found )
     END DO
 
-    IF ( PrevDT==0 ) PrevDT = dt
+!------------------------------------------------------------------------------
+    RungeKutta = ListGetString( Model % Simulation, &
+           'Timestepping Method', Found ) == 'runge-kutta'
 
-    IF ( RealTimestep>2 ) THEN
-      DO i=1,nSolvers
-        Solver => Model % Solvers(i)
-        IF ( Solver % PROCEDURE==0 ) CYCLE
-
-        RungeKutta = .FALSE.
-        IF ( TransientSimulation .AND. Solver % TimeOrder == 1 ) THEN
-            RungeKutta = ListGetString( Solver % Values, &
-               'Timestepping Method', Found ) == 'runge-kutta'
-        END IF
-        IF ( .NOT. RungeKutta ) CYCLE
-
-        IF ( .NOT. ALLOCATED(RGCoeff) ) ALLOCATE(RGCoeff(nSolvers))
-
-        n = SIZE(Solver % Variable % Values)
-        ALLOCATE(RGCoeff(i) % k1(n), RGCoeff(i) % k2(n), RGCoeff(i) % k3(n), &
-                  RGCoeff(i) % k4(n) )
-
-        RGorder = Solver % Order
-        k1 => RGCoeff(i) % k1
-        k1 = Solver % Variable % PrevValues(:,1)-Solver % Variable % PrevValues(:,2)
-        Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k1/2
-      END DO
-      IF(RGorder==4) dt = dt / 2
-    END IF
+    TimeVar => VariableGet( Model % Variables, 'Time')
+    sTime => TimeVar % Values(1)
+    IF(RungeKutta) sTime = sTime - dt
 
     CALL SolveCoupled()
+    IF(RungeKutta) sTime = sTime + dt
 
-    IF ( ALLOCATED(RGCoeff) ) THEN
+    DO i=1,nSolvers
+      Solver => Model % Solvers(i)
+      IF ( Solver % PROCEDURE==0 ) CYCLE
+
+      RungeKutta = .FALSE.
+      IF ( TransientSimulation .AND. Solver % TimeOrder == 1 ) THEN
+          RungeKutta = ListGetString( Solver % Values, &
+              'Timestepping Method', Found ) == 'runge-kutta'
+      END IF
+      IF ( .NOT. RungeKutta ) CYCLE
+
+      IF ( .NOT. ALLOCATED(RKCoeff) ) ALLOCATE(RKCoeff(nSolvers))
+
+      n = SIZE(Solver % Variable % Values)
+      ALLOCATE(RKCoeff(i) % k1(n), RKCoeff(i) % k2(n), RKCoeff(i) % k3(n), &
+                RKCoeff(i) % k4(n) )
+
+      RKorder = Solver % Order
+      k1 => RKCoeff(i) % k1
+      k1 = Solver % Variable % Values-Solver % Variable % PrevValues(:,1)
+      Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + 2*k1/RKorder
+    END DO
+
+    IF ( ALLOCATED(RKCoeff) ) THEN
+      IF(RKorder==4) THEN
+        dt = dt / 2
+        sTime = sTime - dt
+      END IF
+      CALL SolveCoupled()
+
+      RK2_ErrorEstimate = 0._dp
       DO i=1,nSolvers
         Solver => Model % Solvers(i)
-        IF ( .NOT. ALLOCATED(RGCoeff(i) % k1)) CYCLE
+        IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
 
-        k2 => RGCoeff(i) % k2
-        k2 = 2*(Solver % Variable % Values - Solver % Variable % PrevValues(:,1))
-        Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k2/2
+        k1 => RKCoeff(i) % k1
+        k2 => RKCoeff(i) % k2
+        k2 = Solver % Variable % Values - Solver % Variable % PrevValues(:,1)
+        SELECT CASE(RKorder)
+        CASE(2)
+          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + (k1+k2)/2
+          RK2_Errorestimate = MAX( RK2_ErrorEstimate, SUM(((k2-k1)/2)**2) )
+        CASE(4)
+          Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k2
+          k2 = 2*k2
+        END SELECT
       END DO
 
-      IF ( RGorder>2 ) THEN
+      IF ( RKorder==2 ) THEN
+        ! Provide error measure for adaptive timestepping = ||RK2 (Heun) - Explicit Euler|| !
+        RK2_ErrorEstimate = SQRT( ParallelReduction(RK2_ErrorEstimate) )
+        CALL ListAddConstReal( Model % Simulation, 'Adaptive Error Measure', &
+                   RK2_ErrorEstimate / Solver % Variable % Norm )
+      ELSE ! RK4
         CALL SolveCoupled()
 
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
-          IF ( .NOT. ALLOCATED(RGCoeff(i) % k1)) CYCLE
+          IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
 
-          k3 => RGCoeff(i) % k3
+          k3 => RKCoeff(i) % k3
           k3 = 2*(Solver % Variable % Values - Solver % Variable % PrevValues(:,1))
           Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + k3
         END DO
+
+        sTime = sTime + dt
         dt = 2 * dt
         CALL SolveCoupled()
 
         DO i=1,nSolvers
           Solver => Model % Solvers(i)
-          IF ( .NOT. ALLOCATED(RGCoeff(i) % k1)) CYCLE
+          IF ( .NOT. ALLOCATED(RKCoeff(i) % k1)) CYCLE
 
-          k1 => RGCoeff(i) % k1
-          k2 => RGCoeff(i) % k2
-          k3 => RGCoeff(i) % k3
-          k4 => RGCoeff(i) % k4
+          k1 => RKCoeff(i) % k1
+          k2 => RKCoeff(i) % k2
+          k3 => RKCoeff(i) % k3
+          k4 => RKCoeff(i) % k4
           k4 = Solver % Variable % Values - Solver % Variable % PrevValues(:,1)
 
           Solver % Variable % Values = Solver % Variable % PrevValues(:,1) + &
@@ -1407,16 +1435,13 @@ CONTAINS
         
       DO i=1,nSolvers
         Solver => Model % Solvers(i)
-        IF ( ALLOCATED(RGCoeff(i) % k1) ) THEN
-          DEALLOCATE(RGCoeff(i) % k1, RGCoeff(i) % k2, RGCoeff(i) % k3, RGCoeff(i) % k4)
+        IF ( ALLOCATED(RKCoeff(i) % k1) ) THEN
+          DEALLOCATE(RKCoeff(i) % k1, RKCoeff(i) % k2, RKCoeff(i) % k3, RKCoeff(i) % k4)
         END IF
         Solver % Variable % Norm = ComputeNorm(Solver, n, Solver % Variable % Values)
       END DO
-      DEALLOCATE(RgCoeff)
+      DEALLOCATE(RKCoeff)
     END IF
-
-    PrevDt = dt
-
 !------------------------------------------------------------------------------
 
     DO k=1,nSolvers
@@ -1554,7 +1579,6 @@ CONTAINS
               CALL Info('SolveEquations','Running solver in steady state',Level=6)
             END IF
           END IF
-
 
           CALL SolverActivate(Model,Solver,dt,TransientSolver)
 
