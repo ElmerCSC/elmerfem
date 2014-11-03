@@ -32,10 +32,6 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 	USE LocalTypes
 	USE ElementBasisFunctions
 
-#ifdef _OPENMP
-    USE omp_lib
-#endif
-
  	IMPLICIT NONE
 !------------------------------------------------------------------------------
   	TYPE(Solver_t) :: Solver
@@ -2368,78 +2364,39 @@ CONTAINS
         ind => VecIndexStore( : )
     END FUNCTION GetVecIndexStore
 
-    SUBROUTINE ConstructVertexToElementMap(Mesh, VertexToElementMap)
+    SUBROUTINE ConstructVertexToElementMap(Mesh, VertexList)
         IMPLICIT NONE
 
         TYPE(Mesh_t) :: Mesh
-        TYPE(VertexMap_t), ALLOCATABLE :: VertexToElementMap(:)
-
-#ifdef _OPENMP
-        INTEGER(KIND=OMP_LOCK_KIND), ALLOCATABLE :: vertexlock(:)
-#endif
-        TYPE(Element_t), POINTER :: Elements(:)
+        TYPE(IntegerList_t), ALLOCATABLE :: VertexList(:)
+        
+        TYPE(VertexElementMap_t) :: VertexMap
+        TYPE(Element_t), POINTER :: Element, Elements(:)
         INTEGER :: i, j, v, nelem, nvertex, allocstat
 
         nelem = Mesh % NumberOfBulkElements
         nvertex = Mesh % NumberOfNodes
         Elements => Mesh % Elements
 
-        ! Allocate map
-        IF (ALLOCATED(VertexToElementMap)) DEALLOCATE(VertexToElementMap)
-
-        ALLOCATE(VertexToElementMap(nvertex), STAT=allocstat)
-        IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap','Memory allocation failed!')
-
-#ifdef _OPENMP
-        ! Allocate and initialize vertex locks
-        ALLOCATE(vertexlock(nvertex), STAT=allocstat)
-        IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap','Memory allocation failed!')
-
-        !$OMP PARALLEL SHARED(Elements, Element, vertexlock, nvertex, nelem) &
-        !$OMP PRIVATE(i, j, v) DEFAULT(NONE)
-
-        !$OMP DO
-        DO i=1,nvertex
-            CALL OMP_INIT_LOCK(vertexlock(i))
-        END DO
-        !$OMP END DO
-#endif
-
-        !$OMP DO
+        ! Initialize map
+        CALL VertexElementMapInit(VertexMap, nvertex)
+       
+        !$OMP PARALLEL DO SHARED(Elements, nvertex, nelem, VertexMap) &
+        !$OMP PRIVATE(i, j, v, Element) DEFAULT(NONE)
         DO i=1,nelem
-            ASSOCIATE(Element => Elements(i))
-#ifdef _OPENMP
-            ! Copy NodeIndexes to local store
-            ! Sort NodeIndexes
+            Element => Elements(i)
             DO j=1, Element % TYPE % NumberOfNodes
-                ! Lock map(v)
                 ! Add i to map(v)
-                ! Release map(v)
+                CALL VertexElementMapAdd(VertexMap, Element % NodeIndexes(j), Element % ElementIndex)
             END DO
-#else
-            DO j=1, Element % TYPE % NumberOfNodes
-                v = Element % NodeIndexes(j)
-                ! Add i to map(v)
-                IF (.NOT. ALLOCATED(VertexToElementMap)) THEN
-                END IF
-            END DO
-#endif
-            END ASSOCIATE
         END DO
-        !$OMP END DO
+        !$OMP END PARALLEL DO
 
-#ifdef _OPENMP
-        ! Deallocate vertex locks
-        !$OMP DO
-        DO i=1,nvertex
-            CALL OMP_DESTROY_LOCK(vertexlock(i))
-        END DO
-        !$OMP END DO
-
-        !$OMP END PARALLEL
-        DEALLOCATE(vertexlock)
-#endif
-
+        ! Convert map to neighbour list to conserve memory
+        CALL VertexElementMapToList(VertexMap, VertexList)
+        
+        ! Deallocate map
+        CALL VertexElementMapDeleteAll(VertexMap)
     END SUBROUTINE ConstructVertexToElementMap
 
 !------------------------------------------------------------------------------

@@ -1,4 +1,7 @@
 MODULE LocalTypes
+#ifdef _OPENMP
+    USE omp_lib
+#endif
     USE Types
     IMPLICIT NONE
 
@@ -7,10 +10,6 @@ MODULE LocalTypes
         INTEGER :: nc = 0
         REAL(Kind=dp), POINTER :: U(:)=>NULL(),V(:)=>NULL(),W(:)=>NULL()
     END TYPE ElementCache_t
-    
-    TYPE VertexMap_t
-        INTEGER, ALLOCATABLE :: vlist(:)
-    END TYPE VertexMap_t
     
     TYPE IntegerList_t
         INTEGER :: nelem = 0
@@ -28,12 +27,171 @@ MODULE LocalTypes
         REAL(KIND=dp) :: fratio
     END TYPE IntegerHashSet_t
 
+    TYPE VertexElementMap_t
+#ifdef _OPENMP
+        INTEGER(KIND=OMP_LOCK_KIND), ALLOCATABLE :: vlock(:)
+#endif
+        TYPE(IntegerHashSet_t), ALLOCATABLE :: map(:)
+    END TYPE VertexElementMap_t
+
     INTEGER, PARAMETER :: INTEGERLIST_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_CHAIN_DEFAULT_SIZE = 8
     REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = REAL(0.75, dp)
 
 CONTAINS
+
+    SUBROUTINE VertexElementMapInit(vmap, nvertex, mdim)
+        IMPLICIT NONE
+
+        TYPE(VertexElementMap_t) :: vmap
+        INTEGER, INTENT(IN) :: nvertex
+        INTEGER, INTENT(IN), OPTIONAL :: mdim
+        INTEGER :: i, allocstat, meshdim, minitsize
+
+        ! Mesh dimension, the default is 3D
+        meshdim = 3
+        IF (PRESENT(mdim)) meshdim = mdim
+
+        ! Set default size of initial maps depending on 
+        ! the dimension of the mesh
+        SELECT CASE (meshdim)
+        CASE (1)
+            minitsize = 2  ! NOTE: An absolute upper bound is 2
+        CASE (2)
+            minitsize = 16 ! For equilateral triangles 360/60=6
+        CASE (3)
+            minitsize = 64 ! Equilateral triangles in two planes =36
+        CASE DEFAULT
+            minitsize = 64
+        END SELECT
+
+        ALLOCATE(vmap % map(nvertex), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('VertexElementMapInit', &
+              'Memory allocation failed!')
+
+        !$OMP PARALLEL PRIVATE(i)
+        
+        !$OMP DO 
+        DO i=1,nvertex
+            CALL IntegerHashSetInit(vmap % map(i), minitsize)
+        END DO
+        !$OMP END DO NOWAIT
+
+#ifdef _OPENMP
+        !$OMP SINGLE
+        ! Allocate and initialize vertex locks
+        ALLOCATE(vmap % vlock(nvertex), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('VertexElementMapInit', &
+              'Memory allocation failed!')
+        !$OMP END SINGLE
+
+        !$OMP DO
+        DO i=1,nvertex
+            CALL OMP_INIT_LOCK(vmap % vlock(i))
+        END DO
+        !$OMP END DO NOWAIT
+#endif
+
+        !$OMP END PARALLEL
+    END SUBROUTINE VertexElementMapInit
+
+    SUBROUTINE VertexElementMapAdd(vmap, vertexId, elementId)
+        IMPLICIT NONE
+
+        TYPE(VertexElementMap_t) :: vmap
+        INTEGER, INTENT(IN) :: vertexId, elementId
+
+#ifdef _OPENMP        
+        ! Lock the vertex
+        CALL OMP_SET_LOCK(vmap % vlock(vertexId))
+#endif
+
+        ! Add vertex to map
+        CALL IntegerHashSetAdd(vmap % map(vertexId), elementId)
+
+#ifdef _OPENMP
+        ! Unlock the vertex
+        CALL OMP_UNSET_LOCK(vmap % vlock(vertexId))
+#endif
+    END SUBROUTINE VertexElementMapAdd
+
+    SUBROUTINE VertexElementMapDelete(vmap, vertexId, elementId)
+        IMPLICIT NONE
+        
+        TYPE(VertexElementMap_t) :: vmap
+        INTEGER, INTENT(IN) :: vertexId, elementId
+      
+#ifdef _OPENMP        
+        ! Lock the vertex
+        CALL OMP_SET_LOCK(vmap % vlock(vertexId))
+#endif
+        
+        ! Delete vertex from map
+        CALL IntegerHashSetDelete(vmap % map(vertexId), elementId)
+
+#ifdef _OPENMP
+        ! Unlock the vertex
+        CALL OMP_UNSET_LOCK(vmap % vlock(vertexId))
+#endif
+    END SUBROUTINE VertexElementMapDelete
+
+    SUBROUTINE VertexElementMapToList(vmap, nlist)
+        IMPLICIT NONE
+
+        
+        TYPE(VertexElementMap_t) :: vmap
+        TYPE(IntegerList_t), ALLOCATABLE :: nlist(:)
+
+        INTEGER :: i, nvertex, allocstat
+        TYPE(IntegerList_t) :: entries
+
+        nvertex = SIZE(vmap % map)
+        
+        ALLOCATE(nlist(nvertex), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('VertexElementMapToList', &
+              'Memory allocation failed!')
+        
+        !$OMP PARALLEL DO PRIVATE(i)
+        DO i=1,nvertex
+            ! Add all elements from map to a simple list
+            CALL IntegerListInit(nlist(i), vmap % map(i) % entries % nelem)
+            CALL IntegerListAddAll(nlist(i), vmap % map(i) % entries)
+        END DO
+        !$OMP END PARALLEL DO
+    END SUBROUTINE VertexElementMapToList
+
+    SUBROUTINE VertexElementMapDeleteAll(vmap)
+        IMPLICIT NONE
+        
+        TYPE(VertexElementMap_t) :: vmap
+        
+        INTEGER :: i, nvertex
+       
+        nvertex = SIZE(vmap % map)
+        !$OMP PARALLEL PRIVATE(i)         
+#ifdef _OPENMP
+        ! Deallocate vertex locks
+        !$OMP DO
+        DO i=1,nvertex
+            CALL OMP_DESTROY_LOCK(vmap % vlock(i))
+        END DO
+        !$OMP END DO
+
+        !$OMP SINGLE
+        DEALLOCATE(vmap % vlock)
+        !$OMP END SINGLE NOWAIT
+#endif        
+        ! Delete contents of the vertex map
+        !$OMP DO
+        DO i=1,nvertex
+            CALL IntegerHashSetDeleteAll(vmap % map(i))
+        END DO
+        !$OMP END DO NOWAIT
+        !$OMP END PARALLEL
+
+        DEALLOCATE(vmap % map)
+    END SUBROUTINE VertexElementMapDeleteAll
 
     SUBROUTINE IntegerHashSetInit(iset, isize, fratio)
         IMPLICIT NONE
