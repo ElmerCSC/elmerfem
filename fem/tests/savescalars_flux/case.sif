@@ -66,7 +66,7 @@ Solver 2
   Procedure = "SaveData" "SaveScalars"
 !  Filename = f.dat
   Show Norm = True
-  Show Norm Index = 2
+  Show Norm Index = 4
 
   Variable 1 = Temperature
   Coefficient 1 = Heat Conductivity   
@@ -103,7 +103,7 @@ End
 
 ! The norm is the total flux over Dirichlet BCs which should be equal to -1
 
-Solver 2 :: Reference Norm = Real -1.0
+Solver 2 :: Reference Norm = Real 1.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
 $fprintf( stderr, "TEST CASE 1\n");
 RUN

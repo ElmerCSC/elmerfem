@@ -131,7 +131,7 @@ Solver 2 :: Operator 1 = dofs
 RUN
 $fprintf( stderr, "END TEST CASE 6: Target NRM=981.0, EPS=1e-4\n" );
 
-Solver 2 :: Reference Norm = Real -2.9582406
+Solver 2 :: Reference Norm = Real 2.9582406
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
 $fprintf( stderr, "TEST CASE 7\n");
 Solver 2 :: Operator 1 = diffusive flux

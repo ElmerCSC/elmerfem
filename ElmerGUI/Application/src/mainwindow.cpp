@@ -6654,10 +6654,18 @@ void MainWindow::compileSolverSlot()
   }
 
   QStringList args;
+#ifdef WIN32
+  args << "/C";
+  args << "" + QString(qgetenv("ELMER_HOME")) + "\\bin\\elmerf90.bat";
+  QString dllFileName;
+  dllFileName = fileName.left(fileName.lastIndexOf(".")) + ".dll";
+  args << "-o";
+  args << dllFileName;
+#endif
   args << fileName;
 
 #ifdef WIN32
-  compiler->start("elmerf90.bat", args);
+  compiler->start("cmd.exe", args);
 #else
   logMessage("Run->compiler is currently not implemented on this platform");
   return;
