@@ -2364,41 +2364,6 @@ CONTAINS
         ind => VecIndexStore( : )
     END FUNCTION GetVecIndexStore
 
-    SUBROUTINE ConstructVertexToElementMap(Mesh, VertexList)
-        IMPLICIT NONE
-
-        TYPE(Mesh_t) :: Mesh
-        TYPE(IntegerList_t), ALLOCATABLE :: VertexList(:)
-        
-        TYPE(VertexElementMap_t) :: VertexMap
-        TYPE(Element_t), POINTER :: Element, Elements(:)
-        INTEGER :: i, j, v, nelem, nvertex, allocstat
-
-        nelem = Mesh % NumberOfBulkElements
-        nvertex = Mesh % NumberOfNodes
-        Elements => Mesh % Elements
-
-        ! Initialize map
-        CALL VertexElementMapInit(VertexMap, nvertex)
-       
-        !$OMP PARALLEL DO SHARED(Elements, nvertex, nelem, VertexMap) &
-        !$OMP PRIVATE(i, j, v, Element) DEFAULT(NONE)
-        DO i=1,nelem
-            Element => Elements(i)
-            DO j=1, Element % TYPE % NumberOfNodes
-                ! Add i to map(v)
-                CALL VertexElementMapAdd(VertexMap, Element % NodeIndexes(j), Element % ElementIndex)
-            END DO
-        END DO
-        !$OMP END PARALLEL DO
-
-        ! Convert map to neighbour list to conserve memory
-        CALL VertexElementMapToList(VertexMap, VertexList)
-        
-        ! Deallocate map
-        CALL VertexElementMapDeleteAll(VertexMap)
-    END SUBROUTINE ConstructVertexToElementMap
-
 !------------------------------------------------------------------------------
 END SUBROUTINE PoissonSolver
 !------------------------------------------------------------------------------

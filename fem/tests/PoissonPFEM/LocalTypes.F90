@@ -27,12 +27,12 @@ MODULE LocalTypes
         REAL(KIND=dp) :: fratio
     END TYPE IntegerHashSet_t
 
-    TYPE VertexElementMap_t
+    TYPE VertexMap_t
 #ifdef _OPENMP
         INTEGER(KIND=OMP_LOCK_KIND), ALLOCATABLE :: vlock(:)
 #endif
         TYPE(IntegerHashSet_t), ALLOCATABLE :: map(:)
-    END TYPE VertexElementMap_t
+    END TYPE VertexMap_t
 
     INTEGER, PARAMETER :: INTEGERLIST_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_DEFAULT_SIZE = 64
@@ -41,10 +41,10 @@ MODULE LocalTypes
 
 CONTAINS
 
-    SUBROUTINE VertexElementMapInit(vmap, nvertex, mdim)
+    SUBROUTINE VertexMapInit(vmap, nvertex, mdim)
         IMPLICIT NONE
 
-        TYPE(VertexElementMap_t) :: vmap
+        TYPE(VertexMap_t) :: vmap
         INTEGER, INTENT(IN) :: nvertex
         INTEGER, INTENT(IN), OPTIONAL :: mdim
         INTEGER :: i, allocstat, meshdim, minitsize
@@ -67,7 +67,7 @@ CONTAINS
         END SELECT
 
         ALLOCATE(vmap % map(nvertex), STAT=allocstat)
-        IF (allocstat /= 0) CALL Fatal('VertexElementMapInit', &
+        IF (allocstat /= 0) CALL Fatal('VertexMapInit', &
               'Memory allocation failed!')
 
         !$OMP PARALLEL PRIVATE(i)
@@ -82,7 +82,7 @@ CONTAINS
         !$OMP SINGLE
         ! Allocate and initialize vertex locks
         ALLOCATE(vmap % vlock(nvertex), STAT=allocstat)
-        IF (allocstat /= 0) CALL Fatal('VertexElementMapInit', &
+        IF (allocstat /= 0) CALL Fatal('VertexMapInit', &
               'Memory allocation failed!')
         !$OMP END SINGLE
 
@@ -94,13 +94,15 @@ CONTAINS
 #endif
 
         !$OMP END PARALLEL
-    END SUBROUTINE VertexElementMapInit
+    END SUBROUTINE VertexMapInit
 
-    SUBROUTINE VertexElementMapAdd(vmap, vertexId, elementId)
+    SUBROUTINE VertexMapAdd(vmap, vertexId, elementId)
         IMPLICIT NONE
 
-        TYPE(VertexElementMap_t) :: vmap
+        TYPE(VertexMap_t) :: vmap
         INTEGER, INTENT(IN) :: vertexId, elementId
+
+        IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
 
 #ifdef _OPENMP        
         ! Lock the vertex
@@ -114,14 +116,16 @@ CONTAINS
         ! Unlock the vertex
         CALL OMP_UNSET_LOCK(vmap % vlock(vertexId))
 #endif
-    END SUBROUTINE VertexElementMapAdd
+    END SUBROUTINE VertexMapAdd
 
-    SUBROUTINE VertexElementMapDelete(vmap, vertexId, elementId)
+    SUBROUTINE VertexMapDelete(vmap, vertexId, elementId)
         IMPLICIT NONE
         
-        TYPE(VertexElementMap_t) :: vmap
+        TYPE(VertexMap_t) :: vmap
         INTEGER, INTENT(IN) :: vertexId, elementId
       
+        IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
+
 #ifdef _OPENMP        
         ! Lock the vertex
         CALL OMP_SET_LOCK(vmap % vlock(vertexId))
@@ -134,13 +138,35 @@ CONTAINS
         ! Unlock the vertex
         CALL OMP_UNSET_LOCK(vmap % vlock(vertexId))
 #endif
-    END SUBROUTINE VertexElementMapDelete
+    END SUBROUTINE VertexMapDelete
 
-    SUBROUTINE VertexElementMapToList(vmap, nlist)
+    FUNCTION VertexMapFind(vmap, vertexId, conn) RESULT(found)
         IMPLICIT NONE
+        TYPE(VertexMap_t), TARGET :: vmap
+        INTEGER, INTENT(IN) :: vertexId, conn
+        LOGICAL :: found
 
+        found = .FALSE.
+        IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
+        found = IntegerHashSetFind(vmap % map(vertexid), conn)
+    END FUNCTION VertexMapFind
+
+    FUNCTION VertexMapGetList(vmap, vertexId) RESULT(nlist)
+        IMPLICIT NONE
+        TYPE(VertexMap_t), TARGET :: vmap
+        INTEGER, INTENT(IN) :: vertexId
+
+        TYPE(IntegerList_t), POINTER :: nlist
         
-        TYPE(VertexElementMap_t) :: vmap
+        IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
+
+        nlist => vmap % map(vertexId) % entries
+    END FUNCTION VertexMapGetList
+
+    SUBROUTINE VertexMapToLists(vmap, nlist)
+        IMPLICIT NONE
+        
+        TYPE(VertexMap_t) :: vmap
         TYPE(IntegerList_t), ALLOCATABLE :: nlist(:)
 
         INTEGER :: i, nvertex, allocstat
@@ -149,7 +175,7 @@ CONTAINS
         nvertex = SIZE(vmap % map)
         
         ALLOCATE(nlist(nvertex), STAT=allocstat)
-        IF (allocstat /= 0) CALL Fatal('VertexElementMapToList', &
+        IF (allocstat /= 0) CALL Fatal('VertexMapToList', &
               'Memory allocation failed!')
         
         !$OMP PARALLEL DO PRIVATE(i)
@@ -159,12 +185,12 @@ CONTAINS
             CALL IntegerListAddAll(nlist(i), vmap % map(i) % entries)
         END DO
         !$OMP END PARALLEL DO
-    END SUBROUTINE VertexElementMapToList
+    END SUBROUTINE VertexMapToLists
 
-    SUBROUTINE VertexElementMapDeleteAll(vmap)
+    SUBROUTINE VertexMapDeleteAll(vmap)
         IMPLICIT NONE
         
-        TYPE(VertexElementMap_t) :: vmap
+        TYPE(VertexMap_t) :: vmap
         
         INTEGER :: i, nvertex
        
@@ -191,7 +217,63 @@ CONTAINS
         !$OMP END PARALLEL
 
         DEALLOCATE(vmap % map)
-    END SUBROUTINE VertexElementMapDeleteAll
+    END SUBROUTINE VertexMapDeleteAll
+    
+    FUNCTION VertexMapGetSize(vmap) RESULT(N)
+        IMPLICIT NONE
+        TYPE(VertexMap_t) :: vmap
+        INTEGER :: n
+      
+        N = SIZE(vmap % map)
+    END FUNCTION VertexMapGetSize
+
+    FUNCTION VertexMapEquals(vmap1, vmap2) RESULT(equalTo)
+        IMPLICIT NONE
+        TYPE(VertexMap_t), TARGET :: vmap1, vmap2
+        
+        LOGICAL :: equalTo
+        INTEGER :: i, id, n1, n2, ln1, ln2
+        TYPE(IntegerList_t), POINTER :: l1, l2
+
+        equalTo = .FALSE.
+
+        n1 = VertexMapGetSize(vmap1)
+        n2 = VertexMapGetSize(vmap2)
+    
+        ! Test size of maps, if not equal the maps are different
+        IF (n1 /= n2) RETURN
+        
+        DO i=1, n1
+            ! Test size of vertex mapping, if not equal the maps are different
+            l1 => VertexMapGetList(vmap1, i)
+            l2 => VertexMapGetList(vmap2, i)
+
+            ln1 = IntegerListGetSize(l1)
+            ln2 = IntegerListGetSize(l2)
+            
+            IF (ln1 /= ln2) RETURN
+
+            ! Try to find each element of vmap1 from vmap2
+            DO id = 1, ln1
+                IF (.NOT. VertexMapFind(vmap2, i, IntegerListAt(l1, id))) RETURN
+            END DO
+        END DO
+
+        equalTo = .TRUE.
+    END FUNCTION VertexMapEquals
+
+    SUBROUTINE VertexMapOutputString(vmap)
+        IMPLICIT NONE
+        TYPE(VertexMap_t) :: vmap
+        
+        INTEGER :: i
+        
+        WRITE (*,*) 'nvertex=', SIZE(vmap % map)
+        DO i=1,SIZE(vmap % map)
+            WRITE (*,*) 'nelem=', vmap % map(i) % entries % nelem
+            WRITE (*,*) vmap % map(i) % entries % entries(1:vmap % map(i) % entries % nelem)
+        END DO
+    END SUBROUTINE VertexMapOutputString
 
     SUBROUTINE IntegerHashSetInit(iset, isize, fratio)
         IMPLICIT NONE
@@ -361,6 +443,29 @@ CONTAINS
         hkey = FLOOR(REAL(m,dp)*MOD(key*hA,REAL(1,dp)))+1
     END FUNCTION IntegerHashSetHashFunction
 
+    SUBROUTINE IntegerHashSetOutputString(iset)
+        IMPLICIT NONE
+        TYPE(IntegerHashSet_t) :: iset
+        
+        INTEGER :: i
+        
+        WRITE (*,*) 'nelem=', iset % entries % nelem
+        WRITE (*,*) iset % entries % entries(1:iset % entries % nelem)
+        WRITE (*,*) 'HashSet contents'
+        WRITE (*,*) 'SIZE(iset % set)=', SIZE(iset % set)
+        WRITE (*,*) 'fill, nelem/SIZE(iset % set)=', REAL(iset % entries % nelem)/SIZE(iset % set)
+        DO i=1,SIZE(iset % set)
+            IF (.NOT. ALLOCATED(iset % set(i) % list)) THEN
+                WRITE (*,'(A,I0,A)') 'set(',i,') empty'
+            ELSE
+                WRITE (*,'(A,I0,A)') 'set(',i,') allocated'
+                WRITE (*,*) 'list of entries (keys)'
+                WRITE (*,*) 'nelem=', iset % set(i) % list % nelem
+                WRITE (*,*) iset % set(i) % list % entries(1:iset % set(i) % list % nelem)
+            END IF
+        END DO
+    END SUBROUTINE IntegerHashSetOutputString
+    
     SUBROUTINE IntegerListInit(ilist, isize)
         IMPLICIT NONE
 
@@ -504,5 +609,51 @@ CONTAINS
             END IF
         END DO
     END FUNCTION IntegerListFind
+    
+    FUNCTION IntegerListGetArray(ilist) RESULT(arr)
+        IMPLICIT NONE
+        
+        TYPE(IntegerList_t), TARGET :: ilist
+        INTEGER, POINTER :: arr(:)
+
+        arr => ilist % entries
+    END FUNCTION IntegerListGetArray
+
+    FUNCTION IntegerListGetSize(ilist) RESULT(N)
+        IMPLICIT NONE
+        TYPE(IntegerList_t) :: ilist
+        INTEGER :: N
+
+        N = ilist % nelem
+    END FUNCTION IntegerListGetSize
+
+! If iterators are needed, these need to be implemented
+
+!!!     FUNCTION IntegerListGetIterator(ilist) RESULT(iliter)
+!!!      IMPLICIT NONE
+!!!      TYPE(IntegerList_t) :: ilist
+!!!      TYPE(IntegerListIterator_t) :: iliter
+!!!
+!!!      ! NIY
+!!!      iliter => NULL()
+!!!    END FUNCTION getiterator
+!!!
+!!!    FUNCTION IntegerListIteratorNext(iliter) RESULT(nextelem)
+!!!      IMPLICIT NONE
+!!!      TYPE(IntegerListIterator_t) :: iliter
+!!!      INTEGER :: nextelem
+!!!
+!!!      ! NIY
+!!!      nextelem = 0
+!!!    END FUNCTION IntegerListIteratorNext
+!!!
+!!!    FUNCTION IntegerListIteratorHasNext(iliter) RESULT(hasnext)
+!!!      IMPLICIT NONE
+!!!      TYPE(IntegerListIterator_t) :: iliter
+!!!      LOGICAL :: hasnext
+!!!
+!!!      ! NIY
+!!!      hasnext = .FALSE.
+!!!    END FUNCTION IntegerListIteratorHasNext
 
 END MODULE LocalTypes

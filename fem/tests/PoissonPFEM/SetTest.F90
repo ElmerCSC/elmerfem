@@ -124,27 +124,4 @@ PROGRAM SetTest
 
         END SUBROUTINE CheckIntegerHashSetConsistency
 
-        SUBROUTINE WriteIntegerHashSetContents(iset)
-            IMPLICIT NONE
-            TYPE(IntegerHashSet_t) :: iset
-
-            INTEGER :: i
-
-            WRITE (*,*) 'nelem=', iset % entries % nelem
-            WRITE (*,*) iset % entries % entries(1:iset % entries % nelem)
-            WRITE (*,*) 'HashSet contents'
-            WRITE (*,*) 'SIZE(iset % set)=', SIZE(iset % set)
-            WRITE (*,*) 'fill, nelem/SIZE(iset % set)=', REAL(iset % entries % nelem)/SIZE(iset % set)
-            DO i=1,SIZE(iset % set)
-                IF (.NOT. ALLOCATED(iset % set(i) % list)) THEN
-                    WRITE (*,'(A,I0,A)') 'set(',i,') empty'
-                ELSE
-                    WRITE (*,'(A,I0,A)') 'set(',i,') allocated'
-                    WRITE (*,*) 'list of entries (keys)'
-                    WRITE (*,*) 'nelem=', iset % set(i) % list % nelem
-                    WRITE (*,*) iset % set(i) % list % entries(1:iset % set(i) % list % nelem)
-                END IF
-            END DO
-        END SUBROUTINE WriteIntegerHashSetContents
-
 END PROGRAM SetTest
