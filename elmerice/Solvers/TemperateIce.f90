@@ -382,9 +382,11 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
   !       non-linear system iteration loop
   !------------------------------------------------------------------------------
   DO iter=1,NonlinearIter
-     FirstTime = .FALSE.           
-     CALL MPI_ALLREDUCE(UnconstrainedNodesExist,GlobalUnconstrainedNodesExist,1, &
-          MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+     FirstTime = .FALSE.
+     IF ( ParEnv % PEs > 1 ) THEN
+        CALL MPI_ALLREDUCE(UnconstrainedNodesExist,GlobalUnconstrainedNodesExist,1, &
+             MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+     END IF
      UnconstrainedNodesExist = .FALSE.
 
      !------------------------------------------------------------------------------
