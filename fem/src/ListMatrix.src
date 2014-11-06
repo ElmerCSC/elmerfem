@@ -241,7 +241,6 @@ CONTAINS
     Trunc=.FALSE.
     IF(PRESENT(Truncate)) Trunc=Truncate
 
-    L => List_AllocateMatrix(A % NumberOfRows)
     DO i=1,A % NumberOfRows
       DO j=A % Rows(i+1)-1,A % Rows(i),-1
         IF(Trunc) THEN

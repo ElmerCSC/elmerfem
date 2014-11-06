@@ -9025,7 +9025,9 @@ END SUBROUTINE GetMaxDefs
         IF (isParallel) THEN
           PI_out % INTERFACE(cnt) = PI_in % INTERFACE(j)
 
-          PI_out % NeighbourList(cnt) % Neighbours => &
+          ALLOCATE(PI_out % NeighbourList(cnt) % Neighbours(&
+               SIZE(PI_in % NeighbourList(j) % Neighbours)))
+          PI_out % NeighbourList(cnt) % Neighbours = &
             PI_in % NeighbourList(j) % Neighbours
 
           PI_out % GlobalDOFs(cnt) = PI_in % GlobalDOFs(j)+i*gnodes
@@ -10554,11 +10556,13 @@ END SUBROUTINE FindNeighbourNodes
            CALL AllocateVector( Matrix % MassValues, SIZE(Matrix % Values) )
            Matrix % MassValues = 0.0d0
         END IF
-     ELSE IF ( ASSOCIATED( Solver % Matrix % Force ) ) THEN
-        n1 = Matrix % NumberOFRows
-        n2 = SIZE(Solver % Matrix % Force,2)
-        ALLOCATE(Matrix % Force(n1,n2))
-        Matrix % Force = 0.0d0
+     ELSE IF ( ASSOCIATED( Solver % Matrix ) ) THEN
+        IF( ASSOCIATED( Solver % Matrix % Force) ) THEN
+           n1 = Matrix % NumberOFRows
+           n2 = SIZE(Solver % Matrix % Force,2)
+           ALLOCATE(Matrix % Force(n1,n2))
+           Matrix % Force = 0.0d0
+        END IF
      END IF
 
      Solver % Matrix => Matrix
@@ -12380,6 +12384,17 @@ CONTAINS
         IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
            DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
 
+        IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
+           DO i=1,Mesh % NumberOfNodes
+              IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+                   DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+           END DO
+           DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
+        END IF
+
+        IF ( ASSOCIATED( Mesh % ParallelInfo % INTERFACE ) ) &
+           DEALLOCATE( Mesh % ParallelInfo % INTERFACE )
+
         DEALLOCATE( Mesh % Nodes )
      END IF
      Mesh % Nodes => NULL()
@@ -12413,8 +12428,9 @@ CONTAINS
                         GebhardtFactors % Factors )
                    END IF
                    DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
-                 END IF
-              END IF
+                END IF
+                DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
+             END IF
            END IF
 
            IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &

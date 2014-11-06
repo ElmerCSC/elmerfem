@@ -12,6 +12,7 @@
        USE SParIterComm
        USE Interpolation
        USE CoordinateSystems
+       USE MeshUtils, ONLY: ReleaseMesh
 !-------------------------------------------------------------------------------
        TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
        TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
@@ -320,18 +321,13 @@
           DEALLOCATE(vstore, vperm)
         END IF
 
-        DEALLOCATE(ProcRecv(i) % Nodes_x, ProcRecv(i) % Nodes_y,&
-                   ProcRecv(i) % Nodes_z )
+        !Pointers to ProcRev, deallocated automatically below
+        NULLIFY(Nmesh % Nodes % x,&
+                Nmesh % Nodes % y,&
+                Nmesh % Nodes % z)
 
-        Var => Nmesh % Variables
-        DO WHILE(ASSOCIATED(Var))
-          DEALLOCATE(Var % Values)
-          IF (ASSOCIATED(Var % PrevValues)) DEALLOCATE(Var % PrevValues)
-          nVar => Var
-          Var => Var % Next
-          DEALLOCATE(nVar)
-        END DO
-        DEALLOCATE(nperm,foundnodes, Nmesh)
+        CALL ReleaseMesh(Nmesh)
+        DEALLOCATE(foundnodes, Nmesh)
       END DO
       DEALLOCATE(ProcRecv)
 
