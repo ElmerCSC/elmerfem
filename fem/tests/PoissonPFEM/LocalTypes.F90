@@ -40,6 +40,281 @@ MODULE LocalTypes
     REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = REAL(0.75, dp)
 
 CONTAINS
+    
+    SUBROUTINE MeshToDualGraph3(Mesh, DualGraph)
+        IMPLICIT NONE
+
+        TYPE(Mesh_t) :: Mesh
+        TYPE(VertexMap_t) :: DualGraph
+
+        TYPE(Element_t), POINTER :: Element, NElement, Elements(:)
+        TYPE(IntegerList_t), ALLOCATABLE, TARGET :: VToEList(:)
+        TYPE(IntegerList_t), POINTER :: NeighbourList
+        INTEGER, POINTER :: NeighbourArray(:)
+        INTEGER :: i, j, nli, nti, nl, e, ne, eid, neid, nodeid, nelem, nnelem, nvertex
+        INTEGER, POINTER CONTIG :: NodeIndexes(:)
+        INTEGER, ALLOCATABLE :: eptr(:), eind(:)
+#ifdef HAVE_TIMING
+        REAL(kind=dp) :: t_start, t_end
+#endif    
+
+        nelem = Mesh % NumberOfBulkElements
+        nvertex = Mesh % NumberOfNodes
+        Elements => Mesh % Elements
+
+#ifdef HAVE_TIMING
+        t_start = ftimer()
+#endif      
+        ! Copy mesh to CSR structure
+        ALLOCATE(eptr(nelem+1), eind(nelem*Mesh % MaxElementNodes))
+        eptr(1)=1 ! Fortran numbering
+        DO i=1, nelem
+            Element => Elements(i)
+            nl = Element % TYPE % NumberOfNodes
+            nli = eptr(i) ! Fortran numbering
+            nti = nli+nl-1
+            eind(nli:nti) = Element % NodeIndexes(1:nl) ! Fortran numbering
+            eptr(i+1) = nli+nl
+        END DO
+#ifdef HAVE_TIMING
+        t_end = ftimer()
+        WRITE (*,'(A,ES12.3,A)') 'Mesh tranformation, meshtodual: ', t_end - t_start, ' sec.'
+#endif                              
+
+#ifdef HAVE_TIMING
+        t_start = ftimer()
+#endif 
+        CALL ConstructVertexToElementList(nelem, nvertex, eptr, eind, VToEList)
+#ifdef HAVE_TIMING
+        t_end = ftimer()
+        WRITE (*,'(A,ES12.3,A)') 'Vertex-element list creation: ', t_end - t_start, ' sec.'
+#endif    
+
+#ifdef HAVE_TIMING
+        t_start = ftimer()
+#endif 
+        ! Algorithm: loop over elements and add edges 
+        ! between elements for each vertex. 
+        CALL VertexMapInit(DualGraph, nelem)
+#ifdef HAVE_TIMING
+        t_end = ftimer()
+        WRITE (*,'(A,ES12.3,A)') 'Dual graph init: ', t_end - t_start, ' sec.'
+#endif 
+
+#ifdef HAVE_TIMING
+        t_start = ftimer()
+#endif 
+        ! For each element
+        !$OMP PARALLEL DO SHARED(eptr, eind, nvertex, nelem, VToEList, DualGraph) &
+        !$OMP PRIVATE(eid, nli, nti, ne, neid, nnelem, NeighbourList, &
+        !$OMP         NeighbourArray, NodeIndexes) SCHEDULE(GUIDED) DEFAULT(NONE)
+        DO eid=1,nelem
+            nli = eptr(eid)
+            nti = eptr(eid+1)-1
+
+            ! For each node nodeid in element eid
+            DO nodeid=nli, nti
+                ! Get list of elements mapping to a vertex
+                NeighbourList => VToEList(eind(nodeid))
+                NeighbourArray => IntegerListGetArray(NeighbourList)
+                nnelem = IntegerListGetSize(NeighbourList)
+
+                ! For each neighbour element ne of nodeid
+                DO ne=1, nnelem
+                    neid = NeighbourArray(ne)
+
+                    ! Add each actual neighbouring element to graph 
+                    IF (eid /= neid) CALL VertexMapAdd(DualGraph, eid, neid)
+                END DO
+            END DO
+        END DO
+        !$OMP END PARALLEL DO
+
+        DEALLOCATE(eind, eptr)
+
+#ifdef HAVE_TIMING
+        t_end = ftimer()
+        WRITE (*,'(A,ES12.3,A)') 'Dual graph creation: ', t_end - t_start, ' sec.'
+#endif 
+
+        ! Delete entries in vertex to element map
+        DO i=1,nvertex
+            CALL IntegerListDeleteAll(VToEList(i))
+        END DO
+        DEALLOCATE(VToEList)
+    END SUBROUTINE MeshToDualGraph3
+    
+    SUBROUTINE ConstructVertexToElementList(ne, nn, eptr, eind, VertexToElementList)
+        IMPLICIT NONE
+
+        INTEGER, INTENT(IN) :: ne, nn
+        INTEGER :: eptr(:), eind(:)
+        TYPE(IntegerList_t), ALLOCATABLE :: VertexToElementList(:)
+        TYPE(Mesh_t) :: Mesh
+
+        TYPE(Element_t), POINTER :: Element, Elements(:)
+        INTEGER :: i, j, v, eli, eti, nelem, nvertex, allocstat
+        INTEGER, ALLOCATABLE :: vptr(:), vind(:)
+#ifdef HAVE_TIMING
+        REAL(kind=dp) :: t_start, t_end
+#endif    
+#ifdef _OPENMP
+        INTEGER, ALLOCATABLE :: vlock(:)
+#endif            
+
+        nelem = ne
+        nvertex = nn
+
+#ifdef HAVE_TIMING
+        t_start = ftimer()
+#endif      
+        ! ALLOCATE(vptr(nvertex), STAT=allocstat)
+        ! IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap', &
+        !                                'Vertex pointer allocation failed!')
+        ! vptr(:) = 0
+
+#ifdef _OPENMP
+        ! Allocate vertex locks
+        ALLOCATE(vlock(nvertex), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap', &
+              'Lock allocation failed!')
+#endif
+        ! Allocate vertex lists
+        ALLOCATE(VertexToElementList(nvertex), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap', &
+              'Vertex list allocation failed!')
+
+#ifdef HAVE_TIMING
+        t_end = ftimer()
+        WRITE (*,'(A,ES12.3,A)') 'ConstructVertexToElementList, init: ', t_end - t_start, ' sec.'
+#endif        
+
+        ! For each element
+        !$OMP PARALLEL SHARED(nelem, nvertex, eind, eptr, VertexToElementList, vlock) &
+        !$OMP PRIVATE(i, j, eli, eti, Element) DEFAULT(NONE)
+
+        ! Initialize locks 
+#ifdef _OPENMP
+        !$OMP DO
+        DO i=1,nvertex
+            CALL OMP_INIT_LOCK(vlock(i))
+        END DO
+        !$OMP END DO NOWAIT
+#endif
+        ! Initialize vertex lists
+        !$OMP DO
+        DO i=1,nvertex
+            ! TODO: Change list size to be more dynamic
+            CALL IntegerListInit(VertexToElementList(i), 32)
+        END DO
+        !$OMP END DO
+
+        !$OMP DO
+        ! For each element
+        DO i=1,nelem
+            eli = eptr(i)
+            eti = eptr(i+1)-1
+
+            ! For each vertex in element
+            !DIR$ IVDEP
+            DO j=eli, eti
+                ! Add connection to vertex eind(j)
+#ifdef _OPENMP
+                CALL OMP_SET_LOCK(vlock(eind(j)))
+#endif
+                CALL IntegerListAdd(VertexToElementList(eind(j)), i)
+#ifdef _OPENMP
+                CALL OMP_UNSET_LOCK(vlock(eind(j)))
+#endif
+            END DO
+        END DO
+        !$OMP END DO
+
+#ifdef _OPENMP
+        !$OMP DO
+        DO i=1,nvertex
+            CALL OMP_DESTROY_LOCK(vlock(i))
+        END DO
+        !$OMP END DO NOWAIT
+#endif
+
+        !$OMP END PARALLEL
+
+#ifdef _OPENMP
+        ! Deallocate vertex locks
+        DEALLOCATE(vlock)
+#endif
+    END SUBROUTINE ConstructVertexToElementList
+    
+     SUBROUTINE ConstructVertexToElementList2(ne, nn, eptr, eind, vptr, vind)
+        IMPLICIT NONE
+
+        INTEGER, INTENT(IN) :: ne, nn
+        INTEGER :: eptr(:), eind(:)
+        INTEGER, ALLOCATABLE :: vptr(:), vind(:)
+
+        INTEGER :: i, j, v, eli, eti, nelem, nvertex, allocstat
+#ifdef HAVE_TIMING
+        REAL(kind=dp) :: t_start, t_end
+#endif    
+
+        nelem = ne
+        nvertex = nn
+
+#ifdef HAVE_TIMING
+        t_start = ftimer()
+#endif      
+        ! Initialize vertex structure (enough storage for nvertex vertices 
+        ! having eptr(nelem
+        ALLOCATE(vptr(nvertex), vind(eptr(nelem+1)-1), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap', &
+                                        'Vertex allocation failed!')
+        vptr = 0
+
+#ifdef HAVE_TIMING
+        t_end = ftimer()
+        WRITE (*,'(A,ES12.3,A)') 'ConstructVertexToElementList, init: ', t_end - t_start, ' sec.'
+#endif        
+
+        ! For each element
+
+        ! Initialize vertex lists
+        !$OMP DO
+        DO i=1,nelem
+            
+        END DO
+        !$OMP END DO
+
+        !$OMP DO
+        ! For each element
+        DO i=1,nelem
+            eli = eptr(i)
+            eti = eptr(i+1)-1
+
+            ! For each vertex in element
+            !DIR$ IVDEP
+            DO j=eli, eti
+                ! Add connection to vertex eind(j)
+            END DO
+        END DO
+        !$OMP END DO
+    END SUBROUTINE ConstructVertexToElementList2
+
+    ! Portable wall-clock timer 
+    FUNCTION ftimer() RESULT(timerval)
+        IMPLICIT NONE
+        
+        REAL(KIND=dp) :: timerval
+        INTEGER :: t, rate
+        
+#ifdef _OPENMP
+        timerval = OMP_GET_WTIME()
+#else
+        CALL SYSTEM_CLOCK(t,count_rate=rate)
+        timerval = REAL(t,KIND(dp))/REAL(rate,KIND(dp))      
+#endif
+    END FUNCTION ftimer
+
 
     SUBROUTINE VertexMapInit(vmap, nvertex, mdim)
         IMPLICIT NONE
@@ -104,6 +379,30 @@ CONTAINS
 
         IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
 
+        ! Add vertex to map
+        CALL IntegerHashSetAdd(vmap % map(vertexId), elementId)
+    END SUBROUTINE VertexMapAdd
+
+    SUBROUTINE VertexMapDelete(vmap, vertexId, elementId)
+        IMPLICIT NONE
+        
+        TYPE(VertexMap_t) :: vmap
+        INTEGER, INTENT(IN) :: vertexId, elementId
+      
+        IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
+
+        ! Delete vertex from map
+        CALL IntegerHashSetDelete(vmap % map(vertexId), elementId)
+    END SUBROUTINE VertexMapDelete
+
+    SUBROUTINE VertexMapAddAtomic(vmap, vertexId, elementId)
+        IMPLICIT NONE
+
+        TYPE(VertexMap_t) :: vmap
+        INTEGER, INTENT(IN) :: vertexId, elementId
+
+        IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
+
 #ifdef _OPENMP        
         ! Lock the vertex
         CALL OMP_SET_LOCK(vmap % vlock(vertexId))
@@ -116,9 +415,9 @@ CONTAINS
         ! Unlock the vertex
         CALL OMP_UNSET_LOCK(vmap % vlock(vertexId))
 #endif
-    END SUBROUTINE VertexMapAdd
+    END SUBROUTINE VertexMapAddAtomic
 
-    SUBROUTINE VertexMapDelete(vmap, vertexId, elementId)
+    SUBROUTINE VertexMapDeleteAtomic(vmap, vertexId, elementId)
         IMPLICIT NONE
         
         TYPE(VertexMap_t) :: vmap
@@ -138,7 +437,7 @@ CONTAINS
         ! Unlock the vertex
         CALL OMP_UNSET_LOCK(vmap % vlock(vertexId))
 #endif
-    END SUBROUTINE VertexMapDelete
+    END SUBROUTINE VertexMapDeleteAtomic
 
     FUNCTION VertexMapFind(vmap, vertexId, conn) RESULT(found)
         IMPLICIT NONE
@@ -293,7 +592,7 @@ CONTAINS
         IF (ALLOCATED(iset % set)) DEALLOCATE(iset % set)
         IF (ALLOCATED(iset % entries)) DEALLOCATE(iset % entries)
 
-        ALLOCATE(iset % set(FLOOR(n/iset % fratio)), &
+        ALLOCATE(iset % set(n), &
                  iset % entries, STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('IntegerHashSetInit', &
                                        'Memory allocation error!')
