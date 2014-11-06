@@ -617,11 +617,6 @@ void GetElementSide(int element,int side,int normal,
       for(i=0;i<=j;i++)
 	ind[i] = ind2[j-i];
     }
-#if 0
-    else if(normal != 1) {
-      printf("GetElementSide: unknown option (normal=%d)\n",normal);
-    }
-#endif 
   }
 }
 

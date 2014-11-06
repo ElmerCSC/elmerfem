@@ -2077,7 +2077,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 
   sprintf(nodefile,"%s.node",prefix);
   if ((in = fopen(nodefile,"r")) == NULL) {
-    printf("LoadElmerInput: The opening of the nodes file %s failed!\n",nodefile);
+    printf("LoadTriangleInput: The opening of the nodes file %s failed!\n",nodefile);
     return(1);
   }
   else 
@@ -2094,7 +2094,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 
   sprintf(elemfile,"%s.ele",prefix);
   if ((in = fopen(elemfile,"r")) == NULL) {
-    printf("LoadElmerInput: The opening of the element file %s failed!\n",elemfile);
+    printf("LoadTriangleInput: The opening of the element file %s failed!\n",elemfile);
     return(3);
   }
   else 
@@ -2158,7 +2158,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 
   sprintf(polyfile,"%s.poly",prefix);
   if ((in = fopen(polyfile,"r")) == NULL) {
-    printf("LoadElmerInput: The opening of the poly file %s failed!\n",polyfile);
+    printf("LoadTriangleInput: The opening of the poly file %s failed!\n",polyfile);
     return(1);
   }
   else 
@@ -2271,7 +2271,7 @@ int LoadMeditInput(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Loading mesh in Medit format from file %s\n",prefix);
 
   if ((in = fopen(nodefile,"r")) == NULL) {
-    printf("LoadElmerInput: The opening of the mesh file %s failed!\n",nodefile);
+    printf("LoadMeditInput: The opening of the mesh file %s failed!\n",nodefile);
     return(1);
   }
 
@@ -3108,7 +3108,7 @@ static int LoadGmshInput1(struct FemType *data,struct BoundaryType *bound,
 
 
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadElmerInput: The opening of the mesh file %s failed!\n",filename);
+    printf("LoadGmshInput: The opening of the mesh file %s failed!\n",filename);
     return(1);
   }
   if(info) printf("Loading mesh in Gmsh format 1.0 from file %s\n",filename);
@@ -3266,7 +3266,7 @@ static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
   char *cp,line[MAXLINESIZE];
 
   if ((in = fopen(filename,"r")) == NULL) {
-    printf("LoadElmerInput: The opening of the mesh file %s failed!\n",filename);
+    printf("LoadGmshInput2: The opening of the mesh file %s failed!\n",filename);
     return(1);
   }
   if(info) printf("Loading mesh in Gmsh format 2.0 from file %s\n",filename);
@@ -3464,7 +3464,7 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     sprintf(filename,"%s.msh",prefix);
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadElmerInput: The opening of the mesh file %s failed!\n",filename);
+      printf("LoadGmshInput: The opening of the mesh file %s failed!\n",filename);
       return(1);
     }
   }

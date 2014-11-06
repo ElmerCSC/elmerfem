@@ -376,12 +376,14 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 			  int sideelem,int sideelemtype,int *sideind)
 {
   int i,j,sideelemtype2,elemind,parent,normal,elemtype;
-  int elemsides,side,sidenodes,nohits,hit;
+  int elemsides,side,sidenodes,nohits,hit,hit1,hit2;
   int sideind2[MAXNODESD1];
 
   hit = FALSE;
   elemsides = 0;
   elemtype = 0;
+  hit1 = FALSE;
+  hit2 = FALSE;
 
   for(parent=1;parent<=2;parent++) {
     if(parent == 1) 
@@ -402,6 +404,8 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 
 	for(side=0;side<elemsides;side++) {
 
+	  if(0) printf("elem = %d %d %d %d\n",elemind,elemsides,normal,side);
+
 	  GetElementSide(elemind,side,normal,data,&sideind2[0],&sideelemtype2);
 
 	  if(sideelemtype2 < 300 && sideelemtype > 300) break;	
@@ -417,10 +421,12 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 	    
 	    if(hit == TRUE) {
 	      if(parent == 1) {
+		hit1 = TRUE;
 		bound->side[sideelem] = side;
 		bound->normal[sideelem] = normal;
 	      }
 	      else {
+		hit2 = TRUE;
 		bound->side2[sideelem] = side;	      
 	      }
 	      goto skip;
@@ -436,12 +442,15 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
  
       for(side=0;;side++) {
 
+	if(0) printf("side = %d\n",side);
+
 	GetElementSide(elemind,side,normal,data,&sideind2[0],&sideelemtype2);
 
+	if(sideelemtype2 == 0 ) break;
 	if(sideelemtype2 < 300 && sideelemtype > 300) break;	
 	if(sideelemtype2 < 200 && sideelemtype > 200) break;		
 	if(sideelemtype != sideelemtype2) continue;
-	
+		
 	sidenodes = sideelemtype % 100;
 
 	nohits = 0;
@@ -451,41 +460,38 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 	if(nohits == sidenodes) {
 	  hit = TRUE;
 	  if(parent == 1) {
+	    hit1 = TRUE;
 	    bound->side[sideelem] = side;
 	  }
-	  else 
+	  else {
+	    hit2 = TRUE;
 	    bound->side2[sideelem] = side;	      
+	  }
 	  goto skip;
 	}
 	
       }
-    }
 
-  skip:  
-    if(!hit) {
-      if(!elemind) {
-	printf("elemind is zero\n");
-	return(1);
+    skip:  
+      if(!hit) {
+	printf("FindParentSide: cannot locate BC element in given bulk element\n");
+	printf("BC elem of type %d with indexes: ",sideelemtype);
+	for(i=0;i<sideelemtype%100;i++)
+	  printf(" %d ",sideind[i]);
+	printf("\n");
+
+	printf("Bulk elem %d of type %d with indexes: ",elemind,elemtype);
+	for(i=0;i<elemtype/100;i++)
+	  printf(" %d ",data->topology[elemind][i]);
+	printf("\n");             
       }
-
-      printf("FindParentSide: unsuccesfull (elemtype=%d elemsides=%d parent=%d)\n",
-		    sideelemtype,elemsides,parent);
-      printf("parents = %d %d\n",bound->parent[sideelem],bound->parent2[sideelem]);
-
-      printf("sideind =");
-      for(i=0;i<sideelemtype%100;i++)
-	printf(" %d ",sideind[i]);
-      printf("\n");
-
-      printf("elemind = %d %d\n",elemtype,elemind);
-      for(i=0;i<elemtype/100;i++)
-	printf(" %d ",data->topology[elemind][i]);
-      printf("\n");      
     }
-
   }
 
-  return(0);
+  if(hit1 || hit2) 
+    return(0);
+  else
+    return(1);
 }
 
 
@@ -498,7 +504,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 {
   int noknots,noelements,nosides,maxelemtype;
   int sideind[MAXNODESD1],tottypes,elementtype;
-  int i,j,k,l,dummyint,cdstat;
+  int i,j,k,l,dummyint,cdstat,fail;
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
 
@@ -616,6 +622,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   i = 0;
   for(k=1; k <= nosides; k++) {
+
     i++;
     fscanf(in,"%d",&dummyint);
 
@@ -640,7 +647,8 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
     }
 
     if(bound->parent[i] > 0) {
-      FindParentSide(data,bound,i,elementtype,sideind);
+      fail = FindParentSide(data,bound,i,elementtype,sideind);
+      if(fail) i--;      
     }
     else {
 #if 0
@@ -652,7 +660,10 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
       i--;
     }
   }
-
+  
+  if( nosides > i ) {
+    printf("LoadElmerInput: removed %d boundary element with invalid parent definition!\n");
+  }
   bound->nosides = i;
   fclose(in); 
 
@@ -5617,7 +5628,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   if(splitsides) {
     printf("************************* Warning ****************************\n");
     printf("Number or boundary elements split at between parents: %d\n",splitsides);
-    printf("This could be a problem for internal flux conditions\n");
+    printf("This could be a problem for internal jump conditions\n");
     printf("You could try to use '-halobc' flag as remedy with ElmerSolver.\n");
     printf("**************************************************************\n");
   }
