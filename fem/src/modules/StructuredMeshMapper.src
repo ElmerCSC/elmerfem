@@ -68,7 +68,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
        BotPointer(:),NodeIndexes(:)
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
-       DeTangle, ComputeTangledMask = .FALSE.
+       DeTangle, ComputeTangledMask = .FALSE., Reinitialize
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, ElemVector(3),DotPro,Eps,Length, MinHeight
   REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime,Heps
@@ -95,7 +95,12 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   PSolver => Solver
   Mesh => Solver % Mesh
 
-  IF( .NOT. Initialized ) THEN
+  Reinitialize = ListGetLogical(SolverParams, "Always Detect Structure", Found)
+  IF(.NOT. Found) Reinitialize = .FALSE.
+
+  IF( (.NOT. Initialized) .OR. Reinitialize ) THEN
+     IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
+     IF(ASSOCIATED(TopPointer)) DEALLOCATE(TopPointer)
      CALL DetectExtrudedStructure( Mesh, PSolver, ExtVar = Var, &
           TopNodePointer = TopPointer, BotNodePointer = BotPointer )
      MaskExists = ASSOCIATED( Var % Perm ) 
@@ -104,6 +109,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
      nsize = SIZE( Coord )
      Initialized = .TRUE.
 
+     IF(ALLOCATED(OrigCoord)) DEALLOCATE(OrigCoord)
      ALLOCATE( OrigCoord(nsize), STAT=istat)
      IF ( istat /= 0 ) THEN
        CALL FATAL( 'StructuredMeshMapper', 'Memory allocation error' )
@@ -181,6 +187,10 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   IF(TopMode == 0) THEN
      IF( ListCheckPresentAnyBC( Model,'Top Surface') ) THEN
         TopMode = 3
+        IF( Reinitialize ) THEN
+           IF( ALLOCATED(Field)) DEALLOCATE(Field)
+           IF( ALLOCATED(Surface)) DEALLOCATE(Surface)
+        END IF
         IF(.NOT. ALLOCATED(Field)) THEN
            N = Mesh % MaxElementNodes
            ALLOCATE(Field(nsize),Surface(n))
