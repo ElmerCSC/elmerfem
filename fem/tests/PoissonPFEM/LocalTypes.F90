@@ -51,9 +51,10 @@ CONTAINS
         TYPE(IntegerList_t), ALLOCATABLE, TARGET :: VToEList(:)
         TYPE(IntegerList_t), POINTER :: NeighbourList
         INTEGER, POINTER :: NeighbourArray(:)
-        INTEGER :: i, j, nli, nti, nl, e, ne, eid, neid, nodeid, nelem, nnelem, nvertex
+        INTEGER :: i, j, ind, nli, nti, nl, e, ne, eid, neid, nodeid, nelem, nnelem, nvertex
         INTEGER, POINTER CONTIG :: NodeIndexes(:)
-        INTEGER, ALLOCATABLE :: eptr(:), eind(:)
+        INTEGER, ALLOCATABLE :: eptr(:), eind(:), vptr(:), vind(:)
+        LOGICAL :: mapOk
 #ifdef HAVE_TIMING
         REAL(kind=dp) :: t_start, t_end
 #endif    
@@ -89,6 +90,34 @@ CONTAINS
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Vertex-element list creation: ', t_end - t_start, ' sec.'
 #endif    
+#ifdef HAVE_TIMING
+        t_start = ftimer()
+#endif 
+        CALL ConstructVertexToElementList2(nelem, nvertex, eptr, eind, vptr, vind)
+#ifdef HAVE_TIMING
+        t_end = ftimer()
+        WRITE (*,'(A,ES12.3,A)') 'Vertex-element list creation2: ', t_end - t_start, ' sec.'
+#endif    
+        ! Compare list to the correct one
+        mapOk = .TRUE.
+        DO i=1,nvertex
+            nl = vptr(i+1)-vptr(i)
+            IF (nl == IntegerListGetSize(VToEList(i))) THEN
+                DO j=vptr(i), vptr(i+1)-1
+                    IF (IntegerListFind(VToEList(i), vind(j))<0) THEN
+                        WRITE (*,*) 'ERROR: Element not found vertex=', i, vind(j)
+                    END IF
+                END DO
+            ELSE
+                WRITE (*,*) 'ERROR: Map is of different size for vertex=', i
+            END IF
+        END DO
+        IF (mapOk) THEN
+            WRITE (*,*) 'Vertex-element list correct'
+        ELSE
+            WRITE (*,*) 'ERROR: Vertex-element list incorrect'
+            STOP
+        END IF
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
@@ -105,8 +134,8 @@ CONTAINS
         t_start = ftimer()
 #endif 
         ! For each element
-        !$OMP PARALLEL DO SHARED(eptr, eind, nvertex, nelem, VToEList, DualGraph) &
-        !$OMP PRIVATE(eid, nli, nti, ne, neid, nnelem, NeighbourList, &
+        !$OMP PARALLEL DO SHARED(eptr, eind, nvertex, nelem, vptr, vind, DualGraph) &
+        !$OMP PRIVATE(eid, ind, nli, nti, ne, neid, nnelem, NeighbourList, &
         !$OMP         NeighbourArray, NodeIndexes) SCHEDULE(GUIDED) DEFAULT(NONE)
         DO eid=1,nelem
             nli = eptr(eid)
@@ -115,14 +144,16 @@ CONTAINS
             ! For each node nodeid in element eid
             DO nodeid=nli, nti
                 ! Get list of elements mapping to a vertex
-                NeighbourList => VToEList(eind(nodeid))
-                NeighbourArray => IntegerListGetArray(NeighbourList)
-                nnelem = IntegerListGetSize(NeighbourList)
+                ind = eind(nodeid)
+                ! NeighbourList => VToEList(eind(nodeid))
+                ! NeighbourArray => IntegerListGetArray(NeighbourList)
+                ! nnelem = IntegerListGetSize(NeighbourList)
 
                 ! For each neighbour element ne of nodeid
-                DO ne=1, nnelem
-                    neid = NeighbourArray(ne)
-
+                DO ne=vptr(ind), vptr(ind+1)-1
+                    ! neid = NeighbourArray(ne)
+                    neid = vind(ne)
+                    
                     ! Add each actual neighbouring element to graph 
                     IF (eid /= neid) CALL VertexMapAdd(DualGraph, eid, neid)
                 END DO
@@ -130,7 +161,7 @@ CONTAINS
         END DO
         !$OMP END PARALLEL DO
 
-        DEALLOCATE(eind, eptr)
+        DEALLOCATE(eind, eptr, vptr, vind)
 
 #ifdef HAVE_TIMING
         t_end = ftimer()
@@ -246,27 +277,24 @@ CONTAINS
 #endif
     END SUBROUTINE ConstructVertexToElementList
     
-     SUBROUTINE ConstructVertexToElementList2(ne, nn, eptr, eind, vptr, vind)
+     SUBROUTINE ConstructVertexToElementList2(nelem, nvertex, eptr, eind, vptr, vind)
         IMPLICIT NONE
 
-        INTEGER, INTENT(IN) :: ne, nn
+        INTEGER, INTENT(IN) :: nelem, nvertex
         INTEGER :: eptr(:), eind(:)
         INTEGER, ALLOCATABLE :: vptr(:), vind(:)
 
-        INTEGER :: i, j, v, eli, eti, nelem, nvertex, allocstat
+        INTEGER :: i, j, v, eli, eti, ind, tmpi, tmpip, allocstat
 #ifdef HAVE_TIMING
         REAL(kind=dp) :: t_start, t_end
 #endif    
-
-        nelem = ne
-        nvertex = nn
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
 #endif      
         ! Initialize vertex structure (enough storage for nvertex vertices 
-        ! having eptr(nelem
-        ALLOCATE(vptr(nvertex), vind(eptr(nelem+1)-1), STAT=allocstat)
+        ! having eptr(nelem+1)-1 elements)
+        ALLOCATE(vptr(nvertex+1), vind(eptr(nelem+1)), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap', &
                                         'Vertex allocation failed!')
         vptr = 0
@@ -278,26 +306,51 @@ CONTAINS
 
         ! For each element
 
-        ! Initialize vertex lists
-        !$OMP DO
+        ! Compute number of elements attached to each vertex (size of lists)
         DO i=1,nelem
-            
-        END DO
-        !$OMP END DO
+            eli = eptr(i)
+            eti = eptr(i+1)-1
 
-        !$OMP DO
-        ! For each element
+            DO j=eli, eti
+                vptr(eind(j))=vptr(eind(j))+1
+            END DO
+        END DO
+        ! WRITE (*,*) vptr(1:4), vptr(nvertex-2:nvertex+1)
+
+        ! Compute cumulative sum (row pointers!)
+        tmpi = vptr(1)
+        vptr(1)=1
+        DO i=1,nvertex-1
+            tmpip=vptr(i+1)
+            vptr(i+1)=vptr(i)+tmpi
+            tmpi=tmpip
+        END DO
+        vptr(nvertex+1)=vptr(nvertex)+tmpi
+
+        ! WRITE (*,*) vptr(1:4), vptr(nvertex-2:nvertex+1)
+        
+        ! Construct element lists for each vertex
         DO i=1,nelem
             eli = eptr(i)
             eti = eptr(i+1)-1
 
             ! For each vertex in element
-            !DIR$ IVDEP
             DO j=eli, eti
                 ! Add connection to vertex eind(j)
+                ind = eind(j)
+                vind(vptr(ind))=i
+                vptr(ind)=vptr(ind)+1
             END DO
         END DO
-        !$OMP END DO
+        ! WRITE (*,*) vptr(1:4), vptr(nvertex-2:nvertex+1)
+
+        ! Correct row pointers
+        DO i=nvertex,2,-1
+            vptr(i)=vptr(i-1)
+        END DO
+        vptr(1)=1
+        ! WRITE (*,*) vptr(1:4), vptr(nvertex-2:nvertex+1)
+        ! STOP
     END SUBROUTINE ConstructVertexToElementList2
 
     ! Portable wall-clock timer 

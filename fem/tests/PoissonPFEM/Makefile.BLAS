@@ -20,6 +20,7 @@ PoissonOMPBLAS.so: PoissonOMPBLAS.o ElementBasisFunctions.o LocalTypes.o
 
 LocalTypes.o: LocalTypes.F90
 	$(ELMERF90) -DHAVE_TIMING -c $< -o $@
+#	$(ELMERF90) -DHAVE_TIMING -fbounds-check -fbacktrace -c $< -o $@
 
 MeshColour.o: MeshColour.F90 LocalTypes.o
 	$(ELMERF90) -DHAVE_TIMING -DHAVE_METIS -c $< -o $@
