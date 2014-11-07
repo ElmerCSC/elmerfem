@@ -107,6 +107,7 @@ static void Instructions()
   printf("2)  .mesh.*   : ElmerSolver format (also partitioned .part format)\n");
   printf("3)  .ep       : ElmerPost format\n");
   printf("4)  .msh      : Gmsh mesh format\n");
+  printf("5)  .vtu      : VTK ascii XML format\n");
 #if 0
   printf("5)  .inp      : Abaqus input format\n");
   printf("7)  .fidap    : Fidap format\n");
@@ -992,6 +993,13 @@ int main(int argc, char *argv[])
   case 4:
     for(k=0;k<nomeshes;k++) {
       SaveMeshGmsh(&data[k],boundaries[k],eg.saveboundaries ? MAXBOUNDARIES:0,
+		   eg.filesout[k],eg.decimals,info);
+    }
+    break;
+
+  case 5:
+    for(k=0;k<nomeshes;k++) {
+      SaveMeshVtu(&data[k],boundaries[k],eg.saveboundaries ? MAXBOUNDARIES:0,
 		   eg.filesout[k],eg.decimals,info);
     }
     break;
