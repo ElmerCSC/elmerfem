@@ -4225,7 +4225,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	if(mapdim[i] != elemdim) continue;
 	if(mapbc[i]) {
 	  j++;
-	  printf("boundary index changed %d -> %d in %d elements\n",i,j,mapbc[i]); 
+	  if(i != j) printf("boundary index changed %d -> %d in %d elements\n",i,j,mapbc[i]); 
 	  mapbc[i] = j;
 	}    
       }
@@ -4309,7 +4309,7 @@ void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int i
   for(i=minmat;i<=maxmat;i++) {
     if(mapmat[i]) {
       j++;
-      printf("body index changed %d -> %d in %d elements\n",i,j,mapmat[i]); 
+      if(i != j) printf("body index changed %d -> %d in %d elements\n",i,j,mapmat[i]); 
       mapmat[i] = j;
     }
   }  
@@ -4328,7 +4328,7 @@ void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int i
     }
   }
   else {
-    if(info) printf("Numbering of bodies is ok!\n");
+    if(info) printf("Numbering of bodies is already ok\n");
   }
   free_Ivector(mapmat,minmat,maxmat);
 }
