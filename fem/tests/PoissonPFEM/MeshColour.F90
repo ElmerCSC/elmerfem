@@ -37,7 +37,9 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
     TYPE(Element_t),POINTER :: Element
     TYPE(Mesh_t), POINTER :: Mesh
 
-    TYPE(VertexMap_t), TARGET :: DualGraph, DualGraph2
+    TYPE(VertexMap_t), TARGET :: DualGraph
+    INTEGER :: n
+    INTEGER, ALLOCATABLE :: dualptr(:), dualind(:)
 #ifdef HAVE_TIMING
     REAL(kind=dp) :: t_start, t_end
 #endif    
@@ -48,39 +50,28 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
 #ifdef HAVE_TIMING
     t_start = ftimer()
 #endif 
-    CALL MeshToDualGraph3(Mesh, DualGraph)
+    ! CALL MeshToDualGraph3(Mesh, DualGraph)
+    CALL MeshToDualGraph4(Mesh, n, dualptr, dualind)
 #ifdef HAVE_TIMING
     t_end = ftimer()
     WRITE (*,'(A,ES12.3,A)') 'Dual graph creation total: ', t_end - t_start, ' sec.'
 #endif    
 
     ! Test creation of dual mesh
-    ! #ifdef HAVE_TIMING
-    ! t_start = ftimer()
-    ! #endif 
-    ! CALL MeshToDualGraph2(Mesh, DualGraph2)
-    ! #ifdef HAVE_TIMING
-    ! t_end = ftimer()
-    ! WRITE (*,'(A,ES12.3,A)') 'Dual graph creation total: ', t_end - t_start, ' sec.'
-    ! #endif    
-
-    ! IF (VertexMapEquals(DualGraph, DualGraph2)) THEN
-    !     WRITE (*,'(A)') 'Graphs are equal'
-    ! ELSE
-    !     WRITE (*,'(A)') 'ERROR: Graphs are not equal'
-    ! END IF
+#ifdef HAVE_TIMING
+    t_start = ftimer()
+#endif 
+    CALL VertexMapFromArray(DualGraph, n, dualptr, dualind)
+#ifdef HAVE_TIMING
+    t_end = ftimer()
+    WRITE (*,'(A,ES12.3,A)') 'Vertex map creation from array total: ', t_end - t_start, ' sec.'
+#endif    
 
 #ifdef HAVE_METIS
     CALL MeshToDualMetisVerify(Mesh, DualGraph)
 #endif
 
-    ! WRITE (*,*) 'DualGraph, first version'
-    ! CALL VertexMapOutputString(DualGraph)
-    ! WRITE (*,*) 'DualGraph, second version'
-    ! CALL VertexMapOutputString(DualGraph2)
-
     CALL VertexMapDeleteAll(DualGraph)
-    ! CALL VertexMapDeleteAll(DualGraph2)
 
     CONTAINS
 
@@ -127,6 +118,9 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
             ! TYPE(IntegerList_t), POINTER :: elist
             LOGICAL :: graphOk
             TYPE(Element_t), POINTER :: Element, Elements(:)
+            TYPE(IntegerList_t), POINTER :: vlist
+            INTEGER, POINTER :: varr(:)
+            INTEGER :: vsize
 #ifdef HAVE_TIMING
             REAL(kind=dp) :: t_start, t_end
 #endif    
@@ -194,11 +188,23 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
                 dualind(i)=dualind(i)+1
             END DO
 
+            
+
             ! Verify graph structure
             graphOk = .TRUE.
             DO i=1,ne
                 nl = dualptr(i+1)-dualptr(i)
            
+                vlist => VertexMapGetList(DualGraph,i)
+                vsize = IntegerListGetSize(vlist)
+                varr => IntegerListGetArray(vlist)
+                IF (i<4) THEN
+                    WRITE (*,*) 'Metis:'
+                    WRITE (*,*) dualind(dualptr(i):dualptr(i+1)-1)
+                    WRITE (*,*) 'Elmer:'
+                    WRITE (*,*) varr(1:vsize)
+                END IF
+
                 IF (IntegerListGetSize(VertexMapGetList(DualGraph, i)) == nl) THEN
                     DO j=dualptr(i),dualptr(i+1)-1
                         IF (.NOT. VertexMapFind(DualGraph, i, dualind(j))) THEN
