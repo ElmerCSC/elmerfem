@@ -7452,10 +7452,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       END IF
     END DO
     IF( NoEmptyRows > 0 ) THEN
-      CALL Warn('SolveWithLinearRestriction',&
+      CALL Info('SolveWithLinearRestriction',&
           'Constraint Matrix in partition '//TRIM(I2S(ParEnv % MyPe))// &
           ' has '//TRIM(I2S(NoEmptyRows))// &
-          ' empty rows out of '//TRIM(I2S(RestMatrix % NumberOfRows)) )
+          ' empty rows out of '//TRIM(I2S(RestMatrix % NumberOfRows)), &
+	  Level=6 )
     END IF
   END IF
 
