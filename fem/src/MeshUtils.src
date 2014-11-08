@@ -9343,6 +9343,7 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % NumberOfBoundaryElements=cnt-Mesh_out % NumberOfBulkElements
 
     Mesh_out % Name=Mesh_in % Name
+    Mesh_out % DiscontMesh = Mesh_in % DiscontMesh
     Mesh_out % MaxElementDOFs  = Mesh_out % MaxElementNodes
     Mesh_out % MeshDim = 3
     CurrentModel % DIMENSION = 3
