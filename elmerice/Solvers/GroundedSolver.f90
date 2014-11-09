@@ -22,7 +22,7 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: Olivier Gagliardini, Ga¨el Durand
+! *  Authors: Olivier Gagliardini, Gael Durand
 ! *  Email:   
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
@@ -230,11 +230,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
  
 END SUBROUTINE GroundedSolver 
 !------------------------------------------------------------------------------
-
-
 SUBROUTINE GroundedSolverInit( Model,Solver,dt,TransientSimulation )
-
-!DEC$ATTRIBUTES DLLEXPORT :: GroundedSolver
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
@@ -258,19 +254,22 @@ SUBROUTINE GroundedSolverInit( Model,Solver,dt,TransientSimulation )
 
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t), POINTER :: Material, SolverParams
-  TYPE(Variable_t), POINTER :: PointerToVariable
+  TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar
   TYPE(Nodes_t), SAVE :: Nodes
 
-  LOGICAL :: stat, FirstTime = .TRUE., GotIt, Quadratic
+  LOGICAL :: stat, FirstTime = .TRUE., GotIt
 
-  INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum
-  INTEGER, POINTER :: Permutation(:)
+  INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
+  INTEGER, POINTER :: Permutation(:), bedrockPerm(:)
+
 
   REAL(KIND=dp), POINTER :: VariableValues(:)
   REAL(KIND=dp) :: z, toler
   REAL(KIND=dp), ALLOCATABLE :: zb(:)
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolverInit'
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolverInit', bedrockName
+
+  INTEGER,PARAMETER :: MATERIAL_DEFAULT = 1, MATERIAL_NAMED = 2, VARIABLE = 3
 
   SAVE DIM, SolverName
 
@@ -283,7 +282,7 @@ SUBROUTINE GroundedSolverInit( Model,Solver,dt,TransientSimulation )
   CALL INFO( SolverName , 'Initializing GroundedMask' )
 
   !--------------------------------------------------------------
-  !Allocate some permanent storage, this is done first time only:
+  ! This Solver is only executed once - FirstTime for safety 
   !--------------------------------------------------------------
 
   IF (FirstTime) THEN
@@ -305,20 +304,46 @@ SUBROUTINE GroundedSolverInit( Model,Solver,dt,TransientSimulation )
       CALL FATAL(SolverName, 'No tolerance given for the Grounded Mask')
     END IF
 
-    ! quadratic elements or not, not used for now
-    Quadratic = .FALSE.
-    Element => GetActiveElement(1)
-    n = GetElementNOFNodes()
-    IF ( Element % Type % ElementCode/n == 102 ) Quadratic = .TRUE.
+    bedrockName = GetString(SolverParams, 'Bedrock Variable', GotIt)
+    IF (GotIt) THEN
+       bedrockSource = VARIABLE
+       CALL info(SolverName, 'Bedrock Variable name found', level=8)
+    ELSE
+       bedrockName = GetString(SolverParams, 'Bedrock Material', GotIt)
+       IF (GotIt) THEN
+          bedrockSource = MATERIAL_NAMED
+          CALL info(SolverName, 'Bedrock Material name found', level=8)
+       ELSE
+          bedrockSource = MATERIAL_DEFAULT     
+          CALL info(SolverName, 'No Bedrock Variable or Material; searching for material \"Min Zs Bottom\".', level=8)
+       END IF
+    END IF
+
 
     DO t = 1, Solver % NumberOfActiveElements
-      Element => GetActiveElement(t)
-      !IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
-      n = GetElementNOFNodes()
+       Element => GetActiveElement(t)
+       !IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
+       n = GetElementNOFNodes()
 
-      Material => GetMaterial( Element )
-      zb(1:n) = ListGetReal( Material,'Min Zs Bottom',n , & 
-                   Element % NodeIndexes, GotIt ) + toler
+       SELECT CASE(bedrockSource)
+       CASE (VARIABLE)
+          bedrockVar => VariableGet(Model % Mesh % Variables, bedrockName )
+          IF (.NOT. ASSOCIATED(bedrockVar)) CALL FATAL(SolverName,"Could not find bedrock variable")
+          bedrockPerm => bedrockVar % Perm
+          zb(1:n) =  bedrockVar % values(bedrockPerm(Element % NodeIndexes)) + toler
+          NULLIFY(bedrockPerm)
+          NULLIFY(bedrockVar)
+       CASE (MATERIAL_NAMED)
+          Material => GetMaterial( Element )
+          zb(1:n) = ListGetReal( Material,bedrockName, n , & 
+               Element % NodeIndexes, GotIt ) + toler
+          IF (.NOT. GotIt) CALL FATAL(SolverName,"Could not find bedrock material")
+       CASE (MATERIAL_DEFAULT)
+          Material => GetMaterial( Element )
+          zb(1:n) = ListGetReal( Material,'Min Zs Bottom',n , & 
+               Element % NodeIndexes, GotIt ) + toler
+          IF (.NOT. GotIt) CALL FATAL(SolverName,"Could not find bedrock material")
+       END SELECT
 
       CALL GetElementNodes( Nodes )
 
@@ -397,5 +422,6 @@ SUBROUTINE GroundedSolverInit( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 END SUBROUTINE GroundedSolverInit 
 !------------------------------------------------------------------------------
+
 
 
