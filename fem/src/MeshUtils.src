@@ -164,6 +164,7 @@ CONTAINS
      Mesh % NumberOfNodes = 0
      Mesh % NumberOfBulkElements = 0
      Mesh % NumberOfBoundaryElements = 0
+     Mesh % DiscontMesh = .FALSE.
 
      Mesh % MaxFaceDOFs = 0
      Mesh % MaxEdgeDOFs = 0
