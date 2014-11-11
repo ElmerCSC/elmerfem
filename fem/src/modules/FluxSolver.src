@@ -130,8 +130,6 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
     END IF
   END IF
 
-  i = 0
-  firstmag = Dofs + 1
   IF( CalculateFlux ) THEN
     FluxSol => VariableGet( Solver % Mesh % Variables, TRIM(VarName)//' Flux 1' )
     Fields(1) % Values => FluxSol % Values
@@ -160,17 +158,16 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
     i = i + dim
   END IF
 
+  firstmag = i + 1
   IF( CalculateFluxMag ) THEN
     FluxSol => VariableGet( Solver % Mesh % Variables, TRIM(VarName)//' Flux_mag' )
     i = i + 1
-    firstmag = i
     Fields(i) % Values => FluxSol % Values
   END IF
 
   IF( CalculateGradMag ) THEN
     FluxSol => VariableGet( Solver % Mesh % Variables, TRIM(VarName)//' Grad_mag' )
     i = i + 1
-    firstmag = MIN( firstmag, i )
     Fields(i) % Values => FluxSol % Values
   END IF
 
@@ -644,7 +641,7 @@ END SUBROUTINE FluxSolver
       FluxName = TRIM(VarName)//' Flux_mag'
       CALL Info('FluxSolver_init','Saving flux magnitude to: '//FluxName) 
       CALL ListAddString( SolverParams,&
-          NextFreeKeyword('Exported Variable',SolverParams),TRIM(FluxName)//'_mag')
+          NextFreeKeyword('Exported Variable',SolverParams),TRIM(FluxName))
     END IF
 
     IF( CalculateGrad ) THEN
