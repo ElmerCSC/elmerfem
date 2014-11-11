@@ -130,6 +130,7 @@ SUBROUTINE FluxSolver( Model,Solver,dt,Transient )
     END IF
   END IF
 
+  i = 0
   IF( CalculateFlux ) THEN
     FluxSol => VariableGet( Solver % Mesh % Variables, TRIM(VarName)//' Flux 1' )
     Fields(1) % Values => FluxSol % Values
