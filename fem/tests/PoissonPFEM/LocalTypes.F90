@@ -193,7 +193,7 @@ CONTAINS
         INTEGER, POINTER CONTIG :: NodeIndexes(:)
         INTEGER, POINTER :: tmparr(:)
         INTEGER, ALLOCATABLE :: eptr(:), eind(:), vptr(:), vind(:), &
-              wrkliptr(:), wrktiptr(:), wrkind(:), wrkindnew(:), wrkheap(:)
+              wrkliptr(:), wrktiptr(:), wrkind(:), wrkindnew(:), wrkheap(:), wrkmap(:)
         LOGICAL, ALLOCATABLE :: wrkmask(:)
         LOGICAL :: mapOk
         TYPE(IntegerList_t) :: dualindlist
@@ -287,10 +287,11 @@ CONTAINS
         ALLOCATE(wrkind(64), wrkliptr(Mesh % MaxElementNodes), &
                  wrktiptr(Mesh % MaxElementNodes), &
                  wrkheap(Mesh % MaxElementNodes), wrkmask(Mesh % MaxElementNodes), dualptr(nelem+1), &
-                 STAT=allocstat)
+                 wrkmap(Mesh % NumberOfBulkElements), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('MeshDualGraph', &
               'Unable to allocate local workspace!')
-
+        wrkmap(:)=0
+        
 
         wrkind(1:64) = 0
         ! TODO: Get the initial size for dualindlist from somewhere
@@ -330,7 +331,10 @@ CONTAINS
 !!!            END IF
 
             ! Merge vertex lists (multi-way merge of ordered lists)
-            CALL VertexListMerge4(eid, nv, wrkliptr, wrktiptr, totelem, vind, nc, wrkind, wrkheap, wrkmask)
+            ! SUBROUTINE VertexListMerge3(node, nv, liptr, tiptr, te, vind, nc, wrkind, map)
+            CALL VertexListMerge3(eid, nv, wrkliptr, wrktiptr, totelem, vind, nc, wrkind, wrkmap)
+            
+            ! CALL VertexListMerge4(eid, nv, wrkliptr, wrktiptr, totelem, vind, nc, wrkind, wrkheap, wrkmask)
             ! CALL VertexListMerge4(eid, nli, nti, nv, vptr, vind, nc, wrkind)
             ! Quick hack to allocate memory for the work array
             ! IF (SIZE(wrkheap,1) /= nelem) THEN
@@ -537,6 +541,49 @@ CONTAINS
 
                 ! IF (eid == 2) WRITE (*,*) wrkind(1:totelem)
             END SUBROUTINE VertexListMerge2
+
+            SUBROUTINE VertexListMerge3(node, nv, liptr, tiptr, te, vind, nc, wrkind, map)
+                IMPLICIT NONE
+                
+                INTEGER, INTENT(IN) :: node, nv
+                INTEGER :: liptr(:)
+                INTEGER, INTENT(IN) ::tiptr(:), te
+                INTEGER, INTENT(IN) :: vind(:)
+                INTEGER, INTENT(OUT) :: nc
+                INTEGER :: wrkind(:)
+                INTEGER :: map(:)
+
+                INTEGER :: i, j, k, vindi
+
+                ! Merge nv lists using a map (i.e. an array)
+                nc = 1
+                DO i=1,nv
+                    DO j=liptr(i), tiptr(i)-1
+                        vindi = vind(j)
+                        ! Put element to map if it is not already there
+                        IF (map(vindi)==0) THEN
+                            wrkind(nc)=vindi
+                            nc=nc+1
+                        END IF
+                        ! Increase counter
+                        map(vindi)=map(vindi)+1
+                    END DO
+                END DO
+                nc=nc-1
+
+                ! Map ready, just construct final list
+                j=1
+                DO i=1,nc
+                    vindi = wrkind(i)
+                    IF (map(vindi) > 0 .AND. vindi /= node) THEN
+                        wrkind(j)=vindi
+                        j=j+1
+                    END IF
+                    ! Clear map
+                    map(vindi) = 0 
+                END DO
+                nc=j-1
+            END SUBROUTINE VertexListMerge3
 
             SUBROUTINE VertexListMerge4(node, nv, liptr, tiptr, te, vind, nc, wrkind, heap, mask)
                 IMPLICIT NONE
