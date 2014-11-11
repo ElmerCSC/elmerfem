@@ -2643,7 +2643,6 @@ CONTAINS
          Element => Model % Mesh % Elements( t + Model % Mesh % NumberOfBulkElements )
 
          IF( Element % BoundaryInfo % Constraint /= Model % BCs(bc_ind) % Tag ) CYCLE
-         PRINT *,'t',t
 
          ! Outside code this tells the active element
          Model % CurrentElement => Element
@@ -2696,9 +2695,6 @@ CONTAINS
                //Name(1:nlen),node, Found )
            IF( AddRhs ) voff = ListGetRealAtNode( BC,'Mortar BC Offset '&
                //Name(1:nlen),node, Found )        
-
-PRINT *,'voff',voff
-
 
            DO j = Projector % Rows(i),Projector % Rows(i+1)-1
 
