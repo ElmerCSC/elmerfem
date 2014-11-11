@@ -740,7 +740,7 @@ CONTAINS
         REAL(kind=dp) :: t_start, t_end
 #endif    
 #ifdef _OPENMP
-        INTEGER, ALLOCATABLE :: vlock(:)
+        INTEGER(kind=omp_lock_kind), ALLOCATABLE :: vlock(:)
 #endif            
 
         nelem = ne
