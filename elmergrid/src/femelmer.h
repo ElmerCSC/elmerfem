@@ -28,7 +28,7 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
 int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dimper[],
 				      int info);
 int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound,
-				 int partz,int info);
+				 struct ElmergridType *eg, int info);
 int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
 			 int partorder, Real corder[],int info);
 #if PARTMETIS

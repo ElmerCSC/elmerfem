@@ -2405,13 +2405,20 @@ int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dim
 
 
 int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound,
-				 int partz,int info) {
-  int i,j,k,l,dim,allocated;
+				 struct ElmergridType *eg, int info) {
+  int i,j,k,l,dim,allocated,debug,partz,hit,bctype;
   int noknots, noelements,bcelem,bc,maxbcelem;
   int IndZ,noconnect,totpartelems,sideelemtype,sidenodes,sidehits,nohits;
   int *cumz,*elemconnect,*partelems,*nodeconnect;
   int sideind[MAXNODESD2];
   Real z,MaxZ,MinZ; 
+
+
+  debug = FALSE;
+
+  partz = eg->partbcz;
+  if( partz == 0 ) return(0);
+
 
   if(info) {
     printf("Making a simple 1D partitioing in z for the connected elements only\n");
@@ -2464,6 +2471,10 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 		     data,sideind,&sideelemtype);
 
       sidenodes = sideelemtype % 100;
+#if 0
+      /* This method of going through the connected BC elements was not really 
+	 robust enough since there can be elements that are not on the boundary 
+	 but still past the test if all their nodes are on the boundary. */
       nohits = 0;      
       z = 0.0; 
       for(j=0;j<sidenodes;j++) {
@@ -2474,13 +2485,41 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 	}
       }
       if( nohits < sidenodes ) continue;
+#else     
+      hit = FALSE;
       
+      for(k=1;k<=eg->connect;k++) {
+	bctype = eg->connectbounds[k-1];
+	if( bctype > 0 ) {
+	  if(bound[bc].types[i] == bctype) hit = TRUE;
+	} 
+	else if( bctype == -1 ) {
+	  if( bound[bc].parent[i] ) hit = TRUE;
+	}
+	else if( bctype == -2 ) {
+	  if( bound[bc].parent[i] && bound[bc].parent2[i] ) hit = TRUE;
+	}
+	else if( bctype == -3 ) {
+	  if( bound[bc].parent[i] && !bound[bc].parent2[i] ) hit = TRUE;
+	}
+	if(hit) break;
+      }	
+      if(!hit) continue;
+
+      z = 0.0; 
+      for(j=0;j<sidenodes;j++) {
+	k = sideind[j];
+	z += data->z[k];
+      }
+#endif
+
       z = z / sidenodes;
       IndZ = ceil( MAXCATEGORY * ( z - MinZ ) / ( MaxZ - MinZ ) );
 
       /* To be on the safe side */
       IndZ = MIN( MAX( IndZ, 1 ), MAXCATEGORY );
 
+     
       if(allocated) {
 	IndZ = cumz[IndZ];	
 	if(0) partelems[IndZ] += 1;
@@ -2507,7 +2546,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 
   if( !allocated )  {
     maxbcelem = bcelem;
-    if( 0 ) {
+    if( debug ) {
       printf("Number of constrained boundary elements = %d\n",bcelem);   
       printf("Differential categories (showing only 20 active ones from %d)\n",MAXCATEGORY);
       k = 0;
@@ -2524,7 +2563,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
     for(i=1;i<=MAXCATEGORY;i++) 
       cumz[i] = cumz[i] + cumz[i-1];
     
-    if( 0 ) {
+    if( debug ) {
       printf("Cumulative categories\n");
       for(j=0;j<=MAXCATEGORY;j++) {
 	printf("%d : %d\n",j,cumz[j]);
@@ -2535,7 +2574,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
     for(i=1;i<=MAXCATEGORY;i++) 
       cumz[i] = ceil( 1.0 * partz * cumz[i] / noconnect );
     
-    if( 0 ) {
+    if( debug ) {
       printf("Partition categories\n");
       for(j=0;j<=MAXCATEGORY;j++) {
 	printf("%d : %d\n",j,cumz[j]);
@@ -3414,7 +3453,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
   if( dual ) {
 
     if( eg->partbcz > 1 ) 
-      PartitionConnectedElements1D(data,bound,eg->partbcz,info);
+      PartitionConnectedElements1D(data,bound,eg,info);
     else if( eg->partbcmetis > 1 ) 
       PartitionConnectedElementsMetis(data,bound,eg->partbcmetis,metisopt,info);
 
