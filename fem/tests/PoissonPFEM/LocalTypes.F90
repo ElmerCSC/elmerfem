@@ -189,11 +189,12 @@ CONTAINS
         TYPE(IntegerList_t), POINTER :: NeighbourList
         INTEGER, POINTER :: NeighbourArray(:)
         INTEGER :: i, j, ind, nli, nti, nl, nc, nv, vid, vli, vti, e, ne, eid, neid, &
-              nodeid, nelem, nnelem, nvertex, allocstat
+              nodeid, nelem, nnelem, nvertex, totelem, allocstat
         INTEGER, POINTER CONTIG :: NodeIndexes(:)
         INTEGER, POINTER :: tmparr(:)
         INTEGER, ALLOCATABLE :: eptr(:), eind(:), vptr(:), vind(:), &
               wrkliptr(:), wrktiptr(:), wrkind(:), wrkindnew(:), wrkheap(:)
+        LOGICAL, ALLOCATABLE :: wrkmask(:)
         LOGICAL :: mapOk
         TYPE(IntegerList_t) :: dualindlist
 #ifdef HAVE_TIMING
@@ -280,15 +281,20 @@ CONTAINS
         END DO
 
         ! Allocate work array (local to each thread)
-        ! TODO: Get value for wrkind from somewhere
-        ALLOCATE(wrkind(32), wrkliptr(Mesh % MaxElementNodes), &
+        ! Guess value for wrkind
+
+        ! TODO: Optimize the dimensions to be multiples of 64 bytes
+        ALLOCATE(wrkind(64), wrkliptr(Mesh % MaxElementNodes), &
                  wrktiptr(Mesh % MaxElementNodes), &
-                 wrkheap(2*Mesh % MaxElementNodes), dualptr(nelem+1), STAT=allocstat)
+                 wrkheap(Mesh % MaxElementNodes), wrkmask(Mesh % MaxElementNodes), dualptr(nelem+1), &
+                 STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('MeshDualGraph', &
               'Unable to allocate local workspace!')
 
+
+        wrkind(1:64) = 0
         ! TODO: Get the initial size for dualindlist from somewhere
-        CALL IntegerListInit(dualindlist, nelem*20)
+        CALL IntegerListInit(dualindlist, nelem*30)
 
         ! For each element
         dualptr(1)=1
@@ -298,24 +304,41 @@ CONTAINS
             nv = nti-nli+1
             
             ! Get pointers to vertices related to the nodes of the element
+            totelem = 0
             DO i=nli,nti
-                wrkliptr(i-nli+1)=vptr(eind(i))
-                wrktiptr(i-nli+1)=vptr(eind(i)+1) ! NOTE: This is to make comparison cheaper
+                 wrkliptr(i-nli+1)=vptr(eind(i))
+                 wrktiptr(i-nli+1)=vptr(eind(i)+1) ! NOTE: This is to make comparison cheaper
+                 totelem = totelem + wrktiptr(i-nli+1)-wrkliptr(i-nli+1)
             END DO
+            
+            ! Allocate wrkind large enough
+            IF (SIZE(wrkind)<totelem) THEN
+                 DEALLOCATE(wrkind)
+                 ALLOCATE(wrkind(totelem), STAT=allocstat)
+                 wrkind(1:totelem) = 0
+            END IF
 
-            IF (eid == 2) THEN
-                DO i=1, nv
-                    WRITE (*,*) wrkliptr(i), wrktiptr(i)
-                END DO
-
-                DO i=1, nv
-                    WRITE (*,*) vind(wrkliptr(i):wrktiptr(i)-1)
-                END DO
-             END IF
+!!!          IF (eid == 18) THEN
+!!!                WRITE (*,*) 'ROW=', eid
+!!!                DO i=1, nv
+!!!                    WRITE (*,*) wrkliptr(i), wrktiptr(i)
+!!!                END DO
+!!!
+!!!                DO i=1, nv
+!!!                    WRITE (*,*) vind(wrkliptr(i):wrktiptr(i)-1)
+!!!                END DO
+!!!            END IF
 
             ! Merge vertex lists (multi-way merge of ordered lists)
-            CALL VertexListMerge(eid, nv, wrkliptr, wrktiptr, vind, nc, wrkind, wrkheap)
-            
+            CALL VertexListMerge4(eid, nv, wrkliptr, wrktiptr, totelem, vind, nc, wrkind, wrkheap, wrkmask)
+            ! CALL VertexListMerge4(eid, nli, nti, nv, vptr, vind, nc, wrkind)
+            ! Quick hack to allocate memory for the work array
+            ! IF (SIZE(wrkheap,1) /= nelem) THEN
+            !     DEALLOCATE(wrkheap)
+            !     ALLOCATE(wrkheap(nelem, 1))
+            ! END IF
+            ! CALL VertexListMerge3(eid, nv, wrkliptr, wrktiptr, vind, nc, wrkind, wrkheap)
+
             ! Add merged list to final list of vertices
             CALL IntegerListAddArray(dualindlist, wrkind(1:nc))
             dualptr(eid+1)=dualptr(eid)+nc
@@ -328,13 +351,15 @@ CONTAINS
         tmparr => IntegerListGetArray(dualindlist)
         dualind(1:dualptr(nelem+1)-1)=tmparr(1:dualptr(nelem+1)-1)
 
-        CALL IntegerListDeleteAll(dualindlist)
-        DEALLOCATE(eind, eptr, vptr, vind, wrkind, wrkliptr, wrktiptr, wrkheap)
-
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Dual graph creation: ', t_end - t_start, ' sec.'
 #endif 
+
+        CALL IntegerListDeleteAll(dualindlist)
+        DEALLOCATE(eind, eptr, vptr, vind, wrkind, wrkliptr, wrktiptr, wrkheap)
+
+
         CONTAINS 
 
             SUBROUTINE VertexListMerge(cnode, nv, wrkliptr, wrktiptr, vind, nc, wrkind, wrkheap)
@@ -345,7 +370,7 @@ CONTAINS
                 INTEGER, INTENT(IN) :: wrktiptr(:), vind(:)
                 INTEGER, INTENT(OUT) :: nc
                 INTEGER, ALLOCATABLE :: wrkind(:)
-                INTEGER :: wrkheap(:)
+                INTEGER :: wrkheap(:,:)
                 
                 ! Local variables
                 INTEGER :: i, j, wrki, vindi, nheap
@@ -363,14 +388,15 @@ CONTAINS
                 DO WHILE (nheap > 0)
                     ! HEAP_EXTRACT(wrkheap, nheap, vindi, i)
                     CALL IntegerHeapExtractTuple(nheap, wrkheap, vindi, i)
-                    IF (cnode == 2) WRITE (*,*) 'Got from', i, vindi, nheap
+                    ! WRITE (*,*) 'Got from', i, vindi, nheap
 
-                    ! Do not add node if it is the current node
+                    ! Do not add node if it is the current node (no reflexive edges)
                     IF (vindi /= cnode) THEN
                         ! Do not add node if it was previously added to the list
                         IF (nc>0) THEN
                             IF (wrkind(nc) /= vindi) THEN
                                 nc=nc+1
+                                ! TODO: Get rid of this test by allocating wrkind large enough
                                 IF (nc>SIZE(wrkind)) THEN
                                     ALLOCATE(wrkindnew(SIZE(wrkind)*2))
                                     wrkindnew(1:nc-1)=wrkind(1:nc-1)
@@ -387,73 +413,268 @@ CONTAINS
                     IF (wrkliptr(i)<wrktiptr(i)) THEN
                         wrki = wrkliptr(i)
                         wrkliptr(i)=wrkliptr(i)+1
-                        IF (cnode == 2) WRITE (*,*) 'Add from', i, wrki, vind(wrki), nheap
+                        ! WRITE (*,*) 'Add from', i, wrki, vind(wrki), nheap
                         ! HEAP_INSERT(wrkheap, nheap, vind(wrki), i)
                         CALL IntegerHeapInsertTuple(nheap, wrkheap, vind(wrki), i)
                     END IF
                 END DO
             END SUBROUTINE VertexListMerge
 
+            SUBROUTINE VertexListMerge2(cnode, nv, wrkliptr, wrktiptr, vind, nc, wrkind, wrkheap, totelem)
+                IMPLICIT NONE
+
+                INTEGER, INTENT(IN) :: cnode, nv
+                INTEGER :: wrkliptr(:)
+                INTEGER, INTENT(IN) :: wrktiptr(:), vind(:)
+                INTEGER, INTENT(OUT) :: nc
+                INTEGER, ALLOCATABLE :: wrkind(:)
+                INTEGER :: wrkheap(:,:)
+                INTEGER :: totelem, pind
+                
+                ! Local variables
+                INTEGER :: i, j, k,  wrki, vindi, elem, nheap
+
+                ! Insert to list
+                ! Is this needed?
+                DO i=1,nv
+                    wrkheap(i,1)=vind(wrkliptr(i))
+                END DO
+                ! If the above is not needed, this should be removed
+                ! DO i=1,nv
+                !     wrkliptr(i)=wrkliptr(i)+1
+                ! END DO
+                ! nheap = 0
+                ! DO i=1,nv
+                !     CALL IntegerHeapInsertTuple(nheap, wrkheap, vind(wrkliptr(i)), i)
+                !     wrkliptr(i)=wrkliptr(i)+1
+                ! END DO
+
+                ! IF (eid == 4)THEN
+                ! DO i=1,nv
+                !     WRITE (*,*) wrkliptr(i), wrktiptr(i)
+                ! END DO
+                ! END IF
+
+                ! nc = 1
+                pind=HUGE(wrkind(1))
+                ! IF (eid ==3 .AND. ANY(wrkind>0)) THEN
+                !     WRITE (*,*) eid, wrkind(1:totelem)
+                ! END IF
+                ! wrkind(1:totelem)=0
+                nc = 0
+                ! DO WHILE (nheap > 0)
+                DO elem=1,totelem
+                    ! NOTE: The following lines really do assume that nv is small, in the 
+                    ! region of about 10 at most 
+                    ! Find minimum element
+                    ! i=1
+                    ! DO j=1,nv
+                    !     IF (wrkliptr(j) < wrktiptr(j)) THEN
+                    !         i=j
+                    !         EXIT
+                    !     END IF
+                    ! END DO
+                    ! k=i
+                    ! DO j=k+1,nv
+                    DO j=1,nv
+                        IF (wrkliptr(j) < wrktiptr(j) .AND. &
+                             wrkheap(j,1)<wrkheap(i,1)) i=j
+                        ! IF (wrkliptr(j) < wrktiptr(j) .AND. &
+                        !     vind(wrkliptr(j)) < vind(wrkliptr(i))) i=j
+                    END DO
+                    ! i now contains the index of the minimum entry
+                    ! Do not add node if it was previously added to the list
+                    vindi = wrkheap(i,1)
+                    wrkheap(i,1)=HUGE(wrkheap(i,1))
+                    ! IF (wrkheap(i,1) /= cnode .AND. pind /= wrkheap(i,1)) THEN
+                    IF (vindi /= cnode .AND. pind /= vindi) THEN
+                        ! IF (eid == 18) THEN
+                        !     WRITE (*,*) 'nc=', nc, pind
+                        !     WRITE (*,*) 'wrkind:', wrkind(1:nc)
+                        ! END IF
+                        nc = nc + 1
+                        wrkind(nc)=vindi
+                        pind = vindi
+                    END IF
+
+                    ! Advance row pointer
+                    wrkliptr(i)=wrkliptr(i)+1
+                    IF (wrkliptr(i) < wrktiptr(i)) wrkheap(i,1)=vind(wrkliptr(i))
+                    
+                    ! CALL IntegerHeapExtractTuple(nheap, wrkheap, vindi, i)
+
+                    ! IF (eid==18) THEN
+                    !      WRITE (*,*) 'Got from', i, wrkliptr(i), vindi
+                    !      WRITE (*,*) wrkheap(1:nv,1)
+                    ! END IF
+                    
+                    ! wrkheap(i,1)=HUGE(wrkheap(i,1))
+                    ! IF (wrkliptr(i)<wrktiptr(i)) THEN
+                        ! HEAP_INSERT(wrkheap, nheap, vind(wrki), i)
+                        ! IF (eid==18) THEN
+                        !      WRITE (*,*) 'Add to', i,  wrkliptr(i), vind(wrkliptr(i))
+                        !      WRITE (*,*) wrkheap(1:nv,1)
+                        ! END IF
+                        ! wrkheap(i,1)=vind(wrkliptr(i))
+                        ! CALL IntegerHeapInsertTuple(nheap, wrkheap, vind(wrkliptr(i)), i)
+                    !     wrkliptr(i)=wrkliptr(i)+1
+                    ! END IF
+                END DO
+                ! nc=nc-1
+
+                ! Build actual wrkind
+                ! nc = 0
+                ! IF (eid == 2) WRITE (*,*) wrkind(1:totelem)
+                ! DO elem=1,totelem
+                !     IF (wrkind(elem) /= cnode .AND. &
+                !         wrkind(elem) > 0) THEN
+                !         nc = nc + 1
+                !         wrkind(nc) = wrkind(elem)
+                        ! wrkind(elem) = 0
+                !     END IF
+                ! END DO
+                ! wrkind(nc+1:totelem)=0
+
+                ! IF (eid == 2) WRITE (*,*) wrkind(1:totelem)
+            END SUBROUTINE VertexListMerge2
+
+            SUBROUTINE VertexListMerge4(node, nv, liptr, tiptr, te, vind, nc, wrkind, heap, mask)
+                IMPLICIT NONE
+
+                INTEGER, INTENT(IN) :: node, nv
+                INTEGER :: liptr(:)
+                INTEGER, INTENT(IN) ::tiptr(:), te
+                INTEGER, INTENT(IN) :: vind(:)
+                INTEGER, INTENT(OUT) :: nc
+                INTEGER :: wrkind(:)
+                INTEGER :: heap(:)
+                LOGICAL :: mask(:)
+                
+                ! Local variables
+                INTEGER :: i, j, k,  wrki, vindi, elem, nheap
+                INTEGER :: pind
+                
+                DO i=1,nv
+                    heap(i)=vind(liptr(i))
+                END DO
+
+                ! DO i=1,nv
+                !     WRITE (*,*) i, ': ', vind(liptr(i):tiptr(i)-1)
+                ! END DO
+
+                ! nc = 1
+                pind=HUGE(wrkind(1))
+                mask(1:nv) = .TRUE.
+                
+                nc = 0
+                DO elem=1,te
+                    i=1
+                    DO j=1,nv
+                        IF (mask(j) .AND. heap(j)<heap(i)) i=j
+                    END DO
+                    ! i now contains the index of the minimum entry
+                    ! Do not add node if it was previously added to the list
+                    vindi = heap(i)
+                    heap(i)=HUGE(heap(i))
+                    ! WRITE (*,*) elem, i, vindi
+
+                    ! IF (heap(i,1) /= node .AND. pind /= heap(i,1)) THEN
+                    IF (vindi /= node .AND. pind /= vindi) THEN
+                        nc = nc + 1
+                        wrkind(nc)=vindi
+                        pind = vindi
+                    END IF
+
+                    ! Advance row pointer
+                    liptr(i)=liptr(i)+1
+                    ! Update mask
+                    IF (liptr(i) < tiptr(i)) THEN
+                        heap(i)=vind(liptr(i))
+                    ELSE
+                        mask(i)=.FALSE.
+                    END IF
+
+                    ! WRITE (*,*) elem,' heap:', heap(1:nv)
+                END DO    
+
+                ! IF (node == 1) THEN
+                !     write (*,*) wrkind(1:nc)
+                !     STOP
+                ! END IF
+            END SUBROUTINE VertexListMerge4
+
             SUBROUTINE IntegerHeapInsertTuple(n, heap, t1, t2)
                 IMPLICIT NONE
                 
                 ! Parameters
-                INTEGER :: n, heap(:)
+                INTEGER :: n, heap(:,:)
                 INTEGER, INTENT(IN) :: t1, t2
 
                 ! Variables
                 INTEGER :: j, k
 
-                IF (eid == 2) THEN
-                    WRITE (*,*) 'before heap n=', n
-                    WRITE (*,*) heap(1:2*n)
-                    WRITE (*,*) 'tuple=', t1, t2
-                END IF
-                ! Insert to ordered list
+                ! IF (eid == 2) THEN
+                !     WRITE (*,*) 'ADD: before heap n=', n
+                !     WRITE (*,*) heap(1:n,1)
+                !     WRITE (*,*) heap(1:n,2)
+                !     WRITE (*,*) 'tuple=', t1, t2
+                ! END IF
+                
+                ! Insert to an ordered list
                 j=1
                 DO j=1,n
-                    IF (t1<heap(2*j-1)) THEN
-                        ! TODO: THIS IS THE WRONG WAY! 
-                        DO k=j,n
-                            heap(2*k+1)=heap(2*k-1)
-                            heap(2*k+2)=heap(2*k)
-                        END DO
-                        EXIT
-                    END IF
+                    IF (t1<heap(j,1)) EXIT
                 END DO
-                
-                ! Position found and storage arranged, just add element to heap
-                heap(2*j-1)=t1
-                heap(2*j)=t2
+                DO k=n,j,-1
+                    heap(k+1,1)=heap(k,1)
+                END DO
+                DO k=n,j,-1
+                    heap(k+1,2)=heap(k,2)
+                END DO
+
+                ! Position found and storage arranged, just add element to list
+                heap(j,1)=t1
+                heap(j,2)=t2
                 n=n+1
 
-                IF (eid == 2) THEN
-                    WRITE (*,*) 'after heap n=', n
-                    WRITE (*,*) heap(1:2*n)
-                    IF (n>7) STOP
-                END IF
+                ! IF (eid == 2) THEN
+                ! WRITE (*,*) 'ADD: after heap n=', n
+                !      WRITE (*,*) heap(1:n,1)
+                !      WRITE (*,*) heap(1:n,2)
+                ! IF (n>7) STOP
+                ! END IF
             END SUBROUTINE IntegerHeapInsertTuple
 
             SUBROUTINE IntegerHeapExtractTuple(n, heap, t1, t2)
                 IMPLICIT NONE
                 
                 ! Parameters
-                INTEGER :: n, heap(:)
+                INTEGER :: n, heap(:,:)
                 INTEGER, INTENT(OUT) :: t1, t2
 
                 INTEGER :: j
 
+                ! WRITE (*,*) 'EXTRACT: before heap n=', n
+                ! WRITE (*,*) heap(1:n,1)
+                ! WRITE (*,*) heap(1:n,2)
+
                 ! Extract element
-                t1=heap(1)
-                t2=heap(2)
-                
+                t1=heap(1,1)
+                t2=heap(1,2)
+
                 ! Move rest of the data to correct position
                 DO j=1,n-1
-                    ! TODO: CHECK THIS
-                    heap(2*j-1)=heap(2*j+1)
-                    heap(2*j)=heap(2*j+2)
+                    heap(j,1)=heap(j+1,1)
+                END DO
+                DO j=1,n-1
+                    heap(j,2)=heap(j+1,2)
                 END DO
                 n=n-1
+
+                ! WRITE (*,*) 'EXTRACT: after heap n=', n
+                ! WRITE (*,*) heap(1:n,1)
+                ! WRITE (*,*) heap(1:n,2)
+                
             END SUBROUTINE IntegerHeapExtractTuple
     END SUBROUTINE MeshToDualGraph4
     
