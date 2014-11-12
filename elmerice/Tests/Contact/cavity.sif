@@ -99,7 +99,7 @@ Initial Condition 2
 ! If any change in the mesh, this has to be updated so that
 ! bedrock is the equation of the rock topography
 ! this will be used to impose the no-penetration conditon
-  bedrock = Variable Coordinate 1
+  Bedrock = Variable Coordinate 1
    Real  
      0.0 0.0 
      2.0 0.1
@@ -176,6 +176,7 @@ Solver 1
   Variable = "GroundedMask"
   Variable DOFs = 1
   TolerInit = Real $GLTolerance 
+  Bedrock Variable = String "Bedrock"
 End
 
 Solver2
@@ -197,9 +198,7 @@ Solver 3
   Variable DOFs = 1
 
   Toler = Real $GLTolerance
-
-  SaveGL = Logical True
-  Save File Name = String "CavityLine$namerun".dat"!"
+  Bedrock Variable = String "Bedrock"
 End
 
 Solver 4
@@ -272,7 +271,7 @@ Solver 8
   Variable DOFS =  1
   Exported Variable 1 = "Zs Bottom Residual"
   Exported Variable 1 DOFs = 1
-  Exported Variable 2 = "bedrock"
+  Exported Variable 2 = "Bedrock"
   Exported Variable 2 DOFs = 1
 
   Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
@@ -295,10 +294,8 @@ Solver 8
   Stabilization Method = Stabilized
   Apply Dirichlet = Logical True
 
-! ALE Formulation = Logical True
-
 ! How much the free surface is relaxed
-!  Relaxation Factor = Real 1.0
+  Relaxation Factor = Real 1.0
 
 ! use/or not accumulation
   Use Accumulation = Logical True  
@@ -306,13 +303,6 @@ Solver 8
 ! take accumulation to be given normal to surface/as vector
   Normal Flux = Logical False
 End
-
-!Solver 9  
-!  Procedure = File "SaveData" "SaveLine"
-!  Filename =  "results.dat"
-!  !Filename =  "$namerun"_surface.dat"
-!  File Append = Logical True
-!End
 
 Solver 9
   Exec Solver = After TimeStep
@@ -335,21 +325,12 @@ Solver 9
   Operator 5 = String "cpu time"
 End
 
-!Solver 10 
-!  Exec Solver = After Timestep 
-!  Exec Interval = $interval
-!  Equation = "result output"
-!  Procedure = "ResultOutputSolve" "ResultOutputSolver"
-!  Output File Name = String $namerun
-!  Output Format = String vtu
-!End
-
 !---------------------------------------------------
 !---------------- EQUATIONS ------------------------
 !---------------------------------------------------
 ! Equation for the ice
 Equation 1
-  Active Solvers (5) = 2 4 6 7 9 ! 10
+  Active Solvers (5) = 2 4 6 7 9 
 End
 
 ! Equation for the free surface of the cavity
@@ -374,7 +355,7 @@ Boundary Condition 1
   Normal-Tangential Velocity = Logical True
   Flow Force BC = Logical True
 
-  Zs Bottom = Equals bedrock
+  Zs Bottom = Equals Bedrock
   Zs Bottom Condition = Variable Coordinate 1
     Real MATC "2.0 - tx"
 
@@ -437,5 +418,3 @@ Boundary Condition 4
   Name = "ice left"
   Target Boundaries = 4
 End
-
-
