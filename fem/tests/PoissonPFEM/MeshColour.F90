@@ -51,7 +51,8 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
     t_start = ftimer()
 #endif 
     ! CALL MeshToDualGraph3(Mesh, DualGraph)
-    CALL MeshToDualGraph4(Mesh, n, dualptr, dualind)
+    ! CALL MeshToDualGraph4(Mesh, n, dualptr, dualind)
+    CALL ElmerMeshToDualGraph(Mesh, n, dualptr, dualind)
 #ifdef HAVE_TIMING
     t_end = ftimer()
     WRITE (*,'(A,ES12.3,A)') 'Dual graph creation total: ', t_end - t_start, ' sec.'
@@ -198,11 +199,11 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
                 vlist => VertexMapGetList(DualGraph,i)
                 vsize = IntegerListGetSize(vlist)
                 varr => IntegerListGetArray(vlist)
-                ! IF (i==3) THEN
+                ! IF (i==2) THEN
                 !         WRITE (*,*) 'Metis:'
                 !         WRITE (*,*) dualind(dualptr(i):dualptr(i+1)-1)
                 !         WRITE (*,*) 'Elmer:'
-                !        WRITE (*,*) varr(1:vsize)
+                !         WRITE (*,*) varr(1:vsize)
                 !         STOP    
                 ! END IF
 

@@ -12,12 +12,12 @@ MODULE LocalTypes
         INTEGER :: nc = 0
         REAL(Kind=dp), POINTER :: U(:)=>NULL(),V(:)=>NULL(),W(:)=>NULL()
     END TYPE ElementCache_t
-    
+
     TYPE IntegerList_t
         INTEGER :: nelem = 0
         INTEGER, ALLOCATABLE :: entries(:)
     END TYPE IntegerList_t
-    
+
     TYPE IntegerHashBucket_t
         ! Bucket elements
         TYPE(IntegerList_t), ALLOCATABLE :: list
@@ -42,7 +42,7 @@ MODULE LocalTypes
     REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = REAL(0.75, dp)
 
 CONTAINS
-    
+
     SUBROUTINE MeshToDualGraph3(Mesh, DualGraph)
         IMPLICIT NONE
 
@@ -59,7 +59,7 @@ CONTAINS
         LOGICAL :: mapOk
 #ifdef HAVE_TIMING
         REAL(kind=dp) :: t_start, t_end
-#endif    
+#endif
 
         nelem = Mesh % NumberOfBulkElements
         nvertex = Mesh % NumberOfNodes
@@ -67,7 +67,7 @@ CONTAINS
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif      
+#endif
         ! Copy mesh to CSR structure
         ALLOCATE(eptr(nelem+1), eind(nelem*Mesh % MaxElementNodes))
         eptr(1)=1 ! Fortran numbering
@@ -82,24 +82,24 @@ CONTAINS
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Mesh tranformation, meshtodual: ', t_end - t_start, ' sec.'
-#endif                              
+#endif
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif 
+#endif
         CALL ConstructVertexToElementList(nelem, nvertex, eptr, eind, VToEList)
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Vertex-element list creation: ', t_end - t_start, ' sec.'
-#endif    
+#endif
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif 
+#endif
         CALL ConstructVertexToElementList2(nelem, nvertex, eptr, eind, vptr, vind)
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Vertex-element list creation2: ', t_end - t_start, ' sec.'
-#endif    
+#endif
         ! Compare list to the correct one
         mapOk = .TRUE.
         DO i=1,nvertex
@@ -123,18 +123,18 @@ CONTAINS
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif 
-        ! Algorithm: loop over elements and add edges 
-        ! between elements for each vertex. 
+#endif
+        ! Algorithm: loop over elements and add edges
+        ! between elements for each vertex.
         CALL VertexMapInit(DualGraph, nelem)
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Dual graph init: ', t_end - t_start, ' sec.'
-#endif 
+#endif
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif 
+#endif
         ! For each element
         !$OMP PARALLEL DO SHARED(eptr, eind, nvertex, nelem, vptr, vind, DualGraph) &
         !$OMP PRIVATE(eid, ind, nli, nti, ne, neid, nnelem, NeighbourList, &
@@ -155,8 +155,8 @@ CONTAINS
                 DO ne=vptr(ind), vptr(ind+1)-1
                     ! neid = NeighbourArray(ne)
                     neid = vind(ne)
-                    
-                    ! Add each actual neighbouring element to graph 
+
+                    ! Add each actual neighbouring element to graph
                     IF (eid /= neid) CALL VertexMapAdd(DualGraph, eid, neid)
                 END DO
             END DO
@@ -168,7 +168,7 @@ CONTAINS
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Dual graph creation: ', t_end - t_start, ' sec.'
-#endif 
+#endif
 
         ! Delete entries in vertex to element map
         DO i=1,nvertex
@@ -199,7 +199,7 @@ CONTAINS
         TYPE(IntegerList_t) :: dualindlist
 #ifdef HAVE_TIMING
         REAL(kind=dp) :: t_start, t_end
-#endif    
+#endif
 
         nelem = Mesh % NumberOfBulkElements
         n = nelem
@@ -208,7 +208,7 @@ CONTAINS
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif      
+#endif
         ! Copy mesh to CSR structure
         ALLOCATE(eptr(nelem+1), eind(nelem*Mesh % MaxElementNodes))
         eptr(1)=1 ! Fortran numbering
@@ -223,24 +223,24 @@ CONTAINS
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Mesh tranformation, meshtodual: ', t_end - t_start, ' sec.'
-#endif                              
+#endif
 
 ! #ifdef HAVE_TIMING
 !         t_start = ftimer()
-! #endif 
+! #endif
 !         CALL ConstructVertexToElementList(nelem, nvertex, eptr, eind, VToEList)
 ! #ifdef HAVE_TIMING
 !         t_end = ftimer()
 !         WRITE (*,'(A,ES12.3,A)') 'Vertex-element list creation: ', t_end - t_start, ' sec.'
-! #endif    
+! #endif
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif 
+#endif
         CALL ConstructVertexToElementList2(nelem, nvertex, eptr, eind, vptr, vind)
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Vertex-element list creation2: ', t_end - t_start, ' sec.'
-#endif    
+#endif
 !         ! Compare list to the correct one
 !         mapOk = .TRUE.
 !         DO i=1,nvertex
@@ -261,7 +261,7 @@ CONTAINS
 !             WRITE (*,*) 'ERROR: Vertex-element list incorrect'
 !             STOP
 !         END IF
-        
+
         ! Delete entries in vertex to element map
 !         DO i=1,nvertex
 !             CALL IntegerListDeleteAll(VToEList(i))
@@ -270,7 +270,7 @@ CONTAINS
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif 
+#endif
 
         ! Ensure that vertex to element lists are sorted
         DO vid=1,nvertex
@@ -291,7 +291,7 @@ CONTAINS
         IF (allocstat /= 0) CALL Fatal('MeshDualGraph', &
               'Unable to allocate local workspace!')
         wrkmap(:)=0
-        
+
 
         wrkind(1:64) = 0
         ! TODO: Get the initial size for dualindlist from somewhere
@@ -303,7 +303,7 @@ CONTAINS
             nli = eptr(eid)
             nti = eptr(eid+1)-1
             nv = nti-nli+1
-            
+
             ! Get pointers to vertices related to the nodes of the element
             totelem = 0
             DO i=nli,nti
@@ -311,7 +311,7 @@ CONTAINS
                  wrktiptr(i-nli+1)=vptr(eind(i)+1) ! NOTE: This is to make comparison cheaper
                  totelem = totelem + wrktiptr(i-nli+1)-wrkliptr(i-nli+1)
             END DO
-            
+
             ! Allocate wrkind large enough
             IF (SIZE(wrkind)<totelem) THEN
                  DEALLOCATE(wrkind)
@@ -332,9 +332,9 @@ CONTAINS
 
             ! Merge vertex lists (multi-way merge of ordered lists)
             ! SUBROUTINE VertexListMerge3(node, nv, liptr, tiptr, te, vind, nc, wrkind, map)
-            CALL VertexListMerge3(eid, nv, wrkliptr, wrktiptr, totelem, vind, nc, wrkind, wrkmap)
-            
-            ! CALL VertexListMerge4(eid, nv, wrkliptr, wrktiptr, totelem, vind, nc, wrkind, wrkheap, wrkmask)
+            ! CALL VertexListMerge3(eid, nv, wrkliptr, wrktiptr, totelem, vind, nc, wrkind, wrkmap)
+
+            CALL VertexListMerge4(eid, nv, wrkliptr, wrktiptr, totelem, vind, nc, wrkind, wrkheap, wrkmask)
             ! CALL VertexListMerge4(eid, nli, nti, nv, vptr, vind, nc, wrkind)
             ! Quick hack to allocate memory for the work array
             ! IF (SIZE(wrkheap,1) /= nelem) THEN
@@ -358,13 +358,13 @@ CONTAINS
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'Dual graph creation: ', t_end - t_start, ' sec.'
-#endif 
+#endif
 
         CALL IntegerListDeleteAll(dualindlist)
         DEALLOCATE(eind, eptr, vptr, vind, wrkind, wrkliptr, wrktiptr, wrkheap)
 
 
-        CONTAINS 
+        CONTAINS
 
             SUBROUTINE VertexListMerge(cnode, nv, wrkliptr, wrktiptr, vind, nc, wrkind, wrkheap)
                 IMPLICIT NONE
@@ -375,7 +375,7 @@ CONTAINS
                 INTEGER, INTENT(OUT) :: nc
                 INTEGER, ALLOCATABLE :: wrkind(:)
                 INTEGER :: wrkheap(:,:)
-                
+
                 ! Local variables
                 INTEGER :: i, j, wrki, vindi, nheap
 
@@ -388,7 +388,7 @@ CONTAINS
                     ! HEAP_INSERT(wrkheap, nheap, vind(wrki), i)
                     CALL IntegerHeapInsertTuple(nheap, wrkheap, vind(wrki), i)
                 END DO
-                
+
                 DO WHILE (nheap > 0)
                     ! HEAP_EXTRACT(wrkheap, nheap, vindi, i)
                     CALL IntegerHeapExtractTuple(nheap, wrkheap, vindi, i)
@@ -434,7 +434,7 @@ CONTAINS
                 INTEGER, ALLOCATABLE :: wrkind(:)
                 INTEGER :: wrkheap(:,:)
                 INTEGER :: totelem, pind
-                
+
                 ! Local variables
                 INTEGER :: i, j, k,  wrki, vindi, elem, nheap
 
@@ -468,8 +468,8 @@ CONTAINS
                 nc = 0
                 ! DO WHILE (nheap > 0)
                 DO elem=1,totelem
-                    ! NOTE: The following lines really do assume that nv is small, in the 
-                    ! region of about 10 at most 
+                    ! NOTE: The following lines really do assume that nv is small, in the
+                    ! region of about 10 at most
                     ! Find minimum element
                     ! i=1
                     ! DO j=1,nv
@@ -504,14 +504,14 @@ CONTAINS
                     ! Advance row pointer
                     wrkliptr(i)=wrkliptr(i)+1
                     IF (wrkliptr(i) < wrktiptr(i)) wrkheap(i,1)=vind(wrkliptr(i))
-                    
+
                     ! CALL IntegerHeapExtractTuple(nheap, wrkheap, vindi, i)
 
                     ! IF (eid==18) THEN
                     !      WRITE (*,*) 'Got from', i, wrkliptr(i), vindi
                     !      WRITE (*,*) wrkheap(1:nv,1)
                     ! END IF
-                    
+
                     ! wrkheap(i,1)=HUGE(wrkheap(i,1))
                     ! IF (wrkliptr(i)<wrktiptr(i)) THEN
                         ! HEAP_INSERT(wrkheap, nheap, vind(wrki), i)
@@ -544,7 +544,7 @@ CONTAINS
 
             SUBROUTINE VertexListMerge3(node, nv, liptr, tiptr, te, vind, nc, wrkind, map)
                 IMPLICIT NONE
-                
+
                 INTEGER, INTENT(IN) :: node, nv
                 INTEGER :: liptr(:)
                 INTEGER, INTENT(IN) ::tiptr(:), te
@@ -580,7 +580,7 @@ CONTAINS
                         j=j+1
                     END IF
                     ! Clear map
-                    map(vindi) = 0 
+                    map(vindi) = 0
                 END DO
                 nc=j-1
             END SUBROUTINE VertexListMerge3
@@ -596,23 +596,18 @@ CONTAINS
                 INTEGER :: wrkind(:)
                 INTEGER :: heap(:)
                 LOGICAL :: mask(:)
-                
+
                 ! Local variables
                 INTEGER :: i, j, k,  wrki, vindi, elem, nheap
                 INTEGER :: pind
-                
+
                 DO i=1,nv
                     heap(i)=vind(liptr(i))
                 END DO
 
-                ! DO i=1,nv
-                !     WRITE (*,*) i, ': ', vind(liptr(i):tiptr(i)-1)
-                ! END DO
-
-                ! nc = 1
                 pind=HUGE(wrkind(1))
                 mask(1:nv) = .TRUE.
-                
+
                 nc = 0
                 DO elem=1,te
                     i=1
@@ -623,9 +618,7 @@ CONTAINS
                     ! Do not add node if it was previously added to the list
                     vindi = heap(i)
                     heap(i)=HUGE(heap(i))
-                    ! WRITE (*,*) elem, i, vindi
 
-                    ! IF (heap(i,1) /= node .AND. pind /= heap(i,1)) THEN
                     IF (vindi /= node .AND. pind /= vindi) THEN
                         nc = nc + 1
                         wrkind(nc)=vindi
@@ -640,19 +633,13 @@ CONTAINS
                     ELSE
                         mask(i)=.FALSE.
                     END IF
+                END DO
 
-                    ! WRITE (*,*) elem,' heap:', heap(1:nv)
-                END DO    
-
-                ! IF (node == 1) THEN
-                !     write (*,*) wrkind(1:nc)
-                !     STOP
-                ! END IF
             END SUBROUTINE VertexListMerge4
 
             SUBROUTINE IntegerHeapInsertTuple(n, heap, t1, t2)
                 IMPLICIT NONE
-                
+
                 ! Parameters
                 INTEGER :: n, heap(:,:)
                 INTEGER, INTENT(IN) :: t1, t2
@@ -666,7 +653,7 @@ CONTAINS
                 !     WRITE (*,*) heap(1:n,2)
                 !     WRITE (*,*) 'tuple=', t1, t2
                 ! END IF
-                
+
                 ! Insert to an ordered list
                 j=1
                 DO j=1,n
@@ -694,7 +681,7 @@ CONTAINS
 
             SUBROUTINE IntegerHeapExtractTuple(n, heap, t1, t2)
                 IMPLICIT NONE
-                
+
                 ! Parameters
                 INTEGER :: n, heap(:,:)
                 INTEGER, INTENT(OUT) :: t1, t2
@@ -721,10 +708,433 @@ CONTAINS
                 ! WRITE (*,*) 'EXTRACT: after heap n=', n
                 ! WRITE (*,*) heap(1:n,1)
                 ! WRITE (*,*) heap(1:n,2)
-                
+
             END SUBROUTINE IntegerHeapExtractTuple
     END SUBROUTINE MeshToDualGraph4
-    
+
+    SUBROUTINE ElmerMeshToDualGraph(Mesh, n, dualptr, dualind)
+        IMPLICIT NONE
+
+        TYPE(Mesh_t) :: Mesh
+        INTEGER, INTENT(OUT) :: n
+        INTEGER, ALLOCATABLE :: dualptr(:), dualind(:)
+
+        TYPE(Element_t), POINTER :: Element, Elements(:)
+
+        ! MESH DATA
+        ! Mesh (CRS format)
+        INTEGER, ALLOCATABLE :: eptr(:), eind(:)
+        INTEGER :: nelem
+        ! Vertex to element map (CRS format)
+        INTEGER, ALLOCATABLE :: vptr(:), vind(:)
+        INTEGER :: nvertex
+
+        ! WORK ARRAYS
+        ! Pointers to vertex-element maps of the current element
+        INTEGER, ALLOCATABLE :: ptrli(:), ptrti(:)
+        ! Neighbour indices
+        INTEGER, ALLOCATABLE :: neighind(:)
+        ! ARRAY MERGE: map for merge
+        INTEGER, ALLOCATABLE :: wrkmap(:)
+        ! HEAP (list) MERGE: heap and mask for merge
+        INTEGER, ALLOCATABLE :: wrkheap(:)
+        LOGICAL, ALLOCATABLE :: wrkmask(:)
+        
+        ! OpenMP thread block leads for work division
+        INTEGER, ALLOCATABLE :: thrblk(:)
+        ! Work indices
+        INTEGER, ALLOCATABLE :: wrkind(:), wrkindresize(:)
+        INTEGER :: nwrkind
+
+        ! Variables
+        INTEGER :: i, dnnz, eid, nl, nli, nti, nn, nv, nthr, &
+                   te, thrli, thrti, vli, vti, TID, allocstat
+        INTEGER :: mapSizePad, maxNodesPad, neighSizePad
+
+#ifdef HAVE_TIMING
+        REAL(kind=dp) :: t_start, t_end
+#endif
+
+        ! Mesh data
+        Elements => Mesh % Elements
+        nvertex = Mesh % NumberOfNodes
+        nelem = Mesh % NumberOfBulkElements
+        
+        ! Initialize dual mesh size and number of nonzeroes
+        n = nelem
+        dnnz = 0
+
+#ifdef HAVE_TIMING
+        t_start = ftimer()
+#endif
+        ! Copy mesh to CRS structure
+        ALLOCATE(eptr(nelem+1), eind(nelem*Mesh % MaxElementNodes), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+              'Unable to allocate mesh structure!')
+        eptr(1)=1 ! Fortran numbering
+        DO i=1, nelem
+            Element => Elements(i)
+            nl = Element % TYPE % NumberOfNodes
+            nli = eptr(i) ! Fortran numbering
+            nti = nli+nl-1
+            eind(nli:nti) = Element % NodeIndexes(1:nl) ! Fortran numbering
+            eptr(i+1) = nli+nl
+        END DO
+#ifdef HAVE_TIMING
+        t_end = ftimer()
+        WRITE (*,'(A,ES12.3,A)') 'Mesh transformation, ElmerMeshToDualGraph: ', t_end - t_start, ' sec.'
+#endif
+
+#ifdef HAVE_TIMING
+        t_start = ftimer()
+#endif
+        ! Construct vertex to element list (in serial!)
+        CALL VertexToElementList(nelem, nvertex, eptr, eind, vptr, vind)
+
+        ! Allocate pointers to dual mesh
+        ALLOCATE(dualptr(nelem+1), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+                                       'Unable to allocate dual mesh!')
+
+        ! Divide work by number of rows in the vertex graph
+        nthr = 1 
+        !$ nthr = omp_get_max_threads()
+
+        ! Load balance the actual work done by threads
+        CALL ThreadLoadBalanceElementNeighbour(nthr, nelem, eptr, eind, vptr, thrblk)
+
+        ! TODO: Begin OpenMP parallel section here
+        !$OMP PARALLEL SHARED(nelem, nvertex, eptr, eind, &
+        !$OMP                 vptr, vind, Mesh, dualind, dualptr, &
+        !$OMP                 nthr, thrblk, dnnz) &
+        !$OMP PRIVATE(i, eid, nli, nti, nn, nv, vli, vti, te, &
+        !$OMP         maxNodesPad, neighSizePad, ptrli, ptrti, &
+        !$OMP         wrkheap, wrkmask, wrkmap, neighind, &
+        !$OMP         wrkind, nwrkind, wrkindresize, allocstat, &
+        !$OMP         mapSizePad, thrli, thrti, TID) NUM_THREADS(nthr) &
+        !$OMP DEFAULT(NONE)
+
+        TID = 1
+        !$ TID = omp_get_thread_num()+1
+
+        ! Ensure that the vertex to element lists are sorted
+        !$OMP DO 
+        DO i=1,nvertex
+            vli = vptr(i)
+            vti = vptr(i+1)-1
+
+            CALL Sort(vti-vli+1, vind(vli:vti))
+        END DO
+        !$OMP END DO NOWAIT
+
+        ! Allocate work array (local to each thread)
+        maxNodesPad = IntegerNBytePad(Mesh % MaxElementNodes, 8)
+        neighSizePad = IntegerNBytePad(Mesh % MaxElementNodes*20, 8)
+
+        ! Pointers to vertex maps
+        ALLOCATE(neighind(neighSizePad), &
+                 ptrli(maxNodesPad), ptrti(maxNodesPad), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+                                       'Unable to allocate local workspace!')
+        ! Initialize neighbour indices
+        neighind = 0
+
+        IF (nthr > 1) THEN
+        ! IF (.TRUE.) THEN
+            ! With multiple threads, use heap based merge
+            ALLOCATE(wrkheap(maxNodesPad), wrkmask(maxNodesPad), STAT=allocstat)
+            IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+                                           'Unable to allocate local workspace!')
+        ELSE
+            ! With a single thread, use map -based merge
+            mapSizePad = IntegerNBytePad(Mesh % NumberOfBulkElements, 8)
+            ALLOCATE(wrkmap(Mesh % NumberOfBulkElements), STAT=allocstat)
+            IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+                                       'Unable to allocate local workspace!')
+            ! Initialize map
+            wrkmap(:)=0
+        END IF
+
+        ! Allocate local list for results
+        ! TODO: Compute multiplier along with thread work division
+        nwrkind = 0
+        ALLOCATE(wrkind(nelem/nthr*20), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+                                       'Unable to allocate local workspace!')
+
+        ! Ensure that all the threads have finished sorting the vertex indices
+        !$OMP BARRIER
+
+        ! Get thread indices
+        thrli = thrblk(TID)
+        thrti = thrblk(TID+1)
+
+        ! For each element
+        DO eid=thrli,thrti-1
+            nli = eptr(eid)
+            nti = eptr(eid+1)-1
+            nv = nti-nli+1
+
+            ! Get pointers to vertices related to the nodes of the element
+            te = 0
+            DO i=nli,nti
+                 ptrli(i-nli+1)=vptr(eind(i))
+                 ptrti(i-nli+1)=vptr(eind(i)+1) ! NOTE: This is to make comparison cheaper
+                 te = te + ptrti(i-nli+1)-ptrli(i-nli+1)
+            END DO
+
+            ! Allocate neighind large enough
+            IF (SIZE(neighind)<te) THEN
+                 DEALLOCATE(neighind)
+                 neighSizePad = IntegerNBytePad(te,8)
+                 ALLOCATE(neighind(neighSizePad), STAT=allocstat)
+                 neighind = 0
+            END IF
+
+            ! Merge vertex lists (multi-way merge of ordered lists)
+            IF (nthr>1) THEN
+            ! IF (.TRUE.) THEN
+                CALL kWayMergeList(eid, nv, ptrli, ptrti, &
+                                   te, vind, nn, neighind, wrkheap, wrkmask)
+            ELSE
+                CALL kWayMergeArray(eid, nv, ptrli, ptrti, &
+                                    te, vind, nn, neighind, wrkmap)
+            END IF
+
+            ! Add merged list to final list of vertices
+            IF (nn+nwrkind>SIZE(wrkind)) THEN
+                ALLOCATE(wrkindresize(MAX(nn+nwrkind,2*SIZE(wrkind))), STAT=allocstat)
+                IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+                                               'Unable to allocate local workspace!')
+                wrkindresize(1:nwrkind)=wrkind(1:nwrkind)
+                DEALLOCATE(wrkind)
+                CALL MOVE_ALLOC(wrkindresize, wrkind)
+            END IF
+            wrkind(nwrkind+1:nwrkind+nn) = neighind(1:nn)
+            nwrkind = nwrkind + nn
+
+            ! Store number of row nonzeroes
+            dualptr(eid)=nn
+        END DO
+
+        ! Get the global size of the dual mesh
+        !$OMP DO REDUCTION(+:dnnz)
+        DO i=1,nthr
+            dnnz = nwrkind
+        END DO
+        !$OMP END DO
+
+        ! Allocate memory for dual mesh indices
+        !$OMP SINGLE
+        ALLOCATE(dualind(dnnz), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+              'Unable to allocate dual mesh!')
+        ! dualptr stores row counts, build crs pointers from them
+        CALL ComputeCRSIndexes(nelem, dualptr)
+        !$OMP END SINGLE
+
+        dualind(dualptr(thrli):dualptr(thrti)-1)=wrkind(1:nwrkind)
+        
+        IF (nthr > 1) THEN
+        ! IF (.TRUE.) THEN
+            DEALLOCATE(wrkheap, wrkmask, STAT=allocstat)
+        ELSE
+            DEALLOCATE(wrkmap, STAT=allocstat)
+        END IF
+        IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+              'Unable to deallocate local workspace!')
+        DEALLOCATE(neighind, ptrli, ptrti, wrkind)
+
+        ! TODO: OpenMP parallel region ends here
+        !$OMP END PARALLEL
+
+#ifdef HAVE_TIMING
+        t_end = ftimer()
+        WRITE (*,'(A,ES12.3,A)') 'Dual graph creation, ElmerMeshToDualGraph: ', t_end - t_start, ' sec.'
+#endif
+
+        ! Deallocate the rest of memory
+        DEALLOCATE(eind, eptr, vptr, vind, thrblk)
+
+        CONTAINS
+
+            SUBROUTINE VertexToElementList(nelem, nvertex, eptr, eind, vptr, vind)
+                IMPLICIT NONE
+
+                INTEGER, INTENT(IN) :: nelem, nvertex
+                INTEGER :: eptr(:), eind(:)
+                INTEGER, ALLOCATABLE :: vptr(:), vind(:)
+
+                INTEGER :: i, j, v, eli, eti, ind, tmpi, tmpip, allocstat
+
+                ! Initialize vertex structure (enough storage for nvertex vertices
+                ! having eptr(nelem+1) elements)
+                ALLOCATE(vptr(nvertex+1), vind(eptr(nelem+1)), STAT=allocstat)
+                IF (allocstat /= 0) CALL Fatal('VertexToElementList', &
+                      'Vertex allocation failed!')
+                vptr = 0
+
+                ! For each element
+
+                ! Compute number of elements attached to each vertex (size of lists)
+                DO i=1,nelem
+                    eli = eptr(i)
+                    eti = eptr(i+1)-1
+
+                    DO j=eli, eti
+                        vptr(eind(j))=vptr(eind(j))+1
+                    END DO
+                END DO
+
+                ! Compute in-place cumulative sum (row pointers!)
+                CALL ComputeCRSIndexes(nvertex, vptr)
+                ! tmpi = vptr(1)
+                ! vptr(1)=1
+                ! DO i=1,nvertex-1
+                !     tmpip=vptr(i+1)
+                !     vptr(i+1)=vptr(i)+tmpi
+                !     tmpi=tmpip
+                ! END DO
+                ! vptr(nvertex+1)=vptr(nvertex)+tmpi
+
+                ! Construct element lists for each vertex
+                DO i=1,nelem
+                    eli = eptr(i)
+                    eti = eptr(i+1)-1
+
+                    ! For each vertex in element
+                    DO j=eli, eti
+                        ! Add connection to vertex eind(j)
+                        ind = eind(j)
+                        vind(vptr(ind))=i
+                        vptr(ind)=vptr(ind)+1
+                    END DO
+                END DO
+
+                ! Correct row pointers
+                DO i=nvertex,2,-1
+                    vptr(i)=vptr(i-1)
+                END DO
+                vptr(1)=1
+            END SUBROUTINE VertexToElementList
+
+            ! k-way merge with an array
+            SUBROUTINE kWayMergeArray(node, nv, ptrli, ptrti, te, vind, nn, neighind, map)
+                IMPLICIT NONE
+
+                INTEGER, INTENT(IN) :: node, nv
+                INTEGER :: ptrli(:)
+                INTEGER, INTENT(IN) ::ptrti(:), te
+                INTEGER, INTENT(IN) :: vind(:)
+                INTEGER, INTENT(OUT) :: nn
+                INTEGER :: neighind(:)
+                INTEGER :: map(:)
+
+                INTEGER :: i, j, k, vindi
+
+                ! Merge nv lists using a map (i.e. an array)
+                nn = 1
+                DO i=1,nv
+                    DO j=ptrli(i), ptrti(i)-1
+                        vindi = vind(j)
+                        ! Put element to map if it is not already there
+                        IF (map(vindi)==0) THEN
+                            neighind(nn)=vindi
+                            nn=nn+1
+                        END IF
+                        ! Increase counter
+                        map(vindi)=map(vindi)+1
+                    END DO
+                END DO
+                nn=nn-1
+
+                ! Map ready, just construct final list
+                j=1
+                DO i=1,nn
+                    vindi = neighind(i)
+                    IF (map(vindi) > 0 .AND. vindi /= node) THEN
+                        neighind(j)=vindi
+                        j=j+1
+                    END IF
+                    ! Clear map
+                    map(vindi) = 0
+                END DO
+                nn=j-1
+            END SUBROUTINE kWayMergeArray
+
+            ! k-way merge with a list
+            SUBROUTINE kWayMergeList(node, nv, ptrli, ptrti, te, vind, nn, neighind, list, mask)
+                IMPLICIT NONE
+
+                INTEGER, INTENT(IN) :: node, nv
+                INTEGER :: ptrli(:)
+                INTEGER, INTENT(IN) ::ptrti(:), te
+                INTEGER, INTENT(IN) :: vind(:)
+                INTEGER, INTENT(OUT) :: nn
+                INTEGER :: neighind(:)
+                INTEGER :: list(:)
+                LOGICAL :: mask(:)
+
+                ! Local variables
+                INTEGER :: i, j, k,  wrki, vindi, elem
+                INTEGER :: pind
+
+                DO i=1,nv
+                    list(i)=vind(ptrli(i))
+                END DO
+
+                pind=HUGE(neighind(1))
+                mask(1:nv) = .TRUE.
+
+                nn = 0
+                DO elem=1,te
+                    i=1
+                    DO j=1,nv
+                        IF (mask(j) .AND. list(j)<list(i)) i=j
+                    END DO
+                    ! i now contains the index of the minimum entry
+                    ! Do not add node if it was previously added to the list
+                    vindi = list(i)
+                    list(i)=HUGE(list(i))
+
+                    IF (vindi /= node .AND. pind /= vindi) THEN
+                        nn = nn + 1
+                        neighind(nn)=vindi
+                        pind = vindi
+                    END IF
+
+                    ! Advance row pointer
+                    ptrli(i)=ptrli(i)+1
+                    ! Update mask
+                    IF (ptrli(i) < ptrti(i)) THEN
+                        list(i)=vind(ptrli(i))
+                    ELSE
+                        mask(i)=.FALSE.
+                    END IF
+                END DO
+
+            END SUBROUTINE kWayMergeList
+            
+            SUBROUTINE ComputeCRSIndexes(n, arr)
+                IMPLICIT NONE
+                
+                INTEGER, INTENT(IN) :: n
+                INTEGER :: arr(:)
+
+                INTEGER :: i, indi, indip
+
+                indi = arr(1)
+                arr(1)=1
+                DO i=1,n-1
+                    indip=arr(i+1)
+                    arr(i+1)=arr(i)+indi
+                    indi=indip
+                END DO
+                arr(n+1)=arr(n)+indi
+            END SUBROUTINE ComputeCRSIndexes
+
+    END SUBROUTINE ElmerMeshToDualGraph
+
     SUBROUTINE ConstructVertexToElementList(ne, nn, eptr, eind, VertexToElementList)
         IMPLICIT NONE
 
@@ -738,17 +1148,17 @@ CONTAINS
         INTEGER, ALLOCATABLE :: vptr(:), vind(:)
 #ifdef HAVE_TIMING
         REAL(kind=dp) :: t_start, t_end
-#endif    
+#endif
 #ifdef _OPENMP
         INTEGER(kind=omp_lock_kind), ALLOCATABLE :: vlock(:)
-#endif            
+#endif
 
         nelem = ne
         nvertex = nn
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif      
+#endif
         ! ALLOCATE(vptr(nvertex), STAT=allocstat)
         ! IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap', &
         !                                'Vertex pointer allocation failed!')
@@ -768,13 +1178,13 @@ CONTAINS
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'ConstructVertexToElementList, init: ', t_end - t_start, ' sec.'
-#endif        
+#endif
 
         ! For each element
         !$OMP PARALLEL SHARED(nelem, nvertex, eind, eptr, VertexToElementList, vlock) &
         !$OMP PRIVATE(i, j, eli, eti, Element) DEFAULT(NONE)
 
-        ! Initialize locks 
+        ! Initialize locks
 #ifdef _OPENMP
         !$OMP DO
         DO i=1,nvertex
@@ -826,7 +1236,7 @@ CONTAINS
         DEALLOCATE(vlock)
 #endif
     END SUBROUTINE ConstructVertexToElementList
-    
+
      SUBROUTINE ConstructVertexToElementList2(nelem, nvertex, eptr, eind, vptr, vind)
         IMPLICIT NONE
 
@@ -837,12 +1247,12 @@ CONTAINS
         INTEGER :: i, j, v, eli, eti, ind, tmpi, tmpip, allocstat
 #ifdef HAVE_TIMING
         REAL(kind=dp) :: t_start, t_end
-#endif    
+#endif
 
 #ifdef HAVE_TIMING
         t_start = ftimer()
-#endif      
-        ! Initialize vertex structure (enough storage for nvertex vertices 
+#endif
+        ! Initialize vertex structure (enough storage for nvertex vertices
         ! having eptr(nelem+1) elements)
         ALLOCATE(vptr(nvertex+1), vind(eptr(nelem+1)), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('ConstructVertexToElementMap', &
@@ -852,7 +1262,7 @@ CONTAINS
 #ifdef HAVE_TIMING
         t_end = ftimer()
         WRITE (*,'(A,ES12.3,A)') 'ConstructVertexToElementList, init: ', t_end - t_start, ' sec.'
-#endif        
+#endif
 
         ! For each element
 
@@ -878,7 +1288,7 @@ CONTAINS
         vptr(nvertex+1)=vptr(nvertex)+tmpi
 
         ! WRITE (*,*) vptr(1:4), vptr(nvertex-2:nvertex+1)
-        
+
         ! Construct element lists for each vertex
         DO i=1,nelem
             eli = eptr(i)
@@ -903,18 +1313,18 @@ CONTAINS
         ! STOP
     END SUBROUTINE ConstructVertexToElementList2
 
-    ! Portable wall-clock timer 
+    ! Portable wall-clock timer
     FUNCTION ftimer() RESULT(timerval)
         IMPLICIT NONE
-        
+
         REAL(KIND=dp) :: timerval
         INTEGER :: t, rate
-        
+
 #ifdef _OPENMP
         timerval = OMP_GET_WTIME()
 #else
         CALL SYSTEM_CLOCK(t,count_rate=rate)
-        timerval = REAL(t,KIND(dp))/REAL(rate,KIND(dp))      
+        timerval = REAL(t,KIND(dp))/REAL(rate,KIND(dp))
 #endif
     END FUNCTION ftimer
 
@@ -931,7 +1341,7 @@ CONTAINS
         meshdim = 3
         IF (PRESENT(mdim)) meshdim = mdim
 
-        ! Set default size of initial maps depending on 
+        ! Set default size of initial maps depending on
         ! the dimension of the mesh
         SELECT CASE (meshdim)
         CASE (1)
@@ -949,8 +1359,8 @@ CONTAINS
               'Memory allocation failed!')
 
         !$OMP PARALLEL PRIVATE(i)
-        
-        !$OMP DO 
+
+        !$OMP DO
         DO i=1,nvertex
             CALL IntegerHashSetInit(vmap % map(i), minitsize)
         END DO
@@ -979,11 +1389,11 @@ CONTAINS
 
         TYPE(VertexMap_t) :: vmap
         INTEGER, INTENT(IN) :: n, vptr(:), vind(:)
-        
-        INTEGER :: i, j, vli, vti
+
+        INTEGER :: i, j, vli, vti, msize
 
         CALL VertexMapInit(vmap, n)
-        
+
         ! For each vertex
         DO i=1,n
             vli=vptr(i)
@@ -993,6 +1403,10 @@ CONTAINS
             DO j=vli,vti
                 CALL VertexMapAdd(vmap, i, vind(j))
             END DO
+            msize = IntegerListGetSize(vmap % map(i) % entries)
+            IF (msize /= vti-vli+1) THEN
+                WRITE (*,*) 'WARNING: Some duplicate entries were found for row=', i
+            END IF
         END DO
     END SUBROUTINE VertexMapFromArray
 
@@ -1010,10 +1424,10 @@ CONTAINS
 
     SUBROUTINE VertexMapDelete(vmap, vertexId, elementId)
         IMPLICIT NONE
-        
+
         TYPE(VertexMap_t) :: vmap
         INTEGER, INTENT(IN) :: vertexId, elementId
-      
+
 !        IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
 
         ! Delete vertex from map
@@ -1028,7 +1442,7 @@ CONTAINS
 
 !       IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
 
-#ifdef _OPENMP        
+#ifdef _OPENMP
         ! Lock the vertex
         CALL OMP_SET_LOCK(vmap % vlock(vertexId))
 #endif
@@ -1044,17 +1458,17 @@ CONTAINS
 
     SUBROUTINE VertexMapDeleteAtomic(vmap, vertexId, elementId)
         IMPLICIT NONE
-        
+
         TYPE(VertexMap_t) :: vmap
         INTEGER, INTENT(IN) :: vertexId, elementId
-      
+
 !        IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
 
-#ifdef _OPENMP        
+#ifdef _OPENMP
         ! Lock the vertex
         CALL OMP_SET_LOCK(vmap % vlock(vertexId))
 #endif
-        
+
         ! Delete vertex from map
         CALL IntegerHashSetDelete(vmap % map(vertexId), elementId)
 
@@ -1081,7 +1495,7 @@ CONTAINS
         INTEGER, INTENT(IN) :: vertexId
 
         TYPE(IntegerList_t), POINTER :: nlist
-        
+
  !       IF (vertexId < 1 .OR. vertexId > SIZE(vmap % map)) RETURN
 
         nlist => vmap % map(vertexId) % entries
@@ -1089,7 +1503,7 @@ CONTAINS
 
     SUBROUTINE VertexMapToLists(vmap, nlist)
         IMPLICIT NONE
-        
+
         TYPE(VertexMap_t) :: vmap
         TYPE(IntegerList_t), ALLOCATABLE :: nlist(:)
 
@@ -1097,11 +1511,11 @@ CONTAINS
         TYPE(IntegerList_t) :: entries
 
         nvertex = SIZE(vmap % map)
-        
+
         ALLOCATE(nlist(nvertex), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('VertexMapToList', &
               'Memory allocation failed!')
-        
+
         !$OMP PARALLEL DO PRIVATE(i)
         DO i=1,nvertex
             ! Add all elements from map to a simple list
@@ -1113,13 +1527,13 @@ CONTAINS
 
     SUBROUTINE VertexMapDeleteAll(vmap)
         IMPLICIT NONE
-        
+
         TYPE(VertexMap_t) :: vmap
-        
+
         INTEGER :: i, nvertex
-       
+
         nvertex = SIZE(vmap % map)
-        !$OMP PARALLEL PRIVATE(i)         
+        !$OMP PARALLEL PRIVATE(i)
 #ifdef _OPENMP
         ! Deallocate vertex locks
         !$OMP DO
@@ -1131,7 +1545,7 @@ CONTAINS
         !$OMP SINGLE
         DEALLOCATE(vmap % vlock)
         !$OMP END SINGLE NOWAIT
-#endif        
+#endif
         ! Delete contents of the vertex map
         !$OMP DO
         DO i=1,nvertex
@@ -1142,19 +1556,19 @@ CONTAINS
 
         DEALLOCATE(vmap % map)
     END SUBROUTINE VertexMapDeleteAll
-    
+
     FUNCTION VertexMapGetSize(vmap) RESULT(N)
         IMPLICIT NONE
         TYPE(VertexMap_t) :: vmap
         INTEGER :: n
-      
+
         N = SIZE(vmap % map)
     END FUNCTION VertexMapGetSize
 
     FUNCTION VertexMapEquals(vmap1, vmap2) RESULT(equalTo)
         IMPLICIT NONE
         TYPE(VertexMap_t), TARGET :: vmap1, vmap2
-        
+
         LOGICAL :: equalTo
         INTEGER :: i, id, n1, n2, ln1, ln2
         TYPE(IntegerList_t), POINTER :: l1, l2
@@ -1163,10 +1577,10 @@ CONTAINS
 
         n1 = VertexMapGetSize(vmap1)
         n2 = VertexMapGetSize(vmap2)
-    
+
         ! Test size of maps, if not equal the maps are different
         IF (n1 /= n2) RETURN
-        
+
         DO i=1, n1
             ! Test size of vertex mapping, if not equal the maps are different
             l1 => VertexMapGetList(vmap1, i)
@@ -1174,7 +1588,7 @@ CONTAINS
 
             ln1 = IntegerListGetSize(l1)
             ln2 = IntegerListGetSize(l2)
-            
+
             IF (ln1 /= ln2) RETURN
 
             ! Try to find each element of vmap1 from vmap2
@@ -1189,9 +1603,9 @@ CONTAINS
     SUBROUTINE VertexMapOutputString(vmap)
         IMPLICIT NONE
         TYPE(VertexMap_t) :: vmap
-        
+
         INTEGER :: i
-        
+
         WRITE (*,*) 'nvertex=', SIZE(vmap % map)
         DO i=1,SIZE(vmap % map)
             WRITE (*,*) 'nelem=', vmap % map(i) % entries % nelem
@@ -1211,7 +1625,7 @@ CONTAINS
         n = INTEGERHASHSET_DEFAULT_SIZE
         IF (PRESENT(isize)) n = isize
         iset % fratio = INTEGERHASHSET_FILLRATIO
-        IF (PRESENT(fratio) .AND. fratio > 0 & 
+        IF (PRESENT(fratio) .AND. fratio > 0 &
               .AND. fratio <= REAL(1,dp)) iset % fratio = fratio
 
         IF (ALLOCATED(iset % set)) DEALLOCATE(iset % set)
@@ -1259,14 +1673,14 @@ CONTAINS
         ! Add the requested entry to the hashset
         CALL IntegerHashSetAddHashEntry(iset, key)
     END SUBROUTINE IntegerHashSetAdd
-   
+
     SUBROUTINE IntegerHashSetAddHashEntry(iset, key)
         IMPLICIT NONE
         TYPE(IntegerHashSet_t) :: iset
         INTEGER, INTENT(IN) :: key
-        
+
         INTEGER :: n, hkey, lind, allocstat
-        
+
         hkey = IntegerHashSetHashFunction(iset, key)
         IF (.NOT. ALLOCATED(iset % set(hkey) % list)) THEN
             ! Add new chain and entry
@@ -1290,9 +1704,9 @@ CONTAINS
               END IF
             END ASSOCIATE
         END IF
-        
+
     END SUBROUTINE IntegerHashSetAddHashEntry
-    
+
     SUBROUTINE IntegerHashSetDelete(iset, key)
         IMPLICIT NONE
 
@@ -1307,7 +1721,7 @@ CONTAINS
             IF (lind > 0) THEN
                 ! Delete values from chain
                 CALL IntegerListDeleteAt(iset % set(hkey) % list, lind)
-            
+
                 ! Delete entry from entry list (O(n) operation)
                 CALL IntegerListDelete(iset % entries, key)
             END IF
@@ -1322,7 +1736,7 @@ CONTAINS
 
         DO ent=1, iset % entries % nelem
             hkey = IntegerHashSetHashFunction(iset, iset % entries % entries(ent))
-            ! Elements of chain may not be allocated if they have been 
+            ! Elements of chain may not be allocated if they have been
             ! previously deallocated by this routine
             IF (ALLOCATED(iset % set(hkey) % list)) THEN
                 CALL IntegerListDeleteAll(iset % set(hkey) % list)
@@ -1358,9 +1772,9 @@ CONTAINS
         INTEGER :: m
         INTEGER :: hkey
         REAL(kind=dp), PARAMETER :: hA = (SQRT(REAL(5,dp))-1)/2
-                
+
         ! Use a multiplicative hash function with Knuth's choice of
-        ! A, i.e., 
+        ! A, i.e.,
         ! h(k) = floor(m*(k*hA mod 1)), with hA=(sqrt(5)-1)/2
         m = SIZE(iset % set)
         ! hkey = FLOOR(REAL(m,dp)*(key*hA-FLOOR(key*hA)))+1
@@ -1370,9 +1784,9 @@ CONTAINS
     SUBROUTINE IntegerHashSetOutputString(iset)
         IMPLICIT NONE
         TYPE(IntegerHashSet_t) :: iset
-        
+
         INTEGER :: i
-        
+
         WRITE (*,*) 'nelem=', iset % entries % nelem
         WRITE (*,*) iset % entries % entries(1:iset % entries % nelem)
         WRITE (*,*) 'HashSet contents'
@@ -1389,7 +1803,7 @@ CONTAINS
             END IF
         END DO
     END SUBROUTINE IntegerHashSetOutputString
-    
+
     SUBROUTINE IntegerListInit(ilist, isize)
         IMPLICIT NONE
 
@@ -1451,20 +1865,20 @@ CONTAINS
 
       TYPE(IntegerList_t) :: ilist
       TYPE(IntegerList_t) :: alist
-      
+
       INTEGER :: i, isize, ni, na, allocstat
       INTEGER, ALLOCATABLE :: elementsnew(:)
 
       isize = SIZE(ilist % entries)
       ni = ilist % nelem
-      na = alist % nelem 
+      na = alist % nelem
       ! Check if reallocation of ilist is needed
       IF (isize < ni + na) THEN
           ! Reallocate a list structure with enough space
           ALLOCATE(elementsnew(2*isize+na), STAT=allocstat)
           IF (allocstat /= 0) CALL Fatal('IntegerListAddAll',&
                                          'Memory allocation error!')
-          
+
           ! Copy elements, deallocate old element vector and move allocation
           elementsnew(1:ni)=ilist % entries(1:ni)
           DEALLOCATE(ilist % entries)
@@ -1481,7 +1895,7 @@ CONTAINS
 
       TYPE(IntegerList_t) :: ilist
       INTEGER :: alist(:)
-      
+
       INTEGER :: i, isize, ni, na, allocstat
       INTEGER, ALLOCATABLE :: elementsnew(:)
 
@@ -1494,7 +1908,7 @@ CONTAINS
           ALLOCATE(elementsnew(2*isize+na), STAT=allocstat)
           IF (allocstat /= 0) CALL Fatal('IntegerListAddAll',&
                                          'Memory allocation error!')
-          
+
           ! Copy elements, deallocate old element vector and move allocation
           elementsnew(1:ni)=ilist % entries(1:ni)
           DEALLOCATE(ilist % entries)
@@ -1563,10 +1977,10 @@ CONTAINS
             END IF
         END DO
     END FUNCTION IntegerListFind
-    
+
     FUNCTION IntegerListGetArray(ilist) RESULT(arr)
         IMPLICIT NONE
-        
+
         TYPE(IntegerList_t), TARGET :: ilist
         INTEGER, POINTER :: arr(:)
 
@@ -1609,5 +2023,86 @@ CONTAINS
 !!!      ! NIY
 !!!      hasnext = .FALSE.
 !!!    END FUNCTION IntegerListIteratorHasNext
+
+    ! Given CRS indices, referenced indirectly from graph, 
+    ! evenly load balance the work among the nthr threads
+    SUBROUTINE ThreadLoadBalanceElementNeighbour(nthr, gn, gptr, gind, rptr, blkleads)
+        IMPLICIT NONE
+
+        INTEGER :: nthr
+        INTEGER, INTENT(IN) :: gn
+        INTEGER :: gptr(:), gind(:), rptr(:)
+        INTEGER, ALLOCATABLE :: blkleads(:)
+
+        INTEGER :: i, j, k, wrk, gwrk, thrwrk, allocstat
+        
+        ! Compute number of nonzeroes / thread
+        !$ nthr = MIN(nthr,gn)
+        
+        ALLOCATE(blkleads(nthr+1), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ThreadLoadBalanceCRS', &
+                                       'Unable to allocate blkleads!')
+        
+        ! Special case of just one thread
+        IF (nthr == 1) THEN
+            blkleads(1)=1
+            blkleads(2)=gn+1
+            RETURN
+        END IF
+
+        ! Compute total global work
+        gwrk = 0
+        DO i=1,gn
+            DO j=gptr(i),gptr(i+1)-1
+                gwrk = gwrk + (rptr(gind(j)+1)-rptr(gind(j)))
+            END DO
+        END DO
+
+        ! Amount of work per thread
+        thrwrk = CEILING(REAL(gwrk,dp) / nthr)
+
+        ! TODO: Use Elmer messaging interface here
+        ! WRITE (*,'(A,I0,A,I0)') 'ThreadLoadBalanceElementNeighbour: Total global work=', gwrk, &
+        !                         ' work per element=', thrwrk
+
+        ! Find rows for each thread to compute
+        blkleads(1)=1
+        DO i=1,nthr
+            wrk = 0
+            ! Acquire enough work for thread i
+            DO j=blkleads(i),gn
+                DO k=gptr(j),gptr(j+1)-1
+                    wrk = wrk + (rptr(gind(j)+1)-rptr(gind(j)))
+                END DO
+                IF (wrk >= thrwrk) EXIT
+            END DO
+            ! TODO: Use Elmer messaging interface here
+            ! WRITE (*,'(A,I0,A,I0)') 'ThreadLoadBalanceElementNeighbour: assigned ', wrk ,&
+            !                         ' work to thread ', i
+            blkleads(i+1)=j+1
+            ! Check if we have run out of rows
+            IF (j+1>gn) EXIT
+        END DO
+        ! Reset number of rows (may be less than equal to original number)
+        nthr = i
+        ! Assign what is left of the matrix to the final thread
+        blkleads(nthr+1)=gn+1
+    END SUBROUTINE ThreadLoadBalanceElementNeighbour
+
+    ! Pad given integer value to be the next largest multiple of nbyte
+    FUNCTION IntegerNBytePad(val, nbyte) RESULT(padval)
+        IMPLICIT NONE
+
+        INTEGER, INTENT(IN) :: val, nbyte
+        INTEGER :: padval
+        ! Parameters and variables
+        INTEGER, PARAMETER :: bytesinint = KIND(val)
+        INTEGER :: nbytesinint
+
+        ! Compute number of nbytes in int
+        nbytesinint = nbyte/bytesinint
+        ! Compute value padded to multiples of n-byte
+        padval=((val-1)/nbytesinint)*nbytesinint+nbytesinint
+    END FUNCTION IntegerNBytePad
 
 END MODULE LocalTypes
