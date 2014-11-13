@@ -5,3 +5,5 @@ cp $ELMER_HOME/share/elmersolver/lib/FreeSurfaceSolver.so MyFreeSurfaceSolver
 
 To execute:
 ElmerSolver mismip.sif
+
+All command-lines are written in  Makefile
