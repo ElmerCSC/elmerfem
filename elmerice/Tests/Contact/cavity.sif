@@ -355,6 +355,9 @@ Boundary Condition 1
   Normal-Tangential Velocity = Logical True
   Flow Force BC = Logical True
 
+  Test Contact Tolerance = Real 1.0e-3
+  Grounding Line Definition = String "Last Grounded"
+
   Zs Bottom = Equals Bedrock
   Zs Bottom Condition = Variable Coordinate 1
     Real MATC "2.0 - tx"

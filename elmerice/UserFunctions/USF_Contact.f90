@@ -35,6 +35,9 @@
 !>  Return a friction coefficient
 !>  -from sliding weertman for resting ice (GroundedMask = 0 or 1)
 !>  -of 0 for floating ice (GroundedMask = -1)
+!>  2014 : Introduce 3 different ways of defining the grounding line (Mask = 0)
+!>  Last Grounded ; First Floating ; Discontinuous
+
 FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
   USE ElementDescription
@@ -56,14 +59,14 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), GroundedMaskPerm(:), HydroPerm(:), FlowPerm(:), DistancePerm(:)
   INTEGER :: nodenumber, ii, DIM, GL_retreat, n, tt, Nn, jj, nnn, MSum, ZSum
 
-  LOGICAL :: FirstTime = .TRUE., FirstTimeTime = .TRUE., GotIt, Yeschange, GLmoves
+  LOGICAL :: FirstTime = .TRUE., FirstTimeTime = .TRUE., GotIt, Yeschange, GLmoves, Friction
 
   REAL (KIND=dp) ::  y, relChange, relChangeOld, Sliding_Budd, Sliding_Weertman, Friction_Coulomb, C, m
 
-  REAL(KIND=dp) :: NonLinIter, comp, cond
-  CHARACTER*20 :: USF_Name='SlidCoef_Contact', Sl_Law
+  REAL(KIND=dp) :: NonLinIter, comp, cond, TestContact
+  CHARACTER*20 :: USF_Name='SlidCoef_Contact', Sl_Law, GLtype
 
-  SAVE FirstTime, yeschange, told, GLmoves, thresh
+  SAVE FirstTime, yeschange, told, GLmoves, thresh, GLtype, TestContact
   SAVE DIM, USF_Name, Normal, Fwater, Fbase, relChangeOld, Sl_Law
 
 !----------------------------------------------------------------------------
@@ -108,6 +111,15 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
       CALL FATAL(USF_Name,'No "Sliding law" Name given')
     END IF
 
+    GLtype = GetString( BC, 'Grounding Line Definition', GotIt )
+    IF (.NOT.Gotit) THEN
+       GLtype = 'Last Grounded'
+       CALL Info(USF_Name, 'Grounded Line Defined as the last Grounded point', Level=3)
+    ELSE
+      WRITE(Message, '(A,A)') 'Grounding Line Defined as ', GLtype
+       CALL Info(USF_Name, Message, Level=3)
+    END IF
+
     ! Possiblity to fix the grounding line, default is a moving Grounding Line
     GLmoves = GetLogical( BC, 'Grounding line moves', GotIt )
     IF (.NOT.GotIt) THEN
@@ -118,6 +130,15 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
       CALL Info(USF_Name, 'If you want to fix the Grounding Line, put the keyword "Grounding line moves" to False', Level=3)
     ELSE
       CALL Info(USF_Name, 'GL will be fixed', Level=3)
+    END IF
+
+    TestContact = GetConstReal( BC, 'Test Contact Tolerance', GotIt )
+    IF (.NOT.Gotit) THEN
+       TestContact = 1.0e-3     
+       CALL Info(USF_Name, 'Contact will be tested for a tolerance of 1.0e-3', Level=3)
+    ELSE
+      WRITE(Message, '(A,e14.8)') 'Contact tested for a tolerance of ', TestContact
+       CALL Info(USF_Name, Message, Level=3)
     END IF
 
     ! Possibility to avoid detachement from nodes that are too far inland from the Grounding line
@@ -133,8 +154,6 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
     ELSE
       CALL INFO( USF_Name, 'far inland nodes will not detach', level=3)
     END IF
-
-
   ENDIF
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -149,7 +168,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
   ! to use the non detachment possibility when a grounded node is too far from the grounding line
   ! and positioned on a well below sea level bedrock
-  IF (thresh.GT.0) THEN
+  IF (thresh.GT.0.0) THEN
     DistanceVar => VariableGet( Model % Mesh % Variables, 'Distance')
     IF ( ASSOCIATED( DistanceVar ) ) THEN
       Distance => DistanceVar % Values
@@ -161,7 +180,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   ! Look at the convergence of the FlowSolver.
-  ! If relative change < 1.e-3, test if traction occurs. To apply one time
+  ! If relative change < TestContact, test if traction occurs. To apply one time
   !
   ! Only to release contact between bed and ice as hydrostatic pressure is higher than normal stress
   !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -170,7 +189,8 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   Fwater = 0.0_dp
   Fbase = 0.0_dp
 
-  IF ( (relChange.NE.relChangeOld) .AND. (relchange.GT.0.0_dp) .AND. (relchange.LT.1.0e-3_dp) .AND. (yesChange) .AND. GLmoves ) THEN
+  IF ( (relChange.NE.relChangeOld) .AND. (relchange.GT.0.0_dp) .AND. & 
+    &            (relchange.LT.TestContact) .AND. (yesChange) .AND. GLmoves ) THEN
     ! Change the basal condition just once per timestep
     yesChange = .FALSE.
 
@@ -296,53 +316,56 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
       END DO
       Model % CurrentElement => CurElement
-
     END IF
-
   END IF
-  ! END relChange.NE.relChangeOld .AND. relchange.GT.0.0_dp .AND. relchange.LT.1.0e-3_dp .AND. yesChange 
 
   relChangeOld = relChange  
 
-  !!!!!!!!!!!!!!!!!!!!!!!!
-  ! Weertman sliding law
-  !!!!!!!!!!!!!!!!!!!!!!!!
-
-  ! Bdrag = 0 if GroundedMask=-1
-  ! Bdrag = Sliding_law if GroundedMask=0 or 1
 
   IF (GroundedMaskPerm(nodenumber) > 0) THEN
   ! for the bottom surface, where the GroundedMask is defined
+     cond = GroundedMask(GroundedMaskPerm(nodenumber))
 
-    cond = GroundedMask(GroundedMaskPerm(nodenumber))
+  ! Definition of the Grounding line in term of friction 
+  ! If GLtype = Last Grounded -> Bdrag = 0 if Nodal Mask < 0
+  ! If GLtype = First Floating -> Bdrag = 0 if Nodal Mask <=0
+  ! If GLtype = Discontinuous -> Bdrag = 0 if at one node of the element Mask<=0
 
-    IF (cond >= -0.5_dp) THEN
-       ! grounded node
-       SELECT CASE(Sl_law)
-       CASE ('weertman')
-          Bdrag = Sliding_weertman(Model, nodenumber, y)
-       CASE ('budd')
-          Bdrag = Sliding_Budd(Model, nodenumber, y)
-       CASE ('coulomb')
-          Bdrag = Friction_Coulomb(Model, nodenumber, y)
-       CASE DEFAULT
-          WRITE(Message, '(A,A)') 'Sliding law not recognised ',Sl_law
-          CALL FATAL( USF_Name, Message)
-       END SELECT
-!      IF (Sl_Law == 'weertman') Bdrag = Sliding_weertman(Model, nodenumber, y)
-!      IF (Sl_Law == 'budd')     Bdrag = Sliding_Budd(Model, nodenumber, y)
-!      IF (Sl_Law == 'coulomb')  Bdrag = Friction_Coulomb(Model, nodenumber, y)
-    ELSE
+     Friction = .FALSE.
+     SELECT CASE(GLtype)
+     CASE('last grounded')
+        IF (cond > -0.5) Friction = .TRUE.  
+     CASE('first floating')
+        IF (cond > 0.5) Friction = .TRUE. 
+     CASE('discontinuous')
+        BoundaryElement => Model % CurrentElement
+        IF (ALL(GroundedMask(GroundedMaskPerm(BoundaryElement % NodeIndexes))>-0.5)) Friction = .TRUE. 
+     CASE DEFAULT
+        WRITE(Message, '(A,A)') 'GL type not recognised ', GLtype 
+        CALL FATAL( USF_Name, Message)
+     END SELECT
+
+     IF (Friction) THEN
+        ! grounded node
+        SELECT CASE(Sl_law)
+        CASE ('weertman')
+           Bdrag = Sliding_weertman(Model, nodenumber, y)
+        CASE ('budd')
+           Bdrag = Sliding_Budd(Model, nodenumber, y)
+        CASE ('coulomb')
+           Bdrag = Friction_Coulomb(Model, nodenumber, y)
+        CASE DEFAULT
+           WRITE(Message, '(A,A)') 'Sliding law not recognised ',Sl_law
+           CALL FATAL( USF_Name, Message)
+        END SELECT
+     ELSE
     ! floating node
-      Bdrag = 0.0_dp
-    END IF
-
+        Bdrag = 0.0_dp
+     END IF
   ELSE
   ! for other surfaces, typically for lateral surfaces within buttressing experiments
-    Bdrag = Sliding_weertman(Model, nodenumber, y)
-
+     Bdrag = Sliding_weertman(Model, nodenumber, y)
   END IF
-
 END FUNCTION SlidCoef_Contact
 
 
