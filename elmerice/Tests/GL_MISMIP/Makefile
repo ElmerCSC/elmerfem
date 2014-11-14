@@ -6,9 +6,9 @@ PLATFORM := $(shell uname -s)
 run:
 	if [ '$(PLATFORM)' = 'Linux' ] ; \
 	then \
-           cp $(ELMER_HOME)/share/elmersolver/lib/FreeSurfaceSolver.so MyFreeSurfaceSolver ; \
+           cp $(ELMER_HOME)/share/elmersolver/lib/FreeSurfaceSolver.so MyFreeSurfaceSolver.so ; \
 	else \
-	   cp $(ELMER_HOME)/share/elmersolver/lib/FreeSurfaceSolver.dylib MyFreeSurfaceSolver ; \
+	   cp $(ELMER_HOME)/share/elmersolver/lib/FreeSurfaceSolver.dylib MyFreeSurfaceSolver.dylib ; \
         fi ;
 	$(ELMER_SOLVER) mismip.sif
 
