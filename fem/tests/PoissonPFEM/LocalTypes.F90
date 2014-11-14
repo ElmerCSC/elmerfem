@@ -466,6 +466,82 @@ CONTAINS
 
     END SUBROUTINE ElmerMeshToDualGraph
 
+    SUBROUTINE ElmerDualGraphColour(n, dualptr, dualind, nc, colours)
+        IMPLICIT NONE
+        
+        INTEGER, INTENT(IN) :: n
+        INTEGER, INTENT(IN) :: dualptr(:), dualind(:)
+        INTEGER :: nc
+        INTEGER, ALLOCATABLE :: colours(:)
+
+        INTEGER :: v, w, allocstat
+
+        ! Iterative parallel greedy algorithm (Alg 2.) from 
+        ! U. V. Catalyurek, J. Feo, A.H. Gebremedhin, M. Halappanavar, A. Pothen. 
+        ! "Graph coloring algorithms for multi-core and massively multithreaded systems".
+        ! Parallel computing, 38, 2012, pp. 576--594. 
+
+        ! Initialize number of colours, maximum degree of graph and number of 
+        ! uncolored vertices
+        nc = 1
+        dualmaxdeg = 0
+        nunc = n
+        
+        ! Allocate memory for colours of vertices
+        ALLOCATE(colours(n), uncolored(n), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
+                                       'Unable to allocate colour maps!')
+        
+        !$OMP PARALLEL SHARED(n, dualmaxdeg, dualptr, dualind, nc, colours, nunc, &
+        !$OMP                 uncolored) &
+        !$OMP PRIVATE(vli, vti, v, w, nfc, fc)
+        !$OMP DEFAULT(NONE)
+
+        ! TODO: allocate thread local memory here (get size from dualptr first)
+        !$OMP DO REDUCTION(max:dualmaxdeg)
+        DO v=1,n
+            dualmaxdeg = MAX(dualmaxdeg, dualptr(v+1)-dualptr(v))
+        END DO
+        !$OMP END DO
+        ALLOCATE(fc(dualmaxdeg), STAT=allocstat)
+        ! Initialize forbidden colours
+        fc = 0
+
+        ! Initialize colours and uncolored entries
+        !$OMP DO 
+        DO v=1,n
+            colours(v)=nc
+            uncolored(v)=v
+        END DO
+        !$OMP END DO
+        
+        DO WHILE(dimc)
+            ! For each v\in U in parallel do
+            !$OMP DO
+            DO v=1,n
+                vli=dualptr(v)
+                vti=dualptr(v+1)-1
+
+                ! For each w\in adj(v) do
+                DO w=vli, vti
+                    ! fc[colour[w]]<-v
+                    !$OMP ATOMIC READ
+                    wcol = colours(dualind(w))
+                    fc(wcol)=v
+                END DO
+
+                ! c <- min\{i>0: fc[i]/=v \}
+                ! TODO
+            END DO
+            !$OMP END DO
+
+        END DO
+
+        DEALLOCATE(forbiddencolours)
+        !$OMP END PARALLEL
+
+    END SUBROUTINE ElmerDualGraphColour
+
     SUBROUTINE ConstructVertexToElementList(ne, nn, eptr, eind, VertexToElementList)
         IMPLICIT NONE
 
