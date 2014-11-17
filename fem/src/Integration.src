@@ -1637,11 +1637,9 @@ END FUNCTION GaussPointsPTetra
         END IF
      CASE(7)
         IF (PRefElement) THEN
-           !IP = GaussPointsPWedge(27)
            IP = GaussPointsWedge2(6,3,PReferenceElement=PRefElement)
         ELSE
-           IP = GaussPointsWedge2(3,3,PReferenceElement=PRefElement)
-	   !IP = GaussPointsWedge(8)    ! The line above should be used!
+           IP = GaussPointsWedge2(3,2,PReferenceElement=PRefElement)
         END IF
      CASE(8)
         IF (PRefElement) THEN
