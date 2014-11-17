@@ -113,7 +113,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
     GLtype = GetString( BC, 'Grounding Line Definition', GotIt )
     IF (.NOT.Gotit) THEN
-       GLtype = 'Last Grounded'
+       GLtype = 'last grounded'
        CALL Info(USF_Name, 'Grounded Line Defined as the last Grounded point', Level=3)
     ELSE
       WRITE(Message, '(A,A)') 'Grounding Line Defined as ', GLtype
