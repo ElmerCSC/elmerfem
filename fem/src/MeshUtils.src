@@ -6930,7 +6930,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
-          MaxErrInd, MinErrInd, InitialHits, ActiveHits
+          MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep
       TYPE(Element_t), POINTER :: Element, ElementM
       TYPE(Element_t) :: ElementT
       TYPE(GaussIntegrationPoints_t) :: IP
@@ -6946,16 +6946,19 @@ END SUBROUTINE GetMaxDefs
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
       LOGICAL :: LeftCircle, Stat, CornerFound(4), CornerFoundM(4)
       TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Variable_t), POINTER :: TimestepVar
 
       ! These are used temporarely for debugging purposes
-      INTEGER :: SaveInd
+      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles
       LOGICAL :: SaveElem
       CHARACTER(LEN=20) :: FileName
 
-      SaveInd = ListGetInteger( BC,'Level Projector Save Element Index',Found )
-      
       Mesh => CurrentModel % Solver % Mesh 
 
+      SaveInd = ListGetInteger( BC,'Level Projector Save Element Index',Found )
+      TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
+      Timestep = NINT( TimestepVar % Values(1) )
+ 
       n = Mesh % MaxElementNodes
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
       ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n) )
@@ -6991,7 +6994,7 @@ END SUBROUTINE GetMaxDefs
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
       Point = 0.0_dp
-
+      MaxSubTriangles = 0
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -7037,7 +7040,8 @@ END SUBROUTINE GetMaxDefs
         SumArea = 0.0_dp
         
         IF( SaveElem ) THEN
-          OPEN( 10,FILE='a.dat')
+          FileName = 't'//TRIM(I2S(TimeStep))//'_a.dat'
+          OPEN( 10,FILE=Filename)
           DO i=1,n
             WRITE( 10, * ) Nodes % x(i), Nodes % y(i)
           END DO
@@ -7229,24 +7233,7 @@ END SUBROUTINE GetMaxDefs
             IF ( MODULO(Nrange,2) /= 0 ) sgn0 = -1
           END IF
           
-          ElemHits = ElemHits + 1
           InitialHits = InitialHits + kmax
-
-          IF( SaveElem ) THEN
-            FileName = 'b'//TRIM(I2S(ElemHits))//'.dat'
-            OPEN( 10,FILE=FileName)
-            DO i=1,nM
-              WRITE( 10, * ) NodesM % x(i), NodesM % y(i)
-            END DO
-            CLOSE( 10 )
-
-            FileName = 'c'//TRIM(I2S(ElemHits))//'.dat'
-            OPEN( 10,FILE=FileName)
-            DO i=1,kmax
-              WRITE( 10, * ) x(i), y(i)
-            END DO
-            CLOSE( 10 )           
-          END IF
 
           !CALL Info('LevelProjector','Integrating a '&
           !    //TRIM(I2S(kmax))//'-node polygon',Level=12)            
@@ -7283,17 +7270,30 @@ END SUBROUTINE GetMaxDefs
 
           IF( kmax < 3 ) CYCLE
 
+          ElemHits = ElemHits + 1
           ActiveHits = ActiveHits + kmax
 
+          IF( kmax > MaxSubTriangles ) THEN
+            MaxSubTriangles = kmax
+            MaxSubElem = ind
+          END IF
+
           IF( SaveElem ) THEN
-            FileName = 'd'//TRIM(I2S(ElemHits))//'.dat'
+            FileName = 't'//TRIM(I2S(TimeStep))//'_b'//TRIM(I2S(ElemHits))//'.dat'
+            OPEN( 10,FILE=FileName)
+            DO i=1,nM
+              WRITE( 10, * ) NodesM % x(i), NodesM % y(i)
+            END DO
+            CLOSE( 10 )
+
+            FileName = 't'//TRIM(I2S(TimeStep))//'_d'//TRIM(I2S(ElemHits))//'.dat'
             OPEN( 10,FILE=FileName)
             DO i=1,nM
               WRITE( 10, * ) xt, yt
             END DO
             CLOSE( 10 )
 
-            FileName = 'e'//TRIM(I2S(ElemHits))//'.dat'
+            FileName = 't'//TRIM(I2S(TimeStep))//'_e'//TRIM(I2S(ElemHits))//'.dat'
             OPEN( 10,FILE=FileName)
             DO i=1,kmax
               WRITE( 10, * ) x(i), y(i)
@@ -7448,6 +7448,14 @@ END SUBROUTINE GetMaxDefs
           END IF
 
         END DO
+
+        IF( SaveElem ) THEN
+          FileName = 't'//TRIM(I2S(TimeStep))//'_n.dat'
+          OPEN( 10,FILE=Filename)
+          OPEN( 10,FILE=FileName)
+          WRITE( 10, * ) ElemHits 
+          CLOSE( 10 )
+        END IF
         
         TotCands = TotCands + ElemCands
         TotHits = TotHits + ElemHits
@@ -7485,6 +7493,11 @@ END SUBROUTINE GetMaxDefs
           //TRIM(I2S(InitialHits)),Level=10)
       CALL Info('LevelProjector','Number of active corners: '&
           //TRIM(I2S(ActiveHits)),Level=10)
+
+      CALL Info('LevelProjector','Number of most subelement corners: '&
+          //TRIM(I2S(MaxSubTriangles)),Level=10)
+      CALL Info('LevelProjector','Element of most subelement corners: '&
+          //TRIM(I2S(MaxSubElem)),Level=10)
 
       WRITE( Message,'(A,ES12.5)') 'Total reference area:',TotRefArea
       CALL Info('LevelProjector',Message,Level=8)
