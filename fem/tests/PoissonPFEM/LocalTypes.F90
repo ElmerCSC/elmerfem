@@ -459,7 +459,7 @@ CONTAINS
         INTEGER, ALLOCATABLE :: uncolored(:)
         INTEGER, ALLOCATABLE :: fc(:), ucptr(:), rc(:), rcnew(:)
 
-        INTEGER :: dualmaxdeg, i, v, w, uci, vli, vti, vcol, wcol, &
+        INTEGER :: dualmaxdeg, i, v, w, uci, wci, vli, vti, vcol, wcol, &
                    nrc, nunc, nthr, TID, allocstat
         INTEGER, PARAMETER :: VERTEX_PER_THREAD = 10
 
@@ -484,7 +484,7 @@ CONTAINS
         
         !$OMP PARALLEL SHARED(gn, dualmaxdeg, gptr, gind, colours, nunc, &
         !$OMP                 uncolored, ucptr, nthr) &
-        !$OMP PRIVATE(uci, vli, vti, v, w, vcol, wcol, fc, nrc, rc, rcnew, &
+        !$OMP PRIVATE(uci, vli, vti, v, w, wci, vcol, wcol, fc, nrc, rc, rcnew, &
         !$OMP         allocstat, TID) &
         !$OMP REDUCTION(max:nc) DEFAULT(NONE) NUM_THREADS(nthr)
 
@@ -565,8 +565,9 @@ CONTAINS
                 END IF
 
                 ! For each w\in adj(v) do
-                DO w=vli,vti
-                    IF (colours(gind(w))==vcol .AND. v>w) THEN
+                DO wci=vli,vti
+                    w = gind(wci)
+                    IF (colours(w)==vcol .AND. v>w) THEN
                         ! R <- R\bigcup {v} (thread local)
                         nrc = nrc + 1
                         rc(nrc)=v
@@ -585,6 +586,7 @@ CONTAINS
 
             ! U <- R
             uncolored(ucptr(TID):ucptr(TID+1)-1)=rc(1:nrc)
+            !$OMP BARRIER
 
             ! Colour the remaining vertices sequentially if the 
             ! size of the set of uncoloured vertices is small enough
@@ -599,6 +601,7 @@ CONTAINS
                     DO w=vli, vti
                         ! fc[colour[w]]<-v
                         wcol = colours(gind(w))
+                        IF (wcol /= 0) fc(wcol) = v
                     END DO
 
                     ! Find smallest permissible colour for vertex
