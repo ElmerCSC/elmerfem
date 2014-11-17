@@ -146,7 +146,7 @@ CONTAINS
         !$OMP DEFAULT(NONE)
 
         TID = 1
-        !$ TID = omp_get_thread_num()+1
+        !$ TID = OMP_GET_THREAD_NUM()+1
 
         ! Ensure that the vertex to element lists are sorted
         !$OMP DO 
@@ -446,35 +446,22 @@ CONTAINS
 
             END SUBROUTINE kWayMergeList
             
-            SUBROUTINE ComputeCRSIndexes(n, arr)
-                IMPLICIT NONE
-                
-                INTEGER, INTENT(IN) :: n
-                INTEGER :: arr(:)
-
-                INTEGER :: i, indi, indip
-
-                indi = arr(1)
-                arr(1)=1
-                DO i=1,n-1
-                    indip=arr(i+1)
-                    arr(i+1)=arr(i)+indi
-                    indi=indip
-                END DO
-                arr(n+1)=arr(n)+indi
-            END SUBROUTINE ComputeCRSIndexes
-
     END SUBROUTINE ElmerMeshToDualGraph
 
-    SUBROUTINE ElmerDualGraphColour(n, dualptr, dualind, nc, colours)
+    SUBROUTINE ElmerGraphColour(gn, gptr, gind, nc, colours)
         IMPLICIT NONE
         
-        INTEGER, INTENT(IN) :: n
-        INTEGER, INTENT(IN) :: dualptr(:), dualind(:)
+        INTEGER, INTENT(IN) :: gn
+        INTEGER, INTENT(IN) :: gptr(:), gind(:)
         INTEGER :: nc
         INTEGER, ALLOCATABLE :: colours(:)
 
-        INTEGER :: v, w, allocstat
+        INTEGER, ALLOCATABLE :: uncolored(:)
+        INTEGER, ALLOCATABLE :: fc(:), ucptr(:), rc(:), rcnew(:)
+
+        INTEGER :: dualmaxdeg, i, v, w, uci, vli, vti, vcol, wcol, &
+                   nrc, nunc, nthr, TID, allocstat
+        INTEGER, PARAMETER :: VERTEX_PER_THREAD = 10
 
         ! Iterative parallel greedy algorithm (Alg 2.) from 
         ! U. V. Catalyurek, J. Feo, A.H. Gebremedhin, M. Halappanavar, A. Pothen. 
@@ -483,64 +470,162 @@ CONTAINS
 
         ! Initialize number of colours, maximum degree of graph and number of 
         ! uncolored vertices
-        nc = 1
+        nc = 0
         dualmaxdeg = 0
-        nunc = n
-        
-        ! Allocate memory for colours of vertices
-        ALLOCATE(colours(n), uncolored(n), STAT=allocstat)
+        nunc = gn
+                
+        nthr = 1
+        !$ nthr = OMP_GET_MAX_THREADS()
+
+        ! Allocate memory for colours of vertices and thread colour pointers
+        ALLOCATE(colours(gn), uncolored(gn), ucptr(nthr+1), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
                                        'Unable to allocate colour maps!')
         
-        !$OMP PARALLEL SHARED(n, dualmaxdeg, dualptr, dualind, nc, colours, nunc, &
-        !$OMP                 uncolored) &
-        !$OMP PRIVATE(vli, vti, v, w, nfc, fc)
-        !$OMP DEFAULT(NONE)
+        !$OMP PARALLEL SHARED(gn, dualmaxdeg, gptr, gind, colours, nunc, &
+        !$OMP                 uncolored, ucptr, nthr) &
+        !$OMP PRIVATE(uci, vli, vti, v, w, vcol, wcol, fc, nrc, rc, rcnew, &
+        !$OMP         allocstat, TID) &
+        !$OMP REDUCTION(max:nc) DEFAULT(NONE) NUM_THREADS(nthr)
 
-        ! TODO: allocate thread local memory here (get size from dualptr first)
+        TID=1
+        !$ TID=OMP_GET_THREAD_NUM()+1
+
+        ! Get maximum vertex degree of the given graph
         !$OMP DO REDUCTION(max:dualmaxdeg)
-        DO v=1,n
-            dualmaxdeg = MAX(dualmaxdeg, dualptr(v+1)-dualptr(v))
+        DO v=1,gn
+            dualmaxdeg = MAX(dualmaxdeg, gptr(v+1)-gptr(v))
         END DO
         !$OMP END DO
-        ALLOCATE(fc(dualmaxdeg), STAT=allocstat)
-        ! Initialize forbidden colours
+
+        ! Greedy algorithm colours a given graph with at most max_{v\in V} deg(v) colours
+        ALLOCATE(fc(dualmaxdeg), rc(gn/nthr), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
+                                       'Unable to allocate local workspace!')
+        ! Initialize forbidden colour array (local to thread)
         fc = 0
 
         ! Initialize colours and uncolored entries
         !$OMP DO 
-        DO v=1,n
-            colours(v)=nc
+        DO v=1,gn
+            colours(v)=0
+            ! U <- V
             uncolored(v)=v
         END DO
         !$OMP END DO
-        
-        DO WHILE(dimc)
+
+        DO
             ! For each v\in U in parallel do
             !$OMP DO
-            DO v=1,n
-                vli=dualptr(v)
-                vti=dualptr(v+1)-1
+            DO uci=1,nunc
+                v = uncolored(uci)
+                vli = gptr(v)
+                vti = gptr(v+1)-1
 
                 ! For each w\in adj(v) do
                 DO w=vli, vti
                     ! fc[colour[w]]<-v
                     !$OMP ATOMIC READ
-                    wcol = colours(dualind(w))
-                    fc(wcol)=v
+                    wcol = colours(gind(w))
+                    IF (wcol /= 0) fc(wcol) = v
                 END DO
 
+                ! Find smallest permissible colour for vertex
                 ! c <- min\{i>0: fc[i]/=v \}
-                ! TODO
+                DO i=1,dualmaxdeg
+                    IF (fc(i) /= v) THEN
+                        !$OMP ATOMIC WRITE 
+                        colours(v) = i
+                        ! Maintain maximum colour
+                        nc = MAX(nc, i)
+                        EXIT
+                    END IF
+                END DO
             END DO
             !$OMP END DO
 
+            nrc = 0
+            ! For each v\in U in parallel do
+            !$OMP DO
+            DO uci=1,nunc
+                v = uncolored(uci)
+                vli = gptr(v)
+                vti = gptr(v+1)-1
+                vcol = colours(v)
+
+                ! Make sure that recolour array has enough storage for 
+                ! the worst case (all elements need to be added)
+                IF (SIZE(rc)<nrc+(vti-vli)) THEN
+                    ALLOCATE(rcnew(MAX(SIZE(rc)*2, nrc+(vti-vli))), STAT=allocstat)
+                    IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
+                                                   'Unable to allocate local workspace!')
+                    rcnew(1:nrc)=rc(1:nrc)
+                    DEALLOCATE(rc)
+                    CALL MOVE_ALLOC(rcnew, rc)
+                END IF
+
+                ! For each w\in adj(v) do
+                DO w=vli,vti
+                    IF (colours(gind(w))==vcol .AND. v>w) THEN
+                        ! R <- R\bigcup {v} (thread local)
+                        nrc = nrc + 1
+                        rc(nrc)=v
+                    END IF
+                END DO
+            END DO
+            !$OMP END DO NOWAIT
+              
+            ucptr(TID)=nrc
+            !$OMP BARRIER
+
+            !$OMP SINGLE
+            CALL ComputeCRSIndexes(nthr, ucptr)
+            nunc = ucptr(nthr+1)-1
+            !$OMP END SINGLE
+
+            ! U <- R
+            uncolored(ucptr(TID):ucptr(TID+1)-1)=rc(1:nrc)
+
+            ! Colour the remaining vertices sequentially if the 
+            ! size of the set of uncoloured vertices is small enough
+            IF (nunc < nthr*VERTEX_PER_THREAD) THEN
+                !$OMP SINGLE
+                DO uci=1,nunc
+                    v = uncolored(uci)
+                    vli = gptr(v)
+                    vti = gptr(v+1)-1
+                    
+                    ! For each w\in adj(v) do
+                    DO w=vli, vti
+                        ! fc[colour[w]]<-v
+                        wcol = colours(gind(w))
+                    END DO
+
+                    ! Find smallest permissible colour for vertex
+                    ! c <- min\{i>0: fc[i]/=v \}
+                    DO i=1,dualmaxdeg
+                        IF (fc(i) /= v) THEN
+                            ! Single thread, no collisions possible 
+                            colours(v) = i
+                            ! Maintain maximum colour
+                            nc = MAX(nc, i)
+                            EXIT
+                        END IF
+                    END DO
+                END DO
+                !$OMP END SINGLE NOWAIT
+
+                EXIT
+            END IF
+
         END DO
 
-        DEALLOCATE(forbiddencolours)
+        ! Deallocate thread local storage
+        DEALLOCATE(fc, rc)
         !$OMP END PARALLEL
 
-    END SUBROUTINE ElmerDualGraphColour
+        DEALLOCATE(uncolored, ucptr)
+    END SUBROUTINE ElmerGraphColour
 
     SUBROUTINE ConstructVertexToElementList(ne, nn, eptr, eind, VertexToElementList)
         IMPLICIT NONE
@@ -1495,6 +1580,25 @@ CONTAINS
         ! Assign what is left of the matrix to the final thread
         blkleads(nthr+1)=gn+1
     END SUBROUTINE ThreadLoadBalanceElementNeighbour
+
+    ! Given row counts, in-place compute CRS indices to data
+    SUBROUTINE ComputeCRSIndexes(n, arr)
+        IMPLICIT NONE
+                
+        INTEGER, INTENT(IN) :: n
+        INTEGER :: arr(:)
+        
+        INTEGER :: i, indi, indip
+        
+        indi = arr(1)
+        arr(1)=1
+        DO i=1,n-1
+            indip=arr(i+1)
+            arr(i+1)=arr(i)+indi
+            indi=indip
+        END DO
+        arr(n+1)=arr(n)+indi
+    END SUBROUTINE ComputeCRSIndexes
 
     ! Pad given integer value to be the next largest multiple of nbyte
     FUNCTION IntegerNBytePad(val, nbyte) RESULT(padval)

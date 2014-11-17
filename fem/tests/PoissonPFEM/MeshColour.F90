@@ -38,27 +38,26 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
     TYPE(Mesh_t), POINTER :: Mesh
 
     TYPE(VertexMap_t), TARGET :: DualGraph
-    INTEGER :: n
-    INTEGER, ALLOCATABLE :: dualptr(:), dualind(:)
+    INTEGER :: n, ngc
+    INTEGER, ALLOCATABLE :: dualptr(:), dualind(:), colours(:)
 #ifdef HAVE_TIMING
     REAL(kind=dp) :: t_start, t_end
 #endif    
 
     Mesh => GetMesh()
 
-    ! Test creation of dual mesh
+    ! Create dual mesh
 #ifdef HAVE_TIMING
     t_start = ftimer()
 #endif 
-    ! CALL MeshToDualGraph3(Mesh, DualGraph)
-    ! CALL MeshToDualGraph4(Mesh, n, dualptr, dualind)
     CALL ElmerMeshToDualGraph(Mesh, n, dualptr, dualind)
 #ifdef HAVE_TIMING
     t_end = ftimer()
     WRITE (*,'(A,ES12.3,A)') 'Dual graph creation total: ', t_end - t_start, ' sec.'
 #endif    
 
-    ! Test creation of dual mesh
+    ! Verify dual mesh
+#ifdef HAVE_METIS
 #ifdef HAVE_TIMING
     t_start = ftimer()
 #endif 
@@ -67,13 +66,23 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
     t_end = ftimer()
     WRITE (*,'(A,ES12.3,A)') 'Vertex map creation from array total: ', t_end - t_start, ' sec.'
 #endif    
-
-#ifdef HAVE_METIS
     CALL MeshToDualMetisVerify(Mesh, DualGraph)
-#endif
-
     CALL VertexMapDeleteAll(DualGraph)
+#endif 
 
+    ! Colour mesh
+#ifdef HAVE_TIMING
+    t_start = ftimer()
+#endif 
+    CALL ElmerGraphColour(n, dualptr, dualind, ngc, colours)
+#ifdef HAVE_TIMING
+    t_end = ftimer()
+    WRITE (*,'(A,ES12.3,A)') 'Graph colouring total: ', t_end - t_start, ' sec.'
+#endif    
+    WRITE (*,'(A,I0)') 'Number of colours created ngc=', ngc
+    CALL GraphColourVerify(n, dualptr, dualind, ngc, colours)
+
+    DEALLOCATE(dualptr, dualind, colours)
     CONTAINS
 
 #ifdef HAVE_METIS
