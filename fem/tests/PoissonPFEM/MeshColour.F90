@@ -243,6 +243,67 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
 
         END SUBROUTINE MeshToDualMetisVerify
 #endif
+        
+        SUBROUTINE GraphColourVerify(gn, gptr, gind, ngc, gc)
+            IMPLICIT NONE
+            
+            INTEGER, INTENT(IN) :: gn
+            INTEGER, INTENT(IN) :: gptr(:), gind(:)
+            INTEGER, INTENT(IN) :: ngc
+            INTEGER, INTENT(IN) :: gc(:)
+
+            INTEGER :: c, v, w, vli, vti, vcol, wind, wcol
+            REAL(KIND=dp) :: avg, dev
+            INTEGER :: ccount(ngc)
+            LOGICAL :: colourOk
+
+            ccount = 0
+            colourOk = .TRUE.
+            ! Verify and count colours (in serial!)
+            DO v=1,gn
+                vli = gptr(v)
+                vti = gptr(v+1)-1
+                ! Get colour of v
+                vcol = gc(v)
+                
+                ! Verify that colour is in range
+                IF (vcol<1 .OR. vcol>ngc) THEN
+                    WRITE (*,'(A,I0,A,I0,A)') 'ERROR: Graph vertex v=', v, &
+                                              ' colour ', vcol, ' out of range' 
+                    colourOk = .FALSE.
+                ELSE
+                    ccount(vcol)=ccount(vcol)+1
+                END IF
+
+                ! Check colour versus each neighbour
+                DO wind=vli,vti
+                    w = gind(wind)
+                    wcol = gc(w)
+                    IF (wcol == vcol) THEN
+                        WRITE (*,'(A,I0,A,I0,A,I0)') 'ERROR: Neighbouring vertices (v,w)=(', v,',', w, &
+                                                     ') of the same colour col=', vcol
+                        colourOk = .FALSE.
+                    END IF
+                END DO
+            END DO
+
+            ! Compute average
+            avg = REAL(SUM(ccount),dp)/ngc
+
+            WRITE (*,'(A,I0,/,A,I0,/,A,ES12.3)') 'Number of vertices, n=', n, &
+                                        'Number of coloured vertices, nc=', SUM(ccount), &
+                                        'Average vertices per colour avg=', avg
+            ! Print out statistics
+            DO c=1,ngc
+                dev = ABS(avg-ccount(c))
+                WRITE (*,'(A,I0,A,I0,A,ES12.3)') 'Colour c=', c, ', count=', ccount(c), ', average dev=', dev
+            END DO
+            IF (colourOk) THEN
+                WRITE (*,'(A)') 'Colouring seems ok.'
+            ELSE
+                WRITE (*,'(A)') 'ERROR: Colouring seems inconsistent!'
+            END IF
+        END SUBROUTINE GraphColourVerify
 
         SUBROUTINE MeshToDualGraph(Mesh, DualGraph)
             IMPLICIT NONE
