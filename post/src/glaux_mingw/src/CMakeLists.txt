@@ -1,7 +1,7 @@
 
 ########### install files ###############
 
-install(FILES  GL/glaux.h DESTINATION )
+install(FILES  GL/glaux.h DESTINATION  COMPONENT ElmerPost)
 
 
 

@@ -11,7 +11,7 @@ add_executable(sico2elmer ${sico2elmer_SRCS})
 
 target_link_libraries(sico2elmer)
 SET_TARGET_PROPERTIES(sico2elmer PROPERTIES LINKER_LANGUAGE Fortran)
-install(TARGETS sico2elmer DESTINATION bin)
+install(TARGETS sico2elmer DESTINATION bin COMPONENT ElmerPost)
 
 
 ########### install files ###############

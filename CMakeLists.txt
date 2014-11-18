@@ -287,6 +287,10 @@ IF(WITH_ELMERGUITESTER)
   MESSAGE(STATUS "  Building ElmerGUI tester")
 MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
+IF(WITH_ELMERPOST)
+  MESSAGE(WARNING "  Building ElmerPost")
+MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
 
 # Packaging
 if(NOT BYPASS_CPACK)

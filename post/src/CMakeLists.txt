@@ -52,7 +52,7 @@ IF(WIN32)
   target_link_libraries(ElmerPost gdi32 user32 advapi32)
 ENDIF(WIN32)
 
-install(TARGETS ElmerPost DESTINATION bin)
+install(TARGETS ElmerPost DESTINATION bin COMPONENT ElmerPost)
 
 
 ########### next target ###############
@@ -65,9 +65,9 @@ add_executable(QueryGLXExt ${QueryGLXExt_SRCS})
 
 target_link_libraries(QueryGLXExt ${OPENGL_LIBRARIES})
 
-install(TARGETS QueryGLXExt DESTINATION bin)
+install(TARGETS QueryGLXExt DESTINATION bin COMPONENT ElmerPost)
 
-install(DIRECTORY "lib" DESTINATION ${ELMER_POST_DATADIR})
+install(DIRECTORY "lib" DESTINATION ${ELMER_POST_DATADIR} COMPONENT ElmerPost)
 
 
 ########### next target ###############
