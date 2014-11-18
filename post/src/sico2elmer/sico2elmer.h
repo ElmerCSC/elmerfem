@@ -8,6 +8,7 @@ Includes
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "../../config.h"
 
 #if defined(HAVE_UNISTD_H)
 #include <unistd.h>
@@ -34,8 +35,8 @@ void postgrid_(float  *xi,
 	       int    *jmax_in,
 	       int    *kcmax_in,
 	       int    *ktmax_in,
-	       char   *runname,
-	       char   *ergnum,
+	       FC_CHAR_PTR(runname,i1), /*name of run*/
+	       FC_CHAR_PTR(ergnum,i2), /*number of file*/
 	       int    *maske,
 	       int    *flag);
 void pregrid_(float  *xi,
@@ -46,8 +47,8 @@ void pregrid_(float  *xi,
 	      int    *jmax_in,
 	      int    *kcmax_in,
 	      int    *ktmax_in,
-	      char   *runname,
-	      char   *ergnum,
+              FC_CHAR_PTR(runname,i1), /*name of run*/
+              FC_CHAR_PTR(ergnum,i2), /*number of file*/
 	      int    *maske,
 	      float  *deltaX,
 	      int    *flag);
@@ -75,8 +76,8 @@ void elmerdata_(int   *imax_in,
 		float *qy,
 		int   *n_cts,
 		int   *maske,
-		char  *runname,
-		char  *ergnum,
+                FC_CHAR_PTR(runname,i1), /*name of run*/
+                FC_CHAR_PTR(ergnum,i2), /*number of file*/
 		int   *flag);
 void asciidata_(float  *xi,
 		float  *eta,
@@ -105,8 +106,8 @@ void asciidata_(float  *xi,
 		float *qy,
 		int   *n_cts,
 		int   *maske,
-		char  *runname,
-		char  *ergnum,
+                FC_CHAR_PTR(runname,i1), /*name of run*/
+                FC_CHAR_PTR(ergnum,i2), /*number of file*/
 		int   *flag);
 int get_staggered_grid(float  *xi,
 		       float  *eta,
@@ -133,7 +134,7 @@ void  make_float_from_integer_scalar_field(int   *input_property,
 					   float *output_property, 
 					   int   number_of_nodes,
 					   int   reorder_ice_land_sea_mask);
-void readlog_c_(char   *runname,
+void readlog_c_(FC_CHAR_PTR(runname,i1), /*name of run*/
 		int    *imax,
 		int    *jmax,
 		int    *kcmax,
