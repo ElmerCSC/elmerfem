@@ -5664,7 +5664,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), OPTIONAL, TARGET :: DiagScaling(:)
     LOGICAL, OPTIONAL :: ApplyScaling, RhsScaling,ConstraintScaling
     INTEGER :: n,i,j
-    REAL(KIND=dp) :: bnorm
+    REAL(KIND=dp) :: bnorm,s
     COMPLEX(KIND=dp) :: DiagC
     LOGICAL :: ComplexMatrix, DoRHS, DoCM
     REAL(KIND=dp), POINTER  :: Diag(:)
@@ -5701,9 +5701,7 @@ END FUNCTION SearchNodeL
         END DO
       END IF
       
-      IF ( ParEnv % PEs > 1 ) THEN
-        CALL ParallelSumVector(A, Diag)
-      END IF    
+      IF ( ParEnv % PEs > 1 ) CALL ParallelSumVector(A, Diag)
 
       IF ( ComplexMatrix ) THEN
         DO i=1,n,2
@@ -5716,6 +5714,24 @@ END FUNCTION SearchNodeL
           END IF
         END DO
       ELSE
+        s = 0
+        IF (ANY(ABS(Diag)<=TINY(bnorm))) s=1
+        s = ParallelReduction(s,2) 
+
+        IF(s/=0) THEN 
+          Diag = 0
+          DO i=1,n
+            j = A % Diag(i)
+            IF (j>0) Diag(i) = A % Values(j)
+
+            IF ( ABS(Diag(i)) <= TINY(bnorm) ) THEN
+              Diag(i) = SUM( ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)) )
+            END IF
+          END DO
+
+          IF ( ParEnv % PEs > 1 ) CALL ParallelSumVector(A, Diag)
+        END IF
+
         DO i=1,n
           IF ( ABS(Diag(i)) > TINY(bnorm) ) THEN
             Diag(i) = 1.0_dp / SQRT(ABS(Diag(i)))
@@ -7296,7 +7312,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
-              EmptyRow, ComplexSystem
+              EmptyRow, ComplexSystem, ConstraintScaling
   SAVE MultiplierValues, SolverPointer
   CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
 
@@ -7408,6 +7424,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   IF(ASSOCIATED(RestMatrix)) THEN
     NoEmptyRows = 0
 
+    ConstraintScaling = ListGetLogical(Solver % Values, 'Constraint Scaling',Found)
+    IF(ConstraintScaling) THEN
+      rowsum = ListGetConstReal( Solver % Values, 'Constraint Scale', Found)
+      IF(Found) RestMatrix % Values = RestMatrix % Values * rowsum
+    END IF
+
     DO i=RestMatrix % NumberOfRows,1,-1
       k=StiffMatrix % NumberOfRows
       IF(ASSOCIATED(AddMatrix)) k=MAX(k,AddMatrix % NumberOfRows)
@@ -7424,11 +7446,22 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       EmptyRow = .TRUE.
 
       rowsum = 0._dp
+      l = -1
       DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
+        IF(RestMatrix % Cols(j)==k) l=j
         rowsum = rowsum + ABS(RestMatrix % Values(j))
       END DO
 
       IF(rowsum>EPSILON(1._dp)) THEN
+        IF(ConstraintScaling) THEN
+          IF(l<=0.OR.l>0.AND.RestMatrix % Values(l)==0) THEN
+            DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
+              RestMatrix % Values(j) = RestMatrix % values(j)/rowsum
+            END DO
+            RestMatrix % RHS(i) = RestMatrix % RHS(i) / rowsum
+          END IF
+       END IF
+
         DO j=RestMatrix % Rows(i+1)-1,RestMatrix % Rows(i),-1
           Found = .TRUE.
 
@@ -7447,7 +7480,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             CALL AddToMatrixElement( CollectionMatrix, &
                RestMatrix % Cols(j), k, RestMatrix % Values(j))
           END IF
-
           CALL AddToMatrixElement( CollectionMatrix, &
                k, RestMatrix % Cols(j), RestMatrix % Values(j))
         END DO
@@ -7463,6 +7495,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         CollectionVector(k) = RestVector(i)
       END IF
     END DO
+
+
     IF( NoEmptyRows > 0 ) THEN
       CALL Info('SolveWithLinearRestriction',&
           'Constraint Matrix in partition '//TRIM(I2S(ParEnv % MyPe))// &
@@ -7515,7 +7549,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   IF(CollectionMatrix % FORMAT==MATRIX_LIST) &
     CALL List_toCRSMatrix(CollectionMatrix)
-
 
   CALL Info( 'SolveWithLinearRestriction', 'CollectionMatrix done', Level=5 )
 
