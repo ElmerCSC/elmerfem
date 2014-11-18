@@ -2556,7 +2556,7 @@ CONTAINS
      INTEGER, TARGET :: Perm(:)    !< The node reordering info
      !------------------------------------------------------------------------------
      INTEGER :: i,j,k,i2,j2,k2,n,u,v,node,totsize,nodesize,bc_ind,&
-         nnodes,nlen,TargetBC
+         nnodes,nlen
      INTEGER, POINTER :: PPerm(:)
      INTEGER, ALLOCATABLE :: InvInvPerm(:)
      LOGICAL :: Found, Found2, AddRhs, AddCoeff, AddRes
@@ -2597,7 +2597,6 @@ CONTAINS
        AddCoeff = ListCheckPresent( BC,'Mortar BC Coefficient '//Name(1:nlen))
        AddRes = ListCheckPresent( BC,'Mortar BC Resistivity '//Name(1:nlen))
        AddRhs = ListCheckPresent( BC,'Mortar BC Offset '//Name(1:nlen))
-
        IF( AddRhs ) THEN
          IF( .NOT. ASSOCIATED( Projector % Rhs ) ) THEN
            CALL Info('SetWeightedProjectorJump','Allocating projector rhs')
@@ -2610,8 +2609,6 @@ CONTAINS
          Projector => Projector % ConstraintMatrix
          CYCLE
        END IF
-
-       TargetBC = ListGetInteger( BC,'Mortar BC',Found ) 
 
        CALL Info('SetWeightedProjectorJump','Setting jump to mortar projector in BC '&
            //TRIM(I2S(bc_ind)),Level=7)
@@ -2650,29 +2647,19 @@ CONTAINS
          Left => Element % BoundaryInfo % Left
          Right => Element % BoundaryInfo % Right 
         
-         IF( TargetBC > 0 ) THEN
-           IF( ASSOCIATED( Left ) ) THEN
-             IF( Left % PartIndex /= ParEnv % myPE ) CYCLE
-           ELSE IF ( ASSOCIATED( Right ) ) THEN
-             IF( Left % PartIndex /= ParEnv % myPE ) CYCLE
-           ELSE
-             CYCLE
-           END IF
-         ELSE
-           ! This case is for the case when TargetBC = 0 i.e. for Discontinuous BC
-           ! These are conditions that resulted to creation of zero 
-           ! constraint matrix entries in this partition so no need to do them.
-           IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
-             CYCLE
-           END IF
-           
-           ! For this we have a zero mass matrix entry so don't bother to add zero
-           IF( Left % PartIndex /= ParEnv % myPE .AND. &
-               Right % PartIndex /= ParEnv % myPe ) THEN
-             CYCLE
-           END IF
+         ! These are conditions that resulted to creation of zero 
+         ! constraint matrix entries in this partition so no need to do them.
+         IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
+           CYCLE
+         END IF         
+
+         ! For this we have a zero mass matrix entry so don't bother to add zero
+         IF( Left % PartIndex /= ParEnv % myPE .AND. &
+             Right % PartIndex /= ParEnv % myPe ) THEN
+           CYCLE
          END IF
 
+         
          nnodes = Element % TYPE % NumberOfNodes
          DO u=1, nnodes
            node = Element % NodeIndexes(u)
@@ -2695,6 +2682,7 @@ CONTAINS
                //Name(1:nlen),node, Found )
            IF( AddRhs ) voff = ListGetRealAtNode( BC,'Mortar BC Offset '&
                //Name(1:nlen),node, Found )        
+
 
            DO j = Projector % Rows(i),Projector % Rows(i+1)-1
 
@@ -5719,13 +5707,12 @@ END FUNCTION SearchNodeL
         s = ParallelReduction(s,2) 
 
         IF(s/=0) THEN 
-          Diag = 0
           DO i=1,n
-            j = A % Diag(i)
-            IF (j>0) Diag(i) = A % Values(j)
-
             IF ( ABS(Diag(i)) <= TINY(bnorm) ) THEN
               Diag(i) = SUM( ABS(A % Values(A % Rows(i):A % Rows(i+1)-1)) )
+            ELSE
+              j = A % Diag(i)
+              IF (j>0) Diag(i) = A % Values(j)
             END IF
           END DO
 
