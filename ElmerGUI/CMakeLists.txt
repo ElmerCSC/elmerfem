@@ -9,6 +9,7 @@ SET(WITH_MATC FALSE CACHE BOOL "ElmerGUI: Use MATC for internal operations in po
 SET(WITH_PARAVIEW FALSE CACHE BOOL "ElmerGUI: Use ParaView for postprocessing?")
 SET(WITH_VTK FALSE CACHE BOOL "ElmerGUI: Use VTK for postprocessing?")
 SET(WITH_QWT FALSE CACHE BOOL "ElmerGUI: Use QWT for convergence monitor?")
+SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "ElmerGUI: Include ElmerGUIlogger")
 
 
 MESSAGE(STATUS "------------------------------------------------")
@@ -76,6 +77,10 @@ ENDIF()
 
 ADD_SUBDIRECTORY(netgen)
 ADD_SUBDIRECTORY(Application)
+
+IF(WITH_ELMERGUILOGGER)
+  ADD_SUBDIRECTORY(../ElmerGUIlogger)
+ENDIF(WITH_ELMERGUILOGGER)
 
 IF(WIN32)
   INCLUDE(cmake/windows_bundle.cmake)
