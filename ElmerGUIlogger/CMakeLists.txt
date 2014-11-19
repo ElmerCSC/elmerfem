@@ -1,18 +1,17 @@
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 SET(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules")
+MESSAGE(STATUS "------------------------------------------------")
+FIND_PACKAGE(Qt4 COMPONENTS QtOpenGL QtXml QtScript QtGui QtCore REQUIRED)
+MESSAGE(STATUS "  [ElmerGUIlogger] Qt4:               " ${Qt4_FOUND})
+MESSAGE(STATUS "  [ElmerGUIlogger] Qt4_LIBRARIES:     " ${Qt4_LIBRARY})
+MESSAGE(STATUS "------------------------------------------------")
 IF(ElmerGUIloggerSTANDALONE)
   PROJECT(ElmerGUIlogger CXX C)
-
-  MESSAGE(STATUS "------------------------------------------------")
-  FIND_PACKAGE(Qt4 COMPONENTS QtOpenGL QtXml QtScript QtGui QtCore REQUIRED)
-  MESSAGE(STATUS "  [ElmerGUIlogger] Qt4:               " ${Qt4_FOUND})
-  MESSAGE(STATUS "  [ElmerGUIlogger] Qt4_LIBRARIES:     " ${Qt4_LIBRARY})
-  MESSAGE(STATUS "------------------------------------------------")
-
   IF(WIN32)
     INCLUDE(cmake/windows_bundle.cmake)
   ENDIF(WIN32)
 ENDIF(ElmerGUIloggerSTANDALONE)
+
 
 SET(CMAKE_INCLUDE_CURRENT_DIR ON)
 SET(CMAKE_AUTOMOC ON)
@@ -26,6 +25,7 @@ SET(RC_FILE ElmerGUIlogger.rc)
 
 
 QT4_ADD_RESOURCES(UI_RESOURCES ElmerGUIlogger.qrc)
+MESSAGE(WARNING "QT_USE_FILE: ${QT_USE_FILE}")
 INCLUDE(${QT_USE_FILE})
 ADD_DEFINITIONS(${QT_DEFINITIONS})
 

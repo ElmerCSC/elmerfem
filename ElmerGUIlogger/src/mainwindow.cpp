@@ -28,7 +28,7 @@
  *****************************************************************************
  *                                                                           *
  *  Authors: Mikko Lyly, Juha Ruokolainen and Peter Råback                   *
- *  Small fixes: Boris Pek                                                   *
+ *  Small fixes: Boris Pek, Juhani Kataja                                    *
  *  Email:   Juha.Ruokolainen@csc.fi                                         *
  *  Web:     http://www.csc.fi/elmer                                         *
  *  Address: CSC - IT Center for Science Ltd.                                 *
@@ -135,9 +135,11 @@ void MainWindow::startElmerGUISlot()
 {
   textEdit->setTextColor(Qt::darkGreen);
 
-  textEdit->append("Starting ElmerGUI...");
+  textEdit->append("Starting ElmerGUI:");
+  QString ELMERGUI_BIN = QCoreApplication::applicationDirPath() + "/ElmerGUI";
+  textEdit->append(ELMERGUI_BIN);
 
-  elmerGUI->start("ElmerGUI");
+  elmerGUI->start(ELMERGUI_BIN);
 
   if(!elmerGUI->waitForStarted()) {
     textEdit->setTextColor(Qt::darkGreen);
