@@ -178,7 +178,7 @@
 #undef HAVE_UNISTD_H
 
 /* Define to 1 if you have the <windows.h> header file. */
-#undef HAVE_WINDOWS_H
+#cmakedefine HAVE_WINDOWS_H
 
 /* Define to 1 if the system has the type `_Bool'. */
 #undef HAVE__BOOL
@@ -194,7 +194,9 @@
 #undef LSTAT_FOLLOWS_SLASHED_SYMLINK
 
 /* Detected platform. */
-#undef MINGW32
+#cmakedefine MINGW32
+/* #cmakedefine WIN32 */
+#define __WIN32__ @WIN32@
 
 /* Name of package */
 #undef PACKAGE
@@ -249,7 +251,7 @@
 #undef VERSION
 
 /* Detected platform2. */
-#undef WIN32
+/* #undef WIN32 */
 
 /* Number of bits in a file offset, on hosts where this is settable. */
 #undef _FILE_OFFSET_BITS

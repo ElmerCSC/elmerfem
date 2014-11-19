@@ -3,11 +3,18 @@ include_directories(${CMAKE_BINARY_DIR}/src)
 include_directories(${CMAKE_BINARY_DIR}/src/camera)
 
 
-INCLUDE_DIRECTORIES( ${TCL_INCLUDE_PATH})
+INCLUDE_DIRECTORIES(${TCL_INCLUDE_PATH} ${TK_INCLUDE_PATH})
 
 
+IF(NOT(WIN32))
 add_subdirectory(tk)
-add_subdirectory(glaux)
+ENDIF(NOT(WIN32))
+
+IF(NOT(MINGW))
+  add_subdirectory(glaux)
+ELSE()
+  add_subdirectory(glaux_mingw)
+ENDIF(NOT(MINGW))
 add_subdirectory(camera)
 add_subdirectory(graphics)
 add_subdirectory(modules)
@@ -20,31 +27,44 @@ add_subdirectory(elements)
 
 ########### next target ###############
 
-SET(ElmerPost_SRCS
-   ElmerPost.c
-   elmerpost.h
-   geometry.c
-   geometry.h
-   LUDecomp.c
-   second.c
-   cplusplus.cpp
-   fttext.cpp
-   teksti.c
-   ElmerPost.c
-   elmerpost.h
-   geometry.c
-   geometry.h
-   LUDecomp.c
-   second.c
-   cplusplus.cpp
-   fttext.cpp
-   ElmerPost-res.rc
-)
+IF(NOT(WIN32))
+  SET(ElmerPost_SRCS
+    ElmerPost.c
+    elmerpost.h
+    geometry.c
+    geometry.h
+    LUDecomp.c
+    second.c
+    cplusplus.cpp
+    fttext.cpp
+    teksti.c)
+ELSEIF(MINGW AND WIN32)
+  SET(ElmerPost_SRCS
+    ElmerPost.c
+    elmerpost.h
+    geometry.c
+    geometry.h
+    LUDecomp.c
+    second.c
+    cplusplus.cpp
+    fttext.cpp
+    ElmerPost-res.rc
+    )
+ENDIF()
+
+
+IF(MINGW AND WIN32)
+  SET(CMAKE_RC_COMPILER_INIT windres)
+  ENABLE_LANGUAGE(RC)
+  SET(CMAKE_RC_COMPILE_OBJECT
+    "<CMAKE_RC_COMPILER> <FLAGS> -O coff <DEFINES> -i <SOURCE> -o <OBJECT>")
+  #SET(SOURCES ${SOURCES} ElmerGUI.rc)
+ENDIF()
 
 add_executable(ElmerPost ${ElmerPost_SRCS})
 
 target_link_libraries(ElmerPost camera elements module objects visuals graphics
-  glaux tk camera elements module objects visuals graphics glaux tk camera
+  glaux camera elements module objects visuals graphics glaux camera
   elements module objects visuals graphics glaux ${OPENGL_LIBRARIES} ${TCL_LIBRARY} ${TK_LIBRARY}
   matc m)
 
@@ -56,16 +76,17 @@ install(TARGETS ElmerPost DESTINATION bin COMPONENT ElmerPost)
 
 
 ########### next target ###############
+IF(NOT(WIN32))
+  SET(QueryGLXExt_SRCS
+    QueryGLXExt.c
+    )
 
-SET(QueryGLXExt_SRCS
-   QueryGLXExt.c
-)
+  add_executable(QueryGLXExt ${QueryGLXExt_SRCS})
 
-add_executable(QueryGLXExt ${QueryGLXExt_SRCS})
+  target_link_libraries(QueryGLXExt ${OPENGL_LIBRARIES} COMPONENT ElmerPost)
 
-target_link_libraries(QueryGLXExt ${OPENGL_LIBRARIES})
-
-install(TARGETS QueryGLXExt DESTINATION bin COMPONENT ElmerPost)
+  install(TARGETS QueryGLXExt DESTINATION bin)
+ENDIF(NOT(WIN32))
 
 install(DIRECTORY "lib" DESTINATION ${ELMER_POST_DATADIR} COMPONENT ElmerPost)
 
