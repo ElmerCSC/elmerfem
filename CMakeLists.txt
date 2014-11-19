@@ -31,6 +31,7 @@ SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
+SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
 SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
 
@@ -220,6 +221,10 @@ IF(WITH_ELMERGUITESTER)
   ADD_SUBDIRECTORY(ElmerGUItester)
 ENDIF(WITH_ELMERGUITESTER)
 
+IF(WITH_ELMERGUILOGGER)
+  ADD_SUBDIRECTORY(ElmerGUIlogger)
+ENDIF(WITH_ELMERGUILOGGER)
+
 #INCLUDE(FeatureSummary)
 #FEATURE_SUMMARY(WHAT ENABLED_FEATURES
 #  INCLUDE_QUIET_PACKAGES
@@ -285,7 +290,12 @@ ENDIF()
 
 IF(WITH_ELMERGUITESTER)
   MESSAGE(STATUS "  Building ElmerGUI tester")
-MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF()
+
+IF(WITH_ELMERGUILOGGER)
+  MESSAGE(STATUS "  Building ElmerGUI logger")
+  MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
 
 # Packaging
