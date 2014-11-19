@@ -139,7 +139,7 @@ void MainWindow::startElmerGUISlot()
   QString ELMERGUI_BIN = QCoreApplication::applicationDirPath() + "/ElmerGUI";
   textEdit->append(ELMERGUI_BIN);
 
-  elmerGUI->start(ELMERGUI_BIN);
+  elmerGUI->start(ELMERGUI_BIN, QStringList());
 
   if(!elmerGUI->waitForStarted()) {
     textEdit->setTextColor(Qt::darkGreen);
