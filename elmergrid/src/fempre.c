@@ -149,7 +149,7 @@ static void Instructions()
   printf("-removeunused        : remove nodes that are not used in any element\n");
   printf("-bulkorder           : renumber materials types from 1 so that every number is used\n");
   printf("-boundorder          : renumber boundary types from 1 so that every number is used\n");
-  printf("-autoclean           : this performs the united action of the three above\n");
+  printf("-autoclean           : this performs the united action of the four above\n");
   printf("-bulkbound int[3]    : set the intersection of materials [int1 int2] to be boundary int3\n");
   printf("-boundbound int[3]   : set the intersection of boundaries [int1 int2] to be boundary int3\n");
   printf("-bulktype int[3]     : set material types in interval [int1 int2] to type int3\n");
