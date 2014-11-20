@@ -33,6 +33,10 @@ SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
 SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
 SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
+SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
+
+MARK_AS_ADVANCED(WITH_ELMERPOST)
+
 
 if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
   CMAKE_POLICY(SET CMP0022 OLD)
@@ -287,6 +291,7 @@ IF(WITH_ELMERGUITESTER)
   MESSAGE(STATUS "  Building ElmerGUI tester")
 MESSAGE(STATUS "------------------------------------------------")
 ENDIF()
+
 IF(WITH_ELMERPOST)
   MESSAGE(WARNING "  Building ElmerPost")
 MESSAGE(STATUS "------------------------------------------------")
