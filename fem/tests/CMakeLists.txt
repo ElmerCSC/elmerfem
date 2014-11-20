@@ -17,7 +17,22 @@ CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/runtests.in.cmake
 # SET(ENV{ELMER_LIB} "${CMAKE_BINARY_DIR}/fem/src")
 # SET(ENV{ELMER_HOME} "${CMAKE_BINARY_DIR}/fem/src")
 
-INCLUDE(test_subdirs.cmake)
+#INCLUDE(test_subdirs.cmake)
+
+MACRO(SUBDIRLIST result curdir)
+  FILE(GLOB children RELATIVE ${curdir} ${curdir}/*)
+  SET(dirlist "")
+  FOREACH(child ${children})
+    IF(IS_DIRECTORY ${curdir}/${child})
+        LIST(APPEND dirlist ${child})
+    ENDIF()
+  ENDFOREACH()
+  SET(${result} ${dirlist})
+ENDMACRO()
+SUBDIRLIST(SUBDIRS ${CMAKE_CURRENT_SOURCE_DIR})
+FOREACH(subdir ${SUBDIRS})
+  ADD_SUBDIRECTORY(${subdir})
+ENDFOREACH()
 
 IF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
   INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/. 

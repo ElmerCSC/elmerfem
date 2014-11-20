@@ -1,17 +1,9 @@
 #!/usr/bin/python
-import os, fnmatch, re, types, subprocess
+import os, fnmatch, re, types, subprocess, sys
+
+DEFAULT_BUILD_DIR="/home/jkataja/src/elmer/build"
 
 ##################################
-src_dir = "/home/jkataja/src/elmer/elmerfem/fem/tests"
-dirs = os.walk('.')
-
-test_root = dirs.next()
-test_dirs = test_root[1]
-
-build_dir = "/home/jkataja/src/elmer/build/fem/tests"
-build_dirs = os.walk(build_dir)
-build_root = build_dirs.next()
-build_dirs = build_root[1]
 
 ignore_file_glob = ['*.swp','Makefile','*.cmake',\
         'CMakeLists.txt', '*.o','*.sif']
@@ -33,10 +25,10 @@ include(${TEST_SOURCE}/../test_macros.cmake)
 RUN_ELMER_TEST()
 """
 
-failed_tests = []
-with open("/home/jkataja/Desktop/failed",'r') as failedfile:
-    failed_tests = map(str.rstrip, failedfile.readlines())
-    failedfile.close()
+#failed_tests = []
+#with open("/home/jkataja/Desktop/failed",'r') as failedfile:
+    #failed_tests = map(str.rstrip, failedfile.readlines())
+    #failedfile.close()
 
 ##################################
 
@@ -83,29 +75,6 @@ def parse_makefile(makefilename):
     return makefiledict
 
 
-def append_subdirectory(subdirfname, testname):
-    try:
-        with open(subdirfname, 'r') as subdirf:
-            for line in subdirf:
-                if fnmatch.fnmatchcase(line, testname):
-                    subdirf.close()
-                    return True
-
-    except IOError:
-        with open(subdirfname, 'w') as subdirf:
-            subdirf.write("# Automatically generated file\n")
-            subdirf.write("ADD_SUBDIRECTORY(%s)\n" %(testname))
-            subdirf.close()
-            return True
-
-    with open(subdirfname, 'a') as subdirf:
-        subdirf.write("ADD_SUBDIRECTORY(%s)\n" %(testname))
-        subdirf.close()
-        return True
-
-    return False
-
-
 def increase_solver_n(testname, decrease=False):
     norm_re = re.compile('^(Solver )(\d)+( :: Reference Norm = Real )(\S*)')
     tol_re = re.compile("^(Solver )(\d)+( :: Reference Norm Tolerance = Real )(\S*)")
@@ -140,7 +109,8 @@ def increase_solver_n(testname, decrease=False):
         return lines
 
 
-def execute_test(testname, remake=True):
+def execute_test(testname, elmer_build_dir=DEFAULT_BUILD_DIR, remake=True):
+    build_dir = elmer_build_dir + "/fem/tests"
     if remake:
         makeval = subprocess.call(["make","-j4"], cwd=build_dir+"/../")
     process = subprocess.call("ctest", cwd=build_dir+"/"+testname)
@@ -238,7 +208,6 @@ def convert_test(testname):
     cmakelists_file.close()
     runtests_file.close()
 
-    append_subdirectory('test_subdirs.cmake',testname)
     return True
 
 
@@ -256,6 +225,12 @@ def fixtests(testlist):
     return helpless_tests
 
 if __name__ == '__main__':
-    print("hello, world!")
-    #output = map(convert_test, test_dirs)
-
+    if len(sys.argv) > 1:
+        try:
+            convert_test(sys.argv[1])
+        except Exception as e:
+            print(e)
+            print("Failed to convert %s"% (sys.argv[1]))
+    else:
+        print("Usage: convert_tests.py <test-directory>")
+        print("Convert traditional Elmer test to ctest (EXPERIMENTAL).")
