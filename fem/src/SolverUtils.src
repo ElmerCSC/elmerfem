@@ -1445,7 +1445,7 @@ CONTAINS
 
     LOGICAL :: Conditional
     LOGICAL, ALLOCATABLE :: DonePeriodic(:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: CondName, PassName, PassCondName
+    CHARACTER(LEN=MAX_NAME_LEN) :: CondName, DirName, PassName, PassCondName
 
     INTEGER :: NoNodes,NoDims,bf_id,nlen, NOFNodesFound, dim, &
         bndry_start, bndry_end, Upper
@@ -1456,6 +1456,11 @@ CONTAINS
     LOGICAL :: NodesFound, Passive, OffDiagonal, ApplyLimiter
     LOGICAL, POINTER :: LimitActive(:)
     TYPE(Variable_t), POINTER :: Var
+
+    INTEGER :: ind, ElemFirst, ElemLast, bf
+    REAL(KIND=dp) :: SingleVal
+    LOGICAL :: AnySingleBC, AnySingleBF
+
 
 !------------------------------------------------------------------------------
 ! These logical vectors are used to minimize extra effort in setting up different BCs
@@ -1719,6 +1724,7 @@ CONTAINS
     END IF
     DEALLOCATE(ActivePart, ActiveCond)
 
+
 !------------------------------------------------------------------------------
 ! Go through the pointwise Dirichlet BCs that are created on-the-fly
 ! Note that it is best that the coordinates are transformed to nodes using 
@@ -1861,9 +1867,6 @@ CONTAINS
           n = Element % TYPE % NumberOfNodes
           NodeIndexes => Element % NodeIndexes
           
-          ! should check perm/=0 first + compatible check in the SetLimiterValues:
-          ! IF( .NOT. ANY(LimitActive( NDofs*(Perm(NodeIndexes(1:n) )-1)+dof) ) ) CYCLE
-          
           IF( t > Model % NumberOfBulkElements ) THEN
             DO bc = 1,Model % NumberOfBCs
               IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
@@ -1881,6 +1884,91 @@ CONTAINS
       END DO
     END IF
     
+
+    ! Check the boundaries and body forces for possible single nodes BCs that are used to fixed 
+    ! the domain for undetermined equations. The loop is slower than optimal in the case that there is 
+    ! a large amount of different boundaries that have a node to set. 
+    !--------------------------------------------------------------------------------------------
+    DirName = TRIM(Name)//' Single Node'
+    AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
+    AnySingleBF = ListCheckPresentAnyBodyForce( Model, DirName )
+
+    IF( AnySingleBC .OR. AnySingleBF ) THEN
+      DO bc = 1,Model % NumberOfBCs  + Model % NumberOfBodyForces    
+
+        ! Make a distinction between BCs and BFs. 
+        ! These are treated in the same loop because most of the logic is still the same. 
+        IF( bc <= Model % NumberOfBCs ) THEN
+          ValueList => Model % BCs(BC) % Values
+          ElemFirst =  Model % NumberOfBulkElements + 1 
+          ElemLast =  Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+        ELSE
+          ValueList => Model % BodyForces(bc - Model % NumberOfBCs) % Values
+          ElemFirst =  1
+          ElemLast =  Model % NumberOfBulkElements
+        END IF
+
+        SingleVal = ListGetCReal( ValueList,DirName, GotIt) 
+        IF( .NOT. GotIt ) CYCLE
+        ind = ListGetInteger( ValueList,TRIM(Name)//' Single Node Index',GotIt )     
+        
+        ! On the first time find a one single uniquely defined node for setting 
+        ! the value. In parallel it will be an unshared node with the highest possible 
+        ! node number 
+        IF( .NOT. GotIt ) THEN        
+
+          ind = 0
+          DO t = ElemFirst, ElemLast
+            Element => Model % Elements(t)
+            n = Element % TYPE % NumberOfNodes
+            NodeIndexes => Element % NodeIndexes
+
+            IF( bc <= Model % NumberOfBCs ) THEN
+              IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
+            ELSE
+              bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values,'Body Force',GotIt)
+              IF( bc - Model % NumberOfBCs /= bf ) CYCLE
+            END IF
+
+            DO i=1,n
+              j = NodeIndexes(i)
+              IF( Perm(j) == 0) CYCLE
+              IF( ParEnv % PEs > 1 ) THEN
+                IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
+              END IF
+              ind = j 
+              EXIT
+            END DO
+            IF( ind > 0 ) EXIT
+          END DO
+
+          ! Find the maximum partition that owns the node. 
+          ! It could be minimum also, just some convection is needed. 
+          IF( ParEnv % PEs > 1 ) THEN
+            k = -1
+            IF( ind > 0 ) k = ParEnv % MyPe          
+            k = NINT( ParallelReduction( 1.0_dp * k, 2 ) ) 
+            IF( k == -1 ) THEN
+              CALL Warn('SetDirichletBoundaries','Could not find node to set: '//TRIM(DirName))
+            END IF
+            IF( k /= ParEnv % MyPe ) ind = 0
+          ELSE
+            IF( ind == 0 ) THEN
+              CALL Warn('SetDirichletBoundaries','Could not find node to set: '//TRIM(DirName))
+            END IF
+          END IF
+
+          CALL ListAddInteger( ValueList,TRIM(Name)//' Single Node Index', ind )
+        END IF
+
+        ! Ok, if this is the partition where the single node to eliminate the floating should 
+        ! be eliminated then set it here.         
+        IF( ind > 0 ) THEN
+          CALL SetSinglePoint(ind,SingleVal)
+        END IF
+      END DO
+    END IF
+
 
 !------------------------------------------------------------------------------
 !   Take care of the matrix entries of passive elements
@@ -2088,7 +2176,7 @@ CONTAINS
       INTEGER :: i,j,k,k1,l
 
       IF ( DOF > 0 ) THEN
-        Work(1:n)  = ListGetReal( ValueList, Name, n, NodeIndexes, gotIt )
+        Work(1:n) = ListGetReal( ValueList, Name, n, NodeIndexes, gotIt )
       ELSE
         CALL ListGetRealArray( ValueList, Name, WorkA, n, NodeIndexes, gotIt )
       END IF
@@ -2102,53 +2190,86 @@ CONTAINS
         END IF
 
         DO j=1,n
+          k = Perm(NodeIndexes(j))
+          IF( k == 0 ) CYCLE
+
           IF ( Conditional .AND. Condition(j) < 0.0d0 ) CYCLE
           IF ( NodeIndexes(j) > SIZE(Perm) .OR. NodeIndexes(j) < 1 ) THEN
             CALL Warn('SetDirichletBoundaries','Invalid Node Number')
             CYCLE
           END IF
 
-          k = Perm(NodeIndexes(j))
-
-          IF ( k > 0 ) THEN
-            IF ( DOF>0 ) THEN
-              k = OffSet + NDOFs * (k-1) + DOF
+          IF ( DOF>0 ) THEN
+            k = OffSet + NDOFs * (k-1) + DOF
+            IF ( A % FORMAT == MATRIX_SBAND ) THEN
+              CALL SBand_SetDirichlet( A,b,k,Work(j) )
+            ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
+              CALL CRS_SetSymmDirichlet( A,b,k,Work(j)/DiagScaling(k) )
+            ELSE
+              CALL ZeroRow( A,k )
+              IF( .NOT. OffDiagonal ) THEN
+                CALL SetMatrixElement( A,k,k,1.0d0 )
+                b(k) = Work(j)/DiagScaling(k)
+                IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
+              END IF
+            END IF
+          ELSE
+            DO l=1,MIN( NDOFs, SIZE(Worka,1) )
+              k1 = OffSet + NDOFs * (k-1) + l
               IF ( A % FORMAT == MATRIX_SBAND ) THEN
-                CALL SBand_SetDirichlet( A,b,k,Work(j) )
+                CALL SBand_SetDirichlet( A,b,k1,WorkA(l,1,j) )
               ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
-                CALL CRS_SetSymmDirichlet( A,b,k,Work(j)/DiagScaling(k) )
-              ELSE
-                CALL ZeroRow( A,k )
                 IF( .NOT. OffDiagonal ) THEN
-                  CALL SetMatrixElement( A,k,k,1.0d0 )
-                  b(k) = Work(j)/DiagScaling(k)
-                  IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
+                  CALL CRS_SetSymmDirichlet( A,b,k1,WorkA(l,1,j)/DiagScaling(k1))
+                END IF
+              ELSE
+                CALL ZeroRow( A,k1 )
+                IF(.NOT. OffDiagonal ) THEN
+                  CALL SetMatrixElement( A,k1,k1,1.0d0 )
+                  b(k1) = WorkA(l,1,j)/DiagScaling(k1)
+                  IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k1) = .TRUE.
                 END IF
               END IF
-            ELSE
-              DO l=1,MIN( NDOFs, SIZE(Worka,1) )
-                k1 = OffSet + NDOFs * (k-1) + l
-                IF ( A % FORMAT == MATRIX_SBAND ) THEN
-                  CALL SBand_SetDirichlet( A,b,k1,WorkA(l,1,j) )
-                ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
-                  IF( .NOT. OffDiagonal ) THEN
-                    CALL CRS_SetSymmDirichlet( A,b,k1,WorkA(l,1,j)/DiagScaling(k1))
-                  END IF
-                ELSE
-                  CALL ZeroRow( A,k1 )
-                  IF(.NOT. OffDiagonal ) THEN
-                    CALL SetMatrixElement( A,k1,k1,1.0d0 )
-                    b(k1) = WorkA(l,1,j)/DiagScaling(k1)
-                    IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k1) = .TRUE.
-                  END IF
-                END IF
-              END DO
-            END IF
+            END DO
           END IF
+
         END DO
       END IF
 
     END SUBROUTINE SetPointValues
+
+
+!------------------------------------------------------------------------------
+!> Set values related to one single point
+!------------------------------------------------------------------------------
+  
+    SUBROUTINE SetSinglePoint(ind,val)
+      INTEGER :: ind
+      REAL(KIND=dp) :: val
+
+      INTEGER :: i,j,k,k1,l
+
+      k = Perm(ind)
+      IF( k == 0 ) THEN
+        CALL Warn('SetSinglePoint','This should not happe!')
+        RETURN
+      END IF
+      
+      k = OffSet + NDOFs * (k-1) + DOF
+      IF ( A % FORMAT == MATRIX_SBAND ) THEN
+        CALL SBand_SetDirichlet( A,b,k,val )
+      ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
+        CALL CRS_SetSymmDirichlet( A,b,k,val/DiagScaling(k) )
+      ELSE
+        CALL ZeroRow( A,k )
+        IF( .NOT. OffDiagonal ) THEN
+          CALL SetMatrixElement( A,k,k,1._dp )
+          b(k) = val / DiagScaling(k)
+          IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
+        END IF
+      END IF
+      
+    END SUBROUTINE SetSinglePoint
 
 !------------------------------------------------------------------------------
 !> Set values related to upper and lower limiters.
@@ -6209,7 +6330,7 @@ END FUNCTION SearchNodeL
               'Calculate Boundary Flux') ) CYCLE
         END IF
 
-        DO j=1,Element % Type % NumberOfNodes
+        DO j=1,Element % TYPE % NumberOfNodes
           ind = NodalLoads % Perm( Element % NodeIndexes(j) )
           IF( ind == 0 ) CYCLE
 
