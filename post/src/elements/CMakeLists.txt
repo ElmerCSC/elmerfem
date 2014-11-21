@@ -33,8 +33,8 @@ SET(elements_STAT_SRCS
 
 add_library(elements STATIC ${elements_STAT_SRCS})
 
-include_directories(${CMAKE_BINARY_DIR}/src/elements)
-include_directories(${CMAKE_SOURCE_DIR}/src/elements)
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 ########### install files ###############
 

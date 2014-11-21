@@ -1,5 +1,6 @@
 
 ########### next target ###############
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
 SET(graphics_STAT_SRCS
    graphics.c
