@@ -124,6 +124,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   END IF
   NonlinearTol  = GetConstReal( SolverParams, &
        'Nonlinear System Convergence Tolerance',    Found )
+  IF ( .NOT.Found ) NonlinearTol = 1.0e-6
   NonlinearIter = GetInteger(   SolverParams, &
        'Nonlinear System Max Iterations', Found )
   IF ( .NOT.Found ) NonlinearIter = 1
