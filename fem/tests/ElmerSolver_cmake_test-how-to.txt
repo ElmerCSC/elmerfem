@@ -1,5 +1,7 @@
 ElmerSolver cmake test case how-to 
 ==================================
+Juhani Kataja / CSC, 2014/11
+
 
 The aim of this document is to describe how to create a minimalistic test
 problem using cmake/ctest. There are two ways of creating a test case utilizing
@@ -53,13 +55,7 @@ execute_process(COMMAND <command-name> <arg1> <arg2> ...)
 RUN_ELMER_TEST()
 ################################################################################
 
-5)    Finally, modify file "fem/tests/test-subdirs.cmake" by adding the
-      following line to it
-################################################################################
-add_subdirectory(<testname>)
-################################################################################
-
-6)    To run the test, compile Elmer and run "ctest -R <testname>" in the build
+5)    To run the test, compile Elmer and run "ctest -R <testname>" in the build
       directory (This will run all test matching <testname>)
 
 
