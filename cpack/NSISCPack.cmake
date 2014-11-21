@@ -40,6 +40,9 @@ IF(WIN32)
   SET(CPACK_COMPONENT_ELMERGUI_SAMPLES_DISPLAY_NAME "ElmerGUI samples")
   SET(CPACK_COMPONENT_ELMERGUI_SAMPLES_DESCRIPTION "Geometry samples for ElmerGUI")
 
+  SET(CPACK_COMPONENT_ELMERPOST_DISPLAY_NAME "ElmerPost")
+  SET(CPACK_COMPONENT_ELMERPOST_DESCRIPTION "A post processor for Elmer")
+
   SET(CPACK_NSIS_COMPONENT_INSTALL TRUE)
-  SET(CPACK_COMPONENT_INSTALL_ALL "elmergui gfortran_minimal Unspecified elmergui_samples")
+  SET(CPACK_COMPONENT_INSTALL_ALL "elmergui gfortran_minimal Unspecified elmergui_samples ElmerPost")
 ENDIF(WIN32)
