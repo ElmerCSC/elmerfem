@@ -32,7 +32,9 @@ INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/src)
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/../matc/src)
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/src)
 
-add_subdirectory(matc)
+IF(NOT(TARGET matc))
+  add_subdirectory(matc)
+ENDIF(NOT(TARGET matc))
 add_subdirectory(src)
 
 INSTALL(DIRECTORY "doc/" DESTINATION "${ELMER_POST_DATADIR}/help" COMPONENT ElmerPost)

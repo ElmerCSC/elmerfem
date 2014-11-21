@@ -58,15 +58,12 @@ IF(MINGW AND WIN32)
   ENABLE_LANGUAGE(RC)
   SET(CMAKE_RC_COMPILE_OBJECT
     "<CMAKE_RC_COMPILER> <FLAGS> -O coff <DEFINES> -i <SOURCE> -o <OBJECT>")
-  #SET(SOURCES ${SOURCES} ElmerGUI.rc)
 ENDIF()
 
 add_executable(ElmerPost ${ElmerPost_SRCS})
 
 target_link_libraries(ElmerPost camera elements module objects visuals graphics
-  glaux camera elements module objects visuals graphics glaux camera
-  elements module objects visuals graphics glaux ${OPENGL_LIBRARIES} ${TCL_LIBRARY} ${TK_LIBRARY}
-  matc m)
+  glaux matc m ${OPENGL_LIBRARIES} ${TCL_LIBRARY} ${TK_LIBRARY})
 
 IF(WIN32)
   target_link_libraries(ElmerPost gdi32 user32 advapi32)
@@ -83,7 +80,7 @@ IF(NOT(WIN32))
 
   add_executable(QueryGLXExt ${QueryGLXExt_SRCS})
 
-  target_link_libraries(QueryGLXExt ${OPENGL_LIBRARIES} COMPONENT ElmerPost)
+  target_link_libraries(QueryGLXExt ${OPENGL_LIBRARIES})
 
   install(TARGETS QueryGLXExt DESTINATION bin)
 ENDIF(NOT(WIN32))

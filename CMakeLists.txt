@@ -294,7 +294,8 @@ ENDIF()
 
 IF(WITH_ELMERPOST)
   MESSAGE(WARNING "  Building ElmerPost")
-MESSAGE(STATUS "------------------------------------------------")
+  MESSAGE(STATUS "------------------------------------------------")
+  ADD_SUBDIRECTORY(post)
 ENDIF()
 
 # Packaging
