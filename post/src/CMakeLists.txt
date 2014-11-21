@@ -1,6 +1,6 @@
-include_directories(${CMAKE_BINARY_DIR}/src/graphics)
-include_directories(${CMAKE_BINARY_DIR}/src)
-include_directories(${CMAKE_BINARY_DIR}/src/camera)
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/graphics)
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/camera)
 
 
 INCLUDE_DIRECTORIES(${TCL_INCLUDE_PATH} ${TK_INCLUDE_PATH})
@@ -63,7 +63,8 @@ ENDIF()
 add_executable(ElmerPost ${ElmerPost_SRCS})
 
 target_link_libraries(ElmerPost camera elements module objects visuals graphics
-  glaux matc m ${OPENGL_LIBRARIES} ${TCL_LIBRARY} ${TK_LIBRARY})
+  glaux ${OPENGL_LIBRARIES} ${TCL_LIBRARY} ${TK_LIBRARY} matc m)
+
 
 IF(WIN32)
   target_link_libraries(ElmerPost gdi32 user32 advapi32)

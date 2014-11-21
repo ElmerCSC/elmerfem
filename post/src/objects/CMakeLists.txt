@@ -1,5 +1,6 @@
 
 ########### next target ###############
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
 
 SET(objects_STAT_SRCS
    objects.c

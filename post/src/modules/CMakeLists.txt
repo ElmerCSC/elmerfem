@@ -1,5 +1,6 @@
 
 ########### next target ###############
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
 
 SET(module_STAT_SRCS
    matctcl.c

@@ -1,5 +1,6 @@
 
 ########### next target ###############
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
 
 SET(sico2elmer_SRCS
    sico2elmerc.c

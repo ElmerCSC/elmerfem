@@ -195,8 +195,8 @@
 
 /* Detected platform. */
 #cmakedefine MINGW32
-/* #cmakedefine WIN32 */
-#define __WIN32__ @WIN32@
+#cmakedefine __WIN32__ @WIN32@
+#cmakedefine WIN32
 
 /* Name of package */
 #undef PACKAGE

@@ -14,8 +14,8 @@ SET(glaux_STAT_SRCS
    xform.c
 )
 
-add_library(glaux STATIC ${glaux_STAT_SRCS})
-
+add_library(glaux ${glaux_STAT_SRCS})
+target_link_libraries(glaux tk)
 
 ########### install files ###############
 
