@@ -845,7 +845,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     ! If soft limiters are applied then also loads must be computed
     !------------------------------------------------------------------------------
-     IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
+     IF( ListGetLogical( Solver % Values,'Calculate Boundary Fluxes',Found) ) THEN
        CALL ListAddLogical( Solver % Values,'Calculate Loads',.TRUE.)
      END IF
 	    
@@ -880,7 +880,9 @@ CONTAINS
       END IF
     END IF
 
-    IF ( ListGetLogical( Solver % Values,'Nonlinear Apply Limiter', Found ) ) THEN
+    ! Create a additional variable for the limiters. For elasticity, for example
+    ! the variable will be the contact load. 
+    IF ( ListGetLogical( Solver % Values,'Apply Limiter', Found ) ) THEN
       Var_name = GetVarName(Solver % Variable) // ' Contact Load'
       Var => VariableGet( Solver % Mesh % Variables, var_name )
       IF ( .NOT. ASSOCIATED(Var) ) THEN

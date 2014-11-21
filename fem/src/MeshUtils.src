@@ -3867,15 +3867,16 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: Success
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,m,n,n1,n2,k1,k2,ind,Constraint,DIM
-    TYPE(Element_t), POINTER :: Element, Elements(:)
+    TYPE(Element_t), POINTER :: Element, Left, Right, Elements(:)
     LOGICAL :: ThisActive, TargetActive
     INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:), &
         InvPerm1(:), InvPerm2(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
-    LOGICAL :: OnTheFlyBC
+    LOGICAL :: OnTheFlyBC, CheckForHalo, HaloFound
 
     TYPE(Element_t), POINTER :: Parent,q
     INTEGER :: en, in
+    LOGICAL, ALLOCATABLE :: ActiveNode(:)
 
     CALL Info('CreateInterfaceMeshes','Making a list of elements at interface',Level=9)
 
@@ -3887,6 +3888,48 @@ END SUBROUTINE GetMaxDefs
     ! it has probably been created on-the-fly from a discontinuous boundary.
     OnTheFlyBC = ( Trgt > Model % NumberOfBCs )
 
+    ! In parallel we may have some excess halo elements. 
+    ! To eliminate them mark the nodes that are associated to elements truly owned. 
+    CheckForHalo = ( ParEnv % PEs > 1 )
+
+    ! This is just temporarily set to false always until the logic has been tested. 
+    CheckForHalo = .FALSE.
+
+    HaloFound = .FALSE.
+    IF( CheckForHalo ) THEN
+      ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+      ActiveNode = .FALSE.
+      DO i=1, Mesh % NumberOfBoundaryElements
+        Element => Elements(i)
+        IF (Element % TYPE % ElementCode<=200) CYCLE
+
+        Left => Element % BoundaryInfo % Left 
+        IF( ASSOCIATED( Left ) ) THEN
+          IF( Left % PartIndex == ParEnv % MyPe ) THEN
+            ActiveNode( Left % NodeIndexes ) = .TRUE.
+          ELSE
+            HaloFound = .TRUE.
+          END IF
+        END IF
+
+        Right => Element % BoundaryInfo % Right
+        IF( ASSOCIATED( Right ) ) THEN
+          IF( Right % PartIndex == ParEnv % MyPe ) THEN
+            ActiveNode( Right % NodeIndexes ) = .TRUE.
+          ELSE
+            HaloFound = .TRUE.
+          END IF
+        END IF
+      END DO
+
+      ! No halo element found on the boundary so no need to check them later
+      IF( .NOT. HaloFound ) THEN
+        DEALLOCATE( ActiveNode ) 
+        CheckForHalo = .FALSE.
+      END IF
+    END IF
+
+
     ! Interface meshes consist of boundary elements only    
     Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
 
@@ -3896,9 +3939,19 @@ END SUBROUTINE GetMaxDefs
     n1 = 0
     n2 = 0
     DO i=1, Mesh % NumberOfBoundaryElements
-      IF (Elements(i) % TYPE % ElementCode<=200) CYCLE
-      Constraint = Elements(i) % BoundaryInfo % Constraint
-      IF ( Model % BCs(This) % Tag == Constraint ) n1 = n1 + 1
+      Element => Elements(i)
+      IF (Element % TYPE % ElementCode<=200) CYCLE
+
+      Constraint = Element % BoundaryInfo % Constraint
+      IF ( Model % BCs(This) % Tag == Constraint ) THEN
+        IF( CheckForHalo ) THEN
+          IF( ANY(ActiveNode(Element % NodeIndexes) ) ) THEN
+            n1 = n1 + 1
+          END IF
+        ELSE
+          n1 = n1 + 1
+        END IF
+      END IF
       IF( OnTheFlyBC ) THEN
         IF( Trgt == Constraint ) n2 = n2 + 1
       ELSE
@@ -3941,7 +3994,13 @@ END SUBROUTINE GetMaxDefs
       
       Constraint = Element % BoundaryInfo % Constraint
       
-      ThisActive = ( Model % BCs(This) % Tag == Constraint )
+      ThisActive = ( Model % BCs(This) % Tag == Constraint ) 
+      IF( CheckForHalo ) THEN
+        IF( .NOT. ANY(ActiveNode(Element % NodeIndexes) ) ) THEN
+          ThisActive = .FALSE.
+        END IF
+      END IF
+
       IF( OnTheFlyBC ) THEN
         TargetActive = ( Trgt == Constraint )
       ELSE
@@ -4062,6 +4121,8 @@ END SUBROUTINE GetMaxDefs
       BMesh2 % Elements(i) % NodeIndexes = Perm2(BMesh2 % Elements(i) % NodeIndexes)
     END DO
     DEALLOCATE( Perm1, Perm2 )
+
+    IF( CheckForHalo ) DEALLOCATE( ActiveNode ) 
 
     Success = .TRUE.
 
@@ -7932,7 +7993,7 @@ END SUBROUTINE GetMaxDefs
         Element % NodeIndexes = NodePerm(Indexes(1:nn)) + NoOrigNodes
         NewFace => Find_Face( Right, Element )
         Element % NodeIndexes = Indexes(1:nn)
-
+ 
         ParentFound = ParentFound + 1
 
         OldMap => LGetEdgeMap( OldFace % TYPE % ElementCode / 100 )

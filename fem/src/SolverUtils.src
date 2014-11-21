@@ -1162,10 +1162,9 @@ CONTAINS
 !> Determine soft limiters set. This is called after the solution.
 !> and can therefore be active only on the 2nd nonlinear iteration round.
 !------------------------------------------------------------------------------
-   SUBROUTINE DetermineSoftLimiter( Solver, Nonlinear )
+   SUBROUTINE DetermineSoftLimiter( Solver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t) :: Solver
-     LOGICAL :: Nonlinear ! is the limiter nonlinear and requires updating of loads vector
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
      TYPE(variable_t), POINTER :: Var, LoadVar
@@ -1186,16 +1185,10 @@ CONTAINS
      Model => CurrentModel
      Var => Solver % Variable
      
-     IF( Nonlinear ) THEN
-       CALL Info('DetermineSoftLimiter','Determining soft limiter for nonlinear problems',Level=8)
-       LoadVar => VariableGet( Model % Variables, &
-           GetVarName(Var) // ' Contact Load',ThisOnly = .TRUE. )
-       CALL CalculateLoads( Solver, Solver % Matrix, Var % Values, Var % DOFs, .FALSE., LoadVar ) 
-     ELSE
-       CALL Info('DetermineSoftLimiter','Determining soft limiter using nodal loads',Level=8)
-       LoadVar => VariableGet( Model % Variables, &
-           GetVarName(Var) // ' Loads',ThisOnly = .TRUE. )
-     END IF
+     CALL Info('DetermineSoftLimiter','Determining soft limiter for nonlinear problems',Level=8)
+     LoadVar => VariableGet( Model % Variables, &
+         GetVarName(Var) // ' Contact Load',ThisOnly = .TRUE. )
+     CALL CalculateLoads( Solver, Solver % Matrix, Var % Values, Var % DOFs, .FALSE., LoadVar ) 
 
      IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
        CALL Fatal('DetermineSoftLimiter', &
@@ -1831,8 +1824,7 @@ CONTAINS
 !   Go through soft upper and lower limits
 !------------------------------------------------------------------------------
     Params => Model % Solver % Values
-    ApplyLimiter = ListGetLogical( Params,'Nonlinear Apply Limiter',GotIt) .OR. &
-        ListGetLogical( Params,'Apply Limiter',GotIt) 
+    ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt) 
 
     IF( Dof/=0 .AND. ApplyLimiter ) THEN
       CALL Info('SetDirichletBoundaries','Applying limiters',Level=10)
@@ -6089,6 +6081,13 @@ END FUNCTION SearchNodeL
     LOGICAL :: Found
 
 
+    REAL(KIND=dp), ALLOCATABLE :: BoundarySum(:), BufReal(:)
+    INTEGER, ALLOCATABLE :: BoundaryShared(:),BoundaryActive(:),DofSummed(:),BufInteg(:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: bc, ind, NoBoundaryActive, NoBCs, ierr
+    LOGICAL :: OnlyGivenBCs
+
+
     IF( .NOT. ASSOCIATED(NodalLoads) ) RETURN
     ALLOCATE( TempVector(Aaid % NumberOfRows) )
 
@@ -6109,7 +6108,6 @@ END FUNCTION SearchNodeL
     ELSE
       CALL MatrixVectorMultiply( Aaid, x, TempVector )
     END IF
-
 
     IF( ListGetLogical(Solver % Values, 'Calculate Energy Norm', Found) ) THEN
       Energy = 0._dp
@@ -6145,7 +6143,8 @@ END FUNCTION SearchNodeL
     END IF
 
 
-    DO This=1,CurrentModel % NumberOfBCs
+    NoBCs = CurrentModel % NumberOfBCs
+    DO This=1,NoBCs
       Projector => CurrentModel  % BCs(This) % PMatrix
       IF (ASSOCIATED(Projector))THEN
         DO DOF=1,DOFs
@@ -6179,6 +6178,122 @@ END FUNCTION SearchNodeL
     END DO
     DEALLOCATE( TempVector )
 
+
+    IF( ListGetLogical( Solver % Values,'Calculate Boundary Fluxes',Found ) ) THEN
+      CALL Info('CalculateLoads','Computing boundary fluxes from nodal loads',Level=6)
+
+      IF( Solver % Mesh % MaxEdgeDofs > 1 .OR. Solver % Mesh % MaxFaceDOFs > 1 ) THEN
+        CALL Warn('CalculateLoads','Boundary flux computation implemented only for nodes for now!')
+      END IF
+
+      ALLOCATE( BoundarySum( NoBCs * DOFs ), &
+          BoundaryActive( NoBCs ), &
+          BoundaryShared( NoBCs ), &
+          DofSummed( MAXVAL( NodalLoads % Perm ) ) )
+      BoundarySum = 0.0_dp
+      BoundaryActive = 0
+      BoundaryShared = 0
+      DofSummed = 0
+
+      OnlyGivenBCs = ListCheckPresentAnyBC( CurrentModel,'Calculate Boundary Flux')
+      
+      k = Solver % Mesh % NumberOfBulkElements
+      DO i = k+1,k + Solver % Mesh % NumberOfBoundaryElements
+        Element => Solver % Mesh % Elements(i)
+        bc = Element % BoundaryInfo % Constraint
+           
+        IF( bc == 0 ) CYCLE
+
+        IF( OnlyGivenBCs ) THEN
+          IF (.NOT. ListGetLogical( CurrentModel % BCs(bc) % Values,&
+              'Calculate Boundary Flux') ) CYCLE
+        END IF
+
+        DO j=1,Element % Type % NumberOfNodes
+          ind = NodalLoads % Perm( Element % NodeIndexes(j) )
+          IF( ind == 0 ) CYCLE
+
+          ! In this partition sum up only the true owners
+          IF ( ParEnv % PEs>1 ) THEN
+            IF ( AAid % ParallelInfo % NeighbourList(ind) % Neighbours(1) &
+                /= ParEnv % Mype ) CYCLE
+          END IF
+
+          ! Only sum each entry once. If there is a conflict we cannot 
+          ! really resolve it with the chosen method so just warn. 
+          IF( DofSummed(ind) == 0 ) THEN
+            BoundarySum( DOFs*(bc-1)+1 :DOFs*bc ) = BoundarySum( DOFs*(bc-1)+ 1:DOFs*bc ) + &
+                NodalLoads % Values( DOFs*(ind-1) + 1: DOFs * ind )
+            DofSummed( ind ) = bc
+            BoundaryActive( bc ) = 1
+          ELSE IF( bc /= DofSummed(ind) ) THEN
+            BoundaryShared(bc) = 1
+            BoundaryShared(DofSummed(ind)) = 1
+          END IF
+        END DO
+      END DO
+      
+
+      NoBoundaryActive = 0
+      IF( ParEnv % PEs > 1 ) THEN
+        ALLOCATE( BufInteg( NoBCs ), BufReal( NoBCs * DOFs ) )
+
+        BufInteg = BoundaryActive
+        CALL MPI_ALLREDUCE( BufInteg, BoundaryActive, NoBCs, MPI_INTEGER, &
+            MPI_SUM, ParEnv % ActiveComm, ierr )
+        
+        BufInteg = BoundaryShared
+        CALL MPI_ALLREDUCE( BufInteg, BoundaryShared, NoBCs, MPI_INTEGER, &
+            MPI_SUM, ParEnv % ActiveComm, ierr )
+
+        BufReal = BoundarySum 
+        CALL MPI_ALLREDUCE( BufReal, BoundarySum, DOFs * NoBCs, MPI_DOUBLE_PRECISION, &
+            MPI_SUM, ParEnv % ActiveComm, ierr )
+
+        DEALLOCATE( BufInteg, BufReal ) 
+      END IF
+
+
+      DO i=1,CurrentModel % NumberOfBCs 
+        IF( BoundaryActive(i) == 0 ) CYCLE
+        IF( BoundaryShared(i) > 0) THEN
+          CALL Warn('CalculateLoads','Boundary '//TRIM(I2S(i))//' includes inseparable dofs!')
+        END IF
+        NoBoundaryActive = NoBoundaryActive + 1
+
+        DO j=1,DOFs
+          IF( Dofs == 1 ) THEN
+            WRITE( Message,'(A)') GetVarname(Solver % Variable)//&
+                ' Flux over BC '//TRIM(I2S(i))
+          ELSE
+            WRITE( Message,'(A)') GetVarname(Solver % Variable)//&
+                ' '//TRIM(I2S(j))//' Flux over BC '//TRIM(I2S(i))
+          END IF
+          CALL ListAddConstReal( CurrentModel % Simulation, 'res: '//TRIM(Message), &
+              BoundarySum(DOFs*(i-1)+j) )
+          WRITE( Message,'(A,ES12.5)') TRIM(Message)//': ',BoundarySum(DOFs*(i-1)+j)
+          CALL Info('CalculateLoads',Message,Level=6)
+        END DO
+      END DO
+      
+      IF( NoBoundaryActive > 1 ) THEN
+        DO j=1,DOFs
+          IF( Dofs == 1 ) THEN
+            WRITE( Message,'(A)') GetVarname(Solver % Variable)//&
+                ' Flux over all BCs'
+          ELSE
+            WRITE( Message,'(A)') GetVarname(Solver % Variable)//&
+                ' '//TRIM(I2S(j))//' Flux over all BCs'
+          END IF
+          WRITE( Message,'(A,ES12.5)') TRIM(Message)//': ',SUM(BoundarySum(j::DOFs))
+          CALL Info('CalculateLoads',Message,Level=6)
+        END DO
+      END IF
+      
+      DEALLOCATE( DofSummed, BoundaryShared, BoundaryActive, BoundarySum )      
+    END IF
+
+
     IF( UseBulkValues ) THEN
       Aaid % Values => SaveValues
     END IF
@@ -6206,7 +6321,7 @@ END FUNCTION SearchNodeL
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
-               SkipZeroRhs, ComplexSystem, ComputeChangeScaled, NonlinApplyLimiter
+               SkipZeroRhs, ComplexSystem, ComputeChangeScaled
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName
     INTEGER(KIND=AddrInt) :: Proc
@@ -6307,11 +6422,10 @@ END FUNCTION SearchNodeL
         ListGetLogical( Params, 'Harmonic Analysis',GotIt )
 
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
-    NonlinApplyLimiter = ListGetLogical( Params,'Nonlinear Apply Limiter',GotIt ) 
     SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt ) 
 
     IF ( .NOT. ( HarmonicAnalysis .OR. EigenAnalysis .OR. ApplyLimiter &
-        .OR. NonlinApplyLimiter .OR. SkipZeroRhs ) ) THEN
+        .OR. SkipZeroRhs ) ) THEN
       bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))      
       IF ( bnorm <= TINY( bnorm) ) THEN
         CALL Info('SolveSystem','Solution trivially zero!')
@@ -6359,9 +6473,6 @@ END FUNCTION SearchNodeL
 !-----------------------------------------------------------------------------
     bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))
     IF ( bnorm <= TINY( bnorm) .AND..NOT.SkipZeroRhs) THEN
-      IF( ApplyLimiter ) THEN
-        CALL DetermineSoftLimiter( Solver, .FALSE. ) 	 
-      END IF
       CALL Info('SolveSystem','Solution trivially zero!')
       x = 0.0d0
 
@@ -6496,6 +6607,7 @@ END FUNCTION SearchNodeL
     NodalLoads => VariableGet( Solver % Mesh % Variables, &
         GetVarName(Solver % Variable) // ' Loads' )
     IF( ASSOCIATED( NodalLoads ) ) THEN
+      CALL Info('SolveLinearSystem','Calculating nodal loads',Level=6)
       CALL CalculateLoads( Solver, Aaid, x, Dofs, .TRUE., NodalLoads ) 
     END IF
 
@@ -6515,14 +6627,6 @@ END FUNCTION SearchNodeL
       CALL ComputeChange(Solver,.FALSE.,n, x, Matrix=A, RHS=b )
     END IF
     Norm = Solver % Variable % Norm
-
- ! Create soft limiters to be later applied by the Dirichlet conditions
- ! in the next round. Within apply a hard limiter after the set is
- ! determined.
- !---------------------------------------------------------------------
-   IF( ApplyLimiter ) THEN
-     CALL DetermineSoftLimiter( Solver, .FALSE. ) 	
-   END IF
 
 !------------------------------------------------------------------------------
  
