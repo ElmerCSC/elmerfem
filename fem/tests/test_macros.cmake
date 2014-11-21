@@ -16,6 +16,9 @@ macro(ADD_ELMER_TEST test_name)
 endmacro()
 
 macro(ADD_ELMERTEST_MODULE test_name module_name file_name)
+  IF(APPLE)
+    SET(CMAKE_SHARED_MODULE_SUFFIX ".dylib")
+  ENDIF(APPLE)
   SET(ELMERTEST_CMAKE_NAME "${test_name}_${module_name}")
   ADD_LIBRARY(${ELMERTEST_CMAKE_NAME} MODULE ${file_name})
   SET_TARGET_PROPERTIES(${ELMERTEST_CMAKE_NAME}
