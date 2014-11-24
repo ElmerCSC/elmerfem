@@ -5764,6 +5764,217 @@ END FUNCTION SearchNodeL
 
 
 
+
+!------------------------------------------------------------------------------
+!> Compute weights of entities i.e. their area and volume in the mesh.
+!------------------------------------------------------------------------------
+  SUBROUTINE CalculateEntityWeights(Model)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE 
+    TYPE(Model_t) :: Model
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Nodes_t) :: ElementNodes
+    TYPE(Element_t), POINTER :: Element, Left, Right
+    TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+    INTEGER ::i,j,k, e,t, n, Coordsys, TrueOwner, bc_id, bf_id, mat_id, body_id, &
+        maxsize, ierr, PotOwner
+    INTEGER :: NoBC, NoBodies, NoBF, NoMat
+    INTEGER, POINTER :: Indexes(:)
+    REAL(KIND=dp) :: u,v,w,s,detJ
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:),bc_weights(:),body_weights(:),&
+        mat_weights(:),bf_weights(:),tmp_weights(:)
+    REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3), &
+        Coeff
+    LOGICAL :: Found, Stat, BodyElem
+
+
+    Mesh => Model % Mesh
+    CoordSys = CurrentCoordinateSystem()
+
+    IF(.NOT. ASSOCIATED( Mesh ) ) THEN
+      CALL Warn('CalculateEntityWeights','Mesh not associated!')
+      RETURN
+    END IF
+
+    CALL Info('ComputeNodalWeights','Computing weights for the mesh entities',Level=6)
+    n = Mesh % MaxElementNodes
+
+    NoBC = Model % NumberOfBCs
+    NoBodies = Model % NumberOfBodies
+    NoMat = Model % NumberOfMaterials
+    NoBF = Model % NumberOfBodyForces
+    
+
+    ALLOCATE(Basis(n), &
+        ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
+
+    IF( NoBC > 0 ) THEN
+      ALLOCATE( bc_weights(NoBC) )
+      bc_weights(1:NoBC ) = 0.0_dp
+    END IF
+
+    IF( NoBodies > 0 ) THEN
+      ALLOCATE( body_weights(NoBodies ) ) 
+      body_weights(1:NoBodies ) = 0.0_dp
+    END IF
+
+    IF( NoMat > 0 ) THEN
+      ALLOCATE( mat_weights(NoMat) ) 
+      mat_weights(1:NoMat ) = 0.0_dp
+    END IF
+
+    IF( NoBF > 0 ) THEN
+      ALLOCATE( bf_weights(NoBF ) )       
+      bf_weights(1:NoBF ) = 0.0_dp
+    END IF
+
+    DO e=1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+
+      bf_id = 0
+      mat_id = 0
+      body_id = 0
+      bc_id = 0
+      Coeff = 1.0_dp
+
+      BodyElem = ( e <= Mesh % NumberOfBulkElements ) 
+      Element => Mesh % Elements( e )
+
+      IF( BodyElem ) THEN
+        body_id = Element % BodyId
+        bf_id = ListGetInteger( Model % Bodies(body_id) % Values,&
+            'Body Force',Found)
+        mat_id = ListGetInteger( Model % Bodies(body_id) % Values,&
+            'Material',Found)
+      ELSE
+        Found = .FALSE.
+        DO bc_id = 1,Model % NumberOfBCs
+          Found = ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) 
+          IF( Found ) EXIT
+        END DO
+        IF(.NOT. Found) CYCLE
+      END IF
+
+      Coeff = 1.0_dp
+      
+      ! In parallel compute the weight only at their true owners.
+      ! Therefore cycle the halo elements. For shared BCs 
+      ! take only half of the weight. 
+      IF( ParEnv % PEs > 1 ) THEN
+        IF( BodyElem ) THEN
+          IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+        ELSE
+          TrueOwner = 0
+          PotOwner = 0
+          Left => Element % BoundaryInfo % Left
+          IF( ASSOCIATED( Left ) ) THEN
+            PotOwner = PotOwner + 1
+            IF( Left % PartIndex == ParEnv % MyPe ) TrueOwner = TrueOwner + 1
+          END IF
+          Right => Element % BoundaryInfo % Right
+          IF( ASSOCIATED( Right ) ) THEN
+            PotOwner = PotOwner + 1
+            IF( Right % PartIndex == ParEnv % MyPe ) TrueOwner = TrueOwner + 1
+          END IF
+          IF( PotOwner > 0 ) THEN
+            IF( TrueOwner == 0 ) CYCLE
+            Coeff = 1.0_dp * TrueOwner / PotOwner
+          END IF
+        END IF
+      END IF
+
+      Indexes => Element % NodeIndexes
+
+      n = Element % TYPE % NumberOfNodes
+      ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes)
+      ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes)
+      ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes)
+
+      IntegStuff = GaussPoints( Element )
+
+      DO t=1,IntegStuff % n        
+        U = IntegStuff % u(t)
+        V = IntegStuff % v(t)
+        W = IntegStuff % w(t)
+
+        stat = ElementInfo( Element, ElementNodes, U, V, W, detJ, Basis )
+        S = Coeff * DetJ * IntegStuff % s(t)
+
+        IF ( CoordSys /= Cartesian ) THEN
+          X = SUM( ElementNodes % X(1:n) * Basis(1:n) )
+          Y = SUM( ElementNodes % Y(1:n) * Basis(1:n) )
+          Z = SUM( ElementNodes % Z(1:n) * Basis(1:n) )
+          CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,X,Y,Z )
+          s = s * 2 * PI * SqrtMetric
+        END IF
+                
+        IF( bc_id > 0 ) bc_weights( bc_id ) = bc_weights( bc_id ) + s
+        IF( body_id > 0 ) body_weights( body_id ) = body_weights( body_id ) + s
+        IF( mat_id > 0 ) mat_weights( mat_id ) = mat_weights( mat_id ) + s
+        IF( bf_id > 0 ) bf_weights( bf_id ) = bf_weights( bf_id ) + s
+      END DO
+
+    END DO
+
+
+    IF( ParEnv % PEs > 1 ) THEN
+      maxsize = MAX( Model % NumberOfBCs, Model % NumberOfBodies ) 
+      ALLOCATE( tmp_weights( maxsize ) ) 
+      tmp_weights = 0.0_dp
+
+      IF( NoBC > 0 ) THEN
+        tmp_weights(1:NoBC ) = bc_weights
+        CALL MPI_ALLREDUCE( tmp_weights, bc_weights, NoBC, &
+            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+      END IF
+      IF( NoBF > 0 ) THEN
+        tmp_weights(1:NoBF ) = bf_weights
+        CALL MPI_ALLREDUCE( tmp_weights, bf_weights, NoBF, &
+            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+      END IF
+      IF( NoBodies > 0 ) THEN
+        tmp_weights(1:NoBodies ) = body_weights
+        CALL MPI_ALLREDUCE( tmp_weights, body_weights, NoBodies, &
+            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+      END IF
+      IF( NoMat > 0 ) THEN
+        tmp_weights(1:NoMat ) = mat_weights
+        CALL MPI_ALLREDUCE( tmp_weights, mat_weights, NoMat, &
+            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+      END IF
+      DEALLOCATE( tmp_weights )
+    END IF
+
+    DO i = 1, NoBC
+      CALL ListAddConstReal( Model % BCs(i) % Values,'Entity Weight',bc_weights(i) )
+      PRINT *,'BC weight:',i,bc_weights(i)
+    END DO
+    DO i = 1, NoBF
+      CALL ListAddConstReal( Model % BodyForces(i) % Values,'Entity Weight',bf_weights(i) )
+      PRINT *,'BF weight:',i,bf_weights(i)
+    END DO
+    DO i = 1, NoBodies
+      CALL ListAddConstReal( Model % Bodies(i) % Values,'Entity Weight',body_weights(i) )
+      PRINT *,'Body weight:',i,body_weights(i)
+    END DO
+    DO i = 1, NoMat
+      CALL ListAddConstReal( Model % Materials(i) % Values,'Entity Weight',mat_weights(i) )
+      PRINT *,'Mat weight:',i,mat_weights(i)
+    END DO
+
+    DEALLOCATE(Basis, &
+        ElementNodes % x, ElementNodes % y, ElementNodes % z )
+    IF( NoBc > 0 ) DEALLOCATE( bc_weights ) 
+    IF( NoBodies > 0 ) DEALLOCATE( body_weights ) 
+    IF( NoMat > 0 ) DEALLOCATE( mat_weights )
+    IF( NoBF > 0 ) DEALLOCATE( bf_weights )
+
+    CALL Info('ComputeEntityWeights','All done',Level=10)
+
+  END SUBROUTINE CalculateEntityWeights
+
+
+
 !------------------------------------------------------------------------------
 !>  Scale system Ax = b as:
 !>  (DAD)y = Db, where D = 1/SQRT(Diag(A)), and y = D^-1 x

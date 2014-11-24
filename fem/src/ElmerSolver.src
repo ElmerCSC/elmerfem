@@ -445,7 +445,12 @@ END INTERFACE
 
        ! Initial Conditions:
        ! -------------------
-       IF ( FirstLoad ) CALL SetInitialConditions
+       IF ( FirstLoad ) CALL SetInitialConditions()
+
+
+       ! Some keywords may be normalized by area or volume
+       !--------------------------------------------------------------
+       IF( FirstLoad ) CALL SetNormalizedKeywords()
 
 
        ! Compute the total number of steps that will be saved to the files
@@ -919,6 +924,81 @@ END INTERFACE
 !------------------------------------------------------------------------------
    END SUBROUTINE SetInitialConditions
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+! This subroutine enables the scaling of keywords by geometric entities. 
+! If any Real type keyword has an associated keyword with suffix 'Normalize by Area'
+! or 'Normalize by Volume' the keyword will be divided with the the area/volume.
+! This way any quantity may be made distributed on-the-fly. The current implementation
+! assumes fixed geometry. The inverse of area/volume will be located at ValueList % Coeff.
+! There is some small additional cost for fetching the value. 
+!------------------------------------------------------------------------------
+   SUBROUTINE SetNormalizedKeywords()
+
+     LOGICAL :: AnyBC, AnyBodyForce, AnyMat, AnyBody
+     CHARACTER(LEN=MAX_NAME_LEN) :: Suffix
+     INTEGER :: list_ind
+     TYPE(Model_t), POINTER :: Model
+     REAL(KIND=dp) :: EntityWeight
+     LOGICAL :: Found
+     TYPE(ValueList_t), POINTER :: List
+
+     Model => CurrentModel
+
+     Suffix = 'Normalize By Area'
+     AnyBC = ListCheckSuffixAnyBC( Model, Suffix )
+
+     Suffix = 'Normalize By Volume'
+     AnyBodyForce = ListCheckSuffixAnyBodyForce( Model, Suffix )
+     AnyMat = ListCheckSuffixAnyMaterial( Model, Suffix )
+     AnyBody = ListCheckSuffixAnyBody( Model, Suffix )
+
+     IF( .NOT. ( AnyBC .OR. AnyBodyForce .OR. AnyMat .OR. AnyBody ) ) RETURN
+
+     ! This computes all the weights as the cost is not that large and
+     ! places the 'Entity Weight' to each list. 
+     CALL CalculateEntityWeights( Model ) 
+
+     Suffix = 'Normalize By Area'
+     IF( AnyBC ) THEN
+       Found = .FALSE.
+       DO list_ind = 1,Model % NumberOfBCs
+         List => Model % BCs(list_ind) % Values
+         EntityWeight = ListGetConstReal( List,'Entity Weight',Found)
+         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
+       END DO
+     END IF
+
+     Suffix = 'Normalize By Volume'
+     IF( AnyBodyForce ) THEN
+       Found = .FALSE.
+       DO list_ind = 1,Model % NumberOfBodyForces
+         List => Model % BodyForces(list_ind) % Values
+         EntityWeight = ListGetConstReal( List,'Entity Weight',Found)
+         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
+       END DO
+     END IF
+
+     IF( AnyMat ) THEN
+       Found = .FALSE.
+       DO list_ind = 1,Model % NumberOfMaterials
+         List => Model % Materials(list_ind) % Values
+         EntityWeight = ListGetConstReal( List,'Entity Weight',Found)
+         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
+       END DO
+     END IF
+
+     IF( AnyBody ) THEN
+       Found = .FALSE.
+       DO list_ind = 1,Model % NumberOfBodies
+         List => Model % Bodies(list_ind) % Values
+         EntityWeight = ListGetConstReal( List,'Entity Weight',Found)
+         CALL ListSetCoefficients( List, Suffix,1.0_dp / EntityWeight )
+       END DO
+     END IF
+
+   END SUBROUTINE SetNormalizedKeywords
 
 
 !------------------------------------------------------------------------------

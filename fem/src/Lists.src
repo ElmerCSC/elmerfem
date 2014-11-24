@@ -60,6 +60,7 @@ MODULE Lists
    INTEGER, PARAMETER :: LIST_TYPE_CONSTANT_TENSOR_STR = 9
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_SCALAR_STR = 10
    INTEGER, PARAMETER :: LIST_TYPE_VARIABLE_TENSOR_STR = 11
+   INTEGER, PARAMETER :: LIST_TYPE_CONSTANT_SCALAR_PROC = 12
 
 
    INTERFACE
@@ -1459,6 +1460,166 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Finds an entry in the list by its name and returns a handle to it.
+!> This one just finds a keyword with the same end as specified by 'name'.
+!------------------------------------------------------------------------------
+   FUNCTION ListFindSuffix( list, name, Found) RESULT(ptr)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list, ptr
+     CHARACTER(LEN=*) :: name
+     LOGICAL, OPTIONAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(Varying_string) :: strn
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+!------------------------------------------------------------------------------
+     INTEGER :: k, k1, n, m
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+     
+     Ptr => List
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF ( n >= k ) THEN
+         IF ( ptr % Name(n-k+1:n) == str(1:k) ) EXIT
+       END IF
+       ptr => ptr % Next
+     END DO
+
+     IF ( PRESENT(Found) ) THEN
+       Found = ASSOCIATED(ptr)
+     ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
+       CALL Warn( 'ListFindSuffix', ' ' )
+       WRITE(Message,*) 'Requested suffix: ', '[',TRIM(Name),'], not found'
+       CALL Warn( 'ListFindSuffix', Message )
+       CALL Warn( 'ListFindSuffix', ' ' )
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ListFindSuffix
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is with the given suffix is present in any boundary condition.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckSuffixAnyBC( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: bc
+     TYPE(Valuelist_t), POINTER :: ptr
+     
+     Found = .FALSE.
+     DO bc = 1,Model % NumberOfBCs
+       ptr => ListFindSuffix( Model % BCs(bc) % Values, Name, Found )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckSuffixAnyBC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is with the given suffix is present in any body.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckSuffixAnyBody( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: body_id
+     TYPE(Valuelist_t), POINTER :: ptr
+     
+     Found = .FALSE.
+     DO body_id = 1,Model % NumberOfBodies
+       ptr => ListFindSuffix( Model % Bodies(body_id) % Values, Name, Found )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckSuffixAnyBody
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is with the given suffix is present in any material.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckSuffixAnyMaterial( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: mat_id
+     TYPE(Valuelist_t), POINTER :: ptr
+     
+     Found = .FALSE.
+     DO mat_id = 1,Model % NumberOfMaterials
+       ptr => ListFindSuffix( Model % Materials(mat_id) % Values, Name, Found )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckSuffixAnyMaterial
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is with the given suffix is present in any body force.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckSuffixAnyBodyForce( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: bf_id
+     TYPE(Valuelist_t), POINTER :: ptr
+     
+     Found = .FALSE.
+     DO bf_id = 1,Model % NumberOfBodyForces
+       ptr => ListFindSuffix( Model % BodyForces(bf_id) % Values, Name, Found )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckSuffixAnyBodyForce
+!------------------------------------------------------------------------------
+
+
+   SUBROUTINE ListSetCoefficients( list, name, coeff )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list
+     CHARACTER(LEN=*) :: name
+     REAL(KIND=dp) :: coeff
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: ptr, ptr2
+     TYPE(Varying_string) :: strn
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+     INTEGER :: k, k1, n, n2, m
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+     
+     Ptr => list
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF ( n >= k ) THEN
+         IF ( ptr % Name(n-k+1:n) == str(1:k) ) THEN
+           Ptr2 => list
+           DO WHILE( ASSOCIATED(ptr2) )
+             n2 = ptr2 % NameLen
+             
+             IF( n2 + k <= n ) THEN
+               IF ( ptr2 % Name(1:n2) == ptr % Name(1:n2) ) THEN
+                 WRITE( Message,'(A,ES12.5)') 'Normalizing > '//&
+                     TRIM( ptr2 % Name )// ' < by ',Coeff
+                 CALL Info('ListSetCoefficients',Message)
+                 ptr2 % Coeff = Coeff
+                 EXIT
+               END IF
+             END IF
+             ptr2 => ptr2 % Next
+           END DO
+         END IF
+       END IF
+       ptr => ptr % Next
+     END DO
+
+   END SUBROUTINE ListSetCoefficients
+ 
   
 !------------------------------------------------------------------------------
 !> Just checks if a entry is present in the list.
@@ -1616,10 +1777,15 @@ CONTAINS
       NULLIFY( ptr % TValues )
       ALLOCATE( ptr % FValues(1,1,1) )
 
-      IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
-
       ptr % FValues = FValue
       ptr % TYPE  = LIST_TYPE_CONSTANT_SCALAR
+
+      IF ( PRESENT(Proc) ) THEN
+        ptr % PROCEDURE = Proc
+        IF( Proc /= 0 ) THEN
+          ptr % TYPE = LIST_TYPE_CONSTANT_SCALAR_PROC
+        END IF
+      END IF
 
       IF ( PRESENT( CValue ) ) THEN
          ptr % Cvalue = CValue
@@ -1696,10 +1862,13 @@ CONTAINS
       NULLIFY( ptr % TValues )
       ALLOCATE( ptr % FValues(N,M,1) )
 
-      IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
 
       ptr % TYPE  = LIST_TYPE_CONSTANT_TENSOR
       ptr % FValues(1:n,1:m,1) = FValues(1:n,1:m)
+
+      IF ( PRESENT(Proc) ) THEN
+        ptr % PROCEDURE = Proc
+      END IF
 
       IF ( PRESENT( Cvalue ) ) THEN
          ptr % CValue = CValue
@@ -1897,31 +2066,47 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: cmd,tmp_str
 !------------------------------------------------------------------------------
      F = 0.0_dp
+
      ptr => ListFind(List,Name,Found)
      IF ( .NOT.ASSOCIATED(ptr) ) RETURN
 
-     IF ( Ptr % TYPE >= 8 ) THEN
+     SELECT CASE(ptr % TYPE)
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR )
+
+       IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
+             '] not used consistently.'
+         CALL Fatal( 'ListGetConstReal', Message )
+       END IF
+       F = ptr % Coeff * ptr % Fvalues(1,1,1)
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
+
         cmd = ptr % CValue
         k = LEN_TRIM( ptr % CValue )
         CALL matc( cmd, tmp_str, k )
         READ( tmp_str(1:k), * ) F
-     ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
-        xx = 0.0_dp
-        yy = 0.0_dp
-        zz = 0.0_dp
-        IF ( PRESENT(x) ) xx = x
-        IF ( PRESENT(y) ) yy = y
-        IF ( PRESENT(z) ) zz = z
-       F = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,xx,yy,zz )
-     ELSE
-       IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+        F = ptr % Coeff * F
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+
+       IF ( ptr % PROCEDURE == 0 ) THEN
          WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-                 '] not used consistently.'
+             '] not used consistently.'
          CALL Fatal( 'ListGetConstReal', Message )
-       ELSE
-         F = ptr % Fvalues(1,1,1)
        END IF
-     END IF
+
+       xx = 0.0_dp
+       yy = 0.0_dp
+       zz = 0.0_dp
+       IF ( PRESENT(x) ) xx = x
+       IF ( PRESENT(y) ) yy = y
+       IF ( PRESENT(z) ) zz = z
+       F = Ptr % Coeff * &
+           ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,xx,yy,zz )
+
+     END SELECT
 
      IF ( PRESENT( minv ) ) THEN
         IF ( F < minv ) THEN
@@ -2217,24 +2402,19 @@ CONTAINS
      ptr => ListFind(List,Name,Found)
      IF ( .NOT.ASSOCIATED(ptr) ) RETURN
 
+
      SELECT CASE(ptr % TYPE)
+
      CASE( LIST_TYPE_CONSTANT_SCALAR )
-       IF ( ptr % PROCEDURE /= 0 ) THEN
-         DO i=1,n
-           F(i) = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
-                CurrentModel % Mesh % Nodes % x( NodeIndexes(i) ), &
-                CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
-                CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
-         END DO
-       ELSE
-         IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-           WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
-                   '] not used consistently.'
-           CALL Fatal( 'ListGetReal', Message )
-           RETURN
-         END IF
-         F = ptr % Fvalues(1,1,1)
+
+       IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
+             '] not used consistently.'
+         CALL Fatal( 'ListGetReal', Message )
+         RETURN
        END IF
+       F = ptr % Coeff * ptr % Fvalues(1,1,1)
+
      
      CASE( LIST_TYPE_VARIABLE_SCALAR )
 
@@ -2244,7 +2424,8 @@ CONTAINS
 
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            IF ( ptr % PROCEDURE /= 0 ) THEN
-             F(i) = ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
+             F(i) = ptr % Coeff * &
+                 ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                           NodeIndexes(i), T )
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
@@ -2253,9 +2434,9 @@ CONTAINS
                CALL Fatal( 'ListGetReal', Message )
                RETURN
              END IF
-             F(i) = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
-                            T(1), ptr % CubicCoeff )
-             
+             F(i) = ptr % Coeff * &
+                 InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
+                 T(1), ptr % CubicCoeff )
              IF( AllGlobal) THEN
                F(2:n) = F(1)
                EXIT
@@ -2275,6 +2456,7 @@ CONTAINS
          k = LEN_TRIM(cmd)
          CALL matc( cmd, tmp_str, k )
          READ( tmp_str(1:k), * ) F(1)
+         F(1) = ptr % Coeff * F(1)
          F(2:n) = F(1)
 
      CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
@@ -2299,6 +2481,7 @@ CONTAINS
            k1 = LEN_TRIM(cmd)
            CALL matc( cmd, tmp_str, k1 )
            READ( tmp_str(1:k1), * ) F(i)
+           F(i) = Ptr % Coeff * F(i)
          END IF
 
          IF( AllGlobal ) THEN
@@ -2307,7 +2490,26 @@ CONTAINS
          END IF
 
        END DO
+
+     CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+
+       IF ( ptr % PROCEDURE == 0 ) THEN
+         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
+             '] not used consistently.'
+         CALL Fatal( 'ListGetReal', Message )
+         RETURN
+       END IF
+
+       DO i=1,n
+         F(i) = Ptr % Coeff * &
+             ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
+             CurrentModel % Mesh % Nodes % x( NodeIndexes(i) ), &
+             CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
+             CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
+       END DO
+
      END SELECT
+
 
      IF ( PRESENT( minv ) ) THEN
         IF ( MINVAL(F(1:n)) < minv ) THEN
@@ -2638,18 +2840,6 @@ CONTAINS
 
        SELECT CASE(ptr % TYPE)
          
-       CASE( LIST_TYPE_CONSTANT_SCALAR )
-
-         IF ( ptr % PROCEDURE /= 0 ) THEN
-           x = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % x( NodeIndexes(1:n) ) )
-           y = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n) ) )
-           z = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n) ) )
-
-           val = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,x,y,z)
-         ELSE
-           CALL Fatal('ListGetRealAtIp','Constant scalar evaluation failed at ip!')
-         END IF
-           
        CASE( LIST_TYPE_VARIABLE_SCALAR )
          
          DO j=1,Handle % ParNo 
@@ -2688,6 +2878,18 @@ CONTAINS
          CALL matc( cmd, tmp_str, k1 )
          READ( tmp_str(1:k1), * ) val
          
+       CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           x = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % x( NodeIndexes(1:n) ) )
+           y = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n) ) )
+           z = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n) ) )
+
+           val = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,x,y,z)
+         ELSE
+           CALL Fatal('ListGetRealAtIp','Constant scalar evaluation failed at ip!')
+         END IF
+           
        CASE DEFAULT
          
          CALL Fatal('ListGetRealAtIp','Unknown case for avaluation at ip')
@@ -2720,25 +2922,17 @@ CONTAINS
          SELECT CASE(ptr % TYPE)
            
          CASE( LIST_TYPE_CONSTANT_SCALAR )
-           IF ( ptr % PROCEDURE /= 0 ) THEN
-             DO i=1,n
-               F(i) = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
-                   CurrentModel % Mesh % Nodes % x( NodeIndexes(i) ), &
-                   CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
-                   CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
-             END DO
-           ELSE
-             Handle % ConstantInList = .TRUE.           
-             
-             IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-               WRITE(Message,*) 'Value type for property [', TRIM(Name), &
-                   '] not used consistently.'
-               CALL Fatal( 'ListGetRealAtIp', Message )
-               RETURN
-             END IF
-             F(1) = ptr % Fvalues(1,1,1)
-           END IF
            
+           Handle % ConstantInList = .TRUE.                      
+           IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+             WRITE(Message,*) 'Value type for property [', TRIM(Name), &
+                 '] not used consistently.'
+             CALL Fatal( 'ListGetRealAtIp', Message )
+             RETURN
+           END IF
+           F(1) = ptr % Coeff * ptr % Fvalues(1,1,1)
+
+
          CASE( LIST_TYPE_VARIABLE_SCALAR )
            DO i=1,n
              k = NodeIndexes(i)
@@ -2746,7 +2940,8 @@ CONTAINS
              
              IF ( .NOT. ANY( T(1:j) == HUGE(1.0_dp) ) ) THEN
                IF ( ptr % PROCEDURE /= 0 ) THEN
-                 F(i) = ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
+                 F(i) = ptr % Coeff * &
+                     ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                      NodeIndexes(i), T )              
                ELSE
                  IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
@@ -2755,7 +2950,8 @@ CONTAINS
                    CALL Fatal( 'ListGetRealAtIp', Message )
                    RETURN
                  END IF
-                 F(i) = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
+                 F(i) = ptr % Coeff * &
+                     InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
                      T(1), ptr % CubicCoeff )
                  
                  ! If the dependency table includes just global values (such as time) 
@@ -2781,7 +2977,8 @@ CONTAINS
            k = LEN_TRIM(cmd)
            CALL matc( cmd, tmp_str, k )
            READ( tmp_str(1:k), * ) F(1)
-           
+           F(1) = ptr % Coeff * F(1) 
+
          CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
            TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
            WRITE( cmd, * ) 'tx=0; st = ', TVar % Values(1)
@@ -2802,14 +2999,31 @@ CONTAINS
                k1 = LEN_TRIM(cmd)
                CALL matc( cmd, tmp_str, k1 )
                READ( tmp_str(1:k1), * ) F(i)
+               F(i) = ptr % Coeff * F(i)
              END IF
              
              IF( AllGlobal ) THEN
                Handle % ConstantInList = .TRUE.
                EXIT
-             END IF
-             
+             END IF            
            END DO
+
+         CASE( LIST_TYPE_CONSTANT_SCALAR_PROC )
+           IF ( ptr % PROCEDURE == 0 ) THEN
+             WRITE(Message,*) 'Value type for property [', TRIM(Name), &
+                 '] not used consistently.'
+             CALL Fatal( 'ListGetRealAtIp', Message )
+             RETURN
+           END IF
+           
+           DO i=1,n
+             F(i) = ptr % Coeff * &
+                 ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
+                 CurrentModel % Mesh % Nodes % x( NodeIndexes(i) ), &
+                 CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
+                 CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
+           END DO
+           
          END SELECT
        END IF
        
@@ -3037,14 +3251,15 @@ CONTAINS
      SELECT CASE(ptr % TYPE)
      CASE ( LIST_TYPE_CONSTANT_TENSOR )
        DO i=1,n
-         F(:,:,i) = ptr % FValues(:,:,1)
+         F(:,:,i) = ptr % Coeff * ptr % FValues(:,:,1)
        END DO
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
          DO i=1,N1
            DO j=1,N2
-             F(i,j,1) = ExecConstRealFunction( ptr % PROCEDURE, &
-                  CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
+             F(i,j,1) = ptr % Coeff * &
+                 ExecConstRealFunction( ptr % PROCEDURE, &
+                 CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
            END DO
          END DO
        END IF
@@ -3097,6 +3312,10 @@ CONTAINS
            END DO
          END DO
        END IF
+
+       IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
+         F = ptr % Coeff * F
+       END IF
   
      CASE DEFAULT
        F = 0.0d0
@@ -3145,8 +3364,9 @@ CONTAINS
            IF ( ASSOCIATED(Variable % Perm) ) k = Variable % Perm(K)
            IF ( k > 0 ) THEN
              T = Variable % Values(k)
-             F(i) = DerivateCurve(ptr % TValues,ptr % FValues(1,1,:), &
-                               T, ptr % CubicCoeff )
+             F(i) = ptr % Coeff * &
+                 DerivateCurve(ptr % TValues,ptr % FValues(1,1,:), &
+                 T, ptr % CubicCoeff )
            END IF
          END DO
 

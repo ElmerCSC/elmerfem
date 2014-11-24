@@ -364,6 +364,7 @@ END INTERFACE
 #endif
 
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+     REAL(KIND=dp) :: Coeff = 1.0_dp
 
      INTEGER :: NameLen,DepNameLen
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
