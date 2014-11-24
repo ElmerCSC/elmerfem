@@ -985,6 +985,7 @@ END SUBROUTINE GetMaxDefs
    END DO
 
    Model % DIMENSION = save_dim
+
 !------------------------------------------------------------------------------
  END FUNCTION LoadMesh
 !------------------------------------------------------------------------------
@@ -2631,11 +2632,12 @@ END SUBROUTINE GetMaxDefs
      END IF
    END DO
 
-
    ! Don't know why this is saved really...
+   ! I guess because the could be higher dimensional meshes loaded already
    Model % DIMENSION = save_dim
 
    CALL Info('LoadMesh','Loading mesh done',Level=8)
+
 
  CONTAINS
 
@@ -3199,7 +3201,7 @@ END SUBROUTINE GetMaxDefs
      REAL(KIND=dp), POINTER :: NodesX(:), NodesY(:), NodesZ(:), Wrk(:,:)
      INTEGER, POINTER :: CoordMap(:)
      REAL(KIND=dp) :: CoordScale(3)
-     INTEGER :: mesh_dim
+     INTEGER :: mesh_dim, model_dim
 
      ! Perform coordinate mapping
      !------------------------------------------------------------
@@ -3254,17 +3256,27 @@ END SUBROUTINE GetMaxDefs
      ! Determine the mesh dimension 
      !----------------------------------------------------------------------------
      mesh_dim = 0
-     IF ( ANY( Mesh % Nodes % x /= Mesh % Nodes % x(1) ) ) mesh_dim = mesh_dim + 1
-     IF ( ANY( Mesh % Nodes % y /= Mesh % Nodes % y(1) ) ) mesh_dim = mesh_dim + 1
-     IF ( ANY( Mesh % Nodes % z /= Mesh % Nodes % z(1) ) ) mesh_dim = mesh_dim + 1
+     model_dim = 0
+     IF ( ANY( Mesh % Nodes % x /= Mesh % Nodes % x(1) ) ) THEN
+       model_dim = 1
+       mesh_dim = mesh_dim + 1
+     END IF
+     IF ( ANY( Mesh % Nodes % y /= Mesh % Nodes % y(1) ) ) THEN
+       model_dim = 2
+       mesh_dim = mesh_dim + 1
+     END IF
+     IF ( ANY( Mesh % Nodes % z /= Mesh % Nodes % z(1) ) ) THEN
+       model_dim = 3
+       mesh_dim = mesh_dim + 1
+     END IF
+
      Mesh % MeshDim = mesh_dim
 
-     CALL Info('LoadMesh','Dimension of mesh is: '//TRIM(I2S(mesh_dim)),Level=8)
-
-
      save_dim = Model % DIMENSION
-     IF ( Model % DIMENSION <= 0 ) Model % DIMENSION = mesh_dim
+     IF ( Model % DIMENSION <= 0 ) Model % DIMENSION = model_dim
 
+     CALL Info('LoadMesh','Dimension of model is: '//TRIM(I2S(model_dim)),Level=8)
+     CALL Info('LoadMesh','Dimension of mesh is: '//TRIM(I2S(mesh_dim)),Level=8)
 
      ! Scaling of coordinates
      !-----------------------------------------------------------------------------
