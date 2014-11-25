@@ -37,6 +37,7 @@
  *  Original Date: 14 Nov 2010                                               *
  *                                                                           *
  *****************************************************************************/
+#include "config.h"
 #include "encoder.h"
 
 Encoder::Encoder(QObject *parent) : QThread(parent), quality(2)
