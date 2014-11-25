@@ -636,6 +636,12 @@ END INTERFACE
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim, PassBCcnt=0
      INTEGER :: MaxElementNodes, MaxElementDOFs, MaxEdgeDOFs, MaxFaceDOFs, MaxBDOFs
+
+     LOGICAL :: EntityWeightsComputed 
+     REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
+         BodyWeight(:), MaterialWeight(:)
+     
+
    END TYPE Mesh_t
 
 !------------------------------------------------------------------------------

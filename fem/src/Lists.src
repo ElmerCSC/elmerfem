@@ -2510,7 +2510,6 @@ CONTAINS
 
      END SELECT
 
-
      IF ( PRESENT( minv ) ) THEN
         IF ( MINVAL(F(1:n)) < minv ) THEN
            WRITE( Message,*) 'Given VALUE ', MINVAL(F(1:n)), ' for property: ', '[', TRIM(Name),']', &

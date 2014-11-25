@@ -5761,6 +5761,7 @@ END FUNCTION SearchNodeL
     CALL Info('ComputeNodalWeights','All done')
 
   END SUBROUTINE CalculateNodalWeights
+!------------------------------------------------------------------------------
 
 
 
@@ -5768,12 +5769,12 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 !> Compute weights of entities i.e. their area and volume in the mesh.
 !------------------------------------------------------------------------------
-  SUBROUTINE CalculateEntityWeights(Model)
+  SUBROUTINE CalculateEntityWeights(Model, Mesh)
 !------------------------------------------------------------------------------
     IMPLICIT NONE 
-    TYPE(Model_t) :: Model
-!------------------------------------------------------------------------------
+    TYPE(Model_t) :: Model 
     TYPE(Mesh_t), POINTER :: Mesh
+!------------------------------------------------------------------------------
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element, Left, Right
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -5782,14 +5783,14 @@ END FUNCTION SearchNodeL
     INTEGER :: NoBC, NoBodies, NoBF, NoMat
     INTEGER, POINTER :: Indexes(:)
     REAL(KIND=dp) :: u,v,w,s,detJ
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:),bc_weights(:),body_weights(:),&
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+    REAL(KIND=dp), POINTER :: bc_weights(:),body_weights(:),&
         mat_weights(:),bf_weights(:),tmp_weights(:)
     REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3), &
         Coeff
     LOGICAL :: Found, Stat, BodyElem
 
 
-    Mesh => Model % Mesh
     CoordSys = CurrentCoordinateSystem()
 
     IF(.NOT. ASSOCIATED( Mesh ) ) THEN
@@ -5809,23 +5810,30 @@ END FUNCTION SearchNodeL
     ALLOCATE(Basis(n), &
         ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )
 
+    IF( .NOT. Mesh % EntityWeightsComputed ) THEN
+      IF( NoBC > 0 ) ALLOCATE( Mesh % BCWeight(NoBC) )
+      IF( NoBodies > 0 ) ALLOCATE( Mesh % BodyWeight(NoBodies ) ) 
+      IF( NoMat > 0 ) ALLOCATE( Mesh % MaterialWeight(NoMat) ) 
+      IF( NoBF > 0 ) ALLOCATE( Mesh % BodyForceWeight(NoBF ) )       
+    END IF
+
     IF( NoBC > 0 ) THEN
-      ALLOCATE( bc_weights(NoBC) )
+      bc_weights => Mesh % BCWeight
       bc_weights(1:NoBC ) = 0.0_dp
     END IF
 
     IF( NoBodies > 0 ) THEN
-      ALLOCATE( body_weights(NoBodies ) ) 
+      body_weights => Mesh % BodyWeight
       body_weights(1:NoBodies ) = 0.0_dp
     END IF
 
     IF( NoMat > 0 ) THEN
-      ALLOCATE( mat_weights(NoMat) ) 
+      mat_weights => Mesh % MaterialWeight
       mat_weights(1:NoMat ) = 0.0_dp
     END IF
 
     IF( NoBF > 0 ) THEN
-      ALLOCATE( bf_weights(NoBF ) )       
+      bf_weights => Mesh % BodyForceWeight       
       bf_weights(1:NoBF ) = 0.0_dp
     END IF
 
@@ -5908,10 +5916,14 @@ END FUNCTION SearchNodeL
           s = s * 2 * PI * SqrtMetric
         END IF
                 
-        IF( bc_id > 0 ) bc_weights( bc_id ) = bc_weights( bc_id ) + s
-        IF( body_id > 0 ) body_weights( body_id ) = body_weights( body_id ) + s
-        IF( mat_id > 0 ) mat_weights( mat_id ) = mat_weights( mat_id ) + s
-        IF( bf_id > 0 ) bf_weights( bf_id ) = bf_weights( bf_id ) + s
+        IF( bc_id > 0 .AND. bc_id <= NoBC) &
+            bc_weights( bc_id ) = bc_weights( bc_id ) + s
+        IF( body_id > 0 .AND. body_id <= NoBodies ) &
+            body_weights( body_id ) = body_weights( body_id ) + s
+        IF( mat_id > 0 .AND. mat_id <= NoMat ) &
+            mat_weights( mat_id ) = mat_weights( mat_id ) + s
+        IF( bf_id > 0 .AND. bf_id <= NoBF ) &
+            bf_weights( bf_id ) = bf_weights( bf_id ) + s
       END DO
 
     END DO
@@ -5946,32 +5958,27 @@ END FUNCTION SearchNodeL
     END IF
 
     DO i = 1, NoBC
-      CALL ListAddConstReal( Model % BCs(i) % Values,'Entity Weight',bc_weights(i) )
       PRINT *,'BC weight:',i,bc_weights(i)
     END DO
     DO i = 1, NoBF
-      CALL ListAddConstReal( Model % BodyForces(i) % Values,'Entity Weight',bf_weights(i) )
       PRINT *,'BF weight:',i,bf_weights(i)
     END DO
     DO i = 1, NoBodies
-      CALL ListAddConstReal( Model % Bodies(i) % Values,'Entity Weight',body_weights(i) )
       PRINT *,'Body weight:',i,body_weights(i)
     END DO
     DO i = 1, NoMat
-      CALL ListAddConstReal( Model % Materials(i) % Values,'Entity Weight',mat_weights(i) )
       PRINT *,'Mat weight:',i,mat_weights(i)
     END DO
 
     DEALLOCATE(Basis, &
         ElementNodes % x, ElementNodes % y, ElementNodes % z )
-    IF( NoBc > 0 ) DEALLOCATE( bc_weights ) 
-    IF( NoBodies > 0 ) DEALLOCATE( body_weights ) 
-    IF( NoMat > 0 ) DEALLOCATE( mat_weights )
-    IF( NoBF > 0 ) DEALLOCATE( bf_weights )
+
+    Mesh % EntityWeightsComputed = .TRUE.
 
     CALL Info('ComputeEntityWeights','All done',Level=10)
 
   END SUBROUTINE CalculateEntityWeights
+!------------------------------------------------------------------------------
 
 
 

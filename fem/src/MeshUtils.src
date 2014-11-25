@@ -184,6 +184,12 @@ CONTAINS
      Mesh % NodesOrig => Mesh % Nodes
      NULLIFY( Mesh % NodesMapped )
 
+     Mesh % EntityWeightsComputed = .FALSE.
+     Mesh % BCWeight => NULL()
+     Mesh % BodyForceWeight => NULL()
+     Mesh % BodyWeight => NULL()
+     Mesh % MaterialWeight => NULL()
+    
      Mesh % ParallelInfo % NumberOfIfDOFs =  0
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
      NULLIFY( Mesh % ParallelInfo % INTERFACE )
