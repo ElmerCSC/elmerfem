@@ -9610,7 +9610,7 @@ CONTAINS
             END DO
           END DO
           IF ( nfound==n ) THEN
-            Face % BoundaryInfo = Boundary % BoundaryInfo; EXIT
+            Face % BoundaryInfo % Constraint = Boundary % BoundaryInfo % Constraint; EXIT
           END IF
         END DO
       END DO
