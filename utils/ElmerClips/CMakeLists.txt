@@ -4,11 +4,6 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
 SET(ElmerClipsSTANDALONE FALSE CACHE BOOL "Bundle necessary libraries in windows for standalone installation.")
 MARK_AS_ADVANCED(ElmerClipsSTANDALONE)
 
-IF(ElmerClipsSTANDALONE)
-  IF(WIN32)
-    INCLUDE(cmake/windows_bundle.cmake)
-  ENDIF(WIN32)
-ENDIF(ElmerClipsSTANDALONE)
 
 
 SET(FFmpegROOT "${CMAKE_CURRENT_BINARY_DIR}/ffmpeg-build" CACHE PATH "Path to FFmpeg installation")
@@ -70,3 +65,9 @@ ADD_EXECUTABLE(ElmerClips WIN32 ${SOURCES} ${UI_RESOURCES})
 TARGET_LINK_LIBRARIES(ElmerClips ${QT_LIBRARIES} ${AVCODEC_LIBRARY}
   ${AVUTIL_LIBRARY} ${SWSCALE_LIBRARY}  ${CMAKE_THREAD_LIBS_INIT})
 INSTALL(TARGETS ElmerClips RUNTIME DESTINATION "bin" COMPONENT "elmerclips")
+
+IF(ElmerClipsSTANDALONE)
+  IF(WIN32)
+    INCLUDE(cmake/windows_bundle.cmake)
+  ENDIF(WIN32)
+ENDIF(ElmerClipsSTANDALONE)
