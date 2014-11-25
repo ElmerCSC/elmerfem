@@ -626,7 +626,14 @@ void GetBoundaryElement(int sideind,struct BoundaryType *bound,struct FemType *d
 {
   int element,side,normal,i,n;
 
+  if( sideind > bound->nosides ) {
+    *sideelemtype = 0;
+    printf("Side element index %d exceeds size of boundary (%d)\n",sideind,bound->nosides);
+    return;
+  }
+
   element = bound->parent[sideind];
+
   if(element) {
     side = bound->side[sideind];
     normal = bound->normal[sideind];
@@ -634,6 +641,7 @@ void GetBoundaryElement(int sideind,struct BoundaryType *bound,struct FemType *d
   }
   else {
     *sideelemtype = bound->elementtypes[sideind];
+
     n = *sideelemtype % 100;
     for(i=0;i<n;i++)
       ind[i] = bound->topology[sideind][i];

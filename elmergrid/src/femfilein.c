@@ -277,6 +277,10 @@ static void FindPointParents(struct FemType *data,struct BoundaryType *bound,
 	  }
 		
 	  sideelem += 1;
+
+	  if( sideelem > bound->nosides ) {
+	    printf("There are more side elements than allocated for (%d vs. %d)\n",sideelem,bound->nosides);
+	  }
 	  bound->parent[sideelem] = elemind;
 	  bound->side[sideelem] = side;
 	  bound->parent2[sideelem] = 0;
@@ -298,7 +302,7 @@ static void FindPointParents(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Found %d side elements formed by %d points.\n",
 		  sideelem,boundarynodes);
 
-  bound->nosides = sideelem;
+  bound->nosides = MIN( sideelem, bound->nosides );
 
   return;
 }
@@ -557,7 +561,7 @@ omstart:
 		  noknots,noelements,maxnodes);
   AllocateKnots(data);
 
-  nosides = 2*boundarynodes;
+  nosides = 4*boundarynodes;
   printf("There are %d boundary nodes, thus allocating %d elements\n",
 	 boundarynodes,nosides);
   AllocateBoundary(bound,nosides);
@@ -1676,7 +1680,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
     if(!strstr(line,"Boundary")) j++;
 
   boundarynodes = j;
-  nosides = 2*boundarynodes;
+  nosides = 6*boundarynodes;
 
   if(info) printf("There are %d boundary nodes, allocating %d elements\n",
 		  boundarynodes,nosides);
@@ -1801,6 +1805,8 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 
   free_Ivector(boundindx,1,boundarynodes);
   free_Ivector(nodeindx,1,boundarynodes);
+
+  if(info) printf("Ansys mesh loaded succefully\n");
 
   return(0);
 }
