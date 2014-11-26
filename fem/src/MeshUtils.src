@@ -8183,7 +8183,7 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp),ALLOCATABLE :: Angles(:)
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: i,j,k,n,ind,Nmax,Nmin,Nfii,Nnodes,MaxElemNodes,NElems
-    LOGICAL :: Hit0, Hit90, Hit180, Hit270
+    LOGICAL :: Found, Hit0, Hit90, Hit180, Hit270
 
     ! We choose degrees as they are more intuitive
     rad2deg = 180.0_dp / PI
@@ -8382,24 +8382,25 @@ END SUBROUTINE GetMaxDefs
       WRITE(Message,'(A,ES12.3)') 'Discrepancy in dfii:',err1
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
       
-      Nsymmetry = 360.0_dp / dFii2 
-      WRITE(Message,'(A,ES12.3)') 'Symmetric sections in target:',Nsymmetry
-      CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
-      IF( ABS( Nsymmetry - NINT( Nsymmetry ) ) > 0.01 ) THEN
-        IF( dFii1 < dFii2 ) THEN
-          CALL Info('RotationalInterfaceMeshes','You might try to switch master and target!',Level=3)
+      i = ListGetInteger(BParams,'Rotational Projector Periods',Found ) 
+      IF( .NOT. Found ) THEN
+        Nsymmetry = 360.0_dp / dFii2 
+        WRITE(Message,'(A,ES12.3)') 'Suggested sections in target:',Nsymmetry
+        CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
+        IF( ABS( Nsymmetry - NINT( Nsymmetry ) ) > 0.01 ) THEN          
+          IF( dFii1 < dFii2 ) THEN
+            CALL Info('RotationalInterfaceMeshes','You might try to switch master and target!',Level=3)
+          END IF
+          CALL Warn('RotationalInterfaceMeshes','Check your settings, this cannot be periodic!')
         END IF
-        CALL Warn('RotationalInterfaceMeshes','Check your settings, this cannot be periodic!')
+      ELSE
+        WRITE(Message,'(A,I0)') 'Using enforced number of periods: ',i
+        CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
+        Nsymmetry = 360.0_dp / dFii2 
+        WRITE(Message,'(A,ES12.3)') 'Suggested number of periods:',Nsymmetry
+        CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
       END IF
     END IF
-
-    ! Go to using arc length, s, as the unit instead of angles.
-    ! This has the advantage that then (s,z) plane can be used also for skewed 
-    ! elements. 
-    !IF( UseArcLength ) THEN
-    !  BMesh1 % Nodes % x = (Radius/rad2deg) * BMesh1 % Nodes % x 
-    !  BMesh2 % Nodes % x = (Radius/rad2deg) * BMesh2 % Nodes % x 
-    !END IF
 
   END SUBROUTINE RotationalInterfaceMeshes
 !------------------------------------------------------------------------------
