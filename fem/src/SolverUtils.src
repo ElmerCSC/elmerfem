@@ -6545,7 +6545,7 @@ END FUNCTION SearchNodeL
 
         IF( OnlyGivenBCs ) THEN
           IF (.NOT. ListGetLogical( CurrentModel % BCs(bc) % Values,&
-              'Calculate Boundary Flux') ) CYCLE
+              'Calculate Boundary Flux',Found) ) CYCLE
         END IF
 
         DO j=1,Element % TYPE % NumberOfNodes
