@@ -219,7 +219,7 @@ CONTAINS
     A % ListMatrix => NULL()
 
     A % FORMAT = MATRIX_CRS
-    CALL Info('ListToCRSMatrix','Matrix format changed from List to CRS', Level=5)
+    CALL Info('ListToCRSMatrix','Matrix format changed from List to CRS', Level=8)
 
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToCRSMatrix
