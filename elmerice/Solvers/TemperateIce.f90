@@ -360,28 +360,35 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
   !------------------------------------------------------------------------------
   !       Get externally declared DOFs
   !------------------------------------------------------------------------------
-  IF (.NOT.ApplyDirichlet) ActiveNode = .FALSE.
-  VarTempHom => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Homologous' )
-  IF (.NOT.ASSOCIATED(VarTempHom)) THEN
-     WRITE(Message,'(A)') TRIM(Solver % Variable % Name) // ' Homologous not associated'
-     CALL FATAL( SolverName, Message)
-  END IF
+  IF (.NOT.ApplyDirichlet) THEN
+     ActiveNode = .FALSE.
+  ELSE
+     VarTempHom => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Homologous' )
+     IF (.NOT.ASSOCIATED(VarTempHom)) THEN
+        WRITE(Message,'(A)') TRIM(Solver % Variable % Name) // ' Homologous not associated, but Apply Dirichlet set.'
+        CALL FATAL( SolverName, Message)
+     END IF
 
-  VarTempResidual => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Residual' )
-  IF (.NOT.ASSOCIATED(VarTempResidual)) THEN
-     WRITE(Message,'(A)') '>' // TRIM(Solver % Variable % Name) // ' Residual< not associated'
-     CALL FATAL( SolverName, Message)
+     VarTempResidual => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Residual' )
+     IF (.NOT.ASSOCIATED(VarTempResidual)) THEN
+        WRITE(Message,'(A)') '>' // TRIM(Solver % Variable % Name) // ' Residual< not associated'
+        CALL FATAL( SolverName, Message)
+     END IF
+     PointerToResidualVector => VarTempResidual % Values
   END IF
-  PointerToResidualVector => VarTempResidual % Values
 
 
   !------------------------------------------------------------------------------
   !       non-linear system iteration loop
   !------------------------------------------------------------------------------
   DO iter=1,NonlinearIter
-     FirstTime = .FALSE.           
-     CALL MPI_ALLREDUCE(UnconstrainedNodesExist,GlobalUnconstrainedNodesExist,1, &
-          MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+     FirstTime = .FALSE.
+     IF ( ParEnv % PEs > 1 ) THEN
+        CALL MPI_ALLREDUCE(UnconstrainedNodesExist,GlobalUnconstrainedNodesExist,1, &
+             MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+     ELSE
+        GlobalUnconstrainedNodesExist = UnconstrainedNodesExist
+     END IF
      UnconstrainedNodesExist = .FALSE.
 
      !------------------------------------------------------------------------------
@@ -872,39 +879,37 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
      !-----------------------------
      ! determine "active" nodes set
      !-----------------------------
-     IF (ASSOCIATED(VarTempHom)) THEN
+     IF (ApplyDirichlet .AND. ASSOCIATED(VarTempHom)) THEN
         TempHomologous => VarTempHom % Values
         DO i=1,Model % Mesh % NumberOfNodes
            k = VarTempHom % Perm(i)
            l= TempPerm(i)
-           TempHomologous(k) = Temp(l) - UpperLimit(i)
-           IF (ApplyDirichlet) THEN
+           TempHomologous(k) = Temp(l) - UpperLimit(i)        
 
-              ! jump to next round if we have a
-              !ghost node in a halo parallel mesh
-              IF (( ParEnv % PEs > 1 ) .AND. &
-                   (IsGhostNode( i ))) THEN
-                 IF (TempHomologous(k) >= 0.0 ) &
-                      TempHomologous(k) = LinearTol
-                 CYCLE
-              END IF
+           ! jump to next round if we have a
+           !ghost node in a halo parallel mesh
+           IF (( ParEnv % PEs > 1 ) .AND. &
+                (IsGhostNode( i ))) THEN
+              IF (TempHomologous(k) >= 0.0 ) &
+                   TempHomologous(k) = LinearTol
+              CYCLE
+           END IF
 
-              !---------------------------------------------------------
-              ! if upper limit is exceeded, manipulate matrix in any case
-              !----------------------------------------------------------
-              IF (TempHomologous(k) >= 0.0 ) THEN
-                 ActiveNode(i) = .TRUE.
-                 TempHomologous(k) = LinearTol
+           !---------------------------------------------------------
+           ! if upper limit is exceeded, manipulate matrix in any case
+           !----------------------------------------------------------
+           IF (TempHomologous(k) >= 0.0 ) THEN
+              ActiveNode(i) = .TRUE.
+              TempHomologous(k) = LinearTol
+           END IF
+           !---------------------------------------------------
+           ! if there is "heating", don't manipulate the matrix
+           !---------------------------------------------------
+           IF (ResidualVector(l) > LinearTol .AND. iter>1) THEN
+              IF (ActiveNode(i)) THEN
+                 UnconstrainedNodesExist = .TRUE.
               END IF
-              !---------------------------------------------------
-              ! if there is "heating", don't manipulate the matrix
-              !---------------------------------------------------
-              IF (ResidualVector(l) > LinearTol .AND. iter>1) THEN
-                 IF (ActiveNode(i)) THEN
-                    UnconstrainedNodesExist = .TRUE.
-                 END IF
-                 ActiveNode(i) = .FALSE.
-              END IF
+              ActiveNode(i) = .FALSE.
            END IF
            IF( .NOT.ActiveNode(i) ) THEN
               PointerToResidualVector(VarTempResidual % Perm(i)) = 0.0D00
@@ -914,7 +919,7 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
         END DO
      ELSE
         WRITE(Message,'(A)') TRIM(Solver % Variable % Name) // ' Homologous not associated'
-        CALL FATAL( SolverName, Message)
+        CALL INFO( SolverName, Message, Level=1)
      END IF
      !------------------------------------------
      ! special treatment for periodic boundaries

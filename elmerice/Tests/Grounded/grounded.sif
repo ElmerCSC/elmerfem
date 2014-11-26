@@ -125,8 +125,10 @@ Solver 2
   Equation = "GroundedMaskInit"
   Variable = "GroundedMask"
   Variable DOFs = 1
-  TolerInit = Real 1.0e-03
   Procedure = "ElmerIceSolvers" "GroundedSolverInit"
+  TolerInit = Real 1.0e-03
+
+  Bedrock Variable = String "bedrock"
 End
 
 Solver 3
@@ -190,10 +192,10 @@ Solver 6
   Equation = "GroundedMask"
   Variable = "GroundedMask"
   Variable DOFs = 1
+  Procedure = "ElmerIceSolvers" "GroundedSolver"
 
   Toler = Real 1.0e-3
-
-  Procedure = "ElmerIceSolvers" "GroundedSolver"
+  Bedrock Variable = String "bedrock"
 End
 
 Solver 7

@@ -144,7 +144,7 @@ MODULE DiffuseConvective
      REAL(KIND=dp) :: Lambda=1.0,Pe,Pe1,Pe2,Tau,x,y,z
 
      REAL(KIND=dp) :: Tau_M, Tau_C, Gmat(3,3),Gvec(3), dt=0._dp, LC1, NodalVelo(4,n), &
-       RM(n),LC(3,n), gradP(n), VRM(3), GradNodal(n,3,3), PVelo(3), NodalPVelo(4,n), &
+       RM(n),LC(3,n), gradP(n), VRM(3), GradNodal(n,4,3), PVelo(3), NodalPVelo(4,n), &
        Work(3,n), Grav(3), expc, reft, temperature
 
      REAL(KIND=dp), POINTER :: gWrk(:,:)

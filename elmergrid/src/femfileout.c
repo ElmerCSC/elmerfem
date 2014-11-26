@@ -570,3 +570,273 @@ int SaveMeshGmsh(struct FemType *data,struct BoundaryType *bound,
 
   return(0);
 }
+
+
+static int ElmerToVtkType(int elmertype)
+{
+  int vtktype = 0;
+
+  switch (elmertype) {
+      
+  case 101:
+    vtktype = 1;
+  case 202:        
+    vtktype = 3;
+    break;
+  case 203:        
+    vtktype = 21;
+    break;
+  case 303:        
+    vtktype = 5;
+    break;
+  case 306:        
+    vtktype = 22;
+    break;
+  case 404:        
+    vtktype = 9;
+    break;
+  case 408:        
+    vtktype = 23;
+    break;
+  case 409:        
+    vtktype = 28;
+    break;
+  case 504:        
+    vtktype = 10;
+    break;
+  case 510:        
+    vtktype = 24;
+    break;
+  case 605:        
+    vtktype = 14;
+    break;
+  case 613:        
+    vtktype = 27;
+    break;
+  case 706:        
+    vtktype = 13;
+    break;
+  case 715:        
+    vtktype = 26;
+    break;
+  case 808:        
+    vtktype = 12;
+    break;
+  case 820:
+    vtktype = 25;
+    break;
+
+  default:
+    printf("Elmer element %d does not have an Vtk counterpart!\n",elmertype);
+  }
+
+  return(vtktype);
+}
+
+
+
+int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
+		 int nobound,char *prefix,int decimals,int info)
+/* This procedure saves the mesh in the VTU format understood by Paraview and Visit, for example. */
+{
+  int material,noknots,noelements,bulkelems,sideelems,vtktype,elemtype,boundtype;
+  char filename[MAXFILESIZE],outstyle[MAXFILESIZE];
+  int i,j,k,nodesd2,elemind,idoffset;
+  int ind[MAXNODESD2];
+  int LittleEnd,PrecBits,elemoffset;
+  FILE *out;
+  
+  if(!data->created) {
+    printf("SaveMeshVtk: You tried to save points that were never created.\n");
+    return(1);
+  }
+
+  /* Compute the number of boundary elements and register the minimum BC type */
+  sideelems = 0;
+  if(nobound) {
+    for(j=0;j<nobound;j++) {
+      if(bound[j].created) 
+	sideelems += bound[j].nosides; 
+    }
+    if(0) printf("number of boundary elements: %d\n",sideelems);
+  }
+ 
+  noknots = data->noknots;
+  bulkelems = data->noelements;
+  if(nobound)
+    noelements = bulkelems + sideelems;
+  else
+    noelements = bulkelems;
+
+  AddExtension(prefix,filename,"vtu");
+  if(info) printf("Saving VTU mesh to %s.\n",filename);  
+
+  out = fopen(filename,"w");
+  if(out == NULL) {
+    printf("opening of file was not successful\n");
+    return(3);
+  }
+
+  idoffset = 100;
+  LittleEnd = FALSE;
+  PrecBits = 64; /* 32 for single precision */
+  
+
+  if(info) printf("Saving Elmer mesh in ascii VTU format\n");
+  fprintf(out,"<?xml version=\"1.0\"?>\n");
+  if( LittleEnd ) 
+    fprintf(out,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"LittleEndian\">\n");
+  else
+    fprintf(out,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"BigEndian\">\n");
+
+  fprintf(out,"  <UnstructuredGrid>\n");
+  fprintf(out,"    <Piece NumberOfPoints=\"%d\"  NumberOfCells=\"%d\">\n",noknots,noelements);
+
+  /* Write out the nodal indexes, this is mainly just on example */
+  fprintf(out,"      <PointData>\n");
+  fprintf(out,"        <DataArray type=\"Float%d\" Name=\"NodeNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
+  for(i=1;i<=noknots;i++) fprintf(out,"%12.6le ",1.0*i);
+  fprintf(out,"\n");
+  fprintf(out,"        </DataArray>\n");
+  fprintf(out,"      </PointData>\n");
+
+
+  printf("Saving cell data (Element numbers and Goemetry Ids).\n");
+  fprintf(out,"      <CellData>\n");
+  /* Write out the element indexes, this is mainly just on example */
+  fprintf(out,"        <DataArray type=\"Float%d\" Name=\"ElementNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
+  for(i=1;i<=noelements;i++) 
+    fprintf(out,"%12.6le ",1.0*i);
+  fprintf(out,"\n");
+  fprintf(out,"        </DataArray>\n");
+
+  /* Write out the geometry Ids */
+  fprintf(out,"        <DataArray type=\"Int32\" Name=\"GeometryIds\" NumberOfComponents=\"1\" format=\"ascii\">\n");
+  for(i=1;i<=bulkelems;i++) 
+    fprintf(out,"%d ",data->material[i]);
+
+  if(nobound ) {
+    for(j=0;j<nobound;j++) {
+      if(bound[j].created == FALSE) continue;      
+      for(i=1;i<=bound[j].nosides;i++) {
+	boundtype = bound[j].types[i];
+	fprintf(out,"%d ",idoffset + bound[j].types[i]);
+      }
+    }
+  }
+  fprintf(out,"\n");
+  fprintf(out,"        </DataArray>\n");
+
+
+  /* Write out the geometry Ids */
+  if(data->partitionexist) {
+    fprintf(out,"        <DataArray type=\"Int32\" Name=\"Partition\" NumberOfComponents=\"1\" format=\"ascii\">\n");
+    for(i=1;i<=bulkelems;i++) 
+      fprintf(out,"%d ",data->elempart[i]);
+    
+    if(nobound ) {
+      for(j=0;j<nobound;j++) {
+	if(bound[j].created == FALSE) continue;      
+	for(i=1;i<=bound[j].nosides;i++) {
+	  k = bound[j].parent[i];
+	  if(k) 
+	    fprintf(out,"%d ",data->elempart[k]);
+	  else
+	    fprintf(out,"%d ",0);
+	}
+      }
+    }
+    fprintf(out,"\n");
+    fprintf(out,"        </DataArray>\n");
+  }
+
+  fprintf(out,"      </CellData>\n");
+
+
+  if(info) printf("Saving %d nodal coordinates\n",noknots);
+  fprintf(out,"      <Points>\n");  
+  fprintf(out,"        <DataArray type=\"Float%d\" Name=\"ElementNumber\" NumberOfComponents=\"3\" format=\"ascii\">\n",PrecBits);
+  for(i=1;i<=noknots;i++) 
+    fprintf(out,"%12.6le %12.6le %12.6le ",data->x[i],data->y[i],data->z[i]);
+  fprintf(out,"\n");
+  fprintf(out,"        </DataArray>\n");
+  fprintf(out,"      </Points>\n");
+
+
+  printf("Saving %d element topologies.\n",noelements);
+  fprintf(out,"      <Cells>\n");  
+
+
+  fprintf(out,"        <DataArray type=\"Int32\" Name=\"connectivity\" NumberOfComponents=\"1\" format=\"ascii\">\n");
+  for(i=1;i<=bulkelems;i++) {
+    elemtype = data->elementtypes[i];
+    for(j=0;j<elemtype%100;j++)
+      fprintf(out,"%d ",data->topology[i][j]-1);
+  }
+  if(nobound ) {
+    for(j=0;j<nobound;j++) {
+      if(bound[j].created == FALSE) continue;      
+      for(i=1;i<=bound[j].nosides;i++) {
+	GetBoundaryElement(i,&bound[j],data,ind,&elemtype); 
+	for(k=0;k<elemtype%100;k++)
+	  fprintf(out,"%d ",ind[k]-1);
+      }
+    }
+  }
+  fprintf(out,"\n");
+  fprintf(out,"        </DataArray>\n");
+
+
+  fprintf(out,"        <DataArray type=\"Int32\" Name=\"offsets\" NumberOfComponents=\"1\" format=\"ascii\">\n");
+  elemoffset = 0;
+  for(i=1;i<=bulkelems;i++) {
+    elemtype = data->elementtypes[i];
+    elemoffset += elemtype % 100;
+    fprintf(out,"%d ",elemoffset );
+  }
+  if(nobound ) {
+    for(j=0;j<nobound;j++) {
+      if(bound[j].created == FALSE) continue;      
+      for(i=1;i<=bound[j].nosides;i++) {
+	GetBoundaryElement(i,&bound[j],data,ind,&elemtype); 
+	elemoffset += elemtype % 100;
+	fprintf(out,"%d ",elemoffset );
+      }
+    }
+  }
+  fprintf(out,"\n");
+  fprintf(out,"        </DataArray>\n");
+
+
+  fprintf(out,"        <DataArray type=\"Int32\" Name=\"types\" NumberOfComponents=\"1\" format=\"ascii\">\n");
+  for(i=1;i<=bulkelems;i++) {
+    elemtype = data->elementtypes[i];
+    vtktype = ElmerToVtkType( elemtype );
+    fprintf(out,"%d ",vtktype );
+  }
+  if(nobound ) {
+    for(j=0;j<nobound;j++) {
+      if(bound[j].created == FALSE) continue;      
+      for(i=1;i<=bound[j].nosides;i++) {
+	GetBoundaryElement(i,&bound[j],data,ind,&elemtype); 
+	vtktype = ElmerToVtkType( elemtype );
+	fprintf(out,"%d ",vtktype );
+      }
+    }
+  }
+  fprintf(out,"\n");
+  fprintf(out,"        </DataArray>\n");
+
+ 
+  fprintf(out,"      </Cells>\n");
+  fprintf(out,"    </Piece>\n");
+  fprintf(out,"  </UnstructuredGrid>\n");
+  fprintf(out,"</VTKFile>\n");
+
+  fclose(out);
+
+  if(info) printf("Saving of Elmer mesh to VTK format finished\n");
+
+  return(0);
+}
+

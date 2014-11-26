@@ -1811,7 +1811,12 @@ CONTAINS
            c(3) = c(3) .OR. ANY( Mesh % Nodes % z /= z )
            Mesh => Mesh % Next
         END DO
-        Model % DIMENSION = COUNT( c )
+
+        ! This may be too conservative
+        ! Model % DIMENSION = COUNT( c ) 
+        IF( C(1) ) Model % Dimension = 1
+        IF( C(2) ) Model % Dimension = 2 
+        IF( C(3) ) Model % Dimension = 3
      END IF
 
      SELECT CASE ( csys )

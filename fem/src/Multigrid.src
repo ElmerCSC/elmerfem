@@ -881,13 +881,13 @@ CONTAINS
 
        INTEGER :: i,j,k,l,m,n,n2,k1,k2,iter,MaxIter = 100, RDOF, CDOF,ndofs
        LOGICAL :: Condition, Found, Parallel, Project,Transient
-       CHARACTER(LEN=MAX_NAME_LEN) :: Path,str,mgname
+       CHARACTER(LEN=MAX_NAME_LEN) :: Path,str,mgname, LowestSolver
 
        TYPE(Matrix_t), POINTER :: ProjPN, ProjQT
        INTEGER, POINTER :: Permutation(:), Permutation2(:), Indexes(:), Deg(:), &
                 PatLevel(:), iPerm(:),dum(:)
 
-       REAL(KIND=dp) :: ResidualNorm, RHSNorm, Tolerance, ILUTOL
+       REAL(KIND=dp) :: ResidualNorm, RHSNorm, Tolerance, ILUTOL, tmp
        REAL(KIND=dp), POINTER CONTIG :: Residual(:), Residual2(:), Solution2(:), &
                SaveVals(:), Basis(:)
 
@@ -895,7 +895,8 @@ CONTAINS
 
        REAL(KIND=dp) :: CPUTime, tt, detJ
 
-       LOGICAL :: NewLinearSystem, stat
+       LOGICAL :: NewLinearSystem, stat, LIter
+
        SAVE NewLinearSystem
 
        TYPE(Nodes_t), SAVE :: Nodes
@@ -903,8 +904,6 @@ CONTAINS
        TYPE(ValueList_t), POINTER :: Params
 !------------------------------------------------------------------------------
        tt = CPUTime()
-
-
 
 !
 !      Initialize:
@@ -932,22 +931,59 @@ CONTAINS
 !      If at lowest level, solve directly:
 !      -----------------------------------
        IF ( Level <= 1 ) THEN
-         CALL ListSetNamespace('mglowest:')
 
-         IF ( .NOT. Parallel ) THEN
-           IF (ListGetLogical(Params,'MG Lowest Linear Solver Iterative',Found)) THEN
-             CALL IterSolver( Matrix1, Solution, ForceVector, Solver )
-           ELSE
-             CALL DirectSolver( Matrix1, Solution, ForceVector, Solver )
-           END IF
-         ELSE
-           CALL ParallelIter( Matrix1, Matrix1 % ParallelInfo, DOFs, &
-               Solution, ForceVector, Solver, Matrix1 % ParMatrix )
-         END IF
+          CALL ListSetNamespace('mglowest:')
 
-         CALL ListSetNamespace('')
+          LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
+          IF ( .NOT. Found ) THEN
+            LIter=ListGetLogical(Params,'MG Lowest Linear Solver Iterative',Found)
+            IF ( .NOT. Found .AND. Parallel ) LIter=.TRUE.
+            LowestSolver='direct'
+            IF ( LIter ) LowestSolver='iterative'
+          END IF
 
-         RETURN
+          CALL Info('PMGSolve','Starting lowest linear solver using: '//TRIM(LowestSolver),Level=10 )
+
+          SELECT CASE(LowestSolver)
+
+          CASE('iterative')
+            IF ( Parallel ) THEN
+              CALL ParallelIter( Matrix1, Matrix1 % ParallelInfo, DOFs, &
+                  Solution, ForceVector, Solver, Matrix1 % ParMatrix )
+            ELSE
+              CALL IterSolver( Matrix1, Solution, ForceVector, Solver )
+            END IF
+
+          CASE('direct')
+            CALL DirectSolver( Matrix1, Solution, ForceVector, Solver )
+
+          CASE('smoother')
+            IF ( Parallel ) THEN
+               CALL ParallelInitSolve( Matrix1, Solution, &
+                       ForceVector, Residual, NewLinearSystem )
+            END IF
+            PSolver => Solver
+            tmp = MGSmooth( PSolver, Matrix1, Mesh1, Solution, &
+                 ForceVector, Residual, Level, DOFs, LowestSmooth = .TRUE. )
+
+          CASE('none') 
+            CALL Info('GMGSolve','Applying no solver for coarsest level')
+
+          CASE DEFAULT
+             CALL Warn( 'GMGSolve', 'Unknown solver selection for MG lowest level' )
+             CALL Warn( 'GMGSolve', 'Using iterative solver' )
+
+             IF ( Parallel ) THEN
+               CALL ParallelIter( Matrix1, Matrix1 % ParallelInfo, DOFs, &
+                   Solution, ForceVector, Solver, Matrix1 % ParMatrix )
+             ELSE
+               CALL IterSolver( Matrix1, Solution, ForceVector, Solver )
+             END IF
+          END SELECT
+
+          CALL ListSetNamespace('')
+
+          RETURN
        END IF
 !
        n = Matrix1 % NumberOfRows

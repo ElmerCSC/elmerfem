@@ -479,38 +479,17 @@ CONTAINS
                          CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i+1, 0._dp)
                        END IF
                     ELSE IF (NullEdges) THEN
-                       IF( ASSOCIATED( A % Eperm) ) THEN
-                         IF( A % Eperm(i) /= 0 ) THEN
-                           CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
-                           IF(MOD(i,2)==0) THEN
-                             CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i-1, 0._dp)
-                           ELSE
-                             CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i+1, 0._dp)
-                           END IF
-                         END IF
+                       CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
+                       IF(MOD(i,2)==0) THEN
+                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i-1, 0._dp)
                        ELSE
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
-                         IF(MOD(i,2)==0) THEN
-                           CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i-1, 0._dp)
-                         ELSE
-                           CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i+1, 0._dp)
-                         END IF
+                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i+1, 0._dp)
                        END IF
                     END IF
 
                     DO j=A % Rows(i+1)-1,A % Rows(i),-1
                       IF (i>k .OR. A % Cols(j)>k .OR. .NOT.NullEdges) THEN
                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
-                      END IF
-                    END DO
-
-                    DO j=A % Rows(i+1)-1,A % Rows(i),-1
-                      IF (i>k .OR. A % Cols(j)>k .OR. .NOT.NullEdges) THEN
-                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
-                      ELSE IF (NullEdges .AND. ASSOCIATED(A % EPerm)) THEN
-                        IF ( A % Eperm(i)==0.AND.A % EPerm(A % Cols(j))==0) THEN
-                          CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
-                        END IF
                       END IF
                     END DO
                   END DO
@@ -569,27 +548,12 @@ CONTAINS
                     IF(i>k) THEN
                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 0._dp)
                     ELSE IF (NullEdges) THEN
-                       IF(ASSOCIATED( A % EPerm) ) THEN
-                         IF( A % Eperm(i)/=0 ) &
-                           CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
-                       ELSE
-                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
-                       END IF
+                       CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, i, 1._dp)
                     END IF
 
                     DO j=A % Rows(i+1)-1,A % Rows(i),-1
                       IF (i>k .OR. A % Cols(j)>k .OR. .NOT.NullEdges) THEN
                         CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
-                      END IF
-                    END DO
-
-                    DO j=A % Rows(i+1)-1,A % Rows(i),-1
-                      IF (i>k .OR. A % Cols(j)>k .OR. .NOT.NullEdges) THEN
-                        CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
-                      ELSE IF (NullEdges .AND. ASSOCIATED(A % EPerm)) THEN
-                        IF ( A % Eperm(i)==0.AND.A % EPerm(A % Cols(j))==0) THEN
-                          CALL List_AddToMatrixElement(PrecMat % ListMatrix, i, A % Cols(j), A % Values(j))
-                        END IF
                       END IF
                     END DO
                   END DO

@@ -208,7 +208,7 @@ VtkPost::VtkPost(QWidget *parent)
   // Initialize:
   //------------
   setWindowIcon(QIcon(":/icons/Mesh3D.png"));
-  setWindowTitle("ElmerGUI postprocessor");
+  setWindowTitle("ElmerVTK postprocessor");
   resize(800, 600);
 
   createActions();
@@ -2183,7 +2183,7 @@ QSize VtkPost::sizeHint() const
 
 void VtkPost::showHelpSlot()
 {
-  QMessageBox::about(this, tr("ElmerGUI postprocessor (beta)"),
+  QMessageBox::about(this, tr("ElmerVTK postprocessor"),
 		     tr("Press 'p' to pick a point\n"
                         "Press 'i' to show/hide the interactive plane widget\n"
 			"Press 'w' to show the results in wireframe mode\n"

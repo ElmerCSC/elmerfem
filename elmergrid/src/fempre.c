@@ -107,6 +107,7 @@ static void Instructions()
   printf("2)  .mesh.*   : ElmerSolver format (also partitioned .part format)\n");
   printf("3)  .ep       : ElmerPost format\n");
   printf("4)  .msh      : Gmsh mesh format\n");
+  printf("5)  .vtu      : VTK ascii XML format\n");
 #if 0
   printf("5)  .inp      : Abaqus input format\n");
   printf("7)  .fidap    : Fidap format\n");
@@ -148,7 +149,7 @@ static void Instructions()
   printf("-removeunused        : remove nodes that are not used in any element\n");
   printf("-bulkorder           : renumber materials types from 1 so that every number is used\n");
   printf("-boundorder          : renumber boundary types from 1 so that every number is used\n");
-  printf("-autoclean           : this performs the united action of the three above\n");
+  printf("-autoclean           : this performs the united action of the four above\n");
   printf("-bulkbound int[3]    : set the intersection of materials [int1 int2] to be boundary int3\n");
   printf("-boundbound int[3]   : set the intersection of boundaries [int1 int2] to be boundary int3\n");
   printf("-bulktype int[3]     : set material types in interval [int1 int2] to type int3\n");
@@ -172,6 +173,7 @@ static void Instructions()
   printf("-partdual            : use the dual graph in the partitioning\n");
   printf("-halo                : create halo for the partitioning for DG\n");
   printf("-halobc              : create halo for the partitioning at boundaries only\n");
+  printf("-haloz               : create halo for the the special z-partitioning\n");
   printf("-indirect            : create indirect connections in the partitioning\n");
   printf("-periodic int[3]     : decleare the periodic coordinate directions for parallel meshes\n");
   printf("-partjoin int        : number of partitions in the data to be joined\n");
@@ -960,7 +962,8 @@ int main(int argc, char *argv[])
     for(k=0;k<nomeshes;k++) {
       if(data[k].nopartitions > 1) 
 	SaveElmerInputPartitioned(&data[k],boundaries[k],eg.filesout[k],eg.decimals,
-				  eg.partitionhalo,eg.partitionindirect,eg.parthypre,info);
+				  eg.partitionhalo,eg.partitionindirect,eg.parthypre,
+				  eg.partbclayers,info);
       else
 	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,info);
     }
@@ -990,6 +993,13 @@ int main(int argc, char *argv[])
   case 4:
     for(k=0;k<nomeshes;k++) {
       SaveMeshGmsh(&data[k],boundaries[k],eg.saveboundaries ? MAXBOUNDARIES:0,
+		   eg.filesout[k],eg.decimals,info);
+    }
+    break;
+
+  case 5:
+    for(k=0;k<nomeshes;k++) {
+      SaveMeshVtu(&data[k],boundaries[k],eg.saveboundaries ? MAXBOUNDARIES:0,
 		   eg.filesout[k],eg.decimals,info);
     }
     break;

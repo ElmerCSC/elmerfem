@@ -469,7 +469,7 @@ void GetElementSide(int element,int side,int normal,
     }
     else if (side < 5) {
       *sideelemtype = 404;     
-      for(i=0;i<3;i++)
+      for(i=0;i<4;i++)
 	ind[i] = elemind[i];
     }
     else if(side < 13) {
@@ -617,11 +617,6 @@ void GetElementSide(int element,int side,int normal,
       for(i=0;i<=j;i++)
 	ind[i] = ind2[j-i];
     }
-#if 0
-    else if(normal != 1) {
-      printf("GetElementSide: unknown option (normal=%d)\n",normal);
-    }
-#endif 
   }
 }
 
@@ -631,7 +626,14 @@ void GetBoundaryElement(int sideind,struct BoundaryType *bound,struct FemType *d
 {
   int element,side,normal,i,n;
 
+  if( sideind > bound->nosides ) {
+    *sideelemtype = 0;
+    printf("Side element index %d exceeds size of boundary (%d)\n",sideind,bound->nosides);
+    return;
+  }
+
   element = bound->parent[sideind];
+
   if(element) {
     side = bound->side[sideind];
     normal = bound->normal[sideind];
@@ -639,6 +641,7 @@ void GetBoundaryElement(int sideind,struct BoundaryType *bound,struct FemType *d
   }
   else {
     *sideelemtype = bound->elementtypes[sideind];
+
     n = *sideelemtype % 100;
     for(i=0;i<n;i++)
       ind[i] = bound->topology[sideind][i];
@@ -4230,7 +4233,7 @@ void RenumberBoundaryTypes(struct FemType *data,struct BoundaryType *bound,
 	if(mapdim[i] != elemdim) continue;
 	if(mapbc[i]) {
 	  j++;
-	  printf("boundary index changed %d -> %d in %d elements\n",i,j,mapbc[i]); 
+	  if(i != j) printf("boundary index changed %d -> %d in %d elements\n",i,j,mapbc[i]); 
 	  mapbc[i] = j;
 	}    
       }
@@ -4314,7 +4317,7 @@ void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int i
   for(i=minmat;i<=maxmat;i++) {
     if(mapmat[i]) {
       j++;
-      printf("body index changed %d -> %d in %d elements\n",i,j,mapmat[i]); 
+      if(i != j) printf("body index changed %d -> %d in %d elements\n",i,j,mapmat[i]); 
       mapmat[i] = j;
     }
   }  
@@ -4333,7 +4336,7 @@ void RenumberMaterialTypes(struct FemType *data,struct BoundaryType *bound,int i
     }
   }
   else {
-    if(info) printf("Numbering of bodies is ok!\n");
+    if(info) printf("Numbering of bodies is already ok\n");
   }
   free_Ivector(mapmat,minmat,maxmat);
 }

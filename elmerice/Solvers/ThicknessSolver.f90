@@ -124,6 +124,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   END IF
   NonlinearTol  = GetConstReal( SolverParams, &
        'Nonlinear System Convergence Tolerance',    Found )
+  IF ( .NOT.Found ) NonlinearTol = 1.0e-6
   NonlinearIter = GetInteger(   SolverParams, &
        'Nonlinear System Max Iterations', Found )
   IF ( .NOT.Found ) NonlinearIter = 1
@@ -494,7 +495,9 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           DHDT => DHDTSol % Values
 
           Do i=1,Solver % Mesh % NumberOfNodes
-            DHDT(DHDTSol % Perm(i))=(Solver % Variable % Values(ThickPerm(i))-PreH(ThickPerm(i),1))/dt
+             IF ( DHDTSol % Perm(i) .ge. 1 ) THEN
+                DHDT(DHDTSol % Perm(i))=(Solver % Variable % Values(ThickPerm(i))-PreH(ThickPerm(i),1))/dt
+             END IF
           End Do
        Endif
 
