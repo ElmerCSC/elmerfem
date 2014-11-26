@@ -31,10 +31,11 @@ MACRO(SUBDIRLIST result curdir)
 ENDMACRO()
 
 SUBDIRLIST(SUBDIRS ${CMAKE_CURRENT_SOURCE_DIR})
+
 FOREACH(subdir ${SUBDIRS})
-  IF(EXISTS(${subdir}/CMakeLists.txt))
+  IF(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt")
     ADD_SUBDIRECTORY(${subdir})
-  ENDIF(EXISTS(${subdir}/CMakeLists.txt))
+  ENDIF(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt")
 ENDFOREACH()
 
 IF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
