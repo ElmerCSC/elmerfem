@@ -3890,7 +3890,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:), &
         InvPerm1(:), InvPerm2(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
-    LOGICAL :: OnTheFlyBC, CheckForHalo, HaloFound
+    LOGICAL :: OnTheFlyBC, CheckForHalo, HaloFound, NarrowHalo, NoHalo
 
     TYPE(Element_t), POINTER :: Parent,q
     INTEGER :: en, in
@@ -3908,10 +3908,18 @@ END SUBROUTINE GetMaxDefs
 
     ! In parallel we may have some excess halo elements. 
     ! To eliminate them mark the nodes that are associated to elements truly owned. 
-    CheckForHalo = ( ParEnv % PEs > 1 )
+    IF( ParEnv % PEs > 1 ) THEN
+      ! Account for halo elements that share some nodes for the master boundary
+      NarrowHalo = ListGetLogical(Model % Simulation,'Projector Narrow Halo')
+      ! Do not allow for any halo elements for the master boundary
+      NoHalo = ListGetLogical(Model % Simulation,'Projector No Halo')
+    ELSE
+      NarrowHalo = .FALSE.
+      NoHalo = .FALSE.
+    END IF
 
     ! This is just temporarily set to false always until the logic has been tested. 
-    CheckForHalo = .FALSE.
+    CheckForHalo = NarrowHalo .OR. NoHalo
 
     HaloFound = .FALSE.
     IF( CheckForHalo ) THEN
@@ -3961,15 +3969,30 @@ END SUBROUTINE GetMaxDefs
       IF (Element % TYPE % ElementCode<=200) CYCLE
 
       Constraint = Element % BoundaryInfo % Constraint
-      IF ( Model % BCs(This) % Tag == Constraint ) THEN
+      IF( Model % BCs(This) % Tag == Constraint ) THEN
         IF( CheckForHalo ) THEN
-          IF( ANY(ActiveNode(Element % NodeIndexes) ) ) THEN
-            n1 = n1 + 1
+          IF( NarrowHalo ) THEN
+            IF( ANY(ActiveNode(Element % NodeIndexes) ) ) THEN
+              n1 = n1 + 1
+            END IF
+          ELSE IF( NoHalo ) THEN
+            ThisActive = .FALSE.
+            Left => Element % BoundaryInfo % Left 
+            IF( ASSOCIATED( Left ) ) THEN
+              ThisActive = ( Left % PartIndex == ParEnv % MyPe )
+            END IF
+            Right => Element % BoundaryInfo % Right
+            IF( ASSOCIATED( Right ) ) THEN
+              ThisActive = ThisActive .OR. &
+                  ( Right % PartIndex == ParEnv % MyPe ) 
+            END IF
+            IF( ThisActive ) n1 = n1 + 1
           END IF
         ELSE
           n1 = n1 + 1
         END IF
       END IF
+
       IF( OnTheFlyBC ) THEN
         IF( Trgt == Constraint ) n2 = n2 + 1
       ELSE
@@ -4013,9 +4036,22 @@ END SUBROUTINE GetMaxDefs
       Constraint = Element % BoundaryInfo % Constraint
       
       ThisActive = ( Model % BCs(This) % Tag == Constraint ) 
-      IF( CheckForHalo ) THEN
-        IF( .NOT. ANY(ActiveNode(Element % NodeIndexes) ) ) THEN
+      IF( ThisActive .AND. CheckForHalo ) THEN
+        IF( NarrowHalo ) THEN
+          IF( .NOT. ANY(ActiveNode(Element % NodeIndexes) ) ) THEN
+            ThisActive = .FALSE.
+          END IF
+        ELSE IF( NoHalo ) THEN
           ThisActive = .FALSE.
+          Left => Element % BoundaryInfo % Left 
+          IF( ASSOCIATED( Left ) ) THEN
+            ThisActive = ( Left % PartIndex == ParEnv % MyPe )
+          END IF
+          Right => Element % BoundaryInfo % Right
+          IF( ASSOCIATED( Right ) ) THEN
+            ThisActive = ThisActive .OR. &
+                ( Right % PartIndex == ParEnv % MyPe ) 
+          END IF
         END IF
       END IF
 
