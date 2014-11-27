@@ -764,7 +764,7 @@ CONTAINS
   ! Dirichlet BCs in terms of magnetic flux density B:
   ! --------------------------------------------------
   CALL DirichletAfromB()
-  CALL ConstrainUnused(A)
+  !CALL ConstrainUnused(A)
 
   !
   ! Gauge tree, if requested or using direct solver:
@@ -867,7 +867,6 @@ CONTAINS
 
   REAL(kind=dp), ALLOCATABLE :: dDiag(:)
 !------------------------------------------------------------------------------
-
   n = A % NumberOfRows
   ALLOCATE(dDiag(n)); dDiag = 0._dp
 
@@ -2945,14 +2944,20 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   !---------------------------------------------------------------
   Mesh => GetMesh()
   nNodes = Mesh % NumberOfNodes
+  Write (Message, '(A,I8,A,I8)'), 'nNodes = ', nNodes, '        nEdges = ', Mesh % NumberOfEdges
+  call Info('WhitneyAVHarmonicSolver', Message)
   Perm => Solver % Variable % Perm
 
   A => GetMatrix()
 
   IF ( .NOT. AllocationsDone ) THEN
 
-     IF (Solver % Variable % dofs /= 2) CALL Fatal ('WhitneyAVHarmonicSolver_Init', &
-       'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
+     IF (Solver % Variable % dofs /= 2) THEN
+       WRITE (Message, '(A,I3)') 'dofs:', Solver % Variable % dofs
+       CALL Info ('WhitneyAVHarmonicSolver_Init', Message)
+       CALL Fatal ('WhitneyAVHarmonicSolver_Init', &
+         'Variable is not properly defined for time harmonic AV solver, Use: Variable = A[A re:1 A im:1]')
+     ENDIF
 
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
@@ -3260,7 +3265,10 @@ CONTAINS
     !
     ! Dirichlet BCs in terms of magnetic flux density B:
     ! --------------------------------------------------
+
+    call Info('WhitneyAVHarmonicSolver::DoSolve', 'Calling DefaultDirichletBCs()')
     CALL DirichletAfromB()
+    call Info('WhitneyAVHarmonicSolver::DoSolve', 'Done')
 
     !
     ! Gauge tree, if requested or using direct solver:
@@ -3302,7 +3310,9 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: dDiag(:)
 !------------------------------------------------------------------------------
     n = A % NumberOFRows
+    !CALL Info('ConstrainUnused', 'Hello, world!', Level=5) ! DEBUG
     ALLOCATE(dDiag(n)); dDiag=0._dp
+    !CALL Info('ConstrainUnused', '3316', Level=5) ! DEBUG
 
     DO i=1,n,2
       j = A % Diag(i)
@@ -3336,6 +3346,7 @@ CONTAINS
         END IF
       END IF
     END DO
+    !CALL Info('ConstrainUnused', '3349', Level=5) ! DEBUG
 !------------------------------------------------------------------------------
   END SUBROUTINE ConstrainUnused
 !------------------------------------------------------------------------------
@@ -4891,7 +4902,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   CALL ListAddLogical( SolverParams, 'No Matrix',.TRUE.)
   CALL ListAddString( SolverParams, 'Equation', 'never' )
   CALL ListAddString( SolverParams, 'Procedure', &
-              'MagnetoDynamics MagnetoDynamics_Dummy',.FALSE. )
+              'VectorHelmholtz MagnetoDynamics_Dummy',.FALSE. )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput cf_dummy' )
 
   pname = ListGetString( Model % Solvers(soln) % Values, 'Mesh', Found )
