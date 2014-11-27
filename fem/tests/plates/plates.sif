@@ -61,4 +61,4 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.478813167574, EPS=1e-4\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.47853756, EPS=1e-4\n" );
