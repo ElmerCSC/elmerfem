@@ -14,7 +14,7 @@ Simulation
   Timestep Intervals = 10
   Steady State Max Iterations = 1
 
-! Post File = MGDynamics.ep
+ Post File = MGDynamics.ep
   Output Intervals(1) = 1
 End
 
@@ -43,10 +43,11 @@ End
 $ w=1
 
 Solver 1
-  Equation = "MGDynamics"
+  Equation = "VectorHelmholtz"
 
-  Variable = P[P re:1 P im:1]
-  Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+  /*Variable = P[P re:1 P im:1]*/
+  Variable =A[A re: 1 A im:1]
+  Procedure = "VectorHelmholtz" "WhitneyAVHarmonicSolver"
 
   Angular Frequency = Real $w
 

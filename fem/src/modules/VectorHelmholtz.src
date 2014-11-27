@@ -2854,9 +2854,9 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
     PiolaVersion = GetLogical(SolverParams, &
         'Use Piola Transform', Found )   
     IF (PiolaVersion) THEN    
-       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+       CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
     ELSE
-       CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
+       CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
     END IF
   END IF
 ! CALL ListAddString( SolverParams, "Exported Variable 1", &
@@ -4288,7 +4288,7 @@ CONTAINS
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + im*Omega* &
+           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + Omega* &
                         SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO
