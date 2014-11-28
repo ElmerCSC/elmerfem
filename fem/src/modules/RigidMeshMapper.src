@@ -343,9 +343,12 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
             END DO
           ELSE 
             Scaling(1:1) = ListGetReal( BodyForce,'Mesh Scale 1',1,NodeIndex,GotScale) 
+	    IF(.NOT. GotScale ) Scaling(1) = 1.0_dp
             Scaling(2:2) = ListGetReal( BodyForce,'Mesh Scale 2',1,NodeIndex,Found) 
+	    IF(.NOT. Found ) Scaling(2) = 1.0_dp
             GotScale = GotScale .OR. Found
             Scaling(3:3) = ListGetReal( BodyForce,'Mesh Scale 3',1,NodeIndex,Found) 
+	    IF(.NOT. Found ) Scaling(3) = 1.0_dp
             GotScale = GotScale .OR. Found
           END IF
         END IF
