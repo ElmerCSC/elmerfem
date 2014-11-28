@@ -5,13 +5,18 @@
 ! an optional skew of 20 degrees in the rotor. 
 ! Increse number of extruded layers for better accuracy. 
 !
-! This test case uses a level projector which assumes that 
-! the extruded layers are at constant z-levels.
+! This test case uses a generic projector which does not make 
+! any assumptions on the characteristics of the 2D mesh.
+!
+! It seems that combination with strong nodal projector and weak
+! edge projector converges better than all-weak projector.
+!
+! P.R. / 28.11.2014 
 !---------------------------------------------------------------------
 
-$skew=6.0  
+$skew=3.0 
 $omega=20.0 
-$t0=1
+$t0=1.0
 
 Header
   CHECK KEYWORDS Warn
@@ -21,7 +26,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 10
+  Max Output Level = 12
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -94,12 +99,16 @@ Solver 2
   Linear System Preconditioning = ILU2
   Linear System Residual Output = 20
   Linear System Max Iterations = 500
-  Linear System Iterative Method = BiCGStab2
-!GCR
+  Linear System Iterative Method = GCR
   BicGStabL Polynomial Degree = 4
   Linear System GCR Restart = 600
-  Linear System Convergence Tolerance = 1e-10
+  Linear System Convergence Tolerance = 1e-14
   Linear System Abort Not Converged = False
+
+  Steady State Convergence Tolerance = 1e-10
+
+  Linear System Normwise Backward Error = Logical True
+!  Linear System Row Equilibration = True
 
   Edge Basis = Logical True
   Apply Mortar BCs = Logical True
@@ -206,12 +215,19 @@ End
 Body Force 1
   Name = "MoveToLeft"
   Mesh Translate 1 = -4.0
+!  Mesh Scale 3 = Real 1.1
+!  Mesh Translate 3 = -0.05
+
+  Mesh Rotate 3 = Variable Coordinate 3 
+    Real MATC "-skew*tx"
 End
 
 Body Force 2 
   Name = "Hot Move"
   Mesh Rotate 3 = Variable time, Coordinate 3 
     Real MATC "omega*(t0+tx(0))+skew*tx(1)"
+
+!  Electric Potential = Equals "Coordinate 3"
 End 
 
 Body Force 3
@@ -231,18 +247,17 @@ Boundary Condition 2
   Name = "Mortar Outside"
 End
 
+$pcoeff = 1.0
 Boundary Condition 3
   Target Boundaries(2) = 1 2
   Name = "Mortar Inside"
 
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
+  Rotational Projector Periods = Integer 4
 
   Level Projector = Logical True
-  Level Projector Plane Edges Strong = Logical True
-  Level Projector Extruded Edges Strong = Logical True
-  Level Projector Skew Edges Strong = Logical False
-
+  Level Projector Generic = Logical True
 ! electric conductivity zero so we can skip this
   Projector Skip Nodes = Logical True
 
@@ -257,10 +272,8 @@ Boundary Condition 4
   Radial Projector = Logical True
 
   Level Projector = Logical True
+  Level Projector Generic = Logical True
   Level Projector Nodes Strong = Logical True
-  Level Projector Plane Edges Strong = Logical True
-  Level Projector Extruded Edges Strong = Logical True
-  Level Projector Skew Edges Strong = Logical False
 
 !  Save Projector = Logical True
 End
@@ -277,13 +290,12 @@ Boundary Condition 6
   Mortar BC = 7
   Radial Projector = Logical True
 
-  Level Projector = Logical True
-  Level Projector Plane Edges Strong = Logical True
-  Level Projector Extruded Edges Strong = Logical True
-  Level Projector Skew Edges Strong = Logical False
+  Level Projector = Logical True 
+  Level Projector Generic = Logical True
 
   Projector Skip Nodes = Logical True
 !  Save Projector = Logical True
+!  Projector Set Rowsum = Logical True
 End
 
 Boundary Condition 7
@@ -312,7 +324,7 @@ End
 
 Boundary Condition 11
   Name = "Start-Cold"
-  Target Boundaries(1) = 11
+  Target Boundaries(1) = 11 
   P {e} = Real 0
   P = Real 0.0
 End 
@@ -321,7 +333,7 @@ Boundary Condition 12
   Name = "EndZS-Stator"
   Target Boundaries(1) = 16
   P {e} = real 0
-!  P = Real 0.0
+!  P = Real 1.0
 End 
 
 Boundary Condition 13
@@ -343,4 +355,4 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.52268693E-02\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.41218136E-02\n");
