@@ -5865,7 +5865,7 @@ END SUBROUTINE GetMaxDefs
     IF( DoEdges ) DEALLOCATE( EdgePerm )
 
     m = COUNT( Projector % InvPerm  == 0 ) 
-    IF( m == 0 ) THEN
+    IF( m > 0 ) THEN
       CALL Warn('LevelProjector','Projector % InvPerm not set in for dofs: '//TRIM(I2S(m)))
     END IF
 
