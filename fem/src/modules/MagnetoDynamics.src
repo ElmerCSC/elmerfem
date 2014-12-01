@@ -5268,7 +5268,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier', ThisOnly=.TRUE.)
 
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
-   IF ( .NOT. ASSOCIATED(MFD) ) RETURN
    EL_MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density E' )
 
    MFS => VariableGet( Mesh % Variables, 'Magnetic Field Strength')
@@ -6098,7 +6097,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
 
          IF ( ASSOCIATED(JXB).OR.ASSOCIATED(EL_JXB)) THEN
-           IF (.NOT. ASSOCIATED(CD)) THEN
+           IF (.NOT. ASSOCIATED(CD) .AND. .NOT. ASSOCIATED(EL_CD)) THEN
              CALL Warn('MagnetoDynamicsCalcFields', 'Cannot Calculate JxB since Current Density is not calculated!')
            ELSE
              IF (Vdofs == 1) THEN
