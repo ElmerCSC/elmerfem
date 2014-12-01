@@ -14,7 +14,7 @@ Simulation
   Timestep Intervals = 10
   Steady State Max Iterations = 1
 
-  Post File = MGDynamics.ep
+  Post File = MGDynamics.vtu
   Output Intervals(1) = 1
 End
 
@@ -38,7 +38,7 @@ Material 1
 End
 
 Equation 1
-  Active Solvers(1) = 1
+  Active Solvers(2) = 1 2
 End
 
 $ w=1
@@ -53,72 +53,63 @@ Solver 1
 
   Use Tree Gauge = Logical False
 
-  !Linear System Solver = String "Direct"
+  Linear System Solver = String "Iterative"
   Linear System Iterative Method = String "BiCGStab"
   Linear System Preconditioning = String "None"
-  Linear System Max Iterations = Integer 100
-  Linear System Convergence Tolerance = 1.0e-6
+  Linear System Max Iterations = Integer 1000
+  Linear System Convergence Tolerance = 1.0e-4
 
   Steady State Convergence Tolerance = 1e-09
   Automated Source Projection BCs = Logical False
 End
 
-!Solver 2
-!  Equation = "calcfields"
-!
-!  Procedure = "VectorHelmholtz" "MagnetoDynamicsCalcFields"
-!  Linear System Symmetric = True
-!
-!  Potential variable = String "A"
-!
-!  Calculate Current Density = Logical False
-!  Calculate Electric Field = Logical False
-!  Calculate Magnetic Field Strength = Logical True
-!  Calculate Elemental Fields = Logical True
-!
-!  Steady State Convergence Tolerance = 1
-!  Linear System Solver = "Direct"
-!  Linear System Preconditioning = None
-!  Linear System Residual Output = 0
-!  Linear System Max Iterations = 5000
-!  Linear System Iterative Method = CG
-!  Linear System Convergence Tolerance = 1.0e-6
-!End
+Solver 2
+  Equation = "calcfields"
+
+  Procedure = "VectorHelmholtz" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential variable = String "A"
+
+  Angular Frequency = Real $w
+
+  Calculate Elemental Fields = Logical True
+  Calculate Current Density = Logical False
+  Calculate Electric Field = Logical False
+  Calculate Magnetic Field Strength = Logical False
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Direct"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-6
+End
 
 
 Body Force 1
-  Current Density 1 = Real 1
+  Current Density 1 = Real 0
   Current Density 2 = Real 0
   Current Density 3 = Real 0
 End
 
 Boundary Condition 1
-  Target Boundaries(4) = 1 2 3 4
+  Target Boundaries(5) = 1 2 3 4 5
 
-  A = Real 0
-  A im = Real 0
+  A {e} = Real 0
+  A {e} im = Real 0
 End
-
+ 
 Boundary Condition 2
-  Target Boundaries(1) = 5
-
-  A 1 = Real 0
-  A im 1 = Real 1
-  A 2 = Real 0
-  A im 2 = Real 0
-  A 3 = Real 0
-  A im 3 = Real 0
-
-End
-
-Boundary Condition 3
   Target Boundaries(1) = 6
 
-!  A re = Real 0
-!  A im = Real 0
-
-  A = Real 0
-  A im = Real 0
+  A {e} 1 = Real 1
+  A {e} 1 Im = Real 0
+  A {e} 2 = Real 1
+  A {e} 2 Im = Real 0
+  A {e} 3 = Real 1
+  A {e} 3 Im = Real 0
 End
 
 Solver 1 :: Reference Norm = Real 1

@@ -764,7 +764,7 @@ CONTAINS
   ! Dirichlet BCs in terms of magnetic flux density B:
   ! --------------------------------------------------
   CALL DirichletAfromB()
-  !CALL ConstrainUnused(A)
+  CALL ConstrainUnused(A)
 
   !
   ! Gauge tree, if requested or using direct solver:
@@ -3266,9 +3266,8 @@ CONTAINS
     ! Dirichlet BCs in terms of magnetic flux density B:
     ! --------------------------------------------------
 
-    call Info('WhitneyAVHarmonicSolver::DoSolve', 'Calling DefaultDirichletBCs()')
     CALL DirichletAfromB()
-    call Info('WhitneyAVHarmonicSolver::DoSolve', 'Done')
+    CALL Info('WhitneyAVHarmonicSolver::DoSolve', 'Called DirichletAfromB()')
 
     !
     ! Gauge tree, if requested or using direct solver:
@@ -3279,22 +3278,25 @@ CONTAINS
 
     IF (TG) THEN
       CALL GaugeTree()
+      CALL Info('WhitneyAVHarmonicSolver::DoSolve', 'Called GaugeTree()')
       WRITE(Message,*) 'Volume tree edges: ', &
              TRIM(i2s(COUNT(TreeEdges))),     &
                ' of total: ',Mesh % NumberOfEdges
       CALL Info('WhitneyAVHarmonicSolver: ', Message, Level=5)
     END IF
-
+  
     !
     ! Fix unused potential DOFs:
     ! --------------------------
     A => GetMatrix()
     CALL ConstrainUnused(A)
+    CALL Info('WhitneyAVHarmonicSolver::DoSolve', 'Called ConstrainUnused()')
 
     !
     ! Linear system solution:
     ! -----------------------
     Norm = DefaultSolve()
+    CALL Info('WhitneyAVHarmonicSolver::DoSolve', 'Called DefaultSolve()')
     Converged = Solver % Variable % NonlinConverged==1
 !------------------------------------------------------------------------------
   END FUNCTION DoSolve
