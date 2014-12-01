@@ -5575,7 +5575,8 @@ END SUBROUTINE GetMaxDefs
 
     ! There is no strong strategy for skewed edges currently
     StrongSkewEdges = .FALSE.
-
+    ! Maximum skew in degrees before treating edges as skewed
+    SkewTol = 0.1  
 
     IF( Mesh % MeshDim == 2 ) THEN
       ! In 2D these always yield since current only the strong method 
@@ -5588,7 +5589,6 @@ END SUBROUTINE GetMaxDefs
       ! Make a test here to be able to skip it later. No test is needed
       ! if the generic integrator is enforced. 
       IF(.NOT. GenericIntegrator ) THEN
-        SkewTol = 0.1  ! in degrees
         MaxSkew1 = CheckMeshSkew( BMesh1, NotAllQuads )
         IF( NotAllQuads ) THEN
           CALL Info('LevelProjector','This mesh has also triangles',Level=8)
@@ -5864,6 +5864,12 @@ END SUBROUTINE GetMaxDefs
     IF( DoNodes ) DEALLOCATE( NodePerm )
     IF( DoEdges ) DEALLOCATE( EdgePerm )
 
+    m = COUNT( Projector % InvPerm  == 0 ) 
+    IF( m == 0 ) THEN
+      CALL Warn('LevelProjector','Projector % InvPerm not set in for dofs: '//TRIM(I2S(m)))
+    END IF
+
+
     CALL Info('LevelProjector','Projector created',Level=10)
 
 
@@ -5975,6 +5981,7 @@ END SUBROUTINE GetMaxDefs
         nrow = NodePerm( InvPerm1( ind ) )
         IF( nrow == 0 ) CYCLE
         NodePerm( InvPerm1( ind ) ) = 0
+        Projector % InvPerm(nrow) = InvPerm1(ind)
 
         Found = .FALSE.
         x1 = BMesh1 % Nodes % x(ind)
@@ -6123,7 +6130,6 @@ END SUBROUTINE GetMaxDefs
           CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
               InvPerm1(ind), NodeCoeff ) 
         END IF
-        Projector % InvPerm(nrow) = InvPerm1(ind)
 
         ! The scaling of the projector entries is used, for example, 
         ! to allow antiperiodic projectors. 
@@ -6194,6 +6200,7 @@ END SUBROUTINE GetMaxDefs
         nrow = NodePerm( InvPerm1( ind ) )
         IF( nrow == 0 ) CYCLE
         NodePerm( InvPerm1( ind ) ) = 0
+        Projector % InvPerm(nrow) = InvPerm1(ind)
 
         Found = .FALSE.
         x1 = ArcCoeff * BMesh1 % Nodes % x(ind)
@@ -6317,7 +6324,6 @@ END SUBROUTINE GetMaxDefs
             CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                 InvPerm1(ind), NodeCoeff ) 
           END IF
-          Projector % InvPerm(nrow) = InvPerm1(ind)
           
           ! The scaling of the projector entries is used, for example, 
           ! to allow antiperiodic projectors. 
@@ -6412,7 +6418,6 @@ END SUBROUTINE GetMaxDefs
           IF( EdgePerm(eind) == 0 ) CYCLE
 
           nrow = EdgeRow0 + EdgePerm(eind) 
-          EdgePerm(eind) = 0
           
           ! Get the nodes of the edge
           i1 = EdgeMap(i,1) 
@@ -6447,6 +6452,8 @@ END SUBROUTINE GetMaxDefs
             IF(.NOT. StrongSkewEdges) CYCLE
           END IF
           
+
+
           ! Numbering of global indexes is needed to ensure correct direction 
           ! of the edge dofs. Basically the InvPerm could be used also in serial
           ! but the order of numbering is maintained when the reduced mesh is created. 
@@ -6791,6 +6798,9 @@ END SUBROUTINE GetMaxDefs
             PRINT *,'Const:',XConst,YConst,XConstM,YConstM
             PRINT *,'coeff:',ncoeff,coeff(1:ncoeff),coeffi(1:ncoeff)
           END IF
+
+          ! Mark that this is set so it don't need to be set again
+          EdgePerm(eind) = 0
 
           ! Ok, we found a true projector entry
           Projector % InvPerm(nrow) = EdgeCol0 + eind
