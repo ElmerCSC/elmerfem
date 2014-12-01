@@ -97,19 +97,19 @@ End
 Boundary Condition 1
   Target Boundaries(5) = 1 2 3 4 5
 
-  A {e} = Real 0
-  A {e} im = Real 0
+  A re {e} = Real 0
+  A im {e} = Real 0
 End
  
 Boundary Condition 2
   Target Boundaries(1) = 6
 
-  A {e} 1 = Real 1
-  A {e} 1 Im = Real 0
-  A {e} 2 = Real 1
-  A {e} 2 Im = Real 0
-  A {e} 3 = Real 1
-  A {e} 3 Im = Real 0
+  A re {e} 1 = Real 0
+  A im {e} 1 = Real 0
+  A re {e} 2 = Real 1
+  A im {e} 2 = Real 0
+  A re {e} 3 = Real 0
+  A im {e} 3 = Real 0
 End
 
 Solver 1 :: Reference Norm = Real 1
