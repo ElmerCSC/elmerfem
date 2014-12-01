@@ -3054,7 +3054,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   
   INTEGER, SAVE :: nTime = 0
   LOGICAL :: GotIt, Hit, Parallel, FixedMesh
-  CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
+  CHARACTER(MAX_NAME_LEN) :: FilePrefix
   CHARACTER(MAX_NAME_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Variable_t), POINTER :: Var
@@ -3073,7 +3073,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: NumberOfNodes, NumberOfElements, ParallelNodes, ParallelElements
   TYPE(Element_t), POINTER :: CurrentElement, LeftElem, RightElem
   TYPE(ValueList_t),POINTER :: Params
-  INTEGER :: MaxModes, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex
+  INTEGER :: MaxModes, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex, discontMesh
   INTEGER, POINTER :: ActiveModes(:), Indexes(:)
   LOGICAL :: GotActiveModes, EigenAnalysis, WriteIds, SaveBoundariesOnly, SaveBulkOnly, &
       GotMaskName, AllNodesUsed, SaveElemental, SaveNodal, GotMaskCond
@@ -3131,10 +3131,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   NoFileindex = GetLogical( Params,'No Fileindex',GotIt)
 
+  FilePrefix = GetString( Params,'Output File Name',GotIt )
+  IF ( .NOT.GotIt ) FilePrefix = "Output"
+  IF ( Mesh % DiscontMesh ) FilePrefix = TRIM(FilePrefix)//'_discont'    
+
   IF ( nTime == 1 ) THEN
-    FilePrefix = GetString( Params,'Output File Name',GotIt )
-    IF ( .NOT.GotIt ) FilePrefix = "Output"
-    IF( Mesh % DiscontMesh ) FilePrefix = TRIM(FilePrefix)//'_discont'    
     CALL Info('VtuOutputSolver','Saving results in VTK XML format with prefix: '//TRIM(FilePrefix))
     WRITE( Message,'(A,I0)') 'Saving number of partitions: ',Partitions
     CALL Info('VtuOutputSolver', Message )
