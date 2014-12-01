@@ -764,7 +764,7 @@ CONTAINS
   ! Dirichlet BCs in terms of magnetic flux density B:
   ! --------------------------------------------------
   CALL DirichletAfromB()
-  CALL ConstrainUnused(A)
+  !CALL ConstrainUnused(A)
 
   !
   ! Gauge tree, if requested or using direct solver:
@@ -4301,7 +4301,7 @@ CONTAINS
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + Omega* &
+           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) - Omega*Omega* &
                         SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO

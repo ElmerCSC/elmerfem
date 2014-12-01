@@ -18,6 +18,11 @@ Simulation
   Output Intervals(1) = 1
 End
 
+Constants
+ Permeability of Vacuum = Real 1
+ Permittivity of Vacuum = Real 1
+End
+
 Body 1
   Equation = 1
   Material = 1
@@ -41,7 +46,7 @@ Equation 1
   Active Solvers(2) = 1 2
 End
 
-$ w=1
+$ w=7
 
 Solver 1
   Equation = "VectorHelmholtz"
@@ -54,8 +59,8 @@ Solver 1
   Use Tree Gauge = Logical False
 
   Linear System Solver = String "Iterative"
-  Linear System Iterative Method = String "BiCGStab"
-  Linear System Preconditioning = String "None"
+  Linear System Iterative Method = String "GCR"
+  Linear System Preconditioning = ILU0
   Linear System Max Iterations = Integer 1000
   Linear System Convergence Tolerance = 1.0e-4
 
@@ -73,10 +78,11 @@ Solver 2
 
   Angular Frequency = Real $w
 
-  Calculate Elemental Fields = Logical True
+  Calculate Elemental Fields = Logical False
   Calculate Current Density = Logical False
   Calculate Electric Field = Logical False
   Calculate Magnetic Field Strength = Logical False
+  Calculate Magnetic Vector Potential = Logical True
 
   Steady State Convergence Tolerance = 1
   Linear System Solver = "Direct"
