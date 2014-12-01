@@ -8987,8 +8987,8 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,k,n,dim
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
-        Discontinuous, NodalJump, Stride, Radial, AntiRadial, DoNodes, DoEdges, &
-        Flat, LevelProj, FullCircle
+        Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
+        Flat, LevelProj, StrideProj, FullCircle
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -9092,12 +9092,22 @@ END SUBROUTINE GetMaxDefs
     END IF
 
 
-    ! There is a simple edge projector tailored for the AV solver
+    ! There are tailored projectors for simplified interfaces
     !-------------------------------------------------------------
-    Stride = ListGetLogical( BC,'Stride Projector',GotIt) 
+
+    StrideProj = ListGetLogical( BC,'Stride Projector',GotIt) 
+    ! Stride projector is obsolite. To revert back to using it the user may comment out 
+    ! the following lines. At some stage this will be removed if there are no complaints!
+    IF( StrideProj ) THEN
+      CALL ListAddLogical( BC,'Level Projector',.TRUE.)
+      CALL ListAddLogical( BC,'Level Projector Strong',.TRUE.)
+      CALL Warn('PeriodicProjector','Enforcing > Level Projector < instead of old > Stride Projector <')
+      StrideProj = .FALSE.
+    END IF
+
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
 
-    IF( Stride .OR. LevelProj ) THEN
+    IF( LevelProj .OR. StrideProj ) THEN
       IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',GotIt ) ) THEN
         DoNodes = .FALSE.
       ELSE
@@ -9125,7 +9135,7 @@ END SUBROUTINE GetMaxDefs
     BMesh1 => AllocateMesh()
     BMesh2 => AllocateMesh()
     
-    IF( Stride ) THEN
+    IF( StrideProj ) THEN
       CALL CreateInterfaceEdges( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
           InvPerm1, InvPerm2, Success ) 
     ELSE
@@ -9178,7 +9188,7 @@ END SUBROUTINE GetMaxDefs
     UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
     IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
 
-    IF( Stride ) THEN
+    IF( StrideProj ) THEN
       Projector => StrideProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
           InvPerm1, InvPerm2, DoNodes, DoEdges, NodeScale )
     ELSE IF( LevelProj ) THEN 
