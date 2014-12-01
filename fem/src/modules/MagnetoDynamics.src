@@ -4278,8 +4278,8 @@ CONTAINS
            q = j+np
 
            IF ( Newton ) THEN
-             JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
-                 SUM(CONJG(B_ip(:))*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+             JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(i,:)) * &
+                 SUM(CONJG(B_ip(:))*RotWBasis(j,:))*detJ*IP % s(t)/Babs
            END IF
 
            STIFF(p,q) = STIFF(p,q) + mu * &
