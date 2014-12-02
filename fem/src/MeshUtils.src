@@ -5513,7 +5513,7 @@ END SUBROUTINE GetMaxDefs
     !--------------------------------------------------------------------------
     LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
-        EdgeBasis, PiolaVersion, GenericIntegrator
+        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
         ArcCoeff, EdgeCoeff, NodeCoeff
@@ -5538,6 +5538,8 @@ END SUBROUTINE GetMaxDefs
     IF( .NOT. Found ) NodeCoeff = ListGetConstReal( CurrentModel % Simulation,&
         'Projector Node Multiplier',Found )
     IF( .NOT. Found ) NodeCoeff = 1.0_dp
+
+    Rotational = ListGetLogical( BC,'Rotational Projector',Found ) 
     
     Parallel = ( ParEnv % PEs > 1 )
     Mesh => CurrentModel % Mesh
@@ -5567,6 +5569,14 @@ END SUBROUTINE GetMaxDefs
     END IF
     YTol = RelTolY * YRange
     XTol = RelTolX * XRange
+
+    ! Determine the coefficient that turns possible angles into units of
+    ! ach-lenth. If this is not rotational then there are no angles. 
+    IF( Rotational) THEN
+      ArcCoeff = (2*PI*Radius)/360.0           
+    ELSE
+      ArcCoeff = 1.0_dp
+    END IF
 
 
     ! Generic integrator does not make any assumptions on the way the mesh 
@@ -5645,20 +5655,15 @@ END SUBROUTINE GetMaxDefs
       END IF
     END IF
 
-    ! Determine the coefficient that turns possible angles into units of
-    ! ach-lenth. If this is not rotational then there are no angles. 
-    IF( ListGetLogical( BC,'Rotational Projector',Found ) ) THEN
-      ! If the number of periods is enforced use that instead since
-      ! the Xrange periodicity might not be correct if the mesh has skew.
+    ! If the number of periods is enforced use that instead since
+    ! the Xrange periodicity might not be correct if the mesh has skew.
+    IF( Rotational) THEN
       i = ListGetInteger( BC,'Rotational Projector Periods',Found ) 
       IF( GenericIntegrator .AND. .NOT. Found ) THEN
         CALL Fatal('LevelProjector',&
             'Generic integrator requires > Rotational Projector Periods <')
       END IF
       IF( i > 0 ) Xrange = 360.0_dp / i
-      ArcCoeff = (2*PI*Radius)/360.0           
-    ELSE
-      ArcCoeff = 1.0_dp
     END IF
 
     ! This is the tolerance used to define constant direction in radians
