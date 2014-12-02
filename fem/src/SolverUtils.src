@@ -1677,7 +1677,7 @@ CONTAINS
 
       ActivePartAll(bf_id) = ListCheckPresent(ValueList, Name(1:nlen) // ' DOFs' ) 
       ActiveCond(bf_id) = ListCheckPresent( ValueList,CondName )      
-      ActivePartAll(bf_id) = ListCheckPresent(ValueList, Name(1:nlen) ) 
+      ActivePart(bf_id) = ListCheckPresent(ValueList, Name(1:nlen) ) 
 
       Passive = Passive .OR. ListCheckPresent(ValueList, PassName)
     END DO
