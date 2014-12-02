@@ -88,10 +88,6 @@ Solver 1
   
   Stabilization Method = String Bubbles
   Flow Model = Stokes
-  Exported Variable 1 = "velocity"
-  Exported Variable 1 DOFS = 2
-  Exported Variable 2 = "pressure"
-  Exported Variable 2 DOFS = 2
   Linear System Solver = Direct         
   Linear System Direct Method = umfpack
 
@@ -110,16 +106,12 @@ Solver 2
   Filename =  "results.dat"
   File Append = Logical False
 
-  Variable 1 = String "pressure"
-  Operator 1 = String "int"
+  Variable 1 = String "velocity 1"
+  Operator 1 = String "max
   
-  Variable 2 = String "pressure"
-  Operator 2 = String "Max"
+  Variable 2 = String "velocity 1"
+  Operator 2 = String "min"
 
-  Variable 3 = String "pressure"
-  Operator 3 = String "min"
-
-  Operator 4 = String "cpu time"
 End
 
 

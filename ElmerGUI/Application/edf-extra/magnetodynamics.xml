@@ -1,4 +1,4 @@
-in<?xml version='1.0' encoding='UTF-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE edf>
 <edf version="1.0" >
    <PDE Name="MgDyn" >

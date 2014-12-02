@@ -654,10 +654,11 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-    SUBROUTINE ParallelVector(A, vec)
+    SUBROUTINE ParallelVector(A, vec_out, vec_in)
 !-------------------------------------------------------------------------------
       TYPE(Matrix_t), INTENT(in) :: A
-      REAL(KIND=dp), INTENT(inout) :: vec(:)
+      REAL(KIND=dp), INTENT(inout) :: vec_out(:)
+      REAL(KIND=dp), INTENT(in), OPTIONAL :: vec_in(:)
 !-------------------------------------------------------------------------------
       INTEGER :: i,j,k
 !-------------------------------------------------------------------------------
@@ -666,11 +667,37 @@ CONTAINS
         IF ( A % ParallelInfo % Neighbourlist(i) % &
                    Neighbours(1)==Parenv % Mype ) THEN
           j=j+1
-          vec(j) = vec(i)
+          IF(PRESENT(vec_in)) THEN
+            vec_out(j) = vec_in(i)
+          ELSE
+            vec_out(j) = vec_out(i)
+          END IF
         END IF
       END DO
 !-------------------------------------------------------------------------------
     END SUBROUTINE ParallelVector
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+    SUBROUTINE PartitionVector(A, vec_out, vec_in)
+!-------------------------------------------------------------------------------
+      TYPE(Matrix_t), INTENT(in) :: A
+      REAL(KIND=dp), INTENT(inout) :: vec_in(:), vec_out(:)
+!-------------------------------------------------------------------------------
+      INTEGER :: i,j,k
+!-------------------------------------------------------------------------------
+      j = 0
+      vec_out = 0._dp
+      DO i=1,A % NumberOfRows
+        IF ( A % ParallelInfo % Neighbourlist(i) % &
+                   Neighbours(1)==Parenv % Mype ) THEN
+          j=j+1
+          vec_out(i) = vec_in(j)
+        END IF
+      END DO
+!-------------------------------------------------------------------------------
+    END SUBROUTINE PartitionVector
 !-------------------------------------------------------------------------------
     
 

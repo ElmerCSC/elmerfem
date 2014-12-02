@@ -500,7 +500,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           ListGetLogical(Model % BCs(j) % Values, MaskName, gotIt)
     END DO
     
-
     IF ( GotOper ) THEN
       
       SELECT CASE( Oper ) 
@@ -726,7 +725,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
 
-
   !------------------------------------------------------------------------------
   !   Add eigenvalues on the list if told to
   !------------------------------------------------------------------------------
@@ -781,7 +779,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     CALL Info('SaveScalars',Message)
   END IF
     
-  
   !------------------------------------------------------------------------------
   ! Get the info at given node points
   !------------------------------------------------------------------------------
@@ -1194,7 +1191,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
 !------------------------------------------------------------------------------
 
-
 CONTAINS
 
 
@@ -1382,6 +1378,7 @@ CONTAINS
         Mean, Variance, sumx, sumxx, sumabsx, x, Variance2
     INTEGER :: Nonodes, i, j, k, l, NoDofs, sumi
     LOGICAL :: Initialized 
+    TYPE(NeighbourList_t), POINTER :: nlist(:)
 
     Initialized = .FALSE.
     sumi = 0
@@ -1396,15 +1393,27 @@ CONTAINS
       Nonodes = SIZE(Var % Values) / NoDofs
     END IF
 
+    nlist => Null()
+    IF(ParEnv % PEs>1) THEN
+      IF(ASSOCIATED(Var % Solver)) THEN
+        IF(ASSOCIATED(Var % Solver % Matrix)) THEN
+          IF(ASSOCIATED(Var % Solver % Matrix % ParallelInfo)) THEN
+            nlist => Var % Solver % Matrix % ParallelInfo % NeighbourList
+          END IF
+        END IF
+      END IF
+    END IF
+
     DO i=1,Nonodes
       j = i
 
-      IF( ParEnv % PEs > 1 ) THEN
-        IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
-      END IF
-      
       IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
+
       IF(j > 0) THEN
+        IF( ParEnv % PEs > 1 .AND. ASSOCIATED(nlist) ) THEN
+          IF( nlist(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+        END IF
+
         IF(NoDofs <= 1) THEN
           x = Var % Values(j)
         ELSE
@@ -2094,7 +2103,7 @@ CONTAINS
             
           CASE ('convective flux')
             
-            Normal = NormalVector( Element,ElementNodes,U,V,.TRUE. )
+            Normal = NormalVector( Element,ElementNodes,u,v,.TRUE. )
             coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))
             
             IF(NoDofs == 1) THEN
@@ -2773,7 +2782,6 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   CALL Info('SaveLine','-----------------------------------------', Level=4 )
   CALL Info('SaveLine','Saving data on specified lines',Level=4)
 
-
   Params => GetSolverParams()
 
   Mesh => Model % Meshes
@@ -2893,6 +2901,19 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
         Var => Var % Next        
         CYCLE
       END IF
+
+      IF( Var % TYPE /= Variable_on_nodes_on_elements ) THEN
+        var => Var % Next 
+        CYCLE
+      END IF
+
+      IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
+        IF( SIZE( Var % Values ) /= Var % Dofs * Mesh % NumberOfNodes ) THEN
+          Var => Var % Next
+          CYCLE
+        END IF
+      END IF
+
       NoVar = NoVar + 1
       WRITE (Name,'(A,I0)') 'Variable ',NoVar
       
@@ -2946,7 +2967,6 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Find out which nodes should be saved and optimize their order 
 !------------------------------------------------------------------------------
-
   MaskName = ListGetString(Params,'Save Mask',GotIt) 
   IF(.NOT. GotIt) MaskName = 'Save Line'
 
@@ -3429,7 +3449,6 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END IF
   CLOSE(10)
   DEALLOCATE( Values )
-
 
   ! Finally save the names of the variables to help to identify the 
   ! columns in the result matrix.

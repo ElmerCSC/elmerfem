@@ -49,6 +49,40 @@ MODULE TimeIntegrate
 
 CONTAINS
 
+!>
+!------------------------------------------------------------------------------
+
+   SUBROUTINE RungeKutta( N, dt, MassMatrix, StiffMatrix, &
+                   Force, PrevSolution, CurrSolution )
+!------------------------------------------------------------------------------
+    INTEGER :: N
+    REAL(KIND=dp) :: Force(:),PrevSolution(:),dt
+    REAL(KIND=dp) :: MassMatrix(:,:),StiffMatrix(:,:),CurrSolution(:)
+
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,NB1,NB2
+
+    REAL(KIND=dp) :: s
+!------------------------------------------------------------------------------
+    NB1 = SIZE( StiffMatrix,1 )
+    NB2 = SIZE( StiffMatrix,2 )
+
+    DO i=1,NB1
+      s = 0.0_dp
+      DO j=1,n
+            s = s + (1/dt) * MassMatrix(i,j) * PrevSolution(j) - &
+                 StiffMatrix(i,j) * CurrSolution(j)
+      END DO
+
+      DO j=1,NB2
+         StiffMatrix(i,j) = (1/dt)*MassMatrix(i,j)
+      END DO
+      Force(i) = Force(i) + s
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE RungeKutta
+!------------------------------------------------------------------------------
+
 !> Apply newmark beta scheme to local matrix equation.
 !> This is used also for Implicit Euler with beta=1.0 and
 !> Crank-Nicolson with beta=0.5.
@@ -419,6 +453,95 @@ CONTAINS
 ! and A % MassValues includes the mass matrix.
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+   SUBROUTINE RungeKutta_CRS( dt, Matrix, Force, PrevSolution, CurrSolution )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), TARGET :: Force(:)
+    REAL(KIND=dp) :: PrevSolution(:),CurrSolution(:),dt
+    TYPE(Matrix_t), POINTER :: Matrix
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,n
+    REAL(KIND=dp), POINTER :: Stiff(:),Mass(:),MassL(:)
+    REAL(KIND=dp), POINTER :: PrevResidual(:)
+    INTEGER, POINTER :: Cols(:),Rows(:)
+    REAL(KIND=dp) :: su,mu,uj,ui
+!------------------------------------------------------------------------------
+    
+    n = Matrix % NumberOfRows
+    Rows   => Matrix % Rows
+    Cols   => Matrix % Cols
+    Stiff => Matrix % Values
+    Mass => Matrix % MassValues
+    
+    ! For true 2nd order accuracy of Crank-Nicolsen for nonlinear
+    ! problems the old matrix and rhs need to be considered.
+    !-------------------------------------------------------------
+    IF( ASSOCIATED( Matrix % BulkResidual ) ) THEN
+      ! Ax-f from previous iteration
+      PrevResidual => Matrix % BulkResidual
+
+      IF( ASSOCIATED( Matrix % MassValuesLumped ) ) THEN
+        MassL => Matrix % MassValuesLumped
+        !$omp parallel do private(j,ui)
+        DO i=1,n
+          j = Matrix % Diag(i)
+          ui = PrevSolution(i)
+          Force(i) = PrevResidual(i) + (1.0/dt) * MassL(i) * ui
+        END DO
+        !$omp end parallel do
+        Stiff = 0
+        Stiff(Matrix % Diag) = Stiff(Matrix % Diag) + (1.0d0/dt) * MassL(i)
+      ELSE
+        !$omp parallel do private(j,uj,mu)     
+        DO i=1,n
+          mu = 0.0_dp
+          DO j=Rows(i),Rows(i+1)-1
+            uj = PrevSolution(Cols(j))
+            mu = mu + Mass(j) * uj
+          END DO
+          Force(i) = PrevResidual(i) + (1.0/dt)*mu
+        END DO
+        !$omp end parallel do
+        Stiff = (1.0d0/dt) * Mass
+      END IF
+    ELSE
+
+      IF( ASSOCIATED( Matrix % MassValuesLumped ) ) THEN
+        MassL => Matrix % MassValuesLumped
+        !$omp parallel do private(j,uj,mu)
+        DO i=1,n
+          su = 0.0_dp
+          DO j=Rows(i),Rows(i+1)-1
+            uj = CurrSolution(Cols(j))
+            su = su + Stiff(j) * uj
+          END DO
+          mu = MassL(i)*PrevSolution(i)
+          Force(i) = Force(i) - su + (1.0/dt)*mu
+        END DO
+        !$omp end parallel do
+        Stiff = 0
+        Stiff(Matrix % Diag) = Stiff(Matrix % Diag) + (1.0/dt) * MassL
+      ELSE
+        !$omp parallel do private(j,uj,su,mu)     
+        DO i=1,n
+          su = 0.0_dp
+          mu = 0.0_dp
+          DO j=Rows(i),Rows(i+1)-1
+            uj = CurrSolution(Cols(j))
+            su = su + Stiff(j) * uj
+            uj = PrevSolution(Cols(j))
+            mu = mu + Mass(j) * uj
+          END DO
+          Force(i) = Force(i) - su + (1.0/dt)*mu
+        END DO
+        !$omp end parallel do
+        Stiff = (1.0d0/dt) * Mass
+      END IF
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE RungeKutta_CRS
+!------------------------------------------------------------------------------
 
 !> Apply newmark beta scheme to CRS_Matrix.
 !> This is used also for Implicit Euler with beta=1.0 and

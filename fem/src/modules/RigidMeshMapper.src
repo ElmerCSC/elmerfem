@@ -256,7 +256,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
    END IF
 
 
-
   AnyMeshMatrix = ListCheckPresentAnyBodyForce( Model,'Mesh Matrix')
   AnyMeshRotate = ListCheckPresentAnyBodyForce( Model,'Mesh Rotate') .OR. &
       ListCheckPresentAnyBodyForce( Model,'Mesh Rotate 1') .OR. &
@@ -447,6 +446,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
         ! Get mesh origin
         !----------------------------------------------------
         IF( AnyMeshOrigin ) THEN
+          Origin = 0._dp
           Parray => ListGetConstRealArray( BodyForce,'Mesh Origin', Found )
           IF ( Found ) THEN
             DO i=1,SIZE(Parray,1)
@@ -511,7 +511,6 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
     END DO
 
   END DO
-
 
   IF(.NOT. Visited ) THEN
     WRITE(Message,* ) 'Number of nodes mapped: ',COUNT( NodeDone )

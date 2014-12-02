@@ -367,6 +367,7 @@ END INTERFACE
 #endif
 
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
+     REAL(KIND=dp) :: Coeff = 1.0_dp
 
      INTEGER :: NameLen,DepNameLen
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
@@ -638,6 +639,12 @@ END INTERFACE
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim, PassBCcnt=0
      INTEGER :: MaxElementNodes, MaxElementDOFs, MaxEdgeDOFs, MaxFaceDOFs, MaxBDOFs
+
+     LOGICAL :: EntityWeightsComputed 
+     REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
+         BodyWeight(:), MaterialWeight(:)
+     
+
    END TYPE Mesh_t
 
 !------------------------------------------------------------------------------

@@ -517,10 +517,12 @@ CONTAINS
     totcount(1) = cands1
     totcount(2) = cands2
     totcount(3) = Particles % NumberOfParticles
-    tmpcount = totcount
 
-    CALL MPI_ALLREDUCE( tmpcount, totcount, 3, MPI_INTEGER, &
-        MPI_SUM, MPI_COMM_WORLD, ierr ) 
+    IF( ParEnv % PEs > 1 ) THEN
+      tmpcount = totcount
+      CALL MPI_ALLREDUCE( tmpcount, totcount, 3, MPI_INTEGER, &
+          MPI_SUM, MPI_COMM_WORLD, ierr ) 
+    END IF
 
     WRITE( Message,'(A,I8)') 'Number of candidate nodes:',totcount(1)
     CALL Info('CreateGridParticles',Message,Level=5)

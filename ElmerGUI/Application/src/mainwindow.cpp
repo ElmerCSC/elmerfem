@@ -714,23 +714,23 @@ void MainWindow::createActions()
   showConvergenceAct->setCheckable(true);
 
   // Solver -> Post process
-  resultsAct = new QAction(QIcon(":/icons/Post.png"), tr("Start postprocessor"), this);
+  resultsAct = new QAction(QIcon(":/icons/Post.png"), tr("Start ElmerPost"), this);
   resultsAct->setStatusTip(tr("Run ElmerPost for visualization"));
   connect(resultsAct, SIGNAL(triggered()), this, SLOT(resultsSlot()));
 
   // Solver -> Kill post process
-  killresultsAct = new QAction(QIcon(":/icons/window-close.png"), tr("Kill postprocessor"), this);
+  killresultsAct = new QAction(QIcon(":/icons/window-close.png"), tr("Kill ElmerPost"), this);
   killresultsAct->setStatusTip(tr("Kill ElmerPost"));
   connect(killresultsAct, SIGNAL(triggered()), this, SLOT(killresultsSlot()));
   killresultsAct->setEnabled(false);
 
   // Solver -> Show Vtk postprocessor
-  showVtkPostAct = new QAction(QIcon(), tr("Postprocessor (VTK)..."), this);
-  showVtkPostAct->setStatusTip(tr("Invokes the ElmerGUI postprocessor"));
+  showVtkPostAct = new QAction(QIcon(), tr("Start ElmerVTK"), this);
+  showVtkPostAct->setStatusTip(tr("Invokes VTK based ElmerGUI postprocessor"));
   connect(showVtkPostAct, SIGNAL(triggered()), this, SLOT(showVtkPostSlot()));
 
   // Solver -> Show ParaView postprocessor
-  paraviewAct = new QAction(QIcon(), tr("ParaView"), this);
+  paraviewAct = new QAction(QIcon(), tr("Start ParaView"), this);
   paraviewAct->setStatusTip(tr("Invokes ParaView for visualization"));
   connect(paraviewAct, SIGNAL(triggered()), this, SLOT(showParaViewSlot()));
 
@@ -977,7 +977,7 @@ void MainWindow::createMenus()
   args << "-v";
   testProcess.start("ElmerPost", args);
   if(!testProcess.waitForStarted()) {
-    logMessage("no - disabling postprocessing features");
+    logMessage("no - disabling ElmerPost postprocessing features");
     resultsAct->setEnabled(false);
     killresultsAct->setEnabled(false);
   } else {
@@ -6287,8 +6287,8 @@ void MainWindow::meshUnifierFinishedSlot(int exitCode)
   
   logMessage("Post processor started");
 
-  updateSysTrayIcon("Postprocessor started",
-		    "Use Run->Kill Postprocessor to stop processing");
+  updateSysTrayIcon("ElmerPost started",
+		    "Use Run->Kill ElmerPost to stop processing");
 }
 
 
@@ -6449,7 +6449,7 @@ void MainWindow::solverFinishedSlot(int)
   logMessage("Solver ready");
   runsolverAct->setIcon(QIcon(":/icons/Solver.png"));
   updateSysTrayIcon("ElmerSolver has finished",
-            "Use Run->Start postprocessor to view results");
+            "Use Run->Start ElmerPost, ElmerVTK or Paraview to view results");
   killsolverAct->setEnabled(false);
 }
 
@@ -6595,16 +6595,16 @@ void MainWindow::resultsSlot()
   killresultsAct->setEnabled(true);
   
   if(!post->waitForStarted()) {
-    logMessage("Unable to start post processor");
+    logMessage("Unable to start ElmerPost");
     return;
   }
   
   resultsAct->setIcon(QIcon(":/icons/Post-red.png"));
   
-  logMessage("Post processor started");
+  logMessage("ElmerPost started");
 
-  updateSysTrayIcon("Postprocessor started",
-		    "Use Run->Kill Postprocessor to stop processing");
+  updateSysTrayIcon("ElmerPost started",
+		    "Use Run->Kill ElmerPost to stop processing");
 }
 
 
@@ -6612,10 +6612,10 @@ void MainWindow::resultsSlot()
 //-----------------------------------------------------------------------------
 void MainWindow::postProcessFinishedSlot(int)
 {
-  logMessage("Post processor finished");
+  logMessage("ElmerPost finished");
   resultsAct->setIcon(QIcon(":/icons/Post.png"));
-  updateSysTrayIcon("Postprocessor has finished",
-		    "Use Run->Start postprocessor to restart");
+  updateSysTrayIcon("ElmerPost has finished",
+		    "Use Run->Start ElmerPost to restart");
   killresultsAct->setEnabled(false);
 }
 

@@ -1,0 +1,23 @@
+November 2014, Martina Schäfer, SMartina.AC@gmx.de
+
+This simulations contain "validations" of some Solvers and Userfunctions by comparing to the analytical solutions of an infinite parallel slab.
+The analytical equations are hardcoded in the sif-files.
+The tested variables/Solvers/Userfunctions are: 
+Velocity, Pressure, StressSolve, Deformational Heat, getStrainHeating, frictionheat (Load and old version), Strain Rate.
+A paraview state file is provided to compare the Elmer and the analytical solutions.
+
+to set up the simulations:
+ElmerGrid 1 2 rectangle.grd
+
+to run simulations without basal sliding
+ElmerSolver test.sif
+
+to run simulations with basal sliding
+ElmerSolver test-slide.sif
+
+paraview-state files in folder results:
+slab.* without sliding, slab-slide* with sliding
+(when loading the paraview state, the file path needs to be adjusted)
+
+Comments:
+It would be good to create starting from this Example a test which compares analytical and numeric solution included in the "Test" folder. For this it would be necessary (see parameters runTest.sh) to modify the precision of the comparison for some of the Solvers/Userfunctions. Also, it would be good to define additional variables as done in the GMD2013 paper (Eq.65 / Solver available from Gag), which are more complex than mean/min/max values.

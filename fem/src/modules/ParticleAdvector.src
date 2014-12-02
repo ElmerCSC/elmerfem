@@ -751,6 +751,10 @@ CONTAINS
         Norm = SQRT( SUM( ResultVar % Values ** 2) / n )
         Change = 2.0 * ABS( Norm-PrevNorm ) / ( Norm + PrevNorm )
         PrevNorm = Norm
+
+        Solver % Variable % Norm = Norm
+        Solver % Variable % NonlinChange = Change
+
         ! Here the name is ComputeChange in order to get the change also to ElmerGUI
         ! albeit in a very dirt style. One could also edit ElmerGUI....
         WRITE( Message, '(a,g15.8,g15.8,a)') &
@@ -813,6 +817,7 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
   
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found
+  INTEGER :: NormInd
 
   Params => Solver % Values
 
@@ -827,5 +832,15 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
       CALL ListAddLogical( Params,'Particle Accurate At Face',.TRUE.)  
   CALL ListAddLogical( Params,'Particle Dt Negative',.TRUE.)
   CALL ListAddLogical( Params,'Particle Fix Frozen',.TRUE.)
+
+  ! If we want to show a pseudonorm add a variable for which the norm
+  ! is associated with.
+  NormInd = ListGetInteger( Params,'Show Norm Index',Found)
+  IF( NormInd > 0 ) THEN
+    IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
+      CALL ListAddString( Solver % Values,'Variable','-nooutput -global particleadvector_var')
+    END IF
+  END IF
+
 
 END SUBROUTINE ParticleAdvector_Init

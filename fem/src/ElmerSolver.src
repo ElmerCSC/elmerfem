@@ -469,7 +469,7 @@ END INTERFACE
 
        ! Initial Conditions:
        ! -------------------
-       IF ( FirstLoad ) CALL SetInitialConditions
+       IF ( FirstLoad ) CALL SetInitialConditions()
 
 
        ! Compute the total number of steps that will be saved to the files

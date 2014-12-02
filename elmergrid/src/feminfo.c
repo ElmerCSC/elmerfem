@@ -278,7 +278,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->partoptim = FALSE;
   eg->partbcoptim = TRUE;
   eg->partjoin = 0;
-  eg->partitionhalo = FALSE;
+  eg->partitionhalo = 0;
   eg->partitionindirect = FALSE;
   eg->reduce = FALSE;
   eg->increase = FALSE;
@@ -459,6 +459,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     }
     if(strcmp(argv[arg],"-halobc") == 0) {
       eg->partitionhalo = 2;
+    }
+    if(strcmp(argv[arg],"-haloz") == 0) {
+      eg->partitionhalo = 3;
     }
      if(strcmp(argv[arg],"-indirect") == 0) {
       eg->partitionindirect = TRUE;
@@ -721,7 +724,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
     }
 
-    if(strcmp(argv[arg],"-partconnect") == 0) {
+    if(strcmp(argv[arg],"-partconnect") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of 1D partitions is required as a parameter\n");
 	return(15);
@@ -1215,6 +1218,10 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else if(strstr(command,"BOUNDARY HALO")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->partitionhalo = 2;
+    }
+    else if(strstr(command,"EXTRUDED HALO")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->partitionhalo = 3;
     }
     else if(strstr(command,"PARTBW")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);

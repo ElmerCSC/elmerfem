@@ -12,6 +12,7 @@
        USE SParIterComm
        USE Interpolation
        USE CoordinateSystems
+       USE MeshUtils, ONLY: ReleaseMesh
 !-------------------------------------------------------------------------------
        TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
        TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
@@ -24,7 +25,7 @@
        LOGICAL, ALLOCATABLE :: FoundNodes(:)
        TYPE(Mesh_t), POINTER :: nMesh
        TYPE(VAriable_t), POINTER :: Var, nVar
-       INTEGER :: i,j,k,l,nfound,n,ierr,nvars,npart,proc,status(MPI_STATUS_SIZE)
+       INTEGER :: i,j,k,l,nfound,maxrecv,n,ierr,nvars,npart,proc,status(MPI_STATUS_SIZE)
        REAL(KIND=dp) :: myBB(6), eps2, dn
        REAL(KIND=dp), POINTER :: store(:)
        REAL(KIND=dp), ALLOCATABLE, TARGET :: astore(:),vstore(:,:), BB(:,:), &
@@ -101,6 +102,8 @@
         proc = status(MPI_SOURCE)
         BB(:,proc+1) = myBB
       END DO
+
+      CALL CheckBuffer((n*(3 * 2)) + 2) !3 x double precision coord, 2 x count
 
       IF ( n==0 ) THEN
         DEALLOCATE(FoundNodes, BB)
@@ -204,6 +207,25 @@
                1004, MPI_COMM_WORLD, status, ierr )
       END DO
 
+      ! Count variables and received nodes, and check MPI buffer is 
+      ! sufficiently large:
+      ! -----------------------------------------------------------
+      Var => OldVariables
+      nvars = 0
+      DO WHILE(ASSOCIATED(Var))
+         nvars = nvars + 1
+         Var => Var % Next
+      END DO
+
+      maxrecv = 0
+      DO i=1,SIZE(ProcRecv)
+         maxrecv = MAX(maxrecv, ProcRecv(i) % n)
+      END DO
+      
+      !For each node, we send a single integer perm and 
+      !a real(dp) per variable. Also sending two counts
+      CALL CheckBuffer(maxrecv * ((2 * nvars) + 1) + 2) 
+
       ! Check the received points and extract values for the to-be-interpolated-
       ! variables, if we have the points within our domain: 
       ! ------------------------------------------------------------------------
@@ -299,18 +321,13 @@
           DEALLOCATE(vstore, vperm)
         END IF
 
-        DEALLOCATE(ProcRecv(i) % Nodes_x, ProcRecv(i) % Nodes_y,&
-                   ProcRecv(i) % Nodes_z )
+        !Pointers to ProcRev, deallocated automatically below
+        NULLIFY(Nmesh % Nodes % x,&
+                Nmesh % Nodes % y,&
+                Nmesh % Nodes % z)
 
-        Var => Nmesh % Variables
-        DO WHILE(ASSOCIATED(Var))
-          DEALLOCATE(Var % Values)
-          IF (ASSOCIATED(Var % PrevValues)) DEALLOCATE(Var % PrevValues)
-          nVar => Var
-          Var => Var % Next
-          DEALLOCATE(nVar)
-        END DO
-        DEALLOCATE(nperm,foundnodes, Nmesh)
+        CALL ReleaseMesh(Nmesh)
+        DEALLOCATE(foundnodes, Nmesh)
       END DO
       DEALLOCATE(ProcRecv)
 

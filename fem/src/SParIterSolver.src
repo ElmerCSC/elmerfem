@@ -2006,7 +2006,7 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
 
   ! Local variables
 
-  LOGICAL :: stat, EdgeBasis
+  LOGICAL :: stat, EdgeBasis = .FALSE.
   INTEGER :: i, j, k, l, nbind, dof
   INTEGER, DIMENSION(:), ALLOCATABLE :: VecEPerNB
   REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE)
