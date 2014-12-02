@@ -7188,9 +7188,10 @@ END SUBROUTINE GetMaxDefs
 
                   Projector % InvPerm(nrow) = InvPerm1(jj)
                   val = Basis(j) * Wtemp
-                  CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                      InvPerm1(jj), NodeCoeff * val ) 
                   DO i=1,n
+                    CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                        InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val ) 
+
                     IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                         InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )   
@@ -7737,9 +7738,10 @@ END SUBROUTINE GetMaxDefs
                   Projector % InvPerm(nrow) = InvPerm1(jj)
                   val = Basis(j) * Wtemp
 
-                  CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                      InvPerm1(jj), NodeCoeff * val ) 
                   DO i=1,nM
+                    CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                          InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val ) 
+
                     IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                         InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )                   
