@@ -85,7 +85,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
        TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
        INTEGER :: i, j, k, l, m, n, DOFs
-       LOGICAL :: DGSolver, Found, GB, Global_dof, StrideProj, DiscontBC
+       LOGICAL :: DGSolver, Found, GB, Global_dof, LocalConstraints, DiscontBC
        TYPE(Mesh_t), POINTER :: Mesh
        TYPE(Element_t), POINTER :: Element
        TYPE(NeighbourList_t), POINTER :: MtrxN, MeshN
@@ -274,16 +274,17 @@ CONTAINS
          g_beg = NINT(ParallelReduction(1._dp*MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2))
          pardofs_all = NINT(ParallelReduction(Matrix % ParallelDOFs*1._dp,2))
 
-         StrideProj = ListGetLogicalAnyBC(CurrentModel,'Stride Projector' )
+         LocalConstraints = ListGetLogical(Solver % Values, 'Partition Local Constraints',Found)
          DiscontBC  = ListGetLogicalAnyBC(CurrentModel,'Discontinuous Boundary' )
 
-         IF(StrideProj) THEN
+         IF( LocalConstraints  ) THEN
            ALLOCATE(OwnedDofs(ParEnv % PEs), OwnedDofs2(ParEnv % PEs))
            owneddofs = 0
            owneddofs(ParEnv % Mype+1) = Matrix % ExtraDofs
            CALL MPI_ALLREDUCE( Owneddofs, Owneddofs2, ParEnv % PEs, &
                 MPI_INTEGER, MPI_SUM, Matrix % Comm, i )
-           l_beg = SUM(owneddofs2(1:ParEnv % myPE))
+           l_beg = SUM(OwnedDofs2(1:ParEnv % myPE))
+           DEALLOCATE(OwnedDofs,OwnedDofs2)
          END IF
 
          Found = ASSOCIATED(Solver % Matrix % ConstraintMatrix)
@@ -298,11 +299,10 @@ CONTAINS
              Matrix % Parallelinfo % Interface(i) = .TRUE.
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
 
-             IF(proc_ind<=0) proc_ind=ParEnv % PEs
-             proc_ind=proc_ind-1
-
-             DO k=1,ParEnv % PEs
-               Matrix % ParallelInfo % NeighbourList(i) % Neighbours(k)=ParEnv % PEs-k
+             l = 0
+             DO k=ParEnv % PEs,1,-1
+               l = l + 1
+               Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l)=k-1
              END DO
              k = j + g_beg
            ELSE IF(Found) THEN
@@ -324,8 +324,9 @@ CONTAINS
              Matrix % Parallelinfo % NeighbourList(i) % Neighbours = &
                 Matrix % ParallelInfo % NeighbourList(k) % Neighbours
 
-             IF ( StrideProj ) THEN
+             IF ( LocalConstraints ) THEN
                k = j + g_beg + l_beg + pardofs_all
+
                DO m=Matrix % Rows(i), Matrix % Rows(i+1)-1
                  IF (Matrix % Parallelinfo % Interface(Matrix % Cols(m))) THEN
                    l = SIZE(Matrix % ParallelInfo % NeighbourList(Matrix % Cols(m)) % Neighbours)
@@ -342,13 +343,6 @@ CONTAINS
            END IF
            Matrix % ParallelInfo % GlobalDofs(i) = k
          END DO
-
-!        IF ( StrideProj) THEN
-!          DO k=1,SIZE(Matrix % ParallelInfo % NeighbourList)
-!            l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
-!            CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
-!          END DO
-!        END IF
 
          l=Matrix % ExtraDOFs
          n=SIZE(Perm)
