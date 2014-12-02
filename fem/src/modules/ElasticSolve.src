@@ -216,7 +216,6 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          
   REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), &
        Tdiff,Normal(3),s, UnitNorm
-  REAL(KIND=dp) :: at,at0,CPUTime,RealTime
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
 !------------------------------------------------------------------------------
@@ -235,7 +234,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 #else
      REAL(KIND=dp) :: at,at0,CPUTime,RealTime
 #endif
-     INTEGER :: TotalSteps,LoadStep, dim
+     INTEGER :: TotalSteps,LoadStep
 
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
 
