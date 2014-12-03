@@ -284,4 +284,4 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=5.1147197404100240\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM=7.2233039214044048\n");
