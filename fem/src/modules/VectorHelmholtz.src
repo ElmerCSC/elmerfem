@@ -55,7 +55,7 @@ MODULE MagnetoDynamicsUtils
    END INTERFACE
 
    INTERFACE GetPermittivity
-     MODULE PROCEDURE GetPermittivityR, GetPermittivityC
+     MODULE PROCEDURE GetPermittivityR, GetPermittivityC, GetPermittivityCT
   END INTERFACE
 
 CONTAINS
@@ -168,7 +168,7 @@ CONTAINS
   END SUBROUTINE SetDOFToValueC
 !------------------------------------------------------------------------------
 
- SUBROUTINE GetPermittivityR(Material,Acoef,n)
+  SUBROUTINE GetPermittivityR(Material,Acoef,n)
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
@@ -197,7 +197,7 @@ CONTAINS
   END SUBROUTINE GetPermittivityR
 !------------------------------------------------------------------------------
 
- SUBROUTINE GetPermittivityC(Material,Acoef,n)
+  SUBROUTINE GetPermittivityC(Material,Acoef,n)
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
@@ -215,6 +215,8 @@ CONTAINS
       FirstTime = .FALSE.
     END IF
 
+
+    
     Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
     IF ( Found ) THEN
       Acoef(1:n) = Acoef(1:n)
@@ -225,6 +227,23 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE GetPermittivityC
 !------------------------------------------------------------------------------
+
+SUBROUTINE GetPermittivityCT(Material,Acoef,n)
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: Material
+    INTEGER :: n
+    COMPLEX(KIND=dp) :: Acoef(:,:,:)
+!------------------------------------------------------------------------------
+    LOGICAL :: Found, FirstTime = .TRUE. 
+    Acoef = 0.0_dp
+    REAL(KIND=dp) :: permvacuum
+    SAVE permvacuum
+
+    IF( FirstTime ) THEN
+      permvacuum = GetConstReal( CurrentModel % Constants, &
+        'Permittivity of Vacuum'
+END SUBROUTINE GetPermittivityCT
+
 !------------------------------------------------------------------------------
  SUBROUTINE GetInvPermeabilityR(Material,Acoef,n)
 !------------------------------------------------------------------------------
@@ -287,33 +306,6 @@ CONTAINS
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GetInvPermeabilityC
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
- SUBROUTINE GetPermittivity(Material,Acoef,n)
-!------------------------------------------------------------------------------
-    TYPE(ValueList_t), POINTER :: Material
-    INTEGER :: n
-    REAL(KIND=dp) :: Acoef(:)
-!------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE.
-    REAL(KIND=dp) :: Pvacuum = 0._dp
-
-    IF ( FirstTime ) THEN
-      Pvacuum = GetConstReal( CurrentModel % Constants, &
-              'Permittivity of Vacuum', Found )
-      FirstTime = .FALSE.
-    END IF
-    
-
-    Acoef(1:n) = GetReal( Material, 'Relative Permittivity', Found )
-    IF ( Found ) THEN
-      Acoef(1:n) = Pvacuum * Acoef(1:n)
-    ELSE
-      Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
-    END IF
-!------------------------------------------------------------------------------
-  END SUBROUTINE GetPermittivity
 !------------------------------------------------------------------------------
 
 END MODULE MagnetoDynamicsUtils
@@ -445,7 +437,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
      ENDIF
 
      N = Mesh % MaxElementDOFs  ! just big enough
-     ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
+     ALLOCATE( FORCE(N), LOAD(3,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), RotM(3,3,N), &
           Acoef(N), LamCond(N), LamThick(N), &
           STAT=istat )
@@ -526,48 +518,35 @@ CONTAINS
           Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
             GetReal( BodyForce, 'Current Density im 3', Found), KIND=dp)
 
-          Load(4,1:n) = GetReal( BodyForce, 'Magnetization 1', Found )
-          FoundMagnetization = FoundMagnetization .OR. Found
-          Load(4,1:n) = CMPLX( REAL(Load(4,1:n)), &
-                GetReal( BodyForce, 'Magnetization im 1', Found),KIND=dp)
-          FoundMagnetization = FoundMagnetization .OR. Found
+          !Load(4,1:n) = GetReal( BodyForce, 'Magnetization 1', Found )
+          !FoundMagnetization = FoundMagnetization .OR. Found
+          !Load(4,1:n) = CMPLX( REAL(Load(4,1:n)), &
+                !GetReal( BodyForce, 'Magnetization im 1', Found),KIND=dp)
+          !FoundMagnetization = FoundMagnetization .OR. Found
 
-          Load(5,1:n) = GetReal( BodyForce, 'Magnetization 2', Found )
-          FoundMagnetization = FoundMagnetization .OR. Found
-          Load(5,1:n) = CMPLX( REAL(Load(5,1:n)), &
-                GetReal( BodyForce, 'Magnetization im 2', Found),KIND=dp)
-          FoundMagnetization = FoundMagnetization .OR. Found
+          !Load(5,1:n) = GetReal( BodyForce, 'Magnetization 2', Found )
+          !FoundMagnetization = FoundMagnetization .OR. Found
+          !Load(5,1:n) = CMPLX( REAL(Load(5,1:n)), &
+                !GetReal( BodyForce, 'Magnetization im 2', Found),KIND=dp)
+          !FoundMagnetization = FoundMagnetization .OR. Found
 
-          Load(6,1:n) = GetReal( BodyForce, 'Magnetization 3', Found )
-          FoundMagnetization = FoundMagnetization .OR. Found
-          Load(6,1:n) = CMPLX( REAL(Load(6,1:n)), &
-                GetReal( BodyForce, 'Magnetization im 1', Found),KIND=dp)
-          FoundMagnetization = FoundMagnetization .OR. Found
+          !Load(6,1:n) = GetReal( BodyForce, 'Magnetization 3', Found )
+          !FoundMagnetization = FoundMagnetization .OR. Found
+          !Load(6,1:n) = CMPLX( REAL(Load(6,1:n)), &
+                !GetReal( BodyForce, 'Magnetization im 1', Found),KIND=dp)
+          !FoundMagnetization = FoundMagnetization .OR. Found
 
-          Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
-          Load(7,1:n) = CMPLX( REAL(Load(7,1:n)), &
-              GetReal( BodyForce, 'Electric Potential im', Found), KIND=dp)
+          !Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
+          !Load(7,1:n) = CMPLX( REAL(Load(7,1:n)), &
+              !GetReal( BodyForce, 'Electric Potential im', Found), KIND=dp)
        END IF
 
        Material => GetMaterial( Element )
-
-       IF(ASSOCIATED(Material).AND..NOT.FoundMagnetization) THEN
-          Load(4,1:n) = GetReal( Material, 'Magnetization 1', Found )
-          Load(4,1:n) = CMPLX( REAL(Load(4,1:n)), &
-                GetReal( Material, 'Magnetization im 1', Found),KIND=dp)
-
-          Load(5,1:n) = GetReal( Material, 'Magnetization 2', Found )
-          Load(5,1:n) = CMPLX( REAL(Load(5,1:n)), &
-                GetReal( Material, 'Magnetization im 2', Found),KIND=dp)
-
-          Load(6,1:n) = GetReal( Material, 'Magnetization 3', Found )
-          Load(6,1:n) = CMPLX( REAL(Load(6,1:n)), &
-                GetReal( Material, 'Magnetization im 1', Found),KIND=dp)
-       END IF
 
        Acoef = 0.0_dp
        Tcoef = 0.0_dp
        Material => GetMaterial( Element )
+
        IF ( ASSOCIATED(Material) ) THEN
          CALL GetInvPermeability(Material,Acoef,n)
 
@@ -713,17 +692,17 @@ CONTAINS
        Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
           GetReal(BC, 'Magnetic Field Strength im 3', Found), KIND=dp)
 
-       Load(4,1:n) = GetReal( BC, 'Electric Current Density', Found )
-       IF (.NOT. Found) Load(4,1:n) = GetReal( BC, 'Electric Flux', Found )
+       !Load(4,1:n) = GetReal( BC, 'Electric Current Density', Found )
+       !IF (.NOT. Found) Load(4,1:n) = GetReal( BC, 'Electric Flux', Found )
 
-       Load(4,1:n) = CMPLX( REAL(LOAD(4,1:n)), &
-            GetReal( BC, 'Electric Current Density im', Found), KIND=dp)
-       IF (.NOT. Found) Load(4,1:n) = CMPLX( REAL(LOAD(4,1:n)), &
-            GetReal( BC, 'Electric Flux im', Found), KIND=dp)
+       !Load(4,1:n) = CMPLX( REAL(LOAD(4,1:n)), &
+            !GetReal( BC, 'Electric Current Density im', Found), KIND=dp)
+       !IF (.NOT. Found) Load(4,1:n) = CMPLX( REAL(LOAD(4,1:n)), &
+            !GetReal( BC, 'Electric Flux im', Found), KIND=dp)
 
-       Load(5,1:n) = GetReal( BC, 'Electric Transfer Coefficient', Found )
-       Load(5,1:n) = CMPLX( REAL(Load(5,1:n)), &
-         GetReal( BC, 'Electric Transfer Coefficient im', Found), KIND=dp)
+       !Load(5,1:n) = GetReal( BC, 'Electric Transfer Coefficient', Found )
+       !Load(5,1:n) = CMPLX( REAL(Load(5,1:n)), &
+         !GetReal( BC, 'Electric Transfer Coefficient im', Found), KIND=dp)
 
        Acoef(1:n) = GetReal( BC, 'Magnetic Transfer Coefficient', Found )
        Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
@@ -739,7 +718,7 @@ CONTAINS
     !--------------------
   
     !
-    ! Dirichlet BCs in terms of vector potential A:
+    ! Dirichlet BCs in terms of electric field E
     ! ---------------------------------------------
     IF (PiolaVersion) THEN
        CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
@@ -1717,51 +1696,16 @@ CONTAINS
        END IF
 
 
-       M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
+       !M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
        L = L - MATMUL(FixJPotC, dBasisdx(1:n,:))
 
        ! Compute C * grad(V), where C is a tensor
        ! -----------------------------------------
-       L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
+       !L = L-MATMUL(C, MATMUL(LOAD(7,1:n), dBasisdx(1:n,:)))
 
        ! Compute element stiffness matrix and force vector:
        ! --------------------------------------------------
-
-       ! If we calculate a coil, the nodal degrees of freedom are not used:
-       ! ------------------------------------------------------------------
-       IF (.NOT. CoilBody) THEN
-          !
-          ! The constraint equation: -div(C*(j*omega*A+grad(V)))=0
-          ! --------------------------------------------------------
-          DO i=1,np
-            p = i
-            DO j=1,np
-              q = j
-
-              ! Compute the conductivity term <C grad V,grad v> for stiffness 
-              ! matrix (anisotropy taken into account)
-              ! -------------------------------------------
-              IF ( SUM(C) /= 0._dp ) THEN
-                STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(p,:)) * dBasisdx(q,:))*detJ*IP % s(t)
-              END IF
-            END DO
-            DO j=1,nd-np
-              q = j+np
-
-              ! Compute the conductivity term <j * omega * C A,grad v> for 
-              ! stiffness matrix (anisotropy taken into account)
-              ! -------------------------------------------
-              STIFF(p,q) = STIFF(p,q) + im * Omega * &
-                  SUM(MATMUL(C,Wbasis(j,:))*dBasisdx(i,:))*detJ*IP % s(t)
-
-              ! Compute the conductivity term <C grad V, eta> for 
-              ! stiffness matrix (anisotropy taken into account)
-              ! ------------------------------------------------
-              STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
-            END DO
-          END DO
-       END IF ! (.NOT. CoilBody)
 
        !
        ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
@@ -1783,11 +1727,11 @@ CONTAINS
            STIFF(p,q) = STIFF(p,q) + mu * &
               SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
 
-           ! Compute the conductivity term <j * omega * C A,eta> 
+           ! Compute the conductivity term -omega^2/c_0^2< epsilon_r A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
            ! ----------------------------------------------------
-           IF (CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) - Omega*Omega* &
-                        SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
+           STIFF(p,q) = STIFF(p,q) - Omega*Omega* &
+             SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:))*detJ*IP % s(t)
          END DO
        END DO
     END DO
@@ -1838,8 +1782,8 @@ CONTAINS
        B  = SUM(Basis(1:n) * Bcoef(1:n))
        L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
 
-       F  = SUM(LOAD(4,1:n)*Basis(1:n)) !* (-im/Omega)
-       TC = SUM(LOAD(5,1:n)*Basis(1:n)) !* (-im/Omega)
+       !F  = SUM(LOAD(4,1:n)*Basis(1:n)) !* (-im/Omega)
+       !TC = SUM(LOAD(5,1:n)*Basis(1:n)) !* (-im/Omega)
 
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
@@ -1893,7 +1837,7 @@ CONTAINS
                  IP % W(t),detJ,Basis,dBasisdx )
 
       Normal=NormalVector(Element,Nodes,IP % u(t),ip % v(t),.TRUE.)
-      Ln = SUM(LOAD(4,1:n)*Basis(1:n))
+      !Ln = SUM(LOAD(4,1:n)*Basis(1:n))
       L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
       Bn = Bn + Detj * IP % S(t) * (Ln+SUM(L*Normal))
     END DO
@@ -2783,15 +2727,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    END DO
    vDOFs = pSolver % Variable % DOFs
 
-   ElectricPotName = GetString(GetSolverParams(), 'Precomputed Electric Potential', PrecomputedElectricPot)
-   IF (PrecomputedElectricPot) THEN
-      DO i=1,Model % NumberOfSolvers
-         ElPotSolver => Model % Solvers(i)
-         IF (ElectricPotName==getVarName(ElPotSolver % Variable)) EXIT
-      END DO
-   END IF
-
-
    EF => NULL(); EL_EF => NULL(); 
    CD => NULL(); EL_CD => NULL();
    JH => NULL(); EL_JH => NULL();
@@ -2906,398 +2841,14 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
      BodyId = GetBody()
      Material => GetMaterial()
-     IF ( ASSOCIATED(MFS) ) THEN
-       BodyForce => GetBodyForce()
-       FoundMagnetization = .FALSE.
-       IF(ASSOCIATED(BodyForce)) THEN
-         Magnetization(1,1:n) = GetReal( BodyForce,'Magnetization 1', Found )
-         FoundMagnetization = FoundMagnetization .OR. Found
-         Magnetization(1,1:n) = CMPLX( REAL(Magnetization(1,1:n)), &
-                GetReal( BodyForce,'Magnetization 1 im', Found ), KIND=dp )
-         FoundMagnetization = FoundMagnetization .OR. Found
-
-         Magnetization(2,1:n) = GetReal( BodyForce,'Magnetization 2', Found )
-         FoundMagnetization = FoundMagnetization .OR. Found
-         Magnetization(2,1:n) = CMPLX( REAL(Magnetization(2,1:n)), &
-                GetReal( BodyForce,'Magnetization 2 im', Found ), KIND=dp )
-         FoundMagnetization = FoundMagnetization .OR. Found
-
-         Magnetization(3,1:n) = GetReal( BodyForce,'Magnetization 3', Found )
-         FoundMagnetization = FoundMagnetization .OR. Found
-         Magnetization(3,1:n) = CMPLX( REAL(Magnetization(3,1:n)), &
-                GetReal( BodyForce,'Magnetization 3 im', Found ), KIND=dp )
-         FoundMagnetization = FoundMagnetization .OR. Found
-       END IF
-
-       IF(.NOT.FoundMagnetization) THEN
-         Magnetization(1,1:n) = GetReal( Material,'Magnetization 1', Found )
-         Magnetization(1,1:n) = CMPLX( REAL(Magnetization(1,1:n)), &
-                GetReal( Material,'Magnetization 1 im', Found ), KIND=dp )
-
-         Magnetization(2,1:n) = GetReal( Material,'Magnetization 2', Found )
-         Magnetization(2,1:n) = CMPLX( REAL(Magnetization(2,1:n)), &
-                GetReal( Material,'Magnetization 2 im', Found ), KIND=dp )
-
-         Magnetization(3,1:n) = GetReal( Material,'Magnetization 3', Found )
-         Magnetization(3,1:n) = CMPLX( REAL(Magnetization(3,1:n)), &
-                GetReal( Material,'Magnetization 3 im', Found ), KIND=dp )
-       END IF
-     END IF
 
      CALL GetPermittivity(Material,PR,n)
  
-     !------------------------------------------------------------------------------
-     !  Read conductivity values (might be a tensor)
-     !------------------------------------------------------------------------------
-     !C(1:n) = GetReal(Material,'Electric Conductivity',Found)
-     CALL ListGetRealArray( Material, &
-          'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
-
-     Tcoef = CMPLX(0.0d0, 0.0d0, KIND=dp)
-     IF (Found) THEN
-        IF ( SIZE(Cwrk,1) == 1 ) THEN
-           DO k=1,3
-              Tcoef( k,k,1:n ) = Cwrk( 1,1,1:n )
-           END DO
-        ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-           DO k=1,MIN(3,SIZE(Cwrk,1))
-              Tcoef(k,k,1:n) = Cwrk(k,1,1:n)
-           END DO
-        ELSE
-           DO k=1,MIN(3,SIZE(Cwrk,1))
-              DO j=1,MIN(3,SIZE(Cwrk,2))
-                 Tcoef( k,j,1:n ) = Cwrk(k,j,1:n)
-              END DO
-           END DO
-        END IF
-     END IF
-
-     CALL ListGetRealArray( Material, &
-          'Electric Conductivity im', Cwrk_im, n, Element % NodeIndexes, Found )
-
-     IF (Found) THEN
-        IF ( SIZE(Cwrk_im,1) == 1 ) THEN
-           DO k=1,3
-              Tcoef( k,k,1:n ) = CMPLX( REAL(Tcoef( k,k,1:n )), Cwrk_im( 1,1,1:n ), KIND=dp)
-           END DO
-        ELSE IF ( SIZE(Cwrk_im,2) == 1 ) THEN
-           DO k=1,MIN(3,SIZE(Cwrk_im,1))
-              Tcoef(k,k,1:n) = CMPLX( REAL(Tcoef( k,k,1:n )), Cwrk_im( k,1,1:n ), KIND=dp)
-           END DO
-        ELSE
-           DO k=1,MIN(3,SIZE(Cwrk_im,1))
-              DO j=1,MIN(3,SIZE(Cwrk_im,2))
-                 Tcoef( k,j,1:n ) = CMPLX( REAL(Tcoef( k,j,1:n )), Cwrk_im( k,j,1:n ), KIND=dp)
-              END DO
-           END DO
-        END IF
-     END IF
-
-     ! in case of a foil winding, transform the conductivity tensor:
-     ! -------------------------------------------------------------
-     BodyParams => GetBodyParams( Element )
-     IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('VectorHelmholtzCalcFields', 'Body Parameters not found!')
-
-
      !---------------------------------------------------------------------------------------------
 
      CALL GetInvPermeability(Material,R,n)
 
      dim = 3
-
-#if 0
-******** this is now obsolete and will be removed at some point (i guess) ---->
-
-
-     IF (PiolaVersion) CALL GetRefPElementNodes(Element, NodesU, NodesV, NodesW, .FALSE.)
-
-     ! Calculate "on nodes on elements" fields:
-     ! ----------------------------------------
-     E = 0.0d0
-     DO j=1,n
-       IF (PiolaVersion) THEN       
-
-          u = NodesU(j)
-          v = NodesV(j)
-          w = NodesW(j)
-
-          IF ( GetElementFamily() == 6 .AND. j==5 ) w=w-0.001_dp
-
-          stat = EdgeElementInfo( Element, Nodes, u, v, w,  &
-             F, G, DetF, Basis, EBasis, CurlEBasis, dBasisdx)
-
-          !-------------------------------------------------------------------------
-          ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
-          ! vector B_j(x), with the place x related to the reference element 
-          ! coordinates p via the element mapping x = f(p). Additionally, 
-          ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
-          !-------------------------------------------------------------------------
-          GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
-          DO l = 1,nd-np 
-             DO k=1,dim
-                WBasis(l,k) = SUM( GT(k,1:dim) * EBasis(l,1:dim) )
-                RotWBasis(l,k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(l,1:dim) )
-             END DO
-          END DO
-       ELSE
-          u = Element % TYPE % NodeU(j)
-          v = Element % TYPE % NodeV(j)
-          w = Element % TYPE % NodeW(j)
-
-          stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-       END IF
-
-       DO k=1,vDOFs
-         B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
-       END DO
-
-       IF ( Transient ) THEN
-         IF (CoilType /= 'stranded') THEN 
-           E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
-         ELSE
-           E(1,:) = 0._dp
-         END IF
-         localV=0._dp
-         SELECT CASE (CoilType)
-         CASE ('stranded')
-           wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-           wvec = wvec/SQRT(SUM(wvec**2._dp))
-           E(1,:) = E(1,:)+LagrangeVar % Values(IvarId) * N_j * wvec / REAL(CMat_ip(1,1))
-         CASE ('massive')
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId)
-             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-         CASE ('foil winding')
-           localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
-           DO k = 1, VvarDofs-1
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
-           END DO
-           E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-
-         CASE DEFAULT
-           E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-         END SELECT
-       ELSE
-          IF (vDOFs > 1) THEN
-             IF (CoilType /= 'stranded') THEN
-                ! -j * Omega A
-                E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
-                E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
-             ELSE
-                E(1,:) = 0._dp
-                E(2,:) = 0._dp
-             END IF
-
-             localV=0._dp
-             SELECT CASE (CoilType)
-             CASE ('stranded')
-                wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                wvec = wvec/SQRT(SUM(wvec**2._dp))
-                imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
-                E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(1,1))
-                E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(1,1))
-             CASE ('massive')
-                localV(1) = localV(1) + LagrangeVar % Values(VvarId)
-                localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
-                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-             CASE ('foil winding')
-                localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
-                DO k = 1, VvarDofs-1
-                  Reindex = 2*k
-                  Imindex = Reindex+1
-                  localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
-                  localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
-                END DO
-                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-             CASE DEFAULT
-                ! -Grad(V)
-                E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
-             END SELECT
-          ELSE
-             IF (np > 0) THEN
-               E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-             ELSE
-               E(1,:) = 0.0d0
-             END IF
-          END IF
-       END IF
-       
-       PR_ip = SUM( Basis(1:n)*PR(1:n) )
-
-       IF(ASSOCIATED(EL_MFD)) THEN
-         DO l=1,vDOFs
-           DO k=1,dim
-             EL_MFD % Values( EL_MFD % DOFs*(EL_MFD % Perm( &
-                   Element % DGIndexes(j))-1)+dim*(l-1)+k) = B(l,k)
-           END DO
-         END DO
-       END IF
-
-       IF ( ASSOCIATED(MFS) ) THEN
-         DO l=1,dim
-           MG_ip(l) = SUM( Magnetization(l,1:n)*Basis(1:n) )
-         END DO
-
-         IF ( ASSOCIATED(HB) ) THEN
-           Babs=SQRT(SUM(B(1,:)**2))
-             R_ip = InterpolateCurve(HB(:,1),HB(:,2),Babs,CubicCoeff)/Babs
-         ELSE
-           R_ip = SUM( Basis(1:n)*R(1:n) )
-         END IF
-
-         IF (ASSOCIATED(EL_MFS)) THEN
-           DO k=1,dim
-             EL_MFS % Values( EL_MFS % DOFs*(EL_MFS % Perm( &
-                   Element % DGIndexes(j))-1)+k) = R_ip*B(1,k)-REAL(MG_ip(k))
-           END DO
-
-           IF ( Vdofs>1 ) THEN
-             DO k=1,dim
-               EL_MFS % Values( EL_MFS % DOFs*(EL_MFS % Perm( &
-                     Element % DGIndexes(j))-1)+dim+k) = R_ip*B(2,k)-AIMAG(MG_ip(k))
-             END DO
-           END IF
-         END IF
-       END IF
-
-       IF(ASSOCIATED(EL_VP)) THEN
-         DO l=1,vDOFs
-           VP_ip(1,:)=MATMUL(SOL(l,np+1:nd),WBasis(1:nd-np,:))
-           DO k=1,dim
-             EL_VP % Values( EL_VP % DOFs*(EL_VP % Perm( &
-               Element % DGIndexes(j))-1)+dim*(l-1)+k) = VP_ip(1,k)
-           END DO
-         END DO
-       END IF
-
-       IF (ASSOCIATED(EL_EF)) THEN
-         DO l=1,Vdofs
-           DO k=1,dim
-             EL_EF % Values( EL_EF % DOFs*(EL_EF % Perm( &
-                   Element % DGIndexes(j))-1)+dim*(l-1)+k) = E(l,k)
-           END DO
-         END DO
-       END IF
-
-       IF ( ASSOCIATED(EL_CD)) THEN
-         !DO l=1,Vdofs
-         !  DO k=1,dim
-         !    EL_CD % Values( EL_CD % DOFs*(EL_CD % Perm( &
-         !          Element % DGIndexes(j))-1)+dim*(l-1)+k) = C_ip*E(l,k)
-         !  END DO
-         !END DO
-         IF (Vdofs == 1) THEN
-            l = 1
-            DO k=1,dim
-               JatIP(l,k) = SUM( REAL(CMat_ip(k,1:dim)) * E(l,1:dim) )
-               EL_CD % Values( EL_CD % DOFs*(EL_CD % Perm( &
-                    Element % DGIndexes(j))-1)+dim*(l-1)+k) =  JatIP(l,k)
-            END DO
-         ELSE
-            l = 1
-            DO k=1,dim
-               EL_CD % Values( EL_CD % DOFs*(EL_CD % Perm( &
-                    Element % DGIndexes(j))-1)+dim*(l-1)+k) =  SUM( REAL(CMat_ip(k,1:dim)) * E(1,1:dim) ) - &
-                    SUM( AIMAG(CMat_ip(k,1:dim)) * E(2,1:dim) )
-            END DO
-            l = 2
-            DO k=1,dim
-               EL_CD % Values( EL_CD % DOFs*(EL_CD % Perm( &
-                    Element % DGIndexes(j))-1)+dim*(l-1)+k) =  SUM( AIMAG(CMat_ip(k,1:dim)) * E(1,1:dim) ) + &
-                    SUM( REAL(CMat_ip(k,1:dim)) * E(2,1:dim) )
-            END DO           
-         END IF
-       END IF
-
-       IF ( ASSOCIATED(EL_JXB)) THEN
-         IF (.NOT. ASSOCIATED(EL_CD)) THEN
-           CALL Warn('VectorHelmholtzCalcFields', 'Cannot Calculate JxB since Current Density is not calculated!')
-         ELSE
-           IF (Vdofs == 1) THEN
-              l = 1
-              JXBatIP(l,:) = crossproduct(JatIP(l,:),B(l,:))
-              DO k=1,dim
-                 EL_JXB % Values( EL_JXB % DOFs*(EL_JXB % Perm( &
-                      Element % DGIndexes(j))-1)+dim*(l-1)+k) = JXBatIP(l,k)
-              END DO
-           END IF
-         END IF
-       END IF
-
-       IF ( ASSOCIATED(EL_FWP)) THEN
-         IF (Vdofs == 1) THEN
-            l = 1
-            DO k=1,EL_FWP % DOFs
-               EL_FWP % Values( EL_FWP % DOFs*(EL_FWP % Perm( &
-                    Element % DGIndexes(j))-1)+dim*(l-1)+k) = LocalV(1)
-            END DO
-         ELSE
-            l = 1
-            DO k=1,EL_FWP % DOFs
-               EL_FWP % Values( EL_FWP % DOFs*(EL_FWP % Perm( &
-                    Element % DGIndexes(j))-1)+dim*(l-1)+k) = LocalV(1)
-            END DO
-            l = 2
-            DO k=1,EL_FWP % DOFs
-               EL_FWP % Values( EL_FWP % DOFs*(EL_FWP % Perm( &
-                    Element % DGIndexes(j))-1)+dim*(l-1)+k) = LocalV(2)
-            END DO
-         END IF
-       END IF
-
-       IF ( ASSOCIATED(EL_JH) ) THEN
-         DO k=1,EL_JH % DOFs
-           EL_JH % Values( EL_JH % DOFs*(EL_JH % Perm( &
-                 Element % DGIndexes(j))-1)+k) = SUM(E(1,:)**2)
-         END DO
-       END IF
-
-       IF ( ASSOCIATED(MST)) THEN
-         IF ( vDOFS==1) THEN
-           DO l=1,3
-             DO m=l,3
-               ST(l,m)=PR_ip*E(1,l)*E(1,m)+R_ip*B(1,l)*B(1,m)
-             END DO
-             ST(l,l)=ST(l,l)-(PR_ip*SUM(E(1,:)**2)+R_ip*SUM(B(1,:)**2))/2
-           END DO
-           IF (ASSOCIATED(EL_MST)) THEN
-             DO k=1,EL_MST % DOFs
-               EL_MST % Values( EL_MST % DOFs*(EL_MST % Perm( &
-                     Element % DGIndexes(j))-1)+k) = ST(ind1(k),ind2(k))
-             END DO
-           END IF
-         ELSE
-           DO l=1,3
-             DO m=l,3
-               CST(l,m) = PR_ip*CMPLX(E(1,l),E(2,l),KIND=dp) * &
-                                CMPLX(E(1,m),E(2,m),KIND=dp)
-               CST(l,m) = CST(l,m) + &
-                           R_ip*CMPLX(B(1,l),B(2,l),KIND=dp) * &
-                                CMPLX(B(1,m),B(2,m),KIND=dp)
-             END DO
-             CST(l,l) = CST(l,l) - &
-                    (PR_ip*SUM(ABS(CMPLX(E(1,:),E(2,:)))**2)+ &
-                      R_ip*SUM(ABS(CMPLX(B(1,:),B(2,:)))**2))/2
-           END DO
-           IF (ASSOCIATED(EL_MST)) THEN
-             DO l=1,6
-               EL_MST % Values( EL_MST % DOFs*(EL_MST % Perm( &
-                     Element % DGIndexes(j))-1)+l) = REAL(CST(ind1(l),ind2(l)))
-             END DO
-             DO l=1,6
-               EL_MST % Values( EL_MST % DOFs*(EL_MST % Perm( &
-                     Element % DGIndexes(j))-1)+l+6) = AIMAG(CST(ind1(l),ind2(l)))
-             END DO
-           END IF
-         END IF
-       END IF
-     END DO
-
-<------- this is now obsolete and will be removed at some point (i guess) ******
-#endif
 
      ! Calculate nodal fields:
      ! -----------------------
