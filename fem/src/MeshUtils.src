@@ -5521,6 +5521,9 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow
     INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:)
     INTEGER :: EdgeRow0, FaceRow0, EdgeCol0, FaceCol0, ProjectorRows
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+    REAL(KIND=dp), ALLOCATABLE :: Cond(:)
 
     CALL Info('LevelProjector','Creating projector for a levelized mesh',Level=7)
 
@@ -5702,14 +5705,49 @@ END SUBROUTINE GetMaxDefs
       IF(.NOT. Found ) EliminateUnneeded = .TRUE.
 
       IF( EliminateUnneeded ) THEN
+        m = 0
         n = SUM( NodePerm )
         CALL Info('LevelProjector',&
             'Number of potential nodes in projector: '//TRIM(I2S(n)),Level=10)        
         ! Now eliminate the nodes which also occur in the other mesh
         ! These must be redundant edges
         DO i=1, SIZE(InvPerm2)
-          NodePerm(InvPerm2(i)) = 0
+          j = InvPerm2(i) 
+          IF( NodePerm(j) /= 0 ) THEN
+            NodePerm(j) = 0
+            m = m + 1
+          END IF
         END DO
+        IF( m > 0 ) THEN
+          CALL Info('LevelProjector',&
+              'Eliminating redundant nodes from projector: '//TRIM(I2S(m)),Level=10)
+        END IF
+      END IF
+
+      
+      IF( ListCheckPresent( BC,'Level Projector Condition') ) THEN
+        ALLOCATE( Cond( Mesh % MaxElementNodes ) )
+        Cond = 1.0_dp
+        m = 0
+        DO i=1, BMesh1 % NumberOfBulkElements          
+          Element => Mesh % Elements( BMesh1 % Elements(i) % ElementIndex )
+          CurrentModel % CurrentElement => Element
+          n = Element % Type % NumberOfNodes
+          NodeIndexes => Element % NodeIndexes
+          Cond(1:n) = ListGetReal( BC,'Level Projector Condition', n, NodeIndexes )
+          DO j=1,n
+            k = NodeIndexes(j)
+            IF( NodePerm(k) /= 0 ) THEN
+              IF( Cond(j) < 0.0 ) THEN
+                m = m + 1
+                NodePerm(k) = 0 
+              END IF
+            END IF
+          END DO
+        END DO
+        CALL Info('LevelProjector','Eliminated nodes with negative condition: '//&
+            TRIM(I2S(m)),Level=10)        
+        DEALLOCATE( Cond ) 
       END IF
 
       m = 0
@@ -5720,10 +5758,6 @@ END SUBROUTINE GetMaxDefs
         END IF
       END DO
 
-      IF( EliminateUnneeded ) THEN
-        CALL Info('LevelProjector',&
-            'Eliminating redundant nodes from projector: '//TRIM(I2S(n-m)),Level=10)
-      END IF
       CALL Info('LevelProjector',&
           'Number of active nodes in projector: '//TRIM(I2S(m)),Level=8)
       EdgeRow0 = m
