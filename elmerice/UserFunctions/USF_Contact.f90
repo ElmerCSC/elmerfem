@@ -47,23 +47,23 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
   TYPE(Model_t) :: Model
   TYPE(Solver_t) :: Solver
-  TYPE(variable_t), POINTER :: TimeVar, NormalVar, VarSurfResidual, GroundedMaskVar, HydroVar, FlowVariable, DistanceVar
+  TYPE(variable_t), POINTER :: TimeVar, NormalVar, VarSurfResidual, GroundedMaskVar, HydroVar, DistanceVar
   TYPE(ValueList_t), POINTER :: BC
   TYPE(Element_t), POINTER :: Element, CurElement, BoundaryElement
   TYPE(Nodes_t), SAVE :: Nodes
 
-  REAL(KIND=dp), POINTER :: NormalValues(:), ResidValues(:), GroundedMask(:), Hydro(:), FlowValues(:), Distance(:)
-  REAL(KIND=dp) :: Bdrag, t, told, test(3), thresh
-  REAL(KIND=dp), ALLOCATABLE :: Normal(:), Fwater(:), Fbase(:), NormalTest(:)
+  REAL(KIND=dp), POINTER :: NormalValues(:), ResidValues(:), GroundedMask(:), Hydro(:), Distance(:)
+  REAL(KIND=dp) :: Bdrag, t, told, thresh
+  REAL(KIND=dp), ALLOCATABLE :: Normal(:), Fwater(:), Fbase(:)
 
-  INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), GroundedMaskPerm(:), HydroPerm(:), FlowPerm(:), DistancePerm(:)
-  INTEGER :: nodenumber, ii, DIM, GL_retreat, n, tt, Nn, jj, nnn, MSum, ZSum
+  INTEGER, POINTER :: NormalPerm(:), ResidPerm(:), GroundedMaskPerm(:), HydroPerm(:), DistancePerm(:)
+  INTEGER :: nodenumber, ii, DIM, GL_retreat, n, tt, Nn, jj, MSum, ZSum
 
-  LOGICAL :: FirstTime = .TRUE., FirstTimeTime = .TRUE., GotIt, Yeschange, GLmoves, Friction
+  LOGICAL :: FirstTime = .TRUE., GotIt, Yeschange, GLmoves, Friction
 
-  REAL (KIND=dp) ::  y, relChange, relChangeOld, Sliding_Budd, Sliding_Weertman, Friction_Coulomb, C, m
+  REAL (KIND=dp) ::  y, relChange, relChangeOld, Sliding_Budd, Sliding_Weertman, Friction_Coulomb
 
-  REAL(KIND=dp) :: NonLinIter, comp, cond, TestContact
+  REAL(KIND=dp) :: comp, cond, TestContact
   CHARACTER(LEN=MAX_NAME_LEN) :: USF_Name='SlidCoef_Contact', Sl_Law, GLtype
 
   SAVE FirstTime, yeschange, told, GLmoves, thresh, GLtype, TestContact
