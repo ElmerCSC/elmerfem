@@ -580,9 +580,15 @@ CONTAINS
        Load(1,1:n) = CMPLX( REAL(Load(1,1:n)), &
           GetReal(BC, 'Magnetic Field Strength im 1', Found), KIND=dp)
 
+
        Load(2,1:n) = GetReal( BC, 'Magnetic Field Strength 2', Found )
        Load(2,1:n) = CMPLX( REAL(Load(2,1:n)), &
           GetReal(BC, 'Magnetic Field Strength im 2', Found), KIND=dp)
+        !IF (Found .AND. SUM(ABS(LOAD(2,1:n))) > 0) THEN
+          !WRITE(MESSAGE,'(A,E12.4,E12.4)'), 'Found (nz) Magnetic Field Strength im 2 = ', &
+            !REAL(SUM(LOAD(2,1:n))), AIMAG(SUM(LOAD(2,1:n)))
+          !CALL INFO('VectorHelmholtzSolver::DoSolve',MESSAGE)
+        !END IF
 
        Load(3,1:n) = GetReal( BC, 'Magnetic Field Strength 3', Found )
        Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
@@ -605,6 +611,7 @@ CONTAINS
          GetReal( BC, 'Magnetic Transfer Coefficient im', Found), KIND=dp)
 
        CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+       IF(SUM(ABS(FORCE))>0) write(*,*), 'Hello: ', FORCE
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
 
@@ -627,7 +634,6 @@ CONTAINS
     ! --------------------------------------------------
 
     CALL DirichletAfromB()
-    CALL Info('VectorHelmholtzSolver::DoSolve', 'Called DirichletAfromB()')
 
     !
     ! Gauge tree, if requested or using direct solver:
@@ -638,7 +644,6 @@ CONTAINS
 
     IF (TG) THEN
       CALL GaugeTree()
-      CALL Info('VectorHelmholtzSolver::DoSolve', 'Called GaugeTree()')
       WRITE(Message,*) 'Volume tree edges: ', &
              TRIM(i2s(COUNT(TreeEdges))),     &
                ' of total: ',Mesh % NumberOfEdges
@@ -650,13 +655,11 @@ CONTAINS
     ! --------------------------
     A => GetMatrix()
     CALL ConstrainUnused(A)
-    CALL Info('VectorHelmholtzSolver::DoSolve', 'Called ConstrainUnused()')
 
     !
     ! Linear system solution:
     ! -----------------------
     Norm = DefaultSolve()
-    CALL Info('VectorHelmholtzSolver::DoSolve', 'Called DefaultSolve()')
     Converged = Solver % Variable % NonlinConverged==1
 !------------------------------------------------------------------------------
   END FUNCTION DoSolve
@@ -1516,17 +1519,16 @@ CONTAINS
        ! j*omega*C*A + curl(1/mu*curl(A)) + C*grad(V) = 
        !        J + curl(M) - C*grad(P'):
        ! ----------------------------------------------------
-       IF(FirstTime) THEN
-         FirstTime = .FALSE.
-         write(Message, '(A,I5,I5,I5)'), 'n, nd, np = ', n, nd, np
-         CALL Info('VectorHelmholtzSolver::LocalMatrix()', Message)
-         write(Message, '(A,1E15.4,1E15.4)'), 'muinv, eps = ', abs(muinv), abs(eps)
-         CALL Info('VectorHelmholtzSolver::LocalMatrix()', Message)
-       END IF
        ! np = 0  ...
        DO i = 1,nd-np
          p = i+np
          FORCE(p) = FORCE(p) + (SUM(L*WBasis(i,:)))* detJ*IP%s(t)
+
+         if(maxval(abs(L))>0) then !DEBUG
+           write (*,*), 'L = ', L
+           write (*,*), 'WBasis_i = ', WBasis(1,:)
+           write (*,*), 'SUM(L*WBasis(i,:)) = ', SUM(L*WBasis(i,:))
+         end if
          DO j = 1,nd-np
            q = j+np
 
@@ -1565,6 +1567,7 @@ CONTAINS
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: tmp
     CALL GetElementNodes( Nodes )
 
     STIFF = 0.0_dp
@@ -1600,7 +1603,9 @@ CONTAINS
 
        DO i = 1,nd-np
          p = i+np
-         FORCE(p) = FORCE(p) + SUM(L*WBasis(i,:))*detJ*IP%s(t)
+         tmp = SUM(L*WBasis(i,:))*detJ*IP%s(t)
+          
+         FORCE(p) = FORCE(p) + tmp !SUM(L*WBasis(i,:))*detJ*IP%s(t)
          DO j = 1,nd-np
            q = j+np
            STIFF(p,q) = STIFF(p,q) + B * &

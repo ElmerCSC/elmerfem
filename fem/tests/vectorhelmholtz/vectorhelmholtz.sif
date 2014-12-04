@@ -113,6 +113,7 @@ End
  
 Boundary Condition 2
   Target Boundaries(1) = 6
+  Magnetic Transfer Coefficient = Real 100
 
   A re {e} 1 = Real 0
   A im {e} 1 = Real 0
