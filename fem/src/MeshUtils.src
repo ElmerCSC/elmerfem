@@ -210,10 +210,23 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params
      INTEGER :: i, j,k,l, n, slen
      INTEGER, POINTER :: Body_Dofs(:,:)
-     LOGICAL  :: stat
+     LOGICAL  :: stat, Found
      REAL(KIND=dp) :: x,y,z
      TYPE(Solver_t), POINTER  :: Solver
      CHARACTER(MAX_NAME_LEN) :: str, RESULT
+
+     TYPE(ValueList_t), POINTER :: BodyParams
+     CHARACTER(MAX_NAME_LEN) :: ElementDefBody
+     
+     BodyParams => Model % Bodies(BodyId) % Values
+
+     ElementDefBody=ListGetString(BodyParams,'Solver '//TRIM(i2s(SolverId))//': Element',Found )
+     IF (Found) THEN
+       CALL Info('GetMaxDefs','Element found for body '//TRIM(i2s(BodyId))//' with solver '//TRIM(i2s(SolverId)), Level=5) 
+       CALL Info('GetMaxDefs','Default element type is: '//ElementDef, Level=5)
+       CALL Info('GetMaxDefs','New element type for this body is now: '//ElementDefBody, Level=5)
+       ElementDef=ElementDefBody
+     END IF
 
      Solver => Model % Solvers(SolverId)
      Params => Solver % Values
