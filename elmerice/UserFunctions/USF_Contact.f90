@@ -64,7 +64,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
   REAL (KIND=dp) ::  y, relChange, relChangeOld, Sliding_Budd, Sliding_Weertman, Friction_Coulomb, C, m
 
   REAL(KIND=dp) :: NonLinIter, comp, cond, TestContact
-  CHARACTER*20 :: USF_Name='SlidCoef_Contact', Sl_Law, GLtype
+  CHARACTER(LEN=MAX_NAME_LEN) :: USF_Name='SlidCoef_Contact', Sl_Law, GLtype
 
   SAVE FirstTime, yeschange, told, GLmoves, thresh, GLtype, TestContact
   SAVE DIM, USF_Name, Normal, Fwater, Fbase, relChangeOld, Sl_Law
@@ -297,7 +297,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
               Nn = GroundedMaskPerm(Element % NodeIndexes(ii))
               ! the grounded mask is not defined here
               IF (Nn==0) CYCLE
-              MSum = MSum + GroundedMask(Nn)
+              MSum = MSum + INT(GroundedMask(Nn))
               IF (GroundedMask(Nn)==0.0_dp) ZSum = ZSum + 1
               
            END DO
