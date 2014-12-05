@@ -116,6 +116,11 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
   IF( TableFormat ) CALL ParticleOutputTable( Particles )
   IF( VtuFormat ) CALL ParticleOutputVtu( Particles ) 
 
+  IF( ListGetLogical( Params,'Recreate Grid', Found ) ) THEN
+    CALL DestroyParticles( Particles ) 
+  END IF
+
+
   CALL Info('SaveGridData','All done',Level=4)
   CALL Info('SaveGridData', '-----------------------------------------', Level=4 )
   
