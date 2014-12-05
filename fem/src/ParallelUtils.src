@@ -284,6 +284,7 @@ CONTAINS
          Found = ASSOCIATED(Solver % Matrix % ConstraintMatrix)
          IF(Found) Found = ASSOCIATED(Solver % Matrix % ConstraintMatrix % InvPerm)
 
+         G => Null()
          IF( LocalConstraints  ) THEN
            G => AllocateMatrix()
            G % Format = MATRIX_LIST
@@ -417,7 +418,9 @@ CONTAINS
              END IF
            END DO
            IF(ALLOCATED(owneddofs)) DEALLOCATE(OwnedDofs)
-
+         END IF
+ 
+         IF(ASSOCIATED(G)) THEN
            IF(ASSOCIATED(G % Cols)) DEALLOCATE(G % Cols)
            IF(ASSOCIATED(G % Rows)) DEALLOCATE(G % Rows)
            IF(ASSOCIATED(G % Diag)) DEALLOCATE(G % Diag)
