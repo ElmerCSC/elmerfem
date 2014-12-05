@@ -260,6 +260,11 @@ CONTAINS
       CALL Fatal('FindGridParticles','No Mesh associated')
     END IF
 
+    IF( Visited ) THEN
+      DEALLOCATE( GridIndex )
+    END IF
+
+
     meshdim = Mesh % MeshDim
     Params => Solver % Values
 

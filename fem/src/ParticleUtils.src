@@ -925,11 +925,21 @@ RETURN
     IF ( ASSOCIATED(Particles % Partition) ) &
         DEALLOCATE( Particles % Partition )
     
-    DEALLOCATE( Particles % Coordinate ) 
-    DEALLOCATE( Particles % Status ) 
-    DEALLOCATE( Particles % FaceIndex )
-    DEALLOCATE( Particles % ElementIndex ) 
+    IF( ASSOCIATED( Particles % Coordinate ) ) &
+        DEALLOCATE( Particles % Coordinate ) 
+
+    IF( ASSOCIATED( Particles % Status ) ) &
+        DEALLOCATE( Particles % Status ) 
+
+    IF( ASSOCIATED( Particles % FaceIndex ) ) &
+        DEALLOCATE( Particles % FaceIndex )
+
+    IF( ASSOCIATED( Particles % ElementIndex ) ) &
+        DEALLOCATE( Particles % ElementIndex ) 
     
+    IF( ASSOCIATED( Particles % UVW ) ) &
+        DEALLOCATE( Particles % UVW )
+
     Particles % NumberOfParticles = 0
     Particles % MaxNumberOfParticles = 0
     
