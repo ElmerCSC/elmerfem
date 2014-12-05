@@ -1432,7 +1432,6 @@ CONTAINS
     TimeVar => VariableGet( Model % Variables, 'Time')
     sTime => TimeVar % Values(1)
     IF(RungeKutta) sTime = sTime - dt
-
     CALL SolveCoupled()
     IF(RungeKutta) sTime = sTime + dt
 
@@ -3423,6 +3422,7 @@ CONTAINS
           Maxdim = 0
           DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
              CurrentElement => Solver % Mesh % Elements(i)
+             IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
              IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
                 Solver % NumberOfActiveElements = Solver % NumberOFActiveElements + 1
                 Solver % ActiveElements( Solver % NumberOFActiveElements ) = i
