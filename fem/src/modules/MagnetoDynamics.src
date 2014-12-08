@@ -4310,8 +4310,8 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3)
-    COMPLEX(KIND=dp) :: B, F, TC
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
