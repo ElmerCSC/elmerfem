@@ -254,14 +254,14 @@ CONTAINS
     CHARACTER(MAX_NAME_LEN) :: Str
 
 
-    CALL Info('SaveGridData','Saving data on uniform grid')
+    CALL Info('SaveGridData','Saving data on uniform grid',Level=1)
 
     Mesh => GetMesh()
     IF( .NOT. ASSOCIATED( Mesh ) ) THEN
       CALL Fatal('FindGridParticles','No Mesh associated')
     END IF
 
-    IF( Visited ) THEN
+    IF( Visited .AND. Structured) THEN
       DEALLOCATE( GridIndex )
     END IF
 
