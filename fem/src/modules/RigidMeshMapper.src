@@ -66,13 +66,12 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   INTEGER :: i,j,k,n,m,t,dim,elem,bf_id,istat,node,nodei,RotateOrder(3)
   INTEGER, TARGET :: CurrentNode(1)
   INTEGER :: NonlinIter, MaxNonlinIter, NoNodes
-  INTEGER, POINTER :: RelaxPerm(:), VeloPerm(:), NodeIndex(:)
-  REAL(KIND=dp), POINTER :: PArray(:,:) => NULL()
+  INTEGER, POINTER :: RelaxPerm(:), VeloPerm(:), NodeIndex(:), IntArray(:) => NULL()
   REAL(KIND=dp) :: x0(4), x1(4), RotMatrix(4,4),TrsMatrix(4,4),SclMatrix(4,4), &
       TrfMatrix(4,4),Identity(4,4), Origin(4),Angles(3),Scaling(3),alpha, dCoord(3), Norm, dx(3)
   REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime,Coeff,relax(1)
   REAL(KIND=dp), POINTER :: Xorig(:),Yorig(:),Zorig(:),Xnew(:),Ynew(:),Znew(:),&
-      RelaxField(:),VeloVal(:)
+      RelaxField(:),VeloVal(:), PArray(:,:) => NULL()
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
   TYPE(Variable_t), POINTER :: VeloVar, RelaxVar
   TYPE(Mesh_t), POINTER :: Mesh
@@ -146,14 +145,14 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
   ! 3, 2, 1
   !----------------------------------------------------------
   RotateOrder = (/1, 2, 3/)
-  PArray => ListGetConstRealArray( SolverParams,'Mesh Rotation Axis Order', Found)
+  IntArray => ListGetIntegerArray( SolverParams,'Mesh Rotation Axis Order', Found)
   IF(Found) THEN
-     j = SIZE(PArray, 1)
+     j = SIZE(IntArray)
      IF(j /= dim) THEN
         CALL Fatal("RigidMeshMapper","Size of Mesh Rotation Axis Order must match dimension.")
      END IF
      DO i=1,j
-        RotateOrder(i) = PArray((j+1-i),1) !reverse the order
+        RotateOrder(i) = IntArray(j+1-i) !reverse the order
      END DO
   END IF
 
