@@ -2892,7 +2892,6 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   IF( NoVar == 0 ) THEN
     Var => Model % Variables
     DO WHILE( ASSOCIATED( Var ) )            
-      PRINT *,'Name:',TRIM( Var % Name ) 
 
       IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == 1 .OR. &
           (Var % DOFs /= 1 .AND. .NOT. ASSOCIATED(Var % EigenVectors)) ) THEN
