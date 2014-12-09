@@ -448,8 +448,11 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   SkipAssembly = DoneAssembly.AND.(ConstantBulk.OR.ConstantSystem)
 
-  FixJ=GetLogical(GetSolverParams(),'Fix input Current Density', Found)
-  IF (.NOT. Found.AND..NOT.Transient ) FixJ=.TRUE.
+  FixJ = GetLogical(GetSolverParams(),'Fix input Current Density', Found)
+  IF (.NOT. Found .AND. .NOT. Transient ) THEN
+    ! Only fix the current density if there is one
+    FixJ = ListCheckPrefixAnyBodyForce(Model, 'Current Density')
+  END IF
   IF (FixJ) THEN
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
     FixJVar => VariableGet(Mesh % Variables, 'Jfix')
@@ -734,11 +737,9 @@ CONTAINS
      IF  (FixJ) THEN
         Found = .FALSE.
         potname = Solver % Variable % Name(1:Solver % Variable % NameLen)
-        DO i=1,Model % NumberOfBCs
-           IF (ListCheckPresent(Model % BCs(i) % Values,potname) ) THEN
-              Found = .TRUE.; EXIT
-           END IF
-        END DO
+
+        Found = ListCheckPresentAnyBC(Model,potname)
+
         IF (.NOT. Found ) THEN
            DO i=1,Mesh % NumberOfNodes
               J = Solver % Variable % Perm(i)
@@ -2051,11 +2052,7 @@ CONTAINS
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
-       Found = .FALSE.
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 1')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 2')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 3')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density {n}')
+       Found = ListCheckPrefix(BC,'Magnetic Flux Density')
 
        IF ( Found ) THEN
          SELECT CASE(GetElementFamily())
@@ -2100,11 +2097,7 @@ CONTAINS
       BC=>GetBC()
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
-      Found = .FALSE.
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 1')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 2')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 3')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density {n}')
+      Found = ListCheckPrefix(BC,'Magnetic Flux Density')
       IF ( .NOT. Found ) CYCLE
 
       k = GetBoundaryFaceIndex(Element); Element=>Mesh % Faces(k)
@@ -4434,15 +4427,7 @@ CONTAINS
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
-       Found = .FALSE.
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 1')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 1')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 2')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 2')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 3')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 3')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density {n}')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im {n}')
+       Found = ListCheckPrefix(BC,'Magnetic Flux Density')
 
        IF ( Found ) THEN
          SELECT CASE(GetElementFamily())
@@ -4486,15 +4471,7 @@ CONTAINS
       BC=>GetBC()
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
-      Found = .FALSE.
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 1')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 1')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 2')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 2')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 3')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 3')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density {n}')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im {n}')
+      Found = ListCheckPrefix(BC,'Magnetic Flux Density')
       IF ( .NOT. Found ) CYCLE
 
       k = GetBoundaryFaceIndex(Element); Element=>Mesh % Faces(k)
