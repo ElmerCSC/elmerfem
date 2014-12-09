@@ -254,7 +254,7 @@ CONTAINS
     CHARACTER(MAX_NAME_LEN) :: Str
 
 
-    CALL Info('SaveGridData','Saving data on uniform grid',Level=1)
+    CALL Info('SaveGridData','Saving data on uniform grid',Level=4)
 
     Mesh => GetMesh()
     IF( .NOT. ASSOCIATED( Mesh ) ) THEN
