@@ -13,7 +13,12 @@ else
   INCLUDE=$ELMER_LIB/../include
 fi
 
-FC=@CMAKE_Fortran_COMPILER@
+if test "$ELMER_Fortran_COMPILER" = ""; then
+  FC=@CMAKE_Fortran_COMPILER@
+else
+  FC=$ELMER_Fortran_COMPILER
+fi
+
 cmd="$FC $* @CMAKE_Fortran_FLAGS@ @ELMER_F90FLAGS@ @CMAKE_SHARED_LIBRARY_Fortran_FLAGS@ @CMAKE_SHARED_LIBRARY_CREATE_Fortran_FLAGS@ -I$INCLUDE -L$LIBDIR -shared -lelmersolver"
 printf "%s " $cmd
 printf "\n"
