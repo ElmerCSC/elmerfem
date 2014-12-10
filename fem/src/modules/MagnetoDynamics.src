@@ -1883,7 +1883,7 @@ CONTAINS
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
-    CALL GetElementNodes( Nodes )
+    CALL GetElementNodes( Nodes, Element )
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
@@ -1988,7 +1988,7 @@ CONTAINS
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
-    CALL GetElementNodes( Nodes )
+    CALL GetElementNodes( Nodes, Element )
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
