@@ -689,6 +689,7 @@ CONTAINS
        k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
      END SELECT
 
+     Model % CurrentElement => Element
      nd = GetElementNOFDOFs(Element)
      n  = GetElementNOFNodes(Element)
 
