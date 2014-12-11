@@ -1875,7 +1875,7 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3),w0(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -1913,6 +1913,8 @@ CONTAINS
        F  = SUM(LOAD(4,1:n)*Basis(1:n))
        TC = SUM(LOAD(5,1:n)*Basis(1:n))
 
+       Normal = NormalVector(Element,Nodes,IP % U(t), IP % V(t),.TRUE.)
+
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
        DO p=1,np
@@ -1924,12 +1926,16 @@ CONTAINS
        END DO
 
        DO i = 1,nd-np
+         w0(1) = -(WBasis(i,2)*Normal(3) - WBasis(i,3)*Normal(2))
+         w0(2) = -(WBasis(i,3)*Normal(1) - WBasis(i,1)*Normal(3))
+         w0(3) = -(WBasis(i,1)*Normal(2) - WBasis(i,2)*Normal(1))
+
          p = i+np
-         FORCE(p) = FORCE(p) + SUM(L*WBasis(i,:))*detJ*IP%s(t)
+         FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP%s(t)
          DO j = 1,nd-np
            q = j+np
            STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(WBasis(i,:)*WBasis(j,:))*detJ*IP%s(t)
+              SUM(w0*WBasis(j,:))*detJ*IP%s(t)
          END DO
        END DO
     END DO
@@ -4305,7 +4311,7 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3),w0(3)
     COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     LOGICAL :: Stat
@@ -4337,6 +4343,7 @@ CONTAINS
 
        F  = SUM(LOAD(4,1:n)*Basis(1:n)) !* (-im/Omega)
        TC = SUM(LOAD(5,1:n)*Basis(1:n)) !* (-im/Omega)
+       Normal = NormalVector(Element,Nodes,IP % U(t), IP % V(t),.TRUE.)
 
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
@@ -4349,12 +4356,15 @@ CONTAINS
        END DO
 
        DO i = 1,nd-np
+         w0(1) = -(WBasis(i,2)*Normal(3) - WBasis(i,3)*Normal(2))
+         w0(2) = -(WBasis(i,3)*Normal(1) - WBasis(i,1)*Normal(3))
+         w0(3) = -(WBasis(i,1)*Normal(2) - WBasis(i,2)*Normal(1))
          p = i+np
-         FORCE(p) = FORCE(p) + SUM(L*WBasis(i,:))*detJ*IP%s(t)
+         FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP%s(t)
          DO j = 1,nd-np
            q = j+np
            STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(WBasis(i,:)*WBasis(j,:))*detJ*IP%s(t)
+              SUM(WBasis(j,:)*w0)*detJ*IP%s(t)
          END DO
        END DO
     END DO
