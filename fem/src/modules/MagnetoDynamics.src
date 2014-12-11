@@ -1926,16 +1926,13 @@ CONTAINS
        END DO
 
        DO i = 1,nd-np
-         w0(1) = -(WBasis(i,2)*Normal(3) - WBasis(i,3)*Normal(2))
-         w0(2) = -(WBasis(i,3)*Normal(1) - WBasis(i,1)*Normal(3))
-         w0(3) = -(WBasis(i,1)*Normal(2) - WBasis(i,2)*Normal(1))
-
+         w0 = -CrossProduct(Wbasis(i,:),Normal)
          p = i+np
-         FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP%s(t)
+         FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP % s(t)
          DO j = 1,nd-np
            q = j+np
            STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(w0*WBasis(j,:))*detJ*IP%s(t)
+              SUM(WBasis(j,:)*w0)*detJ*IP % s(t)
          END DO
        END DO
     END DO
@@ -4356,9 +4353,7 @@ CONTAINS
        END DO
 
        DO i = 1,nd-np
-         w0(1) = -(WBasis(i,2)*Normal(3) - WBasis(i,3)*Normal(2))
-         w0(2) = -(WBasis(i,3)*Normal(1) - WBasis(i,1)*Normal(3))
-         w0(3) = -(WBasis(i,1)*Normal(2) - WBasis(i,2)*Normal(1))
+         w0 = -CrossProduct(Wbasis(i,:),Normal)
          p = i+np
          FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP%s(t)
          DO j = 1,nd-np
