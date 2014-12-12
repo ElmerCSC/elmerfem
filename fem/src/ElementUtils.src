@@ -756,9 +756,6 @@ CONTAINS
      IF ( PRESENT(Equation) ) THEN
         k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB )
         IF ( k <= 0 ) THEN
-!          DO i=1,SIZE(Perm)
-!             Perm(i) = i 
-!          END DO
            RETURN
         END IF
      ELSE
@@ -766,9 +763,13 @@ CONTAINS
      END IF
 
      IF ( k == SIZE(Perm) ) THEN
-        DO i=1,k 
-           Perm(i) = i
-        END DO
+       IF(PRESENT(NodalDofsOnly)) THEN
+         IF(NodalDofsOnly) k=Mesh % NumberOfNodes
+       END IF
+
+       DO i=1,k 
+         Perm(i) = i
+       END DO
      END IF
 
      ALLOCATE( InvInitialReorder(k) )
@@ -804,7 +805,6 @@ CONTAINS
         n = OptimizeBandwidth( ListMatrix, Perm, InvInitialReorder, &
                       k, OptimizeBW,UseOptimized, ' ' )
      ENDIF
-
 
 !------------------------------------------------------------------------------
 !    Ok, create and initialize the matrix
