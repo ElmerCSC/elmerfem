@@ -611,7 +611,6 @@ CONTAINS
          GetReal( BC, 'Magnetic Transfer Coefficient im', Found), KIND=dp)
 
        CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
-       IF(SUM(ABS(FORCE))>0) write(*,*), 'Hello: ', FORCE
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
 
@@ -2865,7 +2864,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
          END IF
          IF ( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF)) THEN
            DO l=1,vDOFs
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*E(l,:)*Basis(p)
+             !FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*E(l,:)*Basis(p)
+             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*VP_ip(l,:)*Basis(p)  ! \TODO, DEBUG, KLUDGE: note that this is actually kinda like "magnetic vector potential"
              k = k+3
            END DO
          END IF
