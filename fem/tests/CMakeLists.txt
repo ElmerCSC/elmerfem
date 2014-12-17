@@ -70,11 +70,14 @@ IF(INSTALL_OLD_TESTS)
 ENDIF(INSTALL_OLD_TESTS)
 
 # ElmerTests_package target
+SET(ELMER_TESTS_PACKAGE_FILENAME "elmerfem-tests-${ELMER_FEM_REVISION}.tar.gz" CACHE STRING "Filename of test package")
+MARK_AS_ADVANCED(ELMER_TESTS_PACKAGE_FILENAME)
+
 ADD_CUSTOM_TARGET(ElmerTests
   "${CMAKE_COMMAND}" "-E" "make_directory" "${CMAKE_BINARY_DIR}/elmerfem-tests")
 ADD_CUSTOM_TARGET(ElmerTests_package
   DEPENDS ElmerTests
-  COMMAND "${CMAKE_COMMAND}" "-E" "tar" "cvfz" "elmerfem-tests.tar.gz" "elmerfem-tests"
+  COMMAND "${CMAKE_COMMAND}" "-E" "tar" "cvfz" "${ELMER_TESTS_PACKAGE_FILENAME}" "elmerfem-tests"
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
 # Copy the tests in a cross platform compliant manner
