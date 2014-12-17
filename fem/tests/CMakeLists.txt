@@ -1,3 +1,5 @@
+PROJECT(ElmerTests Fortran C)
+CMAKE_MINIMUM_REQUIRED(VERSION 2.8.9)
 
 #ADD_EXECUTABLE(findnorm findnorm_cmake.c)
 
@@ -12,12 +14,6 @@ SET(MESH2D_BIN "${CMAKE_BINARY_DIR}/meshgen2d/src/Mesh2D")
 
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/runtests.in.cmake
   ${CMAKE_CURRENT_BINARY_DIR}/runtests)
-
-# Environment variables for ElmerSolver
-# SET(ENV{ELMER_LIB} "${CMAKE_BINARY_DIR}/fem/src")
-# SET(ENV{ELMER_HOME} "${CMAKE_BINARY_DIR}/fem/src")
-
-#INCLUDE(test_subdirs.cmake)
 
 MACRO(SUBDIRLIST result curdir)
   FILE(GLOB children RELATIVE ${curdir} ${curdir}/*)
@@ -35,10 +31,24 @@ SUBDIRLIST(SUBDIRS ${CMAKE_CURRENT_SOURCE_DIR})
 FOREACH(subdir ${SUBDIRS})
   IF(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt")
     ADD_SUBDIRECTORY(${subdir})
+    LIST(APPEND TEST_SUBDIRS ${subdir})
   ENDIF(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt")
 ENDFOREACH()
 
-IF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
+SET(INSTALL_OLD_TESTS FALSE CACHE BOOL "(deprecated) Install old test system under build directory.")
+
+FOREACH(_subdir ${TEST_SUBDIRS})
+  FILE(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/${_subdir}/*")
+  FOREACH(_file ${files})
+    IF(NOT(${_file} MATCHES "CMakeLists.txt$"))
+      IF(NOT(${_file} MATCHES "runtest.cmake$"))
+        LIST(APPEND ELMER_TEST_FILES ${_file})
+      ENDIF()
+    ENDIF()
+  ENDFOREACH()
+ENDFOREACH()
+
+IF(INSTALL_OLD_TESTS)
   INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/. 
     DESTINATION ${CMAKE_BINARY_DIR}/elmertests
     FILES_MATCHING REGEX 
@@ -57,4 +67,30 @@ IF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
     DESTINATION ${CMAKE_BINARY_DIR}/elmertests)
   INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/runtests 
     DESTINATION ${CMAKE_BINARY_DIR}/elmertests)
-ENDIF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
+ENDIF(INSTALL_OLD_TESTS)
+
+# ElmerTests_package target
+SET(ELMER_TESTS_PACKAGE_FILENAME "elmerfem-tests-${ELMER_FEM_REVISION}.tar.gz" CACHE STRING "Filename of test package")
+MARK_AS_ADVANCED(ELMER_TESTS_PACKAGE_FILENAME)
+
+ADD_CUSTOM_TARGET(ElmerTests
+  "${CMAKE_COMMAND}" "-E" "make_directory" "${CMAKE_BINARY_DIR}/elmerfem-tests")
+ADD_CUSTOM_TARGET(ElmerTests_package
+  DEPENDS ElmerTests
+  COMMAND "${CMAKE_COMMAND}" "-E" "tar" "cvfz" "${ELMER_TESTS_PACKAGE_FILENAME}" "elmerfem-tests"
+  WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+
+# Copy the tests in a cross platform compliant manner
+FOREACH(_file ${ELMER_TEST_FILES})
+  IF(NOT(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${_file}))
+    ADD_CUSTOM_COMMAND(TARGET ElmerTests
+      COMMAND "${CMAKE_COMMAND}" "-E" "copy"
+      "${CMAKE_CURRENT_SOURCE_DIR}/${_file}"
+      "${CMAKE_BINARY_DIR}/elmerfem-tests/${_file}")
+  ELSE()
+    ADD_CUSTOM_COMMAND(TARGET ElmerTests
+      COMMAND "${CMAKE_COMMAND}" "-E" "copy_directory"
+      "${CMAKE_CURRENT_SOURCE_DIR}/${_file}"
+      "${CMAKE_BINARY_DIR}/elmerfem-tests/${_file}")
+  ENDIF()
+ENDFOREACH()
