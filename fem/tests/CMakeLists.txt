@@ -35,13 +35,7 @@ FOREACH(subdir ${SUBDIRS})
   ENDIF(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${subdir}/CMakeLists.txt")
 ENDFOREACH()
 
-IF(BUILD_TEST_PACKAGE)
-  SET(INSTALL_TESTS TRUE)
-ENDIF()
-
-IF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
-  SET(INSTALL_TESTS TRUE)
-ENDIF(NOT(CMAKE_BUILD_TYPE MATCHES "Rel"))
+SET(INSTALL_OLD_TESTS FALSE CACHE BOOL "(deprecated) Install old test system under build directory.")
 
 FOREACH(_subdir ${TEST_SUBDIRS})
   FILE(GLOB files RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "${CMAKE_CURRENT_SOURCE_DIR}/${_subdir}/*")
@@ -54,12 +48,11 @@ FOREACH(_subdir ${TEST_SUBDIRS})
   ENDFOREACH()
 ENDFOREACH()
 
-IF(INSTALL_TESTS)
+IF(INSTALL_OLD_TESTS)
   INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/. 
     DESTINATION ${CMAKE_BINARY_DIR}/elmertests
     FILES_MATCHING REGEX 
-    ".+\\.(f90|F90|sif|mif|grd|eg|msh|good|dat|pos|result|in2d|best0)|HB|Makefile|TEST\\.RESULT|ELMERSOLVER_STARTINFO|mesh\\.*"
-    )
+    ".+\\.(f90|F90|sif|mif|grd|eg|msh|good|dat|pos|result|in2d|best0)|HB|Makefile|TEST\\.RESULT|ELMERSOLVER_STARTINFO|mesh\\.*")
 
   # Misc. directories for meshes etc.
   INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/diffuser_sa/diffuser/.
@@ -74,7 +67,7 @@ IF(INSTALL_TESTS)
     DESTINATION ${CMAKE_BINARY_DIR}/elmertests)
   INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/runtests 
     DESTINATION ${CMAKE_BINARY_DIR}/elmertests)
-ENDIF(INSTALL_TESTS)
+ENDIF(INSTALL_OLD_TESTS)
 
 # ElmerTests_package target
 ADD_CUSTOM_TARGET(ElmerTests
@@ -84,7 +77,7 @@ ADD_CUSTOM_TARGET(ElmerTests_package
   COMMAND "${CMAKE_COMMAND}" "-E" "tar" "cvfz" "elmerfem-tests.tar.gz" "elmerfem-tests"
   WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
 
-# Copy miscellaneous directories for meshes etc.
+# Copy the tests in a cross platform compliant manner
 FOREACH(_file ${ELMER_TEST_FILES})
   IF(NOT(IS_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/${_file}))
     ADD_CUSTOM_COMMAND(TARGET ElmerTests
@@ -98,4 +91,3 @@ FOREACH(_file ${ELMER_TEST_FILES})
       "${CMAKE_BINARY_DIR}/elmerfem-tests/${_file}")
   ENDIF()
 ENDFOREACH()
-
