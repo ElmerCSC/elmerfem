@@ -461,7 +461,7 @@ CONTAINS
 
         INTEGER :: dualmaxdeg, i, v, w, uci, wci, vli, vti, vcol, wcol, &
                    nrc, nunc, nthr, TID, allocstat
-        INTEGER, PARAMETER :: VERTEX_PER_THREAD = 10
+        INTEGER, PARAMETER :: VERTEX_PER_THREAD = 100
 
         ! Iterative parallel greedy algorithm (Alg 2.) from 
         ! U. V. Catalyurek, J. Feo, A.H. Gebremedhin, M. Halappanavar, A. Pothen. 
@@ -629,6 +629,38 @@ CONTAINS
 
         DEALLOCATE(uncolored, ucptr)
     END SUBROUTINE ElmerGraphColour
+
+    SUBROUTINE ElmerGatherColourLists(nc, colours, cptr, cind)
+      IMPLICIT NONE
+      
+      INTEGER, INTENT(IN) :: nc
+      INTEGER, INTENT(IN) :: colours(:)
+      INTEGER, ALLOCATABLE :: cptr(:), cind(:)
+
+      INTEGER :: c, i, n, allocstat
+
+      n = size(colours)
+      ALLOCATE(cptr(nc+1), cind(n), STAT=allocstat)
+      IF (allocstat /= 0) CALL Fatal('ElmerGatherColourLists','Memory allocation failed.')
+      cptr = 0
+      ! Count number of elements in each colour
+      DO i=1,n
+        cptr(colours(i))=cptr(colours(i))+1
+      END DO
+
+      CALL ComputeCRSIndexes(nc, cptr)
+
+      DO i=1,n
+        c=colours(i)
+        cind(cptr(c))=i
+        cptr(c)=cptr(c)+1
+      END DO
+
+      DO i=nc,2,-1
+        cptr(i)=cptr(i-1)
+      END DO
+      cptr(1)=1
+    END SUBROUTINE ElmerGatherColourLists
 
     SUBROUTINE ConstructVertexToElementList(ne, nn, eptr, eind, VertexToElementList)
         IMPLICIT NONE
@@ -1325,7 +1357,7 @@ CONTAINS
         INTEGER :: key
 
         key = 0
-        IF (ind < 0 .OR. ind > SIZE(ilist % entries)) RETURN
+        ! IF (ind < 0 .OR. ind > SIZE(ilist % entries)) RETURN
         key = ilist % entries(ind)
     END FUNCTION IntegerListAt
 
@@ -1435,7 +1467,7 @@ CONTAINS
 
         INTEGER :: i
 
-        IF (ind < 0 .OR. ind > SIZE(ilist % entries)) RETURN
+        ! IF (ind < 0 .OR. ind > SIZE(ilist % entries)) RETURN
 
         DO i=ind, ilist % nelem-1
             ilist % entries(i) = ilist % entries(i+1)
@@ -1605,18 +1637,18 @@ CONTAINS
 
     ! Pad given integer value to be the next largest multiple of nbyte
     FUNCTION IntegerNBytePad(val, nbyte) RESULT(padval)
-        IMPLICIT NONE
+      IMPLICIT NONE
 
-        INTEGER, INTENT(IN) :: val, nbyte
-        INTEGER :: padval
-        ! Parameters and variables
-        INTEGER, PARAMETER :: bytesinint = KIND(val)
-        INTEGER :: nbytesinint
-
-        ! Compute number of nbytes in int
-        nbytesinint = nbyte/bytesinint
-        ! Compute value padded to multiples of n-byte
-        padval=((val-1)/nbytesinint)*nbytesinint+nbytesinint
+      INTEGER, INTENT(IN) :: val, nbyte
+      INTEGER :: padval
+      ! Parameters and variables
+      INTEGER, PARAMETER :: bytesinint = KIND(val)
+      INTEGER :: nbytesinint
+      
+      ! Compute number of nbytes in int
+      nbytesinint = nbyte/bytesinint
+      ! Compute value padded to multiples of n-byte
+      padval=((val-1)/nbytesinint)*nbytesinint+nbytesinint
     END FUNCTION IntegerNBytePad
 
 END MODULE LocalTypes

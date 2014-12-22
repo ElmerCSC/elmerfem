@@ -39,7 +39,8 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
 
     TYPE(VertexMap_t), TARGET :: DualGraph
     INTEGER :: n, ngc
-    INTEGER, ALLOCATABLE :: dualptr(:), dualind(:), colours(:)
+    INTEGER, ALLOCATABLE :: dualptr(:), dualind(:), colours(:), &
+                            cptr(:), cind(:)
 #ifdef HAVE_TIMING
     REAL(kind=dp) :: t_start, t_end
 #endif    
@@ -78,11 +79,21 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
 #ifdef HAVE_TIMING
     t_end = ftimer()
     WRITE (*,'(A,ES12.3,A)') 'Graph colouring total: ', t_end - t_start, ' sec.'
-#endif    
+#endif
     WRITE (*,'(A,I0)') 'Number of colours created ngc=', ngc
     CALL GraphColourVerify(n, dualptr, dualind, ngc, colours)
 
-    DEALLOCATE(dualptr, dualind, colours)
+#ifdef HAVE_TIMING
+    t_start = ftimer()
+#endif 
+    CALL ElmerGatherColourLists(ngc, colours, cptr, cind)
+#ifdef HAVE_TIMING
+    t_end = ftimer()
+    WRITE (*,'(A,ES12.3,A)') 'Colour gather total: ', t_end-t_start, ' sec.'
+#endif
+    CALL GraphColourListVerify(ngc, colours, cptr, cind)
+
+    DEALLOCATE(dualptr, dualind, colours, cptr, cind)
     CONTAINS
 
 #ifdef HAVE_METIS
@@ -304,6 +315,71 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
                 WRITE (*,'(A)') 'ERROR: Colouring seems inconsistent!'
             END IF
         END SUBROUTINE GraphColourVerify
+
+        SUBROUTINE GraphColourListVerify(ngc, gc, cptr, cind)
+          IMPLICIT NONE
+          INTEGER, INTENT(IN) :: ngc
+          INTEGER, INTENT(IN) :: gc(:)
+          INTEGER, INTENT(IN) :: cptr(:), cind(:)
+          
+          INTEGER :: ccount(ngc)
+          INTEGER, ALLOCATABLE :: cverify(:)
+          INTEGER :: i, n, ncol, totcol
+          LOGICAL :: listsOk
+          
+          listsOk = .TRUE.
+
+          n=size(gc)
+          ! Count colours
+          ccount = 0
+          DO i=1,n
+            ccount(gc(i))=ccount(gc(i))+1
+          END DO
+
+          ! Verify list pointers
+          IF (SIZE(cptr) /= ngc+1 .OR. SIZE(cind) /= n) THEN
+            WRITE (*,*) 'ERROR: Colour list pointer size does not', &
+                        ' match the number of colours'
+            RETURN
+          END IF
+          totcol = 0
+          DO i=1,ngc
+            ncol = cptr(i+1)-cptr(i)
+            IF (ncol /= ccount(i)) THEN
+              WRITE (*,'(3(A,I0))') 'ERROR: Colour=', i, ': pointer=', ncol,', count=', ccount(i)
+              listsOk = .FALSE.
+            END IF
+          END DO
+          ! Further verification of no use since pointers to lists are incorrect
+          IF (.NOT. listsOk) RETURN
+
+          IF (SUM(ccount) /= n) THEN
+            WRITE (*,*) 'ERROR: Not enough colours in lists to cover the graph'
+            listsOk = .FALSE.
+          END IF
+
+          ! Verify colours themselves
+          ALLOCATE(cverify(n))
+
+          cverify=0
+          DO i=1,n
+            cverify(cind(i))=cverify(cind(i))+1
+          END DO
+          DO i=1,n
+            IF (cverify(i) > 1 .OR. cverify(i) < 1) THEN
+              WRITE (*,'(2(A,I0))') 'ERROR: Vertex=', i, ', colour count=', cverify(i)
+              listsOk = .FALSE.
+            END IF
+          END DO
+          
+          DEALLOCATE(cverify)
+
+          IF (listsOk) THEN
+            WRITE (*,'(A)') 'Colour lists seem ok.'
+          ELSE
+            WRITE (*,'(A)') 'ERROR: Colour lists seem inconsistent!'
+          END IF
+        END SUBROUTINE GraphColourListVerify
 
         SUBROUTINE MeshToDualGraph(Mesh, DualGraph)
             IMPLICIT NONE
