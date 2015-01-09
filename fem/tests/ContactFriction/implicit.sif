@@ -2,9 +2,9 @@
 ! Test case for contact with friction coefficient defined.
 ! It is assumed that a blunt object is pressed to the surface and
 ! the tangential forces are proportional to the normal forces.
-! This uses an explicit strategy to set the friction.
+! This uses an implicit strategy to set the friction.
 !
-! P.R. / 2.12.2014
+! P.R. / 9.1.2015
 !------------------------------------------------------------------
 
 $dy = -0.2
@@ -23,7 +23,7 @@ Simulation
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Post File = case.vtu
+  Post File = implicit.vtu
 End
 
 Constants
@@ -58,6 +58,8 @@ Solver 1
 
   Apply Limiter = Logical True
 
+  Linear System Scaling = Logical False
+
 !  Calculate Stresses = Logical True
 End
 
@@ -82,8 +84,10 @@ Boundary Condition 1
   Target Boundaries(2) = 1 2
 
   Disp 2 Lower Limit = Opposes Coordinate 2
-  Disp 1 Load = Variable Disp Contact Load 2
-    Real MATC "mu*tx"
+
+  Friction BC Disp = Logical True
+  Friction Coefficient Disp = Real $ mu
+  Friction Normal Component Disp = Integer 2
 End
 
 Boundary Condition 2
@@ -101,5 +105,6 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=0.13287213\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.13287207\n");
+
 

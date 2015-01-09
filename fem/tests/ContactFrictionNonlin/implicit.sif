@@ -2,9 +2,14 @@
 ! Test case for contact with friction coefficient defined.
 ! It is assumed that a blunt object is pressed to the surface and
 ! the tangential forces are proportional to the normal forces.
-! This uses an explicit strategy to set the friction.
 !
-! P.R. / 2.12.2014
+! There seems to be some convergence issues for the nonlinear system
+! already at dy=-0.3 so a value dy=-0.2 was chosen for this test case. 
+! Also higher friction coefficient may cause additional challenges.
+!
+! This uses an implicit strategy to set the friction.
+!
+! P.R. / 9.1.2015
 !------------------------------------------------------------------
 
 $dy = -0.2
@@ -18,12 +23,16 @@ Header
 End
 
 Simulation
-  Max Output Level = 6
-  Coordinate System = Cartesian
+  Max Output Level = 12
+  Coordinate System = Cartesian 2D
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Post File = case.vtu
+  Post File = implicit.vtu
+
+! The ElasticSolver does not really like the Dirichlet conditions at the start 
+! of the nonlinear iteration. 
+  Initialize Dirichlet Conditions = False
 End
 
 Constants
@@ -42,12 +51,13 @@ Body 1
 End
 
 Solver 1
-  Equation = Linear elasticity
-  Procedure = "StressSolve" "StressSolver"
+  Equation = Nonlinear elasticity
+  Procedure = "ElasticSolve" "ElasticSolver"
   Variable = -dofs 2 Disp
   Steady State Convergence Tolerance = 1.0e-8
   Nonlinear System Convergence Tolerance = 1.0e-8
-  Nonlinear System Max Iterations = 30
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Relaxation Factor = 1.0
 
   Linear System Solver = "Iterative"
   Linear System Preconditioning = Ilu1
@@ -55,6 +65,9 @@ Solver 1
   Linear System Max Iterations = 5000
   Linear System Iterative Method = Bicgstab
   Linear System Convergence Tolerance = 1.0e-8
+
+! Restore the linear solution
+!  Elasticity Solver Linear = Logical True
 
   Apply Limiter = Logical True
 
@@ -69,7 +82,7 @@ End
 
 Material 1
   Youngs modulus = 1.0e3
-  Density = 0.0
+  Density = 1000.0
   Poisson ratio = 0.3
 End
 
@@ -82,8 +95,15 @@ Boundary Condition 1
   Target Boundaries(2) = 1 2
 
   Disp 2 Lower Limit = Opposes Coordinate 2
-  Disp 1 Load = Variable Disp Contact Load 2
-    Real MATC "mu*tx"
+
+! This uses an implicit strategy to set the friction.
+  Friction BC Disp = Logical True
+  Friction Coefficient Disp = Real $ mu
+  Friction Normal Component Disp = Integer 2
+
+! explicit strategy
+!  Disp 1 Load = Variable Disp Contact Load 2
+!    Real MATC "mu*tx"
 End
 
 Boundary Condition 2
@@ -101,5 +121,4 @@ End
 
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=0.13287213\n");
-
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.13915462\n");
