@@ -1535,6 +1535,12 @@ CONTAINS
      DEALLOCATE( DonePeriodic ) 
    END IF
 
+! Add the possible friction coefficient
+!----------------------------------------------------------
+   IF ( ListCheckPresentAnyBC( Model,'Friction BC ' // Name(1:nlen) ) ) THEN
+     CALL SetFrictionBoundaries( Model, A, b, Name, NDOFs, Perm )
+   END IF
+
 
 ! Add the possible nodal jump in case of mortar projectors
 !---------------------------------------------------------------
@@ -2892,6 +2898,101 @@ CONTAINS
 !------------------------------------------------------------------------------
    END SUBROUTINE SetPeriodicBoundariesPass2
 !------------------------------------------------------------------------------
+
+
+
+
+!> At first pass sum together the rows related to the periodic dofs.
+!------------------------------------------------------------------------------
+   SUBROUTINE SetFrictionBoundaries( Model, A, b, &
+                      Name, NDOFs, Perm )
+!------------------------------------------------------------------------------
+    TYPE(Model_t) :: Model        !< The current model structure
+    TYPE(Matrix_t), POINTER :: A  !< The global matrix
+    REAL(KIND=dp) :: b(:)         !< The global RHS vector
+    CHARACTER(LEN=*) :: Name      !< name of the dof to be set
+    INTEGER :: NDOFs              !< the total number of DOFs for this equation
+    INTEGER, TARGET :: Perm(:)    !< The node reordering info, this has been generated at the
+                                  !< beginning of the simulation for bandwidth optimization
+!------------------------------------------------------------------------------
+    INTEGER :: t,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd
+    LOGICAL :: Found
+    REAL(KIND=dp),ALLOCATABLE :: Coeff(:)
+    LOGICAL, ALLOCATABLE :: NodeDone(:)
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+!------------------------------------------------------------------------------
+
+
+    CALL Info('SetFrictionBoundaries','Setting friction boundaries for variable: '//TRIM(Name),&
+        Level=8)
+
+    IF( NDOFs /= 2 ) THEN
+      CALL Fatal('SetFrictionBoundaries','Implemented only for 2D currently!')
+    END IF
+
+    nlen = LEN_TRIM(Name)
+    Mesh => Model % Mesh
+
+    ALLOCATE( NodeDone( SIZE( Perm ) ) ) 
+    ALLOCATE( Coeff( Mesh % MaxElementNodes ) )
+
+    NodeDone = .FALSE.
+    Coeff = 0.0_dp
+    
+    DO t = Mesh % NumberOfBulkElements+1, &
+        Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t)
+      
+      Model % CurrentElement => Element
+            
+      DO bc_id = 1,Model % NumberOfBCs
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) EXIT
+      END DO
+      IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE     
+      BC => Model % BCs(bc_id) % Values
+
+      IF( .NOT. ListGetLogical( BC,& 
+          'Friction BC ' // Name(1:nlen), Found ) ) CYCLE
+
+      NodeIndexes => Element % NodeIndexes
+      n = Element % TYPE % NumberOfNodes
+      
+      Coeff(1:n) = ListGetReal( BC,& 
+          'Friction Coefficient ' // Name(1:nlen), n, NodeIndexes )
+      NormalInd = ListGetInteger( BC,& 
+          'Friction Normal Component ' // Name(1:nlen) )
+      
+      DO i = 1, n
+        j = Perm( Nodeindexes(i) )
+        IF( NodeDone( j ) ) CYCLE
+
+        k = NDOFs * (j-1) + NormalInd
+        k2 = NDOFs * (j-1) + ( 3 - NormalInd ) 
+
+        DO l = A % Rows(k),A % Rows(k+1)-1
+          DO l2 = A % Rows(k2), A % Rows(k2+1)-1
+            IF( A % Cols(l2) == A % Cols(l) ) EXIT
+          END DO
+          A % Values(l2) = A % Values(l2) - Coeff(i) * A % Values(l)
+        END DO
+        A % Rhs(k2) = A % Rhs(k2) - Coeff(i) * A % Rhs(k)
+        NodeDone( j ) = .TRUE.
+      END DO
+    END DO
+
+    n = COUNT( NodeDone ) 
+    CALL Info('SetFrictionBoundaries','Number of friction nodes: '//TRIM(I2S(n)),Level=10)
+
+    DEALLOCATE( NodeDone, Coeff )
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetFrictionBoundaries
+!------------------------------------------------------------------------------
+
+
 
 
 !> Set the diagonal entry related to mortar BCs.
@@ -7009,6 +7110,15 @@ END FUNCTION SearchNodeL
       IF ( bnorm <= TINY( bnorm) ) THEN
         CALL Info('SolveSystem','Solution trivially zero!')
         x = 0.0d0
+        
+        ! Increase the nonlinear counter since otherwise some stuff may stagnate
+        ! Normally this is done within ComputeChange
+        iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+        Solver % Variable % NonlinIter = iterV % Values(1)
+        iterV % Values(1) = iterV % Values(1) + 1 
+        Solver % Variable % Norm = 0.0_dp
+        Solver % Variable % NonlinConverged = 1
+     
         RETURN
       END IF
     END IF
@@ -7060,6 +7170,8 @@ END FUNCTION SearchNodeL
       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       Solver % Variable % NonlinIter = iterV % Values(1)
       iterV % Values(1) = iterV % Values(1) + 1 
+      Solver % Variable % Norm = 0.0_dp
+      Solver % Variable % NonlinConverged = 1
 
       RETURN
     END IF
