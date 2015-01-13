@@ -68,7 +68,7 @@
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,k,n,l,t,k1,k2,iter,Ndeg,istat,nproc,tlen,nthreads
-     CHARACTER(LEN=MAX_STRING_LEN) :: threads
+     CHARACTER(LEN=MAX_STRING_LEN) :: threads, CoordTransform
 
      REAL(KIND=dp) :: s,dt,dtfunc
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
@@ -297,8 +297,10 @@ END INTERFACE
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
-         IF( ListCheckPresent(CurrentModel % Simulation,'Coordinate Transformation') ) THEN
-           CALL CoordinateTransformation( CurrentModel % Meshes, .TRUE. )
+         CoordTransform = ListGetString(CurrentModel % Simulation,'Coordinate Transformation',GotIt)
+         IF( GotIt ) THEN
+           CALL CoordinateTransformation( CurrentModel % Meshes, CoordTransform, &
+               CurrentModel % Simulation, .TRUE. )
          END IF
 
          IF(.NOT. Silent ) THEN

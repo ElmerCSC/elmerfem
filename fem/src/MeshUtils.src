@@ -5745,7 +5745,7 @@ END SUBROUTINE GetMaxDefs
         DO i=1, BMesh1 % NumberOfBulkElements          
           Element => Mesh % Elements( BMesh1 % Elements(i) % ElementIndex )
           CurrentModel % CurrentElement => Element
-          n = Element % Type % NumberOfNodes
+          n = Element % TYPE % NumberOfNodes
           NodeIndexes => Element % NodeIndexes
           Cond(1:n) = ListGetReal( BC,'Level Projector Condition', n, NodeIndexes )
           DO j=1,n
@@ -14275,17 +14275,18 @@ CONTAINS
   !> system while optionally maintaining the original coordinates. 
   !> Note that this may be called 
   !---------------------------------------------------------------
-  SUBROUTINE CoordinateTransformation( Mesh, GlobalTransformation )
+  SUBROUTINE CoordinateTransformation( Mesh, CoordTransform, Params, &
+      IrreversibleTransformation )
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL, OPTIONAL :: GlobalTransformation
-    !---------------------------------------------------------------   
     CHARACTER(LEN=MAX_NAME_LEN) :: CoordTransform
+    TYPE(ValueList_t), POINTER :: Params
+    LOGICAL, OPTIONAL :: IrreversibleTransformation
+    !---------------------------------------------------------------   
     REAL(KIND=dp) :: R0(3),R1(3),Coeff,Rad0
-    LOGICAL :: Global,FirstTime,Reuse,UpdateNodes,Found
+    LOGICAL :: Irreversible,FirstTime,Reuse,UpdateNodes,Found
     REAL(KIND=dp), POINTER :: x0(:),y0(:),z0(:),x1(:),y1(:),z1(:),&
         NewCoords(:)
     INTEGER :: i,j,k,n,Mode
-    TYPE(ValueList_t), POINTER :: Params
     TYPE(Variable_t), POINTER :: Var
 
     ! The coordinate transformation may either be global for all the solvers
@@ -14298,22 +14299,10 @@ CONTAINS
       CALL Fatal('CoordinateTransformation','Mesh not associated!')
     END IF
 
-    IF( PRESENT( GlobalTransformation ) ) THEN
-      Global = GlobalTransformation
+    IF( PRESENT( IrreversibleTransformation ) ) THEN
+      Irreversible = IrreversibleTransformation
     ELSE
-      Global = .FALSE.
-    END IF
-
-    IF( Global ) THEN
-      Params => CurrentModel % Simulation
-    ELSE
-      Params => CurrentModel % Solver % Values
-    END IF
-
-    CoordTransform = ListGetString(Params,'Coordinate Transformation',Found )
-    IF( .NOT. Found ) THEN
-      CALL Warn('CoordinateTransformation','No coordinate transformation given!')
-      RETURN
+      Irreversible = .FALSE.
     END IF
 
     n = Mesh % NumberOfNodes 
@@ -14322,7 +14311,7 @@ CONTAINS
     y0 => Mesh % Nodes % y
     z0 => Mesh % Nodes % z
     
-    IF( Global ) THEN
+    IF( Irreversible ) THEN
       UpdateNodes = .TRUE.
       ! Map to the same nodes
       x1 => Mesh % Nodes % x
@@ -14426,7 +14415,7 @@ CONTAINS
       END DO
     END IF
 
-    IF( .NOT. Global ) THEN
+    IF( .NOT. Irreversible ) THEN
       Mesh % NodesOrig => Mesh % Nodes
       Mesh % Nodes => Mesh % NodesMapped
 
@@ -14449,11 +14438,20 @@ CONTAINS
 !---------------------------------------------------------------
 !> Return back to the original coordinate system. 
 !---------------------------------------------------------------
-  SUBROUTINE BackCoordinateTransformation( Mesh )
+  SUBROUTINE BackCoordinateTransformation( Mesh, DeleteTemporalMesh )
     TYPE(Mesh_t) :: Mesh
+    LOGICAL, OPTIONAL :: DeleteTemporalMesh
 !---------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var
 
+    IF( PRESENT( DeleteTemporalMesh ) ) THEN
+      IF( DeleteTemporalMesh ) THEN
+        DEALLOCATE( Mesh % NodesMapped % x, &
+            Mesh % NodesMapped % y, &
+            Mesh % NodesMapped % z ) 
+        DEALLOCATE( Mesh % NodesMapped )
+      END IF
+    END IF
 
     IF( .NOT. ASSOCIATED( Mesh % NodesOrig ) ) THEN
       CALL Fatal('BackCoordinateTransformation','NodesOrig not associated')
@@ -14476,20 +14474,18 @@ CONTAINS
 
 !---------------------------------------------------------------
 !> This partitions the mesh into a given number of partitions in each 
-!> direction. It may be used in clustering multigrid or similar. 
-!> It is not easily applicable to parallel computation as this 
-!> partitioning should be done outside ElmerSolver in advance.
+!> direction. It may be used in clustering multigrid or similar, 
+!> and also to internal partitioning within ElmerSolver. 
 !---------------------------------------------------------------
-  SUBROUTINE ClusterNodesByDirection(Solver,Mesh,Clustering,MaskPerm)
+  SUBROUTINE ClusterNodesByDirection(Params,Mesh,Clustering,MaskActive)
  
     USE GeneralUtils
 
-    TYPE(Solver_t), POINTER :: Solver
+    TYPE(ValueList_t), POINTER :: Params
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, OPTIONAL :: MaskPerm(:)
+    LOGICAL, OPTIONAL :: MaskActive(:)
     INTEGER, POINTER :: Clustering(:)
 !---------------------------------------------------------------
-    TYPE(ValueList_t), POINTER :: Params
     LOGICAL :: MaskExists,GotIt,Hit
     REAL(KIND=dp), ALLOCATABLE :: Measure(:)
     INTEGER :: i,j,k,k0,l,ind,n,dim,dir,divs,nsize,elemsinpart,clusters
@@ -14502,18 +14498,17 @@ CONTAINS
 
     ! CALL Info('ClusterNodesByDirection','')
 
-    MaskExists = PRESENT(MaskPerm)
+    MaskExists = PRESENT(MaskActive)
     IF( MaskExists ) THEN
-      nsize = MAXVAL( MaskPerm ) 
+      nsize = COUNT( MaskActive )
     ELSE
       nsize = Mesh % NumberOfNodes
     END IF
      
-    IF( ASSOCIATED( Solver ) ) THEN
-      Params => Solver % Values
-    ELSE
-      CALL Fatal('ClusterNodesByDirection','No solver associated')
+    IF( .NOT. ASSOCIATED( Params ) ) THEN
+      CALL Fatal('ClusterNodesByDirection','No parameter list associated')
     END IF
+
     dim = Mesh % MeshDim
     Parray => ListGetConstRealArray( Params,'Clustering Normal Vector',GotIt )
     IF( GotIt ) THEN
@@ -14535,7 +14530,8 @@ CONTAINS
     END IF
 
 
-    Iarray => ListGetIntegerArray( Params,'MG Cluster Divisions',GotIt )
+    Iarray => ListGetIntegerArray( Params,'Partitioning Divisions',GotIt )
+    IF(.NOT. GotIt) Iarray => ListGetIntegerArray( Params,'MG Cluster Divisions',GotIt )
     Divisions = 1
     IF( GotIt ) THEN
       n = MIN( SIZE(Iarray), dim ) 
@@ -14600,8 +14596,9 @@ CONTAINS
       !----------------------------------------
       DO i=1,Mesh % NumberOfNodes
         j = i
-        IF( MaskExists ) j = MaskPerm(j)
-        IF( j == 0 ) CYCLE
+        IF( MaskExists ) THEN
+          IF( .NOT. MaskActive(j) ) CYCLE
+        END IF
         
         Coord(1) = Mesh % Nodes % x(i)
         Coord(2) = Mesh % Nodes % y(i)
@@ -14696,6 +14693,233 @@ CONTAINS
 
 
   END SUBROUTINE ClusterNodesByDirection
+
+
+
+  SUBROUTINE ClusterElementsByDirection(Params,Mesh,Clustering,MaskActive)
+ 
+    USE GeneralUtils
+
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, OPTIONAL :: MaskActive(:)
+    INTEGER, POINTER :: Clustering(:)
+!---------------------------------------------------------------
+    LOGICAL :: MaskExists,GotIt,Hit
+    REAL(KIND=dp), ALLOCATABLE :: Measure(:)
+    INTEGER :: i,j,k,k0,l,ind,n,dim,dir,divs,nsize,elemsinpart,clusters
+    INTEGER, POINTER :: Iarray(:),Order(:),NodePart(:),NoPart(:)
+    INTEGER :: Divisions(3),minpart,maxpart,clustersize
+    REAL(KIND=dp), POINTER :: PArray(:,:), Arrange(:)
+    REAL(KIND=dp) :: Normal(3), Tangent1(3), Tangent2(3), Coord(3), Weights(3), &
+        avepart,devpart
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+!---------------------------------------------------------------
+
+    ! CALL Info('ClusterElementsByDirection','')
+
+    MaskExists = PRESENT(MaskActive)
+    IF( MaskExists ) THEN
+      nsize = COUNT( MaskActive ) 
+    ELSE
+      nsize = Mesh % NumberOfBulkElements
+    END IF
+     
+    IF( .NOT. ASSOCIATED( Params ) ) THEN
+      CALL Fatal('ClusterElementsByDirection','No parameter list associated')
+    END IF
+
+    dim = Mesh % MeshDim
+    Parray => ListGetConstRealArray( Params,'Clustering Normal Vector',GotIt )
+    IF( GotIt ) THEN
+      Normal = Parray(1:3,1)
+    ELSE
+      Normal(1) = 1.0
+      Normal(2) = 1.0e-2
+      IF( dim == 3) Normal(3) = 1.0e-4
+    END IF
+    Normal = Normal / SQRT( SUM( Normal ** 2) )
+
+    CALL TangentDirections( Normal,Tangent1,Tangent2 )
+    
+    IF( .FALSE. ) THEN
+      PRINT *,'Normal:',Normal
+      PRINT *,'Tangent1:',Tangent1
+      PRINT *,'Tangent2:',Tangent2
+    END IF
+
+    Iarray => ListGetIntegerArray( Params,'Partitioning Divisions',GotIt )
+    IF(.NOT. GotIt ) THEN
+      Iarray => ListGetIntegerArray( Params,'MG Cluster Divisions',GotIt )
+    END IF
+
+    Divisions = 1
+    IF( GotIt ) THEN
+      n = MIN( SIZE(Iarray), dim ) 
+      Divisions(1:n) = Iarray(1:n)
+    ELSE
+      clustersize = ListGetInteger( Params,'MG Cluster Size',GotIt)
+      IF( GotIt .AND. ClusterSize > 0) THEN
+        IF( dim == 2 ) THEN
+          Divisions(1) = ( nsize / clustersize ) ** 0.5
+          Divisions(2) = ( nsize / ( clustersize * Divisions(1) ) )
+        ELSE
+          Divisions(1:2) = ( nsize / clustersize ) ** (1.0_dp / 3 )
+          Divisions(3) = ( nsize / ( clustersize * Divisions(1) * Divisions(2) ) )
+        END IF
+      ELSE
+        CALL Fatal('ClusterNodesByDirection','Clustering Divisions not given!')
+      END IF
+    END IF
+
+    Clusters = Divisions(1) * Divisions(2) * Divisions(3)
+
+    IF( .FALSE. ) THEN
+      PRINT *,'dim:',dim
+      PRINT *,'divisions:',divisions
+      PRINT *,'clusters:',clusters
+      PRINT *,'nsize:',nsize
+    END IF
+
+    ALLOCATE(Order(nsize),Arrange(nsize),NodePart(nsize),NoPart(Clusters))
+    
+
+    ! These are needed as an initial value for the loop over dimension
+    elemsinpart = nsize
+    nodepart = 1
+    
+
+    ! Go through each direction and cumulatively add to the clusters
+    !-----------------------------------------------------------
+
+    DO dir = 1,dim      
+      divs = Divisions(dir)
+      IF( divs <= 1 ) CYCLE
+      
+      ! Use the three principal directions as the weight
+      !-------------------------------------------------
+      IF( dir == 1 ) THEN
+        Weights = Normal
+      ELSE IF( dir == 2 ) THEN
+        Weights = Tangent1
+      ELSE 
+        Weights = Tangent2
+      END IF
+
+      ! Initialize ordering for the current direction
+      !----------------------------------------------
+      DO i=1,nsize
+        Order(i) = i
+      END DO
+      
+
+      ! Now compute the weights for each node
+      !----------------------------------------
+      DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        IF( MaskExists ) THEN
+          IF( .NOT. MaskActive( i ) ) CYCLE
+        ELSE 
+          IF( i > Mesh % NumberOfBulkElements ) EXIT
+        END IF
+        
+        Element => Mesh % Elements(i)
+        NodeIndexes => Element % NodeIndexes 
+        n = Element % Type % NumberOfNodes
+
+        Coord(1) = SUM( Mesh % Nodes % x( NodeIndexes ) ) / n
+        Coord(2) = SUM( Mesh % Nodes % y( NodeIndexes ) ) / n
+        Coord(3) = SUM( Mesh % Nodes % z( NodeIndexes ) ) / n
+
+        Arrange(j) = SUM( Weights * Coord )
+      END DO
+
+      ! Order the nodes for given direction
+      !----------------------------------------------
+      CALL SortR(nsize,Order,Arrange)
+
+      ! For each direction the number of elements in cluster becomes smaller
+      elemsinpart = elemsinpart / divs
+
+      ! initialize the counter partition
+      nopart = 0
+
+
+      ! Go through each node and locate it to a cluster taking into consideration
+      ! the previous clustering (for 1st direction all one)
+      !------------------------------------------------------------------------
+      j = 1
+      DO i = 1,nsize
+        ind = Order(i)
+        
+        ! the initial partition offset depends on previous partitioning
+        k0 = (nodepart(ind)-1) * divs
+
+        ! Find the correct new partitioning, this loop is just long enough
+        DO l=1,divs
+          Hit = .FALSE.
+          
+          ! test for increase of local partition
+          IF( j < divs ) THEN
+            IF( nopart(k0+j) >= elemsinpart ) THEN
+              j = j + 1
+              Hit = .TRUE.
+            END IF
+          END IF
+          
+          ! test for decrease of local partition
+          IF( j > 1 )  THEN            
+            IF( nopart(k0+j-1) < elemsinpart ) THEN
+              j = j - 1
+              Hit = .TRUE.
+            END IF
+          END IF
+          
+          ! If either increase or decrease is needed, this must be ok 
+          IF(.NOT. Hit) EXIT
+        END DO
+          
+        k = k0 + j
+        nopart(k) = nopart(k) + 1
+        nodepart(ind) = k
+      END DO
+
+    END DO
+
+
+    minpart = HUGE(minpart)
+    maxpart = 0
+    avepart = 1.0_dp * nsize / clusters
+    devpart = 0.0_dp
+    DO i=1,clusters
+      minpart = MIN( minpart, nopart(i))
+      maxpart = MAX( maxpart, nopart(i))
+      devpart = devpart + ABS ( nopart(i) - avepart )
+    END DO
+    devpart = devpart / clusters
+
+    WRITE(Message,'(A,T25,I10)') 'Min nodes in cluster:',minpart
+    CALL Info('ClusterElementsByDirection',Message)
+    WRITE(Message,'(A,T25,I10)') 'Max nodes in cluster:',maxpart
+    CALL Info('ClusterElementsByDirection',Message)
+    WRITE(Message,'(A,T28,F10.2)') 'Average nodes in cluster:',avepart
+    CALL Info('ClusterElementsByDirection',Message)
+    WRITE(Message,'(A,T28,F10.2)') 'Deviation of nodes:',devpart
+    CALL Info('ClusterElementsByDirection',Message)
+    
+
+    IF( ASSOCIATED(Clustering)) THEN
+      Clustering = Nodepart 
+      DEALLOCATE(Nodepart)
+    ELSE
+      Clustering => Nodepart
+      NULLIFY( Nodepart ) 
+    END IF
+    
+    DEALLOCATE(Order,Arrange,NoPart)
+
+
+  END SUBROUTINE ClusterElementsByDirection
 
 
 !---------------------------------------------------------------
