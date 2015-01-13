@@ -43,6 +43,7 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-8
   Nonlinear System Convergence Tolerance = 1.0e-8
   Nonlinear System Max Iterations = 30
+  Nonlinear System Min Iterations = 2
 
   Linear System Solver = Iterative
   Linear System Iterative Method = "BiCGStabl"
@@ -65,8 +66,6 @@ Solver 2
   Output Format = Vtu
 
   Exec Solver = never
-!After Simulation  
-!  Save Geometry Ids = True
 End
 
 
