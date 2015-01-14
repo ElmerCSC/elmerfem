@@ -9944,6 +9944,203 @@ END SUBROUTINE GetMaxDefs
   END SUBROUTINE WriteMeshToDisk
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Writes the mesh to disk, including detection of elementcodes and shared node
+!> info necessary for parallel meshes.
+!------------------------------------------------------------------------------
+  SUBROUTINE WriteMeshToDisk2(Model, NewMesh, Path, Partition )
+!------------------------------------------------------------------------------
+    USE Types
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=*) :: Path
+    CHARACTER(LEN=MAX_NAME_LEN) :: headerFN, elementFN, nodeFN,&
+         boundFN, sharedFN
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: NewMesh
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,m,MaxNodes,ElmCode,NumElmCodes,ElmCodeList(100),ElmCodeCounts(100),& !overkill but it's easier
+         Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared
+    INTEGER, OPTIONAL :: Partition
+    INTEGER, POINTER :: BList(:)
+    INTEGER, ALLOCATABLE :: ElementCodes(:)
+    LOGICAL :: Parallel, WarnNoTarget, Found
+!------------------------------------------------------------------------------
+
+    IF(PRESENT(Partition)) THEN
+       Parallel = .TRUE.
+       WRITE(headerFN, '(A,I0,A)') '/part.',Partition+1,'.header'
+       WRITE(elementFN, '(A,I0,A)') '/part.',Partition+1,'.elements'
+       WRITE(nodeFN, '(A,I0,A)') '/part.',Partition+1,'.nodes'
+       WRITE(boundFN, '(A,I0,A)') '/part.',Partition+1,'.boundary'
+       WRITE(sharedFN, '(A,I0,A)') '/part.',Partition+1,'.shared'
+    ELSE
+       Parallel = .FALSE.
+       headerFN = '/mesh.header'
+       elementFN = '/mesh.elements'
+       nodeFN = '/mesh.nodes'
+       boundFN = '/mesh.boundary'
+    END IF
+
+    !Info for header file
+
+    ElmCodeList = 0 !init array
+    NumElmCodes = 0
+    NumElements = NewMesh % NumberOfBoundaryElements + &
+         NewMesh % NumberOfBulkElements
+    ALLOCATE(ElementCodes(NumElements))
+
+    !cycle to bring element code list into array-inquirable form
+    DO i=1,NumElements
+       ElementCodes(i) = NewMesh % Elements(i) % TYPE % ElementCode
+    END DO
+
+    DO i=NumElements,1,-1 !this should give element codes increasing value, which appears to be
+                          !'standard' though I doubt it matters
+       IF(ANY(ElmCodeList .EQ. ElementCodes(i))) CYCLE
+       NumElmCodes = NumElmCodes + 1
+       ElmCodeList(NumElmCodes) = ElementCodes(i)
+    END DO
+
+    DO j=1,NumElmCodes
+       ElmCodeCounts(j) = COUNT(ElementCodes .EQ. ElmCodeList(j))
+    END DO
+
+    !Write header file
+    OPEN( 1,FILE=TRIM(Path) // headerFN,STATUS='UNKNOWN' )
+    WRITE( 1,'(i0,x,i0,x,i0)' ) NewMesh % NumberOfNodes, &
+         NewMesh % NumberOfBulkElements, &
+         NewMesh % NumberOfBoundaryElements
+
+    WRITE( 1,'(i0)' ) NumElmCodes
+    DO j=1,NumElmCodes
+       WRITE( 1,'(i0,x,i0,x)' ) ElmCodeList(j),ElmCodeCounts(j)
+    END DO
+    IF(Parallel) THEN !need number of shared nodes
+       NoShared = 0
+       DO i=1,NewMesh % NumberOfNodes
+          IF(SIZE(NewMesh % ParallelInfo % NeighbourList(i) % &
+               Neighbours) .GT. 1) THEN
+             NoShared = NoShared + 1
+          END IF
+       END DO
+       WRITE( 1,'(i0,x,i0)') NoShared, 0
+    END IF
+    CLOSE(1)
+
+    !Write nodes file
+    OPEN( 1,FILE=TRIM(Path) // nodeFN, STATUS='UNKNOWN' )
+    DO i=1,NewMesh % NumberOfNodes
+       IF (Parallel) THEN
+          WRITE(1,'(i0,x)', ADVANCE='NO') &
+               NewMesh % ParallelInfo % GlobalDOFs(i)
+       ELSE
+          WRITE(1,'(i0,x)', ADVANCE='NO') i
+       END IF
+       WRITE(1,'(a,x,ES17.10,x,ES17.10,x,ES17.10)',ADVANCE='NO') &
+            ' -1 ', NewMesh % Nodes % x(i), &
+            NewMesh % Nodes % y(i), NewMesh % Nodes % z(i)
+       WRITE( 1,* ) ''
+    END DO
+    CLOSE(1)
+
+    !Write elements file
+    OPEN( 1,FILE=TRIM(Path) // elementFN, STATUS='UNKNOWN' )
+    DO i=1,NewMesh % NumberOfBulkElements
+       IF(Parallel) THEN
+          ElemID = NewMesh % Elements(i) % GElementIndex
+       ELSE
+          ElemID = i
+       END IF
+       WRITE(1,'(i0,x,i0,x,i0,x)',ADVANCE='NO') ElemID, &
+            NewMesh % Elements(i) % BodyId, &
+            NewMesh % Elements(i) % TYPE % ElementCode
+       DO j=1,NewMesh % Elements(i) % TYPE % NumberOfNodes
+          IF(Parallel) THEN
+             m = NewMesh % ParallelInfo % GlobalDOFs(&
+                  NewMesh % Elements(i) % NodeIndexes(j))
+          ELSE
+             m = NewMesh % Elements(i) % NodeIndexes(j)
+          END IF
+          WRITE(1,'(i0,x)', ADVANCE='NO') m
+       END DO
+       WRITE(1,*) ''
+    END DO
+    CLOSE(1)
+
+    !Write boundary file
+    WarnNoTarget = .FALSE.
+    OPEN( 1,FILE=TRIM(Path) // boundFN, STATUS='UNKNOWN' )
+    DO i=1,NewMesh % NumberOfBoundaryElements
+       k = i + NewMesh % NumberOfBulkElements
+       parent1 = 0
+       IF ( ASSOCIATED( NewMesh % Elements(k) % BoundaryInfo % Left ) ) &
+          parent1 = NewMesh % Elements(k) % BoundaryInfo % Left % ElementIndex
+       parent2 = 0
+       IF ( ASSOCIATED( NewMesh % Elements(k) % BoundaryInfo % Right ) ) &
+          parent2 = NewMesh % Elements(k) % BoundaryInfo % Right % ElementIndex
+
+       IF(Parallel) THEN
+          IF(parent1 .NE. 0) parent1 = NewMesh % Elements(parent1) % GElementIndex
+          IF(parent2 .NE. 0) parent2 = NewMesh % Elements(parent2) % GElementIndex
+       END IF
+
+       Constraint = NewMesh % Elements(k) % BoundaryInfo % Constraint
+       BList => ListGetIntegerArray( Model % BCs(Constraint) % Values, &
+            'Target Boundaries', Found )
+       IF(Found) THEN
+          IF(SIZE(BList) .GT. 1) THEN
+             CALL WARN("WriteMeshToDisk2","A BC has more than one Target Boundary, SaveMesh output will not match input!")
+          END IF
+          meshBC = BList(1)
+       ELSE
+          WarnNoTarget = .TRUE.
+          meshBC = Constraint
+       END IF
+
+       WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & !This meshBC stuff will *only* work if each BC has only 1 target boundary
+            meshBC, Parent1,Parent2,&
+            NewMesh % Elements(k) % TYPE % ElementCode
+       DO j=1,NewMesh % Elements(k) % TYPE % NumberOfNodes
+          IF(Parallel) THEN
+             m = NewMesh % ParallelInfo % GlobalDOFs(&
+                  NewMesh % Elements(k) % NodeIndexes(j))
+          ELSE
+             m = NewMesh % Elements(k) % NodeIndexes(j)
+          END IF
+          WRITE(1,'(x,i0)', ADVANCE='NO') m
+       END DO
+       WRITE(1,*) !blank write statement to create new line without extra space.
+    END DO
+    CLOSE(1)
+
+    IF(WarnNoTarget) THEN
+       CALL WARN("WriteMeshToDisk2","Couldn't find a Target Boundary, assuming mapping to self")
+    END IF
+
+    IF(.NOT. Parallel) RETURN
+
+    !Write .shared file
+!Need to create part.n.shared from Mesh % ParallelInfo %
+!NeighbourList % Neighbours.  Look in MeshUtils.src
+    OPEN( 1,FILE=TRIM(Path) // sharedFN, STATUS='UNKNOWN' )
+    DO i=1,NewMesh % NumberOfNodes
+       nneigh = SIZE(NewMesh % ParallelInfo % NeighbourList(i) % &
+            Neighbours)
+       IF(nneigh .LT. 2) CYCLE
+       WRITE(1,'(i0, x, i0, x)',ADVANCE='NO') &
+            NewMesh % ParallelInfo % GlobalDOFs(i),nneigh
+       DO j=1,nneigh
+          WRITE(1,'(I0, x)',ADVANCE='NO') NewMesh % ParallelInfo %&
+               NeighbourList(i) % Neighbours(j) + 1
+       END DO
+       WRITE( 1,* ) ''
+    END DO
+    CLOSE(1)
+
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE WriteMeshToDisk2
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Generate element edge (faces in 3D) tables for given mesh.

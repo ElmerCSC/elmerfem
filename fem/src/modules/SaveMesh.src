@@ -1,0 +1,62 @@
+SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
+
+  USE DefUtils
+  USE CRSMatrix
+  USE GeneralUtils
+  USE ElementDescription
+  USE MeshUtils
+
+  USE SParIterGlobals
+
+  IMPLICIT NONE
+
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation, SaveMeshLogical, Found
+  INTEGER :: i, parts, ierr
+  TYPE(Mesh_t), Pointer :: Mesh
+  CHARACTER(LEN=MAX_NAME_LEN):: MeshName, MeshDir, inty, tmp
+
+  Mesh => Solver % Mesh
+  SaveMeshLogical = ListGetLogical(Solver % Values, "Save Mesh", Found)
+  IF(.NOT.Found) THEN
+    Call Warn("Save Mesh","Can't find Save Mesh logical")
+    SaveMeshLogical = .FALSE.
+  END IF
+
+  IF(.NOT. SaveMeshLogical) RETURN !nothing to do
+
+  MeshName = ListgetString( Solver % Values,"Mesh Name", Found)
+  IF(.NOT. Found) CALL FATAL("SaveMesh","No name given for mesh")
+
+  MeshDir = ListgetString( Solver % Values,&
+       "Save Mesh Directory", Found)
+  IF(.NOT. Found) CALL FATAL("SaveMesh",&
+       "No directory given to save mesh")
+
+  MeshDir = TRIM(MeshDir)//TRIM(MeshName)
+
+  IF( ParEnv % PEs<=1 ) THEN !serial
+     CALL SYSTEM("mkdir -p "//MeshDir)
+     CALL WriteMeshToDisk2(Model, Mesh, MeshDir)
+  ELSE !parallel
+     
+     parts = ParEnv % PEs
+
+     tmp = TRIM(MeshDir)//"/partitioning."
+     MeshDir = TRIM(tmp)
+
+     WRITE (tmp, '(A,I0)') TRIM(MeshDir),parts
+     MeshDir = TRIM(tmp)
+
+     IF(ParEnv % MyPe==0) THEN
+        PRINT *, 'Save Mesh, creating directory...' !TEST
+        CALL SYSTEM("mkdir -p "//MeshDir)        
+     END IF
+     CALL MPI_BARRIER(MPI_COMM_WORLD, ierr)
+
+     CALL WriteMeshToDisk2(Model, Mesh, MeshDir, ParEnv % MyPe)
+  END IF
+
+END SUBROUTINE SaveMesh
