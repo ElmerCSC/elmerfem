@@ -9952,18 +9952,18 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
     USE Types
 !------------------------------------------------------------------------------
-    CHARACTER(LEN=*) :: Path
-    CHARACTER(LEN=MAX_NAME_LEN) :: headerFN, elementFN, nodeFN,&
-         boundFN, sharedFN
     TYPE(Model_t) :: Model
     TYPE(Mesh_t), POINTER :: NewMesh
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,k,m,MaxNodes,ElmCode,NumElmCodes,ElmCodeList(100),ElmCodeCounts(100),& !overkill but it's easier
-         Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared
+    CHARACTER(LEN=*) :: Path
     INTEGER, OPTIONAL :: Partition
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,m,MaxNodes,ElmCode,NumElmCodes,ElmCodeList(100),ElmCodeCounts(100),&
+         Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared
     INTEGER, POINTER :: BList(:)
     INTEGER, ALLOCATABLE :: ElementCodes(:)
     LOGICAL :: Parallel, WarnNoTarget, Found
+    CHARACTER(LEN=MAX_NAME_LEN) :: headerFN, elementFN, nodeFN,&
+         boundFN, sharedFN
 !------------------------------------------------------------------------------
 
     IF(PRESENT(Partition)) THEN
@@ -9996,13 +9996,13 @@ END SUBROUTINE GetMaxDefs
 
     DO i=NumElements,1,-1 !this should give element codes increasing value, which appears to be
                           !'standard' though I doubt it matters
-       IF(ANY(ElmCodeList .EQ. ElementCodes(i))) CYCLE
+       IF(ANY(ElmCodeList == ElementCodes(i))) CYCLE
        NumElmCodes = NumElmCodes + 1
        ElmCodeList(NumElmCodes) = ElementCodes(i)
     END DO
 
     DO j=1,NumElmCodes
-       ElmCodeCounts(j) = COUNT(ElementCodes .EQ. ElmCodeList(j))
+       ElmCodeCounts(j) = COUNT(ElementCodes == ElmCodeList(j))
     END DO
 
     !Write header file
@@ -10019,7 +10019,7 @@ END SUBROUTINE GetMaxDefs
        NoShared = 0
        DO i=1,NewMesh % NumberOfNodes
           IF(SIZE(NewMesh % ParallelInfo % NeighbourList(i) % &
-               Neighbours) .GT. 1) THEN
+               Neighbours) > 1) THEN
              NoShared = NoShared + 1
           END IF
        END DO
@@ -10080,16 +10080,17 @@ END SUBROUTINE GetMaxDefs
           parent2 = NewMesh % Elements(k) % BoundaryInfo % Right % ElementIndex
 
        IF(Parallel) THEN
-          IF(parent1 .NE. 0) parent1 = NewMesh % Elements(parent1) % GElementIndex
-          IF(parent2 .NE. 0) parent2 = NewMesh % Elements(parent2) % GElementIndex
+          IF(parent1 /= 0) parent1 = NewMesh % Elements(parent1) % GElementIndex
+          IF(parent2 /= 0) parent2 = NewMesh % Elements(parent2) % GElementIndex
        END IF
 
        Constraint = NewMesh % Elements(k) % BoundaryInfo % Constraint
        BList => ListGetIntegerArray( Model % BCs(Constraint) % Values, &
             'Target Boundaries', Found )
        IF(Found) THEN
-          IF(SIZE(BList) .GT. 1) THEN
-             CALL WARN("WriteMeshToDisk2","A BC has more than one Target Boundary, SaveMesh output will not match input!")
+          IF(SIZE(BList) > 1) THEN
+             CALL WARN("WriteMeshToDisk2",&
+                  "A BC has more than one Target Boundary, SaveMesh output will not match input!")
           END IF
           meshBC = BList(1)
        ELSE
@@ -10097,7 +10098,8 @@ END SUBROUTINE GetMaxDefs
           meshBC = Constraint
        END IF
 
-       WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & !This meshBC stuff will *only* work if each BC has only 1 target boundary
+       !This meshBC stuff will *only* work if each BC has only 1 target boundary
+       WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & 
             meshBC, Parent1,Parent2,&
             NewMesh % Elements(k) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(k) % TYPE % NumberOfNodes
@@ -10120,13 +10122,13 @@ END SUBROUTINE GetMaxDefs
     IF(.NOT. Parallel) RETURN
 
     !Write .shared file
-!Need to create part.n.shared from Mesh % ParallelInfo %
-!NeighbourList % Neighbours.  Look in MeshUtils.src
+    !Need to create part.n.shared from Mesh % ParallelInfo %
+    !NeighbourList % Neighbours.
     OPEN( 1,FILE=TRIM(Path) // sharedFN, STATUS='UNKNOWN' )
     DO i=1,NewMesh % NumberOfNodes
        nneigh = SIZE(NewMesh % ParallelInfo % NeighbourList(i) % &
             Neighbours)
-       IF(nneigh .LT. 2) CYCLE
+       IF(nneigh < 2) CYCLE
        WRITE(1,'(i0, x, i0, x)',ADVANCE='NO') &
             NewMesh % ParallelInfo % GlobalDOFs(i),nneigh
        DO j=1,nneigh
