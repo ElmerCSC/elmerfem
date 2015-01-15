@@ -42,19 +42,16 @@
 SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
 
   USE DefUtils
-  USE CRSMatrix
-  USE GeneralUtils
-  USE ElementDescription
   USE MeshUtils
-
-  USE SParIterGlobals
 
   IMPLICIT NONE
 
-  TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
+  TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
-  LOGICAL :: TransientSimulation, SaveMeshLogical, Found
+  LOGICAL :: TransientSimulation
+!---------------------------------------------------------------
+  LOGICAL :: SaveMeshLogical, Found
   INTEGER :: i, parts, ierr
   TYPE(Mesh_t), Pointer :: Mesh
   CHARACTER(LEN=MAX_NAME_LEN):: MeshName, MeshDir, inty, tmp
