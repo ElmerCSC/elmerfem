@@ -207,6 +207,7 @@ Solver 5
   Nonlinear System Newton After Iterations = 50  
   Nonlinear System Newton After Tolerance = 1.0e-05
   Nonlinear System Relaxation Factor = 1.00
+  Nonlinear System Reset Newton = Logical True
     
   Steady State Convergence Tolerance = Real 1.0e-4
 
