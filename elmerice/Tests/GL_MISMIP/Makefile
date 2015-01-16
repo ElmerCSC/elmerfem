@@ -13,5 +13,5 @@ run:
 	$(ELMER_SOLVER) mismip.sif
 
 clean:
-	/bin/rm *.dat *.log *.dat.names
+	/bin/rm *.dat *.log *.dat.names GL_MISMIP.txt
 	/bin/rm MyFreeSurfaceSolver.*
