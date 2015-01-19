@@ -423,7 +423,6 @@ SUBROUTINE InterpolateDEM (x, y, xb, yb, zb, Nbx, Nby, xb0, yb0, lbx, lby, Rmin,
               END IF
            END IF
         END DO
-        PRINT *, "r_min = ", rmin
         zbed = zb(imin)
 
      ELSE

@@ -4599,7 +4599,7 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
 
 int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 			      char *prefix,int decimals,int halomode,int indirect,
-			      int parthypre,int partlayers,int info)
+			      int parthypre,int subparts,int info)
 /* Saves the mesh in a form that may be used as input 
    in Elmer calculations in parallel platforms. 
    */
@@ -4621,10 +4621,15 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   FILE *out,*outfiles[MAXPARTITIONS+1];
   int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart,sumorphannodes,sumindirect;
 
+  if(info) {
+    printf("Saving Elmer mesh in partitioned format\n");
+    if( halomode ) printf("Saving halo elements in mode %d\n",halomode);
+    if( subparts ) printf("There are %d subpartitions\n",subparts);
+  }
 
   if(!data->created) {
     printf("You tried to save points that were never created.\n");
-    bigerror("No ElmerPost file saved!");
+    bigerror("No Elmer mesh files saved!");
   }
 
   partitions = data->nopartitions;
@@ -4633,10 +4638,11 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     bigerror("No Elmer mesh files saved!");
   }
 
-  if( partlayers < 1 && halomode == 3) {
+  if( subparts < 1 && halomode == 3) {
     printf("There can be no layer halo since there are no layers!\n");
     bigerror("No Elmer mesh files saved!");
   }
+
 
   elempart = data->elempart;
   ownerpart = data->nodepart;
@@ -4780,14 +4786,14 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     }
 
     /* This creates a simple halo when the elements have been partitioned such
-       that they are in number of "partlayers" intervals of z coordinate. */
-    if( halomode == 3 && part <= partlayers ) {
+       that they are in number of "subparts" intervals of z coordinate. */
+    if( halomode == 3 && part <= subparts ) {
       int leftright;
       for(leftright=-1;leftright <=1;leftright += 2) {
 	part2 = part+leftright;
 	nofile2 = nofile+leftright;
 
-	if( part2 < 1 || part2 > partlayers ) continue;	
+	if( part2 < 1 || part2 > subparts ) continue;	
 	halobulkelems += 1;
 
 	fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);
@@ -5237,12 +5243,12 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
 	  if( halomode == 3 ) {
 	    closeparent = closeparent2 = FALSE;
-	    if( part <= partlayers ) {
+	    if( part <= subparts ) {
 	      if( parent ) 
-		if( elempart[parent] <= partlayers) 
+		if( elempart[parent] <= subparts) 
 		  closeparent = ( ABS( elempart[parent]-part) == 1 );
 	      if( parent2 ) 
-		if( elempart[parent2] <= partlayers ) 
+		if( elempart[parent2] <= subparts ) 
 		  closeparent2 = ( ABS( elempart[parent2]-part) == 1 );
 	    }
 	  }

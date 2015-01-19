@@ -64,7 +64,8 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: GotIt, Structured, Visited = .FALSE.
   CHARACTER(LEN=MAX_NAME_LEN) :: FileFormat
-  LOGICAL :: Found,VtiFormat, VtuFormat, TableFormat, AnyFormat
+  LOGICAL :: Found,VtiFormat, VtuFormat, TableFormat, AnyFormat, &
+      RecreateGrid
   INTEGER :: Extent(6)
   REAL(KIND=dp) :: Origin(3), Dx(3)
   INTEGER, POINTER :: GridIndex(:,:,:)
@@ -98,10 +99,12 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
     RETURN
   END IF
 
+  RecreateGrid = ListGetLogical( Params,'Recreate Grid', Found ) 
+
   ! Initialize the particles on the first calling
   !------------------------------------------------------------------------
   Structured = VtiFormat
-  IF( .NOT. Visited ) THEN
+  IF( .NOT. Visited .OR. RecreateGrid ) THEN
     Particles % TimeOrder = 0
     Particles % dim = CoordinateSystemDimension()
     CALL CreateGridParticles( Particles ) 
@@ -115,6 +118,9 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
   IF( VtiFormat ) CALL ParticleOutputVti( Particles, Extent, Origin, Dx, GridIndex )
   IF( TableFormat ) CALL ParticleOutputTable( Particles )
   IF( VtuFormat ) CALL ParticleOutputVtu( Particles ) 
+
+  IF( RecreateGrid ) CALL DestroyParticles( Particles ) 
+
 
   CALL Info('SaveGridData','All done',Level=4)
   CALL Info('SaveGridData', '-----------------------------------------', Level=4 )
@@ -248,12 +254,17 @@ CONTAINS
     CHARACTER(MAX_NAME_LEN) :: Str
 
 
-    CALL Info('SaveGridData','Saving data on uniform grid')
+    CALL Info('SaveGridData','Saving data on uniform grid',Level=4)
 
     Mesh => GetMesh()
     IF( .NOT. ASSOCIATED( Mesh ) ) THEN
       CALL Fatal('FindGridParticles','No Mesh associated')
     END IF
+
+    IF( Visited .AND. Structured) THEN
+      DEALLOCATE( GridIndex )
+    END IF
+
 
     meshdim = Mesh % MeshDim
     Params => Solver % Values

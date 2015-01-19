@@ -146,9 +146,6 @@ Material 1
   !! Bed condition
   Min Zb = Equals Bedrock 
   Max Zb = Real 1.0e6
-
-  !! Grounding line condition
-  GL_toler = Real 1.0e-3
 End
 
 !---------------------------------------------------
@@ -158,11 +155,11 @@ End
 Solver 1
   Exec Solver = Before All
   Equation = GroundedMaskIni
-  Procedure = "ElmerIceSolvers" "GroundedSolverInit"
+  Procedure = "ElmerIceSolvers" "GroundedSolver"
   Variable = GroundedMask
   Variable DOFs = 1
 
-  TolerInit = Real 1.0e-3
+  Toler = Real 1.0e-3
   Bedrock Variable = String "Bedrock"
 End
 
@@ -210,6 +207,7 @@ Solver 5
   Nonlinear System Newton After Iterations = 50  
   Nonlinear System Newton After Tolerance = 1.0e-05
   Nonlinear System Relaxation Factor = 1.00
+  Nonlinear System Reset Newton = Logical True
     
   Steady State Convergence Tolerance = Real 1.0e-4
 

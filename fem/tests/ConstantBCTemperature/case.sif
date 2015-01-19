@@ -1,0 +1,104 @@
+!---------------------------------------------------------------------
+! Solves a Poisson equation with floating potential (zero net charge).
+! This problem is like having an well conducting block barried in an
+! insulation without knowing its temperature. 
+!
+! P.R. / 4.12.2014
+!--------------------------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "squares"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 12
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+
+
+Solver 1
+  Equation = "HeatEquation"
+  Variable = "Temperature"
+  Procedure = File "HeatSolve" "HeatSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "bicgstab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = ILU2
+  Linear System Residual Output = 20
+
+  Calculate Boundary Fluxes = Logical True
+End  
+
+
+Solver 2
+  Exec Solver = never
+
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = Temperature
+  Operator 1 = boundary min
+  Variable 2 = Temperature
+  Operator 2 = boundary max
+End 
+
+
+Material 1
+  Name = "Material1"
+
+  Density = 1.0
+  Heat Conductivity = 1.0
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+
+  Temperature = 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 2 
+
+  Temperature Constant = Logical True
+  Save Scalars = True
+End
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.52492579\n");
+
+

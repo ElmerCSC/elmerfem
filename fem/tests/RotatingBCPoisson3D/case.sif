@@ -120,7 +120,7 @@ Solver 3
   Equation = SaveScalars
   Procedure = "SaveData" "SaveScalars"
 
-  Filename = scalars.dat
+!  Filename = scalars.dat
 
   Variable 1 = Temperature
   Operator 1 = dofs

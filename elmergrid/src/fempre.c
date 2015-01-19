@@ -963,7 +963,7 @@ int main(int argc, char *argv[])
       if(data[k].nopartitions > 1) 
 	SaveElmerInputPartitioned(&data[k],boundaries[k],eg.filesout[k],eg.decimals,
 				  eg.partitionhalo,eg.partitionindirect,eg.parthypre,
-				  eg.partbclayers,info);
+				  eg.partbcz,info);
       else
 	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,info);
     }

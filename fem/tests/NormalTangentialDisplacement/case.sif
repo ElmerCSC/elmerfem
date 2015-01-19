@@ -1,0 +1,136 @@
+!---------------------------------------------------------------------
+! Test case for elasticity equation with normal-tangential BCs + friction
+!
+! A square is rotated with 30 degrees around the origin and we hope to 
+! get the same solution as for the original case where the square is 
+! aligned with the coordinate directions. 
+!
+! P.R. / 17.12.2014
+!--------------------------------------------------------------------
+
+$mu=0.5
+$phi=30.0
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "square"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 12
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 2
+End
+
+
+Solver 1
+  Exec Solver = Before all
+
+  Equation = MeshDeform
+  Procedure = "RigidMeshMapper" "RigidMeshMapper"
+End
+
+
+
+Solver 2
+  Equation = "ElasticSolve"
+  Variable = -dofs 2 Displacement
+  Procedure = File "ElasticSolve" "ElasticSolver"
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "bicgstabl"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Preconditioning = ILU1
+  Linear System Residual Output = 20
+
+  NonLinear System Max Iterations = 30
+  NonLinear System Convergence Tolerance = 1.0e-6
+
+  Calculate Loads = Logical True
+  Calculate Boundary Fluxes = Logical True
+  Calculate Stresses = True
+End  
+
+
+Solver 3
+  Exec Solver = after all
+
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = f.dat
+  Variable 1 = Displacement 
+  Operator 1 = max
+End 
+
+
+Material 1
+  Name = "Material1"
+
+  Density = 1.0
+  Poisson Ratio = 0.3
+  Youngs Modulus = 1.0e3
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Mesh Rotate 3 = Real $ phi
+  Mesh Origin(3) = Real 0.5 0.5 0.0
+End
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries(1) = 1
+
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 2
+  Name = "Top"
+  Target Boundaries(1) = 3 
+
+  Normal-Tangential Displacement = Logical True
+  Displacement 1 = -0.01
+
+! Special subroutine is needed to take just the normal component 
+! of the reaction force and multiply it with friction coeffcient
+  Displacement 2 Load = Variable "time"
+    Real Procedure "TangentForce" "TangentForce"
+End
+
+!Boundary Condition 3
+!  Target Boundaries(2) = 2 4
+!  Name = "Sides"
+!End 
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.10620918E-01\n");
+
+

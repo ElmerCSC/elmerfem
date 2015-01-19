@@ -37,7 +37,7 @@ Simulation
   Steady State Min Iterations = 1
   Steady State Max Iterations = 1
 
-  Post File = "$nom$.vtu"
+  Post File = File "$nom".vtu"
   max output level = 3
 End
 

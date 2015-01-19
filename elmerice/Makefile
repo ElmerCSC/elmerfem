@@ -60,7 +60,8 @@ UserFunctions/USF_ShapeFactor.f90 \
 UserFunctions/USF_Sliding.f90 \
 UserFunctions/USF_Zs.f90\
 UserFunctions/USF_GetFrictionHeating.f90 \
-UserFunctions/USF_WaterTransfer.f90
+UserFunctions/USF_WaterTransfer.f90 \
+UserFunctions/USF_Damage.f90
 
 solverobjects := $(filter %.o,$(patsubst %.f90,%.o,$(SOLVERSOURCE))) $(filter %.o,$(patsubst %.f,%.o,$(SOLVERSOURCE)))
 usfobjects := $(patsubst %.f90,%.o,$(USFSOURCE))

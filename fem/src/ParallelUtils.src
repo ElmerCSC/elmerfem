@@ -84,14 +84,14 @@ CONTAINS
        TYPE(Matrix_t), POINTER :: Matrix
 !-------------------------------------------------------------------------------
        TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
-       INTEGER :: i, j, k, l, m, n, DOFs
-       LOGICAL :: DGSolver, Found, GB, Global_dof, StrideProj, DiscontBC
+       INTEGER :: i, j, k, l, m, n, DOFs, PDOFs
+       LOGICAL :: DGSolver, Found, GB, Global_dof, LocalConstraints, DiscontBC
        TYPE(Mesh_t), POINTER :: Mesh
        TYPE(Element_t), POINTER :: Element
        TYPE(NeighbourList_t), POINTER :: MtrxN, MeshN
 
-       INTEGER :: maxnode, maxedge, maxface, fdofs, maxfdofs, &
-                  edofs, maxedofs, maxbdofs, l_beg, g_beg, proc_ind, sz
+       INTEGER :: maxnode, maxedge, maxface, fdofs, maxfdofs, col, &
+                  edofs, maxedofs, maxbdofs, l_beg, g_beg, proc, sz
 
        INTEGER, POINTER :: Perm(:)
 
@@ -99,6 +99,10 @@ CONTAINS
        INTEGER :: pardofs_bef, pardofs_all
        INTEGER, ALLOCATABLE :: pardofs_in(:), pardofs_out(:), ind(:)
        REAL(KIND=dp) :: realtime,tt
+
+       LOGICAL, ALLOCATABLE :: Done(:)
+       TYPE(Matrix_t), POINTER :: G
+       INTEGER :: Ierr, status(MPI_STATUS_SIZE)
 
 !-------------------------------------------------------------------------------
 
@@ -274,23 +278,19 @@ CONTAINS
          g_beg = NINT(ParallelReduction(1._dp*MAXVAL(Matrix % ParallelInfo % GlobalDOFs),2))
          pardofs_all = NINT(ParallelReduction(Matrix % ParallelDOFs*1._dp,2))
 
-         StrideProj = ListGetLogicalAnyBC(CurrentModel,'Stride Projector' )
+         LocalConstraints = ListGetLogical(Solver % Values, 'Partition Local Constraints',Found)
          DiscontBC  = ListGetLogicalAnyBC(CurrentModel,'Discontinuous Boundary' )
-
-         IF(StrideProj) THEN
-           ALLOCATE(OwnedDofs(ParEnv % PEs), OwnedDofs2(ParEnv % PEs))
-           owneddofs = 0
-           owneddofs(ParEnv % Mype+1) = Matrix % ExtraDofs
-           CALL MPI_ALLREDUCE( Owneddofs, Owneddofs2, ParEnv % PEs, &
-                MPI_INTEGER, MPI_SUM, Matrix % Comm, i )
-           l_beg = SUM(owneddofs2(1:ParEnv % myPE))
-         END IF
 
          Found = ASSOCIATED(Solver % Matrix % ConstraintMatrix)
          IF(Found) Found = ASSOCIATED(Solver % Matrix % ConstraintMatrix % InvPerm)
 
+         G => Null()
+         IF( LocalConstraints  ) THEN
+           G => AllocateMatrix()
+           G % Format = MATRIX_LIST
+         END IF
+
          j=0
-         proc_ind = ParEnv % PEs
          DO i=Matrix % NumberOFRows-Matrix % ExtraDOFs+1,Matrix % NumberOfRows
            j=j+1
            Global_dof = j <= Matrix % ParallelDOFs
@@ -298,12 +298,12 @@ CONTAINS
              Matrix % Parallelinfo % Interface(i) = .TRUE.
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
 
-             IF(proc_ind<=0) proc_ind=ParEnv % PEs
-             proc_ind=proc_ind-1
-
-             DO k=1,ParEnv % PEs
-               Matrix % ParallelInfo % NeighbourList(i) % Neighbours(k)=ParEnv % PEs-k
+             l = 0
+             DO k=ParEnv % PEs,1,-1
+               l = l + 1
+               Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l)=k-1
              END DO
+
              k = j + g_beg
            ELSE IF(Found) THEN
              n = Solver % Matrix % ConstraintMatrix % InvPerm(j-Matrix % ParallelDOFs)
@@ -316,25 +316,32 @@ CONTAINS
              l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l))
 
-             IF(.NOT.DiscontBC) THEN
-               IF (Matrix % Parallelinfo % Interface(k)) &
-                 CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
+             IF(LocalConstraints) THEN
+               IF(.NOT.DiscontBC) THEN
+                 IF (Matrix % Parallelinfo % Interface(k)) &
+                   CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
+               END IF
+
+               DO m=Matrix % Rows(i), Matrix % Diag(i)-1
+                 col = Matrix % Cols(m)
+                 IF (Matrix % Parallelinfo % Interface(col)) THEN
+                   DO l=1,SIZE(Matrix % ParallelInfo % NeighbourList(col) % Neighbours)
+                     proc = Matrix % ParallelInfo % NeighbourList(col) % Neighbours(l)
+                     IF(proc==ParEnv % mype) THEN
+                       CALL List_AddToMatrixElement( G % ListMatrix, proc+1, col, 1._dp )
+                     ELSE
+                       CALL List_AddToMatrixElement( G % ListMatrix, &
+                            proc+1, Matrix % ParallelInfo % GlobalDOFs(col), 1._dp)
+                     END IF
+                   END DO
+                 END IF
+               END DO
              END IF
 
              Matrix % Parallelinfo % NeighbourList(i) % Neighbours = &
                 Matrix % ParallelInfo % NeighbourList(k) % Neighbours
 
-             IF ( StrideProj ) THEN
-               k = j + g_beg + l_beg + pardofs_all
-               DO m=Matrix % Rows(i), Matrix % Rows(i+1)-1
-                 IF (Matrix % Parallelinfo % Interface(Matrix % Cols(m))) THEN
-                   l = SIZE(Matrix % ParallelInfo % NeighbourList(Matrix % Cols(m)) % Neighbours)
-                   CALL Sort(l,Matrix % ParallelInfo % NeighbourList(Matrix % Cols(m)) % Neighbours)
-                 END IF
-               END DO
-             ELSE
-               k = Matrix % ParallelInfo % GlobalDOFs(k) + (n+1)*g_beg + pardofs_all
-             END IF
+             k = Matrix % ParallelInfo % GlobalDOFs(k) + (n+1)*g_beg + pardofs_all
            ELSE
              ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1))
              Matrix % Parallelinfo % NeighbourList(i) % Neighbours(1)=ParEnv % myPE
@@ -343,12 +350,6 @@ CONTAINS
            Matrix % ParallelInfo % GlobalDofs(i) = k
          END DO
 
-!        IF ( StrideProj) THEN
-!          DO k=1,SIZE(Matrix % ParallelInfo % NeighbourList)
-!            l = SIZE(Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
-!            CALL Sort(l,Matrix % ParallelInfo % NeighbourList(k) % Neighbours)
-!          END DO
-!        END IF
 
          l=Matrix % ExtraDOFs
          n=SIZE(Perm)
@@ -361,6 +362,70 @@ CONTAINS
               Ind(k) = Matrix % Parallelinfo % Globaldofs(i)
             END DO
             CALL SortI(l,Ind,Matrix % Perm(n*DOFs+1:))
+         END IF
+
+         IF (ASSOCIATED(ParEnv % IsNeighbour).AND. LocalConstraints) THEN
+           CALL List_ToCRSMatrix(G)
+           ALLOCATE(Done(Matrix % NumberOfROws)); Done=.FALSE.
+
+           DO i=1,ParEnv % PEs
+             IF(i-1==ParEnv % Mype) THEN
+               IF(G % NumberOfRows>=i) THEN
+                 DO j=G % Rows(i), G % Rows(i+1)-1
+                   m = G % Cols(j)
+                   IF(.NOT.Done(m)) THEN
+                     Done(m) = .TRUE.
+                     k = SIZE(Matrix % ParallelInfo % Neighbourlist(m) % Neighbours)
+                     CALL Sort(k,Matrix % ParallelInfo % NeighbourList(m) % Neighbours)
+                   END IF
+                 END DO
+               END IF
+               CYCLE
+             END IF
+  
+             j = 0
+             IF(G % NumberOfRows>=i) j = G % Rows(i+1)-G % Rows(i)
+  
+             IF(ParEnv % IsNeighbour(i)) THEN
+               CALL MPI_BSEND( j,1,MPI_INTEGER,i-1,130,Matrix % Comm,ierr )
+               IF (j>0) THEN
+                 CALL MPI_BSEND(G % Cols(G % Rows(i):),j,MPI_INTEGER,i-1,131,Matrix % Comm,ierr )
+               END IF
+             ELSE
+               IF(j>0) stop 'barf'
+             END IF
+           END DO
+
+           DO i=1,ParEnv % NumOfNeighbours
+             CALL MPI_RECV( j,1,MPI_INTEGER,MPI_ANY_SOURCE,130,Matrix % Comm,status,ierr )
+             IF (j>0) THEN
+               IF(.NOT.ALLOCATED(owneddofs)) ALLOCATE(owneddofs(j))
+               IF(SIZE(owneddofs)<j) THEN
+                 DEALLOCATE(owneddofs); ALLOCATE(owneddofs(j))
+               END IF
+
+               CALL MPI_RECV(owneddofs,j,MPI_INTEGER,status(MPI_SOURCE),131,Matrix % Comm,status,ierr )
+               DO l=1,j
+                  m = SearchNode( Matrix % ParallelInfo, Owneddofs(l), Order=Matrix % Perm )
+                  IF(m>0) THEN
+                    IF(.NOT.Done(m)) THEN
+                      Done(m) = .TRUE.
+                      k = SIZE(Matrix % ParallelInfo % Neighbourlist(m) % Neighbours)
+                      CALL Sort(k,Matrix % ParallelInfo % NeighbourList(m) % Neighbours)
+                    END IF
+                  END IF
+                END DO
+             END IF
+           END DO
+           IF(ALLOCATED(owneddofs)) DEALLOCATE(OwnedDofs)
+         END IF
+ 
+         IF(ASSOCIATED(G)) THEN
+           IF(ASSOCIATED(G % Cols)) DEALLOCATE(G % Cols)
+           IF(ASSOCIATED(G % Rows)) DEALLOCATE(G % Rows)
+           IF(ASSOCIATED(G % Diag)) DEALLOCATE(G % Diag)
+           IF(ASSOCIATED(G % Values)) DEALLOCATE(G % Values)
+           DEALLOCATE(G)
          END IF
 
        ELSE

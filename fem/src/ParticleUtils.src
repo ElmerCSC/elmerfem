@@ -925,11 +925,21 @@ RETURN
     IF ( ASSOCIATED(Particles % Partition) ) &
         DEALLOCATE( Particles % Partition )
     
-    DEALLOCATE( Particles % Coordinate ) 
-    DEALLOCATE( Particles % Status ) 
-    DEALLOCATE( Particles % FaceIndex )
-    DEALLOCATE( Particles % ElementIndex ) 
+    IF( ASSOCIATED( Particles % Coordinate ) ) &
+        DEALLOCATE( Particles % Coordinate ) 
+
+    IF( ASSOCIATED( Particles % Status ) ) &
+        DEALLOCATE( Particles % Status ) 
+
+    IF( ASSOCIATED( Particles % FaceIndex ) ) &
+        DEALLOCATE( Particles % FaceIndex )
+
+    IF( ASSOCIATED( Particles % ElementIndex ) ) &
+        DEALLOCATE( Particles % ElementIndex ) 
     
+    IF( ASSOCIATED( Particles % UVW ) ) &
+        DEALLOCATE( Particles % UVW )
+
     Particles % NumberOfParticles = 0
     Particles % MaxNumberOfParticles = 0
     
@@ -5669,7 +5679,8 @@ RETURN
       LOGICAL :: stat, ThisOnly=.TRUE., ComponentVector
       CHARACTER(LEN=1024) :: Txt, FieldName
       TYPE(Element_t), POINTER :: Element
- 
+
+      INTEGER, ALLOCATABLE :: ElemInd(:)
 
       WRITE( TableUnit,'(ES12.4)', ADVANCE = 'NO' ) time
         
@@ -5697,7 +5708,9 @@ RETURN
         Nodes % x(1:n) = Mesh % Nodes % x( Indexes ) 
         Nodes % y(1:n) = Mesh % Nodes % y( Indexes ) 
         Nodes % z(1:n) = Mesh % Nodes % z( Indexes ) 
-        
+
+        ALLOCATE(ElemInd(Mesh % MaxElementDOFs))
+
         u = Particles % uvw(No,1)
         v = Particles % uvw(No,2)
         IF( dim == 3 ) THEN
@@ -5707,7 +5720,6 @@ RETURN
         END IF
         
         stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
-
         
         val = SUM( Basis(1:n) * Nodes % x(1:n) )
         WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') val             
@@ -5764,39 +5776,45 @@ RETURN
             dofs = Solution % DOFs
             Values => Solution % Values         
             val = 0.0_dp
+
+            IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+              ElemInd(1:n) = Perm(Element % DGIndexes(1:n))
+            ELSE
+              ElemInd(1:n) = Perm(Indexes(1:n))
+            END IF
             
             IF( ComponentVector ) THEN
-              IF( ALL( Perm( Indexes ) > 0 ) ) THEN
-                val = SUM( Basis(1:n) * Values(Perm(Indexes)) )
+              IF( ALL(ElemInd(1:n) > 0 ) ) THEN
+                val = SUM( Basis(1:n) * Values(ElemInd(1:n)) )
               END IF
               WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') val             
 
               Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 2',ThisOnly )
               IF( ASSOCIATED(Solution)) THEN
                 Values => Solution % Values
-                IF( ALL( Perm( Indexes ) > 0 ) ) THEN
-                  val = SUM( Basis(1:n) * Values(Perm(Indexes)) )
+                IF( ALL( ElemInd(1:n) > 0 ) ) THEN
+                  val = SUM( Basis(1:n) * Values(ElemInd(1:n)) )
                 END IF
                 WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') val             
 
                 Solution => VariableGet( Mesh % Variables, TRIM(FieldName)//' 3',ThisOnly )
                 IF( ASSOCIATED(Solution)) THEN
                   Values => Solution % Values
-                  IF( ALL( Perm( Indexes ) > 0 ) ) THEN
-                    val = SUM( Basis(1:n) * Values(Perm(Indexes)) )
+                  IF( ALL( ElemInd(1:n) > 0 ) ) THEN
+                    val = SUM( Basis(1:n) * Values(ElemInd(1:n)) )
                   END IF
                   WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') val             
                 END IF
               END IF
             ELSE IF( Dofs == 1 ) THEN
-              IF( ALL( Perm( Indexes ) > 0 ) ) THEN
-                val = SUM( Basis(1:n) * Values(Perm(Indexes)) )
+              IF( ALL( ElemInd(1:n) > 0 ) ) THEN
+                val = SUM( Basis(1:n) * Values(ElemInd(1:n)) )
               END IF
               WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') val             
             ELSE
               DO j = 1, Dofs
-                IF( ALL( Perm( Indexes ) > 0 ) ) THEN
-                  val = SUM( Basis(1:n) * Values(Dofs*(Perm(Indexes)-1)+j) )
+                IF( ALL( ElemInd(1:n) > 0 ) ) THEN
+                  val = SUM( Basis(1:n) * Values(Dofs*(ElemInd(1:n)-1)+j) )
                 END IF
                 WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') val                          
               END DO
