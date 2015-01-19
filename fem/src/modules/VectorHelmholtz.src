@@ -538,14 +538,11 @@ CONTAINS
        !Get element local matrix and rhs vector:
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
-          Tcoef, Acoef, &
-          !LaminateStack, LaminateStackModel, LamThick, &
-          !LamCond, CoilBody, CoilType, 
-            Element, n, nd, PiolaVersion )
+          Tcoef, Acoef, Element, n, nd, PiolaVersion )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
-       CALL DefaultUpdateEquations( STIFF, FORCE )
+       CALL DefaultUpdateEquations( STIFF, FORCE, Element )
     END DO
     CALL DefaultFinishBulkAssembly()
     !
@@ -1870,7 +1867,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
 
   IF ( GetLogical( SolverParams, 'Calculate Div of Poynting Vector', Found ) ) THEN
     i = i + 1
-    write (*,*), 'DIV OF POYNTING VECTOR in _Init' !DEBUG
     CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
       "Div Poynting Vector[Div Poynting Vector re:1 Div Poynting Vector im:1]" )
     i = i + 1
