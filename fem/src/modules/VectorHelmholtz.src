@@ -346,13 +346,13 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found!, L1
-  TYPE(Element_t),POINTER :: Element!, Edge
+  LOGICAL :: AllocationsDone = .FALSE., Found
+  TYPE(Element_t),POINTER :: Element
 
-  REAL(KIND=dp) :: Omega!, Norm
+  REAL(KIND=dp) :: Omega
   TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams
 
-  INTEGER :: n,istat,i,nNodes,Active!,FluxCount=0, j, k, l, nb,nd,t
+  INTEGER :: n,istat,i,nNodes,Active
   INTEGER :: NoIterationsMin, NoIterationsMax
 
   TYPE(Mesh_t), POINTER :: Mesh
@@ -366,18 +366,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
-  !REAL(KIND=dp), POINTER :: !sValues(:), fixpot(:)
-  !TYPE(Variable_t), POINTER :: fixJpot
-
-  !CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
-
-  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound!, CoilBody, FixJ, LaminateStack, Stat, TG, EigenAnalysis
+  LOGICAL ::   PiolaVersion, EdgeBasis,LFact,LFactFound
   INTEGER, POINTER :: Perm(:)
-  !INTEGER, ALLOCATABLE :: FluxMap(:)
-  !LOGICAL, ALLOCATABLE :: TreeEdges(:)
 
   TYPE(Matrix_t), POINTER :: A
-  !TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
@@ -441,8 +433,6 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   END DO
   IF ( EdgeBasis ) CALL ListRemove( GetSolverParams(), 'Linear System Refactorize' )
 
-  !CALL CalculateLumped(Model % NumberOfBodyForces)
-
 CONTAINS
 
 !---------------------------------------------------------------------------------------------
@@ -453,7 +443,6 @@ CONTAINS
 !---------------------------------------------------------------------------------------------
     REAL(KIND=dp) :: Norm!, TOL, PrevNorm
     INTEGER :: k,n,nd,t!, i, j
-    !REAL(KIND=dp), ALLOCATABLE :: Diag(:)
     LOGICAL  :: FoundMagnetization, Found
 !---------------------------------------------------------------------------------------------
     ! System assembly:
@@ -634,27 +623,22 @@ CONTAINS
             Tcoef, Acoef, Element, n, nd, PiolaVersion )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
-    COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:), Acoef(:)!, &
+    COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:), Acoef(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: eps, muinv, L(3)!,M(3), G(3), FixJPotC(n), C(3,3)
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ!,FixJPot(2,nd)
+    COMPLEX(KIND=dp) :: eps, muinv, L(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
 
-    !REAL(KIND=dp) :: skind, muder, AlocR(2,nd)
 
     LOGICAL :: Stat
-    INTEGER :: t, i, j!, siz, np, q, p 
+    INTEGER :: t, i, j
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    !REAL(KIND=dp), POINTER ::  Bval(:), Hval(:), !Cval(:),  &
-           !CubicCoeff(:)=>NULL(), HB(:,:)=>NULL()
-    !TYPE(ValueList_t), POINTER :: Lst
 
     TYPE(Nodes_t), SAVE :: Nodes
-    !LOGICAL :: FirstTime = .TRUE.
 
     CALL GetElementNodes( Nodes, Element )
 
@@ -896,16 +880,16 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  IF (GetLogical(Solver % Values,'Calculate JxB',Found)) THEN
-    i = i + 1
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "JxB E[JxB E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "JxB E[JxB re E:3 JxB im E:3]" )
-    END IF
-  END IF
+  !IF (GetLogical(Solver % Values,'Calculate JxB',Found)) THEN
+    !i = i + 1
+    !IF ( vDOFs==1 ) THEN
+      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            !"JxB E[JxB E:3]" )
+    !ELSE
+      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+            !"JxB E[JxB re E:3 JxB im E:3]" )
+    !END IF
+  !END IF
 
   IF ( GetLogical( Solver % Values, 'Calculate Maxwell Stress', Found ) ) THEN
     i = i + 1
@@ -928,13 +912,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
           "Current Density E[Current Density re E:3 Current Density im E:3]" )
     END IF
   END IF
-
-  IF ( GetLogical( Solver % Values, 'Calculate Joule Heating', Found ) ) THEN
-    i = i + 1
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-        "Joule Field E" )
-  END IF
-
 
   IF ( GetLogical( Solver % Values, 'Calculate Poynting vector', Found ) ) THEN
     i = i + 1
@@ -1122,14 +1099,14 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
   
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), R(35), Norm!, ElPotSol(1,8)
-   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3),&!, JatIP(2,3), &
-                    VP_ip(2,3)!, Wbase(35), alpha(35), JXBatIP(2,3)
-   REAL(KIND=dp) ::  detJ, R_ip, Omega, Power, Energy!, C_ip, ST(3,3)
-   REAL(KIND=dp) :: Freq, ComponentLoss(2)!, ValAtIP, FieldPower, FreqPower, LossCoeff
-   REAL(KIND=dp) :: TotalLoss!, localV(2), Coeff, localAlpha
-   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area!, wvec(3), N_j
-   COMPLEX(KIND=dp) ::   H(3), ExHc(3), PR_ip, divS, PR(16), J_ip(3), EdotJ!,MG_ip(3)
+   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), R(35), Norm
+   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3),&
+                    VP_ip(2,3)
+   REAL(KIND=dp) ::  detJ, R_ip, Omega, Power, Energy
+   REAL(KIND=dp) :: Freq, ComponentLoss(2)
+   REAL(KIND=dp) :: TotalLoss
+   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area
+   COMPLEX(KIND=dp) ::   H(3), ExHc(3), PR_ip, divS, PR(16), J_ip(3), EdotJ
 
    !COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
@@ -1137,27 +1114,23 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
-   TYPE(Variable_t), POINTER :: MFD, MFS, CD, ECF,&!,  MST, &
-                                JH, EF, JXB, PV, DIVPV, EW!, FWP, Var  
+   TYPE(Variable_t), POINTER :: MFD, MFS, CD, ECF, &
+                                JH, EF, PV, DIVPV, EW
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_ECF, &
-                                  EL_EF,&! EL_FWP, EL_JXB, EL_JH,EL_MST,
-                                EL_PV, EL_DIVPV, EL_EW
+                                  EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
 
-   INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,vDOFs,dim,BodyId!,m
-              !VvarDofs,VvarId,Imindex, Active,IvarId,Reindex
+   INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,vDOFs,dim,BodyId
 
-   TYPE(Solver_t), POINTER :: pSolver!, ElPotSolver
-   !TYPE(Matrix_t), POINTER :: EMatrix
-   !TYPE(Variable_t), POINTER :: EVariable
+   TYPE(Solver_t), POINTER :: pSolver
    REAL(KIND=dp), POINTER :: xx(:), bb(:)
    REAL(KIND=dp) :: hdotE(2), hdotE_r, hdotE_i
 
-   CHARACTER(LEN=MAX_NAME_LEN) :: Pname!, Currname, CoilType, ElectricPotName
+   CHARACTER(LEN=MAX_NAME_LEN) :: Pname
 
-   TYPE(ValueList_t), POINTER :: Material, BC, BodyForce!, BodyParams
-   LOGICAL :: Found, stat, LossEstimation, &!, Cubic, FoundMagnetization
-              CalcFluxLogical!, CoilBody,  PreComputedElectricPot
+   TYPE(ValueList_t), POINTER :: Material, BC, BodyForce
+   LOGICAL :: Found, stat, LossEstimation, &
+              CalcFluxLogical
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -1165,13 +1138,11 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    INTEGER, ALLOCATABLE :: Pivot(:)
 
-   REAL(KIND=dp), POINTER :: Fsave(:)!, HB(:,:)=>NULL(), CubicCoeff(:)=>NULL()
-   !REAL(KIND=dp) :: Babs
+   REAL(KIND=dp), POINTER :: Fsave(:)
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), RotM(:,:,:)
 
-   !REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>NULL(), Cwrk_im(:,:,:)=>NULL()
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:), Load(:,:), BndLoad(:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
@@ -1215,25 +1186,14 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
  
    ECF => NULL(); EL_ECF => NULL(); 
    CD => NULL(); EL_CD => NULL();
-   !JH => NULL(); 
-   !EL_JH => NULL();
-   !FWP => NULL(); 
-   !EL_FWP => NULL();
-   JXB => NULL(); 
-   !EL_JXB => NULL();
 
-   !MST => variableGet( Mesh % Variables, 'Maxwell stress' )
-   !EL_MST => variableGet( Mesh % Variables, 'Maxwell stress E' )
 
    dofs = 0 
    IF ( ASSOCIATED(MFD) ) dofs=dofs+3
    IF ( ASSOCIATED(MFS) ) dofs=dofs+3
    IF ( ASSOCIATED(EF)  ) dofs=dofs+3
    IF ( ASSOCIATED(CD)  ) dofs=dofs+3
-   !IF ( ASSOCIATED(FWP) ) dofs=dofs+1
    IF ( ASSOCIATED(ECF) ) dofs=dofs+3
-   IF ( ASSOCIATED(JXB) ) dofs=dofs+3
-   !IF ( ASSOCIATED(MST) ) dofs=dofs+6
    IF ( ASSOCIATED(PV) ) dofs=dofs+3
    IF ( ASSOCIATED(DIVPV) ) dofs=dofs+1
    IF ( ASSOCIATED(EW) ) dofs=dofs+1
@@ -1355,32 +1315,13 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        IF (PiolaVersion) THEN
           stat = EdgeElementInfo( Element, Nodes, u, v, w, &
                F, G, DetJ, Basis, WBasis, RotWBasis, dBasisdx, ApplyPiolaTransform=.TRUE.)
-          !stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-               !F, G, DetF, Basis, EBasis, CurlEBasis, dBasisdx)
-
-          !-------------------------------------------------------------------------
-          ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
-          ! vector B_j(x), with the place x related to the reference element 
-          ! coordinates p via the element mapping x = f(p). Additionally, 
-          ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
-          !-------------------------------------------------------------------------
-          !GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
-          !DO l = 1,nd-np 
-             !DO k=1,dim
-                !WBasis(l,k) = SUM( GT(k,1:dim) * EBasis(l,1:dim) )
-                !RotWBasis(l,k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(l,1:dim) )
-             !END DO
-          !END DO
-          !DetJ = ABS(DetF)
        ELSE
           stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
           CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
        END IF
 
-       !IF (ASSOCIATED(MFD)) THEN
        B(1,:) = MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega)
        B(2,:) = MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:) ) / (-Omega)
-       !END IF
 
         J_ip(:) = MATMUL(Load(:,1:n),Basis(1:n))
 
