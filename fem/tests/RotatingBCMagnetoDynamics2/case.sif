@@ -1,10 +1,15 @@
+!--------------------------------------------------------------------
 ! Test case for 3D nonconforming mortar elements using the AV solver.
 ! 
 ! This case includes 4-fold symmetry in the rotations and 
 ! an optional skew of 20 degrees in the rotor. 
 ! Increse number of extruded layers for better accuracy. 
+!
+! This test case uses a level projector which assumes that 
+! the extruded layers are at constant z-levels.
+!---------------------------------------------------------------------
 
-$skew=0.0  ! does not yet work with skew
+$skew=6.0  
 $omega=20.0 
 $t0=1
 
@@ -53,7 +58,7 @@ Body 2
   Target Bodies(1) = 1
   Name = "Rotor-Hot"
   Equation = 1
-  Material = 1
+  Material = 2
   Body Force = 2
   Initial Condition = 1
 End
@@ -62,7 +67,7 @@ Body 3
   Target Bodies(1) = 2
   Name = "Rotor-Cold"
   Equation = 1
-  Material = 2
+  Material = 3
   Body Force = 3
   Initial Condition = 1
 End
@@ -86,16 +91,15 @@ Solver 2
 !  Use Piola Transform = Logical True
 
   Linear System Solver = "Iterative"
-  Linear System Preconditioning = ILU1
-  Linear System Residual Output = 100
-  Linear System Max Iterations = 3000
+  Linear System Preconditioning = ILU2
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 500
   Linear System Iterative Method = BiCGStab2
+!GCR
   BicGStabL Polynomial Degree = 4
   Linear System GCR Restart = 600
   Linear System Convergence Tolerance = 1e-10
   Linear System Abort Not Converged = False
-
-  Steady State Convergence Tolerance = 1e-09
 
   Edge Basis = Logical True
   Apply Mortar BCs = Logical True
@@ -170,12 +174,13 @@ End
 
 
 Solver 6
-  Exec Solver = never
+!  Exec Solver = never
   Equation = VtuOutput
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = f
+  Output File Name = case
   Vtu Format = True
   Single Precision = True
+  Save Geometry Ids = True
 End 
 
 Equation 1
@@ -185,12 +190,17 @@ End
 
 Material 1
   Reluctivity  = Real 1.0
-  Electric Conductivity = Real 0.0
+  Electric Conductivity = Real 1.0e-6
 End
 
 Material 2
   Reluctivity  = Real 1.0
   Electric Conductivity = Real 1.0
+End
+
+Material 3
+  Reluctivity  = Real 1.0
+  Electric Conductivity = Real 1.0e-6
 End
 
 Body Force 1
@@ -227,8 +237,15 @@ Boundary Condition 3
 
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
-  Stride Projector = Logical True
+
+  Level Projector = Logical True
+  Level Projector Plane Edges Strong = Logical True
+  Level Projector Extruded Edges Strong = Logical True
+  Level Projector Skew Edges Strong = Logical False
+
+! electric conductivity zero so we can skip this
   Projector Skip Nodes = Logical True
+
 !  Save Projector = Logical True
 End
 
@@ -238,8 +255,13 @@ Boundary Condition 4
 
   Mortar BC = 5
   Radial Projector = Logical True
-  Stride Projector = Logical True
-  Projector Skip Nodes = Logical True
+
+  Level Projector = Logical True
+  Level Projector Nodes Strong = Logical True
+  Level Projector Plane Edges Strong = Logical True
+  Level Projector Extruded Edges Strong = Logical True
+  Level Projector Skew Edges Strong = Logical False
+
 !  Save Projector = Logical True
 End
 
@@ -254,7 +276,12 @@ Boundary Condition 6
 
   Mortar BC = 7
   Radial Projector = Logical True
-  Stride Projector = Logical True
+
+  Level Projector = Logical True
+  Level Projector Plane Edges Strong = Logical True
+  Level Projector Extruded Edges Strong = Logical True
+  Level Projector Skew Edges Strong = Logical False
+
   Projector Skip Nodes = Logical True
 !  Save Projector = Logical True
 End
@@ -275,6 +302,7 @@ Boundary Condition 9
   P {e} = Real 0
 !  P = Real 0.0
 End 
+
 Boundary Condition 10
   Name = "Start-Hot"
   Target Boundaries(1) = 12
@@ -293,21 +321,22 @@ Boundary Condition 12
   Name = "EndZS-Stator"
   Target Boundaries(1) = 16
   P {e} = real 0
+!  P = Real 0.0
 End 
 
 Boundary Condition 13
   Name = "EndZ-Hot"
   Target Boundaries(1) = 15
   P {e} = real 0
-!  P = Real 1.0
-  Electric Current Density = 1.0
+  P = Real 1.0
+!  Electric Current Density = 1.0
 End 
 
 Boundary Condition 14
   Name = "EndZ-Cold"
   Target Boundaries(1) = 14
   P {e} = real 0
-!  P = Real 1.0
+  P = Real 1.0
 !  Electric Current Density = 1.0
 End 
  
@@ -315,4 +344,5 @@ End
 Solver 2 :: Reference Norm = Real 0.73842653E-02
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.73842653E-02\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.41206705E-02\n");
+

@@ -448,8 +448,11 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   SkipAssembly = DoneAssembly.AND.(ConstantBulk.OR.ConstantSystem)
 
-  FixJ=GetLogical(GetSolverParams(),'Fix input Current Density', Found)
-  IF (.NOT. Found.AND..NOT.Transient ) FixJ=.TRUE.
+  FixJ = GetLogical(GetSolverParams(),'Fix input Current Density', Found)
+  IF (.NOT. Found .AND. .NOT. Transient ) THEN
+    ! Only fix the current density if there is one
+    FixJ = ListCheckPrefixAnyBodyForce(Model, 'Current Density')
+  END IF
   IF (FixJ) THEN
     CALL JfixPotentialSolver(Model,Solver,dt,Transient)
     FixJVar => VariableGet(Mesh % Variables, 'Jfix')
@@ -686,6 +689,7 @@ CONTAINS
        k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
      END SELECT
 
+     Model % CurrentElement => Element
      nd = GetElementNOFDOFs(Element)
      n  = GetElementNOFNodes(Element)
 
@@ -734,11 +738,9 @@ CONTAINS
      IF  (FixJ) THEN
         Found = .FALSE.
         potname = Solver % Variable % Name(1:Solver % Variable % NameLen)
-        DO i=1,Model % NumberOfBCs
-           IF (ListCheckPresent(Model % BCs(i) % Values,potname) ) THEN
-              Found = .TRUE.; EXIT
-           END IF
-        END DO
+
+        Found = ListCheckPresentAnyBC(Model,potname)
+
         IF (.NOT. Found ) THEN
            DO i=1,Mesh % NumberOfNodes
               J = Solver % Variable % Perm(i)
@@ -1873,7 +1875,7 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3),w0(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -1882,7 +1884,7 @@ CONTAINS
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
-    CALL GetElementNodes( Nodes )
+    CALL GetElementNodes( Nodes, Element )
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
@@ -1911,6 +1913,8 @@ CONTAINS
        F  = SUM(LOAD(4,1:n)*Basis(1:n))
        TC = SUM(LOAD(5,1:n)*Basis(1:n))
 
+       Normal = NormalVector(Element,Nodes,IP % U(t), IP % V(t),.TRUE.)
+
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
        DO p=1,np
@@ -1922,12 +1926,13 @@ CONTAINS
        END DO
 
        DO i = 1,nd-np
+         w0 = -CrossProduct(Wbasis(i,:),Normal)
          p = i+np
-         FORCE(p) = FORCE(p) + SUM(L*WBasis(i,:))*detJ*IP%s(t)
+         FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP % s(t)
          DO j = 1,nd-np
            q = j+np
            STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(WBasis(i,:)*WBasis(j,:))*detJ*IP%s(t)
+              SUM(WBasis(j,:)*w0)*detJ*IP % s(t)
          END DO
        END DO
     END DO
@@ -1987,7 +1992,7 @@ CONTAINS
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
-    CALL GetElementNodes( Nodes )
+    CALL GetElementNodes( Nodes, Element )
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
@@ -2051,11 +2056,7 @@ CONTAINS
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
-       Found = .FALSE.
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 1')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 2')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 3')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density {n}')
+       Found = ListCheckPrefix(BC,'Magnetic Flux Density')
 
        IF ( Found ) THEN
          SELECT CASE(GetElementFamily())
@@ -2100,11 +2101,7 @@ CONTAINS
       BC=>GetBC()
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
-      Found = .FALSE.
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 1')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 2')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 3')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density {n}')
+      Found = ListCheckPrefix(BC,'Magnetic Flux Density')
       IF ( .NOT. Found ) CYCLE
 
       k = GetBoundaryFaceIndex(Element); Element=>Mesh % Faces(k)
@@ -3208,6 +3205,7 @@ CONTAINS
          k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
        END SELECT
 
+       Model % CurrentElement => Element
        nd = GetElementNOFDOFs(Element)
        n  = GetElementNOFNodes(Element)
 
@@ -4278,8 +4276,8 @@ CONTAINS
            q = j+np
 
            IF ( Newton ) THEN
-             JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
-                 SUM(CONJG(B_ip(:))*RotWBasis(i,:))*detJ*IP % s(t)/Babs
+             JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(i,:)) * &
+                 SUM(CONJG(B_ip(:))*RotWBasis(j,:))*detJ*IP % s(t)/Babs
            END IF
 
            STIFF(p,q) = STIFF(p,q) + mu * &
@@ -4310,8 +4308,8 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3)
-    COMPLEX(KIND=dp) :: B, F, TC
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3),w0(3)
+    COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -4342,6 +4340,7 @@ CONTAINS
 
        F  = SUM(LOAD(4,1:n)*Basis(1:n)) !* (-im/Omega)
        TC = SUM(LOAD(5,1:n)*Basis(1:n)) !* (-im/Omega)
+       Normal = NormalVector(Element,Nodes,IP % U(t), IP % V(t),.TRUE.)
 
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
@@ -4354,12 +4353,13 @@ CONTAINS
        END DO
 
        DO i = 1,nd-np
+         w0 = -CrossProduct(Wbasis(i,:),Normal)
          p = i+np
-         FORCE(p) = FORCE(p) + SUM(L*WBasis(i,:))*detJ*IP%s(t)
+         FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP%s(t)
          DO j = 1,nd-np
            q = j+np
            STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(WBasis(i,:)*WBasis(j,:))*detJ*IP%s(t)
+              SUM(WBasis(j,:)*w0)*detJ*IP%s(t)
          END DO
        END DO
     END DO
@@ -4434,15 +4434,7 @@ CONTAINS
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
-       Found = .FALSE.
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 1')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 1')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 2')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 2')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 3')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 3')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density {n}')
-       Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im {n}')
+       Found = ListCheckPrefix(BC,'Magnetic Flux Density')
 
        IF ( Found ) THEN
          SELECT CASE(GetElementFamily())
@@ -4486,15 +4478,7 @@ CONTAINS
       BC=>GetBC()
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
-      Found = .FALSE.
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 1')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 1')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 2')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 2')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density 3')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im 3')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density {n}')
-      Found = Found .OR. ListCheckPresent(BC,'Magnetic Flux Density im {n}')
+      Found = ListCheckPrefix(BC,'Magnetic Flux Density')
       IF ( .NOT. Found ) CYCLE
 
       k = GetBoundaryFaceIndex(Element); Element=>Mesh % Faces(k)
@@ -5268,7 +5252,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier', ThisOnly=.TRUE.)
 
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
-   IF ( .NOT. ASSOCIATED(MFD) ) RETURN
    EL_MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density E' )
 
    MFS => VariableGet( Mesh % Variables, 'Magnetic Field Strength')
@@ -6098,7 +6081,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
 
          IF ( ASSOCIATED(JXB).OR.ASSOCIATED(EL_JXB)) THEN
-           IF (.NOT. ASSOCIATED(CD)) THEN
+           IF (.NOT. ASSOCIATED(CD) .AND. .NOT. ASSOCIATED(EL_CD)) THEN
              CALL Warn('MagnetoDynamicsCalcFields', 'Cannot Calculate JxB since Current Density is not calculated!')
            ELSE
              IF (Vdofs == 1) THEN

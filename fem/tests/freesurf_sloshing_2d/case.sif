@@ -33,7 +33,7 @@ Simulation
 
 ! Number of timesteps is decreased for the consistency test
   Timestep Intervals = Integer 20
-!500
+  Output Intervals = Integer 4
   Timestep Sizes = Real 0.02
   Output Intervals = 5
 !  Post File = "case.vtu"
@@ -127,25 +127,36 @@ End
 
 Solver 4
   Equation = String "SaveFree"
-  Exec Solver = never
-!"After TimeStep"
+  Exec Solver = After Saving
 
   Procedure = File "SaveData" "SaveScalars"
  
-  Variable 1 = pressure 
-  Operator 1 = volume
+  Variable 1 = timestep
 
-  Variable 2 = FreeSurface 
-  Operator 2 = min
-  Operator 3 = max
-  Operator 4 = mean
+  Variable 2 = pressure 
+  Operator 2 = volume
+
+  Variable 3 = FreeSurface 
+  Operator 3 = min
+  Operator 4 = max
+  Operator 5 = mean
 
   Filename = f.dat
 End 
 
+Solver 5
+  Equation = String "SaveLine"
+  Exec Solver = Before Saving
+
+  Procedure = File "SaveData" "SaveLine"
+ 
+  Filename = line.dat
+End 
+
+
 Equation 1
   Name = "BulkSolvers"
-  Active Solvers(2) = 1 2
+  Active Solvers(2) = 1 2 
 End
 
 Equation 2
@@ -208,6 +219,8 @@ Boundary Condition 3
 
   Mesh Update 1 = 0
   Mesh Update 2 =  Equals FreeSurface
+
+  Save Line = Logical True
 End
 
 Solver 3 :: Reference Norm = Real 5.48559563392912453E-002

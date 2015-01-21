@@ -1,0 +1,213 @@
+!------------------------------------------------------------------
+! Test case for contact with friction coefficient defined.
+! It is assumed that a blunt object is pressed to the surface and
+! the tangential forces are proportional to the normal forces.
+!
+! There seems to be some convergence issues for the nonlinear system
+! already at dy=-0.3 so a value dy=-0.2 was chosen for this test case. 
+! Also higher friction coefficient may cause additional challenges.
+!
+! This case includes also the effects of frictional heating. 
+! A nodal heat source is used. It is obtained from nodal tangential force
+! multiplied by velocity. A conditional thermal contact is added between
+! the blunt object and the base. 
+!
+! P.R. / 3.12.2014
+!------------------------------------------------------------------
+
+$dy = -0.2
+$mu = 0.3
+$velo = 0.1
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 32
+  Coordinate System = Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Post File = case.vtu
+
+! The ElasticSolver does not really like the Dirichlet conditions at the start 
+! of the nonlinear iteration. 
+  Initialize Dirichlet Conditions = False
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+  Permittivity of Vacuum = 8.8542e-12
+  Boltzmann Constant = 1.3807e-23
+  Unit Charge = 1.602e-19
+End
+
+Body 1
+  Name = "Blunt"
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+
+Body 2
+  Name = "Base"
+  Target Bodies(1) = 2
+  Equation = 2
+  Material = 2
+!  Body Force = 2
+
+End
+
+Solver 1
+  Equation = Nonlinear elasticity
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 2 Disp
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = Ilu1
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = Bicgstab
+  Linear System Convergence Tolerance = 1.0e-8
+
+! Restore the linear solution
+!  Elasticity Solver Linear = Logical True
+
+  Apply Limiter = Logical True
+
+!  Calculate Stresses = Logical True
+End
+
+
+Solver 2
+  Equation = HeatEq
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+
+  Stabilize = Logical True
+
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Relaxation Factor = 1.0
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = Ilu1
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = Bicgstab
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Apply Mortar BCs = Logical True
+  Export Lagrange Multiplier = Logical True
+End
+
+
+Equation 1
+  Name = "Deformation and Heat"
+  Active Solvers(2) = 1 2
+End
+
+Equation 2
+  Name = "JustHeat"
+  Active Solvers(1) = 2
+  Convection = constant
+End
+
+Material 1
+  Name = "ElasticMat"
+  Youngs modulus = 1.0e3
+  Density = 1000.0
+  Poisson ratio = 0.3
+  Heat Conductivity = 1.0
+  Heat Capacity = 1.0
+End
+
+Material 2
+  Name = "RigidMat"
+  Heat Conductivity = 1.0
+  Density = 1000.0
+  Heat Capacity = 1.0
+  Convection Velocity 1 = $velo
+End
+
+Body Force 1
+  Name = "BodyForce"
+End
+
+Boundary Condition 1
+  Name = "Contact"
+  Target Boundaries(2) = 1 2
+
+  Disp 2 Lower Limit = Opposes Coordinate 2
+  Disp 1 Load = Variable "Disp Contact Load 2"
+    Real MATC "mu*tx"
+
+! Thermal contact with base top
+  Mortar BC =  Integer 5
+
+! Create a strong projector for the line setting y-coordinate to zero
+  Flat Projector = Logical True
+  Flat Projector Coordinate = Integer 2
+  Level Projector = Logical True
+  Level Projector Strong = Logical True
+
+! Applies the heat contact only where there is mechanical contact
+  Level Projector Condition = Variable Coordinate 2
+    Real MATC "1.0e-6-tx"
+
+! Sets the nodal heat source  
+  Temperature Load = Variable "Disp Contact Load 1" 
+    Real MATC "velo*tx"
+End
+
+Boundary Condition 2
+  Name = "Top"
+  Target Boundaries(1) = 4
+  Disp 1 = Real 0.0
+  Disp 2 = Real $dy
+  Temperature = 0.0
+End
+
+Boundary Condition 3 
+  Name = "Sides"
+  Target Boundaries(2) = 3 5
+End
+
+
+Boundary Condition 4 
+  Name = "BaseBottom"
+  Target Boundaries(1) = 7
+  Temperature = 0.0
+End
+  
+Boundary Condition 5
+  Name = "BaseTop"
+  Target Boundaries(1) = 9
+End
+
+Boundary Condition 6
+  Name = "BaseRight"
+  Target Boundaries(1) = 8 
+End
+
+Boundary Condition 7
+  Name = "BaseLeft"
+  Target Boundaries(1) = 10
+  Temperature = 0.0
+End
+
+
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.99411287E-01\n");

@@ -1444,7 +1444,6 @@ CONTAINS
     TimeVar => VariableGet( Model % Variables, 'Time')
     sTime => TimeVar % Values(1)
     IF(RungeKutta) sTime = sTime - dt
-
     CALL SolveCoupled()
     IF(RungeKutta) sTime = sTime + dt
 
@@ -3434,6 +3433,7 @@ CONTAINS
           Maxdim = 0
           DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
              CurrentElement => Solver % Mesh % Elements(i)
+             IF( CurrentElement % PartIndex /= ParEnv % myPE ) CYCLE
              IF ( CheckElementEquation( Model, CurrentElement, EquationName ) ) THEN
                 Solver % NumberOfActiveElements = Solver % NumberOFActiveElements + 1
                 Solver % ActiveElements( Solver % NumberOFActiveElements ) = i
@@ -3684,7 +3684,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: OrigDT, DTScal
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
-         UpdateExported, CoordTransform
+         UpdateExported, GotCoordTransform
      INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
 #ifdef USE_ISO_C_BINDINGS
@@ -3693,25 +3693,25 @@ CONTAINS
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct, CPUTime,RealTime
 #endif
      TYPE(Variable_t), POINTER :: TimeVar, IterV
-     CHARACTER(LEN=MAX_NAME_LEN) :: str
+     CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
      TYPE(ValueList_t), POINTER :: Params
 
      SAVE TimeVar
 !------------------------------------------------------------------------------
      CALL SetCurrentMesh( Model, Solver % Mesh )
      Model % Solver => Solver
+     Params => Solver % Values
 
-     CoordTransform = ListCheckPresent( Solver % Values,'Coordinate Transformation')
-     IF( CoordTransform ) THEN
-       CALL CoordinateTransformation( Solver % Mesh, .FALSE. )
+     CoordTransform = ListGetString(Params,'Coordinate Transformation',&
+         GotCoordTransform )
+     IF( GotCoordTransform ) THEN
+       CALL CoordinateTransformation( Solver % Mesh, CoordTransform, &
+           Params, .FALSE. )
      END IF
 
      ! Some keywords may be normalized by area or volume
      !--------------------------------------------------------------
      CALL SetNormalizedKeywords(Model, Solver % Mesh)
-
-
-     Params => Solver % Values
 
 !------------------------------------------------------------------------------
 ! The solver may be skipped if the exec condition is negative. 
@@ -3829,7 +3829,7 @@ CONTAINS
      CALL ListSetNamespace('')
      Solver % dt = dt
 
-     IF( CoordTransform ) THEN
+     IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
 

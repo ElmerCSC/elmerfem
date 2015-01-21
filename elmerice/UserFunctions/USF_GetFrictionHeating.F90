@@ -206,7 +206,7 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
   END IF
   ! Get the Stokes loads
   !---------------------------
-  FlowLoadsName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt )  
+  FlowLoadsName = GetString( Model % Solver % Values , 'Flow Loads Name', GotIt )  
   IF (.NOT. GotIt) THEN
      WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
      WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &

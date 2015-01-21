@@ -68,7 +68,7 @@
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,k,n,l,t,k1,k2,iter,Ndeg,istat,nproc,tlen,nthreads
-     CHARACTER(LEN=MAX_STRING_LEN) :: threads
+     CHARACTER(LEN=MAX_STRING_LEN) :: threads, CoordTransform
 
      REAL(KIND=dp) :: s,dt,dtfunc
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
@@ -321,8 +321,10 @@ END INTERFACE
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
-         IF( ListCheckPresent(CurrentModel % Simulation,'Coordinate Transformation') ) THEN
-           CALL CoordinateTransformation( CurrentModel % Meshes, .TRUE. )
+         CoordTransform = ListGetString(CurrentModel % Simulation,'Coordinate Transformation',GotIt)
+         IF( GotIt ) THEN
+           CALL CoordinateTransformation( CurrentModel % Meshes, CoordTransform, &
+               CurrentModel % Simulation, .TRUE. )
          END IF
 
          IF(.NOT. Silent ) THEN
@@ -1934,138 +1936,6 @@ END INTERFACE
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveToPost
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!> Release a mesh from the list of meshes.
-!------------------------------------------------------------------------------
-  RECURSIVE SUBROUTINE FreeMesh(Mesh)
-!------------------------------------------------------------------------------
-    TYPE(Mesh_t), POINTER :: Mesh
-!------------------------------------------------------------------------------
-    IF (.NOT.ASSOCIATED(Mesh)) RETURN
-
-    CALL FreeMesh(Mesh % Next)
-
-    Mesh % Next   => NULL()
-    Mesh % Child  => NULL()
-    Mesh % Parent => NULL()
-
-    CALL ReleaseMesh(Mesh)
-    DEALLOCATE(Mesh)
-!------------------------------------------------------------------------------
-  END SUBROUTINE FreeMesh
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!> Releases structures related to the Solver. 
-!------------------------------------------------------------------------------
-  SUBROUTINE FreeSolver(Solver)
-!------------------------------------------------------------------------------
-    TYPE(Solver_t) :: Solver
-!------------------------------------------------------------------------------
-    CALL FreeValueList(Solver % Values)
-    CALL FreeMatrix(Solver % Matrix)
-    IF (ALLOCATED(Solver % Def_Dofs)) DEALLOCATE(Solver % Def_Dofs)
-    IF (ASSOCIATED(Solver % ActiveElements)) DEALLOCATE(Solver % ActiveElements)
-!------------------------------------------------------------------------------
-  END SUBROUTINE FreeSolver
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!> Releases value list which includes all the sif definitions, for example.
-!------------------------------------------------------------------------------
-  SUBROUTINE FreeValueList(List)
-!------------------------------------------------------------------------------
-    TYPE(ValueList_t), POINTER :: List
-!------------------------------------------------------------------------------
-    TYPE(ValueList_t), POINTER :: ptr
-   
-    ptr => List
-    DO WHILE(ASSOCIATED(ptr))
-      IF (ASSOCIATED(ptr % TValues)) DEALLOCATE(ptr % TValues)
-      IF (ASSOCIATED(ptr % FValues)) DEALLOCATE(ptr % FValues)
-      IF (ASSOCIATED(ptr % IValues)) DEALLOCATE(ptr % IValues)
-      ptr => ptr % Next
-    END DO 
-!------------------------------------------------------------------------------
-  END SUBROUTINE FreeValueList
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!> Releases the whole model. 
-!------------------------------------------------------------------------------
- SUBROUTINE FreeModel(Model)
-!------------------------------------------------------------------------------
-   TYPE(Model_t), POINTER :: Model
-!------------------------------------------------------------------------------
-   TYPE(Matrix_t), POINTER :: A,B
-   INTEGER :: i
-   IF (.NOT.ASSOCIATED(Model)) RETURN
-
-   CALL FreeMesh(Model % Meshes)
-
-   CALL FreeValueList(Model % Constants)
-   CALL FreeValueList(Model % Simulation)
-
-   IF (ASSOCIATED(Model % BCs)) THEN
-     DO i=1,Model % NumberOfBCs
-#if 0
-       A => Model % BCs(i) % PMatrix
-       IF (ASSOCIATED(A)) THEN
-         DO WHILE( ASSOCIATED(A) )
-           B => A % Child
-           A % Child => NULL()
-           A => B
-         END DO
-         CALL FreeMatrix(Model % BCs(i) % PMatrix)
-       END IF
-#endif
-       CALL FreeValueList( Model % BCs(i) % Values)
-     END DO
-     DEALLOCATE(Model % BCs)
-   END IF
-
-   DO i=1,Model % NumberOfSolvers
-     CALL FreeSolver(Model % Solvers(i))
-   END DO
-   DEALLOCATE(Model % Solvers)
-
-   IF (ASSOCIATED(Model % ICs)) THEN
-     DO i=1,Model % NumberOfICs
-       CALL FreeValueList( Model % ICs(i) % Values)
-     END DO
-     DEALLOCATE(Model % ICs)
-   END IF
-
-   IF (ASSOCIATED(Model % Bodies)) THEN
-     DO i=1,Model % NumberOfBodies
-       CALL FreeValueList( Model % Bodies(i) % Values)
-     END DO
-     DEALLOCATE(Model % Bodies)
-   END IF
-
-   IF (ASSOCIATED(Model % Equations)) THEN
-     DO i=1,Model % NumberOfEquations
-       CALL FreeValueList( Model % Equations(i) % Values)
-     END DO
-     DEALLOCATE(Model % Equations)
-   END IF
-
-   IF (ASSOCIATED(Model % BodyForces)) THEN
-     DO i=1,Model % NumberOfBodyForces
-       CALL FreeValueList( Model % BodyForces(i) % Values)
-     END DO
-     DEALLOCATE(Model % BodyForces)
-   END IF
-
-   Model=>NULL()
-!------------------------------------------------------------------------------
- END SUBROUTINE FreeModel
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

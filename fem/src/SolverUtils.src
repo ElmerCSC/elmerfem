@@ -312,6 +312,15 @@ CONTAINS
            CALL CRS_MoveRow( A,n1,n2 )  
          END IF
 
+         ! If entries are not found the format is changed on-the-fly
+         IF( A % FORMAT == MATRIX_LIST ) THEN
+           IF( PRESENT( Coeff ) ) THEN
+             CALL CRS_MoveRow( A,n1,n2,Coeff )
+           ELSE
+             CALL CRS_MoveRow( A,n1,n2 )  
+         END IF
+       END IF
+
        CASE( MATRIX_LIST )
          IF( PRESENT( Coeff ) ) THEN
            CALL List_MoveRow( A % ListMatrix,n1,n2,Coeff )
@@ -1437,7 +1446,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: NodeIndexes(:), IndNodes(:)
     INTEGER, ALLOCATABLE :: Indexes(:), PassPerm(:)
-    INTEGER :: BC,i,j,k,l,m,n,t,k1,k2,OffSet
+    INTEGER :: BC,i,j,j2,k,l,m,n,t,k1,k2,OffSet
     LOGICAL :: GotIt, periodic, OrderByBCNumbering
     REAL(KIND=dp), POINTER :: MinDist(:)
     REAL(KIND=dp), POINTER :: WorkA(:,:,:) => NULL()
@@ -1463,7 +1472,10 @@ CONTAINS
     INTEGER :: ind, ElemFirst, ElemLast, bf
     REAL(KIND=dp) :: SingleVal
     LOGICAL :: AnySingleBC, AnySingleBF
-
+    LOGICAL, ALLOCATABLE :: LumpedNodeSet(:)
+    LOGICAL :: NeedListMatrix
+    INTEGER, ALLOCATABLE :: Rows0(:), Cols0(:)
+    REAL(KIND=dp), POINTER :: BulkValues0(:)
 
 !------------------------------------------------------------------------------
 ! These logical vectors are used to minimize extra effort in setting up different BCs
@@ -1524,6 +1536,12 @@ CONTAINS
        END IF
      END DO
      DEALLOCATE( DonePeriodic ) 
+   END IF
+
+! Add the possible friction coefficient
+!----------------------------------------------------------
+   IF ( ListCheckPresentAnyBC( Model,'Friction BC ' // Name(1:nlen) ) ) THEN
+     CALL SetFrictionBoundaries( Model, A, b, Name, NDOFs, Perm )
    END IF
 
 
@@ -1680,7 +1698,7 @@ CONTAINS
 
       ActivePartAll(bf_id) = ListCheckPresent(ValueList, Name(1:nlen) // ' DOFs' ) 
       ActiveCond(bf_id) = ListCheckPresent( ValueList,CondName )      
-      ActivePartAll(bf_id) = ListCheckPresent(ValueList, Name(1:nlen) ) 
+      ActivePart(bf_id) = ListCheckPresent(ValueList, Name(1:nlen) ) 
 
       Passive = Passive .OR. ListCheckPresent(ValueList, PassName)
     END DO
@@ -1902,10 +1920,12 @@ CONTAINS
         ! Make a distinction between BCs and BFs. 
         ! These are treated in the same loop because most of the logic is still the same. 
         IF( bc <= Model % NumberOfBCs ) THEN
+          IF(.NOT. AnySingleBC ) CYCLE
           ValueList => Model % BCs(BC) % Values
           ElemFirst =  Model % NumberOfBulkElements + 1 
           ElemLast =  Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
         ELSE
+          IF( .NOT. AnySingleBF ) CYCLE
           ValueList => Model % BodyForces(bc - Model % NumberOfBCs) % Values
           ElemFirst =  1
           ElemLast =  Model % NumberOfBulkElements
@@ -2009,6 +2029,180 @@ CONTAINS
         END IF
       END DO
     END IF
+
+
+    ! Check the boundaries and body forces for possible single nodes BCs that must have a constant
+    ! value on that boundary / body force.
+    !--------------------------------------------------------------------------------------------
+    DirName = TRIM(Name)//' Constant'
+    AnySingleBC = ListCheckPresentAnyBC( Model, DirName )
+    AnySingleBF = ListCheckPresentAnyBodyForce( Model, DirName )
+
+    IF( AnySingleBC .OR. AnySingleBF ) THEN
+      ALLOCATE( LumpedNodeSet( SIZE( Perm ) ) )
+
+      IF( AnySingleBC ) CALL Info('SetDirichletBoundaries','Found BC constraint: '//TRIM(DirName))
+      IF( AnySingleBF ) CALL Info('SetDirichletBoundaries','Found BodyForce constraint: '//TRIM(DirName))
+
+      ! Improve the logic in future
+      ! Now we assume that if the "supernode" has been found then also the matrix has the correct topology. 
+      IF( AnySingleBC ) THEN
+        NeedListMatrix = .NOT. ListCheckPresentAnyBC( Model, TRIM(Name)//' Constant Node Index')
+      ELSE 
+        NeedListMatrix = .NOT. ListCheckPresentAnyBodyForce( Model, TRIM(Name)//' Constant Node Index')
+      END IF
+      
+      ! Move the list matrix because of its flexibility
+      IF( NeedListMatrix ) THEN
+        CALL Info('SetDirichletBoundaries','Using List maxtrix to set constant constraints',Level=8)
+        CALL Info('SetDircihletBoundaries','Original matrix non-zeros: '&
+            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
+        IF( ASSOCIATED( A % BulkValues ) ) THEN
+          ALLOCATE( Cols0( SIZE( A % Cols ) ), Rows0( SIZE( A % Rows ) ) )
+          Cols0 = A % Cols
+          Rows0 = A % Rows
+        END IF
+        CALL List_toListMatrix(A)
+      END IF
+
+      DO bc = 1,Model % NumberOfBCs + Model % NumberOfBodyForces
+
+        ! Make a distinction between BCs and BFs. 
+        ! These are treated in the same loop because most of the logic is still the same. 
+        IF( bc <= Model % NumberOfBCs ) THEN
+          IF(.NOT. AnySingleBC ) CYCLE
+          ValueList => Model % BCs(BC) % Values
+          ElemFirst =  Model % NumberOfBulkElements + 1 
+          ElemLast =  Model % NumberOfBulkElements + Model % NumberOfBoundaryElements
+        ELSE
+          IF(.NOT. AnySingleBF ) CYCLE
+          ValueList => Model % BodyForces(bc - Model % NumberOfBCs) % Values
+          ElemFirst =  1
+          ElemLast =  Model % NumberOfBulkElements
+        END IF
+
+        IF( .NOT. ListGetLogical( ValueList,DirName, GotIt) ) CYCLE
+
+        ind = ListGetInteger( ValueList,TRIM(Name)//' Constant Node Index',GotIt )     
+        
+
+        ! On the first time find a one single uniquely defined node for setting 
+        ! the value. In parallel it will be an unshared node with the highest possible 
+        ! node number 
+        IF( .NOT. GotIt ) THEN        
+
+          ind = 0
+          DO t = ElemFirst, ElemLast
+            Element => Model % Elements(t)
+
+            IF( bc <= Model % NumberOfBCs ) THEN
+              IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
+            ELSE
+              bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values,'Body Force',GotIt)
+              IF( bc - Model % NumberOfBCs /= bf ) CYCLE
+            END IF            
+
+            n = Element % TYPE % NumberOfNodes
+            NodeIndexes => Element % NodeIndexes
+
+            DO i=1,n
+              j = NodeIndexes(i)
+              IF( Perm(j) == 0) CYCLE
+              IF( ParEnv % PEs > 1 ) THEN
+                IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
+              END IF
+              ind = j 
+              EXIT
+            END DO
+            IF( ind > 0 ) EXIT
+          END DO
+
+          ! Find the maximum partition that owns the node. 
+          ! It could be minimum also, just some convection is needed. 
+          IF( ParEnv % PEs > 1 ) THEN
+            k = -1
+            IF( ind > 0 ) k = ParEnv % MyPe          
+            k = NINT( ParallelReduction( 1.0_dp * k, 2 ) ) 
+            IF( k == -1 ) THEN
+              CALL Warn('SetDirichletBoundaries','Could not find node to set: '//TRIM(DirName))
+            END IF
+            IF( k /= ParEnv % MyPe ) ind = 0
+          ELSE
+            IF( ind == 0 ) THEN
+              CALL Warn('SetDirichletBoundaries','Could not find node to set: '//TRIM(DirName))
+            END IF
+          END IF
+
+          CALL ListAddInteger( ValueList,TRIM(Name)//' Constant Node Index', ind )
+          NeedListMatrix = .TRUE.
+        END IF
+
+        IF( ParEnv % PEs > 1 ) CALL Warn('SetDirichletBoundaries','Node index not set properly in parallel')
+        IF( ind == 0 ) CYCLE
+
+        ! Ok, now sum up the rows to the corresponding nodal index
+        LumpedNodeSet = .FALSE.
+
+        ! Don't lump the "supernode" and therefore mark it set already
+        LumpedNodeSet(ind) = .TRUE.
+
+        DO t = ElemFirst, ElemLast
+          Element => Model % Elements(t)
+
+          IF( bc <= Model % NumberOfBCs ) THEN
+            IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc) % Tag ) CYCLE
+          ELSE
+            bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values,'Body Force',GotIt)
+            IF( bc - Model % NumberOfBCs /= bf ) CYCLE
+          END IF
+
+          n = Element % TYPE % NumberOfNodes
+          Indexes(1:n) = Element % NodeIndexes
+
+          CALL SetLumpedRows(ind,n)
+        END DO
+
+        n = COUNT( LumpedNodeSet ) 
+        CALL Info('SetDirichletBoundaries','Number of lumped nodes set: '//TRIM(I2S(n)),Level=10)
+      END DO
+
+      IF( NeedListMatrix ) THEN
+        DEALLOCATE( LumpedNodeSet )
+
+        ! Revert back to CRS matrix
+        CALL List_ToCRSMatrix(A)
+
+        ! This is needed in order to copy the old BulkValues to a vector that 
+        ! has the same size as the new matrix. Otherwise the matrix vector multiplication
+        ! with the new Rows and Cols will fail. 
+        IF( ASSOCIATED( A % BulkValues ) ) THEN
+          BulkValues0 => A % BulkValues
+          NULLIFY( A % BulkValues ) 
+          ALLOCATE( A % BulkValues( SIZE( A % Values ) ) )
+          A % BulkValues = 0.0_dp
+
+          DO i=1,A % NumberOfRows
+            DO j = Rows0(i), Rows0(i+1)-1
+              k = Cols0(j) 
+              DO j2 = A % Rows(i), A % Rows(i+1)-1
+                k2 = A % Cols(j2)
+                IF( k == k2 ) THEN
+                  A % BulkValues(j2) = BulkValues0(j)
+                  EXIT
+                END IF
+              END DO
+            END DO
+          END DO
+
+          DEALLOCATE( Cols0, Rows0, BulkValues0 ) 
+        END IF
+        
+        CALL Info('SetDircihletBoundaries','Modified matrix non-zeros: '&
+            //TRIM(I2S(SIZE( A % Cols ))),Level=8)
+      END IF
+    END IF
+
+
 
     IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
     
@@ -2168,6 +2362,58 @@ CONTAINS
       END IF
     END SUBROUTINE SetElementValues
   
+
+
+!------------------------------------------------------------------------------
+!> Set values related to a specific boundary or bulk element.
+!> If scaling has been applied the rows need to be scaled when
+!> they are moved.
+!------------------------------------------------------------------------------
+    SUBROUTINE SetLumpedRows(ind0,n)
+      INTEGER :: ind0,n
+      INTEGER :: ind,i,j,k,k0
+      REAL(KIND=dp) :: Coeff
+      ! -------------------------------------------------------------------        
+
+      
+      DO j=1,n
+        ind = Indexes(j)
+
+        IF( LumpedNodeSet(ind) ) CYCLE
+        LumpedNodeSet(ind) = .TRUE.
+
+        IF ( DOF > 0 ) THEN
+          k0 = Offset + NDOFs * (Perm(ind0)-1) + DOF
+          k = OffSet + NDOFs * (Perm(ind)-1) + DOF
+
+          Coeff = DiagScaling(k0) / DiagScaling(k)
+
+          CALL MoveRow( A, k, k0, Coeff )
+          b(k0) = b(k0) + Coeff * b(k)
+
+          CALL AddToMatrixElement( A, k, k, 1.0_dp )
+          CALL AddToMatrixElement( A, k, k0, -Coeff )
+          b(k) = 0.0_dp
+        ELSE
+          DO l = 1, NDOFs
+            k0 = Offset + NDOFs + (Perm(ind0)-1) * DOF
+            k = OffSet + NDOFs * (Perm(ind)-1) + l
+
+            Coeff = DiagScaling(k0) / DiagScaling(k)
+
+            CALL MoveRow( A, k, k0, Coeff )
+            b(k0) = b(k0) + Coeff * b(k)
+          
+            CALL AddToMatrixElement( A, k, k, 1.0_dp )
+            CALL AddToMatrixElement( A, k, k0, -Coeff )
+          END DO
+        END IF
+      END DO
+
+    END SUBROUTINE SetLumpedRows
+
+
+
 !------------------------------------------------------------------------------
 !> Set values related to individual points.
 !------------------------------------------------------------------------------
@@ -2655,6 +2901,101 @@ CONTAINS
 !------------------------------------------------------------------------------
    END SUBROUTINE SetPeriodicBoundariesPass2
 !------------------------------------------------------------------------------
+
+
+
+
+!> At first pass sum together the rows related to the periodic dofs.
+!------------------------------------------------------------------------------
+   SUBROUTINE SetFrictionBoundaries( Model, A, b, &
+                      Name, NDOFs, Perm )
+!------------------------------------------------------------------------------
+    TYPE(Model_t) :: Model        !< The current model structure
+    TYPE(Matrix_t), POINTER :: A  !< The global matrix
+    REAL(KIND=dp) :: b(:)         !< The global RHS vector
+    CHARACTER(LEN=*) :: Name      !< name of the dof to be set
+    INTEGER :: NDOFs              !< the total number of DOFs for this equation
+    INTEGER, TARGET :: Perm(:)    !< The node reordering info, this has been generated at the
+                                  !< beginning of the simulation for bandwidth optimization
+!------------------------------------------------------------------------------
+    INTEGER :: t,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd
+    LOGICAL :: Found
+    REAL(KIND=dp),ALLOCATABLE :: Coeff(:)
+    LOGICAL, ALLOCATABLE :: NodeDone(:)
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+!------------------------------------------------------------------------------
+
+
+    CALL Info('SetFrictionBoundaries','Setting friction boundaries for variable: '//TRIM(Name),&
+        Level=8)
+
+    IF( NDOFs /= 2 ) THEN
+      CALL Fatal('SetFrictionBoundaries','Implemented only for 2D currently!')
+    END IF
+
+    nlen = LEN_TRIM(Name)
+    Mesh => Model % Mesh
+
+    ALLOCATE( NodeDone( SIZE( Perm ) ) ) 
+    ALLOCATE( Coeff( Mesh % MaxElementNodes ) )
+
+    NodeDone = .FALSE.
+    Coeff = 0.0_dp
+    
+    DO t = Mesh % NumberOfBulkElements+1, &
+        Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t)
+      
+      Model % CurrentElement => Element
+            
+      DO bc_id = 1,Model % NumberOfBCs
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) EXIT
+      END DO
+      IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE     
+      BC => Model % BCs(bc_id) % Values
+
+      IF( .NOT. ListGetLogical( BC,& 
+          'Friction BC ' // Name(1:nlen), Found ) ) CYCLE
+
+      NodeIndexes => Element % NodeIndexes
+      n = Element % TYPE % NumberOfNodes
+      
+      Coeff(1:n) = ListGetReal( BC,& 
+          'Friction Coefficient ' // Name(1:nlen), n, NodeIndexes )
+      NormalInd = ListGetInteger( BC,& 
+          'Friction Normal Component ' // Name(1:nlen) )
+      
+      DO i = 1, n
+        j = Perm( Nodeindexes(i) )
+        IF( NodeDone( j ) ) CYCLE
+
+        k = NDOFs * (j-1) + NormalInd
+        k2 = NDOFs * (j-1) + ( 3 - NormalInd ) 
+
+        DO l = A % Rows(k),A % Rows(k+1)-1
+          DO l2 = A % Rows(k2), A % Rows(k2+1)-1
+            IF( A % Cols(l2) == A % Cols(l) ) EXIT
+          END DO
+          A % Values(l2) = A % Values(l2) - Coeff(i) * A % Values(l)
+        END DO
+        A % Rhs(k2) = A % Rhs(k2) - Coeff(i) * A % Rhs(k)
+        NodeDone( j ) = .TRUE.
+      END DO
+    END DO
+
+    n = COUNT( NodeDone ) 
+    CALL Info('SetFrictionBoundaries','Number of friction nodes: '//TRIM(I2S(n)),Level=10)
+
+    DEALLOCATE( NodeDone, Coeff )
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetFrictionBoundaries
+!------------------------------------------------------------------------------
+
+
 
 
 !> Set the diagonal entry related to mortar BCs.
@@ -6772,6 +7113,15 @@ END FUNCTION SearchNodeL
       IF ( bnorm <= TINY( bnorm) ) THEN
         CALL Info('SolveSystem','Solution trivially zero!')
         x = 0.0d0
+        
+        ! Increase the nonlinear counter since otherwise some stuff may stagnate
+        ! Normally this is done within ComputeChange
+        iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+        Solver % Variable % NonlinIter = iterV % Values(1)
+        iterV % Values(1) = iterV % Values(1) + 1 
+        Solver % Variable % Norm = 0.0_dp
+        Solver % Variable % NonlinConverged = 1
+     
         RETURN
       END IF
     END IF
@@ -6823,6 +7173,8 @@ END FUNCTION SearchNodeL
       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       Solver % Variable % NonlinIter = iterV % Values(1)
       iterV % Values(1) = iterV % Values(1) + 1 
+      Solver % Variable % Norm = 0.0_dp
+      Solver % Variable % NonlinConverged = 1
 
       RETURN
     END IF

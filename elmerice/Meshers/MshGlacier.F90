@@ -42,7 +42,7 @@
    PROGRAM  MshGlacier
        USE GeneralUtils
        USE types
-!      USE DefUtils
+       USE DefUtils
 !
 IMPLICIT NONE
 !

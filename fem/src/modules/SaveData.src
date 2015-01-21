@@ -1393,7 +1393,7 @@ CONTAINS
       Nonodes = SIZE(Var % Values) / NoDofs
     END IF
 
-    nlist => Null()
+    nlist => NULL()
     IF(ParEnv % PEs>1) THEN
       IF(ASSOCIATED(Var % Solver)) THEN
         IF(ASSOCIATED(Var % Solver % Matrix)) THEN
@@ -2896,13 +2896,15 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   IF( NoVar == 0 ) THEN
     Var => Model % Variables
     DO WHILE( ASSOCIATED( Var ) )            
+
       IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == 1 .OR. &
           (Var % DOFs /= 1 .AND. .NOT. ASSOCIATED(Var % EigenVectors)) ) THEN
         Var => Var % Next        
         CYCLE
       END IF
 
-      IF( Var % TYPE /= Variable_on_nodes_on_elements ) THEN
+      IF( Var % TYPE /= Variable_on_nodes_on_elements .AND. &
+          Var % TYPE /= Variable_on_nodes ) THEN
         var => Var % Next 
         CYCLE
       END IF
@@ -2922,6 +2924,12 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     END DO
   END IF
     
+  IF( NoVar == 0 ) THEN
+    CALL Warn('SaveLine','No variables to save!')
+    RETURN
+  END IF
+
+
 !----------------------------------------------
 ! Calculate the number of entries for each node
 !---------------------------------------------- 

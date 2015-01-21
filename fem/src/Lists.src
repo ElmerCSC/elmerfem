@@ -1661,6 +1661,88 @@ CONTAINS
    END FUNCTION ListCheckPrefix
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Check if the keyword is with the given prefix is present in any boundary condition.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPrefixAnyBC( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: bc
+     TYPE(Valuelist_t), POINTER :: ptr
+     
+     Found = .FALSE.
+     DO bc = 1,Model % NumberOfBCs
+       ptr => ListFindPrefix( Model % BCs(bc) % Values, Name, Found )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPrefixAnyBC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is with the given prefix is present in any body.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPrefixAnyBody( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: body_id
+     TYPE(Valuelist_t), POINTER :: ptr
+     
+     Found = .FALSE.
+     DO body_id = 1,Model % NumberOfBodies
+       ptr => ListFindPrefix( Model % Bodies(body_id) % Values, Name, Found )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPrefixAnyBody
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is with the given prefix is present in any material.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPrefixAnyMaterial( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: mat_id
+     TYPE(Valuelist_t), POINTER :: ptr
+     
+     Found = .FALSE.
+     DO mat_id = 1,Model % NumberOfMaterials
+       ptr => ListFindPrefix( Model % Materials(mat_id) % Values, Name, Found )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPrefixAnyMaterial
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Check if the keyword is with the given prefix is present in any body force.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckPrefixAnyBodyForce( Model, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     INTEGER :: bf_id
+     TYPE(Valuelist_t), POINTER :: ptr
+     
+     Found = .FALSE.
+     DO bf_id = 1,Model % NumberOfBodyForces
+       ptr => ListFindPrefix( Model % BodyForces(bf_id) % Values, Name, Found )
+       IF( Found ) EXIT
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckPrefixAnyBodyForce
+!------------------------------------------------------------------------------
+
+
+
 
 
 !------------------------------------------------------------------------------

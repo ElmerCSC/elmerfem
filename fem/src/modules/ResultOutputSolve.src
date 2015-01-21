@@ -3053,8 +3053,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
   
   INTEGER, SAVE :: nTime = 0
-  LOGICAL :: GotIt, Hit, Parallel, FixedMesh
-  CHARACTER(MAX_NAME_LEN), SAVE :: FilePrefix
+  LOGICAL :: GotIt, Hit, Parallel, FixedMesh, DG
+  CHARACTER(MAX_NAME_LEN) :: FilePrefix
   CHARACTER(MAX_NAME_LEN) :: BaseFile, VtuFile, PvtuFile, PvdFile, DataSetFile
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Variable_t), POINTER :: Var
@@ -3073,7 +3073,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: NumberOfNodes, NumberOfElements, ParallelNodes, ParallelElements
   TYPE(Element_t), POINTER :: CurrentElement, LeftElem, RightElem
   TYPE(ValueList_t),POINTER :: Params
-  INTEGER :: MaxModes, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex
+  INTEGER :: MaxModes, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex, discontMesh
   INTEGER, POINTER :: ActiveModes(:), Indexes(:)
   LOGICAL :: GotActiveModes, EigenAnalysis, WriteIds, SaveBoundariesOnly, SaveBulkOnly, &
       GotMaskName, AllNodesUsed, SaveElemental, SaveNodal, GotMaskCond
@@ -3086,6 +3086,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   Params => GetSolverParams()
   Mesh => Model % Mesh
   MeshDim = Mesh % MeshDim
+
+  DG = GetLogical( Params,'Discontinuous Galerkin',GotIt)
 
   ExtCount = GetInteger( Params,'Output Count',GotIt)
   IF( GotIt ) THEN
@@ -3104,10 +3106,10 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     AsciiOutput = GetLogical( Params,'Ascii Output',GotIt)
     BinaryOutput = .NOT. AsciiOutput
   END IF
-
+  
   SaveElemental = GetLogical( Params,'Save Elemental Fields',GotIt)
   IF(.NOT. GotIt) SaveElemental = .TRUE.
-
+    
   SaveNodal = GetLogical( Params,'Save Nodal Fields',GotIt) 
   IF(.NOT. GotIt) SaveNodal = .TRUE.
 
@@ -3131,10 +3133,11 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   NoFileindex = GetLogical( Params,'No Fileindex',GotIt)
 
+  FilePrefix = GetString( Params,'Output File Name',GotIt )
+  IF ( .NOT.GotIt ) FilePrefix = "Output"
+  IF ( Mesh % DiscontMesh ) FilePrefix = TRIM(FilePrefix)//'_discont'    
+
   IF ( nTime == 1 ) THEN
-    FilePrefix = GetString( Params,'Output File Name',GotIt )
-    IF ( .NOT.GotIt ) FilePrefix = "Output"
-    IF( Mesh % DiscontMesh ) FilePrefix = TRIM(FilePrefix)//'_discont'    
     CALL Info('VtuOutputSolver','Saving results in VTK XML format with prefix: '//TRIM(FilePrefix))
     WRITE( Message,'(A,I0)') 'Saving number of partitions: ',Partitions
     CALL Info('VtuOutputSolver', Message )
@@ -3192,16 +3195,21 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   END IF
   NumberOfElements = 0
 
-  IF( NumberOfNodes > 0) THEN
+  IF( NumberOfNodes > 0 ) THEN
     ElemFirst = HUGE( ElemFirst )
     ElemLast = 0 
-    ALLOCATE(NodePerm(Mesh % NumberOfNodes))
-    NodePerm = 0
+
+    IF( DG ) THEN
+      NumberOfNodes = 0
+    ELSE
+      ALLOCATE(NodePerm(Mesh % NumberOfNodes))
+      NodePerm = 0
+    END IF
 
     ALLOCATE(ActiveElem(Mesh % NumberOfBulkElements + & 
         Mesh % NumberOfBoundaryElements))
     ActiveElem = .FALSE.
-    
+
     ! Count the true number of elements and mark the 1st and last element
     !-----------------------------------------------------------------------
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -3313,32 +3321,40 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
         IF( .NOT. ALL(MaskCond(1:n) > 0.0_dp ) ) CYCLE
       END IF
 
-      NodePerm( CurrentElement % NodeIndexes ) = 1
       ActiveElem(i) = .TRUE.
-
       NumberOfElements = NumberOfElements + 1
       ElemFirst = MIN( ElemFirst, i )
       ElemLast = MAX( ElemLast, i )
+
+      IF( DG ) THEN
+        NumberOfNodes = NumberOfNodes + CurrentElement % TYPE % NumberOfNodes
+      ELSE
+        NodePerm( CurrentElement % NodeIndexes ) = 1
+      END IF
     END DO
     
 
     ! Make the numbered list of nodes used. 
-    NumberOfNodes = COUNT( NodePerm > 0 ) 
-    AllNodesUsed = ( NumberOfNodes == Mesh % NumberOfNodes )
-
-    IF( AllNodesUsed ) THEN
-      DEALLOCATE( NodePerm ) 
+    IF( DG ) THEN
+      AllNodesUsed = .TRUE.
     ELSE
-      ALLOCATE( NodeOrder( NumberOfNodes ) ) 
-      NodeOrder = 0
-      j = 0
-      DO i=1,Mesh % NumberOfNodes
-        IF( NodePerm(i) > 0 ) THEN
-          j = j + 1       
-          NodePerm(i) = j
-          NodeOrder(j) = i
-        END IF
-      END DO
+      NumberOfNodes = COUNT( NodePerm > 0 ) 
+      AllNodesUsed = ( NumberOfNodes == Mesh % NumberOfNodes )
+      
+      IF( AllNodesUsed ) THEN
+        DEALLOCATE( NodePerm ) 
+      ELSE
+        ALLOCATE( NodeOrder( NumberOfNodes ) ) 
+        NodeOrder = 0
+        j = 0
+        DO i=1,Mesh % NumberOfNodes
+          IF( NodePerm(i) > 0 ) THEN
+            j = j + 1       
+            NodePerm(i) = j
+            NodeOrder(j) = i
+          END IF
+        END DO
+      END IF
     END IF
   END IF
 
@@ -3496,7 +3512,7 @@ CONTAINS
     INTEGER, PARAMETER :: VtuUnit = 58
     TYPE(Variable_t), POINTER :: Var,Var1
     CHARACTER(LEN=512) :: str
-    INTEGER :: i,ii,j,k,dofs,Rank,cumn,n,dim,vari,sdofs,dispdofs, disp2dofs, Offset, &
+    INTEGER :: i,ii,j,jj,k,dofs,Rank,cumn,n,dim,vari,sdofs,dispdofs, disp2dofs, Offset, &
         NoFields, IndField, iField, NoModes
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldName2, OutStr
@@ -3508,8 +3524,8 @@ CONTAINS
     INTEGER, POINTER :: Perm(:), Perm2(:), DispPerm(:), Disp2Perm(:)
     REAL(KIND=dp), POINTER :: Values(:), DispValues(:), Disp2Values(:), Values2(:), Values3(:)
     REAL(KIND=dp) :: x,y,z, val,ElemVectVal(3)
-    INTEGER(KIND=dp), ALLOCATABLE :: ElemInd(:)
-!    REAL(KIND=dp), ALLOCATABLE :: ElemVectVal(:)
+    INTEGER, ALLOCATABLE, TARGET :: ElemInd(:)
+    INTEGER, POINTER :: NodeIndexes(:)
     
     COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)
     TYPE(Solver_t), POINTER :: Solver
@@ -3531,6 +3547,7 @@ CONTAINS
     Params => GetSolverParams()
     Buffered = .TRUE.
 
+    ALLOCATE( ElemInd(Model % Mesh % MaxElementDOFS))
     
     ! This is a hack to ensure that the streamed saving will cover the whole file
     !----------------------------------------------------------------------------
@@ -3635,8 +3652,11 @@ CONTAINS
             CYCLE
           END IF
         END IF
-        IF ( Solution % TYPE == Variable_on_nodes_on_elements ) CYCLE
-        
+
+        IF ( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+          IF( .NOT. ( DG .AND. SaveElemental ) ) CYCLE
+        END IF
+
 	IF( ASSOCIATED(Solution % EigenVectors) ) THEN
           NoModes = SIZE( Solution % EigenValues )
           IF( ComponentVector ) THEN
@@ -3754,7 +3774,7 @@ CONTAINS
             k = NumberOfNodes * PrecSize * sdofs
             Offset = Offset + IntSize + k
           END IF
-         
+          
           !---------------------------------------------------------------------
           ! Data may also be appended and then its saved on the second sweep
           !---------------------------------------------------------------------
@@ -3762,46 +3782,115 @@ CONTAINS
             
             IF( BinaryOutput ) WRITE( VtuUnit ) k
             
-            DO ii = 1, NumberOfNodes
-              IF( AllNodesUsed ) THEN
-                i = ii 
-              ELSE
-                i = NodeOrder(ii)
-              END IF
-
-              IF( ASSOCIATED( Perm ) ) THEN
-                j = Perm(i)
-              ELSE
-                j = i
-              END IF
-              
-              Use2 = .FALSE.
-              IF( ComplementExists ) THEN
-                IF( j == 0 ) THEN
-                  Use2 = .TRUE. 
-                  j = Perm2(i)
-                END IF
-              END IF
-              
-              DO k=1,sdofs              
-                IF(j==0 .OR. k > dofs) THEN
-                  val = 0.0_dp
-                ELSE IF( ComponentVector ) THEN
-                  IF( k == 1 ) val = Values(j)
-                  IF( k == 2 ) val = Values2(j)
-                  IF( k == 3 ) val = Values3(j)
-                ELSE IF( Use2 ) THEN
-                  val = Values2(dofs*(j-1)+k)              
-                ELSE IF( NoModes > 0 ) THEN
-                  val = EigenVectors(IndField,dofs*(j-1)+k)                              
+            IF( DG ) THEN
+              DO i = ElemFirst, ElemLast
+                IF( .NOT. ActiveElem(i) ) CYCLE
+                CurrentElement => Model % Elements(i)
+                n = GetElementNOFNodes(CurrentElement)
+                                
+                IF ( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+                  
+                  IF ( ASSOCIATED(CurrentElement % BoundaryInfo) .AND. .NOT. &
+                      ASSOCIATED(CurrentElement % DGIndexes) ) THEN
+                    
+                    Parent => CurrentElement % BoundaryInfo % Left
+                    IF (.NOT.ASSOCIATED(Parent) ) &
+                        Parent => CurrentElement % BoundaryInfo % Right
+                    
+                    IF ( ASSOCIATED(Parent) ) THEN
+                      IF (ASSOCIATED(Parent % DGIndexes) ) THEN
+                        DO j=1,n
+                          DO k=1,Parent % TYPE % NumberOfNodes
+                            IF(Currentelement % NodeIndexes(j) == Parent % NodeIndexes(k)) &
+                                ElemInd(j) = Parent % DGIndexes(k) 
+                          END DO
+                        END DO
+                      END IF
+                    END IF
+                  ELSE
+                    ElemInd(1:n) = CurrentElement % DGIndexes(1:n) 
+                  END IF
+                  NodeIndexes => ElemInd
                 ELSE
-                  val = Values(dofs*(j-1)+k)              
+                  NodeIndexes => CurrentElement % NodeIndexes                                  
+                END IF
+
+                DO ii = 1, n
+                  IF( ASSOCIATED( Perm ) ) THEN
+                    j = Perm( NodeIndexes(ii) )
+                  ELSE
+                    j = NodeIndexes(ii)
+                  END IF
+                  
+                  Use2 = .FALSE.
+                  IF( ComplementExists ) THEN
+                    IF( j == 0 ) THEN
+                      Use2 = .TRUE. 
+                      j = Perm2( NodeIndexes(ii) )
+                    END IF
+                  END IF
+                  
+                  DO k=1,sdofs              
+                    IF(j==0 .OR. k > dofs) THEN
+                      val = 0.0_dp
+                    ELSE IF( ComponentVector ) THEN
+                      IF( k == 1 ) val = Values(j)
+                      IF( k == 2 ) val = Values2(j)
+                      IF( k == 3 ) val = Values3(j)
+                    ELSE IF( Use2 ) THEN
+                      val = Values2(dofs*(j-1)+k)              
+                    ELSE IF( NoModes > 0 ) THEN
+                      val = EigenVectors(IndField,dofs*(j-1)+k)                              
+                    ELSE
+                      val = Values(dofs*(j-1)+k)              
+                    END IF
+                    
+                    CALL AscBinRealWrite( val )                      
+                  END DO
+                END DO
+              END DO
+              
+            ELSE
+              DO ii = 1, NumberOfNodes
+                IF( AllNodesUsed ) THEN
+                  i = ii 
+                ELSE
+                  i = NodeOrder(ii)
                 END IF
                 
-                CALL AscBinRealWrite( val )
-
+                IF( ASSOCIATED( Perm ) ) THEN
+                  j = Perm(i)
+                ELSE
+                  j = i
+                END IF
+                
+                Use2 = .FALSE.
+                IF( ComplementExists ) THEN
+                  IF( j == 0 ) THEN
+                    Use2 = .TRUE. 
+                    j = Perm2(i)
+                  END IF
+                END IF
+                
+                DO k=1,sdofs              
+                  IF(j==0 .OR. k > dofs) THEN
+                    val = 0.0_dp
+                  ELSE IF( ComponentVector ) THEN
+                    IF( k == 1 ) val = Values(j)
+                    IF( k == 2 ) val = Values2(j)
+                    IF( k == 3 ) val = Values3(j)
+                  ELSE IF( Use2 ) THEN
+                    val = Values2(dofs*(j-1)+k)              
+                  ELSE IF( NoModes > 0 ) THEN
+                    val = EigenVectors(IndField,dofs*(j-1)+k)                              
+                  ELSE
+                    val = Values(dofs*(j-1)+k)              
+                  END IF
+                  
+                  CALL AscBinRealWrite( val )
+                END DO
               END DO
-            END DO
+            END IF
 
             CALL AscBinRealWrite( 0.0_dp, .TRUE. )
 
@@ -3828,9 +3917,7 @@ CONTAINS
       CALL AscBinStrWrite( OutStr ) 
     END IF
     
-  IF( SaveElemental ) THEN
-    ALLOCATE( ElemInd(Model % Mesh % MaxElementDOFS))
-
+  IF( SaveElemental .AND. .NOT. DG ) THEN
     DO Rank = 0,1
       DO Vari = 1, 999
 
@@ -3996,7 +4083,6 @@ CONTAINS
         END IF
       END DO
     END DO
-    DEALLOCATE(ElemInd)
   END IF  ! IF( SaveElemental )
 
     !---------------------------------------------------------------------
@@ -4085,42 +4171,84 @@ CONTAINS
     IF( WriteData ) THEN
       IF( BinaryOutput ) WRITE( VtuUnit ) k 
 
-      DO ii = 1, NumberOfNodes
-        IF( AllNodesUsed ) THEN
-          i = ii 
-        ELSE
-          i = NodeOrder(ii)
-        END IF
+      IF( DG ) THEN
+        DO k = ElemFirst, ElemLast
+          IF( .NOT. ActiveElem(k) ) CYCLE
+          CurrentElement => Model % Elements(k)
+          NodeIndexes => CurrentElement % NodeIndexes
+          n = GetElementNOFNodes(CurrentElement)
 
-        x = Model % Mesh % Nodes % x(i)
-        y = Model % Mesh % Nodes % y(i)
-        z = Model % Mesh % Nodes % z(i)
-        
-        ! If displacement field is active remove the displacement from the coordinates
-        IF( dispdofs > 0 .OR. disp2dofs > 0) THEN
-          j = 0
-          IF(dispdofs > 0) THEN
-            j = DispPerm(i)
-            IF( j > 0 ) THEN
-              x = x - DispValues(dispdofs*(j-1)+1)
-              y = y - DispValues(dispdofs*(j-1)+2)
-              IF(dispdofs == 3) z = z - DispValues(dispdofs*(j-1)+3)
+          DO ii = 1,n 
+            i = NodeIndexes(ii)
+            x = Model % Mesh % Nodes % x( i )
+            y = Model % Mesh % Nodes % y( i )
+            z = Model % Mesh % Nodes % z( i )
+
+            ! If displacement field is active remove the displacement from the coordinates
+            IF( dispdofs > 0 .OR. disp2dofs > 0) THEN
+              j = 0
+              IF(dispdofs > 0) THEN
+                j = DispPerm(i)
+                IF( j > 0 ) THEN
+                  x = x - DispValues(dispdofs*(j-1)+1)
+                  y = y - DispValues(dispdofs*(j-1)+2)
+                  IF(dispdofs == 3) z = z - DispValues(dispdofs*(j-1)+3)
+                END IF
+              END IF
+              IF(disp2dofs > 0 .AND. j==0) THEN
+                j = Disp2Perm(i)
+                IF( j > 0 ) THEN
+                  x = x - Disp2Values(disp2dofs*(j-1)+1)
+                  y = y - Disp2Values(disp2dofs*(j-1)+2)
+                  IF(disp2dofs == 3) z = z - Disp2Values(disp2dofs*(j-1)+3)
+                END IF
+              END IF
+            END IF
+            
+            CALL AscBinRealWrite( x )
+            CALL AscBinRealWrite( y )
+            CALL AscBinRealWrite( z )            
+          END DO
+        END DO
+
+      ELSE
+        DO ii = 1, NumberOfNodes
+          IF( AllNodesUsed ) THEN
+            i = ii 
+          ELSE
+            i = NodeOrder(ii)
+          END IF
+          
+          x = Model % Mesh % Nodes % x( i )
+          y = Model % Mesh % Nodes % y( i )
+          z = Model % Mesh % Nodes % z( i )
+          
+          ! If displacement field is active remove the displacement from the coordinates
+          IF( dispdofs > 0 .OR. disp2dofs > 0) THEN
+            j = 0
+            IF(dispdofs > 0) THEN
+              j = DispPerm(i)
+              IF( j > 0 ) THEN
+                x = x - DispValues(dispdofs*(j-1)+1)
+                y = y - DispValues(dispdofs*(j-1)+2)
+                IF(dispdofs == 3) z = z - DispValues(dispdofs*(j-1)+3)
+              END IF
+            END IF
+            IF(disp2dofs > 0 .AND. j==0) THEN
+              j = Disp2Perm(i)
+              IF( j > 0 ) THEN
+                x = x - Disp2Values(disp2dofs*(j-1)+1)
+                y = y - Disp2Values(disp2dofs*(j-1)+2)
+                IF(disp2dofs == 3) z = z - Disp2Values(disp2dofs*(j-1)+3)
+              END IF
             END IF
           END IF
-          IF(disp2dofs > 0 .AND. j==0) THEN
-            j = Disp2Perm(i)
-            IF( j > 0 ) THEN
-              x = x - Disp2Values(disp2dofs*(j-1)+1)
-              y = y - Disp2Values(disp2dofs*(j-1)+2)
-              IF(disp2dofs == 3) z = z - Disp2Values(disp2dofs*(j-1)+3)
-            END IF
-          END IF
-        END IF
-        
-        CALL AscBinRealWrite( x )
-        CALL AscBinRealWrite( y )
-        CALL AscBinRealWrite( z )
-      END DO
+          
+          CALL AscBinRealWrite( x )
+          CALL AscBinRealWrite( y )
+          CALL AscBinRealWrite( z )
+        END DO
+      END IF
 
       CALL AscBinRealWrite( 0.0_dp, .TRUE.)
     END IF
@@ -4169,6 +4297,8 @@ CONTAINS
     IF( WriteData ) THEN
       IF( BinaryOutput ) WRITE( VtuUnit ) k
 
+      ! node counter for DG
+      k = 0
       DO i = ElemFirst, ElemLast
         IF(.NOT. ActiveElem(i) ) CYCLE
 
@@ -4176,13 +4306,16 @@ CONTAINS
         n = GetElementNOFNodes(CurrentElement)
        
         DO j=1,n
-          IF( AllNodesUsed ) THEN
-            CALL AscBinIntegerWrite( CurrentElement % NodeIndexes(j) - 1 )
+          IF( DG ) THEN
+            jj = k + j
+          ELSE IF( AllNodesUsed ) THEN
+            jj = CurrentElement % NodeIndexes(j)
           ELSE
-            CALL AscBinIntegerWrite( NodePerm( CurrentElement % NodeIndexes(j)) - 1 )
+            jj = NodePerm( CurrentElement % NodeIndexes(j))
           END IF
+          CALL AscBinIntegerWrite( jj - 1 )
         END DO
-
+        k = k + n
       END DO
       CALL AscBinIntegerWrite( 0, .TRUE. ) 
     END IF
@@ -4309,8 +4442,8 @@ CONTAINS
     CLOSE( VtuUnit )
 
     CALL AscBinWriteFree()
-
-  
+    DEALLOCATE(ElemInd)
+ 
   END SUBROUTINE WriteVtuFile
     
 

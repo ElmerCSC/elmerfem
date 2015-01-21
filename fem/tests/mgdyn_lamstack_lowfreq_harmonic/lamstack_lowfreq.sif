@@ -47,7 +47,7 @@ Solver 1
    Linear System Convergence Tolerance = 1e-8
    Linear System Residual Output = 100
    Linear System Max Iterations = 5000
-   Linear System Iterative Method = BiCGStabL
+   Linear System Iterative Method = BiCGStab2
    BiCGstabl polynomial degree = 2
    Linear System Direct Method = Umfpack
 
@@ -184,5 +184,5 @@ Solver 2 :: Reference Norm = Real 0.52698493E-01
 Solver 2 :: Reference Norm Tolerance = Real 1e-3
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.52698493E-01,EPS=1e-3\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.52692906E-01,EPS=1e-3\n" );
 

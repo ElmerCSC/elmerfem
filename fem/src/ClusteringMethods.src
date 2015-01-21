@@ -64,6 +64,7 @@ CONTAINS
     TYPE(Solver_t), POINTER :: PSolver
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: MaskPerm(:)
+    LOGICAL, POINTER :: MaskActive(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: ClusterMethod 
 
     ClusterMethod = ListGetString( Solver % Values,'MG Cluster Method',GotIt)
@@ -76,11 +77,18 @@ CONTAINS
       PSolver => Solver
       Mesh => Solver % Mesh 
       MaskPerm => Solver % Variable % Perm
+      IF( ASSOCIATED( MaskPerm ) ) THEN
+        ALLOCATE( MaskActive( SIZE( MaskPerm ) ) ) 
+        MaskActive = ( MaskPerm > 0 )
+      END IF
+
       IF( Amat % NumberOfRows /= Components * Mesh % NumberOfNodes ) THEN
         CALL Fatal('ChoosClusterNodes','Mismatch in dimensions, geometric clustering works only for two levels!')
       END IF
 
-      CALL ClusterNodesByDirection(PSolver,Mesh,CF,MaskPerm)
+      CALL ClusterNodesByDirection(Solver % Values,Mesh,CF,MaskActive)
+
+      IF( ASSOCIATED( MaskPerm ) ) DEALLOCATE( MaskActive ) 
 
        PRINT *,'CF:',SIZE(CF),MINVAL(CF),MAXVAL(CF)
     

@@ -249,6 +249,7 @@ BINARIES = AdvectionDiffusion$(SHL_EXT) \
 	FDiffusion$(SHL_EXT)  \
 	FDiffusion3D$(SHL_EXT) \
 	SaveData$(SHL_EXT) \
+	SaveMesh$(SHL_EXT) \
 	ReloadData$(SHL_EXT) \
 	ReloadInput$(SHL_EXT) \
 	FreeSurfaceReduced$(SHL_EXT) \

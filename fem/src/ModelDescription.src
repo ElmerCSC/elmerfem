@@ -4599,24 +4599,26 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
   CALL Info('GetNodalElementSize','Computing nodal element size indicator')
 
-
   ALLOCATE( Solver )
   Solver % Mesh => Model % Mesh
   Mesh => Solver % Mesh
+
+  ALLOCATE(Solver % Def_Dofs(10,Model % NumberOfBodies,6))
+  Solver % Def_Dofs = -1; Solver % Def_Dofs(:,:,1)=1
 
   Params => NULL()
   CALL ListAddString( Params,'Linear System Iterative Method', 'CG' )
   CALL ListAddLogical( Params,'Linear System Symmetric', .TRUE. )
   CALL ListAddInteger( Params, 'Linear System Max Iterations', 5000 )
   CALL ListAddString( Params, 'Linear System Preconditioning', 'ILU0' )
-  CALL ListAddInteger( Params, 'Linear System Residual Output', 100 )
+  CALL ListAddInteger( Params, 'Linear System Residual Output', 1 )
   CALL ListAddConstReal( Params, 'Linear System Convergence Tolerance', 1.0d-9 )
   Solver % Values=>Params
 
-  ALLOCATE(CPerm(Mesh % NumberOfNodes))
+  ALLOCATE(CPerm(Mesh % NumberOfNodes+Mesh % NumberOfEdges))
 
   A => CreateMatrix(Model,Solver, &
-           Solver % Mesh,CPerm,1,MATRIX_CRS,.FALSE. )
+           Solver % Mesh,CPerm,1,MATRIX_CRS,.FALSE.,NodalDofsOnly=.TRUE. )
 
   A % Comm = MPI_COMM_WORLD
   A % ParMatrix => NULL()
@@ -4681,14 +4683,13 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
     A % RHS(Element % NodeIndexes) = &
              A % RHS(Element % NodeIndexes)+FORCE(1:n)
   END DO
-  
+
   h=0
   IF (ASSOCIATED(A % ParMatrix)) THEN
     CALL ParallelIter(A,A % ParallelInfo,1,h,A % RHS,Solver,A % ParMatrix)
   ELSE
     CALL IterSolver(A,h,A % RHS,Solver)
   END IF
-  
 
   WRITE(Message,'(A,2ES12.4)') 'Minimum Element Size: ',ElemMin, MINVAL(h)
   CALL Info('GetNodalElementSize',Message)
@@ -4701,7 +4702,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   DEALLOCATE(Mesh % Variables)
   Mesh % Variables => NULL()
 
-  CALL FreeMatrix(A)
+  CALL FreeSolver(Solver)
   DEALLOCATE( FORCE, STIFF,Cperm )
  
 CONTAINS
@@ -4768,6 +4769,139 @@ CONTAINS
 !------------------------------------------------------------------------------
 END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Release a mesh from the list of meshes.
+!------------------------------------------------------------------------------
+  RECURSIVE SUBROUTINE FreeMesh(Mesh)
+!------------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Mesh
+!------------------------------------------------------------------------------
+    IF (.NOT.ASSOCIATED(Mesh)) RETURN
+
+    CALL FreeMesh(Mesh % Next)
+
+    Mesh % Next   => NULL()
+    Mesh % Child  => NULL()
+    Mesh % Parent => NULL()
+
+    CALL ReleaseMesh(Mesh)
+    DEALLOCATE(Mesh)
+!------------------------------------------------------------------------------
+  END SUBROUTINE FreeMesh
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Releases structures related to the Solver. 
+!------------------------------------------------------------------------------
+  SUBROUTINE FreeSolver(Solver)
+!------------------------------------------------------------------------------
+    TYPE(Solver_t) :: Solver
+!------------------------------------------------------------------------------
+    CALL FreeValueList(Solver % Values)
+    CALL FreeMatrix(Solver % Matrix)
+    IF (ALLOCATED(Solver % Def_Dofs)) DEALLOCATE(Solver % Def_Dofs)
+    IF (ASSOCIATED(Solver % ActiveElements)) DEALLOCATE(Solver % ActiveElements)
+!------------------------------------------------------------------------------
+  END SUBROUTINE FreeSolver
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Releases value list which includes all the sif definitions, for example.
+!------------------------------------------------------------------------------
+  SUBROUTINE FreeValueList(List)
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: List
+!------------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: ptr
+   
+    ptr => List
+    DO WHILE(ASSOCIATED(ptr))
+      IF (ASSOCIATED(ptr % TValues)) DEALLOCATE(ptr % TValues)
+      IF (ASSOCIATED(ptr % FValues)) DEALLOCATE(ptr % FValues)
+      IF (ASSOCIATED(ptr % IValues)) DEALLOCATE(ptr % IValues)
+      ptr => ptr % Next
+    END DO 
+!------------------------------------------------------------------------------
+  END SUBROUTINE FreeValueList
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Releases the whole model. 
+!------------------------------------------------------------------------------
+ SUBROUTINE FreeModel(Model)
+!------------------------------------------------------------------------------
+   TYPE(Model_t), POINTER :: Model
+!------------------------------------------------------------------------------
+   TYPE(Matrix_t), POINTER :: A,B
+   INTEGER :: i
+   IF (.NOT.ASSOCIATED(Model)) RETURN
+
+   CALL FreeMesh(Model % Meshes)
+
+   CALL FreeValueList(Model % Constants)
+   CALL FreeValueList(Model % Simulation)
+
+   IF (ASSOCIATED(Model % BCs)) THEN
+     DO i=1,Model % NumberOfBCs
+#if 0
+       A => Model % BCs(i) % PMatrix
+       IF (ASSOCIATED(A)) THEN
+         DO WHILE( ASSOCIATED(A) )
+           B => A % Child
+           A % Child => NULL()
+           A => B
+         END DO
+         CALL FreeMatrix(Model % BCs(i) % PMatrix)
+       END IF
+#endif
+       CALL FreeValueList( Model % BCs(i) % Values)
+     END DO
+     DEALLOCATE(Model % BCs)
+   END IF
+
+   DO i=1,Model % NumberOfSolvers
+     CALL FreeSolver(Model % Solvers(i))
+   END DO
+   DEALLOCATE(Model % Solvers)
+
+   IF (ASSOCIATED(Model % ICs)) THEN
+     DO i=1,Model % NumberOfICs
+       CALL FreeValueList( Model % ICs(i) % Values)
+     END DO
+     DEALLOCATE(Model % ICs)
+   END IF
+
+   IF (ASSOCIATED(Model % Bodies)) THEN
+     DO i=1,Model % NumberOfBodies
+       CALL FreeValueList( Model % Bodies(i) % Values)
+     END DO
+     DEALLOCATE(Model % Bodies)
+   END IF
+
+   IF (ASSOCIATED(Model % Equations)) THEN
+     DO i=1,Model % NumberOfEquations
+       CALL FreeValueList( Model % Equations(i) % Values)
+     END DO
+     DEALLOCATE(Model % Equations)
+   END IF
+
+   IF (ASSOCIATED(Model % BodyForces)) THEN
+     DO i=1,Model % NumberOfBodyForces
+       CALL FreeValueList( Model % BodyForces(i) % Values)
+     END DO
+     DEALLOCATE(Model % BodyForces)
+   END IF
+
+   Model=>NULL()
+!------------------------------------------------------------------------------
+ END SUBROUTINE FreeModel
+!------------------------------------------------------------------------------
+
 
 END MODULE ModelDescription
 

@@ -67,14 +67,6 @@ Body 3
   Initial Condition = 1
 End
 
-Solver 7
-  Exec Solver = never
-
-  Procedure = "HeatSolve" "HeatSolver"
-  Equation = export
-  Variable = x
-  Exported Variable 1 = Coordinates[Coordinates:3]
-End
 
 Solver 1
   Exec Solver = Before Timestep
@@ -176,10 +168,10 @@ End
 
 
 Solver 6
-  Exec Solver = never
+!  Exec Solver = never
   Equation = VtuOutput
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = f
+  Output File Name = case
   Vtu Format = True
   Single Precision = True
 End 
@@ -233,7 +225,8 @@ Boundary Condition 3
 
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
-  Stride Projector = Logical True
+  Level Projector = Logical True
+  Level Projector Strong = Logical True
 End
 
 Boundary Condition 4
@@ -242,7 +235,8 @@ Boundary Condition 4
 
   Mortar BC = 5
   Radial Projector = Logical True
-  Stride Projector = Logical True
+  Level Projector = Logical True
+  Level Projector Strong = Logical True
 End
 
 Boundary Condition 5
@@ -256,7 +250,8 @@ Boundary Condition 6
 
   Mortar BC = 7
   Radial Projector = Logical True
-  Stride Projector = Logical True
+  Level Projector = Logical True
+  Level Projector Strong = Logical True
 End
 
 Boundary Condition 7
@@ -285,4 +280,4 @@ End
 Solver 2 :: Reference Norm = Real 0.11344121E-02
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.11344121E-02\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM=0.11344121E-02\n");

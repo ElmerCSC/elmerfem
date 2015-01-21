@@ -152,9 +152,6 @@ Material 1
 
   Max Zs Bottom = Real 1.0e6
 
-  !! Grounding line condition
-  GL_toler = Real $GLTolerance
-
   Mesh Youngs Modulus = Real 1.0
   Mesh Poisson Ratio = real 0.3
    
@@ -171,11 +168,11 @@ End
 !              = 0 if it is at the transition between grounded and floating
 Solver 1
   Exec Solver = Before All
-  Procedure = "ElmerIceSolvers" "GroundedSolverInit"
+  Procedure = "ElmerIceSolvers" "GroundedSolver"
   Equation = "GroundedMaskInit"
   Variable = "GroundedMask"
   Variable DOFs = 1
-  TolerInit = Real $GLTolerance 
+  Toler = Real $GLTolerance 
   Bedrock Variable = String "Bedrock"
 End
 
