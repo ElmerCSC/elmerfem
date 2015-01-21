@@ -694,14 +694,13 @@ CONTAINS
     COMPLEX(KIND=dp) :: LOAD(:,:), Bcoef(:)
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
-    TYPE(Element_t), POINTER :: Element!, Parent
+    TYPE(Element_t), POINTER :: Element
     LOGICAL,OPTIONAL :: PiolaVersion
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ!,Normal(3)
     COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     LOGICAL :: Stat
-    !INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q
 
@@ -880,17 +879,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  !IF (GetLogical(Solver % Values,'Calculate JxB',Found)) THEN
-    !i = i + 1
-    !IF ( vDOFs==1 ) THEN
-      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            !"JxB E[JxB E:3]" )
-    !ELSE
-      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            !"JxB E[JxB re E:3 JxB im E:3]" )
-    !END IF
-  !END IF
-
   IF ( GetLogical( Solver % Values, 'Calculate Maxwell Stress', Found ) ) THEN
     i = i + 1
     IF ( vDOFs==1 ) THEN
@@ -899,17 +887,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
     ELSE
       CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
            "Maxwell Stress E[Maxwell Stress re E:6 Maxwell Stress im E:6]" )
-    END IF
-  END IF
-
-  IF ( GetLogical( Solver % Values, 'Calculate Current Density', Found ) ) THEN
-    i = i + 1
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-          "Current Density E[Current Density E:3]" )
-    ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-          "Current Density E[Current Density re E:3 Current Density im E:3]" )
     END IF
   END IF
 
@@ -995,15 +972,17 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
   ! add these in the beginning, so that SaveData sees these existing, even
   ! if executed before the actual computations...
   ! -----------------------------------------------------------------------
-  CALL ListAddConstReal(Model % Simulation,'res: Eddy current power',0._dp)
-  CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',0._dp)
+  !CALL ListAddConstReal(Model % Simulation,'res: Eddy current power',0._dp)
+  !CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',0._dp)
+  CALL ListAddConstReal(Model % Simulation,'res: Functional Value', 0._dp)
+  CALL ListAddConstReal(Model % Simulation,'res: Functional Value im', 0._dp)
 
   IF (GetLogical(GetSolverParams(),'Show Angular Frequency',Found)) &
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency',0._dp)
 
   ! add these in the beginning only if the Magnetix Flux Average is computed
   ! -------------------------------------------------------------------------
-  IF (ListGetLogicalAnyBC( Model,'Magnetic Flux Average')) THEN
+  IF (ListGetLogicalAnyBC( Model,'Magnetic Flux Average')) THEN ! \TODO: what to do with these?
     CALL ListAddConstReal( Model % Simulation,'res: Magnetic Flux Average', 0._dp)
     CALL ListAddConstReal(Model % Simulation, &
                            'res: Magnetic Flux Density Average',0._dp)
@@ -1254,9 +1233,13 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
                        xx(2*(i-1)+1) * bb(2*(i-1)+2) + &
                        xx(2*(i-1)+2) * bb(2*(i-1)+1) ]
    END DO
+   
    hdotE_r = ParallelReduction(hdotE(1))
    hdotE_i = ParallelReduction(hdotE(2))
-   write (*,*), 'hdotE = ', hdotE
+   write (Message,*), 'Functional value:', hdotE
+   CALL Info('VectorHelmholtzSolver',Message)
+   CALL ListAddConstReal(Model % Simulation, 'res: Functional value', hdotE_r)
+   CALL ListAddConstReal(Model % Simulation, 'res: Functional value im', hdotE_i)
 
    CALL DefaultInitialize()
    DO i = 1, GetNOFActive()
@@ -1482,13 +1465,11 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      Solver % Matrix % RHS => Fsave
    END IF
 
-   WRITE(Message,*) 'Eddy current power: ', Power
-   CALL Info( 'MagnetoDynamics', Message )
-   CALL ListAddConstReal( Model % Simulation, 'res: Eddy current power', Power )
-
    WRITE(Message,*) '(Electro)Magnetic Field Energy: ', Energy
-   CALL Info( 'MagnetoDynamics', Message )
+   CALL Info( 'VectorHelmholtz', Message )
    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
+
+   
 
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Tcoef,RotM )
