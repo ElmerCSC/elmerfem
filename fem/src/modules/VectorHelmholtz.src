@@ -276,13 +276,14 @@ CONTAINS
 
     Acoef(1:n) = GetReal( Material, 'Inverse Relative Permeability', Found )
     IF ( Found ) THEN
-      Acoef(1:n) = Acoef(1:n)/Avacuum
+      Acoef(1:n) = Acoef(1:n)
     END IF
     IF ( Found ) THEN
       Acoef(1:n) = Acoef(1:n)
       Acoef(1:n) = CMPLX(REAL(Acoef(1:n)), &
         GetReal( Material, 'Inverse Relative Permeability im', Found ), KIND=dp )
     END IF
+    Acoef = Acoef / Avacuum
 !------------------------------------------------------------------------------
   END SUBROUTINE GetInvPermeabilityC
 !------------------------------------------------------------------------------
@@ -780,7 +781,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
   LOGICAL :: Found, ElementalFields
   INTEGER, POINTER :: Active(:)
-  INTEGER :: mysolver,i,j,k,n,m,vDOFs, soln!,l
+  INTEGER :: mysolver,i,j,k,n,m,vDOFs,soln!,l
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
@@ -824,6 +825,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   END DO
   soln = i
   IF ( vDOFs==0 ) vDOFs=1
+  vDOFs = 2
 
   ALLOCATE(Solvers(n+1))
   Solvers(1:n) = Model % Solvers
@@ -844,69 +846,71 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
     CALL ListAddString( SolverParams, 'Mesh', pname )
   END IF
 
-  i = 0
-
-  IF (GetLogical(SolverParams,'Calculate Flux Density',Found)) THEN
-    i = i + 1
+  IF (GetLogical(Solver % Values,'Calculate Magnetic Flux Density',Found)) THEN
     IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-           "Magnetic Flux Density E[Magnetic Flux Density E:3]" )
+      CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable', SolverParams), &
+        "Magnetic Flux Density E[Magnetic Flux Density E:3]" )
     ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-           "Magnetic Flux Density E[Magnetic Flux Density re E:3 Magnetic Flux Density im E:3]" )
+      CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable', SolverParams), &
+        "Magnetic Flux Density E[Magnetic Flux Density re E:3 Magnetic Flux Density im E:3]" )
     END IF
   END IF
 
   IF (GetLogical(Solver % Values,'Calculate Electric field',Found)) THEN
-    i = i + 1
     IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable', SolverParams), &
             "Electric field E[Electric field E:3]" )
     ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable', SolverParams), &
             "Electric field E[Electric field re E:3 Electric field im E:3]" )
     END IF
   END IF
 
   IF (GetLogical(Solver % Values,'Calculate Magnetic Field Strength',Found)) THEN
-    i = i + 1
     IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable', SolverParams), &
             "Magnetic Field Strength E[Magnetic Field Strength E:3]" )
     ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable', SolverParams), &
             "Magnetic Field Strength E[Magnetic Field Strength re E:3 Magnetic Field Strength im E:3]" )
     END IF
   END IF
 
-  IF ( GetLogical( Solver % Values, 'Calculate Maxwell Stress', Found ) ) THEN
-    i = i + 1
-    IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-           "Maxwell Stress E[Maxwell Stress E:6]" )
-    ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-           "Maxwell Stress E[Maxwell Stress re E:6 Maxwell Stress im E:6]" )
-    END IF
-  END IF
+  !IF ( GetLogical( Solver % Values, 'Calculate Maxwell Stress', Found ) ) THEN
+    !i = i + 1
+    !IF ( vDOFs==1 ) THEN
+      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+           !"Maxwell Stress E[Maxwell Stress E:6]" )
+    !ELSE
+      !CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+           !"Maxwell Stress E[Maxwell Stress re E:6 Maxwell Stress im E:6]" )
+    !END IF
+  !END IF
 
   IF ( GetLogical( Solver % Values, 'Calculate Poynting vector', Found ) ) THEN
-    i = i + 1
     IF ( vDOFs==1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable', SolverParams), &
         "Poynting vector E[Poynting vector E:3]" )
     ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+      CALL ListAddString( SolverParams,&
+        NextFreeKeyword('Exported Variable', SolverParams), &
         "Poynting vector E[Poynting vector re E:3 Poynting vector im E:3]" )
     END IF
   END IF
 
   IF ( GetLogical( Solver % Values, 'Calculate Div of Poynting Vector', Found ) ) THEN
-    i = i + 1
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams,&
+      NextFreeKeyword('Exported Variable', SolverParams), &
       "Div Poynting Vector E[Div Poynting Vector re E:1 Div Poynting Vector im E:1]" )
-    i = i + 1
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams,&
+      NextFreeKeyword('Exported Variable', SolverParams), &
       "Electric Work E[Electric Work re E:1 Electric Work im E:1]")
   END IF
 
@@ -999,59 +1003,36 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
   IF(Found.AND..NOT.NodalFields) RETURN
 
-  i=1
-  DO WHILE(.TRUE.)
-    IF ( .NOT.ListCheckPresent(SolverParams, &
-          "Exported Variable "//TRIM(i2s(i))) ) EXIT
-    i = i + 1
-  END DO
-
-  i = i - 1
   IF (GetLogical(SolverParams,'Calculate Magnetic Flux Density',Found)) THEN
-    i = i + 1
-    IF ( Var % dofs == 1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-        "Magnetic Flux Density[Magnetic Flux Density:3]" )
-    ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-        "Magnetic Flux Density[Magnetic Flux Density re:3 Magnetic Flux Density im:3]" )
-    END IF
+    CALL ListAddString( SolverParams,&
+      NextFreeKeyword('Exported Variable', SolverParams), &
+      "Magnetic Flux Density[Magnetic Flux Density re:3 Magnetic Flux Density im:3]" )
   END IF
 
   IF (GetLogical(SolverParams,'Calculate Electric field',Found)) THEN
-    i = i + 1
-    IF ( Var  % dofs==1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "Electric field[Electric field:3]" )
-    ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams,&
+      NextFreeKeyword('Exported Variable', SolverParams), &
       "Electric field[Electric field re:3 Electric field im:3]")
-    END IF
   END IF
 
   IF (GetLogical(SolverParams,'Calculate Magnetic Field Strength',Found)) THEN
-    i = i + 1
-    IF ( Var  % dofs==1 ) THEN
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-            "Magnetic Field Strength[Magnetic Field Strength:3]" )
-    ELSE
-      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams,&
+      NextFreeKeyword('Exported Variable', SolverParams), &
       "Magnetic Field Strength[Magnetic Field Strength re:3 Magnetic Field Strength im:3]")
-    END IF
   END IF
 
   IF ( GetLogical( SolverParams, 'Calculate Poynting vector', Found ) ) THEN
-    i = i + 1
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams,&
+      NextFreeKeyword('Exported Variable', SolverParams), &
       "Poynting vector[Poynting vector re:3 Poynting vector im:3]" )
   END IF
 
   IF ( GetLogical( SolverParams, 'Calculate Div of Poynting Vector', Found ) ) THEN
-    i = i + 1
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams,&
+      NextFreeKeyword('Exported Variable', SolverParams), &
       "Div Poynting Vector[Div Poynting Vector re:1 Div Poynting Vector im:1]" )
-    i = i + 1
-    CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+    CALL ListAddString( SolverParams,&
+      NextFreeKeyword('Exported Variable', SolverParams), &
       "Electric Work[Electric Work re:1 Electric Work im:1]")
   END IF
 !------------------------------------------------------------------------------
@@ -1078,14 +1059,14 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
   
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), R(35), Norm
-   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3),&
-                    VP_ip(2,3)
-   REAL(KIND=dp) ::  detJ, R_ip, Omega, Power, Energy
+   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), Norm
+   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), E(2,3)
+   REAL(KIND=dp) :: detJ, Omega, Power, Energy
    REAL(KIND=dp) :: Freq, ComponentLoss(2)
    REAL(KIND=dp) :: TotalLoss
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area
-   COMPLEX(KIND=dp) ::   H(3), ExHc(3), PR_ip, divS, PR(16), J_ip(3), EdotJ
+   COMPLEX(KIND=dp) :: H(3), ExHc(3), PR_ip, divS, J_ip(3), PR(16), EdotJ, EF_ip(3), R_ip, &!
+                       B(3), R(35)
 
    !COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
@@ -1093,13 +1074,13 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
-   TYPE(Variable_t), POINTER :: MFD, MFS, CD, ECF, &
-                                JH, EF, PV, DIVPV, EW
-   TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_ECF, &
-                                  EL_EF, EL_PV, EL_DIVPV, EL_EW
+   TYPE(Variable_t), POINTER :: MFD, MFS,  &
+                                EF, PV, DIVPV, EW
+   TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, &
+                                EL_EF, EL_PV, EL_DIVPV, EL_EW
                               
-
-   INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,vDOFs,dim,BodyId
+   !
+   INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,dofcount,vDOFs,dim,BodyId
 
    TYPE(Solver_t), POINTER :: pSolver
    REAL(KIND=dp), POINTER :: xx(:), bb(:)
@@ -1137,7 +1118,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    Mesh => GetMesh()
 
-   MFD => NULL(); EL_MFD => NULL();
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
    EL_MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density E' )
 
@@ -1163,21 +1143,14 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    END DO
    vDOFs = pSolver % Variable % dofs
  
-   ECF => NULL(); EL_ECF => NULL(); 
-   CD => NULL(); EL_CD => NULL();
-
-
    dofs = 0 
    IF ( ASSOCIATED(MFD) ) dofs=dofs+3
    IF ( ASSOCIATED(MFS) ) dofs=dofs+3
    IF ( ASSOCIATED(EF)  ) dofs=dofs+3
-   IF ( ASSOCIATED(CD)  ) dofs=dofs+3
-   IF ( ASSOCIATED(ECF) ) dofs=dofs+3
    IF ( ASSOCIATED(PV) ) dofs=dofs+3
    IF ( ASSOCIATED(DIVPV) ) dofs=dofs+1
    IF ( ASSOCIATED(EW) ) dofs=dofs+1
    dofs = dofs*2  ! complex problem
-   IF ( ASSOCIATED(JH) ) dofs=dofs+1
    NodalFields = dofs>0
 
    IF(NodalFields) THEN
@@ -1187,30 +1160,19 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      IF ( ASSOCIATED(EL_MFD) ) dofs=dofs+3
      IF ( ASSOCIATED(EL_MFS) ) dofs=dofs+3
      IF ( ASSOCIATED(EL_EF)  ) dofs=dofs+3
-     IF ( ASSOCIATED(EL_CD)  ) dofs=dofs+3
-     !IF ( ASSOCIATED(EL_FWP) ) dofs=dofs+1
-     IF ( ASSOCIATED(EL_ECF) ) dofs=dofs+3
-     !IF ( ASSOCIATED(EL_JXB) ) dofs=dofs+3
-     !IF ( ASSOCIATED(EL_MST) ) dofs=dofs+6
      IF ( ASSOCIATED(EL_PV) )  dofs=dofs+3
      IF ( ASSOCIATED(EL_DIVPV) ) dofs=dofs+1
      IF ( ASSOCIATED(EL_EW) ) dofs=dofs+1
      dofs = dofs*2 ! complex problem
-     !IF ( ASSOCIATED(EL_JH) ) dofs=dofs+1
    END IF
 
    ElementalFields = .FALSE.
    IF ( ASSOCIATED(EL_MFD) ) ElementalFields=.TRUE.
    IF ( ASSOCIATED(EL_MFS) ) ElementalFields=.TRUE.
    IF ( ASSOCIATED(EL_EF)  ) ElementalFields=.TRUE.
-   IF ( ASSOCIATED(EL_CD)  ) ElementalFields=.TRUE.
-   !IF ( ASSOCIATED(EL_FWP) ) ElementalFields=.TRUE.
-   IF ( ASSOCIATED(EL_ECF) ) ElementalFields=.TRUE.
-   !IF ( ASSOCIATED(EL_JXB) ) ElementalFields=.TRUE.
-   !IF ( ASSOCIATED(EL_MST) ) ElementalFields=.TRUE.
-   !IF ( ASSOCIATED(EL_JH) ) ElementalFields=.TRUE.
-   IF ( ASSOCIATED(EL_DIVPV) ) ElementalFields=.TRUE.
    IF ( ASSOCIATED(EL_PV) ) ElementalFields=.TRUE.
+   IF ( ASSOCIATED(EL_DIVPV) ) ElementalFields=.TRUE.
+   IF ( ASSOCIATED(EL_EW) ) ElementalFields=.TRUE.
 
    n = Mesh % MaxElementDOFs
 
@@ -1289,24 +1251,24 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
      MASS  = 0._dp
      FORCE = 0._dp
-     E = 0._dp; B=0._dp
+     E = 0._dp; B=0._dp; divS=0._dp
      DO j = 1,IP % n
        u = IP % U(j)
        v = IP % V(j)
        w = IP % W(j)
 
        IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-               F, G, DetJ, Basis, WBasis, RotWBasis, dBasisdx, ApplyPiolaTransform=.TRUE.)
+         stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+           F, G, DetJ, Basis, WBasis, RotWBasis, dBasisdx, ApplyPiolaTransform=.TRUE.)
        ELSE
-          stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+         stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
+         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
        END IF
 
-       B(1,:) = MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega)
-       B(2,:) = MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:) ) / (-Omega)
+       B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
+         MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:) ) / (-Omega))
 
-        J_ip(:) = MATMUL(Load(:,1:n),Basis(1:n))
+       J_ip(:) = MATMUL(Load(:,1:n),Basis(1:n))
 
        !-------------------------------
        ! The conductivity as a tensor
@@ -1319,29 +1281,19 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        END DO
 
        !IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS) ) THEN
-         R_ip = SUM( Basis(1:n)*R(1:n) )
-         H = R_ip*CMPLX(B(1,:), B(2,:), KIND=dp)
+       R_ip = SUM( Basis(1:n)*R(1:n) )
+       H = R_ip*B
        !END IF
 
 
        PR_ip = SUM( Basis(1:n)*PR(1:n) )
 
-       !IF( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF) ) THEN
-         DO l=1,vDOFs
-           VP_ip(l,:)=MATMUL(SOL(l,np+1:nd),WBasis(1:nd-np,:))
-         END DO
-       !END IF
+       EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)))
 
-       !IF ( ASSOCIATED(PV).OR.ASSOCIATED(EL_PV) ) THEN
-         ExHc = ComplexCrossProduct(CMPLX(VP_ip(1,:),VP_ip(2,:), KIND=dp), CONJG(H))
-       !END IF
+       ExHc = ComplexCrossProduct(EF_ip, CONJG(H))
 
-       !IF ( ASSOCIATED(DIVPV) .OR. ASSOCIATED(EL_DIVPV) ) THEN ! \TODO make B and VP_ip complex variables and rename VP_ip -> E
-         EdotJ = SUM(CMPLX(VP_ip(1,:), VP_ip(2,:), KIND=dp)*CONJG(J_IP))
-         divS = CMPLX(0,1,KIND=dp) * Omega * 0.5_dp * (SUM(CMPLX(B(1,:), B(2,:), KIND=dp)*CONJG(H)) + &
-                                         SUM(CMPLX(VP_ip(1,:), VP_ip(2,:), KIND=dp) * CONJG(PR_ip * &
-                                                  CMPLX(VP_ip(1,:), VP_ip(2,:), KIND=dp)))) + EdotJ
-       !END IF
+       EdotJ = SUM(EF_ip*CONJG(J_ip))
+       divS = im * Omega * 0.5_dp * (SUM(B*CONJG(H)) + SUM(EF_ip * CONJG(PR_ip * EF_ip)))  + EdotJ
 
        s = IP % s(j) * detJ
 
@@ -1363,31 +1315,29 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
                TRANSPOSE(E(2:2,1:dim)) ) * s
        END IF
 
-       Energy = Energy + s*(REAL(PR_ip)*SUM(E**2) + R_ip*SUM(B**2))/2
+       Energy = Energy + s*(REAL(PR_ip)*SUM(E**2) + REAL(R_ip)*SUM(B**2))/2 ! \TODO: this should contribute to \int \divg S dx
        DO p=1,n
          DO q=1,n
            MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
          END DO
          k = 0
          IF (ASSOCIATED(MFD) .OR. ASSOCIATED(EL_MFD)) THEN
-           DO l=1,vDOFs
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*B(l,:)*Basis(p)
-             k = k+3
-           END DO
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(B)*Basis(p)
+           k = k+3
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(B)*Basis(p)
+           k = k+3
          END IF
          IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) THEN
-           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(1,:)) ! \TODO: only real muinv supported
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(H) 
            k = k+3
-           IF ( vDOFs>1 ) THEN
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(2,:)) ! \TODO: only real muinv supported
-             k = k+3
-           END IF
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(H)
+           k = k+3
          END IF
          IF ( ASSOCIATED(EF).OR.ASSOCIATED(EL_EF)) THEN
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*VP_ip(1,:)*Basis(p)
-             k = k+3
-             FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*VP_ip(2,:)*Basis(p)
-             k = k+3
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*REAL(EF_ip)*Basis(p)
+           k = k+3
+           FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*AIMAG(EF_ip)*Basis(p)
+           k = k+3
          END IF
          IF ( ASSOCIATED(PV).OR.ASSOCIATED(EL_PV)) THEN
            FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+0.5_dp*s*REAL(ExHc)*Basis(p)
@@ -1420,18 +1370,14 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      END IF
 
      IF(ElementalFields) THEN
-       dofs = 0
+       dofcount = 0
        CALL LUdecomp(MASS,n,pivot)
-       CALL LocalSol(EL_MFD,  6, n, MASS, FORCE, pivot, dofs) ! 2*3 components
-       CALL LocalSol(EL_MFS,  6, n, MASS, FORCE, pivot, dofs)
-       CALL LocalSol(EL_EF,   6, n, MASS, FORCE, pivot, dofs)
-       CALL LocalSol(EL_PV,   6, n, MASS, FORCE, pivot, dofs)
-       CALL LocalSol(EL_DIVPV,2, n, MASS, FORCE, pivot, dofs)
-       CALL LocalSol(EL_EW,   2, n, MASS, FORCE, pivot, dofs)
-       !CALL LocalSol(EL_JXB,  3*vDOFs, n, MASS, FORCE, pivot, dofs)
-       !CALL LocalSol(EL_FWP,  1*vDOFs, n, MASS, FORCE, pivot, dofs)
-       !CALL LocalSol(EL_JH,   1, n, MASS, FORCE, pivot, dofs)
-       !CALL LocalSol(EL_MST,  6*vDOFs, n, MASS, FORCE, pivot, dofs)
+       CALL LocalSol(EL_MFD,  6, n, MASS, FORCE, pivot, dofcount) ! 2*3 components
+       CALL LocalSol(EL_MFS,  6, n, MASS, FORCE, pivot, dofcount)
+       CALL LocalSol(EL_EF,   6, n, MASS, FORCE, pivot, dofcount)
+       CALL LocalSol(EL_PV,   6, n, MASS, FORCE, pivot, dofcount)
+       CALL LocalSol(EL_DIVPV,2, n, MASS, FORCE, pivot, dofcount)
+       CALL LocalSol(EL_EW,   2, n, MASS, FORCE, pivot, dofcount)
      END IF
 
    END DO
@@ -1451,25 +1397,19 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    IF(NodalFields) THEN
      Fsave => Solver % Matrix % RHS
-     dofs = 0
-     CALL GlobalSol(MFD,  6, Gforce, dofs)
-     CALL GlobalSol(MFS,  6, Gforce, dofs)
-     CALL GlobalSol(EF ,  6, Gforce, dofs)
-     CALL GlobalSol(PV,   6, Gforce, dofs)
-     CALL GlobalSol(DIVPV,2, Gforce, dofs)
-     CALL GlobalSol(EW,   2, Gforce, dofs)
-     !CALL GlobalSol(JXB,  3*vDOFs, Gforce, dofs)
-     !CALL GlobalSol(FWP,  1*vDOFs, Gforce, dofs)
-     !CALL GlobalSol(JH ,  1      , Gforce, dofs)
-     !CALL GlobalSol(MST , 6*vDOFs, Gforce, dofs)
+     dofcount = 0
+     CALL GlobalSol(MFD,  6, Gforce, dofcount)
+     CALL GlobalSol(MFS,  6, Gforce, dofcount)
+     CALL GlobalSol(EF ,  6, Gforce, dofcount)
+     CALL GlobalSol(PV,   6, Gforce, dofcount)
+     CALL GlobalSol(DIVPV,2, Gforce, dofcount)
+     CALL GlobalSol(EW,   2, Gforce, dofcount)
      Solver % Matrix % RHS => Fsave
    END IF
 
    WRITE(Message,*) '(Electro)Magnetic Field Energy: ', Energy
    CALL Info( 'VectorHelmholtz', Message )
    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
-
-   
 
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Tcoef,RotM )
@@ -1686,7 +1626,7 @@ CONTAINS
       REAL(KIND=dp) :: FaceBasis(n), P1Basis(n1), P2Basis(n2)
       REAL(KIND=dp) :: Jump(n1+n2), detJ, U, V, W, S
       LOGICAL :: Stat
-      INTEGER ::  p, q, t!, nParent,i,j,nFace,
+      INTEGER ::  p, q, t
       TYPE(GaussIntegrationPoints_t) :: IntegStuff
 
       TYPE(Nodes_t) :: FaceNodes, P1Nodes, P2Nodes
@@ -1743,8 +1683,9 @@ CONTAINS
        TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
        REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)!,L(3)
-       REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B(2, 3), &
+       REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3),  &
                         SOL(2,32), Flux(2), Area
+       COMPLEX(KIND=DP) :: B(3)
        LOGICAL :: Stat
        TYPE(GaussIntegrationPoints_t) :: IP
        INTEGER :: j, k, np, vDOFs
@@ -1758,19 +1699,18 @@ CONTAINS
 
        DO j=1,IP % n
          stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-                  IP % W(j), detJ, Basis, dBasisdx )
+                             IP % W(j), detJ, Basis, dBasisdx )
          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
          Normal = NormalVector( Element, Nodes, IP % U(j), IP % V(j), .TRUE. )
 
          s = IP % s(j) * detJ
 
-         DO k=1, vDOFs
-           B(k,:) = MATMUL( SOL(k, np+1:nd), RotWBasis(1:nd-np,:) )
-           Flux(k) = Flux(k) + s * SUM(Normal * B(k,:))
-         END DO  
+         B = CMPLX(MATMUL( SOL(1, np+1:nd), RotWBasis(1:nd-np,:) ), &
+                   MATMUL( SOL(2, np+1:nd), RotWBasis(1:nd-np,:) ))
+         Flux(1) = Flux(1) + s * REAL(SUM(Normal * B))
+         Flux(2) = Flux(2) + s * AIMAG(SUM(Normal * B))
 
          Area = Area + s
-
       END DO
 
     END SUBROUTINE calcAverageFlux
