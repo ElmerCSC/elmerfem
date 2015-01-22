@@ -238,6 +238,7 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
 
         CALL GetElementNodes(Nodes, Element)
 
+        IF (ANY(GroundedMaskPerm(Element % NodeIndexes(1:n))==0)) CYCLE
         DO ii = 1,n
 
            Nn = GroundedMaskPerm(Element % NodeIndexes(ii))
@@ -286,12 +287,14 @@ FUNCTION SlidCoef_Contact ( Model, nodenumber, y) RESULT(Bdrag)
         DO tt = 1, Model % NumberOfBoundaryElements
            
            Element => GetBoundaryElement(tt)
+           IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
            n = GetElementNOFNodes(Element)
            
            CALL GetElementNodes(Nodes, Element)
            MSum = 0
            ZSum = 0
            
+           IF (ANY(GroundedMaskPerm(Element % NodeIndexes(1:n))==0)) CYCLE
            DO ii = 1,n
               
               Nn = GroundedMaskPerm(Element % NodeIndexes(ii))
