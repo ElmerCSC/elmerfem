@@ -5660,8 +5660,8 @@ END SUBROUTINE GetMaxDefs
             StrongLevelEdges = .TRUE.
             StrongExtrudedEdges = .TRUE.
           ELSE
-            StrongLevelEdges = ListGetLogical( BC,'&
-                Level Projector Plane Edges Strong',Found )
+            StrongLevelEdges = ListGetLogical( BC,&
+                'Level Projector Plane Edges Strong',Found )
             StrongExtrudedEdges = ListGetLogical( BC,&
                 'Level Projector Extruded Edges Strong',Found )
             StrongSkewEdges = ListGetLogical( BC,&
