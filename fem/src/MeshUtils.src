@@ -14736,7 +14736,8 @@ CONTAINS
       n = MIN( SIZE(Iarray), dim ) 
       Divisions(1:n) = Iarray(1:n)
     ELSE
-      clustersize = ListGetInteger( Params,'MG Cluster Size',GotIt)
+      clustersize = ListGetInteger( Params,'Partitioning Size',GotIt)
+      IF(.NOT. GotIt) clustersize = ListGetInteger( Params,'MG Cluster Size',GotIt)
       IF( GotIt .AND. ClusterSize > 0) THEN
         IF( dim == 2 ) THEN
           Divisions(1) = ( nsize / clustersize ) ** 0.5
@@ -14958,7 +14959,8 @@ CONTAINS
       n = MIN( SIZE(Iarray), dim ) 
       Divisions(1:n) = Iarray(1:n)
     ELSE
-      clustersize = ListGetInteger( Params,'MG Cluster Size',GotIt)
+      clustersize = ListGetInteger( Params,'Partitioning Size',GotIt)
+      IF(.NOT. GotIt) clustersize = ListGetInteger( Params,'MG Cluster Size',GotIt)
       IF( GotIt .AND. ClusterSize > 0) THEN
         IF( dim == 2 ) THEN
           Divisions(1) = ( nsize / clustersize ) ** 0.5
@@ -15024,13 +15026,13 @@ CONTAINS
         
         Element => Mesh % Elements(i)
         NodeIndexes => Element % NodeIndexes 
-        n = Element % Type % NumberOfNodes
+        n = Element % TYPE % NumberOfNodes
 
         Coord(1) = SUM( Mesh % Nodes % x( NodeIndexes ) ) / n
         Coord(2) = SUM( Mesh % Nodes % y( NodeIndexes ) ) / n
         Coord(3) = SUM( Mesh % Nodes % z( NodeIndexes ) ) / n
 
-        Arrange(j) = SUM( Weights * Coord )
+        Arrange(i) = SUM( Weights * Coord )
       END DO
 
       ! Order the nodes for given direction
@@ -15106,7 +15108,7 @@ CONTAINS
     WRITE(Message,'(A,T28,F10.2)') 'Deviation of nodes:',devpart
     CALL Info('ClusterElementsByDirection',Message)
     
-
+    
     IF( ASSOCIATED(Clustering)) THEN
       Clustering = Nodepart 
       DEALLOCATE(Nodepart)
@@ -15119,6 +15121,166 @@ CONTAINS
 
 
   END SUBROUTINE ClusterElementsByDirection
+
+
+
+  SUBROUTINE ClusterElementsUniform(Params,Mesh,Clustering,MaskActive)
+ 
+    USE GeneralUtils
+
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, OPTIONAL :: MaskActive(:)
+    INTEGER, POINTER :: Clustering(:)
+!---------------------------------------------------------------
+    LOGICAL :: MaskExists,Found
+    INTEGER :: i,j,k,ind,n,dim,nsize,clusters
+    INTEGER, POINTER :: Iarray(:),NodePart(:),NoPart(:)
+    INTEGER :: Divisions(3),minpart,maxpart,Inds(3)
+    REAL(KIND=dp) :: Coord(3), Weights(3), avepart,devpart
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+    REAL(KIND=dp) :: BoundingBox(6)
+    INTEGER, ALLOCATABLE :: CellCount(:,:,:)
+
+    ! CALL Info('ClusterElementsByDirection','')
+
+    MaskExists = PRESENT(MaskActive)
+    IF( MaskExists ) THEN
+      nsize = COUNT( MaskActive ) 
+    ELSE
+      nsize = Mesh % NumberOfBulkElements
+    END IF
+     
+    IF( .NOT. ASSOCIATED( Params ) ) THEN
+      CALL Fatal('ClusterElementsByDirection','No parameter list associated')
+    END IF
+
+    dim = Mesh % MeshDim
+    BoundingBox = 0.0_dp
+    BoundingBox(1) = MINVAL( Mesh % Nodes % x )
+    BoundingBox(2) = MAXVAL( Mesh % Nodes % x )
+    BoundingBox(3) = MINVAL( Mesh % Nodes % y )
+    BoundingBox(4) = MAXVAL( Mesh % Nodes % y )
+    BoundingBox(5) = MINVAL( Mesh % Nodes % z )
+    BoundingBox(6) = MAXVAL( Mesh % Nodes % z )
+    
+    !PRINT *,'Bounding Box:',BoundingBox
+
+    Iarray => ListGetIntegerArray( Params,'Partitioning Divisions',Found)
+    IF(.NOT. Found ) THEN
+      CALL Fatal('ClusterNodesByDirection','> Partitioning Divisions < not given!')
+    END IF
+
+    Divisions = 1
+    IF( Found ) THEN
+      n = MIN( SIZE(Iarray), dim ) 
+      Divisions(1:n) = Iarray(1:n)
+    END IF
+
+    ALLOCATE( CellCount(Divisions(1), Divisions(2), Divisions(3) ) )
+    CellCount = 0
+    Clusters = Divisions(1) * Divisions(2) * Divisions(3)
+
+    IF( .FALSE. ) THEN
+      PRINT *,'dim:',dim
+      PRINT *,'divisions:',divisions
+      PRINT *,'clusters:',clusters
+      PRINT *,'nsize:',nsize
+    END IF
+
+    ALLOCATE(NodePart(nsize),NoPart(Clusters))
+    NoPart = 0
+    NodePart = 0
+
+    !----------------------------------------
+    Inds = 1
+    Coord = 0.0_dp
+    DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      IF( MaskExists ) THEN
+        IF( .NOT. MaskActive( i ) ) CYCLE
+      ELSE 
+        IF( i > Mesh % NumberOfBulkElements ) EXIT
+      END IF
+      
+      Element => Mesh % Elements(i)
+      NodeIndexes => Element % NodeIndexes 
+      n = Element % TYPE % NumberOfNodes
+      
+      Coord(1) = SUM( Mesh % Nodes % x( NodeIndexes ) ) / n
+      Coord(2) = SUM( Mesh % Nodes % y( NodeIndexes ) ) / n
+      IF( dim == 3 ) THEN
+        Coord(3) = SUM( Mesh % Nodes % z( NodeIndexes ) ) / n
+      END IF
+
+      Inds = 1
+      DO j=1,dim
+        Inds(j) = CEILING( Divisions(j) * &
+            ( Coord(j) - BoundingBox(2*j-1) ) / &
+            ( BoundingBox(2*j) - BoundingBox(2*j-1) ) )
+      END DO
+      
+      CellCount(Inds(1),Inds(2),Inds(3)) = &
+          CellCount(Inds(1),Inds(2),Inds(3)) + 1
+
+      ind = (Inds(1)-1)*Divisions(2)*Divisions(3) + &
+          (Inds(2)-1)*Divisions(3) +  &
+          Inds(3)
+      NodePart(i) = ind
+      NoPart(ind) = NoPart(ind) + 1
+    END DO
+
+    ! Compute statistical information of the partitioning
+    n = COUNT( NoPart > 0 )    
+    minpart = HUGE(minpart)
+    maxpart = 0
+    avepart = 1.0_dp * nsize / n
+    devpart = 0.0_dp
+    DO i=1,clusters
+      IF( nopart(i) > 0 ) THEN
+        minpart = MIN( minpart, nopart(i))
+        maxpart = MAX( maxpart, nopart(i))
+        devpart = devpart + ABS ( nopart(i) - avepart )
+      END IF
+    END DO
+    devpart = devpart / n
+
+    WRITE(Message,'(A,T28,I0)') 'Number of partitions:',n
+    CALL Info('ClusterElementsUniform',Message)
+    WRITE(Message,'(A,T25,I10)') 'Min nodes in cluster:',minpart
+    CALL Info('ClusterElementsUniform',Message)
+    WRITE(Message,'(A,T25,I10)') 'Max nodes in cluster:',maxpart
+    CALL Info('ClusterElementsUniform',Message)
+    WRITE(Message,'(A,T28,F10.2)') 'Average nodes in cluster:',avepart
+    CALL Info('ClusterElementsUniform',Message)
+    WRITE(Message,'(A,T28,F10.2)') 'Deviation of nodes:',devpart
+    CALL Info('ClusterElementsUniform',Message)
+
+    ! Renumber the partitions using only the active ones
+    n = 0
+    DO i=1,clusters
+      IF( NoPart(i) > 0 ) THEN
+        n = n + 1
+        NoPart(i) = n
+      END IF
+    END DO
+    DO i=1,nsize
+      j = NodePart(i)
+      IF( j > 0 ) NodePart(i) = NoPart(j)
+    END DO
+            
+    IF( ASSOCIATED(Clustering)) THEN
+      Clustering = Nodepart 
+      DEALLOCATE(Nodepart)
+    ELSE
+      Clustering => Nodepart
+      NULLIFY( Nodepart ) 
+    END IF
+    
+    DEALLOCATE(NoPart)
+
+  END SUBROUTINE ClusterElementsUniform
+
 
 
 !---------------------------------------------------------------

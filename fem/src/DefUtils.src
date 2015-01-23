@@ -56,6 +56,10 @@ MODULE DefUtils
      MODULE PROCEDURE DefaultUpdateEquationsR, DefaultUpdateEquationsC
    END INTERFACE
 
+   INTERFACE DefaultUpdatePrec
+     MODULE PROCEDURE DefaultUpdatePrecR, DefaultUpdatePrecC
+   END INTERFACE
+
    INTERFACE DefaultUpdateMass
      MODULE PROCEDURE DefaultUpdateMassR, DefaultUpdateMassC
    END INTERFACE
@@ -1424,9 +1428,9 @@ CONTAINS
 
      sz = SIZE(ElementNodes % x)
      IF ( sz > n ) THEN
-       ElementNodes % x(n+1:sz) = 0.0d0
-       ElementNodes % y(n+1:sz) = 0.0d0
-       ElementNodes % z(n+1:sz) = 0.0d0
+       ElementNodes % x(n+1:sz) = 0.0_dp
+       ElementNodes % y(n+1:sz) = 0.0_dp
+       ElementNodes % z(n+1:sz) = 0.0_dp
      END IF
 
      sz1 = SIZE(Mesh % Nodes % x)
@@ -2900,6 +2904,157 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+  SUBROUTINE DefaultUpdatePrecR( M, UElement, USolver ) 
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), OPTIONAL,TARGET   :: USolver
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+     REAL(KIND=dp)   :: M(:,:)
+
+     TYPE(Solver_t), POINTER   :: Solver
+     TYPE(Matrix_t), POINTER   :: A
+     TYPE(Variable_t), POINTER :: x
+     TYPE(Element_t), POINTER  :: Element, P1, P2
+
+     REAL(KIND=dp),  POINTER :: SaveValues(:)
+
+     INTEGER :: i,j,n
+     INTEGER, POINTER :: Indexes(:)
+
+     IF ( PRESENT( USolver ) ) THEN
+        Solver => USolver
+        A => Solver % Matrix
+        x => Solver % Variable
+     ELSE
+        Solver => CurrentModel % Solver
+        A => Solver % Matrix
+        x => Solver % Variable
+     END IF
+
+     IF ( PRESENT( UElement ) ) THEN
+        Element => UElement 
+     ELSE
+        Element => CurrentModel % CurrentElement
+     END IF
+
+     Indexes => GetIndexStore()
+     n = GetElementDOFs( Indexes, Element, Solver )
+
+     IF ( ParEnv % PEs > 1 ) THEN
+       IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+          P1 => Element % BoundaryInfo % Left
+          P2 => Element % BoundaryInfo % Right
+          IF ( ASSOCIATED(P1) .AND. ASSOCIATED(P2) ) THEN
+            IF ( P1 % PartIndex/=ParEnv % myPE .AND. &
+                 P2 % PartIndex/=ParEnv % myPE )RETURN
+
+            IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
+                 P2 % PartIndex/=ParEnv % myPE ) M=M/2
+          ELSE IF ( ASSOCIATED(P1) ) THEN
+            IF ( P1 % PartIndex /= ParEnv % myPE ) RETURN
+          ELSE IF ( ASSOCIATED(P2) ) THEN
+            IF ( P2 % PartIndex /= ParEnv % myPE ) RETURN
+          END IF
+       ELSE IF ( Element % PartIndex/=ParEnv % myPE ) THEN
+          RETURN
+       END IF
+     END IF
+
+     IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
+       ALLOCATE( A % PrecValues(SIZE(A % Values)) )
+       A % PrecValues = 0.0d0
+     END IF
+
+     SaveValues => A % MassValues
+     A % MassValues => A % PrecValues
+     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)) )
+     A % MassValues => SaveValues
+!------------------------------------------------------------------------------
+  END SUBROUTINE DefaultUpdatePrecR
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultUpdatePrecC( MC, UElement, USolver ) 
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), OPTIONAL,TARGET   :: USolver
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+     COMPLEX(KIND=dp)   :: MC(:,:)
+
+     TYPE(Solver_t), POINTER   :: Solver
+     TYPE(Matrix_t), POINTER   :: A
+     TYPE(Variable_t), POINTER :: x
+     TYPE(Element_t), POINTER  :: Element, P1, P2
+
+     REAL(KIND=dp), ALLOCATABLE :: M(:,:)
+     REAL(KIND=dp),  POINTER :: SaveValues(:)
+
+     INTEGER :: i,j,n,DOFs
+     INTEGER, POINTER :: Indexes(:)
+
+     IF ( PRESENT( USolver ) ) THEN
+        Solver => USolver
+        A => Solver % Matrix
+        x => Solver % Variable
+     ELSE
+        Solver => CurrentModel % Solver
+        A => Solver % Matrix
+        x => Solver % Variable
+     END IF
+
+     IF ( PRESENT( UElement ) ) THEN
+        Element => UElement 
+     ELSE
+        Element => CurrentModel % CurrentElement
+     END IF
+
+     DOFs = x % DOFs
+     Indexes => GetIndexStore()
+     n = GetElementDOFs( Indexes, Element, Solver )
+
+      IF ( ParEnv % PEs > 1 ) THEN
+        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+           P1 => Element % BoundaryInfo % Left
+           P2 => Element % BoundaryInfo % Right
+           IF ( ASSOCIATED(P1) .AND. ASSOCIATED(P2) ) THEN
+             IF ( P1 % PartIndex/=ParEnv % myPE .AND. &
+                  P2 % PartIndex/=ParEnv % myPE )RETURN
+ 
+             IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
+                  P2 % PartIndex/=ParEnv % myPE ) MC=MC/2
+           ELSE IF ( ASSOCIATED(P1) ) THEN
+             IF ( P1 % PartIndex/=ParEnv % myPE ) RETURN
+           ELSE IF ( ASSOCIATED(P2) ) THEN
+             IF ( P2 % PartIndex/=ParEnv % myPE ) RETURN
+           END IF
+        ELSE IF ( Element % PartIndex/=ParEnv % myPE ) THEN
+           RETURN
+        END IF
+      END IF
+
+     IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
+        ALLOCATE( A % PrecValues(SIZE(A % Values)) )
+        A % PrecValues = 0.0d0
+     END IF
+
+     ALLOCATE( M(DOFs*n,DOFs*n) )
+     DO i=1,n*DOFs/2
+       DO j=1,n*DOFs/2
+         M(2*(i-1)+1, 2*(j-1)+1) =   REAL( MC(i,j) )
+         M(2*(i-1)+1, 2*(j-1)+2) = -AIMAG( MC(i,j) )
+         M(2*(i-1)+2, 2*(j-1)+1) =  AIMAG( MC(i,j) )
+         M(2*(i-1)+2, 2*(j-1)+2) =   REAL( MC(i,j) )
+       END DO
+     END DO
+
+     SaveValues => A % MassValues
+     A % MassValues => A % PrecValues
+     CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)) )
+     A % MassValues => SaveValues
+     DEALLOCATE( M )
+!------------------------------------------------------------------------------
+  END SUBROUTINE DefaultUpdatePrecC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
   SUBROUTINE DefaultUpdateMassR( M, UElement, USolver ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,TARGET   :: USolver
@@ -2962,8 +3117,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateMassR
 !------------------------------------------------------------------------------
-
-
 
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultUpdateMassC( MC, UElement, USolver ) 

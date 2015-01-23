@@ -3051,13 +3051,13 @@ END SUBROUTINE ExchangeInterfaces
 !> communication...
 !--------------------------------------------------------------------------
   SUBROUTINE ExchangeIfvalues( NbsIfMatrix, RecvdIfMatrix, &
-             NeedMass, NeedDamp, NeedPrec )
+             NeedMass, NeedDamp, NeedPrec, NeedILU )
     USE Types
     IMPLICIT NONE
 
     ! Parameters
 
-    LOGICAL :: NeedMass, NeedDamp,NeedPrec
+    LOGICAL :: NeedMass, NeedDamp,NeedPrec,NeedILU
     TYPE (BasicMatrix_t), DIMENSION(:) :: NbsIfMatrix, RecvdIfMatrix
 
     ! Local variables
@@ -3166,8 +3166,12 @@ END SUBROUTINE ExchangeInterfaces
        IF ( NeedDamp ) &
          ALLOCATE( RecvdIfMatrix(sproc+1) % DampValues(Cols) )
 
-!      RecvdIfMatrix(sproc+1) % ILUValues => NULL()
+!      RecvdIfMatrix(sproc+1) % PrecValues => NULL()
        IF ( NeedPrec ) &
+         ALLOCATE( RecvdIfMatrix(sproc+1) % PrecValues(Cols) )
+
+!      RecvdIfMatrix(sproc+1) % ILUValues => NULL()
+       IF ( NeedILU ) &
          ALLOCATE( RecvdIfMatrix(sproc+1) % ILUValues(Cols) )
 
        req_cnt = req_cnt+1
@@ -3270,6 +3274,34 @@ END SUBROUTINE ExchangeInterfaces
 
 !----------------------------------------------------------------------
 
+  IF ( NeedPrec ) THEN
+    req_cnt = 0
+    DO i = 1, n
+       rows = recv_rows(i)
+       sproc = neigh(i)
+       RecvdIfMatrix(sproc+1) % NumberOfRows = rows
+
+       IF ( rows>0 ) THEN
+         cols = recv_cols(i)
+         req_cnt = req_cnt+1
+         CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % PrecValues, cols, &
+           MPI_DOUBLE_PRECISION, sproc, 2006, MPI_COMM_WORLD, requests(req_cnt), ierr )
+       END IF
+    END DO
+
+    DO i = 1, n
+      destproc = neigh(i)
+      rows = NbsIfMatrix(destproc+1) % NumberOfRows
+      IF ( rows>0 ) THEN
+         cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
+         CALL MPI_BSEND( NbsIfMatrix(destproc+1) % PrecValues, &
+              cols, MPI_DOUBLE_PRECISION, destproc, 2006, MPI_COMM_WORLD, ierr )
+      END IF
+    END DO
+    CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
+  END IF
+
+!----------------------------------------------------------------------
   IF ( NeedMass ) THEN
     req_cnt = 0
     DO i = 1, n
@@ -3281,7 +3313,7 @@ END SUBROUTINE ExchangeInterfaces
          cols = recv_cols(i)
          req_cnt = req_cnt+1
          CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % MassValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2006, MPI_COMM_WORLD, requests(req_cnt), ierr )
+           MPI_DOUBLE_PRECISION, sproc, 2007, MPI_COMM_WORLD, requests(req_cnt), ierr )
        END IF
     END DO
 
@@ -3291,7 +3323,7 @@ END SUBROUTINE ExchangeInterfaces
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
          CALL MPI_BSEND( NbsIfMatrix(destproc+1) % MassValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2006, MPI_COMM_WORLD, ierr )
+              cols, MPI_DOUBLE_PRECISION, destproc, 2007, MPI_COMM_WORLD, ierr )
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3310,7 +3342,7 @@ END SUBROUTINE ExchangeInterfaces
          cols = recv_cols(i)
          req_cnt = req_cnt+1
          CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % DampValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2007, MPI_COMM_WORLD, requests(req_cnt), ierr )
+           MPI_DOUBLE_PRECISION, sproc, 2008, MPI_COMM_WORLD, requests(req_cnt), ierr )
        END IF
     END DO
 
@@ -3320,7 +3352,7 @@ END SUBROUTINE ExchangeInterfaces
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
          CALL MPI_BSEND( NbsIfMatrix(destproc+1) % DampValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2007, MPI_COMM_WORLD, ierr )
+              cols, MPI_DOUBLE_PRECISION, destproc, 2008, MPI_COMM_WORLD, ierr )
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )
@@ -3328,7 +3360,7 @@ END SUBROUTINE ExchangeInterfaces
 
 !----------------------------------------------------------------------
 
-  IF ( NeedPrec ) THEN
+  IF ( NeedILU ) THEN
     req_cnt = 0
     DO i = 1, n
        rows = recv_rows(i)
@@ -3339,7 +3371,7 @@ END SUBROUTINE ExchangeInterfaces
          cols = recv_cols(i)
          req_cnt = req_cnt+1
          CALL MPI_iRECV( RecvdIfMatrix(sproc+1) % ILUValues, cols, &
-           MPI_DOUBLE_PRECISION, sproc, 2008, MPI_COMM_WORLD, requests(req_cnt), ierr )
+           MPI_DOUBLE_PRECISION, sproc, 2009, MPI_COMM_WORLD, requests(req_cnt), ierr )
        END IF
     END DO
 
@@ -3349,7 +3381,7 @@ END SUBROUTINE ExchangeInterfaces
       IF ( rows>0 ) THEN
          cols = NbsIfMatrix(destproc+1) % Rows(rows+1)-1
          CALL MPI_BSEND( NbsIfMatrix(destproc+1) % ILUValues, &
-              cols, MPI_DOUBLE_PRECISION, destproc, 2008, MPI_COMM_WORLD, ierr )
+              cols, MPI_DOUBLE_PRECISION, destproc, 2009, MPI_COMM_WORLD, ierr )
       END IF
     END DO
     CALL MPI_Waitall( req_cnt, requests, MPI_STATUSES_IGNORE, ierr )

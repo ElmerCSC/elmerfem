@@ -398,13 +398,10 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
 */
 void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
  (
-  int *nrows,int *rows, int *cols, double *vals,
-  int *globaldofs, int *owner,
-  int *ILUn, int *BILU,
-  int *hypre_method, int *hypre_intpara, double *hypre_dppara,
-  int *Rounds, double *TOL,
-  int *verbosityPtr,
-  int** ContainerPtr,
+  int *nrows,int *rows, int *cols, double *vals, int *precflag, double *precvals, 
+    int *globaldofs, int *owner, int *ILUn, int *BILU, int *hypre_method,
+      int *hypre_intpara, double *hypre_dppara,
+         int *Rounds, double *TOL, int *verbosityPtr, int** ContainerPtr,
   int *fcomm
  )
 {
@@ -500,10 +497,36 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    /* Assemble after setting the coefficients */
    HYPRE_IJMatrixAssemble(A);
 
-   if (*BILU <= 1) {
+   if (!*precflag && *BILU <= 1) {
      Atilde = A;
-   }
-   else {
+   } else if ( *precflag ) {
+     int nnz,irow,jcol,i,j,k,*rcols;
+     double *dbuf;
+
+     HYPRE_IJMatrixCreate(comm, ilower, iupper, ilower, iupper, &Atilde);
+     HYPRE_IJMatrixSetObjectType(Atilde, HYPRE_PARCSR);
+     HYPRE_IJMatrixInitialize(Atilde);
+     {
+        int nnz,irow,i,j,k,*rcols;
+
+        rcols = (int *)malloc( csize*sizeof(int) );
+        for (i = 0; i < local_size; i++) {
+          nnz = rows[i+1]-rows[i];
+          if ( nnz>csize ) {
+            csize = nnz+csize;
+            rcols = (int *)realloc( rcols, csize*sizeof(int) );
+          }
+          irow=globaldofs[i];
+          for( k=0,j=rows[i]; j<rows[i+1]; j++,k++) {
+             rcols[k] = globaldofs[cols[j-1]-1];
+          }
+          HYPRE_IJMatrixAddToValues(Atilde, 1, &nnz, &irow, rcols, &precvals[rows[i]-1]);
+        }
+        free( rcols );
+     }
+     /* Assemble after setting the coefficients */
+     HYPRE_IJMatrixAssemble(Atilde);     
+   } else {
      int nnz,irow,jcol,i,j,k,*rcols;
      double *dbuf;
      if (myid==0 && verbosity >= 5) fprintf(stdout,"HYPRE: using BILU(%d) approximation for preconditioner\n",*BILU);
