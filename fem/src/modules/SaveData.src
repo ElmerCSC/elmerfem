@@ -780,14 +780,13 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   ! Get the info at given node points
   !------------------------------------------------------------------------------
   DO k=1,NoPoints+NoCoordinates
-    
+
     IF(k <= NoPoints) THEN
       l = PointIndex(k)
     ELSE
       l = CoordinateIndex(k-NoPoints)
     END IF
     
-
     Var => Model % Variables
 
     DO WHILE( ASSOCIATED( Var ) )
@@ -845,9 +844,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
       Var => Var % Next      
     END DO
-    WRITE (Message,'(A,I0,A)') 'Tabulated ',NoPoints+NoCoordinates,' coordinate points'
-    CALL Info('SaveScalars',Message)
   END DO
+
+  IF( NoPoints + NoCoordinates > 0 ) THEN
+    WRITE (Message,'(A,I0,A)') 'Tabulated all field values at ',NoPoints+NoCoordinates,' points'
+    CALL Info('SaveScalars',Message)
+  END IF
   
   !------------------------------------------------------------------------------
   ! Get the info at exact coordinates within elements
@@ -1012,7 +1014,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     LineInd = ListGetInteger( Params,'Line Marker',GotIt)
     
     IF(WriteCore .AND. NoValues /= PrevNoValues) THEN 
-      WRITE( Message, * ) 'Saving names of values to file ', TRIM(ScalarNamesFile)
+      WRITE( Message, '(A)' ) 'Saving names of values to file: '//TRIM(ScalarNamesFile)
       CALL Info( 'SaveScalars', Message, Level=4 )
       
       IF(SubroutineVisited) THEN
@@ -1054,7 +1056,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     ! In parallel case save the data in different files
     !------------------------------------------------------------------------------
     
-    WRITE( Message, * ) 'Saving values to file ', TRIM(ScalarsFile)
+    WRITE( Message,'(A)' ) 'Saving values to file: '// TRIM(ScalarsFile)
     CALL Info( 'SaveScalars', Message, Level=4 )
     
     IF ( ParallelWrite ) THEN

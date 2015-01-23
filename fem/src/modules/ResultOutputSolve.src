@@ -4818,8 +4818,8 @@ CONTAINS
     IF( AsciiOutput ) THEN
       WRITE( VtuUnit,'(A,I0,A)') '      <DataArray type="Float64" NumberOfComponents="',dim,'" format="ascii"/>'    
     ELSE 
-      WRITE( VtuUnit,'(A,I0,A,I0,A)') '      <DataArray type="Float',PrecBits,'&
-          " NumberOfComponents="',dim,'" format="appended"/>'    
+      WRITE( VtuUnit,'(A,I0,A,I0,A)') '      <DataArray type="Float',PrecBits,&
+          '" NumberOfComponents="',dim,'" format="appended"/>'    
     END IF
     WRITE( VtuUnit,'(A)') '    </PPoints>' 
 
