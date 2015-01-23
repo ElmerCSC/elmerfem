@@ -88,11 +88,7 @@ CONTAINS
     TYPE (SParIterSolverGlobalD_t), POINTER :: SParMatrixDesc
 
     TYPE (ParEnv_t), POINTER :: ParallelEnv
-#ifdef USE_ISO_C_BINDINGS
-    REAL(kind=dp) :: tt
-#else
-    REAL(kind=dp) :: tt,realtime
-#endif
+REAL(kind=dp) :: tt,realtime
     !******************************************************************
 
     IF ( .NOT. ParEnv % Initialized ) THEN
@@ -158,7 +154,7 @@ CONTAINS
     TYPE (BasicMatrix_t), POINTER :: NbsIfMatrix(:), CurrIf
     TYPE (BasicMatrix_t), DIMENSION(:), ALLOCATABLE :: RecvdIfMatrix
 
-    LOGICAL :: NeedMass, NeedDamp, NeedPrec, GotNewCol, Found
+    LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, GotNewCol, Found
 
 #ifdef USE_ISO_C_BINDINGS
     REAL(kind=dp) :: st
@@ -321,6 +317,13 @@ st = realtime()
   SplittedMatrix % InsideMatrix % Diag=0
 
   NULLIFY( SplittedMatrix % InsideMatrix % Values )
+  NeedPrec = .FALSE.
+  IF (  ASSOCIATED( SourceMatrix % PrecValues ) ) THEN
+     IF ( SIZE(SourceMatrix % Values) == &
+           SIZE(SourceMatrix % PrecValues) ) NeedPrec = .TRUE.
+  END IF
+  NULLIFY( SplittedMatrix % InsideMatrix % PrecValues )
+
   NeedMass = .FALSE.
   IF (  ASSOCIATED( SourceMatrix % MassValues ) ) THEN
      IF ( SIZE(SourceMatrix % Values) == &
@@ -335,7 +338,7 @@ st = realtime()
   END IF
   NULLIFY( SplittedMatrix % InsideMatrix % DampValues )
 
-  NeedPrec = ListGetString(CurrentModel % Solver % Values, &
+  NeedILU = ListGetString(CurrentModel % Solver % Values, &
    'Linear System Preconditioning', Found ) == 'vanka'
   SplittedMatrix % InsideMatrix % Ordered = .FALSE.
   NULLIFY( SplittedMatrix % InsideMatrix % ILUValues )
@@ -370,6 +373,8 @@ st = realtime()
         ALLOCATE( NbsIfMatrix(i) % Values(NbsIfMCols(i)) )
         ALLOCATE( NbsIfMatrix(i) % RowOwner(NbsIfMRows(i)) )
 
+        IF ( NeedPrec ) ALLOCATE( NbsIfMatrix(i) % PrecValues( NbsIfMCols(i) ) )
+
 !       NULLIFY( NbsIfMatrix(i) % MassValues )
         IF ( NeedMass ) ALLOCATE( NbsIfMatrix(i) % MassValues( NbsIfMCols(i) ) )
 
@@ -377,7 +382,7 @@ st = realtime()
         IF ( NeedDamp ) ALLOCATE( NbsIfMatrix(i) % DampValues( NbsIfMCols(i) ) )
 
 !       NULLIFY( NbsIfMatrix(i) % ILUValues )
-        IF ( NeedPrec ) ALLOCATE( NbsIfMatrix(i) % ILUValues( NbsIfMCols(i) ) )
+        IF ( NeedILU ) ALLOCATE( NbsIfMatrix(i) % ILUValues( NbsIfMCols(i) ) )
      END IF
 
      OwnIfMatrix(i) % NumberOfRows = OwnIfMRows(i)
@@ -389,9 +394,10 @@ st = realtime()
         ALLOCATE( OwnIfMatrix(i) % Values(OwnIfMCols(i)) )
         ALLOCATE( OwnIfMatrix(i) % RowOwner(OwnIfMRows(i)) )
 
+        IF ( NeedPrec ) ALLOCATE( OwnIfMatrix(i) % PrecValues(OwnIfMCols(i)) )
         IF ( NeedMass ) ALLOCATE( OwnIfMatrix(i) % MassValues(OwnIfMCols(i)) )
         IF ( NeedDamp ) ALLOCATE( OwnIfMatrix(i) % DampValues(OwnIfMCols(i)) )
-        IF ( NeedPrec ) ALLOCATE( OwnIfMatrix(i) % ILUValues(OwnIfMCols(i)) )
+        IF ( NeedILU  ) ALLOCATE( OwnIfMatrix(i) % ILUValues(OwnIfMCols(i)) )
      END IF
   END DO
 
@@ -629,6 +635,12 @@ st = realtime()
         SplittedMatrix % IfVecs(i) % IfVec    = 0
         SplittedMatrix % IfMatrix(i) % Values = 0._dp
 
+        IF ( NeedPrec ) THEN
+           ALLOCATE( SplittedMatrix % IfMatrix(i) % PrecValues(  &
+              SIZE(SplittedMatrix % IfMatrix(i) % Cols) ) )
+           SplittedMatrix % IfMatrix(i) % PrecValues = 0._dp
+        END IF
+
         IF ( NeedMass ) THEN
            ALLOCATE( SplittedMatrix % IfMatrix(i) % MassValues(  &
               SIZE(SplittedMatrix % IfMatrix(i) % Cols) ) )
@@ -641,7 +653,7 @@ st = realtime()
            SplittedMatrix % IfMatrix(i) % DampValues = 0._dp
         END IF
 
-        IF ( NeedPrec ) THEN
+        IF ( NeedILU ) THEN
            ALLOCATE( SplittedMatrix % IfMatrix(i) % ILUValues(  &
               SIZE(SplittedMatrix % IfMatrix(i) % Cols) ) )
            SplittedMatrix % IfMatrix(i) % ILUValues = 0._dp
@@ -726,6 +738,9 @@ st = realtime()
   ! Allocate more insidematrix stuff
   ! ---------------------------------
   sz = SIZE(A % Values)
+  NULLIFY( A % PrecValues )
+  IF ( NeedPrec ) ALLOCATE(A % PrecValues(sz))
+
   NULLIFY( A % MassValues )
   IF ( NeedMass ) ALLOCATE(A % MassValues(sz))
 
@@ -733,7 +748,7 @@ st = realtime()
   IF ( NeedDamp ) ALLOCATE(A % DampValues(sz))
 
   A % ILUValues => NULL()
-  IF ( NeedPrec ) ALLOCATE(A % ILUValues(sz))
+  IF ( NeedILU ) ALLOCATE(A % ILUValues(sz))
 
 
   !----------------------------------------------------------------------
@@ -786,40 +801,46 @@ SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
 
   INTEGER :: i
 
-  LOGICAL :: NeedMass, NeedDamp, NeedPrec
+  LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU
 
   !*******************************************************************
 
   NeedMass = ASSOCIATED(SplittedMatrix % InsideMatrix % MassValues)
   NeedDamp = ASSOCIATED(SplittedMatrix % InsideMatrix % DampValues)
+  NeedPrec = ASSOCIATED(SplittedMatrix % InsideMatrix % PrecValues)
 
   SplittedMatrix % InsideMatrix % Values = 0._dp
   IF ( NeedMass ) SplittedMatrix % InsideMatrix % MassValues = 0._dp
   IF ( NeedDamp ) SplittedMatrix % InsideMatrix % DampValues = 0._dp
+  IF ( NeedPrec ) SplittedMatrix % InsideMatrix % PrecValues = 0._dp
 
-  NeedPrec = .FALSE.
+  NeedILU = .FALSE.
   DO i = 1, ParEnv % PEs
      IF ( SplittedMatrix % IfMatrix(i) % NumberOfRows /= 0 ) THEN
-       NeedPrec = ALLOCATED(SplittedMatrix % IfMatrix(i) % ILUValues)
+       NeedILU = ALLOCATED(SplittedMatrix % IfMatrix(i) % ILUValues)
        SplittedMatrix % IfMatrix(i) % Values = 0._dp
-       IF ( NeedPrec ) SplittedMatrix % IfMatrix(i) % ILUValues  = 0._dp
+       IF ( NeedILU ) SplittedMatrix % IfMatrix(i) % ILUValues  = 0._dp
        IF ( NeedMass.AND.ALLOCATED(SplittedMatrix % IfMatrix(i) % MassValues) ) &
          SplittedMatrix % IfMatrix(i) % MassValues = 0._dp
+       IF ( NeedPrec.AND.ALLOCATED(SplittedMatrix % IfMatrix(i) % PrecValues) ) &
+         SplittedMatrix % IfMatrix(i) % PrecValues = 0._dp
        IF ( NeedDamp.AND.ALLOCATED(SplittedMatrix % IfMatrix(i) % DampValues) ) &
          SplittedMatrix % IfMatrix(i) % DampValues = 0._dp
      END IF
 
      IF ( SplittedMatrix % NbsIfMatrix(i) % NumberOfRows /= 0 ) THEN
        SplittedMatrix % NbsIfMatrix(i) % Values = 0._dp
-       IF ( NeedPrec.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % ILUvalues) ) &
+       IF ( NeedILU.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % ILUvalues) ) &
          SplittedMatrix % NbsIfMatrix(i) % ILUValues  = 0._dp
+       IF ( NeedPrec.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % Precvalues) ) &
+         SplittedMatrix % NbsIfMatrix(i) % PrecValues  = 0._dp
        IF ( NeedMass.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % MassValues) ) &
          SplittedMatrix % NbsIfMatrix(i) % MassValues = 0._dp
        IF ( NeedDamp.AND.ALLOCATED(SplittedMatrix % NbsIfMatrix(i) % DampValues) ) &
          SplittedMatrix % NbsIfMatrix(i) % DampValues = 0._dp
      END IF
   END DO
-  IF(NeedPrec) SplittedMatrix % InsideMatrix % ILUValues = 0._dp
+  IF(NeedILU) SplittedMatrix % InsideMatrix % ILUValues = 0._dp
 !----------------------------------------------------------------------
 END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
@@ -848,7 +869,7 @@ END SUBROUTINE ZeroSplittedMatrix
     TYPE (GlueTableT), POINTER :: GT
     TYPE (SplittedMatrixT), POINTER :: SplittedMatrix
 
-    LOGICAL :: NeedMass, NeedDamp, NeedPrec, found
+    LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, found
 !----------------------------------------------------------------------
 
     GlobalData     => SourceMatrix % ParMatrix
@@ -862,11 +883,12 @@ END SUBROUTINE ZeroSplittedMatrix
     IF ( UpdateMatrix ) THEN
       NeedMass = ASSOCIATED(SplittedMatrix % InsideMatrix % MassValues)
       NeedDamp = ASSOCIATED(SplittedMatrix % InsideMatrix % DampValues)
+      NeedPrec = ASSOCIATED(SplittedMatrix % InsideMatrix % PrecValues)
 
-      NeedPrec = .FALSE.
+      NeedILU = .FALSE.
       DO i=1,ParEnv % PEs
         IF (SplittedMatrix % IfMatrix(i) % NumberOfRows>0) THEN
-          NeedPrec = ALLOCATED(SplittedMatrix % IfMatrix(i) % ILUValues)
+          NeedILU = ALLOCATED(SplittedMatrix % IfMatrix(i) % ILUValues)
           EXIT
         END IF
       END DO
@@ -891,6 +913,10 @@ END SUBROUTINE ZeroSplittedMatrix
                     SplittedMatrix % InsideMatrix % Values( &
                        GT % Inds(j) ) + SourceMatrix % Values(j)
 
+               IF ( NeedPrec ) &
+                  SplittedMatrix % InsideMatrix % PrecValues( GT % Inds(j) ) = &
+                       SplittedMatrix % InsideMatrix % PrecValues( &
+                        GT % Inds(j) ) + SourceMatrix % PrecValues(j)
                IF ( NeedMass ) &
                   SplittedMatrix % InsideMatrix % MassValues( GT % Inds(j) ) = &
                        SplittedMatrix % InsideMatrix % MassValues( &
@@ -899,7 +925,7 @@ END SUBROUTINE ZeroSplittedMatrix
                   SplittedMatrix % InsideMatrix % DampValues( GT % Inds(j) ) = &
                        SplittedMatrix % InsideMatrix % DampValues( &
                           GT % Inds(j) ) + SourceMatrix % DampValues(j)
-               IF ( NeedPrec ) &
+               IF ( NeedILU ) &
                   SplittedMatrix % InsideMatrix % ILUValues( GT % Inds(j) ) = &
                        SplittedMatrix % InsideMatrix % ILUValues( &
                           GT % Inds(j) ) + SourceMatrix % ILUValues(j)
@@ -925,7 +951,7 @@ END SUBROUTINE ZeroSplittedMatrix
                         IF ( NeedDamp ) &
                           CurrIf % DampValues(l) = CurrIf % DampValues(l) + &
                                SourceMatrix % DampValues(j)
-                        IF ( NeedPrec ) &
+                        IF ( NeedILU ) &
                           CurrIf % ILUValues(l) = CurrIf % ILUValues(l) + &
                                SourceMatrix % ILUValues(j)
                         EXIT
@@ -948,13 +974,16 @@ END SUBROUTINE ZeroSplittedMatrix
                   DO l = CurrIf % Rows(RowInd), CurrIf % Rows(RowInd+1)-1
                      IF ( GCol == CurrIf % Cols(l) ) THEN
                         CurrIf % Values(l) = CurrIf % Values(l) + SourceMatrix % Values(j)
+                        IF ( NeedPrec ) &
+                           CurrIf % PrecValues(l) = CurrIf % PrecValues(l) + &
+                                SourceMatrix % PrecValues(j)
                         IF ( NeedMass ) &
                            CurrIf % MassValues(l) = CurrIf % MassValues(l) + &
                                 SourceMatrix % MassValues(j)
                         IF ( NeedDamp ) &
                            CurrIf % DampValues(l) = CurrIf % DampValues(l) + &
                                 SourceMatrix % DampValues(j)
-                        IF ( NeedPrec ) &
+                        IF ( NeedILU ) &
                            CurrIf % ILUValues(l) = CurrIf % ILUValues(l) + &
                                 SourceMatrix % ILUValues(j)
                         EXIT
@@ -1356,7 +1385,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   REAL(KIND=dp), POINTER :: Vals(:)
   INTEGER, POINTER :: nb(:), Rows(:), Cols(:)
 
-  LOGICAL :: NeedMass, NeedDamp, NeedPrec,Found
+  LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, Found
   LOGICAL :: NewSetup
   INTEGER :: verbosity
   
@@ -1367,7 +1396,8 @@ INTEGER::inside
 
 #ifdef HAVE_HYPRE
     TYPE(Matrix_t), POINTER :: GM
-    INTEGER:: nnd,ind(2)
+    INTEGER:: nnd,ind(2), precond
+    REAL(KIND=dp), POINTER :: PrecVals(:)
     REAL(KIND=dp), ALLOCATABLE :: xx_d(:),yy_d(:),zz_d(:)
     INTEGER, ALLOCATABLE :: nodeowner(:),nodeperm(:),bperm(:)
 
@@ -1385,16 +1415,15 @@ INTEGER::inside
       END SUBROUTINE SolveHYPRE
 
       !! create HYPRE matrix and setup solver/preconditioner
-      SUBROUTINE SolveHYPRE1( n, Rows, Cols, Vals, GDOFs, &
-           Owner, ILUn, BILU, &
-           hypremethod, hypre_intpara, hypre_dppara, rounds, TOL, &
-           verbosity, hypreContainer, fcomm ) BIND(C,name="solvehypre1")
+      SUBROUTINE SolveHYPRE1( n, Rows, Cols, Vals, Precond, PrecVals, GDOFs, &
+           Owner, ILUn, BILU, hypremethod, hypre_intpara, hypre_dppara, rounds, &
+               TOL, verbosity, hypreContainer, fcomm ) BIND(C,name="solvehypre1")
         USE, INTRINSIC :: iso_c_binding
         INTEGER(KIND=c_int) :: n, Rows(n), Cols(n), GDOFs(n), &
-                   PE, Owner(n), ILUn, BILU, hypremethod, &
+                   PE, Owner(n), ILUn, BILU, hypremethod, precond, &
                    symmetry, maxlevel, hypre_intpara(10), verbosity,fcomm,rounds
         REAL(KIND=c_double) :: Vals(n),Xvec(n),RHSvec(n),TOL,threshold,filter, &
-                            hypre_dppara(5)
+                            hypre_dppara(5), PrecVals(n)
         INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       END SUBROUTINE SolveHYPRE1
 
@@ -1666,8 +1695,12 @@ INTEGER::inside
         END IF
         ! setup solver/preconditioner
         IF (SourceMatrix % Hypre == 0) THEN
-          CALL SolveHYPRE1( SourceMatrix % NumberOfRows, Rows, Cols, Vals, &
-              Aperm, Owner,  ILUn, BILU, hypremethod,hypre_intpara, hypre_dppara,&
+          precond=0
+          PrecVals => SourceMatrix % PrecValues
+          IF(ASSOCIATED(PrecVals)) precond=1
+
+          CALL SolveHYPRE1( SourceMatrix % NumberOfRows, Rows, Cols, Vals, Precond, &
+              PrecVals, Aperm, Owner,  ILUn, BILU, hypremethod,hypre_intpara, hypre_dppara,&
               rounds, TOL, verbosity, SourceMatrix % Hypre, SourceMatrix % Comm)
         END IF
 
@@ -1865,15 +1898,16 @@ INTEGER::inside
 #endif
 
 
-  NeedPrec = .FALSE.
+  NeedILU = .FALSE.
   DO i=1,ParEnv % PEs
     IF ( SplittedMatrix % IfMatrix(i) % NumberOFRows>0 ) THEN
-      NeedPrec = ALLOCATED( SplittedMatrix % IfMatrix(i) % ILUValues )
+      NeedILU = ALLOCATED( SplittedMatrix % IfMatrix(i) % ILUValues )
       EXIT
     END IF
   END DO
   NeedMass = ASSOCIATED( SplittedMatrix % InsideMatrix % MassValues )
   NeedDamp = ASSOCIATED( SplittedMatrix % InsideMatrix % DampValues )
+  NeedPrec = ASSOCIATED( SplittedMatrix % InsideMatrix % PrecValues )
 
   CALL ZeroSplittedMatrix( SplittedMatrix )
 
@@ -1896,6 +1930,10 @@ INTEGER::inside
                 SplittedMatrix % InsideMatrix % Values( &
                    GT % Inds(j) ) + SourceMatrix % Values(j)
 
+           IF ( NeedPrec ) &
+              SplittedMatrix % InsideMatrix % PrecValues( GT % Inds(j) ) = &
+                   SplittedMatrix % InsideMatrix % PrecValues( &
+                      GT % Inds(j) ) + SourceMatrix % PrecValues(j)
            IF ( NeedMass ) &
               SplittedMatrix % InsideMatrix % MassValues( GT % Inds(j) ) = &
                    SplittedMatrix % InsideMatrix % MassValues( &
@@ -1904,7 +1942,7 @@ INTEGER::inside
               SplittedMatrix % InsideMatrix % DampValues( GT % Inds(j) ) = &
                    SplittedMatrix % InsideMatrix % DampValues( &
                       GT % Inds(j) ) + SourceMatrix % DampValues(j)
-           IF ( NeedPrec ) &
+           IF ( NeedILU ) &
               SplittedMatrix % InsideMatrix % ILUValues( GT % Inds(j) ) = &
                    SplittedMatrix % InsideMatrix % ILUValues( &
                       GT % Inds(j) ) + SourceMatrix % ILUValues(j)
@@ -1925,13 +1963,16 @@ INTEGER::inside
                  IF ( GCol == CurrIf % Cols(l) ) THEN
                     CurrIf % Values(l) = CurrIf % Values(l) + &
                          SourceMatrix % Values(j)
-                    IF ( NeedMass ) &
+                    IF ( NeedPrec ) &
+                       CurrIf % PrecValues(l) = CurrIf % PrecValues(l) + &
+                            SourceMatrix % PrecValues(j)
+                    IF ( NeedPrec ) &
                        CurrIf % MassValues(l) = CurrIf % MassValues(l) + &
                             SourceMatrix % MassValues(j)
                     IF ( NeedDamp ) &
                        CurrIf % DampValues(l) = CurrIf % DampValues(l) + &
                             SourceMatrix % DampValues(j)
-                    IF ( NeedPrec ) &
+                    IF ( NeedILU ) &
                        CurrIf % ILUValues(l) = CurrIf % ILUValues(l) + &
                             SourceMatrix % ILUValues(j)
                     EXIT
@@ -1954,13 +1995,16 @@ INTEGER::inside
                  IF ( GCol == CurrIf % Cols(l) ) THEN
                     CurrIf % Values(l) = CurrIf % Values(l) + &
                          SourceMatrix % Values(j)
+                    IF ( NeedPrec ) &
+                       CurrIf % PrecValues(l) = CurrIf % PrecValues(l) + &
+                            SourceMatrix % PrecValues(j)
                     IF ( NeedMass ) &
                        CurrIf % MassValues(l) = CurrIf % MassValues(l) + &
                             SourceMatrix % MassValues(j)
                     IF ( NeedDamp ) &
                        CurrIf % DampValues(l) = CurrIf % DampValues(l) + &
                             SourceMatrix % DampValues(j)
-                    IF ( NeedPrec ) &
+                    IF ( NeedILU ) &
                        CurrIf % ILUValues(l) = CurrIf % ILUValues(l) + &
                             SourceMatrix % ILUValues(j)
                     EXIT
@@ -2943,7 +2987,7 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
   INTEGER :: i, j, k, l, RowInd, Rows, ColInd, ColIndA
   TYPE (BasicMatrix_t), DIMENSION(:), ALLOCATABLE :: RecvdIfMatrix
 
-  LOGICAL :: Found, NeedMass, NeedDamp, NeedPrec
+  LOGICAL :: Found, NeedMass, NeedDamp, NeedPrec, NeedILU
 
   !*******************************************************************
 
@@ -2954,22 +2998,23 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
   !----------------------------------------------------------------------
   InsideMatrix => SplittedMatrix % InsideMatrix
 
-  NeedPrec = .FALSE.
+  NeedILU = .FALSE.
   DO i=1,Parenv % PEs
     IF ( SplittedMatrix % IfMatrix(i) % NumberOfRows>0 ) THEN
-      NeedPrec = ALLOCATED(SplittedMatrix % IfMatrix(i) % ILUValues)
+      NeedILU = ALLOCATED(SplittedMatrix % IfMatrix(i) % ILUValues)
       EXIT
     END IF
   END DO
 
   NeedMass = ASSOCIATED(InsideMatrix % MassValues)
   NeedDamp = ASSOCIATED(InsideMatrix % DampValues)
+  NeedPrec = ASSOCIATED(InsideMatrix % PrecValues)
 
   ALLOCATE( RecvdIfMatrix(ParEnv % PEs) )
   RecvdIfMatrix(:) % NumberOfRows = 0
 
   CALL ExchangeIfValues(SplittedMatrix % NbsIfMatrix, &
-     RecvdIfMatrix, NeedMass, NeedDamp, NeedPrec )
+     RecvdIfMatrix, NeedMass, NeedDamp, NeedPrec, NeedILU )
 
   !----------------------------------------------------------------------
   !
@@ -3006,13 +3051,16 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
                   IF ( RecvdIfMatrix(i) % Cols(k) == CurrIf % Cols(l) ) THEN
                      CurrIf % Values(l) = CurrIf % Values(l) + &
                            RecvdIfMatrix(i) % Values(k)
+                     IF ( NeedPrec ) &
+                        CurrIf % PrecValues(l) = CurrIf % PrecValues(l) + &
+                               RecvdIfMatrix(i) % PrecValues(k)
                      IF ( NeedMass ) &
                         CurrIf % MassValues(l) = CurrIf % MassValues(l) + &
                                RecvdIfMatrix(i) % MassValues(k)
                      IF ( NeedDamp ) &
                         CurrIf % DampValues(l) = CurrIf % DampValues(l) + &
                                  RecvdIfMatrix(i) % DampValues(k)
-                     IF ( NeedPrec ) &
+                     IF ( NeedILU) &
                         CurrIf % ILUValues(l) = CurrIf % ILUValues(l) + &
                                RecvdIfMatrix(i) % ILUValues(k)
                       EXIT
@@ -3042,13 +3090,16 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
                      IF ( ColIndA == InsideMatrix % Cols(l) ) THEN
                         InsideMatrix % Values(l) = InsideMatrix % Values(l) + &
                                 RecvdIfMatrix(i) % Values(k)
+                       IF ( NeedPrec ) &
+                          InsideMatrix % PrecValues(l) = InsideMatrix % PrecValues(l) + &
+                                   RecvdIfMatrix(i) % PrecValues(k)
                        IF ( NeedMass ) &
                           InsideMatrix % MassValues(l) = InsideMatrix % MassValues(l) + &
                                    RecvdIfMatrix(i) % MassValues(k)
                        IF ( NeedDamp ) &
                           InsideMatrix % DampValues(l) = InsideMatrix % DampValues(l) + &
                                    RecvdIfMatrix(i) % DampValues(k)
-                       IF ( NeedPrec ) &
+                       IF ( NeedILU ) &
                           InsideMatrix % ILUValues(l) = InsideMatrix % ILUValues(l) + &
                                    RecvdIfMatrix(i) % ILUValues(k)
                        Found = .TRUE.
@@ -3086,6 +3137,9 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
 
        IF (ALLOCATED(RecvdIfMatrix(i) % DampValues)) &
          DEALLOCATE(RecvdIfMatrix(i) % DampValues)
+
+       IF (ALLOCATED(RecvdIfMatrix(i) % PrecValues)) &
+         DEALLOCATE(RecvdIfMatrix(i) % PrecValues)
      END IF
   END DO
   DEALLOCATE( RecvdIfMatrix )

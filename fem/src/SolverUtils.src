@@ -99,6 +99,10 @@ CONTAINS
            CALL Band_ZeroMatrix( A )
        END SELECT
 
+       IF ( ASSOCIATED(A % PrecValues) ) THEN
+         A % PrecValues(:) = 0._dp 
+       END IF
+
        IF ( ASSOCIATED( A % MassValues ) ) THEN
          A % MassValues(:) = 0.d0
        END IF
@@ -6429,6 +6433,17 @@ END FUNCTION SearchNodeL
       END DO
     END DO
     
+    IF ( ASSOCIATED( A % PrecValues ) ) THEN
+      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+        DO i=1,n
+          DO j=A % Rows(i), A % Rows(i+1)-1
+            A % PrecValues(j) = A % PrecValues(j) * &
+                ( Diag(i) * Diag(A % Cols(j)) )
+          END DO
+        END DO
+      END IF
+    END IF
+
     IF ( ASSOCIATED( A % MassValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
         DO i=1,n
@@ -6666,6 +6681,16 @@ END FUNCTION SearchNodeL
       END DO
     END DO
     
+    IF ( ASSOCIATED( A % PrecValues ) ) THEN
+      IF (SIZE(A % Values) == SIZE(A % PrecValues)) THEN
+        DO i=1,n
+          DO j=A % Rows(i), A % Rows(i+1)-1
+            A % PrecValues(j) = A % PrecValues(j) / &
+                ( Diag(i) * Diag(A % Cols(j)) )
+          END DO
+        END DO
+      END IF
+    END IF
     IF ( ASSOCIATED( A % MassValues ) ) THEN
       IF (SIZE(A % Values) == SIZE(A % MassValues)) THEN
         DO i=1,n
@@ -8236,6 +8261,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       k=StiffMatrix % NumberOfRows
       IF(ASSOCIATED(AddMatrix)) k=MAX(k,AddMatrix % NumberOfRows)
       k=k+i
+
 
       CALL AddToMatrixElement( CollectionMatrix,k,k,0._dp )
       IF(ComplexSystem) THEN

@@ -121,14 +121,17 @@
      END IF
      ILUValues => A % ILUValues
 
-     ALLOCATE(TotValues(SIZE(A % Values)))
-
      Dofs  = Solver % Variable % DOFs
      Perm => Solver % Variable % Perm
 
      Svalues => A % Values
-     Values = 0._dp
-     TotValues = A % Values
+
+     ALLOCATE(TotValues(SIZE(A % Values)))
+     IF(ASSOCIATED(A % PrecValues)) THEN
+       TotValues = A % PrecValues
+     ELSE
+       TotValues = A % Values
+     END IF
 
      IF ( ParEnv  % PEs>1 ) THEN
        ALLOCATE(cnt(0:ParEnv % PEs))
@@ -159,7 +162,7 @@
              IF ( m==ParEnv % myPE ) CYCLE
              cnt(m) = cnt(m)+1
              Buf(m) % gcol(cnt(m)) = A % ParallelInfo % GlobalDOFs(Cols(j))
-             Buf(m) % gval(cnt(m)) = A % Values(j)
+             Buf(m) % gval(cnt(m)) = TotValues(j)
              Buf(m) % grow(cnt(m)) = A % ParallelInfo % GlobalDOFs(i)
            END DO
          END DO
@@ -211,8 +214,6 @@
              IF ( l>0 ) THEN
                k = SearchNode(A % ParallelInfo,rrow(j),Order=A % Perm)
                IF ( k>0 ) THEN
-!                k = A % Perm(k)
-!                l = A % Perm(l)
                  IF ( l>=k ) THEN
                    DO m=Diag(k),Rows(k+1)-1
                      IF ( Cols(m)==l ) THEN

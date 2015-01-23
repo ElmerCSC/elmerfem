@@ -126,7 +126,7 @@ END INTERFACE
     INTEGER :: NumberOfRows
     INTEGER, ALLOCATABLE :: Rows(:), Cols(:), Diag(:)
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
-    REAL(KIND=dp), ALLOCATABLE :: Values(:),MassValues(:),DampValues(:),ILUValues(:)
+    REAL(KIND=dp), ALLOCATABLE :: Values(:),MassValues(:),DampValues(:),ILUValues(:),PrecValues(:)
   END  TYPE BasicMatrix_t
 
 
@@ -183,7 +183,8 @@ END INTERFACE
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling
-    REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(),BulkValues(:)=>NULL()
+    REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
+		           BulkValues(:)=>NULL(), PrecValues(:)=>NULL()
 
 #ifdef HAVE_MUMPS
     TYPE(dmumps_struc), POINTER :: MumpsID => NULL() ! Global distributed Mumps
@@ -792,6 +793,7 @@ END INTERFACE
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
+
 
 
 !------------------------------------------------------------------------------

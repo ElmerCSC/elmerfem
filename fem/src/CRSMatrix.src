@@ -2205,7 +2205,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Diag   => A % Diag
     Rows   => A % Rows
     Cols   => A % Cols
-    Values => A % Values
+    IF(ASSOCIATED(A % PrecValues)) THEN
+      Values => A % PrecValues
+    ELSE
+      Values => A % Values
+    END IF
 
     IF ( .NOT. ASSOCIATED(A % ILUValues) ) THEN
 
@@ -2555,7 +2559,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     Diag   => A % Diag
     Rows   => A % Rows
     Cols   => A % Cols
-    Values => A % Values
+    IF(ASSOCIATED(A % PrecValues)) THEN
+      Values => A % PrecValues
+    ELSE
+      Values => A % Values
+    END IF
 
     IF ( .NOT.ASSOCIATED(A % CILUValues) ) THEN
 
@@ -2934,7 +2942,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       Diag => A % Diag
       Rows => A % Rows
       Cols => A % Cols
-      Values => A % Values
+      IF(ASSOCIATED(A % PrecValues)) THEN
+        Values => A % PrecValues
+      ELSE
+        Values => A % Values
+      END IF
 
       ALLOCATE( A % ILURows(N+1),A % ILUDiag(N),STAT=istat )
       IF ( istat /= 0 ) THEN
@@ -3138,7 +3150,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       Diag => A % Diag
       Rows => A % Rows
       Cols => A % Cols
-      Values => A % Values
+      IF (ASSOCIATED(A % PrecValues)) THEN
+        Values => A % PrecValues
+      ELSE
+        Values => A % Values
+      END IF
 
       ALLOCATE( A % ILURows(n+1),A % ILUDiag(n),STAT=istat )
       IF ( istat /= 0 ) THEN
