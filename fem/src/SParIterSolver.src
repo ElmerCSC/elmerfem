@@ -945,6 +945,9 @@ END SUBROUTINE ZeroSplittedMatrix
 
                      IF ( GCol == CurrIf % Cols(l) ) THEN
                         CurrIf % Values(l) = CurrIf % Values(l) + SourceMatrix % Values(j)
+                        IF ( NeedPrec ) &
+                          CurrIf % PrecValues(l) = CurrIf % PrecValues(l) + &
+                               SourceMatrix % PrecValues(j)
                         IF ( NeedMass ) &
                           CurrIf % MassValues(l) = CurrIf % MassValues(l) + &
                                SourceMatrix % MassValues(j)
