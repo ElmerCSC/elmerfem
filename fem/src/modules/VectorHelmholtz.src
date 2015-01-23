@@ -347,7 +347,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found
+  LOGICAL :: AllocationsDone = .FALSE., Found, HasPrecDampCoeff_re, HasPrecDampCoeff_im
   TYPE(Element_t),POINTER :: Element
 
   REAL(KIND=dp) :: Omega
@@ -359,6 +359,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
 
   COMPLEX(kind=dp) :: Aval
+  COMPLEX(KIND=dp), ALLOCATABLE :: PrecDampCoeff(:)
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:)  ! \TODO Acoef and Tcoef could be (1,1)-tensors
   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
@@ -400,7 +401,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
      ALLOCATE( FORCE(N), LOAD(3,N), STIFF(N,N), &
           MASS(N,N), Tcoef(N), RotM(3,3,N), &
           Acoef(N), LamCond(N), LamThick(N), &
-          STAT=istat )
+          PrecDampCoeff(1), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'VectorHelmholtzSolver', 'Memory allocation error.' )
      END IF
@@ -412,6 +413,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   END IF
   
   Omega = GetAngularFrequency(Found=Found)
+  PrecDampCoeff = 0._dp
+  PrecDampCoeff = GetReal(GetSolverParams(), 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff_re)
+  PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
+    GetReal(GetSolverParams(), 'Linear System Preconditioning Damp Coefficient im', HasPrecDampCoeff_im))
 
   !
   ! Resolve internal non.linearities, if requeted:
@@ -633,11 +638,9 @@ CONTAINS
     COMPLEX(KIND=dp) :: eps, muinv, L(3), DAMP(nd,nd)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
 
-
     LOGICAL :: Stat
     INTEGER :: t, i, j
     TYPE(GaussIntegrationPoints_t) :: IP
-
 
     TYPE(Nodes_t), SAVE :: Nodes
 
@@ -686,9 +689,10 @@ CONTAINS
          END DO
        END DO
     END DO
-   DAMP = CMPLX(-1._dp, -1._dp) * MASS(1:nd,1:nd) 
-   !DAMP = CMPLX(0._dp, 1._dp) * (STIFF(1:nd,1:nd) - MASS)
-   CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + DAMP)
+    IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) THEN
+      DAMP = PrecDampCoeff(1) * MASS(1:nd,1:nd) 
+      CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + DAMP)
+    END IF
    STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + MASS(1:nd, 1:nd)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -761,7 +765,9 @@ CONTAINS
         END DO
       END DO
    END DO
-   CALL DefaultUpdatePrec(2*STIFF)
+   IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) THEN
+     CALL DefaultUpdatePrec(2*STIFF)
+   END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
