@@ -630,7 +630,7 @@ CONTAINS
     LOGICAL :: PiolaVersion
 
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: eps, muinv, L(3)
+    COMPLEX(KIND=dp) :: eps, muinv, L(3), DAMP(nd,nd)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
 
 
@@ -646,6 +646,7 @@ CONTAINS
     STIFF = 0.0_dp
     FORCE = 0.0_dp
     MASS  = 0.0_dp
+    DAMP  = 0.0_dp
 
     !Numerical integration:
     !----------------------
@@ -680,11 +681,15 @@ CONTAINS
               SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
 
            ! the term \omega^2 \epsilon u.v
-           STIFF(i,j) = STIFF(i,j) - Omega*Omega* &
+           MASS(i,j) = MASS(i,j) - Omega**2* &
              eps * SUM(WBasis(J,:)*WBasis(i,:))*detJ*IP%s(t)
          END DO
        END DO
     END DO
+   DAMP = CMPLX(-1._dp, -1._dp) * MASS(1:nd,1:nd) 
+   !DAMP = CMPLX(0._dp, 1._dp) * (STIFF(1:nd,1:nd) - MASS)
+   CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + DAMP)
+   STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + MASS(1:nd, 1:nd)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -756,6 +761,7 @@ CONTAINS
         END DO
       END DO
    END DO
+   CALL DefaultUpdatePrec(2*STIFF)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
