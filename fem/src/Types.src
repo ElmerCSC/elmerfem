@@ -123,7 +123,8 @@ END INTERFACE
     INTEGER :: NumberOfRows
     INTEGER, ALLOCATABLE :: Rows(:), Cols(:), Diag(:)
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
-    REAL(KIND=dp), ALLOCATABLE :: Values(:),MassValues(:),DampValues(:),ILUValues(:)
+    REAL(KIND=dp), ALLOCATABLE :: Values(:),MassValues(:), &
+        DampValues(:),ILUValues(:),PrecValues(:)
   END  TYPE BasicMatrix_t
 
 
