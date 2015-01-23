@@ -1180,20 +1180,22 @@ CONTAINS
      TYPE(Solver_t) :: Solver
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
-     TYPE(variable_t), POINTER :: Var, LoadVar
+     TYPE(variable_t), POINTER :: Var, LoadVar, IterVar
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,t,ind,dofs, dof, bf, bc, Upper, Removed, Added, &
-         ElemFirst, ElemLast, totsize
+         ElemFirst, ElemLast, totsize, i2, j2, ind2
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:)
-     REAL(KIND=dp) :: LimitSign, Eps, val
+     REAL(KIND=dp) :: LimitSign, EqSign, ValEps, LoadEps, val
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
-     LOGICAL :: Found,AnyLimitBC, AnyLimitBF, Set, AnyDofActive
+     LOGICAL :: Found,AnyLimitBC, AnyLimitBF
      LOGICAL, ALLOCATABLE :: LimitDone(:)
      LOGICAL, POINTER :: LimitActive(:)
      TYPE(ValueList_t), POINTER :: Params
      CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName
-
-
+     LOGICAL, ALLOCATABLE :: InterfaceDof(:)
+     INTEGER :: ConservativeAfterIters
+     LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
+         DoAdd, DoRemove, DirectionActive
 
      Model => CurrentModel
      Var => Solver % Variable
@@ -1210,28 +1212,115 @@ CONTAINS
      END IF
      LoadValues => LoadVar % Values
 
-
-     dofs = Var % Dofs
+     ! The variable to be constrained by the soft limiters
      FieldValues => Var % Values
      FieldPerm => Var % Perm
      totsize = SIZE( FieldValues )
-
+     dofs = Var % Dofs
      Params => Solver % Values
-     
+
+     ConservativeAdd = .FALSE.
+     ConservativeAfterIters = ListGetInteger(Params,&
+         'Apply Limiter Conservative Add After Iterations',Conservative ) 
+     IF( Conservative ) THEN
+       IterVar => VariableGet( Model % Variables,'nonlin iter')
+       ConservativeAdd = ( ConservativeAfterIters < NINT( IterVar % Values(1) ) )
+       IF( ConservativeAdd ) THEN
+         CALL Info('DetermineSoftLimiter','Adding dofs in conservative fashion',Level=8)
+       END IF
+     END IF
+
+     ConservativeRemove = .FALSE.
+     ConservativeAfterIters = ListGetInteger(Params,&
+         'Apply Limiter Conservative Remove After Iterations',Found ) 
+     IF( Found ) THEN
+       Conservative = .TRUE.  
+       IterVar => VariableGet( Model % Variables,'nonlin iter')
+       ConservativeRemove = ( ConservativeAfterIters < NINT( IterVar % Values(1) ) )
+       IF( ConservativeRemove ) THEN
+         CALL Info('DetermineSoftLimiter','Adding dofs in conservative fashion',Level=8)
+       END IF
+     END IF
+
+     LoadEps = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
+     IF(.NOT. Found ) LoadEps = EPSILON( LoadEps )
+         
+     ValEps = ListGetConstReal(Params,'Limiter Value Tolerance',Found ) 
+     IF(.NOT. Found ) ValEps = EPSILON( ValEps )
+
+     ! The user may want to toggle the sign for various kinds of equations
+     ! The default sign that come from standard formulation of Laplace equation.
+     !---------------------------------------------------------------------------       
+     IF( ListGetLogical( Params,'Limiter Load Sign Negative',Found) ) THEN
+       EqSign = -1.0_dp
+     ELSE
+       EqSign = 1.0_dp
+     END IF
+
      ! Loop through upper and lower limits     
      !------------------------------------------------------------------------
      DO Upper=0,1
-       Removed = 0
-       Added = 0
+
+       DirectionActive = .FALSE.
+
+       ! If we have both upper and lower limiter then these logical vectors need to be 
+       ! reinitialized for the 2nd sweep.
+       IF( ALLOCATED( LimitDone) ) LimitDone = .FALSE.
+       IF( ALLOCATED( InterfaceDof ) ) InterfaceDof = .FALSE. 
+
+       ! Upper and lower limits have different sign for testing
+       !----------------------------------------------------------------------       
+       IF( Upper == 0 ) THEN
+         LimitSign = -EqSign
+       ELSE
+         LimitSign = EqSign
+       END IF       
        
-       !------------------------------------------------------------------------
-       ! If the limiter already exists then check the corresponding load
-       ! to determine whether the node needs to be released from the set.
-       !------------------------------------------------------------------------
-       NULLIFY( LimitActive ) 
- 
-        ! Check that active set vectors for limiters exist, otherwise allocate
-        !---------------------------------------------------------------------
+       ! Go through the components of the field, if many
+       !-------------------------------------------------
+       DO DOF = 1,dofs
+
+         name = Var % name
+         IF ( Var % DOFs > 1 ) name = ComponentName(name,DOF)
+
+         ! The keywords for the correct lower or upper limit of the variable
+         !------------------------------------------------------------------
+         IF( Upper == 0 ) THEN
+           LimitName = TRIM(name)//' Lower Limit'           
+         ELSE
+           LimitName = TRIM(name)//' Upper Limit' 
+         END IF
+
+         AnyLimitBC = ListCheckPresentAnyBC( Model, LimitName )
+         AnyLimitBF = ListCheckPresentAnyBodyForce( Model, LimitName )
+
+         ! If there is no active keyword then there really is nothing to do
+         !----------------------------------------------------------------
+         IF( .NOT. ( AnyLimitBC .OR. AnyLimitBF ) ) CYCLE
+         DirectionActive = .TRUE.
+         
+         CALL Info('DetermineSoftLimiter','Applying limit: '//TRIM(LimitName),Level=8)
+
+         ! OK: Do contact for a particular dof and only upper or lower limit
+         !------------------------------------------------------------------------
+
+         ! Define the range of elements for which the limiters are active
+         !---------------------------------------------------------------
+         ElemFirst = Model % NumberOfBulkElements + 1           
+         ElemLast = Model % NumberOfBulkElements 
+        
+         IF( AnyLimitBF ) ElemFirst = 1
+         IF( AnyLimitBC ) ElemLast = Model % NumberOfBulkElements + &
+             Model % NumberOfBoundaryElements 
+         
+         IF(.NOT. ALLOCATED( LimitDone) ) THEN
+           n = Model % MaxElementNodes
+           ALLOCATE( LimitDone( totsize ), ElemLimit(n) )
+           LimitDone = .FALSE.
+         END IF
+
+         ! Check that active set vectors for limiters exist, otherwise allocate
+         !---------------------------------------------------------------------
          IF( Upper == 0 ) THEN
            IF( .NOT. ASSOCIATED(Var % LowerLimitActive ) ) THEN
              ALLOCATE( Var % LowerLimitActive( totsize ) )
@@ -1246,93 +1335,85 @@ CONTAINS
            LimitActive => Var % UpperLimitActive
          END IF
  
-         Eps = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
-         IF(.NOT. Found ) Eps = EPSILON( Eps )
-         
+         Removed = 0
+         Added = 0        
          IF(.NOT. ALLOCATED( LimitDone) ) THEN
            n = Model % MaxElementNodes
            ALLOCATE( LimitDone( totsize ), ElemLimit(n) )
            LimitDone = .FALSE.
          END IF
 
-         ! These are the default sign that come from standard formulation
-         ! of Laplace equation.
-         !----------------------------------------------------------------------       
-         IF( Upper == 0 ) THEN
-           LimitSign = -1.0_dp
-         ELSE
-           LimitSign = 1.0_dp
-         END IF
-
-         ! The user may want to toggle the sign for other kinds of equations
-         !----------------------------------------------------------------------       
-         IF( ListGetLogical( Params,'Limiter Load Sign Negative',Found) ) &
-             LimitSign = -1.0_dp * LimitSign
-
-         ! Go through the active set and free nodes with wrong sign
-         !----------------------------------------------------------------------       
-         DO i=1,totsize
-           IF( LimitActive(i) ) THEN
-             IF( LimitSign * LoadValues(i) > LimitSign * Eps ) THEN
-               removed = removed + 1
-               LimitActive(i) = .FALSE.
-               LimitDone(i) = .TRUE.
-             END IF
+         IF( Conservative ) THEN
+           IF(.NOT. ALLOCATED( InterfaceDof ) ) THEN
+             ALLOCATE( InterfaceDof( totsize ) )
+             InterfaceDof = .FALSE. 
            END IF
-         END DO
-       
-       
-       ! Go through the field variables one dof at a time since 
-       ! typically for vector valued field the limiter is given componentwise.
-       !---------------------------------------------------------------------      
-       AnyDofActive = .FALSE.
-       DO DOF = 1,dofs
-         name = Var % name
-         IF ( Var % DOFs > 1 ) name = ComponentName(name,DOF)
-         
-         IF( Upper == 0 ) THEN
-           LimitName = TRIM(name)//' Lower Limit' 
-         ELSE
-           LimitName = TRIM(name)//' Upper Limit' 
+
+           
+           ! Mark limited and unlimited neighbours and thereby make a 
+           ! list of interface dofs. 
+           !----------------------------------------------------------------------
+           DO t = ElemFirst, ElemLast
+             
+             Element => Model % Elements(t)
+             Model % CurrentElement => Element
+             n = Element % TYPE % NumberOfNodes
+             NodeIndexes => Element % NodeIndexes
+             
+             IF( t > Model % NumberOfBulkElements ) THEN
+               Found = .FALSE.
+               DO bc = 1,Model % NumberOfBCs
+                 IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+                   ElemLimit(1:n) = ListGetReal( Model % BCs(bc) % Values, &
+                       LimitName, n, NodeIndexes, Found)
+                   EXIT
+                 END IF
+               END DO
+               IF(.NOT. Found) CYCLE
+             ELSE             
+               bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
+                   'Body Force', Found)
+               IF(.NOT. Found ) CYCLE
+               ElemLimit(1:n) = ListGetReal( Model % BodyForces(bf) % Values, &
+                   LimitName, n, NodeIndexes, Found)
+               IF(.NOT. Found) CYCLE
+             END IF
+             
+             DO i=1,n
+               j = FieldPerm( NodeIndexes(i) )
+               IF( j == 0 ) CYCLE
+               ind = Dofs * ( j - 1) + Dof
+               
+               DO i2 = i+1,n
+                 j2 = FieldPerm( NodeIndexes(i2) )
+                 IF( j2 == 0 ) CYCLE
+                 ind2 = Dofs * ( j2 - 1) + Dof
+                 
+                 ! XOR has some portability issues
+                 IF( (LimitActive(ind) .AND. .NOT. LimitActive(ind2) ) .OR. &
+                     (.NOT. LimitActive(ind) .AND. LimitActive(ind2) ) ) THEN
+                   InterfaceDof(ind) = .TRUE.
+                   InterfaceDof(ind2) = .TRUE.
+                 END IF
+               END DO
+             END DO
+           END DO
+
+           CALL Info('DetermineSoftLimiter',&
+               'Number of interface dofs: '//TRIM(I2S(COUNT(InterfaceDof))),Level=8)
          END IF
-         
-         ! Check whether limiters exist at all
-         !---------------------------------------------------------------------
-         AnyLimitBC = ListCheckPresentAnyBC( Model, LimitName )
-         AnyLimitBF = ListCheckPresentAnyBodyForce( Model, LimitName )
-         
-         IF( .NOT. ( AnyLimitBC .OR. AnyLimitBF ) ) CYCLE
-         AnyDofActive = .TRUE.
 
-         IF(.NOT. ALLOCATED( LimitDone) ) THEN
-           n = Model % MaxElementNodes
-           ALLOCATE( LimitDone( totsize ), ElemLimit(n) )
-           LimitDone = .FALSE.
-         END IF
-
-         Eps = ListGetConstReal(Params,'Limiter Value Tolerance',Found ) 
-         IF(.NOT. Found ) Eps = EPSILON( Eps )
-
-
-         ! Define the range of elements for which the limiters are active
-         !---------------------------------------------------------------
-         ElemFirst = Model % NumberOfBulkElements + 1           
-         ElemLast = Model % NumberOfBulkElements 
-        
-         IF( AnyLimitBF ) ElemFirst = 1
-         IF( AnyLimitBC ) ElemLast = Model % NumberOfBulkElements + &
-             Model % NumberOfBoundaryElements 
-
-
-         ! Go through the elements 
-         !---------------------------------------------------------------
+       
+         ! Add and release dofs from the contact set:
+         ! If it is removed it cannot be added. 
+         !----------------------------------------------------------------------
          DO t = ElemFirst, ElemLast
 
            Element => Model % Elements(t)
            Model % CurrentElement => Element
            n = Element % TYPE % NumberOfNodes
            NodeIndexes => Element % NodeIndexes
-
+           
            IF( t > Model % NumberOfBulkElements ) THEN
              Found = .FALSE.
              DO bc = 1,Model % NumberOfBCs
@@ -1356,56 +1437,82 @@ CONTAINS
              j = FieldPerm( NodeIndexes(i) )
              IF( j == 0 ) CYCLE
              ind = Dofs * ( j - 1) + Dof
-             
+
              IF( LimitDone(ind) ) CYCLE
-
-             val = Var % Values(ind) 
-             IF( Upper == 0 ) THEN
-               Set = ( val < ElemLimit(i) - Eps )
+             
+             ! Go through the active set and free nodes with wrong sign in contact force
+             !--------------------------------------------------------------------------       
+             IF( LimitActive( ind ) ) THEN
+               DoRemove = ( LimitSign * LoadValues(ind) > LimitSign * LoadEps ) 
+               IF( DoRemove ) THEN
+                 ! In the conservative mode only release nodes from contact set 
+                 ! when they are adjacent to dofs that previously was not in the set.
+                 ! This means that set is released only at the boundaries. 
+                 IF( ConservativeRemove ) DoRemove = InterfaceDof( ind ) 
+                 IF( DoRemove ) THEN
+                   removed = removed + 1
+                   LimitActive(ind) = .FALSE.
+                   CYCLE
+                 END IF
+               END IF
              ELSE
-               Set = ( val > ElemLimit(i) + Eps )
-             END IF
-
-             IF( Set ) THEN
-               IF( .NOT. LimitActive(ind)) added = added + 1
-               LimitActive(ind) = .TRUE.
-               LimitDone(ind) = .TRUE.
+               ! Go through the dofs that are beyond the contact surface.
+               !-----------------------------------------------------------
+               val = Var % Values(ind) 
+               IF( Upper == 0 ) THEN
+                 DoAdd = ( val < ElemLimit(i) - ValEps )
+               ELSE
+                 DoAdd = ( val > ElemLimit(i) + ValEps )
+               END IF
+               
+               IF( DoAdd ) THEN
+                 IF( ConservativeAdd ) DoAdd = InterfaceDof( ind ) 
+                 IF( DoAdd ) THEN
+                   IF( .NOT. LimitActive(ind) ) THEN
+                     added = added + 1
+                     LimitActive(ind) = .TRUE.
+                   END IF
+                 END IF
+               END IF
              END IF
 
              ! Enforce the values to limits because nonlinear material models
              ! may otherwise lead to divergence of the iteration
              !--------------------------------------------------------------
-             IF( Upper == 0 ) THEN
-               Var % Values(ind) = MAX( val, ElemLimit(i) )
-             ELSE
-               Var % Values(ind) = MIN( val, ElemLimit(i) )
+             IF( LimitActive(ind) ) THEN
+               IF( Upper == 0 ) THEN
+                 Var % Values(ind) = MAX( val, ElemLimit(i) )
+               ELSE
+                 Var % Values(ind) = MIN( val, ElemLimit(i) )
+               END IF
              END IF
 
+             LimitDone(ind) = .TRUE.             
            END DO
          END DO
        END DO
-       IF(.NOT. AnyDofActive ) CYCLE
-	
-       
-       ! Output some information before exiting
-       !---------------------------------------------------------------------
-       IF( Upper == 0 ) THEN
-         CALL Info('DetermineSoftLimiter','Determined lower soft limit set',Level=5)
-       ELSE
-         CALL Info('DetermineSoftLimiter','Determined upper soft limit set',Level=5)
-       END IF
-       WRITE(Message,'(A,I0)') 'Number of limited dofs for '&
-           //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
-       CALL Info('DetermineSoftLimiter',Message,Level=5)
 
-       IF(added > 0) THEN
-         WRITE(Message,'(A,I0,A)') 'Added ',added,' dofs to the set'
+       IF( DirectionActive ) THEN      
+         ! Output some information before exiting
+         !---------------------------------------------------------------------
+         IF( Upper == 0 ) THEN
+           CALL Info('DetermineSoftLimiter','Determined lower soft limit set',Level=5)
+         ELSE
+           CALL Info('DetermineSoftLimiter','Determined upper soft limit set',Level=5)
+         END IF
+         WRITE(Message,'(A,I0)') 'Number of limited dofs for '&
+             //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
          CALL Info('DetermineSoftLimiter',Message,Level=5)
-       END IF
-
-       IF(removed > 0) THEN
-         WRITE(Message,'(A,I0,A)') 'Removed ',removed,' dofs from the set'
-         CALL Info('DetermineSoftLimiter',Message,Level=5)
+         
+         IF(added >= 0) THEN
+           WRITE(Message,'(A,I0,A)') 'Added ',added,' dofs to the set'
+           CALL Info('DetermineSoftLimiter',Message,Level=5)
+         END IF
+         
+         IF(removed >= 0) THEN
+           WRITE(Message,'(A,I0,A)') 'Removed ',removed,' dofs from the set'
+           CALL Info('DetermineSoftLimiter',Message,Level=5)
+         END IF
        END IF
      END DO
 
@@ -1413,9 +1520,12 @@ CONTAINS
      IF( ALLOCATED( LimitDone ) ) THEN
        DEALLOCATE( LimitDone, ElemLimit ) 
      END IF
+     
+     IF( ALLOCATED( InterfaceDof ) ) THEN
+       DEALLOCATE( InterfaceDof )
+     END IF
 
-
-     ! CALL Info('DetermineSoftLimiter','All done')
+     CALL Info('DetermineSoftLimiter','All done',Level=12)
 
   END SUBROUTINE DetermineSoftLimiter
 !------------------------------------------------------------------------------
@@ -3017,7 +3127,7 @@ CONTAINS
          nnodes,nlen,TargetBC
      INTEGER, POINTER :: PPerm(:)
      INTEGER, ALLOCATABLE :: InvInvPerm(:)
-     LOGICAL :: Found, Found2, AddRhs, AddCoeff, AddRes
+     LOGICAL :: Found, AddRhs, AddCoeff, AddRes
      LOGICAL, ALLOCATABLE :: NodeDone(:)
      REAL(KIND=dp) :: coeff, weight, voff, res
      TYPE(Matrix_t), POINTER :: Projector
