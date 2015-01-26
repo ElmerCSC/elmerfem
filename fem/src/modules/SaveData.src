@@ -1248,6 +1248,7 @@ CONTAINS
     REAL, ALLOCATABLE :: TmpValues(:)
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: TmpValueNames(:)
     LOGICAL, POINTER :: TmpValuesInteger(:)     
+    TYPE(Variable_t), POINTER :: TargetVar
     INTEGER :: MPIOper
     INTEGER :: istat
     LOGICAL :: GotParOper
@@ -1350,17 +1351,17 @@ CONTAINS
     WRITE (Str,'(A,I0)') 'Target Variable ',n
     VariableName = ListGetString( Params, TRIM(Str), GotIt )
     IF( GotIt ) THEN
-      Var => VariableGet( Model % Variables, TRIM(VariableName) )
-      IF(.NOT. ASSOCIATED(Var)) THEN
+      TargetVar => VariableGet( Model % Variables, TRIM(VariableName) )
+      IF(.NOT. ASSOCIATED(TargetVar)) THEN
         NULLIFY(WrkPntr)
         ALLOCATE(WrkPntr(1),STAT=istat)
 	IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 5') 	
  
         CALL VariableAdd( Model % Variables, Mesh, Solver, &
             TRIM(VariableName), 1, WrkPntr )
-        Var => VariableGet( Model % Variables, TRIM(VariableName) )       
+        TargetVar => VariableGet( Model % Variables, TRIM(VariableName) )       
       END IF
-      Var % Values(1) = Values(n)
+      TargetVar % Values(1) = Values(n)
       CALL Info('SaveScalars','Defining: '//TRIM(VariableName)//' = '//TRIM(ValueNames(n)))
     END IF
 
