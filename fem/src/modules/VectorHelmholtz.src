@@ -690,10 +690,13 @@ CONTAINS
        END DO
     END DO
     IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) THEN
-      DAMP = PrecDampCoeff(1) * MASS(1:nd,1:nd) 
-      CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + DAMP)
+      DAMP = PrecDampCoeff(1) * (STIFF(1:nd,1:nd) - MASS(1:nd,1:nd))
+      !DAMP = PrecDampCoeff(1) * (MASS(1:nd,1:nd))
+      !CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + MASS(1:nd,1:nd) + DAMP(1:nd,1:nd))
     END IF
    STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + MASS(1:nd, 1:nd)
+   IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) &
+     CALL DefaultUpdatePrec(STIFF(1:nd,1:nd) + DAMP(1:nd,1:nd))
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -746,27 +749,28 @@ CONTAINS
 
       ! Compute element stiffness matrix and force vector:
       !---------------------------------------------------
-      DO p=1,np
-        FORCE(p) = FORCE(p) + F*Basis(p)*detJ*IP % s(t)
-        DO q=1,np
-          STIFF(p,q) = STIFF(p,q) + TC * &
-                 Basis(p)*Basis(q)*detJ*IP % s(T)
-        END DO
-      END DO
+      !DO p=1,np
+        !FORCE(p) = FORCE(p) + F*Basis(p)*detJ*IP % s(t)
+        !DO q=1,np
+          !STIFF(p,q) = STIFF(p,q) + TC * &
+                 !Basis(p)*Basis(q)*detJ*IP % s(T)
+        !END DO
+      !END DO
 
       DO i = 1,nd-np
         p = i+np
          
-        FORCE(p) = FORCE(p) + SUM(L*WBasis(i,:))*detJ*IP%s(t)
+        FORCE(p) = FORCE(p) - B*SUM(L*WBasis(i,:))*detJ*IP%s(t)
         DO j = 1,nd-np
           q = j+np
-          STIFF(p,q) = STIFF(p,q) + B * &
+          STIFF(p,q) = STIFF(p,q) - B * &
              SUM(WBasis(i,:)*WBasis(j,:))*detJ*IP%s(t)
         END DO
       END DO
    END DO
    IF(HasPrecDampCoeff_im .OR. HasPrecDampCoeff_re) THEN
-     CALL DefaultUpdatePrec(2*STIFF)
+     !CALL DefaultUpdatePrec(2*STIFF)
+     CALL DefaultUpdatePrec(PrecDampCoeff(1)*STIFF + STIFF)
    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
