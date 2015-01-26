@@ -5884,7 +5884,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              DO l=1,2
                ValAtIP = SUM( B(l,1:3) ** 2 )
                Coeff = s * Basis(p) * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
-               ComponentLoss(k) = ComponentLoss(k) + Coeff
+               ComponentLoss(l) = ComponentLoss(l) + Coeff
                BodyLoss(BodyId) = BodyLoss(BodyId) + Coeff
              END DO
              
@@ -6033,12 +6033,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       LossesFile = ListGetString(SolverParams,'Magnetic Losses Filename',Found )
       IF( Found ) THEN
         OPEN (10, FILE=LossesFile)
+        WRITE( 10,'(A,T12,A)')  '!body_id','loss [P]'
         DO j=1,Model % NumberOfBodies
           IF( BodyLoss(j) < TINY( TotalLoss ) ) CYCLE
-          WRITE( Message,'(I0,T10,ES17.9)') j, BodyLoss(j)
+          WRITE( 10,'(I0,T10,ES17.9)') j, BodyLoss(j)
         END DO
         CALL Info('MagnetoDynamicsCalsFields', &
             'Magnetic losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
+        CLOSE(10)
       END IF
 
       DEALLOCATE( BodyLoss )      
