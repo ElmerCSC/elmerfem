@@ -382,15 +382,11 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
       'Use Piola Transform', Found )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
-        'USING NEW PIOLA TRASFORMED FINITE ELEMENTS',Level=2)
+        'Using Piola Transformed element basis functions',Level=4)
     CALL Info('WhitneyAVSolver', &
-        'DEVELOPMENT IS ONGOING. CURRENTLY RESPECT THE FOLLOWING RESTRICTIONS:',Level=2)    
+        'Currently only homogeneous Dirichlet and Neumann BCs for the vector potential supported',Level=4)
     CALL Info('WhitneyAVSolver', &
-        '- ONLY HOMOGENEOUS DIRICHLET AND NEUMANN BSC FOR THE VECTOR POTENTIAL A SUPPORTED',Level=2)     
-    CALL Info('WhitneyAVSolver', &
-        '- THE OPTION Use Tree Gauge IS NOT AVAILABLE',Level=2)
-    CALL Info('WhitneyAVSolver', &
-        '- USING THE DEFAULT Element = n:1 e:1 -brick b:3 -quad_face b:2 SHOULD WORK', Level=2)
+        'The option > Use Tree Gauge < is not available',Level=4)
   END IF
 
   !Allocate some permanent storage, this is done first time only:
@@ -439,7 +435,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      AllocationsDone = .TRUE.
   END IF
 
-  
   ConstantSystem = GetLogical( GetSolverParams(), &
        'Constant System', Found )
 
@@ -1263,8 +1258,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE Potential
 !------------------------------------------------------------------------------
-
-
 
 
 
@@ -2856,8 +2849,6 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
     END IF
   END IF
-! CALL ListAddString( SolverParams, "Exported Variable 1", &
-!              "-dofs 2 -nooutput Jfix" )
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVHarmonicSolver_Init0
 !------------------------------------------------------------------------------
@@ -2880,7 +2871,6 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -2927,15 +2917,11 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
       'Use Piola Transform', Found )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
-        'USING NEW PIOLA TRASFORMED FINITE ELEMENTS',Level=2)
+        'Using Piola Transformed element basis functions',Level=4)
     CALL Info('WhitneyAVSolver', &
-        'DEVELOPMENT IS ONGOING. CURRENTLY RESPECT THE FOLLOWING RESTRICTIONS:',Level=2)    
+        'Currently only homogeneous Dirichlet and Neumann BCs for the vector potential supported',Level=4)
     CALL Info('WhitneyAVSolver', &
-        '- ONLY HOMOGENEOUS DIRICHLET AND NEUMANN BSC FOR THE VECTOR POTENTIAL A SUPPORTED',Level=2)     
-    CALL Info('WhitneyAVSolver', &
-        '- THE OPTION Use Tree Gauge IS NOT AVAILABLE',Level=2)
-    CALL Info('WhitneyAVSolver', &
-        '- USING THE DEFAULT Element = n:1 e:1 -brick b:3 -quad_face b:2 SHOULD WORK', Level=2)
+        'The option > Use Tree Gauge < is not available',Level=4)
   END IF
 
   ! Allocate some permanent storage, this is done first time only:
@@ -2968,8 +2954,13 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   
   Omega = GetAngularFrequency(Found=Found)
 
-  FixJ=GetLogical(GetSolverParams(),'Fix input Current Density', Found)
-  IF (.NOT. Found ) FixJ=.TRUE.
+  FixJ = GetLogical(GetSolverParams(),'Fix input Current Density', Found)
+
+  ! If not specified compute the Jfix field only if there is a specified current BC
+  IF(.NOT. Found ) THEN
+    FixJ = ListCheckPrefixAnyBodyForce( Model,'Current Density' )
+  END IF
+
   IF (FixJ) CALL JfixPotentialSolver(Model,Solver,dt,Transient)
 
   !
@@ -4823,6 +4814,8 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
 
+  ! This is really using DG so we don't need to make any dirty tricks to create DG fields
+  ! as is done in this initialization. 
   IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) RETURN
 
   ElementalFields = GetLogical( GetSolverParams(), 'Calculate Elemental Fields', Found)
@@ -4850,6 +4843,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   vdofs = 0
   DO i=1,Model % NumberOfSolvers
     sname = GetString(Model % Solvers(i) % Values, 'Variable', Found)
+
     J=INDEX(sname,'[')-1
     IF ( j<=0 ) j=LEN_TRIM(sname)
     IF ( sname(1:j) == pname(1:LEN_TRIM(pname)) )THEN
@@ -4868,7 +4862,6 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   IF ( Vdofs==0 ) Vdofs=1
   RealField = ( Vdofs == 1 )
 
-
   ! Create DG solver structures on-the-fly without actually solving the matrix
   ! equations. It is assumed that the DG field within each element is independent
   ! and hence no coupling between elemental fields is needed. 
@@ -4881,6 +4874,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   Solvers(n+1) % ActiveElements => NULL()
   CALL ListAddString( SolverParams, 'Exec Solver', 'never' )
   CALL ListAddLogical( SolverParams, 'No Matrix',.TRUE.)
+  CALL ListAddLogical( SolverParams, 'Optimize Bandwidth',.FALSE.)
   CALL ListAddString( SolverParams, 'Equation', 'never' )
   CALL ListAddString( SolverParams, 'Procedure', &
               'MagnetoDynamics MagnetoDynamics_Dummy',.FALSE. )
@@ -4962,14 +4956,17 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
         "Joule Field E" )
   END IF
 
-  IF ( GetLogical( Solver % Values, 'Calculate Magnetic Losses', Found ) ) THEN
+  IF ( GetLogical( Solver % Values, 'Calculate Harmonic Loss', Found ) ) THEN
     IF( RealField ) THEN
       CALL Warn('MagnetoDynamicsCalcFields',&
-          'Magnetic losses computation only available for complex systems!')
+          'Harmonic loss computation only available for complex systems!')
     ELSE
       i = i + 1
       CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-          "Magnetic Losses E" )
+          "Harmonic Loss Linear E" )
+      i = i + 1
+      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          "Harmonic Loss Quadratic E" )
     END IF
   END IF
 
@@ -5082,7 +5079,8 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   END IF
 
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
-  IF(Found.AND..NOT.NodalFields) RETURN
+
+  IF(Found .AND. .NOT.NodalFields) RETURN
   RealField = ( Var % Dofs == 1 )
 
   i=1
@@ -5161,14 +5159,17 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
         "Joule Field" )
   END IF
 
-  IF ( GetLogical( SolverParams, 'Calculate Magnetic Losses', Found ) ) THEN
+  IF ( GetLogical( SolverParams, 'Calculate Harmonic Loss', Found ) ) THEN
     IF( RealField ) THEN
       CALL Warn('MagnetcDynamicsCalcFields',&
-          'Magnetic losses computation only available for complex systems!')
+          'Harmonic loss computation only available for complex systems!')
     ELSE
       i = i + 1
       CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-          "Magnetic Losses" )
+          "Harmonic Loss Linear" )
+      i = i + 1
+      CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+          "Harmonic Loss Quadratic" )
     END IF
   END IF
 
@@ -5214,7 +5215,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
    TYPE(Solver_t) :: Solver
    TYPE(Model_t) :: Model
-
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 !------------------------------------------------------------------------------
@@ -5224,8 +5224,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3), JatIP(2,3), &
                     VP_ip(2,3), Wbase(35), alpha(35), JXBatIP(2,3)
    REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy
-   REAL(KIND=dp) :: Freq, FreqPower, FieldPower, ComponentLoss(2), LossCoeff, ValAtIP
-   REAL(KIND=dp) :: Coeff, TotalLoss, localAlpha, localV(2), nofturns, coilthickness
+   REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
+   REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
+   REAL(KIND=dp) :: ComponentLoss(2,2)
+   REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3)
    COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3)
 
@@ -5237,15 +5239,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
 
    TYPE(Variable_t), POINTER :: Var, MFD, MFS, CD, EF, MST, &
-                                JH, VP, FWP, JXB, ML, LagrangeVar
+                                JH, VP, FWP, JXB, ML, ML2, LagrangeVar
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_CD, EL_EF, &
-                                EL_MST, EL_JH, EL_VP, EL_FWP, EL_JXB, EL_ML
+                                EL_MST, EL_JH, EL_VP, EL_FWP, EL_JXB, EL_ML, EL_ML2
 
    INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
               VvarDofs,VvarId,IvarId,Reindex,Imindex
 
    TYPE(Solver_t), POINTER :: pSolver, ElPotSolver
-   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossesFile
+   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
@@ -5261,7 +5263,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: Babs
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
-   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), RotM(:,:,:)
+   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), RotM(:,:,:)
 
    REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>NULL(), Cwrk_im(:,:,:)=>NULL()
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
@@ -5316,6 +5318,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    FWP=>NULL(); EL_FWP => NULL();
    JXB =>NULL(); EL_JXB => NULL();
    ML=>NULL(); EL_ML => NULL();
+   ML2=>NULL(); EL_ML2 => NULL();
 
    IF ( Transient .OR. .NOT. RealField ) THEN
      EF => VariableGet( Mesh % Variables, 'Electric Field' )
@@ -5332,8 +5335,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    EL_JH => VariableGet( Mesh % Variables, 'Joule Field E' )
 
    IF(.NOT. RealField ) THEN
-     ML => VariableGet( Mesh % Variables, 'Magnetic Losses')
-     EL_ML => VariableGet( Mesh % Variables, 'Magnetic Losses E')
+     ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear')
+     EL_ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear E')
+     ML2 => VariableGet( Mesh % Variables, 'Harmonic Loss Quadratic')
+     EL_ML2 => VariableGet( Mesh % Variables, 'Harmonic Loss Quadratic E')
    END IF
 
    JXB => VariableGet( Mesh % Variables, 'JxB')
@@ -5354,6 +5359,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    DOFs = DOFs*vDOFs
    IF ( ASSOCIATED(JH) ) DOFs=DOFs+1
    IF ( ASSOCIATED(ML) ) DOFs=DOFs+1
+   IF ( ASSOCIATED(ML2) ) DOFs=DOFs+1
    NodalFields = DOFs>0
 
    IF(NodalFields) THEN
@@ -5371,6 +5377,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      DOFs = DOFs*vDOFs
      IF ( ASSOCIATED(EL_JH) ) DOFs=DOFs+1
      IF ( ASSOCIATED(EL_ML) ) DOFs=DOFs+1
+     IF ( ASSOCIATED(EL_ML2) ) DOFs=DOFs+1
    END IF
 
    ElementalFields = .FALSE.
@@ -5384,6 +5391,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(EL_MST) ) ElementalFields=.TRUE.
    IF ( ASSOCIATED(EL_JH)  ) ElementalFields=.TRUE.
    IF ( ASSOCIATED(EL_ML)  ) ElementalFields=.TRUE.
+   IF ( ASSOCIATED(EL_ML2)  ) ElementalFields=.TRUE.
 
    n = Mesh % MaxElementDOFs
    ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n) )
@@ -5391,23 +5399,36 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    SOL = 0._dp; PSOL=0._dp
 
    LossEstimation = GetLogical(SolverParams,'Loss Estimation',Found) &
-       .OR. ASSOCIATED( ML ) .OR. ASSOCIATED( EL_ML ) 
+       .OR. ASSOCIATED( ML ) .OR. ASSOCIATED( EL_ML ) &
+       .OR. ASSOCIATED( ML2 ) .OR. ASSOCIATED( EL_ML2 ) 
 
    IF (LossEstimation) THEN
-      FreqPower = GetCReal( SolverParams,'Fourier Loss Frequency Exponent',Found )
-      IF( .NOT. Found ) FreqPower = 2.0_dp
+      FreqPower = GetCReal( SolverParams,'Harmonic Loss Linear Frequency Exponent',Found )
+      IF( .NOT. Found ) FreqPower = 1.0_dp
 
-      FieldPower = GetCReal( SolverParams,'Fourier Loss Field Exponent',Found ) 
-      IF( .NOT. Found ) FieldPower = 2.0_dp
+      FreqPower2 = GetCReal( SolverParams,'Harmonic Loss Quadratic Frequency Exponent',Found )
+      IF( .NOT. Found ) FreqPower2 = 2.0_dp
+
+      FieldPower = GetCReal( SolverParams,'Harmonic Loss Linear Exponent',Found ) 
+      IF( .NOT. Found ) FieldPower = 1.0_dp
       FieldPower = FieldPower / 2.0_dp
 
-      IF(.NOT. ListCheckPresentAnyMaterial( Model,'Fourier Loss Coefficient') ) THEN
+      FieldPower2 = GetCReal( SolverParams,'Harmonic Loss Quadratic Exponent',Found ) 
+      IF( .NOT. Found ) FieldPower2 = 2.0_dp
+      FieldPower = FieldPower2 / 2.0_dp
+
+      IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient') ) THEN
         CALL Warn('MagnetoDynamicsCalcFields',&
-            'Magnetic losses require > Fourier Loss Coeffecient < in material section!')
+            'Harmonic loss requires > Harmonic Loss Linear Coefficient < in material section!')
+      END IF
+
+      IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Quadratic Coefficient') ) THEN
+        CALL Warn('MagnetoDynamicsCalcFields',&
+            'Harmonic loss requires > Harmonic Loss Quadratic Coefficient < in material section!')
       END IF
 
       ComponentLoss = 0.0_dp
-      ALLOCATE( BodyLoss(Model % NumberOfBodies) )
+      ALLOCATE( BodyLoss(3,Model % NumberOfBodies) )
       BodyLoss = 0.0_dp
    END IF
 
@@ -5435,7 +5456,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
 
      Omega = GetAngularFrequency(Found=Found,UElement=Element)
-     IF( .NOT. RealField ) THEN
+     IF( .NOT. RealField .AND. (LossEstimation) ) THEN
        IF(.NOT. Found ) CALL Fatal('MagnetoDynamicsCalcFields',&
            '(Angular) Frequency must be given for complex fields!')
      END IF
@@ -5855,13 +5876,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF ( ASSOCIATED(JH).OR.ASSOCIATED(EL_JH) ) THEN
            ! The Joule heating power per unit volume: J.E = (sigma * E).E
            IF (vDOFS == 1) THEN
-             FORCE(p,k+1) = FORCE(p,k+1) + SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
+             Coeff = SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
                  TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s
            ELSE
              ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
              ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
              ! would be obtained.
-             FORCE(p,k+1) = FORCE(p,k+1) + SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
+             Coeff = SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
                  TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s - &
                  SUM( MATMUL( AIMAG(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
                  TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s + &
@@ -5870,6 +5891,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                  SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
                  TRANSPOSE(E(2:2,1:dim)) ) * Basis(p) * s
            END IF
+           BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
+           FORCE(p,k+1) = FORCE(p,k+1) + Coeff
            k = k+1
          END IF
 
@@ -5878,22 +5901,32 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          ! Compute a loss estimate for cos and sin modes:
          !-------------------------------------------------
          IF (LossEstimation) THEN
-           LossCoeff = ListGetFun( Material,'Fourier Loss Coefficient',Freq,Found ) 
-           ! No losses if loss coefficient is not given
+           LossCoeff = ListGetFun( Material,'Harmonic Loss Linear Coefficient',Freq,Found ) 
+           LossCoeff2 = ListGetFun( Material,'Harmonic Loss Quadratic Coefficient',Freq,Found ) 
+           ! No losses to add if loss coefficient is not given
            IF( Found ) THEN
              DO l=1,2
                ValAtIP = SUM( B(l,1:3) ** 2 )
                Coeff = s * Basis(p) * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
-               ComponentLoss(l) = ComponentLoss(l) + Coeff
-               BodyLoss(BodyId) = BodyLoss(BodyId) + Coeff
+               Coeff2 = s * Basis(p) * LossCoeff2 * ( Freq ** FreqPower2 ) * ( ValAtIp ** FieldPower2 )
+               ComponentLoss(1,l) = ComponentLoss(1,l) + Coeff
+               BodyLoss(1,BodyId) = BodyLoss(1,BodyId) + Coeff 
+               ComponentLoss(2,l) = ComponentLoss(2,l) + Coeff2
+               BodyLoss(2,BodyId) = BodyLoss(2,BodyId) + Coeff2
              END DO
-             
-             IF ( ASSOCIATED(ML) .OR. ASSOCIATED(EL_ML) ) THEN
-               FORCE(p,k+1) = FORCE(p,k+1) + Coeff
-             END IF
+           ELSE
+             Coeff = 0.0_dp
+             Coeff2 = 0.0_dp
            END IF
 
-           k = k+1
+           IF ( ASSOCIATED(ML) .OR. ASSOCIATED(EL_ML) ) THEN
+             FORCE(p,k+1) = FORCE(p,k+1) + Coeff
+             k = k + 1
+           END IF
+           IF ( ASSOCIATED(ML2) .OR. ASSOCIATED(EL_ML2) ) THEN
+             FORCE(p,k+1) = FORCE(p,k+1) + Coeff2
+             k = k + 1
+           END IF
          END IF
 
          IF ( ASSOCIATED(MST).OR.ASSOCIATED(EL_MST)) THEN
@@ -5956,6 +5989,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_FWP,  1*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_JH,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML,   1, n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
      END IF
    END DO
@@ -5964,17 +5998,20 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    Energy = ParallelReduction(Energy)
 
    IF (LossEstimation) THEN
-      DO i=1,2
-         ComponentLoss(i) = ParallelReduction(ComponentLoss(i)) 
-      END DO
+     DO j=1,2
+       DO i=1,2
+         ComponentLoss(j,i) = ParallelReduction(ComponentLoss(j,i)) 
+       END DO
+     END DO
 
-      DO i=1,Model % NumberOfBodies
-         BodyLoss(i) = ParallelReduction(BodyLoss(i))
-      END DO
-
-      TotalLoss = SUM( ComponentLoss )      
+     DO j=1,3
+       DO i=1,Model % NumberOfBodies
+         BodyLoss(j,i) = ParallelReduction(BodyLoss(j,i))
+       END DO
+       TotalLoss(j) = SUM( BodyLoss(j,:) )
+     END DO
    END IF
-
+   
     ! Assembly of the face terms:
     !----------------------------
 
@@ -5998,6 +6035,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GlobalSol(FWP,  1*vdofs, Gforce, Dofs)
      CALL GlobalSol(JH ,  1      , Gforce, Dofs)
      CALL GlobalSol(ML ,  1      , Gforce, Dofs)
+     CALL GlobalSol(ML2 ,  1      , Gforce, Dofs)
      CALL GlobalSol(MST , 6*vdofs, Gforce, Dofs)
      Solver % Matrix % RHS => Fsave
    END IF
@@ -6014,43 +6052,64 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF (PiolaVersion) DEALLOCATE( EBasis, CurlEBasis )
 
    IF (LossEstimation) THEN
-      CALL ListAddConstReal( Model % Simulation,'res: fourier loss',TotalLoss )
+     CALL ListAddConstReal( Model % Simulation,'res: harmonic loss linear',TotalLoss(1) )
+     CALL ListAddConstReal( Model % Simulation,'res: harmonic loss quadratic',TotalLoss(2) )
+     CALL ListAddConstReal( Model % Simulation,'res: joule loss',TotalLoss(3) )
 
-      WRITE( Message,'(A,ES12.3)') 'Loss for cos mode: ', ComponentLoss(1)
-      CALL Info('MagnetoDynamicsCalcFields', Message, Level=6 )
-      WRITE( Message,'(A,ES12.3)') 'Loss for sin mode: ', ComponentLoss(2)
-      CALL Info('MagnetoDynamicsCalcFields', Message, Level=6 )
-      WRITE( Message,'(A,ES12.3)') 'Total loss: ',TotalLoss
-      CALL Info('MagnetoDynamicsCalcFields',Message, Level=5 )
+     DO k=1,2
+       IF( k == 1 ) THEN
+         CALL Info('MagnetoDynamicsCalcFields','Harmonic Loss Linear by components',Level=6)
+       ELSE
+         CALL Info('MagnetoDynamicsCalcFields','Harmonic Loss Quadratic by components',Level=6)
+       END IF
+       WRITE( Message,'(A,ES12.3)') 'Loss for cos mode: ', ComponentLoss(k,1)
+       CALL Info('MagnetoDynamicsCalcFields', Message, Level=6 )
+       WRITE( Message,'(A,ES12.3)') 'Loss for sin mode: ', ComponentLoss(k,2)
+       CALL Info('MagnetoDynamicsCalcFields', Message, Level=6 )
+       WRITE( Message,'(A,ES12.3)') 'Total loss: ',TotalLoss(k)
+       CALL Info('MagnetoDynamicsCalcFields',Message, Level=5 )
+     END DO
 
-      CALL Info('MagnetoDynamicsCalcFields','Losses by bodies',Level=6)
-      DO j=1,Model % NumberOfBodies
-         IF( BodyLoss(j) < TINY( TotalLoss ) ) CYCLE
-         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLoss(j)
+     DO k=1,3
+       IF( TotalLoss(k) > TINY( TotalLoss(k) ) ) CYCLE
+       IF( k == 1 ) THEN
+         CALL Info('MagnetoDynamicsCalcFields','Harmonic Loss Linear by bodies',Level=6)
+       ELSE IF( k == 2 ) THEN
+         CALL Info('MagnetoDynamicsCalcFields','Harmonic Loss Quadratic by bodies',Level=6)
+       ELSE
+         CALL Info('MagnetoDynamicsCalcFields','Joule Loss by bodies',Level=6)
+       END IF
+
+       DO j=1,Model % NumberOfBodies
+         IF( BodyLoss(k,j) < TINY( TotalLoss(k) ) ) CYCLE
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLoss(k,j)
          CALL Info('MagnetoDynamicsCalcFields', Message, Level=6 )
-      END DO
- 
-      LossesFile = ListGetString(SolverParams,'Magnetic Losses Filename',Found )
-      IF( Found ) THEN
-        OPEN (10, FILE=LossesFile)
-        WRITE( 10,'(A,T12,A)')  '!body_id','loss [P]'
-        DO j=1,Model % NumberOfBodies
-          IF( BodyLoss(j) < TINY( TotalLoss ) ) CYCLE
-          WRITE( 10,'(I0,T10,ES17.9)') j, BodyLoss(j)
-        END DO
-        CALL Info('MagnetoDynamicsCalsFields', &
-            'Magnetic losses for bodies was saved to file: '//TRIM(LossesFile),Level=6 )
-        CLOSE(10)
-      END IF
+       END DO
+     END DO
 
-      DEALLOCATE( BodyLoss )      
+     IF( ParEnv % MyPe == 0 ) THEN
+       LossFile = ListGetString(SolverParams,'Harmonic Loss Filename',Found )
+       IF( Found ) THEN
+         OPEN (10, FILE=LossFile)
+         WRITE( 10,'(A)')  '!body_id   harmonic(1)      harmonic(2)      joule'
+         DO j=1,Model % NumberOfBodies
+           IF( SUM(BodyLoss(1:3,j)) < TINY( TotalLoss(1) ) ) CYCLE
+           WRITE( 10,'(I0,T10,3ES17.9)') j, BodyLoss(1:3,j)
+         END DO
+         CALL Info('MagnetoDynamicsCalsFields', &
+             'Harmonic loss for bodies was saved to file: '//TRIM(LossFile),Level=6 )
+         CLOSE(10)
+       END IF
+     END IF
+
+     DEALLOCATE( BodyLoss )      
    END IF
       
-  IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) THEN
-    WRITE(Message,*) 'Angular Frequency: ', Omega
-    CALL Info( 'MagnetoDynamicsCalcFields', Message )
-    CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)
-  END IF
+   IF (GetLogical(SolverParams,'Show Angular Frequency',Found)) THEN
+     WRITE(Message,*) 'Angular Frequency: ', Omega
+     CALL Info( 'MagnetoDynamicsCalcFields', Message )
+     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)
+   END IF
 
   ! Flux On Boundary:
   !------------------
