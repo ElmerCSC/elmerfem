@@ -1,0 +1,129 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "mesh3d"
+End
+
+Simulation
+  Max Output Level = 8
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Timestepping Method = BDF
+  Timestep Sizes = 1
+  Timestep Intervals = 10
+  Steady State Max Iterations = 1
+
+!  Post File = MGDynamics.vtu
+  Output Intervals(1) = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+! Pre = Variable coordinate
+!  Real MATC "rand(1)"
+End
+
+Material 1
+  Reluctivity  = Real 1
+! Permittivity = Real 1
+  Electric Conductivity = Real 1
+
+  Harmonic Loss Linear Coefficient = Real 1.0
+  Harmonic Loss Quadratic Coefficient = Real 1.0
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+$ w=1
+
+Solver 1
+  Equation = "MGDynamics"
+
+  Variable = P[P re:1 P im:1]
+  Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+
+  Angular Frequency = Real $w
+
+  Linear System Symmetric = True
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = mumps
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = Ilu
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-6
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential Variable = String "P"
+
+  Calculate Harmonic Loss = Logical True
+  Angular Frequency = Real $w
+  Harmonic Loss Filename = File "Loss.dat"
+  Calculate Elemental Fields = Logical True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-6
+End
+
+
+Body Force 1
+!  Current Density 1 = Real 0
+!  Current Density 2 = Real 0
+!  Current Density 3 = Real 0
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+
+  P re {e} = Real 0
+  P im {e} = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 5
+
+  P re = Real 0
+  P im = Real 1
+
+  P re {e} = Real 0
+  P im {e} = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 6
+
+  P re = Real 0
+  P im = Real 0
+
+  P re {e} = Real 0
+  P im {e} = Real 0
+End
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.10358902E-03,EPS=1e-3\n" );
