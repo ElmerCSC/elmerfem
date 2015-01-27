@@ -2658,6 +2658,20 @@ CONTAINS
 
      SELECT CASE(ptr % TYPE)
 
+     CASE( LIST_TYPE_CONSTANT_SCALAR )
+
+       IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+         WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
+             '] not used consistently.'
+         CALL Fatal( 'ListGetReal', Message )
+         RETURN
+       END IF
+       F = ptr % Coeff * ptr % Fvalues(1,1,1)
+       IF( PRESENT( dFdx ) ) THEN
+         dFdx = 0.0_dp
+       END IF
+
+
      CASE( LIST_TYPE_VARIABLE_SCALAR )
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
