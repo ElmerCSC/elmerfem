@@ -247,10 +247,11 @@ CONTAINS
       Acoef(1:n) = Acoef(1:n)/Avacuum
     ELSE
       Acoef(1:n) = GetReal( Material, 'Inverse Permeability', Found )
+      IF ( .NOT. Found ) Acoef(1:n) = GetReal( Material, 'Reluctivity', Found)
+      IF ( .NOT. Found ) Acoef(1:n) = GetReal( Material, 'Relative Reluctivity', Found) 
+      IF ( Found ) Acoef(1:n) = Acoef(1:n) / Avacuum
     END IF
-    IF ( Found ) THEN
-      Acoef(1:n) = Acoef(1:n)
-    END IF
+    IF(.NOT. Found) Acoef(1:n) = 1/Avacuum
 !------------------------------------------------------------------------------
   END SUBROUTINE GetInvPermeabilityR
 !------------------------------------------------------------------------------
@@ -274,16 +275,32 @@ CONTAINS
       FirstTime = .FALSE.
     END IF
 
-    Acoef(1:n) = GetReal( Material, 'Inverse Relative Permeability', Found )
-    IF ( Found ) THEN
-      Acoef(1:n) = Acoef(1:n)
-    END IF
-    IF ( Found ) THEN
-      Acoef(1:n) = Acoef(1:n)
+    Acoef(1:n) = GetReal( Material, 'Inverse Relative Permeability', Found ) / Avacuum
+    IF (.NOT. Found ) THEN
+      Acoef(1:n) = GetReal(Material, 'Inverse Permeability', Found )
+      IF (.NOT. Found ) THEN
+        Acoef(1:n) = GetReal(Material, 'Reluctivity', Found)
+        IF (.NOT. Found) THEN
+          Acoef(1:n) = GetReal(Material, 'Relative Reluctivity', Found)
+          IF (.NOT. Found) THEN
+            Acoef(1:n) = CMPLX(1/Avacuum, 0._dp)
+          ELSE
+            Acoef(1:n) = CMPLX(REAL(Acoef(1:n)), &
+              GetReal(Material, 'Relative Reluctivity im', Found))/Avacuum
+          END IF
+        ELSE
+          Acoef(1:n) = CMPLX(REAL(Acoef(1:n)), &
+            GetReal(Material, 'Reluctivity im', Found))
+        END IF
+      ELSE 
+        Acoef(1:n) = CMPLX(REAL(Acoef(1:n)), &
+          GetReal(Material, 'Inverse Permeability im', Found))
+      END IF
+    ELSE
       Acoef(1:n) = CMPLX(REAL(Acoef(1:n)), &
-        GetReal( Material, 'Inverse Relative Permeability im', Found ), KIND=dp )
+        GetReal(Material, 'Inverse Relative Permeability im', Found)/Avacuum)
     END IF
-    Acoef = Acoef / Avacuum
+
 !------------------------------------------------------------------------------
   END SUBROUTINE GetInvPermeabilityC
 !------------------------------------------------------------------------------
@@ -1338,7 +1355,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        ExHc = ComplexCrossProduct(EF_ip, CONJG(H))
 
        EdotJ = SUM(EF_ip*CONJG(J_ip))
-       divS = im * Omega * 0.5_dp * (SUM(B*CONJG(H)) + SUM(EF_ip * CONJG(PR_ip * EF_ip)))  + EdotJ
+       divS = im * Omega * (SUM(B*CONJG(H)) - SUM(EF_ip * CONJG(PR_ip * EF_ip))) - EdotJ
 
        s = IP % s(j) * detJ
 
