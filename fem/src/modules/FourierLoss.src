@@ -320,14 +320,15 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
 
 
   ! Check whether the exact integration of Fourier coefficients is used
-  ExactIntegration = GetLogical(SolverParams, 'Exact Integration', Found)
-  IF (.NOT. Found) ExactIntegration = .TRUE.
+  ExactIntegration = .NOT. GetLogical(SolverParams, 'Inexact Integration', Found)
   IF (ExactIntegration) THEN
     CALL Info('FourierLossSolver','Using exact integration')    
   ELSE
     SimpsonsRule = GetLogical( SolverParams,'Simpsons Rule',Found )
     IF( SimpsonsRule ) THEN
       CALL Info('FourierLossSolver','Using Simpsons rule for integration')
+    ELSE
+      CALL Info('FourierLossSolver','Using trapetsoidal rule for integration')    
     END IF
   END IF
 
