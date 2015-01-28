@@ -186,7 +186,7 @@ CONTAINS
     IF ( FirstTime ) THEN
       Avacuum = GetConstReal( CurrentModel % Constants, &
         'Permittivity of Vacuum', Found )
-      IF(.NOT. Found ) Avacuum = 8.854187817e-12
+      IF(.NOT. Found ) Avacuum = 8.854187817d-12
       FirstTime = .FALSE.
     END IF
     
@@ -215,7 +215,7 @@ CONTAINS
     !IF( FirstTime ) THEN
       !permvacuum = GetConstReal( CurrentModel % Constants, &
         !'Permittivity of Vacuum', Found)
-      !IF(.NOT. Found ) permvacuum = 8.854187817e-12
+      !IF(.NOT. Found ) permvacuum = 8.854187817d-12
       !FirstTime = .FALSE.
     !END IF
     !CALL ListGetRealArray( Material, &
@@ -350,7 +350,8 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   LOGICAL :: AllocationsDone = .FALSE., Found, HasPrecDampCoeff_re, HasPrecDampCoeff_im
   TYPE(Element_t),POINTER :: Element
 
-  REAL(KIND=dp) :: Omega
+
+  REAL(KIND=dp) :: Omega, mu0inv, eps0
   TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams
 
   INTEGER :: n,istat,i,nNodes,Active
@@ -418,6 +419,12 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
     GetReal(GetSolverParams(), 'Linear System Preconditioning Damp Coefficient im', HasPrecDampCoeff_im))
 
+  mu0inv = GetConstReal( CurrentModel % Constants,  'Permeability of Vacuum', Found )
+  IF(.NOT. Found ) mu0inv = PI * 4.0d-7
+  eps0 = GetConstReal ( CurrentModel % Constants, 'Permittivity of Vacuum', Found )
+  IF(.NOT. Found ) eps0 = 8.854187817d-12
+
+  CALL ListAddLogical( GetSolverParams(), "Linear System Complex", .TRUE.) !DEBUG
   !
   ! Resolve internal non.linearities, if requeted:
   ! ----------------------------------------------
@@ -481,7 +488,6 @@ CONTAINS
 
        Acoef = 0.0_dp
        Tcoef = 0.0_dp
-       Material => GetMaterial( Element )
 
        IF ( ASSOCIATED(Material) ) THEN
          CALL GetInvPermeability(Material,Acoef,n)
@@ -524,7 +530,16 @@ CONTAINS
 
        nd = GetElementNOFDOFs(Element)
        n  = GetElementNOFNodes(Element)
-       Model % CurrentElement => Element 
+       Model % CurrentElement => Element
+
+       Material => GetMaterial(Element % BoundaryInfo % Left)
+       Tcoef = 0.0_dp
+       IF ( ASSOCIATED(Material) ) THEN
+         CALL GetInvPermeability(Material, Tcoef, n)
+       ELSE
+         Material => GetMaterial(Element % BoundaryInfo % Right)
+         CALL GetInvPermeability(Material, Tcoef, n)
+       END IF
 
        Load(1,1:n) = GetReal( BC, 'Magnetic Boundary Load 1', Found ) 
        Load(1,1:n) = CMPLX( REAL(Load(1,1:n)), &
@@ -542,7 +557,11 @@ CONTAINS
        Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
          GetReal( BC, 'Electric Robin Coefficient im', Found), KIND=dp)
 
-       CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd,PiolaVersion)
+       IF(.NOT. ASSOCIATED(Material)) THEN
+         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd, PiolaVersion=PiolaVersion)
+       ELSE
+         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd, Tcoef, PiolaVersion)
+       END IF
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
 
@@ -702,16 +721,17 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd, PiolaVersion)
+  SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Acoef, Element, n, nd, Tcoef, PiolaVersion)
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp) :: LOAD(:,:), Bcoef(:)
+    COMPLEX(KIND=dp) :: LOAD(:,:), Acoef(:)
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL,OPTIONAL :: PiolaVersion
+    COMPLEX(KIND=dp), OPTIONAL :: Tcoef(n)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ!,Normal(3)
-    COMPLEX(KIND=dp) :: B, F, TC, L(3)
+    COMPLEX(KIND=dp) :: B, F, TC, L(3), muinv
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -720,6 +740,7 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
+    IF( .NOT. PRESENT(Tcoef) ) Tcoef(1:n) = mu0inv
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
@@ -744,26 +765,17 @@ CONTAINS
       END IF
 
       !Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
-      B  = SUM(Basis(1:n) * Bcoef(1:n))
+      B  = SUM(Basis(1:n) * Acoef(1:n))
       L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
-
-      ! Compute element stiffness matrix and force vector:
-      !---------------------------------------------------
-      !DO p=1,np
-        !FORCE(p) = FORCE(p) + F*Basis(p)*detJ*IP % s(t)
-        !DO q=1,np
-          !STIFF(p,q) = STIFF(p,q) + TC * &
-                 !Basis(p)*Basis(q)*detJ*IP % s(T)
-        !END DO
-      !END DO
+      muinv = SUM( Basis(1:n) * Tcoef(1:n) )
 
       DO i = 1,nd-np
         p = i+np
          
-        FORCE(p) = FORCE(p) - B*SUM(L*WBasis(i,:))*detJ*IP%s(t)
+        FORCE(p) = FORCE(p) - muinv*SUM(L*WBasis(i,:))*detJ*IP%s(t)
         DO j = 1,nd-np
           q = j+np
-          STIFF(p,q) = STIFF(p,q) - B * &
+          STIFF(p,q) = STIFF(p,q) - muinv*B * &
              SUM(WBasis(i,:)*WBasis(j,:))*detJ*IP%s(t)
         END DO
       END DO
@@ -992,10 +1004,10 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
   ! add these in the beginning, so that SaveData sees these existing, even
   ! if executed before the actual computations...
   ! -----------------------------------------------------------------------
-  !CALL ListAddConstReal(Model % Simulation,'res: Eddy current power',0._dp)
-  !CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',0._dp)
-  CALL ListAddConstReal(Model % Simulation,'res: Functional Value', 0._dp)
-  CALL ListAddConstReal(Model % Simulation,'res: Functional Value im', 0._dp)
+  IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
+    CALL ListAddConstReal(Model % Simulation,'res: Energy Functional', 0._dp)
+    CALL ListAddConstReal(Model % Simulation,'res: Energy Functional im', 0._dp)
+  END IF
 
   IF (GetLogical(GetSolverParams(),'Show Angular Frequency',Found)) &
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency',0._dp)
@@ -1077,7 +1089,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), Norm
    REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), E(2,3)
-   REAL(KIND=dp) :: detJ, Omega, Power, Energy
+   REAL(KIND=dp) :: detJ, Omega, Energy, Energy_im
    REAL(KIND=dp) :: Freq, ComponentLoss(2)
    REAL(KIND=dp) :: TotalLoss
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area
@@ -1099,7 +1111,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    INTEGER :: i,j,k,l,n,nd,np,p,q,dofs,dofcount,vDOFs,dim,BodyId
 
    TYPE(Solver_t), POINTER :: pSolver
-   REAL(KIND=dp), POINTER :: xx(:), bb(:)
+   REAL(KIND=dp), POINTER :: xx(:), bb(:), TempVector(:), TempRHS(:)
    REAL(KIND=dp) :: hdotE(2), hdotE_r, hdotE_i
 
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
@@ -1199,25 +1211,42 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    R=0._dp; PR=0._dp
 
-   Power = 0._dp; Energy = 0._dp
+   Energy = 0._dp; Energy_im = 0._dp
 
    xx => pSolver % Variable % Values
    bb => pSolver % Matrix % RHS
-
-   hdotE = 0._dp
-   DO i = 1, size(xx,1)/2   ! \TODO this assumes that each edge belongs to only one PE
-     hdotE = hdotE + [ xx(2*(i-1)+1) * bb(2*(i-1)+1) - &
-                       xx(2*(i-1)+2) * bb(2*(i-1)+2), &
-                       xx(2*(i-1)+1) * bb(2*(i-1)+2) + &
-                       xx(2*(i-1)+2) * bb(2*(i-1)+1) ]
-   END DO
    
-   hdotE_r = ParallelReduction(hdotE(1))
-   hdotE_i = ParallelReduction(hdotE(2))
-   write (Message,*), 'Functional value:', hdotE
-   CALL Info('VectorHelmholtzSolver',Message)
-   CALL ListAddConstReal(Model % Simulation, 'res: Functional value', hdotE_r)
-   CALL ListAddConstReal(Model % Simulation, 'res: Functional value im', hdotE_i)
+   hdotE_r = 0._dp
+   hdotE_i = 0._dp
+   ! This piece of code effectively does what keyword "Calculate Energy Norm" would but
+   ! it treats the system complex valued.
+   IF (GetLogical( GetSolverParams(), 'Calculate Energy Functional', Found)) THEN
+     ALLOCATE(TempVector(pSolver % Matrix % NumberOfRows))
+     IF ( ParEnv % PEs > 1 ) THEN
+       ALLOCATE(TempRHS(SIZE(bb)))
+       TempRHS = bb 
+       CALL ParallelInitSolve( pSolver % Matrix, xx, TempRHS, Tempvector )
+       CALL ParallelMatrixVector( pSolver % Matrix, xx, TempVector, .TRUE. )
+     ELSE
+       CALL MatrixVectorMultiply( pSolver % Matrix, xx, TempVector )
+     END IF
+
+     DO i = 1, size(xx,1)/2   
+       IF ( ParEnv % Pes>1 ) THEN
+         IF ( pSolver % Matrix % ParMatrix % ParallelInfo % &
+           NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+       END IF
+       hdotE_r = hdotE_r + xx(2*(i-1)+1) * Tempvector(2*(i-1)+1) - xx(2*(i-1)+2) * Tempvector(2*(i-1)+2)
+       hdotE_i = hdotE_i + xx(2*(i-1)+1) * Tempvector(2*(i-1)+2) + xx(2*(i-1)+2) * Tempvector(2*(i-1)+1) 
+     END DO
+
+     hdotE_r = ParallelReduction(hdotE_r)
+     hdotE_i = ParallelReduction(hdotE_i)
+     write (Message,*), 'Energy Functional value:', hdotE_r, hdotE_i
+     CALL Info('VectorHelmholtzSolver',Message)
+     CALL ListAddConstReal(Model % Simulation, 'res: Energy Functional', hdotE_r)
+     CALL ListAddConstReal(Model % Simulation, 'res: Energy Functional im', hdotE_i)
+   END IF
 
    CALL DefaultInitialize()
    DO i = 1, GetNOFActive()
@@ -1313,25 +1342,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
        s = IP % s(j) * detJ
 
-       !Power = Power + SUM(E**2)*C_ip*s
-       IF (vDOFs == 1) THEN
-          Power = Power + SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-               TRANSPOSE(E(1:1,1:dim)) ) * s
-       ELSE
-          ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
-          ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
-          ! would be obtained.
-          Power = Power + SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-               TRANSPOSE(E(1:1,1:dim)) ) * s - &
-               SUM( MATMUL( AIMAG(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
-               TRANSPOSE(E(1:1,1:dim)) ) * s + &
-               SUM( MATMUL( AIMAG(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-               TRANSPOSE(E(2:2,1:dim)) ) * s + &               
-               SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
-               TRANSPOSE(E(2:2,1:dim)) ) * s
-       END IF
-
-       Energy = Energy + s*(REAL(PR_ip)*SUM(E**2) + REAL(R_ip)*SUM(B**2))/2 ! \TODO: this should contribute to \int \divg S dx
+       Energy = Energy + REAL(divS)*s
+       Energy_im = Energy_im + AIMAG(divS)*s
        DO p=1,n
          DO q=1,n
            MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
@@ -1398,8 +1410,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    END DO
 
-   Power  = ParallelReduction(Power)
    Energy = ParallelReduction(Energy)
+   Energy_im = ParallelReduction(Energy_im)
 
     ! Assembly of the face terms:
     !----------------------------
@@ -1423,9 +1435,10 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      Solver % Matrix % RHS => Fsave
    END IF
 
-   WRITE(Message,*) '(Electro)Magnetic Field Energy: ', Energy
+   WRITE(Message,*) '(Electro) Integral of Divergence of Poynting Vector: ', Energy, Energy_im
    CALL Info( 'VectorHelmholtz', Message )
-   CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
+   CALL ListAddConstReal(Model % Simulation,'res: Integral of Div Poynting Vector',Energy)
+   CALL ListAddConstReal(Model % Simulation,'res: Integral of Div Poynting Vector im',Energy_im)
 
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Tcoef,RotM )
