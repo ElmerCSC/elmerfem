@@ -688,7 +688,7 @@ CONTAINS
     IF(.NOT. Found ) FreqPower = 1.0_dp
 
     FieldPower = GetCReal( SolverParams,'Harmonic Loss Linear Exponent',Found ) 
-    IF( .NOT. Found ) FieldPower = 1.0_dp
+    IF( .NOT. Found ) FieldPower = 2.0_dp
 
     FreqPower2 = GetCReal( SolverParams,'Harmonic Loss Quadratic Frequency Exponent',Found )
     IF(.NOT. Found ) FreqPower2 = 2.0_dp

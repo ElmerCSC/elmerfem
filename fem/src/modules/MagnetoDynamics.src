@@ -5410,7 +5410,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
       IF( .NOT. Found ) FreqPower2 = 2.0_dp
 
       FieldPower = GetCReal( SolverParams,'Harmonic Loss Linear Exponent',Found ) 
-      IF( .NOT. Found ) FieldPower = 1.0_dp
+      IF( .NOT. Found ) FieldPower = 2.0_dp
       FieldPower = FieldPower / 2.0_dp
 
       FieldPower2 = GetCReal( SolverParams,'Harmonic Loss Quadratic Exponent',Found ) 
