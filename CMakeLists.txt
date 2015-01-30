@@ -127,7 +127,7 @@ IF(MPI_FOUND)
   ENDIF()
   # Hypre
   IF(WITH_Hypre)
-    FIND_PACKAGE(Hypre COMPONENTS Euclid parcsr_ls ParaSails IJ_mv QUIET)
+    FIND_PACKAGE(Hypre REQUIRED OPTIONAL_COMPONENTS Euclid parcsr_ls ParaSails IJ_mv QUIET)
   ENDIF()
 ENDIF()
 
