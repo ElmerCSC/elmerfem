@@ -196,6 +196,8 @@ CONTAINS
       Acoef(1:n) = CMPLX(REAL(Acoef(1:n)), &
         GetReal( Material, 'Relative Permittivity im', Found ), KIND=dp )
       Acoef(1:n) = Acoef(1:n)*Avacuum
+    ELSE
+      Acoef(1:n) = Avacuum
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GetPermittivityC
