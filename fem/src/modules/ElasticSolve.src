@@ -182,7 +182,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: GotForceBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
        CauchyResponseFunction  = .FALSE., UseUMAT = .FALSE., AxialSymmetry
-  LOGICAL :: PseudoTraction
+  LOGICAL :: PseudoTraction, GlobalPseudoTraction
   LOGICAL :: PlaneStress, CalculateStrains, CalculateStresses
   LOGICAL :: CalcPrincipalAngle, CalcPrincipal
   LOGICAL :: CalcPrincipalStress, CalcPrincipalStrain
@@ -196,7 +196,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
           FlowPerm(:),AdjacentNodes(:)
 
   INTEGER :: dim,i,j,k,l,m,n,t,iter,NDeg,k1,k2,STDOFs,LocalNodes,istat
-  INTEGER :: NewtonIter,NonlinearIter, FlowNOFNodes
+  INTEGER :: NewtonIter,NonlinearIter, MinNonlinearIter, FlowNOFNodes
   INTEGER :: CoordinateSystem
   INTEGER :: NPROPS, NSTATEV, MaxIntegrationPoints = 1, N_Gauss
 
@@ -315,6 +315,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   NeoHookeanMaterial = ListGetLogical( SolverParams, &
        'Neo-Hookean Material', GotIt )
   IF (NeoHookeanMaterial) Isotropic = .TRUE.
+
+  GlobalPseudoTraction = GetLogical( SolverParams, 'Pseudo-Traction', GotIt)
+
 
   !------------------------------------------------------------------------------
   !     Allocate some permanent storage, this is done first time only
@@ -506,6 +509,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   NonlinearIter = ListGetInteger( SolverParams, &
        'Nonlinear System Max Iterations', GotIt )
   IF ( .NOT. GotIt ) NonlinearIter = 1
+
+  MinNonlinearIter = ListGetInteger( SolverParams, &
+       'Nonlinear System Min Iterations', GotIt )
 
   LinearModel = ListGetLogical( SolverParams, &
        'Elasticity Solver Linear', GotIt )
@@ -787,6 +793,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
            IF ( .NOT. GotForceBC .AND. ALL( SpringCoeff==0.0d0 ) ) CYCLE
            PseudoTraction = GetLogical( BC, 'Pseudo-Traction', GotIt)
+           IF(.NOT. GotIt ) PseudoTraction = GlobalPseudoTraction
            !------------------------------------------------------------------------------
 
            ParentElement => CurrentElement % BoundaryInfo % Left
@@ -917,13 +924,15 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      !------------------------------------------------------------------------------
 
      IF ( DefaultLinesearch( Converged ) ) GOTO 100
-     IF( Converged ) EXIT
+
+     IF( iter >= MinNonlinearIter .AND. Converged ) EXIT
  
      UNorm = DefaultSolve()
 
      !----------------------------------------------------------------------------------
 
-     IF ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) THEN
+     IF ( ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) .AND. &
+         ( iter >= MinNonlinearIter ) ) THEN
         IF (UseUMAT) THEN
            ! Save the state variables corresponding to the converged nonlinear
            ! solution to the array holding the previous solution state:
