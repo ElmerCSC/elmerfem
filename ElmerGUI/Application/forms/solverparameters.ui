@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>643</width>
-    <height>522</height>
+    <height>546</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -382,14 +382,46 @@
           <string>Method</string>
          </property>
          <layout class="QGridLayout">
-          <item row="0" column="0">
-           <widget class="QRadioButton" name="linearSystemSolverDirect">
+          <item row="1" column="0">
+           <widget class="QRadioButton" name="linearSystemSolverIterative">
             <property name="text">
-             <string>Direct</string>
+             <string>Iterative</string>
             </property>
             <property name="checked">
-             <bool>false</bool>
+             <bool>true</bool>
             </property>
+           </widget>
+          </item>
+          <item row="0" column="2">
+           <spacer>
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="2" column="1">
+           <widget class="QComboBox" name="linearSystemMultigridMethod">
+            <item>
+             <property name="text">
+              <string>Jacobi</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>CG</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>BiCGStab</string>
+             </property>
+            </item>
            </widget>
           </item>
           <item row="0" column="1">
@@ -409,29 +441,6 @@
               <string>MUMPS</string>
              </property>
             </item>
-           </widget>
-          </item>
-          <item row="0" column="2">
-           <spacer>
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
-          <item row="1" column="0">
-           <widget class="QRadioButton" name="linearSystemSolverIterative">
-            <property name="text">
-             <string>Iterative</string>
-            </property>
-            <property name="checked">
-             <bool>true</bool>
-            </property>
            </widget>
           </item>
           <item row="1" column="1">
@@ -473,7 +482,30 @@
             </item>
            </widget>
           </item>
+          <item row="0" column="0">
+           <widget class="QRadioButton" name="linearSystemSolverDirect">
+            <property name="text">
+             <string>Direct</string>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
           <item row="1" column="2">
+           <spacer>
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item row="2" column="2">
            <spacer>
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
@@ -493,38 +525,6 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="1">
-           <widget class="QComboBox" name="linearSystemMultigridMethod">
-            <item>
-             <property name="text">
-              <string>Jacobi</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>CG</string>
-             </property>
-            </item>
-            <item>
-             <property name="text">
-              <string>BiCGStab</string>
-             </property>
-            </item>
-           </widget>
-          </item>
-          <item row="2" column="2">
-           <spacer>
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>40</width>
-              <height>20</height>
-             </size>
-            </property>
-           </spacer>
-          </item>
          </layout>
         </widget>
        </item>
@@ -534,6 +534,20 @@
           <string>Control</string>
          </property>
          <layout class="QGridLayout">
+          <item row="7" column="0" colspan="3">
+           <widget class="QCheckBox" name="linearSystemAbortWhenNotConvergedCheck">
+            <property name="text">
+             <string>Abort if the solution did not converge</string>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="0">
+           <widget class="QLabel" name="linearSystemPreconditionRecomputeLabel">
+            <property name="text">
+             <string>Prec. recompute</string>
+            </property>
+           </widget>
+          </item>
           <item row="0" column="0">
            <widget class="QLabel" name="linearSystemMaxIterationsLabel">
             <property name="text">
@@ -566,6 +580,13 @@
            <widget class="QLabel" name="linearSystemPreconditioningLabel">
             <property name="text">
              <string>Preconditioning</string>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="linearSystemILUTToleranceLabel">
+            <property name="text">
+             <string>ILUT tolerance</string>
             </property>
            </widget>
           </item>
@@ -659,10 +680,10 @@
             </property>
            </spacer>
           </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="linearSystemILUTToleranceLabel">
+          <item row="4" column="0">
+           <widget class="QLabel" name="linearSystemResiduaOutputLabel">
             <property name="text">
-             <string>ILUT tolerance</string>
+             <string>Residual output</string>
             </property>
            </widget>
           </item>
@@ -673,24 +694,10 @@
             </property>
            </widget>
           </item>
-          <item row="4" column="0">
-           <widget class="QLabel" name="linearSystemResiduaOutputLabel">
-            <property name="text">
-             <string>Residual output</string>
-            </property>
-           </widget>
-          </item>
           <item row="4" column="1" colspan="3">
            <widget class="QLineEdit" name="linearSystemResiduaOutputEdit">
             <property name="text">
              <string>1</string>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="linearSystemPreconditionRecomputeLabel">
-            <property name="text">
-             <string>Prec. recompute</string>
             </property>
            </widget>
           </item>
@@ -701,14 +708,7 @@
             </property>
            </widget>
           </item>
-          <item row="6" column="0" colspan="3">
-           <widget class="QCheckBox" name="linearSystemAbortWhenNotConvergedCheck">
-            <property name="text">
-             <string>Abort if the solution did not converge</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="3">
+          <item row="7" column="3">
            <spacer>
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
@@ -720,6 +720,20 @@
              </size>
             </property>
            </spacer>
+          </item>
+          <item row="6" column="0">
+           <widget class="QLabel" name="linearSystemBiCGstablPolDegLabel">
+            <property name="text">
+             <string>BiCGStabl order</string>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="1" colspan="3">
+           <widget class="QLineEdit" name="linearSystemBiCGstablPolDeg">
+            <property name="text">
+             <string>2</string>
+            </property>
+           </widget>
           </item>
          </layout>
         </widget>

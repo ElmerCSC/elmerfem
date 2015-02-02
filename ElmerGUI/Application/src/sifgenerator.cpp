@@ -1113,7 +1113,10 @@ void SifGenerator::parseLinearSystemTab(Ui::solverParameterEditor ui)
     
     addSifLine("  Linear System Convergence Tolerance = ",
 		ui.linearSystemConvergenceToleranceEdit->text());
-    
+
+    addSifLine("  BiCGstabl polynomial degree = ",
+               ui.linearSystemBiCGstablPolDeg->text());
+
     if(!hyprePreconditioning)
       addSifLine("  Linear System Preconditioning = ",
 		 ui.linearSystemPreconditioning->currentText());
