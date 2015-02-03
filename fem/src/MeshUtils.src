@@ -3941,11 +3941,7 @@ END SUBROUTINE GetMaxDefs
 
     ! This is just temporarily set to false always until the logic has been tested. 
     CheckForHalo = NarrowHalo .OR. NoHalo
-CheckForhalo = .true.
-nohalo=.true.
-    ! Interface meshes consist of boundary elements only    
     Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
-
 
     HaloFound = .FALSE.
     IF( CheckForHalo ) THEN
