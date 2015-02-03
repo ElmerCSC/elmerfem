@@ -749,9 +749,9 @@ CONTAINS
     LOGICAL,OPTIONAL :: PiolaVersion
     COMPLEX(KIND=dp), OPTIONAL :: Tcoef(n)
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ!,Normal(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
     COMPLEX(KIND=dp) :: B, F, TC, L(3), muinv
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), tanWBasis(3)
     LOGICAL :: Stat
     TYPE(GaussIntegrationPoints_t) :: IP
     INTEGER :: t, i, j, np, p, q
@@ -783,19 +783,20 @@ CONTAINS
         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
       END IF
 
-      !Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
+      Normal = NormalVector( Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       B  = SUM(Basis(1:n) * Acoef(1:n))
       L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
       muinv = SUM( Basis(1:n) * Tcoef(1:n) )
 
       DO i = 1,nd-np
+        tanWBasis(:) = WBasis(i,:) - Normal * SUM(Normal* WBasis(i,:))
         p = i+np
          
         FORCE(p) = FORCE(p) - muinv*SUM(L*WBasis(i,:))*detJ*IP%s(t)
         DO j = 1,nd-np
           q = j+np
           STIFF(p,q) = STIFF(p,q) - muinv*B * &
-             SUM(WBasis(i,:)*WBasis(j,:))*detJ*IP%s(t)
+             SUM(tanWBasis(:)*WBasis(j,:))*detJ*IP%s(t)
         END DO
       END DO
    END DO
