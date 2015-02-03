@@ -3941,6 +3941,11 @@ END SUBROUTINE GetMaxDefs
 
     ! This is just temporarily set to false always until the logic has been tested. 
     CheckForHalo = NarrowHalo .OR. NoHalo
+CheckForhalo = .true.
+nohalo=.true.
+    ! Interface meshes consist of boundary elements only    
+    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
+
 
     HaloFound = .FALSE.
     IF( CheckForHalo ) THEN
@@ -3976,9 +3981,6 @@ END SUBROUTINE GetMaxDefs
       END IF
     END IF
 
-
-    ! Interface meshes consist of boundary elements only    
-    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
 
 !   Search elements in this boundary and its periodic
 !   counterpart:
@@ -15701,6 +15703,7 @@ CONTAINS
       END IF
       
       Element % BodyId = BodyId
+      Element % PartIndex = ParEnv % MYpe
     END DO
     
 !   Update new mesh node count:
