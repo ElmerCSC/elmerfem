@@ -1137,7 +1137,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce
-   LOGICAL :: Found, stat, LossEstimation, &
+   LOGICAL :: Found, stat, &
               CalcFluxLogical
 
    TYPE(GaussIntegrationPoints_t) :: IP
@@ -1464,25 +1464,6 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    DEALLOCATE( MASS,FORCE,Tcoef,RotM )
    IF (PiolaVersion) DEALLOCATE( EBasis, CurlEBasis )
 
-   IF (LossEstimation) THEN
-      CALL ListAddConstReal( Model % Simulation,'res: fourier loss',TotalLoss )
-
-      WRITE( Message,'(A,ES12.3)') 'Loss for cos mode: ', ComponentLoss(1)
-      CALL Info('MagnetoDynamics', Message, Level=6 )
-      WRITE( Message,'(A,ES12.3)') 'Loss for sin mode: ', ComponentLoss(2)
-      CALL Info('MagnetoDynamics', Message, Level=6 )
-      WRITE( Message,'(A,ES12.3)') 'Total loss: ',TotalLoss
-      CALL Info('MagnetoDynamics',Message, Level=5 )
-
-      CALL Info('FourierLosses','Losses by bodies',Level=6)
-      DO j=1,Model % NumberOfBodies
-         IF( BodyLoss(j) < TINY( TotalLoss ) ) CYCLE
-         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLoss(j)
-         CALL Info('MagnetoDynamics', Message, Level=6 )
-      END DO
- 
-      DEALLOCATE( BodyLoss )      
-   END IF
       
   IF (GetLogical(GetSolverParams(),'Show Angular Frequency',Found)) THEN
     WRITE(Message,*) 'Angular Frequency: ', Omega
