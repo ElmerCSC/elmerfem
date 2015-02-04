@@ -1032,22 +1032,6 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
   IF (GetLogical(GetSolverParams(),'Show Angular Frequency',Found)) &
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency',0._dp)
 
-  ! add these in the beginning only if the Magnetix Flux Average is computed
-  ! -------------------------------------------------------------------------
-  IF (ListGetLogicalAnyBC( Model,'Magnetic Flux Average')) THEN ! \TODO: what to do with these?
-    CALL ListAddConstReal( Model % Simulation,'res: Magnetic Flux Average', 0._dp)
-    CALL ListAddConstReal(Model % Simulation, &
-                           'res: Magnetic Flux Density Average',0._dp)
-
-    IF (Var % dofs == 2) THEN 
-      CALL ListAddConstReal(Model % Simulation,'res: Magnetic Flux im Average',0._dp)
-      CALL ListAddConstReal(Model % Simulation, &
-                   'res: Magnetic Flux Density im Average', 0._dp )
-    END IF
-
-    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Flux Area',0._dp)
-  END IF
-
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
   IF(Found.AND..NOT.NodalFields) RETURN
 
@@ -1117,7 +1101,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
                        B(3), R(35)
 
    !COMPLEX(KIND=dp) :: CST(3,3)
-   COMPLEX(KIND=dp) :: CMat_ip(3,3)  
+   !COMPLEX(KIND=dp) :: CMat_ip(3,3)  
 
    INTEGER, PARAMETER :: ind1(6) = [1,2,3,1,2,1]
    INTEGER, PARAMETER :: ind2(6) = [1,2,3,2,3,3]
@@ -1339,17 +1323,14 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        ! The conductivity as a tensor
        ! -------------------------------
        !C_ip  = SUM( Basis(1:n)*C(1:n) )
-       DO k=1,3
-         DO l=1,3
-           CMat_ip(k,l) = SUM( Tcoef(k,l,1:n) * Basis(1:n) )
-         END DO
-       END DO
+       !DO k=1,3
+         !DO l=1,3
+           !CMat_ip(k,l) = SUM( Tcoef(k,l,1:n) * Basis(1:n) )
+         !END DO
+       !END DO
 
-       !IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS) ) THEN
        R_ip = SUM( Basis(1:n)*R(1:n) )
        H = R_ip*B
-       !END IF
-
 
        PR_ip = SUM( Basis(1:n)*PR(1:n) )
 
@@ -1463,98 +1444,12 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Tcoef,RotM )
    IF (PiolaVersion) DEALLOCATE( EBasis, CurlEBasis )
-
       
   IF (GetLogical(GetSolverParams(),'Show Angular Frequency',Found)) THEN
     WRITE(Message,*) 'Angular Frequency: ', Omega
     CALL Info( 'MagnetoDynamics', Message )
     CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)
   END IF
-
-  ! Flux On Boundary:
-  !------------------
-
-  CalcFluxLogical = .FALSE.
-  Flux = 0._dp
-  Area = 0._dp
-  AverageFluxDensity = 0._dp
-
-  IF (ListGetLogicalAnyBC( Model,'Magnetic Flux Average')) THEN
-    IF (PiolaVersion) THEN
-         CALL Warn('VectorHelmholtzCalcFields', &
-          'Magnetic Flux Average: The feature is not yet available for Piola transformed basis functions')
-    ELSE
-    DO i=1,GetNOFBoundaryElements()
-       Element => GetBoundaryElement(i)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
-       BC=>GetBC()
-       IF (.NOT. ASSOCIATED(BC) ) CYCLE
-     
-       SELECT CASE(GetElementFamily())
-       CASE(1)
-         CYCLE
-       CASE(2)
-         k = GetBoundaryEdgeIndex(Element,1); Element => Mesh % Edges(k)
-       CASE(3,4)
-         k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
-       END SELECT
-
-       IF (ASSOCIATED(Element % BoundaryInfo % Right)) THEN
-         BodyId = Element % BoundaryInfo % Right % BodyID       
-       ELSE IF (ASSOCIATED(Element % BoundaryInfo % Left)) THEN
-         BodyId = Element % BoundaryInfo % Left % BodyID
-       ELSE 
-         CALL Fatal ('VectorHelmholtzCalcFields', 'Magnetic Flux Average: Boundary Element has not got a parent element.')
-       END IF
-
-       n = GetElementNOFNodes()
-       np = n*pSolver % Def_Dofs(GetElementFamily(Element),BodyId,1)
-       nd = GetElementNOFDOFs(uElement=Element, uSolver=pSolver)
-       CALL GetVectorLocalSolution(SOL,Pname,uElement=Element,uSolver=pSolver)
-
-       CalcFluxLogical = GetLogical( BC, 'Magnetic Flux Average', Found)
-       IF (Found .AND. CalcFluxLogical) CALL calcAverageFlux(Flux, Area, Element, n, nd, np, SOL, vDOFs)
-    END DO
-    Flux(1) = ParallelReduction(Flux(1))
-    Flux(2) = ParallelReduction(Flux(2))
-    Area = ParallelReduction(Area)
-
-    IF( Area < EPSILON( Area ) ) THEN
-      CALL WARN('VectorHelmholtzCalcFields', 'Magnetic Flux Average Computation: Area < Epsilon(Area)')
-      RETURN
-    END IF
-
-    AverageFluxDensity = Flux / Area
- 
-    WRITE(Message,*) 'Magnetic Flux Average: ', Flux(1)
-    CALL Info( 'MagnetoDynamics', Message )
-    CALL ListAddConstReal( Model % Simulation, 'res: Magnetic Flux Average', Flux(1) )
- 
-    IF (vDOFs == 2) THEN 
-      WRITE(Message,*) 'Magnetic Flux im Average: ', Flux(2)
-      CALL Info( 'MagnetoDynamics', Message )
-      CALL ListAddConstReal( Model % Simulation, 'res: Magnetic Flux im Average', Flux(2) )
-    END IF
-
-    WRITE(Message,*) 'Magnetic Flux Density Average: ', AverageFluxDensity(1)
-    CALL Info( 'MagnetoDynamics', Message )
-    CALL ListAddConstReal( Model % Simulation,'res: Magnetic Flux Density Average', &
-                          AverageFluxDensity(1))
-
-    IF (vDOFs == 2) THEN 
-     WRITE(Message,*) 'Magnetic Flux Density im Average: ', AverageFluxDensity(2)
-     CALL Info( 'MagnetoDynamics', Message )
-     CALL ListAddConstReal( Model % Simulation,'res: Magnetic Flux Density im Average', &
-                          AverageFluxDensity(2))
-    END IF
-
-    WRITE(Message,*) 'Magnetic Flux Area: ', Area
-    CALL Info( 'MagnetoDynamics', Message )
-    CALL ListAddConstReal( Model % Simulation,'res: Magnetic Flux Area', Area )
-    END IF
-  END IF
-
-
 CONTAINS
 
  
@@ -1706,44 +1601,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     END SUBROUTINE LocalJumps
 !------------------------------------------------------------------------------
-
-
-    SUBROUTINE calcAverageFlux (Flux, Area, Element, n, nd, np, SOL, vDOFs)
-       INTEGER :: n, nd
-       TYPE(Element_t), POINTER :: Element
-!------------------------------------------------------------------------------
-       REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)!,L(3)
-       REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3),  &
-                        SOL(2,32), Flux(2), Area
-       COMPLEX(KIND=DP) :: B(3)
-       LOGICAL :: Stat
-       TYPE(GaussIntegrationPoints_t) :: IP
-       INTEGER :: j, k, np, vDOFs
-
-       TYPE(Nodes_t), SAVE :: Nodes
-!------------------------------------------------------------------------------
-       CALL GetElementNodes( Nodes )
-       IP = GaussPoints(Element)
-
-       B=0._dp
-
-       DO j=1,IP % n
-         stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-                             IP % W(j), detJ, Basis, dBasisdx )
-         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-         Normal = NormalVector( Element, Nodes, IP % U(j), IP % V(j), .TRUE. )
-
-         s = IP % s(j) * detJ
-
-         B = CMPLX(MATMUL( SOL(1, np+1:nd), RotWBasis(1:nd-np,:) ), &
-                   MATMUL( SOL(2, np+1:nd), RotWBasis(1:nd-np,:) ))
-         Flux(1) = Flux(1) + s * REAL(SUM(Normal * B))
-         Flux(2) = Flux(2) + s * AIMAG(SUM(Normal * B))
-
-         Area = Area + s
-      END DO
-
-    END SUBROUTINE calcAverageFlux
 
 !------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzCalcFields
