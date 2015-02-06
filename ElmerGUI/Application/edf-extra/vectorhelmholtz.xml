@@ -39,7 +39,6 @@
 	  <Name> Inverse Relative Permeability </Name>
 	  <Type> String </Type>
 	  <Whatis> Give the inverse relative permeability compared to vacuum (real part). </Whatis>
-          <DefaultValue> 1 </DefaultValue>
 	</Parameter>
 	<Parameter Widget="Edit" >
 	  <Name> Inverse Relative Permeability im </Name>
@@ -50,7 +49,6 @@
 	  <Name> Relative Permittivity </Name>
 	  <Type> String </Type>
 	  <Whatis> Give the relative permittivity of medium (real part). </Whatis>
-          <DefaultValue> 1 </DefaultValue>
 	</Parameter>
 	<Parameter Widget="Edit" >
 	  <Name> Relative Permittivity im</Name>
