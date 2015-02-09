@@ -576,6 +576,13 @@ CONTAINS
        Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
          GetReal( BC, 'Electric Robin Coefficient im', Found), KIND=dp)
 
+       ! ABC for vacuum ! TODO: disabled currently
+#if 0  
+       IF(GetLogical( BC, 'Absorbing Boundary Condition', Found )) THEN
+         Acoef = -im*Omega*sqrt(eps0/mu0inv)/(2*pi)
+       END IF
+#endif
+
        IF(.NOT. ASSOCIATED(Material)) THEN
          CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd, PiolaVersion=PiolaVersion)
        ELSE
