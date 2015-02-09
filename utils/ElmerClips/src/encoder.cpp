@@ -39,6 +39,10 @@
  *****************************************************************************/
 #include "encoder.h"
 
+extern "C" {
+#include <libavutil/mem.h>
+}
+
 Encoder::Encoder(QObject *parent) : QThread(parent), quality(2)
 {
   frameRGB = avcodec_alloc_frame();

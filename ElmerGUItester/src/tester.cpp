@@ -139,12 +139,12 @@ void Tester::testExecutables()
 {
 #ifdef Q_WS_WIN
   ok &= testFile(elmerHome + "\\bin\\ElmerSolver.exe", ui.elmerSolverResult);
-  ok &= testFile(elmerGuiHome + "\\ElmerGUI.exe", ui.elmerGuiResult);
+  ok &= testFile(elmerHome + "\\bin\\ElmerGUI.exe", ui.elmerGuiResult);
   ok &= testFile(elmerHome + "\\bin\\ElmerPost.exe", ui.elmerPostResult);
   ok &= testFile(elmerHome + "\\bin\\ElmerGrid.exe", ui.elmerGridResult);
 #else
   ok &= testFile(elmerHome + "/bin/ElmerSolver", ui.elmerSolverResult);
-  ok &= testFile(elmerGuiHome + "/ElmerGUI", ui.elmerGuiResult);
+  ok &= testFile(elmerHome + "/bin/ElmerGUI", ui.elmerGuiResult);
   ok &= testFile(elmerHome + "/bin/ElmerPost", ui.elmerPostResult);
   ok &= testFile(elmerHome + "/bin/ElmerGrid", ui.elmerGridResult);
 #endif
