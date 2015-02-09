@@ -3738,8 +3738,8 @@ CONTAINS
            BC => GetBC()
            IF ( .NOT. ASSOCIATED(BC) ) CYCLE
            IF ( .NOT. ListCheckPresent(BC, Name) .AND. &
-                .NOT. ListCheckPresent(BC, TRIM(Name)//' {e}') .AND. &
-                .NOT. ListCheckPresent(BC, TRIM(Name)//' {f}') ) CYCLE
+                .NOT. ListCheckPrefix(BC, TRIM(Name)//' {e}') .AND. &
+                .NOT. ListCheckPrefix(BC, TRIM(Name)//' {f}') ) CYCLE
 
            ! Get parent element:
            ! -------------------
@@ -3749,7 +3749,7 @@ CONTAINS
            END IF
            IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
 
-           IF ( ListCheckPresent(BC, TRIM(Name)//' {e}') ) THEN
+           IF ( ListCheckPrefix(BC, TRIM(Name)//' {e}') ) THEN
              IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
                SELECT CASE(GetElementFamily())
                CASE(1,2)

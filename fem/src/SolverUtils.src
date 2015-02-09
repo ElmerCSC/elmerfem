@@ -1180,7 +1180,7 @@ CONTAINS
      TYPE(Solver_t) :: Solver
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
-     TYPE(variable_t), POINTER :: Var, LoadVar, IterVar
+     TYPE(variable_t), POINTER :: Var, LoadVar, IterVar, LimitVar
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,t,ind,dofs, dof, bf, bc, Upper, Removed, Added, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2
@@ -1500,6 +1500,7 @@ CONTAINS
          ELSE
            CALL Info('DetermineSoftLimiter','Determined upper soft limit set',Level=5)
          END IF
+
          WRITE(Message,'(A,I0)') 'Number of limited dofs for '&
              //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
          CALL Info('DetermineSoftLimiter',Message,Level=5)
@@ -1516,6 +1517,31 @@ CONTAINS
        END IF
      END DO
 
+     ! Optionally save the limiters as a field variable so that 
+     ! lower limit is given value -1.0 and upper limit value +1.0.
+     IF( ListGetLogical( Params,'Save Limiter',Found ) ) THEN
+       LimitVar => VariableGet( Model % Variables, &
+           GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
+       IF(.NOT. ASSOCIATED( LimitVar ) ) THEN
+         CALL VariableAddVector( Model % Variables, Model % Mesh, Solver,&
+             GetVarName(Var) //' Contact Active', Perm = FieldPerm )
+         LimitVar => VariableGet( Model % Variables, &
+             GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
+       END IF
+
+       ! Currently the visulized limit is always scalar even though the limited field could be a vector!
+       DO i = 1, SIZE( LimitVar % Values ) 
+         LimitVar % Values(i) = 0.0_dp
+         DO j=1,Var % Dofs
+           IF( ASSOCIATED( Var % LowerLimitActive ) ) THEN
+             IF( Var % LowerLimitActive(Var%Dofs*(i-1)+j) ) LimitVar % Values(i) = -1.0_dp
+           END IF
+           IF( ASSOCIATED( Var % UpperLimitActive ) ) THEN
+             IF( Var % UpperLimitActive(Var%Dofs*(i-1)+j) ) LimitVar % Values(i) = 1.0_dp
+           END IF
+         END DO
+       END DO
+     END IF
 
      IF( ALLOCATED( LimitDone ) ) THEN
        DEALLOCATE( LimitDone, ElemLimit ) 
