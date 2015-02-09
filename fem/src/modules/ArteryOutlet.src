@@ -117,7 +117,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
 
   INTEGER :: t, k,n,m,ie,bf_id,mat_id,prev_mat_id,istat,LocalNodes,i,j, nonliniter, l, &
       bc, joinnode, Connections, SolidConnections, fsstep, fsstepmax, NonlinearIter, &
-      mindisti, jf, js
+      mindisti, jf, js, NoActive
   
   INTEGER, POINTER :: NodeIndexes(:), WPerm(:)
   INTEGER, ALLOCATABLE :: LumpedBoundaries(:), SolidEndBoundaries(:)
@@ -125,7 +125,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: Norm, PrevNorm, FlowOut2d
   
   LOGICAL :: GotIt, GotIt2, AllocationsDone = .FALSE. , FirstTime = .TRUE.
-  LOGICAL :: CenterPointsComputed = .FALSE.
+  LOGICAL :: CenterPointsComputed = .FALSE., InternalMesh
 
   CHARACTER(LEN=MAX_NAME_LEN) :: Method, Name
   
@@ -157,13 +157,14 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
   CALL Info('OutletCompute','Starting')
   
   Mesh1D => Solver % Mesh
-  
+
   Wnodal => Solver % Variable % Values
   LocalNodes = SIZE( Wnodal )
 
   IF(LocalNodes == 0) THEN
     CALL Fatal('OutletCompute','No active variables')
   END IF
+
   WPerm => Solver % Variable % Perm
   StiffMatrix => Solver % Matrix
   IF(.NOT. ASSOCIATED(StiffMatrix)) THEN
@@ -172,6 +173,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
   ForceVector => StiffMatrix % RHS
   Norm = Solver % Variable % Norm
 
+  InternalMesh = GetLogical( Solver % Values,'1D Mesh Create')
 
 !------------------------------------------------------------------------------
 ! Find the solver and mesh used for the flow simulation
@@ -458,16 +460,28 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
       
       CALL InitializeToZero( StiffMatrix, ForceVector )
       
-      WRITE(Message,'(A,I3)') 'Nonlinear iteration: ',nonliniter
+      WRITE(Message,'(A,I0)') 'Nonlinear iteration: ',nonliniter
       CALL Info('OutletCompute',Message)
       
       !------------------------------------------------------------------------------
       !    Do the assembly
-      !------------------------------------------------------------------------------
-      
-      DO ie = 1, Solver % NumberOfActiveElements 
-        
-        CurrentElement => Mesh1D % Elements( Solver % ActiveElements(ie) )
+      !------------------------------------------------------------------------------      
+      IF( InternalMesh ) THEN
+        NoActive = Mesh1D % NumberOfBulkElements 
+      ELSE
+        NoActive = Solver % NumberOfActiveElements
+      END IF
+
+
+      DO ie = 1, NoActive
+
+        IF( InternalMesh ) THEN        
+          CurrentElement => Mesh1D % Elements( ie )
+        ELSE
+          CurrentElement => Mesh1D % Elements( Solver % ActiveElements(ie) )
+        END IF
+
+        Model % CurrentElement => CurrentElement
         n = CurrentElement % TYPE % NumberOfNodes
         
         NodeIndexes => CurrentElement % NodeIndexes

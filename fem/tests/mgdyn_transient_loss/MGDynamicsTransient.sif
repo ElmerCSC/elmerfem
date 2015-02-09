@@ -1,0 +1,137 @@
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "mesh3d"
+End
+
+Simulation
+  Max Output Level = 6
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  Timestep Sizes = $ 1.0/10
+  Timestep Intervals = 10
+  Output Intervals(1) = 0
+  Steady State Max Iterations = 1
+
+!  Post File = case.vtu
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+
+Material 1
+  Reluctivity  = Real 1
+  Electric Conductivity = Real 1
+
+  Harmonic Loss Linear Coefficient = Variable "Frequency"
+    Real 
+      0.0 1.0
+      1.0 1.0
+      10.0 1.0
+    End 
+
+  Harmonic Loss Quadratic Coefficient = Variable "Frequency"
+    Real 
+      0.0 1.0
+      1.0 1.0
+      10.0 1.0
+    End 
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Solver 1
+  Equation = "MGDynamics"
+
+  Variable = P
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Linear System Symmetric = True
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack
+
+  Constant System = Logical True
+  Linear System refactorize = False
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = Ilu
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = BiCGStabL
+  Linear System Convergence Tolerance = 1.0e-6
+
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+
+  Potential Variable = String "P"
+  Calculate Magnetic Field Strength = Logical True
+
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-6
+End
+
+
+Solver 3
+  Equation = "Losses"
+
+  Procedure = "FourierLoss" "FourierLossSolver"
+
+  Fourier Series Components = Integer 3 
+  Frequency = Real 1.0
+  Target Variable = String "P"
+  Fourier Loss Filename = File "Loss.dat"
+  Harmonic Loss Linear Exponent = Real 1.0
+  Harmonic Loss Quadratic Exponent = Real 2.0
+
+  Linear System Symmetric = True
+  Steady State Convergence Tolerance = 0
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-6
+End
+
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+
+  P {e} = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 5
+
+  P = Variable Time
+   Real MATC "sin(2*pi*tx)"
+
+  P {e} = Real 0
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 6
+
+  P = Real 0
+  P {e} = Real 0
+End
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1.1854786,EPS=1e-3\n" );

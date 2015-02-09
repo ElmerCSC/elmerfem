@@ -40,4 +40,5 @@ FOREACH(FNAME ${SRC_FILES})
 ENDFOREACH()
 
 ADD_DEPENDENCIES(EliminatePeriodic EliminateDirichlet)
+ADD_DEPENDENCIES(FourierLoss MagnetoDynamics)
 TARGET_LINK_LIBRARIES(EliminatePeriodic EliminateDirichlet)
