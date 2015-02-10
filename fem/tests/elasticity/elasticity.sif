@@ -34,14 +34,14 @@ Solver 1
   Procedure = "ElasticSolve" "ElasticSolver"
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStab
-  Linear System Preconditioning = ILU1
+  Linear System Preconditioning = ILU2
   Linear System Max Iterations = 500
-  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Convergence Tolerance = 1.0e-10
   Linear System Residual Output = 20
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Newton After Iterations = 20
   Nonlinear System Max Iterations = 1000
-  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Convergence Tolerance = 1.0e-7
   Nonlinear System Convergence Measure = Residual
   Nonlinear System Relaxation Factor = 1.0
   Steady State Convergence Tolerance = 1.0e-4
@@ -64,7 +64,8 @@ Boundary Condition 2
   Surface Traction 2 = Real -5.0e7
 End
 
-Solver 1 :: Reference Norm = Real 0.275359863061
+Solver 1 :: Reference Norm = Real 0.27899467
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.27899341\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM= 0.27899467\n");
+
