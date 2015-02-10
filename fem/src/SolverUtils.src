@@ -426,7 +426,7 @@ CONTAINS
    SUBROUTINE CopyBulkMatrix( A )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
-     INTEGER :: n
+     INTEGER :: i,n
      
      n = SIZE( A % Rhs )
      IF( ASSOCIATED( A % BulkRhs ) ) THEN
@@ -438,7 +438,9 @@ CONTAINS
      IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
        ALLOCATE( A % BulkRHS( n ) )
      END IF
-     A % BulkRHS = A % Rhs
+     DO i=1,n
+       A % BulkRHS(i) = A % Rhs(i)
+    END DO
      
      n = SIZE( A % Values )
      IF( ASSOCIATED( A % BulkValues ) ) THEN
@@ -451,7 +453,9 @@ CONTAINS
        ALLOCATE( A % BulkValues( n ) )
      END IF
 
-     A % BulkValues = A % Values
+     DO i=1,n
+       A % BulkValues(i) = A % Values(i)
+     END DO
 
    END SUBROUTINE CopyBulkMatrix
 !------------------------------------------------------------------------------
