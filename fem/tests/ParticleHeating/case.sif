@@ -1,4 +1,4 @@
-! In this example a light source describes by statistical photons being reflected 
+! In this example a light source describes by statistical photons being reflected
 ! and absorbed heats up a complex 2D geometry. For convenience the speed of light
 ! is set to one and the time is scaled accordingly. Still the heat equation is 
 ! solved in steady state as there is no heat capacity.
