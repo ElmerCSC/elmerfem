@@ -15782,6 +15782,7 @@ CONTAINS
       END IF
       
       Element % BodyId = BodyId
+      Element % PartIndex = ParEnv % myPE
     END DO
     
 !   Update new mesh node count:
