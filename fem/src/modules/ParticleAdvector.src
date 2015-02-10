@@ -756,6 +756,7 @@ CONTAINS
 
         Solver % Variable % Norm = Norm
         Solver % Variable % NonlinChange = Change
+        Solver % Variable % Values = Norm
 
         ! Here the name is ComputeChange in order to get the change also to ElmerGUI
         ! albeit in a very dirt style. One could also edit ElmerGUI....
@@ -837,7 +838,7 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
 
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
-  NormInd = ListGetInteger( Params,'Show Norm Index',Found)
+  NormInd = ListGetInteger( Params,'Norm Variable Index',Found)
   IF( NormInd > 0 ) THEN
     IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
       CALL ListAddString( Solver % Values,'Variable','-nooutput -global particleadvector_var')
