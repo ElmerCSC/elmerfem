@@ -4890,7 +4890,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    /* Remember that this element is saved for this partition */
 	    elementhalo[part2] = i;
 	      	   
-	    fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part2,data->material[i],elemtype);
+	    fprintf(outfiles[nofile2],"%d/%d %d %d ",i,part,data->material[i],elemtype);
 	      
 	    for(j=0;j < nodesd2;j++) {
 	      ind = data->topology[i][j];
