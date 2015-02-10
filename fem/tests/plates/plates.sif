@@ -6,7 +6,7 @@ Constants
 End
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 4
   Coordinate System = Cartesian 2D
   Simulation Type = Steady State
   Steady State Max Iterations = 1
@@ -39,7 +39,7 @@ Solver 1
   Linear System Max Iterations = 500
   Linear System Iterative Method = BiCGStab
   Linear System Preconditioning = ILU0
-  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Convergence Tolerance = 1.0e-10
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Newton After Iterations = 20
   Nonlinear System Max Iterations = 1
@@ -60,7 +60,7 @@ Boundary Condition 1
 End
 
 Solver 1 :: Reference Norm = Real 0.478813167574
-Solver 1 :: Reference Norm Tolerance = Real 1e-4
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-3
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=0.47853756, EPS=1e-4\n" );
