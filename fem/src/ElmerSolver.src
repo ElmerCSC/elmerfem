@@ -598,7 +598,7 @@ END INTERFACE
        LOGICAL, OPTIONAL :: Finalize 
 
        INTEGER :: i, TestCount=0, PassCount=0, FailCount
-       REAL(KIND=dp) :: Norm, RefNorm, Tol
+       REAL(KIND=dp) :: Norm, RefNorm, Tol, Err
        TYPE(Solver_t), POINTER :: Solver
        LOGICAL :: Found, Success = .TRUE., FinalizeOnly
 
@@ -659,12 +659,16 @@ END INTERFACE
          Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
          IF(.NOT. Found ) Tol = 1.0d-5
 
-         IF( ABS( Norm - RefNorm ) > Tol * RefNorm ) THEN
+         Err = ABS( Norm - RefNorm ) / RefNorm 
+
+         IF( Err > Tol ) THEN
            ! Normally warning is done for every partition but this time it is the same for all
            IF( ParEnv % MyPe == 0 ) THEN
              WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
                  'Solver ',i,' FAILED:  Norm = ',Norm,'  RefNorm = ',RefNorm
              CALL Warn('CompareToReferenceSolution',Message)
+             WRITE( Message,'(A,ES12.6)') 'Relative Error to reference: ',Err
+             CALL Info('CompareToReferenceSolution',Message, Level = 4 )
            END IF
          ELSE         
            WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
