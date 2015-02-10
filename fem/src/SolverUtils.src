@@ -87,6 +87,7 @@ CONTAINS
      REAL(KIND=dp) :: ForceVector(:)         !< vector to be initialized
 !------------------------------------------------------------------------------
      INTEGER :: i,dim
+     LOGICAL :: Found
      TYPE(Solver_t), POINTER :: Solver
 !------------------------------------------------------------------------------
 
@@ -152,6 +153,9 @@ CONTAINS
      CALL AverageBoundaryNormals( CurrentModel, NormalTangentialName, &
        NormalTangentialNOFNodes, BoundaryReorder, &
              BoundaryNormals, BoundaryTangent1, BoundaryTangent2, dim )
+
+    IF(ListGetLogical(Solver % Values, 'Mortar Projector Nonlinear',Found)) &
+      Found = GenerateProjectors(CurrentModel,Solver)
 !------------------------------------------------------------------------------
    END SUBROUTINE InitializeToZero
 !------------------------------------------------------------------------------
@@ -7752,6 +7756,8 @@ END FUNCTION SearchNodeL
 
     END IF
 
+    IF(ListGetLogical(Solver % Values, 'Mortar Projector Nonlinear',Found)) &
+        CALL ReleaseProjectors(Solver)
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveSystem
 !------------------------------------------------------------------------------
@@ -9402,6 +9408,149 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END IF
 
   END SUBROUTINE FCT_Correction
+
+
+  FUNCTION GenerateProjectors(Model,Solver) RESULT(FoundMortar)
+    
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t) :: Solver
+
+     LOGICAL :: FoundMortar, ApplyMortar, Found
+     INTEGER :: i,j,k,l,n,dsize,size0,col,row
+     TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
+
+     ! Linear constraints from mortar BCs:
+     ! -----------------------------------
+     FoundMortar = .FALSE.
+     ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
+     IF( ApplyMortar ) THEN
+       IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
+         CALL Warn('SingeSolver','> Apply Mortar BCs < can only be set if there is a matrix equation')
+         ApplyMortar = .FALSE.
+       END IF
+     END IF
+
+     CM => Null()
+     IF( ApplyMortar ) THEN
+       DO i=1,Model % NumberOFBCs
+         j=ListGetInteger(Model % BCs(i) % Values,'Mortar BC',FoundMortar)
+         IF(FoundMortar) THEN           
+           CM0 => PeriodicProjector(Model,Solver % Mesh,i,j,CoordinateSystemDimension(),.TRUE.)
+           IF(ASSOCIATED(CM0)) THEN
+             CM0 % ConstraintMatrix => CM
+             CM => CM0
+           END IF
+         END IF
+       END DO
+       FoundMortar = ASSOCIATED(CM)
+       
+       IF(FoundMortar) THEN
+         CM0 => CM
+         CMP => NULL()
+         DO WHILE(ASSOCIATED(CM0))
+
+           n = SIZE( Solver % Variable % Perm )
+           size0 = MAXVAL( Solver % Variable % Perm ) 
+           dsize = n - size0
+
+           DO i=1,SIZE(CM0 % Cols ) 
+             j = CM0 % Cols(i)
+
+             IF( j <= n ) THEN
+               CM0 % Cols(i) = Solver % Variable % Perm(j)
+             ELSE 
+               CM0 % Cols(i) = j - dsize
+             END IF
+           END DO
+
+           IF(ASSOCIATED(CM0 % InvPerm)) THEN
+             DO i=1,SIZE(CM0 % InvPerm)
+               IF(CM0 % InvPerm(i) > 0) THEN
+                 CM0 % InvPerm(i) = Solver % Variable % Perm(CM0 % InvPerm(i))
+               END IF
+             END DO
+           END IF
+
+           n = Solver % Variable % DOFs
+
+           ! In case of a vector valued problem create a projector that acts on all 
+           ! components of the vector.
+           IF (n>1) THEN
+             CM1 => AllocateMatrix()
+             CM1 % NumberOfRows = n*CM0 % NumberOfRows
+             ALLOCATE(CM1 % Rows(n*CM0 % NumberOfRows+1))
+             ALLOCATE(CM1 % Cols(n*n*SIZE(CM0 % Cols))); CM1 % Cols = 0._dp
+             ALLOCATE(CM1 % Diag(CM1 % NumberOfRows)); CM1 % Diag = 0._dp
+             ALLOCATE(CM1 % Values(n*n*SIZE(CM0 % Values))); CM1 % Values = 0._dp
+
+             CM1 % Rows(1) = 1
+             col = 0
+             row = 1
+             DO i=1,CM0 % NumberOfRows
+               DO j=1,n
+                 DO k=CM0 % Rows(i),CM0 % Rows(i+1)-1
+                   DO l=1,n
+                     col = col + 1
+                     CM1 % Cols(col) = n*(CM0 % Cols(k)-1)+l
+                     IF(j==l) &
+                       CM1 % Values(col) = CM0 % Values(k)
+                   END DO
+                 END DO
+                 row = row + 1
+                 CM1 % Rows(row) = col + 1
+               END DO
+             END DO
+
+             ALLOCATE(CM1 % InvPerm(n*SIZE(CM0 % InvPerm)))
+             CM1 % InvPerm = 0
+             DO i=1,SIZE(CM0 % InvPerm)
+               IF(CM0 % InvPerm(i)<=0) CYCLE
+               DO j=1,n
+                 CM1 % InvPerm(n*(i-1)+j) = n*(CM0 % InvPerm(i)-1)+j
+               END DO
+             END DO
+
+             CM1 % ConstraintMatrix => CM0 % ConstraintMatrix
+             IF(ASSOCIATED(CM0,CM)) CM=>CM1
+             CM0 % ConstraintMatrix => NULL(); CALL FreeMatrix(CM0)
+             CM0 => CM1
+             IF(ASSOCIATED(CMP)) CMP % ConstraintMatrix => CM0
+           END IF
+
+           ALLOCATE(CM0 % RHS(CM0 % NumberOfRows)); CM0 % RHS = 0._dp
+           CM0 % Ordered = .FALSE.
+           CALL CRS_SortMatrix(CM0,.TRUE.)
+           CMP => CM0
+           CM0 => CM0 % ConstraintMatrix
+         END DO
+
+         CM0 => Solver % Matrix
+         DO WHILE(ASSOCIATED(CM0 % ConstraintMatrix))
+           CM0 => CM0 % ConstraintMatrix
+         END DO
+         CM0 % ConstraintMatrix => CM
+       END IF
+     END IF
+   END FUNCTION GenerateProjectors
+
+
+   SUBROUTINE ReleaseProjectors(Solver) 
+     TYPE(Solver_t) :: Solver
+
+     TYPE(Matrix_t), POINTER :: CM, CM0
+
+     CM => Solver % Matrix
+     DO WHILE(ASSOCIATED(CM % ConstraintMatrix))
+       IF(CM % ConstraintMatrix % ConstraintType/=0) THEN
+         CM0 => CM % ConstraintMatrix 
+         CM % ConstraintMatrix => null()
+         CALL FreeMatrix(CM0)
+         EXIT
+       END IF
+       CM => CM % ConstraintMatrix
+     END DO
+   END SUBROUTINE ReleaseProjectors
+
 
 
 END MODULE SolverUtils

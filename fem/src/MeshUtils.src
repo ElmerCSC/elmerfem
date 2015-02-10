@@ -4011,7 +4011,6 @@ END SUBROUTINE GetMaxDefs
 
     ! This is just temporarily set to false always until the logic has been tested. 
     CheckForHalo = NarrowHalo .OR. NoHalo
-    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
 
     HaloFound = .FALSE.
     IF( CheckForHalo ) THEN
@@ -4047,6 +4046,9 @@ END SUBROUTINE GetMaxDefs
       END IF
     END IF
 
+
+    ! Interface meshes consist of boundary elements only    
+    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
 
 !   Search elements in this boundary and its periodic
 !   counterpart:
@@ -5038,7 +5040,7 @@ END SUBROUTINE GetMaxDefs
     BMesh1 % Parent => NULL()
     BMesh2 % Parent => NULL()
 
-    !Projector % ConstraintType = CONSTRAINT_TYPE_EDGE
+    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
     !    Projector % ConstraintBC = bc
 
     ! Create a projector in style P=I-Q, or rather just P=Q. 
@@ -5765,6 +5767,8 @@ END SUBROUTINE GetMaxDefs
     ! structure to be introduced.
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
+
+    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
 
     PiolaVersion = ListGetLogical( CurrentModel % Solver % Values, &
         'Use Piola Transform', Found)
@@ -15778,7 +15782,6 @@ CONTAINS
       END IF
       
       Element % BodyId = BodyId
-      Element % PartIndex = ParEnv % MYpe
     END DO
     
 !   Update new mesh node count:
