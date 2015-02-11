@@ -2599,7 +2599,7 @@ CONTAINS
                 PermSize = 0
               END IF
               
-              IF( k <= 25 ) THEN
+              IF( k < 25 ) THEN
                 WRITE( OutputUnit,'(A,T25,A,I8,I8,I4,A)') Var % Name(1:k),' : ',&
                     SIZE(Var % Values), PermSize, Var % DOFs,' : '//TRIM( EqName )
               ELSE
