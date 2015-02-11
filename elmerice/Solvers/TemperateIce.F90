@@ -270,18 +270,34 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
      END IF
 
      ! get the ghost nodes of this partition
-     IF ( ParEnv % PEs > 1 ) THEN !only if we have a parallel run
-        IsGhostNode( 1:M ) = .FALSE.
-        GhostNodes = 0;
-        DO t=1,Solver % NumberOfActiveElements
-           Element => GetActiveElement(t)
-           IF (ParEnv % myPe .EQ. Element % partIndex) CYCLE
-           DO i=1,GetElementNOFNodes(Element)
-              IsGhostNode(Element % NodeIndexes(i)) = .TRUE.
-              GhostNodes = GhostNodes + 1
-           END DO
+!!$     IF ( ParEnv % PEs > 1 ) THEN !only if we have a parallel run
+!!$        IsGhostNode( 1:M ) = .FALSE.
+!!$        GhostNodes = 0;
+!!$        DO t=1,Solver % NumberOfActiveElements
+!!$           Element => GetActiveElement(t)
+!!$           IF (ParEnv % myPe .EQ. Element % partIndex) CYCLE
+!!$           DO i=1,GetElementNOFNodes(Element)
+!!$              IsGhostNode(Element % NodeIndexes(i)) = .TRUE.
+!!$              GhostNodes = GhostNodes + 1
+!!$           END DO
+!!$        END DO
+!!$     END IF
+
+     GhostNodes = M
+     IsGhostNode = .TRUE.
+     DO t=1,Solver % Mesh % NumberOfBulkElements
+        Element => Solver % Mesh % Elements(t)
+        Model % CurrentElement => Element
+        IF (ParEnv % myPe /= Element % partIndex) CYCLE
+
+        DO i=1,GetElementNOFNodes(Element)
+           j = Element % NodeIndexes(i)
+           IF(IsGhostNode(j)) THEN
+              IsGhostNode(j) = .FALSE.
+              GhostNodes = GhostNodes - 1
+           END IF
         END DO
-     END IF
+     END DO
 
      PRINT *, ParEnv % myPe, ':', GhostNodes, ' ghost nodes'
 
