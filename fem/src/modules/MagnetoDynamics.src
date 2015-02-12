@@ -5415,7 +5415,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
       FieldPower2 = GetCReal( SolverParams,'Harmonic Loss Quadratic Exponent',Found ) 
       IF( .NOT. Found ) FieldPower2 = 2.0_dp
-      FieldPower = FieldPower2 / 2.0_dp
+      FieldPower2 = FieldPower2 / 2.0_dp
 
       IF(.NOT. ListCheckPresentAnyMaterial( Model,'Harmonic Loss Linear Coefficient') ) THEN
         CALL Warn('MagnetoDynamicsCalcFields',&
