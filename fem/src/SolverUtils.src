@@ -7542,7 +7542,7 @@ END FUNCTION SearchNodeL
   RECURSIVE SUBROUTINE SolveSystem( A,ParA,b,x,Norm,DOFs,Solver )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) CONTIG :: b(:)   !< The RHS vector
-    REAL(KIND=dp) :: x(:)   !< Previous solution on entry, new solution on exit (hopefully)
+    REAL(KIND=dp) CONTIG :: x(:)   !< Previous solution on entry, new solution on exit (hopefully)
     REAL(KIND=dp) :: Norm          !< L2 Norm of solution
     TYPE(Matrix_t), POINTER :: A   !< The coefficient matrix
     INTEGER :: DOFs                !< Number of degrees of freedom per node for this equation
