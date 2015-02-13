@@ -5,4 +5,4 @@ CONFIGURE_FILE( waveguide.sif waveguide.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO shoebox_tets DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(vectorhelmholtz)
+ADD_ELMER_TEST(VectorHelmholtzWaveguide)
