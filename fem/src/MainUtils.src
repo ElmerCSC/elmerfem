@@ -3524,9 +3524,10 @@ CONTAINS
 
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
-     FoundMortar = .FALSE.
-     IF(.NOT.GetLogical(GetSolverParams(),'Mortar Projector Nonlinear',Found)) &
-        FoundMortar = GenerateProjectors(Model,Solver)
+!     FoundMortar = .FALSE.
+!     IF(.NOT.GetLogical(GetSolverParams(),'Mortar Projector Nonlinear',Found)) &
+!     FoundMortar = 
+     CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
      CALL INFO("SingleSolver", "Attempting to call solver", level=5)
      SolverParams => GetSolverParams(Solver)
@@ -3543,7 +3544,7 @@ CONTAINS
          Model, Solver, dt, TransientSimulation)
 #endif
 
-    IF(FoundMortar) CALL ReleaseProjectors(Solver)
+!    IF(FoundMortar) CALL ReleaseProjectors(Solver)
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------

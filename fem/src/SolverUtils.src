@@ -153,9 +153,8 @@ CONTAINS
      CALL AverageBoundaryNormals( CurrentModel, NormalTangentialName, &
        NormalTangentialNOFNodes, BoundaryReorder, &
              BoundaryNormals, BoundaryTangent1, BoundaryTangent2, dim )
-
-    IF(ListGetLogical(Solver % Values, 'Mortar Projector Nonlinear',Found)) &
-      Found = GenerateProjectors(CurrentModel,Solver)
+     
+     CALL GenerateProjectors(CurrentModel,Solver,Nonlinear = .TRUE. )
 !------------------------------------------------------------------------------
    END SUBROUTINE InitializeToZero
 !------------------------------------------------------------------------------
@@ -1568,6 +1567,472 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+#if 0
+!------------------------------------------------------------------------------
+!> Determine contact set. This is called after the solution.
+!> and can therefore be active only on the 2nd nonlinear iteration round.
+!------------------------------------------------------------------------------
+   SUBROUTINE DetermineContactSet( Solver )
+!------------------------------------------------------------------------------
+     TYPE(Solver_t) :: Solver
+!-----------------------------------------------------------------------------
+     TYPE(Model_t), POINTER :: Model
+     TYPE(variable_t), POINTER :: Var, LoadVar, IterVar, LimitVar
+     TYPE(Element_t), POINTER :: Element
+     INTEGER :: i,j,k,n,t,ind,dofs, dof, bf, bc, Upper, Removed, Added, &
+         ElemFirst, ElemLast, totsize, i2, j2, ind2
+     REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:)
+     REAL(KIND=dp) :: LimitSign, EqSign, ValEps, LoadEps, val
+     INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
+     LOGICAL :: Found,AnyLimitBC, AnyLimitBF
+     LOGICAL, ALLOCATABLE :: LimitDone(:)
+     LOGICAL, POINTER :: LimitActive(:)
+     TYPE(ValueList_t), POINTER :: Params
+     CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName
+     LOGICAL, ALLOCATABLE :: InterfaceDof(:)
+     INTEGER :: ConservativeAfterIters
+     LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
+         DoAdd, DoRemove, DirectionActive
+
+     REAL(KIND=dp), POINTER :: nWrk(:,:)
+     
+
+     Model => CurrentModel
+     Var => Solver % Variable
+     
+     CALL Info('DetermineContactSet','Determining contact set for contact problems',Level=8)
+     LoadVar => VariableGet( Model % Variables, &
+         GetVarName(Var) // ' Contact Load',ThisOnly = .TRUE. )
+     CALL CalculateLoads( Solver, Solver % Matrix, Var % Values, Var % DOFs, .FALSE., LoadVar ) 
+
+     IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
+       CALL Fatal('DetermineContactSet', &
+           'No Loads associated with variable '//GetVarName(Var) )
+       RETURN
+     END IF
+     LoadValues => LoadVar % Values
+
+     ! The variable to be constrained by the soft limiters
+     FieldValues => Var % Values
+     FieldPerm => Var % Perm
+     totsize = SIZE( FieldValues )
+     dofs = Var % Dofs
+     Params => Solver % Values
+
+     ConservativeAdd = .FALSE.
+     ConservativeAfterIters = ListGetInteger(Params,&
+         'Apply Limiter Conservative Add After Iterations',Conservative ) 
+     IF( Conservative ) THEN
+       IterVar => VariableGet( Model % Variables,'nonlin iter')
+       ConservativeAdd = ( ConservativeAfterIters < NINT( IterVar % Values(1) ) )
+       IF( ConservativeAdd ) THEN
+         CALL Info('DetermineContactSet','Adding dofs in conservative fashion',Level=8)
+       END IF
+     END IF
+
+     ConservativeRemove = .FALSE.
+     ConservativeAfterIters = ListGetInteger(Params,&
+         'Apply Limiter Conservative Remove After Iterations',Found ) 
+     IF( Found ) THEN
+       Conservative = .TRUE.  
+       IterVar => VariableGet( Model % Variables,'nonlin iter')
+       ConservativeRemove = ( ConservativeAfterIters < NINT( IterVar % Values(1) ) )
+       IF( ConservativeRemove ) THEN
+         CALL Info('DetermineContactSet','Adding dofs in conservative fashion',Level=8)
+       END IF
+     END IF
+
+     LoadEps = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
+     IF(.NOT. Found ) LoadEps = EPSILON( LoadEps )
+         
+     ValEps = ListGetConstReal(Params,'Limiter Value Tolerance',Found ) 
+     IF(.NOT. Found ) ValEps = EPSILON( ValEps )
+
+     ! The user may want to toggle the sign for various kinds of equations
+     ! The default sign that come from standard formulation of Laplace equation.
+     !---------------------------------------------------------------------------       
+     IF( ListGetLogical( Params,'Limiter Load Sign Negative',Found) ) THEN
+       EqSign = -1.0_dp
+     ELSE
+       EqSign = 1.0_dp
+     END IF
+
+
+     ! Compute the direction in the normal direction
+     !-----------------------------------------------------------------------
+     CALL GetConstRealArray( Params, nWrk ,'Contact Normal Vector' )
+     ContactNormal = nWrk(1:3)
+
+              
+     n = CM0 % NumberOfRows
+     IF( SIZE( ContactCond ) /= n ) THEN
+       DEALLOCATE( ContactCond, ContactDist, ContactActive )
+       ContactVisited = .FALSE.
+     END IF
+     
+     IF( .NOT. ContactVisited ) THEN
+       ALLOCATE( ContactCond( n ), ContactDist(n), ContactActive(n) ) 
+       ContactCond = 0.0_dp
+       ContactDist = 0.0_dp
+       ContactActive = .TRUE.
+     END IF
+     
+     disp = 0.0_dp
+     coord = 0.0_dp
+     NodalForce = 0.0_dp
+
+     DO i = 1,Projector % NumberOfRows
+       DO j = Projector % Rows(i),CM0 % Rows(i+1)-1
+         k = Projector % Cols(j)
+         
+         ! This includes only the coordinate since the displacement
+         ! is added to the coordinate!
+         coeff = Projector % Values(j)
+
+         coord(1) = Model % Mesh % Nodes % x( k ) 
+         coord(2) = Model % Mesh % Nodes % y( k ) 
+         coord(3) = Model % Mesh % Nodes % z( k ) 
+         
+         IF( dofs == 2 ) THEN
+           disp(1) = Solver % Variable % Values( 2 * k - 1)
+           disp(2) = Solver % Variable % Values( 2 * k )
+           disp(3) = 0.0_dp
+         ELSE
+           disp(1) = Solver % Variable % Values( 3 * k - 2)
+           disp(2) = Solver % Variable % Values( 3 * k - 1 )
+           disp(3) = Solver % Variable % Values( 3 * k )
+         END IF
+
+         ContactDist( i ) = ContactDist( i ) + &
+             coeff * SUM( ContactNormal * (Coord + Disp) )
+       END DO
+     END DO
+
+
+     PRINT *,'PositiveCond:',COUNT( ContactDist > 1.0e-12 )
+     PRINT *,'NegativeCond:',COUNT( ContactDist < 1.0e-12 )
+
+
+     NormalLoad = 0.0_dp
+
+     DO i=1,Model % Mesh % NumberOfNodes
+       j = FieldPerm(i)
+       IF( j == 0 ) CYCLE
+       
+       Rotated = GetSolutionRotation(A,i) 
+       IF( Rotated ) THEN
+         LocalNormal = A(:,1)
+       ELSE
+         LocalNormal = ContactNormal
+       END IF
+
+       DO k=1,dofs
+         NodalForce(k) = LoadValues(dofs*(j-1)+k)
+       END DO
+       NormalLoad(j) = SUM( NodalForce * ContactNormal )
+     END DO
+
+
+
+
+     ! Loop through upper and lower limits     
+     !------------------------------------------------------------------------
+     DO Upper=0,1
+
+       DirectionActive = .FALSE.
+
+       ! If we have both upper and lower limiter then these logical vectors need to be 
+       ! reinitialized for the 2nd sweep.
+       IF( ALLOCATED( LimitDone) ) LimitDone = .FALSE.
+       IF( ALLOCATED( InterfaceDof ) ) InterfaceDof = .FALSE. 
+
+       ! Upper and lower limits have different sign for testing
+       !----------------------------------------------------------------------       
+       IF( Upper == 0 ) THEN
+         LimitSign = -EqSign
+       ELSE
+         LimitSign = EqSign
+       END IF       
+       
+       ! Go through the components of the field, if many
+       !-------------------------------------------------
+       DO DOF = 1,dofs
+
+         name = Var % name
+         IF ( Var % DOFs > 1 ) name = ComponentName(name,DOF)
+
+         ! The keywords for the correct lower or upper limit of the variable
+         !------------------------------------------------------------------
+         IF( Upper == 0 ) THEN
+           LimitName = TRIM(name)//' Lower Limit'           
+         ELSE
+           LimitName = TRIM(name)//' Upper Limit' 
+         END IF
+
+         AnyLimitBC = ListCheckPresentAnyBC( Model, LimitName )
+         AnyLimitBF = ListCheckPresentAnyBodyForce( Model, LimitName )
+
+         ! If there is no active keyword then there really is nothing to do
+         !----------------------------------------------------------------
+         IF( .NOT. ( AnyLimitBC .OR. AnyLimitBF ) ) CYCLE
+         DirectionActive = .TRUE.
+         
+         CALL Info('DetermineContactSet','Applying limit: '//TRIM(LimitName),Level=8)
+
+         ! OK: Do contact for a particular dof and only upper or lower limit
+         !------------------------------------------------------------------------
+
+         ! Define the range of elements for which the limiters are active
+         !---------------------------------------------------------------
+         ElemFirst = Model % NumberOfBulkElements + 1           
+         ElemLast = Model % NumberOfBulkElements 
+        
+         
+         IF(.NOT. ALLOCATED( LimitDone) ) THEN
+           n = Model % MaxElementNodes
+           ALLOCATE( LimitDone( totsize ), ElemLimit(n) )
+           LimitDone = .FALSE.
+         END IF
+
+         ! Check that active set vectors for limiters exist, otherwise allocate
+         !---------------------------------------------------------------------
+         IF( Upper == 0 ) THEN
+           IF( .NOT. ASSOCIATED(Var % LowerLimitActive ) ) THEN
+             ALLOCATE( Var % LowerLimitActive( totsize ) )
+             Var % LowerLimitActive = .FALSE.
+           END IF
+           LimitActive => Var % LowerLimitActive
+         ELSE
+           IF( .NOT. ASSOCIATED( Var % UpperLimitActive ) ) THEN
+             ALLOCATE( Var % UpperLimitActive( totsize ) )
+             Var % UpperLimitActive = .FALSE.
+           END IF
+           LimitActive => Var % UpperLimitActive
+         END IF
+ 
+         Removed = 0
+         Added = 0        
+         IF(.NOT. ALLOCATED( LimitDone) ) THEN
+           n = Model % MaxElementNodes
+           ALLOCATE( LimitDone( totsize ), ElemLimit(n) )
+           LimitDone = .FALSE.
+         END IF
+
+         IF( Conservative ) THEN
+           IF(.NOT. ALLOCATED( InterfaceDof ) ) THEN
+             ALLOCATE( InterfaceDof( totsize ) )
+             InterfaceDof = .FALSE. 
+           END IF
+
+           
+           ! Mark limited and unlimited neighbours and thereby make a 
+           ! list of interface dofs. 
+           !----------------------------------------------------------------------
+           DO t = ElemFirst, ElemLast
+             
+             Element => Model % Elements(t)
+             Model % CurrentElement => Element
+             n = Element % TYPE % NumberOfNodes
+             NodeIndexes => Element % NodeIndexes
+             
+             IF( t > Model % NumberOfBulkElements ) THEN
+               Found = .FALSE.
+               DO bc = 1,Model % NumberOfBCs
+                 IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+                   ElemLimit(1:n) = ListGetReal( Model % BCs(bc) % Values, &
+                       LimitName, n, NodeIndexes, Found)
+                   EXIT
+                 END IF
+               END DO
+               IF(.NOT. Found) CYCLE
+             ELSE             
+               bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
+                   'Body Force', Found)
+               IF(.NOT. Found ) CYCLE
+               ElemLimit(1:n) = ListGetReal( Model % BodyForces(bf) % Values, &
+                   LimitName, n, NodeIndexes, Found)
+               IF(.NOT. Found) CYCLE
+             END IF
+             
+             DO i=1,n
+               j = FieldPerm( NodeIndexes(i) )
+               IF( j == 0 ) CYCLE
+               ind = Dofs * ( j - 1) + Dof
+               
+               DO i2 = i+1,n
+                 j2 = FieldPerm( NodeIndexes(i2) )
+                 IF( j2 == 0 ) CYCLE
+                 ind2 = Dofs * ( j2 - 1) + Dof
+                 
+                 ! XOR has some portability issues
+                 IF( (LimitActive(ind) .AND. .NOT. LimitActive(ind2) ) .OR. &
+                     (.NOT. LimitActive(ind) .AND. LimitActive(ind2) ) ) THEN
+                   InterfaceDof(ind) = .TRUE.
+                   InterfaceDof(ind2) = .TRUE.
+                 END IF
+               END DO
+             END DO
+           END DO
+
+           CALL Info('DetermineContactSet',&
+               'Number of interface dofs: '//TRIM(I2S(COUNT(InterfaceDof))),Level=8)
+         END IF
+
+       
+         ! Add and release dofs from the contact set:
+         ! If it is removed it cannot be added. 
+         !----------------------------------------------------------------------
+         DO t = ElemFirst, ElemLast
+
+           Element => Model % Elements(t)
+           Model % CurrentElement => Element
+           n = Element % TYPE % NumberOfNodes
+           NodeIndexes => Element % NodeIndexes
+           
+           IF( t > Model % NumberOfBulkElements ) THEN
+             Found = .FALSE.
+             DO bc = 1,Model % NumberOfBCs
+               IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+                 ElemLimit(1:n) = ListGetReal( Model % BCs(bc) % Values, &
+                     LimitName, n, NodeIndexes, Found)
+                 EXIT
+               END IF
+             END DO
+             IF(.NOT. Found) CYCLE
+           ELSE             
+             bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
+                 'Body Force', Found)
+             IF(.NOT. Found ) CYCLE
+             ElemLimit(1:n) = ListGetReal( Model % BodyForces(bf) % Values, &
+                 LimitName, n, NodeIndexes, Found)
+             IF(.NOT. Found) CYCLE
+           END IF
+
+           DO i=1,n
+             j = FieldPerm( NodeIndexes(i) )
+             IF( j == 0 ) CYCLE
+             ind = Dofs * ( j - 1) + Dof
+
+             IF( LimitDone(ind) ) CYCLE
+             
+             ! Go through the active set and free nodes with wrong sign in contact force
+             !--------------------------------------------------------------------------       
+             IF( LimitActive( ind ) ) THEN
+               DoRemove = ( LimitSign * LoadValues(ind) > LimitSign * LoadEps ) 
+               IF( DoRemove ) THEN
+                 ! In the conservative mode only release nodes from contact set 
+                 ! when they are adjacent to dofs that previously was not in the set.
+                 ! This means that set is released only at the boundaries. 
+                 IF( ConservativeRemove ) DoRemove = InterfaceDof( ind ) 
+                 IF( DoRemove ) THEN
+                   removed = removed + 1
+                   LimitActive(ind) = .FALSE.
+                   CYCLE
+                 END IF
+               END IF
+             ELSE
+               ! Go through the dofs that are beyond the contact surface.
+               !-----------------------------------------------------------
+               val = Var % Values(ind) 
+               IF( Upper == 0 ) THEN
+                 DoAdd = ( val < ElemLimit(i) - ValEps )
+               ELSE
+                 DoAdd = ( val > ElemLimit(i) + ValEps )
+               END IF
+               
+               IF( DoAdd ) THEN
+                 IF( ConservativeAdd ) DoAdd = InterfaceDof( ind ) 
+                 IF( DoAdd ) THEN
+                   IF( .NOT. LimitActive(ind) ) THEN
+                     added = added + 1
+                     LimitActive(ind) = .TRUE.
+                   END IF
+                 END IF
+               END IF
+             END IF
+
+             ! Enforce the values to limits because nonlinear material models
+             ! may otherwise lead to divergence of the iteration
+             !--------------------------------------------------------------
+             IF( LimitActive(ind) ) THEN
+               IF( Upper == 0 ) THEN
+                 Var % Values(ind) = MAX( val, ElemLimit(i) )
+               ELSE
+                 Var % Values(ind) = MIN( val, ElemLimit(i) )
+               END IF
+             END IF
+
+             LimitDone(ind) = .TRUE.             
+           END DO
+         END DO
+       END DO
+
+       IF( DirectionActive ) THEN      
+         ! Output some information before exiting
+         !---------------------------------------------------------------------
+         IF( Upper == 0 ) THEN
+           CALL Info('DetermineContactSet','Determined lower soft limit set',Level=5)
+         ELSE
+           CALL Info('DetermineContactSet','Determined upper soft limit set',Level=5)
+         END IF
+
+         WRITE(Message,'(A,I0)') 'Number of limited dofs for '&
+             //TRIM(GetVarName(Var))//': ',COUNT( LimitActive )
+         CALL Info('DetermineContactSet',Message,Level=5)
+         
+         IF(added >= 0) THEN
+           WRITE(Message,'(A,I0,A)') 'Added ',added,' dofs to the set'
+           CALL Info('DetermineContactSet',Message,Level=5)
+         END IF
+         
+         IF(removed >= 0) THEN
+           WRITE(Message,'(A,I0,A)') 'Removed ',removed,' dofs from the set'
+           CALL Info('DetermineContactSet',Message,Level=5)
+         END IF
+       END IF
+     END DO
+
+     ! Optionally save the limiters as a field variable so that 
+     ! lower limit is given value -1.0 and upper limit value +1.0.
+     IF( ListGetLogical( Params,'Save Limiter',Found ) ) THEN
+       LimitVar => VariableGet( Model % Variables, &
+           GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
+       IF(.NOT. ASSOCIATED( LimitVar ) ) THEN
+         CALL VariableAddVector( Model % Variables, Model % Mesh, Solver,&
+             GetVarName(Var) //' Contact Active', Perm = FieldPerm )
+         LimitVar => VariableGet( Model % Variables, &
+             GetVarName(Var) // ' Contact Active',ThisOnly = .TRUE. )
+       END IF
+
+       ! Currently the visulized limit is always scalar even though the limited field could be a vector!
+       DO i = 1, SIZE( LimitVar % Values ) 
+         LimitVar % Values(i) = 0.0_dp
+         DO j=1,Var % Dofs
+           IF( ASSOCIATED( Var % LowerLimitActive ) ) THEN
+             IF( Var % LowerLimitActive(Var%Dofs*(i-1)+j) ) LimitVar % Values(i) = -1.0_dp
+           END IF
+           IF( ASSOCIATED( Var % UpperLimitActive ) ) THEN
+             IF( Var % UpperLimitActive(Var%Dofs*(i-1)+j) ) LimitVar % Values(i) = 1.0_dp
+           END IF
+         END DO
+       END DO
+     END IF
+
+     IF( ALLOCATED( LimitDone ) ) THEN
+       DEALLOCATE( LimitDone, ElemLimit ) 
+     END IF
+     
+     IF( ALLOCATED( InterfaceDof ) ) THEN
+       DEALLOCATE( InterfaceDof )
+     END IF
+
+     CALL Info('DetermineContactSet','All done',Level=12)
+
+   END SUBROUTINE DetermineContactSet
+!------------------------------------------------------------------------------
+#endif
+
+
 !------------------------------------------------------------------------------
 !> Set dirichlet boundary condition for given dof. The conditions are
 !> set based on the given name and applied directly to the matrix structure
@@ -2747,6 +3212,8 @@ CONTAINS
     Projector => Model % BCs(This) % PMatrix
     IF ( .NOT. ASSOCIATED(Projector) ) RETURN
 
+PRINT *,'pass1'
+
 !   For explicit conditions just create the dependency almost like a normal Dirichlet BC, 
 !   For implicit one (otherwise) do the assembly of the projector:
 !   ---------------------------------
@@ -2779,10 +3246,89 @@ CONTAINS
       END DO
 
     ELSE IF ( ListGetLogical( BC, &
-         'Periodic BC Use Lagrange Coefficient', Found ) ) THEN
-
+        'Periodic BC Use Lagrange Coefficient', Found ) ) THEN
+      
       Jump = ListCheckPresent( BC, &
-         'Periodic BC Coefficient '//Name(1:nlen))
+          'Periodic BC Coefficient '//Name(1:nlen))
+      
+
+      IF( .NOT. ASSOCIATED( Solver % MortarMatrix ) ) THEN
+        ALLOCATE( Solver % MortarMatrix( Model % NumberOfBCs ) )
+        DO i=1, Model % NumberOfBCs
+          Solver % MortarMatrix(i) % Mat => NULL()
+        END DO
+      END IF
+     
+      ! Perhaps we already have a valid projector
+      F => Solver % MortarMatrix(This) % Mat
+
+      IF( .NOT. ASSOCIATED( F ) ) THEN
+        IF(.NOT. Jump ) THEN
+          ! If there is no jump we can as well use the initial periodic projector
+          F => Projector 
+          Solver % MortarMatrix(This) % Mat => F
+        ELSE
+          ! If there is a jump then we have to create some additional entries
+          IF( NDofs > 1 ) THEN
+            CALL Fatal('SetPeriodicBCsPass1','The jump is implemented only for one component')
+          END IF
+
+          F => AllocateMatrix()
+          n = NDOFs * Projector % NumberOfRows
+          F % NumberOfRows = n
+          
+        ! If there is a jump in the future allocate also the diagonal
+        IF( Jump ) THEN
+          jmp = 1
+          size0 = NDOFs * MAXVAL( Perm ) 
+        ELSE
+          jmp = 0
+        END IF
+        
+        ALLOCATE( F % RHS(n), F % Rows(n+1), &
+            F % Cols(SIZE(Projector % Cols)*NDOFs**2+n*(1+jmp)),  &
+            F % Values(SIZE(Projector % Values)*NDOFs**2+n*(1+jmp)) )
+        
+        F % Rows(1) = 1
+        DO i=1,Projector % NumberOfRows
+          n = Projector % Rows(i+1)-Projector % Rows(i)
+          DO j=1,NDOFs
+            k = NDOFs*(i-1)+j
+            F % Rows(k+1) = F % Rows(k) + NDOFs*n+1+jmp
+          END DO
+        END DO
+      
+        DO i=1,Projector % NumberOfRows
+          k = Perm(Projector % InvPerm(i))
+          DO p=1,NDOFs
+            n = F % Rows(NDOFs*(i-1)+p)
+            F % Cols(n) = NDOFs*(k-1)+p
+            
+            IF( Jump ) THEN
+              n = n + 1
+              F % Cols(n) = size0 + NDOFs*(i-1)+p
+            END IF
+            
+            DO j=Projector % Rows(i),Projector % Rows(i+1)-1
+              m = Perm(Projector % Cols(j))
+              IF ( m>0 ) THEN
+                DO q=1,NDOFs
+                  n = n + 1
+                  F % Cols(n) = NDOFs*(m-1)+q
+                END DO
+              END IF
+            END DO
+          END DO
+        END DO
+        CALL CRS_SortMatrix(F)
+        
+        F % RHS = 0._dp
+        F % Values = 0._dp
+        
+        Solver % MortarMatrix(This) % Mat => F
+
+
+
       IF( Jump ) THEN
         PPerm => Perm
         CALL CalculateNodalWeights(Model % Solver,.TRUE.,&
@@ -2793,86 +3339,15 @@ CONTAINS
       END IF
 
 
-      G => NULL()
-      F => A % ConstraintMatrix
-      DO WHILE(ASSOCIATED(F))
-        G => Projector % Child
-        DO WHILE(ASSOCIATED(G))
-          IF (ASSOCIATED(F,G)) EXIT
-          G => G % Child
-        END DO
-        IF (ASSOCIATED(F,G)) EXIT
-        F => F % ConstraintMatrix
-      END DO
-
-      IF ( .NOT.ASSOCIATED(F,G) ) THEN
-        F => AllocateMatrix()
-        F % ConstraintMatrix => A % ConstraintMatrix
-        A % ConstraintMatrix => F
-
-        F % Child => Projector % Child
-        Projector % Child => F
-
-        n = NDOFs*Projector % NumberOfRows
-        F % NumberOfRows = n
-
-        ! If there is a jump in the future allocate also the diagonal
-        IF( Jump ) THEN
-          jmp = 1
-          size0 = NDOFs * MAXVAL( Perm ) 
-        ELSE
-          jmp = 0
-        END IF
-
-        ALLOCATE( F % RHS(n), F % Rows(n+1), &
-            F % Cols(SIZE(Projector % Cols)*NDOFs**2+n*(1+jmp)),  &
-            F % Values(SIZE(Projector % Values)*NDOFs**2+n*(1+jmp)) )
-
-         F % Rows(1) = 1
-         DO i=1,Projector % NumberOfRows
-           n = Projector % Rows(i+1)-Projector % Rows(i)
-           DO j=1,NDOFs
-             k = NDOFs*(i-1)+j
-             F % Rows(k+1)=F % Rows(k)+NDOFs*n+1+jmp
-           END DO
-         END DO
-
-         DO i=1,Projector % NumberOfRows
-           k = Perm(Projector % InvPerm(i))
-           DO p=1,NDOFs
-             n = F % Rows(NDOFs*(i-1)+p)
-             F % Cols(n) = NDOFs*(k-1)+p
-
-             IF( Jump ) THEN
-               n = n + 1
-               F % Cols(n) = size0 + NDOFs*(i-1)+p
-             END IF
-
-             DO j=Projector % Rows(i),Projector % Rows(i+1)-1
-               m = Perm(Projector % Cols(j))
-               IF ( m>0 ) THEN
-                 DO q=1,NDOFs
-                   n = n + 1
-                   F % Cols(n) = NDOFs*(m-1)+q
-                 END DO
-               END IF
-             END DO
-           END DO
-         END DO
-         CALL CRS_SortMatrix(F)
-
-         F % RHS = 0._dp
-         F % Values = 0._dp
-      END IF
 
       DO i=1,Projector % NumberOfRows
         k = Perm(Projector % InvPerm(i))
         IF ( k<=0 ) CYCLE
-
+        
         ! Add the diagonal unity projector (scaled)
         CALL ZeroRow(F,NDOFS*(i-1)+DOF)
         CALL SetMatrixElement( F, NDOFs*(i-1)+DOF, &
-               NDOFs*(k-1)+DOF, Scale )
+            NDOFs*(k-1)+DOF, Scale )
 
         ! Add the diagonal unity projector (scaled)
         IF( Jump ) THEN
@@ -2888,16 +3363,19 @@ CONTAINS
                 size0 + NDOFs*(i-1)+DOF, -0.5/(weight*coeff) )
           END IF
         END IF
-
+        
         ! Add the original nodal projector values
         DO j=Projector % Rows(i),Projector % Rows(i+1)-1
           m = Perm(Projector % Cols(j))
           IF ( m>0 ) THEN
             CALL SetMatrixElement( F, NDOFs*(i-1)+DOF, &
-               NDOFs*(m-1)+DOF, Projector % Values(j) )
+                NDOFs*(m-1)+DOF, Projector % Values(j) )
           END IF
         END DO
       END DO
+      
+
+
     ELSE
 
       ALLOCATE(F)
@@ -3147,7 +3625,7 @@ CONTAINS
 
 
 !> Set the diagonal entry related to mortar BCs.
-!> This implements the jump condition. 
+!> This implements the implicit jump condition. 
 !------------------------------------------------------------------------------
    SUBROUTINE SetWeightedProjectorJump( Model, A, b, &
        Name, DOF, NDOFs, Perm )
@@ -3174,26 +3652,15 @@ CONTAINS
      !------------------------------------------------------------------------------
 
      ! If there is no mortar projector then nothing to do
-     Projector => A % ConstraintMatrix
-     IF(.NOT. ASSOCIATED( Projector ) ) RETURN
-
-     totsize = MAXVAL( Perm )
-     nodesize = MAXVAL( Perm(1:Model % Mesh % NumberOfNodes ) )
-
      SomethingDone = .FALSE.
 
      ! Go through the projectors and check for jumps
      ! If there is a jump add an entry to the diagonal-to-be
-     DO WHILE(ASSOCIATED(Projector))
+     DO bc_ind=1,Model % NumberOFBCs
 
-       ! The projector must be associated to some boundary 
-       ! condition when it is created.
-       bc_ind = Projector % ConstraintBC
-       IF( bc_ind == 0 ) THEN
-         Projector => Projector % ConstraintMatrix
-         CYCLE
-       END IF
-      
+       Projector => Model % Solver % MortarMatrix(bc_ind) % Mat
+       IF( .NOT. ASSOCIATED( Projector ) ) CYCLE
+
        ! For this boundary there should also be a coefficient 
        ! otherwise nothing needs to be done. 
        nlen = LEN_TRIM(Name)
@@ -3211,10 +3678,10 @@ CONTAINS
          Projector % Rhs = 0.0_dp
        END IF
 
-       IF( .NOT. (AddCoeff .OR. AddRes .OR. AddRhs) ) THEN
-         Projector => Projector % ConstraintMatrix
-         CYCLE
-       END IF
+       IF( .NOT. (AddCoeff .OR. AddRes .OR. AddRhs) ) CYCLE
+
+       totsize = MAXVAL( Perm )
+       nodesize = MAXVAL( Perm(1:Model % Mesh % NumberOfNodes ) )
 
        TargetBC = ListGetInteger( BC,'Mortar BC',Found ) 
 
@@ -3360,7 +3827,6 @@ CONTAINS
        SomethingDone = .TRUE.
 
        DEALLOCATE( InvInvPerm, NodeDone )
-       Projector => Projector % ConstraintMatrix
      END DO
 
      IF( SomethingDone ) THEN
@@ -5422,6 +5888,7 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
+
     ! Calculate derivative a.k.a. sensitivity
     IF( SteadyState ) THEN
 
@@ -5451,6 +5918,7 @@ END FUNCTION SearchNodeL
         END IF
       END IF
     END IF
+
 !------------------------------------------------------------------------------
   END SUBROUTINE ComputeChange
 !------------------------------------------------------------------------------
@@ -6786,7 +7254,6 @@ END FUNCTION SearchNodeL
     END IF
 
     IF(.NOT. ASSOCIATED( Diag ) ) THEN
-!     CALL Fatal('BackScaleLinearSystem','Diag not associated!')
       CALL Warn('BackScaleLinearSystem','Diag not associated!')
       RETURN
     END IF
@@ -7153,9 +7620,6 @@ END FUNCTION SearchNodeL
   END SUBROUTINE CalculateLoads
 
 
-
-
-
 !------------------------------------------------------------------------------
 !> Solves a linear system and also calls the necessary preconditioning routines.
 !------------------------------------------------------------------------------
@@ -7305,7 +7769,6 @@ END FUNCTION SearchNodeL
       RETURN
     END IF
 
-
 !   If solving eigensystem go there:
 !   --------------------------------
     IF ( EigenAnalysis ) THEN
@@ -7361,7 +7824,6 @@ END FUNCTION SearchNodeL
         CALL ScaleLinearSystem(Solver, A, b, x, RhsScaling=bnorm/=0._dp,ConstraintScaling=.TRUE. )
       END IF
     END IF
-
 
     ComputeChangeScaled = ListGetLogical(Params,'Nonlinear System Compute Change in Scaled System',GotIt)
     IF(.NOT.GotIt) ComputeChangeScaled = .FALSE.
@@ -7554,7 +8016,6 @@ END FUNCTION SearchNodeL
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
     LOGICAL :: Relax, Found, NeedPrevSol, Timing
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,ConstrainedSolve,colsj,rowoffset
-    TYPE(Matrix_t), POINTER :: SaveMatrix, Atmp, Btmp
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, ProcName, VariableName
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp) :: Relaxation,Beta,Gamma
@@ -7627,80 +8088,18 @@ END FUNCTION SearchNodeL
 
     ConstrainedSolve = 0
     IF ( ASSOCIATED(A % ConstraintMatrix) )  THEN
-      IF ( A % ConstraintMatrix % NumberOFRows>=1 ) & 
+      IF ( A % ConstraintMatrix % NumberOFRows >= 1 ) & 
         ConstrainedSolve = 1
     END IF
 
     IF ( ASSOCIATED(A % AddMatrix) )  THEN
-      IF ( A % AddMatrix % NumberOFRows>=1 ) ConstrainedSolve = 1
+      IF ( A % AddMatrix % NumberOFRows >= 1 ) ConstrainedSolve = 1
     END IF
 
     ConstrainedSolve = ParallelReduction(ConstrainedSolve*1._dp)
 
-    IF ( ConstrainedSolve>0 ) THEN
-
-      ! if there are several constraint matrices unify:
-      ! -----------------------------------------------
-      Btmp => NULL()
-      Atmp => A % ConstraintMatrix
-      IF(ASSOCIATED(atmp)) THEN
-        IF ( ASSOCIATED(Atmp % ConstraintMatrix) ) THEN
-          nrows = 0
-          ncols = 0
-          DO WHILE(ASSOCIATED(Atmp))
-            nrows = nrows + Atmp % NumberOfRows
-            ncols = ncols + SIZE(Atmp % Cols)
-            Atmp => Atmp % ConstraintMatrix
-          END DO
-
-          Btmp => AllocateMatrix()
-          ALLOCATE( Btmp % RHS(nrows), Btmp % Rows(nrows+1), &
-              Btmp % Cols(ncols), Btmp % Values(ncols) )
-          Btmp % NumberOFRows = nrows
-          ALLOCATE(Btmp % InvPerm(nrows)); Btmp % InvPerm=0
-
-          Atmp => A % ConstraintMatrix
-          k = 0
-          m = 0
-          n = 1
-          rowoffset = 0
-          Btmp % Rows(n) = 1
-          DO WHILE(ASSOCIATED(Atmp))
-            DO i=1,Atmp % NumberOfRows
-              Btmp % RHS(n)=Atmp % RHS(i)
-
-              IF(ASSOCIATED(Atmp % Invperm)) THEN
-                Btmp % InvPerm(n) = Atmp % InvPerm(i) + m * A % NumberOfRows
-              END IF
-
-              DO j=Atmp % Rows(i),Atmp % Rows(i+1)-1
-                k = k + 1
-                colsj = Atmp % Cols(j)
-
-                ! This is an entry related to the Lagrange coefficient
-                ! that must be manipulated if the row index is changed.
-                IF( colsj > A % NumberOfRows) colsj = colsj + rowoffset
-
-                Btmp % Cols(k)   = colsj
-                Btmp % Values(k) = Atmp % Values(j)
-              END DO
-              n = n + 1
-              Btmp % Rows(n) = k + 1
-            END DO
-            rowoffset = rowoffset + Atmp % NumberOfRows
-            m = m + 1
-            Atmp => Atmp % ConstraintMatrix
-          END DO
-          Atmp => A % ConstraintMatrix
-          A % ConstraintMatrix => Btmp
-        END IF
-      END IF
+    IF ( ConstrainedSolve > 0 ) THEN
       CALL SolveWithLinearRestriction( A,b,x,Norm,DOFs,Solver )
-
-      IF ( ASSOCIATED(Btmp) ) THEN
-        CALL FreeMatrix(Btmp)
-        A % ConstraintMatrix => Atmp
-      END IF
     ELSE
       CALL SolveLinearSystem( A,b,x,Norm,DOFs,Solver )
     END IF
@@ -7760,8 +8159,8 @@ END FUNCTION SearchNodeL
 
     END IF
 
-    IF(ListGetLogical(Solver % Values, 'Mortar Projector Nonlinear',Found)) &
-        CALL ReleaseProjectors(Solver)
+!    IF(ListGetLogical(Solver % Values, 'Mortar Projector Nonlinear',Found)) &
+!        CALL ReleaseProjectors(Solver)
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveSystem
 !------------------------------------------------------------------------------
@@ -8607,8 +9006,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   SUBROUTINE SaveLinearSystem( Solver )
 !------------------------------------------------------------------------------
     TYPE( Solver_t ) :: Solver
-!------------------------------------------------------------------------------
-    
+!------------------------------------------------------------------------------    
     TYPE(Matrix_t), POINTER :: A
     TYPE(ValueList_t), POINTER :: Params
     CHARACTER(LEN=MAX_NAME_LEN) :: dumpfile, dumpprefix
@@ -8625,6 +9023,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END IF
 
     A => Solver % Matrix
+
     IF(.NOT. ASSOCIATED( A ) ) THEN
       CALL Fatal('SaveLinearSystem','Matrix not assciated!')
     END IF
@@ -8634,7 +9033,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     
     dumpprefix = ListGetString( Params, 'Linear System Save Prefix', Found)
     IF(.NOT. Found ) dumpprefix = 'linsys'
-    
+
     dumpfile = TRIM(dumpprefix)//'_a.dat'
     CALL Info('SaveLinearSystem','Saving matrix to: '//TRIM(dumpfile))
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
@@ -9414,138 +9813,231 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   END SUBROUTINE FCT_Correction
 
 
-  FUNCTION GenerateProjectors(Model,Solver) RESULT(FoundMortar)
+  SUBROUTINE GenerateProjectors(Model,Solver,Nonlinear,SteadyState) 
     
      TYPE(Model_t) :: Model
      TYPE(Solver_t) :: Solver
+     LOGICAL, OPTIONAL :: Nonlinear, SteadyState
 
+     LOGICAL :: IsNonlinear,IsSteadyState
      LOGICAL :: FoundMortar, ApplyMortar, Found
      INTEGER :: i,j,k,l,n,dsize,size0,col,row
+     TYPE(ValueList_t), POINTER :: BC
      TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
 
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
      FoundMortar = .FALSE.
      ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
-     IF( ApplyMortar ) THEN
-       IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
-         CALL Warn('SingeSolver','> Apply Mortar BCs < can only be set if there is a matrix equation')
-         ApplyMortar = .FALSE.
-       END IF
-     END IF
+     IF( .NOT. ApplyMortar ) RETURN
+     
+     IsNonlinear = .FALSE.
+     IF( PRESENT( Nonlinear ) ) IsNonlinear = Nonlinear
+     IsSteadyState = .NOT. IsNonlinear
 
-     CM => Null()
-     IF( ApplyMortar ) THEN
-       DO i=1,Model % NumberOFBCs
-         j=ListGetInteger(Model % BCs(i) % Values,'Mortar BC',FoundMortar)
-         IF(FoundMortar) THEN           
-           CM0 => PeriodicProjector(Model,Solver % Mesh,i,j,CoordinateSystemDimension(),.TRUE.)
-           IF(ASSOCIATED(CM0)) THEN
-             CM0 % ConstraintMatrix => CM
-             CM => CM0
-           END IF
-         END IF
+     IF( .NOT. ASSOCIATED( Solver % MortarMatrix ) ) THEN
+       ALLOCATE( Solver % MortarMatrix( Model % NumberOfBCs ) )
+       DO i=1, Model % NumberOfBCs
+         Solver % MortarMatrix(i) % Mat => NULL()
        END DO
-       FoundMortar = ASSOCIATED(CM)
+     END IF
+     
+     FoundMortar = .FALSE.
+
+     DO i=1,Model % NumberOFBCs
+       BC => Model % BCs(i) % Values
        
-       IF(FoundMortar) THEN
-         CM0 => CM
-         CMP => NULL()
-         DO WHILE(ASSOCIATED(CM0))
+       j = ListGetInteger( BC,'Mortar BC',FoundMortar)
+       
+       IF( .NOT. FoundMortar ) CYCLE
 
-           n = SIZE( Solver % Variable % Perm )
-           size0 = MAXVAL( Solver % Variable % Perm ) 
-           dsize = n - size0
+       IF( IsNonlinear ) THEN
+         IF( .NOT. ListGetLogical( BC,'Mortar BC Nonlinear',Found) ) CYCLE
+       END IF
+       
+       IF( ASSOCIATED( Solver % MortarMatrix(i) % Mat ) ) THEN
+         CALL FreeMatrix( Solver % MortarMatrix(i) % Mat )
+       END IF
+       
+       Solver % MortarMatrix(i) % Mat => &
+           PeriodicProjector(Model,Solver % Mesh,i,j,CoordinateSystemDimension(),.TRUE.)
+       
+       IF( ASSOCIATED( Solver % MortarMatrix(i) % Mat ) ) THEN
+         Solver % MortarMatrixChanged = .TRUE.
+         FoundMortar = .TRUE.
+       END IF
 
-           DO i=1,SIZE(CM0 % Cols ) 
-             j = CM0 % Cols(i)
+     END DO
 
-             IF( j <= n ) THEN
-               CM0 % Cols(i) = Solver % Variable % Perm(j)
+   END SUBROUTINE GenerateProjectors
+
+
+
+   ! Generate constraint matrix from mortar projectors. 
+   ! This routine takes each boundary projector and applies it 
+   ! to the current field variable (scalar or vector) merging 
+   ! all into one single projector. 
+   !---------------------------------------------------------
+   SUBROUTINE GenerateConstraintMatrix( Model, Solver )
+
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t) :: Solver
+     INTEGER, POINTER :: Perm(:)
+     INTEGER :: i,j,k,k2,dofs,maxperm,permsize,bc_ind,row,col
+     TYPE(Matrix_t), POINTER :: Atmp,Btmp
+     LOGICAL :: AllocationsDone
+     TYPE(ValueList_t), POINTER :: BC
+
+     IF( .NOT. Solver % MortarMatrixChanged ) RETURN
+     
+     ! Compute the size of the initial boundary matrices.
+     !------------------------------------------------------
+     row = 0
+     DO bc_ind=1,Model % NumberOFBCs
+       Atmp => Solver % MortarMatrix(bc_ind) % Mat
+       IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
+       row = row + Atmp % NumberOfRows
+     END DO
+
+     IF( row == 0 )  RETURN
+     
+     CALL Info('GenerateConstraintMatrix','There are '&
+         //TRIM(I2S(row))//' initial rows in constraint matrices',Level=10)
+
+     dofs = Solver % Variable % DOFs
+     Perm => Solver % Variable % Perm
+     permsize = SIZE( Perm )
+     maxperm  = MAXVAL( Perm )
+     AllocationsDone = .FALSE.
+
+100  col = 0 
+     row = 1
+     k2 = 0
+
+     DO bc_ind=1,Model % NumberOFBCs
+       Atmp => Solver % MortarMatrix(bc_ind) % Mat
+       IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
+
+       IF( Dofs == 1 ) THEN         
+         DO i=1,Atmp % NumberOfRows           
+
+           IF( ASSOCIATED( Atmp % InvPerm ) ) THEN
+             k = Atmp % InvPerm(i)
+             ! Node does not have an active dof
+             IF( Perm(k) == 0 ) CYCLE
+             
+             IF( AllocationsDone ) THEN
+               Btmp % InvPerm(row) = Perm( k ) 
+             END IF
+           END IF
+
+           DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1
+             
+             col = Atmp % Cols(k) 
+             
+             IF( col <= permsize ) THEN
+               col = Perm(col)
+               IF( col == 0 ) CYCLE
              ELSE 
-               CM0 % Cols(i) = j - dsize
+               col = maxperm + row
+             END IF
+
+             k2 = k2 + 1
+             IF( AllocationsDone ) THEN
+               Btmp % Cols(k2) = col
+               Btmp % Values(k2) = Atmp % Values(k)
              END IF
            END DO
 
-           IF(ASSOCIATED(CM0 % InvPerm)) THEN
-             DO i=1,SIZE(CM0 % InvPerm)
-               IF(CM0 % InvPerm(i) > 0) THEN
-                 CM0 % InvPerm(i) = Solver % Variable % Perm(CM0 % InvPerm(i))
+           IF( AllocationsDone ) THEN
+             IF( ASSOCIATED( Atmp % Rhs ) ) THEN
+               Btmp % Rhs(row) = Atmp % Rhs(i)
+             END IF
+             Btmp % Rows(row+1) = k2 +1
+           END IF
+
+           row = row + 1
+         END DO
+       ELSE 
+         ! In case of a vector valued problem create a projector that acts on all 
+         ! components of the vector.
+         DO i=1,Atmp % NumberOfRows           
+           DO j=1,Dofs
+             
+             IF( ASSOCIATED( Atmp % invPerm ) ) THEN
+               k = Atmp % InvPerm(i)
+               IF( Perm(k) == 0 ) CYCLE
+               IF( AllocationsDone ) THEN
+                 Btmp % InvPerm(row) = Dofs * ( Perm( k ) - 1 ) + j
+               END IF
+             END IF
+             
+             DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1             
+               col = Atmp % Cols(k)                
+               IF( col <= permsize ) THEN
+                 col = Perm(col)
+                 IF( col == 0 ) CYCLE
+               ELSE 
+                 col = maxperm + row 
+               END IF
+               
+               k2 = k2 + 1
+               IF( AllocationsDone ) THEN
+                 Btmp % Cols(k2) = Dofs * (col-1) + j
+                 Btmp % Values(k2) = Atmp % Values(k)
                END IF
              END DO
-           END IF
-
-           n = Solver % Variable % DOFs
-
-           ! In case of a vector valued problem create a projector that acts on all 
-           ! components of the vector.
-           IF (n>1) THEN
-             CM1 => AllocateMatrix()
-             CM1 % NumberOfRows = n*CM0 % NumberOfRows
-             ALLOCATE(CM1 % Rows(n*CM0 % NumberOfRows+1))
-             ALLOCATE(CM1 % Cols(n*n*SIZE(CM0 % Cols))); CM1 % Cols = 0._dp
-             ALLOCATE(CM1 % Diag(CM1 % NumberOfRows)); CM1 % Diag = 0._dp
-             ALLOCATE(CM1 % Values(n*n*SIZE(CM0 % Values))); CM1 % Values = 0._dp
-
-             CM1 % Rows(1) = 1
-             col = 0
-             row = 1
-             DO i=1,CM0 % NumberOfRows
-               DO j=1,n
-                 DO k=CM0 % Rows(i),CM0 % Rows(i+1)-1
-                   DO l=1,n
-                     col = col + 1
-                     CM1 % Cols(col) = n*(CM0 % Cols(k)-1)+l
-                     IF(j==l) &
-                       CM1 % Values(col) = CM0 % Values(k)
-                   END DO
-                 END DO
-                 row = row + 1
-                 CM1 % Rows(row) = col + 1
-               END DO
-             END DO
-
-             ALLOCATE(CM1 % InvPerm(n*SIZE(CM0 % InvPerm)))
-             CM1 % InvPerm = 0
-             DO i=1,SIZE(CM0 % InvPerm)
-               IF(CM0 % InvPerm(i)<=0) CYCLE
-               DO j=1,n
-                 CM1 % InvPerm(n*(i-1)+j) = n*(CM0 % InvPerm(i)-1)+j
-               END DO
-             END DO
-
-             CM1 % ConstraintMatrix => CM0 % ConstraintMatrix
-             IF(ASSOCIATED(CM0,CM)) CM=>CM1
-             CM0 % ConstraintMatrix => NULL(); CALL FreeMatrix(CM0)
-             CM0 => CM1
-             IF(ASSOCIATED(CMP)) CMP % ConstraintMatrix => CM0
-           END IF
-
-           ALLOCATE(CM0 % RHS(CM0 % NumberOfRows)); CM0 % RHS = 0._dp
-           CM0 % Ordered = .FALSE.
-           CALL CRS_SortMatrix(CM0,.TRUE.)
-           CMP => CM0
-           CM0 => CM0 % ConstraintMatrix
+              
+             IF( AllocationsDone ) THEN
+               ! This does not really make sense            
+               !IF( ASSOCIATED( Atmp % Rhs ) ) THEN
+               !  Btmp % Rhs(row) = Atmp % Rhs(i)
+               !END IF
+               Btmp % Rows(row+1) = k2 +1
+             END IF
+             
+             row = row + 1
+           END DO
          END DO
+       END IF       
+     END DO
 
-         CM0 => Solver % Matrix
-         DO WHILE(ASSOCIATED(CM0 % ConstraintMatrix))
-           CM0 => CM0 % ConstraintMatrix
-         END DO
-         CM0 % ConstraintMatrix => CM
-       END IF
+     ! Allocate the united matrix of all the boundary matrices
+     !-------------------------------------------------------
+     IF( .NOT. AllocationsDone ) THEN
+       Btmp => AllocateMatrix()
+       ALLOCATE( Btmp % RHS(row-1), Btmp % Rows(row), &
+           Btmp % Cols(k2), Btmp % Values(k2), &
+           Btmp % InvPerm(row-1) )
+       Btmp % Rhs = 0.0_dp
+       Btmp % Rows = 0
+       Btmp % Cols = 0
+       Btmp % Values = 0.0_dp
+       Btmp % NumberOFRows = row -1 
+       Btmp % InvPerm = 0
+       Btmp % Rows(1) = 1
+
+       AllocationsDone = .TRUE.
+       GOTO 100
      END IF
-   END FUNCTION GenerateProjectors
+
+     Btmp % Ordered = .FALSE.
+     CALL CRS_SortMatrix(Btmp,.TRUE.)     
+     Solver % Matrix % ConstraintMatrix => Btmp
+
+   END SUBROUTINE GenerateConstraintMatrix
+     
 
 
-   SUBROUTINE ReleaseProjectors(Solver) 
+#if 0
+   SUBROUTINE ReleaseConstraintMatrix(Solver) 
      TYPE(Solver_t) :: Solver
 
      TYPE(Matrix_t), POINTER :: CM, CM0
 
      CM => Solver % Matrix
      DO WHILE(ASSOCIATED(CM % ConstraintMatrix))
-       IF(CM % ConstraintMatrix % ConstraintType/=0) THEN
+       IF(CM % ConstraintMatrix % ConstraintType /= 0) THEN
          CM0 => CM % ConstraintMatrix 
          CM % ConstraintMatrix => null()
          CALL FreeMatrix(CM0)
@@ -9553,8 +10045,29 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        END IF
        CM => CM % ConstraintMatrix
      END DO
-   END SUBROUTINE ReleaseProjectors
+   END SUBROUTINE ReleaseConstraintMatrix
+#endif
 
+
+   SUBROUTINE ReleaseProjectors(Model, Solver) 
+
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t) :: Solver
+     TYPE(ValueList_t), POINTER :: BC
+     INTEGER :: i
+
+     IF( .NOT. ASSOCIATED( Solver % MortarMatrix ) ) RETURN
+
+     DO i=1,Model % NumberOFBCs
+       BC => Model % BCs(i) % Values
+       
+       IF( ASSOCIATED( Solver % MortarMatrix(i) % Mat ) ) THEN
+         CALL FreeMatrix( Solver % MortarMatrix(i) % Mat )
+         Solver % MortarMatrix(i) % Mat => NULL()
+       END IF
+     END DO
+
+   END SUBROUTINE ReleaseProjectors
 
 
 END MODULE SolverUtils

@@ -4499,243 +4499,6 @@ END SUBROUTINE GetMaxDefs
 
 
 
-!------------------------------------------------------------------------------
-!> Create master and slave mesh for the interface assuming edge elements.
-!> We set them to be the normal elements in the temporal structures in order
-!> to be able to reuse some subroutines related to rotational projectors.  
-!------------------------------------------------------------------------------
-  SUBROUTINE CreateInterfaceEdges( Model, Mesh, This, Trgt, BMesh1, BMesh2, &
-      InvPerm1, InvPerm2, Success ) 
-!------------------------------------------------------------------------------    
-    TYPE(Model_t) :: Model
-    INTEGER :: This, Trgt
-    TYPE(Mesh_t), TARGET :: Mesh
-    TYPE(Matrix_t), POINTER :: Projector
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
-    LOGICAL :: Success
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,m,n,n1,n2,k1,k2,ind,Constraint,DIM,NoBothActive,Offset
-    TYPE(Element_t), POINTER :: Element, Elements(:), Parent, Edge
-    LOGICAL :: ThisActive, TargetActive
-    LOGICAL, ALLOCATABLE, TARGET :: ActiveEdge1(:), ActiveEdge2(:)
-    LOGICAL, POINTER :: ActiveEdge(:)
-    INTEGER, POINTER :: NodeIndexes(:), PPerm(:)
-    TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
-    LOGICAL :: OnTheFlyBC
-
-    CALL Info('CreateInterfaceEdges','Making a list of edge elements at interface',Level=9)
-
-    IF ( This <= 0 .OR. Trgt <= 0 ) THEN
-      CALL Fatal('CreateInterfaceEdges','Invalid target boundaries')
-    END IF
-
-    ! If the target is larger than number of BCs givem then 
-    ! it has probably been created on-the-fly from a discontinuous boundary.
-    OnTheFlyBC = ( Trgt > Model % NumberOfBCs )
-
-    ! Interface meshes consist of boundary elements only    
-    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
-    
-!   Find the active edges on the boundary 
-!   --------------------------------------------------
-    ALLOCATE( ActiveEdge1( Mesh % NumberOfEdges ) )
-    ALLOCATE( ActiveEdge2( Mesh % NumberOfEdges ) )
-    ActiveEdge1 = .FALSE.
-    ActiveEdge2 = .FALSE.
-    
-    DO i=1, Mesh % NumberOfBoundaryElements
-      Element => Elements(i) 
-      
-      IF (Element % TYPE % ElementCode < 300) CYCLE
-      IF (Element % TYPE % ElementCode >= 500) CYCLE
-      
-      Constraint = Element % BoundaryInfo % Constraint
-      ThisActive = ( Model % BCs(This) % Tag == Constraint ) 
-      IF( OnTheFlyBC ) THEN
-        TargetActive = ( Trgt == Constraint )
-      ELSE
-        TargetActive = ( Model % BCs(Trgt) % Tag == Constraint )
-      END IF
-      
-      IF(.NOT. (ThisActive .OR. TargetActive ) ) CYCLE
-      
-      Parent => Element % BoundaryInfo % Left
-      IF( .NOT. ASSOCIATED( Parent) ) THEN
-        Parent => Element % BoundaryInfo % Right
-      END IF
-      IF( .NOT. ASSOCIATED( Parent ) ) THEN
-        CALL Fatal('CreateInterfaceMeshes','Neither parent not associated!')
-      END IF
-      
-      
-      DO j=1,Parent % TYPE % NumberOfEdges
-        
-        k = Parent % EdgeIndexes(j)
-        Edge => Mesh % Edges(k)
-        
-        IF( ALL( Element % NodeIndexes /= Edge % NodeIndexes(1) ) ) CYCLE 
-        IF( ALL( Element % NodeIndexes /= Edge % NodeIndexes(2) ) ) CYCLE 
-        
-        IF( ThisActive ) THEN
-          ActiveEdge1(k) = .TRUE.
-        ELSE
-          ActiveEdge2(k) = .TRUE.
-        END IF
-      END DO
-    END DO
-    
-    ! Here we check edges that belong to both this and target.
-    ! These must be considered later on when creating projectors.
-    NoBothActive = COUNT( ActiveEdge1 .AND. ActiveEdge2 )
-    IF( NoBothActive > 0 ) THEN
-      WRITE(Message,'(A,I0)') 'Edges belonging to both Master and Target: ',NoBothActive
-      CALL Warn('CreateInterfaceEdges',Message)
-    END IF
-        
-    n1 = COUNT( ActiveEdge1 )
-    n2 = COUNT( ActiveEdge2 ) 
-    
-    WRITE(Message,'(A,I0)') 'Number of edge elements in slave: ',n1
-    CALL Info('CreateInterfaceEdges',Message,Level=8)
-
-    WRITE(Message,'(A,I0)') 'Number of edge elements in master: ',n2
-    CALL Info('CreateInterfaceEdges',Message,Level=8)
-
-
-    IF ( n1 == 0 .OR. n2 == 0 ) THEN
-      DEALLOCATE( ActiveEdge1, ActiveEdge2 )
-      Success = .FALSE.
-      RETURN
-    END IF
-
-
-!   Initialize mesh structures for boundaries, this
-!   is for getting the mesh projector:
-!   ------------------------------------------------
-
-    BMesh1 % Parent => Mesh
-    BMesh2 % Parent => Mesh
-
-    CALL AllocateVector( BMesh1 % Elements,n1 )
-    CALL AllocateVector( BMesh2 % Elements,n2 )
-
- 
-!   Fill in the mesh element structures with the
-!   boundary eedge lements:
-!   ---------------------------------------------
-    n = Mesh % NumberOfNodes 
-    Offset = n
-    ALLOCATE( PPerm( n ) )
-
-    
-    DO k=1,2
-      
-      IF( k == 1 ) THEN
-        PMesh => BMesh1
-        ActiveEdge => ActiveEdge1
-      ELSE
-        PMesh => BMesh2
-        ActiveEdge => ActiveEdge2
-      END IF
-      
-      PPerm = 0
-      PMesh % MaxElementNodes = 0
-      ind = 0
-      
-      DO i=1, Mesh % NumberOfEdges
-        Element => Mesh % Edges(i)
-        IF( ActiveEdge( i ) ) THEN
-          ind = ind + 1
-          n = Element % TYPE % NumberOfNodes        
-          PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, n )
-          PMesh % Elements(ind) = Element
-          
-          CALL AllocateVector(PMesh % Elements(ind) % NodeIndexes,n )
-          PMesh % Elements(ind) % NodeIndexes(1:n) = Element % NodeIndexes(1:n)
-          PPerm( Element % NodeIndexes(1:n) ) = 1
-        END IF
-      END DO
-
-!   Fill in the mesh node structures with the
-!   boundary nodes:
-!   -----------------------------------------
-      PMesh % NumberOfBulkElements = ind
-      PMesh % NumberOfNodes = COUNT(PPerm > 0)
-
-      ! As there were some active boundary elements this condition should 
-      ! really never be possible   
-      IF ( PMesh % NumberOfNodes==0  ) THEN
-        CALL Fatal('CreateInterfaceEdges','No active nodes on periodic boundary!')
-      END IF
-
-      WRITE(Message,'(A,I0)') 'Number of periodic nodes: ',PMesh % NumberOfNodes 
-      CALL Info('CreateInterfaceEdges',Message,Level=9)    
-      
-      ALLOCATE( PMesh % Nodes )
-      CALL AllocateVector( PMesh % Nodes % x, PMesh % NumberOfNodes ) 
-      CALL AllocateVector( PMesh % Nodes % y, PMesh % NumberOfNodes ) 
-      CALL AllocateVector( PMesh % Nodes % z, PMesh % NumberOfNodes ) 
-    
-      ! Now, create the master and target meshes that only include the active elements
-      !---------------------------------------------------------------------------
-      k1 = 0
-      DO i=1, Mesh % NumberOfNodes
-        
-        IF ( PPerm(i) > 0 ) THEN
-          k1 = k1 + 1
-          PPerm(i) = k1
-          
-          PMesh % Nodes % x(k1) = Mesh % Nodes % x(i)
-          PMesh % Nodes % y(k1) = Mesh % Nodes % y(i)
-          PMesh % Nodes % z(k1) = Mesh % Nodes % z(i)
-        END IF
-      END DO
-
-
-!   Finally, Renumber the element node pointers to use
-!   only boundary nodes:
-!   ---------------------------------------------------
-      DO i=1,ind
-        PMesh % Elements(i) % NodeIndexes = PPerm(PMesh % Elements(i) % NodeIndexes)
-      END DO
-
-      ! Create inverse tables to be used later when creating a projector
-      !-----------------------------------------------------------------
-      IF( k == 1 ) THEN
-        ALLOCATE( InvPerm1( k1 + n1 ) )
-        DO i=1,Mesh % NumberOfNodes
-          IF( PPerm(i) > 0 ) InvPerm1(PPerm(i)) = i
-        END DO
-        n1 = 0
-        DO i=1,Mesh % NumberOfEdges
-          IF( ActiveEdge1(i) ) THEN
-            n1 = n1 + 1
-            InvPerm1(k1+n1) = Offset + i
-          END IF
-        END DO
-      ELSE
-        ALLOCATE( InvPerm2( k1 + n2 ) )
-        DO i=1,Mesh % NumberOfNodes
-          IF( PPerm(i) > 0 ) InvPerm2(PPerm(i)) = i
-        END DO
-        n2 = 0
-        DO i=1,Mesh % NumberOfEdges
-          IF( ActiveEdge2(i) ) THEN
-            n2 = n2 + 1
-            InvPerm2(k1+n2) = Offset + i
-          END IF
-        END DO
-      END IF
-    END DO
-
-    DEALLOCATE( ActiveEdge1, ActiveEdge2, PPerm )
-    Success = .TRUE.
-
-  END SUBROUTINE CreateInterfaceEdges
-  !---------------------------------------------------------------------------
-
-
-
   !---------------------------------------------------------------------------
   !> Given two interface meshes for nonconforming rotating boundaries make 
   !> a coordinate transformation to each node of the slave boundary (BMesh1) so that 
@@ -4999,575 +4762,6 @@ END SUBROUTINE GetMaxDefs
   END FUNCTION NodalProjectorDiscont
 !------------------------------------------------------------------------------
 
-
- 
-  !---------------------------------------------------------------------------
-  !> Create a nodal and edge projector for cases when the edges form a nice cartesian 
-  !> grid with the 2nd coordinate always on the same level i.e. there are
-  !> always strides along which node and edge projector may be easily created.
-  !> Along the strides the node projector is computed using linear interpolation
-  !> whereas the edge projector is computed using the overlap fraction of the edges.
-  !---------------------------------------------------------------------------
-   FUNCTION StrideProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
-       InvPerm1, InvPerm2, DoNodes, DoEdges, NodeScale, EdgeScale ) &
-       RESULT ( Projector )
-  !---------------------------------------------------------------------------
-    USE Lists
-
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
-    LOGICAL :: DoNodes, DoEdges
-    LOGICAL :: Repeating, AntiRepeating
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
-    REAL(KIND=dp), OPTIONAL :: NodeScale, EdgeScale
-    TYPE(Matrix_t), POINTER :: Projector    
-    !--------------------------------------------------------------------------
-    INTEGER :: i,j,n,m,k1,k2,km1,km2,ncoeff,sgn0,ind,Nfii,Nfii2,nrow,ncol,&
-        SectorMax,Nelim,NoNodes1,NoNodes2, dxnegi, dxposi, possign, negsign
-    INTEGER, POINTER :: Rows(:),Cols(:),TmpCols(:),TmpRows(:)
-    REAL(KIND=dp), POINTER :: Values(:),TmpValues(:)
-    REAL(KIND=dp) :: coeff(100), Xtol, Ytol, RelTol, XRange, YRange, Xmin, Xmax, &
-        Xmaxm, Xminm, x1, x2, y1, y2, xm1, xm2, ym1, ym2, dx, dxNeg, dxPos, &
-        XmaxAll, XminAll, YminAll, YmaxAll, wsum, deg2rad, Radius, w0, wx, wy, ds, &
-        minwsum, maxwsum
-    INTEGER :: coeffi(100),signs(100)
-    LOGICAL :: Yconst, YConstM, SelfProject, EliminateUnneeded, Found, Parallel
-    TYPE(Element_t), POINTER :: Element, ElementM
-
-    CALL Info('StrideProjector','Creating simple projector along 1D strides',Level=7)
-
-    Parallel = ParEnv % PEs>1
-    
-    BMesh1 % Parent => NULL()
-    BMesh2 % Parent => NULL()
-
-    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
-    !    Projector % ConstraintBC = bc
-
-    ! Create a projector in style P=I-Q, or rather just P=Q. 
-    SelfProject = .TRUE.
-
-    ! Eliminate the unneeded entries. This is currently fixed to .TRUE.
-    ! The other possibility is to make the corresponding rows to be zero. 
-    EliminateUnneeded = .TRUE.
-    
-    ! We don't know how many entries we will have so make it big enough
-    ! For edge elements using strides the typical number of needed target edges is two.
-    ! Considering the self projection roughly three entities are needed. 
-    n = BMesh1 % NumberOfNodes + BMesh1 % NumberOfBulkElements
-    m = 5*n
-
-    ! Create a projector using conservative size eastimates
-    Projector => AllocateMatrix()
-    ALLOCATE( Projector % Rows(n+1) )
-    ALLOCATE( Projector % Cols(m) )
-    ALLOCATE( Projector % Values(m) )
-    ALLOCATE( Projector % InvPerm(n) )
-    
-    Cols   => Projector % Cols
-    Rows   => Projector % Rows
-    Values => Projector % Values
-    Projector % NumberOfRows = n
-
-    ! Range is needed to define tolerances, 
-    ! and to map the angle in case there master mesh is treated as 
-    ! a repeating structure. 
-    XMaxAll = MAXVAL(BMesh2 % Nodes % x)
-    XMinAll = MINVAL(BMesh2 % Nodes % x)
-    XRange = XMaxAll - XMinAll
-
-    YMaxAll = MAXVAL(BMesh2 % Nodes % y)
-    YMinAll = MINVAL(BMesh2 % Nodes % y)
-    YRange = YMaxAll - YMinAll
-
-    IF( Repeating ) THEN
-      SectorMax = CEILING( 360.0 / XRange ) 
-      WRITE( Message,'(A,I0)') 'Maximum number of sectors: ',SectorMax
-      CALL Info('PreRotationalProjector',Message,Level=8)
-    END IF
-    
-    ! Fix here the relative tolerance used to define the whether and edge has constant coordinate
-    RelTol = 1.0e-5
-    YTol = RelTol * YRange
-    XTol = RelTol * XRange
-    deg2rad = PI / 180.0_dp
-    
-    ! Initalize some stuff that grows within the loop where projector is build
-    Rows(1) = 1
-    ncol = 0
-    nrow = 0
-    sgn0 = 1
-    Nelim = 0
-    coeffi = 0
-    minwsum = HUGE( minwsum ) 
-    maxwsum = 0.0_dp
-        
-    ! Given the inverse permutation compute the initial number of
-    ! nodes in both cases. 
-    NoNodes1 = BMesh1 % NumberOfNodes
-    NoNodes2 = BMesh2 % NumberOfNodes
-
-
-    ! If requested, create mapping for node dofs
-    !------------------------------------------------------------------
-    IF( DoNodes ) THEN
-      
-      ! By construction there is always two components in the projector
-      ! for the nodes. 
-      ncoeff = 2
-
-      DO i=1,BMesh1 % NumberOfNodes
-        
-        Found = .FALSE.
-        x1 = BMesh1 % Nodes % x(i)
-        y1 = BMesh1 % Nodes % y(i)
-
-        IF( Repeating ) THEN
-          Nfii = FLOOR( (x1-XMinAll) / XRange )
-          x1 = x1 - Nfii * XRange
-          
-          IF( AntiRepeating ) THEN
-            IF ( MODULO(Nfii,2) /= 0 ) THEN
-              sgn0 = -1
-            ELSE
-              sgn0 = 1
-            END IF
-          END IF
-        END IF
-        
-        ! Currently a cheap n^2 loop but it could be improved
-        ! Looping over master nodes
-        !--------------------------------------------------------------------
-        DO ind = 1, BMesh2 % NumberOfBulkElements
-          ElementM => BMesh2 % Elements(ind)
-          
-          km1 = ElementM % NodeIndexes(1)
-          ym1 = BMesh2 % Nodes % y(km1)
-          
-          ! The node to map must be on the same stride
-          IF( ABS( y1 - ym1 ) > YTol ) CYCLE
-          
-          km2 = ElementM % NodeIndexes(2)
-          ym2 = BMesh2 % Nodes % y(km2)
-          
-          ! The stride must have constant y-coordinate
-          IF( ABS( ym2 - ym1 ) > YTol ) CYCLE
-          
-          ! The node to map must be in interval, x1 \in [xm1,xm2]
-          xm1 = BMesh2 % Nodes % x(km1)
-          xm2 = BMesh2 % Nodes % x(km2)          
-          IF( (xm1 - x1 ) * (xm2 - x1 ) > 0.0 ) CYCLE
-          
-          ! When we have the correct edge, the mapping is trivial
-          coeff(1) = ABS( (xm1-x1)/(xm1-xm2) )
-          coeff(2) = 1.0_dp - coeff(1)
-
-          coeffi(1) = km2
-          coeffi(2) = km1
-          
-          Found = .TRUE.
-          EXIT
-        END DO
-
-        IF( Found ) THEN        
-          IF( ANY( InvPerm2(coeffi(1:ncoeff)) == InvPerm1(i) ) ) THEN
-            Nelim = Nelim + 1
-            IF( EliminateUnneeded ) THEN
-              CYCLE
-            ELSE
-              nrow = nrow + 1
-              ncol = ncol + 1
-              Cols(ncol) = InvPerm1(i)
-              Values(ncol) = 0.0_dp
-              coeffi(1:ncoeff) = 0
-              Rows(nrow+1) = ncol + 1      
-              Projector % InvPerm(nrow) = InvPerm1(i)
-              CYCLE
-            END IF
-          END IF
-              
-          nrow = nrow + 1
-          Projector % InvPerm(nrow) = InvPerm1(i)
-      
-          IF( SelfProject ) THEN
-            ncol = ncol + 1
-            Values(ncol) = 1.0_dp      
-            Cols(ncol) = InvPerm1(i) 
-          END IF
-                    
-          IF( PRESENT( NodeScale ) ) THEN
-            Coeff(1:ncoeff) = NodeScale * Coeff(1:ncoeff)
-          END IF
-
-          ! The projection weights
-          DO j=1,ncoeff 
-            
-            ! Skip too small projector entries
-            IF( ABS( Coeff(j) ) < 1.0d-12 ) CYCLE
-            
-            ncol = ncol + 1
-            IF( ncol > m ) THEN
-              CALL Fatal('StrideProjector','The initial number of projector entries is too small!')
-            END IF
-            
-            ! Use the permutation to revert to original dofs
-            Cols(ncol) = InvPerm2( coeffi(j) )
-            
-            ! If the projector is of style Px+Qx=0 then
-            ! and the negative sign, otherwise let the initial sign be.
-            IF( SelfProject ) THEN
-              Values(ncol) = -sgn0 * Coeff(j) 
-            ELSE
-              Values(ncol) =  sgn0 * Coeff(j)
-            END IF
-          END DO
-          
-          coeffi(1:ncoeff) = 0
-          Rows(nrow+1) = ncol + 1      
-        ELSE
-          CALL Warn('StrideProjector','Node could not be mapped: '//TRIM(I2S(i)))          
-        END IF
-      END DO
-    END IF ! DoNodes
-
-
-    ! If requested, create mapping for edge dofs
-    !-------------------------------------------------------------
-    IF( DoEdges ) THEN
-
-      DO i=1,BMesh1 % NumberOfBulkElements
-
-        Element => BMesh1 % Elements(i)        
-
-        k1 = Element % NodeIndexes(1)
-        x1 = BMesh1 % Nodes % x(k1)
-        y1 = BMesh1 % Nodes % y(k1)
-
-        k2 = Element % NodeIndexes(2)
-        x2 = BMesh1 % Nodes % x(k2)
-        y2 = BMesh1 % Nodes % y(k2)
-
-        ! Numbering of global indexes is needed to ensure correct direction 
-        ! of the edge dofs. Basically the InvPerm could be used also in serial
-        ! but the order of numbering is maintained when the reduced mesh is created. 
-        IF(Parallel) THEN
-          k1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm1(k1))
-          k2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm1(k2))
-        END IF
-
-        ncoeff = 0 
-        YConst = ( ABS(y2-y1) < YTol )
-
-        IF( Repeating ) THEN
-          Nfii = FLOOR( (x1-XMinAll) / XRange )
-          x1 = x1 - Nfii * XRange
-          x2 = x2 - Nfii * XRange
-
-          IF( x2 > XMaxAll ) THEN
-            Nfii2 = 1
-          ELSE IF( x2 < XMinAll ) THEN
-            Nfii2 = -1
-          ELSE
-            Nfii2 = 0
-          END IF
-        END IF
-
-        IF( .NOT. YConst ) THEN
-          dXpos = HUGE( dxpos )
-          dXneg = -HUGE( dxneg )
-          dXPosi = 0
-          dXNegi = 0
-        END IF
-
-100     IF( AntiRepeating ) THEN
-          IF ( MODULO(Nfii,2) /= 0 ) THEN
-            sgn0 = -1
-          ELSE
-            sgn0 = 1
-          END IF
-        END IF
-
-        Xmin = MIN( x1, x2 )
-        Xmax = MAX( x1, x2 ) 
-
-        ! Currently a n^2 loop but it could be improved
-        !--------------------------------------------------------------------
-        DO ind = 1, BMesh2 % NumberOfBulkElements
-          ElementM => BMesh2 % Elements(ind)
-
-          km1 = ElementM % NodeIndexes(1)
-          ym1 = BMesh2 % Nodes % y(km1)
-
-          km2 = ElementM % NodeIndexes(2)
-          ym2 = BMesh2 % Nodes % y(km2)
-
-          YConstM = ( ABS(ym2-ym1) < YTol )
-
-          ! Are both either lateral or not lateral
-          ! XOR was used here before but it had some portability issues
-          IF( YConst .AND. .NOT. YConstM ) CYCLE
-          IF( YConstM .AND. .NOT. YConst ) CYCLE
-
-          ! y is constant and x varies for both edges
-          IF( YConst ) THEN
-            ! If they are lateral is y must be the same
-            IF( ABS( ym1 - y1 ) > YTol ) CYCLE
-
-            xm1 = BMesh2 % Nodes % x(km1)
-            xm2 = BMesh2 % Nodes % x(km2)
-
-            ! Check whether the range of master x has a union with the slave x
-            xmaxm = MAX( xm1, xm2 ) 
-            IF( xmaxm < xmin ) CYCLE
-
-            xminm = MIN( xm1, xm2 ) 
-            IF( xminm > xmax ) CYCLE
-
-            ! Ok, we have a hit register it 
-            ncoeff = ncoeff + 1
-            coeffi(ncoeff) = ind
-
-            ! weight depends on the relative fraction of overlapping
-            coeff(ncoeff) = (MIN(xmaxm,xmax)-MAX(xminm,xmin))/(xmax-xmin)
-
-            ! sign depends on the direction and order of global numbering
-            IF(Parallel) THEN
-              km1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km1))
-              km2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km2))
-            END IF
-
-            IF( (x1-x2)*(xm1-xm2)*(k1-k2)*(km1-km2) > 0.0_dp ) THEN
-              signs(ncoeff) = sgn0
-            ELSE
-              signs(ncoeff) = -sgn0
-            END IF
-
-            ! Test whether the sum of coefficients has already reached unity
-            wsum = SUM( coeff(1:ncoeff) )
-            IF( 1.0_dp - wsum < 1.0d-12 ) EXIT
-
-            ! x is (almost) constant and y varies 
-          ELSE 
-            ! If they are not lateral y range must still be the same
-            ! Check for this one coordinate at a time
-            IF( ABS( ym1 - y1 ) > YTol .AND. ABS( ym1 - y2 ) > YTol ) CYCLE
-            IF( ABS( ym2 - y1 ) > YTol .AND. ABS( ym2 - y2 ) > YTol ) CYCLE
-
-            xm1 = BMesh2 % Nodes % x(km1)
-            xm2 = BMesh2 % Nodes % x(km2)
-
-            ! If there is no skev the coordinates xm1 and xm2 should be the same 
-            xminm = MIN( xm1, xm2 ) 
-            xmaxm = MAX( xm1, xm2 ) 
-
-            ! For the angle is constant there can be at maximum two edges needed
-            ! One with negative difference in angle, and one with positive
-            dx = xmin - xminm 
-
-            ! Projector candidate edge on the left-hand-side
-            IF( dx > 0.0_dp ) THEN
-              ! Is this the closest edge so far on that side?
-              IF( dx < dxpos ) THEN
-                dxpos = dx 
-                dxposi = ind
-                IF(Parallel) THEN
-                  km1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km1))
-                  km2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km2))
-                END IF
-                IF( (y1-y2)*(ym1-ym2)*(k1-k2)*(km1-km2) > 0.0_dp ) THEN
-                  possign = sgn0
-                ELSE
-                  possign = -sgn0
-                END IF
-              END IF
-              ! Projector candidate edge on the right-hand-side
-            ELSE
-              ! Is this the closest edge so far on that side? 
-              IF( dx > dxneg ) THEN
-                dxneg = dx
-                dxnegi = ind
-                IF(Parallel) THEN
-                  km1 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km1))
-                  km2 = CurrentModel % Mesh % ParallelInfo % GlobalDOFs(InvPerm2(km2))
-                END IF
-                IF( (y1-y2)*(ym1-ym2)*(k1-k2)*(km1-km2) > 0.0_dp ) THEN
-                  negsign = sgn0 
-                ELSE
-                  negsign = -sgn0
-                END IF
-              END IF
-            END IF
-          END IF ! of Yconst
-        END DO
-
-
-        IF( YConst ) THEN
-          ! The part of the edge lies outside the interval. 
-          ! Therefore add the range in angle and redo this. 
-          IF( Repeating ) THEN
-            IF( Nfii2 /= 0 ) THEN
-              x1 = x1 - Nfii2 * XRange
-              x2 = x2 - Nfii2 * XRange
-              Nfii = Nfii + NFii2
-              Nfii2 = 0
-              GOTO 100
-            END IF
-          END IF
-
-          ! Do some error detection 
-          ! If Y is not const the sum of weight is by construction one. 
-          wsum = SUM( coeff(1:ncoeff) )
-
-          IF( ANY( Coeff(1:ncoeff) /= coeff(1:ncoeff)) ) THEN
-            PRINT *,'Problematic weights:',wsum,i
-            PRINT *,'weights:',ncoeff,coeff(1:ncoeff)
-            PRINT *,'coords',x1,x2,y1,y2,Nfii,Nfii2
-            PRINT *,'box',XminAll, XMaxAll, YminAll,YMaxAll
-            PRINT *,'Projector:',YConst,ncoeff,SUM(coeff(1:ncoeff))
-            PRINT *,'coeffs:',coeff(1:ncoeff)
-            PRINT *,'signs:',signs(1:ncoeff)
-            CALL Fatal('StrideProjector','Encountered NaN entries in projector')
-          END IF
-
-        ELSE
-          IF( dxposi > 0 .AND. dxnegi > 0 ) THEN
-            ncoeff = 2
-            coeff(1) = -dxneg/(dxpos-dxneg)
-            coeffi(1) = dxposi
-            signs(1) = possign
-            coeff(2) = dxpos/(dxpos-dxneg)
-            coeffi(2) = dxnegi
-            signs(2) = negsign
-          ELSE IF( dxposi > 0 ) THEN
-            ncoeff = 1
-            coeff(1) = 1.0_dp
-            coeffi(1) = dxposi
-            signs(ncoeff) = possign
-          ELSE IF( dxnegi > 0 ) THEN
-            ncoeff = 1
-            coeff(1) = 1.0_dp
-            coeffi(1) = dxnegi
-            signs(1) = negsign
-          END IF
-        END IF
-
-        IF( ncoeff == 0 ) THEN
-          CALL Warn('StrideProjector','Edge could not be mapped: '//TRIM(I2S(i)))          
-          CYCLE
-        END IF
-
-        
-        wsum = SUM( ABS( coeff(1:ncoeff) ) )
-        minwsum = MIN( minwsum, wsum ) 
-        maxwsum = MAX( maxwsum, wsum ) 
-
-        ! Cycle (or write an empty row) if reference to itself is needed in the mapping.
-        ! Mapping to itself results in to a zero row which is not needed and can 
-        ! potentially be harmfull. 
-        IF( ANY( InvPerm2(coeffi(1:ncoeff)+NoNodes2) == InvPerm1(i+NoNodes1) ) ) THEN
-          Nelim = Nelim + 1
-          IF( EliminateUnneeded ) THEN
-            CYCLE
-          ELSE
-            nrow = nrow + 1
-            ncol = ncol + 1
-            Cols(ncol) = InvPerm1(i+NoNodes1)
-            Values(ncol) = 0.0_dp
-            coeffi(1:ncoeff) = 0
-            Rows(nrow+1) = ncol + 1      
-            Projector % InvPerm(nrow) = InvPerm1(i+NoNodes1)
-            CYCLE
-          END IF
-        END IF
-
-        ! Ok, we found a true projector entry
-        ! Register the initiating index of the row. 
-        nrow = nrow + 1
-        Projector % InvPerm(nrow) = InvPerm1(i+NoNodes1)
-
-        ! The reference to the edge to be projected
-        IF( SelfProject ) THEN
-          ncol = ncol + 1
-          Cols(ncol) = InvPerm1(i+NoNodes1) 
-          Values(ncol) = 1.0_dp      
-        END IF
-
-        ! This can be used to create antiperiodic projectors, for example. 
-        IF( PRESENT( EdgeScale ) ) THEN
-          Coeff(1:ncoeff) = EdgeScale * Coeff(1:ncoeff)
-        END IF
-
-        ! And finally add the projection weights to the projection matrix
-        DO j=1,ncoeff 
-
-          IF( coeffi(j) == 0 ) CYCLE
-          IF( ABS( Coeff(j) ) < 1.0e-12 ) CYCLE
-
-          ncol = ncol + 1
-          IF( ncol > m ) THEN
-            CALL Fatal('StrideProjector','The initial number of projector entries is too small!')
-          END IF
-
-          ! If the permutation is given use it
-          Cols(ncol) = InvPerm2( coeffi(j) + NoNodes2 )
-
-          ! If the projector is of style Px+Qx=0 then
-          ! and the negative sign, otherwise let the initial sign be.
-          IF( SelfProject ) THEN
-            Values(ncol) = -signs(j)*Coeff(j) 
-          ELSE
-            Values(ncol) = signs(j)*Coeff(j)
-          END IF
-        END DO
-
-        coeffi(1:ncoeff) = 0
-        Rows(nrow+1) = ncol + 1      
-      END DO
-    END IF ! DoEdges
-
-    WRITE( Message,'(A,ES12.3)') 'Minimum absolute sum of weights: ',minwsum
-    CALL Info('StrideProjector',Message,Level=10)
-
-    WRITE( Message,'(A,ES12.3)') 'Maximum absolute sum of weights: ',maxwsum
-    CALL Info('StrideProjector',Message,Level=10)
-
-    IF( Nelim > 0 ) THEN
-      CALL Info('StrideProjector','Number of eliminated mappings: '//TRIM(I2S(Nelim)),Level=8)
-    END IF
-
-    ! Eliminate unneeded matrix rows 
-    IF( nrow < Projector % NumberOfRows ) THEN
-      CALL Info('StrideProjector','Reducing number of rows from '&
-          //TRIM(I2S(Projector % NumberOfRows))//' to '//TRIM(I2S(nrow)),Level=10 )
-      ALLOCATE( TmpRows(nrow+1) )
-      TmpRows = Rows(1:nrow+1)
-      DEALLOCATE( Projector % Rows )
-      Projector % Rows => TmpRows 
-
-      ALLOCATE( TmpRows(nrow) )
-      TmpRows = Projector % InvPerm(1:nrow)
-      DEALLOCATE( Projector % InvPerm )
-      Projector % InvPerm => TmpRows 
-
-      Projector % NumberOfRows = nrow
-    END IF
-
-    ! Eliminate unneeded matrix entries
-    IF( ncol < m ) THEN
-      CALL Info('StrideProjector','Reducing number of entries from '&
-          //TRIM(I2S(m))//' to '//TRIM(I2S(ncol)),Level=10 )
-      ALLOCATE( TmpValues( ncol ), TmpCols( ncol ), TmpRows(nrow+1) )
-      TmpValues = Values(1:ncol)
-      TmpCols   = Cols(1:ncol)
-      DEALLOCATE( Projector % Values, Projector % Cols )
-
-      Projector % Cols => TmpCols
-      Projector % Values => TmpValues
-    END IF
-
-    CALL CRS_SortMatrix(projector,.TRUE.)
-
-  END FUNCTION StrideProjector
-!------------------------------------------------------------------------------
 
 
   !---------------------------------------------------------------------------
@@ -5975,9 +5169,9 @@ END SUBROUTINE GetMaxDefs
     !-------------------------------------------------------------
     IF( SomethingUndone ) THEN      
       IF( GenericIntegrator ) THEN
-        CALL AddEdgeProjectorWeakGeneric()
+        CALL AddProjectorWeakGeneric()
       ELSE
-        CALL AddEdgeProjectorWeak()
+        CALL AddProjectorWeak()
       END IF
     END IF
 
@@ -6983,7 +6177,7 @@ END SUBROUTINE GetMaxDefs
     ! into several triangles. This is not generic - it assumes constant
     ! y levels, and cartesian mesh where the search is done.  
     !----------------------------------------------------------------------
-    SUBROUTINE AddEdgeProjectorWeak()
+    SUBROUTINE AddProjectorWeak()
 
       INTEGER, TARGET :: IndexesT(3)
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
@@ -7402,7 +6596,7 @@ END SUBROUTINE GetMaxDefs
       CALL Info('LevelProjector',Message,Level=8)
 
 
-    END SUBROUTINE AddEdgeProjectorWeak
+    END SUBROUTINE AddProjectorWeak
 
 
 
@@ -7410,7 +6604,7 @@ END SUBROUTINE GetMaxDefs
     ! Create weak projector for the remaining nodes and edges
     ! using generic algo that can deal with triangles and quadrilaterals.
     !----------------------------------------------------------------------
-    SUBROUTINE AddEdgeProjectorWeakGeneric()
+    SUBROUTINE AddProjectorWeakGeneric()
 
       INTEGER, TARGET :: IndexesT(3)
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
@@ -8006,7 +7200,7 @@ END SUBROUTINE GetMaxDefs
       CALL Info('LevelProjector',Message,Level=8)
 
 
-    END SUBROUTINE AddEdgeProjectorWeakGeneric
+    END SUBROUTINE AddProjectorWeakGeneric
 
 
   END FUNCTION LevelProjector
@@ -9118,7 +8312,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
-        Flat, LevelProj, StrideProj, FullCircle
+        Flat, LevelProj, FullCircle
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -9225,19 +8419,16 @@ END SUBROUTINE GetMaxDefs
     ! There are tailored projectors for simplified interfaces
     !-------------------------------------------------------------
 
-    StrideProj = ListGetLogical( BC,'Stride Projector',GotIt) 
-    ! Stride projector is obsolite. To revert back to using it the user may comment out 
-    ! the following lines. At some stage this will be removed if there are no complaints!
-    IF( StrideProj ) THEN
+    ! Stride projector is obsolite and has been eliminated. 
+    IF( ListGetLogical( BC,'Stride Projector',GotIt) ) THEN
       CALL ListAddLogical( BC,'Level Projector',.TRUE.)
       CALL ListAddLogical( BC,'Level Projector Strong',.TRUE.)
       CALL Warn('PeriodicProjector','Enforcing > Level Projector < instead of old > Stride Projector <')
-      StrideProj = .FALSE.
     END IF
 
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
 
-    IF( LevelProj .OR. StrideProj ) THEN
+    IF( LevelProj ) THEN
       IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',GotIt ) ) THEN
         DoNodes = .FALSE.
       ELSE
@@ -9265,13 +8456,8 @@ END SUBROUTINE GetMaxDefs
     BMesh1 => AllocateMesh()
     BMesh2 => AllocateMesh()
     
-    IF( StrideProj ) THEN
-      CALL CreateInterfaceEdges( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
-          InvPerm1, InvPerm2, Success ) 
-    ELSE
-      CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
-          InvPerm1, InvPerm2, Success ) 
-    END IF
+    CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
+        InvPerm1, InvPerm2, Success ) 
 
     IF(.NOT. Success) THEN
       CALL ReleaseMesh(BMesh1); CALL ReleaseMesh(BMesh2)
@@ -9318,10 +8504,7 @@ END SUBROUTINE GetMaxDefs
     UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
     IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
 
-    IF( StrideProj ) THEN
-      Projector => StrideProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
-          InvPerm1, InvPerm2, DoNodes, DoEdges, NodeScale )
-    ELSE IF( LevelProj ) THEN 
+    IF( LevelProj ) THEN 
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
           FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &          
           NodeScale, EdgeScale, BC )

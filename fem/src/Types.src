@@ -128,7 +128,7 @@ END INTERFACE
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
     REAL(KIND=dp), ALLOCATABLE :: Values(:),MassValues(:), &
         DampValues(:),ILUValues(:),PrecValues(:)
-  END  TYPE BasicMatrix_t
+  END TYPE BasicMatrix_t
 
 
   TYPE SubVector_t
@@ -680,6 +680,10 @@ END INTERFACE
       TYPE(BlockMatrix_t), POINTER :: BlockMatrix => NULL()
       TYPE(Matrix_t),   POINTER :: Matrix => NULL()
       TYPE(Variable_t), POINTER :: Variable => NULL()
+
+      TYPE(SubMatrix_t), POINTER :: MortarMatrix(:) => NULL()
+      LOGICAL :: MortarMatrixChanged = .FALSE.
+
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------

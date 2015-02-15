@@ -2413,6 +2413,9 @@ CONTAINS
         CALL ListAddLogical(Params,'Back Rotate N-T Solution',BackRotNT)
     END IF
 
+    ! Combine the individual projectors into one massive projector
+    CALL GenerateConstraintMatrix( CurrentModel, Solver )
+
     CALL SolveSystem(A,ParMatrix,b,x % Values,x % Norm,x % DOFs,Solver)
 
     ! If flux corrected transport is used then apply the corrector to the system
