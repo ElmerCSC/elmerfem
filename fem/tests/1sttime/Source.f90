@@ -1,5 +1,4 @@
 FUNCTION Source( Model, n, f ) RESULT(h)
-!DEC$ATTRIBUTES DLLEXPORT :: Source
    USE Lists
    TYPE(Model_t) :: Model
    INTEGER :: n
