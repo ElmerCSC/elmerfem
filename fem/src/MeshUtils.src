@@ -4560,6 +4560,7 @@ END SUBROUTINE GetMaxDefs
   END SUBROUTINE PreRotationalProjector
 !------------------------------------------------------------------------------
 
+
 !------------------------------------------------------------------------------
 !> Postprocess projector so that it changes the sign of the anti-periodic
 !> entries as assigns by the MirrorNode flag.
@@ -4658,7 +4659,7 @@ END SUBROUTINE GetMaxDefs
     ! This corresponds to numerical integration of the collocation method.
     !-----------------------------------------------------------------
     Projector => MeshProjector( BMesh2, BMesh1, UseQuadrantTree )    
-    Projector % ConstraintType = CONSTRAINT_TYPE_NODAL
+    Projector % ProjectorType = PROJECTOR_TYPE_NODAL
 
     Values => Projector % Values
     Cols => Projector % Cols
@@ -4733,8 +4734,8 @@ END SUBROUTINE GetMaxDefs
     m = COUNT( NodePerm > 0 ) 
 
     Projector => AllocateMatrix()
-    Projector % ConstraintType = CONSTRAINT_TYPE_NODAL
-    Projector % ConstraintBC = bc
+    Projector % ProjectorType = PROJECTOR_TYPE_NODAL
+    Projector % ProjectorBC = bc
 
     ALLOCATE( Projector % Cols(m) )
     ALLOCATE( Projector % Values(m) )
@@ -4962,7 +4963,7 @@ END SUBROUTINE GetMaxDefs
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
 
-    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
+    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
 
     PiolaVersion = ListGetLogical( CurrentModel % Solver % Values, &
         'Use Piola Transform', Found)
@@ -5771,7 +5772,6 @@ END SUBROUTINE GetMaxDefs
             IF(.NOT. StrongSkewEdges) CYCLE
           END IF
           
-
 
           ! Numbering of global indexes is needed to ensure correct direction 
           ! of the edge dofs. Basically the InvPerm could be used also in serial
@@ -7419,8 +7419,8 @@ END SUBROUTINE GetMaxDefs
     ! structure to be introduced.
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
-    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
-    Projector % ConstraintBC = bc
+    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+    Projector % ProjectorBC = bc
     
     ! Create the inverse permutation needed when the projector matrix is added to the global 
     ! matrix. 
@@ -7517,12 +7517,11 @@ END SUBROUTINE GetMaxDefs
 
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                   DiscontIndexes(p), Scale * val )             
-
               ! Add entry to the diagonal-to-be if jump condition is to be used
-              IF( NodalJump ) THEN
-                CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                    size0 + indp, DiagEps ) 
-              END IF
+              !IF( NodalJump ) THEN
+              !  CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+              !      size0 + indp, DiagEps ) 
+              !END IF
             ELSE
               DO q=1,n
 
@@ -7535,10 +7534,10 @@ END SUBROUTINE GetMaxDefs
                     DiscontIndexes(q), Scale * Basis(q) * val ) 
 
                 ! Add entry to the diagonal-to-be if jump condition is to be used
-                IF( NodalJump ) THEN
-                  CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                      size0 + indq, DiagEps ) 
-                END IF
+                !IF( NodalJump ) THEN
+                !  CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
+                !      size0 + indq, DiagEps ) 
+                !END IF
               END DO
             END IF
           END DO
@@ -8220,7 +8219,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,This
     REAL(KIND=dp) :: rowsum, dia
 
-    This = Projector % ConstraintBC
+    This = Projector % ProjectorBC
 
     IF(ParEnv % PEs == 1 ) THEN
       OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
@@ -8321,7 +8320,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(ValueList_t), POINTER :: BC
 
     INTERFACE
-      FUNCTION WeightedProjector2(BMesh2, BMesh1, InvPerm2, InvPerm1, &
+      FUNCTION WeightedProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
           UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, &
           NodalJump ) &
          RESULT ( Projector )
@@ -8332,7 +8331,7 @@ END SUBROUTINE GetMaxDefs
         LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
         TYPE(Matrix_t), POINTER :: Projector
         LOGICAL :: NodalJump
-      END FUNCTION WeightedProjector2
+      END FUNCTION WeightedProjector
     END INTERFACE
 !------------------------------------------------------------------------------
     Projector => NULL()
@@ -8509,7 +8508,7 @@ END SUBROUTINE GetMaxDefs
           FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &          
           NodeScale, EdgeScale, BC )
     ELSE IF( IntGalerkin ) THEN
-      Projector => WeightedProjector2( BMesh2, BMesh1, InvPerm2, InvPerm1, &
+      Projector => WeightedProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
           UseQuadrantTree, Repeating, AntiRepeating, NodeScale, NodalJump )
     ELSE
       Projector => NodalProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
@@ -8524,7 +8523,7 @@ END SUBROUTINE GetMaxDefs
 
     DEALLOCATE( InvPerm1, InvPerm2 )
 
-100 Projector % ConstraintBC = This
+100 Projector % ProjectorBC = This
 
     IF( ListGetLogical( BC,'Projector Set Rowsum',GotIt ) ) THEN
       CALL SetProjectorRowsum( Projector )

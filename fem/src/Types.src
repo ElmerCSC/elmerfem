@@ -84,9 +84,9 @@ MODULE Types
 	                SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
 	                SOLVER_MODE_MATRIXFREE = 6    ! normal field, no matrix
 
-  INTEGER, PARAMETER :: CONSTRAINT_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
-                        CONSTRAINT_TYPE_NODAL = 1, &    ! nodal projector
-                        CONSTRAINT_TYPE_GALERKIN = 2    ! Galerkin projector
+  INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
+                        PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
+                        PROJECTOR_TYPE_GALERKIN = 2    ! Galerkin projector
   
 !------------------------------------------------------------------------------
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
@@ -168,7 +168,7 @@ END INTERFACE
     INTEGER :: Subband, FORMAT, SolveCount, Comm=-1
     LOGICAL :: Ordered, Lumped, Symmetric, COMPLEX, DGMatrix, Cholesky
 
-    INTEGER :: ConstraintBC,ConstraintType
+    INTEGER :: ProjectorBC,ProjectorType
 
     TYPE(ListMatrix_t), POINTER :: ListMatrix(:) => NULL()
 
@@ -646,8 +646,19 @@ END INTERFACE
      REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
          BodyWeight(:), MaterialWeight(:)
      
-
    END TYPE Mesh_t
+
+
+   TYPE MortarBC_t 
+     TYPE(Matrix_t), POINTER :: Projector => NULL()
+     INTEGER, POINTER :: Perm(:) => NULL()
+     REAL(KIND=dp), POINTER :: Rhs(:) => NULL()
+     REAL(KIND=dp), POINTER :: Diag(:) => NULL()
+     LOGICAL, POINTER :: Active(:) => NULL()
+     LOGICAL, POINTER :: Slip(:) => NULL()
+     REAL(KIND=dp) :: SlaveScale = 1.0_dp
+     REAL(KIND=dp) :: MasterScale = 1.0_dp
+   END TYPE MortarBC_t
 
 !------------------------------------------------------------------------------
 
@@ -681,8 +692,8 @@ END INTERFACE
       TYPE(Matrix_t),   POINTER :: Matrix => NULL()
       TYPE(Variable_t), POINTER :: Variable => NULL()
 
-      TYPE(SubMatrix_t), POINTER :: MortarMatrix(:) => NULL()
-      LOGICAL :: MortarMatrixChanged = .FALSE.
+      TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
+      LOGICAL :: MortarBCsChanged = .FALSE.
 
     END TYPE Solver_t
 
