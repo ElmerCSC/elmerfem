@@ -2815,11 +2815,8 @@ CONTAINS
       END IF
     END IF
 
-
-
     IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
     
-
 !------------------------------------------------------------------------------
 
   CONTAINS
@@ -3213,8 +3210,6 @@ CONTAINS
     Projector => Model % BCs(This) % PMatrix
     IF ( .NOT. ASSOCIATED(Projector) ) RETURN
     
-    PRINT *,'pass1'
-
 !   For explicit conditions just create the dependency almost like a normal Dirichlet BC, 
 !   For implicit one (otherwise) do the assembly of the projector:
 !   ---------------------------------
@@ -3252,15 +3247,15 @@ CONTAINS
       Jump = ListCheckPresent( BC, &
           'Periodic BC Coefficient '//Name(1:nlen))
       
-      IF( .NOT. ASSOCIATED( Solver % MortarBCs ) ) THEN
-        ALLOCATE( Solver % MortarBCs( Model % NumberOfBCs ) )
+      IF( .NOT. ASSOCIATED( Model % Solver % MortarBCs ) ) THEN
+        ALLOCATE( Model % Solver % MortarBCs( Model % NumberOfBCs ) )
         DO i=1, Model % NumberOfBCs
-          Solver % MortarBCs(i) % Projector => NULL()
+          Model % Solver % MortarBCs(i) % Projector => NULL()
         END DO
       END IF
       
-      Solver % MortarBCs(This) % Projector => Projector
-      MortarBC => Solver % MortarBCs(This)
+      Model % Solver % MortarBCs(This) % Projector => Projector
+      MortarBC => Model % Solver % MortarBCs(This)
       
       IF( Jump ) THEN
         IF( ASSOCIATED( MortarBC % Diag ) ) THEN
@@ -3275,7 +3270,7 @@ CONTAINS
         ELSE
           MortarBC % Diag( DOF::NDOFs ) = 0.0_dp
         END IF
-        
+
         IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
           IF( SIZE( MortarBC % Rhs ) < NDofs * Projector % NumberOfRows ) THEN
             DEALLOCATE( MortarBC % Rhs ) 
@@ -3313,7 +3308,7 @@ CONTAINS
       MortarBC % Projector => Projector
       MortarBC % SlaveScale = -Scale 
       MortarBC % MasterScale = -1.0_dp
-      
+
       IF( Jump ) THEN
         PPerm => Perm
         CALL CalculateNodalWeights(Model % Solver,.TRUE.,&
@@ -3329,7 +3324,7 @@ CONTAINS
           ! Add the diagonal unity projector (scaled)
           weight = WeightVar % Values( k )
           coeff = ListGetRealAtNode( BC,'Periodic BC Coefficient '&
-              //Name(1:nlen),Projector % InvPerm(i), Found )
+              //Name(1:nlen),k, Found )
           
           ! For Nodal projector the entry is 1/(weight*coeff)
           ! For Galerkin projector the is weight/coeff 
@@ -3376,6 +3371,7 @@ CONTAINS
       END DO
       DEALLOCATE(F)
     END IF
+
 !------------------------------------------------------------------------------
    END SUBROUTINE SetPeriodicBoundariesPass1
 !------------------------------------------------------------------------------
@@ -8763,7 +8759,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       k=StiffMatrix % NumberOfRows
       IF(ASSOCIATED(AddMatrix)) k=MAX(k,AddMatrix % NumberOfRows)
       k=k+i
-
 
       CALL AddToMatrixElement( CollectionMatrix,k,k,0._dp )
       IF(ComplexSystem) THEN
