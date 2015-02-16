@@ -208,6 +208,7 @@ Boundary Condition 7
 End
 
 
+Solver 2 :: Reference Norm = Real 0.99411287E-01
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
 $fprintf( stderr,"END TEST CASE 1: Target NRM=0.99411287E-01\n");

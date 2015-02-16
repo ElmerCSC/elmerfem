@@ -2372,7 +2372,7 @@ CONTAINS
 
     TYPE(Matrix_t), POINTER   :: A
     TYPE(Variable_t), POINTER :: x
-    REAL(KIND=dp), POINTER  :: b(:), SOL(:)
+    REAL(KIND=dp), POINTER CONTIG :: b(:), SOL(:)
 
     LOGICAL :: Found, BackRot
 
@@ -2416,7 +2416,7 @@ CONTAINS
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
 
-    CALL SolveSystem(A,ParMatrix,b,x % Values,x % Norm,x % DOFs,Solver)
+    CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
 
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
