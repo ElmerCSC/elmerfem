@@ -6,8 +6,8 @@ Juhani Kataja / CSC, 2014/11
 The aim of this document is to describe how to create a minimalistic test
 problem using cmake/ctest. There are two ways of creating a test case utilizing
 ctest: from scratch or converting an existing traditional Elmer test. However,
-the latter method is experimental and the resulting test suite might not work
-out of the box.
+the latter method is experimental and the resulting test might not work out of
+the box.
 
 
 A. The Instructions for creating a ctest from scratch
@@ -73,6 +73,7 @@ $ python ./convert_tests.py <testname>
 in the "fem/tests" directory.
 
 The script assumes that the Solver 1 is tested and modifies the sif-file
-accordingly. If some other solver is to be tested the lines sif-file can be edited freely.
+accordingly. If some other solver is to be tested the sif-file must be manually
+edited (see A.2).
 
 
