@@ -69,6 +69,7 @@ MODULE huti_interfaces
        REAL, DIMENSION(*) :: x, b, r
        INTEGER, DIMENSION(*) :: ipar
        DOUBLE PRECISION, DIMENSION(*) :: dpar
+       REAL :: res
      END FUNCTION stopc_iface_s
 
      SUBROUTINE mv_iface_d(x, r, ipar)
@@ -97,6 +98,7 @@ MODULE huti_interfaces
        DOUBLE PRECISION, DIMENSION(*) :: x, b, r
        INTEGER, DIMENSION(*) :: ipar
        DOUBLE PRECISION, DIMENSION(*) :: dpar
+       DOUBLE PRECISION res
      END FUNCTION stopc_iface_d
 
      SUBROUTINE mv_iface_c(x, r, ipar)
@@ -125,6 +127,7 @@ MODULE huti_interfaces
        COMPLEX, DIMENSION(*) :: x, b, r
        INTEGER, DIMENSION(*) :: ipar
        DOUBLE PRECISION, DIMENSION(*) :: dpar
+       REAL :: res
      END FUNCTION stopc_iface_c
 
      SUBROUTINE mv_iface_z(x, r, ipar)
@@ -153,6 +156,7 @@ MODULE huti_interfaces
        DOUBLE COMPLEX, DIMENSION(*) :: x, b, r
        INTEGER, DIMENSION(*) :: ipar
        DOUBLE PRECISION, DIMENSION(*) :: dpar
+       DOUBLE PRECISION :: res
      END FUNCTION stopc_iface_z
 
   END INTERFACE
