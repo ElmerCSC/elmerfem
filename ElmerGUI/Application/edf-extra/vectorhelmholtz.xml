@@ -69,11 +69,13 @@
         </Parameter>
 
          <Parameter Widget="Edit" Enabled="True">
-           <Name> Linear System Preconditioning Damp Coefficient </Name> <Type>Real</Type>
+           <Name> Linear System Preconditioning Damp Coefficient </Name> 
+           <Type> Real </Type>
          </Parameter>
 
          <Parameter Widget="Edit" Enabled="True">
-           <Name> Linear System Preconditioning Damp Coefficient im </Name> <Type>Real</Type>
+           <Name> Linear System Preconditioning Damp Coefficient im </Name> 
+           <Type> Real </Type>
            <DefaultValue> 1.0 </DefaultValue>
          </Parameter>
 
@@ -85,6 +87,7 @@
 
          <Parameter Widget="CheckBox">
            <Name> Use Piola Transform </Name>
+           <Type> Logical </Type>
          </Parameter>
 
          <Parameter Widget="Label">
@@ -140,83 +143,45 @@
 	
       </BodyForce>
 
-      <Material>
-         <Parameter Widget="Label" > <Name> Properties </Name> </Parameter>
-         <Parameter Widget="Edit" >
-            <Name> Damping coefficient </Name>
-            <SifName> Sound damping </SifName>
-         </Parameter>
-         <Parameter Widget="Edit" >
-            <Name> Sound speed </Name>
-         </Parameter>
-
-         <Parameter Widget="Label">
-           <Name> Free text input </Name>
-         </Parameter>
-
-	 <Parameter Widget="TextEdit" Enabled="True">
-	   <Name> Free text </Name>
-	   <Type> String </Type>
-	   <Whatis> Free text is copied into the Material-block of the SIF as such. </Whatis>
-	   <StatusTip> Free text is copied into the Material-block of the SIF as such. </StatusTip>
-	 </Parameter>
-      </Material>
-
-
-      <InitialCondition>
-         <Parameter Widget="Label" > <Name> Variables </Name> </Parameter>
-         <Parameter  Widget="Edit">
-           <Name> Pressure wave 1 (real part)</Name>
-           <SifName> Pressure Wave 1 </SifName>
-         </Parameter>
-         <Parameter  Widget="Edit">
-           <Name> Pressure wave 2 (imag part) </Name>
-           <SifName> Pressure Wave 2 </SifName>
-         </Parameter>
-
-         <Parameter Widget="Label">
-           <Name> Free text input </Name>
-         </Parameter>
-	 
-	 <Parameter Widget="TextEdit" Enabled="True">
-	   <Name> Free text </Name>
-	   <Type> String </Type>
-	   <Whatis> Free text is copied into the Initial Condition-block of the SIF as such. </Whatis>
-	   <StatusTip> Free text is copied into the Initial Condition-block of the SIF as such. </StatusTip>
-	 </Parameter>
-
-      </InitialCondition>
 
       <BoundaryCondition>
         <Parameter Widget="Edit">
           <Name> E re {e} </Name>
+          <Type> Real </Type>
           <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {e} </Activate>
           <Activate> /Vector Helmholtz Equation/BoundaryCondition/E re {f} </Activate>
           <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {f} </Activate>
         </Parameter>
         <Parameter Widget="Edit" Enabled="False" Visible="False">
           <Name> E im {e} </Name>
+          <Type> Real </Type>
         </Parameter>
         <Parameter Widget="Edit" Enabled="False" Visible="False">
           <Name> E re {f} </Name>
+          <Type> Real </Type>
         </Parameter>
         <Parameter Widget="Edit" Enabled="False" Visible="False">
           <Name> E im {f} </Name>
+          <Type> Real </Type>
         </Parameter>
         <Parameter Widget="Edit">
           <Name> E re {e} 1</Name>
+          <Type> Real </Type>
           <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {e} 1 </Activate>
           <Activate> /Vector Helmholtz Equation/BoundaryCondition/E re {f} 1 </Activate>
           <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {f} 1 </Activate>
         </Parameter>
         <Parameter Widget="Edit" Enabled="False" Visible="False">
           <Name> E im {e} 1</Name>
+          <Type> Real </Type>
         </Parameter>
         <Parameter Widget="Edit" Enabled="False" Visible="False">
           <Name> E re {f} 1</Name>
+          <Type> Real </Type>
         </Parameter>
         <Parameter Widget="Edit" Enabled="False" Visible="False">
           <Name> E im {f} 1</Name>
+          <Type> Real </Type>
         </Parameter>
 
         <Parameter Widget="Edit">
