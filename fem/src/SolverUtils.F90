@@ -3308,7 +3308,7 @@ CONTAINS
       MortarBC % Projector => Projector
       MortarBC % SlaveScale = -Scale 
       MortarBC % MasterScale = -1.0_dp
-
+ 
       IF( Jump ) THEN
         PPerm => Perm
         CALL CalculateNodalWeights(Model % Solver,.TRUE.,&
@@ -3696,9 +3696,7 @@ CONTAINS
     
        ! Create a table that shows how the additional degrees of freedom map
        ! to their corresponding regular dof. This is needed when creating the jump.
-       ! The sole purpose of this is to define the index "i2" later in the code. 
-       n = MAXVAL( Projector % InvPerm )
-       ALLOCATE( NodeDone( SIZE( Projector % InvPerm ) ) )
+       ALLOCATE( NodeDone( Projector % NumberOfRows ) )
        NodeDone = .FALSE.
        
        ! Looping through elements rather than looping through projector rows directly
@@ -3742,10 +3740,9 @@ CONTAINS
          DO u=1, nnodes
            node = Element % NodeIndexes(u)
 
-           v = Perm( node )
-           IF( v == 0 ) CYCLE
+           IF( Perm( node ) == 0 ) CYCLE
 
-           i = MortarBC % Perm( v ) 
+           i = MortarBC % Perm( node ) 
            IF( i == 0 ) CYCLE
 
            IF( NodeDone( i ) ) CYCLE
@@ -9831,7 +9828,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      TYPE(Solver_t) :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,k,k2,dofs,maxperm,permsize,bc_ind,row,col
+     INTEGER :: i,j,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2
      TYPE(Matrix_t), POINTER :: Atmp,Btmp
      LOGICAL :: AllocationsDone, CreateSelf
      TYPE(ValueList_t), POINTER :: BC
@@ -9860,8 +9857,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      maxperm  = MAXVAL( Perm )
      AllocationsDone = .FALSE.
 
-100  col = 0 
-     row = 1
+100  row = 1
      k2 = 0
 
      DO bc_ind=1,Model % NumberOFBCs
@@ -9905,12 +9901,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
              col = Atmp % Cols(k) 
              
              IF( col <= permsize ) THEN
-               col = Perm(col)
-               IF( col == 0 ) CYCLE
+               col2 = Perm(col)
+               IF( col2 == 0 ) CYCLE
              ELSE 
                PRINT *,'col too large',col,permsize
                CYCLE
-               col = maxperm + row
              END IF
 
              k2 = k2 + 1
@@ -9922,11 +9917,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                  wsum = wsum + Atmp % Values(k)
                ELSE IF( ASSOCIATED( MortarBC % Perm ) ) THEN
                  ! Look if the component refers to the slave
-                 IF( MortarBC % Perm( col ) > 0 ) THEN
+                 IF( MortarBC % Perm( col2 ) > 0 ) THEN
                    Scale = MortarBC % SlaveScale 
-                   IF( .NOT. CreateSelf ) THEN
-                     wsum = wsum + Atmp % Values(k) 
-                   END IF
+                   wsum = wsum + Atmp % Values(k) 
                  ELSE
                    Scale = MortarBC % MasterScale
                  END IF
@@ -9935,7 +9928,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                  Scale = 1.0_dp
                END IF
 
-               Btmp % Cols(k2) = col
+               Btmp % Cols(k2) = col2
                Btmp % Values(k2) = Scale * Atmp % Values(k)
              END IF
            END DO
@@ -9944,7 +9937,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
            IF( CreateSelf ) THEN
              k2 = k2 + 1
              IF( AllocationsDone ) THEN
-               Btmp % Cols(k2) = Perm( k )
+               Btmp % Cols(k2) = Perm( Atmp % InvPerm(i) )
                Btmp % Values(k2) = MortarBC % SlaveScale * wsum
              END IF
            END IF
@@ -9989,56 +9982,62 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                Btmp % InvPerm(row) = Dofs * ( Perm( k ) - 1 ) + j
              END IF
 
-             IF( CreateSelf ) THEN
-               k2 = k2 + 1
-               IF( AllocationsDone ) THEN
-                 Btmp % Cols(k2) = Dofs * ( Perm( k ) -1 ) + j
-                 Btmp % Values(k2) = -MortarBC % SlaveScale
-                 wsum = 1.0_dp
-               END IF
-             ELSE
-               wsum = 0.0_dp
-             END IF
+             wsum = 0.0_dp
 
              DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1             
+
                col = Atmp % Cols(k)                
                
                IF( col <= permsize ) THEN
-                 col = Perm(col)
-                 IF( col == 0 ) CYCLE
+                 col2 = Perm(col)
+                 IF( col2 == 0 ) CYCLE
                ELSE 
                  PRINT *,'col too large',col,permsize
                  CYCLE
-                 col = maxperm + row
                END IF              
                
                k2 = k2 + 1
                IF( AllocationsDone ) THEN
-
-                 IF( MortarBC % Perm( col ) > 0 ) THEN
-                   Scale = MortarBC % SlaveScale 
-                   IF( .NOT. CreateSelf ) THEN
+                 
+                 IF( CreateSelf ) THEN
+                   Scale = -MortarBC % MasterScale
+                   wsum = wsum + Atmp % Values(k)
+                 ELSE IF( MortarBC % Perm( col ) > 0 ) THEN
+                   IF( MortarBC % Perm( col2 ) > 0 ) THEN
+                     Scale = MortarBC % SlaveScale 
                      wsum = wsum + Atmp % Values(k) 
+                   ELSE
+                     Scale = MortarBC % MasterScale
                    END IF
                  ELSE
-                   Scale = MortarBC % MasterScale
+                   Scale = 1.0_dp
                  END IF
-                 Btmp % Cols(k2) = Dofs * ( col - 1) + j
+
+                 Btmp % Cols(k2) = Dofs * ( col2 - 1) + j
                  Btmp % Values(k2) = Scale * Atmp % Values(k)
                END IF
              END DO
               
+             ! Add the self entry as in 'D'
+             IF( CreateSelf ) THEN
+               k2 = k2 + 1
+               IF( AllocationsDone ) THEN
+                 Btmp % Cols(k2) = Dofs * ( Perm( Atmp % InvPerm(i) ) -1 ) + j
+                 Btmp % Values(k2) = MortarBC % SlaveScale * wsum
+               END IF
+             END IF
+             
              IF( ASSOCIATED( MortarBC % Diag ) ) THEN
                k2 = k2 + 1
                IF( AllocationsDone ) THEN
                  Btmp % Cols(k2) = maxperm + row
-                 Btmp % Values(k2) = wsum * MortarBC % Diag(Dofs*(i-1)+j)
+                 Btmp % Values(k2) = 0.5_dp * wsum * MortarBC % Diag(Dofs*(i-1)+j)
                END IF
              END IF
 
              IF( AllocationsDone ) THEN
                IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
-                 Btmp % Rhs(row) = 0.5_dp * wsum * MortarBC % rhs(Dofs*(i-1)+j)
+                 Btmp % Rhs(row) = wsum * MortarBC % rhs(Dofs*(i-1)+j)
                END IF
                Btmp % Rows(row+1) = k2 + 1
              END IF
