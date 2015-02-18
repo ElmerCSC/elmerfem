@@ -44,28 +44,33 @@ MODULE huti_interfaces
 
   ABSTRACT INTERFACE
      SUBROUTINE mv_iface_s(x, r, ipar)
+       IMPLICIT NONE
        REAL, DIMENSION(*) :: x, r
        INTEGER, DIMENSION(*) :: ipar
      END SUBROUTINE mv_iface_s
 
      SUBROUTINE pc_iface_s(p, b, ipar)
+       IMPLICIT NONE
        REAL, DIMENSION(*) :: p, b
        INTEGER, DIMENSION(*) :: ipar
      END SUBROUTINE pc_iface_s
 
      FUNCTION dotp_iface_s(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        REAL, DIMENSION(*) :: x, y
        REAL :: res
      END FUNCTION dotp_iface_s
 
      FUNCTION norm_iface_s(n, b, k) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, k
        REAL, DIMENSION(*) :: b
        REAL :: res
      END FUNCTION norm_iface_s
        
      FUNCTION stopc_iface_s(x, b, r, ipar, dpar) RESULT(res)
+       IMPLICIT NONE
        REAL, DIMENSION(*) :: x, b, r
        INTEGER, DIMENSION(*) :: ipar
        DOUBLE PRECISION, DIMENSION(*) :: dpar
@@ -73,28 +78,33 @@ MODULE huti_interfaces
      END FUNCTION stopc_iface_s
 
      SUBROUTINE mv_iface_d(x, r, ipar)
+       IMPLICIT NONE
        DOUBLE PRECISION, DIMENSION(*) :: x, r
        INTEGER, DIMENSION(*) :: ipar
      END SUBROUTINE mv_iface_d
 
      SUBROUTINE pc_iface_d(p, b, ipar)
+       IMPLICIT NONE
        DOUBLE PRECISION, DIMENSION(*) :: p, b
        INTEGER, DIMENSION(*) :: ipar
      END SUBROUTINE pc_iface_d
 
      FUNCTION dotp_iface_d(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        DOUBLE PRECISION, DIMENSION(*) :: x, y
        DOUBLE PRECISION :: res
      END FUNCTION dotp_iface_d
 
      FUNCTION norm_iface_d(n, b, k) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, k
        DOUBLE PRECISION, DIMENSION(*) :: b
        DOUBLE PRECISION :: res
      END FUNCTION norm_iface_d
        
      FUNCTION stopc_iface_d(x, b, r, ipar, dpar) RESULT(res)
+       IMPLICIT NONE
        DOUBLE PRECISION, DIMENSION(*) :: x, b, r
        INTEGER, DIMENSION(*) :: ipar
        DOUBLE PRECISION, DIMENSION(*) :: dpar
@@ -102,28 +112,33 @@ MODULE huti_interfaces
      END FUNCTION stopc_iface_d
 
      SUBROUTINE mv_iface_c(x, r, ipar)
+       IMPLICIT NONE
        COMPLEX, DIMENSION(*) :: x, r
        INTEGER, DIMENSION(*) :: ipar
      END SUBROUTINE mv_iface_c
 
      SUBROUTINE pc_iface_c(p, b, ipar)
+       IMPLICIT NONE
        COMPLEX, DIMENSION(*) :: p, b
        INTEGER, DIMENSION(*) :: ipar
      END SUBROUTINE pc_iface_c
 
      FUNCTION dotp_iface_c(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        COMPLEX, DIMENSION(*) :: x, y
        COMPLEX :: res
      END FUNCTION dotp_iface_c
 
      FUNCTION norm_iface_c(n, b, k) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, k
        COMPLEX, DIMENSION(*) :: b
        REAL :: res
      END FUNCTION norm_iface_c
        
      FUNCTION stopc_iface_c(x, b, r, ipar, dpar) RESULT(res)
+       IMPLICIT NONE
        COMPLEX, DIMENSION(*) :: x, b, r
        INTEGER, DIMENSION(*) :: ipar
        DOUBLE PRECISION, DIMENSION(*) :: dpar
@@ -131,28 +146,33 @@ MODULE huti_interfaces
      END FUNCTION stopc_iface_c
 
      SUBROUTINE mv_iface_z(x, r, ipar)
+       IMPLICIT NONE
        DOUBLE COMPLEX, DIMENSION(*) :: x, r
        INTEGER, DIMENSION(*) :: ipar
      END SUBROUTINE mv_iface_z
 
      SUBROUTINE pc_iface_z(p, b, ipar)
+       IMPLICIT NONE
        DOUBLE COMPLEX, DIMENSION(*) :: p, b
        INTEGER, DIMENSION(*) :: ipar
      END SUBROUTINE pc_iface_z
 
      FUNCTION dotp_iface_z(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        DOUBLE COMPLEX, DIMENSION(*) :: x, y
        DOUBLE COMPLEX :: res
      END FUNCTION dotp_iface_z
 
      FUNCTION norm_iface_z(n, b, k) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, k
        DOUBLE COMPLEX, DIMENSION(*) :: b
        DOUBLE PRECISION :: res
      END FUNCTION norm_iface_z
        
      FUNCTION stopc_iface_z(x, b, r, ipar, dpar) RESULT(res)
+       IMPLICIT NONE
        DOUBLE COMPLEX, DIMENSION(*) :: x, b, r
        INTEGER, DIMENSION(*) :: ipar
        DOUBLE PRECISION, DIMENSION(*) :: dpar
