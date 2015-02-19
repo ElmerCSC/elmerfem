@@ -79,8 +79,8 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        FlowSolution(:),  PointerToResidualVector(:)
 
   REAL(KIND=dp), ALLOCATABLE :: ResidualVector(:), &
-       STIFF(:,:),SourceFunc(:),FORCE(:), TimeForce(:), LOAD(:),&
-       MASS(:,:), Velo(:,:), Flux(:,:), LowerLimit(:), UpperLimit(:), &
+       STIFF(:,:),FORCE(:), TimeForce(:), LOAD(:),&
+       MASS(:,:), Velo(:,:),  LowerLimit(:), UpperLimit(:), &
        OldValues(:), OldRHS(:),StiffVector(:),MeshVelocity(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, EquationName, FlowSolName, StabilizeFlag
@@ -130,6 +130,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   END IF
   NonlinearTol  = GetConstReal( SolverParams, &
        'Nonlinear System Convergence Tolerance',    Found )
+  IF ( .NOT.Found ) NonlinearTol = 1.0e-6
   NonlinearIter = GetInteger(   SolverParams, &
        'Nonlinear System Max Iterations', Found )
   IF ( .NOT.Found ) NonlinearIter = 1
@@ -207,8 +208,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
              LOAD,&
              Velo,  &
              MeshVelocity, &
-             Flux, &
-             SourceFunc, &
              LowerLimit,                      &
              UpperLimit, &
              LimitedSolution,  &
@@ -237,8 +236,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           LOAD(NMAX) , &
           Velo( 3, NMAX ), &
           MeshVelocity( 3,NMAX ), &
-          Flux( 3, NMAX), &
-          SourceFunc( NMAX ), &
           LowerLimit( MMAX ), &
           UpperLimit( MMAX ), &
           LimitedSolution( MMAX, 2 ),  &
@@ -504,7 +501,9 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           DHDT => DHDTSol % Values
 
           Do i=1,Solver % Mesh % NumberOfNodes
-            DHDT(DHDTSol % Perm(i))=(Solver % Variable % Values(ThickPerm(i))-PreH(ThickPerm(i),1))/dt
+             IF ( DHDTSol % Perm(i) .ge. 1 ) THEN
+                DHDT(DHDTSol % Perm(i))=(Solver % Variable % Values(ThickPerm(i))-PreH(ThickPerm(i),1))/dt
+             END IF
           End Do
        Endif
 

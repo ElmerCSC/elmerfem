@@ -1,0 +1,28 @@
+File started at: 2014/08/28 16:16:20
+Data is appended to existing file
+ 
+Variables in columns of matrix: ./results.dat
+   1: value: time scalar variable
+   2: mean: pressure
+   3: min: pressure
+   4: max: pressure
+   5: max: depth
+   6: min: ds
+   7: mean: friction heating
+   8: min: friction heating
+   9: max: friction heating
+  10: mean: friction load
+  11: min: friction load
+  12: max: friction load
+  13: mean: frictionold
+  14: min: frictionold
+  15: max: frictionold
+  16: mean: velocity 1
+  17: min: velocity 1
+  18: max: velocity 1
+  19: mean: velocity 2
+  20: min: velocity 2
+  21: max: velocity 2
+  22: mean: velocity 3
+  23: min: velocity 3
+  24: max: velocity 3

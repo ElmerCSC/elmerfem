@@ -35,7 +35,7 @@ install: Scattered2DDataInterpolator
 	cp -f Scattered2DDataInterpolator $(ELMERICE_HOME)/lib/.
 
 Scattered2DDataInterpolator: Scattered2DDataInterpolator.f90 csa_interpolate_points.o Scattered2D_FInterface.o
-	elmerf90 $(NETCDFINC) $(NNLIB) $(CSLIB)  $^ -o $@ $(NETCDFLIBS)
+	elmerf90 $(NETCDFINC) $^ $(NNLIB) $(CSLIB) -o $@ $(NETCDFLIBS)
 
 csa_interpolate_points.o : csa_interpolate_points.c
 	$(CC) $(CCFLAG) -I$(CS_HOME) -c $^ -o $@

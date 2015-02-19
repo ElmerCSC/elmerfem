@@ -117,6 +117,7 @@ Boundary Condition 1
   P im {e} = real 0
 End
 
+Solver 2 :: Reference Norm = Real 2.5874020
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=2.5874020\n" );

@@ -1,0 +1,1671 @@
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This library is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU Lesser General Public
+! *  License as published by the Free Software Foundation; either
+! *  version 2.1 of the License, or (at your option) any later version.
+! *
+! *  This library is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+! *  Lesser General Public License for more details.
+! * 
+! *  You should have received a copy of the GNU Lesser General Public
+! *  License along with this library (in file ../LGPL-2.1); if not, write 
+! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  Fifth Floor, Boston, MA  02110-1301  USA
+! *
+! *****************************************************************************/
+!
+!/******************************************************************************
+! *
+! *  Authors: Juha Ruokolainen
+! *  Email:   Juha.Ruokolainen@csc.fi
+! *  Web:     http://www.csc.fi/elmer
+! *  Address: CSC - IT Center for Science Ltd.
+! *           Keilaranta 14
+! *           02101 Espoo, Finland 
+! *
+! *  Original Date: 01 Oct 1996
+! *
+! ****************************************************************************/
+
+!> \ingroup ElmerLib 
+!> \{
+
+!-----------------------------------------------------------------------------
+!>  Module defining Gauss integration points and
+!>  containing various integration routines.
+!-----------------------------------------------------------------------------
+MODULE Integration
+   USE Types
+   USE LoadMod
+   USE LinearAlgebra
+
+   IMPLICIT NONE
+
+   INTEGER, PARAMETER, PRIVATE :: MAXN = 13
+   INTEGER, PARAMETER, PRIVATE :: MAX_INTEGRATION_POINTS = MAXN**3
+
+   LOGICAL, PRIVATE :: GInit = .FALSE.
+
+!------------------------------------------------------------------------------
+   TYPE GaussIntegrationPoints_t
+      INTEGER :: N
+      REAL(KIND=dp), POINTER :: u(:),v(:),w(:),s(:)
+   END TYPE GaussIntegrationPoints_t
+
+   TYPE(GaussIntegrationPoints_t), TARGET, PRIVATE, SAVE :: IntegStuff
+   ! SAVE IntegStuff, GInit
+   !$OMP THREADPRIVATE(IntegStuff)
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+! Storage for 1d Gauss points, and weights. The values are computed on the
+! fly (see ComputeGaussPoints1D below). These values are used for quads and
+! bricks as well.
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), PRIVATE, SAVE :: Points(MAXN,MAXN),Weights(MAXN,MAXN)
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+! Triangle - 1 point rule; exact integration of x^py^q, p+q<=1
+!------------------------------------------------------------------------------
+   REAL(KIND=dp),DIMENSION(1),PRIVATE :: UTriangle1P=(/ 0.3333333333333333D0 /)
+   REAL(KIND=dp),DIMENSION(1),PRIVATE :: VTriangle1P=(/ 0.3333333333333333D0 /)
+   REAL(KIND=dp),DIMENSION(1),PRIVATE :: STriangle1P=(/ 1.0000000000000000D0 /)
+
+!------------------------------------------------------------------------------
+! Triangle - 3 point rule; exact integration of x^py^q, p+q<=2
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(3), PRIVATE :: UTriangle3P = &
+    (/ 0.16666666666666667D0, 0.66666666666666667D0, 0.16666666666666667D0 /)
+
+   REAL(KIND=dp), DIMENSION(3), PRIVATE :: VTriangle3P = &
+    (/ 0.16666666666666667D0, 0.16666666666666667D0, 0.66666666666666667D0 /)
+
+   REAL(KIND=dp), DIMENSION(3), PRIVATE :: STriangle3P = &
+    (/ 0.33333333333333333D0, 0.33333333333333333D0, 0.33333333333333333D0 /)
+
+!------------------------------------------------------------------------------
+! Triangle - 4 point rule; exact integration of x^py^q, p+q<=3
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: UTriangle4P = &
+         (/  0.33333333333333333D0, 0.2000000000000000D0, &
+             0.60000000000000000D0, 0.20000000000000000D0 /)
+
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: VTriangle4P = &
+         (/  0.33333333333333333D0, 0.2000000000000000D0, &
+             0.20000000000000000D0, 0.60000000000000000D0 /)
+
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: STriangle4P = &
+         (/ -0.56250000000000000D0, 0.52083333333333333D0, &
+             0.52083333333333333D0, 0.52083333333333333D0 /)
+
+!------------------------------------------------------------------------------
+! Triangle - 6 point rule; exact integration of x^py^q, p+q<=4
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(6), PRIVATE :: UTriangle6P = &
+       (/ 0.091576213509771D0, 0.816847572980459D0, 0.091576213509771D0, &
+          0.445948490915965D0, 0.108103018168070D0, 0.445948490915965D0 /)
+
+   REAL(KIND=dp), DIMENSION(6), PRIVATE :: VTriangle6P = &
+        (/ 0.091576213509771D0, 0.091576213509771D0, 0.816847572980459D0, &
+           0.445948490915965D0, 0.445948490915965D0, 0.108103018168070D0 /)
+
+   REAL(KIND=dp), DIMENSION(6), PRIVATE :: STriangle6P = &
+        (/ 0.109951743655322D0, 0.109951743655322D0, 0.109951743655322D0, &
+           0.223381589678011D0, 0.223381589678011D0, 0.223381589678011D0 /)
+
+!------------------------------------------------------------------------------
+! Triangle - 7 point rule; exact integration of x^py^q, p+q<=5
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(7), PRIVATE :: UTriangle7P = &
+        (/ 0.333333333333333D0, 0.101286507323456D0, 0.797426985353087D0, &
+           0.101286507323456D0, 0.470142064105115D0, 0.059715871789770D0, &
+           0.470142064105115D0 /)
+
+   REAL(KIND=dp), DIMENSION(7), PRIVATE :: VTriangle7P = &
+        (/ 0.333333333333333D0, 0.101286507323456D0, 0.101286507323456D0, &
+           0.797426985353087D0, 0.470142064105115D0, 0.470142064105115D0, &
+           0.059715871789770D0 /)
+
+   REAL(KIND=dp), DIMENSION(7), PRIVATE :: STriangle7P = &
+        (/ 0.225000000000000D0, 0.125939180544827D0, 0.125939180544827D0, &
+           0.125939180544827D0, 0.132394152788506D0, 0.132394152788506D0, &
+           0.132394152788506D0 /)
+
+!------------------------------------------------------------------------------
+! Triangle - 11 point rule; exact integration of x^py^q, p+q<=6
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: UTriangle11P = &
+    (/ 0.3019427231413448D-01, 0.5298143569082113D-01, &
+       0.4972454892773975D-01, 0.7697772693248785D-01, &
+       0.7008117469890058D+00, 0.5597774797709894D+00, &
+       0.5428972301980696D+00, 0.3437947421925572D+00, &
+       0.2356669356664465D+00, 0.8672623210691472D+00, &
+       0.2151020995173866D+00 /)
+
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: VTriangle11P = &
+    (/ 0.2559891985673773D+00, 0.1748087863744473D-01, &
+       0.6330812033358987D+00, 0.8588528075577063D+00, &
+       0.2708520519075563D+00, 0.1870602768957014D-01, &
+       0.2027008533579804D+00, 0.5718576583152437D+00, &
+       0.1000777578531811D+00, 0.4654861310422605D-01, &
+       0.3929681357810497D+00 /)
+
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: STriangle11P = &
+    (/ 0.3375321205342688D-01, 0.1148426034648707D-01, &
+       0.4197958777582435D-01, 0.3098130358202468D-01, &
+       0.2925899761167147D-01, 0.2778515729102349D-01, &
+       0.8323049608963519D-01, 0.6825761580824108D-01, &
+       0.6357334991651026D-01, 0.2649352562792455D-01, &
+       0.8320249389723097D-01 /)
+
+!------------------------------------------------------------------------------
+! Triangle - 12 point rule; exact integration of x^py^q, p+q<=7
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(12), PRIVATE :: UTriangle12P = &
+    (/ 0.6232720494911090D+00, 0.3215024938520235D+00, &
+       0.5522545665686063D-01, 0.2777161669760336D+00, &
+       0.5158423343535236D+00, 0.2064414986704435D+00, &
+       0.3432430294535058D-01, 0.3047265008682535D+00, &
+       0.6609491961864082D+00, 0.6238226509441210D-01, &
+       0.8700998678316921D+00, 0.6751786707389329D-01 /)
+
+   REAL(KIND=dp), DIMENSION(12), PRIVATE :: VTriangle12P = &
+    (/ 0.3215024938520235D+00, 0.5522545665686063D-01, &
+       0.6232720494911090D+00, 0.5158423343535236D+00, &
+       0.2064414986704435D+00, 0.2777161669760336D+00, &
+       0.3047265008682535D+00, 0.6609491961864082D+00, &
+       0.3432430294535058D-01, 0.8700998678316921D+00, &
+       0.6751786707389329D-01, 0.6238226509441210D-01 /)
+
+   REAL(KIND=dp), DIMENSION(12), PRIVATE :: STriangle12P = &
+    (/ 0.4388140871440586D-01, 0.4388140871440586D-01, &
+       0.4388140871440587D-01, 0.6749318700971417D-01, &
+       0.6749318700971417D-01, 0.6749318700971417D-01, &
+       0.2877504278510970D-01, 0.2877504278510970D-01, &
+       0.2877504278510969D-01, 0.2651702815743698D-01, &
+       0.2651702815743698D-01, 0.2651702815743698D-01 /)
+
+!------------------------------------------------------------------------------
+! Triangle - 17 point rule; exact integration of x^py^q, p+q<=8
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(17), PRIVATE :: UTriangle17P = &
+    (/ 0.2292423642627924D+00, 0.4951220175479885D-01, &
+       0.3655948407066446D+00, 0.4364350639589269D+00, &
+       0.1596405673569602D+00, 0.9336507149305228D+00, &
+       0.5219569066777245D+00, 0.7110782758797098D+00, &
+       0.5288509041694864D+00, 0.1396967677642513D-01, &
+       0.4205421906708996D-01, 0.4651359156686354D-01, &
+       0.1975981349257204D+00, 0.7836841874017514D+00, &
+       0.4232808751402256D-01, 0.4557097415216423D+00, &
+       0.2358934246935281D+00 /)
+
+   REAL(KIND=dp), DIMENSION(17), PRIVATE :: VTriangle17P = &
+    (/ 0.5117407211006358D+00, 0.7589103637479163D+00, &
+       0.1529647481767193D+00, 0.3151398735074337D-01, &
+       0.5117868393288316D-01, 0.1964516824106966D-01, &
+       0.2347490459725670D+00, 0.4908682577187765D-01, &
+       0.4382237537321878D+00, 0.3300210677033395D-01, &
+       0.2088758614636060D+00, 0.9208929246654702D+00, &
+       0.2742740954674795D+00, 0.1654585179097472D+00, &
+       0.4930011699833554D+00, 0.4080804967846944D+00, &
+       0.7127872162741824D+00 /)
+
+   REAL(KIND=dp), DIMENSION(17), PRIVATE :: STriangle17P = &
+    (/ 0.5956595662857148D-01, 0.2813390230006461D-01, &
+       0.3500735477096827D-01, 0.2438077450393263D-01, &
+       0.2843374448051010D-01, 0.7822856634218779D-02, &
+       0.5179111341004783D-01, 0.3134229539096806D-01, &
+       0.2454951584925144D-01, 0.5371382557647114D-02, &
+       0.2571565514768072D-01, 0.1045933340802507D-01, &
+       0.4937780841212319D-01, 0.2824772362317584D-01, &
+       0.3218881684015661D-01, 0.2522089247693226D-01, &
+       0.3239087356572598D-01 /)
+
+!------------------------------------------------------------------------------
+! Triangle - 20 point rule; exact integration of x^py^q, p+q<=9
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(20), PRIVATE :: UTriangle20P = &
+   (/ 0.2469118866487856D-01, 0.3348782965514246D-00, &
+      0.4162560937597861D-00, 0.1832492889417431D-00, &
+      0.2183952668281443D-00, 0.4523362527443628D-01, &
+      0.4872975112073226D-00, 0.7470127381316580D-00, &
+      0.7390287107520658D-00, 0.3452260444515281D-01, &
+      0.4946745467572288D-00, 0.3747439678780460D-01, &
+      0.2257524791528391D-00, 0.9107964437563798D-00, &
+      0.4254445629399445D-00, 0.1332215072275240D-00, &
+      0.5002480151788234D-00, 0.4411517722238269D-01, &
+      0.1858526744057914D-00, 0.6300024376672695D-00 /)
+
+   REAL(KIND=dp), DIMENSION(20), PRIVATE :: VTriangle20P = &
+   (/ 0.4783451248176442D-00, 0.3373844236168988D-00, &
+      0.1244378463254732D-00, 0.6365569723648120D-00, &
+      0.3899759363237886D-01, 0.9093437140096456D-00, &
+      0.1968266037596590D-01, 0.2191311129347709D-00, &
+      0.3833588560240875D-01, 0.7389795063475102D-00, &
+      0.4800989285800525D-00, 0.2175137165318176D-00, &
+      0.7404716820879975D-00, 0.4413531509926682D-01, &
+      0.4431292142978816D-00, 0.4440953593652837D-00, &
+      0.1430831401051367D-00, 0.4392970158411878D-01, &
+      0.1973209364545017D-00, 0.1979381059170009D-00 /)
+
+   REAL(KIND=dp), DIMENSION(20), PRIVATE :: STriangle20P = &
+   (/ 0.1776913091122958D-01, 0.4667544936904065D-01, &
+      0.2965283331432967D-01, 0.3880447634997608D-01, &
+      0.2251511457011248D-01, 0.1314162394636178D-01, &
+      0.1560341736610505D-01, 0.1967065434689744D-01, &
+      0.2247962849501080D-01, 0.2087108394969067D-01, &
+      0.1787661200700672D-01, 0.2147695865607915D-01, &
+      0.2040998247303970D-01, 0.1270342300533680D-01, &
+      0.3688713099356314D-01, 0.3813199811535777D-01, &
+      0.1508642325812160D-01, 0.1238422287692121D-01, &
+      0.3995072336992735D-01, 0.3790911262589247D-01 /)
+
+!------------------------------------------------------------------------------
+! Tetrahedron - 1 point rule; exact integration of x^py^qz^r, p+q+r<=1
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(1), PRIVATE :: UTetra1P = (/ 0.25D0 /)
+   REAL(KIND=dp), DIMENSION(1), PRIVATE :: VTetra1P = (/ 0.25D0 /)
+   REAL(KIND=dp), DIMENSION(1), PRIVATE :: WTetra1P = (/ 0.25D0 /)
+   REAL(KIND=dp), DIMENSION(1), PRIVATE :: STetra1P = (/ 1.00D0 /)
+
+!------------------------------------------------------------------------------
+! Tetrahedron - 4 point rule; exact integration of x^py^qz^r, p+q+r<=2
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: UTetra4P = &
+    (/ 0.1757281246520584D0, 0.2445310270213291D0, &
+       0.5556470949048655D0, 0.0240937534217468D0 /)
+
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: VTetra4P = &
+    (/ 0.5656137776620919D0, 0.0501800797762026D0, &
+       0.1487681308666864D0, 0.2354380116950194D0 /)
+
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: WTetra4P = &
+    (/ 0.2180665126782654D0, 0.5635595064952189D0, &
+       0.0350112499848832D0, 0.1833627308416330D0 /)
+
+   REAL(KIND=dp), DIMENSION(4), PRIVATE :: STetra4P = &
+    (/ 0.2500000000000000D0, 0.2500000000000000D0, &
+       0.2500000000000000D0, 0.2500000000000000D0 /)
+!------------------------------------------------------------------------------
+! Tetrahedron - 5 point rule; exact integration of x^py^qz^r, p+q+r<=3
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(5), PRIVATE :: UTetra5P =  &
+    (/ 0.25000000000000000D0, 0.50000000000000000D0, &
+       0.16666666666666667D0, 0.16666666666666667D0, &
+       0.16666666666666667D0 /)
+
+   REAL(KIND=dp), DIMENSION(5), PRIVATE :: VTetra5P =  &
+    (/ 0.25000000000000000D0, 0.16666666666666667D0, &
+       0.50000000000000000D0, 0.16666666666666667D0, &
+       0.16666666666666667D0 /)
+
+   REAL(KIND=dp), DIMENSION(5), PRIVATE :: WTetra5P =  &
+    (/ 0.25000000000000000D0, 0.16666666666666667D0, &
+       0.16666666666666667D0, 0.50000000000000000D0, &
+       0.16666666666666667D0 /)
+
+   REAL(KIND=dp), DIMENSION(5), PRIVATE :: STetra5P =  &
+    (/-0.80000000000000000D0, 0.45000000000000000D0, &
+       0.45000000000000000D0, 0.45000000000000000D0, &
+       0.45000000000000000D0 /)
+!------------------------------------------------------------------------------
+! Tetrahedron - 11 point rule; exact integration of x^py^qz^r, p+q+r<=4
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: UTetra11P =  &
+    (/ 0.3247902050850455D+00, 0.4381969657060433D+00, &
+       0.8992592373310454D-01, 0.1092714936292849D+00, &
+       0.3389119319942253D-01, 0.5332363613904868D-01, &
+       0.1935618747806815D+00, 0.4016250624424964D-01, &
+       0.3878132182319405D+00, 0.7321489692875428D+00, &
+       0.8066342495294049D-01 /)
+
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: VTetra11P =  &
+    (/ 0.4573830181783998D+00, 0.9635325047480842D-01, &
+       0.3499588148445295D+00, 0.1228957438582778D+00, &
+       0.4736224692062527D-01, 0.4450376952468180D+00, &
+       0.2165626476982170D+00, 0.8033385922433729D+00, &
+       0.7030897281814283D-01, 0.1097836536360084D+00, &
+       0.1018859284267242D-01 /)
+
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: WTetra11P =  &
+    (/ 0.1116787541193331D+00, 0.6966288385119494D-01, &
+       0.5810783971325720D-01, 0.3424607753785182D+00, &
+       0.7831772466208499D+00, 0.3688112094344830D+00, &
+       0.5872345323698884D+00, 0.6178518963560731D-01, &
+       0.4077342860913465D+00, 0.9607290317342082D-01, &
+       0.8343823045787845D-01 /)
+
+   REAL(KIND=dp), DIMENSION(11), PRIVATE :: STetra11P =  &
+    (/ 0.1677896627448221D+00, 0.1128697325878004D+00, &
+       0.1026246621329828D+00, 0.1583002576888426D+00, &
+       0.3847841737508437D-01, 0.1061709382037234D+00, &
+       0.5458124994014422D-01, 0.3684475128738168D-01, &
+       0.1239234851349682D+00, 0.6832098141300300D-01, &
+       0.3009586149124714D-01 /)
+!------------------------------------------------------------------------------
+
+ CONTAINS
+
+
+!------------------------------------------------------------------------------
+!> Subroutine to compute Fejer integration points by FFT.
+!------------------------------------------------------------------------------
+   SUBROUTINE ComputeFejerPoints1D( Points,Weights,n )
+!------------------------------------------------------------------------------
+    INTEGER :: n
+    REAL(KIND=dp) :: Points(n),Weights(n)
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,l,m 
+#ifdef USE_ISO_C_BINDINGS
+    TYPE(C_FFTCMPLX) :: W(n+1)
+#else
+    COMPLEX(KIND=dp) :: W(n+1)
+#endif
+    REAL(KIND=dp) :: arr((n+1)/2+1), V(n+2)
+
+    DO i=1,(n+1)/2
+      Points(i) = COS(i*PI/(n+1._dp))
+      Points(n-i+1) = -Points(i)
+    END DO
+
+    k = 0
+    DO i=1,n+1,2
+      k = k + 1
+      arr(k) = i
+    END DO
+
+    V = 0._dp
+    DO i=1,k
+      V(i) = 2._dp/(arr(i)*(arr(i)-2))
+    END DO
+    V(k+1) = 1._dp/arr(k)
+
+    DO i=1,n+1
+#ifdef USE_ISO_C_BINDINGS
+      W(i) % rval = -(V(i)+V(n-i+3))
+#else
+      W(i) = -(V(i)+V(n-i+3))
+#endif
+    END DO
+    CALL frfftb(n+1,W,V)
+
+    Weights(1:n) = V(2:n+1)/(n+1)
+    DO i=1,n/2
+      Weights(i) = (Weights(i) + Weights(n-i+1))/2
+      Weights(n-i+1) = Weights(i)
+    END DO
+    Weights(1:n) = 2 * Weights(1:n) / SUM(Weights(1:n))
+!------------------------------------------------------------------------------
+  END SUBROUTINE ComputeFejerPoints1D
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Subroutine to compute gaussian integration points and weights in [-1,1]
+!> as roots of Legendre polynomials.
+!------------------------------------------------------------------------------
+   SUBROUTINE ComputeGaussPoints1D( Points,Weights,n )
+!------------------------------------------------------------------------------
+     INTEGER :: n
+     REAL(KIND=dp) :: Points(n),Weights(n)
+!------------------------------------------------------------------------------
+     REAL(KIND=dp)   :: A(n/2,n/2),s,x,Work(8*n)
+     COMPLEX(KIND=dp) :: Eigs(n/2)
+     REAL(KIND=dp)   :: P(n+1),Q(n),P0(n),P1(n+1)
+     INTEGER :: i,j,k,np,info
+!------------------------------------------------------------------------------
+! One point is trivial
+!------------------------------------------------------------------------------
+     IF ( n <= 1 ) THEN
+       Points(1)  = 0.0d0
+       Weights(1) = 2.0d0
+       RETURN
+     END IF
+!------------------------------------------------------------------------------
+! Compute coefficients of n:th Legendre polynomial from the recurrence:
+!
+! (i+1)P_{i+1}(x) = (2i+1)*x*P_i(x) - i*P_{i-1}(x), P_{0} = 1; P_{1} = x;
+!
+! CAVEAT: Computed coefficients inaccurate for n > ~15
+!------------------------------------------------------------------------------
+     P = 0
+     P0(1) = 1
+     P1(1) = 1
+     P1(2) = 0
+
+     DO i=1,n-1
+       P(1:i+1) = (2*i+1) * P1(1:i+1)  / (i+1)
+       P(3:i+2) = P(3:i+2) - i*P0(1:i) / (i+1)
+       P0(1:i+1) = P1(1:i+1); P1(1:i+2) = P(1:i+2)
+     END DO
+!------------------------------------------------------------------------------
+! Odd n implicates zero as one of the roots...
+!------------------------------------------------------------------------------
+     np = n - MOD(n,2)
+!------------------------------------------------------------------------------
+!  Variable substitution: y=x^2
+!------------------------------------------------------------------------------
+     np = np / 2
+     DO i=1,np+1
+       P(i) = P(2*i-1)
+     END DO
+!------------------------------------------------------------------------------
+! Solve the roots of the polynomial by forming a matrix whose characteristic
+! polynomial is the n:th Legendre polynomial and solving for the eigenvalues.
+! Dunno if this is a very good method....
+!------------------------------------------------------------------------------
+     A=0
+     DO i=1,np-1
+       A(i,i+1) = 1
+     END DO
+
+     DO i=1,np
+       A(np,i) = -P(np+2-i) / P(1)
+     END DO
+     CALL DGEEV( 'N','N',np,A,n/2,Points,P0,Work,1,Work,1,Work,8*n,info )
+!    CALL EigenValues( A, np, Eigs )
+!    Points(1:np) = REAL( Eigs(1:np) )
+
+!------------------------------------------------------------------------------
+! Backsubstitute from y=x^2
+!------------------------------------------------------------------------------
+     Q(1:np+1) = P(1:np+1)
+     P = 0
+     DO i=1,np+1
+       P(2*i-1) = Q(i)
+     END DO
+
+     Q(1:np) = Points(1:np)
+     DO i=1,np
+       Points(2*i-1) = +SQRT( Q(i) )
+       Points(2*i)   = -SQRT( Q(i) )
+     END DO
+     IF ( MOD(n,2) == 1 ) Points(n) = 0.0d0
+
+     CALL DerivPoly( n,Q,P )
+     CALL RefineRoots( n,P,Q,Points )
+!------------------------------------------------------------------------------
+! Check for roots
+!------------------------------------------------------------------------------
+     DO i=1,n
+       s = EvalPoly( n,P,Points(i) )
+       IF ( ABS(s) > 1.0d-12 ) THEN
+         CALL Warn( 'ComputeGaussPoints1D', &
+                 '-------------------------------------------------------' )
+         CALL Warn( 'ComputeGaussPoints1D', 'Computed integration point' )
+         CALL Warn( 'ComputeGaussPoints1D', 'seems to be inaccurate: ' )
+         WRITE( Message, * ) 'Points req.: ',n
+         CALL Warn( 'ComputeGaussPoints1D', Message )
+         WRITE( Message, * ) 'Residual: ',s
+         CALL Warn( 'ComputeGaussPoints1D', Message )
+         WRITE( Message, * ) 'Point: +-', SQRT(Points(i))
+         CALL Warn( 'ComputeGaussPoints1D', Message )
+         CALL Warn( 'ComputeGaussPoints1D', &
+                 '-------------------------------------------------------' )
+       END IF
+     END DO
+!------------------------------------------------------------------------------
+! Finally, the integration weights equal to
+!
+! W_i = 2/( (1-x_i^2)*Q(x_i)^2 ), x_i is the i:th root, and Q(x) = dP(x) / dx
+!------------------------------------------------------------------------------
+     CALL DerivPoly( n,Q,P )
+
+     DO i=1,n
+       s = EvalPoly( n-1,Q,Points(i) )
+       Weights(i) = 2 / ((1-Points(i)**2)*s**2);
+     END DO
+!------------------------------------------------------------------------------
+! ... make really sure the weights add up:
+!------------------------------------------------------------------------------
+     Weights(1:n) = 2 * Weights(1:n) / SUM(Weights(1:n))
+
+CONTAINS
+
+!--------------------------------------------------------------------------
+
+   FUNCTION EvalPoly( n,P,x ) RESULT(s)
+     INTEGER :: i,n
+     REAL(KIND=dp) :: P(n+1),x,s
+ 
+     s = 0.0d0
+     DO i=1,n+1
+       s = s * x + P(i)
+     END DO
+   END FUNCTION EvalPoly
+
+!--------------------------------------------------------------------------
+
+   SUBROUTINE DerivPoly( n,Q,P )
+     INTEGER :: i,n
+     REAL(KIND=dp) :: Q(n),P(n+1)
+ 
+     DO i=1,n
+       Q(i) = P(i)*(n-i+1)
+     END DO
+   END SUBROUTINE DerivPoly
+ 
+!--------------------------------------------------------------------------
+
+   SUBROUTINE RefineRoots( n,P,Q,Points )
+     INTEGER :: i,j,n
+     REAL(KIND=dp) :: P(n+1),Q(n),Points(n)
+ 
+     REAL(KIND=dp) :: x,s
+     INTEGER, PARAMETER :: MaxIter = 100
+
+     DO i=1,n
+       x = Points(i)
+       DO j=1,MaxIter
+         s = EvalPoly(n,P,x) / EvalPoly(n-1,Q,x)
+         x = x - s
+         IF ( ABS(s) <= ABS(x)*EPSILON(s) ) EXIT
+       END DO
+       IF ( ABS(EvalPoly(n,P,x))<ABS(EvalPoly(n,P,Points(i))) ) THEN
+         IF ( ABS(x-Points(i))<1.0d-8 ) Points(i) = x
+       END IF
+     END DO
+   END SUBROUTINE RefineRoots
+
+!--------------------------------------------------------------------------
+ END SUBROUTINE ComputeGaussPoints1D
+!--------------------------------------------------------------------------
+
+!--------------------------------------------------------------------------
+   FUNCTION GaussPointsInitialized() RESULT(g)
+!--------------------------------------------------------------------------
+     LOGICAL :: g
+!--------------------------------------------------------------------------
+     g=Ginit
+!--------------------------------------------------------------------------
+   END FUNCTION GaussPointsInitialized
+!--------------------------------------------------------------------------
+
+! !------------------------------------------------------------------------------
+!    SUBROUTINE GaussPointsInit
+! !------------------------------------------------------------------------------
+!      INTEGER :: i,n,istat
+!      INTEGER :: nthreads, thread, omp_get_max_threads, omp_get_thread_num
+!
+!      IF ( .NOT. ALLOCATED(IntegStuff) ) THEN
+! !$omp barrier
+! !$omp critical
+!        IF ( .NOT. GInit ) THEN
+!          GInit = .TRUE.
+!          nthreads = 1
+! !$       nthreads = omp_get_max_threads()
+!          ALLOCATE( IntegStuff(nthreads) )
+!          DO i=1,nthreads
+!            IntegStuff(i) % u => NULL()
+!            IntegStuff(i) % v => NULL()
+!            IntegStuff(i) % w => NULL()
+!            IntegStuff(i) % s => NULL()
+!          END DO
+!          DO n=1,MAXN
+!            CALL ComputeGaussPoints1D( Points(1:n,n),Weights(1:n,n),n )
+!          END DO
+!        END IF
+! !$omp end critical
+!      END IF
+!
+!      thread = 1
+! !$   thread = omp_get_thread_num()+1
+!     ALLOCATE( IntegStuff(thread) % u(MAX_INTEGRATION_POINTS), &
+!               IntegStuff(thread) % v(MAX_INTEGRATION_POINTS), &
+!               IntegStuff(thread) % w(MAX_INTEGRATION_POINTS), &
+!               IntegStuff(thread) % s(MAX_INTEGRATION_POINTS), STAT=istat )
+!
+!     IF ( istat /= 0 ) THEN
+!       CALL Fatal( 'GaussPointsInit', 'Memory allocation error.' )
+!       STOP
+!     END IF
+! !------------------------------------------------------------------------------
+! !  END SUBROUTINE GaussPointsInit
+! !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE GaussPointsInit
+!------------------------------------------------------------------------------
+     INTEGER :: i,n,istat
+	 INTEGER :: omp_get_thread_num
+
+     !$omp barrier
+     !$omp single
+     IF ( .NOT. GInit ) THEN
+        DO n=1,MAXN
+          CALL ComputeGaussPoints1D( Points(1:n,n),Weights(1:n,n),n )
+        END DO
+        GInit = .TRUE.
+     END IF
+     !$omp end single
+     !$omp barrier
+
+     ALLOCATE( IntegStuff % u(MAX_INTEGRATION_POINTS), &
+               IntegStuff % v(MAX_INTEGRATION_POINTS), &
+               IntegStuff % w(MAX_INTEGRATION_POINTS), &
+               IntegStuff % s(MAX_INTEGRATION_POINTS), STAT=istat )
+     IntegStuff % u = 0._dp
+     IntegStuff % v = 0._dp
+     IntegStuff % w = 0._dp
+     IntegStuff % s = 0._dp
+     IF ( istat /= 0 ) THEN
+       CALL Fatal( 'GaussPointsInit', 'Memory allocation error.' )
+     END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE GaussPointsInit
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+   FUNCTION GaussPoints0D( n ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: n
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!     INTEGER :: thread, omp_get_thread_num
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!     thread = 1
+! !$    thread = omp_get_thread_num()+1
+!     p => IntegStuff(thread)
+      p => IntegStuff
+      p % n = 1
+      p % u(1) = 0
+      p % v(1) = 0
+      p % w(1) = 0
+      p % s(1) = 1
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPoints0D
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!>    Return gaussian integration points for 1D line element
+!------------------------------------------------------------------------------
+   FUNCTION GaussPoints1D( n ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: n   !< number of points in the requested rule
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+!     INTEGER :: thread, omp_get_thread_num
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!     thread = 1
+! !$    thread = omp_get_thread_num()+1
+!      p => IntegStuff(thread)
+      p => IntegStuff
+      IF ( n < 1 .OR. n > MAXN ) THEN
+        p % n = 0
+        WRITE( Message, * ) 'Invalid number of points: ',n
+        CALL Error( 'GaussPoints1D', Message )
+        RETURN
+      END IF
+
+      p % n = n
+      p % u(1:n) = Points(1:n,n)
+      p % v(1:n) = 0.0d0
+      p % w(1:n) = 0.0d0
+      p % s(1:n) = Weights(1:n,n)
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPoints1D
+!------------------------------------------------------------------------------
+
+   FUNCTION GaussPointsPTriangle(n) RESULT(p)
+
+      INTEGER :: i,n
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+      REAL (KIND=dp) :: uq, vq, sq
+!     INTEGER :: thread, omp_get_thread_num
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!      thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      ! Construct gauss points for p (barycentric) triangle from 
+      ! gauss points for quadrilateral
+      p = GaussPointsQuad( n )
+      
+      ! For each point apply mapping from quad to triangle and 
+      ! multiply weight by detJ of mapping
+      DO i=1,p % n  
+         uq = p % u(i) 
+         vq = p % v(i) 
+         sq = p % s(i)
+         p % u(i) = 1d0/2*(uq-uq*vq)
+         p % v(i) = SQRT(3d0)/2*(1d0+vq)
+         p % s(i) = -SQRT(3d0)/4*(-1+vq)*sq
+      END DO
+      
+      p % w(1:n) = 0.0d0
+    END FUNCTION GaussPointsPTriangle
+
+
+!------------------------------------------------------------------------------
+!>    Return Gaussian integration points for 2D triangle element. Here the 
+!>    reference element over which the integration is done can also be the
+!>    equilateral triangle used in the description of p-elements. In that case,
+!>    this routine may return a more economical set of integration points. 
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsTriangle( n, PReferenceElement ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: n    !< number of points in the requested rule
+      LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+      INTEGER :: i
+      LOGICAL :: ConvertToPTriangle
+      REAL (KIND=dp) :: uq, vq, sq
+!     INTEGER :: thread, omp_get_thread_num
+!-------------------------------------------------------------------------------
+      ConvertToPtriangle = .FALSE.
+      IF ( PRESENT(PReferenceElement) ) THEN
+         ConvertToPTriangle =  PReferenceElement
+      END IF
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!       thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      SELECT CASE (n)
+      CASE (1)
+         p % u(1:n) = UTriangle1P
+         p % v(1:n) = VTriangle1P
+         p % s(1:n) = STriangle1P / 2.0D0
+         p % n = 1
+      CASE (3)
+         p % u(1:n) = UTriangle3P
+         p % v(1:n) = VTriangle3P
+         p % s(1:n) = STriangle3P / 2.0D0
+         p % n = 3
+      CASE (4)
+         p % u(1:n) = UTriangle4P
+         p % v(1:n) = VTriangle4P
+         p % s(1:n) = STriangle4P / 2.0D0
+         p % n = 4
+      CASE (6)
+         p % u(1:n) = UTriangle6P
+         p % v(1:n) = VTriangle6P
+         p % s(1:n) = STriangle6P / 2.0D0
+         p % n = 6
+      CASE (7)
+         p % u(1:n) = UTriangle7P
+         p % v(1:n) = VTriangle7P
+         p % s(1:n) = STriangle7P / 2.0D0
+         p % n = 7
+      CASE (11)
+         p % u(1:n) = UTriangle11P
+         p % v(1:n) = VTriangle11P
+         p % s(1:n) = STriangle11P
+         p % n = 11
+      CASE (12)
+         p % u(1:n) = UTriangle12P
+         p % v(1:n) = VTriangle12P
+         p % s(1:n) = STriangle12P
+         p % n = 12
+      CASE (17)
+         p % u(1:n) = UTriangle17P
+         p % v(1:n) = VTriangle17P
+         p % s(1:n) = STriangle17P
+         p % n = 17
+      CASE (20)
+         p % u(1:n) = UTriangle20P
+         p % v(1:n) = VTriangle20P
+         p % s(1:n) = STriangle20P
+         p % n = 20
+      CASE DEFAULT
+!        CALL Error( 'GaussPointsTriangle', 'Invalid number of points requested' )
+!        p % n = 0
+
+         p = GaussPointsQuad( n )
+         DO i=1,p % n
+            p % v(i) = (p % v(i) + 1) / 2
+            p % u(i) = (p % u(i) + 1) / 2 * (1 - p % v(i))
+            p % s(i) = p % s(i) * ( 1 - p % v(i) )
+         END DO
+         p % s(1:p % n) = 0.5d0 * p % s(1:p % n) / SUM( p % s(1:p % n) )
+      END SELECT
+
+      IF (ConvertToPTriangle) THEN
+         !-------------------------------------------------------------------
+         ! Apply an additional transformation if the actual reference element
+         ! is the equilateral triangle used in the description of p-elements.
+	 ! We map the original integration points into their counterparts on the 
+	 ! p-reference element and scale the weights by the determinant of the 
+	 ! deformation gradient associated with the change of reference element.
+         !-------------------------------------------------------------------
+         DO i=1,P % n  
+            uq = P % u(i) 
+            vq = P % v(i) 
+            sq = P % s(i)
+            P % u(i) = -1.0d0 + 2.0d0*uq + vq
+            P % v(i) = SQRT(3.0d0)*vq
+            P % s(i) = SQRT(3.0d0)*2.0d0*sq
+         END DO
+      END IF
+
+      p % w(1:n) = 0.0d0
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsTriangle
+!------------------------------------------------------------------------------
+
+   FUNCTION GaussPointsPTetra(np) RESULT(p)
+
+   INTEGER :: i,np,n
+   TYPE(GaussIntegrationPoints_t), POINTER :: p
+   REAL(KIND=dp) :: uh, vh, wh, sh
+!  INTEGER :: thread, omp_get_thread_num
+   
+   IF ( .NOT. GInit ) CALL GaussPointsInit
+!    thread = 1
+! !$ thread = omp_get_thread_num()+1
+!    p => IntegStuff(thread)
+   p => IntegStuff
+   n = DBLE(np)**(1.0D0/3.0D0) + 0.5D0
+
+   ! Get gauss points of p brick 
+   ! (take into account term z^2) from jacobian determinant
+   p = GaussPointsPBrick(n,n,n+1)
+   ! p = GaussPointsBrick( np )
+   ! WRITE (*,*) 'Getting gauss points for: ', n, p % n
+
+   ! For each point apply mapping from brick to 
+   ! tetrahedron and multiply each weight by detJ 
+   ! of mapping
+   DO i=1,p % n
+      uh = p % u(i)
+      vh = p % v(i)
+      wh = p % w(i)
+      sh = p % s(i)
+
+      p % u(i)= 1d0/4*(uh - uh*vh - uh*wh + uh*vh*wh)
+      p % v(i)= SQRT(3d0)/4*(5d0/3 + vh - wh/3 - vh*wh)
+      p % w(i)= SQRT(6d0)/3*(1d0 + wh)
+      p % s(i)= -sh * SQRT(2d0)/16 * (1d0 - vh - wh + vh*wh) * (-1d0 + wh)
+   END DO
+END FUNCTION GaussPointsPTetra
+
+
+!------------------------------------------------------------------------------
+!>    Return Gaussian integration points for 3D tetrahedral element. Here the 
+!>    reference element over which the integration is done can also be the
+!>    regular tetrahedron used in the description of p-elements. In that case,
+!>    this routine may return a more economical set of integration points. 
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsTetra( n, PReferenceElement ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: n      !< number of points in the requested rule
+      LOGICAL, OPTIONAL ::  PReferenceElement !< used for switching the reference element 
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+      REAL( KIND=dp ) :: ScaleFactor
+      INTEGER :: i
+      LOGICAL :: ConvertToPTetrahedron
+      REAL (KIND=dp) :: uq, vq, wq, sq
+!     INTEGER :: thread, omp_get_thread_num
+!----------------------------------------------------------------------------------
+      ConvertToPTetrahedron = .FALSE.
+      IF ( PRESENT(PReferenceElement) ) THEN
+         ConvertToPTetrahedron =  PReferenceElement
+      END IF
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!       thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      SELECT CASE (n)
+      CASE (1)
+         p % u(1:n) = UTetra1P
+         p % v(1:n) = VTetra1P
+         p % w(1:n) = WTetra1P
+         p % s(1:n) = STetra1P / 6.0D0
+         p % n = 1
+      CASE (4)
+         p % u(1:n) = UTetra4P
+         p % v(1:n) = VTetra4P
+         p % w(1:n) = WTetra4P
+         p % s(1:n) = STetra4P / 6.0D0
+         p % n = 4
+      CASE (5)
+         p % u(1:n) = UTetra5P
+         p % v(1:n) = VTetra5P
+         p % w(1:n) = WTetra5P
+         p % s(1:n) = STetra5P / 6.0D0
+         p % n = 5
+      CASE (11)
+         p % u(1:n) = UTetra11P
+         p % v(1:n) = VTetra11P
+         p % w(1:n) = WTetra11P
+         p % s(1:n) = STetra11P / 6.0D0
+         p % n = 11
+      CASE DEFAULT
+!        CALL Error( 'GaussPointsTetra', 'Invalid number of points requested.' )
+!        p % n = 0
+         p = GaussPointsBrick( n )
+
+         DO i=1,p % n
+            ScaleFactor = 0.5d0
+            p % u(i) = ( p % u(i) + 1 ) * Scalefactor
+            p % v(i) = ( p % v(i) + 1 ) * ScaleFactor
+            p % w(i) = ( p % w(i) + 1 ) * ScaleFactor
+            p % s(i) = p % s(i) * ScaleFactor**3
+
+            ScaleFactor = 1.0d0 - p % w(i)
+            p % u(i) = p % u(i) * ScaleFactor
+            p % v(i) = p % v(i) * ScaleFactor
+            p % s(i) = p % s(i) * ScaleFactor**2
+
+            ScaleFactor = 1.0d0 - p % v(i) / ScaleFactor
+            p % u(i) = p % u(i) * ScaleFactor
+            p % s(i) = p % s(i) * ScaleFactor
+         END DO
+!         p % s(1:p % n) = p % s(1:p % n) / SUM( p % s(1:p % n) ) / 6.0d0
+      END SELECT
+
+      IF (ConvertToPTetrahedron) THEN
+         !-------------------------------------------------------------------
+         ! Apply an additional transformation if the actual reference element
+         ! is the regular tetrahedron used in the description of p-elements
+	 ! We map the original integration points into their counterparts on the 
+	 ! p-reference element and scale the weights by the determinant of the 
+	 ! deformation gradient associated with the change of reference element.
+         !-------------------------------------------------------------------
+         DO i=1,P % n  
+            uq = P % u(i) 
+            vq = P % v(i)
+            wq = P % w(i)            
+            sq = P % s(i)
+            P % u(i) = -1.0d0 + 2.0d0*uq + vq + wq
+            P % v(i) = SQRT(3.0d0)*vq + 1.0d0/SQRT(3.0d0)*wq
+            P % w(i) = SQRT(8.0d0)/SQRT(3.0d0)*wq
+            P % s(i) = SQRT(8.0d0)*2.0d0*sq
+         END DO
+      END IF
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsTetra
+!------------------------------------------------------------------------------
+
+   FUNCTION GaussPointsPPyramid( np ) RESULT(p)
+      
+   INTEGER :: np,n,i
+   REAL(KIND=dp) :: uh,vh,wh,sh
+   TYPE(GaussIntegrationPoints_t), POINTER :: p
+!  INTEGER :: thread, omp_get_thread_num
+
+   IF ( .NOT. GInit ) CALL GaussPointsInit
+!    thread = 1
+! !$ thread = omp_get_thread_num()+1
+!    p => IntegStuff(thread)
+   p => IntegStuff
+
+   n = DBLE(np)**(1.0D0/3.0D0) + 0.5D0
+
+   ! Get gauss points of p brick 
+   ! (take into account term (-1+z)^2) from jacobian determinant
+   p = GaussPointsPBrick(n,n,n+1)
+
+   ! For each point apply mapping from brick to 
+   ! pyramid and multiply each weight by detJ 
+   ! of mapping
+   DO i=1,p % n
+      uh = p % u(i)
+      vh = p % v(i)
+      wh = p % w(i)
+      sh = p % s(i)
+
+      p % u(i)= 1d0/2*uh*(1d0-wh)
+      p % v(i)= 1d0/2*vh*(1d0-wh)
+      p % w(i)= SQRT(2d0)/2*(1d0+wh)
+      p % s(i)= sh * SQRT(2d0)/8 * (-1d0+wh)**2
+   END DO      
+
+   END FUNCTION GaussPointsPPyramid
+
+
+   
+!------------------------------------------------------------------------------
+!>    Return gaussian integration points for 3D prism element.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsPyramid( np ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: np     !< number of points in the requested rule
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+      INTEGER :: i,j,k,n,t
+!       INTEGER :: thread, omp_get_thread_num
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!       thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      n = REAL(np)**(1.0D0/3.0D0) + 0.5D0
+
+      IF ( n < 1 .OR. n > MAXN ) THEN
+         p % n = 0
+         WRITE( Message, * ) 'Invalid number of points: ', n
+         CALL Error( 'GaussPointsPyramid', Message )
+         RETURN
+      END IF
+
+      t = 0
+      DO i=1,n
+        DO j=1,n
+          DO k=1,n
+             t = t + 1
+             p % u(t) = Points(k,n)
+             p % v(t) = Points(j,n)
+             p % w(t) = Points(i,n)
+             p % s(t) = Weights(i,n)*Weights(j,n)*Weights(k,n)
+          END DO
+        END DO
+      END DO
+      p % n = t
+
+      DO t=1,p % n
+        p % w(t) = (p % w(t) + 1.0d0) / 2.0d0
+        p % u(t) = p % u(t) * (1.0d0-p % w(t))
+        p % v(t) = p % v(t) * (1.0d0-p % w(t))
+        p % s(t) = p % s(t) * (1.0d0-p % w(t))**2/2
+      END DO
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsPyramid
+!------------------------------------------------------------------------------
+
+   FUNCTION GaussPointsPWedge(n) RESULT(p)
+       
+   INTEGER :: n, i
+   REAL(KIND=dp) :: uh,vh,wh,sh
+   TYPE(GaussIntegrationPoints_t), POINTER :: p
+!   INTEGER :: thread, omp_get_thread_num
+
+   IF ( .NOT. GInit ) CALL GaussPointsInit
+!    thread = 1
+! !$ thread = omp_get_thread_num()+1
+!    p => IntegStuff(thread)
+   p => IntegStuff
+
+   ! Get gauss points of brick
+   p = GaussPointsBrick(n)
+
+   ! For each point apply mapping from brick to 
+   ! wedge and multiply each weight by detJ 
+   ! of mapping
+   DO i=1,p % n
+      uh = p % u(i)
+      vh = p % v(i)
+      wh = p % w(i)
+      sh = p % s(i)
+
+      p % u(i)= 1d0/2*(uh-uh*vh)
+      p % v(i)= SQRT(3d0)/2*(1d0+vh)
+      p % w(i)= wh
+      p % s(i)= sh * SQRT(3d0)*(1-vh)/4
+   END DO
+
+   END FUNCTION GaussPointsPWedge
+
+!------------------------------------------------------------------------------
+!>    Return gaussian integration points for 3D wedge element
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsWedge( np ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: np     !< number of points in the requested rule
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+      INTEGER :: i,j,k,n,t
+!       INTEGER :: thread, omp_get_thread_num
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!       thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      n = REAL(np)**(1.0d0/3.0d0) + 0.5d0
+
+      IF ( n < 1 .OR. n > MAXN ) THEN
+         p % n = 0
+         WRITE( Message, * ) 'Invalid number of points: ', n
+         CALL Error( 'GaussPointsWedge', Message )
+         RETURN
+      END IF
+
+      t = 0
+      DO i=1,n
+        DO j=1,n
+          DO k=1,n
+             t = t + 1
+             p % u(t) = Points(k,n)
+             p % v(t) = Points(j,n)
+             p % w(t) = Points(i,n)
+             p % s(t) = Weights(i,n)*Weights(j,n)*Weights(k,n)
+          END DO
+        END DO
+      END DO
+      p % n = t
+
+      DO i=1,p % n
+        p % v(i) = (p % v(i) + 1)/2
+        p % u(i) = (p % u(i) + 1)/2 * (1 - p % v(i))
+        p % s(i) = p % s(i) * (1-p % v(i))/4
+      END DO
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsWedge
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!>  Return an optimized number of Gaussian points for integrating over prisms.
+!>  Here the reference element can also be that of the p-approximation. 
+!>  A rule with m x n points is returned.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsWedge2(m,n,PReferenceElement) RESULT(p)
+!------------------------------------------------------------------------------
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+      INTEGER :: m     !< The number of points over a triangular face
+      INTEGER :: n     !< The number of points in the orthogonal direction to the triangular faces
+      LOGICAL, OPTIONAL ::  PReferenceElement !< Used for switching the reference element      
+!------------------------------------------------------------------------------
+      INTEGER :: i,j,k,t
+      LOGICAL :: ConvertToPPrism
+      REAL(KIND=dp) :: uq(20), vq(20), sq(20)
+      REAL(KIND=dp) :: uh,vh,wh,sh    
+!-----------------------------------------------------------------------------
+      ConvertToPPrism = .FALSE.
+      IF ( PRESENT(PReferenceElement) ) THEN
+         ConvertToPPrism =  PReferenceElement
+      END IF
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+      p => IntegStuff
+
+      SELECT CASE (m)
+      CASE (1)
+         IF (ConvertToPPrism) THEN
+            uq(1) = -1.0d0 + 2.0d0*UTriangle1P(1) + VTriangle1P(1)
+            vq(1) = SQRT(3.0d0) * VTriangle1P(1)
+            sq(1) = SQRT(3.0d0) * STriangle1P(1)
+         ELSE
+            uq(1:m) = UTriangle1P
+            vq(1:m) = VTriangle1P
+            sq(1:m) = STriangle1P / 2.0D0
+         END IF
+      CASE (3)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle3P(i) + VTriangle3P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle3P(i)
+               sq(i) = SQRT(3.0d0) * STriangle3P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle3P
+            vq(1:m) = VTriangle3P
+            sq(1:m) = STriangle3P / 2.0D0
+         END IF
+      CASE (4)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle4P(i) + VTriangle4P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle4P(i)
+               sq(i) = SQRT(3.0d0) * STriangle4P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle4P
+            vq(1:m) = VTriangle4P
+            sq(1:m) = STriangle4P / 2.0D0
+         END IF
+      CASE (6)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle6P(i) + VTriangle6P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle6P(i)
+               sq(i) = SQRT(3.0d0) * STriangle6P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle6P
+            vq(1:m) = VTriangle6P
+            sq(1:m) = STriangle6P / 2.0D0
+         END IF
+      CASE (7)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle7P(i) + VTriangle7P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle7P(i)
+               sq(i) = SQRT(3.0d0) * STriangle7P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle7P
+            vq(1:m) = VTriangle7P
+            sq(1:m) = STriangle7P / 2.0D0
+         END IF
+      CASE (11)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle11P(i) + VTriangle11P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle11P(i)
+               sq(i) = SQRT(3.0d0) * 2.0d0 * STriangle11P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle11P
+            vq(1:m) = VTriangle11P
+            sq(1:m) = STriangle11P
+         END IF
+      CASE (12)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle12P(i) + VTriangle12P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle12P(i)
+               sq(i) = SQRT(3.0d0) * 2.0d0 * STriangle12P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle12P
+            vq(1:m) = VTriangle12P
+            sq(1:m) = STriangle12P
+         END IF
+      CASE (17)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle17P(i) + VTriangle17P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle17P(i)
+               sq(i) = SQRT(3.0d0) * 2.0d0 * STriangle17P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle17P
+            vq(1:m) = VTriangle17P
+            sq(1:m) = STriangle17P
+         END IF
+      CASE (20)
+         IF (ConvertToPPrism) THEN
+            DO i=1,m
+               uq(i) = -1.0d0 + 2.0d0*UTriangle20P(i) + VTriangle20P(i)
+               vq(i) = SQRT(3.0d0) * VTriangle20P(i)
+               sq(i) = SQRT(3.0d0) * 2.0d0 * STriangle20P(i)
+            END DO
+         ELSE
+            uq(1:m) = UTriangle20P
+            vq(1:m) = VTriangle20P
+            sq(1:m) = STriangle20P
+         END IF
+      CASE DEFAULT
+         !-------------------------------------------------------------------------------------
+         ! The requested number of integration points associated with the triangular face 
+         ! cannot be created. Therefore use the given number of points in the third direction
+         ! and generate silently n x n x n rule. 
+         !-----------------------------------------------------------------------------------
+         IF (ConvertToPPrism) THEN
+            p = GaussPointsBrick(n*n*n)
+            DO i=1,p % n
+               uh = p % u(i)
+               vh = p % v(i)
+               wh = p % w(i)
+               sh = p % s(i)
+
+               p % u(i)= 1d0/2*(uh-uh*vh)
+               p % v(i)= SQRT(3d0)/2*(1d0+vh)
+               p % w(i)= wh
+               p % s(i)= sh * SQRT(3d0)*(1-vh)/4
+            END DO
+         ELSE
+            t = 0
+            DO i=1,n
+               DO j=1,n
+                  DO k=1,n
+                     t = t + 1
+                     p % u(t) = Points(k,n)
+                     p % v(t) = Points(j,n)
+                     p % w(t) = Points(i,n)
+                     p % s(t) = Weights(i,n)*Weights(j,n)*Weights(k,n)
+                  END DO
+               END DO
+            END DO
+            p % n = t
+
+            DO i=1,p % n
+               p % v(i) = (p % v(i) + 1)/2
+               p % u(i) = (p % u(i) + 1)/2 * (1 - p % v(i))
+               p % s(i) = p % s(i) * (1-p % v(i))/4
+            END DO
+         END IF
+         RETURN
+      END SELECT
+
+      t = 0
+      DO i=1,m
+         DO j=1,n
+            t = t + 1
+            p % u(t) = uq(i)
+            p % v(t) = vq(i)
+            p % w(t) = Points(j,n)
+            p % s(t) = sq(i)*Weights(j,n)
+         END DO
+      END DO
+      p % n = t
+!------------------------------------------------------------------------------
+    END FUNCTION GaussPointsWedge2
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+!>    Return gaussian integration points for 2D quad element
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsQuad( np ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: np     !< number of points in the requested rule
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+      INTEGER i,j,n,t
+!      INTEGER :: thread, omp_get_thread_num
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!      thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      n = SQRT( REAL(np) ) + 0.5
+
+      ! WRITE (*,*) 'Integration:', n, np 
+
+      IF ( n < 1 .OR. n > MAXN ) THEN
+        p % n = 0
+        WRITE( Message, * ) 'Invalid number of points: ', n
+        CALL Error( 'GaussPointsQuad', Message )
+        RETURN
+      END IF
+
+      t = 0
+      DO i=1,n
+        DO j=1,n
+          t = t + 1
+          p % u(t) = Points(j,n)
+          p % v(t) = Points(i,n)
+          p % s(t) = Weights(i,n)*Weights(j,n)
+        END DO
+      END DO
+      p % n = t
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsQuad
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!>    Return gaussian integration points for 3D brick element for
+!>    composite rule 
+!>    sum_i=1^nx(sum_j=1^ny(sum_k=1^nz w_ijk f(x_{i,j,k},y_{i,j,k},z_{i,j,k}))).
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsPBrick( nx, ny, nz ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: nx    !< number of points in the requested rule in x direction
+      INTEGER :: ny    !< number of points in the requested rule in y direction
+      INTEGER :: nz    !< number of points in the requested rule in z direction
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+      INTEGER i,j,k,t
+!       INTEGER :: thread, omp_get_thread_num
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!       thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      ! Check validity of number of integration points
+      IF ( nx < 1 .OR. nx > MAXN .OR. &
+           ny < 1 .OR. ny > MAXN .OR. &
+           nz < 1 .OR. nz > MAXN) THEN
+        p % n = 0
+        WRITE( Message, * ) 'Invalid number of points: ', nx, ny, nz
+        CALL Error( 'GaussPointsBrick', Message )
+        RETURN
+      END IF
+
+      t = 0
+      DO i=1,nx
+        DO j=1,ny
+          DO k=1,nz
+            t = t + 1
+            p % u(t) = Points(i,nx)
+            p % v(t) = Points(j,ny)
+            p % w(t) = Points(k,nz)
+            p % s(t) = Weights(i,nx)*Weights(j,ny)*Weights(k,nz)
+          END DO
+        END DO
+      END DO
+      p % n = t
+!------------------------------------------------------------------------------
+    END FUNCTION GaussPointsPBrick
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!>    Return gaussian integration points for 3D brick element
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsBrick( np ) RESULT(p)
+!------------------------------------------------------------------------------
+      INTEGER :: np     !< number of points in the requested rule
+      TYPE(GaussIntegrationPoints_t), POINTER :: p
+!------------------------------------------------------------------------------
+      INTEGER i,j,k,n,t
+!      INTEGER :: thread, omp_get_thread_num
+
+      IF ( .NOT. GInit ) CALL GaussPointsInit
+!      thread = 1
+! !$    thread = omp_get_thread_num()+1
+!       p => IntegStuff(thread)
+      p => IntegStuff
+
+      n = REAL(np)**(1.0D0/3.0D0) + 0.5D0
+
+      IF ( n < 1 .OR. n > MAXN ) THEN
+        p % n = 0
+        WRITE( Message, * ) 'Invalid number of points: ', n
+        CALL Error( 'GaussPointsBrick', Message )
+        RETURN
+      END IF
+
+      t = 0
+      DO i=1,n
+        DO j=1,n
+          DO k=1,n
+            t = t + 1
+            p % u(t) = Points(k,n)
+            p % v(t) = Points(j,n)
+            p % w(t) = Points(i,n)
+            p % s(t) = Weights(i,n)*Weights(j,n)*Weights(k,n)
+          END DO
+        END DO
+      END DO
+      p % n = t
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsBrick
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!>    Given element structure return gauss integration points for the element.
+!----------------------------------------------------------------------------------------------
+   FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis, PReferenceElement ) RESULT(IntegStuff)
+!---------------------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE( Element_t ) :: elm   !< Structure holding element description
+     INTEGER, OPTIONAL :: np    !< Number of requested points
+     INTEGER, OPTIONAL :: RelOrder  !< Relative order of Gauss points (-1,0,+1)
+     LOGICAL, OPTIONAL :: EdgeBasis !< For choosing quadrature suitable for edge elements
+     LOGICAL, OPTIONAL :: PReferenceElement !< For switching to the p-version reference element     
+     TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
+!------------------------------------------------------------------------------
+     LOGICAL :: pElement, UsePRefElement
+     INTEGER :: n, eldim, p1d
+     TYPE(ElementType_t), POINTER :: elmt
+!------------------------------------------------------------------------------
+     elmt => elm % TYPE
+
+     IF (PRESENT(EdgeBasis)) THEN
+        IF (EdgeBasis) THEN
+           UsePRefElement = .TRUE.
+           IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
+           IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
+           RETURN
+        END IF
+     END IF
+
+     pElement = isActivePElement(elm)
+
+     IF ( PRESENT(np) ) THEN
+       n = np
+     ELSE IF( PRESENT( RelOrder ) ) THEN
+       IF (pElement) THEN
+         n = elm % PDefs % GaussPoints
+         IF( RelOrder == 0 ) THEN
+           CONTINUE
+         ELSE 
+           eldim = elm % type % dimension
+           p1d = NINT( n**(1.0_dp/eldim) ) + RelOrder
+           IF( p1d < 1 ) THEN
+             CALL Fatal('GaussPoints','Number of integration points must remain positive!')
+           END IF
+           n = p1d**eldim
+         END IF
+       ELSE
+         IF( RelOrder == 0 ) THEN
+           n = elmt % GaussPoints
+         ELSE IF( RelOrder == 1 ) THEN
+           n = elmt % GaussPoints2
+         ELSE IF( RelOrder == -1 ) THEN
+           n = elmt % GaussPoints0
+         ELSE
+           PRINT *,'RelOrder can only be {-1, 0, 1} !'
+         END IF
+       END IF  
+     ELSE
+       IF (pElement) THEN
+         n = elm % PDefs % GaussPoints
+       ELSE
+         n = elmt % GaussPoints
+       END IF
+     END IF
+
+     SELECT CASE( elmt % ElementCode / 100 )
+     CASE (1)
+        IntegStuff = GaussPoints0D(n)
+
+     CASE (2)
+        IntegStuff = GaussPoints1D(n)
+
+     CASE (3)
+        IF (pElement) THEN
+           IntegStuff = GaussPointsPTriangle(n)
+        ELSE    
+           IntegStuff = GaussPointsTriangle(n)
+        END IF
+ 
+     CASE (4)
+        IntegStuff = GaussPointsQuad(n)
+
+     CASE (5)
+        IF (pElement) THEN
+           IntegStuff = GaussPointsPTetra(n)
+        ELSE
+           IntegStuff = GaussPointsTetra(n)
+        END IF
+
+     CASE (6)
+        IF (pElement) THEN
+           IntegStuff = GaussPointsPPyramid(n)
+        ELSE
+           IntegStuff = GaussPointsPyramid(n)
+        END IF
+
+     CASE (7)
+        IF (pElement) THEN
+           IntegStuff = GaussPointsPWedge(n)
+        ELSE 
+           IntegStuff = GaussPointsWedge(n)
+        END IF
+
+     CASE (8)
+        IntegStuff = GaussPointsBrick(n)
+     END SELECT
+
+   END FUNCTION GaussPoints
+
+
+!----------------------------------------------------------------------------------
+!>  Return a suitable version of the Gaussian numerical integration method for
+!>  H(curl)-conforming finite elements. The default here is that the edge basis 
+!>  functions are obtained via calling the function EdgeElementInfo, so that
+!>  the reference element is chosen to be that used for p-approximation. 
+!>  By giving the optional argument PiolaVersion = .FALSE. this function returns
+!>  an alternate (usually smaller) set of integration points on the classic 
+!>  reference element. This option may be useful when the edge basis functions are 
+!>  obtained via calling the alternate subroutine GetEdgeBasis.
+!------------------------------------------------------------------------------
+   FUNCTION EdgeElementGaussPoints(ElementFamily, PiolaVersion) RESULT(IP)
+!------------------------------------------------------------------------------
+     INTEGER :: ElementFamily
+     LOGICAL, OPTIONAL :: PiolaVersion
+     TYPE(GaussIntegrationPoints_t) :: IP
+!------------------------------------------------------------------------------
+     LOGICAL :: PRefElement
+!------------------------------------------------------------------------------
+     PRefElement = .TRUE.
+     IF ( PRESENT(PiolaVersion) ) PRefElement = PiolaVersion
+
+     SELECT CASE(ElementFamily)
+     CASE (1)
+        IntegStuff = GaussPoints0D(1)
+     CASE (2)
+        IntegStuff = GaussPoints1D(2)
+     CASE(3)
+        IP = GaussPointsTriangle(3, PReferenceElement=PRefElement)
+     CASE(4)
+        IF (PRefElement) THEN
+           IP = GaussPointsQuad(9)
+        ELSE
+           IP = GaussPointsQuad(4)
+        END IF
+     CASE(5)
+        IP = GaussPointsTetra(4, PReferenceElement=PRefElement)
+     CASE(6)
+        IF (PRefElement) THEN
+           IP = GaussPointsPPyramid(27)
+        ELSE
+           IP = GaussPointsPyramid(27)
+        END IF
+     CASE(7)
+        IF (PRefElement) THEN
+           IP = GaussPointsWedge2(6,3,PReferenceElement=PRefElement)
+        ELSE
+           IP = GaussPointsWedge2(3,2,PReferenceElement=PRefElement)
+        END IF
+     CASE(8)
+        IF (PRefElement) THEN
+           IP = GaussPointsPBrick(3,3,3)
+        ELSE
+           IP = GaussPointsBrick(8)
+        END IF
+     CASE DEFAULT
+        CALL Fatal('Integration::EdgeElementGaussPoints','Unsupported element type')
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION EdgeElementGaussPoints
+!------------------------------------------------------------------------------
+
+
+!---------------------------------------------------------------------------
+END MODULE Integration
+!---------------------------------------------------------------------------
+
+!> \} ElmerLib

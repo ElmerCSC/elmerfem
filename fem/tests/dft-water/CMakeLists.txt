@@ -1,0 +1,9 @@
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( H2O.sif H2O.sif COPYONLY)
+
+file(COPY ELMERSOLVER_STARTINFO  test.good coarse DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+#This test is defunctional
+#ADD_ELMER_TEST(dft-water)

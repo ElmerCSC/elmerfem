@@ -93,12 +93,12 @@ contains
     use huti_interfaces
     implicit none
 
-    procedure( mv_iface_s ), pointer :: matvecsubr => NULL()
-    procedure( pc_iface_s ), pointer :: pcondlsubr => NULL()
-    procedure( pc_iface_s ), pointer :: pcondrsubr => NULL()
-    procedure( dotp_iface_s ), pointer :: dotprodfun => NULL()
-    procedure( norm_iface_s ), pointer :: normfun => NULL()
-    procedure( stopc_iface_s ), pointer :: stopcfun => NULL()
+    procedure( mv_iface_s ), pointer :: matvecsubr
+    procedure( pc_iface_s ), pointer :: pcondlsubr 
+    procedure( pc_iface_s ), pointer :: pcondrsubr 
+    procedure( dotp_iface_s ), pointer :: dotprodfun 
+    procedure( norm_iface_s ), pointer :: normfun 
+    procedure( stopc_iface_s ), pointer :: stopcfun 
 
     ! Parameters
 
@@ -338,12 +338,12 @@ contains
     use huti_interfaces
     implicit none
 
-    procedure( mv_iface_d ), pointer :: matvecsubr => NULL()
-    procedure( pc_iface_d ), pointer :: pcondlsubr => NULL()
-    procedure( pc_iface_d ), pointer :: pcondrsubr => NULL()
-    procedure( dotp_iface_d ), pointer :: dotprodfun => NULL()
-    procedure( norm_iface_d ), pointer :: normfun => NULL()
-    procedure( stopc_iface_d ), pointer :: stopcfun => NULL()
+    procedure( mv_iface_d ), pointer :: matvecsubr 
+    procedure( pc_iface_d ), pointer :: pcondlsubr 
+    procedure( pc_iface_d ), pointer :: pcondrsubr 
+    procedure( dotp_iface_d ), pointer :: dotprodfun 
+    procedure( norm_iface_d ), pointer :: normfun 
+    procedure( stopc_iface_d ), pointer :: stopcfun 
 
     ! Parameters
 
@@ -583,12 +583,12 @@ contains
     use huti_interfaces
     implicit none
 
-    procedure( mv_iface_c ), pointer :: matvecsubr => NULL()
-    procedure( pc_iface_c ), pointer :: pcondlsubr => NULL()
-    procedure( pc_iface_c ), pointer :: pcondrsubr => NULL()
-    procedure( dotp_iface_c ), pointer :: dotprodfun => NULL()
-    procedure( norm_iface_c ), pointer :: normfun => NULL()
-    procedure( stopc_iface_c ), pointer :: stopcfun => NULL()
+    procedure( mv_iface_c ), pointer :: matvecsubr 
+    procedure( pc_iface_c ), pointer :: pcondlsubr 
+    procedure( pc_iface_c ), pointer :: pcondrsubr 
+    procedure( dotp_iface_c ), pointer :: dotprodfun 
+    procedure( norm_iface_c ), pointer :: normfun 
+    procedure( stopc_iface_c ), pointer :: stopcfun 
 
     ! Parameters
 
@@ -828,12 +828,12 @@ contains
     use huti_interfaces
     implicit none
 
-    procedure( mv_iface_z ), pointer :: matvecsubr => NULL()
-    procedure( pc_iface_z ), pointer :: pcondlsubr => NULL()
-    procedure( pc_iface_z ), pointer :: pcondrsubr => NULL()
-    procedure( dotp_iface_z ), pointer :: dotprodfun => NULL()
-    procedure( norm_iface_z ), pointer :: normfun => NULL()
-    procedure( stopc_iface_z ), pointer :: stopcfun => NULL()
+    procedure( mv_iface_z ), pointer :: matvecsubr 
+    procedure( pc_iface_z ), pointer :: pcondlsubr
+    procedure( pc_iface_z ), pointer :: pcondrsubr 
+    procedure( dotp_iface_z ), pointer :: dotprodfun 
+    procedure( norm_iface_z ), pointer :: normfun 
+    procedure( stopc_iface_z ), pointer :: stopcfun 
 
     ! Parameters
 

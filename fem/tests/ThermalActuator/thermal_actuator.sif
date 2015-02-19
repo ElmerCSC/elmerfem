@@ -17,6 +17,8 @@ Simulation
   
 ! from um:s to m:s
   Coordinate Scaling = 1.0e-6
+
+  Initialize Dirichlet Conditions = False
 End
 
 Body 1
@@ -136,7 +138,7 @@ End
 Boundary Condition 1
   Target Boundaries = 1
   Potential = 0
-  Temperature = 298
+  Temperature = 298.0
   Displacement 1 = 0.0
   Displacement 2 = 0.0
   Displacement 3 = 0.0
@@ -150,6 +152,9 @@ Boundary Condition 2
   Displacement 2 = 0.0
   Displacement 3 = 0.0
 End
+
+Solver 3 :: Reference Norm = Real 6.145282E-07
+Solver 3 :: Reference Norm Tolerance = Real 1.0e-4
 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN

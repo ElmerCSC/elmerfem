@@ -1,5 +1,4 @@
 SUBROUTINE HelmholtzHDIVSolver( Model,Solver,dt,TransientSimulation )
-!DEC$ATTRIBUTES DLLEXPORT :: HelmholtzHDIVSolver
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
@@ -42,7 +41,6 @@ SUBROUTINE HelmholtzHDIVSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------

@@ -1,0 +1,79 @@
+ElmerSolver cmake test case how-to 
+==================================
+Juhani Kataja / CSC, 2014/11
+
+
+The aim of this document is to describe how to create a minimalistic test
+problem using cmake/ctest. There are two ways of creating a test case utilizing
+ctest: from scratch or converting an existing traditional Elmer test. However,
+the latter method is experimental and the resulting test might not work out of
+the box.
+
+
+A. The Instructions for creating a ctest from scratch
+-----------------------------------------------------
+
+1)    Create a subdirectory in "fem/tests/<testname>" named after the test
+
+2)    Define your analysis write your <sifname>.sif file, mesh files, f90-files
+      etc. necessary to run the test analysis ELMERSOLVER_STARTINFO.
+      
+      In order to test a norm resulting from a solver, add the lines
+################################################################################
+Reference Norm = Real <norm>
+Reference Norm Tolerance = Real <tol>
+################################################################################
+      to the <sifname>.sif file inside the solver block to be tested.
+
+      Equivalently, top-level directives
+################################################################################
+Solver N :: Reference Norm = Real <norm>
+Solver N :: Reference Norm Tolerance = Real <tol>
+################################################################################
+      may be used.
+      
+
+3)    Create CMakeLists.txt file in the test directory containing
+################################################################################
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE(<sifname>.sif <sifname>.sif COPYONLY)
+
+ADD_ELMERTEST_MODULE(<testname> <modulename> <modulesource.f90>)
+
+file(COPY ELMERSOLVER_STARTINFO <file2> <file2> ... DESTINATION
+"${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(<testname>)
+################################################################################
+
+4)    Create runtest.cmake containing
+################################################################################
+include(${TEST_SOURCE}/../test_macros.cmake)
+execute_process(COMMAND <command-name> <arg1> <arg2> ...)
+RUN_ELMER_TEST()
+################################################################################
+
+5)    To run the test, compile Elmer and run "ctest -R <testname>" in the build
+      directory (This will run all test matching <testname>)
+
+
+B. Instructions for converting traditional Elmer test case (experimental)
+-------------------------------------------------------------------------
+
+######### Warning. This method is experimental. #########
+
+It is also possible to convert a traditional Elmer test case to utilize ctest
+with the python script "convert_tests.py" residing in "fem/tests". To that
+end, execute
+
+$ python ./convert_tests.py <testname>
+
+in the "fem/tests" directory.
+
+The script assumes that the Solver 1 is tested and modifies the sif-file
+accordingly. If some other solver is to be tested the sif-file must be manually
+edited (see A.2).
+
+

@@ -62,6 +62,7 @@ Boundary Condition 3
   B 2 = Real 10
 End
 
+Solver 1 :: Reference Norm = Real 0.179608284792E-01
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=0.179608284792E-01\n" );

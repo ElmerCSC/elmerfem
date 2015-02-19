@@ -43,12 +43,12 @@ program Compare
   read (parm4,*) n_col_cpu
   call getarg(5,parm5) ! special TARGET
   read (parm5,*) Target_Error
-
-  !Value of the TARGET
-  if (Target_Error > 0) then
-  else
-     Target_Error=1E-6
-  endif
+  
+  if ( Target_Error .LE. 0 .OR. Target_Error .GE. 1 ) then
+        Target_Error=1E-6
+  Endif
+  ! Print TARGET value in file difference.txt
+  print*, "TARGET=", Target_Error
 
   !Concatenation file.txt
   filename1=trim(file1)//'.txt'

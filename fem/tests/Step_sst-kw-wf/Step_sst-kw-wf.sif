@@ -15,7 +15,7 @@ Simulation
   Output Intervals = 1
 
 ! Output File = "Step_small.result"
-  Post File = "Step_small.ep"
+!  Post File = "Step_small.ep"
 End
 
 
@@ -195,6 +195,8 @@ Boundary Condition 3
 End
 
 
+Solver 3 :: Reference Norm = Real 1.503297
+Solver 3 :: Reference Norm Tolerance = Real 1.0e-3
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM= 1.503297,EPS=1.0e-3\n" );

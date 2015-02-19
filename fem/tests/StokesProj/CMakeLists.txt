@@ -1,0 +1,10 @@
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( ns.sif ns.sif COPYONLY)
+ADD_ELMERTEST_MODULE(StokesProj Velocity Velocity.f90)
+ADD_ELMERTEST_MODULE(StokesProj Pressure Pressure.f90)
+
+file(COPY ELMERSOLVER_STARTINFO Step Step.grd Velocity.f90  Pressure.f90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(StokesProj)

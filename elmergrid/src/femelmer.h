@@ -21,9 +21,14 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
 			    int partorder, Real corder[],int info);
 int PartitionSimpleElementsNonRecursive(struct FemType *data,
 					int dimpart[],int dimper[],int info);
+#if PARTMETIS
+int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bound,
+				    int nparts,int metisopt,int info);
+#endif
 int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dimper[],
 				      int info);
-int PartitionConnectedElements1D(struct FemType *data,int partz,int info);
+int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound,
+				 struct ElmergridType *eg, int info);
 int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],
 			 int partorder, Real corder[],int info);
 #if PARTMETIS
@@ -38,6 +43,6 @@ int OptimizePartitioningAtBoundary(struct FemType *data,struct BoundaryType *bou
 int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noopt,
 			 int partbw,int info);
 int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
-			      char *prefix,int decimals,int halo,int indirect,
-			      int parthypre,int info);
+			      char *prefix,int decimals,int halomode,int indirect,
+			      int parthypre,int partlayers,int info);
 

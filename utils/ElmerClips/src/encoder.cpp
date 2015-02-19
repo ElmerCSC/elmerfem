@@ -37,7 +37,12 @@
  *  Original Date: 14 Nov 2010                                               *
  *                                                                           *
  *****************************************************************************/
+#include "config.h"
 #include "encoder.h"
+
+extern "C" {
+#include <libavutil/mem.h>
+}
 
 Encoder::Encoder(QObject *parent) : QThread(parent), quality(2)
 {

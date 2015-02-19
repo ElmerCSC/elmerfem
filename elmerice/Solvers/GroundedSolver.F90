@@ -22,7 +22,7 @@
 ! *****************************************************************************/
 ! ******************************************************************************
 ! *
-! *  Authors: Olivier Gagliardini, Ga¨el Durand
+! *  Authors: Olivier Gagliardini, Gael Durand
 ! *  Email:   
 ! *  Web:     http://elmerice.elmerfem.org
 ! *
@@ -230,11 +230,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
  
 END SUBROUTINE GroundedSolver 
 !------------------------------------------------------------------------------
-
-
 SUBROUTINE GroundedSolverInit( Model,Solver,dt,TransientSimulation )
-
-!DEC$ATTRIBUTES DLLEXPORT :: GroundedSolver
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
@@ -252,150 +248,14 @@ SUBROUTINE GroundedSolverInit( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 
-!------------------------------------------------------------------------------
-! Local variables
-!------------------------------------------------------------------------------
-
-  TYPE(Element_t),POINTER :: Element
-  TYPE(ValueList_t), POINTER :: Material, SolverParams
-  TYPE(Variable_t), POINTER :: PointerToVariable
-  TYPE(Nodes_t), SAVE :: Nodes
-
-  LOGICAL :: stat, FirstTime = .TRUE., GotIt, Quadratic
-
-  INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum
-  INTEGER, POINTER :: Permutation(:)
-
-  REAL(KIND=dp), POINTER :: VariableValues(:)
-  REAL(KIND=dp) :: z, toler
-  REAL(KIND=dp), ALLOCATABLE :: zb(:)
-
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'GroundedSolverInit'
 
-  SAVE DIM, SolverName
-
-  !------------------------------------------------------------------------------
-
-  PointerToVariable => Solver % Variable
-  Permutation  => PointerToVariable % Perm
-  VariableValues => PointerToVariable % Values
-
-  CALL INFO( SolverName , 'Initializing GroundedMask' )
-
-  !--------------------------------------------------------------
-  !Allocate some permanent storage, this is done first time only:
-  !--------------------------------------------------------------
-
-  IF (FirstTime) THEN
-    FirstTime = .FALSE.
-    DIM = CoordinateSystemDimension()
-    mn = Solver % Mesh % MaxElementNodes
-
-    ALLOCATE(zb(mn), STAT=istat)
-
-    IF ( istat /= 0 ) THEN
-      CALL FATAL( SolverName, 'Memory allocation error.' )
-    END IF
-    CALL INFO( SolverName, 'Memory allocation done.',Level=1 )
-
-    SolverParams => GetSolverParams()
-
-    toler = GetConstReal(SolverParams, 'TolerInit', GotIt)
-    IF (.NOT.GotIt) THEN
-      CALL FATAL(SolverName, 'No tolerance given for the Grounded Mask')
-    END IF
-
-    ! quadratic elements or not, not used for now
-    Quadratic = .FALSE.
-    Element => GetActiveElement(1)
-    n = GetElementNOFNodes()
-    IF ( Element % Type % ElementCode/n == 102 ) Quadratic = .TRUE.
-
-    DO t = 1, Solver % NumberOfActiveElements
-      Element => GetActiveElement(t)
-      !IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
-      n = GetElementNOFNodes()
-
-      Material => GetMaterial( Element )
-      zb(1:n) = ListGetReal( Material,'Min Zs Bottom',n , & 
-                   Element % NodeIndexes, GotIt ) + toler
-
-      CALL GetElementNodes( Nodes )
-
-      DO i = 1, n
-        Nn = Permutation(Element % NodeIndexes(i))
-        IF (Nn==0) CYCLE
-
-        IF (DIM == 2) THEN
-          z = Nodes % y( i )
-        ELSE IF (DIM == 3) THEN
-          z = Nodes % z( i )
-        END IF
-
-        ! Geometrical condition:
-        ! if the node is above the bedrock (plus the tolerance)
-        ! then its mask is -1 (floating)
-        ! otherwise it is 1 (grounded)
-        IF (z > zb(i)) THEN
-          VariableValues(Nn) = -1.0_dp
-        ELSE
-          VariableValues(Nn) = 1.0_dp
-        END IF
-
-      END DO
-
-    END DO
-
-    ! attribute zeros to the mask, corresponding to the Grounding Line
-    ! loop over each element:
-    ! if the sum of the element masks is lower than the element number of nodes minus the number of zeros, then each mask equal to 1 is modified to 0
-
-    DO t = 1, Solver % NumberOfActiveElements
-
-      Element => GetActiveElement(t)
-      !IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
-      n = GetElementNOFNodes()
-
-      CALL GetElementNodes( Nodes )
-      MSum = 0
-      ZSum = 0
-
-      DO i = 1, n
-        Nn = Permutation(Element % NodeIndexes(i))
-        IF (Nn==0) CYCLE
-
-        MSum = MSum + VariableValues(Nn)
-        IF (VariableValues(Nn) == 0.0_dp) ZSum = ZSum + 1.0_dp
-
-      END DO
-
-      IF (MSum + ZSum < n) THEN
-        DO i = 1, n
-          Nn = Permutation(Element % NodeIndexes(i))
-          IF (Nn==0) CYCLE
-
-          IF (VariableValues(Nn) == 1.0_dp) THEN
-            VariableValues(Nn) = 0.0_dp
-
-            IF (DIM==2) PRINT *, 'Initial Grounding Line, x', Nodes % x( i )
-            IF (DIM==3) PRINT *, 'Initial Grounding Line, (x,y)', Nodes % x( i ), Nodes % y( i )
-
-          END IF
-        END DO
-      END IF
-
-    END DO
-
-    IF ( ParEnv % PEs>1 ) CALL ParallelSumVector( Solver % Matrix, VariableValues, 1 )
-
-    DEALLOCATE(zb)
-
-    CALL INFO( SolverName , 'Done')
-    
-  END IF
+  CALL FATAL( SolverName, 'This solver is deprecated due to code redundancy, &
+       please GroundedSolver instead' )
 
 !------------------------------------------------------------------------------
 END SUBROUTINE GroundedSolverInit 
 !------------------------------------------------------------------------------
+
 
 

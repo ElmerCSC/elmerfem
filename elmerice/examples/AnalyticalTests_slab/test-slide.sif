@@ -1,0 +1,365 @@
+check keywords warn
+
+echo on
+$namerun = "test-slide"
+
+!defintion of the slab
+$slope = 5.0*pi/180.0
+$H = 200
+$L = 2000
+$beta=0.01
+$temp=-5
+
+
+$ function getArrheniusFactor(Th){ \
+    if (Th<-10) {ArrheniusFactor=3.985E-13 * exp( -60.0E03/(8.314 * (273.15 + Th)));}\
+    else {\
+       if (Th>0) ArrheniusFactor=1.916E03 * exp( -139.0E03/(8.314 *  (273.15)));\
+            else ArrheniusFactor=1.916E03 * exp( -139.0E03/(8.314 *  (273.15 + Th)));}\
+_getArrheniusFactor=ArrheniusFactor*1.0E18*31556926.0;\
+}
+
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 2D 
+  Simulation Type ="Steady"
+
+  Output Intervals = 1
+  Steady State Max Iterations = 1 !20
+  Steady State Min Iterations = 1
+
+  Output File = "$namerun".result"
+  Post File = "$namerun".vtu"
+  max output level = 3
+
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! the ice body
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+Body 2
+  Equation = 2
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Initial Condition 1
+  Velocity 1 = Real 0.0
+  Velocity 2 = Real 0.0
+  Pressure = Real 0.0
+  Depth = Real 0.0
+  Height = Real 0.0
+  Friction Load = Real 0.0
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real MATC "9.81*(31556926.0)^(2.0)* sin(slope)"
+  Flow BodyForce 2 = Real MATC "-9.81*(31556926.0)^(2.0)* cos(slope)"
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! ice material properties in MPa - m - a system 
+Material 1
+
+ Density = Real MATC "910.0*1.0E-06*(31556926.0)^(-2.0)"
+
+ Viscosity Model = String Glen
+ Viscosity = Real 1.0 ! To avoid warning output (should be modified)
+ Glen Exponent = Real 3.0
+ Critical Shear Rate = Real 1.0e-10
+ ! Paterson value in MPa^-3a^-1
+ Limit Temperature = Real -10.0
+ Rate Factor 1 = Real 1.258e13
+ Rate Factor 2 = Real 6.046e28
+ Activation Energy 1 = Real 60e3
+ Activation Energy 2 = Real 139e3
+ Glen Enhancement Factor = Real 1.0
+ Constant Temperature = Real $temp
+
+ pressure_analytic = Variable Coordinate 2
+     Real MATC "910.0*1.0E-06*9.81*(H-tx)*cos(slope)"
+
+
+ velox_analytic = Variable Coordinate 2
+     Real MATC "2.0*(910.0*1.0E-06*9.81*sin(slope))^3.0/4.0*(H^4-(H-tx)^4)*getArrheniusFactor(temp)+1.0/beta*(910.0*1.0E-06*9.81*sin(slope))*H"
+
+
+ sigmaxx1_analytic = Variable Coordinate 2
+     Real MATC "-910.0*1.0E-06*9.81*(H-tx)*cos(slope)"
+ sigmazz2_analytic = Variable Coordinate 2
+     Real MATC "-910.0*1.0E-06*9.81*(H-tx)*cos(slope)"
+ sigmazx4_analytic  = Variable Coordinate 2
+     Real MATC "910.0*1.0E-06*9.81*(H-tx)*sin(slope)"
+
+ strainxz_analytic  = Variable Coordinate 2
+      Real MATC "(910.0*1.0E-06*9.81*sin(slope))^3.0*getArrheniusFactor(temp)*(H-tx)^3"
+
+ strainheat_analytic  = Variable Coordinate 2
+      Real MATC "2*(910.0*1.0E-06*9.81*sin(slope))^4.0*getArrheniusFactor(temp)*(H-tx)^4"
+
+ friction_analytic = Variable Coordinate 2
+     Real MATC "1/beta*(910.0*1.0E-06*9.81*sin(slope)*H)^2"
+
+ Cauchy = Logical True
+End
+
+
+Solver 1
+  Equation = "Flowdepth"
+   Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+   Variable = String "Depth"
+   Variable DOFs = 1
+   Linear System Solver = "Direct"
+   Linear System Direct Method = umfpack
+   ! this sets the direction
+   ! -1 is negative z-direction (upside down)
+   ! +1 is positive (downside up)
+   Gradient = Real -1.0E00
+  ! switch that to True, if you
+  ! want to have free surface gradients
+  ! to be computed
+  !------------------------------------
+  Calc Free Surface = Logical True
+  ! will contain the variable of the corresponding free surface position
+  !---------------------------------------------------------------------
+  Exported Variable 1 = -dofs 1 "FreeSurf"
+  FreeSurf Name = String "FreeSurf"
+End
+ 
+Solver 2
+   Equation = "FlowHeight"
+   Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+   Variable = -dofs 1 "Height"
+   Linear System Solver = "Direct"
+   Linear System Direct Method = umfpack
+   ! this sets the direction
+   ! -1 is negative z-direction (upside down)
+   ! +1 is positive (downside up)
+   Gradient = Real 1.0E00
+   Calc Free Surface = Logical False
+End
+
+Solver 3
+!Exec Solver = Never
+ Equation = "Navier-Stokes"
+  flow model = Stokes
+  Optimize Bandwidth = Logical True
+  Linear System Solver = Direct
+  Linear System Direct Method = "umfpack"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0E-08
+  Linear System Abort Not Converged = False
+  Linear System Preconditioning = "ILU1"
+  Linear System Residual Output = 1
+
+  Steady State Convergence Tolerance = 1.0E-02
+!  Stabilization Method = [Stabilized,P2/P1,Bubbles] 
+  Stabilization Method = Stabilized
+
+  Nonlinear System Convergence Tolerance = 1.0E-05
+  Nonlinear System Max Iterations = 100
+ !switch from Picard to Newton (faster) after either of the following criteria,
+ !at least 2 Picard iterations are necessary
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance =  1.0E-4
+! reset newton to false each new time step
+  Nonlinear System Reset Newton = Logical True
+
+  Nonlinear System Relaxation Factor = 1.00
+
+   Exported Variable 1 = Flow Solution Loads[Fx:1 Fy:1 Fz:1 Res:1]
+   Calculate Loads = Logical True
+End
+
+Solver 4
+  Equation = "SaveMaterials"
+  Exec Solver = After TimeStep
+  Procedure = File "SaveData" "SaveMaterials"
+  Parameter 1 =  String "pressure_analytic"
+  Parameter 2 =  String "velox_analytic"
+  Parameter 3 =  String "sigmazz2_analytic"
+  Parameter 4 =  String "sigmazx4_analytic"
+  Parameter 5 =  String "sigmaxx1_analytic"
+  Parameter 6 =  String "strainxz_analytic"
+  Parameter 7 =  String "strainheat_analytic"
+  Parameter 8 =  String "friction_analytic"
+End
+
+
+Solver 5
+  Equation = String "StressSolver"
+  Procedure =  File "ElmerIceSolvers" "ComputeDevStress"
+  ! this is just a dummy, hence no output is needed
+  !-----------------------------------------------------------------------
+  Variable = -nooutput "Sij"
+  Variable DOFs = 1
+  ! the name of the variable containing the flow solution (U,V,W,Pressure)
+  !-----------------------------------------------------------------------
+  Flow Solver Name = String "Flow Solution"
+  ! no default value anymore for "Stress Variable Name"
+  Stress Variable Name = String "Stress"
+  !-----------------------------------------------------------------------
+  Exported Variable 1 = "Stress" ! [Sxx, Syy, Szz, Sxy] in 2D
+                                 ! [Sxx, Syy, Szz, Sxy, Syz, Szx] in 3D
+  Exported Variable 1 DOFs = 4   ! 4 in 2D, 6 in 3D
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 300
+  Linear System Convergence Tolerance = 1.0E-09
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+End
+
+
+Solver 6
+  Equation = "Strain Rate"
+  Procedure = "ElmerIceSolvers" "ComputeStrainRate"
+! this is just a dummy, hence no output is needed
+!-----------------------------------------------------------------------  
+  Variable = -nooutput "Eij"
+  Variable DOFs = 1
+
+  Exported Variable 1 = "StrainRate"
+  Exported Variable 1 DOFs = 5
+
+! the name of the variable containing the flow solution (U,V,W,Pressure)
+!-----------------------------------------------------------------------
+  Flow Solver Name = String "Flow Solution"
+! the name of the strain-rate solution (default is 'StrainRate')
+  StrainRate Variable Name = String "StrainRate"
+  
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+End
+
+Solver 7
+  Equation = "StrainHeating"
+  Variable = String "StrainHeat"
+  Variable DOFs = 1
+  Procedure = File "ElmerIceSolvers" "getStrainHeating"
+  Nonlinear System Max Iterations = 1
+End
+
+Solver 8
+  Equation = DeformationalHeat
+  Variable = W
+  Variable DOFs = 1
+
+  procedure =  "ElmerIceSolvers" "DeformationalHeatSolver"
+
+  Linear System Solver = direct
+  Linear System direct Method = umfpack
+  
+  Flow Solver Name = String "Flow Solution"
+End
+
+
+Solver 9
+  Equation = "NormalVector" 
+  Exec Solver = Before Simulation
+  Procedure = "ElmerIceSolvers" "ComputeNormalSolver"
+  Variable = String "Normal Vector" 
+  Variable DOFs = 2
+  Optimize Bandwidth = Logical False 
+  ComputeAll = Logical False
+End
+
+
+Solver 10
+ Equation = "SaveBoundaries"
+ Procedure = "SaveData" "SaveBoundaryValues"
+ Variable = String -nooutput dummyvar
+ Variable DOFs = Integer 1
+ Parameter 1 = "Friction Load"
+ Parameter 2 = "Friction Heating"
+End
+
+Solver 11
+    Equation = "ForceToStress"
+    Procedure = File "ElmerIceSolvers" "ForceToStress"
+    Variable = String "Friction HeatingFromLoads"
+    Variable DOFs = 1
+    
+    Force Variable Name = String "Friction Load"
+
+    Linear System Solver = Direct
+    Linear System Direct Method = umfpack
+ End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Equation 1 
+  Active Solvers (9)= 1 2 3 4 5 6 7 8 9
+End
+
+Equation 2
+  Active Solvers (2)= 10 11
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!! BC  Bedrock
+Boundary Condition 1
+  Target Boundaries = 1
+  Body ID = 2
+
+  Normal-Tangential Velocity = Logical True
+  Velocity 1 = Real 0.0
+  Slip Coefficient 2 = $beta
+
+  Height = Real 0.0
+
+  Friction Heating = Variable Coordinate 1
+       Real Procedure "ElmerIceUSF" "getFrictionHeat"
+  ComputeNormal = Logical True !needed for ComputeNormal
+
+  Friction Load = Variable Velocity 1                
+       Real Procedure "ElmerIceUSF" "getfrictionloads"
+
+End
+
+!!! BC outflow
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4
+  Periodic BC Translate(2) = Real $L 0.0
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Pressure = Logical True
+  Periodic BC Friction Heating = Logical True
+  Periodic BC Friction HeatingFromLoads = Logical True
+  Periodic BC Friction Load = Logical True
+  Periodic BC Stress = Logical True
+  Periodic BC Normal = Logical True
+  Periodic BC StrainHeat = Logical True
+End
+
+!!! BC  Free surface Top
+Boundary Condition 3
+  Target Boundaries = 3 
+  Pressure = Real 0.0
+  Depth = Real 0.0
+End
+
+!!! BC inflow
+Boundary Condition 4
+  Target Boundaries = 4
+End

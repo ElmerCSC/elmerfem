@@ -58,6 +58,7 @@ Boundary Condition 1
   Poison = Real 1.0
 End
 
+Solver 1 :: Reference Norm = Real 0.426963082339
 $ fprintf( stderr, "TEST CASE 1\n" );
 RUN
 $ fprintf( stderr, "END TEST CASE 1, Target NRM=0.426963082339\n ");

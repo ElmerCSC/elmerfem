@@ -2,7 +2,6 @@
 ! due to a time harmonic vertical field B_ac = B0 sin(wt) e_y
 
 FUNCTION appliedB( model,n,t ) RESULT(c1)
-!DEC$ATTRIBUTES DLLEXPORT :: applied_B
    USE types
 
    TYPE(model_t) :: model
@@ -16,7 +15,6 @@ FUNCTION appliedB( model,n,t ) RESULT(c1)
  END FUNCTION appliedB
 
 FUNCTION applieddBdt( model,n,t ) RESULT(c2)
-!DEC$ATTRIBUTES DLLEXPORT :: applied_dBdt
    USE types
 
    TYPE(model_t) :: model

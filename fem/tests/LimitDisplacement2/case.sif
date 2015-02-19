@@ -43,6 +43,7 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-8
   Nonlinear System Convergence Tolerance = 1.0e-8
   Nonlinear System Max Iterations = 30
+  Nonlinear System Min Iterations = 2
 
   Linear System Solver = Iterative
   Linear System Iterative Method = "BiCGStabl"
@@ -65,8 +66,6 @@ Solver 2
   Output Format = Vtu
 
   Exec Solver = never
-!After Simulation  
-!  Save Geometry Ids = True
 End
 
 
@@ -104,6 +103,7 @@ Boundary Condition 3
 End
 
 
+Solver 1 :: Reference Norm = Real 0.13114840
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
 $fprintf( stderr,"END TEST CASE 1: Target NRM= 0.13114840\n");

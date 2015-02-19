@@ -1,4 +1,4 @@
-in<?xml version='1.0' encoding='UTF-8'?>
+<?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE edf>
 <edf version="1.0" >
    <PDE Name="MgDyn" >
@@ -104,12 +104,12 @@ in<?xml version='1.0' encoding='UTF-8'?>
 
       <Solver>
 	     <Parameter Widget="Label" > <Name> A-V formulation solver </Name> </Parameter>
-         <Parameter Widget="Edit" Enabled="False">
+         <Parameter Widget="Edit" Enabled="True">
            <Name> Procedure </Name>
            <DefaultValue> "MagnetoDynamics" "WhitneyAVSolver" </DefaultValue>
          </Parameter>
 	     <Parameter Widget="Label" > <Name> Variable for vector (and scalar) potential </Name> </Parameter>
-	 <Parameter Widget="Edit" Enabled="False">
+	 <Parameter Widget="Edit" Enabled="True">
            <Name> Variable </Name>
            <DefaultValue> AV </DefaultValue>
 	   <Whatis>Variable for vector (and scalar) potential(s)</Whatis>
@@ -227,13 +227,13 @@ in<?xml version='1.0' encoding='UTF-8'?>
 
       <Solver>
 	<Parameter Widget="Label" > <Name> MagnetoDynamics field computation </Name> </Parameter>
-	<Parameter Widget="Edit" Enabled="False">
+	<Parameter Widget="Edit" Enabled="True">
 	  <Name> Procedure </Name>
 	  <DefaultValue> "MagnetoDynamics" "MagnetoDynamicsCalcFields" </DefaultValue>
 	</Parameter>
 
 	<Parameter Widget="Label" > <Name> Target Variable </Name> </Parameter>
-	<Parameter Widget="Edit" Enabled="False">
+	<Parameter Widget="Edit" Enabled="True">
 	  <Name> Potential Variable </Name>
 	  <DefaultValue> AV </DefaultValue>
 	  <Whatis> Name of the vector (and scalar) potential field to apply the postprocessing computation. </Whatis>
