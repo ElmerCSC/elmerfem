@@ -1,11 +1,7 @@
 elmerfem
 ========
 
-This is the Git repository for Elmer FEM software suite. Elmer is undergoing a
-transition from SVN to Git and this repository is not yet in official use. The
-official repository is still hosted at http://sf.net/projects/elmerfem. The
-final step in the transition is expected to take place in 9/2014 and will be
-separately publicized. 
+This is the official source code repository for the Elmer FEM software suite. 
 
 Elmer is a finite element software for numerical solution of partial
 differential equations. Elmer is capable of handling any number of equations
