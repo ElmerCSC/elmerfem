@@ -7698,6 +7698,11 @@ END FUNCTION SearchNodeL
           A % ConstraintMatrix => Btmp
         END IF
       END IF
+
+      IF( ListGetLogical( Solver % Values,'Save Constraint Matrix',Found ) ) THEN
+        CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm')
+      END IF
+
       CALL SolveWithLinearRestriction( A,b,x,Norm,DOFs,Solver )
 
       IF ( ASSOCIATED(Btmp) ) THEN
