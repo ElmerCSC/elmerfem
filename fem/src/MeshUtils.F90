@@ -8212,22 +8212,31 @@ END SUBROUTINE GetMaxDefs
 
   ! Save projector, mainly a utility for debugging purposes
   !--------------------------------------------------------
-  SUBROUTINE SaveProjector(Projector,SaveRowSum)
+  SUBROUTINE SaveProjector(Projector,SaveRowSum,Prefix)
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: SaveRowSum 
+    CHARACTER(LEN=*), OPTIONAL :: Prefix
 
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename, IntPrefix
     INTEGER :: i,j,This
     REAL(KIND=dp) :: rowsum, dia
 
     This = Projector % ProjectorBC
 
-    IF(ParEnv % PEs == 1 ) THEN
-      OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
+    IF( PRESENT( Prefix ) ) THEN
+      IntPrefix = TRIM( Prefix ) 
     ELSE
-      OPEN(1,FILE='p'//TRIM(I2S(This))//'_part'//&
-          TRIM(I2S(ParEnv % MyPe))//'.dat',STATUS='Unknown')
+      IntPrefix = 'p'
     END IF
     
+    IF(ParEnv % PEs == 1 ) THEN
+      FileName = TRIM(Prefix)//TRIM(I2S(This))//'.dat'
+    ELSE
+      FileName = TRIM(Prefix)//TRIM(I2S(This))//'_part'//&
+          TRIM(I2S(ParEnv % MyPe))//'.dat'
+    END IF
+
+    OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
       rowsum = 0.0_dp
       DO j=projector % rows(i), projector % rows(i+1)-1
@@ -8245,12 +8254,13 @@ END SUBROUTINE GetMaxDefs
 
     IF( SaveRowSum ) THEN
       IF(ParEnv % PEs == 1 ) THEN
-        OPEN(1,FILE='rsum'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
+        FileName = TRIM(Prefix)//TRIM(I2S(This))//'_rsum.dat'
       ELSE
-        OPEN(1,FILE='rsum'//TRIM(I2S(This))//'_part'//&
-            TRIM(I2S(ParEnv % MyPe))//'.dat',STATUS='Unknown')
+        FileName = TRIM(Prefix)//TRIM(I2S(This))//'_rsum_part'//&
+            TRIM(I2S(ParEnv % MyPe))//'.dat'
       END IF
       
+      OPEN(1,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
         rowsum = 0.0_dp
         DO j=projector % rows(i), projector % rows(i+1)-1

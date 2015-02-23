@@ -117,7 +117,6 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
  
   DO t = 1, Solver % Mesh % NumberOfBoundaryElements
     Element => GetBoundaryElement(t)
-    IF (ParEnv % myPe .NE. Element % partIndex) CYCLE
     n = GetElementNOFNodes(Element)
     BC => GetBC(Element)
     IF (n == 1) CYCLE

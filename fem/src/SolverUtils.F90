@@ -4109,6 +4109,9 @@ CONTAINS
            IF ( k > 0 ) THEN
              IF ( DOF>0 ) THEN
                k = NDOFs * (k-1) + DOF
+               IF( ParEnv % Pes > 1 ) THEN
+                  IF(  A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) CYCLE
+               END IF
                b(k) = b(k) + Work(j) * DiagScaling(k)
              ELSE
                DO l=1,MIN( NDOFs, SIZE(Worka,1) )
@@ -8049,6 +8052,68 @@ END FUNCTION SearchNodeL
     ConstrainedSolve = ParallelReduction(ConstrainedSolve*1._dp)
 
     IF ( ConstrainedSolve > 0 ) THEN
+
+      ! if there are several constraint matrices unify:
+      ! -----------------------------------------------
+      Btmp => NULL()
+      Atmp => A % ConstraintMatrix
+      IF(ASSOCIATED(atmp)) THEN
+        IF ( ASSOCIATED(Atmp % ConstraintMatrix) ) THEN
+          nrows = 0
+          ncols = 0
+          DO WHILE(ASSOCIATED(Atmp))
+            nrows = nrows + Atmp % NumberOfRows
+            ncols = ncols + SIZE(Atmp % Cols)
+            Atmp => Atmp % ConstraintMatrix
+          END DO
+
+          Btmp => AllocateMatrix()
+          ALLOCATE( Btmp % RHS(nrows), Btmp % Rows(nrows+1), &
+              Btmp % Cols(ncols), Btmp % Values(ncols) )
+          Btmp % NumberOFRows = nrows
+          ALLOCATE(Btmp % InvPerm(nrows)); Btmp % InvPerm=0
+
+          Atmp => A % ConstraintMatrix
+          k = 0
+          m = 0
+          n = 1
+          rowoffset = 0
+          Btmp % Rows(n) = 1
+          DO WHILE(ASSOCIATED(Atmp))
+            DO i=1,Atmp % NumberOfRows
+              Btmp % RHS(n)=Atmp % RHS(i)
+
+              IF(ASSOCIATED(Atmp % Invperm)) THEN
+                Btmp % InvPerm(n) = Atmp % InvPerm(i) + m * A % NumberOfRows
+              END IF
+
+              DO j=Atmp % Rows(i),Atmp % Rows(i+1)-1
+                k = k + 1
+                colsj = Atmp % Cols(j)
+
+                ! This is an entry related to the Lagrange coefficient
+                ! that must be manipulated if the row index is changed.
+                IF( colsj > A % NumberOfRows) colsj = colsj + rowoffset
+
+                Btmp % Cols(k)   = colsj
+                Btmp % Values(k) = Atmp % Values(j)
+              END DO
+              n = n + 1
+              Btmp % Rows(n) = k + 1
+            END DO
+            rowoffset = rowoffset + Atmp % NumberOfRows
+            m = m + 1
+            Atmp => Atmp % ConstraintMatrix
+          END DO
+          Atmp => A % ConstraintMatrix
+          A % ConstraintMatrix => Btmp
+        END IF
+      END IF
+
+      IF( ListGetLogical( Solver % Values,'Save Constraint Matrix',Found ) ) THEN
+        CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm')
+      END IF
+
       CALL SolveWithLinearRestriction( A,b,x,Norm,DOFs,Solver )
     ELSE
       CALL SolveLinearSystem( A,b,x,Norm,DOFs,Solver )

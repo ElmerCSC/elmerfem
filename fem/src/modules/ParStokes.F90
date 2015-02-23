@@ -35,7 +35,6 @@
 
 
 SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
-!DEC$ATTRIBUTES DLLEXPORT :: StokesSolver
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
@@ -74,7 +73,6 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------

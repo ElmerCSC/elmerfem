@@ -1,5 +1,4 @@
 SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
-!DEC$ATTRIBUTES DLLEXPORT :: PoissonSolver
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
@@ -190,7 +189,6 @@ END SUBROUTINE PoissonSolver
 
 !------------------------------------------------------------------------------
 FUNCTION CircX(Model,x,y,z) RESULT(s)
-!DEC$ATTRIBUTES DLLEXPORT :: CircX
 !------------------------------------------------------------------------------
   USE Types
   TYPE(Model_t) :: Model
@@ -205,7 +203,6 @@ END FUNCTION CircX
 
 !------------------------------------------------------------------------------
 FUNCTION CircY(Model,x,y,z) RESULT(s)
-!DEC$ATTRIBUTES DLLEXPORT :: CircY
 !------------------------------------------------------------------------------
   USE Types
   TYPE(Model_t) :: Model

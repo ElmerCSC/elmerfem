@@ -1,5 +1,4 @@
 SUBROUTINE PressureSolver( Model,Solver,dt,TransientSimulation )
-!DEC$ATTRIBUTES DLLEXPORT :: PressureSolver
 !------------------------------------------------------------------------------
 !******************************************************************************
 !

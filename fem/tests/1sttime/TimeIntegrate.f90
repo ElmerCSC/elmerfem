@@ -1,5 +1,4 @@
 SUBROUTINE TimeIntTest( Model,Solver,dt,TransientSimulation )
-!DEC$ATTRIBUTES DLLEXPORT :: TimeIntTest
   USE DefUtils
 
   IMPLICIT NONE
