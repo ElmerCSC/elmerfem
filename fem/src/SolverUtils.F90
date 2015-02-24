@@ -2149,6 +2149,7 @@ CONTAINS
        END IF
      END DO
      DEALLOCATE( DonePeriodic ) 
+
    END IF
 
 ! Add the possible friction coefficient
@@ -3243,20 +3244,31 @@ CONTAINS
       
     ELSE IF ( ListGetLogical( BC, &
         'Periodic BC Use Lagrange Coefficient', Found ) ) THEN
-      
+
       Jump = ListCheckPresent( BC, &
           'Periodic BC Coefficient '//Name(1:nlen))
       
       IF( .NOT. ASSOCIATED( Model % Solver % MortarBCs ) ) THEN
+        CALL Info('SetPeriodicBoundariesPass1',&
+            'Allocating mortar BCs for solver',Level=5)
         ALLOCATE( Model % Solver % MortarBCs( Model % NumberOfBCs ) )
         DO i=1, Model % NumberOfBCs
           Model % Solver % MortarBCs(i) % Projector => NULL()
         END DO
       END IF
       
-      Model % Solver % MortarBCs(This) % Projector => Projector
-      MortarBC => Model % Solver % MortarBCs(This)
+      IF( ASSOCIATED( Projector, &
+          Model % Solver % MortarBCs(This) % Projector) ) THEN
+        CALL Info('SetPeridociBoundariesPass1','Using existing projector: '&
+            //TRIM(I2S(This)),Level=8)
+        RETURN
+      END IF
       
+      Model % Solver % MortarBCs(This) % Projector => Projector
+      CALL Info('SetPeridociBoundariesPass1','Using projector as mortar constraint: '&
+          //TRIM(I2S(This)),Level=5)
+
+      MortarBC => Model % Solver % MortarBCs(This)      
       IF( Jump ) THEN
         IF( ASSOCIATED( MortarBC % Diag ) ) THEN
           IF( SIZE( MortarBC % Diag ) < NDofs * Projector % NumberOfRows ) THEN
@@ -3306,7 +3318,7 @@ CONTAINS
       
       ! We can use directly the nodal projector
       MortarBC % Projector => Projector
-      MortarBC % SlaveScale = -Scale 
+      MortarBC % SlaveScale = -Scale
       MortarBC % MasterScale = -1.0_dp
  
       IF( Jump ) THEN
@@ -3322,15 +3334,19 @@ CONTAINS
           IF ( k<=0 ) CYCLE
           
           ! Add the diagonal unity projector (scaled)
-          weight = WeightVar % Values( k )
+          weight = WeightVar % Values( PPerm( k ) )
           coeff = ListGetRealAtNode( BC,'Periodic BC Coefficient '&
-              //Name(1:nlen),k, Found )
-          
+              //Name(1:nlen), k, Found )
+
           ! For Nodal projector the entry is 1/(weight*coeff)
           ! For Galerkin projector the is weight/coeff 
-          MortarBC % Diag( NDOFS* (k-1) + DOF ) = 1.0_dp / ( weight * coeff ) 
+          IF( Found ) THEN
+            MortarBC % Diag( NDOFS* (i-1) + DOF ) = 1.0_dp / ( weight * coeff ) 
+          END IF
         END DO
       END IF
+
+      Model % Solver % MortarBCsChanged = .TRUE.
       
     ELSE
 
@@ -3748,6 +3764,8 @@ CONTAINS
            IF( NodeDone( i ) ) CYCLE
            NodeDone( i ) = .TRUE. 
 
+           Found = .FALSE.
+
            IF( AddCoeff ) THEN
              coeff = ListGetRealAtNode( BC,'Mortar BC Coefficient '&
                  //Name(1:nlen),node, Found )        
@@ -3761,14 +3779,18 @@ CONTAINS
 
            ! For Nodal projector the entry is 1/(weight*coeff)
            ! For Galerkin projector the is weight/coeff 
-           IF( AddCoeff .OR. Addres ) THEN
-             MortarBC % Diag(NDOFs*(i-1)+DOF) = -res
+           IF( Found ) THEN 
+             IF( AddCoeff .OR. Addres ) THEN
+               MortarBC % Diag(NDOFs*(i-1)+DOF) = -res
+             END IF
            END IF
 
            IF( AddRhs ) THEN
              voff = ListGetRealAtNode( BC,'Mortar BC Offset '&
                  //Name(1:nlen),node, Found )        
-             MortarBC % Rhs(NDofs*(i-1)+DOF) = voff
+             IF( Found ) THEN
+               MortarBC % Rhs(NDofs*(i-1)+DOF) = voff
+             END IF
            END IF
 
          END DO
@@ -8052,64 +8074,6 @@ END FUNCTION SearchNodeL
     ConstrainedSolve = ParallelReduction(ConstrainedSolve*1._dp)
 
     IF ( ConstrainedSolve > 0 ) THEN
-
-      ! if there are several constraint matrices unify:
-      ! -----------------------------------------------
-      Btmp => NULL()
-      Atmp => A % ConstraintMatrix
-      IF(ASSOCIATED(atmp)) THEN
-        IF ( ASSOCIATED(Atmp % ConstraintMatrix) ) THEN
-          nrows = 0
-          ncols = 0
-          DO WHILE(ASSOCIATED(Atmp))
-            nrows = nrows + Atmp % NumberOfRows
-            ncols = ncols + SIZE(Atmp % Cols)
-            Atmp => Atmp % ConstraintMatrix
-          END DO
-
-          Btmp => AllocateMatrix()
-          ALLOCATE( Btmp % RHS(nrows), Btmp % Rows(nrows+1), &
-              Btmp % Cols(ncols), Btmp % Values(ncols) )
-          Btmp % NumberOFRows = nrows
-          ALLOCATE(Btmp % InvPerm(nrows)); Btmp % InvPerm=0
-
-          Atmp => A % ConstraintMatrix
-          k = 0
-          m = 0
-          n = 1
-          rowoffset = 0
-          Btmp % Rows(n) = 1
-          DO WHILE(ASSOCIATED(Atmp))
-            DO i=1,Atmp % NumberOfRows
-              Btmp % RHS(n)=Atmp % RHS(i)
-
-              IF(ASSOCIATED(Atmp % Invperm)) THEN
-                Btmp % InvPerm(n) = Atmp % InvPerm(i) + m * A % NumberOfRows
-              END IF
-
-              DO j=Atmp % Rows(i),Atmp % Rows(i+1)-1
-                k = k + 1
-                colsj = Atmp % Cols(j)
-
-                ! This is an entry related to the Lagrange coefficient
-                ! that must be manipulated if the row index is changed.
-                IF( colsj > A % NumberOfRows) colsj = colsj + rowoffset
-
-                Btmp % Cols(k)   = colsj
-                Btmp % Values(k) = Atmp % Values(j)
-              END DO
-              n = n + 1
-              Btmp % Rows(n) = k + 1
-            END DO
-            rowoffset = rowoffset + Atmp % NumberOfRows
-            m = m + 1
-            Atmp => Atmp % ConstraintMatrix
-          END DO
-          Atmp => A % ConstraintMatrix
-          A % ConstraintMatrix => Btmp
-        END IF
-      END IF
-
       IF( ListGetLogical( Solver % Values,'Save Constraint Matrix',Found ) ) THEN
         CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm')
       END IF
@@ -9356,7 +9320,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           WRITE( Message,'(A,I0,A)') 'Multiplying component ',k,' of the rhs with > '//TRIM(VarName)//' <'
           CALL Info('LinearSystemMultiply',Message, Level=6 )
 
-          PRINT *,'Range:',Mode,MINVAL(CoeffVar % Values),MAXVAL(CoeffVar % Values)
+          !PRINT *,'Range:',Mode,MINVAL(CoeffVar % Values),MAXVAL(CoeffVar % Values)
         END IF
       END IF
       IF( Mode == 0 ) CYCLE
@@ -9827,6 +9791,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   END SUBROUTINE FCT_Correction
 
 
+  ! Create Linear constraints from mortar BCs:
+  ! -------------------------------------------   
   SUBROUTINE GenerateProjectors(Model,Solver,Nonlinear,SteadyState) 
     
      TYPE(Model_t) :: Model
@@ -9835,15 +9801,15 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
      LOGICAL :: IsNonlinear,IsSteadyState
      LOGICAL :: ApplyMortar, Found
-     INTEGER :: i,j,k,l,n,dsize,size0,col,row
+     INTEGER :: i,j,k,l,n,dsize,size0,col,row,dim
      TYPE(ValueList_t), POINTER :: BC
      TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
 
-     ! Linear constraints from mortar BCs:
-     ! -----------------------------------
      ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
      IF( .NOT. ApplyMortar ) RETURN
      
+     CALL Info('GenerateProjector','Generating mortar projectors',Level=8)
+
      IsNonlinear = .FALSE.
      IF( PRESENT( Nonlinear ) ) IsNonlinear = Nonlinear
      IsSteadyState = .NOT. IsNonlinear
@@ -9855,6 +9821,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        END DO
      END IF
      
+     dim = CoordinateSystemDimension()
+
      DO i=1,Model % NumberOFBCs
        BC => Model % BCs(i) % Values
        
@@ -9870,7 +9838,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        END IF
        
        Solver % MortarBCs(i) % Projector => &
-           PeriodicProjector(Model,Solver % Mesh,i,j,CoordinateSystemDimension(),.TRUE.)
+           PeriodicProjector(Model,Solver % Mesh,i,j,dim,.TRUE.)
        
        IF( ASSOCIATED( Solver % MortarBCs(i) % Projector ) ) THEN
          Solver % MortarBCsChanged = .TRUE.
@@ -9893,12 +9861,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      TYPE(Solver_t) :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2
+     INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2
      TYPE(Matrix_t), POINTER :: Atmp,Btmp
-     LOGICAL :: AllocationsDone, CreateSelf
+     LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix
      TYPE(ValueList_t), POINTER :: BC
      TYPE(MortarBC_t), POINTER :: MortarBC
      REAL(KIND=dp) :: wsum, Scale
+     INTEGER :: rowoffset, arows
 
      IF( .NOT. Solver % MortarBCsChanged ) RETURN
      
@@ -9921,30 +9890,44 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      permsize = SIZE( Perm )
      maxperm  = MAXVAL( Perm )
      AllocationsDone = .FALSE.
+     arows = Solver % Matrix % NumberOfRows
+
+     ComplexMatrix = Solver % Matrix % Complex
+     IF( ComplexMatrix ) THEN
+       IF( MODULO( Dofs,2 ) /= 0 ) CALL Fatal('GenerateConstraintMatrix',&
+           'Complex matrix should have even number of components!')
+     END IF
+
+     ! Currently complex matrix is enforced if there is an even number of 
+     ! entries since it seems that we cannot rely on the flag to be set.
+     ComplexMatrix = ( MODULO( Dofs,2 ) == 0 )
+
 
 100  row = 1
      k2 = 0
+     rowoffset = 0
 
-     DO bc_ind=1,Model % NumberOFBCs
+     DO bc_ind=Model % NumberOFBCs,1,-1
 
        MortarBC => Solver % MortarBCs(bc_ind) 
        Atmp => MortarBC % Projector
        IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
 
-        IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
+       IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
          CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
        END IF
 
        ! If the projector is of type x_s=P*x_m then generate a constraint matrix
        ! of type [D-P]x=0.
        CreateSelf = ( Atmp % ProjectorType == PROJECTOR_TYPE_NODAL ) 
-
-       PRINT *,'Including projector matrix:',bc_ind,Dofs,CreateSelf
-
+       
+       !PRINT *,'Including projector matrix:',&
+       !    bc_ind,Dofs,CreateSelf,ComplexMatrix,&
+       !    ASSOCIATED(MortarBC % Diag)
 
        IF( Dofs == 1 ) THEN         
          DO i=1,Atmp % NumberOfRows           
-           
+
            ! If the mortar boundary is not active at this round don't apply it
            IF( ASSOCIATED( MortarBC % Active ) ) THEN
              IF( .NOT. MortarBC % Active(i) ) CYCLE
@@ -9956,7 +9939,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
            IF( Perm(k) == 0 ) CYCLE
              
            IF( AllocationsDone ) THEN
-             Btmp % InvPerm(row) = Perm( k ) 
+             Btmp % InvPerm(row) = rowoffset + Perm( k ) 
            END IF
 
            wsum = 0.0_dp
@@ -9978,11 +9961,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
                IF( CreateSelf ) THEN
                  ! We want to create [D-P] hence the negative sign
-                 Scale = -MortarBC % MasterScale
+                 Scale = MortarBC % MasterScale
                  wsum = wsum + Atmp % Values(k)
                ELSE IF( ASSOCIATED( MortarBC % Perm ) ) THEN
                  ! Look if the component refers to the slave
-                 IF( MortarBC % Perm( col2 ) > 0 ) THEN
+                 IF( MortarBC % Perm( col ) > 0 ) THEN
                    Scale = MortarBC % SlaveScale 
                    wsum = wsum + Atmp % Values(k) 
                  ELSE
@@ -10011,14 +9994,41 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
            ! Add a diagonal entry if requested. When this is done at the final stage
            ! all the hazzle with the right column index is easier. 
            IF( ASSOCIATED( MortarBC % Diag ) ) THEN
-             k2 = k2 + 1             
-             IF( AllocationsDone ) THEN
-               Btmp % Cols(k2) = maxperm + row
-               ! The factor 0.5 comes from the fact that the 
-               ! contribution is summed twice, 2nd time as transpose
-               ! For Nodal projector the entry is 1/(weight*coeff)
-               ! For Galerkin projector the is weight/coeff 
-               Btmp % Values(k2) = 0.5_dp * wsum * MortarBC % Diag(i)
+             IF( MortarBC % LumpedDiag ) THEN
+               k2 = k2 + 1             
+               IF( AllocationsDone ) THEN
+                 Btmp % Cols(k2) = i + arows + rowoffset 
+                 ! The factor 0.5 comes from the fact that the 
+                 ! contribution is summed twice, 2nd time as transpose
+                 ! For Nodal projector the entry is 1/(weight*coeff)
+                 ! For Galerkin projector the is weight/coeff 
+                 Btmp % Values(k2) = -0.5_dp * MortarBC % Diag(i) ! * wsum
+               END IF
+             ELSE
+               DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
+                 col = Atmp % Cols(k) 
+                 
+                 IF( col > permsize ) CYCLE
+                 col2 = Perm(col)
+
+                 IF( CreateSelf ) THEN
+                   Scale = -MortarBC % MasterScale
+                 ELSE 
+                   IF( MortarBC % Perm( col ) > 0 ) THEN
+                     Scale = MortarBC % SlaveScale 
+                   ELSE
+                     CYCLE                     
+                   END IF
+                 END IF
+
+                 k2 = k2 + 1
+                 IF( AllocationsDone ) THEN                   
+                   Btmp % Cols(k2) = MortarBC % Perm( col ) + arows + rowoffset
+                   Btmp % Values(k2) = -0.5_dp * Atmp % Values(k) * &
+                       MortarBC % Diag(i) 
+                 END IF
+               END DO
+              
              END IF
            END IF
 
@@ -10037,14 +10047,27 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
          DO i=1,Atmp % NumberOfRows           
            DO j=1,Dofs
              
+             ! For complex matrices both entries mist be created
+             ! since preconditioning benefits from 
+             IF( ComplexMatrix ) THEN
+               IF( MODULO( j, 2 ) == 0 ) THEN
+                 j2 = j-1
+               ELSE 
+                 j2 = j+1
+               END IF
+             ELSE
+               j2 = 0
+             END IF
+
              IF( ASSOCIATED( MortarBC % Active ) ) THEN
                IF( .NOT. MortarBC % Active(Dofs*(i-1)+j) ) CYCLE
              END IF
                           
              k = Atmp % InvPerm(i)
              IF( Perm(k) == 0 ) CYCLE
+
              IF( AllocationsDone ) THEN
-               Btmp % InvPerm(row) = Dofs * ( Perm( k ) - 1 ) + j
+               Btmp % InvPerm(row) = rowoffset + Dofs * ( Perm( k ) - 1 ) + j
              END IF
 
              wsum = 0.0_dp
@@ -10065,10 +10088,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                IF( AllocationsDone ) THEN
                  
                  IF( CreateSelf ) THEN
-                   Scale = -MortarBC % MasterScale
+                   Scale = MortarBC % MasterScale
                    wsum = wsum + Atmp % Values(k)
-                 ELSE IF( MortarBC % Perm( col ) > 0 ) THEN
-                   IF( MortarBC % Perm( col2 ) > 0 ) THEN
+                 ELSE IF( ASSOCIATED( MortarBC % Perm ) ) THEN
+                   IF( MortarBC % Perm( col ) > 0 ) THEN
                      Scale = MortarBC % SlaveScale 
                      wsum = wsum + Atmp % Values(k) 
                    ELSE
@@ -10092,14 +10115,46 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                END IF
              END IF
              
-             IF( ASSOCIATED( MortarBC % Diag ) ) THEN
-               k2 = k2 + 1
-               IF( AllocationsDone ) THEN
-                 Btmp % Cols(k2) = maxperm + row
-                 Btmp % Values(k2) = 0.5_dp * wsum * MortarBC % Diag(Dofs*(i-1)+j)
+             ! Create the imaginary part (real part) corresponding to the 
+             ! real part (imaginary part) of the projector. 
+             IF( j2 /= 0 ) THEN
+               DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1             
+
+                 col = Atmp % Cols(k)                
+                 
+                 IF( col <= permsize ) THEN
+                   col2 = Perm(col)
+                   IF( col2 == 0 ) CYCLE
+                 END IF
+                 
+                 k2 = k2 + 1
+                 IF( AllocationsDone ) THEN
+                   Btmp % Cols(k2) = Dofs * ( col2 - 1) + j2
+                 END IF
+               END DO
+
+               IF( CreateSelf ) THEN
+                 k2 = k2 + 1
+                 IF( AllocationsDone ) THEN
+                   Btmp % Cols(k2) = Dofs * ( Perm( Atmp % InvPerm(i) ) -1 ) + j2
+                 END IF
                END IF
              END IF
 
+            
+             IF( ASSOCIATED( MortarBC % Diag ) ) THEN
+               IF( MortarBC % LumpedDiag ) THEN
+                 k2 = k2 + 1
+                 IF( AllocationsDone ) THEN
+                   Btmp % Cols(k2) = row + arows + rowoffset 
+                   Btmp % Values(k2) = 0.5_dp * wsum * MortarBC % Diag(Dofs*(i-1)+j)
+                 END IF
+               ELSE
+                 CALL Fatal('GenerateConstraintMatrix','Diagonal assumed to be lumped!')
+               END IF
+             END IF
+
+               
              IF( AllocationsDone ) THEN
                IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
                  Btmp % Rhs(row) = wsum * MortarBC % rhs(Dofs*(i-1)+j)
@@ -10110,13 +10165,17 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
              row = row + 1
            END DO
          END DO
-       END IF       
+       END IF
+
+       rowoffset = rowoffset + Arows
      END DO
 
      ! Allocate the united matrix of all the boundary matrices
      !-------------------------------------------------------
      IF( .NOT. AllocationsDone ) THEN
-       PRINT *,'Allocating constraint matrix size:',row,k2
+       CALL Info('GenerateConstraintMatrix','Allocating '//&
+           TRIM(I2S(row))//' rows and '//TRIM(I2S(k2-1))//' nonzeros',&
+           Level=6)
 
        Btmp => AllocateMatrix()
        ALLOCATE( Btmp % RHS(row-1), Btmp % Rows(row), &
@@ -10137,35 +10196,32 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      Btmp % Ordered = .FALSE.
      CALL CRS_SortMatrix(Btmp,.TRUE.)     
      Solver % Matrix % ConstraintMatrix => Btmp
+     
+     Solver % MortarBCsChanged = .FALSE.
 
    END SUBROUTINE GenerateConstraintMatrix
      
 
-
-#if 0
    SUBROUTINE ReleaseConstraintMatrix(Solver) 
      TYPE(Solver_t) :: Solver
 
      TYPE(Matrix_t), POINTER :: CM, CM0
 
-     CM => Solver % Matrix
-     DO WHILE(ASSOCIATED(CM % ConstraintMatrix))
-       IF(CM % ConstraintMatrix % ConstraintType /= 0) THEN
-         CM0 => CM % ConstraintMatrix 
-         CM % ConstraintMatrix => null()
-         CALL FreeMatrix(CM0)
-         EXIT
-       END IF
+     CM => Solver % Matrix % ConstraintMatrix
+     DO WHILE(ASSOCIATED(CM))
+       CALL FreeMatrix(CM)
        CM => CM % ConstraintMatrix
      END DO
+     Solver % Matrix % ConstraintMatrix => NULL()
+
    END SUBROUTINE ReleaseConstraintMatrix
-#endif
 
 
    SUBROUTINE ReleaseProjectors(Model, Solver) 
 
      TYPE(Model_t) :: Model
      TYPE(Solver_t) :: Solver
+
      TYPE(ValueList_t), POINTER :: BC
      INTEGER :: i
 

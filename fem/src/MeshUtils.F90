@@ -8230,9 +8230,9 @@ END SUBROUTINE GetMaxDefs
     END IF
     
     IF(ParEnv % PEs == 1 ) THEN
-      FileName = TRIM(Prefix)//TRIM(I2S(This))//'.dat'
+      FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'.dat'
     ELSE
-      FileName = TRIM(Prefix)//TRIM(I2S(This))//'_part'//&
+      FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'_part'//&
           TRIM(I2S(ParEnv % MyPe))//'.dat'
     END IF
 
@@ -8254,9 +8254,9 @@ END SUBROUTINE GetMaxDefs
 
     IF( SaveRowSum ) THEN
       IF(ParEnv % PEs == 1 ) THEN
-        FileName = TRIM(Prefix)//TRIM(I2S(This))//'_rsum.dat'
+        FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'_rsum.dat'
       ELSE
-        FileName = TRIM(Prefix)//TRIM(I2S(This))//'_rsum_part'//&
+        FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'_rsum_part'//&
             TRIM(I2S(ParEnv % MyPe))//'.dat'
       END IF
       
