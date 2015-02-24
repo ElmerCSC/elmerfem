@@ -5,7 +5,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 32
 
   Coordinate System = Cartesian
   Simulation Type = Steady
@@ -17,7 +17,7 @@ Simulation
 
   Mesh Levels=2
   Mesh Keep=1
-! Post File   = "ptest.ep"
+!  Post File = "case.vtu"
 End
 
 ! Ilma (roottorin ulkokehä kestomagneettien välissä)
@@ -173,23 +173,27 @@ Solver 2
   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
 
 ! Tallennetaan muuttuvat (roottorin pyöritys) koordinaatit
-  Exported Variable 1 = Coordinates[Coordinates:3]
+!  Exported Variable 1 = Coordinates[Coordinates:3]
 
   NonLinear System Relaxation Factor=1
 
   Linear System Solver = Iterative
-  Linear System Symmetric=True
+  Linear System Symmetric = True
   Linear System Convergence Tolerance = 1.e-10
-  Linear System Max Iterations=1000
-  Linear System Residual Output=10
-  Linear System Abort not Converged=False
-  Linear System preconditioning=ilu
-  Linear System ILUT Tolerance=1e-8
+  Linear System Max Iterations = 1000
+  Linear System Residual Output = 10
+  Linear System Abort not Converged = False
+  Linear System preconditioning = ilu
+  Linear System ILUT Tolerance = 1e-8
   Linear System Iterative Method = BicgstabL
 
 ! Linear System Solver = "Direct"
 ! Linear System Direct Method = UMFPack
   Steady State Convergence Tolerance = 1e-06
+
+  Apply Mortar BCs = Logical True
+
+  Save Constraint Matrix = Logical True
 End
 
 
@@ -230,7 +234,7 @@ Boundary Condition 2:: Target Boundaries(1) = 2
 Boundary Condition 3
   Target Boundaries(1) = 3
   Periodic BC Use Lagrange Coefficient=Logical True
-  Periodic BC=4
+  Periodic BC = 4
   Periodic BC Rotate(3) = 0 0 90
   Anti Periodic BC A im = Logical True
   Anti Periodic BC A re = Logical True
@@ -240,7 +244,7 @@ Boundary Condition 4:: Target Boundaries(1) = 4
 ! Periodinen reuna, roottorin osuus
 Boundary Condition 5
   Target Boundaries(1) = 5
-  Periodic BC=6
+  Periodic BC = 6
   Periodic BC Use Lagrange Coefficient=Logical True
   Periodic BC Rotate(3) = 0 0 90
   Anti Periodic BC A im = Logical True
@@ -248,8 +252,6 @@ Boundary Condition 5
 End
 Boundary Condition 6:: Target Boundaries(1) = 6
 
-Solver 2 :: Reference Norm = Real 0.20475283E-01
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.20475283E-01\n");
+Solver 2 :: Reference Norm = Real 2.054466E-02
+
 !End Of File
