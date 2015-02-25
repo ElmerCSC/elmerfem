@@ -654,6 +654,8 @@ END INTERFACE
      INTEGER, POINTER :: Perm(:) => NULL()
      REAL(KIND=dp), POINTER :: Rhs(:) => NULL()
      REAL(KIND=dp), POINTER :: Diag(:) => NULL()
+     REAL(KIND=dp), POINTER :: Dist(:) => NULL()
+     REAL(KIND=dp), POINTER :: NormalLoad(:) => NULL()
      LOGICAL, POINTER :: Active(:) => NULL()
      LOGICAL, POINTER :: Slip(:) => NULL()
      REAL(KIND=dp) :: SlaveScale = 1.0_dp
