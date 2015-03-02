@@ -150,6 +150,12 @@ IF(Hypre_FOUND)
   # LINK_DIRECTORIES(${Hypre_LIBRARIES})
 ENDIF()
 
+# Check if Fortran compiler supports procedure pointer
+INCLUDE(testProcedurePointer)
+IF(NOT CMAKE_Fortran_COMPILER_SUPPORTS_PROCEDUREPOINTER)
+  MESSAGE(FATAL_ERROR "Fortran compiler does not seem to support the PROCEDURE statement.")
+ENDIF()
+
 # Check if Fortran compiler supports contiguous keyword
 INCLUDE(testContiguous)
 IF(CMAKE_Fortran_COMPILER_SUPPORTS_CONTIGUOUS)
@@ -159,12 +165,12 @@ ELSE()
 ENDIF()
 
 # Check that the gfortran version is >= 4.8
-IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
-  INCLUDE(testGFortranVersion)
-  IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
-    MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
-  ENDIF()
-ENDIF()
+# IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
+#   INCLUDE(testGFortranVersion)
+#   IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
+#     MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
+#   ENDIF()
+# ENDIF()
 
 # Check if this is mingw toolchain. 
 IF(MINGW)
