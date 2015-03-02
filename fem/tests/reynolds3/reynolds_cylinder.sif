@@ -13,13 +13,13 @@ End
 
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 8
   Coordinate System =  Cartesian 3D
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady
   Steady State Max Iterations = 1
   Output Intervals = 1
-!  Post File = "reynolds_cylinder.ep"
+!  Post File = "reynolds_cylinder.vtu"
 End
 
 
@@ -52,9 +52,8 @@ Initial Condition 1
 End 
 
 Body Force 1
-  FilmPressure = 0.0
-  FilmPressure Condition = Variable "FilmPressure Cavitation"
-    Real MATC "tx"
+  Name = "Cavitation"
+  FilmPressure Lower Limit = Real $ pcav 
 End 
 
 Solver 1
@@ -78,8 +77,8 @@ Solver 1
   Nonlinear System Newton After Tolerance = 1.0e-2
   Nonlinear System Relaxation Factor = 1.0
 
-  Cavitation = True
-  Cavitation Pressure = $ pcav
+! Applies the cavitation pressure given as lower limit on the body force
+  Apply Limiter = Logical True
 End
 
 
