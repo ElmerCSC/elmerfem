@@ -6,7 +6,7 @@
 
 # Cross-compile for Haswell nodes on taito.csc.fi
 SET(CMAKE_SYSTEM_NAME Linux)
-SET(CMAKE_SYSTEM_PROCESSOR k1om)
+SET(CMAKE_SYSTEM_PROCESSOR x86_64)
 SET(CMAKE_SYSTEM_VERSION 1)
 
 # Specify the cross compilers (serial)
