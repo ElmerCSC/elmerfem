@@ -389,8 +389,13 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
   !       non-linear system iteration loop
   !------------------------------------------------------------------------------
   DO Peniter=1,NonlinearIter
-     CALL MPI_ALLREDUCE(UnconstrainedNodesExist,GlobalUnconstrainedNodesExist,1, &
-          MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+     IF ( ParEnv % PEs > 1 ) THEN
+        CALL MPI_ALLREDUCE(UnconstrainedNodesExist,GlobalUnconstrainedNodesExist,1, &
+             MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
+     ELSE
+        GlobalUnconstrainedNodesExist = UnconstrainedNodesExist
+     END IF
+
      UnconstrainedNodesExist = .FALSE.
 
      !------------------------------------------------------------------------------

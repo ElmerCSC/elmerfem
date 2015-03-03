@@ -433,3 +433,9 @@ Boundary Condition 4
   Velocity 1 = Real 0.0e0
   ComputeNormal = Logical False
 End
+
+Solver 8 :: Reference Norm = Real 274.58576
+Solver 8 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=274.58576,EPS=1E-06\n" );

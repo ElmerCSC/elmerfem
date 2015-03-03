@@ -100,3 +100,10 @@ Boundary Condition 2
   Target Boundaries = 6
   Depth = Real 0.0
 End 
+
+Solver 1 :: Reference Norm = Real 0.59160798
+Solver 1 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.59160798,EPS=1E-06\n" );
+
