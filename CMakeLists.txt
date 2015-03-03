@@ -165,12 +165,12 @@ ELSE()
 ENDIF()
 
 # Check that the gfortran version is >= 4.8
-# IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
-#   INCLUDE(testGFortranVersion)
-#   IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
-#     MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
-#   ENDIF()
-# ENDIF()
+IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
+  INCLUDE(testGFortranVersion)
+  IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
+    MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
+  ENDIF()
+ENDIF()
 
 # Check if this is mingw toolchain. 
 IF(MINGW)
