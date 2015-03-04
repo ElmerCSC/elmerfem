@@ -22,6 +22,14 @@ SET(CMAKE_C_FLAGS "-g -fPIC" CACHE STRING "")
 SET(CMAKE_CXX_FLAGS "-g -fPIC" CACHE STRING "")
 SET(CMAKE_Fortran_FLAGS "-g -fPIC" CACHE STRING "")
 
+# Reset the default build type flags, all flags should be set above
+SET(CMAKE_C_FLAGS_RELWITHDEBINFO "" CACHE STRING "")
+SET(CMAKE_CXX_FLAGS_RELWITHDEBINFO "" CACHE STRING "")
+SET(CMAKE_Fortran_FLAGS_RELWITHDEBINFO "" CACHE STRING "")
+
+# Compilation flags for native build using C compiler, used for ElmerGrid
+SET(NATIVE_BUILD_FLAGS "-g -fPIC -target-cpu=sandybridge" CACHE STRING "")
+
 # BLAS and LAPACK libraries are included in the wrappers,
 # so we just link in libm to make cmake happy
 SET(BLAS_LIBRARIES "m" CACHE STRING "")
