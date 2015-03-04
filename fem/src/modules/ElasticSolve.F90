@@ -1996,6 +1996,16 @@ CONTAINS
              END DO
           END DO
           ! TO DO: More general spring conditions should be treated here
+          DO p=1,N
+             DO i=1,dim 
+                DO q=1,N
+                   DO j=1,dim 
+                      BoundaryMatrix((p-1)*dim+i,(q-1)*dim+j) = BoundaryMatrix((p-1)*dim+i,(q-1)*dim+j) + &
+                           SpringCoeff(i,j) * Basis(q) * Basis(p) * s
+                   END DO
+                END DO
+             END DO
+          END DO
        END IF
 
 

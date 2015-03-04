@@ -2362,6 +2362,97 @@ CONTAINS
 
 
 
+!> Performs finilizing steps related to the the active solver
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultFinish( USolver )
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
+
+     TYPE(Solver_t), POINTER :: Solver, PostSolver
+     TYPE(ValueList_t), POINTER :: Params
+     TYPE(Variable_t), POINTER :: iterV
+     INTEGER, POINTER :: PostSolverIndexes(:)
+     INTEGER :: j,k,iter
+     REAL(KIND=dp) :: dt
+     LOGICAL :: Transient, Found, alloc_parenv
+
+     INTERFACE
+        SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
+          USE Types
+          TYPE(Model_t)::Model
+          TYPE(Solver_t),POINTER::Solver
+          REAL(KIND=dp) :: dt
+          LOGICAL :: Transient
+        END SUBROUTINE SolverActivate_x
+     END INTERFACE
+
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+
+     ! One can run postprocessing solver in this slot.
+     !-----------------------------------------------------------------------------
+     PostSolverIndexes =>  ListGetIntegerArray( Solver % Values,'Post Solvers',Found )
+     IF( Found ) THEN
+       dt = GetTimeStep()
+       Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
+
+       ! store the nonlinear iteration at the outer loop
+       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+       iter = NINT(iterV % Values(1))
+
+       DO j=1,SIZE(PostSolverIndexes)
+         k = PostSolverIndexes(j)
+         PostSolver => CurrentModel % Solvers(k)
+
+         IF(ParEnv % PEs>1) THEN
+           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+             CALL ListAddLogical( PostSolver % Values, 'Post not parallel', .TRUE.)
+
+           alloc_parenv = .FALSE.
+           IF(ASSOCIATED(PostSolver % Matrix)) THEN
+             IF(ASSOCIATED(PostSolver % Matrix % ParMatrix) ) THEN
+               ParEnv = PostSolver % Matrix % ParMatrix % ParEnv
+             ELSE
+               ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+             END IF
+           ELSE
+             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+           END IF
+         END IF
+
+         CurrentModel % Solver => PostSolver
+         CALL SolverActivate_x( CurrentModel,PostSolver,dt,Transient)
+
+         IF(ParEnv % PEs>1) THEN
+           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+             CALL ListAddLogical( PostSolver % Values, 'Post not parallel', .FALSE.)
+
+           IF(alloc_parenv) THEN
+             DEALLOCATE(ParEnv % Active)
+             ParEnv % Active => NULL()
+           END IF
+
+           IF(ASSOCIATED(Solver % Matrix)) THEN
+             IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
+               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+           END IF
+         END IF
+       END DO
+       CurrentModel % Solver => Solver
+       iterV % Values = iter       
+     END IF
+
+     CALL Info('DefaultFinish','Finished solver: '//&
+         TRIM(ListGetString(Solver % Values,'Equation')),Level=5)
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE DefaultFinish
+!------------------------------------------------------------------------------
+
+
 !> Solver the matrix equation related to the active solver
 !------------------------------------------------------------------------------
   FUNCTION DefaultSolve( USolver, BackRotNT ) RESULT(Norm)
@@ -2446,10 +2537,11 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:)
     LOGICAL :: ReduceStep
 
-    LOGICAL :: stat, First, Last
+    LOGICAL :: stat, First, Last, DoLinesearch
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Variable_t), POINTER :: iterV
     INTEGER :: iter, previter, MaxIter
+    REAL(KIND=dp) :: LinesearchCond
 
     SAVE :: previter
 
@@ -2459,9 +2551,21 @@ CONTAINS
       Solver => CurrentModel % Solver
     END IF
 
+    DoLinesearch = .FALSE.
+    IF( ListCheckPrefix( Solver % Values,'Nonlinear System Linesearch') ) THEN
+      LineSearchCond = ListGetCReal( Solver % Values,&
+          'Nonlinear System Linesearch Condition', Stat )
+      IF( Stat ) THEN
+        DoLinesearch = ( LineSearchCond > 0.0_dp )
+        CALL ListAddLogical( Solver % Values,'Nonlinear System Linesearch', DoLinesearch )
+      ELSE
+        DoLinesearch = ListGetLogical( Solver % Values,'Nonlinear System Linesearch',Stat)
+      END IF
+    END IF
+
     ! This routine might be called for convenience also without checking 
     ! first whether it is needed.
-    IF( .NOT. ListGetLogical( Solver % Values,'Nonlinear System Linesearch',Stat) ) THEN
+    IF(.NOT. DoLinesearch ) THEN
       ReduceStep = .FALSE.
       IF( PRESENT( Converged ) ) Converged = .FALSE.
       RETURN
@@ -3562,7 +3666,6 @@ CONTAINS
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem
      TYPE(ValueList_t), POINTER :: BC, ptr, Params
      TYPE(Element_t), POINTER :: Element, Parent, Edge, Face, SaveElement
-     TYPE(Variable_t), POINTER :: IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: name
      LOGICAL :: BUpd, PiolaTransform
 
@@ -3614,16 +3717,7 @@ CONTAINS
      ! This is done only once for each solver, hence the complex logic. 
      !---------------------------------------------------------------------
      IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
-       iterV => VariableGet( Solver % Mesh % Variables,'nonlin iter')
-       Found = .FALSE.
-       IF( ASSOCIATED( iterV ) ) THEN
-         IF( NINT( iterV % Values(1) ) > 1 ) Found = .TRUE.
-       END IF
-       iterV => VariableGet( Solver % Mesh % Variables,'coupled iter')
-       IF( ASSOCIATED( iterV ) ) THEN
-         IF( NINT( iterV % Values(1) ) > 1 ) Found = .TRUE.
-       END IF
-       IF( Found ) CALL DetermineSoftLimiter( Solver )	
+       CALL DetermineSoftLimiter( Solver )	
      END IF
 
 

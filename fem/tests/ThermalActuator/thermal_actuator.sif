@@ -153,7 +153,7 @@ Boundary Condition 2
   Displacement 3 = 0.0
 End
 
-Solver 3 :: Reference Norm = Real 6.145282E-07
+Solver 3 :: Reference Norm = Real 6.1504839-07
 Solver 3 :: Reference Norm Tolerance = Real 1.0e-4
 
 $fprintf( stderr, "TEST CASE 1\n");
