@@ -1,6 +1,6 @@
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 ! USF_Damage.f90
-! Last modif : 24 October 2014
+! Last modif : 12 December 2014
 ! Computes the evolution of damage and computes the Enhancement factor of the Glen's law
 ! as a function of damage evolution 
 !
@@ -86,13 +86,13 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
  
    TYPE(Solver_t):: Solver 
    TYPE(ValueList_t), POINTER :: Material, Constants
-   TYPE(Variable_t), POINTER :: StressVariable, FlowVariable, ChiVariable
-   REAL(KIND=dp), POINTER :: StressValues(:), FlowValues(:), ChiValues(:)
-   INTEGER, POINTER :: StressPerm(:), FlowPerm(:), ChiPerm(:)
+   TYPE(Variable_t), POINTER :: StressVariable, FlowVariable, ChiVariable, PSeaDVariable
+   REAL(KIND=dp), POINTER :: StressValues(:), FlowValues(:), ChiValues(:), PSeaDValues(:)
+   INTEGER, POINTER :: StressPerm(:), FlowPerm(:), ChiPerm(:), PSeaDPerm(:)
 
    INTEGER :: Ind(3,3), DIM, i, j, indice(3), infor
    REAL (KIND=dp) :: Sig(3,3), SigDev(3,3), EigVect(3,3), EigValues(3),tmp 
-   REAL (KIND=dp) :: SigmaI, SigmaII, Chi, B, sigmath 
+   REAL (KIND=dp) :: SigmaI, SigmaII, Chi, B, sigmath, pwater
    REAL (KIND=DP) :: EI(3),Dumy(1),Work(24), sigmath_var, stress_threshold
    REAL (KIND=DP) :: u, v, nbrPi, s
    LOGICAL :: GotIt, FirstTime = .TRUE., Cauchy
@@ -159,6 +159,16 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
       ChiValues  => ChiVariable % Values
    ELSE
       CALL FATAL('Damage Source', 'Need to declare Chi variable somewhere !')
+   END IF
+   
+   ! Get the Sea Damage Pressure
+   PSeaDVariable => VariableGet( Model % Variables, 'PSeaD' )
+   IF ( ASSOCIATED( PSeaDVariable ) ) THEN
+      PSeaDPerm   => PSeaDVariable % Perm
+      PSeaDValues => PSeaDVariable % Values
+   ELSE
+      CALL WARN('Damage Source', 'PSeaD not associated, basal pressure not taken into account in damage formation' )
+      CALL WARN('Damage Source', 'Taking default value PSeaD=0.0')
    END IF
 
    ! Get the variables to compute the hydrostatic pressure  
@@ -234,9 +244,16 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
 
    stress_threshold = sigmath*(1+sigmath_var)
   
+   ! Get the Sea pressure at the node
+   
+   IF ( ASSOCIATED( PSeaDVariable ) ) THEN
+   pwater = PseaDValues ( PSeaDPerm (nodenumber) )
+   ELSE
+   pwater = 0.0_dp
+   END IF
 
    ! Damage Criterion
-   Chi = 1.0_dp / (1.0_dp - D) * SigmaI - stress_threshold
+   Chi = 1.0_dp / (1.0_dp - D) * (SigmaI + pwater) - stress_threshold
 
    ! Save Chi in ChiVariable
    ChiValues(ChiPerm(nodenumber)) = Chi
