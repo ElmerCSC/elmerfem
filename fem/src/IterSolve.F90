@@ -164,10 +164,10 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: Adiag,CM,PrecMat,SaveGlobalM
 
-    REAL(KIND=dp) :: dpar(50),stopfun
+    REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE),stopfun
 !   external stopfun
     REAL(KIND=dp), ALLOCATABLE :: work(:,:)
-    INTEGER :: i,j,k,N,ipar(50),wsize,istat,IterType,PCondType,ILUn,Blocks
+    INTEGER :: i,j,k,N,ipar(HUTI_IPAR_DFLTSIZE),wsize,istat,IterType,PCondType,ILUn,Blocks
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt,AbortNotConverged, Refactorize,Found,GotDiagFactor
@@ -200,16 +200,15 @@ CONTAINS
 #endif
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
-        pcondrProc=0, mvProc, iterProc, StopcProc
+        pcondrProc, mvProc, iterProc, StopcProc
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=Addrint) :: AddrFunc
 #else
-    REAL(KIND=dp), POINTER :: felem
-    COMPLEX(KIND=dp), POINTER CONTIG :: xC(:), bC(:)
+    INTEGER :: astat
+    COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
     INTEGER(KIND=Addrint) :: AddrFunc
     EXTERNAL :: AddrFunc    
-    type(c_ptr) :: felem_c_ptr
 #endif
 
     INTERFACE
@@ -231,7 +230,7 @@ CONTAINS
     
     ipar = 0
     dpar = 0.0D0
-    
+    pcondrProc = 0
 !------------------------------------------------------------------------------
     Params => Solver % Values
     str = ListGetString( Params,'Linear System Iterative Method',Found )
@@ -808,16 +807,26 @@ CONTAINS
 
 #ifdef USE_ISO_C_BINDINGS
     IF (A % Complex) THEN
-        ! Associate xC and bC with the correct values
-        felem => x(1)
-        felem_c_ptr = C_LOC(felem)
-        CALL C_F_POINTER(felem_c_ptr, xC, (/ HUTI_NDIM /) )
-        felem => b(1)
-        felem_c_ptr = C_LOC(felem)
-        CALL C_F_POINTER(felem_c_ptr, bC, (/ HUTI_NDIM /) )
-        ! write (*,*) xC(1:3), bC(1:3)
-        CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
-                       mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+      ! Associate xC and bC with complex variables
+      ALLOCATE(xC(HUTI_NDIM), bC(HUTI_NDIM), STAT=astat)
+      IF (astat /= 0) THEN
+        CALL Fatal('IterSolve','Unable to allocate memory for complex arrays')
+      END IF
+      ! Initialize xC and copy bC
+      xC = cmplx(0,dp)
+      DO i=1,HUTI_NDIM
+        bC(i) = cmplx(b(2*i-1),b(2*i),dp)
+      END DO
+      
+      CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
+            mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+
+      ! Copy result back
+      DO i=1,HUTI_NDIM
+        x(2*i-1) = REAL(REAL(xC(i)),dp)
+        x(2*i) = REAL(AIMAG(xC(i)),dp)
+      END DO
+      DEALLOCATE(bC,xC)
     ELSE
         CALL IterCall( iterProc, x, b, ipar, dpar, work, &
                        mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )

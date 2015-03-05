@@ -146,6 +146,12 @@ IF(Hypre_FOUND)
   # LINK_DIRECTORIES(${Hypre_LIBRARIES})
 ENDIF()
 
+# Check if Fortran compiler supports procedure pointer
+INCLUDE(testProcedurePointer)
+IF(NOT CMAKE_Fortran_COMPILER_SUPPORTS_PROCEDUREPOINTER)
+  MESSAGE(FATAL_ERROR "Fortran compiler does not seem to support the PROCEDURE statement.")
+ENDIF()
+
 # Check if Fortran compiler supports contiguous keyword
 INCLUDE(testContiguous)
 IF(CMAKE_Fortran_COMPILER_SUPPORTS_CONTIGUOUS)
