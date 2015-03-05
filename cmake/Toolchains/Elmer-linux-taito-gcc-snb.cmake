@@ -23,24 +23,20 @@ SET(CMAKE_CXX_FLAGS "-O2 -g" CACHE STRING "")
 SET(CMAKE_Fortran_FLAGS "-O2 -g" CACHE STRING "")
 
 # BLAS and LAPACK (from MKL), no threading as MPI_INIT is used
-SET(BLAS_LIBRARIES $ENV{MKLROOT}/lib/intel64/libmkl_scalapack_lp64.so
-		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_lp64.so
+SET(BLAS_LIBRARIES $ENV{MKLROOT}/lib/intel64/libmkl_gf_lp64.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_core.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_sequential.so
-		   $ENV{MKLROOT}/lib/intel64/libmkl_blacs_intelmpi_lp64.so
 		   /usr/lib64/libpthread.so
 		   /usr/lib64/libm.so
 		   CACHE STRING "")
-SET(LAPACK_LIBRARIES $ENV{MKLROOT}/lib/intel64/libmkl_scalapack_lp64.so
-		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_lp64.so
+SET(LAPACK_LIBRARIES $ENV{MKLROOT}/lib/intel64/libmkl_gf_lp64.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_core.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_sequential.so
-		   $ENV{MKLROOT}/lib/intel64/libmkl_blacs_intelmpi_lp64.so
 		   /usr/lib64/libpthread.so
 		   /usr/lib64/libm.so
 		   CACHE STRING "")
 SET(SCALAPACK_LIBRARIES $ENV{MKLROOT}/lib/intel64/libmkl_scalapack_lp64.so
-		   $ENV{MKLROOT}/lib/intel64/libmkl_intel_lp64.so
+		   $ENV{MKLROOT}/lib/intel64/libmkl_gf_lp64.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_core.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_sequential.so
 		   $ENV{MKLROOT}/lib/intel64/libmkl_blacs_intelmpi_lp64.so
