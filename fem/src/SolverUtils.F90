@@ -3815,7 +3815,7 @@ CONTAINS
            ! For Galerkin projector the is weight/coeff 
            IF( Found ) THEN 
              IF( AddCoeff .OR. Addres ) THEN
-               MortarBC % Diag(NDOFs*(i-1)+DOF) = -res
+               MortarBC % Diag(NDOFs*(i-1)+DOF) = res
              END IF
            END IF
 
@@ -10088,7 +10088,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                  ! contribution is summed twice, 2nd time as transpose
                  ! For Nodal projector the entry is 1/(weight*coeff)
                  ! For Galerkin projector the is weight/coeff 
-                 Btmp % Values(k2) = -0.5_dp * MortarBC % Diag(i) ! * wsum
+                 Btmp % Values(k2) = -0.5_dp * MortarBC % Diag(i) * wsum
                END IF
              ELSE
                DO k=Atmp % Rows(i),Atmp % Rows(i+1)-1                 
