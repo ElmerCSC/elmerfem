@@ -770,6 +770,9 @@ END INTERFACE
       LOGICAL :: InitSolver, Found
 !------------------------------------------------------------------------------
 
+      CALL Info('AddSolvers','Setting up '//TRIM(I2S(CurrentModel % NumberOfSolvers))//&
+          ' solvers',Level=10)
+
       ! This is a hack that sets Equation flags True for the "Active Solvers".
       ! The Equation flag is the legacy way of setting a Solver active and is still
       ! used internally.
@@ -795,8 +798,11 @@ END INTERFACE
        END IF
      END DO
 
+     ! Add the dynamically linked solver to be called later
+     !---------------------------------------------------------------------
      DO i=1,CurrentModel % NumberOfSolvers
         eq = ListGetString( CurrentModel % Solvers(i) % Values,'Equation', Found )
+        CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
 
         Solver => CurrentModel % Solvers(i)
         InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
@@ -814,6 +820,9 @@ END INTERFACE
           CALL AddEquationSolution( Solver, Transient )
         END IF
      END DO
+
+     CALL Info('AddSolvers','Setting up solvers done',Level=12)
+
 !------------------------------------------------------------------------------
   END SUBROUTINE AddSolvers
 !------------------------------------------------------------------------------
@@ -825,6 +834,8 @@ END INTERFACE
   SUBROUTINE AddMeshCoordinatesAndTime()
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: DtVar
+
+     CALL Info('AddMeshCoordinatesAndTime','Setting mesh coordinates and time',Level=10)
 
      NULLIFY( Solver )
 
@@ -881,6 +892,9 @@ END INTERFACE
      LOGICAL :: nt_boundary
      TYPE(Element_t), POINTER :: Element
      TYPE(Variable_t), POINTER :: var, vect_var
+
+     CALL Info('SetInitialConditions','Setting up initial conditions (if any)',Level=10)
+
 
      dim = CoordinateSystemDimension()
 
