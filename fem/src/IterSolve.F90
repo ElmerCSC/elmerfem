@@ -812,8 +812,10 @@ CONTAINS
       IF (astat /= 0) THEN
         CALL Fatal('IterSolve','Unable to allocate memory for complex arrays')
       END IF
-      ! Initialize xC and copy bC
-      xC = cmplx(0,dp)
+      ! Initialize xC and bC
+      DO i=1,HUTI_NDIM
+        xC(i) = cmplx(x(2*i-1),x(2*i),dp)
+      END DO
       DO i=1,HUTI_NDIM
         bC(i) = cmplx(b(2*i-1),b(2*i),dp)
       END DO
