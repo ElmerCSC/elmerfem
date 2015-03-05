@@ -1697,7 +1697,8 @@ CONTAINS
          ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:)
      REAL(KIND=dp) :: LimitSign, EqSign, ValEps, LoadEps, val, ContactNormal(3), &
-         LocalNormal(3), Coord(3), Disp(3), NodalForce(3), wsum, coeff, Dist, Dist0
+         LocalNormal(3), Coord(3), Disp(3), NodalForce(3), wsum, coeff, &
+         Dist, Dist0, DistOffset
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
      LOGICAL :: Found,AnyLimitBC, AnyLimitBF
      LOGICAL, ALLOCATABLE :: LimitDone(:)
@@ -1705,9 +1706,9 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: Params
      CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName, VarName
      LOGICAL, ALLOCATABLE :: InterfaceDof(:)
-     INTEGER :: ConservativeAfterIters, ActiveDirection, NonlinIter
+     INTEGER :: ConservativeAfterIters, ActiveDirection, NonlinIter, CoupledIter
      LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
-         DoAdd, DoRemove, DirectionActive, Rotated
+         DoAdd, DoRemove, DirectionActive, Rotated, FirstTime
      TYPE(MortarBC_t), POINTER :: MortarBC
      TYPE(Matrix_t), POINTER :: Projector
      TYPE(ValueList_t), POINTER :: BC
@@ -1737,8 +1738,13 @@ CONTAINS
      dofs = Var % Dofs
      Params => Solver % Values
 
+     IterVar => VariableGet( Model % Variables,'coupled iter')
+     CoupledIter = NINT( IterVar % Values(1) )
+
      IterVar => VariableGet( Model % Variables,'nonlin iter')
      NonlinIter = NINT( IterVar % Values(1) )
+
+     FirstTime = ( NonlinIter == 1 .AND. CoupledIter == 1 ) 
 
      ConservativeAdd = .FALSE.
      ConservativeAfterIters = ListGetInteger(Params,&
@@ -1755,7 +1761,6 @@ CONTAINS
          'Apply Limiter Conservative Remove After Iterations',Found ) 
      IF( Found ) THEN
        Conservative = .TRUE.  
-       IterVar => VariableGet( Model % Variables,'nonlin iter')
        ConservativeRemove = ( ConservativeAfterIters < NonlinIter )
        IF( ConservativeRemove ) THEN
          CALL Info('DetermineContact','Adding dofs in conservative fashion',Level=8)
@@ -1823,7 +1828,9 @@ CONTAINS
        END DO
      
        ! Initialize the mortar vectors
-       MortarBC % Diag = 0.0_dp
+       IF( ASSOCIATED( MortarBC % Diag ) ) THEN
+         MortarBC % Diag = 0.0_dp
+       END IF
        MortarBC % Rhs = 0.0_dp
        MortarBC % Dist = 0.0_dp
        MortarBC % NormalLoad = 0.0_dp
@@ -1871,7 +1878,7 @@ CONTAINS
            Dist0 = Dist0 + coeff * SUM( ContactNormal * Coord )
          END DO
 
-         PRINT *,'Dist:',i,Dist,wsum,Dist/wsum
+         ! PRINT *,'Dist:',i,Dist,wsum,Dist/wsum
 
          ! Divide by weight to get back to real distance in the direction of the normal
          Dist = Dist / wsum
@@ -1884,10 +1891,6 @@ CONTAINS
        
        PRINT *,'MinDist:',MINVAL( MortarBC % Dist )
        PRINT *,'MaxDist:',MAXVAL( MortarBC % Dist ) 
-
-!       DO i=1,Projector % NumberOfRows
-!         MortarBC % Rhs(Dofs*(i-1)+ActiveDirection) = -MortarBC % Dist(i)
-!       END DO
 
        ! Compute the normal load used to determine whether contact should 
        ! be released.
@@ -1912,10 +1915,18 @@ CONTAINS
        
 
        EqSign = 1.0_dp
+       LimitSign = -1.0_dp
        
        BC => Model % BCs(bc_ind) % Values
        Removed = 0
        Added = 0        
+       
+       IF( FirstTime ) THEN
+         DistOffset = ListGetCReal( Model % BCs(bc_ind) % Values,&
+             'Mortar BC Initial Contact Depth',Found)
+       ELSE
+         DistOffset = 0.0_dp
+       END IF
 
        ! Determine now whether we have contact or not
        DO i = 1,Projector % NumberOfRows
@@ -1952,7 +1963,7 @@ CONTAINS
              MortarBC % Active(ind) = .FALSE.
            END IF
          ELSE 
-           DoAdd = ( MortarBC % Dist( i ) < -ValEps ) 
+           DoAdd = ( MortarBC % Dist( i ) < -ValEps + DistOffset ) 
            IF( DoAdd ) THEN
              added = added + 1
              MortarBC % Active(ind) = .TRUE.
@@ -2001,9 +2012,11 @@ CONTAINS
            CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
                TRIM(VarName)//' Contact Dist',1,MortarBC % Dist, &
                MortarBC % Perm )
-           CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
-               TRIM(VarName)//' Contact Diag',DOFs,MortarBC % Diag, &
-               MortarBC % Perm )
+           IF( ASSOCIATED( MortarBC % Diag ) ) THEN
+             CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
+                 TRIM(VarName)//' Contact Diag',DOFs,MortarBC % Diag, &
+                 MortarBC % Perm )
+           END IF
            CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
                TRIM(VarName)//' Contact Rhs',DOFs,MortarBC % Rhs, &
                MortarBC % Perm )
@@ -2030,13 +2043,15 @@ CONTAINS
 
        nsize = Dofs * Projector % NumberOfRows
 
-       IF( ASSOCIATED( MortarBC % Diag ) ) THEN
-         IF( SIZE( MortarBC % Diag ) < nsize ) DEALLOCATE( MortarBC % Diag ) 
-       END IF
-       IF( .NOT. ASSOCIATED( MortarBC % Diag ) ) THEN
-         CALL Info('DetermineContact','Allocating projector mortar rhs',Level=10)
-         ALLOCATE( MortarBC % Diag( nsize ) )
-         MortarBC % Diag = 0.0_dp
+       IF(.FALSE.) THEN
+         IF( ASSOCIATED( MortarBC % Diag ) ) THEN
+           IF( SIZE( MortarBC % Diag ) < nsize ) DEALLOCATE( MortarBC % Diag ) 
+         END IF
+         IF( .NOT. ASSOCIATED( MortarBC % Diag ) ) THEN
+           CALL Info('DetermineContact','Allocating projector mortar diag',Level=10)
+           ALLOCATE( MortarBC % Diag( nsize ) )
+           MortarBC % Diag = 0.0_dp
+         END IF
        END IF
 
        IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
@@ -9928,17 +9943,27 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      INTEGER :: i,j,k,l,n,dsize,size0,col,row,dim
      TYPE(ValueList_t), POINTER :: BC
      TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
+     TYPE(Variable_t), POINTER :: DispVar
 
      ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
      ApplyContact = ListGetLogical(Solver % Values,'Apply Contact BCs',Found) 
 
      IF( .NOT. ( ApplyMortar .OR. ApplyContact) ) RETURN
      
-     CALL Info('GenerateProjector','Generating mortar projectors',Level=8)
+     CALL Info('GenerateProjectors','Generating mortar projectors',Level=8)
 
      IsNonlinear = .FALSE.
      IF( PRESENT( Nonlinear ) ) IsNonlinear = Nonlinear
      IsSteadyState = .NOT. IsNonlinear
+
+     IF( IsNonlinear ) THEN
+       IF( .NOT. ListGetLogicalAnyBC( Model, 'Mortar BC Nonlinear') ) RETURN
+       DispVar => Solver % Variable
+       CALL Info('GenerateProjectors','Displacing mesh for nonlinear projectors',Level=8)
+       CALL DisplaceMesh( Solver % Mesh, DispVar % Values, 1, &
+           DispVar % Perm, DispVar % Dofs )
+     END IF
+
 
      IF( .NOT. ASSOCIATED( Solver % MortarBCs ) ) THEN
        ALLOCATE( Solver % MortarBCs( Model % NumberOfBCs ) )
@@ -9957,8 +9982,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
        IF( IsNonlinear ) THEN
          IF( .NOT. ListGetLogical( BC,'Mortar BC Nonlinear',Found) ) CYCLE
-       END IF
-       
+       ELSE
+         IF( ListGetLogical( BC,'Mortar BC Nonlinear',Found) ) CYCLE
+       END IF             
+
        IF( ASSOCIATED( Solver % MortarBCs(i) % Projector ) ) THEN
          CALL FreeMatrix( Solver % MortarBCs(i) % Projector )
        END IF
@@ -9971,6 +9998,15 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        END IF
 
      END DO
+
+
+     IF( IsNonlinear ) THEN
+       DispVar => Solver % Variable
+       CALL Info('GenerateProjectors','Reverting mesh for nonlinear projectors',Level=10)
+       CALL DisplaceMesh( Solver % Mesh, DispVar % Values, -1, &
+           DispVar % Perm, DispVar % Dofs )
+     END IF
+
 
    END SUBROUTINE GenerateProjectors
 
@@ -10300,6 +10336,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
        rowoffset = rowoffset + Arows
      END DO
+
+     IF( k2 == 0 ) THEN
+       CALL Info('GenerateConstraintMatrix','No entries in constraint matrix!',Level=6)
+       RETURN
+     END IF
 
      ! Allocate the united matrix of all the boundary matrices
      !-------------------------------------------------------
