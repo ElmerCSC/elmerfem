@@ -414,11 +414,9 @@ CONTAINS
     END IF
 
     ! We should have the procedure 
-    proc_name = ListGetString( SolverParams, 'Procedure',Found)
-    IF( Found ) THEN
+    proc_name = ListGetString( SolverParams, 'Procedure',IsProcedure)
+    IF( IsProcedure ) THEN
       CALL Info('AddEquationBasics','Using procedure: '//TRIM(proc_name),Level=10)
-    ELSE
-      CALL Fatal('AddEquationBasics','Could not find > Procedure < for solver!')
     END IF
 
 
@@ -456,12 +454,14 @@ CONTAINS
     ! Check the solver for initialization
     ! This is utilized only by some solvers.
     !-----------------------------------------------------------------
-    InitProc = GetProcAddr( TRIM(proc_name)//'_Init', abort=.FALSE. )
-    IF ( InitProc /= 0 ) THEN
-      CALL ExecSolver( InitProc, CurrentModel, Solver, &
-          Solver % dt, Transient )
+    IF( IsProcedure ) THEN
+      InitProc = GetProcAddr( TRIM(proc_name)//'_Init', abort=.FALSE. )
+      IF ( InitProc /= 0 ) THEN
+        CALL ExecSolver( InitProc, CurrentModel, Solver, &
+            Solver % dt, Transient )
+      END IF
     END IF
-     
+
     Solver % SolverMode = SOLVER_MODE_DEFAULT
     IF( ListGetLogical( SolverParams, 'Auxiliary Solver', Found ) ) &
         Solver % SolverMode = SOLVER_MODE_AUXILIARY
@@ -525,7 +525,7 @@ CONTAINS
 
     ! Get the procudure that really runs the solver
     !------------------------------------------------------------------------------
-    IF( Solver % PROCEDURE == 0 ) THEN
+    IF( IsProcedure ) THEN
       Solver % PROCEDURE = GetProcAddr(proc_name)
     END IF
     
@@ -547,11 +547,11 @@ CONTAINS
       NULLIFY( Solver % Variable % Values )
       
       
-    ELSE IF( IsCoupledSolver .AND. Solver % PROCEDURE == 0 ) THEN
+    ELSE IF( IsCoupledSolver .AND. .NOT. IsProcedure ) THEN
       ! Coupled solver may inherit the matrix only if procedure is given
       !-----------------------------------------------------------------
 
-    ELSE IF( IsBlockSolver .AND. Solver % PROCEDURE == 0 ) THEN
+    ELSE IF( IsBlockSolver .AND. .NOT. IsProcedure ) THEN
       ! Block solver may inherit the matrix only if procedure is given
       !-----------------------------------------------------------------
       

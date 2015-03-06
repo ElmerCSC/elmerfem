@@ -1708,12 +1708,13 @@ CONTAINS
      LOGICAL, ALLOCATABLE :: InterfaceDof(:)
      INTEGER :: ConservativeAfterIters, ActiveDirection, NonlinIter, CoupledIter
      LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
-         DoAdd, DoRemove, DirectionActive, Rotated, FirstTime
+         DoAdd, DoRemove, DirectionActive, Rotated, FirstTime = .TRUE.
      TYPE(MortarBC_t), POINTER :: MortarBC
      TYPE(Matrix_t), POINTER :: Projector
      TYPE(ValueList_t), POINTER :: BC
      REAL(KIND=dp), POINTER :: nWrk(:,:)
      
+     SAVE FirstTime
 
      Model => CurrentModel
      Var => Solver % Variable
@@ -1744,7 +1745,7 @@ CONTAINS
      IterVar => VariableGet( Model % Variables,'nonlin iter')
      NonlinIter = NINT( IterVar % Values(1) )
 
-     FirstTime = ( NonlinIter == 1 .AND. CoupledIter == 1 ) 
+     !FirstTime = ( NonlinIter == 1 .AND. CoupledIter == 1 ) 
 
      ConservativeAdd = .FALSE.
      ConservativeAfterIters = ListGetInteger(Params,&
@@ -2033,6 +2034,7 @@ CONTAINS
 
      END DO
 
+     FirstTime = .FALSE.
      CALL Info('DetermineContact','All done',Level=10)
 
    CONTAINS
