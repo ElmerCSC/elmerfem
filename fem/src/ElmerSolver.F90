@@ -575,7 +575,7 @@ END INTERFACE
   CALL TrilinosCleanup()
 #endif
 
-     IF ( ParEnv % PEs>1 )  CALL ParallelFinalize()
+     CALL ParallelFinalize()
      CALL Info('ElmerSolver','The end',Level=3)
 
      RETURN

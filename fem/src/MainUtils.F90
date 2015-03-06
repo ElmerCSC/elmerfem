@@ -87,12 +87,12 @@ CONTAINS
             CALL ListAddString( Params,'Linear System Direct Method', str)
           END IF
         ELSE
-          IF ( str == 'mumps' ) THEN
-            CALL Warn( 'CheckLinearSolverOptions', 'Currently no serial interface' // &
-                ' to the MUMPS solver implemented, trying UMFPACK!')
-            str = 'umfpack'    
-            CALL ListAddString( Params,'Linear System Direct Method', str)
-          END IF
+!         IF ( str == 'mumps' ) THEN
+!           CALL Warn( 'CheckSolverOptions', 'Currently no serial interface' // &
+!               ' to the MUMPS solver implemented, trying UMFPACK!')
+!           str = 'umfpack'    
+!           CALL ListAddString( Params,'Linear System Direct Method', str)
+!         END IF
         END IF
         
         SELECT CASE( str )
@@ -103,7 +103,7 @@ CONTAINS
 #ifndef HAVE_UMFPACK
           CALL Fatal( 'GetMatrixFormat', 'UMFPACK solver has not been installed.' )
 #endif
-        CASE( 'mumps' )
+        CASE( 'mumps', 'mumpslocal' )
 #ifndef HAVE_MUMPS
           CALL Fatal( 'CheckLinearSolverOptions', 'MUMPS solver has not been installed.' )
 #endif
