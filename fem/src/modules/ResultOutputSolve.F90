@@ -4897,6 +4897,8 @@ CONTAINS
       VTKCode = 12
     CASE( 820 )
       VTKCode = 25
+    CASE( 827 ) 
+      VTKCode = 33
     CASE DEFAULT
       WRITE(Message,'(A,I0)') 'Not implemented for elementtype: ',ElmerCode
       CALL Fatal('Elmer2VtkElement','Not Implemented for elementtype')
