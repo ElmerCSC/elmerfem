@@ -2028,7 +2028,8 @@ CONTAINS
          
          ! Currently the visulized limit is always scalar even though the limited field could be a vector!
          DO i = 1, SIZE( LimitVar % Values ) 
-           LimitVar % Values(i) = MortarBC % Active( Dofs*(i-1)+Dof)
+!          LimitVar % Values(i) = MortarBC % Active( Dofs*(i-1)+Dof)
+           LimitVar % Values(i) = 0
          END DO
        END IF
 
