@@ -696,8 +696,7 @@ END INTERFACE
       TYPE(Variable_t), POINTER :: Variable => NULL()
 
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
-      LOGICAL :: MortarBCsChanged = .FALSE.
-
+      LOGICAL :: MortarBCsChanged = .FALSE., MortarBCsOnly=.FALSE.
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------

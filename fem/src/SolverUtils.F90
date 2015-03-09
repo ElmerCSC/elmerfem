@@ -10026,8 +10026,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      TYPE(Solver_t) :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2
-     TYPE(Matrix_t), POINTER :: Atmp,Btmp
+     INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2,mcount,bcount
+     TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
      LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix
      TYPE(ValueList_t), POINTER :: BC
      TYPE(MortarBC_t), POINTER :: MortarBC
@@ -10036,21 +10036,34 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
      CALL Info('GenerateConstraintMatrix','Building constraint matrix',Level=12)
 
-     IF( .NOT. Solver % MortarBCsChanged ) THEN
+     IF( Solver % MortarBCsOnly .AND. .NOT. Solver % MortarBCsChanged ) THEN
        CALL Info('GenerateConstraintMatrix','Nothing to do!',Level=12)
        RETURN
      END IF
      
      ! Compute the size of the initial boundary matrices.
      !------------------------------------------------------
-     row = 0
-     DO bc_ind=1,Model % NumberOFBCs
-       Atmp => Solver % MortarBCs(bc_ind) % Projector
-       IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
-       row = row + Atmp % NumberOfRows
-     END DO
+     row    = 0
+     mcount = 0
+     bcount = 0
+     IF(.NOT. Solver % MortarBcsOnly) THEN
+       Ctmp => Solver % Matrix % ConstraintMatrix
+       DO WHILE(ASSOCIATED(Ctmp))
+         mcount = mcount + 1
+         row = row + Ctmp % NumberOfRows
+       END DO
+     END IF
 
-     IF( row == 0 )  RETURN
+     IF(Solver % MortarBCsChanged) THEN
+       DO bc_ind=1,Model % NumberOFBCs
+         Atmp => Solver % MortarBCs(bc_ind) % Projector
+         IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
+         bcount = bcount + 1
+         row = row + Atmp % NumberOfRows
+       END DO
+     END IF
+
+     IF( row==0 .OR. bcount==0 .AND. mcount<=1 )  RETURN
      
      CALL Info('GenerateConstraintMatrix','There are '&
          //TRIM(I2S(row))//' initial rows in constraint matrices',Level=10)
@@ -10077,14 +10090,22 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      k2 = 0
      rowoffset = 0
 
-     DO bc_ind=Model % NumberOFBCs,1,-1
+     Ctmp => Solver % Matrix % ConstraintMatrix
+     DO bc_ind=Model % NumberOFBCs+mcount,1,-1
 
-       MortarBC => Solver % MortarBCs(bc_ind) 
-       Atmp => MortarBC % Projector
-       IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
+       IF(bc_ind>Model % NumberOfBCs) THEN
+         Atmp => Ctmp
+         Ctmp => Ctmp % ConstraintMatrix
+         IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
+       ELSE
+         IF(.NOT. Solver % MortarBCsChanged) EXIT
+         MortarBC => Solver % MortarBCs(bc_ind) 
+         Atmp => MortarBC % Projector
+         IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
 
-       IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
-         CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
+         IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
+           CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
+         END IF
        END IF
 
        ! If the projector is of type x_s=P*x_m then generate a constraint matrix
@@ -10103,13 +10124,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
              IF( .NOT. MortarBC % Active(i) ) CYCLE
            END IF
 
-           k = Atmp % InvPerm(i)
-
            ! Node does not have an active dof to be constrained
-           IF( Perm(k) == 0 ) CYCLE
+           IF(ASSOCIATED(Atmp % InvPerm)) THEN
+             k = Atmp % InvPerm(i)
+             IF( Perm(k) == 0 ) CYCLE
              
-           IF( AllocationsDone ) THEN
-             Btmp % InvPerm(row) = rowoffset + Perm( k ) 
+             IF( AllocationsDone ) THEN
+               Btmp % InvPerm(row) = rowoffset + Perm( k ) 
+             END IF
            END IF
 
            wsum = 0.0_dp
@@ -10233,11 +10255,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                IF( .NOT. MortarBC % Active(Dofs*(i-1)+j) ) CYCLE
              END IF
                           
-             k = Atmp % InvPerm(i)
-             IF( Perm(k) == 0 ) CYCLE
+            IF(ASSOCIATED(Atmp % InvPerm)) THEN
+               k = Atmp % InvPerm(i)
+               IF( Perm(k) == 0 ) CYCLE
 
-             IF( AllocationsDone ) THEN
-               Btmp % InvPerm(row) = rowoffset + Dofs * ( Perm( k ) - 1 ) + j
+               IF( AllocationsDone ) THEN
+                 Btmp % InvPerm(row) = rowoffset + Dofs * ( Perm( k ) - 1 ) + j
+               END IF
              END IF
 
              wsum = 0.0_dp
@@ -10373,7 +10397,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      Solver % Matrix % ConstraintMatrix => Btmp
      
      Solver % MortarBCsChanged = .FALSE.
-
    END SUBROUTINE GenerateConstraintMatrix
      
 
@@ -10387,7 +10410,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        CALL FreeMatrix(CM)
        CM => CM % ConstraintMatrix
      END DO
-     Solver % Matrix % ConstraintMatrix => NULL()
+     Solver % Matrix % ConstraintMatrix => Null()
 
    END SUBROUTINE ReleaseConstraintMatrix
 
