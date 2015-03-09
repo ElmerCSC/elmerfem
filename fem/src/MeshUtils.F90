@@ -5945,6 +5945,7 @@ END SUBROUTINE GetMaxDefs
 
     ! If requested, create mapping for edge dofs
     !-------------------------------------------------------------
+    EdgeBasis = .FALSE.
     IF( DoEdges ) THEN
       EdgeCol0 = Mesh % NumberOfNodes
       FaceCol0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges

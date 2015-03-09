@@ -330,6 +330,7 @@ CONTAINS
     
     wsize = HUTI_WRKDIM
     
+    StopcProc = 0
     IF (PRESENT(StopcF)) THEN
        StopcProc = StopcF
        HUTI_STOPC = HUTI_USUPPLIED_STOPC
