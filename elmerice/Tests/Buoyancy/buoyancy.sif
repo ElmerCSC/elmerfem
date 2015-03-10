@@ -37,7 +37,7 @@ Simulation
 
   Post File = "buoyancy.vtu"
 
-  max output level = 3
+  max output level = 4
 End
 
 !---------------------------------------------------
@@ -352,5 +352,8 @@ Boundary Condition 4
   Mesh Update 1 = Real 0.0
 End
 
-
-
+Solver 2 :: Reference Norm = Real 9.9999999
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=9.9999999,EPS=\n" );

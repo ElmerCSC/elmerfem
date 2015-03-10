@@ -1,5 +1,4 @@
 FUNCTION Youngs( Model, n, x ) RESULT( s )
-!DEC$ATTRIBUTES DLLEXPORT :: Youngs
   USE Types
   TYPE(Model_t) :: Model
   INTEGER :: n
@@ -14,7 +13,6 @@ END FUNCTION Youngs
 
 
 FUNCTION InFlow( Model, n, x ) RESULT( vin )
-!DEC$ATTRIBUTES DLLEXPORT :: InFlow
   USE Types
   TYPE(Model_t) :: Model
   INTEGER :: n

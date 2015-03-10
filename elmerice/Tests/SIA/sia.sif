@@ -22,7 +22,7 @@ Simulation
   Steady State Max Iterations = 1
   Steady State Min Iterations = 1
   Post File = "result.vtu"
-  max output level = 3
+  max output level = 4
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 Body 1
@@ -182,4 +182,10 @@ Boundary Condition 6
   Save Line = Logical True
   SIAFlow 4 = real 0.0
   Depth = real 0.0
-End 
+End
+
+Solver 3 :: Reference Norm = Real 0.52180740E-02
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.52180740E-02,EPS=1E-06\n" );

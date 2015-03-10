@@ -36,6 +36,11 @@ SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared
 SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 
+IF(NOT CMAKE_BUILD_TYPE)
+  SET(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Build type (Release, Debug, RelWithDebInfo, MinSizeRel)" FORCE)
+  SET_PROPERTY(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
+ENDIF(NOT CMAKE_BUILD_TYPE)
+
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
 
@@ -151,6 +156,14 @@ IF(CMAKE_Fortran_COMPILER_SUPPORTS_CONTIGUOUS)
   ADD_DEFINITIONS(-DCONTIG=,CONTIGUOUS)
 ELSE()
   ADD_DEFINITIONS(-DCONTIG=)
+ENDIF()
+
+# Check that the gfortran version is >= 4.8
+IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
+  INCLUDE(testGFortranVersion)
+  IF(NOT CMAKE_Fortran_COMPILER_GNU_VERSION_OK)
+    MESSAGE(FATAL_ERROR "GNU Fortran version is too old, should be at least 4.8")
+  ENDIF()
 ENDIF()
 
 # Check if this is mingw toolchain. 

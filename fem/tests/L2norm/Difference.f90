@@ -1,5 +1,4 @@
 SUBROUTINE DifferenceSolver(Model, Solver, dt, TransientSimulation)
-!DEC$ATTRIBUTES DLLEXPORT:: DifferenceSolver
 !------------------------------------------------------------------------------
 !******************************************************************************
 !

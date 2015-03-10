@@ -1,5 +1,4 @@
 SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
-!DEC$ATTRIBUTES DLLEXPORT :: StokesSolver
 !------------------------------------------------------------------------------
 !******************************************************************************
 !

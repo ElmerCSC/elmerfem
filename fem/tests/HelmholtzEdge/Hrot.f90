@@ -1,5 +1,4 @@
 SUBROUTINE HrotSolver( Model,Solver,dt,TransientSimulation )
-!DEC$ATTRIBUTES DLLEXPORT :: HrotSolver
 !------------------------------------------------------------------------------
 !******************************************************************************
 !
@@ -38,7 +37,6 @@ SUBROUTINE HrotSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
   TYPE(Model_t) :: Model
-
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------

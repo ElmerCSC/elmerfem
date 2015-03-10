@@ -3693,6 +3693,9 @@ CONTAINS
            IF ( k > 0 ) THEN
              IF ( DOF>0 ) THEN
                k = NDOFs * (k-1) + DOF
+               IF( ParEnv % Pes > 1 ) THEN
+                  IF(  A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) CYCLE
+               END IF
                b(k) = b(k) + Work(j) * DiagScaling(k)
              ELSE
                DO l=1,MIN( NDOFs, SIZE(Worka,1) )
