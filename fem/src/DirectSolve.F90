@@ -1436,9 +1436,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Pardiso_SolveSystem( Solver,A,x,b,Free_fact )
 !------------------------------------------------------------------------------
-      IMPLICIT NONE
+    IMPLICIT NONE
 
-      TYPE(Solver_t) :: Solver
+    TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp), TARGET :: x(*), b(*)
     LOGICAL, OPTIONAL :: Free_fact
@@ -1446,21 +1446,30 @@ CONTAINS
 ! MKL version of Pardiso (interface is different)
 #if defined(HAVE_MKL)
     INTERFACE
-          SUBROUTINE pardiso(pt, maxfct, mnum, mtype, phase, n, &
+      SUBROUTINE pardiso(pt, maxfct, mnum, mtype, phase, n, &
                            values, rows, cols, perm, nrhs, iparm, msglvl, b, x, ierror)
-              USE Types
-                REAL(KIND=dp) :: values(*), b(*), x(*)
-                INTEGER(KIND=AddrInt) :: pt(*)
-                INTEGER :: perm(*), nrhs, iparm(*), msglvl, ierror
-                INTEGER :: maxfct, mnum, mtype, phase, n, rows(*), cols(*)
-        END SUBROUTINE pardiso
-      END INTERFACE
+        USE Types
+        IMPLICIT NONE
+        REAL(KIND=dp) :: values(*), b(*), x(*)
+        INTEGER(KIND=AddrInt) :: pt(*)
+        INTEGER :: perm(*), nrhs, iparm(*), msglvl, ierror
+        INTEGER :: maxfct, mnum, mtype, phase, n, rows(*), cols(*)
+      END SUBROUTINE pardiso
+
+      SUBROUTINE pardisoinit(pt, mtype, iparm)
+        USE Types
+        IMPLICIT NONE
+        INTEGER(KIND=AddrInt) :: pt(*)
+        INTEGER :: mtype
+        INTEGER :: iparm(*)
+      END SUBROUTINE pardisoinit
+    END INTERFACE
 
     INTEGER maxfct, mnum, mtype, phase, n, nrhs, ierror, msglvl
     INTEGER, POINTER :: Iparm(:)
     INTEGER i, j, k, nz, idum(1), nzutd
     LOGICAL :: Found, matsym, matpd
-    REAL*8  waltime1, waltime2, ddum(1)
+    REAL*8  :: ddum(1)
 
     LOGICAL :: Factorize, FreeFactorize
     INTEGER :: tlen, allocstat
@@ -1468,9 +1477,6 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: values(:)
     INTEGER, POINTER  :: rows(:), cols(:)
-
-    INTEGER, EXTERNAL :: MKL_GET_MAX_THREADS
-
 
     ! Check if system needs to be refactorized
     Factorize = ListGetLogical( Solver % Values, &
@@ -1544,11 +1550,9 @@ CONTAINS
     IF ( ABS(mtype) == 2 ) THEN
       nzutd = 0
       DO i=1,n
-        DO j=A % Diag(i), a % Rows(i+1)-1
-          IF ( A % Values(j) /= 0._dp ) nzutd=nzutd+1
-        END DO
+        nzutd = nzutd + A % Rows(i+1)-A % Diag(i)
       END DO
-
+      
       ALLOCATE( values(nzutd), cols(nzutd), rows(n+1), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal('Pardiso_SolveSystem', &
@@ -1556,18 +1560,17 @@ CONTAINS
       END IF
 
       ! Copy upper triangular part of A to Pardiso structure
-      k = 1
+      Rows(1)=1
       DO i=1,n
-        Rows(i) = k
-        DO j=A % Diag(i), A % Rows(i+1)-1
-          IF ( A % Values(j) /= 0._dp ) THEN
-            Cols(k) = A % Cols(j)
-            Values(k) = A % Values(j)
-            k = k + 1
-          END IF
+        ! Set up row pointers and copy values
+        nzutd = A % Rows(i+1)-A % Diag(i)
+        Rows(i+1) = Rows(i)+nzutd
+        DO j=0,nzutd-1
+          Cols(Rows(i)+j)=A % Cols(A%Diag(i)+j)
+          Values(Rows(i)+j)=A % Values(A%Diag(i)+j)
         END DO
-        Rows(n+1) = k
       END DO
+      
     ELSE
       Cols => A % Cols
       Rows => A % Rows
@@ -1603,20 +1606,21 @@ CONTAINS
       iparm = 0
       A % PardisoId = 0
  
-      ! Set up parameters explicitly
+      ! Set up scaling values for solver based on matrix type
+      CALL pardisoinit(A % PardisoId, mtype, iparm)
+
+      ! Set up rest of parameters explicitly
       iparm(1)=1      ! Do not use solver default parameters
       iparm(2)=2      ! Minimize fill-in with nested dissection from Metis
-      iparm(3)=MKL_GET_MAX_THREADS() ! Get value of MKL_NUM_THREADS
+      iparm(3)=0      ! Reserved
       iparm(4)=0      ! Always compute factorization
       iparm(5)=0      ! No user input permutation
       iparm(6)=0      ! Write solution vector to x
       iparm(8)=5      ! Number of iterative refinement steps
-      iparm(10)=13    ! Perturbation value 10^-iparm(10) in case of small pivots
-      iparm(11)=1     ! Use scalings from symmetric weighted matching
-      iparm(13)=1     ! Use permutations from symmetric weighted matching
       iparm(18)=-1    ! Report nnz(L) and nnz(U)
       iparm(19)=0     ! Do not report Mflops
       iparm(27)=0     ! Do not check sparse matrix representation
+      iparm(35)=0     ! Use Fortran style indexing
       iparm(60)=0     ! Use in-core version of Pardiso
 
       ! Perform analysis
