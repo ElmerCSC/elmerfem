@@ -16,56 +16,66 @@ MODULE huti_sfe
   INTERFACE
   
      FUNCTION zdotc(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        DOUBLE COMPLEX :: x(*), y(*)
        DOUBLE COMPLEX :: res
      END FUNCTION zdotc
 
      FUNCTION zdotu(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        DOUBLE COMPLEX :: x(*), y(*)
        DOUBLE COMPLEX :: res
      END FUNCTION zdotu
 
      FUNCTION cdotc(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        COMPLEX :: x(*), y(*)
        COMPLEX :: res
      END FUNCTION cdotc
 
      FUNCTION cdotu(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        COMPLEX :: x(*), y(*)
        COMPLEX :: res
      END FUNCTION cdotu
 
      FUNCTION sdot(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        REAL :: x(*), y(*), res
      END FUNCTION sdot
 
      FUNCTION ddot(n, x, xinc, y, yinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc, yinc
        DOUBLE PRECISION :: x(*), y(*), res
      END FUNCTION ddot
 
      FUNCTION dnrm2(n, x, xinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc
        DOUBLE PRECISION :: x(*), res
      END FUNCTION dnrm2
 
      FUNCTION snrm2(n, x, xinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc
        REAL :: x(*), res
      END FUNCTION snrm2
 
      FUNCTION dznrm2(n, x, xinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc
        DOUBLE COMPLEX :: x(*)
        DOUBLE PRECISION :: res
      END FUNCTION dznrm2
 
      FUNCTION scnrm2(n, x, xinc) RESULT(res)
+       IMPLICIT NONE
        INTEGER :: n, xinc
        COMPLEX :: x(*)
        REAL :: res
@@ -77,7 +87,7 @@ CONTAINS
   
   SUBROUTINE huti_s_cg(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_s ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondrsubr
@@ -111,7 +121,7 @@ CONTAINS
 
   SUBROUTINE huti_s_tfqmr(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_s ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondrsubr
@@ -145,7 +155,7 @@ CONTAINS
 
   SUBROUTINE huti_s_cgs(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_s ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondrsubr
@@ -179,7 +189,7 @@ CONTAINS
 
   SUBROUTINE huti_s_qmr(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_s ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondrsubr
@@ -213,7 +223,7 @@ CONTAINS
 
   SUBROUTINE huti_s_bicgstab(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_s ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondrsubr
@@ -247,7 +257,7 @@ CONTAINS
 
   SUBROUTINE huti_s_gmres(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_s ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondrsubr
@@ -281,7 +291,7 @@ CONTAINS
 
   SUBROUTINE huti_s_bicgstab_2(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_s ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_s ), POINTER :: pcondrsubr
@@ -315,7 +325,7 @@ CONTAINS
 
   SUBROUTINE huti_d_cg(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -349,7 +359,7 @@ CONTAINS
 
   SUBROUTINE huti_d_cgs(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -383,7 +393,7 @@ CONTAINS
 
   SUBROUTINE huti_d_bicgstab(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -417,7 +427,7 @@ CONTAINS
 
   SUBROUTINE huti_d_tfqmr(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -451,7 +461,7 @@ CONTAINS
 
   SUBROUTINE huti_d_qmr(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -485,7 +495,7 @@ CONTAINS
 
   SUBROUTINE huti_d_gmres(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -519,7 +529,7 @@ CONTAINS
 
   SUBROUTINE huti_d_bicgstab_2(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_d ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_d ), POINTER :: pcondrsubr
@@ -553,7 +563,7 @@ CONTAINS
 
   SUBROUTINE huti_c_cg(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_c ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondrsubr
@@ -587,7 +597,7 @@ CONTAINS
 
   SUBROUTINE huti_c_cgs(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_c ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondrsubr
@@ -621,7 +631,7 @@ CONTAINS
 
   SUBROUTINE huti_c_bicgstab(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_c ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondrsubr
@@ -655,7 +665,7 @@ CONTAINS
 
   SUBROUTINE huti_c_qmr(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_c ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondrsubr
@@ -689,7 +699,7 @@ CONTAINS
 
   SUBROUTINE huti_c_tfqmr(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_c ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondrsubr
@@ -701,7 +711,7 @@ CONTAINS
     COMPLEX, DIMENSION(HUTI_NDIM) :: xvec, rhsvec
     DOUBLE PRECISION, DIMENSION(HUTI_DPAR_DFLTSIZE) :: dpar
     COMPLEX, DIMENSION(HUTI_WRKDIM,HUTI_NDIM) :: work
-
+ 
     IF(.NOT. ASSOCIATED(pcondrsubr) ) THEN
        pcondrsubr => huti_cdummy_pcondfun
     END IF
@@ -723,7 +733,7 @@ CONTAINS
 
   SUBROUTINE huti_c_gmres(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE    
     PROCEDURE( mv_iface_c ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondrsubr
@@ -757,7 +767,7 @@ CONTAINS
 
   SUBROUTINE huti_c_bicgstab_2(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_c ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_c ), POINTER :: pcondrsubr
@@ -791,7 +801,7 @@ CONTAINS
   
   SUBROUTINE huti_z_cg(xvec, rhsvec, ipar, dpar, work, matvecsubr, &
        & pcondlsubr, pcondrsubr, dotprodfun, normfun, mstopfun)
-    
+    IMPLICIT NONE
     PROCEDURE( mv_iface_z ), POINTER :: matvecsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondlsubr
     PROCEDURE( pc_iface_z ), POINTER :: pcondrsubr

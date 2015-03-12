@@ -1,7 +1,7 @@
 
 
-macro(ADD_ELMER_TEST test_name)
-  add_test(NAME ${test_name}
+MACRO(ADD_ELMER_TEST test_name)
+  ADD_TEST(NAME ${test_name}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     COMMAND ${CMAKE_COMMAND}
       -DELMERGRID_BIN=${ELMERGRID_BIN}
@@ -12,10 +12,16 @@ macro(ADD_ELMER_TEST test_name)
       -DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}
       -DBINARY_DIR=${CMAKE_BINARY_DIR}
       -DCMAKE_Fortran_COMPILER=${CMAKE_Fortran_COMPILER}
+      -DMPIEXEC=${MPIEXEC}
+      -DMPIEXEC_NUMPROC_FLAG=${MPIEXEC_NUMPROC_FLAG}
+      -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
+      -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
+      -DWITH_MPI=${WITH_MPI}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
-endmacro()
+ENDMACRO()
 
-macro(ADD_ELMERTEST_MODULE test_name module_name file_name)
+
+MACRO(ADD_ELMERTEST_MODULE test_name module_name file_name)
   IF(APPLE)
     SET(CMAKE_SHARED_MODULE_SUFFIX ".dylib")
   ENDIF(APPLE)
@@ -36,49 +42,63 @@ macro(ADD_ELMERTEST_MODULE test_name module_name file_name)
       elmersolver ElmerSolver ElmerGrid)
   ENDIF()
   UNSET(ELMERTEST_CMAKE_NAME)
-endmacro()
+ENDMACRO()
 
-macro(RUN_ELMER_TEST)
+
+MACRO(RUN_ELMER_TEST)
   MESSAGE(STATUS "BINARY_DIR = ${BINARY_DIR}")
-  set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
-  set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
+  SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
+  SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
 
   IF(NOT(WIN32))
-    set(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
   ENDIF(NOT(WIN32))
 
   FILE(REMOVE TEST.PASSED)
 
   IF(WIN32)
-    set(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
     GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    set(ENV{PATH} "$ENV{PATH};${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+    SET(ENV{PATH} "$ENV{PATH};${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
   ENDIF(WIN32)
 
-  execute_process(COMMAND ${ELMERSOLVER_BIN} OUTPUT_FILE "test-stdout.log"
-    ERROR_FILE "test-stderr.log" OUTPUT_VARIABLE TESTOUTPUT)
+  IF(WITH_MPI)
+    EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
+      OUTPUT_FILE "test-stdout.log"
+      ERROR_FILE "test-stderr.log"
+      OUTPUT_VARIABLE TESTOUTPUT)
+  ELSE()      
+    EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
+      OUTPUT_FILE "test-stdout.log"
+      ERROR_FILE "test-stderr.log"
+      OUTPUT_VARIABLE TESTOUTPUT)
+  ENDIF()
 
   MESSAGE(STATUS "testoutput.........: ${TESTOUTPUT}")
 
-  file(READ "TEST.PASSED" RES)
-  if (NOT RES EQUAL "1")
-    message(FATAL_ERROR "Test failed")
-  endif()
-endmacro()
+  FILE(READ "TEST.PASSED" RES)
+  IF (NOT RES EQUAL "1")
+    MESSAGE(FATAL_ERROR "Test failed")
+  ENDIF()
+ENDMACRO()
 
-macro(EXECUTE_ELMER_SOLVER SIFNAME)
-  set(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
-  set(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
+
+MACRO(EXECUTE_ELMER_SOLVER SIFNAME)
+  SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
+  SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
 
   IF(NOT(WIN32))
-    set(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
   ENDIF(NOT(WIN32))
 
   IF(WIN32)
-    set(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
+    SET(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
     GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    set(ENV{PATH} "${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+    SET(ENV{PATH} "${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
   ENDIF(WIN32)
-  execute_process(COMMAND ${ELMERSOLVER_BIN} ${SIFNAME} OUTPUT_FILE "${SIFNAME}-stdout.log"
+  
+  EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN} ${SIFNAME}
+    OUTPUT_FILE "${SIFNAME}-stdout.log"
     ERROR_FILE "${SIFNAME}-stderr.log")
-endmacro()
+ENDMACRO()
+

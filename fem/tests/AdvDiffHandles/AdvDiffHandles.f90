@@ -162,7 +162,7 @@ CONTAINS
 
       ! Velocity at integration point
       !------------------------------
-      DO i=1,dim
+      DO i=1,3
         Velo_AtIp(i) = SUM(Velo(i,1:n) * Basis(1:n))
       END DO
 

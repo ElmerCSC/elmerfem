@@ -64,31 +64,30 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Nodes_t) :: ElementNodes
   TYPE(Element_t),POINTER :: Element, Parent
   TYPE(ValueList_t), POINTER :: Params, Material, Equation, BC 
-  TYPE(Variable_t), POINTER :: VarTemp
 
   INTEGER, PARAMETER :: Compressibility_None = 1, Compressibility_Weak = 2, &
       Compressibility_GasIsothermal = 3, Compressibility_GasAdiabatic = 4
   INTEGER, PARAMETER :: Viscosity_Newtonian = 1, Viscosity_Rarefied = 2
 
   INTEGER :: iter, i, j, k, l, n, nd, t, istat, mat_id, eq_id, body_id, mat_idold, &
-      NoIterations, ViscosityType, CompressibilityType, added, removed
+      NoIterations, ViscosityType, CompressibilityType
   INTEGER, POINTER :: NodeIndexes(:), PressurePerm(:)
 
-!  LOGICAL, POINTER :: PeriodicNodes(:)
   LOGICAL :: GotIt, GotIt2, GotIt3, stat, AllocationsDone = .FALSE., SubroutineVisited = .FALSE., &
-      UseVelocity, SideCorrection, Bubbles, PartIntSliding, Cavitation, Converged
-  REAL(KIND=dp), POINTER :: Pressure(:), CavitationValues(:), LoadValues(:)
+      UseVelocity, SideCorrection, Bubbles, Converged, ApplyLimiter
+  REAL(KIND=dp), POINTER :: Pressure(:)
   REAL(KIND=dp) :: Norm, ReferencePressure, HeatRatio, BulkModulus, &
-      mfp0, Pres, Dens, CavitationPressure, CavLoadTol, CavPresTol
+      mfp0, Pres, Dens
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:), TimeForce(:), &
       Viscosity(:), GapHeight(:), NormalVelocity(:), Velocity(:,:), &
-      Admittance(:), Impedance(:), ElemPressure(:)
+      Admittance(:), Impedance(:), ElemPressure(:), PrevElemPressure(:)
+  TYPE(Variable_t), POINTER :: SensVar, SaveVar
 
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityModel, CompressibilityModel
 
   SAVE ElementNodes, Viscosity, GapHeight, Velocity, NormalVelocity, &
-      Admittance, FORCE, STIFF, MASS, TimeForce, ElemPressure, AllocationsDone, &
-      CavitationValues, LoadValues
+      Admittance, FORCE, STIFF, MASS, TimeForce, ElemPressure, PrevElemPressure, &
+      AllocationsDone
 
 
   CALL Info('ReynoldsSolver','---------------------------------------',Level=5)
@@ -105,16 +104,6 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
   Params => GetSolverParams()
   Bubbles = GetLogical( Params, 'Bubbles', GotIt )
-  PartIntSliding = GetLogical(Params,'Partial Integrate Sliding',GotIt)
-
-  Cavitation = GetLogical( Params,'Cavitation',GotIt) 
-  IF(Cavitation) THEN
-    CavitationPressure = GetCReal( Params,'Cavitation Pressure')
-    CavLoadTol = GetCReal( Params,'Cavitation Load Tolerance',GotIt)
-    IF(.NOT. GotIt ) CavLoadTol = 1.0e-20
-    CavPresTol = GetCReal( Params,'Cavitation Pressure Tolerance',GotIt)
-    IF(.NOT. GotIt ) CavPresTol = 1.0e-6   
-  END IF
 
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF(Solver % Variable % Dofs /= 1) THEN
@@ -128,11 +117,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 ! Do some initial stuff
 !------------------------------------------------------------------------------
 
-  SideCorrection = .FALSE.
-  DO i=1,Model % NumberOfBCs
-    stat = GetLogical(Model % BCs(i) % Values,'Open Side',gotIt) 
-    IF(stat) SideCorrection = .TRUE.
-  END DO
+  SideCorrection = ListGetLogicalAnyBC( Model,'Open Side')
 
   NoIterations = GetInteger( Params,'Nonlinear System Max Iterations',GotIt)
   IF(.NOT. GotIt) NoIterations = 1
@@ -158,32 +143,9 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
         MASS( 2*N, 2*N ), &
         TimeForce( 2*N ), &
         ElemPressure(N), &
+        PrevElemPressure(N), &
         STAT=istat )
     IF ( istat /= 0 ) CALL FATAL('ReynoldsSolver','Memory allocation error')
-
-
-    IF( Cavitation ) THEN
-      VarTemp => VariableGet( Model % Mesh % Variables, &
-         GetVarName(Solver % Variable) // ' Loads' )
-      IF (.NOT.ASSOCIATED(VarTemp)) THEN
-        WRITE(Message,'(A)') GetVarName(Solver % Variable) // ' Loads: not associated'
-        CALL FATAL('ReynoldsSolver', Message)
-      END IF
-      LoadValues => VarTemp % Values
-
-      VarTemp => VariableGet( Model % Mesh % Variables, &
-           GetVarName(Solver % Variable) // ' Cavitation' )
-      IF (.NOT.ASSOCIATED(VarTemp)) THEN
-        WRITE(Message,'(A)') TRIM(ComponentName(Solver % Variable)) // ' Cavitation: not associated'
-        CALL FATAL('ReynoldsSolver', Message)
-      END IF
-      CavitationValues => VarTemp % Values
-
-      ! Initialize this so that an uninitialized defult (zero) is not cavitation
-      DO i= 1, SIZE(CavitationValues) 
-        IF( ABS(CavitationValues(i)) < 1.0d-20 ) CavitationValues(i) = -1.0
-      END DO
-    END IF
 
     AllocationsDone = .TRUE.
   END IF
@@ -206,6 +168,75 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
 !    Do the bulk assembly:
 !    ---------------------
+    CALL GlobalBulkAssembly()
+    CALL DefaultFinishBulkAssembly( )
+
+!------------------------------------------------------------------------------
+!    Neumann & Newton BCs:
+!------------------------------------------------------------------------------
+    IF(SideCorrection) THEN
+      CALL GlobalBoundaryAssemby()
+    END IF
+    
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs()
+
+!    Solve the system and we are done:
+!    ---------------------------------
+    Norm = DefaultSolve()
+
+    Converged = ( Solver % Variable % NonlinConverged == 1 )
+    IF( Converged ) EXIT
+  END DO
+  
+  IF( ListGetLogical( Params,'Gap Sensitivity', GotIt ) ) THEN
+    CALL Info('ReynoldsSolver','Computing FilmPressure sentivity to gap height',Level=5)
+
+    CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.TRUE.)
+    ApplyLimiter = ListGetLogical( Params,'Apply Limiter', GotIt )
+    IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .FALSE. ) 
+    
+    SensVar => VariableGet( Model % Variables,'FilmPressure Gap Sensitivity')
+    IF( .NOT. ASSOCIATED( SensVar ) ) THEN
+      CALL Fatal('ReynoldsSolver','> Filmpressure gap sensitivity < should exist!')
+    END IF
+    SaveVar => Solver % Variable 
+    Solver % Variable => SensVar
+
+    CALL DefaultInitialize()
+    CALL GlobalBulkAssembly( 1 )
+    CALL DefaultFinishBulkAssembly( )
+    CALL DefaultFinishAssembly()
+    CALL DefaultDirichletBCs( Ux = SensVar )
+
+!    Solve the system and we are done:
+!    ---------------------------------
+    Norm = DefaultSolve()
+
+    CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.FALSE.)
+    Solver % Variable => SaveVar
+    IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .TRUE. ) 
+  END IF
+
+
+  CALL DefaultFinish() 
+  CALL Info('ReynoldsSolver','-------------------------------------------------',Level=5)
+  
+CONTAINS  
+
+
+
+  ! Cycle over the bulk elements and build the global linear system
+  ! Optionally performs sensitisity analysis. 
+  !----------------------------------------------------------------------
+  SUBROUTINE GlobalBulkAssembly( SensitivityMode )
+
+    INTEGER, OPTIONAL :: SensitivityMode
+    INTEGER :: SensMode 
+    
+    SensMode = 0
+    IF( PRESENT(SensitivityMode) ) SensMode = SensitivityMode
+
 
     DO t=1,Solver % NumberOfActiveElements
 
@@ -215,6 +246,12 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
       
       CALL GetElementNodes( ElementNodes )
       CALL GetScalarLocalSolution( ElemPressure )
+
+      IF( SensMode > 0 ) THEN
+        IF( TransientSimulation ) THEN
+          CALL GetScalarLocalSolution( PrevElemPressure, tstep = -1 )
+        END IF
+      END IF
 
 
       body_id =  Element % Bodyid
@@ -229,25 +266,35 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 !       Get velocities
 !------------------------------------------------------------------------------        
 
-      Velocity(1,1:n) = GetReal(Equation,'Surface Velocity 1',GotIt)
-      Velocity(2,1:n) = GetReal(Equation,'Surface Velocity 2',GotIt2)
-      Velocity(3,1:n) = GetReal(Equation,'Surface Velocity 3',GotIt3)
-      UseVelocity = GotIt .OR. GotIt2 .OR. GotIt3
-      IF(.NOT. UseVelocity) THEN
-        Velocity(1,1:n) = GetReal(Material,'Surface Velocity 1',GotIt)
-        Velocity(2,1:n) = GetReal(Material,'Surface Velocity 2',GotIt2)
-        Velocity(3,1:n) = GetReal(Material,'Surface Velocity 3',GotIt3)
+      Velocity = 0.0_dp
+      UseVelocity = .FALSE.
+      IF( ListCheckPrefix( Equation,'Surface Velocity') ) THEN
+        Velocity(1,1:n) = GetReal(Equation,'Surface Velocity 1',GotIt)
+        Velocity(2,1:n) = GetReal(Equation,'Surface Velocity 2',GotIt2)
+        Velocity(3,1:n) = GetReal(Equation,'Surface Velocity 3',GotIt3)
         UseVelocity = GotIt .OR. GotIt2 .OR. GotIt3
+      END IF
+      IF(.NOT. UseVelocity) THEN
+        IF( ListCheckPrefix( Material,'Surface Velocity') ) THEN
+          Velocity(1,1:n) = GetReal(Material,'Surface Velocity 1',GotIt)
+          Velocity(2,1:n) = GetReal(Material,'Surface Velocity 2',GotIt2)
+          Velocity(3,1:n) = GetReal(Material,'Surface Velocity 3',GotIt3)
+          UseVelocity = GotIt .OR. GotIt2 .OR. GotIt3
+        END IF
       END IF
 
       IF(.NOT. UseVelocity) THEN
-        Velocity(1,1:n) = GetReal(Equation,'Tangent Velocity 1',GotIt) 
-        Velocity(2,1:n) = GetReal(Equation,'Tangent Velocity 2',GotIt2)
-        Velocity(3,1:n) = GetReal(Equation,'Tangent Velocity 3',GotIt3)
+        IF( ListCheckPrefix( Equation,'Tangent Velocity') ) THEN
+          Velocity(1,1:n) = GetReal(Equation,'Tangent Velocity 1',GotIt) 
+          Velocity(2,1:n) = GetReal(Equation,'Tangent Velocity 2',GotIt2)
+          Velocity(3,1:n) = GetReal(Equation,'Tangent Velocity 3',GotIt3)
+        END IF
         IF(.NOT. (GotIt .OR. GotIt2 .OR. GotIt3)) THEN
-          Velocity(1,1:n) = GetReal(Material,'Tangent Velocity 1',GotIt) 
-          Velocity(2,1:n) = GetReal(Material,'Tangent Velocity 2',GotIt2)
-          Velocity(3,1:n) = GetReal(Material,'Tangent Velocity 3',GotIt3)
+          IF( ListCheckPrefix( Material,'Tangent Velocity') ) THEN
+            Velocity(1,1:n) = GetReal(Material,'Tangent Velocity 1',GotIt) 
+            Velocity(2,1:n) = GetReal(Material,'Tangent Velocity 2',GotIt2)
+            Velocity(3,1:n) = GetReal(Material,'Tangent Velocity 3',GotIt3)
+          END IF
         END IF
         NormalVelocity(1:n) = GetReal(Equation,'Normal Velocity',GotIt)
         IF(.NOT. GotIt) NormalVelocity(1:n) = &
@@ -308,7 +355,7 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
       MASS = 0.0d0
       FORCE = 0.0d0
       
-      CALL LocalMatrix(   MASS, STIFF, FORCE, Element, n, nd, ElementNodes) 
+      CALL LocalBulkMatrix( MASS, STIFF, FORCE, Element, n, nd, ElementNodes, SensMode ) 
                     
 !------------------------------------------------------------------------------
 !  In time dependent simulation add mass matrix to stiff matrix
@@ -329,143 +376,27 @@ SUBROUTINE ReynoldsSolver( Model,Solver,dt,TransientSimulation )
 
 !------------------------------------------------------------------------------
     END DO 
-!------------------------------------------------------------------------------
-    CALL DefaultFinishBulkAssembly( )
 
-!------------------------------------------------------------------------------
-!    Neumann & Newton BCs:
-!------------------------------------------------------------------------------
+  END SUBROUTINE GlobalBulkAssembly
 
-    IF(SideCorrection) THEN
-          
-     DO t=1, Solver % Mesh % NumberOfBoundaryElements
-        Element => GetBoundaryElement(t)
-        IF ( .NOT. ActiveBoundaryElement() ) CYCLE
-
-        n  = GetElementNOFNodes()
-        nd = GetElementNOFDOFs()
-        IF ( GetElementFamily() == 1 ) CYCLE
-
-        BC => GetBC()
-        IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
-
-        stat = GetLogical(BC,'Open Side',gotIt) 
-        IF(.NOT. stat) CYCLE
-!------------------------------------------------------------------------------
-        NodeIndexes => Element % NodeIndexes
-          
-        IF ( ANY( PressurePerm(NodeIndexes(1:n)) == 0 ) ) CYCLE
-        
-        Parent => Element % BoundaryInfo % Left
-        stat = ASSOCIATED( Parent )
-        IF ( stat ) stat = stat .AND. ALL(PressurePerm(Parent % NodeIndexes) > 0)
-        
-        IF(.NOT. stat) THEN
-          Parent => ELement % BoundaryInfo % Right            
-          stat = ASSOCIATED( Parent )
-          IF ( stat ) stat = stat .AND. ALL(PressurePerm(Parent % NodeIndexes) > 0)
-          IF ( .NOT. stat )  CALL Fatal( 'ReynoldsSolver', &
-              'No proper parent element available for specified boundary' )
-        END IF
-        
-        Model % CurrentElement => Parent
-        CALL GetElementNodes( ElementNodes )
-
-        mat_id = GetInteger( Model % Bodies(Parent % BodyId) % Values,'Material')
-        Material => Model % Materials(mat_id) % Values
-        
-        GapHeight(1:n) = GetReal(Material,'Gap Height')
-
-        Viscosity(1:n) = GetReal( Material, 'Viscosity')
-        
-        STIFF = 0.0d0
-        MASS = 0.0d0
-        FORCE = 0.0d0
-          
-!------------------------------------------------------------------------------
-!             Get element local matrix and rhs vector
-!------------------------------------------------------------------------------
-
-        CALL LocalBoundary( MASS, STIFF, FORCE, Element, n, ElementNodes )
-                    
-!------------------------------------------------------------------------------
-!             Update global matrix and rhs vector from local matrix & vector
-!------------------------------------------------------------------------------
-        IF ( TransientSimulation ) THEN
-          MASS = 0.d0
-          CALL Default1stOrderTime( MASS, STIFF, FORCE )
-        END IF
-        
-        CALL DefaultUpdateEquations( STIFF, FORCE )
-
-!------------------------------------------------------------------------------
-      END DO
-!------------------------------------------------------------------------------
-    END IF
-
-
-    CALL DefaultFinishAssembly()
-    CALL DefaultDirichletBCs()
-    CALL Info( 'ReynoldsSolver', 'Dirichlet conditions done', Level=4 )
-
-!    Solve the system and we are done:
-!    ---------------------------------
-
-    Norm = DefaultSolve()
-
-    added = 0
-    removed = 0
-    IF(Cavitation) THEN
-      DO i=1,SIZE(Pressure)
-        IF( CavitationValues(i) > 0.0 ) THEN
-          IF( LoadValues(i) > CavLoadTol ) THEN
-            removed = removed + 1
-            CavitationValues(i) = -1.0
-          END IF
-        ELSE
-          IF( Pressure(i) < CavitationPressure - CavPresTol ) THEN
-            added = added + 1
-            CavitationValues(i) = 1.0
-          END IF
-        END IF
-      END DO
-
-      IF(added > 0) THEN
-        WRITE(Message,'(A,I0,A)') 'Added ',added,' nodes to the cavitation set'
-        CALL Info('ReynoldsSolver',Message,Level=5)
-      END IF
-      IF(removed > 0) THEN
-        WRITE(Message,'(A,I0,A)') 'Removed ',removed,' nodes from the cavitation set'
-        CALL Info('ReynoldsSolver',Message,Level=5)
-      END IF      
-
-    END IF
-
-    Converged = ( Solver % Variable % NonlinConverged == 1 )
-
-    IF( Converged .AND. (added + removed <= GetInteger(Params,&
-        'Cavitation Set Maximum Change',Stat)) ) EXIT
-  END DO
-  
-  CALL Info('ReynoldsSolver','-------------------------------------------------',Level=5)
-  
-CONTAINS
 
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(MassMatrix, StiffMatrix, ForceVector, Element, n, nd, Nodes)
+  SUBROUTINE LocalBulkMatrix(MassMatrix, StiffMatrix, ForceVector, &
+      Element, n, nd, Nodes, SensMode )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MassMatrix(:,:), StiffMatrix(:,:), ForceVector(:)
     INTEGER :: n, nd
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
+    INTEGER :: SensMode
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3), SqrtElementMetric
     REAL(KIND=dp) :: x,y,z,Metric(3,3),SqrtMetric,Symb(3,3,3),dSymb(3,3,3,3)
-    REAL(KIND=dp) :: U, V, W, S, MS, MM, L, A, B, HR, SL(3), SLR, SLL(3)
-    REAL(KIND=dp) :: Normal(3), Velo(3), NormalVelo, TangentVelo(3), Damp, Pres, TotPres, Gap, &
-        Visc, mfp, Kn, Density, DensityDer
+    REAL(KIND=dp) :: U, V, W, S, MS, MM, L, A, B, HR, SL(3), SLR, SLL(3), F
+    REAL(KIND=dp) :: Normal(3), Velo(3), NormalVelo, TangentVelo(3), Damp, Pres, PrevPres, &
+        TotPres, GradPres(3), dPdt, Gap, Visc, mfp, Kn, Density, DensityDer
     LOGICAL :: Stat
     INTEGER :: i,p,q,t,DIM, NBasis, CoordSys
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
@@ -542,6 +473,21 @@ CONTAINS
       Gap = SUM(Basis(1:n) * GapHeight(1:n))
       TotPres = ReferencePressure + Pres
 
+      ! If we compute sensitivity of solution we need various derivatives of pressure
+      !--------------------------------------------------------------------------------
+      IF( SensMode > 0 ) THEN
+        IF( TransientSimulation ) THEN
+          PrevPres = SUM( Basis(1:n) * PrevElemPressure(1:n) ) 
+          dPdt = ( Pres - PrevPres ) / dt 
+        ELSE 
+          dPdt = 0.0_dp
+        END IF        
+        DO i = 1,3
+          GradPres(i) = SUM( dBasisdx(1:n,i) * ElemPressure(1:n) )
+        END DO
+      END IF
+
+
 !------------------------------------------------------------------------------
 !  Different material models. The "density" is used only as a functional form,
 !  not as absolute value.
@@ -593,62 +539,142 @@ CONTAINS
       ! Multipliers of dp/dt: Mass matrix 
       MM = -DensityDer * Gap
       
-      ! right-hand-side: Force vector 
+      ! Normal velocity: right-hand-side force vector
       L = Density * NormalVelo
 
-      ! tangential velocity part of rhs. This is integrated by parts for simplicity.
-      SL = 0.0d0
+      ! Tangential velocity: Both rhs and matix contribution
       SLR = 0.0d0
       SLL = 0.0d0
 
-      IF(PartIntSliding) THEN
-        SL = -0.5_dp * Density * Gap * TangentVelo 
-      ELSE
-        DO i=1,dim
-           ! The plane element automatically omits the derivative in normal direction
-           SLR = SLR + 0.5_dp * Density * SUM( dBasisdx(1:n,i) * Velocity(i,1:n) * GapHeight(1:n)) 
-        END DO
-         ! Implicit part: coefficient of the pressure gradient
-        SLL = -0.5_dp* DensityDer * Gap * Velo 
-      END IF
+      DO i=1,dim
+        ! The plane element automatically omits the derivative in normal direction
+        SLR = SLR + 0.5_dp * Density * SUM( dBasisdx(1:n,i) * Velocity(i,1:n) * GapHeight(1:n)) 
+      END DO
+      ! Implicit part: coefficient of the pressure gradient
+      SLL = -0.5_dp* DensityDer * Gap * Velo 
 
 !------------------------------------------------------------------------------
 !      The Reynolds equation
 !------------------------------------------------------------------------------
       DO p=1,NBasis
         DO q=1,NBasis
-          A = HR * Basis(q) * Basis(p) 
-          B = MM * Basis(q) * Basis(p)
-          
+          A = HR * Basis(q) * Basis(p)           
           DO i=1,DIM
             DO j=1,DIM
               A = A + MS * Metric(i,j) * dBasisdx(q,i) * dBasisdx(p,j)
               A = A + SLL(j) * Metric(i,j) * dBasisdx(q,i) * Basis(p)
             END DO
-          END DO
-          
+          END DO          
           StiffMatrix(p,q) = StiffMatrix(p,q) + s * A 
-          MassMatrix(p,q)  = MassMatrix(p,q)  + s * B
-        END DO
-        
-        ForceVector(p) = ForceVector(p) + s * Basis(p) * L
-        ForceVector(p) = ForceVector(p) + s * Basis(p) * SLR         
 
-        DO i=1,DIM
-          ForceVector(p) = ForceVector(p) + s * dBasisdx(p,i) * SL(i)         
+          IF( TransientSimulation ) THEN
+            B = MM * Basis(q) * Basis(p)
+            MassMatrix(p,q)  = MassMatrix(p,q)  + s * B
+          END IF
         END DO
-        
+
+        F = 0.0_dp
+        IF( SensMode == 0 ) THEN
+          F = L + SLR
+        ELSE IF( SensMode == 1 ) THEN
+          IF( TransientSimulation ) THEN
+            F = -2.0 * DensityDer * dPdt
+          END IF
+          F = F - DensityDer * SUM( TangentVelo * GradPres )          
+          DO i = 1,dim
+            ! The plane element automatically omits the derivative in normal direction
+            F = F - 1.5_dp * ( Density / Gap ) * SUM( dBasisdx(1:n,i) * Velocity(i,1:n) * GapHeight(1:n) ) 
+          END DO
+          F = F - 3.0_dp * Damp * Density * Pres / Gap 
+          F = F - 3 * Density * NormalVelo / Gap
+        END IF
+
+        ForceVector(p) = ForceVector(p) + s * Basis(p) * F
+
       END DO
     END DO
 
 !------------------------------------------------------------------------------
-  END SUBROUTINE LocalMatrix
+  END SUBROUTINE LocalBulkMatrix
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Cycle over boundary elements and add the flux BCs. 
+!> Currently only such BC is the condition for open side. 
+!------------------------------------------------------------------------------
+   SUBROUTINE GlobalBoundaryAssemby()
+
+    DO t=1, Solver % Mesh % NumberOfBoundaryElements
+      Element => GetBoundaryElement(t)
+      IF ( .NOT. ActiveBoundaryElement() ) CYCLE
+      
+      n  = GetElementNOFNodes()
+      nd = GetElementNOFDOFs()
+      IF ( GetElementFamily() == 1 ) CYCLE
+      
+      BC => GetBC()
+      IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+      
+      stat = GetLogical(BC,'Open Side',gotIt) 
+      IF(.NOT. stat) CYCLE
+!------------------------------------------------------------------------------
+      NodeIndexes => Element % NodeIndexes
+      
+      IF ( ANY( PressurePerm(NodeIndexes(1:n)) == 0 ) ) CYCLE
+      
+      Parent => Element % BoundaryInfo % Left
+      stat = ASSOCIATED( Parent )
+      IF ( stat ) stat = stat .AND. ALL(PressurePerm(Parent % NodeIndexes) > 0)
+      
+      IF(.NOT. stat) THEN
+        Parent => ELement % BoundaryInfo % Right            
+        stat = ASSOCIATED( Parent )
+        IF ( stat ) stat = stat .AND. ALL(PressurePerm(Parent % NodeIndexes) > 0)
+        IF ( .NOT. stat )  CALL Fatal( 'ReynoldsSolver', &
+            'No proper parent element available for specified boundary' )
+      END IF
+      
+      Model % CurrentElement => Parent
+      CALL GetElementNodes( ElementNodes )
+      
+      mat_id = GetInteger( Model % Bodies(Parent % BodyId) % Values,'Material')
+      Material => Model % Materials(mat_id) % Values
+      
+      GapHeight(1:n) = GetReal(Material,'Gap Height')
+      
+      Viscosity(1:n) = GetReal( Material, 'Viscosity')
+      
+      STIFF = 0.0d0
+      MASS = 0.0d0
+      FORCE = 0.0d0
+      
+!------------------------------------------------------------------------------
+!             Get element local matrix and rhs vector
+!------------------------------------------------------------------------------
+      
+      CALL LocalBoundaryMatrix( MASS, STIFF, FORCE, Element, n, ElementNodes )
+                    
+!------------------------------------------------------------------------------
+!             Update global matrix and rhs vector from local matrix & vector
+!------------------------------------------------------------------------------
+      IF ( TransientSimulation ) THEN
+        MASS = 0.d0
+        CALL Default1stOrderTime( MASS, STIFF, FORCE )
+      END IF
+      
+      CALL DefaultUpdateEquations( STIFF, FORCE )
+      
+ !------------------------------------------------------------------------------
+    END DO
+
+
+  END SUBROUTINE GlobalBoundaryAssemby
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalBoundary(MassMatrix, StiffMatrix, ForceVector, Element, n, Nodes)
+  SUBROUTINE LocalBoundaryMatrix(MassMatrix, StiffMatrix, ForceVector, Element, n, Nodes)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: MassMatrix(:,:), StiffMatrix(:,:), ForceVector(:)
     INTEGER :: n
@@ -733,8 +759,11 @@ CONTAINS
 !------------------------------------------------------------------------------
      END DO
 !------------------------------------------------------------------------------
-   END SUBROUTINE LocalBoundary
+   END SUBROUTINE LocalBoundaryMatrix
 !------------------------------------------------------------------------------
+
+
+   
 
 
 !------------------------------------------------------------------------------
@@ -756,33 +785,12 @@ SUBROUTINE ReynoldsSolver_init( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
-  LOGICAL :: Cavitation, Found
+  LOGICAL :: Found
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName
   TYPE(ValueList_t), POINTER :: Params 
 
 
   Params => GetSolverParams()
-
-! This is the old way of setting the cavitation set
-!-----------------------------------------------------
-  Cavitation = ListGetLogical( Params,'Cavitation',Found)
-  IF(.NOT. Found ) THEN
-    Cavitation = ListCheckPresent(Params,'Cavitation Pressure')
-    IF( Cavitation ) THEN
-      CALL Warn('ReynoldsSolver_init','If you want to activate cavitation set > Cavitation = True <')
-      CALL ListAddLogical(Params,'Cavitation',.TRUE.)
-    END IF
-  END IF
-  IF( Cavitation ) THEN
-    VarName = ListGetString( Params,'Variable',Found)
-    IF(.NOT. Found) THEN
-      CALL Warn('ReynoldsSolver_init','Variable is required!')
-      RETURN
-    END IF
-    CALL ListAddString( Params,NextFreeKeyword('Exported Variable',Params), &
-	TRIM(VarName)//' Cavitation')
-    CALL ListAddLogical( Params,'Calculate Loads',.TRUE.)
-  END IF
 
 ! The new way with generic limiters is a library functionality.
 ! The Poisson equation is assembled using different sign that the 
@@ -790,10 +798,12 @@ SUBROUTINE ReynoldsSolver_init( Model,Solver,dt,TransientSimulation )
 !----------------------------------------------------------------
   CALL ListAddLogical( Params,'Limiter Load Sign Negative',.TRUE.)
 
+  IF( ListGetLogical( Params,'Gap Sensitivity', Found ) ) THEN
+    CALL ListAddStrinG( Params,NextFreeKeyword('Exported Variable',Params),&
+        'FilmPressure Gap Sensitivity')
+  END IF
+
 END SUBROUTINE ReynoldsSolver_init
-
-
-
 
 
 

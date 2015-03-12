@@ -417,7 +417,7 @@ void mem_free_all(void);
 #ifdef MODULE_MATC
 static int math_out_allocated  = 0;
 #pragma omp threadprivate (math_out_allocated)
-void error( char *format, ... )
+void error_matc( char *format, ... )
 {
     va_list args;
 
@@ -459,9 +459,11 @@ void PrintOut( char *format, ... )
     va_end( args );
 }
 #else
-extern void error( char *format, ... );
+extern void error_matc( char *format, ... );
 extern void PrintOut( char *format, ... );
 #endif
+
+#define error error_matc
 
 /*******************************************************************
                        function prototypes 

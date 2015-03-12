@@ -64,6 +64,9 @@
 /* define HAVE_HYPRE */
 #cmakedefine HAVE_HYPRE
 
+/* Define if you have a MKL library */
+#cmakedefine HAVE_MKL
+
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK
 
