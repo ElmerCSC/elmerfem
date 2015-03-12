@@ -7905,7 +7905,7 @@ END SUBROUTINE GetMaxDefs
     CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
 
     IF( err1 > eps_rad .OR. err2 > eps_rad ) THEN
-      CALL Fatal('RotationalInterfaceMeshes','Discrepancy of radius deemed too large!')
+      CALL Warn('RotationalInterfaceMeshes','Discrepancy of radius is rather large!')
     END IF
 
     ! Ok, so we have concluded that the interface has constant radius
