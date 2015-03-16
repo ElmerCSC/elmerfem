@@ -87,7 +87,7 @@ CONTAINS
      REAL(KIND=dp) :: ForceVector(:)         !< vector to be initialized
 !------------------------------------------------------------------------------
      INTEGER :: i,dim
-     LOGICAL :: Found, AnyNT, AnyProj
+     LOGICAL :: Found, AnyNT, AnyProj, DoDisplaceMesh
      TYPE(Solver_t), POINTER :: Solver
 !------------------------------------------------------------------------------
 
@@ -139,10 +139,13 @@ CONTAINS
      AnyProj =  ListGetLogicalAnyBC( CurrentModel, 'Mortar BC Nonlinear')
      IF( .NOT. (AnyNT .OR. AnyProj ) ) RETURN
 
-     CALL Info('GenerateProjectors','Displacing mesh for nonlinear projectors',Level=8)
-     CALL DisplaceMesh( Solver % Mesh, Solver % variable % Values, 1, &
-         Solver % Variable % Perm, Solver % variable % Dofs )
-     
+     DoDisplaceMesh = ListGetLogical( Solver % Values,'Displace Mesh At Init',Found )
+     IF( DoDisplaceMesh ) THEN
+       CALL Info('InitializeToZero','Displacing mesh for nonlinear projectors',Level=8)
+       CALL DisplaceMesh( Solver % Mesh, Solver % variable % Values, 1, &
+           Solver % Variable % Perm, Solver % variable % Dofs )
+     END IF
+
      IF( AnyNT ) THEN
        dim = CoordinateSystemDimension()
        CALL CheckNormalTangentialBoundary( CurrentModel, NormalTangentialName, &
@@ -158,8 +161,10 @@ CONTAINS
        CALL GenerateProjectors(CurrentModel,Solver,Nonlinear = .TRUE. )
      END IF
 
-     CALL DisplaceMesh( Solver % Mesh, Solver % variable % Values, -1, &
-         Solver % Variable % Perm, Solver % variable % Dofs )
+     IF( DoDisplaceMesh ) THEN
+       CALL DisplaceMesh( Solver % Mesh, Solver % variable % Values, -1, &
+           Solver % Variable % Perm, Solver % variable % Dofs )
+     END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE InitializeToZero
 !------------------------------------------------------------------------------
@@ -1233,8 +1238,6 @@ CONTAINS
        IF( CoupledIter > 1 ) FirstTime = .FALSE.
      END IF
           
-     PRINT *,'SoftLimit firsttime:',FirstTime
-
      ! Determine variable for computing the contact load used to determine the 
      ! soft limit set.
      !------------------------------------------------------------------------
@@ -1840,7 +1843,7 @@ CONTAINS
 
        FlatProjector = ListGetLogical( BC, 'Flat Projector',Found )
        RotationalProjector = ListGetLogical( BC, 'Rotational Projector',Found )
-       RotatedContact = ListGetLogical( BC,'Normal-Tangential '//TRIM(VarName))
+       RotatedContact = ListGetLogical( BC,'Normal-Tangential '//TRIM(VarName),Found)
 
        IF( FlatProjector ) THEN
          ActiveDirection = ListGetInteger( BC, 'Flat Projector Coordinate',Found )
@@ -1856,11 +1859,9 @@ CONTAINS
 
        ContactNormal = 0.0_dp
        ContactNormal(ActiveDirection) = 1.0_dp
-       PRINT *,'Setting Contact Normal to:',ContactNormal
        
        ContactT1 = 0.0_dp
        ContactT1(3-ActiveDirection) = 0.0_dp
-
 
 
        ! If we have N-T system then the mortar condition for the master side
@@ -8300,7 +8301,7 @@ END FUNCTION SearchNodeL
 
     CALL Info('SolveSystem','Solving linear system',Level=10)
 
-    Timing = ListGetLogical(Params,'Linear System Timing',Found)
+    Timing = ListCheckPrefix(Params,'Linear System Timing')
     IF( Timing ) THEN
       t0 = CPUTime(); rt0 = RealTime()
     END IF
@@ -8397,31 +8398,32 @@ END FUNCTION SearchNodeL
       st  = CPUTime() - t0;
       rst = RealTime() - rt0
 
-      CALL ListAddConstReal(CurrentModel % Simulation,'res: linsys cpu time '&
-              //GetVarName(Solver % Variable),st)
-      CALL ListAddConstReal(CurrentModel % Simulation,'res: linsys real time '&
-              //GetVarName(Solver % Variable),rst)
       WRITE(Message,'(a,f8.2,f8.2,a)') 'Linear system time (CPU,REAL) for '&
-      //GetVarName(Solver % Variable)//': ',st,rst,' (s)'
+          //GetVarName(Solver % Variable)//': ',st,rst,' (s)'
       CALL Info('SolveSystem',Message)    
-
+      
+      IF( ListGetLogical(Params,'Linear System Timing',Found)) THEN
+        CALL ListAddConstReal(CurrentModel % Simulation,'res: linsys cpu time '&
+            //GetVarName(Solver % Variable),st)
+        CALL ListAddConstReal(CurrentModel % Simulation,'res: linsys real time '&
+            //GetVarName(Solver % Variable),rst)
+      END IF
+      
       IF( ListGetLogical(Params,'Linear System Timing Cumulative',Found)) THEN
         ct = ListGetConstReal(CurrentModel % Simulation,'res: cum linsys cpu time '&
-                //GetVarName(Solver % Variable),Found)
+            //GetVarName(Solver % Variable),Found)
         st = st + ct
         ct = ListGetConstReal(CurrentModel % Simulation,'res: cum linsys real time '&
-                //GetVarName(Solver % Variable),Found)
+            //GetVarName(Solver % Variable),Found)
         rst = rst + ct
         CALL ListAddConstReal(CurrentModel % Simulation,'res: cum linsys cpu time '&
-              //GetVarName(Solver % Variable),st)
+            //GetVarName(Solver % Variable),st)
         CALL ListAddConstReal(CurrentModel % Simulation,'res: cum linsys real time '&
-              //GetVarName(Solver % Variable),rst)
-      END IF 
+            //GetVarName(Solver % Variable),rst)
+      END IF
 
     END IF
 
-!    IF(ListGetLogical(Solver % Values, 'Mortar Projector Nonlinear',Found)) &
-!        CALL ReleaseProjectors(Solver)
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveSystem
 !------------------------------------------------------------------------------
@@ -10115,12 +10117,16 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      TYPE(Solver_t) :: Solver
      LOGICAL, OPTIONAL :: Nonlinear, SteadyState
 
-     LOGICAL :: IsNonlinear,IsSteadyState
+     LOGICAL :: IsNonlinear,IsSteadyState,Timing
      LOGICAL :: ApplyMortar, ApplyContact, Found
      INTEGER :: i,j,k,l,n,dsize,size0,col,row,dim
      TYPE(ValueList_t), POINTER :: BC
      TYPE(Matrix_t), POINTER :: CM, CMP, CM0, CM1
      TYPE(Variable_t), POINTER :: DispVar
+     REAL(KIND=dp) :: t0,rt0,rst,st,ct
+#ifndef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: CPUTime,RealTime
+#endif
 
      ApplyMortar = ListGetLogical(Solver % Values,'Apply Mortar BCs',Found) 
      ApplyContact = ListGetLogical(Solver % Values,'Apply Contact BCs',Found) 
@@ -10128,6 +10134,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      IF( .NOT. ( ApplyMortar .OR. ApplyContact) ) RETURN
      
      CALL Info('GenerateProjectors','Generating mortar projectors',Level=8)
+
+     Timing = ListCheckPrefix(Solver % Values,'Projector Timing')
+     IF( Timing ) THEN
+       t0 = CPUTime(); rt0 = RealTime()      
+     END IF
+
+
 
      IsNonlinear = .FALSE.
      IF( PRESENT( Nonlinear ) ) IsNonlinear = Nonlinear
@@ -10167,6 +10180,38 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        END IF
 
      END DO
+
+
+     IF( Timing ) THEN
+       st  = CPUTime() - t0;
+       rst = RealTime() - rt0
+       
+       WRITE(Message,'(a,f8.2,f8.2,a)') 'Projector creation time (CPU,REAL) for '&
+           //GetVarName(Solver % Variable)//': ',st,rst,' (s)'
+       CALL Info('GenerateProjectors',Message)    
+       
+       IF( ListGetLogical(Solver % Values,'Projector Timing',Found)) THEN
+         CALL ListAddConstReal(CurrentModel % Simulation,'res: projector cpu time '&
+             //GetVarName(Solver % Variable),st)
+         CALL ListAddConstReal(CurrentModel % Simulation,'res: projector real time '&
+             //GetVarName(Solver % Variable),rst)
+       END IF
+
+       IF( ListGetLogical(Solver % Values,'Projector Timing Cumulative',Found)) THEN
+         ct = ListGetConstReal(CurrentModel % Simulation,'res: cum projector cpu time '&
+             //GetVarName(Solver % Variable),Found)
+         st = st + ct
+         ct = ListGetConstReal(CurrentModel % Simulation,'res: cum projector real time '&
+             //GetVarName(Solver % Variable),Found)
+         rst = rst + ct
+         CALL ListAddConstReal(CurrentModel % Simulation,'res: cum projector cpu time '&
+             //GetVarName(Solver % Variable),st)
+         CALL ListAddConstReal(CurrentModel % Simulation,'res: cum projector real time '&
+             //GetVarName(Solver % Variable),rst)
+       END IF
+     END IF
+     
+
 
 
    END SUBROUTINE GenerateProjectors
@@ -10270,10 +10315,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        ! of type [D-P]x=0.
        CreateSelf = ( Atmp % ProjectorType == PROJECTOR_TYPE_NODAL ) 
        
-       PRINT *,'Including projector matrix:',&
-           bc_ind,Dofs,CreateSelf,ComplexMatrix,&
-           ASSOCIATED(MortarBC % Diag),AllocationsDone
-
        IF( Dofs == 1 ) THEN         
          DO i=1,Atmp % NumberOfRows           
 

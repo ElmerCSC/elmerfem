@@ -65,7 +65,10 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     END IF
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
-
+    IF( .NOT. ListCheckPresent( SolverParams,'Displace Mesh At Init') ) THEN
+      CALL ListAddLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
+    END IF
+    
     CalculateStrains = GetLogical(SolverParams, 'Calculate Strains', Found)
     CalcPrincipalAngle = GetLogical(SolverParams, 'Calculate PAngle', Found)
     CalcPrincipalAll = GetLogical(SolverParams, 'Calculate Principal', Found)

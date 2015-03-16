@@ -4792,11 +4792,11 @@ END SUBROUTINE GetMaxDefs
     !--------------------------------------------------------------------------
     LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
-        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational
+        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, IntGalerkin
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
         ArcCoeff, EdgeCoeff, NodeCoeff
-    INTEGER :: NoNodes1, NoNodes2
+    INTEGER :: NoNodes1, NoNodes2, MeshDim
     INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow
     INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:)
     INTEGER :: EdgeRow0, FaceRow0, EdgeCol0, FaceCol0, ProjectorRows
@@ -4869,13 +4869,17 @@ END SUBROUTINE GetMaxDefs
     StrongSkewEdges = .FALSE.
     ! Maximum skew in degrees before treating edges as skewed
     SkewTol = 0.1  
+    
+    IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', Found )
+    MeshDIm = Mesh % MeshDim
 
-    IF( Mesh % MeshDim == 2 ) THEN
+    IF( MeshDim == 2 ) THEN
       ! In 2D these always yield since current only the strong method 
       ! of nodes has been implemented in 2D 
-      StrongNodes = .TRUE.
-      StrongLevelEdges = .FALSE.
-      StrongExtrudedEdges = .FALSE.
+      CALL Info('LevelProjector','Initial mesh is 2D, using 1D projectors!',Level=10) 
+      StrongNodes = ListGetLogical( BC,'Level Projector Nodes Strong',Found ) 
+      IF(.NOT. Found) StrongNodes = ListGetLogical( BC,'Level Projector Strong',Found ) 
+      IF(.NOT. Found) StrongNodes = .NOT. IntGalerkin
     ELSE ! 3D 
       ! It is assumed that that the target mesh is always un-skewed 
       ! Make a test here to be able to skip it later. No test is needed
@@ -4902,40 +4906,45 @@ END SUBROUTINE GetMaxDefs
           CALL Warn('LevelProjector','Target mesh has too much skew, using generic integrator!')
           GenericIntegrator = .TRUE. 
         END IF
-      END IF
+        
+        ! The projectors for nodes and edges can be created either in a strong way 
+        ! or weak way in the special case that the nodes are located in extruded layers. 
+        ! The strong way results to a sparse projector. For constant 
+        ! levels it can be quite optimal, except for the edges with a skew. 
+        ! If strong projector is used for all edges then "StrideProjector" should 
+        ! be recovered.
+        IF( DoNodes ) THEN
+          IF( ListGetLogical( BC,'Level Projector Nodes Strong',Found ) )StrongNodes = .TRUE.
+          IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) StrongNodes = .TRUE.
+          IF(.NOT. Found ) StrongNodes = .NOT. IntGalerkin
+        END IF
 
-      ! The projectors for nodes and edges can be created either in a strong way 
-      ! or weak way in the special case that the nodes are located in extruded layers. 
-      ! The strong way results to a sparse projector. For constant 
-      ! levels it can be quite optimal, except for the edges with a skew. 
-      ! If strong projector is used for all edges then "StrideProjector" should 
-      ! be recovered.
-      IF( GenericIntegrator ) THEN
-        CALL Info('LevelProjector','Using generic weak projector for all edge dofs!')
-        StrongNodes = ListGetLogical( BC,'Level Projector Nodes Strong',Found ) 
-        StrongLevelEdges = .FALSE.
-        StrongExtrudedEdges = .FALSE.
-      ELSE
-        IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) THEN
-          StrongNodes = .TRUE.
-          StrongLevelEdges = .TRUE.
-          StrongExtrudedEdges = .TRUE.
-        ELSE
-          StrongNodes = ListGetLogical( BC, 'Level Projector Nodes Strong', Found )
-          IF( ListGetLogical( BC,'Level Projector Edges Strong',Found ) ) THEN
-            StrongLevelEdges = .TRUE.
-            StrongExtrudedEdges = .TRUE.
+        IF( DoEdges ) THEN
+          StrongLevelEdges = .NOT. IntGalerkin
+          StrongExtrudedEdges = .NOT. IntGalerkin
+          StrongSkewEdges = .FALSE.
+          
+          IF( GenericIntegrator ) THEN
+            CALL Info('LevelProjector','Using generic weak projector for all edge dofs!')
+            StrongLevelEdges = .FALSE.
+            StrongExtrudedEdges = .FALSE.
           ELSE
-            StrongLevelEdges = ListGetLogical( BC,&
-                'Level Projector Plane Edges Strong',Found )
-            StrongExtrudedEdges = ListGetLogical( BC,&
-                'Level Projector Extruded Edges Strong',Found )
-            StrongSkewEdges = ListGetLogical( BC,&
-                'Level Projector Skew Edges Strong',Found )
+            IF( ListGetLogical( BC,'Level Projector Strong',Found ) .OR. &
+                ListGetLogical( BC,'Level Projector Edges Strong',Found ) ) THEN
+              StrongLevelEdges = .TRUE.
+              StrongExtrudedEdges = .TRUE.
+            END IF
+            IF( ListGetLogical( BC,'Level Projector Plane Edges Strong',&
+                Found ) ) StrongLevelEdges = .TRUE.
+            IF( ListGetLogical( BC,'Level Projector Extruded Edges Strong',&
+                Found ) ) StrongExtrudedEdges = .TRUE.
+            IF( ListGetLogical( BC,'Level Projector Skew Edges Strong',&
+                Found ) ) StrongSkewEdges = .TRUE.
           END IF
         END IF
       END IF
     END IF
+
 
     ! If the number of periods is enforced use that instead since
     ! the Xrange periodicity might not be correct if the mesh has skew.
@@ -4996,6 +5005,7 @@ END SUBROUTINE GetMaxDefs
           j = InvPerm2(i) 
           IF( NodePerm(j) /= 0 ) THEN
             NodePerm(j) = 0
+            PRINT *,'Removing node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
             m = m + 1
           END IF
         END DO
@@ -5123,14 +5133,14 @@ END SUBROUTINE GetMaxDefs
     ! be dealt with the weak projectors. 
     SomethingUndone = .FALSE.
 
-    ! If requested, create mapping for node dofs
+    ! If requested, create strong mapping for node dofs
     !------------------------------------------------------------------   
     IF( DoNodes ) THEN
       IF( StrongNodes ) THEN
         IF( GenericIntegrator ) THEN
           CALL AddNodalProjectorStrongGeneric()
         ELSE
-          CALL AddNodalProjectorStrong()
+          CALL AddNodalProjectorStrongStrides()
         END IF
       ELSE
         ! If strong projector is applied they can deal with all nodal dofs
@@ -5138,14 +5148,14 @@ END SUBROUTINE GetMaxDefs
       END IF
     END IF
 
-    ! If requested, create mapping for edge dofs
+    ! If requested, create strong mapping for edge dofs
     !-------------------------------------------------------------
     IF( DoEdges ) THEN
       EdgeCol0 = Mesh % NumberOfNodes
       FaceCol0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
 
       IF( StrongLevelEdges .OR. StrongExtrudedEdges ) THEN
-        CALL AddEdgeProjectorStrong()
+        CALL AddEdgeProjectorStrongStrides()
         ! Compute the unset edge dofs. 
         ! Some of the dofs may have been set by the strong projector. 
         m = 0
@@ -5169,10 +5179,12 @@ END SUBROUTINE GetMaxDefs
     ! And the the rest
     !-------------------------------------------------------------
     IF( SomethingUndone ) THEN      
-      IF( GenericIntegrator ) THEN
+      IF( MeshDim == 2 ) THEN
+        CALL AddProjectorWeak1D()
+      ELSE IF( GenericIntegrator ) THEN
         CALL AddProjectorWeakGeneric()
       ELSE
-        CALL AddProjectorWeak()
+        CALL AddProjectorWeakStrides()
       END IF
     END IF
 
@@ -5269,7 +5281,7 @@ END SUBROUTINE GetMaxDefs
     ! combination of two nodes. This approach minimizes the size of the projector
     ! and also minimizes the need for parallel communication.
     !-------------------------------------------------------------------------------------
-    SUBROUTINE AddNodalProjectorStrong()
+    SUBROUTINE AddNodalProjectorStrongStrides()
 
       TYPE(Element_t), POINTER :: ElementM
       INTEGER, POINTER :: IndexesM(:)
@@ -5477,7 +5489,7 @@ END SUBROUTINE GetMaxDefs
       DEALLOCATE( NodesM % x, NodesM % y, NodesM % z )
 
 
-    END SUBROUTINE AddNodalProjectorStrong
+    END SUBROUTINE AddNodalProjectorStrongStrides
     !---------------------------------------------------------------------------------
 
 
@@ -5684,7 +5696,7 @@ END SUBROUTINE GetMaxDefs
     ! well. For skewed geometries the solution does not easily seem to be compatible
     ! with the strong projector. 
     !---------------------------------------------------------------------------------
-    SUBROUTINE AddEdgeProjectorStrong()
+    SUBROUTINE AddEdgeProjectorStrongStrides()
 
       INTEGER :: ind, indm, eind, eindm, k1, k2, km1, km2, sgn0, coeffi(100), &
           ncoeff, dncoeff, ncoeff0, i1, i2, j1, j2, Nundefined, NoSkewed, SkewPart
@@ -6165,7 +6177,7 @@ END SUBROUTINE GetMaxDefs
       DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
           NodesM % x, NodesM % y, NodesM % z )
 
-    END SUBROUTINE AddEdgeProjectorStrong
+    END SUBROUTINE AddEdgeProjectorStrongStrides
     !----------------------------------------------------------------------
 
 
@@ -6177,7 +6189,7 @@ END SUBROUTINE GetMaxDefs
     ! into several triangles. This is not generic - it assumes constant
     ! y levels, and cartesian mesh where the search is done.  
     !----------------------------------------------------------------------
-    SUBROUTINE AddProjectorWeak()
+    SUBROUTINE AddProjectorWeakStrides()
 
       INTEGER, TARGET :: IndexesT(3)
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
@@ -6596,7 +6608,7 @@ END SUBROUTINE GetMaxDefs
       CALL Info('LevelProjector',Message,Level=8)
 
 
-    END SUBROUTINE AddProjectorWeak
+    END SUBROUTINE AddProjectorWeakStrides
 
 
 
@@ -7202,6 +7214,304 @@ END SUBROUTINE GetMaxDefs
 
     END SUBROUTINE AddProjectorWeakGeneric
 
+
+    !----------------------------------------------------------------------
+    ! Create weak projector for the nodes in 1D mesh.
+    !----------------------------------------------------------------------
+    SUBROUTINE AddProjectorWeak1D()
+
+      INTEGER, TARGET :: IndexesT(3)
+      INTEGER, POINTER :: Indexes(:), IndexesM(:)
+      INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,inds(10),nM,iM,i2,i2M
+      INTEGER :: ElemHits, TotHits, MaxErrInd, MinErrInd, TimeStep
+      TYPE(Element_t), POINTER :: Element, ElementM
+      TYPE(Element_t) :: ElementT
+      TYPE(GaussIntegrationPoints_t) :: IP
+      TYPE(Nodes_t) :: Nodes, NodesM, NodesT
+      REAL(KIND=dp) :: xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
+          xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
+          SumArea,MaxErr,MinErr,Err,uvw(3),ArcRange 
+      REAL(KIND=dp) :: TotRefArea, TotSumArea
+      REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
+      LOGICAL :: LeftCircle, Stat
+      TYPE(Mesh_t), POINTER :: Mesh
+      TYPE(Variable_t), POINTER :: TimestepVar
+
+      ! These are used temporarely for debugging purposes
+      INTEGER :: SaveInd
+      LOGICAL :: SaveElem
+      CHARACTER(LEN=20) :: FileName
+
+      CALL Info('LevelProjector','Creating weak constraints using a 1D integrator',Level=8)      
+
+      Mesh => CurrentModel % Solver % Mesh 
+
+      SaveInd = ListGetInteger( BC,'Level Projector Save Element Index',Found )
+      TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
+      Timestep = NINT( TimestepVar % Values(1) )
+ 
+      n = Mesh % MaxElementNodes
+      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+      ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n) )
+      ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
+      ALLOCATE( Basis(n), BasisM(n) )
+
+
+      Nodes % y  = 0.0_dp
+      NodesM % y = 0.0_dp
+      NodesT % y = 0.0_dp
+      Nodes % z  = 0.0_dp
+      NodesM % z = 0.0_dp
+      NodesT % z = 0.0_dp
+      yt = 0.0_dp
+      zt = 0.0_dp
+
+      MaxErr = 0.0_dp
+      MinErr = HUGE( MinErr )
+      MaxErrInd = 0
+      MinErrInd = 0
+      zt = 0.0_dp
+      LeftCircle = .FALSE.
+      ArcTol = ArcCoeff * Xtol
+      ArcRange = ArcCoeff * Xrange 
+     
+      ! The temporal triangle used in the numerical integration
+      ElementT % TYPE => GetElementType( 202, .FALSE. )
+      ElementT % NodeIndexes => IndexesT
+      TotHits = 0
+      TotRefArea = 0.0_dp
+      TotSumArea = 0.0_dp
+
+      DO ind=1,BMesh1 % NumberOfBulkElements
+
+        ! Optionally save the submesh for specified element, for vizualization and debugging
+        SaveElem = ( SaveInd == ind )
+
+        Element => BMesh1 % Elements(ind)        
+        Indexes => Element % NodeIndexes
+        
+        n = Element % TYPE % NumberOfNodes
+        
+        ! Transform the angle to archlength in order to have correct balance between x and y
+        Nodes % x(1:n) = ArcCoeff * BMesh1 % Nodes % x(Indexes(1:n))
+
+        xmin = MINVAL(Nodes % x(1:n))
+        xmax = MAXVAL(Nodes % x(1:n))
+        
+        ymin = MINVAL(Nodes % y(1:n))
+        ymax = MAXVAL(Nodes % y(1:n))
+
+        IF( FullCircle ) THEN
+          LeftCircle = ( ALL( ABS( Nodes % x(1:n) ) > ArcCoeff * 90.0_dp ) )
+          IF( LeftCircle ) THEN
+            DO j=1,n
+              IF( Nodes % x(j) < 0.0 ) Nodes % x(j) = &
+                  Nodes % x(j) + ArcCoeff * 360.0_dp
+            END DO
+          END IF
+        END IF
+                
+        ! Compute the reference area
+        u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
+        stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+        IP = GaussPoints( Element ) 
+        RefArea = detJ * SUM( IP % s(1:IP % n) )
+        SumArea = 0.0_dp
+        
+        IF( SaveElem ) THEN
+          FileName = 't'//TRIM(I2S(TimeStep))//'_a.dat'
+          OPEN( 10,FILE=Filename)
+          DO i=1,n
+            WRITE( 10, * ) Nodes % x(i)
+          END DO
+          CLOSE( 10 )
+        END IF
+
+        ! Currently a n^2 loop but it could be improved
+        !--------------------------------------------------------------------
+        ElemHits = 0
+        DO indM=1,BMesh2 % NumberOfBulkElements
+          
+          ElementM => BMesh2 % Elements(indM)        
+          IndexesM => ElementM % NodeIndexes
+          nM = ElementM % TYPE % NumberOfNodes
+
+          NodesM % x(1:nM) = ArcCoeff * BMesh2 % Nodes % x(IndexesM(1:nM))
+          ! Treat the left circle differently. 
+          IF( LeftCircle ) THEN
+            ! Omit the element if it is definately on the right circle
+            IF( ALL( ABS( NodesM % x(1:nM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
+            DO j=1,nM
+              IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = &
+                  NodesM % x(j) + ArcCoeff * 360.0_dp
+            END DO
+          END IF
+          
+          xminm = MINVAL( NodesM % x(1:nM))
+          xmaxm = MAXVAL( NodesM % x(1:nM))
+
+          IF( Repeating ) THEN
+            ! Enforce xmaxm to be on the same interval than xmin
+            Nrange = FLOOR( (xmaxm-xmin+ArcTol) / ArcRange )
+            IF( Nrange /= 0 ) THEN
+              xminm = xminm - Nrange * ArcRange
+              xmaxm = xmaxm - Nrange * ArcRange
+              NodesM % x(1:nM) = NodesM % x(1:nM) - NRange * ArcRange 
+            END IF
+
+            ! Check whether there could be a intersection in an other interval as well
+            IF( xminm + ArcRange < xmax + ArcTol ) THEN
+              Nrange2 = 1
+            ELSE
+              Nrange2 = 0
+            END IF
+          END IF
+
+          IF( FullCircle .AND. .NOT. LeftCircle ) THEN
+            IF( xmaxm - xminm > ArcCoeff * 180.0 ) CYCLE
+          END IF
+
+200       IF( xminm >= xmax ) GOTO 100
+          IF( xmaxm <= xmin ) GOTO 100
+
+          NodesT % x(1) = MAX( xmin, xminm ) 
+          NodesT % x(2) = MIN( xmax, xmaxm ) 
+
+          sgn0 = 1
+          IF( AntiRepeating ) THEN
+            IF ( MODULO(Nrange,2) /= 0 ) sgn0 = -1
+          END IF
+          
+          ElemHits = ElemHits + 1
+
+          IF( SaveElem ) THEN
+            FileName = 't'//TRIM(I2S(TimeStep))//'_b'//TRIM(I2S(ElemHits))//'.dat'
+            OPEN( 10,FILE=FileName)
+            DO i=1,nM
+              WRITE( 10, * ) NodesM % x(i)
+            END DO
+            CLOSE( 10 )
+
+            FileName = 't'//TRIM(I2S(TimeStep))//'_e'//TRIM(I2S(ElemHits))//'.dat'
+            OPEN( 10,FILE=FileName)
+            DO i=1,2
+              WRITE( 10, * ) NodesT % x(i)
+            END DO
+            CLOSE( 10 )           
+          END IF
+                   
+          ! Use somewhat higher integration rules than the default
+          IP = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
+          
+          ! Integration over the temporal element
+          DO nip=1, IP % n 
+            stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
+                IP % v(nip),IP % w(nip),detJ,Basis)
+            
+            ! We will actually only use the global coordinates and the integration weight 
+            ! from the temporal mesh. 
+            
+            ! Global coordinate of the integration point
+            xt = SUM( Basis(1:2) * NodesT % x(1:2) )
+            
+            ! Integration weight for current integration point
+            Wtemp = DetJ * IP % s(nip)
+            sumarea = sumarea + Wtemp
+            
+            ! Integration point at the slave element
+            CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
+            stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+            
+            ! Integration point at the master element
+            CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
+            stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
+            
+            !IF( ANY( Basis(1:2) < 0.0 ) ) PRINT *,'Basis:',BasisM(1:2)
+            !IF( ANY( BasisM(1:2) < 0.0 ) ) PRINT *,'BasisM:',BasisM(1:2)
+
+            ! Add the nodal dofs
+            DO j=1,n 
+              jj = Indexes(j)                                    
+              nrow = NodePerm(InvPerm1(jj))
+              IF( nrow == 0 ) CYCLE
+              
+              Projector % InvPerm(nrow) = InvPerm1(jj)
+              val = Basis(j) * Wtemp
+              
+              DO i=1,n
+                CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                    InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val ) 
+              END DO
+              
+              DO i=1,nM
+                !IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
+                CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                    InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )                   
+              END DO
+            END DO
+          END DO
+          
+100       IF( Repeating ) THEN
+            IF( NRange2 /= 0 ) THEN
+              xminm = xminm + ArcCoeff * Nrange2 * ArcRange
+              xmaxm = xmaxm + ArcCoeff * Nrange2 * ArcRange
+              NodesM % x(1:n) = NodesM % x(1:n) + NRange2 * ArcRange 
+              NRange = NRange + NRange2
+              NRange2 = 0
+              GOTO 200
+            END IF
+          END IF
+
+        END DO
+
+        IF( SaveElem ) THEN
+          FileName = 't'//TRIM(I2S(TimeStep))//'_n.dat'
+          OPEN( 10,FILE=Filename)
+          WRITE( 10, * ) ElemHits 
+          CLOSE( 10 )
+        END IF
+        
+        TotHits = TotHits + ElemHits
+        TotSumArea = TotSumArea + SumArea
+        TotRefArea = TotRefArea + RefArea
+
+        Err = SumArea / RefArea
+        IF( Err > MaxErr ) THEN
+          MaxErr = Err
+          MaxErrInd = Err
+        END IF
+        IF( Err < MinErr ) THEN
+          MinErr = Err
+          MinErrInd = ind
+        END IF
+      END DO
+
+      DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
+      DEALLOCATE( NodesM % x, NodesM % y, NodesM % z )
+      DEALLOCATE( NodesT % x, NodesT % y, NodesT % z )
+      DEALLOCATE( Basis, BasisM )
+
+      CALL Info('LevelProjector','Number of integration pairs: '&
+          //TRIM(I2S(TotHits)),Level=10)
+
+      WRITE( Message,'(A,ES12.5)') 'Total reference area:',TotRefArea
+      CALL Info('LevelProjector',Message,Level=8)
+      WRITE( Message,'(A,ES12.5)') 'Total integrated area:',TotSumArea
+      CALL Info('LevelProjector',Message,Level=8)
+
+      Err = TotSumArea / TotRefArea
+      WRITE( Message,'(A,ES12.3)') 'Average ratio in area integration:',Err 
+      CALL Info('LevelProjector',Message,Level=8)
+
+      WRITE( Message,'(A,I0,A,ES12.4)') &
+          'Maximum relative discrepancy in areas (element: ',MaxErrInd,'):',MaxErr-1.0_dp 
+      CALL Info('LevelProjector',Message,Level=8)
+      WRITE( Message,'(A,I0,A,ES12.4)') &
+          'Minimum relative discrepancy in areas (element: ',MinErrInd,'):',MinErr-1.0_dp 
+      CALL Info('LevelProjector',Message,Level=8)
+
+
+    END SUBROUTINE AddProjectorWeak1D
 
   END FUNCTION LevelProjector
   !------------------------------------------------------------------------------
@@ -8510,19 +8820,20 @@ END SUBROUTINE GetMaxDefs
     Repeating = ( Rotational .AND. .NOT. FullCircle ) .OR. Sliding 
     AntiRepeating = ( AntiRotational .AND. .NOT. FullCircle ) .OR. AntiSliding 
 
-    UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
-    IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
-
     IF( LevelProj ) THEN 
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
           FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &          
           NodeScale, EdgeScale, BC )
-    ELSE IF( IntGalerkin ) THEN
-      Projector => WeightedProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
-          UseQuadrantTree, Repeating, AntiRepeating, NodeScale, NodalJump )
-    ELSE
-      Projector => NodalProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
-                 UseQuadrantTree, Repeating, AntiRepeating )
+    ELSE 
+      UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
+      IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
+      IF( IntGalerkin ) THEN
+        Projector => WeightedProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
+            UseQuadrantTree, Repeating, AntiRepeating, NodeScale, NodalJump )
+      ELSE
+        Projector => NodalProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
+            UseQuadrantTree, Repeating, AntiRepeating )
+      END IF
     END IF
 
     ! Deallocate mesh structures:
