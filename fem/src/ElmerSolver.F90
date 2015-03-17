@@ -597,10 +597,11 @@ END INTERFACE
      SUBROUTINE CompareToReferenceSolution( Finalize ) 
        LOGICAL, OPTIONAL :: Finalize 
 
-       INTEGER :: i, TestCount=0, PassCount=0, FailCount
-       REAL(KIND=dp) :: Norm, RefNorm, Tol, Err
+       INTEGER :: i, j, k, n, solver_id, TestCount=0, PassCount=0, FailCount, Dofs
+       REAL(KIND=dp) :: Norm, RefNorm, Tol, Err, val, refval
        TYPE(Solver_t), POINTER :: Solver
-       LOGICAL :: Found, Success = .TRUE., FinalizeOnly
+       TYPE(Variable_t), POINTER :: Var
+       LOGICAL :: Found, Success = .TRUE., FinalizeOnly, CompareNorm, CompareSolution
 
        SAVE TestCount, PassCount 
 
@@ -641,41 +642,104 @@ END INTERFACE
        END IF
 
 
-       DO i=1,CurrentModel % NumberOfSolvers
-         Solver => CurrentModel % Solvers(i)
+       DO solver_id=1,CurrentModel % NumberOfSolvers
+         Solver => CurrentModel % Solvers(solver_id)
 
-         RefNorm = ListGetConstReal( Solver % Values,'Reference Norm', Found )
-         IF(.NOT. Found ) CYCLE
+         RefNorm = ListGetConstReal( Solver % Values,'Reference Norm', CompareNorm )
+         CompareSolution = ListCheckPrefix( Solver % Values,'Reference Solution')
          
-         TestCount = TestCount + 1
-
-         IF( .NOT. ASSOCIATED( Solver % Variable ) ) THEN
+         IF(.NOT. ( CompareNorm .OR. CompareSolution ) ) CYCLE
+         
+         Var => Solver % Variable
+         IF( .NOT. ASSOCIATED( Var ) ) THEN
            CALL Warn('CompareToReferenceSolution','Variable in Solver '&
                //TRIM(I2S(i))//' not associated, cannot compare')
            CYCLE
          END IF
-         
-         Norm = Solver % Variable % Norm 
-         Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
-         IF(.NOT. Found ) Tol = 1.0d-5
 
-         Err = ABS( Norm - RefNorm ) / RefNorm 
+         TestCount = TestCount + 1
+         Success = .TRUE.
 
-         IF( Err > Tol ) THEN
-           ! Normally warning is done for every partition but this time it is the same for all
-           IF( ParEnv % MyPe == 0 ) THEN
+         ! Compare either to existing norm (ensures consistancy) 
+         ! or to existing solution (may also be used to directly verify)
+         ! Usually only either of these is given but for the sake of completeness
+         ! both may be used at the same time. 
+         IF( CompareNorm ) THEN
+           Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
+           IF(.NOT. Found ) Tol = 1.0d-5
+           Norm = Var % Norm 
+           Err = ABS( Norm - RefNorm ) / RefNorm 
+
+           ! Compare to given reference norm
+           IF( Err > Tol ) THEN
+             ! Warn only in the main core
+             IF( ParEnv % MyPe == 0 ) THEN
+               WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
+                   'Solver ',solver_id,' FAILED:  Norm = ',Norm,'  RefNorm = ',RefNorm
+               CALL Warn('CompareToReferenceSolution',Message)
+               WRITE( Message,'(A,ES12.6)') 'Relative Error to reference norm: ',Err
+               CALL Info('CompareToReferenceSolution',Message, Level = 4 )
+             END IF
+             Success = .FALSE.
+           ELSE         
              WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
-                 'Solver ',i,' FAILED:  Norm = ',Norm,'  RefNorm = ',RefNorm
-             CALL Warn('CompareToReferenceSolution',Message)
-             WRITE( Message,'(A,ES12.6)') 'Relative Error to reference: ',Err
-             CALL Info('CompareToReferenceSolution',Message, Level = 4 )
+                 'Solver ',solver_id,' PASSED:  Norm = ',Norm,'  RefNorm = ',RefNorm
+             CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
-         ELSE         
-           WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
-               'Solver ',i,' PASSED:  Norm = ',Norm,'  RefNorm = ',RefNorm
-           CALL Info('CompareToReferenceSolution',Message,Level=4)
-           PassCount = PassCount + 1
          END IF
+
+         IF( CompareSolution ) THEN
+           Tol = ListGetConstReal( Solver % Values,'Reference Solution Tolerance', Found )
+           IF(.NOT. Found ) Tol = 1.0d-5
+           Dofs = Var % Dofs
+           n = 0 
+           RefNorm = 0.0_dp
+           Norm = 0.0_dp
+           Err = 0.0_dp
+           DO i=1,Solver % Mesh % NumberOfNodes
+             j = Var % Perm(i)
+             IF( j == 0 ) CYCLE
+             DO k=1,Dofs
+               IF( Dofs == 1 ) THEN
+                 refval = ListGetRealAtNode( Solver % Values,'Reference Solution',i,Found ) 
+               ELSE
+                 refval = ListGetRealAtNode( Solver % Values,'Reference Solution '//TRIM(I2S(k)),i,Found ) 
+               END IF
+               IF( Found ) THEN
+                 val = Var % Values( Dofs*(j-1)+k)
+                 RefNorm = RefNorm + refval**2
+                 Norm = Norm + val**2
+                 Err = Err + (refval-val)**2
+                 n = n + 1
+               END IF
+             END DO
+           END DO
+           IF( ParEnv % PEs > 1 ) CALL Warn('CompareToReferefenSolution','Not implemented in parallel!')
+           IF( n == 0 ) CALL Fatal('CompareToReferenceSolution','Could not find any reference solution')
+           RefNorm = SQRT( RefNorm / n ) 
+           Norm = SQRT( Norm / n )
+           Err = SQRT( Err / n ) 
+
+           IF( Err > Tol ) THEN
+             ! Normally warning is done for every partition but this time it is the same for all
+             IF( ParEnv % MyPe == 0 ) THEN
+               WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
+                   'Solver ',solver_id,' FAILED:  Solution = ',Norm,'  RefSolution = ',RefNorm
+               CALL Warn('CompareToReferenceSolution',Message)
+               WRITE( Message,'(A,ES12.6)') 'Relative Error to reference solution: ',Err
+               CALL Info('CompareToReferenceSolution',Message, Level = 4 )
+             END IF
+             Success = .FALSE.
+           ELSE         
+             WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
+                 'Solver ',solver_id,' PASSED:  Solution = ',Norm,'  RefSolution = ',RefNorm
+             CALL Info('CompareToReferenceSolution',Message,Level=4)
+           END IF
+         END IF
+
+
+
+         IF( Success ) PassCount = PassCount + 1
        END DO
       
 
