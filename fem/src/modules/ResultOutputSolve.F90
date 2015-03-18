@@ -4303,15 +4303,16 @@ CONTAINS
         IF(.NOT. ActiveElem(i) ) CYCLE
 
         CurrentElement => Model % Elements(i)
-        n = GetElementNOFNodes(CurrentElement)
-       
+        n = GetElementNOFNodes( CurrentElement )
+        NodeIndexes => Elmer2VtkIndexes( CurrentElement )
+
         DO j=1,n
           IF( DG ) THEN
             jj = k + j
           ELSE IF( AllNodesUsed ) THEN
-            jj = CurrentElement % NodeIndexes(j)
+            jj = NodeIndexes(j)
           ELSE
-            jj = NodePerm( CurrentElement % NodeIndexes(j))
+            jj = NodePerm( NodeIndexes(j) )
           END IF
           CALL AscBinIntegerWrite( jj - 1 )
         END DO
@@ -4897,14 +4898,52 @@ CONTAINS
       VTKCode = 12
     CASE( 820 )
       VTKCode = 25
-    CASE( 827 ) 
-      VTKCode = 33
+    CASE( 827 )
+      VTKCode = 29
     CASE DEFAULT
       WRITE(Message,'(A,I0)') 'Not implemented for elementtype: ',ElmerCode
-      CALL Fatal('Elmer2VtkElement','Not Implemented for elementtype')
+      CALL Fatal('Elmer2VtkElement',Message)
       
     END SELECT
   END FUNCTION Elmer2VtkElement
+
+
+  FUNCTION Elmer2VtkIndexes( Element ) RESULT ( NodeIndexes )
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+
+    INTEGER, TARGET :: NewIndexes(27)
+    INTEGER :: ElmerCode, n
+    INTEGER, POINTER :: Order(:)
+    INTEGER, TARGET, DIMENSION(20) :: &
+        Order820 = (/1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16/)
+    INTEGER, TARGET, DIMENSION(27) :: &
+        Order827 = (/1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16,24,22,21,23,25,26,27/)
+      
+    ElmerCode = Element % Type % ElementCode
+
+    SELECT CASE (ElmerCode)
+      
+    CASE( 820 )
+      Order => Order820
+      
+    CASE( 827 ) 
+      Order => Order827
+      
+    CASE DEFAULT
+      Order => NULL()
+
+    END SELECT
+
+    IF( ASSOCIATED( Order) ) THEN
+      n = Element % Type % NumberOfNodes 
+      NewIndexes(1:n) = Element % NodeIndexes( Order(1:n) )
+      NodeIndexes => NewIndexes
+    ELSE
+      NodeIndexes => Element % NodeIndexes
+    END IF 
+
+  END FUNCTION Elmer2VtkIndexes
 
 
 !------------------------------------------------------------------------------
