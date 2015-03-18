@@ -1701,13 +1701,14 @@ CONTAINS
      TYPE(Model_t), POINTER :: Model
      TYPE(variable_t), POINTER :: Var, LoadVar, IterVar, LimitVar
      TYPE(Element_t), POINTER :: Element
+     TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: i,j,k,l,n,m,t,ind,dofs, bf, Upper, Removed, Added, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind, &
          DistSign, DofN, DofT1, DofT2
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:), TempX(:)
      REAL(KIND=dp) :: LimitSign, ValEps, LoadEps, val, ContactNormal(3), &
          ContactT1(3), ContactT2(3), LocalT1(3), LocalT2(3), &
-         LocalNormal(3), Coord(3), Disp(3), NodalForce(3), wsum, coeff, &
+         LocalNormal(3), NodalForce(3), wsum, coeff, &
          Dist, DistN, DistT1, DistT2, DistOffset, NTT(3,3), RotVec(3)
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
      LOGICAL :: Found,AnyLimitBC, AnyLimitBF
@@ -1726,11 +1727,13 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: BC
      REAL(KIND=dp), POINTER :: nWrk(:,:)
      
+     
      SAVE FirstTime
 
      Model => CurrentModel
      Var => Solver % Variable
      VarName = GetVarName( Var ) 
+     Mesh => Solver % Mesh
      
      CALL Info('DetermineContact','Determining contact set for contact problems',Level=8)
 
@@ -1892,163 +1895,25 @@ CONTAINS
        ELSE
          DistSign = 1
        END IF
+       LimitSign = -DistSign * 1.0_dp       
+
+
 
        NoSlip = ListGetLogical( BC,'No-Slip '//TRIM(VarName) ,Found )
        IF( NoSlip ) THEN
          CALL Info('DetermineContact','Using no-slip condistions for displacement',Level=10)
        END IF
 
-       ! Allocate vectors to be used 
        CALL AllocateMortarVectors()
+
+       CALL InitializeMortarVectors()
      
-       ! Create the permutation to make life easier in the future
-       MortarBC % Perm = 0
-       DO i=1,SIZE( Projector % InvPerm )
-         j = Projector % InvPerm(i) 
-         IF( j > 0 .AND. j <= SIZE( FieldPerm ) ) THEN
-           MortarBC % Perm( j ) = i
-         END IF
-       END DO
+       ! Calculate the distance used to determine whether contact should be added
+       CALL CalculateMortarDistance()
      
-       ! Initialize the mortar vectors
-       IF( ASSOCIATED( MortarBC % Diag ) ) THEN
-         MortarBC % Diag = 0.0_dp
-       END IF
-       MortarBC % Rhs = 0.0_dp
-       MortarBC % Dist = 0.0_dp
-       MortarBC % NormalLoad = 0.0_dp
-       MortarBC % Slip = .FALSE.
-     
-       disp = 0.0_dp
-       coord = 0.0_dp
-       NodalForce = 0.0_dp
-       
-       DO i = 1,Projector % NumberOfRows
-
-         wsum = 0.0_dp
-         Dist = 0.0_dp
-         DistN = 0.0_dp
-         DistT1 = 0.0_dp
-         DistT2 = 0.0_dp
-
-         IF( RotatedContact ) THEN
-           Rotated = GetSolutionRotation(NTT, Projector % InvPerm(i) ) 
-           LocalNormal = NTT(:,1)
-           LocalT1 = NTT(:,2)
-           IF( Dofs == 3 ) LocalT2 = NTT(:,3)
-         END IF
-
-         DO j = Projector % Rows(i),Projector % Rows(i+1)-1
-           k = Projector % Cols(j)
-           l = FieldPerm( k ) 
-           IF( l == 0 ) CYCLE
-
-           ! This includes only the coordinate since the displacement
-           ! is added to the coordinate!
-           coeff = Projector % Values(j)
-
-           ! Only compute the sum related to the slave
-           IF( MortarBC % Perm(k) > 0 ) THEN
-             wsum = wsum + ABS( coeff )
-           END IF
-
-           coord(1) = Model % Mesh % Nodes % x( k ) 
-           coord(2) = Model % Mesh % Nodes % y( k ) 
-           coord(3) = Model % Mesh % Nodes % z( k ) 
-           
-           IF( dofs == 2 ) THEN
-             disp(1) = Solver % Variable % Values( 2 * l - 1)
-             disp(2) = Solver % Variable % Values( 2 * l )
-             disp(3) = 0.0_dp
-           ELSE
-             disp(1) = Solver % Variable % Values( 3 * l - 2)
-             disp(2) = Solver % Variable % Values( 3 * l - 1 )
-             disp(3) = Solver % Variable % Values( 3 * l )
-           END IF
-           
-           ! DistN is used to give the distance that we need to move the original coordinates
-           ! in the wanted direction in order to have contact.
-           IF( RotatedContact ) THEN
-             DistN = DistN + coeff * SUM( LocalNormal * Coord )
-           ELSE
-             DistN = DistN + coeff * SUM( ContactNormal * Coord )
-           END IF
-
-           ! Tangential distances needed to move the original coordinates to the contact position
-           IF( NoSlip ) THEN
-             IF( RotatedContact ) THEN
-               DistT1 = DistT1 + coeff * SUM( LocalT1 * Coord )
-             ELSE
-               DistT1 = DistT1 + coeff * SUM( ContactT1 * Coord )
-             END IF
-             IF( Dofs == 3 ) THEN
-               IF( RotatedContact ) THEN
-                 DistT2 = DistT2 + coeff * SUM( LocalT2 * Coord )
-               ELSE
-                 DistT2 = DistT2 + coeff * SUM( ContactT2 * Coord )
-               END IF
-             END IF
-           END IF
-
-          
-           ! Dist is used to compute the current signed distance that is used to determine
-           ! whether we have contact or not. 
-           IF( RotationalProjector ) THEN
-             Dist = Dist + coeff * SQRT( SUM( (Coord + Disp)**2 ) )
-           ELSE
-             Dist = Dist + coeff * SUM( ContactNormal * ( Coord + Disp ) )
-           END IF
-         END DO
-
-
-         ! Divide by weight to get back to real distance in the direction of the normal
-         Dist = Dist / wsum
-         DistN = DistN / wsum       
-         IF( NoSlip ) THEN
-           DistT1 = DistT1 / wsum
-           DistT2 = DistT2 / wsum 
-         END IF
-
-         j = Projector % InvPerm(i)
-         !PRINT '(A,I0,5ES12.3)','Dist:',i,Model % Mesh % Nodes % x(j), &
-         !    Model % mesh % nodes %y(j),Dist,DistN,DistT1
-
-
-         MortarBC % Dist( i ) = DistSign * Dist 
-
-         MortarBC % Rhs(Dofs*(i-1)+DofN) = -DistN
-         IF( .FALSE. .AND. NoSlip ) THEN
-           MortarBC % Rhs(Dofs*(i-1)+DofT1) = -DistT1
-           IF( Dofs == 3 ) THEN
-             MortarBC % Rhs(Dofs*(i-1)+DofT2) = -DistT2
-           END IF
-         END IF
-       END DO
-       
-       PRINT *,'MinDist:',MINVAL( MortarBC % Dist )
-       PRINT *,'MaxDist:',MAXVAL( MortarBC % Dist ) 
-
        ! Compute the normal load used to determine whether contact should be released.
-       DO i = 1,Projector % NumberOfRows
-         j = Projector % InvPerm( i ) 
-         k = FieldPerm( j ) 
-         IF( k == 0 ) CYCLE
-                  
-         DO l=1,dofs
-           NodalForce(l) = LoadValues(dofs*(k-1)+l)
-         END DO
-
-         IF( RotatedContact ) THEN
-           MortarBC % NormalLoad(i) = -NodalForce(1)
-         ELSE
-           MortarBC % NormalLoad(i) = SUM( NodalForce * ContactNormal )
-         END IF
-
-         !PRINT '(A,I0,5ES12.3)','Dist:',i,Model % Mesh % Nodes % x(j), &
-         !    Model % mesh % nodes %y(j),MortarBC % NormalLoad(i)
-       END DO
-       
-       LimitSign = -DistSign * 1.0_dp       
+       CALL CalculateContactPressure()
+        
        Removed = 0
        Added = 0        
        
@@ -2134,41 +1999,8 @@ CONTAINS
        IF( SaveContact .AND. ContactSaved ) THEN
          CALL Warn('DetermineContactSet','Currently we can only save one contact at a time!')
        ELSE IF( SaveContact ) THEN
-         CALL Info('DetermineContactSet','Saving contact for BC '//TRIM(I2S(bc_ind)),Level=8)
+         CALL SaveMortarContact() 
          ContactSaved = .TRUE.
-         LimitVar => VariableGet( Model % Variables, &
-             TRIM(VarName) // ' Contact Active',ThisOnly = .TRUE. )
-         IF(.NOT. ASSOCIATED( LimitVar ) ) THEN
-           CALL VariableAddVector( Model % Variables, Model % Mesh, Solver,&
-               TRIM(VarName) //' Contact Active', DOFs, Perm = MortarBC % Perm )
-           LimitVar => VariableGet( Model % Variables, &
-               TRIM(VarName) // ' Contact Active',ThisOnly = .TRUE. )
-
-           ! At the same time create these variables
-           CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
-               TRIM(VarName)//' Contact Dist',1,MortarBC % Dist, &
-               MortarBC % Perm )
-           IF( ASSOCIATED( MortarBC % Diag ) ) THEN
-             CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
-                 TRIM(VarName)//' Contact Diag',DOFs,MortarBC % Diag, &
-                 MortarBC % Perm )
-           END IF
-           CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
-               TRIM(VarName)//' Contact Rhs',DOFs,MortarBC % Rhs, &
-               MortarBC % Perm )
-           CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
-               TRIM(VarName)//' Contact NormalLoad',1,MortarBC % NormalLoad, &
-               MortarBC % Perm )
-         END IF
-         
-         ! Currently the visulized limit is always scalar even though the limited field could be a vector!
-         DO i = 1, SIZE( LimitVar % Values ) 
-           IF( MortarBC % Active(i) ) THEN
-             LimitVar % Values(i) = 1.0_dp
-           ELSE
-             LimitVar % Values(i) = -1.0_dp
-           END IF
-         END DO
        END IF
 
      END DO
@@ -2178,6 +2010,9 @@ CONTAINS
 
    CONTAINS
 
+
+          ! Allocates the vectors related to the mortar contact surface
+     !----------------------------------------------------------------------------
      SUBROUTINE AllocateMortarVectors()
 
        INTEGER :: nsize
@@ -2233,6 +2068,15 @@ CONTAINS
          MortarBC % Active = .FALSE.
        END IF
 
+       IF( ASSOCIATED( MortarBC % NodalWeight ) ) THEN
+         IF( SIZE( MortarBC % NodalWeight ) < nsize ) DEALLOCATE( MortarBC % NodalWeight ) 
+       END IF
+       IF( .NOT. ASSOCIATED( MortarBC % NodalWeight ) ) THEN
+         CALL Info('DetermineContact','Allocating projector mortar nodal weight',Level=10)
+         ALLOCATE( MortarBC % NodalWeight( nsize ) )
+         MortarBC % NodalWeight = 0.0_dp
+       END IF
+
        IF( ASSOCIATED( MortarBC % Slip ) ) THEN
          IF( SIZE( MortarBC % Slip ) < nsize ) DEALLOCATE( MortarBC % Slip ) 
        END IF
@@ -2255,6 +2099,259 @@ CONTAINS
 
      END SUBROUTINE AllocateMortarVectors
 
+
+     SUBROUTINE InitializeMortarVectors()
+
+       ! Create the permutation to make life easier in the future
+       MortarBC % Perm = 0
+       DO i=1,SIZE( Projector % InvPerm )
+         j = Projector % InvPerm(i) 
+         IF( j > 0 .AND. j <= SIZE( FieldPerm ) ) THEN
+           MortarBC % Perm( j ) = i
+         END IF
+       END DO
+     
+       ! Initialize the mortar vectors
+       IF( ASSOCIATED( MortarBC % Diag ) ) THEN
+         MortarBC % Diag = 0.0_dp
+       END IF
+       MortarBC % Rhs = 0.0_dp
+       MortarBC % Dist = 0.0_dp
+       MortarBC % NormalLoad = 0.0_dp
+       MortarBC % Slip = .FALSE.
+
+     END SUBROUTINE InitializeMortarVectors
+
+
+     SUBROUTINE CalculateMortarDistance()
+
+       REAL(KIND=dp) :: Disp(3), Coord(3)
+
+       DO i = 1,Projector % NumberOfRows
+
+         wsum = 0.0_dp
+         Dist = 0.0_dp
+         DistN = 0.0_dp
+         DistT1 = 0.0_dp
+         DistT2 = 0.0_dp
+         
+         IF( RotatedContact ) THEN
+           Rotated = GetSolutionRotation(NTT, Projector % InvPerm(i) ) 
+           LocalNormal = NTT(:,1)
+           LocalT1 = NTT(:,2)
+           IF( Dofs == 3 ) LocalT2 = NTT(:,3)
+         END IF
+
+         DO j = Projector % Rows(i),Projector % Rows(i+1)-1
+           k = Projector % Cols(j)
+           l = FieldPerm( k ) 
+           IF( l == 0 ) CYCLE
+           
+           ! This includes only the coordinate since the displacement
+           ! is added to the coordinate!
+           coeff = Projector % Values(j)
+
+           ! Only compute the sum related to the slave
+           IF( MortarBC % Perm(k) > 0 ) THEN
+             wsum = wsum + ABS( coeff )
+           END IF
+
+           coord(1) = Mesh % Nodes % x( k ) 
+           coord(2) = Mesh % Nodes % y( k ) 
+           coord(3) = Mesh % Nodes % z( k ) 
+           
+           IF( dofs == 2 ) THEN
+             disp(1) = Solver % Variable % Values( 2 * l - 1)
+             disp(2) = Solver % Variable % Values( 2 * l )
+             disp(3) = 0.0_dp
+           ELSE
+             disp(1) = Solver % Variable % Values( 3 * l - 2)
+             disp(2) = Solver % Variable % Values( 3 * l - 1 )
+             disp(3) = Solver % Variable % Values( 3 * l )
+           END IF
+           
+           ! DistN is used to give the distance that we need to move the original coordinates
+           ! in the wanted direction in order to have contact.
+           IF( RotatedContact ) THEN
+             DistN = DistN + coeff * SUM( LocalNormal * Coord )
+           ELSE
+             DistN = DistN + coeff * SUM( ContactNormal * Coord )
+           END IF
+
+           ! Tangential distances needed to move the original coordinates to the contact position
+           IF( NoSlip ) THEN
+             IF( RotatedContact ) THEN
+               DistT1 = DistT1 + coeff * SUM( LocalT1 * Coord )
+             ELSE
+               DistT1 = DistT1 + coeff * SUM( ContactT1 * Coord )
+             END IF
+             IF( Dofs == 3 ) THEN
+               IF( RotatedContact ) THEN
+                 DistT2 = DistT2 + coeff * SUM( LocalT2 * Coord )
+               ELSE
+                 DistT2 = DistT2 + coeff * SUM( ContactT2 * Coord )
+               END IF
+             END IF
+           END IF
+          
+           ! Dist is used to compute the current signed distance that is used to determine
+           ! whether we have contact or not. 
+           IF( RotationalProjector ) THEN
+             Dist = Dist + coeff * SQRT( SUM( (Coord + Disp)**2 ) )
+           ELSE
+             Dist = Dist + coeff * SUM( ContactNormal * ( Coord + Disp ) )
+           END IF
+         END DO
+
+         ! Divide by weight to get back to real distance in the direction of the normal
+         Dist = Dist / wsum
+         DistN = DistN / wsum       
+         IF( NoSlip ) THEN
+           DistT1 = DistT1 / wsum
+           DistT2 = DistT2 / wsum 
+         END IF
+         
+         j = Projector % InvPerm(i)
+         !PRINT '(A,I0,5ES12.3)','Dist:',i,Mesh % Nodes % x(j), &
+         !    Mesh % nodes %y(j),Dist,DistN,DistT1
+                  
+         MortarBC % Dist( i ) = DistSign * Dist 
+
+         MortarBC % Rhs(Dofs*(i-1)+DofN) = -DistN
+         IF( .FALSE. .AND. NoSlip ) THEN
+           MortarBC % Rhs(Dofs*(i-1)+DofT1) = -DistT1
+           IF( Dofs == 3 ) THEN
+             MortarBC % Rhs(Dofs*(i-1)+DofT2) = -DistT2
+           END IF
+         END IF
+       END DO
+       
+     END SUBROUTINE CalculateMortarDistance
+
+
+     ! Calculates the contact pressure in the normal direction from the nodal loads.
+     ! The nodal loads may be given either in cartesian or n-t coordinate system. 
+     !-------------------------------------------------------------------------------
+     SUBROUTINE CalculateContactPressure()
+       
+       INTEGER :: elem
+       INTEGER, POINTER :: Indexes(:)
+       TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+       TYPE(Nodes_t) :: Nodes
+       INTEGER :: i,j,k,t,CoordSys
+       REAL(KIND=dp) :: s, x, DetJ, u, v, w, Normal(3),NodalForce(3)
+       REAL(KIND=dp), ALLOCATABLE :: Basis(:)
+       LOGICAL :: Stat
+
+       n = Mesh % MaxElementNodes
+       ALLOCATE(Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+
+
+       CoordSys = CurrentCoordinateSystem()
+       NodalForce = 0.0_dp
+
+       MortarBC % NodalWeight = 0.0_dp
+       MortarBC % NormalLoad = 0.0_dp
+       
+
+       DO elem=Mesh % NumberOfBulkElements + 1, &
+           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+         
+         Element => Mesh % Elements( elem )         
+         IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc_ind) % Tag ) CYCLE
+         
+         Indexes => Element % NodeIndexes
+         
+         n = Element % TYPE % NumberOfNodes
+         Nodes % x(1:n) = Mesh % Nodes % x(Indexes)
+         Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
+         Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
+         
+         IntegStuff = GaussPoints( Element )
+         
+         DO t=1,IntegStuff % n        
+           U = IntegStuff % u(t)
+           V = IntegStuff % v(t)
+           W = IntegStuff % w(t)
+           
+           stat = ElementInfo( Element, Nodes, U, V, W, detJ, Basis )
+           S = DetJ * IntegStuff % s(t)
+           
+           IF ( CoordSys /= Cartesian ) THEN
+             X = SUM( Nodes % X(1:n) * Basis(1:n) )
+             s = s * x
+           END IF
+           
+           Normal = NormalVector( Element,Nodes,u,v,.TRUE. )
+
+           DO i=1,n
+             j = MortarBC % Perm( Indexes(i) ) 
+             k = FieldPerm( Indexes(i) )
+             IF( k == 0 .OR. j == 0 ) CYCLE
+             DO l=1,dofs
+               NodalForce(l) = LoadValues(dofs*(k-1)+l)
+             END DO
+
+             IF( RotatedContact ) THEN
+               MortarBC % NormalLoad(j) = MortarBC % NormalLoad(j) - &
+                   s * NodalForce(1)
+             ELSE
+               MortarBC % NormalLoad(j) = MortarBC % NormalLoad(j) - &
+                   s * SUM( NodalForce * Normal )
+             END IF
+             
+             MortarBC % NodalWeight(j) = MortarBC % NodalWeight(j) + s 
+           END DO
+           
+         END DO
+       END DO
+       
+       MortarBC % NormalLoad = MortarBC % NormalLoad / (MortarBC % NodalWeight**2 )
+
+       DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z )
+                          
+     END SUBROUTINE CalculateContactPressure
+
+
+     SUBROUTINE SaveMortarContact() 
+       
+       CALL Info('DetermineContactSet','Saving contact for BC '//TRIM(I2S(bc_ind)),Level=8)
+
+       LimitVar => VariableGet( Model % Variables, &
+           TRIM(VarName) // ' Contact Active',ThisOnly = .TRUE. )
+       IF(.NOT. ASSOCIATED( LimitVar ) ) THEN
+         CALL VariableAddVector( Model % Variables, Model % Mesh, Solver,&
+             TRIM(VarName) //' Contact Active', DOFs, Perm = MortarBC % Perm )
+         LimitVar => VariableGet( Model % Variables, &
+             TRIM(VarName) // ' Contact Active',ThisOnly = .TRUE. )
+         
+         ! At the same time create these variables
+         CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
+             TRIM(VarName)//' Contact Dist',1,MortarBC % Dist, &
+             MortarBC % Perm )
+         IF( ASSOCIATED( MortarBC % Diag ) ) THEN
+           CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
+               TRIM(VarName)//' Contact Diag',DOFs,MortarBC % Diag, &
+               MortarBC % Perm )
+         END IF
+         CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
+             TRIM(VarName)//' Contact Rhs',DOFs,MortarBC % Rhs, &
+             MortarBC % Perm )
+         CALL VariableAddVector( Model % Variables,Model % Mesh,Solver,&
+             TRIM(VarName)//' Contact NormalLoad',1,MortarBC % NormalLoad, &
+             MortarBC % Perm )
+       END IF
+       
+       ! Currently the visulized limit is always scalar even though the limited field could be a vector!
+       DO i = 1, SIZE( LimitVar % Values ) 
+         IF( MortarBC % Active(i) ) THEN
+           LimitVar % Values(i) = 1.0_dp
+         ELSE
+           LimitVar % Values(i) = -1.0_dp
+         END IF
+       END DO
+     END SUBROUTINE SaveMortarContact
+       
 
    END SUBROUTINE DetermineContact
 !------------------------------------------------------------------------------
@@ -7190,7 +7287,7 @@ END FUNCTION SearchNodeL
 
     Mesh % EntityWeightsComputed = .TRUE.
 
-    CALL Info('ComputeEntityWeights','All done',Level=10)
+    CALL Info('CalculateEntityWeights','All done',Level=10)
 
   END SUBROUTINE CalculateEntityWeights
 !------------------------------------------------------------------------------
