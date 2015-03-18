@@ -9,9 +9,6 @@ ELSE()
 ENDIF()
 #SET(FINDNORM_BIN "${CMAKE_CURRENT_BINARY_DIR}/findnorm")
 
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/runTest.sh.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/runTest.sh)
-
 MACRO(SUBDIRLIST result curdir)
   FILE(GLOB children RELATIVE ${curdir} ${curdir}/*)
   SET(dirlist "")
