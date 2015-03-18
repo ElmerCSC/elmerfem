@@ -8401,45 +8401,88 @@ END SUBROUTINE GetMaxDefs
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     !--------------------------------------------------------------------------
-    INTEGER :: FlatDim, MeshDim
+    TYPE(Mesh_t), POINTER :: Bmesh
+    INTEGER :: FlatDim, MeshDim, MinDiffI, i, j
+    REAL(KIND=dp), POINTER :: Coord(:)
+    REAL(KIND=dp) :: Diff, MaxDiff, MinDiff, RelDiff, RelDiff1
     LOGICAL :: Found
 
     CALL Info('FlatInterfaceMeshes','Flattening interface meshes to 2D',Level=8)    
     
     MeshDim = CurrentModel % DIMENSION
     FlatDim = ListGetInteger( BParams,'Flat Projector Coordinate',Found,minv=1,maxv=3) 
-    IF(.NOT. Found ) FlatDim = MeshDim
 
-    ! Some pieces of the code cannot work with 1D meshes, this choice is ok for all steps
-    IF( FlatDim == 3 ) THEN
-      BMesh1 % Nodes % z = 0.0_dp
-      Bmesh2 % Nodes % z = 0.0_dp
-    ELSE IF( FlatDim == 2 ) THEN
-      IF( MeshDim == 3 ) THEN
-        BMesh1 % Nodes % y = BMesh1 % Nodes % z
-        Bmesh2 % Nodes % y = BMesh2 % Nodes % z
-        BMesh1 % Nodes % z = 0.0_dp
-        Bmesh2 % Nodes % z = 0.0_dp
-      ELSE
-        BMesh1 % Nodes % y = 0.0_dp
-        BMesh2 % Nodes % y = 0.0_dp
-      END IF
-    ELSE
-      IF( MeshDim == 3 ) THEN
-        BMesh1 % Nodes % x = BMesh1 % Nodes % z
-        Bmesh2 % Nodes % x = BMesh2 % Nodes % z
-        BMesh1 % Nodes % z = 0.0_dp
-        Bmesh2 % Nodes % z = 0.0_dp
-      ELSE 
-        BMesh1 % Nodes % x = BMesh1 % Nodes % y
-        Bmesh2 % Nodes % x = BMesh2 % Nodes % y
-        BMesh1 % Nodes % y = 0.0_dp
-        Bmesh2 % Nodes % y = 0.0_dp
-      END IF
+    IF(.NOT. Found ) THEN
+      DO j=1, 2
+        IF( j == 1 ) THEN
+          Bmesh => BMesh1
+        ELSE
+          BMesh => BMesh2
+        END IF
+        
+        MaxDiff = 0.0
+        MinDiff = HUGE( MinDiff ) 
+        
+        DO i = 1, MeshDim
+          IF( i == 1 ) THEN
+            Coord => BMesh % Nodes % x 
+          ELSE IF( i == 2 ) THEN
+            Coord => Bmesh % Nodes % y
+          ELSE
+            Coord => Bmesh % Nodes % z
+          END IF
+
+          Diff = MAXVAL( Coord ) - MINVAL( Coord )
+          MaxDiff = MAX( Diff, MaxDiff ) 
+          IF( Diff < MinDiff ) THEN
+            MinDiff = Diff
+            MinDiffI = i
+          END IF
+        END DO
+
+        RelDiff = MinDiff / MaxDiff
+        IF( j == 1 ) THEN
+          FlatDim = MinDiffI
+          RelDiff1 = RelDiff 
+        ELSE IF( j == 2 ) THEN
+          IF( RelDiff < RelDiff1 ) FlatDim = MinDiffI
+        END IF
+      END DO
+
+      CALL Info('FlatInterfaceMeshes','> Flat Projector Coordinate < set to: '//TRIM(I2S(FlatDim)))
+      CALL ListAddInteger( BParams,'Flat Projector Coordinate',FlatDim )
     END IF
 
-    Bmesh1 % MeshDim = 2
-    Bmesh2 % MeshDim = 2      
+
+    DO j=1,2
+      ! Some pieces of the code cannot work with 1D meshes, this choice is ok for all steps
+      IF( j == 1 ) THEN
+        Bmesh => BMesh1
+      ELSE
+        BMesh => BMesh2
+      END IF
+      
+      IF( FlatDim == 3 ) THEN
+        BMesh % Nodes % z = 0.0_dp
+      ELSE IF( FlatDim == 2 ) THEN
+        IF( MeshDim == 3 ) THEN
+          BMesh % Nodes % y = BMesh % Nodes % z
+          BMesh % Nodes % z = 0.0_dp
+        ELSE
+          BMesh % Nodes % y = 0.0_dp
+        END IF
+      ELSE IF( FlatDim == 1 ) THEN
+        IF( MeshDim == 3 ) THEN
+          BMesh % Nodes % x = BMesh % Nodes % z
+          BMesh % Nodes % z = 0.0_dp
+        ELSE 
+          BMesh % Nodes % x = BMesh % Nodes % y
+          BMesh % Nodes % y = 0.0_dp
+        END IF
+      END IF
+
+      Bmesh % MeshDim = 2
+    END DO
 
   END SUBROUTINE FlatInterfaceMeshes
 !------------------------------------------------------------------------------

@@ -1278,7 +1278,7 @@ CONTAINS
        Conservative = .TRUE.  
        ConservativeRemove = ( ConservativeAfterIters < NonlinIter )
        IF( ConservativeRemove ) THEN
-         CALL Info('DetermineSoftLimiter','Adding dofs in conservative fashion',Level=8)
+         CALL Info('DetermineSoftLimiter','Removing dofs in conservative fashion',Level=8)
        END IF
      END IF
 
@@ -1692,7 +1692,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Determine contact set. 
+!> Subroutine for determine the contact set and create the necessary data
+!> for setting up the contact conditions. As input the mortar projectors,
+!> the current solution, and the stiffness matrix are used.  
 !------------------------------------------------------------------------------
    SUBROUTINE DetermineContact( Solver )
 !------------------------------------------------------------------------------
@@ -1704,21 +1706,20 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: i,j,k,l,n,m,t,ind,dofs, bf, Upper, Removed, Added, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind, &
-         DistSign, DofN, DofT1, DofT2
+         DistSign, LimitSign, DofN, DofT1, DofT2
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:), TempX(:)
-     REAL(KIND=dp) :: LimitSign, ValEps, LoadEps, val, ContactNormal(3), &
+     REAL(KIND=dp) :: ValEps, LoadEps, val, ContactNormal(3), &
          ContactT1(3), ContactT2(3), LocalT1(3), LocalT2(3), &
          LocalNormal(3), NodalForce(3), wsum, coeff, &
          Dist, DistN, DistT1, DistT2, DistOffset, NTT(3,3), RotVec(3)
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
      LOGICAL :: Found,AnyLimitBC, AnyLimitBF
-     LOGICAL, ALLOCATABLE :: LimitDone(:)
+     LOGICAL, ALLOCATABLE :: LimitDone(:),InterfaceDof(:)
      LOGICAL, POINTER :: LimitActive(:)
      TYPE(ValueList_t), POINTER :: Params
      CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName, VarName
-     LOGICAL, ALLOCATABLE :: InterfaceDof(:)
      INTEGER :: ConservativeAfterIters, ActiveDirection, NonlinIter, CoupledIter
-     LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
+     LOGICAL :: ConservativeAdd, ConservativeRemove, &
          DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, &
          RotationalProjector, FirstTime = .TRUE., SaveContact, ContactSaved, &
          RotatedContact, NoSlip
@@ -1791,32 +1792,24 @@ CONTAINS
 
      !FirstTime = ( NonlinIter == 1 .AND. CoupledIter == 1 ) 
 
-     ConservativeAdd = .FALSE.
      ConservativeAfterIters = ListGetInteger(Params,&
-         'Apply Limiter Conservative Add After Iterations',Conservative ) 
-     IF( Conservative ) THEN
-       ConservativeAdd = ( ConservativeAfterIters < NonlinIter )
+         'Apply Limiter Conservative Add After Iterations',ConservativeAdd ) 
+     IF( ConservativeAdd ) THEN
+       IF( CoupledIter == 1 ) ConservativeAdd = ( ConservativeAfterIters < NonlinIter )
        IF( ConservativeAdd ) THEN
          CALL Info('DetermineContact','Adding dofs in conservative fashion',Level=8)
        END IF
      END IF
 
-     ConservativeRemove = .FALSE.
      ConservativeAfterIters = ListGetInteger(Params,&
-         'Apply Limiter Conservative Remove After Iterations',Found ) 
-     IF( Found ) THEN
-       Conservative = .TRUE.  
-       ConservativeRemove = ( ConservativeAfterIters < NonlinIter )
+         'Apply Limiter Conservative Remove After Iterations',ConservativeRemove ) 
+     IF( ConservativeRemove ) THEN
+       IF( CoupledIter == 1 ) ConservativeRemove = ( ConservativeAfterIters < NonlinIter )
        IF( ConservativeRemove ) THEN
-         CALL Info('DetermineContact','Adding dofs in conservative fashion',Level=8)
+         CALL Info('DetermineContact','Removing dofs in conservative fashion',Level=8)
        END IF
      END IF
-     
-     IF( Conservative ) THEN
-       CALL Fatal('DetermineContact','Conservative fashion not yet implemented!')
-     END IF
-
-
+         
      LoadEps = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
      IF(.NOT. Found ) LoadEps = EPSILON( LoadEps )
          
@@ -1860,13 +1853,7 @@ CONTAINS
          CALL Fatal('DetermineContact','Projector must be current either flat or rotational!')
        END IF
 
-       ContactNormal = 0.0_dp
-       ContactNormal(ActiveDirection) = 1.0_dp
        
-       ContactT1 = 0.0_dp
-       ContactT1(3-ActiveDirection) = 0.0_dp
-
-
        ! If we have N-T system then the mortar condition for the master side
        ! should have reverse sign as both normal displacement diminish the gap.
        IF( RotatedContact ) THEN
@@ -1876,6 +1863,12 @@ CONTAINS
        ELSE
          DofN = ActiveDirection 
        END IF
+
+       ! This is the normal that is used to detect the signed distance
+       ContactNormal = 0.0_dp
+       ContactNormal(ActiveDirection) = 1.0_dp
+       ContactT1 = 0.0_dp
+       ContactT1(3-ActiveDirection) = 0.0_dp
 
        DofT1 = 0; DofT2 = 0
        DO i=1,dofs
@@ -1890,15 +1883,6 @@ CONTAINS
          END IF
        END DO
 
-       IF( ListGetLogical( BC,'Normal Sign Negative',Found ) ) THEN
-         DistSign = -1
-       ELSE
-         DistSign = 1
-       END IF
-       LimitSign = -DistSign * 1.0_dp       
-
-
-
        NoSlip = ListGetLogical( BC,'No-Slip '//TRIM(VarName) ,Found )
        IF( NoSlip ) THEN
          CALL Info('DetermineContact','Using no-slip condistions for displacement',Level=10)
@@ -1908,15 +1892,28 @@ CONTAINS
 
        CALL InitializeMortarVectors()
      
+       ! If the contact set is set up in a conservative fashion we need to mark interface nodes
+       IF( ConservativeAdd .OR. ConservativeRemove ) THEN
+         CALL MarkInterfaceDofs()
+       END IF
+
+       ! Compute the normal load used to determine whether contact should be released.
+       ! Also check the direction to which the signed distance should be computed
+       CALL CalculateContactPressure()
+
+       IF( ListGetLogical( BC,'Normal Sign Negative',Found ) ) DistSign = -1
+       IF( ListGetLogical( BC,'Normal Sign Positive',Found ) ) DistSign = 1
+
        ! Calculate the distance used to determine whether contact should be added
        CALL CalculateMortarDistance()
-     
-       ! Compute the normal load used to determine whether contact should be released.
-       CALL CalculateContactPressure()
+
         
+       ! This is related to the formulation of the PDE and is probably fixed for all elasticity solvers
+       LimitSign = -1
+       
        Removed = 0
        Added = 0        
-       
+
        IF( FirstTime ) THEN
          DistOffset = ListGetCReal( BC,&
              'Mortar BC Initial Contact Depth',Found)
@@ -1954,12 +1951,18 @@ CONTAINS
          !--------------------------------------------------------------------------       
          IF( MortarBC % Active( ind ) ) THEN
            DoRemove = ( LimitSign * MortarBC % NormalLoad(i) > LimitSign * LoadEps ) 
+           IF( DoRemove .AND. ConservativeRemove ) THEN
+             DoRemove = InterfaceDof(ind) 
+           END IF
            IF( DoRemove ) THEN
              removed = removed + 1
              MortarBC % Active(ind) = .FALSE.
            END IF
          ELSE 
            DoAdd = ( MortarBC % Dist( i ) < -ValEps + DistOffset ) 
+           IF( DoAdd .AND. ConservativeAdd ) THEN
+             DoAdd = InterfaceDof(ind)
+           END IF
            IF( DoAdd ) THEN
              added = added + 1
              MortarBC % Active(ind) = .TRUE.
@@ -2003,6 +2006,11 @@ CONTAINS
          ContactSaved = .TRUE.
        END IF
 
+       IF( ConservativeAdd .OR. ConservativeRemove ) THEN
+         DEALLOCATE( InterfaceDof )
+       END IF
+
+
      END DO
 
      FirstTime = .FALSE.
@@ -2011,7 +2019,7 @@ CONTAINS
    CONTAINS
 
 
-          ! Allocates the vectors related to the mortar contact surface
+     ! Allocates the vectors related to the mortar contact surface
      !----------------------------------------------------------------------------
      SUBROUTINE AllocateMortarVectors()
 
@@ -2100,6 +2108,8 @@ CONTAINS
      END SUBROUTINE AllocateMortarVectors
 
 
+     ! Initialize the mortar vectors and mortar permutation future use. 
+     !-------------------------------------------------------------------------------
      SUBROUTINE InitializeMortarVectors()
 
        ! Create the permutation to make life easier in the future
@@ -2123,6 +2133,70 @@ CONTAINS
      END SUBROUTINE InitializeMortarVectors
 
 
+     
+
+     ! Make a list of interface dofs to allow conservative algos 
+     ! There only nodes that are at the interface are added or removed from the set.
+     !------------------------------------------------------------------------------
+     SUBROUTINE MarkInterfaceDofs()
+       
+       INTEGER :: i,j,i2,j2,k,k2,l,n,ind,ind2,elem
+       INTEGER, POINTER :: Indexes(:)
+       TYPE(Element_t), POINTER :: Element
+       
+       CALL Info('DetermineContact','Marking interface dofs for conservative adding/removal',Level=8)
+
+       IF(.NOT. ALLOCATED( InterfaceDof ) ) THEN
+         ALLOCATE( InterfaceDof( SIZE(MortarBC % Active) ) )
+       END IF
+       InterfaceDof = .FALSE. 
+
+
+       DO elem=Mesh % NumberOfBulkElements + 1, &
+           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+         
+         Element => Mesh % Elements( elem )         
+         IF ( Element % BoundaryInfo % Constraint /= Model % BCs(bc_ind) % Tag ) CYCLE
+         
+         n = Element % TYPE % NumberOfNodes
+         Indexes => Element % NodeIndexes
+         
+         DO i=1,n
+           j = FieldPerm( Indexes(i) )
+           IF( j == 0 ) CYCLE
+           k = MortarBC % Perm( Indexes(i) )
+           
+           DO i2 = i+1,n
+             j2 = FieldPerm( Indexes(i2) )
+             IF( j2 == 0 ) CYCLE
+             k2 = MortarBC % perm( Indexes(i2) )
+             
+             DO l=1,Dofs             
+               ind = Dofs * ( k - 1 ) + l
+               ind2 = Dofs * ( k2 - 1) + l
+               
+               ! XOR has some portability issues
+               IF( (MortarBC % Active(ind) .AND. .NOT. MortarBC % Active(ind2) ) .OR. &
+                   (.NOT. MortarBC % Active(ind) .AND. MortarBC % Active(ind2) ) ) THEN
+                 InterfaceDof(ind) = .TRUE.
+                 InterfaceDof(ind2) = .TRUE.
+               END IF
+             END DO
+           END DO
+         END DO
+       END DO
+
+       n = COUNT(InterfaceDof)
+       CALL Info('DetermineContact',&
+           'Number of interface dofs: '//TRIM(I2S(n)),Level=8)
+     END SUBROUTINE MarkInterfaceDofs
+     
+
+     ! Calculates the signed distance that is used to define whether we have contact or not.
+     ! If distance is negative then we can later add the corresponding node to the contact set
+     ! Also computes the right-hand-side of the mortar equality constrained which is the 
+     ! desired distance in the active direction.  
+     !----------------------------------------------------------------------------------------
      SUBROUTINE CalculateMortarDistance()
 
        REAL(KIND=dp) :: Disp(3), Coord(3)
@@ -2226,6 +2300,9 @@ CONTAINS
          END IF
        END DO
        
+       PRINT *,'Distance Range:',MINVAL( MortarBC % Dist ), MAXVAL( MortarBC % Dist )
+       PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
+       
      END SUBROUTINE CalculateMortarDistance
 
 
@@ -2238,21 +2315,23 @@ CONTAINS
        INTEGER, POINTER :: Indexes(:)
        TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
        TYPE(Nodes_t) :: Nodes
-       INTEGER :: i,j,k,t,CoordSys
-       REAL(KIND=dp) :: s, x, DetJ, u, v, w, Normal(3),NodalForce(3)
+       INTEGER :: i,j,k,t,CoordSys, NormalSign0, NormalSign, NormalCount
+       REAL(KIND=dp) :: s, x, DetJ, u, v, w, Normal(3),NodalForce(3),DotProd
        REAL(KIND=dp), ALLOCATABLE :: Basis(:)
        LOGICAL :: Stat
 
        n = Mesh % MaxElementNodes
        ALLOCATE(Basis(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
 
-
+       
        CoordSys = CurrentCoordinateSystem()
        NodalForce = 0.0_dp
 
        MortarBC % NodalWeight = 0.0_dp
        MortarBC % NormalLoad = 0.0_dp
-       
+       NormalSign0 = 0
+       NormalCount = 0
+
 
        DO elem=Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -2284,6 +2363,20 @@ CONTAINS
            
            Normal = NormalVector( Element,Nodes,u,v,.TRUE. )
 
+           IF( FlatProjector ) THEN
+             DotProd = SUM( Normal * ContactNormal ) 
+             IF( DotProd < 0.0 ) THEN
+               NormalSign = 1
+             ELSE
+               NormalSign = -1 
+             END IF
+             IF( NormalSign0 == 0 ) THEN
+               NormalSign0 = NormalSign
+             ELSE
+               IF( NormalSign0 /= NormalSign ) NormalCount = NormalCount + 1
+             END IF
+           END IF
+
            DO i=1,n
              j = MortarBC % Perm( Indexes(i) ) 
              k = FieldPerm( Indexes(i) )
@@ -2294,13 +2387,13 @@ CONTAINS
 
              IF( RotatedContact ) THEN
                MortarBC % NormalLoad(j) = MortarBC % NormalLoad(j) - &
-                   s * NodalForce(1)
+                   s * Basis(i) * NodalForce(1)
              ELSE
                MortarBC % NormalLoad(j) = MortarBC % NormalLoad(j) - &
-                   s * SUM( NodalForce * Normal )
+                   s * Basis(i) * SUM( NodalForce * Normal )
              END IF
              
-             MortarBC % NodalWeight(j) = MortarBC % NodalWeight(j) + s 
+             MortarBC % NodalWeight(j) = MortarBC % NodalWeight(j) + s * Basis(i)
            END DO
            
          END DO
@@ -2309,10 +2402,26 @@ CONTAINS
        MortarBC % NormalLoad = MortarBC % NormalLoad / (MortarBC % NodalWeight**2 )
 
        DEALLOCATE( Basis, Nodes % x, Nodes % y, Nodes % z )
-                          
+
+       IF( FlatProjector ) THEN
+         IF( NormalCount == 0 ) THEN
+           CALL Info('DetermineContact','All normals are consistently signed',Level=10)
+         ELSE
+           CALL Warn('DetermineContact','There are normals with conflicting signs: '&
+               //TRIM(I2S(NormalCount) ) )
+           NormalSign = 1
+         END IF
+         CALL Info('DetermineContact','Normal direction for distance measure: '&
+             //TRIM(I2S(NormalSign)),Level=8)
+         DistSign = NormalSign 
+       END IF
+
      END SUBROUTINE CalculateContactPressure
 
 
+     ! Creates variable for saving from the mortar vectors.
+     ! Note that currenly only one boundary may be saved at a time.
+     !-----------------------------------------------------------------------------
      SUBROUTINE SaveMortarContact() 
        
        CALL Info('DetermineContactSet','Saving contact for BC '//TRIM(I2S(bc_ind)),Level=8)
@@ -3891,9 +4000,14 @@ CONTAINS
       
       Coeff(1:n) = ListGetReal( BC,& 
           'Friction Coefficient ' // Name(1:nlen), n, NodeIndexes )
-      NormalInd = ListGetInteger( BC,& 
-          'Friction Normal Component ' // Name(1:nlen) )
-      
+      IF( ListGetLogical( BC,& 
+          'Normal-Tangential ' // Name(1:nlen) ) ) THEN
+        NormalInd = 1 
+      ELSE
+        NormalInd = ListGetInteger( BC,& 
+            'Friction Normal Component ' // Name(1:nlen) )
+      END IF
+
       DO i = 1, n
         j = Perm( Nodeindexes(i) )
         IF( NodeDone( j ) ) CYCLE
