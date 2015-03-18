@@ -39,5 +39,8 @@ $ function MuSquare(tx) {\
 
 -----------------------
 TO RUN the TEST:
+elmerf90 ./PROG/GradientValidation.f90 -o ./GradientValidation
+elmerf90 ./PROG/USF_Init.f90 -o ./USF_Init
+ElmerGrid 1 2 mesh2D -metis 4 4
+mpirun -n 4 ElmerSolver_mpi
 
-Edit/Update then execute RunTest.sh
