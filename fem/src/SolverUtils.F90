@@ -1705,7 +1705,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: i,j,k,l,n,m,t,ind,dofs, bf, Upper, Removed, Added, &
-         ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind, &
+         ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind, master_ind, &
          DistSign, LimitSign, DofN, DofT1, DofT2
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:), TempX(:)
      REAL(KIND=dp) :: ValEps, LoadEps, val, ContactNormal(3), &
@@ -1852,11 +1852,19 @@ CONTAINS
        ELSE
          CALL Fatal('DetermineContact','Projector must be current either flat or rotational!')
        END IF
-
-       
+      
        ! If we have N-T system then the mortar condition for the master side
        ! should have reverse sign as both normal displacement diminish the gap.
        IF( RotatedContact ) THEN
+         master_ind = ListGetInteger( BC,'Mortar BC',Found )
+         IF( master_ind > 0 ) THEN
+           IF( .NOT. ListGetLogical( Model % BCs(master_ind) % Values, &
+               'Normal-Tangential '//TRIM(VarName),Found) ) THEN
+             CALL Fatal('DetermineContact','Master boundary '//TRIM(I2S(master_ind))//&
+                 ' should also have N-T coordinates!')
+           END IF
+         END IF
+
          CALL Info('DetermineContact','We have a normal-tangential system',Level=6)
          MortarBC % MasterScale = -1.0_dp
          DofN = 1
