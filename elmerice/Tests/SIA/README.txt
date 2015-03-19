@@ -1,4 +1,11 @@
 # Make the mesh 
-elmerf90-nosh MshGlacierSynthetic.f90 fbed.f90 fsurf.f90 -o MshGlacierSynthetic
 ElmerGrid 1 2 mesh_A 
-./MshGlacierSynthetic
+# Run the simulation
+ElmerSolver 
+
+Results established:
+--------------------
+19.03.2015
+Laure Tavard,LGGE
+Froggy cluster (CIMENT: Grenoble University HPC centre)
+Revision 58f71b4
