@@ -1,5 +1,9 @@
-ElmerGrid 1 2 ice.grd
-ElmerSolver cavity.sif
+# Test for ExportVertically Solvers
+
+How to Run the test:
+-------------
+ElmerGrid 1 2 mesh.grd
+ElmerSolver exportvertically.sif
 
 
 Results established:

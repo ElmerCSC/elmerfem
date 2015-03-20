@@ -50,7 +50,7 @@ Simulation
 
   Output File = "test.result"
   Post File = "test.vtu"
-  max output level = 3
+  max output level = 4
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!

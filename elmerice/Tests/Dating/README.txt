@@ -1,6 +1,7 @@
-ElmerGrid 1 2 ice.grd
-ElmerSolver cavity.sif
-
+# Test with AdvectionReaction Solver
+#
+ElmerGrid 1 2 mesh.grd
+ElmerSolver dating.sif
 
 Results established:
 ------------------

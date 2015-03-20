@@ -1,6 +1,7 @@
-ElmerGrid 1 2 ice.grd
-ElmerSolver cavity.sif
-
+# Test with DEnsity Solver
+#
+ElmerGrid 1 2 mesh.grd
+ElmerSolver density.sif
 
 Results established:
 ------------------

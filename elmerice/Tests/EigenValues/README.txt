@@ -1,6 +1,9 @@
-ElmerGrid 1 2 ice.grd
-ElmerSolver cavity.sif
+# Test with EigenValues Solver
 
+Run the test:
+-------------
+ElmerGrid 1 2 mesh.grd
+ElmerSolver carre2D.sif
 
 Results established:
 ------------------

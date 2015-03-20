@@ -1,6 +1,9 @@
-ElmerGrid 1 2 ice.grd
-ElmerSolver cavity.sif
+Test with ComputeDevStress Solver
 
+How to run the test:
+--------------------
+ElmerGrid 1 2 rectangle.grd
+ElmerSolver computeDevStress.sif
 
 Results established:
 ------------------

@@ -1,7 +1,10 @@
-# Make the mesh 
-ElmerGrid 1 2 mesh_A 
+To execute the test:
+---------------------
+# Make the mesh
+ElmerGrid 1 2 mesh_A
+./MshGlacierSynthetic
 # Run the simulation
-ElmerSolver 
+ElmerSolver sia.sif
 
 Results established:
 --------------------

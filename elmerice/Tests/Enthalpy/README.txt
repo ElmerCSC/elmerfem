@@ -1,6 +1,8 @@
-ElmerGrid 1 2 ice.grd
-ElmerSolver cavity.sif
+# Test for GroundedSolver and GetHydrostaticLoads Solvers
 
+Run the test:
+-------------
+ElmerSolver enthalpy.sif
 
 Results established:
 ------------------
@@ -8,4 +10,3 @@ Results established:
 Laure Tavard,LGGE
 Froggy cluster (CIMENT: Grenoble University HPC centre)
 Revision 58f71b4
-

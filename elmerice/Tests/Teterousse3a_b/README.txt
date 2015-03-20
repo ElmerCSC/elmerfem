@@ -1,6 +1,7 @@
-ElmerGrid 1 2 ice.grd
-ElmerSolver cavity.sif
-
+How to run the test:
+elmerf90 ./PROG/USF_TR.f90 -o USF_TR
+ElmerGrid 14 2 teterousse.msh -autoclean -order 1.0 0.1 0.01
+ElmerSolver test.sif
 
 Results established:
 ------------------
@@ -8,4 +9,3 @@ Results established:
 Laure Tavard,LGGE
 Froggy cluster (CIMENT: Grenoble University HPC centre)
 Revision 58f71b4
-

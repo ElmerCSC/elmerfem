@@ -382,7 +382,7 @@ Boundary Condition 5
   DGD = Real 0.0
 End
 
-Solver 7 :: Reference Norm = Real 0.81472727E-01
+Solver 7 :: Reference Norm = Real 0.81466048E-01
 Solver 7 :: Reference Norm Tolerance = Real 1E-06
 $fprintf( stderr, "TEST CASE 1\n");
 RUN

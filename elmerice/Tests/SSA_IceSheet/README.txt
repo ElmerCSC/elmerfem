@@ -1,5 +1,7 @@
-ElmerGrid 1 2 ice.grd
-ElmerSolver cavity.sif
+# Grow an ice cap
+#
+ElmerGrid 1 2 rectangle.grd
+ElmerSolver ssa_IceSheet.sif
 
 
 Results established:
@@ -8,4 +10,3 @@ Results established:
 Laure Tavard,LGGE
 Froggy cluster (CIMENT: Grenoble University HPC centre)
 Revision 58f71b4
-

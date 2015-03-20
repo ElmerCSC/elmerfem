@@ -1,6 +1,7 @@
-ElmerGrid 1 2 ice.grd
-ElmerSolver cavity.sif
-
+# Test for IntegratedVelocity Solvers
+#
+ElmerGrid 1 2 rectangle.grd
+ElmerSolver test.sif
 
 Results established:
 ------------------
@@ -8,4 +9,3 @@ Results established:
 Laure Tavard,LGGE
 Froggy cluster (CIMENT: Grenoble University HPC centre)
 Revision 58f71b4
-
