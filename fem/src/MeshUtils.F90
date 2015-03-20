@@ -5137,7 +5137,7 @@ END SUBROUTINE GetMaxDefs
     !------------------------------------------------------------------   
     IF( DoNodes ) THEN
       IF( StrongNodes ) THEN
-        IF( GenericIntegrator ) THEN
+        IF( GenericIntegrator ) THEN 
           CALL AddNodalProjectorStrongGeneric()
         ELSE
           CALL AddNodalProjectorStrongStrides()

@@ -1706,7 +1706,7 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: i,j,k,l,n,m,t,ind,dofs, bf, Upper, Removed, Added, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind, master_ind, &
-         DistSign, LimitSign, DofN, DofT1, DofT2
+         DistSign, LimitSign, DofN, DofT1, DofT2, Limited, LimitedMin
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:), TempX(:)
      REAL(KIND=dp) :: ValEps, LoadEps, val, ContactNormal(3), &
          ContactT1(3), ContactT2(3), LocalT1(3), LocalT2(3), &
@@ -1922,12 +1922,15 @@ CONTAINS
        Removed = 0
        Added = 0        
 
+       Found = .FALSE.
        IF( FirstTime ) THEN
          DistOffset = ListGetCReal( BC,&
              'Mortar BC Initial Contact Depth',Found)
-       ELSE
-         DistOffset = 0.0_dp
+         IF(.NOT. Found ) DistOffset = ListGetCReal( BC,&
+             'Contact Depth Offset Initial',Found)
        END IF
+       IF( .NOT. Found ) DistOffset = ListGetCReal( BC,&
+             'Contact Depth Offset',Found)
 
        ! Determine now whether we have contact or not
        DO i = 1,Projector % NumberOfRows
@@ -1939,8 +1942,7 @@ CONTAINS
 
          ! Enforce contact 
          !------------------------------------------------------
-         coeff = ListGetRealAtNode( BC,'Contact Active Condition '&
-             //TRIM(VarName), j, Found )
+         coeff = ListGetRealAtNode( BC,'Contact Active Condition', j, Found )
          IF( Found .AND. coeff > 0.0_dp ) THEN
            MortarBC % Active(ind) = .TRUE.
            CYCLE
@@ -1948,8 +1950,7 @@ CONTAINS
 
          ! Enforce no contact
          !------------------------------------------------------
-         coeff = ListGetRealAtNode( BC,'Contact Passive Condition '&
-             //TRIM(VarName), j, Found )
+         coeff = ListGetRealAtNode( BC,'Contact Passive Condition', j, Found )
          IF( Found .AND. coeff > 0.0_dp ) THEN
            MortarBC % Active(ind) = .FALSE.
            CYCLE
@@ -1978,6 +1979,15 @@ CONTAINS
          END IF
        END DO
 
+       ! If requested ensure a minumum number of contact nodes
+       !-------------------------------------------------------------------
+       Limited = COUNT( MortarBC % active(DofN::Dofs) )      
+       LimitedMin = ListGetInteger( BC,'Contact Active Set Minimum',Found)
+       IF( Found .AND. LimitedMin > Limited ) THEN
+         CALL IncreaseContactSet( LimitedMin - Limited ) 
+         Limited = LimitedMin
+       END IF
+
        IF( NoSlip ) THEN
          MortarBC % Active( DofT1 :: Dofs ) = MortarBC % Active( DofN :: Dofs )
          IF( Dofs == 3 ) THEN
@@ -1990,17 +2000,17 @@ CONTAINS
        !---------------------------------------------------------------------
        CALL Info('DetermineContactSet','Determined contact limit set',Level=5)
 
-       WRITE(Message,'(A,I0)') 'Number of limited dofs for '&
-           //TRIM(VarName)//': ',COUNT( MortarBC % Active ) 
+       WRITE(Message,'(A,I0)') 'Number of limited nodes for '&
+           //TRIM(VarName)//': ',limited 
        CALL Info('DetermineContactSet',Message,Level=5)
        
-       IF(added >= 0) THEN
-         WRITE(Message,'(A,I0,A)') 'Added ',added,' dofs to the set'
+       IF(added > 0) THEN
+         WRITE(Message,'(A,I0,A)') 'Added ',added,' nodes to the set'
          CALL Info('DetermineContactSet',Message,Level=5)
        END IF
        
-       IF(removed >= 0) THEN
-         WRITE(Message,'(A,I0,A)') 'Removed ',removed,' dofs from the set'
+       IF(removed > 0) THEN
+         WRITE(Message,'(A,I0,A)') 'Removed ',removed,' nodes from the set'
          CALL Info('DetermineContactSet',Message,Level=5)
        END IF
 
@@ -2425,6 +2435,62 @@ CONTAINS
        END IF
 
      END SUBROUTINE CalculateContactPressure
+
+
+     ! If requested add new nodes to the contact set
+     ! This would be typically done in order to make the elastic problem well defined
+     ! Without any contact the bodies may float around.
+     !---------------------------------------------------------------------------------
+     SUBROUTINE IncreaseContactSet( NewNodes ) 
+       INTEGER :: NewNodes
+
+       REAL(KIND=dp), ALLOCATABLE :: DistArray(:)
+       INTEGER, ALLOCATABLE :: IndArray(:)
+       REAL(KIND=dp) :: Dist
+       INTEGER :: i,j,ind
+
+       ! Nothing to do 
+       IF( NewNodes <= 0 ) RETURN
+
+       CALL Info('DetermineContact','Setting '//TRIM(I2S(j))//' additional contact nodes',Level=6)
+       ALLOCATE( DistArray( NewNodes ), IndArray( NewNodes ) ) 
+       DistArray = HUGE( DistArray ) 
+       IndArray = 0
+
+       ! Find additional contact nodes from the closest non-contact nodes
+       DO i = 1,Projector % NumberOfRows
+         ind = Dofs * (i-1) + DofN
+         IF( MortarBC % Active(ind)  ) CYCLE
+
+         Dist = MortarBC % Dist(i) 
+         IF( Dist < DistArray(NewNodes) ) THEN
+           DistArray(NewNodes) = Dist
+           IndArray(NewNodes) = ind
+
+           ! Order the new nodes such that the last node always has the largest distance
+           ! This way we only need to compare to the one distance when adding new nodes.
+           DO j=1,NewNodes-1
+             IF( DistArray(j) > DistArray(NewNodes) ) THEN
+               Dist = DistArray(NewNodes)
+               DistArray(NewNodes) = DistArray(j)
+               DistArray(j) = Dist                
+               ind = IndArray(NewNodes)
+               IndArray(NewNodes) = IndArray(j)
+               IndArray(j) = ind                
+             END IF
+           END DO
+         END IF
+       END DO
+
+       IF( ANY( IndArray == 0 ) ) THEN
+         CALL Fatal('DetermineContact','Could not define sufficient number of new nodes!')
+       END IF
+
+       MortarBC % Active( IndArray ) = .TRUE.
+
+       DEALLOCATE( DistArray, IndArray ) 
+     END SUBROUTINE IncreaseContactSet
+
 
 
      ! Creates variable for saving from the mortar vectors.
@@ -10328,6 +10394,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   END SUBROUTINE FCT_Correction
 
 
+
   ! Create Linear constraints from mortar BCs:
   ! -------------------------------------------   
   SUBROUTINE GenerateProjectors(Model,Solver,Nonlinear,SteadyState) 
@@ -10430,9 +10497,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        END IF
      END IF
      
-
-
-
    END SUBROUTINE GenerateProjectors
 
 

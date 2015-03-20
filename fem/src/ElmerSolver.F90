@@ -293,6 +293,15 @@ END INTERFACE
          OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',ERR=20 )
          CurrentModel => LoadModel( ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE )
 
+
+         !------------------------------------------------------------------------------
+         ! Some keywords automatically require other keywords to be set
+         ! We could complain on the missing keywords later on, but sometimes 
+         ! it may be just as simple to add them directly. 
+         !------------------------------------------------------------------------------
+         CALL CompleteModelKeywords( )
+
+
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
          ExtrudeLevels=GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
@@ -366,7 +375,6 @@ END INTERFACE
        eq = ListGetString( CurrentModel % Simulation, 'Simulation Type', GotIt )
        Scanning  = eq == 'scanning'
        Transient = eq == 'transient'
-
 
 !------------------------------------------------------------------------------
 !      To more conveniently support the use of VTK based visualization there 

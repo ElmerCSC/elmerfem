@@ -1587,6 +1587,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Finds a keyword with the given basename and normalizes it with a 
+!> constant coefficients for all future request of the keyword.
+!------------------------------------------------------------------------------
    SUBROUTINE ListSetCoefficients( list, name, coeff )
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: list
@@ -1626,6 +1630,61 @@ CONTAINS
      END DO
 
    END SUBROUTINE ListSetCoefficients
+ 
+
+!> Copies an entry from 'ptr' to an entry in *different* list with the same content.
+!-----------------------------------------------------------------------------------
+   SUBROUTINE ListCopyItem( ptr, list )
+
+     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: ptrb, ptrnext
+
+     ptrb => ListAdd( List, ptr % Name ) 
+
+     ptrnext => ptrb % next
+     ptrb = ptr
+     ptrb % next => ptrnext
+
+   END SUBROUTINE ListCopyItem
+
+
+!> Checks two lists for a given keyword. If it is given then 
+!> copy it as it is to the 2nd list.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListCompareAndCopy( list, listb, name, Found )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list, listb
+     CHARACTER(LEN=*) :: name
+     LOGICAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: ptr
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+     INTEGER :: k, n
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+     Found = .FALSE.
+
+     ! Find the keyword from the 1st list 
+     IF ( .NOT. ASSOCIATED(ptr) ) THEN
+       Ptr => List
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         IF ( n==k ) THEN
+           IF ( ptr % Name(1:n) == str(1:n) ) EXIT
+         END IF
+         ptr => ptr % Next
+       END DO
+     END IF
+     
+     IF(.NOT. ASSOCIATED( ptr ) ) RETURN
+     
+     ! Add the same entry to the 2nd list 
+     CALL ListCopyItem( ptr, listb ) 
+     Found = .TRUE.
+
+   END SUBROUTINE ListCompareAndCopy
  
   
 !------------------------------------------------------------------------------
