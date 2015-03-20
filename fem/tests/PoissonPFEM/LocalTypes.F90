@@ -40,7 +40,7 @@ MODULE LocalTypes
     INTEGER, PARAMETER :: INTEGERHASHSET_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_CHAIN_DEFAULT_SIZE = 8
     REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = REAL(0.75, dp)
-
+    INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 4
 CONTAINS
 
     SUBROUTINE ElmerMeshToDualGraph(Mesh, n, dualptr, dualind)
@@ -70,7 +70,13 @@ CONTAINS
         ! HEAP (list) MERGE: heap and mask for merge
         INTEGER, ALLOCATABLE :: wrkheap(:)
         LOGICAL, ALLOCATABLE :: wrkmask(:)
-        
+
+        TYPE :: IntTuple_t
+          INTEGER :: i1, i2
+        END type IntTuple_t
+        ! TYPE(IntTuple_t), ALLOCATABLE :: wrkheap2(:)
+        ! INTEGER, ALLOCATABLE :: wrkheap2(:), wrkheap3(:)
+
         ! OpenMP thread block leads for work division
         INTEGER, ALLOCATABLE :: thrblk(:)
         ! Work indices
@@ -170,14 +176,16 @@ CONTAINS
         ! Initialize neighbour indices
         neighind = 0
 
-        IF (nthr > 1) THEN
+        IF (nthr > HEAPALG_THRESHOLD) THEN
         ! IF (.TRUE.) THEN
+        ! IF (.FALSE.) THEN
             ! With multiple threads, use heap based merge
-            ALLOCATE(wrkheap(maxNodesPad), wrkmask(maxNodesPad), STAT=allocstat)
+            ALLOCATE(wrkheap(maxNodesPad), &
+                     wrkmask(maxNodesPad), STAT=allocstat)
             IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
                                            'Unable to allocate local workspace!')
         ELSE
-            ! With a single thread, use map -based merge
+            ! With a small number of threads, use map -based merge
             mapSizePad = IntegerNBytePad(Mesh % NumberOfBulkElements, 8)
             ALLOCATE(wrkmap(Mesh % NumberOfBulkElements), STAT=allocstat)
             IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
@@ -223,10 +231,16 @@ CONTAINS
             END IF
 
             ! Merge vertex lists (multi-way merge of ordered lists)
-            IF (nthr>1) THEN
+            IF (nthr > HEAPALG_THRESHOLD) THEN
             ! IF (.TRUE.) THEN
-                CALL kWayMergeList(eid, nv, ptrli, ptrti, &
-                                   te, vind, nn, neighind, wrkheap, wrkmask)
+            ! IF (.FALSE.) THEN
+              CALL kWayMergeList(eid, nv, ptrli, ptrti, &
+                     te, vind, nn, neighind, wrkheap, wrkmask)
+              ! CALL kWayMergeList2(eid, nv, ptrli, ptrti, &
+              !                     te, vind, nn, neighind, wrkheap, &
+              !                     wrkheapval, wrkmask)
+              ! CALL kWayMergeHeap(eid, nv, ptrli, ptrti, &
+              !        te, vind, nn, neighind, wrkheap2)
             ELSE
                 CALL kWayMergeArray(eid, nv, ptrli, ptrti, &
                                     te, vind, nn, neighind, wrkmap)
@@ -266,8 +280,9 @@ CONTAINS
 
         dualind(dualptr(thrli):dualptr(thrti)-1)=wrkind(1:nwrkind)
         
-        IF (nthr > 1) THEN
+        IF (nthr > HEAPALG_THRESHOLD) THEN
         ! IF (.TRUE.) THEN
+        ! IF (.FALSE.) THEN
             DEALLOCATE(wrkheap, wrkmask, STAT=allocstat)
         ELSE
             DEALLOCATE(wrkmap, STAT=allocstat)
@@ -276,7 +291,6 @@ CONTAINS
               'Unable to deallocate local workspace!')
         DEALLOCATE(neighind, ptrli, ptrti, wrkind)
 
-        ! TODO: OpenMP parallel region ends here
         !$OMP END PARALLEL
 
 #ifdef HAVE_TIMING
@@ -300,7 +314,7 @@ CONTAINS
 
                 ! Initialize vertex structure (enough storage for nvertex vertices
                 ! having eptr(nelem+1) elements)
-                ALLOCATE(vptr(nvertex+1), vind(eptr(nelem+1)), STAT=allocstat)
+                ALLOCATE(vptr(nvertex+1), STAT=allocstat)
                 IF (allocstat /= 0) CALL Fatal('VertexToElementList', &
                       'Vertex allocation failed!')
                 vptr = 0
@@ -327,6 +341,11 @@ CONTAINS
                 !     tmpi=tmpip
                 ! END DO
                 ! vptr(nvertex+1)=vptr(nvertex)+tmpi
+
+                ! Allocate vertex to element lists
+                ALLOCATE(vind(vptr(nvertex+1)), STAT=allocstat)
+                IF (allocstat /= 0) CALL Fatal('VertexToElementList', &
+                      'Vertex allocation failed!')
 
                 ! Construct element lists for each vertex
                 DO i=1,nelem
@@ -369,32 +388,33 @@ CONTAINS
                     DO j=ptrli(i), ptrti(i)-1
                         vindi = vind(j)
                         ! Put element to map if it is not already there
-                        IF (map(vindi)==0) THEN
+                        IF (map(vindi)==0 .AND. vindi /= node) THEN
                             neighind(nn)=vindi
+                            ! Increase counter
+                            map(vindi)=1
                             nn=nn+1
                         END IF
-                        ! Increase counter
-                        map(vindi)=map(vindi)+1
                     END DO
                 END DO
                 nn=nn-1
 
-                ! Map ready, just construct final list
-                j=1
+                ! ! Map ready, just construct final list
+                ! j=1
                 DO i=1,nn
-                    vindi = neighind(i)
-                    IF (map(vindi) > 0 .AND. vindi /= node) THEN
-                        neighind(j)=vindi
-                        j=j+1
-                    END IF
+                    ! vindi = neighind(i)
+                    ! IF (map(vindi) > 0 .AND. vindi /= node) THEN
+                    !     neighind(j)=vindi
+                    !     j=j+1
+                    ! END IF
                     ! Clear map
-                    map(vindi) = 0
+                    map(neighind(i)) = 0
                 END DO
-                nn=j-1
+                ! nn=j-1
             END SUBROUTINE kWayMergeArray
 
             ! k-way merge with a list
-            SUBROUTINE kWayMergeList(node, nv, ptrli, ptrti, te, vind, nn, neighind, list, mask)
+            SUBROUTINE kWayMergeList(node, nv, ptrli, ptrti, te, vind, &
+                  nn, neighind, list, mask)
                 IMPLICIT NONE
 
                 INTEGER, INTENT(IN) :: node, nv
@@ -414,23 +434,23 @@ CONTAINS
                     list(i)=vind(ptrli(i))
                 END DO
 
-                pind=HUGE(neighind(1))
+                pind=-1
                 mask(1:nv) = .TRUE.
 
-                nn = 0
+                nn = 1
                 DO elem=1,te
                     i=1
-                    DO j=1,nv
+                    DO j=2,nv
                         IF (mask(j) .AND. list(j)<list(i)) i=j
                     END DO
                     ! i now contains the index of the minimum entry
                     ! Do not add node if it was previously added to the list
                     vindi = list(i)
-                    list(i)=HUGE(list(i))
+                    ! list(i)=HUGE(list(i))
 
                     IF (vindi /= node .AND. pind /= vindi) THEN
-                        nn = nn + 1
                         neighind(nn)=vindi
+                        nn = nn + 1
                         pind = vindi
                     END IF
 
@@ -441,11 +461,252 @@ CONTAINS
                         list(i)=vind(ptrli(i))
                     ELSE
                         mask(i)=.FALSE.
+                        list(i)=HUGE(list(i))
                     END IF
                 END DO
+                nn=nn-1
 
             END SUBROUTINE kWayMergeList
+
+            ! k-way merge with a list
+            SUBROUTINE kWayMergeList2(node, nv, ptrli, ptrti, te, vind, &
+                                      nn, neighind, indlist, vallist, mask)
+                IMPLICIT NONE
+
+                INTEGER, INTENT(IN) :: node, nv
+                INTEGER :: ptrli(:)
+                INTEGER, INTENT(IN) ::ptrti(:), te
+                INTEGER, INTENT(IN) :: vind(:)
+                INTEGER, INTENT(OUT) :: nn
+                INTEGER :: neighind(:)
+                INTEGER :: indlist(:)
+                INTEGER :: vallist(:)
+                LOGICAL :: mask(:)
+
+                ! Local variables
+                INTEGER :: i, j, k,  wrki, vindi, elem, nzl
+                INTEGER :: pind, mind
+
+                DO i=1,nv
+                    indlist(i)=i
+                END DO
+                DO i=1,nv
+                  vallist(i)=vind(ptrli(i))
+                END DO
+                nzl = nv
+
+                pind = -1
+
+                nn = 1
+                DO WHILE(nzl>0)
+                    i=1
+                    DO j=2,nzl
+                        IF (vallist(j)<vallist(i)) i=j
+                    END DO
+                    ! i now contains the index of the minimum entry
+                    ! Do not add node if it was previously added to the list
+                    vindi = vallist(i)
+                    IF (vindi /= node .AND. pind /= vindi) THEN
+                      neighind(nn)=vindi
+                      pind=vindi
+                      nn=nn+1
+                    END IF
+
+                    ! Advance row pointer
+                    ptrli(indlist(i))=ptrli(indlist(i))+1
+                    ! Check if all elements have been added
+                    IF (ptrli(i)< ptrti(i)) THEN
+                      vallist(i)=vind(ptrli(indlist(i)))
+                    ELSE
+                      ! Remove index i from lists
+                      DO j=1,i-1
+                        indlist(j)=indlist(j)
+                      END DO
+                      DO j=i+1,nzl
+                        indlist(j-1)=indlist(j)
+                      END DO
+                      nzl=nzl-1
+                    END IF
+                END DO
+                nn=nn-1
+            END SUBROUTINE kWayMergeList2
             
+            ! k-way merge with an actual heap
+            SUBROUTINE kWayMergeHeap(node, nv, ptrli, ptrti, te, vind, &
+                                      nn, neighind, heap)
+                IMPLICIT NONE
+
+                INTEGER, INTENT(IN) :: node, nv
+                INTEGER :: ptrli(:)
+                INTEGER, INTENT(IN) ::ptrti(:), te
+                INTEGER, INTENT(IN) :: vind(:)
+                INTEGER, INTENT(OUT) :: nn
+                INTEGER :: neighind(:)
+                TYPE(IntTuple_t) :: heap(:)
+
+                TYPE(IntTuple_t) :: tmp
+                INTEGER :: ii, l, r, mind, ll, tmpval, tmpind
+
+                ! Local variables
+                INTEGER :: i, nzheap, vindi, lindi, pind
+
+                ! Put elements to heap
+                nzheap = 0
+                DO i=1,nv
+                  IF (ptrli(i)<ptrti(i)) THEN
+                    heap(i) % i1 = vind(ptrli(i))
+                    heap(i) % i2= i
+                    ptrli(i) = ptrli(i)+1
+                    nzheap = nzheap+1
+                  END IF
+                END DO
+
+                ! Build heap
+                DO ii=(nzheap/2), 1, -1
+                  i = ii
+                  DO 
+                    ! Find index of the minimum element
+                    mind = i
+                    DO ll=2*i,MIN(2*i+1,nzheap)
+                      IF (heap(ll) % i1 < heap(mind) % i1) mind = ll
+                    END DO
+                    
+                    IF (mind /= i) THEN
+                      tmp = heap(i)
+                      heap(i) = heap(mind)
+                      heap(mind) = tmp
+                      i = mind
+                    ELSE
+                      EXIT
+                    END IF
+                  END DO
+                  ! CALL BinaryHeapHeapify(heap, nzheap, i)
+                END DO
+
+                ! IF (.NOT. BinaryHeapIsHeap(heap, nzheap)) THEN
+                !   WRITE (*,*) heap(1:nzheap) % i1
+                !   WRITE (*,*) nzheap
+                !   WRITE (*,*) 'Not a heap, build!'
+                !   STOP
+                ! END IF
+
+                pind = -1
+                nn = 1
+                DO WHILE(nzheap>0)
+                  ! Pick the first element from heap
+                  vindi = heap(1) % i1
+                  lindi = heap(1) % i2
+
+                  ! Remove duplicates
+                  IF (vindi /= pind .AND. vindi /= node) THEN
+                    neighind(nn) = vindi
+                    pind = vindi
+                    nn = nn+1
+                  END IF
+
+                  ! Add new element from list (if any)
+                  IF (ptrli(lindi) < ptrti(lindi)) THEN
+                    heap(1) % i1 = vind(ptrli(lindi))
+                    heap(1) % i2 = lindi
+                    ptrli(lindi) = ptrli(lindi)+1
+                  ELSE
+                    heap(1) % i1 = heap(nzheap) % i1
+                    heap(1) % i2 = heap(nzheap) % i2
+                    nzheap=nzheap-1
+                  END IF
+                  ! CALL BinaryHeapHeapify(heap, nzheap, 1)
+                  i = 1
+                  DO 
+                    ! Find index of the minimum element
+                    mind = i
+                    DO ll=2*i,MIN(2*i+1,nzheap)
+                      IF (heap(ll) % i1 < heap(mind) % i1) mind = ll
+                    END DO
+                    
+                    IF (mind /= i) THEN
+                      tmp = heap(i)
+                      heap(i) = heap(mind)
+                      heap(mind) = tmp
+                      i = mind
+                    ELSE
+                      EXIT
+                    END IF
+                  END DO
+
+                  ! IF (.NOT. BinaryHeapIsHeap(heap, nzheap)) THEN
+                  !   WRITE (*,*) heap(1:nzheap) % i1
+                  !   WRITE (*,*) nzheap
+                  !   WRITE (*,*) 'Not a heap, insert/delete!'
+                  !   STOP
+                  ! END IF
+  
+                END DO
+                nn=nn-1
+            END SUBROUTINE kWayMergeHeap
+
+            SUBROUTINE BinaryHeapHeapify(heap, nelem, sind)
+              IMPLICIT NONE
+              TYPE(IntTuple_t) :: heap(:)
+              INTEGER, INTENT(IN) :: nelem
+              INTEGER, INTENT(IN) :: sind
+
+              INTEGER :: i, l, r, mind
+              TYPE(IntTuple_t) :: tmp
+              
+              i = sind
+              DO
+                l = 2*i
+                r = 2*i+1
+                ! Find index of the minimum element
+                mind = i
+                IF (l <= nelem) THEN
+                  IF (heap(l) % i1 < heap(i) % i1) mind = l
+                END IF
+                IF (r <= nelem) THEN
+                  IF (heap(r) % i1 < heap(mind) % i1) mind = r
+                END IF
+                
+                IF (mind /= i) THEN
+                  tmp = heap(i)
+                  heap(i) = heap(mind)
+                  heap(mind) = tmp
+                  i = mind
+                ELSE
+                  EXIT
+                END IF
+              END DO
+            END SUBROUTINE BinaryHeapHeapify
+
+            FUNCTION BinaryHeapIsHeap(heap, nelem) RESULT(heaporder)
+              IMPLICIT NONE
+              TYPE(IntTuple_t) :: heap(:)
+              INTEGER, INTENT(IN) :: nelem
+              LOGICAL :: heaporder
+              
+              INTEGER :: i, l, r
+              
+              heaporder = .TRUE.
+
+              DO i=(nelem/2), 1, -1
+                l = 2*i
+                r = 2*i+1
+                IF (l <= nelem) THEN
+                  IF (heap(l) % i1 < heap(i) % i1) THEN
+                    heaporder = .FALSE.
+                    write (*,*) 'left: ', l, i
+                    EXIT
+                  END IF
+                END IF
+                IF (r <= nelem) THEN
+                  IF (heap(r) % i1 < heap(i) % i1) THEN
+                    heaporder = .FALSE.
+                    write (*,*) 'right: ', r, i
+                    EXIT
+                  END IF
+                END IF
+              END DO
+            END FUNCTION BinaryHeapIsHeap
+
     END SUBROUTINE ElmerMeshToDualGraph
 
     SUBROUTINE ElmerGraphColour(gn, gptr, gind, nc, colours)

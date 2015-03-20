@@ -219,12 +219,12 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
                 vlist => VertexMapGetList(DualGraph,i)
                 vsize = IntegerListGetSize(vlist)
                 varr => IntegerListGetArray(vlist)
-                ! IF (i==2) THEN
-                !         WRITE (*,*) 'Metis:'
-                !         WRITE (*,*) dualind(dualptr(i):dualptr(i+1)-1)
-                !         WRITE (*,*) 'Elmer:'
-                !         WRITE (*,*) varr(1:vsize)
-                !         STOP    
+                ! IF (i==1) THEN
+                !          WRITE (*,*) 'Metis:'
+                !          WRITE (*,*) dualind(dualptr(i):dualptr(i+1)-1)
+                !          WRITE (*,*) 'Elmer:'
+                !          WRITE (*,*) varr(1:vsize)
+                !          STOP    
                 ! END IF
 
                 IF (IntegerListGetSize(VertexMapGetList(DualGraph, i)) == nl) THEN
