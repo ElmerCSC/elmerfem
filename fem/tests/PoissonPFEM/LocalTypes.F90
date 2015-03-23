@@ -40,7 +40,7 @@ MODULE LocalTypes
     INTEGER, PARAMETER :: INTEGERHASHSET_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_CHAIN_DEFAULT_SIZE = 8
     REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = REAL(0.75, dp)
-    INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 4
+    INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 12
 CONTAINS
 
     SUBROUTINE ElmerMeshToDualGraph(Mesh, n, dualptr, dualind)
@@ -74,7 +74,7 @@ CONTAINS
         TYPE :: IntTuple_t
           INTEGER :: i1, i2
         END type IntTuple_t
-        ! TYPE(IntTuple_t), ALLOCATABLE :: wrkheap2(:)
+        TYPE(IntTuple_t), ALLOCATABLE :: wrkheap2(:)
         ! INTEGER, ALLOCATABLE :: wrkheap2(:), wrkheap3(:)
 
         ! OpenMP thread block leads for work division
@@ -147,7 +147,7 @@ CONTAINS
         !$OMP                 nthr, thrblk, dnnz) &
         !$OMP PRIVATE(i, eid, nli, nti, nn, nv, vli, vti, te, &
         !$OMP         maxNodesPad, neighSizePad, ptrli, ptrti, &
-        !$OMP         wrkheap, wrkmask, wrkmap, neighind, &
+        !$OMP         wrkheap, wrkheap2, wrkmask, wrkmap, neighind, &
         !$OMP         wrkind, nwrkind, wrkindresize, allocstat, &
         !$OMP         mapSizePad, thrli, thrti, TID) NUM_THREADS(nthr) &
         !$OMP DEFAULT(NONE)
@@ -177,12 +177,13 @@ CONTAINS
         ! Initialize neighbour indices
         neighind = 0
 
-        IF (nthr > HEAPALG_THRESHOLD) THEN
+        IF (nthr >= HEAPALG_THRESHOLD) THEN
         ! IF (.TRUE.) THEN
         ! IF (.FALSE.) THEN
             ! With multiple threads, use heap based merge
             ALLOCATE(wrkheap(maxNodesPad), &
-                     wrkmask(maxNodesPad), STAT=allocstat)
+                     wrkmask(maxNodesPad), &
+                     wrkheap2(maxNodesPad), STAT=allocstat)
             IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
                                            'Unable to allocate local workspace!')
         ELSE
@@ -232,16 +233,18 @@ CONTAINS
             END IF
 
             ! Merge vertex lists (multi-way merge of ordered lists)
-            IF (nthr > HEAPALG_THRESHOLD) THEN
+            IF (nthr >= HEAPALG_THRESHOLD) THEN
             ! IF (.TRUE.) THEN
             ! IF (.FALSE.) THEN
               CALL kWayMergeList(eid, nv, ptrli, ptrti, &
-                     te, vind, nn, neighind, wrkheap, wrkmask)
+                      te, vind, nn, neighind, wrkheap, wrkmask)
+              ! CALL kWayMergeList3(eid, nv, ptrli, ptrti, &
+              !         te, vind, nn, neighind, wrkheap, wrkmask)
               ! CALL kWayMergeList2(eid, nv, ptrli, ptrti, &
               !                     te, vind, nn, neighind, wrkheap, &
               !                     wrkheapval, wrkmask)
               ! CALL kWayMergeHeap(eid, nv, ptrli, ptrti, &
-              !        te, vind, nn, neighind, wrkheap2)
+              !         te, vind, nn, neighind, wrkheap2)
             ELSE
                 CALL kWayMergeArray(eid, nv, ptrli, ptrti, &
                                     te, vind, nn, neighind, wrkmap)
@@ -281,10 +284,10 @@ CONTAINS
 
         dualind(dualptr(thrli):dualptr(thrti)-1)=wrkind(1:nwrkind)
         
-        IF (nthr > HEAPALG_THRESHOLD) THEN
+        IF (nthr >= HEAPALG_THRESHOLD) THEN
         ! IF (.TRUE.) THEN
         ! IF (.FALSE.) THEN
-            DEALLOCATE(wrkheap, wrkmask, STAT=allocstat)
+            DEALLOCATE(wrkheap, wrkmask, wrkheap2, STAT=allocstat)
         ELSE
             DEALLOCATE(wrkmap, STAT=allocstat)
         END IF
@@ -399,16 +402,9 @@ CONTAINS
                 END DO
                 nn=nn-1
 
-                ! ! Map ready, just construct final list
-                ! j=1
+                ! Clear map
                 DO i=1,nn
-                    ! vindi = neighind(i)
-                    ! IF (map(vindi) > 0 .AND. vindi /= node) THEN
-                    !     neighind(j)=vindi
-                    !     j=j+1
-                    ! END IF
-                    ! Clear map
-                    map(neighind(i)) = 0
+                  map(neighind(i)) = 0
                 END DO
                 ! nn=j-1
             END SUBROUTINE kWayMergeArray
@@ -445,10 +441,9 @@ CONTAINS
                         IF (mask(j) .AND. list(j)<list(i)) i=j
                     END DO
                     ! i now contains the index of the minimum entry
+                    
                     ! Do not add node if it was previously added to the list
                     vindi = list(i)
-                    ! list(i)=HUGE(list(i))
-
                     IF (vindi /= node .AND. pind /= vindi) THEN
                         neighind(nn)=vindi
                         nn = nn + 1
@@ -531,6 +526,63 @@ CONTAINS
                 END DO
                 nn=nn-1
             END SUBROUTINE kWayMergeList2
+
+            ! k-way merge with a list
+            SUBROUTINE kWayMergeList3(node, nv, ptrli, ptrti, te, vind, &
+                  nn, neighind, list, mask)
+                IMPLICIT NONE
+
+                INTEGER, INTENT(IN) :: node, nv
+                INTEGER :: ptrli(:)
+                INTEGER :: ptrti(:), te
+                INTEGER, INTENT(IN) :: vind(:)
+                INTEGER, INTENT(OUT) :: nn
+                INTEGER :: neighind(:)
+                INTEGER :: list(:)
+                LOGICAL :: mask(:)
+
+                ! Local variables
+                INTEGER :: i, j, k, wrki, vindi, elem, nl
+                INTEGER :: pind
+
+                ! DO i=1,nv
+                !     list(i)=vind(ptrli(i))
+                ! END DO
+
+                nl = nv
+                pind=-1
+                nn = 1
+                DO elem=1,te
+                    i=1
+                    DO j=2,nl
+                        ! IF (list(j)<list(i)) i=j
+                      IF (vind(ptrli(j)) < vind(ptrli(i))) i=j
+                    END DO
+                    ! i now contains the index of the minimum entry
+                    vindi = vind(ptrli(i))
+                    ! Do not add node if it was previously added to the list
+                    ! Advance row pointer
+                    ptrli(i)=ptrli(i)+1
+                    
+                    IF (vindi /= node .AND. pind /= vindi) THEN
+                        neighind(nn)=vindi
+                        nn = nn + 1
+                        pind = vindi
+                    END IF
+                    ! Update lists
+                    IF (ptrli(i) == ptrti(i)) THEN
+                      ! Remove ith element from list and pointers
+                      DO j=i,nl-1
+                        ! list(j)=list(j+1)
+                        ptrli(j)=ptrli(j+1)
+                        ptrti(j)=ptrti(j+1)
+                      END DO
+                      nl=nl-1
+                    END IF
+                END DO
+                nn=nn-1
+
+            END SUBROUTINE kWayMergeList3
             
             ! k-way merge with an actual heap
             SUBROUTINE kWayMergeHeap(node, nv, ptrli, ptrti, te, vind, &
@@ -565,23 +617,27 @@ CONTAINS
                 ! Build heap
                 DO ii=(nzheap/2), 1, -1
                   i = ii
+                  ! CALL BinaryHeapHeapify(heap, nzheap, i)
                   DO 
                     ! Find index of the minimum element
-                    mind = i
-                    DO ll=2*i,MIN(2*i+1,nzheap)
-                      IF (heap(ll) % i1 < heap(mind) % i1) mind = ll
-                    END DO
-                    
-                    IF (mind /= i) THEN
-                      tmp = heap(i)
-                      heap(i) = heap(mind)
-                      heap(mind) = tmp
-                      i = mind
-                    ELSE
-                      EXIT
+                    IF (2*i<=nzheap) THEN
+                      IF (heap(2*i) % i1 < heap(i) % i1) THEN
+                        mind = 2*i
+                      ELSE
+                        mind = i
+                      END IF
+                      IF (2*i+1<=nzheap) THEN
+                        IF (heap(2*i+1) % i1 < heap(mind) % i1) mind = 2*i+1
+                      END IF
                     END IF
+                    
+                    IF (mind == i) EXIT
+
+                    tmp = heap(i)
+                    heap(i) = heap(mind)
+                    heap(mind) = tmp
+                    i = mind
                   END DO
-                  ! CALL BinaryHeapHeapify(heap, nzheap, i)
                 END DO
 
                 ! IF (.NOT. BinaryHeapIsHeap(heap, nzheap)) THEN
@@ -593,7 +649,7 @@ CONTAINS
 
                 pind = -1
                 nn = 1
-                DO WHILE(nzheap>0)
+                DO WHILE(nzheap > 0)
                   ! Pick the first element from heap
                   vindi = heap(1) % i1
                   lindi = heap(1) % i2
@@ -619,19 +675,30 @@ CONTAINS
                   i = 1
                   DO 
                     ! Find index of the minimum element
-                    mind = i
-                    DO ll=2*i,MIN(2*i+1,nzheap)
-                      IF (heap(ll) % i1 < heap(mind) % i1) mind = ll
-                    END DO
-                    
-                    IF (mind /= i) THEN
-                      tmp = heap(i)
-                      heap(i) = heap(mind)
-                      heap(mind) = tmp
-                      i = mind
-                    ELSE
-                      EXIT
+                    ii = 2*i
+                    IF (ii<=nzheap) THEN
+                      IF (heap(ii) % i1 < heap(i) % i1) THEN
+                        mind = ii
+                      ELSE
+                        mind = i
+                      END IF
+                      IF (ii+1<=nzheap) THEN
+                        IF (heap(ii+1) % i1 < heap(mind) % i1) mind = ii+1
+                      END IF
+                      ! END DO
                     END IF
+
+                    IF (mind == i) EXIT
+
+                    ! IF (mind /= i) THEN
+                    ! Bubble down the element
+                    tmp = heap(i)
+                    heap(i) = heap(mind)
+                    heap(mind) = tmp
+                    i = mind
+                    ! ELSE
+                    !  EXIT
+                    ! END IF
                   END DO
 
                   ! IF (.NOT. BinaryHeapIsHeap(heap, nzheap)) THEN
