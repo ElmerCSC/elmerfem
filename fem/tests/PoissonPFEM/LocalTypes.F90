@@ -138,7 +138,8 @@ CONTAINS
         !$ nthr = omp_get_max_threads()
 
         ! Load balance the actual work done by threads
-        CALL ThreadLoadBalanceElementNeighbour(nthr, nelem, eptr, eind, vptr, thrblk)
+        ! CALL ThreadLoadBalanceElementNeighbour(nthr, nelem, eptr, eind, vptr, thrblk)
+        CALL ThreadStaticWorkShare(nthr, nelem, thrblk)
 
         ! TODO: Begin OpenMP parallel section here
         !$OMP PARALLEL SHARED(nelem, nvertex, eptr, eind, &
@@ -735,8 +736,17 @@ CONTAINS
         dualmaxdeg = 0
         nunc = gn
                 
+        ! Get maximum vertex degree of the given graph
+        !$OMP PARALLEL DO SHARED(gptr, gn) &
+        !$OMP PRIVATE(v) REDUCTION(max:dualmaxdeg) DEFAULT(NONE)
+        DO v=1,gn
+            dualmaxdeg = MAX(dualmaxdeg, gptr(v+1)-gptr(v))
+        END DO
+        !$OMP END PARALLEL DO
+
         nthr = 1
-        !$ nthr = OMP_GET_MAX_THREADS()
+        ! Ensure that each vertex has at most one thread attached to it
+        !$ nthr = MIN(omp_get_max_threads(), gn)
 
         ! Allocate memory for colours of vertices and thread colour pointers
         ALLOCATE(colours(gn), uncolored(gn), ucptr(nthr+1), STAT=allocstat)
@@ -752,14 +762,9 @@ CONTAINS
         TID=1
         !$ TID=OMP_GET_THREAD_NUM()+1
 
-        ! Get maximum vertex degree of the given graph
-        !$OMP DO REDUCTION(max:dualmaxdeg)
-        DO v=1,gn
-            dualmaxdeg = MAX(dualmaxdeg, gptr(v+1)-gptr(v))
-        END DO
-        !$OMP END DO
-
-        ! Greedy algorithm colours a given graph with at most max_{v\in V} deg(v) colours
+        ! Greedy algorithm colours a given graph with at 
+        ! most max_{v\in V} deg(v)+1 colours
+        dualmaxdeg = dualmaxdeg + 1
         ALLOCATE(fc(dualmaxdeg), rc(gn/nthr), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
                                        'Unable to allocate local workspace!')
@@ -832,6 +837,7 @@ CONTAINS
                         ! R <- R\bigcup {v} (thread local)
                         nrc = nrc + 1
                         rc(nrc)=v
+                        EXIT
                     END IF
                 END DO
             END DO
@@ -1828,7 +1834,7 @@ CONTAINS
         !$ nthr = MIN(nthr,gn)
         
         ALLOCATE(blkleads(nthr+1), STAT=allocstat)
-        IF (allocstat /= 0) CALL Fatal('ThreadLoadBalanceCRS', &
+        IF (allocstat /= 0) CALL Fatal('ThreadLoadBalanceElementNeighbour', &
                                        'Unable to allocate blkleads!')
         
         ! Special case of just one thread
@@ -1871,11 +1877,58 @@ CONTAINS
             ! Check if we have run out of rows
             IF (j+1>gn) EXIT
         END DO
-        ! Reset number of rows (may be less than equal to original number)
+        ! Reset number of rows (may be less than or equal to original number)
         nthr = i
         ! Assign what is left of the matrix to the final thread
         blkleads(nthr+1)=gn+1
     END SUBROUTINE ThreadLoadBalanceElementNeighbour
+
+    SUBROUTINE ThreadStaticWorkShare(nthr, gn, blkleads)
+        IMPLICIT NONE
+
+        INTEGER :: nthr
+        INTEGER, INTENT(IN) :: gn
+        INTEGER, ALLOCATABLE :: blkleads(:)
+
+        INTEGER :: i, rem, thrwrk, allocstat
+        INTEGER :: totelem
+        
+        ! Compute number of nonzeroes / thread
+        !$ nthr = MIN(nthr,gn)
+        
+        ALLOCATE(blkleads(nthr+1), STAT=allocstat)
+        IF (allocstat /= 0) CALL Fatal('ThreadStaticWorkShare', &
+                                       'Unable to allocate blkleads!')
+        
+        ! Special case of just one thread
+        IF (nthr == 1) THEN
+            blkleads(1)=1
+            blkleads(2)=gn+1
+            RETURN
+        END IF
+
+        ! Assuming even distribution of nodes / element, 
+        ! distribute rows for each thread to compute 
+        blkleads(1)=1
+        thrwrk = gn / nthr
+        rem = gn-nthr*thrwrk
+        ! totelem = 0
+        DO i=1,nthr-1
+          IF (i<rem) THEN
+            blkleads(i+1)=blkleads(i)+thrwrk+1
+          ELSE
+            blkleads(i+1)=blkleads(i)+thrwrk
+          END IF
+          ! totelem = totelem + blkleads(i+1)-blkleads(i)
+        END DO
+        ! Assign what is left of the matrix to the final thread
+        blkleads(nthr+1)=gn+1
+        
+        ! totelem = totelem + blkleads(i+1)-blkleads(i)
+        ! write (*,*) blkleads(1:nthr+1)
+        ! write (*,*) gn, nthr
+        ! IF (totelem /= gn) STOP
+    END SUBROUTINE ThreadStaticWorkShare
 
     ! Given row counts, in-place compute CRS indices to data
     SUBROUTINE ComputeCRSIndexes(n, arr)
