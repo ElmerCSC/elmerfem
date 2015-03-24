@@ -1264,6 +1264,12 @@ CONTAINS
           Indexes(NB) = Element % NodeIndexes(i)
        END DO
      END IF
+
+     ! default for nodal elements, if no solver active:
+     ! ------------------------------------------------
+     IF(.NOT.ASSOCIATED(Solver)) RETURN
+     IF(.NOT.ASSOCIATED(Solver % Mesh)) RETURN
+
      IF ( ALL(Solver % Def_Dofs(GetElementFamily(Element),id,2:)<0) ) RETURN
 
      FaceDOFs   = Solver % Mesh % MaxFaceDOFs
