@@ -3183,7 +3183,13 @@ CONTAINS
           IF( FieldSize == 0 ) THEN
             CALL Fatal('LoadRestartFile','Cannot pick variables with old format!')
           END IF
-          IF( Dofs == 1 ) RestartVariableSizes(DofCount) = FieldSize
+          IF( Dofs == 1 ) THEN
+             IF(PermSize > 0) THEN
+                RestartVariableSizes(DofCount) = PermSize
+             ELSE
+                RestartVariableSizes(DofCount) = FieldSize
+             END IF
+          END IF
         END IF
       END IF
 
