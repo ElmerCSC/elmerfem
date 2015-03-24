@@ -5276,8 +5276,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    SolverParams => GetSolverParams()
 
 
-   PiolaVersion = GetLogical( SolverParams, &
-      'Use Piola Transform', Found )
+   PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
    IF (PiolaVersion) &
     CALL Info('MagnetoDynamicsCalcFields', &
         'USING NEW PIOLA TRASFORMED FINITE ELEMENTS',Level=2)
@@ -5312,13 +5311,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential')
    EL_VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential E')
 
-   EF => NULL(); EL_EF => NULL(); 
-   CD => NULL(); EL_CD => NULL();
-   JH => NULL(); EL_JH => NULL();
-   FWP=>NULL(); EL_FWP => NULL();
-   JXB =>NULL(); EL_JXB => NULL();
-   ML=>NULL(); EL_ML => NULL();
-   ML2=>NULL(); EL_ML2 => NULL();
+   EF  => NULL(); EL_EF => NULL(); 
+   CD  => NULL(); EL_CD => NULL();
+   JH  => NULL(); EL_JH => NULL();
+   FWP => NULL(); EL_FWP => NULL();
+   JXB => NULL(); EL_JXB => NULL();
+   ML  => NULL(); EL_ML => NULL();
+   ML2 => NULL(); EL_ML2 => NULL();
 
    IF ( Transient .OR. .NOT. RealField ) THEN
      EF => VariableGet( Mesh % Variables, 'Electric Field' )
@@ -5621,12 +5620,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL GetReluctivity(Material,R,n)
      END IF
 
-     dim = 3
+     dim = CoordinateSystemDimension()
 
 
      ! Calculate nodal fields:
      ! -----------------------
-     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+     IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
 
      MASS  = 0._dp
      FORCE = 0._dp
@@ -5660,7 +5659,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
 
        DO k=1,vDOFs
-         B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
+         SELECT CASE(dim)
+         CASE(2)
+            B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
+            B(k,2) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) )
+            B(k,3) = 0._dp
+         CASE(3)
+            B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
+         END SELECT
        END DO
 
        !-------------------------------
@@ -5767,7 +5773,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        IF( ASSOCIATED(VP).OR.ASSOCIATED(EL_VP) ) THEN
          DO l=1,vDOFs
-           VP_ip(l,:)=MATMUL(SOL(l,np+1:nd),WBasis(1:nd-np,:))
+           SELECT CASE(dim)
+           CASE(2)
+             VP_ip(l,1) = 0._dp
+             VP_ip(l,2) = 0._dp
+             VP_ip(l,3) = SUM(SOL(l,1:nd) * Basis(1:nd))
+           CASE(3)
+             VP_ip(l,:)=MATMUL(SOL(l,np+1:nd),WBasis(1:nd-np,:))
+           END SELECT
          END DO
        END IF
 
@@ -5891,7 +5904,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                  SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
                  TRANSPOSE(E(2:2,1:dim)) ) * Basis(p) * s
            END IF
-           BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
+           IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
            FORCE(p,k+1) = FORCE(p,k+1) + Coeff
            k = k+1
          END IF
