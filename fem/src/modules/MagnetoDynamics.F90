@@ -5447,7 +5447,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
      IF (PrecomputedElectricPot) &
-          CALL GetScalarLocalSolution(ElPotSol(1,:),ElectricPotName,uSolver=ElPotSolver)
+         CALL GetScalarLocalSolution(ElPotSol(1,:),ElectricPotName,uSolver=ElPotSolver)
 
      IF ( Transient ) THEN
        CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
@@ -5681,7 +5681,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        IF ( Transient ) THEN
          IF (CoilType /= 'stranded') THEN 
-           E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,1) = 0._dp
+             E(1,2) = 0._dp
+             E(1,3) = -SUM(PSOL(1:nd) * Basis(1:nd))
+           CASE(3)
+             E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
+           END SELECT
          ELSE
            E(1,:) = 0._dp
          END IF
@@ -5700,16 +5707,26 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
            END DO
            E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-
          CASE DEFAULT
-           E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+           IF(dim==3) THEN
+             E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+           ELSE ! given external potential ?
+           END IF
          END SELECT
        ELSE
           IF (vDOFs > 1) THEN
              IF (CoilType /= 'stranded') THEN
                 ! -j * Omega A
-                E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
-                E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
+                SELECT CASE(dim)
+                CASE(2)
+                  E(1,:) = 0._dp
+                  E(2,:) = 0._dp
+                  E(1,3) =  Omega*SUM(SOL(2,1:nd) * Basis(1:nd))
+                  E(2,3) = -Omega*SUM(SOL(1,1:nd) * Basis(1:nd))
+                CASE(3)
+                  E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
+                  E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
+                END SELECT
              ELSE
                 E(1,:) = 0._dp
                 E(2,:) = 0._dp
@@ -5740,11 +5757,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                 E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
              CASE DEFAULT
                 ! -Grad(V)
-                E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+                IF(dim==3) THEN
+                  E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+                  E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+                ELSE  ! external given scalar potential ?
+                END IF
              END SELECT
           ELSE
-             IF (np > 0) THEN
+             IF (np > 0 .AND. dim==3) THEN
                E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              ELSE
                IF (PrecomputedElectricPot) THEN
