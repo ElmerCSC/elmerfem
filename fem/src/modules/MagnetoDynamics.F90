@@ -4886,6 +4886,13 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   END IF
 
   i = 1
+  DO WHILE(.TRUE.)
+    IF(ListCheckPresent(SolverParams, 'Exported Variable "//TRIM(i2s(i))) THEN
+      i=i+1
+    ELSE
+      EXIT
+    END IF
+  END DO
 
   IF ( RealField ) THEN
     CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
