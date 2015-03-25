@@ -4792,17 +4792,19 @@ END SUBROUTINE GetMaxDefs
     !--------------------------------------------------------------------------
     LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
-        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, IntGalerkin
+        EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, IntGalerkin, &
+        CreateDual
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
         ArcCoeff, EdgeCoeff, NodeCoeff
     INTEGER :: NoNodes1, NoNodes2, MeshDim
     INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow
-    INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:)
+    INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:),DualNodePerm(:)
     INTEGER :: EdgeRow0, FaceRow0, EdgeCol0, FaceCol0, ProjectorRows
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
+    TYPE(Matrix_t), POINTER :: DualProjector    
 
     CALL Info('LevelProjector','Creating projector for a levelized mesh',Level=7)
 
@@ -4822,6 +4824,7 @@ END SUBROUTINE GetMaxDefs
     IF( .NOT. Found ) NodeCoeff = 1.0_dp
 
     Rotational = ListGetLogical( BC,'Rotational Projector',Found ) 
+    Cylindrical = ListGetLogical( BC,'Cylindrical Projector',Found ) 
     
     Parallel = ( ParEnv % PEs > 1 )
     Mesh => CurrentModel % Mesh
@@ -4854,7 +4857,7 @@ END SUBROUTINE GetMaxDefs
 
     ! Determine the coefficient that turns possible angles into units of
     ! ach-lenth. If this is not rotational then there are no angles. 
-    IF( Rotational) THEN
+    IF( Rotational .OR. Cylindrical ) THEN
       ArcCoeff = (2*PI*Radius)/360.0           
     ELSE
       ArcCoeff = 1.0_dp
@@ -4971,8 +4974,16 @@ END SUBROUTINE GetMaxDefs
     ! structure to be introduced.
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
-
     Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+
+    CreateDual = ListGetLogical( BC,'Create Dual Projector',Found ) 
+    IF( CreateDual ) THEN
+      DualProjector => AllocateMatrix()
+      DualProjector % FORMAT = MATRIX_LIST
+      DualProjector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+      Projector % EMatrix => DualProjector
+    END IF
+
 
     PiolaVersion = ListGetLogical( CurrentModel % Solver % Values, &
         'Use Piola Transform', Found)
@@ -5014,7 +5025,36 @@ END SUBROUTINE GetMaxDefs
               'Eliminating redundant nodes from projector: '//TRIM(I2S(m)),Level=10)
         END IF
       END IF
+      
 
+      IF( CreateDual ) THEN
+        ALLOCATE( DualNodePerm( Mesh % NumberOfNodes ) )
+        DualNodePerm = 0
+        DO i=1,SIZE(InvPerm2)
+          DualNodePerm(InvPerm2(i)) = 1
+        END DO
+        
+        IF( EliminateUnneeded ) THEN
+          m = 0
+          n = SUM( DualNodePerm )
+          CALL Info('LevelProjector',&
+              'Number of potential nodes in dual projector: '//TRIM(I2S(n)),Level=10)        
+          ! Now eliminate the nodes which also occur in the other mesh
+          ! These must be redundant edges
+          DO i=1, SIZE(InvPerm1)
+            j = InvPerm1(i) 
+            IF( DualNodePerm(j) /= 0 ) THEN
+              DualNodePerm(j) = 0
+              PRINT *,'Removing dual node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
+              m = m + 1
+            END IF
+          END DO
+          IF( m > 0 ) THEN
+            CALL Info('LevelProjector',&
+                'Eliminating redundant dual nodes from projector: '//TRIM(I2S(m)),Level=10)
+          END IF
+        END IF
+      END IF
       
       IF( ListCheckPresent( BC,'Level Projector Condition') ) THEN
         ALLOCATE( Cond( Mesh % MaxElementNodes ) )
@@ -5040,7 +5080,7 @@ END SUBROUTINE GetMaxDefs
             TRIM(I2S(m)),Level=10)        
         DEALLOCATE( Cond ) 
       END IF
-
+      
       m = 0
       DO i=1,Mesh % NumberOfNodes
         IF( NodePerm(i) > 0 ) THEN
@@ -5048,10 +5088,26 @@ END SUBROUTINE GetMaxDefs
           NodePerm(i) = m
         END IF
       END DO
-
+      
       CALL Info('LevelProjector',&
           'Number of active nodes in projector: '//TRIM(I2S(m)),Level=8)
       EdgeRow0 = m
+      
+      IF( CreateDual ) THEN
+        m = 0
+        DO i=1,Mesh % NumberOfNodes
+          IF( DualNodePerm(i) > 0 ) THEN
+            m = m + 1
+            DualNodePerm(i) = m
+          END IF
+        END DO
+        ALLOCATE( DualProjector % InvPerm(m) )
+        DualProjector % InvPerm = 0
+
+        IF( DoEdges ) THEN
+          CALL Fatal('LevelProjector','Dual projector cannot handle edges!')
+        END IF
+      END IF
     ELSE
       EdgeRow0 = 0
     END IF
@@ -5129,6 +5185,7 @@ END SUBROUTINE GetMaxDefs
     ALLOCATE( Projector % InvPerm(ProjectorRows) )
     Projector % InvPerm = 0
 
+
     ! If after strong projectors there are still something undone they must 
     ! be dealt with the weak projectors. 
     SomethingUndone = .FALSE.
@@ -5193,8 +5250,14 @@ END SUBROUTINE GetMaxDefs
     !--------------------------------------------------------------
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(projector,.TRUE.)
+
+    IF( CreateDual ) THEN
+      CALL List_toCRSMatrix(DualProjector)
+      CALL CRS_SortMatrix(DualProjector,.TRUE.)
+    END IF
     
     IF( DoNodes ) DEALLOCATE( NodePerm )
+    IF( CreateDual .AND. DoNodes ) DEALLOCATE( DualNodePerm )
     IF( DoEdges ) DEALLOCATE( EdgePerm )
 
     m = COUNT( Projector % InvPerm  == 0 ) 
@@ -7257,7 +7320,6 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
       ALLOCATE( Basis(n), BasisM(n) )
 
-
       Nodes % y  = 0.0_dp
       NodesM % y = 0.0_dp
       NodesT % y = 0.0_dp
@@ -7282,6 +7344,7 @@ END SUBROUTINE GetMaxDefs
       TotHits = 0
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
+
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -7430,7 +7493,7 @@ END SUBROUTINE GetMaxDefs
             !IF( ANY( Basis(1:2) < 0.0 ) ) PRINT *,'Basis:',BasisM(1:2)
             !IF( ANY( BasisM(1:2) < 0.0 ) ) PRINT *,'BasisM:',BasisM(1:2)
 
-            ! Add the nodal dofs
+            ! Add the entries to the projector
             DO j=1,n 
               jj = Indexes(j)                                    
               nrow = NodePerm(InvPerm1(jj))
@@ -7450,6 +7513,30 @@ END SUBROUTINE GetMaxDefs
                     InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )                   
               END DO
             END DO
+
+            ! Add the entries to the dual projector 
+            IF( CreateDual ) THEN
+              DO j=1,nM 
+                jj = IndexesM(j)                                    
+                nrow = DualNodePerm(InvPerm2(jj))
+
+                IF( nrow == 0 ) CYCLE
+                
+                DualProjector % InvPerm(nrow) = InvPerm2(jj)
+                val = BasisM(j) * Wtemp
+                
+                DO i=1,nM
+                  CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
+                      InvPerm2(IndexesM(i)), NodeCoeff * BasisM(i) * val ) 
+                END DO
+
+                DO i=1,n
+                  !IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
+                  CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
+                      InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val )                   
+                END DO
+              END DO
+            END IF
           END DO
           
 100       IF( Repeating ) THEN
@@ -8042,13 +8129,13 @@ END SUBROUTINE GetMaxDefs
   !> accuracy is not limited by the curvilinear coordinates. Also ensure
   !> that the master nodes manipulated so they for sure hit the target nodes.
   !---------------------------------------------------------------------------
-  SUBROUTINE RotationalInterfaceMeshes(BMesh1, BMesh2, BParams, Radius, &
-      FullCircle )
+  SUBROUTINE RotationalInterfaceMeshes(BMesh1, BMesh2, BParams, Cylindrical, &
+      Radius, FullCircle )
   !---------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
     TYPE(Valuelist_t), POINTER :: BParams
     REAL(KIND=dp) :: Radius
-    LOGICAL :: FullCircle
+    LOGICAL :: FullCircle, Cylindrical
     !--------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: PMesh
     TYPE(Element_t), POINTER :: Element
@@ -8125,6 +8212,7 @@ END SUBROUTINE GetMaxDefs
         PMesh % Nodes % z(i) = SQRT( x(1)**2 + x(2)**2)
       END DO
 
+
       ! Let's see if we have a full angle to operate or not.
       ! If not, then make the interval continuous. 
       ! Here we check only four critical angles: (0,90,180,270) degs.
@@ -8150,21 +8238,25 @@ END SUBROUTINE GetMaxDefs
 
       ! Eliminate the problematic discontinuity in case we have no full circle
       ! The discontinuity will be moved to some of angles (-90,0,90).
-      IF( .NOT. FullCircle .AND. Hit180 ) THEN
-        IF( .NOT. Hit0 ) THEN
-          Fii = 0.0_dp
-        ELSE IF( .NOT. Hit270 ) THEN
-          Fii = -90.0
-        ELSE IF( .NOT. Hit90 ) THEN
-          Fii = 90.0
+      IF( .NOT. FullCircle ) THEN
+        IF( Cylindrical ) THEN
+          CALL Info('RotationalInterfaceMeshes','Cylindrical interface not full circle')
+        ELSE IF( Hit180 ) THEN
+          IF( .NOT. Hit0 ) THEN
+            Fii = 0.0_dp
+          ELSE IF( .NOT. Hit270 ) THEN
+            Fii = -90.0
+          ELSE IF( .NOT. Hit90 ) THEN
+            Fii = 90.0
+          END IF
+          
+          DO j=1,PMesh % NumberOfNodes
+            IF( PMesh % Nodes % x(j) < Fii ) PMesh % Nodes % x(j) = &
+                PMesh % Nodes % x(j) + 360.0_dp
+          END DO
+          WRITE( Message,'(A,F8.3)') 'Moving discontinuity of angle to: ',Fii
+          CALL Info('RotationalInterfaceMesh',Message,Level=6)
         END IF
-        
-        DO j=1,PMesh % NumberOfNodes
-          IF( PMesh % Nodes % x(j) < Fii ) PMesh % Nodes % x(j) = &
-              PMesh % Nodes % x(j) + 360.0_dp
-        END DO
-        WRITE( Message,'(A,F8.3)') 'Moving discontinuity of angle to: ',Fii
-        CALL Info('RotationalInterfaceMesh',Message,Level=6)
       END IF
 
 
@@ -8242,6 +8334,9 @@ END SUBROUTINE GetMaxDefs
     ! Some pieces of the code cannot work with 1D meshes, this choice is ok for all steps
     Bmesh1 % MeshDim = 2
     Bmesh2 % MeshDim = 2      
+
+    ! Cylindrical interface does not have symmetry as does the rotational!
+    IF( Cylindrical ) RETURN
 
     ! If were are studying a symmetric segment then anylyze further the angle 
     !-------------------------------------------------------------------------
@@ -8675,7 +8770,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
-        Flat, LevelProj, FullCircle
+        Flat, LevelProj, FullCircle, Cylindrical
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -8746,6 +8841,9 @@ END SUBROUTINE GetMaxDefs
     AntiRotational = ListGetLogical( BC,&
         'Anti Rotational Projector',GotIt )
     IF( AntiRotational ) Rotational = .TRUE.
+
+    Cylindrical =  ListGetLogical( BC,&
+        'Cylindrical Projector',GotIt )
 
     Radial = ListGetLogical( BC,&
         'Radial Projector',GotIt )
@@ -8848,8 +8946,8 @@ END SUBROUTINE GetMaxDefs
     !---------------------------------------------------------------------------------
     Radius = 1.0_dp
     FullCircle = .FALSE.
-    IF( Rotational ) THEN
-      CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, &
+    IF( Rotational .OR. Cylindrical ) THEN
+      CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, Cylindrical, &
           Radius, FullCircle )
     ELSE IF( Radial ) THEN
       CALL RadialInterfaceMeshes( BMesh1, BMesh2, BC )
@@ -8899,8 +8997,13 @@ END SUBROUTINE GetMaxDefs
         'Projector Multiplier',GotIt) 
     IF( GotIt ) Projector % Values = Coeff * Projector % Values
 
+
     IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
-      CALL SaveProjector( Projector, .TRUE. ) 
+      CALL SaveProjector( Projector, .TRUE.,'p' ) 
+      ! Dual projector if it exists
+      IF( ASSOCIATED( Projector % Ematrix ) ) THEN
+        CALL SaveProjector( Projector % Ematrix, .TRUE.,'d' ) 
+      END IF
       IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
     END IF    
 

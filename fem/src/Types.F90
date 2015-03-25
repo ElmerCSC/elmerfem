@@ -654,9 +654,10 @@ END INTERFACE
      INTEGER, POINTER :: Perm(:) => NULL()
      REAL(KIND=dp), POINTER :: Rhs(:) => NULL()
      REAL(KIND=dp), POINTER :: Diag(:) => NULL()
-     REAL(KIND=dp), POINTER :: Dist(:) => NULL()
-     REAL(KIND=dp), POINTER :: NormalLoad(:) => NULL()
-     REAL(KIND=dp), POINTER :: NodalWeight(:) => NULL()
+!     REAL(KIND=dp), POINTER :: Dist(:) => NULL()
+!     REAL(KIND=dp), POINTER :: Velo(:) => NULL()
+!     REAL(KIND=dp), POINTER :: NormalLoad(:) => NULL()
+!     REAL(KIND=dp), POINTER :: NodalWeight(:) => NULL()
      LOGICAL, POINTER :: Active(:) => NULL()
      LOGICAL, POINTER :: Slip(:) => NULL()
      REAL(KIND=dp) :: SlaveScale = 1.0_dp
