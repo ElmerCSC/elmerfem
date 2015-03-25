@@ -40,7 +40,7 @@ MODULE LocalTypes
     INTEGER, PARAMETER :: INTEGERHASHSET_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_CHAIN_DEFAULT_SIZE = 8
     REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = REAL(0.75, dp)
-    INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 12
+    INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 1
 CONTAINS
 
     SUBROUTINE ElmerMeshToDualGraph(Mesh, n, dualptr, dualind)
@@ -212,64 +212,64 @@ CONTAINS
 
         ! For each element
         DO eid=thrli,thrti-1
-            nli = eptr(eid)
-            nti = eptr(eid+1)-1
-            nv = nti-nli+1
+          nli = eptr(eid)
+          nti = eptr(eid+1)-1
+          nv = nti-nli+1
+          
+          ! Get pointers to vertices related to the nodes of the element
+          te = 0
+          DO i=nli,nti
+            ptrli(i-nli+1)=vptr(eind(i))
+            ptrti(i-nli+1)=vptr(eind(i)+1) ! NOTE: This is to make comparison cheaper
+            te = te + ptrti(i-nli+1)-ptrli(i-nli+1)
+          END DO
 
-            ! Get pointers to vertices related to the nodes of the element
-            te = 0
-            DO i=nli,nti
-                 ptrli(i-nli+1)=vptr(eind(i))
-                 ptrti(i-nli+1)=vptr(eind(i)+1) ! NOTE: This is to make comparison cheaper
-                 te = te + ptrti(i-nli+1)-ptrli(i-nli+1)
-            END DO
-
-            ! Allocate neighind large enough
-            IF (SIZE(neighind)<te) THEN
-                 DEALLOCATE(neighind)
-                 neighSizePad = IntegerNBytePad(te,8)
-                 ALLOCATE(neighind(neighSizePad), STAT=allocstat)
-                 neighind = 0
-            END IF
-
-            ! Merge vertex lists (multi-way merge of ordered lists)
-            IF (nthr >= HEAPALG_THRESHOLD) THEN
+          ! Allocate neighind large enough
+          IF (SIZE(neighind)<te) THEN
+            DEALLOCATE(neighind)
+            neighSizePad = IntegerNBytePad(te,8)
+            ALLOCATE(neighind(neighSizePad), STAT=allocstat)
+            neighind = 0
+          END IF
+          
+          ! Merge vertex lists (multi-way merge of ordered lists)
+          IF (nthr >= HEAPALG_THRESHOLD) THEN
             ! IF (.TRUE.) THEN
             ! IF (.FALSE.) THEN
-              CALL kWayMergeList(eid, nv, ptrli, ptrti, &
-                      te, vind, nn, neighind, wrkheap, wrkmask)
-              ! CALL kWayMergeList3(eid, nv, ptrli, ptrti, &
-              !         te, vind, nn, neighind, wrkheap, wrkmask)
-              ! CALL kWayMergeList2(eid, nv, ptrli, ptrti, &
-              !                     te, vind, nn, neighind, wrkheap, &
-              !                     wrkheapval, wrkmask)
-              ! CALL kWayMergeHeap(eid, nv, ptrli, ptrti, &
-              !         te, vind, nn, neighind, wrkheap2)
-            ELSE
-                CALL kWayMergeArray(eid, nv, ptrli, ptrti, &
-                                    te, vind, nn, neighind, wrkmap)
-            END IF
+            ! CALL kWayMergeList(eid, nv, ptrli, ptrti, &
+            !         te, vind, nn, neighind, wrkheap, wrkmask)
+            ! CALL kWayMergeList3(eid, nv, ptrli, ptrti, &
+            !         te, vind, nn, neighind, wrkheap, wrkmask)
+            ! CALL kWayMergeList2(eid, nv, ptrli, ptrti, &
+            !                     te, vind, nn, neighind, wrkheap, &
+            !                     wrkheapval, wrkmask)
+            CALL kWayMergeHeap(eid, nv, ptrli, ptrti, &
+                               te, vind, nn, neighind, wrkheap2)
+          ELSE
+            CALL kWayMergeArray(eid, nv, ptrli, ptrti, &
+                                te, vind, nn, neighind, wrkmap)
+          END IF
 
-            ! Add merged list to final list of vertices
-            IF (nn+nwrkind>SIZE(wrkind)) THEN
-                ALLOCATE(wrkindresize(MAX(nn+nwrkind,2*SIZE(wrkind))), STAT=allocstat)
-                IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
-                                               'Unable to allocate local workspace!')
-                wrkindresize(1:nwrkind)=wrkind(1:nwrkind)
-                DEALLOCATE(wrkind)
-                CALL MOVE_ALLOC(wrkindresize, wrkind)
-            END IF
-            wrkind(nwrkind+1:nwrkind+nn) = neighind(1:nn)
-            nwrkind = nwrkind + nn
+          ! Add merged list to final list of vertices
+          IF (nn+nwrkind>SIZE(wrkind)) THEN
+            ALLOCATE(wrkindresize(MAX(nn+nwrkind,2*SIZE(wrkind))), STAT=allocstat)
+            IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
+                                           'Unable to allocate local workspace!')
+            wrkindresize(1:nwrkind)=wrkind(1:nwrkind)
+            DEALLOCATE(wrkind)
+            CALL MOVE_ALLOC(wrkindresize, wrkind)
+          END IF
+          wrkind(nwrkind+1:nwrkind+nn) = neighind(1:nn)
+          nwrkind = nwrkind + nn
 
-            ! Store number of row nonzeroes
-            dualptr(eid)=nn
+          ! Store number of row nonzeroes
+          dualptr(eid)=nn
         END DO
 
         ! Get the global size of the dual mesh
         !$OMP DO REDUCTION(+:dnnz)
         DO i=1,nthr
-            dnnz = nwrkind
+          dnnz = nwrkind
         END DO
         !$OMP END DO
 
@@ -277,7 +277,7 @@ CONTAINS
         !$OMP SINGLE
         ALLOCATE(dualind(dnnz), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
-              'Unable to allocate dual mesh!')
+                                       'Unable to allocate dual mesh!')
         ! dualptr stores row counts, build crs pointers from them
         CALL ComputeCRSIndexes(nelem, dualptr)
         !$OMP END SINGLE
@@ -287,12 +287,12 @@ CONTAINS
         IF (nthr >= HEAPALG_THRESHOLD) THEN
         ! IF (.TRUE.) THEN
         ! IF (.FALSE.) THEN
-            DEALLOCATE(wrkheap, wrkmask, wrkheap2, STAT=allocstat)
+          DEALLOCATE(wrkheap, wrkmask, wrkheap2, STAT=allocstat)
         ELSE
-            DEALLOCATE(wrkmap, STAT=allocstat)
+          DEALLOCATE(wrkmap, STAT=allocstat)
         END IF
         IF (allocstat /= 0) CALL Fatal('ElmerMeshToDualGraph', &
-              'Unable to deallocate local workspace!')
+                                       'Unable to deallocate local workspace!')
         DEALLOCATE(neighind, ptrli, ptrti, wrkind)
 
         !$OMP END PARALLEL
@@ -601,7 +601,7 @@ CONTAINS
                 INTEGER :: ii, l, r, mind, ll, tmpval, tmpind
 
                 ! Local variables
-                INTEGER :: i, nzheap, vindi, lindi, pind
+                INTEGER :: i, e, nzheap, vindi, lindi, pind
 
                 ! Put elements to heap
                 nzheap = 0
@@ -629,6 +629,8 @@ CONTAINS
                       IF (2*i+1<=nzheap) THEN
                         IF (heap(2*i+1) % i1 < heap(mind) % i1) mind = 2*i+1
                       END IF
+                    ELSE
+                      mind = i
                     END IF
                     
                     IF (mind == i) EXIT
@@ -649,7 +651,7 @@ CONTAINS
 
                 pind = -1
                 nn = 1
-                DO WHILE(nzheap > 0)
+                DO e=1,te
                   ! Pick the first element from heap
                   vindi = heap(1) % i1
                   lindi = heap(1) % i2
@@ -685,7 +687,8 @@ CONTAINS
                       IF (ii+1<=nzheap) THEN
                         IF (heap(ii+1) % i1 < heap(mind) % i1) mind = ii+1
                       END IF
-                      ! END DO
+                    ELSE
+                      mind = i
                     END IF
 
                     IF (mind == i) EXIT
