@@ -40,7 +40,7 @@ MODULE LocalTypes
     INTEGER, PARAMETER :: INTEGERHASHSET_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_CHAIN_DEFAULT_SIZE = 8
     REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = REAL(0.75, dp)
-    INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 1
+    INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 12
 CONTAINS
 
     SUBROUTINE ElmerMeshToDualGraph(Mesh, n, dualptr, dualind)
@@ -675,33 +675,27 @@ CONTAINS
                   END IF
                   ! CALL BinaryHeapHeapify(heap, nzheap, 1)
                   i = 1
+                  
                   DO 
-                    ! Find index of the minimum element
+                    ! Find the index of the minimum element
                     ii = 2*i
-                    IF (ii<=nzheap) THEN
-                      IF (heap(ii) % i1 < heap(i) % i1) THEN
-                        mind = ii
-                      ELSE
-                        mind = i
-                      END IF
-                      IF (ii+1<=nzheap) THEN
-                        IF (heap(ii+1) % i1 < heap(mind) % i1) mind = ii+1
-                      END IF
-                    ELSE
-                      mind = i
+                    mind = i
+                    IF (ii+1<=nzheap) THEN
+                      ! Elements 2*i and 2*i+1 can be tested
+                      IF (heap(ii) % i1 < heap(i) % i1) mind = ii
+                      IF (heap(ii+1) % i1 < heap(mind) % i1) mind = ii+1
+                    ELSE IF (ii<=nzheap) THEN
+                      ! Element ii can be tested
+                      IF (heap(ii) % i1 < heap(i) % i1) mind = ii
                     END IF
 
                     IF (mind == i) EXIT
 
-                    ! IF (mind /= i) THEN
                     ! Bubble down the element
                     tmp = heap(i)
                     heap(i) = heap(mind)
                     heap(mind) = tmp
                     i = mind
-                    ! ELSE
-                    !  EXIT
-                    ! END IF
                   END DO
 
                   ! IF (.NOT. BinaryHeapIsHeap(heap, nzheap)) THEN
@@ -1270,6 +1264,10 @@ CONTAINS
             msize = IntegerListGetSize(vmap % map(i) % entries)
             IF (msize /= vti-vli+1) THEN
                 WRITE (*,*) 'WARNING: Some duplicate entries were found for row=', i
+                ! WRITE (*,*) msize, vti-vli+1
+                ! WRITE (*,*) vind(vli:vti)
+                ! WRITE (*,*) vmap % map(i) % entries % entries(1:msize)
+                ! STOP
             END IF
         END DO
     END SUBROUTINE VertexMapFromArray
