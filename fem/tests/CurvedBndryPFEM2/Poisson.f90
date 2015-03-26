@@ -78,12 +78,11 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
       CALL DefaultUpdateEquations( STIFF, FORCE )
    END DO
    CALL DefaultFinishAssembly()
-!  CALL ListAddConstReal( BC,'Potential',0.0d0)
    CALL DefaultDirichletBCs()
    Norm = DefaultSolve()
 
-   Energy  = 0.0d0
-   LOAD    = 0.0d0
+   Energy  = 0.0_dp
+   LOAD    = 0.0_dp
    DO t=1,active
       Element => GetActiveElement(t)
       nd = GetElementNOFDOFs()
@@ -94,7 +93,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
    END DO
    PRINT*,Energy
    A => GetMatrix()
-   PRINT*,'DOFs, Error in energy: ',A % NumberOfRows, ABS(Energy-PI/2.0d0)
+   PRINT*,'DOFs, Error in energy: ',A % NumberOfRows, ABS(Energy-PI/2.0_dp)
 
 CONTAINS
 
@@ -115,8 +114,8 @@ CONTAINS
     SAVE Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes )
-    STIFF = 0.0d0
-    FORCE = 0.0d0
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
 
     !Numerical integration:
     !----------------------
@@ -153,8 +152,7 @@ FUNCTION CircX(Model,x,y,z) RESULT(s)
   REAL(KIND=dp)::x,y,z,s,r
 
   r = SQRT(x**2 + y**2 )
-  s = 0.0d0
-  IF ( r /= 0.0d0 ) s = SQRT(2.0d0)*x/r - x
+  s = SQRT(2.0_dp)*x/r - x
 !------------------------------------------------------------------------------
 END FUNCTION CircX
 !------------------------------------------------------------------------------
@@ -167,8 +165,7 @@ FUNCTION CircY(Model,x,y,z) RESULT(s)
   REAL(KIND=dp)::x,y,z,s,r
 
   r = SQRT(x**2 + y**2 )
-  s = 0.0d0
-  IF ( r /= 0.0d0 ) s = SQRT(2.0d0)*y/r - y
+  s = SQRT(2.0_dp)*y/r - y
 !------------------------------------------------------------------------------
 END FUNCTION CircY
 !------------------------------------------------------------------------------

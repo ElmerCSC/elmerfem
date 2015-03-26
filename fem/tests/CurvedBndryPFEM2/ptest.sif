@@ -21,13 +21,13 @@ Body Force 1 :: Source = Real 1
 Equation 1 :: Element="p:6"
 Equation 1 :: Active Solvers(2) = 1 2
 
-Solver 2
+Solver 1
   Equation = Mesh Update
   Exec Solver = Before Simulation
   Linear System Solver = Direct
 End
 
-Solver 1
+Solver 2
   Equation = "Poisson"
 
   Variable = "Potential"
@@ -46,7 +46,7 @@ Boundary Condition 1
 End
 
 
-Solver 1 :: Reference Norm = Real 0.75409042E-01
+Solver 2 :: Reference Norm = Real 0.75409042E-01
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=0.75409042E-01\n" );
