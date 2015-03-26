@@ -1667,16 +1667,14 @@ CONTAINS
      Found = .FALSE.
 
      ! Find the keyword from the 1st list 
-     IF ( .NOT. ASSOCIATED(ptr) ) THEN
-       Ptr => List
-       DO WHILE( ASSOCIATED(ptr) )
-         n = ptr % NameLen
-         IF ( n==k ) THEN
-           IF ( ptr % Name(1:n) == str(1:n) ) EXIT
-         END IF
-         ptr => ptr % Next
-       END DO
-     END IF
+     Ptr => List
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF ( n==k ) THEN
+         IF ( ptr % Name(1:n) == str(1:n) ) EXIT
+       END IF
+       ptr => ptr % Next
+     END DO
      
      IF(.NOT. ASSOCIATED( ptr ) ) RETURN
      
