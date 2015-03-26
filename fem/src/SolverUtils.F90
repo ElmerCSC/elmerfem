@@ -1875,7 +1875,7 @@ CONTAINS
        ContactT1 = 0.0_dp
        ContactT1(DofT1) = 1.0_dp
        ContactT2 = 0.0_dp
-       ContactT2(DofT2) = 1.0_dp
+       IF(DofT2>0) ContactT2(DofT2) = 1.0_dp
 
        NoSlip = ListGetLogical( BC,'Contact No-Slip',Found )
        IF( NoSlip ) THEN
