@@ -244,7 +244,7 @@ CONTAINS
             !                     te, vind, nn, neighind, wrkheap, &
             !                     wrkheapval, wrkmask)
             CALL kWayMergeHeap(eid, nv, ptrli, ptrti, &
-                               te, vind, nn, neighind, wrkheap2)
+                                te, vind, nn, neighind, wrkheap2)
           ELSE
             CALL kWayMergeArray(eid, nv, ptrli, ptrti, &
                                 te, vind, nn, neighind, wrkmap)
@@ -807,6 +807,7 @@ CONTAINS
             dualmaxdeg = MAX(dualmaxdeg, gptr(v+1)-gptr(v))
         END DO
         !$OMP END PARALLEL DO
+        dualmaxdeg = dualmaxdeg + 1
 
         nthr = 1
         ! Ensure that each vertex has at most one thread attached to it
@@ -828,7 +829,6 @@ CONTAINS
 
         ! Greedy algorithm colours a given graph with at 
         ! most max_{v\in V} deg(v)+1 colours
-        dualmaxdeg = dualmaxdeg + 1
         ALLOCATE(fc(dualmaxdeg), rc(gn/nthr), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
                                        'Unable to allocate local workspace!')
