@@ -1779,15 +1779,23 @@ END SUBROUTINE GetMaxDefs
    INTEGER :: n0, n
    REAL(KIND=dp), POINTER :: TmpCoord(:)
 
+   INTEGER :: i
+   LOGICAL :: pelementsPresent
+
    n = Mesh % NumberOfNodes + &
        Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
        Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
        Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
    n0 = SIZE( Mesh % Nodes % x )
 
+   pelementsPresent = .FALSE.
+   DO i=1,Mesh % NumberOfBulkElements
+     IF(isPelement(Mesh % Elements(i))) THEN
+       pelementsPresent = .TRUE.; EXIT
+     END IF
+   END DO
 
-   IF ( ( Mesh % NumberOfNodes > n0 .OR. &
-       ( n > n0 .AND. Mesh % MaxBDOFs > 0 ) ) ) THEN
+   IF ( Mesh % NumberOfNodes > n0 .OR. n > n0 .AND. pelementsPresent ) THEN
      CALL Info('EnlargeCoordinates','Increasing number of nodes from '&
          //TRIM(I2S(n0))//' to '//TRIM(I2S(n)),Level=8)
 
