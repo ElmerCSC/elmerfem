@@ -1605,14 +1605,14 @@ CONTAINS
 !DIR$ LOOP COUNT MAX=3
             DO i=1,j
                 G(1:nc,i,j) = REAL(0,dp)
-!VECT
                 DO k=1,cdim
                     ! @todo This operation can be blocked over l
+!VECT
                     DO l=1,nc
                         G(l,i,j)=G(l,i,j)+dx(l,k,i)*dx(l,k,j)
                     END DO
-                END DO
 !ENDVECT
+                END DO
             END DO
         END DO
 
@@ -1760,13 +1760,13 @@ CONTAINS
 !DIR$ LOOP COUNT MAX=3
                 DO i=1,cdim
                     LtoGMap(1:nc,i,j) = REAL(0,dp)
-!VECT
                     DO k=1,dim
+!VECT
                         DO l=1,nc
                             LtoGMap(l,i,j) = LtoGMap(l,i,j) + dx(l,i,k)*Metric(l,k,j)
                         END DO
-                    END DO
 !ENDVECT
+                    END DO
                 END DO
             END DO
 
@@ -2153,7 +2153,6 @@ CONTAINS
         ELSE
           IF (ANY(NodeIndexes<=0)) THEN
             ! Vector masking needed, ATOMIC needed
-!VECT
             DO i=1,n
               IF (NodeIndexes(i)>0) THEN
 !DIR$ LOOP COUNT MIN=1, AVG=3
@@ -2165,10 +2164,8 @@ CONTAINS
                 END DO
               END IF
             END DO
-!ENDVECT
           ELSE
             ! No vector masking needed, ATOMIC needed
-!VECT
             DO i=1,n
 !DIR$ LOOP COUNT MIN=1, AVG=3
 !DIR$ IVDEP
@@ -2178,7 +2175,6 @@ CONTAINS
                 Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
               END DO
             END DO
-!ENDVECT
           END IF ! Vector masking
         END IF ! Coloured assembly
     END SUBROUTINE UpdateGlobalEquationsVec
