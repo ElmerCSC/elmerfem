@@ -28,174 +28,191 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 !     INPUT: Steady state or transient simulation
 !
 !******************************************************************************
-	USE DefUtils
-	USE LocalTypes
-	USE ElementBasisFunctions
+  USE DefUtils
+  USE LocalTypes
+  USE ElementBasisFunctions
 
- 	IMPLICIT NONE
-!------------------------------------------------------------------------------
-  	TYPE(Solver_t) :: Solver
-  	TYPE(Model_t) :: Model
+  IMPLICIT NONE
+  !------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
 
-  	REAL(KIND=dp) :: dt
-  	LOGICAL :: TransientSimulation
-!------------------------------------------------------------------------------
-! Local variables
-!------------------------------------------------------------------------------
-  	TYPE(Element_t),POINTER :: Element
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+  !------------------------------------------------------------------------------
+  ! Local variables
+  !------------------------------------------------------------------------------
+  TYPE(Element_t),POINTER :: Element
 
-  	REAL(KIND=dp) :: Norm
-  	INTEGER :: nnz, nthreads, n, nb, nd, t, istat, active
-  	LOGICAL :: Found
-  	TYPE(Mesh_t), POINTER :: Mesh
-  	TYPE(ValueList_t), POINTER :: BodyForce
-  	REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), LOAD(:), FORCE(:)
-  	INTEGER, POINTER :: Indexes(:)
-  	INTEGER :: nind
-  	INTEGER, SAVE :: maxdofs
-  	LOGICAL, SAVE :: AllocationsDone = .FALSE.
-	!$OMP THREADPRIVATE(STIFF, LOAD, FORCE, AllocationsDone, maxdofs)
+  REAL(KIND=dp) :: Norm
+  INTEGER :: nnz, nthreads, n, nb, nd, t, istat, active
+  LOGICAL :: Found
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(ValueList_t), POINTER :: BodyForce
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), LOAD(:), FORCE(:)
+  INTEGER, POINTER :: Indexes(:)
+  INTEGER :: nind
+  INTEGER, SAVE :: maxdofs
+  LOGICAL, SAVE :: AllocationsDone = .FALSE.
+  !$OMP THREADPRIVATE(STIFF, LOAD, FORCE, AllocationsDone, maxdofs)
 
-#ifdef _OPENMP
- 	REAL(kind=dp) :: omp_begin, omp_end
-#else
-	REAL :: time_begin, time_end
-#endif
-	REAL(kind=dp) :: time_as, time_ls
+  ! Variables related to graph colouring
+  INTEGER :: col, cli, cti, ngd, ngc
+  INTEGER, ALLOCATABLE :: dualptr(:), dualind(:), colours(:), &
+        cptr(:), cind(:)
 
-!------------------------------------------------------------------------------
+  REAL(kind=dp) :: t_start, t_end
+  REAL(kind=dp) :: s_start, s_end, ls_start, ls_end, time_s, time_ls
 
-  	Mesh => GetMesh()
-	! Timings
-#ifdef _OPENMP
- 	omp_begin = OMP_GET_WTIME()
-#else
- 	CALL CPU_TIME(time_begin)
-#endif
+  !------------------------------------------------------------------------------
+  Mesh => GetMesh()
 
-	nthreads=1
-   	!System assembly:
-   	!----------------
-   	Active = GetNOFActive()
-   	CALL DefaultInitialize()
-   	!$OMP PARALLEL DEFAULT(NONE) &
-   	!$OMP SHARED(Solver, Mesh, Active,nthreads) &
-   	!$OMP PRIVATE(BodyForce, Element, n, nd, nb, t, istat, Found, Norm, &
-   	!$OMP         Indexes, nind)
+  nthreads=1
+  !System assembly:
+  !----------------
+  Active = GetNOFActive()
+  CALL DefaultInitialize()
 
-#ifdef _OPENMP
-    !$OMP SINGLE
-    nthreads = omp_get_num_procs()
-    WRITE (*,'(A,I0)') 'Number of processors=', nthreads
-    nthreads = omp_get_max_threads()
-    WRITE (*,'(A,I0)') 'Maximum number of threads=', nthreads
-    nthreads = OMP_GET_NUM_THREADS()
-    WRITE (*,'(A,I0)') 'Number of threads=', nthreads
-    !$OMP END SINGLE
-#endif
+  ! Construct the dual graph from Elmer mesh
+  t_start = ftimer()
+  CALL ElmerMeshToDualGraph(Mesh, ngd, dualptr, dualind)
+  t_end = ftimer()
+  WRITE (*,'(A,ES12.3,A)') 'Dual graph creation total: ', t_end - t_start, ' sec.'
 
+  ! Colour the dual graph
+  t_start = ftimer()
+  CALL ElmerGraphColour(ngd, dualptr, dualind, ngc, colours)
+  t_end = ftimer()
+  WRITE (*,'(A,ES12.3,A)') 'Graph colouring total: ', t_end - t_start, ' sec.'
+  WRITE (*,'(A,I0)') 'Number of colours created ngc=', ngc
 
-	!Allocate some permanent storage per thread:
-	!--------------------------------------------------------------
-   	IF ( .NOT. AllocationsDone ) THEN
-   		n = Mesh % MaxElementDOFs  ! just big enough for elemental arrays
-   		maxdofs = n
-     	ALLOCATE( FORCE(N), LOAD(N), STIFF(N,N), STAT=istat )
-     	IF ( istat /= 0 ) THEN
-        	CALL Fatal( 'PoissonSolve', 'Memory allocation error.' )
-     	END IF
-     	AllocationsDone = .TRUE.
-  	END IF
+  ! Deallocate dual mesh
+  DEALLOCATE(dualptr, dualind)
 
-   	!$OMP DO SCHEDULE(STATIC)
-   	DO t=1,Active
-   	! DO t=1,100
-    	Element => GetActiveElement(t)
-      	n  = GetElementNOFNodes(Element)
-      	nd = GetElementNOFDOFs(Element)
-     	nb = GetElementNOFBDOFs(Element)
+  ! Construct colour lists
+  t_start = ftimer()
+  CALL ElmerGatherColourLists(ngc, colours, cptr, cind)
+  t_end = ftimer()
+  WRITE (*,'(A,ES12.3,A)') 'Colour gather total: ', t_end-t_start, ' sec.'
 
-      	LOAD(1:n) = 0.0d0
-      	BodyForce => GetBodyForce(Element)
-      	! TODO: check if this is correct
-      	! $OMP CRITICAL
-      	IF ( ASSOCIATED(BodyForce) ) &
-        	LOAD(1:n) = GetReal( BodyForce, 'Source', Found, UElement=Element )
-        ! $OMP END CRITICAL
-        ! IF (ANY(LOAD(1:n) /= omp_get_thread_num())) THEN
-        !      WRITE (*,*) omp_get_thread_num(), ' has a wrong value'
-        ! END IF
+  ! Start timer for solver
+  s_start = ftimer()
 
-      	!Get element local matrix and rhs vector:
-      	!----------------------------------------
-      	! CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, n, nd+nb )
-      	! Compare matrices (should be the same)
-      	! Norm = DNRM2( (nd+nb)*(nd+nb), STIFF, 1)
-      	! WRITE (*,'(A,ES12.5)') '||L||_F=', Norm
-		! Norm = DNRM2( (nd+nb), FORCE, 1)
-      	! WRITE (*,'(A,ES12.5)') '||f||_2=', Norm
-      	! Vectorized version
-        CALL LocalMatrixVec( STIFF, FORCE, LOAD, Element, n, nd+nb )
-      	! IF (t>0) STOP
-      	! Compare matrices (should be the same)
-      	! Norm = DNRM2( (nd+nb)*(nd+nb), STIFF, 1)
-      	! WRITE (*,'(A,ES12.5)') '||L||_F=', Norm
-		! Norm = DNRM2( (nd+nb), FORCE, 1)
-      	! WRITE (*,'(A,ES12.5)') '||f||_2=', Norm
-		! STOP
-
-      	CALL LCondensate( nd, nb, STIFF, FORCE, maxdofs )
-      	! CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
-      	! TEMP, to test vectorized version of glueing process
-      	Indexes => GetVecIndexStore()
-        nind = GetElementDOFs( Indexes, Element, Solver )
-        CALL UpdateGlobalEquationsVec( Solver % Matrix, STIFF, Solver % Matrix % RHS, FORCE, nind, &
-                                         Solver % Variable % DOFs, Solver % Variable % Perm(Indexes(1:nind)), &
-                                         UElement=Element )
-   	END DO
-   	!$OMP END DO
-   	!$OMP END PARALLEL
-
-    ! STOP
+  !$OMP PARALLEL DEFAULT(NONE) &
+  !$OMP SHARED(Solver, Mesh, Active,nthreads, ngc, cptr, cind) &
+  !$OMP PRIVATE(BodyForce, Element, col, cli, cti, n, nd, nb, t, istat, Found, Norm, &
+  !$OMP         Indexes, nind)
 
 #ifdef _OPENMP
-  	omp_end = OMP_GET_WTIME()
-  	time_as = (omp_end-omp_begin)
-#else
- 	CALL CPU_TIME(time_end)
- 	time_as = (time_end-time_begin)
+  !$OMP SINGLE
+  nthreads = omp_get_num_procs()
+  WRITE (*,'(A,I0)') 'Number of processors=', nthreads
+  nthreads = omp_get_max_threads()
+  WRITE (*,'(A,I0)') 'Maximum number of threads=', nthreads
+  nthreads = OMP_GET_NUM_THREADS()
+  WRITE (*,'(A,I0)') 'Number of threads=', nthreads
+  !$OMP END SINGLE
 #endif
 
-    ! Compute the frobenius norm of the global matrix
-    nnz = Solver % Matrix % Rows(Solver % Matrix % NumberOfRows+1)-1
-    Norm = DNRM2(nnz, Solver % Matrix % Values, 1)
-    WRITE (*,'(A,ES24.16)') '||A||_F=', Norm
-    Norm = DNRM2(Solver % Matrix % NumberOfRows, Solver % Matrix % RHS, 1)
-    WRITE (*,'(A,ES24.16)') '||b||_2=', Norm
 
-   	CALL DefaultFinishAssembly()
-   	CALL DefaultDirichletBCs()
+  !Allocate some permanent storage per thread:
+  !--------------------------------------------------------------
+  IF ( .NOT. AllocationsDone ) THEN
+    n = Mesh % MaxElementDOFs  ! just big enough for elemental arrays
+    maxdofs = n
+    ALLOCATE( FORCE(N), LOAD(N), STIFF(N,N), STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'PoissonSolve', 'Memory allocation error.' )
+    END IF
+    AllocationsDone = .TRUE.
+  END IF
 
-   	! And finally, solve:
-   	!--------------------
-   	WRITE (*,'(A,I0,A,I0)') 'Assembly done, n=', Solver % Matrix % NumberOfRows, ', nelem=', Active
-#ifdef _OPENMP
- 	omp_begin = OMP_GET_WTIME()
-#else
- 	CALL CPU_TIME(time_begin)
-#endif
-   	Norm = DefaultSolve()
-#ifdef _OPENMP
-  	omp_end = OMP_GET_WTIME()
-  	time_ls = (omp_end-omp_begin)
-#else
- 	CALL CPU_TIME(time_end)
- 	time_ls = (time_end-time_begin)
-#endif
+  ! TODO: Perform FE assembly one colour at a time. 
+  ! Element indices are listed in CRS structure cptr, cind with ngc colours in total
+  DO col=1,ngc
+    cli = cptr(col)
+    cti = cptr(col+1)-1
 
-	WRITE (*,'(A, I0)') 'OMP_NUM_THREADS=', nthreads
-	WRITE (*,'(A,F12.5)') 'Assembly (s)=', time_as
-	WRITE (*,'(A,F12.5)') 'Solve (s)=', time_ls
+    !$OMP DO SCHEDULE(STATIC)
+    DO t=cli, cti
+      Element => GetActiveElement(cind(t))
+      n  = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element)
+      nb = GetElementNOFBDOFs(Element)
+
+      LOAD(1:n) = 0.0d0
+      BodyForce => GetBodyForce(Element)
+      ! TODO: check if this is correct
+      ! $OMP CRITICAL
+      IF ( ASSOCIATED(BodyForce) ) &
+            LOAD(1:n) = GetReal( BodyForce, 'Source', Found, UElement=Element )
+      ! $OMP END CRITICAL
+      ! IF (ANY(LOAD(1:n) /= omp_get_thread_num())) THEN
+      !      WRITE (*,*) omp_get_thread_num(), ' has a wrong value'
+      ! END IF
+
+      !Get element local matrix and rhs vector:
+      !----------------------------------------
+      ! CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, n, nd+nb )
+      ! Compare matrices (should be the same)
+      ! Norm = DNRM2( (nd+nb)*(nd+nb), STIFF, 1)
+      ! WRITE (*,'(A,ES12.5)') '||L||_F=', Norm
+      ! Norm = DNRM2( (nd+nb), FORCE, 1)
+      ! WRITE (*,'(A,ES12.5)') '||f||_2=', Norm
+      ! Vectorized version
+      CALL LocalMatrixVec( STIFF, FORCE, LOAD, Element, n, nd+nb )
+      ! IF (t>0) STOP
+      ! Compare matrices (should be the same)
+      ! Norm = DNRM2( (nd+nb)*(nd+nb), STIFF, 1)
+      ! WRITE (*,'(A,ES12.5)') '||L||_F=', Norm
+      ! Norm = DNRM2( (nd+nb), FORCE, 1)
+      ! WRITE (*,'(A,ES12.5)') '||f||_2=', Norm
+      ! STOP
+
+      CALL LCondensate( nd, nb, STIFF, FORCE, maxdofs )
+      ! CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+      ! TEMP, to test vectorized version of glueing process
+      Indexes => GetVecIndexStore()
+      nind = GetElementDOFs( Indexes, Element, Solver )
+      CALL UpdateGlobalEquationsVec( Solver % Matrix, STIFF, Solver % Matrix % RHS, FORCE, nind, &
+            Solver % Variable % DOFs, Solver % Variable % Perm(Indexes(1:nind)), &
+            UElement=Element, MCAssembly=.TRUE. )
+    END DO ! Element loop
+    !$OMP END DO
+
+  END DO ! Colour loop
+  !$OMP END PARALLEL
+
+  ! Deallocate colouring 
+  DEALLOCATE(colours, cptr, cind)
+
+  ! End timer
+  s_end = ftimer()
+  time_s = (s_end-s_start)
+
+  ! Compute the frobenius norm of the global matrix
+  nnz = Solver % Matrix % Rows(Solver % Matrix % NumberOfRows+1)-1
+  Norm = DNRM2(nnz, Solver % Matrix % Values, 1)
+  WRITE (*,'(A,ES24.16)') '||A||_F=', Norm
+  Norm = DNRM2(Solver % Matrix % NumberOfRows, Solver % Matrix % RHS, 1)
+  WRITE (*,'(A,ES24.16)') '||b||_2=', Norm
+
+  CALL DefaultFinishAssembly()
+  CALL DefaultDirichletBCs()
+
+  ! And finally, solve:
+  !--------------------
+  WRITE (*,'(A,I0,A,I0)') 'Assembly done, n=', Solver % Matrix % NumberOfRows, ', nelem=', Active
+  ! Time the linear solve as well
+  ls_start = ftimer()
+  Norm = DefaultSolve()
+  ls_end = ftimer()
+
+  time_ls = (ls_end-ls_start)
+
+  WRITE (*,'(A, I0)') 'OMP_NUM_THREADS=', nthreads
+  WRITE (*,'(A,F12.5)') 'Assembly (s)=', time_s
+  WRITE (*,'(A,F12.5)') 'Solve (s)=', time_ls
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -2046,7 +2063,7 @@ CONTAINS
 !> Vectorized version, does not support normal or tangential boundary
 !> conditions yet.
     SUBROUTINE UpdateGlobalEquationsVec( Gmtr, Lmtr, Gvec, Lvec, n, &
-                                         NDOFs, NodeIndexes, RotateNT, UElement )
+                                         NDOFs, NodeIndexes, RotateNT, UElement, MCAssembly )
         TYPE(Matrix_t), POINTER :: Gmtr         !< The global matrix
         REAL(KIND=dp) :: Lmtr(:,:)              !< Local matrix to be added to the global matrix.
         REAL(KIND=dp) :: Gvec(:)                !< Element local force vector.
@@ -2056,6 +2073,7 @@ CONTAINS
         INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping.
         LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
         TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
+        LOGICAL, OPTIONAL :: MCAssembly   !< Assembly process is multicoloured and guaranteed race condition free 
 
         INTEGER :: dim, i,j,k
         INTEGER :: Ind(n*NDOFs)
@@ -2063,6 +2081,7 @@ CONTAINS
 !DIR$ ATTRIBUTES ALIGN:64::Ind, Vals
         TYPE(Element_t), POINTER :: Element
         LOGICAL :: Rotate
+        LOGICAL :: ColouredAssembly
 
         IF (PRESENT(UElement)) THEN
             Element => UElement
@@ -2074,6 +2093,9 @@ CONTAINS
 
         Rotate = .TRUE.
         IF ( PRESENT(RotateNT) ) Rotate = RotateNT
+
+        ColouredAssembly = .FALSE.
+        IF ( PRESENT(MCAssembly) ) ColouredAssembly = MCAssembly
 
         dim = CoordinateSystemDimension()
         ! TEMP
@@ -2093,53 +2115,82 @@ CONTAINS
         IF ( ASSOCIATED( Gmtr ) ) THEN
             SELECT CASE( Gmtr % FORMAT )
             CASE( MATRIX_CRS )
-                CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr)
+                CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr, ColouredAssembly)
             CASE DEFAULT
                 CALL Fatal('UpdateGlobalEquationsVec','Not implemented for given matrix type')
             END SELECT
         END IF
 
-        ! @todo: Add check if doing a colored assembly
-        !       , i.e., if OMP ATOMIC is needed
-
-        IF (ANY(NodeIndexes<=0)) THEN
-        ! Vector masking needed
+        ! Check for multicolored assembly
+        IF (ColouredAssembly) THEN 
+          IF (ANY(NodeIndexes<=0)) THEN
+            ! Vector masking needed, no ATOMIC needed
 !VECT
             DO i=1,n
-                IF (NodeIndexes(i)>0) THEN
-!DIR$ LOOP COUNT MIN=1, AVG=3
-!DIR$ IVDEP
-                    DO j=1,NDOFs
-                        k = NDOFs*(NodeIndexes(i)-1) + j
-                        ! $OMP ATOMIC
-                        Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
-                    END DO
-                END IF
-           END DO
-!ENDVECT
-        ELSE
-        ! No vector masking needed
-!VECT
-            DO i=1,n
+              IF (NodeIndexes(i)>0) THEN
 !DIR$ LOOP COUNT MIN=1, AVG=3
 !DIR$ IVDEP
                 DO j=1,NDOFs
-                    k = NDOFs*(NodeIndexes(i)-1) + j
-                    ! $OMP ATOMIC
-                    Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+                  k = NDOFs*(NodeIndexes(i)-1) + j
+                  Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
                 END DO
+              END IF
             END DO
 !ENDVECT
-        END IF
+          ELSE
+            ! No vector masking needed, no ATOMIC needed
+!VECT
+            DO i=1,n
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+              DO j=1,NDOFs
+                k = NDOFs*(NodeIndexes(i)-1) + j
+                Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+              END DO
+            END DO
+!ENDVECT
+          END IF ! Vector masking
+        ELSE
+          IF (ANY(NodeIndexes<=0)) THEN
+            ! Vector masking needed, ATOMIC needed
+!VECT
+            DO i=1,n
+              IF (NodeIndexes(i)>0) THEN
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+                DO j=1,NDOFs
+                  k = NDOFs*(NodeIndexes(i)-1) + j
+                  !$OMP ATOMIC
+                  Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+                END DO
+              END IF
+            END DO
+!ENDVECT
+          ELSE
+            ! No vector masking needed, ATOMIC needed
+!VECT
+            DO i=1,n
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+              DO j=1,NDOFs
+                k = NDOFs*(NodeIndexes(i)-1) + j
+                !$OMP ATOMIC
+                Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+              END DO
+            END DO
+!ENDVECT
+          END IF ! Vector masking
+        END IF ! Coloured assembly
     END SUBROUTINE UpdateGlobalEquationsVec
 
 
-    SUBROUTINE CRS_GlueLocalMatrixVec(Gmtr, N, NDOFs, Indices, Lmtr)
+    SUBROUTINE CRS_GlueLocalMatrixVec(Gmtr, N, NDOFs, Indices, Lmtr, MCAssembly)
         TYPE(Matrix_t) :: Gmtr               !< Global matrix
         INTEGER, INTENT(IN) :: N             !< Number of nodes in element
         INTEGER, INTENT(IN) :: NDOFs         !< Number of degrees of freedom for one node
         INTEGER, INTENT(IN) :: Indices(:)    !< Maps element node numbers to global (or partition) node numbers
         REAL(KIND=dp), INTENT(IN) :: Lmtr(:,:)  !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added
+        LOGICAL :: MCAssembly                !< Is the assembly multicolored or not (free of race conditions)
 
         ! INTEGER, ALLOCATABLE, SAVE :: Lind(:) ! Lind((N*NDOFs)*(N*NDOFs))
         ! REAL(KIND=dp), ALLOCATABLE, SAVE :: Lvals(:) ! Lvals((N*NDOFs)*(N*NDOFs))
@@ -2300,16 +2351,22 @@ CONTAINS
 !       CALL SortF(nzind, Lind, Lvals)
 
         ! The actual contribution loop
-!DIR$ IVDEP
-! !DIR$ PREFETCH Lind:0:4
-! !DIR$ PREFETCH gval:1:4
-! !DIR$ PREFETCH Lvals:3:4
+        IF (MCAssembly) THEN
+!DIR$ PREFETCH gval:1:64
+!DIR$ PREFETCH gval:0:8
 !VECT
-        DO i=1,nzind
-            ! $OMP ATOMIC
+          DO i=1,nzind
             gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
-        END DO
+          END DO
 !ENDVECT
+        ELSE
+!DIR$ PREFETCH gval:1:64
+!DIR$ PREFETCH gval:0:8
+          DO i=1,nzind
+            !$OMP ATOMIC
+            gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
+          END DO
+        END IF
 
     END SUBROUTINE CRS_GlueLocalMatrixVec
 
