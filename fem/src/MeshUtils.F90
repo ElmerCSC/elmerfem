@@ -3088,28 +3088,27 @@ END SUBROUTINE GetMaxDefs
     ! Check whether the "Element" definitions can depend on mesh
     ! -----------------------------------------------------------
     MeshDeps = .FALSE.; FoundEqDefs = .FALSE.;  FoundSolverDefs = .FALSE.
-    IF(FirstOrderElements) THEN
-      DO eq_id=1,Model % NumberOFEquations
-        Vlist => Model % Equations(eq_id) % Values
-        ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
-        FoundEqDefs = FoundEqDefs .OR. FoundDef0
-        j = INDEX(ElementDef0,'p:')
-        IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
-      END DO
 
-      DO solver_id=1,Model % NumberOFSolvers
-        Vlist => Model % Solvers(solver_id) % Values
+    DO eq_id=1,Model % NumberOFEquations
+      Vlist => Model % Equations(eq_id) % Values
+      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
+      FoundEqDefs = FoundEqDefs .OR. FoundDef0
+      j = INDEX(ElementDef0,'p:')
+      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+    END DO
 
-        ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
-        FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
+    DO solver_id=1,Model % NumberOFSolvers
+      Vlist => Model % Solvers(solver_id) % Values
 
-        ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef0)
-        FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
+      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
+      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
 
-        j = INDEX(ElementDef0,'p:')
-        IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
-      END DO
-    END IF
+      ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef0)
+      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
+
+      j = INDEX(ElementDef0,'p:')
+      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
+    END DO
 
     IF(.NOT.MeshDeps) THEN
       ElementDef = ' '
