@@ -142,11 +142,13 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 
       LOAD(1:n) = 0.0d0
       BodyForce => GetBodyForce(Element)
-      ! TODO: check if this is correct
-      ! $OMP CRITICAL
+      ! ifort still has a compiler induced race condition bug for the
+      ! cases where the contents of a return value pointer have to be copied 
+      ! to an array
+      !$OMP CRITICAL
       IF ( ASSOCIATED(BodyForce) ) &
             LOAD(1:n) = GetReal( BodyForce, 'Source', Found, UElement=Element )
-      ! $OMP END CRITICAL
+      !$OMP END CRITICAL
       ! IF (ANY(LOAD(1:n) /= omp_get_thread_num())) THEN
       !      WRITE (*,*) omp_get_thread_num(), ' has a wrong value'
       ! END IF
