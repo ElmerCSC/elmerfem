@@ -807,7 +807,6 @@ CONTAINS
             dualmaxdeg = MAX(dualmaxdeg, gptr(v+1)-gptr(v))
         END DO
         !$OMP END PARALLEL DO
-        dualmaxdeg = dualmaxdeg + 1
 
         nthr = 1
         ! Ensure that each vertex has at most one thread attached to it
@@ -829,7 +828,7 @@ CONTAINS
 
         ! Greedy algorithm colours a given graph with at 
         ! most max_{v\in V} deg(v)+1 colours
-        ALLOCATE(fc(dualmaxdeg), rc(gn/nthr), STAT=allocstat)
+        ALLOCATE(fc(dualmaxdeg+1), rc(gn/nthr), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
                                        'Unable to allocate local workspace!')
         ! Initialize forbidden colour array (local to thread)
@@ -862,7 +861,7 @@ CONTAINS
 
                 ! Find smallest permissible colour for vertex
                 ! c <- min\{i>0: fc[i]/=v \}
-                DO i=1,dualmaxdeg
+                DO i=1,dualmaxdeg+1
                     IF (fc(i) /= v) THEN
                         !$OMP ATOMIC WRITE 
                         colours(v) = i
@@ -937,7 +936,7 @@ CONTAINS
 
                     ! Find smallest permissible colour for vertex
                     ! c <- min\{i>0: fc[i]/=v \}
-                    DO i=1,dualmaxdeg
+                    DO i=1,dualmaxdeg+1
                         IF (fc(i) /= v) THEN
                             ! Single thread, no collisions possible 
                             colours(v) = i
