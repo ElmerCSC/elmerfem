@@ -3055,7 +3055,7 @@ END SUBROUTINE GetMaxDefs
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
      INTEGER :: DGIndex, body_id, body_id0, eq_id, solver_id, el_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
-                FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers)
+                FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), FirstOrderElements
      TYPE(Element_t), POINTER :: Element
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(10,6)
@@ -3074,31 +3074,42 @@ END SUBROUTINE GetMaxDefs
      IF ( PRESENT(Def_Dofs) ) THEN
        inDofs = Def_Dofs
      END IF
+
+     ! P-basis only over 1st order elements:
+     ! -------------------------------------
+     FirstOrderElements = .TRUE.
+     DO i=1,Mesh % NumberOfBulkElements
+       IF (Mesh % Elements(i) % Type % BasisFunctionDegree>1) THEN
+         FirstOrderElements = .FALSE.; EXIT
+       END IF
+     END DO
+
     !
     ! Check whether the "Element" definitions can depend on mesh
     ! -----------------------------------------------------------
-    MeshDeps = .FALSE.; FoundEqDefs = .FALSE.
-    DO eq_id=1,Model % NumberOFEquations
-      Vlist => Model % Equations(eq_id) % Values
-      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
-      FoundEqDefs = FoundEqDefs .OR. FoundDef0
-      j = INDEX(ElementDef0,'p:')
-      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
-    END DO
+    MeshDeps = .FALSE.; FoundEqDefs = .FALSE.;  FoundSolverDefs = .FALSE.
+    IF(FirstOrderElements) THEN
+      DO eq_id=1,Model % NumberOFEquations
+        Vlist => Model % Equations(eq_id) % Values
+        ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
+        FoundEqDefs = FoundEqDefs .OR. FoundDef0
+        j = INDEX(ElementDef0,'p:')
+        IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
+      END DO
 
-    FoundSolverDefs = .FALSE.
-    DO solver_id=1,Model % NumberOFSolvers
-      Vlist => Model % Solvers(solver_id) % Values
+      DO solver_id=1,Model % NumberOFSolvers
+        Vlist => Model % Solvers(solver_id) % Values
 
-      ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
-      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
+        ElementDef0 = ListGetString(Vlist,'Element',FoundDef0)
+        FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
 
-      ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef0)
-      FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
+        ElementDef = ListGetString(Vlist,'Element{'//TRIM(i2s(solver_id))//'}',FoundDef0)
+        FoundSolverDefs(Solver_id) = FoundSolverDefs(solver_id) .OR. FoundDef0
 
-      j = INDEX(ElementDef0,'p:')
-      IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
-    END DO
+        j = INDEX(ElementDef0,'p:')
+        IF (j>0.AND. ElementDef0(j+2:j+2)=='%') meshdeps = .TRUE.
+      END DO
+    END IF
 
     IF(.NOT.MeshDeps) THEN
       ElementDef = ' '
@@ -3204,7 +3215,7 @@ END SUBROUTINE GetMaxDefs
        NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
 
        ! Check if given element is a p element
-       IF (inDOFs(el_id,6) > 0) THEN
+       IF (FirstOrderElements.AND.inDOFs(el_id,6) > 0) THEN
          CALL AllocatePDefinitions(Element)
 
          NeedEdges = .TRUE.
