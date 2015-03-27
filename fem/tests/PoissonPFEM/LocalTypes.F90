@@ -828,7 +828,7 @@ CONTAINS
 
         ! Greedy algorithm colours a given graph with at 
         ! most max_{v\in V} deg(v)+1 colours
-        ALLOCATE(fc(dualmaxdeg+1), rc(gn/nthr), STAT=allocstat)
+        ALLOCATE(fc(dualmaxdeg+1), rc((gn/nthr)+1), STAT=allocstat)
         IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
                                        'Unable to allocate local workspace!')
         ! Initialize forbidden colour array (local to thread)
@@ -884,8 +884,8 @@ CONTAINS
 
                 ! Make sure that recolour array has enough storage for 
                 ! the worst case (all elements need to be added)
-                IF (SIZE(rc)<nrc+(vti-vli)) THEN
-                    ALLOCATE(rcnew(MAX(SIZE(rc)*2, nrc+(vti-vli))), STAT=allocstat)
+                IF (SIZE(rc)<nrc+(vti-vli)+1) THEN
+                    ALLOCATE(rcnew(MAX(SIZE(rc)*2, nrc+(vti-vli)+1)), STAT=allocstat)
                     IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
                                                    'Unable to allocate local workspace!')
                     rcnew(1:nrc)=rc(1:nrc)
