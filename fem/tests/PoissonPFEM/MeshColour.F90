@@ -324,7 +324,7 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
           
           INTEGER :: ccount(ngc)
           INTEGER, ALLOCATABLE :: cverify(:)
-          INTEGER :: i, n, ncol, totcol
+          INTEGER :: i, j, cli, cti,  n, ncol, totcol
           LOGICAL :: listsOk
           
           listsOk = .TRUE.
@@ -362,8 +362,12 @@ SUBROUTINE MeshColour( Model,Solver,dt,TransientSimulation )
           ALLOCATE(cverify(n))
 
           cverify=0
-          DO i=1,n
-            cverify(cind(i))=cverify(cind(i))+1
+          DO i=1,ngc
+            cli = cptr(i)
+            cti = cptr(i+1)-1
+            DO j=cli,cti
+              cverify(cind(j))=cverify(cind(j))+1
+            END DO
           END DO
           DO i=1,n
             IF (cverify(i) > 1 .OR. cverify(i) < 1) THEN

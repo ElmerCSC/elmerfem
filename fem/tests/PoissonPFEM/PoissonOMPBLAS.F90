@@ -178,7 +178,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
       nind = GetElementDOFs( Indexes, Element, Solver )
       CALL UpdateGlobalEquationsVec( Solver % Matrix, STIFF, Solver % Matrix % RHS, FORCE, nind, &
             Solver % Variable % DOFs, Solver % Variable % Perm(Indexes(1:nind)), &
-            UElement=Element, MCAssembly=.TRUE. )
+            UElement=Element, MCAssembly=.FALSE. )
     END DO ! Element loop
     !$OMP END DO
 
