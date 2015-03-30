@@ -1974,6 +1974,10 @@ CONTAINS
 
        LoadVar => VariableGet( Model % Variables, &
            TRIM(VarName) // ' Contact Load',ThisOnly = .TRUE. )
+       IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
+         CALL Fatal('DetermineContact', &
+             'No Loads associated with variable: '//GetVarName(Var) )
+       END IF
 
        IF( RotatedContact ) THEN
          CALL Info('DetermineContact','Tranforming solution vector to N-T coordinate system',Level=8)
@@ -2003,10 +2007,6 @@ CONTAINS
 
        IF( RotatedContact ) DEALLOCATE( TempX )
 
-       IF( .NOT. ASSOCIATED( LoadVar ) ) THEN
-         CALL Fatal('DetermineContact', &
-             'No Loads associated with variable: '//GetVarName(Var) )
-       END IF
 
      END FUNCTION CalculateContactLoad
 
@@ -2244,6 +2244,8 @@ CONTAINS
 100    CONTINUE
 
        DO i = 1,ActiveProjector % NumberOfRows
+
+         IF( ActiveProjector % InvPerm(i) == 0 ) CYCLE
 
          wsum = 0.0_dp
          Dist = 0.0_dp
@@ -2541,7 +2543,7 @@ CONTAINS
      SUBROUTINE NormalContactSet() 
        
        INTEGER :: LimitSign, Removed, Added
-       REAL(KIND=dp) :: DistOffSet
+       REAL(KIND=dp) :: DistOffSet, MinLoad, MaxLoad, NodeLoad, MinDist, MaxDist, NodeDist
        INTEGER :: i,j,k,ind
        LOGICAL :: Found
 
@@ -2550,6 +2552,10 @@ CONTAINS
 
        Removed = 0
        Added = 0        
+       MinLoad = HUGE(MinLoad)
+       MaxLoad = -HUGE(MaxLoad)
+       MinDist = HUGE(MinDist)
+       MaxDist = -HUGE(MaxDist)
 
        Found = .FALSE.
        IF( FirstTime ) THEN
@@ -2589,7 +2595,10 @@ CONTAINS
          ! Free nodes with wrong sign in contact force
          !--------------------------------------------------------------------------       
          IF( MortarBC % Active( ind ) ) THEN
-           DoRemove = ( LimitSign * NormalLoadVar % Values(k) > LimitSign * LoadEps ) 
+           NodeLoad = NormalLoadVar % Values(k)
+           MaxLoad = MAX( MaxLoad, NodeLoad )
+           MinLoad = MIN( MinLoad, NodeLoad )
+           DoRemove = ( LimitSign * NodeLoad > LimitSign * LoadEps ) 
            IF( DoRemove .AND. ConservativeRemove ) THEN
              DoRemove = InterfaceDof(ind) 
            END IF
@@ -2598,7 +2607,11 @@ CONTAINS
              MortarBC % Active(ind) = .FALSE.
            END IF
          ELSE 
-           DoAdd = ( DistVar % Values(k) < -ValEps + DistOffset ) 
+           NodeDist = DistVar % Values(k)
+           MaxDist = MAX( MaxDist, NodeDist ) 
+           MinDist = MIN( MinDist, NodeDist )
+
+           DoAdd = ( NodeDist < -ValEps + DistOffset )            
            IF( DoAdd .AND. ConservativeAdd ) THEN
              DoAdd = InterfaceDof(ind)
            END IF
@@ -2608,6 +2621,15 @@ CONTAINS
            END IF
          END IF
        END DO
+
+       IF( MaxDist - MinDist >= 0.0_dp ) THEN
+         PRINT *,'NormalContactSet Dist:',MinDist,MaxDist
+       END IF
+       IF( MaxLoad - MinLoad >= 0.0_dp ) THEN
+         PRINT *,'NormalContactSet Load:',MinLoad,MaxLoad
+       END IF
+
+
 
        IF(added > 0) THEN
          WRITE(Message,'(A,I0,A)') 'Added ',added,' nodes to the set'
@@ -11121,6 +11143,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
      IF( k2 == 0 ) THEN
        CALL Info('GenerateConstraintMatrix','No entries in constraint matrix!',Level=6)
+       Solver % Matrix % ConstraintMatrix => NULL()
        RETURN
      END IF
 

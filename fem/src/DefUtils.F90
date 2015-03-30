@@ -3743,9 +3743,9 @@ CONTAINS
 
      ! Create contact BCs using mortar conditions.
      !---------------------------------------------------------------------
-     IF( ListGetLogical( Solver % Values,'Apply Contact BCs',Found) ) THEN
-       CALL DetermineContact( Solver )	
-     END IF
+     !IF( ListGetLogical( Solver % Values,'Apply Contact BCs',Found) ) THEN
+     !  CALL DetermineContact( Solver )	
+     !END IF
 
 
 
@@ -4426,7 +4426,6 @@ CONTAINS
       CALL CRS_RemoveZeros( PSolver % Matrix )
     END IF	
 
-
   END SUBROUTINE DefaultFinishBulkAssembly
 
 
@@ -4482,6 +4481,13 @@ CONTAINS
         CALL SaveLinearSystem( PSolver ) 
       END IF
     END IF
+
+    ! Create contact BCs using mortar conditions.
+    !---------------------------------------------------------------------
+    IF( ListGetLogical( PSolver % Values,'Apply Contact BCs',Found) ) THEN
+      CALL DetermineContact( PSolver )	
+    END IF
+
 
   END SUBROUTINE DefaultFinishBoundaryAssembly
 
