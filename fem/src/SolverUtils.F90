@@ -9696,8 +9696,18 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                   Found = .NOT.StiffMatrix % ConstrainedDOF(RestMatrix % Cols(j))
 
           IF(Found) THEN
-            CALL AddToMatrixElement( CollectionMatrix, &
-               RestMatrix % Cols(j), k, RestMatrix % Values(j))
+            IF (ASSOCIATED(RestMatrix % TValues)) THEN
+              IF(RestMatrix % TValues(j) /= 0._dp) THEN
+                CALL AddToMatrixElement( CollectionMatrix, &
+                   RestMatrix % Cols(j), k, RestMatrix % TValues(j))
+              ELSE
+                CALL AddToMatrixElement( CollectionMatrix, &
+                   RestMatrix % Cols(j), k, RestMatrix % Values(j))
+              END IF
+            ELSE
+              CALL AddToMatrixElement( CollectionMatrix, &
+                 RestMatrix % Cols(j), k, RestMatrix % Values(j))
+            END IF
           END IF
           CALL AddToMatrixElement( CollectionMatrix, &
                k, RestMatrix % Cols(j), RestMatrix % Values(j))
@@ -10810,7 +10820,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      INTEGER, POINTER :: Perm(:)
      INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2,mcount,bcount
      TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
-     LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix
+     LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent
      TYPE(ValueList_t), POINTER :: BC
      TYPE(MortarBC_t), POINTER :: MortarBC
      REAL(KIND=dp) :: wsum, Scale
@@ -10874,6 +10884,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      k2 = 0
      rowoffset = 0
 
+     TransposePresent = .FALSE.
      Ctmp => Solver % Matrix % ConstraintMatrix
      DO bc_ind=Model % NumberOFBCs+mcount,1,-1
 
@@ -10891,6 +10902,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
            CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
          END IF
        END IF
+       TransposePresent = TransposePresent .OR. ASSOCIATED(Atmp % Child)
 
        ! If the projector is of type x_s=P*x_m then generate a constraint matrix
        ! of type [D-P]x=0.
@@ -10950,6 +10962,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
                Btmp % Cols(k2) = col2
                Btmp % Values(k2) = Scale * Atmp % Values(k)
+               IF(ASSOCIATED(Atmp % Child)) THEN
+                 Btmp % TValues(k2) = Scale * Atmp % Child % Values(k)
+               END IF
              END IF
            END DO
            
@@ -11065,7 +11080,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                    Scale = MortarBC % MasterScale
                    wsum = wsum + Atmp % Values(k)
                  ELSE IF( ASSOCIATED( MortarBC % Perm ) ) THEN
-                   IF( MortarBC % Perm( col ) > 0 ) THEN
+                   IF( MortarBC % Perm(col) > 0 ) THEN
                      Scale = MortarBC % SlaveScale 
                      wsum = wsum + Atmp % Values(k) 
                    ELSE
@@ -11077,6 +11092,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
                  Btmp % Cols(k2) = Dofs * ( col2 - 1) + j
                  Btmp % Values(k2) = Scale * Atmp % Values(k)
+                 IF(ASSOCIATED(Atmp % Child)) THEN
+                   Btmp % TValues(k2) = Scale * Atmp % Child % Values(k)
+                 END IF
                END IF
              END DO
               
@@ -11170,13 +11188,17 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        Btmp % InvPerm = 0
        Btmp % Rows(1) = 1
 
+       IF(TransposePresent) THEN
+         ALLOCATE(Btmp % TValues(k2)); Btmp % Tvalues=0._dp
+       END IF
+
        AllocationsDone = .TRUE.
 
        GOTO 100
      END IF
 
-     Btmp % Ordered = .FALSE.
-     CALL CRS_SortMatrix(Btmp,.TRUE.)     
+!    Btmp % Ordered = .FALSE.
+!    CALL CRS_SortMatrix(Btmp,.TRUE.)     
      Solver % Matrix % ConstraintMatrix => Btmp
      
      Solver % MortarBCsChanged = .FALSE.

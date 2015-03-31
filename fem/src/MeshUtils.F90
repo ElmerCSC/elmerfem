@@ -5249,7 +5249,12 @@ END SUBROUTINE GetMaxDefs
     ! Now change the matrix format to CRS from list matrix
     !--------------------------------------------------------------
     CALL List_toCRSMatrix(Projector)
-    CALL CRS_SortMatrix(projector,.TRUE.)
+    CALL CRS_SortMatrix(Projector,.TRUE.)
+
+    IF(ASSOCIATED(Projector % Child)) THEN
+      CALL List_toCRSMatrix(Projector % Child)
+      CALL CRS_SortMatrix(Projector % Child,.TRUE.)
+    END IF
 
     IF( CreateDual ) THEN
       CALL List_toCRSMatrix(DualProjector)
@@ -7294,10 +7299,10 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,MaxErr,MinErr,Err,uvw(3),ArcRange 
+          SumArea,MaxErr,MinErr,Err,uvw(3),ArcRange, val_dual
       REAL(KIND=dp) :: TotRefArea, TotSumArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
-      LOGICAL :: LeftCircle, Stat
+      LOGICAL :: LeftCircle, Stat, DualMaster, DualSlave, DualLCoeff
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Variable_t), POINTER :: TimestepVar
 
@@ -7325,8 +7330,24 @@ END SUBROUTINE GetMaxDefs
 
       BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
       IF (BiOrthogonalBasis) THEN
+        DualSlave  = ListGetLogical(BC, 'Biorthogonal Dual Slave', Found)
+        IF(.NOT.Found) DualSlave  = .TRUE.
+
+        DualMaster = ListGetLogical(BC, 'Biorthogonal Dual Master', Found)
+        IF(.NOT.Found) DualMaster = .TRUE.
+
+        DualLCoeff = ListGetLogical(BC, 'Biorthogonal Dual Lagrange Coefficients', Found)
+        IF(.NOT.Found) DualLCoeff = .FALSE.
+
         ALLOCATE(CoeffBasis(n), MASS(n,n))
         CALL Info('LevelProjector','Using biorthogonal basis, as requested',Level=8)      
+
+        IF(DualLCoeff) THEN
+          DualSlave  = .FALSE.
+          DualMaster = .FALSE.
+          Projector % Child => AllocateMatrix()
+          Projector % Child % Format = MATRIX_LIST
+        END IF
       END IF
 
       Nodes % y  = 0.0_dp
@@ -7552,21 +7573,33 @@ END SUBROUTINE GetMaxDefs
               IF( nrow == 0 ) CYCLE
               
               Projector % InvPerm(nrow) = InvPerm1(jj)
-              IF(BiorthogonalBasis) THEN
-                val = CoeffBasis(j) * Wtemp
-              ELSE
-                val = Basis(j) * Wtemp
+              val = Basis(j) * Wtemp
+              IF(BiorthogonalBasis ) THEN
+                val_dual  = CoeffBasis(j) * Wtemp
+                IF ( DualSlave ) val = val_dual 
               END IF
-              
+
               DO i=1,n
                 CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                    InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val ) 
+                      InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val )
+
+                IF(BiorthogonalBasis .AND. DualLCoeff ) THEN
+                  CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                        InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val_dual )
+                END IF
               END DO
               
+              val = Basis(j) * Wtemp
+              IF(BiorthogonalBasis.AND.DualMaster ) val = val_dual 
+
               DO i=1,nM
-                !IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
                 CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                    InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )                   
+                    InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )
+
+                IF(BiorthogonalBasis .AND. DualLCoeff ) THEN
+                  CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                    InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val_dual )
+                 END IF
               END DO
             END DO
 
