@@ -4909,41 +4909,41 @@ END SUBROUTINE GetMaxDefs
           CALL Warn('LevelProjector','Target mesh has too much skew, using generic integrator!')
           GenericIntegrator = .TRUE. 
         END IF
+      END IF
         
-        ! The projectors for nodes and edges can be created either in a strong way 
-        ! or weak way in the special case that the nodes are located in extruded layers. 
-        ! The strong way results to a sparse projector. For constant 
-        ! levels it can be quite optimal, except for the edges with a skew. 
-        ! If strong projector is used for all edges then "StrideProjector" should 
-        ! be recovered.
-        IF( DoNodes ) THEN
-          IF( ListGetLogical( BC,'Level Projector Nodes Strong',Found ) )StrongNodes = .TRUE.
-          IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) StrongNodes = .TRUE.
-          IF(.NOT. Found ) StrongNodes = .NOT. IntGalerkin
-        END IF
-
-        IF( DoEdges ) THEN
-          StrongLevelEdges = .NOT. IntGalerkin
-          StrongExtrudedEdges = .NOT. IntGalerkin
-          StrongSkewEdges = .FALSE.
-          
-          IF( GenericIntegrator ) THEN
-            CALL Info('LevelProjector','Using generic weak projector for all edge dofs!')
-            StrongLevelEdges = .FALSE.
-            StrongExtrudedEdges = .FALSE.
-          ELSE
-            IF( ListGetLogical( BC,'Level Projector Strong',Found ) .OR. &
-                ListGetLogical( BC,'Level Projector Edges Strong',Found ) ) THEN
-              StrongLevelEdges = .TRUE.
-              StrongExtrudedEdges = .TRUE.
-            END IF
-            IF( ListGetLogical( BC,'Level Projector Plane Edges Strong',&
-                Found ) ) StrongLevelEdges = .TRUE.
-            IF( ListGetLogical( BC,'Level Projector Extruded Edges Strong',&
-                Found ) ) StrongExtrudedEdges = .TRUE.
-            IF( ListGetLogical( BC,'Level Projector Skew Edges Strong',&
-                Found ) ) StrongSkewEdges = .TRUE.
+      ! The projectors for nodes and edges can be created either in a strong way 
+      ! or weak way in the special case that the nodes are located in extruded layers. 
+      ! The strong way results to a sparse projector. For constant 
+      ! levels it can be quite optimal, except for the edges with a skew. 
+      ! If strong projector is used for all edges then "StrideProjector" should 
+      ! be recovered.
+      IF( DoNodes ) THEN
+        StrongNodes = .NOT. IntGalerkin
+        IF( ListGetLogical( BC,'Level Projector Nodes Strong',Found ) ) StrongNodes = .TRUE.
+        IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) StrongNodes = .TRUE.
+      END IF
+      
+      IF( DoEdges ) THEN
+        StrongLevelEdges = .NOT. IntGalerkin
+        StrongExtrudedEdges = .NOT. IntGalerkin
+        StrongSkewEdges = .FALSE.
+        
+        IF( GenericIntegrator ) THEN
+          CALL Info('LevelProjector','Using generic weak projector for all edge dofs!')
+          StrongLevelEdges = .FALSE.
+          StrongExtrudedEdges = .FALSE.
+        ELSE
+          IF( ListGetLogical( BC,'Level Projector Strong',Found ) .OR. &
+              ListGetLogical( BC,'Level Projector Edges Strong',Found ) ) THEN
+            StrongLevelEdges = .TRUE.
+            StrongExtrudedEdges = .TRUE.
           END IF
+          IF( ListGetLogical( BC,'Level Projector Plane Edges Strong',&
+              Found ) ) StrongLevelEdges = .TRUE.
+          IF( ListGetLogical( BC,'Level Projector Extruded Edges Strong',&
+              Found ) ) StrongExtrudedEdges = .TRUE.
+          IF( ListGetLogical( BC,'Level Projector Skew Edges Strong',&
+              Found ) ) StrongSkewEdges = .TRUE.
         END IF
       END IF
     END IF
