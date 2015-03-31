@@ -40,7 +40,11 @@ MODULE LocalTypes
     INTEGER, PARAMETER :: INTEGERHASHSET_DEFAULT_SIZE = 64
     INTEGER, PARAMETER :: INTEGERHASHSET_CHAIN_DEFAULT_SIZE = 8
     REAL(KIND=dp), PARAMETER :: INTEGERHASHSET_FILLRATIO = REAL(0.75, dp)
-    INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 12
+    INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 25
+
+    TYPE :: IntTuple_t
+      INTEGER :: i1, i2
+    END type IntTuple_t
 CONTAINS
 
     SUBROUTINE ElmerMeshToDualGraph(Mesh, n, dualptr, dualind)
@@ -71,9 +75,9 @@ CONTAINS
         INTEGER, ALLOCATABLE :: wrkheap(:)
         LOGICAL, ALLOCATABLE :: wrkmask(:)
 
-        TYPE :: IntTuple_t
-          INTEGER :: i1, i2
-        END type IntTuple_t
+        ! TYPE :: IntTuple_t
+        !   INTEGER :: i1, i2
+        ! END type IntTuple_t
         TYPE(IntTuple_t), ALLOCATABLE :: wrkheap2(:)
         ! INTEGER, ALLOCATABLE :: wrkheap2(:), wrkheap3(:)
 
@@ -584,7 +588,8 @@ CONTAINS
 
             END SUBROUTINE kWayMergeList3
             
-            ! k-way merge with an actual heap
+            
+    ! k-way merge with an actual heap
             SUBROUTINE kWayMergeHeap(node, nv, ptrli, ptrti, te, vind, &
                                       nn, neighind, heap)
                 IMPLICIT NONE

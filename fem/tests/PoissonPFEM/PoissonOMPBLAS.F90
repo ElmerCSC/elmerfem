@@ -6,216 +6,80 @@
 #define ENDVECT
 #endif
 
-SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
-!------------------------------------------------------------------------------
-!******************************************************************************
-!
-!  Solve the Poisson equation with OpenMP threading for assembly and solution
-!  phases implemented
-!
-!  ARGUMENTS:
-!
-!  TYPE(Model_t) :: Model,  
-!     INPUT: All model information (mesh, materials, BCs, etc...)
-!
-!  TYPE(Solver_t) :: Solver
-!     INPUT: Linear & nonlinear equation solver options
-!
-!  REAL(KIND=dp) :: dt,
-!     INPUT: Timestep size for time dependent simulations
-!
-!  LOGICAL :: TransientSimulation
-!     INPUT: Steady state or transient simulation
-!
-!******************************************************************************
+MODULE PoissonSolverContains
   USE DefUtils
   USE LocalTypes
   USE ElementBasisFunctions
+  CONTAINS
 
-  IMPLICIT NONE
-  !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver
-  TYPE(Model_t) :: Model
+  SUBROUTINE GraphColourListVerify(ngc, gc, cptr, cind)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: ngc
+    INTEGER, INTENT(IN) :: gc(:)
+    INTEGER, INTENT(IN) :: cptr(:), cind(:)
 
-  REAL(KIND=dp) :: dt
-  LOGICAL :: TransientSimulation
-  !------------------------------------------------------------------------------
-  ! Local variables
-  !------------------------------------------------------------------------------
-  TYPE(Element_t),POINTER :: Element
+    INTEGER :: ccount(ngc)
+    INTEGER, ALLOCATABLE :: cverify(:)
+    INTEGER :: i, j, cli, cti,  n, ncol, totcol
+    LOGICAL :: listsOk
 
-  REAL(KIND=dp) :: Norm
-  INTEGER :: nnz, nthreads, n, nb, nd, t, istat, active
-  LOGICAL :: Found
-  TYPE(Mesh_t), POINTER :: Mesh
-  TYPE(ValueList_t), POINTER :: BodyForce
-  REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), LOAD(:), FORCE(:)
-  INTEGER, POINTER :: Indexes(:)
-  INTEGER :: nind
-  INTEGER, SAVE :: maxdofs
-  LOGICAL, SAVE :: AllocationsDone = .FALSE.
-  !$OMP THREADPRIVATE(STIFF, LOAD, FORCE, AllocationsDone, maxdofs)
+    listsOk = .TRUE.
 
-  ! Variables related to graph colouring
-  INTEGER :: col, cli, cti, ngd, ngc
-  INTEGER, ALLOCATABLE :: dualptr(:), dualind(:), colours(:), &
-        cptr(:), cind(:)
+    n=size(gc)
+    ! Count colours
+    ccount = 0
+    DO i=1,n
+      ccount(gc(i))=ccount(gc(i))+1
+    END DO
 
-  REAL(kind=dp) :: t_start, t_end
-  REAL(kind=dp) :: s_start, s_end, ls_start, ls_end, time_s, time_ls
-
-  !------------------------------------------------------------------------------
-  Mesh => GetMesh()
-
-  nthreads=1
-  !System assembly:
-  !----------------
-  Active = GetNOFActive()
-  CALL DefaultInitialize()
-
-  ! Construct the dual graph from Elmer mesh
-  t_start = ftimer()
-  CALL ElmerMeshToDualGraph(Mesh, ngd, dualptr, dualind)
-  t_end = ftimer()
-  WRITE (*,'(A,ES12.3,A)') 'Dual graph creation total: ', t_end - t_start, ' sec.'
-
-  ! Colour the dual graph
-  t_start = ftimer()
-  CALL ElmerGraphColour(ngd, dualptr, dualind, ngc, colours)
-  t_end = ftimer()
-  WRITE (*,'(A,ES12.3,A)') 'Graph colouring total: ', t_end - t_start, ' sec.'
-  WRITE (*,'(A,I0)') 'Number of colours created ngc=', ngc
-
-  ! Deallocate dual mesh
-  DEALLOCATE(dualptr, dualind)
-
-  ! Construct colour lists
-  t_start = ftimer()
-  CALL ElmerGatherColourLists(ngc, colours, cptr, cind)
-  t_end = ftimer()
-  WRITE (*,'(A,ES12.3,A)') 'Colour gather total: ', t_end-t_start, ' sec.'
-
-  ! Start timer for solver
-  s_start = ftimer()
-
-  !$OMP PARALLEL DEFAULT(NONE) &
-  !$OMP SHARED(Solver, Mesh, Active,nthreads, ngc, cptr, cind) &
-  !$OMP PRIVATE(BodyForce, Element, col, cli, cti, n, nd, nb, t, istat, Found, Norm, &
-  !$OMP         Indexes, nind)
-
-#ifdef _OPENMP
-  !$OMP SINGLE
-  nthreads = omp_get_num_procs()
-  WRITE (*,'(A,I0)') 'Number of processors=', nthreads
-  nthreads = omp_get_max_threads()
-  WRITE (*,'(A,I0)') 'Maximum number of threads=', nthreads
-  nthreads = OMP_GET_NUM_THREADS()
-  WRITE (*,'(A,I0)') 'Number of threads=', nthreads
-  !$OMP END SINGLE
-#endif
-
-
-  !Allocate some permanent storage per thread:
-  !--------------------------------------------------------------
-  IF ( .NOT. AllocationsDone ) THEN
-    n = Mesh % MaxElementDOFs  ! just big enough for elemental arrays
-    maxdofs = n
-    ALLOCATE( FORCE(N), LOAD(N), STIFF(N,N), STAT=istat )
-    IF ( istat /= 0 ) THEN
-      CALL Fatal( 'PoissonSolve', 'Memory allocation error.' )
+    ! Verify list pointers
+    IF (SIZE(cptr) /= ngc+1 .OR. SIZE(cind) /= n) THEN
+      WRITE (*,*) 'ERROR: Colour list pointer size does not', &
+            ' match the number of colours'
+      RETURN
     END IF
-    AllocationsDone = .TRUE.
-  END IF
+    totcol = 0
+    DO i=1,ngc
+      ncol = cptr(i+1)-cptr(i)
+      IF (ncol /= ccount(i)) THEN
+        WRITE (*,'(3(A,I0))') 'ERROR: Colour=', i, ': pointer=', ncol,', count=', ccount(i)
+        listsOk = .FALSE.
+      END IF
+    END DO
+    ! Further verification of no use since pointers to lists are incorrect
+    IF (.NOT. listsOk) RETURN
 
-  ! TODO: Perform FE assembly one colour at a time. 
-  ! Element indices are listed in CRS structure cptr, cind with ngc colours in total
-  DO col=1,ngc
-    cli = cptr(col)
-    cti = cptr(col+1)-1
+    IF (SUM(ccount) /= n) THEN
+      WRITE (*,*) 'ERROR: Not enough colours in lists to cover the graph'
+      listsOk = .FALSE.
+    END IF
 
-    !$OMP DO SCHEDULE(STATIC)
-    DO t=cli, cti
-      Element => GetActiveElement(cind(t))
-      n  = GetElementNOFNodes(Element)
-      nd = GetElementNOFDOFs(Element)
-      nb = GetElementNOFBDOFs(Element)
+    ! Verify colours themselves
+    ALLOCATE(cverify(n))
 
-      LOAD(1:n) = 0.0d0
-      BodyForce => GetBodyForce(Element)
-      ! ifort still has a compiler induced race condition bug for the
-      ! cases where the contents of a return value pointer have to be copied 
-      ! to an array
-      !$OMP CRITICAL
-      IF ( ASSOCIATED(BodyForce) ) &
-            LOAD(1:n) = GetReal( BodyForce, 'Source', Found, UElement=Element )
-      !$OMP END CRITICAL
-      ! IF (ANY(LOAD(1:n) /= omp_get_thread_num())) THEN
-      !      WRITE (*,*) omp_get_thread_num(), ' has a wrong value'
-      ! END IF
+    cverify=0
+    DO i=1,ngc
+      cli = cptr(i)
+      cti = cptr(i+1)-1
+      DO j=cli,cti
+        cverify(cind(j))=cverify(cind(j))+1
+      END DO
+    END DO
+    DO i=1,n
+      IF (cverify(i) > 1 .OR. cverify(i) < 1) THEN
+        WRITE (*,'(2(A,I0))') 'ERROR: Vertex=', i, ', colour count=', cverify(i)
+        listsOk = .FALSE.
+      END IF
+    END DO
 
-      !Get element local matrix and rhs vector:
-      !----------------------------------------
-      ! CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, n, nd+nb )
-      ! Compare matrices (should be the same)
-      ! Norm = DNRM2( (nd+nb)*(nd+nb), STIFF, 1)
-      ! WRITE (*,'(A,ES12.5)') '||L||_F=', Norm
-      ! Norm = DNRM2( (nd+nb), FORCE, 1)
-      ! WRITE (*,'(A,ES12.5)') '||f||_2=', Norm
-      ! Vectorized version
-      CALL LocalMatrixVec( STIFF, FORCE, LOAD, Element, n, nd+nb )
-      ! IF (t>0) STOP
-      ! Compare matrices (should be the same)
-      ! Norm = DNRM2( (nd+nb)*(nd+nb), STIFF, 1)
-      ! WRITE (*,'(A,ES12.5)') '||L||_F=', Norm
-      ! Norm = DNRM2( (nd+nb), FORCE, 1)
-      ! WRITE (*,'(A,ES12.5)') '||f||_2=', Norm
-      ! STOP
+    DEALLOCATE(cverify)
 
-      CALL LCondensate( nd, nb, STIFF, FORCE, maxdofs )
-      ! CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
-      ! TEMP, to test vectorized version of glueing process
-      Indexes => GetVecIndexStore()
-      nind = GetElementDOFs( Indexes, Element, Solver )
-      CALL UpdateGlobalEquationsVec( Solver % Matrix, STIFF, Solver % Matrix % RHS, FORCE, nind, &
-            Solver % Variable % DOFs, Solver % Variable % Perm(Indexes(1:nind)), &
-            UElement=Element, MCAssembly=.FALSE. )
-    END DO ! Element loop
-    !$OMP END DO
-
-  END DO ! Colour loop
-  !$OMP END PARALLEL
-
-  ! Deallocate colouring 
-  DEALLOCATE(colours, cptr, cind)
-
-  ! End timer
-  s_end = ftimer()
-  time_s = (s_end-s_start)
-
-  ! Compute the frobenius norm of the global matrix
-  nnz = Solver % Matrix % Rows(Solver % Matrix % NumberOfRows+1)-1
-  Norm = DNRM2(nnz, Solver % Matrix % Values, 1)
-  WRITE (*,'(A,ES24.16)') '||A||_F=', Norm
-  Norm = DNRM2(Solver % Matrix % NumberOfRows, Solver % Matrix % RHS, 1)
-  WRITE (*,'(A,ES24.16)') '||b||_2=', Norm
-
-  CALL DefaultFinishAssembly()
-  CALL DefaultDirichletBCs()
-
-  ! And finally, solve:
-  !--------------------
-  WRITE (*,'(A,I0,A,I0)') 'Assembly done, n=', Solver % Matrix % NumberOfRows, ', nelem=', Active
-  ! Time the linear solve as well
-  ls_start = ftimer()
-  Norm = DefaultSolve()
-  ls_end = ftimer()
-
-  time_ls = (ls_end-ls_start)
-
-  WRITE (*,'(A, I0)') 'OMP_NUM_THREADS=', nthreads
-  WRITE (*,'(A,F12.5)') 'Assembly (s)=', time_s
-  WRITE (*,'(A,F12.5)') 'Solve (s)=', time_ls
-CONTAINS
+    IF (listsOk) THEN
+      WRITE (*,'(A)') 'Colour lists seem ok.'
+    ELSE
+      WRITE (*,'(A)') 'ERROR: Colour lists seem inconsistent!'
+    END IF
+  END SUBROUTINE GraphColourListVerify
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(  STIFF, FORCE, LOAD, Element, n, nd )
@@ -2127,7 +1991,6 @@ CONTAINS
         IF (ColouredAssembly) THEN 
           IF (ANY(NodeIndexes<=0)) THEN
             ! Vector masking needed, no ATOMIC needed
-!VECT
             DO i=1,n
               IF (NodeIndexes(i)>0) THEN
 !DIR$ LOOP COUNT MIN=1, AVG=3
@@ -2138,10 +2001,8 @@ CONTAINS
                 END DO
               END IF
             END DO
-!ENDVECT
           ELSE
             ! No vector masking needed, no ATOMIC needed
-!VECT
             DO i=1,n
 !DIR$ LOOP COUNT MIN=1, AVG=3
 !DIR$ IVDEP
@@ -2150,7 +2011,6 @@ CONTAINS
                 Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
               END DO
             END DO
-!ENDVECT
           END IF ! Vector masking
         ELSE
           IF (ANY(NodeIndexes<=0)) THEN
@@ -2352,11 +2212,11 @@ CONTAINS
         IF (MCAssembly) THEN
 !DIR$ PREFETCH gval:1:64
 !DIR$ PREFETCH gval:0:8
-!VECT
+!DIR$ VECTOR
           DO i=1,nzind
             gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
           END DO
-!ENDVECT
+
         ELSE
 !DIR$ PREFETCH gval:1:64
 !DIR$ PREFETCH gval:0:8
@@ -2419,6 +2279,228 @@ CONTAINS
         ind => VecIndexStore( : )
     END FUNCTION GetVecIndexStore
 
+  END MODULE PoissonSolverContains
+
+SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-END SUBROUTINE PoissonSolver
+!******************************************************************************
+!
+!  Solve the Poisson equation with OpenMP threading for assembly and solution
+!  phases implemented
+!
+!  ARGUMENTS:
+!
+!  TYPE(Model_t) :: Model,  
+!     INPUT: All model information (mesh, materials, BCs, etc...)
+!
+!  TYPE(Solver_t) :: Solver
+!     INPUT: Linear & nonlinear equation solver options
+!
+!  REAL(KIND=dp) :: dt,
+!     INPUT: Timestep size for time dependent simulations
+!
+!  LOGICAL :: TransientSimulation
+!     INPUT: Steady state or transient simulation
+!
+!******************************************************************************
+  USE PoissonSolverContains
+  IMPLICIT NONE
+  !------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+  !------------------------------------------------------------------------------
+  ! Local variables
+  !------------------------------------------------------------------------------
+  TYPE(Element_t),POINTER :: Element
+
+  REAL(KIND=dp) :: Norm
+  INTEGER :: nnz, nthreads, n, nb, nd, t, istat, active
+  LOGICAL :: Found
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(ValueList_t), POINTER :: BodyForce
+  REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), LOAD(:), FORCE(:)
+  INTEGER, POINTER :: Indexes(:)
+  INTEGER :: nind
+  INTEGER, SAVE :: maxdofs
+  LOGICAL, SAVE :: AllocationsDone = .FALSE.
+  !$OMP THREADPRIVATE(STIFF, LOAD, FORCE, AllocationsDone, maxdofs)
+
+  ! Variables related to graph colouring
+  INTEGER :: col, cli, cti, ngd, ngc
+  INTEGER, ALLOCATABLE :: dualptr(:), dualind(:), colours(:), &
+        cptr(:), cind(:)
+
+  REAL(kind=dp) :: t_start, t_end
+  REAL(kind=dp) :: s_start, s_end, ls_start, ls_end, time_s, time_ls
+
+  !------------------------------------------------------------------------------
+  Mesh => GetMesh()
+
+  nthreads=1
+  !System assembly:
+  !----------------
+  Active = GetNOFActive()
+  CALL DefaultInitialize()
+
+  ! Construct the dual graph from Elmer mesh
+  t_start = ftimer()
+  CALL ElmerMeshToDualGraph(Mesh, ngd, dualptr, dualind)
+  t_end = ftimer()
+  WRITE (*,'(A,ES12.3,A)') 'Dual graph creation total: ', t_end - t_start, ' sec.'
+
+  ! Colour the dual graph
+  t_start = ftimer()
+  CALL ElmerGraphColour(ngd, dualptr, dualind, ngc, colours)
+  t_end = ftimer()
+  WRITE (*,'(A,ES12.3,A)') 'Graph colouring total: ', t_end - t_start, ' sec.'
+  WRITE (*,'(A,I0)') 'Number of colours created ngc=', ngc
+
+  ! Deallocate dual mesh
+  DEALLOCATE(dualptr, dualind)
+
+  ! Construct colour lists
+  t_start = ftimer()
+  CALL ElmerGatherColourLists(ngc, colours, cptr, cind)
+  t_end = ftimer()
+  WRITE (*,'(A,ES12.3,A)') 'Colour gather total: ', t_end-t_start, ' sec.'
+
+  ! Verify colour lists
+  CALL GraphColourListVerify(ngc, colours, cptr, cind)
+
+  ! Start timer for solver
+  s_start = ftimer()
+
+  !$OMP PARALLEL DEFAULT(NONE) &
+  !$OMP SHARED(Solver, Mesh, Active,nthreads, ngc, cptr, cind, cli, cti) &
+  !$OMP PRIVATE(BodyForce, Element, col, n, nd, nb, t, istat, Found, Norm, &
+  !$OMP         Indexes, nind)
+
+#ifdef _OPENMP
+  !$OMP SINGLE
+  nthreads = omp_get_num_procs()
+  WRITE (*,'(A,I0)') 'Number of processors=', nthreads
+  nthreads = omp_get_max_threads()
+  WRITE (*,'(A,I0)') 'Maximum number of threads=', nthreads
+  nthreads = OMP_GET_NUM_THREADS()
+  WRITE (*,'(A,I0)') 'Number of threads=', nthreads
+  !$OMP END SINGLE
+#endif
+
+
+  !Allocate some permanent storage per thread:
+  !--------------------------------------------------------------
+  IF ( .NOT. AllocationsDone ) THEN
+    n = Mesh % MaxElementDOFs  ! just big enough for elemental arrays
+    maxdofs = n
+    ALLOCATE( FORCE(N), LOAD(N), STIFF(N,N), STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'PoissonSolve', 'Memory allocation error.' )
+    END IF
+    AllocationsDone = .TRUE.
+  END IF
+
+  ! TODO: Perform FE assembly one colour at a time. 
+  ! Element indices are listed in CRS structure cptr, 
+  ! cind with ngc colours in total
+  DO col=1,ngc
+    !$OMP SINGLE
+    cli = cptr(col)
+    cti = cptr(col+1)-1
+    !$OMP END SINGLE
+
+    !$OMP DO SCHEDULE(STATIC)
+    DO t=cli, cti
+      Element => GetActiveElement(cind(t))
+      n  = GetElementNOFNodes(Element)
+      nd = GetElementNOFDOFs(Element)
+      nb = GetElementNOFBDOFs(Element)
+
+      LOAD(1:n) = 0.0d0
+      BodyForce => GetBodyForce(Element)
+      ! ifort still has a compiler induced race condition bug for the
+      ! cases where the contents of a return value pointer have to be copied 
+      ! to an array
+
+      !$OMP CRITICAL
+      IF ( ASSOCIATED(BodyForce) ) &
+            LOAD(1:n) = GetReal( BodyForce, 'Source', Found, UElement=Element )
+      !$OMP END CRITICAL
+
+      ! IF (ANY(LOAD(1:n) /= omp_get_thread_num())) THEN
+      !      WRITE (*,*) omp_get_thread_num(), ' has a wrong value'
+      ! END IF
+
+      !Get element local matrix and rhs vector:
+      !----------------------------------------
+      ! CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, n, nd+nb )
+      ! Compare matrices (should be the same)
+      ! Norm = DNRM2( (nd+nb)*(nd+nb), STIFF, 1)
+      ! WRITE (*,'(A,ES12.5)') '||L||_F=', Norm
+      ! Norm = DNRM2( (nd+nb), FORCE, 1)
+      ! WRITE (*,'(A,ES12.5)') '||f||_2=', Norm
+      ! Vectorized version
+      CALL LocalMatrixVec( STIFF, FORCE, LOAD, Element, n, nd+nb )
+      ! IF (t>0) STOP
+      ! Compare matrices (should be the same)
+      ! Norm = DNRM2( (nd+nb)*(nd+nb), STIFF, 1)
+      ! WRITE (*,'(A,ES12.5)') '||L||_F=', Norm
+      ! Norm = DNRM2( (nd+nb), FORCE, 1)
+      ! WRITE (*,'(A,ES12.5)') '||f||_2=', Norm
+      ! STOP
+
+      CALL LCondensate( nd, nb, STIFF, FORCE, maxdofs )
+      ! CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+      ! TEMP, to test vectorized version of glueing process
+      Indexes => GetVecIndexStore()
+      nind = GetElementDOFs( Indexes, Element, Solver )
+      CALL UpdateGlobalEquationsVec( Solver % Matrix, STIFF, Solver % Matrix % RHS, FORCE, nind, &
+            Solver % Variable % DOFs, Solver % Variable % Perm(Indexes(1:nind)), &
+            UElement=Element, MCAssembly=.TRUE. )
+    END DO ! Element loop
+    !$OMP END DO
+
+  END DO ! Colour loop
+  !$OMP END PARALLEL
+
+  ! Deallocate colouring 
+  DEALLOCATE(colours, cptr, cind)
+
+  ! End timer
+  s_end = ftimer()
+  time_s = (s_end-s_start)
+
+  ! Compute the frobenius norm of the global matrix
+  nnz = Solver % Matrix % Rows(Solver % Matrix % NumberOfRows+1)-1
+  Norm = DNRM2(nnz, Solver % Matrix % Values, 1)
+  WRITE (*,'(A,ES24.16)') '||A||_F=', Norm
+  Norm = DNRM2(Solver % Matrix % NumberOfRows, Solver % Matrix % RHS, 1)
+  WRITE (*,'(A,ES24.16)') '||b||_2=', Norm
+
+  CALL DefaultFinishAssembly()
+  CALL DefaultDirichletBCs()
+
+  ! And finally, solve:
+  !--------------------
+  WRITE (*,'(A,I0,A,I0)') 'Assembly done, n=', Solver % Matrix % NumberOfRows, ', nelem=', Active
+  ! Time the linear solve as well
+  ls_start = ftimer()
+  Norm = DefaultSolve()
+  ls_end = ftimer()
+
+  time_ls = (ls_end-ls_start)
+
+  WRITE (*,'(A, I0)') 'OMP_NUM_THREADS=', nthreads
+  WRITE (*,'(A,F12.5)') 'Assembly (s)=', time_s
+  WRITE (*,'(A,F12.5)') 'Solve (s)=', time_ls
+
+! TEMP
+! CONTAINS
+END SUBROUTINE PoissonSolver  
+
+
+!------------------------------------------------------------------------------
+! END SUBROUTINE PoissonSolver
 !------------------------------------------------------------------------------

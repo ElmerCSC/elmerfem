@@ -1026,7 +1026,10 @@ CONTAINS
 
      IF ( t > 0 .AND. t <= Solver % NumberOfActiveElements ) THEN
         Element => Solver % Mesh % Elements( Solver % ActiveElements(t) )
+        ! NOTE: This needs to be until CurrentModel is made threadprivate
+        !$OMP CRITICAL(SetElement)
         CurrentModel % CurrentElement => Element ! may be used by user functions
+        !$OMP END CRITICAL(SetElement)
      ELSE
         WRITE( Message, * ) 'Invalid element number requested: ', t
         CALL Fatal( 'GetActiveElement', Message )
