@@ -180,7 +180,7 @@ END INTERFACE
     REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)=>NULL()
 
     REAL(KIND=dp),  POINTER CONTIG :: Values(:)=>NULL(), ILUValues(:)=>NULL(), &
-               DiagScaling(:) => NULL()
+               DiagScaling(:) => NULL(), TValues(:) => Null()
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling

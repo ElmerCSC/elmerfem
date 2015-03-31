@@ -680,6 +680,11 @@ CONTAINS
 
     Var => VariableList
     DO WHILE( ASSOCIATED( Var ) )
+       IF ( Var % Secondary ) THEN
+         Var => Var % Next
+         CYCLE
+       END IF
+
        IF ( Var % DOFs > 1 ) THEN
          IF ( ASSOCIATED( Var % Values ) ) &
             DEALLOCATE( Var % Values )
