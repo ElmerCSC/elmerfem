@@ -9697,21 +9697,30 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
           IF(Found) THEN
             IF (ASSOCIATED(RestMatrix % TValues)) THEN
-              IF(RestMatrix % TValues(j) /= 0._dp) THEN
-                CALL AddToMatrixElement( CollectionMatrix, &
-                   RestMatrix % Cols(j), k, RestMatrix % TValues(j))
-              ELSE
-                CALL AddToMatrixElement( CollectionMatrix, &
-                   RestMatrix % Cols(j), k, RestMatrix % Values(j))
-              END IF
+              CALL AddToMatrixElement( CollectionMatrix, &
+                 RestMatrix % Cols(j), k, RestMatrix % TValues(j))
             ELSE
               CALL AddToMatrixElement( CollectionMatrix, &
                  RestMatrix % Cols(j), k, RestMatrix % Values(j))
             END IF
           END IF
           CALL AddToMatrixElement( CollectionMatrix, &
-               k, RestMatrix % Cols(j), RestMatrix % Values(j))
+                 k, RestMatrix % Cols(j), RestMatrix % Values(j))
         END DO
+      END IF
+
+      IF (EnforceDirichlet) THEN
+        IF(ASSOCIATED(RestMatrix % InvPerm)) THEN
+          l = RestMatrix % InvPerm(i)
+          IF(l>0) THEN
+            l = MOD(l-1,StiffMatrix % NumberOfRows)+1
+            IF(StiffMatrix % ConstrainedDOF(l)) THEN
+              CollectionVector(k) = 0
+              CALL ZeroRow(CollectionMatrix,k)
+              CALL SetMatrixElement(CollectionMatrix,k,k,1._dp)
+            END IF
+          END IF
+        END IF
       END IF
       
       ! If there is no matrix entry, there can be no non-zero r.h.s.
@@ -9724,6 +9733,21 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         IF( ASSOCIATED( RestVector ) ) CollectionVector(k) = RestVector(i)
       END IF
     END DO
+
+     IF (EnforceDirichlet) THEN
+        IF(ASSOCIATED(RestMatrix % InvPerm)) THEN
+          l = RestMatrix % InvPerm(i)
+          IF(l>0) THEN
+            l = MOD(l-1,StiffMatrix % NumberOfRows)+1
+            IF(StiffMatrix % ConstrainedDOF(l)) THEN
+              CollectionVector(k) = 0
+              CALL ZeroRow(CollectionMatrix,k)
+              CALL SetMatrixElement(CollectionMatrix,k,k,1._dp)
+            END IF
+          END IF
+        END IF
+      END IF
+
 
     IF( NoEmptyRows > 0 ) THEN
       CALL Info('SolveWithLinearRestriction',&
@@ -10962,8 +10986,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
                Btmp % Cols(k2) = col2
                Btmp % Values(k2) = Scale * Atmp % Values(k)
-               IF(ASSOCIATED(Atmp % Child)) THEN
-                 Btmp % TValues(k2) = Scale * Atmp % Child % Values(k)
+               IF(ASSOCIATED(Btmp % TValues)) THEN
+                 IF(ASSOCIATED(Atmp % Child)) THEN
+                   Btmp % TValues(k2) = Scale * Atmp % Child % Values(k)
+                 ELSE
+                   Btmp % TValues(k2) = Scale * Atmp % Values(k)
+                 END IF
                END IF
              END IF
            END DO
@@ -11092,8 +11120,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
                  Btmp % Cols(k2) = Dofs * ( col2 - 1) + j
                  Btmp % Values(k2) = Scale * Atmp % Values(k)
-                 IF(ASSOCIATED(Atmp % Child)) THEN
-                   Btmp % TValues(k2) = Scale * Atmp % Child % Values(k)
+                 IF(ASSOCIATED(Btmp % Tvalues)) THEN
+                   IF(ASSOCIATED(Atmp % Child)) THEN
+                     Btmp % TValues(k2) = Scale * Atmp % Child % Values(k)
+                   ELSE
+                     Btmp % TValues(k2) = Scale * Atmp % Values(k)
+                   END IF
                  END IF
                END IF
              END DO
