@@ -7306,6 +7306,9 @@ END SUBROUTINE GetMaxDefs
       LOGICAL :: SaveElem
       CHARACTER(LEN=20) :: FileName
 
+      LOGICAL :: BiOrthogonalBasis
+      REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
+
       CALL Info('LevelProjector','Creating weak constraints using a 1D integrator',Level=8)      
 
       Mesh => CurrentModel % Solver % Mesh 
@@ -7319,6 +7322,12 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n) )
       ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
       ALLOCATE( Basis(n), BasisM(n) )
+
+      BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
+      IF (BiOrthogonalBasis) THEN
+        ALLOCATE(CoeffBasis(n), MASS(n,n))
+        CALL Info('LevelProjector','Using biorthogonal basis, as requested',Level=8)      
+      END IF
 
       Nodes % y  = 0.0_dp
       NodesM % y = 0.0_dp
@@ -7467,7 +7476,41 @@ END SUBROUTINE GetMaxDefs
           ! Use somewhat higher integration rules than the default
           IP = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
           
-          ! Integration over the temporal element
+          IF(BiOrthogonalBasis) THEN
+            MASS  = 0
+            CoeffBasis = 0
+            DO nip=1, IP % n 
+              stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
+                  IP % v(nip),IP % w(nip),detJ,Basis)
+
+              ! Global coordinate of the integration point
+              xt = SUM( Basis(1:2) * NodesT % x(1:2) )
+            
+              ! Integration weight for current integration point
+              Wtemp = DetJ * IP % s(nip)
+            
+              ! Integration point at the slave element
+              CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
+              stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+
+              DO i=1,n
+                DO j=1,n
+                  MASS(i,j) = MASS(i,j) + wTemp * Basis(i) * Basis(j)
+                END DO
+                CoeffBasis(i) = CoeffBasis(i) + wTemp * Basis(i)
+              END DO
+            END DO
+
+            CALL InvertMatrix( MASS, n )
+
+            DO i=1,n
+              DO j=1,n
+                MASS(i,j) = MASS(i,j) * CoeffBasis(i)
+              END DO
+            END DO
+          END IF
+
+
           DO nip=1, IP % n 
             stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
                 IP % v(nip),IP % w(nip),detJ,Basis)
@@ -7485,13 +7528,22 @@ END SUBROUTINE GetMaxDefs
             ! Integration point at the slave element
             CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
             stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-            
+
             ! Integration point at the master element
             CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
             stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
             
             !IF( ANY( Basis(1:2) < 0.0 ) ) PRINT *,'Basis:',BasisM(1:2)
             !IF( ANY( BasisM(1:2) < 0.0 ) ) PRINT *,'BasisM:',BasisM(1:2)
+
+            IF(BiOrthogonalBasis) THEN
+              CoeffBasis = 0._dp
+              DO i=1,n
+                DO j=1,n
+                  CoeffBasis(i) = CoeffBasis(i) + MASS(i,j) * Basis(j)
+                END DO
+              END DO
+            END IF
 
             ! Add the entries to the projector
             DO j=1,n 
@@ -7500,7 +7552,11 @@ END SUBROUTINE GetMaxDefs
               IF( nrow == 0 ) CYCLE
               
               Projector % InvPerm(nrow) = InvPerm1(jj)
-              val = Basis(j) * Wtemp
+              IF(BiorthogonalBasis) THEN
+                val = CoeffBasis(j) * Wtemp
+              ELSE
+                val = Basis(j) * Wtemp
+              END IF
               
               DO i=1,n
                 CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
