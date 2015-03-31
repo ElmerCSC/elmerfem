@@ -7339,15 +7339,19 @@ END SUBROUTINE GetMaxDefs
         DualLCoeff = ListGetLogical(BC, 'Biorthogonal Dual Lagrange Coefficients', Found)
         IF(.NOT.Found) DualLCoeff = .FALSE.
 
-        ALLOCATE(CoeffBasis(n), MASS(n,n))
-        CALL Info('LevelProjector','Using biorthogonal basis, as requested',Level=8)      
-
         IF(DualLCoeff) THEN
           DualSlave  = .FALSE.
           DualMaster = .FALSE.
-          Projector % Child => AllocateMatrix()
-          Projector % Child % Format = MATRIX_LIST
+          CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.FALSE.)
+        ELSE
+          CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.TRUE.)
         END IF
+
+        Projector % Child => AllocateMatrix()
+        Projector % Child % Format = MATRIX_LIST
+
+        ALLOCATE(CoeffBasis(n), MASS(n,n))
+        CALL Info('LevelProjector','Using biorthogonal basis, as requested',Level=8)      
       END IF
 
       Nodes % y  = 0.0_dp
@@ -7576,30 +7580,32 @@ END SUBROUTINE GetMaxDefs
               val = Basis(j) * Wtemp
               IF(BiorthogonalBasis ) THEN
                 val_dual  = CoeffBasis(j) * Wtemp
-                IF ( DualSlave ) val = val_dual 
               END IF
 
               DO i=1,n
                 CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                       InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val )
 
-                IF(BiorthogonalBasis .AND. DualLCoeff ) THEN
+                IF(BiorthogonalBasis ) THEN
                   CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
                         InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val_dual )
                 END IF
               END DO
               
               val = Basis(j) * Wtemp
-              IF(BiorthogonalBasis.AND.DualMaster ) val = val_dual 
-
               DO i=1,nM
                 CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                     InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )
 
-                IF(BiorthogonalBasis .AND. DualLCoeff ) THEN
-                  CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                    InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val_dual )
-                 END IF
+                IF(BiorthogonalBasis) THEN
+                  IF(DualMaster .OR. DualLCoeff) THEN
+                    CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                      InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val_dual )
+                  ELSE
+                    CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                      InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )
+                  END IF
+                END IF
               END DO
             END DO
 

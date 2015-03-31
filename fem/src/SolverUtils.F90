@@ -9524,7 +9524,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
-              EmptyRow, ComplexSystem, ConstraintScaling
+              EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose
   SAVE MultiplierValues, SolverPointer
   CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
 
@@ -9635,6 +9635,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   ComplexSystem = ComplexSystem .OR. ListGetLogical( Solver % Values, &
            'Linear System Complex', Found )
 
+  UseTranspose = ListGetLogical( Solver % Values, 'Use Transpose values', Found)
+
   IF(ASSOCIATED(RestMatrix)) THEN
 
     CALL Info('SolveWithLinearRestriction',&
@@ -9704,8 +9706,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                  RestMatrix % Cols(j), k, RestMatrix % Values(j))
             END IF
           END IF
-          CALL AddToMatrixElement( CollectionMatrix, &
-                 k, RestMatrix % Cols(j), RestMatrix % Values(j))
+
+          IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
+            CALL AddToMatrixElement( CollectionMatrix, &
+                     k, RestMatrix % Cols(j), RestMatrix % Values(j))
+          ELSE
+            CALL AddToMatrixElement( CollectionMatrix, &
+                    k, RestMatrix % Cols(j), RestMatrix % Values(j))
+          END IF
         END DO
       END IF
 
