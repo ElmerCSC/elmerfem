@@ -2374,6 +2374,7 @@ CONTAINS
          END IF
 
          ! We use the same permutation for all boundary variables
+         IF(ActiveProjector % InvPerm(i) <= 0 ) CYCLE
          j = DistVar % Perm( ActiveProjector % InvPerm(i) )
 
          DistVar % Values( j ) = Dist
@@ -10820,6 +10821,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      IF( Solver % MortarBCsOnly .AND. .NOT. Solver % MortarBCsChanged ) THEN
        CALL Info('GenerateConstraintMatrix','Nothing to do!',Level=12)
        RETURN
+     ELSE IF ( Solver % MortarBCsOnly ) THEN
+       CALL ReleaseConstraintMatrix(Solver)
      END IF
      
      ! Compute the size of the initial boundary matrices.
@@ -10876,8 +10879,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
        IF(bc_ind>Model % NumberOfBCs) THEN
          Atmp => Ctmp
-         Ctmp => Ctmp % ConstraintMatrix
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
+         Ctmp => Ctmp % ConstraintMatrix
        ELSE
          IF(.NOT. Solver % MortarBCsChanged) EXIT
          MortarBC => Solver % MortarBCs(bc_ind) 
@@ -11143,7 +11146,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
      IF( k2 == 0 ) THEN
        CALL Info('GenerateConstraintMatrix','No entries in constraint matrix!',Level=6)
-       Solver % Matrix % ConstraintMatrix => NULL()
+!      Solver % Matrix % ConstraintMatrix => NULL()
        RETURN
      END IF
 
@@ -11186,15 +11189,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
    SUBROUTINE ReleaseConstraintMatrix(Solver) 
      TYPE(Solver_t) :: Solver
 
-     TYPE(Matrix_t), POINTER :: CM, CM0
-
-     CM => Solver % Matrix % ConstraintMatrix
-     DO WHILE(ASSOCIATED(CM))
-       CALL FreeMatrix(CM)
-       CM => CM % ConstraintMatrix
-     END DO
+     CALL FreeMatrix(Solver % Matrix % ConstraintMatrix)
      Solver % Matrix % ConstraintMatrix => Null()
-
    END SUBROUTINE ReleaseConstraintMatrix
 
 
