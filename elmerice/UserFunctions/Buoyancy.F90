@@ -85,14 +85,18 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    t = TimeVar % Values(1)
    dt = Model % Solver % dt 
 
+   IF(FirstTime .OR. Model % Mesh % Changed) THEN
+      IF(.NOT. FirstTime) &
+           DEALLOCATE(NodeOnBoundary, auxReal, SourceFunc)
 
-   IF (FirstTime) THEN
-      FirstTime = .FALSE.
-      NewTime = .TRUE.
-      told = t
       ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
       n = Model % MaxElementNodes 
       ALLOCATE( auxReal(n), SourceFunc(n) )
+   END IF
+
+   IF (FirstTime) THEN
+      NewTime = .TRUE.
+      told = t
       DIM = CoordinateSystemDimension()
 
       rhow = GetConstReal( Model % Constants, 'Water Density', GotIt )
@@ -145,7 +149,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
         IF (bf_id_FS<0) THEN 
            CALL FATAL('Sea Pressure','No Basal Melt found in any body Force')
         END IF 
-      END IF
+     END IF
 
 !-----------------------------------------------------------------
 ! Read the gravity 
@@ -162,10 +166,21 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
         gravity = -GetConstReal( Model % BodyForces(bf_id) % Values, 'Flow BodyForce 3',Gotit)
       END IF
  
-!-----------------------------------------------------------------
-! Number of nodes concerned (needed to compute Ns from the normal)
-!-----------------------------------------------------------------
+   ELSE
+      IF (t > told) THEN
+         NewTime = .TRUE.
+         told = t
+      END IF
+   ENDIF  ! FirstTime
 
+   IF(FirstTime .OR. (NewTime .AND. Model % Mesh % Changed)) THEN
+
+      FirstTime = .FALSE.
+      PRINT *, 'Debug, mesh changed so reallocating memory in Buoyancy'
+      !-----------------------------------------------------------------
+      ! Number of nodes concerned (needed to compute Ns from the normal)
+      !-----------------------------------------------------------------
+      
       CurElement => Model % CurrentElement
       NodeOnBoundary = 0
       NumberOfNodesOnBoundary = 0
@@ -180,23 +195,21 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
             DO i = 1, n
                j = BCElement % NodeIndexes (i)
                IF (NodeOnBoundary(j)==0) THEN
-                 NumberOfNodesOnBoundary = NumberOfNodesOnBoundary + 1
-                 NodeOnBoundary(j) = NumberOfNodesOnBoundary
+                  NumberOfNodesOnBoundary = NumberOfNodesOnBoundary + 1
+                  NodeOnBoundary(j) = NumberOfNodesOnBoundary
                END IF
             END DO
          END IF
       END DO
       Model % CurrentElement => CurElement 
 
+      IF(ALLOCATED(S)) DEALLOCATE(S,Ns)
+      IF(ALLOCATED(a_perp)) DEALLOCATE(a_perp)
+
       ALLOCATE( S( NumberOfNodesOnBoundary ), Ns( NumberOfNodesOnBoundary ))
       IF (NormalFlux) ALLOCATE( a_perp ( NumberOfNodesOnBoundary ))
-      
-   ELSE
-      IF (t > told) THEN
-         NewTime = .TRUE.
-         told = t
-      END IF
-   ENDIF  ! FirstTime
+   END IF
+
    
    IF (NewTime) THEN
       NewTime = .FALSE.
