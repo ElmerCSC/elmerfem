@@ -2402,7 +2402,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
     AllocationsDone = .TRUE.
   END IF
 
-  ! TODO: Perform FE assembly one colour at a time. 
+  ! Perform FE assembly one colour at a time. 
   ! Element indices are listed in CRS structure cptr, 
   ! cind with ngc colours in total
   DO col=1,ngc
