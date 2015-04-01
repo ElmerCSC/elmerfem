@@ -4806,6 +4806,8 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     TYPE(Matrix_t), POINTER :: DualProjector    
 
+    LOGICAL :: DualMaster, DualSlave, DualLCoeff, BiorthogonalBasis
+
     CALL Info('LevelProjector','Creating projector for a levelized mesh',Level=7)
 
     IF(.NOT. (DoEdges .OR. DoNodes ) ) THEN
@@ -4982,6 +4984,32 @@ END SUBROUTINE GetMaxDefs
       DualProjector % FORMAT = MATRIX_LIST
       DualProjector % ProjectorType = PROJECTOR_TYPE_GALERKIN
       Projector % EMatrix => DualProjector
+    END IF
+
+    ! Check whether biorthogonal basis for projectors requested:
+    ! ----------------------------------------------------------
+    BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
+    IF (BiOrthogonalBasis) THEN
+      DualSlave  = ListGetLogical(BC, 'Biorthogonal Dual Slave', Found)
+      IF(.NOT.Found) DualSlave  = .TRUE.
+
+      DualMaster = ListGetLogical(BC, 'Biorthogonal Dual Master', Found)
+      IF(.NOT.Found) DualMaster = .TRUE.
+
+      DualLCoeff = ListGetLogical(BC, 'Biorthogonal Dual Lagrange Coefficients', Found)
+      IF(.NOT.Found) DualLCoeff = .FALSE.
+
+      IF(DualLCoeff) THEN
+        DualSlave  = .FALSE.
+        DualMaster = .FALSE.
+        CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.FALSE.)
+      ELSE
+        CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.TRUE.)
+      END IF
+
+      Projector % Child => AllocateMatrix()
+      Projector % Child % Format = MATRIX_LIST
+      CALL Info('LevelProjector','Using biorthogonal basis, as requested',Level=8)      
     END IF
 
 
@@ -6699,7 +6727,7 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: x(10),y(10),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange 
+          SumArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , val_dual
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol
       REAL(KIND=dp) :: TotRefArea, TotSumArea
@@ -6713,6 +6741,8 @@ END SUBROUTINE GetMaxDefs
       INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles
       LOGICAL :: SaveElem
       CHARACTER(LEN=20) :: FileName
+
+      REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
 
       CALL Info('LevelProjector','Creating weak constraints using a generic integrator',Level=8)      
 
@@ -6728,6 +6758,8 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
       ALLOCATE( Basis(n), BasisM(n) )
       ALLOCATE( dBasisdx(n,3), WBasis(n,3), WBasisM(n,3), RotWBasis(n,3) )
+
+      IF(BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
 
       Nodes % z  = 0.0_dp
       NodesM % z = 0.0_dp
@@ -7080,6 +7112,46 @@ END SUBROUTINE GetMaxDefs
             NodesT % y(2) = y(k+1)
             NodesT % x(3) = x(k+2)
             NodesT % y(3) = y(k+2)
+
+            IF(BiOrthogonalBasis) THEN
+              MASS  = 0
+              CoeffBasis = 0
+              DO nip=1, IP % n 
+                stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
+                    IP % v(nip),IP % w(nip),detJ,Basis)
+
+                ! We will actually only use the global coordinates and the integration weight 
+                ! from the temporal mesh. 
+              
+                ! Global coordinates of the integration point
+                xt = SUM( Basis(1:3) * NodesT % x(1:3) )
+                yt = SUM( Basis(1:3) * NodesT % y(1:3) )
+                zt = 0.0_dp
+              
+                ! Integration weight for current integration point
+                Wtemp = DetJ * IP % s(nip)
+                sumarea = sumarea + Wtemp
+              
+                ! Integration point at the slave element
+                CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
+                stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+
+                DO i=1,n
+                  DO j=1,n
+                    MASS(i,j) = MASS(i,j) + wTemp * Basis(i) * Basis(j)
+                  END DO
+                  CoeffBasis(i) = CoeffBasis(i) + wTemp * Basis(i)
+                END DO
+              END DO
+
+              CALL InvertMatrix( MASS, n )
+
+              DO i=1,n
+                DO j=1,n
+                  MASS(i,j) = MASS(i,j) * CoeffBasis(i)
+                END DO
+              END DO
+            END IF
             
             ! Integration over the temporal element
             DO nip=1, IP % n 
@@ -7130,6 +7202,15 @@ END SUBROUTINE GetMaxDefs
 
               ! Add the nodal dofs
               IF( DoNodes .AND. .NOT. StrongNodes ) THEN
+                IF(BiOrthogonalBasis) THEN
+                  CoeffBasis = 0._dp
+                  DO i=1,n
+                    DO j=1,n
+                      CoeffBasis(i) = CoeffBasis(i) + MASS(i,j) * Basis(j)
+                    END DO
+                  END DO
+                END IF
+
                 DO j=1,n 
                   jj = Indexes(j)                                    
                   nrow = NodePerm(InvPerm1(jj))
@@ -7137,16 +7218,32 @@ END SUBROUTINE GetMaxDefs
 
                   Projector % InvPerm(nrow) = InvPerm1(jj)
                   val = Basis(j) * Wtemp
+                  IF(BiorthogonalBasis) val_dual = CoeffBasis(j) * Wtemp
 
                   DO i=1,n
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                           InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val ) 
+
+                    IF(BiOrthogonalBasis) THEN
+                      CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                            InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val_dual ) 
+                    END IF
                   END DO
 
                   DO i=1,nM
                     IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                         InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )                   
+
+                    IF(BiOrthogonalBasis) THEN
+                      IF(DualMaster.OR.DualLCoeff) THEN
+                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                              InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val_dual ) 
+                      ELSE
+                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                              InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val ) 
+                      END IF
+                    END IF
                   END DO
                 END DO
               END IF
@@ -7302,7 +7399,7 @@ END SUBROUTINE GetMaxDefs
           SumArea,MaxErr,MinErr,Err,uvw(3),ArcRange, val_dual
       REAL(KIND=dp) :: TotRefArea, TotSumArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
-      LOGICAL :: LeftCircle, Stat, DualMaster, DualSlave, DualLCoeff
+      LOGICAL :: LeftCircle, Stat
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Variable_t), POINTER :: TimestepVar
 
@@ -7311,7 +7408,6 @@ END SUBROUTINE GetMaxDefs
       LOGICAL :: SaveElem
       CHARACTER(LEN=20) :: FileName
 
-      LOGICAL :: BiOrthogonalBasis
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
 
       CALL Info('LevelProjector','Creating weak constraints using a 1D integrator',Level=8)      
@@ -7328,31 +7424,7 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
       ALLOCATE( Basis(n), BasisM(n) )
 
-      BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
-      IF (BiOrthogonalBasis) THEN
-        DualSlave  = ListGetLogical(BC, 'Biorthogonal Dual Slave', Found)
-        IF(.NOT.Found) DualSlave  = .TRUE.
-
-        DualMaster = ListGetLogical(BC, 'Biorthogonal Dual Master', Found)
-        IF(.NOT.Found) DualMaster = .TRUE.
-
-        DualLCoeff = ListGetLogical(BC, 'Biorthogonal Dual Lagrange Coefficients', Found)
-        IF(.NOT.Found) DualLCoeff = .FALSE.
-
-        IF(DualLCoeff) THEN
-          DualSlave  = .FALSE.
-          DualMaster = .FALSE.
-          CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.FALSE.)
-        ELSE
-          CALL ListAddLogical( CurrentModel % Solver % Values, 'Use Transpose Values',.TRUE.)
-        END IF
-
-        Projector % Child => AllocateMatrix()
-        Projector % Child % Format = MATRIX_LIST
-
-        ALLOCATE(CoeffBasis(n), MASS(n,n))
-        CALL Info('LevelProjector','Using biorthogonal basis, as requested',Level=8)      
-      END IF
+      IF (BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
 
       Nodes % y  = 0.0_dp
       NodesM % y = 0.0_dp
@@ -7578,7 +7650,7 @@ END SUBROUTINE GetMaxDefs
               
               Projector % InvPerm(nrow) = InvPerm1(jj)
               val = Basis(j) * Wtemp
-              IF(BiorthogonalBasis ) THEN
+              IF(BiorthogonalBasis) THEN
                 val_dual  = CoeffBasis(j) * Wtemp
               END IF
 
@@ -7592,7 +7664,6 @@ END SUBROUTINE GetMaxDefs
                 END IF
               END DO
               
-              val = Basis(j) * Wtemp
               DO i=1,nM
                 CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                     InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )
