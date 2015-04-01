@@ -83,12 +83,13 @@ SUBROUTINE FreeSurfaceSolver_RotInit( Model,Solver,dt,TransientSimulation )
   END DO
 
   !Push to globals
-  WRITE(OrientVarName, '(a,a,a)') TRIM(VariableName),' Orientation' 
+  WRITE(OrientVarName, '(a,a)') TRIM(VariableName),' Orientation' 
   ALLOCATE(OrientVarPointer(3))
 
   CALL VariableAdd(Model % Mesh % Variables, Model % Mesh, Solver, OrientVarName,3,OrientVarPointer)
-  OrientVar => VariableGet(Model %  Mesh % Variables, OrientVarName, Found)
-  IF(.NOT. Found) CALL FATAL(SolverName, "Internal problem set/getting Orientation Variable")
+  OrientVar => VariableGet(Model %  Mesh % Variables, OrientVarName, .TRUE.)
+  IF(.NOT. ASSOCIATED(OrientVar)) &
+       CALL FATAL(SolverName, "Internal problem set/getting Orientation Variable")
   OrientVar % Values = Orientation
 
   RotationMatrix = ComputeRotationMatrix(Orientation)

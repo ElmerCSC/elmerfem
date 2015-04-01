@@ -668,8 +668,8 @@ MODULE LoadMod
 
             INTEGER(KIND=AddrInt) :: fptr
             REAL(KIND=dp), DIMENSION(:) CONTIG :: x,b
-            INTEGER :: ipar(50)
-            REAL(KIND=dp) :: dpar(50)
+            INTEGER :: ipar(HUTI_IPAR_DFLTSIZE)
+            REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE)
             REAL(KIND=dp) :: work(:,:)
             INTEGER(KIND=Addrint) :: mvptr, pcondptr, pcondrptr, &
                                      dotptr, normptr, stopcptr
@@ -724,8 +724,8 @@ MODULE LoadMod
 
             INTEGER(KIND=AddrInt) :: fptr
             COMPLEX(KIND=dp), DIMENSION(:) CONTIG :: x,b
-            INTEGER :: ipar(50)
-            REAL(KIND=dp) :: dpar(50)
+            INTEGER :: ipar(HUTI_IPAR_DFLTSIZE)
+            REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE)
             COMPLEX(KIND=dp) :: work(:,:)
             INTEGER(KIND=Addrint) :: mvptr, pcondptr, pcondrptr, &
                                      dotptr, normptr, stopcptr
@@ -766,7 +766,7 @@ MODULE LoadMod
             ! Stopping criterion operator
             cfptr = TRANSFER(stopcptr, cfptr)
             IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, stopcfun)
-
+            
             ! Finally, do the itercall
             cfptr = TRANSFER(fptr, cfptr)
             CALL C_F_PROCPOINTER(cfptr, iterfun)

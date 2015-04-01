@@ -1,4 +1,17 @@
 
+IF(CMAKE_CROSSCOMPILING)
+  IF(NATIVE_BUILD_FLAGS)
+    IF(CMAKE_BUILD_TYPE)
+      STRING(TOUPPER _${CMAKE_BUILD_TYPE} _build_type)
+      SET(CMAKE_C_FLAGS${_build_type} "")
+    ENDIF()
+    SET(CMAKE_C_FLAGS ${NATIVE_BUILD_FLAGS})
+    MESSAGE(STATUS "Resetting build flags for Elmergrid: ${NATIVE_BUILD_FLAGS}")
+  ELSE()
+    MESSAGE(WARNING "Crosscompiling ElmerGrid, no native build flags set")
+  ENDIF()
+ENDIF()
+
 ADD_SUBDIRECTORY(metis)
 
 SET(elmergrid_SRCS common.h femdef.h femelmer.h femfilein.h
@@ -10,12 +23,13 @@ SET(elmergrid_SRCS common.h femdef.h femelmer.h femfilein.h
 INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/elmergrid/src/metis)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/elmergrid/src)
 
+ADD_DEFINITIONS(-DDISABLE_MATC)
+
 ADD_EXECUTABLE(ElmerGrid ${elmergrid_SRCS})
 
-TARGET_LINK_LIBRARIES(ElmerGrid matc metis)
+TARGET_LINK_LIBRARIES(ElmerGrid metis m)
 IF(NOT(WIN32))
   SET_TARGET_PROPERTIES(ElmerGrid PROPERTIES INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
 ENDIF()
 
-#INSTALL(PROGRAMS ${CMAKE_BINARY_DIR}/elmergrid/src/ElmerGrid DESTINATION "bin")
 INSTALL(TARGETS ElmerGrid RUNTIME DESTINATION "bin")
