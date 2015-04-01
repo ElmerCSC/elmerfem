@@ -18,10 +18,16 @@ Body 1 :: Equation = 1
 Body 1 :: Body Force = 1
 
 Body Force 1 :: Source = Real 1
-Equation 1 :: Element="p:3"
-Equation 1 :: Active Solvers = 1
+Equation 1 :: Element="p:6"
+Equation 1 :: Active Solvers(2) = 1 2
 
 Solver 1
+  Equation = Mesh Update
+  Exec Solver = Before Simulation
+  Linear System Solver = Direct
+End
+
+Solver 2
   Equation = "Poisson"
 
   Variable = "Potential"
@@ -35,10 +41,12 @@ End
 Boundary Condition 1
   Target Boundaries(4) = 1 2 3 4
   Potential = Real 0
+  Mesh Update 1 = Real Procedure "Poisson" "Circx"
+  Mesh Update 2 = Real Procedure "Poisson" "Circy"
 End
 
 
-Solver 1 :: Reference Norm = Real 0.12579221
+Solver 2 :: Reference Norm = Real 0.75409042E-01
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.10163229\n" );
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.75409042E-01\n" );

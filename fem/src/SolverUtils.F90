@@ -2230,7 +2230,11 @@ CONTAINS
        DispVals => Solver % Variable % Values
 
        IF( CalculateVelocity ) THEN
-         PrevDispVals => Solver % Variable % PrevValues(:,1)
+         IF( Solver % TimeOrder == 1 ) THEN
+           PrevDispVals => Solver % Variable % PrevValues(:,1)
+         ELSE
+           PrevDispVals => Solver % Variable % PrevValues(:,3)
+         END IF
          IF(.NOT. ASSOCIATED( PrevDispVals ) ) CALL Fatal('DetermineContact',&
              'Previous displacement field required!')
        END IF
@@ -6653,8 +6657,10 @@ END FUNCTION SearchNodeL
     END IF
 
 
-    ! Only 1st order velocity computation implemented so far...
-    IF ( Solver % TimeOrder == 1 ) THEN
+    ! Compute derivative of solution with time i.e. velocity 
+    ! For 2nd order schemes there is direct pointer to the velocity component
+    ! Thus only 1st order schemes need to be computed.
+    IF( Solver % TimeOrder == 1) THEN
       DoIt = .FALSE.
       IF( SteadyState ) THEN
         DoIt = ListGetLogical( SolverParams,'Calculate Velocity',Stat)
@@ -6665,7 +6671,7 @@ END FUNCTION SearchNodeL
         TimestepVar => VariableGet( Solver % Mesh % Variables, 'timestep size' )
         dt = TimestepVar % Values(1) 
         str = TRIM( Solver % Variable % Name ) // ' Velocity'
-        VeloVar => VariableGet( Solver % Mesh % Variables, str )
+        VeloVar => VariableGet( Solver % Mesh % Variables, str )        
         VeloVar % Values = (x - Solver % Variable % PrevValues(:,1)) / dt
       END IF
     END IF
