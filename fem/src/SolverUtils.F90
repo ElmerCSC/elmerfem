@@ -1806,6 +1806,10 @@ CONTAINS
        Projector => MortarBC % Projector
        IF(.NOT. ASSOCIATED(Projector) ) CYCLE
 
+       ! Sometimes the projector may be empty 
+       IF( Projector % NumberOfRows == 0 ) CYCLE
+       IF( ALL( Projector % InvPerm == 0 ) ) CYCLE
+
        BC => Model % BCs(bc_ind) % Values
 
        CALL Info('DetermineContact','Set contact for boundary: '&
@@ -1918,6 +1922,7 @@ CONTAINS
        CALL Info('DetermineContactSet',Message,Level=5)
 
        IF( NoSlip ) THEN
+         !PRINT *,'NoSlip:',DofN,DofT1,DofT2,Dofs
          MortarBC % Active( DofT1 :: Dofs ) = MortarBC % Active( DofN :: Dofs )
          IF( Dofs == 3 ) THEN
            MortarBC % Active( DofT2 :: Dofs ) = MortarBC % Active( DofN :: Dofs ) 
@@ -2222,10 +2227,13 @@ CONTAINS
 
        REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactDist(3), ContactVelo(3)
        REAL(KIND=dp), POINTER :: DispVals(:), PrevDispVals(:) 
-       REAL(KIND=dp) :: MinDist, MaxDist
+       REAL(KIND=dp) :: MinDist, MaxDist, Wlim
        TYPE(Matrix_t), POINTER :: ActiveProjector
-       LOGICAL :: IsSlave, IsMaster
+       LOGICAL :: IsSlave, IsMaster, Found
+       REAL(KIND=dp) :: wtot
 
+
+       Wlim = ListGetCReal(BC,'Contact Weight Minimum Limit',Found ) 
 
        DispVals => Solver % Variable % Values
 
@@ -2244,6 +2252,7 @@ CONTAINS
        ActiveProjector => Projector
        MinDist = HUGE(MinDist)
        MaxDist = -HUGE(MaxDist)
+       Found = .FALSE.
 
 100    CONTINUE
 
@@ -2280,9 +2289,9 @@ CONTAINS
            ! is added to the coordinate!
            coeff = ActiveProjector % Values(j)
 
-           ! Only compute the sum related to the active projector
+           ! The postive and negative weight are equal and opposite in sign
            IF( coeff > 0.0_dp ) THEN
-             wsum = wsum + coeff 
+             wsum = wsum + coeff
            END IF
 
            coord(1) = Mesh % Nodes % x( k ) 
@@ -2350,16 +2359,31 @@ CONTAINS
            END IF
          END DO
          
+         ! Omit too small total weight
+         IF( ABS( wsum ) < TINY( wsum ) ) CYCLE
+         IF(ActiveProjector % InvPerm(i) <= 0 ) CYCLE
+
+         j = WeightVar % Perm( ActiveProjector % InvPerm(i) )
+         wtot = WeightVar % Values( j ) 
+
+         IF( wsum < Wlim * wtot ) THEN
+           PRINT *,'Skipping this entry:',wsum/wtot
+           CYCLE
+         END IF
+
          ! Divide by weight to get back to real distance in the direction of the normal
-         ContactDist = ContactDist(1) / wsum 
+         ContactDist = ContactDist / wsum 
+
          Dist = DistSign * Dist / wsum
          IF( CalculateVelocity ) THEN
            ContactVelo = ContactVelo / wsum
          END IF
 
-         ! PRINT *,'ContactVelo:',i, ContactVelo(1:Dofs), wsum, IsSlave
-
+        ! PRINT *,'ContactDist:',i,Dist,ContactDist(1:Dofs)
+        ! PRINT *,'ContactVelo:',i, ContactVelo(1:Dofs), wsum, IsSlave
+         
          IF( IsSlave ) THEN
+           Found = .TRUE.
            MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactDist(1)
            IF( NoSlip ) THEN
              MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactDist(2) 
@@ -2370,11 +2394,11 @@ CONTAINS
            
            MinDist = MIN( Dist, MinDist ) 
            MaxDist = MAX( Dist, MaxDist )
-         END IF
-
-         IF( IsMaster ) THEN
+         ELSE
            Dist = -Dist
-           ContactVelo = -ContactVelo
+           IF( CalculateVelocity ) THEN
+             ContactVelo = -ContactVelo
+           END IF
          END IF
 
          ! We use the same permutation for all boundary variables
@@ -2402,9 +2426,13 @@ CONTAINS
          PRINT *,'Velo range:',MINVAL( VeloVar % Values), MAXVAL( VeloVar % Values)
        END IF
 
-       PRINT *,'Distance Range:',MinDist, MaxDist
-       PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
-       
+       IF( Found ) THEN
+         PRINT *,'Distance Range:',MinDist, MaxDist
+         PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
+       ELSE
+         PRINT *,'No nodes with sufficient weights'
+       END IF
+
      END SUBROUTINE CalculateMortarDistance
 
 
