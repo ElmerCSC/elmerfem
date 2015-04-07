@@ -7412,9 +7412,9 @@ END SUBROUTINE GetMaxDefs
       TYPE(Element_t) :: ElementT
       TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
-      REAL(KIND=dp) :: xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
-          xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,MaxErr,MinErr,Err,uvw(3),ArcRange, val_dual
+      REAL(KIND=dp) :: xt,yt,zt,xmax,xmin,xmaxm,ymaxm,&
+          xminm,yminm,DetJ,Wtemp,q,u,v,w,um,vm,wm,val,RefArea,dArea,&
+          SumArea,MaxErr,MinErr,Err,uvw(3),val_dual
       REAL(KIND=dp) :: TotRefArea, TotSumArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       LOGICAL :: LeftCircle, Stat
@@ -7459,8 +7459,6 @@ END SUBROUTINE GetMaxDefs
       MinErrInd = 0
       zt = 0.0_dp
       LeftCircle = .FALSE.
-      ArcTol = ArcCoeff * Xtol
-      ArcRange = ArcCoeff * Xrange 
      
       ! The temporal triangle used in the numerical integration
       ElementT % TYPE => GetElementType( 202, .FALSE. )
@@ -7478,23 +7476,18 @@ END SUBROUTINE GetMaxDefs
         Element => BMesh1 % Elements(ind)        
         Indexes => Element % NodeIndexes
         
-        n = Element % TYPE % NumberOfNodes
-        
-        ! Transform the angle to archlength in order to have correct balance between x and y
-        Nodes % x(1:n) = ArcCoeff * BMesh1 % Nodes % x(Indexes(1:n))
+        n = Element % TYPE % NumberOfNodes        
+        Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
 
         xmin = MINVAL(Nodes % x(1:n))
         xmax = MAXVAL(Nodes % x(1:n))
         
-        ymin = MINVAL(Nodes % y(1:n))
-        ymax = MAXVAL(Nodes % y(1:n))
-
         IF( FullCircle ) THEN
-          LeftCircle = ( ALL( ABS( Nodes % x(1:n) ) > ArcCoeff * 90.0_dp ) )
+          LeftCircle = ( ALL( ABS( Nodes % x(1:n) ) > 90.0_dp ) )
           IF( LeftCircle ) THEN
             DO j=1,n
               IF( Nodes % x(j) < 0.0 ) Nodes % x(j) = &
-                  Nodes % x(j) + ArcCoeff * 360.0_dp
+                  Nodes % x(j) + 360.0_dp
             END DO
           END IF
         END IF
@@ -7522,16 +7515,17 @@ END SUBROUTINE GetMaxDefs
           
           ElementM => BMesh2 % Elements(indM)        
           IndexesM => ElementM % NodeIndexes
-          nM = ElementM % TYPE % NumberOfNodes
 
-          NodesM % x(1:nM) = ArcCoeff * BMesh2 % Nodes % x(IndexesM(1:nM))
+          nM = ElementM % TYPE % NumberOfNodes
+          NodesM % x(1:nM) = BMesh2 % Nodes % x(IndexesM(1:nM))
+
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
             ! Omit the element if it is definately on the right circle
-            IF( ALL( ABS( NodesM % x(1:nM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
+            IF( ALL( ABS( NodesM % x(1:nM) ) - 90.0 < XTol ) ) CYCLE
             DO j=1,nM
               IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = &
-                  NodesM % x(j) + ArcCoeff * 360.0_dp
+                  NodesM % x(j) + 360.0_dp
             END DO
           END IF
           
@@ -7540,15 +7534,15 @@ END SUBROUTINE GetMaxDefs
 
           IF( Repeating ) THEN
             ! Enforce xmaxm to be on the same interval than xmin
-            Nrange = FLOOR( (xmaxm-xmin+ArcTol) / ArcRange )
+            Nrange = FLOOR( (xmaxm-xmin+XTol) / XRange )
             IF( Nrange /= 0 ) THEN
-              xminm = xminm - Nrange * ArcRange
-              xmaxm = xmaxm - Nrange * ArcRange
-              NodesM % x(1:nM) = NodesM % x(1:nM) - NRange * ArcRange 
+              xminm = xminm - Nrange * XRange
+              xmaxm = xmaxm - Nrange * XRange
+              NodesM % x(1:nM) = NodesM % x(1:nM) - NRange * XRange 
             END IF
 
             ! Check whether there could be a intersection in an other interval as well
-            IF( xminm + ArcRange < xmax + ArcTol ) THEN
+            IF( xminm + XRange < xmax + XTol ) THEN
               Nrange2 = 1
             ELSE
               Nrange2 = 0
@@ -7556,7 +7550,7 @@ END SUBROUTINE GetMaxDefs
           END IF
 
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
-            IF( xmaxm - xminm > ArcCoeff * 180.0 ) CYCLE
+            IF( xmaxm - xminm > 180.0 ) CYCLE
           END IF
 
 200       IF( xminm >= xmax ) GOTO 100
@@ -7648,9 +7642,6 @@ END SUBROUTINE GetMaxDefs
             CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
             stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
             
-            !IF( ANY( Basis(1:2) < 0.0 ) ) PRINT *,'Basis:',BasisM(1:2)
-            !IF( ANY( BasisM(1:2) < 0.0 ) ) PRINT *,'BasisM:',BasisM(1:2)
-
             IF(BiOrthogonalBasis) THEN
               CoeffBasis = 0._dp
               DO i=1,n
@@ -7725,9 +7716,9 @@ END SUBROUTINE GetMaxDefs
 
 100       IF( Repeating ) THEN
             IF( NRange2 /= 0 ) THEN
-              xminm = xminm + ArcCoeff * Nrange2 * ArcRange
-              xmaxm = xmaxm + ArcCoeff * Nrange2 * ArcRange
-              NodesM % x(1:n) = NodesM % x(1:n) + NRange2 * ArcRange 
+              xminm = xminm + Nrange2 * XRange
+              xmaxm = xmaxm + Nrange2 * XRange
+              NodesM % x(1:n) = NodesM % x(1:n) + NRange2 * XRange 
               NRange = NRange + NRange2
               NRange2 = 0
               GOTO 200
