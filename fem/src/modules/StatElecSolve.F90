@@ -190,12 +190,12 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: CapMatrixFile, Name, VarName
   TYPE(ValueList_t), POINTER :: Params, BC 
   
-  SAVE LocalStiffMatrix, Load, LocalForce, Pwrk, PotDiff, &
+  SAVE LocalStiffMatrix, Load, LocalForce, PotDiff, &
       ElementNodes, CalculateFlux, CalculateEnergy, &
       AllocationsDone, Permittivity, &
       CapBodies, CalculateCapMatrix, CapBodyIndex, &
       CapMatrix, CalculateField, CapMatrixFile, ConstantWeights, &
-      PiezoCoeff, PiezoMaterial, Displacement, Pz_w, &
+      PiezoCoeff, PiezoMaterial, Displacement, Pwrk, Pz_w, &
       ConstantBulk, AssemblyDone, Alpha, Beta, LayerH, LayerV, &
       PermIso, Charges, Basis, dBasisdx
   
@@ -204,7 +204,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
   !$omp               Beta, LayerV, LayerH, PermIso, LocalStiffMatrix, &
   !$omp               Load, PotDiff, Displacement, PiezoCoeff, &
   !$omp               CapBodyIndex, Charges, CapMatrix, Pwrk, Pz_w, &
-  !$omp               Basis, dBasisdx)
+  !$omp               Basis, dBasisdx, PiezoMaterial)
   
   INTERFACE
     FUNCTION ElectricBoundaryResidual( Model,Edge,Mesh,Quant,Perm,Gnorm ) RESULT(Indicator)
@@ -594,7 +594,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
      SUBROUTINE BulkAssembly()
        !------------------------------------------------------------------------------
-       !$omp parallel shared(Solver, Model, PiezoMaterial, dim, at0, &
+       !$omp parallel shared(Solver, Model, dim, at0, &
        !$omp                 PermittivityOfVacuum, Message) &
        !$omp          private(t, CurrentElement, i, j, k, n, ntot, NodeIndexes, &
        !$omp                  bf_id, gotIt, Var, TID) default(none)
