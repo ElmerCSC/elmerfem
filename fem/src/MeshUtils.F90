@@ -7243,7 +7243,7 @@ END SUBROUTINE GetMaxDefs
                           InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val ) 
 
                     IF(BiOrthogonalBasis) THEN
-                      CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                      CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
                             InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val_dual ) 
                     END IF
                   END DO
@@ -7255,10 +7255,10 @@ END SUBROUTINE GetMaxDefs
 
                     IF(BiOrthogonalBasis) THEN
                       IF(DualMaster.OR.DualLCoeff) THEN
-                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                        CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
                               InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val_dual ) 
                       ELSE
-                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                        CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
                               InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val ) 
                       END IF
                     END IF
@@ -7722,7 +7722,7 @@ END SUBROUTINE GetMaxDefs
               END DO
             END IF
           END DO
-          
+
 100       IF( Repeating ) THEN
             IF( NRange2 /= 0 ) THEN
               xminm = xminm + ArcCoeff * Nrange2 * ArcRange
