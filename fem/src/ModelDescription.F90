@@ -258,6 +258,7 @@ CONTAINS
 
     TYPE(Solver_t), POINTER :: ASolvers(:)
 
+    TYPE(ComponentArray_t), POINTER  :: AComponent(:)
     TYPE(MaterialArray_t), POINTER  :: AMaterial(:)
     TYPE(EquationArray_t), POINTER  :: AEquation(:)
     TYPE(BodyArray_t), POINTER      :: ABody(:)
@@ -307,6 +308,7 @@ CONTAINS
         ELSE IF ( Name(1:18) == 'initial conditions' ) THEN
         ELSE IF ( Name(1:10) == 'boundaries' ) THEN
         ELSE IF ( Name(1:19) == 'boundary conditions' ) THEN
+        ELSE IF ( Name(1:10) == 'components' ) THEN
         ELSE IF ( Name(1:9)  == 'equations' ) THEN
         ELSE IF ( Name(1:7)  == 'solvers' ) THEN
         ELSE IF ( Name(1:9)  == 'materials' ) THEN
@@ -356,6 +358,7 @@ CONTAINS
       Model % ICs => NULL()
       Model % Bodies => NULL()
       Model % Solvers => NULL()
+      Model % Components => NULL()
       Model % Equations => NULL()
       Model % Materials => NULL()
       Model % Constants => NULL()
@@ -731,6 +734,51 @@ CONTAINS
            List => Model % Bodies(Arrayn) % Values
         END IF
 
+      ELSE IF ( Section(1:9) == 'component' ) THEN
+
+        IF ( ScanOnly ) THEN
+           READ( Section(10:),*,iostat=iostat ) Arrayn
+           IF( iostat /= 0 ) THEN
+             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
+           END IF
+           Model % NumberOFComponents = MAX( Model % NumberOFComponents, ArrayN )
+        ELSE
+           IF ( .NOT.ASSOCIATED( Model % Components ) ) THEN
+             ALLOCATE( Model % Components(Model % NumberOfComponents) )
+             DO i=1,Model % NumberOfComponents
+               NULLIFY( Model % Components(i) % Values )
+             END DO
+           ELSE
+              READ( Section(10:),*,iostat=iostat ) Arrayn
+              IF( iostat /= 0 ) THEN
+                CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
+              END IF
+              Model % NumberOFComponents = MAX( Arrayn, Model % NumberOFComponents )
+              IF ( SIZE( Model % Components ) < Model % NumberOfComponents ) THEN
+                 ALLOCATE( ABody(Model % NumberOfComponents) )
+                 DO i=1,SIZE(Model % Components)
+                    AComponent(i) % Values => Model % Components(i) % Values
+                 END DO
+                 DO i=SIZE(Model % Components)+1,Model % NumberOfComponents
+                    NULLIFY( AComponent(i) % Values )
+                 END DO
+                 DEALLOCATE( Model % Components )
+                 Model % Components => AComponent
+              END IF
+           END IF
+
+           READ( Section(10:),*,iostat=iostat ) Arrayn
+           IF( iostat /= 0 ) THEN
+             CALL Fatal('LoadInputFile','Problem reading: '//TRIM(Section))
+           END IF
+           IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfComponents ) THEN
+              WRITE( Message, * ) 'Component section number: ',Arrayn, &
+                        ' exeeds header value. Aborting. '
+              CALL Fatal( 'Model Input', Message )
+           END IF
+           List => Model % Components(Arrayn) % Values
+        END IF
+
       ELSE IF ( Section(1:6) == 'solver' ) THEN
 
         IF ( ScanOnly ) THEN
@@ -815,6 +863,8 @@ CONTAINS
           Model % BodyForces(Arrayn) % Values => List
         ELSE IF ( Section(1:8) == 'equation' ) THEN
           Model % Equations(Arrayn) % Values  => List
+        ELSE IF ( Section(1:9) == 'component' ) THEN
+          Model % Components(Arrayn) % Values => List
         ELSE IF ( Section(1:4) == 'body' ) THEN
           Model % Bodies(Arrayn) % Values => List
         ELSE IF ( Section(1:6) == 'solver' ) THEN
