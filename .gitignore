@@ -2,3 +2,11 @@
 tags
 *.o
 build
+CMakeFiles
+CTestTestfile.cmake
+Elmer-linux-ubuntu12.cmake
+Makefile
+builddir
+cmake_install.cmake
+compile.sh
+
