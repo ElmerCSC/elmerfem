@@ -70,12 +70,12 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM, bf_id_FS 
    REAL(KIND=dp) :: y, pw, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: Zsl, rhow, gravity
-   REAL(KIND=dp), ALLOCATABLE :: S(:), auxReal(:), Ns(:),  a_perp(:), SourceFunc(:), normal(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: S(:), Ns(:),  a_perp(:), SourceFunc(:), normal(:,:)
    LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE. 
    CHARACTER(LEN=MAX_NAME_LEN)  :: BottomSurfaceName
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
-   SAVE S, rhow, gravity, Zsl, auxReal, NormalFlux, a_perp, SourceFunc
+   SAVE S, rhow, gravity, Zsl, NormalFlux, a_perp, SourceFunc
    SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal
    SAVE BottomSurfaceName, bf_id_FS 
    
@@ -84,16 +84,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
    dt = Model % Solver % dt 
-
-   IF(FirstTime .OR. Model % Mesh % Changed) THEN
-      IF(.NOT. FirstTime) &
-           DEALLOCATE(NodeOnBoundary, auxReal, SourceFunc)
-
-      ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
-      n = Model % MaxElementNodes 
-      ALLOCATE( auxReal(n), SourceFunc(n) )
-   END IF
-
+   
    IF (FirstTime) THEN
       NewTime = .TRUE.
       told = t
@@ -175,8 +166,14 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
 
    IF(FirstTime .OR. (NewTime .AND. Model % Mesh % Changed)) THEN
 
+      IF(.NOT. FirstTime) &
+           DEALLOCATE(NodeOnBoundary, SourceFunc)
+      ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
+      n = Model % MaxElementNodes 
+      ALLOCATE( SourceFunc(n) )
+
       FirstTime = .FALSE.
-      PRINT *, 'Debug, mesh changed so reallocating memory in Buoyancy'
+
       !-----------------------------------------------------------------
       ! Number of nodes concerned (needed to compute Ns from the normal)
       !-----------------------------------------------------------------
@@ -345,6 +342,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
       pw = -gravity * rhow * (Zsl - S(j))  
    END IF
    IF (pw > 0.0) pw = 0.0
+
 END FUNCTION SeaPressure
 
 
@@ -368,24 +366,34 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    INTEGER :: Nn, i, j, p, n, Nmax, bf_id, DIM 
    REAL(KIND=dp) :: y, C, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: rhow, gravity
-   REAL(KIND=dp), ALLOCATABLE :: auxReal(:), Ns(:), normal(:,:)
+   REAL(KIND=dp), ALLOCATABLE :: Ns(:), normal(:,:)
    LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS   
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
-   SAVE rhow, gravity, auxReal
+   SAVE rhow, gravity
    SAVE NumberOfNodesOnBoundary, NodeOnBoundary, normal 
 
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
    dt = Model % Solver % dt 
 
-   IF (FirstTime) THEN
-      FirstTime = .FALSE.
+   ! .OR. (NewTime .AND. Model % Mesh % Changed)
+   IF(FirstTime) THEN
+      NewTime = .TRUE.
+   ELSE IF(t > told) THEN
       NewTime = .TRUE.
       told = t
+   END IF
+
+   IF (FirstTime .OR. (NewTime .AND. Model % Mesh % Changed)) THEN
+
+      IF(.NOT. FirstTime) DEALLOCATE(NodeOnBoundary, Ns)
+      FirstTime = .FALSE.
+      NewTime = .FALSE.
+
       ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
       n = Model % MaxElementNodes 
-      ALLOCATE( auxReal(n) )
+
       DIM = CoordinateSystemDimension()
 
       rhow = GetConstReal( Model % Constants, 'Water Density', GotIt )
@@ -452,17 +460,7 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
       Model % CurrentElement => CurElement 
 
       ALLOCATE( Ns( NumberOfNodesOnBoundary ))
-      
-   ELSE
-      IF (t > told) THEN
-         NewTime = .TRUE.
-         told = t
-      END IF
-   ENDIF
-   
-   IF (NewTime) THEN
-      NewTime = .FALSE.
-      
+
       ! Compute Ns for new t
       ALLOCATE( Normal(3, NumberOfNodesOnBoundary))
       Ns = 0.0_dp
@@ -513,4 +511,5 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    ELSE
       C = 1.0e20_dp
    END IF
+
 END FUNCTION SeaSpring
