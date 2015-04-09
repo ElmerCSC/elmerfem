@@ -84,16 +84,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
    dt = Model % Solver % dt 
-
-   IF(FirstTime .OR. Model % Mesh % Changed) THEN
-      IF(.NOT. FirstTime) &
-           DEALLOCATE(NodeOnBoundary, auxReal, SourceFunc)
-
-      ALLOCATE( NodeOnBoundary( Model % Mesh % NumberOfNodes ))
-      n = Model % MaxElementNodes 
-      ALLOCATE( auxReal(n), SourceFunc(n) )
-   END IF
-
+   
    IF (FirstTime) THEN
       NewTime = .TRUE.
       told = t
