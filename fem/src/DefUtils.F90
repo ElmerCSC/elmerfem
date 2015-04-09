@@ -1543,6 +1543,20 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Get component list given component id
+  FUNCTION GetComponent(i) RESULT(list)
+!------------------------------------------------------------------------------
+     INTEGER :: i
+     TYPE(ValueList_t), POINTER :: list
+
+     list => Null()
+     IF(i>=0 .AND. i<=SIZE(CurrentModel % Components)) list=> &
+             CurrentModel % Components(i) % Values
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponent
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Returns the equation index of the active element
