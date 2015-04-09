@@ -671,7 +671,7 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
                    ' material ',  material_id
            END IF
         END IF
-        CALL INFO(SolverName,Message,Level=10)
+        CALL INFO(SolverName,Message,Level=25)
         !------------------------------------------------------------------------------
         ! no contribution proportional to temperature by default
         !------------------------------------------------------------------------------
