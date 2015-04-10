@@ -4975,13 +4975,17 @@ END SUBROUTINE GetMaxDefs
 
     ! If the number of periods is enforced use that instead since
     ! the Xrange periodicity might not be correct if the mesh has skew.
-    IF( Rotational) THEN
-      i = ListGetInteger( BC,'Rotational Projector Periods',Found ) 
-      IF( GenericIntegrator .AND. .NOT. Found ) THEN
-        CALL Fatal('LevelProjector',&
-            'Generic integrator requires > Rotational Projector Periods <')
+    IF( Rotational ) THEN
+      IF( FullCircle ) THEN
+        Xrange = 360.0_dp
+      ELSE 
+        i = ListGetInteger( BC,'Rotational Projector Periods',Found,minv=1 ) 
+        IF( GenericIntegrator .AND. .NOT. Found ) THEN
+          CALL Fatal('LevelProjector',&
+              'Generic integrator requires > Rotational Projector Periods <')
+        END IF
+        Xrange = 360.0_dp / i
       END IF
-      IF( i > 0 ) Xrange = 360.0_dp / i
     END IF
 
     ! This is the tolerance used to define constant direction in radians
@@ -6763,8 +6767,8 @@ END SUBROUTINE GetMaxDefs
       TYPE(Variable_t), POINTER :: TimestepVar
 
       ! These are used temporarely for debugging purposes
-      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles
-      LOGICAL :: SaveElem
+      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd
+      LOGICAL :: SaveElem, DebugElem
       CHARACTER(LEN=20) :: FileName
 
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
@@ -6774,10 +6778,13 @@ END SUBROUTINE GetMaxDefs
       Mesh => CurrentModel % Solver % Mesh 
 
       SaveInd = ListGetInteger( BC,'Level Projector Save Element Index',Found )
+      DebugInd = ListGetInteger( BC,'Level Projector Debug Element Index',Found )
+
       TimestepVar => VariableGet( Mesh % Variables,'Timestep',ThisOnly=.TRUE. )
       Timestep = NINT( TimestepVar % Values(1) )
  
       n = Mesh % MaxElementNodes
+
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
       ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n) )
       ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
@@ -6819,6 +6826,7 @@ END SUBROUTINE GetMaxDefs
 
         ! Optionally save the submesh for specified element, for vizualization and debugging
         SaveElem = ( SaveInd == ind )
+        DebugElem = ( DebugInd == ind )
 
         Element => BMesh1 % Elements(ind)        
         Indexes => Element % NodeIndexes
@@ -6835,12 +6843,6 @@ END SUBROUTINE GetMaxDefs
         Nodes % x(1:n) = ArcCoeff * BMesh1 % Nodes % x(Indexes(1:n))
         Nodes % y(1:n) = BMesh1 % Nodes % y(Indexes(1:n))
 
-        xmin = MINVAL(Nodes % x(1:n))
-        xmax = MAXVAL(Nodes % x(1:n))
-
-        ymin = MINVAL(Nodes % y(1:n))
-        ymax = MAXVAL(Nodes % y(1:n))
-
         IF( FullCircle ) THEN
           LeftCircle = ( ALL( ABS( Nodes % x(1:n) ) > ArcCoeff * 90.0_dp ) )
           IF( LeftCircle ) THEN
@@ -6850,6 +6852,12 @@ END SUBROUTINE GetMaxDefs
             END DO
           END IF
         END IF
+
+        xmin = MINVAL(Nodes % x(1:n))
+        xmax = MAXVAL(Nodes % x(1:n))
+
+        ymin = MINVAL(Nodes % y(1:n))
+        ymax = MAXVAL(Nodes % y(1:n))
                 
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
@@ -6866,6 +6874,16 @@ END SUBROUTINE GetMaxDefs
           END DO
           CLOSE( 10 )
         END IF
+        
+        IF( DebugElem ) THEN
+          PRINT *,'Debug Elem:',ind,n,LeftCircle
+          PRINT *,'ArcTol:',ArcTol
+          PRINT *,'X:',Nodes % x(1:n)
+          PRINT *,'Y:',Nodes % y(1:n)
+          PRINT *,'Xrange:',Xmin,Xmax
+          PRINT *,'Yrange:',Ymin,Ymax
+        END IF
+
 
         ! Currently a n^2 loop but it could be improved
         !--------------------------------------------------------------------
@@ -6924,6 +6942,12 @@ END SUBROUTINE GetMaxDefs
 
 200       IF( xminm > xmax - ArcTol ) GOTO 100
           IF( xmaxm < xmin + ArcTol ) GOTO 100
+
+          IF( DebugElem ) THEN
+            PRINT *,'Candidate Elem:',indM,nM
+            PRINT *,'X:',NodesM % x(1:nM)
+            PRINT *,'Y:',NodesM % y(1:nM)
+          END IF
 
           neM = ElementM % TYPE % NumberOfEdges
           IF( PiolaVersion .AND. neM == 4 ) THEN
@@ -7085,6 +7109,11 @@ END SUBROUTINE GetMaxDefs
 
           IF( kmax < 3 ) GOTO 100
 
+          IF( DebugElem ) THEN
+            PRINT *,'Corners:',kmax
+            PRINT *,'Center:',xt,yt
+          END IF
+
           ElemHits = ElemHits + 1
           ActiveHits = ActiveHits + kmax
 
@@ -7131,6 +7160,9 @@ END SUBROUTINE GetMaxDefs
             ! This check over area also automatically elimiates redundant nodes
             ! that were detected twice.
             dArea = 0.5*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
+
+            IF( DebugElem ) PRINT *,'dArea:',dArea,refArea
+
             IF( dArea < RelTolY**2 * RefArea ) CYCLE
             
             NodesT % x(2) = x(k+1)
@@ -7244,6 +7276,8 @@ END SUBROUTINE GetMaxDefs
                   Projector % InvPerm(nrow) = InvPerm1(jj)
                   val = Basis(j) * Wtemp
                   IF(BiorthogonalBasis) val_dual = CoeffBasis(j) * Wtemp
+
+                  IF( DebugElem ) PRINT *,'Vals:',val
 
                   DO i=1,n
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
@@ -8418,9 +8452,13 @@ END SUBROUTINE GetMaxDefs
 
       ! Eliminate the problematic discontinuity in case we have no full circle
       ! The discontinuity will be moved to some of angles (-90,0,90).
-      IF( .NOT. FullCircle ) THEN
+      IF( FullCircle ) THEN
+        CALL Info('RotationalInterfaceMeshes','Cylindrical interface seems to be a full circle',&
+            Level=6)
+      ELSE
         IF( Cylindrical ) THEN
-          CALL Info('RotationalInterfaceMeshes','Cylindrical interface not full circle')
+          CALL Info('RotationalInterfaceMeshes','Cylindrical interface not full circle',&
+              Level=6)
         ELSE IF( Hit180 ) THEN
           IF( .NOT. Hit0 ) THEN
             Fii = 0.0_dp
@@ -8516,42 +8554,41 @@ END SUBROUTINE GetMaxDefs
     Bmesh2 % MeshDim = 2      
 
     ! Cylindrical interface does not have symmetry as does the rotational!
-    IF( Cylindrical ) RETURN
+    IF( Cylindrical .OR. FullCircle ) RETURN
 
     ! If were are studying a symmetric segment then anylyze further the angle 
     !-------------------------------------------------------------------------
-    IF( .NOT. FullCircle ) THEN
-      dFii1 = x1r_max(1)-x1r_min(1)
-      dFii2 = x2r_max(1)-x2r_min(1)
-      
-      WRITE(Message,'(A,ES12.3)') 'This boundary dfii:  ',dFii1
-      CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
-      
-      WRITE(Message,'(A,ES12.3)') 'Target boundary dfii:  ',dFii2
-      CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
-      
-      err1 = 2 * ABS( dFii1 - dFii2 ) / ( dFii1 + dFii2 )
-      WRITE(Message,'(A,ES12.3)') 'Discrepancy in dfii:',err1
+    dFii1 = x1r_max(1)-x1r_min(1)
+    dFii2 = x2r_max(1)-x2r_min(1)
+
+    WRITE(Message,'(A,ES12.3)') 'This boundary dfii:  ',dFii1
+    CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
+
+    WRITE(Message,'(A,ES12.3)') 'Target boundary dfii:  ',dFii2
+    CALL Info('RotationalInterfaceMeshes',Message,Level=8)    
+
+    err1 = 2 * ABS( dFii1 - dFii2 ) / ( dFii1 + dFii2 )
+    WRITE(Message,'(A,ES12.3)') 'Discrepancy in dfii:',err1
+    CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
+
+    i = ListGetInteger(BParams,'Rotational Projector Periods',Found ) 
+    IF( .NOT. Found ) THEN
+      Nsymmetry = 360.0_dp / dFii2 
+      WRITE(Message,'(A,ES12.3)') 'Suggested sections in target:',Nsymmetry
       CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
-      
-      i = ListGetInteger(BParams,'Rotational Projector Periods',Found ) 
-      IF( .NOT. Found ) THEN
-        Nsymmetry = 360.0_dp / dFii2 
-        WRITE(Message,'(A,ES12.3)') 'Suggested sections in target:',Nsymmetry
-        CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
-        IF( ABS( Nsymmetry - NINT( Nsymmetry ) ) > 0.01 ) THEN          
-          IF( dFii1 < dFii2 ) THEN
-            CALL Info('RotationalInterfaceMeshes','You might try to switch master and target!',Level=3)
-          END IF
-          CALL Fatal('RotationalInterfaceMeshes','Check your settings, this cannot be periodic!')
+      IF( ABS( Nsymmetry - NINT( Nsymmetry ) ) > 0.01 ) THEN          
+        IF( dFii1 < dFii2 ) THEN
+          CALL Info('RotationalInterfaceMeshes','You might try to switch master and target!',Level=3)
         END IF
-      ELSE
-        WRITE(Message,'(A,I0)') 'Using enforced number of periods: ',i
-        CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
-        Nsymmetry = 360.0_dp / dFii2 
-        WRITE(Message,'(A,ES12.3)') 'Suggested number of periods:',Nsymmetry
-        CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
+        CALL Fatal('RotationalInterfaceMeshes','Check your settings, this cannot be periodic!')
       END IF
+      CALL ListAddInteger(BParams,'Rotational Projector Periods', NINT( Nsymmetry ) ) 
+    ELSE
+      WRITE(Message,'(A,I0)') 'Using enforced number of periods: ',i
+      CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
+      Nsymmetry = 360.0_dp / dFii2 
+      WRITE(Message,'(A,ES12.3)') 'Suggested number of periods:',Nsymmetry
+      CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
     END IF
 
   END SUBROUTINE RotationalInterfaceMeshes

@@ -1388,7 +1388,8 @@ END INTERFACE
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE==0 ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
-           CALL SolverActivate( CurrentModel,Solver,dt,Transient )
+          ! solver to be called prior to time looping can never be transient
+           CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
         END IF
      END DO
 
