@@ -4938,9 +4938,13 @@ END SUBROUTINE GetMaxDefs
       ! If strong projector is used for all edges then "StrideProjector" should 
       ! be recovered.
       IF( DoNodes ) THEN
-        StrongNodes = .NOT. IntGalerkin
-        IF( ListGetLogical( BC,'Level Projector Nodes Strong',Found ) ) StrongNodes = .TRUE.
-        IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) StrongNodes = .TRUE.
+        IF( GenericIntegrator ) THEN
+          StrongNodes = .FALSE.
+        ELSE
+          StrongNodes = .NOT. IntGalerkin
+          IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) StrongNodes = .TRUE.
+          IF( ListGetLogical( BC,'Level Projector Nodes Strong',Found ) ) StrongNodes = .TRUE.
+        END IF
       END IF
       
       IF( DoEdges ) THEN
@@ -5825,6 +5829,9 @@ END SUBROUTINE GetMaxDefs
           dx,dy,Xeps
       LOGICAL :: YConst, YConstM, XConst, XConstM, EdgeReady, Repeated, LeftCircle, &
           SkewEdge, AtRangeLimit
+
+
+      CALL Info('LevelProjector','Creating strong stride projector for edges assuming strides',Level=10)
 
       n = Mesh % NumberOfEdges
       IF( n == 0 ) RETURN      
@@ -7250,6 +7257,7 @@ END SUBROUTINE GetMaxDefs
 
                   DO i=1,nM
                     IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
+
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                         InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )                   
 
@@ -7864,25 +7872,22 @@ END SUBROUTINE GetMaxDefs
       
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',Found ) ) THEN
       DoEdges = .FALSE. 
+    ELSE IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Edges',Found ) ) THEN
+      DoEdges = .FALSE.
     ELSE
-      IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Edges',Found ) ) THEN
-        DoEdges = .FALSE.
-      ELSE
-        DoEdges = ( Mesh % NumberOfEdges > 0 )
-      END IF
+      DoEdges = ( Mesh % NumberOfEdges > 0 )
     END IF
     IF( DoEdges .AND. Mesh % NumberOfEdges == 0 ) THEN
       CALL Warn('WeightedProjectorDiscont','Edge basis requested but mesh has no edges!')
+      DoEdges = .FALSE.
     END IF
 
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',Found ) ) THEN
       DoNodes = .FALSE. 
+    ELSE IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Nodes',Found ) ) THEN
+      DoNodes = .FALSE.
     ELSE
-      IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Nodes',Found ) ) THEN
-        DoNodes = .FALSE.
-      ELSE
-        DoNodes = ( Mesh % NumberOfNodes > 0 )
-      END IF
+      DoNodes = ( Mesh % NumberOfNodes > 0 )
     END IF
 
     ! Should the projector be diagonal or mass matrix type 
