@@ -1,4 +1,15 @@
 *~
 tags
 *.o
+
+# build stuff
 build
+CMakeFiles
+CTestTestfile.cmake
+Elmer-linux-ubuntu12.cmake
+Makefile
+builddir
+cmake_install.cmake
+compile_devel.sh
+compile_trafotek.sh
+
