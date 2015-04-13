@@ -4938,13 +4938,15 @@ END SUBROUTINE GetMaxDefs
       ! If strong projector is used for all edges then "StrideProjector" should 
       ! be recovered.
       IF( DoNodes ) THEN
+        StrongNodes = .NOT. IntGalerkin
         IF( GenericIntegrator ) THEN
           StrongNodes = .FALSE.
-        ELSE
-          StrongNodes = .NOT. IntGalerkin
-          IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) StrongNodes = .TRUE.
-          IF( ListGetLogical( BC,'Level Projector Nodes Strong',Found ) ) StrongNodes = .TRUE.
+        ELSE IF( ListGetLogical( BC,'Level Projector Strong',Found ) ) THEN
+          StrongNodes = .TRUE.
         END IF
+        ! The nodes could be treated with strong projector even though the edges are integrated
+        ! with a weak projector. 
+        IF( ListGetLogical( BC,'Level Projector Nodes Strong',Found ) ) StrongNodes = .TRUE.
       END IF
       
       IF( DoEdges ) THEN
