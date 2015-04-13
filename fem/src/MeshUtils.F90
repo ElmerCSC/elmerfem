@@ -7678,6 +7678,10 @@ END SUBROUTINE GetMaxDefs
             Wtemp = DetJ * IP % s(nip)
             sumarea = sumarea + Wtemp
             
+            ! Use the real arc length so that this projector weights correctly 
+            ! in rotational case when used with other projectors.
+            Wtemp = ArcCoeff * Wtemp 
+
             ! Integration point at the slave element
             CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
             stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
@@ -7704,7 +7708,7 @@ END SUBROUTINE GetMaxDefs
               Projector % InvPerm(nrow) = InvPerm1(jj)
               val = Basis(j) * Wtemp
               IF(BiorthogonalBasis) THEN
-                val_dual  = CoeffBasis(j) * Wtemp
+                val_dual = CoeffBasis(j) * Wtemp
               END IF
 
               DO i=1,n
@@ -7743,7 +7747,7 @@ END SUBROUTINE GetMaxDefs
                 
                 DualProjector % InvPerm(nrow) = InvPerm2(jj)
                 val = BasisM(j) * Wtemp
-                
+
                 DO i=1,nM
                   CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
                       InvPerm2(IndexesM(i)), NodeCoeff * BasisM(i) * val ) 
