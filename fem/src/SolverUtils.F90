@@ -1806,10 +1806,6 @@ CONTAINS
        Projector => MortarBC % Projector
        IF(.NOT. ASSOCIATED(Projector) ) CYCLE
 
-       ! Sometimes the projector may be empty 
-       IF( Projector % NumberOfRows == 0 ) CYCLE
-       IF( ALL( Projector % InvPerm == 0 ) ) CYCLE
-
        BC => Model % BCs(bc_ind) % Values
 
        CALL Info('DetermineContact','Set contact for boundary: '&
@@ -1922,7 +1918,6 @@ CONTAINS
        CALL Info('DetermineContactSet',Message,Level=5)
 
        IF( NoSlip ) THEN
-         !PRINT *,'NoSlip:',DofN,DofT1,DofT2,Dofs
          MortarBC % Active( DofT1 :: Dofs ) = MortarBC % Active( DofN :: Dofs )
          IF( Dofs == 3 ) THEN
            MortarBC % Active( DofT2 :: Dofs ) = MortarBC % Active( DofN :: Dofs ) 
@@ -2227,13 +2222,10 @@ CONTAINS
 
        REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactDist(3), ContactVelo(3)
        REAL(KIND=dp), POINTER :: DispVals(:), PrevDispVals(:) 
-       REAL(KIND=dp) :: MinDist, MaxDist, Wlim
+       REAL(KIND=dp) :: MinDist, MaxDist
        TYPE(Matrix_t), POINTER :: ActiveProjector
-       LOGICAL :: IsSlave, IsMaster, Found
-       REAL(KIND=dp) :: wtot
+       LOGICAL :: IsSlave, IsMaster
 
-
-       Wlim = ListGetCReal(BC,'Contact Weight Minimum Limit',Found ) 
 
        DispVals => Solver % Variable % Values
 
@@ -2252,7 +2244,6 @@ CONTAINS
        ActiveProjector => Projector
        MinDist = HUGE(MinDist)
        MaxDist = -HUGE(MaxDist)
-       Found = .FALSE.
 
 100    CONTINUE
 
@@ -2289,9 +2280,9 @@ CONTAINS
            ! is added to the coordinate!
            coeff = ActiveProjector % Values(j)
 
-           ! The postive and negative weight are equal and opposite in sign
+           ! Only compute the sum related to the active projector
            IF( coeff > 0.0_dp ) THEN
-             wsum = wsum + coeff
+             wsum = wsum + coeff 
            END IF
 
            coord(1) = Mesh % Nodes % x( k ) 
@@ -2359,31 +2350,16 @@ CONTAINS
            END IF
          END DO
          
-         ! Omit too small total weight
-         IF( ABS( wsum ) < TINY( wsum ) ) CYCLE
-         IF(ActiveProjector % InvPerm(i) <= 0 ) CYCLE
-
-         j = WeightVar % Perm( ActiveProjector % InvPerm(i) )
-         wtot = WeightVar % Values( j ) 
-
-         IF( wsum < Wlim * wtot ) THEN
-           PRINT *,'Skipping this entry:',wsum/wtot
-           CYCLE
-         END IF
-
          ! Divide by weight to get back to real distance in the direction of the normal
-         ContactDist = ContactDist / wsum 
-
+         ContactDist = ContactDist(1) / wsum 
          Dist = DistSign * Dist / wsum
          IF( CalculateVelocity ) THEN
            ContactVelo = ContactVelo / wsum
          END IF
 
-        ! PRINT *,'ContactDist:',i,Dist,ContactDist(1:Dofs)
-        ! PRINT *,'ContactVelo:',i, ContactVelo(1:Dofs), wsum, IsSlave
-         
+         ! PRINT *,'ContactVelo:',i, ContactVelo(1:Dofs), wsum, IsSlave
+
          IF( IsSlave ) THEN
-           Found = .TRUE.
            MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactDist(1)
            IF( NoSlip ) THEN
              MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactDist(2) 
@@ -2394,11 +2370,11 @@ CONTAINS
            
            MinDist = MIN( Dist, MinDist ) 
            MaxDist = MAX( Dist, MaxDist )
-         ELSE
+         END IF
+
+         IF( IsMaster ) THEN
            Dist = -Dist
-           IF( CalculateVelocity ) THEN
-             ContactVelo = -ContactVelo
-           END IF
+           ContactVelo = -ContactVelo
          END IF
 
          ! We use the same permutation for all boundary variables
@@ -2426,13 +2402,9 @@ CONTAINS
          PRINT *,'Velo range:',MINVAL( VeloVar % Values), MAXVAL( VeloVar % Values)
        END IF
 
-       IF( Found ) THEN
-         PRINT *,'Distance Range:',MinDist, MaxDist
-         PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
-       ELSE
-         PRINT *,'No nodes with sufficient weights'
-       END IF
-
+       PRINT *,'Distance Range:',MinDist, MaxDist
+       PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
+       
      END SUBROUTINE CalculateMortarDistance
 
 
@@ -9550,17 +9522,27 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(Matrix_t), POINTER :: CollectionMatrix, RestMatrix, AddMatrix, &
        RestMatrixTranspose
   REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:),&
-                 MultiplierValues(:),AddVector(:)
+                 MultiplierValues(:),AddVector(:), Tvals(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:)
-  INTEGER, ALLOCATABLE :: TmpRow(:)
+  INTEGER, ALLOCATABLE :: iperm(:), perm(:), rperm(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
-  INTEGER :: i, j, k, l
+  INTEGER :: i, j, k, l, m, n
   TYPE(Variable_t), POINTER :: MultVar
-  REAL(KIND=dp) :: scl, rowsum
+  REAL(KIND=dp) :: scl, scl1, rowsum
+  REAL(KIND=dp), ALLOCATABLE :: dval(:)
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
-              EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose
+              EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints
   SAVE MultiplierValues, SolverPointer
   CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
+  TYPE(ListMatrix_t), POINTER :: cList
+  TYPE(ListMatrixEntry_t), POINTER :: cPtr, cPrev, cTmp
+
+  INTEGER, ALLOCATABLE, TARGET :: SlavePerm(:), SlaveIPerm(:), MasterPerm(:), MasterIPerm(:)
+  INTEGER, POINTER :: UsePerm(:), UseIPerm(:)
+  REAL(KIND=dp), POINTER :: UseDiag(:)
+  TYPE(ListMatrix_t) :: Ltmp
+  LOGICAL  :: EliminateFromMaster, EliminateSlave
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:)
 
 !------------------------------------------------------------------------------
   CALL Info( 'SolveWithLinearRestriction ', ' ', Level=5 )
@@ -9572,6 +9554,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   RestMatrix => NULL()
   IF(.NOT.NotExplicit) &
         RestMatrix => StiffMatrix % ConstraintMatrix
+  RestVector => Null()
   IF(ASSOCIATED(RestMatrix)) RestVector => RestMatrix % RHS
 
   AddMatrix => StiffMatrix % AddMatrix
@@ -9604,7 +9587,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   NumberOfRows = StiffMatrix % NumberOfRows
   IF(ASSOCIATED(AddMatrix)) NumberOfRows = MAX(NumberOfRows,AddMatrix % NumberOfRows)
-  IF(ASSOCIATED(RestMatrix)) NumberOfRows = NumberOFRows + RestMatrix % NumberOfRows
+  EliminateConstraints = ListGetLogical( Solver % Values, 'Eliminate Linear Constraints', Found)
+  IF(ASSOCIATED(RestMatrix)) THEN
+    IF(.NOT.EliminateConstraints) &
+      NumberOfRows = NumberOFRows + RestMatrix % NumberOfRows
+  END IF
 
 
   ALLOCATE( CollectionMatrix % RHS( NumberOfRows ), &
@@ -9632,7 +9619,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      END IF
 
      MultVar => VariableGet(Solver % Mesh % Variables, MultiplierName)
-     j=NumberOfRows-StiffMatrix % NumberOfRows
+     j = 0
+     IF(ASSOCIATED(RestMatrix)) j = RestMatrix % NumberofRows
+     IF(ASSOCIATED(AddMatrix))  j = j+MAX(0,AddMatrix % NumberofRows-StiffMatrix % NumberOfRows)
 
      IF ( .NOT. ASSOCIATED(MultVar) ) THEN
        ALLOCATE( MultiplierValues(j), STAT=istat )
@@ -9671,13 +9660,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   UseTranspose = ListGetLogical( Solver % Values, 'Use Transpose values', Found)
 
-  IF(ASSOCIATED(RestMatrix)) THEN
+  IF(ASSOCIATED(RestMatrix).AND..NOT.EliminateConstraints) THEN
 
     CALL Info('SolveWithLinearRestriction',&
         'Adding ConstraintMatrix into CollectionMatrix',Level=10)
 
-    NoEmptyRows = 0
 
+    NoEmptyRows = 0
     ConstraintScaling = ListGetLogical(Solver % Values, 'Constraint Scaling',Found)
     IF(ConstraintScaling) THEN
       rowsum = ListGetConstReal( Solver % Values, 'Constraint Scale', Found)
@@ -9743,7 +9732,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
           IF (UseTranspose .AND. ASSOCIATED(RestMatrix % TValues)) THEN
             CALL AddToMatrixElement( CollectionMatrix, &
-                     k, RestMatrix % Cols(j), RestMatrix % Values(j))
+                     k, RestMatrix % Cols(j), RestMatrix % TValues(j))
           ELSE
             CALL AddToMatrixElement( CollectionMatrix, &
                     k, RestMatrix % Cols(j), RestMatrix % Values(j))
@@ -9788,7 +9777,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         'Finished Adding ConstraintMatrix',Level=12)
   END IF
 
-
 !------------------------------------------------------------------------------
 ! Put the AddMatrix to upper part of CollectionMatrix
 !------------------------------------------------------------------------------
@@ -9828,13 +9816,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         'Finished Adding AddMatrix',Level=12)
   END IF
 
-
-
 !------------------------------------------------------------------------------
 ! Put the StiffMatrix to upper part of CollectionMatrix
 !------------------------------------------------------------------------------
   CALL Info('SolveWithLinearRestriction',&
       'Adding Stiffness Matrix into CollectionMatrix',Level=10)
+
   DO i=StiffMatrix % NumberOfRows,1,-1
     DO j=StiffMatrix % Rows(i+1)-1,StiffMatrix % Rows(i),-1
       CALL AddToMatrixElement( CollectionMatrix, &
@@ -9843,6 +9830,175 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     CollectionVector(i) = CollectionVector(i) + ForceVector(i)
   END DO
 
+!------------------------------------------------------------------------------
+! Eliminate constraints instead of adding the Lagrange coefficient equations.
+! Assumes biorthogonal basis for Lagrange coefficient interpolation, but not
+! necesserily biorthogonal constraint equation test functions.
+!------------------------------------------------------------------------------
+  IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
+    CALL Info('SolveWithLinearRestriction',&
+        'Eliminating Constraints from CollectionMatrix',Level=10)
+
+    n  = StiffMatrix % NumberOfRows
+    m = RestMatrix % NumberOfRows
+
+    ALLOCATE(SlaveDiag(n),MasterDiag(m),SlavePerm(n),MasterPerm(n),SlaveIPerm(m),MasterIPerm(m))
+    SlavePerm  = 0; SlaveIPerm  = 0; 
+    MasterPerm = 0; MasterIPerm = 0;
+
+    Tvals => RestMatrix % TValues
+    IF (.NOT.ASSOCIATED(Tvals)) Tvals => RestMatrix % Values 
+
+    ! Extract diagonal entries for constraints:
+    !------------------------------------------
+    DO i=1, RestMatrix % NumberOfRows
+      m = RestMatrix % InvPerm(i)
+      m = MOD(m-1,n) + 1
+      SlavePerm(m)  = i
+      SlaveIperm(i) = m
+
+      DO j=RestMatrix % Rows(i), RestMatrix % Rows(i+1)-1
+        k = RestMatrix % Cols(j)
+        IF(k>n) CYCLE
+
+        IF( k == RestMatrix % InvPerm(i)) THEN
+           SlaveDiag(i) = Tvals(j)
+        ELSE
+           MasterDiag(i) = Tvals(j)
+           MasterPerm(k)  = i
+           MasterIperm(i) = k
+        END IF
+      END DO
+    END DO
+
+    EliminateSlave = ListGetLogical( Solver % values, 'Eliminate Slave',Found )
+    EliminateFromMaster = ListGetLogical( Solver % values, 'Eliminate From Master',Found )
+
+    UsePerm  => SlavePerm
+    UseIPerm => SlaveIPerm
+    UseDiag  => SlaveDiag
+    IF(EliminateFromMaster) THEN
+      UsePerm  => MasterPerm 
+      UseIPerm => MasterIPerm 
+      UseDiag  => MasterDiag
+    END IF
+
+    ! Replace elimination equations by the constraints (could done be as a postprocessing
+    ! step, if eq's totally eliminated from linsys.)
+    ! ----------------------------------------------------------------------------------
+    DO m=1,RestMatrix % NumberOfRows
+      i = UseIPerm(m)
+      CALL List_DeleteRow(CollectionMatrix % ListMatrix, i, Keep=.TRUE.)
+    END DO
+
+    DO m=1,RestMatrix % NumberOfRows
+      i = UseIPerm(m)
+      DO l=RestMatrix % Rows(m), RestMatrix % Rows(m+1)-1
+        j = RestMatrix % Cols(l)
+        IF(j > n) CYCLE
+
+        IF(UseTranspose) THEN
+          CALL List_AddToMatrixElement( CollectionMatrix % ListMatrix, &
+              i, j, Tvals(l) )
+        ELSE
+          CALL List_AddToMatrixElement( CollectionMatrix % ListMatrix, &
+              i, j, RestMatrix % Values(l) )
+        END IF
+      END DO
+      CollectionVector(i) = RestVector(m)
+    END DO
+
+    ! Eliminate Lagrange Coefficients:
+    ! --------------------------------
+    DO m=1,RestMatrix % NumberOfRows
+      i = UseIPerm(m)
+      DO j=RestMatrix % Rows(m), RestMatrix % Rows(m+1)-1
+        k = RestMatrix % Cols(j)
+        IF(k<=n) THEN
+          IF(UsePerm(k)/=0) CYCLE
+        ELSE
+          k = UseIPerm(k-n)
+        END IF
+        scl = -Tvals(j) / UseDiag(m)
+
+        DO l=StiffMatrix % Rows(i), StiffMatrix % Rows(i+1)-1
+         CALL List_AddToMatrixElement( CollectionMatrix % ListMatrix, &
+               k, StiffMatrix % Cols(l), scl * StiffMatrix % Values(l) )
+        END DO
+        CollectionVector(k) = CollectionVector(k) + scl * ForceVector(i)
+      END DO
+    END DO
+
+    ! Eliminate slave dofs, using the constraint equations:
+    ! -----------------------------------------------------
+    IF ( EliminateSlave ) THEN
+      DO i=1,StiffMatrix % NumberOfRows
+        IF(UsePerm(i)/=0) CYCLE
+        cPrev => Null()
+        cPtr  => CollectionMatrix % ListMatrix(i) % Head
+        DO WHILE(ASSOCIATED(cPtr))
+          j = SlavePerm(cPtr % Index)
+          IF(j==0) THEN
+            cPrev => cPtr
+            cPtr  => cPtr % Next
+            CYCLE
+          END IF
+          scl = -cPtr % Value / SlaveDiag(j)
+
+          cTmp => cPtr
+          cPtr => cPtr % Next
+
+          DEALLOCATE(cTmp)
+
+          IF(ASSOCIATED(cPrev)) THEN
+            cPrev % Next => cPtr
+          ELSE
+            CollectionMatrix % ListMatrix(i) % Head => cPtr
+          END IF
+          CollectionMatrix % ListMatrix(i) % Degree = &
+            MAX(CollectionMatrix % ListMatrix(i) % Degree-1,0)
+
+          j = UseIPerm(j)
+          cTmp => CollectionMatrix % ListMatrix(j) % Head
+          DO WHILE(ASSOCIATED(cTmp))
+             l = cTmp % Index
+             IF(SlavePerm(l)==0) THEN
+               CALL List_AddToMatrixElement( CollectionMatrix % ListMatrix, &
+                        i, l, scl * cTmp % Value )
+             END IF
+           cTmp => cTmp % Next
+          END DO
+          CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(j)
+        END DO
+      END DO
+    END IF
+
+    IF(EliminateFromMaster) THEN
+      ! Optimize bandwidth, if needed:
+      ! ------------------------------
+      DO i=1,RestMatrix % NumberOfRows
+          j = SlaveIPerm(i)
+          k = MasterIPerm(i)
+
+        Ctmp => CollectionMatrix % ListMatrix(j) % Head
+        CollectionMatrix % ListMatrix(j) % Head => &
+               CollectionMatrix % ListMatrix(k) % Head
+        CollectionMatrix % ListMatrix(k) % Head => Ctmp
+
+        l = CollectionMatrix % ListMatrix(j) % Degree
+        CollectionMatrix % ListMatrix(j) % Degree = &
+          CollectionMatrix % ListMatrix(k) % Degree
+        CollectionMatrix % ListMatrix(k) % Degree = l
+
+        scl = CollectionVector(j)
+        CollectionVector(j) = CollectionVector(k)
+        CollectionVector(k) = scl
+      END DO
+    END IF
+
+    CALL Info('SolveWithLinearRestriction',&
+        'Finished Adding ConstraintMatrix',Level=12)
+  END IF
 
   CALL Info('SolveWithLinearRestriction',&
       'Reverting CollectionMatrix back to CRS matrix',Level=10)
@@ -9860,7 +10016,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   
   i = StiffMatrix % NumberOfRows+1
   j = SIZE(CollectionSolution)
-  CollectionSolution(i:j) = 0
+  CollectionSolution(i:j) = 0._dp
   IF(ExportMultiplier) CollectionSolution(i:j) = MultiplierValues(1:j-i+1)
 
   CollectionMatrix % ExtraDOFs = CollectionMatrix % NumberOfRows - &
@@ -9879,7 +10035,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
 ! Collectionmatrix % Complex = StiffMatrix % Complex
 
-
    !------------------------------------------------------------------------------
    ! Look at the nonlinear system previous values again, not taking the constrained
    ! system into account...
@@ -9896,12 +10051,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   CollectionMatrix % Comm = StiffMatrix % Comm
 
-
   CALL Info('SolveWithLinearRestriction',&
       'Now going for the coupled linear system',Level=10)
+
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
-
 
 !------------------------------------------------------------------------------
 ! Separate the solution from CollectionSolution
@@ -9909,21 +10063,36 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     CALL Info('SolveWithLinearRestriction',&
       'Picking solution from collection solution',Level=10)
 
-    Solution = 0.0d0
+    Solution = 0.0_dp
     i = 1
     j = StiffMatrix % NumberOfRows
     Solution(i:j) = CollectionSolution(i:j)
 
     IF ( ExportMultiplier ) THEN
-       i = StiffMatrix % NumberOfRows
-       j=0
-       IF(ASSOCIATED(RestMatrix)) j = RestMatrix % NumberOfRows
-       IF(ASSOCIATED(AddMatrix)) &
-         j=j+MAX(0,AddMatrix % NumberOfRows-StiffMatrix%NumberOFRows)
+      i = StiffMatrix % NumberOfRows
+      j=0
+      IF(ASSOCIATED(RestMatrix)) j = RestMatrix % NumberOfRows
+      IF(ASSOCIATED(AddMatrix)) &
+        j=j+MAX(0,AddMatrix % NumberOfRows - StiffMatrix % NumberOFRows)
 
-       MultiplierValues = 0.0_dp
-       MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
+      MultiplierValues = 0.0_dp
+      IF(EliminateConstraints) THEN
+        ! Compute eliminated l-coefficient values:
+        ! ---------------------------------------
+        DO i=1,RestMatrix % NumberOfRows
+          m = UseIPerm(i)
+          scl = 1._dp / UseDiag(i)
+          MultiplierValues(i) = scl * ForceVector(m)
+          DO j=StiffMatrix % Rows(m), StiffMatrix % Rows(m+1)-1
+            MultiplierValues(i) = MultiplierValues(i) - &
+              scl * StiffMatrix % Values(j) * Solution(StiffMatrix % Cols(j))
+          END DO
+        END DO
+      ELSE
+        MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
+      END IF
     END IF
+
 !------------------------------------------------------------------------------
 
     StiffMatrix % CollectionMatrix => CollectionMatrix
@@ -11231,7 +11400,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      !-------------------------------------------------------
      IF( .NOT. AllocationsDone ) THEN
        CALL Info('GenerateConstraintMatrix','Allocating '//&
-           TRIM(I2S(row))//' rows and '//TRIM(I2S(k2-1))//' nonzeros',&
+           TRIM(I2S(row-1))//' rows and '//TRIM(I2S(k2))//' nonzeros',&
            Level=6)
 
        Btmp => AllocateMatrix()
