@@ -9883,13 +9883,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     EliminateSlave = ListGetLogical( Solver % values, 'Eliminate Slave',Found )
     EliminateFromMaster = ListGetLogical( Solver % values, 'Eliminate From Master',Found )
 
-    UsePerm  => SlavePerm
-    UseIPerm => SlaveIPerm
-    UseDiag  => SlaveDiag
     IF(EliminateFromMaster) THEN
       UsePerm  => MasterPerm 
-      UseIPerm => MasterIPerm 
       UseDiag  => MasterDiag
+      UseIPerm => MasterIPerm 
+    ELSE
+      UsePerm  => SlavePerm
+      UseDiag  => SlaveDiag
+      UseIPerm => SlaveIPerm
     END IF
 
     ! Replace elimination equations by the constraints (could done be as a postprocessing
@@ -9982,12 +9983,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       END DO
     END IF
 
+    ! Optimize bandwidth, if needed:
+    ! ------------------------------
     IF(EliminateFromMaster) THEN
-      ! Optimize bandwidth, if needed:
-      ! ------------------------------
       DO i=1,RestMatrix % NumberOfRows
-          j = SlaveIPerm(i)
-          k = MasterIPerm(i)
+        j = SlaveIPerm(i)
+        k = MasterIPerm(i)
 
         Ctmp => CollectionMatrix % ListMatrix(j) % Head
         CollectionMatrix % ListMatrix(j) % Head => &
@@ -10085,7 +10086,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         j=j+MAX(0,AddMatrix % NumberOfRows - StiffMatrix % NumberOFRows)
 
       MultiplierValues = 0.0_dp
-      IF(EliminateConstraints) THEN
+      IF(ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
         ! Compute eliminated l-coefficient values:
         ! ---------------------------------------
         DO i=1,RestMatrix % NumberOfRows
