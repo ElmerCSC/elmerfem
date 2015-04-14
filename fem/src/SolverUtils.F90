@@ -6286,7 +6286,8 @@ END FUNCTION SearchNodeL
     INTEGER, POINTER :: Indexes(:)
     TYPE(Variable_t), POINTER :: iterV, VeloVar, TimestepVar, WeightVar
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
-    LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip
+    LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
+        SkipConstraints 
 
     TYPE(Matrix_t), POINTER :: MMatrix
     REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mb(:), Mr(:)
@@ -6295,6 +6296,7 @@ END FUNCTION SearchNodeL
     TYPE(ValueList_t), POINTER :: SolverParams
 
     SolverParams => Solver % Values
+    
   
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
@@ -6326,6 +6328,9 @@ END FUNCTION SearchNodeL
         IF (.NOT. Stat ) RelaxBefore = .TRUE.
       END IF
 
+      ! Steady state system has never any constraints
+      SkipConstraints = .FALSE.
+
     ELSE
       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       IterNo = iterV % Values(1)
@@ -6352,6 +6357,9 @@ END FUNCTION SearchNodeL
         IF( Stat .AND. RelaxAfter >= Solver % Variable % NonlinIter ) Relax = .FALSE.
       END IF	
 
+      SkipConstraints = ListGetLogical(SolverParams,&
+          'Nonlinear System Convergence Without Constraints',Stat) 
+
       IF(Relax) THEN
         RelaxBefore = ListGetLogical( SolverParams, &
             'Nonlinear System Relaxation Before', Stat )
@@ -6362,7 +6370,7 @@ END FUNCTION SearchNodeL
 
     IF(PRESENT(values)) THEN
       x => values
-    ELSE 
+    ELSE
       x => Solver % Variable % Values      
     END IF
 
@@ -6376,12 +6384,13 @@ END FUNCTION SearchNodeL
       RETURN
     END IF
 
-
     IF(PRESENT(nsize)) THEN
       n = nsize 
-    ELSE
+    ELSE 
       n = SIZE( x )
     END IF
+
+    IF( SkipConstraints ) n = MIN( n, Solver % Matrix % NumberOfRows )
 
     Stat = .FALSE.
     IF(PRESENT(values0)) THEN
