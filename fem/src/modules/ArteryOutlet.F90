@@ -360,11 +360,11 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
     
     WRITE(Message,'(A,I3)') 'Lumping Boundary:',bc
     CALL Info('OutletCompute',Message)
-    WRITE(Message,'(A,E10.4)') 'Force: ',FluidicForces(bc)
+    WRITE(Message,'(A,E11.4)') 'Force:',FluidicForces(bc)
     CALL Info('OutletCompute',Message)
-    WRITE(Message,'(A,E10.4)') 'Area: ',FluidicAreas(bc)
+    WRITE(Message,'(A,E11.4)') 'Area:',FluidicAreas(bc)
     CALL Info('OutletCompute',Message)
-    WRITE(Message,'(A,E10.4)') 'Flux: ',FluidicFluxes(bc)
+    WRITE(Message,'(A,E11.4)') 'Flux:',FluidicFluxes(bc)
     CALL Info('OutletCompute',Message)    
   END DO
 
@@ -386,7 +386,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
         IF(SolidEndBoundaries(bc) /= 0) THEN          
           WRITE(Message,'(A,I3)') 'Solid End Area Boundary: ',bc
           CALL Info('OutletCompute',Message)
-          WRITE(Message,'(A,E10.4)') 'Solid End Area: ',SolidEndAreas(bc)
+          WRITE(Message,'(A,E11.4)') 'Solid End Area:',SolidEndAreas(bc)
           CALL Info('OutletCompute',Message)          
         END IF
       END DO      
@@ -609,7 +609,7 @@ SUBROUTINE OutletCompute( Model,Solver,dt,TransientSimulation )
         Werror = 0.0d0
       END IF
       
-      WRITE(Message,'(A,E10.4)') 'Relative Change: ',Werror
+      WRITE(Message,'(A,E11.4)') 'Relative Change:',Werror
       CALL Info('OutletCompute',Message)
       
       IF ( Werror < NonlinearTol ) EXIT
@@ -859,7 +859,7 @@ CONTAINS
 
         CALL ListAddConstReal( Model % Simulation, XName, XPosWeighted(i) )
 
-        WRITE(Message,'(A,I0,A,E10.4)') 'Coordinate ',i,': ',XPosWeighted(i)  
+        WRITE(Message,'(A,I0,A,E11.4)') 'Coordinate ',i,':',XPosWeighted(i)  
         CALL Info('SurfaceCenterPoints',Message)
       END DO
 !------------------------------------------------------------------------------
