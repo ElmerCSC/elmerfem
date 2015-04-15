@@ -9531,17 +9531,16 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(Matrix_t), POINTER :: CollectionMatrix, RestMatrix, AddMatrix, &
        RestMatrixTranspose
   REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:),&
-                 MultiplierValues(:),AddVector(:), Tvals(:)
+                 MultiplierValues(:),AddVector(:), Tvals(:), Vals(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:)
-  INTEGER, ALLOCATABLE :: iperm(:), perm(:), rperm(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
   INTEGER :: i, j, k, l, m, n
   TYPE(Variable_t), POINTER :: MultVar
-  REAL(KIND=dp) :: scl, scl1, rowsum
-  REAL(KIND=dp), ALLOCATABLE :: dval(:)
+  REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
               EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints
   SAVE MultiplierValues, SolverPointer
+
   CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
   TYPE(ListMatrix_t), POINTER :: cList
   TYPE(ListMatrixEntry_t), POINTER :: cPtr, cPrev, cTmp
@@ -9549,7 +9548,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   INTEGER, ALLOCATABLE, TARGET :: SlavePerm(:), SlaveIPerm(:), MasterPerm(:), MasterIPerm(:)
   INTEGER, POINTER :: UsePerm(:), UseIPerm(:)
   REAL(KIND=dp), POINTER :: UseDiag(:)
-  TYPE(ListMatrix_t) :: Ltmp
+  TYPE(ListMatrix_t), POINTER :: Lmat(:)
   LOGICAL  :: EliminateFromMaster, EliminateSlave
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:)
 
@@ -9584,7 +9583,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END IF
   END IF
 
-
   IF(.NOT.ASSOCIATED(CollectionMatrix)) THEN
     CollectionMatrix => AllocateMatrix()
     CollectionMatrix % FORMAT = MATRIX_LIST
@@ -9601,7 +9599,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     IF(.NOT.EliminateConstraints) &
       NumberOfRows = NumberOFRows + RestMatrix % NumberOfRows
   END IF
-
 
   ALLOCATE( CollectionMatrix % RHS( NumberOfRows ), &
        CollectionSolution( NumberOfRows ), STAT = istat )
@@ -9893,27 +9890,32 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       UseIPerm => SlaveIPerm
     END IF
 
+    IF(UseTranspose) THEN
+      Vals => Tvals
+    ELSE
+      Vals => RestMatrix % Values
+    END IF
+
+    Lmat => CollectionMatrix % ListMatrix
+
     ! Replace elimination equations by the constraints (could done be as a postprocessing
     ! step, if eq's totally eliminated from linsys.)
     ! ----------------------------------------------------------------------------------
     DO m=1,RestMatrix % NumberOfRows
       i = UseIPerm(m)
-      CALL List_DeleteRow(CollectionMatrix % ListMatrix, i, Keep=.TRUE.)
+      CALL List_DeleteRow(Lmat, i, Keep=.TRUE.)
     END DO
 
     DO m=1,RestMatrix % NumberOfRows
       i = UseIPerm(m)
-      DO l=RestMatrix % Rows(m), RestMatrix % Rows(m+1)-1
+      DO l=RestMatrix % Rows(m+1)-1, RestMatrix % Rows(m), -1
         j = RestMatrix % Cols(l)
+
+        ! skip l-coeffient entries, handled separately afterwards:
+        ! --------------------------------------------------------
         IF(j > n) CYCLE
 
-        IF(UseTranspose) THEN
-          CALL List_AddToMatrixElement( CollectionMatrix % ListMatrix, &
-              i, j, Tvals(l) )
-        ELSE
-          CALL List_AddToMatrixElement( CollectionMatrix % ListMatrix, &
-              i, j, RestMatrix % Values(l) )
-        END IF
+        CALL List_AddToMatrixElement( Lmat, i, j, Vals(l) )
       END DO
       CollectionVector(i) = RestVector(m)
     END DO
@@ -9932,8 +9934,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         scl = -Tvals(j) / UseDiag(m)
 
         DO l=StiffMatrix % Rows(i), StiffMatrix % Rows(i+1)-1
-         CALL List_AddToMatrixElement( CollectionMatrix % ListMatrix, &
-               k, StiffMatrix % Cols(l), scl * StiffMatrix % Values(l) )
+         CALL List_AddToMatrixElement( Lmat, k, &
+             StiffMatrix % Cols(l), scl * StiffMatrix % Values(l) )
         END DO
         CollectionVector(k) = CollectionVector(k) + scl * ForceVector(i)
       END DO
@@ -9945,8 +9947,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       DO i=1,StiffMatrix % NumberOfRows
         IF(UsePerm(i)/=0) CYCLE
         cPrev => Null()
-        cPtr  => CollectionMatrix % ListMatrix(i) % Head
+        cPtr  => Lmat(i) % Head
         DO WHILE(ASSOCIATED(cPtr))
+          ! ...search for entry to be eliminated...
+          ! ----------------------------------------
           j = SlavePerm(cPtr % Index)
           IF(j==0) THEN
             cPrev => cPtr
@@ -9958,25 +9962,27 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           cTmp => cPtr
           cPtr => cPtr % Next
 
+          ! ...delete the eliminated matrix entry...
+          ! -----------------------------------------
           DEALLOCATE(cTmp)
 
           IF(ASSOCIATED(cPrev)) THEN
             cPrev % Next => cPtr
           ELSE
-            CollectionMatrix % ListMatrix(i) % Head => cPtr
+           Lmat(i) % Head => cPtr
           END IF
-          CollectionMatrix % ListMatrix(i) % Degree = &
-            MAX(CollectionMatrix % ListMatrix(i) % Degree-1,0)
+          Lmat(i) % Degree = MAX(Lmat(i) % Degree-1,0)
 
+          ! ... and add replacement values:
+          ! -------------------------------
           j = UseIPerm(j)
           cTmp => CollectionMatrix % ListMatrix(j) % Head
           DO WHILE(ASSOCIATED(cTmp))
              l = cTmp % Index
              IF(SlavePerm(l)==0) THEN
-               CALL List_AddToMatrixElement( CollectionMatrix % ListMatrix, &
-                        i, l, scl * cTmp % Value )
+               CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
              END IF
-           cTmp => cTmp % Next
+             cTmp => cTmp % Next
           END DO
           CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(j)
         END DO
@@ -9990,15 +9996,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         j = SlaveIPerm(i)
         k = MasterIPerm(i)
 
-        Ctmp => CollectionMatrix % ListMatrix(j) % Head
-        CollectionMatrix % ListMatrix(j) % Head => &
-               CollectionMatrix % ListMatrix(k) % Head
-        CollectionMatrix % ListMatrix(k) % Head => Ctmp
+        Ctmp => Lmat(j) % Head
+        Lmat(j) % Head => Lmat(k) % Head
+        Lmat(k) % Head => Ctmp
 
-        l = CollectionMatrix % ListMatrix(j) % Degree
-        CollectionMatrix % ListMatrix(j) % Degree = &
-          CollectionMatrix % ListMatrix(k) % Degree
-        CollectionMatrix % ListMatrix(k) % Degree = l
+        l = Lmat(j) % Degree
+        Lmat(j) % Degree = Lmat(k) % Degree
+        Lmat(k) % Degree = l
 
         scl = CollectionVector(j)
         CollectionVector(j) = CollectionVector(k)
@@ -10090,8 +10094,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         ! Compute eliminated l-coefficient values:
         ! ---------------------------------------
         DO i=1,RestMatrix % NumberOfRows
-          m = UseIPerm(i)
           scl = 1._dp / UseDiag(i)
+          m = UseIPerm(i)
           MultiplierValues(i) = scl * ForceVector(m)
           DO j=StiffMatrix % Rows(m), StiffMatrix % Rows(m+1)-1
             MultiplierValues(i) = MultiplierValues(i) - &
