@@ -420,6 +420,12 @@ END INTERFACE
 
 !------------------------------------------------------------------------------
 
+    TYPE ComponentArray_t
+      TYPE(ValueList_t), POINTER :: Values
+    END TYPE ComponentArray_t
+
+!------------------------------------------------------------------------------
+
     TYPE BodyForceArray_t
       TYPE(ValueList_t), POINTER :: Values
     END TYPE BodyForceArray_t
@@ -738,6 +744,11 @@ END INTERFACE
 !
       INTEGER :: NumberOfEquations = 0
       TYPE(EquationArray_t), POINTER :: Equations(:) => NULL()
+!
+!     Active electrical components
+!
+      INTEGER :: NumberOfComponents = 0
+      TYPE(ComponentArray_t), POINTER :: Components(:) => NULL()
 !
 !     Active bodyforces: (bussinesq approx., heatsource, freele chosen
 !     bodyforce...)

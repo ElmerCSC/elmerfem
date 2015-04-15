@@ -569,7 +569,7 @@ CONTAINS
       ptr % SteadyConverged = -1    
 
       IF ( PRESENT( Secondary ) ) THEN
-        PRINT *,'Secondary:',TRIM(name)
+        IF(Secondary) PRINT *,'Secondary:',TRIM(name)
         ptr % Secondary = Secondary
       END IF
 

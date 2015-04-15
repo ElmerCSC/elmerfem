@@ -1026,7 +1026,9 @@ CONTAINS
 
      IF ( t > 0 .AND. t <= Solver % NumberOfActiveElements ) THEN
         Element => Solver % Mesh % Elements( Solver % ActiveElements(t) )
+        !$omp critical(GetActiveElementCurrentElement)
         CurrentModel % CurrentElement => Element ! may be used by user functions
+        !$omp end critical(GetActiveElementCurrentElement)
      ELSE
         WRITE( Message, * ) 'Invalid element number requested: ', t
         CALL Fatal( 'GetActiveElement', Message )
@@ -1046,7 +1048,9 @@ CONTAINS
 
      IF ( t > 0 .AND. t <= Solver % Mesh % NumberOfBoundaryElements ) THEN
         Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements+t )
+        !$omp critical(GetBoundaryElementCurrentElement)
         CurrentModel % CurrentElement => Element ! may be used be user functions
+        !$omp end critical(GetBoundaryElementCurrentElement)
      ELSE
         WRITE( Message, * ) 'Invalid element number requested: ', t
         CALL Fatal( 'GetBoundaryElement', Message )
@@ -1538,6 +1542,20 @@ CONTAINS
   END FUNCTION GetMaterialId
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Get component list given component id
+  FUNCTION GetComponent(i) RESULT(list)
+!------------------------------------------------------------------------------
+     INTEGER :: i
+     TYPE(ValueList_t), POINTER :: list
+
+     list => Null()
+     IF(i>=0 .AND. i<=SIZE(CurrentModel % Components)) list=> &
+             CurrentModel % Components(i) % Values
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponent
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------

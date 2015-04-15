@@ -682,16 +682,16 @@ END INTERFACE
            IF( Err > Tol ) THEN
              ! Warn only in the main core
              IF( ParEnv % MyPe == 0 ) THEN
-               WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
-                   'Solver ',solver_id,' FAILED:  Norm = ',Norm,'  RefNorm = ',RefNorm
+               WRITE( Message,'(A,I0,A,ES13.6,A,ES13.6)') &
+                   'Solver ',solver_id,' FAILED:  Norm =',Norm,'  RefNorm =',RefNorm
                CALL Warn('CompareToReferenceSolution',Message)
-               WRITE( Message,'(A,ES12.6)') 'Relative Error to reference norm: ',Err
+               WRITE( Message,'(A,ES13.6)') 'Relative Error to reference norm:',Err
                CALL Info('CompareToReferenceSolution',Message, Level = 4 )
              END IF
              Success = .FALSE.
            ELSE         
-             WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
-                 'Solver ',solver_id,' PASSED:  Norm = ',Norm,'  RefNorm = ',RefNorm
+             WRITE( Message,'(A,I0,A,ES13.6,A,ES13.6)') &
+                 'Solver ',solver_id,' PASSED:  Norm =',Norm,'  RefNorm =',RefNorm
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
          END IF
@@ -731,16 +731,16 @@ END INTERFACE
            IF( Err > Tol ) THEN
              ! Normally warning is done for every partition but this time it is the same for all
              IF( ParEnv % MyPe == 0 ) THEN
-               WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
-                   'Solver ',solver_id,' FAILED:  Solution = ',Norm,'  RefSolution = ',RefNorm
+               WRITE( Message,'(A,I0,A,ES13.6,A,ES13.6)') &
+                   'Solver ',solver_id,' FAILED:  Solution = ',Norm,'  RefSolution =',RefNorm
                CALL Warn('CompareToReferenceSolution',Message)
-               WRITE( Message,'(A,ES12.6)') 'Relative Error to reference solution: ',Err
+               WRITE( Message,'(A,ES13.6)') 'Relative Error to reference solution:',Err
                CALL Info('CompareToReferenceSolution',Message, Level = 4 )
              END IF
              Success = .FALSE.
            ELSE         
-             WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
-                 'Solver ',solver_id,' PASSED:  Solution = ',Norm,'  RefSolution = ',RefNorm
+             WRITE( Message,'(A,I0,A,ES13.6,A,ES13.6)') &
+                 'Solver ',solver_id,' PASSED:  Solution =',Norm,'  RefSolution =',RefNorm
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
          END IF

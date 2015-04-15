@@ -332,7 +332,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 
   cv = GetConstReal( SolverParams, 'Velocity Implicity', Found)
   IF(.NOT. Found) cv = 1.0_dp 
-  WRITE(Message,'(a,F8.2)') 'Velocity implicity (1=fully implicit)=', cv
+  WRITE(Message,'(a,F9.2)') 'Velocity implicity (1=fully implicit)=',cv
   CALL Info(SolverName, Message, Level=6 )
 
   LinearTol = GetConstReal( SolverParams, &
