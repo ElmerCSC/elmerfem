@@ -7675,12 +7675,10 @@ END SUBROUTINE GetMaxDefs
             xt = SUM( Basis(1:2) * NodesT % x(1:2) )
             
             ! Integration weight for current integration point
-            Wtemp = ArcCoeff * DetJ * IP % s(nip)
-            sumarea = sumarea + Wtemp
-            
             ! Use the real arc length so that this projector weights correctly 
             ! in rotational case when used with other projectors.
-            Wtemp = ArcCoeff * Wtemp 
+            Wtemp = ArcCoeff * DetJ * IP % s(nip)
+            sumarea = sumarea + Wtemp
 
             ! Integration point at the slave element
             CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              

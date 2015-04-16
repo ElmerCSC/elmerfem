@@ -11151,7 +11151,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
          SomeSkip = .FALSE.
          DO i=1,Dofs
            str = ComponentNameVar( Solver % Variable, i )
-           SetDof = ListGetLogical( Model % BCs(i) % Values,'Mortar BC '//TRIM(str),Found )
+           SetDof = ListGetLogical( Model % BCs(bc_ind) % Values,'Mortar BC '//TRIM(str),Found )
            SetDefined(i) = Found
            IF(Found) THEN
              ActiveComponents(i) = SetDof
@@ -11165,10 +11165,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
          
          ! By default all components are applied mortar BC and some are turned off.
          ! If the user does the opposite then the default for other components is True. 
-         IF( SomeSet .AND. ANY(.NOT. SetDefined) ) THEN
+         IF( SomeSet .AND. .NOT. ALL(SetDefined) ) THEN
            IF( SomeSkip ) THEN
              CALL Fatal('GenerateConstraintMatrix','Dont know what to do with all components')
            ELSE 
+             CALL Info('GenerateConstraintMatrix',&
+                 'Unspecified components will not be set for BC '//TRIM(I2S(bc_ind)),Level=10)
              DO i=1,Dofs
                IF( .NOT. SetDefined(i) ) ActiveComponents(i) = .FALSE.
              END DO
