@@ -11054,11 +11054,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      INTEGER, POINTER :: Perm(:)
      INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2,mcount,bcount
      TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
-     LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent
+     LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent, Found, &
+         SetDof, SomeSet, SomeSkip
+     LOGICAL, ALLOCATABLE :: ActiveComponents(:), SetDefined(:)
      TYPE(ValueList_t), POINTER :: BC
      TYPE(MortarBC_t), POINTER :: MortarBC
      REAL(KIND=dp) :: wsum, Scale
      INTEGER :: rowoffset, arows
+     CHARACTER(LEN=MAX_NAME_LEN) :: Str
 
      CALL Info('GenerateConstraintMatrix','Building constraint matrix',Level=12)
 
@@ -11103,6 +11106,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      AllocationsDone = .FALSE.
      arows = Solver % Matrix % NumberOfRows
 
+     ALLOCATE( ActiveComponents(dofs), SetDefined(dofs) ) 
+
+
      ComplexMatrix = Solver % Matrix % Complex
      IF( ComplexMatrix ) THEN
        IF( MODULO( Dofs,2 ) /= 0 ) CALL Fatal('GenerateConstraintMatrix',&
@@ -11122,6 +11128,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      Ctmp => Solver % Matrix % ConstraintMatrix
      DO bc_ind=Model % NumberOFBCs+mcount,1,-1
 
+       ! This is the default i.e. all components are applied mortar BCs
+       ActiveComponents = .TRUE.
+
        IF(bc_ind>Model % NumberOfBCs) THEN
          Atmp => Ctmp
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
@@ -11135,6 +11144,37 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
          IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
            CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
          END IF
+
+         ! Enable that the user can for vector valued cases either set some 
+         ! or skip some field components. 
+         SomeSet = .FALSE.
+         SomeSkip = .FALSE.
+         DO i=1,Dofs
+           str = ComponentNameVar( Solver % Variable, i )
+           SetDof = ListGetLogical( Model % BCs(i) % Values,'Mortar BC '//TRIM(str),Found )
+           SetDefined(i) = Found
+           IF(Found) THEN
+             ActiveComponents(i) = SetDof
+             IF( SetDof ) THEN
+               SomeSet = .TRUE.
+             ELSE
+               SomeSkip = .TRUE.
+             END IF
+           END IF
+         END DO
+         
+         ! By default all components are applied mortar BC and some are turned off.
+         ! If the user does the opposite then the default for other components is True. 
+         IF( SomeSet .AND. ANY(.NOT. SetDefined) ) THEN
+           IF( SomeSkip ) THEN
+             CALL Fatal('GenerateConstraintMatrix','Dont know what to do with all components')
+           ELSE 
+             DO i=1,Dofs
+               IF( .NOT. SetDefined(i) ) ActiveComponents(i) = .FALSE.
+             END DO
+           END IF
+         END IF
+
        END IF
        TransposePresent = TransposePresent .OR. ASSOCIATED(Atmp % Child)
 
@@ -11143,6 +11183,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        CreateSelf = ( Atmp % ProjectorType == PROJECTOR_TYPE_NODAL ) 
        
        IF( Dofs == 1 ) THEN         
+
+         IF( .NOT. ActiveComponents(1) ) CYCLE
+
          DO i=1,Atmp % NumberOfRows           
 
            ! If the mortar boundary is not active at this round don't apply it
@@ -11272,6 +11315,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
          DO i=1,Atmp % NumberOfRows           
            DO j=1,Dofs
              
+             IF( .NOT. ActiveComponents(j) ) CYCLE
+
              ! For complex matrices both entries mist be created
              ! since preconditioning benefits from 
              IF( ComplexMatrix ) THEN

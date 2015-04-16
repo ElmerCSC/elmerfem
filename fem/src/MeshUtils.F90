@@ -7523,9 +7523,6 @@ END SUBROUTINE GetMaxDefs
         n = Element % TYPE % NumberOfNodes        
         Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
 
-        xmin = MINVAL(Nodes % x(1:n))
-        xmax = MAXVAL(Nodes % x(1:n))
-        
         IF( FullCircle ) THEN
           LeftCircle = ( ALL( ABS( Nodes % x(1:n) ) > 90.0_dp ) )
           IF( LeftCircle ) THEN
@@ -7535,7 +7532,10 @@ END SUBROUTINE GetMaxDefs
             END DO
           END IF
         END IF
-                
+
+        xmin = MINVAL(Nodes % x(1:n))
+        xmax = MAXVAL(Nodes % x(1:n))
+                        
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
