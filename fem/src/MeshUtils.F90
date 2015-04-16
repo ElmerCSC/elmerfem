@@ -7540,7 +7540,7 @@ END SUBROUTINE GetMaxDefs
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
         IP = GaussPoints( Element ) 
-        RefArea = detJ * SUM( IP % s(1:IP % n) )
+        RefArea = detJ * ArcCoeff * SUM( IP % s(1:IP % n) )
         SumArea = 0.0_dp
         
         IF( SaveElem ) THEN
@@ -7640,7 +7640,7 @@ END SUBROUTINE GetMaxDefs
               xt = SUM( Basis(1:2) * NodesT % x(1:2) )
             
               ! Integration weight for current integration point
-              Wtemp = DetJ * IP % s(nip)
+              Wtemp = DetJ * ArcCoeff * IP % s(nip)
             
               ! Integration point at the slave element
               CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
@@ -7675,7 +7675,7 @@ END SUBROUTINE GetMaxDefs
             xt = SUM( Basis(1:2) * NodesT % x(1:2) )
             
             ! Integration weight for current integration point
-            Wtemp = DetJ * IP % s(nip)
+            Wtemp = ArcCoeff * DetJ * IP % s(nip)
             sumarea = sumarea + Wtemp
             
             ! Use the real arc length so that this projector weights correctly 
