@@ -15,7 +15,7 @@ Simulation
   Output Intervals(1) = 2
   Steady State Max Iterations = 1
 
-! Post File = MGDynamics.ep
+  Post File = MGDynamics.vtu
 End
 
 Body 1
