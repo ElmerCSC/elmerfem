@@ -1361,8 +1361,8 @@ END INTERFACE
       LOGICAL :: Transient,Scanning
 !------------------------------------------------------------------------------
      INTEGER :: interval, timestep, i, j, k, n
-     REAL(KIND=dp) :: dt, ddt, dtfunc
-     INTEGER :: timeleft,cum_timestep
+     REAL(KIND=dp) :: dt, ddt, dtfunc, timeleft
+     INTEGER :: cum_timestep
      INTEGER, SAVE ::  stepcount=0, RealTimestep
      LOGICAL :: ExecThis,SteadyStateReached=.FALSE.
 
@@ -1463,24 +1463,27 @@ END INTERFACE
              IF( cum_Timestep > 1 ) THEN
                maxtime = ListGetConstReal( CurrentModel % Simulation,'Real Time Max',GotIt)
                IF( GotIt ) THEN
-                  WRITE( Message,'(A,F8.3)') 'Fraction of real time left: ',&
-                              1.0_dp-RealTime() / maxtime
-               ELSE             
-                 timeleft = NINT((stepcount-(cum_Timestep-1))*(newtime-prevtime)/60._dp);
-                 IF (timeleft > 120) THEN
-                   WRITE( Message, *) 'Estimated time left: ', &
-                     TRIM(i2s(timeleft/60)),' hours.'
-                 ELSE IF(timeleft > 60) THEN
-                   WRITE( Message, *) 'Estimated time left: 1 hour ', &
-                     TRIM(i2s(MOD(timeleft,60))), ' minutes.'
-                 ELSE IF(timeleft >= 1) THEN
-                   WRITE( Message, *) 'Estimated time left: ', &
-                     TRIM(i2s(timeleft)),' minutes.'
-                 ELSE
-                   WRITE( Message, *) 'Estimated time left: less than a minute.'
-                 END IF
+                 WRITE( Message,'(A,F8.3)') 'Fraction of real time left: ',&
+                     1.0_dp-RealTime() / maxtime
                END IF
-               CALL Info( 'MAIN', Message, Level=3 )
+
+               ! Compute estimated time left in seconds
+               timeleft = (stepcount-(cum_Timestep-1))*(newtime-prevtime)
+               
+               ! No sense to show too short estimated times
+               IF( timeleft > 1 ) THEN
+                 IF (timeleft >= 24 * 3600) THEN ! >24 hours
+                   WRITE( Message,'(A)') 'Estimated time left: '//I2S(NINT(timeleft/3600))//' hours'
+                 ELSE IF (timeleft >= 3600) THEN   ! 1 to 20 hours
+                   WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/3600,' hours'
+                 ELSE IF(timeleft >= 60) THEN ! 1 to 60 minutes
+                   WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/60,' minutes'
+                 ELSE                         ! 1 to 60 seconds
+                   WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft,' seconds'
+                 END IF
+                 CALL Info( 'MAIN', Message, Level=3 )
+               END IF
+               
              END IF
              prevtime = newtime
            ELSE
