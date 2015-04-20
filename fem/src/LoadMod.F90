@@ -169,6 +169,7 @@ MODULE LoadMod
             END INTERFACE
 
 #ifdef HAVE_EXECUTECOMMANDLINE
+            estat = 0; cstat = 0
             CALL EXECUTE_COMMAND_LINE(cmd, .TRUE., EXITSTAT=estat, CMDSTAT=cstat)
 #else
             ! Workaround for Fortran compilers which do not 
