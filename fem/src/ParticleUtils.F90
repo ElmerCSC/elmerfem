@@ -4769,7 +4769,9 @@ RETURN
         dtime = RKCoeff * DtVar % Values(No)
       END IF
 
+      Coord = 0._dp
       Coord(1:dim) = Particles % Coordinate(No,:) 
+      Velo  = 0._dp
       Velo(1:dim) = Particles % Velocity(No,:) 	
       
       Element => Mesh % Elements( Particles % ElementIndex(No) )            
