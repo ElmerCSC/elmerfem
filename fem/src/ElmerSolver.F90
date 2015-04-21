@@ -787,7 +787,6 @@ END INTERFACE
 
          ! Nullify the old structure since otherwise bad things may happen at deallocation
          NULLIFY( CurrentModel % Solvers(i) % ActiveElements )
-         NULLIFY( CurrentModel % Solvers(i) % Values )
          NULLIFY( CurrentModel % Solvers(i) % Mesh )
          NULLIFY( CurrentModel % Solvers(i) % BlockMatrix )
          NULLIFY( CurrentModel % Solvers(i) % Matrix )
@@ -800,20 +799,18 @@ END INTERFACE
        CurrentModel % NumberOfSolvers = n
 
        ! Now create the ResultOutputSolver instance on-the-fly
-       NULLIFY( CurrentModel % Solvers(n) % Values )
        CurrentModel % Solvers(n) % PROCEDURE = 0
        NULLIFY( CurrentModel % Solvers(n) % Matrix )
        NULLIFY( CurrentModel % Solvers(n) % BlockMatrix )
-       NULLIFY( CurrentModel % Solvers(n) % Values )
        NULLIFY( CurrentModel % Solvers(n) % Variable )
        NULLIFY( CurrentModel % Solvers(n) % ActiveElements )
        CurrentModel % Solvers(n) % NumberOfActiveElements = 0
-       NULLIFY( CurrentModel % Solvers(n) % Values )
        j = CurrentModel % NumberOfBodies
        ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6))
        CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
        
        ! Add some keywords to the list
+       CurrentModel % Solvers(n) % Values => ListAllocate()
        CALL ListAddString(CurrentModel % Solvers(n) % Values,&
            'Procedure', 'ResultOutputSolve ResultOutputSolver',.FALSE.)
        CALL ListAddString(CurrentModel % Solvers(n) % Values,'Output Format','vtu')
@@ -983,6 +980,7 @@ END INTERFACE
            n = Element % TYPE % NumberOfNodes
 
            BC => GetBC()
+           IF(.NOT.ASSOCIATED(BC)) CYCLE
 
            Var => Mesh % Variables
            DO WHILE( ASSOCIATED(Var) )

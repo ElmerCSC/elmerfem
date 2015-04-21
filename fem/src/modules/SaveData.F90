@@ -91,7 +91,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   TYPE(Solver_t), POINTER :: ParSolver
-  TYPE(ValueList_t), POINTER :: Lst, Params
+  TYPE(ValueList_t), POINTER :: Params
+  TYPE(ValueListEntry_t), POINTER :: Lst
   TYPE(Variable_t), POINTER :: Var, OldVar
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t),POINTER :: CurrentElement
@@ -108,7 +109,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       Mean, Variance, Dist, MinDist, x, y, z, Deviation, Vol, Intmean, intvar, &
       KineticEnergy, PotentialEnergy, FieldEnergy, & 
       IntSquare, LocalCoords(3), TempCoordinates(3), Val, Val2, &
-      Change, Norm = 0.0_dp, PrevNorm, EpsAbs, ParallelHits, ParallelCands
+      Change = 0._dp, Norm = 0.0_dp, PrevNorm, EpsAbs, ParallelHits, ParallelCands
   REAL (KIND=DP), ALLOCATABLE :: Values(:), CoordinateDist(:), &
       CoordinatesBasis(:,:), ElementValues(:), BoundaryFluxes(:),BoundaryAreas(:)
   REAL (KIND=DP), POINTER :: PointCoordinates(:,:), LineCoordinates(:,:), WrkPntr(:)
@@ -972,7 +973,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Read the scalars defined in other modules
   !------------------------------------------------------------------------------
-  Lst => Model % Simulation
+  Lst => ListHead(Model % Simulation)
   l = 0
   DO WHILE( ASSOCIATED( Lst ) )    
     IF ( Lst % Name(1:4) == TRIM(ResultPrefix) ) THEN
@@ -1166,7 +1167,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     Name = ListGetString( Params, 'Equation',GotIt)
     IF(.NOT. GotIt) Name = 'SaveScalars'
-    
+
     ! Here the name is ComputeChange in order to get the change also to ElmerGUI
     ! albeit in a very dirt style. One could also edit ElmerGUI....
     WRITE( Message, '(a,g15.8,g15.8,a)') &
@@ -4336,7 +4337,7 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
 
   CALL Info('SaveDependence','Saving dependencies in a table')
 
-  Params => Solver % Values
+  Params => GetSolverParams()
 
   FileName = ListGetString( Params,'Filename',Found)
   IF(.NOT. Found ) FileName = 'dep.dat'

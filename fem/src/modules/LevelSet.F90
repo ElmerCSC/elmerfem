@@ -760,7 +760,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     VisitedTimes = VisitedTimes + 1
-    Params => Solver % Values
+    Params => GetSolverParams()
     Filename = ListGetString(Params,'Filename',FileSave )
 
     IF(FileSave) THEN         
@@ -1205,7 +1205,7 @@ CONTAINS
 !    Get variables needed for solution
 !------------------------------------------------------------------------------
 
-     Params => Solver % Values
+     Params => GetSolverParams()
 
      ! The variable that should be renormalized
      LevelSetVariableName = ListGetString(Params,'Level Set Variable',GotIt) 

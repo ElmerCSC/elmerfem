@@ -97,7 +97,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 
   Debug = .FALSE.
-  Params => Solver % Values
+  Params => GetSolverParams()
   Mesh => Solver % Mesh
   PSolver => Solver
 

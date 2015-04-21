@@ -108,7 +108,7 @@
   MeshPerm => MeshSol % Perm
   STDOFs =  MeshSol % DOFs
   MeshUpdate => MeshSol % Values
-  Params => Solver % Values
+  Params => GetSolverParams()
   Mesh => Solver % Mesh
   
   LocalNodes = COUNT( MeshPerm > 0 )

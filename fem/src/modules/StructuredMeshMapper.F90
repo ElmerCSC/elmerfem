@@ -95,7 +95,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   !   Initialize the pointers to top and bottom nodes 
   !------------------------------------------------------------------------------
 
-  SolverParams => Solver % Values
+  SolverParams => GetSolverParams()
   PSolver => Solver
   Mesh => Solver % Mesh
 

@@ -142,7 +142,7 @@ END SUBROUTINE StatCurrentSolver_Init
 
      Potential     => Solver % Variable % Values
      PotentialPerm => Solver % Variable % Perm
-     Params => Solver % Values
+     Params => GetSolverParams()
 
      LocalNodes = Model % NumberOfNodes
      StiffMatrix => Solver % Matrix

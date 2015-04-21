@@ -43,7 +43,7 @@
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
-  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Solver_t) :: Solver
   LOGICAL ::  TransientSimulation
   REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
@@ -51,7 +51,7 @@
   INTEGER :: dim
   LOGICAL :: Found, Calculate
 
-  Params => Solver % Values
+  Params => GetSolverParams()
   dim = CoordinateSystemDimension()
 
   Calculate = ListGetLogical( Params,'Compute Mesh Velocity',Found ) 
@@ -88,7 +88,7 @@ END SUBROUTINE MeshSolver_Init
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t)  :: Model
-  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Solver_t) :: Solver
   LOGICAL ::  TransientSimulation
   REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------

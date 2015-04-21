@@ -1638,7 +1638,7 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
            CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
-    TYPE(ValueList_t), POINTER :: Lst
+    TYPE(ValueListEntry_t), POINTER :: Lst
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes )
 
@@ -4097,7 +4097,7 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
            CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
-    TYPE(ValueList_t), POINTER :: Lst
+    TYPE(ValueListEntry_t), POINTER :: Lst
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
@@ -4867,9 +4867,9 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   ! and hence no coupling between elemental fields is needed. 
   ALLOCATE(Solvers(n+1))
   Solvers(1:n) = Model % Solvers
-  SolverParams => NULL()
+  Solvers(n+1) % Values => ListAllocate()
+  SolverParams => Solvers(n+1) % Values
   CALL ListAddLogical( SolverParams, 'Discontinuous Galerkin', .TRUE. )
-  Solvers(n+1) % Values => SolverParams
   Solvers(n+1) % PROCEDURE = 0
   Solvers(n+1) % ActiveElements => NULL()
   CALL ListAddString( SolverParams, 'Exec Solver', 'never' )
@@ -4879,6 +4879,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   CALL ListAddString( SolverParams, 'Procedure', &
               'MagnetoDynamics MagnetoDynamics_Dummy',.FALSE. )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput cf_dummy' )
+
 
   pname = ListGetString( Model % Solvers(soln) % Values, 'Mesh', Found )
   IF(Found) THEN
@@ -5048,6 +5049,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   LOGICAL :: Found, FluxFound, NodalFields, RealField
   TYPE(ValueList_t), POINTER :: EQ, SolverParams
 
+  IF(.NOT.ASSOCIATED(Solver % Values)) Solver % Values=>ListAllocate()
   SolverParams => GetSolverParams()
 
   CALL ListAddString( SolverParams, 'Variable', '-nooutput hr_dummy' )

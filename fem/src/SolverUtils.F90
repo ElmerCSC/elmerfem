@@ -2088,7 +2088,6 @@ CONTAINS
               CALL ListAddIntegerArray( ValueList,'Target Nodes', &
                   1, IndNodes) 
             END IF
-            Model % BCs(BC) % Values => ValueList
 
             ! Finally deallocate the temporal vectors
             DEALLOCATE( IndNodes, MinDist ) 
@@ -3760,7 +3759,6 @@ CONTAINS
               ! retreated each time. 
               CALL ListAddIntegerArray( ValueList,'Target Nodes', 0, IndNodes) 
             END IF
-            Model % BCs(BC) % Values => ValueList
 
             ! Finally deallocate the temporal vectors
             DEALLOCATE( IndNodes, MinDist ) 
