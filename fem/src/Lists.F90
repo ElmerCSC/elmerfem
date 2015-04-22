@@ -3580,10 +3580,8 @@ CONTAINS
                      NodeIndexes(i), T, G )
          ELSE
            DO j=1,N1
-             DO k=1,N2
-               F(j,i) = InterpolateCurve(ptr % TValues, ptr % FValues(j,1,:), &
-                                T(1), ptr % CubicCoeff )
-             END DO
+             F(j,i) = InterpolateCurve(ptr % TValues, &
+                   ptr % FValues(j,1,:), T(1), ptr % CubicCoeff )
            END DO
          END IF
 
