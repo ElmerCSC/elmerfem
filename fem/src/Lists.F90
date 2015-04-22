@@ -3600,9 +3600,7 @@ CONTAINS
        IF( AllGlobal ) THEN
          DO i=2,n
            DO j=1,N1
-             DO k=1,N2
-               F(j,i) = F(j,1) 
-             END DO
+             F(j,i) = F(j,1) 
            END DO
          END DO
        END IF
