@@ -960,6 +960,34 @@ CONTAINS
      END IF
   END SUBROUTINE GetRealArray
 
+!> Returns a real vector by its name if found in the list structure, and in the active element. 
+  RECURSIVE SUBROUTINE GetRealVector( List, x, Name, Found, UElement )
+     REAL(KIND=dp) :: x(:,:)
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+
+     TYPE(Element_t), POINTER :: Element
+
+     INTEGER :: n
+
+     IF ( PRESENT( Found ) ) Found = .FALSE.
+
+     Element => GetCurrentElement(UElement)
+
+     n = GetElementNOFNodes( Element )
+     IF ( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+          IF ( PRESENT( Found ) ) THEN
+             CALL ListGetRealvector( List, Name, x, n, Element % NodeIndexes, Found )
+          ELSE
+             CALL ListGetRealVector( List, Name, x, n, Element % NodeINdexes  )
+          END IF
+       END IF
+     END IF
+  END SUBROUTINE GetRealVector
+
 !> Set some property elementwise to the active element
   SUBROUTINE SetElementProperty( Name, Values, UElement )
     CHARACTER(LEN=*) :: Name

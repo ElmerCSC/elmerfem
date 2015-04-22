@@ -115,6 +115,23 @@ MODULE Lists
    END INTERFACE
 
    INTERFACE
+     SUBROUTINE ExecRealVectorFunction( Proc,Md,Node,Temp,F )
+       USE Types
+
+#ifdef SGI
+       INTEGER :: Proc
+#else
+       INTEGER(KIND=AddrInt) :: Proc
+#endif
+       TYPE(Model_t) :: Md
+       INTEGER :: Node,n1,n2
+       REAL(KIND=dp) :: Temp(*)
+
+       REAL(KIND=dp) :: F(:,:)
+     END SUBROUTINE ExecRealVectorFunction
+   END INTERFACE
+
+   INTERFACE
      FUNCTION ExecConstRealFunction( Proc,Md,x,y,z ) RESULT(dbl)
        USE Types
 
@@ -3488,6 +3505,122 @@ CONTAINS
      END SELECT
 !------------------------------------------------------------------------------
    END SUBROUTINE ListGetRealArray
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Gets a real vector from the list by its name
+!------------------------------------------------------------------------------
+   RECURSIVE SUBROUTINE ListGetRealVector( List,Name,F,N,NodeIndexes,Found )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     INTEGER :: N,NodeIndexes(:)
+     REAL(KIND=dp), POINTER :: G(:)
+     REAL(KIND=dp), TARGET :: F(:,:)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+
+     REAL(KIND=dp) :: T(MAX_FNC)
+     INTEGER :: i,j,k,nlen,N1,N2,k1,S1,S2,l
+     CHARACTER(LEN=2048) :: tmp_str, cmd
+     LOGICAL :: AllGlobal
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,Name,Found)
+     IF ( .NOT.ASSOCIATED(ptr) ) THEN
+       DO i=1,SIZE(F,1)
+         F(i,1:n) = ListGetReal(List,Name//' '//TRIM(I2S(i)),n,NodeIndexes,Found)
+       END DO
+       RETURN
+     END IF
+
+     IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+       CALL Fatal( 'ListGetRealVector', &
+           'Value type for property > '// TRIM(Name) // '< not used consistently.')
+     END IF
+
+     N1 = SIZE(ptr % FValues,1)
+
+     SELECT CASE(ptr % TYPE)
+     CASE ( LIST_TYPE_CONSTANT_TENSOR )
+       DO i=1,n
+         F(:,i) = ptr % Coeff * ptr % FValues(:,1,1)
+       END DO
+
+       IF ( ptr % PROCEDURE /= 0 ) THEN
+         DO i=1,n1
+           F(i,1) = ptr % Coeff * &
+             ExecConstRealFunction( ptr % PROCEDURE, &
+               CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
+         END DO
+       END IF
+     
+     CASE( LIST_TYPE_VARIABLE_TENSOR,LIST_TYPE_VARIABLE_TENSOR_STR )
+       TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+       WRITE( cmd, '(a,e15.8)' ) 'tx=0; st = ', TVar % Values(1)
+       k = LEN_TRIM(cmd)
+       CALL matc( cmd, tmp_str, k )
+
+       DO i=1,n
+         k = NodeIndexes(i)
+         CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
+         IF ( ANY(T(1:j)==HUGE(1._dP)) ) CYCLE
+
+         IF ( ptr % TYPE==LIST_TYPE_VARIABLE_TENSOR_STR) THEN
+           DO l=1,j
+             WRITE( cmd, '(a,g19.12)' ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+           END DO
+
+           cmd = ptr % CValue
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+           READ( tmp_str(1:k1), * ) (F(j,i),j=1,N1)
+         ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
+           G => F(:,i)
+           CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
+                     NodeIndexes(i), T, G )
+         ELSE
+           DO j=1,N1
+             DO k=1,N2
+               F(j,i) = InterpolateCurve(ptr % TValues, ptr % FValues(j,1,:), &
+                                T(1), ptr % CubicCoeff )
+             END DO
+           END DO
+         END IF
+
+         IF( AllGlobal ) EXIT
+       END DO
+
+       IF( AllGlobal ) THEN
+         DO i=2,n
+           DO j=1,N1
+             DO k=1,N2
+               F(j,i) = F(j,1) 
+             END DO
+           END DO
+         END DO
+       END IF
+
+       IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
+         F = ptr % Coeff * F
+       END IF
+  
+     CASE DEFAULT
+       F = 0.0d0
+       DO i=1,N1
+         IF ( PRESENT( Found ) ) THEN
+           F(i,:) = ListGetReal( List,Name,N,NodeIndexes,Found )
+         ELSE
+           F(i,:) = ListGetReal( List,Name,N,NodeIndexes )
+         END IF
+       END DO
+     END SELECT
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListGetRealVector
 !------------------------------------------------------------------------------
 
 
