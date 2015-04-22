@@ -403,16 +403,14 @@ MODULE LoadMod
             INTEGER(KIND=AddrInt) :: fptr
             TYPE(Model_t), POINTER :: model
             INTEGER :: node
-            REAL(KIND=dp) :: val(*)
-            REAL(KIND=dp) :: arr(:)
+            REAL(KIND=dp) :: val(*), arr(:)
 
             INTERFACE
                 SUBROUTINE ElmerRealArrFn(model, node, val, arr)
                     IMPORT Model_t, dp
                     TYPE(Model_t) :: model
                     INTEGER :: node
-                    REAL(KIND=dp) :: val(*)
-                    REAL(KIND=dp) :: arr(:)
+                    REAL(KIND=dp) :: val(*), arr(:)
                 END SUBROUTINE ElmerRealArrFn
             END INTERFACE
             TYPE(C_FUNPTR) :: cfptr

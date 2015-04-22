@@ -115,19 +115,12 @@ MODULE Lists
    END INTERFACE
 
    INTERFACE
-     SUBROUTINE ExecRealVectorFunction( Proc,Md,Node,Temp,F )
+     SUBROUTINE ExecRealVectorFunction( Proc,Md,Node,T,F )
        USE Types
-
-#ifdef SGI
-       INTEGER :: Proc
-#else
        INTEGER(KIND=AddrInt) :: Proc
-#endif
        TYPE(Model_t) :: Md
        INTEGER :: Node,n1,n2
-       REAL(KIND=dp) :: Temp(*)
-
-       REAL(KIND=dp) :: F(:,:)
+       REAL(KIND=dp) :: T(*), F(:,:)
      END SUBROUTINE ExecRealVectorFunction
    END INTERFACE
 

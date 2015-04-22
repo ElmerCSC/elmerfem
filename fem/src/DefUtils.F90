@@ -848,14 +848,10 @@ CONTAINS
      END IF
 
      x => GetStore(n)
-     x = 0.0d0
+     x = 0.0_dp
      IF( ASSOCIATED(List) ) THEN
        IF ( ASSOCIATED(List % Head) ) THEN
-          IF ( PRESENT( Found ) ) THEN
-             x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
-          ELSE
-             x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
-          END IF
+         x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
        END IF
      END IF
   END FUNCTION GetReal
@@ -972,6 +968,7 @@ CONTAINS
 
      INTEGER :: n
 
+     x = 0._dp
      IF ( PRESENT( Found ) ) Found = .FALSE.
 
      Element => GetCurrentElement(UElement)
@@ -987,6 +984,41 @@ CONTAINS
        END IF
      END IF
   END SUBROUTINE GetRealVector
+
+!> Returns a complex vector by its name if found in the list structure, and in the active element. 
+  RECURSIVE SUBROUTINE GetComplexVector( List, x, Name, Found, UElement )
+     COMPLEX(KIND=dp) :: x(:,:)
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: lFound
+     INTEGER :: n
+     REAL(KIND=dp), ALLOCATABLE :: xr(:,:)
+
+     x = 0._dp
+     IF ( PRESENT( Found ) ) Found = .FALSE.
+
+     Element => GetCurrentElement(UElement)
+
+     n = GetElementNOFNodes( Element )
+     IF ( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+          ALLOCATE(xr(SIZE(x,1),SIZE(x,2)))
+          CALL ListGetRealvector( List, Name, xr, n, &
+                 Element % NodeIndexes, lFound )
+          IF(PRESENT(Found)) Found=lFound
+          x = xr
+          CALL ListGetRealvector( List, TRIM(Name)//' im', &
+              xr, n, Element % NodeIndexes, lFound )
+          IF(PRESENT(Found)) Found=Found.OR.lFound
+          x = CMPLX(REAL(x), xr)
+       END IF
+     END IF
+  END SUBROUTINE GetComplexVector
+
 
 !> Set some property elementwise to the active element
   SUBROUTINE SetElementProperty( Name, Values, UElement )
