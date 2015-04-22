@@ -3532,7 +3532,7 @@ CONTAINS
      IF ( .NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
        DO i=1,SIZE(F,1)
-         F(i,1:n) = ListGetReal(List,Name//' '//TRIM(I2S(i)),n,NodeIndexes,lFound)
+         F(i,1:n) = ListGetReal(List,TRIM(Name)//' '//TRIM(I2S(i)),n,NodeIndexes,lFound)
          IF(PRESENT(Found)) Found = Found .OR. lFound
        END DO
        RETURN
