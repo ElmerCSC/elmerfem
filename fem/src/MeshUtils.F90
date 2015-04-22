@@ -8360,12 +8360,12 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: x1_min(3),x1_max(3),x2_min(3),x2_max(3),&
         x1r_min(3),x1r_max(3),x2r_min(3),x2r_max(3)
     REAL(KIND=dp) :: x(3), xcyl(3),rad2deg,F1min,F1max,F2min,F2max,dFii1,dFii2,eps_rad,&
-        err1,err2,dF,Fii,Nsymmetry,fmin,fmax
+        err1,err2,dF,Fii,Nsymmetry,fmin,fmax,DegOffset,rad,alpha
     REAL(KIND=dp), POINTER :: TmpCoord(:)
     REAL(KIND=dp),ALLOCATABLE :: Angles(:)
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: i,j,k,n,ind,Nmax,Nmin,Nfii,Nnodes,MaxElemNodes,NElems
-    LOGICAL :: Found, Hit0, Hit90, Hit180, Hit270
+    LOGICAL :: Found, Hit0, Hit90, Hit180, Hit270, SetDegOffset
 
     ! We choose degrees as they are more intuitive
     rad2deg = 180.0_dp / PI
@@ -8376,10 +8376,19 @@ END SUBROUTINE GetMaxDefs
     NElems = BMesh2 % NumberOfBulkElements
     FullCircle = .FALSE.
 
+
     ! Go trough master (k=1) and target mesh (k=2)
     !--------------------------------------------
     DO k=1,2
      
+      ! Potentially the projector may be set to rotate by just adding an offset 
+      ! to the angle. This may depende on time etc. 
+      IF( k == 1 ) THEN
+        DegOffset = ListGetCReal(BParams,'Rotational Projector Angle Offset',SetDegOffset ) 
+      ELSE
+        SetDegOffset = .FALSE.
+      END IF
+
       IF( k == 1 ) THEN
         PMesh => BMesh1
       ELSE
@@ -8417,7 +8426,8 @@ END SUBROUTINE GetMaxDefs
 
       ! Do the actual coordinate transformation
       !---------------------------------------------------------------------------
-      DO i=1,PMesh % NumberOfNodes
+      n = PMesh % NumberOfNodes
+      DO i=1,n
         x(1) = PMesh % Nodes % x(i)
         x(2) = PMesh % Nodes % y(i)
         x(3) = PMesh % Nodes % z(i)
@@ -8425,11 +8435,20 @@ END SUBROUTINE GetMaxDefs
         ! Set the angle to be the first coordinate as it may sometimes be the 
         ! only nonzero coordinate. Z-coordinate is always unchanged. 
         !------------------------------------------------------------------------
-        PMesh % Nodes % x(i) = rad2deg * ATAN2( x(2), x(1)  )
-        PMesh % Nodes % y(i) = x(3)
-        PMesh % Nodes % z(i) = SQRT( x(1)**2 + x(2)**2)
-      END DO
+        alpha = rad2deg * ATAN2( x(2), x(1)  ) 
+        rad = SQRT( x(1)**2 + x(2)**2)
 
+        ! Set the offset and revert then the angle to range [-180,180] 
+        IF( SetDegOffset ) THEN
+          alpha = MODULO( alpha + DegOffset, 360.0 )            
+          IF( alpha > 180.0 ) alpha = alpha - 360.0
+        END IF
+
+        PMesh % Nodes % x(i) = alpha
+        PMesh % Nodes % y(i) = x(3)
+        PMesh % Nodes % z(i) = rad      
+      END DO
+      
 
       ! Let's see if we have a full angle to operate or not.
       ! If not, then make the interval continuous. 
