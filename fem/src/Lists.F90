@@ -3526,12 +3526,14 @@ CONTAINS
      REAL(KIND=dp) :: T(MAX_FNC)
      INTEGER :: i,j,k,nlen,N1,N2,k1,S1,S2,l
      CHARACTER(LEN=2048) :: tmp_str, cmd
-     LOGICAL :: AllGlobal
+     LOGICAL :: AllGlobal, lFound
 !------------------------------------------------------------------------------
      ptr => ListFind(List,Name,Found)
      IF ( .NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
        DO i=1,SIZE(F,1)
-         F(i,1:n) = ListGetReal(List,Name//' '//TRIM(I2S(i)),n,NodeIndexes,Found)
+         F(i,1:n) = ListGetReal(List,Name//' '//TRIM(I2S(i)),n,NodeIndexes,lFound)
+         IF(PRESENT(Found)) Found = Found .OR. lFound
        END DO
        RETURN
      END IF
