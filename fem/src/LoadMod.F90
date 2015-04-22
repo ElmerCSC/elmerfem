@@ -398,6 +398,32 @@ MODULE LoadMod
             CALL pptr(model, node, val, arr)
         END SUBROUTINE execrealarrayfunction
 
+        RECURSIVE SUBROUTINE execrealvectorfunction(fptr, model, node, val, arr )
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t), POINTER :: model
+            INTEGER :: node
+            REAL(KIND=dp) :: val(*)
+            REAL(KIND=dp) :: arr(:)
+
+            INTERFACE
+                SUBROUTINE ElmerRealArrFn(model, node, val, arr)
+                    IMPORT Model_t, dp
+                    TYPE(Model_t) :: model
+                    INTEGER :: node
+                    REAL(KIND=dp) :: val(*)
+                    REAL(KIND=dp) :: arr(:)
+                END SUBROUTINE ElmerRealArrFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerRealArrFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL pptr(model, node, val, arr)
+        END SUBROUTINE execrealvectorfunction
+
         SUBROUTINE execsolver(fptr, model, solver, dt, transient)
             IMPLICIT NONE
             INTEGER(KIND=AddrInt) :: fptr
