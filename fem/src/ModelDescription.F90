@@ -1090,9 +1090,9 @@ CONTAINS
 #include "../config.h"
 
 #ifdef USE_ISO_C_BINDINGS
-          str(1:9) = 'ELMER_LIB'
+          str = 'ELMER_LIB'
 #else
-          str(1:10) = 'ELMER_LIB'//CHAR(0)
+          str = 'ELMER_LIB'//CHAR(0)
 #endif
           CALL envir( str,str1,k ) 
 
@@ -1103,9 +1103,9 @@ CONTAINS
           END IF
           IF (.NOT. fexist) THEN
 #ifdef USE_ISO_C_BINDINGS
-             str(1:10) = 'ELMER_HOME'
+             str = 'ELMER_HOME'
 #else
-             str(1:11) = 'ELMER_HOME'//CHAR(0)
+             str = 'ELMER_HOME'//CHAR(0)
 #endif
              CALL envir( str,str1,k ) 
              IF ( k > 0 ) THEN
