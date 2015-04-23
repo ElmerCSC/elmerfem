@@ -1088,10 +1088,12 @@ END INTERFACE
                IF ( GotIt ) THEN
                  DO j=1,n
                    k = Element % NodeIndexes(j)
-                   DO l=1,MIN(SIZE(WorkA,1),Var % DOFs)
-                     IF ( ASSOCIATED(Var % Perm) ) k = Var % Perm(k)
-                     IF ( k>0 ) Var % Values(Var % DOFs*(k-1)+l) = WorkA(l,1,j)
-                   END DO
+                   IF ( ASSOCIATED(Var % Perm) ) k = Var % Perm(k)
+                   IF(k>0) THEN
+                     DO l=1,MIN(SIZE(WorkA,1),Var % DOFs)
+                       Var % Values(Var % DOFs*(k-1)+l) = WorkA(l,1,j)
+                     END DO
+                   END IF
                  END DO
                ELSE
                END IF
@@ -1258,10 +1260,12 @@ END INTERFACE
                IF ( GotIt ) THEN
                  DO k=1,n
                    k1 = Indexes(k)
-                   DO l=1,MIN(SIZE(WorkA,1),Var % DOFs)
-                     IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
-                     IF ( k1>0 ) Var % Values(Var % DOFs*(k1-1)+l) = WorkA(l,1,k)
-                   END DO
+                   IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
+                   IF(k1>0) THEN
+                     DO l=1,MIN(SIZE(WorkA,1),Var % DOFs)
+                       IF ( k1>0 ) Var % Values(Var % DOFs*(k1-1)+l) = WorkA(l,1,k)
+                     END DO
+                   END IF
                  END DO
                END IF
              END IF
