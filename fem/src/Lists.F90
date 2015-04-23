@@ -3524,6 +3524,7 @@ CONTAINS
      ptr => ListFind(List,Name,lFound)
      IF ( .NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
+       AnyFound = .FALSE.
        DO i=1,SIZE(F,1)
          F(i,1:n) = ListGetReal(List,TRIM(Name)//' '//TRIM(I2S(i)),n,NodeIndexes,lFound)
          AnyFound = AnyFound.OR.lFound
