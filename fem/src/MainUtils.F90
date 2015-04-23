@@ -44,10 +44,8 @@
 MODULE MainUtils
 
 !------------------------------------------------------------------------------
-
-  USE SolverUtils
-  USE BlockSolve
-  USE ModelDescription
+  USE DefUtils
+  Use BlockSolve
 #ifdef USE_ISO_C_BINDINGS
   USE LoadMod
 #endif
@@ -72,7 +70,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
 
-    Params => Solver % Values
+    Params => GetSolverParams(Solver)
     str = ListGetString( Params,'Linear System Solver', Found )
 
     IF ( str == 'direct' ) THEN
@@ -325,7 +323,7 @@ CONTAINS
 
     !------------------------------------------------------------------------------
 
-    SolverParams => Solver % Values
+    SolverParams => GetSolverParams(Solver)
 
     ! If there is a matrix level Flux Corrected Transport and/or nonlinear timestepping
     ! then you must use global matrices for time integration.
@@ -1827,7 +1825,7 @@ CONTAINS
     END INTERFACE
 #endif
 
-    SolverParams => GetSolverParams()
+    SolverParams => GetSolverParams(Solver)
 
     IsCoupledSolver = .FALSE.
     IsAssemblySolver = .FALSE.
@@ -2588,7 +2586,7 @@ CONTAINS
     END IF
     CALL Info('BlockSolver','---------------------------------------',Level=5)
 
-    SolverParams => Solver % Values
+    SolverParams => GetSolverParams(Solver)
     Mesh => Solver % Mesh
     PSolver => Solver
 
@@ -3580,7 +3578,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      CALL SetCurrentMesh( Model, Solver % Mesh )
      Model % Solver => Solver
-     Params => Solver % Values
+     Params => GetSolverParams(Solver)
 
      CoordTransform = ListGetString(Params,'Coordinate Transformation',&
          GotCoordTransform )

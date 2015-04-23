@@ -477,6 +477,10 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         GapIndexes(N), &
         STAT=istat )
 
+    ElementNodes % x = 0._dp
+    ElementNodes % y = 0._dp
+    ElementNodes % z = 0._dp
+
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'AcousticsSolver', 'Memory allocation error.' )
     END IF
@@ -5323,6 +5327,7 @@ CONTAINS
          stat = ElementInfo( Element, Nodes, U, V, W, SqrtElementMetric, &
              Basis, dBasisdx, ddBasisddx, .FALSE., .FALSE. )
         
+         dBasisdx(n+1:,:) = 0._dp
          SELECT CASE( Element % TYPE % ElementCode ) 
            
          CASE(504)

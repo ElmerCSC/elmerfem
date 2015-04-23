@@ -115,6 +115,16 @@ MODULE Lists
    END INTERFACE
 
    INTERFACE
+     SUBROUTINE ExecRealVectorFunction( Proc,Md,Node,T,F )
+       USE Types
+       INTEGER(KIND=AddrInt) :: Proc
+       TYPE(Model_t) :: Md
+       INTEGER :: Node,n1,n2
+       REAL(KIND=dp) :: T(*), F(:,:)
+     END SUBROUTINE ExecRealVectorFunction
+   END INTERFACE
+
+   INTERFACE
      FUNCTION ExecConstRealFunction( Proc,Md,x,y,z ) RESULT(dbl)
        USE Types
 
@@ -1191,6 +1201,28 @@ CONTAINS
     END FUNCTION VariableGet 
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+ FUNCTION ListHead(list) RESULT(head)
+!------------------------------------------------------------------------------
+   TYPE(ValueList_t) :: List
+   TYPE(ValueListEntry_t), POINTER :: Head
+!------------------------------------------------------------------------------
+   head => List % Head
+!------------------------------------------------------------------------------
+ END FUNCTION ListHead
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ FUNCTION ListEmpty(list) RESULT(l)
+!------------------------------------------------------------------------------
+    LOGICAL :: L
+    TYPE(ValueList_t) :: list
+!------------------------------------------------------------------------------
+    L = .NOT.ASSOCIATED(list % head)
+!------------------------------------------------------------------------------
+ END FUNCTION ListEmpty
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Allocates a new value list.
@@ -1198,6 +1230,18 @@ CONTAINS
   FUNCTION ListAllocate() RESULT(ptr)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: ptr
+     ALLOCATE( ptr )
+     ptr % Head => Null()
+!------------------------------------------------------------------------------
+  END FUNCTION ListAllocate
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Allocates a new value list.
+!------------------------------------------------------------------------------
+  FUNCTION ListEntryAllocate() RESULT(ptr)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
 
      ALLOCATE( ptr )
      ptr % PROCEDURE = 0
@@ -1212,7 +1256,7 @@ CONTAINS
      NULLIFY( ptr % TValues )
      NULLIFY( ptr % IValues )
 !------------------------------------------------------------------------------
-  END FUNCTION ListAllocate
+  END FUNCTION ListEntryAllocate
 !------------------------------------------------------------------------------
 
 
@@ -1221,7 +1265,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ListDelete( ptr )
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 
      IF ( ASSOCIATED(ptr % CubicCoeff) ) DEALLOCATE(ptr % CubicCoeff)
      IF ( ASSOCIATED(ptr % FValues) ) DEALLOCATE(ptr % FValues)
@@ -1238,23 +1282,23 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ListRemove( List, Name )
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List
-     CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t) :: List
+     CHARACTER(LEN=*)  :: Name
 !------------------------------------------------------------------------------
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k
      LOGICAL :: Found
-     TYPE(ValueList_t), POINTER :: ptr, prev
+     TYPE(ValueListEntry_t), POINTER :: ptr, prev
 !------------------------------------------------------------------------------
-     IF ( ASSOCIATED(List) ) THEN
+     IF ( ASSOCIATED(List % Head) ) THEN
        k = StringToLowerCase( str,Name,.TRUE. )
-       ptr  => List
+       ptr  => List % Head
        Prev => ptr
        DO WHILE( ASSOCIATED(ptr) )
          IF ( ptr % NameLen == k .AND. ptr % Name(1:k) == str(1:k) ) THEN
-            IF ( ASSOCIATED(ptr,List) ) THEN
-               List => ptr % Next
-               Prev => List
+            IF ( ASSOCIATED(ptr,List % Head) ) THEN
+               List % Head => ptr % Next
+               Prev => List % Head
             ELSE
                Prev % Next => ptr % Next
             END IF
@@ -1277,22 +1321,24 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION ListAdd( List, Name ) RESULT(NEW)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List, NEW
+     TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueListEntry_t), POINTER :: new
 !------------------------------------------------------------------------------
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k
      LOGICAL :: Found
-     TYPE(ValueList_t), POINTER :: ptr, prev
+     TYPE(ValueListEntry_t), POINTER :: ptr, prev
 !------------------------------------------------------------------------------
      Prev => NULL()
      Found = .FALSE.
 
-     NEW => ListAllocate()
+     IF(.NOT.ASSOCIATED(List)) List => ListAllocate()
+     New => ListEntryAllocate()
 
-     IF ( ASSOCIATED(List) ) THEN
+     IF ( ASSOCIATED(List % Head) ) THEN
        k = StringToLowerCase( str,Name,.TRUE. )
-       ptr  => List
+       ptr  => List % Head
        NULLIFY( prev )
        DO WHILE( ASSOCIATED(ptr) )
          IF ( ptr % NameLen == k .AND. ptr % Name(1:k) == str(1:k) ) THEN
@@ -1305,23 +1351,23 @@ CONTAINS
        END DO
 
        IF ( Found ) THEN
-         NEW % Next => ptr % Next
+         New % Next => ptr % Next
          IF ( ASSOCIATED( prev ) ) THEN
-           Prev % Next => NEW
+           Prev % Next => New
          ELSE
-           List => NEW
+           List % Head => New
          END IF
          CALL ListDelete( Ptr )
        ELSE
          IF ( ASSOCIATED(prev) ) THEN
            prev % next => NEW
          ELSE
-           NEW % Next => List % Next
-           List % Next => NEW
+           NEW % Next => List % Head % Next
+           List % Head % Next => NEW
          END IF
        END IF
      ELSE
-       List => NEW
+       List % Head => NEW
      END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListAdd
@@ -1363,7 +1409,8 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION ListFind( list, name, Found) RESULT(ptr)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: list, ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
@@ -1372,13 +1419,16 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n
 
+     IF(PRESENT(Found)) Found = .FALSE.
+     ptr => NULL()
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
      k = StringToLowerCase( str,Name,.TRUE. )
 
-     ptr => NULL()
      IF ( ListGetNamespace(strn) ) THEN
        strn = strn //' '//str(1:k)
        k1 = LEN(strn)
-       ptr => List
+       ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
           n = ptr % NameLen
           IF ( n==k1 ) THEN
@@ -1389,7 +1439,7 @@ CONTAINS
      END IF
 
      IF ( .NOT. ASSOCIATED(ptr) ) THEN
-       Ptr => List
+       Ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
          n = ptr % NameLen
          IF ( n==k ) THEN
@@ -1418,7 +1468,8 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION ListFindPrefix( list, name, Found) RESULT(ptr)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: list, ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
@@ -1427,13 +1478,14 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
 
-     k = StringToLowerCase( str,Name,.TRUE. )
-     
      ptr => NULL()
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
+     k = StringToLowerCase( str,Name,.TRUE. )
      IF ( ListGetNamespace(strn) ) THEN
        strn = strn //' '//str(1:k)
        k1 = LEN(strn)
-       ptr => List
+       ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
           n = ptr % NameLen
           IF ( n >= k1 ) THEN
@@ -1444,7 +1496,7 @@ CONTAINS
      END IF
 
      IF ( .NOT. ASSOCIATED(ptr) ) THEN
-       Ptr => List
+       Ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
          n = ptr % NameLen
          IF ( n >= k ) THEN
@@ -1473,7 +1525,8 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION ListFindSuffix( list, name, Found) RESULT(ptr)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: list, ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
@@ -1482,9 +1535,11 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
 
-     k = StringToLowerCase( str,Name,.TRUE. )
+     ptr => Null()
+     IF(.NOT.ASSOCIATED(List)) RETURN
      
-     Ptr => List
+     k = StringToLowerCase( str,Name,.TRUE. )
+     Ptr => List % Head
      DO WHILE( ASSOCIATED(ptr) )
        n = ptr % NameLen
        IF ( n >= k ) THEN
@@ -1515,7 +1570,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: bc
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO bc = 1,Model % NumberOfBCs
@@ -1535,7 +1590,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: body_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO body_id = 1,Model % NumberOfBodies
@@ -1555,7 +1610,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: mat_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO mat_id = 1,Model % NumberOfMaterials
@@ -1575,7 +1630,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: bf_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO bf_id = 1,Model % NumberOfBodyForces
@@ -1593,19 +1648,21 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      REAL(KIND=dp) :: coeff
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr, ptr2
+     TYPE(ValueListEntry_t), POINTER :: ptr, ptr2
      TYPE(Varying_string) :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k, k1, n, n2, m
 
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
      k = StringToLowerCase( str,Name,.TRUE. )
      
-     Ptr => list
+     Ptr => list % Head
      DO WHILE( ASSOCIATED(ptr) )
        n = ptr % NameLen
        IF ( n >= k ) THEN
          IF ( ptr % Name(n-k+1:n) == str(1:k) ) THEN
-           Ptr2 => list
+           Ptr2 => list % Head
            DO WHILE( ASSOCIATED(ptr2) )
              n2 = ptr2 % NameLen
              
@@ -1637,7 +1694,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      ptr => ListFind(List,Name,Found)
 !------------------------------------------------------------------------------
@@ -1654,7 +1711,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      ptr => ListFindPrefix(List,Name,Found)
 !------------------------------------------------------------------------------
@@ -1670,7 +1727,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: bc
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO bc = 1,Model % NumberOfBCs
@@ -1690,7 +1747,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: body_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO body_id = 1,Model % NumberOfBodies
@@ -1710,7 +1767,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: mat_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO mat_id = 1,Model % NumberOfMaterials
@@ -1730,7 +1787,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: bf_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO bf_id = 1,Model % NumberOfBodyForces
@@ -1757,7 +1814,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       INTEGER :: k
       LOGICAL :: DoCase
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
 
@@ -1787,7 +1844,7 @@ CONTAINS
       CHARACTER(LEN=*) :: Name
       LOGICAL :: LValue
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
       Ptr % LValue = LValue
@@ -1808,7 +1865,7 @@ CONTAINS
       INTEGER :: IValue
       INTEGER(Kind=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
       IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
@@ -1833,7 +1890,7 @@ CONTAINS
       INTEGER :: IValues(N)
       INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
 
@@ -1859,7 +1916,7 @@ CONTAINS
       REAL(KIND=dp) :: FValue
       INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
 
@@ -1901,7 +1958,7 @@ CONTAINS
      REAL(KIND=dp) :: TValues(N)
      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      ptr => ListAdd( List, Name )
      IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
@@ -1944,7 +2001,7 @@ CONTAINS
       REAL(KIND=dp) :: FValues(:,:)
       INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
 
@@ -1983,7 +2040,7 @@ CONTAINS
      REAL(KIND=dp) :: TValues(N)
      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
 
      ptr => ListAdd( List, Name )
@@ -2018,7 +2075,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      INTEGER, OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      L = 0
      ptr => ListFind(List,Name,Found)
@@ -2066,7 +2123,7 @@ CONTAINS
      CHARACTER(LEN=*)  :: Name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER :: i,n
      INTEGER, POINTER :: IValues(:)
 !------------------------------------------------------------------------------
@@ -2104,7 +2161,7 @@ CONTAINS
      LOGICAL :: L
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      L = .FALSE.
      ptr => ListFind(List,Name,Found)
@@ -2125,7 +2182,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: Found
      CHARACTER(LEN=MAX_NAME_LEN) :: S
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      S = ' '
      ptr => ListFind(List,Name,Found)
@@ -2149,7 +2206,7 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      REAL(KIND=dp) :: xx,yy,zz
      INTEGER :: i,j,k,n
      CHARACTER(LEN=MAX_NAME_LEN) :: cmd,tmp_str
@@ -2242,7 +2299,7 @@ CONTAINS
      NodeIndexes(n) = 1
 
      x = 0.0_dp
-     IF ( ASSOCIATED(List) ) THEN
+     IF ( ASSOCIATED(List % head) ) THEN
         IF ( PRESENT( Found ) ) THEN
            x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
         ELSE
@@ -2273,7 +2330,7 @@ CONTAINS
 
      IF ( PRESENT( Found ) ) Found = .FALSE.
 
-     IF ( ASSOCIATED(List) ) THEN
+     IF ( ASSOCIATED(List % Head) ) THEN
        NodeIndexes => Dnodes
        NodeIndexes(one) = Node
        
@@ -2395,12 +2452,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION ListCheckAllGlobal( ptr, name ) RESULT ( AllGlobal )
+  FUNCTION ListCheckAllGlobal( List, name ) RESULT ( AllGlobal )
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: name
      LOGICAL :: AllGlobal
 !------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
      TYPE(Element_t), POINTER :: Element
      INTEGER :: ind,i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Variable, CVar
@@ -2408,6 +2466,9 @@ CONTAINS
 
      AllGlobal = .TRUE.
 
+     IF(.NOT.ASSOCIATED(List)) RETURN
+     ptr => List % Head
+     IF(.NOT.ASSOCIATED(ptr)) RETURN
 
      slen = ptr % DepNameLen
 
@@ -2478,7 +2539,7 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      REAL(KIND=dp) :: T(MAX_FNC)
      INTEGER :: i,j,k,k1,l,l0,l1,lsize
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
@@ -2639,7 +2700,7 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: dFdx, eps
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      REAL(KIND=dp) :: T(1)
      INTEGER :: i,j,k,k1,l,l0,l1,lsize
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
@@ -2652,7 +2713,8 @@ CONTAINS
        ptr => ListFind(List,Name,Found)
        IF ( .NOT.ASSOCIATED(ptr) ) RETURN
      ELSE
-       ptr => List
+       IF(.NOT.ASSOCIATED(List)) RETURN
+       ptr => List % Head
        IF ( .NOT.ASSOCIATED(ptr) ) THEN
          CALL Warn('ListGetFun','List entry not associated')
          RETURN
@@ -2800,7 +2862,7 @@ CONTAINS
      REAL(KIND=dp)  :: val
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: T(MAX_FNC),x,y,z
      REAL(KIND=dp), POINTER :: F(:)
@@ -2824,11 +2886,14 @@ CONTAINS
 
      ! If the provided list is the same as last time, also the keyword will
      ! be sitting at the same place, otherwise find it in the new list
-     IF( .NOT. ASSOCIATED( List ) ) THEN
+     IF( .NOT. ASSOCIATED(List) ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
        RETURN
-     ELSE IF( ASSOCIATED( List, Handle % List ) ) THEN
-       ptr => Handle % ptr       
+     ELSE IF( .NOT. ASSOCIATED( List % Head ) ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RETURN
+     ELSE IF( ASSOCIATED( Handle % List, List ) ) THEN
+       ptr => Handle % ptr % head
        IF(PRESENT(Found)) Found = .TRUE.
        IF( Handle % ConstantInList ) THEN
          val = Handle % Values(1)
@@ -2844,7 +2909,9 @@ CONTAINS
        END IF
   
        Handle % List => List
-       Handle % ptr => ptr
+       IF(.NOT.ASSOCIATED(Handle % Ptr)) &
+           Handle % Ptr => ListAllocate()
+       Handle % Ptr % Head => ptr
        
        ! Check whether the keyword should be evaluated at integration point directly
        IF( ListGetLogical( List, TRIM( Name )//' At IP',GotIt ) ) THEN
@@ -3171,7 +3238,8 @@ CONTAINS
      CHARACTER(LEN=*)  :: Section,Name
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr, List
+     TYPE(ValueList_t), POINTER :: List
+     TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER :: i, n, NoVal
      TYPE(Model_t), POINTER :: Model
      REAL(KIND=dp)  :: val
@@ -3282,7 +3350,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp), POINTER  :: F(:,:)
      INTEGER :: i,j,N1,N2
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      NULLIFY( F ) 
      ptr => ListFind(List,Name,Found)
@@ -3322,7 +3390,7 @@ CONTAINS
      INTEGER :: N,NodeIndexes(:)
      REAL(KIND=dp), POINTER :: F(:,:,:), G(:,:)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
 
@@ -3432,6 +3500,120 @@ CONTAINS
    END SUBROUTINE ListGetRealArray
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Gets a real vector from the list by its name
+!------------------------------------------------------------------------------
+   RECURSIVE SUBROUTINE ListGetRealVector( List,Name,F,N,NodeIndexes,Found )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     INTEGER :: N,NodeIndexes(:)
+     REAL(KIND=dp), POINTER :: G(:)
+     REAL(KIND=dp), TARGET :: F(:,:)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+
+     REAL(KIND=dp) :: T(MAX_FNC)
+     INTEGER :: i,j,k,nlen,N1,N2,k1,S1,S2,l
+     CHARACTER(LEN=2048) :: tmp_str, cmd
+     LOGICAL :: AllGlobal, lFound
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,Name,Found)
+     IF ( .NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       DO i=1,SIZE(F,1)
+         F(i,1:n) = ListGetReal(List,TRIM(Name)//' '//TRIM(I2S(i)),n,NodeIndexes,lFound)
+         IF(PRESENT(Found)) Found = Found .OR. lFound
+       END DO
+       RETURN
+     END IF
+
+     IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+       CALL Fatal( 'ListGetRealVector', &
+           'Value type for property > '// TRIM(Name) // '< not used consistently.')
+     END IF
+
+     N1 = SIZE(ptr % FValues,1)
+
+     SELECT CASE(ptr % TYPE)
+     CASE ( LIST_TYPE_CONSTANT_TENSOR )
+       DO i=1,n
+         F(:,i) = ptr % Coeff * ptr % FValues(:,1,1)
+       END DO
+
+       IF ( ptr % PROCEDURE /= 0 ) THEN
+         DO i=1,n1
+           F(i,1) = ptr % Coeff * &
+             ExecConstRealFunction( ptr % PROCEDURE, &
+               CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
+         END DO
+       END IF
+     
+     CASE( LIST_TYPE_VARIABLE_TENSOR,LIST_TYPE_VARIABLE_TENSOR_STR )
+       TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+       WRITE( cmd, '(a,e15.8)' ) 'tx=0; st = ', TVar % Values(1)
+       k = LEN_TRIM(cmd)
+       CALL matc( cmd, tmp_str, k )
+
+       DO i=1,n
+         k = NodeIndexes(i)
+         CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
+         IF ( ANY(T(1:j)==HUGE(1._dP)) ) CYCLE
+
+         IF ( ptr % TYPE==LIST_TYPE_VARIABLE_TENSOR_STR) THEN
+           DO l=1,j
+             WRITE( cmd, '(a,g19.12)' ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+           END DO
+
+           cmd = ptr % CValue
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+           READ( tmp_str(1:k1), * ) (F(j,i),j=1,N1)
+         ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
+           G => F(:,i)
+           CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
+                     NodeIndexes(i), T, G )
+         ELSE
+           DO j=1,N1
+             F(j,i) = InterpolateCurve(ptr % TValues, &
+                   ptr % FValues(j,1,:), T(1), ptr % CubicCoeff )
+           END DO
+         END IF
+
+         IF( AllGlobal ) EXIT
+       END DO
+
+       IF( AllGlobal ) THEN
+         DO i=2,n
+           DO j=1,N1
+             F(j,i) = F(j,1) 
+           END DO
+         END DO
+       END IF
+
+       IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
+         F = ptr % Coeff * F
+       END IF
+  
+     CASE DEFAULT
+       F = 0.0d0
+       DO i=1,N1
+         IF ( PRESENT( Found ) ) THEN
+           F(i,:) = ListGetReal( List,Name,N,NodeIndexes,Found )
+         ELSE
+           F(i,:) = ListGetReal( List,Name,N,NodeIndexes )
+         END IF
+       END DO
+     END SELECT
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListGetRealVector
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Gets a real derivative from. This is only available for tables with dependencies.
@@ -3444,7 +3626,7 @@ CONTAINS
      REAL(KIND=dp) :: F(N)
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER :: i,k,l
      REAL(KIND=dp) :: T
 !------------------------------------------------------------------------------
@@ -3649,7 +3831,7 @@ CONTAINS
      LOGICAL :: IsArray
      LOGICAL :: Found
      INTEGER :: mat, n1, n2
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
     
      IsArray = .FALSE.
      DO mat = 1,Model % NumberOfMaterials
@@ -3739,7 +3921,7 @@ CONTAINS
     IMPLICIT NONE
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
-    TYPE(ValueList_t),POINTER  :: List
+    TYPE(ValueList_t), POINTER  :: List
     LOGICAL :: ShowVariables
     LOGICAL, OPTIONAL :: ClearList
 !------------------------------------------------------------------------------
@@ -4100,7 +4282,7 @@ CONTAINS
 !> Returns the angular frequency  
   FUNCTION ListGetAngularFrequency(ValueList,Found,UElement) RESULT(w)
     REAL(KIND=dp) :: w
-    TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
+    TYPE(ValueList_t), OPTIONAL, POINTER :: ValueList
     LOGICAL, OPTIONAL :: Found
     LOGICAL :: GotIt
     TYPE(Element_t), POINTER :: Element, UElement

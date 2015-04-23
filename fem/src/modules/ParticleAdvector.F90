@@ -84,7 +84,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   Particles => GlobalParticles
   VisitedTimes = VisitedTimes + 1
 
-  Params => Solver % Values
+  Params => GetSolverParams()
   Mesh => Solver % Mesh
   PSolver => Solver
   DIM = CoordinateSystemDimension()
@@ -822,7 +822,7 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found
   INTEGER :: NormInd
 
-  Params => Solver % Values
+  Params => GetSolverParams()
 
   ! These are default setting that make the operation of the advection solver 
   ! possible. There should always be one passive particle for each active node.

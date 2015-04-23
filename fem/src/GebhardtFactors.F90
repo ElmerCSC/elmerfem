@@ -346,7 +346,7 @@
      END DO
 
      ALLOCATE( Solver )
-     NULLIFY( Solver % Values )
+     Solver % Values => ListAllocate()
 
      CALL ListAddString( Solver % Values, &
                   'Linear System Iterative Method', 'CGS' )
