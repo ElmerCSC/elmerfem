@@ -44,7 +44,6 @@
 MODULE MainUtils
 
 !------------------------------------------------------------------------------
-  USE DefUtils
   Use BlockSolve
 #ifdef USE_ISO_C_BINDINGS
   USE LoadMod
@@ -1770,8 +1769,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CoupledSolver( Model, Solver, dt, Transient )
 !------------------------------------------------------------------------------    
-    USE DefUtils
-    
     IMPLICIT NONE
 !------------------------------------------------------------------------------
     TYPE(Solver_t), TARGET :: Solver
@@ -2546,9 +2543,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BlockSolver( Model, Solver, dt, Transient )
 !------------------------------------------------------------------------------
-    
-    USE DefUtils
-    
     IMPLICIT NONE
  !------------------------------------------------------------------------------
     TYPE(Solver_t), TARGET :: Solver
@@ -3115,8 +3109,6 @@ CONTAINS
   SUBROUTINE BlockSystemAssembly(Solver,dt,Transient,RowVar,ColVar,&
       RowIndOffset,ColIndOffset)
 !---------------------------------------------------
-    USE DefUtils
-
     TYPE(Solver_t), POINTER :: Solver
     REAL(KIND=dp) :: dt
     LOGICAL :: Transient
