@@ -3584,9 +3584,9 @@ CONTAINS
            CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G )
          ELSE
-           DO k=1,N1
+           DO k=1,n1
              F(k,i) = InterpolateCurve(ptr % TValues, &
-                   ptr % FValues(j,1,:), T(MIN(j,k)), ptr % CubicCoeff )
+                   ptr % FValues(k,1,:), T(MIN(j,k)), ptr % CubicCoeff )
            END DO
          END IF
 
