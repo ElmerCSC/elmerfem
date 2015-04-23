@@ -1641,6 +1641,84 @@ CONTAINS
    END FUNCTION ListCheckSuffixAnyBodyForce
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Finds an entry related to vector keyword of type "name" or "name i", i=1,2,3.
+!> This could save time since it will detect at one sweep whether the keyword
+!> for a vector is given, and whether it is componentwise or not. 
+!> There is a caveat since currently the "i" is not checked and possibly 
+!> the user could mix the formats and the chosen one would be random. 
+!------------------------------------------------------------------------------
+   FUNCTION ListFindVectorPrefix( list, name, ComponentWise,Found ) RESULT(ptr)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
+     CHARACTER(LEN=*) :: name
+     LOGICAL :: ComponentWise
+     LOGICAL, OPTIONAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(Varying_string) :: strn
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+!------------------------------------------------------------------------------
+     INTEGER :: k, k1, n, m
+
+     ptr => NULL()
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+
+     IF ( ListGetNamespace(strn) ) THEN
+       strn = strn //' '//str(1:k)
+       k1 = LEN(strn)
+       ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+          n = ptr % NameLen
+          IF ( n == k1 ) THEN
+            IF ( ptr % Name(1:k1) == strn ) THEN
+              ComponentWise = .FALSE.
+              EXIT
+            END IF
+          ELSE IF( n == k1 + 2 ) THEN
+            IF ( ptr % Name(1:k1+1) == strn//' ' ) THEN
+              ComponentWise = .TRUE.
+              EXIT
+            END IF
+          END IF
+          ptr => ptr % Next
+       END DO
+     END IF
+
+     IF ( .NOT. ASSOCIATED(ptr) ) THEN
+       Ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         IF ( n == k ) THEN
+           IF ( ptr % Name(1:k) == str(1:k) ) THEN
+             ComponentWise = .FALSE.
+             EXIT
+           END IF
+         ELSE IF( n == k + 2 ) THEN
+           IF ( ptr % Name(1:k+1) == str(1:k)//' ' ) THEN
+             ComponentWise = .TRUE.
+             EXIT
+           END IF
+         END IF
+         ptr => ptr % Next
+       END DO
+     END IF
+
+     IF ( PRESENT(Found) ) THEN
+       Found = ASSOCIATED(ptr)
+     ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
+       CALL Warn( 'ListFindVectorPrefix', ' ' )
+       WRITE(Message,*) 'Requested vector prefix: ', '[',TRIM(Name),'], not found'
+       CALL Warn( 'ListFindVectorPrefix', Message )
+       CALL Warn( 'ListFindVectorPrefix', ' ' )
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ListFindVectorPrefix
+!------------------------------------------------------------------------------
+
+
 
    SUBROUTINE ListSetCoefficients( list, name, coeff )
 !------------------------------------------------------------------------------
