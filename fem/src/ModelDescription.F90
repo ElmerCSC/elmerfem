@@ -2482,6 +2482,11 @@ CONTAINS
           'Output Caller', GotIt )
       IF ( .NOT. GotIt ) OutputCaller = .TRUE.
       
+      ! By default only on partition is used to show the results
+      ! For debugging it may be usefull to show several.
+      MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
+          'Max Output Partition', GotIt )    
+
     END SUBROUTINE InitializeOutputLevel
 !------------------------------------------------------------------------------
   END FUNCTION LoadModel
