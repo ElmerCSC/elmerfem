@@ -120,7 +120,7 @@ MODULE Lists
        INTEGER(KIND=AddrInt) :: Proc
        TYPE(Model_t) :: Md
        INTEGER :: Node,n1,n2
-       REAL(KIND=dp) :: T(*), F(:,:)
+       REAL(KIND=dp) :: T(*), F(:)
      END SUBROUTINE ExecRealVectorFunction
    END INTERFACE
 
