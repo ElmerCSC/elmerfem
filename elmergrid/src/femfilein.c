@@ -3120,7 +3120,7 @@ static int LoadGmshInput1(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Loading mesh in Gmsh format 1.0 from file %s\n",filename);
 
   allocated = FALSE;
-  dim = 3;
+  dim = data->dim;
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
@@ -3279,7 +3279,7 @@ static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Loading mesh in Gmsh format 2.0 from file %s\n",filename);
 
   allocated = FALSE;
-  dim = 3;
+  dim = data->dim;
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
@@ -3395,12 +3395,12 @@ omstart:
 	cp = line;
 	gmshtype = next_int(&cp);
 	tagphys = next_int(&cp);
-	if(gmshtype == 2) {
+	if(gmshtype == dim-1) {
 	  physsurfexist = TRUE;
 	  if(tagphys < MAXBCS) sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
 	  else printf("Index %d too high: ignoring physical surface %s",tagphys,cp+1);
 	}
-	else if(gmshtype == 3) {
+	else if(gmshtype == dim) {
 	  physvolexist = TRUE;
 	  if(tagphys < MAXBODIES) sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
 	  else printf("Index %d too high: ignoring physical volume %s",tagphys,cp+1);
