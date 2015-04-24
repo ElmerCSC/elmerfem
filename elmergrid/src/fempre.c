@@ -432,6 +432,7 @@ int main(int argc, char *argv[])
   case 14:
     boundaries[nofile] = (struct BoundaryType*)
       malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    data[nofile].dim = (eg.dim >= 1 && eg.dim <= 3) ? eg.dim : 3; /* default dim 3 with gmsh*/
     for(i=0;i<MAXBOUNDARIES;i++) {
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
