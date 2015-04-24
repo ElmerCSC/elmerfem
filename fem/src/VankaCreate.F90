@@ -241,6 +241,7 @@
      ALLOCATE( Indexes(nn), AL(nn*dofs,nn*dofs), ind(nn*dofs) )
 
      Active = GetNOFActive(Solver)
+     ILUValues = 0._dp
      DO i=1,Active
        element => GetActiveElement(i)
        nn = GetElementDOFs(Indexes)
