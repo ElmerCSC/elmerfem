@@ -4308,7 +4308,7 @@ CONTAINS
             Var1 => VariableGet(Variables,TRIM(str(1:k)))
             IF( ASSOCIATED( Var1 ) ) THEN
               GotIt = .TRUE.
-              IsVector = ( Var1 % Dofs == Dim ) 
+              IsVector = ( Var1 % Dofs == Dim .OR. Var1 % Dofs == 3 ) 
               Set = ( Comp == 1 .OR. .NOT. IsVector )
             END IF
           END IF
