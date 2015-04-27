@@ -390,8 +390,7 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
-    TYPE(ValueList_t), POINTER :: Material, BodyForce
-    TYPE(ValueListEntry_t), POINTER :: Lst
+    TYPE(ValueList_t), POINTER :: Material, Lst, BodyForce
 
     TYPE(Nodes_t), SAVE :: Nodes
     
@@ -994,9 +993,8 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
-    TYPE(ValueList_t), POINTER :: Material, BodyForce
-    TYPE(ValueListEntry_t), POINTER :: Lst
-    
+    TYPE(ValueList_t), POINTER :: Material, Lst, BodyForce
+
     TYPE(Nodes_t), SAVE :: Nodes
     
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
@@ -1328,7 +1326,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: Unorm, Totnorm, val
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
   REAL(KIND=dp), POINTER :: SaveRHS(:)
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
+  REAL(KIND=dp) :: at0,at1,at2
   
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  FoundMortar, CSymmetry, LossEstimation, JouleHeating
@@ -1422,11 +1420,11 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
 
-  at0 = RealTime()
+!  at0 = RealTime()
   CALL BulkAssembly()
   CALL DefaultFinishAssembly()
-  at1 = RealTime()
-  WRITE(Message,* ) 'Assembly Time: ',at1-at0
+!  at1 = RealTime()
+!  WRITE(Message,* ) 'Assembly Time: ',at1-at0
   CALL Info( 'BSolver', Message, Level=5 )
 !        
 !------------------------------------------------------------------------------     
@@ -1484,8 +1482,8 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
 
 !------------------------------------------------------------------------------     
 
-  at2 = RealTime()
-  WRITE(Message,* ) 'Solution Time: ',at2-at1
+!  at2 = RealTime()
+!  WRITE(Message,* ) 'Solution Time: ',at2-at1
   CALL Info( 'BSolver', Message, Level=5 )
   
   WRITE( Message, * ) 'Result Norm: ',TotNorm
@@ -1526,6 +1524,8 @@ CONTAINS
     COMPLEX(KIND=dp) :: imag_value
     INTEGER :: IvarId, ReIndex, ImIndex, nofturns, VvarDofs, VvarId
     REAL(KIND=DP) :: grads_coeff
+    REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im
+    COMPLEX(KIND=dp) :: i_multiplier
     
     SAVE Nodes
 
@@ -1586,6 +1586,15 @@ CONTAINS
  
           nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
           IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
+          
+          i_multiplier_re = GetConstReal(BodyParams, 'Current Multiplier re', Found)
+          IF (.NOT. Found) i_multiplier_re = 0._dp
+          
+          i_multiplier_im = GetConstReal(BodyParams, 'Current Multiplier im', Found)
+          IF (.NOT. Found) i_multiplier_im = 0._dp
+          
+          i_multiplier = i_multiplier_re + im * i_multiplier_im
+          
         CASE ('massive')
           CoilBody = .TRUE.
 
@@ -1690,8 +1699,13 @@ CONTAINS
           SELECT CASE (CoilType)
           CASE ('stranded')
             imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
-            PotAtIp(1) = PotAtIp(1)+REAL(imag_value * N_j / CondAtIp)
-            PotAtIp(2) = PotAtIp(2)+AIMAG(imag_value * N_j / CondAtIp)
+            IF (i_multiplier /= 0._dp) THEN
+              PotAtIp(1) = PotAtIp(1)+REAL(i_multiplier * imag_value * N_j / CondAtIp)
+              PotAtIp(2) = PotAtIp(2)+AIMAG(i_multiplier * imag_value * N_j / CondAtIp)
+            ELSE
+              PotAtIp(1) = PotAtIp(1)+REAL(imag_value * N_j / CondAtIp)
+              PotAtIp(2) = PotAtIp(2)+AIMAG(imag_value * N_j / CondAtIp)
+            END IF            
           CASE ('massive')
             localV(1) = localV(1) + LagrangeVar % Values(VvarId)
             localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
