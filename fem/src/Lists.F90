@@ -1746,7 +1746,7 @@ CONTAINS
 !> This could save time since it will detect at one sweep whether the keyword
 !> for a vector is given, and whether it is componentwise or not. 
 !> There is a caveat since currently the "i" is not checked and possibly 
-!> the user could mix the formats and the chosen one would be random. 
+!> the user could mix the formats and the chosen one would be random.  
 !------------------------------------------------------------------------------
    FUNCTION ListFindVectorPrefix( list, name, ComponentWise,Found ) RESULT(ptr)
 !------------------------------------------------------------------------------
@@ -1756,7 +1756,7 @@ CONTAINS
      LOGICAL :: ComponentWise
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
+     CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
