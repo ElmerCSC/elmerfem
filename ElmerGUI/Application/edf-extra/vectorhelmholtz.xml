@@ -1,0 +1,323 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE edf>
+<edf version="1.0" >
+
+   <PDE Name="VecHelm" >
+      <Name>Vector Helmholtz Equation</Name>
+
+      <Equation>
+        <Parameter Widget="Label">
+          <Name> Options </Name>
+        </Parameter>
+        <Parameter Widget="Edit"> 
+           <Name> Angular Frequency </Name>
+        </Parameter>
+        <Parameter Widget="Label">
+          <Name> This and that </Name>
+        </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Element Codes </Name>
+           <SifName> Element </SifName>
+           <Whatis> Define element degrees of freedom (p:n d:n n:n e:n f:n b:n d:n). "p" is the p-element degree, "e" number of edge DOFs, "f" number of face DOFs, "b" number of bubble DOFs, and "d" the Discontinuous Galerkin DOFs (0 = element number of nodes). "p" and "b" may be entered together, "d" on its own, and the rest together. </Whatis>
+        </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+	 </Parameter>
+      </Equation>
+
+      <Material>
+        <Parameter Widget="Label" > <Name> Material properties </Name> </Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Inverse Relative Permeability </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the inverse relative permeability compared to vacuum (real part). </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Inverse Relative Permeability im </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the inverse relative permeability compared to vacuum (imag part). </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Relative Permittivity </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the relative permittivity of medium (real part). </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
+	  <Name> Relative Permittivity im</Name>
+	  <Type> String </Type>
+	  <Whatis> Give the relative permittivity of medium (imag part). </Whatis>
+	</Parameter>
+      </Material>
+
+
+      <Solver>
+        <Parameter Widget="Edit">
+          <Name> Procedure </Name>
+          <DefaultValue> "VectorHelmholtz" "VectorHelmholtzSolver" </DefaultValue>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False">
+          <Name> Variable </Name>
+          <DefaultValue> E[E re:1 E im:1] </DefaultValue>
+        </Parameter>
+
+         <Parameter Widget="Edit" Enabled="True">
+           <Name> Linear System Preconditioning Damp Coefficient </Name> 
+           <Type> Real </Type>
+         </Parameter>
+
+         <Parameter Widget="Edit" Enabled="True">
+           <Name> Linear System Preconditioning Damp Coefficient im </Name> 
+           <Type> Real </Type>
+           <DefaultValue> 1.0 </DefaultValue>
+         </Parameter>
+
+         <Parameter Widget="Label"> <Name> Miscellaneous options </Name> </Parameter>
+         <Parameter Widget="CheckBox">
+           <Name> Calculate Loads </Name>
+           <Whatis> If checked compute boundary reaction forces. </Whatis>
+         </Parameter>
+
+         <Parameter Widget="CheckBox">
+           <Name> Use Piola Transform </Name>
+           <Type> Logical </Type>
+         </Parameter>
+
+         <Parameter Widget="Label">
+           <Name> Free text input </Name>
+         </Parameter>
+	 
+	 <Parameter Widget="TextEdit" Enabled="True">
+	   <Name> Free text </Name>
+	   <Type> String </Type>
+	   <Whatis> Free text is copied into the Solver-block of the SIF as such. </Whatis>
+	   <StatusTip> Free text is copied into the Solver-block of the SIF as such. </StatusTip>
+	 </Parameter>
+
+       </Solver>
+
+      <BodyForce>
+         <Parameter Widget="Label" > <Name> Volume sources </Name> </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Current Density 1 (real part)</Name>
+           <SifName> Current Density 1 </SifName>
+        </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Current Density 1 (imag part)</Name>
+           <SifName> Current Density im 1 </SifName>
+        </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Current Density 2 (real part)</Name>
+           <SifName> Current Density 2 </SifName>
+        </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Current Density 2 (imag part)</Name>
+           <SifName> Current Density im 2 </SifName>
+        </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Current Density 3 (real part)</Name>
+           <SifName> Current Density 3 </SifName>
+        </Parameter>
+        <Parameter Widget="Edit">
+           <Name> Current Density 3 (imag part)</Name>
+           <SifName> Current Density im 3 </SifName>
+        </Parameter>
+
+        <Parameter Widget="Label">
+          <Name> Free text input </Name>
+        </Parameter>
+	
+	<Parameter Widget="TextEdit" Enabled="True">
+	  <Name> Free text </Name>
+	  <Type> String </Type>
+	  <Whatis> Free text is copied into the Body Force-block of the SIF as such. </Whatis>
+	  <StatusTip> Free text is copied into the Body Force-block of the SIF as such. </StatusTip>
+	</Parameter>
+	
+      </BodyForce>
+
+
+      <BoundaryCondition>
+        <Parameter Widget="Edit">
+          <Name> E re {e} </Name>
+          <Type> Real </Type>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {e} </Activate>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E re {f} </Activate>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {f} </Activate>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E im {e} </Name>
+          <Type> Real </Type>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E re {f} </Name>
+          <Type> Real </Type>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E im {f} </Name>
+          <Type> Real </Type>
+        </Parameter>
+        <Parameter Widget="Edit">
+          <Name> E re {e} 1</Name>
+          <Type> Real </Type>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {e} 1 </Activate>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E re {f} 1 </Activate>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {f} 1 </Activate>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E im {e} 1</Name>
+          <Type> Real </Type>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E re {f} 1</Name>
+          <Type> Real </Type>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E im {f} 1</Name>
+          <Type> Real </Type>
+        </Parameter>
+
+        <Parameter Widget="Edit">
+          <Name> E re {e} 2</Name>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {e} 2 </Activate>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E re {f} 2 </Activate>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {f} 2 </Activate>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E im {e} 2</Name>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E re {f} 2</Name>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E im {f} 2</Name>
+        </Parameter>
+        
+        <Parameter Widget="Edit">
+          <Name> E re {e} 3</Name>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {e} 3 </Activate>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E re {f} 3 </Activate>
+          <Activate> /Vector Helmholtz Equation/BoundaryCondition/E im {f} 3 </Activate>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E im {e} 3</Name>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E re {f} 3</Name>
+        </Parameter>
+        <Parameter Widget="Edit" Enabled="False" Visible="False">
+          <Name> E im {f} 3</Name>
+        </Parameter>
+
+        <Parameter Widget="Edit">
+          <Name> Magnetic Boundary Load 1</Name>
+        </Parameter>
+        <Parameter Widget="Edit">
+          <Name> Magnetic Boundary Load im 1</Name>
+        </Parameter>
+        <Parameter Widget="Edit">
+          <Name> Magnetic Boundary Load 2</Name>
+        </Parameter>
+        <Parameter Widget="Edit">
+          <Name> Magnetic Boundary Load im 2</Name>
+        </Parameter>
+        <Parameter Widget="Edit">
+          <Name> Magnetic Boundary Load 3</Name>
+        </Parameter>
+        <Parameter Widget="Edit">
+          <Name> Magnetic Boundary Load im 3</Name>
+        </Parameter>
+
+        <Parameter Widget="Edit">
+          <Name> Electric Robin Coefficient</Name>
+        </Parameter>
+        <Parameter Widget="Edit">
+          <Name> Electric Robin Coefficient im</Name>
+        </Parameter>
+
+        <Parameter Widget="TextEdit">
+        </Parameter>
+        <Parameter Widget="Label">
+          <Name> Free text input </Name>
+        </Parameter>
+
+        <Parameter Widget="TextEdit" Enabled="True">
+          <Name> Free text </Name>
+          <Type> String </Type>
+          <Whatis> Free text is copied into the Boundary Condition-block of the SIF as such. </Whatis>
+          <StatusTip> Free text is copied into the Boundary Condition-block of the SIF as such. </StatusTip>
+        </Parameter>
+
+      </BoundaryCondition>
+   </PDE>
+
+   <PDE Name="VecHelmPost">
+     <Name>Vector Helmholtz Post Process</Name>
+     <Equation>
+       <Parameter Widget="Label">
+         <Name> Free text input </Name>
+       </Parameter>
+
+       <Parameter Widget="TextEdit" Enabled="True">
+         <Name> Free text </Name>
+         <Type> String </Type>
+         <Whatis> Free text is copied into the Equation-block of the SIF as such. </Whatis>
+         <StatusTip> Free text is copied into the Equation-block of the SIF as such. </StatusTip>
+       </Parameter>
+     </Equation>
+
+     <Solver>
+       <Parameter Widget="Edit">
+         <Name> Procedure </Name>
+         <DefaultValue> "VectorHelmholtz" "VectorHelmholtzCalcFields" </DefaultValue>
+       </Parameter>
+
+       <Parameter Widget="Edit" Enabled="True">
+         <Name> Field Variable </Name>
+         <DefaultValue> E </DefaultValue>
+         <Type> String </Type>
+         <Whatis> The electric field variable name defined in Vector Helmholtz Equation Solver </Whatis>
+       </Parameter>
+
+       <Parameter Widget="Label"> <name> Specify fields to compute </name> </Parameter>
+       <Parameter Widget="CheckBox">
+         <Name> Calculate Electric Field </Name> 
+         <Type> Logical </Type> 
+         <Whatis> Calculate Electric Field </Whatis>
+       </Parameter>
+       <Parameter Widget="CheckBox"> 
+         <Name> Calculate Magnetic Field Strength </Name> 
+         <Type> Logical </Type>
+         <Whatis> Calculate Magnetic Field Strength </Whatis>
+       </Parameter>
+       <Parameter Widget="CheckBox"> 
+         <Name> Calculate Magnetic Flux </Name> 
+         <Type> Logical </Type> 
+         <Whatis> Calculate Magnetic Flux </Whatis>
+       </Parameter>
+       <Parameter Widget="CheckBox"> 
+         <Name> Calculate Poynting Vector </Name> 
+         <Type> Logical </Type> 
+         <Whatis> Calculate Poynting Vector </Whatis>
+       </Parameter>
+       <Parameter Widget="CheckBox"> 
+         <Name> Calculate Div Poynting Vector </Name>
+         <Type> Logical </Type> 
+         <Whatis> Calculate Divergence of Poyntings vector</Whatis>
+       </Parameter>
+       <Parameter Widget="CheckBox">
+         <Name> Calculate Energy Functional </Name> 
+         <Type> Logical </Type> 
+         <Whatis> Evaluate bilinear form of the problem with the solution field </Whatis>
+       </Parameter>
+     </Solver>
+   </PDE>
+
+ </edf>

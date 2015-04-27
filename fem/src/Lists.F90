@@ -120,7 +120,7 @@ MODULE Lists
        INTEGER(KIND=AddrInt) :: Proc
        TYPE(Model_t) :: Md
        INTEGER :: Node,n1,n2
-       REAL(KIND=dp) :: T(*), F(:,:)
+       REAL(KIND=dp) :: T(*), F(:)
      END SUBROUTINE ExecRealVectorFunction
    END INTERFACE
 
@@ -3519,15 +3519,21 @@ CONTAINS
      REAL(KIND=dp) :: T(MAX_FNC)
      INTEGER :: i,j,k,nlen,N1,N2,k1,S1,S2,l
      CHARACTER(LEN=2048) :: tmp_str, cmd
-     LOGICAL :: AllGlobal, lFound
+     LOGICAL :: AllGlobal, lFound, AnyFound
 !------------------------------------------------------------------------------
-     ptr => ListFind(List,Name,Found)
+     ptr => ListFind(List,Name,lFound)
      IF ( .NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
+       AnyFound = .FALSE.
        DO i=1,SIZE(F,1)
          F(i,1:n) = ListGetReal(List,TRIM(Name)//' '//TRIM(I2S(i)),n,NodeIndexes,lFound)
-         IF(PRESENT(Found)) Found = Found .OR. lFound
+         AnyFound = AnyFound.OR.lFound
        END DO
+       IF(PRESENT(Found)) THEN
+          Found = AnyFound
+       ELSE IF(.NOT.AnyFound) THEN
+          CALL Warn( 'ListFind', 'Requested property ['//TRIM(Name)//'] not found')
+       END IF
        RETURN
      END IF
 
@@ -3579,9 +3585,9 @@ CONTAINS
            CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G )
          ELSE
-           DO j=1,N1
-             F(j,i) = InterpolateCurve(ptr % TValues, &
-                   ptr % FValues(j,1,:), T(1), ptr % CubicCoeff )
+           DO k=1,n1
+             F(k,i) = InterpolateCurve(ptr % TValues, &
+                   ptr % FValues(k,1,:), T(MIN(j,k)), ptr % CubicCoeff )
            END DO
          END IF
 

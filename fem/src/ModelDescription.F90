@@ -1638,16 +1638,20 @@ CONTAINS
 
                Depname = str(str_beg:k)
 
-               n = 1
-               IF ( n > SIZE( ATt ) ) THEN
+               n=1
+               IF ( n > SIZE(ATt) ) THEN
                   DEALLOCATE( ATt, ATx )
-                  ALLOCATE( ATt(n), ATx(1,1,n) )
+                  ALLOCATE( ATt(n), ATx(n1,n2,n) )
                END IF
 
                ATt(1) = 1.0_dp
-               ATx(1,1,1) = 1.0_dp
+               ATx(:,:,1) = 1.0_dp
 
-               CALL ListAddDepReal(List,Name,Depname,n,ATt(1:n),ATx(1,1,1:n))
+               IF(n1==1.AND.n2==1) THEN
+                 CALL ListAddDepReal(List,Name,Depname,n,ATt,ATx(1,1,1))
+               ELSE
+                 CALL ListAddDepRealArray(List,Name,Depname,n,ATt,n1,n2,ATx)
+               END IF
             END IF
             EXIT
 
@@ -1663,13 +1667,17 @@ CONTAINS
                n = 1
                IF ( n > SIZE( ATt ) ) THEN
                   DEALLOCATE( ATt, ATx )
-                  ALLOCATE( ATt(n), ATx(1,1,n) )
+                  ALLOCATE( ATt(n), ATx(n1,n2,n) )
                END IF
 
                ATt(1) = 1.0_dp
-               ATx(1,1,1) = -1.0_dp
+               ATx(:,:,1) = -1.0_dp
 
-               CALL ListAddDepReal(List,Name,Depname,n,ATt(1:n),ATx(1,1,1:n))
+               IF(n1==1.AND.n2==1) THEN
+                 CALL ListAddDepReal(List,Name,Depname,n,ATt,ATx(1,1,1))
+               ELSE
+                 CALL ListAddDepRealArray(List,Name,Depname,n,ATt,n1,n2,ATx)
+               END IF
             END IF
             EXIT
 
