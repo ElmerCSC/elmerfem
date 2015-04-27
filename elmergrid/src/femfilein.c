@@ -3270,6 +3270,7 @@ static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
   int usetaggeom,tagmat,verno;
   int physvolexist, physsurfexist;
   FILE *in;
+  const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
   char *cp,line[MAXLINESIZE];
 
   if ((in = fopen(filename,"r")) == NULL) {
@@ -3398,15 +3399,15 @@ omstart:
 	if(gmshtype == dim-1) {
 	  physsurfexist = TRUE;
 	  if(tagphys < MAXBCS) sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
-	  else printf("Index %d too high: ignoring physical surface %s",tagphys,cp+1);
+          else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
 	}
 	else if(gmshtype == dim) {
 	  physvolexist = TRUE;
 	  if(tagphys < MAXBODIES) sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
-	  else printf("Index %d too high: ignoring physical volume %s",tagphys,cp+1);
+	  else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
 	}
-	else printf("Physical groups of dimension %d not supported: "
-		"ignoring group %d %s",gmshtype,tagphys,cp+1);
+	else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
+		"ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
       }
 
       getline;
