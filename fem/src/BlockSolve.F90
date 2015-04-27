@@ -785,7 +785,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
         END DO
       END IF
 
-      CALL ListSetNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
+      CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
       SkipCompChange = ListGetLogical( Params,'Skip Compute Nonlinear Change',Found)
       CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
 
@@ -872,7 +872,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
 #endif
 
 
-    CALL ListSetNameSpace(CHAR(namesp))
+    CALL ListPopNameSpace()
 
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
     CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',SkipCompChange)
@@ -963,9 +963,10 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
         
         ! Solving the subsystem
         !-----------------------------------
-        CALL ListSetNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(RowVar))//':')          
+        CALL ListPushNamespace('block '//TRIM(i2s(RowVar))//TRIM(i2s(RowVar))//':')          
         CALL SolveSystem( A, ParMatrix, b, &
             Var % Values, Var % Norm, Var % DOFs, Solver )
+        CALL ListPopNamespace()
         
         Solver % Matrix % RHS => rhs_save
         Solver % Matrix => mat_save
@@ -1080,8 +1081,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     precProc = AddrFunc(BlockMatrixPrec)
     mvProc = AddrFunc(BlockMatrixVectorProd)
 
-    LS = ListGetNameSpace(namesp)
-    CALL ListSetNameSpace('outer:')
+    CALL ListPushNameSpace('outer:')
     
     prevXnorm = SQRT( SUM( x**2 ) )
 
@@ -1122,7 +1122,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     CALL ListAddLogical(Params,'Linear System Refactorize',.TRUE.)
     CALL ListAddLogical(Params,'Linear System Free Factorization',.TRUE.)
 
-    CALL ListSetNameSpace(CHAR(namesp))
+    CALL ListPopNamespace()
     Xnorm = SQRT( SUM( x**2) )
     
     MaxChange = 2*ABS(Xnorm-PrevXnorm)/(Xnorm+PrevXnorm)
@@ -1264,8 +1264,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     TotNorm = 0.0_dp
     MaxChange = 0.0_dp
     
-    LS = ListGetNameSpace(namesp)
-    CALL ListSetNameSpace('outer:')
+    CALL ListPushNamespace('outer:')
     
     ! The case with one block is mainly for testing and developing features
     ! related to nonlinearity and assembly.
@@ -1289,7 +1288,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
       CALL Info('BlockSolverInt','Using block solution strategy',Level=6)
       CALL BlockStandardIter( Solver, MaxChange )
     END IF
-    CALL ListSetNameSpace('')
+    CALL ListPopNamespace()
 
     ! For legacy matrices do the backmapping 
     !------------------------------------------

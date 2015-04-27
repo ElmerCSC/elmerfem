@@ -2668,17 +2668,16 @@ CONTAINS
      
      CASE( LIST_TYPE_VARIABLE_SCALAR )
 
+       CALL ListPushActiveName(Name)
        DO i=1,n
          k = NodeIndexes(i)
          CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
 
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            IF ( ptr % PROCEDURE /= 0 ) THEN
-             CALL ListPushActiveName(Name)
              F(i) = ptr % Coeff * &
                  ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                           NodeIndexes(i), T )
-             CALL ListPopActiveName()
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
                WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -2696,6 +2695,7 @@ CONTAINS
            END IF
          END IF
        END DO
+       CALL ListPopActiveName()
 
 
      CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
@@ -3212,17 +3212,16 @@ CONTAINS
 
 
          CASE( LIST_TYPE_VARIABLE_SCALAR )
+           CALL ListPushActiveName(name)
            DO i=1,n
              k = NodeIndexes(i)
              CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
              
              IF ( .NOT. ANY( T(1:j) == HUGE(1.0_dp) ) ) THEN
                IF ( ptr % PROCEDURE /= 0 ) THEN
-                 CALL ListPushActiveName(name)
                  F(i) = ptr % Coeff * &
                      ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                      NodeIndexes(i), T )              
-                 CALL ListPopActiveName()
                ELSE
                  IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
                    WRITE(Message,*) 'Value type for property [', TRIM(Name), &
@@ -3244,6 +3243,7 @@ CONTAINS
                END IF
              END IF
            END DO
+           CALL ListPopActiveName()
            
          CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
            Handle % ConstantInList = .TRUE.
@@ -3558,6 +3558,7 @@ CONTAINS
        k = LEN_TRIM(cmd)
        CALL matc( cmd, tmp_str, k )
 
+       CALL ListPushActiveName(name)
        DO i=1,n
          k = NodeIndexes(i)
          CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
@@ -3576,10 +3577,8 @@ CONTAINS
            READ( tmp_str(1:k1), * ) ((F(j,k,i),k=1,N2),j=1,N1)
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
            G => F(:,:,i)
-           CALL ListPushActiveName(name)
            CALL ExecRealArrayFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G )
-           CALL ListPopActiveName()
          ELSE
            DO j=1,N1
              DO k=1,N2
@@ -3588,9 +3587,9 @@ CONTAINS
              END DO
            END DO
          END IF
-
          IF( AllGlobal ) EXIT
        END DO
+       CALL ListPopActiveName()
 
        IF( AllGlobal ) THEN
          DO i=2,n
@@ -3686,6 +3685,7 @@ CONTAINS
        k = LEN_TRIM(cmd)
        CALL matc( cmd, tmp_str, k )
 
+       CALL ListPushActiveName(name)
        DO i=1,n
          k = NodeIndexes(i)
          CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
@@ -3704,10 +3704,8 @@ CONTAINS
            READ( tmp_str(1:k1), * ) (F(j,i),j=1,N1)
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
            G => F(:,i)
-           CALL ListPushActiveName(name)
            CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G )
-           CALL ListPopActiveName()
          ELSE
            DO k=1,n1
              F(k,i) = InterpolateCurve(ptr % TValues, &
@@ -3717,6 +3715,7 @@ CONTAINS
 
          IF( AllGlobal ) EXIT
        END DO
+       CALL ListPopActiveName()
 
        IF( AllGlobal ) THEN
          DO i=2,n

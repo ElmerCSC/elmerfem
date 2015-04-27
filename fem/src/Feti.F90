@@ -913,9 +913,7 @@ CONTAINS
       return
     end if
 
-    nm=''
-    gotNM=ListGetNameSpace(nm)
-    CALL ListSetNameSpace('feti proj:')
+    CALL ListPushNameSpace('feti proj:')
 
     nrows = A % NumberOfRows
     ALLOCATE(x(nz),b(nz),P(nrows),Q(nrows));P=0; Q=0
@@ -1215,7 +1213,7 @@ CONTAINS
       CALL Fatal('Feti Procjection','Unknown projection OP.')
     END SELECT
 
-    CALL ListSetNameSpace(CHAR(nm))
+    CALL ListPopNameSpace()
 !call checktimer('project',delete=.true.)
 
 CONTAINS
@@ -1666,9 +1664,7 @@ END SUBROUTINE FetiProject
     ! ----------------------------------
     ALLOCATE(eigVectors(Neigs,n))
       
-    nm=''
-    gotNM=ListGetNameSpace(nm)
-    CALL ListSetNameSpace('feti:')
+    CALL ListPushNameSpace('feti:')
 
     CALL ListAddString( Params, 'Feti: Linear System Solver', 'Direct' )
     Params=>GetSolverParams()
@@ -1694,7 +1690,7 @@ END SUBROUTINE FetiProject
     ! ------------------------------------------------------------------------
     CALL DirectSolver(A,x,x,Solver,Free_Fact=.TRUE.)
 
-    CALL ListSetNameSpace(CHAR(nm))
+    CALL ListPopNameSpace()
 
     ! Finally create null(A) from zero freq. eigenvectors:
     ! ----------------------------------------------------

@@ -191,7 +191,7 @@ CONTAINS
           CALL ListAddLogical( Params,'Linear System Free Factorization', .FALSE. )
           CALL ListAddLogical( Params,'Linear System Refactorize', NewLinearSystem )
 
-          CALL ListSetNamespace('mglowest:')
+          CALL ListPushNamespace('mglowest:')
 
           LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
           IF ( .NOT. Found ) THEN
@@ -240,7 +240,7 @@ CONTAINS
              END IF
           END SELECT
 
-          CALL ListSetNamespace('')
+          CALL ListPopNamespace()
 
           Solution(1:n) = Solution(1:n) * RHSNorm
           ForceVector(1:n) = ForceVector(1:n) * RHSnorm
@@ -940,7 +940,7 @@ CONTAINS
 !      -----------------------------------
        IF ( Level <= 1 ) THEN
 
-          CALL ListSetNamespace('mglowest:')
+          CALL ListPushNamespace('mglowest:')
 
           LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
           IF ( .NOT. Found ) THEN
@@ -989,7 +989,7 @@ CONTAINS
              END IF
           END SELECT
 
-          CALL ListSetNamespace('')
+          CALL ListPopNamespace()
 
           RETURN
        END IF
@@ -1578,7 +1578,7 @@ CONTAINS
     IF(.NOT. GotIt) DirectLimit = 20
 
     IF ( Level <= 1 .OR. n < DirectLimit) THEN
-      CALL ListSetNamespace('mglowest:')
+      CALL ListPushNamespace('mglowest:')
 
       NewLinearSystem = .FALSE.
       IF(PRESENT(NewSystem)) NewSystem = .FALSE.
@@ -1595,7 +1595,7 @@ CONTAINS
             Solution, ForceVector, Solver, Matrix1 % ParMatrix )
       END IF
 
-      CALL ListSetNamespace('')
+      CALL ListPopNamespace()
 
       RETURN
     END IF
@@ -5164,7 +5164,7 @@ CONTAINS
       NewLinearSystem = .FALSE.
       IF(Level == 1 .AND. PRESENT(NewSystem)) NewSystem = .FALSE.
 
-      CALL ListSetNamespace('mglowest:')
+      CALL ListPushNamespace('mglowest:')
 
       LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
 
@@ -5221,7 +5221,7 @@ CONTAINS
 
       DEALLOCATE( Residual ) 
 
-      CALL ListSetNamespace('')
+      CALL ListPopNamespace()
       CALL Info('CMGSolve','Lowest level solved',Level=9)
 
       RETURN
@@ -5980,7 +5980,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
      LOGICAL :: TransientSimulation
      REAL(KIND=dp) :: dt, OrigDT, DTScal
 !------------------------------------------------------------------------------
-     LOGICAL :: stat, Found, GB, FirstTime=.TRUE., MeActive
+     LOGICAL :: stat, Found, GB, FirstTime=.TRUE., MeActive, NamespaceFound
      INTEGER :: i, j, n, SolverAddr, BDOFs, execi, timestep, maxdim
      REAL(KIND=dp) :: st
      TYPE(Variable_t), POINTER :: TimeVar, IterV
@@ -6074,8 +6074,8 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
        END IF
      END IF
 
-     str = ListGetString( Params, 'Namespace', Found )
-     IF (Found) CALL ListSetNamespace(TRIM(str))
+     str = ListGetString( Params, 'Namespace', NamespaceFound )
+     IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
 
      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
      iterV % Values(1) = 1
@@ -6090,7 +6090,7 @@ IF(newrow < prevnewrow ) PRINT *,'problem:',indi,i,newrow,prevnewrow
              Solver % PROCEDURE, Model, Solver, DTScal*dt, TransientSimulation)
 #endif
 
-     CALL ListSetNamespace('')
+     IF(NamespaceFound) CALL ListPopNamespace()
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
           CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
