@@ -332,7 +332,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 
   cv = GetConstReal( SolverParams, 'Velocity Implicity', Found)
   IF(.NOT. Found) cv = 1.0_dp 
-  WRITE(Message,'(a,F8.2)') 'Velocity implicity (1=fully implicit)=', cv
+  WRITE(Message,'(a,F9.2)') 'Velocity implicity (1=fully implicit)=',cv
   CALL Info(SolverName, Message, Level=6 )
 
   LinearTol = GetConstReal( SolverParams, &
@@ -469,6 +469,8 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      IF ( istat /= 0 ) THEN
         CALL Fatal(SolverName,'Memory allocation error 1, Aborting.')
      END IF
+
+     ElemFreeSurf = 0._dp
 
      IF(NeedOldValues) THEN
         ALLOCATE(OldFreeSurf(SIZE(FreeSurf)), STAT=istat)

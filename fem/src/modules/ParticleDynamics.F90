@@ -493,7 +493,7 @@ SUBROUTINE ParticleDynamics( Model,Solver,dt,TransientSimulation )
 
   Particles => GlobalParticles
   PSolver => Solver
-  Params => Solver % Values
+  Params => GetSolverParams()
   Mesh => Solver % Mesh
   DIM = CoordinateSystemDimension()
 

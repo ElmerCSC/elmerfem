@@ -1103,8 +1103,8 @@
      SUBROUTINE InitFactorSolver(Solver)
        
        TYPE(Solver_t) :: Solver
-       
-       NULLIFY( Solver % Values )
+
+       Solver % Values => ListAllocate()
        
        CALL ListAddString( Solver % Values, &
            'Linear System Iterative Method', 'CGS' )

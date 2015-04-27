@@ -807,12 +807,14 @@ CONTAINS
 
      x => GetStore(n)
      x = 0.0d0
-     IF ( ASSOCIATED(List) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
-        ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
-        END IF
+     IF( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+          IF ( PRESENT( Found ) ) THEN
+             x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
+          ELSE
+             x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
+          END IF
+       END IF
      END IF
      s = x(1)
   END FUNCTION GetCReal
@@ -846,13 +848,11 @@ CONTAINS
      END IF
 
      x => GetStore(n)
-     x = 0.0d0
-     IF ( ASSOCIATED(List) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
-        ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
-        END IF
+     x = 0.0_dp
+     IF( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+         x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
+       END IF
      END IF
   END FUNCTION GetReal
 
@@ -917,12 +917,14 @@ CONTAINS
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
      IF ( PRESENT( Found ) ) Found = .FALSE.
-     IF ( ASSOCIATED(List) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           x => ListGetConstRealArray( List, Name, Found )
-        ELSE
-           x => ListGetConstRealArray( List, Name )
-        END IF
+     IF(ASSOCIATED(List)) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+          IF ( PRESENT( Found ) ) THEN
+             x => ListGetConstRealArray( List, Name, Found )
+          ELSE
+             x => ListGetConstRealArray( List, Name )
+          END IF
+       END IF
      END IF
   END SUBROUTINE GetConstRealArray
 
@@ -944,13 +946,79 @@ CONTAINS
 
      n = GetElementNOFNodes( Element )
      IF ( ASSOCIATED(List) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           CALL ListGetRealArray( List, Name, x, n, Element % NodeIndexes, Found )
-        ELSE
-           CALL ListGetRealArray( List, Name, x, n, Element % NodeINdexes  )
-        END IF
+       IF ( ASSOCIATED(List % Head) ) THEN
+          IF ( PRESENT( Found ) ) THEN
+             CALL ListGetRealArray( List, Name, x, n, Element % NodeIndexes, Found )
+          ELSE
+             CALL ListGetRealArray( List, Name, x, n, Element % NodeINdexes  )
+          END IF
+       END IF
      END IF
   END SUBROUTINE GetRealArray
+
+!> Returns a real vector by its name if found in the list structure, and in the active element. 
+  RECURSIVE SUBROUTINE GetRealVector( List, x, Name, Found, UElement )
+     REAL(KIND=dp) :: x(:,:)
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+
+     TYPE(Element_t), POINTER :: Element
+
+     INTEGER :: n
+
+     x = 0._dp
+     IF ( PRESENT( Found ) ) Found = .FALSE.
+
+     Element => GetCurrentElement(UElement)
+
+     n = GetElementNOFNodes( Element )
+     IF ( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+          IF ( PRESENT( Found ) ) THEN
+             CALL ListGetRealvector( List, Name, x, n, Element % NodeIndexes, Found )
+          ELSE
+             CALL ListGetRealVector( List, Name, x, n, Element % NodeINdexes  )
+          END IF
+       END IF
+     END IF
+  END SUBROUTINE GetRealVector
+
+!> Returns a complex vector by its name if found in the list structure, and in the active element. 
+  RECURSIVE SUBROUTINE GetComplexVector( List, x, Name, Found, UElement )
+     COMPLEX(KIND=dp) :: x(:,:)
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: lFound
+     INTEGER :: n
+     REAL(KIND=dp), ALLOCATABLE :: xr(:,:)
+
+     x = 0._dp
+     IF ( PRESENT( Found ) ) Found = .FALSE.
+
+     Element => GetCurrentElement(UElement)
+
+     n = GetElementNOFNodes( Element )
+     IF ( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+          ALLOCATE(xr(SIZE(x,1),SIZE(x,2)))
+          CALL ListGetRealvector( List, Name, xr, n, &
+                 Element % NodeIndexes, lFound )
+          IF(PRESENT(Found)) Found=lFound
+          x = xr
+          CALL ListGetRealvector( List, TRIM(Name)//' im', &
+              xr, n, Element % NodeIndexes, lFound )
+          IF(PRESENT(Found)) Found=Found.OR.lFound
+          x = CMPLX(REAL(x), xr)
+       END IF
+     END IF
+  END SUBROUTINE GetComplexVector
+
 
 !> Set some property elementwise to the active element
   SUBROUTINE SetElementProperty( Name, Values, UElement )
@@ -1550,7 +1618,7 @@ CONTAINS
      INTEGER :: i
      TYPE(ValueList_t), POINTER :: list
 
-     list => Null()
+     List => Null()
      IF(i>=0 .AND. i<=SIZE(CurrentModel % Components)) list=> &
              CurrentModel % Components(i) % Values
 !------------------------------------------------------------------------------
@@ -1644,7 +1712,7 @@ CONTAINS
         mat_id = GetMaterialId( Found=L )
     END IF
 
-    NULLIFY( Material )
+    Material => Null()
     IF ( L ) Material => CurrentModel % Materials(mat_id) % Values
     IF ( PRESENT( Found ) ) Found = L
 !------------------------------------------------------------------------------
@@ -1671,7 +1739,7 @@ CONTAINS
        bf_id = GetBodyForceId( Found=L )
     END IF
 
-    NULLIFY( BodyForce )
+    BodyForce => Null()
     IF ( L ) BodyForce => CurrentModel % BodyForces(bf_id) % Values
     IF ( PRESENT( Found ) ) Found = L
 !------------------------------------------------------------------------------
@@ -1762,13 +1830,13 @@ CONTAINS
 
      TYPE(Element_t), POINTER :: Element
 
-	 IF ( PRESENT(Uelement) ) THEN
-	    Element => UElement
-	 ELSE
-	    Element => CurrentModel % CurrentElement
-	 END IF
+     IF ( PRESENT(Uelement) ) THEN
+        Element => UElement
+     ELSE
+       Element => CurrentModel % CurrentElement
+     END IF
 
-     NULLIFY(bc)
+     BC => Null()
      bc_id = GetBCId( Element )
      IF ( bc_id > 0 )  BC => CurrentModel % BCs(bc_id) % Values
 !------------------------------------------------------------------------------
@@ -1820,7 +1888,7 @@ CONTAINS
         ic_id = GetICId( Found=L )
     END IF
 
-    NULLIFY( IC )
+    IC => Null()
     IF ( L ) IC => CurrentModel % ICs(ic_id) % Values
     IF ( PRESENT( Found ) ) Found = L
 !------------------------------------------------------------------------------
@@ -3685,7 +3753,8 @@ CONTAINS
           DOF, local, numEdgeDofs,istat, n_start, Offset
 
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem
-     TYPE(ValueList_t), POINTER :: BC, ptr, Params
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: BC, Params
      TYPE(Element_t), POINTER :: Element, Parent, Edge, Face, SaveElement
      CHARACTER(LEN=MAX_NAME_LEN) :: name
      LOGICAL :: BUpd, PiolaTransform
@@ -3806,7 +3875,7 @@ CONTAINS
            IF ( .NOT. ASSOCIATED(Parent) )   CYCLE
 
            BC => GetBC()
-           IF ( .NOT. ASSOCIATED(BC) ) CYCLE
+           IF ( .NOT.ASSOCIATED(BC) ) CYCLE
 
            ptr => ListFind(BC, Name,Found )
            IF ( .NOT. ASSOCIATED(ptr) ) CYCLE
@@ -3859,7 +3928,7 @@ CONTAINS
            IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
            BC => GetBC()
-           IF ( .NOT. ASSOCIATED(BC) ) CYCLE
+           IF ( .NOT.ASSOCIATED(BC) ) CYCLE
            IF ( .NOT. ListCheckPresent(BC, Name) .AND. &
                 .NOT. ListCheckPrefix(BC, TRIM(Name)//' {e}') .AND. &
                 .NOT. ListCheckPrefix(BC, TRIM(Name)//' {f}') ) CYCLE
