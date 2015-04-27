@@ -2570,7 +2570,6 @@ CONTAINS
     TYPE (Matrix_t), POINTER :: Amat, SolverMatrix
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: SolverParams
-    TYPE(Varying_string) :: namesp
 
     CALL Info('BlockSolver','---------------------------------------',Level=5)
     IF( Solver % SolverMode /= SOLVER_MODE_BLOCK ) THEN
@@ -2731,16 +2730,16 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL InitializeToZero(Solver % Matrix, Solver % Matrix % rhs)
             
-            CALL ListSetNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
+            CALL ListPushNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
             CALL BlockSystemAssembly(PSolver,dt,Transient,RowVar,ColVar)
             
             ! Mainly sets the r.h.s. in transient case correctly
             CALL DefaultFinishAssembly()                    
             
             CALL BlockSystemDirichlet(TotMatrix,RowVar,ColVar)
+            CALL ListPopNameSpace()
           END DO
         END DO
-        CALL ListSetNameSpace('')
       END IF
 
       ! The user may give a user defined preconditioner matrix
@@ -2806,8 +2805,7 @@ CONTAINS
       TotNorm = 0.0_dp
       MaxChange = 0.0_dp
 
-      LS = ListGetNameSpace(namesp)
-      CALL ListSetNameSpace('outer:')
+      CALL ListPushNameSpace('outer:')
 
       ! The case with one block is mainly for testing and developing features
       ! related to nonlinearity and assembly.
@@ -2832,7 +2830,7 @@ CONTAINS
 	CALL Info('BlockSolver','Using block solution strategy',Level=6)
         CALL BlockStandardIter( Solver, MaxChange )
       END IF      
-      CALL ListSetNameSpace('')
+      CALL ListPopNameSpace()
 
       ! For legacy matrices do the backmapping 
       !------------------------------------------
@@ -3554,7 +3552,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: OrigDT, DTScal
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
-         UpdateExported, GotCoordTransform
+         UpdateExported, GotCoordTransform, NamespaceFound
      INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
 #ifdef USE_ISO_C_BINDINGS
@@ -3659,8 +3657,8 @@ CONTAINS
        iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
        iterV % Values(1) = 1
 
-       str = ListGetString( Params, 'Namespace', Found )
-       IF (Found) CALL ListSetNamespace(TRIM(str))
+       str = ListGetString( Params, 'Namespace', NamespaceFound )
+       IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
      END IF
 
  !------------------------------------------------------------------------------
@@ -3696,7 +3694,9 @@ CONTAINS
      ELSE 
        CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
      END IF
-     CALL ListSetNamespace('')
+     IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
+       IF(NamespaceFound) CALL ListPopNamespace()
+     END IF
      Solver % dt = dt
 
      IF( GotCoordTransform ) THEN
