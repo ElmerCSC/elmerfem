@@ -139,13 +139,14 @@ MODULE Lists
      END FUNCTION ExecConstRealFunction
    END INTERFACE
 #endif
-   TYPE(Varying_string), SAVE, PRIVATE :: Namespace
-   !$OMP THREADPRIVATE(NameSpace)
 
    TYPE String_stack_t
       TYPE(Varying_string) :: Name
       TYPE(String_stack_t), POINTER :: Next => Null()
    END TYPE String_stack_t
+
+   CHARACTER(:), ALLOCATABLE, SAVE, PRIVATE :: Namespace
+   !$OMP THREADPRIVATE(NameSpace)
 
    TYPE(String_stack_t), SAVE, PRIVATE, POINTER :: Namespace_stack => Null()
    !$OMP THREADPRIVATE(NameSpace_stack)
@@ -1413,7 +1414,7 @@ CONTAINS
    FUNCTION ListGetNamespace(str) RESULT(l)
 !------------------------------------------------------------------------------
     LOGICAL :: l 
-    TYPE(Varying_string) :: str
+    CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
     l = .FALSE.
     IF ( Namespace /= '' ) THEN
@@ -1430,10 +1431,16 @@ CONTAINS
      CHARACTER(LEN=*) :: str
 !------------------------------------------------------------------------------
      LOGICAL :: L
+     CHARACTER(:), ALLOCATABLE :: tstr
      TYPE(String_stack_t), POINTER :: stack
 !------------------------------------------------------------------------------
      ALLOCATE(stack)
-     L = ListGetNameSpace(stack % name)
+     L = ListGetNameSpace(tstr)
+     IF(ALLOCATED(tstr)) THEN
+       stack % name = tstr
+     ELSE
+       stack % name = ''
+     END IF
      stack % next => Namespace_stack
      Namespace_stack => stack
      CALL ListSetNamespace(str)
@@ -1508,7 +1515,7 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
+     CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n
@@ -1567,7 +1574,7 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
+     CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
@@ -1624,7 +1631,6 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
@@ -1743,7 +1749,6 @@ CONTAINS
      REAL(KIND=dp) :: coeff
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr, ptr2
-     TYPE(Varying_string) :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k, k1, n, n2, m
 

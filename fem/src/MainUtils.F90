@@ -2570,7 +2570,6 @@ CONTAINS
     TYPE (Matrix_t), POINTER :: Amat, SolverMatrix
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: SolverParams
-    TYPE(Varying_string) :: namesp
 
     CALL Info('BlockSolver','---------------------------------------',Level=5)
     IF( Solver % SolverMode /= SOLVER_MODE_BLOCK ) THEN

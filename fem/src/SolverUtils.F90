@@ -9320,8 +9320,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     TYPE(Variable_t), POINTER :: Var, Variables
     LOGICAL :: Found, Symmetric, SaveFields, SkipCorrection
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TmpVarName
-    TYPE(Varying_string) :: namesp
-
 
     Params => Solver % Values
 

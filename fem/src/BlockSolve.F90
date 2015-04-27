@@ -675,7 +675,6 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     TYPE(Variable_t), POINTER :: Var, SolverVar
 
     LOGICAL :: GotOrder, BlockGS, Found, NS, SkipCompChange
-    TYPE(Varying_string) :: namesp
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
@@ -698,8 +697,6 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     Solver => TotMatrix % Solver
     offset => TotMatrix % Offset
     SolverVar => Solver % Variable
-
-    NS = ListGetNameSpace(namesp)
 
 #define SOLSYS
 #ifdef SOLSYS
@@ -1011,7 +1008,6 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     INTEGER, POINTER :: Offset(:),poffset(:),BlockStruct(:)
     INTEGER :: i,j,k,l,ia,ib
     LOGICAL :: LS, BlockAV,Found
-    TYPE(Varying_string) :: namesp
 
     Params => Solver % Values
 
@@ -1188,7 +1184,6 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     TYPE(Matrix_t), POINTER :: Amat, SaveMatrix
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
-    TYPE(Varying_string) :: namesp
 
     CALL Info('BlockSolver','---------------------------------------',Level=5)
 
