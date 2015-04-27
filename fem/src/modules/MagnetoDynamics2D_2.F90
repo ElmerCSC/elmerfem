@@ -390,8 +390,9 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
-    TYPE(ValueList_t), POINTER :: Material, Lst, BodyForce
-
+    TYPE(ValueList_t), POINTER :: Material, BodyForce
+    TYPE(ValueListEntry_t), POINTER :: Lst
+    
     TYPE(Nodes_t), SAVE :: Nodes
     
 !$omp threadprivate(Nodes)
@@ -993,7 +994,8 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
-    TYPE(ValueList_t), POINTER :: Material, Lst, BodyForce
+    TYPE(ValueList_t), POINTER :: Material, BodyForce
+    TYPE(ValueListEntry_t), POINTER :: Lst
 
     TYPE(Nodes_t), SAVE :: Nodes
     
