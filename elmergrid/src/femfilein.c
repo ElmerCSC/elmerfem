@@ -43,7 +43,7 @@
 #include "femknot.h"
 #include "femfilein.h"
 
-#define getline fgets(line,MAXLINESIZE,in) 
+#define GETLINE fgets(line,MAXLINESIZE,in) 
 
 static int linenumber;
 
@@ -365,7 +365,7 @@ omstart:
 
 
   for(;;) {
-    /* getline; */
+    /* GETLINE; */
 
     if (Getrow(line,in,TRUE)) goto end;
 
@@ -885,7 +885,7 @@ omstart:
   noelements = 0;
 
   for(;;) {
-    /* getline; */
+    /* GETLINE; */
 
     if (Getrow(line,in,TRUE)) goto end;
 
@@ -1123,7 +1123,7 @@ int LoadFidapInput(struct FemType *data,char *prefix,int info)
   maxentity = 0;
 
   for(;;) {
-    isio = getline;
+    isio = GETLINE;
 
     if(!isio) goto end;
     if(strstr(line,"END")) goto end;
@@ -1145,13 +1145,13 @@ int LoadFidapInput(struct FemType *data,char *prefix,int info)
 
     case 1: 
       if(info) printf("Loading FIDAP input file %s\n",filename);
-      getline;
+      GETLINE;
       if(info) printf("Name of the case: %s",line);
       mode = 0;
       break;
 
     case 2:
-      getline;   
+      GETLINE;   
       if(0) printf("reading the header info\n");
       sscanf(line,"%d%d%d%d%d",&noknots,&noelements,
 	     &nogroups,&dim,&novel);
@@ -1169,7 +1169,7 @@ int LoadFidapInput(struct FemType *data,char *prefix,int info)
       AllocateKnots(data);
       if(info) printf("reading the nodes\n");
       for(i=1;i<=noknots;i++) {
-	getline;
+	GETLINE;
 	if (dim == 2)
 	  sscanf(line,"%d%le%le",&knotno,
 		 &(data->x[i]),&(data->y[i]));
@@ -1205,7 +1205,7 @@ int LoadFidapInput(struct FemType *data,char *prefix,int info)
 	while(val!=':');i++;
 	sscanf(&line[i],"%d",&typeflag);
 	
-	getline;
+	GETLINE;
 	i=0;
 	do val=line[i++];
 	while(val!=':');i++;
@@ -1247,7 +1247,7 @@ int LoadFidapInput(struct FemType *data,char *prefix,int info)
 	}
 
 	for(i=totelems+1;i<=totelems+elems;i++) {
-	  getline;
+	  GETLINE;
 
 	  cp = line;
 	  j = next_int(&cp);
@@ -1273,7 +1273,7 @@ int LoadFidapInput(struct FemType *data,char *prefix,int info)
       CreateVariable(data,2,dim,0.0,"Velocity",FALSE);
       vel = data->dofs[2];
       for(j=1;j<=noknots;j++) {
-	getline;
+	GETLINE;
 	if(dim==2) 
 	  sscanf(line,"%le%le",&(vel[2*j-1]),&(vel[2*j]));
 	if(dim==3) 
@@ -1288,7 +1288,7 @@ int LoadFidapInput(struct FemType *data,char *prefix,int info)
       CreateVariable(data,1,1,0.0,"Temperature",FALSE);
       temp = data->dofs[1];
       for(j=1;j<=noknots;j++) {
-	getline;
+	GETLINE;
 	sscanf(line,"%le",&(temp[j]));
       }      
       mode = 0;
@@ -1487,7 +1487,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   }
 
   if(info) printf("Calculating Ansys elementtypes from %s\n",filename);
-  for(i=0;getline;i++);
+  for(i=0;GETLINE;i++);
 
   noansystypes = i-1;
   printf("There seems to be %d elementytypes in file %s.\n",noansystypes,filename);
@@ -1499,7 +1499,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   rewind(in);
   for(i=0;i<=noansystypes;i++) {
     Real dummy1,dummy2,dummy3;
-    getline;
+    GETLINE;
 
     /* Ansys writes decimal points also for integers and therefore these 
        values are read in as real numbers. */
@@ -1544,7 +1544,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   }
 
   if(info) printf("Calculating Ansys nodes from %s\n",filename);
-  for(i=0;getline;i++);
+  for(i=0;GETLINE;i++);
 
   if(info) printf("There seems to be %d nodes in file %s.\n",i,filename);
   if(i != noknots) printf("Conflicting number of nodes %d vs %d!\n",i,noknots);
@@ -1575,7 +1575,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Loading %d Ansys nodes from %s\n",noknots,filename);
   rewind(in);
   for(i=1;i<=noknots;i++) {
-    getline; cp=line;
+    GETLINE; cp=line;
 
     indx[i] = next_int(&cp);
     if(cp[0] == '.') cp++;
@@ -1628,7 +1628,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 
   for(j=1;j<=noelements;j++) {
 
-    getline; 
+    GETLINE; 
     cp=line;
 
     for(i=0;i<8;i++) {
@@ -1645,7 +1645,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
     if(ansystypes[k] != currenttype) k=1;
 
     if(ansysnodes[k] > 8) {
-      getline; 
+      GETLINE; 
       cp=line;
 
       if(ansysnodes[k] == 10 && topology[2] != topology[3])
@@ -1676,7 +1676,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   }
 
   j = 0;
-  for(i=0;getline;i++)
+  for(i=0;GETLINE;i++)
     if(!strstr(line,"Boundary")) j++;
 
   boundarynodes = j;
@@ -1695,7 +1695,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
   rewind(in);
   maxside = 0;
   j = 0;
-  for(i=0;getline;i++) {
+  for(i=0;GETLINE;i++) {
     if(strstr(line,"Boundary")) {
       sscanf(line,"%d",&sidetype);
       maxside = MAX(sidetype,maxside);
@@ -1736,7 +1736,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
       sscanf(line,"%d%s%s%d",&bcind,&text[0],&text2[0],&sides);
       
       if(strstr(text2,"BODY")) {      
-	getline;
+	GETLINE;
 	sscanf(line,"%d%d",&j,&bcind);
 	strcpy(data->bodyname[bcind],text);	
       }
@@ -1745,7 +1745,7 @@ int LoadAnsysInput(struct FemType *data,struct BoundaryType *bound,
 	for(i=1;i<=maxside;i++) 
 	  bctypes[i] = 0;
 	for(i=1;i<=sides;i++) {
-	  getline;
+	  GETLINE;
 	  sscanf(line,"%d%d",&j,&bcind);
 	  bctypes[bcind] = TRUE;
 	}
@@ -1892,7 +1892,7 @@ int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
   for(;;) {
     
     if(mode == 0) {
-      isio = getline;
+      isio = GETLINE;
       
       if(!isio) goto end;
       if(strstr(line,"END")) goto end;
@@ -1939,7 +1939,7 @@ int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
 
     case 6:
 
-      getline;   
+      GETLINE;   
       sscanf(line,"%d",&noknots);
       data->noknots = noknots;
 
@@ -1950,7 +1950,7 @@ int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
       data->z = Rvector(1,noknots);
       
       for(i=1;i<=noknots;i++) {
-	getline;
+	GETLINE;
 	sscanf(line,"%le%le%le",&x,&y,&z);
 	data->x[i] = x;
 	data->y[i] = y;
@@ -1961,7 +1961,7 @@ int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
       
     case 7:
       
-      getline;   
+      GETLINE;   
       sscanf(line,"%d",&nobound);
 
       if(info) printf("Loading %d boundary element definitions\n",nobound);
@@ -1971,7 +1971,7 @@ int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
       boundnodes = Ivector(1,nobound);
       
       for(i=1;i<=nobound;i++) {
-	getline; cp=line;
+	GETLINE; cp=line;
 	
 	boundtypes[i]= next_int(&cp);
 	maxsidenodes = next_int(&cp);
@@ -1998,7 +1998,7 @@ int LoadFieldviewInput(struct FemType *data,char *prefix,int info)
       data->elementtypes = Ivector(1,noelements);
       
       for(i=0;;) {
-	getline; cp=line;
+	GETLINE; cp=line;
 
 	if(strstr(line,"Variables")) mode = 9;
 	if(mode != 8) break;
@@ -2089,7 +2089,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
   else 
     printf("Loading nodes from file %s\n",nodefile);
 
-  getline;
+  GETLINE;
   sscanf(line,"%d %d %d %d",&noknots,&dim,&nodeatts,&bcmarkers);
   fclose(in);
 
@@ -2106,7 +2106,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
   else 
     printf("Loading elements from file %s\n",elemfile);
 
-  getline;
+  GETLINE;
   sscanf(line,"%d %d %d",&noelements,&maxnodes,&elematts);
   fclose(in);
 
@@ -2126,9 +2126,9 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     boundnodes[i] = 0;
 
   in = fopen(nodefile,"r");
-  getline;
+  GETLINE;
   for(i=1; i <= noknots; i++) {
-    getline;
+    GETLINE;
     cp = line;
     j = next_int(&cp);
     if(j != i) printf("LoadTriangleInput: nodes i=%d j=%d\n",i,j);
@@ -2143,9 +2143,9 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
   fclose(in);
 
   in = fopen(elemfile,"r");
-  getline;
+  GETLINE;
   for(i=1; i <= noelements; i++) {
-    getline;
+    GETLINE;
     cp = line;
     data->elementtypes[i] = elementtype;
     j = next_int(&cp);
@@ -2178,8 +2178,8 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
     elemsides = 3;
     hit = FALSE;
 
-    getline;
-    getline;
+    GETLINE;
+    GETLINE;
     sscanf(line,"%d %d",&bcelems,&markers);
 
     CreateInverseTopology(data,info);
@@ -2190,7 +2190,7 @@ int LoadTriangleInput(struct FemType *data,struct BoundaryType *bound,
 
     for(i=1;i<=bcelems;i++) {
       
-      getline;
+      GETLINE;
       if(markers)
 	sscanf(line,"%d %d %d %d",&j,&ind1,&ind2,&bctype);
       else 
@@ -2320,7 +2320,7 @@ allocate:
       printf("noknots = %d %s",noknots,line);
 
       for(i=1; i <= noknots; i++) {
-	getline;
+	GETLINE;
 #if 0
 	printf("i=%d line=%s",i,line);
 #endif
@@ -2347,7 +2347,7 @@ allocate:
       if(maxnodes < 3) maxnodes = 3;
 
       for(i=1; i <= noelements; i++) {
-	getline;
+	GETLINE;
 	if(allocated) {
 	  cp = line;
 	  data->elementtypes[i] = elementtype;
@@ -3151,12 +3151,12 @@ allocate:
 
     if(strstr(line,"$NOD")) {
       
-      getline;
+      GETLINE;
       cp = line;
       noknots = next_int(&cp);
 
       for(i=1; i <= noknots; i++) {
-	getline;
+	GETLINE;
 	cp = line;
 
 	j = next_int(&cp);
@@ -3170,7 +3170,7 @@ allocate:
 	  maxindx = MAX(j,maxindx);
 	}
       }
-      getline;
+      GETLINE;
       if(!strstr(line,"$ENDNOD")) {
 	printf("NOD section should end to string ENDNOD\n");
 	printf("%s\n",line);
@@ -3178,12 +3178,12 @@ allocate:
     }
     
     if(strstr(line,"$ELM")) {
-      getline;
+      GETLINE;
       cp = line;
       noelements = next_int(&cp);
 
       for(i=1; i <= noelements; i++) {
-	getline;
+	GETLINE;
 	
 	cp = line;
 	elemno = next_int(&cp);
@@ -3215,7 +3215,7 @@ allocate:
 	}
 
       }
-      getline;
+      GETLINE;
       if(!strstr(line,"$ENDELM")) 
 	printf("ELM section should end to string ENDELM\n");
     }
@@ -3295,7 +3295,7 @@ omstart:
     if(strstr(line,"$End")) continue;
 
     if(strstr(line,"$MeshFormat")) {
-      getline;
+      GETLINE;
       cp = line;
       verno = next_int(&cp);
 
@@ -3303,19 +3303,19 @@ omstart:
 	printf("Version number is not compatible with the parser: %d\n",verno);
       }
 
-      getline;
+      GETLINE;
       if(!strstr(line,"$EndMeshFormat")) {
 	printf("$MeshFormat section should end to string $EndMeshFormat:\n%s\n",line);
       }      
     }
       
     else if(strstr(line,"$Nodes")) {
-      getline;
+      GETLINE;
       cp = line;
       noknots = next_int(&cp);
 
       for(i=1; i <= noknots; i++) {
-	getline;
+	GETLINE;
 	cp = line;
 
 	j = next_int(&cp);
@@ -3329,19 +3329,19 @@ omstart:
 	  maxindx = MAX(j,maxindx);
 	}
       }
-      getline;
+      GETLINE;
       if(!strstr(line,"$EndNodes")) {
 	printf("$Nodes section should end to string $EndNodes:\n%s\n",line);
       }           
     }
     
     else if(strstr(line,"$Elements")) {
-      getline;
+      GETLINE;
       cp = line;
       noelements = next_int(&cp);
 
       for(i=1; i <= noelements; i++) {
-	getline;
+	GETLINE;
 	
 	cp = line;
 	elemno = next_int(&cp);
@@ -3382,17 +3382,17 @@ omstart:
 	}
 	
       }
-      getline;
+      GETLINE;
       if(!strstr(line,"$EndElements")) {
 	printf("$Elements section should end to string $EndElements:\n%s\n",line);
       }   
     }
     else if(strstr(line,"$PhysicalNames")) {
-      getline;
+      GETLINE;
       cp = line;
       nophysical = next_int(&cp);
       for(i=0;i<nophysical;i++) {
-	getline;
+	GETLINE;
 	cp = line;
 	gmshtype = next_int(&cp);
 	tagphys = next_int(&cp);
@@ -3410,7 +3410,7 @@ omstart:
 		"ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
       }
 
-      getline;
+      GETLINE;
       if(!strstr(line,"$EndPhysicalNames")) {
 	printf("$PhysicalNames section should end to string $EndPhysicalNames:\n%s\n",line);
       }   
@@ -3559,12 +3559,12 @@ omstart:
 	return(1);
       }
       elemtype0 = 504;
-      getline;
+      GETLINE;
     }
     else if(strstr(line,"COORDINATES")) {
       i = 0;
       for(;;) {
-	getline;
+	GETLINE;
 	if( strstr(line,"END_COORDINATES")) break;
 	cp = line;
 	j = next_int(&cp);
@@ -3587,7 +3587,7 @@ omstart:
       tagmat = 1;
 
       for(;;) {
-	getline;
+	GETLINE;
 	if( strstr(line,"END_ELEMENTS")) break;
 	cp = line;
 	j = next_int(&cp);
@@ -3610,7 +3610,7 @@ omstart:
     }
     else if ( strstr(line,"BOUNDARIES")) {
       for(;;) {
-	getline;	
+	GETLINE;	
 	if( strstr(line,"END_BOUNDARIES")) break;
 
 	printf("Implement boundaries!\n");
@@ -4465,7 +4465,7 @@ omstart:
     }
 
     for(i=1;i<=thisknots;i++) {
-      getline;
+      GETLINE;
 
       if(allocated) {
 	cp = line;
@@ -4487,7 +4487,7 @@ omstart:
     }
 
     for(i=1;i<=thiselems;i++) {
-      getline;
+      GETLINE;
 
       if(allocated) {
 	cp = line;
