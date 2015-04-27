@@ -142,6 +142,20 @@ MODULE Lists
    TYPE(Varying_string), SAVE, PRIVATE :: Namespace
    !$OMP THREADPRIVATE(NameSpace)
 
+   TYPE String_stack_t
+      TYPE(Varying_string) :: Name
+      TYPE(String_stack_t), POINTER :: Next => Null()
+   END TYPE String_stack_t
+
+   TYPE(String_stack_t), SAVE, PRIVATE, POINTER :: Namespace_stack => Null()
+   !$OMP THREADPRIVATE(NameSpace_stack)
+
+   CHARACTER(:), ALLOCATABLE, SAVE, PRIVATE :: ActiveListName
+   !$OMP THREADPRIVATE(ActiveListName)
+
+   TYPE(String_stack_t), SAVE, PRIVATE, POINTER :: Activename_stack => Null()
+   !$OMP THREADPRIVATE(Activename_stack)
+
    TYPE(ValueList_t), POINTER, SAVE, PRIVATE  :: TimerList => NULL()
    LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerResults
 
@@ -1201,6 +1215,7 @@ CONTAINS
     END FUNCTION VariableGet 
 !------------------------------------------------------------------------------
 
+
 !------------------------------------------------------------------------------
  FUNCTION ListHead(list) RESULT(head)
 !------------------------------------------------------------------------------
@@ -1382,7 +1397,12 @@ CONTAINS
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: str
 !------------------------------------------------------------------------------
-     NameSpace = str
+     CHARACTER(LEN=LEN_TRIM(str)) :: str_lcase
+!------------------------------------------------------------------------------
+     INTEGER :: n
+!------------------------------------------------------------------------------
+     n = StringToLowerCase( str_lcase,str,.TRUE. )
+     NameSpace = str_lcase
 !------------------------------------------------------------------------------
    END SUBROUTINE ListSetNamespace
 !------------------------------------------------------------------------------
@@ -1402,6 +1422,80 @@ CONTAINS
     END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListGetNamespace
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE ListPushNamespace(str)
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: str
+!------------------------------------------------------------------------------
+     LOGICAL :: L
+     TYPE(String_stack_t), POINTER :: stack
+!------------------------------------------------------------------------------
+     ALLOCATE(stack)
+     L = ListGetNameSpace(stack % name)
+     stack % next => Namespace_stack
+     Namespace_stack => stack
+     CALL ListSetNamespace(str)
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListPushNamespace
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE ListPopNamespace()
+!------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
+!------------------------------------------------------------------------------
+     IF(ASSOCIATED(Namespace_stack)) THEN
+       Namespace = Namespace_stack % name
+       stack => Namespace_stack
+       Namespace_stack => stack % Next
+       DEALLOCATE(stack)
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListPopNamespace
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE ListPushActivename(str)
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: str
+!------------------------------------------------------------------------------
+     LOGICAL :: L
+     TYPE(String_stack_t), POINTER :: stack
+!------------------------------------------------------------------------------
+     ALLOCATE(stack)
+     stack % name = ListGetActiveName()
+     stack % next => Activename_stack
+     Activename_stack => stack
+     ActiveListName = str
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListPushActiveName
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE ListPopActiveName()
+!------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
+!------------------------------------------------------------------------------
+     IF(ASSOCIATED(Activename_stack)) THEN
+       ActiveListName = Activename_stack % name
+       stack => Activename_stack
+       Activename_stack => stack % Next
+       DEALLOCATE(stack)
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListPopActiveName
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   FUNCTION ListGetActiveName() RESULT(str)
+!------------------------------------------------------------------------------
+    CHARACTER(:), ALLOCATABLE :: str
+!------------------------------------------------------------------------------
+    str = ActiveListName
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetActiveName
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -2082,7 +2176,9 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) RETURN
 
      IF ( ptr % PROCEDURE /= 0 ) THEN
+       CALL ListPushActiveName(Name)
        L = ExecIntFunction( ptr % PROCEDURE, CurrentModel )
+       CALL ListPopActiveName()
      ELSE
        IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
          WRITE(Message,*) 'Value type for property [', TRIM(Name), &
@@ -2142,10 +2238,12 @@ CONTAINS
      IValues => Ptr % IValues(1:n)
 
      IF ( ptr % PROCEDURE /= 0 ) THEN
+       CALL ListPushActiveName(Name)
        IValues = 0
        DO i=1,N
          Ivalues(i) = ExecIntFunction( ptr % PROCEDURE, CurrentModel )
        END DO
+       CALL ListPopActiveName()
      END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListGetIntegerArray
@@ -2249,8 +2347,10 @@ CONTAINS
        IF ( PRESENT(x) ) xx = x
        IF ( PRESENT(y) ) yy = y
        IF ( PRESENT(z) ) zz = z
+       CALL ListPushActiveName(Name)
        F = Ptr % Coeff * &
            ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,xx,yy,zz )
+       CALL ListPopActiveName()
 
      END SELECT
 
@@ -2574,9 +2674,11 @@ CONTAINS
 
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            IF ( ptr % PROCEDURE /= 0 ) THEN
+             CALL ListPushActiveName(Name)
              F(i) = ptr % Coeff * &
                  ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                           NodeIndexes(i), T )
+             CALL ListPopActiveName()
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
                WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -2650,6 +2752,7 @@ CONTAINS
          RETURN
        END IF
 
+       CALL ListPushActiveName(name)
        DO i=1,n
          F(i) = Ptr % Coeff * &
              ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
@@ -2657,6 +2760,7 @@ CONTAINS
              CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
              CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
        END DO
+       CALL ListPopActiveName()
 
      END SELECT
 
@@ -2744,6 +2848,7 @@ CONTAINS
      CASE( LIST_TYPE_VARIABLE_SCALAR )
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
+         CALL ListPushActiveName(name)
          F = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
 
          ! Compute derivative at the point if requested
@@ -2760,6 +2865,7 @@ CONTAINS
            F2 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
            dFdx = ( F2 - F1 ) / (2*xeps)
          END IF
+         CALL ListPopActiveName()
        ELSE
          IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
            WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -3017,7 +3123,9 @@ CONTAINS
          ! there is no node index, so use zero
          j = 0 
          IF ( ptr % PROCEDURE /= 0 ) THEN
+           CALL ListPushActiveName(name)
            val = ExecRealFunction( ptr % PROCEDURE,CurrentModel, j, T )
+           CALL ListPopActiveName()
          ELSE
            val = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
                T(1), ptr % CubicCoeff )
@@ -3053,7 +3161,9 @@ CONTAINS
            y = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n) ) )
            z = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n) ) )
 
+           CALL ListPushActiveName(name)
            val = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,x,y,z)
+           CALL ListPopActiveName()
          ELSE
            CALL Fatal('ListGetRealAtIp','Constant scalar evaluation failed at ip!')
          END IF
@@ -3108,9 +3218,11 @@ CONTAINS
              
              IF ( .NOT. ANY( T(1:j) == HUGE(1.0_dp) ) ) THEN
                IF ( ptr % PROCEDURE /= 0 ) THEN
+                 CALL ListPushActiveName(name)
                  F(i) = ptr % Coeff * &
                      ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                      NodeIndexes(i), T )              
+                 CALL ListPopActiveName()
                ELSE
                  IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
                    WRITE(Message,*) 'Value type for property [', TRIM(Name), &
@@ -3184,6 +3296,7 @@ CONTAINS
              RETURN
            END IF
            
+           CALL ListPushActiveName(name)
            DO i=1,n
              F(i) = ptr % Coeff * &
                  ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
@@ -3191,6 +3304,7 @@ CONTAINS
                  CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
                  CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
            END DO
+           CALL ListPopActiveName()
            
          END SELECT
        END IF
@@ -3369,11 +3483,13 @@ CONTAINS
      F => ptr % FValues(:,:,1)
 
      IF ( ptr % PROCEDURE /= 0 ) THEN
+       CALL ListPushActiveName(name)
        DO i=1,N1
          DO j=1,N2
            F(i,j) = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,0.0d0,0.0d0,0.0d0 )
          END DO
        END DO
+       CALL ListPopActiveName()
      END IF
    END FUNCTION ListGetConstRealArray
 !------------------------------------------------------------------------------
@@ -3424,6 +3540,7 @@ CONTAINS
        END DO
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
+         CALL ListPushActiveName(name)
          DO i=1,N1
            DO j=1,N2
              F(i,j,1) = ptr % Coeff * &
@@ -3431,6 +3548,7 @@ CONTAINS
                  CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
            END DO
          END DO
+         CALL ListPopActiveName()
        END IF
    
      
@@ -3458,8 +3576,10 @@ CONTAINS
            READ( tmp_str(1:k1), * ) ((F(j,k,i),k=1,N2),j=1,N1)
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
            G => F(:,:,i)
+           CALL ListPushActiveName(name)
            CALL ExecRealArrayFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G )
+           CALL ListPopActiveName()
          ELSE
            DO j=1,N1
              DO k=1,N2
@@ -3551,11 +3671,13 @@ CONTAINS
        END DO
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
+         CALL ListPushActiveName(name)
          DO i=1,n1
            F(i,1) = ptr % Coeff * &
              ExecConstRealFunction( ptr % PROCEDURE, &
                CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
          END DO
+         CALL ListPopActiveName()
        END IF
      
      CASE( LIST_TYPE_VARIABLE_TENSOR,LIST_TYPE_VARIABLE_TENSOR_STR )
@@ -3582,8 +3704,10 @@ CONTAINS
            READ( tmp_str(1:k1), * ) (F(j,i),j=1,N1)
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
            G => F(:,i)
+           CALL ListPushActiveName(name)
            CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G )
+           CALL ListPopActiveName()
          ELSE
            DO k=1,n1
              F(k,i) = InterpolateCurve(ptr % TValues, &
