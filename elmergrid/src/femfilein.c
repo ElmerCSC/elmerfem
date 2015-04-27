@@ -3120,7 +3120,7 @@ static int LoadGmshInput1(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Loading mesh in Gmsh format 1.0 from file %s\n",filename);
 
   allocated = FALSE;
-  dim = 3;
+  dim = data->dim;
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
@@ -3263,11 +3263,12 @@ allocate:
 static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
 			  char *filename,int info)
 {
-  int noknots = 0,noelements = 0,maxnodes,dim,notags;
+  int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
   int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
   int usetaggeom,tagmat,verno;
+  int physvolexist, physsurfexist;
   FILE *in;
   char *cp,line[MAXLINESIZE];
 
@@ -3278,11 +3279,13 @@ static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Loading mesh in Gmsh format 2.0 from file %s\n",filename);
 
   allocated = FALSE;
-  dim = 3;
+  dim = data->dim;
   maxnodes = 0;
   maxindx = 0;
   maxelemtype = 0;
   usetaggeom = FALSE;
+  physvolexist = FALSE;
+  physsurfexist = FALSE;
 
 omstart:
 
@@ -3384,11 +3387,27 @@ omstart:
       }   
     }
     else if(strstr(line,"$PhysicalNames")) {
-      if(info) printf("Physical names are not accounted for\n");
       getline;
       cp = line;
-      i = next_int(&cp);
-      for(;i>0;i--) getline;
+      nophysical = next_int(&cp);
+      for(i=0;i<nophysical;i++) {
+	getline;
+	cp = line;
+	gmshtype = next_int(&cp);
+	tagphys = next_int(&cp);
+	if(gmshtype == dim-1) {
+	  physsurfexist = TRUE;
+	  if(tagphys < MAXBCS) sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
+	  else printf("Index %d too high: ignoring physical surface %s",tagphys,cp+1);
+	}
+	else if(gmshtype == dim) {
+	  physvolexist = TRUE;
+	  if(tagphys < MAXBODIES) sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
+	  else printf("Index %d too high: ignoring physical volume %s",tagphys,cp+1);
+	}
+	else printf("Physical groups of dimension %d not supported: "
+		"ignoring group %d %s",gmshtype,tagphys,cp+1);
+      }
 
       getline;
       if(!strstr(line,"$EndPhysicalNames")) {
@@ -3451,6 +3470,8 @@ omstart:
     RenumberBoundaryTypes(data,bound,TRUE,0,info);
     RenumberMaterialTypes(data,bound,info);
   }
+  data->bodynamesexist = physvolexist;
+  data->boundarynamesexist = physsurfexist;
 
   if(info) printf("Successfully read the mesh from the Gmsh input file.\n");
 
