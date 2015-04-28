@@ -1,0 +1,297 @@
+From: Juha Ruokolainen <jpr@csc.fi>
+To: elmerupdates@postit.csc.fi
+Subject: [Elmerupdates] ELMER 5.4.0 RELEASED
+Date: Wed, 3 Oct 2007 14:18:21 +0300 (EEST)
+
+
+
+Elmer version 5.4.0 is out:
+
+Source code is available from
+
+http://nic.funet.fi/pub/sci/physics/elmer/src
+
+Elmer 5.4 consists of the following packages:
+
+matc 5.4.0
+umfpack 4.4
+mathlibs 1.0.0
+elmergrid 5.4.0
+meshgen2d 5.0.0
+eio 5.4.0
+hutiter 5.4.0
+fem 5.4.0
+elmerparam 1.0.0
+front 5.4.0
+elmerpost 5.4.0
+
+The file elmer-5.4.0.tar.gz is also provided for convenience,
+this contains all the relevant packages.
+
+Windows binary installation package is available at
+
+http://nic.funet.fi/pub/sci/physics/elmer/bin/windows/Elmer-5.4.0.exe.
+
+There are new compile instructions for Windows/MINGW at the bottom
+of the page
+
+http://www.csc.fi/english/pages/elmer/download/compiling
+
+
+New features of Elmer 5.4.0 include:
+====================================
+
+New manuals:
+------------
+* MATC manual was extracted from the html help to latex format. Now available
+in as a new document called MATCManual.pdf.
+
+* Elmer Overview manual was written. It has an emphasis on big things and 
+should
+help people in learning Elmer. Available in cvs as doc/overview and as a new
+document called ElmerOverview.pdf.
+
+
+Solver enhancements:
+--------------------
+
+* "Internal solvers" identified by Equation ="Heat Equation" | 
+"Navier-Stokes" |
+"Mesh Update" | "Magnetic Induction" | "Stress Analysis" may now use "Exported
+Variable n" definitions in solver-sections. Previously these definitions were
+silently ignored.
+
+* Added Boundary Condition-section keyword "Target Coordinates Eps=Real".
+Target nodes are only set if closer than "eps" to given coordinate values.
+The default is to set closest nodes irrespective of their distance to given
+coordinates.
+
+* New Solver-section keyword "Radiation Solver=Logical" may be used to define 
+the
+solver responsible of taking care of the heat radiation, if a Solver with
+"Equation=Heat Equation" is not present.
+
+* Added Simulation Type=Scannig, which goes through timesteps etc., but 
+doesn't set transient
+mode.
+
+* Added DefUtils function GetCReal(), which is similiar to GetReal but 
+returns a scalar value.
+One may use this for parameters that are time dependent (for example), but 
+not spatially varying.
+
+* Added Material-section keyword "Pressure Coefficient" which may be used to 
+give the pressure
+material derivative coefficient value in the heat equation. This should give 
+a value for
+the expression (@log(1/rho)/@log(T))_p
+
+* Added feature to define elements passive in the middle of the simulation. 
+Passive elements are
+controlled by a Body Force keyword (type Real), e.g. "Temperature Passive" 
+for Heat Equation.
+
+* Possibility to change the reference shape of linear elasticity.
+
+* Added possibility for saving scalars data in a file understood by the 
+LiveGraph? program
+
+* Added some new nonlin. and steady state convergence measures and features.
+
+* Added a module IterativeMethods?.src where new iterative solvers may be 
+placed and referred in
+IterSolve?.src. New iterative solvers include 'Jacobi', 'SGS', and 
+'BiCGstabL'.
+
+* The parallel solver has received some attention, and should work much 
+better than
+before. Also the HYPRE interface is updated to include ParaSails - a 
+parallel sparse
+approximate inverse preconditioner. To activate use
+
+Linear System Use Hypre = Logical True
+Linear System Preconditioning = ParaSails
+ParaSails Threshold = Real
+ParaSails Filter = Real
+ParaSails Symmetry = Real
+ParaSails Maxlevel = Real
+
+look at the HYPRE/ParaSails documentation for the meaning of preconditioner 
+settings.
+
+
+* changes in convergence measures & norms & relaxation:
+
+Convergence measures are used to monitor the convergence of the solution process. The different measures are 
+
+c_n = 2*||u|-|u_0|| / (|u|+|u_0|)
+
+c_s = 2*|u-u_0| / (|u|+|u_0|)
+
+c_r = |Ax_0-b| / |b|
+
+where the suffixes (n,s,r) refer to values 'norm', 'solution', 'residual' of the keyword 
+
+Nonlinear System Convergence Measure = String
+
+The old standard way 'norm' is the default. The critical value when convergence is decleared is still terminated by the keyword 
+
+Nonlinear System Convergence Tolerance = Real
+
+Absolute measures (opposed to relative) may be invoked by
+
+Nonlinear System Convergence Absolute = Logical True
+
+Relaxation:
+
+Relaxation is now also done within ComputeChange. The keywords related to that are 
+
+Nonlinear System Relaxation Factor = Real
+Nonlinear System Relaxation Before = Logical
+
+The default of the second one is True (as before). This means that relaxation is applied before the convergence measure is computed. Heavy relaxation will therefore make convergence seem easier. The countereffect this the flag could be set False. This has the price that one extra norm has to be computed, and that norms are not backward compatible. 
+
+Nonlinar vs. steady state:
+
+The convergence tolerances are used to determine the convergence of a single equation, and that of the coupled system. Therefore all the above keywords have also a counterpart starting with string 'Steady State'. 
+
+Steady State Convergence Measure = String
+Steady State Convergence Tolerance = Real
+Steady State Convergence Absolute = Logical
+Steady State Relaxation Factor = Real
+Steady State Relaxation Before = Logical
+
+Norms
+-----
+By default Elmer uses the L2 norm. Now also other norms are possible in scalar computation. 
+
+Nonlinear System Norm Degree = Integer
+
+Note that value 0 refers to infinity, or max, norm,
+
+Nonlinear System Norm Dofs = Integer
+
+By default all degrees of freedom of the result vector are taken into account. Sometimes, it is desirable to look at only some components. Like in the Navier-Stokes equation the pressure may be a poorer indicator of the accuracy, and also it does not necesseraly have same scale as velocity. Therefore by default the Navier-Stokes solver sets the value of this keyword equal to DIM. 
+
+The norm used in the convergence measures is always the same for steady state as for nonlinear norms. For the linear systems the only possible norm is still L2. 
+
+What now
+--------
+Everything should be backward compatible. The most useful new feature will probably be the new convergence measure types that are more robust for some applications. 
+
+
+New application solvers:
+========================
+
+PhaseChangeSolve
+----------------
+There is a new solver that is applicable to 2D phase change problems, 
+occurring for example in the field of
+crystal growth. Previously only Eularian phase change solution was supported. 
+The Lagrangian approaches
+should give superior accuracy with the same mesh density. The solver includes 
+both steady state algorhitm
+and a transient algorhitm.
+
+The steady-state algorithm geometrically constructs a levelset and maps the 
+old interface to the new
+position. Here a flux condition must be set on the interface if there is a 
+constant pull in the system
+(look at PhaseChange2 in tests).
+
+The transient algorithm computes the melting velocity over the interface and 
+uses the velocity to advance
+the position of the surface. With time the interface should obtain the 
+steady-state solution, if such
+exists.
+
+FluxSolver
+----------
+There is a new solver that computes fluxes. For example, heat fluxes may be 
+computed when the temperature
+field T and heat conductivity k are known from
+q = -k\grad{T}
+The heat flux is computed with the Galerkin approximation one component at a 
+time in order to optimize
+memory consumption.
+
+NormalSolver
+-------------
+There is a new solver that computes surface normals. Usually, the direction 
+of the normals are assumed to
+be defined by the boundary element alone. However, there are some cases when 
+this may lead to slight
+inconsistancies. Then the nodal values may be computed by this solver that 
+uses the Galerkin method to
+define nodal values for the normals. The normals are computed one component 
+at a time in order to optimize
+memory consumption.
+
+
+Modifications to solvers
+========================
+
+SaveScalars
+-----------
+SaveScalars has now some additaional operators that may be used to save the 
+current norms and changes to
+external files in order to monitor the bahavior. The operators are 'norm', 
+'nonlinear system change', and
+'steady state change'. Also some simple operators operating on a boundary 
+were added: boundary max,
+boundary min, boundary max abs, boundary min abs.
+
+The data in scalars may now be saved in comma-separated-values (CSV) format 
+which is understood by the
+LiveGraph program. This is envoked by setting a flag 'Live Graph = Logical 
+True'.
+
+The commands above could be used to monitor convergence behavior in real-time 
+by adding the following
+solver to the sif-file:
+
+Solver 3
+Name = "SaveScalars"
+Procedure = "SaveData" "SaveScalars"
+Filename = File "f.dat"
+Variable 1 = Temperature
+Operator 1 = norm
+Operator 2 = nonlinear system change
+End
+
+
+
+ElmerGrid enhancements
+======================
+
+* The import of Universal file (UNV) and gmsh (ver 2) formats was improved.
+
+* In ElmerGrid enhanced the functionality of the '-increase' (element order) 
+flag also to 3D geometries.
+The order may be increased from 1 to 2 only.
+
+
+... and countless number of other enhancements, additions, bug fixes....
+
+
+ElmerPost
+==========
+
+Added modules for exporting pictures/video clips in jpg/mpg format. The 
+modules can be found
+in the source tree (post/src), but they are not compiled automativally due to 
+dependencies on
+non-standard libraries. These are distrubted with the windows binaries 
+however. More information
+can be found from the headers of the source files.
+
+Usage in Elmer-Post:
+
+savejpg file.jpg quality [ quality: 1=bad ... 100=good ]
+savempg start file.mpg [ initializes video compressor ]
+savempg append [ adds current frame to video ]
+savempg stop [ finalizes video compressor ]
+
+Have fun,
+
+The Elmer Team

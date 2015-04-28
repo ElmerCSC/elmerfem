@@ -1,0 +1,338 @@
+From: Juha Ruokolainen <jpr@csc.fi>
+Subject: [Elmerupdates] Elmer Version 5.3 Released
+Date: Tue, 30 Jan 2007 10:15:53 +0200 (EET)
+
+
+Elmer version 5.3.0 has been relased
+====================================
+
+- New Windows binary is available from:
+
+http://www.csc.fi/elmer/download
+
+or directly from
+
+ftp://ftp.funet.fi/pub/sci/physics/elmer/bin/Elmer-5.3.0.exe
+
+The binary has been compiled under MINGW using the default
+GCC + gfortran v4.3 available from:
+
+http://gcc.gnu.org/wiki/GFortranBinaries
+
+- Sources available through
+
+http://www.csc.fi/elmer/download
+
+or directly from
+
+ftp://ftp.funet.fi/pub/sci/physics/elmer/src
+
+New Features include:
+=====================
+
+o Nodal Loads & Nodal Dirichlet conditions:
+
+In boundary condition-section give
+
+Target Nodes(n) = Integer
+or
+Target Coordinates(n,dim) = Real
+
+The coordinates, if given, will be used to search closest nodes.
+Dirichlet conditions and nodal loads may be set the usual way for
+these boundary conditions, i.e.
+
+Temperature = Real value
+Temperature Load = Real value
+
+o Bulk Nodal Loads & Bulk Dirichlet Conditions
+
+In body force-section variable conditions & loads may be given as
+
+Temperature = Real value
+Temperature Load = Real value
+
+o New Harmonic analysis solver-section keywords
+
+Harmonic Analysis = Logical
+Frequency(n) = Real
+
+these keywords may be set to activate harmonic analysis for
+second order time derivative equations (StressSolve etc.):
+
+( (-w^2M+K) + iwD ) X = F
+
+where M is mass matrix, K stiffness matrix, and D damping matrix.
+The solution is over given frequency (f=w/(2pi)) values.
+
+Current limitations include:
+
+x Dirichlet conditions are real
+x Only real part of the force may be given
+x Only real part of the solutions appears in output
+
+o New solver-section keyword
+
+Constant Bulk System = Logical
+
+which may be set to 'True' if the bulk matrix & rhs are known
+not to change during simulation. The boundary conditions may
+change the matrix and vector as needed. Currently only used
+by StressSolve & HeatSolve.
+
+o New solver-section keyword
+
+Constant Bulk Matrix = Logical
+
+which may be set to 'True' if the bulk matrix is known not to
+change during simulation. The boundary conditions may change the
+matrix as needed. The RHS vector may also change. Currently used
+only by StressSolve.
+
+o New solver-section keyword
+
+Linear System Refactorize = Logical
+
+may be set to 'False' if it is known that the coefficient matrix does
+not change during simulation. StressSolve also compensates for changing
+timestep by reactivating factorizing when the timestep changes, for other
+solvers this keyword must not be used with varying timestep.
+
+This keyword applies to
+
+Linear System Solver = Direct
+Linear System Direct Method = UMFPack
+
+as well as to iterative solver preconditioning.
+
+o New 'Output File' format, including binary output by simulation-section
+keyowrd:
+
+Output Binary = Logical
+
+New format saves space and execution time.
+
+o Output of solution fields to VTK and OpenDX formats
+
+o New boundary condition-section keyword
+
+Normal-Tangential var_name Rotate = Logical
+
+may be used to disable (by setting to value False) the change
+for variables (x,y,z) -> (n,t1,t2) on a N-T boundary if not
+needed (no dirichlet conditions).
+
+o New keyword in equation-section
+
+Element = [n:#dofs d:#dofs p:#dofs b:#dofs e:#dofs f:#dofs]
+
+where n means nodal dofs, d discontinuous galerkin element dofs,
+p stands for p-element 'p', b is number of bubble degrees of
+freedom, e- and f- give edge and face degrees of freedom
+respectively.
+
+This may be used, instead of the mesh defintion, to enable
+unusual (not Lagrange type) element types.
+
+Element = [p:2]
+
+would give p=2 element over the basic element type the mesh
+defines.
+
+Element = [d:4]
+
+gives DG element with 4 internal DOFs. Specifying d:0 has the
+special meaning that DG dofs equals to the #nodes within the
+mesh defined element.
+
+Element = [p:1 b:1]
+
+would give one bubble DOF over a linear element, etc.
+
+If equation-section defines more than one solver
+
+Active Solvers(n) = Integer
+
+the element defintion may be different for individual solvers
+
+Element[1] = ...
+Element[2] = ...
+
+o The field variable components may be given individual names:
+
+Variable = var_name[cname 1:#dofs cname 2:#dofs ... ]
+
+instead of the default component names "var_name 1", "var_name 2", ...
+These given component names may be used in boundary conditions,
+initial conditions, etc. and are seen as field variables
+as usual.
+
+o All solvers, including FlowSolve, StressSolve, HeatSolve, may
+now be used as "external solvers", specifying i.e.
+
+Procedure = "FlowSolve" "FlowSolver"
+Variable = Flow[Veloc:3 Pres:1]
+
+in solver section.
+
+o If variable "primary_var loads" exists the linear system solver
+will compute boundary reaction forces as a field variable after
+solution:
+F=Ax-b
+where A and b are the bulk matrix and RHS vector respectively
+(the system matrix & vector before applying any boundary
+conditions).
+
+For example specifying
+
+Procedure = "FlowSolve" "FlowSolver"
+Variable = Flow[Veloc:3 Pres:1]
+Exported Variable 1 = Flow Loads[Stress Vector:3 CEQ Residual:1]
+
+will compute boundary stress vector which could be used i.e. in FSI
+simulation to specify the reaction of the boundary to flow field in
+a boundary condition section:
+
+Displacement 1 Load = Variable Stress Vector 1
+Real MATC "-tx"
+Displacement 2 Load = Variable Stress Vector 2
+Real MATC "-tx"
+Displacement 3 Load = Variable Stress Vector 3
+Real MATC "-tx"
+
+similarily
+
+Procedure = "HeatSolve" "HeatSolver"
+Variable = Temperature
+Exported Variable 1 = Temperature Loads
+
+will give nodal equivalent heat flux. Summing the 'Temperature Loads' 
+variable
+over a boundary (using SaveData f.ex.) will give heat flux over the 
+boundary.
+
+Currently implemented for StressSolve, HeatSolve and FlowSolve.
+
+o New operators in SaveScalars
+
+There are some new simple operators in SaveScalars: 'sum', 'dofs', 'boundary
+sum', 'boundary dofs' and 'boundary mean'. These are particularly useful in
+extracting the node based information. Assume that you would have computed
+'Temperature Loads' as in above example. Then you could extract the sum of
+loads i.e. the total heat flux over the domain and of a boundary by adding
+the following solver:
+
+Solver n
+Equation = String "SaveScalars"
+Procedure = File "SaveData" "SaveScalars"
+Filename = File "f.dat"
+Variable 1 = String "Temperature Loads"
+Operator 1 = "sum"
+Variable 2 = String "Temperature Loads"
+Operator 2 = "boundary sum"
+End
+
+Additionally a flag 'Save Scalars = Logical True' at the boundary
+of interest should also be set.
+
+o Initial support for HYPRE parallel linear solver library
+
+x compile and install the HYPRE library. HYPRE is found at
+
+http://www.llnl.gov/CASC/linear_solvers/
+
+x configure mathlibs for parallel computing
+
+./configure --prefix=... --with-mpi
+or
+./configure --prefix=... --with-mpi-dir=...
+make install
+
+x configure fem for parallel computing and HYPRE
+
+export CFLAGS "-Impi_include_dir -Ihypre_include_dir ..."
+./configure --prefix=... --with-mpi-dir=... \
+--with-hypre="-Lhypre_lib_dir -lHYPRE"
+make install
+
+and set the solver-section keyword in the solver input file
+
+Linear System Use HYPRE = Logcal True
+
+HYPRE solver used by the elmer interface is BiCGStab with (global)
+ILU(n) preconditioning. The n in ILU(n) may be selected the usual way
+
+Linear System Preconditioning = ILUn
+
+Later versions may include support to different HYPRE linear equation
+solvers, like AMG, etc.
+
+o Partitioning (ElmerGrid)
+
+Improved partitioning capabilities. Most importantly, interfaces to some
+dual graph based partioning routines of Metis library implemented. This
+makes the Metis partitioning available also for mixed meshes. The new
+options are available using an extra integer parameter (optional) in the
+command line. See the Metis documentation for more info.
+
+-metis 4 0 % METIS_PartMeshNodal (default)
+-metis 4 1 % METIS_PartGraphRecursive
+-metis 4 2 % METIS_PartGraphKway
+-metis 4 3 % METIS_PartGraphVKway
+
+For the simple geometric partitioning there are two possibilities. You may
+either first partition the elements and then define the nodal partitioning
+accordingly, or vice versa.
+
+-partition 2 2 1 0 % First partition elements (default)
+-partition 2 2 1 1 % First partition nodes
+
+o Conservation of names
+
+There is a new possibility to conserve name information in some mesh
+import routines. Currently this is supported only for the newest Ansys
+script and for the FDNEUT format. In mesh format the name information is
+saved to a separate file (mesh.names) that may be included in the sif
+file, and thereafter the material names may be used as MATC variables.
+
+o Removal of extra BCs
+
+There is are some new options in ElmerGrid which to remove lower
+dimensional BCs and to map the BC numbering to be continous. This may be
+useful for meshers (e.g. Gmsh) that automatically create a bunch of
+geometric entities making it difficult to handle them in later phases.
+
+o Shell-element solver including large deflections
+
+o Kohn-Sham equations solver for density functional theory
+
+o Many new test cases
+
+The test cases are in the fem-5.3.0.tar.gz package in the fem-5.3.0/tests
+directory. After building and installing ELMER you should be able to run
+all the tests by commanding
+make check
+in the fem-5.3.0 directory. To run individual tests enter the tests
+directory and give the command
+./runtests test_dir
+
+To use the test cases as a starting point for developing your own case,
+please note that
+x Output is disabled by default, to re-enable uncomment either or both of
+the lines
+!Output File=..
+!Post File=...
+in Simulation-section of the .sif file.
+x Solver output messages are restricted by
+Max Output Level = 3
+increse the number or remove the line to get more verbose output.
+
+There are in total 69 test cases in this release, running through them takes
+few minutes depending on your computer capabilities, compilers and compiler
+options used.
+
+o Numerous bug fixes and smaller enhancements
+
+Have Fun,
+
+The Elmer Team
