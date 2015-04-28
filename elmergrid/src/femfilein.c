@@ -3393,21 +3393,23 @@ omstart:
       nophysical = next_int(&cp);
       for(i=0;i<nophysical;i++) {
 	GETLINE;
-	cp = line;
-	gmshtype = next_int(&cp);
-	tagphys = next_int(&cp);
-	if(gmshtype == dim-1) {
-	  physsurfexist = TRUE;
-	  if(tagphys < MAXBCS) sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
-          else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
-	}
-	else if(gmshtype == dim) {
-	  physvolexist = TRUE;
-	  if(tagphys < MAXBODIES) sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
-	  else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
-	}
-	else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
-		"ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
+        if(allocated) {
+            cp = line;
+            gmshtype = next_int(&cp);
+            tagphys = next_int(&cp);
+            if(gmshtype == dim-1) {
+                physsurfexist = TRUE;
+                if(tagphys < MAXBCS) sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
+                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
+            }
+            else if(gmshtype == dim) {
+                physvolexist = TRUE;
+                if(tagphys < MAXBODIES) sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
+                else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
+            }
+            else printf("Physical groups of dimension %d not supported in %d-dimensional mesh: "
+                        "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
+        }
       }
 
       GETLINE;
