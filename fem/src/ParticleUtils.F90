@@ -2079,7 +2079,7 @@ RETURN
         InvPerm => NULL()
       ELSE
         GotMask = .TRUE.
-        IF( InitMethod(1:5) == 'nodal') THEN
+        IF( InitMethod == 'nodal') THEN
           ALLOCATE( InvPerm(SIZE(MaskPerm)) )
           InvPerm = 0
           j = 0
@@ -2095,7 +2095,7 @@ RETURN
           nonodes = j
           
           PRINT *,'Total nodes vs. masked',Mesh % NumberOfNodes,nonodes
-        ELSE IF( InitMethod(1:9) == 'elemental') THEN
+        ELSE IF( InitMethod == 'elemental') THEN
           ALLOCATE( InvPerm( MAX( Mesh % NumberOfBulkElements, Mesh % NumberOfBoundaryElements ) ) ) 
           InvPerm = 0
           
@@ -2144,7 +2144,7 @@ RETURN
     ! Use a simple bounding box for initializatin
     ! By default a local bounding box is used...
     !-------------------------------------------------------------------------  
-    IF( InitMethod(1:3) == 'box') THEN
+    IF( InitMethod == 'box') THEN
       Eps = GetCReal( Params,'Wall Particle Radius',GotIt)
       IF(.NOT. GotIt) eps = 1.0d-8
       

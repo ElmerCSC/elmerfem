@@ -1498,17 +1498,17 @@ CONTAINS
           IF (k==1) THEN
              str = ListGetString( VelocitySolver % Values, &
                   'Linear System Preconditioning', GotIt )          
-             IF ( GotIt .AND. str(1:3) == 'ilu' ) &
+             IF ( GotIt .AND. SEQL(str, 'ilu') ) &
                   CALL ListAddLogical(VelocitySolver % Values, 'No Precondition Recompute', .TRUE.)
 
              str = ListGetString( ProjectionSolver % Values, &
                   'Linear System Preconditioning', GotIt )          
-             IF ( GotIt .AND. str(1:3) == 'ilu' ) &
+             IF ( GotIt .AND. SEQL(str, 'ilu') ) &
                   CALL ListAddLogical(ProjectionSolver % Values, 'No Precondition Recompute', .TRUE.)
 
              str = ListGetString( PressureSolver % Values, &
                   'Linear System Preconditioning', GotIt )          
-             IF ( GotIt .AND. str(1:3) == 'ilu' ) &
+             IF ( GotIt .AND. SEQL(str, 'ilu') ) &
                   CALL ListAddLogical(PressureSolver % Values, 'No Precondition Recompute', .TRUE.)
           END IF
 
@@ -1518,15 +1518,15 @@ CONTAINS
        ! These are related to the performance optimization
        str = ListGetString( VelocitySolver % Values, &
             'Linear System Preconditioning', GotIt )          
-       IF ( GotIt .AND. str(1:3) == 'ilu' ) &
+       IF ( GotIt .AND. SEQL(str, 'ilu') ) &
             CALL ListAddLogical(VelocitySolver % Values, 'No Precondition Recompute', .FALSE.)     
        str = ListGetString( ProjectionSolver % Values, &
             'Linear System Preconditioning', GotIt )          
-       IF ( GotIt .AND. str(1:3) == 'ilu' ) &
+       IF ( GotIt .AND. SEQL(str, 'ilu') ) &
             CALL ListAddLogical(ProjectionSolver % Values, 'No Precondition Recompute', .FALSE.)     
        str = ListGetString( PressureSolver % Values, &
             'Linear System Preconditioning', GotIt )          
-       IF ( GotIt .AND. str(1:3) == 'ilu' ) &
+       IF ( GotIt .AND. SEQL(str, 'ilu') ) &
             CALL ListAddLogical(PressureSolver % Values, 'No Precondition Recompute', .FALSE.)     
  
 

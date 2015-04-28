@@ -454,7 +454,7 @@ CONTAINS
              END IF
            END IF
 
-       ELSE IF ( str(1:3) == 'ilu' ) THEN
+       ELSE IF ( SEQL(str, 'ilu') ) THEN
           IF ( NewLinearSystem ) THEN
              k = ICHAR(str(4:4)) - ICHAR('0')
              IF ( k < 0 .OR. k > 9 ) k = 0
@@ -1213,7 +1213,7 @@ CONTAINS
            ELSE
              Condition = CRS_ILUT( Matrix1, ILUTOL )
            END IF
-         ELSE IF ( str(1:3) == 'ilu' ) THEN
+         ELSE IF ( SEQL(str, 'ilu') ) THEN
            k = ICHAR(str(4:4)) - ICHAR('0')
            IF ( k < 0 .OR. k > 9 ) k = 0
            IF ( Parallel ) THEN
@@ -1765,7 +1765,7 @@ CONTAINS
         END IF
       END IF
       
-    ELSE IF ( str(1:3) == 'ilu' ) THEN      
+    ELSE IF ( SEQL(str, 'ilu') ) THEN      
       IF ( NewLinearSystem ) THEN
         k = ICHAR(str(4:4)) - ICHAR('0')
         IF ( k < 0 .OR. k > 9 ) k = 0
@@ -5368,7 +5368,7 @@ CONTAINS
         END IF
       END IF
       
-    ELSE IF ( str(1:3) == 'ilu' ) THEN      
+    ELSE IF ( SEQL(str, 'ilu') ) THEN      
       IF ( NewLinearSystem ) THEN
         k = ICHAR(str(4:4)) - ICHAR('0')
         IF ( k < 0 .OR. k > 9 ) k = 0

@@ -581,17 +581,17 @@ CONTAINS
       END IF
       
       DO WHILE( var_name(1:1) == '-' )
-        IF ( var_name(1:10) == '-nooutput ' ) THEN
+        IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
         END IF
         
-        IF ( var_name(1:8) == '-global ' ) THEN
+        IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
         END IF
         
-        IF ( var_name(1:6) == '-dofs ' ) THEN
+        IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs
           i = 7
           j = LEN_TRIM( var_name )
@@ -779,17 +779,17 @@ CONTAINS
       VariableGlobal = .FALSE.
       
       DO WHILE( var_name(1:1) == '-' )
-        IF ( var_name(1:10) == '-nooutput ' ) THEN
+        IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
         END IF
         
-        IF ( var_name(1:8) == '-global ' ) THEN
+        IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
         END IF
         
-        IF ( var_name(1:6) == '-dofs ' ) THEN
+        IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs 
           j = LEN_TRIM( var_name )
           k = 7

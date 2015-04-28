@@ -138,7 +138,7 @@ CONTAINS
      IF ( Solver % Variable % DOFs <= 1 ) RETURN
 
      NormalTangentialName = 'Normal-Tangential'
-     IF ( Solver % Variable % Name(1:13) == 'flow solution' ) THEN
+     IF ( SEQL(Solver % Variable % Name, 'flow solution') ) THEN
        NormalTangentialName = TRIM(NormalTangentialName) // ' Velocity'
      ELSE
        NormalTangentialName = TRIM(NormalTangentialName) // ' ' // &
@@ -8019,7 +8019,7 @@ END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
 SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs )
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: var_name
+  CHARACTER(LEN=*)  :: var_name
   LOGICAL, OPTIONAL :: NoOutput, Global
   INTEGER, OPTIONAL :: Dofs
 
@@ -8030,17 +8030,17 @@ SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs )
   IF(PRESENT(Dofs)) Dofs = 0
 
   DO WHILE( var_name(1:1) == '-' )
-    IF ( var_name(1:10) == '-nooutput ' ) THEN
+    IF ( SEQL(var_name, '-nooutput ') ) THEN
       IF(PRESENT(NoOutput)) NoOutput = .TRUE.
       var_name(1:LEN(var_name)-10) = var_name(11:)
     END IF
     
-    IF ( var_name(1:8) == '-global ' ) THEN
+    IF ( SEQL(var_name, '-global ') ) THEN
       IF(PRESENT(Global)) Global = .TRUE.
       var_name(1:LEN(var_name)-8) = var_name(9:)
     END IF
     
-    IF ( var_name(1:6) == '-dofs ' ) THEN
+    IF ( SEQL(var_name, '-dofs ') ) THEN
       IF(PRESENT(DOFs)) READ( var_name(7:), * ) DOFs     
       j = LEN_TRIM( var_name )
       k = 7

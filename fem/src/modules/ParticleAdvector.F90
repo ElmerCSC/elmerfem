@@ -536,7 +536,7 @@ CONTAINS
         dofs = dim 
         InternalVariable = .TRUE.
         maxdim = MAX( dim, maxdim )
-      ELSE IF( VariableName(1:8) == 'particle' ) THEN
+      ELSE IF( SEQL(VariableName, 'particle') ) THEN
         dofs = 1
         InternalVariable = .TRUE.
         maxdim = MAX( 1, maxdim )
@@ -678,7 +678,7 @@ CONTAINS
             NewValues(i) = 1.0_dp * Particles % Status(i)
           END DO
           
-        ELSE IF( VariableName(1:8) == 'particle' ) THEN
+        ELSE IF( SEQL(VariableName, 'particle') ) THEN
           ParticleVar => ParticleVariableGet( Particles, VariableName )
           IF( ASSOCIATED( ParticleVar ) ) THEN
             NewValues = ParticleVar % Values

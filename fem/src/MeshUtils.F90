@@ -3722,20 +3722,14 @@ END SUBROUTINE GetMaxDefs
      TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
     INTEGER, PARAMETER :: MAXLEN=1024
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: str
-#else
-    CHARACTER(LEN=MAX_STRING_LEN) :: str
-#endif
     INTEGER :: i,j,n
     INTEGER, PARAMETER :: FileUnit = 10
     REAL(KIND=dp) :: x
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementData_t), POINTER :: PD,PD1
 
-#ifdef ALLOC_CHAR
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
-#endif
 
     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', ERR=10 )
 
@@ -3745,12 +3739,12 @@ END SUBROUTINE GetMaxDefs
         CALL Fatal( 'ReadElementProperties', 'Element id out of range.' )
       END IF
       
-      IF ( str(1:8) == 'element:' ) THEN
+      IF ( SEQL( str, 'element:') ) THEN
         Element => Mesh % Elements(i)
         PD => Element % PropertyData
 
         DO WHILE(ReadAndTrim(FileUnit,str))
-          IF ( str(1:3) == 'end' ) EXIT
+          IF ( str == 'end' ) EXIT
 
           i = INDEX(str, ':')
           IF ( i<=0 ) CYCLE
