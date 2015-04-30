@@ -200,9 +200,8 @@
 !    Figure out requested coordinate system
 !------------------------------------------------------------------------------
      eq = GetString( GetSimulation(), 'Coordinate System' )
-
      SELECT CASE(eq)
-     CASE('cartesian','cartesian2d','cartesian3d')
+     CASE('cartesian','cartesian 2d','cartesian 3d')
        Coordinates = Cartesian
      CASE('axi symmetric')
        Coordinates = AxisSymmetric
