@@ -8344,6 +8344,237 @@ END SUBROUTINE GetMaxDefs
   !------------------------------------------------------------------------------
  
   !---------------------------------------------------------------------------
+  ! Simply fitting of cylinder into a point cloud. This is done in two phases.
+  ! 1) The axis of the cylinder is found by minimizing the \sum((n_i*t)^2)
+  !    for each component of of t where n_i:s are the surface normals. 
+  !    This is fully generic and assumes no positions. 
+  ! 2) The radius and center point of the cylinder are found by fitting a circle
+  !    in the chosen plane to three representative points. Currently the fitting
+  !    can only be done in x-y plane. 
+  !---------------------------------------------------------------------------
+  SUBROUTINE CylinderFit(PMesh, PParams) 
+  !---------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: PMesh
+    TYPE(Valuelist_t), POINTER :: PParams
+
+    INTEGER :: i,j,k,n,t,AxisI,iter
+    INTEGER, POINTER :: NodeIndexes(:)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Nodes_t) :: Nodes
+    REAL(KIND=dp) :: NiNj(3,3),A(3,3),F(3),M11,M12,M13,M14
+    REAL(KIND=dp) :: d1,d2,MinDist,MaxDist,Dist,X0,Y0,Rad
+    REAL(KIND=dp) :: Normal(3), AxisNormal(3), Tangent1(3), Tangent2(3), Coord(3), &
+        CircleCoord(3,3)
+    INTEGER :: CircleInd(3) 
+
+    CALL Info('CylinderFit','Trying to fit a cylinder to the surface patch',Level=10)
+
+    NiNj = 0.0_dp
+
+    n = PMesh % MaxElementNodes
+    ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+
+    ! If the initial mesh is in 2D there is really no need to figure out the 
+    ! direction of the rotational axis. It can only be aligned with the z-axis. 
+    IF( CurrentModel % Mesh % MeshDim == 2 ) THEN
+      AxisNormal = 0.0_dp
+      AxisNormal(3) = 1.0_dp
+      GOTO 100 
+    END IF
+
+
+    ! Compute the inner product of <N*N> for the elements
+    DO t=1, PMesh % NumberOfBulkElements
+      Element => PMesh % Elements(t)
+      
+      n = Element % TYPE % NumberOfNodes
+      NodeIndexes => Element % NodeIndexes
+      
+      Nodes % x(1:n) = PMesh % Nodes % x(NodeIndexes(1:n))
+      Nodes % y(1:n) = PMesh % Nodes % y(NodeIndexes(1:n))
+      Nodes % z(1:n) = PMesh % Nodes % z(NodeIndexes(1:n))           
+      
+      Normal = NormalVector( Element, Nodes, Check = .FALSE. ) 
+
+      DO i=1,3
+        DO j=1,3
+          NiNj(i,j) = NiNj(i,j) + Normal(i) * Normal(j)
+        END DO
+      END DO      
+    END DO
+
+    ! Normalize by the number of boundary elements
+    NiNj = NiNj / PMesh % NumberOfBulkElements
+
+    ! The potential direction for the cylinder axis is the direction with 
+    ! least hits for the normal.
+    AxisI = 1 
+    DO i=2,3
+      IF( NiNj(i,i) < NiNj(AxisI,AxisI) ) AxisI = i 
+    END DO
+
+    CALL Info('CylinderFit','Axis coordinate set to be: '//TRIM(I2S(AxisI)))
+
+    ! Keep the dominating direction fixed and iteratively solve the two other directions
+    AxisNormal = 0.0_dp
+    AxisNormal(AxisI) = 1.0_dp
+
+    ! Basically we could solve from equation Ax=0 the tangent but only up to a constant.
+    ! Thus we enforce the axis direction to one by manipulation the matrix equation 
+    ! thereby can get a unique solution. 
+    A = NiNj
+    A(AxisI,1:3) = 0.0_dp
+    A(AxisI,AxisI) = 1.0_dp
+    CALL InvertMatrix( A, 3 )
+    AxisNormal = A(1:3,AxisI)
+
+    ! Normalize the axis normal length to one    
+    AxisNormal = AxisNormal / SQRT( SUM( AxisNormal ** 2 ) )
+    PRINT *,'Axis Normal:',AxisNormal
+    IF( 1.0_dp - ABS( AxisNormal(3) ) > 1.0e-5 ) THEN
+      CALL Fatal('CylinderFit','Set the rest of the code to deal with generic axis!')
+    END IF
+
+100 CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
+    PRINT *,'Axis Tangent 1:',Tangent1
+    PRINT *,'Axis Tangent 2:',Tangent2
+
+    ! Finding three points with maximum distance in the tangent directions
+
+    ! First, find the single extrumum point in the first tangent direction
+    ! Save the local coordinates in the N-T system of the cylinder
+    MinDist = HUGE(MinDist) 
+    DO i=1, PMesh % NumberOfNodes
+      Coord(1) = PMesh % Nodes % x(i)
+      Coord(2) = PMesh % Nodes % y(i)
+      Coord(3) = PMesh % Nodes % z(i)
+
+      d1 = SUM( Tangent1 * Coord )
+      IF( d1 < MinDist ) THEN
+        MinDist = d1
+        CircleInd(1) = i
+      END IF
+    END DO
+
+    i = CircleInd(1)
+    Coord(1) = PMesh % Nodes % x(i)
+    Coord(2) = PMesh % Nodes % y(i)
+    Coord(3) = PMesh % Nodes % z(i)
+      
+    CircleCoord(1,1) = SUM( Tangent1 * Coord ) 
+    CircleCoord(1,2) = SUM( Tangent2 * Coord ) 
+    CircleCoord(1,3) = SUM( AxisNormal * Coord )
+   
+
+    !PRINT *,'MinDist1:',MinDist,CircleInd(1),CircleCoord(1,:)
+
+    ! Find two more points such that their minimum distance to the previous point(s)
+    ! is maximized. This takes some time but the further the nodes are apart the more 
+    ! accurate it will be to fit the circle to the points. Also if there is just 
+    ! a symmetric section of the cylinder it is important to find the points rigorously.
+    DO j=2,3
+      ! The maximum minimum distance of any node from the previously defined nodes
+      MaxDist = 0.0_dp
+      DO i=1, PMesh % NumberOfNodes
+        Coord(1) = PMesh % Nodes % x(i)
+        Coord(2) = PMesh % Nodes % y(i)
+        Coord(3) = PMesh % Nodes % z(i)
+        
+        ! Minimum distance from the previously defined nodes
+        MinDist = HUGE(MinDist)
+        DO k=1,j-1
+          d1 = SUM( Tangent1 * Coord )
+          d2 = SUM( Tangent2 * Coord )
+          Dist = ( d1 - CircleCoord(k,1) )**2 + ( d2 - CircleCoord(k,2) )**2
+          MinDist = MIN( Dist, MinDist )
+        END DO
+        
+        ! If the minimum distance is greater than in any other node, choose this
+        IF( MaxDist < MinDist ) THEN
+          MaxDist = MinDist 
+          CircleInd(j) = i
+        END IF
+      END DO
+
+      ! Ok, we have found the point now set the circle coordinates 
+      i = CircleInd(j)
+      Coord(1) = PMesh % Nodes % x(i)
+      Coord(2) = PMesh % Nodes % y(i)
+      Coord(3) = PMesh % Nodes % z(i)
+      
+      CircleCoord(j,1) = SUM( Tangent1 * Coord ) 
+      CircleCoord(j,2) = SUM( Tangent2 * Coord ) 
+      CircleCoord(j,3) = SUM( AxisNormal * Coord )
+    END DO
+      
+
+    !PRINT *,'Circle Indexes:',CircleInd
+
+    ! Given three nodes it is possible to analytically compute the center point and
+    ! radius of the cylinder from a 4x4 determinant equation. The matrices values
+    ! m1i are the determinants of the comatrices. 
+
+    A(1:3,1) = CircleCoord(1:3,1)  ! x
+    A(1:3,2) = CircleCoord(1:3,2)  ! y
+    A(1:3,3) = 1.0_dp
+    m11 = Det3x3( a )
+
+    A(1:3,1) = CircleCoord(1:3,1)**2 + CircleCoord(1:3,2)**2  ! x^2+y^2
+    A(1:3,2) = CircleCoord(1:3,2)  ! y
+    A(1:3,3) = 1.0_dp
+    m12 = Det3x3( a )
+ 
+    A(1:3,1) = CircleCoord(1:3,1)**2 + CircleCoord(1:3,2)**2  ! x^2+y^2
+    A(1:3,2) = CircleCoord(1:3,1)  ! x
+    A(1:3,3) = 1.0_dp
+    m13 = Det3x3( a )
+ 
+    A(1:3,1) = CircleCoord(1:3,1)**2 + CircleCoord(1:3,2)**2 ! x^2+y^2
+    A(1:3,2) = CircleCoord(1:3,1)  ! x
+    A(1:3,3) = CircleCoord(1:3,2)  ! y
+    m14 = Det3x3( a )
+
+    !PRINT *,'determinants:',m11,m12,m13,m14
+
+    IF( ABS( m11 ) < EPSILON( m11 ) ) THEN
+      CALL Fatal('CylinderFit','Points cannot be an a circle')
+    END IF
+
+    X0 =  0.5 * m12 / m11 
+    Y0 = -0.5 * m13 / m11
+    rad = SQRT( x0**2 + y0**2 + m14/m11 )
+
+    PRINT *,'Radius of cylinder',rad
+    !PRINT *,'Center point in local coordinates:',x0,y0
+
+    Coord = x0 * Tangent1 + y0 * Tangent2
+
+    PRINT *,'Center point in cartesian coordinates:',Coord
+    
+    CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
+    CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
+
+    
+  CONTAINS
+    
+    ! Compute the value of 3x3 determinant
+    !-------------------------------------------
+    FUNCTION Det3x3( A ) RESULT ( val ) 
+      
+      REAL(KIND=dp) :: A(:,:)
+      REAL(KIND=dp) :: val
+
+      val = A(1,1) * ( A(2,2) * A(3,3) - A(2,3) * A(3,2) ) &
+          - A(1,2) * ( A(2,1) * A(3,3) - A(2,3) * A(3,1) ) &
+          + A(1,3) * ( A(2,1) * A(3,2) - A(2,2) * A(3,1) ) 
+
+    END FUNCTION Det3x3
+
+  END SUBROUTINE CylinderFit
+
+
+
+  !---------------------------------------------------------------------------
   !> Given two interface meshes for nonconforming rotating boundaries make 
   !> a coordinate transformation to (phi,z) level where the interpolation
   !> accuracy is not limited by the curvilinear coordinates. Also ensure
@@ -8362,7 +8593,7 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: x1_min(3),x1_max(3),x2_min(3),x2_max(3),&
         x1r_min(3),x1r_max(3),x2r_min(3),x2r_max(3)
     REAL(KIND=dp) :: x(3), xcyl(3),rad2deg,F1min,F1max,F2min,F2max,dFii1,dFii2,eps_rad,&
-        err1,err2,dF,Fii,Nsymmetry,fmin,fmax,DegOffset,rad,alpha
+        err1,err2,dF,Fii,Nsymmetry,fmin,fmax,DegOffset,rad,alpha,x0(3)
     REAL(KIND=dp), POINTER :: TmpCoord(:)
     REAL(KIND=dp),ALLOCATABLE :: Angles(:)
     INTEGER, POINTER :: NodeIndexes(:)
@@ -8377,6 +8608,16 @@ END SUBROUTINE GetMaxDefs
     Nnodes = BMesh2 % NumberOfNodes
     NElems = BMesh2 % NumberOfBulkElements
     FullCircle = .FALSE.
+
+    IF( ListGetLogical( BParams,'Rotational Projector Center Fit',Found ) ) THEN
+      IF( .NOT. ListCheckPresent( BParams,'Rotational Projector Center X') ) THEN
+        CALL CylinderFit( BMesh1, BParams ) 
+      END IF
+    END IF
+    
+    x0(1) = ListGetCReal( BParams,'Rotational Projector Center X',Found ) 
+    x0(2) = ListGetCReal( BParams,'Rotational Projector Center Y',Found ) 
+    x0(3) = ListGetCReal( BParams,'Rotational Projector Center Z',Found ) 
 
 
     ! Go trough master (k=1) and target mesh (k=2)
@@ -8433,6 +8674,9 @@ END SUBROUTINE GetMaxDefs
         x(1) = PMesh % Nodes % x(i)
         x(2) = PMesh % Nodes % y(i)
         x(3) = PMesh % Nodes % z(i)
+
+        ! Subtract the center of axis
+        x = x - x0
         
         ! Set the angle to be the first coordinate as it may sometimes be the 
         ! only nonzero coordinate. Z-coordinate is always unchanged. 
@@ -8618,6 +8862,7 @@ END SUBROUTINE GetMaxDefs
 
   END SUBROUTINE RotationalInterfaceMeshes
 !------------------------------------------------------------------------------
+
 
 
   !---------------------------------------------------------------------------
