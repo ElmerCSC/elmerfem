@@ -9959,24 +9959,17 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           END IF
           scl = -cPtr % Value / SlaveDiag(j)
 
-          cTmp => cPtr
-          cPtr => cPtr % Next
+          cTmp  => cPtr
+          cPtr  => cPtr % Next
 
-          ! ...delete the eliminated matrix entry...
-          ! -----------------------------------------
-          DEALLOCATE(cTmp)
-
-          IF(ASSOCIATED(cPrev)) THEN
-            cPrev % Next => cPtr
-          ELSE
-           Lmat(i) % Head => cPtr
-          END IF
-          Lmat(i) % Degree = MAX(Lmat(i) % Degree-1,0)
+          ! Delete elimination entry:
+          ! -------------------------
+          CALL List_DeleteMatrixElement(Lmat,i,cTmp % Index)
 
           ! ... and add replacement values:
           ! -------------------------------
           j = UseIPerm(j)
-          cTmp => CollectionMatrix % ListMatrix(j) % Head
+          cTmp => Lmat(j) % Head
           DO WHILE(ASSOCIATED(cTmp))
              l = cTmp % Index
              IF(SlavePerm(l)==0) THEN
