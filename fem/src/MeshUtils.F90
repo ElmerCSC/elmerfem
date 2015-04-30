@@ -7603,6 +7603,8 @@ END SUBROUTINE GetMaxDefs
           NodesT % x(1) = MAX( xmin, xminm ) 
           NodesT % x(2) = MIN( xmax, xmaxm ) 
 
+          IF(ABS(NodesT % x(1)-NodesT % x(2))<1.d-12) GOTO 100
+
           sgn0 = 1
           IF( AntiRepeating ) THEN
             IF ( MODULO(Nrange,2) /= 0 ) sgn0 = -1
