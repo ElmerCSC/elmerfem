@@ -194,12 +194,17 @@ END INTERFACE
          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
          CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
          CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
-         CALL Info( 'MAIN', 'Library version: ' // VERSION &
+         CALL Info( 'MAIN', 'Version: ' // VERSION &
 #ifdef REVISION
-             // ' (Rev: ' // REVISION // ')' )
-#else
-         )
+             // ' (Rev: ' // REVISION  &
 #endif
+#ifdef COMPILATIONDATE
+             // ', Compiled: ' // COMPILATIONDATE // ')' &
+#else
+             // ')' &
+#endif
+         )
+
          IF ( ParEnv % PEs > 1 ) &
              CALL Info( 'MAIN', ' Running in parallel using ' // &
              TRIM(i2s(ParEnv % PEs)) // ' tasks.')
