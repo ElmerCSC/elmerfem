@@ -73,6 +73,7 @@
 !  Variable 1 Supporting Points = Integer 3 !minimum of points to be used for interpolation
 !  Variable 1 Dimensions = Integer 2 !dimension of variable, here needs a file with two columns, NOTE numbers have to be written as 0.04 and not 4e-2
 !  Variable 1 Exponent = Real 3.0 ! inverse distance weighting exponent (has to be positive) - default 2.0
+!  Variable 1 Area Scaling Factor = Real 2.0 ! increases the max search distance by factor 2 of the maximium distance of dataset poitns
 !  Variable 1 Directions(2) = Integer 1 2 !which dimensions are these? Here direction 1 and 2 (x and y)
 !  Exported Variable 1 = mb !Variablename in Elmer
 !  Exported Variable 1 DOFS = Integer 1 !degrees of freedom
@@ -113,7 +114,7 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
   TYPE(Solver_t), POINTER :: PointerToSolver
   TYPE(ValueList_t), POINTER :: BC, Equation
   TYPE(Element_t), POINTER :: CurrentElement
-  REAL (KIND=dp):: theInterpolatedValue, IDExponent(99)
+  REAL (KIND=dp):: theInterpolatedValue, IDExponent(99), ScalingFactor(99)
 
 
   SAVE AllocationsDone, FirstTime, SolverName,&
@@ -121,7 +122,7 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
        IsToBeInterpolated, SupportingPoints, VariableName,&
        VariableDataNameShort, SimulTime, NoDim, VariableDirections,&
        VariableDataIName, VariableDataNameEnd, VariableDataIName2, &
-       IDExponent     
+       IDExponent,ScalingFactor
 
   IF (FirstTime) WRITE(SolverName,'(A)') 'InterpolatePointValue'
   PointerToSolver => Solver
@@ -258,6 +259,18 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
                    'Exponent for ', TRIM(Name), '= ', IDExponent(NoVariables)
               CALL INFO(SolverName,Message,Level=3)
            END IF
+        END IF
+        ScalingFactor(NoVariables) = &
+             GetConstReal( Solver % Values, TRIM(Name) // ' Area Scaling Factor', Found)
+        IF (.NOT.Found) THEN
+           ScalingFactor(NoVariables) = 1.0_dp
+           WRITE(Message,'(A,A,A)')&
+                '>', TRIM(Name),' Area Scaling Factor< not found - setting to 1.0'
+           CALL WARN(SolverName,Message)
+        ELSE
+           WRITE(Message,'(A,A,A,F8.2)')&
+               'Area Scaling Factor for ', TRIM(Name), '= ', ScalingFactor(NoVariables)
+           CALL INFO(SolverName,Message,Level=3)
         END IF
 
      END DO
@@ -413,6 +426,7 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
                    NoDim(VariableNo),&
                    VariableDirections(VariableNo,1:3), &
                    IDExponent(VariableNo), &
+                   ScalingFactor(VariableNo), &
                    reinitiate,&
                    SupportingPoints(VariableNo),&
                    SolverName) 
@@ -431,11 +445,11 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
 CONTAINS
   !-----------------------------------------------------------------------------------------------------------
   FUNCTION GetRadiallyInterpolatedValue(InData,XI,YI,ZI,&
-       NoInData,DIM,Directions,exponent,reinitiate,numberOfSupportingPoints,SolverName)&
+       NoInData,DIM,Directions,exponent,scalingfactor,reinitiate,numberOfSupportingPoints,SolverName)&
        RESULT(theInterpolatedValue)
     USE DefUtils
     REAL(KIND=dp) :: theInterpolatedValue
-    REAL(KIND=dp)  :: InData(:,:), XI,YI,ZI,exponent
+    REAL(KIND=dp)  :: InData(:,:), XI,YI,ZI,exponent,scalingfactor
     INTEGER  :: DIM, NoInData, numberOfSupportingPoints, Directions(3)
     LOGICAL :: reinitiate
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
@@ -487,7 +501,7 @@ CONTAINS
        DO j=1,DIM
           maxdistance = maxdistance + (minmaxxy(2,j) - minmaxxy(1,j))**2.0_dp
        END DO
-       maxdistance = 2.0_dp * sqrt(maxdistance)     
+       maxdistance = scalingfactor * sqrt(maxdistance)     
     END IF
     !-------------------
     ! get the supporting
