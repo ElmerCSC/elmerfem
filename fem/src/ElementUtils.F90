@@ -931,6 +931,54 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+   FUNCTION CreateOdeMatrix( Model, Solver, Dofs ) RESULT(Matrix)
+!------------------------------------------------------------------------------
+     TYPE(Model_t) :: Model
+     TYPE(Solver_t), TARGET :: Solver
+     INTEGER :: DOFs
+     TYPE(Matrix_t), POINTER :: Matrix
+!------------------------------------------------------------------------------
+     LOGICAL :: Found
+     INTEGER i,j,k
+!------------------------------------------------------------------------------
+
+     Matrix => NULL()
+
+     IF ( ListGetLogical( Solver % Values, 'No matrix',Found)) RETURN
+     
+     ! Create a list matrix that allows for unspecified entries in the matrix 
+     ! structure to be introduced.
+     Matrix => AllocateMatrix()
+     Matrix % FORMAT = MATRIX_LIST
+     
+     ! This is basically a stupid way to initialize but we have a very little matrix...
+     DO i = 1, Dofs
+       DO j = 1, Dofs
+         CALL List_AddToMatrixElement(Matrix % ListMatrix, i, &
+             j, 0.0_dp ) 
+       END DO
+     END DO
+
+     CALL List_ToCRSMatrix(Matrix)
+     CALL CRS_SortMatrix(Matrix,.TRUE.)
+     
+     CALL Info('CreateOdeMatrix','Number of rows in ode matrix: '//&
+         TRIM(I2S(Matrix % NumberOfRows)), Level=9)
+     CALL Info('CreateOdeMatrix','Number of entries in ode matrix: '//&
+         TRIM(I2S(SIZE(Matrix % Cols)) ), Level=9)
+     
+     Matrix % Solver => Solver
+     Matrix % DGMatrix = .FALSE.
+     Matrix % Subband = DOFs
+     Matrix % COMPLEX = .FALSE.
+     Matrix % FORMAT  = MatrixFormat
+
+!------------------------------------------------------------------------------
+   END FUNCTION CreateOdeMatrix
+!------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE RotateMatrix( Matrix,Vector,n,DIM,DOFs,NodeIndexes,  &
