@@ -11,9 +11,12 @@ Header
   Include Path ""
   Results Directory ""
 End
-   
+ 
+  
+$prefix="g"
+
 Simulation
-  Max Output Level = 4
+  Max Output Level = 32
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -26,7 +29,7 @@ Simulation
   Timestep Intervals = 2
   Output Intervals = 1
 
-!  Post File = case.vtu
+!  Post File = case_$prefix$.ep
 !  Output File = case.result
 
   Simulation Timing = Logical True
@@ -115,6 +118,9 @@ Solver 2
   Solver Timing = Logical True
   Linear System Timing Cumulative = Logical True
   Solver Timing Cumulative = Logical True
+
+! Don't account for the constraints when studying convergence and computing norms
+  Nonlinear System Convergence Without Constraints = Logical True
 End
 
 Solver 3
@@ -167,9 +173,8 @@ Solver 5
   Exec Solver = never
   Equation = VtuOutput
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = case
+  Output File Name = case_$prefix$
   Vtu Format = True
-  Single Precision = True
 End 
 
 Equation 1
@@ -224,6 +229,8 @@ Boundary Condition 3
 
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
+  Level Projector = Logical True
+  Galerkin Projector = Logical True
 
 !  Save Projector = Logical True
 End
@@ -231,10 +238,18 @@ End
 Boundary Condition 4
   Name = "Periodic Rotor Master"
   Target Boundaries(1) = 4
-  Periodic BC Use Lagrange Coefficient = Logical True
-  Periodic BC = 5
-  Periodic BC Rotate(3) = 0 0 90
-  Periodic BC Temperature = Logical True
+
+  Mortar BC = 5
+  Mortar BC Static = Logical True
+  Radial Projector = Logical True
+  Level Projector = Logical True
+  Galerkin Projector = Logical True
+
+! This is old and error-prone way to ensure continuity
+!  Periodic BC Use Lagrange Coefficient = Logical True
+!  Periodic BC = 5
+!  Periodic BC Rotate(3) = 0 0 90
+!  Periodic BC Temperature = Logical True
 End
 
 Boundary Condition 5
@@ -245,10 +260,18 @@ End
 Boundary Condition 6
   Name = "Periodic Stator Master"
   Target Boundaries(1) = 10
-  Periodic BC Use Lagrange Coefficient = Logical True
-  Periodic BC = 7
-  Periodic BC Rotate(3) = 0 0 90
-  Periodic BC Temperature = Logical True
+
+  Mortar BC = 7
+  Mortar BC Static = Logical True
+  Radial Projector = Logical True
+  Level Projector = Logical True
+  Galerkin Projector = Logical True
+  
+
+!  Periodic BC Use Lagrange Coefficient = Logical True
+!  Periodic BC = 7
+!  Periodic BC Rotate(3) = 0 0 90
+!  Periodic BC Temperature = Logical True
 End
 
 Boundary Condition 7
@@ -262,8 +285,5 @@ Boundary Condition 8
 End 
 
 
-Solver 2 :: Reference Norm = Real 1.3948370669927004
-$fprintf( stderr, "TEST CASE 1\n")$
-RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM=1.3948370669927004\n");
+Solver 2 :: Reference Norm = Real 1.370007
  
