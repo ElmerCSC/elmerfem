@@ -1875,10 +1875,10 @@ CONTAINS
 !-----------------------------------------------------------------------------------
    SUBROUTINE ListCopyItem( ptr, list )
 
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      TYPE(ValueList_t), POINTER :: list
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptrb, ptrnext
+     TYPE(ValueListEntry_t), POINTER :: ptrb, ptrnext
 
      ptrb => ListAdd( List, ptr % Name ) 
 
@@ -1898,7 +1898,7 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k, n
 
@@ -1906,7 +1906,7 @@ CONTAINS
      Found = .FALSE.
 
      ! Find the keyword from the 1st list 
-     Ptr => List
+     Ptr => List % Head
      DO WHILE( ASSOCIATED(ptr) )
        n = ptr % NameLen
        IF ( n==k ) THEN
@@ -4644,6 +4644,23 @@ CONTAINS
       CALL Warn('ListGetAngularFrequency','Angular frequency could not be determined!')
     END IF
   END FUNCTION ListGetAngularFrequency
+
+
+  !------------------------------------------------------------------------------
+!> Returns handle to the Solver value list of the active solver
+  FUNCTION ListGetSolverParams(Solver) RESULT(SolverParam)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: SolverParam
+     TYPE(Solver_t), OPTIONAL :: Solver
+
+     IF ( PRESENT(Solver) ) THEN
+       SolverParam => Solver % Values
+     ELSE
+       SolverParam => CurrentModel % Solver % Values
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetSolverParams
+!------------------------------------------------------------------------------
 
 
 

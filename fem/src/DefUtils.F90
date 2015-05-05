@@ -1679,11 +1679,7 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: SolverParam
      TYPE(Solver_t), OPTIONAL :: Solver
 
-     IF ( PRESENT(Solver) ) THEN
-       SolverParam => Solver % Values
-     ELSE
-       SolverParam => CurrentModel % Solver % Values
-     END IF
+     SolverParam => ListGetSolverParams(Solver)
 !------------------------------------------------------------------------------
   END FUNCTION GetSolverParams
 !------------------------------------------------------------------------------

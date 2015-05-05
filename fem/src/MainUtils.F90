@@ -69,7 +69,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
 
-    Params => GetSolverParams(Solver)
+    Params => ListGetSolverParams(Solver)
     str = ListGetString( Params,'Linear System Solver', Found )
 
     IF ( str == 'direct' ) THEN
@@ -316,7 +316,7 @@ CONTAINS
 
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
-    SolverParams => GetSolverParams(Solver)
+    SolverParams => ListGetSolverParams(Solver)
 
     !------------------------------------------------------------------------------
     ! Check the historical solvers that may be built-in on some .sif files
@@ -1816,7 +1816,7 @@ CONTAINS
     END INTERFACE
 #endif
 
-    SolverParams => GetSolverParams(Solver)
+    SolverParams => ListGetSolverParams(Solver)
 
     IsCoupledSolver = .FALSE.
     IsAssemblySolver = .FALSE.
@@ -2573,7 +2573,7 @@ CONTAINS
     END IF
     CALL Info('BlockSolver','---------------------------------------',Level=5)
 
-    SolverParams => GetSolverParams(Solver)
+    SolverParams => ListGetSolverParams(Solver)
     Mesh => Solver % Mesh
     PSolver => Solver
 
@@ -3507,12 +3507,12 @@ CONTAINS
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
 !     FoundMortar = .FALSE.
-!     IF(.NOT.GetLogical(GetSolverParams(),'Mortar Projector Nonlinear',Found)) &
+!     IF(.NOT.GetLogical(ListGetSolverParams(),'Mortar Projector Nonlinear',Found)) &
 !     FoundMortar = 
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
      CALL INFO("SingleSolver", "Attempting to call solver", level=5)
-     SolverParams => GetSolverParams(Solver)
+     SolverParams => ListGetSolverParams(Solver)
      Equation = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
         WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
@@ -3562,7 +3562,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      CALL SetCurrentMesh( Model, Solver % Mesh )
      Model % Solver => Solver
-     Params => GetSolverParams(Solver)
+     Params => ListGetSolverParams(Solver)
 
      CoordTransform = ListGetString(Params,'Coordinate Transformation',&
          GotCoordTransform )
