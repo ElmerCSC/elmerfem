@@ -135,6 +135,25 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Compare equality of start of s1 to (in most uses string literal) s2.
+!------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+  PURE FUNCTION SEQL(s1,s2) RESULT(L)
+!------------------------------------------------------------------------------
+    LOGICAL :: L
+    CHARACTER(LEN=*), INTENT(IN) :: s1,s2
+!------------------------------------------------------------------------------
+    INTEGER :: n
+!------------------------------------------------------------------------------
+    L = .FALSE.
+    n = LEN(s2)
+    IF(LEN(s1) < n) RETURN
+    IF (s1(1:n)==s2) L=.TRUE.
+!------------------------------------------------------------------------------
+  END FUNCTION SEQL
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Converts integer to string. Handy when writing output with integer data.
@@ -792,7 +811,7 @@ CONTAINS
        IF ( LEN_TRIM(IncludePath(k0:))>0 ) THEN
          k1 = INDEX( IncludePath(k0:), '"' ) + k0 - 2
          IF ( k1 < k0 ) k1=LEN_TRIM(IncludePath)
-         WRITE( tmpName,'(a,a,a)' ) TRIM(IncludePath(k0:k1)), '/', TRIM(name)
+         tmpName = TRIM(IncludePath(k0:k1)) //  '/' // TRIM(name)
          OPEN( Unit, FILE=TRIM(TmpName), STATUS='OLD',ERR=20 )
          RETURN
        END IF
@@ -834,19 +853,13 @@ CONTAINS
      INTEGER, PARAMETER :: MAXLEN = 16384
 
      INTEGER :: Unit
-#ifdef ALLOC_CHAR
      CHARACTER(LEN=:), ALLOCATABLE :: str
-#else
-     CHARACTER(LEN=*) :: str
-#endif
 
      LOGICAL, OPTIONAL :: Echo, literal
 
      LOGICAL :: l
 
-#ifdef ALLOC_CHAR
      CHARACTER(LEN=:), ALLOCATABLE :: temp
-#endif
      CHARACTER(LEN=12) :: tmpstr
      CHARACTER(LEN=MAXLEN) :: readstr = ' ', copystr = ' ', matcstr=' ' , IncludePath=' '
 
@@ -864,13 +877,11 @@ CONTAINS
      IF ( PRESENT(literal) ) literal=.FALSE.
      l = .TRUE.
 
-#ifdef ALLOC_CHAR
      IF(.NOT.ALLOCATED(str)) ALLOCATE(CHARACTER(512)::str)
-#endif
      outlen = LEN(str)
 
      IF ( ValueStarts==0 .AND. OpenSection ) THEN
-       str(1:3) = 'end'
+       str = 'end'
        ValueStarts = 0
        OpenSection = .FALSE.
        RETURN
@@ -901,15 +912,16 @@ CONTAINS
             END IF
           END DO
 
-          IF ( Tmpstr(1:12) == 'include path' ) THEN
+          IF ( SEQL(Tmpstr, 'include path') ) THEN
             k = LEN_TRIM(readstr)
             IncludePath(1:k-13) = readstr(14:k)
+            Tmpstr = ''
           ELSE
             EXIT
           END IF
         END DO
 
-        IF ( tmpstr(1:8) == 'include ' ) THEN
+        IF ( SEQL(tmpstr, 'include ') ) THEN
           IncludeUnit = IncludeUnit-1
           CALL OpenIncludeFile( IncludeUnit, TRIM(readstr(9:)), IncludePath )
           READ( IncludeUnit,'(A)',END=3,ERR=3 ) readstr
@@ -1058,16 +1070,12 @@ CONTAINS
           END IF
 
           IF ( k>outlen ) THEN
-#ifdef ALLOC_CHAR
              temp = str
              DEALLOCATE(str)
              outlen=LEN(temp)+512
              ALLOCATE(CHARACTER(outlen)::str)
              str(1:LEN(temp))=temp; str(LEN(temp)+1:)=''
              DEALLOCATE(temp)
-#else
-             CALL Fatal( 'ReadAndTrim', 'Output length exeeded.' )
-#endif
           END IF
 
           j = ICHAR( readstr(i:i) )

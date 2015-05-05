@@ -232,7 +232,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     CHARACTER(LEN=*) :: FileName
-    TYPE(Model_t) :: Model
+    TYPE(Model_t), TARGET :: Model
     INTEGER :: InFileUnit, iostat
     LOGICAL :: BaseLoad
     LOGICAL :: ScanOnly
@@ -246,11 +246,7 @@ CONTAINS
 
     INTEGER(KIND=AddrInt) :: Proc
 
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: section, name, str
-#else
-    CHARACTER(LEN=MAX_STRING_LEN) :: section, name, str
-#endif
 
     LOGICAL :: Found, SizeGiven
     LOGICAL :: FreeNames=.FALSE., Echo = .FALSE.
@@ -274,11 +270,9 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-#ifdef ALLOC_CHAR
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::section)
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::name)
-#endif
 
 !------------------------------------------------------------------------------
 !   Read model header first
@@ -291,29 +285,36 @@ CONTAINS
  
     IF ( BaseLoad ) THEN
       DO WHILE( ReadAndTrim( InFileUnit, Name, Echo ) )
-        IF ( Name(1:1) == ' ' )   CYCLE
-        IF ( Name(1:3) == 'end' ) EXIT
-        IF ( Name(1:14) == 'check keywords' ) THEN
+        IF ( Name=='' .OR. Name==' ' )   CYCLE
+        IF (Name == 'end' ) EXIT
+
+        IF ( SEQL(Name,'check keywords') ) THEN
            k = 16
            IF ( Name(k:k) == '"' ) k = k + 1
-           IF ( Name(k:k+5) == 'ignore' )  CheckAbort = 0
-           IF ( Name(k:k+3) == 'warn' )    CheckAbort = 1
-           IF ( Name(k:k+5) == 'silent' )  CheckAbort = 2
-           IF ( Name(k:k+4) == 'abort' )   CheckAbort = 3
-        ELSE IF ( Name(1:7) == 'echo on' ) THEN
+           SELECT CASE(Name(k:))
+           CASE('ignore')
+             CheckAbort = 0
+           CASE('warn')
+             CheckAbort = 1
+           CASE('silent')
+             CheckAbort = 2
+           CASE('abort')
+             CheckAbort = 3
+           END SELECT
+        ELSE IF ( Name == 'echo on' ) THEN
            Echo = .TRUE.
-        ELSE IF ( Name(1:8) == 'echo off' ) THEN
+        ELSE IF ( Name == 'echo off' ) THEN
            Echo = .FALSE.
-        ELSE IF ( Name(1:6)  == 'bodies' ) THEN
-        ELSE IF ( Name(1:18) == 'initial conditions' ) THEN
-        ELSE IF ( Name(1:10) == 'boundaries' ) THEN
-        ELSE IF ( Name(1:19) == 'boundary conditions' ) THEN
-        ELSE IF ( Name(1:10) == 'components' ) THEN
-        ELSE IF ( Name(1:9)  == 'equations' ) THEN
-        ELSE IF ( Name(1:7)  == 'solvers' ) THEN
-        ELSE IF ( Name(1:9)  == 'materials' ) THEN
-        ELSE IF ( Name(1:11) == 'body forces' ) THEN
-        ELSE IF ( Name(1:7)  == 'mesh db' ) THEN
+        ELSE IF ( SEQL(Name, 'bodies') ) THEN
+        ELSE IF ( SEQL(Name, 'initial conditions') ) THEN
+        ELSE IF ( SEQL(Name, 'boundaries') ) THEN
+        ELSE IF ( SEQL(Name, 'boundary conditions') ) THEN
+        ELSE IF ( SEQL(Name, 'components') ) THEN
+        ELSE IF ( SEQL(Name, 'equations') ) THEN
+        ELSE IF ( SEQL(Name, 'solvers') ) THEN
+        ELSE IF ( SEQL(Name, 'materials') ) THEN
+        ELSE IF ( SEQL(Name, 'body forces') ) THEN
+        ELSE IF ( SEQL(Name, 'mesh db') ) THEN
           k = 9
           i = 1
           nlen = LEN_TRIM(Name)
@@ -341,12 +342,12 @@ CONTAINS
              MeshDir = "." // CHAR(0)
           END IF
           MeshName(i:i) = CHAR(0)
-        ELSE IF ( Name(1:6) == 'header' ) THEN
-        ELSE IF ( Name(1:12) == 'include path' ) THEN
+        ELSE IF ( SEQL(Name,'header') ) THEN
+        ELSE IF ( SEQL(Name,'include path') ) THEN
            IncludePath = Name(14:)
-        ELSE IF ( Name(1:17) == 'results directory' ) THEN
+        ELSE IF ( SEQL(Name,'results directory') ) THEN
            OutputPath = Name(19:)
-        ELSE IF ( Name(1:13) == 'simulation id' ) THEN
+        ELSE IF ( SEQL(Name,'simulation id') ) THEN
            SimulationId = Name(15:)
         ELSE
           WRITE( Message, * ) 'Unknown input field in header section: ' // TRIM(Name)
@@ -361,10 +362,10 @@ CONTAINS
       Model % Components => NULL()
       Model % Equations => NULL()
       Model % Materials => NULL()
-      Model % Constants => NULL()
-      Model % Simulation => NULL()
       Model % BodyForces => NULL()
       Model % Boundaries => NULL()
+      Model % Constants => NULL()
+      Model % Simulation => NULL()
     END IF
 
 !------------------------------------------------------------------------------
@@ -373,7 +374,6 @@ CONTAINS
          ALLOCATE( Model % Boundaries(Model % NumberOfBoundaries) )
          ALLOCATE( Model % BoundaryId(Model % NumberOfBoundaries) )
          DO i=1,Model % NumberOfBoundaries
-           NULLIFY( Model % Boundaries(i) % Values )
            Model % BoundaryId(i) = 0
          END DO
          BoundaryIndex = 0
@@ -385,22 +385,22 @@ CONTAINS
 !------------------------------------------------------------------------------
     DO WHILE(ReadAndTrim(InFileUnit,Section,Echo))
 !------------------------------------------------------------------------------
-      IF ( Section(1:1) == ' ' ) CYCLE
+      IF ( Section == '' .OR. Section == ' ' ) CYCLE
 
-      IF ( Section(1:7) == 'include' ) THEN
+      IF ( SEQL(Section,'include') ) THEN
         CALL LoadIncludeFile( Model, InFileUnit-1, Section(9:), &
                     MeshDir, MeshName, ScanOnly )
         CYCLE
       END IF
 
-      IF ( Section(1:6) == 'header' ) THEN
+      IF ( SEQL(Section, 'header') ) THEN
          DO WHILE( ReadAndTrim( InFileUnit, Section, Echo ) )
-            IF ( Section(1:3) == 'end' ) EXIT
+            IF ( Section == 'end' ) EXIT
          END DO
          CYCLE
-      ELSE IF ( Section(1:5) == 'echo ' .OR. Section(1:6) == 'check ') THEN
+      ELSE IF ( SEQL(Section, 'echo ') .OR. SEQL(Section, 'check ')) THEN
          CYCLE
-      ELSE IF ( Section(1:3) == 'run' ) THEN
+      ELSE IF ( Section == 'run' ) THEN
          IF ( PRESENT(runc) ) runc=.TRUE.
          EXIT
       END IF
@@ -408,21 +408,25 @@ CONTAINS
       FreeNames = CheckAbort <= 0
 
       ArrayN = 0
-      IF ( Section(1:9) == 'constants' ) THEN
+      IF ( SEQL(Section, 'constants') ) THEN
 
          IF ( .NOT. ScanOnly ) THEN
            ArrayN = 1
+           IF(.NOT.ASSOCIATED(Model % Constants)) &
+                Model % Constants => ListAllocate()
            List => Model % Constants
          END IF
 
-      ELSE IF ( Section(1:10) == 'simulation' ) THEN
+      ELSE IF ( SEQL(Section, 'simulation') ) THEN
 
          IF ( .NOT. ScanOnly ) THEN
            ArrayN = 1
+           IF(.NOT.ASSOCIATED(Model % Simulation)) &
+               Model % Simulation=>ListAllocate()
            List => Model % Simulation
          END IF
 
-      ELSE IF ( Section(1:18) == 'boundary condition' ) THEN
+      ELSE IF ( SEQL(Section, 'boundary condition') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(19:),*,iostat=iostat ) Arrayn
@@ -433,9 +437,6 @@ CONTAINS
         ELSE
            IF ( .NOT.ASSOCIATED( Model % BCs ) ) THEN
               ALLOCATE( Model % BCs(Model % NumberOfBCs) )
-              DO i=1,Model % NumberOfBCs
-                 NULLIFY( Model % BCs(i) % Values )
-              END DO
            ELSE 
              READ( Section(19:),*,iostat=iostat ) Arrayn
              IF( iostat /= 0 ) THEN
@@ -449,13 +450,15 @@ CONTAINS
                 DO i=1,SIZE(Model % BCs)
                    ABC(i) % Values => Model % BCs(i) % Values
                 END DO
-                DO i=SIZE(Model % BCs)+1,Model % NumberOfBCs
-                   NULLIFY( ABC(i) % Values )
-                END DO
                 DEALLOCATE( Model % BCs )
                 Model % BCs => ABC
              END IF
            END IF
+
+           DO i=1,Model % NUmberOfBCs
+             IF(.NOT.ASSOCIATED(Model % BCs(i) % Values)) &
+               Model % BCs(i) % Values => ListAllocate()
+           END DO
 
            READ( Section(19:),*,iostat=iostat ) Arrayn
            IF( iostat /= 0 ) THEN
@@ -473,7 +476,7 @@ CONTAINS
 
         FreeNames = .TRUE.
 
-      ELSE IF ( Section(1:8) == 'boundary' ) THEN
+      ELSE IF ( SEQL(Section, 'boundary') ) THEN
 
         IF ( ScanOnly ) THEN
            Model % NumberOfBoundaries = Model % NumberOfBoundaries + 1
@@ -482,7 +485,6 @@ CONTAINS
               ALLOCATE( Model % Boundaries(Model % NumberOfBoundaries) )
               ALLOCATE( Model % BoundaryId(Model % NumberOfBoundaries) )
               DO i=1,Model % NumberOfBoundaries
-                 NULLIFY( Model % Boundaries(i) % Values )
                  Model % BoundaryId(i) = 0
               END DO
            END IF
@@ -503,7 +505,7 @@ CONTAINS
            List => Model % Boundaries(BoundaryIndex) % Values
         END IF
 
-      ELSE IF ( Section(1:17) == 'initial condition' ) THEN
+      ELSE IF ( SEQL(Section, 'initial condition') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(18:),*,iostat=iostat ) Arrayn
@@ -514,9 +516,6 @@ CONTAINS
         ELSE
            IF ( .NOT.ASSOCIATED( Model % ICs ) ) THEN
               ALLOCATE( Model % ICs(Model % NumberOfICs) )
-              DO i=1,Model % NumberOfICs
-                 NULLIFY( Model % ICs(i) % Values )
-              END DO
            ELSE
               READ( Section(18:),*,iostat=iostat ) Arrayn
               IF( iostat /= 0 ) THEN
@@ -528,13 +527,15 @@ CONTAINS
                 DO i=1,SIZE(Model % ICs)
                    AIC(i) % Values => Model % ICs(i) % Values
                 END DO
-                DO i=SIZE(Model % ICs)+1,Model % NumberOfICs
-                   NULLIFY( AIC(i) % Values )
-                END DO
                 DEALLOCATE( Model % ICs )
                 Model % ICs => AIC
               END IF
            END IF
+
+           DO i=1,Model % NUmberOfICs
+             IF(.NOT.ASSOCIATED(Model % ICs(i) % Values)) &
+               Model % ICs(i) % Values => ListAllocate()
+           END DO
 
            READ( Section(18:),*,iostat=iostat ) Arrayn
            IF( iostat /= 0 ) THEN
@@ -552,7 +553,7 @@ CONTAINS
 
         FreeNames = .TRUE.
 
-      ELSE IF ( Section(1:8) == 'material' ) THEN
+      ELSE IF ( SEQL(Section, 'material') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(9:),*,iostat=iostat ) Arrayn
@@ -563,9 +564,6 @@ CONTAINS
         ELSE
            IF ( .NOT.ASSOCIATED( Model % Materials ) ) THEN
               ALLOCATE( Model % Materials(Model % NumberOfMaterials) )
-              DO i=1,Model % NumberOfMaterials
-                 NULLIFY( Model % Materials(i) % Values )
-              END DO
            ELSE
               READ( Section(9:),*,iostat=iostat ) Arrayn
               IF( iostat /= 0 ) THEN
@@ -577,13 +575,15 @@ CONTAINS
                 DO i=1,SIZE(Model % Materials)
                    AMaterial(i) % Values => Model % Materials(i) % Values
                 END DO
-                DO i=SIZE(Model % Materials)+1,Model % NumberOfMaterials
-                   NULLIFY( AMaterial(i) % Values )
-                END DO
                 DEALLOCATE( Model % Materials )
                 Model % Materials => AMaterial
               END IF
            END IF
+
+           DO i=1,Model % NumberOfMaterials
+             IF(.NOT.ASSOCIATED(Model % Materials(i) % Values)) &
+               Model % Materials(i) % Values => ListAllocate()
+           END DO
 
            READ( Section(9:),*,iostat=iostat ) Arrayn
            IF( iostat /= 0 ) THEN
@@ -597,7 +597,7 @@ CONTAINS
            List => Model % Materials(Arrayn) % Values
         END IF
 
-      ELSE IF ( Section(1:10) == 'body force' ) THEN
+      ELSE IF ( SEQL(Section, 'body force') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(12:),*,iostat=iostat ) Arrayn
@@ -608,9 +608,6 @@ CONTAINS
         ELSE
            IF ( .NOT.ASSOCIATED( Model % BodyForces ) ) THEN
              ALLOCATE( Model % BodyForces(Model % NumberOfBodyForces) )
-             DO i=1,Model % NumberOfBodyForces
-                NULLIFY( Model % BodyForces(i) % Values )
-             END DO
            ELSE
               READ( Section(12:),*,iostat=iostat ) Arrayn
               IF( iostat /= 0 ) THEN
@@ -622,13 +619,15 @@ CONTAINS
                  DO i=1,SIZE(Model % BodyForces)
                     ABF(i) % Values => Model % BodyForces(i) % Values
                  END DO
-                 DO i=SIZE(Model % BodyForces)+1,Model % NumberOfBodyForces
-                    NULLIFY( ABF(i) % Values )
-                 END DO
                  DEALLOCATE( Model % BodyForces )
                  Model % BodyForces => ABF
               END IF
            END IF
+
+           DO i=1,Model % NumberOfBodyForces
+             IF(.NOT.ASSOCIATED(Model % BodyForces(i) % Values)) &
+               Model % BodyForces(i) % Values => ListAllocate()
+           END DO
 
            READ( Section(12:),*,iostat=iostat ) Arrayn
            IF( iostat /= 0 ) THEN
@@ -642,7 +641,7 @@ CONTAINS
            List => Model % BodyForces(Arrayn) % Values
         END IF
 
-      ELSE IF ( Section(1:8) == 'equation' ) THEN
+      ELSE IF ( SEQL(Section, 'equation') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(9:),*,iostat=iostat ) Arrayn
@@ -653,9 +652,6 @@ CONTAINS
         ELSE
            IF ( .NOT.ASSOCIATED( Model % Equations ) ) THEN
              ALLOCATE( Model % Equations(Model % NumberOfEquations) )
-             DO i=1,Model % NumberOfEquations
-               NULLIFY( Model % Equations(i) % Values )
-             END DO
            ELSE
               READ( Section(9:),*,iostat=iostat ) Arrayn
               IF( iostat /= 0 ) THEN
@@ -667,13 +663,15 @@ CONTAINS
                 DO i=1,SIZE(Model % Equations)
                    AEquation(i) % Values => Model % Equations(i) % Values
                 END DO
-                DO i=SIZE(Model % Equations)+1,Model % NumberOfEquations
-                   NULLIFY( AEquation(i) % Values )
-                END DO
                 DEALLOCATE( Model % Equations )
                 Model % Equations => AEquation
               END IF
            END IF
+
+           DO i=1,Model % NumberOfEquations
+             IF(.NOT.ASSOCIATED(Model % Equations(i) % Values)) &
+               Model % Equations(i) % Values => ListAllocate()
+           END DO
 
            READ( Section(9:),*,iostat=iostat ) Arrayn
            IF( iostat /= 0 ) THEN
@@ -689,7 +687,7 @@ CONTAINS
 
         FreeNames = .TRUE.
 
-      ELSE IF ( Section(1:4) == 'body' ) THEN
+      ELSE IF ( SEQL(Section, 'body') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(5:),*,iostat=iostat ) Arrayn
@@ -700,9 +698,6 @@ CONTAINS
         ELSE
            IF ( .NOT.ASSOCIATED( Model % Bodies ) ) THEN
              ALLOCATE( Model % Bodies(Model % NumberOfBodies) )
-             DO i=1,Model % NumberOfBodies
-               NULLIFY( Model % Bodies(i) % Values )
-             END DO
            ELSE
               READ( Section(5:),*,iostat=iostat ) Arrayn
               IF( iostat /= 0 ) THEN
@@ -714,13 +709,15 @@ CONTAINS
                  DO i=1,SIZE(Model % Bodies)
                     ABody(i) % Values => Model % Bodies(i) % Values
                  END DO
-                 DO i=SIZE(Model % Bodies)+1,Model % NumberOfBodies
-                    NULLIFY( ABody(i) % Values )
-                 END DO
                  DEALLOCATE( Model % Bodies )
                  Model % Bodies => ABody
               END IF
            END IF
+
+           DO i=1,Model % NumberOfBodies
+             IF(.NOT.ASSOCIATED(Model % Bodies(i) % Values)) &
+               Model % Bodies(i) % Values => ListAllocate()
+           END DO
 
            READ( Section(5:),*,iostat=iostat ) Arrayn
            IF( iostat /= 0 ) THEN
@@ -734,7 +731,7 @@ CONTAINS
            List => Model % Bodies(Arrayn) % Values
         END IF
 
-      ELSE IF ( Section(1:9) == 'component' ) THEN
+      ELSE IF ( SEQL(Section, 'component') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(10:),*,iostat=iostat ) Arrayn
@@ -745,9 +742,6 @@ CONTAINS
         ELSE
            IF ( .NOT.ASSOCIATED( Model % Components ) ) THEN
              ALLOCATE( Model % Components(Model % NumberOfComponents) )
-             DO i=1,Model % NumberOfComponents
-               NULLIFY( Model % Components(i) % Values )
-             END DO
            ELSE
               READ( Section(10:),*,iostat=iostat ) Arrayn
               IF( iostat /= 0 ) THEN
@@ -757,15 +751,17 @@ CONTAINS
               IF ( SIZE( Model % Components ) < Model % NumberOfComponents ) THEN
                  ALLOCATE( ABody(Model % NumberOfComponents) )
                  DO i=1,SIZE(Model % Components)
-                    AComponent(i) % Values => Model % Components(i) % Values
-                 END DO
-                 DO i=SIZE(Model % Components)+1,Model % NumberOfComponents
-                    NULLIFY( AComponent(i) % Values )
+                    AComponent(i) % Values % head => Model % Components(i) % Values % head
                  END DO
                  DEALLOCATE( Model % Components )
                  Model % Components => AComponent
               END IF
            END IF
+
+           DO i=1,Model % NumberOfComponents
+             IF(.NOT.ASSOCIATED(Model % Components(i) % Values)) &
+               Model % Components(i) % Values => ListAllocate()
+           END DO
 
            READ( Section(10:),*,iostat=iostat ) Arrayn
            IF( iostat /= 0 ) THEN
@@ -779,7 +775,7 @@ CONTAINS
            List => Model % Components(Arrayn) % Values
         END IF
 
-      ELSE IF ( Section(1:6) == 'solver' ) THEN
+      ELSE IF ( SEQL(Section, 'solver') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(7:),*,iostat=iostat ) Arrayn
@@ -793,7 +789,6 @@ CONTAINS
              DO i=1,Model % NumberOfSolvers
                 Model % Solvers(i) % PROCEDURE = 0
                 NULLIFY( Model % Solvers(i) % Matrix )
-                NULLIFY( Model % Solvers(i) % Values )
                 NULLIFY( Model % Solvers(i) % Variable )
                 NULLIFY( Model % Solvers(i) % ActiveElements )
                 Model % Solvers(i) % NumberOfActiveElements = 0
@@ -813,7 +808,6 @@ CONTAINS
                    ASolvers(i) % PROCEDURE = 0
                    NULLIFY( ASolvers(i) % Matrix )
                    NULLIFY( ASolvers(i) % Mesh )
-                   NULLIFY( ASolvers(i) % Values )
                    NULLIFY( ASolvers(i) % Variable )
                    NULLIFY( ASolvers(i) % ActiveElements )
                    ASolvers(i) % NumberOfActiveElements = 0
@@ -822,6 +816,11 @@ CONTAINS
                 Model % Solvers => ASolvers
               END IF
            END IF
+
+           DO i=1,Model % NumberOfSolvers
+             IF(.NOT.ASSOCIATED(Model % Solvers(i) % Values)) &
+               Model % Solvers(i) % Values => ListAllocate()
+           END DO
 
            READ( Section(7:),*,iostat=iostat ) Arrayn
            IF( iostat /= 0 ) THEN
@@ -843,34 +842,6 @@ CONTAINS
 
       CALL SectionContents( Model, List, CheckAbort, FreeNames, &
                 Section, InFileUnit, ScanOnly, Echo )
-
-      IF ( .NOT. ScanOnly ) THEN
-        IF( .NOT. ASSOCIATED( List ) ) THEN
-          CALL Warn('LoadInputFile','Empty section given for: '//TRIM(Section))
-        ELSE IF ( Section(1:9) == 'constants' ) THEN
-          Model % Constants => List
-        ELSE IF ( Section(1:10) == 'simulation' ) THEN
-          Model % Simulation => List
-        ELSE IF ( Section(1:18) == 'boundary condition' ) THEN
-          Model % BCs(Arrayn) % Values => List
-        ELSE IF ( Section(1:8) == 'boundary' ) THEN
-          Model % Boundaries(BoundaryIndex) % Values => List
-        ELSE IF ( Section(1:17) == 'initial condition' ) THEN
-          Model % ICs(Arrayn) % Values => List
-        ELSE IF ( Section(1:8) == 'material' ) THEN
-          Model % Materials(Arrayn) % Values => List
-        ELSE IF ( Section(1:10) == 'body force' ) THEN
-          Model % BodyForces(Arrayn) % Values => List
-        ELSE IF ( Section(1:8) == 'equation' ) THEN
-          Model % Equations(Arrayn) % Values  => List
-        ELSE IF ( Section(1:9) == 'component' ) THEN
-          Model % Components(Arrayn) % Values => List
-        ELSE IF ( Section(1:4) == 'body' ) THEN
-          Model % Bodies(Arrayn) % Values => List
-        ELSE IF ( Section(1:6) == 'solver' ) THEN
-          Model % Solvers(Arrayn) % Values => List
-        END IF
-      END IF
 !------------------------------------------------------------------------------
     END DO
 !------------------------------------------------------------------------------
@@ -882,49 +853,49 @@ CONTAINS
       ! For some fields this is not detrimental, thus just a warning.
       !--------------------------------------------------------------------
       DO i = 1, Model % NumberOFBCs
-        IF(.NOT. ASSOCIATED( Model % BCs(i) % Values ) ) THEN
+        IF( ListEmpty(Model % BCs(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Boundary Condition ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
       
       DO i = 1, Model % NumberOfBodyForces
-        IF(.NOT. ASSOCIATED( Model % BodyForces(i) % Values ) ) THEN
+        IF( ListEmpty(Model % BodyForces(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Body Force ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
 
       DO i = 1, Model % NumberOfICs
-        IF(.NOT. ASSOCIATED( Model % ICs(i) % Values ) ) THEN
+        IF( ListEmpty(Model % ICs(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Initial Condition ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
       
       DO i = 1, Model % NumberOfMaterials         
-        IF(.NOT. ASSOCIATED( Model % Materials(i) % Values ) ) THEN
+        IF( ListEmpty(Model % Materials(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Material ',i
           CALL Warn('LoadInputFile',Message)
         END IF
       END DO
 
       DO i = 1, Model % NumberOFEquations 
-        IF(.NOT. ASSOCIATED( Model % Equations(i) % Values ) ) THEN
+        IF( ListEmpty(Model % Equations(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Equation ',i
           CALL Fatal('LoadInputFile',Message)
         END IF
       END DO
     
       DO i = 1, Model % NumberOfSolvers         
-        IF(.NOT. ASSOCIATED( Model % Solvers(i) % Values ) ) THEN
+        IF( ListEmpty(Model % Solvers(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Solver ',i
           CALL Fatal('LoadInputFile',Message)
         END IF
       END DO
 
       DO i = 1, Model % NumberOfBodies
-        IF(.NOT. ASSOCIATED( Model % Bodies(i) % Values ) ) THEN
+        IF( ListEmpty(Model % Bodies(i) % Values) ) THEN
           WRITE( Message,'(A,I0)') 'Entry missing for: Body ',i
           CALL Fatal('LoadInputFile',Message)
         END IF
@@ -996,7 +967,7 @@ CONTAINS
       IF ( Model % NumberOFEquations <= 0 ) THEN
          Model % NumberOfEquations = 1
          ALLOCATE( Model % Equations(1) )
-         NULLIFY( Model % Equations(1) % Values )
+         Model % Equations(1) % Values => ListAllocate()
          CALL ListAddIntegerArray( Model % Equations(1) % Values, 'Active Solvers', &
              Model % NumberOFSolvers, (/ (i,i=1,Model % NumberOfSolvers) /) )
          CALL ListAddString ( Model % Equations(1) % Values, 'Name', 'Default Equation 1' )
@@ -1005,28 +976,28 @@ CONTAINS
       IF ( Model % NumberOfMaterials <= 0 ) THEN
          Model % NumberOfMaterials = 1
          ALLOCATE( Model % Materials(1) )
-         NULLIFY( Model % Materials(1) % Values )
+         Model % Materials(1) % Values => ListAllocate()
          CALL ListAddString ( Model % Materials(1) % Values, 'Name', 'Default Material 1' )
       END IF
 
       IF ( Model % NumberOfBodyForces <= 0 ) THEN
          Model % NumberOfBodyForces = 1
          ALLOCATE( Model % BodyForces(1) )
-         NULLIFY( Model % BodyForces(1) % Values )
+         Model % BodyForces(1) % Values => ListAllocate()
          CALL ListAddString ( Model % BodyForces(1) % Values, 'Name','Default Body Force 1' )
       END IF
 
       IF ( Model % NumberOfICs <= 0 ) THEN
          Model % NumberOfICs = 1
          ALLOCATE( Model % ICs(1) )
-         NULLIFY( Model % ICs(1) % Values )
+         Model % ICs(1) % Values => ListAllocate()
          CALL ListAddString ( Model % ICs(1) % Values, 'Name','Default IC 1' )
       END IF
 
       IF ( Model % NumberOfBodies <= 0 ) THEN
          Model % NumberOfBodies = 1
          ALLOCATE( Model % Bodies(1) )
-         NULLIFY( Model % Bodies(1) % Values )
+         Model % Bodies(1) % Values => ListAllocate()
          CALL ListAddString(  Model % Bodies(1) % Values, 'Name', 'Default Body 1' )
          CALL ListAddInteger( Model % Bodies(1) % Values, 'Equation',   1 )
          CALL ListAddInteger( Model % Bodies(1) % Values, 'Material',   1 )
@@ -1063,11 +1034,7 @@ CONTAINS
        TYPE(HashTable_t), POINTER, SAVE :: Hash =>NULL()
        TYPE(HashValue_t), POINTER :: Val
        LOGICAL :: FirstTime = .TRUE.,lstat, fexist
-#ifdef ALLOC_CHAR
        CHARACTER(LEN=:), ALLOCATABLE :: str
-#else
-       CHARACTER(LEN=MAX_STRING_LEN) :: str
-#endif
        CHARACTER(LEN=MAX_STRING_LEN) :: str1
 !       EXTERNAL ENVIR
 
@@ -1075,9 +1042,7 @@ CONTAINS
 
        IF ( CheckAbort <= 0 ) RETURN
 
-#ifdef ALLOC_CHAR
        ALLOCATE(CHARACTER(MAX_STRING_LEN) :: str)
-#endif
 
        IF ( FirstTime ) THEN
 !
@@ -1118,8 +1083,8 @@ CONTAINS
              END IF
           END IF
           IF (.NOT. fexist) THEN
-             CALL GetSolverHome(str, n)
-             WRITE(str1, '(a,a)') str(1:n), '/lib/SOLVER.KEYWORDS'
+             CALL GetSolverHome(str1, n)
+             str1 = str1(1:n) // '/lib/SOLVER.KEYWORDS'
              INQUIRE(FILE=TRIM(str1), EXIST=fexist)
           END IF
           IF (.NOT. fexist) THEN
@@ -1195,31 +1160,33 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-        IF ( Section(1:9) == 'constants' ) THEN
+        IF ( SEQL(Section, 'constants') ) THEN
            str =  'constants: '
-        ELSE IF ( Section(1:10) == 'simulation' ) THEN
+        ELSE IF ( SEQL(Section, 'simulation') ) THEN
            str =  'simulation: '
-        ELSE IF ( Section(1:18) == 'boundary condition' ) THEN
+        ELSE IF ( SEQL(Section,  'boundary condition') ) THEN
            str =  'bc: '
-        ELSE IF ( Section(1:8) == 'boundary' ) THEN
+        ELSE IF ( SEQL(Section, 'boundary') ) THEN
           str =  'boundary: '
-        ELSE IF ( Section(1:17) == 'initial condition' ) THEN
+        ELSE IF ( SEQL(Section, 'initial condition') ) THEN
           str =  'ic: '
-        ELSE IF ( Section(1:8) == 'material' ) THEN
+        ELSE IF ( SEQL(Section, 'material') ) THEN
           str =  'material: '
-        ELSE IF ( Section(1:10) == 'body force' ) THEN
+        ELSE IF ( SEQL(Section, 'body force') ) THEN
           str =  'bodyforce: '
-        ELSE IF ( Section(1:8) == 'equation' ) THEN
+        ELSE IF ( SEQL(Section, 'equation') ) THEN
           str =  'equation: '
-        ELSE IF ( Section(1:4) == 'body' ) THEN
+        ELSE IF ( SEQL(Section, 'body') ) THEN
           str =  'body: '
-        ELSE IF ( Section(1:6) == 'solver' ) THEN
+        ELSE IF ( SEQL(Section, 'solver') ) THEN
           str =  'solver: '
+        ELSE IF ( SEQL(Section, 'component') ) THEN
+          str =  'component: '
         END IF
 
-        i=INDEX(Name,':')+1
-        IF (name(i:i)==' ') i=i+1
-        str = TRIM(str) // TRIM(Name(i:))
+        i= INDEX(Name,':') + 1
+        IF (Name(i:i)==' ') i=i+1
+        str = TRIM(str) // Name(i:LEN_TRIM(Name))
 
 !------------------------------------------------------------------------------
 
@@ -1305,11 +1272,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: Atx(:,:,:), ATt(:)
 
       CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
-#ifdef ALLOC_CHAR
       CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname
-#else
-      CHARACTER(LEN=MAX_STRING_LEN) :: Name,str, Depname
-#endif
       LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, Cubic, AllInt, Monotone
 
       INTEGER(KIND=AddrInt) :: Proc
@@ -1317,16 +1280,20 @@ CONTAINS
           abuflen=0, maxbuflen=0, iostat
 
       ALLOCATE( ATt(1), ATx(1,1,1), IValues(1) )
-#ifdef ALLOC_CHAR
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::Name)
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::Depname)
-#endif
 
 
+      Name = ''
       DO WHILE( ReadAndTrim( InFileUnit,Name,Echo ) )
 
-        IF ( Name(1:7) == 'include' ) THEN
+        IF ( Name == '' .OR. Name == ' ')  CYCLE
+        IF ( SEQL(Name,'end') ) THEN
+          EXIT
+        END IF
+
+        IF ( SEQL(Name,'include') ) THEN
           OPEN( InFileUnit-1,FILE=TRIM(Name(9:)),STATUS='OLD',ERR=10 )
           CALL SectionContents( Model,List,CheckAbort,FreeNames, &
                   Section,InFileUnit-1,ScanOnly, Echo )
@@ -1335,14 +1302,9 @@ CONTAINS
 
 10        CONTINUE
 
-          WRITE( Message, * ) 'Cannot find include file: ', Name(9:40)
+          WRITE( Message, * ) 'Cannot find include file: ', Name(9:)
           CALL Warn( 'Model Input', Message )
           CYCLE
-        END IF
-
-        IF ( Name(1:1) == ' ' )  CYCLE
-        IF ( Name(1:3) == 'end' ) THEN
-          EXIT
         END IF
 
         TYPE = LIST_TYPE_CONSTANT_SCALAR
@@ -1379,7 +1341,7 @@ CONTAINS
              CALL CheckKeyWord( Name,'real',CheckAbort,FreeNames,Section )
 
              Proc = 0
-             IF ( str(str_beg:str_beg+9) == 'procedure ' ) THEN
+             IF ( SEQL(str(str_beg:),'procedure ') ) THEN
 
                IF ( .NOT. ScanOnly ) THEN
                   Proc = GetProcAddr( str(str_beg+10:) )
@@ -1405,7 +1367,7 @@ CONTAINS
                   END SELECT
                END IF
 
-             ELSE IF ( str(str_beg:str_beg+4) == 'matc ' ) THEN
+             ELSE IF ( SEQL(str(str_beg:),'matc ') ) THEN
 
                IF ( .NOT. ScanOnly ) THEN
 
@@ -1484,13 +1446,13 @@ CONTAINS
                    ALLOCATE( ATt(MaxBufLen), ATx(n1,n2,MaxBufLen) )
                  END IF
  
-                 Cubic = str(str_beg:str_beg+4)=='cubic'
-                 monotone = str(str_beg+6:str_beg+13)=='monotone'
+                 Cubic = SEQL(str(str_beg:),'cubic')
+                 monotone = SEQL(str(str_beg+6:),'monotone')
                  n = 0
                  DO WHILE( ReadAndTrim(InFileUnit,str,Echo) )
 
-                   IF ( str(1:3) == 'end' ) EXIT
-                   IF ( str(1:1) == ' '  ) CYCLE
+                   IF ( str == '' .OR. str==' '  ) CYCLE
+                   IF ( SEQL(str,'end') ) EXIT
  
                    slen = LEN_TRIM(str)
                    IF ( .NOT. ScanOnly ) THEN
@@ -1556,10 +1518,10 @@ CONTAINS
             CALL CheckKeyWord( Name,'logical',CheckAbort,FreeNames,Section )
 
             IF ( .NOT. ScanOnly ) THEN
-               IF ( str(str_beg:str_beg+3) == 'true' .OR. &
+               IF ( SEQL(str(str_beg:),'true') .OR. &
                  str(str_beg:str_beg) == '1' ) THEN
                  CALL ListAddLogical( List,Name,.TRUE. )
-               ELSE IF ( str(str_beg:str_beg+4) == 'false' .OR. &
+               ELSE IF ( SEQL(str(str_beg:),'false') .OR. &
                  str(str_beg:str_beg) == '0' ) THEN
                  CALL ListAddLogical( List,Name,.FALSE. )
                ELSE 
@@ -1573,7 +1535,7 @@ CONTAINS
             CALL CheckKeyWord( Name,'integer',CheckAbort,FreeNames,Section )
 
              Proc = 0
-             IF ( str(str_beg:str_beg+9) == 'procedure ' ) THEN
+             IF ( SEQL(str(str_beg:),'procedure ') ) THEN
                IF ( .NOT. ScanOnly ) THEN
                  Proc = GetProcAddr( str(str_beg+10:) )
                  IF ( SizeGiven ) THEN
@@ -1665,16 +1627,20 @@ CONTAINS
 
                Depname = str(str_beg:k)
 
-               n = 1
-               IF ( n > SIZE( ATt ) ) THEN
+               n=1
+               IF ( n > SIZE(ATt) ) THEN
                   DEALLOCATE( ATt, ATx )
-                  ALLOCATE( ATt(n), ATx(1,1,n) )
+                  ALLOCATE( ATt(n), ATx(n1,n2,n) )
                END IF
 
                ATt(1) = 1.0_dp
-               ATx(1,1,1) = 1.0_dp
+               ATx(:,:,1) = 1.0_dp
 
-               CALL ListAddDepReal(List,Name,Depname,n,ATt(1:n),ATx(1,1,1:n))
+               IF(n1==1.AND.n2==1) THEN
+                 CALL ListAddDepReal(List,Name,Depname,n,ATt,ATx(1,1,1))
+               ELSE
+                 CALL ListAddDepRealArray(List,Name,Depname,n,ATt,n1,n2,ATx)
+               END IF
             END IF
             EXIT
 
@@ -1690,13 +1656,17 @@ CONTAINS
                n = 1
                IF ( n > SIZE( ATt ) ) THEN
                   DEALLOCATE( ATt, ATx )
-                  ALLOCATE( ATt(n), ATx(1,1,n) )
+                  ALLOCATE( ATt(n), ATx(n1,n2,n) )
                END IF
 
                ATt(1) = 1.0_dp
-               ATx(1,1,1) = -1.0_dp
+               ATx(:,:,1) = -1.0_dp
 
-               CALL ListAddDepReal(List,Name,Depname,n,ATt(1:n),ATx(1,1,1:n))
+               IF(n1==1.AND.n2==1) THEN
+                 CALL ListAddDepReal(List,Name,Depname,n,ATt,ATx(1,1,1))
+               ELSE
+                 CALL ListAddDepRealArray(List,Name,Depname,n,ATt,n1,n2,ATx)
+               END IF
             END IF
             EXIT
 
@@ -2196,7 +2166,7 @@ CONTAINS
         CALL Info('LoadModel',Message,Level=7)
 
         single=.FALSE.
-        IF ( Name(1:8) == '-single ' ) THEN
+        IF ( SEQL(Name, '-single ') ) THEN
           single=.TRUE.
           Name=Name(9:)
         END IF
@@ -2392,16 +2362,16 @@ CONTAINS
 
       ind = [1,2,3,4,5,6,7,8]
 
-      IF (ElementDef(1:5) == 'point' )     ind=1
-      IF (ElementDef(1:4) == 'line' )      ind=2
-      IF (ElementDef(1:3) == 'tri' )       ind=3
-      IF (ElementDef(1:4) == 'quad' )      ind=4
-      IF (ElementDef(1:5) == 'tetra' )     ind=5
-      IF (ElementDef(1:7) == 'pyramid' )   ind=6
-      IF (ElementDef(1:5) == 'prism' )     ind=7
-      IF (ElementDef(1:5) == 'brick' )     ind=8
-      IF (ElementDef(1:8) == 'tri_face' )  ind=9
-      IF (ElementDef(1:9) == 'quad_face' ) ind=10
+      IF (SEQL(ElementDef, 'point') )     ind=1
+      IF (SEQL(ElementDef, 'line') )      ind=2
+      IF (SEQL(ElementDef, 'tri') )       ind=3
+      IF (SEQL(ElementDef, 'quad') )      ind=4
+      IF (SEQL(ElementDef, 'tetra') )     ind=5
+      IF (SEQL(ElementDef, 'pyramid') )   ind=6
+      IF (SEQL(ElementDef, 'prism') )     ind=7
+      IF (SEQL(ElementDef, 'brick') )     ind=8
+      IF (SEQL(ElementDef, 'tri_face') )  ind=9
+      IF (SEQL(ElementDef, 'quad_face') ) ind=10
 
       n = INDEX(ElementDef,'-')
       IF (n<=0) n=LEN_TRIM(ElementDef)
@@ -2501,6 +2471,11 @@ CONTAINS
           'Output Caller', GotIt )
       IF ( .NOT. GotIt ) OutputCaller = .TRUE.
       
+      ! By default only on partition is used to show the results
+      ! For debugging it may be usefull to show several.
+      MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
+          'Max Output Partition', GotIt )    
+
     END SUBROUTINE InitializeOutputLevel
 !------------------------------------------------------------------------------
   END FUNCTION LoadModel
@@ -2637,7 +2612,7 @@ CONTAINS
             IF( SIZE(Var % Values) == Var % Dofs ) THEN
               SaveThis = SaveGlobal
             ELSE
-              IF ( Var % Name(1:10) /= 'coordinate' .OR. SaveCoordinates ) THEN
+              IF ( .NOT.SEQL(Var % Name,'coordinate') .OR. SaveCoordinates ) THEN
                 SaveThis = .TRUE.
               END IF
             END IF
@@ -2666,9 +2641,7 @@ CONTAINS
             IF( SaveThis ) THEN
               Found = .FALSE.
               IF( ASSOCIATED( Var % Solver ) ) THEN
-                IF( ASSOCIATED( Var % Solver % Values ) ) THEN
-                  EqName = ListGetString(Var % Solver % Values,'Equation',Found)
-                END IF
+                EqName = ListGetString(Var % Solver % Values,'Equation',Found)
               END IF
               IF(.NOT. Found ) EqName = 'no equation'
               
@@ -2734,7 +2707,7 @@ CONTAINS
         IF( Var % DOFs == SIZE(Var % Values) ) THEN
           SaveThis = SaveGlobal
         ELSE
-          IF ( Var % Name(1:10) /= 'coordinate' .OR. SaveCoordinates ) THEN
+          IF ( .NOT.SEQL(Var % Name, 'coordinate') .OR. SaveCoordinates ) THEN
             SaveThis = .TRUE.
           END IF
         END IF
@@ -2980,11 +2953,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
     CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,FullName,PosName
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: Row
-#else
-    CHARACTER(LEN=MAX_STRING_LEN) :: Row
-#endif
     CHARACTER(LEN=MAX_STRING_LEN) :: FName,Trash
     INTEGER ::i,j,k,k2,n,nt,Node,DOFs,TotalDofs,DofCount,SavedCount,Timestep,NSDOFs,nlen
     INTEGER :: nNodes, Stat, FieldSize, PermSize
@@ -3052,9 +3021,7 @@ CONTAINS
     END IF
     RestartFileOpen = .TRUE.
 
-#ifdef ALLOC_CHAR
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
-#endif
     READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
     IF( iostat /= 0 ) THEN
       CALL Fatal('LoadRestartFile','Error reading header line!')
@@ -3305,7 +3272,7 @@ CONTAINS
           Var % Perm = 0
         END IF
 
-        IF ( VarName(1:14) == 'flow solution ' ) THEN
+        IF ( SEQL(VarName, 'flow solution ') ) THEN
 !------------------------------------------------------------------------------
 !         First add components to the variable list separately...
 !         (must be done this way for the output routines to work properly...)
@@ -3444,7 +3411,7 @@ CONTAINS
          ! If not all varibales were saved for this time step, and we're not
          ! using a .pos file, we may have reached the end even though i < TotalDOFs.
          IF ( Stat /= 0 ) EXIT
-         IF ( Row(1:5) == "Time:" ) THEN
+         IF ( SEQL(Row, "Time:") ) THEN
             CALL UnReadLine( RestartUnit, Row )
             EXIT
          END IF
@@ -3764,12 +3731,8 @@ CONTAINS
     INTEGER, INTENT(OUT) :: SavedCount, Timestep
     REAL(dp), INTENT(OUT) :: Time
     INTEGER, INTENT(OUT) :: Stat
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: String
     ALLOCATE(CHARACTER(32)::String)
-#else
-    CHARACTER(LEN=32) :: String
-#endif
 
     IF ( Binary ) THEN
       CALL BinReadString( RestartUnit, String, Stat )
@@ -3779,7 +3742,7 @@ CONTAINS
       CALL BinReadDouble( RestartUnit, Time, Stat )
     ELSE
       DO WHILE( ReadAndTrim(RestartUnit,String) )
-        IF ( String(1:5) == 'time:' ) THEN
+        IF ( SEQL(String, 'time:') ) THEN
           READ( String(7:),*,IOSTAT=iostat) SavedCount,Timestep,Time
           IF( iostat /= 0 ) THEN
             CALL Fatal('LoadRestartFile','Error in ReadTime!')
@@ -3877,11 +3840,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Variable_t), POINTER :: Var,Var1,Displacement,MeshUpdate,MaskVar
 
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: Row
-#else
-    CHARACTER(LEN=MAX_STRING_LEN):: Row
-#endif
     CHARACTER(MAX_NAME_LEN) :: Str, DateStr
 
     LOGICAL :: gotIt, SaveCoordinates, MoveBoundary, MeshMoved, MaskExists
@@ -4353,9 +4312,7 @@ CONTAINS
    END IF
 
 !------------------------------------------------------------------------------
-#ifdef ALLOC_CHAR
    ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
-#endif
    DO WHILE( .TRUE. )
       IF ( AppendFlag ) THEN
          SavedCount = Model % Mesh % SavesDone
@@ -4368,11 +4325,11 @@ CONTAINS
 !   ...read one timestep to memory (if not already there)...
 !------------------------------------------------------------------------------
          DO WHILE( ReadAndTrim(OutputUnit,Row) )
-            IF ( Row(1:11) == 'total dofs:' ) READ( Row(12:),* ) DOFs
-            IF ( Row(1:5)  == 'time:' ) EXIT
+            IF ( SEQL(Row, 'total dofs:') ) READ( Row(12:),* ) DOFs
+            IF ( SEQL( Row, 'time:') ) EXIT
          END DO
          
-         IF ( Row(1:5) /= 'time:' ) EXIT
+         IF ( .NOT.SEQL(Row, 'time:') ) EXIT
          
          READ( Row(7:),* ) SavedCount,Timestep,Time
       END IF
@@ -4540,7 +4497,11 @@ CONTAINS
                       WRITE(PostFileUnit,'(ES17.8E3)',ADVANCE='NO') &
                          AIMAG(Var % Cvalues(k))
                     ELSE
-                      WRITE(PostFileUnit,'(ES17.8E3)',ADVANCE='NO') Var % Values(k)
+                      IF(k<=SIZE(Var % Values)) THEN
+                        WRITE(PostFileUnit,'(ES17.8E3)',ADVANCE='NO') Var % Values(k)
+                      ELSE
+                        WRITE(PostFileUnit,'(ES17.8E3)',ADVANCE='NO') 0._dp
+                      END IF
                     END IF
                  ELSE
                     WRITE(PostFileUnit,'(A)',ADVANCE='NO') ' 0.0'
@@ -4691,14 +4652,14 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   ALLOCATE(Solver % Def_Dofs(10,Model % NumberOfBodies,6))
   Solver % Def_Dofs = -1; Solver % Def_Dofs(:,:,1)=1
 
-  Params => NULL()
+  Solver % Values => ListAllocate()
+  Params => Solver % Values
   CALL ListAddString( Params,'Linear System Iterative Method', 'CG' )
   CALL ListAddLogical( Params,'Linear System Symmetric', .TRUE. )
   CALL ListAddInteger( Params, 'Linear System Max Iterations', 5000 )
   CALL ListAddString( Params, 'Linear System Preconditioning', 'ILU0' )
   CALL ListAddInteger( Params, 'Linear System Residual Output', 1 )
   CALL ListAddConstReal( Params, 'Linear System Convergence Tolerance', 1.0d-9 )
-  Solver % Values=>Params
 
   ALLOCATE(CPerm(Mesh % NumberOfNodes+Mesh % NumberOfEdges))
 
@@ -4901,15 +4862,17 @@ END SUBROUTINE GetNodalElementSize
 !------------------------------------------------------------------------------
     TYPE(ValueList_t), POINTER :: List
 !------------------------------------------------------------------------------
-    TYPE(ValueList_t), POINTER :: ptr
+    TYPE(ValueListEntry_t), POINTER :: ptr
    
-    ptr => List
+    IF(.NOT.ASSOCIATED(List)) RETURN
+    ptr => List % Head
     DO WHILE(ASSOCIATED(ptr))
       IF (ASSOCIATED(ptr % TValues)) DEALLOCATE(ptr % TValues)
       IF (ASSOCIATED(ptr % FValues)) DEALLOCATE(ptr % FValues)
       IF (ASSOCIATED(ptr % IValues)) DEALLOCATE(ptr % IValues)
       ptr => ptr % Next
     END DO 
+    DEALLOCATE(List)
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeValueList
 !------------------------------------------------------------------------------

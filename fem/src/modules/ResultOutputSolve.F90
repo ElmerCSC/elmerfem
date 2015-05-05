@@ -69,7 +69,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   CALL Info( 'ResultOutputSolver', '-------------------------------------')
 
-  Params => Solver % Values
+  Params => GetSolverParams()
   SaveGid = GetLogical(Params,'Gid Format',Found)
   SaveGmsh = GetLogical(Params,'Gmsh Format',Found)
   SaveVTK = GetLogical(Params,'VTK Format',Found)

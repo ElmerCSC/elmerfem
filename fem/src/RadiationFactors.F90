@@ -128,7 +128,7 @@
        RadiationFlag = ListGetString( Model % BCs(i) % Values, &
              'Radiation', GotIt )
         IF (GotIt) THEN
-          IF ( RadiationFlag(1:12) == 'diffuse gray' ) Found = .TRUE.
+          IF ( RadiationFlag == 'diffuse gray' ) Found = .TRUE.
         END IF
      END DO
      IF(.NOT. Found) RETURN
@@ -226,7 +226,7 @@
            IF ( Model % BCs(i) % Tag == k ) THEN
              RadiationFlag = ListGetString( Model % BCs(i) % Values, &
                  'Radiation', GotIt )
-             IF ( RadiationFlag(1:12) == 'diffuse gray' ) THEN
+             IF ( RadiationFlag == 'diffuse gray' ) THEN
                l = MAX(1, ListGetInteger( Model % BCs(i) % Values,'Radiation Boundary',GotIt) )
                MaxRadiationBody = MAX(l, MaxRadiationBody)
 
@@ -442,7 +442,7 @@
            IF ( Model % BCs(i) % Tag == k ) THEN
              RadiationFlag = ListGetString( Model % BCs(i) % Values, &
                  'Radiation', GotIt )
-             IF ( RadiationFlag(1:12) == 'diffuse gray' ) THEN
+             IF ( RadiationFlag == 'diffuse gray' ) THEN
                l = MAX(1, ListGetInteger( Model % BCs(i) % Values,'Radiation Boundary',GotIt) )
                NodeIndexes =>  CurrentElement % NodeIndexes
                n = CurrentElement % TYPE % NumberOfNodes
@@ -1103,8 +1103,8 @@
      SUBROUTINE InitFactorSolver(Solver)
        
        TYPE(Solver_t) :: Solver
-       
-       NULLIFY( Solver % Values )
+
+       Solver % Values => ListAllocate()
        
        CALL ListAddString( Solver % Values, &
            'Linear System Iterative Method', 'CGS' )

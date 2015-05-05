@@ -194,12 +194,17 @@ END INTERFACE
          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
          CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
          CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
-         CALL Info( 'MAIN', 'Library version: ' // VERSION &
+         CALL Info( 'MAIN', 'Version: ' // VERSION &
 #ifdef REVISION
-             // ' (Rev: ' // REVISION // ')' )
-#else
-         )
+             // ' (Rev: ' // REVISION  &
 #endif
+#ifdef COMPILATIONDATE
+             // ', Compiled: ' // COMPILATIONDATE // ')' &
+#else
+             // ')' &
+#endif
+         )
+
          IF ( ParEnv % PEs > 1 ) &
              CALL Info( 'MAIN', ' Running in parallel using ' // &
              TRIM(i2s(ParEnv % PEs)) // ' tasks.')
@@ -795,7 +800,6 @@ END INTERFACE
 
          ! Nullify the old structure since otherwise bad things may happen at deallocation
          NULLIFY( CurrentModel % Solvers(i) % ActiveElements )
-         NULLIFY( CurrentModel % Solvers(i) % Values )
          NULLIFY( CurrentModel % Solvers(i) % Mesh )
          NULLIFY( CurrentModel % Solvers(i) % BlockMatrix )
          NULLIFY( CurrentModel % Solvers(i) % Matrix )
@@ -808,20 +812,18 @@ END INTERFACE
        CurrentModel % NumberOfSolvers = n
 
        ! Now create the ResultOutputSolver instance on-the-fly
-       NULLIFY( CurrentModel % Solvers(n) % Values )
        CurrentModel % Solvers(n) % PROCEDURE = 0
        NULLIFY( CurrentModel % Solvers(n) % Matrix )
        NULLIFY( CurrentModel % Solvers(n) % BlockMatrix )
-       NULLIFY( CurrentModel % Solvers(n) % Values )
        NULLIFY( CurrentModel % Solvers(n) % Variable )
        NULLIFY( CurrentModel % Solvers(n) % ActiveElements )
        CurrentModel % Solvers(n) % NumberOfActiveElements = 0
-       NULLIFY( CurrentModel % Solvers(n) % Values )
        j = CurrentModel % NumberOfBodies
        ALLOCATE( CurrentModel % Solvers(n) % Def_Dofs(10,j,6))
        CurrentModel % Solvers(n) % Def_Dofs(:,1:j,6) = -1
        
        ! Add some keywords to the list
+       CurrentModel % Solvers(n) % Values => ListAllocate()
        CALL ListAddString(CurrentModel % Solvers(n) % Values,&
            'Procedure', 'ResultOutputSolve ResultOutputSolver',.FALSE.)
        CALL ListAddString(CurrentModel % Solvers(n) % Values,'Output Format','vtu')
@@ -951,7 +953,7 @@ END INTERFACE
      USE DefUtils
      INTEGER :: DOFs
      CHARACTER(LEN=MAX_NAME_LEN) :: str
-     LOGICAL :: Found
+     LOGICAL :: Found, NamespaceFound
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, ALLOCATABLE :: Indexes(:)
      REAL(KIND=dp),ALLOCATABLE :: Work(:)
@@ -1005,14 +1007,15 @@ END INTERFACE
            n = Element % TYPE % NumberOfNodes
 
            BC => GetBC()
+           IF(.NOT.ASSOCIATED(BC)) CYCLE
 
            Var => Mesh % Variables
            DO WHILE( ASSOCIATED(Var) )
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
-             str = ListGetString( Solver % Values, 'Namespace', Found )
-             IF (Found) CALL ListSetNamespace(TRIM(str))
+             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
 
 
              IF ( Var % DOFs <= 1 ) THEN
@@ -1112,16 +1115,18 @@ END INTERFACE
                IF ( GotIt ) THEN
                  DO j=1,n
                    k = Element % NodeIndexes(j)
-                   DO l=1,MIN(SIZE(WorkA,1),Var % DOFs)
-                     IF ( ASSOCIATED(Var % Perm) ) k = Var % Perm(k)
-                     IF ( k>0 ) Var % Values(Var % DOFs*(k-1)+l) = WorkA(l,1,j)
-                   END DO
+                   IF ( ASSOCIATED(Var % Perm) ) k = Var % Perm(k)
+                   IF(k>0) THEN
+                     DO l=1,MIN(SIZE(WorkA,1),Var % DOFs)
+                       Var % Values(Var % DOFs*(k-1)+l) = WorkA(l,1,j)
+                     END DO
+                   END IF
                  END DO
                ELSE
                END IF
              END IF
 
-             CALL ListSetNamespace('')
+             IF(NamespaceFound) CALL ListPopNamespace()
              Var => Var % Next
            END DO
          END DO
@@ -1141,7 +1146,7 @@ END INTERFACE
      TYPE(Element_t), POINTER :: Edge
      INTEGER :: DOFs,i,j,k,l
      CHARACTER(LEN=MAX_NAME_LEN) :: str
-     LOGICAL :: Found, ThingsToDO
+     LOGICAL :: Found, ThingsToDO, NamespaceFound
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, ALLOCATABLE :: Indexes(:)
      REAL(KIND=dp) :: Val
@@ -1166,8 +1171,8 @@ END INTERFACE
            Solver => Var % Solver
            IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
            
-           str = ListGetString( Solver % Values, 'Namespace', Found )
-           IF (Found) CALL ListSetNamespace(TRIM(str))
+           str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+           IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
            
            ! global variable
            IF( SIZE( Var % Values ) == Var % DOFs ) THEN
@@ -1188,6 +1193,7 @@ END INTERFACE
              ThingsToDo = ThingsToDo .OR. &
                   ListCheckPresent( IC, TRIM(Var % Name)//' {e}' )
            END IF
+           IF (NamespaceFound) CALL ListPopNamespace()
            Var => Var % Next
          END DO
        END DO
@@ -1217,8 +1223,8 @@ END INTERFACE
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
-             str = ListGetString( Solver % Values, 'Namespace', Found )
-             IF (Found) CALL ListSetNamespace(TRIM(str))
+             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
              
              ! global variables were already set
              IF( SIZE( Var % Values ) == Var % DOFs ) THEN
@@ -1282,14 +1288,16 @@ END INTERFACE
                IF ( GotIt ) THEN
                  DO k=1,n
                    k1 = Indexes(k)
-                   DO l=1,MIN(SIZE(WorkA,1),Var % DOFs)
-                     IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
-                     IF ( k1>0 ) Var % Values(Var % DOFs*(k1-1)+l) = WorkA(l,1,k)
-                   END DO
+                   IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
+                   IF(k1>0) THEN
+                     DO l=1,MIN(SIZE(WorkA,1),Var % DOFs)
+                       IF ( k1>0 ) Var % Values(Var % DOFs*(k1-1)+l) = WorkA(l,1,k)
+                     END DO
+                   END IF
                  END DO
                END IF
              END IF
-             CALL ListSetNamespace('')
+             IF(NamespaceFound) CALL ListPopNamespace()
              Var => Var % Next
            END DO
          END DO

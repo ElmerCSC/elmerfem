@@ -126,7 +126,7 @@ SUBROUTINE TransientPhaseChange( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! The variables needed for solution
   !------------------------------------------------------------------------------
-  Params => Solver % Values
+  Params => GetSolverParams()
 
   PSolver => Solver
   SurfSol  => Solver % Variable

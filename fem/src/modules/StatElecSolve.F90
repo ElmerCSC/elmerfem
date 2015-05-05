@@ -814,7 +814,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
          CurrentElement => GetBoundaryElement(t)
          IF ( .NOT. ActiveBoundaryElement(CurrentElement) ) CYCLE 
          BC => GetBC(CurrentElement)
-         IF ( .NOT. ASSOCIATED( BC ) ) CYCLE 
+         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE 
 
          n = GetElementNOFNodes(CurrentElement)
          ntot = GetElementNOFDOFs(CurrentElement)
@@ -1283,7 +1283,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
        ! REAL(KIND=dp) :: Basis(ntot),dBasisdx(ntot,3)
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,C(3,3),x,y,z
-       REAL(KIND=dp) :: PiezoForce(n), LocalStrain(6), PiezoLoad(3)
+       REAL(KIND=dp) :: PiezoForce(ntot), LocalStrain(6), PiezoLoad(3)
 
        LOGICAL :: Stat
 

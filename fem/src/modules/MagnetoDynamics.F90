@@ -552,26 +552,18 @@ CONTAINS
      BodyForce => GetBodyForce()
      FoundMagnetization = .FALSE.
      IF ( ASSOCIATED(BodyForce) ) THEN
-	Load(1,1:n) = GetReal( BodyForce, 'Current Density 1', Found )
-	Load(2,1:n) = GetReal( BodyForce, 'Current Density 2', Found )
-	Load(3,1:n) = GetReal( BodyForce, 'Current Density 3', Found )
 
-	Load(4,1:n) = GetReal( BodyForce, 'Magnetization 1', Found )
-        FoundMagnetization = FoundMagnetization .OR. Found
-	Load(5,1:n) = GetReal( BodyForce, 'Magnetization 2', Found )
-        FoundMagnetization = FoundMagnetization .OR. Found
-	Load(6,1:n) = GetReal( BodyForce, 'Magnetization 3', Found )
-        FoundMagnetization = FoundMagnetization .OR. Found
-
+       CALL GetRealVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
+       CALL GetRealVector( BodyForce, Load(4:6,1:n), &
+                'Magnetization', FoundMagnetization )
 	Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
      END IF
 
      Material => GetMaterial( Element )
 
      IF(ASSOCIATED(Material).AND..NOT.FoundMagnetization) THEN
-       Load(4,1:n) = GetReal( Material, 'Magnetization 1', Found )
-       Load(5,1:n) = GetReal( Material, 'Magnetization 2', Found )
-       Load(6,1:n) = GetReal( Material, 'Magnetization 3', Found )
+       CALL GetRealVector( Material, Load(4:6,1:n), &
+                'Magnetization', FoundMagnetization )
      END IF
      
     BodyParams => GetBodyParams( Element )
@@ -688,9 +680,7 @@ CONTAINS
      nd = GetElementNOFDOFs(Element)
      n  = GetElementNOFNodes(Element)
 
-     Load(1,1:n) = GetReal( BC, 'Magnetic Field Strength 1', Found )
-     Load(2,1:n) = GetReal( BC, 'Magnetic Field Strength 2', Found )
-     Load(3,1:n) = GetReal( BC, 'Magnetic Field Strength 3', Found )
+     CALL GetRealVector( BC, Load(1:3,1:n), 'Magnetic Field Strength', Found )
 
      Acoef(1:n) = GetReal( BC, 'Magnetic Transfer Coefficient', Found ) !???
 
@@ -1638,7 +1628,7 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
            CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
-    TYPE(ValueList_t), POINTER :: Lst
+    TYPE(ValueListEntry_t), POINTER :: Lst
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes )
 
@@ -2098,7 +2088,7 @@ CONTAINS
       IF ( .NOT. Found ) CYCLE
 
       k = GetBoundaryFaceIndex(Element); Element=>Mesh % Faces(k)
-      Faces=Faces+1
+      Faces = Faces+1
       FaceMap(k) = Faces
 
       DO i=1,Element % TYPE % NumberOfNodes
@@ -2133,12 +2123,10 @@ CONTAINS
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
       n  = GetElementNOFNodes(Element)
-      LOAD(1,1:n) = GetReal(BC,'Magnetic Flux Density 1',Found1)
-      LOAD(2,1:n) = GetReal(BC,'Magnetic Flux Density 2',Found2)
-      LOAD(3,1:n) = GetReal(BC,'Magnetic Flux Density 3',Found3)
+      CALL GetRealVector(BC,Load(1:3,1:n),'Magnetic Flux Density',Found1)
       LOAD(4,1:n) = GetReal(BC,'Magnetic Flux Density {n}',Found)
 
-      IF (Found.OR.Found1.OR.Found2.OR.Found3) THEN
+      IF (Found.OR.Found1) THEN
         k = GetBoundaryFaceIndex(Element)
         Element => Mesh % Faces(k)
         nd = GetElementNOFDOFs(Element)
@@ -2549,21 +2537,9 @@ CONTAINS
       BodyForce => GetBodyForce()
       IF (ASSOCIATED(BodyForce)) THEN
         IF (A % COMPLEX ) THEN
-          Load_C(1,1:n) = GetReal( BodyForce, 'Current Density 1', Found )
-          Load_C(1,1:n) = CMPLX( REAL(Load_C(1,1:n)), &
-            GetReal( BodyForce, 'Current Density im 1', Found ),KIND=dp)
-
-          Load_C(2,1:n) = GetReal( BodyForce, 'Current Density 2', Found )
-          Load_C(2,1:n) = CMPLX( REAL(Load_C(2,1:n)), & 
-            GetReal( BodyForce, 'Current Density im 2', Found), KIND=dp)
-
-          Load_C(3,1:n) = GetReal( BodyForce, 'Current Density 3', Found )
-          Load_C(3,1:n) = CMPLX( REAL(Load_C(3,1:n)), &
-            GetReal( BodyForce, 'Current Density im 3', Found), KIND=dp)
+          CALL GetComplexVector(BodyForce,Load_C(1:3,1:n),'Current Density',Found)
         ELSE
-          Load_R(1,1:n) = GetReal(BodyForce, 'Current Density 1', Found)
-          Load_R(2,1:n) = GetReal(BodyForce, 'Current Density 2', Found)
-          Load_R(3,1:n) = GetReal(BodyForce, 'Current Density 3', Found)
+          CALL GetRealVector(BodyForce,Load_R(1:3,1:n),'Current Density',Found)
         END IF
       END IF
 
@@ -2650,18 +2626,7 @@ CONTAINS
           Nrm = NormalVector(Element,Nodes,0._dp,0._dp)
 
           IF (A % COMPLEX ) THEN
-             Load_C(1,1:n) = GetReal( BodyForce, 'Current Density 1', Found )
-             Load_C(1,1:n) = CMPLX( REAL(Load_C(1,1:n)), &
-                  GetReal( BodyForce, 'Current Density im 1', Found ),KIND=dp)
-
-             Load_C(2,1:n) = GetReal( BodyForce, 'Current Density 2', Found )
-             Load_C(2,1:n) = CMPLX( REAL(Load_C(2,1:n)), & 
-                  GetReal( BodyForce, 'Current Density im 2', Found), KIND=dp)
-
-             Load_C(3,1:n) = GetReal( BodyForce, 'Current Density 3', Found )
-             Load_C(3,1:n) = CMPLX( REAL(Load_C(3,1:n)), &
-                  GetReal( BodyForce, 'Current Density im 3', Found), KIND=dp)
-
+             CALL GetComplexVector( BodyForce, Load_C(1:3,1:n), 'Current Density', Found )
              L_C(1) = SUM(Load_C(1,1:n))/n
              L_C(2) = SUM(Load_C(2,1:n))/n
              L_C(3) = SUM(Load_C(3,1:n))/n
@@ -2674,9 +2639,7 @@ CONTAINS
                 IF (ABS(SUM(L_R*Nrm))<Jfluxeps) CYCLE
              END IF
           ELSE
-             Load_R(1,1:n) = GetReal(BodyForce, 'Current Density 1', Found)
-             Load_R(2,1:n) = GetReal(BodyForce, 'Current Density 2', Found)
-             Load_R(3,1:n) = GetReal(BodyForce, 'Current Density 3', Found)
+             CALL GetRealVector( BodyForce, Load_R(1:3,1:n), 'Current Density', Found )
 
              L_R(1) = SUM(Load_R(1,1:n))/n
              L_R(2) = SUM(Load_R(2,1:n))/n
@@ -3012,35 +2975,9 @@ CONTAINS
        BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.
        IF ( ASSOCIATED(BodyForce) ) THEN
-          Load(1,1:n) = GetReal( BodyForce, 'Current Density 1', Found )
-          Load(1,1:n) = CMPLX( REAL(Load(1,1:n)), &
-            GetReal( BodyForce, 'Current Density im 1', Found ),KIND=dp)
-
-          Load(2,1:n) = GetReal( BodyForce, 'Current Density 2', Found )
-          Load(2,1:n) = CMPLX( REAL(Load(2,1:n)), & 
-            GetReal( BodyForce, 'Current Density im 2', Found), KIND=dp)
-
-          Load(3,1:n) = GetReal( BodyForce, 'Current Density 3', Found )
-          Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
-            GetReal( BodyForce, 'Current Density im 3', Found), KIND=dp)
-
-          Load(4,1:n) = GetReal( BodyForce, 'Magnetization 1', Found )
-          FoundMagnetization = FoundMagnetization .OR. Found
-          Load(4,1:n) = CMPLX( REAL(Load(4,1:n)), &
-                GetReal( BodyForce, 'Magnetization im 1', Found),KIND=dp)
-          FoundMagnetization = FoundMagnetization .OR. Found
-
-          Load(5,1:n) = GetReal( BodyForce, 'Magnetization 2', Found )
-          FoundMagnetization = FoundMagnetization .OR. Found
-          Load(5,1:n) = CMPLX( REAL(Load(5,1:n)), &
-                GetReal( BodyForce, 'Magnetization im 2', Found),KIND=dp)
-          FoundMagnetization = FoundMagnetization .OR. Found
-
-          Load(6,1:n) = GetReal( BodyForce, 'Magnetization 3', Found )
-          FoundMagnetization = FoundMagnetization .OR. Found
-          Load(6,1:n) = CMPLX( REAL(Load(6,1:n)), &
-                GetReal( BodyForce, 'Magnetization im 1', Found),KIND=dp)
-          FoundMagnetization = FoundMagnetization .OR. Found
+          CALL GetComplexVector( BodyForce, Load(1:3,1:n), 'Current Density', Found )
+          CALL GetComplexVector( BodyForce, Load(4:6,1:n), &
+                 'Magnetization', FoundMagnetization )
 
           Load(7,1:n) = GetReal( BodyForce, 'Electric Potential', Found )
           Load(7,1:n) = CMPLX( REAL(Load(7,1:n)), &
@@ -3050,17 +2987,8 @@ CONTAINS
        Material => GetMaterial( Element )
 
        IF(ASSOCIATED(Material).AND..NOT.FoundMagnetization) THEN
-          Load(4,1:n) = GetReal( Material, 'Magnetization 1', Found )
-          Load(4,1:n) = CMPLX( REAL(Load(4,1:n)), &
-                GetReal( Material, 'Magnetization im 1', Found),KIND=dp)
-
-          Load(5,1:n) = GetReal( Material, 'Magnetization 2', Found )
-          Load(5,1:n) = CMPLX( REAL(Load(5,1:n)), &
-                GetReal( Material, 'Magnetization im 2', Found),KIND=dp)
-
-          Load(6,1:n) = GetReal( Material, 'Magnetization 3', Found )
-          Load(6,1:n) = CMPLX( REAL(Load(6,1:n)), &
-                GetReal( Material, 'Magnetization im 1', Found),KIND=dp)
+          CALL GetComplexVector( Material, Load(4:6,1:n), &
+                 'Magnetization', FoundMagnetization )
        END IF
 
        Acoef = 0.0_dp
@@ -3200,23 +3128,14 @@ CONTAINS
        nd = GetElementNOFDOFs(Element)
        n  = GetElementNOFNodes(Element)
 
-       Load(1,1:n) = GetReal( BC, 'Magnetic Field Strength 1', Found )
-       Load(1,1:n) = CMPLX( REAL(Load(1,1:n)), &
-          GetReal(BC, 'Magnetic Field Strength im 1', Found), KIND=dp)
-
-       Load(2,1:n) = GetReal( BC, 'Magnetic Field Strength 2', Found )
-       Load(2,1:n) = CMPLX( REAL(Load(2,1:n)), &
-          GetReal(BC, 'Magnetic Field Strength im 2', Found), KIND=dp)
-
-       Load(3,1:n) = GetReal( BC, 'Magnetic Field Strength 3', Found )
-       Load(3,1:n) = CMPLX( REAL(Load(3,1:n)), &
-          GetReal(BC, 'Magnetic Field Strength im 3', Found), KIND=dp)
+       CALL GetComplexVector( BC, Load(1:3,1:n), 'Magnetic Field Strength', Found)
 
        Load(4,1:n) = GetReal( BC, 'Electric Current Density', Found )
        IF (.NOT. Found) Load(4,1:n) = GetReal( BC, 'Electric Flux', Found )
 
        Load(4,1:n) = CMPLX( REAL(LOAD(4,1:n)), &
             GetReal( BC, 'Electric Current Density im', Found), KIND=dp)
+
        IF (.NOT. Found) Load(4,1:n) = CMPLX( REAL(LOAD(4,1:n)), &
             GetReal( BC, 'Electric Flux im', Found), KIND=dp)
 
@@ -4097,7 +4016,7 @@ CONTAINS
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
            CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
-    TYPE(ValueList_t), POINTER :: Lst
+    TYPE(ValueListEntry_t), POINTER :: Lst
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
@@ -4507,23 +4426,13 @@ CONTAINS
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
 
       n  = GetElementNOFNodes(Element)
-      LOAD(1,1:n) = GetReal(BC,'Magnetic Flux Density 1',Found1)
-      LOAD(1,1:n) = LOAD(1,1:n)+im*GetReal(BC,'Magnetic Flux Density im 1',Found)
-      Found1 = Found1.OR.Found
-
-      LOAD(2,1:n) = GetReal(BC,'Magnetic Flux Density 2',Found2)
-      LOAD(2,1:n) = LOAD(2,1:n)+im*GetReal(BC,'Magnetic Flux Density im 2',Found)
-      Found2 = Found2.OR.Found
-
-      LOAD(3,1:n) = GetReal(BC,'Magnetic Flux Density 3',Found3)
-      LOAD(3,1:n) = LOAD(3,1:n)+im*GetReal(BC,'Magnetic Flux Density im 3',Found)
-      Found3 = Found3.OR.Found
+      CALL GetComplexVector(BC,Load(1:3,1:n),'Magnetic Flux Density',Found1)
 
       LOAD(4,1:n) = GetReal(BC,'Magnetic Flux Density {n}',Found)
       LOAD(4,1:n) = LOAD(4,1:n)+im*GetReal(BC,'Magnetic Flux Density im {n}',L1)
       Found = Found.OR.L1
 
-      IF (Found.OR.Found1.OR.Found2.OR.Found3) THEN
+      IF (Found.OR.Found1) THEN
         k = GetBoundaryFaceIndex(Element)
         Element => Mesh % Faces(k)
         nd = GetElementNOFDOFs(Element)
@@ -4867,9 +4776,9 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   ! and hence no coupling between elemental fields is needed. 
   ALLOCATE(Solvers(n+1))
   Solvers(1:n) = Model % Solvers
-  SolverParams => NULL()
+  Solvers(n+1) % Values => ListAllocate()
+  SolverParams => Solvers(n+1) % Values
   CALL ListAddLogical( SolverParams, 'Discontinuous Galerkin', .TRUE. )
-  Solvers(n+1) % Values => SolverParams
   Solvers(n+1) % PROCEDURE = 0
   Solvers(n+1) % ActiveElements => NULL()
   CALL ListAddString( SolverParams, 'Exec Solver', 'never' )
@@ -4879,6 +4788,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   CALL ListAddString( SolverParams, 'Procedure', &
               'MagnetoDynamics MagnetoDynamics_Dummy',.FALSE. )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput cf_dummy' )
+
 
   pname = ListGetString( Model % Solvers(soln) % Values, 'Mesh', Found )
   IF(Found) THEN
@@ -5048,6 +4958,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   LOGICAL :: Found, FluxFound, NodalFields, RealField
   TYPE(ValueList_t), POINTER :: EQ, SolverParams
 
+  IF(.NOT.ASSOCIATED(Solver % Values)) Solver % Values=>ListAllocate()
   SolverParams => GetSolverParams()
 
   CALL ListAddString( SolverParams, 'Variable', '-nooutput hr_dummy' )
@@ -5474,37 +5385,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.
        IF(ASSOCIATED(BodyForce)) THEN
-         Magnetization(1,1:n) = GetReal( BodyForce,'Magnetization 1', Found )
-         FoundMagnetization = FoundMagnetization .OR. Found
-         Magnetization(1,1:n) = CMPLX( REAL(Magnetization(1,1:n)), &
-                GetReal( BodyForce,'Magnetization 1 im', Found ), KIND=dp )
-         FoundMagnetization = FoundMagnetization .OR. Found
-
-         Magnetization(2,1:n) = GetReal( BodyForce,'Magnetization 2', Found )
-         FoundMagnetization = FoundMagnetization .OR. Found
-         Magnetization(2,1:n) = CMPLX( REAL(Magnetization(2,1:n)), &
-                GetReal( BodyForce,'Magnetization 2 im', Found ), KIND=dp )
-         FoundMagnetization = FoundMagnetization .OR. Found
-
-         Magnetization(3,1:n) = GetReal( BodyForce,'Magnetization 3', Found )
-         FoundMagnetization = FoundMagnetization .OR. Found
-         Magnetization(3,1:n) = CMPLX( REAL(Magnetization(3,1:n)), &
-                GetReal( BodyForce,'Magnetization 3 im', Found ), KIND=dp )
-         FoundMagnetization = FoundMagnetization .OR. Found
+         CALL GetComplexVector( BodyForce,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
        END IF
 
        IF(.NOT.FoundMagnetization) THEN
-         Magnetization(1,1:n) = GetReal( Material,'Magnetization 1', Found )
-         Magnetization(1,1:n) = CMPLX( REAL(Magnetization(1,1:n)), &
-                GetReal( Material,'Magnetization 1 im', Found ), KIND=dp )
-
-         Magnetization(2,1:n) = GetReal( Material,'Magnetization 2', Found )
-         Magnetization(2,1:n) = CMPLX( REAL(Magnetization(2,1:n)), &
-                GetReal( Material,'Magnetization 2 im', Found ), KIND=dp )
-
-         Magnetization(3,1:n) = GetReal( Material,'Magnetization 3', Found )
-         Magnetization(3,1:n) = CMPLX( REAL(Magnetization(3,1:n)), &
-                GetReal( Material,'Magnetization 3 im', Found ), KIND=dp )
+         CALL GetComplexVector( BodyForce,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
        END IF
      END IF
 

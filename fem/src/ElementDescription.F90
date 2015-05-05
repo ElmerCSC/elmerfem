@@ -375,11 +375,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !     Local variables
 !------------------------------------------------------------------------------
-#ifdef ALLOC_CHAR
       CHARACTER(LEN=:), ALLOCATABLE :: str
-#else
-      CHARACTER(LEN=MAX_STRING_LEN) :: str
-#endif
       CHARACTER(LEN=MAX_STRING_LEN) :: tstr,elmer_home
 
       INTEGER :: k, n
@@ -458,12 +454,10 @@ CONTAINS
 
       OPEN( 1,FILE=TRIM(tstr), STATUS='OLD' )
 
-#ifdef ALLOC_CHAR
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
-#endif
       DO WHILE( ReadAndTrim(1,str) )
 
-        IF ( str(1:7) == 'element' ) THEN
+        IF ( SEQL(str, 'element') ) THEN
 
           BasisTerms = 0
 
@@ -474,37 +468,37 @@ CONTAINS
           gotit = .FALSE.
           DO WHILE( ReadAndTrim(1,str) )
 
-            IF ( str(1:9) == 'dimension' ) THEN
-              READ( str(10:MAX_STRING_LEN), * ) element % DIMENSION
+            IF ( SEQL(str, 'dimension') ) THEN
+              READ( str(10:), * ) element % DIMENSION
 
-            ELSE IF ( str(1:4) == 'code' ) THEN
-              READ( str(5:MAX_STRING_LEN), * ) element % ElementCode
+            ELSE IF ( SEQL(str, 'code') ) THEN
+              READ( str(5:), * ) element % ElementCode
 
-            ELSE IF ( str(1:5) == 'nodes' ) THEN
-              READ( str(6:MAX_STRING_LEN), * ) element % NumberOfNodes
+            ELSE IF ( SEQL(str, 'nodes') ) THEN
+              READ( str(6:), * ) element % NumberOfNodes
 
-            ELSE IF ( str(1:6) == 'node u' ) THEN
+            ELSE IF ( SEQL(str, 'node u') ) THEN
               ALLOCATE( element % NodeU(element % NumberOfNodes) )
-              READ( str(7:MAX_STRING_LEN), * ) (element % NodeU(k),k=1,element % NumberOfNodes)
+              READ( str(7:), * ) (element % NodeU(k),k=1,element % NumberOfNodes)
 
-            ELSE IF ( str(1:6) == 'node v' ) THEN
+            ELSE IF ( SEQL(str, 'node v') ) THEN
               ALLOCATE( element % NodeV(element % NumberOfNodes) )
-              READ( str(7:MAX_STRING_LEN), * ) (element % NodeV(k),k=1,element % NumberOfNodes)
+              READ( str(7:), * ) (element % NodeV(k),k=1,element % NumberOfNodes)
 
-            ELSE IF ( str(1:6) == 'node w' ) THEN
+            ELSE IF ( SEQL(str, 'node w') ) THEN
               ALLOCATE( element % NodeW(element % NumberOfNodes ) )
-              READ( str(7:MAX_STRING_LEN), * ) (element % NodeW(k),k=1,element % NumberOfNodes)
+              READ( str(7:), * ) (element % NodeW(k),k=1,element % NumberOfNodes)
 
-            ELSE IF ( str(1:5) == 'basis' ) THEN
-              READ( str(6:MAX_STRING_LEN), * ) (BasisTerms(k),k=1,element % NumberOfNodes)
+            ELSE IF ( SEQL(str, 'basis') ) THEN
+              READ( str(6:), * ) (BasisTerms(k),k=1,element % NumberOfNodes)
 
-            ELSE IF ( str(1:13) == 'stabilization' ) THEN
-              READ( str(14:MAX_STRING_LEN), * ) element % StabilizationMK
+            ELSE IF ( SEQL(str, 'stabilization') ) THEN
+              READ( str(14:), * ) element % StabilizationMK
 
-            ELSE IF ( str(1:12) == 'gauss points' ) THEN
+            ELSE IF ( SEQL(str, 'gauss points') ) THEN
 
               Element % GaussPoints2 = 0
-              READ( str(13:MAX_STRING_LEN), *,END=10 ) element % GaussPoints,&
+              READ( str(13:), *,END=10 ) element % GaussPoints,&
                   element % GaussPoints2, element % GaussPoints0 
 
 10            CONTINUE
@@ -515,7 +509,7 @@ CONTAINS
               IF ( Element % GaussPoints0 <= 0 ) &
                    Element % GaussPoints0 = Element % GaussPoints
              
-            ELSE IF ( str(1:3) == 'end' ) THEN
+            ELSE IF ( str == 'end element' ) THEN
               gotit = .TRUE.
               EXIT
             END IF

@@ -187,7 +187,7 @@
            IF ( Model % BCs(i) % Tag == k ) THEN
              RadiationFlag = ListGetString( Model % BCs(i) % Values, &
                             'Radiation', GotIt )
-             IF ( RadiationFlag(1:12) == 'diffuse gray' ) THEN
+             IF ( RadiationFlag == 'diffuse gray' ) THEN
                RadiationSurfaces = RadiationSurfaces + 1
                ElementNumbers(RadiationSurfaces) = t
                Model % Elements(RadiationSurfaces) = Model % Elements(t)
@@ -346,7 +346,7 @@
      END DO
 
      ALLOCATE( Solver )
-     NULLIFY( Solver % Values )
+     Solver % Values => ListAllocate()
 
      CALL ListAddString( Solver % Values, &
                   'Linear System Iterative Method', 'CGS' )

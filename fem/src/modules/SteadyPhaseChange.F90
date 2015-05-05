@@ -119,7 +119,7 @@ SUBROUTINE SteadyPhaseChange( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Get variables needed for solution
 !------------------------------------------------------------------------------
-  Params => Solver % Values
+  Params => GetSolverParams()
 
   PSolver => Solver
   NULLIFY(SurfSol)

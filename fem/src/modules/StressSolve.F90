@@ -1348,7 +1348,7 @@ CONTAINS
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      CHARACTER(LEN=MAX_NAME_LEN) :: eqname
 
-     SAVE Nodes, StSolver, ForceG, Permutation, SForceG, Eqname
+     SAVE Nodes, StSolver, ForceG, Permutation, SForceG, Eqname, UseMask
 
      ! These variables are needed for Principal stress calculation
      ! they are quite small and allocated even if principal stress calculation
@@ -1822,7 +1822,7 @@ CONTAINS
          IF( .NOT. PossibleFluxElement(Element) ) CYCLE
 
          BC => GetBC()
-         IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
 !------------------------------------------------------------------------------
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
          
@@ -1978,7 +1978,7 @@ CONTAINS
        n = GetElementNOFNodes()
        
        BC => GetBC()
-       IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+       IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
        
        IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
 
@@ -2085,7 +2085,7 @@ CONTAINS
          IF( .NOT. PossibleFluxElement(Element) ) CYCLE
          
          BC => GetBC()
-         IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
          
          n = GetElementNOFNodes()
@@ -2124,7 +2124,7 @@ CONTAINS
          IF( .NOT. PossibleFluxElement(Element) ) CYCLE
          
          BC => GetBC()
-         IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
          
          n = GetElementNOFNodes()
@@ -2537,7 +2537,7 @@ CONTAINS
      ResidualNorm  = 0.0d0
 
      BC => GetBC()
-     IF ( .NOT. ASSOCIATED( BC ) ) RETURN
+     IF ( .NOT.ASSOCIATED( BC ) ) RETURN
 
      ! Logical parameters:
      ! -------------------

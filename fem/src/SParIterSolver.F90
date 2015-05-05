@@ -1539,22 +1539,22 @@ INTEGER::inside
 
       IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )
 
-      IF ( IterativeMethod(1:8) == 'bicgstab' ) THEN
+      IF ( IterativeMethod == 'bicgstab' ) THEN
         CALL Info("SParIterSolver", "Hypre: BiCGStab",Level=3)
         hypre_sol = 0;
-      ELSE IF ( IterativeMethod(1:9) == 'boomeramg' )THEN
+      ELSE IF ( IterativeMethod == 'boomeramg' )THEN
         CALL Info("SParIterSolver", "Hypre: BoomerAMG",Level=3)
         hypre_sol = 1;
-      ELSE IF ( IterativeMethod(1:2) == 'cg' ) THEN
+      ELSE IF ( IterativeMethod == 'cg' ) THEN
         hypre_sol = 2;
         CALL Info("SParIterSolver", "Hypre: CG",Level=3)
-      ELSE IF ( IterativeMethod(1:5) == 'gmres' ) THEN
+      ELSE IF ( IterativeMethod == 'gmres' ) THEN
         hypre_sol = 3;
         CALL Info("SParIterSolver", "Hypre: GMRes",Level=3)
-      ELSE IF ( IterativeMethod(1:9) == 'flexgmres' ) THEN
+      ELSE IF ( IterativeMethod == 'flexgmres' ) THEN
         hypre_sol = 4;
         CALL Info("SParIterSolver", "Hypre: FlexGMRes",Level=3)
-      ELSE IF ( IterativeMethod(1:6) == 'lgmres' ) THEN
+      ELSE IF ( IterativeMethod == 'lgmres' ) THEN
         hypre_sol = 5;
         CALL Info("SParIterSolver", "Hypre: LGMRes",Level=3)
       ELSE
@@ -1562,20 +1562,20 @@ INTEGER::inside
       END IF
 
       IF ( hypre_sol /= 1) THEN
-         IF ( Prec(1:3)=='ilu' .AND. Prec(4:4)/='t') THEN
+         IF ( SEQL(Prec,'ilu') ) THEN
            READ( Prec(4:), * ) ILUn
            WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
            CALL Info("SParIterSolver", Message,Level=3)
-         ELSE IF( Prec(1:9) == 'parasails' ) THEN
+         ELSE IF( Prec == 'parasails' ) THEN
            CALL Info("SParIterSolver", "Preconditioner: ParaSails",Level=3)
            hypre_pre = 1
-         ELSE IF( Prec(1:9) == 'boomeramg' ) THEN
+         ELSE IF( Prec == 'boomeramg' ) THEN
            CALL Info("SParIterSolver", "Preconditioner: boomerAMG",Level=3)
            hypre_pre = 2
-         ELSE IF( Prec(1:3) == 'ams' ) THEN
+         ELSE IF( Prec == 'ams' ) THEN
            CALL Info("SParIterSolver", "Preconditioner: AMS",Level=3)
            hypre_pre = 3
-         ELSE IF( Prec(1:4) == 'none' ) THEN
+         ELSE IF( Prec == 'none' ) THEN
            hypre_pre = 9
          END IF
       END IF

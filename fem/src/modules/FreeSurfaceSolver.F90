@@ -470,6 +470,8 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
         CALL Fatal(SolverName,'Memory allocation error 1, Aborting.')
      END IF
 
+     ElemFreeSurf = 0._dp
+
      IF(NeedOldValues) THEN
         ALLOCATE(OldFreeSurf(SIZE(FreeSurf)), STAT=istat)
 

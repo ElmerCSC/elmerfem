@@ -122,6 +122,7 @@ END INTERFACE
   INCLUDE 'dmumps_struc.h'
 #endif
 
+
   TYPE BasicMatrix_t
     INTEGER :: NumberOfRows
     INTEGER, ALLOCATABLE :: Rows(:), Cols(:), Diag(:)
@@ -349,12 +350,9 @@ END INTERFACE
    END TYPE ElementType_t
 
 !------------------------------------------------------------------------------
-
-   TYPE ValueList_t
-     TYPE(ValueList_t), POINTER :: Next
-
-     INTEGER :: Model
+   TYPE ValueListEntry_t
      INTEGER :: TYPE
+     TYPE(ValueListEntry_t), POINTER :: Next => Null()
 
      REAL(KIND=dp), POINTER :: TValues(:)
      REAL(KIND=dp), POINTER :: FValues(:,:,:), CubicCoeff(:)=>NULL()
@@ -368,19 +366,25 @@ END INTERFACE
      INTEGER(KIND=AddrInt) :: PROCEDURE
 #endif
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
      REAL(KIND=dp) :: Coeff = 1.0_dp
+     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
 
      INTEGER :: NameLen,DepNameLen
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
+   END TYPE ValueListEntry_t
+
+   TYPE ValueList_t
+     TYPE(ValueListEntry_t), POINTER :: Head => Null()
    END TYPE ValueList_t
+
 
    ! This is a tentative data type to speed up the retrieval of parameters
    ! at Gaussian points.
    !----------------------------------------------------------------------
    TYPE ValueHandle_t
      TYPE(Element_t), POINTER :: Element => NULL()
-     TYPE(ValueList_t), POINTER :: List => NULL(), ptr => NULL()
+     TYPE(ValueList_t), POINTER :: List => Null()
+     TYPE(ValueList_t), POINTER :: Ptr  => Null()
      TYPE(Nodes_t), POINTER :: Nodes
      INTEGER, POINTER :: Indexes
      INTEGER :: n 
@@ -399,7 +403,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
    TYPE MaterialArray_t
-     TYPE(ValueList_t), POINTER :: Values
+     TYPE(ValueList_t), POINTER :: Values => Null()
    END TYPE MaterialArray_t
 
 !------------------------------------------------------------------------------
@@ -408,50 +412,50 @@ END INTERFACE
      INTEGER :: TYPE,Tag
      TYPE(Matrix_t), POINTER :: PMatrix => NULL()
      LOGICAL :: PMatrixGalerkin = .FALSE.
-     TYPE(ValueList_t), POINTER :: Values
+     TYPE(ValueList_t), POINTER :: Values => Null()
    END TYPE BoundaryConditionArray_t
 
 !------------------------------------------------------------------------------
 
    TYPE InitialConditionArray_t
      INTEGER :: TYPE,Tag
-     TYPE(ValueList_t), POINTER :: Values
+     TYPE(ValueList_t), POINTER :: Values => Null()
    END TYPE InitialConditionArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE ComponentArray_t
-      TYPE(ValueList_t), POINTER :: Values
+      TYPE(ValueList_t), POINTER :: Values => Null()
     END TYPE ComponentArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE BodyForceArray_t
-      TYPE(ValueList_t), POINTER :: Values
+      TYPE(ValueList_t), POINTER :: Values => Null()
     END TYPE BodyForceArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE BoundaryArray_t
-      TYPE(ValueList_t), POINTER :: Values
+      TYPE(ValueList_t), POINTER :: Values => Null()
     END TYPE BoundaryArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE BodyArray_t
-      TYPE(ValueList_t), POINTER :: Values
+      TYPE(ValueList_t), POINTER :: Values => Null()
     END TYPE BodyArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE EquationArray_t
-      TYPE(ValueList_t), POINTER :: Values
+      TYPE(ValueList_t), POINTER :: Values => Null()
     END TYPE EquationArray_t
 
 !------------------------------------------------------------------------------
 
 !   TYPE SimulationInfo_t
-!     TYPE(ValueList_t), POINTER :: Values
+!     TYPE(ValueList_t) :: Values => Null()
 !   END TYPE SimulationInfo_t
 
 !------------------------------------------------------------------------------
@@ -681,7 +685,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
     TYPE Solver_t
-      TYPE(ValueList_t), POINTER :: Values => NULL()
+      TYPE(ValueList_t), POINTER :: Values => Null()
 
       INTEGER :: TimeOrder,DoneTime,Order,NOFEigenValues=0
       INTEGER(KIND=AddrInt) :: PROCEDURE, LinBeforeProc, LinAfterProc
@@ -727,7 +731,7 @@ END INTERFACE
 !
 !     Simulation input data, that concern the model as a whole
 !
-      TYPE(ValueList_t), POINTER :: Simulation => NULL()
+      TYPE(ValueList_t), POINTER :: Simulation => Null()
 !
 !     Variables
 !
@@ -736,7 +740,7 @@ END INTERFACE
 !     Some physical constants, that will be read from the database or set by
 !     other means: gravity direction/intensity and Stefan-Boltzmann constant)
 !
-      TYPE(ValueList_t), POINTER :: Constants => NULL()
+      TYPE(ValueList_t), POINTER :: Constants => Null()
 !
 !     Types  of  equations (flow,heat,...) and  some  parameters (for example
 !     laminar or turbulent flow or type of convection model for heat equation,
@@ -826,9 +830,7 @@ END INTERFACE
     TYPE(Matrix_t), POINTER :: GlobalMatrix
 
 
-
 !------------------------------------------------------------------------------
 END MODULE Types
 !------------------------------------------------------------------------------
-
 !> \}

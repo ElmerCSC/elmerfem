@@ -51,7 +51,7 @@ SUBROUTINE OutletCompute_Init( Model,Solver,dt,TransientSimulation )
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Model_t) :: Model
-  TYPE(Solver_t):: Solver
+  TYPE(Solver_t) :: Solver
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
@@ -59,7 +59,7 @@ SUBROUTINE OutletCompute_Init( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh, PMesh
 
 
-  Params => Solver % Values
+  Params => GetSolverParams()
   IF( GetLogical( Params,'1D Mesh Create') ) THEN
     CALL Info('OutletCompute_Init','Creating internal 1D mesh')
 
