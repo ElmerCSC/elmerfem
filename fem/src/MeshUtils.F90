@@ -6769,6 +6769,7 @@ END SUBROUTINE GetMaxDefs
       LOGICAL :: SaveElem, DebugElem
       CHARACTER(LEN=20) :: FileName
 
+      REAL(KIND=dp) :: Area
       REAL(KIND=dp), ALLOCATABLE :: CoeffBasis(:), MASS(:,:)
 
       CALL Info('LevelProjector','Creating weak constraints using a generic integrator',Level=8)      
@@ -7171,6 +7172,7 @@ END SUBROUTINE GetMaxDefs
             IF(BiOrthogonalBasis) THEN
               MASS  = 0
               CoeffBasis = 0
+              area = 0._dp
               DO nip=1, IP % n 
                 stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
                     IP % v(nip),IP % w(nip),detJ,Basis)
@@ -7185,7 +7187,7 @@ END SUBROUTINE GetMaxDefs
               
                 ! Integration weight for current integration point
                 Wtemp = DetJ * IP % s(nip)
-                sumarea = sumarea + Wtemp
+                area = area + wtemp
               
                 ! Integration point at the slave element
                 CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
@@ -7198,6 +7200,8 @@ END SUBROUTINE GetMaxDefs
                   CoeffBasis(i) = CoeffBasis(i) + wTemp * Basis(i)
                 END DO
               END DO
+
+              IF(Area<1.d-12) GOTO 100
 
               CALL InvertMatrix( MASS, n )
 
@@ -7296,10 +7300,10 @@ END SUBROUTINE GetMaxDefs
                     IF(BiOrthogonalBasis) THEN
                       IF(DualMaster.OR.DualLCoeff) THEN
                         CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                              InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val_dual ) 
+                              InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val_dual ) 
                       ELSE
                         CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                              InvPerm1(Indexes(i)), -NodeScale * NodeCoeff * Basis(i) * val ) 
+                              InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val ) 
                       END IF
                     END IF
                   END DO
