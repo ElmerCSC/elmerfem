@@ -2706,7 +2706,6 @@ END SUBROUTINE GetMaxDefs
    !-------------------------------------------------------------------
    CALL NonNodalElements()
 
-
    ! Create parallel info for the non-nodal elements
    !------------------------------------------------------------------
    CALL ParallelNonNodalElements()
@@ -3297,7 +3296,10 @@ END SUBROUTINE GetMaxDefs
 
      IF ( Mesh % MaxElementDOFs <= 0 ) Mesh % MaxElementDOFs = Mesh % MaxElementNodes 
 
-     IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs)
+     IF ( NeedEdges ) THEN
+       CALL Info('NonNodalElements','Requested elements require creation of edges',Level=8)
+       CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs,inDOFs)
+     END IF
 
      CALL SetMeshMaxDOFs(Mesh)
 
@@ -7270,8 +7272,8 @@ END SUBROUTINE GetMaxDefs
                   IF( nrow == 0 ) CYCLE
 
                   Projector % InvPerm(nrow) = InvPerm1(jj)
-                  val = Basis(j) * Wtemp
-                  IF(BiorthogonalBasis) val_dual = CoeffBasis(j) * Wtemp
+                  val = sgn0 * Basis(j) * Wtemp
+                  IF(BiorthogonalBasis) val_dual = sgn0 * CoeffBasis(j) * Wtemp
 
                   IF( DebugElem ) PRINT *,'Vals:',val
 
@@ -7332,7 +7334,7 @@ END SUBROUTINE GetMaxDefs
                       ii = 2 * ( Element % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
                     END IF
 
-                    val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
+                    val = Wtemp * sgn0 * SUM( WBasis(j,:) * Wbasis(i,:) ) 
                     IF( ABS( val ) > 1.0e-12 ) THEN
                       CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                           ii, EdgeCoeff * val ) 
@@ -7343,7 +7345,7 @@ END SUBROUTINE GetMaxDefs
                     ELSE
                       ii = 2 * ( ElementM % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
                     END IF                    
-                    val = -Wtemp * SUM( WBasis(j,:) * WBasisM(i,:) ) 
+                    val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
                     IF( ABS( val ) > 1.0e-12 ) THEN
                       CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                           ii, EdgeScale * EdgeCoeff * val  ) 
@@ -7445,7 +7447,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER, TARGET :: IndexesT(3)
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,inds(10),nM,iM,i2,i2M
-      INTEGER :: ElemHits, TotHits, MaxErrInd, MinErrInd, TimeStep
+      INTEGER :: ElemHits, TotHits, MaxErrInd, MinErrInd, TimeStep, AntiPeriodicHits
       TYPE(Element_t), POINTER :: Element, ElementM
       TYPE(Element_t) :: ElementT
       TYPE(GaussIntegrationPoints_t) :: IP
@@ -7502,6 +7504,7 @@ END SUBROUTINE GetMaxDefs
       ElementT % TYPE => GetElementType( 202, .FALSE. )
       ElementT % NodeIndexes => IndexesT
       TotHits = 0
+      AntiPeriodicHits = 0
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
 
@@ -7517,6 +7520,9 @@ END SUBROUTINE GetMaxDefs
         n = Element % TYPE % NumberOfNodes        
         Nodes % x(1:n) = BMesh1 % Nodes % x(Indexes(1:n))
 
+        ! There is a discontinuity of angle at 180 degs
+        ! If we are working on left-hand-side then add 360 degs to the negative angles
+        ! to remove this discontinuity.
         IF( FullCircle ) THEN
           LeftCircle = ( ALL( ABS( Nodes % x(1:n) ) > 90.0_dp ) )
           IF( LeftCircle ) THEN
@@ -7589,7 +7595,7 @@ END SUBROUTINE GetMaxDefs
 
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
             IF( xmaxm - xminm > 180.0 ) CYCLE
-          END IF
+          END IF          
 
 200       IF( xminm >= xmax ) GOTO 100
           IF( xmaxm <= xmin ) GOTO 100
@@ -7598,10 +7604,13 @@ END SUBROUTINE GetMaxDefs
           NodesT % x(2) = MIN( xmax, xmaxm ) 
 
           IF(ABS(NodesT % x(1)-NodesT % x(2))<1.d-12) GOTO 100
-
+         
           sgn0 = 1
           IF( AntiRepeating ) THEN
-            IF ( MODULO(Nrange,2) /= 0 ) sgn0 = -1
+            IF ( MODULO(Nrange,2) /= 0 ) THEN
+              sgn0 = -1
+              AntiPeriodicHits = AntiPeriodicHits + 1
+            END IF
           END IF
           
           ElemHits = ElemHits + 1
@@ -7700,9 +7709,9 @@ END SUBROUTINE GetMaxDefs
               IF( nrow == 0 ) CYCLE
               
               Projector % InvPerm(nrow) = InvPerm1(jj)
-              val = Basis(j) * Wtemp
+              val = sgn0 * Basis(j) * Wtemp
               IF(BiorthogonalBasis) THEN
-                val_dual = CoeffBasis(j) * Wtemp
+                val_dual = sgn0 * CoeffBasis(j) * Wtemp
               END IF
 
               DO i=1,n
@@ -7740,7 +7749,7 @@ END SUBROUTINE GetMaxDefs
                 IF( nrow == 0 ) CYCLE
                 
                 DualProjector % InvPerm(nrow) = InvPerm2(jj)
-                val = BasisM(j) * Wtemp
+                val = sgn0 * BasisM(j) * Wtemp
 
                 DO i=1,nM
                   CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
@@ -7798,21 +7807,25 @@ END SUBROUTINE GetMaxDefs
 
       CALL Info('LevelProjector','Number of integration pairs: '&
           //TRIM(I2S(TotHits)),Level=10)
+      IF( AntiPeriodicHits > 0 ) THEN
+        CALL Info('LevelProjector','Number of antiperiodic pairs: '&
+          //TRIM(I2S(AntiPeriodicHits)),Level=10)
+      END IF
 
-      WRITE( Message,'(A,ES12.5)') 'Total reference area:',TotRefArea
-      CALL Info('LevelProjector',Message,Level=8)
-      WRITE( Message,'(A,ES12.5)') 'Total integrated area:',TotSumArea
+      WRITE( Message,'(A,ES12.5)') 'Total reference length:',TotRefArea / ArcCoeff
+      CALL Info('LevelProjector',Message,Level=8) 
+      WRITE( Message,'(A,ES12.5)') 'Total integrated length:',TotSumArea / ArcCoeff
       CALL Info('LevelProjector',Message,Level=8)
 
       Err = TotSumArea / TotRefArea
-      WRITE( Message,'(A,ES12.3)') 'Average ratio in area integration:',Err 
+      WRITE( Message,'(A,ES12.3)') 'Average ratio in length integration:',Err 
       CALL Info('LevelProjector',Message,Level=8)
 
       WRITE( Message,'(A,I0,A,ES12.4)') &
-          'Maximum relative discrepancy in areas (element: ',MaxErrInd,'):',MaxErr-1.0_dp 
+          'Maximum relative discrepancy in length (element: ',MaxErrInd,'):',MaxErr-1.0_dp 
       CALL Info('LevelProjector',Message,Level=8)
       WRITE( Message,'(A,I0,A,ES12.4)') &
-          'Minimum relative discrepancy in areas (element: ',MinErrInd,'):',MinErr-1.0_dp 
+          'Minimum relative discrepancy in length (element: ',MinErrInd,'):',MinErr-1.0_dp 
       CALL Info('LevelProjector',Message,Level=8)
 
 
@@ -9357,7 +9370,6 @@ END SUBROUTINE GetMaxDefs
       NodalJump = ListCheckPrefix( BC,'Mortar BC Resistivity')
     END IF
 
-
     ! There are tailored projectors for simplified interfaces
     !-------------------------------------------------------------
 
@@ -9381,13 +9393,17 @@ END SUBROUTINE GetMaxDefs
         END IF
       END IF
 
+
       IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',GotIt ) ) THEN
         DoEdges = .FALSE.
       ELSE
         IF( ListGetLogical( BC,'Projector Skip Edges',GotIt) ) THEN
           DoEdges = .FALSE.
         ELSE
-          DoEdges = ( Mesh % NumberOfEdges > 0 )
+          ! We are conservative here since there may be edges in 2D which 
+          ! still cannot be used for creating the projector
+          DoEdges = ( Mesh % NumberOfEdges > 0 .AND. &
+              Mesh % MeshDim == 3 .AND. Dim == 3 )
         END IF
       END IF
     END IF
@@ -9448,6 +9464,10 @@ END SUBROUTINE GetMaxDefs
           FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &          
           NodeScale, EdgeScale, BC )
     ELSE 
+      IF( FullCircle ) THEN
+        CALL Fatal('PeriodicProjector','A full circle cannot be dealt with the generic projector!')
+      END IF
+
       UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
       IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
       IF( IntGalerkin ) THEN
@@ -10370,13 +10390,24 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
      SELECT CASE( CoordinateSystemDimension() )
-        CASE(2)
-          IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) CALL FindMeshEdges2D( Mesh )
-        CASE(3)
-          IF ( .NOT.ASSOCIATED( Mesh % Faces) ) CALL FindMeshFaces3D( Mesh )
-          IF(FindEdges3D) THEN
-            IF ( .NOT.ASSOCIATED( Mesh % Edges) ) CALL FindMeshEdges3D( Mesh )
-          END IF
+
+     CASE(2)
+       IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
+         CALL Info('FindMeshEdges','Determining edges in 2D mesh',Level=8)
+         CALL FindMeshEdges2D( Mesh )
+       END IF
+
+     CASE(3)
+       IF ( .NOT.ASSOCIATED( Mesh % Faces) ) THEN
+         CALL Info('FindMeshEdges','Determining faces in 3D mesh',Level=8)
+         CALL FindMeshFaces3D( Mesh )
+       END IF
+       IF(FindEdges3D) THEN
+         IF ( .NOT.ASSOCIATED( Mesh % Edges) ) THEN
+           CALL Info('FindMeshEdges','Determining edges in 3D mesh',Level=8)
+           CALL FindMeshEdges3D( Mesh )
+         END IF
+       END IF
      END SELECT
 
      CALL AssignConstraints()

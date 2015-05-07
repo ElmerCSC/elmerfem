@@ -10969,14 +10969,22 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
      IF( .NOT. ( ApplyMortar .OR. ApplyContact) ) RETURN
      
+     i = ListGetInteger( Solver % Values,'Mortar BC Master Solver',Found ) 
+     IF( Found ) THEN
+       Solver % MortarBCs => CurrentModel % Solvers(i) % MortarBCs
+       IF( .NOT. ASSOCIATED( Solver % MortarBCs ) ) THEN
+         CALL Fatal('GenerateProjectors','Could not reuse projectors from solver: '//TRIM(I2S(i)))
+       END IF
+       CALL Info('GenerateProjectors','Reusing projectors from solver: '//TRIM(I2S(i)),Level=8)
+       RETURN
+     END IF
+
      CALL Info('GenerateProjectors','Generating mortar projectors',Level=8)
 
      Timing = ListCheckPrefix(Solver % Values,'Projector Timing')
      IF( Timing ) THEN
        t0 = CPUTime(); rt0 = RealTime()      
      END IF
-
-
 
      IsNonlinear = .FALSE.
      IF( PRESENT( Nonlinear ) ) IsNonlinear = Nonlinear
