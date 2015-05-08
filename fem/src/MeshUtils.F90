@@ -7276,8 +7276,8 @@ END SUBROUTINE GetMaxDefs
                   IF( nrow == 0 ) CYCLE
 
                   Projector % InvPerm(nrow) = InvPerm1(jj)
-                  val = sgn0 * Basis(j) * Wtemp
-                  IF(BiorthogonalBasis) val_dual = sgn0 * CoeffBasis(j) * Wtemp
+                  val = Basis(j) * Wtemp
+                  IF(BiorthogonalBasis) val_dual = CoeffBasis(j) * Wtemp
 
                   IF( DebugElem ) PRINT *,'Vals:',val
 
@@ -7295,15 +7295,15 @@ END SUBROUTINE GetMaxDefs
                     IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
 
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                        InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )                   
+                        InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )                   
 
                     IF(BiOrthogonalBasis) THEN
                       IF(DualMaster.OR.DualLCoeff) THEN
                         CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                              InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val_dual ) 
+                              InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val_dual ) 
                       ELSE
                         CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                              InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val ) 
+                              InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val ) 
                       END IF
                     END IF
                   END DO
@@ -7338,7 +7338,7 @@ END SUBROUTINE GetMaxDefs
                       ii = 2 * ( Element % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
                     END IF
 
-                    val = Wtemp * sgn0 * SUM( WBasis(j,:) * Wbasis(i,:) ) 
+                    val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
                     IF( ABS( val ) > 1.0e-12 ) THEN
                       CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                           ii, EdgeCoeff * val ) 
@@ -7713,9 +7713,9 @@ END SUBROUTINE GetMaxDefs
               IF( nrow == 0 ) CYCLE
               
               Projector % InvPerm(nrow) = InvPerm1(jj)
-              val = sgn0 * Basis(j) * Wtemp
+              val = Basis(j) * Wtemp
               IF(BiorthogonalBasis) THEN
-                val_dual = sgn0 * CoeffBasis(j) * Wtemp
+                val_dual = CoeffBasis(j) * Wtemp
               END IF
 
               DO i=1,n
@@ -7730,15 +7730,15 @@ END SUBROUTINE GetMaxDefs
               
               DO i=1,nM
                 CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                    InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )
+                    InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )
 
                 IF(BiorthogonalBasis) THEN
                   IF(DualMaster .OR. DualLCoeff) THEN
                     CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                      InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val_dual )
+                      InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val_dual )
                   ELSE
                     CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                      InvPerm2(IndexesM(i)), -NodeScale * NodeCoeff * BasisM(i) * val )
+                      InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )
                   END IF
                 END IF
               END DO
@@ -7753,11 +7753,11 @@ END SUBROUTINE GetMaxDefs
                 IF( nrow == 0 ) CYCLE
                 
                 DualProjector % InvPerm(nrow) = InvPerm2(jj)
-                val = sgn0 * BasisM(j) * Wtemp
+                val = BasisM(j) * Wtemp
 
                 DO i=1,nM
                   CALL List_AddToMatrixElement(DualProjector % ListMatrix, nrow, &
-                      InvPerm2(IndexesM(i)), NodeCoeff * BasisM(i) * val ) 
+                      InvPerm2(IndexesM(i)), sgn0 * NodeCoeff * BasisM(i) * val ) 
                 END DO
 
                 DO i=1,n
