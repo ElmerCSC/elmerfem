@@ -4839,7 +4839,8 @@ END SUBROUTINE GetMaxDefs
         'Projector Node Multiplier',Found )
     IF( .NOT. Found ) NodeCoeff = 1.0_dp
 
-    Rotational = ListGetLogical( BC,'Rotational Projector',Found ) 
+    Rotational = ListGetLogical( BC,'Rotational Projector',Found ) .OR. &
+        ListGetLogical( BC,'Anti Rotational Projector',Found )
     Cylindrical = ListGetLogical( BC,'Cylindrical Projector',Found ) 
     
     Parallel = ( ParEnv % PEs > 1 )
@@ -9385,6 +9386,14 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
+    IF(.NOT. GotIt ) THEN
+      IF( Rotational .OR. Cylindrical .OR. Radial .OR. Sliding ) THEN
+        CALL Info('PeriodicProjector','Enforcing > Level Projector = True < with dimensional reduction',&
+            Level = 7 )
+        LevelProj = .TRUE. 
+      END IF
+    END IF
+
 
     IF( LevelProj ) THEN
       IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',GotIt ) ) THEN
