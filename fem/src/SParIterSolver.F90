@@ -2163,6 +2163,7 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
 !   END IF
   END IF
 
+#if 0
   DO i = 1, SplittedMatrix % InsideMatrix % NumberOfRows
     j = SplittedMatrix % InsideMatrix % Diag(i)
     IF ( SplittedMatrix % InsideMatrix % Values(j)==0 ) THEN
@@ -2176,6 +2177,8 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
       END IF
     END IF
   END DO
+#endif
+
 
  !----------------------------------------------------------------------
  !
