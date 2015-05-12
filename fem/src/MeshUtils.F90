@@ -1095,17 +1095,20 @@ END SUBROUTINE GetMaxDefs
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
        DecidedElem(:)
    LOGICAL :: Found, DisCont, GreedyBulk, GreedyBC, Debug, DoubleBC, UseTargetBodies, &
-       LeftHit, RightHit, Moving, Moving2, Set, Parallel
+       UseConsistantBody, LeftHit, RightHit, Moving, Moving2, Set, Parallel
    INTEGER :: i,j,k,n,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        NoBulkElems, NoBoundElems, NoParentElems, NoMissingElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
        NoUndecided, PrevUndecided, NoEdges, Iter, ElemFamily, DecideLimit, &
-       DecidedByFamily(8), UndecidedByFamily(8), ActiveBCs
+       DecidedByFamily(8), UndecidedByFamily(8), ActiveBCs, &
+       CandA, CandB, RightBody, LeftBody
    INTEGER, TARGET :: TargetBody(1)
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:),TargetBodies(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
        ParentElem, OtherElem
+   CHARACTER(MAX_NAME_LEN) :: DiscontFlag
+
 
    LOGICAL :: DoneThisAlready = .FALSE.
 
@@ -1296,16 +1299,74 @@ END SUBROUTINE GetMaxDefs
    MovingNode = .FALSE.
    StayingNode = .FALSE.
 
-   UseTargetBodies = ListCheckPresentAnyBC( Model,&
-       'Discontinuous Target Bodies')
+   ! For historical reasons there is both single 'body' and multiple 'bodies'
+   ! that define on which side of the discontinuity the new nodes will be. 
+   DiscontFlag = 'Discontinuous Target Bodies'
+   UseTargetBodies = ListCheckPresentAnyBC( Model, DiscontFlag ) 
+   IF(.NOT. UseTargetBodies ) THEN
+     DiscontFlag = 'Discontinuous Target Body'
+     UseTargetBodies = ListCheckPresentAnyBC( Model, DiscontFlag ) 
+   END IF
 
+   ! If either parent is consistently one of the bodies then we can create a discontinuous 
+   ! boundary. Note that this currently only works in serial!
+   UseConsistantBody = .FALSE.
+   IF(.NOT. UseTargetBodies ) THEN
+     CALL Info('CreateDiscontMesh','Trying to find a dominating parent body',Level=12)
 
+     CandA = -1
+     CandB = -1
+     DO t=1, NoBoundElems
+       IF(.NOT. DisContElem(t) ) CYCLE
+       Element => Mesh % Elements(NoBulkElems + t)
+
+       LeftBody = Element % BoundaryInfo % Left % BodyId
+       RightBody = Element % BoundaryInfo % Right % BodyId
+
+       IF( CandA == -1 ) THEN
+         CandA = LeftBody 
+       ELSE IF( CandA == 0 ) THEN
+         CYCLE
+       ELSE IF( CandA /= LeftBody .AND. CandA /= RightBody ) THEN
+         CandA = 0
+       END IF
+
+       IF( CandB == -1 ) THEN
+         CandB = RightBody
+       ELSE IF( CandB == 0 ) THEN
+         CYCLE
+       ELSE IF( CandB /= LeftBody .AND. CandB /= RightBody ) THEN
+         CandB = 0
+       END IF
+     END DO
+
+     ! Choose the bigger one to honor the old convention
+     IF( CandA > 0 .AND. CandB > 0 ) THEN
+       TargetBody(1) = MAX( CandA, CandB ) 
+     ELSE IF( CandA > 0 ) THEN
+       TargetBody(1) = CandA
+     ELSE IF( CandB > 0 ) THEN
+       TargetBody(1) = CandB
+     ELSE
+       TargetBody(1) = 0
+     END IF
+
+     IF( TargetBody(1) > 0 ) THEN
+       CALL Info('CreateDiscontMesh',&
+           'There seems to be a consistant discontinuous body: '&
+           //TRIM(I2S(TargetBody(1))),Level=8)
+       UseConsistantBody = .TRUE.
+       TargetBodies => TargetBody
+     ELSE
+       CALL Warn('CreateDiscontMesh',&
+           'No simple rules available for determining discontinuous body')
+     END IF
+   END IF
 
    ! Go through all the boundary elements and now really manipulate the boundary 
    ! elements on the other side. The user may choose which of the parent elements
    ! gets the additional node, or otheriwse the bigger parent index is chosen for
    ! consistency. 
-   TargetBody(1) = 0
    NoMovingElems = 0
    NoStayingElems = 0
 
@@ -1316,30 +1377,16 @@ END SUBROUTINE GetMaxDefs
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
 
-     ! For historical reasons there is both single 'body' and multiple 'bodies'
-     ! that define on which side of the discontinuity the new nodes will be. 
      IF( UseTargetBodies ) THEN
        DO bc = 1,Model % NumberOfBCs
          IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
            TargetBodies => ListGetIntegerArray( Model % BCs(bc) % Values,&
-               'Discontinuous Target Bodies',Found )
+               DiscontFlag, Found )
            EXIT
          END IF
        END DO
        IF(.NOT. Found ) THEN
-         CALL Fatal('CreateDiscontMesh','Use > Discontinuous Target Bodies < in all, if any bc.')
-       END IF
-     ELSE
-       TargetBody(1) = 0
-       DO bc = 1,Model % NumberOfBCs
-         IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-           TargetBody(1) = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous Target Body',Found )
-           EXIT
-         END IF
-       END DO
-       IF( TargetBody(1) > 0 ) THEN
-         UseTargetBodies = .TRUE.
-         TargetBodies => TargetBody
+         CALL Fatal('CreateDiscontMesh','Use > '//TRIM(DiscontFlag)//' < in all, if any bc.')
        END IF
      END IF
 
@@ -1355,7 +1402,7 @@ END SUBROUTINE GetMaxDefs
        RightElem => Element % BoundaryInfo % Right
      END IF
 
-     IF( UseTargetBodies ) THEN
+     IF( UseTargetBodies .OR. UseConsistantBody ) THEN
 
        ! This has been modified so that only information from either side of the discontinuous
        ! node is needed to be able to handle with partitioned meshes. 
@@ -1385,8 +1432,9 @@ END SUBROUTINE GetMaxDefs
          CALL Fatal('CreateDiscontMesh','Neither parent ('//TRIM(I2S(LeftElem % BodyId))//','&
              //TRIM(I2S(RightElem % BodyId))//') is discontinuous target body!')
        END IF
+     ELSE
 
-     ELSE ! Just use a consistent rule, if no target body specified
+! Just use a consistent rule, if no target body specified
        IF( .NOT. ( ASSOCIATED( LeftElem ) .AND. ASSOCIATED( RightElem ) ) ) THEN
          CALL Fatal('CreateDiscontMesh','This method of creating discont bc requires parents!')
        END IF
