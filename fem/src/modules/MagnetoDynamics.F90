@@ -599,7 +599,7 @@ CONTAINS
 
        CALL ListGetRealArray( Material, &
               'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
-
+       
        IF (Found) THEN
           IF ( SIZE(Cwrk,1) == 1 ) THEN
              DO i=1,3
@@ -617,6 +617,8 @@ CONTAINS
              END DO
           END IF
        END IF
+
+       IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
 
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
        IF (.NOT. LaminateStack) LaminateStackModel = ''
@@ -3020,7 +3022,9 @@ CONTAINS
                END DO
             END IF
          END IF
-
+        
+         IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
+        
          CALL ListGetRealArray( Material, &
                 'Electric Conductivity im', Cwrk_im, n, Element % NodeIndexes, Found )
 
@@ -3041,6 +3045,8 @@ CONTAINS
                END DO
             END IF
          END IF
+
+         IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
 
          LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
          IF (.NOT. LaminateStack) LaminateStackModel = ''
@@ -5420,7 +5426,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
         END IF
      END IF
-
+     
+     IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
+     
      CALL ListGetRealArray( Material, &
           'Electric Conductivity im', Cwrk_im, n, Element % NodeIndexes, Found )
 
@@ -5441,12 +5449,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
         END IF
      END IF
-
+        
+     IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp 
+       
      ! in case of a foil winding, transform the conductivity tensor:
      ! -------------------------------------------------------------
      BodyParams => GetBodyParams( Element )
      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('MagnetoDynamicsCalcFields', 'Body Parameters not found!')
 
+     dim = CoordinateSystemDimension()
+ 
      CoilType = GetString(BodyParams, 'Coil Type', Found)
      IF (.NOT. Found) THEN
        CoilType = ''
@@ -5475,7 +5487,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CASE ('foil winding')
          CoilBody = .TRUE.
          CALL GetLocalSolution(alpha,'Alpha')
-         CALL GetElementRotM(Element, RotM, n)
+         
+         IF (dim == 3) CALL GetElementRotM(Element, RotM, n)
 
          VvarId = GetInteger (BodyParams, 'Circuit Voltage Variable Id', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
@@ -5488,10 +5501,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
          VvarDofs = GetInteger (BodyParams, 'Circuit Voltage Variable dofs', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
-
-         DO k = 1,n
-           Tcoef(1:3,1:3,k) = MATMUL(MATMUL(RotM(1:3,1:3,k), Tcoef(1:3,1:3,k)), TRANSPOSE(RotM(1:3,1:3,k)))
-         END DO
+         
+         IF (dim == 3) THEN
+             DO k = 1,n
+               Tcoef(1:3,1:3,k) = MATMUL(MATMUL(RotM(1:3,1:3,k), Tcoef(1:3,1:3,k)), TRANSPOSE(RotM(1:3,1:3,k)))
+             END DO
+         END IF
        CASE DEFAULT
          CALL Fatal ('MagnetoDynamicsCalcFields', 'Non existent Coil Type Chosen!')
        END SELECT
@@ -5511,9 +5526,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ELSE
        CALL GetReluctivity(Material,R,n)
      END IF
-
-     dim = CoordinateSystemDimension()
-
 
      ! Calculate nodal fields:
      ! -----------------------
