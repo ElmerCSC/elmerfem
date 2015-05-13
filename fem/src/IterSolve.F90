@@ -241,31 +241,32 @@ CONTAINS
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
 
-    IF ( str(1:9) == 'bicgstab2' ) THEN
+    SELECT CASE(str)
+    CASE('bicgstab2')
       IterType = ITER_BiCGStab2
-    ELSE IF ( str(1:9) == 'bicgstabl' ) THEN
+    CASE('bicgstabl')
       IterType = ITER_BICGstabl
-    ELSE IF ( str(1:8) == 'bicgstab' ) THEN
+    CASE('bicgstab')
       IterType = ITER_BiCGStab
-    ELSE IF ( str(1:5) == 'tfqmr' )THEN
+    CASE('tfqmr')
       IterType = ITER_TFQMR
-    ELSE IF ( str(1:3) == 'cgs' ) THEN
+    CASE('cgs')
       IterType = ITER_CGS
-    ELSE IF ( str(1:2) == 'cg' ) THEN
+    CASE('cg')
       IterType = ITER_CG
-    ELSE IF ( str(1:5) == 'gmres' ) THEN
+    CASE('gmres')
       IterType = ITER_GMRES
-    ELSE IF ( str(1:3) == 'sgs' ) THEN
+    CASE('sgs')
       IterType = ITER_SGS
-    ELSE IF ( str(1:6) == 'jacobi' ) THEN
+    CASE('jacobi')
       IterType = ITER_jacobi
-    ELSE IF ( str(1:10) == 'richardson' ) THEN
+    CASE('richardson')
       IterType = ITER_richardson
-    ELSE IF ( str(1:3) == 'gcr' ) THEN
+    CASE('gcr')
       IterType = ITER_GCR
-    ELSE
+    CASE DEFAULT
       IterType = ITER_BiCGStab
-    END IF
+    END SELECT
     
 !------------------------------------------------------------------------------
 
@@ -409,22 +410,22 @@ CONTAINS
       A % Cholesky = ListGetLogical( Params, &
           'Linear System Symmetric ILU', Gotit )
       
-      IF ( str(1:4) == 'none' ) THEN
+      IF ( str == 'none' ) THEN
         PCondType = PRECOND_NONE
-      ELSE IF ( str(1:8) == 'diagonal' ) THEN
+      ELSE IF ( str == 'diagonal' ) THEN
         PCondType = PRECOND_DIAGONAL
-      ELSE IF ( str(1:4) == 'ilut' ) THEN
+      ELSE IF ( str == 'ilut' ) THEN
         ILUT_TOL = ListGetCReal( Params, &
             'Linear System ILUT Tolerance',GotIt )
         PCondType = PRECOND_ILUT
-      ELSE IF ( str(1:3) == 'ilu' ) THEN
+      ELSE IF ( SEQL(str, 'ilu') ) THEN
         ILUn = NINT(ListGetCReal( Params, &
             'Linear System ILU Order', gotit ))
         IF ( .NOT.gotit ) &
             ILUn = ICHAR(str(4:4)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         PCondType = PRECOND_ILUn
-      ELSE IF ( str(1:4) == 'bilu' ) THEN
+      ELSE IF ( SEQL(str, 'bilu') ) THEN
         ILUn = ICHAR(str(5:5)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         IF( Solver % Variable % Dofs == 1) THEN
@@ -433,9 +434,9 @@ CONTAINS
         ELSE
           PCondType = PRECOND_BILUn
         END IF
-      ELSE IF ( str(1:9) == 'multigrid' ) THEN
+      ELSE IF ( str == 'multigrid' ) THEN
         PCondType = PRECOND_MG
-      ELSE IF ( str(1:5) == 'vanka' ) THEN
+      ELSE IF ( str == 'vanka' ) THEN
         PCondType = PRECOND_VANKA
       ELSE
         PCondType = PRECOND_NONE

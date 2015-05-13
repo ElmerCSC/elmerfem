@@ -651,18 +651,28 @@ CONTAINS
     END IF
       
     ! Delete lost particles and move the remaining ones so that each 
-    ! empty slot is used.
+    ! empty slot is used. Perm is the reordering of the particles, 
+    ! not the reordering of field values as normally. 
     ! ---------------------------------------------------------------
     IF( PrevNoParticles > 0 ) THEN
       n = 0
       ALLOCATE( Perm( PrevNoParticles ) )
       Perm = 0
-      
+           
       DO No=1,PrevNoParticles
         IF ( Status(No) == PARTICLE_LOST ) CYCLE
-        n=n+1
+        n = n+1
         Perm(n) = No
       END DO
+
+      WRITE(Message,'(A,I0)') 'Number of old active particles: ',n
+      CALL Info('AllocateParticles',Message,Level=8)    
+
+      IF( n < PrevNoParticles ) THEN
+        WRITE(Message,'(A,I0)') 'Number of deleted particles: ',PrevNoParticles-n
+        CALL Info('AllocateParticles',Message,Level=10)    
+      END IF
+
       n1 = 1
       n2 = n
       
@@ -678,11 +688,11 @@ CONTAINS
       IF( ASSOCIATED( PrevVelocity ) ) &
         Particles % PrevVelocity(n1:n2,:) = PrevVelocity(Perm(n1:n2),:)
       IF( Particles % NeighbourTable ) &
-          Particles % ClosestNode(n1:n2)=Closest(Perm(n1:n2))
+          Particles % ClosestNode(n1:n2) = Closest(Perm(n1:n2))
       IF ( ASSOCIATED(NodeIndex) ) &
-          Particles % NodeIndex(n1:n2)=NodeIndex(Perm(n1:n2))
+          Particles % NodeIndex(n1:n2) = NodeIndex(Perm(n1:n2))
       IF ( ASSOCIATED(Partition) ) &
-          Particles % Partition(n1:n2)=Partition(Perm(n1:n2))
+          Particles % Partition(n1:n2) = Partition(Perm(n1:n2))
             
       PrevNoParticles = n
       Particles % NumberOfParticles = n
@@ -730,6 +740,7 @@ CONTAINS
     CALL ParticleVariablesResize( Particles, NoParticles, Perm )
 
     IF( PrevNoParticles > 0 ) THEN
+      CALL Info('AllocateParticles','Deallocating particle permutation',Level=12)
       DEALLOCATE( Perm )
     END IF
 
@@ -762,7 +773,16 @@ CONTAINS
     END DO
 
     n2 = n
-    IF(n1 == 0 ) RETURN
+    CALL Info('DeleteLostParticles','Number of active particles: '&
+        //TRIM(I2S(n2)),Level=12)
+
+    IF(n1 == 0 ) THEN
+      CALL Info('DeleteLostParticles','No particles need to be deleted',Level=12)
+      RETURN
+    ELSE
+      CALL Info('DeleteLostParticles','First particle with changed permutation: '&
+          //TRIM(I2S(n1)),Level=12)      
+    END IF
 
     Particles % Coordinate(n1:n2,:) = &
         Particles % Coordinate(Perm(n1:n2),:)
@@ -803,8 +823,7 @@ CONTAINS
        IF ( ASSOCIATED(Particles % NodeIndex) ) &
           Particles % NodeIndex(n2+1:PrevNoParticles) = 0
        IF ( ASSOCIATED(Particles % Partition) ) &
-           Particles % Partition(n2+1:PrevNoParticles) = 0
-      
+           Particles % Partition(n2+1:PrevNoParticles) = 0      
     END IF
 
     ! Rorders the variables accordingly to Perm, no resize is needed since number of particles is not changed
@@ -906,6 +925,9 @@ RETURN
 
   SUBROUTINE DestroyParticles(Particles) 
     TYPE(Particle_t), POINTER :: Particles
+
+    CALL Info('DestroyParticles','Destrying the particle structures',Level=10)
+
     
     IF ( ASSOCIATED(Particles % Velocity) ) &
         DEALLOCATE( Particles % Velocity ) 
@@ -981,8 +1003,6 @@ RETURN
     END IF
     CALL Info('ReleaseWaitingParticles','Releasing number of particles: '&
         //TRIM(I2S(ReleaseCount)),Level=8)
-!    PRINT *,'Releasing:',NoParticles,ReleaseCount, ReleaseSet
-    
     
     IF( ReleaseSet <= 0 ) RETURN
     
@@ -1032,12 +1052,14 @@ RETURN
     
     REAL(KIND=dp), ALLOCATABLE :: Buf(:)
     INTEGER(KIND=dp), ALLOCATABLE :: BufInt(:)
-    TYPE(ExchgInfo_t), ALLOCATABLE :: Info(:)
+    TYPE(ExchgInfo_t), ALLOCATABLE :: ExcInfo(:)
     !---------------------------------------------------------
     
     nReceived = 0
     IF( ParEnv% PEs == 1 ) RETURN
     
+    CALL Info('ChangeParticlePartition','Senting particles among partitions',Level=10)
+
     Mesh => GetMesh()
     dim = Particles % dim
     
@@ -1059,11 +1081,14 @@ RETURN
     END DO
     DEALLOCATE(IsNeighbour)
     
+    CALL Info('ChangeParticlePartition','Number of active partitions: '&
+        //TRIM(I2S(NoPartitions)),Level=12)
+    
     !
     ! Count particles to be sent to neighbours:
     ! -----------------------------------------
-    ALLOCATE(Info(NoPartitions))
-    Info % n = 0
+    ALLOCATE(ExcInfo(NoPartitions))
+    ExcInfo % n = 0
     
     DO i=1,Particles % NumberOfParticles
       IF( Particles % Status(i) /= PARTICLE_WALLBOUNDARY ) CYCLE
@@ -1090,7 +1115,7 @@ RETURN
             nextPart = Neighbours(j)
             k = Perm(nextPart+1)
             IF ( k>0 ) THEN
-              Info(k) % n=Info(k) % n+1
+              ExcInfo(k) % n = ExcInfo(k) % n+1
               Particles % Status(i) = PARTICLE_PARTBOUNDARY
             ELSE 
               Particles % Status(i) = PARTICLE_LOST
@@ -1100,6 +1125,10 @@ RETURN
         END DO
       END IF
     END DO
+   
+    n = SUM( ExcInfo(1:NoPartitions) % n )
+    CALL Info('ChangeParticlePartition','Number of particles to sent: '&
+        //TRIM(I2S(n)),Level=10)
     
     !
     ! Receive interface sizes:
@@ -1111,25 +1140,35 @@ RETURN
     END DO
     
     DO i=1,NoPartitions
-      CALL MPI_BSEND( Info(i) % n, 1, MPI_INTEGER, Neigh(i), &
+      CALL MPI_BSEND( ExcInfo(i) % n, 1, MPI_INTEGER, Neigh(i), &
           1000, MPI_COMM_WORLD, ierr )
     END DO
     CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
     
     n = SUM(Recv_Parts)
+    CALL Info('ChangeParticlePartition','Number of particles to recieve: '&
+        //TRIM(I2S(n)),Level=10)
+   
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, MPI_COMM_WORLD, ierr )
     IF ( nReceived==0 ) THEN
-      DEALLOCATE(Recv_Parts, Requests, Info, Perm, Neigh)
+      CALL Info('ChangeParticlePartition','No particles needs to be sent',Level=10)
+      DEALLOCATE(Recv_Parts, Requests, ExcInfo, Perm, Neigh)
       RETURN
     END IF
-    
+   
+    n = SUM( ExcInfo(1:NoPartitions) % n )
+    CALL Info('ChangeParticlePartition','Total number of particles to sent: '&
+        //TRIM(I2S(n)),Level=10)
+
+ 
     !
     ! Collect particles to be sent to neighbours:
     ! -------------------------------------------
     DO i=1,NoPartitions
-      ALLOCATE( Info(i) % Gindex(Info(i) % n), Info(i) % Particles(Info(i) % n) )
-      Info(i) % n = 0
+      ALLOCATE( ExcInfo(i) % Gindex(ExcInfo(i) % n), &
+          ExcInfo(i) % Particles(ExcInfo(i) % n) )
+      ExcInfo(i) % n = 0
     END DO
     
     DO i=1,Particles % NumberOfParticles
@@ -1161,18 +1200,20 @@ RETURN
           CALL Warn( 'ChangeParticlePartition', 'Neighbouring partition not found?')
           CYCLE
         END IF
-        Info(j) % n = Info(j) % n+1
-        n = Info(j) % n
-        Info(j) % Particles(n) = i
-        Info(j) % Gindex(n) = Face % GElementIndex
+        ExcInfo(j) % n = ExcInfo(j) % n+1
+        n = ExcInfo(j) % n
+        ExcInfo(j) % Particles(n) = i
+        ExcInfo(j) % Gindex(n) = Face % GElementIndex
       END IF
     END DO
     
-
     n = 0
     DO i=1,NoPartitions
-      n = n + Info(i) % n
+      n = n + ExcInfo(i) % n
     END DO
+
+    CALL Info('ChangeParticlePartition','Collected particles from partitions: '&
+        //TRIM(I2S(n)),Level=12)
 
     ncomp = dim ! coordinate
     IF( ASSOCIATED( Particles % Velocity ) ) ncomp = ncomp + dim
@@ -1192,17 +1233,26 @@ RETURN
     IF ( ASSOCIATED(Particles % Partition) ) ncompInt = ncompInt + 1
     ! status, elementindex & closestnode are recomputed, and hence not communicated
 
+    CALL Info('ChangeParticlePartition','Transferring real entries between particles: '&
+        //TRIM(I2S(ncomp)),Level=12)
+    CALL Info('ChangeParticlePartition','Transferring integer entries between particles: '&
+        //TRIM(I2S(ncompInt)),Level=12)
+
 
     n = 2*(n + 2*ncomp + MPI_BSEND_OVERHEAD*2*NoPartitions)
     CALL CheckBuffer(n)
     
+    CALL Info('ChangeParticlePartition','Size of data buffer: ' &
+        //TRIM(I2S(n)),Level=12)
+
     ! Send particles:
     ! ---------------
+    CALL Info('ChangeParticlePartition','Now sending particle data',Level=14)
     DO j=1,NoPartitions
-      n = Info(j) % n
+      n = ExcInfo(j) % n
       IF ( n<=0 ) CYCLE
       
-      CALL MPI_BSEND( Info(j) % Gindex, n, MPI_INTEGER, Neigh(j), &
+      CALL MPI_BSEND( ExcInfo(j) % Gindex, n, MPI_INTEGER, Neigh(j), &
           1001, MPI_COMM_WORLD, ierr )
       
       ALLOCATE(Buf(n*ncomp))
@@ -1210,7 +1260,7 @@ RETURN
       DO k=1,dim
         DO l=1,n
           m = m + 1
-          Buf(m) = Particles % Coordinate(Info(j) % Particles(l),k)
+          Buf(m) = Particles % Coordinate(ExcInfo(j) % Particles(l),k)
         END DO
       END DO
       
@@ -1218,7 +1268,7 @@ RETURN
         DO k=1,dim
           DO l=1,n
             m = m + 1
-            Buf(m) = Particles % Velocity(Info(j) % Particles(l),k)
+            Buf(m) = Particles % Velocity(ExcInfo(j) % Particles(l),k)
           END DO
         END DO
       END IF
@@ -1227,7 +1277,7 @@ RETURN
         DO k=1,dim
           DO l=1,n
             m = m + 1
-            Buf(m) = Particles % Force(Info(j) % Particles(l),k)
+            Buf(m) = Particles % Force(ExcInfo(j) % Particles(l),k)
           END DO
         END DO
       END IF
@@ -1236,7 +1286,7 @@ RETURN
         DO k=1,dim
           DO l=1,n
             m = m + 1
-            Buf(m) = Particles % PrevCoordinate(Info(j) % Particles(l),k)
+            Buf(m) = Particles % PrevCoordinate(ExcInfo(j) % Particles(l),k)
           END DO
         END DO
       END IF
@@ -1245,7 +1295,7 @@ RETURN
         DO k=1,dim
           DO l=1,n
             m = m + 1
-            Buf(m) = Particles % PrevVelocity(Info(j) % Particles(l),k)
+            Buf(m) = Particles % PrevVelocity(ExcInfo(j) % Particles(l),k)
           END DO
         END DO
       END IF
@@ -1255,7 +1305,7 @@ RETURN
         IF( Var % Dofs == 1 ) THEN
           DO l=1,n
             m = m + 1
-            Buf(m) = Var % Values(Info(j) % Particles(l))
+            Buf(m) = Var % Values(ExcInfo(j) % Particles(l))
           END DO
         END IF
         Var => Var % Next 
@@ -1274,14 +1324,14 @@ RETURN
         IF ( ASSOCIATED(Particles % NodeIndex) ) THEN
           DO l=1,n
             m = m + 1
-            BufInt(m) = Particles % NodeIndex(Info(j) % Particles(l))
+            BufInt(m) = Particles % NodeIndex(ExcInfo(j) % Particles(l))
           END DO
         END IF
         
         IF ( ASSOCIATED(Particles % Partition) ) THEN
           DO l=1,n
             m = m + 1
-            BufInt(m) = Particles % Partition(Info(j) % Particles(l))
+            BufInt(m) = Particles % Partition(ExcInfo(j) % Particles(l))
           END DO
         END IF
         
@@ -1295,13 +1345,14 @@ RETURN
 
     DEALLOCATE(Perm)
     DO i=1,NoPartitions
-      DEALLOCATE( Info(i) % Gindex, Info(i) % Particles )
+      DEALLOCATE( ExcInfo(i) % Gindex, ExcInfo(i) % Particles )
     END DO
-    DEALLOCATE(Info)
+    DEALLOCATE(ExcInfo)
 
 
     ! Recv particles:
     ! ---------------
+    CALL Info('ChangeParticlePartition','Now recieving particle data',Level=14)
     
     n = SUM(Recv_Parts)
     IF ( Particles % NumberOfParticles+n > Particles % MaxNumberOfParticles ) THEN
@@ -1441,6 +1492,10 @@ RETURN
     
     DEALLOCATE(Recv_Parts, Neigh, Requests)
     CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+
+    CALL Info('ChangeParticlePartition','Information exchange done',Level=10)
+
+
     
   CONTAINS
     
@@ -1546,13 +1601,16 @@ RETURN
         Requests(NoPartitions))
     SentParts = 0
     RecvParts = 0
-    
+
     DO i=1,Particles % NumberOfParticles
       Part = Particles % Partition(i)
       IF( Part-1 == ParEnv % MyPe ) CYCLE
       SentParts(Part) = SentParts(Part) + 1
     END DO
     
+    n = SUM( SentParts )
+    CALL Info('ParticleAdvectParallel','Particles to be sent: '//TRIM(I2S(n)),Level=12)
+
     ! Receive interface sizes:
     !--------------------------
     DO i=1,NoPartitions
@@ -1567,6 +1625,8 @@ RETURN
     CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
     
     n = SUM(RecvParts)
+    CALL Info('ParticleAdvectParallel','Particles to be recieved: '//TRIM(I2S(n)),Level=12)
+
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, MPI_COMM_WORLD, ierr )
     IF ( nReceived==0 ) THEN
@@ -1574,8 +1634,15 @@ RETURN
       RETURN
     END IF
     
+    CALL Info('ParticleAdvectParallel','Total number of particles to be recieved: '&
+        //TRIM(I2S(nReceived)),Level=12)    
+
     n = 2*(n + MPI_BSEND_OVERHEAD*2*NoPartitions)
     CALL CheckBuffer(n)
+
+    CALL Info('ParticleAdvectParallel','Buffer size for sending and recieving: ' &
+        //TRIM(I2S(n)),Level=14)    
+
 
     ! Allocate sent and recieve buffers based on the maximum needed size.
     !--------------------------------------------------------------------
@@ -1588,6 +1655,7 @@ RETURN
    
     ! Send particles:
     ! ---------------
+    CALL Info('ParticleAdvectParallel','Now sending field',Level=14)
     DO j=1,NoPartitions
       
       IF( SentParts(j) == 0 ) CYCLE
@@ -1611,6 +1679,7 @@ RETURN
 
     ! Recv particles:
     ! ---------------   
+    CALL Info('ParticleAdvectParallel','Now recieving field',Level=14)
     DO j=1,NoPartitions
 
       m = RecvParts(j)
@@ -1632,6 +1701,8 @@ RETURN
 
     DEALLOCATE(SentParts, RecvParts, Requests, SentInt, SentReal, RecvInt, RecvReal )
    
+    CALL Info('ParticleAdvectParallel','Particle field communication done',Level=14)
+
   END SUBROUTINE ParticleAdvectParallel
 
 
@@ -1852,7 +1923,7 @@ RETURN
     CharSpeed = MAX( Charspeed, TINY( CharSpeed ) )
     
     IF(.FALSE.) THEN
-      WRITE( Message,'(A,E12.6)') 'Speed for timestep control: ',CharSpeed
+      WRITE( Message,'(A,E13.6)') 'Speed for timestep control:',CharSpeed
       CALL Info('CharacteristicSpeed',Message )
     END IF
     
@@ -2079,7 +2150,7 @@ RETURN
         InvPerm => NULL()
       ELSE
         GotMask = .TRUE.
-        IF( InitMethod(1:5) == 'nodal') THEN
+        IF( InitMethod == 'nodal') THEN
           ALLOCATE( InvPerm(SIZE(MaskPerm)) )
           InvPerm = 0
           j = 0
@@ -2095,7 +2166,7 @@ RETURN
           nonodes = j
           
           PRINT *,'Total nodes vs. masked',Mesh % NumberOfNodes,nonodes
-        ELSE IF( InitMethod(1:9) == 'elemental') THEN
+        ELSE IF( InitMethod == 'elemental') THEN
           ALLOCATE( InvPerm( MAX( Mesh % NumberOfBulkElements, Mesh % NumberOfBoundaryElements ) ) ) 
           InvPerm = 0
           
@@ -2144,7 +2215,7 @@ RETURN
     ! Use a simple bounding box for initializatin
     ! By default a local bounding box is used...
     !-------------------------------------------------------------------------  
-    IF( InitMethod(1:3) == 'box') THEN
+    IF( InitMethod == 'box') THEN
       Eps = GetCReal( Params,'Wall Particle Radius',GotIt)
       IF(.NOT. GotIt) eps = 1.0d-8
       
@@ -5353,7 +5424,7 @@ RETURN
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Var
       REAL(KIND=dp), POINTER :: Values(:)
-      INTEGER :: i,j,k, OldSize
+      INTEGER :: i,j,k,OldSize
 !------------------------------------------------------------------------------
       
       IF( PRESENT( Perm ) ) THEN
@@ -5363,15 +5434,18 @@ RETURN
             EXIT
           END IF
         END DO
+        IF( oldsize < 1 ) oldsize = 1
+        CALL Info('ParticleVariablesResize','Using compact size of: '//TRIM(I2S(oldsize)),Level=12)
       END IF
 
       Var => Particles % Variables
       DO WHILE( ASSOCIATED(Var) )
         k = Var % NameLen
         IF( k > 0 ) THEN
-          ! print *,'Increasing size of: '//TRIM(tmp % name(1:k))
+          CALL Info('ParticleVariableResize','Increasing size of variable: '// &
+              Var % name(1:k),Level=12)
           IF( Var % Dofs > 1 ) THEN
-            CALL Fatal('ParticleVariableResize','Implement for vectors!')
+            CALL Fatal('ParticleVariableResize','Implement size increase for vectors!')
           END IF
           Values => Var % Values
           IF( SIZE( Var % Values ) < newsize ) THEN            

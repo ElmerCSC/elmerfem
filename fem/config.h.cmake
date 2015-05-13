@@ -9,6 +9,7 @@
 
 #cmakedefine VERSION "${VERSION}"
 #cmakedefine REVISION "${ELMER_FEM_REVISION}"
+#cmakedefine COMPILATIONDATE "${ELMER_FEM_COMPILATIONDATE}"
 #cmakedefine HAVE_INTTYPES_H
 #cmakedefine ELMER_SOLVER_HOME "${ELMER_SOLVER_HOME}"
 

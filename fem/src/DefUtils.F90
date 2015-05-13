@@ -976,11 +976,7 @@ CONTAINS
      n = GetElementNOFNodes( Element )
      IF ( ASSOCIATED(List) ) THEN
        IF ( ASSOCIATED(List % Head) ) THEN
-          IF ( PRESENT( Found ) ) THEN
-             CALL ListGetRealvector( List, Name, x, n, Element % NodeIndexes, Found )
-          ELSE
-             CALL ListGetRealVector( List, Name, x, n, Element % NodeINdexes  )
-          END IF
+         CALL ListGetRealvector( List, Name, x, n, Element % NodeIndexes, Found )
        END IF
      END IF
   END SUBROUTINE GetRealVector
