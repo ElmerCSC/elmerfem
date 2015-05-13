@@ -200,20 +200,20 @@
 !    Figure out requested coordinate system
 !------------------------------------------------------------------------------
      eq = GetString( GetSimulation(), 'Coordinate System' )
-
-     IF ( eq(1:9) == 'cartesian' ) THEN
+     SELECT CASE(eq)
+     CASE('cartesian','cartesian 2d','cartesian 3d')
        Coordinates = Cartesian
-     ELSE IF ( eq(1:13) == 'axi symmetric' ) THEN
+     CASE('axi symmetric')
        Coordinates = AxisSymmetric
-     ELSE IF( eq(1:19) == 'cylindric symmetric' ) THEN
+     CASE('cylindric symmetric')
        Coordinates = CylindricSymmetric
-     ELSE
+     CASE DEFAULT
        CALL Error( 'ViewFactors', &
          'Unknown Global Coordinate System for Viewfactor computation ')
        CALL Error( 'ViewFactors', TRIM(eq) )
        CALL Fatal( 'ViewFactors', &
          'Only Cartesian 3D or Axi/Cylindrical Symmetric coordinates allowed. Aborting' )
-     END IF
+     END SELECT
 
      CylindricSymmetry = (Coordinates == AxisSymmetric) .OR. (Coordinates==CylindricSymmetric)
 !------------------------------------------------------------------------------
@@ -268,7 +268,7 @@
  
        RadiationFlag = GetString( BC, 'Radiation',GotIt )
 
-       IF ( GotIt .AND. RadiationFlag(1:12) == 'diffuse gray' ) THEN
+       IF ( GotIt .AND. RadiationFlag == 'diffuse gray' ) THEN
          i = MAX(1, GetInteger( BC, 'Radiation Boundary', GotIt ) )
          MaxRadiationBody = MAX(i, MaxRadiationBody)
        END IF
@@ -303,7 +303,7 @@
          IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
          
          RadiationFlag = GetString( BC, 'Radiation', GotIt )
-         IF ( GotIt .AND. RadiationFlag(1:12) == 'diffuse gray' ) THEN
+         IF ( GotIt .AND. RadiationFlag == 'diffuse gray' ) THEN
            i = MAX(1, GetInteger( BC, 'Radiation Boundary', GotIt ))
            IF(i == RadiationBody) THEN
              RadiationOpen = RadiationOpen .OR. GetLogical( BC, 'Radiation Boundary Open', GotIt )

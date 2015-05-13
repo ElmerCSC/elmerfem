@@ -194,12 +194,17 @@ END INTERFACE
          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
          CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
          CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
-         CALL Info( 'MAIN', 'Library version: ' // VERSION &
+         CALL Info( 'MAIN', 'Version: ' // VERSION &
 #ifdef REVISION
-             // ' (Rev: ' // REVISION // ')' )
-#else
-         )
+             // ' (Rev: ' // REVISION  &
 #endif
+#ifdef COMPILATIONDATE
+             // ', Compiled: ' // COMPILATIONDATE // ')' &
+#else
+             // ')' &
+#endif
+         )
+
          IF ( ParEnv % PEs > 1 ) &
              CALL Info( 'MAIN', ' Running in parallel using ' // &
              TRIM(i2s(ParEnv % PEs)) // ' tasks.')
@@ -929,7 +934,7 @@ END INTERFACE
      USE DefUtils
      INTEGER :: DOFs
      CHARACTER(LEN=MAX_NAME_LEN) :: str
-     LOGICAL :: Found
+     LOGICAL :: Found, NamespaceFound
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, ALLOCATABLE :: Indexes(:)
      REAL(KIND=dp),ALLOCATABLE :: Work(:)
@@ -987,8 +992,8 @@ END INTERFACE
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
-             str = ListGetString( Solver % Values, 'Namespace', Found )
-             IF (Found) CALL ListSetNamespace(TRIM(str))
+             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
 
 
              IF ( Var % DOFs <= 1 ) THEN
@@ -1099,7 +1104,7 @@ END INTERFACE
                END IF
              END IF
 
-             CALL ListSetNamespace('')
+             IF(NamespaceFound) CALL ListPopNamespace()
              Var => Var % Next
            END DO
          END DO
@@ -1119,7 +1124,7 @@ END INTERFACE
      TYPE(Element_t), POINTER :: Edge
      INTEGER :: DOFs,i,j,k,l
      CHARACTER(LEN=MAX_NAME_LEN) :: str
-     LOGICAL :: Found, ThingsToDO
+     LOGICAL :: Found, ThingsToDO, NamespaceFound
      TYPE(Solver_t), POINTER :: Solver
      INTEGER, ALLOCATABLE :: Indexes(:)
      REAL(KIND=dp) :: Val
@@ -1144,8 +1149,8 @@ END INTERFACE
            Solver => Var % Solver
            IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
            
-           str = ListGetString( Solver % Values, 'Namespace', Found )
-           IF (Found) CALL ListSetNamespace(TRIM(str))
+           str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+           IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
            
            ! global variable
            IF( SIZE( Var % Values ) == Var % DOFs ) THEN
@@ -1166,6 +1171,7 @@ END INTERFACE
              ThingsToDo = ThingsToDo .OR. &
                   ListCheckPresent( IC, TRIM(Var % Name)//' {e}' )
            END IF
+           IF (NamespaceFound) CALL ListPopNamespace()
            Var => Var % Next
          END DO
        END DO
@@ -1195,8 +1201,8 @@ END INTERFACE
              Solver => Var % Solver
              IF ( .NOT. ASSOCIATED(Solver) ) Solver => CurrentModel % Solver
 
-             str = ListGetString( Solver % Values, 'Namespace', Found )
-             IF (Found) CALL ListSetNamespace(TRIM(str))
+             str = ListGetString( Solver % Values, 'Namespace', NamespaceFound )
+             IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
              
              ! global variables were already set
              IF( SIZE( Var % Values ) == Var % DOFs ) THEN
@@ -1269,7 +1275,7 @@ END INTERFACE
                  END DO
                END IF
              END IF
-             CALL ListSetNamespace('')
+             IF(NamespaceFound) CALL ListPopNamespace()
              Var => Var % Next
            END DO
          END DO

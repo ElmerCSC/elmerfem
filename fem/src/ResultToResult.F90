@@ -188,7 +188,7 @@ PROGRAM ResultToResult
      eq = ListGetString( OldModel % Simulation, 'Simulation Type' )
      TransientSimulation = .FALSE.
 
-     IF ( eq(1:9) == 'transient' ) THEN
+     IF ( eq == 'transient' ) THEN
        TransientSimulation= .TRUE.
 
        elmt => GetElementType( 303 )
@@ -206,44 +206,44 @@ PROGRAM ResultToResult
      eq = ListGetString( OldModel % Simulation, 'Coordinate System', GotIt )
 
      Coordinates = Cartesian
-     IF ( eq(1:12) == 'cartesian 2d' ) THEN
+     IF ( eq == 'cartesian 2d' ) THEN
 
        OldModel % Dimension = 2
        Coordinates = Cartesian
 
-     ELSE IF ( eq(1:13) == 'cartesian 3d' ) THEN
+     ELSE IF ( eq == 'cartesian 3d' ) THEN
 
        OldModel % Dimension = 3
        Coordinates = Cartesian
 
-     ELSE IF ( eq(1:13) == 'axi symmetric' ) THEN
+     ELSE IF ( eq == 'axi symmetric' ) THEN
 
        OldModel % Dimension = 2
        Coordinates = AxisSymmetric
 
-     ELSE IF( eq(1:19) == 'cylindric symmetric' ) THEN
+     ELSE IF( eq == 'cylindric symmetric' ) THEN
 
        OldModel % Dimension = 2
        Coordinates = CylindricSymmetric
 
-     ELSE IF( eq(1:11) == 'cylindrical' ) THEN
+     ELSE IF( eq == 'cylindrical' ) THEN
 
        OldModel % Dimension = 3
        Coordinates = Cylindric
 
-     ELSE IF( eq(1:8) == 'polar 2d' ) THEN
+     ELSE IF( eq == 'polar 2d' ) THEN
 
        OldModel % Dimension = 2
        Coordinates = Polar
 
-     ELSE IF( eq(1:8) == 'polar 3d' ) THEN
+     ELSE IF( eq == 'polar 3d' ) THEN
 
        OldModel % Dimension = 3
        Coordinates = Polar
 
      ELSE
 
-       PRINT*,'Solver: ERROR: Unknown global coordinate system: ',eq(1:20),' Aborting'
+       PRINT*,'Solver: ERROR: Unknown global coordinate system: ',TRIM(eq),' Aborting'
        STOP
 
      END IF
@@ -367,7 +367,7 @@ PROGRAM ResultToResult
      eq = ListGetString( NewModel % Simulation, 'Simulation Type' )
      TransientSimulation = .FALSE.
 
-     IF ( eq(1:9) == 'transient' ) THEN
+     IF ( eq == 'transient' ) THEN
        TransientSimulation= .TRUE.
 
        elmt => GetElementType( 303 )
@@ -385,44 +385,44 @@ PROGRAM ResultToResult
      eq = ListGetString( NewModel % Simulation, 'Coordinate System', GotIt )
 
      Coordinates = Cartesian
-     IF ( eq(1:12) == 'cartesian 2d' ) THEN
+     IF ( eq == 'cartesian 2d' ) THEN
 
        NewModel % Dimension = 2
        Coordinates = Cartesian
 
-     ELSE IF ( eq(1:13) == 'cartesian 3d' ) THEN
+     ELSE IF ( eq == 'cartesian 3d' ) THEN
 
        NewModel % Dimension = 3
        Coordinates = Cartesian
 
-     ELSE IF ( eq(1:13) == 'axi symmetric' ) THEN
+     ELSE IF ( eq == 'axi symmetric' ) THEN
 
        NewModel % Dimension = 2
        Coordinates = AxisSymmetric
 
-     ELSE IF( eq(1:19) == 'cylindric symmetric' ) THEN
+     ELSE IF( eq == 'cylindric symmetric' ) THEN
 
        NewModel % Dimension = 2
        Coordinates = CylindricSymmetric
 
-     ELSE IF( eq(1:11) == 'cylindrical' ) THEN
+     ELSE IF( eq == 'cylindrical' ) THEN
 
        NewModel % Dimension = 3
        Coordinates = Cylindric
 
-     ELSE IF( eq(1:8) == 'polar 2d' ) THEN
+     ELSE IF( eq == 'polar 2d' ) THEN
 
        NewModel % Dimension = 2
        Coordinates = Polar
 
-     ELSE IF( eq(1:8) == 'polar 3d' ) THEN
+     ELSE IF( eq == 'polar 3d' ) THEN
 
        NewModel % Dimension = 3
        Coordinates = Polar
 
      ELSE
 
-       PRINT*,'Solver: ERROR: Unknown global coordinate system: ',eq(1:20),' Aborting'
+       PRINT*,'Solver: ERROR: Unknown global coordinate system: ',TRIM(eq),' Aborting'
        STOP
 
      END IF
@@ -579,8 +579,8 @@ CONTAINS
          DO i=1,CurrentModel % Solvers(1) % NOFEigenValues
            Var => Mesh % Variables
            DO WHILE( ASSOCIATED( Var ) ) 
-             IF ( Var % Name(1:4)  /= 'time' .AND. &
-                     Var % Name(1:10) /= 'coordinate' ) THEN
+             IF ( Var % Name  /= 'time' .AND. &
+                     Var % Name /= 'coordinate' ) THEN
                Var % Values = REAL(Var % EigenVectors(i,:))
                simulationtime(1) = real(var % eigenvalues(i))
              END IF
@@ -634,8 +634,8 @@ CONTAINS
            DO i=1,CurrentModel % Solvers(1) % NOFEigenValues
              Var => Mesh % Variables
              DO WHILE( ASSOCIATED( Var ) ) 
-               IF ( Var % Name(1:4)  /= 'time' .AND. &
-                       Var % Name(1:10) /= 'coordinate' ) THEN
+               IF ( Var % Name  /= 'time' .AND. &
+                       Var % Name /= 'coordinate' ) THEN
                  Var % Values = REAL(Var % EigenVectors(i,:))
                  simulationtime(1) = real(var % eigenvalues(i))
                END IF

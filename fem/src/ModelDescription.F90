@@ -246,11 +246,7 @@ CONTAINS
 
     INTEGER(KIND=AddrInt) :: Proc
 
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: section, name, str
-#else
-    CHARACTER(LEN=MAX_STRING_LEN) :: section, name, str
-#endif
 
     LOGICAL :: Found, SizeGiven
     LOGICAL :: FreeNames=.FALSE., Echo = .FALSE.
@@ -274,11 +270,9 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-#ifdef ALLOC_CHAR
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::section)
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::name)
-#endif
 
 !------------------------------------------------------------------------------
 !   Read model header first
@@ -291,29 +285,36 @@ CONTAINS
  
     IF ( BaseLoad ) THEN
       DO WHILE( ReadAndTrim( InFileUnit, Name, Echo ) )
-        IF ( Name(1:1) == ' ' )   CYCLE
-        IF ( Name(1:3) == 'end' ) EXIT
-        IF ( Name(1:14) == 'check keywords' ) THEN
+        IF ( Name=='' .OR. Name==' ' )   CYCLE
+        IF (Name == 'end' ) EXIT
+
+        IF ( SEQL(Name,'check keywords') ) THEN
            k = 16
            IF ( Name(k:k) == '"' ) k = k + 1
-           IF ( Name(k:k+5) == 'ignore' )  CheckAbort = 0
-           IF ( Name(k:k+3) == 'warn' )    CheckAbort = 1
-           IF ( Name(k:k+5) == 'silent' )  CheckAbort = 2
-           IF ( Name(k:k+4) == 'abort' )   CheckAbort = 3
-        ELSE IF ( Name(1:7) == 'echo on' ) THEN
+           SELECT CASE(Name(k:))
+           CASE('ignore')
+             CheckAbort = 0
+           CASE('warn')
+             CheckAbort = 1
+           CASE('silent')
+             CheckAbort = 2
+           CASE('abort')
+             CheckAbort = 3
+           END SELECT
+        ELSE IF ( Name == 'echo on' ) THEN
            Echo = .TRUE.
-        ELSE IF ( Name(1:8) == 'echo off' ) THEN
+        ELSE IF ( Name == 'echo off' ) THEN
            Echo = .FALSE.
-        ELSE IF ( Name(1:6)  == 'bodies' ) THEN
-        ELSE IF ( Name(1:18) == 'initial conditions' ) THEN
-        ELSE IF ( Name(1:10) == 'boundaries' ) THEN
-        ELSE IF ( Name(1:19) == 'boundary conditions' ) THEN
-        ELSE IF ( Name(1:10) == 'components' ) THEN
-        ELSE IF ( Name(1:9)  == 'equations' ) THEN
-        ELSE IF ( Name(1:7)  == 'solvers' ) THEN
-        ELSE IF ( Name(1:9)  == 'materials' ) THEN
-        ELSE IF ( Name(1:11) == 'body forces' ) THEN
-        ELSE IF ( Name(1:7)  == 'mesh db' ) THEN
+        ELSE IF ( SEQL(Name, 'bodies') ) THEN
+        ELSE IF ( SEQL(Name, 'initial conditions') ) THEN
+        ELSE IF ( SEQL(Name, 'boundaries') ) THEN
+        ELSE IF ( SEQL(Name, 'boundary conditions') ) THEN
+        ELSE IF ( SEQL(Name, 'components') ) THEN
+        ELSE IF ( SEQL(Name, 'equations') ) THEN
+        ELSE IF ( SEQL(Name, 'solvers') ) THEN
+        ELSE IF ( SEQL(Name, 'materials') ) THEN
+        ELSE IF ( SEQL(Name, 'body forces') ) THEN
+        ELSE IF ( SEQL(Name, 'mesh db') ) THEN
           k = 9
           i = 1
           nlen = LEN_TRIM(Name)
@@ -341,12 +342,12 @@ CONTAINS
              MeshDir = "." // CHAR(0)
           END IF
           MeshName(i:i) = CHAR(0)
-        ELSE IF ( Name(1:6) == 'header' ) THEN
-        ELSE IF ( Name(1:12) == 'include path' ) THEN
+        ELSE IF ( SEQL(Name,'header') ) THEN
+        ELSE IF ( SEQL(Name,'include path') ) THEN
            IncludePath = Name(14:)
-        ELSE IF ( Name(1:17) == 'results directory' ) THEN
+        ELSE IF ( SEQL(Name,'results directory') ) THEN
            OutputPath = Name(19:)
-        ELSE IF ( Name(1:13) == 'simulation id' ) THEN
+        ELSE IF ( SEQL(Name,'simulation id') ) THEN
            SimulationId = Name(15:)
         ELSE
           WRITE( Message, * ) 'Unknown input field in header section: ' // TRIM(Name)
@@ -384,22 +385,22 @@ CONTAINS
 !------------------------------------------------------------------------------
     DO WHILE(ReadAndTrim(InFileUnit,Section,Echo))
 !------------------------------------------------------------------------------
-      IF ( Section(1:1) == ' ' ) CYCLE
+      IF ( Section == '' .OR. Section == ' ' ) CYCLE
 
-      IF ( Section(1:7) == 'include' ) THEN
+      IF ( SEQL(Section,'include') ) THEN
         CALL LoadIncludeFile( Model, InFileUnit-1, Section(9:), &
                     MeshDir, MeshName, ScanOnly )
         CYCLE
       END IF
 
-      IF ( Section(1:6) == 'header' ) THEN
+      IF ( SEQL(Section, 'header') ) THEN
          DO WHILE( ReadAndTrim( InFileUnit, Section, Echo ) )
-            IF ( Section(1:3) == 'end' ) EXIT
+            IF ( Section == 'end' ) EXIT
          END DO
          CYCLE
-      ELSE IF ( Section(1:5) == 'echo ' .OR. Section(1:6) == 'check ') THEN
+      ELSE IF ( SEQL(Section, 'echo ') .OR. SEQL(Section, 'check ')) THEN
          CYCLE
-      ELSE IF ( Section(1:3) == 'run' ) THEN
+      ELSE IF ( Section == 'run' ) THEN
          IF ( PRESENT(runc) ) runc=.TRUE.
          EXIT
       END IF
@@ -407,7 +408,7 @@ CONTAINS
       FreeNames = CheckAbort <= 0
 
       ArrayN = 0
-      IF ( Section(1:9) == 'constants' ) THEN
+      IF ( SEQL(Section, 'constants') ) THEN
 
          IF ( .NOT. ScanOnly ) THEN
            ArrayN = 1
@@ -416,7 +417,7 @@ CONTAINS
            List => Model % Constants
          END IF
 
-      ELSE IF ( Section(1:10) == 'simulation' ) THEN
+      ELSE IF ( SEQL(Section, 'simulation') ) THEN
 
          IF ( .NOT. ScanOnly ) THEN
            ArrayN = 1
@@ -425,7 +426,7 @@ CONTAINS
            List => Model % Simulation
          END IF
 
-      ELSE IF ( Section(1:18) == 'boundary condition' ) THEN
+      ELSE IF ( SEQL(Section, 'boundary condition') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(19:),*,iostat=iostat ) Arrayn
@@ -475,7 +476,7 @@ CONTAINS
 
         FreeNames = .TRUE.
 
-      ELSE IF ( Section(1:8) == 'boundary' ) THEN
+      ELSE IF ( SEQL(Section, 'boundary') ) THEN
 
         IF ( ScanOnly ) THEN
            Model % NumberOfBoundaries = Model % NumberOfBoundaries + 1
@@ -504,7 +505,7 @@ CONTAINS
            List => Model % Boundaries(BoundaryIndex) % Values
         END IF
 
-      ELSE IF ( Section(1:17) == 'initial condition' ) THEN
+      ELSE IF ( SEQL(Section, 'initial condition') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(18:),*,iostat=iostat ) Arrayn
@@ -552,7 +553,7 @@ CONTAINS
 
         FreeNames = .TRUE.
 
-      ELSE IF ( Section(1:8) == 'material' ) THEN
+      ELSE IF ( SEQL(Section, 'material') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(9:),*,iostat=iostat ) Arrayn
@@ -596,7 +597,7 @@ CONTAINS
            List => Model % Materials(Arrayn) % Values
         END IF
 
-      ELSE IF ( Section(1:10) == 'body force' ) THEN
+      ELSE IF ( SEQL(Section, 'body force') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(12:),*,iostat=iostat ) Arrayn
@@ -640,7 +641,7 @@ CONTAINS
            List => Model % BodyForces(Arrayn) % Values
         END IF
 
-      ELSE IF ( Section(1:8) == 'equation' ) THEN
+      ELSE IF ( SEQL(Section, 'equation') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(9:),*,iostat=iostat ) Arrayn
@@ -686,7 +687,7 @@ CONTAINS
 
         FreeNames = .TRUE.
 
-      ELSE IF ( Section(1:4) == 'body' ) THEN
+      ELSE IF ( SEQL(Section, 'body') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(5:),*,iostat=iostat ) Arrayn
@@ -730,7 +731,7 @@ CONTAINS
            List => Model % Bodies(Arrayn) % Values
         END IF
 
-      ELSE IF ( Section(1:9) == 'component' ) THEN
+      ELSE IF ( SEQL(Section, 'component') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(10:),*,iostat=iostat ) Arrayn
@@ -774,7 +775,7 @@ CONTAINS
            List => Model % Components(Arrayn) % Values
         END IF
 
-      ELSE IF ( Section(1:6) == 'solver' ) THEN
+      ELSE IF ( SEQL(Section, 'solver') ) THEN
 
         IF ( ScanOnly ) THEN
            READ( Section(7:),*,iostat=iostat ) Arrayn
@@ -1033,11 +1034,7 @@ CONTAINS
        TYPE(HashTable_t), POINTER, SAVE :: Hash =>NULL()
        TYPE(HashValue_t), POINTER :: Val
        LOGICAL :: FirstTime = .TRUE.,lstat, fexist
-#ifdef ALLOC_CHAR
        CHARACTER(LEN=:), ALLOCATABLE :: str
-#else
-       CHARACTER(LEN=MAX_STRING_LEN) :: str
-#endif
        CHARACTER(LEN=MAX_STRING_LEN) :: str1
 !       EXTERNAL ENVIR
 
@@ -1045,9 +1042,7 @@ CONTAINS
 
        IF ( CheckAbort <= 0 ) RETURN
 
-#ifdef ALLOC_CHAR
        ALLOCATE(CHARACTER(MAX_STRING_LEN) :: str)
-#endif
 
        IF ( FirstTime ) THEN
 !
@@ -1088,8 +1083,8 @@ CONTAINS
              END IF
           END IF
           IF (.NOT. fexist) THEN
-             CALL GetSolverHome(str, n)
-             WRITE(str1, '(a,a)') str(1:n), '/lib/SOLVER.KEYWORDS'
+             CALL GetSolverHome(str1, n)
+             str1 = str1(1:n) // '/lib/SOLVER.KEYWORDS'
              INQUIRE(FILE=TRIM(str1), EXIST=fexist)
           END IF
           IF (.NOT. fexist) THEN
@@ -1165,27 +1160,27 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
-        IF ( Section(1:9) == 'constants' ) THEN
+        IF ( SEQL(Section, 'constants') ) THEN
            str =  'constants: '
-        ELSE IF ( Section(1:10) == 'simulation' ) THEN
+        ELSE IF ( SEQL(Section, 'simulation') ) THEN
            str =  'simulation: '
-        ELSE IF ( Section(1:18) == 'boundary condition' ) THEN
+        ELSE IF ( SEQL(Section,  'boundary condition') ) THEN
            str =  'bc: '
-        ELSE IF ( Section(1:8) == 'boundary' ) THEN
+        ELSE IF ( SEQL(Section, 'boundary') ) THEN
           str =  'boundary: '
-        ELSE IF ( Section(1:17) == 'initial condition' ) THEN
+        ELSE IF ( SEQL(Section, 'initial condition') ) THEN
           str =  'ic: '
-        ELSE IF ( Section(1:8) == 'material' ) THEN
+        ELSE IF ( SEQL(Section, 'material') ) THEN
           str =  'material: '
-        ELSE IF ( Section(1:10) == 'body force' ) THEN
+        ELSE IF ( SEQL(Section, 'body force') ) THEN
           str =  'bodyforce: '
-        ELSE IF ( Section(1:8) == 'equation' ) THEN
+        ELSE IF ( SEQL(Section, 'equation') ) THEN
           str =  'equation: '
-        ELSE IF ( Section(1:4) == 'body' ) THEN
+        ELSE IF ( SEQL(Section, 'body') ) THEN
           str =  'body: '
-        ELSE IF ( Section(1:6) == 'solver' ) THEN
+        ELSE IF ( SEQL(Section, 'solver') ) THEN
           str =  'solver: '
-        ELSE IF ( Section(1:9) == 'component' ) THEN
+        ELSE IF ( SEQL(Section, 'component') ) THEN
           str =  'component: '
         END IF
 
@@ -1277,11 +1272,7 @@ CONTAINS
       REAL(KIND=dp), ALLOCATABLE :: Atx(:,:,:), ATt(:)
 
       CHARACTER(LEN=MAX_NAME_LEN) :: TypeString,Keyword
-#ifdef ALLOC_CHAR
       CHARACTER(LEN=:), ALLOCATABLE :: Name,str, Depname
-#else
-      CHARACTER(LEN=MAX_STRING_LEN) :: Name,str, Depname
-#endif
       LOGICAL :: ReturnType, ScanOnly, String_literal,  SizeGiven, Cubic, AllInt, Monotone
 
       INTEGER(KIND=AddrInt) :: Proc
@@ -1289,17 +1280,20 @@ CONTAINS
           abuflen=0, maxbuflen=0, iostat
 
       ALLOCATE( ATt(1), ATx(1,1,1), IValues(1) )
-#ifdef ALLOC_CHAR
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::Name)
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
       ALLOCATE(CHARACTER(MAX_STRING_LEN)::Depname)
-#endif
 
 
       Name = ''
       DO WHILE( ReadAndTrim( InFileUnit,Name,Echo ) )
 
-        IF ( Name(1:7) == 'include' ) THEN
+        IF ( Name == '' .OR. Name == ' ')  CYCLE
+        IF ( SEQL(Name,'end') ) THEN
+          EXIT
+        END IF
+
+        IF ( SEQL(Name,'include') ) THEN
           OPEN( InFileUnit-1,FILE=TRIM(Name(9:)),STATUS='OLD',ERR=10 )
           CALL SectionContents( Model,List,CheckAbort,FreeNames, &
                   Section,InFileUnit-1,ScanOnly, Echo )
@@ -1308,14 +1302,9 @@ CONTAINS
 
 10        CONTINUE
 
-          WRITE( Message, * ) 'Cannot find include file: ', Name(9:40)
+          WRITE( Message, * ) 'Cannot find include file: ', Name(9:)
           CALL Warn( 'Model Input', Message )
           CYCLE
-        END IF
-
-        IF ( Name(1:1) == ' ' )  CYCLE
-        IF ( Name(1:3) == 'end' ) THEN
-          EXIT
         END IF
 
         TYPE = LIST_TYPE_CONSTANT_SCALAR
@@ -1352,7 +1341,7 @@ CONTAINS
              CALL CheckKeyWord( Name,'real',CheckAbort,FreeNames,Section )
 
              Proc = 0
-             IF ( str(str_beg:str_beg+9) == 'procedure ' ) THEN
+             IF ( SEQL(str(str_beg:),'procedure ') ) THEN
 
                IF ( .NOT. ScanOnly ) THEN
                   Proc = GetProcAddr( str(str_beg+10:) )
@@ -1378,7 +1367,7 @@ CONTAINS
                   END SELECT
                END IF
 
-             ELSE IF ( str(str_beg:str_beg+4) == 'matc ' ) THEN
+             ELSE IF ( SEQL(str(str_beg:),'matc ') ) THEN
 
                IF ( .NOT. ScanOnly ) THEN
 
@@ -1457,13 +1446,13 @@ CONTAINS
                    ALLOCATE( ATt(MaxBufLen), ATx(n1,n2,MaxBufLen) )
                  END IF
  
-                 Cubic = str(str_beg:str_beg+4)=='cubic'
-                 monotone = str(str_beg+6:str_beg+13)=='monotone'
+                 Cubic = SEQL(str(str_beg:),'cubic')
+                 monotone = SEQL(str(str_beg+6:),'monotone')
                  n = 0
                  DO WHILE( ReadAndTrim(InFileUnit,str,Echo) )
 
-                   IF ( str(1:3) == 'end' ) EXIT
-                   IF ( str(1:1) == ' '  ) CYCLE
+                   IF ( str == '' .OR. str==' '  ) CYCLE
+                   IF ( SEQL(str,'end') ) EXIT
  
                    slen = LEN_TRIM(str)
                    IF ( .NOT. ScanOnly ) THEN
@@ -1529,10 +1518,10 @@ CONTAINS
             CALL CheckKeyWord( Name,'logical',CheckAbort,FreeNames,Section )
 
             IF ( .NOT. ScanOnly ) THEN
-               IF ( str(str_beg:str_beg+3) == 'true' .OR. &
+               IF ( SEQL(str(str_beg:),'true') .OR. &
                  str(str_beg:str_beg) == '1' ) THEN
                  CALL ListAddLogical( List,Name,.TRUE. )
-               ELSE IF ( str(str_beg:str_beg+4) == 'false' .OR. &
+               ELSE IF ( SEQL(str(str_beg:),'false') .OR. &
                  str(str_beg:str_beg) == '0' ) THEN
                  CALL ListAddLogical( List,Name,.FALSE. )
                ELSE 
@@ -1546,7 +1535,7 @@ CONTAINS
             CALL CheckKeyWord( Name,'integer',CheckAbort,FreeNames,Section )
 
              Proc = 0
-             IF ( str(str_beg:str_beg+9) == 'procedure ' ) THEN
+             IF ( SEQL(str(str_beg:),'procedure ') ) THEN
                IF ( .NOT. ScanOnly ) THEN
                  Proc = GetProcAddr( str(str_beg+10:) )
                  IF ( SizeGiven ) THEN
@@ -2177,7 +2166,7 @@ CONTAINS
         CALL Info('LoadModel',Message,Level=7)
 
         single=.FALSE.
-        IF ( Name(1:8) == '-single ' ) THEN
+        IF ( SEQL(Name, '-single ') ) THEN
           single=.TRUE.
           Name=Name(9:)
         END IF
@@ -2373,16 +2362,16 @@ CONTAINS
 
       ind = [1,2,3,4,5,6,7,8]
 
-      IF (ElementDef(1:5) == 'point' )     ind=1
-      IF (ElementDef(1:4) == 'line' )      ind=2
-      IF (ElementDef(1:3) == 'tri' )       ind=3
-      IF (ElementDef(1:4) == 'quad' )      ind=4
-      IF (ElementDef(1:5) == 'tetra' )     ind=5
-      IF (ElementDef(1:7) == 'pyramid' )   ind=6
-      IF (ElementDef(1:5) == 'prism' )     ind=7
-      IF (ElementDef(1:5) == 'brick' )     ind=8
-      IF (ElementDef(1:8) == 'tri_face' )  ind=9
-      IF (ElementDef(1:9) == 'quad_face' ) ind=10
+      IF (SEQL(ElementDef, 'point') )     ind=1
+      IF (SEQL(ElementDef, 'line') )      ind=2
+      IF (SEQL(ElementDef, 'tri') )       ind=3
+      IF (SEQL(ElementDef, 'quad') )      ind=4
+      IF (SEQL(ElementDef, 'tetra') )     ind=5
+      IF (SEQL(ElementDef, 'pyramid') )   ind=6
+      IF (SEQL(ElementDef, 'prism') )     ind=7
+      IF (SEQL(ElementDef, 'brick') )     ind=8
+      IF (SEQL(ElementDef, 'tri_face') )  ind=9
+      IF (SEQL(ElementDef, 'quad_face') ) ind=10
 
       n = INDEX(ElementDef,'-')
       IF (n<=0) n=LEN_TRIM(ElementDef)
@@ -2482,6 +2471,11 @@ CONTAINS
           'Output Caller', GotIt )
       IF ( .NOT. GotIt ) OutputCaller = .TRUE.
       
+      ! By default only on partition is used to show the results
+      ! For debugging it may be usefull to show several.
+      MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
+          'Max Output Partition', GotIt )    
+
     END SUBROUTINE InitializeOutputLevel
 !------------------------------------------------------------------------------
   END FUNCTION LoadModel
@@ -2589,7 +2583,7 @@ CONTAINS
             IF( SIZE(Var % Values) == Var % Dofs ) THEN
               SaveThis = SaveGlobal
             ELSE
-              IF ( Var % Name(1:10) /= 'coordinate' .OR. SaveCoordinates ) THEN
+              IF ( .NOT.SEQL(Var % Name,'coordinate') .OR. SaveCoordinates ) THEN
                 SaveThis = .TRUE.
               END IF
             END IF
@@ -2684,7 +2678,7 @@ CONTAINS
         IF( Var % DOFs == SIZE(Var % Values) ) THEN
           SaveThis = SaveGlobal
         ELSE
-          IF ( Var % Name(1:10) /= 'coordinate' .OR. SaveCoordinates ) THEN
+          IF ( .NOT.SEQL(Var % Name, 'coordinate') .OR. SaveCoordinates ) THEN
             SaveThis = .TRUE.
           END IF
         END IF
@@ -2930,11 +2924,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Variable_t),POINTER :: Var, Comp
     CHARACTER(LEN=MAX_NAME_LEN) :: Name,VarName,VarName2,FullName,PosName
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: Row
-#else
-    CHARACTER(LEN=MAX_STRING_LEN) :: Row
-#endif
     CHARACTER(LEN=MAX_STRING_LEN) :: FName,Trash
     INTEGER ::i,j,k,k2,n,nt,Node,DOFs,TotalDofs,DofCount,SavedCount,Timestep,NSDOFs,nlen
     INTEGER :: nNodes, Stat, FieldSize, PermSize
@@ -3002,9 +2992,7 @@ CONTAINS
     END IF
     RestartFileOpen = .TRUE.
 
-#ifdef ALLOC_CHAR
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
-#endif
     READ( RestartUnit, '(A)', IOSTAT=iostat ) Row
     IF( iostat /= 0 ) THEN
       CALL Fatal('LoadRestartFile','Error reading header line!')
@@ -3255,7 +3243,7 @@ CONTAINS
           Var % Perm = 0
         END IF
 
-        IF ( VarName(1:14) == 'flow solution ' ) THEN
+        IF ( SEQL(VarName, 'flow solution ') ) THEN
 !------------------------------------------------------------------------------
 !         First add components to the variable list separately...
 !         (must be done this way for the output routines to work properly...)
@@ -3394,7 +3382,7 @@ CONTAINS
          ! If not all varibales were saved for this time step, and we're not
          ! using a .pos file, we may have reached the end even though i < TotalDOFs.
          IF ( Stat /= 0 ) EXIT
-         IF ( Row(1:5) == "Time:" ) THEN
+         IF ( SEQL(Row, "Time:") ) THEN
             CALL UnReadLine( RestartUnit, Row )
             EXIT
          END IF
@@ -3714,12 +3702,8 @@ CONTAINS
     INTEGER, INTENT(OUT) :: SavedCount, Timestep
     REAL(dp), INTENT(OUT) :: Time
     INTEGER, INTENT(OUT) :: Stat
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: String
     ALLOCATE(CHARACTER(32)::String)
-#else
-    CHARACTER(LEN=32) :: String
-#endif
 
     IF ( Binary ) THEN
       CALL BinReadString( RestartUnit, String, Stat )
@@ -3729,7 +3713,7 @@ CONTAINS
       CALL BinReadDouble( RestartUnit, Time, Stat )
     ELSE
       DO WHILE( ReadAndTrim(RestartUnit,String) )
-        IF ( String(1:5) == 'time:' ) THEN
+        IF ( SEQL(String, 'time:') ) THEN
           READ( String(7:),*,IOSTAT=iostat) SavedCount,Timestep,Time
           IF( iostat /= 0 ) THEN
             CALL Fatal('LoadRestartFile','Error in ReadTime!')
@@ -3827,11 +3811,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrentElement
     TYPE(Variable_t), POINTER :: Var,Var1,Displacement,MeshUpdate,MaskVar
 
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: Row
-#else
-    CHARACTER(LEN=MAX_STRING_LEN):: Row
-#endif
     CHARACTER(MAX_NAME_LEN) :: Str, DateStr
 
     LOGICAL :: gotIt, SaveCoordinates, MoveBoundary, MeshMoved, MaskExists
@@ -4303,9 +4283,7 @@ CONTAINS
    END IF
 
 !------------------------------------------------------------------------------
-#ifdef ALLOC_CHAR
    ALLOCATE(CHARACTER(MAX_STRING_LEN)::Row)
-#endif
    DO WHILE( .TRUE. )
       IF ( AppendFlag ) THEN
          SavedCount = Model % Mesh % SavesDone
@@ -4318,11 +4296,11 @@ CONTAINS
 !   ...read one timestep to memory (if not already there)...
 !------------------------------------------------------------------------------
          DO WHILE( ReadAndTrim(OutputUnit,Row) )
-            IF ( Row(1:11) == 'total dofs:' ) READ( Row(12:),* ) DOFs
-            IF ( Row(1:5)  == 'time:' ) EXIT
+            IF ( SEQL(Row, 'total dofs:') ) READ( Row(12:),* ) DOFs
+            IF ( SEQL( Row, 'time:') ) EXIT
          END DO
          
-         IF ( Row(1:5) /= 'time:' ) EXIT
+         IF ( .NOT.SEQL(Row, 'time:') ) EXIT
          
          READ( Row(7:),* ) SavedCount,Timestep,Time
       END IF

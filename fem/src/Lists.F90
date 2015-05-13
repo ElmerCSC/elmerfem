@@ -139,13 +139,14 @@ MODULE Lists
      END FUNCTION ExecConstRealFunction
    END INTERFACE
 #endif
-   TYPE(Varying_string), SAVE, PRIVATE :: Namespace
-   !$OMP THREADPRIVATE(NameSpace)
 
    TYPE String_stack_t
       TYPE(Varying_string) :: Name
       TYPE(String_stack_t), POINTER :: Next => Null()
    END TYPE String_stack_t
+
+   CHARACTER(:), ALLOCATABLE, SAVE, PRIVATE :: Namespace
+   !$OMP THREADPRIVATE(NameSpace)
 
    TYPE(String_stack_t), SAVE, PRIVATE, POINTER :: Namespace_stack => Null()
    !$OMP THREADPRIVATE(NameSpace_stack)
@@ -1413,7 +1414,7 @@ CONTAINS
    FUNCTION ListGetNamespace(str) RESULT(l)
 !------------------------------------------------------------------------------
     LOGICAL :: l 
-    TYPE(Varying_string) :: str
+    CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
     l = .FALSE.
     IF ( Namespace /= '' ) THEN
@@ -1430,10 +1431,16 @@ CONTAINS
      CHARACTER(LEN=*) :: str
 !------------------------------------------------------------------------------
      LOGICAL :: L
+     CHARACTER(:), ALLOCATABLE :: tstr
      TYPE(String_stack_t), POINTER :: stack
 !------------------------------------------------------------------------------
      ALLOCATE(stack)
-     L = ListGetNameSpace(stack % name)
+     L = ListGetNameSpace(tstr)
+     IF(ALLOCATED(tstr)) THEN
+       stack % name = tstr
+     ELSE
+       stack % name = ''
+     END IF
      stack % next => Namespace_stack
      Namespace_stack => stack
      CALL ListSetNamespace(str)
@@ -1508,7 +1515,7 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
+     CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n
@@ -1567,7 +1574,7 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
+     CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
@@ -1624,7 +1631,6 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
@@ -1735,6 +1741,84 @@ CONTAINS
    END FUNCTION ListCheckSuffixAnyBodyForce
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Finds an entry related to vector keyword of type "name" or "name i", i=1,2,3.
+!> This could save time since it will detect at one sweep whether the keyword
+!> for a vector is given, and whether it is componentwise or not. 
+!> There is a caveat since currently the "i" is not checked and possibly 
+!> the user could mix the formats and the chosen one would be random.  
+!------------------------------------------------------------------------------
+   FUNCTION ListFindVectorPrefix( list, name, ComponentWise,Found ) RESULT(ptr)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
+     CHARACTER(LEN=*) :: name
+     LOGICAL :: ComponentWise
+     LOGICAL, OPTIONAL :: Found
+!------------------------------------------------------------------------------
+     CHARACTER(:), ALLOCATABLE :: strn
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+!------------------------------------------------------------------------------
+     INTEGER :: k, k1, n, m
+
+     ptr => NULL()
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+
+     IF ( ListGetNamespace(strn) ) THEN
+       strn = strn //' '//str(1:k)
+       k1 = LEN(strn)
+       ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+          n = ptr % NameLen
+          IF ( n == k1 ) THEN
+            IF ( ptr % Name(1:k1) == strn ) THEN
+              ComponentWise = .FALSE.
+              EXIT
+            END IF
+          ELSE IF( n == k1 + 2 ) THEN
+            IF ( ptr % Name(1:k1+1) == strn//' ' ) THEN
+              ComponentWise = .TRUE.
+              EXIT
+            END IF
+          END IF
+          ptr => ptr % Next
+       END DO
+     END IF
+
+     IF ( .NOT. ASSOCIATED(ptr) ) THEN
+       Ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         IF ( n == k ) THEN
+           IF ( ptr % Name(1:k) == str(1:k) ) THEN
+             ComponentWise = .FALSE.
+             EXIT
+           END IF
+         ELSE IF( n == k + 2 ) THEN
+           IF ( ptr % Name(1:k+1) == str(1:k)//' ' ) THEN
+             ComponentWise = .TRUE.
+             EXIT
+           END IF
+         END IF
+         ptr => ptr % Next
+       END DO
+     END IF
+
+     IF ( PRESENT(Found) ) THEN
+       Found = ASSOCIATED(ptr)
+     ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
+       CALL Warn( 'ListFindVectorPrefix', ' ' )
+       WRITE(Message,*) 'Requested vector prefix: ', '[',TRIM(Name),'], not found'
+       CALL Warn( 'ListFindVectorPrefix', Message )
+       CALL Warn( 'ListFindVectorPrefix', ' ' )
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ListFindVectorPrefix
+!------------------------------------------------------------------------------
+
+
 
    SUBROUTINE ListSetCoefficients( list, name, coeff )
 !------------------------------------------------------------------------------
@@ -1743,7 +1827,6 @@ CONTAINS
      REAL(KIND=dp) :: coeff
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr, ptr2
-     TYPE(Varying_string) :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k, k1, n, n2, m
 
@@ -2668,17 +2751,16 @@ CONTAINS
      
      CASE( LIST_TYPE_VARIABLE_SCALAR )
 
+       CALL ListPushActiveName(Name)
        DO i=1,n
          k = NodeIndexes(i)
          CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
 
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            IF ( ptr % PROCEDURE /= 0 ) THEN
-             CALL ListPushActiveName(Name)
              F(i) = ptr % Coeff * &
                  ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                           NodeIndexes(i), T )
-             CALL ListPopActiveName()
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
                WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -2696,6 +2778,7 @@ CONTAINS
            END IF
          END IF
        END DO
+       CALL ListPopActiveName()
 
 
      CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
@@ -3212,17 +3295,16 @@ CONTAINS
 
 
          CASE( LIST_TYPE_VARIABLE_SCALAR )
+           CALL ListPushActiveName(name)
            DO i=1,n
              k = NodeIndexes(i)
              CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
              
              IF ( .NOT. ANY( T(1:j) == HUGE(1.0_dp) ) ) THEN
                IF ( ptr % PROCEDURE /= 0 ) THEN
-                 CALL ListPushActiveName(name)
                  F(i) = ptr % Coeff * &
                      ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
                      NodeIndexes(i), T )              
-                 CALL ListPopActiveName()
                ELSE
                  IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
                    WRITE(Message,*) 'Value type for property [', TRIM(Name), &
@@ -3244,6 +3326,7 @@ CONTAINS
                END IF
              END IF
            END DO
+           CALL ListPopActiveName()
            
          CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
            Handle % ConstantInList = .TRUE.
@@ -3558,6 +3641,7 @@ CONTAINS
        k = LEN_TRIM(cmd)
        CALL matc( cmd, tmp_str, k )
 
+       CALL ListPushActiveName(name)
        DO i=1,n
          k = NodeIndexes(i)
          CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
@@ -3576,10 +3660,8 @@ CONTAINS
            READ( tmp_str(1:k1), * ) ((F(j,k,i),k=1,N2),j=1,N1)
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
            G => F(:,:,i)
-           CALL ListPushActiveName(name)
            CALL ExecRealArrayFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G )
-           CALL ListPopActiveName()
          ELSE
            DO j=1,N1
              DO k=1,N2
@@ -3588,9 +3670,9 @@ CONTAINS
              END DO
            END DO
          END IF
-
          IF( AllGlobal ) EXIT
        END DO
+       CALL ListPopActiveName()
 
        IF( AllGlobal ) THEN
          DO i=2,n
@@ -3686,6 +3768,7 @@ CONTAINS
        k = LEN_TRIM(cmd)
        CALL matc( cmd, tmp_str, k )
 
+       CALL ListPushActiveName(name)
        DO i=1,n
          k = NodeIndexes(i)
          CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
@@ -3704,10 +3787,8 @@ CONTAINS
            READ( tmp_str(1:k1), * ) (F(j,i),j=1,N1)
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
            G => F(:,i)
-           CALL ListPushActiveName(name)
            CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
                      NodeIndexes(i), T, G )
-           CALL ListPopActiveName()
          ELSE
            DO k=1,n1
              F(k,i) = InterpolateCurve(ptr % TValues, &
@@ -3717,6 +3798,7 @@ CONTAINS
 
          IF( AllGlobal ) EXIT
        END DO
+       CALL ListPopActiveName()
 
        IF( AllGlobal ) THEN
          DO i=2,n
@@ -4230,7 +4312,7 @@ CONTAINS
             Var1 => VariableGet(Variables,TRIM(str(1:k)))
             IF( ASSOCIATED( Var1 ) ) THEN
               GotIt = .TRUE.
-              IsVector = ( Var1 % Dofs == Dim ) 
+              IsVector = ( Var1 % Dofs == Dim .OR. Var1 % Dofs == 3 ) 
               Set = ( Comp == 1 .OR. .NOT. IsVector )
             END IF
           END IF
