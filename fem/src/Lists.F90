@@ -3821,9 +3821,9 @@ CONTAINS
        G = 0.0d0
        DO i=1,N1
          IF ( PRESENT( Found ) ) THEN
-           G(i,:) = G(i,:) + ListGetReal( List,Name,N,NodeIndexes,Found )
+           G(i,:) = ListGetReal( List,Name,N,NodeIndexes,Found )
          ELSE
-           G(i,:) = G(i,:) + ListGetReal( List,Name,N,NodeIndexes )
+           G(i,:) = ListGetReal( List,Name,N,NodeIndexes )
          END IF
        END DO
      END SELECT
