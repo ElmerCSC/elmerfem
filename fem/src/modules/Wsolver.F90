@@ -48,6 +48,8 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
   SAVE STIFF, LOAD, FORCE, Tcoef, RotM, Cwrk, AllocationsDone
 !------------------------------------------------------------------------------
 
+  IF (.NOT.ASSOCIATED(Solver % Matrix)) RETURN
+
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
   Mesh => GetMesh()

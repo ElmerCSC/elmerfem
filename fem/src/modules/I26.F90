@@ -99,8 +99,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   TYPE(CircuitVariable_t), POINTER :: Cvar
 
   TYPE Component_t
-    REAL(KIND=dp) :: ElArea, N_j, coilthickness
-    INTEGER :: BodyId, polord, nofturns, ElBoundary, nofcnts
+    REAL(KIND=dp) :: ElArea, N_j, coilthickness, nofturns
+    INTEGER :: BodyId, polord, ElBoundary, nofcnts
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
   END TYPE
@@ -386,7 +386,7 @@ CONTAINS
         
         SELECT CASE (Comp % CoilType) 
         CASE ('stranded')
-          Comp % nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+          Comp % nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
           IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
 
           Comp % ElBoundary = GetInteger(BodyParams, 'Electrode Boundary 1', Found)
@@ -444,7 +444,7 @@ CONTAINS
           Comp % coilthickness = GetConstReal(BodyParams, 'Coil Thickness', Found)
           IF (.NOT. Found) CALL Fatal('Circuits_Init','Coil Thickness not found!')
 
-          Comp % nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+          Comp % nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
           IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
  
         END SELECT

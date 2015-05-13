@@ -104,8 +104,8 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 
   TYPE Component_t
     REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
-                     N_j, coilthickness, i_multiplier_re, i_multiplier_im
-    INTEGER :: BodyId, polord, nofturns, ElBoundary, nofcnts
+                     N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
+    INTEGER :: BodyId, polord, ElBoundary, nofcnts
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
   END TYPE
@@ -355,7 +355,7 @@ CONTAINS
         
         SELECT CASE (Comp % CoilType) 
         CASE ('stranded')
-          Comp % nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+          Comp % nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
           IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
 
           Comp % ElBoundary = GetInteger(BodyParams, 'Electrode Boundary 1', Found)
@@ -413,7 +413,7 @@ CONTAINS
           Comp % coilthickness = GetConstReal(BodyParams, 'Coil Thickness', Found)
           IF (.NOT. Found) CALL Fatal('Circuits_Init','Coil Thickness not found!')
 
-          Comp % nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+          Comp % nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
           IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
  
         END SELECT

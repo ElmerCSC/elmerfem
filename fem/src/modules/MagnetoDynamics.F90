@@ -5476,7 +5476,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          N_j = GetConstReal (BodyParams, 'Stranded Coil N_j', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
 
-         nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+         nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
        CASE ('massive')
          CoilBody = .TRUE.
@@ -5496,7 +5496,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          coilthickness = GetConstReal(BodyParams, 'Coil Thickness', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Coil Thickness not found!')
 
-         nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+         nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
 
          VvarDofs = GetInteger (BodyParams, 'Circuit Voltage Variable dofs', Found)

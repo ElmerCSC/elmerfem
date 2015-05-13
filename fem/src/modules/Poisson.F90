@@ -43,6 +43,8 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   SAVE STIFF, LOAD, FORCE, AllocationsDone
 !------------------------------------------------------------------------------
 
+  IF (.NOT.ASSOCIATED(Solver % Matrix)) RETURN
+
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
   Mesh => GetMesh()

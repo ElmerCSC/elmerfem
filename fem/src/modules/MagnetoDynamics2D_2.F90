@@ -1524,8 +1524,8 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber
     LOGICAL :: CoilBody, EddyLoss
     COMPLEX(KIND=dp) :: imag_value
-    INTEGER :: IvarId, ReIndex, ImIndex, nofturns, VvarDofs, VvarId
-    REAL(KIND=DP) :: grads_coeff
+    INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
+    REAL(KIND=DP) :: grads_coeff, nofturns
     REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im
     COMPLEX(KIND=dp) :: i_multiplier
     
@@ -1586,7 +1586,7 @@ CONTAINS
           N_j = GetConstReal (BodyParams, 'Stranded Coil N_j', Found)
           IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
  
-          nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+          nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
           IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
           
           i_multiplier_re = GetConstReal(BodyParams, 'Current Multiplier re', Found)
@@ -1613,7 +1613,7 @@ CONTAINS
           coilthickness = GetConstReal(BodyParams, 'Coil Thickness', Found)
           IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Coil Thickness not found!')
  
-          nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+          nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
           IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
  
           VvarDofs = GetInteger (BodyParams, 'Circuit Voltage Variable dofs', Found)
