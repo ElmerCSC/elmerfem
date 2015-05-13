@@ -2812,6 +2812,8 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
     END IF
   END IF
+  IF( .NOT. ListCheckPresent( SolverParams, 'Linear System Complex') ) &
+    CALL ListAddLogical( SolverParams, 'Linear System Complex', .TRUE. )
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVHarmonicSolver_Init0
 !------------------------------------------------------------------------------

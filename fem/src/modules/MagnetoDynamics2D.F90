@@ -620,6 +620,25 @@ CONTAINS
 END SUBROUTINE MagnetoDynamics2D
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+SUBROUTINE MagnetoDynamics2DHarmonic_Init0( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
+  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
+  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
+  LOGICAL :: TransientSimulation !< Steady state or transient simulation
+!------------------------------------------------------------------------------
+  IF( .NOT.ListCheckPresent( Solver % Values, 'Apply Mortar BCs') ) &
+    CALL ListAddLogical( Solver % Values, 'Apply Mortar BCs', .TRUE.)
+
+  IF( .NOT.ListCheckPresent( Solver % Values, 'Linear System Complex') ) &
+    CALL ListAddLogical( Solver % Values, 'Linear System Complex', .TRUE.)
+!------------------------------------------------------------------------------
+END SUBROUTINE MagnetoDynamics2DHarmonic_Init0
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 SUBROUTINE MagnetoDynamics2DHarmonic_Init( Model,Solver,dt,TransientSimulation )
@@ -640,7 +659,6 @@ SUBROUTINE MagnetoDynamics2DHarmonic_Init( Model,Solver,dt,TransientSimulation )
     CALL ListAddString( Params,'Variable',&
         'Potential[Potential re:1 Potential im:1]')
   END IF
-
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2DHarmonic_Init
 !------------------------------------------------------------------------------
