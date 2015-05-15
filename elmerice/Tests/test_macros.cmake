@@ -16,6 +16,7 @@ MACRO(ADD_ELMERICE_TEST test_name)
       -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
       -DWITH_MPI=${WITH_MPI}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runTest.cmake)
+    SET_TESTS_PROPERTIES(${test_name} PROPERTIES LABELS "elmerice")
 ENDMACRO()
 
 MACRO(ADD_ELMERICETEST_MODULE test_name module_name file_name)
