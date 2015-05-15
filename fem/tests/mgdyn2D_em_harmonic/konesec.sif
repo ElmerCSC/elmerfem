@@ -194,18 +194,18 @@ Solver 2
   Apply Mortar BCs = Logical True
 
   Save Constraint Matrix = Logical True
+
+  Nonlinear System Convergence Without Constraints = Logical True
 End
 
 
 ! Lasketaan magneetivuontiheys vektoripotentiaalista
 Solver 3
-  Exec Solver = Never
+  Exec Solver = never ! After all
   Equation = ComputeB
-  Variable = -nooutput temp
 
-  Exported Variable 1 = B[B re:2 B im:2]
-  Target Variable="A"
-  Procedure = "MagnetoDynamics2D" "bSolver"
+  Potential Variable="A"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BicgstabL
@@ -227,31 +227,44 @@ Boundary Condition 1
   Target Boundaries(1) = 1
   Mortar BC = Integer 2
   Anti Rotational Projector = Logical True
+  Galerkin Projector = Logical True
 End
 Boundary Condition 2:: Target Boundaries(1) = 2
 
 ! Periodinen reuna, staattorin osuus
 Boundary Condition 3
   Target Boundaries(1) = 3
-  Periodic BC Use Lagrange Coefficient=Logical True
-  Periodic BC = 4
-  Periodic BC Rotate(3) = 0 0 90
-  Anti Periodic BC A im = Logical True
-  Anti Periodic BC A re = Logical True
+  
+  Mortar BC = Integer 4
+  Anti Radial Projector = Logical True
+  Galerkin Projector = Logical True
+  Mortar BC Static = Logical True
+ 
+!  Periodic BC Use Lagrange Coefficient=Logical True
+!  Periodic BC = 4
+!  Periodic BC Rotate(3) = 0 0 90
+!  Anti Periodic BC A im = Logical True
+!  Anti Periodic BC A re = Logical True
 End
 Boundary Condition 4:: Target Boundaries(1) = 4
 
 ! Periodinen reuna, roottorin osuus
 Boundary Condition 5
   Target Boundaries(1) = 5
-  Periodic BC = 6
-  Periodic BC Use Lagrange Coefficient=Logical True
-  Periodic BC Rotate(3) = 0 0 90
-  Anti Periodic BC A im = Logical True
-  Anti Periodic BC A re = Logical True
+
+  Mortar BC = Integer 6
+  Anti Radial Projector = Logical True
+  Galerkin Projector = Logical True
+  Mortar BC Static = Logical True
+
+!  Periodic BC = 6
+!  Periodic BC Use Lagrange Coefficient=Logical True
+!  Periodic BC Rotate(3) = 0 0 90
+!  Anti Periodic BC A im = Logical True
+!  Anti Periodic BC A re = Logical True
 End
 Boundary Condition 6:: Target Boundaries(1) = 6
 
-Solver 2 :: Reference Norm = Real 2.054466E-02
+Solver 2 :: Reference Norm = Real 2.053797E-02
 
 !End Of File

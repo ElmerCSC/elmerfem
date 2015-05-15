@@ -2973,12 +2973,11 @@ END SUBROUTINE GetMaxDefs
      END DO
 
 
-     IF( minid > maxid ) THEN
-       PRINT *,'minid',minid,maxid
-       CALL Fatal('LoadMesh','Boundary indexes are screwed')
-     END IF
      CALL Info('LoadMesh','Minimum initial boundary index: '//TRIM(I2S(minid)),Level=6 )
      CALL Info('LoadMesh','Maximum initial boundary index: '//TRIM(I2S(maxid)),Level=6 )
+     IF( minid > maxid ) THEN
+       CALL Fatal('LoadMesh','Boundary indexes are screwed')
+     END IF
 
      minid = MIN( minid, 1 ) 
      maxid = MAX( maxid, Model % NumberOfBCs ) 
