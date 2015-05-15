@@ -1,0 +1,95 @@
+!----------------------------------------------------
+! Simple test case for 2nd order ode of 1 dofs.
+! 
+! P.R. 4.5.2015 
+!----------------------------------------------------
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 42
+
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Transient"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+  Timestep Intervals = 100
+  Timestep Sizes = 0.01
+  Timestepping Method = bdf
+  Bdf Order = 4
+
+!  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equations"
+End
+
+
+Solver 1
+  Equation = Ode
+  Procedure = "OdeSolver" "OdeSolver"
+
+  Variable = -global ode
+  Variable Dofs = 1
+
+  Time Derivative Order = 2
+
+  Linear System Save = Logical False
+  Linear System Solver = "Direct"
+
+  Active Components = Integer 1
+End 
+
+
+Solver 2 
+  Exec Solver = never
+
+  Equation = SaveScalars
+
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = time
+  Variable 2 = "Ode"
+
+  Filename = f.dat
+End 
+
+Material 1
+  Name = "Material"
+  Density = 1
+End
+
+Component 1 
+  Name = String "Ode Component"
+
+$ d=1.0  
+$ m=1.0
+
+  Stiffness Matrix 11 = Real 1.0
+  Damping Matrix 11 = Real $d
+  Mass Matrix 11 = Real $m
+  Force 1 = Real 1.0  
+End 
+
+
+Solver 1 :: Reference Norm = Real 0.33762925
+
+!End Of File

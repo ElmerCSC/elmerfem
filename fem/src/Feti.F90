@@ -894,9 +894,6 @@ CONTAINS
 
     type(matrix_t), pointer :: gtg_m => null()
 
-    logical :: gotnm
-    type(Varying_string) :: nm
-
     integer,save :: size, mygroup, grpsize, subsize, comm_group,solv_group,solv_comm,ir=0
     integer, allocatable, save :: ranks(:,:),subsizes(:)
 
@@ -913,9 +910,7 @@ CONTAINS
       return
     end if
 
-    nm=''
-    gotNM=ListGetNameSpace(nm)
-    CALL ListSetNameSpace('feti proj:')
+    CALL ListPushNameSpace('feti proj:')
 
     nrows = A % NumberOfRows
     ALLOCATE(x(nz),b(nz),P(nrows),Q(nrows));P=0; Q=0
@@ -1215,7 +1210,7 @@ CONTAINS
       CALL Fatal('Feti Procjection','Unknown projection OP.')
     END SELECT
 
-    CALL ListSetNameSpace(CHAR(nm))
+    CALL ListPopNameSpace()
 !call checktimer('project',delete=.true.)
 
 CONTAINS
@@ -1493,8 +1488,7 @@ END SUBROUTINE FetiProject
     INTEGER, POINTER :: p(:)
     INTEGER :: i,j,k,n,m,dofs,neigs,dim,FixNodes(0:6)
     REAL(KIND=dp), POINTER :: coord_x(:),coord_y(:),coord_z(:), dscale(:)
-    TYPE(Varying_string) :: nm
-    LOGICAL :: Found, gotNM
+    LOGICAL :: Found
     REAL(KIND=dp) :: xc,yc,zc,hc,ss
     INTEGER, ALLOCATABLE :: floatinds(:)
     CHARACTER(MAX_NAME_LEN) :: Method
@@ -1666,9 +1660,7 @@ END SUBROUTINE FetiProject
     ! ----------------------------------
     ALLOCATE(eigVectors(Neigs,n))
       
-    nm=''
-    gotNM=ListGetNameSpace(nm)
-    CALL ListSetNameSpace('feti:')
+    CALL ListPushNameSpace('feti:')
 
     CALL ListAddString( Params, 'Feti: Linear System Solver', 'Direct' )
     Params=>GetSolverParams()
@@ -1694,7 +1686,7 @@ END SUBROUTINE FetiProject
     ! ------------------------------------------------------------------------
     CALL DirectSolver(A,x,x,Solver,Free_Fact=.TRUE.)
 
-    CALL ListSetNameSpace(CHAR(nm))
+    CALL ListPopNameSpace()
 
     ! Finally create null(A) from zero freq. eigenvectors:
     ! ----------------------------------------------------

@@ -54,7 +54,7 @@ SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
 
-  Params => Solver % Values
+  Params => GetSolverParams()
   CALL ListAddInteger( Params, 'Variable Dofs',1 )
   IF( .NOT. ListCheckPresent(  Params,'Variable') ) THEN
     CALL ListAddString( Params,'Variable','Potential')
@@ -390,7 +390,8 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
-    TYPE(ValueList_t), POINTER :: Material, Lst, BodyForce
+    TYPE(ValueListEntry_t), POINTER :: Lst
+    TYPE(ValueList_t), POINTER :: Material, BodyForce
 
     TYPE(Nodes_t), SAVE :: Nodes
 !$omp threadprivate(Nodes)
@@ -619,6 +620,25 @@ CONTAINS
 END SUBROUTINE MagnetoDynamics2D
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+SUBROUTINE MagnetoDynamics2DHarmonic_Init0( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
+  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
+  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
+  LOGICAL :: TransientSimulation !< Steady state or transient simulation
+!------------------------------------------------------------------------------
+  IF( .NOT.ListCheckPresent( Solver % Values, 'Apply Mortar BCs') ) &
+    CALL ListAddLogical( Solver % Values, 'Apply Mortar BCs', .TRUE.)
+
+  IF( .NOT.ListCheckPresent( Solver % Values, 'Linear System Complex') ) &
+    CALL ListAddLogical( Solver % Values, 'Linear System Complex', .TRUE.)
+!------------------------------------------------------------------------------
+END SUBROUTINE MagnetoDynamics2DHarmonic_Init0
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 SUBROUTINE MagnetoDynamics2DHarmonic_Init( Model,Solver,dt,TransientSimulation )
@@ -633,13 +653,12 @@ SUBROUTINE MagnetoDynamics2DHarmonic_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
 
-  Params => Solver % Values
+  Params => GetSolverParams(Solver)
   CALL ListAddInteger( Params, 'Variable Dofs',2 )
   IF( .NOT. ListCheckPresent(  Params,'Variable') ) THEN
     CALL ListAddString( Params,'Variable',&
         'Potential[Potential re:1 Potential im:1]')
   END IF
-
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2DHarmonic_Init
 !------------------------------------------------------------------------------
@@ -992,7 +1011,8 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
-    TYPE(ValueList_t), POINTER :: Material, Lst, BodyForce
+    TYPE(ValueListEntry_t), POINTER :: Lst
+    TYPE(ValueList_t), POINTER :: Material,  BodyForce
 
     TYPE(Nodes_t), SAVE :: Nodes
 !$omp threadprivate(Nodes)

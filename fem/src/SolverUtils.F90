@@ -138,7 +138,7 @@ CONTAINS
      IF ( Solver % Variable % DOFs <= 1 ) RETURN
 
      NormalTangentialName = 'Normal-Tangential'
-     IF ( Solver % Variable % Name(1:13) == 'flow solution' ) THEN
+     IF ( SEQL(Solver % Variable % Name, 'flow solution') ) THEN
        NormalTangentialName = TRIM(NormalTangentialName) // ' Velocity'
      ELSE
        NormalTangentialName = TRIM(NormalTangentialName) // ' ' // &
@@ -2088,7 +2088,6 @@ CONTAINS
               CALL ListAddIntegerArray( ValueList,'Target Nodes', &
                   1, IndNodes) 
             END IF
-            Model % BCs(BC) % Values => ValueList
 
             ! Finally deallocate the temporal vectors
             DEALLOCATE( IndNodes, MinDist ) 
@@ -3760,7 +3759,6 @@ CONTAINS
               ! retreated each time. 
               CALL ListAddIntegerArray( ValueList,'Target Nodes', 0, IndNodes) 
             END IF
-            Model % BCs(BC) % Values => ValueList
 
             ! Finally deallocate the temporal vectors
             DEALLOCATE( IndNodes, MinDist ) 
@@ -7097,7 +7095,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: LoadValues(:)
     INTEGER :: i,j,k,l,m,ii,This,DOF
     REAL(KIND=dp), POINTER :: TempRHS(:), TempVector(:), SaveValues(:), Rhs(:)
-    REAL(KIND=dp) :: Energy
+    REAL(KIND=dp) :: Energy, Energy_im
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: Found
 
@@ -7132,12 +7130,37 @@ END FUNCTION SearchNodeL
 
     IF( ListGetLogical(Solver % Values, 'Calculate Energy Norm', Found) ) THEN
       Energy = 0._dp
-      DO i=1,Aaid % NumberOfRows
-        IF ( ParEnv % Pes>1 ) THEN
-          IF ( Aaid % ParMatrix % ParallelInfo % &
-              NeighbourList(i) % Neighbours(1) /= Parenv % MyPE ) CYCLE
-        END IF
-        Energy = Energy + x(i)*TempVector(i)
+      IF( ListGetLogical(Solver % Values, 'Linear System Complex', Found) ) THEN
+        Energy_im = 0._dp
+        DO i = 1, (Aaid % NumberOfRows / 2)
+          IF ( ParEnv % Pes>1 ) THEN
+            IF ( Aaid% ParMatrix % ParallelInfo % &
+              NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          END IF
+          Energy    = Energy    + x(2*(i-1)+1) * TempVector(2*(i-1)+1) - x(2*(i-1)+2) * TempVector(2*(i-1)+2)
+          Energy_im = Energy_im + x(2*(i-1)+1) * TempVector(2*(i-1)+2) + x(2*(i-1)+2) * TempVector(2*(i-1)+1) 
+       END DO
+       Energy    = ParallelReduction(Energy)
+       Energy_im = ParallelReduction(Energy_im)
+
+       CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy)
+       CALL ListAddConstReal( Solver % Values, 'Energy norm im', Energy_im)
+
+       WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+       CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
+
+       WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm im'
+       CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
+
+       WRITE( Message, * ) 'Energy Norm: ', Energy, Energy_im
+       CALL Info( 'SolveLinearSystem', Message )
+     ELSE 
+       DO i=1,Aaid % NumberOfRows
+         IF ( ParEnv % Pes>1 ) THEN
+           IF ( Aaid % ParMatrix % ParallelInfo % &
+                NeighbourList(i) % Neighbours(1) /= Parenv % MyPE ) CYCLE
+         END IF
+         Energy = Energy + x(i)*TempVector(i)
       END DO
       Energy = ParallelReduction(Energy)
       CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy )
@@ -7148,6 +7171,7 @@ END FUNCTION SearchNodeL
       WRITE( Message, * ) 'Energy Norm: ', Energy
       CALL Info( 'SolveLinearSystem', Message )
     END IF
+  END IF
 
     IF ( ParEnv % PEs>1 ) THEN
       DO i=1,Aaid % NumberOfRows
@@ -7995,7 +8019,7 @@ END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
 SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs )
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: var_name
+  CHARACTER(LEN=*)  :: var_name
   LOGICAL, OPTIONAL :: NoOutput, Global
   INTEGER, OPTIONAL :: Dofs
 
@@ -8006,17 +8030,17 @@ SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs )
   IF(PRESENT(Dofs)) Dofs = 0
 
   DO WHILE( var_name(1:1) == '-' )
-    IF ( var_name(1:10) == '-nooutput ' ) THEN
+    IF ( SEQL(var_name, '-nooutput ') ) THEN
       IF(PRESENT(NoOutput)) NoOutput = .TRUE.
       var_name(1:LEN(var_name)-10) = var_name(11:)
     END IF
     
-    IF ( var_name(1:8) == '-global ' ) THEN
+    IF ( SEQL(var_name, '-global ') ) THEN
       IF(PRESENT(Global)) Global = .TRUE.
       var_name(1:LEN(var_name)-8) = var_name(9:)
     END IF
     
-    IF ( var_name(1:6) == '-dofs ' ) THEN
+    IF ( SEQL(var_name, '-dofs ') ) THEN
       IF(PRESENT(DOFs)) READ( var_name(7:), * ) DOFs     
       j = LEN_TRIM( var_name )
       k = 7
@@ -9296,8 +9320,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     TYPE(Variable_t), POINTER :: Var, Variables
     LOGICAL :: Found, Symmetric, SaveFields, SkipCorrection
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TmpVarName
-    TYPE(Varying_string) :: namesp
-
 
     Params => Solver % Values
 
@@ -9440,13 +9462,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     ! The stiffness matrix is momentarily replaced by the consistent mass matrix M_C
     ! Also the namespace is replaced to 'fct:' so that different strategies may 
     ! be applied to the mass matrix solution.
-    Found = ListGetNameSpace(namesp)
-    CALL ListSetNameSpace('fct:')
+    CALL ListPushNameSpace('fct:')
     SaveValues => A % Values
     A % Values => M_C
     CALL SolveLinearSystem( A, ku, udot, Norm, 1, Solver )
     A % Values => SaveValues
-    CALL ListSetNameSpace(CHAR(namesp))
+    CALL ListPopNamespace()
 
     ! Computation of correction factors (Zalesak's limiter)
     ! Code derived initially from Kuzmin's subroutine   

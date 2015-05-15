@@ -84,7 +84,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   Particles => GlobalParticles
   VisitedTimes = VisitedTimes + 1
 
-  Params => Solver % Values
+  Params => GetSolverParams()
   Mesh => Solver % Mesh
   PSolver => Solver
   DIM = CoordinateSystemDimension()
@@ -536,7 +536,7 @@ CONTAINS
         dofs = dim 
         InternalVariable = .TRUE.
         maxdim = MAX( dim, maxdim )
-      ELSE IF( VariableName(1:8) == 'particle' ) THEN
+      ELSE IF( SEQL(VariableName, 'particle') ) THEN
         dofs = 1
         InternalVariable = .TRUE.
         maxdim = MAX( 1, maxdim )
@@ -678,7 +678,7 @@ CONTAINS
             NewValues(i) = 1.0_dp * Particles % Status(i)
           END DO
           
-        ELSE IF( VariableName(1:8) == 'particle' ) THEN
+        ELSE IF( SEQL(VariableName, 'particle') ) THEN
           ParticleVar => ParticleVariableGet( Particles, VariableName )
           IF( ASSOCIATED( ParticleVar ) ) THEN
             NewValues = ParticleVar % Values
@@ -822,7 +822,7 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found
   INTEGER :: NormInd
 
-  Params => Solver % Values
+  Params => GetSolverParams()
 
   ! These are default setting that make the operation of the advection solver 
   ! possible. There should always be one passive particle for each active node.

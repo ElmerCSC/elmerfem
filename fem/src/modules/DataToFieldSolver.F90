@@ -316,7 +316,7 @@ CONTAINS
     
     
     SAVE Visited, Nodes, STIFF, FORCE, Basis, dBasisdx, NodalWeight
-    SAVE BoundaryPerm
+    SAVE BoundaryPerm, BoundaryNodes
 
     ! Assembly the diffusion part used for regularization
     !----------------------------------------------------------

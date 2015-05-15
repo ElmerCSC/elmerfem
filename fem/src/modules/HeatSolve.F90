@@ -912,14 +912,16 @@
 !------------------------------------------------------------------------------
 !          Perfusion (added as suggested by Matthias Zenker)
 !------------------------------------------------------------------------------
-         PerfusionRate(1:n) = GetReal( BodyForce, 'Perfusion Rate', Found )
+         IF( ASSOCIATED(BodyForce) ) THEN
+           PerfusionRate(1:n) = GetReal( BodyForce, 'Perfusion Rate', Found )
          
-         IF ( Found ) THEN
-           PerfusionRefTemperature(1:n) = GetReal( BodyForce, 'Perfusion Reference Temperature' )
-           PerfusionDensity(1:n) = GetReal( BodyForce, 'Perfusion Density' )
-           PerfusionHeatCapacity(1:n) = GetReal( BodyForce, 'Perfusion Heat Capacity' )
-           C0(1:n) = PerfusionHeatCapacity(1:n) * PerfusionRate(1:n) * PerfusionDensity(1:n) 
-           Load(1:n) = Load(1:n) + C0(1:n) * PerfusionRefTemperature(1:n)           
+           IF ( Found ) THEN
+             PerfusionRefTemperature(1:n) = GetReal( BodyForce, 'Perfusion Reference Temperature' )
+             PerfusionDensity(1:n) = GetReal( BodyForce, 'Perfusion Density' )
+             PerfusionHeatCapacity(1:n) = GetReal( BodyForce, 'Perfusion Heat Capacity' )
+             C0(1:n) = PerfusionHeatCapacity(1:n) * PerfusionRate(1:n) * PerfusionDensity(1:n) 
+             Load(1:n) = Load(1:n) + C0(1:n) * PerfusionRefTemperature(1:n)           
+           END IF
          END IF
 
 !------------------------------------------------------------------------------
@@ -1280,7 +1282,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       RadiationFlag = GetString( BC, 'Radiation', Found )
 
-      IF ( Found .AND. RadiationFlag(1:4) /= 'none' ) THEN
+      IF ( Found .AND. RadiationFlag /= 'none' ) THEN
         NodalEmissivity(1:n) = GetReal(BC, 'Emissivity', Found)
         IF(.NOT. Found) THEN
            NodalEmissivity(1:n) = GetParentMatProp( 'Emissivity' )
@@ -1288,7 +1290,7 @@ CONTAINS
         Emissivity = SUM( NodalEmissivity(1:n) ) / n
 
 !------------------------------------------------------------------------------
-        IF (  RadiationFlag(1:9) == 'idealized' ) THEN
+        IF (  RadiationFlag == 'idealized' ) THEN
           AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
           IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
         ELSE
