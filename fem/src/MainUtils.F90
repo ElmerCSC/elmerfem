@@ -603,6 +603,8 @@ CONTAINS
       ! allocated. 
       !------------------------------------------------------------------------------------
       IF( VariableGlobal ) THEN
+        CALL Info('AddEquationBasics','Creating global variable: '//var_name(1:n),Level=8)
+
         Solver % SolverMode = SOLVER_MODE_GLOBAL
         ALLOCATE( Solution( DOFs ) )
         Solution = 0.0_dp
@@ -618,6 +620,15 @@ CONTAINS
                 tmpname, 1, Component )
           END DO
         END IF
+
+        IF( ListGetLogical( SolverParams,'Ode Matrix',Found ) ) THEN
+          CALL Info('AddEquationBasics','Creating dense matrix for ODE: '&
+              //TRIM(I2S(Dofs)),Level=8)
+          ALLOCATE( Solver % Variable % Perm(1) )
+          Solver % Variable % Perm(1) = 1
+          Solver % Matrix => CreateOdeMatrix( CurrentModel, Solver, Dofs )
+        END IF
+
       ELSE        
 
         ! If the variable is a field variable create a permutation and matrix related to it

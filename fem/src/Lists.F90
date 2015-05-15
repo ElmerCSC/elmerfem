@@ -3773,15 +3773,15 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL, OPTIONAL :: Found
      INTEGER :: N,NodeIndexes(:)
-     REAL(KIND=dp), POINTER :: G(:)
      REAL(KIND=dp), TARGET :: F(:,:)
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
 
+     REAL(KIND=dp), ALLOCATABLE :: G(:,:)
      REAL(KIND=dp) :: T(MAX_FNC)
-     INTEGER :: i,j,k,nlen,N1,N2,k1,S1,S2,l
+     INTEGER :: i,j,k,nlen,N1,N2,k1,S1,S2,l, cnt
      CHARACTER(LEN=2048) :: tmp_str, cmd
      LOGICAL :: AllGlobal, lFound, AnyFound
 !------------------------------------------------------------------------------
@@ -3801,6 +3801,12 @@ CONTAINS
        RETURN
      END IF
 
+     F = 0._dp
+     cnt = 0
+     ALLOCATE(G(SIZE(F,1),SIZE(F,2)))
+
+100  CONTINUE
+
      IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
        CALL Fatal( 'ListGetRealVector', &
            'Value type for property > '// TRIM(Name) // '< not used consistently.')
@@ -3811,7 +3817,7 @@ CONTAINS
      SELECT CASE(ptr % TYPE)
      CASE ( LIST_TYPE_CONSTANT_TENSOR )
        DO i=1,n
-         F(:,i) = ptr % Coeff * ptr % FValues(:,1,1)
+         G(:,i) = ptr % Coeff * ptr % FValues(:,1,1)
        END DO
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
@@ -3846,14 +3852,13 @@ CONTAINS
            cmd = ptr % CValue
            k1 = LEN_TRIM(cmd)
            CALL matc( cmd, tmp_str, k1 )
-           READ( tmp_str(1:k1), * ) (F(j,i),j=1,N1)
+           READ( tmp_str(1:k1), * ) (G(j,i),j=1,N1)
          ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
-           G => F(:,i)
            CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
-                     NodeIndexes(i), T, G )
+                     NodeIndexes(i), T, G(:,i) )
          ELSE
            DO k=1,n1
-             F(k,i) = InterpolateCurve(ptr % TValues, &
+             G(k,i) = InterpolateCurve(ptr % TValues, &
                    ptr % FValues(k,1,:), T(MIN(j,k)), ptr % CubicCoeff )
            END DO
          END IF
@@ -3865,25 +3870,31 @@ CONTAINS
        IF( AllGlobal ) THEN
          DO i=2,n
            DO j=1,N1
-             F(j,i) = F(j,1) 
+             G(j,i) = G(j,1) 
            END DO
          END DO
        END IF
 
        IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
-         F = ptr % Coeff * F
+         G = ptr % Coeff * G
        END IF
   
      CASE DEFAULT
-       F = 0.0d0
+       G = 0.0d0
        DO i=1,N1
          IF ( PRESENT( Found ) ) THEN
-           F(i,:) = ListGetReal( List,Name,N,NodeIndexes,Found )
+           G(i,:) = ListGetReal( List,Name,N,NodeIndexes,Found )
          ELSE
-           F(i,:) = ListGetReal( List,Name,N,NodeIndexes )
+           G(i,:) = ListGetReal( List,Name,N,NodeIndexes )
          END IF
        END DO
      END SELECT
+
+     F = F + G
+     cnt = cnt + 1
+     ptr => ListFind(List,Name//'{'//TRIM(I2S(cnt))//'}',lFound)
+     IF(ASSOCIATED(ptr)) GOTO 100
+
 !------------------------------------------------------------------------------
    END SUBROUTINE ListGetRealVector
 !------------------------------------------------------------------------------
