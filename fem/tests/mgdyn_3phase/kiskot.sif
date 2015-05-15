@@ -195,7 +195,4 @@ Boundary Condition 6
   p im = Real $ sin(4*pi/3)
 End
 
-Solver 1 :: Reference Norm = Real 0.55302509E-01
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.55302509E-01\n");
+Solver 1 :: Reference Norm = Real 5.539231E-02

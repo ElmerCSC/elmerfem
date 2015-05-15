@@ -66,6 +66,11 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   END IF
   CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
+  IF( .NOT. ListCheckPresent( SolverParams,'Displace Mesh At Init') ) THEN
+    CALL ListAddLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
+  END IF
+
+
   CalculateStrains = GetLogical(SolverParams, 'Calculate Strains', Found)
   CalculateStresses = GetLogical( SolverParams, 'Calculate Stresses', Found )
 

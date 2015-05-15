@@ -1,17 +1,12 @@
-!-----------------------------------------------------------------
-! Test case for 3D nonconforming mortar elements.
+! Test case for 3D nonconforming mortar elements
+! Some timing settings inhereted from benchmark computations
 ! 
 ! This case includes 4-fold symmetry in the rotations and 
-! some skew for both stator and rotor.
+! a skew of 20 degrees in the rotor. 
+! Increse number of extruded layers for better accuracy. 
 !
-! This is a variation of the test case using generic version of the 
-! mortar projector for interfaces meshes in level.
-!
-! P.R. / 26.11.2014
-!----------------------------------------------------------------- 
-
-$omega=20.0
-$skew=5.0
+! This is a variation of the test case using strong version of the 
+! Level Projector.
 
 Header
   CHECK KEYWORDS Warn
@@ -21,7 +16,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 7
+  Max Output Level = 32
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -30,9 +25,12 @@ Simulation
   
   Timestepping Method = BDF
   BDF Order = 1
-  Timestep Sizes = 1.0
-  Timestep Intervals = 3
+  Timestep Sizes = 0.1
+  Timestep Intervals = 2
   Output Intervals = 1
+
+  Post File = strong.vtu
+!  Output File = case.result
 
   Simulation Timing = Logical True
 End  
@@ -74,6 +72,7 @@ End
 
 
 Solver 1
+!  Exec Solver = Before all
   Exec Solver = Before Timestep
   Equation = MeshDeform
   Procedure = "RigidMeshMapper" "RigidMeshMapper"
@@ -112,6 +111,8 @@ Solver 2
 
   Apply Mortar BCs = Logical True
   Export Lagrange Multiplier = Logical True
+
+!  No Explicit Constrained Matrix = Logical True
 
   Linear System Timing = Logical True
   Solver Timing = Logical True
@@ -166,7 +167,7 @@ End
 
 
 Solver 5
-!  Exec Solver = never
+  Exec Solver = never
   Equation = VtuOutput
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = case
@@ -189,32 +190,23 @@ End
 Body Force 1
   Name = "MoveToLeft"
   Mesh Translate 1 = -4.0
-  Mesh Rotate 3 = Variable Coordinate 3 
-    Real MATC "0.0031474+0.5*(1-tx)*skew"
-
-! This is one way to make the mesh nonconforming in z
-!  Mesh Scale 3 = 0.8
 End
+
+$omega=20.0
+$skew=10.0
 
 Body Force 2 
   Name = "Hot Move"
   Heat Source = 100.0
-  Mesh Translate 3 = Real 0.1
   Mesh Rotate 3 = Variable time, Coordinate 3 
     Real MATC "omega*tx(0)+skew*tx(1)"
-
-! This is another way to make the mesh nonconforming in z
-! Mesh Translate 3 = Real 0.25
 End 
 
 Body Force 3
   Name = "Cold Move"
   Heat Source = -100.0
-  Mesh Translate 3 = Real 0.1
   Mesh Rotate 3 = Variable time, Coordinate 3 
     Real MATC "omega*tx(0)+skew*tx(1)"
-
-! Mesh Translate 3 = Real 0.25
 End 
 
 Boundary Condition 1
@@ -235,25 +227,25 @@ Boundary Condition 3
   Mortar BC =  Integer 2
   Rotational Projector = Logical True
 
-! Because there is skew on both sides the code cannot 
-! decide the periodicity from the interface mesh directly. 
-  Rotational Projector Periods = Integer 4
-
   Level Projector = Logical True
-  Level Projector Generic = Logical True
 
-!  Save Projector = Logical True
-!  Level Projector Save Element Index = Integer 1
+!  Projector Skip Nodes = Logical False
+!  Projector Skip Edges = Logical False
+
+  Level Projector Nodes Strong = Logical True
+!  Level Projector Plane Edges Strong = Logical False
+!  Level Projector Extruded Edges Strong = Logical False 
+
+  Save Projector = Logical True
 End
 
 Boundary Condition 4
   Name = "Periodic Rotor Master"
   Target Boundaries(1) = 4
-
-  Mortar BC =  Integer 5
-  Radial Projector = Logical True
-  Level Projector = Logical True
-  Level Projector Generic = Logical True
+  Periodic BC Use Lagrange Coefficient = Logical True
+  Periodic BC = 5
+  Periodic BC Rotate(3) = 0 0 90
+  Periodic BC Temperature = Logical True
 End
 
 Boundary Condition 5
@@ -264,11 +256,10 @@ End
 Boundary Condition 6
   Name = "Periodic Stator Master"
   Target Boundaries(1) = 10
-
-  Mortar BC =  Integer 7
-  Radial Projector = Logical True
-  Level Projector = Logical True
-  Level Projector Generic = Logical True
+  Periodic BC Use Lagrange Coefficient = Logical True
+  Periodic BC = 7
+  Periodic BC Rotate(3) = 0 0 90
+  Periodic BC Temperature = Logical True
 End
 
 Boundary Condition 7
@@ -282,5 +273,7 @@ Boundary Condition 8
 End 
 
 
-Solver 2 :: Reference Norm = Real 7.225090E+00
-Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
+$fprintf( stderr, "TEST CASE 1\n")$
+RUN
+$fprintf( stderr,"END TEST CASE 1: Target NRM=1.3444902712590778\n");
+ 

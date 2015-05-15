@@ -352,11 +352,13 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-   SUBROUTINE List_DeleteRow(List,k1)
+   SUBROUTINE List_DeleteRow(List,k1,Keep)
 !-------------------------------------------------------------------------------
      INTEGER :: k1,k2
+     LOGICAL, OPTIONAL :: Keep
      TYPE(ListMatrix_t) :: List(:)
 !-------------------------------------------------------------------------------
+     LOGICAL :: lKeep
      INTEGER::n
      TYPE(ListMatrixEntry_t), POINTER :: Clist,Next
 
@@ -369,10 +371,18 @@ CONTAINS
        DEALLOCATE(Clist)
        Clist=>Next
      END DO
+
+     lKeep = .FALSE.
+     IF(PRESENT(Keep)) lKeep = Keep
      
-     List(k1:n-1)=List(k1+1:n)
-     List(n) % Degree=0
-     List(n) % Head=>NULL()
+     IF(lKeep) THEN
+       List(k1) % Degree=0
+       List(k1) % Head=>NULL()
+     ELSE
+       List(k1:n-1)=List(k1+1:n)
+       List(n) % Degree=0
+       List(n) % Head=>NULL()
+     END IF
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_DeleteRow
 !-------------------------------------------------------------------------------

@@ -1091,7 +1091,7 @@ CONTAINS
   !> created. The this projector matrix is transferred to a projector on the nodal
   !> coordinates.   
   !---------------------------------------------------------------------------
-   FUNCTION WeightedProjector2(BMesh2, BMesh1, InvPerm2, InvPerm1, &
+   FUNCTION WeightedProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
        UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, & 
        NodalJump ) &
       RESULT ( Projector )
@@ -1284,7 +1284,7 @@ CONTAINS
     !-----------------------------------------------------------
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
-    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
+    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
 
     ALLOCATE(Eqind(eqindsize))
     EqInd = 0
@@ -1368,12 +1368,12 @@ CONTAINS
             ! Add a diagonal entry to the future constrained system.
             ! This will enable a jump to the discontinuous boundary.
             ! So far no value is added just the sparse matrix entry.
-            IF( NodalJump ) THEN
-              IF( Indexes(p) <= nodesize .AND. Indexes(q) <= nodesize ) THEN 
-                CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
-                    totsize + EQInd(Indexes(q)), 0.0_dp )
-              END IF
-            END IF
+            !IF( NodalJump ) THEN
+            !  IF( Indexes(p) <= nodesize .AND. Indexes(q) <= nodesize ) THEN 
+            !    CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
+            !        totsize + EQInd(Indexes(q)), 0.0_dp )
+            !  END IF
+            !END IF
           END DO
 
           DO q = Rows(NoGaussPoints), Rows(NoGaussPoints+1)-1
@@ -1439,5 +1439,5 @@ CONTAINS
     IF(EdgeBasis) DEALLOCATE( dBasisdx, WBasis, RotWBasis ) 
 
 !------------------------------------------------------------------------------
-  END FUNCTION WeightedProjector2
+  END FUNCTION WeightedProjector
 !------------------------------------------------------------------------------

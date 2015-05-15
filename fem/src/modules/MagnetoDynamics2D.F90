@@ -60,13 +60,14 @@ SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,TransientSimulation )
     CALL ListAddString( Params,'Variable','Potential')
   END IF
 
-  CALL ListAddLogical( Solver % Values, 'Apply Mortar BCs',.TRUE.)
+  IF(.NOT. ListCheckPresent( Params,'Apply Mortar BCs') ) THEN
+    CALL ListAddLogical( Params,'Apply Mortar BCs',.TRUE.)
+  END IF
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2D_Init
 !------------------------------------------------------------------------------
-!> \ingroup Solvers
-!> \{
-!> \}
+
 
 !------------------------------------------------------------------------------
 !> Solver the magnetic vector potential in cartesian 2D case.
@@ -101,8 +102,6 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
   INTEGER :: CoupledIter
   TYPE(Variable_t), POINTER :: IterV, CoordVar
 
-  TYPE(Matrix_t),POINTER::A,B,CM,S
-
 !------------------------------------------------------------------------------
 
   CALL Info( 'MagnetoDynamics2D','------------------------------------------------', Level=4 )
@@ -115,17 +114,17 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
   NULLIFY(BC)
   Mesh => GetMesh()
 
-  IF(GetCoupledIter()>1) NewtonRaphson=.TRUE.
+  IF(GetCoupledIter()>1) NewtonRaphson = .TRUE.
 
   NonlinIter = GetInteger(GetSolverParams(), &
            'Nonlinear System Max Iterations',Found)
-  IF(.NOT.Found) NonlinIter=1
+  IF(.NOT.Found) NonlinIter = 1
 
   CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
 
-  DO iter=1,NonlinIter
-    IF(Iter>1) NewtonRaphson=.TRUE.
+  DO iter = 1,NonlinIter
+    IF(Iter > 1) NewtonRaphson=.TRUE.
     ! System assembly:
     ! ----------------
 
@@ -659,6 +658,15 @@ SUBROUTINE MagnetoDynamics2DHarmonic_Init( Model,Solver,dt,TransientSimulation )
     CALL ListAddString( Params,'Variable',&
         'Potential[Potential re:1 Potential im:1]')
   END IF
+
+  IF(.NOT. ListCheckPresent( Params,'Apply Mortar BCs') ) THEN
+    CALL ListAddLogical( Params,'Apply Mortar BCs',.TRUE.)
+  END IF
+  
+  IF(.NOT. ListCheckPresent( Params,'Linear System Complex') ) THEN
+    CALL ListAddLogical( Params,'Linear System Complex',.TRUE.)
+  END IF
+
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2DHarmonic_Init
 !------------------------------------------------------------------------------
@@ -681,7 +689,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: AllocationsDone = .FALSE., Found,FoundMortar
+  LOGICAL :: AllocationsDone = .FALSE., Found
   TYPE(Element_t),POINTER :: Element
 
   REAL(KIND=dp) :: Norm
@@ -691,12 +699,9 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t),   POINTER :: Mesh
   COMPLEX(KIND=dp), PARAMETER :: im=(0._dp,1._dp)
 
-
   LOGICAL, SAVE :: NewtonRaphson = .FALSE., CSymmetry
   INTEGER :: CoupledIter
   TYPE(Variable_t), POINTER :: IterV, CoordVar
-
-  TYPE(Matrix_t),POINTER::A,B,CM,S
 
 !------------------------------------------------------------------------------
 
@@ -708,7 +713,6 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   CALL Info( 'MagnetoDynamics2DHarmonic',&
       '------------------------------------------------', Level=4 )
 
-
   CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
 
@@ -717,43 +721,11 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   Mesh => GetMesh()
   NULLIFY(BC)
 
-  S=>Solver % Matrix
-  S % COMPLEX = .TRUE.
-
-  DO i=1,Model % NumberOFBCs
-    j=GetInteger(Model % BCs(i) % Values,'Mortar BC',FoundMortar)
-    IF(FoundMortar) THEN
-      S % COMPLEX = .FALSE.
-
-      A => PeriodicProjector(Model,Mesh,i,j,2,.TRUE.)
-      FoundMortar = ASSOCIATED(A)
-      EXIT
-    END IF
-  END DO
-
-  IF(FoundMortar) THEN
-    CM => AllocateMatrix()
-    CM % FORMAT = MATRIX_LIST
-    DO i=1,A % NumberOfRows
-      DO j=A % Rows(i),A % Rows(i+1)-1
-        jp = Solver % Variable % Perm(A % Cols(j))
-        CALL AddToMatrixElement(CM,2*(i-1)+1,2*(jp-1)+1,A % Values(j))
-        CALL AddToMatrixElement(CM,2*(i-1)+1,2*(jp-1)+2,A % Values(j))
-      END DO
-    END DO
-    CALL FreeMatrix(A)
-
-    CALL List_toCRSMatrix(CM)
-    ALLOCATE(CM % RHS(CM % NumberOfRows))
-    CM % RHS = 0._dp
-    S % ConstraintMatrix => CM
-  END IF
-
-  IF(GetCoupledIter()>1) NewtonRaphson=.TRUE.
+  IF(GetCoupledIter() > 1) NewtonRaphson=.TRUE.
 
   NonlinIter = GetInteger(GetSolverParams(), &
-           'Nonlinear system max iterations',Found)
-  IF(.NOT.Found) NonlinIter=1
+      'Nonlinear system max iterations',Found)
+  IF(.NOT.Found) NonlinIter = 1
 
   DO iter=1,NonlinIter
 
@@ -793,11 +765,6 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
  
     IF( Solver % Variable % NonlinConverged == 1 ) EXIT
   END DO
-
-   IF(FoundMortar) THEN
-     CALL FreeMatrix(CM)
-     S % ConstraintMatrix => NULL()
-   END IF
 
    IF(.NOT. CSymmetry ) THEN
      CALL CalculateLumped(Model % NumberOfBodyForces)
@@ -1313,16 +1280,9 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Visited = .FALSE.
   REAL(KIND=dp) :: Unorm, Totnorm, val
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
-  REAL(KIND=dp), POINTER :: SaveRHS(:)
-#ifdef USE_ISO_C_BINDINGS
-  REAL(KIND=dp) :: at0,at1,at2
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime
-#endif
-  
+  REAL(KIND=dp), POINTER :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
-  LOGICAL ::  FoundMortar, CSymmetry, LossEstimation, JouleHeating
-  TYPE(Matrix_t),POINTER::A,B,CM,S
+  LOGICAL ::  CSymmetry, LossEstimation, JouleHeating
   REAL(KIND=dp) :: Omega
   
   SAVE Visited
@@ -1401,40 +1361,14 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
     CALL Fatal( 'BSolver', 'Real solution, loss estimation omitted' )
   END IF
 
-
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),TotDOFs))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
 
-  at0 = RealTime()
   CALL BulkAssembly()
   CALL DefaultFinishAssembly()
-  at1 = RealTime()
-  WRITE(Message,* ) 'Assembly Time: ',at1-at0
-  CALL Info( 'BSolver', Message, Level=5 )
 !        
 !------------------------------------------------------------------------------     
-
-  S=>Solver % Matrix
-
-!  DO i=1,Model % NumberOFBCs
-!    j=GetInteger(Model % BCs(i) % Values,'Mortar BC',FoundMortar)
-!    IF(FoundMortar) THEN
-!      A => PeriodicProjector(Model,Solver % Mesh,i,j,dim,.TRUE.)
-!      FoundMortar = ASSOCIATED(A)
-!      EXIT
-!    END IF
-!  END DO
-
-!  IF(FoundMortar) THEN
-!    CM=>A
-!    ALLOCATE(CM % RHS(CM % NumberOfRows))
-!    CM % RHS = 0._dp
-!    S % ConstraintMatrix => CM
-!    CM % Cols = Solver % Variable % Perm(CM % Cols)
-!    CM % Ordered = .FALSE.
-!    CALL CRS_SortMatrix(CM,.TRUE.)
-!  END IF
 
    CALL DefaultDirichletBCs()
       
@@ -1457,19 +1391,10 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
    TotNorm = SQRT(TotNorm)
    Solver % Variable % Norm = Totnorm
 
-!  IF(FoundMortar) THEN
-!    CALL FreeMatrix(CM)
-!    S % ConstraintMatrix=>NULL()
-!  END IF
-
 !------------------------------------------------------------------------------     
-
-  at2 = RealTime()
-  WRITE(Message,* ) 'Solution Time: ',at2-at1
-  CALL Info( 'BSolver', Message, Level=5 )
   
-  WRITE( Message, * ) 'Result Norm: ',TotNorm
-  CALL Info( 'BSolver', Message, Level=4 )
+   WRITE( Message, * ) 'Result Norm: ',TotNorm
+   CALL Info( 'BSolver', Message, Level=4 )
 
 
 CONTAINS
