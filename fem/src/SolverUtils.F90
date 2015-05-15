@@ -6054,6 +6054,52 @@ END FUNCTION SearchNodeL
   END SUBROUTINE RotateNTSystem
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------------
+!> Rotate all components of a solution vector to normal-tangential coordinate system
+!------------------------------------------------------------------------------------
+  SUBROUTINE RotateNTSystemAll( Solution, Perm, NDOFs )
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Solution(:)
+    INTEGER :: Perm(:), NDOFs
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k, dim
+    REAL(KIND=dp) :: Bu,Bv,Bw,RM(3,3)
+!------------------------------------------------------------------------------
+    dim = CoordinateSystemDimension()
+
+    IF ( NormalTangentialNOFNodes<=0.OR.ndofs<dim ) RETURN
+
+    DO i=1,SIZE(BoundaryReorder)
+       k = BoundaryReorder(i)
+       IF ( k <= 0 ) CYCLE
+       j = Perm(i)
+       IF ( j <= 0 ) CYCLE
+
+       IF ( dim < 3 ) THEN
+          Bu = Solution(NDOFs*(j-1)+1)
+          Bv = Solution(NDOFs*(j-1)+2)
+
+          Solution(NDOFs*(j-1)+1) = BoundaryNormals(k,1)*Bu + BoundaryNormals(k,2)*Bv
+          Solution(NDOFs*(j-1)+2) = -BoundaryNormals(k,2)*Bu + BoundaryNormals(k,1)*Bv
+
+       ELSE
+          Bu = Solution(NDOFs*(j-1)+1)
+          Bv = Solution(NDOFs*(j-1)+2)
+          Bw = Solution(NDOFs*(j-1)+3)
+ 
+          RM(:,1) = BoundaryNormals(k,:)
+          RM(:,2) = BoundaryTangent1(k,:)
+          RM(:,3) = BoundaryTangent2(k,:)
+
+          Solution(NDOFs*(j-1)+1) = RM(1,1)*Bu + RM(2,1)*Bv + RM(3,1)*Bw
+          Solution(NDOFs*(j-1)+2) = RM(1,2)*Bu + RM(2,2)*Bv + RM(3,2)*Bw
+          Solution(NDOFs*(j-1)+3) = RM(1,3)*Bu + RM(2,3)*Bv + RM(3,3)*Bw
+       END IF
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE RotateNTSystemAll
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Backrotate a solution from normal-tangential coordinate system to cartesian one.
@@ -8550,7 +8596,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 !   If parallel execution, check for parallel matrix initializations
 !------------------------------------------------------------------------------
-     IF ( ParEnv % Pes>1.AND..NOT. ASSOCIATED(A % ParMatrix) ) THEN
+    IF ( ParEnv % Pes>1.AND..NOT. ASSOCIATED(A % ParMatrix) ) THEN
       CALL ParallelInitMatrix( Solver, A )
     END IF
 
@@ -8700,8 +8746,9 @@ END FUNCTION SearchNodeL
     IF(.NOT.GotIt) ComputeChangeScaled = .FALSE.
 
     IF(ComputeChangeScaled) THEN
-      ALLOCATE(NonlinVals(SIZE(x)))
-      NonlinVals = x
+       ALLOCATE(NonlinVals(SIZE(x)))
+       NonlinVals = x
+       CALL RotateNTSystemAll(NonlinVals, Solver % Variable % Perm, DOFs)
     END IF
 
     ! Sometimes the r.h.s. may abruptly diminish in value resulting to significant 
