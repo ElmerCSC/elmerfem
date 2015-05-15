@@ -947,11 +947,12 @@ CONTAINS
 !------------------------------------------------------------------------------
       INTERFACE
         SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName )
+            NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
           USE Types
           TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
           TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
           LOGICAL, OPTIONAL :: UseQuadrantTree
+          LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
           CHARACTER(LEN=*),OPTIONAL :: MaskName
           TYPE(Projector_t), POINTER, OPTIONAL :: Projector
         END SUBROUTINE InterpolateMeshToMesh
