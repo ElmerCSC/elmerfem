@@ -100,17 +100,18 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
   INTEGER :: istat, NoVariables, VariableNo, LocalNodes, DataChannel,&
        timearound=1, AllocationIncrement, DIM, dataread, elementnumber,&
        i, j, k, SupportingPoints(99), NoDim(99),VariableDirections(99,3), &
-       SimulTime, VariableDataIName(99), VariableDataIName2(99)
-  INTEGER, POINTER :: Permutation(:),VarPerm(:),NodeIndexes(:)
+       SimulTime, VariableDataIName(99), VariableDataIName2(99), &
+       skippednodes, allnodes
+  INTEGER, POINTER :: Permutation(:),VarPerm(:),MaskVarPerm(:),NodeIndexes(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: InData(:,:), DummyIn(:)
-  REAL(KIND=dp), POINTER :: Field(:), VarVal(:)
-  LOGICAL, ALLOCATABLE:: IsToBeInterpolated(:)
-  LOGICAL :: AllocationsDone=.FALSE., FirstTime=.TRUE., Found, GotVar, VariablesExist, reinitiate,Found2
+  REAL(KIND=dp), POINTER :: Field(:), VarVal(:), MaskVarVal(:)
+  LOGICAL :: AllocationsDone=.FALSE., FirstTime=.TRUE., Found, GotVar,&
+       VariablesExist, reinitiate,Found2,IsMasked(99)
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, Name, DataName,DataNameI, &
        DataNameI2, temp,& 
        DataNameEnd,  VariableName(99) , VariableDataName(99), &
-       VariableDataNameShort(99), VariableDataNameEnd(99)
-  TYPE(Variable_t), POINTER :: Var
+       VariableDataNameShort(99), VariableDataNameEnd(99), MaskName(99)
+  TYPE(Variable_t), POINTER :: Var, MaskVar
   TYPE(Solver_t), POINTER :: PointerToSolver
   TYPE(ValueList_t), POINTER :: BC, Equation
   TYPE(Element_t), POINTER :: CurrentElement
@@ -119,10 +120,10 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
 
   SAVE AllocationsDone, FirstTime, SolverName,&
        DIM,NoVariables, VariablesExist, LocalNodes,Permutation,&
-       IsToBeInterpolated, SupportingPoints, VariableName,&
+       SupportingPoints, VariableName, MaskName,&
        VariableDataNameShort, SimulTime, NoDim, VariableDirections,&
        VariableDataIName, VariableDataNameEnd, VariableDataIName2, &
-       IDExponent,ScalingFactor
+       IsMasked, IDExponent,ScalingFactor
 
   IF (FirstTime) WRITE(SolverName,'(A)') 'InterpolatePointValue'
   PointerToSolver => Solver
@@ -273,6 +274,22 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
            CALL INFO(SolverName,Message,Level=3)
         END IF
 
+        MaskName(NoVariables) = &
+             ListGetString( Solver % Values, TRIM(Name) // ' Mask', Found)
+        PRINT *, 
+        IF (.NOT.Found) THEN
+           
+           WRITE(Message,'(A,A,A)')&
+                '>', TRIM(Name),' Mask< not found - interpolating whole area'
+           CALL INFO(SolverName,Message,Level=3)
+           IsMasked(NoVariables)=.FALSE.
+        ELSE
+           WRITE(Message,'(A,A,A,A)')&
+               'Area Scaling Factor for ', TRIM(Name), ' is ', MaskName(NoVariables)
+           CALL INFO(SolverName,Message,Level=3)
+           IsMasked(NoVariables)=.TRUE.
+        END IF
+
      END DO
      NoVariables = NoVariables-1
 
@@ -299,10 +316,10 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
                    VariableNo, ' (',TRIM(VariableName(VariableNo)),') added.'
               CALL INFO(SolverName,Message,Level=3)
               NULLIFY( Field ) 
-           END IF
-        END DO
+           END IF              
+        END DO      
      ELSE
-        CALL FATAL(SolverName, 'No valid parameters found.')
+        CALL FATAL(SolverName, 'No valid variables found.')
      END IF
      CALL INFO(Solvername,'(Re-)Initialization done',Level=1)
   END IF ! FirstTime---------------------------------------------------------------------------------------------
@@ -326,6 +343,15 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
         END IF
         VarPerm  => Var % Perm
         VarVal => Var % Values
+        IF (IsMasked(VariableNo)) THEN
+           MaskVar => VariableGet( Model % Variables, TRIM(MaskName(VariableNo)), .TRUE.)
+           IF (.NOT.ASSOCIATED(MaskVar)) THEN
+              WRITE(Message,'(A,A,A)') MaskName(VariableNo),' given but no variable assigned - interpolating over whole area'
+              CALL WARN(SolverName,Message)
+           END IF
+           MaskVarPerm  => MaskVar % Perm
+           MaskVarVal => MaskVar % Values
+        END IF
         !----------------------
         ! Read data and 
         ! to inquire the size
@@ -370,7 +396,7 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
         END DO
 10      CLOSE(15)       
         dataread = dataread - 1
-        WRITE(Message,'(A,I10,A,A)') 'Found ', dataread, ' datests in ', VariableDataName(VariableNo)
+        WRITE(Message,'(A,I10,A,A)') 'Found ', dataread, ' datasets in ', VariableDataName(VariableNo)
 
         CALL INFO(SolverName,Message,Level=3)
 
@@ -397,7 +423,7 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
            READ (15, *, END=20, IOSTAT=Istat, ERR=30) InData(i,1:NoDim(VariableNo)+1)
         END DO
 20      CLOSE(15)
-        WRITE(Message, '(A,I6,A,A,A,I3,A,A,A)') &
+        WRITE(Message, '(A,I9,A,A,A,I3,A,A,A)') &
              'Data read  (',dataread,' datasets) from file ', TRIM(VariableDataName(VariableNo)),&
              ' for variable no. ', VariableNo,' (',&
              TRIM(VariableName(VariableNo)),')'
@@ -411,13 +437,19 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
         !------------------------------------------------------
         ! Loop all active elements of solver
         !------------------------------------------------------
+        skippednodes = 0
         DO elementNumber=1,Solver % NumberOFActiveElements    
            CurrentElement => GetActiveElement(elementNumber)
            IF (.NOT.ASSOCIATED(CurrentElement)) CALL FATAL(SolverName,'Element pointer not associated')
            !------------------------------------------------------
            ! Loop all points of element
            !------------------------------------------------------
-           DO i=1,GetElementNOFNodes(CurrentElement) 
+           DO i=1,GetElementNOFNodes(CurrentElement)
+              allnodes = allnodes + 1
+              IF ( (IsMasked(VariableNo)) .AND. (MaskVarVal(MaskVarPerm(CurrentElement % NodeIndexes( i ))) == 0.0_dp) ) THEN
+                 skippednodes = skippednodes + 1
+                 CYCLE
+              END IF
               theInterpolatedValue = GetRadiallyInterpolatedValue(InData,&
                    Model % Nodes % x( CurrentElement % NodeIndexes( i ) ),&
                    Model % Nodes % y( CurrentElement % NodeIndexes( i ) ),&
@@ -434,6 +466,8 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
               VarVal(VarPerm(CurrentElement % NodeIndexes(i))) = theInterpolatedValue
            END DO
         END DO ! DO elementNumber
+        WRITE (Message,'(A,A,A,F5.3)') &
+             'Percentage of skipped nodes for variable', TRIM(VariableName(VariableNo)), ': ', FLOAT(skippednodes)/FLOAT(allnodes)
      END DO !DO VariableNo
   END IF
   RETURN
@@ -466,7 +500,7 @@ CONTAINS
 
     IF (numberOfSupportingPoints < 2) &
          CALL FATAL(SolverName // TRIM('(GetRadiallyInterpolatedValue)'),'The number of supporting points must be at least 2')
-    IF (exponent < 1) &
+    IF (exponent < 0.0) &
          CALL  FATAL(SolverName // TRIM('(GetRadiallyInterpolatedValue)'),'The exponent should be larger or equal to unity')
 
     X(1:3) = 0.0_dp
