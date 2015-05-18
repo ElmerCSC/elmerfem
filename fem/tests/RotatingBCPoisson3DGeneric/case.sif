@@ -282,5 +282,5 @@ Boundary Condition 8
 End 
 
 
-Solver 2 :: Reference Norm = Real 7.221632
+Solver 2 :: Reference Norm = Real 7.225090E+00
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-4

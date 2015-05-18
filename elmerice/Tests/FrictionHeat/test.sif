@@ -41,7 +41,7 @@ Simulation
 
   Post File = "test_$Step$.vtu"
 
-  max output level = 10
+  max output level = 4
 
   Initialize Dirichlet Conditions = Logical False
 !  Extruded Mesh Levels = 3
@@ -318,3 +318,13 @@ Boundary Condition 6
   Top surface = Variable Zb
      REAL MATC "tx(0)+H"
 End
+
+Solver 3 :: Reference Norm = Real 207.29755
+Solver 3 :: Reference Norm Tolerance = Real 1E-06
+Solver 7 :: Reference Norm = Real 30.225781
+Solver 7 :: Reference Norm Tolerance = Real 1E-06
+
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=207.29755,EPS=1E-06\n                 Target NRM=30.225781,EPS=1E-06\n " );
+

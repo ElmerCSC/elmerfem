@@ -27,7 +27,8 @@ Simulation
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-Body 1
+Body 1 !As body 1 does not contains Equation,
+! there is a  Warning in screen output
   Initial Condition = 1
 End
 
@@ -47,14 +48,14 @@ End
 
 Solver 1
   Equation = "Fw"
-  Procedure = "ElmerIceSolvers" "GetHydrostaticLoads"
+  Procedure = File "ElmerIceSolvers" "GetHydrostaticLoads"
   Variable = Fw[Fx:1 Fy:1 Fz:1]
   Variable DOFs = 3
 End
 
 Solver 2
    Equation = "ForceToStress"
-   Procedure = File "ElmerIceSolvers" "ForceToStress"
+   Procedure = "ElmerIceSolvers" "ForceToStress"
    Variable = String "Stress"
    Variable DOFs = 1
 
@@ -95,4 +96,11 @@ Boundary Condition 1
   External Pressure = Variable Coordinate 1, Coordinate 2
       Real MATC "100.0*(cos(6.0*pi*tx(0)))*(cos(6.0*pi*tx(1)))"
 End
+
+Solver 2 :: Reference Norm = Real 52.380952
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=52.380952,EPS=1E-06\n" );
+
 

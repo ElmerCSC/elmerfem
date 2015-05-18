@@ -2812,6 +2812,8 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
     END IF
   END IF
+  IF( .NOT. ListCheckPresent( SolverParams, 'Linear System Complex') ) &
+    CALL ListAddLogical( SolverParams, 'Linear System Complex', .TRUE. )
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVHarmonicSolver_Init0
 !------------------------------------------------------------------------------
@@ -5193,7 +5195,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !-------------------------------------------------------------------------------------------
    SolverParams => GetSolverParams()
 
-
    PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
    IF (PiolaVersion) &
     CALL Info('MagnetoDynamicsCalcFields', &
@@ -5355,6 +5356,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    Power = 0._dp; Energy = 0._dp
    CALL DefaultInitialize()
+
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
@@ -5547,7 +5549,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           DetJ = ABS(DetF)
        ELSE
           stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+          IF( dim == 3 ) THEN
+            CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+          END IF
        END IF
 
        DO k=1,vDOFs
@@ -5902,6 +5906,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        Solver % Matrix % RHS => Fsave
      END IF
 
+
      IF(ElementalFields) THEN
        dofs = 0
        CALL LUdecomp(MASS,n,pivot)
@@ -5917,7 +5922,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
      END IF
+
    END DO
+
 
    Power  = ParallelReduction(Power)
    Energy = ParallelReduction(Energy)
@@ -6158,12 +6165,23 @@ CONTAINS
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
 
-   ind = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
+   IF( ANY( Var % Perm( Element % DGIndexes(1:n) ) <= 0 ) ) THEN
+     PRINT *,'size',SIZE( Var % Perm ), MAXVAL( Element % DGIndexes(1:n))
+     PRINT *,'Perm zero:',m,n,dofs,Var % Perm( Element % DGIndexes(1:n) )
+     PRINT *,'size values',SIZE(Var % Values)
+     PRINT *,'Element index:',Element % ElementIndex
+     PRINT *,'Element indexes:',Element % NodeIndexes
+     STOP
+   END IF
+
+   ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
+
+
    DO i=1,m
       dofs = dofs+1
       x = b(1:n,dofs)
       CALL LUSolve(n,MASS,x,pivot)
-      Var % Values(ind(1:n)+i) = x
+      Var % Values(ind(1:n)+i) = x(1:n)
    END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE LocalSol
@@ -6321,6 +6339,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        CALL GetElementNodes( Nodes )
        IP = GaussPoints(Element)
+
+       IF( dim == 2 ) THEN
+         CALL Warn('CalcAverageFlux','Not implemented for 2D problems yet!')
+       END IF
 
        B=0._dp
 

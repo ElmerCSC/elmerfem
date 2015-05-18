@@ -1567,8 +1567,8 @@ INCLUDE "mpif.h"
       Matrix % SolveCount   = 0
       Matrix % NumberOfRows = 0
 
-      Matrix % ConstraintBC = 0
-      Matrix % ConstraintType = CONSTRAINT_TYPE_DEFAULT
+      Matrix % ProjectorBC = 0
+      Matrix % ProjectorType = PROJECTOR_TYPE_DEFAULT
       
       Matrix % Solver => NULL()
 

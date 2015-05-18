@@ -2481,6 +2481,35 @@ CONTAINS
   END FUNCTION LoadModel
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Some keywords automatically require other keywords to be set
+!> We could complain on the missing keywords later on, but sometimes 
+!> it may be just as simple to add them directly. 
+!------------------------------------------------------------------------------
+  SUBROUTINE CompleteModelKeywords()
+
+    TYPE(Model_t), POINTER :: Model 
+    TYPE(ValueList_t), POINTER :: List, ListB
+    INTEGER :: i,j
+    LOGICAL :: Found, Flag
+
+
+    Model => CurrentModel 
+
+    DO i=1,Model % NumberOfBCs
+      List => Model % BCs(i) % Values
+      j = ListGetInteger( List,'Mortar BC',Found )
+      IF( j == 0 ) CYCLE
+      ListB => Model % BCs(j) % Values
+
+      CALL ListCompareAndCopy( List, ListB,'Mass Consistent Normals',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Mass Consistent Normals < to BC '//TRIM(I2S(j)),Level=10)
+    END DO
+
+
+  END SUBROUTINE CompleteModelKeywords
+  
 
 
 !------------------------------------------------------------------------------

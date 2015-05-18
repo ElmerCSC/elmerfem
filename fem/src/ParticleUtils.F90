@@ -991,7 +991,7 @@ RETURN
     
     ! Get the size of the current release set
     !-------------------------------------------------------
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     ReleaseSet = GetInteger( Params,'Particle Release Number',Found)
     IF( .NOT. Found ) THEN
       ReleaseFraction = GetCReal( Params,'Particle Release Fraction',Found )
@@ -1875,7 +1875,7 @@ RETURN
     SAVE Visited, MaxSpeed
     
     IF(.NOT. Visited ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       UseMaxSpeed = GetLogical( Params,'Characteristic Max Speed',Found)
       Visited = .TRUE.
     END IF
@@ -2099,7 +2099,7 @@ RETURN
 
 
     Mesh => GetMesh()
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     dim = Particles % Dim
     Parallel = ( ParEnv % PEs > 1 )
     
@@ -3225,7 +3225,7 @@ RETURN
     Debug = .FALSE.
  
     IF( .NOT. Visited ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       Robust = ListGetLogical( Params,'Particle Locate Robust',stat)
       IF(.NOT. Stat) Robust = .TRUE.
       StopAtFace = ListGetLogical( Params,'Particle Stop At Face',Stat)
@@ -3526,7 +3526,7 @@ RETURN
 
 ! print *,'Locating Particles'
     
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     Mesh => GetMesh()
     dim = Particles % dim      
     PartitionChangesOnly = .FALSE.
@@ -3728,7 +3728,7 @@ RETURN
     
     IF(.NOT. Visited ) THEN
       Mesh => GetMesh()
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       n = Mesh % MaxElementNodes
       ALLOCATE( LocalPerm(n), LocalVelo(n,3) )
       
@@ -4606,7 +4606,7 @@ RETURN
 
     
     IF(.NOT. Visited ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       TimeOrder = Particles % TimeOrder
       dim = Particles % dim
       
@@ -4774,7 +4774,7 @@ RETURN
     IF(.NOT. Visited ) THEN
       Visited = .TRUE.
 
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       Mesh => CurrentModel % Solver % Mesh
       dim = Particles % dim
 
@@ -4954,7 +4954,7 @@ RETURN
     IF( .NOT. Visited ) THEN
       Visited = .TRUE.
       Mesh => GetMesh()
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       dim = Mesh % Meshdim
       
       NoPeriodic = 0
@@ -5059,7 +5059,7 @@ RETURN
     IF( .NOT. Visited ) THEN
       Visited = .TRUE.
       Mesh => GetMesh()
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       dim = Mesh % Meshdim
       
       NoContact = 0
@@ -5186,7 +5186,7 @@ RETURN
     dtout = 0.0_dp
 
     IF( InitInterval ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       
       ! directly defined timestep
       dt0 = GetCReal(Params,'Timestep Size',DtIs)
@@ -5524,7 +5524,7 @@ RETURN
 
 
     IF( VisitedTimes == 1 ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       FilePrefix = ListGetString(Params,'Filename Prefix')
       CALL WriteParticleFileNames(FilePrefix, dim)
       
@@ -5941,7 +5941,7 @@ RETURN
 
     SAVE :: VisitedTimes, Params, FilePrefix, TimeVar, FileNameGmsh, CoordInit
 
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     FilePrefix = ListGetString(Params,'Filename Prefix')
 
     WRITE( FileNameGmsh,'(A,A)') TRIM(FilePrefix),'.pos'
@@ -6063,7 +6063,7 @@ RETURN
     
     SAVE :: MinSaveStatus, MaxSaveStatus
     
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     Mesh => GetMesh()
     
     ExtCount = ListGetInteger( Params,'Output Count',GotIt)
@@ -6218,7 +6218,7 @@ RETURN
       
       WriteXML = .TRUE.
       WriteData = AsciiOutput
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       Buffered = .TRUE.
       
       ! This is a hack to ensure that the streamed saving will cover the whole file
@@ -6940,7 +6940,7 @@ RETURN
     INTEGER :: NumberOfNodes, ParallelNodes, Dim
     
     
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     Mesh => GetMesh()
     
     ExtCount = ListGetInteger( Params,'Output Count',GotIt)
@@ -7530,7 +7530,7 @@ RETURN
 
     
     Particles => GlobalParticles
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     
     TableFormat = ListGetLogical( Params,'Table Format',Found)
     GmshFormat = ListGetLogical( Params,'Gmsh Format',Found)

@@ -84,9 +84,9 @@ MODULE Types
 	                SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
 	                SOLVER_MODE_MATRIXFREE = 6    ! normal field, no matrix
 
-  INTEGER, PARAMETER :: CONSTRAINT_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
-                        CONSTRAINT_TYPE_NODAL = 1, &    ! nodal projector
-                        CONSTRAINT_TYPE_GALERKIN = 2    ! Galerkin projector
+  INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
+                        PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
+                        PROJECTOR_TYPE_GALERKIN = 2    ! Galerkin projector
   
 !------------------------------------------------------------------------------
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
@@ -169,7 +169,7 @@ END INTERFACE
     INTEGER :: Subband, FORMAT, SolveCount, Comm=-1
     LOGICAL :: Ordered, Lumped, Symmetric, COMPLEX, DGMatrix, Cholesky
 
-    INTEGER :: ConstraintBC,ConstraintType
+    INTEGER :: ProjectorBC,ProjectorType
 
     TYPE(ListMatrix_t), POINTER :: ListMatrix(:) => NULL()
 
@@ -181,7 +181,7 @@ END INTERFACE
     REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)=>NULL()
 
     REAL(KIND=dp),  POINTER CONTIG :: Values(:)=>NULL(), ILUValues(:)=>NULL(), &
-               DiagScaling(:) => NULL()
+               DiagScaling(:) => NULL(), TValues(:) => Null()
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling
@@ -658,6 +658,23 @@ END INTERFACE
      
    END TYPE Mesh_t
 
+
+   TYPE MortarBC_t 
+     TYPE(Matrix_t), POINTER :: Projector => NULL()
+     INTEGER, POINTER :: Perm(:) => NULL()
+     REAL(KIND=dp), POINTER :: Rhs(:) => NULL()
+     REAL(KIND=dp), POINTER :: Diag(:) => NULL()
+!     REAL(KIND=dp), POINTER :: Dist(:) => NULL()
+!     REAL(KIND=dp), POINTER :: Velo(:) => NULL()
+!     REAL(KIND=dp), POINTER :: NormalLoad(:) => NULL()
+!     REAL(KIND=dp), POINTER :: NodalWeight(:) => NULL()
+     LOGICAL, POINTER :: Active(:) => NULL()
+     LOGICAL, POINTER :: Slip(:) => NULL()
+     REAL(KIND=dp) :: SlaveScale = 1.0_dp
+     REAL(KIND=dp) :: MasterScale = 1.0_dp
+     LOGICAL :: LumpedDiag = .TRUE.
+   END TYPE MortarBC_t
+
 !------------------------------------------------------------------------------
 
 !   TYPE Constants_t
@@ -689,6 +706,9 @@ END INTERFACE
       TYPE(BlockMatrix_t), POINTER :: BlockMatrix => NULL()
       TYPE(Matrix_t),   POINTER :: Matrix => NULL()
       TYPE(Variable_t), POINTER :: Variable => NULL()
+
+      TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
+      LOGICAL :: MortarBCsChanged = .FALSE., MortarBCsOnly=.FALSE.
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
