@@ -1679,11 +1679,7 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: SolverParam
      TYPE(Solver_t), OPTIONAL :: Solver
 
-     IF ( PRESENT(Solver) ) THEN
-       SolverParam => Solver % Values
-     ELSE
-       SolverParam => CurrentModel % Solver % Values
-     END IF
+     SolverParam => ListGetSolverParams(Solver)
 !------------------------------------------------------------------------------
   END FUNCTION GetSolverParams
 !------------------------------------------------------------------------------
@@ -2557,6 +2553,7 @@ CONTAINS
 
     TYPE(ValueList_t), POINTER :: Params
     TYPE(Solver_t), POINTER :: Solver
+    TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
 
     Solver => CurrentModel % Solver
@@ -2592,7 +2589,23 @@ CONTAINS
         CALL ListAddLogical(Params,'Back Rotate N-T Solution',BackRotNT)
     END IF
 
+    ! Combine the individual projectors into one massive projector
+    IF(.NOT.ASSOCIATED(Solver % Matrix % ConstraintMatrix)) &
+      Solver % MortarBCsOnly = .TRUE.
+    Ctmp => Solver % Matrix % ConstraintMatrix
+    CALL GenerateConstraintMatrix( CurrentModel, Solver )
+
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
+
+    IF(.NOT. Solver % MortarBCsOnly) THEN
+      IF(ASSOCIATED(Ctmp).OR.ASSOCIATED(Solver % Matrix % ConstraintMatrix)) THEN
+        IF(.NOT.ASSOCIATED(Ctmp, Solver % Matrix % ConstraintMatrix)) THEN
+          CALL FreeMatrix(Solver % Matrix % ConstraintMatrix)
+          Solver % Matrix % ConstraintMatrix => Ctmp
+          IF (ASSOCIATED(Solver % MortarBCs)) Solver % MortarBCsChanged = .TRUE.
+        END IF
+      END IF
+    END IF
 
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
@@ -3807,6 +3820,14 @@ CONTAINS
      END IF
 
 
+     ! Create contact BCs using mortar conditions.
+     !---------------------------------------------------------------------
+     !IF( ListGetLogical( Solver % Values,'Apply Contact BCs',Found) ) THEN
+     !  CALL DetermineContact( Solver )	
+     !END IF
+
+
+
      IF(.NOT.ALLOCATED(A % ConstrainedDOF)) &
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
      A % ConstrainedDOF = .FALSE.
@@ -4484,7 +4505,6 @@ CONTAINS
       CALL CRS_RemoveZeros( PSolver % Matrix )
     END IF	
 
-
   END SUBROUTINE DefaultFinishBulkAssembly
 
 
@@ -4540,6 +4560,13 @@ CONTAINS
         CALL SaveLinearSystem( PSolver ) 
       END IF
     END IF
+
+    ! Create contact BCs using mortar conditions.
+    !---------------------------------------------------------------------
+    IF( ListGetLogical( PSolver % Values,'Apply Contact BCs',Found) ) THEN
+      CALL DetermineContact( PSolver )	
+    END IF
+
 
   END SUBROUTINE DefaultFinishBoundaryAssembly
 
@@ -5136,148 +5163,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE GetParentUVW
 !------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-   SUBROUTINE GalerkinProjector(Model,Mesh,A,B,NumericEps)
-!------------------------------------------------------------------------------
-     TYPE(Matrix_t), POINTER :: Projector,A,B
-     TYPE(Mesh_t) :: Mesh
-     TYPE(Model_t) :: Model
-     REAL(KIND=dp), OPTIONAL :: NumericEps
-!------------------------------------------------------------------------------
-     INTEGER, ALLOCATABLE :: CPerm(:)
-     INTEGER:: i,j,k,n,t,ll
-     LOGICAL :: Found
-     TYPE(ValueList_t), POINTER :: BC
-     TYPE(Element_t), POINTER :: Element
-!------------------------------------------------------------------------------
-
-     ALLOCATE(Cperm(Mesh % NumberOfNodes));cperm=0
-     ll=0
-
-     A => NULL()
-     B => NULL()
-
-     DO t=1,GetNOFBoundaryElements()
-       Element=>GetBoundaryElement(t)
-       n=GetElementNOFNodes()
-
-       BC=>GetBC()
-       IF(.NOT.ASSOCIATED(BC)) CYCLE
-
-       IF (.NOT.ListCheckPresent(BC,'Mortar BC')) CYCLE
-         
-       IF(.NOT.ASSOCIATED(A)) THEN
-         A=>AllocateMatrix()
-         B=>AllocateMatrix()
-         A % FORMAT = MATRIX_LIST
-         B % FORMAT = MATRIX_LIST
-       END IF
-
-       DO i=1,n
-         j=Element % NodeIndexes(i)
-         IF(CPerm(j)==0) THEN
-           ll=ll+1
-           cperm(j)=ll
-         END IF
-       END DO
-
-       CALL IntegConns(A,B,CPerm,Element,n)
-     END DO
-
-     CALL List_toCRSMatrix(A)
-     CALL List_toCRSMatrix(B)
-
-CONTAINS
-
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE IntegConns(A,B,CPerm,Element,n)
-!------------------------------------------------------------------------------
-    TYPE(Element_t), POINTER :: Element, oElement
-    TYPE(Matrix_t) :: A,B
-    INTEGER ::n,i,j,k,t,p,q,cperm(:)
-    REAL(KIND=dp):: myMass(n,n),otherMass(n,n),detj,DetJo, &
-             Basis(n),Basiso(n),glob(3),loc(3)
-    LOGICAL :: stat
-    TYPE(Nodes_t),SAVE :: Nodes, oNodes
-    TYPE(GaussIntegrationPoints_t), TARGET :: ip
-!------------------------------------------------------------------------------
-
-    ip=GaussPoints(Element)
-    CALL GetElementNodes(Nodes)
-
-    mymass=0
-    DO t=1,ip%n
-      stat = ElementInfo(Element,Nodes,ip%u(t),ip%v(t),iP%w(t),detJ,Basis)
-
-      glob(1) = SUM(Basis(1:n)*Nodes % x(1:n))
-      glob(2) = SUM(Basis(1:n)*Nodes % y(1:n))
-      glob(3) = SUM(Basis(1:n)*Nodes % z(1:n))
-
-      CALL FindElement(Glob,Loc,oElement)
-      IF(.NOT.ASSOCIATED(oElement)) STOP 'eh?'
-      CALL GetElementNodes(oNodes,oElement)
-
-      stat = ElementInfo(oElement,oNodes,loc(1),loc(2),loc(3),detJo,Basiso)
-
-      OtherMass=0
-      DO i=1,n
-        DO j=1,n
-          MyMass(i,j)=MyMass(i,j)+detJ*ip%s(t)*Basis(j)*Basis(i)
-          OtherMass(i,j)=OtherMass(i,j)+detJ*ip%s(t)*Basiso(j)*Basis(i)
-        END DO
-      END DO
-  
-      DO i=1,n
-        p=CPerm(Element % NodeIndexes(i))
-        DO j=1,n
-         q=oElement % NodeIndexes(j)
-         CALL AddToMatrixElement(B,p,q,OtherMass(i,j))
-        END DO
-      END DO
-     END DO
-
-     DO i=1,n
-       p=CPerm(Element % NodeIndexes(i))
-       DO j=1,n
-        q=Element % NodeIndexes(j)
-        CALL AddToMatrixElement(A,p,q,MyMass(i,j))
-       END DO
-     END DO
-!------------------------------------------------------------------------------
-  END SUBROUTINE IntegConns
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE FindElement(glob,loc,oelement)
-!------------------------------------------------------------------------------
-    REAL(kind=dp)::glob(:),loc(:)
-    INTEGER ::id,i
-    TYPE(nodes_t),SAVE::nodes
-    TYPE(element_t),POINTER::oelement,el
-!------------------------------------------------------------------------------
-
-    id=GetInteger(GetBC(),'Mortar BC')
-    oelement=>NULL()
-    DO i=1,GetNOFBoundaryElements()
-      el=>Mesh % Elements( Mesh % NumberOfBulkElements+i)
-      IF (el%BoundaryInfo%Constraint/=id) CYCLE
-
-      CALL GetElementNodes(Nodes,El)
-      IF(PointInElement(el,nodes,glob,loc,NumericEps=NumericEps)) THEN
-        oelement=>el
-        EXIT
-      END IF
-    END DO
-!------------------------------------------------------------------------------
-   END SUBROUTINE FindElement
-!------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-  END SUBROUTINE GalerkinProjector
-!------------------------------------------------------------------------------
-
 
 
 END MODULE DefUtils

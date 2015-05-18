@@ -116,7 +116,7 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
 
   CalculateVelocity = GetLogical( SolverParams,'Calculate Mesh Velocity',Found)
   IF( CalculateVelocity ) THEN
-    VeloVar => VariableGet( Mesh % Variables,'Mesh Velo')
+    VeloVar => VariableGet( Mesh % Variables,'Mesh Velocity')
     IF(ASSOCIATED(VeloVar)) THEN
       VeloVal => VeloVar % Values
       VeloPerm => VeloVar % Perm
@@ -129,15 +129,18 @@ SUBROUTINE RigidMeshMapper( Model,Solver,dt,Transient )
         VeloPerm(i) = i
       END DO
       IF( dim == 2 ) THEN
-        CALL VariableAddVector( Mesh % variables, Mesh, Solver,'Mesh Velo[Mesh Velo:2]',&
+        CALL VariableAddVector( Mesh % variables, Mesh, Solver,&
+            'Mesh Velocity[Mesh Velocity:2]',&
             dim, VeloVal, VeloPerm ) 
       ELSE
-        CALL VariableAddVector( Mesh % variables, Mesh, Solver,'Mesh Velo[Mesh Velo:3]',&
+        CALL VariableAddVector( Mesh % variables, Mesh, Solver,&
+            'Mesh Velocity[Mesh Velocity:3]',&
             dim, VeloVal, VeloPerm ) 
       END IF
     END IF
 
-    CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh,'Mesh Velo' )	
+    CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh,&
+        'Mesh Velocity' )	
   END IF
 
   TranslateBeforeRotate = GetLogical( SolverParams,&

@@ -2844,7 +2844,7 @@ SUBROUTINE SParIterAllReduceOR(L)
    INTEGER :: ierr
 
    L1 = L
-   CALL MPI_ALLREDUCE(L1,L,1,MPI_LOGICAL,MPI_LAND,MPI_COMM_WORLD,ierr)
+   CALL MPI_ALLREDUCE(L1,L,1,MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
 !-----------------------------------------------------------------------
 END  SUBROUTINE SParIterAllReduceOR
 !-----------------------------------------------------------------------
