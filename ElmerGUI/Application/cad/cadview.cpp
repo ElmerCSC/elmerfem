@@ -312,7 +312,11 @@ bool CadView::readFile(QString fileName)
   
   // Construct model data and draw surfaces:
   //-----------------------------------------
+#if OCC_VERSION_HEX >= 0x060800
+  BRepMesh_IncrementalMesh(shape,deflection);
+#else
   BRepMesh::Mesh(shape, deflection);
+#endif
 
   numberOfFaces = 0;
   TopExp_Explorer expFace;
