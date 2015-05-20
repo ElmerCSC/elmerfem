@@ -6,3 +6,4 @@ CONFIGURE_FILE( ptest.sif ptest.sif COPYONLY)
 file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(ThermoElectric)
+ADD_ELMER_LABEL(ThermoElectric quick)

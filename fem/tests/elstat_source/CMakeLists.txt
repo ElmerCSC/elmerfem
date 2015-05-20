@@ -6,3 +6,4 @@ CONFIGURE_FILE( elstat_s.sif elstat_s.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO Step.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(elstat_source)
+ADD_ELMER_LABEL(elstat_source quick)

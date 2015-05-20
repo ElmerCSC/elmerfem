@@ -6,3 +6,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO cubes.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(ElmerGridExtrudeOffset)
+ADD_ELMER_LABEL(ElmerGridExtrudeOffset quick)

@@ -6,3 +6,4 @@ CONFIGURE_FILE( crucible.sif crucible.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO crucible.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(InductionHeating2)
+ADD_ELMER_LABEL(InductionHeating2 quick)
