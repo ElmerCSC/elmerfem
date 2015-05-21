@@ -3908,6 +3908,82 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
   END SUBROUTINE CRS_InspectMatrix
 
 
+!------------------------------------------------------------------------------
+!> Eliminate redundant entries in matrix A by summing same (i,j) combinations
+!> together. It is assumed that the same entries are on the same CRS row.
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_PackMatrix( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A     !< Structure holding the matrix
+!------------------------------------------------------------------------------ 
+    INTEGER :: i,j,k,k2,n,rowi,nofs0
+    INTEGER, ALLOCATABLE :: LocalCols(:), ColIndex(:)
+    REAL(KIND=dp), ALLOCATABLE :: LocalValues(:)
+    REAL(KIND=dp), POINTER :: Values(:)
+    INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
+!------------------------------------------------------------------------------
+
+    IF(A % NumberOfRows == 0 ) RETURN
+
+    Rows   => A % Rows
+    Cols   => A % Cols
+    Diag   => A % Diag
+    Values => A % Values
+
+    nofs0 = Rows(A % NumberOfRows+1)-1
+
+    n = 0
+    DO i=1,A % NumberOfRows
+      n = MAX( n, Rows(i+1)+1-Rows(i) )
+    END DO
+    ALLOCATE( LocalCols(n), LocalValues(n) )
+    LocalCols = 0
+    LocalValues = 0.0_dp
+
+    ALLOCATE( ColIndex( MAXVAL( Cols ) ) )
+    ColIndex = 0
+
+    k2 = 0
+    DO i=1,A % NumberOfRows
+      Rowi = k2+1
+
+      ! Memorize the matrix row
+      DO k=1,Rows(i+1)-Rows(i)
+        LocalCols(k) = Cols(Rows(i)+k-1)
+        LocalValues(k) = Values(Rows(i)+k-1)
+      END DO
+
+      ! Pack the matrix row 
+      DO k=1,Rows(i+1)-Rows(i)
+        j = LocalCols(k) 
+        IF( ColIndex(j) == 0 ) THEN
+          k2 = k2 + 1
+          ColIndex(j) = k2
+          Cols(k2) = Cols(Rows(i)+k-1)
+          Values(k2) = LocalValues(k)
+        ELSE
+          k2 = ColIndex(j)
+          Values(k2) = Values(k2) + LocalValues(k)
+        END IF
+      END DO
+      
+      ! Nullify the index table
+      DO k=1,Rows(i+1)-Rows(i)
+        j = LocalCols(k) 
+        ColIndex(j) = 0 
+      END DO
+      Rows(i) = Rowi
+    END DO
+    Rows(i+1) = k2+1
+    
+    CALL Info('CRS_PackMatrix','Number of summed-up matrix entries: '&
+        //TRIM(I2S(nofs0-k2)),Level=8)
+
+  END SUBROUTINE CRS_PackMatrix
+!------------------------------------------------------------------------------
+
+
+
 END MODULE CRSMatrix
 !------------------------------------------------------------------------------
 

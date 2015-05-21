@@ -5116,7 +5116,7 @@ END SUBROUTINE GetMaxDefs
           j = InvPerm2(i) 
           IF( NodePerm(j) /= 0 ) THEN
             NodePerm(j) = 0
-            PRINT *,'Removing node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
+            !PRINT *,'Removing node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
             m = m + 1
           END IF
         END DO
