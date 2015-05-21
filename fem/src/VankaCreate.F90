@@ -353,22 +353,19 @@
           ALLOCATE(ru(n), rv(n))
         END IF
  
-        i = ndim  - A % ExtraDOFs + 1
-        j = (i-1)/2
-
-        l = 0
+        i = (ndim  - A % ExtraDOFs)/2
+        j = 0
         DO k=1,n,2
-          l = l + 1
-          rv(k)   =  REAL(v(j+l))
-          rv(k+1) = AIMAG(v(j+l))
+          j = j + 1
+          rv(k)   =  REAL(v(i+j)); rv(k+1) = AIMAG(v(i+j))
         END DO
  
         CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, ru, rv )
 
-        l = 0
+        j = 0
         DO k=1,n,2
-          l = l + 1
-          u(j+l) =  CMPLX( ru(k), ru(k+1), KIND=dp )
+          j = j + 1
+          u(i+j) =  CMPLX( ru(k), ru(k+1), KIND=dp )
         END DO
       END IF
 !-------------------------------------------------------------------------------
@@ -559,13 +556,13 @@
          IF ( ParEnv % PEs > 1) THEN
            IF ( A % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
          END IF
-         ii = 2*(Perm((i-nm-1) / 2 + 1) - 1)
+         ii = 2*(Perm((i-nm-1)/2 + 1) - 1)
 
          DO j=A % Rows(i+1)-2,A % Rows(i),-2
-           k = A % Cols(j)
-           IF(k <= nm)  EXIT
-           IF(k > nm+n) CYCLE
-           jj = 2*(Perm( (k-nm-1) / 2 + 1) - 1)
+           k = A % Cols(j) - nm
+           IF(k <= 0)  EXIT
+           IF(k >  n) CYCLE
+           jj = 2*(Perm((k-1) / 2 + 1) - 1)
            c = CMPLX( TotValues(j), -TotValues(j+1), KIND=dp )
 
            IF(ABS(c)>AEPS) THEN
@@ -577,27 +574,18 @@
          END DO
        END DO
      ELSE
-       j = 0; k = 0
-       DO i=1,n
-         j = j + 1
-         IF ( ParEnv % PEs > 1) THEN
-           IF ( A % ParallelInfo % NeighbourList(i+nm) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
-         END IF
-         k = k + 1
-         Perm(j) = k
-       END DO
-
+       ii = 0
        DO i=1,n
          IF ( ParEnv % PEs > 1) THEN
            IF ( A % ParallelInfo % NeighbourList(i+nm) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
          END IF
-         ii = Perm(i)
-
+         ii = ii + 1
+         jj = 0
          DO j=A % Rows(i+1)-1,A % Rows(i)
-           k = A % Cols(j)-nm
+           k = A % Cols(j) - nm
            IF(k <= 0) EXIT
            IF(k  > n) CYCLE
-           jj = Perm(k)
+           jj = jj + 1
            IF(ABS(TotValues(j))>AEPS) &
              CALL AddToMatrixElement( tm, ii, jj,  TotValues(j))
          END DO
