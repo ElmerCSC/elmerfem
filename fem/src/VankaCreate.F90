@@ -275,22 +275,12 @@
   END SUBROUTINE VankaCreate
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-MODULE CircuitPrecInfo
-!------------------------------------------------------------------------------
-  USE DefUtils
-  TYPE(Matrix_t), POINTER :: CircuitMatrix => Null()
-!------------------------------------------------------------------------------
-END MODULE CircuitPrecInfo
-!------------------------------------------------------------------------------
-
 !-------------------------------------------------------------------------------
 !> Assumes partitionwise smallish invertible "addmatrix"
 !-------------------------------------------------------------------------------
     SUBROUTINE CircuitPrec(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
-      USE CircuitPrecInfo
 
       INTEGER :: ipar(*)
       REAL(KIND=dp) u(*), v(*)
@@ -308,7 +298,7 @@ END MODULE CircuitPrecInfo
       u(1:ndim) = v(1:ndim)
       CALL CRS_LUPrecondition( u,v, ipar)
 
-      n = CircuitMatrix % NumberOfRows
+      n = A % CircuitMatrix % NumberOfRows
       IF(n>0) THEN
         IF ( .NOT.ASSOCIATED(sv) ) THEN
           ALLOCATE(sv)
@@ -319,7 +309,7 @@ END MODULE CircuitPrecInfo
  
         i = ndim - A % ExtraDOFs + 1
         j = ndim - A % ExtraDOFs + n
-        CALL Umfpack_SolveSystem( sv, CircuitMatrix, u(i:j), v(i:j) )
+        CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, u(i:j), v(i:j) )
       END IF
 !-------------------------------------------------------------------------------
     END SUBROUTINE CircuitPrec
@@ -329,7 +319,6 @@ END MODULE CircuitPrecInfo
     SUBROUTINE CircuitPrecComplex(u,v,ipar)
 !-------------------------------------------------------------------------------
       USE DefUtils
-      USE CircuitPrecInfo
 
       INTEGER :: ipar(*)
       COMPLEX(KIND=dp) u(*), v(*)
@@ -348,7 +337,7 @@ END MODULE CircuitPrecInfo
       u(1:ipar(3)) = v(1:ipar(3))
       CALL CRS_ComplexLUPrecondition( u,v, ipar)
 
-      n = CircuitMatrix % NumberOfRows
+      n = A % CircuitMatrix % NumberOfRows
       IF(n>0) THEN
         IF ( .NOT.ASSOCIATED(sv) ) THEN
           ALLOCATE(sv)
@@ -374,7 +363,7 @@ END MODULE CircuitPrecInfo
           rv(k+1) = AIMAG(v(j+l))
         END DO
  
-        CALL Umfpack_SolveSystem( sv, CircuitMatrix, ru, rv )
+        CALL Umfpack_SolveSystem( sv, A % CircuitMatrix, ru, rv )
 
         l = 0
         DO k=1,n,2
@@ -392,16 +381,13 @@ END MODULE CircuitPrecInfo
 !------------------------------------------------------------------------------
   SUBROUTINE CircuitPrecCreate(A,Solver)
      USE DefUtils
-     USE CircuitPrecInfo
 !------------------------------------------------------------------------------
      TYPE(Matrix_t), TARGET :: A
      TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
-     INTEGER, POINTER :: Diag(:), Rows(:), Cols(:), Indexes(:), Ind(:)
-     REAL(KIND=dp), POINTER :: ILUValues(:), SValues(:), TotValues(:)
-     REAL(KIND=dp), ALLOCATABLE :: al(:,:)
+     INTEGER, POINTER :: Diag(:), Rows(:), Cols(:)
+     REAL(KIND=dp), ALLOCATABLE :: TotValues(:)
      LOGICAL ::  found
-     TYPE(Element_t), POINTER :: Element
      INTEGER :: status(MPI_STATUS_SIZE)
      REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
      INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:), perm(:)
@@ -414,6 +400,8 @@ END MODULE CircuitPrecInfo
      TYPE(Buf_t), POINTER :: buf(:)
 
      COMPLEX(KIND=dp) :: c
+
+     TYPE(Matrix_t), POINTER :: tm
 
      Diag => A % Diag
      Rows => A % Rows
@@ -537,9 +525,22 @@ END MODULE CircuitPrecInfo
        END DO
      END IF
 
-     IF(ASSOCIATED(CircuitMatrix)) CALL FreeMatrix(CircuitMatrix)
-     CircuitMatrix => AllocateMatrix()
-     CircuitMatrix % Format = MATRIX_LIST
+     IF(ParEnv % PEs<=1) THEN
+       tm => A % CircuitMatrix
+     ELSE
+       tm => A % ParMatrix % SplittedMatrix % InsideMatrix % CircuitMatrix
+     END IF
+
+     IF(ASSOCIATED(tm)) CALL FreeMatrix(tm)
+
+     tm => AllocateMatrix()
+     tm % Format = MATRIX_LIST
+
+     IF(ParEnv % PEs<=1) THEN
+       A % CircuitMatrix => tm
+     ELSE
+       A % ParMatrix % SplittedMatrix % InsideMatrix % CircuitMatrix => tm
+     END IF
     
      ALLOCATE(Perm(n)); Perm=0
 
@@ -568,10 +569,10 @@ END MODULE CircuitPrecInfo
            c = CMPLX( TotValues(j), -TotValues(j+1), KIND=dp )
 
            IF(ABS(c)>AEPS) THEN
-             CALL AddToMatrixElement( CircuitMatrix, ii+1, jj+1,  TotValues(j))
-             CALL AddToMatrixElement( CircuitMatrix, ii+1, jj+2, -TotValues(j+1))
-             CALL AddToMatrixElement( CircuitMatrix, ii+2, jj+1,  TotValues(j+1))
-             CALL AddToMatrixElement( CircuitMatrix, ii+2, jj+2,  TotValues(j))
+             CALL AddToMatrixElement( tm, ii+1, jj+1,  TotValues(j))
+             CALL AddToMatrixElement( tm, ii+1, jj+2, -TotValues(j+1))
+             CALL AddToMatrixElement( tm, ii+2, jj+1,  TotValues(j+1))
+             CALL AddToMatrixElement( tm, ii+2, jj+2,  TotValues(j))
            END IF
          END DO
        END DO
@@ -598,12 +599,12 @@ END MODULE CircuitPrecInfo
            IF(k  > n) CYCLE
            jj = Perm(k)
            IF(ABS(TotValues(j))>AEPS) &
-             CALL AddToMatrixElement( CircuitMatrix, ii, jj,  TotValues(j))
+             CALL AddToMatrixElement( tm, ii, jj,  TotValues(j))
          END DO
        END DO
      END IF
 
-     CALL List_ToCRSMatrix(CircuitMatrix)
+     CALL List_ToCRSMatrix(tm)
 !------------------------------------------------------------------------------
   END SUBROUTINE CircuitPrecCreate
 !------------------------------------------------------------------------------

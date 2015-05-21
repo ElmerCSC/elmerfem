@@ -157,7 +157,7 @@ END INTERFACE
 
 
   TYPE Matrix_t
-    TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), &
+    TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), CircuitMatrix => Null(), &
         ConstraintMatrix=>NULL(), EMatrix=>NULL(), AddMatrix=>NULL(), CollectionMatrix=>NULL()
 
     INTEGER :: NumberOfRows, ExtraDOFs=0, ParallelDOFs=0
