@@ -84,6 +84,7 @@ MODULE IterSolve
    INTEGER, PARAMETER, PRIVATE :: PRECOND_MG        =           540
    INTEGER, PARAMETER, PRIVATE :: PRECOND_BILUn     =           550
    INTEGER, PARAMETER, PRIVATE :: PRECOND_Vanka     =           560
+   INTEGER, PARAMETER, PRIVATE :: PRECOND_Circuit   =           570
 
    INTEGER, PARAMETER :: stack_max=64
    INTEGER :: stack_pos=0
@@ -223,6 +224,18 @@ CONTAINS
         INTEGER :: ipar(*)
         REAL(KIND=dp) :: u(*),v(*)
       END SUBROUTINE VankaPrec
+
+      SUBROUTINE CircuitPrec(u,v,ipar)
+        USE Types
+        INTEGER :: ipar(*)
+        REAL(KIND=dp) :: u(*),v(*)
+      END SUBROUTINE CircuitPrec
+
+      SUBROUTINE CircuitPrecComplex(u,v,ipar)
+        USE Types
+        INTEGER :: ipar(*)
+        COMPLEX(KIND=dp) :: u(*),v(*)
+      END SUBROUTINE CircuitPrecComplex
     END INTERFACE
 !------------------------------------------------------------------------------
     N = A % NumberOfRows
@@ -438,6 +451,10 @@ CONTAINS
         PCondType = PRECOND_MG
       ELSE IF ( str == 'vanka' ) THEN
         PCondType = PRECOND_VANKA
+      ELSE IF ( str == 'circuit' ) THEN
+        ILUn = ListGetInteger( Params, 'Linear System ILU Order', gotit )
+        IF(.NOT.Gotit ) ILUn=-1
+        PCondType = PRECOND_Circuit
       ELSE
         PCondType = PRECOND_NONE
         CALL Warn( 'IterSolve', 'Unknown preconditioner type, feature disabled.' )
@@ -468,7 +485,7 @@ CONTAINS
             END IF
 
             IF ( A % COMPLEX ) THEN
-              IF ( PCondType == PRECOND_ILUn ) THEN
+              IF ( PCondType == PRECOND_ILUn .OR. (PCondType==PRECOND_Circuit.AND.ILUn>=0) ) THEN
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)
                 CM => A % ConstraintMatrix
                 IF(NullEdges.OR.ASSOCIATED(CM)) THEN
@@ -546,9 +563,9 @@ CONTAINS
               ELSE IF ( PCondType == PRECOND_ILUT ) THEN
                 Condition = CRS_ComplexILUT( A,ILUT_TOL )
               END IF
-            ELSE
+            ELSE IF (ILUn>=0) THEN
               SELECT CASE(PCondType)
-              CASE(PRECOND_ILUn)
+              CASE(PRECOND_ILUn, PRECOND_Circuit)
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)
                 CM => A % ConstraintMatrix
                 IF(NullEdges.OR.ASSOCIATED(CM)) THEN
@@ -713,6 +730,13 @@ CONTAINS
         
       CASE (PRECOND_VANKA)
         pcondProc = AddrFunc( VankaPrec )
+
+      CASE (PRECOND_Circuit)
+        IF ( .NOT. A % Complex ) THEN
+          pcondProc = AddrFunc( CircuitPrec )
+        ELSE
+          pcondProc = AddrFunc( CircuitPrecComplex )
+        END IF
         
       CASE DEFAULT
         pcondProc = 0
