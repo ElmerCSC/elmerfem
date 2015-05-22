@@ -6,3 +6,4 @@ CONFIGURE_FILE( TempDist.sif TempDist.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(heateq_steady_start)
+ADD_ELMER_LABEL(heateq_steady_start quick)

@@ -6,3 +6,4 @@ CONFIGURE_FILE( stress_amg.sif stress_amg.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO  angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(amultg2)
+ADD_ELMER_LABEL(amultg2 quick)

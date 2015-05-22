@@ -6,3 +6,4 @@ CONFIGURE_FILE( rotflow.sif rotflow.sif COPYONLY)
 file(COPY square.grd ELMERSOLVER_STARTINFO square DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(rotflow)
+ADD_ELMER_LABEL(rotflow quick)

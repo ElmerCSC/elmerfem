@@ -6,3 +6,4 @@ CONFIGURE_FILE( ad.sif ad.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO Step.grd flow.dat.pos flow.dat  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(reload)
+ADD_ELMER_LABEL(reload quick)

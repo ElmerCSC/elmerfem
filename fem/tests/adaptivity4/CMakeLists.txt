@@ -6,3 +6,4 @@ CONFIGURE_FILE( stress.sif stress.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO mesh.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(adaptivity4)
+ADD_ELMER_LABEL(adaptivity4 quick)

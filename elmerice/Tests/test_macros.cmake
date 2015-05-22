@@ -1,3 +1,7 @@
+MACRO(ADD_ELMER_LABEL test_name label_string)
+  SET_PROPERTY(TEST ${test_name} APPEND PROPERTY LABELS ${label_string})
+ENDMACRO()
+
 MACRO(ADD_ELMERICE_TEST test_name)
   ADD_TEST(NAME ${test_name}
     WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
