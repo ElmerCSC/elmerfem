@@ -3936,6 +3936,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     DO i=1,A % NumberOfRows
       n = MAX( n, Rows(i+1)+1-Rows(i) )
     END DO
+
     ALLOCATE( LocalCols(n), LocalValues(n) )
     LocalCols = 0
     LocalValues = 0.0_dp
@@ -3949,7 +3950,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
       ! Memorize the matrix row
       DO k=1,Rows(i+1)-Rows(i)
-        LocalCols(k) = Cols(Rows(i)+k-1)
+        LocalCols(k)   = Cols(Rows(i)+k-1)
         LocalValues(k) = Values(Rows(i)+k-1)
       END DO
 
@@ -3962,8 +3963,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           Cols(k2) = Cols(Rows(i)+k-1)
           Values(k2) = LocalValues(k)
         ELSE
-          k2 = ColIndex(j)
-          Values(k2) = Values(k2) + LocalValues(k)
+          Values(ColIndex(j)) = Values(ColIndex(j)) + LocalValues(k)
         END IF
       END DO
       
@@ -3974,8 +3974,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       END DO
       Rows(i) = Rowi
     END DO
-    Rows(i+1) = k2+1
-    
+    Rows(i) = k2+1
+
     CALL Info('CRS_PackMatrix','Number of summed-up matrix entries: '&
         //TRIM(I2S(nofs0-k2)),Level=8)
 
