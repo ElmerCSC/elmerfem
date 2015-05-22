@@ -7506,7 +7506,7 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: xt,yt,zt,xmax,xmin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,MaxErr,MinErr,Err,uvw(3),val_dual
+          SumArea,MaxErr,MinErr,Err,uvw(3),val_dual,dx,dxcut
       REAL(KIND=dp) :: TotRefArea, TotSumArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       LOGICAL :: LeftCircle, Stat
@@ -7587,6 +7587,7 @@ END SUBROUTINE GetMaxDefs
 
         xmin = MINVAL(Nodes % x(1:n))
         xmax = MAXVAL(Nodes % x(1:n))
+        dx = xmax - xmin 
                         
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
@@ -7654,9 +7655,14 @@ END SUBROUTINE GetMaxDefs
 
           NodesT % x(1) = MAX( xmin, xminm ) 
           NodesT % x(2) = MIN( xmax, xmaxm ) 
+          dxcut = ABS( NodesT % x(1)-NodesT % x(2) )
 
-          IF(ABS(NodesT % x(1)-NodesT % x(2))<1.d-12) GOTO 100
-         
+          ! Too small absolute values may result to problems when inverting matrix
+          IF( dxcut < 1.0d-12 ) GOTO 100
+
+          ! Too small relative value is irrelevant
+          IF( dxcut < 1.0d-8 * dx ) GOTO 100
+
           sgn0 = 1
           IF( AntiRepeating ) THEN
             IF ( MODULO(Nrange,2) /= 0 ) THEN
