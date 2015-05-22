@@ -3918,17 +3918,18 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------ 
     INTEGER :: i,j,k,k2,n,rowi,nofs0
     INTEGER, ALLOCATABLE :: LocalCols(:), ColIndex(:)
-    REAL(KIND=dp), ALLOCATABLE :: LocalValues(:)
-    REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
+    REAL(KIND=dp), POINTER :: Values(:), TValues(:)
+    REAL(KIND=dp), ALLOCATABLE :: LocalValues(:), LocalTValues(:)
 !------------------------------------------------------------------------------
 
     IF(A % NumberOfRows == 0 ) RETURN
 
-    Rows   => A % Rows
-    Cols   => A % Cols
-    Diag   => A % Diag
-    Values => A % Values
+    Rows    => A % Rows
+    Cols    => A % Cols
+    Diag    => A % Diag
+    Values  => A % Values
+    TValues => A % TValues
 
     nofs0 = Rows(A % NumberOfRows+1)-1
 
@@ -3937,11 +3938,11 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       n = MAX( n, Rows(i+1)+1-Rows(i) )
     END DO
 
-    ALLOCATE( LocalCols(n), LocalValues(n) )
+    ALLOCATE( LocalCols(n), LocalValues(n), LocalTValues(n) )
     LocalCols = 0
     LocalValues = 0.0_dp
 
-    ALLOCATE( ColIndex( MAXVAL( Cols ) ) )
+    ALLOCATE(ColIndex(MAXVAL(Cols)))
     ColIndex = 0
 
     k2 = 0
@@ -3952,6 +3953,8 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
       DO k=1,Rows(i+1)-Rows(i)
         LocalCols(k)   = Cols(Rows(i)+k-1)
         LocalValues(k) = Values(Rows(i)+k-1)
+        IF(ASSOCIATED(TValues)) &
+          LocalTValues(k) = TValues(Rows(i)+k-1)
       END DO
 
       ! Pack the matrix row 
@@ -3962,8 +3965,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
           ColIndex(j) = k2
           Cols(k2) = Cols(Rows(i)+k-1)
           Values(k2) = LocalValues(k)
+          IF(ASSOCIATED(TValues)) &
+            TValues(k2) = LocalTValues(k)
         ELSE
           Values(ColIndex(j)) = Values(ColIndex(j)) + LocalValues(k)
+          IF(ASSOCIATED(TValues)) &
+            TValues(ColIndex(j)) = TValues(ColIndex(j)) + LocalTValues(k)
         END IF
       END DO
       
