@@ -6,3 +6,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO Step.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(current_heat_control)
+ADD_ELMER_LABEL(current_heat_control quick)

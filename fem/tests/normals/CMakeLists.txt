@@ -6,3 +6,4 @@ CONFIGURE_FILE( normals.sif normals.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO  angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(normals)
+ADD_ELMER_LABEL(normals quick)

@@ -6,3 +6,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO beam_no_air.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(ElastElstat1DBeam)
+ADD_ELMER_LABEL(ElastElstat1DBeam quick)

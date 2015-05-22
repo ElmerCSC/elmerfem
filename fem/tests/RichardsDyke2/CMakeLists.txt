@@ -6,3 +6,4 @@ CONFIGURE_FILE( richards.sif richards.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO land_gauss.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(RichardsDyke2)
+ADD_ELMER_LABEL(RichardsDyke2 benchmark)

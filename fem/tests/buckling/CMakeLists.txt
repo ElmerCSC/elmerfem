@@ -6,3 +6,4 @@ CONFIGURE_FILE( buckling.sif buckling.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO buckling.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(buckling)
+ADD_ELMER_LABEL(buckling quick)

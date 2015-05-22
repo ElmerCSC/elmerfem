@@ -7,3 +7,4 @@ ADD_ELMERTEST_MODULE(ExtrudedMesh Poisson Poisson.f90)
 file(COPY Poisson.f90 square.grd ELMERSOLVER_STARTINFO  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(ExtrudedMesh)
+ADD_ELMER_LABEL(ExtrudedMesh quick)

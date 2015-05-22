@@ -6,3 +6,4 @@ CONFIGURE_FILE( adap.sif adap.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO kulma.mif  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(el_adaptivity)
+ADD_ELMER_LABEL(el_adaptivity quick)

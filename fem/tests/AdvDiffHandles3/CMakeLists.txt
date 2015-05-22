@@ -7,3 +7,4 @@ ADD_ELMERTEST_MODULE(AdvDiffHandles3 AdvDiffHandles3 AdvDiffHandles3.f90)
 file(COPY ELMERSOLVER_STARTINFO AdvDiffHandles3.f90 Step.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(AdvDiffHandles3)
+ADD_ELMER_LABEL(AdvDiffHandles3 quick)

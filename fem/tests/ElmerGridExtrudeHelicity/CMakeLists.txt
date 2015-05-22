@@ -6,3 +6,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 file(COPY helix.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(ElmerGridExtrudeHelicity)
+ADD_ELMER_LABEL(ElmerGridExtrudeHelicity quick)
