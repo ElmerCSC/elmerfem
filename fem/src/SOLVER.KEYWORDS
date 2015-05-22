@@ -1,4 +1,4 @@
-INCLUDE /opt/elmerfem-devel/fem/src/ELMERFEM_TRAFOTEK.KEYWORDS
+INCLUDE /opt/elmerfem-devel/fem/src/SOLVER_TRAFOTEK.KEYWORDS
 $ function i2str(i) { _i2str = sprintf("%g",i); }
 $ ndim=3
 $ nexp=20
