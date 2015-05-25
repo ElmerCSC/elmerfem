@@ -15,8 +15,16 @@ FUNCTION heating( model, n, JH ) RESULT(JHmass)
   TYPE(Model_t) :: model
   INTEGER :: n
   REAL(KIND=dp) :: JH, JHmass, density
-
-  density = 2700._dp
+  TYPE(Element_t), POINTER :: Element
+  TYPE(Valuelist_t), POINTER :: Material
+  Logical :: Found
+  
+  Element => GetCurrentElement()
+  Material => GetMaterial(Element, Found)
+  IF (.not. Found) CALL Fatal('heating', 'Material not found')
+  
+  density = GetConstReal(Material, 'density', Found)
+  IF (.NOT. FOUND) CALL Fatal('heating', 'density not found in Material section')
   
   JHmass = JH/density
 
@@ -42,13 +50,21 @@ FUNCTION getTcondition( model, n, args ) RESULT(Condition)
   USE DefUtils
   IMPLICIT None
   TYPE(Model_t) :: model
+  TYPE(Valuelist_t), POINTER :: BF
   INTEGER :: n
-  REAL(KIND=dp) :: args(2), Condition, x, y
+  REAL(KIND=dp) :: args(2), Condition, x, y, limit
+  LOGICAL :: FOUND
 
   x=args(1)
   y=args(2)
-
-  if ( x > 0.450_dp ) then
+  
+  BF => GetBodyForce() 
+  IF (.not. ASSOCIATED(BF)) CALL Fatal('getTcondition', 'Body Force not found')
+  
+  limit = GetConstReal(BF, 'Temperature Condition Limit Position', FOUND)
+  IF (.NOT. FOUND) CALL Fatal('getTcondition', 'Temperature Condition Limit Position not found in Body Force section')
+  
+  if ( x > limit ) then
     Condition = 1d0
   else
     Condition = -1d0
