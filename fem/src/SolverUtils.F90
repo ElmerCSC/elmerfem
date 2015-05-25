@@ -10024,11 +10024,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             k = Xmat % Cols(j)
             l = SlavePerm(k)
             IF(l>0 .AND. k/=i) THEN
+              IF(ABS(Tvals(j))<AEPS) CYCLE
               scl = -TVals(j) / SlaveDiag(l)
 
               CALL List_DeleteMatrixElement( Tmat % ListMatrix, m, k )
 
               DO q=Xmat % Rows(l+1)-1, Xmat % Rows(l),-1
+                IF(ABS(Tvals(q))<AEPS) CYCLE
                 ix = Xmat % Cols(q)
                 IF ( ix==k ) CYCLE
                 CALL List_AddToMatrixElement( Tmat % ListMatrix, m, ix, scl * TVals(q) )
@@ -10072,7 +10074,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     ! -----------------------------------------------------
     IF ( EliminateSlave ) THEN
 
-call fatal( "swlr", "slave elimination not working atm...")
       Tmat => AllocateMatrix()
       Tmat % Format = MATRIX_LIST
       CALL List_ToCRSMatrix(Collectionmatrix)
@@ -10085,6 +10086,7 @@ call fatal( "swlr", "slave elimination not working atm...")
           IF(j==0) CYCLE
           scl = -CollectionMatrix % Values(k) / SlaveDiag(j)
 
+
           ! Eliminate entry:
           ! ----------------
           CollectionMatrix % Values(k) = 0._dp
@@ -10094,7 +10096,7 @@ call fatal( "swlr", "slave elimination not working atm...")
           j = UseIPerm(j)
           DO m=CollectionMatrix % Rows(j),CollectionMatrix % Rows(j+1)-1
              l = CollectionMatrix % Cols(m)
-             IF(SlavePerm(l)==0) &
+             IF(j/=l) &
                CALL AddToMatrixElement( Tmat, i, l, scl*CollectionMatrix % Values(m) )
           END DO
           CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(j)
