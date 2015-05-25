@@ -9600,12 +9600,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 !------------------------------------------------------------------------------
   TYPE(Solver_t), POINTER :: SolverPointer
   TYPE(Matrix_t), POINTER :: CollectionMatrix, RestMatrix, AddMatrix, &
-       RestMatrixTranspose
+       RestMatrixTranspose, TMat
   REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:),&
                  MultiplierValues(:),AddVector(:), Tvals(:), Vals(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
-  INTEGER :: i, j, k, l, m, n
+  INTEGER :: i, j, k, l, m, n, p,q
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
@@ -9916,7 +9916,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     CALL Info('SolveWithLinearRestriction',&
         'Eliminating Constraints from CollectionMatrix',Level=10)
 
-    n  = StiffMatrix % NumberOfRows
+    n = StiffMatrix % NumberOfRows
     m = RestMatrix % NumberOfRows
 
     ALLOCATE(SlaveDiag(n),MasterDiag(m),SlavePerm(n),MasterPerm(n),SlaveIPerm(m),MasterIPerm(m))
@@ -9938,7 +9938,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         k = RestMatrix % Cols(j)
         IF(k>n) CYCLE
 
-        IF( k == RestMatrix % InvPerm(i)) THEN
+        IF(k == RestMatrix % InvPerm(i)) THEN
            SlaveDiag(i) = Tvals(j)
         ELSE
            MasterDiag(i) = Tvals(j)
@@ -9991,66 +9991,115 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       CollectionVector(i) = RestVector(m)
     END DO
 
+    DO i=RestMatrix % NumberofRows,1,-1
+      q = 0
+      DO j = RestMatrix % Rows(i+1)-1, RestMatrix % Rows(i),-1
+        k = RestMatrix % Cols(j)
+        IF(UsePerm(k)>0 .AND. ABS(TVals(j))>1.d-12) q=q+1
+      END DO
+      IF(q>1) EXIT
+    END DO
+    Found = q>1
+
+    Tmat => RestMatrix
+    IF(Found) THEN
+      Tmat => AllocateMatrix()
+      Tmat % Format = MATRIX_LIST
+
+      DO i=RestMatrix % NumberofRows,1,-1
+        DO j = RestMatrix % Rows(i+1)-1, RestMatrix % Rows(i),-1
+          k = RestMatrix % Cols(j)
+          IF ( ABS(Tvals(j))>AEPS ) &
+            CALL List_AddToMatrixElement(Tmat % ListMatrix, i, k, TVals(j))
+        END DO
+      END DO
+
+      DO m=1,RestMatrix % NumberOfRows
+        i = UseIPerm(m)
+        DO j=RestMatrix % Rows(m), RestMatrix % Rows(m+1)-1
+          k = RestMatrix % Cols(j)
+          l = SlavePerm(k)
+          IF(l>0 .AND. k/=i) THEN
+            scl = -TVals(j) / SlaveDiag(l)
+
+            CALL List_DeleteMatrixElement( Tmat % ListMatrix, m, k )
+
+            DO q=RestMatrix % Rows(l+1)-1, RestMatrix % Rows(l),-1
+              k = RestMatrix % Cols(q)
+              IF ( SlavePerm(k)<=0 ) &
+                CALL List_AddToMatrixElement( Tmat % ListMatrix, m, k, scl * TVals(q) )
+            END DO
+          END IF
+        END DO
+      END DO
+      CALL List_ToCRSMatrix(Tmat)
+    END IF
+
     ! Eliminate Lagrange Coefficients:
     ! --------------------------------
     DO m=1,RestMatrix % NumberOfRows
       i = UseIPerm(m)
-      DO j=RestMatrix % Rows(m), RestMatrix % Rows(m+1)-1
-        k = RestMatrix % Cols(j)
+      DO j=TMat % Rows(m), TMat % Rows(m+1)-1
+        k = TMat % Cols(j)
         IF(k<=n) THEN
           IF(UsePerm(k)/=0) CYCLE
         ELSE
           k = UseIPerm(k-n)
         END IF
-        scl = -Tvals(j) / UseDiag(m)
+        scl = -TMat % Values(j) / UseDiag(m)
 
-        DO l=StiffMatrix % Rows(i), StiffMatrix % Rows(i+1)-1
-         CALL List_AddToMatrixElement( Lmat, k, &
-             StiffMatrix % Cols(l), scl * StiffMatrix % Values(l) )
+        DO l=StiffMatrix % Rows(i+1)-1, StiffMatrix % Rows(i),-1
+          CALL List_AddToMatrixElement( Lmat, k, &
+              StiffMatrix % Cols(l), scl * StiffMatrix % Values(l) )
         END DO
         CollectionVector(k) = CollectionVector(k) + scl * ForceVector(i)
       END DO
     END DO
 
+    IF ( Found ) CALL FreeMatrix(Tmat)
+
     ! Eliminate slave dofs, using the constraint equations:
     ! -----------------------------------------------------
     IF ( EliminateSlave ) THEN
+
+      Tmat => AllocateMatrix()
+      Tmat % Format = MATRIX_LIST
+      CALL List_ToCRSMatrix(Collectionmatrix)
+
       DO i=1,StiffMatrix % NumberOfRows
         IF(UsePerm(i)/=0) CYCLE
-        cPrev => Null()
-        cPtr  => Lmat(i) % Head
-        DO WHILE(ASSOCIATED(cPtr))
-          ! ...search for entry to be eliminated...
-          ! ----------------------------------------
-          j = SlavePerm(cPtr % Index)
-          IF(j==0) THEN
-            cPrev => cPtr
-            cPtr  => cPtr % Next
-            CYCLE
-          END IF
-          scl = -cPtr % Value / SlaveDiag(j)
 
-          cTmp  => cPtr
-          cPtr  => cPtr % Next
+        DO k=CollectionMatrix % Rows(i), CollectionMatrix % Rows(i+1)-1
+          j = SlavePerm(CollectionMatrix % Cols(j))
+          IF(j==0) CYCLE
+          scl = -CollectionMatrix % Values(k) / SlaveDiag(j)
 
-          ! Delete elimination entry:
-          ! -------------------------
-          CALL List_DeleteMatrixElement(Lmat,i,cTmp % Index)
+          ! Eliminate entry:
+          ! ----------------
+          CollectionMatrix % Values(k) = 0._dp
 
           ! ... and add replacement values:
           ! -------------------------------
           j = UseIPerm(j)
-          cTmp => Lmat(j) % Head
-          DO WHILE(ASSOCIATED(cTmp))
-             l = cTmp % Index
-             IF(SlavePerm(l)==0) THEN
-               CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
-             END IF
-             cTmp => cTmp % Next
+          DO m=CollectionMatrix % Rows(j),CollectionMatrix % Rows(j+1)-1
+             l = CollectionMatrix % Cols(m)
+             IF(SlavePerm(l)==0) &
+               CALL AddToMatrixElement( Tmat, i, l, scl*CollectionMatrix % Values(m))
           END DO
           CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(j)
         END DO
       END DO
+
+      CALL List_ToListMatrix(CollectionMatrix)
+      Lmat => Collectionmatrix % ListMatrix
+
+      CALL List_ToCRSMatrix(Tmat)
+      DO i=1,Tmat % NumberOfRows
+        DO j=Tmat % Rows(i), Tmat % Rows(i+1)-1
+          CALL List_AddToMatrixElement( Lmat, i, Tmat % Cols(j), Tmat % Values(j))
+        END DO
+      END DO
+      CALL FreeMatrix(Tmat)
     END IF
 
     ! Optimize bandwidth, if needed:
@@ -11286,7 +11335,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
            ! Node does not have an active dof to be constrained
            k = Atmp % InvPerm(i)
            IF( Perm(k) == 0 ) CYCLE
-           
+
            IF( SumProjectors ) THEN
              NewRow = ( SumPerm(k) == 0 )
              IF( NewRow ) THEN
