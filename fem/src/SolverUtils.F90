@@ -9600,12 +9600,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 !------------------------------------------------------------------------------
   TYPE(Solver_t), POINTER :: SolverPointer
   TYPE(Matrix_t), POINTER :: CollectionMatrix, RestMatrix, AddMatrix, &
-       RestMatrixTranspose, TMat
+       RestMatrixTranspose, TMat, XMat
   REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:),&
                  MultiplierValues(:),AddVector(:), Tvals(:), Vals(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
-  INTEGER :: i, j, k, l, m, n, p,q
+  INTEGER :: i, j, k, l, m, n, p,q, ix
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
@@ -9991,53 +9991,63 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       CollectionVector(i) = RestVector(m)
     END DO
 
-    DO i=RestMatrix % NumberofRows,1,-1
-      q = 0
-      DO j = RestMatrix % Rows(i+1)-1, RestMatrix % Rows(i),-1
-        k = RestMatrix % Cols(j)
-        IF(UsePerm(k)>0 .AND. ABS(TVals(j))>AEPS) q=q+1
+    Xmat => RestMatrix
+
+    Found = .TRUE.
+    DO WHILE(Found)
+      DO i=Xmat % NumberofRows,1,-1
+        q = 0
+        DO j = Xmat % Rows(i+1)-1, Xmat % Rows(i),-1
+          k = Xmat % Cols(j)
+          IF(UsePerm(k)>0 .AND. ABS(TVals(j))>AEPS) q=q+1
+        END DO
+        IF(q>1) EXIT
       END DO
-      IF(q>1) EXIT
+      Found = q>1
+
+      Tmat => Xmat
+      IF(Found) THEN
+        Tmat => AllocateMatrix()
+        Tmat % Format = MATRIX_LIST
+
+        DO i=Xmat % NumberofRows,1,-1
+          DO j = Xmat % Rows(i+1)-1, Xmat % Rows(i),-1
+            k = Xmat % Cols(j)
+            IF ( ABS(Tvals(j))>AEPS ) &
+              CALL List_AddToMatrixElement(Tmat % ListMatrix, i, k, TVals(j))
+          END DO
+        END DO
+
+        DO m=1,Xmat % NumberOfRows
+          i = UseIPerm(m)
+          DO j=Xmat % Rows(m), Xmat % Rows(m+1)-1
+            k = Xmat % Cols(j)
+            l = SlavePerm(k)
+            IF(l>0 .AND. k/=i) THEN
+              scl = -TVals(j) / SlaveDiag(l)
+
+              CALL List_DeleteMatrixElement( Tmat % ListMatrix, m, k )
+
+              DO q=Xmat % Rows(l+1)-1, Xmat % Rows(l),-1
+                ix = Xmat % Cols(q)
+                IF ( ix==k ) CYCLE
+                CALL List_AddToMatrixElement( Tmat % ListMatrix, m, ix, scl * TVals(q) )
+              END DO
+            END IF
+          END DO
+        END DO
+
+        CALL List_ToCRSMatrix(Tmat)
+        Tvals => Tmat % Values
+        IF(.NOT.ASSOCIATED(Xmat,RestMatrix)) CALL FreeMatrix(Xmat)
+      END IF
+
+      Xmat => TMat
     END DO
-    Found = q>1
-
-    Tmat => RestMatrix
-    IF(Found) THEN
-      Tmat => AllocateMatrix()
-      Tmat % Format = MATRIX_LIST
-
-      DO i=RestMatrix % NumberofRows,1,-1
-        DO j = RestMatrix % Rows(i+1)-1, RestMatrix % Rows(i),-1
-          k = RestMatrix % Cols(j)
-          IF ( ABS(Tvals(j))>AEPS ) &
-            CALL List_AddToMatrixElement(Tmat % ListMatrix, i, k, TVals(j))
-        END DO
-      END DO
-
-      DO m=1,RestMatrix % NumberOfRows
-        i = UseIPerm(m)
-        DO j=RestMatrix % Rows(m), RestMatrix % Rows(m+1)-1
-          k = RestMatrix % Cols(j)
-          l = SlavePerm(k)
-          IF(l>0 .AND. k/=i) THEN
-            scl = -TVals(j) / SlaveDiag(l)
-
-            CALL List_DeleteMatrixElement( Tmat % ListMatrix, m, k )
-
-            DO q=RestMatrix % Rows(l+1)-1, RestMatrix % Rows(l),-1
-              k = RestMatrix % Cols(q)
-              IF ( SlavePerm(k)<=0 ) &
-                CALL List_AddToMatrixElement( Tmat % ListMatrix, m, k, scl * TVals(q) )
-            END DO
-          END IF
-        END DO
-      END DO
-      CALL List_ToCRSMatrix(Tmat)
-    END IF
 
     ! Eliminate Lagrange Coefficients:
     ! --------------------------------
-    DO m=1,RestMatrix % NumberOfRows
+    DO m=1,Tmat % NumberOfRows
       i = UseIPerm(m)
       DO j=TMat % Rows(m), TMat % Rows(m+1)-1
         k = TMat % Cols(j)
@@ -10046,7 +10056,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         ELSE
           k = UseIPerm(k-n)
         END IF
-        scl = -TMat % Values(j) / UseDiag(m)
+        scl = -Tvals(j) / UseDiag(m)
 
         DO l=StiffMatrix % Rows(i+1)-1, StiffMatrix % Rows(i),-1
           CALL List_AddToMatrixElement( Lmat, k, &
@@ -10056,7 +10066,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       END DO
     END DO
 
-    IF ( Found ) CALL FreeMatrix(Tmat)
+    IF ( .NOT.ASSOCIATED(Tmat, RestMatrix ) ) CALL FreeMatrix(Tmat)
 
     ! Eliminate slave dofs, using the constraint equations:
     ! -----------------------------------------------------
