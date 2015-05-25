@@ -14,9 +14,11 @@ FUNCTION heating( model, n, JH ) RESULT(JHmass)
   IMPLICIT None
   TYPE(Model_t) :: model
   INTEGER :: n
-  REAL(KIND=dp) :: JH, JHmass
+  REAL(KIND=dp) :: JH, JHmass, density
 
-  JHmass = JH
+  density = 2700._dp
+  
+  JHmass = JH/density
 
 END FUNCTION heating
 
