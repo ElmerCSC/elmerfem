@@ -10032,8 +10032,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
               DO q=Xmat % Rows(l+1)-1, Xmat % Rows(l),-1
                 IF(ABS(Tvals(q))<AEPS) CYCLE
                 ix = Xmat % Cols(q)
-                IF ( ix==k ) CYCLE
-                CALL List_AddToMatrixElement( Tmat % ListMatrix, m, ix, scl * TVals(q) )
+                IF ( ix/=k ) &
+                  CALL List_AddToMatrixElement( Tmat % ListMatrix, m, ix, scl * TVals(q) )
               END DO
             END IF
           END DO
@@ -10073,46 +10073,41 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     ! Eliminate slave dofs, using the constraint equations:
     ! -----------------------------------------------------
     IF ( EliminateSlave ) THEN
-
-      Tmat => AllocateMatrix()
-      Tmat % Format = MATRIX_LIST
-      CALL List_ToCRSMatrix(Collectionmatrix)
-
       DO i=1,StiffMatrix % NumberOfRows
         IF(UsePerm(i)/=0) CYCLE
+        cPrev => Null()
+        cPtr  => Lmat(i) % Head
+        DO WHILE(ASSOCIATED(cPtr))
+          ! ...search for entry to be eliminated...
+          ! ----------------------------------------
+          j = SlavePerm(cPtr % Index)
+          IF(j==0) THEN
+            cPrev => cPtr
+            cPtr  => cPtr % Next
+            CYCLE
+          END IF
+          scl = -cPtr % Value / SlaveDiag(j)
 
-        DO k=CollectionMatrix % Rows(i), CollectionMatrix % Rows(i+1)-1
-          j = SlavePerm(CollectionMatrix % Cols(k))
-          IF(j==0) CYCLE
-          scl = -CollectionMatrix % Values(k) / SlaveDiag(j)
+          cTmp  => cPtr
+          cPtr  => cPtr % Next
 
-
-          ! Eliminate entry:
-          ! ----------------
-          CollectionMatrix % Values(k) = 0._dp
+          ! Delete elimination entry:
+          ! -------------------------
+          CALL List_DeleteMatrixElement(Lmat,i,cTmp % Index)
 
           ! ... and add replacement values:
           ! -------------------------------
           j = UseIPerm(j)
-          DO m=CollectionMatrix % Rows(j),CollectionMatrix % Rows(j+1)-1
-             l = CollectionMatrix % Cols(m)
+          cTmp => Lmat(j) % Head
+          DO WHILE(ASSOCIATED(cTmp))
+             l = cTmp % Index
              IF(j/=l) &
-               CALL AddToMatrixElement( Tmat, i, l, scl*CollectionMatrix % Values(m) )
+               CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
+             cTmp => cTmp % Next
           END DO
           CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(j)
         END DO
       END DO
-
-      CALL List_ToListMatrix(CollectionMatrix)
-      Lmat => Collectionmatrix % ListMatrix
-
-      CALL List_ToCRSMatrix(Tmat)
-      DO i=Tmat % NumberOfRows,1,-1
-        DO j=Tmat % Rows(i+1)-1, Tmat % Rows(i),-1
-          CALL List_AddToMatrixElement( Lmat, i, Tmat % Cols(j), Tmat % Values(j))
-        END DO
-      END DO
-      CALL FreeMatrix(Tmat)
     END IF
 
     ! Optimize bandwidth, if needed:
