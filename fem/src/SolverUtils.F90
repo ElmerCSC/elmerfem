@@ -8574,6 +8574,12 @@ END FUNCTION SearchNodeL
           TYPE(Solver_t) :: Solver
        END SUBROUTINE VankaCreate
 
+       SUBROUTINE CircuitPrecCreate(A,Solver)
+          USE Types
+          TYPE(Matrix_t) :: A
+          TYPE(Solver_t) :: Solver
+       END SUBROUTINE CircuitPrecCreate
+
        SUBROUTINE FetiSolver(A,x,b,Solver)
           USE Types
           TYPE(Matrix_t), POINTER :: A
@@ -8794,6 +8800,7 @@ END FUNCTION SearchNodeL
     IF (Method=='multigrid' .OR. Method=='iterative' ) THEN
       Prec = ListGetString(Params,'Linear System Preconditioning',GotIt)
       IF ( Prec=='vanka' ) CALL VankaCreate(A,Solver)
+      IF ( Prec=='circuit' ) CALL CircuitPrecCreate(A,Solver)
     END IF
 
     IF ( ParEnv % PEs <= 1 ) THEN
