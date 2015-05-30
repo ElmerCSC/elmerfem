@@ -65,6 +65,10 @@
 !  omega = Real 0.6
 !  far field ocean temperature = Real 2.0
 !  water column scaling = Real 200.0
+!  ice base scaling depth = Real 100.0
+!  ice base scaling offset = Real 40.0
+!  iceBaseScaling = logical True
+
 !End
 
 SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
@@ -91,6 +95,10 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
   REAL (KIND=dp)              :: T_far            ! the far field ocean temperature
   REAL (KIND=dp)              :: wct_sc           ! a scaling factor using wct (water column thickness) 
   LOGICAL                     :: glMelt           ! determines whether melt occurs actually at the grounding line itself
+
+  ! an optional additional scaling factor using depth of base of ice shelf
+  REAL (KIND=dp)              :: iceBaseOffset, iceBaseRef, iceBaseFactor
+  LOGICAL                     :: iceBaseScaling
 
   ! truely local variables!
   TYPE(ValueList_t), POINTER :: SolverParams
@@ -147,6 +155,27 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
   T_far = GetConstReal( SolverParams, 'far field ocean temperature',  Found )
   IF (.NOT. Found) THEN
      CALL FATAL(SolverName,'No keyword >far field ocean temperature< found in SubShelfMelt solver')
+  END IF
+
+  iceBaseScaling = GetLogical( SolverParams, 'ice base scaling',  Found )
+  IF (Found) THEN
+     IF (iceBaseScaling) THEN
+        CALL INFO(SolverName, 'Using icebase scaling', Level=4)
+        iceBaseOffset = GetConstReal( SolverParams, 'ice base scaling offset',  Found )
+        IF (.NOT.Found) THEN
+           CALL INFO(SolverName, 'Setting ice base offset to zero', Level=4)
+           iceBaseOffset = 0.0_dp
+        END IF
+        iceBaseRef = GetConstReal( SolverParams, 'ice base scaling depth',  Found )
+        IF (.NOT.Found) THEN
+           CALL FATAL(SolverName,'ice base scaling used but >ice base scaling depth< not set')
+        END IF
+     ELSE
+        CALL INFO(SolverName, 'Not using icebase scaling', Level=4)
+     END IF
+  ELSE
+     CALL INFO(SolverName, 'Not using icebase scaling', Level=4)
+     iceBaseScaling = .FALSE.
   END IF
 
   wct_sc = GetConstReal( SolverParams, 'water column scaling',  Found )
@@ -228,6 +257,16 @@ SUBROUTINE SubShelfMelt (Model, Solver, dt, Transient)
      CASE DEFAULT
         CALL FATAL(SolverName,'Melt function not recognised in SubShelfMelt scaling')
      END SELECT
+
+     ! an additional scaling term may also be applied to reduce melting of thin shelves near sea level
+     IF (iceBaseScaling) THEN
+        iceBaseFactor = MAX(0.0_dp, &
+             -TANH((z_iceBase%values(z_iceBase%Perm(i))+iceBaseOffset)*exp(1.0_dp)/iceBaseRef))
+
+     ELSE
+        iceBaseFactor = 1.0_dp
+     END IF
+     meltScaling = meltScaling * iceBaseFactor
 
      Solver%Variable%Values(Solver%Variable%Perm(i)) = - meltRate * meltScaling
 
