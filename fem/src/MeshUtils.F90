@@ -4042,10 +4042,10 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:), &
         InvPerm1(:), InvPerm2(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
-    LOGICAL :: OnTheFlyBC, CheckForHalo, HaloFound, NarrowHalo, NoHalo, Found
+    LOGICAL :: OnTheFlyBC, CheckForHalo, NarrowHalo, NoHalo, Found
 
     TYPE(Element_t), POINTER :: Parent,q
-    INTEGER :: en, in
+    INTEGER :: en, in, HaloCount, ActiveCount
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
 
     CALL Info('CreateInterfaceMeshes','Making a list of elements at interface',Level=9)
@@ -4053,6 +4053,9 @@ END SUBROUTINE GetMaxDefs
     IF ( This <= 0 .OR. Trgt <= 0 ) THEN
       CALL Fatal('CreateInterfaceMeshes','Invalid target boundaries')
     END IF
+
+    ! Interface meshes consist of boundary elements only    
+    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
 
     ! If the target is larger than number of BCs givem then 
     ! it has probably been created on-the-fly from a discontinuous boundary.
@@ -4073,9 +4076,10 @@ END SUBROUTINE GetMaxDefs
     ! This is just temporarily set to false always until the logic has been tested. 
     CheckForHalo = NarrowHalo .OR. NoHalo
 
-    HaloFound = .FALSE.
     IF( CheckForHalo ) THEN
+      CALL Info('CreateInterfaceMeshes','Checking for halo elements',Level=15)
       ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+      HaloCount = 0
       ActiveNode = .FALSE.
       DO i=1, Mesh % NumberOfBoundaryElements
         Element => Elements(i)
@@ -4086,7 +4090,7 @@ END SUBROUTINE GetMaxDefs
           IF( Left % PartIndex == ParEnv % MyPe ) THEN
             ActiveNode( Left % NodeIndexes ) = .TRUE.
           ELSE
-            HaloFound = .TRUE.
+            HaloCount = HaloCount + 1
           END IF
         END IF
 
@@ -4095,27 +4099,29 @@ END SUBROUTINE GetMaxDefs
           IF( Right % PartIndex == ParEnv % MyPe ) THEN
             ActiveNode( Right % NodeIndexes ) = .TRUE.
           ELSE
-            HaloFound = .TRUE.
+            HaloCount = HaloCount + 1 
           END IF
         END IF
       END DO
 
       ! No halo element found on the boundary so no need to check them later
-      IF( .NOT. HaloFound ) THEN
+      IF( HaloCount == 0 ) THEN
+        CALL Info('CreateInterfaceMeshes','Found no halo elements to eliminate',Level=15)
         DEALLOCATE( ActiveNode ) 
         CheckForHalo = .FALSE.
+      ELSE
+        CALL Info('CreateInterfaceMeshes','Number of halo elements to eliminate: '&
+            //TRIM(I2S(HaloCount)),Level=12)
       END IF
     END IF
 
-
-    ! Interface meshes consist of boundary elements only    
-    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
 
 !   Search elements in this boundary and its periodic
 !   counterpart:
 !   --------------------------------------------------
     n1 = 0
     n2 = 0
+    HaloCount = 0
     DO i=1, Mesh % NumberOfBoundaryElements
       Element => Elements(i)
       IF (Element % TYPE % ElementCode<=200) CYCLE
@@ -4126,6 +4132,8 @@ END SUBROUTINE GetMaxDefs
           IF( NarrowHalo ) THEN
             IF( ANY(ActiveNode(Element % NodeIndexes) ) ) THEN
               n1 = n1 + 1
+            ELSE
+              HaloCount = HaloCount + 1
             END IF
           ELSE IF( NoHalo ) THEN
             ThisActive = .FALSE.
@@ -4138,7 +4146,11 @@ END SUBROUTINE GetMaxDefs
               ThisActive = ThisActive .OR. &
                   ( Right % PartIndex == ParEnv % MyPe ) 
             END IF
-            IF( ThisActive ) n1 = n1 + 1
+            IF( ThisActive ) THEN
+              n1 = n1 + 1
+            ELSE
+              HaloCount = HaloCount + 1
+            END IF
           END IF
         ELSE
           n1 = n1 + 1
@@ -4151,6 +4163,11 @@ END SUBROUTINE GetMaxDefs
         IF ( Model % BCs(Trgt) % Tag == Constraint ) n2 = n2 + 1
       END IF
     END DO
+
+    IF( CheckForHalo ) THEN
+      CALL Info('CreateInterfaceMeshes','Number of halo elements eliminated: '&
+          //TRIM(I2S(HaloCount)),Level=12)
+    END IF
 
     IF ( n1 <= 0 .OR. n2 <= 0 ) THEN
       ! This is too conservative in parallel

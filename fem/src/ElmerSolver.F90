@@ -73,7 +73,7 @@
      REAL(KIND=dp) :: s,dt,dtfunc
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
      REAL(KIND=dp), POINTER, SAVE :: sTime(:), sStep(:), sInterval(:), sSize(:), &
-           steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:)
+           steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sPar(:)
 
      TYPE(Element_t),POINTER :: CurrentElement
 
@@ -134,9 +134,12 @@ END INTERFACE
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
      ParallelEnv => ParallelInit()
-     OutputPE = ParEnv % MyPE
 
-!tt = realtime()
+     OutputPE = -1
+     IF( ParEnv % MyPe == 0 ) THEN
+       OutputPE = 0 
+     END IF
+     
      IF ( FirstTime ) THEN
        !
        ! Print banner to output:
@@ -240,7 +243,7 @@ END INTERFACE
 
        IF( Version ) RETURN
        
-       CALL InitializeElementDescriptions
+       CALL InitializeElementDescriptions()
        FirstTime = .FALSE.
      END IF
 
@@ -444,7 +447,7 @@ END INTERFACE
 
        IF ( FirstLoad ) &
          ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
-             steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1) )
+             steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), sPar(1) )
 
        dt   = 0._dp
 
@@ -459,6 +462,7 @@ END INTERFACE
 
        steadyIt = 0
        nonlinIt = 0
+       sPar = 0
 
        CoupledMinIter = ListGetInteger( CurrentModel % Simulation, &
                   'Steady State Min Iterations', GotIt )
@@ -468,7 +472,7 @@ END INTERFACE
 !      coordinate dependent parameter computing routines can ask for
 !      them...
 !------------------------------------------------------------------------------
-       IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime
+       IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime()
 
 !------------------------------------------------------------------------------
 !      Get Output File Options
@@ -618,6 +622,7 @@ END INTERFACE
 
        SAVE TestCount, PassCount 
 
+       IF( ParEnv % MyPe > 0 ) RETURN
 
        ! Write the success to a file for further use e.g. by cmake
        !----------------------------------------------------------
@@ -749,8 +754,6 @@ END INTERFACE
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
          END IF
-
-
 
          IF( Success ) PassCount = PassCount + 1
        END DO
@@ -938,6 +941,10 @@ END INTERFACE
                'nonlin iter', 1, nonlinIt )
        CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
                'coupled iter', 1, steadyIt )
+
+       sPar(1) = 1.0_dp * ParEnv % MyPe 
+       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Partition', 1, sPar ) 
+
        Mesh => Mesh % Next
      END DO
 !------------------------------------------------------------------------------

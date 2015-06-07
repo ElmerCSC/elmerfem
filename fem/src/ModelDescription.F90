@@ -114,7 +114,7 @@ CONTAINS
     ProcName(j) = CHAR(0)
 
     q = 0
-    IF ( OutputPE/=0 ) THEN
+    IF ( OutputPE < 0 ) THEN
       q=1
     ELSE IF( PRESENT(Quiet) ) THEN
       IF ( Quiet ) q = 1
@@ -2475,6 +2475,17 @@ CONTAINS
       ! For debugging it may be usefull to show several.
       MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
           'Max Output Partition', GotIt )    
+      
+      MinOutputPE = ListGetInteger( CurrentModel % Simulation, &
+          'Min Output Partition', GotIt )    
+      
+      IF( ParEnv % MyPe >= MinOutputPE .AND. &
+          ParEnv % MyPe <= MaxOutputPE ) THEN 
+        OutputPE = ParEnv % MyPE
+      ELSE
+        OutputPE = -1
+      END IF
+  
 
     END SUBROUTINE InitializeOutputLevel
 !------------------------------------------------------------------------------
