@@ -7,8 +7,16 @@ MACRO(ADD_ELMERICE_TEST test_name)
       -DTEST_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
       -DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}
       -DBINARY_DIR=${CMAKE_BINARY_DIR}
+      -DELMERSOLVER_HOME=${ELMER_SOLVER_HOME}
+      -DSHLEXT=${SHL_EXTENSION}
       -DCMAKE_Fortran_COMPILER=${CMAKE_Fortran_COMPILER}
+      -DMPIEXEC=${MPIEXEC}
+      -DMPIEXEC_NUMPROC_FLAG=${MPIEXEC_NUMPROC_FLAG}
+      -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
+      -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
+      -DWITH_MPI=${WITH_MPI}
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runTest.cmake)
+    SET_TESTS_PROPERTIES(${test_name} PROPERTIES LABELS "elmerice")
 ENDMACRO()
 
 MACRO(ADD_ELMERICETEST_MODULE test_name module_name file_name)
@@ -37,20 +45,26 @@ ENDMACRO()
 MACRO(RUN_ELMERICE_TEST)
   MESSAGE(STATUS "BINARY_DIR = ${BINARY_DIR}")
   FILE(REMOVE TEST.PASSED)
-  SET(extra_macro_args ${ARGN})
-  # optional args? For mpi run command
-  LIST(LENGTH extra_macro_args num_extra_args)
-  MESSAGE( "${extra_macro_args} ${num_extra_args}")
-  IF(${num_extra_args} GREATER 0)
-    LIST(GET extra_macro_args 0 optional_arg)
-    MESSAGE("Got an optional arg: ${optional_arg}")
-    SET(test_parameters -np ${optional_arg} )
-    EXECUTE_PROCESS(COMMAND "mpirun" ${test_parameters} ${ELMERSOLVER_BIN} OUTPUT_FILE "test-stdout.log"
-        ERROR_FILE "test-stderr.log" OUTPUT_VARIABLE TESTOUTPUT)
+  #Optional arguments like WITH_MPI
+  SET(LIST_VAR "${ARGN}")
+  IF("LIST_VAR" STREQUAL "")
+    EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
+      OUTPUT_FILE "test-stdout.log"
+      ERROR_FILE "test-stderr.log"
+      OUTPUT_VARIABLE TESTOUTPUT)
   ELSE()
-    EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN} OUTPUT_FILE "test-stdout.log"
-      ERROR_FILE "test-stderr.log" OUTPUT_VARIABLE TESTOUTPUT)
-  ENDIF(${num_extra_args} GREATER 0)
+     IF("${LIST_VAR}" STREQUAL WITH_MPI)
+       SET(N "${NPROCS}")
+         IF("N" STREQUAL "")
+	   MESSAGE( FATAL_ERROR "Test failed:variable <NPROC> not defined. Set <NPROC> in runTes.cmake")
+         ELSE()
+	   EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${N} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
+             OUTPUT_FILE "test-stdout.log"
+             ERROR_FILE "test-stderr.log"
+             OUTPUT_VARIABLE TESTOUTPUT)
+         ENDIF()
+       ENDIF()
+  ENDIF()
 
   MESSAGE(STATUS "testoutput.........: ${TESTOUTPUT}")
 

@@ -311,20 +311,22 @@ SUBROUTINE DistanceSolver1( Model,Solver,dt,TransientSimulation )
      IF ( .NOT.ASSOCIATED(Element) ) CYCLE
 
      BodyForce => GetBodyForce()
-     dist = GetCReal(BodyForce, Solver % Variable % Name, Found )
-     IF ( Found) THEN
-        nd = GetElementNOFNodes()
-        condition(1:nd) = GetReal(BodyForce, TRIM(Solver % Variable % Name) // " Condition", Found )        
-        DO i=1,nd
-           IF (condition(i) < 0.0) CYCLE
-           j = Element % NodeIndexes(i)
-           IF ( bperm(j) == 0 ) THEN
-              nb = nb + 1
-              aperm(nb) = j
-              bperm(j)  = nb
-              bdist(j) = dist
-           END IF
-        END DO
+     IF(ASSOCIATED(BodyForce)) THEN
+       dist = GetCReal(BodyForce, Solver % Variable % Name, Found )
+       IF ( Found) THEN
+          nd = GetElementNOFNodes()
+          condition(1:nd) = GetReal(BodyForce, TRIM(Solver % Variable % Name) // " Condition", Found )        
+          DO i=1,nd
+             IF (condition(i) < 0.0) CYCLE
+             j = Element % NodeIndexes(i)
+             IF ( bperm(j) == 0 ) THEN
+                nb = nb + 1
+                aperm(nb) = j
+                bperm(j)  = nb
+                bdist(j) = dist
+             END IF
+          END DO
+       END IF
      END IF
   END DO
 

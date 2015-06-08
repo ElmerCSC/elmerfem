@@ -83,12 +83,13 @@ SUBROUTINE FreeSurfaceSolver_RotInit( Model,Solver,dt,TransientSimulation )
   END DO
 
   !Push to globals
-  WRITE(OrientVarName, '(a,a,a)') TRIM(VariableName),' Orientation' 
+  WRITE(OrientVarName, '(a,a)') TRIM(VariableName),' Orientation' 
   ALLOCATE(OrientVarPointer(3))
 
   CALL VariableAdd(Model % Mesh % Variables, Model % Mesh, Solver, OrientVarName,3,OrientVarPointer)
-  OrientVar => VariableGet(Model %  Mesh % Variables, OrientVarName, Found)
-  IF(.NOT. Found) CALL FATAL(SolverName, "Internal problem set/getting Orientation Variable")
+  OrientVar => VariableGet(Model %  Mesh % Variables, OrientVarName, .TRUE.)
+  IF(.NOT. ASSOCIATED(OrientVar)) &
+       CALL FATAL(SolverName, "Internal problem set/getting Orientation Variable")
   OrientVar % Values = Orientation
 
   RotationMatrix = ComputeRotationMatrix(Orientation)
@@ -331,7 +332,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 
   cv = GetConstReal( SolverParams, 'Velocity Implicity', Found)
   IF(.NOT. Found) cv = 1.0_dp 
-  WRITE(Message,'(a,F8.2)') 'Velocity implicity (1=fully implicit)=', cv
+  WRITE(Message,'(a,F9.2)') 'Velocity implicity (1=fully implicit)=',cv
   CALL Info(SolverName, Message, Level=6 )
 
   LinearTol = GetConstReal( SolverParams, &
@@ -468,6 +469,8 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      IF ( istat /= 0 ) THEN
         CALL Fatal(SolverName,'Memory allocation error 1, Aborting.')
      END IF
+
+     ElemFreeSurf = 0._dp
 
      IF(NeedOldValues) THEN
         ALLOCATE(OldFreeSurf(SIZE(FreeSurf)), STAT=istat)

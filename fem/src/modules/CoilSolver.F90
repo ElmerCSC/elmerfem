@@ -70,7 +70,7 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found  
 
   dim = CoordinateSystemDimension()
-  Params => Solver % Values
+  Params => GetSolverParams()
 
   IF( .NOT. ListCheckPresent( Params,'Variable') ) THEN
     CALL ListAddString( Params,'Variable','-nooutput CoilTmp')
@@ -133,7 +133,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
   CALL Info('CoilSolver','Solving current distribution in a coil')
   CALL Info('CoilSolver','--------------------------------------')
 
-  Params => Solver % Values
+  Params => GetSolverParams()
 
   nsize = SIZE( Solver % Variable % Values ) 
   ALLOCATE( SetA(nsize), SetB(nsize) )

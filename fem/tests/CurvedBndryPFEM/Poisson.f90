@@ -44,7 +44,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Matrix_t), POINTER :: A
   TYPE(Mesh_t),   POINTER :: Mesh
 
-  SAVE STIFF, LOAD, FORCE, AllocationsDone
+  SAVE STIFF, LOAD, FORCE, POT, AllocationsDone
 !------------------------------------------------------------------------------
 
   ! Allocate some permanent storage, this is done first time only:

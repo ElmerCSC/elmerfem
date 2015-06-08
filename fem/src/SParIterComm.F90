@@ -136,7 +136,7 @@ CONTAINS
     IF ( ierr /= 0 ) RETURN
 
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
-    IF ( ierr /= 0 .OR. ParEnv % PEs <= 1 ) THEN
+    IF ( ierr /= 0 ) THEN
        CALL MPI_Finalize( ierr )
     ELSE
        CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
@@ -2844,7 +2844,7 @@ SUBROUTINE SParIterAllReduceOR(L)
    INTEGER :: ierr
 
    L1 = L
-   CALL MPI_ALLREDUCE(L1,L,1,MPI_LOGICAL,MPI_LAND,MPI_COMM_WORLD,ierr)
+   CALL MPI_ALLREDUCE(L1,L,1,MPI_LOGICAL,MPI_LOR,MPI_COMM_WORLD,ierr)
 !-----------------------------------------------------------------------
 END  SUBROUTINE SParIterAllReduceOR
 !-----------------------------------------------------------------------

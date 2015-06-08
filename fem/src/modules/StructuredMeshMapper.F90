@@ -95,7 +95,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   !   Initialize the pointers to top and bottom nodes 
   !------------------------------------------------------------------------------
 
-  SolverParams => Solver % Values
+  SolverParams => GetSolverParams()
   PSolver => Solver
   Mesh => Solver % Mesh
 
@@ -137,7 +137,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
         CALL FATAL('StructuredMeshMapper',&
              '>Minimum Height< either set to negative/zero value or not found')
      ELSE
-        WRITE(Message,'(A,E10.4)') 'Adjusting upper surface to maintain minimum height to ', MinHeight
+        WRITE(Message,'(A,E11.4)') 'Adjusting upper surface to maintain minimum height to:', MinHeight
         CALL INFO('StructuredMeshMapper',Message,Level=1)
      END IF
   ELSE
@@ -384,9 +384,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
             TangledMask(TangledMaskPerm(i)) = -1.0_dp 
           END IF
           IF( .FALSE. ) THEN
-            WRITE(Message,'(A,E10.4,A,E10.4,A,E10.4,A,E10.4)')&
+            WRITE(Message,'(A,E11.4,A,E11.4,A,E11.4,A,E11.4)')&
                 "Corrected negative height:", TopVal - BotVal, "=",&
-                TopVal ,"-", BotVal, ". New upper value: ", Field(itop)
+                TopVal ,"-", BotVal, ". New upper value:", Field(itop)
             CALL INFO('SructuredMeshMapper',Message,Level=9)
           END IF
         END IF

@@ -108,7 +108,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
      ! Optimize performance if ILU preconditioning is used...
      str = ListGetString( Solver % Values, &
           'Linear System Preconditioning', Found )          
-     IF ( Found .AND. str(1:3) == 'ilu' ) THEN
+     IF ( Found .AND. SEQL(str, 'ilu') ) THEN
         IF (NewTimeStep) THEN
            CALL ListAddLogical(Solver % Values, 'No Precondition Recompute', .FALSE.) 
         ELSE

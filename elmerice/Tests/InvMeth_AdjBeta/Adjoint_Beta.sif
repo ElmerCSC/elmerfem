@@ -64,7 +64,7 @@ Simulation
 
   Initialize Dirichlet Conditions = Logical False
 
-  max output level = 3
+  max output level = 4
 End
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 

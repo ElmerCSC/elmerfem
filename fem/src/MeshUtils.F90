@@ -1779,15 +1779,23 @@ END SUBROUTINE GetMaxDefs
    INTEGER :: n0, n
    REAL(KIND=dp), POINTER :: TmpCoord(:)
 
+   INTEGER :: i
+   LOGICAL :: pelementsPresent
+
    n = Mesh % NumberOfNodes + &
        Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
        Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
        Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
    n0 = SIZE( Mesh % Nodes % x )
 
+   pelementsPresent = .FALSE.
+   DO i=1,Mesh % NumberOfBulkElements
+     IF(isPelement(Mesh % Elements(i))) THEN
+       pelementsPresent = .TRUE.; EXIT
+     END IF
+   END DO
 
-   IF ( ( Mesh % NumberOfNodes > n0 .OR. &
-       ( n > n0 .AND. Mesh % MaxBDOFs > 0 ) ) ) THEN
+   IF ( Mesh % NumberOfNodes > n0 .OR. n > n0 .AND. pelementsPresent ) THEN
      CALL Info('EnlargeCoordinates','Increasing number of nodes from '&
          //TRIM(I2S(n0))//' to '//TRIM(I2S(n)),Level=8)
 
@@ -3047,7 +3055,7 @@ END SUBROUTINE GetMaxDefs
      INTEGER, POINTER :: EdgeDofs(:), FaceDofs(:)
      INTEGER :: DGIndex, body_id, body_id0, eq_id, solver_id, el_id
      LOGICAL :: NeedEdges, Found, FoundDef0, FoundDef, FoundEq, GotIt, MeshDeps, &
-                FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers)
+                FoundEqDefs, FoundSolverDefs(Model % NumberOfSolvers), FirstOrderElements
      TYPE(Element_t), POINTER :: Element
      TYPE(ValueList_t), POINTER :: Vlist
      INTEGER :: inDOFs(10,6)
@@ -3066,10 +3074,21 @@ END SUBROUTINE GetMaxDefs
      IF ( PRESENT(Def_Dofs) ) THEN
        inDofs = Def_Dofs
      END IF
+
+     ! P-basis only over 1st order elements:
+     ! -------------------------------------
+     FirstOrderElements = .TRUE.
+     DO i=1,Mesh % NumberOfBulkElements
+       IF (Mesh % Elements(i) % Type % BasisFunctionDegree>1) THEN
+         FirstOrderElements = .FALSE.; EXIT
+       END IF
+     END DO
+
     !
     ! Check whether the "Element" definitions can depend on mesh
     ! -----------------------------------------------------------
-    MeshDeps = .FALSE.; FoundEqDefs = .FALSE.
+    MeshDeps = .FALSE.; FoundEqDefs = .FALSE.;  FoundSolverDefs = .FALSE.
+
     DO eq_id=1,Model % NumberOFEquations
       Vlist => Model % Equations(eq_id) % Values
       ElementDef0 = ListGetString(Vlist,'Element',FoundDef0 )
@@ -3078,7 +3097,6 @@ END SUBROUTINE GetMaxDefs
       IF (j>0.AND. ElementDef0(j+2:j+2)=='%') MeshDeps = .TRUE.
     END DO
 
-    FoundSolverDefs = .FALSE.
     DO solver_id=1,Model % NumberOFSolvers
       Vlist => Model % Solvers(solver_id) % Values
 
@@ -3196,7 +3214,7 @@ END SUBROUTINE GetMaxDefs
        NeedEdges = NeedEdges .OR. ANY( inDOFs(el_id,2:4)>0 )
 
        ! Check if given element is a p element
-       IF (inDOFs(el_id,6) > 0) THEN
+       IF (FirstOrderElements.AND.inDOFs(el_id,6) > 0) THEN
          CALL AllocatePDefinitions(Element)
 
          NeedEdges = .TRUE.
@@ -3704,20 +3722,14 @@ END SUBROUTINE GetMaxDefs
      TYPE(Mesh_t) :: Mesh
 !------------------------------------------------------------------------------
     INTEGER, PARAMETER :: MAXLEN=1024
-#ifdef ALLOC_CHAR
     CHARACTER(LEN=:), ALLOCATABLE :: str
-#else
-    CHARACTER(LEN=MAX_STRING_LEN) :: str
-#endif
     INTEGER :: i,j,n
     INTEGER, PARAMETER :: FileUnit = 10
     REAL(KIND=dp) :: x
     TYPE(Element_t), POINTER :: Element
     TYPE(ElementData_t), POINTER :: PD,PD1
 
-#ifdef ALLOC_CHAR
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
-#endif
 
     OPEN( Unit=FileUnit, File=FileName, STATUS='OLD', ERR=10 )
 
@@ -3727,12 +3739,12 @@ END SUBROUTINE GetMaxDefs
         CALL Fatal( 'ReadElementProperties', 'Element id out of range.' )
       END IF
       
-      IF ( str(1:8) == 'element:' ) THEN
+      IF ( SEQL( str, 'element:') ) THEN
         Element => Mesh % Elements(i)
         PD => Element % PropertyData
 
         DO WHILE(ReadAndTrim(FileUnit,str))
-          IF ( str(1:3) == 'end' ) EXIT
+          IF ( str == 'end' ) EXIT
 
           i = INDEX(str, ':')
           IF ( i<=0 ) CYCLE
@@ -5945,6 +5957,7 @@ END SUBROUTINE GetMaxDefs
 
     ! If requested, create mapping for edge dofs
     !-------------------------------------------------------------
+    EdgeBasis = .FALSE.
     IF( DoEdges ) THEN
       EdgeCol0 = Mesh % NumberOfNodes
       FaceCol0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
@@ -9019,22 +9032,31 @@ END SUBROUTINE GetMaxDefs
 
   ! Save projector, mainly a utility for debugging purposes
   !--------------------------------------------------------
-  SUBROUTINE SaveProjector(Projector,SaveRowSum)
+  SUBROUTINE SaveProjector(Projector,SaveRowSum,Prefix)
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: SaveRowSum 
+    CHARACTER(LEN=*), OPTIONAL :: Prefix
 
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename, IntPrefix
     INTEGER :: i,j,This
     REAL(KIND=dp) :: rowsum, dia
 
     This = Projector % ConstraintBC
 
-    IF(ParEnv % PEs == 1 ) THEN
-      OPEN(1,FILE='p'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
+    IF( PRESENT( Prefix ) ) THEN
+      IntPrefix = TRIM( Prefix ) 
     ELSE
-      OPEN(1,FILE='p'//TRIM(I2S(This))//'_part'//&
-          TRIM(I2S(ParEnv % MyPe))//'.dat',STATUS='Unknown')
+      IntPrefix = 'p'
     END IF
     
+    IF(ParEnv % PEs == 1 ) THEN
+      FileName = TRIM(Prefix)//TRIM(I2S(This))//'.dat'
+    ELSE
+      FileName = TRIM(Prefix)//TRIM(I2S(This))//'_part'//&
+          TRIM(I2S(ParEnv % MyPe))//'.dat'
+    END IF
+
+    OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
       rowsum = 0.0_dp
       DO j=projector % rows(i), projector % rows(i+1)-1
@@ -9052,12 +9074,13 @@ END SUBROUTINE GetMaxDefs
 
     IF( SaveRowSum ) THEN
       IF(ParEnv % PEs == 1 ) THEN
-        OPEN(1,FILE='rsum'//TRIM(I2S(This))//'.dat',STATUS='Unknown')
+        FileName = TRIM(Prefix)//TRIM(I2S(This))//'_rsum.dat'
       ELSE
-        OPEN(1,FILE='rsum'//TRIM(I2S(This))//'_part'//&
-            TRIM(I2S(ParEnv % MyPe))//'.dat',STATUS='Unknown')
+        FileName = TRIM(Prefix)//TRIM(I2S(This))//'_rsum_part'//&
+            TRIM(I2S(ParEnv % MyPe))//'.dat'
       END IF
       
+      OPEN(1,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
         rowsum = 0.0_dp
         DO j=projector % rows(i), projector % rows(i+1)-1

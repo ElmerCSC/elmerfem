@@ -9,6 +9,7 @@
 
 #cmakedefine VERSION "${VERSION}"
 #cmakedefine REVISION "${ELMER_FEM_REVISION}"
+#cmakedefine COMPILATIONDATE "${ELMER_FEM_COMPILATIONDATE}"
 #cmakedefine HAVE_INTTYPES_H
 #cmakedefine ELMER_SOLVER_HOME "${ELMER_SOLVER_HOME}"
 
@@ -63,6 +64,9 @@
 /* Define if you have a HYPRE library. */
 /* define HAVE_HYPRE */
 #cmakedefine HAVE_HYPRE
+
+/* Define if you have a MKL library */
+#cmakedefine HAVE_MKL
 
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK

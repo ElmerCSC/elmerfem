@@ -138,7 +138,7 @@ CONTAINS
      IF ( Solver % Variable % DOFs <= 1 ) RETURN
 
      NormalTangentialName = 'Normal-Tangential'
-     IF ( Solver % Variable % Name(1:13) == 'flow solution' ) THEN
+     IF ( SEQL(Solver % Variable % Name, 'flow solution') ) THEN
        NormalTangentialName = TRIM(NormalTangentialName) // ' Velocity'
      ELSE
        NormalTangentialName = TRIM(NormalTangentialName) // ' ' // &
@@ -1191,27 +1191,50 @@ CONTAINS
      TYPE(Solver_t) :: Solver
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
-     TYPE(variable_t), POINTER :: Var, LoadVar, IterVar, LimitVar
+     TYPE(variable_t), POINTER :: Var, LoadVar, IterV, LimitVar
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,t,ind,dofs, dof, bf, bc, Upper, Removed, Added, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2
-     REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:)
+     REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), &
+         ElemLimit(:),ElemInit(:), ElemActive(:)
      REAL(KIND=dp) :: LimitSign, EqSign, ValEps, LoadEps, val
      INTEGER, POINTER :: FieldPerm(:), NodeIndexes(:)
-     LOGICAL :: Found,AnyLimitBC, AnyLimitBF
+     LOGICAL :: Found,AnyLimitBC, AnyLimitBF, GotInit, GotActive
      LOGICAL, ALLOCATABLE :: LimitDone(:)
      LOGICAL, POINTER :: LimitActive(:)
-     TYPE(ValueList_t), POINTER :: Params
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName
+     TYPE(ValueList_t), POINTER :: Params, Entity
+     CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName, InitName, ActiveName
      LOGICAL, ALLOCATABLE :: InterfaceDof(:)
-     INTEGER :: ConservativeAfterIters
+     INTEGER :: ConservativeAfterIters, NonlinIter, CoupledIter
      LOGICAL :: Conservative, ConservativeAdd, ConservativeRemove, &
-         DoAdd, DoRemove, DirectionActive
+         DoAdd, DoRemove, DirectionActive, FirstTime
 
      Model => CurrentModel
      Var => Solver % Variable
      
-     CALL Info('DetermineSoftLimiter','Determining soft limiter for nonlinear problems',Level=8)
+
+     ! Check the iterations counts and determine whether this is the first 
+     ! time with this solver. 
+     !------------------------------------------------------------------------
+     FirstTime = .TRUE.
+     iterV => VariableGet( Solver % Mesh % Variables,'nonlin iter')
+     IF( ASSOCIATED( iterV ) ) THEN
+       NonlinIter =  NINT( iterV % Values(1) ) 
+       IF( NonlinIter > 1 ) FirstTime = .FALSE.
+     END IF
+
+     iterV => VariableGet( Solver % Mesh % Variables,'coupled iter')
+     IF( ASSOCIATED( iterV ) ) THEN
+       CoupledIter = NINT( iterV % Values(1) )
+       IF( CoupledIter > 1 ) FirstTime = .FALSE.
+     END IF
+          
+     PRINT *,'SoftLimit firsttime:',FirstTime
+
+     ! Determine variable for computing the contact load used to determine the 
+     ! soft limit set.
+     !------------------------------------------------------------------------
+     CALL Info('DetermineSoftLimiter','Determining soft limiter problems',Level=8)
      LoadVar => VariableGet( Model % Variables, &
          GetVarName(Var) // ' Contact Load',ThisOnly = .TRUE. )
      CALL CalculateLoads( Solver, Solver % Matrix, Var % Values, Var % DOFs, .FALSE., LoadVar ) 
@@ -1222,6 +1245,7 @@ CONTAINS
        RETURN
      END IF
      LoadValues => LoadVar % Values
+
 
      ! The variable to be constrained by the soft limiters
      FieldValues => Var % Values
@@ -1234,8 +1258,7 @@ CONTAINS
      ConservativeAfterIters = ListGetInteger(Params,&
          'Apply Limiter Conservative Add After Iterations',Conservative ) 
      IF( Conservative ) THEN
-       IterVar => VariableGet( Model % Variables,'nonlin iter')
-       ConservativeAdd = ( ConservativeAfterIters < NINT( IterVar % Values(1) ) )
+       ConservativeAdd = ( ConservativeAfterIters < NonlinIter )
        IF( ConservativeAdd ) THEN
          CALL Info('DetermineSoftLimiter','Adding dofs in conservative fashion',Level=8)
        END IF
@@ -1246,8 +1269,7 @@ CONTAINS
          'Apply Limiter Conservative Remove After Iterations',Found ) 
      IF( Found ) THEN
        Conservative = .TRUE.  
-       IterVar => VariableGet( Model % Variables,'nonlin iter')
-       ConservativeRemove = ( ConservativeAfterIters < NINT( IterVar % Values(1) ) )
+       ConservativeRemove = ( ConservativeAfterIters < NonlinIter )
        IF( ConservativeRemove ) THEN
          CALL Info('DetermineSoftLimiter','Adding dofs in conservative fashion',Level=8)
        END IF
@@ -1298,8 +1320,12 @@ CONTAINS
          !------------------------------------------------------------------
          IF( Upper == 0 ) THEN
            LimitName = TRIM(name)//' Lower Limit'           
+           InitName = TRIM(name)//' Lower Initial'
+           ActiveName = TRIM(name)//' Lower Active'
          ELSE
            LimitName = TRIM(name)//' Upper Limit' 
+           InitName = TRIM(name)//' Upper Initial' 
+           ActiveName = TRIM(name)//' Upper Active' 
          END IF
 
          AnyLimitBC = ListCheckPresentAnyBC( Model, LimitName )
@@ -1326,7 +1352,7 @@ CONTAINS
          
          IF(.NOT. ALLOCATED( LimitDone) ) THEN
            n = Model % MaxElementNodes
-           ALLOCATE( LimitDone( totsize ), ElemLimit(n) )
+           ALLOCATE( LimitDone( totsize ), ElemLimit(n), ElemInit(n), ElemActive(n) )
            LimitDone = .FALSE.
          END IF
 
@@ -1350,9 +1376,87 @@ CONTAINS
          Added = 0        
          IF(.NOT. ALLOCATED( LimitDone) ) THEN
            n = Model % MaxElementNodes
-           ALLOCATE( LimitDone( totsize ), ElemLimit(n) )
+           ALLOCATE( LimitDone( totsize ), ElemLimit(n), ElemInit(n), ElemActive(n) )
            LimitDone = .FALSE.
          END IF
+
+
+         IF( FirstTime ) THEN
+           ! In the first time set the initial set 
+           !----------------------------------------------------------------------
+           DO t = ElemFirst, ElemLast
+             
+             Element => Model % Elements(t)
+             Model % CurrentElement => Element
+
+             n = Element % TYPE % NumberOfNodes
+             NodeIndexes => Element % NodeIndexes
+             
+             Found = .FALSE.
+             IF( t > Model % NumberOfBulkElements ) THEN
+               DO bc = 1,Model % NumberOfBCs
+                 IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
+                   Found = .TRUE.
+                   Entity => Model % BCs(bc) % Values
+                   EXIT
+                 END IF
+               END DO
+               IF(.NOT. Found ) CYCLE
+             ELSE             
+               bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
+                   'Body Force', Found)
+               IF(.NOT. Found ) CYCLE
+               Entity => Model % BodyForces(bf) % Values
+             END IF
+             
+             ElemLimit(1:n) = ListGetReal( Entity, &
+                 LimitName, n, NodeIndexes, Found)             
+             IF(.NOT. Found) CYCLE
+
+             ElemInit(1:n) = ListGetReal( Entity, &
+                 InitName, n, NodeIndexes, GotInit)
+             ElemActive(1:n) = ListGetReal( Entity, &
+                 ActiveName, n, NodeIndexes, GotActive)
+             IF(.NOT. ( GotInit .OR. GotActive ) ) CYCLE
+
+
+             DO i=1,n
+               j = FieldPerm( NodeIndexes(i) )
+               IF( j == 0 ) CYCLE
+               ind = Dofs * ( j - 1) + Dof
+
+               IF( LimitDone(ind) ) CYCLE
+             
+               ! Go through the active set and free nodes with wrong sign in contact force
+               !--------------------------------------------------------------------------       
+               IF( GotInit .AND. ElemInit(i) > 0.0_dp ) THEN
+                 added = added + 1
+                 LimitActive(ind) = .TRUE.
+               ELSE IF( GotActive .AND. ElemActive(i) > 0.0_dp ) THEN
+                 added = added + 1
+                 LimitActive(ind) = .TRUE.
+               ELSE
+                 LimitActive(ind) = .FALSE.
+               END IF
+
+               ! Enforce the values to limits because nonlinear material models
+               ! may otherwise lead to divergence of the iteration
+               !--------------------------------------------------------------
+               IF( LimitActive(ind) ) THEN
+                 IF( Upper == 0 ) THEN
+                   Var % Values(ind) = MAX( val, ElemLimit(i) )
+                 ELSE
+                   Var % Values(ind) = MIN( val, ElemLimit(i) )
+                 END IF
+               END IF
+               
+               LimitDone(ind) = .TRUE.             
+             END DO
+           END DO
+
+           CYCLE
+         END IF
+
 
          IF( Conservative ) THEN
            IF(.NOT. ALLOCATED( InterfaceDof ) ) THEN
@@ -1371,25 +1475,27 @@ CONTAINS
              n = Element % TYPE % NumberOfNodes
              NodeIndexes => Element % NodeIndexes
              
+             Found = .FALSE.
              IF( t > Model % NumberOfBulkElements ) THEN
-               Found = .FALSE.
                DO bc = 1,Model % NumberOfBCs
                  IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-                   ElemLimit(1:n) = ListGetReal( Model % BCs(bc) % Values, &
-                       LimitName, n, NodeIndexes, Found)
+                   Found = .TRUE.
+                   Entity => Model % BCs(bc) % Values
                    EXIT
                  END IF
                END DO
-               IF(.NOT. Found) CYCLE
+               IF(.NOT. Found ) CYCLE
              ELSE             
                bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
                    'Body Force', Found)
                IF(.NOT. Found ) CYCLE
-               ElemLimit(1:n) = ListGetReal( Model % BodyForces(bf) % Values, &
-                   LimitName, n, NodeIndexes, Found)
-               IF(.NOT. Found) CYCLE
+               Entity => Model % BodyForces(bf) % Values
              END IF
-             
+
+             ElemLimit(1:n) = ListGetReal( Entity, &
+                 LimitName, n, NodeIndexes, Found)
+             IF(.NOT. Found) CYCLE
+
              DO i=1,n
                j = FieldPerm( NodeIndexes(i) )
                IF( j == 0 ) CYCLE
@@ -1425,24 +1531,29 @@ CONTAINS
            n = Element % TYPE % NumberOfNodes
            NodeIndexes => Element % NodeIndexes
            
+           Found = .FALSE.
            IF( t > Model % NumberOfBulkElements ) THEN
-             Found = .FALSE.
              DO bc = 1,Model % NumberOfBCs
                IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-                 ElemLimit(1:n) = ListGetReal( Model % BCs(bc) % Values, &
-                     LimitName, n, NodeIndexes, Found)
+                 Found = .TRUE.
+                 Entity => Model % BCs(bc) % Values
                  EXIT
                END IF
              END DO
-             IF(.NOT. Found) CYCLE
+             IF(.NOT. Found ) CYCLE
            ELSE             
              bf = ListGetInteger( Model % Bodies(Element % bodyid) % Values, &
                  'Body Force', Found)
              IF(.NOT. Found ) CYCLE
-             ElemLimit(1:n) = ListGetReal( Model % BodyForces(bf) % Values, &
-                 LimitName, n, NodeIndexes, Found)
-             IF(.NOT. Found) CYCLE
+             Entity => Model % BodyForces(bf) % Values
            END IF
+           
+           ElemLimit(1:n) = ListGetReal( Entity, &
+               LimitName, n, NodeIndexes, Found)             
+           IF(.NOT. Found) CYCLE
+           
+           ElemActive(1:n) = ListGetReal( Entity, &
+               ActiveName, n, NodeIndexes, GotActive)
 
            DO i=1,n
              j = FieldPerm( NodeIndexes(i) )
@@ -1453,7 +1564,12 @@ CONTAINS
              
              ! Go through the active set and free nodes with wrong sign in contact force
              !--------------------------------------------------------------------------       
-             IF( LimitActive( ind ) ) THEN
+             IF( GotActive .AND. ElemActive(i) > 0.0_dp ) THEN
+               IF(.NOT. LimitActive( ind ) ) THEN
+                 added = added + 1
+                 LimitActive(ind) = .TRUE. 
+               END IF
+             ELSE IF( LimitActive( ind ) ) THEN
                DoRemove = ( LimitSign * LoadValues(ind) > LimitSign * LoadEps ) 
                IF( DoRemove ) THEN
                  ! In the conservative mode only release nodes from contact set 
@@ -1555,7 +1671,7 @@ CONTAINS
      END IF
 
      IF( ALLOCATED( LimitDone ) ) THEN
-       DEALLOCATE( LimitDone, ElemLimit ) 
+       DEALLOCATE( LimitDone, ElemLimit, ElemInit, ElemActive ) 
      END IF
      
      IF( ALLOCATED( InterfaceDof ) ) THEN
@@ -1972,7 +2088,6 @@ CONTAINS
               CALL ListAddIntegerArray( ValueList,'Target Nodes', &
                   1, IndNodes) 
             END IF
-            Model % BCs(BC) % Values => ValueList
 
             ! Finally deallocate the temporal vectors
             DEALLOCATE( IndNodes, MinDist ) 
@@ -3644,7 +3759,6 @@ CONTAINS
               ! retreated each time. 
               CALL ListAddIntegerArray( ValueList,'Target Nodes', 0, IndNodes) 
             END IF
-            Model % BCs(BC) % Values => ValueList
 
             ! Finally deallocate the temporal vectors
             DEALLOCATE( IndNodes, MinDist ) 
@@ -3834,7 +3948,7 @@ CONTAINS
      END IF
 
      GB = ListGetLogical( Solver % Values, 'Bubbles in Global System', Found )
-     IF (.NOT.Found) GB = .TRUE.
+     IF (.NOT. Found) GB = .TRUE.
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
        IF (.NOT. isActivePElement(Element) ) RETURN
@@ -5473,35 +5587,37 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:)
     LOGICAL :: ReduceStep
 !------------------------------------------------------------------------------
-    INTEGER :: MaxTests=0,tests,MaxNonlinIter,NonlinIter
+    INTEGER :: MaxTests=0,tests,MaxNonlinIter,NonlinIter, Dofs
     REAL(KIND=dp) :: Residual0, Residual1, Residual
-    INTEGER :: i,n,m,ForceInd, ForceDofs, SearchMode, CostMode, iter = 0
+    INTEGER :: i,n,m,ForceDof, SearchMode, CostMode, iter = 0
     TYPE(Matrix_t), POINTER :: A, MP
-    TYPE(Variable_t), POINTER :: IterVar
+    TYPE(Variable_t), POINTER :: IterVar, Var
     REAL(KIND=dp), POINTER :: b(:), x(:), x0(:), r(:), x1(:), x2(:), mr(:), mx(:), mb(:)
     REAL(KIND=dp) :: Norm, PrevNorm, rNorm, bNorm, Relaxation, Alpha, Myy, &
-        NonlinTol, LineTol, Cost0, Cost1, Cost, OrthoCoeff, x0norm, x1norm, Change, &
+        NonlinTol, LineTol, Cost0(4), Cost1(4), Cost(4), OrthoCoeff, x0norm, x1norm, Change, &
         LinTol
     REAL(KIND=dp), ALLOCATABLE :: TempRHS(:)
     INTEGER, POINTER :: Indexes(:)
-    LOGICAL :: Stat, Init, Newton, Ortho, Debug 
-    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, ConvergenceType
+    LOGICAL :: Stat, Init, Newton, Ortho, Debug, SaveToFile
+    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, ConvergenceType, FileName
     TYPE(ValueList_t), POINTER :: SolverParams
 
 
     SAVE SolverParams, Alpha, Myy, Relaxation, MaxTests, tests, &
         Residual, NonlinTol, LinTol, x1, x0, LineTol, CostMode, SearchMode, &
-        Cost0, Residual0, Cost1, ForceInd, n, ForceDofs, Ortho, Newton, &
-        ConvergenceType, Norm, PrevNorm, iter
+        Cost0, Residual0, Cost1, n, Dofs, ForceDof, Ortho, Newton, &
+        ConvergenceType, Norm, PrevNorm, iter, FileName, SaveToFile
 
     Debug = .FALSE.
     
     SolverParams => Solver % Values
-
+    Var => Solver % Variable
+    Dofs = Var % Dofs
+ 
     IF(PRESENT(values)) THEN
       x => values
     ELSE 
-      x => Solver % Variable % Values      
+      x => Var % Values      
     END IF
 
 
@@ -5537,8 +5653,8 @@ END FUNCTION SearchNodeL
       END IF
 
       Norm = 0.0_dp
-      Solver % Variable % NonlinConverged = 0
-      Solver % Variable % NonlinChange = 1.0_dp
+      Var % NonlinConverged = 0
+      Var % NonlinChange = 1.0_dp
       
       ! 1 - Residual norm : |Ax-b| 
       ! 2 - Quadratic functional : x^T(Ax-2b)/2
@@ -5597,6 +5713,13 @@ END FUNCTION SearchNodeL
       LineTol = ListGetConstReal( SolverParams, &
           'Nonlinear System Linesearch Tolerance', Stat )
 
+      ForceDof = ListGetInteger( SolverParams, &
+          'Nonlinear System Linesearch Force Index', Stat )
+      IF(.NOT. Stat) ForceDof = Dofs
+
+      FileName = ListGetString( SolverParams, &
+          'Nonlinear System Linesearch Filename', SaveToFile )
+      
       ! Computation of nonlinear change is now done with this routine
       ! so skip computing the change in the standard slot.
       !---------------------------------------------------------------
@@ -5630,18 +5753,30 @@ END FUNCTION SearchNodeL
       Residual = ComputeNorm(Solver, n, r)
     END IF
 
-    IF( CostMode == 1 ) THEN
-      Cost = Residual
-    ELSE IF( CostMode == 2 ) THEN
-      Cost = SUM( 0.5_dp * x(1:n) * ( r(1:n) - b(1:n) ) )
-    ELSE IF( CostMode == 3 ) THEN
-      Cost = SUM( x(1:n) * r(1:n) )
-    ELSE IF( CostMode == 4 ) THEN
-      Cost = SUM( r(ForceInd::2) )
-    ELSE
-      CALL Fatal('CheckStepSize','Unknown CostMode: '//TRIM(I2S(SearchMode)))
+    ! Currently we compute all the costs to make it easier to study the 
+    ! behavior of different measures when doing linesearch.
+    IF( .TRUE. ) THEN
+      Cost(1) = Residual
+      Cost(2) = SUM( 0.5_dp * x(1:n) * ( r(1:n) - b(1:n) ) )
+      Cost(3) = SUM( x(1:n) * r(1:n) )
+      Cost(4) = SUM( r(ForceDof::Dofs) )
+    ELSE      
+      IF( CostMode == 1 ) THEN
+        Cost(1) = Residual
+      ELSE IF( CostMode == 2 ) THEN
+        Cost(2) = SUM( 0.5_dp * x(1:n) * ( r(1:n) - b(1:n) ) )
+      ELSE IF( CostMode == 3 ) THEN
+        Cost(3) = SUM( x(1:n) * r(1:n) )
+      ELSE IF( CostMode == 4 ) THEN
+        Cost(4) = SUM( r(ForceDof::Dofs) )
+      ELSE
+        CALL Fatal('CheckStepSize','Unknown CostMode: '//TRIM(I2S(SearchMode)))
+      END IF
+      DEALLOCATE(r)
     END IF
-    DEALLOCATE(r)
+
+    WRITE( Message,'(A,4ES15.7)') 'Cost: ',Cost
+    CALL Info('CheckStepSize',Message,Level=8)
 
     ! At first iteration we cannot really do anything but go further 
     ! and save the reference residual for comparison.
@@ -5658,6 +5793,16 @@ END FUNCTION SearchNodeL
         PRINT *,'b0 range: ',MINVAL(b),MAXVAL(b)
         PRINT *,'Cost0: ',Cost0
       END IF
+
+      IF( SaveToFile ) THEN
+        CALL Info('CheckStepSize','Saving step information into file: '&
+            //TRIM(FileName),Level=10)
+        OPEN( 10, FILE = FileName, STATUS='UNKNOWN' )
+        i = 0
+        WRITE (10,'(2I6,5ES15.7)') Tests,i,Alpha,Cost
+        CLOSE( 10 )
+      END IF
+
 
       RETURN
     END IF
@@ -5736,6 +5881,22 @@ END FUNCTION SearchNodeL
     END IF
 
 
+    IF( SaveToFile ) THEN
+      CALL Info('CheckStepSize','Saving step information into file: '&
+          //TRIM(FileName),Level=10)
+      OPEN( 10, FILE = FileName, POSITION='APPEND',STATUS='OLD' )
+      IF( ReduceStep ) THEN
+        i = 0
+      ELSE
+        i = 1
+      END IF
+
+      WRITE (10,'(2I6,5ES13.6)') Tests,i,Alpha,Cost
+      CLOSE( 10 )
+    END IF
+
+
+
 100 IF( ReduceStep ) THEN
       IF( Tests >= MaxTests .AND. ReduceStep ) THEN
         CALL Fatal('CheckStepSize','Maximum number of linesearch steps taken without success!')
@@ -5788,11 +5949,11 @@ END FUNCTION SearchNodeL
       
       WRITE(Message,'(A,I0,A,g15.6)') 'Step accepted after ',tests,' trials: ',Alpha
       CALL Info( 'CheckStepSize',Message,Level=5 )
-      WRITE(Message,'(A,g15.6)') 'Previous cost:',Cost0
+      WRITE(Message,'(A,g15.6)') 'Previous cost:',Cost0(CostMode)
       CALL Info( 'CheckStepSize',Message,Level=6 )
-      WRITE(Message,'(A,g15.6)') 'Initial cost: ',Cost1
+      WRITE(Message,'(A,g15.6)') 'Initial cost: ',Cost1(CostMode)
       CALL Info( 'CheckStepSize',Message,Level=6 )
-      WRITE(Message,'(A,g15.6)') 'Final cost:   ',Cost
+      WRITE(Message,'(A,g15.6)') 'Final cost:   ',Cost(CostMode)
       CALL Info( 'CheckStepSize',Message,Level=6 )
       
       Tests = 0
@@ -5805,7 +5966,10 @@ END FUNCTION SearchNodeL
       END IF
 
       IF( Newton ) FirstIter = .TRUE.
+
     END IF
+
+
 
   CONTAINS
 
@@ -5818,7 +5982,7 @@ END FUNCTION SearchNodeL
       REAL(KIND=dp) :: Alpha
       LOGICAL :: ReduceStep
 
-      ReduceStep = ( Cost > ( 1.0_dp - Myy * Alpha ) * Cost0 )
+      ReduceStep = ( Cost(CostMode) > ( 1.0_dp - Myy * Alpha ) * Cost0(CostMode) )
       IF( ReduceStep ) THEN
         Alpha = Alpha * Relaxation
       ELSE
@@ -5848,11 +6012,11 @@ END FUNCTION SearchNodeL
       
       IF(Tests == 1) THEN
         p(1) = 0.0_dp
-        c(1) = Cost0
+        c(1) = Cost0(CostMode)
         r(1) = Residual0
 
         p(2) = 1.0_dp
-        c(2) = Cost
+        c(2) = Cost(CostMode)
         r(2) = Residual
         
         step = 0.25_dp
@@ -5860,7 +6024,7 @@ END FUNCTION SearchNodeL
         RETURN
       ELSE 
         p(3) = Alpha
-        c(3) = Cost 
+        c(3) = Cost(CostMode) 
         r(3) = Residual
       END IF
 
@@ -5917,7 +6081,7 @@ END FUNCTION SearchNodeL
 
         Alpha = p(i)
         Residual0 = r(i)
-        Cost0 = c(i)
+        Cost0(CostMode) = c(i)
         ! PRINT *,'Choosing i',i,Alpha,Residual0,Cost0
 
         RETURN
@@ -5942,7 +6106,7 @@ END FUNCTION SearchNodeL
         END IF
         step = (p(2)-p(1))/2.0d0
         Alpha = p(1) + SIGN(step,p(2)-p(1))
-      ELSE 
+      ELSE  
         IF( Debug ) THEN
           PRINT *,'p:',p
           PRINT *,'c:',c,Cost0
@@ -5950,13 +6114,13 @@ END FUNCTION SearchNodeL
           PRINT *,'dc',c(2)-c(1),c(3)-c(2)
         END IF
 
-        IF( MINVAL ( c ) < Cost0 ) THEN
+        IF( MINVAL ( c ) < Cost0(CostMode) ) THEN
           i = 1
           DO k=2,3
             IF( c(k) < c(i) ) i = k
           END DO
           Alpha = p(i)
-          Cost0 = c(i)
+          Cost0(CostMode) = c(i)
           Residual0 = r(i)
          
           CALL Warn('BisectSearch','Bisection method improved but faced local maximium')
@@ -5973,7 +6137,7 @@ END FUNCTION SearchNodeL
             IF( r(k) < r(i) ) i = k
           END DO
           Alpha = p(i)
-          Cost0 = c(i)
+          Cost0(CostMode) = c(i)
           Residual0 = r(i)         
         END IF
 
@@ -6031,12 +6195,12 @@ END FUNCTION SearchNodeL
       
       IF(Tests == 1) THEN
         p(1) = 0.0_dp
-        c(1) = Cost0
+        c(1) = Cost0(CostMode)
         
         p(2) = 1.0_dp
-        c(2) = Cost1
+        c(2) = Cost1(CostMode)
         
-        IF( Cost0 * Cost1 > 0.0_dp ) THEN
+        IF( Cost0(CostMode) * Cost1(CostMode) > 0.0_dp ) THEN
           CALL Warn('CostSearch','Lumped forces should have different sign!')
         END IF
 
@@ -6044,7 +6208,7 @@ END FUNCTION SearchNodeL
         RETURN
       ELSE 
         p(3) = Alpha
-        c(3) = Cost 
+        c(3) = Cost(CostMode) 
       END IF
       
      ! Order the previous points so that p1 < p2 < p3
@@ -6931,7 +7095,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: LoadValues(:)
     INTEGER :: i,j,k,l,m,ii,This,DOF
     REAL(KIND=dp), POINTER :: TempRHS(:), TempVector(:), SaveValues(:), Rhs(:)
-    REAL(KIND=dp) :: Energy
+    REAL(KIND=dp) :: Energy, Energy_im
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: Found
 
@@ -6966,12 +7130,37 @@ END FUNCTION SearchNodeL
 
     IF( ListGetLogical(Solver % Values, 'Calculate Energy Norm', Found) ) THEN
       Energy = 0._dp
-      DO i=1,Aaid % NumberOfRows
-        IF ( ParEnv % Pes>1 ) THEN
-          IF ( Aaid % ParMatrix % ParallelInfo % &
-              NeighbourList(i) % Neighbours(1) /= Parenv % MyPE ) CYCLE
-        END IF
-        Energy = Energy + x(i)*TempVector(i)
+      IF( ListGetLogical(Solver % Values, 'Linear System Complex', Found) ) THEN
+        Energy_im = 0._dp
+        DO i = 1, (Aaid % NumberOfRows / 2)
+          IF ( ParEnv % Pes>1 ) THEN
+            IF ( Aaid% ParMatrix % ParallelInfo % &
+              NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+          END IF
+          Energy    = Energy    + x(2*(i-1)+1) * TempVector(2*(i-1)+1) - x(2*(i-1)+2) * TempVector(2*(i-1)+2)
+          Energy_im = Energy_im + x(2*(i-1)+1) * TempVector(2*(i-1)+2) + x(2*(i-1)+2) * TempVector(2*(i-1)+1) 
+       END DO
+       Energy    = ParallelReduction(Energy)
+       Energy_im = ParallelReduction(Energy_im)
+
+       CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy)
+       CALL ListAddConstReal( Solver % Values, 'Energy norm im', Energy_im)
+
+       WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+       CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
+
+       WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm im'
+       CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
+
+       WRITE( Message, * ) 'Energy Norm: ', Energy, Energy_im
+       CALL Info( 'SolveLinearSystem', Message )
+     ELSE 
+       DO i=1,Aaid % NumberOfRows
+         IF ( ParEnv % Pes>1 ) THEN
+           IF ( Aaid % ParMatrix % ParallelInfo % &
+                NeighbourList(i) % Neighbours(1) /= Parenv % MyPE ) CYCLE
+         END IF
+         Energy = Energy + x(i)*TempVector(i)
       END DO
       Energy = ParallelReduction(Energy)
       CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy )
@@ -6982,6 +7171,7 @@ END FUNCTION SearchNodeL
       WRITE( Message, * ) 'Energy Norm: ', Energy
       CALL Info( 'SolveLinearSystem', Message )
     END IF
+  END IF
 
     IF ( ParEnv % PEs>1 ) THEN
       DO i=1,Aaid % NumberOfRows
@@ -7698,6 +7888,11 @@ END FUNCTION SearchNodeL
           A % ConstraintMatrix => Btmp
         END IF
       END IF
+
+      IF( ListGetLogical( Solver % Values,'Save Constraint Matrix',Found ) ) THEN
+        CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm')
+      END IF
+
       CALL SolveWithLinearRestriction( A,b,x,Norm,DOFs,Solver )
 
       IF ( ASSOCIATED(Btmp) ) THEN
@@ -7824,7 +8019,7 @@ END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
 SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs )
 
-  CHARACTER(LEN=MAX_NAME_LEN) :: var_name
+  CHARACTER(LEN=*)  :: var_name
   LOGICAL, OPTIONAL :: NoOutput, Global
   INTEGER, OPTIONAL :: Dofs
 
@@ -7835,17 +8030,17 @@ SUBROUTINE VariableNameParser(var_name, NoOutput, Global, Dofs )
   IF(PRESENT(Dofs)) Dofs = 0
 
   DO WHILE( var_name(1:1) == '-' )
-    IF ( var_name(1:10) == '-nooutput ' ) THEN
+    IF ( SEQL(var_name, '-nooutput ') ) THEN
       IF(PRESENT(NoOutput)) NoOutput = .TRUE.
       var_name(1:LEN(var_name)-10) = var_name(11:)
     END IF
     
-    IF ( var_name(1:8) == '-global ' ) THEN
+    IF ( SEQL(var_name, '-global ') ) THEN
       IF(PRESENT(Global)) Global = .TRUE.
       var_name(1:LEN(var_name)-8) = var_name(9:)
     END IF
     
-    IF ( var_name(1:6) == '-dofs ' ) THEN
+    IF ( SEQL(var_name, '-dofs ') ) THEN
       IF(PRESENT(DOFs)) READ( var_name(7:), * ) DOFs     
       j = LEN_TRIM( var_name )
       k = 7
@@ -8297,7 +8492,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   SolverPointer => Solver
 
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
-  IF(.NOT.Found) NotExplicit=.FALSE.
+  IF(.NOT. Found) NotExplicit=.FALSE.
 
   RestMatrix => NULL()
   IF(.NOT.NotExplicit) &
@@ -9125,8 +9320,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     TYPE(Variable_t), POINTER :: Var, Variables
     LOGICAL :: Found, Symmetric, SaveFields, SkipCorrection
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TmpVarName
-    TYPE(Varying_string) :: namesp
-
 
     Params => Solver % Values
 
@@ -9269,13 +9462,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     ! The stiffness matrix is momentarily replaced by the consistent mass matrix M_C
     ! Also the namespace is replaced to 'fct:' so that different strategies may 
     ! be applied to the mass matrix solution.
-    Found = ListGetNameSpace(namesp)
-    CALL ListSetNameSpace('fct:')
+    CALL ListPushNameSpace('fct:')
     SaveValues => A % Values
     A % Values => M_C
     CALL SolveLinearSystem( A, ku, udot, Norm, 1, Solver )
     A % Values => SaveValues
-    CALL ListSetNameSpace(CHAR(namesp))
+    CALL ListPopNamespace()
 
     ! Computation of correction factors (Zalesak's limiter)
     ! Code derived initially from Kuzmin's subroutine   

@@ -256,7 +256,7 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         Tmp => Solver % Mesh % Variables
         DO WHILE( ASSOCIATED(tmp) )
            IF ( tmp % NameLen == 4 ) THEN
-              IF ( tmp % Name(1:4) == 'pres' ) THEN
+              IF ( tmp % Name == 'pres' ) THEN
                  IF ( Tmp % Valid ) THEN
                     HSol => Tmp
                  END IF
@@ -476,6 +476,10 @@ SUBROUTINE AcousticsSolver( Model,Solver,dt,TransientSimulation )
         ! NodesOnBoundary(N*Solver % Mesh % NumberOfBoundaryElements), &
         GapIndexes(N), &
         STAT=istat )
+
+    ElementNodes % x = 0._dp
+    ElementNodes % y = 0._dp
+    ElementNodes % z = 0._dp
 
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'AcousticsSolver', 'Memory allocation error.' )
@@ -2051,7 +2055,7 @@ CONTAINS
       CALL OptimalMatrixScaling( m, A, s )
 
       str = ListGetString( Solver % Values, 'Linear System Preconditioning',GotIt )
-      IF (GotIt .AND. str(1:3) == 'ilu') THEN
+      IF (GotIt .AND. SEQL(str, 'ilu')) THEN
         IluOrder = ICHAR(str(4:4)) - ICHAR('0')
         IF ( IluOrder  < 0 .OR. IluOrder > 9 ) IluOrder = 0
         Condition = CRS_ComplexIncompleteLU( A, IluOrder )
@@ -5323,6 +5327,7 @@ CONTAINS
          stat = ElementInfo( Element, Nodes, U, V, W, SqrtElementMetric, &
              Basis, dBasisdx, ddBasisddx, .FALSE., .FALSE. )
         
+         dBasisdx(n+1:,:) = 0._dp
          SELECT CASE( Element % TYPE % ElementCode ) 
            
          CASE(504)

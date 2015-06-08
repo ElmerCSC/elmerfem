@@ -164,10 +164,10 @@ CONTAINS
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: Adiag,CM,PrecMat,SaveGlobalM
 
-    REAL(KIND=dp) :: dpar(50),stopfun
+    REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE),stopfun
 !   external stopfun
     REAL(KIND=dp), ALLOCATABLE :: work(:,:)
-    INTEGER :: i,j,k,N,ipar(50),wsize,istat,IterType,PCondType,ILUn,Blocks
+    INTEGER :: i,j,k,N,ipar(HUTI_IPAR_DFLTSIZE),wsize,istat,IterType,PCondType,ILUn,Blocks
     LOGICAL :: Internal, NullEdges
     LOGICAL :: ComponentwiseStopC, NormwiseStopC, RowEquilibration
     LOGICAL :: Condition,GotIt,AbortNotConverged, Refactorize,Found,GotDiagFactor
@@ -200,16 +200,15 @@ CONTAINS
 #endif
     
     INTEGER(KIND=Addrint) :: dotProc, normProc, pcondProc, &
-        pcondrProc=0, mvProc, iterProc, StopcProc
+        pcondrProc, mvProc, iterProc, StopcProc
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=Addrint) :: AddrFunc
 #else
-    REAL(KIND=dp), POINTER :: felem
-    COMPLEX(KIND=dp), POINTER CONTIG :: xC(:), bC(:)
+    INTEGER :: astat
+    COMPLEX(KIND=dp), ALLOCATABLE :: xC(:), bC(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: workC(:,:)
     INTEGER(KIND=Addrint) :: AddrFunc
     EXTERNAL :: AddrFunc    
-    type(c_ptr) :: felem_c_ptr
 #endif
 
     INTERFACE
@@ -231,7 +230,7 @@ CONTAINS
     
     ipar = 0
     dpar = 0.0D0
-    
+    pcondrProc = 0
 !------------------------------------------------------------------------------
     Params => Solver % Values
     str = ListGetString( Params,'Linear System Iterative Method',Found )
@@ -242,31 +241,32 @@ CONTAINS
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
 
-    IF ( str(1:9) == 'bicgstab2' ) THEN
+    SELECT CASE(str)
+    CASE('bicgstab2')
       IterType = ITER_BiCGStab2
-    ELSE IF ( str(1:9) == 'bicgstabl' ) THEN
+    CASE('bicgstabl')
       IterType = ITER_BICGstabl
-    ELSE IF ( str(1:8) == 'bicgstab' ) THEN
+    CASE('bicgstab')
       IterType = ITER_BiCGStab
-    ELSE IF ( str(1:5) == 'tfqmr' )THEN
+    CASE('tfqmr')
       IterType = ITER_TFQMR
-    ELSE IF ( str(1:3) == 'cgs' ) THEN
+    CASE('cgs')
       IterType = ITER_CGS
-    ELSE IF ( str(1:2) == 'cg' ) THEN
+    CASE('cg')
       IterType = ITER_CG
-    ELSE IF ( str(1:5) == 'gmres' ) THEN
+    CASE('gmres')
       IterType = ITER_GMRES
-    ELSE IF ( str(1:3) == 'sgs' ) THEN
+    CASE('sgs')
       IterType = ITER_SGS
-    ELSE IF ( str(1:6) == 'jacobi' ) THEN
+    CASE('jacobi')
       IterType = ITER_jacobi
-    ELSE IF ( str(1:10) == 'richardson' ) THEN
+    CASE('richardson')
       IterType = ITER_richardson
-    ELSE IF ( str(1:3) == 'gcr' ) THEN
+    CASE('gcr')
       IterType = ITER_GCR
-    ELSE
+    CASE DEFAULT
       IterType = ITER_BiCGStab
-    END IF
+    END SELECT
     
 !------------------------------------------------------------------------------
 
@@ -331,6 +331,7 @@ CONTAINS
     
     wsize = HUTI_WRKDIM
     
+    StopcProc = 0
     IF (PRESENT(StopcF)) THEN
        StopcProc = StopcF
        HUTI_STOPC = HUTI_USUPPLIED_STOPC
@@ -409,22 +410,22 @@ CONTAINS
       A % Cholesky = ListGetLogical( Params, &
           'Linear System Symmetric ILU', Gotit )
       
-      IF ( str(1:4) == 'none' ) THEN
+      IF ( str == 'none' ) THEN
         PCondType = PRECOND_NONE
-      ELSE IF ( str(1:8) == 'diagonal' ) THEN
+      ELSE IF ( str == 'diagonal' ) THEN
         PCondType = PRECOND_DIAGONAL
-      ELSE IF ( str(1:4) == 'ilut' ) THEN
+      ELSE IF ( str == 'ilut' ) THEN
         ILUT_TOL = ListGetCReal( Params, &
             'Linear System ILUT Tolerance',GotIt )
         PCondType = PRECOND_ILUT
-      ELSE IF ( str(1:3) == 'ilu' ) THEN
+      ELSE IF ( SEQL(str, 'ilu') ) THEN
         ILUn = NINT(ListGetCReal( Params, &
             'Linear System ILU Order', gotit ))
         IF ( .NOT.gotit ) &
             ILUn = ICHAR(str(4:4)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         PCondType = PRECOND_ILUn
-      ELSE IF ( str(1:4) == 'bilu' ) THEN
+      ELSE IF ( SEQL(str, 'bilu') ) THEN
         ILUn = ICHAR(str(5:5)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         IF( Solver % Variable % Dofs == 1) THEN
@@ -433,9 +434,9 @@ CONTAINS
         ELSE
           PCondType = PRECOND_BILUn
         END IF
-      ELSE IF ( str(1:9) == 'multigrid' ) THEN
+      ELSE IF ( str == 'multigrid' ) THEN
         PCondType = PRECOND_MG
-      ELSE IF ( str(1:5) == 'vanka' ) THEN
+      ELSE IF ( str == 'vanka' ) THEN
         PCondType = PRECOND_VANKA
       ELSE
         PCondType = PRECOND_NONE
@@ -808,16 +809,28 @@ CONTAINS
 
 #ifdef USE_ISO_C_BINDINGS
     IF (A % Complex) THEN
-        ! Associate xC and bC with the correct values
-        felem => x(1)
-        felem_c_ptr = C_LOC(felem)
-        CALL C_F_POINTER(felem_c_ptr, xC, (/ HUTI_NDIM /) )
-        felem => b(1)
-        felem_c_ptr = C_LOC(felem)
-        CALL C_F_POINTER(felem_c_ptr, bC, (/ HUTI_NDIM /) )
-        ! write (*,*) xC(1:3), bC(1:3)
-        CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
-                       mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+      ! Associate xC and bC with complex variables
+      ALLOCATE(xC(HUTI_NDIM), bC(HUTI_NDIM), STAT=astat)
+      IF (astat /= 0) THEN
+        CALL Fatal('IterSolve','Unable to allocate memory for complex arrays')
+      END IF
+      ! Initialize xC and bC
+      DO i=1,HUTI_NDIM
+        xC(i) = cmplx(x(2*i-1),x(2*i),dp)
+      END DO
+      DO i=1,HUTI_NDIM
+        bC(i) = cmplx(b(2*i-1),b(2*i),dp)
+      END DO
+      
+      CALL IterCall( iterProc, xC, bC, ipar, dpar, workC, &
+            mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )
+
+      ! Copy result back
+      DO i=1,HUTI_NDIM
+        x(2*i-1) = REAL(REAL(xC(i)),dp)
+        x(2*i) = REAL(AIMAG(xC(i)),dp)
+      END DO
+      DEALLOCATE(bC,xC)
     ELSE
         CALL IterCall( iterProc, x, b, ipar, dpar, work, &
                        mvProc, pcondProc, pcondrProc, dotProc, normProc, stopcProc )

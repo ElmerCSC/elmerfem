@@ -169,6 +169,7 @@ MODULE LoadMod
             END INTERFACE
 
 #ifdef HAVE_EXECUTECOMMANDLINE
+            estat = 0; cstat = 0
             CALL EXECUTE_COMMAND_LINE(cmd, .TRUE., EXITSTAT=estat, CMDSTAT=cstat)
 #else
             ! Workaround for Fortran compilers which do not 
@@ -396,6 +397,30 @@ MODULE LoadMod
             CALL C_F_PROCPOINTER(cfptr, pptr)
             CALL pptr(model, node, val, arr)
         END SUBROUTINE execrealarrayfunction
+
+        RECURSIVE SUBROUTINE execrealvectorfunction(fptr, model, node, val, arr )
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Model_t), POINTER :: model
+            INTEGER :: node
+            REAL(KIND=dp) :: val(*), arr(:)
+
+            INTERFACE
+                SUBROUTINE ElmerRealArrFn(model, node, val, arr)
+                    IMPORT Model_t, dp
+                    TYPE(Model_t) :: model
+                    INTEGER :: node
+                    REAL(KIND=dp) :: val(*), arr(:)
+                END SUBROUTINE ElmerRealArrFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(ElmerRealArrFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL pptr(model, node, val, arr)
+        END SUBROUTINE execrealvectorfunction
 
         SUBROUTINE execsolver(fptr, model, solver, dt, transient)
             IMPLICIT NONE
@@ -668,8 +693,8 @@ MODULE LoadMod
 
             INTEGER(KIND=AddrInt) :: fptr
             REAL(KIND=dp), DIMENSION(:) CONTIG :: x,b
-            INTEGER :: ipar(50)
-            REAL(KIND=dp) :: dpar(50)
+            INTEGER :: ipar(HUTI_IPAR_DFLTSIZE)
+            REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE)
             REAL(KIND=dp) :: work(:,:)
             INTEGER(KIND=Addrint) :: mvptr, pcondptr, pcondrptr, &
                                      dotptr, normptr, stopcptr
@@ -724,8 +749,8 @@ MODULE LoadMod
 
             INTEGER(KIND=AddrInt) :: fptr
             COMPLEX(KIND=dp), DIMENSION(:) CONTIG :: x,b
-            INTEGER :: ipar(50)
-            REAL(KIND=dp) :: dpar(50)
+            INTEGER :: ipar(HUTI_IPAR_DFLTSIZE)
+            REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE)
             COMPLEX(KIND=dp) :: work(:,:)
             INTEGER(KIND=Addrint) :: mvptr, pcondptr, pcondrptr, &
                                      dotptr, normptr, stopcptr
@@ -766,7 +791,7 @@ MODULE LoadMod
             ! Stopping criterion operator
             cfptr = TRANSFER(stopcptr, cfptr)
             IF (C_ASSOCIATED(cfptr)) CALL C_F_PROCPOINTER(cfptr, stopcfun)
-
+            
             ! Finally, do the itercall
             cfptr = TRANSFER(fptr, cfptr)
             CALL C_F_PROCPOINTER(cfptr, iterfun)

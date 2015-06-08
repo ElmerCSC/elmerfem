@@ -1720,12 +1720,12 @@ END SUBROUTINE CheckResidualsComplex
          CALL Warn( 'DampedEigenSolve', 'Using ILU0 preconditioning' )
          ILU = 0
       ELSE
-         IF ( str(1:4) == 'none' .OR. str(1:8) == 'diagonal' .OR. &
-              str(1:4) == 'ilut' .OR. str(1:9) == 'multigrid' ) THEN
+         IF ( str == 'none' .OR. str == 'diagonal' .OR. &
+              str == 'ilut' .OR. str == 'multigrid' ) THEN
 
            ILU = 0
            CALL Warn( 'DampedEigenSolve', 'Useing ILU0 preconditioning' )
-         ELSE IF ( str(1:3) == 'ilu' ) THEN
+         ELSE IF ( SEQL(str,'ilu') ) THEN
            ILU = ICHAR(str(4:4)) - ICHAR('0')
            IF ( ILU  < 0 .OR. ILU > 9 ) ILU = 0
          ELSE

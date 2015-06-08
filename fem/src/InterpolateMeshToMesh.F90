@@ -6,7 +6,7 @@
 !> that speeds up the interpolation.
 !------------------------------------------------------------------------------
      SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName )
+            NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
 !------------------------------------------------------------------------------
        USE Lists
        USE SParIterComm
@@ -23,6 +23,7 @@
        INTEGER, ALLOCATABLE :: perm(:), vperm(:)
        INTEGER, POINTER :: nperm(:)
        LOGICAL, ALLOCATABLE :: FoundNodes(:)
+       LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
        TYPE(Mesh_t), POINTER :: nMesh
        TYPE(VAriable_t), POINTER :: Var, nVar
        INTEGER :: i,j,k,l,nfound,maxrecv,n,ierr,nvars,npart,proc,status(MPI_STATUS_SIZE)
@@ -57,18 +58,29 @@
        END INTERFACE
 !-------------------------------------------------------------------------------
 
+      ALLOCATE( FoundNodes(NewMesh % NumberOfNodes) ); FoundNodes=.FALSE.
+
+      IF(PRESENT(UnfoundNodes)) THEN
+         IF(ASSOCIATED(UnfoundNodes)) DEALLOCATE(UnfoundNodes)
+         ALLOCATE(UnfoundNodes(NewMesh % NumberOfNodes))
+      END IF
+
       IF ( ParEnv % PEs<=1 ) THEN
          CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName )
+            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+
+         IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
          RETURN
       END IF
 
       ! Interpolate within our own partition, flag the points
       ! we found:
       ! -----------------------------------------------------
-      ALLOCATE( FoundNodes(NewMesh % NumberOfNodes) ); FoundNodes=.FALSE.
+
       CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
          NewVariables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodes )
+
+      IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
 
       ! special case "all found":
       !--------------------------
@@ -357,6 +369,14 @@
         CALL MPI_RECV( vperm, n, MPI_INTEGER, proc, &
               2002, MPI_COMM_WORLD, status, ierr )
 
+        !Mark nodes as found if requested
+        IF(PRESENT(UnfoundNodes)) THEN
+           DO j=1,n
+              k=perm(ProcSend(proc+1) % Perm(vperm(j)))
+              UnfoundNodes(k) = .FALSE.
+           END DO
+        END IF
+
         ! recv values and store:
         ! ----------------------
         Var => OldVariables
@@ -501,7 +521,7 @@ CONTAINS
                           RotWBasis(:,:), WBasis(:,:)
        REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum, F(3,3), G(3,3)
        
-       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT
+       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
        INTEGER, POINTER   :: Rows(:), Cols(:), Diag(:)
@@ -525,6 +545,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+       Parallel = (ParEnv % PEs > 1)
 !
 !      If projector argument given, search for existing
 !      projector matrix, or generate new projector, if
@@ -679,7 +700,7 @@ CONTAINS
          END IF
 
          IF( .NOT. TryQTree .OR. &
-             (.NOT. Found .AND. .NOT. PRESENT( FoundNodes) ) ) THEN
+             (.NOT. Found .AND. .NOT. Parallel ) ) THEN
            !------------------------------------------------------------------------------
            ! Go through all old mesh bulk elements
            !------------------------------------------------------------------------------
@@ -704,7 +725,7 @@ CONTAINS
          
          IF (.NOT.Found) THEN
            Element => NULL()
-           IF (.NOT.PRESENT(FoundNodes) ) THEN
+           IF (.NOT. Parallel ) THEN
              WRITE( Message,'(A,I0,A)' ) 'Point ',i,' was not found in any of the elements!'
              CALL Info( 'InterpolateMeshToMesh', Message, Level=20 )
              TotFails = TotFails + 1
@@ -797,7 +818,7 @@ CONTAINS
 !------------------------------------------------------------------------------
          END DO
 
-         IF( .NOT. PRESENT( FoundNodes ) ) THEN
+         IF( .NOT. Parallel ) THEN
            IF( QtreeFails > 0 ) THEN
              WRITE( Message,'(A,I0)' ) 'Number of points not found in quadtree: ',QtreeFails
              CALL Info( 'InterpolateMeshToMesh', Message )

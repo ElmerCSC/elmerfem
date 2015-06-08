@@ -79,7 +79,7 @@ SUBROUTINE SaveGridData( Model,Solver,dt,TransientSimulation )
   CALL Info('SaveGridData','Saving data an uniform grid point        ', Level=4 )
 
   Particles => GlobalParticles
-  Params => Solver % Values
+  Params => GetSolverParams()
   Mesh => Solver % Mesh
 
   TableFormat = ListGetLogical( Params,'Table Format',Found)
@@ -267,7 +267,7 @@ CONTAINS
 
 
     meshdim = Mesh % MeshDim
-    Params => Solver % Values
+    Params => GetSolverParams()
 
     ! Create a mask for saving only part of data
     !---------------------------------------------------------------

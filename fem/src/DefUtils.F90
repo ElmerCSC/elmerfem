@@ -807,12 +807,14 @@ CONTAINS
 
      x => GetStore(n)
      x = 0.0d0
-     IF ( ASSOCIATED(List) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
-        ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
-        END IF
+     IF( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+          IF ( PRESENT( Found ) ) THEN
+             x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
+          ELSE
+             x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
+          END IF
+       END IF
      END IF
      s = x(1)
   END FUNCTION GetCReal
@@ -846,13 +848,11 @@ CONTAINS
      END IF
 
      x => GetStore(n)
-     x = 0.0d0
-     IF ( ASSOCIATED(List) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
-        ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
-        END IF
+     x = 0.0_dp
+     IF( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+         x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
+       END IF
      END IF
   END FUNCTION GetReal
 
@@ -917,12 +917,14 @@ CONTAINS
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
      IF ( PRESENT( Found ) ) Found = .FALSE.
-     IF ( ASSOCIATED(List) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           x => ListGetConstRealArray( List, Name, Found )
-        ELSE
-           x => ListGetConstRealArray( List, Name )
-        END IF
+     IF(ASSOCIATED(List)) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+          IF ( PRESENT( Found ) ) THEN
+             x => ListGetConstRealArray( List, Name, Found )
+          ELSE
+             x => ListGetConstRealArray( List, Name )
+          END IF
+       END IF
      END IF
   END SUBROUTINE GetConstRealArray
 
@@ -944,13 +946,75 @@ CONTAINS
 
      n = GetElementNOFNodes( Element )
      IF ( ASSOCIATED(List) ) THEN
-        IF ( PRESENT( Found ) ) THEN
-           CALL ListGetRealArray( List, Name, x, n, Element % NodeIndexes, Found )
-        ELSE
-           CALL ListGetRealArray( List, Name, x, n, Element % NodeINdexes  )
-        END IF
+       IF ( ASSOCIATED(List % Head) ) THEN
+          IF ( PRESENT( Found ) ) THEN
+             CALL ListGetRealArray( List, Name, x, n, Element % NodeIndexes, Found )
+          ELSE
+             CALL ListGetRealArray( List, Name, x, n, Element % NodeINdexes  )
+          END IF
+       END IF
      END IF
   END SUBROUTINE GetRealArray
+
+!> Returns a real vector by its name if found in the list structure, and in the active element. 
+  RECURSIVE SUBROUTINE GetRealVector( List, x, Name, Found, UElement )
+     REAL(KIND=dp) :: x(:,:)
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+
+     TYPE(Element_t), POINTER :: Element
+
+     INTEGER :: n
+
+     x = 0._dp
+     IF ( PRESENT( Found ) ) Found = .FALSE.
+
+     Element => GetCurrentElement(UElement)
+
+     n = GetElementNOFNodes( Element )
+     IF ( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+         CALL ListGetRealvector( List, Name, x, n, Element % NodeIndexes, Found )
+       END IF
+     END IF
+  END SUBROUTINE GetRealVector
+
+!> Returns a complex vector by its name if found in the list structure, and in the active element. 
+  RECURSIVE SUBROUTINE GetComplexVector( List, x, Name, Found, UElement )
+     COMPLEX(KIND=dp) :: x(:,:)
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: lFound
+     INTEGER :: n
+     REAL(KIND=dp), ALLOCATABLE :: xr(:,:)
+
+     x = 0._dp
+     IF ( PRESENT( Found ) ) Found = .FALSE.
+
+     Element => GetCurrentElement(UElement)
+
+     n = GetElementNOFNodes( Element )
+     IF ( ASSOCIATED(List) ) THEN
+       IF ( ASSOCIATED(List % Head) ) THEN
+          ALLOCATE(xr(SIZE(x,1),SIZE(x,2)))
+          CALL ListGetRealvector( List, Name, xr, n, &
+                 Element % NodeIndexes, lFound )
+          IF(PRESENT(Found)) Found=lFound
+          x = xr
+          CALL ListGetRealvector( List, TRIM(Name)//' im', &
+              xr, n, Element % NodeIndexes, lFound )
+          IF(PRESENT(Found)) Found=Found.OR.lFound
+          x = CMPLX(REAL(x), xr)
+       END IF
+     END IF
+  END SUBROUTINE GetComplexVector
+
 
 !> Set some property elementwise to the active element
   SUBROUTINE SetElementProperty( Name, Values, UElement )
@@ -1026,7 +1090,9 @@ CONTAINS
 
      IF ( t > 0 .AND. t <= Solver % NumberOfActiveElements ) THEN
         Element => Solver % Mesh % Elements( Solver % ActiveElements(t) )
+        !$omp critical(GetActiveElementCurrentElement)
         CurrentModel % CurrentElement => Element ! may be used by user functions
+        !$omp end critical(GetActiveElementCurrentElement)
      ELSE
         WRITE( Message, * ) 'Invalid element number requested: ', t
         CALL Fatal( 'GetActiveElement', Message )
@@ -1046,7 +1112,9 @@ CONTAINS
 
      IF ( t > 0 .AND. t <= Solver % Mesh % NumberOfBoundaryElements ) THEN
         Element => Solver % Mesh % Elements( Solver % Mesh % NumberOfBulkElements+t )
+        !$omp critical(GetBoundaryElementCurrentElement)
         CurrentModel % CurrentElement => Element ! may be used be user functions
+        !$omp end critical(GetBoundaryElementCurrentElement)
      ELSE
         WRITE( Message, * ) 'Invalid element number requested: ', t
         CALL Fatal( 'GetBoundaryElement', Message )
@@ -1264,6 +1332,12 @@ CONTAINS
           Indexes(NB) = Element % NodeIndexes(i)
        END DO
      END IF
+
+     ! default for nodal elements, if no solver active:
+     ! ------------------------------------------------
+     IF(.NOT.ASSOCIATED(Solver)) RETURN
+     IF(.NOT.ASSOCIATED(Solver % Mesh)) RETURN
+
      IF ( ALL(Solver % Def_Dofs(GetElementFamily(Element),id,2:)<0) ) RETURN
 
      FaceDOFs   = Solver % Mesh % MaxFaceDOFs
@@ -1533,6 +1607,20 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Get component list given component id
+  FUNCTION GetComponent(i) RESULT(list)
+!------------------------------------------------------------------------------
+     INTEGER :: i
+     TYPE(ValueList_t), POINTER :: list
+
+     List => Null()
+     IF(i>=0 .AND. i<=SIZE(CurrentModel % Components)) list=> &
+             CurrentModel % Components(i) % Values
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponent
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Returns the equation index of the active element
@@ -1620,7 +1708,7 @@ CONTAINS
         mat_id = GetMaterialId( Found=L )
     END IF
 
-    NULLIFY( Material )
+    Material => Null()
     IF ( L ) Material => CurrentModel % Materials(mat_id) % Values
     IF ( PRESENT( Found ) ) Found = L
 !------------------------------------------------------------------------------
@@ -1647,7 +1735,7 @@ CONTAINS
        bf_id = GetBodyForceId( Found=L )
     END IF
 
-    NULLIFY( BodyForce )
+    BodyForce => Null()
     IF ( L ) BodyForce => CurrentModel % BodyForces(bf_id) % Values
     IF ( PRESENT( Found ) ) Found = L
 !------------------------------------------------------------------------------
@@ -1738,13 +1826,13 @@ CONTAINS
 
      TYPE(Element_t), POINTER :: Element
 
-	 IF ( PRESENT(Uelement) ) THEN
-	    Element => UElement
-	 ELSE
-	    Element => CurrentModel % CurrentElement
-	 END IF
+     IF ( PRESENT(Uelement) ) THEN
+        Element => UElement
+     ELSE
+       Element => CurrentModel % CurrentElement
+     END IF
 
-     NULLIFY(bc)
+     BC => Null()
      bc_id = GetBCId( Element )
      IF ( bc_id > 0 )  BC => CurrentModel % BCs(bc_id) % Values
 !------------------------------------------------------------------------------
@@ -1796,7 +1884,7 @@ CONTAINS
         ic_id = GetICId( Found=L )
     END IF
 
-    NULLIFY( IC )
+    IC => Null()
     IF ( L ) IC => CurrentModel % ICs(ic_id) % Values
     IF ( PRESENT( Found ) ) Found = L
 !------------------------------------------------------------------------------
@@ -2362,6 +2450,97 @@ CONTAINS
 
 
 
+!> Performs finilizing steps related to the the active solver
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultFinish( USolver )
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
+
+     TYPE(Solver_t), POINTER :: Solver, PostSolver
+     TYPE(ValueList_t), POINTER :: Params
+     TYPE(Variable_t), POINTER :: iterV
+     INTEGER, POINTER :: PostSolverIndexes(:)
+     INTEGER :: j,k,iter
+     REAL(KIND=dp) :: dt
+     LOGICAL :: Transient, Found, alloc_parenv
+
+     INTERFACE
+        SUBROUTINE SolverActivate_x(Model,Solver,dt,Transient)
+          USE Types
+          TYPE(Model_t)::Model
+          TYPE(Solver_t),POINTER::Solver
+          REAL(KIND=dp) :: dt
+          LOGICAL :: Transient
+        END SUBROUTINE SolverActivate_x
+     END INTERFACE
+
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+
+     ! One can run postprocessing solver in this slot.
+     !-----------------------------------------------------------------------------
+     PostSolverIndexes =>  ListGetIntegerArray( Solver % Values,'Post Solvers',Found )
+     IF( Found ) THEN
+       dt = GetTimeStep()
+       Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
+
+       ! store the nonlinear iteration at the outer loop
+       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+       iter = NINT(iterV % Values(1))
+
+       DO j=1,SIZE(PostSolverIndexes)
+         k = PostSolverIndexes(j)
+         PostSolver => CurrentModel % Solvers(k)
+
+         IF(ParEnv % PEs>1) THEN
+           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+             CALL ListAddLogical( PostSolver % Values, 'Post not parallel', .TRUE.)
+
+           alloc_parenv = .FALSE.
+           IF(ASSOCIATED(PostSolver % Matrix)) THEN
+             IF(ASSOCIATED(PostSolver % Matrix % ParMatrix) ) THEN
+               ParEnv = PostSolver % Matrix % ParMatrix % ParEnv
+             ELSE
+               ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+             END IF
+           ELSE
+             ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
+           END IF
+         END IF
+
+         CurrentModel % Solver => PostSolver
+         CALL SolverActivate_x( CurrentModel,PostSolver,dt,Transient)
+
+         IF(ParEnv % PEs>1) THEN
+           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+             CALL ListAddLogical( PostSolver % Values, 'Post not parallel', .FALSE.)
+
+           IF(alloc_parenv) THEN
+             DEALLOCATE(ParEnv % Active)
+             ParEnv % Active => NULL()
+           END IF
+
+           IF(ASSOCIATED(Solver % Matrix)) THEN
+             IF(ASSOCIATED(Solver % Matrix % ParMatrix) ) &
+               ParEnv = Solver % Matrix % ParMatrix % ParEnv
+           END IF
+         END IF
+       END DO
+       CurrentModel % Solver => Solver
+       iterV % Values = iter       
+     END IF
+
+     CALL Info('DefaultFinish','Finished solver: '//&
+         TRIM(ListGetString(Solver % Values,'Equation')),Level=5)
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE DefaultFinish
+!------------------------------------------------------------------------------
+
+
 !> Solver the matrix equation related to the active solver
 !------------------------------------------------------------------------------
   FUNCTION DefaultSolve( USolver, BackRotNT ) RESULT(Norm)
@@ -2443,10 +2622,11 @@ CONTAINS
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:)
     LOGICAL :: ReduceStep
 
-    LOGICAL :: stat, First, Last
+    LOGICAL :: stat, First, Last, DoLinesearch
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Variable_t), POINTER :: iterV
     INTEGER :: iter, previter, MaxIter
+    REAL(KIND=dp) :: LinesearchCond
 
     SAVE :: previter
 
@@ -2456,9 +2636,21 @@ CONTAINS
       Solver => CurrentModel % Solver
     END IF
 
+    DoLinesearch = .FALSE.
+    IF( ListCheckPrefix( Solver % Values,'Nonlinear System Linesearch') ) THEN
+      LineSearchCond = ListGetCReal( Solver % Values,&
+          'Nonlinear System Linesearch Condition', Stat )
+      IF( Stat ) THEN
+        DoLinesearch = ( LineSearchCond > 0.0_dp )
+        CALL ListAddLogical( Solver % Values,'Nonlinear System Linesearch', DoLinesearch )
+      ELSE
+        DoLinesearch = ListGetLogical( Solver % Values,'Nonlinear System Linesearch',Stat)
+      END IF
+    END IF
+
     ! This routine might be called for convenience also without checking 
     ! first whether it is needed.
-    IF( .NOT. ListGetLogical( Solver % Values,'Nonlinear System Linesearch',Stat) ) THEN
+    IF(.NOT. DoLinesearch ) THEN
       ReduceStep = .FALSE.
       IF( PRESENT( Converged ) ) Converged = .FALSE.
       RETURN
@@ -3557,9 +3749,9 @@ CONTAINS
           DOF, local, numEdgeDofs,istat, n_start, Offset
 
      LOGICAL :: Flag,Found, ConstantValue, ScaleSystem
-     TYPE(ValueList_t), POINTER :: BC, ptr, Params
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: BC, Params
      TYPE(Element_t), POINTER :: Element, Parent, Edge, Face, SaveElement
-     TYPE(Variable_t), POINTER :: IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: name
      LOGICAL :: BUpd, PiolaTransform
 
@@ -3611,16 +3803,7 @@ CONTAINS
      ! This is done only once for each solver, hence the complex logic. 
      !---------------------------------------------------------------------
      IF( ListGetLogical( Solver % Values,'Apply Limiter',Found) ) THEN
-       iterV => VariableGet( Solver % Mesh % Variables,'nonlin iter')
-       Found = .FALSE.
-       IF( ASSOCIATED( iterV ) ) THEN
-         IF( NINT( iterV % Values(1) ) > 1 ) Found = .TRUE.
-       END IF
-       iterV => VariableGet( Solver % Mesh % Variables,'coupled iter')
-       IF( ASSOCIATED( iterV ) ) THEN
-         IF( NINT( iterV % Values(1) ) > 1 ) Found = .TRUE.
-       END IF
-       IF( Found ) CALL DetermineSoftLimiter( Solver )	
+       CALL DetermineSoftLimiter( Solver )	
      END IF
 
 
@@ -3688,7 +3871,7 @@ CONTAINS
            IF ( .NOT. ASSOCIATED(Parent) )   CYCLE
 
            BC => GetBC()
-           IF ( .NOT. ASSOCIATED(BC) ) CYCLE
+           IF ( .NOT.ASSOCIATED(BC) ) CYCLE
 
            ptr => ListFind(BC, Name,Found )
            IF ( .NOT. ASSOCIATED(ptr) ) CYCLE
@@ -3741,7 +3924,7 @@ CONTAINS
            IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
            BC => GetBC()
-           IF ( .NOT. ASSOCIATED(BC) ) CYCLE
+           IF ( .NOT.ASSOCIATED(BC) ) CYCLE
            IF ( .NOT. ListCheckPresent(BC, Name) .AND. &
                 .NOT. ListCheckPrefix(BC, TRIM(Name)//' {e}') .AND. &
                 .NOT. ListCheckPrefix(BC, TRIM(Name)//' {f}') ) CYCLE
