@@ -4063,14 +4063,25 @@ END SUBROUTINE GetMaxDefs
 
     ! In parallel we may have some excess halo elements. 
     ! To eliminate them mark the nodes that are associated to elements truly owned. 
+    NarrowHalo = .FALSE.
+    NoHalo = .FALSE.
+
     IF( ParEnv % PEs > 1 ) THEN
       ! Account for halo elements that share some nodes for the master boundary
       NarrowHalo = ListGetLogical(Model % Simulation,'Projector Narrow Halo',Found)
+
       ! Do not allow for any halo elements for the master boundary
-      NoHalo = ListGetLogical(Model % Simulation,'Projector No Halo',Found)
-    ELSE
-      NarrowHalo = .FALSE.
-      NoHalo = .FALSE.
+      IF( .NOT. Found ) THEN
+        NoHalo = ListGetLogical(Model % Simulation,'Projector No Halo',Found)
+      END IF
+      
+      IF(.NOT. Found ) THEN
+        IF( ListGetLogical(Model % Solver % Values, 'Partition Local Constraints',Found) ) THEN
+          NarrowHalo = .TRUE.
+        ELSE
+          NoHalo = .TRUE.
+        END IF
+      END IF
     END IF
 
     ! This is just temporarily set to false always until the logic has been tested. 
@@ -4255,6 +4266,8 @@ END SUBROUTINE GetMaxDefs
       IF( Mesh % NumberOfFaces == 0 .OR. Mesh % NumberOfEdges == 0 ) THEN
         PMesh % Elements(ind) % NodeIndexes(1:n) = Element % NodeIndexes(1:n)
       ELSE
+        ! If we have edge dofs we want the face element be associated with the 
+        ! face list since that only has properly defined edge indexes.
         Parent => Element % BoundaryInfo % Left
         IF(.NOT. ASSOCIATED( Parent ) ) THEN
           Parent => Element % BoundaryInfo % Right
@@ -4266,6 +4279,9 @@ END SUBROUTINE GetMaxDefs
         ! set the elementindex to be faceindex as it may be needed
         ! for the edge elements.
         PMesh % Elements(ind) % ElementIndex = q % ElementIndex
+
+        ! Set also the owner partition
+        PMesh % Elements(ind) % PartIndex = q % PartIndex
 
         en = q % TYPE % NumberOfEdges
         ALLOCATE(PMesh % Elements(ind) % EdgeIndexes(en))
@@ -4883,7 +4899,6 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     TYPE(Matrix_t), POINTER :: DualProjector    
-
     LOGICAL :: DualMaster, DualSlave, DualLCoeff, BiorthogonalBasis
 
     CALL Info('LevelProjector','Creating projector for a levelized mesh',Level=7)
@@ -5105,6 +5120,7 @@ END SUBROUTINE GetMaxDefs
     PiolaVersion = ListGetLogical( CurrentModel % Solver % Values, &
         'Use Piola Transform', Found)
 
+
     ! At the 1st stage determine the maximum size of the projector
     ! If the strong projector is used then the numbering is done as we go
     ! this way we can eliminate unneeded rows. 
@@ -5112,10 +5128,27 @@ END SUBROUTINE GetMaxDefs
     IF( DoNodes ) THEN      
       ALLOCATE( NodePerm( Mesh % NumberOfNodes ) )
       NodePerm = 0
-      DO i=1,SIZE(InvPerm1)
-        NodePerm(InvPerm1(i)) = 1
+
+      ! in parallel only consider nodes that truly are part of this partition
+      DO i=1,BMesh1 % NumberOfBulkElements
+        j = BMesh1 % Elements(i) % ElementIndex
+        
+        IF( Parallel ) THEN
+          IF( BMesh1 % Elements(i) % PartIndex /= ParEnv % MyPe ) CYCLE          
+        END IF
+        
+        IF( Mesh % NumberOfFaces > 0 ) THEN
+          Element => Mesh % Faces(j) 
+        ELSE
+          Element => Mesh % Elements(j) 
+        END IF
+        NodePerm(Element % NodeIndexes) = 1
       END DO
-      
+
+      n = SUM( NodePerm )
+      CALL Info('LevelProjector','Initial number of periodic nodes '//TRIM(I2S(n))//&
+          ' out of '//TRIM(I2S(BMesh1 % NumberOfNodes ) ), Level = 10 )
+
       ! Eliminate the redundant nodes by default. 
       ! These are noded that depend on themselves.
       EliminateUnneeded = ListGetLogical( BC,&
@@ -5143,12 +5176,23 @@ END SUBROUTINE GetMaxDefs
         END IF
       END IF
       
-
       IF( CreateDual ) THEN
         ALLOCATE( DualNodePerm( Mesh % NumberOfNodes ) )
         DualNodePerm = 0
-        DO i=1,SIZE(InvPerm2)
-          DualNodePerm(InvPerm2(i)) = 1
+
+        DO i=1,BMesh2 % NumberOfBulkElements
+          j = BMesh2 % Elements(i) % ElementIndex
+        
+          IF( Parallel ) THEN
+            IF( BMesh2 % Elements(i) % PartIndex /= ParEnv % MyPe ) CYCLE          
+          END IF
+        
+          IF( Mesh % NumberOfFaces > 0 ) THEN
+            Element => Mesh % Faces(j) 
+          ELSE
+            Element => Mesh % Elements(j) 
+          END IF
+          DualNodePerm(Element % NodeIndexes) = 1
         END DO
         
         IF( EliminateUnneeded ) THEN
@@ -5230,12 +5274,19 @@ END SUBROUTINE GetMaxDefs
     END IF
     ProjectorRows = EdgeRow0
 
+
     IF( DoEdges ) THEN
       ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
       EdgePerm = 0
 
       ! Mark the edges for which the projector must be created for
       DO i=1, BMesh1 % NumberOfBulkElements
+
+        ! in parallel only consider face elements that truly are part of this partition
+        IF( Parallel ) THEN
+          IF( BMesh1 % Elements(i) % PartIndex /= ParEnv % MyPe ) CYCLE          
+        END IF
+
         DO j=1, BMesh1 % Elements(i) % TYPE % NumberOfEdges
           EdgePerm( BMesh1 % Elements(i) % EdgeIndexes(j) ) = 1
         END DO
@@ -5289,6 +5340,8 @@ END SUBROUTINE GetMaxDefs
       ProjectorRows = FaceRow0
       
       IF( PiolaVersion ) THEN
+        ! Note: this might not work in parallel with halo since some of the face elements
+        ! do not then belong to the slave boundary. 
         m = BMesh1 % NumberOfBulkElements
         CALL Info('LevelProjector',&
             'Number of active faces in projector: '//TRIM(I2S(m)),Level=8)
@@ -5301,7 +5354,6 @@ END SUBROUTINE GetMaxDefs
         'Max number of rows in projector: '//TRIM(I2S(ProjectorRows)),Level=10)
     ALLOCATE( Projector % InvPerm(ProjectorRows) )
     Projector % InvPerm = 0
-
 
     ! If after strong projectors there are still something undone they must 
     ! be dealt with the weak projectors. 
@@ -5386,7 +5438,6 @@ END SUBROUTINE GetMaxDefs
     IF( m > 0 ) THEN
       CALL Warn('LevelProjector','Projector % InvPerm not set in for dofs: '//TRIM(I2S(m)))
     END IF
-
 
     CALL Info('LevelProjector','Projector created',Level=10)
 
@@ -6819,10 +6870,10 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: x(10),y(10),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , val_dual
+          SumArea,TrueArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , val_dual
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol
-      REAL(KIND=dp) :: TotRefArea, TotSumArea
+      REAL(KIND=dp) :: TotRefArea, TotSumArea, TotTrueArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
       LOGICAL :: LeftCircle, Stat, CornerFound(4), CornerFoundM(4)
@@ -6883,8 +6934,10 @@ END SUBROUTINE GetMaxDefs
       ActiveHits = 0
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
+      TotTrueArea = 0.0_dp
       Point = 0.0_dp
       MaxSubTriangles = 0
+
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -6929,7 +6982,8 @@ END SUBROUTINE GetMaxDefs
         IP = GaussPoints( Element ) 
         RefArea = detJ * SUM( IP % s(1:IP % n) )
         SumArea = 0.0_dp
-        
+        TrueArea = 0.0_dp
+
         IF( SaveElem ) THEN
           FileName = 't'//TRIM(I2S(TimeStep))//'_a.dat'
           OPEN( 10,FILE=Filename)
@@ -7337,12 +7391,15 @@ END SUBROUTINE GetMaxDefs
 
                 DO j=1,n 
                   jj = Indexes(j)                                    
+
                   nrow = NodePerm(InvPerm1(jj))
                   IF( nrow == 0 ) CYCLE
 
                   Projector % InvPerm(nrow) = InvPerm1(jj)
                   val = Basis(j) * Wtemp
                   IF(BiorthogonalBasis) val_dual = CoeffBasis(j) * Wtemp
+
+                  TrueArea = TrueArea + val
 
                   IF( DebugElem ) PRINT *,'Vals:',val
 
@@ -7390,6 +7447,10 @@ END SUBROUTINE GetMaxDefs
                     jj = jj + EdgeCol0
                     Projector % InvPerm( nrow ) = jj
                   ELSE
+                    IF( Parallel ) THEN
+                      IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+                    END IF
+
                     jj = 2 * ( ind - 1 ) + ( j - 4 )
                     nrow = FaceRow0 + jj
                     jj = 2 * ( Element % ElementIndex - 1) + ( j - 4 ) 
@@ -7450,6 +7511,7 @@ END SUBROUTINE GetMaxDefs
         TotHits = TotHits + ElemHits
         TotSumArea = TotSumArea + SumArea
         TotRefArea = TotRefArea + RefArea
+        TotTrueArea = TotTruearea + TrueArea
 
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
@@ -7495,6 +7557,9 @@ END SUBROUTINE GetMaxDefs
 
       Err = TotSumArea / TotRefArea
       WRITE( Message,'(A,ES12.3)') 'Average ratio in area integration:',Err 
+      CALL Info('LevelProjector',Message,Level=8)
+
+      WRITE( Message,'(A,ES12.5)') 'True integrated area:',TotTrueArea
       CALL Info('LevelProjector',Message,Level=8)
 
       WRITE( Message,'(A,I0,A,ES12.4)') &
@@ -7820,7 +7885,6 @@ END SUBROUTINE GetMaxDefs
               DO j=1,nM 
                 jj = IndexesM(j)                                    
                 nrow = DualNodePerm(InvPerm2(jj))
-
                 IF( nrow == 0 ) CYCLE
                 
                 DualProjector % InvPerm(nrow) = InvPerm2(jj)
