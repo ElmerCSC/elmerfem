@@ -5582,9 +5582,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END DO
        IF(ImposeCircuitCurrent .and. ItoJCoeffFound) THEN
          wvec = -MATMUL(Wbase(1:nd), dBasisdx(1:nd,:))
-         !DEBUG
-         !write (*,*),  'Wbase', Wbase(1:nd)
-         !write (*,*),  'wvec', wvec(1:nd)
          IF(SUM(wvec**2._dp) .GE. AEPS) THEN
            wvec = wvec/SQRT(SUM(wvec**2._dp))
          ELSE
@@ -5787,9 +5784,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                DO l=1,dim
                  CC_J(1,l) = ItoJCoeff*wvec(l)*CircuitCurrent
                END DO
-                 !DEBUG
-                 !write (*,*), 'ItoJCoeff, wvec, dBasisdx(p,:), CircuitCurrent'
-                 !write (*,*), ItoJCoeff, wvec, dBasisdx(p,:), CircuitCurrent
              ELSE
                CALL Fatal('MagnetoDynamicsCalcFields','Complex circuit current imposing is not implemented')
              END IF
