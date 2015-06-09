@@ -1214,6 +1214,7 @@ CONTAINS
               OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
                   STATUS='UNKNOWN',POSITION='APPEND' )
               WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
+              CLOSE(10)
 
               i = INDEX( str,':' )
               OPEN( 10,File='../SOLVER.KEYWORDS.bysection',&

@@ -5131,18 +5131,11 @@ END SUBROUTINE GetMaxDefs
 
       ! in parallel only consider nodes that truly are part of this partition
       DO i=1,BMesh1 % NumberOfBulkElements
-        j = BMesh1 % Elements(i) % ElementIndex
-        
+        Element => BMesh1 % Elements(i)        
         IF( Parallel ) THEN
-          IF( BMesh1 % Elements(i) % PartIndex /= ParEnv % MyPe ) CYCLE          
-        END IF
-        
-        IF( Mesh % NumberOfFaces > 0 ) THEN
-          Element => Mesh % Faces(j) 
-        ELSE
-          Element => Mesh % Elements(j) 
-        END IF
-        NodePerm(Element % NodeIndexes) = 1
+          IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE          
+        END IF        
+        NodePerm( InvPerm1( Element % NodeIndexes ) ) = 1
       END DO
 
       n = SUM( NodePerm )
@@ -5181,20 +5174,13 @@ END SUBROUTINE GetMaxDefs
         DualNodePerm = 0
 
         DO i=1,BMesh2 % NumberOfBulkElements
-          j = BMesh2 % Elements(i) % ElementIndex
-        
+          Element => BMesh2 % Elements(i)        
           IF( Parallel ) THEN
-            IF( BMesh2 % Elements(i) % PartIndex /= ParEnv % MyPe ) CYCLE          
+            IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE          
           END IF
-        
-          IF( Mesh % NumberOfFaces > 0 ) THEN
-            Element => Mesh % Faces(j) 
-          ELSE
-            Element => Mesh % Elements(j) 
-          END IF
-          DualNodePerm(Element % NodeIndexes) = 1
+          DualNodePerm( InvPerm2( Element % NodeIndexes ) ) = 1
         END DO
-        
+                
         IF( EliminateUnneeded ) THEN
           m = 0
           n = SUM( DualNodePerm )
