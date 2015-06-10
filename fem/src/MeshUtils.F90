@@ -8956,9 +8956,11 @@ END SUBROUTINE GetMaxDefs
 
     ! Ok, so we have concluded that the interface has constant radius
     ! therefore the constant radius may be removed from the mesh description.
+    ! Or perhaps we don't remove to allow more intelligent projector building 
+    ! for contact mechanics. 
     !---------------------------------------------------------------------------
-    Bmesh1 % Nodes % z = 0.0_dp
-    BMesh2 % Nodes % z = 0.0_dp
+    !Bmesh1 % Nodes % z = 0.0_dp
+    !BMesh2 % Nodes % z = 0.0_dp
 
     ! Check whether the z-coordinate is constant or not.
     ! Constant z-coordinate implies 1D system, otherwise 2D system.
@@ -9024,6 +9026,7 @@ END SUBROUTINE GetMaxDefs
   !---------------------------------------------------------------------------
   !> Given two interface meshes for nonconforming radial boundaries make 
   !> a coordinate transformation to (r,z) level.
+  !> This is always a symmetry condition and can not be a contact condition.
   !---------------------------------------------------------------------------
   SUBROUTINE RadialInterfaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
@@ -9143,12 +9146,13 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: FlatDim, MeshDim, MinDiffI, i, j
     REAL(KIND=dp), POINTER :: Coord(:)
     REAL(KIND=dp) :: Diff, MaxDiff, MinDiff, RelDiff, RelDiff1
-    LOGICAL :: Found
+    LOGICAL :: Found, ReduceDim
 
     CALL Info('FlatInterfaceMeshes','Flattening interface meshes to 2D',Level=8)    
     
     MeshDim = CurrentModel % DIMENSION
     FlatDim = ListGetInteger( BParams,'Flat Projector Coordinate',Found,minv=1,maxv=3) 
+    ReduceDim = ListGetLogical( BParams,'Flat Projector Reduce Dimension',Found )
 
     IF(.NOT. Found ) THEN
       DO j=1, 2
@@ -9199,25 +9203,24 @@ END SUBROUTINE GetMaxDefs
       ELSE
         BMesh => BMesh2
       END IF
-      
+
+      ! Set the 3rd component to be the "distance" in the flat interface      
       IF( FlatDim == 3 ) THEN
-        BMesh % Nodes % z = 0.0_dp
+        CONTINUE
       ELSE IF( FlatDim == 2 ) THEN
-        IF( MeshDim == 3 ) THEN
-          BMesh % Nodes % y = BMesh % Nodes % z
-          BMesh % Nodes % z = 0.0_dp
-        ELSE
-          BMesh % Nodes % y = 0.0_dp
-        END IF
+        Coord => BMesh % Nodes % y
+        BMesh % Nodes % y => BMesh % Nodes % z
+        BMesh % Nodes % z => Coord
+        IF( MeshDim == 2 ) BMesh % Nodes % y = 0.0_dp
       ELSE IF( FlatDim == 1 ) THEN
-        IF( MeshDim == 3 ) THEN
-          BMesh % Nodes % x = BMesh % Nodes % z
-          BMesh % Nodes % z = 0.0_dp
-        ELSE 
-          BMesh % Nodes % x = BMesh % Nodes % y
-          BMesh % Nodes % y = 0.0_dp
-        END IF
+        Coord => BMesh % Nodes % x
+        BMesh % Nodes % x => BMesh % Nodes % y
+        BMesh % Nodes % y => BMesh % Nodes % z
+        Bmesh % Nodes % z => Coord
+        IF( MeshDim == 2 ) BMesh % Nodes % y = 0.0_dp
       END IF
+
+      IF( ReduceDim ) BMesh % Nodes % z = 0.0_dp
 
       Bmesh % MeshDim = 2
     END DO
