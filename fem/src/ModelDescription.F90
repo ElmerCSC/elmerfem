@@ -1905,14 +1905,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Function to read the complete Elmer model: sif file and mesh files.
 !------------------------------------------------------------------------------
-  FUNCTION LoadModel( ModelName,BoundariesOnly,numprocs,mype ) RESULT( Model )
+  FUNCTION LoadModel( ModelName,BoundariesOnly,numprocs,mype,MeshIndex) RESULT( Model )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=*) :: ModelName
     LOGICAL :: BoundariesOnly
 
-    INTEGER, OPTIONAL :: numprocs,mype
+    INTEGER, OPTIONAL :: numprocs,mype, MeshIndex
  
     TYPE(Model_t), POINTER :: Model
 
@@ -2026,6 +2026,9 @@ CONTAINS
     ! Check the mesh 
     !--------------------------------------------------------
     Name = ListGetString( Model % Simulation, 'Mesh', GotIt )
+    IF(PRESENT(MeshIndex)) THEN
+      IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+    END IF
 
     OneMeshName = .FALSE.
     IF ( GotIt ) THEN
@@ -2056,6 +2059,10 @@ CONTAINS
          MeshDir = "." // CHAR(0)
       END IF
       MeshName(i:i) = CHAR(0)
+    ELSE
+      IF(PRESENT(MeshIndex)) THEN
+        IF(MeshIndex>0) MeshName = MeshName(1:LEN_TRIM(MeshName)-1) // TRIM(I2S(MeshIndex))//CHAR(0)
+      END IF
     END IF
 
     NULLIFY( Model % Meshes )
@@ -2067,6 +2074,11 @@ CONTAINS
       IF( NewLoadMesh ) THEN
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs )
+        IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
+          CALL FreeModel(Model)
+          Model => Null()
+          RETURN
+        END IF
       ELSE
         Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs(1,:) )
@@ -2160,6 +2172,9 @@ CONTAINS
 
     DO s=1,Model % NumberOfSolvers
       Name = ListGetString( Model % Solvers(s) % Values, 'Mesh', GotIt )
+      IF(PRESENT(MeshIndex)) THEN
+        IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+      END IF
 
       IF( GotIt ) THEN
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s

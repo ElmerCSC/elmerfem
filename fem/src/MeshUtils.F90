@@ -2678,6 +2678,11 @@ END SUBROUTINE GetMaxDefs
    TYPE(Matrix_t), POINTER :: Projector
    LOGICAL :: parallel, LoadNewMesh
 
+   Mesh => Null()
+
+   INQUIRE( FILE=MeshNamePar(1:LEN_TRIM(MeshNamePar)-1), EXIST=Found)
+   IF(.NOT.Found) RETURN
+
    CALL Info('LoadMesh','Starting',Level=8)
 
    Parallel = .FALSE.

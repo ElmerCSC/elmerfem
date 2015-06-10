@@ -77,7 +77,7 @@
 
      TYPE(Element_t),POINTER :: CurrentElement
 
-     LOGICAL :: GotIt,Transient,Scanning,LastSaved
+     LOGICAL :: GotIt,Transient,Scanning,LastSaved, MeshMode = .FALSE.
 
      INTEGER :: TimeIntervals,interval,timestep, &
        TotalTimesteps,SavedSteps,CoupledMaxIter,CoupledMinIter
@@ -112,7 +112,7 @@
 
      INTEGER :: iargc, NoArgs
 
-     INTEGER :: ExtrudeLevels
+     INTEGER :: ExtrudeLevels, MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
      INTEGER :: omp_get_max_threads
@@ -133,7 +133,6 @@ END INTERFACE
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
-     ParallelEnv => ParallelInit()
 
      OutputPE = -1
      IF( ParEnv % MyPe == 0 ) THEN
@@ -141,6 +140,8 @@ END INTERFACE
      END IF
      
      IF ( FirstTime ) THEN
+       ParallelEnv => ParallelInit()
+
        !
        ! Print banner to output:
 #include "../config.h"
@@ -244,7 +245,6 @@ END INTERFACE
        IF( Version ) RETURN
        
        CALL InitializeElementDescriptions()
-       FirstTime = .FALSE.
      END IF
 
      ! Read input file name either as an argument, or from the default file:
@@ -283,9 +283,16 @@ END INTERFACE
 !------------------------------------------------------------------------------
 !    Read Model and mesh from Elmer mesh data base
 !------------------------------------------------------------------------------
+     MeshIndex = 0
      DO WHILE( .TRUE. )
 
        IF ( initialize==2 ) GOTO 1
+
+       IF(MeshMode) THEN
+         CALL FreeModel(CurrentModel)
+         MeshIndex = MeshIndex + 1
+         FirstLoad=.TRUE.
+       END IF
 
        IF ( FirstLoad ) THEN
          IF( .NOT. Silent ) THEN
@@ -299,8 +306,10 @@ END INTERFACE
          IF ( gotIt ) CLOSE(inFileUnit)
          
          OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',ERR=20 )
-         CurrentModel => LoadModel( ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE )
+         CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
+         IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
+         MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
 
          !------------------------------------------------------------------------------
          ! Some keywords automatically require other keywords to be set
@@ -586,13 +595,14 @@ END INTERFACE
 !------------------------------------------------------------------------------
      IF ( Initialize /= 1 ) CALL Info( 'ElmerSolver', '*** Elmer Solver: ALL DONE ***',Level=3 )
 
-     IF ( Initialize <=0 ) CALL FreeModel(CurrentModel)
+     IF ( Initialize <= 0 ) CALL FreeModel(CurrentModel)
 
 #ifdef HAVE_TRILINOS
   CALL TrilinosCleanup()
 #endif
 
-     CALL ParallelFinalize()
+     IF ( FirstTime ) CALL ParallelFinalize()
+     FirstTime = .FALSE.
      CALL Info('ElmerSolver','The end',Level=3)
 
      RETURN
