@@ -2680,7 +2680,11 @@ END SUBROUTINE GetMaxDefs
 
    Mesh => Null()
 
-   INQUIRE( FILE=MeshNamePar(1:LEN_TRIM(MeshNamePar)-1), EXIST=Found)
+   n = LEN_TRIM(MeshNamePar)
+   DO WHILE (MeshNamePar(n:n)==CHAR(0).OR.MeshNamePar(n:n)==' ')
+     n=n-1
+   END DO
+   INQUIRE( FILE=MeshNamePar(1:n), EXIST=Found)
    IF(.NOT.Found) RETURN
 
    CALL Info('LoadMesh','Starting',Level=8)
