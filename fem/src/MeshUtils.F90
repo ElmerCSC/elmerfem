@@ -5061,7 +5061,22 @@ END SUBROUTINE GetMaxDefs
     ! Check whether biorthogonal basis for projectors requested:
     ! ----------------------------------------------------------
     BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
+
+    ! If we want to eliminate the constraints we have to have a biortgonal basis
+    IF(.NOT. Found ) THEN
+      BiOrthogonalBasis = ListGetLogical( CurrentModel % Solver % Values, &
+          'Eliminate Linear Constraints',Found )
+      IF( BiOrthogonalBasis ) THEN
+        CALL Info('LevelProjector',&
+            'Setting > Use Biorthogonal Basis < to True to enable elimination',Level=8)
+      END IF
+    END IF
+
     IF (BiOrthogonalBasis) THEN
+      IF( DoEdges ) THEN
+        CALL Warn('LevelProjector','Biorthogonal basis cannot be combined with edge elements!')
+      END IF
+
       DualSlave  = ListGetLogical(BC, 'Biorthogonal Dual Slave', Found)
       IF(.NOT.Found) DualSlave  = .TRUE.
 
