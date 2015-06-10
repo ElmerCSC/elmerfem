@@ -13075,6 +13075,8 @@ END SUBROUTINE FindNeighbourNodes
     IF(.NOT.EdgesPresent) THEN
       CALL ReleaseMeshEdgeTables( Mesh )
       CALL ReleaseMeshFaceTables( Mesh )
+    ELSE
+      CALL FindMeshEdges( NewMesh )
     END IF
 
 !call writemeshtodisk( NewMesh, "." )
