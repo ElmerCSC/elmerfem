@@ -133,6 +133,7 @@ END INTERFACE
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
+     IF(FirstTime)  ParallelEnv => ParallelInit()
 
      OutputPE = -1
      IF( ParEnv % MyPe == 0 ) THEN
@@ -140,7 +141,6 @@ END INTERFACE
      END IF
      
      IF ( FirstTime ) THEN
-       ParallelEnv => ParallelInit()
 
        !
        ! Print banner to output:
