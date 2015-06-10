@@ -9531,7 +9531,7 @@ END SUBROUTINE GetMaxDefs
 
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
     IF(.NOT. GotIt ) THEN
-      IF( Rotational .OR. Cylindrical .OR. Radial .OR. Sliding ) THEN
+      IF( Rotational .OR. Cylindrical .OR. Radial .OR. Flat ) THEN
         CALL Info('PeriodicProjector','Enforcing > Level Projector = True < with dimensional reduction',&
             Level = 7 )
         LevelProj = .TRUE. 
@@ -9605,11 +9605,9 @@ END SUBROUTINE GetMaxDefs
           Radius, FullCircle )
     ELSE IF( Radial ) THEN
       CALL RadialInterfaceMeshes( BMesh1, BMesh2, BC )
-    ELSE IF( Sliding ) THEN
-      CONTINUE
     ELSE IF( Flat ) THEN
       CALL FlatInterfaceMeshes( BMesh1, BMesh2, BC )
-    ELSE
+    ELSE IF( .NOT. Sliding ) THEN
       CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
     END IF
 
