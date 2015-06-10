@@ -11235,6 +11235,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      
      SumProjectors = ListGetLogical( Solver % Values,&
          'Mortar BCs Additive', Found )
+     IF( .NOT. Found .AND. bcount > 1 ) THEN
+       IF( ListGetLogical( Solver % Values, &
+           'Eliminate Linear Constraints',Found ) ) THEN
+         CALL Info('GenerateConstraintMatrix',&
+             'Enforcing > Mortar BCs Additive < to True to enable elimination',Level=6)
+         SumProjectors = .TRUE.
+       END IF
+     END IF
      EliminatedRows = 0
 
      CALL Info('GenerateConstraintMatrix','There are '&
