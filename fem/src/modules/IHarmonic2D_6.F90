@@ -215,21 +215,21 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
     ! -----------------------------------------------------
 
     CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
-
+    
     DO p=1,n_Circuits
       DO i=1,Circuits(p) % n
         Cvar => Circuits(p) % CircuitVariables(i)
         
-        CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' re', ipt(Cvar % ValueId))
-        CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' im', ipt(Cvar % ImValueId))
+        CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' re', ip(Cvar % ValueId))
+        CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId))
 
         IF (Cvar % pdofs /= 0 ) THEN
           DO jj = 1, Cvar % pdofs
             write (dofnumber, "(I2)") jj
             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                   //'re dof '//TRIM(dofnumber), ipt(Cvar % ValueId + ReIndex(jj)))
+                                   //'re dof '//TRIM(dofnumber), ip(Cvar % ValueId + ReIndex(jj)))
             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                   //'im dof '//TRIM(dofnumber), ipt(Cvar % ValueId + ImIndex(jj)))
+                                   //'im dof '//TRIM(dofnumber), ip(Cvar % ValueId + ImIndex(jj)))
           END DO
         END IF
 
@@ -557,7 +557,7 @@ CONTAINS
     ! Store values of independent variables (e.g. currents & voltages) from
     ! previous timestep here:
     ! ---------------------------------------------------------------------
-    ALLOCATE( ip(Circuit_tot_n) ); ip = 0._dp
+    ALLOCATE( ip(Circuit_tot_n), ipt(Circuit_tot_n) ); ip = 0._dp
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_Init
 !------------------------------------------------------------------------------
@@ -1402,7 +1402,7 @@ endif
       !--------------------------------------------------------------
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
-
+      
       IF( CSymmetry ) THEN
         x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
         detJ = detJ * x
@@ -1416,16 +1416,16 @@ endif
       ! ----------------------
       
       CALL AddToCmplxMatrixElement(CM, RowId, ColId, &
-            REAL(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC), &
-           AIMAG(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC))
+            REAL(-Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC), &
+           AIMAG(-Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC))
             
       DO p=1,nd
 
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
           CALL AddToCmplxMatrixElement(CM, RowId, ReIndex(PS(Indexes(p))), &
-                 REAL(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC), & 
-                AIMAG(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC))
+                 REAL(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)), & 
+                AIMAG(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)))
 
 !          IF (.NOT. Adirichlet(ReIndex(PS(indexes(p))))) THEN
             ! source: 
@@ -1457,7 +1457,7 @@ endif
     TYPE(Component_t) :: Comp
 
     REAL(KIND=dp) :: Basis(nn), DetJ, x
-    REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn),w(3)
+    REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn),w(3),grads_coeff
     COMPLEX(KIND=dp) :: localC
     INTEGER :: i,j,t,Indexes(nd),pp,RowId
     LOGICAL :: stat
@@ -1482,6 +1482,7 @@ endif
       IF( CSymmetry ) THEN
         x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
         detJ = detJ * x
+        grads_coeff = grads_coeff/x
       END IF
 
       localC = SUM(Tcoef(1:nn) * Basis(1:nn))
@@ -1489,22 +1490,22 @@ endif
       ! computing the source term Vi(sigma grad v0, grad si):
       ! ------------------------------------------------
       CALL AddToCmplxMatrixElement(CM, RowId, RowId, &
-              REAL(IP % s(t)*detJ*localC), &
-              AIMAG(IP % s(t)*detJ*localC))
+              REAL(IP % s(t)*detJ*localC*grads_coeff**2), &
+              AIMAG(IP % s(t)*detJ*localC*grads_coeff**2))
 
       DO j=1,nd
         ! computing the mass term (sigma * im * Omega * a, grad si):
         ! ---------------------------------------------------------
         CALL AddToCmplxMatrixElement(CM, RowId, ReIndex(PS(Indexes(j))), &
-               REAL(im * Omega * IP % s(t)*detJ*localC*basis(j)), &
-              AIMAG(im * Omega * IP % s(t)*detJ*localC*basis(j)))
+               REAL(im * Omega * IP % s(t)*detJ*localC*basis(j)*grads_coeff), &
+              AIMAG(im * Omega * IP % s(t)*detJ*localC*basis(j)*grads_coeff))
 
 !        IF (.NOT. Adirichlet(ReIndex(PS(indexes(q))))) THEN
           ! computing the source term Vi(sigma grad v0, a'):
           ! ------------------------------------------------
           CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(j))), RowId, &
-                REAL(IP % s(t)*detJ*localC*basis(j)), &
-               AIMAG(IP % s(t)*detJ*localC*basis(j)))
+                REAL(IP % s(t)*detJ*localC*basis(j)*grads_coeff), &
+               AIMAG(IP % s(t)*detJ*localC*basis(j)*grads_coeff))
 !        END IF
 
       END DO
@@ -1523,7 +1524,7 @@ endif
     TYPE(Component_t) :: Comp
 
     REAL(KIND=dp) :: Basis(nn), DetJ, &
-                     localAlpha, localV, localVtest, x, circ_eq_coeff, grads_coeff
+                     localAlpha, localV, localVtest, x, grads_coeff
     REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn),w(3),alpha(nn)
     INTEGER :: p,i,j,t,Indexes(nd),pp,RowId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest
@@ -1548,12 +1549,10 @@ endif
                 IP % W(t), detJ, Basis,dBasisdx )
 
       grads_coeff = 1._dp
-      circ_eq_coeff = 1._dp
       IF( CSymmetry ) THEN
         x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
         detJ = detJ * x
-        grads_coeff = grads_coeff/(2._dp*pi*x)
-        circ_eq_coeff = 2._dp * pi
+        grads_coeff = grads_coeff/x
       END IF
 
       localAlpha = SUM(alpha(1:nn) * Basis(1:nn))
@@ -1588,14 +1587,14 @@ endif
           
           ! Computing the stiff term (sigma V(alpha) grad v0, V'(alpha) grad si):
           ! ---------------------------------------------------------------------
-          value = IP % s(t)*detJ*localV*localVtest*C*grads_coeff**2*circ_eq_coeff
+          value = IP % s(t)*detJ*localV*localVtest*C*grads_coeff**2
           CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, dofId+nm, REAL(value), AIMAG(value))
         END DO
 
         DO j=1,nd
           ! computing the mass term (sigma * im * Omega * a, V'(alpha) grad si):
           ! ---------------------------------------------------------
-          value = im * Omega * IP % s(t)*detJ*localVtest*C*basis(j)*grads_coeff*circ_eq_coeff
+          value = im * Omega * IP % s(t)*detJ*localVtest*C*basis(j)*grads_coeff
           CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, ReIndex(PS(Indexes(j))), REAL(value), AIMAG(value) )
         END DO
 

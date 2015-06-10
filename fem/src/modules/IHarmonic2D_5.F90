@@ -1400,16 +1400,16 @@ endif
       ! ----------------------
       
       CALL AddToCmplxMatrixElement(CM, RowId, ColId, &
-            REAL(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC), &
-           AIMAG(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC))
+            REAL(-Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC), &
+           AIMAG(-Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC))
             
       DO p=1,nd
 
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
           CALL AddToCmplxMatrixElement(CM, RowId, ReIndex(PS(Indexes(p))), &
-                 REAL(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC), & 
-                AIMAG(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC))
+                 REAL(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)), & 
+                AIMAG(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)))
 
 !          IF (.NOT. Adirichlet(ReIndex(PS(indexes(p))))) THEN
             ! source: 

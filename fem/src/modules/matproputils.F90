@@ -52,7 +52,7 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   REAL(KIND=dp) :: dummyArgument
  
   ! variables needed inside function
-  REAL(KIND=dp),POINTER ::  Conductivity(:,:)
+  REAL(KIND=dp) ::  Conductivity(:)
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
   REAL(KIND=dp) :: ft, fc, it, ic
 
@@ -80,8 +80,8 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   ic = GetConstReal(BodyParams, 'Insulator Layer Heat Conductivity', Found)
   IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Insulator Layer Heat Conductivity not found in Body section')
   
-  Conductivity(1,1) = ((ft + it) * fc * ic) / (it * fc + ft * ic)
-  Conductivity(1,2) = (ft * fc + it * ic) / (ft + it)
+  Conductivity(1) = ((ft + it) * fc * ic) / (it * fc + ft * ic)
+  Conductivity(2) = (ft * fc + it * ic) / (ft + it)
   !WRITE(Message,*)  Conductivity(1,1), Conductivity(1,2)
   !CALL Info('getWindingk', Message, Level = 5)
  
