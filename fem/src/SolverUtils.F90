@@ -10012,6 +10012,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       END DO
       Found = q>1
 
+
       Tmat => Xmat
       IF(Found) THEN
         Tmat => AllocateMatrix()
@@ -10093,7 +10094,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             cPtr  => cPtr % Next
             CYCLE
           END IF
-          scl = -cPtr % Value / SlaveDiag(j)
+          scl = -cPtr % Value / UseDiag(j)
 
           cTmp  => cPtr
           cPtr  => cPtr % Next
@@ -10117,6 +10118,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       END DO
     END IF
 
+#if 0
     ! Optimize bandwidth, if needed:
     ! ------------------------------
     IF(EliminateFromMaster) THEN
@@ -10137,6 +10139,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         CollectionVector(k) = scl
       END DO
     END IF
+#endif
 
     CALL Info('SolveWithLinearRestriction',&
         'Finished Adding ConstraintMatrix',Level=12)

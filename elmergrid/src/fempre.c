@@ -709,8 +709,8 @@ int main(int argc, char *argv[])
   if(eg.clone[0] || eg.clone[1] || eg.clone[2]) {
     for(k=0;k<nomeshes;k++) {
       CloneMeshes(&data[k],boundaries[k],eg.clone,eg.clonesize,FALSE,info);
-      mergeeps = fabs(eg.clonesize[0]+eg.clonesize[1]+eg.clonesize[2]) * 1.0e-8;
-      MergeElements(&data[k],boundaries[k],eg.order,eg.corder,mergeeps,TRUE,TRUE);
+      /* mergeeps = fabs(eg.clonesize[0]+eg.clonesize[1]+eg.clonesize[2]) * 1.0e-8;
+	 MergeElements(&data[k],boundaries[k],eg.order,eg.corder,mergeeps,TRUE,TRUE); */
     }
   }
 

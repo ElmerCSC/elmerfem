@@ -49,7 +49,7 @@ MODULE Messages
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
    LOGICAL :: OutputLevelMask(0:31) = (/ (.TRUE.,i=1,32) /)
    INTEGER :: MaxOutputLevel=32, MinOutputLevel=0, OutputPE = 0
-   INTEGER :: MaxOutputPE = 0
+   INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
 
 CONTAINS
 
@@ -71,7 +71,7 @@ CONTAINS
 
 !-----------------------------------------------------------------------
 
-     IF ( OutputPE < 0 .OR. OutputPE > MaxOutputPE ) RETURN
+     IF ( OutputPE < 0 ) RETURN
 
      IF ( PRESENT( Level ) ) THEN
        IF ( .NOT. OutputLevelMask(Level) ) RETURN

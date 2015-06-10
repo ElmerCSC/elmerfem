@@ -3452,16 +3452,31 @@ CONTAINS
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
      IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     IF ( ParEnv % PEs>1 .AND. .NOT.SlaveNotParallel ) THEN
-       DO i=1,ParEnv % PEs
-         IF ( ParEnv % Active(i) ) THEN
-           EXIT
+     IF ( ParEnv % PEs > 1 .AND. .NOT.SlaveNotParallel ) THEN
+       ! Check that the solver is active in some of the active output solvers
+       IF( ANY( ParEnv % Active(MinOutputPE:MaxOutputPE) ) ) THEN
+         IF( ParEnv % MyPe >= MinOutputPE .OR. &
+             ParEnv % MyPe <= MaxOutputPE ) THEN 
+           OutputPE = ParEnv % MyPE
+         ELSE
+           OutputPE = -1
          END IF
-       END DO
+       ELSE         
+        ! Otherwise get the first active partition for this solver
+        DO i=1,ParEnv % PEs
+           IF ( ParEnv % Active(i) ) THEN
+             EXIT
+           END IF
+         END DO
 
-       OutputPE = -1
-       IF ( i-1==ParEnv % MyPE .OR. i>ParEnv % PEs .AND. ParEnv % myPE==0 ) &
-         OutputPE=0
+         OutputPE = -1
+         IF ( i-1 == ParEnv % MyPE ) THEN
+           OutputPE = i-1 
+         ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
+           OutputPE = 0
+         END IF
+       END IF
+
 
        n = COUNT(ParEnv % Active)
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN

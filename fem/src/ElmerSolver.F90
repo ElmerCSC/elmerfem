@@ -73,11 +73,11 @@
      REAL(KIND=dp) :: s,dt,dtfunc
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
      REAL(KIND=dp), POINTER, SAVE :: sTime(:), sStep(:), sInterval(:), sSize(:), &
-           steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:)
+           steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sPar(:)
 
      TYPE(Element_t),POINTER :: CurrentElement
 
-     LOGICAL :: GotIt,Transient,Scanning,LastSaved
+     LOGICAL :: GotIt,Transient,Scanning,LastSaved, MeshMode = .FALSE.
 
      INTEGER :: TimeIntervals,interval,timestep, &
        TotalTimesteps,SavedSteps,CoupledMaxIter,CoupledMinIter
@@ -112,7 +112,7 @@
 
      INTEGER :: iargc, NoArgs
 
-     INTEGER :: ExtrudeLevels
+     INTEGER :: ExtrudeLevels, MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
      INTEGER :: omp_get_max_threads
@@ -133,11 +133,15 @@ END INTERFACE
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
-     ParallelEnv => ParallelInit()
-     OutputPE = ParEnv % MyPE
+     IF(FirstTime)  ParallelEnv => ParallelInit()
 
-!tt = realtime()
+     OutputPE = -1
+     IF( ParEnv % MyPe == 0 ) THEN
+       OutputPE = 0 
+     END IF
+     
      IF ( FirstTime ) THEN
+
        !
        ! Print banner to output:
 #include "../config.h"
@@ -240,8 +244,7 @@ END INTERFACE
 
        IF( Version ) RETURN
        
-       CALL InitializeElementDescriptions
-       FirstTime = .FALSE.
+       CALL InitializeElementDescriptions()
      END IF
 
      ! Read input file name either as an argument, or from the default file:
@@ -280,9 +283,16 @@ END INTERFACE
 !------------------------------------------------------------------------------
 !    Read Model and mesh from Elmer mesh data base
 !------------------------------------------------------------------------------
+     MeshIndex = 0
      DO WHILE( .TRUE. )
 
        IF ( initialize==2 ) GOTO 1
+
+       IF(MeshMode) THEN
+         CALL FreeModel(CurrentModel)
+         MeshIndex = MeshIndex + 1
+         FirstLoad=.TRUE.
+       END IF
 
        IF ( FirstLoad ) THEN
          IF( .NOT. Silent ) THEN
@@ -296,8 +306,10 @@ END INTERFACE
          IF ( gotIt ) CLOSE(inFileUnit)
          
          OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',ERR=20 )
-         CurrentModel => LoadModel( ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE )
+         CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
+         IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
+         MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
 
          !------------------------------------------------------------------------------
          ! Some keywords automatically require other keywords to be set
@@ -444,7 +456,7 @@ END INTERFACE
 
        IF ( FirstLoad ) &
          ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
-             steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1) )
+             steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), sPar(1) )
 
        dt   = 0._dp
 
@@ -459,6 +471,7 @@ END INTERFACE
 
        steadyIt = 0
        nonlinIt = 0
+       sPar = 0
 
        CoupledMinIter = ListGetInteger( CurrentModel % Simulation, &
                   'Steady State Min Iterations', GotIt )
@@ -468,7 +481,7 @@ END INTERFACE
 !      coordinate dependent parameter computing routines can ask for
 !      them...
 !------------------------------------------------------------------------------
-       IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime
+       IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime()
 
 !------------------------------------------------------------------------------
 !      Get Output File Options
@@ -582,13 +595,14 @@ END INTERFACE
 !------------------------------------------------------------------------------
      IF ( Initialize /= 1 ) CALL Info( 'ElmerSolver', '*** Elmer Solver: ALL DONE ***',Level=3 )
 
-     IF ( Initialize <=0 ) CALL FreeModel(CurrentModel)
+     IF ( Initialize <= 0 ) CALL FreeModel(CurrentModel)
 
 #ifdef HAVE_TRILINOS
   CALL TrilinosCleanup()
 #endif
 
-     CALL ParallelFinalize()
+     IF ( FirstTime ) CALL ParallelFinalize()
+     FirstTime = .FALSE.
      CALL Info('ElmerSolver','The end',Level=3)
 
      RETURN
@@ -618,6 +632,7 @@ END INTERFACE
 
        SAVE TestCount, PassCount 
 
+       IF( ParEnv % MyPe > 0 ) RETURN
 
        ! Write the success to a file for further use e.g. by cmake
        !----------------------------------------------------------
@@ -749,8 +764,6 @@ END INTERFACE
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
          END IF
-
-
 
          IF( Success ) PassCount = PassCount + 1
        END DO
@@ -938,6 +951,10 @@ END INTERFACE
                'nonlin iter', 1, nonlinIt )
        CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
                'coupled iter', 1, steadyIt )
+
+       sPar(1) = 1.0_dp * ParEnv % MyPe 
+       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Partition', 1, sPar ) 
+
        Mesh => Mesh % Next
      END DO
 !------------------------------------------------------------------------------
