@@ -345,6 +345,7 @@ CONTAINS
      END DO
 
      CALL MeshStabParams( Newmesh )
+     NewMesh % Changed = .TRUE.
 
 CONTAINS
 
