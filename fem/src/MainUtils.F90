@@ -335,6 +335,7 @@ CONTAINS
        Solver => Model % Solvers(i)
        IF(ASSOCIATED(Solver % Mesh, NewMesh)) THEN
          CALL FreeMatrix(Solver % Matrix)
+         Model % Solver => Solver
 
          CALL AddEquationBasics( Solver, ListGetString(Solver % Values, 'Variable', Found), &
                ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient' )

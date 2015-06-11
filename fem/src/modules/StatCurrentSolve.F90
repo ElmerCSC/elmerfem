@@ -172,9 +172,19 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone ) THEN
+     IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
        N = Model % MaxElementNodes
  
+       IF(AllocationsDone) THEN
+         DEALLOCATE( ElementNodes % x, &
+                   ElementNodes % y,   &
+                   ElementNodes % z,   &
+                   Conductivity,       &
+                   LocalForce,         &
+                   LocalStiffMatrix,   &
+                   Load )
+       END IF
+
        ALLOCATE( ElementNodes % x(N),   &
                  ElementNodes % y(N),   &
                  ElementNodes % z(N),   &
