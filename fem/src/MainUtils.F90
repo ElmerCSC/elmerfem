@@ -285,7 +285,7 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh, Newmesh, tmesh
 !------------------------------------------------------------------------------
      INTEGER :: Def_Dofs(10,6), i,j,k
-     LOGICAL :: Found
+     LOGICAL :: Found, Transient
      TYPE(Solver_t), POINTER :: Solver
 !------------------------------------------------------------------------------
 
@@ -331,19 +331,18 @@ CONTAINS
      Mesh % Next => Null()
      CALL ReleaseMesh( Mesh )
 
+     Transient = ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient'
+
      DO i=1,Model % NumberOfSolvers
        Solver => Model % Solvers(i)
        IF(ASSOCIATED(Solver % Mesh, NewMesh)) THEN
          CALL FreeMatrix(Solver % Matrix)
          Model % Solver => Solver
 
-         CALL AddEquationBasics( Solver, ListGetString(Solver % Values, 'Variable', Found), &
-               ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient' )
-
-         CALL AddEquationSolution( Solver, &
-               ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient' )
-
-          Solver % DoneTime = 1
+         CALL AddEquationBasics( Solver, ListGetString(Solver % Values, &
+                  'Variable', Found), Transient )
+         CALL AddEquationSolution( Solver, Transient )
+         IF ( Transient .AND. Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
        END IF
      END DO
 
@@ -384,7 +383,7 @@ CONTAINS
 
      ! Save some previous timesteps for variable timestep multistep methods
      V => VariableGet( M1 % Variables, 'Timestep size' )
-     DtVar => VariableGet( M1 % Variables, 'Timestep size' )
+     DtVar => VariableGet( M2 % Variables, 'Timestep size' )
      DtVar % PrevValues => V % PrevValues
 
      V => VariableGet( M1 % Variables, 'nonlin iter' )
