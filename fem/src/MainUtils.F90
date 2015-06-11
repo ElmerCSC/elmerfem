@@ -276,6 +276,134 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+!------------------------------------------------------------------------------
+   SUBROUTINE SwapMesh(Model,Mesh,Name)
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: Name
+     TYPE(Model_t) :: Model
+     TYPE(Mesh_t), POINTER :: Mesh, Newmesh, tmesh
+!------------------------------------------------------------------------------
+     INTEGER :: Def_Dofs(10,6), i,j,k
+     LOGICAL :: Found
+     TYPE(Solver_t), POINTER :: Solver
+!------------------------------------------------------------------------------
+
+     Def_Dofs = -1;
+     DO i=1,Model % NumberOfSolvers
+       DO j=1,10
+         DO k=1,6
+           Def_Dofs(j,k) = MAX(Def_Dofs(j,k), MAXVAL(Model % Solvers(i) % Def_Dofs(j,:,k)))
+         END DO
+       END DO
+     END DO
+
+     Newmesh => LoadMesh2( Model, Name, Name, &
+       .FALSE., Parenv % PEs, ParEnv % myPE, Def_Dofs )
+
+
+     NewMesh % Next => Mesh % Next
+     IF(ASSOCIATED(Mesh,  Model % Meshes)) THEN
+       Model % Meshes => Newmesh
+     ELSE
+       Tmesh => Model % Meshes
+       DO WHILE(ASSOCIATED(Tmesh % next))
+         IF(ASSOCIATED(Mesh, Tmesh % next)) THEN
+           Tmesh % Next => Newmesh
+           EXIT
+         END IF
+       END DO
+     END IF
+
+     NewMesh % Name = Name
+     CALL AddCoordAndTime(Mesh,NewMesh)
+
+     DO i=1,Model % NumberOfSolvers
+       Solver => Model % Solvers(i)
+       IF(ASSOCIATED(Solver % Mesh, Mesh)) Solver % Mesh => Newmesh
+     END DO
+
+     IF(Mesh % DiscontMesh) CALL CreateDiscontMesh(Model,Newmesh,.TRUE.)
+
+     IF(ASSOCIATED(Model % Mesh, Mesh)) Model % Mesh => NewMesh
+     IF(ASSOCIATED(Model % Variables, Mesh % Variables)) Model % Variables => NewMesh % Variables
+
+     Mesh % Next => Null()
+     CALL ReleaseMesh( Mesh )
+
+     DO i=1,Model % NumberOfSolvers
+       Solver => Model % Solvers(i)
+       IF(ASSOCIATED(Solver % Mesh, NewMesh)) THEN
+         CALL FreeMatrix(Solver % Matrix)
+
+         CALL AddEquationBasics( Solver, ListGetString(Solver % Values, 'Variable', Found), &
+               ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient' )
+
+         CALL AddEquationSolution( Solver, &
+               ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient' )
+       END IF
+     END DO
+
+     CALL MeshStabParams( Newmesh )
+
+CONTAINS
+
+
+   SUBROUTINE AddCoordAndTime(M1,M2)
+    TYPE(Solver_t), POINTER :: Solver => Null()
+    TYPE(Mesh_t) :: M1,M2
+    TYPE(Variable_t), POINTER :: DtVar, V
+
+     CALL VariableAdd( M2 % Variables, M2,Solver, &
+           'Coordinate 1',1, M2 % Nodes % x )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+           'Coordinate 2',1, M2 % Nodes % y )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+          'Coordinate 3',1,M2 % Nodes % z )
+
+     V => VariableGet( M1 % Variables, 'Time' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Time', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Periodic Time' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
+
+     V => VariableGet( M1 % Variables, 'Timestep' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep size', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep interval' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep interval', 1, V % Values )
+
+     ! Save some previous timesteps for variable timestep multistep methods
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     DtVar => VariableGet( M1 % Variables, 'Timestep size' )
+     DtVar % PrevValues => V % PrevValues
+
+     V => VariableGet( M1 % Variables, 'nonlin iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+             'nonlin iter', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'coupled iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+             'coupled iter', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'partition' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
+!------------------------------------------------------------------------------
+    END SUBROUTINE AddCoordAndTime
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE SwapMesh
+!------------------------------------------------------------------------------
+
+
+
+
 !------------------------------------------------------------------------------
 !> Add the generic stuff related to each Solver. 
 !> A few solvers are for historical reasons given a special treatment. 
