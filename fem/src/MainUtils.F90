@@ -342,6 +342,8 @@ CONTAINS
 
          CALL AddEquationSolution( Solver, &
                ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient' )
+
+          Solver % DoneTime = 1
        END IF
      END DO
 

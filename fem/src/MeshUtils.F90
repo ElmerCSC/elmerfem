@@ -1086,10 +1086,11 @@ END SUBROUTINE GetMaxDefs
 !> of the nodes is needed by other bulk elements than those directly 
 !> associated with the discontinuous boundaries. 
 !------------------------------------------------------------------------------
- SUBROUTINE CreateDiscontMesh( Model, Mesh )
+ SUBROUTINE CreateDiscontMesh( Model, Mesh, DoAlways )
 
    TYPE(Model_t) :: Model
    TYPE(Mesh_t), POINTER :: Mesh
+   LOGICAL, OPTIONAL :: DoAlways
 
    INTEGER, POINTER :: DisContPerm(:)
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
@@ -1112,7 +1113,13 @@ END SUBROUTINE GetMaxDefs
 
    LOGICAL :: DoneThisAlready = .FALSE.
 
-   IF (DoneThisAlready) RETURN
+   IF(.NOT.PRESENT(DoAlways)) THEN
+     IF (DoneThisAlready) RETURN
+   ELSE 
+     IF(.NOT.DoAlways) THEN
+       IF (DoneThisAlready) RETURN
+     END IF
+   END IF
    DoneThisAlready = .TRUE.
 
    Parallel = ( ParEnv % PEs > 1 )
