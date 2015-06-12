@@ -7364,13 +7364,13 @@ END IF
     INTEGER, TARGET :: Triangle(3,2)
     INTEGER, TARGET :: Quad(4,2)
     INTEGER, TARGET :: Tetra(6,2)
-    INTEGER, TARGET :: Prism(8,2)
+    INTEGER, TARGET :: Pyramid(8,2)
     INTEGER, TARGET :: Wedge(9,2)
     INTEGER, TARGET :: Brick(12,2)
 
     LOGICAL :: Initialized(8) = .FALSE.
   
-    SAVE Line, Triangle, Wedge, Brick, Tetra, Quad, Prism, Initialized
+    SAVE Line, Triangle, Wedge, Brick, Tetra, Quad, Pyramid, Initialized
 
     SELECT CASE(ElementFamily)
     CASE(1)
@@ -7384,7 +7384,7 @@ END IF
     CASE(5) 
       EdgeMap => Tetra
     CASE(6) 
-      EdgeMap => Prism
+      EdgeMap => Pyramid
     CASE(7) 
       EdgeMap => Wedge
     CASE(8) 
