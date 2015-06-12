@@ -477,6 +477,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   Visited = .TRUE.
 
+  CALL MeshStabParams(Mesh)
   !------------------------------------------------------------------------------
 END SUBROUTINE StructuredMeshMapper
 !------------------------------------------------------------------------------

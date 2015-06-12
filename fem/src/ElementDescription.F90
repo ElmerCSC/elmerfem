@@ -8243,14 +8243,14 @@ END IF
 
        CASE DEFAULT
          EdgeMap => LGetEdgeMap(Family)
-         hK = HUGE(1.0_dp)
+         hK = -1.0 * HUGE(1.0_dp)
          DO i=1,SIZE(EdgeMap,1)
            j=EdgeMap(i,1)
            k=EdgeMap(i,2)
            x0 = X(j) - X(k)
            y0 = Y(j) - Y(k)
            z0 = Z(j) - Z(k)
-           hk = MIN(hK, x0**2 + y0**2 + z0**2)
+           hk = MAX(hK, x0**2 + y0**2 + z0**2)
          END DO
      END SELECT
 

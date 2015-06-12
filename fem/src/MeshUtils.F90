@@ -10623,6 +10623,7 @@ END SUBROUTINE GetMaxDefs
     Mesh_out % Name=Mesh_in % Name
     Mesh_out % DiscontMesh = Mesh_in % DiscontMesh
     Mesh_out % MaxElementDOFs  = Mesh_out % MaxElementNodes
+    Mesh_out % Stabilize = Mesh_in % Stabilize
     Mesh_out % MeshDim = 3
     CurrentModel % DIMENSION = 3
 
