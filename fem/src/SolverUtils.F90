@@ -10006,12 +10006,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         q = 0
         DO j = Xmat % Rows(i+1)-1, Xmat % Rows(i),-1
           k = Xmat % Cols(j)
+          IF(k>n) CYCLE
           IF(UsePerm(k)>0 .AND. ABS(TVals(j))>AEPS) q=q+1
         END DO
         IF(q>1) EXIT
       END DO
       Found = q>1
-
 
       Tmat => Xmat
       IF(Found) THEN

@@ -300,7 +300,7 @@ CONTAINS
 
      Newmesh => LoadMesh2( Model, Name, Name, &
        .FALSE., Parenv % PEs, ParEnv % myPE, Def_Dofs )
-
+     IF(.NOT.ASSOCIATED(NewMesh)) RETURN
 
      NewMesh % Next => Mesh % Next
      IF(ASSOCIATED(Mesh,  Model % Meshes)) THEN
