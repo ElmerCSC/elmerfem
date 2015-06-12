@@ -3656,7 +3656,7 @@ CONTAINS
            ParEnv = Solver % Matrix % ParMatrix % ParEnv
          END IF
        END IF
-     ELSE
+     ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = MPI_COMM_WORLD
      END IF
 

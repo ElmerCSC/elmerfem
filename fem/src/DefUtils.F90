@@ -2410,6 +2410,7 @@ CONTAINS
            ELSE
              ALLOCATE(ParEnv % Active(ParEnv % PEs)); alloc_parenv=.TRUE.
            END IF
+           ParEnv % ActiveComm = Solver % Matrix % Comm
          END IF
 
          CurrentModel % Solver => SlaveSolver
