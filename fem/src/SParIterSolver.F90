@@ -621,6 +621,7 @@ st = realtime()
   isNeighbour = Parenv % IsNeighbour
   CALL MPI_ALLREDUCE( isNeighbour, Parenv % IsNeighbour, Parenv % Pes, &
       MPI_LOGICAL, MPI_LOR, SourceMatrix % Comm, i )
+  Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
   Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
 
   ! -
