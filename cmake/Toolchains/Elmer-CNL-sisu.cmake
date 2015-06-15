@@ -3,6 +3,10 @@
 # Author: Sami Ilvonen, CSC - IT Center for Science Ltd.
 # Version: 0.1
 
+#set(CMAKE_Fortran_FLAGS_DEBUG "${CMAKE_Fortran_FLAGS_DEBUG} -fcheck=bounds,do")
+#set(CMAKE_Fortran_FLAGS_DEBUG "${CMAKE_Fortran_FLAGS_DEBUG} -fcheck=mem")
+
+
 SET(CMAKE_SYSTEM_NAME Linux)
 SET(CMAKE_SYSTEM_PROCESSOR x86_64)
 SET(CMAKE_SYSTEM_VERSION 1)
