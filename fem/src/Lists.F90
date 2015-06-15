@@ -705,6 +705,11 @@ CONTAINS
 
     Var => VariableList
     DO WHILE( ASSOCIATED( Var ) )
+       IF ( Var % Secondary ) THEN
+         Var => Var % Next
+         CYCLE
+       END IF
+
        IF ( Var % DOFs > 1 ) THEN
          IF ( ASSOCIATED( Var % Values ) ) &
             DEALLOCATE( Var % Values )
@@ -1824,6 +1829,10 @@ CONTAINS
 
 
 
+!------------------------------------------------------------------------------
+!> Finds a keyword with the given basename and normalizes it with a 
+!> constant coefficients for all future request of the keyword.
+!------------------------------------------------------------------------------
    SUBROUTINE ListSetCoefficients( list, name, coeff )
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: list
@@ -1864,6 +1873,59 @@ CONTAINS
      END DO
 
    END SUBROUTINE ListSetCoefficients
+ 
+
+!> Copies an entry from 'ptr' to an entry in *different* list with the same content.
+!-----------------------------------------------------------------------------------
+   SUBROUTINE ListCopyItem( ptr, list )
+
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptrb, ptrnext
+
+     ptrb => ListAdd( List, ptr % Name ) 
+
+     ptrnext => ptrb % next
+     ptrb = ptr
+     ptrb % next => ptrnext
+
+   END SUBROUTINE ListCopyItem
+
+
+!> Checks two lists for a given keyword. If it is given then 
+!> copy it as it is to the 2nd list.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListCompareAndCopy( list, listb, name, Found )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list, listb
+     CHARACTER(LEN=*) :: name
+     LOGICAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+     INTEGER :: k, n
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+     Found = .FALSE.
+
+     ! Find the keyword from the 1st list 
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF ( n==k ) THEN
+         IF ( ptr % Name(1:n) == str(1:n) ) EXIT
+       END IF
+       ptr => ptr % Next
+     END DO
+     
+     IF(.NOT. ASSOCIATED( ptr ) ) RETURN
+     
+     ! Add the same entry to the 2nd list 
+     CALL ListCopyItem( ptr, listb ) 
+     Found = .TRUE.
+
+   END SUBROUTINE ListCompareAndCopy
  
   
 !------------------------------------------------------------------------------
@@ -4597,6 +4659,23 @@ CONTAINS
       CALL Warn('ListGetAngularFrequency','Angular frequency could not be determined!')
     END IF
   END FUNCTION ListGetAngularFrequency
+
+
+  !------------------------------------------------------------------------------
+!> Returns handle to the Solver value list of the active solver
+  FUNCTION ListGetSolverParams(Solver) RESULT(SolverParam)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: SolverParam
+     TYPE(Solver_t), OPTIONAL :: Solver
+
+     IF ( PRESENT(Solver) ) THEN
+       SolverParam => Solver % Values
+     ELSE
+       SolverParam => CurrentModel % Solver % Values
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetSolverParams
+!------------------------------------------------------------------------------
 
 
 

@@ -42,9 +42,9 @@
 !> \{
 MODULE DiffuseConvective
 
-  USE MaterialModels
-  USE Integration
+  USE DefUtils
   USE Differentials
+  USE MaterialModels
 
   IMPLICIT NONE
 
@@ -140,7 +140,7 @@ MODULE DiffuseConvective
      REAL(KIND=dp) :: A,M
      REAL(KIND=dp) :: Load
 
-     REAL(KIND=dp) :: VNorm,hK,mK
+     REAL(KIND=dp) :: VNorm,hK,mK,hScale
      REAL(KIND=dp) :: Lambda=1.0,Pe,Pe1,Pe2,Tau,x,y,z
 
      REAL(KIND=dp) :: Tau_M, Tau_C, Gmat(3,3),Gvec(3), dt=0._dp, LC1, NodalVelo(4,n), &
@@ -160,7 +160,7 @@ MODULE DiffuseConvective
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
      LOGICAL :: Vms, Found, Transient, stat,Convection,ConvectAndStabilize,Bubbles, &
-          FrictionHeat
+          FrictionHeat, PBubbles
      TYPE(ValueList_t), POINTER :: BodyForce
 
 !------------------------------------------------------------------------------
@@ -181,8 +181,13 @@ MODULE DiffuseConvective
      NBasis = n
      Bubbles = .FALSE.
      IF ( Convection .AND. .NOT. (Vms .OR. Stabilize) .AND. UseBubbles ) THEN
+       PBubbles  = isActivePElement(Element) .AND. Element % BDOFs > 0
+       IF ( PBubbles ) THEN
+          NBasis = n + Element % BDOFs
+       ELSE
         NBasis = 2*n
         Bubbles = .TRUE.
+       END IF
      END IF
 
 !------------------------------------------------------------------------------
@@ -203,7 +208,10 @@ MODULE DiffuseConvective
 !    Stabilization parameters: hK, mK (take a look at Franca et.al.)
 !    If there is no convection term we don t need stabilization.
 !------------------------------------------------------------------------------
-     hK = element % hK
+     hScale = GetCReal( GetSolverParams(), 'H scale', Found )
+     IF(.NOT.Found) hScale = 1._dp
+
+     hK = element % hK * hScale
      mK = element % StabilizationMK
 
      ConvectAndStabilize = .FALSE.

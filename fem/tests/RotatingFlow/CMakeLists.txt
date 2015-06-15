@@ -6,3 +6,4 @@ CONFIGURE_FILE( rotating.sif rotating.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO circle DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(RotatingFlow)
+ADD_ELMER_LABEL(RotatingFlow quick)

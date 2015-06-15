@@ -503,6 +503,9 @@ CONTAINS
     
     
     SAVE :: Visited, PrevNorm, UnitPerm
+
+    CALL Info('ParticleAdvector','Setting the advected fields',Level=10)
+
     
     Mesh => GetMesh()
     dim = Mesh % MeshDim
@@ -516,6 +519,7 @@ CONTAINS
     NoParticles = Particles % NumberOfParticles
     maxdim = 0
 
+
     Parallel = ( ParEnv % PEs > 1 ) 
 
     Initiated = .FALSE.
@@ -527,12 +531,15 @@ CONTAINS
       VariableName = GetString( Params,Name,GotVar)
       IF(.NOT. GotVar ) EXIT
 
+      CALL Info('ParticleAdvector','Setting field for variable: '//TRIM(VariableName),Level=15)
+
       ! Get the target variables
       ! Variables starting with 'particle' as associated with particles
       !----------------------------------------------------------------
       IF( VariableName == 'particle coordinate' .OR. &
           VariableName == 'particle velocity' .OR. &
           VariableName == 'particle force') THEN
+
         dofs = dim 
         InternalVariable = .TRUE.
         maxdim = MAX( dim, maxdim )
@@ -566,6 +573,7 @@ CONTAINS
 
       WRITE (Name,'(A,I0)') 'Operator ',NoVar
       OperName = GetString( Params,Name,GotOper)
+
       IF( GotOper ) THEN
         IF( OperName == 'difference' ) THEN
           Difference = .TRUE.
@@ -579,6 +587,8 @@ CONTAINS
       ELSE
         OperName = 'adv'
       END IF
+
+      CALL Info('ParticleAdvector','Using operator for variable: '//TRIM(OperName),Level=15)
       
       WRITE (Name,'(A,I0)') 'Result Variable ',NoVar
       ResultName = GetString( Params,Name,GotRes)
@@ -586,10 +596,12 @@ CONTAINS
         ResultName = TRIM(OperName)//' '//TRIM(VariableName)
       END IF
 
+
       ! Create variables if they do not exist
       !---------------------------------------------------------      
       ResultVar => VariableGet( Mesh % Variables, TRIM(ResultName) )
       IF( .NOT. ASSOCIATED(ResultVar)) THEN
+
         IF( InternalVariable ) THEN
           UsePerm = .FALSE.
         ELSE
@@ -627,6 +639,8 @@ CONTAINS
       ! Finally, set the values
       !---------------------------------------------------------      
       IF( InternalVariable ) THEN
+        CALL Info('ParticleAdvector','Setting particle variable to fields',Level=15)
+
         IF( VariableName == 'particle coordinate') THEN
           IF( ResultVar % Dofs /= dim ) THEN
             CALL Fatal('ParticleAdvector','Variable should have dim dofs: '//TRIM(VariableName))
@@ -688,6 +702,7 @@ CONTAINS
         END IF
         
       ELSE 
+        CALL Info('ParticleAdvector','Setting field variable to advected fields',Level=15)
 
         DO i = 1, NoParticles
           Status = GetParticleStatus( Particles, i )
@@ -766,9 +781,9 @@ CONTAINS
       END IF
     END DO
 
-
     ! Allocate the local new temporal values
     IF(.NOT. Initiated ) THEN
+      CALL Info('ParticleAdvector','Allocating for temporal value vectors',Level=15)
       NoVar = NoVar - 1
       IF( NoVar < 1 ) THEN
         CALL Fatal('ParticleAdvector','No target and result variables exist!')

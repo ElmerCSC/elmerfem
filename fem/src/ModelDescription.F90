@@ -114,7 +114,7 @@ CONTAINS
     ProcName(j) = CHAR(0)
 
     q = 0
-    IF ( OutputPE/=0 ) THEN
+    IF ( OutputPE < 0 ) THEN
       q=1
     ELSE IF( PRESENT(Quiet) ) THEN
       IF ( Quiet ) q = 1
@@ -1214,6 +1214,7 @@ CONTAINS
               OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
                   STATUS='UNKNOWN',POSITION='APPEND' )
               WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
+              CLOSE(10)
 
               i = INDEX( str,':' )
               OPEN( 10,File='../SOLVER.KEYWORDS.bysection',&
@@ -1905,14 +1906,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Function to read the complete Elmer model: sif file and mesh files.
 !------------------------------------------------------------------------------
-  FUNCTION LoadModel( ModelName,BoundariesOnly,numprocs,mype ) RESULT( Model )
+  FUNCTION LoadModel( ModelName,BoundariesOnly,numprocs,mype,MeshIndex) RESULT( Model )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=*) :: ModelName
     LOGICAL :: BoundariesOnly
 
-    INTEGER, OPTIONAL :: numprocs,mype
+    INTEGER, OPTIONAL :: numprocs,mype, MeshIndex
  
     TYPE(Model_t), POINTER :: Model
 
@@ -2026,6 +2027,9 @@ CONTAINS
     ! Check the mesh 
     !--------------------------------------------------------
     Name = ListGetString( Model % Simulation, 'Mesh', GotIt )
+    IF(PRESENT(MeshIndex)) THEN
+      IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+    END IF
 
     OneMeshName = .FALSE.
     IF ( GotIt ) THEN
@@ -2056,6 +2060,10 @@ CONTAINS
          MeshDir = "." // CHAR(0)
       END IF
       MeshName(i:i) = CHAR(0)
+    ELSE
+      IF(PRESENT(MeshIndex)) THEN
+        IF(MeshIndex>0) MeshName = MeshName(1:LEN_TRIM(MeshName)-1) // TRIM(I2S(MeshIndex))//CHAR(0)
+      END IF
     END IF
 
     NULLIFY( Model % Meshes )
@@ -2067,6 +2075,11 @@ CONTAINS
       IF( NewLoadMesh ) THEN
         Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs )
+        IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
+          CALL FreeModel(Model)
+          Model => Null()
+          RETURN
+        END IF
       ELSE
         Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
             BoundariesOnly, numprocs, mype, Def_Dofs(1,:) )
@@ -2160,6 +2173,9 @@ CONTAINS
 
     DO s=1,Model % NumberOfSolvers
       Name = ListGetString( Model % Solvers(s) % Values, 'Mesh', GotIt )
+      IF(PRESENT(MeshIndex)) THEN
+        IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+      END IF
 
       IF( GotIt ) THEN
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s
@@ -2475,12 +2491,52 @@ CONTAINS
       ! For debugging it may be usefull to show several.
       MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
           'Max Output Partition', GotIt )    
+      
+      MinOutputPE = ListGetInteger( CurrentModel % Simulation, &
+          'Min Output Partition', GotIt )    
+      
+      IF( ParEnv % MyPe >= MinOutputPE .AND. &
+          ParEnv % MyPe <= MaxOutputPE ) THEN 
+        OutputPE = ParEnv % MyPE
+      ELSE
+        OutputPE = -1
+      END IF
+  
 
     END SUBROUTINE InitializeOutputLevel
 !------------------------------------------------------------------------------
   END FUNCTION LoadModel
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Some keywords automatically require other keywords to be set
+!> We could complain on the missing keywords later on, but sometimes 
+!> it may be just as simple to add them directly. 
+!------------------------------------------------------------------------------
+  SUBROUTINE CompleteModelKeywords()
+
+    TYPE(Model_t), POINTER :: Model 
+    TYPE(ValueList_t), POINTER :: List, ListB
+    INTEGER :: i,j
+    LOGICAL :: Found, Flag
+
+
+    Model => CurrentModel 
+
+    DO i=1,Model % NumberOfBCs
+      List => Model % BCs(i) % Values
+      j = ListGetInteger( List,'Mortar BC',Found )
+      IF( j == 0 ) CYCLE
+      ListB => Model % BCs(j) % Values
+
+      CALL ListCompareAndCopy( List, ListB,'Mass Consistent Normals',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Mass Consistent Normals < to BC '//TRIM(I2S(j)),Level=10)
+    END DO
+
+
+  END SUBROUTINE CompleteModelKeywords
+  
 
 
 !------------------------------------------------------------------------------

@@ -19,7 +19,7 @@ Simulation
 
   Mesh Levels=1
   Mesh Keep=1
-! Post File   = "ptest.ep"
+! Post File   = "case.vtu"
 End
 
 ! Ilma (roottorin ulkokehä kestomagneettien välissä)
@@ -170,9 +170,6 @@ Solver 2
   Variable = "A"
   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2D"
 
-! Tallennetaan muuttuvat (roottorin pyöritys) koordinaatit
-  Exported Variable 1 = Coordinates[Coordinates:3]
-
   NonLinear System Relaxation Factor=1
 
   Linear System Solver = Iterative
@@ -187,18 +184,18 @@ Solver 2
 ! Linear System Solver = "Direct"
 ! Linear System Direct Method = UMFPack
   Steady State Convergence Tolerance = 1e-06
-End
+
+  Nonlinear System Convergence Without Constraints = Logical True
+End 
 
 
 ! Lasketaan magneetivuontiheys vektoripotentiaalista
 Solver 3
   Exec Solver = never
   Equation = ComputeB
-  Variable = -nooutput temp
 
-  Exported Variable 1 = B[B:2]
-  Target Variable="A"
-  Procedure = "MagnetoDynamics2D" "bSolver"
+  Potential Variable="A"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BicgstabL
@@ -214,37 +211,37 @@ Solver 4
   Procedure = "SaveData" "SaveScalars"
   Filename = "l.dat"
 End
-
+ 
 ! Liikkuva reuna
 Boundary Condition 1
   Target Boundaries(1) = 1
   Mortar BC = Integer 2
   Anti Rotational Projector = Logical True
+  Galerkin Projector = Logical True
 End
 Boundary Condition 2:: Target Boundaries(1) = 2
 
 ! Periodinen reuna, staattorin osuus
 Boundary Condition 3
   Target Boundaries(1) = 3
-  Periodic BC Use Lagrange Coefficient=Logical True
-  Periodic BC=4
-  Periodic BC Rotate(3) = 0 0 90
-  Anti Periodic BC A = Logical True
+
+  Mortar BC = Integer 4
+  Anti Radial Projector = Logical True
+  Galerkin Projector = Logical True
+  Mortar BC Static = Logical True
 End
 Boundary Condition 4:: Target Boundaries(1) = 4
 
 ! Periodinen reuna, roottorin osuus
 Boundary Condition 5
   Target Boundaries(1) = 5
-  Periodic BC=6
-  Periodic BC Use Lagrange Coefficient=Logical True
-  Periodic BC Rotate(3) = 0 0 90
-  Anti Periodic BC A = Logical True
+
+  Mortar BC = Integer 6
+  Anti Radial Projector = Logical True
+  Galerkin Projector = Logical True
+  Mortar BC Static = Logical True
 End
 Boundary Condition 6:: Target Boundaries(1) = 6
 
-Solver 2 :: Reference Norm = Real 77.630006
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM= 77.630006\n");
-!End Of File
+Solver 2 :: Reference Norm = Real 3.034413E-02
+

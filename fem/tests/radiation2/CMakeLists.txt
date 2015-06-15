@@ -6,3 +6,4 @@ CONFIGURE_FILE( radiation2.sif radiation2.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO radiation2.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(radiation2)
+ADD_ELMER_LABEL(radiation2 quick)

@@ -5142,7 +5142,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), PSOL(35), R(35), C(35), Norm, ElPotSol(1,8)
    REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3), JatIP(2,3), &
-                    VP_ip(2,3), Wbase(35), alpha(35), JXBatIP(2,3)
+                    VP_ip(2,3), Wbase(35), alpha(35), JXBatIP(2,3), CC_J(2,3)
    REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
@@ -5167,11 +5167,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               VvarDofs,VvarId,IvarId,Reindex,Imindex
 
    TYPE(Solver_t), POINTER :: pSolver, ElPotSolver
-   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile
+   CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
-              CalcFluxLogical, CoilBody, PreComputedElectricPot
+              CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, ItoJCoeffFound
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -5191,10 +5191,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
+   REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent
    
 !-------------------------------------------------------------------------------------------
    SolverParams => GetSolverParams()
-
 
    PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
    IF (PiolaVersion) &
@@ -5230,6 +5230,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential')
    EL_VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential E')
+
+   ImposeCircuitCurrent = GetLogical(SolverParams, 'Impose Circuit Current', Found)
+   CurrPathPotName = GetString(SolverParams, 'Circuit Current Path Potential Name', Found)
+   IF (.NOT. Found) CurrPathPotName = 'W'
 
    EF  => NULL(); EL_EF => NULL(); 
    CD  => NULL(); EL_CD => NULL();
@@ -5357,6 +5361,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    Power = 0._dp; Energy = 0._dp
    CALL DefaultInitialize()
+
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
@@ -5364,6 +5369,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      nd = GetElementNOFDOFs(uSolver=pSolver)
 
      CALL GetElementNodes( Nodes )
+     ItoJCoeffFound = .FALSE.
+     IF(ImposeCircuitCurrent) THEN
+       ItoJCoeff = ListGetConstReal(GetBodyParams(Element), &
+         'Current to density coefficient', ItoJCoeffFound)
+       IF(ItoJCoeffFound) THEN 
+         CALL GetLocalSolution(Wbase,CurrPathPotName)
+         IvarId = GetInteger(GetBodyParams(Element), 'Circuit Current Variable Id', Found)
+         IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Current Variable Id not found!')
+         CircuitCurrent = LagrangeVar % Values(IvarId)
+       END IF  
+     END IF
 
      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
      IF (PrecomputedElectricPot) &
@@ -5549,7 +5565,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           DetJ = ABS(DetF)
        ELSE
           stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-          CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+          IF( dim == 3 ) THEN
+            CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+          END IF
        END IF
 
        DO k=1,vDOFs
@@ -5562,7 +5580,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
             B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
          END SELECT
        END DO
-
+       IF(ImposeCircuitCurrent .and. ItoJCoeffFound) THEN
+         wvec = -MATMUL(Wbase(1:nd), dBasisdx(1:nd,:))
+         IF(SUM(wvec**2._dp) .GE. AEPS) THEN
+           wvec = wvec/SQRT(SUM(wvec**2._dp))
+         ELSE
+           wvec = [0.0_dp, 0.0_dp, 1.0_dp]
+         END IF
+       END IF
        !-------------------------------
        ! The conductivity as a tensor
        ! -------------------------------
@@ -5754,9 +5779,21 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            !  FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*C_ip*E(l,:)*Basis(p)
            !  k = k+3
            !END DO
+           IF (ItoJCoeffFound) THEN
+             IF (Vdofs == 1) THEN
+               DO l=1,dim
+                 CC_J(1,l) = ItoJCoeff*wvec(l)*CircuitCurrent
+               END DO
+             ELSE
+               CALL Fatal('MagnetoDynamicsCalcFields','Complex circuit current imposing is not implemented')
+             END IF
+           ELSE
+             CC_J(1,:) = 0.0_dp
+           END IF
            IF (Vdofs == 1) THEN
               DO l=1,dim
-                 JatIP(1,l) = SUM( REAL(CMat_ip(l,1:dim)) * E(1,1:dim) )
+                 JatIP(1,l) = SUM( REAL(CMat_ip(l,1:dim)) * E(1,1:dim) ) + CC_J(1,l)
+                 
                  FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
@@ -5904,6 +5941,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        Solver % Matrix % RHS => Fsave
      END IF
 
+
      IF(ElementalFields) THEN
        dofs = 0
        CALL LUdecomp(MASS,n,pivot)
@@ -5919,7 +5957,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
      END IF
+
    END DO
+
 
    Power  = ParallelReduction(Power)
    Energy = ParallelReduction(Energy)
@@ -6160,12 +6200,23 @@ CONTAINS
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
 
-   ind = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
+   IF( ANY( Var % Perm( Element % DGIndexes(1:n) ) <= 0 ) ) THEN
+     PRINT *,'size',SIZE( Var % Perm ), MAXVAL( Element % DGIndexes(1:n))
+     PRINT *,'Perm zero:',m,n,dofs,Var % Perm( Element % DGIndexes(1:n) )
+     PRINT *,'size values',SIZE(Var % Values)
+     PRINT *,'Element index:',Element % ElementIndex
+     PRINT *,'Element indexes:',Element % NodeIndexes
+     STOP
+   END IF
+
+   ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
+
+
    DO i=1,m
       dofs = dofs+1
       x = b(1:n,dofs)
       CALL LUSolve(n,MASS,x,pivot)
-      Var % Values(ind(1:n)+i) = x
+      Var % Values(ind(1:n)+i) = x(1:n)
    END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE LocalSol
@@ -6323,6 +6374,10 @@ CONTAINS
 !------------------------------------------------------------------------------
        CALL GetElementNodes( Nodes )
        IP = GaussPoints(Element)
+
+       IF( dim == 2 ) THEN
+         CALL Warn('CalcAverageFlux','Not implemented for 2D problems yet!')
+       END IF
 
        B=0._dp
 
