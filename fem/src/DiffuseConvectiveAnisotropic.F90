@@ -275,7 +275,7 @@ MODULE DiffuseConvective
        END DO
      ELSE IF ( Stabilize .AND. Convection ) THEN
        ConvectAndStabilize = .TRUE.
-       hK = element % hK
+       hK = element % hK * hScale
        mK = element % StabilizationMK
        dNodalBasisdx = 0._dp
        DO p=1,n
