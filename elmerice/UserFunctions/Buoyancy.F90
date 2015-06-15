@@ -84,7 +84,14 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
    dt = Model % Solver % dt 
-   
+
+   !Element type 101 doesn't have a parent element, can't enquire SeaLevel
+   !Should only occur during SaveBoundaryValues, so isn't an issue
+   IF(GetElementFamily(Model % CurrentElement) < 2) THEN
+      pw = 0.0_dp
+      RETURN
+   END IF
+
    IF (FirstTime) THEN
       NewTime = .TRUE.
       told = t
@@ -376,6 +383,13 @@ FUNCTION SeaSpring ( Model, nodenumber, y) RESULT(C)
    Timevar => VariableGet( Model % Variables,'Time')
    t = TimeVar % Values(1)
    dt = Model % Solver % dt 
+
+   !Element type 101 doesn't have a parent element, can't enquire SeaLevel
+   !Should only occur during SaveBoundaryValues, so isn't an issue
+   IF(GetElementFamily(Model % CurrentElement) < 2) THEN
+      C = 1.0e20_dp
+      RETURN
+   END IF
 
    ! .OR. (NewTime .AND. Model % Mesh % Changed)
    IF(FirstTime) THEN
