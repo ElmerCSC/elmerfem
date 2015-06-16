@@ -2691,7 +2691,11 @@ END SUBROUTINE GetMaxDefs
    DO WHILE (MeshNamePar(n:n)==CHAR(0).OR.MeshNamePar(n:n)==' ')
      n=n-1
    END DO
-   INQUIRE( FILE=MeshNamePar(1:n), EXIST=Found)
+   IF(NumProcs<=1) THEN
+     INQUIRE( FILE=MeshNamePar(1:n)//'/mesh.header', EXIST=Found)
+   ELSE
+     INQUIRE( FILE=MeshNamePar(1:n)//'/part.1.header', EXIST=Found)
+   END IF
    IF(.NOT.Found) RETURN
 
    CALL Info('LoadMesh','Starting',Level=8)
