@@ -2527,7 +2527,6 @@ END SUBROUTINE GetMaxDefs
      ! when reading the parallel information. 
      Mesh % ParallelInfo % NumberOfIfDOFs = 0
      Mesh % ParallelInfo % GlobalDOFs => NodeTags
-print*,'eh: ', parenv % mype, maxval(mesh % parallelinfo % globaldofs)
 
    END SUBROUTINE PermuteNodeNumbering
 
