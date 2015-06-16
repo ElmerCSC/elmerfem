@@ -1418,7 +1418,7 @@ END SUBROUTINE GetMaxDefs
        ELSE IF( ASSOCIATED( RightElem ) ) THEN
          RightHit = ANY( TargetBodies == RightElem % BodyId )
          LeftHit = .NOT. RightHit 
-       ELSE
+       ELSE 
          CALL Fatal('CreateDiscontMesh','Either parent is needed (try partitioning with halobc)!')
        END IF
 
@@ -1434,7 +1434,7 @@ END SUBROUTINE GetMaxDefs
        END IF
      ELSE
 
-! Just use a consistent rule, if no target body specified
+       ! Just use a consistent rule, if no target body specified
        IF( .NOT. ( ASSOCIATED( LeftElem ) .AND. ASSOCIATED( RightElem ) ) ) THEN
          CALL Fatal('CreateDiscontMesh','This method of creating discont bc requires parents!')
        END IF
@@ -4896,10 +4896,10 @@ END SUBROUTINE GetMaxDefs
     LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
         EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, IntGalerkin, &
-        CreateDual
+        CreateDual, HaveMaxDistance
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
-        ArcCoeff, EdgeCoeff, NodeCoeff
+        ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance
     INTEGER :: NoNodes1, NoNodes2, MeshDim
     INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow
     INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:),DualNodePerm(:)
@@ -4931,6 +4931,13 @@ END SUBROUTINE GetMaxDefs
         ListGetLogical( BC,'Anti Rotational Projector',Found )
     Cylindrical = ListGetLogical( BC,'Cylindrical Projector',Found ) 
     
+    MaxDistance = ListGetCReal( BC,'Projector Max Distance', HaveMaxDistance) 
+    IF(.NOT. HaveMaxDistance ) THEN
+      MaxDistance = ListGetCReal( CurrentModel % Solver % Values,&
+          'Projector Max Distance', HaveMaxDistance)       
+    END IF
+
+
     Parallel = ( ParEnv % PEs > 1 )
     Mesh => CurrentModel % Mesh
     BMesh1 % Parent => NULL()
@@ -5784,7 +5791,11 @@ END SUBROUTINE GetMaxDefs
         Found = .FALSE.
         x1 = ArcCoeff * BMesh1 % Nodes % x(ind)
         y1 = BMesh1 % Nodes % y(ind)
-        z1 = 0.0_dp
+        IF( HaveMaxDistance ) THEN
+          z1 = BMesh1 % Nodes % z(ind)
+        ELSE
+          z1 = 0.0_dp
+        END IF
 
         sgn0 = 1
         coeff = 0.0_dp
@@ -5809,6 +5820,10 @@ END SUBROUTINE GetMaxDefs
           ElementM => BMesh2 % Elements(indM)
           nM = ElementM % TYPE % NumberOfNodes        
           IndexesM => ElementM % NodeIndexes
+
+          IF( HaveMaxDistance ) THEN
+            IF( MINVAL( ABS( BMesh2 % Nodes % z(IndexesM(1:nM)) - z1 ) ) > MaxDistance ) CYCLE          
+          END IF
           
           ! Quick tests to save time
           NodesM % y(1:nM) = BMesh2 % Nodes % y(IndexesM(1:nM))           
@@ -5887,14 +5902,16 @@ END SUBROUTINE GetMaxDefs
         END DO
 
         IF(.NOT. Found ) THEN
-          WRITE( Message,'(A,2I8,3ES12.3)') 'Problematic node: ',&
-              ind,ParEnv % MyPe,x1,y1,MaxMinBasis
           IF( MaxMinBasis > -1.0e-6 ) THEN
             CALL Info('LevelProjector',Message,Level=8)
             Found = .TRUE.
           ELSE
             Nundefined = Nundefined + 1
-            CALL Warn('LevelProjector',Message )
+            IF( .NOT. HaveMaxDistance ) THEN
+              WRITE( Message,'(A,2I8,3ES12.3)') 'Problematic node: ',&
+                  ind,ParEnv % MyPe,x1,y1,MaxMinBasis
+              CALL Warn('LevelProjector',Message )
+            END IF
           END IF
         END IF
 
@@ -5925,8 +5942,13 @@ END SUBROUTINE GetMaxDefs
       END DO
 
       IF( Nundefined > 0 ) THEN
-        CALL Warn('LevelProjector',&
-            'Nodes could not be determined by any edge: '//TRIM(I2S(Nundefined)))          
+        IF( HaveMaxDistance ) THEN
+          CALL Info('LevelProjector',&
+              'Nodes could not be found in any element: '//TRIM(I2S(Nundefined)))          
+        ELSE
+          CALL Warn('LevelProjector',&
+              'Nodes could not be found in any element: '//TRIM(I2S(Nundefined)))          
+        END IF
       END IF
 
       DEALLOCATE( NodesM % x, NodesM % y, NodesM % z, Basis, coeffi, coeff )
@@ -6880,7 +6902,8 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: x(10),y(10),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,TrueArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , val_dual
+          SumArea,TrueArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , &
+          val_dual, zmin, zmax, zminm, zmaxm
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol
       REAL(KIND=dp) :: TotRefArea, TotSumArea, TotTrueArea
@@ -6986,6 +7009,11 @@ END SUBROUTINE GetMaxDefs
         ymin = MINVAL(Nodes % y(1:n))
         ymax = MAXVAL(Nodes % y(1:n))
                 
+        IF( HaveMaxDistance ) THEN
+          zmin = MINVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+          zmax = MAXVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+        END IF
+
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
@@ -7013,6 +7041,17 @@ END SUBROUTINE GetMaxDefs
         END IF
 
 
+        IF( DoNodes .AND. .NOT. StrongNodes ) THEN
+          DO i=1,n
+            j = InvPerm1(Indexes(i))
+            nrow = NodePerm(j)
+            IF( nrow == 0 ) CYCLE
+            CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                j, 0.0_dp ) 
+          END DO
+        END IF
+
+
         ! Currently a n^2 loop but it could be improved
         !--------------------------------------------------------------------
         ElemCands = 0
@@ -7023,6 +7062,13 @@ END SUBROUTINE GetMaxDefs
           IndexesM => ElementM % NodeIndexes
           nM = ElementM % TYPE % NumberOfNodes
 
+          IF( HaveMaxDistance ) THEN
+            zminm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            zmaxm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            IF( zmaxm < zmin - MaxDistance ) CYCLE
+            IF( zminm > zmax + MaxDistance ) CYCLE
+          END IF
+          
           NodesM % y(1:nM) = BMesh2 % Nodes % y(IndexesM(1:nM))
           
           ! Make the quick and dirty search first
@@ -7598,7 +7644,8 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: xt,yt,zt,xmax,xmin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,MaxErr,MinErr,Err,uvw(3),val_dual,dx,dxcut
+          SumArea,MaxErr,MinErr,Err,uvw(3),val_dual,dx,dxcut, &
+          zmin,zmax, zminm, zmaxm
       REAL(KIND=dp) :: TotRefArea, TotSumArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       LOGICAL :: LeftCircle, Stat
@@ -7644,7 +7691,7 @@ END SUBROUTINE GetMaxDefs
       zt = 0.0_dp
       LeftCircle = .FALSE.
      
-      ! The temporal triangle used in the numerical integration
+      ! The temporal element segment used in the numerical integration
       ElementT % TYPE => GetElementType( 202, .FALSE. )
       ElementT % NodeIndexes => IndexesT
       TotHits = 0
@@ -7680,6 +7727,12 @@ END SUBROUTINE GetMaxDefs
         xmin = MINVAL(Nodes % x(1:n))
         xmax = MAXVAL(Nodes % x(1:n))
         dx = xmax - xmin 
+
+        ! The flattened dimension is always the z-component
+        IF( HaveMaxDistance ) THEN
+          zmin = MINVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+          zmax = MAXVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+        END IF
                         
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
@@ -7697,6 +7750,18 @@ END SUBROUTINE GetMaxDefs
           CLOSE( 10 )
         END IF
 
+        ! Set the values to maintain the size of the matrix
+        ! The size of the matrix is used when allocating for utility vectors of contact algo.
+        ! This does not set the Projector % InvPerm to nonzero value that is used to 
+        ! determine whether there really is a projector. 
+        DO i=1,n
+          j = InvPerm1(Indexes(i))
+          nrow = NodePerm(j)
+          IF( nrow == 0 ) CYCLE
+          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+              j, 0.0_dp ) 
+        END DO
+
         ! Currently a n^2 loop but it could be improved
         !--------------------------------------------------------------------
         ElemHits = 0
@@ -7706,6 +7771,8 @@ END SUBROUTINE GetMaxDefs
           IndexesM => ElementM % NodeIndexes
 
           nM = ElementM % TYPE % NumberOfNodes
+
+ 
           NodesM % x(1:nM) = BMesh2 % Nodes % x(IndexesM(1:nM))
 
           ! Treat the left circle differently. 
@@ -7744,6 +7811,16 @@ END SUBROUTINE GetMaxDefs
 
 200       IF( xminm >= xmax ) GOTO 100
           IF( xmaxm <= xmin ) GOTO 100
+
+          
+          ! This is a cheap test so perform that first, if requested
+          IF( HaveMaxDistance ) THEN
+            zminm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            zmaxm = MAXVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            IF( zmaxm < zmin - MaxDistance ) GOTO 100 
+            IF( zminm > zmax + MaxDistance ) GOTO 100
+          END IF
+          
 
           NodesT % x(1) = MAX( xmin, xminm ) 
           NodesT % x(2) = MIN( xmax, xmaxm ) 
@@ -9333,6 +9410,7 @@ END SUBROUTINE GetMaxDefs
 
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
+      IF( projector % invperm(i) == 0 ) CYCLE
       rowsum = 0.0_dp
       DO j=projector % rows(i), projector % rows(i+1)-1
         WRITE(1,*) projector % invperm(i), projector % cols(j), projector % values(j)
@@ -9342,7 +9420,6 @@ END SUBROUTINE GetMaxDefs
           rowsum = rowsum + projector % values(j)
         END IF
       END DO
-!               PRINT *,'rowsum i:',i,dia,rowsum,rowsum/dia
     END DO
     CLOSE(1)     
 
@@ -9357,16 +9434,18 @@ END SUBROUTINE GetMaxDefs
       
       OPEN(1,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
+        IF( projector % invperm(i) == 0 ) CYCLE
         rowsum = 0.0_dp
-        DO j=projector % rows(i), projector % rows(i+1)-1
-          
+        dia = 0.0_dp
+        DO j=projector % rows(i), projector % rows(i+1)-1          
           IF( projector % invperm(i) == projector % cols(j) ) THEN
             dia = projector % values(j)
           END IF
           rowsum = rowsum + projector % values(j)
         END DO
         
-        WRITE(1,*) projector % invperm(i), i, dia, rowsum
+        WRITE(1,*) projector % invperm(i), i, &
+            projector % rows(i+1)-projector % rows(i),dia, rowsum
       END DO
       CLOSE(1)     
     END IF
@@ -9459,7 +9538,6 @@ END SUBROUTINE GetMaxDefs
       IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', GotIt )
     END IF
 
-
     ! If the boundary is discontinuous then we have the luxury of creating the projector
     ! very cheaply using the permutation vector. This does not need the target as the 
     ! boundary is self-contained.
@@ -9477,6 +9555,21 @@ END SUBROUTINE GetMaxDefs
     END IF
     
     IF ( Trgt <= 0 ) RETURN    
+
+    ! Create the mesh projector, and if needed, also eliminate the ghost nodes
+    ! There are two choices of projector: a nodal projector P in x=Px, and a 
+    ! Galerkin projector [Q-P] in Qx=Px. 
+    ! The projector is assumed to be either a rotational projector with no translation
+    ! and rotation, or then generic one with possible coordinate mapping.
+    !---------------------------------------------------------------------------------
+    CALL Info('PeriodicProjector','-----------------------------------------------------',Level=8)
+    WRITE( Message,'(A,I0,A,I0)') 'Creating projector between BCs ',This,' and ',Trgt
+    CALL Info('PeriodicProjector',Message,Level=8)
+
+    ! If requested map the interface coordinate from (x,y,z) to any permutation
+    ! of these. 
+    CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
+
 
     ! Check whether to use (anti)rotational projector.
     ! We don't really know on which side the projector was called so 
@@ -9516,7 +9609,6 @@ END SUBROUTINE GetMaxDefs
     END IF
     EdgeScale = NodeScale
 
-
     NodalJump = ListCheckPrefix( BC,'Mortar BC Coefficient')
     IF(.NOT. NodalJump ) THEN
       NodalJump = ListCheckPrefix( BC,'Mortar BC Resistivity')
@@ -9533,11 +9625,16 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
-    IF(.NOT. GotIt ) THEN
-      IF( Rotational .OR. Cylindrical .OR. Radial .OR. Flat ) THEN
+    IF( Rotational .OR. Cylindrical .OR. Radial .OR. Flat ) THEN
+      IF(.NOT. GotIt ) THEN
         CALL Info('PeriodicProjector','Enforcing > Level Projector = True < with dimensional reduction',&
             Level = 7 )
         LevelProj = .TRUE. 
+      ELSE IF(.NOT. LevelProj ) THEN
+        ! If we have dimensionally reduced projector but don't use LevelProjector 
+        ! to integrate over it, then ensure that the 3rd coordinate is set to zero.
+        BMesh1 % Nodes % z = 0.0_dp
+        BMesh2 % Nodes % z = 0.0_dp
       END IF
     END IF
 
@@ -9552,7 +9649,6 @@ END SUBROUTINE GetMaxDefs
           DoNodes = ( Mesh % NumberOfNodes > 0 ) 
         END IF
       END IF
-
 
       IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',GotIt ) ) THEN
         DoEdges = .FALSE.
@@ -9582,19 +9678,6 @@ END SUBROUTINE GetMaxDefs
       RETURN
     END IF
 
-    ! Create the mesh projector, and if needed, also eliminate the ghost nodes
-    ! There are two choices of projector: a nodal projector P in x=Px, and a 
-    ! Galerkin projector [Q-P] in Qx=Px. 
-    ! The projector is assumed to be either a rotational projector with no translation
-    ! and rotation, or then generic one with possible coordinate mapping.
-    !---------------------------------------------------------------------------------
-    CALL Info('PeriodicProjector','-----------------------------------------------------',Level=8)
-    WRITE( Message,'(A,I0,A,I0)') 'Creating projector between BCs ',This,' and ',Trgt
-    CALL Info('PeriodicProjector',Message,Level=8)
-
-    ! If requested map the interface coordinate from (x,y,z) to any permutation
-    ! of these. 
-    CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
 
     ! If the interface is rotational move to (phi,z) plane and alter the phi coordinate 
     ! so that the meshes coinside. 
