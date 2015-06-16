@@ -2527,6 +2527,7 @@ END SUBROUTINE GetMaxDefs
      ! when reading the parallel information. 
      Mesh % ParallelInfo % NumberOfIfDOFs = 0
      Mesh % ParallelInfo % GlobalDOFs => NodeTags
+print*,'eh: ', parenv % mype, maxval(mesh % parallelinfo % globaldofs)
 
    END SUBROUTINE PermuteNodeNumbering
 
@@ -4297,7 +4298,7 @@ END SUBROUTINE GetMaxDefs
         PMesh % Elements(ind) % ElementIndex = q % ElementIndex
 
         ! Set also the owner partition
-        PMesh % Elements(ind) % PartIndex = q % PartIndex
+!       PMesh % Elements(ind) % PartIndex = q % PartIndex
 
         en = q % TYPE % NumberOfEdges
         ALLOCATE(PMesh % Elements(ind) % EdgeIndexes(en))
