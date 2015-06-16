@@ -2694,7 +2694,8 @@ END SUBROUTINE GetMaxDefs
    IF(NumProcs<=1) THEN
      INQUIRE( FILE=MeshNamePar(1:n)//'/mesh.header', EXIST=Found)
    ELSE
-     INQUIRE( FILE=MeshNamePar(1:n)//'/part.1.header', EXIST=Found)
+     INQUIRE( FILE=MeshNamePar(1:n)//'/partitioning.'// & 
+         TRIM(i2s(Numprocs))//'/part.1.header', EXIST=Found)
    END IF
    IF(.NOT.Found) RETURN
 
