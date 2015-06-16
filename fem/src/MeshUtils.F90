@@ -1086,10 +1086,11 @@ END SUBROUTINE GetMaxDefs
 !> of the nodes is needed by other bulk elements than those directly 
 !> associated with the discontinuous boundaries. 
 !------------------------------------------------------------------------------
- SUBROUTINE CreateDiscontMesh( Model, Mesh )
+ SUBROUTINE CreateDiscontMesh( Model, Mesh, DoAlways )
 
    TYPE(Model_t) :: Model
    TYPE(Mesh_t), POINTER :: Mesh
+   LOGICAL, OPTIONAL :: DoAlways
 
    INTEGER, POINTER :: DisContPerm(:)
    LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
@@ -1112,7 +1113,13 @@ END SUBROUTINE GetMaxDefs
 
    LOGICAL :: DoneThisAlready = .FALSE.
 
-   IF (DoneThisAlready) RETURN
+   IF(.NOT.PRESENT(DoAlways)) THEN
+     IF (DoneThisAlready) RETURN
+   ELSE 
+     IF(.NOT.DoAlways) THEN
+       IF (DoneThisAlready) RETURN
+     END IF
+   END IF
    DoneThisAlready = .TRUE.
 
    Parallel = ( ParEnv % PEs > 1 )
@@ -2684,7 +2691,12 @@ END SUBROUTINE GetMaxDefs
    DO WHILE (MeshNamePar(n:n)==CHAR(0).OR.MeshNamePar(n:n)==' ')
      n=n-1
    END DO
-   INQUIRE( FILE=MeshNamePar(1:n), EXIST=Found)
+   IF(NumProcs<=1) THEN
+     INQUIRE( FILE=MeshNamePar(1:n)//'/mesh.header', EXIST=Found)
+   ELSE
+     INQUIRE( FILE=MeshNamePar(1:n)//'/partitioning.'// & 
+         TRIM(i2s(Numprocs))//'/part.1.header', EXIST=Found)
+   END IF
    IF(.NOT.Found) RETURN
 
    CALL Info('LoadMesh','Starting',Level=8)
@@ -4290,7 +4302,7 @@ END SUBROUTINE GetMaxDefs
         PMesh % Elements(ind) % ElementIndex = q % ElementIndex
 
         ! Set also the owner partition
-        PMesh % Elements(ind) % PartIndex = q % PartIndex
+!       PMesh % Elements(ind) % PartIndex = q % PartIndex
 
         en = q % TYPE % NumberOfEdges
         ALLOCATE(PMesh % Elements(ind) % EdgeIndexes(en))
