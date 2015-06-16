@@ -145,7 +145,7 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   LOGICAL :: CSymmetry
   
   SAVE CSymmetry, RotMvar, Circuits, n_Circuits, Circuit_tot_n, ip, ipt, Adirichlet, &
-       Tcoef, RotM, Omega
+       Tcoef, RotM, Omega, nm
 !------------------------------------------------------------------------------
 
   IF (First) THEN
