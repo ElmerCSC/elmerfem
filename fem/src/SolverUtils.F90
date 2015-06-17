@@ -1707,7 +1707,7 @@ CONTAINS
      INTEGER :: i,j,k,l,n,m,t,ind,dofs, bf, Upper, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind, master_ind, &
          DistSign, LimitSign, DofN, DofT1, DofT2, Limited, LimitedMin
-     REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:)
+     REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:),pNormal(:,:)
      REAL(KIND=dp) :: ValEps, LoadEps, val, ContactNormal(3), &
          ContactT1(3), ContactT2(3), LocalT1(3), LocalT2(3), &
          LocalNormal(3), NodalForce(3), wsum, coeff, &
@@ -1720,7 +1720,7 @@ CONTAINS
      CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName, VarName
      INTEGER :: ConservativeAfterIters, ActiveDirection, NonlinIter, CoupledIter
      LOGICAL :: ConservativeAdd, ConservativeRemove, &
-         DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, &
+         DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, PlaneProjector, &
          RotationalProjector, FirstTime = .TRUE., SaveContact, ContactSaved, &
          RotatedContact, NoSlip, CalculateVelocity
      TYPE(MortarBC_t), POINTER :: MortarBC
@@ -1811,7 +1811,8 @@ CONTAINS
            //TRIM(I2S(bc_ind)),Level=8)
        Model % Solver % MortarBCsChanged = .TRUE.
 
-       FlatProjector = ListGetLogical( BC, 'Flat Projector',Found )
+       FlatProjector = ListGetLogical( BC, 'Flat Projector',Found ) 
+       PlaneProjector = ListGetLogical( BC, 'Plane Projector',Found )
        RotationalProjector = ListGetLogical( BC, 'Rotational Projector',Found ) .OR. &
            ListGetLogical( BC, 'Cylindrical Projector',Found )
        RotatedContact = ListGetLogical( BC,'Normal-Tangential '//TRIM(VarName),Found)
@@ -1819,7 +1820,7 @@ CONTAINS
        IF( FlatProjector ) THEN
          ActiveDirection = ListGetInteger( BC, 'Flat Projector Coordinate',Found )
          IF( .NOT. Found ) ActiveDirection = dofs       
-       ELSE IF( RotationalProjector ) THEN
+       ELSE IF( RotationalProjector .OR. PlaneProjector ) THEN
          ActiveDirection = 1
          IF( .NOT. RotatedContact ) THEN
            CALL Warn('DetermineContact','Rotational projector may not work without N-T coordinates')
@@ -1850,7 +1851,9 @@ CONTAINS
          CALL Info('DetermineContact','We have a normal-tangential system',Level=6)
          MortarBC % MasterScale = -1.0_dp
          DofN = 1
-       ELSE
+       ELSE IF( PlaneProjector ) THEN
+         CALL Fatal('DetermineContact','PlaneProjector assumes N-T coordinate system!')
+       ELSE                 
          DofN = ActiveDirection 
        END IF
 
@@ -1869,8 +1872,13 @@ CONTAINS
 
        ! This is the normal that is used to detect the signed distance
        ! and tangent vectors used to detect surface velocity
-       ContactNormal = 0.0_dp
-       ContactNormal(ActiveDirection) = 1.0_dp
+       IF( PlaneProjector ) THEN
+         pNormal => ListGetConstRealArray( BC,'Plane Projector Normal',Found)
+         ContactNormal = pNormal(1:3,1)
+       ELSE
+         ContactNormal = 0.0_dp
+         ContactNormal(ActiveDirection) = 1.0_dp
+       END IF
        ContactT1 = 0.0_dp
        ContactT1(DofT1) = 1.0_dp
        ContactT2 = 0.0_dp
@@ -2544,7 +2552,7 @@ CONTAINS
            Normal = NormalVector( Element,Nodes,u,v,.TRUE. )
 
            ! Check the concistency of sign in the projector
-           IF( IsSlave .AND. FlatProjector ) THEN
+           IF( IsSlave .AND. ( FlatProjector .OR. PlaneProjector ) ) THEN
              DotProd = SUM( Normal * ContactNormal ) 
              IF( DotProd < 0.0 ) THEN
                NormalSign = 1

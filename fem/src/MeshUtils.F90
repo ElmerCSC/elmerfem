@@ -9319,6 +9319,155 @@ END SUBROUTINE GetMaxDefs
 
 
   !---------------------------------------------------------------------------
+  !> Given two interface meshes flatten them into the plane that 
+  !> best fits either of the meshes. 
+  !---------------------------------------------------------------------------
+  SUBROUTINE PlaneInterfaceMeshes(BMesh1, BMesh2, BParams )
+    !---------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Valuelist_t), POINTER :: BParams
+    !--------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Bmesh
+    INTEGER :: i, j, n, nip, MeshDim
+    REAL(KIND=dp) :: Normal(3), NormalSum(3), RefSum, Length, Planeness, &
+        PlaneNormal(3,1), PlaneNormal1(3,1), Planeness1, Normal1(3), &
+        Tangent(3), Tangent2(3), Coord(3), detJ, Normal0(3)
+    REAL(KIND=dp), POINTER :: PNormal(:,:), Basis(:)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: ElementNodes
+    INTEGER, POINTER :: NodeIndexes(:)
+    LOGICAL :: Found, Stat, Normal0Set
+
+    CALL Info('PlaneInterfaceMeshes','Flattening interface meshes to a plane',Level=8)    
+
+    MeshDim = CurrentModel % DIMENSION
+    PNormal => ListGetConstRealArray( BParams,'Plane Projector Normal',Found) 
+
+    ! If the projector normal is not given determine it first 
+    IF(.NOT. Found ) THEN     
+      CALL Info('PlaneInterfaceMeshes','Could not find > Plane Projector Normal < so determining it now',Level=12)    
+      n = CurrentModel % MaxElementNodes
+      ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), &
+          ElementNodes % z(n), Basis(n) )
+
+      ! Fit a plane to both datasets
+      DO j=1, 2
+        IF( j == 1 ) THEN
+          Bmesh => BMesh1
+        ELSE      
+          BMesh => BMesh2
+        END IF
+
+        NormalSum = 0.0_dp
+        RefSum = 0.0_dp
+        Normal0Set = .FALSE.
+
+        ! we use the Dot2Min and Normal2 temporarily also for first mesh, with k=1
+        !-------------------------------------------------------------------------
+        DO i=1, BMesh % NumberOfBulkElements
+          Element => BMesh % Elements(i)
+          n = Element % TYPE % NumberOfNodes
+          NodeIndexes => Element % NodeIndexes
+          IP = GaussPoints( Element ) 
+
+          ElementNodes % x(1:n) = BMesh % Nodes % x(NodeIndexes(1:n))
+          ElementNodes % y(1:n) = BMesh % Nodes % y(NodeIndexes(1:n))
+          ElementNodes % z(1:n) = BMesh % Nodes % z(NodeIndexes(1:n))           
+
+          DO nip=1, IP % n 
+            stat = ElementInfo( Element,ElementNodes,&
+                IP % u(nip),IP % v(nip),IP % w(nip),detJ,Basis)
+
+            Normal = NormalVector( Element, ElementNodes, &
+                IP % u(nip), IP % v(nip), .FALSE. ) 
+            IF( .NOT. Normal0Set ) THEN
+              Normal0 = Normal
+              Normal0Set = .TRUE.
+            END IF
+
+            IF( SUM( Normal * Normal0 ) < 0.0 ) Normal = -Normal
+
+            NormalSum = NormalSum + IP % S(nip) * DetJ * Normal
+            RefSum = RefSum + IP % S(nip) * DetJ
+          END DO
+        END DO
+
+        ! Normalize the normal to unity length
+        Length = SQRT( SUM( NormalSum ** 2 ) )
+        PlaneNormal(:,1) = NormalSum / Length
+
+        ! Planeness is one if all the normals have the same direction
+        Planeness = Length / RefSum 
+        
+        PRINT *,'PlaneNormal:',j,PlaneNormal(:,1),Length,Planeness
+
+        ! Save the key parameters of the first mesh
+        IF( j == 1 ) THEN          
+          PlaneNormal1 = PlaneNormal
+          Planeness1 = Planeness
+        END IF
+      END DO
+
+      ! Choose the mesh for which is close to a plane 
+      IF( Planeness1 > Planeness ) THEN
+        PRINT *,'PlaneNormal: Selecting slave'
+        PlaneNormal = PlaneNormal1
+      ELSE
+        PRINT *,'PlaneNormal: Selecting master'        
+      END IF
+
+      PRINT *,'PlaneNormal selected:',PlaneNormal(:,1)
+
+      CALL ListAddConstRealArray( BParams,'Plane Projector Normal',&
+          3,1,PlaneNormal )
+      DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z, Basis )
+
+      PNormal => ListGetConstRealArray( BParams,'Plane Projector Normal',Found) 
+    END IF
+
+    Normal = Pnormal(1:3,1)
+    CALL TangentDirections( Normal, Tangent, Tangent2 )
+
+    !PRINT *,'Normal:',Normal
+    !PRINT *,'Tangent1:',Tangent
+    !PRINT *,'Tangent2:',Tangent2
+
+    DO j=1,2
+      IF( j == 1 ) THEN
+        Bmesh => BMesh1
+      ELSE
+        BMesh => BMesh2
+      END IF
+
+      DO i=1,BMesh % NumberOfNodes
+        Coord(1) = BMesh % Nodes % x(i)
+        Coord(2) = BMesh % Nodes % y(i)
+        Coord(3) = BMesh % Nodes % z(i)
+
+        BMesh % Nodes % x(i) = SUM( Coord * Tangent )
+        IF( MeshDim == 3 ) THEN
+          BMesh % Nodes % y(i) = SUM( Coord * Tangent2 )
+        ELSE
+          BMesh % Nodes % y(i) = 0.0_dp
+        END IF
+        BMesh % Nodes % z(i) = SUM( Coord * Normal ) 
+      END DO
+
+      !PRINT *,'Range for mesh:',j
+      !PRINT *,'X:',MINVAL(BMesh % Nodes % x),MAXVAL(BMesh % Nodes % x)
+      !PRINT *,'Y:',MINVAL(BMesh % Nodes % y),MAXVAL(BMesh % Nodes % y)
+      !PRINT *,'Z:',MINVAL(BMesh % Nodes % z),MAXVAL(BMesh % Nodes % z)
+    END DO
+
+    Bmesh % MeshDim = 2
+
+  END SUBROUTINE PlaneInterfaceMeshes
+  !------------------------------------------------------------------------------
+
+
+
+  !---------------------------------------------------------------------------
   !> Given a permutation map the (x,y,z) such that the projector can better 
   !> be applied. E.g. if boundary has constant x, take that as the last coordinate.
   !---------------------------------------------------------------------------
@@ -9507,7 +9656,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
-        Flat, LevelProj, FullCircle, Cylindrical
+        Flat, Plane, LevelProj, FullCircle, Cylindrical
     INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
@@ -9610,6 +9759,8 @@ END SUBROUTINE GetMaxDefs
 
     Flat = ListGetLogical( BC, &
         'Flat Projector',GotIt )
+    Plane = ListGetLogical( BC, &
+        'Plane Projector',GotIt )
 
     NodeScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) THEN
@@ -9637,7 +9788,7 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
-    IF( Rotational .OR. Cylindrical .OR. Radial .OR. Flat ) THEN
+    IF( Rotational .OR. Cylindrical .OR. Radial .OR. Flat .OR. Plane ) THEN
       IF(.NOT. GotIt ) THEN
         CALL Info('PeriodicProjector','Enforcing > Level Projector = True < with dimensional reduction',&
             Level = 7 )
@@ -9705,6 +9856,8 @@ END SUBROUTINE GetMaxDefs
       CALL RadialInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( Flat ) THEN
       CALL FlatInterfaceMeshes( BMesh1, BMesh2, BC )
+    ELSE IF( Plane ) THEN
+      CALL PlaneInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( .NOT. Sliding ) THEN
       CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
     END IF
