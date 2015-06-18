@@ -714,6 +714,34 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
 
+!-------------------Circuit stuff----------------------------------------------
+  TYPE CMPLXCircuitVariable_t
+    LOGICAL :: isIvar, isVvar
+    INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner
+    TYPE(CMPLXComponent_t), POINTER :: Component
+    REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: Source(:), M(:)
+    INTEGER, ALLOCATABLE :: EqVarIds(:)
+  END TYPE CMPLXCircuitVariable_t
+  
+  TYPE CMPLXComponent_t
+    REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
+                     N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
+    INTEGER :: BodyId, polord, ElBoundary, nofcnts
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    TYPE(CMPLXCircuitVariable_t), POINTER :: ivar, vvar
+  END TYPE CMPLXComponent_t
+
+  TYPE CMPLXCircuit_t
+    REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
+    INTEGER, ALLOCATABLE :: Body(:), Perm(:)
+    LOGICAL :: UsePerm = .FALSE.
+    INTEGER :: n, m, n_comp,CvarDofs
+    CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), sourceRe(:), sourceIm(:), sourcetype(:)
+    TYPE(CMPLXComponent_t), POINTER :: Components(:)
+    TYPE(CMPLXCircuitVariable_t), POINTER :: CircuitVariables(:)
+  END TYPE CMPLXCircuit_t
+!-------------------Circuit stuff----------------------------------------------
 
 !------------------------------------------------------------------------------
     TYPE Model_t
@@ -824,11 +852,16 @@ END INTERFACE
 
       TYPE(Mesh_t),   POINTER :: Mesh   => NULL()
       TYPE(Solver_t), POINTER :: Solver => NULL()
+      
+      ! Circuits:
+      INTEGER, POINTER :: n_Circuits=>Null(), Circuit_tot_n=>Null()
+      TYPE(Matrix_t), POINTER :: CircuitMatrix => Null()
+      TYPE(CMPLXCircuit_t), POINTER :: CMPLXCircuits(:) => Null()
+    
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
-
 
 !------------------------------------------------------------------------------
 END MODULE Types
