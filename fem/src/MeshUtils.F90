@@ -9310,6 +9310,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,This
     REAL(KIND=dp) :: rowsum, dia
 
+    IF(.NOT.ASSOCIATED(Projector)) RETURN
     This = Projector % ProjectorBC
 
     IF( PRESENT( Prefix ) ) THEN
