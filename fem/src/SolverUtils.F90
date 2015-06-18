@@ -6366,6 +6366,7 @@ END FUNCTION SearchNodeL
         IF( Stat .AND. RelaxAfter >= IterNo ) Relax = .FALSE.
       END IF	
 
+      RelaxBefore = .TRUE.
       IF(Relax) THEN
         RelaxBefore = ListGetLogical( SolverParams, &
             'Steady State Relaxation Before', Stat )      
@@ -6404,6 +6405,7 @@ END FUNCTION SearchNodeL
       SkipConstraints = ListGetLogical(SolverParams,&
           'Nonlinear System Convergence Without Constraints',Stat) 
 
+      RelaxBefore = .TRUE.
       IF(Relax) THEN
         RelaxBefore = ListGetLogical( SolverParams, &
             'Nonlinear System Relaxation Before', Stat )
@@ -10100,6 +10102,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       END DO
     END DO
 
+
     EliminateSlave = ListGetLogical( Solver % values, 'Eliminate Slave',Found )
     EliminateFromMaster = ListGetLogical( Solver % values, 'Eliminate From Master',Found )
 
@@ -10196,7 +10199,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         Tvals => Tmat % Values
         IF(.NOT.ASSOCIATED(Xmat,RestMatrix)) CALL FreeMatrix(Xmat)
       END IF
-
       Xmat => TMat
     END DO
 
@@ -10208,10 +10210,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         k = TMat % Cols(j)
         IF(k<=n) THEN
           IF(UsePerm(k)/=0) CYCLE
+          scl = -Tvals(j) / UseDiag(m)
         ELSE
           k = UseIPerm(k-n)
+          ! multiplied by 1/2 in GenerateConstraintMatrx()
+          scl = -2*Tvals(j) / UseDiag(m)
         END IF
-        scl = -Tvals(j) / UseDiag(m)
 
         DO l=StiffMatrix % Rows(i+1)-1, StiffMatrix % Rows(i),-1
           CALL List_AddToMatrixElement( Lmat, k, &
@@ -10239,7 +10243,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             cPtr  => cPtr % Next
             CYCLE
           END IF
-          scl = -cPtr % Value / UseDiag(j)
+          scl = -cPtr % Value / SlaveDiag(j)
 
           cTmp  => cPtr
           cPtr  => cPtr % Next
@@ -10250,20 +10254,19 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
           ! ... and add replacement values:
           ! -------------------------------
-          j = UseIPerm(j)
-          cTmp => Lmat(j) % Head
+          k = UseIPerm(j)
+          cTmp => Lmat(k) % Head
           DO WHILE(ASSOCIATED(cTmp))
              l = cTmp % Index
-             IF(j/=l) &
+             IF ( l /= SlaveIPerm(j) ) &
                CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
              cTmp => cTmp % Next
           END DO
-          CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(j)
+          CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)
         END DO
       END DO
     END IF
 
-#if 0
     ! Optimize bandwidth, if needed:
     ! ------------------------------
     IF(EliminateFromMaster) THEN
@@ -10284,7 +10287,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         CollectionVector(k) = scl
       END DO
     END IF
-#endif
 
     CALL Info('SolveWithLinearRestriction',&
         'Finished Adding ConstraintMatrix',Level=12)
