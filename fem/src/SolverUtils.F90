@@ -8540,22 +8540,19 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 !> Prints the values of the CRS matrix to standard output.
 !------------------------------------------------------------------------------
-  SUBROUTINE PrintMatrix( A, SaveMass, SaveDamp, SaveStiff, ParArg, Solver )
+  SUBROUTINE PrintMatrix( A, Parallel, CNumbering,SaveMass, SaveDamp, SaveStiff)
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A            !< Structure holding matrix
+    LOGICAL :: Parallel    !< are we in parallel mode?
+    LOGICAL :: CNumbering  !< Continuous numbering ?
     LOGICAL, OPTIONAL :: SaveMass  !< Should we save the mass matrix
     LOGICAL, OPTIONAL :: SaveDamp  !< Should we save the damping matrix
     LOGICAL, OPTIONAL :: SaveStiff !< Should we save the stiffness matrix
-    LOGICAL, OPTIONAL :: ParArg    !< are we in parallel mode?
-    TYPE(Solver_t), OPTIONAL :: Solver ! Solver parameters
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,IndMass,IndDamp,IndStiff,IndMax,row,col
-    LOGICAL :: DoMass, DoDamp, DoStiff, Parallel, Cnumbering, Found
+    LOGICAL :: DoMass, DoDamp, DoStiff, Found
     REAL(KIND=dp) :: Vals(3)
     INTEGER, ALLOCATABLE :: Owner(:)
-
-    Parallel = .FALSE.
-    IF(PRESENT(ParArg)) Parallel = ParArg
 
     DoMass = .FALSE.
     IF( PRESENT( SaveMass ) ) DoMass = SaveMass
@@ -8591,17 +8588,12 @@ END FUNCTION SearchNodeL
     IF( DoMass ) IndMass = IndDamp + 1
     IndMax = MAX( IndStiff, IndDamp, IndMass )
 
-    IF( PRESENT(Solver).AND.Parallel ) THEN
-      Cnumbering = ListGetLogical( Solver % Values, &
-               'Linear System Save Continuous Numbering', Found)
-
-      IF(Cnumbering) THEN
-        n = SIZE(A % ParallelInfo % GlobalDOFs)
+    IF (Parallel.AND.Cnumbering) THEN
+      n = SIZE(A % ParallelInfo % GlobalDOFs)
   
-        ALLOCATE( A % Gorder(n), Owner(n) )
-        CALL ContinuousNumbering( A % ParallelInfo, &
-            A % Perm, A % Gorder, Owner )
-      END IF
+      ALLOCATE( A % Gorder(n), Owner(n) )
+      CALL ContinuousNumbering( A % ParallelInfo, &
+          A % Perm, A % Gorder, Owner )
     END IF
 
     DO i=1,A % NumberOfRows
@@ -8644,21 +8636,34 @@ END FUNCTION SearchNodeL
       END DO
     END DO
 
+!------------------------------------------------------------------------------
   END SUBROUTINE  PrintMatrix
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Prints the values of the right-hand-side vector to standard output.
 !------------------------------------------------------------------------------
-  SUBROUTINE PrintRHS( A )
+  SUBROUTINE PrintRHS( A, Parallel, CNumbering )
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A  !< Structure holding matrix
+    LOGICAL :: Parallel, CNumbering
 !------------------------------------------------------------------------------
-    INTEGER :: i
+    INTEGER :: i, row
     REAL(KIND=dp) :: Val
 
     DO i=1,A % NumberOfRows
+      row = i
+      IF(Parallel) THEN
+        IF(Cnumbering) THEN
+          row = A % Gorder(i)
+        ELSE 
+          row = A % ParallelInfo % GlobalDOFs(i)
+        END IF
+      END IF
+
       Val = A % Rhs(i)
-      WRITE(1,'(I0,A)',ADVANCE='NO') i,' '
+      WRITE(1,'(I0,A)',ADVANCE='NO') row,' '
       IF( ABS( Val ) <= TINY( Val ) ) THEN
         WRITE(1,'(A)') '0.0'
       ELSE
@@ -10401,7 +10406,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     CHARACTER(LEN=MAX_NAME_LEN) :: dumpfile, dumpprefix
     INTEGER, POINTER :: Perm(:)
     INTEGER :: i
-    LOGICAL :: SaveMass, SaveDamp, SavePerm, Found , Parallel
+    LOGICAL :: SaveMass, SaveDamp, SavePerm, Found , Parallel, CNumbering
 !------------------------------------------------------------------------------
 
     CALL Info('SaveLinearSystem','Saving linear system',Level=4)
@@ -10412,6 +10417,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     IF(.NOT. ASSOCIATED( Params ) ) THEN
       CALL Fatal('SaveLinearSystem','Parameter list not associated!')
     END IF
+
+    CNumbering = ListGetLogical(Params, 'Linear System Save Continuous Numbering',Found)
 
     IF( PRESENT(Ain)) THEN
       A => Ain
@@ -10433,14 +10440,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//TRIM(I2S(ParEnv % myPE))
     CALL Info('SaveLinearSystem','Saving matrix to: '//TRIM(dumpfile))
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
-    CALL PrintMatrix(A,SaveMass=SaveMass,SaveDamp=SaveDamp,ParArg=Parallel,Solver=Solver)
+    CALL PrintMatrix(A,Parallel,Cnumbering,SaveMass=SaveMass,SaveDamp=SaveDamp)
     CLOSE(1)
 
     dumpfile = TRIM(dumpprefix)//'_b.dat'
     IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//TRIM(I2S(ParEnv % myPE))
     CALL Info('SaveLinearSystem','Saving matrix rhs to: '//TRIM(dumpfile))
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
-    CALL PrintRHS(A)
+    CALL PrintRHS(A, Parallel, CNumbering)
     CLOSE(1)
     
     SavePerm = ListGetLogical( Params,'Linear System Save Perm',Found)
