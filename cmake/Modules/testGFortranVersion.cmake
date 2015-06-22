@@ -41,11 +41,12 @@ ENDIF()
 ELSE()
   # Handle cross-compilation without user intervention
   FILE(WRITE ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testGFortranVersion.F90   
-"program versiontest
+"
+program versiontest
 #if defined(__GFORTRAN__) && defined(__GNUC__) && defined(__GNUC_MINOR__)
 #if __GNUC__<5
 #if __GNUC_MINOR__<8
-! Gfortran versions earlier than 4.8 known not to fully work with Elmer
+! Gfortran versions <4.8 are known not to fully work with Elmer
 #error 
 #endif
 #endif
