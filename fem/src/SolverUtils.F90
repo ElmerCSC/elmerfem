@@ -7810,18 +7810,20 @@ END FUNCTION SearchNodeL
       DEALLOCATE( tmp_weights )
     END IF
 
-    DO i = 1, NoBC
-      PRINT *,'BC weight:',i,bc_weights(i)
-    END DO
-    DO i = 1, NoBF
-      PRINT *,'BF weight:',i,bf_weights(i)
-    END DO
-    DO i = 1, NoBodies
-      PRINT *,'Body weight:',i,body_weights(i)
-    END DO
-    DO i = 1, NoMat
-      PRINT *,'Mat weight:',i,mat_weights(i)
-    END DO
+    IF( ParEnv % MyPe == 0 ) THEN
+      DO i = 1, NoBC
+        PRINT *,'BC weight:',i,bc_weights(i)
+      END DO
+      DO i = 1, NoBF
+        PRINT *,'BF weight:',i,bf_weights(i)
+      END DO
+      DO i = 1, NoBodies
+        PRINT *,'Body weight:',i,body_weights(i)
+      END DO
+      DO i = 1, NoMat
+        PRINT *,'Mat weight:',i,mat_weights(i)
+      END DO
+    END IF
 
     DEALLOCATE(Basis, &
         ElementNodes % x, ElementNodes % y, ElementNodes % z )
