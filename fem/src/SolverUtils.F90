@@ -4741,7 +4741,7 @@ CONTAINS
       Coeff(1:n) = ListGetReal( BC,& 
           'Friction Coefficient ' // Name(1:nlen), n, NodeIndexes )
       IF( ListGetLogical( BC,& 
-          'Normal-Tangential ' // Name(1:nlen) ) ) THEN
+          'Normal-Tangential ' // Name(1:nlen), Found ) ) THEN
         NormalInd = 1 
       ELSE
         NormalInd = ListGetInteger( BC,& 
@@ -11793,9 +11793,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      ALLOCATE( ActiveComponents(dofs), SetDefined(dofs) ) 
      
      IF( SumProjectors ) THEN
-       IF( dofs > 1 ) THEN
-         CALL Fatal('GenerateConstraintMatrix','Summing of projectors implemented only for one dof!')
-       END IF
        ALLOCATE( SumPerm( dofs * permsize ), SumCount( arows ) )
        SumPerm = 0
        SumCount = 0
@@ -11810,7 +11807,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      ! Currently complex matrix is enforced if there is an even number of 
      ! entries since it seems that we cannot rely on the flag to be set.
      ComplexMatrix = ( MODULO( Dofs,2 ) == 0 )
-
 
 100  sumrow = 0
      k2 = 0
@@ -12062,8 +12058,21 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
              IF( k == 0 ) CYCLE
              IF( Perm(k) == 0 ) CYCLE
              
-             sumrow = sumrow + 1
-             row = sumrow
+             IF( SumProjectors ) THEN
+               NewRow = ( SumPerm(Dofs*(k-1)+j) == 0 )
+               IF( NewRow ) THEN
+                 sumrow = sumrow + 1                
+                 SumPerm(Dofs*(k-1)+j) = sumrow 
+               ELSE
+                 IF(.NOT. AllocationsDone ) THEN
+                   EliminatedRows = EliminatedRows + 1
+                 END IF
+               END IF
+               row = SumPerm(k)
+             ELSE
+               sumrow = sumrow + 1
+               row = sumrow
+             END IF
 
              IF( AllocationsDone ) THEN
                Btmp % InvPerm(row) = rowoffset + Dofs * ( Perm( k ) - 1 ) + j
@@ -12083,7 +12092,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                  CYCLE
                END IF              
                
-               k2 = k2 + 1
                IF( AllocationsDone ) THEN
                  
                  IF( CreateSelf ) THEN
@@ -12100,6 +12108,15 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                    Scale = 1.0_dp
                  END IF
 
+                 IF( SumProjectors ) THEN
+                   k2 = Btmp % Rows(row)
+                   DO WHILE( Btmp % Cols(k2) > 0 )
+                     k2 = k2 + 1
+                   END DO
+                 ELSE
+                   k2 = k2 + 1
+                 END IF
+                 
                  Btmp % Cols(k2) = Dofs * ( col2 - 1) + j
                  Btmp % Values(k2) = Scale * Atmp % Values(k)
                  IF(ASSOCIATED(Btmp % Tvalues)) THEN
@@ -12109,6 +12126,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                      Btmp % TValues(k2) = Scale * Atmp % Values(k)
                    END IF
                  END IF
+               ELSE
+                 k2 = k2 + 1 
+                 IF( SumProjectors ) THEN
+                   SumCount(row) = SumCount(row) + 1
+                 END IF                 
                END IF
              END DO
               
@@ -12165,7 +12187,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                IF( ASSOCIATED( MortarBC % Rhs ) ) THEN
                  Btmp % Rhs(row) = wsum * MortarBC % rhs(Dofs*(i-1)+j)
                END IF
-               Btmp % Rows(row+1) = k2 + 1
+               IF(.NOT. SumProjectors ) THEN
+                 Btmp % Rows(row+1) = k2 + 1
+               END IF
              END IF
 
            END DO
