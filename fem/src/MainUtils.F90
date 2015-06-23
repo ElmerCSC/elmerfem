@@ -252,6 +252,181 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+! This subroutine enables the rotation of vector valued keywords.
+!------------------------------------------------------------------------------
+   SUBROUTINE SetRotatedProperties(Model, Mesh)
+     TYPE(Model_t) :: Model
+     TYPE(Mesh_t), POINTER :: Mesh
+
+     LOGICAL :: AnyBC, AnyBodyForce, AnyMat, AnyBody
+     CHARACTER(LEN=MAX_NAME_LEN) :: Suffix
+     INTEGER :: list_ind
+     REAL(KIND=dp) :: RotMatrix(3,3), Angles(3,1)
+     REAL(KIND=dp), POINTER :: Pmatrix(:,:)
+     INTEGER, TARGET :: NodeIndex(1)
+     INTEGER, POINTER :: NodeIndexes(:)
+     REAL(KIND=dp) :: EntityWeight
+     LOGICAL :: Found
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL :: Visited = .FALSE.
+
+     SAVE Visited, Suffix, AnyBC, AnyBodyForce, AnyMat, AnyBody
+
+     IF(.NOT. Visited ) THEN
+       Suffix = 'Property Rotate'
+       AnyBC = ListCheckSuffixAnyBC( Model, Suffix )
+       AnyBodyForce = ListCheckSuffixAnyBodyForce( Model, Suffix )
+       AnyMat = ListCheckSuffixAnyMaterial( Model, Suffix )
+       AnyBody = ListCheckSuffixAnyBody( Model, Suffix )
+       Visited = .TRUE.
+     END IF
+       
+     IF( .NOT. ( AnyBC .OR. AnyBodyForce .OR. AnyMat .OR. AnyBody ) ) RETURN
+
+     NodeIndex(1) = 1
+     NodeIndexes => NodeIndex
+
+     IF( AnyBody ) THEN
+       DO list_ind = 1,Model % NumberOfBodies
+         List => Model % Bodies(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+
+     IF( AnyBodyForce ) THEN
+       DO list_ind = 1,Model % NumberOfBodyForces
+         List => Model % BodyForces(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+
+     IF( AnyMat ) THEN
+       DO list_ind = 1,Model % NumberOfMaterials
+         List => Model % Materials(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+
+     IF( AnyBC ) THEN
+       DO list_ind = 1,Model % NumberOfBCs
+         List => Model % BCs(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+   CONTAINS 
+
+     FUNCTION AnglesToRotationMatrix( Angles, RotateOrder ) RESULT ( RotMatrix )
+
+       REAL(KIND=dp) :: Angles(3), RotMatrix(3,3)
+       INTEGER, OPTIONAL :: RotateOrder(3)
+
+       INTEGER :: i,j
+       REAL(KIND=dp) :: TrfMatrix(3,3), IdentityMatrix(3,3), Alpha
+
+       IdentityMatrix = 0.0_dp
+       DO i=1,3
+         IdentityMatrix(i,i) = 1.0_dp
+       END DO
+
+       RotMatrix = IdentityMatrix
+
+       DO i=1,3
+         j = i
+         IF( PRESENT( RotateOrder ) ) j = RotateOrder(i)
+         Alpha = Angles(j) * PI / 180.0_dp
+
+         IF( ABS(Alpha) < TINY(Alpha) ) CYCLE
+         TrfMatrix = IdentityMatrix
+
+         SELECT CASE(j)
+         CASE(1)
+           TrfMatrix(2,2) =  COS(Alpha)
+           TrfMatrix(2,3) = -SIN(Alpha)
+           TrfMatrix(3,2) =  SIN(Alpha)
+           TrfMatrix(3,3) =  COS(Alpha)
+         CASE(2)
+           TrfMatrix(1,1) =  COS(Alpha)
+           TrfMatrix(1,3) = -SIN(Alpha)
+           TrfMatrix(3,1) =  SIN(Alpha)
+           TrfMatrix(3,3) =  COS(Alpha)
+         CASE(3)
+           TrfMatrix(1,1) =  COS(Alpha)
+           TrfMatrix(1,2) = -SIN(Alpha)
+           TrfMatrix(2,1) =  SIN(Alpha)
+           TrfMatrix(2,2) =  COS(Alpha)
+         END SELECT
+
+         RotMatrix = MATMUL( RotMatrix, TrfMatrix )
+       END DO
+
+     END FUNCTION AnglesToRotationMatrix
+
+
+   END SUBROUTINE SetRotatedProperties
+!------------------------------------------------------------------------------
+
+
 
 
 !------------------------------------------------------------------------------
@@ -3727,6 +3902,10 @@ CONTAINS
        CALL CoordinateTransformation( Solver % Mesh, CoordTransform, &
            Params, .FALSE. )
      END IF
+
+     ! Some properties might be rotated by "Property Rotate"
+     !--------------------------------------------------------------
+     CALL SetRotatedProperties(Model, Solver % Mesh)
 
      ! Some keywords may be normalized by area or volume
      !--------------------------------------------------------------
