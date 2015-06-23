@@ -472,7 +472,6 @@ CONTAINS
          END DO
        END DO
      END DO
-     Def_Dofs(:,4) = -1
 
      Newmesh => LoadMesh2( Model, Name, Name, &
        .FALSE., Parenv % PEs, ParEnv % myPE, Def_Dofs )
