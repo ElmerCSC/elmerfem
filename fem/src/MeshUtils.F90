@@ -1097,7 +1097,7 @@ END SUBROUTINE GetMaxDefs
        DecidedElem(:)
    LOGICAL :: Found, DisCont, GreedyBulk, GreedyBC, Debug, DoubleBC, UseTargetBodies, &
        UseConsistantBody, LeftHit, RightHit, Moving, Moving2, Set, Parallel
-   INTEGER :: i,j,k,n,t,bc
+   INTEGER :: i,j,k,n,m,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        NoBulkElems, NoBoundElems, NoParentElems, NoMissingElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
@@ -1109,6 +1109,8 @@ END SUBROUTINE GetMaxDefs
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
        ParentElem, OtherElem
    CHARACTER(MAX_NAME_LEN) :: DiscontFlag
+   LOGICAL :: CheckForHalo
+   LOGICAL, ALLOCATABLE :: ActiveNode(:)
 
 
    LOGICAL :: DoneThisAlready = .FALSE.
@@ -1155,6 +1157,7 @@ END SUBROUTINE GetMaxDefs
    DecidedElem = .FALSE.
    NoDisContElems = 0
    NoMissingElems = 0
+
 
    ! Go over all boundary elements and mark nodes that should be 
    ! discontinuous and nodes that should be continuous 
@@ -1203,17 +1206,14 @@ END SUBROUTINE GetMaxDefs
    NoParentElems = COUNT( DecidedElem(1:NoBulkElems) )
    NoDisContNodes = COUNT( DisContNode ) 
 
-   IF( .NOT. Parallel ) THEN
-     ! Print more information when operating in serial mode since in parallel
-     ! this results to additional communication.
-     CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '&
-         //TRIM(I2S(NoDisContElems)),Level=7)
-     CALL Info('CreateDiscontMesh','Number of discontinuous parent elements: '&
-         //TRIM(I2S(NoParentElems)),Level=7 )
-     CALL Info('CreateDiscontMesh','Number of candicate nodes: '&
-         //TRIM(I2S(NoDisContNodes)),Level=7)
-   END IF
-
+   ! Print more information when operating in serial mode since in parallel
+   ! this results to additional communication.
+   CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '&
+       //TRIM(I2S(NoDisContElems)),Level=7)
+   CALL Info('CreateDiscontMesh','Number of discontinuous parent elements: '&
+       //TRIM(I2S(NoParentElems)),Level=7 )
+   CALL Info('CreateDiscontMesh','Number of candicate nodes: '&
+       //TRIM(I2S(NoDisContNodes)),Level=7)
 
    ! By default all nodes that are associated to elements immediately at the discontinuous 
    ! boundary are treated as discontinuous. However, the user may be not be greedy and release
@@ -1246,18 +1246,50 @@ END SUBROUTINE GetMaxDefs
        END DO
        NoDisContNodes = COUNT( DisContNode ) 
      END IF
-     
-     IF(.NOT. Parallel ) THEN
-       IF( NoDiscontNodes < n ) THEN
-         CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '//TRIM(I2S(NoDisContNodes)) )
-       ELSE
-         CALL Info('CreateDiscontMesh','All candidate nodes used')
-       END IF
 
-       IF( NoDiscontNodes == 0 ) THEN
-         IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
-           CALL Info('CreateDiscontMesh','You might want to try the Greedy bulk strategy',Level=3)
+
+     CheckForHalo = .FALSE.
+     IF( Parallel ) THEN
+       DO t = 1, NoBulkElems     
+         Element => Mesh % Elements(t)
+         IF( ParEnv % MyPe /= Element % PartIndex ) THEN
+           CheckForHalo = .TRUE.
+           EXIT
          END IF
+       END DO
+       
+       IF( CheckForHalo ) THEN
+         CALL Info('CreateDiscontMesh','Checking for nodes that are not really needed in bulk assembly')
+         ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+         ActiveNode = .FALSE.
+         DO t = 1, NoBulkElems     
+           Element => Mesh % Elements(t)
+           IF( ParEnv % MyPe == Element % PartIndex ) THEN
+             Indexes => Element % NodeIndexes
+             ActiveNode( Indexes ) = .TRUE.
+           END IF
+         END DO
+         m = Mesh % NumberOfNodes - COUNT( ActiveNode ) 
+         CALL Info('CreateDiscontMesh','Number of passive nodes in the halo: '//TRIM(I2S(m)))
+     
+         IF( m > 0 ) THEN
+           DisContNode = DisContNode .AND. ActiveNode 
+           m = COUNT( DisContNode )
+           CALL Info('CreateDiscontMesh','Number of candidate nodes without halo: '&
+               //TRIM(I2S(m)),Level=7)
+         END IF
+       END IF
+     END IF
+
+     IF( NoDiscontNodes < n ) THEN
+       CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '//TRIM(I2S(NoDisContNodes)) )
+     ELSE
+       CALL Info('CreateDiscontMesh','All candidate nodes used')
+     END IF
+     
+     IF( NoDiscontNodes == 0 ) THEN
+       IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
+         CALL Info('CreateDiscontMesh','You might want to try the Greedy bulk strategy',Level=3)
        END IF
      END IF
    END IF
@@ -1384,6 +1416,10 @@ END SUBROUTINE GetMaxDefs
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
 
+     IF( CheckForHalo ) THEN
+       IF( .NOT. ANY( ActiveNode(Indexes) ) ) CYCLE
+     END IF
+
      IF( UseTargetBodies ) THEN
        DO bc = 1,Model % NumberOfBCs
          IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
@@ -1426,6 +1462,7 @@ END SUBROUTINE GetMaxDefs
          RightHit = ANY( TargetBodies == RightElem % BodyId )
          LeftHit = .NOT. RightHit 
        ELSE 
+         PRINT *,'CreateDiscontMesh Indexes:',Indexes,DisContPerm(Indexes)
          CALL Fatal('CreateDiscontMesh','Either parent is needed (try partitioning with halobc)!')
        END IF
 
@@ -1461,36 +1498,41 @@ END SUBROUTINE GetMaxDefs
      ! of another boundary element in which case the nodal indexes 
      ! might already have been manipulated. 
      IF( ASSOCIATED( ParentElem ) ) THEN
-       DO j=1,SIZE(ParentElem % NodeIndexes)
-         k = ParentElem % NodeIndexes(j)
-         IF( k <= NoNodes ) MovingNode( k ) = .TRUE.
-       END DO
-
-       ! Ok, we found the element to manipulate the indexes. 
-       ! The new index is numbered on top of the old indexes. 
-       ParentIndexes => ParentElem % NodeIndexes
-       DO i=1,SIZE(ParentIndexes) 
-         j = ParentIndexes(i)
-
-         ! If a bulk element is parent to several boundary elements 
-         ! the numbering could already have been tampered so check for that.
-         IF( j > NoNodes ) CYCLE
-
-         IF( DisContPerm(j) > 0 ) THEN
-           ParentIndexes(i) = NoNodes + DisContPerm(j)
-         END IF
-       END DO
-       Element % BoundaryInfo % Right => ParentElem
-       NoMovingElems = NoMovingElems + 1
+       ! Don't bother treating halo elements
+       IF( ParentElem % PartIndex == ParEnv % MyPe ) THEN
+         DO j=1,SIZE(ParentElem % NodeIndexes)
+           k = ParentElem % NodeIndexes(j)
+           IF( k <= NoNodes ) MovingNode( k ) = .TRUE.
+         END DO
+         
+         ! Ok, we found the element to manipulate the indexes. 
+         ! The new index is numbered on top of the old indexes. 
+         ParentIndexes => ParentElem % NodeIndexes
+         DO i=1,SIZE(ParentIndexes) 
+           j = ParentIndexes(i)
+           
+           ! If a bulk element is parent to several boundary elements 
+           ! the numbering could already have been tampered so check for that.
+           IF( j > NoNodes ) CYCLE
+           
+           IF( DisContPerm(j) > 0 ) THEN
+             ParentIndexes(i) = NoNodes + DisContPerm(j)
+           END IF
+         END DO
+         Element % BoundaryInfo % Right => ParentElem
+         NoMovingElems = NoMovingElems + 1
+       END IF
      END IF
 
      IF( ASSOCIATED( OtherElem ) ) THEN
-       DO j=1,SIZE(OtherElem % NodeIndexes)
-         k = OtherElem % NodeIndexes(j)
-         IF( k <= NoNodes ) StayingNode( k ) = .TRUE.
-       END DO
-       Element % BoundaryInfo % Left => OtherElem
-       NoStayingElems = NoStayingElems + 1
+       IF( OtherElem % PartIndex == ParEnv % MyPe ) THEN
+         DO j=1,SIZE(OtherElem % NodeIndexes)
+           k = OtherElem % NodeIndexes(j)
+           IF( k <= NoNodes ) StayingNode( k ) = .TRUE.
+         END DO
+         Element % BoundaryInfo % Left => OtherElem
+         NoStayingElems = NoStayingElems + 1
+       END IF
      END IF
    END DO
 
@@ -1517,6 +1559,10 @@ END SUBROUTINE GetMaxDefs
        IF( DecidedElem(t) ) CYCLE
 
        Element => Mesh % Elements(t)
+
+       ! No need to treat halo elements
+       IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+
        Indexes => Element % NodeIndexes
 
        IF( ALL( DisContPerm( Indexes ) == 0 ) ) CYCLE
@@ -1559,6 +1605,10 @@ END SUBROUTINE GetMaxDefs
        IF( DecidedElem(t) ) CYCLE
 
        Element => Mesh % Elements(t)
+
+       ! Don't bother to treat halo elements
+       IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+
        Indexes => Element % NodeIndexes
 
        IF( ALL( DisContPerm( Indexes ) == 0 ) ) CYCLE
@@ -4972,7 +5022,7 @@ END SUBROUTINE GetMaxDefs
     !    P1row, P1col, P1val, &
     !    P2row, P2col, P2val ) 
 
-    ! Revert back to P=[P1-P2] since we don't want to work with 
+    ! Revert back to P=[P1-P2] since we don't want to work with two separate projectors
     Projector => AllocateMatrix()
     Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
     !Projector % ProjectorBC = bc
@@ -4980,7 +5030,6 @@ END SUBROUTINE GetMaxDefs
     m = P1Row(N1+1)-1 + P2Row(N1+1)-1
     ALLOCATE( Projector % Cols(m) )
     ALLOCATE( Projector % Values(m) )
-
     ALLOCATE( Projector % Rows(N1) )
     ALLOCATE( Projector % InvPerm(N1) )
 

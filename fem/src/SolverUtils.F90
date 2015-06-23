@@ -10147,12 +10147,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   INTEGER, POINTER :: UsePerm(:), UseIPerm(:)
   REAL(KIND=dp), POINTER :: UseDiag(:)
   TYPE(ListMatrix_t), POINTER :: Lmat(:)
-  LOGICAL  :: EliminateFromMaster, EliminateSlave
+  LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel
   REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:)
 
 !------------------------------------------------------------------------------
   CALL Info( 'SolveWithLinearRestriction ', ' ', Level=5 )
   SolverPointer => Solver
+
+  Parallel = (ParEnv % PEs > 1 )
 
   NotExplicit = ListGetLogical(Solver % Values,'No Explicit Constrained Matrix',Found)
   IF(.NOT. Found) NotExplicit=.FALSE.
@@ -10514,6 +10516,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         ! skip l-coeffient entries, handled separately afterwards:
         ! --------------------------------------------------------
         IF(j > n) CYCLE
+
+        ! Don't add elimination entries to others except for the owner partition
+        ! I'm still hesitant about this so it is commented out
+        IF( Parallel ) THEN
+          !IF( StiffMatrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPe ) CYCLE
+        END IF
 
         CALL List_AddToMatrixElement( Lmat, i, j, Vals(l) )
       END DO
