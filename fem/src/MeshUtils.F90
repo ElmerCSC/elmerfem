@@ -4879,6 +4879,138 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
+  !---------------------------------------------------------------------------
+  !> Create a projector using an external subroutine. 
+  !---------------------------------------------------------------------------
+  FUNCTION ExternalProjector( BMesh1, BMesh2, InvPerm1, InvPerm2, BC ) &
+      RESULT ( Projector )
+    !---------------------------------------------------------------------------
+    USE Lists
+    USE Messages
+    USE Types
+    USE GeneralUtils
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Matrix_t), POINTER :: Projector    
+    !--------------------------------------------------------------------------
+    INTEGER :: i,j,k,n,m,ElemNodes
+    INTEGER :: N1,N2,E1,E2,M1,M2
+    REAL(KIND=dp), POINTER :: x1(:),x2(:),y1(:),y2(:),z1(:),z2(:)
+    INTEGER, ALLOCATABLE :: Etypes1(:),Etopo1(:),Etypes2(:),Etopo2(:)
+    INTEGER, POINTER :: P1row(:),P1col(:),P2row(:),P2col(:)
+    REAL(KIND=dp), POINTER :: P1val(:),P2val(:)
+    INTEGER, POINTER :: Rows(:),Cols(:),InvPerm(:)
+    REAL(KIND=dp), POINTER :: Values(:)
+
+
+    N1 = Bmesh1 % NumberOfNodes
+    x1 => BMesh1 % Nodes % x
+    y1 => BMesh1 % Nodes % y
+    z1 => BMesh1 % Nodes % z
+
+    N2 = Bmesh2 % NumberOfNodes
+    x2 => BMesh2 % Nodes % x
+    y2 => BMesh2 % Nodes % y
+    z2 => BMesh2 % Nodes % z
+    
+    E1 = Bmesh1 % NumberOfBulkElements
+    ALLOCATE( Etypes1(E1) )
+    DO i=1,E1
+      Etypes1(i) = BMesh1 % Elements(i) % TYPE % ElementCode / 100
+    END DO
+
+    E2 = Bmesh1 % NumberOfBulkElements
+    ALLOCATE( Etypes1(E2) )
+    DO i=1,E2
+      Etypes2(i) = BMesh2 % Elements(i) % TYPE % ElementCode / 100
+    END DO
+
+    M1 = SUM( Etypes1 )
+    ALLOCATE( Etopo1(M1) )
+    k = 0
+    DO i=1,E1
+      ElemNodes = BMesh1 % Elements(i) % TYPE % ElementCode / 100
+      DO j=1,ElemNodes
+        k = k + 1
+        Etopo1(k) = BMesh1 % Elements(i) % NodeIndexes(j)
+      END DO
+    END DO
+
+    M2 = SUM( Etypes1 )
+    ALLOCATE( Etopo2(M2) )
+    k = 0
+    DO i=1,E2
+      ElemNodes = BMesh2 % Elements(i) % TYPE % ElementCode / 100
+      DO j=1,ElemNodes
+        k = k + 1
+        ETopo2(k) = BMesh2 % Elements(i) % NodeIndexes(j)
+      END DO
+    END DO
+ 
+    ! i=1 refers to slave
+    ! i=2 refers to master
+
+    ! Input parameters
+    ! Ni         : Number of nodes in slave
+    ! xi, yi, zi : Node coordinates
+    ! Ei         : Number of elements in slave
+    ! Etypesi    : ElementTypes (2 edge, 3 triangle, 4 quad)
+    ! Mi         : Size of element topology
+    ! ETopoi     : Element topology
+
+    ! Output parameters (the external routine should allocate these)
+    ! Pirow      : Row intervals of size N1+1 (also for i=2)
+    ! PiCol      : Column indexes of size Pirow(Ni+1)-1
+    ! PiVal      : Projector values of size Pirow(Ni+1)-1
+
+    ! This is just a tentative interface so far. Still missing the noromal information. 
+    !CALL ProjectorProcedure( N1,x1,y1,z1,E1,Etypes1,M1,Etopo1, &
+    !    N2,x2,y2,z2,E2,Etypes2,M2,Etopo2, &
+    !    P1row, P1col, P1val, &
+    !    P2row, P2col, P2val ) 
+
+    ! Revert back to P=[P1-P2] since we don't want to work with 
+    Projector => AllocateMatrix()
+    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+    !Projector % ProjectorBC = bc
+
+    m = P1Row(N1+1)-1 + P2Row(N1+1)-1
+    ALLOCATE( Projector % Cols(m) )
+    ALLOCATE( Projector % Values(m) )
+
+    ALLOCATE( Projector % Rows(N1) )
+    ALLOCATE( Projector % InvPerm(N1) )
+
+    Cols => Projector % Cols
+    Values => Projector % Values
+    Rows => Projector % Rows
+    InvPerm => Projector % InvPerm
+    InvPerm = 0
+
+    Projector % NumberOfRows = N1
+    k = 0
+    Rows(1) = 1
+    DO i=1,N1
+      DO j=P1Row(i),P1Row(i+1)-1
+        k = k + 1
+        Cols(k) = InvPerm1(P1Col(j))
+        Values(k) = P1Val(j)
+      END DO
+      DO j=P2Row(i),P2Row(i+1)-1
+        k = k + 1
+        Cols(k) = InvPerm2(P2Col(j))
+        Values(k) = P2Val(j)
+      END DO
+      InvPerm(i) = InvPerm1(i)
+      Rows(i+1) = k+1
+    END DO
+
+  END FUNCTION ExternalProjector
+
+  
 
   !---------------------------------------------------------------------------
   !> Create a projector for mixes nodal / edge problems assuming constant level
@@ -9728,10 +9860,29 @@ END SUBROUTINE GetMaxDefs
     WRITE( Message,'(A,I0,A,I0)') 'Creating projector between BCs ',This,' and ',Trgt
     CALL Info('PeriodicProjector',Message,Level=8)
 
+    ! Create temporal mesh structures that are utilized when making the 
+    ! projector between "This" and "Trgt" boundary.
+    !--------------------------------------------------------------------------
+    BMesh1 => AllocateMesh()
+    BMesh2 => AllocateMesh()
+    
+    CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
+        InvPerm1, InvPerm2, Success ) 
+
+    IF(.NOT. Success) THEN
+      CALL ReleaseMesh(BMesh1); CALL ReleaseMesh(BMesh2)
+      RETURN
+    END IF
+
+    IF( ListCheckPresent( BC, 'Projector Procedure' ) ) THEN
+      Projector => ExternalProjector( BMesh1, BMesh2, InvPerm1, InvPerm2, BC )
+      GOTO 100
+    END IF
+
+
     ! If requested map the interface coordinate from (x,y,z) to any permutation
     ! of these. 
     CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
-
 
     ! Check whether to use (anti)rotational projector.
     ! We don't really know on which side the projector was called so 
@@ -9826,20 +9977,6 @@ END SUBROUTINE GetMaxDefs
               Mesh % MeshDim == 3 .AND. Dim == 3 )
         END IF
       END IF
-    END IF
-
-    ! Create temporal mesh structures that are utilized when making the 
-    ! projector between "This" and "Trgt" boundary.
-    !--------------------------------------------------------------------------
-    BMesh1 => AllocateMesh()
-    BMesh2 => AllocateMesh()
-    
-    CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
-        InvPerm1, InvPerm2, Success ) 
-
-    IF(.NOT. Success) THEN
-      CALL ReleaseMesh(BMesh1); CALL ReleaseMesh(BMesh2)
-      RETURN
     END IF
 
 
