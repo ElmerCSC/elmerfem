@@ -3761,7 +3761,7 @@ CONTAINS
      IF ( ParEnv % PEs > 1 .AND. .NOT.SlaveNotParallel ) THEN
        ! Check that the solver is active in some of the active output solvers
        IF( ANY( ParEnv % Active(MinOutputPE+1:MaxOutputPE+1) ) ) THEN
-         IF( ParEnv % MyPe >= MinOutputPE .OR. &
+         IF( ParEnv % MyPe >= MinOutputPE .AND. &
              ParEnv % MyPe <= MaxOutputPE ) THEN 
            OutputPE = ParEnv % MyPE
          ELSE
