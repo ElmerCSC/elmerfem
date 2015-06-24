@@ -8284,7 +8284,8 @@ END SUBROUTINE GetMaxDefs
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element, Left, Right, OldFace, NewFace, Swap
-    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, SetDiagEdges, DoNodes, DoEdges
+    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, &
+        SetDiagEdges, DoNodes, DoEdges, LocalConstraints, SkipNonOwners
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
     REAL(KIND=dp) :: point(3), uvw(3), DiagEps
     INTEGER, ALLOCATABLE :: EQind(:)
@@ -8313,7 +8314,7 @@ END SUBROUTINE GetMaxDefs
       CALL Warn('WeightedProjectorDiscont','One BC (not '&
           //TRIM(I2S(j))//') only for discontinuous boundary!')
     END IF
-
+ 
     Scale = ListGetCReal( Model % BCs(bc) % Values,'Mortar BC Scaling',Stat )  
     IF(.NOT. Stat) Scale = -1.0_dp
 
@@ -8336,6 +8337,11 @@ END SUBROUTINE GetMaxDefs
       size0 = 0
     END IF
       
+    LocalConstraints = ListGetLogical(Model % Solver % Values, &
+        'Partition Local Constraints',Found)
+    SkipNonOwners = ListGetLogical(Model % Solver % Values, &
+        'Partition Skip Halo Constraints',Found)
+
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',Found ) ) THEN
       DoEdges = .FALSE. 
     ELSE IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Edges',Found ) ) THEN
@@ -8421,7 +8427,7 @@ END SUBROUTINE GetMaxDefs
         IF( ASSOCIATED( Right ) ) THEN
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF 
-        !IF( ActSides == 0 ) CYCLE
+        IF( SkipNonOwners .AND. ActSides == 0 ) CYCLE
         
         ! Consistently choose the face with the old edges 
         IF( ALL( Left % NodeIndexes <= NoOrigNodes ) ) THEN
@@ -8515,10 +8521,14 @@ END SUBROUTINE GetMaxDefs
         IF( ASSOCIATED( Right ) ) THEN
           PosSides = PosSides + 1
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
-        END IF 
-        ! IF( ActSides == 0 ) CYCLE
+        END IF
+        IF( SkipNonOwners .AND. ActSides == 0 ) CYCLE        
 
-        Coeff = 1.0_dp * ActSides / PosSides 
+        IF( LocalConstraints ) THEN
+          Coeff = 1.0_dp
+        ELSE
+          Coeff = 1.0_dp * ActSides / PosSides 
+        END IF
         ParentFound = ParentFound + 1
 
         ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
@@ -8636,9 +8646,15 @@ END SUBROUTINE GetMaxDefs
         IF( ASSOCIATED( Right ) ) THEN
           PosSides = PosSides + 1
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
-        END IF 
-        !IF( ActSides == 0 ) CYCLE
-        Coeff = (1.0_dp * ActSides) / (1.0_dp * PosSides)
+        END IF
+
+        IF( SkipNonOwners .AND. ActSides == 0 ) CYCLE
+
+        IF( LocalConstraints ) THEN
+          Coeff = 1.0_dp
+        ELSE          
+          Coeff = (1.0_dp * ActSides) / (1.0_dp * PosSides)
+        END IF
 
         ! Consistently choose the face with the old edges
         IF( ALL( Left % NodeIndexes <= NoOrigNodes ) ) THEN
