@@ -19,6 +19,7 @@ MACRO(ADD_ELMER_TEST test_name)
       -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
       -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
       -DWITH_MPI=${WITH_MPI}
+      -P ${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
 ENDMACRO()
 

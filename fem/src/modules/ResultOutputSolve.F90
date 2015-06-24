@@ -3704,6 +3704,7 @@ CONTAINS
             Values3 => Solution % Values
             dofs = 3
           END IF
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
         END IF
 
         !---------------------------------------------------------------------
