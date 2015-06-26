@@ -4081,6 +4081,7 @@ CONTAINS
 
           k = Perm(Indexes(j))
           IF ( k > 0 ) THEN
+            
             IF ( DOF>0 ) THEN
               m = 0
               IF ( NormalTangentialNOFNodes>0 ) m=BoundaryReorder(Indexes(j))
@@ -4114,6 +4115,18 @@ CONTAINS
                   CALL CRS_SetSymmDirichlet( A,b,k,Work(j)/DiagScaling(k) )
                 ELSE
                   CALL ZeroRow( A,k )
+
+                  ! Potentially do not add non-zero entries to non-owners
+                  !IF( ParEnv % PEs > 1 ) THEN
+                  !IF( SIZE( A % ParallelInfo % NeighbourList(k) % Neighbours) > 1 )  THEN
+                  !IF( A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) THEN
+                  !  PRINT *,'Node to skip: ',k,ParEnv % MyPe, &
+                  !      A % ParallelInfo % NeighbourList(k) % Neighbours
+                  !CYCLE
+                  !END IF
+                  !END IF
+                  !END IF
+
                   IF( .NOT. OffDiagonal ) THEN
                     CALL SetMatrixElement( A,k,k,1._dp )
                     b(k) = Work(j) / DiagScaling(k)
@@ -4132,7 +4145,7 @@ CONTAINS
                   END IF
                 ELSE
                   CALL ZeroRow( A,k1 )
-	          IF( .NOT. OffDiagonal ) THEN
+	          IF( .NOT. OffDiagonal ) THEN            
                     CALL SetMatrixElement( A,k1,k1,1.0d0 )
                     b(k1) = WorkA(l,1,j)/DiagScaling(k1)
                     IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k1) = .TRUE.
@@ -10134,7 +10147,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
                  MultiplierValues(:),AddVector(:), Tvals(:), Vals(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
-  INTEGER :: i, j, k, l, m, n, p,q, ix
+  INTEGER :: i, j, k, l, m, n, p,q, ix, Loop
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
@@ -10459,6 +10472,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
     ! Extract diagonal entries for constraints:
     !------------------------------------------
+    CALL Info('SolveWithLInearRestriction',&
+        'Extracting diagonal entries for constraints',Level=15)
     DO i=1, RestMatrix % NumberOfRows
       m = RestMatrix % InvPerm(i)
       IF( m == 0 ) CYCLE
@@ -10485,10 +10500,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     EliminateFromMaster = ListGetLogical( Solver % values, 'Eliminate From Master',Found )
 
     IF(EliminateFromMaster) THEN
+      CALL Info('SolveWithLInearRestriction',&
+          'Eliminating from master',Level=15)      
       UsePerm  => MasterPerm 
       UseDiag  => MasterDiag
       UseIPerm => MasterIPerm 
     ELSE
+      CALL Info('SolveWithLInearRestriction',&
+          'Eliminating from slave',Level=15)            
       UsePerm  => SlavePerm
       UseDiag  => SlaveDiag
       UseIPerm => SlaveIPerm
@@ -10505,11 +10524,15 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     ! Replace elimination equations by the constraints (could done be as a postprocessing
     ! step, if eq's totally eliminated from linsys.)
     ! ----------------------------------------------------------------------------------
+    CALL Info('SolveWithLInearRestriction',&
+        'Deleting rows from equation to be eliminated',Level=15)
     DO m=1,RestMatrix % NumberOfRows
       i = UseIPerm(m)
       CALL List_DeleteRow(Lmat, i, Keep=.TRUE.)
     END DO
 
+    CALL Info('SolveWithLInearRestriction',&
+        'Copying rows from constraint matrix to eliminate dofs',Level=15)
     DO m=1,RestMatrix % NumberOfRows
       i = UseIPerm(m)
       DO l=RestMatrix % Rows(m+1)-1, RestMatrix % Rows(m), -1
@@ -10533,6 +10556,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     Xmat => RestMatrix
 
     Found = .TRUE.
+    Loop = 0
     DO WHILE(Found)
       DO i=Xmat % NumberofRows,1,-1
         q = 0
@@ -10547,6 +10571,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
       Tmat => Xmat
       IF(Found) THEN
+        Loop = Loop + 1
+        CALL Info('SolveWithLInearRestriction',&
+            'Recursive elimination round: '//TRIM(I2S(Loop)),Level=15)
+
         Tmat => AllocateMatrix()
         Tmat % Format = MATRIX_LIST
 
@@ -10558,11 +10586,18 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           END DO
         END DO
 
+
         DO m=1,Xmat % NumberOfRows
           i = UseIPerm(m)
           DO j=Xmat % Rows(m), Xmat % Rows(m+1)-1
             k = Xmat % Cols(j)
+
+            ! The size of SlavePerm is often exceeded but I don't really undersrtand the operation...
+            ! so this is just a dirty fix.
+            IF( k > SIZE( SlavePerm ) ) CYCLE
+
             l = SlavePerm(k)
+
             IF(l>0 .AND. k/=i) THEN
               IF(ABS(Tvals(j))<AEPS) CYCLE
               scl = -TVals(j) / SlaveDiag(l)
@@ -10588,6 +10623,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
     ! Eliminate Lagrange Coefficients:
     ! --------------------------------
+    CALL Info('SolveWithLInearRestriction',&
+        'Eliminating Largrange Coefficients',Level=15)
     DO m=1,Tmat % NumberOfRows
       i = UseIPerm(m)
       DO j=TMat % Rows(m), TMat % Rows(m+1)-1
@@ -10614,6 +10651,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     ! Eliminate slave dofs, using the constraint equations:
     ! -----------------------------------------------------
     IF ( EliminateSlave ) THEN
+      CALL Info('SolveWithLInearRestriction',&
+          'Eliminate slave dofs using constraint equations',Level=15)
+
       DO i=1,StiffMatrix % NumberOfRows
         IF(UsePerm(i)/=0) CYCLE
         cPrev => Null()
@@ -10654,6 +10694,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     ! Optimize bandwidth, if needed:
     ! ------------------------------
     IF(EliminateFromMaster) THEN
+      CALL Info('SolveWithLinearRestriction',&
+          'Optimizing bandwidth after elimination',Level=15)
       DO i=1,RestMatrix % NumberOfRows
         j = SlaveIPerm(i)
         k = MasterIPerm(i)

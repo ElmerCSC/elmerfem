@@ -3918,11 +3918,11 @@ END SUBROUTINE GetMaxDefs
 
     IF( ParEnv % PEs > 1 ) THEN
       ! Account for halo elements that share some nodes for the master boundary
-      NarrowHalo = ListGetLogical(Model % Simulation,'Projector Narrow Halo',Found)
+      NarrowHalo = ListGetLogical(Model % Solver % Values,'Projector Narrow Halo',Found)
 
       ! Do not allow for any halo elements for the master boundary
       IF( .NOT. Found ) THEN
-        NoHalo = ListGetLogical(Model % Simulation,'Projector No Halo',Found)
+        NoHalo = ListGetLogical(Model % Solver % Values,'Projector No Halo',Found)
       END IF
       
       IF(.NOT. Found ) THEN
@@ -8064,7 +8064,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element, Left, Right, OldFace, NewFace, Swap
     LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, &
-        SetDiagEdges, DoNodes, DoEdges, LocalConstraints, SkipNonOwners
+        SetDiagEdges, DoNodes, DoEdges, LocalConstraints, NoHalo
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
     REAL(KIND=dp) :: point(3), uvw(3), DiagEps
     INTEGER, ALLOCATABLE :: EQind(:)
@@ -8118,8 +8118,8 @@ END SUBROUTINE GetMaxDefs
       
     LocalConstraints = ListGetLogical(Model % Solver % Values, &
         'Partition Local Constraints',Found)
-    SkipNonOwners = ListGetLogical(Model % Solver % Values, &
-        'Partition Skip Halo Constraints',Found)
+    NoHalo = ListGetLogical(Model % Solver % Values, &
+        'Projector No Halo',Found)
 
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',Found ) ) THEN
       DoEdges = .FALSE. 
@@ -8206,7 +8206,7 @@ END SUBROUTINE GetMaxDefs
         IF( ASSOCIATED( Right ) ) THEN
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF 
-        IF( SkipNonOwners .AND. ActSides == 0 ) CYCLE
+        IF( NoHalo .AND. ActSides == 0 ) CYCLE
         
         ! Consistently choose the face with the old edges 
         IF( ALL( Left % NodeIndexes <= NoOrigNodes ) ) THEN
@@ -8301,7 +8301,7 @@ END SUBROUTINE GetMaxDefs
           PosSides = PosSides + 1
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF
-        IF( SkipNonOwners .AND. ActSides == 0 ) CYCLE        
+        IF( NoHalo .AND. ActSides == 0 ) CYCLE        
 
         IF( LocalConstraints ) THEN
           Coeff = 1.0_dp
@@ -8427,7 +8427,7 @@ END SUBROUTINE GetMaxDefs
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF
 
-        IF( SkipNonOwners .AND. ActSides == 0 ) CYCLE
+        IF( NoHalo .AND. ActSides == 0 ) CYCLE
 
         IF( LocalConstraints ) THEN
           Coeff = 1.0_dp
