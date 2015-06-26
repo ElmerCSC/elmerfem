@@ -137,11 +137,13 @@ Boundary Condition 2
   !Contact Active Set Minimum = Integer 1
   !Contact No-Slip = Logical True
 
-! Create a strong projector for the line setting y-coordinate to zero
-  Flat Projector = Logical True
+! Create a projector by choosing a plane where to integrate
+  Plane Projector = Logical True
 
 ! a) Use weak projector or not
   Galerkin Projector = Logical False
+  Normal-Tangential Displacement = Logical True
+
 
 ! b) Use more tailored projector able to do accurate integration
   Level Projector = Logical True
@@ -151,6 +153,7 @@ End
 Boundary Condition 3
   Name = "Upper surface of lower block"
   Target Boundaries(1) = 59
+  Normal-Tangential Displacement = Logical True
 End
 
 Boundary Condition 4
