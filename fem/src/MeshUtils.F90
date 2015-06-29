@@ -3720,6 +3720,10 @@ END SUBROUTINE GetMaxDefs
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
 
+
+    CALL Info('MeshStabParams','Computing stabilization parameters',Level=7)
+    CALL ResetTimer('MeshStabParams')
+
     DO i=1,CurrentModel % NumberOfSolvers
        Solver => CurrentModel % Solvers(i)
        IF ( ASSOCIATED( Mesh, Solver % Mesh ) ) THEN
@@ -3753,6 +3757,8 @@ END SUBROUTINE GetMaxDefs
     END DO
  
     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
+
+    CALL CheckTimer('MeshStabParams',Level=7,Delete=.TRUE.)
 !----------------------------------------------------------------------------
   END SUBROUTINE MeshStabParams
 !------------------------------------------------------------------------------
@@ -4951,6 +4957,7 @@ END SUBROUTINE GetMaxDefs
     ! Generic integrator does not make any assumptions on the way the mesh 
     ! is constructured. Otherwise constant strides in y-direction is assumed. 
     GenericIntegrator = ListGetLogical( BC,'Level Projector Generic',Found ) 
+    IF(.NOT. Found ) GenericIntegrator = .TRUE.
 
     ! There is no strong strategy for skewed edges currently
     StrongSkewEdges = .FALSE.
@@ -8069,6 +8076,7 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: point(3), uvw(3), DiagEps
     INTEGER, ALLOCATABLE :: EQind(:)
     INTEGER, POINTER :: OldMap(:,:), NewMap(:,:)
+    TYPE(ValueList_t), POINTER :: BCParams
 
     CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
          //TRIM(I2S(bc)),Level=7)
@@ -8094,12 +8102,14 @@ END SUBROUTINE GetMaxDefs
           //TRIM(I2S(j))//') only for discontinuous boundary!')
     END IF
  
-    Scale = ListGetCReal( Model % BCs(bc) % Values,'Mortar BC Scaling',Stat )  
+    BCParams => Model % BCs(bc) % Values
+
+    Scale = ListGetCReal( BCParams,'Mortar BC Scaling',Stat )  
     IF(.NOT. Stat) Scale = -1.0_dp
 
-    NodalJump = ListCheckPrefix( Model % BCs(bc) % Values,'Mortar BC Coefficient')
+    NodalJump = ListCheckPrefix( BCParams,'Mortar BC Coefficient')
     IF(.NOT. NodalJump ) THEN
-      NodalJump = ListCheckPrefix( Model % BCs(bc) % Values,'Mortar BC Resistivity')
+      NodalJump = ListCheckPrefix( BCParams,'Mortar BC Resistivity')
     END IF
 
     IF( NodalJump ) THEN
@@ -8123,7 +8133,7 @@ END SUBROUTINE GetMaxDefs
 
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',Found ) ) THEN
       DoEdges = .FALSE. 
-    ELSE IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Edges',Found ) ) THEN
+    ELSE IF( ListGetLogical( BCParams,'Projector Skip Edges',Found ) ) THEN
       DoEdges = .FALSE.
     ELSE
       DoEdges = ( Mesh % NumberOfEdges > 0 )
@@ -8135,17 +8145,31 @@ END SUBROUTINE GetMaxDefs
 
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',Found ) ) THEN
       DoNodes = .FALSE. 
-    ELSE IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Nodes',Found ) ) THEN
+    ELSE IF( ListGetLogical( BCParams,'Projector Skip Nodes',Found ) ) THEN
       DoNodes = .FALSE.
     ELSE
       DoNodes = ( Mesh % NumberOfNodes > 0 )
     END IF
 
     ! Should the projector be diagonal or mass matrix type 
-    SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found ) 
-    SetDiagEdges = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag Edges',Found )
+    SetDiag = ListGetLogical( BCParams,'Mortar BC Diag',Found ) 
+
+    IF(.NOT. Found ) SetDiag = ListGetLogical( BCParams, 'Use Biorthogonal Basis', Found)
+
+    ! If we want to eliminate the constraints we have to have a biortgonal basis
+    IF(.NOT. Found ) THEN
+      SetDiag = ListGetLogical( CurrentModel % Solver % Values, &
+          'Eliminate Linear Constraints',Found )
+      IF( SetDiag ) THEN
+        CALL Info('WeightedProjectorDiscont',&
+            'Setting > Use Biorthogonal Basis < to True to enable elimination',Level=8)
+      END IF
+    END IF
+
+
+    SetDiagEdges = ListGetLogical( BCParams,'Mortar BC Diag Edges',Found )
     IF(.NOT. Found ) SetDiagEdges = SetDiag
-    DiagEps = ListGetConstReal( Model % BCs(bc) % Values,'Mortar BC Diag Eps',Found ) 
+    DiagEps = ListGetConstReal( BCParams,'Mortar BC Diag Eps',Found ) 
 
     ! Integration weights should follow the metrics if we want physical nodal jumps. 
     AxisSym = .FALSE.
