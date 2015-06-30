@@ -1110,7 +1110,6 @@ END SUBROUTINE GetMaxDefs
    LOGICAL, ALLOCATABLE :: ActiveNode(:)
    TYPE(ValueList_t), POINTER :: BCList
 
-
    LOGICAL :: DoneThisAlready = .FALSE.
 
    IF(.NOT.PRESENT(DoAlways)) THEN
@@ -1162,12 +1161,45 @@ END SUBROUTINE GetMaxDefs
    NoMissingElems = 0
 
 
+   ! Check whether we need to skip some elements and nodes on the halo boundary 
+   ! We don't want to create additional nodes on the nodes that are on the halo only 
+   ! since they just would create further need for new halo...
+   CheckForHalo = .FALSE.
+   IF( Parallel ) THEN
+     DO t = 1, NoBulkElems     
+       Element => Mesh % Elements(t)
+       IF( ParEnv % MyPe /= Element % PartIndex ) THEN
+         CheckForHalo = .TRUE.
+         EXIT
+       END IF
+     END DO
+   END IF
+ 
+   IF( CheckForHalo ) THEN
+     CALL Info('CreateDiscontMesh',&
+         'Checking for nodes that are not really needed in bulk assembly',Level=12)
+     
+     ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+     ActiveNode = .FALSE.
+     DO t = 1, NoBulkElems     
+       Element => Mesh % Elements(t)
+       IF( ParEnv % MyPe == Element % PartIndex ) THEN
+         Indexes => Element % NodeIndexes
+         ActiveNode( Indexes ) = .TRUE.
+       END IF
+     END DO
+     m = Mesh % NumberOfNodes - COUNT( ActiveNode ) 
+     CALL Info('CreateDiscontMesh','Number of passive nodes in the halo: '//TRIM(I2S(m)),Level=10)
+   END IF
+
+
    ! Go over all boundary elements and mark nodes that should be 
    ! discontinuous and nodes that should be continuous 
    DO t = 1, NoBoundElems
      
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
+     n = Element % Type % NumberOfNodes
 
      DisCont = .FALSE.
      DO bc = 1,Model % NumberOfBCs
@@ -1178,7 +1210,13 @@ END SUBROUTINE GetMaxDefs
      END DO     
      IF(.NOT. DisCont ) CYCLE
      
-     DisContNode( Indexes ) = .TRUE.     
+     DO i=1,n
+       j = Indexes(i) 
+       IF( CheckForHalo ) THEN
+         IF( .NOT. ActiveNode(j) ) CYCLE
+       END IF
+       DisContNode(j) = .TRUE.
+     END DO
      DisContElem( t ) = .TRUE.
      
      LeftElem => Element % BoundaryInfo % Left
@@ -1266,47 +1304,10 @@ END SUBROUTINE GetMaxDefs
 
    IF( i == 0 ) THEN
      CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
+     IF( CheckForHalo ) DEALLOCATE( ActiveNode ) 
      DEALLOCATE( DiscontNode, DiscontElem, ParentUsed )
      RETURN
    END IF
-
-   ! Check whether we need to skip some elements and nodes on the halo boundary 
-   ! We don't want to create additional nodes on the nodes that are on the halo only 
-   ! since they just would create further need for new halo...
-   CheckForHalo = .FALSE.
-   IF( Parallel ) THEN
-     DO t = 1, NoBulkElems     
-       Element => Mesh % Elements(t)
-       IF( ParEnv % MyPe /= Element % PartIndex ) THEN
-         CheckForHalo = .TRUE.
-         EXIT
-       END IF
-     END DO
-   END IF
- 
-   IF( CheckForHalo ) THEN
-     CALL Info('CreateDiscontMesh','Checking for nodes that are not really needed in bulk assembly',Level=12)
-     
-     ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
-     ActiveNode = .FALSE.
-     DO t = 1, NoBulkElems     
-       Element => Mesh % Elements(t)
-       IF( ParEnv % MyPe == Element % PartIndex ) THEN
-         Indexes => Element % NodeIndexes
-         ActiveNode( Indexes ) = .TRUE.
-       END IF
-     END DO
-     m = Mesh % NumberOfNodes - COUNT( ActiveNode ) 
-     CALL Info('CreateDiscontMesh','Number of passive nodes in the halo: '//TRIM(I2S(m)),Level=10)
-
-     IF( m > 0 ) THEN
-       DisContNode = DisContNode .AND. ActiveNode 
-       m = COUNT( DisContNode )
-       CALL Info('CreateDiscontMesh','Number of candidate nodes without halo: '&
-           //TRIM(I2S(m)),Level=7)
-     END IF
-   END IF
-
 
    ! Ok, we have marked discontinuous nodes, now give them an index. 
    ! This should also create the indexes in parallel.
@@ -1440,8 +1441,6 @@ END SUBROUTINE GetMaxDefs
        NoStayingElems = NoStayingElems + 1
      END IF
    END DO
-
-   PRINT *,'staying:',ParEnv % MyPe, NoMovingElems, NoStayingElems
 
    CALL Info('CreateDiscontMesh','Number of bulk elements moving: '&
        //TRIM(I2S(NoMovingElems)), Level=8)
@@ -8374,11 +8373,6 @@ END SUBROUTINE GetMaxDefs
 
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                   DiscontIndexes(p), Scale * val )             
-              ! Add entry to the diagonal-to-be if jump condition is to be used
-              !IF( NodalJump ) THEN
-              !  CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-              !      size0 + indp, DiagEps ) 
-              !END IF
             ELSE
               DO q=1,n
 
@@ -8389,12 +8383,6 @@ END SUBROUTINE GetMaxDefs
                     Indexes(q), Basis(q) * val ) 
                 CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                     DiscontIndexes(q), Scale * Basis(q) * val ) 
-
-                ! Add entry to the diagonal-to-be if jump condition is to be used
-                !IF( NodalJump ) THEN
-                !  CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                !      size0 + indq, DiagEps ) 
-                !END IF
               END DO
             END IF
           END DO
