@@ -8588,6 +8588,7 @@ END SUBROUTINE GetMaxDefs
   END FUNCTION WeightedProjectorDiscont
   !------------------------------------------------------------------------------
  
+
   !---------------------------------------------------------------------------
   ! Simply fitting of cylinder into a point cloud. This is done in two phases.
   ! 1) The axis of the cylinder is found by minimizing the \sum((n_i*t)^2)
@@ -8677,7 +8678,7 @@ END SUBROUTINE GetMaxDefs
     AxisNormal = AxisNormal / SQRT( SUM( AxisNormal ** 2 ) )
     PRINT *,'Axis Normal:',AxisNormal
     IF( 1.0_dp - ABS( AxisNormal(3) ) > 1.0e-5 ) THEN
-      CALL Fatal('CylinderFit','Set the rest of the code to deal with generic axis!')
+      CALL Warn('CylinderFit','The cylinder axis is not aligned with z-axis!')
     END IF
 
 100 CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
@@ -8686,7 +8687,7 @@ END SUBROUTINE GetMaxDefs
 
     ! Finding three points with maximum distance in the tangent directions
 
-    ! First, find the single extrumum point in the first tangent direction
+    ! First, find the single extremum point in the first tangent direction
     ! Save the local coordinates in the N-T system of the cylinder
     MinDist = HUGE(MinDist) 
     DO i=1, PMesh % NumberOfNodes
@@ -8798,6 +8799,11 @@ END SUBROUTINE GetMaxDefs
     
     CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
     CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
+    CALL ListAddConstReal( PParams,'Rotational Projector Center Z',Coord(3))
+
+    CALL ListAddConstReal( PParams,'Rotational Projector Normal X',AxisNormal(1))
+    CALL ListAddConstReal( PParams,'Rotational Projector Normal Y',AxisNormal(2))
+    CALL ListAddConstReal( PParams,'Rotational Projector Normal Z',AxisNormal(3))
 
     
   CONTAINS
@@ -8838,12 +8844,14 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: x1_min(3),x1_max(3),x2_min(3),x2_max(3),&
         x1r_min(3),x1r_max(3),x2r_min(3),x2r_max(3)
     REAL(KIND=dp) :: x(3), xcyl(3),rad2deg,F1min,F1max,F2min,F2max,dFii1,dFii2,eps_rad,&
-        err1,err2,dF,Fii,Nsymmetry,fmin,fmax,DegOffset,rad,alpha,x0(3)
+        err1,err2,dF,Fii,Nsymmetry,fmin,fmax,DegOffset,rad,alpha,x0(3),xtmp(3),&
+        Normal(3), Tangent1(3), Tangent2(3) 
     REAL(KIND=dp), POINTER :: TmpCoord(:)
     REAL(KIND=dp),ALLOCATABLE :: Angles(:)
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: i,j,k,n,ind,Nmax,Nmin,Nfii,Nnodes,MaxElemNodes,NElems
     LOGICAL :: Found, Hit0, Hit90, Hit180, Hit270, SetDegOffset
+    LOGICAL :: GotNormal, GotCenter
 
     ! We choose degrees as they are more intuitive
     rad2deg = 180.0_dp / PI
@@ -8854,15 +8862,28 @@ END SUBROUTINE GetMaxDefs
     NElems = BMesh2 % NumberOfBulkElements
     FullCircle = .FALSE.
 
-    IF( ListGetLogical( BParams,'Rotational Projector Center Fit',Found ) ) THEN
+    ! Cylindrical projector is fitted always and rotational only when requested.
+    IF( ListGetLogical( BParams,'Rotational Projector Center Fit',Found ) .OR. &
+       Cylindrical ) THEN
       IF( .NOT. ListCheckPresent( BParams,'Rotational Projector Center X') ) THEN
         CALL CylinderFit( BMesh1, BParams ) 
       END IF
     END IF
     
-    x0(1) = ListGetCReal( BParams,'Rotational Projector Center X',Found ) 
+    x0(1) = ListGetCReal( BParams,'Rotational Projector Center X',GotCenter ) 
     x0(2) = ListGetCReal( BParams,'Rotational Projector Center Y',Found ) 
+    GotCenter = GotCenter .OR. Found
     x0(3) = ListGetCReal( BParams,'Rotational Projector Center Z',Found ) 
+    GotCenter = GotCenter .OR. Found
+
+    Normal(1) = ListGetCReal( BParams,'Rotational Projector Normal X',GotNormal ) 
+    Normal(2) = ListGetCReal( BParams,'Rotational Projector Normal Y',Found ) 
+    GotNormal = GotNormal .OR. Found
+    Normal(3) = ListGetCReal( BParams,'Rotational Projector Normal Z',Found ) 
+    GotNormal = GotNormal .OR. Found
+    IF( GotNormal ) THEN
+      CALL TangentDirections( Normal,Tangent1,Tangent2 )
+    END IF
 
 
     ! Go trough master (k=1) and target mesh (k=2)
@@ -8921,8 +8942,18 @@ END SUBROUTINE GetMaxDefs
         x(3) = PMesh % Nodes % z(i)
 
         ! Subtract the center of axis
-        x = x - x0
-        
+        IF( GotCenter ) THEN
+          x = x - x0
+        END IF
+
+        IF( GotNormal ) THEN
+          xtmp = x
+          x(1) = SUM( Tangent1 * xtmp ) 
+          x(2) = SUM( Tangent2 * xtmp ) 
+          x(3) = SUM( Normal * xtmp ) 
+        END IF
+
+
         ! Set the angle to be the first coordinate as it may sometimes be the 
         ! only nonzero coordinate. Z-coordinate is always unchanged. 
         !------------------------------------------------------------------------
