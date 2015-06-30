@@ -8107,7 +8107,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodePerm(:)
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    INTEGER :: p,q,i,j,it,nn,n,m,t,NoOrigNodes, NoDiscontNodes, size0, indp, indq, &
+    INTEGER :: p,q,i,j,it,nn,n,m,t,NoOrigNodes, NoDiscontNodes, indp, indq, &
         e1, e2, e12, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides, &
         InvPermSize, indpoffset
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
@@ -8127,8 +8127,6 @@ END SUBROUTINE GetMaxDefs
 
     CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
          //TRIM(I2S(bc)),Level=7)
-
-    Projector => NULL()
 
     Projector => NULL()
     IF( .NOT. Mesh % DisContMesh ) THEN
@@ -8159,20 +8157,6 @@ END SUBROUTINE GetMaxDefs
       NodalJump = ListCheckPrefix( BCParams,'Mortar BC Resistivity')
     END IF
 
-    IF( NodalJump ) THEN
-      ! Just have a conservative upper limit for the size of the future matrix "A" so that
-      ! for sure the projector columns values won't include it. 
-      ! We will fix the entries then later.
-      IF( ASSOCIATED( Model % Solver % Variable ) ) THEN
-        size0 = SIZE( Model % Solver % Variable % perm ) 
-      ELSE
-        CALL Fatal('WeightedProjectorDiscont','Dont know offset for projector diagonal')
-        size0 = Model % Mesh % NumberOfNodes
-      END IF
-    ELSE
-      size0 = 0
-    END IF
-      
     LocalConstraints = ListGetLogical(Model % Solver % Values, &
         'Partition Local Constraints',Found)
     NoHalo = ListGetLogical(Model % Solver % Values, &
@@ -8311,7 +8295,6 @@ END SUBROUTINE GetMaxDefs
           'Size of InvPerm estimated to be: '//TRIM(I2S(InvPermSize)),Level=8)
     END IF
 
-
     ! Ok, nothing to do just go end tidy things up
     IF( InvPermSize == 0 ) GOTO 100
 
@@ -8333,15 +8316,15 @@ END SUBROUTINE GetMaxDefs
     !------------------------------------------------------------------------
     IF( DoNodes ) THEN
       ! Number the degrees of freedom related to the nodal constraint
-      DO i=1,NoOrigNodes
-        j = NodePerm(i)
-        IF( j == 0 ) CYCLE
-        IF( InvPerm(j) > 0 ) THEN
-          PRINT *,'This should not happen: ',i,j,InvPerm(j)
-        ELSE
-          InvPerm(j) = i
-        END IF
-      END DO
+      !DO i=1,NoOrigNodes
+      !  j = NodePerm(i)
+      !  IF( j == 0 ) CYCLE
+      !  IF( InvPerm(j) > 0 ) THEN
+      !    PRINT *,'This should not happen: ',i,j,InvPerm(j)
+      !  ELSE
+      !    InvPerm(j) = i
+      !  END IF
+      !END DO
             
       ParentMissing = 0
       ParentFound = 0
@@ -8385,6 +8368,8 @@ END SUBROUTINE GetMaxDefs
         ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
         ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
 
+        IF( ALL( NodePerm(Indexes) == 0 ) ) CYCLE
+
         ! Get the indexes on the other side of the discontinuous boundary
         DO i=1,n
           j = NodePerm( Indexes(i) ) 
@@ -8412,6 +8397,9 @@ END SUBROUTINE GetMaxDefs
           DO p=1,n             
             indp = NodePerm( Indexes(p) )
             IF( indp == 0 ) CYCLE
+
+            ! Only set for the nodes are are really used
+            InvPerm(indp) = Indexes(p)
 
             val = weight * Basis(p)
 
@@ -8610,6 +8598,7 @@ END SUBROUTINE GetMaxDefs
 
     ! Convert from list matrix to CRS matrix format
     CALL List_ToCRSMatrix(Projector)
+
     IF( Projector % NumberOfRows > 0) THEN
       CALL CRS_SortMatrix(Projector,.TRUE.)
       CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
