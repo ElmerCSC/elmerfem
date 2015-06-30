@@ -1093,7 +1093,8 @@ END SUBROUTINE GetMaxDefs
    LOGICAL, OPTIONAL :: DoAlways
 
    INTEGER, POINTER :: DisContPerm(:)
-   LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), ParentUsed(:), MovingNode(:), StayingNode(:)
+   LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), ParentUsed(:), &
+       MovingNode(:), StayingNode(:)
    LOGICAL :: Found, DisCont, GreedyBulk, GreedyBC, Debug, DoubleBC, UseTargetBodies, &
        UseConsistantBody, LeftHit, RightHit, Moving, Moving2, Set, Parallel
    INTEGER :: i,j,k,n,m,t,bc
@@ -1315,12 +1316,6 @@ END SUBROUTINE GetMaxDefs
    ALLOCATE( DisContPerm(NoNodes) )
    DisContPerm = 0    
    j = 0
-   DO i=1,NoNodes
-     IF( DisContNode(i) ) THEN
-       j = j + 1
-       DisContPerm(i) = j
-     END IF
-   END DO
 
    ! We could end up here on an parallel case only
    ! Then we must make the parallel numbering, so jump to the end where this is done. 
@@ -1409,6 +1404,7 @@ END SUBROUTINE GetMaxDefs
      END IF
    END IF
 
+
    ! Assume we have only one active BC and we know the list of discontinuous 
    ! target bodies there. Hence we have all the info needed to set the 
    ! discontinuous elements also for other bulk elements. 
@@ -1416,7 +1412,6 @@ END SUBROUTINE GetMaxDefs
    NoUndecided = 0
    NoMovingElems = 0 
    NoStayingElems = 0
-
 
    DO t=1, NoBulkElems
      Element => Mesh % Elements(t)
@@ -1432,10 +1427,6 @@ END SUBROUTINE GetMaxDefs
      IF( Moving ) THEN
        NoMovingElems = NoMovingElems + 1 
        MovingNode(Indexes) = .TRUE.
-       DO i=1, SIZE(Indexes) 
-         j = DisContPerm(Indexes(i))
-         IF( j > 0 ) Indexes(i) = NoNodes + j
-       END DO
      ELSE
        StayingNode(Indexes) = .TRUE.
        NoStayingElems = NoStayingElems + 1
@@ -1447,6 +1438,39 @@ END SUBROUTINE GetMaxDefs
    CALL Info('CreateDiscontMesh','Number of bulk elements staying: '&
        //TRIM(I2S(NoStayingElems)), Level=8)
 
+   ! Create permutation numbering for the discontinuous nodes   
+   ! Doubling will be done only for nodes that have both parents
+   DO i=1,NoNodes
+     IF( MovingNode(i) .AND. StayingNode(i) .AND. DisContNode(i) ) THEN
+       j = j + 1
+       DisContPerm(i) = j
+     END IF
+   END DO
+   IF( j < NoDiscontNodes ) THEN
+     PRINT *,'Some discontinuous nodes only needed on the other side:',NoDiscontNodes-j
+     NoDiscontNodes = j 
+   END IF
+
+
+   ! Now set the new indexes for bulk elements
+   DO t=1, NoBulkElems
+     Element => Mesh % Elements(t)
+
+     ! No need to treat halo elements
+     IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+     Indexes => Element % NodeIndexes
+
+     IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
+     Moving = ANY( TargetBodies == Element % BodyId )
+
+     IF( Moving ) THEN
+       DO i=1, SIZE(Indexes) 
+         j = DisContPerm(Indexes(i))
+         IF( j > 0 ) Indexes(i) = NoNodes + j
+       END DO
+     END IF
+   END DO
+
     
    ! Now set also the unset boundary elements by following the ownership of the parent elements
    ! or the majority opinion if this is conflicting.
@@ -1457,7 +1481,7 @@ END SUBROUTINE GetMaxDefs
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
 
-     IF( ALL( DisContPerm( Indexes ) == 0 ) ) CYCLE
+     IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
 
      ElemFamily = Element % TYPE % ElementCode / 100 
 
@@ -1483,8 +1507,8 @@ END SUBROUTINE GetMaxDefs
 
      ! Otherwise we follow the majority rule
      IF( .NOT. Set ) THEN
-       NoMoving = COUNT( MovingNode(Indexes)) 
-       NoStaying = COUNT( StayingNode(Indexes)) 
+       NoMoving = COUNT( MovingNode(Indexes) ) 
+       NoStaying = COUNT( StayingNode(Indexes) ) 
 
        IF( NoStaying /= NoMoving ) THEN
          Moving = ( NoMoving > NoStaying )
@@ -1519,7 +1543,23 @@ END SUBROUTINE GetMaxDefs
      CALL Warn('CreateDiscontMesh','Could not decide what to do with some boundary elements!')
    END IF
 
-   DEALLOCATE( MovingNode, StayingNode )
+
+   m = COUNT( DiscontNode .AND. .NOT. MovingNode )
+   IF( m > 0 ) THEN
+     PRINT *,'Number of discont nodes not moving: ',ParEnv % MyPe, m
+   END IF
+
+   m = COUNT( DiscontNode .AND. .NOT. StayingNode )
+   IF( m > 0 ) THEN
+     PRINT *,'Number of discont nodes not staying: ',ParEnv % MyPe, m
+   END IF
+
+   m = COUNT( DiscontNode .AND. .NOT. ( StayingNode .OR. MovingNode ) )
+   IF( m > 0 ) THEN
+     PRINT *,'Number of problematic nodes: ',ParEnv % MyPe, m
+   END IF
+
+   !DEALLOCATE( MovingNode, StayingNode )
 
    ! Now add the new nodes also to the nodes structure
    ! and give the new nodes the same coordinates as the ones
@@ -1633,8 +1673,9 @@ END SUBROUTINE GetMaxDefs
 
 200 CONTINUE
 
+   CALL EnlargeParallelInfo(Mesh, DiscontNode, StayingNode, MovingNode )
+
    DEALLOCATE( DisContNode, DiscontElem )   
-   CALL EnlargeParallelInfo(Mesh)
   
  END SUBROUTINE CreateDiscontMesh
 
@@ -1744,12 +1785,13 @@ END SUBROUTINE GetMaxDefs
  END SUBROUTINE EnlargeBoundaryElements
 
 
- SUBROUTINE EnlargeParallelInfo( Mesh )
+ SUBROUTINE EnlargeParallelInfo( Mesh, DiscontNode, StayingNode, MovingNode )
 
    TYPE(Mesh_t) :: Mesh
+   LOGICAL, ALLOCATABLE :: DiscontNode(:), StayingNode(:), MovingNode(:)
+
    INTEGER :: nmax,n0,n1,i,j,istat, goffset
-   INTEGER, POINTER :: TmpGlobalDofs(:)
- 
+   INTEGER, POINTER :: TmpGlobalDofs(:) 
    INTEGER, ALLOCATABLE :: Perm(:)
    LOGICAL, POINTER :: Intf(:)
    TYPE(NeighbourList_t), POINTER :: Nlist(:)
@@ -1784,7 +1826,13 @@ END SUBROUTINE GetMaxDefs
    ALLOCATE( TmpGlobalDofs(n1), STAT=istat )
    IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate TmpGlobalDofs array.')
    TmpGlobalDofs = 0
-   TmpGlobalDofs(1:n0) = Mesh % ParallelInfo % GlobalDofs(1:n0)
+   DO i=1,n0
+     IF( DiscontNode(i) .AND. MovingNode(i) .AND. ( .NOT. StayingNode(i) ) ) THEN
+       TmpGlobalDofs(i) = Mesh % ParallelInfo % GlobalDofs(i) + goffset
+     ELSE
+       TmpGlobalDofs(i) = Mesh % ParallelInfo % GlobalDofs(i)
+     END IF
+   END DO
    DO i=n0+1,n1
      j = Perm(i)
      IF(j > 0) THEN
