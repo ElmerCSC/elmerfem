@@ -1188,7 +1188,7 @@ END SUBROUTINE GetMaxDefs
          ActiveNode( Indexes ) = .TRUE.
        END IF
      END DO
-     m = Mesh % NumberOfNodes - COUNT( ActiveNode ) 
+     m = COUNT( .NOT. ActiveNode ) 
      CALL Info('CreateDiscontMesh','Number of passive nodes in the halo: '//TRIM(I2S(m)),Level=10)
    END IF
 
