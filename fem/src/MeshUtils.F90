@@ -1079,6 +1079,69 @@ END SUBROUTINE GetMaxDefs
   END FUNCTION LoadMesh
 #endif
 
+
+  SUBROUTINE MarkHaloNodes( Mesh, HaloNode, FoundHaloNodes )
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, POINTER :: HaloNode(:)
+    LOGICAL :: FoundHaloNodes
+
+    INTEGER :: n,t
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: Indexes(:)
+    LOGICAL :: AllocDone
+
+    ! Check whether we need to skip some elements and nodes on the halo boundary 
+    ! We don't want to create additional nodes on the nodes that are on the halo only 
+    ! since they just would create further need for new halo...
+    FoundHaloNodes = .FALSE.
+    IF( ParEnv % PEs > 1 ) THEN
+      DO t = 1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)
+        IF( ParEnv % MyPe /= Element % PartIndex ) THEN
+          FoundHaloNodes = .TRUE.
+          EXIT
+        END IF
+      END DO
+    END IF
+
+
+    ! If we have halo check the truly active nodes
+    IF( FoundHaloNodes ) THEN
+      CALL Info('MarkHaloNodes',&
+          'Checking for nodes that are not really needed in bulk assembly',Level=12)
+
+      IF( .NOT. ASSOCIATED( HaloNode ) ) THEN
+        ALLOCATE( HaloNode( Mesh % NumberOfNodes ) )
+        AllocDone = .TRUE.
+      ELSE
+        AllocDone = .FALSE.
+      END IF
+
+      ! Node is a halo node if it is not needed by any prooper element
+      HaloNode = .TRUE.
+      DO t = 1, Mesh % NumberOfBulkElements     
+        Element => Mesh % Elements(t)
+        IF( ParEnv % MyPe == Element % PartIndex ) THEN
+          Indexes => Element % NodeIndexes
+          HaloNode( Indexes ) = .FALSE.
+        END IF
+      END DO
+
+      n = COUNT( HaloNode ) 
+      FoundHaloNodes = ( n > 0 ) 
+      CALL Info('MarkHaloNodes','Number of passive nodes in the halo: '&
+          //TRIM(I2S(n)),Level=10)
+
+      ! If there are no halo nodes and the allocation was done within this subroutine
+      ! then deallocate also. 
+      IF( .NOT. FoundHaloNodes .AND. AllocDone ) THEN
+        DEALLOCATE( HaloNode ) 
+      END IF
+    END IF
+
+  END SUBROUTINE MarkHaloNodes
+
  
 !> Create a discontinuous mesh over requested boundaries.
 !> The nodes are duplicated in order to facilitate the discontinuity.
@@ -1108,7 +1171,7 @@ END SUBROUTINE GetMaxDefs
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, ParentElem, OtherElem
    CHARACTER(MAX_NAME_LEN) :: DiscontFlag
    LOGICAL :: CheckForHalo
-   LOGICAL, ALLOCATABLE :: ActiveNode(:)
+   LOGICAL, POINTER :: HaloNode(:)
    TYPE(ValueList_t), POINTER :: BCList
 
    LOGICAL :: DoneThisAlready = .FALSE.
@@ -1163,36 +1226,14 @@ END SUBROUTINE GetMaxDefs
 
 
    ! Check whether we need to skip some elements and nodes on the halo boundary 
-   ! We don't want to create additional nodes on the nodes that are on the halo only 
+   ! We might not want to create additional nodes on the nodes that are on the halo only 
    ! since they just would create further need for new halo...
-   CheckForHalo = .FALSE.
-   IF( Parallel ) THEN
-     DO t = 1, NoBulkElems     
-       Element => Mesh % Elements(t)
-       IF( ParEnv % MyPe /= Element % PartIndex ) THEN
-         CheckForHalo = .TRUE.
-         EXIT
-       END IF
-     END DO
-   END IF
- 
+   CheckForHalo = ListGetLogical( Model % Simulation,'No Discontinuous Halo',Found ) 
+   IF(.NOT. Found ) CheckForHalo = .TRUE.
    IF( CheckForHalo ) THEN
-     CALL Info('CreateDiscontMesh',&
-         'Checking for nodes that are not really needed in bulk assembly',Level=12)
-     
-     ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
-     ActiveNode = .FALSE.
-     DO t = 1, NoBulkElems     
-       Element => Mesh % Elements(t)
-       IF( ParEnv % MyPe == Element % PartIndex ) THEN
-         Indexes => Element % NodeIndexes
-         ActiveNode( Indexes ) = .TRUE.
-       END IF
-     END DO
-     m = COUNT( .NOT. ActiveNode ) 
-     CALL Info('CreateDiscontMesh','Number of passive nodes in the halo: '//TRIM(I2S(m)),Level=10)
+     HaloNode => NULL()
+     CALL MarkHaloNodes( Mesh, HaloNode, CheckForHalo ) 
    END IF
-
 
    ! Go over all boundary elements and mark nodes that should be 
    ! discontinuous and nodes that should be continuous 
@@ -1214,7 +1255,7 @@ END SUBROUTINE GetMaxDefs
      DO i=1,n
        j = Indexes(i) 
        IF( CheckForHalo ) THEN
-         IF( .NOT. ActiveNode(j) ) CYCLE
+         IF( HaloNode(j) ) CYCLE
        END IF
        DisContNode(j) = .TRUE.
      END DO
@@ -1244,9 +1285,6 @@ END SUBROUTINE GetMaxDefs
    ! associated to them. 
    NoDisContElems = COUNT( DiscontElem )
    NoDisContNodes = COUNT( DisContNode ) 
-
-   ! Print more information when operating in serial mode since in parallel
-   ! this results to additional communication.
    CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '&
        //TRIM(I2S(NoDisContElems)),Level=7)
    CALL Info('CreateDiscontMesh','Number of candicate nodes: '&
@@ -1305,7 +1343,7 @@ END SUBROUTINE GetMaxDefs
 
    IF( i == 0 ) THEN
      CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
-     IF( CheckForHalo ) DEALLOCATE( ActiveNode ) 
+     IF( CheckForHalo ) DEALLOCATE( HaloNode ) 
      DEALLOCATE( DiscontNode, DiscontElem, ParentUsed )
      RETURN
    END IF
@@ -1315,7 +1353,6 @@ END SUBROUTINE GetMaxDefs
    DisContPerm => NULL()
    ALLOCATE( DisContPerm(NoNodes) )
    DisContPerm = 0    
-   j = 0
 
    ! We could end up here on an parallel case only
    ! Then we must make the parallel numbering, so jump to the end where this is done. 
@@ -1326,7 +1363,7 @@ END SUBROUTINE GetMaxDefs
      ELSE
        Mesh % DisContMesh = .TRUE.
        Mesh % DisContPerm => DisContPerm
-       Mesh % DisContNodes = NoDisContNodes 
+       Mesh % DisContNodes = 0
      END IF
      GOTO 200
    END IF
@@ -1417,7 +1454,7 @@ END SUBROUTINE GetMaxDefs
      Element => Mesh % Elements(t)
 
      ! No need to treat halo elements
-     IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+     IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
 
      Indexes => Element % NodeIndexes
 
@@ -1438,26 +1475,33 @@ END SUBROUTINE GetMaxDefs
    CALL Info('CreateDiscontMesh','Number of bulk elements staying: '&
        //TRIM(I2S(NoStayingElems)), Level=8)
 
+   ! Set discontinuous nodes only if there is a real moving node associted with it
+   ! Otherwise we would create a zero to the permutation vector. 
+   DiscontNode = DiscontNode .AND. MovingNode 
+
    ! Create permutation numbering for the discontinuous nodes   
    ! Doubling will be done only for nodes that have both parents
+   j = 0
    DO i=1,NoNodes
-     IF( MovingNode(i) .AND. StayingNode(i) .AND. DisContNode(i) ) THEN
+     IF( DisContNode(i) ) THEN
        j = j + 1
        DisContPerm(i) = j
      END IF
    END DO
    IF( j < NoDiscontNodes ) THEN
-     PRINT *,'Some discontinuous nodes only needed on the other side:',NoDiscontNodes-j
+     PRINT *,'Some discontinuous nodes only needed on the other side:',&
+         ParEnv % MyPe, NoDiscontNodes-j
      NoDiscontNodes = j 
    END IF
 
 
    ! Now set the new indexes for bulk elements
+   ! In parallel skip the halo elements
    DO t=1, NoBulkElems
      Element => Mesh % Elements(t)
 
      ! No need to treat halo elements
-     IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+     IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
      Indexes => Element % NodeIndexes
 
      IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
@@ -1552,11 +1596,6 @@ END SUBROUTINE GetMaxDefs
    m = COUNT( DiscontNode .AND. .NOT. StayingNode )
    IF( m > 0 ) THEN
      PRINT *,'Number of discont nodes not staying: ',ParEnv % MyPe, m
-   END IF
-
-   m = COUNT( DiscontNode .AND. .NOT. ( StayingNode .OR. MovingNode ) )
-   IF( m > 0 ) THEN
-     PRINT *,'Number of problematic nodes: ',ParEnv % MyPe, m
    END IF
 
    !DEALLOCATE( MovingNode, StayingNode )
@@ -1673,7 +1712,7 @@ END SUBROUTINE GetMaxDefs
 
 200 CONTINUE
 
-   CALL EnlargeParallelInfo(Mesh, DiscontNode, StayingNode, MovingNode )
+   CALL EnlargeParallelInfo(Mesh )
 
    DEALLOCATE( DisContNode, DiscontElem )   
   
@@ -1785,10 +1824,9 @@ END SUBROUTINE GetMaxDefs
  END SUBROUTINE EnlargeBoundaryElements
 
 
- SUBROUTINE EnlargeParallelInfo( Mesh, DiscontNode, StayingNode, MovingNode )
+ SUBROUTINE EnlargeParallelInfo( Mesh )
 
    TYPE(Mesh_t) :: Mesh
-   LOGICAL, ALLOCATABLE :: DiscontNode(:), StayingNode(:), MovingNode(:)
 
    INTEGER :: nmax,n0,n1,i,j,istat, goffset
    INTEGER, POINTER :: TmpGlobalDofs(:) 
@@ -1827,11 +1865,7 @@ END SUBROUTINE GetMaxDefs
    IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate TmpGlobalDofs array.')
    TmpGlobalDofs = 0
    DO i=1,n0
-     IF( DiscontNode(i) .AND. MovingNode(i) .AND. ( .NOT. StayingNode(i) ) ) THEN
-       TmpGlobalDofs(i) = Mesh % ParallelInfo % GlobalDofs(i) + goffset
-     ELSE
-       TmpGlobalDofs(i) = Mesh % ParallelInfo % GlobalDofs(i)
-     END IF
+     TmpGlobalDofs(i) = Mesh % ParallelInfo % GlobalDofs(i)
    END DO
    DO i=n0+1,n1
      j = Perm(i)
@@ -8124,6 +8158,8 @@ END SUBROUTINE GetMaxDefs
     INTEGER, ALLOCATABLE :: EQind(:)
     INTEGER, POINTER :: OldMap(:,:), NewMap(:,:)
     TYPE(ValueList_t), POINTER :: BCParams
+    LOGICAL :: CheckHaloNodes
+    LOGICAL, POINTER :: HaloNode(:)
 
     CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
          //TRIM(I2S(bc)),Level=7)
@@ -8157,10 +8193,24 @@ END SUBROUTINE GetMaxDefs
       NodalJump = ListCheckPrefix( BCParams,'Mortar BC Resistivity')
     END IF
 
+    ! Take the full weight when creating the constraints since the values will 
+    ! not be communicated
     LocalConstraints = ListGetLogical(Model % Solver % Values, &
+        'Partition Local Projector',Found)
+    IF(.NOT. Found ) LocalConstraints = ListGetLogical(Model % Solver % Values, &
         'Partition Local Constraints',Found)
+
+    ! Don't consider halo when creating discontinuity
     NoHalo = ListGetLogical(Model % Solver % Values, &
         'Projector No Halo',Found)
+
+    ! Don't consider single halo nodes when creating discontinuity
+    CheckHaloNodes = ListGetLogical( Model % Solver % Values,&
+        'Projector No Halo Nodes',Found ) 
+    IF( CheckHaloNodes ) THEN
+      CALL MarkHaloNodes( Mesh, HaloNode, CheckHaloNodes )
+    END IF
+
 
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',Found ) ) THEN
       DoEdges = .FALSE. 
@@ -8315,17 +8365,7 @@ END SUBROUTINE GetMaxDefs
     ! Projector for the nodal dofs. 
     !------------------------------------------------------------------------
     IF( DoNodes ) THEN
-      ! Number the degrees of freedom related to the nodal constraint
-      !DO i=1,NoOrigNodes
-      !  j = NodePerm(i)
-      !  IF( j == 0 ) CYCLE
-      !  IF( InvPerm(j) > 0 ) THEN
-      !    PRINT *,'This should not happen: ',i,j,InvPerm(j)
-      !  ELSE
-      !    InvPerm(j) = i
-      !  END IF
-      !END DO
-            
+
       ParentMissing = 0
       ParentFound = 0
       DO t = 1, Mesh % NumberOfBoundaryElements
@@ -8340,10 +8380,10 @@ END SUBROUTINE GetMaxDefs
         Right => Element % BoundaryInfo % Right 
 
         ! Here we really need both sides to be able to continue!
-        IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
-          ParentMissing = ParentMissing + 1
-          CYCLE
-        END IF
+        !IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
+        !  ParentMissing = ParentMissing + 1
+        !  CYCLE
+        !END IF
 
         PosSides = 0
         ActSides = 0
@@ -8368,7 +8408,11 @@ END SUBROUTINE GetMaxDefs
         ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
         ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
 
-        IF( ALL( NodePerm(Indexes) == 0 ) ) CYCLE
+        IF( ALL( NodePerm(Indexes(1:n)) == 0 ) ) CYCLE
+        
+        IF( CheckHaloNodes ) THEN
+          IF( ALL( HaloNode(Indexes(1:n)) ) ) CYCLE
+        END IF
 
         ! Get the indexes on the other side of the discontinuous boundary
         DO i=1,n
@@ -8397,6 +8441,9 @@ END SUBROUTINE GetMaxDefs
           DO p=1,n             
             indp = NodePerm( Indexes(p) )
             IF( indp == 0 ) CYCLE
+            IF( CheckHaloNodes ) THEN
+              IF( HaloNode( Indexes(p) ) ) CYCLE
+            END IF
 
             ! Only set for the nodes are are really used
             InvPerm(indp) = Indexes(p)
@@ -8415,6 +8462,10 @@ END SUBROUTINE GetMaxDefs
                 indq = NodePerm(Indexes(q))
                 IF( indq == 0 ) CYCLE
 
+                IF( CheckHaloNodes ) THEN
+                  IF( HaloNode( Indexes(p) ) ) CYCLE
+                END IF
+                
                 CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                     Indexes(q), Basis(q) * val ) 
                 CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
@@ -8609,6 +8660,8 @@ END SUBROUTINE GetMaxDefs
 
 100 DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
     DEALLOCATE( Indexes, DisContIndexes, Basis, dBasisdx, WBasis, WBasis2, RotWBasis )
+    IF( CheckHaloNodes ) DEALLOCATE( HaloNode )
+
            
   END FUNCTION WeightedProjectorDiscont
   !------------------------------------------------------------------------------
