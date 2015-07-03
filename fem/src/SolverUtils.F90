@@ -10525,12 +10525,16 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END IF
   END IF
 
-  EliminateDiscont =  ListGetLogical( Solver % values, 'Eliminate Discont',Found )
-  IF( EliminateDiscont ) THEN
-    CALL totv( StiffMatrix, SlaveDiag, SlaveIPerm )
-    CALL totv( StiffMatrix, DiagDiag, SlaveIPerm )
-    CALL totv( StiffMatrix, MasterDiag, MasterIPerm )
-    CALL tota( StiffMatrix, TotValues, SlavePerm )
+  IF ( ParEnv % Pes>1 ) THEN
+    EliminateDiscont =  ListGetLogical( Solver % values, 'Eliminate Discont',Found )
+    IF( EliminateDiscont ) THEN
+      CALL totv( StiffMatrix, SlaveDiag, SlaveIPerm )
+      CALL totv( StiffMatrix, DiagDiag, SlaveIPerm )
+      CALL totv( StiffMatrix, MasterDiag, MasterIPerm )
+      CALL tota( StiffMatrix, TotValues, SlavePerm )
+    END IF
+  ELSE
+    EliminateDiscont = .FALSE.
   END IF
 
   IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
