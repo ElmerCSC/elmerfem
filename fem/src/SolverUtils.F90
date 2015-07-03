@@ -10860,15 +10860,16 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
               scl * StiffMatrix % Values(j) * Solution(StiffMatrix % Cols(j))
           END DO
         END DO
-        IF(EliminateDiscont) THEN
-          IF (EliminateFromMaster) THEN
-            CALL totv(StiffMatrix,MultiplierValues,MasterPerm)
-          ELSE
-            CALL totv(StiffMatrix,MultiplierValues,SlavePerm)
-          END IF
-        END IF
       ELSE
         MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
+      END IF
+
+      IF(EliminateConstraints.AND.EliminateDiscont) THEN
+        IF (EliminateFromMaster) THEN
+          CALL totv(StiffMatrix,MultiplierValues,MasterIPerm)
+        ELSE
+          CALL totv(StiffMatrix,MultiplierValues,SlaveIPerm)
+        END IF
       END IF
     END IF
 
@@ -10887,19 +10888,30 @@ CONTAINS
     real(kind=dp) :: totvalues(:)
     integer, allocatable :: perm(:)
 
-    real(kind=dp), ALLOCATABLE :: x(:)
+    real(kind=dp), ALLOCATABLE :: x(:),r(:)
+    INTEGER :: i,j,ng
 
-    ALLOCATE(x(A % NumberOfRows))
+    ng = A % NumberOfRows
+!   ng = ParallelReduction(1._dp*MAXVAL(A % ParallelInfo % GLobalDOfs))
+    ALLOCATE(x(ng),r(ng))
+
     x = 0._dp
     IF(ALLOCATED(perm)) THEN
-      DO i=1,SIZE(totvalues)
-        x(perm(i)) = totvalues(i)
+      DO i=1,SIZE(perm)
+        j = Perm(i)
+        !j = a % parallelinfo % globaldofs(j)
+        x(j) = totvalues(i)
       END DO
     END IF
+
     CALL ParallelSumVector(A, x)
+!   CALL MPI_ALLREDUCE( x,r, ng, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, i ); x=r
+
     IF(ALLOCATED(perm)) THEN
-      DO i=1,SIZE(totvalues)
-        totvalues(i) = x(perm(i))
+      DO i=1,SIZE(perm)
+        j = Perm(i)
+        !j = A % parallelinfo % globaldofs(j)
+        totvalues(i) = x(j)
       END DO
     END IF
   END SUBROUTINE Totv
