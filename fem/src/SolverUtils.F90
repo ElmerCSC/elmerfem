@@ -4942,10 +4942,10 @@ CONTAINS
            END IF
            
            ! For this we have a zero mass matrix entry so don't bother to add zero
-           IF( Left % PartIndex /= ParEnv % myPE .AND. &
-               Right % PartIndex /= ParEnv % myPe ) THEN
-             CYCLE
-           END IF
+!          IF( Left % PartIndex /= ParEnv % myPE .AND. &
+!              Right % PartIndex /= ParEnv % myPe ) THEN
+!            CYCLE
+!          END IF
          END IF
 
          nnodes = Element % TYPE % NumberOfNodes
@@ -9561,7 +9561,7 @@ END FUNCTION SearchNodeL
     ConstrainedSolve = ParallelReduction(ConstrainedSolve*1._dp)
 
     IF ( ConstrainedSolve > 0 ) THEN
-      CALL Info('SolveSystem','Solving linear system with constaint matrix',Level=10)
+      CALL Info('SolveSystem','Solving linear system with constraint matrix',Level=10)
       IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN
         CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm')
       END IF
@@ -10144,13 +10144,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(Matrix_t), POINTER :: CollectionMatrix, RestMatrix, AddMatrix, &
        RestMatrixTranspose, TMat, XMat
   REAL(KIND=dp), POINTER CONTIG :: CollectionVector(:), RestVector(:),&
-                 MultiplierValues(:),AddVector(:), Tvals(:), Vals(:)
-  REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:)
+     MultiplierValues(:), AddVector(:), Tvals(:), Vals(:)
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: CollectionSolution(:), TotValues(:)
   INTEGER :: NumberOfRows, NumberOfValues, MultiplierDOFs, istat, NoEmptyRows 
   INTEGER :: i, j, k, l, m, n, p,q, ix, Loop
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum
-  LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, &
+  LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EliminateDiscont, &
               EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints
   SAVE MultiplierValues, SolverPointer
 
@@ -10163,7 +10163,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   REAL(KIND=dp), POINTER :: UseDiag(:)
   TYPE(ListMatrix_t), POINTER :: Lmat(:)
   LOGICAL  :: EliminateFromMaster, EliminateSlave, Parallel
-  REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:)
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: SlaveDiag(:), MasterDiag(:), DiagDiag(:)
 
 !------------------------------------------------------------------------------
   CALL Info( 'SolveWithLinearRestriction ', ' ', Level=5 )
@@ -10463,9 +10463,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     n = StiffMatrix % NumberOfRows
     m = RestMatrix % NumberOfRows
 
-    ALLOCATE(SlaveDiag(n),MasterDiag(m),SlavePerm(n),MasterPerm(n),SlaveIPerm(m),MasterIPerm(m))
+    ALLOCATE(SlaveDiag(m),MasterDiag(m),SlavePerm(n),MasterPerm(n),SlaveIPerm(m),MasterIPerm(m),DiagDiag(m))
     SlavePerm  = 0; SlaveIPerm  = 0; 
-    MasterPerm = 0; MasterIPerm = 0;
+    MasterPerm = 0; MasterIPerm = 0
 
     Tvals => RestMatrix % TValues
     IF (.NOT.ASSOCIATED(Tvals)) Tvals => RestMatrix % Values 
@@ -10476,6 +10476,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         'Extracting diagonal entries for constraints',Level=15)
     DO i=1, RestMatrix % NumberOfRows
       m = RestMatrix % InvPerm(i)
+
       IF( m == 0 ) CYCLE
       m = MOD(m-1,n) + 1
       SlavePerm(m)  = i
@@ -10483,7 +10484,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
       DO j=RestMatrix % Rows(i), RestMatrix % Rows(i+1)-1
         k = RestMatrix % Cols(j)
-        IF(k>n) CYCLE
+        IF(k>n) THEN
+           DiagDiag(i) = Tvals(j)
+           CYCLE
+        END IF
 
         IF(k == RestMatrix % InvPerm(i)) THEN
            SlaveDiag(i) = Tvals(j)
@@ -10494,8 +10498,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         END IF
       END DO
     END DO
+  END IF
 
-
+  IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
     EliminateSlave = ListGetLogical( Solver % values, 'Eliminate Slave',Found )
     EliminateFromMaster = ListGetLogical( Solver % values, 'Eliminate From Master',Found )
 
@@ -10518,14 +10523,24 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     ELSE
       Vals => RestMatrix % Values
     END IF
+  END IF
 
-    Lmat => CollectionMatrix % ListMatrix
+  EliminateDiscont =  ListGetLogical( Solver % values, 'Eliminate Discont',Found )
+  IF( EliminateDiscont ) THEN
+    CALL totv( StiffMatrix, SlaveDiag, SlaveIPerm )
+    CALL totv( StiffMatrix, DiagDiag, SlaveIPerm )
+    CALL totv( StiffMatrix, MasterDiag, MasterIPerm )
+    CALL tota( StiffMatrix, TotValues, SlavePerm )
+  END IF
 
+  IF (ASSOCIATED(RestMatrix).AND.EliminateConstraints) THEN
     ! Replace elimination equations by the constraints (could done be as a postprocessing
     ! step, if eq's totally eliminated from linsys.)
     ! ----------------------------------------------------------------------------------
     CALL Info('SolveWithLInearRestriction',&
         'Deleting rows from equation to be eliminated',Level=15)
+
+    Lmat => CollectionMatrix % ListMatrix
     DO m=1,RestMatrix % NumberOfRows
       i = UseIPerm(m)
       CALL List_DeleteRow(Lmat, i, Keep=.TRUE.)
@@ -10542,19 +10557,14 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         ! --------------------------------------------------------
         IF(j > n) CYCLE
 
-        ! Don't add elimination entries to others except for the owner partition
-        ! I'm still hesitant about this so it is commented out
-        IF( Parallel ) THEN
-          !IF( StiffMatrix % ParallelInfo % NeighbourList(i) % Neighbours(1) /= ParEnv % MyPe ) CYCLE
-        END IF
-
         CALL List_AddToMatrixElement( Lmat, i, j, Vals(l) )
       END DO
       CollectionVector(i) = RestVector(m)
     END DO
 
+    ! Eliminate slave dof cycles:
+    ! ---------------------------
     Xmat => RestMatrix
-
     Found = .TRUE.
     Loop = 0
     DO WHILE(Found)
@@ -10623,21 +10633,35 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
     ! Eliminate Lagrange Coefficients:
     ! --------------------------------
+
     CALL Info('SolveWithLInearRestriction',&
         'Eliminating Largrange Coefficients',Level=15)
+
     DO m=1,Tmat % NumberOfRows
       i = UseIPerm(m)
       DO j=TMat % Rows(m), TMat % Rows(m+1)-1
         k = TMat % Cols(j)
         IF(k<=n) THEN
           IF(UsePerm(k)/=0) CYCLE
-          scl = -Tvals(j) / UseDiag(m)
+
+          IF ( EliminateDiscont ) THEN
+            IF (EliminateFromMaster) THEN
+              scl = -SlaveDiag(SlavePerm(k)) / UseDiag(m)
+            ELSE
+              scl = -MasterDiag(MasterPerm(k)) / UseDiag(m)
+            END IF
+          ELSE
+            scl = -Tvals(j) / UseDiag(m)
+          END IF
         ELSE
           k = UseIPerm(k-n)
-          ! multiplied by 1/2 in GenerateConstraintMatrx()
-          scl = -2*Tvals(j) / UseDiag(m)
+          ! multiplied by 1/2 in GenerateConstraintMatrix()
+          IF (EliminateDiscont) THEN
+            scl = -2*DiagDiag(m) / UseDiag(m)
+          ELSE
+            scl = -2*Tvals(j) / UseDiag(m)
+          END IF
         END IF
-
         DO l=StiffMatrix % Rows(i+1)-1, StiffMatrix % Rows(i),-1
           CALL List_AddToMatrixElement( Lmat, k, &
               StiffMatrix % Cols(l), scl * StiffMatrix % Values(l) )
@@ -10654,41 +10678,67 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       CALL Info('SolveWithLInearRestriction',&
           'Eliminate slave dofs using constraint equations',Level=15)
 
-      DO i=1,StiffMatrix % NumberOfRows
-        IF(UsePerm(i)/=0) CYCLE
-        cPrev => Null()
-        cPtr  => Lmat(i) % Head
-        DO WHILE(ASSOCIATED(cPtr))
-          ! ...search for entry to be eliminated...
-          ! ----------------------------------------
-          j = SlavePerm(cPtr % Index)
-          IF(j==0) THEN
-            cPrev => cPtr
-            cPtr  => cPtr % Next
-            CYCLE
-          END IF
-          scl = -cPtr % Value / SlaveDiag(j)
+      IF(EliminateDiscont) THEN
+        DO i=1,StiffMatrix % NumberOfRows
+          IF ( UsePerm(i)/=0 ) CYCLE
 
-          cTmp  => cPtr
-          cPtr  => cPtr % Next
+          DO m=StiffMatrix % Rows(i), StiffMatrix % Rows(i+1)-1
+             j = SlavePerm(StiffMatrix % Cols(m))
+             IF ( j==0 ) CYCLE
+             scl = -TotValues(m) / SlaveDiag(j)
 
-          ! Delete elimination entry:
-          ! -------------------------
-          CALL List_DeleteMatrixElement(Lmat,i,cTmp % Index)
+             ! Delete elimination entry:
+             ! -------------------------
+             CALL List_DeleteMatrixElement(Lmat,i,StiffMatrix % Cols(m))
 
-          ! ... and add replacement values:
-          ! -------------------------------
-          k = UseIPerm(j)
-          cTmp => Lmat(k) % Head
-          DO WHILE(ASSOCIATED(cTmp))
-             l = cTmp % Index
-             IF ( l /= SlaveIPerm(j) ) &
-               CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
-             cTmp => cTmp % Next
+             k = UseIPerm(j)
+             cTmp => Lmat(k) % Head
+             DO WHILE(ASSOCIATED(cTmp))
+                l = cTmp % Index
+                IF ( l /= SlaveIPerm(j) ) &
+                   CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
+              cTmp => cTmp % Next
+            END DO
+            CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)
           END DO
-          CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)
         END DO
-      END DO
+      ELSE
+        DO i=1,StiffMatrix % NumberOfRows
+          IF(UsePerm(i)/=0) CYCLE
+          cPrev => Null()
+          cPtr  => Lmat(i) % Head
+          DO WHILE(ASSOCIATED(cPtr))
+            ! ...search for entry to be eliminated...
+            ! ----------------------------------------
+            j = SlavePerm(cPtr % Index)
+            IF(j==0) THEN
+              cPrev => cPtr
+              cPtr  => cPtr % Next
+              CYCLE
+            END IF
+            scl = -cPtr % Value / SlaveDiag(j)
+
+            cTmp  => cPtr
+            cPtr  => cPtr % Next
+
+            ! Delete elimination entry:
+            ! -------------------------
+            CALL List_DeleteMatrixElement(Lmat,i,cTmp % Index)
+
+            ! ... and add replacement values:
+            ! -------------------------------
+            k = UseIPerm(j)
+            cTmp => Lmat(k) % Head
+            DO WHILE(ASSOCIATED(cTmp))
+               l = cTmp % Index
+               IF ( l /= SlaveIPerm(j) ) &
+                 CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
+               cTmp => cTmp % Next
+            END DO
+            CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)
+          END DO
+        END DO
+      END IF
     END IF
 
     ! Optimize bandwidth, if needed:
@@ -10806,6 +10856,13 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
               scl * StiffMatrix % Values(j) * Solution(StiffMatrix % Cols(j))
           END DO
         END DO
+        IF(EliminateDiscont) THEN
+          IF (EliminateFromMaster) THEN
+            CALL totv(StiffMatrix,MultiplierValues,MasterPerm)
+          ELSE
+            CALL totv(StiffMatrix,MultiplierValues,SlavePerm)
+          END IF
+        END IF
       ELSE
         MultiplierValues(1:j) = CollectionSolution(i+1:i+j)
       END IF
@@ -10818,6 +10875,183 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     CollectionMatrix % ConstraintMatrix => NULL()
 
     CALL Info( 'SolveWithLinearRestriction', 'All done', Level=5 )
+
+CONTAINS
+
+  SUBROUTINE totv( A, totvalues, perm )
+    type(matrix_t), pointer :: A
+    real(kind=dp) :: totvalues(:)
+    integer, allocatable :: perm(:)
+
+    real(kind=dp), ALLOCATABLE :: x(:)
+
+    ALLOCATE(x(A % NumberOfRows))
+    x = 0._dp
+    IF(ALLOCATED(perm)) THEN
+      DO i=1,SIZE(totvalues)
+        x(perm(i)) = totvalues(i)
+      END DO
+    END IF
+    CALL ParallelSumVector(A, x)
+    IF(ALLOCATED(perm)) THEN
+      DO i=1,SIZE(totvalues)
+        totvalues(i) = x(perm(i))
+      END DO
+    END IF
+  END SUBROUTINE Totv
+    
+
+  SUBROUTINE Tota( A, TotValues, cperm )
+     type(matrix_t), pointer :: A
+     integer, allocatable :: cperm(:)
+     real(kind=dp), ALLOCATABLE :: totvalues(:)
+
+     INTEGER, POINTER :: Diag(:), Rows(:), Cols(:)
+     LOGICAL ::  found
+     INTEGER :: status(MPI_STATUS_SIZE)
+     REAL(KIND=dp), ALLOCATABLE, TARGET :: rval(:)
+     INTEGER, ALLOCATABLE :: cnt(:), rrow(:),rcol(:), perm(:)
+     INTEGER :: i,j,k,l,m,ii,jj,proc,rcnt,nn, dof, dofs, Active, n, nm,ierr
+
+     TYPE Buf_t
+        REAL(KIND=dp), ALLOCATABLE :: gval(:)
+        INTEGER, ALLOCATABLE :: grow(:),gcol(:)
+     END TYPE Buf_t
+     TYPE(Buf_t), POINTER :: buf(:)
+
+     Diag => A % Diag
+     Rows => A % Rows
+     Cols => A % Cols
+
+     n = A % NumberOfRows
+
+     ALLOCATE(TotValues(SIZE(A % Values))); TotValues=A % Values
+
+     IF (ParEnv  % PEs>1 ) THEN
+       ALLOCATE(cnt(0:ParEnv % PEs-1))
+       cnt = 0
+       DO i=1,n
+         DO j=Rows(i),Rows(i+1)-1
+!          IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
+           iF ( ALLOCATED(CPerm)) THEN
+             IF(cperm(Cols(j))==0) CYCLE
+           END IF
+           IF(TotValues(j)==0) CYCLE
+
+           IF ( A % ParallelInfo % Interface(Cols(j)) ) THEN
+             DO k=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
+               m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(k)
+               IF ( m==ParEnv % myPE ) CYCLE
+               cnt(m) = cnt(m)+1
+             END DO 
+           END IF
+         END DO
+       END DO
+
+       ALLOCATE( buf(0:ParEnv % PEs-1) )
+       DO i=0,ParEnv % PEs-1
+         IF ( cnt(i) > 0 ) &
+           ALLOCATE( Buf(i) % gval(cnt(i)), Buf(i) % grow(cnt(i)), Buf(i) % gcol(cnt(i)) )
+       END DO
+
+       cnt = 0
+       DO i=1,n
+         DO j=Rows(i),Rows(i+1)-1
+!          IF(Cols(j)<=nm .OR. Cols(j)>nm+n) CYCLE
+           iF ( ALLOCATED(CPerm)) THEN
+             IF(cperm(Cols(j))==0) CYCLE
+           END IF
+           IF(TotValues(j)==0) CYCLE
+
+           IF ( A % ParallelInfo % Interface(Cols(j)) ) THEN
+             DO k=1,SIZE(A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours)
+               m = A % ParallelInfo % NeighbourList(Cols(j)) % Neighbours(k)
+               IF ( m==ParEnv % myPE ) CYCLE
+               cnt(m) = cnt(m)+1
+               Buf(m) % gcol(cnt(m)) = A % ParallelInfo % GlobalDOFs(Cols(j))
+               Buf(m) % gval(cnt(m)) = TotValues(j)
+               Buf(m) % grow(cnt(m)) = A % ParallelInfo % GlobalDOFs(i)
+             END DO
+           END IF
+         END DO
+       END DO
+
+       DO i=0,ParEnv % PEs-1
+         IF ( ParEnv % IsNeighbour(i+1) ) THEN
+           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, MPI_COMM_WORLD, status, ierr )
+           IF ( cnt(i)>0 ) THEN
+             CALL MPI_BSEND( Buf(i) % grow, cnt(i), MPI_INTEGER, &
+                 i, 7002, MPI_COMM_WORLD, status, ierr )
+
+             CALL MPI_BSEND( Buf(i) % gcol, cnt(i), MPI_INTEGER, &
+                 i, 7003, MPI_COMM_WORLD, status, ierr )
+
+             CALL MPI_BSEND( Buf(i) % gval, cnt(i), MPI_DOUBLE_PRECISION, &
+                 i, 7004, MPI_COMM_WORLD, status, ierr )
+           END IF
+         END IF
+       END DO
+
+       DO i=0,ParEnv % PEs-1
+         IF ( cnt(i)>0 ) &
+           DEALLOCATE( Buf(i) % gval, Buf(i) % grow, Buf(i) % gcol )
+       END DO
+       DEALLOCATE( cnt,Buf )
+
+       DO i=1,ParEnv % NumOfNeighbours
+         CALL MPI_RECV( rcnt, 1, MPI_INTEGER, &
+           MPI_ANY_SOURCE, 7001, MPI_COMM_WORLD, status, ierr )
+
+         IF ( rcnt>0 ) THEN
+           IF(.NOT.ALLOCATED(rrow)) THEN
+             ALLOCATE( rrow(rcnt), rcol(rcnt), rval(rcnt) )
+           ELSE IF(SIZE(rrow)<rcnt) THEN
+             DEALLOCATE(rrow,rcol,rval)
+             ALLOCATE( rrow(rcnt), rcol(rcnt), rval(rcnt) )
+           ENDIF
+
+           proc = status(MPI_SOURCE)
+           CALL MPI_RECV( rrow, rcnt, MPI_INTEGER, &
+              proc, 7002, MPI_COMM_WORLD, status, ierr )
+
+           CALL MPI_RECV( rcol, rcnt, MPI_INTEGER, &
+              proc, 7003, MPI_COMM_WORLD, status, ierr )
+
+           CALL MPI_RECV( rval, rcnt, MPI_DOUBLE_PRECISION, &
+              proc, 7004, MPI_COMM_WORLD, status, ierr )
+
+           DO j=1,rcnt
+             l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)
+             IF ( l>0 ) THEN
+               k = SearchNode(A % ParallelInfo,rrow(j),Order=A % Perm)
+               IF ( k>0 ) THEN
+                 IF ( l>=k ) THEN
+                   DO m=Diag(k),Rows(k+1)-1
+                     IF ( Cols(m) == l ) THEN
+                       TotValues(m) = TotValues(m) + rval(j)
+                       EXIT
+                     ELSE IF( Cols(m)>l) THEN
+                       EXIT
+                     END IF
+                   END DO
+                 ELSE
+                   DO m=Rows(k),Diag(k)-1
+                     IF ( Cols(m)==l ) THEN
+                       TotValues(m) = TotValues(m) + rval(j)
+                       EXIT
+                     ELSE IF( Cols(m)>l) THEN
+                       EXIT
+                     END IF
+                   END DO
+                 END IF
+               END IF
+             END IF
+           END DO
+         END IF
+       END DO
+     END IF
+  End subroutine tota
+
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveWithLinearRestriction
 !------------------------------------------------------------------------------
@@ -11785,7 +12019,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
      TYPE(Solver_t) :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2,mcount,bcount
+     INTEGER :: i,ii,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2,mcount,bcount
      TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
      LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent, Found, &
          SetDof, SomeSet, SomeSkip, SumProjectors, NewRow
@@ -11943,7 +12177,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
          IF( .NOT. ActiveComponents(1) ) CYCLE
 
+         ii = 0
          DO i=1,Atmp % NumberOfRows           
+
+            IF( Atmp % Rows(i) >= Atmp % Rows(i+1) ) CYCLE ! skip empty rows
+            ii = ii + 1
 
            ! If the mortar boundary is not active at this round don't apply it
            IF( ASSOCIATED( MortarBC % Active ) ) THEN
@@ -12049,7 +12287,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
              IF( MortarBC % LumpedDiag ) THEN
                k2 = k2 + 1             
                IF( AllocationsDone ) THEN
-                 Btmp % Cols(k2) = i + arows + rowoffset 
+                 Btmp % Cols(k2) = ii + arows + rowoffset 
                  ! The factor 0.5 comes from the fact that the 
                  ! contribution is summed twice, 2nd time as transpose
                  ! For Nodal projector the entry is 1/(weight*coeff)
@@ -12314,8 +12552,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
        CALL CRS_PackMatrix( Btmp ) 
      END IF
 
-!    Btmp % Ordered = .FALSE.
-!    CALL CRS_SortMatrix(Btmp,.TRUE.)     
      Solver % Matrix % ConstraintMatrix => Btmp
      
      Solver % MortarBCsChanged = .FALSE.
