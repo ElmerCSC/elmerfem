@@ -19,6 +19,7 @@ MACRO(ADD_ELMER_TEST test_name)
       -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
       -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
       -DWITH_MPI=${WITH_MPI}
+      -P ${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
 ENDMACRO()
 
@@ -36,13 +37,8 @@ MACRO(ADD_ELMERTEST_MODULE test_name module_name file_name)
   SET_TARGET_PROPERTIES(${ELMERTEST_CMAKE_NAME}
     PROPERTIES OUTPUT_NAME ${module_name} LINKER_LANGUAGE Fortran)
   TARGET_LINK_LIBRARIES(${ELMERTEST_CMAKE_NAME} elmersolver)
-  IF(WITH_MPI)
-    ADD_DEPENDENCIES(${ELMERTEST_CMAKE_NAME} 
-      elmersolver ElmerSolver_mpi ElmerGrid)
-  ELSE()
-    ADD_DEPENDENCIES(${ELMERTEST_CMAKE_NAME} 
-      elmersolver ElmerSolver ElmerGrid)
-  ENDIF()
+  ADD_DEPENDENCIES(${ELMERTEST_CMAKE_NAME} 
+    elmersolver Solver_TGT ElmerGrid)
   UNSET(ELMERTEST_CMAKE_NAME)
 ENDMACRO()
 

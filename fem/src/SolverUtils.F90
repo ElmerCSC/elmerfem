@@ -4458,6 +4458,8 @@ CONTAINS
 
        IF( .NOT. (AddCoeff .OR. AddRes .OR. AddRhs) ) CYCLE
 
+       Model % Solver % MortarBCsChanged = .TRUE.
+
        IF( .NOT. ASSOCIATED( Projector % InvPerm ) ) THEN
          CALL Fatal('SetWeightedProjectorJump','The > Projector % InvPerm < is really needed here!')
        END IF
@@ -6366,6 +6368,7 @@ END FUNCTION SearchNodeL
         IF( Stat .AND. RelaxAfter >= IterNo ) Relax = .FALSE.
       END IF	
 
+      RelaxBefore = .TRUE.
       IF(Relax) THEN
         RelaxBefore = ListGetLogical( SolverParams, &
             'Steady State Relaxation Before', Stat )      
@@ -6404,6 +6407,7 @@ END FUNCTION SearchNodeL
       SkipConstraints = ListGetLogical(SolverParams,&
           'Nonlinear System Convergence Without Constraints',Stat) 
 
+      RelaxBefore = .TRUE.
       IF(Relax) THEN
         RelaxBefore = ListGetLogical( SolverParams, &
             'Nonlinear System Relaxation Before', Stat )
@@ -7808,18 +7812,20 @@ END FUNCTION SearchNodeL
       DEALLOCATE( tmp_weights )
     END IF
 
-    DO i = 1, NoBC
-      PRINT *,'BC weight:',i,bc_weights(i)
-    END DO
-    DO i = 1, NoBF
-      PRINT *,'BF weight:',i,bf_weights(i)
-    END DO
-    DO i = 1, NoBodies
-      PRINT *,'Body weight:',i,body_weights(i)
-    END DO
-    DO i = 1, NoMat
-      PRINT *,'Mat weight:',i,mat_weights(i)
-    END DO
+    IF( ParEnv % MyPe == 0 ) THEN
+      DO i = 1, NoBC
+        PRINT *,'BC weight:',i,bc_weights(i)
+      END DO
+      DO i = 1, NoBF
+        PRINT *,'BF weight:',i,bf_weights(i)
+      END DO
+      DO i = 1, NoBodies
+        PRINT *,'Body weight:',i,body_weights(i)
+      END DO
+      DO i = 1, NoMat
+        PRINT *,'Mat weight:',i,mat_weights(i)
+      END DO
+    END IF
 
     DEALLOCATE(Basis, &
         ElementNodes % x, ElementNodes % y, ElementNodes % z )
@@ -8538,6 +8544,146 @@ END FUNCTION SearchNodeL
 
 
 !------------------------------------------------------------------------------
+!> Prints the values of the CRS matrix to standard output.
+!------------------------------------------------------------------------------
+  SUBROUTINE PrintMatrix( A, Parallel, CNumbering,SaveMass, SaveDamp, SaveStiff)
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A            !< Structure holding matrix
+    LOGICAL :: Parallel    !< are we in parallel mode?
+    LOGICAL :: CNumbering  !< Continuous numbering ?
+    LOGICAL, OPTIONAL :: SaveMass  !< Should we save the mass matrix
+    LOGICAL, OPTIONAL :: SaveDamp  !< Should we save the damping matrix
+    LOGICAL, OPTIONAL :: SaveStiff !< Should we save the stiffness matrix
+!------------------------------------------------------------------------------
+    INTEGER :: i,j,k,n,IndMass,IndDamp,IndStiff,IndMax,row,col
+    LOGICAL :: DoMass, DoDamp, DoStiff, Found
+    REAL(KIND=dp) :: Vals(3)
+    INTEGER, ALLOCATABLE :: Owner(:)
+
+    DoMass = .FALSE.
+    IF( PRESENT( SaveMass ) ) DoMass = SaveMass
+    IF( DoMass .AND. .NOT. ASSOCIATED( A % MassValues ) ) THEN
+      CALL Warn('CRS_PrintMatrix','Cannot save nonexisting mass matrix')
+      DoMass = .FALSE. 
+    END IF
+
+    DoDamp = .FALSE.
+    IF( PRESENT( SaveDamp ) ) DoDamp = SaveDamp
+    IF( DoDamp .AND. .NOT. ASSOCIATED( A % DampValues ) ) THEN
+      CALL Warn('CRS_PrintMatrix','Cannot save nonexisting damp matrix')
+      DoDamp = .FALSE. 
+    END IF
+
+    DoStiff = .TRUE.
+    IF( PRESENT( SaveStiff ) ) DoStiff = SaveStiff
+    IF( DoStiff .AND. .NOT. ASSOCIATED( A % Values ) ) THEN
+      CALL Warn('CRS_PrintMatrix','Cannot save nonexisting stiff matrix')
+      DoStiff = .FALSE. 
+    END IF
+
+    IF(.NOT. (DoStiff .OR. DoDamp .OR. DoMass ) ) THEN
+      CALL Warn('CRS_PrintMatrix','Saving just the topology!')
+    END IF
+    
+    IndStiff = 0
+    IndDamp = 0
+    IndMass = 0
+
+    IF( DoStiff ) IndStiff = 1
+    IF( DoDamp ) IndDamp = IndStiff + 1
+    IF( DoMass ) IndMass = IndDamp + 1
+    IndMax = MAX( IndStiff, IndDamp, IndMass )
+
+    IF (Parallel.AND.Cnumbering) THEN
+      n = SIZE(A % ParallelInfo % GlobalDOFs)
+  
+      ALLOCATE( A % Gorder(n), Owner(n) )
+      CALL ContinuousNumbering( A % ParallelInfo, &
+          A % Perm, A % Gorder, Owner )
+    END IF
+
+    DO i=1,A % NumberOfRows
+      row = i
+      IF(Parallel) THEN
+        IF(Cnumbering) THEN
+          row = A % Gorder(i)
+        ELSE 
+          row = A % ParallelInfo % GlobalDOFs(i)
+        END IF
+      END IF
+      DO j = A % Rows(i),A % Rows(i+1)-1
+
+        col = A % Cols(j)
+        IF(Parallel) THEN
+          IF(Cnumbering) THEN
+            col = A % Gorder(col)
+          ELSE 
+            col = A % ParallelInfo % GlobalDOFs(col)
+          END IF
+        END IF
+
+        WRITE(1,'(I0,A,I0,A)',ADVANCE='NO') row,' ',col,' '
+
+        IF( DoStiff ) THEN
+          Vals(IndStiff) = A % Values(j)
+        END IF
+        IF( DoDamp ) THEN
+          Vals(IndDamp) = A % DampValues(j)
+        END IF
+        IF( DoMass ) THEN
+          Vals(IndMass) = A % MassValues(j)
+        END IF
+
+        IF( IndMax > 0 ) THEN
+          WRITE(1,*) Vals(1:IndMax)          
+        ELSE
+          WRITE(1,'(A)') ' '
+        END IF
+      END DO
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE  PrintMatrix
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Prints the values of the right-hand-side vector to standard output.
+!------------------------------------------------------------------------------
+  SUBROUTINE PrintRHS( A, Parallel, CNumbering )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A  !< Structure holding matrix
+    LOGICAL :: Parallel, CNumbering
+!------------------------------------------------------------------------------
+    INTEGER :: i, row
+    REAL(KIND=dp) :: Val
+
+    DO i=1,A % NumberOfRows
+      row = i
+      IF(Parallel) THEN
+        IF(Cnumbering) THEN
+          row = A % Gorder(i)
+        ELSE 
+          row = A % ParallelInfo % GlobalDOFs(i)
+        END IF
+      END IF
+
+      Val = A % Rhs(i)
+      WRITE(1,'(I0,A)',ADVANCE='NO') row,' '
+      IF( ABS( Val ) <= TINY( Val ) ) THEN
+        WRITE(1,'(A)') '0.0'
+      ELSE
+        WRITE(1,*) Val
+      END IF
+    END DO
+
+  END SUBROUTINE PrintRHS
+!------------------------------------------------------------------------------
+
+
+
+
+!------------------------------------------------------------------------------
 !> Solves a linear system and also calls the necessary preconditioning routines.
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE SolveLinearSystem( A, b, &
@@ -8556,7 +8702,7 @@ END FUNCTION SearchNodeL
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
                SkipZeroRhs, ComplexSystem, ComputeChangeScaled
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
-    CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName
+    CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp), ALLOCATABLE, TARGET :: Px(:), &
                 TempVector(:), TempRHS(:), NonlinVals(:)
@@ -8604,6 +8750,11 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     IF ( ParEnv % Pes>1.AND..NOT. ASSOCIATED(A % ParMatrix) ) THEN
       CALL ParallelInitMatrix( Solver, A )
+    END IF
+
+   IF ( ListGetLogical( Solver % Values, 'Linear System Save',GotIt )) THEN
+      saveslot = ListGetString( Solver % Values,'Linear System Save Slot', GotIt )
+      IF(SaveSlot == 'linear solve') CALL SaveLinearSystem( Solver, A )
     END IF
 
 !------------------------------------------------------------------------------
@@ -9955,6 +10106,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       END DO
     END DO
 
+
     EliminateSlave = ListGetLogical( Solver % values, 'Eliminate Slave',Found )
     EliminateFromMaster = ListGetLogical( Solver % values, 'Eliminate From Master',Found )
 
@@ -10051,7 +10203,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         Tvals => Tmat % Values
         IF(.NOT.ASSOCIATED(Xmat,RestMatrix)) CALL FreeMatrix(Xmat)
       END IF
-
       Xmat => TMat
     END DO
 
@@ -10063,10 +10214,12 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         k = TMat % Cols(j)
         IF(k<=n) THEN
           IF(UsePerm(k)/=0) CYCLE
+          scl = -Tvals(j) / UseDiag(m)
         ELSE
           k = UseIPerm(k-n)
+          ! multiplied by 1/2 in GenerateConstraintMatrx()
+          scl = -2*Tvals(j) / UseDiag(m)
         END IF
-        scl = -Tvals(j) / UseDiag(m)
 
         DO l=StiffMatrix % Rows(i+1)-1, StiffMatrix % Rows(i),-1
           CALL List_AddToMatrixElement( Lmat, k, &
@@ -10094,7 +10247,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             cPtr  => cPtr % Next
             CYCLE
           END IF
-          scl = -cPtr % Value / UseDiag(j)
+          scl = -cPtr % Value / SlaveDiag(j)
 
           cTmp  => cPtr
           cPtr  => cPtr % Next
@@ -10105,20 +10258,19 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
           ! ... and add replacement values:
           ! -------------------------------
-          j = UseIPerm(j)
-          cTmp => Lmat(j) % Head
+          k = UseIPerm(j)
+          cTmp => Lmat(k) % Head
           DO WHILE(ASSOCIATED(cTmp))
              l = cTmp % Index
-             IF(j/=l) &
+             IF ( l /= SlaveIPerm(j) ) &
                CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
              cTmp => cTmp % Next
           END DO
-          CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(j)
+          CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)
         END DO
       END DO
     END IF
 
-#if 0
     ! Optimize bandwidth, if needed:
     ! ------------------------------
     IF(EliminateFromMaster) THEN
@@ -10139,7 +10291,6 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         CollectionVector(k) = scl
       END DO
     END IF
-#endif
 
     CALL Info('SolveWithLinearRestriction',&
         'Finished Adding ConstraintMatrix',Level=12)
@@ -10251,26 +10402,35 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
       
 
 !------------------------------------------------------------------------------
-  SUBROUTINE SaveLinearSystem( Solver )
+  SUBROUTINE SaveLinearSystem( Solver, Ain )
 !------------------------------------------------------------------------------
     TYPE( Solver_t ) :: Solver
+    TYPE(Matrix_t), POINTER, OPTIONAL :: Ain
 !------------------------------------------------------------------------------    
     TYPE(Matrix_t), POINTER :: A
     TYPE(ValueList_t), POINTER :: Params
     CHARACTER(LEN=MAX_NAME_LEN) :: dumpfile, dumpprefix
     INTEGER, POINTER :: Perm(:)
     INTEGER :: i
-    LOGICAL :: SaveMass, SaveDamp, SavePerm, Found 
+    LOGICAL :: SaveMass, SaveDamp, SavePerm, Found , Parallel, CNumbering
 !------------------------------------------------------------------------------
 
     CALL Info('SaveLinearSystem','Saving linear system',Level=4)
+
+    Parallel = ParEnv % PEs > 1
 
     Params => Solver % Values
     IF(.NOT. ASSOCIATED( Params ) ) THEN
       CALL Fatal('SaveLinearSystem','Parameter list not associated!')
     END IF
 
-    A => Solver % Matrix
+    CNumbering = ListGetLogical(Params, 'Linear System Save Continuous Numbering',Found)
+
+    IF( PRESENT(Ain)) THEN
+      A => Ain
+    ELSE
+      A => Solver % Matrix
+    END IF
 
     IF(.NOT. ASSOCIATED( A ) ) THEN
       CALL Fatal('SaveLinearSystem','Matrix not assciated!')
@@ -10283,15 +10443,17 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     IF(.NOT. Found ) dumpprefix = 'linsys'
 
     dumpfile = TRIM(dumpprefix)//'_a.dat'
+    IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//TRIM(I2S(ParEnv % myPE))
     CALL Info('SaveLinearSystem','Saving matrix to: '//TRIM(dumpfile))
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
-    CALL CRS_PrintMatrix(A,SaveMass=SaveMass,SaveDamp=SaveDamp)
+    CALL PrintMatrix(A,Parallel,Cnumbering,SaveMass=SaveMass,SaveDamp=SaveDamp)
     CLOSE(1)
 
     dumpfile = TRIM(dumpprefix)//'_b.dat'
+    IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//TRIM(I2S(ParEnv % myPE))
     CALL Info('SaveLinearSystem','Saving matrix rhs to: '//TRIM(dumpfile))
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
-    CALL CRS_PrintRHS(A)
+    CALL PrintRHS(A, Parallel, CNumbering)
     CLOSE(1)
     
     SavePerm = ListGetLogical( Params,'Linear System Save Perm',Found)
@@ -10302,6 +10464,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         SavePerm = .FALSE.
       ELSE
         dumpfile = TRIM(dumpprefix)//'_perm.dat'
+        IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//TRIM(I2S(ParEnv % myPE))
         CALL Info('SaveLinearSystem','Saving permutation to: '//TRIM(dumpfile))
         OPEN(1,FILE=dumpfile, STATUS='Unknown')
         DO i=1,SIZE(Perm)
@@ -10312,12 +10475,24 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     END IF
     
     dumpfile = TRIM(dumpprefix)//'_sizes.dat'
+    IF(Parallel) dumpfile = TRIM(dumpfile)//'.'//TRIM(I2S(ParEnv % myPE))
     CALL Info('SaveLinearSystem','Saving matrix sizes to: '//TRIM(dumpfile))
     OPEN(1,FILE=dumpfile, STATUS='Unknown')
     WRITE(1,*) A % NumberOfRows
     WRITE(1,*) SIZE(A % Values)
     IF( SavePerm ) WRITE(1,*) SIZE( Perm )
     CLOSE(1)
+
+    IF(Parallel) THEN
+      dumpfile = TRIM(dumpprefix)//'_sizes.dat'
+      CALL Info('SaveLinearSystem','Saving matrix sizes to: '//TRIM(dumpfile))
+      OPEN(1,FILE=dumpfile, STATUS='Unknown')
+      WRITE(1,*) NINT(ParallelReduction(1._dP*A % ParMatrix % &
+                           SplittedMatrix % InsideMatrix % NumberOfRows))
+      WRITE(1,*) NINT(ParallelReduction(1._dp*SIZE(A % Values)))
+      IF( SavePerm ) WRITE(1,*) NINT(ParallelReduction(1._dp*SIZE( Perm )))
+      CLOSE(1)
+    END IF
     
     IF( ListGetLogical( Params,'Linear System Save and Stop',Found ) ) THEN
       CALL Info('SaveLinearSystem','Just saved matrix and stopped!',Level=4)

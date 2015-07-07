@@ -6970,7 +6970,7 @@ void MainWindow::loadDefinitions()
 
   // load additional definitions:
   //-----------------------------
-#ifdef __APPLE__
+#ifdef __APPLE__DONTGO_HERE_TODO
   QDirIterator iterator( homePath+"/edf", QDirIterator::Subdirectories);  
 #else
   QString additionalEdfs = QCoreApplication::applicationDirPath() + "/../share/ElmerGUI/edf";  // @TODO: fix path to share/ElmerGUI/edf

@@ -2691,7 +2691,12 @@ END SUBROUTINE GetMaxDefs
    DO WHILE (MeshNamePar(n:n)==CHAR(0).OR.MeshNamePar(n:n)==' ')
      n=n-1
    END DO
-   INQUIRE( FILE=MeshNamePar(1:n), EXIST=Found)
+   IF(NumProcs<=1) THEN
+     INQUIRE( FILE=MeshNamePar(1:n)//'/mesh.header', EXIST=Found)
+   ELSE
+     INQUIRE( FILE=MeshNamePar(1:n)//'/partitioning.'// & 
+         TRIM(i2s(Numprocs))//'/part.1.header', EXIST=Found)
+   END IF
    IF(.NOT.Found) RETURN
 
    CALL Info('LoadMesh','Starting',Level=8)
@@ -4297,7 +4302,7 @@ END SUBROUTINE GetMaxDefs
         PMesh % Elements(ind) % ElementIndex = q % ElementIndex
 
         ! Set also the owner partition
-        PMesh % Elements(ind) % PartIndex = q % PartIndex
+!       PMesh % Elements(ind) % PartIndex = q % PartIndex
 
         en = q % TYPE % NumberOfEdges
         ALLOCATE(PMesh % Elements(ind) % EdgeIndexes(en))
@@ -9305,6 +9310,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,This
     REAL(KIND=dp) :: rowsum, dia
 
+    IF(.NOT.ASSOCIATED(Projector)) RETURN
     This = Projector % ProjectorBC
 
     IF( PRESENT( Prefix ) ) THEN

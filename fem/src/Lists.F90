@@ -1670,6 +1670,24 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+!------------------------------------------------------------------------------
+!> Check if the suffix exists in the list.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckSuffix( List, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     TYPE(ValuelistEntry_t), POINTER :: ptr
+     
+     ptr => ListFindSuffix( List, Name, Found )
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckSuffix
+!------------------------------------------------------------------------------
+  
+
+
 !------------------------------------------------------------------------------
 !> Check if the keyword is with the given suffix is present in any boundary condition.
 !------------------------------------------------------------------------------
@@ -1851,12 +1869,14 @@ CONTAINS
      DO WHILE( ASSOCIATED(ptr) )
        n = ptr % NameLen
        IF ( n >= k ) THEN
+         ! Did we find a keyword which has the correct suffix?
          IF ( ptr % Name(n-k+1:n) == str(1:k) ) THEN
            Ptr2 => list % Head
            DO WHILE( ASSOCIATED(ptr2) )
              n2 = ptr2 % NameLen
-             
              IF( n2 + k <= n ) THEN
+
+               ! Did we find the corresponding keyword without the suffix?
                IF ( ptr2 % Name(1:n2) == ptr % Name(1:n2) ) THEN
                  WRITE( Message,'(A,ES12.5)') 'Normalizing > '//&
                      TRIM( ptr2 % Name )// ' < by ',Coeff
@@ -1864,6 +1884,7 @@ CONTAINS
                  ptr2 % Coeff = Coeff
                  EXIT
                END IF
+
              END IF
              ptr2 => ptr2 % Next
            END DO
@@ -1874,6 +1895,7 @@ CONTAINS
 
    END SUBROUTINE ListSetCoefficients
  
+
 
 !> Copies an entry from 'ptr' to an entry in *different* list with the same content.
 !-----------------------------------------------------------------------------------
@@ -3785,6 +3807,7 @@ CONTAINS
 
      REAL(KIND=dp), ALLOCATABLE :: G(:,:)
      REAL(KIND=dp) :: T(MAX_FNC)
+     REAL(KIND=dp), POINTER :: RotMatrix(:,:)
      INTEGER :: i,j,k,nlen,N1,N2,k1,S1,S2,l, cnt
      CHARACTER(LEN=2048) :: tmp_str, cmd
      LOGICAL :: AllGlobal, lFound, AnyFound
@@ -3802,7 +3825,8 @@ CONTAINS
        ELSE IF(.NOT.AnyFound) THEN
           CALL Warn( 'ListFind', 'Requested property ['//TRIM(Name)//'] not found')
        END IF
-       RETURN
+       IF( .NOT. AnyFound ) RETURN
+       GOTO 200
      END IF
 
      F = 0._dp
@@ -3894,10 +3918,25 @@ CONTAINS
        END DO
      END SELECT
 
+
      F = F + G
      cnt = cnt + 1
      ptr => ListFind(List,Name//'{'//TRIM(I2S(cnt))//'}',lFound)
      IF(ASSOCIATED(ptr)) GOTO 100
+
+200  IF( ListGetLogical( List, Name//' Property Rotate', lFound ) ) THEN
+       RotMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',lFound )
+       IF( .NOT. ASSOCIATED( RotMatrix ) ) THEN
+         CALL Fatal('ListGetRealVector','Property rotation matrix not given for: '//TRIM(Name))
+       END IF
+       IF( SIZE(F,1) /= 3 ) THEN
+         CALL Fatal('ListGetRealVector','Property may be rotated only with three components!')
+       END IF
+       DO i = 1,SIZE(F,2) 
+         F(1:3,i) = MATMUL( RotMatrix, F(1:3,i) )
+       END DO
+     END IF
+
 
 !------------------------------------------------------------------------------
    END SUBROUTINE ListGetRealVector
