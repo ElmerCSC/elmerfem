@@ -5044,13 +5044,13 @@ CONTAINS
     INTEGER, TARGET :: TriangleEM(3,2)
     INTEGER, TARGET :: QuadEM(4,2)
     INTEGER, TARGET :: TetraEM(6,2)
-    INTEGER, TARGET :: PrismEM(8,2)
+    INTEGER, TARGET :: PyramidEM(8,2)
     INTEGER, TARGET :: WedgeEM(9,2)
     INTEGER, TARGET :: BrickEM(12,2)
 
     LOGICAL :: Initialized(8) = .FALSE.
   
-    SAVE LineEM, TriangleEM, WedgeEM, BrickEM, TetraEM, QuadEM, PrismEM, Initialized
+    SAVE LineEM, TriangleEM, WedgeEM, BrickEM, TetraEM, QuadEM, PyramidEM, Initialized
 
     SELECT CASE(ElementFamily)
     CASE(2)
@@ -5062,7 +5062,7 @@ CONTAINS
     CASE(5) 
       EdgeMap => TetraEM
     CASE(6) 
-      EdgeMap => PrismEM
+      EdgeMap => PyramidEM
     CASE(7) 
       EdgeMap => WedgeEM
     CASE(8) 

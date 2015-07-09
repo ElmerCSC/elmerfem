@@ -756,36 +756,39 @@ CONTAINS
     
     IMPLICIT NONE
 !-----------------------------------------------
-    TYPE(Variable_t), POINTER :: Variables, Var, Prev, RmVar
+    TYPE(Variable_t), POINTER :: Variables
     CHARACTER(LEN=*) :: NameIn
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name
 !-----------------------------------------------    
+    TYPE(Variable_t), POINTER :: Var, Prev, RmVar
+    CHARACTER(LEN=LEN_TRIM(NameIn)) :: Name
     LOGICAL :: GotIt
-    INTEGER :: dummyInt
+    INTEGER :: k
 
     GotIt = .FALSE.
 
     Var => Variables
     Prev => NULL()
-    dummyInt = StringToLowerCase(Name, NameIn,.TRUE.)
+    k = StringToLowerCase(Name, NameIn,.TRUE.)
 
-    WRITE(Message,'(a,a)') "Removing variable: ",Name
+    WRITE(Message,'(a,a)') "Removing variable: ",Name(1:k)
     CALL Info("VariableRemove",Message, Level=10)
 
     !Find variable by name, and hook up % Next appropriately
     DO WHILE(ASSOCIATED(Var))
-       IF(TRIM(Var % Name) == TRIM(Name)) THEN
-          GotIt = .TRUE.
-          RmVar => Var
-          IF(ASSOCIATED(Prev)) THEN
-             !Link up variables either side of removed var
-             Prev % Next => Var % Next
-          ELSE
-             !If this was the first variable, we point Variables
-             !at the next one...
-             Variables => Var % Next
+       IF( Var % NameLen == k ) THEN
+          IF(Var % Name(1:k) == Name(1:k)) THEN
+             GotIt = .TRUE.
+             RmVar => Var
+             IF(ASSOCIATED(Prev)) THEN
+                !Link up variables either side of removed var
+                Prev % Next => Var % Next
+             ELSE
+                !If this was the first variable, we point Variables
+                !at the next one...
+                Variables => Var % Next
+             END IF
+             EXIT
           END IF
-          EXIT
        END IF
        Prev => Var
        Var => Prev % Next
