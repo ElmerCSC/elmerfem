@@ -172,6 +172,8 @@ CONTAINS
      Mesh % NumberOfBoundaryElements = 0
      Mesh % DiscontMesh = .FALSE.
 
+     Mesh % InvPerm => NULL()
+
      Mesh % MaxFaceDOFs = 0
      Mesh % MaxEdgeDOFs = 0
      Mesh % MaxBDOFs = 0
@@ -3965,7 +3967,7 @@ END SUBROUTINE GetMaxDefs
 !> operations since the nodes may be ereased after use. 
 !------------------------------------------------------------------------------
   SUBROUTINE CreateInterfaceMeshes( Model, Mesh, This, Trgt, BMesh1, BMesh2, &
-      InvPerm1, InvPerm2, Success ) 
+      Success ) 
 !------------------------------------------------------------------------------    
     TYPE(Model_t) :: Model
     INTEGER :: This, Trgt
@@ -3976,8 +3978,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,k,l,m,n,n1,n2,k1,k2,ind,Constraint,DIM
     TYPE(Element_t), POINTER :: Element, Left, Right, Elements(:)
     LOGICAL :: ThisActive, TargetActive
-    INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:), &
-        InvPerm1(:), InvPerm2(:)
+    INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     LOGICAL :: OnTheFlyBC, CheckForHalo, NarrowHalo, NoHalo, Found
 
@@ -4147,6 +4148,7 @@ END SUBROUTINE GetMaxDefs
     BMesh1 % MaxElementNodes = 0
     BMesh2 % MaxElementNodes = 0
 
+
     DO i=1, Mesh % NumberOfBoundaryElements
       Element => Elements(i)
       
@@ -4257,8 +4259,8 @@ END SUBROUTINE GetMaxDefs
     CALL AllocateVector( BMesh2 % Nodes % y, BMesh2 % NumberOfNodes ) 
     CALL AllocateVector( BMesh2 % Nodes % z, BMesh2 % NumberOfNodes )
     
-    CALL AllocateVector( InvPerm1, BMesh1 % NumberOfNodes )
-    CALL AllocateVector( InvPerm2, BMesh2 % NumberOfNodes )
+    CALL AllocateVector( Bmesh1 % InvPerm, BMesh1 % NumberOfNodes )
+    CALL AllocateVector( Bmesh2 % InvPerm, BMesh2 % NumberOfNodes )
 
     ! Now, create the master and target meshes that only include the active elements
     !---------------------------------------------------------------------------
@@ -4268,7 +4270,7 @@ END SUBROUTINE GetMaxDefs
       IF ( Perm1(i) > 0 ) THEN
         k1 = k1 + 1
         Perm1(i) = k1
-        InvPerm1(k1) = i
+        BMesh1 % InvPerm(k1) = i
 
         BMesh1 % Nodes % x(k1) = Mesh % Nodes % x(i)
         BMesh1 % Nodes % y(k1) = Mesh % Nodes % y(i)
@@ -4278,7 +4280,7 @@ END SUBROUTINE GetMaxDefs
       IF ( Perm2(i) > 0 ) THEN
         k2 = k2 + 1
         Perm2(i) = k2
-        InvPerm2(k2) = i
+        BMesh2 % InvPerm(k2) = i
         
         BMesh2 % Nodes % x(k2)= Mesh % Nodes % x(i)
         BMesh2 % Nodes % y(k2)= Mesh % Nodes % y(i)
@@ -4657,17 +4659,17 @@ END SUBROUTINE GetMaxDefs
   !> created. Then this projector matrix is transferred to a projector on the nodal
   !> coordinates.   
   !---------------------------------------------------------------------------
-   FUNCTION NodalProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
+   FUNCTION NodalProjector(BMesh2, BMesh1, &
        UseQuadrantTree, Repeating, AntiRepeating ) &
       RESULT ( Projector )
   !---------------------------------------------------------------------------
     USE Lists
 
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
+    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     INTEGER :: i,j,k,n
     INTEGER, POINTER :: Rows(:),Cols(:)
@@ -4675,6 +4677,9 @@ END SUBROUTINE GetMaxDefs
 
     BMesh1 % Parent => NULL()
     BMesh2 % Parent => NULL()
+
+    InvPerm1 => BMesh1 % InvPerm
+    InvPerm2 => BMesh2 % InvPerm
 
     ! Set the nodes of Mesh1 to be in the interval defined by Mesh2
     !-----------------------------------------------------------------
@@ -4795,138 +4800,7 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
-  !---------------------------------------------------------------------------
-  !> Create a projector using an external subroutine. 
-  !---------------------------------------------------------------------------
-  FUNCTION ExternalProjector( BMesh1, BMesh2, InvPerm1, InvPerm2, BC ) &
-      RESULT ( Projector )
-    !---------------------------------------------------------------------------
-    USE Lists
-    USE Messages
-    USE Types
-    USE GeneralUtils
-    IMPLICIT NONE
-
-    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
-    TYPE(ValueList_t), POINTER :: BC
-    TYPE(Matrix_t), POINTER :: Projector    
-    !--------------------------------------------------------------------------
-    INTEGER :: i,j,k,n,m,ElemNodes
-    INTEGER :: N1,N2,E1,E2,M1,M2
-    REAL(KIND=dp), POINTER :: x1(:),x2(:),y1(:),y2(:),z1(:),z2(:)
-    INTEGER, ALLOCATABLE :: Etypes1(:),Etopo1(:),Etypes2(:),Etopo2(:)
-    INTEGER, POINTER :: P1row(:),P1col(:),P2row(:),P2col(:)
-    REAL(KIND=dp), POINTER :: P1val(:),P2val(:)
-    INTEGER, POINTER :: Rows(:),Cols(:),InvPerm(:)
-    REAL(KIND=dp), POINTER :: Values(:)
-
-
-    N1 = Bmesh1 % NumberOfNodes
-    x1 => BMesh1 % Nodes % x
-    y1 => BMesh1 % Nodes % y
-    z1 => BMesh1 % Nodes % z
-
-    N2 = Bmesh2 % NumberOfNodes
-    x2 => BMesh2 % Nodes % x
-    y2 => BMesh2 % Nodes % y
-    z2 => BMesh2 % Nodes % z
-    
-    E1 = Bmesh1 % NumberOfBulkElements
-    ALLOCATE( Etypes1(E1) )
-    DO i=1,E1
-      Etypes1(i) = BMesh1 % Elements(i) % TYPE % ElementCode / 100
-    END DO
-
-    E2 = Bmesh1 % NumberOfBulkElements
-    ALLOCATE( Etypes1(E2) )
-    DO i=1,E2
-      Etypes2(i) = BMesh2 % Elements(i) % TYPE % ElementCode / 100
-    END DO
-
-    M1 = SUM( Etypes1 )
-    ALLOCATE( Etopo1(M1) )
-    k = 0
-    DO i=1,E1
-      ElemNodes = BMesh1 % Elements(i) % TYPE % ElementCode / 100
-      DO j=1,ElemNodes
-        k = k + 1
-        Etopo1(k) = BMesh1 % Elements(i) % NodeIndexes(j)
-      END DO
-    END DO
-
-    M2 = SUM( Etypes1 )
-    ALLOCATE( Etopo2(M2) )
-    k = 0
-    DO i=1,E2
-      ElemNodes = BMesh2 % Elements(i) % TYPE % ElementCode / 100
-      DO j=1,ElemNodes
-        k = k + 1
-        ETopo2(k) = BMesh2 % Elements(i) % NodeIndexes(j)
-      END DO
-    END DO
  
-    ! i=1 refers to slave
-    ! i=2 refers to master
-
-    ! Input parameters
-    ! Ni         : Number of nodes in slave
-    ! xi, yi, zi : Node coordinates
-    ! Ei         : Number of elements in slave
-    ! Etypesi    : ElementTypes (2 edge, 3 triangle, 4 quad)
-    ! Mi         : Size of element topology
-    ! ETopoi     : Element topology
-
-    ! Output parameters (the external routine should allocate these)
-    ! Pirow      : Row intervals of size N1+1 (also for i=2)
-    ! PiCol      : Column indexes of size Pirow(Ni+1)-1
-    ! PiVal      : Projector values of size Pirow(Ni+1)-1
-
-    ! This is just a tentative interface so far. Still missing the noromal information. 
-    !CALL ProjectorProcedure( N1,x1,y1,z1,E1,Etypes1,M1,Etopo1, &
-    !    N2,x2,y2,z2,E2,Etypes2,M2,Etopo2, &
-    !    P1row, P1col, P1val, &
-    !    P2row, P2col, P2val ) 
-
-    ! Revert back to P=[P1-P2] since we don't want to work with two separate projectors
-    Projector => AllocateMatrix()
-    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
-    !Projector % ProjectorBC = bc
-
-    m = P1Row(N1+1)-1 + P2Row(N1+1)-1
-    ALLOCATE( Projector % Cols(m) )
-    ALLOCATE( Projector % Values(m) )
-    ALLOCATE( Projector % Rows(N1) )
-    ALLOCATE( Projector % InvPerm(N1) )
-
-    Cols => Projector % Cols
-    Values => Projector % Values
-    Rows => Projector % Rows
-    InvPerm => Projector % InvPerm
-    InvPerm = 0
-
-    Projector % NumberOfRows = N1
-    k = 0
-    Rows(1) = 1
-    DO i=1,N1
-      DO j=P1Row(i),P1Row(i+1)-1
-        k = k + 1
-        Cols(k) = InvPerm1(P1Col(j))
-        Values(k) = P1Val(j)
-      END DO
-      DO j=P2Row(i),P2Row(i+1)-1
-        k = k + 1
-        Cols(k) = InvPerm2(P2Col(j))
-        Values(k) = P2Val(j)
-      END DO
-      InvPerm(i) = InvPerm1(i)
-      Rows(i+1) = k+1
-    END DO
-
-  END FUNCTION ExternalProjector
-
-  
-
   !---------------------------------------------------------------------------
   !> Create a projector for mixes nodal / edge problems assuming constant level
   !> in the 2nd direction. This kind of projector is suitable for 2D meshes where
@@ -4934,7 +4808,7 @@ END SUBROUTINE GetMaxDefs
   !> extrusion. 
   !---------------------------------------------------------------------------
   FUNCTION LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
-      FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &
+      FullCircle, Radius, DoNodes, DoEdges, &
       NodeScale, EdgeScale, BC ) &
       RESULT ( Projector )
     !---------------------------------------------------------------------------
@@ -4947,11 +4821,11 @@ END SUBROUTINE GetMaxDefs
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2, Mesh
     LOGICAL :: DoNodes, DoEdges
     LOGICAL :: Repeating, AntiRepeating, FullCircle, NotAllQuads, NotAllQuads2
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     REAL(KIND=dp) :: Radius, NodeScale, EdgeScale
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Matrix_t), POINTER :: Projector    
     !--------------------------------------------------------------------------
+    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
         EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, IntGalerkin, &
@@ -5151,6 +5025,9 @@ END SUBROUTINE GetMaxDefs
     ! nodes in both cases. 
     NoNodes1 = BMesh1 % NumberOfNodes
     NoNodes2 = BMesh2 % NumberOfNodes
+
+    InvPerm1 => BMesh1 % InvPerm
+    InvPerm2 => BMesh2 % InvPerm
 
     ! Create a list matrix that allows for unspecified entries in the matrix 
     ! structure to be introduced.
@@ -9766,8 +9643,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
-        Flat, Plane, LevelProj, FullCircle, Cylindrical
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
+        Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
@@ -9799,6 +9675,8 @@ END SUBROUTINE GetMaxDefs
     
     Projector => NULL()
     BC => Model % BCs(This) % Values
+    PMesh => Mesh
+
     
     ! Whether to choose nodal or Galerkin projector is determined by an optional
     ! flag. The default is the nodal projector.
@@ -9814,7 +9692,6 @@ END SUBROUTINE GetMaxDefs
     ! boundary is self-contained.
     !------------------------------------------------------------------------------------
     IF( ListGetLogical( BC, 'Discontinuous Boundary', GotIt ) .AND. Mesh % DisContMesh )THEN
-      PMesh => Mesh
       IF( IntGalerkin ) THEN
         Projector => WeightedProjectorDiscont( PMesh, This )
       ELSE
@@ -9844,18 +9721,15 @@ END SUBROUTINE GetMaxDefs
     BMesh2 => AllocateMesh()
     
     CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
-        InvPerm1, InvPerm2, Success ) 
+        Success ) 
 
     IF(.NOT. Success) THEN
       CALL ReleaseMesh(BMesh1); CALL ReleaseMesh(BMesh2)
       RETURN
     END IF
 
-    IF( ListCheckPresent( BC, 'Projector Procedure' ) ) THEN
-      Projector => ExternalProjector( BMesh1, BMesh2, InvPerm1, InvPerm2, BC )
-      GOTO 100
-    END IF
-
+    ! Do we have external procedure to take care of the projection matrix creation
+    UseExtProjector = ListGetLogical( BC, 'External Projector', GotIt )
 
     ! If requested map the interface coordinate from (x,y,z) to any permutation
     ! of these. 
@@ -9980,9 +9854,11 @@ END SUBROUTINE GetMaxDefs
     Repeating = ( Rotational .AND. .NOT. FullCircle ) .OR. Sliding 
     AntiRepeating = ( AntiRotational .AND. .NOT. FullCircle ) .OR. AntiSliding 
 
-    IF( LevelProj ) THEN 
+    IF( UseExtProjector ) THEN
+      Projector => ExtProjectorCaller( PMesh, BMesh1, BMesh2, This )
+    ELSE IF( LevelProj ) THEN 
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
-          FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &          
+          FullCircle, Radius, DoNodes, DoEdges, &          
           NodeScale, EdgeScale, BC )
     ELSE 
       IF( FullCircle ) THEN
@@ -9992,10 +9868,10 @@ END SUBROUTINE GetMaxDefs
       UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
       IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
       IF( IntGalerkin ) THEN
-        Projector => WeightedProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
+        Projector => WeightedProjector( BMesh2, BMesh1, BMesh2 % InvPerm, BMesh1 % InvPerm, &
             UseQuadrantTree, Repeating, AntiRepeating, NodeScale, NodalJump )
       ELSE
-        Projector => NodalProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
+        Projector => NodalProjector( BMesh2, BMesh1, &
             UseQuadrantTree, Repeating, AntiRepeating )
       END IF
     END IF
@@ -10003,10 +9879,13 @@ END SUBROUTINE GetMaxDefs
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
     BMesh1 % Projector => NULL()
-    BMesh1 % Parent => NULL(); CALL ReleaseMesh(BMesh1)
-    BMesh2 % Parent => NULL(); CALL ReleaseMesh(BMesh2)
+    BMesh1 % Parent => NULL()
+    DEALLOCATE( BMesh1 % InvPerm ) 
+    CALL ReleaseMesh(BMesh1)
 
-    DEALLOCATE( InvPerm1, InvPerm2 )
+    BMesh2 % Parent => NULL()
+    DEALLOCATE( BMesh2 % InvPerm ) 
+    CALL ReleaseMesh(BMesh2)
 
 100 Projector % ProjectorBC = This
 
@@ -10035,6 +9914,93 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
   END FUNCTION PeriodicProjector
 !------------------------------------------------------------------------------
+
+
+
+  FUNCTION ExtProjectorCaller( Mesh, SlaveMesh, MasterMesh, SlaveBcInd ) RESULT ( Projector )
+    !---------------------------------------------------------------------------
+    USE Lists
+    USE Messages
+    USE Types
+    USE GeneralUtils
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), POINTER :: Mesh, SlaveMesh, MasterMesh
+    INTEGER :: SlaveBCind
+    TYPE(Matrix_t), POINTER :: Projector    
+    !--------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: BC
+    LOGICAL :: Found, Parallel, CreateDual, BiorthogonalBasis
+    INTEGER(KIND=AddrInt) :: ProjectorAddr
+
+    CALL Info('ExtProjectorCaller','Creating projector using an external function',Level=7)
+
+    Parallel = ( ParEnv % PEs > 1 )
+    Mesh => CurrentModel % Mesh
+    BC => CurrentModel % BCs(SlaveBcInd) % Values
+
+    Projector => AllocateMatrix()
+    Projector % FORMAT = MATRIX_LIST
+    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+
+    CreateDual = ListGetLogical( BC,'Create Dual Projector',Found ) 
+    IF( CreateDual ) THEN
+      Projector % Ematrix => AllocateMatrix()
+      Projector % Ematrix % FORMAT = MATRIX_LIST
+      Projector % Ematrix % ProjectorType = PROJECTOR_TYPE_GALERKIN
+    ELSE
+      Projector % EMatrix => NULL()
+    END IF
+
+    ! Check whether biorthogonal basis for projectors requested:
+    ! ----------------------------------------------------------
+    BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
+
+    ! If we want to eliminate the constraints we have to have a biortgonal basis
+    IF(.NOT. Found ) THEN
+      BiOrthogonalBasis = ListGetLogical( CurrentModel % Solver % Values, &
+          'Eliminate Linear Constraints',Found )
+      IF( BiOrthogonalBasis ) THEN
+        CALL Info('ContactProjector',&
+            'Setting > Use Biorthogonal Basis < to True to enable elimination',Level=8)
+      END IF
+    END IF
+
+    IF (BiOrthogonalBasis) THEN
+      Projector % Child => AllocateMatrix()
+      Projector % Child % Format = MATRIX_LIST
+      CALL Info('ContactProjector','Using biorthogonal basis, as requested',Level=8)      
+    ELSE
+      Projector % Child => NULL()
+    END IF
+
+
+    ProjectorAddr = CurrentModel % Solver % MortarProc
+    IF( ProjectorAddr == 0 ) THEN
+      CALL Fatal('ExtProjectorCaller','External projector requested by no > Mortar Proc < given!')
+    ELSE
+      CALL ExecMortarProjector( ProjectorAddr, &
+          Mesh, SlaveMesh, MasterMesh, SlaveBCind, Projector )
+    END IF
+
+    ! Now change the matrix format to CRS from list matrix
+    !--------------------------------------------------------------
+    CALL List_toCRSMatrix(Projector)
+    CALL CRS_SortMatrix(Projector,.TRUE.)
+
+    IF( ASSOCIATED(Projector % Child) ) THEN
+      CALL List_toCRSMatrix(Projector % Child)
+      CALL CRS_SortMatrix(Projector % Child,.TRUE.)
+    END IF
+
+    IF( ASSOCIATED( Projector % Ematrix) ) THEN
+      CALL List_toCRSMatrix(Projector % Ematrix)
+      CALL CRS_SortMatrix(Projector % Ematrix,.TRUE.)
+    END IF
+
+    CALL Info('ExtProjectorCaller','Projector created',Level=10)
+    
+  END FUNCTION ExtProjectorCaller
 
 
 !------------------------------------------------------------------------------

@@ -448,6 +448,33 @@ MODULE LoadMod
             CALL pptr(model, solver, dt, transient)
         END SUBROUTINE execsolver
 
+
+        SUBROUTINE execmortarprojector(fptr, mesh, slavemesh, mastermesh, bcind, projector )
+            IMPLICIT NONE
+            INTEGER(KIND=AddrInt) :: fptr
+            TYPE(Mesh_t) :: mesh, slavemesh, mastermesh
+            INTEGER :: bcind
+            TYPE(Matrix_t) :: projector
+
+            INTERFACE
+                SUBROUTINE MortarProjectorFn(mesh, slavemesh, mastermesh, bcind, projector )
+                    IMPORT Mesh_t, Matrix_t
+                    TYPE(Mesh_t) :: mesh, slavemesh, mastermesh
+                    INTEGER :: bcind
+                    TYPE(Matrix_t) :: projector
+                END SUBROUTINE MortarProjectorFn
+            END INTERFACE
+            TYPE(C_FUNPTR) :: cfptr
+            PROCEDURE(MortarProjectorFn), POINTER :: pptr
+
+            ! Ugly hack, fptr should be stored as C function pointer
+            cfptr = TRANSFER(fptr, cfptr)
+            CALL C_F_PROCPOINTER(cfptr, pptr)
+            CALL pptr(mesh, slavemesh, mastermesh, bcind, projector )
+          END SUBROUTINE execmortarprojector
+          
+          
+
         FUNCTION materialuserfunction( fptr, model, element, nodes, n, nd, &
                                        Basis, dBasisdx, Viscosity,Velo, dVelodx ) &
                                        RESULT(realval)

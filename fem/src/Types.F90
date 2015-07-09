@@ -647,6 +647,8 @@ END INTERFACE
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
      INTEGER :: DisContNodes
+     
+     INTEGER, POINTER :: InvPerm(:)
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim, PassBCcnt=0
@@ -709,6 +711,7 @@ END INTERFACE
 
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
       LOGICAL :: MortarBCsChanged = .FALSE., MortarBCsOnly=.FALSE.
+      INTEGER(KIND=AddrInt) :: MortarProc
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
