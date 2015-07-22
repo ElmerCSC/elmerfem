@@ -221,8 +221,6 @@ FUNCTION FreeSurfaceToMeshUpdate( Model, nodenumber, inarray, axis ) RESULT(mu)
 
   MuVect = MATMUL(UnRotationMatrix, DiffVect)
   mu = MuVect(axis)
-
-  PRINT *, ParEnv % MyPE, 'debug, ',nodenumber,' FS, RefFS, Diff', FS, NodeHolder(3), Diff
 END FUNCTION FreeSurfaceToMeshUpdate
 
 !-----------------------------------------------------------------------------
