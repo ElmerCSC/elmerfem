@@ -14770,7 +14770,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE DetectExtrudedStructure( Mesh, Solver, ExtVar, &
       TopNodePointer, BotNodePointer, UpNodePointer, DownNodePointer, &
-      NumberOfLayers, NodeLayer )
+      MidNodePointer, MidLayerExists, NumberOfLayers, NodeLayer )
     
     USE CoordinateSystems
     IMPLICIT NONE
@@ -14779,9 +14779,10 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Variable_t), POINTER, OPTIONAL :: ExtVar
     INTEGER, POINTER, OPTIONAL :: TopNodePointer(:), BotNodePointer(:), &
-        UpNodePointer(:), DownNodePointer(:)
+        UpNodePointer(:), DownNodePointer(:), MidNodePointer(:)
     INTEGER, POINTER, OPTIONAL :: NodeLayer(:)
     INTEGER, OPTIONAL :: NumberOfLayers
+    LOGICAL, OPTIONAL :: MidLayerExists
 !-----------------------------------------------------------------------------
     REAL(KIND=dp) :: Direction(3)
     TYPE(ValueList_t), POINTER :: Params
@@ -14790,19 +14791,17 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
-	UpHit, DownHit
+	UpHit, DownHit, bc_ind
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
-#ifdef USE_ISO_C_BINDINGS
-    REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
-                 ElemVector(3), DotPro, Eps
-#else
-    REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
-                 ElemVector(3), DotPro, Eps, CPUTime
+#ifndef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: CPUTime
 #endif
+    REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
+                 ElemVector(3), DotPro, Eps, MinTop, MaxTop, MinBot, MaxBot
     REAL(KIND=dp), POINTER :: Values(:)
-    INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:)
+    INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CoordTransform
 
    
@@ -14836,8 +14835,13 @@ CONTAINS
     IF(GotIt) THEN
       Var => VariableGet( Mesh % Variables,  VarName )
       IF(ASSOCIATED(Var)) THEN
-        MaskPerm => Var % Perm
-        MaskExists = ASSOCIATED(MaskPerm)
+        MaskExists = ASSOCIATED(Var % Perm)
+        IF( MaskExists ) THEN
+          ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
+          MaskPerm = Var % Perm 
+          CALL Info('DetectExtrudedStructure',&
+              'Using variable as mask: '//TRIM(VarName),Level=8)
+        END IF
       END IF
     END IF
 
@@ -14847,6 +14851,7 @@ CONTAINS
       CALL Info('DetectExtrudedStructure',Message,Level=8)
     ELSE
       nsize = Mesh % NumberOfNodes
+      CALL Info('DetectExtrudedStructure','Applying mask to the whole mesh',Level=8)
     END IF 
 
     CoordTransform = ListGetString(Params,'Mapping Coordinate Transformation',DoCoordTransform )
@@ -15089,23 +15094,102 @@ CONTAINS
       CALL Info('DetectExtrudedStructure',Message)
       NULLIFY(Layer)
     END IF
+
+
+    IF( PRESENT( MidNodePointer ) ) THEN
+      ALLOCATE( MidPointer( nsize ) )
+      MidPointer = 0 
+      MidLayerExists = .FALSE.
+
+      DO elem = Mesh % NumberOfBulkElements + 1, &       
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements  
+        
+        Element => Mesh % Elements(elem)
+        NodeIndexes => Element % NodeIndexes
+        
+        DO bc_ind = 1, CurrentModel % NumberOfBCs 
+          IF( Element % BoundaryInfo % Constraint == &
+              CurrentModel % BCs(bc_ind) % Tag ) THEN
+            IF( ListCheckPresent( CurrentModel % BCs(bc_ind) % Values,'Mid Surface') ) THEN
+              MidPointer( NodeIndexes ) = NodeIndexes
+              MidLayerExists = .TRUE.
+            END IF
+            EXIT
+          END IF
+        END DO
+      END DO
+
+      IF( MidLayerExists ) THEN
+        CALL Info('DetectExtrudedStructure','determine mid pointers',Level=9)
+
+        DO Rounds = 1, nsize
+          DownHit = 0
+          UpHit = 0
+          DO i=1,nsize
+            IF( MaskExists ) THEN
+              IF( MaskPerm(i) == 0) CYCLE
+            END IF
+            IF( MidPointer(i) == 0 ) CYCLE
+            IF( UpActive ) THEN
+              j = UpPointer(i)
+              IF( MidPointer(j) == 0 ) THEN
+                UpHit = UpHit + 1
+                MidPointer(j) = MidPointer(i)
+              END IF
+            END IF
+            IF( DownActive ) THEN
+              j = DownPointer(i)
+              IF( MidPointer(j) == 0 ) THEN
+                DownHit = DownHit + 1
+                MidPointer(j) = MidPointer(i)
+              END IF
+            END IF
+          END DO
+          IF( UpHit == 0 .AND. DownHit == 0 ) EXIT
+        END DO
+
+        CALL Info('DetectExtrudedStructure',&
+            'Mid layer structure detected in '//TRIM(I2S(Rounds-1))//' cycles',Level=9)
+        MidNodePointer => MidPointer
+      ELSE
+        DEALLOCATE( MidPointer ) 
+        MidNodePointer => NULL()
+      END IF
+    END IF
+
   
     ! Count the number of top and bottom nodes, for information only
     !---------------------------------------------------------------
     CALL Info('DetectExtrudedStructure','counting top and bottom bodes',Level=9)        
     IF( UpActive ) THEN
       TopNodes = 0
+      MinTop = HUGE( MinTop ) 
+      MaxTop = -HUGE( MaxTop )
       DO i=1,nsize
-        IF(TopPointer(i) == i) TopNodes = TopNodes + 1
+        IF(TopPointer(i) == i) THEN
+          MinTop = MIN( MinTop, Var % Values(i) )
+          MaxTop = MAX( MaxTop, Var % Values(i) )
+          TopNodes = TopNodes + 1
+        END IF
       END DO
+      PRINT *,'Top range:',MinTop,MaxTop
     END IF
 
     IF( DownActive ) THEN
       BotNodes = 0
+      MinBot = HUGE( MinBot ) 
+      MaxBot = -HUGE( MaxBot )
       DO i=1,nsize
-        IF(BotPointer(i) == i) BotNodes = BotNodes + 1
+        IF(BotPointer(i) == i) THEN
+          MinBot = MIN( MinBot, Var % Values(i))
+          MaxBot = MAX( MaxBot, Var % Values(i))
+          BotNodes = BotNodes + 1
+        END IF
       END DO
+      PRINT *,'Bottom range:',MinBot,MaxBot
     END IF
+
+
 
 
     ! Return the requested pointer structures, otherwise deallocate
