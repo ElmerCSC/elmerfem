@@ -4908,19 +4908,20 @@ END SUBROUTINE GetMaxDefs
       ArcCoeff = 1.0_dp
     END IF
 
+    IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', Found )
+    MeshDIm = Mesh % MeshDim
 
     ! Generic integrator does not make any assumptions on the way the mesh 
     ! is constructured. Otherwise constant strides in y-direction is assumed. 
+    ! For weak strategy always use the generic integrator. 
     GenericIntegrator = ListGetLogical( BC,'Level Projector Generic',Found ) 
-    IF(.NOT. Found ) GenericIntegrator = .TRUE.
+    IF(.NOT. Found ) GenericIntegrator = IntGalerkin
 
     ! There is no strong strategy for skewed edges currently
     StrongSkewEdges = .FALSE.
     ! Maximum skew in degrees before treating edges as skewed
     SkewTol = 0.1  
     
-    IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', Found )
-    MeshDIm = Mesh % MeshDim
 
     IF( MeshDim == 2 ) THEN
       ! In 2D these always yield since current only the strong method 
