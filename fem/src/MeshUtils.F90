@@ -5054,7 +5054,8 @@ END SUBROUTINE GetMaxDefs
           'Eliminate Linear Constraints',Found )
       IF( BiOrthogonalBasis ) THEN
         CALL Info('LevelProjector',&
-            'Setting > Use Biorthogonal Basis < to True to enable elimination',Level=8)
+            'Enforcing > Use Biorthogonal Basis < to True to enable elimination',Level=8)
+        CALL ListAddLogical( BC, 'Use Biorthogonal Basis',.TRUE. )
       END IF
     END IF
 
@@ -5711,6 +5712,7 @@ END SUBROUTINE GetMaxDefs
       coeffi = 0
       sgn0 = 1
       Nundefined = 0
+      z1 = 0.0_dp
 
       ArcTol = ArcCoeff * Xtol
       ArcRange = ArcCoeff * Xrange 
@@ -5731,8 +5733,6 @@ END SUBROUTINE GetMaxDefs
         y1 = BMesh1 % Nodes % y(ind)
         IF( HaveMaxDistance ) THEN
           z1 = BMesh1 % Nodes % z(ind)
-        ELSE
-          z1 = 0.0_dp
         END IF
 
         sgn0 = 1
@@ -8632,14 +8632,17 @@ END SUBROUTINE GetMaxDefs
 
     ! Normalize the axis normal length to one    
     AxisNormal = AxisNormal / SQRT( SUM( AxisNormal ** 2 ) )
-    PRINT *,'Axis Normal:',AxisNormal
     IF( 1.0_dp - ABS( AxisNormal(3) ) > 1.0e-5 ) THEN
       CALL Warn('CylinderFit','The cylinder axis is not aligned with z-axis!')
     END IF
 
 100 CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
-    PRINT *,'Axis Tangent 1:',Tangent1
-    PRINT *,'Axis Tangent 2:',Tangent2
+
+    IF(.FALSE.) THEN
+      PRINT *,'Axis Normal:',AxisNormal
+      PRINT *,'Axis Tangent 1:',Tangent1
+      PRINT *,'Axis Tangent 2:',Tangent2
+    END IF
 
     ! Finding three points with maximum distance in the tangent directions
 
@@ -9398,10 +9401,11 @@ END SUBROUTINE GetMaxDefs
 
       ! Choose the mesh for which is close to a plane 
       IF( Planeness1 > Planeness ) THEN
-        PRINT *,'PlaneNormal: Selecting slave'
+        PRINT *,'PlaneNormal: Selecting slave normal'
         PlaneNormal = PlaneNormal1
       ELSE
-        PRINT *,'PlaneNormal: Selecting master'        
+        PRINT *,'PlaneNormal: Selecting master normal'        
+        PlaneNormal = -PlaneNormal
       END IF
 
       PRINT *,'PlaneNormal selected:',PlaneNormal(:,1)
@@ -9416,9 +9420,11 @@ END SUBROUTINE GetMaxDefs
     Normal = Pnormal(1:3,1)
     CALL TangentDirections( Normal, Tangent, Tangent2 )
 
-    !PRINT *,'Normal:',Normal
-    !PRINT *,'Tangent1:',Tangent
-    !PRINT *,'Tangent2:',Tangent2
+    IF(.FALSE.) THEN
+      PRINT *,'Normal:',Normal
+      PRINT *,'Tangent1:',Tangent
+      PRINT *,'Tangent2:',Tangent2
+    END IF
 
     DO j=1,2
       IF( j == 1 ) THEN
@@ -9441,10 +9447,12 @@ END SUBROUTINE GetMaxDefs
         BMesh % Nodes % z(i) = SUM( Coord * Normal ) 
       END DO
 
-      !PRINT *,'Range for mesh:',j
-      !PRINT *,'X:',MINVAL(BMesh % Nodes % x),MAXVAL(BMesh % Nodes % x)
-      !PRINT *,'Y:',MINVAL(BMesh % Nodes % y),MAXVAL(BMesh % Nodes % y)
-      !PRINT *,'Z:',MINVAL(BMesh % Nodes % z),MAXVAL(BMesh % Nodes % z)
+      IF(.FALSE.) THEN
+        PRINT *,'Range for mesh:',j
+        PRINT *,'X:',MINVAL(BMesh % Nodes % x),MAXVAL(BMesh % Nodes % x)
+        PRINT *,'Y:',MINVAL(BMesh % Nodes % y),MAXVAL(BMesh % Nodes % y)
+        PRINT *,'Z:',MINVAL(BMesh % Nodes % z),MAXVAL(BMesh % Nodes % z)
+      END IF
     END DO
 
     Bmesh % MeshDim = 2
@@ -9532,38 +9540,39 @@ END SUBROUTINE GetMaxDefs
 
   ! Save projector, mainly a utility for debugging purposes
   !--------------------------------------------------------
-  SUBROUTINE SaveProjector(Projector,SaveRowSum,Prefix)
+  SUBROUTINE SaveProjector(Projector,SaveRowSum,Prefix,InvPerm)
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: SaveRowSum 
-    CHARACTER(LEN=*), OPTIONAL :: Prefix
+    CHARACTER(LEN=*) :: Prefix
+    INTEGER, POINTER, OPTIONAL :: InvPerm(:)
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: Filename, IntPrefix
-    INTEGER :: i,j,This
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
+    INTEGER :: i,j
     REAL(KIND=dp) :: rowsum, dia
+    INTEGER, POINTER :: IntInvPerm(:)
 
     IF(.NOT.ASSOCIATED(Projector)) RETURN
-    This = Projector % ProjectorBC
-
-    IF( PRESENT( Prefix ) ) THEN
-      IntPrefix = TRIM( Prefix ) 
-    ELSE
-      IntPrefix = 'p'
-    END IF
     
-    IF(ParEnv % PEs == 1 ) THEN
-      FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'.dat'
+    IF( PRESENT( InvPerm ) ) THEN
+      IntInvPerm => InvPerm 
     ELSE
-      FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'_part'//&
+      IntInvPerm => Projector % InvPerm
+    END IF
+
+    IF(ParEnv % PEs == 1 ) THEN
+      FileName = TRIM(Prefix)//'.dat'
+    ELSE
+      FileName = TRIM(Prefix)//'_part'//&
           TRIM(I2S(ParEnv % MyPe))//'.dat'
     END IF
 
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
-      IF( projector % invperm(i) == 0 ) CYCLE
+      IF( intinvperm(i) == 0 ) CYCLE
       rowsum = 0.0_dp
       DO j=projector % rows(i), projector % rows(i+1)-1
-        WRITE(1,*) projector % invperm(i), projector % cols(j), projector % values(j)
-        IF( projector % invperm(i) == projector % cols(j) ) THEN
+        WRITE(1,*) intinvperm(i), projector % cols(j), projector % values(j)
+        IF( intinvperm(i) == projector % cols(j) ) THEN
           dia = projector % values(j)
         ELSE
           rowsum = rowsum + projector % values(j)
@@ -9575,25 +9584,25 @@ END SUBROUTINE GetMaxDefs
 
     IF( SaveRowSum ) THEN
       IF(ParEnv % PEs == 1 ) THEN
-        FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'_rsum.dat'
+        FileName = TRIM(Prefix)//'_rsum.dat'
       ELSE
-        FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'_rsum_part'//&
+        FileName = TRIM(Prefix)//'_rsum_part'//&
             TRIM(I2S(ParEnv % MyPe))//'.dat'
       END IF
       
       OPEN(1,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
-        IF( projector % invperm(i) == 0 ) CYCLE
+        IF( intinvperm(i) == 0 ) CYCLE
         rowsum = 0.0_dp
         dia = 0.0_dp
         DO j=projector % rows(i), projector % rows(i+1)-1          
-          IF( projector % invperm(i) == projector % cols(j) ) THEN
+          IF( intinvperm(i) == projector % cols(j) ) THEN
             dia = projector % values(j)
           END IF
           rowsum = rowsum + projector % values(j)
         END DO
         
-        WRITE(1,*) projector % invperm(i), i, &
+        WRITE(1,*) intinvperm(i), i, &
             projector % rows(i+1)-projector % rows(i),dia, rowsum
       END DO
       CLOSE(1)     
@@ -9901,11 +9910,18 @@ END SUBROUTINE GetMaxDefs
 
 
     IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
-      CALL SaveProjector( Projector, .TRUE.,'p' ) 
+      CALL SaveProjector( Projector, .TRUE.,'p'//TRIM(I2S(This)) ) 
       ! Dual projector if it exists
       IF( ASSOCIATED( Projector % Ematrix ) ) THEN
-        CALL SaveProjector( Projector % Ematrix, .TRUE.,'d' ) 
+        CALL SaveProjector( Projector % Ematrix, .TRUE.,'pd'//TRIM(I2S(This)), &
+            Projector % InvPerm ) 
       END IF
+      ! Biorthogonal projector if it exists
+      IF( ASSOCIATED( Projector % Child ) ) THEN
+        CALL SaveProjector( Projector % Child, .TRUE.,'pb'//TRIM(I2S(This)), & 
+            Projector % InvPerm ) 
+      END IF
+
       IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
     END IF    
 

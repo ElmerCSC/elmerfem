@@ -2603,7 +2603,7 @@ CONTAINS
          END IF
        END DO
 
-       IF( FlatProjector ) THEN
+       IF( FlatProjector .OR. PlaneProjector ) THEN
          IF( NormalCount == 0 ) THEN
            CALL Info('DetermineContact','All normals are consistently signed',Level=10)
          ELSE
