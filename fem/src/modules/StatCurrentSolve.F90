@@ -65,10 +65,10 @@ SUBROUTINE StatCurrentSolver_Init( Model,Solver,dt,TransientSimulation)
     IF( Calculate ) THEN
       IF( Dim == 2 ) THEN
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            'elcurr[Volume Current:2]' )
+            'Volume Current[Volume Current:2]' )
       ELSE
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            'elcurr[Volume Current:3]' )
+            'Volume Current[Volume Current:3]' )
       END IF
     END IF
    
@@ -203,7 +203,7 @@ END SUBROUTINE StatCurrentSolver_Init
        CalculateCurrent = ListGetLogical( Params, &
            'Calculate Volume Current', GotIt )
        IF ( CalculateCurrent ) THEN
-         Var => VariableGet( Solver % Mesh % Variables,'elcurr')
+         Var => VariableGet( Solver % Mesh % Variables,'Volume Current')
          IF( ASSOCIATED( Var) ) THEN
            VolCurrent => Var % Values
          ELSE

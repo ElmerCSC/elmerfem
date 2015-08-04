@@ -2089,9 +2089,14 @@ CONTAINS
 
       CALL SetCoordinateSystem( Model )
 
+
       MeshLevels = ListGetInteger( Model % Simulation, 'Mesh Levels', GotIt )
       IF ( .NOT. GotIt ) MeshLevels=1
 
+      IF( MeshLevels > 1 ) THEN
+        CALL Info('LoadModel','Creating hierarchy of meshes by mesh multiplication: '&
+            //TRIM(I2S(MeshLevels)))
+      END IF
       MeshKeep = ListGetInteger( Model % Simulation, 'Mesh keep',  GotIt )
       IF ( .NOT. GotIt ) MeshKeep=MeshLevels
 
@@ -2364,6 +2369,7 @@ CONTAINS
        CALL MeshStabParams( Mesh )
        Mesh => Mesh % Next
     END DO
+
 !------------------------------------------------------------------------------
 
   CONTAINS
