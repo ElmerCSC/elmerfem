@@ -1701,13 +1701,14 @@ CONTAINS
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
      TYPE(variable_t), POINTER :: Var, LoadVar, IterVar
-     TYPE(Variable_t), POINTER :: DistVar, NormalLoadVar, VeloVar, WeightVar, ActiveVar
+     TYPE(Variable_t), POINTER :: DistVar, NormalLoadVar, VeloVar, WeightVar, ActiveVar, GapVar
      TYPE(Element_t), POINTER :: Element
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: i,j,k,l,n,m,t,ind,dofs, bf, Upper, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind, master_ind, &
          DistSign, LimitSign, DofN, DofT1, DofT2, Limited, LimitedMin
-     REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:),pNormal(:,:)
+     REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:),pNormal(:,:),&
+         RotatedField(:)
      REAL(KIND=dp) :: ValEps, LoadEps, val, ContactNormal(3), &
          ContactT1(3), ContactT2(3), LocalT1(3), LocalT2(3), &
          LocalNormal(3), NodalForce(3), wsum, coeff, &
@@ -1722,7 +1723,7 @@ CONTAINS
      LOGICAL :: ConservativeAdd, ConservativeRemove, &
          DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, PlaneProjector, &
          RotationalProjector, FirstTime = .TRUE., SaveContact, ContactSaved, &
-         RotatedContact, NoSlip, CalculateVelocity, NodalNormal
+         RotatedContact, NoSlip, CalculateVelocity, NodalNormal, ResidualMode
      TYPE(MortarBC_t), POINTER :: MortarBC
      TYPE(Matrix_t), POINTER :: Projector, DualProjector
      TYPE(ValueList_t), POINTER :: BC, MasterBC
@@ -1739,7 +1740,7 @@ CONTAINS
 
      ! Is the boundary rotated or not
      RotatedContact = ( NormalTangentialNOFNodes > 0 ) 
-     
+
      ! The variable to be constrained by the contact algorithm
      ! Here it is assumed to be some "displacement" i.e. a vector quantity
      FieldValues => Var % Values
@@ -1774,6 +1775,9 @@ CONTAINS
        END IF
      END IF
          
+     ResidualMode = ListGetLogical(Params,&
+         'Linear System Residual Mode',Found )
+
      CalculateVelocity = ListGetLogical(Params,&
          'Apply Contact Velocity',Found )
 
@@ -1791,6 +1795,9 @@ CONTAINS
      IF( .NOT. ASSOCIATED( Model % Solver % MortarBCs ) ) THEN
        CALL Fatal('DetermineContact','Cannot apply contact without projectors!')
      END IF
+
+     ! 0) Create rotateted contact if needed
+     CALL RotatedDisplacementField() 
 
      ! a) Create and/or obtain pointers to boundary variables 
      CALL GetContactFields( FirstTime )
@@ -1972,11 +1979,51 @@ CONTAINS
          DEALLOCATE( InterfaceDof )
        END IF
      END DO
+     
+     ! Use N-T coordinate system for the initial guess
+     ! This is mandatory if using the residual mode linear solvers 
+     IF( RotatedContact ) THEN
+       DEALLOCATE( RotatedField ) 
+     END IF
+     
 
      FirstTime = .FALSE.
      CALL Info('DetermineContact','All done',Level=10)
 
    CONTAINS
+
+
+     ! Given the solution compute the rotated solution.
+     !-------------------------------------------------------------------------
+     SUBROUTINE RotatedDisplacementField( ) 
+
+       REAL(KIND=dp) :: RotVec(3)
+       INTEGER :: i,j,k,m
+
+       IF( .NOT. RotatedContact ) RETURN
+
+       CALL Info('DetermineContact','Rotating displacement field',Level=8)
+       ALLOCATE( RotatedField(Solver % Matrix % NumberOfRows ) )
+       RotatedField = Var % Values
+       
+       DO i=1,SIZE( Var % Perm )
+         j = Solver % Variable % Perm(i)
+         IF( j == 0 ) CYCLE
+         m = BoundaryReorder(i)
+         IF( m == 0 ) CYCLE
+         
+         RotVec = 0._dp
+         DO k=1,Var % DOFs
+           RotVec(k) = RotatedField(Var % DOfs*(j-1)+k)
+         END DO
+         CALL RotateNTSystem( RotVec, i )
+         DO k=1,Var % DOFs
+           RotatedField(Var % Dofs*(j-1)+k) = RotVec( k )
+         END DO
+       END DO
+
+     END SUBROUTINE RotatedDisplacementField
+
 
      ! Given the previous solution and the current stiffness matrix 
      ! computes the load normal to the surface i.e. the contact load.
@@ -1999,33 +2046,12 @@ CONTAINS
        END IF
 
        IF( RotatedContact ) THEN
-         CALL Info('DetermineContact','Tranforming solution vector to N-T coordinate system',Level=8)
-         ALLOCATE( TempX(Solver % Matrix % NumberOfRows ) )
-         TempX = Var % Values
-
-         DO i=1,SIZE( Var % Perm )
-           j = Solver % Variable % Perm(i)
-           IF( j == 0 ) CYCLE
-           m = BoundaryReorder(i)
-           IF( m == 0 ) CYCLE
-
-           RotVec = 0._dp
-           DO k=1,Var % DOFs
-             RotVec(k) = TempX(Var % DOfs*(j-1)+k)
-           END DO
-           CALL RotateNTSystem( RotVec, i )
-           DO k=1,Var % DOFs
-             Tempx(Var % Dofs*(j-1)+k) = RotVec( k )
-           END DO
-         END DO
+         TempX => RotatedField 
        ELSE
-         TempX => Var % Values
+         TempX => FieldValues
        END IF
 
        CALL CalculateLoads( Solver, Solver % Matrix, TempX, Var % DOFs, .FALSE., LoadVar ) 
-
-       IF( RotatedContact ) DEALLOCATE( TempX )
-
 
      END FUNCTION CalculateContactLoad
 
@@ -2089,6 +2115,8 @@ CONTAINS
          CALL VariableAddVector( Model % Variables,Mesh,Solver,&
              TRIM(VarName)//' Contact Distance',1,Perm = BoundaryPerm )
          CALL VariableAddVector( Model % Variables,Mesh,Solver,&
+             TRIM(VarName)//' Contact Gap',1,Perm = BoundaryPerm )
+         CALL VariableAddVector( Model % Variables,Mesh,Solver,&
              TRIM(VarName)//' Contact Normalload',1,Perm = BoundaryPerm )
          CALL VariableAddVector( Model % Variables,Mesh,Solver,&
              TRIM(VarName)//' Contact Weight',1,Perm = BoundaryPerm )
@@ -2102,6 +2130,8 @@ CONTAINS
 
        DistVar => VariableGet( Model % Variables,&
            TRIM(VarName)//' Contact Distance')
+       GapVar => VariableGet( Model % Variables,&
+           TRIM(VarName)//' Contact Gap')
        NormalLoadVar => VariableGet( Model % Variables,&
            TRIM(VarName)//' Contact Normalload')
        WeightVar => VariableGet( Model % Variables,&
@@ -2324,7 +2354,6 @@ CONTAINS
 
        DO i = 1,ActiveProjector % NumberOfRows
 
-
          j = ActiveProjector % InvPerm(i)
 
          IF( j == 0 ) CYCLE
@@ -2374,7 +2403,7 @@ CONTAINS
            ! Normalize the unit vector length to one
            LocalNormal = LocalNormal / SQRT( SUM( LocalNormal**2 ) )
            LocalT1 = LocalT1 / SQRT( SUM( LocalT1**2 ) )
-           LocalT2 = LocalT2 / SQRT( SUM( LocalT1**2 ) )
+           IF( Dofs == 3 ) LocalT2 = LocalT2 / SQRT( SUM( LocalT1**2 ) )
 
            !PRINT *,'NodalNormal:',i,j,LocalNormal0,LocalNormal
          END IF
@@ -2407,20 +2436,27 @@ CONTAINS
              disp(3) = DispVals( 3 * l )
            END IF
            
+           IF( CalculateVelocity ) THEN
+             IF( dofs == 2 ) THEN
+               PrevDisp(1) = PrevDispVals( 2 * l - 1)
+               PrevDisp(2) = PrevDispVals( 2 * l )
+               PrevDisp(3) = 0.0_dp
+             ELSE
+               PrevDisp(1) = PrevDispVals( 3 * l - 2)
+               PrevDisp(2) = PrevDispVals( 3 * l - 1 )
+               PrevDisp(3) = PrevDispVals( 3 * l )
+             END IF
+           END IF
+
+           ! If the linear system is in residual mode also set the ContactDist in residual mode too!
+           IF( ResidualMode ) Coord = Coord + Disp
+
            ! DistN is used to give the distance that we need to move the original coordinates
            ! in the wanted direction in order to have contact.
            IF( RotatedContact ) THEN
              ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Coord )
            ELSE
              ContactDist(1) = ContactDist(1) + coeff * SUM( ContactNormal * Coord )
-           END IF
-
-           ! Dist is used to compute the current signed distance that is used to determine
-           ! whether we have contact or not. 
-           IF( RotationalProjector ) THEN
-             Dist = Dist + coeff * SQRT( SUM( (Coord + Disp)**2 ) )
-           ELSE
-             Dist = Dist + coeff * SUM( ContactNormal * ( Coord + Disp ) )
            END IF
 
            ! Tangential distances needed to move the original coordinates to the contact position
@@ -2439,19 +2475,19 @@ CONTAINS
              END IF
            END IF
 
+           ! If not in the residual mode still take into account the displacement for the condition
+           IF( .NOT. ResidualMode ) Coord = Coord + Disp
+
+           ! Dist is used to compute the current signed distance that is used to determine
+           ! whether we have contact or not. 
+           IF( RotationalProjector ) THEN
+             Dist = Dist + coeff * SQRT( SUM( Coord**2 ) )
+           ELSE
+             Dist = Dist + coeff * SUM( ContactNormal * Coord )
+           END IF
+
            IF( CalculateVelocity ) THEN
-             IF( dofs == 2 ) THEN
-               PrevDisp(1) = PrevDispVals( 2 * l - 1)
-               PrevDisp(2) = PrevDispVals( 2 * l )
-               PrevDisp(3) = 0.0_dp
-             ELSE
-               PrevDisp(1) = PrevDispVals( 3 * l - 2)
-               PrevDisp(2) = PrevDispVals( 3 * l - 1 )
-               PrevDisp(3) = PrevDispVals( 3 * l )
-             END IF
-
              Velo = ( Disp - PrevDisp ) !/ dt
-
              ContactVelo(1) = ContactVelo(1) + coeff * SUM( Velo * LocalNormal ) 
              ContactVelo(2) = ContactVelo(2) + coeff * SUM( Velo * LocalT1 )
              ContactVelo(3) = ContactVelo(3) + coeff * SUM( Velo * LocalT2 ) 
@@ -2462,7 +2498,7 @@ CONTAINS
          
          ! Divide by weight to get back to real distance in the direction of the normal
          IF( ABS( wsum ) > EPSILON( wsum )  ) THEN
-           ContactDist = ContactDist(1) / wsum 
+           ContactDist = ContactDist / wsum 
            Dist = DistSign * Dist / wsum
            IF( CalculateVelocity ) THEN
              ContactVelo = ContactVelo / wsum
@@ -2499,6 +2535,8 @@ CONTAINS
 
          DistVar % Values( j ) = Dist
 
+         GapVar % Values( j ) = ContactDist(1)
+
          IF( CalculateVelocity ) THEN
            DO k=1,Dofs             
              VeloVar % Values( Dofs*(j-1)+k ) = ContactVelo(k) 
@@ -2514,11 +2552,11 @@ CONTAINS
        END IF
 
        IF( CalculateVelocity ) THEN
-         PRINT *,'Velo range:',MINVAL( VeloVar % Values), MAXVAL( VeloVar % Values)
+         !PRINT *,'Velo range:',MINVAL( VeloVar % Values), MAXVAL( VeloVar % Values)
        END IF
 
-       PRINT *,'Distance Range:',MinDist, MaxDist
-       PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
+       !PRINT *,'Distance Range:',MinDist, MaxDist
+       !PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
        
      END SUBROUTINE CalculateMortarDistance
 
@@ -2960,7 +2998,7 @@ CONTAINS
 
 
      ! If we are not using normal-tangential coordinates then the slip BC condition is not 
-     ! naturall correct. Here we set an implicit condition for the BCs such that the zero 
+     ! naturally correct. Here we set an implicit condition for the BCs such that the zero 
      ! tangent for condition is automatically enforced. 
      !-------------------------------------------------------------------------------------
      SUBROUTINE CorrectCartesianForce()
@@ -9648,6 +9686,11 @@ END FUNCTION SearchNodeL
 ! Ax=b -> Adx = b-Ax0 = r
     IF( ResidualMode ) THEN
       ALLOCATE( Res(n) ) 
+
+      ! If needed move the current solution to N-T coordinate system
+      ! before computing the residual.     
+      CALL RotateNTSystemAll(x, Solver % Variable % Perm, DOFs)
+
       CALL LinearSystemResidual( A, b, x, res )
       bb => res
       ! Set the initial guess for the redidual system to zero
@@ -10918,18 +10961,22 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
 ! Collectionmatrix % Complex = StiffMatrix % Complex
 
-   !------------------------------------------------------------------------------
-   ! Look at the nonlinear system previous values again, not taking the constrained
-   ! system into account...
-   !------------------------------------------------------------------------------
-   Found = ASSOCIATED(Solver % Variable % NonlinValues)
-   IF( Found ) THEN
-     k = CollectionMatrix % NumberOfRows
-     IF ( SIZE(Solver % Variable % NonlinValues) /= k) THEN
-       DEALLOCATE(Solver % Variable % NonlinValues)
-       ALLOCATE(Solver % Variable % NonlinValues(k))
-     END IF
-     Solver % Variable % NonlinValues (1:k)= CollectionSolution(1:k)
+  !------------------------------------------------------------------------------
+  ! Look at the nonlinear system previous values again, not taking the constrained
+  ! system into account...
+  !------------------------------------------------------------------------------
+  Found = ASSOCIATED(Solver % Variable % NonlinValues)
+  IF( Found .AND. .NOT. ListGetLogical( Solver % values, &
+      'Nonlinear System Convergence Without Constraints',Found ) ) THEN
+    IF( ListGetLogical( Solver % values, 'Linear System Residual Mode',Found ) ) THEN
+      CALL Fatal('SolveWithLinearRestriction','Current residual mode must skip constraints')
+    END IF
+    k = CollectionMatrix % NumberOfRows
+    IF ( SIZE(Solver % Variable % NonlinValues) /= k) THEN
+      DEALLOCATE(Solver % Variable % NonlinValues)
+      ALLOCATE(Solver % Variable % NonlinValues(k))
+    END IF
+    Solver % Variable % NonlinValues(1:k) = CollectionSolution(1:k)
   END IF
 
   CollectionMatrix % Comm = StiffMatrix % Comm
