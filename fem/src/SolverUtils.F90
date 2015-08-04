@@ -6751,7 +6751,7 @@ END FUNCTION SearchNodeL
     TYPE(Variable_t), POINTER :: iterV, VeloVar, TimestepVar, WeightVar
     CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, str
     LOGICAL :: Stat, ConvergenceAbsolute, Relax, RelaxBefore, DoIt, Skip, &
-        SkipConstraints 
+        SkipConstraints, ResidualMode 
 
     TYPE(Matrix_t), POINTER :: MMatrix
     REAL(KIND=dp), POINTER CONTIG :: Mx(:), Mb(:), Mr(:)
@@ -6765,6 +6765,9 @@ END FUNCTION SearchNodeL
     IF(SteadyState) THEN	
       Skip = ListGetLogical( SolverParams,'Skip Compute Steady State Change',Stat)
       IF( Skip ) RETURN
+
+      ! No residual mode for steady state analysis
+      ResidualMode = .FALSE.
 
       ConvergenceType = ListGetString(SolverParams,&
           'Steady State Convergence Measure',Stat)
@@ -6804,6 +6807,8 @@ END FUNCTION SearchNodeL
 
       Skip = ListGetLogical( SolverParams,'Skip Compute Nonlinear Change',Stat)
       IF(Skip) RETURN
+
+      ResidualMode = ListGetLogical( SolverParams,'Linear System Residual Mode',Stat)
 
       ConvergenceType = ListGetString(SolverParams,&
           'Nonlinear System Convergence Measure',Stat)
@@ -6877,9 +6882,18 @@ END FUNCTION SearchNodeL
       IF (SIZE(x0) /= SIZE(x)) CALL Warn('ComputeChange','Possible mismatch in length of vectors!')
     END IF
 
-    IF(Relax .AND. RelaxBefore) THEN
-      x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
+    IF( ResidualMode ) THEN
+      IF(Relax .AND. RelaxBefore) THEN
+        x(1:n) = x0(1:n) + Relaxation*x(1:n)
+      ELSE
+        x(1:n) = x0(1:n) + x(1:n)
+      END IF
+    ELSE 
+      IF(Relax .AND. RelaxBefore) THEN
+        x(1:n) = (1-Relaxation)*x0(1:n) + Relaxation*x(1:n)
+      END IF
     END IF
+
 
     IF(SteadyState) THEN
       PrevNorm = Solver % Variable % PrevNorm
@@ -9491,6 +9505,47 @@ END FUNCTION SearchNodeL
   END SUBROUTINE SolveLinearSystem
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Given a linear system Ax=b make a change of variables such that we will 
+!> be solving for the residual Adx=b-Ax0 where dx=x-x0.
+!------------------------------------------------------------------------------
+  SUBROUTINE LinearSystemResidual( A, b, x, r )
+
+    REAL(KIND=dp) CONTIG :: b(:)   
+    REAL(KIND=dp) CONTIG :: x(:)   
+    TYPE(Matrix_t), POINTER :: A   
+    REAL(KIND=dp), POINTER :: r(:)
+    REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRVec, TmpRHSVec
+
+    INTEGER :: i,n,nn 
+
+    n = A % NumberOfRows 
+
+    IF (Parenv % Pes>1) THEN
+      ALLOCATE( TmpRHSVec(n), TmpXVec(n) )
+      
+      nn = A % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows
+      
+      TmpRhsVec = b
+      CALL ParallelInitSolve( A, tmpXVec, TmpRhsVec, r)
+      
+      tmpXvec = x(1:n)
+      CALL ParallelVector(a,TmpXvec)
+      CALL ParallelVector(A,tmpRhsvec)
+      
+      CALL ParallelMatrixVector(A, TmpXvec, r)
+      DO i=1,nn
+        r(i) = tmprhsvec(i) - r(i)
+      END DO
+    ELSE
+      CALL MatrixVectorMultiply( A, x, r)
+      DO i=1,n
+        r(i) = b(i) - r(i)
+      END DO
+    END IF
+
+  END SUBROUTINE LinearSystemResidual
+
 
 !------------------------------------------------------------------------------
 !> Solve a system. Various additional utilities are included and 
@@ -9498,7 +9553,7 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE SolveSystem( A,ParA,b,x,Norm,DOFs,Solver )
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) CONTIG :: b(:)   !< The RHS vector
+    REAL(KIND=dp) CONTIG, TARGET :: b(:)   !< The RHS vector
     REAL(KIND=dp) CONTIG :: x(:)   !< Previous solution on entry, new solution on exit (hopefully)
     REAL(KIND=dp) :: Norm          !< L2 Norm of solution
     TYPE(Matrix_t), POINTER :: A   !< The coefficient matrix
@@ -9509,16 +9564,16 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Var, NodalLoads
     TYPE(Mesh_t), POINTER :: Mesh, SaveMEsh
-    LOGICAL :: Relax, Found, NeedPrevSol, Timing
+    LOGICAL :: Relax, Found, NeedPrevSol, Timing, ResidualMode
     INTEGER :: n,i,j,k,l,m,istat,nrows,ncols,ConstrainedSolve,colsj,rowoffset
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, ProcName, VariableName
     INTEGER(KIND=AddrInt) :: Proc
     REAL(KIND=dp) :: Relaxation,Beta,Gamma
     REAL(KIND=dp), ALLOCATABLE :: Diag(:), TempVector(:)
-#ifdef USE_ISO_C_BINDINGS
+    REAL(KIND=dp), POINTER :: bb(:),Res(:)
     REAL(KIND=dp) :: t0,rt0,rst,st,ct
-#else
-    REAL(KIND=dp) :: t0,rt0,rst,st,ct,CPUTime,RealTime
+#ifndef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: CPUTime,RealTime
 #endif
     TYPE(ValueList_t), POINTER :: Params
 
@@ -9548,13 +9603,19 @@ END FUNCTION SearchNodeL
 
     n = A % NumberOfRows
 
+    ResidualMode = ListGetLogical( Params,'Linear System Residual Mode',Found )
+
 !------------------------------------------------------------------------------
 ! The allocation of previous values has to be here in order to 
 ! work properly with the Dirichlet elimination.
 !------------------------------------------------------------------------------
-    Relaxation = ListGetConstReal( Params, &
-      'Nonlinear System Relaxation Factor', Found )
-    NeedPrevSol = Found .AND. (Relaxation /= 1.0_dp)
+    NeedPrevSol = ResidualMode
+
+    IF(.NOT. NeedPrevSol ) THEN
+      Relaxation = ListGetConstReal( Params, &
+          'Nonlinear System Relaxation Factor', Found )
+      IF( Found ) NeedPrevSol = (Relaxation /= 1.0_dp)
+    END IF
 
     IF(.NOT. NeedPrevSol ) THEN
       Method = ListGetString( Params, &
@@ -9583,6 +9644,18 @@ END FUNCTION SearchNodeL
        IF ( istat /= 0 ) GOTO 10
     END IF
 
+! If residual mode is requested make change of variables:
+! Ax=b -> Adx = b-Ax0 = r
+    IF( ResidualMode ) THEN
+      ALLOCATE( Res(n) ) 
+      CALL LinearSystemResidual( A, b, x, res )
+      bb => res
+      ! Set the initial guess for the redidual system to zero
+      x = 0.0_dp
+    ELSE
+      bb => b
+    END IF
+
     ConstrainedSolve = 0
     IF ( ASSOCIATED(A % ConstraintMatrix) )  THEN
       IF ( A % ConstraintMatrix % NumberOFRows >= 1 ) & 
@@ -9594,17 +9667,20 @@ END FUNCTION SearchNodeL
     END IF
 
     ConstrainedSolve = ParallelReduction(ConstrainedSolve*1._dp)
-
+   
     IF ( ConstrainedSolve > 0 ) THEN
       CALL Info('SolveSystem','Solving linear system with constraint matrix',Level=10)
       IF( ListGetLogical( Params,'Save Constraint Matrix',Found ) ) THEN
         CALL SaveProjector(A % ConstraintMatrix,.TRUE.,'cm')
       END IF
-
-      CALL SolveWithLinearRestriction( A,b,x,Norm,DOFs,Solver )
+      CALL SolveWithLinearRestriction( A,bb,x,Norm,DOFs,Solver )
     ELSE
-      CALL SolveLinearSystem( A,b,x,Norm,DOFs,Solver )
+      CALL SolveLinearSystem( A,bb,x,Norm,DOFs,Solver )
     END IF
+
+    ! Even in the residual mode the system is reverted back to complete vectors 
+    ! and we may forget about the residual.
+    IF( ResidualMode ) DEALLOCATE( Res ) 
 
 !------------------------------------------------------------------------------
 
