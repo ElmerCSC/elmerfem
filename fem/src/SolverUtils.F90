@@ -1722,7 +1722,7 @@ CONTAINS
      LOGICAL :: ConservativeAdd, ConservativeRemove, &
          DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, PlaneProjector, &
          RotationalProjector, FirstTime = .TRUE., SaveContact, ContactSaved, &
-         RotatedContact, NoSlip, CalculateVelocity
+         RotatedContact, NoSlip, CalculateVelocity, NodalNormal
      TYPE(MortarBC_t), POINTER :: MortarBC
      TYPE(Matrix_t), POINTER :: Projector, DualProjector
      TYPE(ValueList_t), POINTER :: BC, MasterBC
@@ -1776,6 +1776,9 @@ CONTAINS
          
      CalculateVelocity = ListGetLogical(Params,&
          'Apply Contact Velocity',Found )
+
+     NodalNormal = ListGetLogical(Params,&
+         'Use Nodal Normal',Found )
 
      LoadEps = ListGetConstReal(Params,'Limiter Load Tolerance',Found ) 
      IF(.NOT. Found ) LoadEps = EPSILON( LoadEps )
@@ -2254,7 +2257,8 @@ CONTAINS
      !----------------------------------------------------------------------------------------
      SUBROUTINE CalculateMortarDistance()
 
-       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactDist(3), ContactVelo(3)
+       REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactDist(3), ContactVelo(3), &
+           LocalNormal0(3)
        REAL(KIND=dp), POINTER :: DispVals(:), PrevDispVals(:) 
        REAL(KIND=dp) :: MinDist, MaxDist
        TYPE(Matrix_t), POINTER :: ActiveProjector
@@ -2337,6 +2341,7 @@ CONTAINS
          IF( RotatedContact ) THEN
            Rotated = GetSolutionRotation(NTT, j )
            LocalNormal = NTT(:,1)
+           LocalNormal0 = LocalNormal
            LocalT1 = NTT(:,2)
            IF( Dofs == 3 ) LocalT2 = NTT(:,3)
          ELSE
@@ -2344,6 +2349,36 @@ CONTAINS
            LocalT1 = ContactT1
            IF( Dofs == 3 ) LocalT2 = ContactT2 
          END IF
+
+         ! Compute normal direction from the average sum of normals
+         IF( NodalNormal ) THEN
+           LocalNormal = 0.0_dp
+           LocalT1 = 0.0_dp
+           LocalT2 = 0.0_dp
+
+           DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
+             k = ActiveProjector % Cols(j)
+             
+             l = FieldPerm( k ) 
+             IF( l == 0 ) CYCLE
+             
+             coeff = ActiveProjector % Values(j)             
+             Rotated = GetSolutionRotation(NTT, k )
+
+             ! Weighted direction for the unit vectors
+             LocalNormal = LocalNormal + coeff * NTT(:,1)
+             LocalT1 = LocalT1 + coeff * NTT(:,2)
+             IF( Dofs == 3 ) LocalT2 = LocalT2 + coeff * NTT(:,3)
+           END DO
+
+           ! Normalize the unit vector length to one
+           LocalNormal = LocalNormal / SQRT( SUM( LocalNormal**2 ) )
+           LocalT1 = LocalT1 / SQRT( SUM( LocalT1**2 ) )
+           LocalT2 = LocalT2 / SQRT( SUM( LocalT1**2 ) )
+
+           !PRINT *,'NodalNormal:',i,j,LocalNormal0,LocalNormal
+         END IF
+
 
          DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
            k = ActiveProjector % Cols(j)
