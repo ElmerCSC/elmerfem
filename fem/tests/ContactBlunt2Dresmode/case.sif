@@ -3,8 +3,9 @@
 ! - 2D case weak projector (surface-to-surface)
 ! - Using normal-tangential coordinate system for contact
 ! - Only one steady-state contact searched for
+! - Residual based linear system solution 
 !
-! P.R. / 13.3.2015
+! P.R. / 4.8.2015
 !------------------------------------------------------------------
  
 $dy = 0.3
