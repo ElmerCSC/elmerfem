@@ -1723,7 +1723,7 @@ CONTAINS
      LOGICAL :: ConservativeAdd, ConservativeRemove, &
          DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, PlaneProjector, &
          RotationalProjector, FirstTime = .TRUE., SaveContact, ContactSaved, &
-         RotatedContact, NoSlip, CalculateVelocity, NodalNormal, ResidualMode
+         RotatedContact, StickContact, TieContact, CalculateVelocity, NodalNormal, ResidualMode
      TYPE(MortarBC_t), POINTER :: MortarBC
      TYPE(Matrix_t), POINTER :: Projector, DualProjector
      TYPE(ValueList_t), POINTER :: BC, MasterBC
@@ -1830,15 +1830,31 @@ CONTAINS
        IF( FlatProjector ) THEN
          ActiveDirection = ListGetInteger( BC, 'Flat Projector Coordinate',Found )
          IF( .NOT. Found ) ActiveDirection = dofs       
-       ELSE IF( RotationalProjector .OR. PlaneProjector ) THEN
+       ELSE IF( PlaneProjector ) THEN
+         pNormal => ListGetConstRealArray( BC,'Plane Projector Normal',Found)
+         IF( RotatedContact ) THEN
+           ActiveDirection = 1
+         ELSE
+           ActiveDirection = 1
+           PRINT *,'pnormal',pnormal
+           DO i=2,3
+             IF( ABS( pnormal(i,1) ) > ABS( pnormal(ActiveDirection,1) ) ) THEN
+               ActiveDirection = i
+             END IF
+           END DO
+           CALL Info('DetermineContact','Active direction set to: '//TRIM(I2S(ActiveDirection)))
+         END IF
+       ELSE IF( RotationalProjector ) THEN
          ActiveDirection = 1
          IF( .NOT. RotatedContact ) THEN
            CALL Warn('DetermineContact','Rotational projector may not work without N-T coordinates')
          END IF
        ELSE
-         CALL Fatal('DetermineContact','Projector must be current either flat or rotational!')
+         CALL Fatal('DetermineContact','Projector must be current either flat, plane, cylinder or rotational!')
        END IF
       
+      
+
        master_ind = ListGetInteger( BC,'Mortar BC',Found )
        MasterBC => Model % BCs(master_ind) % Values
        DualProjector => Projector % Ematrix
@@ -1861,8 +1877,6 @@ CONTAINS
          CALL Info('DetermineContact','We have a normal-tangential system',Level=6)
          MortarBC % MasterScale = -1.0_dp
          DofN = 1
-       ELSE IF( PlaneProjector ) THEN
-         CALL Fatal('DetermineContact','PlaneProjector assumes N-T coordinate system!')
        ELSE                 
          DofN = ActiveDirection 
        END IF
@@ -1883,7 +1897,6 @@ CONTAINS
        ! This is the normal that is used to detect the signed distance
        ! and tangent vectors used to detect surface velocity
        IF( PlaneProjector ) THEN
-         pNormal => ListGetConstRealArray( BC,'Plane Projector Normal',Found)
          ContactNormal = pNormal(1:3,1)
        ELSE
          ContactNormal = 0.0_dp
@@ -1894,9 +1907,14 @@ CONTAINS
        ContactT2 = 0.0_dp
        IF(DofT2>0) ContactT2(DofT2) = 1.0_dp
 
-       NoSlip = ListGetLogical( BC,'Contact No-Slip',Found )
-       IF( NoSlip ) THEN
+       StickContact = ListGetLogical( BC,'Stick Contact',Found )
+       IF( StickContact ) THEN
          CALL Info('DetermineContact','Using no-slip condistions for displacement',Level=10)
+       END IF
+
+       TieContact = ListGetLogical( BC,'Tie Contact',Found )
+       IF( TieContact ) THEN
+         CALL Info('DetermineContact','Using tie contact for displacement',Level=10)
        END IF
 
        ! c) allocate and initialize all necessary vectors for the contact 
@@ -1939,12 +1957,18 @@ CONTAINS
            //TRIM(VarName)//': ',limited 
        CALL Info('DetermineContactSet',Message,Level=5)
 
-       IF( NoSlip ) THEN
+       ! For stick and tie contact inherit the active flag from the normal component
+       PRINT *,'Stick or Tie:',StickContact,TieContact,DofN,DofT1,DofT2,Dofs
+       PRINT *,'COunt',Count(MortarBC % Active )
+
+       IF( StickContact .OR. TieContact ) THEN
+
          MortarBC % Active( DofT1 :: Dofs ) = MortarBC % Active( DofN :: Dofs )
          IF( Dofs == 3 ) THEN
            MortarBC % Active( DofT2 :: Dofs ) = MortarBC % Active( DofN :: Dofs ) 
          END IF
        END IF
+       PRINT *,'COunt2',Count(MortarBC % Active )
 
        ! Currently the visulized limit is only for the normal component
        DO i = 1, Projector % NumberOfRows
@@ -2422,9 +2446,15 @@ CONTAINS
            ! Only compute the sum related to the active projector
            IF( SlaveNode(k) ) wsum = wsum + coeff
 
-           coord(1) = Mesh % Nodes % x( k ) 
-           coord(2) = Mesh % Nodes % y( k ) 
-           coord(3) = Mesh % Nodes % z( k ) 
+           IF( TieContact ) THEN
+             ! For tie contact the reference coordinate is set to zero there is
+             ! no initial offset between the coordinates
+             coord = 0.0_dp
+           ELSE
+             coord(1) = Mesh % Nodes % x( k ) 
+             coord(2) = Mesh % Nodes % y( k ) 
+             coord(3) = Mesh % Nodes % z( k ) 
+           END IF
 
            IF( dofs == 2 ) THEN
              disp(1) = DispVals( 2 * l - 1)
@@ -2460,7 +2490,7 @@ CONTAINS
            END IF
 
            ! Tangential distances needed to move the original coordinates to the contact position
-           IF( NoSlip ) THEN
+           IF( StickContact ) THEN
              IF( RotatedContact ) THEN
                ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * Coord )
              ELSE
@@ -2513,7 +2543,7 @@ CONTAINS
 
          IF( IsSlave ) THEN
            MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactDist(1)
-           IF( NoSlip ) THEN
+           IF( StickContact .OR. TieContact ) THEN
              MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactDist(2) 
              IF( Dofs == 3 ) THEN
                MortarBC % Rhs(Dofs*(i-1)+DofT2) = -ContactDist(3)
@@ -2737,6 +2767,12 @@ CONTAINS
          k = NormalLoadVar % Perm(j)
 
          ind = Dofs * (i-1) + DofN
+
+         ! Tie contact should always be in contact - if we have found a counterpart
+         IF( TieContact ) THEN
+           MortarBC % Active(ind) = .TRUE.
+           CYCLE
+         END IF
 
          ! Enforce contact 
          !------------------------------------------------------
