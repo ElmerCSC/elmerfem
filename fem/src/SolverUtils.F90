@@ -1836,7 +1836,6 @@ CONTAINS
            ActiveDirection = 1
          ELSE
            ActiveDirection = 1
-           PRINT *,'pnormal',pnormal
            DO i=2,3
              IF( ABS( pnormal(i,1) ) > ABS( pnormal(ActiveDirection,1) ) ) THEN
                ActiveDirection = i
@@ -1958,17 +1957,12 @@ CONTAINS
        CALL Info('DetermineContactSet',Message,Level=5)
 
        ! For stick and tie contact inherit the active flag from the normal component
-       PRINT *,'Stick or Tie:',StickContact,TieContact,DofN,DofT1,DofT2,Dofs
-       PRINT *,'COunt',Count(MortarBC % Active )
-
        IF( StickContact .OR. TieContact ) THEN
-
          MortarBC % Active( DofT1 :: Dofs ) = MortarBC % Active( DofN :: Dofs )
          IF( Dofs == 3 ) THEN
            MortarBC % Active( DofT2 :: Dofs ) = MortarBC % Active( DofN :: Dofs ) 
          END IF
        END IF
-       PRINT *,'COunt2',Count(MortarBC % Active )
 
        ! Currently the visulized limit is only for the normal component
        DO i = 1, Projector % NumberOfRows
