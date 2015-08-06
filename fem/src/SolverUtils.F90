@@ -1701,12 +1701,13 @@ CONTAINS
 !-----------------------------------------------------------------------------
      TYPE(Model_t), POINTER :: Model
      TYPE(variable_t), POINTER :: Var, LoadVar, IterVar
-     TYPE(Variable_t), POINTER :: DistVar, NormalLoadVar, VeloVar, WeightVar, ActiveVar, GapVar
+     TYPE(Variable_t), POINTER :: DistVar, NormalLoadVar, SlipLoadVar, VeloVar, &
+         WeightVar, ActiveVar, GapVar
      TYPE(Element_t), POINTER :: Element
      TYPE(Mesh_t), POINTER :: Mesh
      INTEGER :: i,j,k,l,n,m,t,ind,dofs, bf, Upper, &
          ElemFirst, ElemLast, totsize, i2, j2, ind2, bc_ind, master_ind, &
-         DistSign, LimitSign, DofN, DofT1, DofT2, Limited, LimitedMin
+         DistSign, LimitSign, DofN, DofT1, DofT2, Limited, LimitedMin, TimeStep
      REAL(KIND=dp), POINTER :: FieldValues(:), LoadValues(:), ElemLimit(:),pNormal(:,:),&
          RotatedField(:)
      REAL(KIND=dp) :: ValEps, LoadEps, val, ContactNormal(3), &
@@ -1718,12 +1719,13 @@ CONTAINS
      LOGICAL, ALLOCATABLE :: LimitDone(:),InterfaceDof(:)
      LOGICAL, POINTER :: LimitActive(:)
      TYPE(ValueList_t), POINTER :: Params
-     CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName, VarName
+     CHARACTER(LEN=MAX_NAME_LEN) :: Name, LimitName, VarName, ContactType
      INTEGER :: ConservativeAfterIters, ActiveDirection, NonlinIter, CoupledIter
      LOGICAL :: ConservativeAdd, ConservativeRemove, &
          DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, PlaneProjector, &
          RotationalProjector, FirstTime = .TRUE., SaveContact, ContactSaved, &
-         RotatedContact, StickContact, TieContact, CalculateVelocity, NodalNormal, ResidualMode
+         RotatedContact, StickContact, TieContact, FrictionContact, SlipContact, &
+         CalculateVelocity, NodalNormal, ResidualMode
      TYPE(MortarBC_t), POINTER :: MortarBC
      TYPE(Matrix_t), POINTER :: Projector, DualProjector
      TYPE(ValueList_t), POINTER :: BC, MasterBC
@@ -1754,6 +1756,9 @@ CONTAINS
 
      IterVar => VariableGet( Model % Variables,'nonlin iter')
      NonlinIter = NINT( IterVar % Values(1) )
+     
+     IterVar => VariableGet( Model % Variables,'timestep')
+     Timestep = NINT( IterVar % Values(1) )
 
      !FirstTime = ( NonlinIter == 1 .AND. CoupledIter == 1 ) 
 
@@ -1906,16 +1911,53 @@ CONTAINS
        ContactT2 = 0.0_dp
        IF(DofT2>0) ContactT2(DofT2) = 1.0_dp
 
-       StickContact = ListGetLogical( BC,'Stick Contact',Found )
-       IF( StickContact ) THEN
-         CALL Info('DetermineContact','Using no-slip condistions for displacement',Level=10)
+       StickContact = .FALSE.; TieContact = .FALSE.
+       FrictionContact = .FALSE.; SlipContact = .FALSE.
+
+       ContactType = ListGetString( BC,'Contact Type',Found ) 
+       IF( Found ) THEN
+         SELECT CASE ( ContactType )
+         CASE('stick')
+           StickContact = .TRUE.
+         CASE('tie')
+           TieContact = .TRUE.
+         CASE('friction')
+           FrictionContact = .TRUE.
+         CASE('slip')
+           SlipContact = .TRUE.
+         CASE Default
+           CALL Fatal('DetermineContact','Unknown contact type: '//TRIM(ContactType))
+         END SELECT
+       ELSE
+         StickContact = ListGetLogical( BC,'Stick Contact',Found )
+         IF(.NOT. Found ) TieContact = ListGetLogical( BC,'Tie Contact',Found )
+         IF(.NOT. Found ) FrictionContact = ListGetLogical( BC,'Friction Contact',Found )
+         IF(.NOT. Found ) SlipContact = ListGetLogical( BC,'Slip Contact',Found )
+         IF(.NOT. Found ) THEN 
+           CALL Warn('DetermineContact','No contact type given, assuming > Slip Contact <')
+           SlipContact = .TRUE.
+         END IF
        END IF
 
-       TieContact = ListGetLogical( BC,'Tie Contact',Found )
-       IF( TieContact ) THEN
-         CALL Info('DetermineContact','Using tie contact for displacement',Level=10)
-       END IF
+       IF( StickContact ) CALL Info('DetermineContact','Using stick contact for displacement',Level=10)
+       IF( TieContact ) CALL Info('DetermineContact','Using tie contact for displacement',Level=10)
+       IF( FrictionContact ) CALL Info('DetermineContact','Using friction contact for displacement',Level=10)
+       IF( SlipContact ) CALL Info('DetermineContact','Using slip contact for displacement',Level=10)
 
+       IF( (FrictionContact .OR. StickContact ) .AND. TimeStep == 1 ) THEN
+         IF( .NOT. ListGetLogical(BC,'Initial Contact Friction',Found ) ) THEN
+           FrictionContact = .FALSE.; StickContact = .FALSE.
+           SlipContact = .TRUE.
+           CALL Info('DetermineContact','Assuming frictionless initial contact',Level=10)
+         END IF
+       ELSE IF( FrictionContact .AND. NonlinIter == 1 ) THEN
+         IF( .NOT. ListGetLogical(BC,'Initial Dynamic Friction',Found ) ) THEN
+           FrictionContact = .FALSE.
+           StickContact = .TRUE.
+           CALL Info('DetermineContact','Assuming sticking in first iteration initial contact',Level=10)
+         END IF        
+       END IF
+       
        ! c) allocate and initialize all necessary vectors for the contact 
        CALL InitializeMortarVectors()
      
@@ -1934,27 +1976,20 @@ CONTAINS
        ! f) Calculate the distance used to determine whether contact should be added
        CALL CalculateMortarDistance()
         
-       ! g) Determine the contact set 
+       ! g) Determine the contact set in normal direction
        CALL NormalContactSet()
 
        IF(.NOT. RotatedContact ) THEN
          CALL CorrectCartesianForce()
        END IF
 
+       ! i) Determine the contact set 
+       CALL TangentContactSet()
 
        ! h) If requested ensure a minumum number of contact nodes
        !-------------------------------------------------------------------
-       Limited = COUNT( MortarBC % active(DofN::Dofs) )      
        LimitedMin = ListGetInteger( BC,'Contact Active Set Minimum',Found)
-       IF( Found .AND. LimitedMin > Limited ) THEN
-         WRITE(Message,'(A,I0)') 'Initial number of contact nodes for '&
-             //TRIM(VarName)//': ',limited 
-         CALL IncreaseContactSet( LimitedMin - Limited ) 
-         Limited = LimitedMin
-       END IF
-       WRITE(Message,'(A,I0)') 'Number of contact nodes for '&
-           //TRIM(VarName)//': ',limited 
-       CALL Info('DetermineContactSet',Message,Level=5)
+       IF( Found ) CALL IncreaseContactSet( LimitedMin )
 
        ! For stick and tie contact inherit the active flag from the normal component
        IF( StickContact .OR. TieContact ) THEN
@@ -1964,7 +1999,12 @@ CONTAINS
          END IF
        END IF
 
-       ! Currently the visulized limit is only for the normal component
+       ! i) If we have dynamic friction then add it 
+       CALL SetDynamicFriction()
+
+
+
+      ! Currently the visulized limit is only for the normal component
        DO i = 1, Projector % NumberOfRows
          j = Projector % InvPerm(i)
          IF( j == 0 ) CYCLE
@@ -2137,6 +2177,8 @@ CONTAINS
          CALL VariableAddVector( Model % Variables,Mesh,Solver,&
              TRIM(VarName)//' Contact Normalload',1,Perm = BoundaryPerm )
          CALL VariableAddVector( Model % Variables,Mesh,Solver,&
+             TRIM(VarName)//' Contact Slipload',1,Perm = BoundaryPerm )
+         CALL VariableAddVector( Model % Variables,Mesh,Solver,&
              TRIM(VarName)//' Contact Weight',1,Perm = BoundaryPerm )
          CALL VariableAddVector( Model % Variables,Mesh,Solver,&
              TRIM(VarName)//' Contact Active',1,Perm = BoundaryPerm )
@@ -2152,6 +2194,8 @@ CONTAINS
            TRIM(VarName)//' Contact Gap')
        NormalLoadVar => VariableGet( Model % Variables,&
            TRIM(VarName)//' Contact Normalload')
+       SlipLoadVar => VariableGet( Model % Variables,&
+           TRIM(VarName)//' Contact Slipload')
        WeightVar => VariableGet( Model % Variables,&
            TRIM(VarName)//' Contact Weight')
        ActiveVar => VariableGet( Model % Variables,&
@@ -2306,7 +2350,7 @@ CONTAINS
      SUBROUTINE CalculateMortarDistance()
 
        REAL(KIND=dp) :: Disp(3), Coord(3), PrevDisp(3), Velo(3), ContactDist(3), ContactVelo(3), &
-           LocalNormal0(3)
+           LocalNormal0(3), SlipCoord(3)
        REAL(KIND=dp), POINTER :: DispVals(:), PrevDispVals(:) 
        REAL(KIND=dp) :: MinDist, MaxDist
        TYPE(Matrix_t), POINTER :: ActiveProjector
@@ -2319,10 +2363,13 @@ CONTAINS
 
        DispVals => Solver % Variable % Values
        IF( .NOT. ASSOCIATED( DispVals ) ) THEN
-         CALL Fatal('CalculateMortarDistance','Solver variable not associated!')
+         CALL Fatal('CalculateMortarDistance','Displacement variable not associated!')
        END IF
 
        IF( CalculateVelocity ) THEN
+         IF( .NOT. ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+           CALL Fatal('CalculateMortarDistance','Displacement PrevValues not associated!')         
+         END IF
          IF( Solver % TimeOrder == 1 ) THEN
            PrevDispVals => Solver % Variable % PrevValues(:,1)
          ELSE
@@ -2384,6 +2431,10 @@ CONTAINS
          ContactVelo = 0.0_dp
          ContactDist = 0.0_dp
          DistanceSet = .FALSE.
+         
+         ! This is the most simple contact condition. We just want no slip on the contact.
+         IF( TieContact .AND. .NOT. ResidualMode ) GOTO 100
+
 
          IF( RotatedContact ) THEN
            Rotated = GetSolutionRotation(NTT, j )
@@ -2396,7 +2447,7 @@ CONTAINS
            LocalT1 = ContactT1
            IF( Dofs == 3 ) LocalT2 = ContactT2 
          END IF
-
+        
          ! Compute normal direction from the average sum of normals
          IF( NodalNormal ) THEN
            LocalNormal = 0.0_dp
@@ -2440,16 +2491,6 @@ CONTAINS
            ! Only compute the sum related to the active projector
            IF( SlaveNode(k) ) wsum = wsum + coeff
 
-           IF( TieContact ) THEN
-             ! For tie contact the reference coordinate is set to zero there is
-             ! no initial offset between the coordinates
-             coord = 0.0_dp
-           ELSE
-             coord(1) = Mesh % Nodes % x( k ) 
-             coord(2) = Mesh % Nodes % y( k ) 
-             coord(3) = Mesh % Nodes % z( k ) 
-           END IF
-
            IF( dofs == 2 ) THEN
              disp(1) = DispVals( 2 * l - 1)
              disp(2) = DispVals( 2 * l )
@@ -2459,6 +2500,24 @@ CONTAINS
              disp(2) = DispVals( 3 * l - 1 )
              disp(3) = DispVals( 3 * l )
            END IF
+
+           ! If nonliear analysis is used we may need to cancel the introduced gap due to numerical errors 
+           IF( TieContact .AND. ResidualMode ) THEN
+             IF( RotatedContact ) THEN
+               ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Disp )
+               ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * Disp )
+               IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * Disp )
+             ELSE
+               ContactDist(1) = ContactDist(1) + coeff * SUM( ContactNormal * Disp )
+               ContactDist(2) = ContactDist(2) + coeff * SUM( ContactT1 * Disp )
+               IF( Dofs == 3 ) ContactDist(3) = ContactDist(3) + coeff * SUM( ContactT2 * Disp ) 
+             END IF
+             CYCLE
+           END IF
+
+           coord(1) = Mesh % Nodes % x( k ) 
+           coord(2) = Mesh % Nodes % y( k ) 
+           coord(3) = Mesh % Nodes % z( k ) 
            
            IF( CalculateVelocity ) THEN
              IF( dofs == 2 ) THEN
@@ -2484,18 +2543,17 @@ CONTAINS
            END IF
 
            ! Tangential distances needed to move the original coordinates to the contact position
-           IF( StickContact ) THEN
+           ! If stick is required then we want to keep the tangential slip zero. 
+           IF( StickContact ) THEN             
+             SlipCoord = -PrevDisp 
+             IF( ResidualMode ) SlipCoord = SlipCoord + Disp 
+
              IF( RotatedContact ) THEN
-               ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * Coord )
+               ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * SlipCoord )
+               IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * SlipCoord )
              ELSE
-               ContactDist(2) = ContactDist(2) + coeff * SUM( ContactT1 * Coord )
-             END IF
-             IF( Dofs == 3 ) THEN
-               IF( RotatedContact ) THEN
-                 ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * Coord )
-               ELSE
-                 ContactDist(3) = ContactDist(3) + coeff * SUM( ContactT2 * Coord )
-               END IF
+               ContactDist(2) = ContactDist(2) + coeff * SUM( ContactT1 * SlipCoord )
+               IF( Dofs == 3 ) ContactDist(3) = ContactDist(3) + coeff * SUM( ContactT2 * SlipCoord )
              END IF
            END IF
 
@@ -2595,7 +2653,8 @@ CONTAINS
        TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
        TYPE(Nodes_t) :: Nodes
        INTEGER :: i,j,k,t,CoordSys, NormalSign0, NormalSign, NormalCount
-       REAL(KIND=dp) :: s, x, DetJ, u, v, w, Normal(3),NodalForce(3),DotProd
+       REAL(KIND=dp) :: s, x, DetJ, u, v, w, Normal(3),NodalForce(3),DotProd, &
+           NormalForce, SlipForce
        REAL(KIND=dp), ALLOCATABLE :: Basis(:)
        LOGICAL :: Stat, IsSlave, IsMaster
        TYPE(Matrix_t), POINTER :: ActiveProjector
@@ -2648,7 +2707,7 @@ CONTAINS
            
            Normal = NormalVector( Element,Nodes,u,v,.TRUE. )
 
-           ! Check the concistency of sign in the projector
+           ! Check the consistency of sign in the projector
            IF( IsSlave .AND. ( FlatProjector .OR. PlaneProjector ) ) THEN
              DotProd = SUM( Normal * ContactNormal ) 
              IF( DotProd < 0.0 ) THEN
@@ -2670,6 +2729,7 @@ CONTAINS
                NodeDone( Indexes(i) ) = .TRUE.
                WeightVar % Values(j) = 0.0_dp
                NormalLoadVar % Values(j) = 0.0_dp
+               SlipLoadVar % Values(j) = 0.0_dp
              END IF
 
              k = FieldPerm( Indexes(i) )
@@ -2679,12 +2739,16 @@ CONTAINS
              END DO
 
              IF( RotatedContact ) THEN
-               NormalLoadVar % Values(j) = NormalLoadVar % Values(j) - &
-                   s * Basis(i) * NodalForce(1)
+               NormalForce = NodalForce(1)
              ELSE
-               NormalLoadVar % Values(j) = NormalLoadVar % Values(j) - &
-                   s * Basis(i) * SUM( NodalForce * Normal )
+               NormalForce = SUM( NodalForce * Normal ) 
              END IF
+             SlipForce = SQRT( SUM( NodalForce**2 ) - NormalForce**2 )
+
+             NormalLoadVar % Values(j) = NormalLoadVar % Values(j) - &
+                 s * Basis(i) * NormalForce
+             SlipLoadVar % Values(j) = SlipLoadVar % Values(j) + &
+                 s * Basis(i) * SlipForce
              
              WeightVar % Values(j) = WeightVar % Values(j) + s * Basis(i)
            END DO
@@ -2696,6 +2760,7 @@ CONTAINS
        DO i=1,Mesh % NumberOfNodes
          IF( NodeDone( i ) ) THEN             
            j = WeightVar % Perm(i)
+           SlipLoadVar % Values(j) = SlipLoadVar % Values(j) / WeightVar % Values(j)**2
            NormalLoadVar % Values(j) = NormalLoadVar % Values(j) / WeightVar % Values(j)**2
          END IF
        END DO
@@ -2717,7 +2782,7 @@ CONTAINS
 
      END SUBROUTINE CalculateContactPressure
 
-
+  
 
      ! Sets the contact in the normal direction by looking at the signed distance and 
      ! contact force. 
@@ -2728,9 +2793,6 @@ CONTAINS
        REAL(KIND=dp) :: DistOffSet, MinLoad, MaxLoad, NodeLoad, MinDist, MaxDist, NodeDist
        INTEGER :: i,j,k,ind
        LOGICAL :: Found
-       LOGICAL :: ElemActive(8)
-       INTEGER :: elem, elemcode, ElemInds(8)
-       INTEGER, POINTER :: Indexes(:)
 
        ! This is related to the formulation of the PDE and is probably fixed for all elasticity solvers
        LimitSign = -1
@@ -2831,15 +2893,208 @@ CONTAINS
          CALL Info('DetermineContactSet',Message,Level=5)
        END IF
 
+     END SUBROUTINE NormalContactSet
+
+
+
+
+     ! Sets the contact in the tangent direction(s).
+     !----------------------------------------------------------------------------------
+     SUBROUTINE TangentContactSet() 
+       
+       INTEGER :: Removed0, Removed, Added
+       REAL(KIND=dp) :: NodeLoad, TangentLoad
+       INTEGER :: i,j,k,ind,IndN, IndT1, IndT2
+       LOGICAL :: Found
+
+       
+       ! For stick and tie contact inherit the active flag from the normal component
+       IF( SlipContact ) THEN
+         RETURN
+       ELSE IF( StickContact .OR. TieContact ) THEN
+         MortarBC % Active( DofT1 :: Dofs ) = MortarBC % Active( DofN :: Dofs )
+         IF( Dofs == 3 ) THEN
+           MortarBC % Active( DofT2 :: Dofs ) = MortarBC % Active( DofN :: Dofs ) 
+         END IF
+         RETURN
+       END IF
+
+       CALL Info('TangentContactSet','Setting the stick set tangent components',Level=10)
+
+       Removed0 = 0
+       Removed = 0
+       Added = 0        
+
+       ! Determine now whether we have contact or not
+       DO i = 1,Projector % NumberOfRows
+         j = Projector % InvPerm( i ) 
+         IF( j == 0 ) CYCLE
+         k = FieldPerm( j ) 
+         IF( k == 0 ) CYCLE
+         k = NormalLoadVar % Perm(j)
+
+         indN = Dofs * (i-1) + DofN
+         indT1 = ind - DofN + DofT1
+         IF(Dofs == 3 ) indT2 = ind - DofN + DofT2
+
+         ! If there is no contact there can be no stick either
+         IF( .NOT. MortarBC % Active(indN) ) THEN
+           IF( MortarBC % Active(indT1) ) THEN
+             removed0 = removed0 + 1
+             MortarBC % Active(indT1) = .FALSE.
+             IF( Dofs == 3 ) MortarBC % Active(indT2) = .FALSE.
+           END IF
+           CYCLE
+         END IF
+
+         ! Ok, we have normal contact what about stick
+         ! Enfor stick
+         !------------------------------------------------------
+         coeff = ListGetRealAtNode( BC,'Stick Active Condition', j, Found )
+         IF( Found .AND. coeff > 0.0_dp ) THEN
+           IF( .NOT. MortarBC % Active(indT1) ) added = added + 1
+           MortarBC % Active(indT1) = .TRUE.
+           IF( Dofs == 3 ) MortarBC % Active(indT2) = .TRUE.
+           CYCLE
+         END IF
+
+         ! Enforce no stick
+         !------------------------------------------------------
+         coeff = ListGetRealAtNode( BC,'Stick Passive Condition', j, Found )
+         IF( Found .AND. coeff > 0.0_dp ) THEN
+           IF( MortarBC % Active(IndT1) ) removed = removed + 1
+           MortarBC % Active(indT1) = .FALSE.
+           IF( Dofs == 3 ) MortarBC % Active(indT2) = .FALSE.
+           CYCLE
+         END IF
+
+         ! Remove nodes with too large tangent force
+         !--------------------------------------------------------------------------       
+         coeff = ListGetRealAtNode( BC,'Static Friction Coefficient', j, Found )
+         IF( .NOT. Found ) coeff = ListGetRealAtNode( BC,'Dynamic Friction Coefficient', j, Found )
+
+         NodeLoad = NormalLoadVar % Values(k)
+         TangentLoad = SlipLoadVar % Values(k)
+         
+         IF( TangentLoad > ABS( coeff * NodeLoad ) ) THEN
+           IF( MortarBC % Active(IndT1) ) removed = removed + 1
+           MortarBC % Active(indT1) = .FALSE.
+           IF( Dofs == 3 ) MortarBC % Active(indT2) = .FALSE.
+         END IF
+       END DO
+
+       IF(added > 0) THEN
+         WRITE(Message,'(A,I0,A)') 'Added ',added,' nodes to the stick set'
+         CALL Info('DetermineContactSet',Message,Level=5)
+       END IF
+       
+       IF(removed0 > 0) THEN
+         WRITE(Message,'(A,I0,A)') 'Removed ',removed0,' non-contact nodes from the stick set'
+         CALL Info('DetermineContactSet',Message,Level=5)
+       END IF
+
+       IF(removed > 0) THEN
+         WRITE(Message,'(A,I0,A)') 'Removed ',removed,' sliding nodes from the stick set'
+         CALL Info('DetermineContactSet',Message,Level=5)
+       END IF
+       
+     END SUBROUTINE TangentContactSet
+
+
+
+     ! If requested add new nodes to the contact set
+     ! This would be typically done in order to make the elastic problem well defined
+     ! Without any contact the bodies may float around.
+     !---------------------------------------------------------------------------------
+     SUBROUTINE IncreaseContactSet( LimitedMin )
+       INTEGER :: LimitedMin
+
+       REAL(KIND=dp), ALLOCATABLE :: DistArray(:)
+       INTEGER, ALLOCATABLE :: IndArray(:)
+       REAL(KIND=dp) :: Dist
+       INTEGER :: i,j,ind,LimitedNow,NewNodes
+
+       ! Nothing to do 
+       IF( LimitedMin <= 0 ) RETURN
+
+       LimitedNow = COUNT( MortarBC % active(DofN::Dofs) )      
+       NewNodes = LimitedMin - LimitedNow
+       IF( NewNodes <= 0 ) RETURN
+
+       WRITE(Message,'(A,I0)') 'Initial number of contact nodes for '&
+           //TRIM(VarName)//': ',LimitedNow 
+       CALL Info('DetermineContactSet',Message,Level=5)
+
+       CALL Info('DetermineContact',&
+           'Setting '//TRIM(I2S(NewNodes))//' additional contact nodes',Level=5)
+
+       ALLOCATE( DistArray( NewNodes ), IndArray( NewNodes ) ) 
+       DistArray = HUGE( DistArray ) 
+       IndArray = 0
+
+       ! Find additional contact nodes from the closest non-contact nodes
+       DO i = 1,Projector % NumberOfRows
+         ind = Dofs * (i-1) + DofN
+         IF( MortarBC % Active(ind)  ) CYCLE
+
+         IF( Projector % InvPerm(i) == 0 ) CYCLE
+         j = DistVar % Perm(Projector % InvPerm(i))
+         Dist = DistVar % Values(j)
+ 
+         IF( Dist < DistArray(NewNodes) ) THEN
+           DistArray(NewNodes) = Dist
+           IndArray(NewNodes) = i
+
+           ! Order the new nodes such that the last node always has the largest distance
+           ! This way we only need to compare to the one distance when adding new nodes.
+           DO j=1,NewNodes-1
+             IF( DistArray(j) > DistArray(NewNodes) ) THEN
+               Dist = DistArray(NewNodes)
+               DistArray(NewNodes) = DistArray(j)
+               DistArray(j) = Dist                
+               ind = IndArray(NewNodes)
+               IndArray(NewNodes) = IndArray(j)
+               IndArray(j) = ind                
+             END IF
+           END DO
+         END IF
+       END DO
+
+       IF( ANY( IndArray == 0 ) ) THEN
+         CALL Fatal('DetermineContact','Could not define sufficient number of new nodes!')
+       END IF
+
+       WRITE(Message,'(A,ES12.4)') 'Maximum distance needed for new nodes:',DistArray(NewNodes)
+       CALL Info('DetermineContact',Message,Level=8)
+
+       MortarBC % Active( Dofs*(IndArray-1)+DofN ) = .TRUE.
+
+       ! If we add nodes assume that they are sticking at the beginning
+       IF( StickContact .OR. TieContact ) THEN
+         MortarBC % Active( Dofs*(IndArray-1)+DofT1 ) = .TRUE.         
+         MortarBC % Active( Dofs*(IndArray-1)+DofT2 ) = .TRUE.
+       END IF
+
+       DEALLOCATE( DistArray, IndArray ) 
+
+     END SUBROUTINE IncreaseContactSet
+
+
+     ! Here we eliminate the middle nodes from the higher order elements if they 
+     ! are different than both nodes of which they are associated with.
+     ! There is no way geometric information could be accurate enough to allow
+     ! such contacts to exist.
+     !---------------------------------------------------------------------------
+     SUBROUTINE QuadraticContactSet()
+
+       LOGICAL :: ElemActive(8)
+       INTEGER :: i,j,k,n,added, removed, elem, elemcode, ElemInds(8)
+       INTEGER, POINTER :: Indexes(:)
+
        added = 0
        removed = 0
 
-       ! Here we eliminate the middle nodes from the higher order elements if they 
-       ! are different than both nodes of which they are associated with.
-       ! There is no way geometric information could be accurate enough to allow
-       ! such contacts to exist.
-       !---------------------------------------------------------------------------
-100    DO elem=Mesh % NumberOfBulkElements + 1, &
+       DO elem=Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
 
          Element => Mesh % Elements( elem )         
@@ -2951,79 +3206,17 @@ CONTAINS
        END DO
 
        IF(added > 0) THEN
-         WRITE(Message,'(A,I0,A)') 'Added ',added,' quadratic nodes to the set'
+         WRITE(Message,'(A,I0,A)') 'Added ',added,' quadratic nodes to contact set'
          CALL Info('DetermineContactSet',Message,Level=5)
        END IF
 
        IF(removed > 0) THEN
-         WRITE(Message,'(A,I0,A)') 'Removed ',removed,' quadratic nodes from the set'
+         WRITE(Message,'(A,I0,A)') 'Removed ',removed,' quadratic nodes from contact set'
          CALL Info('DetermineContactSet',Message,Level=5)
        END IF
          
-     END SUBROUTINE NormalContactSet
+     END SUBROUTINE QuadraticContactSet
 
-
-     ! If requested add new nodes to the contact set
-     ! This would be typically done in order to make the elastic problem well defined
-     ! Without any contact the bodies may float around.
-     !---------------------------------------------------------------------------------
-     SUBROUTINE IncreaseContactSet( NewNodes ) 
-       INTEGER :: NewNodes
-
-       REAL(KIND=dp), ALLOCATABLE :: DistArray(:)
-       INTEGER, ALLOCATABLE :: IndArray(:)
-       REAL(KIND=dp) :: Dist
-       INTEGER :: i,j,ind
-
-       ! Nothing to do 
-       IF( NewNodes <= 0 ) RETURN
-
-       CALL Info('DetermineContact',&
-           'Setting '//TRIM(I2S(NewNodes))//' additional contact nodes',Level=6)
-       ALLOCATE( DistArray( NewNodes ), IndArray( NewNodes ) ) 
-       DistArray = HUGE( DistArray ) 
-       IndArray = 0
-
-       ! Find additional contact nodes from the closest non-contact nodes
-       DO i = 1,Projector % NumberOfRows
-         ind = Dofs * (i-1) + DofN
-         IF( MortarBC % Active(ind)  ) CYCLE
-
-         IF( Projector % InvPerm(i) == 0 ) CYCLE
-         j = DistVar % Perm(Projector % InvPerm(i))
-         Dist = DistVar % Values(j)
- 
-         IF( Dist < DistArray(NewNodes) ) THEN
-           DistArray(NewNodes) = Dist
-           IndArray(NewNodes) = i
-
-           ! Order the new nodes such that the last node always has the largest distance
-           ! This way we only need to compare to the one distance when adding new nodes.
-           DO j=1,NewNodes-1
-             IF( DistArray(j) > DistArray(NewNodes) ) THEN
-               Dist = DistArray(NewNodes)
-               DistArray(NewNodes) = DistArray(j)
-               DistArray(j) = Dist                
-               ind = IndArray(NewNodes)
-               IndArray(NewNodes) = IndArray(j)
-               IndArray(j) = ind                
-             END IF
-           END DO
-         END IF
-       END DO
-
-       IF( ANY( IndArray == 0 ) ) THEN
-         CALL Fatal('DetermineContact','Could not define sufficient number of new nodes!')
-       END IF
-
-       WRITE(Message,'(A,ES12.4)') 'Maximum distance needed for new nodes:',DistArray(NewNodes)
-       CALL Info('DetermineContact',Message,Level=8)
-
-       MortarBC % Active( Dofs*(IndArray-1)+DofN ) = .TRUE.
-
-       DEALLOCATE( DistArray, IndArray ) 
-
-     END SUBROUTINE IncreaseContactSet
 
 
 
@@ -3182,7 +3375,7 @@ CONTAINS
 
 
 
-     SUBROUTINE SetContactFriction()
+     SUBROUTINE SetDynamicFriction()
 
        REAL(KIND=dp), POINTER :: Values(:)
        LOGICAL, ALLOCATABLE :: NodeDone(:)
@@ -3194,7 +3387,7 @@ CONTAINS
        LOGICAL :: Slave, Master
 
 
-       IF(.NOT. ListCheckPresent( BC, 'Contact Friction Coefficient') ) RETURN
+       IF(.NOT. ListCheckPresent( BC, 'Dynamic Friction Coefficient') ) RETURN
       
        CALL Info('DetermineContact','Setting contact friction for boundary',Level=10)
       
@@ -3228,15 +3421,15 @@ CONTAINS
            k = MortarBC % Perm( j )
            IF( k == 0 ) CYCLE
 
-           k = DOFs * (j-1) + DofN
+           k = DOFs * (j-1) + DofT1
            IF( .NOT. MortarBC % Active(k) ) CYCLE
 
            IF( Slave ) THEN
              Coeff = ListGetRealAtNode( BC,& 
-                 'Contact Friction Coefficient', j, Found )
+                 'Dynamic Friction Coefficient', j, Found )
            ELSE
              Coeff = ListGetRealAtNode( MasterBC,& 
-                 'Contact Friction Coefficient', j, Found )
+                 'Dynamic Friction Coefficient', j, Found )
            END IF
            IF(.NOT. Found ) CYCLE
            
@@ -3267,12 +3460,12 @@ CONTAINS
        END DO
        
        n = COUNT( NodeDone ) 
-       CALL Info('SetFrictionBoundaries','Number of friction nodes: '//TRIM(I2S(n)),Level=10)
+       CALL Info('SetSlideFriction','Number of friction nodes: '//TRIM(I2S(n)),Level=10)
        
        DEALLOCATE( NodeDone )
 
-     END SUBROUTINE SetContactFriction
-
+     END SUBROUTINE SetDynamicFriction
+     
 
 
      ! Creates variable for saving from the mortar vectors.
