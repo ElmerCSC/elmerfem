@@ -1698,6 +1698,7 @@ INTEGER::inside
         bilu = 1
       END IF
 
+      CALL SParIterActiveBarrier()
       IF(hypre_pre/=3) THEN
         IF (NewSetup) THEN
           IF (SourceMatrix % Hypre /= 0) THEN
@@ -1766,6 +1767,7 @@ INTEGER::inside
         DEALLOCATE(GM % Values) 
         DEALLOCATE(GM)
       END IF
+      CALL SParIterActiveBarrier()
       
       DEALLOCATE( Owner, Aperm )
 
