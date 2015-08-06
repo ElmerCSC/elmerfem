@@ -1686,6 +1686,7 @@ INTEGER::inside
       n = SIZE(ParallelInfo % GlobalDOFs)
       ALLOCATE( Owner(n), Aperm(n) )
       CALL ContinuousNumbering(ParallelInfo,SourceMatrix % Perm,APerm,Owner)
+      Aperm = Aperm-1 ! Newer hypre libraries require zero based indexing
 
       ! ------------------------------------------------------------
       verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
