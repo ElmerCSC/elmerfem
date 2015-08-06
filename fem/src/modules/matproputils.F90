@@ -117,11 +117,11 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   ! variables needed inside function
   REAL(KIND=dp) ::  Conductivity(:)
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
-  REAL(KIND=dp) :: ft, fc, it, ic, st, sc, Ksi, Ktot
+  REAL(KIND=dp) :: ft, fc, it, ic, st, Ksi, Ktot
 
   TYPE(Valuelist_t), POINTER :: Material, BodyParams
   TYPE(Element_t), POINTER :: Element
-  Logical :: FOUND, FOUNDFT, FOUNDFC, FOUNDST, FOUNDSC
+  Logical :: FOUND, FOUNDFT, FOUNDST
   
   Material => GetMaterial()
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingk', 'Material not found')
@@ -132,31 +132,26 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('getWindingk', 'Body Parameters not found!')
   
   ft = GetConstReal(BodyParams, 'Foil Layer Thickness', FoundFT)
-!  IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Foil Layer Thickness not found in Body section')
-
-  fc = GetConstReal(Material, 'Foil Layer Heat Conductivity', FoundFC)
-!  IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Foil Layer Heat Condictivity not found in Material section')
   
-  st = GetConstReal(Material, 'Strand Thickness', FoundST)
+  st = GetConstReal(BodyParams, 'Strand Thickness', FoundST)
   
-  sc = GetConstReal(Material, 'Strand Heat Conductivity', FoundSC)
+  fc = GetConstReal(Material, 'Material Heat Conductivity', Found)
+  IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Material Heat Condictivity not found in Material section')
   
   it = GetConstReal(BodyParams, 'Insulator Layer Thickness', Found)
   IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Insulator Layer Thickness not found in Body section')
 
   ic = GetConstReal(BodyParams, 'Insulator Layer Heat Conductivity', Found)
   IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Insulator Layer Heat Conductivity not found in Body section')
+
+  IF ((.NOT. FOUNDFT) .AND. (.NOT. FOUNDST)) CALL Fatal('getWindingk', 'Material Thickness not found in Body section')
   
-  IF (.NOT. FOUNDFT .OR. FOUNDST) CALL Fatal('getWindingk', 'Material Thickness not found in Body section')
-  
-  IF (.NOT. FOUNDFC .OR. FOUNDSC) CALL Fatal('getWindingk', 'Material Heat Conductivity not found in Body section')
-  
-  IF (.NOT. FOUNDST)
+  IF (.NOT. FOUNDST) THEN
     Conductivity(1) = ((ft + it) * fc * ic) / (it * fc + ft * ic)
     Conductivity(2) = (ft * fc + it * ic) / (ft + it)
   ELSE
-    Kis = ((st+it) * sc * ic)/((ic*st)+(sc+it))
-    Ktot = (Kis*st + ic*it)/(st+it)
+    Ksi = ((st+it) * fc * ic)/((ic*st)+(fc+it))
+    Ktot = (Ksi*st + ic*it)/(st+it)
     Conductivity(1) = Ktot
     Conductivity(2) = Ktot
   END IF
