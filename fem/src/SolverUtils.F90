@@ -9560,27 +9560,15 @@ END FUNCTION SearchNodeL
     n = A % NumberOfRows 
 
     IF (Parenv % Pes>1) THEN
-      ALLOCATE( TmpRHSVec(n), TmpXVec(n) )
-      
-      nn = A % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows
-      
-      TmpRhsVec = b
-      CALL ParallelInitSolve( A, tmpXVec, TmpRhsVec, r)
-      
-      tmpXvec = x(1:n)
-      CALL ParallelVector(a,TmpXvec)
-      CALL ParallelVector(A,tmpRhsvec)
-      
-      CALL ParallelMatrixVector(A, TmpXvec, r)
-      DO i=1,nn
-        r(i) = tmprhsvec(i) - r(i)
-      END DO
+      CALL ParallelInitSolve(A,x,b,r)
+      CALL ParallelMatrixVector(A,x,r,.TRUE.)
     ELSE
       CALL MatrixVectorMultiply( A, x, r)
-      DO i=1,n
-        r(i) = b(i) - r(i)
-      END DO
     END IF
+
+    DO i=1,n
+      r(i) = b(i) - r(i)
+    END DO
 
   END SUBROUTINE LinearSystemResidual
 
