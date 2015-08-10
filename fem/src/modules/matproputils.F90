@@ -117,7 +117,7 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   ! variables needed inside function
   REAL(KIND=dp) ::  Conductivity(:)
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
-  REAL(KIND=dp) :: ft, fc, it, ic, st, Ksi, Ktot
+  REAL(KIND=dp) :: ft, mc, it, ic, st, Ksi, Ktot
 
   TYPE(Valuelist_t), POINTER :: Material, BodyParams
   TYPE(Element_t), POINTER :: Element
@@ -135,7 +135,7 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   
   st = GetConstReal(BodyParams, 'Strand Thickness', FoundST)
   
-  fc = GetConstReal(Material, 'Material Heat Conductivity', Found)
+  mc = GetConstReal(Material, 'Material Heat Conductivity', Found)
   IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Material Heat Condictivity not found in Material section')
   
   it = GetConstReal(BodyParams, 'Insulator Layer Thickness', Found)
@@ -147,11 +147,11 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   IF ((.NOT. FOUNDFT) .AND. (.NOT. FOUNDST)) CALL Fatal('getWindingk', 'Material Thickness not found in Body section')
   
   IF (.NOT. FOUNDST) THEN
-    Conductivity(1) = ((ft + it) * fc * ic) / (it * fc + ft * ic)
-    Conductivity(2) = (ft * fc + it * ic) / (ft + it)
+    Conductivity(1) = ((ft + it) * mc * ic) / (it * mc + ft * ic)
+    Conductivity(2) = (ft * mc + it * ic) / (ft + it)
   ELSE
-    Ksi = ((st+it) * fc * ic)/((ic*st)+(fc+it))
-    Ktot = (Ksi*st + ic*it)/(st+it)
+    Ksi = (st*mc)+(it*ic)/(st+it) !((st+it) * mc * ic)/((ic*st)+(mc+it))
+    Ktot = ((st+it)*Ksi*ic)/((it*Ksi)+(st*ic))     !(Ksi*st + ic*it)/(st+it)
     Conductivity(1) = Ktot
     Conductivity(2) = Ktot
   END IF

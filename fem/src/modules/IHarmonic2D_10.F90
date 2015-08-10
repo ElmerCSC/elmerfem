@@ -1655,11 +1655,6 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
         ip(1:SIZE(LagRangeVar % Values)) = LagrangeVar % Values
       END IF
     END IF
-    
-    print *, "Parenv%myPE", Parenv%myPE, "ipt:", ipt
-    print *, "LagrangeVar % Values", LagrangeVar % Values
-    print *, "nm:", nm
-    print *, "CM % RowOwner", CM % RowOwner
      
     ! Export circuit & dynamic variables for "SaveScalars":
     ! -----------------------------------------------------
