@@ -1923,7 +1923,7 @@ CONTAINS
            TieContact = .TRUE.
          CASE('friction')
            FrictionContact = .TRUE.
-         CASE('slip')
+         CASE('slide')
            SlipContact = .TRUE.
          CASE Default
            CALL Fatal('DetermineContact','Unknown contact type: '//TRIM(ContactType))
@@ -1932,7 +1932,7 @@ CONTAINS
          StickContact = ListGetLogical( BC,'Stick Contact',Found )
          IF(.NOT. Found ) TieContact = ListGetLogical( BC,'Tie Contact',Found )
          IF(.NOT. Found ) FrictionContact = ListGetLogical( BC,'Friction Contact',Found )
-         IF(.NOT. Found ) SlipContact = ListGetLogical( BC,'Slip Contact',Found )
+         IF(.NOT. Found ) SlipContact = ListGetLogical( BC,'Slide Contact',Found )
          IF(.NOT. Found ) THEN 
            CALL Warn('DetermineContact','No contact type given, assuming > Slip Contact <')
            SlipContact = .TRUE.
@@ -2000,8 +2000,9 @@ CONTAINS
        END IF
 
        ! i) If we have dynamic friction then add it 
-       CALL SetDynamicFriction()
-
+       IF( SlipContact ) THEN
+         CALL SetSlideFriction()
+       END IF
 
 
       ! Currently the visulized limit is only for the normal component
@@ -3375,7 +3376,7 @@ CONTAINS
 
 
 
-     SUBROUTINE SetDynamicFriction()
+     SUBROUTINE SetSlideFriction()
 
        REAL(KIND=dp), POINTER :: Values(:)
        LOGICAL, ALLOCATABLE :: NodeDone(:)
@@ -3385,7 +3386,9 @@ CONTAINS
        INTEGER :: i,j,k,k2,k3,l,l2,l3,n,t
        TYPE(Matrix_t), POINTER :: A
        LOGICAL :: Slave, Master
-
+       REAL(KIND=dp), POINTER :: VeloDir(:,:)
+       REAL(KIND=dp) :: VeloCoeff(3)
+       
 
        IF(.NOT. ListCheckPresent( BC, 'Dynamic Friction Coefficient') ) RETURN
       
@@ -3418,11 +3421,16 @@ CONTAINS
            IF( NodeDone( j ) ) CYCLE
            IF( FieldPerm( j ) == 0 ) CYCLE
 
-           k = MortarBC % Perm( j )
-           IF( k == 0 ) CYCLE
+           ! For slave we have the luxury of skipping the nodes not in contact. 
+           ! For the master we don't have any marker for the contact!
+           IF( Slave ) THEN
+             k = MortarBC % Perm( j )
+             IF( k == 0 ) CYCLE
+             IF( .NOT. MortarBC % Active(Dofs*(k-1)+DofN) ) CYCLE
+           END IF
 
-           k = DOFs * (j-1) + DofT1
-           IF( .NOT. MortarBC % Active(k) ) CYCLE
+           NodeDone( j ) = .TRUE.
+
 
            IF( Slave ) THEN
              Coeff = ListGetRealAtNode( BC,& 
@@ -3433,29 +3441,63 @@ CONTAINS
            END IF
            IF(.NOT. Found ) CYCLE
            
+           IF( Slave ) THEN
+             VeloDir => ListGetConstRealArray( BC, &
+                 'Contact Velocity', Found)
+           ELSE
+             VeloDir => ListGetConstRealArray( MasterBC, &
+                 'Contact Velocity', Found)
+           END IF
+
+           IF(.NOT. Found ) CALL Fatal('SetDynamicFriction',&
+               'Create alternative contact velocity computation!')
+
+
+           IF( RotatedContact ) THEN
+             Rotated = GetSolutionRotation(NTT, j )
+             LocalNormal = NTT(:,1)
+             LocalT1 = NTT(:,2)
+             IF( Dofs == 3 ) LocalT2 = NTT(:,3)
+           ELSE
+             LocalNormal = ContactNormal
+             LocalT1 = ContactT1
+             IF( Dofs == 3 ) LocalT2 = ContactT2 
+           END IF
+           
+           VeloCoeff = 0.0_dp
+           VeloCoeff(DofT1) = SUM( VeloDir(1:3,1) * LocalT1 )
+           IF( Dofs == 3 ) THEN
+             VeloCoeff(DofT2) = SUM( VeloDir(1:3,1) * LocalT2 )
+           END IF
+           VeloCoeff = Coeff * VeloCoeff / SQRT( SUM( VeloCoeff**2 ) )
+
+           !PRINT *,'Coeff:',t,j,k,DofT1,Coeff,VeloCoeff(DofT1)
+
+           j = FieldPerm( j ) 
+           k = DOFs * (j-1) + DofN 
+
            k2 = DOFs * (j-1) + DofT1 
-           A % Rhs(k2) = A % Rhs(k2) - Coeff * A % Rhs(k)
+           A % Rhs(k2) = A % Rhs(k2) - VeloCoeff(DofT1) * A % Rhs(k)
 
            IF( Dofs == 3 ) THEN
              k3 = DOFs * (j-1) + DofT2
-             A % Rhs(k3) = A % Rhs(k3) - Coeff * A % Rhs(k)             
+             A % Rhs(k3) = A % Rhs(k3) - VeloCoeff(DofT2) * A % Rhs(k)             
            END IF
 
            DO l = A % Rows(k),A % Rows(k+1)-1
              DO l2 = A % Rows(k2), A % Rows(k2+1)-1
                IF( A % Cols(l2) == A % Cols(l) ) EXIT
              END DO
-             A % Values(l2) = A % Values(l2) - Coeff * A % Values(l)
+
+             A % Values(l2) = A % Values(l2) - VeloCoeff(DofT1) * A % Values(l)
              
              IF( Dofs == 3 ) THEN
                DO l3 = A % Rows(k3), A % Rows(k3+1)-1
                  IF( A % Cols(l3) == A % Cols(l) ) EXIT
                END DO
-               A % Values(l3) = A % Values(l3) - Coeff * A % Values(l)
+               A % Values(l3) = A % Values(l3) - VeloCoeff(DofT2) * A % Values(l)
              END IF
            END DO
-
-           NodeDone( j ) = .TRUE.
          END DO
        END DO
        
@@ -3464,7 +3506,7 @@ CONTAINS
        
        DEALLOCATE( NodeDone )
 
-     END SUBROUTINE SetDynamicFriction
+     END SUBROUTINE SetSlideFriction
      
 
 
