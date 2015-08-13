@@ -213,9 +213,11 @@ Boundary Condition 5
 
   Normal-Tangential Displacement = Logical True
   Mass Consistent Normals = Logical True
-  Dynamic Friction Coefficient = Variable time 
-    Real MATC "mu*(tx-1)"
-  Contact Velocity(3) = Real -1.0 0.0 0.0
+
+! If these are not obtained they are fetched from the master
+!  Dynamic Friction Coefficient = Variable time 
+!    Real MATC "mu*(tx-1)"
+!  Contact Velocity(3) = Real -1.0 0.0 0.0
 End
 
 Boundary Condition 6
@@ -228,4 +230,4 @@ Boundary Condition 7
   Target Boundaries(1) = 10
 End
 
-Solver 1 :: Reference Norm = 1.391189E-01
+Solver 1 :: Reference Norm = 1.391128E-01
