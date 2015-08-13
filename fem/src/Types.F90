@@ -717,7 +717,7 @@ END INTERFACE
 !-------------------Circuit stuff----------------------------------------------
   TYPE CMPLXCircuitVariable_t
     LOGICAL :: isIvar, isVvar
-    INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner
+    INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner, ComponentId
     TYPE(CMPLXComponent_t), POINTER :: Component
     REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: Source(:), M(:)
@@ -727,7 +727,8 @@ END INTERFACE
   TYPE CMPLXComponent_t
     REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
                      N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
-    INTEGER :: BodyId, polord, ElBoundary, nofcnts
+    INTEGER :: polord, ElBoundary, nofcnts, BodyId
+    INTEGER, POINTER :: BodyIds(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     TYPE(CMPLXCircuitVariable_t), POINTER :: ivar, vvar
   END TYPE CMPLXComponent_t
