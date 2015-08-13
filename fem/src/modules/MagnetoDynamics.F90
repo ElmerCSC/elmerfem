@@ -5405,8 +5405,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF(.NOT. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
      ImposeBodyForceCurrent = .FALSE.
      ImposeCircuitCurrent = .FALSE.
-   ELSE
-     IF (DIM==2) CALL Warn('MagnetoDynamicsCalcFields', 'Current density output field in 2D is not supported yet')
    END IF
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
@@ -5859,14 +5857,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              k = k+3
            END DO
          END IF
+
          IF ( ASSOCIATED(CD).OR.ASSOCIATED(EL_CD)) THEN
-           !DO l=1,vDOFs
-           !  FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*C_ip*E(l,:)*Basis(p)
-           !  k = k+3
-           !END DO
            IF (ItoJCoeffFound) THEN
              IF (Vdofs == 1) THEN
-               DO l=1,dim
+               DO l=1,3
                  CC_J(1,l) = ItoJCoeff*wvec(l)*CircuitCurrent
                END DO
              ELSE
@@ -5877,28 +5872,21 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
 
            IF (Vdofs == 1) THEN
-              DO l=1,dim
-                 JatIP(1,l) = SUM( REAL(CMat_ip(l,1:dim)) * E(1,1:dim) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l))
-                 
-                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
+              DO l=1,3
+                JatIP(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l))
+                FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
-              IF(dim == 2) THEN
-                JatIP(1,3) = JatIP(1,3) + REAL(BodyForceCurrDens_ip(3))
-                FORCE(p,k+3) = FORCE(p,k+3)+s*JatIp(1,3)*Basis(p)
-              END IF
               k = k+3
            ELSE
-              DO l=1,dim
-                 FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( REAL(CMat_ip(l,1:dim)) * E(1,1:dim) )*Basis(p) - &
-                      s * SUM( AIMAG(CMat_ip(l,1:dim)) * E(2,1:dim) ) * Basis(p) + s*REAL(BodyForceCurrDens_ip(l))*Basis(p)
+              DO l=1,3
+                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) - &
+                  s * SUM( AIMAG(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*REAL(BodyForceCurrDens_ip(l))*Basis(p)
               END DO
-              IF(dim == 2) FORCE(p,k+3) = FORCE(p,k+3) + s*REAL(BodyForceCurrDens_ip(3))*Basis(p)
               k = k+3
-              DO l=1,dim
-                 FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( AIMAG(CMat_ip(l,1:dim)) * E(1,1:dim) )*Basis(p) + &
-                      s * SUM( REAL(CMat_ip(l,1:dim)) * E(2,1:dim) ) * Basis(p) + s*AIMAG(BodyForceCurrDens_ip(l))*Basis(p)
+              DO l=1,3
+                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( AIMAG(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) + &
+                  s * SUM( REAL(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*AIMAG(BodyForceCurrDens_ip(l))*Basis(p)
               END DO
-              IF(dim == 2) FORCE(p,k+3) = FORCE(p,k+3) + s*AIMAG(BodyForceCurrDens_ip(3))*Basis(p)
               k = k+3
            END IF
          END IF
