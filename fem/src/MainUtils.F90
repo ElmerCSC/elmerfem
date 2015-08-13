@@ -1200,16 +1200,23 @@ CONTAINS
        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
     END IF
 
-    Solver % LinAfterProc  = 0
     Solver % LinBeforeProc = 0
-    str = ListGetString( Solver  % Values, 'Before Linsolve', Found )
+    str = ListGetString( Solver % Values, 'Before Linsolve', Found )
     IF ( Found ) Solver % LinBeforeProc = GetProcAddr( str )
 
-    str = ListGetString( Solver  % Values, 'After Linsolve', Found )
+    Solver % LinAfterProc = 0
+    str = ListGetString( Solver % Values, 'After Linsolve', Found )
     IF ( Found ) Solver % LinAfterProc = GetProcAddr( str )
 
-    str = ListGetString( Solver  % Values, 'Matrix Vector Proc', Found )
-    IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
+    IF( ASSOCIATED( Solver % Matrix ) ) THEN
+      Solver % Matrix % MatVecSubr = 0
+      str = ListGetString( Solver % Values, 'Matrix Vector Proc', Found )
+      IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
+    END IF
+
+    Solver % MortarProc = 0
+    str = ListGetString( Solver % Values, 'External Projector Procedure', Found )
+    IF ( Found ) Solver % MortarProc = GetProcAddr( str )
 
   END SUBROUTINE AddEquationBasics
 

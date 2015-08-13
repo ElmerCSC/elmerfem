@@ -1686,6 +1686,7 @@ INTEGER::inside
       n = SIZE(ParallelInfo % GlobalDOFs)
       ALLOCATE( Owner(n), Aperm(n) )
       CALL ContinuousNumbering(ParallelInfo,SourceMatrix % Perm,APerm,Owner)
+      Aperm = Aperm-1 ! Newer hypre libraries require zero based indexing
 
       ! ------------------------------------------------------------
       verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
@@ -1698,6 +1699,7 @@ INTEGER::inside
         bilu = 1
       END IF
 
+      CALL SParIterActiveBarrier()
       IF(hypre_pre/=3) THEN
         IF (NewSetup) THEN
           IF (SourceMatrix % Hypre /= 0) THEN
@@ -1766,6 +1768,7 @@ INTEGER::inside
         DEALLOCATE(GM % Values) 
         DEALLOCATE(GM)
       END IF
+      CALL SParIterActiveBarrier()
       
       DEALLOCATE( Owner, Aperm )
 

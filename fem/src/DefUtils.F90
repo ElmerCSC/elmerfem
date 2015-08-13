@@ -1414,7 +1414,7 @@ CONTAINS
                    IF ( Face % NodeIndexes(i)==Element % NodeIndexes(j)) k=k+1
                  END DO
                END DO
-               IF ( k==Element % TYPE % NumberOfNodes) EXIT
+               IF ( k==Face % TYPE % NumberOfNodes) EXIT
              END DO
            END IF
 
