@@ -1871,6 +1871,7 @@ CONTAINS
 
        ! Get the pointer to the other side i.e. master boundary  
        master_ind = ListGetInteger( BC,'Mortar BC',Found )
+       IF( .NOT. Found ) master_ind = ListGetInteger( BC,'Contact BC',Found )
        MasterBC => Model % BCs(master_ind) % Values
        
        ! If we have dual projector we may use it to map certain quantities directly to master nodes
@@ -2450,7 +2451,6 @@ CONTAINS
            END IF
          END IF
        END DO
- 
 
        ! First create the master, then the slave if needed
        IsSlave = .TRUE.
@@ -2464,7 +2464,6 @@ CONTAINS
        END IF
 
 100    CONTINUE
-
 
        DO i = 1,ActiveProjector % NumberOfRows
 
@@ -2482,7 +2481,7 @@ CONTAINS
          DistanceSet = .FALSE.
 
          ! This is the most simple contact condition. We just want no slip on the contact.
-         IF( TieContact .AND. .NOT. ResidualMode ) GOTO 100
+         IF( TieContact .AND. .NOT. ResidualMode ) GOTO 200
 
 
          IF( RotatedContact ) THEN
@@ -2641,7 +2640,7 @@ CONTAINS
 
          ! PRINT *,'ContactVelo:',i, ContactVelo(1:Dofs), wsum, IsSlave
 
-         IF( IsSlave ) THEN
+200      IF( IsSlave ) THEN
            MortarBC % Rhs(Dofs*(i-1)+DofN) = -ContactDist(1)
            IF( StickContact .OR. TieContact ) THEN
              MortarBC % Rhs(Dofs*(i-1)+DofT1) = -ContactDist(2) 
@@ -2686,6 +2685,9 @@ CONTAINS
        IF( CalculateVelocity ) THEN
          !PRINT *,'Velo range:',MINVAL( VeloVar % Values), MAXVAL( VeloVar % Values)
        END IF
+
+       DEALLOCATE( SlaveNode )
+       IF( CreateDual ) DEALLOCATE( MasterNode )
 
        !PRINT *,'Distance Range:',MinDist, MaxDist
        !PRINT *,'Distance Offset:',MINVAL( MortarBC % Rhs ), MAXVAL( MortarBC % Rhs )
@@ -12507,7 +12509,7 @@ CONTAINS
      TYPE(Solver_t) :: Solver
      LOGICAL, OPTIONAL :: Nonlinear, SteadyState
 
-     LOGICAL :: IsNonlinear,IsSteadyState,Timing
+     LOGICAL :: IsNonlinear,IsSteadyState,Timing, RequireNonlinear, ContactBC
      LOGICAL :: ApplyMortar, ApplyContact, Found
      INTEGER :: i,j,k,l,n,dsize,size0,col,row,dim
      TYPE(ValueList_t), POINTER :: BC
@@ -12556,13 +12558,23 @@ CONTAINS
      DO i=1,Model % NumberOFBCs
        BC => Model % BCs(i) % Values
        
+       ContactBC = .FALSE.
        j = ListGetInteger( BC,'Mortar BC',Found)       
+       IF( .NOT. Found ) THEN
+         j = ListGetInteger( BC,'Contact BC',Found)       
+         ContactBC = Found
+       END IF
        IF( .NOT. Found ) CYCLE
 
+       RequireNonlinear = ListGetLogical( BC,'Mortar BC Nonlinear',Found)
+       IF( .NOT. Found ) THEN
+         RequireNonlinear = ContactBC .AND. .NOT. ListGetLogical( BC,'Tie Contact',Found )
+       END IF
+
        IF( IsNonlinear ) THEN
-         IF( .NOT. ListGetLogical( BC,'Mortar BC Nonlinear',Found) ) CYCLE
+         IF( .NOT. RequireNonlinear ) CYCLE
        ELSE
-         IF( ListGetLogical( BC,'Mortar BC Nonlinear',Found) ) CYCLE
+         IF( RequireNonlinear ) CYCLE
        END IF             
 
        IF( ASSOCIATED( Solver % MortarBCs(i) % Projector ) ) THEN
@@ -12738,6 +12750,8 @@ CONTAINS
          Atmp => MortarBC % Projector
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
 
+         CALL Info('GenerateConstraintMatrix','Adding projector for BC: '//TRIM(I2S(bc_ind)),Level=8)
+
          IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
            CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
          END IF
@@ -12776,6 +12790,9 @@ CONTAINS
 
        END IF
        TransposePresent = TransposePresent .OR. ASSOCIATED(Atmp % Child)
+       IF( TransposePresent ) THEN
+         CALL Info('GenerateConstraintMatrix','Transpose matrix is present')
+       END IF
 
        ! If the projector is of type x_s=P*x_m then generate a constraint matrix
        ! of type [D-P]x=0.

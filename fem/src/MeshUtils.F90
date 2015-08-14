@@ -1162,7 +1162,7 @@ END SUBROUTINE GetMaxDefs
        MovingNode(:), StayingNode(:)
    LOGICAL :: Found, DisCont, GreedyBulk, GreedyBC, Debug, DoubleBC, UseTargetBodies, &
        UseConsistantBody, LeftHit, RightHit, Moving, Moving2, Set, Parallel
-   INTEGER :: i,j,k,n,m,t,bc
+   INTEGER :: i,j,k,l,n,m,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        NoBulkElems, NoBoundElems, NoParentElems, NoMissingElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
@@ -1198,7 +1198,8 @@ END SUBROUTINE GetMaxDefs
        i = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous BC',Found )
        j = ListGetInteger( Model % BCs(bc) % Values,'Periodic BC',Found )
        k = ListGetInteger( Model % BCs(bc) % Values,'Mortar BC',Found )
-       DoubleBC = ( i + j + k > 0 )
+       k = ListGetInteger( Model % BCs(bc) % Values,'Contact BC',Found )
+       DoubleBC = ( i + j + k + l > 0 )
        ActiveBCs = ActiveBCs + 1
        BCList => Model % BCs(bc) % Values
      END IF
@@ -1650,6 +1651,9 @@ END SUBROUTINE GetMaxDefs
            IF( Found ) EXIT
            DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
                'Periodic BC',Found )
+           IF( Found ) EXIT
+           DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
+               'Contact BC',Found )
            IF( Found ) EXIT
          END IF
        END DO
