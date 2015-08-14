@@ -3033,9 +3033,46 @@ CONTAINS
      SUBROUTINE TangentContactSet() 
        
        INTEGER :: Removed0, Removed, Added
-       REAL(KIND=dp) :: NodeLoad, TangentLoad, mustatic, mudynamic, stickcoeff, du(3), slip
+       REAL(KIND=dp) :: NodeLoad, TangentLoad, mustatic, mudynamic, stickcoeff, &
+           Fstatic, Fdynamic, Ftangent, du(3), Slip
        INTEGER :: i,j,k,l,ind,IndN, IndT1, IndT2
        LOGICAL :: Found
+
+       IF( FrictionContact .AND. &
+           ListGetLogical( BC,'Stick Contact Global',Found ) ) THEN
+        
+         ! Sum up global normal and slide forces
+         DO i = 1,Projector % NumberOfRows
+           j = Projector % InvPerm( i ) 
+           IF( j == 0 ) CYCLE
+           k = FieldPerm( j ) 
+           IF( k == 0 ) CYCLE
+           k = NormalLoadVar % Perm(j)
+                      
+           ! If there is no contact there can be no stick either
+           indN = Dofs * (i-1) + DofN
+           IF( .NOT. MortarBC % Active(indN) ) CYCLE
+
+           NodeLoad = NormalLoadVar % Values(k)
+           TangentLoad = SlipLoadVar % Values(k)
+         
+           mustatic = ListGetRealAtNode( BC,'Static Friction Coefficient', j )
+           mudynamic = ListGetRealAtNode( BC,'Dynamic Friction Coefficient', j )
+           IF( mustatic <= mudynamic ) THEN
+             CALL Warn('TangentContactSet','Static friction coefficient should be larger than dynamic!')
+           END IF
+           
+           Fstatic = Fstatic + mustatic * ABS( NodeLoad ) 
+           Fdynamic = Fdynamic + mudynamic * ABS( NodeLoad )
+           Ftangent = Ftangent + ABS( TangentLoad ) 
+           IF( Ftangent > Fstatic ) THEN
+             SlipContact = .TRUE.
+             FrictionContact = .FALSE.
+           ELSE 
+             GOTO 100
+           END IF
+         END DO
+       END IF
 
        
        ! For stick and tie contact inherit the active flag from the normal component
@@ -3121,7 +3158,7 @@ CONTAINS
              MortarBC % Active(indT1) = .FALSE.
              IF( Dofs == 3 ) MortarBC % Active(indT2) = .FALSE.
            END IF
-         ELSE 
+         ELSE              
            stickcoeff = ListGetRealAtNode( BC,'Stick Contact Coefficient', j, Found )
            IF( Found ) THEN
              DO l=1,Dofs             
@@ -3157,7 +3194,7 @@ CONTAINS
        END IF
 
 
-100    CALL Info('DetermineContactSet','Creating fields out of normal and stick constact sets',Level=10)
+100    CALL Info('DetermineContactSet','Creating fields out of normal and stick contact sets',Level=10)
 
        DO i = 1, Projector % NumberOfRows
          j = Projector % InvPerm(i)
@@ -7309,7 +7346,7 @@ END FUNCTION SearchNodeL
         Stat = .TRUE.
       END IF
     END IF
-    IF(Stat) THEN
+    IF(Stat .AND. .NOT. SkipConstraints ) THEN
       IF (SIZE(x0) /= SIZE(x)) CALL Warn('ComputeChange','Possible mismatch in length of vectors!')
     END IF
 
