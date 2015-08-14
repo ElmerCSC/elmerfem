@@ -10156,7 +10156,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
     INTEGER :: in_levels
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,n,cnt,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
+    INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
         ExtrudedCoord,dg_n
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     INTEGER :: nnodes,gnodes,gelements,ierr
@@ -10265,11 +10265,21 @@ END SUBROUTINE GetMaxDefs
     END DO
     Mesh_out % NumberOfNodes=cnt
 
+    ! Count 101 elements:
+    ! (these require an extra layer)
+    ! -------------------
+
+    cnt101 = 0
+    DO i=Mesh_in % NumberOfBulkElements+1, &
+         Mesh_in % NumberOfBulkElements+Mesh_in % NumberOfBoundaryElements
+       IF(Mesh_in % Elements(i) % TYPE % ElementCode == 101) cnt101 = cnt101+1
+    END DO
+
     n=SIZE(Mesh_in % Elements)
     IF (PreserveBaseline) THEN
-        ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + Mesh_in % NumberOfBoundaryElements) )
+        ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + Mesh_in % NumberOfBoundaryElements + cnt101) )
     ELSE
-	ALLOCATE(Mesh_out % Elements(n*(in_levels+3)) )
+	ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + cnt101) )
     END IF
 
     ! Generate volume bulk elements:
@@ -10385,7 +10395,7 @@ END SUBROUTINE GetMaxDefs
             Mesh_in % Elements(k) % NodeIndexes
           Mesh_out % Elements(cnt) % TYPE => &
              Mesh_in % Elements(k) % TYPE
-        END IF 
+        END IF
         Mesh_out % Elements(cnt) % DGDOFs = 0
         Mesh_out % Elements(cnt) % DGIndexes => NULL()
         Mesh_out % Elements(cnt) % ElementIndex = cnt + &
@@ -10468,6 +10478,46 @@ END SUBROUTINE GetMaxDefs
         Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
       END DO
     END DO
+
+    !Take care of extra 101 elements
+    !-------------------------------
+
+    IF(cnt101 > 0) THEN
+       DO j=1,Mesh_in % NumberOfBoundaryElements
+          k = j + Mesh_in % NumberOfBulkElements
+
+          IF(Mesh_in % Elements(k) % TYPE % ElementCode /= 101) CYCLE
+          cnt=cnt+1
+
+          Mesh_out % Elements(cnt) = Mesh_in % Elements(k)
+
+          ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
+          Mesh_out % Elements(cnt) % BoundaryInfo = &
+               Mesh_in % Elements(k) % BoundaryInfo
+
+          Mesh_out % Elements(cnt) % BoundaryInfo % constraint = &
+               Mesh_out % Elements(cnt) % BoundaryInfo % constraint + max_baseline_bid
+
+          max_bid = MAX(max_bid, max_baseline_bid + &
+               Mesh_in % Elements(k) % BoundaryInfo % Constraint)
+
+          Mesh_out % Elements(cnt) % NDOFs = 1
+          ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(1))
+          Mesh_out % Elements(cnt) % NodeIndexes = &
+               Mesh_in % Elements(k) % NodeIndexes+(in_levels+1)*n
+          Mesh_out % Elements(cnt) % TYPE => &
+               Mesh_in % Elements(k) % TYPE
+
+          Mesh_out % Elements(cnt) % ElementIndex = cnt + &
+               Mesh_out % NumberOfBulkElements
+          Mesh_out % Elements(cnt) % DGDOFs = 0
+          Mesh_out % Elements(cnt) % DGIndexes => NULL()
+          Mesh_out % Elements(cnt) % PDefs => NULL()
+          Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
+          Mesh_out % Elements(cnt) % FaceIndexes => NULL()
+          Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+       END DO
+    END IF
     
     IF(isParallel) THEN
       j=max_bid
