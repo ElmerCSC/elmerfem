@@ -1198,7 +1198,7 @@ END SUBROUTINE GetMaxDefs
        i = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous BC',Found )
        j = ListGetInteger( Model % BCs(bc) % Values,'Periodic BC',Found )
        k = ListGetInteger( Model % BCs(bc) % Values,'Mortar BC',Found )
-       k = ListGetInteger( Model % BCs(bc) % Values,'Contact BC',Found )
+       l = ListGetInteger( Model % BCs(bc) % Values,'Contact BC',Found )
        DoubleBC = ( i + j + k + l > 0 )
        ActiveBCs = ActiveBCs + 1
        BCList => Model % BCs(bc) % Values
