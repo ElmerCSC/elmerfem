@@ -2571,6 +2571,7 @@ CONTAINS
            ! If nonliear analysis is used we may need to cancel the introduced gap due to numerical errors 
            IF( TieContact .AND. ResidualMode ) THEN
              IF( RotatedContact ) THEN
+               IF( SlaveNode(k) ) coeff = -coeff
                ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Disp )
                ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * Disp )
                IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * Disp )

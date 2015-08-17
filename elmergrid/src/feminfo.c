@@ -1082,7 +1082,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     if(strstr(command,"DECIMALS")) {
       sscanf(params,"%d",&eg->decimals);
     }
-    else if(strstr(command,"BC OFFSET")) {
+    else if(strstr(command,"BOUNDARY OFFSET")) {
       sscanf(params,"%d",&eg->bcoffset);
     }
     else if(strstr(command,"TRIANGLES CRITICAL ANGLE")) {
