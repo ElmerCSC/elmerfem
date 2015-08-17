@@ -1558,6 +1558,7 @@ END FUNCTION GaussPointsPTetra
      ELSE
        IF (pElement) THEN
          n = elm % PDefs % GaussPoints
+         IF( n == 0 ) n = elmt % GaussPoints
        ELSE
          n = elmt % GaussPoints
        END IF
