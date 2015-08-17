@@ -2405,7 +2405,7 @@ CONTAINS
        LOGICAL :: IsSlave, IsMaster, DistanceSet
        LOGICAL, ALLOCATABLE :: SlaveNode(:), MasterNode(:), NodeDone(:)
        INTEGER, POINTER :: Indexes(:)
-       INTEGER :: elemcode
+       INTEGER :: elemcode, CoeffSign
        REAL(KIND=dp), ALLOCATABLE :: CoeffTable(:)
        INTEGER :: l2
        LOGICAL :: DebugNormals
@@ -2532,14 +2532,27 @@ CONTAINS
          IF( DebugNormals ) THEN
            DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
              k = ActiveProjector % Cols(j)
-
+             
              l = FieldPerm( k ) 
              IF( l == 0 ) CYCLE
 
-             coeff = ActiveProjector % Values(j)             
              Rotated = GetSolutionRotation(NTT, k )
-             PRINT *,'Normal:',i,j,k,Rotated,coeff
-             PRINT *,'Prod:',SUM( LocalNormal * NTT(:,1) ), SUM( LocalT1*NTT(:,2)), SUM(LocalT2*NTT(:,3))
+             coeff = SUM( LocalNormal * NTT(:,1) ) + SUM( LocalT1*NTT(:,2)) + SUM(LocalT2*NTT(:,3))
+             IF( SlaveNode(k) .AND. coeff < 2.5_dp ) THEN
+               Found = .TRUE.
+               PRINT *,'Slave Normal:',i,j,k,Rotated,coeff
+             ELSE IF( .NOT. SlaveNode(k) .AND. coeff > -2.5_dp ) THEN
+               Found = .TRUE.
+               PRINT *,'Master Normal:',i,j,k,Rotated,coeff
+             ELSE
+               Found = .FALSE.
+             END IF
+             IF( Found ) THEN
+               PRINT *,'Prod:',SUM( LocalNormal * NTT(:,1) ), SUM( LocalT1*NTT(:,2)), SUM(LocalT2*NTT(:,3))
+               PRINT *,'N:',LocalNormal,NTT(:,1)
+               PRINT *,'T1:',LocalT1,NTT(:,2)
+               PRINT *,'T2:',LocalT2,NTT(:,3)
+             END IF
            END DO
          END IF
 
@@ -2554,10 +2567,15 @@ CONTAINS
            ! This includes only the coordinate since the displacement
            ! is added to the coordinate!
            coeff = ActiveProjector % Values(j)
+           CoeffSign = 1
 
            ! Only compute the sum related to the active projector
-           IF( SlaveNode(k) ) wsum = wsum + coeff
-
+           IF( SlaveNode(k) ) THEN
+             wsum = wsum + coeff
+           ELSE IF( RotatedContact ) THEN
+             CoeffSign = -1
+           END IF
+             
            IF( dofs == 2 ) THEN
              disp(1) = DispVals( 2 * l - 1)
              disp(2) = DispVals( 2 * l )
@@ -2571,7 +2589,6 @@ CONTAINS
            ! If nonliear analysis is used we may need to cancel the introduced gap due to numerical errors 
            IF( TieContact .AND. ResidualMode ) THEN
              IF( RotatedContact ) THEN
-               IF( SlaveNode(k) ) coeff = -coeff
                ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Disp )
                ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * Disp )
                IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * Disp )
@@ -6288,7 +6305,8 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: nbuff(:)
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
 
-    LOGICAL :: MassConsistent
+    LOGICAL :: MassConsistent, LhsSystem
+    LOGICAL, ALLOCATABLE :: LhsTangent(:)
 
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp), POINTER :: NormalValues(:)
@@ -6321,7 +6339,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   Compute sum of elementwise normals for nodes on boundaries
 !------------------------------------------------------------------------------
-
       ALLOCATE( n_comp(Model % NumberOfNodes) )
       n_comp = 0
 
@@ -6543,6 +6560,39 @@ CONTAINS
 !   normalize 
 !------------------------------------------------------------------------------
     IF ( NumberOfBoundaryNodes>0 ) THEN
+
+      LhsSystem = ListGetLogicalAnyBC( Model,'Lhs Tangent Vectors') 
+
+      PRINT *,'Lhs System Any',LhsSystem
+
+      IF( LhsSystem ) THEN
+        ALLOCATE( LhsTangent( Model % NumberOfNodes ) )
+        LhsTangent = .FALSE.
+
+        DO t=Model % NumberOfBulkElements + 1, Model % NumberOfBulkElements + &
+            Model % NumberOfBoundaryElements
+          Element => Model % Elements(t)
+          IF ( Element % TYPE  % ElementCode < 200 ) CYCLE
+          
+          n = Element % TYPE % NumberOfNodes
+          NodeIndexes => Element % NodeIndexes
+          
+          DO i=1,Model % NumberOfBCs
+            IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
+              MassConsistent=ListGetLogical(Model % BCs(i) % Values, &
+                  'Mass Consistent Normals',gotIt)
+              IF( MassConsistent ) THEN
+                IF( ListGetLogical(Model % BCs(i) % Values, &
+                    'Lhs Tangent Vectors',gotIt) ) THEN
+                  LhsTangent( NodeIndexes ) = .TRUE.
+                END IF
+              END IF
+            END IF
+          END DO
+        END DO
+      END IF
+
+
       DO i=1,Model % NumberOfNodes
         k = BoundaryReorder(i) 
         IF ( k > 0 ) THEN
@@ -6553,6 +6603,11 @@ CONTAINS
           IF ( CoordinateSystemDimension() > 2 ) THEN
             CALL TangentDirections( BoundaryNormals(k,:),  &
                 BoundaryTangent1(k,:), BoundaryTangent2(k,:) )
+            IF( LhsSystem ) THEN
+              IF( LhsTangent(i) ) THEN
+                BoundaryTangent2(k,:) = -BoundaryTangent2(k,:)
+              END IF
+            END IF
           END IF
         END IF
       END DO
