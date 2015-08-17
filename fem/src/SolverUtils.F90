@@ -2408,6 +2408,7 @@ CONTAINS
        INTEGER :: elemcode
        REAL(KIND=dp), ALLOCATABLE :: CoeffTable(:)
        INTEGER :: l2
+       LOGICAL :: DebugNormals
 
        CALL Info('DetermineContact','Computing distance between mortar boundaries',Level=14)
 
@@ -2462,6 +2463,8 @@ CONTAINS
        IF( .NOT. ASSOCIATED( ActiveProjector ) ) THEN
          CALL Fatal('CalculateMortarDistance','Projector not associated!')
        END IF
+
+       DebugNormals = ListGetLogical( Params,'Debug Normals',Found ) 
 
 100    CONTINUE
 
@@ -2524,6 +2527,22 @@ CONTAINS
 
            !PRINT *,'NodalNormal:',i,j,LocalNormal0,LocalNormal
          END IF
+
+         ! For debugging reason, check that normals are roughly opposite
+         IF( DebugNormals ) THEN
+           DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
+             k = ActiveProjector % Cols(j)
+
+             l = FieldPerm( k ) 
+             IF( l == 0 ) CYCLE
+
+             coeff = ActiveProjector % Values(j)             
+             Rotated = GetSolutionRotation(NTT, k )
+             PRINT *,'Normal:',i,j,k,Rotated,coeff
+             PRINT *,'Prod:',SUM( LocalNormal * NTT(:,1) ), SUM( LocalT1*NTT(:,2)), SUM(LocalT2*NTT(:,3))
+           END DO
+         END IF
+
 
 
          DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
@@ -2743,7 +2762,7 @@ CONTAINS
          Nodes % y(1:n) = Mesh % Nodes % y(Indexes)
          Nodes % z(1:n) = Mesh % Nodes % z(Indexes)
          
-         IntegStuff = GaussPoints( Element )
+         IntegStuff = GaussPoints( Element, n )
 
          DO t=1,IntegStuff % n        
            U = IntegStuff % u(t)
@@ -6271,6 +6290,7 @@ CONTAINS
     LOGICAL :: MassConsistent
 
     TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp), POINTER :: NormalValues(:)
 !------------------------------------------------------------------------------
 
     ElementNodes % x => x
@@ -6535,7 +6555,32 @@ CONTAINS
           END IF
         END IF
       END DO
+      
+      IF( ListGetLogical( Model % Simulation,'Save Averaged Normals',Found ) ) THEN
+        CALL Info('AverageBoundaryNormals','Saving averaged boundary normals to variable: Averaged Normals')
+        NrmVar => VariableGet( Mesh % Variables, 'Averaged Normals' )
+        
+        IF(.NOT. ASSOCIATED( NrmVar ) ) THEN
+          ALLOCATE( NormalValues( 3 * NumberOfBoundaryNodes ) )
+          CALL VariableAddVector( Mesh % Variables, Mesh, Model % Solver,'Averaged Normals',3,&
+              Perm = BoundaryReorder )
+          NrmVar => VariableGet( Mesh % Variables, 'Averaged Normals' )
+        END IF
+            
+        DO i=1,Model % NumberOfNodes
+          k = BoundaryReorder(i)
+          IF (k>0 ) THEN
+            DO l=1,NrmVar % DOFs
+              NrmVar % Values( NrmVar % DOFs* &
+                  (NrmVar % Perm(i)-1)+l)  = BoundaryNormals(k,l)
+            END DO
+          END IF
+        END DO
+
+      END IF
     END IF
+
+
 
  CONTAINS
 
