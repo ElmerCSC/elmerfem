@@ -5172,7 +5172,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: ComponentLoss(2,2)
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3)
-   COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3)
+   COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3), BodyForceCurrDens(3,35), &
+                    BodyForceCurrDens_ip(3)
 
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
@@ -5195,7 +5196,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
-              CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, ItoJCoeffFound
+              CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, ItoJCoeffFound, ImposeBodyForceCurrent
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -5219,6 +5220,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent
    
 !-------------------------------------------------------------------------------------------
+   dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
    Torque = 0._dp
 
@@ -5256,6 +5258,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential')
    EL_VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential E')
+
+   ImposeBodyForceCurrent = GetLogical(SolverParams, 'Impose Body Force Current', Found)
+   IF (.NOT. Found) ImposeBodyForceCurrent = .TRUE.
 
    ImposeCircuitCurrent = GetLogical(SolverParams, 'Impose Circuit Current', Found)
    CurrPathPotName = GetString(SolverParams, 'Circuit Current Path Potential Name', Found)
@@ -5396,7 +5401,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    Power = 0._dp; Energy = 0._dp
    CALL DefaultInitialize()
-
+   
+   IF(.NOT. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
+     ImposeBodyForceCurrent = .FALSE.
+     ImposeCircuitCurrent = .FALSE.
+   END IF
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
@@ -5415,6 +5424,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CircuitCurrent = LagrangeVar % Values(IvarId)
        END IF  
      END IF
+
 
      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
      IF (PrecomputedElectricPot) &
@@ -5443,6 +5453,26 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        IF(.NOT.FoundMagnetization) THEN
          CALL GetComplexVector( BodyForce,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
+       END IF
+     END IF
+
+     IF (ImposeBodyForceCurrent .AND. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
+       BodyForce => GetBodyForce()
+       BodyForceCurrDens = 0._dp
+       IF ( ASSOCIATED(BodyForce) ) THEN
+         SELECT CASE(DIM)
+         CASE(3)
+           CALL GetComplexVector( BodyForce, BodyForceCurrDens(1:3,1:n), 'Current Density', Found )
+         CASE(2)
+           IF (Vdofs == 2) THEN
+             BodyForceCurrDens(3,1:n) = CMPLX( ListGetReal(BodyForce, 'Current Density', n, Element % NodeIndexes, Found), &
+               ListGetReal(BodyForce, 'Current Density im', n, Element % NodeIndexes, Found), KIND=dp)
+           ELSE
+             BodyForceCurrDens(3,1:n) = CMPLX( ListGetReal(BodyForce, 'Current Density', & 
+               n, Element % NodeIndexes, Found), 0, KIND=dp)
+           END IF
+         END SELECT
+
        END IF
      END IF
 
@@ -5565,7 +5595,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL GetReluctivity(Material,R,n)
      END IF
 
-     dim = CoordinateSystemDimension()
 
 
      ! Calculate nodal fields:
@@ -5632,6 +5661,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            CMat_ip(k,l) = SUM( Tcoef(k,l,1:n) * Basis(1:n) )
          END DO
        END DO
+       BodyForceCurrDens_ip(1:3) = 0._dp
+       IF(ImposeBodyForceCurrent) THEN
+         DO l=1,3
+           BodyForceCurrDens_ip(l) = SUM(BodyForceCurrDens(l,1:n)*Basis(1:n))
+         END DO
+       END IF
 
        IF ( Transient ) THEN
          IF (CoilType /= 'stranded') THEN 
@@ -5822,38 +5857,35 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              k = k+3
            END DO
          END IF
+
          IF ( ASSOCIATED(CD).OR.ASSOCIATED(EL_CD)) THEN
-           !DO l=1,vDOFs
-           !  FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*C_ip*E(l,:)*Basis(p)
-           !  k = k+3
-           !END DO
            IF (ItoJCoeffFound) THEN
              IF (Vdofs == 1) THEN
-               DO l=1,dim
+               DO l=1,3
                  CC_J(1,l) = ItoJCoeff*wvec(l)*CircuitCurrent
                END DO
              ELSE
                CALL Fatal('MagnetoDynamicsCalcFields','Complex circuit current imposing is not implemented')
              END IF
-           ELSE
+           ELSE 
              CC_J(1,:) = 0.0_dp
            END IF
+
            IF (Vdofs == 1) THEN
-              DO l=1,dim
-                 JatIP(1,l) = SUM( REAL(CMat_ip(l,1:dim)) * E(1,1:dim) ) + CC_J(1,l)
-                 
-                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
+              DO l=1,3
+                JatIP(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l))
+                FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
            ELSE
-              DO l=1,dim
-                 FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( REAL(CMat_ip(l,1:dim)) * E(1,1:dim) )*Basis(p) - &
-                      s * SUM( AIMAG(CMat_ip(l,1:dim)) * E(2,1:dim) ) * Basis(p)
+              DO l=1,3
+                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) - &
+                  s * SUM( AIMAG(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*REAL(BodyForceCurrDens_ip(l))*Basis(p)
               END DO
               k = k+3
-              DO l=1,dim
-                 FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( AIMAG(CMat_ip(l,1:dim)) * E(1,1:dim) )*Basis(p) + &
-                      s * SUM( REAL(CMat_ip(l,1:dim)) * E(2,1:dim) ) * Basis(p) 
+              DO l=1,3
+                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( AIMAG(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) + &
+                  s * SUM( REAL(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*AIMAG(BodyForceCurrDens_ip(l))*Basis(p)
               END DO
               k = k+3
            END IF
