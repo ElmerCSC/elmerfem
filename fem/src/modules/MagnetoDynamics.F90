@@ -1858,7 +1858,7 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3),w0(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3),w0(3),w1(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -1913,9 +1913,10 @@ CONTAINS
          p = i+np
          FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP % s(t)
          DO j = 1,nd-np
+           w1 = CrossProduct(Wbasis(j,:),Normal)
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(WBasis(j,:)*w0)*detJ*IP % s(t)
+           STIFF(p,q) = STIFF(p,q) - B * &
+              SUM(w1*w0)*detJ*IP % s(t)
          END DO
        END DO
     END DO
@@ -4220,7 +4221,7 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3),w0(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3),w0(3),w1(3)
     COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     LOGICAL :: Stat
@@ -4269,9 +4270,10 @@ CONTAINS
          p = i+np
          FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP%s(t)
          DO j = 1,nd-np
+           w1 = CrossProduct(Wbasis(j,:),Normal)
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(WBasis(j,:)*w0)*detJ*IP%s(t)
+           STIFF(p,q) = STIFF(p,q) - B * &
+              SUM(w1*w0)*detJ*IP%s(t)
          END DO
        END DO
     END DO
