@@ -2006,7 +2006,7 @@ CONTAINS
        ALLOCATE( RotatedField(Solver % Matrix % NumberOfRows ) )
        RotatedField = Var % Values
        
-       DO i=1,SIZE( Var % Perm )
+       DO i=1,Solver % Mesh % NumberOfNodes
          j = Solver % Variable % Perm(i)
          IF( j == 0 ) CYCLE
          m = BoundaryReorder(i)
@@ -2822,8 +2822,12 @@ CONTAINS
 
          DO i=1,n
            j = MortarBC % Perm( Indexes(i) )
-           ElemInds(i) = Dofs * ( j - 1) + DofN
-           ElemActive(i) = MortarBC % Active( ElemInds(i) ) 
+           IF(j>0) THEN
+             ElemInds(i) = Dofs * ( j - 1) + DofN
+             ElemActive(i) = MortarBC % Active( ElemInds(i) ) 
+           ELSE
+             ElemActive(i) = .FALSE.
+           END IF
          END DO
 
          SELECT CASE ( elemcode ) 

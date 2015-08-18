@@ -4219,6 +4219,11 @@ END SUBROUTINE GetMaxDefs
         ! for the edge elements.
         PMesh % Elements(ind) % ElementIndex = q % ElementIndex
 
+        IF(ASSOCIATED(q % Pdefs)) THEN
+          ALLOCATE(Pmesh % Elements(ind) % Pdefs)
+          PMesh % Elements(ind) % PDefs = q % Pdefs
+        END IF
+
         ! Set also the owner partition
 !       PMesh % Elements(ind) % PartIndex = q % PartIndex
 
@@ -6986,6 +6991,9 @@ END SUBROUTINE GetMaxDefs
             IF( nrow == 0 ) CYCLE
             CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                 j, 0.0_dp ) 
+             IF(ASSOCIATED(Projector % Child)) &
+               CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                   j, 0.0_dp ) 
           END DO
         END IF
 
