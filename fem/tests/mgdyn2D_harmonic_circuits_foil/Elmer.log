@@ -1,0 +1,62 @@
+ELMER SOLVER (v 8.0) STARTED AT: 2015/08/11 10:02:38
+ParCommInit:  Initialize #PEs:            1
+MAIN: 
+MAIN: =============================================================
+MAIN: ElmerSolver finite element software, Welcome!
+MAIN: This program is free software licensed under (L)GPL
+MAIN: Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.
+MAIN: Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi
+MAIN: Version: 8.0 (Rev: 2648ea0, Compiled: 2015-08-07)
+MAIN:  HYPRE library linked in.
+MAIN: =============================================================
+MAIN: 
+MAIN: 
+MAIN: -------------------------------------
+MAIN: Reading Model: sif/1381.sif
+Model Input:  Unlisted keyword: [linear system complex] in section: [solver 3]
+Loading user function library: [matproputils]...[getWindingSigmaConstantTemperature]
+Model Input:  Unlisted keyword: [coil type] in section: [body 3]
+Model Input:  Unlisted keyword: [number of turns] in section: [body 3]
+Model Input:  Unlisted keyword: [electrode area] in section: [body 3]
+Model Input:  Unlisted keyword: [insulator portion] in section: [body 3]
+Model Input:  Unlisted keyword: [winding temperature] in section: [body 3]
+Model Input:  Unlisted keyword: [testsource re] in section: [body force 1]
+Model Input:  Unlisted keyword: [testsource im] in section: [body force 1]
+Model Input:  Unlisted keyword: [a re] in section: [boundary condition 1]
+Model Input:  Unlisted keyword: [a im] in section: [boundary condition 1]
+Model Input:  Unlisted keyword: [air gap] in section: [boundary condition 2]
+Model Input:  Unlisted keyword: [air gap length] in section: [boundary condition 2]
+Model Input:  Unlisted keyword: [air gap relative permeability] in section: [boundary condition 2]
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Steady state iteration:            1
+MAIN: -------------------------------------
+MAIN: 
+ owners:            1           8
+ComputeChange: SS (ITER=1) (NRM,RELC): (  0.0000000      0.0000000     ) :: circuits
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.69880357E-01  2.0000000     ) :: mag
+ComputeChange: SS (ITER=1) (NRM,RELC): ( 0.22949806E-02  2.0000000     ) :: mag
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.10363570E-01  2.0000000     ) :: compb
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.53254817E-01  1.3483915     ) :: compb
+ComputeChange: NS (ITER=5) (NRM,RELC): ( 0.56816109      2.0000000     ) :: compb
+ComputeChange: NS (ITER=6) (NRM,RELC): (  1107.9012      1.9979497     ) :: compb
+ComputeChange: NS (ITER=7) (NRM,RELC): (  121555.44      1.9638718     ) :: compb
+ComputeChange: SS (ITER=1) (NRM,RELC): (  0.0000000      0.0000000     ) :: compb
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Steady state iteration:            2
+MAIN: -------------------------------------
+MAIN: 
+ComputeChange: SS (ITER=2) (NRM,RELC): (  0.0000000      0.0000000     ) :: circuits
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.69880357E-01  1.8728108     ) :: mag
+ComputeChange: SS (ITER=2) (NRM,RELC): ( 0.22949806E-02  0.0000000     ) :: mag
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.10363570E-01  2.0000000     ) :: compb
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.53254817E-01  1.3483915     ) :: compb
+ComputeChange: NS (ITER=5) (NRM,RELC): ( 0.56816109      2.0000000     ) :: compb
+ComputeChange: NS (ITER=6) (NRM,RELC): (  1107.9012      1.9979497     ) :: compb
+ComputeChange: NS (ITER=7) (NRM,RELC): (  121555.44      1.9638718     ) :: compb
+ComputeChange: SS (ITER=2) (NRM,RELC): (  0.0000000      0.0000000     ) :: compb
+ElmerSolver: *** Elmer Solver: ALL DONE ***
+ElmerSolver: The end
+SOLVER TOTAL TIME(CPU,REAL):         0.11        0.14
+ELMER SOLVER FINISHED AT: 2015/08/11 10:02:38
