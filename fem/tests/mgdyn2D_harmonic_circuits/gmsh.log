@@ -1,0 +1,48 @@
+Info    : Running 'gmsh -2 /home/eelis/git/mylly-python/trafocrunch/data/1381/1381.geo' [1 node(s), max. 32 thread(s)]
+Info    : Started on Tue Aug 11 10:02:38 2015
+Info    : Reading '/home/eelis/git/mylly-python/trafocrunch/data/1381/1381.geo'...
+Info    : Done reading '/home/eelis/git/mylly-python/trafocrunch/data/1381/1381.geo'
+Info    : Meshing 1D...
+Info    : Meshing curve 1 (Line)
+Info    : Meshing curve 2 (Line)
+Info    : Meshing curve 3 (Line)
+Info    : Meshing curve 4 (Line)
+Info    : Meshing curve 5 (Line)
+Info    : Meshing curve 6 (Line)
+Info    : Meshing curve 7 (Line)
+Info    : Meshing curve 8 (Line)
+Info    : Meshing curve 9 (Line)
+Info    : Meshing curve 10 (Line)
+Info    : Meshing curve 11 (Line)
+Info    : Meshing curve 12 (Line)
+Info    : Meshing curve 13 (Line)
+Info    : Meshing curve 14 (Line)
+Info    : Meshing curve 15 (Line)
+Info    : Meshing curve 16 (Line)
+Info    : Meshing curve 17 (Line)
+Info    : Meshing curve 18 (Line)
+Info    : Meshing curve 19 (Line)
+Info    : Meshing curve 20 (Line)
+Info    : Meshing curve 21 (Line)
+Info    : Meshing curve 22 (Line)
+Info    : Meshing curve 23 (Line)
+Info    : Meshing curve 24 (Line)
+Info    : Meshing curve 25 (Line)
+Info    : Meshing curve 26 (Line)
+Info    : Meshing curve 27 (Line)
+Info    : Done meshing 1D (0 s)
+Info    : Meshing 2D...
+Info    : Meshing surface 1 (Plane, Delaunay)
+Info    : Meshing surface 2 (Plane, Delaunay)
+Info    : Meshing surface 3 (Plane, Delaunay)
+Info    : Meshing surface 4 (Plane, Delaunay)
+Info    : Meshing surface 5 (Plane, Delaunay)
+Info    : Meshing surface 6 (Plane, Delaunay)
+Info    : Meshing surface 7 (Plane, Delaunay)
+Info    : Meshing surface 8 (Plane, Delaunay)
+Info    : Meshing surface 9 (Plane, Delaunay)
+Info    : Done meshing 2D (0.004 s)
+Info    : 406 vertices 906 elements
+Info    : Writing '/home/eelis/git/mylly-python/trafocrunch/data/1381/1381.msh'...
+Info    : Done writing '/home/eelis/git/mylly-python/trafocrunch/data/1381/1381.msh'
+Info    : Stopped on Tue Aug 11 10:02:38 2015
