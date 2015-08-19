@@ -156,6 +156,7 @@ Component 1
    Coil Thickness = Real 0.05
    Number of Turns = Real 1000
    Electrode Area = Real 0.005
+   Foil Winding Voltage Polynomial Order = Integer 2
 !   Insulator Portion = Real 0.001
 !   Winding Temperature = Real 300
 End
