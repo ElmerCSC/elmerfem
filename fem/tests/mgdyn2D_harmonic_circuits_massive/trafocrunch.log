@@ -1,0 +1,12 @@
+2015-08-11 10:02:37.667:circuitutils:INFO_2: Original matrix:
+[[ 1.  0.  0.  0.]
+ [ 0.  1.  0.  1.]
+ [ 1.  0.  1.  0.]
+ [ 0.  0.  1.  1.]]
+2015-08-11 10:02:37.667:circuitutils:INFO_2: original bandwidth: 5
+2015-08-11 10:02:37.668:circuitutils:INFO_2: Matrix with mckee permutations:
+[[ 1.  0.  0.  0.]
+ [ 1.  1.  0.  0.]
+ [ 0.  1.  1.  0.]
+ [ 0.  0.  1.  1.]]
+2015-08-11 10:02:37.668:circuitutils:INFO_2: new bandwidth: 2

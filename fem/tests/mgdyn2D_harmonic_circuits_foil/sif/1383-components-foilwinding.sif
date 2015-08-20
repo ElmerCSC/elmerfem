@@ -7,7 +7,7 @@ Header 1
 End
 
 Simulation 1
-   Max Output Level = 3
+   Max Output Level = 5
    Coordinate System = Axi symmetric
    Simulation Type = Steady
    Steady State Max Iterations = 2
