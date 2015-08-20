@@ -12535,7 +12535,7 @@ CONTAINS
                    EliminatedRows = EliminatedRows + 1
                  END IF
                END IF
-               row = SumPerm(k)
+               row = SumPerm(Dofs*(k-1)+j)
              ELSE
                sumrow = sumrow + 1
                row = sumrow
