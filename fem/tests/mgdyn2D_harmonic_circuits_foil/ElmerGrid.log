@@ -1,12 +1,12 @@
 
 Starting program Elmergrid
 Elmergrid reading in-line arguments
-Output will be saved to file /home/eelis/git/mylly-python/trafocrunch/data/1381/1381.
+Output will be saved to file /home/eelis/git/mylly-python/trafocrunch/data/1383/1383.
 
 Elmergrid loading data:
 -----------------------
 Format chosen using the first line: $MeshFormat
-Loading mesh in Gmsh format 2.0 from file /home/eelis/git/mylly-python/trafocrunch/data/1381/1381.msh
+Loading mesh in Gmsh format 2.0 from file /home/eelis/git/mylly-python/trafocrunch/data/1383/1383.msh
 Allocating for 406 knots and 886 elements.
 Moving bulk elements to boundary elements
 Leading bulk elementtype is 303
@@ -24,7 +24,7 @@ Elmergrid creating and manipulating meshes:
 
 Elmergrid saving data with method 2:
 -------------------------------------
-Saving mesh in ElmerSolver format to directory /home/eelis/git/mylly-python/trafocrunch/data/1381/1381.
+Saving mesh in ElmerSolver format to directory /home/eelis/git/mylly-python/trafocrunch/data/1383/1383.
 Reusing an existing directory
 Saving 406 coordinates to mesh.nodes.
 Saving 758 element topologies to mesh.elements.

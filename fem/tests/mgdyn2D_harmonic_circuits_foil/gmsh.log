@@ -1,7 +1,7 @@
-Info    : Running 'gmsh -2 /home/eelis/git/mylly-python/trafocrunch/data/1381/1381.geo' [1 node(s), max. 32 thread(s)]
-Info    : Started on Tue Aug 11 10:02:38 2015
-Info    : Reading '/home/eelis/git/mylly-python/trafocrunch/data/1381/1381.geo'...
-Info    : Done reading '/home/eelis/git/mylly-python/trafocrunch/data/1381/1381.geo'
+Info    : Running 'gmsh -2 /home/eelis/git/mylly-python/trafocrunch/data/1383/1383.geo' [1 node(s), max. 32 thread(s)]
+Info    : Started on Wed Aug 19 14:24:54 2015
+Info    : Reading '/home/eelis/git/mylly-python/trafocrunch/data/1383/1383.geo'...
+Info    : Done reading '/home/eelis/git/mylly-python/trafocrunch/data/1383/1383.geo'
 Info    : Meshing 1D...
 Info    : Meshing curve 1 (Line)
 Info    : Meshing curve 2 (Line)
@@ -41,8 +41,8 @@ Info    : Meshing surface 6 (Plane, Delaunay)
 Info    : Meshing surface 7 (Plane, Delaunay)
 Info    : Meshing surface 8 (Plane, Delaunay)
 Info    : Meshing surface 9 (Plane, Delaunay)
-Info    : Done meshing 2D (0.004 s)
+Info    : Done meshing 2D (0.008 s)
 Info    : 406 vertices 906 elements
-Info    : Writing '/home/eelis/git/mylly-python/trafocrunch/data/1381/1381.msh'...
-Info    : Done writing '/home/eelis/git/mylly-python/trafocrunch/data/1381/1381.msh'
-Info    : Stopped on Tue Aug 11 10:02:38 2015
+Info    : Writing '/home/eelis/git/mylly-python/trafocrunch/data/1383/1383.msh'...
+Info    : Done writing '/home/eelis/git/mylly-python/trafocrunch/data/1383/1383.msh'
+Info    : Stopped on Wed Aug 19 14:24:54 2015

@@ -1,4 +1,4 @@
-ELMER SOLVER (v 8.0) STARTED AT: 2015/08/11 10:02:38
+ELMER SOLVER (v 8.0) STARTED AT: 2015/08/19 14:24:54
 ParCommInit:  Initialize #PEs:            1
 MAIN: 
 MAIN: =============================================================
@@ -12,13 +12,15 @@ MAIN: =============================================================
 MAIN: 
 MAIN: 
 MAIN: -------------------------------------
-MAIN: Reading Model: sif/1381.sif
+MAIN: Reading Model: sif/1383.sif
 Model Input:  Unlisted keyword: [linear system complex] in section: [solver 3]
 Loading user function library: [matproputils]...[getWindingSigmaConstantTemperature]
 Model Input:  Unlisted keyword: [coil type] in section: [body 3]
 Model Input:  Unlisted keyword: [number of turns] in section: [body 3]
 Model Input:  Unlisted keyword: [electrode area] in section: [body 3]
-Model Input:  Unlisted keyword: [insulator portion] in section: [body 3]
+Model Input:  Unlisted keyword: [coil thickness] in section: [body 3]
+Model Input:  Unlisted keyword: [foil layer thickness] in section: [body 3]
+Model Input:  Unlisted keyword: [insulator layer thickness] in section: [body 3]
 Model Input:  Unlisted keyword: [winding temperature] in section: [body 3]
 Model Input:  Unlisted keyword: [testsource re] in section: [body force 1]
 Model Input:  Unlisted keyword: [testsource im] in section: [body force 1]
@@ -27,36 +29,46 @@ Model Input:  Unlisted keyword: [a im] in section: [boundary condition 1]
 Model Input:  Unlisted keyword: [air gap] in section: [boundary condition 2]
 Model Input:  Unlisted keyword: [air gap length] in section: [boundary condition 2]
 Model Input:  Unlisted keyword: [air gap relative permeability] in section: [boundary condition 2]
+Model Input:  Unlisted keyword: [alpha] in section: [boundary condition 4]
+Model Input:  Unlisted keyword: [alpha] in section: [boundary condition 5]
+      13 0.8355E-11
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.60168926      2.0000000     ) :: direction
 MAIN: 
 MAIN: -------------------------------------
 MAIN:  Steady state iteration:            1
 MAIN: -------------------------------------
 MAIN: 
- owners:            1           8
+ owners:            1          14
 ComputeChange: SS (ITER=1) (NRM,RELC): (  0.0000000      0.0000000     ) :: circuits
-ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.69880357E-01  2.0000000     ) :: mag
-ComputeChange: SS (ITER=1) (NRM,RELC): ( 0.22949806E-02  2.0000000     ) :: mag
-ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.10363570E-01  2.0000000     ) :: compb
-ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.53254817E-01  1.3483915     ) :: compb
-ComputeChange: NS (ITER=5) (NRM,RELC): ( 0.56816109      2.0000000     ) :: compb
-ComputeChange: NS (ITER=6) (NRM,RELC): (  1107.9012      1.9979497     ) :: compb
-ComputeChange: NS (ITER=7) (NRM,RELC): (  121555.44      1.9638718     ) :: compb
-ComputeChange: SS (ITER=1) (NRM,RELC): (  0.0000000      0.0000000     ) :: compb
+ComputeChange: NS (ITER=1) (NRM,RELC): (  48.423826      2.0000000     ) :: mag
+ComputeChange: SS (ITER=1) (NRM,RELC): ( 0.22888403E-02  2.0000000     ) :: mag
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.10196423E-01  2.0000000     ) :: compb
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.53267709E-01  1.3573426     ) :: compb
+ComputeChange: NS (ITER=3) (NRM,RELC): ( 0.37434757E-03  1.9720855     ) :: compb
+ComputeChange: NS (ITER=4) (NRM,RELC): ( 0.33199392E-03 0.11992400     ) :: compb
+ComputeChange: NS (ITER=5) (NRM,RELC): ( 0.56711328      1.9976597     ) :: compb
+ComputeChange: NS (ITER=6) (NRM,RELC): (  797.98829      1.9971593     ) :: compb
+ComputeChange: NS (ITER=7) (NRM,RELC): (  278125.54      1.9885562     ) :: compb
+ComputeChange: NS (ITER=8) (NRM,RELC): (  213952.33     0.26082542     ) :: compb
+ComputeChange: SS (ITER=1) (NRM,RELC): (  213952.33      2.0000000     ) :: compb
 MAIN: 
 MAIN: -------------------------------------
 MAIN:  Steady state iteration:            2
 MAIN: -------------------------------------
 MAIN: 
 ComputeChange: SS (ITER=2) (NRM,RELC): (  0.0000000      0.0000000     ) :: circuits
-ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.69880357E-01  1.8728108     ) :: mag
-ComputeChange: SS (ITER=2) (NRM,RELC): ( 0.22949806E-02  0.0000000     ) :: mag
-ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.10363570E-01  2.0000000     ) :: compb
-ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.53254817E-01  1.3483915     ) :: compb
-ComputeChange: NS (ITER=5) (NRM,RELC): ( 0.56816109      2.0000000     ) :: compb
-ComputeChange: NS (ITER=6) (NRM,RELC): (  1107.9012      1.9979497     ) :: compb
-ComputeChange: NS (ITER=7) (NRM,RELC): (  121555.44      1.9638718     ) :: compb
-ComputeChange: SS (ITER=2) (NRM,RELC): (  0.0000000      0.0000000     ) :: compb
+ComputeChange: NS (ITER=1) (NRM,RELC): (  48.423826      1.9998109     ) :: mag
+ComputeChange: SS (ITER=2) (NRM,RELC): ( 0.22888403E-02  0.0000000     ) :: mag
+ComputeChange: NS (ITER=1) (NRM,RELC): ( 0.10196423E-01  1.9999998     ) :: compb
+ComputeChange: NS (ITER=2) (NRM,RELC): ( 0.53267709E-01  1.3573426     ) :: compb
+ComputeChange: NS (ITER=3) (NRM,RELC): ( 0.37434757E-03  1.9720855     ) :: compb
+ComputeChange: NS (ITER=4) (NRM,RELC): ( 0.33199392E-03 0.11992400     ) :: compb
+ComputeChange: NS (ITER=5) (NRM,RELC): ( 0.56711328      1.9976597     ) :: compb
+ComputeChange: NS (ITER=6) (NRM,RELC): (  797.98829      1.9971593     ) :: compb
+ComputeChange: NS (ITER=7) (NRM,RELC): (  278125.54      1.9885562     ) :: compb
+ComputeChange: NS (ITER=8) (NRM,RELC): (  213952.33     0.26082542     ) :: compb
+ComputeChange: SS (ITER=2) (NRM,RELC): (  213952.33      0.0000000     ) :: compb
 ElmerSolver: *** Elmer Solver: ALL DONE ***
 ElmerSolver: The end
-SOLVER TOTAL TIME(CPU,REAL):         0.11        0.14
-ELMER SOLVER FINISHED AT: 2015/08/11 10:02:38
+SOLVER TOTAL TIME(CPU,REAL):         0.15        0.17
+ELMER SOLVER FINISHED AT: 2015/08/19 14:24:54
