@@ -858,11 +858,13 @@ END INTERFACE
       INTEGER, POINTER :: n_Circuits=>Null(), Circuit_tot_n=>Null()
       TYPE(Matrix_t), POINTER :: CircuitMatrix => Null()
       TYPE(CMPLXCircuit_t), POINTER :: CMPLXCircuits(:) => Null()
-    
+      TYPE(Solver_t), POINTER :: ASolver    
+      
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
+    
 
 !------------------------------------------------------------------------------
 END MODULE Types

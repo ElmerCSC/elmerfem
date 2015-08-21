@@ -1,21 +1,3 @@
-!/******************************************************************************
-! *
-! *  Module for defining circuits and dynamic equations
-! *
-! *  Authors: Juha Ruokolainen, Eelis Takala, Antero Arkkio
-! *  Email:   Juha.Ruokolainen@csc.fi
-! *  Web:     http://www.csc.fi/elmer
-! *  Address: CSC - IT Center for Science Ltd.
-! *           Keilaranta 14
-! *           02101 Espoo, Finland 
-! *
-! *  Original Date: 30.11.2012
-! *
-! *****************************************************************************/
-
-!> \ingroup Solvers
-!> \{
-
 MODULE CircuitsMod
 
 CONTAINS 
@@ -743,6 +725,423 @@ variable % owner = ParEnv % PEs-1
 
 END MODULE CircuitsMod
 
+MODULE CircMatInitMod
+
+CONTAINS
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountCmplxMatElement(Rows, Cnts, RowId, dofs)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: Rows(:), Cnts(:)
+    INTEGER :: RowId, dofs
+
+    ! Matrix element structure:
+    !
+    ! Re -Im
+    ! Im Re
+    !
+    ! First do Re -Im:
+    ! ----------------
+    Cnts(RowId) = Cnts(RowId) + 2 * dofs
+
+    ! Then do Im Re:
+    ! --------------
+    Cnts(RowId+1) = Cnts(RowId+1) + 2 * dofs
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountCmplxMatElement
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: Rows(:), Cols(:), Cnts(:)
+    INTEGER :: RowId, ColId
+
+    ! Matrix element structure:
+    !
+    ! Re -Im
+    ! Im Re
+    !
+    ! First do Re (0,0):
+    ! ------------------
+    Cols(Rows(RowId) + Cnts(RowId)) = ColId
+    Cnts(RowId) = Cnts(RowId) + 1
+
+    ! Then do -Im (0,1):
+    ! ------------------
+    Cols(Rows(RowId) + Cnts(RowId)) = ColId + 1
+    Cnts(RowId) = Cnts(RowId) + 1
+
+    ! Then do Re (1,0):
+    ! -----------------
+    Cols(Rows(RowId+1) + Cnts(RowId+1)) = ColId
+    Cnts(RowId+1) = Cnts(RowId+1) + 1
+
+    ! Then do Im (1,1):
+    ! -----------------
+    Cols(Rows(RowId+1) + Cnts(RowId+1)) = ColId + 1
+    Cnts(RowId+1) = Cnts(RowId+1) + 1
+    
+!------------------------------------------------------------------------------
+   END SUBROUTINE CreateCmplxMatElement
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountBasicCircuitEquations(Rows, Cnts)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
+    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+    INTEGER :: i, j, p, nm, RowId, n_Circuits
+    INTEGER, POINTER :: Rows(:), Cnts(:)
+    
+    Circuits => CurrentModel % CMPLXCircuits
+    n_Circuits = CurrentModel % n_Circuits
+    nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    
+    ! Basic circuit equations...
+    ! ---------------------------
+    DO p = 1,n_Circuits
+      DO i=1,Circuits(p) % n
+        Cvar => Circuits(p) % CircuitVariables(i)
+        IF(CVar % Owner /= ParEnv % myPE) CYCLE
+
+        RowId = Cvar % ValueId + nm
+        DO j=1,Circuits(p) % n
+          IF(Cvar % A(j)/=0._dp.OR.Cvar % B(j)/=0._dp) &
+             CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
+        END DO
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountBasicCircuitEquations
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CreateBasicCircuitEquations(Rows, Cols, Cnts)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
+    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+    INTEGER :: i, j, p, nm, RowId, ColId, n_Circuits
+    INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
+    
+    Circuits => CurrentModel % CMPLXCircuits
+    n_Circuits = CurrentModel % n_Circuits
+    nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    
+    ! Basic circuit equations...
+    ! ---------------------------
+    DO p = 1,n_Circuits
+      DO i=1,Circuits(p) % n
+        Cvar => Circuits(p) % CircuitVariables(i)
+        IF(Cvar % Owner /= ParEnv % myPE) CYCLE
+
+        RowId = Cvar % ValueId + nm
+        DO j=1,Circuits(p) % n
+          IF(Cvar % A(j)/=0._dp .OR. Cvar % B(j)/=0._dp) THEN
+            ColId = Circuits(p) % CircuitVariables(j) % ValueId + nm
+            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
+          END IF
+        END DO
+      END DO
+    END DO
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE CreateBasicCircuitEquations
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountComponentEquations(Rows, Cnts, Done, dofsdone)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
+    TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
+    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+    TYPE(Solver_t), POINTER :: ASolver
+    TYPE(Element_t), POINTER :: Element
+    TYPE(CMPLXComponent_t), POINTER :: Comp
+    INTEGER :: i, j, p, nm, nn, nd, &
+               RowId, ColId, n_Circuits, &
+               CompInd, q
+    INTEGER, POINTER :: Rows(:), Cnts(:)
+    LOGICAL :: dofsdone
+    LOGICAL*1 :: Done(:)
+    
+    Circuits => CurrentModel % CMPLXCircuits
+    n_Circuits = CurrentModel % n_Circuits
+    Asolver => CurrentModel % Asolver
+    nm = Asolver % Matrix % NumberOfRows
+
+    DO p=1,n_Circuits
+      DO CompInd=1,Circuits(p) % n_comp
+        Done = .FALSE.
+        Comp => Circuits(p) % Components(CompInd)
+        Cvar => Comp % vvar
+        RowId = Cvar % ValueId + nm
+        ColId = Cvar % ValueId + nm
+        SELECT CASE (Comp % CoilType)
+        CASE('stranded')
+          IF (Cvar % Owner == ParEnv % myPE) THEN
+             CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
+             CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
+          END IF
+        CASE('massive')
+          IF (CVar % Owner == ParEnv % myPE) THEN
+            CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
+            CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
+          END IF
+        CASE('foil winding')
+          IF (Cvar % Owner == ParEnv % myPE) THEN
+            ! V = V0 + V1*alpha + V2*alpha^2 + ...
+            CALL CountCmplxMatElement(Rows, Cnts, RowId, Cvar % dofs)
+
+            ! Circuit eqns for the pdofs:
+            ! I(Vj) - I = 0
+              ! ------------------------------------
+            DO j=1, Cvar % pdofs
+              CALL CountCmplxMatElement(Rows, Cnts, RowId + 2*j, Cvar % dofs)
+            END DO
+          END IF
+        END SELECT
+
+!        temp = SUM(Cnts)
+!print *, "Active elements", ParEnv % Mype, ":", GetNOFActive()
+        DO q=GetNOFActive(),1,-1
+          Element => GetActiveElement(q)
+          IF (ElAssocToComp(Element, Comp)) THEN
+            nn = GetElementNOFNodes(Element)
+            nd = GetElementNOFDOFs(Element,ASolver)
+            SELECT CASE (Comp % CoilType)
+            CASE('stranded')              
+              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows)
+            CASE('massive')
+              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows)
+            CASE('foil winding')
+              DO j = 1, Cvar % pdofs
+                dofsdone = ( j==Cvar%pdofs )   
+                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,Done,dofsdone,Rows)
+              END DO
+            END SELECT
+          END IF
+        END DO
+!        Comp % nofcnts = SUM(Cnts) - temp
+!        print *, ParEnv % Mype, "CompInd:", CompInd, "Comp % nofcnts", Comp % nofcnts
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountComponentEquations
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CreateComponentEquations(Rows, Cols, Cnts, Done, dofsdone)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
+    TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
+    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+    TYPE(Solver_t), POINTER :: ASolver
+    TYPE(Element_t), POINTER :: Element
+    TYPE(CMPLXComponent_t), POINTER :: Comp
+    INTEGER :: i, j, jj, p, nm, nn, nd, &
+               RowId, ColId, n_Circuits, &
+               CompInd, q
+    INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
+    LOGICAL :: dofsdone
+    LOGICAL*1 :: Done(:)
+    
+    Circuits => CurrentModel % CMPLXCircuits
+    n_Circuits = CurrentModel % n_Circuits
+    Asolver => CurrentModel % Asolver
+    nm = Asolver % Matrix % NumberOfRows
+
+    DO p=1,n_Circuits
+      DO CompInd = 1, Circuits(p) % n_comp
+        Done = .FALSE.
+        Comp => Circuits(p) % Components(CompInd)
+        Cvar => Comp % vvar
+        RowId = Comp % vvar % ValueId + nm
+        ColId = Comp % ivar % ValueId + nm
+
+        SELECT CASE (Comp % CoilType)
+        CASE('stranded')
+          IF (Cvar % Owner == ParEnv % myPE) THEN
+            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
+            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, RowId)
+          END IF
+        CASE('massive')
+          IF (Cvar % Owner == ParEnv % myPE) THEN
+            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
+            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, RowId)
+          END IF
+        CASE('foil winding')
+          DO j=0, Cvar % pdofs
+            IF (Cvar % Owner == ParEnv % mype) THEN
+              ! V = V0 + V1*alpha + V2*alpha^2 + ...
+              CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, RowId + 2*j)
+              IF (j/=0) THEN
+                ! Circuit eqns for the pdofs:
+                ! I(Vi) - I = 0
+                ! ------------------------------------
+                CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId + 2*j, ColId)
+                DO jj = 1, Cvar % pdofs
+                    CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId + 2*j, RowId + 2*jj)
+                END DO
+              END IF
+            END IF
+          END DO
+        END SELECT
+
+!        temp = SUM(Cnts)
+!print *, "Active elements ", ParEnv % Mype, ":", GetNOFActive()
+        DO q=GetNOFActive(),1,-1
+          Element => GetActiveElement(q)
+          IF (ElAssocToComp(Element, Comp)) THEN
+            nn = GetElementNOFNodes(Element)
+            nd = GetElementNOFDOFs(Element,ASolver)
+            SELECT CASE (Comp % CoilType)
+            CASE('stranded')              
+              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows,Cols,ColId)
+            CASE('massive')
+              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows,Cols=Cols)
+            CASE('foil winding')
+              DO j = 1, Cvar % pdofs
+                dofsdone = ( j==Cvar%pdofs )
+                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,Done,dofsdone,Rows,Cols=Cols)
+              END DO
+            END SELECT
+          END IF
+        END DO
+!        Comp % nofcnts = SUM(Cnts) - temp
+!        print *, ParEnv % Mype, "CompInd:", CompInd, "Coil Type:", Comp % CoilType, &
+!                 "Comp % BodyId:", Comp % BodyId, "Comp % nofcnts", Comp % nofcnts
+
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CreateComponentEquations
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountAndCreateStranded(Element,nn,nd,i,Cnts,Done,Rows,Cols,Jsind)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
+    TYPE(Element_t) :: Element
+    INTEGER :: nn, nd
+    OPTIONAL :: Cols
+    INTEGER :: Rows(:), Cols(:), Cnts(:)
+    INTEGER :: p,i,j,Indexes(nd)
+    INTEGER, OPTIONAL :: Jsind
+    INTEGER, POINTER :: PS(:)
+    LOGICAL*1 :: Done(:)
+  
+    IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateStranded','ASolver not found!')
+    PS => CurrentModel % Asolver % Variable % Perm
+    nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
+    DO p=1,nd
+      j = Indexes(p)
+      IF(.NOT.Done(j)) THEN
+        Done(j) = .TRUE.
+        j = ReIndex(PS(j))
+        IF(PRESENT(Cols)) THEN
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j) 
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, Jsind)
+!          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, Jsind)
+        ELSE
+          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
+          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
+!          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
+        END IF
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountAndCreateStranded
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountAndCreateMassive(Element,nn,nd,i,Cnts,Done,Rows,Cols)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
+    TYPE(Element_t) :: Element
+    INTEGER :: nn, nd
+    OPTIONAL :: Cols
+    INTEGER :: Rows(:), Cols(:), Cnts(:)
+    INTEGER :: p,i,j,Indexes(nd)
+    INTEGER, POINTER :: PS(:)
+    LOGICAL*1 :: Done(:)
+    
+    IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateMassive','ASolver not found!')
+    PS => CurrentModel % Asolver % Variable % Perm
+    nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
+    DO p=1,nd
+      j = Indexes(p)
+      IF(.NOT.Done(j)) THEN
+        Done(j) = .TRUE.
+        j = ReIndex(PS(j))
+        IF(PRESENT(Cols)) THEN
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j)
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, i)
+        ELSE
+          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
+          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
+        END IF
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountAndCreateMassive
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,i,Cnts,Done,dofsdone,Rows,Cols)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
+    TYPE(Element_t) :: Element
+    INTEGER :: nn, nd
+    OPTIONAL :: Cols
+    INTEGER :: Rows(:), Cols(:), Cnts(:)
+    INTEGER :: p,i,j,Indexes(nd)
+    LOGICAL :: dofsdone
+    INTEGER, POINTER :: PS(:)
+    LOGICAL*1 :: Done(:)
+    
+    IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateFoilWinding','ASolver not found!')
+    PS => CurrentModel % Asolver % Variable % Perm
+    nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
+    DO p=1,nd
+      j = Indexes(p)
+      IF(.NOT.Done(j)) THEN
+        Done(j) = dofsdone
+        j = ReIndex(PS(j))
+        IF(PRESENT(Cols)) THEN
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j)
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, i)
+        ELSE
+          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
+          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
+        END IF
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountAndCreateFoilWinding
+!------------------------------------------------------------------------------
+
+
+END MODULE CircMatInitMod
+
 !------------------------------------------------------------------------------
 !> Initialization for the primary solver: CurrentSource
 !------------------------------------------------------------------------------
@@ -780,6 +1179,7 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE CircuitsMod
+  USE CircMatInitMod
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
@@ -871,8 +1271,9 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   
     Omega = GetAngularFrequency()
 
-    ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
- 
+    Model % ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
+    ASolver => Model % ASolver
+    
     ! Initialize circuit matrices:
     ! ----------------------------
     CALL Circuits_Init()
@@ -937,7 +1338,7 @@ CONTAINS
       ! -----------------------------------------------
       CALL ReadCircuitSources(p)
       
-      ! Write circuit equations for every variable:
+      ! Store circuit equation for every variable:
       ! -------------------------------------------
       CALL WriteCoeffVectorsForCircVariables(p)
     
@@ -956,32 +1357,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE CompArea(A,Element,nn,nd)
-!------------------------------------------------------------------------------
-    INTEGER :: nn, nd
-    TYPE(Element_t) :: Element
-
-    REAL(KIND=dp) :: Basis(nd), DetJ,A
-    INTEGER :: i,t
-    LOGICAL :: stat
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(GaussIntegrationPoints_t) :: IP
-
-    CALL GetElementNodes( Nodes )
-
-    ! Numerical integration:
-    ! ----------------------
-    IP = GaussPoints(Element)
-    DO t=1,IP % n
-      stat = ElementInfo(Element,Nodes,IP % U(t),IP % V(t),IP % W(t),detJ,Basis)
-      A = A + IP % s(t)*detJ
-    END DO
-!------------------------------------------------------------------------------
-   END SUBROUTINE CompArea
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
   SUBROUTINE Circuits_MatrixInit()
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,p,q,n,nn,temp,cnt(Parenv % PEs), r_cnt(ParEnv % PEs)
@@ -995,45 +1370,14 @@ CONTAINS
     Model%CircuitMatrix=>CM
     
     CM % Format = MATRIX_CRS
-!    cm % format = matrix_list ! xxxx
     Asolver %  Matrix % AddMatrix => CM
     ALLOCATE(CM % RHS(nm + Circuit_tot_n)); CM % RHS=0._dp
-
-!   return ! xxxx
 
     CM % NumberOfRows = nm + Circuit_tot_n
     n = CM % NumberOfRows
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
     ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
 
-#if 0
-    ! attatch component to task that holds the most elements of its 'body':
-    ! -------------------------------------------------------------------------------
-    DO p=1,n_Circuits
-      DO i=1,Circuits(p) % n_Comp
-        cnt  = 0
-        DO j=1,GetNOFACtive()
-           Element => GetActiveElement(j)
-           IF(ElAssocToComp(Element, Circuits(p) % Components(i))) &
-             cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
-        END DO
-        CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
-                MPI_MAX,ASolver % Matrix % Comm,j)
-
-        SELECT CASE(Circuits(p) % Components(i) % CoilType)
-        CASE('stranded')
-          Cvar => Circuits(p) % Components(i) % Vvar
-          Cvar % Owner = MAXLOC(r_cnt,1) - 1
-
-        CASE DEFAULT
-!         Cvar => Circuits(p) % Components(i) % Ivar
-!         Cvar % Owner = MAXLOC(r_cnt,1) - 1
-          Cvar => Circuits(p) % Components(i) % Vvar
-          Cvar % Owner = MAXLOC(r_cnt,1) - 1
-        END SELECT
-      END DO
-    END DO
-#endif
     IF(.NOT.ASSOCIATED(CM % ParallelInfo)) THEN
       ALLOCATE(CM % ParallelInfo)
       ALLOCATE(CM % ParallelInfo % NeighbourList(nm+Circuit_tot_n))
@@ -1086,90 +1430,19 @@ CONTAINS
     END DO
 
 
-if ( parenv % mype==0 ) then
-do i=1,parenv % pes
-  print*,'owners: ', i, count(cm % rowowner==i-1)
-end do
-endif
+    IF ( parenv % mype==0 ) THEN
+      DO i=1,parenv % pes
+        CALL INFO('Circuits_MatrixInit','owners: '//i2s(i)//' '//i2s(count(cm % rowowner==i-1)), Level=9)
+      END DO
+    END IF
 
 
     ! COUNT SIZES:
     ! ============
-
-    ! Basic circuit equations...
-    ! ---------------------------
-    DO p = 1,n_Circuits
-      DO i=1,Circuits(p) % n
-        Cvar => Circuits(p) % CircuitVariables(i)
-        IF(CVar % Owner /= ParEnv % myPE) CYCLE
-
-        RowId = Cvar % ValueId + nm
-        DO j=1,Circuits(p) % n
-          IF(Cvar % A(j)/=0._dp.OR.Cvar % B(j)/=0._dp) &
-             CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
-        END DO
-      END DO
-    END DO
-
-    ! ... + the terms including reference to @a/@t:
-    ! ---------------------------------------------
-    DO p=1,n_Circuits
-      DO CompInd=1,Circuits(p) % n_comp
-        Done = .FALSE.
-        Comp => Circuits(p) % Components(CompInd)
-        Cvar => Comp % vvar
-        RowId = Cvar % ValueId + nm
-        ColId = Cvar % ValueId + nm
-        SELECT CASE (Comp % CoilType)
-        CASE('stranded')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-             CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
-             CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
-          END IF
-        CASE('massive')
-          IF (CVar % Owner == ParEnv % myPE) THEN
-            CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
-            CALL CountCmplxMatElement(Rows, Cnts, RowId, 1)
-          END IF
-        CASE('foil winding')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-            ! V = V0 + V1*alpha + V2*alpha^2 + ...
-            CALL CountCmplxMatElement(Rows, Cnts, RowId, Cvar % dofs)
-
-            ! Circuit eqns for the pdofs:
-            ! I(Vj) - I = 0
-              ! ------------------------------------
-            DO j=1, Cvar % pdofs
-              CALL CountCmplxMatElement(Rows, Cnts, RowId + 2*j, Cvar % dofs)
-            END DO
-          END IF
-        END SELECT
-
-!        temp = SUM(Cnts)
-!print *, "Active elements", ParEnv % Mype, ":", GetNOFActive()
-        DO q=GetNOFActive(),1,-1
-          Element => GetActiveElement(q)
-          IF (ElAssocToComp(Element, Comp)) THEN
-            nn = GetElementNOFNodes(Element)
-            nd = GetElementNOFDOFs(Element,ASolver)
-            SELECT CASE (Comp % CoilType)
-            CASE('stranded')
-              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Jsind=ColId)
-            CASE('massive')
-              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts)
-            CASE('foil winding')
-              DO j = 1, Cvar % pdofs
-                dofsdone = ( j==Cvar%pdofs )
-                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,dofsdone=dofsdone)
-              END DO
-            END SELECT
-          END IF
-        END DO
-!        Comp % nofcnts = SUM(Cnts) - temp
-!        print *, ParEnv % Mype, "CompInd:", CompInd, "Comp % nofcnts", Comp % nofcnts
-      END DO
-    END DO
-
+    dofsdone = .FALSE.
+    
+    CALL CountBasicCircuitEquations(Rows, Cnts)
+    CALL CountComponentEquations(Rows, Cnts, Done, dofsdone)
 
     ! ALLOCATE CRS STRUCTURES (if need be):
     ! =====================================
@@ -1198,88 +1471,9 @@ endif
     ! CREATE COLMUNS:
     ! ===============
 
-    ! Basic circuit equations...
-    ! ---------------------------
-    DO p = 1,n_Circuits
-      DO i=1,Circuits(p) % n
-        Cvar => Circuits(p) % CircuitVariables(i)
-        IF(Cvar % Owner /= ParEnv % myPE) CYCLE
-
-        RowId = Cvar % ValueId + nm
-        DO j=1,Circuits(p) % n
-          IF(Cvar % A(j)/=0._dp .OR. Cvar % B(j)/=0._dp) THEN
-            ColId = Circuits(p) % CircuitVariables(j) % ValueId + nm
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
-          END IF
-        END DO
-      END DO
-    END DO
-
-    ! ... + the terms including reference to @a/@t:
-    ! ---------------------------------------------
-    DO p=1,n_Circuits
-      DO CompInd = 1, Circuits(p) % n_comp
-        Done = .FALSE.
-        Comp => Circuits(p) % Components(CompInd)
-        Cvar => Comp % vvar
-        RowId = Comp % vvar % ValueId + nm
-        ColId = Comp % ivar % ValueId + nm
-
-        SELECT CASE (Comp % CoilType)
-        CASE('stranded')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, RowId)
-          END IF
-        CASE('massive')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, RowId)
-          END IF
-        CASE('foil winding')
-          DO j=0, Cvar % pdofs
-            IF (Cvar % Owner == ParEnv % mype) THEN
-              ! V = V0 + V1*alpha + V2*alpha^2 + ...
-              CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, RowId + 2*j)
-              IF (j/=0) THEN
-                ! Circuit eqns for the pdofs:
-                ! I(Vi) - I = 0
-                ! ------------------------------------
-                CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId + 2*j, ColId)
-                DO jj = 1, Cvar % pdofs
-                    CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId + 2*j, RowId + 2*jj)
-                END DO
-              END IF
-            END IF
-          END DO
-        END SELECT
-
-!        temp = SUM(Cnts)
-!print *, "Active elements ", ParEnv % Mype, ":", GetNOFActive()
-        DO q=GetNOFActive(),1,-1
-          Element => GetActiveElement(q)
-          IF (ElAssocToComp(Element, Comp)) THEN
-            nn = GetElementNOFNodes(Element)
-            nd = GetElementNOFDOFs(Element,ASolver)
-            SELECT CASE (Comp % CoilType)
-            CASE('stranded')
-              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Cols=Cols,Jsind=ColId)
-            CASE('massive')
-              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Cols=Cols)
-            CASE('foil winding')
-              DO j = 1, Cvar % pdofs
-                dofsdone = ( j==Cvar%pdofs )
-                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,Cols=Cols,dofsdone=dofsdone)
-              END DO
-            END SELECT
-          END IF
-        END DO
-!        Comp % nofcnts = SUM(Cnts) - temp
-!        print *, ParEnv % Mype, "CompInd:", CompInd, "Coil Type:", Comp % CoilType, &
-!                 "Comp % BodyId:", Comp % BodyId, "Comp % nofcnts", Comp % nofcnts
-
-      END DO
-    END DO
+    CALL CreateBasicCircuitEquations(Rows, Cols, Cnts)
+    CALL CreateComponentEquations(Rows, Cols, Cnts, Done, dofsdone)
+    
 
     IF (n /= SUM(Cnts)) THEN
       print *, "Counted Cnts:", n, "Applied Cnts:", SUM(Cnts)
@@ -1297,205 +1491,6 @@ endif
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_MatrixInit
 !------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-   SUBROUTINE CountCmplxMatElement(Rows, Cnts, RowId, dofs)
-!------------------------------------------------------------------------------
-    INTEGER :: Rows(:), Cnts(:)
-    INTEGER :: RowId, dofs
-
-    ! Matrix element structure:
-    !
-    ! Re -Im
-    ! Im Re
-    !
-    ! First do Re -Im:
-    ! ----------------
-    Cnts(RowId) = Cnts(RowId) + 2 * dofs
-
-    ! Then do Im Re:
-    ! --------------
-    Cnts(RowId+1) = Cnts(RowId+1) + 2 * dofs
-
-!------------------------------------------------------------------------------
-   END SUBROUTINE CountCmplxMatElement
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-   SUBROUTINE CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
-!------------------------------------------------------------------------------
-    INTEGER :: Rows(:), Cols(:), Cnts(:)
-    INTEGER :: RowId, ColId
-
-    ! Matrix element structure:
-    !
-    ! Re -Im
-    ! Im Re
-    !
-    ! First do Re (0,0):
-    ! ------------------
-    Cols(Rows(RowId) + Cnts(RowId)) = ColId
-    Cnts(RowId) = Cnts(RowId) + 1
-
-    ! Then do -Im (0,1):
-    ! ------------------
-    Cols(Rows(RowId) + Cnts(RowId)) = ColId + 1
-    Cnts(RowId) = Cnts(RowId) + 1
-
-    ! Then do Re (1,0):
-    ! -----------------
-    Cols(Rows(RowId+1) + Cnts(RowId+1)) = ColId
-    Cnts(RowId+1) = Cnts(RowId+1) + 1
-
-    ! Then do Im (1,1):
-    ! -----------------
-    Cols(Rows(RowId+1) + Cnts(RowId+1)) = ColId + 1
-    Cnts(RowId+1) = Cnts(RowId+1) + 1
-    
-!------------------------------------------------------------------------------
-   END SUBROUTINE CreateCmplxMatElement
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-   SUBROUTINE CountAndCreate_Vemf(Element,nn,nd,i,Cnts,indCol,Cols,dofsdone,Jsind)
-!------------------------------------------------------------------------------
-    TYPE(Element_t) :: Element
-    INTEGER :: nn, nd
-    OPTIONAL :: Cols
-    INTEGER :: Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
-    LOGICAL, OPTIONAL :: dofsdone
-    INTEGER, OPTIONAL :: Jsind, indCol
-
-    nd = GetElementDOFs(Indexes,Element,ASolver)
-    DO p=1,nd
-      j = Indexes(p)
-      IF(.NOT.Done(j)) THEN
-        IF (PRESENT(dofsdone)) THEN
-          Done(j) = dofsdone
-        ELSE
-          Done(j) = .TRUE.
-        END IF
-        j = ReIndex(PS(j))
-        IF(PRESENT(Cols)) THEN
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j)
-
-          IF (PRESENT(indCol)) THEN
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, indCol)
-          ELSE
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, i)
-          END IF
-
-          IF(PRESENT(Jsind)) THEN
-              CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, Jsind)
-          END IF
-
-        ELSE
-
-          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
-          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
-
-          IF(PRESENT(Jsind)) THEN
-              CALL CountCmplxMatElement(Rows, Cnts, j, 1)
-          END IF
-
-        END IF
-      END IF
-    END DO
-!------------------------------------------------------------------------------
-   END SUBROUTINE CountAndCreate_Vemf
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-   SUBROUTINE CountAndCreateStranded(Element,nn,nd,i,Cnts,Cols,Jsind)
-!------------------------------------------------------------------------------
-    TYPE(Element_t) :: Element
-    INTEGER :: nn, nd
-    OPTIONAL :: Cols
-    INTEGER :: Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
-    INTEGER, OPTIONAL :: Jsind
-
-    nd = GetElementDOFs(Indexes,Element,ASolver)
-    DO p=1,nd
-      j = Indexes(p)
-      IF(.NOT.Done(j)) THEN
-        Done(j) = .TRUE.
-        j = ReIndex(PS(j))
-        IF(PRESENT(Cols)) THEN
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j) 
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, Jsind)
-!          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, Jsind)
-        ELSE
-          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
-          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
-!          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
-        END IF
-      END IF
-    END DO
-!------------------------------------------------------------------------------
-   END SUBROUTINE CountAndCreateStranded
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-   SUBROUTINE CountAndCreateMassive(Element,nn,nd,i,Cnts,Cols)
-!------------------------------------------------------------------------------
-    TYPE(Element_t) :: Element
-    INTEGER :: nn, nd
-    OPTIONAL :: Cols
-    INTEGER :: Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
-
-    nd = GetElementDOFs(Indexes,Element,ASolver)
-    DO p=1,nd
-      j = Indexes(p)
-      IF(.NOT.Done(j)) THEN
-        Done(j) = .TRUE.
-        j = ReIndex(PS(j))
-        IF(PRESENT(Cols)) THEN
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j)
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, i)
-        ELSE
-          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
-          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
-        END IF
-      END IF
-    END DO
-!------------------------------------------------------------------------------
-   END SUBROUTINE CountAndCreateMassive
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-   SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,i,Cnts,Cols,dofsdone)
-!------------------------------------------------------------------------------
-    TYPE(Element_t) :: Element
-    INTEGER :: nn, nd
-    OPTIONAL :: Cols
-    INTEGER :: Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
-    LOGICAL :: dofsdone
-
-    nd = GetElementDOFs(Indexes,Element,ASolver)
-    DO p=1,nd
-      j = Indexes(p)
-      IF(.NOT.Done(j)) THEN
-        Done(j) = dofsdone
-        j = ReIndex(PS(j))
-        IF(PRESENT(Cols)) THEN
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j)
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, i)
-        ELSE
-          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
-          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
-        END IF
-      END IF
-    END DO
-!------------------------------------------------------------------------------
-   END SUBROUTINE CountAndCreateFoilWinding
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
   SUBROUTINE Circuits_Apply()
