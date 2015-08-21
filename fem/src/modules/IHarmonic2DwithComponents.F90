@@ -152,6 +152,29 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  SUBROUTINE AllocateCircuitsList()
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: slen,n_Circuits
+    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+
+    ! Read Circuit defintions from MATC:
+    ! ----------------------------------
+    cmd = "Circuits"
+    slen = LEN_TRIM(cmd)
+    CALL Matc( cmd, name, slen )
+    READ(name(1:slen), *) n_Circuits
+    
+    CurrentModel%n_Circuits = n_Circuits
+    
+    ALLOCATE( CurrentModel%CMPLXCircuits(n_Circuits) )
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE AllocateCircuitsList
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
   FUNCTION CountNofCircVarsOfType(CId, Var_type) RESULT (nofc)
 !------------------------------------------------------------------------------
     USE DefUtils
@@ -277,6 +300,56 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadCircuitVariables
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION GetNofCircVariables(CId) RESULT(n)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: CId, n, slen 
+    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    
+    cmd = 'C.'//TRIM(i2s(CId))//'.variables'
+    slen = LEN_TRIM(cmd)
+    CALL Matc( cmd, name, slen )
+      
+    READ(name(1:slen), *) Circuit % n
+
+    n = Circuit % n
+
+!------------------------------------------------------------------------------
+  END FUNCTION GetNofCircVariables
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AllocateCircuit(CId)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: slen,CId,n
+    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    
+    n = Circuit % n
+    
+    ALLOCATE( Circuit % ComponentIds(n), Circuit % names(n) )
+    ALLOCATE( Circuit % sourceRe(n), Circuit % sourceIm(n), Circuit % sourcetype(n) )
+    ALLOCATE( Circuit % CircuitVariables(n), Circuit % Perm(n) )
+    ALLOCATE( Circuit % A(n,n), Circuit % B(n,n), &
+              Circuit % Mre(n,n), Circuit % Mim(n,n)  )
+    Circuit % ComponentIds = 0
+    Circuit % names = ' '
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE AllocateCircuit
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE ReadComponents(CId)
@@ -475,6 +548,136 @@ variable % owner = ParEnv % PEs-1
   END SUBROUTINE AddBareCircuitVariables
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE ReadCoefficientMatrices(CId)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: CId,n
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    n = Circuit % n
+    
+    ! Read in the coefficient matrices for the circuit equations:
+    ! Ax' + Bx = source:
+    ! ------------------------------------------------------------
+
+    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.A'//CHAR(0),Circuit % A,n,n)
+    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.B'//CHAR(0),Circuit % B,n,n)
+    
+    ! Complex multiplier matrix is used for:
+    ! B = times(M,B), where B times is the element-wise product
+    ! ---------------------------------------------------------
+    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mre'//CHAR(0),Circuit % Mre,n,n)
+    CALL matc_get_array('C.'//TRIM(i2s(CId))//'.Mim'//CHAR(0),Circuit % Mim,n,n)
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE ReadCoefficientMatrices
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE ReadPermutationVector(CId)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: CId,n,slen,i
+    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    n = Circuit % n
+
+    DO i=1,n
+      cmd = 'C.'//TRIM(i2s(CId))//'.perm('//TRIM(i2s(i-1))//')'
+      slen = LEN_TRIM(cmd)
+      CALL Matc( cmd, name, slen )
+      READ(name(1:slen),*) Circuit % Perm(i)
+    END DO
+    
+    IF(ANY(Circuit % Perm /= 0)) THEN 
+      Circuit % UsePerm = .TRUE.
+      CALL Info( 'IHarmonic2D','Found Permutation vector for circuit '//i2s(CId), Level=4 )
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE ReadPermutationVector
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE ReadCircuitSources(CId)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: CId,n,slen,i
+    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    n = Circuit % n
+    DO i=1,n
+      ! Names of the source functions, these functions should be found
+      ! in the "Body Force 1" block of the .sif file.
+      ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
+      ! ---------------------------------------------------------------------------
+      cmd = 'nc:C.'//TRIM(i2s(CId))//'.source.'//TRIM(i2s(i))//'.re'
+      slen = LEN_TRIM(cmd)
+      CALL Matc( cmd, name, slen )
+      Circuit % SourceRe(i) = name(1:slen)
+      
+      cmd = 'nc:C.'//TRIM(i2s(CId))//'.source.'//TRIM(i2s(i))//'.im'
+      slen = LEN_TRIM(cmd)
+      CALL Matc( cmd, name, slen )
+      Circuit % SourceIm(i) = name(1:slen)
+
+      ! Types of the source functions: voltage or current
+      ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
+      ! ---------------------------------------------------------------------------
+      cmd = 'nc:C.'//TRIM(i2s(CId))//'.source.'//TRIM(i2s(i))//'.type'
+      slen = LEN_TRIM(cmd)
+      CALL Matc( cmd, name, slen )
+      Circuit % sourcetype(i) = name(1:slen)
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE ReadCircuitSources
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE WriteCoeffVectorsForCircVariables(CId)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: CId,n,slen,i,j,RowId
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+  
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    n = Circuit % n
+
+    DO i=1,n
+      Cvar => Circuit % CircuitVariables(i)
+      RowId = Cvar % ValueId
+
+      ALLOCATE(Cvar % A(Circuit % n), &
+               Cvar % B(Circuit % n), &
+               Cvar % M(Circuit % n), &
+               Cvar % Source(Circuit % n))
+      Cvar % A = 0._dp
+      Cvar % B = 0._dp
+      Cvar % M = 0._dp
+      Cvar % Source = 0._dp
+
+      DO j=1,Circuit % n
+        IF (Circuit % A(i,j)/=0) Cvar % A(j) = Circuit % A(i,j)
+        IF (Circuit % B(i,j)/=0) Cvar % B(j) = Circuit % B(i,j)
+        IF (Circuit % Mre(i,j)/=0 .OR. Circuit % Mim(i,j)/=0) &
+          Cvar % M(j) = Circuit % Mre(i,j) + im * Circuit % Mim(i,j)
+      END DO
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE WriteCoeffVectorsForCircVariables
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
    FUNCTION IdInList(Id, List) RESULT (T)
@@ -699,121 +902,45 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Circuits_Init()
 !------------------------------------------------------------------------------
-    ! Read Circuit defintions from MATC:
-    ! ----------------------------------
-    cmd = "Circuits"
-    slen = LEN_TRIM(cmd)
-    CALL Matc( cmd, name, slen )
-    READ(name(1:slen), *) n_Circuits
     
-    ALLOCATE( Model%CMPLXCircuits(n_Circuits) )
+    CALL AllocateCircuitsList()
     Circuits => Model%CMPLXCircuits
-
-    ! Read in number of circuit variables and their names for each circuit. 
-    ! ---------------------------------------------------------------------
+    
     tot_nofcomp=0
     DO p=1,n_Circuits
-      ! #variables for circuit "p":
-      ! ---------------------------
-      cmd = 'C.'//TRIM(i2s(p))//'.variables'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
       
-      READ(name(1:slen), *) Circuits(p) % n
-
-      n = Circuits(p) % n
-      ALLOCATE( Circuits(p) % ComponentIds(n), Circuits(p) % names(n) )
-      ALLOCATE( Circuits(p) % sourceRe(n), Circuits(p) % sourceIm(n), Circuits(p) % sourcetype(n) )
-      ALLOCATE( Circuits(p) % CircuitVariables(n), Circuits(p) % Perm(n) )
-      Circuits(p) % ComponentIds = 0
-      Circuits(p) % names = ' '
-
+      n = GetNofCircVariables(p)
+      CALL AllocateCircuit(p)
+      
       ! Count and create components:
       ! ----------------------------
       Circuits(p) % n_comp = CountNofCircComponents(p, n)
       ALLOCATE(Circuits(p) % Components(Circuits(p) % n_comp))
       tot_nofcomp=tot_nofcomp+Circuits(p) % n_comp
       
-      ! Read circuit variables from MATC and Components from sif
-      ! --------------------------------------------------------
+      ! Read circuit variables from MATC and Components from sif:
+      ! ---------------------------------------------------------
       CALL ReadCircuitVariables(p)
       CALL ReadComponents(p)
       CALL AddComponentValuesToLists(p)
-      CALL AddBareCircuitVariables(p)
-
-      ! Read in the coefficient matrices for the circuit equations:
-      ! Ax' + Bx = source:
-      ! ------------------------------------------------------------
-
-      n = Circuits(p) % n
-      ALLOCATE( Circuits(p) % A(n,n), Circuits(p) % B(n,n), &
-                Circuits(p) % Mre(n,n), Circuits(p) % Mim(n,n)  )
-
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.A'//CHAR(0),Circuits(p) % A,n,n)
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.B'//CHAR(0),Circuits(p) % B,n,n)
+      CALL AddBareCircuitVariables(p)   ! these don't belong to any components
       
-      ! Complex multiplier matrix is used for:
-      ! B = times(M,B), where B times is the element-wise product
-      ! ---------------------------------------------------------
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.Mre'//CHAR(0),Circuits(p) % Mre,n,n)
-      CALL matc_get_array('C.'//TRIM(i2s(p))//'.Mim'//CHAR(0),Circuits(p) % Mim,n,n)
+      ! Read Coefficient matrices for the circuit equations:
+      ! ----------------------------------------------------
+      CALL ReadCoefficientMatrices(p)
       
-      DO i=1,n
-        cmd = 'C.'//TRIM(i2s(p))//'.perm('//TRIM(i2s(i-1))//')'
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
-        READ(name(1:5),*) Circuits(p) % Perm(i)
-      END DO
+      ! Read Permutation vector (for permuting the rows in the system matrix):
+      ! ----------------------------------------------------------------------
+      CALL ReadPermutationVector(p)
       
-      IF(ANY(Circuits(p) % Perm /= 0)) THEN 
-        Circuits(p) % UsePerm = .TRUE.
-        CALL Info( 'IHarmonic2D','Found Permutation vector for circuit '//i2s(p), Level=4 )
-      END IF
+      ! Read Sources for every equation (force vector):
+      ! -----------------------------------------------
+      CALL ReadCircuitSources(p)
       
-      DO i=1,n
-        ! Names of the source functions, these functions should be found
-        ! in the "Body Force 1" block of the .sif file.
-        ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
-        ! ---------------------------------------------------------------------------
-        cmd = 'nc:C.'//TRIM(i2s(p))//'.source.'//TRIM(i2s(i))//'.re'
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
-        Circuits(p) % SourceRe(i) = name(1:slen)
-        
-        cmd = 'nc:C.'//TRIM(i2s(p))//'.source.'//TRIM(i2s(i))//'.im'
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
-        Circuits(p) % SourceIm(i) = name(1:slen)
-
-        ! Types of the source functions: voltage or current
-        ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
-        ! ---------------------------------------------------------------------------
-        cmd = 'nc:C.'//TRIM(i2s(p))//'.source.'//TRIM(i2s(i))//'.type'
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
-        Circuits(p) % sourcetype(i) = name(1:slen)
-
-        Cvar => Circuits(p) % CircuitVariables(i)
-        RowId = Cvar % ValueId
-
-        ALLOCATE(Cvar % A(Circuits(p) % n), &
-                 Cvar % B(Circuits(p) % n), &
-                 Cvar % M(Circuits(p) % n), &
-                 Cvar % Source(Circuits(p) % n))
-        Cvar % A = 0._dp
-        Cvar % B = 0._dp
-        Cvar % M = 0._dp
-        Cvar % Source = 0._dp
-
-        DO j=1,Circuits(p) % n
-          IF (Circuits(p) % A(i,j)/=0) Cvar % A(j) = Circuits(p) % A(i,j)
-          IF (Circuits(p) % B(i,j)/=0) Cvar % B(j) = Circuits(p) % B(i,j)
-          IF (Circuits(p) % Mre(i,j)/=0 .OR. Circuits(p) % Mim(i,j)/=0) &
-            Cvar % M(j) = Circuits(p) % Mre(i,j) + im * Circuits(p) % Mim(i,j)
-        END DO
-
-
-      END DO
+      ! Write circuit equations for every variable:
+      ! -------------------------------------------
+      CALL WriteCoeffVectorsForCircVariables(p)
+    
     END DO
 
     ! Create CRS matrix strucures for the circuit equations:
