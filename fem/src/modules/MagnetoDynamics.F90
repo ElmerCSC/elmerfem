@@ -121,7 +121,7 @@ CONTAINS
           IF ( Face % NodeIndexes(j)==Boundary % NodeIndexes(k)) m=m+1
         END DO
       END DO
-      IF ( m==Boundary % TYPE % NumberOfNodes) EXIT
+      IF ( m==Face % TYPE % NumberOfNodes) EXIT
     END DO
     n = Parent % FaceIndexes(i)
 !------------------------------------------------------------------------------
@@ -279,18 +279,27 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion
+  LOGICAL :: Found, PiolaVersion, SecondOrder
   TYPE(ValueList_t), POINTER :: SolverParams
 
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     PiolaVersion = GetLogical(SolverParams, &
         'Use Piola Transform', Found )   
+    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
     IF (PiolaVersion) THEN
       IF ( Transient ) THEN
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+        IF (SecondOrder) THEN
+          CALL ListAddString( SolverParams, "Element", "n:1 e:2 -tri_face b:2" )  
+        ELSE
+          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+        END IF
       ELSE
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+        IF (SecondOrder) THEN
+          CALL ListAddString( SolverParams, "Element", "n:0 e:2 -tri_face b:2" )  
+        ELSE
+          CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+        END IF
       END IF
     ELSE
       IF ( Transient ) THEN
@@ -359,7 +368,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
   LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
          SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
-         PiolaVersion, LFact, LFactFound, EdgeBasis
+         PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis
 
   REAL(KIND=dp) :: Relax
 
@@ -378,8 +387,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
   CALL Info('WhitneyAVSolver','Solving the AV equations with edge elements',Level=5 )
 
-  PiolaVersion = GetLogical( GetSolverParams(), &
-      'Use Piola Transform', Found )
+  PiolaVersion = GetLogical( GetSolverParams(), 'Use Piola Transform', Found )
+  SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
@@ -387,6 +396,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         'Currently only homogeneous Dirichlet and Neumann BCs for the vector potential supported',Level=4)
     CALL Info('WhitneyAVSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
+    IF (SecondOrder) &
+         CALL Info('WhitneyAVSolver', &
+        'Using quadratic approximation, the background mesh should consist of element types 504 or 510 ',Level=4)
   END IF
 
   !Allocate some permanent storage, this is done first time only:
@@ -566,26 +578,26 @@ CONTAINS
                 'Magnetization', FoundMagnetization )
      END IF
      
-    BodyParams => GetBodyParams( Element )
-    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
+     BodyParams => GetBodyParams( Element )
+     IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
 
-    CoilBody = .FALSE.
-    CoilType = GetString(BodyParams, 'Coil Type', Found)
-    IF (.NOT. Found) THEN
-      CoilType = ''
-    ELSE
-      SELECT CASE (CoilType)
-      CASE ('stranded')
-        CoilBody = .TRUE.
-      CASE ('massive')
-        CoilBody = .TRUE.
-      CASE ('foil winding')
-        CoilBody = .TRUE.
-        CALL GetElementRotM(Element, RotM, n)
-      CASE DEFAULT
-        CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
-      END SELECT
-    END IF
+     CoilBody = .FALSE.
+     CoilType = GetString(BodyParams, 'Coil Type', Found)
+     IF (.NOT. Found) THEN
+        CoilType = ''
+     ELSE
+        SELECT CASE (CoilType)
+        CASE ('stranded')
+           CoilBody = .TRUE.
+        CASE ('massive')
+           CoilBody = .TRUE.
+        CASE ('foil winding')
+           CoilBody = .TRUE.
+           CALL GetElementRotM(Element, RotM, n)
+        CASE DEFAULT
+           CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
+        END SELECT
+     END IF
 
      Acoef = 0.0d0
      Tcoef = 0.0d0
@@ -645,12 +657,12 @@ CONTAINS
      CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, &
           LamThick, LamCond, CoilBody, CoilType, RotM, &
-          Element, n, nd+nb, PiolaVersion )    
+          Element, n, nd+nb, PiolaVersion, SecondOrder )    
 
-    !Update global matrix and rhs vector from local matrix & vector:
-    !---------------------------------------------------------------
-    IF (Transient) CALL DefaultUpdateMass(MASS)
-    CALL DefaultUpdateEquations(STIFF,FORCE)
+     !Update global matrix and rhs vector from local matrix & vector:
+     !---------------------------------------------------------------
+     IF (Transient) CALL DefaultUpdateMass(MASS)
+     CALL DefaultUpdateEquations(STIFF,FORCE)
   END DO
 
   CALL DefaultFinishBulkAssembly(BulkUpdate=ConstantBulk)
@@ -1603,14 +1615,14 @@ CONTAINS
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, &
-            Element, n, nd, PiolaVersion )
+            Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: PiolaVersion
+    LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
@@ -1621,7 +1633,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
     LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody
-    INTEGER :: t, i, j, p, q, np, siz
+    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
@@ -1630,6 +1642,12 @@ CONTAINS
            CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
 !------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+       EdgeBasisDegree = 2
+    ELSE
+       EdgeBasisDegree = 1
+    END IF
+
     CALL GetElementNodes( Nodes )
 
     STIFF = 0.0d0
@@ -1678,7 +1696,8 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree )
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
@@ -1686,7 +1705,7 @@ CONTAINS
           stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
                RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-               ApplyPiolaTransform = .TRUE.)
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
@@ -1863,10 +1882,16 @@ CONTAINS
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, k, ii,jj, np, p, q
+    INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+       EdgeBasisDegree = 2
+    ELSE
+       EdgeBasisDegree = 1
+    END IF
+
     CALL GetElementNodes( Nodes, Element )
 
     STIFF = 0.0_dp
@@ -1877,7 +1902,8 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
