@@ -735,7 +735,7 @@ END INTERFACE
 
   TYPE CMPLXCircuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
-    INTEGER, ALLOCATABLE :: Body(:), Perm(:)
+    INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
     LOGICAL :: UsePerm = .FALSE.
     INTEGER :: n, m, n_comp,CvarDofs
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), sourceRe(:), sourceIm(:), sourcetype(:)

@@ -16,6 +16,529 @@
 !> \ingroup Solvers
 !> \{
 
+MODULE CircuitsMod
+
+CONTAINS 
+
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    
+    INTEGER :: i
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
+    LOGICAL :: Found
+    
+    BodyParams => GetBodyParams( Element )
+    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('GetCompParams', 'Component parameters not found')
+    
+    i = GetInteger(BodyParams, 'Component', Found)
+
+    IF (.NOT. Found) CALL Fatal ('GetComponentParams', 'Body not associated to any Component!')
+
+    ComponentParams => CurrentModel % Components(i) % Values
+      
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+                                                         'Component parameters not found!')
+    
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentParams
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AddComponentsToBodyLists()
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    
+    LOGICAL :: Found
+    INTEGER :: i, j, k
+    
+    ! Components and Bodies:
+    ! ----------------------  
+    INTEGER :: BodyId
+    INTEGER, POINTER :: BodyAssociations(:) => Null()
+    TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
+        
+    DO i = 1, SIZE(CurrentModel % Components)
+      ComponentParams => CurrentModel % Components(i) % Values
+      
+      IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+                                                         'Component parameters not found!')
+      BodyAssociations => ListGetIntegerArray(ComponentParams, 'Body', Found)
+      
+      IF (.NOT. Found) CYCLE
+
+      DO j = 1, SIZE(BodyAssociations)
+        BodyId = BodyAssociations(j)
+        BodyParams => CurrentModel % Bodies(BodyId) % Values
+        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+                                                      'Body parameters not found!')
+        k = GetInteger(BodyParams, 'Component', Found)
+        IF (Found) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+                               'Body '//TRIM(i2s(BodyId))//' associated to two components!')
+        CALL listAddInteger(BodyParams, 'Component', i)
+        BodyParams => Null()
+      END DO
+    END DO
+
+    DO i = 1, SIZE(CurrentModel % Bodies)
+      BodyParams => CurrentModel % Bodies(i) % Values
+      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+                                                    'Body parameters not found!')
+      j = GetInteger(BodyParams, 'Component', Found)
+      IF (.NOT. Found) CYCLE
+
+      WRITE(Message,'(A,I2,A,I2)') 'Body',i,' associated to Component', j
+      CALL Info('CircuitsAndDynamics2DHarmonic',Message,Level=3)
+      BodyParams => Null()
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddComponentsToBodyLists
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentBodyIds(Id) RESULT (BodyIds)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    
+    LOGICAL :: Found
+    INTEGER :: Id
+    INTEGER, POINTER :: BodyIds(:)
+    TYPE(Valuelist_t), POINTER :: ComponentParams
+    
+    ComponentParams => CurrentModel % Components(Id) % Values
+    
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+                                                         'Component parameters not found!')
+    BodyIds => ListGetIntegerArray(ComponentParams, 'Body', Found)
+    IF (.NOT. Found) BodyIds => Null()
+    
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentBodyIds
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION FindSolverWithKey(key, char_len) RESULT (Solver)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    
+    LOGICAL :: Found
+    INTEGER :: i, char_len
+    TYPE(Solver_t), POINTER :: Solver
+    CHARACTER(char_len) :: key
+    
+    ! Look for the solver we attach the circuit equations to:
+    ! -------------------------------------------------------
+    Found = .False.
+    DO i=1, CurrentModel % NumberOfSolvers
+      Solver => CurrentModel % Solvers(i)
+      IF(ListCheckPresent(Solver % Values, key)) THEN 
+        Found = .True. 
+        EXIT
+      END IF
+    END DO
+    
+    IF (.NOT. Found) CALL Fatal('FindSolverWithKey', & 
+       TRIM(Key)//' keyword not found in any of the solvers!')
+
+!------------------------------------------------------------------------------
+  END FUNCTION FindSolverWithKey
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION CountNofCircVarsOfType(CId, Var_type) RESULT (nofc)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: nofc, char_len, slen, CId, i
+    CHARACTER(LEN=MAX_NAME_LEN) :: Var_type
+    CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+
+    
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    
+    nofc = 0
+    
+    char_len = LEN_TRIM(Var_type)
+    DO i=1,Circuit % n
+      cmd = 'C.'//TRIM(i2s(CId))//'.name.'//TRIM(i2s(i))
+      slen = LEN_TRIM(cmd)
+      CALL Matc( cmd, name, slen )
+
+      IF(name(1:char_len) == Var_type(1:char_len)) nofc = nofc + 1
+    END DO
+
+!------------------------------------------------------------------------------
+  END FUNCTION CountNofCircVarsOfType
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION CountNofCircComponents(CId, nofvar) RESULT (nofc)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: nofc, nofvar, slen, CId, i, j, CompId
+    INTEGER :: ComponentIDs(nofvar)
+    CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+
+    nofc = 0
+    ComponentIDs = -1
+    
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    
+   
+    DO i=1,Circuit % n
+      cmd = 'C.'//TRIM(i2s(CId))//'.name.'//TRIM(i2s(i))
+      slen = LEN_TRIM(cmd)
+      CALL Matc( cmd, name, slen )
+      
+      IF(name(1:12) == 'i_component(' .OR. name(1:12) == 'v_component(') THEN
+        DO j=13,slen
+          IF(name(j:j)==')') EXIT 
+        END DO
+        READ(name(13:j-1),*) CompId
+        IF (.NOT. ANY(ComponentIDs == CompID)) nofc = nofc + 1
+        ComponentIDs(i) = CompId
+      END IF
+    
+    END DO
+
+!------------------------------------------------------------------------------
+  END FUNCTION CountNofCircComponents
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE ReadCircuitVariables(CId)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: slen, ComponentId,i,j,CId, CompInd
+    CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+    TYPE(CMPLXCircuitVariable_t), POINTER :: CVar
+
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    
+    CompInd = 0
+    DO i=1,Circuit % n
+      cmd = 'C.'//TRIM(i2s(CId))//'.name.'//TRIM(i2s(i))
+      slen = LEN_TRIM(cmd)
+      CALL Matc( cmd, name, slen )
+      Circuit % names(i) = name(1:slen)
+      
+      CVar => Circuit % CircuitVariables(i)
+      CVar % isIvar = .FALSE.
+      CVar % isVvar = .FALSE.
+      CVar % Component => Null()
+
+      IF(name(1:12) == 'i_component(' .OR. name(1:12) == 'v_component(') THEN
+        DO j=13,slen
+          IF(name(j:j)==')') EXIT 
+        END DO
+        READ(name(13:j-1),*) ComponentId
+        
+        CVar % BodyId = ComponentId
+        
+        IF ( .NOT. ANY(Circuit % ComponentIds == ComponentId) ) THEN
+          CompInd = CompInd + 1
+          Circuit % ComponentIds(CompInd) = ComponentId
+        END IF
+
+        Cvar % Component => Circuit % Components(CompInd)
+        Cvar % Component % ComponentId = ComponentId
+
+        SELECT CASE (name(1:12))
+        CASE('i_component(')
+          CVar % isIvar = .TRUE.
+          CVar % Component % ivar => CVar
+        CASE('v_component(')
+          CVar % isVvar = .TRUE.
+          CVar % Component % vvar => CVar
+        CASE DEFAULT
+          CALL Fatal('Circuits_Init()', 'Circuit variable should be either i_component or v_component!')
+        END SELECT
+      ELSE
+          CVar % isIvar = .FALSE.
+          CVar % isVvar = .FALSE.
+          CVar % dofs = 1
+          CVar % pdofs = 0
+          CVar % BodyId = 0
+      END IF
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE ReadCircuitVariables
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE ReadComponents(CId)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: CId, CompInd
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+    TYPE(CMPLXComponent_t), POINTER :: Comp
+    TYPE(Valuelist_t), POINTER :: CompParams
+    LOGICAL :: Found
+    
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+
+    Circuit % CvarDofs = 0
+    DO CompInd=1,Circuit % n_comp
+      Comp => Circuit % Components(CompInd)
+      Comp % nofcnts = 0
+!        Comp % ComponentId = Circuits(p) % body(CompInd)
+      Comp % BodyIds => GetComponentBodyIds(Comp % ComponentId)
+
+      IF (.NOT. ASSOCIATED(Comp % ivar) ) THEN
+        CALL FATAL('Circuits_Init', 'Current Circuit Variable is not found for Component '//TRIM(i2s(Comp % ComponentId)))
+      ELSE IF (.NOT. ASSOCIATED(Comp % vvar) ) THEN
+        CALL FATAL('Circuits_Init', 'Voltage Circuit Variable is not found for Component '//TRIM(i2s(Comp % ComponentId)))
+      END IF
+
+      CompParams => CurrentModel % Components (Comp % ComponentId) % Values
+      IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('Circuits_Init', 'Component parameters not found!')
+      
+      Comp % CoilType = GetString(CompParams, 'Coil Type', Found)
+      IF (.NOT. Found) CALL Fatal ('Circuits_Init', 'Coil Type not found!')
+      
+      Comp % i_multiplier_re = GetConstReal(CompParams, 'Current Multiplier re', Found)
+      IF (.NOT. Found) Comp % i_multiplier_re = 0._dp
+      Comp % i_multiplier_im = GetConstReal(CompParams, 'Current Multiplier im', Found)
+      IF (.NOT. Found) Comp % i_multiplier_im = 0._dp
+      
+      SELECT CASE (Comp % CoilType) 
+      CASE ('stranded')
+        Comp % nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
+        IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
+
+        Comp % ElBoundary = GetInteger(CompParams, 'Electrode Boundary 1', Found)
+        IF (.NOT. Found) THEN 
+          Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
+          IF (.NOT. Found) THEN
+            CALL Fatal('Circuits_Init','Electrode Boundary 1 or Electrode Area not found!')
+          END IF
+        ELSE
+          ! Compute Electrode Area Automatically:
+          ! -------------------------------------
+!              DO t=1,GetNOFBoundaryElements()
+!              Element => GetBoundaryElement(t)
+        END IF
+        
+        Comp % N_j = Comp % nofturns / Comp % ElArea
+
+        ! Stranded coil has current and voltage 
+        ! variables (which both have a dof):
+        ! ------------------------------------
+        Comp % ivar % dofs = 1
+        Comp % vvar % dofs = 1
+        Comp % ivar % pdofs = 0
+        Comp % vvar % pdofs = 0
+
+      CASE ('massive')
+        ! Massive coil has current and voltage 
+        ! variables (which both have a dof):
+        ! ------------------------------------
+        Comp % ivar % dofs = 1
+        Comp % vvar % dofs = 1
+        Comp % ivar % pdofs = 0
+        Comp % vvar % pdofs = 0
+
+      CASE ('foil winding')
+        Comp % polord = GetInteger(CompParams, 'Foil Winding Voltage Polynomial Order', Found)
+        IF (.NOT. Found) Comp % polord = 2
+
+        ! Foil winding has current and voltage 
+        ! variables. Current has one dof and 
+        ! voltage has a polynom for describing the 
+        ! global voltage. The polynom has 1+"polynom order"
+        ! dofs. Thus voltage variable has 1+1+"polynom order"
+        ! dofs (V=V0+V1*alpha+V2*alpha^2+..):
+        ! dofs:
+        ! V, V0, V1, V2, ...
+        ! ------------------------------------
+        Comp % ivar % dofs = 1
+        Comp % ivar % pdofs = 0
+        Comp % vvar % dofs = Comp % polord + 2
+        ! polynom dofs:
+        ! -------------
+        Comp % vvar % pdofs = Comp % polord + 1
+
+        Comp % coilthickness = GetConstReal(CompParams, 'Coil Thickness', Found)
+        IF (.NOT. Found) CALL Fatal('Circuits_Init','Coil Thickness not found!')
+
+        Comp % nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
+        IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
+
+      END SELECT
+      CALL AddVariableToCircuit(Circuit, Comp % ivar, CId)
+      CALL AddVariableToCircuit(Circuit, Comp % vvar, CId)
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE ReadComponents
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AddVariableToCircuit(Circuit, Variable, k)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    TYPE(CMPLXCircuit_t) :: Circuit
+    TYPE(CMPLXCircuitVariable_t) :: Variable
+    INTEGER :: Owner=-1, k
+    INTEGER, POINTER :: circuit_tot_n => Null()
+    
+    Circuit_tot_n => CurrentModel%Circuit_tot_n
+    
+    IF(k==1) THEN
+      IF(Owner<=0) Owner = MAX(Parenv % PEs/2,1)
+      Owner = Owner - 1
+      Variable % Owner = Owner
+variable % owner = 0
+    ELSE
+      IF(Owner<=ParEnv % PEs/2) Owner = ParEnv % PEs
+      Owner = Owner - 1
+      Variable % Owner = Owner
+variable % owner = ParEnv % PEs-1
+    END IF
+
+    IF (Circuit % UsePerm) THEN
+      Variable % valueId = Circuit % Perm(Circuit_tot_n + 1)
+      Variable % ImValueId = Variable % valueId + 1
+    ELSE
+      Variable % valueId = Circuit_tot_n + 1
+      Variable % ImValueId = Circuit_tot_n + 2
+    END IF
+    
+    Circuit_tot_n = Circuit_tot_n + 2*Variable % dofs
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddVariableToCircuit
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AddComponentValuesToLists(CId)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+    TYPE(CMPLXComponent_t), POINTER :: Comp
+    TYPE(Valuelist_t), POINTER :: CompParams
+    INTEGER :: CId, CompInd
+    
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    
+    DO CompInd=1,Circuit % n_comp
+ 
+      Comp => Circuit % Components(CompInd)   
+
+      CompParams => CurrentModel % Components (Comp % ComponentId) % Values
+      IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('Circuits_Init', 'Component Parameters not found!')
+
+      CALL listAddInteger(CompParams, 'Circuit Voltage Variable Id', Comp % vvar % valueId)
+      CALL listAddInteger(CompParams, 'Circuit Voltage Variable dofs', Comp % vvar % dofs)
+      CALL listAddInteger(CompParams, 'Circuit Current Variable Id', Comp % ivar % valueId)
+      CALL listAddInteger(CompParams, 'Circuit Current Variable dofs', Comp % ivar % dofs)
+      CALL listAddConstReal(CompParams, 'Stranded Coil N_j', Comp % N_j)
+      CurrentModel % Components (Comp % ComponentId) % Values => CompParams
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddComponentValuesToLists
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE AddBareCircuitVariables(CId)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+    TYPE(CMPLXCircuitVariable_t), POINTER :: CVar
+    INTEGER :: CId, i
+    
+    Circuit => CurrentModel%CMPLXCircuits(CId)
+    ! add variables that are not associated to components
+    DO i=1,Circuit % n
+      Cvar => Circuit % CircuitVariables(i)
+      IF (Cvar % isIvar .OR. Cvar % isVvar) CYCLE
+      CALL AddVariableToCircuit(Circuit, Circuit % CircuitVariables(i), CId)
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddBareCircuitVariables
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+   FUNCTION IdInList(Id, List) RESULT (T)
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     INTEGER :: List(:), Id
+     LOGICAL :: T
+     T = .FALSE.
+     IF (ANY(List == Id)) T = .TRUE.
+!------------------------------------------------------------------------------
+   END FUNCTION IdInList
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   FUNCTION ElAssocToComp(Element, Component) RESULT (T)
+!------------------------------------------------------------------------------
+     USE DefUtils
+     IMPLICIT NONE
+     TYPE(CMPLXComponent_t), POINTER :: Component
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: T
+     T = IdInList(Element % BodyId, Component % BodyIds)
+!------------------------------------------------------------------------------
+   END FUNCTION ElAssocToComp
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   FUNCTION ElAssocToCvar(Element, Cvar) RESULT (T)
+!------------------------------------------------------------------------------
+     USE DefUtils
+     IMPLICIT NONE
+     TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: T
+     T = .FALSE.
+     IF (ASSOCIATED(Cvar % Component)) THEN
+       IF (ASSOCIATED(Cvar % Component % BodyIds)) &
+       T = IdInList(Element % BodyId, Cvar % Component % BodyIds)
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ElAssocToCvar
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION ReIndex(Ind)
+!------------------------------------------------------------------------------
+    Integer :: Ind, ReIndex
+
+    ReIndex = 2 * Ind - 1
+!------------------------------------------------------------------------------
+  END FUNCTION ReIndex
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION ImIndex(Ind)
+!------------------------------------------------------------------------------
+    Integer :: Ind, ImIndex
+
+    ImIndex = 2 * Ind
+!------------------------------------------------------------------------------
+  END FUNCTION ImIndex
+!------------------------------------------------------------------------------
+
+END MODULE CircuitsMod
 
 !------------------------------------------------------------------------------
 !> Initialization for the primary solver: CurrentSource
@@ -53,6 +576,7 @@ END SUBROUTINE CircuitsAndDynamics2DHarmonic_init
 SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CircuitsMod
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
@@ -71,18 +595,20 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: BF,Params,BC
   INTEGER, POINTER :: PS(:)
   REAL(KIND=dp)::vemf,vphi,vind,A,b,sigma,SumResistance
-  TYPE(Matrix_t), POINTER :: CM=>Null()
-  INTEGER :: tstep=0, CompId
+  INTEGER :: CompInd
   TYPE(Variable_t), POINTER :: LagrangeVar, AngVar, VeloVar
   REAL(KIND=dp), TARGET :: torq,imom=0,ang=0._dp,velo=0._dp,scale,sclA,sclB
 
   COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
   REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
   TYPE(Mesh_t), POINTER :: Mesh  
-  TYPE(Valuelist_t), POINTER :: Material, BodyParams
+  TYPE(Valuelist_t), POINTER :: Material, CompParams
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
 
-  integer :: slen,i,j,k,m,n,istat,BodyId,ColId,RowId,ImRowId,jj,tot_nofcomp
+  integer :: slen,i,j,k,m,n,istat,BodyId, &
+             ColId,RowId,ImRowId,jj, &
+             tot_nofcomp, ComponentId, &
+             circ_comp_count
   CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd,CoilType,dofnumber
   REAL(KIND=dp) :: BodyY
 
@@ -91,43 +617,15 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   COMPLEX(KIND=dp) :: cmplx_value
   COMPLEX(KIND=dp) :: i_multiplier
 
-  TYPE CircuitVariable_t
-    LOGICAL :: isIvar, isVvar
-    INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner
-    TYPE(Component_t), POINTER :: Component
-    REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
-    COMPLEX(KIND=dp), ALLOCATABLE :: Source(:), M(:)
-    INTEGER, ALLOCATABLE :: EqVarIds(:)
-  END TYPE
-
-  TYPE(CircuitVariable_t), POINTER :: Cvar
-
-  TYPE Component_t
-    REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
-                     N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
-    INTEGER :: BodyId, polord, ElBoundary, nofcnts
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
-    TYPE(CircuitVariable_t), POINTER :: ivar, vvar
-  END TYPE
-
-  TYPE(Component_t), POINTER :: Comp
-
-  TYPE Circuit_t
-    REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
-    INTEGER, ALLOCATABLE :: Body(:), Perm(:)
-    LOGICAL :: UsePerm = .FALSE.
-    INTEGER :: n, m, n_comp,CvarDofs
-    CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), sourceRe(:), sourceIm(:), sourcetype(:)
-    TYPE(Component_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)
-  END TYPE Circuit_t
-
-  REAL(KIND=dp), ALLOCATABLE :: ip(:)
+  TYPE(CMPLXComponent_t), POINTER :: Comp
+  TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+  TYPE(Matrix_t), POINTER :: CM
+  INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
+  TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
+    
+  REAL(KIND=dp), ALLOCATABLE :: ip(:), ipt(:)
   LOGICAL, ALLOCATABLE :: Adirichlet(:)
   LOGICAL :: dofsdone
-
-  INTEGER :: n_Circuits, Circuit_tot_n
-  TYPE(Circuit_t), ALLOCATABLE :: Circuits(:)
 
   INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
   LOGICAL*1, ALLOCATABLE :: Done(:)
@@ -141,15 +639,17 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 
   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-
+  
   LOGICAL :: CSymmetry
   
-  SAVE CSymmetry, RotMvar, Circuits, n_Circuits, Circuit_tot_n, ip, Adirichlet, &
+  SAVE CSymmetry, RotMvar, ip, ipt, Adirichlet, nm, &
        Tcoef, RotM, Omega
 !------------------------------------------------------------------------------
 
   IF (First) THEN
     First = .FALSE.
+    
+    CALL AddComponentsToBodyLists()
     
     CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric )
@@ -157,70 +657,29 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
     Mesh => Model % Mesh
     N = Mesh % MaxElementDOFs
 
-    ALLOCATE( Tcoef(3,3,N), RotM(3,3,N), STAT=istat )
+    ALLOCATE( Tcoef(3,3,N), RotM(3,3,N), Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'CircuitsAndDynamics2DHarmonic', 'Memory allocation error.' )
     END IF
 
+    n_Circuits => Model%n_Circuits
+    Circuit_tot_n => Model%Circuit_tot_n
+    Circuit_tot_n = 0
+  
     Omega = GetAngularFrequency()
 
-    ! Look for the solver we attach the circuit equations to:
-    ! -------------------------------------------------------
-    Found = .False.
-    DO i=1,Model % NumberOfSolvers
-      Asolver => Model % Solvers(i)
-      IF(ListCheckPresent(Asolver % Values,'Export Lagrange Multiplier')) THEN 
-        Found = .True. 
-        EXIT
-      END IF
-    END DO
+    ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
  
-    IF (.NOT. Found) CALL Fatal('CircuitsAndDynamics2DHarmonic', & 
-            'Export Lagrange Multiplier keyword not wound in any of the solvers!')
-
     ! Initialize circuit matrices:
     ! ----------------------------
-
     CALL Circuits_Init()
   END IF
+
+  Circuits => Model%CMPLXCircuits
+  n_Circuits => Model%n_Circuits
+  Circuit_tot_n => Model%Circuit_tot_n
+  CM=>Model%CircuitMatrix
   
-  IF (Tstep /= GetTimestep()) THEN
-    Tstep = GetTimestep()
-
-    ! Circuit variable values from previous timestep:
-    ! -----------------------------------------------
-    ip = 0._dp
-    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
-    IF(ASSOCIATED(LagrangeVar)) THEN
-      IF(SIZE(LagrangeVar % Values)>=2*Circuit_tot_n) ip=LagrangeVar % Values(1:2*Circuit_tot_n)
-    END IF
-
-    ! Export circuit & dynamic variables for "SaveScalars":
-    ! -----------------------------------------------------
-
-    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
-
-    DO p=1,n_Circuits
-      DO i=1,Circuits(p) % n
-        Cvar => Circuits(p) % CircuitVariables(i)
-        
-        CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' re', ip(Cvar % ValueId))
-        CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId))
-
-        IF (Cvar % pdofs /= 0 ) THEN
-          DO jj = 1, Cvar % pdofs
-            write (dofnumber, "(I2)") jj
-            CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                   //'re dof '//TRIM(dofnumber), ip(Cvar % ValueId + ReIndex(jj)))
-            CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                   //'im dof '//TRIM(dofnumber), ip(Cvar % ValueId + ImIndex(jj)))
-          END DO
-        END IF
-
-      END DO
-    END DO
-  END IF
-
   ! Generate values for the circuit matrix entries:
   ! -----------------------------------------------
   CALL Circuits_Apply()
@@ -246,12 +705,12 @@ CONTAINS
     slen = LEN_TRIM(cmd)
     CALL Matc( cmd, name, slen )
     READ(name(1:slen), *) n_Circuits
-
-    ALLOCATE( Circuits(n_Circuits) )
+    
+    ALLOCATE( Model%CMPLXCircuits(n_Circuits) )
+    Circuits => Model%CMPLXCircuits
 
     ! Read in number of circuit variables and their names for each circuit. 
     ! ---------------------------------------------------------------------
-    Circuit_tot_n = 0._dp
     tot_nofcomp=0
     DO p=1,n_Circuits
       ! #variables for circuit "p":
@@ -259,210 +718,33 @@ CONTAINS
       cmd = 'C.'//TRIM(i2s(p))//'.variables'
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
-
+      
       READ(name(1:slen), *) Circuits(p) % n
 
       n = Circuits(p) % n
-      ALLOCATE( Circuits(p) % body(n), Circuits(p) % names(n) )
+      ALLOCATE( Circuits(p) % ComponentIds(n), Circuits(p) % names(n) )
       ALLOCATE( Circuits(p) % sourceRe(n), Circuits(p) % sourceIm(n), Circuits(p) % sourcetype(n) )
       ALLOCATE( Circuits(p) % CircuitVariables(n), Circuits(p) % Perm(n) )
-      Circuits(p) % body = 0
+      Circuits(p) % ComponentIds = 0
       Circuits(p) % names = ' '
 
-     ! Count bodies and circuit variables in MATC
-     ! ------------------------------------------
-      Circuits(p) % n_comp = 0
-      DO i=1,Circuits(p) % n
-        cmd = 'C.'//TRIM(i2s(p))//'.name.'//TRIM(i2s(i))
-        slen = LEN_TRIM(cmd)
-        CALL Matc( cmd, name, slen )
-
-        Circuits(p) % names(i) = name(1:slen)
-
-        Circuits(p) % CircuitVariables(i) % isIvar = .FALSE.
-        Circuits(p) % CircuitVariables(i) % isVvar = .FALSE.
-
-        IF(name(1:7) == 'i_body(' .OR. name(1:7) == 'v_body(') THEN
-          DO j=8,slen
-            IF(name(j:j)==')') EXIT 
-          END DO
-          READ(name(8:j-1),*) BodyId
-
-          Circuits(p) % CircuitVariables(i) % BodyId = BodyId
-
-          IF ( .NOT. ANY(Circuits(p) % body == BodyID) ) THEN
-            Circuits(p) % n_comp = Circuits(p) % n_comp + 1
-            Circuits(p) % body(Circuits(p) % n_comp) = BodyId
-          END IF
-
-          SELECT CASE (name(1:7))
-          CASE('i_body(')
-            Circuits(p) % CircuitVariables(i) % isIvar = .TRUE.
-          CASE('v_body(')
-            Circuits(p) % CircuitVariables(i) % isVvar = .TRUE.
-          CASE DEFAULT
-            CALL Fatal('Circuits_Init()', 'Circuit variable should be either i_body or v_body!')
-          END SELECT
-        ELSE
-            Circuits(p) % CircuitVariables(i) % isIvar = .FALSE.
-            Circuits(p) % CircuitVariables(i) % isVvar = .FALSE.
-            Circuits(p) % CircuitVariables(i) % dofs = 1
-            Circuits(p) % CircuitVariables(i) % pdofs = 0
-            Circuits(p) % CircuitVariables(i) % BodyId = 0
-        END IF
-      END DO
-
-      ! create components and count the number of dofs in circuit
-      ! ---------------------------------------------------------
+      ! Count and create components:
+      ! ----------------------------
+      Circuits(p) % n_comp = CountNofCircComponents(p, n)
       ALLOCATE(Circuits(p) % Components(Circuits(p) % n_comp))
       tot_nofcomp=tot_nofcomp+Circuits(p) % n_comp
+      
+      ! Read circuit variables from MATC and Components from sif
+      ! --------------------------------------------------------
+      CALL ReadCircuitVariables(p)
+      CALL ReadComponents(p)
+      CALL AddComponentValuesToLists(p)
+      CALL AddBareCircuitVariables(p)
 
-      Circuits(p) % CvarDofs = 0
-      k = 0
-      DO CompId=1,Circuits(p) % n_comp
-        Comp => Circuits(p) % Components(CompId)
-        Comp % nofcnts = 0
-        Comp % BodyId = Circuits(p) % body(CompId)
-        Comp % ivar => NULL()
-        Comp % vvar => NULL()
-        
-        DO i=1,Circuits(p) % n
-          Cvar => Circuits(p) % CircuitVariables(i)
+      ! Read in the coefficient matrices for the circuit equations:
+      ! Ax' + Bx = source:
+      ! ------------------------------------------------------------
 
-          IF (Comp % BodyId == Cvar % BodyId) THEN
-            IF (Cvar % isIvar) THEN
-              Comp % ivar => Cvar
-              Cvar % Component => Comp
-              CYCLE
-            ELSE IF (Cvar % isVvar) THEN
-              Comp % vvar => Cvar
-              Cvar % Component => Comp
-              CYCLE
-            END IF
-          END IF
-        END DO
-
-        IF (.NOT. ASSOCIATED(Comp % ivar) ) THEN
-          CALL FATAL('Circuits_Init', 'Current Circuit Variable is not found for Body '//TRIM(i2s(BodyId)))
-        ELSE IF (.NOT. ASSOCIATED(Comp % vvar) ) THEN
-          CALL FATAL('Circuits_Init', 'Voltage Circuit Variable is not found for Body '//TRIM(i2s(BodyId)))
-        END IF
-
-        CircuitVariableBody => Model % Bodies (Comp % BodyId)
-
-        BodyParams => CircuitVariableBody % Values
-        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('Circuits_Init', 'Body Parameters not found!')
-        Comp % CoilType = GetString(BodyParams, 'Coil Type', Found)
-        IF (.NOT. Found) CALL Fatal ('Circuits_Init', 'Coil Type not found!')
-        
-        Comp % i_multiplier_re = GetConstReal(BodyParams, 'Current Multiplier re', Found)
-        IF (.NOT. Found) Comp % i_multiplier_re = 0._dp
-        Comp % i_multiplier_im = GetConstReal(BodyParams, 'Current Multiplier im', Found)
-        IF (.NOT. Found) Comp % i_multiplier_im = 0._dp
-        
-        SELECT CASE (Comp % CoilType) 
-        CASE ('stranded')
-          Comp % nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
-          IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
-
-          Comp % ElBoundary = GetInteger(BodyParams, 'Electrode Boundary 1', Found)
-          IF (.NOT. Found) THEN 
-            Comp % ElArea = GetConstReal(BodyParams, 'Electrode Area', Found)
-            IF (.NOT. Found) THEN
-              CALL Fatal('Circuits_Init','Electrode Boundary 1 or Electrode Area not found!')
-            END IF
-          ELSE
-            ! Compute Electrode Area Automatically:
-            ! -------------------------------------
-!              DO t=1,GetNOFBoundaryElements()
-!              Element => GetBoundaryElement(t)
-          END IF
-          
-          Comp % N_j = Comp % nofturns / Comp % ElArea
-
-          ! Stranded coil has current and voltage 
-          ! variables (which both have a dof):
-          ! ------------------------------------
-          Comp % ivar % dofs = 1
-          Comp % vvar % dofs = 1
-          Comp % ivar % pdofs = 0
-          Comp % vvar % pdofs = 0
-
-        CASE ('massive')
-          ! Massive coil has current and voltage 
-          ! variables (which both have a dof):
-          ! ------------------------------------
-          Comp % ivar % dofs = 1
-          Comp % vvar % dofs = 1
-          Comp % ivar % pdofs = 0
-          Comp % vvar % pdofs = 0
-
-        CASE ('foil winding')
-          Comp % polord = GetInteger(BodyParams, 'Foil Winding Voltage Polynomial Order', Found)
-          IF (.NOT. Found) Comp % polord = 2
-
-          ! Foil winding has current and voltage 
-          ! variables. Current has one dof and 
-          ! voltage has a polynom for describing the 
-          ! global voltage. The polynom has 1+"polynom order"
-          ! dofs. Thus voltage variable has 1+1+"polynom order"
-          ! dofs (V=V0+V1*alpha+V2*alpha^2+..):
-          ! dofs:
-          ! V, V0, V1, V2, ...
-          ! ------------------------------------
-          Comp % ivar % dofs = 1
-          Comp % ivar % pdofs = 0
-          Comp % vvar % dofs = Comp % polord + 2
-          ! polynom dofs:
-          ! -------------
-          Comp % vvar % pdofs = Comp % polord + 1
-
-          Comp % coilthickness = GetConstReal(BodyParams, 'Coil Thickness', Found)
-          IF (.NOT. Found) CALL Fatal('Circuits_Init','Coil Thickness not found!')
-
-          Comp % nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
-          IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
- 
-        END SELECT
-        CALL AddVariableToCircuit(Circuits(p), Comp % ivar, p)
-        CALL AddVariableToCircuit(Circuits(p), Comp % vvar, p)
-      END DO
-
-      ! add variables that are not associated to components (bodies)
-      DO i=1,Circuits(p) % n
-        Cvar => Circuits(p) % CircuitVariables(i)
-        IF (Cvar % isIvar .OR. Cvar % isVvar) CYCLE
-        CALL AddVariableToCircuit(Circuits(p), Circuits(p) % CircuitVariables(i), p)
-      END DO
-      k = k + 2 * Circuits(p) % CvarDofs
-    END DO
-
-    ! Communicate component numbers and variable dofs to bodies:
-    ! ----------------------------------------------------------
-    DO p=1,n_Circuits
-      DO CompId=1,Circuits(p) % n_comp
-   
-        Comp => Circuits(p) % Components(CompId)   
-
-        CircuitVariableBody => Model % Bodies (Comp % BodyId)
-
-        BodyParams => CircuitVariableBody % Values
-        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('Circuits_Init', 'Body Parameters not found!')
-
-        CALL listAddInteger(BodyParams, 'Component', CompId)
-        CALL listAddInteger(BodyParams, 'Circuit Voltage Variable Id', Comp % vvar % valueId)
-        CALL listAddInteger(BodyParams, 'Circuit Voltage Variable dofs', Comp % vvar % dofs)
-        CALL listAddInteger(BodyParams, 'Circuit Current Variable Id', Comp % ivar % valueId)
-        CALL listAddInteger(BodyParams, 'Circuit Current Variable dofs', Comp % ivar % dofs)
-        CALL listAddConstReal(BodyParams, 'Stranded Coil N_j', Comp % N_j)
-        Model % Bodies(Comp % BodyId) % Values => BodyParams
-      END DO
-    END DO
-
-    ! Read in the coefficient matrices for the circuit equations:
-    ! Ax' + Bx = source:
-    ! ------------------------------------------------------------
-    DO p=1,n_Circuits
       n = Circuits(p) % n
       ALLOCATE( Circuits(p) % A(n,n), Circuits(p) % B(n,n), &
                 Circuits(p) % Mre(n,n), Circuits(p) % Mim(n,n)  )
@@ -541,112 +823,10 @@ CONTAINS
     ! Store values of independent variables (e.g. currents & voltages) from
     ! previous timestep here:
     ! ---------------------------------------------------------------------
-    ALLOCATE( ip(Circuit_tot_n) ); ip = 0._dp
+    ALLOCATE( ip(Circuit_tot_n), ipt(Circuit_tot_n) ); ip = 0._dp
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_Init
 !------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE CreateCircuitVariable (Variable, Component, isIvar, dofs, valueId)
-!------------------------------------------------------------------------------
-    TYPE(CircuitVariable_t), POINTER :: Variable
-    LOGICAL :: isIvar, isVvar
-    INTEGER, OPTIONAL :: valueId
-    INTEGER, OPTIONAL :: dofs
-    TYPE(Component_t), POINTER :: Component
-    
-    IF (.NOT. ASSOCIATED(Variable) ) THEN
-      ALLOCATE(Variable)
-    END IF
-
-    Variable % isIvar = isIvar
-    Variable % isVvar = .NOT. isIvar
-    Variable % BodyId = BodyId
-    IF (PRESENT(valueId)) THEN
-      Variable % valueId = valueId
-    ELSE
-      Variable % valueId = 0
-    END IF
-    IF (PRESENT(dofs))  THEN
-      Variable % dofs = dofs
-    ELSE
-      Variable % dofs = 0
-    END IF
-    Variable % Component => Component
-!------------------------------------------------------------------------------
-  END SUBROUTINE CreateCircuitVariable
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-  SUBROUTINE AddVariableToCircuit(Circuit, Variable, k)
-!------------------------------------------------------------------------------
-    TYPE(Circuit_t) :: Circuit
-    TYPE(CircuitVariable_t) :: Variable
-    INTEGER :: k, Owner=-1
-  
-    IF(k==1) THEN
-      IF(Owner<=0) Owner = MAX(Parenv % PEs/2,1)
-      Owner = Owner - 1
-      Variable % Owner = Owner
-variable % owner = 0
-    ELSE
-      IF(Owner<=ParEnv % PEs/2) Owner = ParEnv % PEs
-      Owner = Owner - 1
-      Variable % Owner = Owner
-variable % owner = ParEnv % PEs-1
-    END IF
-
-    IF (Circuit % UsePerm) THEN
-      Variable % valueId = Circuit % Perm(Circuit_tot_n + 1)
-      Variable % ImValueId = Variable % valueId + 1
-    ELSE
-      Variable % valueId = Circuit_tot_n + 1
-      Variable % ImValueId = Circuit_tot_n + 2
-    END IF
-    
-    Circuit_tot_n = Circuit_tot_n + 2*Variable % dofs
-!------------------------------------------------------------------------------
-  END SUBROUTINE AddVariableToCircuit
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-   SUBROUTINE AddToElementY(Element,ElementY,Tcoef,nn,nd)
-!------------------------------------------------------------------------------
-    INTEGER :: nn, nd, ind
-    REAL(KIND=dp) :: Tcoef(nn), ElementY
-    TYPE(Element_t) :: Element
-
-    REAL(KIND=dp) :: Basis(nn), DetJ,localC,gradv(3)
-    REAL(KIND=dp) :: dBasisdx(nn,3),wBase(nd),w(3)
-    INTEGER :: t,Indexes(nd)
-    LOGICAL :: stat
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(GaussIntegrationPoints_t) :: IP
-
-    CALL GetElementNodes(Nodes)
-    CALL GetLocalSolution(Wbase,'W')
-    ! Numerical integration:
-    ! ----------------------
-    IP = GaussPoints(Element)
-    DO t=1,IP % n
-      ! Basis function values & derivatives at the integration point:
-      !--------------------------------------------------------------
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis,dBasisdx )
-      localC = SUM(Tcoef(1:nn) * Basis(1:nn))
-      gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
-
-      ! computing the stiff term Vi(sigma grad v0, grad si):
-      ! ----------------------------------------------------
-      ElementY = ElementY + IP % s(t)*detJ*localC*SUM(gradv*gradv) 
-    END DO
-
-!------------------------------------------------------------------------------
-   END SUBROUTINE AddToElementY
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
   SUBROUTINE CompArea(A,Element,nn,nd)
@@ -685,7 +865,8 @@ variable % owner = ParEnv % PEs-1
     nm =  Asolver % Matrix % NumberOfRows
 
     CM => AllocateMatrix()
-
+    Model%CircuitMatrix=>CM
+    
     CM % Format = MATRIX_CRS
 !    cm % format = matrix_list ! xxxx
     Asolver %  Matrix % AddMatrix => CM
@@ -706,7 +887,7 @@ variable % owner = ParEnv % PEs-1
         cnt  = 0
         DO j=1,GetNOFACtive()
            Element => GetActiveElement(j)
-           IF(Circuits(p) % Components(i) % BodyId == Element % BodyId) &
+           IF(ElAssocToComp(Element, Circuits(p) % Components(i))) &
              cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
         END DO
         CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
@@ -736,14 +917,16 @@ variable % owner = ParEnv % PEs-1
 
     DO p = 1,n_Circuits
       DO i=1,Circuits(p) % n
-        Cvar => Circuits(p) % CircuitVariables(i)
-
         cnt  = 0
-        DO j=1,GetNOFACtive()
-           Element => GetActiveElement(j)
-           IF(Cvar % BodyId == Element % BodyId) &
-             cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
-        END DO
+        Cvar => Circuits(p) % CircuitVariables(i)
+        IF(ASSOCIATED(CVar%Component)) THEN
+          DO j=1,GetNOFACtive()
+             Element => GetActiveElement(j)
+               IF(ElAssocToCvar(Element, Cvar)) THEN
+                 cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
+               END IF
+          END DO
+        END IF
         CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
                 MPI_MAX,ASolver % Matrix % Comm,j)
 
@@ -804,9 +987,9 @@ endif
     ! ... + the terms including reference to @a/@t:
     ! ---------------------------------------------
     DO p=1,n_Circuits
-      DO CompId=1,Circuits(p) % n_comp
+      DO CompInd=1,Circuits(p) % n_comp
         Done = .FALSE.
-        Comp => Circuits(p) % Components(CompId)
+        Comp => Circuits(p) % Components(CompInd)
         Cvar => Comp % vvar
         RowId = Cvar % ValueId + nm
         ColId = Cvar % ValueId + nm
@@ -839,24 +1022,24 @@ endif
 !print *, "Active elements", ParEnv % Mype, ":", GetNOFActive()
         DO q=GetNOFActive(),1,-1
           Element => GetActiveElement(q)
-          IF (Element % BodyId == Comp % BodyId) THEN
+          IF (ElAssocToComp(Element, Comp)) THEN
             nn = GetElementNOFNodes(Element)
             nd = GetElementNOFDOFs(Element,ASolver)
             SELECT CASE (Comp % CoilType)
             CASE('stranded')
-              CALL CountAndCreate_Vemf(Element,nn,nd,RowId,Cnts,Jsind=ColId)
+              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Jsind=ColId)
             CASE('massive')
-              CALL CountAndCreate_Vemf(Element,nn,nd,RowId,Cnts)
+              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts)
             CASE('foil winding')
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )
-                CALL CountAndCreate_Vemf(Element,nn,nd,2*j+RowId,Cnts,dofsdone=dofsdone)
+                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,dofsdone=dofsdone)
               END DO
             END SELECT
           END IF
         END DO
 !        Comp % nofcnts = SUM(Cnts) - temp
-!        print *, ParEnv % Mype, "CompId:", CompId, "Comp % nofcnts", Comp % nofcnts
+!        print *, ParEnv % Mype, "CompInd:", CompInd, "Comp % nofcnts", Comp % nofcnts
       END DO
     END DO
 
@@ -908,9 +1091,9 @@ endif
     ! ... + the terms including reference to @a/@t:
     ! ---------------------------------------------
     DO p=1,n_Circuits
-      DO CompId = 1, Circuits(p) % n_comp
+      DO CompInd = 1, Circuits(p) % n_comp
         Done = .FALSE.
-        Comp => Circuits(p) % Components(CompId)
+        Comp => Circuits(p) % Components(CompInd)
         Cvar => Comp % vvar
         RowId = Comp % vvar % ValueId + nm
         ColId = Comp % ivar % ValueId + nm
@@ -948,24 +1131,24 @@ endif
 !print *, "Active elements ", ParEnv % Mype, ":", GetNOFActive()
         DO q=GetNOFActive(),1,-1
           Element => GetActiveElement(q)
-          IF (Element % BodyId == Comp % BodyId) THEN
+          IF (ElAssocToComp(Element, Comp)) THEN
             nn = GetElementNOFNodes(Element)
             nd = GetElementNOFDOFs(Element,ASolver)
             SELECT CASE (Comp % CoilType)
             CASE('stranded')
-              CALL CountAndCreate_Vemf(Element,nn,nd,RowId,Cnts,indCol=ColId,Cols=Cols,Jsind=ColId)
+              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Cols=Cols,Jsind=ColId)
             CASE('massive')
-              CALL CountAndCreate_Vemf(Element,nn,nd,RowId,Cnts,Cols=Cols)
+              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Cols=Cols)
             CASE('foil winding')
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )
-                CALL CountAndCreate_Vemf(Element,nn,nd,2*j+RowId,Cnts,Cols=Cols,dofsdone=dofsdone)
+                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,Cols=Cols,dofsdone=dofsdone)
               END DO
             END SELECT
           END IF
         END DO
 !        Comp % nofcnts = SUM(Cnts) - temp
-!        print *, ParEnv % Mype, "CompId:", CompId, "Coil Type:", Comp % CoilType, &
+!        print *, ParEnv % Mype, "CompInd:", CompInd, "Coil Type:", Comp % CoilType, &
 !                 "Comp % BodyId:", Comp % BodyId, "Comp % nofcnts", Comp % nofcnts
 
       END DO
@@ -1097,6 +1280,96 @@ endif
    END SUBROUTINE CountAndCreate_Vemf
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountAndCreateStranded(Element,nn,nd,i,Cnts,Cols,Jsind)
+!------------------------------------------------------------------------------
+    TYPE(Element_t) :: Element
+    INTEGER :: nn, nd
+    OPTIONAL :: Cols
+    INTEGER :: Cols(:), Cnts(:)
+    INTEGER :: p,i,j,Indexes(nd)
+    INTEGER, OPTIONAL :: Jsind
+
+    nd = GetElementDOFs(Indexes,Element,ASolver)
+    DO p=1,nd
+      j = Indexes(p)
+      IF(.NOT.Done(j)) THEN
+        Done(j) = .TRUE.
+        j = ReIndex(PS(j))
+        IF(PRESENT(Cols)) THEN
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j) 
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, Jsind)
+!          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, Jsind)
+        ELSE
+          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
+          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
+!          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
+        END IF
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountAndCreateStranded
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountAndCreateMassive(Element,nn,nd,i,Cnts,Cols)
+!------------------------------------------------------------------------------
+    TYPE(Element_t) :: Element
+    INTEGER :: nn, nd
+    OPTIONAL :: Cols
+    INTEGER :: Cols(:), Cnts(:)
+    INTEGER :: p,i,j,Indexes(nd)
+
+    nd = GetElementDOFs(Indexes,Element,ASolver)
+    DO p=1,nd
+      j = Indexes(p)
+      IF(.NOT.Done(j)) THEN
+        Done(j) = .TRUE.
+        j = ReIndex(PS(j))
+        IF(PRESENT(Cols)) THEN
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j)
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, i)
+        ELSE
+          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
+          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
+        END IF
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountAndCreateMassive
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,i,Cnts,Cols,dofsdone)
+!------------------------------------------------------------------------------
+    TYPE(Element_t) :: Element
+    INTEGER :: nn, nd
+    OPTIONAL :: Cols
+    INTEGER :: Cols(:), Cnts(:)
+    INTEGER :: p,i,j,Indexes(nd)
+    LOGICAL :: dofsdone
+
+    nd = GetElementDOFs(Indexes,Element,ASolver)
+    DO p=1,nd
+      j = Indexes(p)
+      IF(.NOT.Done(j)) THEN
+        Done(j) = dofsdone
+        j = ReIndex(PS(j))
+        IF(PRESENT(Cols)) THEN
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j)
+          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, i)
+        ELSE
+          CALL CountCmplxMatElement(Rows, Cnts, i, 1)
+          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
+        END IF
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE CountAndCreateFoilWinding
+!------------------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
   SUBROUTINE Circuits_Apply()
 !------------------------------------------------------------------------------
@@ -1169,8 +1442,8 @@ endif
     ! densities as source for the vector potential:
     ! --------------------------------------------------------------------------
     DO p=1,n_Circuits
-      DO CompID = 1, Circuits(p) % n_comp
-        Comp => Circuits(p) % Components(CompId)
+      DO CompInd = 1, Circuits(p) % n_comp
+        Comp => Circuits(p) % Components(CompInd)
         Cvar => Comp % vvar
         RowId = Comp % vvar % ValueId + nm
         ImRowId = RowId+1
@@ -1217,13 +1490,13 @@ endif
 
         DO q=GetNOFActive(),1,-1
           Element => GetActiveElement(q)
-          IF (Element % BodyId == Comp % BodyId) THEN
-            BodyParams => GetBodyParams( Element )
-            IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('Circuits_apply', 'Body Parameters not found')
+          IF (ElAssocToComp(Element, Comp)) THEN
+            CompParams => GetComponentParams( Element )
+            IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('Circuits_apply', 'Component parameters not found')
 
-            CoilType = GetString(BodyParams, 'Coil Type', Found)
+            CoilType = GetString(CompParams, 'Coil Type', Found)
             IF (.NOT. Found) CoilType = ''
-
+            
             nn = GetElementNOFNodes(Element)
             nd = GetElementNOFDOFs(Element,ASolver)
             CALL GetConductivity(Element, Tcoef, nn)
@@ -1332,26 +1605,6 @@ endif
   END SUBROUTINE GetConductivity
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-  FUNCTION ReIndex(Ind)
-!------------------------------------------------------------------------------
-    Integer :: Ind, ReIndex
-
-    ReIndex = 2 * Ind - 1
-!------------------------------------------------------------------------------
-  END FUNCTION ReIndex
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  FUNCTION ImIndex(Ind)
-!------------------------------------------------------------------------------
-    Integer :: Ind, ImIndex
-
-    ImIndex = 2 * Ind
-!------------------------------------------------------------------------------
-  END FUNCTION ImIndex
-!------------------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd)
@@ -1359,7 +1612,7 @@ endif
     INTEGER :: nn, nd
     COMPLEX(KIND=dp) :: Tcoef(nn)
     TYPE(Element_t) :: Element
-    TYPE(Component_t) :: Comp
+    TYPE(CMPLXComponent_t) :: Comp
 
     REAL(KIND=dp) :: Basis(nn), DetJ, x
     REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn), w(3)
@@ -1400,16 +1653,16 @@ endif
       ! ----------------------
       
       CALL AddToCmplxMatrixElement(CM, RowId, ColId, &
-            REAL(-Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC), &
-           AIMAG(-Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC))
+            REAL(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC), &
+           AIMAG(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC))
             
       DO p=1,nd
 
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
           CALL AddToCmplxMatrixElement(CM, RowId, ReIndex(PS(Indexes(p))), &
-                 REAL(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)), & 
-                AIMAG(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)))
+                 REAL(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC), & 
+                AIMAG(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC))
 
 !          IF (.NOT. Adirichlet(ReIndex(PS(indexes(p))))) THEN
             ! source: 
@@ -1438,7 +1691,7 @@ endif
     INTEGER :: nn, nd
     COMPLEX(KIND=dp) :: Tcoef(nn)
     TYPE(Element_t) :: Element
-    TYPE(Component_t) :: Comp
+    TYPE(CMPLXComponent_t) :: Comp
 
     REAL(KIND=dp) :: Basis(nn), DetJ, x
     REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn),w(3)
@@ -1504,7 +1757,7 @@ endif
     INTEGER :: nn, nd
     COMPLEX(KIND=dp) :: Tcoef(:), C, value
     TYPE(Element_t) :: Element
-    TYPE(Component_t) :: Comp
+    TYPE(CMPLXComponent_t) :: Comp
 
     REAL(KIND=dp) :: Basis(nn), DetJ, &
                      localAlpha, localV, localVtest, x, circ_eq_coeff, grads_coeff
@@ -1634,7 +1887,99 @@ endif
  END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
 
-
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamics2DHarmonic
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+   
+   USE DefUtils
+   USE CircuitsMod
+
+   IMPLICIT NONE
+   
+   TYPE(Model_t) :: Model
+   TYPE(Solver_t) :: Solver
+   REAL(KIND=dp) :: dt
+   LOGICAL :: Transient
+
+   REAL(KIND=dp), POINTER :: LagrangeValues(:)
+   TYPE(Variable_t), POINTER :: LagrangeVar
+   REAL(KIND=dp), ALLOCATABLE  :: ip(:), ipt(:)
+   INTEGER :: nm
+   
+   TYPE(Solver_t), POINTER :: ASolver
+
+   CHARACTER(LEN=MAX_NAME_LEN) :: dofnumber
+   INTEGER :: i,p,jj,j
+   LOGICAL :: Found
+   TYPE(CMPLXCircuitVariable_t), POINTER :: CVar
+
+   TYPE(Matrix_t), POINTER :: CM    
+   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
+   TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
+
+   Circuit_tot_n => Model%Circuit_tot_n
+   n_Circuits => Model%n_Circuits
+   CM => Model%CircuitMatrix
+   Circuits => Model%CMPLXCircuits
+   
+    ! Look for the solver we attach the circuit equations to:
+    ! -------------------------------------------------------
+    Found = .False.
+    DO i=1,Model % NumberOfSolvers
+      Asolver => Model % Solvers(i)
+      IF(ListCheckPresent(Asolver % Values,'Export Lagrange Multiplier')) THEN 
+        Found = .True. 
+        EXIT
+      END IF
+    END DO
+    
+    nm =  Asolver % Matrix % NumberOfRows
+
+    ! Circuit variable values from previous timestep:
+    ! -----------------------------------------------
+    ALLOCATE(ip(circuit_tot_n), ipt(circuit_tot_n))
+    ip = 0._dp
+    ipt = 0._dp
+    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
+    IF(ASSOCIATED(LagrangeVar)) THEN
+      IF(ParEnv % PEs>1) THEN
+        DO i=1,SIZE(LagrangeVar % Values)
+          IF( CM % RowOwner(nm+i)==Parenv%myPE) ipt(i) = LagrangeVar%Values(i)
+        END DO
+        CALL MPI_ALLREDUCE(ipt,ip,circuit_tot_n, MPI_DOUBLE_PRECISION, &
+                   MPI_SUM, ASolver % Matrix % Comm, j)
+      ELSE
+        ip(1:SIZE(LagRangeVar % Values)) = LagrangeVar % Values
+      END IF
+    END IF
+     
+    ! Export circuit & dynamic variables for "SaveScalars":
+    ! -----------------------------------------------------
+
+    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
+    
+    DO p=1,n_Circuits
+      DO i=1,Circuits(p) % n
+        Cvar => Circuits(p) % CircuitVariables(i)
+        
+        CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' re', ip(Cvar % ValueId))
+        CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId))
+
+        IF (Cvar % pdofs /= 0 ) THEN
+          DO jj = 1, Cvar % pdofs
+            write (dofnumber, "(I2)") jj
+            CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
+                                   //'re dof '//TRIM(dofnumber), ip(Cvar % ValueId + ReIndex(jj)))
+            CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
+                                   //'im dof '//TRIM(dofnumber), ip(Cvar % ValueId + ImIndex(jj)))
+          END DO
+        END IF
+
+      END DO
+    END DO
+END SUBROUTINE CircuitsOutput
