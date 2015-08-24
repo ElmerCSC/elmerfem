@@ -1162,7 +1162,7 @@ END SUBROUTINE GetMaxDefs
        MovingNode(:), StayingNode(:)
    LOGICAL :: Found, DisCont, GreedyBulk, GreedyBC, Debug, DoubleBC, UseTargetBodies, &
        UseConsistantBody, LeftHit, RightHit, Moving, Moving2, Set, Parallel
-   INTEGER :: i,j,k,n,m,t,bc
+   INTEGER :: i,j,k,l,n,m,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        NoBulkElems, NoBoundElems, NoParentElems, NoMissingElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
@@ -1198,7 +1198,8 @@ END SUBROUTINE GetMaxDefs
        i = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous BC',Found )
        j = ListGetInteger( Model % BCs(bc) % Values,'Periodic BC',Found )
        k = ListGetInteger( Model % BCs(bc) % Values,'Mortar BC',Found )
-       DoubleBC = ( i + j + k > 0 )
+       l = ListGetInteger( Model % BCs(bc) % Values,'Contact BC',Found )
+       DoubleBC = ( i + j + k + l > 0 )
        ActiveBCs = ActiveBCs + 1
        BCList => Model % BCs(bc) % Values
      END IF
@@ -1650,6 +1651,9 @@ END SUBROUTINE GetMaxDefs
            IF( Found ) EXIT
            DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
                'Periodic BC',Found )
+           IF( Found ) EXIT
+           DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
+               'Contact BC',Found )
            IF( Found ) EXIT
          END IF
        END DO
@@ -5380,6 +5384,11 @@ END SUBROUTINE GetMaxDefs
     !--------------------------------------------------------------
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(Projector,.TRUE.)
+    CALL Info('LevelProjector','Number of rows in projector: '&
+        //TRIM(I2S(Projector % NumberOfRows)),Level=12)
+    CALL Info('LevelProjector','Number of entries in projector: '&
+        //TRIM(I2S(SIZE(Projector % Values))),Level=12)
+  
 
     IF(ASSOCIATED(Projector % Child)) THEN
       CALL List_toCRSMatrix(Projector % Child)
@@ -6857,7 +6866,7 @@ END SUBROUTINE GetMaxDefs
       TYPE(Variable_t), POINTER :: TimestepVar
 
       ! These are used temporarely for debugging purposes
-      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd
+      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, Nslave, Nmaster
       LOGICAL :: SaveElem, DebugElem
       CHARACTER(LEN=20) :: FileName
 
@@ -6913,6 +6922,8 @@ END SUBROUTINE GetMaxDefs
       TotTrueArea = 0.0_dp
       Point = 0.0_dp
       MaxSubTriangles = 0
+      Nslave = 0
+      Nmaster = 0
 
 
       DO ind=1,BMesh1 % NumberOfBulkElements
@@ -7406,6 +7417,7 @@ END SUBROUTINE GetMaxDefs
                   IF( DebugElem ) PRINT *,'Vals:',val
 
                   DO i=1,n
+                    Nslave = Nslave + 1
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                           InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val ) 
 
@@ -7418,6 +7430,7 @@ END SUBROUTINE GetMaxDefs
                   DO i=1,nM
                     IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
 
+                    Nmaster = Nmaster + 1
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                         InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )                   
 
@@ -7570,6 +7583,12 @@ END SUBROUTINE GetMaxDefs
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Minimum relative discrepancy in areas (element: ',MinErrInd,'):',MinErr-1.0_dp 
       CALL Info('LevelProjector',Message,Level=8)
+
+      CALL Info('LevelProjector','Number of slave entries: '&
+          //TRIM(I2S(Nslave)),Level=10)
+      CALL Info('LevelProjector','Number of master entries: '&
+          //TRIM(I2S(Nmaster)),Level=10)
+
 
 
     END SUBROUTINE AddProjectorWeakGeneric
@@ -8757,12 +8776,9 @@ END SUBROUTINE GetMaxDefs
     Y0 = -0.5 * m13 / m11
     rad = SQRT( x0**2 + y0**2 + m14/m11 )
 
-    PRINT *,'Radius of cylinder',rad
-    !PRINT *,'Center point in local coordinates:',x0,y0
-
     Coord = x0 * Tangent1 + y0 * Tangent2
 
-    PRINT *,'Center point in cartesian coordinates:',Coord
+    !PRINT *,'Center point in cartesian coordinates:',Coord
     
     CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
     CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
@@ -8811,7 +8827,7 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: x1_min(3),x1_max(3),x2_min(3),x2_max(3),&
         x1r_min(3),x1r_max(3),x2r_min(3),x2r_max(3)
     REAL(KIND=dp) :: x(3), xcyl(3),rad2deg,F1min,F1max,F2min,F2max,dFii1,dFii2,eps_rad,&
-        err1,err2,dF,Fii,Nsymmetry,fmin,fmax,DegOffset,rad,alpha,x0(3),xtmp(3),&
+        err1,err2,dF,Fii,Fii0,Nsymmetry,fmin,fmax,DegOffset,rad,alpha,x0(3),xtmp(3),&
         Normal(3), Tangent1(3), Tangent2(3) 
     REAL(KIND=dp), POINTER :: TmpCoord(:)
     REAL(KIND=dp),ALLOCATABLE :: Angles(:)
@@ -8848,10 +8864,10 @@ END SUBROUTINE GetMaxDefs
     GotNormal = GotNormal .OR. Found
     Normal(3) = ListGetCReal( BParams,'Rotational Projector Normal Z',Found ) 
     GotNormal = GotNormal .OR. Found
+
     IF( GotNormal ) THEN
       CALL TangentDirections( Normal,Tangent1,Tangent2 )
     END IF
-
 
     ! Go trough master (k=1) and target mesh (k=2)
     !--------------------------------------------
@@ -8968,9 +8984,13 @@ END SUBROUTINE GetMaxDefs
         CALL Info('RotationalInterfaceMeshes','Cylindrical interface seems to be a full circle',&
             Level=6)
       ELSE
-        IF( Cylindrical ) THEN
-          CALL Info('RotationalInterfaceMeshes','Cylindrical interface not full circle',&
-              Level=6)
+        IF( Cylindrical .AND. k == 2 ) THEN
+          CALL Info('RotationalInterfaceMeshes','Moving the 2nd mesh discontinuity to same angle',Level=6)
+          DO j=1,PMesh % NumberOfNodes
+            IF( PMesh % Nodes % x(j) < Fii ) PMesh % Nodes % x(j) = &
+                PMesh % Nodes % x(j) + 360.0_dp
+          END DO
+          
         ELSE IF( Hit180 ) THEN
           IF( .NOT. Hit0 ) THEN
             Fii = 0.0_dp
@@ -8979,12 +8999,13 @@ END SUBROUTINE GetMaxDefs
           ELSE IF( .NOT. Hit90 ) THEN
             Fii = 90.0
           END IF
-          
+
           DO j=1,PMesh % NumberOfNodes
             IF( PMesh % Nodes % x(j) < Fii ) PMesh % Nodes % x(j) = &
                 PMesh % Nodes % x(j) + 360.0_dp
           END DO
           WRITE( Message,'(A,F8.3)') 'Moving discontinuity of angle to: ',Fii
+          Fii0 = Fii
           CALL Info('RotationalInterfaceMesh',Message,Level=6)
         END IF
       END IF
@@ -9398,8 +9419,6 @@ END SUBROUTINE GetMaxDefs
         ! Planeness is one if all the normals have the same direction
         Planeness = Length / RefSum 
         
-        PRINT *,'PlaneNormal:',j,PlaneNormal(:,1),Length,Planeness
-
         ! Save the key parameters of the first mesh
         IF( j == 1 ) THEN          
           PlaneNormal1 = PlaneNormal
@@ -9783,6 +9802,14 @@ END SUBROUTINE GetMaxDefs
     Plane = ListGetLogical( BC, &
         'Plane Projector',GotIt )
 
+    IF( Radial ) CALL Info('PeriodicProjector','Enforcing > Radial Projector <',Level=12)
+    IF( Sliding ) CALL Info('PeriodicProjector','Enforcing > Sliding Projector <',Level=12)
+    IF( Cylindrical ) CALL Info('PeriodicProjector','Enforcing > Cylindrical Projector <',Level=12)
+    IF( Rotational ) CALL Info('PeriodicProjector','Enforcing > Rotational Projector <',Level=12)
+    IF( Flat ) CALL Info('PeriodicProjector','Enforcing > Flat Projector <',Level=12)
+    IF( Plane ) CALL Info('PeriodicProjector','Enforcing > Plane Projector <',Level=12)
+
+
     NodeScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) THEN
       IF( AntiRadial ) THEN
@@ -9844,6 +9871,17 @@ END SUBROUTINE GetMaxDefs
           ! still cannot be used for creating the projector
           DoEdges = ( Mesh % NumberOfEdges > 0 .AND. &
               Mesh % MeshDim == 3 .AND. Dim == 3 )
+
+          ! Ensure that there is no p-elements that made us think that we have edges
+          IF( DoEdges ) THEN
+            DO i=1,Mesh % NumberOfBulkElements
+              IF(isPelement(Mesh % Elements(i))) THEN
+                DoEdges = .FALSE.
+                CALL Info('PeriodicProjector','Edge projector will not be created for p-element mesh',Level=10)
+                EXIT
+              END IF
+            END DO
+          END IF
         END IF
       END IF
     END IF

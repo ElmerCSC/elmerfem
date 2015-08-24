@@ -2523,7 +2523,7 @@ CONTAINS
 
     TYPE(Model_t), POINTER :: Model 
     TYPE(ValueList_t), POINTER :: List, ListB
-    INTEGER :: i,j
+    INTEGER :: i,j,k
     LOGICAL :: Found, Flag
 
 
@@ -2532,9 +2532,10 @@ CONTAINS
     DO i=1,Model % NumberOfBCs
       List => Model % BCs(i) % Values
       j = ListGetInteger( List,'Mortar BC',Found )
-      IF( j == 0 ) CYCLE
-      ListB => Model % BCs(j) % Values
+      IF(j==0) j = ListGetInteger( List,'Contact BC',Found )
+      IF(j==0) CYCLE
 
+      ListB => Model % BCs(j) % Values
       CALL ListCompareAndCopy( List, ListB,'Mass Consistent Normals',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
           'Added > Mass Consistent Normals < to BC '//TRIM(I2S(j)),Level=10)
