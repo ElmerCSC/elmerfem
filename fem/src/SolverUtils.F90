@@ -2557,7 +2557,6 @@ CONTAINS
          END IF
 
 
-
          DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
            k = ActiveProjector % Cols(j)
 
@@ -6291,7 +6290,7 @@ CONTAINS
 
     TYPE(Variable_t), POINTER :: NrmVar
 
-    LOGICAL, ALLOCATABLE :: Done(:)
+    LOGICAL, ALLOCATABLE :: Done(:), MasterBC(:)
   
     REAL(KIND=dp), POINTER :: SetNormal(:,:), Rot(:,:)
 
@@ -6563,12 +6562,20 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   normalize 
 !------------------------------------------------------------------------------
-    IF ( NumberOfBoundaryNodes>0 .AND. CoordinateSystemDimension() > 2 ) THEN
+    IF ( NumberOfBoundaryNodes>0 ) THEN
 
-      LhsSystem = ListGetLogicalAnyBC( Model,'Lhs Tangent Vectors') 
-
-      PRINT *,'Lhs System Any',LhsSystem
-
+      ALLOCATE( MasterBC( Model % NumberOfBCs ) )
+      MasterBC = .FALSE.
+      DO i = 1, Model % NumberOfBcs
+        j = ListGetInteger( Model % BCs(i) % Values,'Mortar BC',Found )
+        IF( .NOT. Found ) THEN
+          j = ListGetInteger( Model % BCs(i) % Values,'Contact BC',Found )
+        END IF
+        IF( j == 0 .OR. j > Model % NumberOfBCs ) CYCLE
+        MasterBC( j ) = .TRUE.
+      END DO
+      LhsSystem = ANY( MasterBC )
+      
       IF( LhsSystem ) THEN
         ALLOCATE( LhsTangent( Model % NumberOfNodes ) )
         LhsTangent = .FALSE.
@@ -6583,14 +6590,8 @@ CONTAINS
           
           DO i=1,Model % NumberOfBCs
             IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
-              MassConsistent=ListGetLogical(Model % BCs(i) % Values, &
-                  'Mass Consistent Normals',gotIt)
-              IF( MassConsistent ) THEN
-                IF( ListGetLogical(Model % BCs(i) % Values, &
-                    'Lhs Tangent Vectors',gotIt) ) THEN
-                  LhsTangent( NodeIndexes ) = .TRUE.
-                END IF
-              END IF
+              IF( MasterBC(i) ) LhsTangent( NodeIndexes ) = .TRUE.
+              EXIT
             END IF
           END DO
         END DO
@@ -6603,7 +6604,6 @@ CONTAINS
           s = SQRT( SUM( BoundaryNormals(k,:)**2 ) )
           IF ( s /= 0.0d0 ) &
             BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
-
           IF ( CoordinateSystemDimension() > 2 ) THEN
             CALL TangentDirections( BoundaryNormals(k,:),  &
                 BoundaryTangent1(k,:), BoundaryTangent2(k,:) )
