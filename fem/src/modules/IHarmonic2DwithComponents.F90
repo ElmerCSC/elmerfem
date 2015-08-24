@@ -730,6 +730,91 @@ MODULE CircMatInitMod
 CONTAINS
 
 !------------------------------------------------------------------------------
+   SUBROUTINE SetCircuitsParallelInfo()
+!------------------------------------------------------------------------------
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
+    TYPE(Matrix_t), POINTER :: CM
+    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+    TYPE(Solver_t), POINTER :: ASolver
+    TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: i, nm, Circuit_tot_n, p, j, &
+               cnt(Parenv % PEs), r_cnt(ParEnv % PEs), &
+               RowId, nn, l, k, n_Circuits
+    
+    CM => CurrentModel%CircuitMatrix
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('SetCircuitsParallelInfo','ASolver not found!')
+    nm = ASolver % Matrix % NumberOfRows
+    Circuit_tot_n = CurrentModel%Circuit_tot_n
+    Circuits => CurrentModel % CMPLXCircuits
+    n_Circuits = CurrentModel % n_Circuits
+    
+    IF(.NOT.ASSOCIATED(CM % ParallelInfo)) THEN
+      ALLOCATE(CM % ParallelInfo)
+      ALLOCATE(CM % ParallelInfo % NeighbourList(nm+Circuit_tot_n))
+      DO i=1,nm+Circuit_tot_n
+        CM % ParallelInfo % NeighbourList(i) % Neighbours => Null()
+      END DO
+    END IF
+
+    DO p = 1,n_Circuits
+      DO i=1,Circuits(p) % n
+        cnt  = 0
+        Cvar => Circuits(p) % CircuitVariables(i)
+        IF(ASSOCIATED(CVar%Component)) THEN
+          DO j=1,GetNOFACtive()
+             Element => GetActiveElement(j)
+               IF(ElAssocToCvar(Element, Cvar)) THEN
+                 cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
+               END IF
+          END DO
+        END IF
+        CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
+                MPI_MAX,ASolver % Matrix % Comm,j)
+
+
+        RowId = Cvar % ValueId + nm
+
+        nn = COUNT(r_cnt>0)
+        IF(r_cnt(Cvar % Owner+1)<=0) nn=nn+1
+
+        DO j=1,Cvar % Dofs
+          IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+2*(j-1))%Neighbours)) THEN
+            ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+2*(j-1)) % Neighbours(nn))
+            ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+2*(j-1)+1) % Neighbours(nn))
+          END IF
+          CM % ParallelInfo % NeighbourList(RowId+2*(j-1)) % Neighbours(1)   = CVar % Owner
+          CM % ParallelInfo % NeighbourList(RowId+2*(j-1)+1) % Neighbours(1) = CVar % Owner
+          l = 1
+          DO k=0,ParEnv % PEs-1
+            IF(k==CVar % Owner) CYCLE
+            IF(r_cnt(k+1)>0) THEN
+              l = l + 1
+              CM % ParallelInfo % NeighbourList(RowId+2*(j-1)) % Neighbours(l) = k
+              CM % ParallelInfo % NeighbourList(RowId+2*(j-1) + 1) % Neighbours(l) = k
+            END IF
+          END DO
+          CM % RowOwner(RowId + 2*(j-1))     = Cvar % Owner
+          CM % RowOwner(RowId + 2*(j-1) + 1) = Cvar % Owner
+        END DO
+      END DO
+    END DO
+
+
+    IF ( parenv % mype==0 ) THEN
+      DO i=1,parenv % pes
+        CALL INFO('SetCircuitsParallelInfo','owners: '//i2s(i)//' '//i2s(count(cm % rowowner==i-1)), Level=9)
+      END DO
+    END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetCircuitsParallelInfo
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
    SUBROUTINE CountCmplxMatElement(Rows, Cnts, RowId, dofs)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
@@ -1139,6 +1224,112 @@ CONTAINS
    END SUBROUTINE CountAndCreateFoilWinding
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE Circuits_MatrixInit()
+!------------------------------------------------------------------------------
+    USE DefUtils
+!    USE CircuitsMod
+    IMPLICIT NONE
+    TYPE(Matrix_t), POINTER :: CM
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER, POINTER :: PS(:), Rows(:), Cols(:), Cnts(:)
+    INTEGER :: nm, Circuit_tot_n, n, i
+    LOGICAL :: dofsdone
+    LOGICAL*1, ALLOCATABLE :: Done(:)
+    REAL(KIND=dp), POINTER :: Values(:)
+
+!    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+!    TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
+!    TYPE(Element_t), POINTER :: Element
+!    INTEGER :: i, nm, Circuit_tot_n, p, j, &
+!               cnt(Parenv % PEs), r_cnt(ParEnv % PEs), &
+!               RowId, nn, l, k, n_Circuits
+
+!    CM => CurrentModel%CircuitMatrix
+!    nm = ASolver % Matrix % NumberOfRows
+!    Circuits => CurrentModel % CMPLXCircuits
+!    n_Circuits = CurrentModel % n_Circuits
+
+
+
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')
+    Circuit_tot_n = CurrentModel%Circuit_tot_n
+    
+    ! Initialialize Circuit matrix:
+    ! -----------------------------
+    PS => Asolver % Variable % Perm
+    nm =  Asolver % Matrix % NumberOfRows
+
+    CM => AllocateMatrix()
+    CurrentModel%CircuitMatrix=>CM
+    
+    CM % Format = MATRIX_CRS
+    Asolver %  Matrix % AddMatrix => CM
+    ALLOCATE(CM % RHS(nm + Circuit_tot_n)); CM % RHS=0._dp
+
+    CM % NumberOfRows = nm + Circuit_tot_n
+    n = CM % NumberOfRows
+    ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
+    ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
+
+    CALL SetCircuitsParallelInfo()
+
+    ! COUNT SIZES:
+    ! ============
+    dofsdone = .FALSE.
+    
+    CALL CountBasicCircuitEquations(Rows, Cnts)
+    CALL CountComponentEquations(Rows, Cnts, Done, dofsdone)
+
+    ! ALLOCATE CRS STRUCTURES (if need be):
+    ! =====================================
+
+    n = SUM(Cnts)
+
+    IF (n<=0) THEN
+      CM % NUmberOfRows = 0
+      DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null(); RETURN
+    END IF
+
+    ALLOCATE(Cols(n+1), Values(n+1))
+    Cols = 0; Values = 0._dp
+
+    ! CREATE ROW POINTERS:
+    ! ====================
+
+    CM % NumberOfRows = nm + Circuit_tot_n
+    Rows(1) = 1
+    DO i=2,CM % NumberOfRows+1
+      Rows(i) = Rows(i-1) + Cnts(i-1)
+    END DO
+
+    Cnts = 0
+
+    ! CREATE COLMUNS:
+    ! ===============
+
+    CALL CreateBasicCircuitEquations(Rows, Cols, Cnts)
+    CALL CreateComponentEquations(Rows, Cols, Cnts, Done, dofsdone)
+    
+
+    IF (n /= SUM(Cnts)) THEN
+      print *, "Counted Cnts:", n, "Applied Cnts:", SUM(Cnts)
+      CALL Fatal('Circuits_MatrixInit', &
+                 'There were different amount of matrix elements than was counted')
+    END IF
+
+    DEALLOCATE( Cnts, Done )
+    CM % Rows => Rows
+    CM % Cols => Cols
+    CM % Values => Values
+    CALL CRS_SortMatrix(CM)
+    
+    Asolver %  Matrix % AddMatrix => CM
+!------------------------------------------------------------------------------
+  END SUBROUTINE Circuits_MatrixInit
+!------------------------------------------------------------------------------
+
 
 END MODULE CircMatInitMod
 
@@ -1210,8 +1401,7 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 
   integer :: slen,i,j,k,m,n,istat,BodyId, &
              ColId,RowId,ImRowId,jj, &
-             tot_nofcomp, ComponentId, &
-             circ_comp_count
+             ComponentId, circ_comp_count
   CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd,CoilType,dofnumber
   REAL(KIND=dp) :: BodyY
 
@@ -1228,11 +1418,6 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
     
   REAL(KIND=dp), ALLOCATABLE :: ip(:), ipt(:)
   LOGICAL, ALLOCATABLE :: Adirichlet(:)
-  LOGICAL :: dofsdone
-
-  INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
-  LOGICAL*1, ALLOCATABLE :: Done(:)
-  REAL(KIND=dp), POINTER :: Values(:)
 
   TYPE(Element_t), POINTER :: e, e_p
 
@@ -1307,7 +1492,6 @@ CONTAINS
     CALL AllocateCircuitsList()
     Circuits => Model%CMPLXCircuits
     
-    tot_nofcomp=0
     DO p=1,n_Circuits
       
       n = GetNofCircVariables(p)
@@ -1317,7 +1501,6 @@ CONTAINS
       ! ----------------------------
       Circuits(p) % n_comp = CountNofCircComponents(p, n)
       ALLOCATE(Circuits(p) % Components(Circuits(p) % n_comp))
-      tot_nofcomp=tot_nofcomp+Circuits(p) % n_comp
       
       ! Read circuit variables from MATC and Components from sif:
       ! ---------------------------------------------------------
@@ -1354,142 +1537,6 @@ CONTAINS
     ALLOCATE( ip(Circuit_tot_n), ipt(Circuit_tot_n) ); ip = 0._dp
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_Init
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE Circuits_MatrixInit()
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,p,q,n,nn,temp,cnt(Parenv % PEs), r_cnt(ParEnv % PEs)
-
-    ! Initialialize Circuit matrix:
-    ! -----------------------------
-    PS => Asolver % Variable % Perm
-    nm =  Asolver % Matrix % NumberOfRows
-
-    CM => AllocateMatrix()
-    Model%CircuitMatrix=>CM
-    
-    CM % Format = MATRIX_CRS
-    Asolver %  Matrix % AddMatrix => CM
-    ALLOCATE(CM % RHS(nm + Circuit_tot_n)); CM % RHS=0._dp
-
-    CM % NumberOfRows = nm + Circuit_tot_n
-    n = CM % NumberOfRows
-    ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
-    ALLOCATE(Done(nm), CM % RowOwner(n)); Cm % RowOwner=-1
-
-    IF(.NOT.ASSOCIATED(CM % ParallelInfo)) THEN
-      ALLOCATE(CM % ParallelInfo)
-      ALLOCATE(CM % ParallelInfo % NeighbourList(nm+Circuit_tot_n))
-      DO i=1,nm+Circuit_tot_n
-        CM % ParallelInfo % NeighbourList(i) % Neighbours => Null()
-      END DO
-    END IF
-
-    DO p = 1,n_Circuits
-      DO i=1,Circuits(p) % n
-        cnt  = 0
-        Cvar => Circuits(p) % CircuitVariables(i)
-        IF(ASSOCIATED(CVar%Component)) THEN
-          DO j=1,GetNOFACtive()
-             Element => GetActiveElement(j)
-               IF(ElAssocToCvar(Element, Cvar)) THEN
-                 cnt(ParEnv % mype+1)=cnt(ParEnv % mype+1)+1
-               END IF
-          END DO
-        END IF
-        CALL MPI_ALLREDUCE(cnt,r_cnt,ParEnv % PEs, MPI_INTEGER, &
-                MPI_MAX,ASolver % Matrix % Comm,j)
-
-
-        RowId = Cvar % ValueId + nm
-
-        nn = COUNT(r_cnt>0)
-        IF(r_cnt(Cvar % Owner+1)<=0) nn=nn+1
-
-        DO j=1,Cvar % Dofs
-          IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+2*(j-1))%Neighbours)) THEN
-            ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+2*(j-1)) % Neighbours(nn))
-            ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+2*(j-1)+1) % Neighbours(nn))
-          END IF
-          CM % ParallelInfo % NeighbourList(RowId+2*(j-1)) % Neighbours(1)   = CVar % Owner
-          CM % ParallelInfo % NeighbourList(RowId+2*(j-1)+1) % Neighbours(1) = CVar % Owner
-          l = 1
-          DO k=0,ParEnv % PEs-1
-            IF(k==CVar % Owner) CYCLE
-            IF(r_cnt(k+1)>0) THEN
-              l = l + 1
-              CM % ParallelInfo % NeighbourList(RowId+2*(j-1)) % Neighbours(l) = k
-              CM % ParallelInfo % NeighbourList(RowId+2*(j-1) + 1) % Neighbours(l) = k
-            END IF
-          END DO
-          CM % RowOwner(RowId + 2*(j-1))     = Cvar % Owner
-          CM % RowOwner(RowId + 2*(j-1) + 1) = Cvar % Owner
-        END DO
-      END DO
-    END DO
-
-
-    IF ( parenv % mype==0 ) THEN
-      DO i=1,parenv % pes
-        CALL INFO('Circuits_MatrixInit','owners: '//i2s(i)//' '//i2s(count(cm % rowowner==i-1)), Level=9)
-      END DO
-    END IF
-
-
-    ! COUNT SIZES:
-    ! ============
-    dofsdone = .FALSE.
-    
-    CALL CountBasicCircuitEquations(Rows, Cnts)
-    CALL CountComponentEquations(Rows, Cnts, Done, dofsdone)
-
-    ! ALLOCATE CRS STRUCTURES (if need be):
-    ! =====================================
-
-    n = SUM(Cnts)
-
-    IF (n<=0) THEN
-      CM % NUmberOfRows = 0
-      DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null(); RETURN
-    END IF
-
-    ALLOCATE(Cols(n+1), Values(n+1))
-    Cols = 0; Values = 0._dp
-
-    ! CREATE ROW POINTERS:
-    ! ====================
-
-    CM % NumberOfRows = nm + Circuit_tot_n
-    Rows(1) = 1
-    DO i=2,CM % NumberOfRows+1
-      Rows(i) = Rows(i-1) + Cnts(i-1)
-    END DO
-
-    Cnts = 0
-
-    ! CREATE COLMUNS:
-    ! ===============
-
-    CALL CreateBasicCircuitEquations(Rows, Cols, Cnts)
-    CALL CreateComponentEquations(Rows, Cols, Cnts, Done, dofsdone)
-    
-
-    IF (n /= SUM(Cnts)) THEN
-      print *, "Counted Cnts:", n, "Applied Cnts:", SUM(Cnts)
-      CALL Fatal('Circuits_MatrixInit', &
-                 'There were different amount of matrix elements than was counted')
-    END IF
-
-    DEALLOCATE( Cnts, Done )
-    CM % Rows => Rows
-    CM % Cols => Cols
-    CM % Values => Values
-    CALL CRS_SortMatrix(CM)
-    
-    Asolver %  Matrix % AddMatrix => CM
-!------------------------------------------------------------------------------
-  END SUBROUTINE Circuits_MatrixInit
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
