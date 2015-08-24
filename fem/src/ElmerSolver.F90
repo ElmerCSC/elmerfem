@@ -1394,7 +1394,7 @@ END INTERFACE
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
            AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
      INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1
-     LOGICAL :: AdaptiveTime = .TRUE.
+     LOGICAL :: AdaptiveTime = .TRUE., Found
 
      TYPE(Solver_t), POINTER :: Solver
 
@@ -1417,6 +1417,11 @@ END INTERFACE
            CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
         END IF
      END DO
+
+     IF( ListGetLogical( CurrentModel % Simulation,'Calculate Mesh Pieces',Found ) ) THEN
+       CALL CalculateMeshPieces( CurrentModel % Mesh ) 
+     END IF
+     
 
      DO interval = 1, TimeIntervals
         stepcount = stepcount + Timesteps(interval)

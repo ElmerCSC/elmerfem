@@ -6563,7 +6563,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   normalize 
 !------------------------------------------------------------------------------
-    IF ( NumberOfBoundaryNodes>0 ) THEN
+    IF ( NumberOfBoundaryNodes>0 .AND. CoordinateSystemDimension() > 2 ) THEN
 
       LhsSystem = ListGetLogicalAnyBC( Model,'Lhs Tangent Vectors') 
 
@@ -8630,6 +8630,116 @@ END FUNCTION SearchNodeL
   END SUBROUTINE CalculateNodalWeights
 !------------------------------------------------------------------------------
 
+
+
+
+  !> Calcualte the number of separature pieces in a serial mesh.
+  !> This could be used to detect problems in mesh when suspecting 
+  !> floating parts not fixed by any BC, for example.
+  !---------------------------------------------------------------------------------
+  SUBROUTINE CalculateMeshPieces( Mesh )
+
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    LOGICAL :: Ready
+    INTEGER :: i,j,k,n,t,MinIndex,MaxIndex,Loop,NoPieces
+    INTEGER, ALLOCATABLE :: MeshPiece(:),PiecePerm(:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: Indexes(:)
+    TYPE(Variable_t), POINTER :: Var
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Warn('CalculateMeshPieces','Implemented only for serial meshes, doing nothing!')
+      RETURN
+    END IF
+
+    n = Mesh % NumberOfNodes
+    ALLOCATE( MeshPiece( n ) ) 
+    MeshPiece = 0
+
+    ! Only set the piece for the nodes that are used by some element
+    ! For others the marker will remain zero. 
+    DO t = 1, Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(t)        
+      Indexes => Element % NodeIndexes
+      MeshPiece( Indexes ) = 1
+    END DO    
+    j = 0
+    DO i = 1, n
+      IF( MeshPiece(i) > 0 ) THEN
+        j = j + 1
+        MeshPiece(i) = j
+      END IF
+    END DO
+
+    CALL Info('CalculateMeshPieces','Number of non-body nodes in mesh is '//TRIM(I2S(n-j)))
+    
+    ! We go through the elements and set all the piece indexes to minimimum index
+    ! until the mesh is unchanged. Thereafter the whole piece will have the minimum index
+    ! of the piece.
+    Ready = .FALSE.
+    Loop = 0
+    DO WHILE(.NOT. Ready) 
+      Ready = .TRUE.
+      DO t = 1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)        
+        Indexes => Element % NodeIndexes
+
+        MinIndex = MINVAL( MeshPiece( Indexes ) )
+        MaxIndex = MAXVAL( MeshPiece( Indexes ) )
+        IF( MaxIndex > MinIndex ) THEN
+          MeshPiece( Indexes ) = MinIndex
+          Ready = .FALSE.
+        END IF
+      END DO
+      Loop = Loop + 1
+    END DO
+    CALL Info('CalculateMeshPieces','Mesh coloring loops: '//TRIM(I2S(Loop)))
+
+    ! If the maximum index is one then for sure there is only one body
+    IF( MaxIndex == 1 ) THEN
+      CALL Info('CalculateMeshPieces','Mesh consists of single body!')
+      RETURN
+    END IF
+
+    ! Compute the true number of different pieces
+    ALLOCATE( PiecePerm( MaxIndex ) ) 
+    PiecePerm = 0
+    NoPieces = 0
+    DO i = 1, n
+      j = MeshPiece(i) 
+      IF( j == 0 ) CYCLE
+      IF( PiecePerm(j) == 0 ) THEN
+        NoPieces = NoPieces + 1
+        PiecePerm(j) = NoPieces 
+      END IF
+    END DO
+    CALL Info('CalculateMeshPieces','Number of seperate pieces in mesh is '//TRIM(I2S(NoPieces)))
+
+
+    ! Save the mesh piece field to > mesh piece < 
+    Var => VariableGet( Mesh % Variables,'Mesh Piece' )
+    IF(.NOT. ASSOCIATED( Var ) ) THEN      
+      CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece' )
+      Var => VariableGet( Mesh % Variables,'Mesh Piece' )
+    END IF
+
+    IF( .NOT. ASSOCIATED( Var ) ) THEN
+      CALL Fatal('CalculateMeshPieces','Could not get handle to variable > Mesh Piece <')
+    END IF
+
+    DO i = 1, n
+      j = Var % Perm( i ) 
+      IF( j == 0 ) CYCLE
+      IF( MeshPiece(i) > 0 ) THEN
+        Var % Values( j ) = 1.0_dp * PiecePerm( MeshPiece( i ) )
+      ELSE
+        Var % Values( j ) = 0.0_dp
+      END IF
+    END DO
+    CALL Info('CalculateMeshPieces','Saving mesh piece field to: mesh piece')
+  
+  END SUBROUTINE CalculateMeshPieces
 
 
 

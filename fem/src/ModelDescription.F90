@@ -1526,7 +1526,7 @@ CONTAINS
                  str(str_beg:str_beg) == '0' ) THEN
                  CALL ListAddLogical( List,Name,.FALSE. )
                ELSE 
-                 CALL Fatal('SectionContents','Problem reading logical keyword: '//TRIM(str(str_beg:)))
+                 CALL Fatal('SectionContents','Problem reading logical keyword: '//TRIM(Name)//': '//TRIM(str(str_beg:)))
                END IF
             END IF
             EXIT
@@ -2538,7 +2538,18 @@ CONTAINS
       ListB => Model % BCs(j) % Values
       CALL ListCompareAndCopy( List, ListB,'Mass Consistent Normals',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Mass Consistent Normals < to BC '//TRIM(I2S(j)),Level=10)
+          'Added > Mass Consistent Normals < to slave BC '//TRIM(I2S(j)),Level=10)
+
+      CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Displacement',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Normal-Tangential Displacement < to slave BC '//TRIM(I2S(j)),Level=10)
+
+      IF(.NOT. ListCheckPresent( ListB,'Lhs Tangent Vectors') ) THEN
+        CALL Info('CompleteModelKeywords',&
+            'Setting > Lhs Tangent Vectors < to slave BC '//TRIM(I2S(j)),Level=10)
+        CALL ListAddLogical(ListB,'Lhs Tangent Vectors',.TRUE.)
+      END IF
+            
     END DO
 
 
