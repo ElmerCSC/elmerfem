@@ -1429,7 +1429,8 @@ CONTAINS
     INTEGER :: VvarId, IvarId, q, j
     COMPLEX(KIND=dp) :: i_multiplier, cmplx_value
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-    COMPLEX(KIND=dp) :: Tcoef(3,3,nn), RotM(3,3,nn)
+    COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
+    REAL(KIND=dp) :: RotM(3,3,nn)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: Found, CSymmetry
 
@@ -1960,52 +1961,20 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, First=.TRUE.
+  LOGICAL :: First=.TRUE.
 
-  TYPE(Solver_t), POINTER :: Asolver => Null(), RotMSolver => Null()
+  TYPE(Solver_t), POINTER :: Asolver => Null()
 
-  INTEGER :: p,q,bid,ind,nn,nd,nm,ind0
-  TYPE(ValueList_t), POINTER :: Params,BC
-  INTEGER, POINTER :: PS(:)
-  REAL(KIND=dp)::vind,A,b,sigma,SumResistance
-  INTEGER :: CompInd
-  TYPE(Variable_t), POINTER :: LagrangeVar, AngVar, VeloVar
-  REAL(KIND=dp), TARGET :: torq,imom=0,ang=0._dp,velo=0._dp,scale,sclA,sclB
-
-  COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
+  INTEGER :: p, n, istat
   TYPE(Mesh_t), POINTER :: Mesh  
-  TYPE(Valuelist_t), POINTER :: Material, CompParams
-  TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
 
-  integer :: slen,i,j,k,m,n,istat,BodyId, &
-             ColId,RowId,ImRowId,jj, &
-             ComponentId, circ_comp_count
-  CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd,CoilType,dofnumber
-  REAL(KIND=dp) :: BodyY
-
-  LOGICAL  :: owner, STAT
-  REAL(KIND=dp) :: Omega
-  COMPLEX(KIND=dp) :: cmplx_value
-  COMPLEX(KIND=dp) :: i_multiplier
-
-  TYPE(CMPLXComponent_t), POINTER :: Comp
-  TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
   TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
     
-  LOGICAL, ALLOCATABLE :: Adirichlet(:)
-
-  TYPE(Element_t), POINTER :: e, e_p
-
-  TYPE(Variable_t), POINTER :: RotMvar
-
-  COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-
   LOGICAL :: CSymmetry
   
-  SAVE CSymmetry, RotMvar, Adirichlet, nm, Omega
+  SAVE CSymmetry
 !------------------------------------------------------------------------------
 
   IF (First) THEN
@@ -2025,11 +1994,9 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
     END IF
 
     n_Circuits => Model%n_Circuits
-    Circuit_tot_n => Model%Circuit_tot_n
-    Circuit_tot_n = 0
-  
-    Omega = GetAngularFrequency()
+    Model%Circuit_tot_n = 0
 
+  
     Model % ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
     ASolver => Model % ASolver
     
@@ -2064,13 +2031,13 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 
   Circuits => Model%CMPLXCircuits
   n_Circuits => Model%n_Circuits
-  Circuit_tot_n => Model%Circuit_tot_n
+!  Circuit_tot_n => Model%Circuit_tot_n
   CM=>Model%CircuitMatrix
   
   ! Initialialize Circuit matrix:
   ! -----------------------------
-  PS => Asolver % Variable % Perm
-  nm =  Asolver % Matrix % NumberOfRows
+!  PS => Asolver % Variable % Perm
+!  nm =  Asolver % Matrix % NumberOfRows
   IF(.NOT.ASSOCIATED(CM)) RETURN
 
   CM % RHS = 0._dp
