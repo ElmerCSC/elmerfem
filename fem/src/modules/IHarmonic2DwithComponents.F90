@@ -1314,367 +1314,92 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_MatrixInit
 !------------------------------------------------------------------------------
-
-
 END MODULE CircMatInitMod
 
-!------------------------------------------------------------------------------
-!> Initialization for the primary solver: CurrentSource
-!------------------------------------------------------------------------------
-SUBROUTINE CircuitsAndDynamics2DHarmonic_init( Model,Solver,dt,TransientSimulation )
-!------------------------------------------------------------------------------
-  USE DefUtils
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
-  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
-  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
-  LOGICAL :: TransientSimulation !< Steady state or transient simulation
-!------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: Params
-
-  Params => Solver % Values
-
-  ! When we introduce the variables in this way the variables are created
-  ! so that they exist when the proper simulation cycle starts.
-  ! This also keeps the command file cleaner.
-  CALL ListAddString( Params,'Exported Variable 1',&
-      '-global Rotor Angle')
-  CALL ListAddString( Params,'Exported Variable 2',&
-      '-global Rotor Velo')
-  Solver % Values => Params
-
-!------------------------------------------------------------------------------
-END SUBROUTINE CircuitsAndDynamics2DHarmonic_init
-!------------------------------------------------------------------------------
-
-
-
-!------------------------------------------------------------------------------
-SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
-!------------------------------------------------------------------------------
-  USE DefUtils
-  USE CircuitsMod
-  USE CircMatInitMod
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
-  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
-  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
-  LOGICAL :: TransientSimulation !< Steady state or transient simulation
-!------------------------------------------------------------------------------
-! Local variables
-!------------------------------------------------------------------------------
-  TYPE(Element_t), POINTER :: Element
-  LOGICAL :: Found, First=.TRUE.
-
-  TYPE(Solver_t), POINTER :: Asolver => Null(), RotMSolver => Null()
-
-  INTEGER :: p,q,bid,ind,nn,nd,nm,ind0
-  TYPE(ValueList_t), POINTER :: BF,Params,BC
-  INTEGER, POINTER :: PS(:)
-  REAL(KIND=dp)::vemf,vphi,vind,A,b,sigma,SumResistance
-  INTEGER :: CompInd
-  TYPE(Variable_t), POINTER :: LagrangeVar, AngVar, VeloVar
-  REAL(KIND=dp), TARGET :: torq,imom=0,ang=0._dp,velo=0._dp,scale,sclA,sclB
-
-  COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
-  TYPE(Mesh_t), POINTER :: Mesh  
-  TYPE(Valuelist_t), POINTER :: Material, CompParams
-  TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
-
-  integer :: slen,i,j,k,m,n,istat,BodyId, &
-             ColId,RowId,ImRowId,jj, &
-             ComponentId, circ_comp_count
-  CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd,CoilType,dofnumber
-  REAL(KIND=dp) :: BodyY
-
-  LOGICAL  :: owner, STAT
-  REAL(KIND=dp) :: Omega
-  COMPLEX(KIND=dp) :: cmplx_value
-  COMPLEX(KIND=dp) :: i_multiplier
-
-  TYPE(CMPLXComponent_t), POINTER :: Comp
-  TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
-  TYPE(Matrix_t), POINTER :: CM
-  INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
-  TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
-    
-  LOGICAL, ALLOCATABLE :: Adirichlet(:)
-
-  TYPE(Element_t), POINTER :: e, e_p
-
-  TYPE(Variable_t), POINTER :: RotMvar
-
-  COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-
-  INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-  INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-  
-  LOGICAL :: CSymmetry
-  
-  SAVE CSymmetry, RotMvar, Adirichlet, nm, &
-       Tcoef, RotM, Omega
-!------------------------------------------------------------------------------
-
-  IF (First) THEN
-    First = .FALSE.
-    
-    CALL AddComponentsToBodyLists()
-    
-    CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
-      CurrentCoordinateSystem() == CylindricSymmetric )
-
-    Mesh => Model % Mesh
-    N = Mesh % MaxElementDOFs
-
-    ALLOCATE( Tcoef(3,3,N), RotM(3,3,N), Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
-    IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CircuitsAndDynamics2DHarmonic', 'Memory allocation error.' )
-    END IF
-
-    n_Circuits => Model%n_Circuits
-    Circuit_tot_n => Model%Circuit_tot_n
-    Circuit_tot_n = 0
-  
-    Omega = GetAngularFrequency()
-
-    Model % ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
-    ASolver => Model % ASolver
-    
-    ! Initialize circuit matrices:
-    ! ----------------------------
-    CALL Circuits_Init()
-  END IF
-
-  Circuits => Model%CMPLXCircuits
-  n_Circuits => Model%n_Circuits
-  Circuit_tot_n => Model%Circuit_tot_n
-  CM=>Model%CircuitMatrix
-  
-  ! Generate values for the circuit matrix entries:
-  ! -----------------------------------------------
-  CALL Circuits_Apply()
-
-  IF(ASSOCIATED(CM)) THEN
-    IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
-    IF(CM % NumberOfRows<=0)  THEN
-      CALL FreeMatrix(CM)
-      Asolver % Matrix % AddMatrix => Null()
-    END IF
-  ELSE
-     ASolver % Matrix % AddMatrix => Null()
-  END IF
+MODULE CircEqWriteMod
 
 CONTAINS
-
+  
 !------------------------------------------------------------------------------
-  SUBROUTINE Circuits_Init()
+   SUBROUTINE AddBasicCircuitEquations(p)
 !------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+    TYPE(ValueList_t), POINTER :: BF
+    TYPE(Matrix_t), POINTER :: CM
+    INTEGER :: p, i, nm, RowId, ColId, j
+    REAL(KIND=dp) :: Omega, vphi
+    COMPLEX(KIND=dp) :: cmplx_value
+    LOGICAL :: Found
+    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     
-    CALL AllocateCircuitsList()
-    Circuits => Model%CMPLXCircuits
+    Circuit => CurrentModel % CMPLXCircuits(p)
+    nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    Omega = GetAngularFrequency()
+    BF => CurrentModel % BodyForces(1) % Values
+    CM => CurrentModel%CircuitMatrix
     
-    DO p=1,n_Circuits
+    DO i=1,Circuit % n
+      Cvar => Circuit % CircuitVariables(i)
+
+      IF(Cvar % Owner /= ParEnv % myPE) CYCLE
+
+      RowId = Cvar % ValueId + nm
       
-      n = GetNofCircVariables(p)
-      CALL AllocateCircuit(p)
+      vphi=0._dp
+      IF ( ASSOCIATED(BF) ) &
+        vphi = GetCReal(BF, Circuit % SourceRe(i), Found)
       
-      ! Count and create components:
-      ! ----------------------------
-      Circuits(p) % n_comp = CountNofCircComponents(p, n)
-      ALLOCATE(Circuits(p) % Components(Circuits(p) % n_comp))
+      IF (Found) THEN 
+        Cvar % Source(i) = vphi
+      END IF
       
-      ! Read circuit variables from MATC and Components from sif:
-      ! ---------------------------------------------------------
-      CALL ReadCircuitVariables(p)
-      CALL ReadComponents(p)
-      CALL AddComponentValuesToLists(p)
-      CALL AddBareCircuitVariables(p)   ! these don't belong to any components
+      IF (ASSOCIATED(BF) ) &
+        vphi = GetCReal(BF, Circuit % SourceIm(i), Found)
+
+      IF (Found) THEN 
+        Cvar % Source(i) = Cvar % Source(i) + im * vphi
+      END IF
       
-      ! Read Coefficient matrices for the circuit equations:
-      ! ----------------------------------------------------
-      CALL ReadCoefficientMatrices(p)
-      
-      ! Read Permutation vector (for permuting the rows in the system matrix):
-      ! ----------------------------------------------------------------------
-      CALL ReadPermutationVector(p)
-      
-      ! Read Sources for every equation (force vector):
-      ! -----------------------------------------------
-      CALL ReadCircuitSources(p)
-      
-      ! Store circuit equation for every variable:
-      ! -------------------------------------------
-      CALL WriteCoeffVectorsForCircVariables(p)
-    
-    END DO
-
-    ! Create CRS matrix strucures for the circuit equations:
-    ! ------------------------------------------------------
-    CALL Circuits_MatrixInit()
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE Circuits_Init
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE Circuits_Apply()
-!------------------------------------------------------------------------------
-
-    ! Initialialize Circuit matrix:
-    ! -----------------------------
-    PS => Asolver % Variable % Perm
-    nm =  Asolver % Matrix % NumberOfRows
-    IF(.NOT.ASSOCIATED(CM)) RETURN
-
-    CM % RHS = 0._dp
-    IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
-
-    BF => Model % BodyForces(1) % Values
-    
-    ! Basic circuit equations...
-    ! ---------------------------
-    DO p = 1,n_Circuits
-      DO i=1,Circuits(p) % n
-        Cvar => Circuits(p) % CircuitVariables(i)
-
-        IF(Cvar % Owner /= ParEnv % myPE) CYCLE
-
-        RowId = Cvar % ValueId + nm
+      CM % RHS(RowId) = REAL(Cvar % Source(i))
+      CM % RHS(RowId+1) = AIMAG(Cvar % Source(i))
         
-        vphi=0._dp
-        IF ( ASSOCIATED(BF) ) &
-          vphi = GetCReal(BF, Circuits(p) % SourceRe(i), Found)
-        
-        IF (Found) THEN 
-          Cvar % Source(i) = vphi
+      DO j=1,Circuit % n
+
+        ColId = Circuit % CircuitVariables(j) % ValueId + nm
+
+        ! - im * Omega * A x: (x could be voltage or current):
+        !--------------------------------------------
+        IF(Cvar % A(j) /= 0._dp) THEN
+          CALL AddToCmplxMatrixElement(CM, RowId, ColId, 0._dp, -Omega * Cvar % A(j))
         END IF
-        
-        IF (ASSOCIATED(BF) ) &
-          vphi = GetCReal(BF, Circuits(p) % SourceIm(i), Found)
-
-        IF (Found) THEN 
-          Cvar % Source(i) = Cvar % Source(i) + im * vphi
-        END IF
-        
-        CM % RHS(RowId) = REAL(Cvar % Source(i))
-        CM % RHS(RowId+1) = AIMAG(Cvar % Source(i))
+        ! B x:
+        ! ------
+        IF(Cvar % B(j) /= 0._dp) THEN
           
-        DO j=1,Circuits(p) % n
-
-          ColId = Circuits(p) % CircuitVariables(j) % ValueId + nm
-
-          ! - im * Omega * A x: (x could be voltage or current):
-          !--------------------------------------------
-          IF(Cvar % A(j) /= 0._dp) THEN
-            CALL AddToCmplxMatrixElement(CM, RowId, ColId, 0._dp, -Omega * Cvar % A(j))
+          IF (Cvar % M(j) /= 0._dp) THEN
+            cmplx_value = Cvar % M(j) * Cvar % B(j)
+          ELSE
+            cmplx_value = Cvar % B(j)
           END IF
-          ! B x:
-          ! ------
-          IF(Cvar % B(j) /= 0._dp) THEN
-            
-            IF (Cvar % M(j) /= 0._dp) THEN
-              cmplx_value = Cvar % M(j) * Cvar % B(j)
-            ELSE
-              cmplx_value = Cvar % B(j)
-            END IF
-            
-            CALL AddToCmplxMatrixElement(CM, RowId, ColId, REAL(cmplx_value), AIMAG(cmplx_value))
-          END IF
-        END DO
-      END DO
-    END DO
-
-    ! ... + the terms including reference to @a/@t + convert currents to current
-    ! densities as source for the vector potential:
-    ! --------------------------------------------------------------------------
-    DO p=1,n_Circuits
-      DO CompInd = 1, Circuits(p) % n_comp
-        Comp => Circuits(p) % Components(CompInd)
-        Cvar => Comp % vvar
-        RowId = Comp % vvar % ValueId + nm
-        ImRowId = RowId+1
-        ColId = Comp % ivar % ValueId + nm
-
-        IF ( Cvar % Owner == ParEnv % myPE ) THEN
-          SELECT CASE (Comp % CoilType)
-          CASE('stranded')
-            CALL AddToCmplxMatrixElement(CM, RowId, RowId, 1._dp, 0._dp)
-          CASE('massive')
-            i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
-            IF (i_multiplier /= 0_dp) THEN
-              CALL AddToCmplxMatrixElement(CM, RowId, ColId, -REAL(i_multiplier), -AIMAG(i_multiplier))
-            ELSE
-              CALL AddToCmplxMatrixElement(CM, RowId, ColId, -1._dp, 0._dp)
-            END IF
-          CASE('foil winding')
-            ! Foil Winding voltage: 
-            ! V + ...added next... = 0
-            ! ----------------------
-            i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
-            CALL AddToCmplxMatrixElement(CM, RowId, RowId, 1._dp, 0._dp)
-            
-            IF (i_multiplier == 0_dp) i_multiplier = 1.0_dp
-            
-            DO j = 1, Cvar % pdofs 
-              ! Foil Winding voltage: 
-              !  ... - Nf/Lalpha * int_0^{Lalpha}(V_0+V_1*alpha+V_2*alpha**2+...) = 0
-              !          => ... - Nf * (V_0*Lalpha^0 + V_1/2*Lalpha^1 + V_2/3*Lalpha^2 + ...) = 0
-              ! where V_m is the mth dof of the polynomial
-              ! --------------------------------------------------------------
-              cmplx_value = -i_multiplier * REAL(Comp % nofturns) / REAL(j) * Comp % coilthickness**(j-1)
-              CALL AddToCmplxMatrixElement(CM, RowId, 2*j + RowId, &
-                  REAL(cmplx_value), AIMAG(cmplx_value))
-
-              ! Circuit eqns for the pdofs:
-              ! - Nf/Lalpha * I * int_0^1(Vi'(alpha)) + ...added later... = 0
-              ! ----------------------------------------------------------
-              CALL AddToCmplxMatrixElement(CM, 2*j + RowId, ColId, &
-                 REAL(cmplx_value), AIMAG(cmplx_value))
-            END DO
-          END SELECT
+          
+          CALL AddToCmplxMatrixElement(CM, RowId, ColId, REAL(cmplx_value), AIMAG(cmplx_value))
         END IF
-
-        DO q=GetNOFActive(),1,-1
-          Element => GetActiveElement(q)
-          IF (ElAssocToComp(Element, Comp)) THEN
-            CompParams => GetComponentParams( Element )
-            IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('Circuits_apply', 'Component parameters not found')
-
-            CoilType = GetString(CompParams, 'Coil Type', Found)
-            IF (.NOT. Found) CoilType = ''
-            
-            nn = GetElementNOFNodes(Element)
-            nd = GetElementNOFDOFs(Element,ASolver)
-            CALL GetConductivity(Element, Tcoef, nn)
-            SELECT CASE(CoilType)
-            CASE ('stranded')
-              CALL Add_stranded(Element,Tcoef(1,1,1:nn),Comp,nn,nd)
-            CASE ('massive')
-              CALL Add_massive(Element,Tcoef(1,1,1:nn),Comp,nn,nd)
-            CASE ('foil winding')
-!              CALL GetElementRotM(Element, RotM, nn)
-              CALL Add_foil_winding(Element,Tcoef(1,1,1:nn),Comp,nn,nd)
-            CASE DEFAULT
-              CALL Fatal ('Circuits_apply', 'Non existent Coil Type Chosen!')
-            END SELECT
-          END IF
-        END DO
       END DO
     END DO
-    Asolver %  Matrix % AddMatrix => CM
 !------------------------------------------------------------------------------
-  END SUBROUTINE Circuits_Apply
+   END SUBROUTINE AddBasicCircuitEquations
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddToCmplxMatrixElement(CM, RowId, ColId, Re, Im)
 !------------------------------------------------------------------------------
+    USE DefUtils
     IMPLICIT NONE
     TYPE(Matrix_t), POINTER :: CM
-    Integer :: RowId, ColId
+    INTEGER :: RowId, ColId
     REAL(KIND=dp) :: Re, Im
 
     CALL AddToMatrixElement(CM, RowId, ColId, Re)
@@ -1687,15 +1412,122 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+   SUBROUTINE AddComponentEquationsAndCouplings(p, nn, CSymmetry)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
+    INTEGER :: p, CompInd, nm, nn, nd
+    TYPE(Solver_t), POINTER :: ASolver
+    TYPE(CMPLXCircuit_t), POINTER :: Circuit
+    TYPE(Matrix_t), POINTER :: CM
+    TYPE(CMPLXComponent_t), POINTER :: Comp
+    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+    TYPE(Valuelist_t), POINTER :: CompParams
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: Omega
+    INTEGER :: VvarId, IvarId, q, j
+    COMPLEX(KIND=dp) :: i_multiplier, cmplx_value
+    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+    COMPLEX(KIND=dp) :: Tcoef(3,3,nn), RotM(3,3,nn)
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    LOGICAL :: Found, CSymmetry
+
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('AddComponentEquationsAndCouplings','ASolver not found!')
+
+    Circuit => CurrentModel % CMPLXCircuits(p)
+    nm = Asolver % Matrix % NumberOfRows
+    Omega = GetAngularFrequency()
+    CM => CurrentModel%CircuitMatrix
+
+    DO CompInd = 1, Circuit % n_comp
+      Comp => Circuit % Components(CompInd)
+      Cvar => Comp % vvar
+      vvarId = Comp % vvar % ValueId + nm
+      IvarId = Comp % ivar % ValueId + nm
+
+      IF ( Cvar % Owner == ParEnv % myPE ) THEN
+        SELECT CASE (Comp % CoilType)
+        CASE('stranded')
+          CALL AddToCmplxMatrixElement(CM, VvarId, VvarId, 1._dp, 0._dp)
+        CASE('massive')
+          i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
+          IF (i_multiplier /= 0_dp) THEN
+            CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, -REAL(i_multiplier), -AIMAG(i_multiplier))
+          ELSE
+            CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, -1._dp, 0._dp)
+          END IF
+        CASE('foil winding')
+          ! Foil Winding voltage: 
+          ! V + ...added next... = 0
+          ! ----------------------
+          i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
+          CALL AddToCmplxMatrixElement(CM, VvarId, VvarId, 1._dp, 0._dp)
+          
+          IF (i_multiplier == 0_dp) i_multiplier = 1.0_dp
+          
+          DO j = 1, Cvar % pdofs 
+            ! Foil Winding voltage: 
+            !  ... - Nf/Lalpha * int_0^{Lalpha}(V_0+V_1*alpha+V_2*alpha**2+...) = 0
+            !          => ... - Nf * (V_0*Lalpha^0 + V_1/2*Lalpha^1 + V_2/3*Lalpha^2 + ...) = 0
+            ! where V_m is the mth dof of the polynomial
+            ! --------------------------------------------------------------
+            cmplx_value = -i_multiplier * REAL(Comp % nofturns) / REAL(j) * Comp % coilthickness**(j-1)
+            CALL AddToCmplxMatrixElement(CM, VvarId, 2*j + VvarId, &
+                REAL(cmplx_value), AIMAG(cmplx_value))
+
+            ! Circuit eqns for the pdofs:
+            ! - Nf/Lalpha * I * int_0^1(Vi'(alpha)) + ...added later... = 0
+            ! ----------------------------------------------------------
+            CALL AddToCmplxMatrixElement(CM, 2*j + VvarId, IvarId, &
+               REAL(cmplx_value), AIMAG(cmplx_value))
+          END DO
+        END SELECT
+      END IF
+
+      DO q=GetNOFActive(),1,-1
+        Element => GetActiveElement(q)
+        IF (ElAssocToComp(Element, Comp)) THEN
+          CompParams => GetComponentParams( Element )
+          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('Circuits_apply', 'Component parameters not found')
+
+          CoilType = GetString(CompParams, 'Coil Type', Found)
+          IF (.NOT. Found) CoilType = ''
+          
+          nn = GetElementNOFNodes(Element)
+          nd = GetElementNOFDOFs(Element,ASolver)
+          CALL GetConductivity(Element, Tcoef, nn)
+          SELECT CASE(CoilType)
+          CASE ('stranded')
+            CALL Add_stranded(Element,Tcoef(1,1,1:nn),Comp,nn,nd,CSymmetry)
+          CASE ('massive')
+            CALL Add_massive(Element,Tcoef(1,1,1:nn),Comp,nn,nd,CSymmetry)
+          CASE ('foil winding')
+!              CALL GetElementRotM(Element, RotM, nn)
+            CALL Add_foil_winding(Element,Tcoef(1,1,1:nn),Comp,nn,nd,CSymmetry)
+          CASE DEFAULT
+            CALL Fatal ('Circuits_apply', 'Non existent Coil Type Chosen!')
+          END SELECT
+        END IF
+      END DO
+    END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE AddComponentEquationsAndCouplings
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
   SUBROUTINE GetConductivity(Element, Tcoef, nn)
 !------------------------------------------------------------------------------
+    USE DefUtils
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
     TYPE(Valuelist_t), POINTER :: Material
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     REAL(KIND=dp), POINTER, SAVE :: Cwrk(:,:,:), Cwrk_im(:,:,:) 
     INTEGER :: nn, i, j
-    LOGICAL, SAVE :: visited = .FALSE.
+    LOGICAL, SAVE :: visited = .FALSE., Found
 
     IF (.NOT. visited) THEN
       NULLIFY( Cwrk, Cwrk_im )
@@ -1754,28 +1586,78 @@ CONTAINS
   END SUBROUTINE GetConductivity
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+ SUBROUTINE GetElementRotM(Element,RotM,n)
+!------------------------------------------------------------------------------
+   USE DefUtils
+   IMPLICIT NONE
+   TYPE(Element_t) :: Element
+   INTEGER :: k, l, m, j, n
+   REAL(KIND=dp) :: RotM(3,3,n)
+   TYPE(Variable_t), POINTER, SAVE :: RotMvar
+   LOGICAL, SAVE :: visited = .FALSE.
+   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
+   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
+  
+   IF(.NOT. visited) THEN
+     visited = .TRUE.
+     RotMvar => VariableGet( CurrentModel % Mesh % Variables, 'RotM E')
+     IF(.NOT. ASSOCIATED(RotMVar)) THEN
+       CALL Fatal('GetElementRotM','RotM E variable not found')
+     END IF
+   END IF
+
+   RotM = 0._dp
+   DO j = 1, n
+     DO k=1,RotMvar % DOFs
+       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
+             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
+     END DO
+   END DO
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd)
+ END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
-    INTEGER :: nn, nd
-    COMPLEX(KIND=dp) :: Tcoef(nn)
+
+!------------------------------------------------------------------------------
+   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,CSymmetry)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
     TYPE(Element_t) :: Element
+    COMPLEX(KIND=dp) :: Tcoef(nn)
     TYPE(CMPLXComponent_t) :: Comp
+    INTEGER :: nn, nd, nm, Indexes(nd),VvarId,IvarId
+    LOGICAL :: CSymmetry
 
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER, POINTER :: PS(:)
+    TYPE(Matrix_t), POINTER :: CM
+    REAL(KIND=dp) :: Omega
+    TYPE(Nodes_t), SAVE :: Nodes
     REAL(KIND=dp) :: Basis(nn), DetJ, x
     REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn), w(3)
     COMPLEX(KIND=dp) :: localC, i_multiplier, cmplx_value
-    INTEGER :: p,i,j,t,Indexes(nd),RowId,ColId
+    INTEGER :: p,t
     LOGICAL :: stat
-    TYPE(Nodes_t), SAVE :: Nodes
-    TYPE(GaussIntegrationPoints_t) :: IP
 
+    TYPE(GaussIntegrationPoints_t) :: IP
+    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+        
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_stranded','ASolver not found!')
+    PS => Asolver % Variable % Perm
+
+    CM => CurrentModel % CircuitMatrix
+    nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    Omega = GetAngularFrequency()
+    
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
 
-    RowId = Comp % vvar % ValueId + nm
-    ColId = Comp % ivar % ValueId + nm
+    VvarId = Comp % vvar % ValueId + nm
+    IvarId = Comp % ivar % ValueId + nm
 
     i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
 
@@ -1801,7 +1683,7 @@ CONTAINS
       ! R = (1/sigma * js,js):
       ! ----------------------
       
-      CALL AddToCmplxMatrixElement(CM, RowId, ColId, &
+      CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
             REAL(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC), &
            AIMAG(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC))
             
@@ -1809,24 +1691,19 @@ CONTAINS
 
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
-          CALL AddToCmplxMatrixElement(CM, RowId, ReIndex(PS(Indexes(p))), &
+          CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(p))), &
                  REAL(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC), & 
                 AIMAG(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC))
 
-!          IF (.NOT. Adirichlet(ReIndex(PS(indexes(p))))) THEN
-            ! source: 
-            ! (J, rot a'), where
-            ! J = w*I*ComplexMultiplier, thus ComplexMultiplier*I*(w, rot a'):
-            ! ----------------------------
             IF (i_multiplier /= 0._dp) THEN
               cmplx_value = -i_multiplier*Comp % N_j*IP % s(t)*detJ*Basis(p)
             ELSE
               cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(p)
             END IF
             
-            CALL AddToCmplxMatrixElement(CM,ReIndex(PS(Indexes(p))), ColId, &
+            CALL AddToCmplxMatrixElement(CM,ReIndex(PS(Indexes(p))), IvarId, &
                REAL(cmplx_value), AIMAG(cmplx_value))
-!          END IF 
+
         END IF
       END DO
     END DO
@@ -1835,26 +1712,42 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd)
+   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,CSymmetry)
 !------------------------------------------------------------------------------
-    INTEGER :: nn, nd
-    COMPLEX(KIND=dp) :: Tcoef(nn)
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
     TYPE(Element_t) :: Element
+    COMPLEX(KIND=dp) :: Tcoef(nn)
     TYPE(CMPLXComponent_t) :: Comp
+    LOGICAL :: CSymmetry
 
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER, POINTER :: PS(:)
+    TYPE(Matrix_t), POINTER :: CM
+    REAL(KIND=dp) :: Omega
     REAL(KIND=dp) :: Basis(nn), DetJ, x
-    REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn),w(3)
+    REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn)
     COMPLEX(KIND=dp) :: localC
-    INTEGER :: i,j,t,Indexes(nd),pp,RowId
+    INTEGER :: nn, nd, j, t, nm, Indexes(nd),VvarId
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
+    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_massive','ASolver not found!')
+    PS => Asolver % Variable % Perm
+
+    CM => CurrentModel % CircuitMatrix
+    nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    Omega = GetAngularFrequency()
 
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
     CALL GetLocalSolution(Wbase,'W')
 
-    RowId = Comp % vvar % ValueId + nm
+    vvarId = Comp % vvar % ValueId + nm
 
     ! Numerical integration:
     ! ----------------------
@@ -1874,24 +1767,20 @@ CONTAINS
 
       ! computing the source term Vi(sigma grad v0, grad si):
       ! ------------------------------------------------
-      CALL AddToCmplxMatrixElement(CM, RowId, RowId, &
+      CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
               REAL(IP % s(t)*detJ*localC), &
               AIMAG(IP % s(t)*detJ*localC))
 
       DO j=1,nd
         ! computing the mass term (sigma * im * Omega * a, grad si):
         ! ---------------------------------------------------------
-        CALL AddToCmplxMatrixElement(CM, RowId, ReIndex(PS(Indexes(j))), &
+        CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(j))), &
                REAL(im * Omega * IP % s(t)*detJ*localC*basis(j)), &
               AIMAG(im * Omega * IP % s(t)*detJ*localC*basis(j)))
 
-!        IF (.NOT. Adirichlet(ReIndex(PS(indexes(q))))) THEN
-          ! computing the source term Vi(sigma grad v0, a'):
-          ! ------------------------------------------------
-          CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(j))), RowId, &
+          CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(j))), vvarId, &
                 REAL(IP % s(t)*detJ*localC*basis(j)), &
                AIMAG(IP % s(t)*detJ*localC*basis(j)))
-!        END IF
 
       END DO
     END DO
@@ -1901,27 +1790,43 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd)
+   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,CSymmetry)
 !------------------------------------------------------------------------------
+    USE DefUtils
+    USE CircuitsMod
+    IMPLICIT NONE
     INTEGER :: nn, nd
-    COMPLEX(KIND=dp) :: Tcoef(:), C, value
     TYPE(Element_t) :: Element
+    COMPLEX(KIND=dp) :: Tcoef(:), C, value
     TYPE(CMPLXComponent_t) :: Comp
+    LOGICAL :: CSymmetry
 
-    REAL(KIND=dp) :: Basis(nn), DetJ, &
+    TYPE(Solver_t), POINTER :: ASolver
+    INTEGER, POINTER :: PS(:)
+    TYPE(Matrix_t), POINTER :: CM
+    REAL(KIND=dp) :: Basis(nn), DetJ, Omega, &
                      localAlpha, localV, localVtest, x, circ_eq_coeff, grads_coeff
-    REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn),w(3),alpha(nn)
-    INTEGER :: p,i,j,t,Indexes(nd),pp,RowId,vpolord_tot, &
+    REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
+    INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
+    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_foil_winding','ASolver not found!')
+    PS => Asolver % Variable % Perm
+
+    CM => CurrentModel % CircuitMatrix
+    nm = CurrentModel % Asolver % Matrix % NumberOfRows
+    Omega = GetAngularFrequency()
 
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
     CALL GetLocalSolution(alpha,'Alpha')
 
-    RowId = Comp % vvar % ValueId
+    vvarId = Comp % vvar % ValueId
     vpolord_tot = Comp % vvar % pdofs - 1
 
     ! Numerical integration:
@@ -1966,11 +1871,11 @@ CONTAINS
 
       DO vpolordtest=0,vpolord_tot ! V'(alpha)
         localVtest = localAlpha**vpolordtest
-        dofIdtest = 2*(vpolordtest + 1) + RowId
+        dofIdtest = 2*(vpolordtest + 1) + vvarId
         DO vpolord = 0, vpolord_tot ! V(alpha)
 
           localV = localAlpha**vpolord
-          dofId = 2*(vpolord + 1) + RowId
+          dofId = 2*(vpolord + 1) + vvarId
           
           ! Computing the stiff term (sigma V(alpha) grad v0, V'(alpha) grad si):
           ! ---------------------------------------------------------------------
@@ -1989,15 +1894,11 @@ CONTAINS
 
       DO vpolord = 0, vpolord_tot ! V(alpha)
         localV = localAlpha**vpolord
-        dofId = 2*(vpolord + 1) + RowId
+        dofId = 2*(vpolord + 1) + vvarId
 
         DO j=1,nd
-!          IF (.NOT. Adirichlet(ReIndex(PS(indexes(q))))) THEN
-            ! computing the source term (sigma V(alpha) grad v0, a'):
-            ! -------------------------------------------------------
             value = IP % s(t)*detJ*localV*C*basis(j)*grads_coeff
             CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(j))), dofId+nm, REAL(value), AIMAG(value))
-!          END IF
         END DO
       END DO
 
@@ -2006,35 +1907,192 @@ CONTAINS
    END SUBROUTINE Add_foil_winding
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
- SUBROUTINE GetElementRotM(Element,RotM,n)
-!------------------------------------------------------------------------------
-   TYPE(Element_t) :: Element
-   INTEGER :: k, l, m, j, n
-   REAL(KIND=dp) :: RotM(3,3,n)
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-   LOGICAL, SAVE :: visited = .FALSE.
- 
 
-   IF(.NOT. visited) THEN
-     visited = .TRUE.
-     RotMvar => VariableGet( Mesh % Variables, 'RotM E')
-     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-       CALL Fatal('GetElementRotM','RotM E variable not found')
-     END IF
-   END IF
 
-   RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-     END DO
-   END DO
+END MODULE CircEqWriteMod
+
 
 !------------------------------------------------------------------------------
- END SUBROUTINE GetElementRotM
+!> Initialization for the primary solver: CurrentSource
 !------------------------------------------------------------------------------
+SUBROUTINE CircuitsAndDynamics2DHarmonic_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
+  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
+  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
+  LOGICAL :: TransientSimulation !< Steady state or transient simulation
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
+
+  Params => Solver % Values
+
+  ! When we introduce the variables in this way the variables are created
+  ! so that they exist when the proper simulation cycle starts.
+  ! This also keeps the command file cleaner.
+  CALL ListAddString( Params,'Exported Variable 1',&
+      '-global Rotor Angle')
+  CALL ListAddString( Params,'Exported Variable 2',&
+      '-global Rotor Velo')
+  Solver % Values => Params
+
+!------------------------------------------------------------------------------
+END SUBROUTINE CircuitsAndDynamics2DHarmonic_init
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  USE CircuitsMod
+  USE CircMatInitMod
+  USE CircEqWriteMod
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
+  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
+  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
+  LOGICAL :: TransientSimulation !< Steady state or transient simulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  LOGICAL :: Found, First=.TRUE.
+
+  TYPE(Solver_t), POINTER :: Asolver => Null(), RotMSolver => Null()
+
+  INTEGER :: p,q,bid,ind,nn,nd,nm,ind0
+  TYPE(ValueList_t), POINTER :: Params,BC
+  INTEGER, POINTER :: PS(:)
+  REAL(KIND=dp)::vind,A,b,sigma,SumResistance
+  INTEGER :: CompInd
+  TYPE(Variable_t), POINTER :: LagrangeVar, AngVar, VeloVar
+  REAL(KIND=dp), TARGET :: torq,imom=0,ang=0._dp,velo=0._dp,scale,sclA,sclB
+
+  COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
+  TYPE(Mesh_t), POINTER :: Mesh  
+  TYPE(Valuelist_t), POINTER :: Material, CompParams
+  TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
+
+  integer :: slen,i,j,k,m,n,istat,BodyId, &
+             ColId,RowId,ImRowId,jj, &
+             ComponentId, circ_comp_count
+  CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd,CoilType,dofnumber
+  REAL(KIND=dp) :: BodyY
+
+  LOGICAL  :: owner, STAT
+  REAL(KIND=dp) :: Omega
+  COMPLEX(KIND=dp) :: cmplx_value
+  COMPLEX(KIND=dp) :: i_multiplier
+
+  TYPE(CMPLXComponent_t), POINTER :: Comp
+  TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
+  TYPE(Matrix_t), POINTER :: CM
+  INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
+  TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
+    
+  LOGICAL, ALLOCATABLE :: Adirichlet(:)
+
+  TYPE(Element_t), POINTER :: e, e_p
+
+  TYPE(Variable_t), POINTER :: RotMvar
+
+  COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+
+  LOGICAL :: CSymmetry
+  
+  SAVE CSymmetry, RotMvar, Adirichlet, nm, Omega
+!------------------------------------------------------------------------------
+
+  IF (First) THEN
+    First = .FALSE.
+    
+    CALL AddComponentsToBodyLists()
+    
+    CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric )
+
+    Mesh => Model % Mesh
+    N = Mesh % MaxElementDOFs
+
+    ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'CircuitsAndDynamics2DHarmonic', 'Memory allocation error.' )
+    END IF
+
+    n_Circuits => Model%n_Circuits
+    Circuit_tot_n => Model%Circuit_tot_n
+    Circuit_tot_n = 0
+  
+    Omega = GetAngularFrequency()
+
+    Model % ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
+    ASolver => Model % ASolver
+    
+    ! Initialize circuit matrices:
+    ! ----------------------------
+    CALL AllocateCircuitsList()
+    Circuits => Model%CMPLXCircuits
+    
+    DO p=1,n_Circuits
+      
+      n = GetNofCircVariables(p)
+      CALL AllocateCircuit(p)
+      
+      Circuits(p) % n_comp = CountNofCircComponents(p, n)
+      ALLOCATE(Circuits(p) % Components(Circuits(p) % n_comp))
+      
+      CALL ReadCircuitVariables(p)
+      CALL ReadComponents(p)
+      CALL AddComponentValuesToLists(p)  ! Lists are used to communicate values to other solvers at the moment...
+      CALL AddBareCircuitVariables(p)   ! these don't belong to any components
+      CALL ReadCoefficientMatrices(p)
+      CALL ReadPermutationVector(p)
+      CALL ReadCircuitSources(p)
+      CALL WriteCoeffVectorsForCircVariables(p)
+    
+    END DO
+
+    ! Create CRS matrix strucures for the circuit equations:
+    ! ------------------------------------------------------
+    CALL Circuits_MatrixInit()
+  END IF
+
+  Circuits => Model%CMPLXCircuits
+  n_Circuits => Model%n_Circuits
+  Circuit_tot_n => Model%Circuit_tot_n
+  CM=>Model%CircuitMatrix
+  
+  ! Initialialize Circuit matrix:
+  ! -----------------------------
+  PS => Asolver % Variable % Perm
+  nm =  Asolver % Matrix % NumberOfRows
+  IF(.NOT.ASSOCIATED(CM)) RETURN
+
+  CM % RHS = 0._dp
+  IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
+
+  ! Write Circuit equations:
+  ! ------------------------
+  DO p = 1,n_Circuits
+    CALL AddBasicCircuitEquations(p)
+    CALL AddComponentEquationsAndCouplings(p, Model % Mesh % MaxElementDOFs, CSymmetry)
+  END DO
+  Asolver %  Matrix % AddMatrix => CM
+
+  IF(ASSOCIATED(CM)) THEN
+    IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
+    IF(CM % NumberOfRows<=0)  THEN
+      CALL FreeMatrix(CM)
+      Asolver % Matrix % AddMatrix => Null()
+    END IF
+  ELSE
+     ASolver % Matrix % AddMatrix => Null()
+  END IF
 
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamics2DHarmonic
