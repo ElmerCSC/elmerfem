@@ -754,11 +754,7 @@ CONTAINS
   !
   ! Dirichlet BCs in terms of vector potential A:
   ! ---------------------------------------------
-  IF (PiolaVersion) THEN
-     CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
-  ELSE
-     CALL DefaultDirichletBCs()
-  END IF
+  CALL DefaultDirichletBCs()
 
   ! Dirichlet BCs in terms of magnetic flux density B:
   ! --------------------------------------------------
@@ -3188,11 +3184,7 @@ CONTAINS
     !
     ! Dirichlet BCs in terms of vector potential A:
     ! ---------------------------------------------
-    IF (PiolaVersion) THEN
-       CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
-    ELSE
-       CALL DefaultDirichletBCs()
-    END IF
+    CALL DefaultDirichletBCs()
 
     !
     ! Dirichlet BCs in terms of magnetic flux density B:
