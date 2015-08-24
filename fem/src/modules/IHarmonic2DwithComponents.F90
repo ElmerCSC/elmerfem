@@ -1228,7 +1228,6 @@ CONTAINS
   SUBROUTINE Circuits_MatrixInit()
 !------------------------------------------------------------------------------
     USE DefUtils
-!    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Matrix_t), POINTER :: CM
     TYPE(Solver_t), POINTER :: ASolver
@@ -1237,20 +1236,6 @@ CONTAINS
     LOGICAL :: dofsdone
     LOGICAL*1, ALLOCATABLE :: Done(:)
     REAL(KIND=dp), POINTER :: Values(:)
-
-!    TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
-!    TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
-!    TYPE(Element_t), POINTER :: Element
-!    INTEGER :: i, nm, Circuit_tot_n, p, j, &
-!               cnt(Parenv % PEs), r_cnt(ParEnv % PEs), &
-!               RowId, nn, l, k, n_Circuits
-
-!    CM => CurrentModel%CircuitMatrix
-!    nm = ASolver % Matrix % NumberOfRows
-!    Circuits => CurrentModel % CMPLXCircuits
-!    n_Circuits = CurrentModel % n_Circuits
-
-
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Circuits_MatrixInit','ASolver not found!')
@@ -1416,7 +1401,6 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
   TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
     
-  REAL(KIND=dp), ALLOCATABLE :: ip(:), ipt(:)
   LOGICAL, ALLOCATABLE :: Adirichlet(:)
 
   TYPE(Element_t), POINTER :: e, e_p
@@ -1430,7 +1414,7 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   
   LOGICAL :: CSymmetry
   
-  SAVE CSymmetry, RotMvar, ip, ipt, Adirichlet, nm, &
+  SAVE CSymmetry, RotMvar, Adirichlet, nm, &
        Tcoef, RotM, Omega
 !------------------------------------------------------------------------------
 
@@ -1531,10 +1515,6 @@ CONTAINS
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
 
-    ! Store values of independent variables (e.g. currents & voltages) from
-    ! previous timestep here:
-    ! ---------------------------------------------------------------------
-    ALLOCATE( ip(Circuit_tot_n), ipt(Circuit_tot_n) ); ip = 0._dp
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_Init
 !------------------------------------------------------------------------------
