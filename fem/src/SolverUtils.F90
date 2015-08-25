@@ -4544,7 +4544,7 @@ CONTAINS
      !-------------------------------
     SUBROUTINE CheckNTElement(n,elno)
       INTEGER :: n,elno
-      INTEGER :: i,j,k,l,m,dim
+      INTEGER :: i,j,k,l,m,dim,kmax
       LOGICAL :: found
       REAL(KIND=dp) :: Condition(n), RotVec(3)
       
@@ -4574,9 +4574,11 @@ CONTAINS
             RotVec = 0._dp
             RotVec(DOF) = 1._dp
             CALL RotateNTSystem( RotVec, Indexes(j) )
+            kmax = 1
             DO k=1,dim
-              IF ( ABS(RotVec(k)) > 1.d-8 ) NTelement(m,k)=elno
+              IF ( ABS(RotVec(k)) > ABS(RotVec(kmax)) ) kmax = k
             END DO
+            NTelement(m,kmax)=elno
           END IF
         END IF
       END DO
@@ -6288,7 +6290,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Projector
     REAL(KIND=dp), ALLOCATABLE :: Condition(:)
 
-    TYPE(Variable_t), POINTER :: NrmVar
+    TYPE(Variable_t), POINTER :: NrmVar, Tan1Var, Tan2Var
 
     LOGICAL, ALLOCATABLE :: Done(:), MasterBC(:)
   
@@ -6312,7 +6314,6 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: LhsTangent(:)
 
     TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp), POINTER :: NormalValues(:)
 !------------------------------------------------------------------------------
 
     ElementNodes % x => x
@@ -6321,6 +6322,9 @@ CONTAINS
 
     Mesh => Model % Mesh
     NrmVar => VariableGet( Mesh % Variables, 'Normals' )
+
+    !dim = CoordinateSystemDimension() 
+
 
     IF ( ASSOCIATED(NrmVar) ) THEN
 
@@ -6564,18 +6568,24 @@ CONTAINS
 !------------------------------------------------------------------------------
     IF ( NumberOfBoundaryNodes>0 ) THEN
 
-      ALLOCATE( MasterBC( Model % NumberOfBCs ) )
-      MasterBC = .FALSE.
-      DO i = 1, Model % NumberOfBcs
-        j = ListGetInteger( Model % BCs(i) % Values,'Mortar BC',Found )
-        IF( .NOT. Found ) THEN
-          j = ListGetInteger( Model % BCs(i) % Values,'Contact BC',Found )
-        END IF
-        IF( j == 0 .OR. j > Model % NumberOfBCs ) CYCLE
-        MasterBC( j ) = .TRUE.
-      END DO
-      LhsSystem = ANY( MasterBC )
-      
+      LhsSystem = ListGetLogical(Model % Simulation,'Use Lhs System',Found) 
+      IF(.NOT. Found ) LhsSystem = ( dim == 3 )
+
+      IF( LhsSystem ) THEN
+        ALLOCATE( MasterBC( Model % NumberOfBCs ) )
+        MasterBC = .FALSE.
+        DO i = 1, Model % NumberOfBcs
+          j = ListGetInteger( Model % BCs(i) % Values,'Mortar BC',Found )
+          IF( .NOT. Found ) THEN
+            j = ListGetInteger( Model % BCs(i) % Values,'Contact BC',Found )
+          END IF
+          IF( j == 0 .OR. j > Model % NumberOfBCs ) CYCLE
+          MasterBC( j ) = .TRUE.
+        END DO
+        LhsSystem = ANY( MasterBC )
+      END IF
+
+
       IF( LhsSystem ) THEN
         ALLOCATE( LhsTangent( Model % NumberOfNodes ) )
         LhsTangent = .FALSE.
@@ -6604,7 +6614,7 @@ CONTAINS
           s = SQRT( SUM( BoundaryNormals(k,:)**2 ) )
           IF ( s /= 0.0d0 ) &
             BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
-          IF ( CoordinateSystemDimension() > 2 ) THEN
+          IF ( dim > 2 ) THEN
             CALL TangentDirections( BoundaryNormals(k,:),  &
                 BoundaryTangent1(k,:), BoundaryTangent2(k,:) )
             IF( LhsSystem ) THEN
@@ -6621,7 +6631,6 @@ CONTAINS
         NrmVar => VariableGet( Mesh % Variables, 'Averaged Normals' )
         
         IF(.NOT. ASSOCIATED( NrmVar ) ) THEN
-          ALLOCATE( NormalValues( 3 * NumberOfBoundaryNodes ) )
           CALL VariableAddVector( Mesh % Variables, Mesh, Model % Solver,'Averaged Normals',3,&
               Perm = BoundaryReorder )
           NrmVar => VariableGet( Mesh % Variables, 'Averaged Normals' )
@@ -6637,6 +6646,31 @@ CONTAINS
           END IF
         END DO
 
+        IF( dim > 2 .AND. ListGetLogical( Model % Simulation,'Save Averaged Tangents',Found ) ) THEN
+          Tan1Var => VariableGet( Mesh % Variables, 'Averaged First Tangent' )
+          Tan2Var => VariableGet( Mesh % Variables, 'Averaged Second Tangent' )
+
+          IF(.NOT. ASSOCIATED( Tan1Var ) ) THEN
+            CALL VariableAddVector( Mesh % Variables, Mesh, Model % Solver,&
+                'Averaged First Tangent',3, Perm = BoundaryReorder )
+            Tan1Var => VariableGet( Mesh % Variables, 'Averaged First Tangent' )
+            CALL VariableAddVector( Mesh % Variables, Mesh, Model % Solver,&
+                'Averaged Second Tangent',3, Perm = BoundaryReorder )
+            Tan2Var => VariableGet( Mesh % Variables, 'Averaged Second Tangent' )
+          END IF
+          
+          DO i=1,Model % NumberOfNodes
+            k = BoundaryReorder(i)
+            IF (k>0 ) THEN
+              DO l=1,Tan1Var % DOFs
+                Tan1Var % Values( Tan1Var % DOFs* &
+                    (Tan1Var % Perm(i)-1)+l)  = BoundaryTangent1(k,l)
+                Tan2Var % Values( Tan2Var % DOFs* &
+                    (Tan2Var % Perm(i)-1)+l)  = BoundaryTangent2(k,l)
+              END DO
+            END IF
+          END DO
+        END IF
       END IF
     END IF
 
