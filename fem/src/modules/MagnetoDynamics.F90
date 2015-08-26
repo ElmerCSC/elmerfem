@@ -1894,8 +1894,6 @@ CONTAINS
     FORCE = 0.0_dp
     MASS  = 0.0_dp
 
-!   IF(PiolaVersion) RETURN
-
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
@@ -1904,8 +1902,9 @@ CONTAINS
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
        IF ( PiolaVersion ) THEN
-          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), detJ, Basis, dBasisdx, EdgeBasis=WBasis )
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
@@ -2823,14 +2822,18 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, PiolaVersion
+  LOGICAL :: Found, PiolaVersion, SecondOrder
 
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    PiolaVersion = GetLogical(SolverParams, &
-        'Use Piola Transform', Found )   
+    PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )
+    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
     IF (PiolaVersion) THEN    
-       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+       IF (SecondOrder) THEN
+          CALL ListAddString( SolverParams, "Element", "n:1 e:2 -tri_face b:2" )
+       ELSE
+          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+       END IF
     ELSE
        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
     END IF
@@ -2889,7 +2892,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, PiolaVersion, EdgeBasis,LFact,LFactFound
+  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
+  LOGICAL :: PiolaVersion, SecondOrder
+
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
@@ -2901,8 +2906,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
        Acoef, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM
 !------------------------------------------------------------------------------
-  PiolaVersion = GetLogical( GetSolverParams(), &
-      'Use Piola Transform', Found )
+  PiolaVersion = GetLogical( GetSolverParams(), 'Use Piola Transform', Found )
+  SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
@@ -2910,6 +2915,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
         'Currently only homogeneous Dirichlet and Neumann BCs for the vector potential supported',Level=4)
     CALL Info('WhitneyAVSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
+    IF (SecondOrder) &
+         CALL Info('WhitneyAVHarmonicSolver', &
+        'Using quadratic approximation, the background mesh should consist of element types 504 or 510 ',Level=4)   
   END IF
 
   ! Allocate some permanent storage, this is done first time only:
@@ -2952,7 +2960,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   IF (FixJ) CALL JfixPotentialSolver(Model,Solver,dt,Transient)
 
   !
-  ! Resolve internal non.linearities, if requeted:
+  ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( GetSolverParams(), &
               'Nonlinear System Max Iterations',Found)
@@ -3123,7 +3131,7 @@ CONTAINS
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
-          LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion )
+          LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion, SecondOrder )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
@@ -3178,9 +3186,6 @@ CONTAINS
 
     CALL DefaultFinishAssembly()
 
-    ! And finally, solve:
-    !--------------------
-  
     !
     ! Dirichlet BCs in terms of vector potential A:
     ! ---------------------------------------------
@@ -4011,7 +4016,8 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
-            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion )
+            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, &
+            PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
@@ -4019,7 +4025,7 @@ CONTAINS
     REAL(KIND=dp) :: LamThick(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: PiolaVersion
+    LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n)
@@ -4032,7 +4038,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
     LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody
-    INTEGER :: t, i, j, p, q, np, siz
+    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
@@ -4041,6 +4047,12 @@ CONTAINS
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+       EdgeBasisDegree = 2
+    ELSE
+       EdgeBasisDegree = 1
+    END IF
+
     CALL GetElementNodes( Nodes )
 
     STIFF = 0.0_dp
@@ -4091,7 +4103,8 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree )
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
 
@@ -4100,7 +4113,7 @@ CONTAINS
           stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
                RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-               ApplyPiolaTransform = .TRUE.)
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
@@ -4245,10 +4258,16 @@ CONTAINS
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, k, ii,jj, np, p, q
+    INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+       EdgeBasisDegree = 2
+    ELSE
+       EdgeBasisDegree = 1
+    END IF
+
     CALL GetElementNodes( Nodes )
 
     STIFF = 0.0_dp
@@ -4257,14 +4276,21 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE       
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
 
-       CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
 
        B  = SUM(Basis(1:n) * Bcoef(1:n))
        L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
