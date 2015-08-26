@@ -1904,13 +1904,13 @@ CONTAINS
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
        IF ( PiolaVersion ) THEN
-         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx, EdgeBasis=WBasis )
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx, EdgeBasis=WBasis )
        ELSE
-         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                    IP % W(t), detJ, Basis, dBasisdx )
-         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
 
        B  = SUM(Basis(1:n) * Bcoef(1:n))
        L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
@@ -5209,7 +5209,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                                 EL_NF
 
    INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
-              VvarDofs,VvarId,IvarId,Reindex,Imindex
+              VvarDofs,VvarId,IvarId,Reindex,Imindex,EdgeBasisDegree
 
    TYPE(Solver_t), POINTER :: pSolver, ElPotSolver
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName
@@ -5233,9 +5233,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>NULL(), Cwrk_im(:,:,:)=>NULL()
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
 
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField
-   REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
-   REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
    REAL(KIND=dp) :: Torque(3)
    REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent
    
@@ -5248,6 +5246,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF (PiolaVersion) &
     CALL Info('MagnetoDynamicsCalcFields', &
         'USING NEW PIOLA TRASFORMED FINITE ELEMENTS',Level=2)
+   SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )  
+   IF (SecondOrder) THEN
+      EdgeBasisDegree = 2
+   ELSE
+      EdgeBasisDegree = 1
+   END IF
 
    Pname = GetString(SolverParams, 'Potential Variable')
    DO i=1,Model % NumberOfSolvers
@@ -5378,7 +5382,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    n = Mesh % MaxElementDOFs
    ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n) )
-   IF (PiolaVersion) ALLOCATE( EBasis(n,3), CurlEBasis(n,3) )
+
    SOL = 0._dp; PSOL=0._dp
 
    LossEstimation = GetLogical(SolverParams,'Loss Estimation',Found) &
@@ -5619,7 +5623,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      ! Calculate nodal fields:
      ! -----------------------
-     IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+     IF (SecondOrder) THEN
+        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+     ELSE
+        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+     END IF
 
      MASS  = 0._dp
      FORCE = 0._dp
@@ -5630,23 +5638,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        w = IP % W(j)
 
        IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-               F, G, DetF, Basis, EBasis, CurlEBasis, dBasisdx)
-
-          !-------------------------------------------------------------------------
-          ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
-          ! vector B_j(x), with the place x related to the reference element 
-          ! coordinates p via the element mapping x = f(p). Additionally, 
-          ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
-          !-------------------------------------------------------------------------
-          GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
-          DO l = 1,nd-np 
-             DO k=1,dim
-                WBasis(l,k) = SUM( GT(k,1:dim) * EBasis(l,1:dim) )
-                RotWBasis(l,k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(l,1:dim) )
-             END DO
-          END DO
-          DetJ = ABS(DetF)
+          stat = EdgeElementInfo( Element, Nodes, u, v, w, DetF=DetJ, Basis=Basis, &
+               EdgeBasis=WBasis, RotBasis=RotWBasis, dBasisdx=dBasisdx, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
           IF( dim == 3 ) THEN
@@ -6129,7 +6123,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Tcoef,RotM )
-   IF (PiolaVersion) DEALLOCATE( EBasis, CurlEBasis )
 
    IF (LossEstimation) THEN
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss linear',TotalLoss(1) )
