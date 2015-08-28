@@ -2875,6 +2875,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
+  
+  TYPE(ValueList_t), POINTER :: CompParams
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
@@ -2955,6 +2957,32 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
 CONTAINS
 
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    
+    INTEGER :: i
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
+    LOGICAL :: Found
+    
+    BodyParams => GetBodyParams( Element )
+    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('GetCompParams', 'Body Parameters not found')
+    
+    i = GetInteger(BodyParams, 'Component', Found)
+    
+    IF (.NOT. Found) THEN
+      ComponentParams => Null()
+    ELSE
+      ComponentParams => CurrentModel % Components(i) % Values
+    END IF
+   
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentParams
+!------------------------------------------------------------------------------
+
 !---------------------------------------------------------------------------------------------
   FUNCTION DoSolve(IterNo) RESULT(Converged)
 !---------------------------------------------------------------------------------------------
@@ -2995,6 +3023,26 @@ CONTAINS
                  'Magnetization', FoundMagnetization )
        END IF
 
+       CoilBody = .FALSE.
+       CompParams => GetComponentParams( Element )
+       CoilType = ''
+       RotM = 0._dp
+       IF (ASSOCIATED(CompParams)) THEN
+         CoilType = GetString(CompParams, 'Coil Type', Found)
+         IF (Found) THEN
+           SELECT CASE (CoilType)
+           CASE ('stranded')
+              CoilBody = .TRUE.
+           CASE ('massive')
+              CoilBody = .TRUE.
+           CASE ('foil winding')
+              CoilBody = .TRUE.
+              CALL GetElementRotM(Element, RotM, n)
+           CASE DEFAULT
+              CALL Fatal ('WhitneyAVHarmonicSolver', 'Non existent Coil Type Chosen!')
+           END SELECT
+         END IF
+       END IF
        Acoef = 0.0_dp
        Tcoef = 0.0_dp
        Material => GetMaterial( Element )
@@ -3078,27 +3126,6 @@ CONTAINS
            CALL WARN('WhitneyAVSolver', 'Nonexistent Laminate Stack Model chosen!')
          END SELECT
        END IF
-
-       BodyParams => GetBodyParams( Element )
-       IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
-
-       CoilBody = .FALSE.
-       CoilType = GetString(BodyParams, 'Coil Type', Found)
-       IF (.NOT. Found) THEN
-          CoilType = ''
-       ELSE
-          SELECT CASE (CoilType)
-          CASE ('stranded')
-             CoilBody = .TRUE.
-          CASE ('massive')
-             CoilBody = .TRUE.
-          CASE ('foil winding')
-             CoilBody = .TRUE.
-             CALL GetElementRotM(Element, RotM, n)
-          CASE DEFAULT
-             CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
-          END SELECT
-        END IF
 
        Omega = GetAngularFrequency(Found=Found,UElement=Element)
 
@@ -4166,7 +4193,7 @@ CONTAINS
             END DO
             DO j=1,nd-np
               q = j+np
-
+              
               ! Compute the conductivity term <j * omega * C A,grad v> for 
               ! stiffness matrix (anisotropy taken into account)
               ! -------------------------------------------
@@ -5197,7 +5224,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
-   
+   TYPE(ValueList_t), POINTER :: CompParams
+
 !-------------------------------------------------------------------------------------------
    SolverParams => GetSolverParams()
 
@@ -5402,6 +5430,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
 
      CALL GetPermittivity(Material,PR,n)
+
+     CoilBody = .FALSE.
+     CompParams => GetComponentParams( Element )
+     CoilType = ''
+     RotM = 0._dp
+     IF (ASSOCIATED(CompParams)) THEN
+       CoilType = GetString(CompParams, 'Coil Type', Found)
+     END IF 
  
      !------------------------------------------------------------------------------
      !  Read conductivity values (might be a tensor)
@@ -5453,15 +5489,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
         
      IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp 
-       
-     ! in case of a foil winding, transform the conductivity tensor:
-     ! -------------------------------------------------------------
+
      BodyParams => GetBodyParams( Element )
      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('MagnetoDynamicsCalcFields', 'Body Parameters not found!')
 
      dim = CoordinateSystemDimension()
- 
-     CoilType = GetString(BodyParams, 'Coil Type', Found)
+
      IF (.NOT. Found) THEN
        CoilType = ''
      ELSE
@@ -5503,7 +5536,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
          VvarDofs = GetInteger (BodyParams, 'Circuit Voltage Variable dofs', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
-         
+         ! in case of a foil winding, transform the conductivity tensor:
+         ! -------------------------------------------------------------
+        
          IF (dim == 3) THEN
              DO k = 1,n
                Tcoef(1:3,1:3,k) = MATMUL(MATMUL(RotM(1:3,1:3,k), Tcoef(1:3,1:3,k)), TRANSPOSE(RotM(1:3,1:3,k)))
@@ -6141,7 +6176,34 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 CONTAINS
 
- 
+!------------------------------------------------------------------------------
+  FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    
+    INTEGER :: i
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
+    LOGICAL :: Found
+    
+    BodyParams => GetBodyParams( Element )
+    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('GetCompParams', 'Body Parameters not found')
+    
+    i = GetInteger(BodyParams, 'Component', Found)
+    
+    IF (.NOT. Found) THEN
+      ComponentParams => Null()
+    ELSE
+      ComponentParams => CurrentModel % Components(i) % Values
+    END IF
+   
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentParams
+!------------------------------------------------------------------------------
+
+
+
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs )
 !------------------------------------------------------------------------------

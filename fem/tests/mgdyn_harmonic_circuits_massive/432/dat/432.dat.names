@@ -1,0 +1,28 @@
+File started at: 2015/08/25 08:56:27
+ 
+Variables in columns of matrix: ./432/dat/432.dat
+   1: res: eddy current power
+   2: res: magnetic field energy
+   3: res: time
+   4: res: i_s_1
+   5: res: v_s_1
+   6: res: i_body(3)
+   7: res: v_body(3)
+   8: res: v_body(3) dof  1
+   9: res: v_body(3) dof  2
+  10: res: i_s_2
+  11: res: v_s_2
+  12: res: i_body(4)
+  13: res: v_body(4)
+  14: res: v_body(4) dof  1
+  15: res: v_body(4) dof  2
+  16: res: i_s_3
+  17: res: v_s_3
+  18: res: i_body(5)
+  19: res: v_body(5)
+  20: res: v_body(5) dof  1
+  21: res: v_body(5) dof  2
+  22: res: speed
+  23: res: harmonic loss linear
+  24: res: harmonic loss quadratic
+  25: res: joule loss

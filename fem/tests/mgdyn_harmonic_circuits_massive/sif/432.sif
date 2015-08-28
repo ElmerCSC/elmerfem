@@ -1,0 +1,255 @@
+Check Keywords "Warn"
+INCLUDE sif/432-circuits.definitions
+INCLUDE 432/mesh.names
+
+Header 1
+   Mesh DB "." "432"
+End
+
+Initial Condition 1
+   A re {e} = Real 0
+   A im {e} = Real 0
+   A re = Real 0
+   A im = Real 0
+End
+
+Simulation 1
+   Max Output Level = 10
+   Coordinate System = Cartesian 3D
+   Coordinate Mapping(3) = 1 2 3
+   Coordinate Scaling = 0.001
+   Simulation Type = Steady
+   BDF Order = 1
+   Steady State Max Iterations = 1
+   Output Intervals(1) = 0
+   Angular Frequency = 314.159265359
+End
+
+Solver 1
+   Exec Solver = Before All
+   Procedure = "Wsolver" "Wsolve"
+   Equation = "Wire direction"
+   Variable = W
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 1000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Preconditioning = ILU0
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 100
+End
+
+Solver 2
+   Exec Solver = Always
+   Equation = Circuits
+   Variable = X
+   Procedure = "IHarmonic" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 3
+   Equation = "MGDynamics"
+   Variable = "A[A re:1 A im:1]"
+   Procedure = "MagnetoDynamics" "WhitneyAVHarmonicSolver"
+   Angular Frequency = 314.159265359
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = Logical True
+   Linear System Complex = Logical True
+
+   Linear System Solver = Iterative
+   Linear System Iterative Method = BicgstabL
+   Linear System preconditioning = Circuit
+   Linear System Convergence Tolerance = 1.e-7
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 10
+   BicgStabL Polynomial Degree = 4
+   Steady State Convergence Tolerance = 1e-06
+   Linear System Abort not Converged = True
+End
+
+Solver 4
+   Equation = "MGDynamicsCalc"
+   Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+   Linear System Symmetric = True
+   Potential Variable = String "A"
+   Calculate Current Density = Logical True
+   Loss Estimation = Logical True
+   Steady State Convergence Tolerance = 0
+
+   Linear System Solver = "Iterative"
+   Linear System Preconditioning = None
+   Linear System Residual Output = 0
+   Linear System Max Iterations = 5000
+   Linear System Iterative Method = CG
+   Steady State Convergence Tolerance = 1e-6
+   Linear System Convergence Tolerance = 1.0e-8
+End
+
+Solver 5
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "IHarmonic" "CircuitsOutput"
+End
+
+!Solver 6
+!   Exec Solver = After timestep
+!   Equation = "ResultOutput"
+!   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+!   Output File Name = 432-results
+!   Vtu format = Logical True
+!   Save Geometry Ids = Logical True
+!End
+
+!Solver 7
+!   Exec Solver = after timestep
+!   Equation = "sv"
+!   Procedure = "SaveData" "SaveScalars"
+!   Filename = 432/dat/432.dat
+!End
+
+Equation 1
+   Active Solvers(2) = 3 4
+End
+
+Equation 2
+   Active Solvers(4) = 1 2 3 4
+End
+
+Material 1
+   Name = iron
+   Electric Conductivity = Real 0
+   Relative Permeability = Real 2000
+End
+
+Material 2
+   Name = air
+   Electric Conductivity = Real 0
+   Relative Permeability = Real 1
+End
+
+Material 3
+   Name = aluminium
+   Relative Permeability = Real 1
+   Electric Conductivity = 1e7
+End
+
+Body 1
+   Name = core
+   Target Bodies(1) = $ core
+   Equation = 1
+   Material = 1
+   Initial Condition = 1
+End
+
+Body 2
+   Name = air
+   Target Bodies(1) = $ air
+   Equation = 1
+   Material = 2
+   Initial Condition = 1
+End
+
+Body 3
+   Name = limb1L1
+   Target Bodies(1) = $ limb1L1
+   Equation = 2
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+End
+
+Component 1
+   Name = String limb1
+   Body = Integer 3
+   Coil Type = String massive
+End
+
+Body 4
+   Name = limb2L1
+   Target Bodies(1) = $ limb2L1
+   Equation = 2
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+End
+
+Component 2
+   Name = String limb2
+   Body = Integer 4
+   Coil Type = String massive
+End
+
+Body 5
+   Name = limb3L1
+   Target Bodies(1) = $ limb3L1
+   Equation = 2
+   Material = 3
+   Initial Condition = 1
+   Body Force = 1
+End
+
+Component 3
+   Name = String limb3
+   Body = Integer 5
+   Coil Type = String massive
+End
+
+Body Force 1
+   Name = "Circuit"
+   S1 Re = Real 1
+   S1 Im = Real 0.0
+   S2 Re = Real $ cos(pi/3)
+   S2 Im = Real $ sin(pi/3)
+   S3 Re = Real $ cos(2*pi/3)
+   S3 Im = Real $ sin(2*pi/3)
+End
+
+Boundary Condition 1
+   Name = BCn Flux Parallel
+   Target Boundaries(2) = $ coreface_xy xy0
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+
+Boundary Condition 2
+   Name = Alpha0
+   Target Boundaries(3) = $ limb3L1_alpha0 limb1L1_alpha0 limb2L1_alpha0
+   Alpha = Real 0
+End
+
+Boundary Condition 3
+   Name = Alpha1
+   Target Boundaries(3) = $ limb1L1_alpha1 limb3L1_alpha1 limb2L1_alpha1
+   Alpha = Real 1
+End
+
+Boundary Condition 4
+   Name = ground
+   Target Boundaries(3) = $ limb3L1_gamma1 limb2L1_gamma1 limb1L1_gamma1
+   W = Real 1
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+
+Boundary Condition 5
+   Name = current in foil winding
+   Target Boundaries(3) = $ limb3L1_gamma0 limb2L1_gamma0 limb1L1_gamma0
+   W = Real 0
+   A re {e} = Real 0
+   A im {e} = Real 0
+End
+
+Boundary Condition 6
+   Name = Beta1
+   Target Boundaries(3) = $ limb3L1_beta1 limb2L1_beta1 limb1L1_beta1
+   Beta = Real 1
+End
+
+Boundary Condition 7
+   Name = Beta0
+   Target Boundaries(3) = $ limb3L1_beta0 limb1L1_beta0 limb2L1_beta0
+   Beta = Real 0
+End
+
+Solver 3 :: Reference Norm = Real 1.055783E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN

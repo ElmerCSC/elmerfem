@@ -1036,7 +1036,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(CMPLXComponent_t), POINTER :: Comp
     INTEGER :: i, j, jj, p, nm, nn, nd, &
-               RowId, ColId, n_Circuits, &
+               VvarId, IvarId, n_Circuits, &
                CompInd, q
     INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
     LOGICAL :: dofsdone
@@ -1052,32 +1052,32 @@ CONTAINS
         Done = .FALSE.
         Comp => Circuits(p) % Components(CompInd)
         Cvar => Comp % vvar
-        RowId = Comp % vvar % ValueId + nm
-        ColId = Comp % ivar % ValueId + nm
+        VvarId = Comp % vvar % ValueId + nm
+        IvarId = Comp % ivar % ValueId + nm
 
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, RowId)
+            CALL CreateCmplxMatElement(Rows, Cols, Cnts, VvarId, IvarId)
+            CALL CreateCmplxMatElement(Rows, Cols, Cnts, VvarId, VvarId)
           END IF
         CASE('massive')
           IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, ColId)
-            CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, RowId)
+            CALL CreateCmplxMatElement(Rows, Cols, Cnts, VvarId, IvarId)
+            CALL CreateCmplxMatElement(Rows, Cols, Cnts, VvarId, VvarId)
           END IF
         CASE('foil winding')
           DO j=0, Cvar % pdofs
             IF (Cvar % Owner == ParEnv % mype) THEN
               ! V = V0 + V1*alpha + V2*alpha^2 + ...
-              CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId, RowId + 2*j)
+              CALL CreateCmplxMatElement(Rows, Cols, Cnts, VvarId, VvarId + 2*j)
               IF (j/=0) THEN
                 ! Circuit eqns for the pdofs:
                 ! I(Vi) - I = 0
                 ! ------------------------------------
-                CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId + 2*j, ColId)
+                CALL CreateCmplxMatElement(Rows, Cols, Cnts, VvarId + 2*j, IvarId)
                 DO jj = 1, Cvar % pdofs
-                    CALL CreateCmplxMatElement(Rows, Cols, Cnts, RowId + 2*j, RowId + 2*jj)
+                    CALL CreateCmplxMatElement(Rows, Cols, Cnts, VvarId + 2*j, VvarId + 2*jj)
                 END DO
               END IF
             END IF
@@ -1093,13 +1093,13 @@ CONTAINS
             nd = GetElementNOFDOFs(Element,ASolver)
             SELECT CASE (Comp % CoilType)
             CASE('stranded')              
-              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows,Cols,ColId)
+              CALL CountAndCreateStranded(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols,IvarId)
             CASE('massive')
-              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows,Cols=Cols)
+              CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols)
             CASE('foil winding')
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )
-                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,Done,dofsdone,Rows,Cols=Cols)
+                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+VvarId,Cnts,Done,dofsdone,Rows,Cols=Cols)
               END DO
             END SELECT
           END IF
@@ -1122,18 +1122,32 @@ CONTAINS
     USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
-    INTEGER :: nn, nd
+    INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
     OPTIONAL :: Cols
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: p,i,j,Indexes(nd)
     INTEGER, OPTIONAL :: Jsind
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
-  
+    LOGICAL :: First=.TRUE.
+    SAVE dim, First
+
+    IF (First) THEN
+      First = .FALSE.
+      dim = CoordinateSystemDimension()
+    END IF
+
     IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateStranded','ASolver not found!')
     PS => CurrentModel % Asolver % Variable % Perm
     nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
-    DO p=1,nd
+    IF(dim==2) THEN
+      ncdofs1=1
+      ncdofs2=nd
+    ELSE IF(dim==3) THEN
+      ncdofs1=nn
+      ncdofs2=nd
+    END IF
+    DO p=ncdofs1,ncdofs2
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
@@ -1160,17 +1174,31 @@ CONTAINS
     USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
-    INTEGER :: nn, nd
+    INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
     OPTIONAL :: Cols
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: p,i,j,Indexes(nd)
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
-    
+    LOGICAL :: First=.TRUE.
+    SAVE dim, First
+
+    IF (First) THEN
+      First = .FALSE.
+      dim = CoordinateSystemDimension()
+    END IF
+
     IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateMassive','ASolver not found!')
     PS => CurrentModel % Asolver % Variable % Perm
     nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
-    DO p=1,nd
+    IF(dim==2) THEN
+      ncdofs1=1
+      ncdofs2=nd
+    ELSE IF(dim==3) THEN
+      ncdofs1=nn
+      ncdofs2=nd
+    END IF
+    DO p=ncdofs1,ncdofs2
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
@@ -1195,18 +1223,31 @@ CONTAINS
     USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
-    INTEGER :: nn, nd
+    INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
     OPTIONAL :: Cols
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: p,i,j,Indexes(nd)
-    LOGICAL :: dofsdone
+    LOGICAL :: dofsdone, First=.TRUE.
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
+    SAVE dim, First
+
+    IF (First) THEN
+      First = .FALSE.
+      dim = CoordinateSystemDimension()
+    END IF
     
     IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateFoilWinding','ASolver not found!')
     PS => CurrentModel % Asolver % Variable % Perm
     nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
-    DO p=1,nd
+    IF(dim==2) THEN
+      ncdofs1=1
+      ncdofs2=nd
+    ELSE IF(dim==3) THEN
+      ncdofs1=nn
+      ncdofs2=nd
+    END IF
+    DO p=ncdofs1,ncdofs2
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = dofsdone
@@ -1412,7 +1453,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE AddComponentEquationsAndCouplings(p, nn, CSymmetry)
+   SUBROUTINE AddComponentEquationsAndCouplings(p, nn)
 !------------------------------------------------------------------------------
     USE DefUtils
     USE CircuitsMod
@@ -1432,7 +1473,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     REAL(KIND=dp) :: RotM(3,3,nn)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
-    LOGICAL :: Found, CSymmetry
+    LOGICAL :: Found
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('AddComponentEquationsAndCouplings','ASolver not found!')
@@ -1501,12 +1542,11 @@ CONTAINS
           CALL GetConductivity(Element, Tcoef, nn)
           SELECT CASE(CoilType)
           CASE ('stranded')
-            CALL Add_stranded(Element,Tcoef(1,1,1:nn),Comp,nn,nd,CSymmetry)
+            CALL Add_stranded(Element,Tcoef,Comp,nn,nd)
           CASE ('massive')
-            CALL Add_massive(Element,Tcoef(1,1,1:nn),Comp,nn,nd,CSymmetry)
+            CALL Add_massive(Element,Tcoef,Comp,nn,nd)
           CASE ('foil winding')
-!              CALL GetElementRotM(Element, RotM, nn)
-            CALL Add_foil_winding(Element,Tcoef(1,1,1:nn),Comp,nn,nd,CSymmetry)
+            CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd)
           CASE DEFAULT
             CALL Fatal ('Circuits_apply', 'Non existent Coil Type Chosen!')
           END SELECT
@@ -1542,7 +1582,7 @@ CONTAINS
            'Electric Conductivity', Cwrk, nn, Element % NodeIndexes, Found )
 
     IF (.NOT. Found) CALL Fatal('Circuits_apply', 'Electric Conductivity not found.')
-
+    
     IF (Found) THEN
        IF ( SIZE(Cwrk,1) == 1 ) THEN
           DO i=1,3
@@ -1621,16 +1661,15 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,CSymmetry)
+   SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
     USE DefUtils
     USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
-    COMPLEX(KIND=dp) :: Tcoef(nn)
+    COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     TYPE(CMPLXComponent_t) :: Comp
     INTEGER :: nn, nd, nm, Indexes(nd),VvarId,IvarId
-    LOGICAL :: CSymmetry
 
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
@@ -1640,12 +1679,25 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nn), DetJ, x
     REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn), w(3)
     COMPLEX(KIND=dp) :: localC, i_multiplier, cmplx_value
-    INTEGER :: p,t
+    INTEGER :: j,t
     LOGICAL :: stat
 
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
-        
+    LOGICAL :: CSymmetry, First=.TRUE.
+
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    INTEGER :: dim, ncdofs,q
+    
+    SAVE CSymmetry, dim
+
+    IF (First) THEN
+      First = .FALSE.
+      CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric )
+      dim = CoordinateSystemDimension()
+    END IF
+
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_stranded','ASolver not found!')
     PS => Asolver % Variable % Perm
@@ -1656,6 +1708,12 @@ CONTAINS
     
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
+    
+    ncdofs=nd
+    IF (dim == 3) THEN
+      CALL GetLocalSolution(Wbase,'W')
+      ncdofs=nd-nn
+    END IF
 
     VvarId = Comp % vvar % ValueId + nm
     IvarId = Comp % ivar % ValueId + nm
@@ -1672,14 +1730,20 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
 
-      IF( CSymmetry ) THEN
-        x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
-        detJ = detJ * x
-      END IF
+      SELECT CASE(dim)
+      CASE(2)
+        IF( CSymmetry ) THEN
+          x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
+          detJ = detJ * x
+        END IF
+        w = [0._dp, 0._dp, 1._dp]
+      CASE(3)
+        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        w = -normalized(MATMUL(WBase(1:nn), dBasisdx(1:nn,:)))
+      END SELECT
 
-      w = [0._dp, 0._dp, 1._dp]
-      localC = SUM(Tcoef(1:nn) * Basis(1:nn))
-
+      localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
+      
       ! I * R, where 
       ! R = (1/sigma * js,js):
       ! ----------------------
@@ -1687,23 +1751,23 @@ CONTAINS
       CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
             REAL(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC), &
            AIMAG(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC))
-            
-      DO p=1,nd
-
+      
+      DO j=1,ncdofs
+        q=j
+        IF (dim == 3) q=q+nn
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
-          CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(p))), &
-                 REAL(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC), & 
-                AIMAG(-im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(p)/localC))
-
-            IF (i_multiplier /= 0._dp) THEN
-              cmplx_value = -i_multiplier*Comp % N_j*IP % s(t)*detJ*Basis(p)
-            ELSE
-              cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(p)
-            END IF
-            
-            CALL AddToCmplxMatrixElement(CM,ReIndex(PS(Indexes(p))), IvarId, &
-               REAL(cmplx_value), AIMAG(cmplx_value))
+          IF (dim == 2) cmplx_value = -im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(j)/localC
+          IF (dim == 3) cmplx_value = -im * Omega * Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/localC
+          CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(q))), &
+                 REAL(cmplx_value), AIMAG(cmplx_value))
+          
+          IF (dim == 2) cmplx_value = -Comp % N_j*IP % s(t)*detJ*Basis(j)
+          IF (dim == 3) cmplx_value = -Comp % N_j*IP % s(t)*detJ*SUM(WBasis(j,:)*w)
+          IF (i_multiplier /= 0._dp) cmplx_value = i_multiplier*cmplx_value
+          
+          CALL AddToCmplxMatrixElement(CM,ReIndex(PS(Indexes(q))), IvarId, &
+             REAL(cmplx_value), AIMAG(cmplx_value))
 
         END IF
       END DO
@@ -1713,28 +1777,65 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,CSymmetry)
+   FUNCTION norm2(a)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    REAL(KIND=dp) :: norm2(3)
+    REAL(KIND=dp), INTENT(IN) :: a(3)
+    norm2 = sqrt(SUM(a**2))
+!------------------------------------------------------------------------------
+   END FUNCTION norm2
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   FUNCTION normalized(a)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    REAL(KIND=dp) :: normalized(3)
+    REAL(KIND=dp), INTENT(IN) :: a(3)
+    normalized = a/norm2(a)
+!------------------------------------------------------------------------------
+   END FUNCTION normalized
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
     USE DefUtils
     USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
-    COMPLEX(KIND=dp) :: Tcoef(nn)
+    COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     TYPE(CMPLXComponent_t) :: Comp
-    LOGICAL :: CSymmetry
 
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Omega
     REAL(KIND=dp) :: Basis(nn), DetJ, x
-    REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn)
-    COMPLEX(KIND=dp) :: localC
-    INTEGER :: nn, nd, j, t, nm, Indexes(nd),VvarId
+    REAL(KIND=dp) :: dBasisdx(nn,3)
+    COMPLEX(KIND=dp) :: localC, cmplx_value
+    INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
+               VvarId, dim
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+    LOGICAL :: CSymmetry, First=.TRUE.
+
+    REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
+    INTEGER :: ncdofs,q
+
+    SAVE CSymmetry, dim
+
+    IF (First) THEN
+      First = .FALSE.
+      CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric )
+      dim = CoordinateSystemDimension()
+    END IF
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_massive','ASolver not found!')
@@ -1746,7 +1847,12 @@ CONTAINS
 
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
-    CALL GetLocalSolution(Wbase,'W')
+
+    ncdofs=nd
+    IF (dim == 3) THEN
+      CALL GetLocalSolution(Wbase,'W')
+      ncdofs=nd-nn
+    END IF
 
     vvarId = Comp % vvar % ValueId + nm
 
@@ -1759,30 +1865,41 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                 IP % W(t), detJ, Basis,dBasisdx )
 
-      IF( CSymmetry ) THEN
-        x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
-        detJ = detJ * x
-      END IF
+      SELECT CASE(dim)
+      CASE(2)
+        IF( CSymmetry ) THEN
+          x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
+          detJ = detJ * x
+        END IF
+      CASE(3)
+        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
+      END SELECT
 
-      localC = SUM(Tcoef(1:nn) * Basis(1:nn))
+
+      localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
 
       ! computing the source term Vi(sigma grad v0, grad si):
       ! ------------------------------------------------
+      IF(dim==2) cmplx_value = IP % s(t)*detJ*localC
+      IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*gradv)
       CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
-              REAL(IP % s(t)*detJ*localC), &
-              AIMAG(IP % s(t)*detJ*localC))
+              REAL(cmplx_value), AIMAG(cmplx_value))
 
-      DO j=1,nd
+      DO j=1,ncdofs
+        q=j
+        IF (dim == 3) q=q+nn
         ! computing the mass term (sigma * im * Omega * a, grad si):
         ! ---------------------------------------------------------
-        CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(j))), &
-               REAL(im * Omega * IP % s(t)*detJ*localC*basis(j)), &
-              AIMAG(im * Omega * IP % s(t)*detJ*localC*basis(j)))
+        IF(dim==2) cmplx_value = im * Omega * IP % s(t)*detJ*localC*basis(j)
+        IF(dim==3) cmplx_value = im * Omega * IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)
+        CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
+               REAL(cmplx_value), AIMAG(cmplx_value))
 
-          CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(j))), vvarId, &
-                REAL(IP % s(t)*detJ*localC*basis(j)), &
-               AIMAG(IP % s(t)*detJ*localC*basis(j)))
-
+        IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*basis(j)
+        IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
+        CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
+                REAL(cmplx_value), AIMAG(cmplx_value))
       END DO
     END DO
 
@@ -1791,16 +1908,15 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,CSymmetry)
+   SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
     USE DefUtils
     USE CircuitsMod
     IMPLICIT NONE
     INTEGER :: nn, nd
     TYPE(Element_t) :: Element
-    COMPLEX(KIND=dp) :: Tcoef(:), C, value
+    COMPLEX(KIND=dp) :: Tcoef(3,3,nn), C(3,3), value
     TYPE(CMPLXComponent_t) :: Comp
-    LOGICAL :: CSymmetry
 
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
@@ -1809,11 +1925,26 @@ CONTAINS
                      localAlpha, localV, localVtest, x, circ_eq_coeff, grads_coeff
     REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
-               vpolord, vpolordtest, dofId, dofIdtest
+               vpolord, vpolordtest, dofId, dofIdtest, &
+               dim
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+    LOGICAL :: CSymmetry, First=.TRUE.
+
+    REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
+                     RotMLoc(3,3), RotM(3,3,nn)
+    INTEGER :: i,ncdofs,q
+
+    SAVE CSymmetry, dim
+
+    IF (First) THEN
+      First = .FALSE.
+      CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric )
+      dim = CoordinateSystemDimension()
+    END IF
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('Add_foil_winding','ASolver not found!')
@@ -1826,6 +1957,13 @@ CONTAINS
     CALL GetElementNodes(Nodes)
     nd = GetElementDOFs(Indexes,Element,ASolver)
     CALL GetLocalSolution(alpha,'Alpha')
+    
+    ncdofs=nd
+    IF (dim == 3) THEN
+      CALL GetLocalSolution(Wbase,'W')
+      CALL GetElementRotM(Element, RotM, nn)
+      ncdofs=nd-nn
+    END IF
 
     vvarId = Comp % vvar % ValueId
     vpolord_tot = Comp % vvar % pdofs - 1
@@ -1841,13 +1979,31 @@ CONTAINS
 
       grads_coeff = 1._dp
       circ_eq_coeff = 1._dp
-      IF( CSymmetry ) THEN
-        x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
-        detJ = detJ * x
-        grads_coeff = grads_coeff/(2._dp*pi*x)
-        circ_eq_coeff = 2._dp * pi
-      END IF
-
+      SELECT CASE(dim)
+      CASE(2)
+        IF( CSymmetry ) THEN
+          x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
+          detJ = detJ * x
+          grads_coeff = grads_coeff/(2._dp*pi*x)
+          circ_eq_coeff = 2._dp * pi
+        END IF
+        C(1,1) = SUM( Tcoef(1,1,1:nn) * Basis(1:nn) )
+      CASE(3)
+        CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
+        gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
+        ! Compute the conductivity tensor
+        ! -------------------------------
+        DO i=1,3
+          DO j=1,3
+            C(i,j) = SUM( Tcoef(i,j,1:nn) * Basis(1:nn) )
+            RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
+          END DO
+        END DO
+        ! Transform the conductivity tensor:
+        ! ----------------------------------
+        C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+      END SELECT
+      
       localAlpha = SUM(alpha(1:nn) * Basis(1:nn))
       
       ! alpha is normalized to be in [0,1] thus, 
@@ -1856,19 +2012,6 @@ CONTAINS
       ! ------------------------------------------------------
       localAlpha = localAlpha * Comp % coilthickness
 
-
-      ! Compute the conductivity tensor
-      ! -------------------------------
-!      DO i=1,3
-!        DO j=1,3
-          C = SUM( Tcoef(1:nn) * Basis(1:nn) )
-!          RotMLoc(i,j) = SUM( RotM(i,j,1:nn) * Basis(1:nn) )
-!        END DO
-!      END DO
-
-      ! Transform the conductivity tensor:
-      ! ----------------------------------
-!      C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
       DO vpolordtest=0,vpolord_tot ! V'(alpha)
         localVtest = localAlpha**vpolordtest
@@ -1880,15 +2023,19 @@ CONTAINS
           
           ! Computing the stiff term (sigma V(alpha) grad v0, V'(alpha) grad si):
           ! ---------------------------------------------------------------------
-          value = IP % s(t)*detJ*localV*localVtest*C*grads_coeff**2*circ_eq_coeff
+          IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
+          IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
           CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, dofId+nm, REAL(value), AIMAG(value))
         END DO
 
-        DO j=1,nd
+        DO j=1,ncdofs
+          q=j
+          IF (dim == 3) q=q+nn
           ! computing the mass term (sigma * im * Omega * a, V'(alpha) grad si):
           ! ---------------------------------------------------------
-          value = im * Omega * IP % s(t)*detJ*localVtest*C*basis(j)*grads_coeff*circ_eq_coeff
-          CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, ReIndex(PS(Indexes(j))), REAL(value), AIMAG(value) )
+          IF (dim == 2) value = im * Omega * IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff
+          IF (dim == 3) value = im * Omega * IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)
+          CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, ReIndex(PS(Indexes(q))), REAL(value), AIMAG(value) )
         END DO
 
       END DO
@@ -1897,9 +2044,12 @@ CONTAINS
         localV = localAlpha**vpolord
         dofId = 2*(vpolord + 1) + vvarId
 
-        DO j=1,nd
-            value = IP % s(t)*detJ*localV*C*basis(j)*grads_coeff
-            CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(j))), dofId+nm, REAL(value), AIMAG(value))
+        DO j=1,ncdofs
+            q=j
+            IF (dim == 3) q=q+nn
+            IF (dim == 2) value = IP % s(t)*detJ*localV*C(1,1)*basis(j)*grads_coeff
+            IF (dim == 3) value = IP % s(t)*detJ*localV*SUM(MATMUL(C,gradv)*Wbasis(j,:))
+            CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), dofId+nm, REAL(value), AIMAG(value))
         END DO
       END DO
 
@@ -1965,16 +2115,13 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 
   TYPE(Solver_t), POINTER :: Asolver => Null()
 
-  INTEGER :: p, n, istat
+  INTEGER :: p, n, istat, max_element_dofs
   TYPE(Mesh_t), POINTER :: Mesh  
 
   TYPE(Matrix_t), POINTER :: CM
   INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
   TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
     
-  LOGICAL :: CSymmetry
-  
-  SAVE CSymmetry
 !------------------------------------------------------------------------------
 
   IF (First) THEN
@@ -1982,12 +2129,6 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
     
     CALL AddComponentsToBodyLists()
     
-    CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
-      CurrentCoordinateSystem() == CylindricSymmetric )
-
-    Mesh => Model % Mesh
-    N = Mesh % MaxElementDOFs
-
     ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'CircuitsAndDynamics2DHarmonic', 'Memory allocation error.' )
@@ -1995,14 +2136,11 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 
     n_Circuits => Model%n_Circuits
     Model%Circuit_tot_n = 0
-
   
     Model % ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
     ASolver => Model % ASolver
     
-    ! Initialize circuit matrices:
-    ! ----------------------------
-    CALL AllocateCircuitsList()
+    CALL AllocateCircuitsList() ! CurrentModel%CMPLXCircuits
     Circuits => Model%CMPLXCircuits
     
     DO p=1,n_Circuits
@@ -2028,16 +2166,14 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
     ! ------------------------------------------------------
     CALL Circuits_MatrixInit()
   END IF
-
+  
+  max_element_dofs = Model % Mesh % MaxElementDOFs
   Circuits => Model%CMPLXCircuits
   n_Circuits => Model%n_Circuits
-!  Circuit_tot_n => Model%Circuit_tot_n
   CM=>Model%CircuitMatrix
   
   ! Initialialize Circuit matrix:
   ! -----------------------------
-!  PS => Asolver % Variable % Perm
-!  nm =  Asolver % Matrix % NumberOfRows
   IF(.NOT.ASSOCIATED(CM)) RETURN
 
   CM % RHS = 0._dp
@@ -2047,7 +2183,7 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   ! ------------------------
   DO p = 1,n_Circuits
     CALL AddBasicCircuitEquations(p)
-    CALL AddComponentEquationsAndCouplings(p, Model % Mesh % MaxElementDOFs, CSymmetry)
+    CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
   END DO
   Asolver %  Matrix % AddMatrix => CM
 
@@ -2080,7 +2216,6 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 
-   REAL(KIND=dp), POINTER :: LagrangeValues(:)
    TYPE(Variable_t), POINTER :: LagrangeVar
    REAL(KIND=dp), ALLOCATABLE  :: ip(:), ipt(:)
    INTEGER :: nm
@@ -2089,7 +2224,6 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
    CHARACTER(LEN=MAX_NAME_LEN) :: dofnumber
    INTEGER :: i,p,jj,j
-   LOGICAL :: Found
    TYPE(CMPLXCircuitVariable_t), POINTER :: CVar
 
    TYPE(Matrix_t), POINTER :: CM    
@@ -2103,14 +2237,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    
     ! Look for the solver we attach the circuit equations to:
     ! -------------------------------------------------------
-    Found = .False.
-    DO i=1,Model % NumberOfSolvers
-      Asolver => Model % Solvers(i)
-      IF(ListCheckPresent(Asolver % Values,'Export Lagrange Multiplier')) THEN 
-        Found = .True. 
-        EXIT
-      END IF
-    END DO
+    ASolver => CurrentModel % Asolver
+    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CircuitsOutput','ASolver not found!')
     
     nm =  Asolver % Matrix % NumberOfRows
 

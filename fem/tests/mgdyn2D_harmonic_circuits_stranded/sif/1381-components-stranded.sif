@@ -32,7 +32,7 @@ Solver 2
    Exec Solver = Always
    Equation = Circuits
    Variable = X
-   Procedure = "IHarmonic2DwithComponents" "CircuitsAndDynamics2DHarmonic"
+   Procedure = "IHarmonic" "CircuitsAndDynamicsHarmonic"
 End
 
 Solver 3
@@ -83,7 +83,7 @@ End
 Solver 5
    Exec Solver = Always
    Equation = Circuits Output
-   Procedure = "IHarmonic2DwithComponents" "CircuitsOutput"
+   Procedure = "IHarmonic" "CircuitsOutput"
 End
 
 !Solver 6
