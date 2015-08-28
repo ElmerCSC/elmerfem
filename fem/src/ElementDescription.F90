@@ -4326,7 +4326,7 @@ END IF
              END IF
           END IF
        CASE DEFAULT
-          CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
+          CALL Fatal('ElementDescription::FaceElementInfo','Unsupported element type')
        END SELECT
     
 !-----------------------------------------------------------------------------
@@ -4430,7 +4430,7 @@ END IF
        REAL(KIND=dp) :: v                        !< 2nd local coordinate
        REAL(KIND=dp) :: w                        !< 3rd local coordinate
        REAL(KIND=dp), OPTIONAL :: F(3,3)         !< The gradient F=Grad f, with f the element map f:k->K
-       REAL(KIND=dp), OPTIONAL :: G(3,3)         !< The inverse of the gradient F
+       REAL(KIND=dp), OPTIONAL :: G(3,3)         !< The transpose of the inverse of the gradient F
        REAL(KIND=dp) :: detF                     !< The determinant of the gradient matrix F
        REAL(KIND=dp) :: Basis(:)                 !< H1-conforming basis functions evaluated at (u,v,w)
        REAL(KIND=dp) :: EdgeBasis(:,:)           !< The basis functions b spanning the reference element space
@@ -4452,7 +4452,7 @@ END IF
        INTEGER :: n, dim, cdim, q, i, j, k, l, ni, nj, A, I1, I2, FaceIndeces(4)
        REAL(KIND=dp) :: dLbasisdx(MAX(SIZE(Nodes % x),SIZE(Basis)),3), WorkBasis(3,3), WorkCurlBasis(3,3)
        REAL(KIND=dp) :: D1, D2, B(3), curlB(3), GT(3,3), LG(3,3), LF(3,3)
-       REAL(KIND=dp) :: ElmMetric(3,3), detJ, LtoGMap(3,3), CurlBasis(27,3)
+       REAL(KIND=dp) :: ElmMetric(3,3), detJ, CurlBasis(27,3)
        REAL(KIND=dp) :: t(3), s(3), v1, v2, v3
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
        LOGICAL :: SecondOrder
@@ -4497,6 +4497,11 @@ END IF
           detF = 1.0d0
           Basis(1) = 1.0d0
           IF ( PRESENT(dBasisdx) ) dBasisdx(1,:) = 0.0d0
+          RETURN
+       END IF
+
+       IF (cdim == 2 .AND. dim==1) THEN
+          CALL Warn('EdgeElementInfo', 'Traces of 2-D edge elements have not been implemented yet')
           RETURN
        END IF
 
@@ -4662,24 +4667,27 @@ END IF
        ! function returns the local basis functions b and their Curl (with respect
        ! to local coordinates) evaluated at the integration point. The effect of 
        ! the Piola transformation need to be considered when integrating, so we 
-       ! shall return also the values of F, G=F^{-1} and det F.
+       ! shall return also the values of F, G=F^{-T} and det F.
        !
        ! The construction of edge element bases could be done in an alternate way for 
        ! triangles and tetrahedra, while the chosen approach has the benefit that
        ! it generalizes to other cases. For example general quadrilaterals may now 
        ! be handled in the same way.
        !---------------------------------------------------------------------------
-       SELECT CASE(Element % TYPE % ElementCode / 100)
-       CASE(3,4)
-          LG(1,1) = 1.0d0/detF * LF(2,2)
-          LG(1,2) = -1.0d0/detF * LF(1,2)
-          LG(2,1) = -1.0d0/detF * LF(2,1)
-          LG(2,2) = 1.0d0/detF * LF(1,1)
-       CASE(5,6,7,8)
-          CALL InvertMatrix3x3(LF,LG,detF)       
-       CASE DEFAULT
-          CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
-       END SELECT
+       IF (cdim == dim) THEN
+          SELECT CASE(Element % TYPE % ElementCode / 100)
+          CASE(3,4)
+             LG(1,1) = 1.0d0/detF * LF(2,2)
+             LG(1,2) = -1.0d0/detF * LF(1,2)
+             LG(2,1) = -1.0d0/detF * LF(2,1)
+             LG(2,2) = 1.0d0/detF * LF(1,1)
+          CASE(5,6,7,8)
+             CALL InvertMatrix3x3(LF,LG,detF)       
+          CASE DEFAULT
+             CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
+          END SELECT
+          LG(1:dim,1:dim) = TRANSPOSE( LG(1:dim,1:dim) )
+       END IF
 
        IF (UsePretabulatedBasis) THEN
           DO i=1,DOFs
@@ -6699,7 +6707,7 @@ END IF
           IF (PerformPiolaTransform) THEN
              DO j=1,DOFs
                 DO k=1,dim
-                   B(k) = SUM( LG(1:dim,k) * EdgeBasis(j,1:dim) )
+                   B(k) = SUM( LG(k,1:dim) * EdgeBasis(j,1:dim) )
                 END DO
                 EdgeBasis(j,1:dim) = B(1:dim)
 
@@ -6725,7 +6733,7 @@ END IF
              DO i=1,n
                 DO j=1,dim
                    DO k=1,dim
-                      dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LG(k,j)
+                      dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LG(j,k)
                    END DO
                 END DO
              END DO
@@ -6734,7 +6742,7 @@ END IF
 
           IF (PerformPiolaTransform .OR. PRESENT(dBasisdx)) THEN
              IF ( .NOT. ElementMetric( n, Element, Nodes, &
-                  ElmMetric, detJ, dLBasisdx, LtoGMap ) ) THEN
+                  ElmMetric, detJ, dLBasisdx, LG ) ) THEN
                 stat = .FALSE.
                 RETURN
              END IF
@@ -6743,23 +6751,19 @@ END IF
           IF (PerformPiolaTransform) THEN
              DO j=1,DOFs
                 DO k=1,cdim
-                   B(k) = SUM( LtoGMap(k,1:dim) * EdgeBasis(j,1:dim) )
+                   B(k) = SUM( LG(k,1:dim) * EdgeBasis(j,1:dim) )
                 END DO
                 EdgeBasis(j,1:cdim) = B(1:cdim)
-
-                IF (dim == 2) THEN
-                   CurlBasis(j,3) = 1.0d0/DetF * CurlBasis(j,3)
-                ELSE
-                   DO k=1,dim
-                      B(k) = 1.0d0/DetF * SUM( LF(k,1:dim) * CurlBasis(j,1:dim) )
-                   END DO
-                   CurlBasis(j,1:dim) = B(1:dim)
-                END IF
+                ! The returned spatial curl in the case cdim=3 and dim=2 handled here
+                ! has limited usability. This handles only a transformation of
+                ! the type x_3 = p_3:
+                CurlBasis(j,3) = 1.0d0/DetJ * CurlBasis(j,3)
              END DO
-             ! Make the returned value DetF to act as a metric term for integration
-             ! over the volume of the element: 
-             DetF = DetJ
           END IF
+
+          ! Make the returned value DetF to act as a metric term for integration
+          ! over the volume of the element: 
+          DetF = DetJ
 
           ! ----------------------------------------------------------------------
           ! Get global first derivatives of the nodal basis functions if wanted:
@@ -6769,7 +6773,7 @@ END IF
              DO i=1,n
                 DO j=1,cdim
                    DO k=1,dim
-                      dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LtoGMap(j,k)
+                      dBasisdx(i,j) = dBasisdx(i,j) + dLBasisdx(i,k)*LG(j,k)
                    END DO
                 END DO
              END DO
