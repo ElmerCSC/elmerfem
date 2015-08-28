@@ -895,7 +895,7 @@ CONTAINS
    INTEGER::nbf
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: torq,a(nbf),u(nbf),IMoment,IA,zforce,zzforce
-   INTEGER :: i,bfid,n,nd
+   INTEGER :: i,bfid,n,nd,EdgeBasisDegree
    LOGICAL :: Found, CalcTorque,CalcPotential,CalcInertia
    TYPE(ValueList_t),POINTER::Params
    TYPE(ELement_t), POINTER :: Element, Parent
@@ -907,6 +907,9 @@ CONTAINS
 
    IF(.NOT. (CalcTorque .OR. CalcPotential .OR. CalcInertia ) ) RETURN
 
+   EdgeBasisDegree = 1
+   IF (SecondOrder) EdgeBasisDegree = 2
+
    U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0; zforce=0
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
@@ -914,8 +917,8 @@ CONTAINS
      n  = GetElementNOFNodes(Element)
 
      IF( CalcTorque ) THEN
-       CALL Torque(Torq,Element,n,nd)
-       CALL AxialForce(zforce,Element,n,nd)
+       CALL Torque(Torq,Element,n,nd,EdgeBasisDegree)
+       CALL AxialForce(zforce,Element,n,nd,EdgeBasisDegree)
      END IF
 
      IF( CalcPotential ) THEN
@@ -923,7 +926,7 @@ CONTAINS
        IF(ASSOCIATED(Params)) THEN
          bfid=GetBodyForceId(Element)
          IF(GetLogical(Params,'Calculate Potential',Found)) &
-             CALL Potential(u(bfid),a(bfid),Element,n,nd)
+             CALL Potential(u(bfid),a(bfid),Element,n,nd,EdgeBasisDegree)
        END IF
      END IF
 
@@ -945,7 +948,7 @@ CONTAINS
        Parent => Element % BoundaryInfo % Left
        n  = GetELementNofNodes(Parent)
        nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd)
+       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
      END DO
    END IF
 
@@ -1028,9 +1031,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Torque(U,Element,n,nd)
+  SUBROUTINE Torque(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -1057,13 +1060,16 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -1085,9 +1091,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AxialForce(U,Element,n,nd)
+  SUBROUTINE AxialForce(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -1114,13 +1120,16 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -1143,9 +1152,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AxialForceSurf(U,Element,n,nd)
+  SUBROUTINE AxialForceSurf(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -1167,15 +1176,22 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        CALL Warn('AxialForceSurf', 'Surface force not implemented for Piola Elements')
-        RETURN
-!       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-!           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+
+        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+ 
+        stat = EdgeElementInfo( Parent, PNodes, uu, v, w, &
+              DetF = PDetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+
       ELSE
 
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -1203,10 +1219,10 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Potential( U, A, Element,n,nd)
+  SUBROUTINE Potential( U, A, Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: U,A
-    INTEGER :: n, nd
+    INTEGER :: n, nd, EdgeBasisDegree
     TYPE(Element_t) :: Element
 
     REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3),DetJ,POT(nd),pPOT(nd), &
@@ -1235,13 +1251,16 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)         
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -1993,11 +2012,14 @@ CONTAINS
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, np, p, q
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
@@ -2007,14 +2029,21 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
 
-       CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
 
        localGapLength  = SUM(Basis(1:n) * GapLength(1:n))
        muAir  = SUM(Basis(1:n) * AirGapMu(1:n))
@@ -3281,7 +3310,7 @@ CONTAINS
    INTEGER::nbf
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: a(nbf),IMoment,IA
-   INTEGER :: i,bfid,n,nd
+   INTEGER :: i,bfid,n,nd,EdgeBasisDegree
    TYPE(Element_t), POINTER :: Element, Parent
    COMPLEX(KIND=dp) :: torq, U(nbf), zforce, zzforce
    LOGICAL :: Found, CalcTorque,CalcPotential,CalcInertia
@@ -3294,6 +3323,9 @@ CONTAINS
 
    IF(.NOT. (CalcTorque .OR. CalcPotential .OR. CalcInertia ) ) RETURN
 
+   EdgeBasisDegree = 1
+   IF (SecondOrder) EdgeBasisDegree = 2
+
    U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0; zforce=0
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
@@ -3301,8 +3333,8 @@ CONTAINS
      n  = GetElementNOFNodes(Element)
 
      IF( CalcTorque ) THEN
-       CALL Torque(Torq,Element,n,nd)
-       CALL AxialForce(zforce,Element,n,nd)
+       CALL Torque(Torq,Element,n,nd,EdgeBasisDegree)
+       CALL AxialForce(zforce,Element,n,nd,EdgeBasisDegree)
      END IF
 
      IF( CalcPotential ) THEN
@@ -3310,7 +3342,7 @@ CONTAINS
        IF(ASSOCIATED(Params)) THEN
          bfid=GetBodyForceId(Element)
          IF(GetLogical(Params,'Calculate Potential',Found)) &
-             CALL Potential(u(bfid),a(bfid),Element,n,nd)
+             CALL Potential(u(bfid),a(bfid),Element,n,nd,EdgeBasisDegree)
        END IF
      END IF
 
@@ -3332,7 +3364,7 @@ CONTAINS
        Parent => Element % BoundaryInfo % Left
        n  = GetELementNofNodes(Parent)
        nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd)
+       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
      END DO
    END IF
 
@@ -3372,7 +3404,7 @@ CONTAINS
        Parent => Element % BoundaryInfo % Left
        n  = GetELementNofNodes(Parent)
        nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd)
+       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
      END DO
    END IF
      IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
@@ -3433,9 +3465,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Torque(U,Element,n,nd)
+  SUBROUTINE Torque(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     COMPLEX(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -3464,13 +3496,16 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -3494,9 +3529,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AxialForce(U,Element,n,nd)
+  SUBROUTINE AxialForce(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     COMPLEX(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -3525,13 +3560,15 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -3557,9 +3594,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AxialForceSurf(U,Element,n,nd)
+  SUBROUTINE AxialForceSurf(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     COMPLEX(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -3582,15 +3619,22 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        CALL Warn('AxialForceSurf', 'Surface force not implemented for Piola Elements')
-        RETURN
-!       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-!           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+
+        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+ 
+        stat = EdgeElementInfo( Parent, PNodes, uu, v, w, &
+              DetF = PDetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
 
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -3620,11 +3664,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Potential( U, A, Element,n,nd)
+  SUBROUTINE Potential( U, A, Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: A
     COMPLEX(KIND=dp) :: U
-    INTEGER :: n, nd
+    INTEGER :: n, nd, EdgeBasisDegree
     TYPE(Element_t), POINTER :: Element
 
     REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3),DetJ,POT(2,nd), &
@@ -3648,13 +3692,15 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)     
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -6342,7 +6388,7 @@ CONTAINS
    T(1) = ParallelReduction(T(1))
    T(2) = ParallelReduction(T(2))
    T(3) = ParallelReduction(T(3))
- END SUBROUTINE
+ END SUBROUTINE NodalTorque
  
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs )
@@ -6537,8 +6583,9 @@ CONTAINS
     END SUBROUTINE LocalJumps
 !------------------------------------------------------------------------------
 
-
+!------------------------------------------------------------------------------
     SUBROUTINE calcAverageFlux (Flux, Area, Element, n, nd, np, SOL, vDOFs)
+!------------------------------------------------------------------------------
        INTEGER :: n, nd
        TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
@@ -6577,8 +6624,9 @@ CONTAINS
          Area = Area + s
 
       END DO
-
+!------------------------------------------------------------------------------
     END SUBROUTINE calcAverageFlux
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamicsCalcFields
