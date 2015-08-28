@@ -4432,10 +4432,10 @@ END IF
        REAL(KIND=dp), OPTIONAL :: F(3,3)         !< The gradient F=Grad f, with f the element map f:k->K
        REAL(KIND=dp), OPTIONAL :: G(3,3)         !< The inverse of the gradient F
        REAL(KIND=dp) :: detF                     !< The determinant of the gradient matrix F
-       REAL(KIND=dp) :: Basis(:)                 !< Standard nodal basis functions evaluated at (u,v,w)
+       REAL(KIND=dp) :: Basis(:)                 !< H1-conforming basis functions evaluated at (u,v,w)
        REAL(KIND=dp) :: EdgeBasis(:,:)           !< The basis functions b spanning the reference element space
        REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)  !< The Curl of the edge basis functions with respect to the local coordinates
-       REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)  !< The first derivatives of the nodal basis functions at (u,v,w)
+       REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)  !< The first derivatives of the H1-conforming basis functions at (u,v,w)
        LOGICAL, OPTIONAL :: SecondFamily         !< If .TRUE., a Nedelec basis of the second kind is returned
        INTEGER, OPTIONAL :: BasisDegree          !< The approximation degree (supported for some element types) 
        LOGICAL, OPTIONAL :: ApplyPiolaTransform  !< If  .TRUE., perform the Piola transform so that, instead of b
@@ -4510,14 +4510,42 @@ END IF
        !-----------------------------------------------------------------------
        SELECT CASE(Element % TYPE % ElementCode / 100)
        CASE(3)
-          DO q=1,n
-             Basis(q) = TriangleNodalPBasis(q, u, v)
-             dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v) 
-          END DO
-          ! The number of H(curl)-conforming basis functions:
           IF (SecondOrder) THEN
+             ! DOFs is the number of H(curl)-conforming basis functions: 
              DOFs = 8
+             IF (n == 6) THEN
+                ! Here the element of the background mesh is of type 306.
+                ! The Lagrange interpolation basis on the p-approximation reference element:
+                Basis(1) = (3.0d0*u**2 + v*(-Sqrt(3.0d0) + v) + u*(-3.0d0 + 2.0d0*Sqrt(3.0d0)*v))/6.0d0
+                dLBasisdx(1,1) = -0.5d0 + u + v/Sqrt(3.0d0)
+                dLBasisdx(1,2) = (-Sqrt(3.0d0) + 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v)/6.0d0
+                Basis(2) = (3.0d0*u**2 + v*(-Sqrt(3.0d0) + v) + u*(3.0d0 - 2.0d0*Sqrt(3.0d0)*v))/6.0d0
+                dLBasisdx(2,1) = 0.5d0 + u - v/Sqrt(3.d0)
+                dLBasisdx(2,2) = (-Sqrt(3.0d0) - 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v)/6.0d0
+                Basis(3) = (v*(-Sqrt(3.0d0) + 2.0d0*v))/3.0d0
+                dLBasisdx(3,1) = 0.0d0
+                dLBasisdx(3,2) =  -(1.0d0/Sqrt(3.0d0)) + (4.0d0*v)/3.0d0
+                Basis(4) = (3.0d0 - 3.0d0*u**2 - 2.0d0*Sqrt(3.0d0)*v + v**2)/3.0d0
+                dLBasisdx(4,1) = -2.0d0*u
+                dLBasisdx(4,2) = (-2.0d0*(Sqrt(3.0d0) - v))/3.0d0
+                Basis(5) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - v)*v)/3.0d0
+                dLBasisdx(5,1) =  (2.0d0*v)/Sqrt(3.0d0)
+                dLBasisdx(5,2) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 2.0d0*v))/3.0d0
+                Basis(6) = (-2.0d0*v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v))/3.0d0           
+                dLBasisdx(6,1) = (-2.0d0*v)/Sqrt(3.0d0)
+                dLBasisdx(6,2) = (-2.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 2.0d0*v))/3.0d0
+             ELSE
+                ! Here the element of the background mesh is of type 303:
+                DO q=1,3
+                   Basis(q) = TriangleNodalPBasis(q, u, v)
+                   dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v) 
+                END DO
+             END IF
           ELSE
+             DO q=1,n
+                Basis(q) = TriangleNodalPBasis(q, u, v)
+                dLBasisdx(q,1:2) = dTriangleNodalPBasis(q, u, v) 
+             END DO
              IF (Create2ndKindBasis) THEN
                 DOFs = 6
              ELSE
@@ -4531,13 +4559,68 @@ END IF
           END DO
           DOFs = 6
        CASE(5)
-          DO q=1,n
-             Basis(q) = TetraNodalPBasis(q, u, v, w)
-             dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
-          END DO
           IF (SecondOrder) THEN
              DOFs = 20
+             IF (n == 10) THEN
+                ! Here the element of the background mesh is of type 510.
+                ! The Lagrange interpolation basis on the p-approximation reference element:
+                Basis(1) = (6.0d0*u**2 - 2.0d0*Sqrt(3.0d0)*v + 2.0d0*v**2 - Sqrt(6.0d0)*w + 2.0d0*Sqrt(2.0d0)*v*w + &
+                     w**2 + 2.0d0*u*(-3.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/12.0d0
+                dLBasisdx(1,1) = -0.5d0 + u + v/Sqrt(3.0d0) + w/Sqrt(6.0d0)
+                dLBasisdx(1,2) = (-Sqrt(3.0d0) + 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v + Sqrt(2.0d0)*w)/6.0d0
+                dLBasisdx(1,3) = (-Sqrt(6.0d0) + 2.0d0*Sqrt(6.0d0)*u + 2.0d0*Sqrt(2.0d0)*v + 2.0d0*w)/12.0d0
+                Basis(2) = (6.0d0*u**2 - 2.0d0*Sqrt(3.0d0)*v + 2.0d0*v**2 - Sqrt(6.0d0)*w + 2.0d0*Sqrt(2.0d0)*v*w + &
+                     w**2 - 2.0d0*u*(-3.0d0 + 2.0d0*Sqrt(3.0d0)*v + Sqrt(6.0d0)*w))/12.0d0
+                dLBasisdx(2,1) = 0.5d0 + u - v/Sqrt(3.0d0) - w/Sqrt(6.0d0)
+                dLBasisdx(2,2) = (-Sqrt(3.0d0) - 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v + Sqrt(2.0d0)*w)/6.0d0
+                dLBasisdx(2,3) = (-Sqrt(6.0d0) - 2.0d0*Sqrt(6.0d0)*u + 2.0d0*Sqrt(2.0d0)*v + 2.0d0*w)/12.0d0
+                Basis(3) =  (8.0d0*v**2 + w*(Sqrt(6.0d0) + w) - 4.0d0*v*(Sqrt(3.0d0) + Sqrt(2.0d0)*w))/12.0d0
+                dLBasisdx(3,1) = 0.0d0
+                dLBasisdx(3,2) = (-Sqrt(3.0d0) + 4.0d0*v - Sqrt(2.0d0)*w)/3.0d0
+                dLBasisdx(3,3) = (Sqrt(6.0d0) - 4.0d0*Sqrt(2.0d0)*v + 2.0d0*w)/12.0d0
+                Basis(4) = (w*(-Sqrt(6.0d0) + 3.0d0*w))/4.0d0
+                dLBasisdx(4,1) = 0.0d0
+                dLBasisdx(4,2) = 0.0d0
+                dLBasisdx(4,3) = (-Sqrt(6.0d0) + 6.0d0*w)/4.0d0
+                Basis(5) =  (6.0d0 - 6.0d0*u**2 - 4.0d0*Sqrt(3.0d0)*v + 2.0d0*v**2 - 2.0d0*Sqrt(6.0d0)*w + &
+                     2.0d0*Sqrt(2.0d0)*v*w + w**2)/6.0d0
+                dLBasisdx(5,1) = -2.0d0*u
+                dLBasisdx(5,2) = (-2.0d0*Sqrt(3.0d0) + 2.0d0*v + Sqrt(2.0d0)*w)/3.0d0
+                dLBasisdx(5,3) = (-Sqrt(6.0d0) + Sqrt(2.0d0)*v + w)/3.0d0
+                Basis(6) =  (-4.0d0*v**2 + w*(-Sqrt(6.0d0) - Sqrt(6.0d0)*u + w) + v*(4.0d0*Sqrt(3.0d0) + &
+                     4.0d0*Sqrt(3.0d0)*u - Sqrt(2.0d0)*w))/6.0d0
+                dLBasisdx(6,1) = (2.0d0*v)/Sqrt(3.0d0) - w/Sqrt(6.0d0)
+                dLBasisdx(6,2) = (4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u - 8.0d0*v - Sqrt(2.0d0)*w)/6.0d0
+                dLBasisdx(6,3) = (-Sqrt(6.0d0) - Sqrt(6.0d0)*u - Sqrt(2.0d0)*v + 2.0d0*w)/6.0d0
+                Basis(7) =  (-4.0d0*v**2 + w*(-Sqrt(6.0d0) + Sqrt(6.0d0)*u + w) - &
+                     v*(-4.0d0*Sqrt(3.0d0) + 4.0d0*Sqrt(3.0d0)*u + Sqrt(2.0d0)*w))/6.0d0
+                dLBasisdx(7,1) = (-2.0d0*v)/Sqrt(3.0d0) + w/Sqrt(6.0d0)
+                dLBasisdx(7,2) = (4.0d0*Sqrt(3.0d0) - 4.0d0*Sqrt(3.0d0)*u - 8.0d0*v - Sqrt(2.0d0)*w)/6.0d0
+                dLBasisdx(7,3) = (-Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v + 2.0d0*w)/6.0d0
+                Basis(8) = -(w*(-Sqrt(6.0d0) + Sqrt(6.0d0)*u + Sqrt(2.0d0)*v + w))/2.0d0
+                dLBasisdx(8,1) = -(Sqrt(1.5d0)*w)
+                dLBasisdx(8,2) = -(w/Sqrt(2.0d0))
+                dLBasisdx(8,3) = (Sqrt(6.0d0) - Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - 2.0d0*w)/2.0d0
+                Basis(9) = ((Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - w)*w)/2.0d0
+                dLBasisdx(9,1) = Sqrt(1.5d0)*w
+                dLBasisdx(9,2) = -(w/Sqrt(2.0d0))
+                dLBasisdx(9,3) = (Sqrt(6.0d0) + Sqrt(6.0d0)*u - Sqrt(2.0d0)*v - 2.0d0*w)/2.0d0
+                Basis(10) = Sqrt(2.0d0)*v*w - w**2/2.0d0
+                dLBasisdx(10,1) = 0.0d0
+                dLBasisdx(10,2) = Sqrt(2.0d0)*w
+                dLBasisdx(10,3) = Sqrt(2.0d0)*v - w
+             ELSE
+                ! Here the element of the background mesh is of type 504: 
+                DO q=1,4
+                   Basis(q) = TetraNodalPBasis(q, u, v, w)
+                   dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
+                END DO
+             END IF
           ELSE
+             DO q=1,n
+                Basis(q) = TetraNodalPBasis(q, u, v, w)
+                dLBasisdx(q,1:3) = dTetraNodalPBasis(q, u, v, w)
+             END DO
              IF (Create2ndKindBasis) THEN
                 DOFs = 12
              ELSE

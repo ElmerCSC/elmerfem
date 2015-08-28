@@ -154,7 +154,7 @@ SUBROUTINE EdgeElementSolver( Model,Solver,dt,TransientSimulation )
   CALL DefaultFinishBulkAssembly()
   CALL DefaultFinishAssembly()
 
-  CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
+  CALL DefaultDirichletBCs()
 
   Norm = DefaultSolve()  
 

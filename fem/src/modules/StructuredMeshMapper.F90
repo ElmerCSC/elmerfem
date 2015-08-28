@@ -443,10 +443,16 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     END IF
 
     IF(DisplacementMode) THEN
-      IF( GotVeloVar ) VeloVar % Values( VeloVar % Perm(i) ) = xloc / dt
+      IF( GotVeloVar ) THEN
+        IF(Velovar % Perm(i)>0) &
+          VeloVar % Values( VeloVar % Perm(i) ) = xloc / dt
+      END IF
       Coord(i) = OrigCoord(i) + xloc
     ELSE
-      IF( GotVeloVar ) VeloVar % Values( VeloVar % Perm(i) ) = ( xloc - OrigCoord(i) ) / dt
+      IF( GotVeloVar ) THEN
+        IF(Velovar % Perm(i)>0) &
+          VeloVar % Values( VeloVar % Perm(i) ) = ( xloc - OrigCoord(i) ) / dt
+      END IF
       Coord(i) = xloc
     END IF
     IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(i) - OrigCoord(i)
