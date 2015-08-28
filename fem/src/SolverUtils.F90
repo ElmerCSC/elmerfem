@@ -4592,7 +4592,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE SetElementValues(n,elno)
       INTEGER :: n,elno
-      INTEGER :: i,j,k,l,m,dim
+      INTEGER :: i,j,k,l,m,dim,kmax,lmax
       LOGICAL :: CheckNT,found
       REAL(KIND=dp) :: Condition(n), Work(n), RotVec(3)
       
@@ -4636,24 +4636,35 @@ CONTAINS
                 RotVec = 0._dp
                 RotVec(DOF) = 1._dp
                 CALL RotateNTSystem( RotVec, Indexes(j) )
-                DO k=1,dim
-                  IF ( ABS(RotVec(k)) > 1.d-8 ) THEN
-                    IF ( NTelement(m,k)==elno ) THEN
-                      l = NDOFs * (Perm(Indexes(j))-1) + k
-                      IF ( .NOT. NTZeroing_done(m,k) ) THEN
-                        b(l) = 0._dp
-                        CALL ZeroRow( A,l )
-	                IF( .NOT. OffDiagonal ) THEN
-                          CALL SetMatrixElement( A,l,l,1.0_dp)
-                        END IF
-                        NTZeroing_done(m,k) = .TRUE.
-                      END IF
-	              IF( .NOT. OffDiagonal ) THEN
-                        b(l) = b(l) + RotVec(k) * Work(j)/DiagScaling(l)
-	              END IF
-                    END IF
+
+                ! When cartesian component "DOF" is defined set the N-T component
+                ! closest to its direction. 
+                kmax = 1 
+                DO k=2,dim
+                  IF ( ABS(RotVec(k)) > ABS(RotVec(kmax)) ) THEN
+                    kmax = k
                   END IF
                 END DO
+
+                lmax = NDOFs * (Perm(Indexes(j))-1) + kmax
+                IF ( .NOT. NTZeroing_done(m,kmax) ) THEN
+                  NTZeroing_done(m,kmax) = .TRUE.
+                  b(lmax) = 0._dp
+                  CALL ZeroRow( A,lmax )
+                  NTZeroing_done(m,kmax) = .TRUE.                  
+                  IF( .NOT. OffDiagonal ) THEN
+                    b(lmax) = b(lmax) + Work(j)/DiagScaling(lmax)
+                  END IF
+
+                  ! Consider all components of the cartesian vector mapped to the 
+                  ! N-T coordinate system. Should this perhaps have scaling included?
+                  IF( .NOT. OffDiagonal ) THEN
+                    DO k=1,dim
+                      l = NDOFs * (Perm(Indexes(j))-1) + k
+                      CALL SetMatrixElement( A,lmax,l,RotVec(k))
+                    END DO
+                  END IF
+                END IF
               ELSE
                 k = OffSet + NDOFs * (k-1) + DOF
                 IF ( A % FORMAT == MATRIX_SBAND ) THEN
