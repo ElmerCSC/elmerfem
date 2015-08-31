@@ -4639,13 +4639,18 @@ CONTAINS
         END SELECT
       END IF
     END IF
-
+ 
     CALL FinishAssembly( PSolver, PSolver % Matrix % RHS )
 
     IF( GetLogical( Params,'Linear System Multiply',Found ) ) THEN
       CALL Info('DefaultFinishAssembly','Multiplying matrix equation',Level=10)
       CALL LinearSystemMultiply( PSolver )
     END IF
+
+    IF( ListCheckPrefix( Params,'Linear System Diagonal Min') ) THEN
+      CALL LinearSystemMinDiagonal( PSolver )      
+    END IF
+
 
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       str = GetString( Params,'Linear System Save Slot', Found )

@@ -12436,6 +12436,108 @@ CONTAINS
   END SUBROUTINE LinearSystemMultiply
 
 
+
+
+
+
+!---------------------------------------------------------------------------------
+!> Set the diagonal entry to given minumum.
+!----------------------------------------------------------------------------------
+  SUBROUTINE LinearSystemMinDiagonal( Solver )
+!----------------------------------------------------------------------------------    
+    TYPE(Solver_t) :: Solver
+    !------------------------------------------------------------------------------
+    INTEGER, POINTER :: Perm(:),Rows(:),Cols(:)
+    REAL(KIND=dp), POINTER :: Values(:),Rhs(:)
+    TYPE(Variable_t), POINTER :: ThisVar
+    TYPE(Matrix_t), POINTER :: A
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: Coeff
+    INTEGER :: i,j,j2,k,l,jk,n,Mode,Dofs
+    LOGICAL :: Found, UpdateRhs, Symmetric
+    TYPE(ValueList_t), POINTER :: Params
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    INTEGER :: NoSet
+    REAL(KIND=dp) :: DiagSum, val, DiagMax
+
+    Params => Solver % Values
+    Mesh => Solver % Mesh
+    IF(.NOT. ASSOCIATED( Mesh ) ) THEN
+      CALL Fatal('LinearSystemMinDiagonal','Subroutine requires a Mesh!')
+    END IF
+    A => Solver % Matrix
+    IF(.NOT. ASSOCIATED( A ) ) THEN
+      CALL Fatal('LinearSystemMinDiagonal','Subroutine requires a matrix equation!')
+    END IF
+    ThisVar => Solver % Variable
+    IF(.NOT. ASSOCIATED( ThisVar ) ) THEN
+      CALL Fatal('LinearSystemMinDiagonal','Subroutine requires a default variable to exist!')
+    END IF
+
+    Perm => ThisVar % Perm
+    Dofs = ThisVar % Dofs
+    n = A % NumberOfRows
+    Cols => A % Cols
+    Rows => A % Rows
+    Rhs => A % Rhs
+    Values => A % Values
+        
+    ! Set the mimimum value for each component, only nodel dofs consired
+    !-------------------------------------------------------------------
+    NoSet = 0
+    DiagMax = 0.0_dp
+    DiagSum = 0.0_dp
+    n = MAXVAL( Perm ( 1:Mesh % NumberOfNodes ) )
+
+    DO k=1,Dofs
+      Mode = 0
+
+      str = 'Linear System Diagonal Min'
+      Coeff = ListGetCReal( Params, str, Found )
+      IF( Found ) THEN
+        Mode = 1
+        WRITE( Message,'(A,ES12.3)') 'Setting minimum of the diagonal to ',Coeff
+        CALL Info('LinearSystemMinDiagonal',Message, Level=6 )
+      ELSE
+        WRITE( str,'(A,I0)') TRIM(str)//' ',k
+        Coeff = ListGetCReal( Params, str, Found )
+        IF( Found ) THEN
+          Mode = 2 
+          WRITE( Message,'(A,I0,A,ES12.3)') 'Setting minimum of diagonal component ',k,' to ',Coeff
+          CALL Info('LinearSystemMinDiagonal',Message, Level=6 )          
+        END IF
+      END IF
+      
+      IF( Mode == 0 ) CYCLE
+      
+      DO j=1,n
+        jk = Dofs*(j-1)+k
+        l = A % Diag(jk) 
+        IF( l == 0 ) CYCLE
+        val = ABS( Values( l ) )
+        DiagSum = DiagSum + val
+        DiagMax = MAX( DiagMax, val )
+        IF( val < Coeff ) THEN
+          Values( A % Diag(jk) ) = Coeff
+          NoSet = NoSet + 1
+        END IF
+      END DO
+    END DO
+
+    CALL Info('LinearSystemMinDiagonal','Number of diagonal values set to mimimum: '//TRIM(I2S(NoSet)),Level=5)
+    WRITE( Message,'(A,ES12.3)') 'Avarage abs(diagonal) entry: ',DiagSum / n    
+    CALL Info('LinearSystemMinDiagonal',Message, Level=6 )
+    
+    WRITE( Message,'(A,ES12.3)') 'Maximum abs(diagonal) entry: ',DiagMax
+    CALL Info('LinearSystemMinDiagonal',Message, Level=6 )
+
+
+  END SUBROUTINE LinearSystemMinDiagonal
+
+
+
+
+
   !----------------------------------------------------------------------
   !> Make the high-order flux corrected transport (FCT) correction after 
   !> the low order approximation has been solved. 
