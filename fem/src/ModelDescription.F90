@@ -1526,7 +1526,7 @@ CONTAINS
                  str(str_beg:str_beg) == '0' ) THEN
                  CALL ListAddLogical( List,Name,.FALSE. )
                ELSE 
-                 CALL Fatal('SectionContents','Problem reading logical keyword: '//TRIM(str(str_beg:)))
+                 CALL Fatal('SectionContents','Problem reading logical keyword: '//TRIM(Name)//': '//TRIM(str(str_beg:)))
                END IF
             END IF
             EXIT
@@ -2525,7 +2525,8 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: List, ListB
     INTEGER :: i,j,k
     LOGICAL :: Found, Flag
-
+    
+    CALL Info('CompleteModelKeywords','Completing default keywords for master sides',Level=12)
 
     Model => CurrentModel 
 
@@ -2535,10 +2536,18 @@ CONTAINS
       IF(j==0) j = ListGetInteger( List,'Contact BC',Found )
       IF(j==0) CYCLE
 
+      IF( j > Model % NumberOfBCs ) CYCLE
+
       ListB => Model % BCs(j) % Values
+      IF(.NOT. ASSOCIATED( ListB ) ) CYCLE
+
       CALL ListCompareAndCopy( List, ListB,'Mass Consistent Normals',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Mass Consistent Normals < to BC '//TRIM(I2S(j)),Level=10)
+          'Added > Mass Consistent Normals < to master BC '//TRIM(I2S(j)),Level=10)
+
+      CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Displacement',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Normal-Tangential Displacement < to master BC '//TRIM(I2S(j)),Level=10)
     END DO
 
 

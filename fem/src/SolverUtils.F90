@@ -2557,7 +2557,6 @@ CONTAINS
          END IF
 
 
-
          DO j = ActiveProjector % Rows(i),ActiveProjector % Rows(i+1)-1
            k = ActiveProjector % Cols(j)
 
@@ -4545,7 +4544,7 @@ CONTAINS
      !-------------------------------
     SUBROUTINE CheckNTElement(n,elno)
       INTEGER :: n,elno
-      INTEGER :: i,j,k,l,m,dim
+      INTEGER :: i,j,k,l,m,dim,kmax
       LOGICAL :: found
       REAL(KIND=dp) :: Condition(n), RotVec(3)
       
@@ -4575,9 +4574,11 @@ CONTAINS
             RotVec = 0._dp
             RotVec(DOF) = 1._dp
             CALL RotateNTSystem( RotVec, Indexes(j) )
+            kmax = 1
             DO k=1,dim
-              IF ( ABS(RotVec(k)) > 1.d-8 ) NTelement(m,k)=elno
+              IF ( ABS(RotVec(k)) > ABS(RotVec(kmax)) ) kmax = k
             END DO
+            NTelement(m,kmax)=elno
           END IF
         END IF
       END DO
@@ -4591,7 +4592,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE SetElementValues(n,elno)
       INTEGER :: n,elno
-      INTEGER :: i,j,k,l,m,dim
+      INTEGER :: i,j,k,l,m,dim,kmax,lmax
       LOGICAL :: CheckNT,found
       REAL(KIND=dp) :: Condition(n), Work(n), RotVec(3)
       
@@ -4635,24 +4636,35 @@ CONTAINS
                 RotVec = 0._dp
                 RotVec(DOF) = 1._dp
                 CALL RotateNTSystem( RotVec, Indexes(j) )
-                DO k=1,dim
-                  IF ( ABS(RotVec(k)) > 1.d-8 ) THEN
-                    IF ( NTelement(m,k)==elno ) THEN
-                      l = NDOFs * (Perm(Indexes(j))-1) + k
-                      IF ( .NOT. NTZeroing_done(m,k) ) THEN
-                        b(l) = 0._dp
-                        CALL ZeroRow( A,l )
-	                IF( .NOT. OffDiagonal ) THEN
-                          CALL SetMatrixElement( A,l,l,1.0_dp)
-                        END IF
-                        NTZeroing_done(m,k) = .TRUE.
-                      END IF
-	              IF( .NOT. OffDiagonal ) THEN
-                        b(l) = b(l) + RotVec(k) * Work(j)/DiagScaling(l)
-	              END IF
-                    END IF
+
+                ! When cartesian component "DOF" is defined set the N-T component
+                ! closest to its direction. 
+                kmax = 1 
+                DO k=2,dim
+                  IF ( ABS(RotVec(k)) > ABS(RotVec(kmax)) ) THEN
+                    kmax = k
                   END IF
                 END DO
+
+                lmax = NDOFs * (Perm(Indexes(j))-1) + kmax
+                IF ( .NOT. NTZeroing_done(m,kmax) ) THEN
+                  NTZeroing_done(m,kmax) = .TRUE.
+                  b(lmax) = 0._dp
+                  CALL ZeroRow( A,lmax )
+                  NTZeroing_done(m,kmax) = .TRUE.                  
+                  IF( .NOT. OffDiagonal ) THEN
+                    b(lmax) = b(lmax) + Work(j)/DiagScaling(lmax)
+                  END IF
+
+                  ! Consider all components of the cartesian vector mapped to the 
+                  ! N-T coordinate system. Should this perhaps have scaling included?
+                  IF( .NOT. OffDiagonal ) THEN
+                    DO k=1,dim
+                      l = NDOFs * (Perm(Indexes(j))-1) + k
+                      CALL SetMatrixElement( A,lmax,l,RotVec(k))
+                    END DO
+                  END IF
+                END IF
               ELSE
                 k = OffSet + NDOFs * (k-1) + DOF
                 IF ( A % FORMAT == MATRIX_SBAND ) THEN
@@ -6289,9 +6301,9 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: Projector
     REAL(KIND=dp), ALLOCATABLE :: Condition(:)
 
-    TYPE(Variable_t), POINTER :: NrmVar
+    TYPE(Variable_t), POINTER :: NrmVar, Tan1Var, Tan2Var
 
-    LOGICAL, ALLOCATABLE :: Done(:)
+    LOGICAL, ALLOCATABLE :: Done(:), MasterBC(:)
   
     REAL(KIND=dp), POINTER :: SetNormal(:,:), Rot(:,:)
 
@@ -6313,7 +6325,6 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: LhsTangent(:)
 
     TYPE(Mesh_t), POINTER :: Mesh
-    REAL(KIND=dp), POINTER :: NormalValues(:)
 !------------------------------------------------------------------------------
 
     ElementNodes % x => x
@@ -6322,6 +6333,9 @@ CONTAINS
 
     Mesh => Model % Mesh
     NrmVar => VariableGet( Mesh % Variables, 'Normals' )
+
+    !dim = CoordinateSystemDimension() 
+
 
     IF ( ASSOCIATED(NrmVar) ) THEN
 
@@ -6565,9 +6579,23 @@ CONTAINS
 !------------------------------------------------------------------------------
     IF ( NumberOfBoundaryNodes>0 ) THEN
 
-      LhsSystem = ListGetLogicalAnyBC( Model,'Lhs Tangent Vectors') 
+      LhsSystem = ListGetLogical(Model % Simulation,'Use Lhs System',Found) 
+      IF(.NOT. Found ) LhsSystem = ( dim == 3 )
 
-      PRINT *,'Lhs System Any',LhsSystem
+      IF( LhsSystem ) THEN
+        ALLOCATE( MasterBC( Model % NumberOfBCs ) )
+        MasterBC = .FALSE.
+        DO i = 1, Model % NumberOfBcs
+          j = ListGetInteger( Model % BCs(i) % Values,'Mortar BC',Found )
+          IF( .NOT. Found ) THEN
+            j = ListGetInteger( Model % BCs(i) % Values,'Contact BC',Found )
+          END IF
+          IF( j == 0 .OR. j > Model % NumberOfBCs ) CYCLE
+          MasterBC( j ) = .TRUE.
+        END DO
+        LhsSystem = ANY( MasterBC )
+      END IF
+
 
       IF( LhsSystem ) THEN
         ALLOCATE( LhsTangent( Model % NumberOfNodes ) )
@@ -6583,14 +6611,8 @@ CONTAINS
           
           DO i=1,Model % NumberOfBCs
             IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
-              MassConsistent=ListGetLogical(Model % BCs(i) % Values, &
-                  'Mass Consistent Normals',gotIt)
-              IF( MassConsistent ) THEN
-                IF( ListGetLogical(Model % BCs(i) % Values, &
-                    'Lhs Tangent Vectors',gotIt) ) THEN
-                  LhsTangent( NodeIndexes ) = .TRUE.
-                END IF
-              END IF
+              IF( MasterBC(i) ) LhsTangent( NodeIndexes ) = .TRUE.
+              EXIT
             END IF
           END DO
         END DO
@@ -6603,8 +6625,7 @@ CONTAINS
           s = SQRT( SUM( BoundaryNormals(k,:)**2 ) )
           IF ( s /= 0.0d0 ) &
             BoundaryNormals(k,:) = BoundaryNormals(k,:) / s
-
-          IF ( CoordinateSystemDimension() > 2 ) THEN
+          IF ( dim > 2 ) THEN
             CALL TangentDirections( BoundaryNormals(k,:),  &
                 BoundaryTangent1(k,:), BoundaryTangent2(k,:) )
             IF( LhsSystem ) THEN
@@ -6621,7 +6642,6 @@ CONTAINS
         NrmVar => VariableGet( Mesh % Variables, 'Averaged Normals' )
         
         IF(.NOT. ASSOCIATED( NrmVar ) ) THEN
-          ALLOCATE( NormalValues( 3 * NumberOfBoundaryNodes ) )
           CALL VariableAddVector( Mesh % Variables, Mesh, Model % Solver,'Averaged Normals',3,&
               Perm = BoundaryReorder )
           NrmVar => VariableGet( Mesh % Variables, 'Averaged Normals' )
@@ -6637,6 +6657,31 @@ CONTAINS
           END IF
         END DO
 
+        IF( dim > 2 .AND. ListGetLogical( Model % Simulation,'Save Averaged Tangents',Found ) ) THEN
+          Tan1Var => VariableGet( Mesh % Variables, 'Averaged First Tangent' )
+          Tan2Var => VariableGet( Mesh % Variables, 'Averaged Second Tangent' )
+
+          IF(.NOT. ASSOCIATED( Tan1Var ) ) THEN
+            CALL VariableAddVector( Mesh % Variables, Mesh, Model % Solver,&
+                'Averaged First Tangent',3, Perm = BoundaryReorder )
+            Tan1Var => VariableGet( Mesh % Variables, 'Averaged First Tangent' )
+            CALL VariableAddVector( Mesh % Variables, Mesh, Model % Solver,&
+                'Averaged Second Tangent',3, Perm = BoundaryReorder )
+            Tan2Var => VariableGet( Mesh % Variables, 'Averaged Second Tangent' )
+          END IF
+          
+          DO i=1,Model % NumberOfNodes
+            k = BoundaryReorder(i)
+            IF (k>0 ) THEN
+              DO l=1,Tan1Var % DOFs
+                Tan1Var % Values( Tan1Var % DOFs* &
+                    (Tan1Var % Perm(i)-1)+l)  = BoundaryTangent1(k,l)
+                Tan2Var % Values( Tan2Var % DOFs* &
+                    (Tan2Var % Perm(i)-1)+l)  = BoundaryTangent2(k,l)
+              END DO
+            END IF
+          END DO
+        END IF
       END IF
     END IF
 
@@ -8630,6 +8675,116 @@ END FUNCTION SearchNodeL
   END SUBROUTINE CalculateNodalWeights
 !------------------------------------------------------------------------------
 
+
+
+
+  !> Calcualte the number of separature pieces in a serial mesh.
+  !> This could be used to detect problems in mesh when suspecting 
+  !> floating parts not fixed by any BC, for example.
+  !---------------------------------------------------------------------------------
+  SUBROUTINE CalculateMeshPieces( Mesh )
+
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    LOGICAL :: Ready
+    INTEGER :: i,j,k,n,t,MinIndex,MaxIndex,Loop,NoPieces
+    INTEGER, ALLOCATABLE :: MeshPiece(:),PiecePerm(:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: Indexes(:)
+    TYPE(Variable_t), POINTER :: Var
+
+    IF( ParEnv % PEs > 1 ) THEN
+      CALL Warn('CalculateMeshPieces','Implemented only for serial meshes, doing nothing!')
+      RETURN
+    END IF
+
+    n = Mesh % NumberOfNodes
+    ALLOCATE( MeshPiece( n ) ) 
+    MeshPiece = 0
+
+    ! Only set the piece for the nodes that are used by some element
+    ! For others the marker will remain zero. 
+    DO t = 1, Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(t)        
+      Indexes => Element % NodeIndexes
+      MeshPiece( Indexes ) = 1
+    END DO    
+    j = 0
+    DO i = 1, n
+      IF( MeshPiece(i) > 0 ) THEN
+        j = j + 1
+        MeshPiece(i) = j
+      END IF
+    END DO
+
+    CALL Info('CalculateMeshPieces','Number of non-body nodes in mesh is '//TRIM(I2S(n-j)))
+    
+    ! We go through the elements and set all the piece indexes to minimimum index
+    ! until the mesh is unchanged. Thereafter the whole piece will have the minimum index
+    ! of the piece.
+    Ready = .FALSE.
+    Loop = 0
+    DO WHILE(.NOT. Ready) 
+      Ready = .TRUE.
+      DO t = 1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)        
+        Indexes => Element % NodeIndexes
+
+        MinIndex = MINVAL( MeshPiece( Indexes ) )
+        MaxIndex = MAXVAL( MeshPiece( Indexes ) )
+        IF( MaxIndex > MinIndex ) THEN
+          MeshPiece( Indexes ) = MinIndex
+          Ready = .FALSE.
+        END IF
+      END DO
+      Loop = Loop + 1
+    END DO
+    CALL Info('CalculateMeshPieces','Mesh coloring loops: '//TRIM(I2S(Loop)))
+
+    ! If the maximum index is one then for sure there is only one body
+    IF( MaxIndex == 1 ) THEN
+      CALL Info('CalculateMeshPieces','Mesh consists of single body!')
+      RETURN
+    END IF
+
+    ! Compute the true number of different pieces
+    ALLOCATE( PiecePerm( MaxIndex ) ) 
+    PiecePerm = 0
+    NoPieces = 0
+    DO i = 1, n
+      j = MeshPiece(i) 
+      IF( j == 0 ) CYCLE
+      IF( PiecePerm(j) == 0 ) THEN
+        NoPieces = NoPieces + 1
+        PiecePerm(j) = NoPieces 
+      END IF
+    END DO
+    CALL Info('CalculateMeshPieces','Number of seperate pieces in mesh is '//TRIM(I2S(NoPieces)))
+
+
+    ! Save the mesh piece field to > mesh piece < 
+    Var => VariableGet( Mesh % Variables,'Mesh Piece' )
+    IF(.NOT. ASSOCIATED( Var ) ) THEN      
+      CALL VariableAddVector ( Mesh % Variables,Mesh, CurrentModel % Solver,'Mesh Piece' )
+      Var => VariableGet( Mesh % Variables,'Mesh Piece' )
+    END IF
+
+    IF( .NOT. ASSOCIATED( Var ) ) THEN
+      CALL Fatal('CalculateMeshPieces','Could not get handle to variable > Mesh Piece <')
+    END IF
+
+    DO i = 1, n
+      j = Var % Perm( i ) 
+      IF( j == 0 ) CYCLE
+      IF( MeshPiece(i) > 0 ) THEN
+        Var % Values( j ) = 1.0_dp * PiecePerm( MeshPiece( i ) )
+      ELSE
+        Var % Values( j ) = 0.0_dp
+      END IF
+    END DO
+    CALL Info('CalculateMeshPieces','Saving mesh piece field to: mesh piece')
+  
+  END SUBROUTINE CalculateMeshPieces
 
 
 

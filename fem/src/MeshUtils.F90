@@ -1082,6 +1082,8 @@ END SUBROUTINE GetMaxDefs
 #endif
 
 
+
+
   SUBROUTINE MarkHaloNodes( Mesh, HaloNode, FoundHaloNodes )
 
     TYPE(Mesh_t), POINTER :: Mesh
@@ -2725,6 +2727,7 @@ END SUBROUTINE GetMaxDefs
    ! I guess because the could be higher dimensional meshes loaded already
    Model % DIMENSION = save_dim
 
+
    CALL Info('LoadMesh','Loading mesh done',Level=8)
 
 
@@ -4200,7 +4203,7 @@ END SUBROUTINE GetMaxDefs
         PPerm => Perm2
       END IF
 
-      n = Element % TYPE % NumberOfNodes        
+      n = Element % TYPE % NumberOfNodes             
       PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, n )
       PMesh % Elements(ind) = Element
 
@@ -4237,6 +4240,7 @@ END SUBROUTINE GetMaxDefs
       END IF
 
       PPerm( Element % NodeIndexes(1:n) ) = 1
+
     END DO
   
 !   Fill in the mesh node structures with the
@@ -9873,14 +9877,12 @@ END SUBROUTINE GetMaxDefs
               Mesh % MeshDim == 3 .AND. Dim == 3 )
 
           ! Ensure that there is no p-elements that made us think that we have edges
+          ! Here we assume that if there is any p-element then also the 1st element is such
           IF( DoEdges ) THEN
-            DO i=1,Mesh % NumberOfBulkElements
-              IF(isPelement(Mesh % Elements(i))) THEN
-                DoEdges = .FALSE.
-                CALL Info('PeriodicProjector','Edge projector will not be created for p-element mesh',Level=10)
-                EXIT
-              END IF
-            END DO
+            IF(isPelement(Mesh % Elements(1))) THEN
+              DoEdges = .FALSE.
+              CALL Info('PeriodicProjector','Edge projector will not be created for p-element mesh',Level=10)
+            END IF
           END IF
         END IF
       END IF

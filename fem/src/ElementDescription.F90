@@ -9236,9 +9236,9 @@ END FUNCTION PointFaceDistance
           PRINT *,'delta',delta,prevdelta
           PRINT *,'uvw',u,v,w
           PRINT *,'code',Element % TYPE % ElementCode
-          PRINT *,'x:',x,ElementNodes % x
-          PRINT *,'y:',y,ElementNodes % y
-          PRINT *,'z:',z,ElementNodes % z
+          PRINT *,'x:',x,ElementNodes % x(1:n)
+          PRINT *,'y:',y,ElementNodes % y(1:n)
+          PRINT *,'z:',z,ElementNodes % z(1:n)
         ELSE
 !          CALL Warn( 'GlobalToLocal', 'Node may be out of element')
 !          PRINT *,'rst',i,r,s,t,acc
