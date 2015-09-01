@@ -1,3 +1,260 @@
+MODULE trapezoid
+USE DefUtils
+CONTAINS
+  SUBROUTINE trapezoid_for_data(data_x, size_x, data_y,size_y,  a,b,integral,average)
+  !-----------------------------------------------------------------------------------------
+  !*****************************************************************************************
+  !
+  ! Calculate the integral for data point with start and end point for discrete data points.
+  ! Return value of integral and average value, i.e. integral/(end point - start point).
+  !
+  ! ARGUMENTS: 
+  ! data_x   - x data for integration
+  ! data_y   - y data for integration
+  ! a   - Lower limit of integration
+  ! b    - Upper limit of integration
+  ! size_x - size of the data_x
+  ! size_y - size of the data_y
+  !
+  ! RETURN:
+  ! integral - Result of integration
+  ! average  - Average value of the function within interwall
+  !*****************************************************************************************
+
+  IMPLICIT NONE
+  REAL(KIND = dp) a, b, integral,average
+  REAL(KIND = dp) h
+  REAL(KIND = dp) point_x1,point_y1, point_x2,point_y2
+  REAL(KIND = dp), POINTER :: fit_x(:), fit_y(:) 
+  REAL(KIND = dp) :: data_x(size_x), data_y(size_y) 
+  INTEGER nint, size_x, size_y, loc,loc_start,loc_end
+  INTEGER i
+  LOGICAL loc_extra
+
+  nint = 0
+
+  !PRINT *, "limits", a,b
+
+  ! Find start point 
+  CALL find_point_in_array(data_x,size_x,data_y,size_y,a,point_x1,point_y1,loc_start, loc_extra)
+  IF (loc_extra) THEN
+    nint = nint 
+  ENDIF
+  
+  ! Find end point
+  CALL find_point_in_array(data_x,size_x,data_y,size_y,b,point_x2,point_y2,loc_end, loc_extra)  
+  nint =  nint +  loc_end-loc_start +1   
+  IF (loc_extra) THEN
+    nint = nint + 1
+  ENDIF   
+  
+  integral = compute_integral(nint, data_x, data_y, loc_start, point_x1, point_y1, point_x2, point_y2)
+  
+  average = integral/(point_x2-point_x1)
+
+
+  END SUBROUTINE trapezoid_for_data
+  
+  SUBROUTINE find_point_in_array(data_x,size_x,data_y,size_y,test_point, point_x,point_y,loc, loc_extra)
+  !-----------------------------------------------------------------------------------------
+  !*****************************************************************************************
+  !
+  !  Find the given point in array with x_data points.  
+  !  Return the index of the location in array.
+  !  If such point is not found from the list, interpolate linearly the location.
+  !  If the given point is smaller (larger) than smallest (largest) data point, 
+  !    use the smallest (largest) data y point. For point between datapoints, use simple 
+  !    linear interpolation.
+  !    
+  !
+  !  EXAMPLE DATA:
+  !            ***     *-------
+  !           *  **---*
+  !          * 
+  !  ----***
+  !
+  !  
+  !  * =  datapoints
+  !  - =  interpolated data
+  !
+  !  ARGUMENTS:
+  !
+  !  REAL(KIND = dp) :: data_x 
+  !  REAL(KIND = dp) :: data_y
+  !  INTEGER :: size_x
+  !  INTEGER :: size_y
+  !  REAL(KIND = dp) :: test_point
+  !     INPUT: the x-coordinate to be tested. 
+  ! 
+  ! RETURN:
+  !
+  !  REAL(KIND = dp) :: point_x - the starting/ending x point for integration
+  !  REAL(KIND = dp) :: point_y - the starting/ending y point for integration   
+  ! INTEGER :: loc - the index of the point. If not found, use 0 for point smaller than data min, 
+  !            otherwise use the     nearest point smaller than the test_point 
+  ! LOGICAL :: loc_extra - .TRUE. if extra points are created
+  !*****************************************************************************************
+
+  INTEGER size_x, size_y, loc
+  LOGICAL loc_extra
+  REAL(KIND = dp) data_x(size_x), data_y(size_y)
+  REAL(KIND = dp) test_point, point_x, point_y
+  REAL(KIND = dp) line_a,line_b
+
+  loc_extra = .TRUE.
+
+  DO i = 1,size_x,1
+    IF (test_point == data_x(i)) THEN
+       point_x =  test_point     
+       loc = i
+       loc_extra = .FALSE.
+       point_y = data_y(loc)
+       EXIT
+    ENDIF
+  ENDDO
+
+  !find the nearest point from array if the excact location is not found
+
+  IF (loc_extra) THEN
+     IF (test_point < data_x(1)) THEN
+        point_x = test_point
+        point_y = data_y(1)
+        loc = 0
+        loc_extra = .TRUE.
+     ELSEIF (test_point > data_x(size_x)) THEN
+        point_x = test_point
+        point_y = data_y(size_y)
+        loc = size_x
+        loc_extra = .TRUE.
+     ELSE
+        DO i = 2,size_x,1
+           IF (test_point > data_x(i-1) .AND. test_point < data_x(i)) THEN
+              loc = i-1
+              loc_extra = .TRUE.
+              IF (data_x(i) /= data_x(i-1)) THEN
+                 line_a = (data_y(i)-data_y(i-1))/(data_x(i)-data_x(i-1))
+              ELSE
+                 line_a = 0
+              ENDIF
+              line_b = data_y(i-1) - line_a*data_x(i-1)
+              point_x =  test_point
+              point_y = line_a * point_x + line_b
+              EXIT
+           ENDIF
+        ENDDO
+     ENDIF
+  ENDIF
+  END  SUBROUTINE find_point_in_array
+  
+  FUNCTION compute_integral(nint, data_x, data_y, loc_start, point_x1, point_y1, point_x2, point_y2) RESULT (integral)
+  !-----------------------------------------------------------------------------------------
+  !*****************************************************************************************
+  !
+  !  Compute the integral according to data array. 
+  !    
+  !
+  !  ARGUMENTS:
+  !
+  !  INTEGER :: nint - number of datapoints
+  !  REAL(KIND = dp) :: data_x 
+  !  REAL(KIND = dp) :: data_y
+  !  INTEGER :: loc_start - start index for integration in data
+  !  REAL(KIND = dp) :: point_x1 - starting x-point for integration 
+  !  REAL(KIND = dp) :: point_x2 - ending x-point for integration 
+  !  REAL(KIND = dp) :: point_y1 - starting y-point for integration 
+  !  REAL(KIND = dp) :: point_y2 - ending y-point for integration 
+  ! 
+  ! RETURN:
+  !
+  !  REAL(KIND = dp) :: integral - teh value of the integral
+  !
+  !*****************************************************************************************
+    INTEGER :: nint, i, loc_start
+    REAL(KIND = dp) :: point_x1, point_y1, point_x2, point_y2
+    REAL(KIND = dp) :: data_x(:), data_y(:)
+    REAL(KIND = dp) :: fit_x(nint), fit_y(nint)
+    REAL(KIND = dp) :: integral, h
+    
+    fit_x(1) = point_x1
+    fit_y(1) = point_y1
+    
+    DO i = 2,nint-1,1
+       fit_x(i) = data_x(loc_start+i-1)
+       fit_y(i) = data_y(loc_start+i-1)
+    END DO
+    
+    fit_x(nint) = point_x2
+    fit_y(nint) = point_y2
+
+    integral = 0.d0
+    DO i = 1, nint-1,1
+       h = abs(fit_x(i+1) - fit_x(i))
+       integral = integral + 0.5*h*(fit_y(i)+fit_y(i+1))
+    END DO
+
+  END FUNCTION compute_integral
+
+END MODULE trapezoid
+
+FUNCTION getExpCoeffEpikotem( model, n, T ) RESULT(ExpCoeff_average)
+!===================================================================
+! Calculate the thermal expansion coefficient for Epikotem 
+!===================================================================
+USE DefUtils
+USE trapezoid
+IMPLICIT None
+TYPE(Model_t) :: model
+INTEGER :: n
+
+
+
+REAL(KIND = dp) T,Tref,a,b,f, x,integral,ExpCoeff_average
+REAL(KIND = dp), DIMENSION(63) :: data_y, data_x
+INTEGER i, size_x,size_y
+TYPE(Valuelist_t), POINTER :: Material
+LOGICAL :: FOUND
+
+Material => GetMaterial()
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingSigma', 'Material not found')
+
+Tref = GetConstReal(Material, 'Reference Temperature', FOUND)
+IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Reference Temperature not found in Material section')
+
+! Epikotem data
+data_y = (/29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, &
+           29.969, 29.969, 30.3096, 30.6502, 30.6502, 30.9907, 30.9907, 31.3313, &
+           31.6718, 31.6718, 32.0124, 32.3529, 32.6935, 33.0341, 33.3746, 33.7152, &
+           34.0557, 34.3963, 35.0774, 37.1207, 38.8235, 40.8669, 42.9102, 44.9536, &
+           47.678, 50.743, 53.808, 57.2136, 60.2786, 63.3437, 66.4087, 69.8142, 72.8793, &
+           75.9443, 79.0093, 81.7337, 84.1176, 86.8421, 89.226, 91.6099, 93.9938, 95.6966, &
+           96.7183, 98.0805, 99.1022, 100.124, 100.124, 100.124, 100.124, 100.124, 100.124, &
+           100.124, 100.124, 100.124/)
+data_x = (/0.0, 0.236686, 1.89349, 4.26036, 6.62722, 8.99408, 11.3609, 13.7278, &
+           16.0947, 18.4615, 20.8284, 22.9586, 25.3254, 27.6923, 30.0592, 32.426, &
+           34.7929, 36.9231, 39.2899, 41.6568, 44.0237, 46.3905, 48.7574, 50.8876, &
+           53.2544, 55.6213, 57.9882, 60.1183, 62.0118, 63.9053, 66.0355, 67.929, &
+           69.8225, 70.7692, 71.716, 72.6627, 73.6095, 74.5562, 75.503, 76.213, &
+           77.1598, 78.1065, 79.0533, 80.0, 81.4201, 83.0769, 84.7337, 86.1538, &
+           87.8107, 89.4675, 91.3609, 93.7278, 95.858, 98.2249, 100.355, 102.722, &
+           105.089, 107.456, 109.822, 112.189, 114.556, 116.923, 119.29/)
+
+size_x = SIZE(data_x)
+size_y = SIZE(data_y)
+
+IF (T >= Tref) THEN
+  a = Tref
+  b = T
+ELSE
+  a = T
+  b = Tref
+ENDIF
+
+CALL trapezoid_for_data(data_x, size_x, data_y,size_y, a,b,integral,ExpCoeff_average)
+
+ExpCoeff_average=ExpCoeff_average*1.d-6
+
+END FUNCTION getExpCoeffEpikotem
+
 FUNCTION getWindingSigmaConstantTemperature( model, n, T ) RESULT(eff_sigma)
   USE DefUtils
   IMPLICIT None
