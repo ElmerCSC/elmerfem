@@ -1,6 +1,6 @@
-MODULE CircuitsMod
+MODULE CircuitUtils
 
-CONTAINS 
+CONTAINS
 
 !------------------------------------------------------------------------------
   FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
@@ -22,7 +22,7 @@ CONTAINS
 
     ComponentParams => CurrentModel % Components(i) % Values
       
-    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
                                                          'Component parameters not found!')
     
 !------------------------------------------------------------------------------
@@ -48,7 +48,7 @@ CONTAINS
     DO i = 1, SIZE(CurrentModel % Components)
       ComponentParams => CurrentModel % Components(i) % Values
       
-      IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+      IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
                                                          'Component parameters not found!')
       BodyAssociations => ListGetIntegerArray(ComponentParams, 'Body', Found)
       
@@ -57,10 +57,10 @@ CONTAINS
       DO j = 1, SIZE(BodyAssociations)
         BodyId = BodyAssociations(j)
         BodyParams => CurrentModel % Bodies(BodyId) % Values
-        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
                                                       'Body parameters not found!')
         k = GetInteger(BodyParams, 'Component', Found)
-        IF (Found) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+        IF (Found) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
                                'Body '//TRIM(i2s(BodyId))//' associated to two components!')
         CALL listAddInteger(BodyParams, 'Component', i)
         BodyParams => Null()
@@ -69,13 +69,13 @@ CONTAINS
 
     DO i = 1, SIZE(CurrentModel % Bodies)
       BodyParams => CurrentModel % Bodies(i) % Values
-      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
                                                     'Body parameters not found!')
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
       WRITE(Message,'(A,I2,A,I2)') 'Body',i,' associated to Component', j
-      CALL Info('CircuitsAndDynamics2DHarmonic',Message,Level=3)
+      CALL Info('CircuitsAndDynamicsHarmonic',Message,Level=3)
       BodyParams => Null()
     END DO
 !------------------------------------------------------------------------------
@@ -95,7 +95,7 @@ CONTAINS
     
     ComponentParams => CurrentModel % Components(Id) % Values
     
-    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamics2DHarmonic', &
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
                                                          'Component parameters not found!')
     BodyIds => ListGetIntegerArray(ComponentParams, 'Body', Found)
     IF (.NOT. Found) BodyIds => Null()
@@ -132,6 +132,12 @@ CONTAINS
 !------------------------------------------------------------------------------
   END FUNCTION FindSolverWithKey
 !------------------------------------------------------------------------------
+
+END MODULE CircuitUtils
+
+MODULE CMPLXCircuitsMod
+
+CONTAINS 
 
 !------------------------------------------------------------------------------
   SUBROUTINE AllocateCircuitsList()
@@ -337,6 +343,7 @@ CONTAINS
   SUBROUTINE ReadComponents(CId)
 !------------------------------------------------------------------------------
     USE DefUtils
+    USE CircuitUtils
     IMPLICIT NONE
     INTEGER :: CId, CompInd
     TYPE(CMPLXCircuit_t), POINTER :: Circuit
@@ -642,18 +649,24 @@ variable % owner = ParEnv % PEs-1
 
       ALLOCATE(Cvar % A(Circuit % n), &
                Cvar % B(Circuit % n), &
-               Cvar % M(Circuit % n), &
-               Cvar % Source(Circuit % n))
+               Cvar % Mre(Circuit % n), &
+               Cvar % Mim(Circuit % n), &
+               Cvar % SourceRe(Circuit % n), &
+               Cvar % SourceIm(Circuit % n))
       Cvar % A = 0._dp
       Cvar % B = 0._dp
-      Cvar % M = 0._dp
-      Cvar % Source = 0._dp
+      Cvar % Mre = 0._dp
+      Cvar % Mim = 0._dp
+      Cvar % SourceRe = 0._dp
+      Cvar % SourceIm = 0._dp
 
       DO j=1,Circuit % n
         IF (Circuit % A(i,j)/=0) Cvar % A(j) = Circuit % A(i,j)
         IF (Circuit % B(i,j)/=0) Cvar % B(j) = Circuit % B(i,j)
-        IF (Circuit % Mre(i,j)/=0 .OR. Circuit % Mim(i,j)/=0) &
-          Cvar % M(j) = Circuit % Mre(i,j) + im * Circuit % Mim(i,j)
+        IF (Circuit % Mre(i,j)/=0 .OR. Circuit % Mim(i,j)/=0) THEN
+          Cvar % Mre(j) = Circuit % Mre(i,j) 
+          Cvar % Mim(j) = Circuit % Mim(i,j)
+        END IF
       END DO
     END DO
 
@@ -723,7 +736,33 @@ variable % owner = ParEnv % PEs-1
   END FUNCTION ImIndex
 !------------------------------------------------------------------------------
 
-END MODULE CircuitsMod
+!------------------------------------------------------------------------------
+   FUNCTION HasSupport(Element, nn) RESULT(support)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: nn, dim
+    TYPE(Element_t) :: Element
+    LOGICAL :: support, First=.TRUE.
+    REAL(KIND=dp) :: wBase(nn)
+    SAVE dim, First
+
+    IF (First) THEN
+      First = .FALSE.
+      dim = CoordinateSystemDimension()
+    END IF
+    
+    support = .TRUE. 
+    IF (dim == 3) THEN
+      support = .FALSE.
+      CALL GetLocalSolution(Wbase,'W')
+      IF ( ANY(Wbase .ne. 0d0) ) support = .TRUE.
+    END IF
+!------------------------------------------------------------------------------
+   END FUNCTION HasSupport
+!------------------------------------------------------------------------------
+
+END MODULE CMPLXCircuitsMod
 
 MODULE CircMatInitMod
 
@@ -733,7 +772,7 @@ CONTAINS
    SUBROUTINE SetCircuitsParallelInfo()
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     TYPE(Matrix_t), POINTER :: CM
     TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
@@ -945,7 +984,7 @@ CONTAINS
    SUBROUTINE CountComponentEquations(Rows, Cnts, Done, dofsdone)
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
     TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
@@ -1007,8 +1046,10 @@ CONTAINS
             CASE('stranded')              
               CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows)
             CASE('massive')
+              IF (.NOT. HasSupport(Element,nn)) CYCLE 
               CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows)
             CASE('foil winding')
+              IF (.NOT. HasSupport(Element,nn)) CYCLE 
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )   
                 CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,Done,dofsdone,Rows)
@@ -1028,7 +1069,7 @@ CONTAINS
    SUBROUTINE CreateComponentEquations(Rows, Cols, Cnts, Done, dofsdone)
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     TYPE(CMPLXCircuit_t), POINTER :: Circuits(:)
     TYPE(CMPLXCircuitVariable_t), POINTER :: Cvar
@@ -1092,11 +1133,13 @@ CONTAINS
             nn = GetElementNOFNodes(Element)
             nd = GetElementNOFDOFs(Element,ASolver)
             SELECT CASE (Comp % CoilType)
-            CASE('stranded')              
+            CASE('stranded')
               CALL CountAndCreateStranded(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols,IvarId)
             CASE('massive')
+              IF (.NOT. HasSupport(Element,nn)) CYCLE 
               CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols)
             CASE('foil winding')
+              IF (.NOT. HasSupport(Element,nn)) CYCLE   
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )
                 CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+VvarId,Cnts,Done,dofsdone,Rows,Cols=Cols)
@@ -1119,7 +1162,7 @@ CONTAINS
    SUBROUTINE CountAndCreateStranded(Element,nn,nd,i,Cnts,Done,Rows,Cols,Jsind)
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
@@ -1171,7 +1214,7 @@ CONTAINS
    SUBROUTINE CountAndCreateMassive(Element,nn,nd,i,Cnts,Done,Rows,Cols)
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
@@ -1220,7 +1263,7 @@ CONTAINS
    SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,i,Cnts,Done,dofsdone,Rows,Cols)
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
@@ -1394,18 +1437,18 @@ CONTAINS
         vphi = GetCReal(BF, Circuit % SourceRe(i), Found)
       
       IF (Found) THEN 
-        Cvar % Source(i) = vphi
+        Cvar % SourceRe(i) = vphi
       END IF
       
       IF (ASSOCIATED(BF) ) &
         vphi = GetCReal(BF, Circuit % SourceIm(i), Found)
 
       IF (Found) THEN 
-        Cvar % Source(i) = Cvar % Source(i) + im * vphi
+        Cvar % SourceIm(i) = vphi
       END IF
       
-      CM % RHS(RowId) = REAL(Cvar % Source(i))
-      CM % RHS(RowId+1) = AIMAG(Cvar % Source(i))
+      CM % RHS(RowId) = Cvar % SourceRe(i)
+      CM % RHS(RowId+1) = Cvar % SourceIm(i)
         
       DO j=1,Circuit % n
 
@@ -1420,8 +1463,9 @@ CONTAINS
         ! ------
         IF(Cvar % B(j) /= 0._dp) THEN
           
-          IF (Cvar % M(j) /= 0._dp) THEN
-            cmplx_value = Cvar % M(j) * Cvar % B(j)
+          IF (Cvar % Mre(j) /= 0._dp .OR. Cvar % Mim(j) /= 0._dp) THEN
+            cmplx_value = Cvar % Mre(j) + im * Cvar % Mim(j)
+            cmplx_value = cmplx_value * Cvar % B(j)
           ELSE
             cmplx_value = Cvar % B(j)
           END IF
@@ -1456,7 +1500,8 @@ CONTAINS
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn)
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CircuitUtils
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     INTEGER :: p, CompInd, nm, nn, nd
     TYPE(Solver_t), POINTER :: ASolver
@@ -1544,8 +1589,10 @@ CONTAINS
           CASE ('stranded')
             CALL Add_stranded(Element,Tcoef,Comp,nn,nd)
           CASE ('massive')
+            IF (.NOT. HasSupport(Element,nn)) CYCLE
             CALL Add_massive(Element,Tcoef,Comp,nn,nd)
           CASE ('foil winding')
+            IF (.NOT. HasSupport(Element,nn)) CYCLE
             CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd)
           CASE DEFAULT
             CALL Fatal ('Circuits_apply', 'Non existent Coil Type Chosen!')
@@ -1664,7 +1711,7 @@ CONTAINS
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
@@ -1739,7 +1786,7 @@ CONTAINS
         w = [0._dp, 0._dp, 1._dp]
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
-        w = -normalized(MATMUL(WBase(1:nn), dBasisdx(1:nn,:)))
+        w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
       END SELECT
 
       localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
@@ -1777,34 +1824,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   FUNCTION norm2(a)
-!------------------------------------------------------------------------------
-    USE DefUtils
-    IMPLICIT NONE
-    REAL(KIND=dp) :: norm2(3)
-    REAL(KIND=dp), INTENT(IN) :: a(3)
-    norm2 = sqrt(SUM(a**2))
-!------------------------------------------------------------------------------
-   END FUNCTION norm2
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-   FUNCTION normalized(a)
-!------------------------------------------------------------------------------
-    USE DefUtils
-    IMPLICIT NONE
-    REAL(KIND=dp) :: normalized(3)
-    REAL(KIND=dp), INTENT(IN) :: a(3)
-    normalized = a/norm2(a)
-!------------------------------------------------------------------------------
-   END FUNCTION normalized
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
    SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
@@ -1911,7 +1934,7 @@ CONTAINS
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
     USE DefUtils
-    USE CircuitsMod
+    USE CMPLXCircuitsMod
     IMPLICIT NONE
     INTEGER :: nn, nd
     TYPE(Element_t) :: Element
@@ -1937,7 +1960,7 @@ CONTAINS
                      RotMLoc(3,3), RotM(3,3,nn)
     INTEGER :: i,ncdofs,q
 
-    SAVE CSymmetry, dim
+    SAVE CSymmetry, dim, First
 
     IF (First) THEN
       First = .FALSE.
@@ -2058,15 +2081,13 @@ CONTAINS
    END SUBROUTINE Add_foil_winding
 !------------------------------------------------------------------------------
 
-
-
 END MODULE CircEqWriteMod
 
 
 !------------------------------------------------------------------------------
 !> Initialization for the primary solver: CurrentSource
 !------------------------------------------------------------------------------
-SUBROUTINE CircuitsAndDynamics2DHarmonic_init( Model,Solver,dt,TransientSimulation )
+SUBROUTINE CircuitsAndDynamicsHarmonic_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   IMPLICIT NONE
@@ -2090,16 +2111,17 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic_init( Model,Solver,dt,TransientSimulati
   Solver % Values => Params
 
 !------------------------------------------------------------------------------
-END SUBROUTINE CircuitsAndDynamics2DHarmonic_init
+END SUBROUTINE CircuitsAndDynamicsHarmonic_init
 !------------------------------------------------------------------------------
 
 
 
 !------------------------------------------------------------------------------
-SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
+SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE CircuitsMod
+  USE CircuitUtils
+  USE CMPLXCircuitsMod
   USE CircMatInitMod
   USE CircEqWriteMod
   IMPLICIT NONE
@@ -2131,7 +2153,7 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
     
     ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CircuitsAndDynamics2DHarmonic', 'Memory allocation error.' )
+      CALL Fatal( 'CircuitsAndDynamicsHarmonic', 'Memory allocation error.' )
     END IF
 
     n_Circuits => Model%n_Circuits
@@ -2198,7 +2220,7 @@ SUBROUTINE CircuitsAndDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   END IF
 
 !------------------------------------------------------------------------------
-END SUBROUTINE CircuitsAndDynamics2DHarmonic
+END SUBROUTINE CircuitsAndDynamicsHarmonic
 !------------------------------------------------------------------------------
 
 
@@ -2207,7 +2229,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
    
    USE DefUtils
-   USE CircuitsMod
+   USE CMPLXCircuitsMod
 
    IMPLICIT NONE
    

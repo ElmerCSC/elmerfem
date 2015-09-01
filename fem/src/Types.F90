@@ -720,7 +720,7 @@ END INTERFACE
     INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner, ComponentId
     TYPE(CMPLXComponent_t), POINTER :: Component => Null()
     REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
-    COMPLEX(KIND=dp), ALLOCATABLE :: Source(:), M(:)
+    REAL(KIND=dp), ALLOCATABLE :: SourceRe(:), SourceIm(:), Mre(:), Mim(:)
     INTEGER, ALLOCATABLE :: EqVarIds(:)
   END TYPE CMPLXCircuitVariable_t
   
