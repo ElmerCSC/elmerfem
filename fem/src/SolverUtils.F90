@@ -7514,7 +7514,6 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
-
     IF(SteadyState) THEN
       PrevNorm = Solver % Variable % PrevNorm
     ELSE
@@ -7523,7 +7522,6 @@ END FUNCTION SearchNodeL
 
     Norm = ComputeNorm(Solver, n, x)
     Solver % Variable % Norm = Norm
-
 
     !--------------------------------------------------------------------------
     ! The norm should be bounded in order to reach convergence
@@ -7542,7 +7540,6 @@ END FUNCTION SearchNodeL
       CALL Info('ComputeChange',Message)
       CALL Fatal('ComputeChange','Norm of solution exceeded given bounds')
     END IF
-  
       
     SELECT CASE( ConvergenceType )
         
@@ -7652,14 +7649,15 @@ END FUNCTION SearchNodeL
       END IF
       
     CASE('solution')      
+
       ALLOCATE(r(n))
-      r = x-x0
+      r = x(1:n)-x0(1:n)
       Change = ComputeNorm(Solver, n, r)
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
         Change = Change * 2.0/ (Norm+PrevNorm)
       END IF
       DEALLOCATE(r)      
-      
+
     CASE('norm')
       Change = ABS( Norm-PrevNorm )
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
@@ -7769,7 +7767,6 @@ END FUNCTION SearchNodeL
       END IF
       x = x + Ctarget
     END IF
-
 
     ! Compute derivative of solution with time i.e. velocity 
     ! For 2nd order schemes there is direct pointer to the velocity component
