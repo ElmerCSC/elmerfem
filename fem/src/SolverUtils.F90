@@ -7241,8 +7241,8 @@ END FUNCTION SearchNodeL
     INTEGER :: NormDim, NormDofs, Dofs,i,j,k,n,totn,PermStart
     INTEGER, POINTER :: NormComponents(:)
     INTEGER, ALLOCATABLE :: iPerm(:)
-    REAL(KIND=dp) :: Norm, nscale
-    LOGICAL :: Stat, ComponentsAllocated
+    REAL(KIND=dp) :: Norm, nscale, val
+    LOGICAL :: Stat, ComponentsAllocated, ConsistentNorm
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: y(:)
 
@@ -7277,6 +7277,14 @@ END FUNCTION SearchNodeL
  
     n = nin
 
+    IF( ParEnv % PEs > 1 ) THEN
+      ConsistentNorm = ListGetLogical(Solver % Values,'Linear System Consistent Norm',Stat)
+      CALL Info('ComputeNorm','Using consistent norm in parallel',Level=10)
+    ELSE
+      ConsistentNorm = .FALSE.
+    END IF
+
+
     PermStart = ListGetInteger(Solver % Values,'Norm Permutation',Stat)
     IF ( Stat ) THEN
       ALLOCATE(iPerm(SIZE(Solver % Variable % Perm))); iPerm=0
@@ -7293,10 +7301,14 @@ END FUNCTION SearchNodeL
       DEALLOCATE(iPerm)
     END IF
 
-    totn = ParallelReduction(1._dp*n)
-    nscale = NormDOFs*totn/(1._dp*DOFs)
 
     IF( NormDofs < Dofs ) THEN
+      IF( ConsistentNorm ) THEN
+        CALL Warn('ComputeNorm','Consistent norm not implemented for selective norm')
+      END IF
+
+      totn = NINT( ParallelReduction(1._dp*n) )
+      nscale = NormDOFs*totn/(1._dp*DOFs)
       Norm = 0.0_dp
 
       SELECT CASE(NormDim)
@@ -7325,7 +7337,72 @@ END FUNCTION SearchNodeL
         END DO
         Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
       END SELECT
+    ELSE IF( ConsistentNorm ) THEN
+      ! In consistent norm we have to skip the dofs not owned by the partition in order
+      ! to count each dof only once. 
+
+      Norm = 0.0_dp
+      totn = 0
+      DO j=1,n/Dofs
+        IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+            == ParEnv % MyPE ) totn = totn + 1
+      END DO        
+
+      totn = NINT( ParallelReduction(1._dp*totn) )
+      nscale = NormDOFs*totn/(1._dp*DOFs)
+
+      DO i=1,Dofs        
+        SELECT CASE(NormDim)
+
+        CASE(0) 
+          DO j=1,n
+            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+                /= ParEnv % MyPE ) CYCLE
+            val = x(Dofs*(j-1)+i)
+            Norm = MAX( Norm, ABS( val ) )
+          END DO
+
+        CASE(1)
+          DO j=1,n
+            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+                /= ParEnv % MyPE ) CYCLE
+            val = x(Dofs*(j-1)+i)
+            Norm = Norm + ABS(val)
+          END DO
+          
+        CASE(2)          
+          DO j=1,n
+            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+                /= ParEnv % MyPE ) CYCLE
+            val = x(Dofs*(j-1)+i)
+            Norm = Norm + val**2 
+          END DO
+          
+        CASE DEFAULT
+          DO j=1,n
+            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+                /= ParEnv % MyPE ) CYCLE
+            val = x(Dofs*(j-1)+i)
+            Norm = Norm + val**NormDim 
+          END DO          
+        END SELECT
+      END DO
+  
+      SELECT CASE(NormDim)
+      CASE(0)
+        Norm = ParallelReduction(Norm,2)
+      CASE(1)
+        Norm = ParallelReduction(Norm) / nscale
+      CASE(2)
+        Norm = SQRT(ParallelReduction(Norm)/nscale)
+      CASE DEFAULT
+        Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
+      END SELECT
+      
     ELSE
+      totn = NINT( ParallelReduction(1._dp*n) )
+      nscale = NormDOFs*totn/(1._dp*DOFs)
+
       SELECT CASE(NormDim)
       CASE(0)
         Norm = ParallelReduction(MAXVAL(ABS(x(1:n))),2)
@@ -10987,7 +11064,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EliminateDiscont, &
-              EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints
+              EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
+              SkipConstraints
   SAVE MultiplierValues, SolverPointer
 
   CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
@@ -11643,16 +11721,32 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
 ! Collectionmatrix % Complex = StiffMatrix % Complex
 
+  ! We may want to skip the constraints for norm if we use certain other options
+  SkipConstraints = ListGetLogical( Solver % values, &
+      'Nonlinear System Convergence Without Constraints',Found )
+  IF(.NOT. Found ) THEN
+    SkipConstraints = ListGetLogical( Solver % values, 'Linear System Residual Mode',Found ) 
+    IF( SkipConstraints ) THEN
+      CALL Info('SolveWithLinearRestriction','Linear system residual mode must skip constraints',Level=5)
+    ELSE
+      SkipConstraints = ListGetLogical( Solver % values, 'Linear System Consistent Norm',Found ) 
+      IF( SkipConstraints ) THEN
+        CALL Info('SolveWithLinearRestriction','Linear system consistent norm must skip constraints',Level=5)
+      END IF
+    END IF
+    IF( SkipConstraints ) THEN
+      CALL Info('SolveWithLinearRestriction','Enforcing convergence without constraints to True',Level=5)
+      CALL ListAddLogical( Solver % Values, &
+           'Nonlinear System Convergence Without Constraints',.TRUE.)
+    END IF
+  END IF
+
   !------------------------------------------------------------------------------
   ! Look at the nonlinear system previous values again, not taking the constrained
   ! system into account...
   !------------------------------------------------------------------------------
   Found = ASSOCIATED(Solver % Variable % NonlinValues)
-  IF( Found .AND. .NOT. ListGetLogical( Solver % values, &
-      'Nonlinear System Convergence Without Constraints',Found ) ) THEN
-    IF( ListGetLogical( Solver % values, 'Linear System Residual Mode',Found ) ) THEN
-      CALL Fatal('SolveWithLinearRestriction','Current residual mode must skip constraints')
-    END IF
+  IF( Found .AND. .NOT. SkipConstraints ) THEN
     k = CollectionMatrix % NumberOfRows
     IF ( SIZE(Solver % Variable % NonlinValues) /= k) THEN
       DEALLOCATE(Solver % Variable % NonlinValues)
@@ -12511,6 +12605,12 @@ CONTAINS
         jk = Dofs*(j-1)+k
         l = A % Diag(jk) 
         IF( l == 0 ) CYCLE
+
+        ! Only add the diagonal to the owned dof
+        IF( ParEnv % PEs > 1 ) THEN
+          IF( A % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+        END IF
+
         val = ABS( Values( l ) )
         DiagSum = DiagSum + val
         DiagMax = MAX( DiagMax, val )
