@@ -154,7 +154,7 @@ SUBROUTINE EdgeElementSolver( Model,Solver,dt,TransientSimulation )
   CALL DefaultFinishBulkAssembly()
   CALL DefaultFinishAssembly()
 
-  CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
+  CALL DefaultDirichletBCs()
 
   Norm = DefaultSolve()  
 
@@ -356,7 +356,8 @@ CONTAINS
 
           ELSE
              stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), F, G, detJ, Basis, EBasis, CurlEBasis, ApplyPiolaTransform = .TRUE., &
+                  IP % W(t), DetF=detJ, Basis=Basis, EdgeBasis=EBasis, &
+                  RotBasis=CurlEBasis, ApplyPiolaTransform = .TRUE., &
                   BasisDegree = 2)
           END IF
 
