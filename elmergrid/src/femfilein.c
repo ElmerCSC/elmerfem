@@ -4599,6 +4599,7 @@ int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
   printf("Reading 2D mesh from Flux mesh file %s.\n",filename);
   InitializeKnots(data);
 
+  debug = FALSE;
   linenumber = 0;
   dim = 2;
   noknots = 0;
