@@ -7241,8 +7241,8 @@ END FUNCTION SearchNodeL
     INTEGER :: NormDim, NormDofs, Dofs,i,j,k,n,totn,PermStart
     INTEGER, POINTER :: NormComponents(:)
     INTEGER, ALLOCATABLE :: iPerm(:)
-    REAL(KIND=dp) :: Norm, nscale
-    LOGICAL :: Stat, ComponentsAllocated
+    REAL(KIND=dp) :: Norm, nscale, val
+    LOGICAL :: Stat, ComponentsAllocated, ConsistentNorm
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: y(:)
 
@@ -7277,6 +7277,14 @@ END FUNCTION SearchNodeL
  
     n = nin
 
+    IF( ParEnv % PEs > 1 ) THEN
+      ConsistentNorm = ListGetLogical(Solver % Values,'Nonlinear System Consistent Norm',Stat)
+      CALL Info('ComputeNorm','Using consistent norm in parallel',Level=10)
+    ELSE
+      ConsistentNorm = .FALSE.
+    END IF
+
+
     PermStart = ListGetInteger(Solver % Values,'Norm Permutation',Stat)
     IF ( Stat ) THEN
       ALLOCATE(iPerm(SIZE(Solver % Variable % Perm))); iPerm=0
@@ -7293,10 +7301,14 @@ END FUNCTION SearchNodeL
       DEALLOCATE(iPerm)
     END IF
 
-    totn = ParallelReduction(1._dp*n)
-    nscale = NormDOFs*totn/(1._dp*DOFs)
 
     IF( NormDofs < Dofs ) THEN
+      IF( ConsistentNorm ) THEN
+        CALL Warn('ComputeNorm','Consistent norm not implemented for selective norm')
+      END IF
+
+      totn = NINT( ParallelReduction(1._dp*n) )
+      nscale = NormDOFs*totn/(1._dp*DOFs)
       Norm = 0.0_dp
 
       SELECT CASE(NormDim)
@@ -7325,7 +7337,72 @@ END FUNCTION SearchNodeL
         END DO
         Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
       END SELECT
+    ELSE IF( ConsistentNorm ) THEN
+      ! In consistent norm we have to skip the dofs not owned by the partition in order
+      ! to count each dof only once. 
+
+      Norm = 0.0_dp
+      totn = 0
+      DO j=1,n/Dofs
+        IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+            == ParEnv % MyPE ) totn = totn + 1
+      END DO        
+
+      totn = NINT( ParallelReduction(1._dp*totn) )
+      nscale = NormDOFs*totn/(1._dp*DOFs)
+
+      DO i=1,Dofs        
+        SELECT CASE(NormDim)
+
+        CASE(0) 
+          DO j=1,n
+            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+                /= ParEnv % MyPE ) CYCLE
+            val = x(Dofs*(j-1)+i)
+            Norm = MAX( Norm, ABS( val ) )
+          END DO
+
+        CASE(1)
+          DO j=1,n
+            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+                /= ParEnv % MyPE ) CYCLE
+            val = x(Dofs*(j-1)+i)
+            Norm = Norm + ABS(val)
+          END DO
+          
+        CASE(2)          
+          DO j=1,n
+            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+                /= ParEnv % MyPE ) CYCLE
+            val = x(Dofs*(j-1)+i)
+            Norm = Norm + val**2 
+          END DO
+          
+        CASE DEFAULT
+          DO j=1,n
+            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+                /= ParEnv % MyPE ) CYCLE
+            val = x(Dofs*(j-1)+i)
+            Norm = Norm + val**NormDim 
+          END DO          
+        END SELECT
+      END DO
+  
+      SELECT CASE(NormDim)
+      CASE(0)
+        Norm = ParallelReduction(Norm,2)
+      CASE(1)
+        Norm = ParallelReduction(Norm) / nscale
+      CASE(2)
+        Norm = SQRT(ParallelReduction(Norm)/nscale)
+      CASE DEFAULT
+        Norm = (ParallelReduction(Norm)/nscale)**(1.0d0/NormDim)
+      END SELECT
+      
     ELSE
+      totn = NINT( ParallelReduction(1._dp*n) )
+      nscale = NormDOFs*totn/(1._dp*DOFs)
+
       SELECT CASE(NormDim)
       CASE(0)
         Norm = ParallelReduction(MAXVAL(ABS(x(1:n))),2)
@@ -7514,7 +7591,6 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
-
     IF(SteadyState) THEN
       PrevNorm = Solver % Variable % PrevNorm
     ELSE
@@ -7523,7 +7599,6 @@ END FUNCTION SearchNodeL
 
     Norm = ComputeNorm(Solver, n, x)
     Solver % Variable % Norm = Norm
-
 
     !--------------------------------------------------------------------------
     ! The norm should be bounded in order to reach convergence
@@ -7542,7 +7617,6 @@ END FUNCTION SearchNodeL
       CALL Info('ComputeChange',Message)
       CALL Fatal('ComputeChange','Norm of solution exceeded given bounds')
     END IF
-  
       
     SELECT CASE( ConvergenceType )
         
@@ -7652,14 +7726,15 @@ END FUNCTION SearchNodeL
       END IF
       
     CASE('solution')      
+
       ALLOCATE(r(n))
-      r = x-x0
+      r = x(1:n)-x0(1:n)
       Change = ComputeNorm(Solver, n, r)
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
         Change = Change * 2.0/ (Norm+PrevNorm)
       END IF
       DEALLOCATE(r)      
-      
+
     CASE('norm')
       Change = ABS( Norm-PrevNorm )
       IF( .NOT. ConvergenceAbsolute .AND. Norm + PrevNorm > 0.0) THEN
@@ -7769,7 +7844,6 @@ END FUNCTION SearchNodeL
       END IF
       x = x + Ctarget
     END IF
-
 
     ! Compute derivative of solution with time i.e. velocity 
     ! For 2nd order schemes there is direct pointer to the velocity component
@@ -10990,7 +11064,8 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
   TYPE(Variable_t), POINTER :: MultVar
   REAL(KIND=dp) :: scl, rowsum
   LOGICAL :: Found, ExportMultiplier, NotExplicit, Refactorize, EnforceDirichlet, EliminateDiscont, &
-              EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints
+              EmptyRow, ComplexSystem, ConstraintScaling, UseTranspose, EliminateConstraints, &
+              SkipConstraints
   SAVE MultiplierValues, SolverPointer
 
   CHARACTER(LEN=MAX_NAME_LEN) :: MultiplierName
@@ -11646,16 +11721,32 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
 ! Collectionmatrix % Complex = StiffMatrix % Complex
 
+  ! We may want to skip the constraints for norm if we use certain other options
+  SkipConstraints = ListGetLogical( Solver % values, &
+      'Nonlinear System Convergence Without Constraints',Found )
+  IF(.NOT. Found ) THEN
+    SkipConstraints = ListGetLogical( Solver % values, 'Linear System Residual Mode',Found ) 
+    IF( SkipConstraints ) THEN
+      CALL Info('SolveWithLinearRestriction','Linear system residual mode must skip constraints',Level=5)
+    ELSE
+      SkipConstraints = ListGetLogical( Solver % values, 'NonLinear System Consistent Norm',Found ) 
+      IF( SkipConstraints ) THEN
+        CALL Info('SolveWithLinearRestriction','Nonlinear system consistent norm must skip constraints',Level=5)
+      END IF
+    END IF
+    IF( SkipConstraints ) THEN
+      CALL Info('SolveWithLinearRestriction','Enforcing convergence without constraints to True',Level=5)
+      CALL ListAddLogical( Solver % Values, &
+           'Nonlinear System Convergence Without Constraints',.TRUE.)
+    END IF
+  END IF
+
   !------------------------------------------------------------------------------
   ! Look at the nonlinear system previous values again, not taking the constrained
   ! system into account...
   !------------------------------------------------------------------------------
   Found = ASSOCIATED(Solver % Variable % NonlinValues)
-  IF( Found .AND. .NOT. ListGetLogical( Solver % values, &
-      'Nonlinear System Convergence Without Constraints',Found ) ) THEN
-    IF( ListGetLogical( Solver % values, 'Linear System Residual Mode',Found ) ) THEN
-      CALL Fatal('SolveWithLinearRestriction','Current residual mode must skip constraints')
-    END IF
+  IF( Found .AND. .NOT. SkipConstraints ) THEN
     k = CollectionMatrix % NumberOfRows
     IF ( SIZE(Solver % Variable % NonlinValues) /= k) THEN
       DEALLOCATE(Solver % Variable % NonlinValues)
@@ -12434,6 +12525,114 @@ CONTAINS
 
 
   END SUBROUTINE LinearSystemMultiply
+
+
+
+
+
+
+!---------------------------------------------------------------------------------
+!> Set the diagonal entry to given minumum.
+!----------------------------------------------------------------------------------
+  SUBROUTINE LinearSystemMinDiagonal( Solver )
+!----------------------------------------------------------------------------------    
+    TYPE(Solver_t) :: Solver
+    !------------------------------------------------------------------------------
+    INTEGER, POINTER :: Perm(:),Rows(:),Cols(:)
+    REAL(KIND=dp), POINTER :: Values(:),Rhs(:)
+    TYPE(Variable_t), POINTER :: ThisVar
+    TYPE(Matrix_t), POINTER :: A
+    TYPE(Mesh_t), POINTER :: Mesh
+    REAL(KIND=dp) :: Coeff
+    INTEGER :: i,j,j2,k,l,jk,n,Mode,Dofs
+    LOGICAL :: Found, UpdateRhs, Symmetric
+    TYPE(ValueList_t), POINTER :: Params
+    CHARACTER(LEN=MAX_NAME_LEN) :: str
+    INTEGER :: NoSet
+    REAL(KIND=dp) :: DiagSum, val, DiagMax
+
+    Params => Solver % Values
+    Mesh => Solver % Mesh
+    IF(.NOT. ASSOCIATED( Mesh ) ) THEN
+      CALL Fatal('LinearSystemMinDiagonal','Subroutine requires a Mesh!')
+    END IF
+    A => Solver % Matrix
+    IF(.NOT. ASSOCIATED( A ) ) THEN
+      CALL Fatal('LinearSystemMinDiagonal','Subroutine requires a matrix equation!')
+    END IF
+    ThisVar => Solver % Variable
+    IF(.NOT. ASSOCIATED( ThisVar ) ) THEN
+      CALL Fatal('LinearSystemMinDiagonal','Subroutine requires a default variable to exist!')
+    END IF
+
+    Perm => ThisVar % Perm
+    Dofs = ThisVar % Dofs
+    n = A % NumberOfRows
+    Cols => A % Cols
+    Rows => A % Rows
+    Rhs => A % Rhs
+    Values => A % Values
+        
+    ! Set the mimimum value for each component, only nodel dofs consired
+    !-------------------------------------------------------------------
+    NoSet = 0
+    DiagMax = 0.0_dp
+    DiagSum = 0.0_dp
+    n = MAXVAL( Perm ( 1:Mesh % NumberOfNodes ) )
+
+    DO k=1,Dofs
+      Mode = 0
+
+      str = 'Linear System Diagonal Min'
+      Coeff = ListGetCReal( Params, str, Found )
+      IF( Found ) THEN
+        Mode = 1
+        WRITE( Message,'(A,ES12.3)') 'Setting minimum of the diagonal to ',Coeff
+        CALL Info('LinearSystemMinDiagonal',Message, Level=6 )
+      ELSE
+        WRITE( str,'(A,I0)') TRIM(str)//' ',k
+        Coeff = ListGetCReal( Params, str, Found )
+        IF( Found ) THEN
+          Mode = 2 
+          WRITE( Message,'(A,I0,A,ES12.3)') 'Setting minimum of diagonal component ',k,' to ',Coeff
+          CALL Info('LinearSystemMinDiagonal',Message, Level=6 )          
+        END IF
+      END IF
+      
+      IF( Mode == 0 ) CYCLE
+      
+      DO j=1,n
+        jk = Dofs*(j-1)+k
+        l = A % Diag(jk) 
+        IF( l == 0 ) CYCLE
+
+        ! Only add the diagonal to the owned dof
+        IF( ParEnv % PEs > 1 ) THEN
+          IF( A % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+        END IF
+
+        val = ABS( Values( l ) )
+        DiagSum = DiagSum + val
+        DiagMax = MAX( DiagMax, val )
+        IF( val < Coeff ) THEN
+          Values( A % Diag(jk) ) = Coeff
+          NoSet = NoSet + 1
+        END IF
+      END DO
+    END DO
+
+    CALL Info('LinearSystemMinDiagonal','Number of diagonal values set to mimimum: '//TRIM(I2S(NoSet)),Level=5)
+    WRITE( Message,'(A,ES12.3)') 'Avarage abs(diagonal) entry: ',DiagSum / n    
+    CALL Info('LinearSystemMinDiagonal',Message, Level=6 )
+    
+    WRITE( Message,'(A,ES12.3)') 'Maximum abs(diagonal) entry: ',DiagMax
+    CALL Info('LinearSystemMinDiagonal',Message, Level=6 )
+
+
+  END SUBROUTINE LinearSystemMinDiagonal
+
+
+
 
 
   !----------------------------------------------------------------------
