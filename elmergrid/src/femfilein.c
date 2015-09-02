@@ -4573,8 +4573,8 @@ int FluxToElmerType(int nonodes, int dim) {
 
 
 int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
-		 char *prefix,int info)
-/* Load the mesh from format of Flux Cedrat. */
+		    char *prefix,int info)
+/* Load the mesh from format of Flux Cedrat in TRA format. */
 {
   int noknots,noelements,maxnodes,dim,elmertype;
   int nonodes,matind,noregions,mode;
@@ -4588,7 +4588,7 @@ int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
 
   strcpy(filename,prefix);
   if ((in = fopen(filename,"r")) == NULL) {
-    AddExtension(prefix,filename,"tra");
+    AddExtension(prefix,filename,"TRA");
     if ((in = fopen(filename,"r")) == NULL) {
       printf("LoadFluxMesh: opening of the Flux mesh file '%s' wasn't succesfull !\n",
 	     filename);
@@ -4710,6 +4710,174 @@ int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
 	  printf("It seems that reordering of regions should be performed! (%d %d)\n",i,j);
 	}
 	sscanf(cp,"%s",entityname);
+	strcpy(data->bodyname[i],entityname);
+      }
+      data->bodynamesexist = TRUE;
+      data->boundarynamesexist = TRUE;
+      break;
+
+
+    default:
+      if(debug) printf("unimplemented mode: %d\n",mode );
+      mode = 0;
+      break;
+    }
+  }
+
+ end:
+  fclose(in);
+
+  /* Until this far all elements have been listed as bulk elements. 
+     Now separate the lower dimensional elements to be boundary elements. */
+  ElementsToBoundaryConditions(data,bound,TRUE,info);
+ 
+  if(info) printf("The Flux mesh was loaded from file %s.\n\n",filename);
+
+  return(0);
+}
+
+
+int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
+		    char *prefix,int info)
+/* Load the mesh from format of Flux Cedrat in PF3 format. */
+{
+  int noknots,noelements,maxnodes,dim,elmertype;
+  int nonodes,matind,noregions,mode;
+  int debug;
+  int *elementtypes;
+  char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
+  int i,j,k;
+  char entityname[MAXNAMESIZE];
+  FILE *in;
+
+
+  strcpy(filename,prefix);
+  if ((in = fopen(filename,"r")) == NULL) {
+    AddExtension(prefix,filename,"PF3");
+    if ((in = fopen(filename,"r")) == NULL) {
+      printf("LoadFluxMesh: opening of the Flux mesh file '%s' wasn't succesfull !\n",
+	     filename);
+      return(1);
+    }
+  }
+ 
+  printf("Reading 2D mesh from Flux mesh file %s.\n",filename);
+  InitializeKnots(data);
+
+  debug = FALSE;
+  linenumber = 0;
+  dim = 3;
+  noknots = 0;
+  noelements = 0;
+  mode = 0;
+  maxnodes = 6;
+
+
+
+  for(;;) { 
+
+    if(0) printf("line: %d  %s\n",mode,line);
+
+    if( Getrow(line,in,FALSE)) goto end;
+    if(line[0]=='\0') goto end;
+    if( strstr(line,"==== DECOUPAGE  TERMINE")) goto end;
+
+    if( strstr(line,"NOMBRE DE DIMENSIONS DU DECOUPAGE")) mode = 1;
+    else if( strstr(line,"NOMBRE  D'ELEMENTS")) mode = 2;
+    else if( strstr(line,"NOMBRE DE POINTS")) mode = 3;
+    else if( strstr(line,"NOMBRE DE REGIONS")) mode = 4;
+
+    else if( strstr(line,"DESCRIPTEUR DE TOPOLOGIE DES ELEMENTS")) mode = 10;
+    else if( strstr(line,"COORDONNEES DES NOEUDS")) mode = 11;
+    else if( strstr(line,"NOMS DES REGIONS")) mode = 12;
+    else {
+      if(debug) printf("Unknown mode line %d: %s",linenumber,line);
+      mode = 0;
+    }
+
+    if(debug && mode) printf("Current mode is %d\n",mode);
+
+    switch( mode ) {
+    case 1: 
+      dim = atoi(line);
+      break;
+
+    case 2: 
+      noknots = atoi(line);
+      break;
+
+    case 3: 
+      i = atoi(line);
+      noelements = MAX(i,noelements); /* We are looking for the total number of elements */
+      break;
+
+    case 4: 
+      i = atoi(line);
+      noregions = MAX(i,noregions); /* We are looking for the total number of regions */
+      break;
+
+     
+    case 10:
+      if(info) {
+	printf("Allocating mesh with %d nodes and %d %d-node elements in %d dims.\n",
+	       noknots,noelements,maxnodes,dim);
+      }  
+
+      data->noknots = noknots;
+      data->noelements = noelements;
+      data->maxnodes = maxnodes;
+      data->dim = dim;
+      AllocateKnots(data);
+
+      if(info) printf("Reading %d element topologies\n",noelements);
+      for(i=1;i<=noelements;i++) {
+	Getrow(line,in,FALSE);
+	cp = line;
+	j = next_int(&cp);
+	if( i != j ) {
+	  printf("It seems that reordering of elements should be performed! (%d %d)\n",i,j);
+	}
+	nonodes = next_int(&cp);
+	matind = abs( next_int(&cp) ); 
+	
+	elmertype = FluxToElmerType( nonodes, dim );
+	data->elementtypes[i] = elmertype;
+	data->material[i] = matind;
+
+	Getrow(line,in,FALSE);
+	cp = line;
+	for(k=0;k<nonodes;k++) {
+	  data->topology[i][k] = next_int(&cp);
+	}
+      }
+      break;
+
+    case 11:
+      if(info) printf("Reading %d element nodes\n",noknots);
+      for(i=1;i<=noknots;i++) {
+	Getrow(line,in,FALSE);
+	cp = line;
+	j = next_int(&cp);
+	if( i != j ) {
+	  printf("It seems that reordering of nodes should be performed! (%d %d)\n",i,j);
+	}
+	data->x[i] = next_real(&cp);
+	data->y[i] = next_real(&cp);
+	if(dim == 3) data->z[i] = next_real(&cp);
+      }
+      break;
+
+
+    case 12:
+      if(info) printf("Reading %d names of regions\n",noregions);
+      for(i=1;i<=noregions;i++) {
+	Getrow(line,in,FALSE);
+
+	/* currently we just cycle trough this and get a new row */
+	if( strstr(line,"REGIONS SURFACIQUES")) Getrow(line,in,FALSE);
+	if( strstr(line,"REGIONS VOLUMIQUES")) Getrow(line,in,FALSE);
+
+	sscanf(line,"%s",entityname);
 	strcpy(data->bodyname[i],entityname);
       }
       data->bodynamesexist = TRUE;

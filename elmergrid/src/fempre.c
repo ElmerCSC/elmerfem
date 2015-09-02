@@ -524,6 +524,18 @@ int main(int argc, char *argv[])
     nomeshes++;
     break;
 
+  case 21:
+    boundaries[nofile] = (struct BoundaryType*)
+      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    for(i=0;i<MAXBOUNDARIES;i++) {
+      boundaries[nofile][i].created = FALSE; 
+      boundaries[nofile][i].nosides = 0;
+    }
+    if (LoadFluxMesh3D(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
+    nomeshes++;
+    break;
+
   default:
     Instructions();
     Goodbye();
