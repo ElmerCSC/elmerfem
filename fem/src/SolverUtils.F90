@@ -7278,7 +7278,7 @@ END FUNCTION SearchNodeL
     n = nin
 
     IF( ParEnv % PEs > 1 ) THEN
-      ConsistentNorm = ListGetLogical(Solver % Values,'Linear System Consistent Norm',Stat)
+      ConsistentNorm = ListGetLogical(Solver % Values,'Nonlinear System Consistent Norm',Stat)
       CALL Info('ComputeNorm','Using consistent norm in parallel',Level=10)
     ELSE
       ConsistentNorm = .FALSE.
@@ -11729,9 +11729,9 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     IF( SkipConstraints ) THEN
       CALL Info('SolveWithLinearRestriction','Linear system residual mode must skip constraints',Level=5)
     ELSE
-      SkipConstraints = ListGetLogical( Solver % values, 'Linear System Consistent Norm',Found ) 
+      SkipConstraints = ListGetLogical( Solver % values, 'NonLinear System Consistent Norm',Found ) 
       IF( SkipConstraints ) THEN
-        CALL Info('SolveWithLinearRestriction','Linear system consistent norm must skip constraints',Level=5)
+        CALL Info('SolveWithLinearRestriction','Nonlinear system consistent norm must skip constraints',Level=5)
       END IF
     END IF
     IF( SkipConstraints ) THEN
