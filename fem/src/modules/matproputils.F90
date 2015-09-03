@@ -196,6 +196,16 @@ CONTAINS
 
 END MODULE trapezoid
 
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!                                                                           !  
+!             FUNCTIONS CALLABLE FROM ELMER SIF                             !
+!                                                                           ! 
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
 FUNCTION getExpCoeffEpikotem( model, n, T ) RESULT(ExpCoeff_average)
 !===================================================================
 ! Calculate the thermal expansion coefficient for Epikotem 
@@ -359,6 +369,117 @@ FUNCTION getWindingSigma( model, n, T ) RESULT(eff_sigma)
   eff_sigma = ff * alsigma
   
 END FUNCTION getWindingSigma
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
+  ! modules needed
+  USE DefUtils
+ 
+  IMPLICIT None
+ 
+  ! variables in function header
+  TYPE(Model_t) :: model
+  INTEGER :: n
+  REAL(KIND=dp) :: dummyArgument
+ 
+  ! variables needed inside function
+  REAL(KIND=dp) ::  ElasticModulus(:,:)
+  REAL(KIND=dp) :: Em,Ef,Vf,E_perpendicular, E_parallel
+  REAL(KIND=dp) :: Ex, Ey, Ez, nu,nu_xy,nu_xz,nu_yx,nu_yz,nu_zx,nu_zy, D,GPA
+  REAL(KIND=dp) :: nu_parallel, nu_perpendicular, nu_m, nu_f
+
+  TYPE(Valuelist_t), POINTER :: Material, BodyParams
+  TYPE(Element_t), POINTER :: Element
+  Logical :: FOUND
+
+  Em = 12.0e9 
+  Ef = 73.0e9 
+  Vf = 0.2
+  nu = 0.3
+
+
+  Material => GetMaterial()
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingk', 'Material not found') 
+  
+  Em = GetConstReal(Material, 'Youngs Modulus Material 1', FOUND)
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Youngs Modulus for Material 1 not found')
+  Ef = GetConstReal(Material, 'Youngs Modulus Material 2', FOUND)
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Youngs Modulus for Material 2 not found')
+  Vf = GetConstReal(Material, 'Mass Fraction Material 2', FOUND)
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Mass Fraction for Material 2 not found')
+
+  nu_m = GetConstReal(Material, 'Poisson ratio Material 1', FOUND)
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Poisson ratio for Material 1 not found')
+  nu_f = GetConstReal(Material, 'Poisson ratio Material 2', FOUND)
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Poisson ratio for Material 2 not found')
+
+  E_parallel = Em*(1-Vf) + Ef*Vf
+  E_perpendicular = 1/(((1-Vf)/Em)+(Vf/Ef))
+
+  nu_parallel = nu_m*(1-Vf) + nu_f*Vf
+  nu_perpendicular = 1/(((1-Vf)/nu_m)+(Vf/nu_f))
+  
+  !nu_perpendicular = 0.2
+
+  Ex = 1/(((1-Vf)/Em)+(Vf/Ef)) ! perpendicular
+  Ey = Em*(1-Vf) + Ef*Vf ! parallel, direction of fibres
+  Ez = Ex ! perpendicular, same as in x-direction
+
+  nu_xy = nu_perpendicular 
+  nu_xz = nu_perpendicular 
+  nu_yx = nu_parallel
+  nu_yz = nu_parallel
+  nu_zx = nu_perpendicular  
+  nu_zy = nu_perpendicular 
+  
+  D = 1/(1-nu_xy*nu_yx-nu_yz*nu_zy-nu_zx*nu_xz-2*nu_xy*nu_yz*nu_zx)
+ 
+  ElasticModulus(1,1) = (1-nu_yz*nu_zy)*D*Ex  
+  ElasticModulus(1,2) = (nu_yx+nu_zx*nu_yz)*D*Ex
+  ElasticModulus(1,3) = (nu_zx+nu_yx*nu_zy)*D*Ex
+  ElasticModulus(1,4) = 0
+ 
+  ElasticModulus(2,2) = (1-nu_zx*nu_xz)*D*Ey  
+  ElasticModulus(2,1) = (nu_xy+nu_xz*nu_zy)*D*Ey
+  ElasticModulus(2,3) = (nu_zy+nu_zx*nu_yz)*D*Ey
+  ElasticModulus(2,4) = 0
+
+  ElasticModulus(3,3) = (1-nu_xy*nu_yx)*D*Ez  
+  ElasticModulus(3,1) = (nu_xz+nu_xy*nu_yz)*D*Ez
+  ElasticModulus(3,2) = (nu_yz+nu_xz*nu_yx)*D*Ez
+  ElasticModulus(3,4) = 0
+
+  ElasticModulus(4,1) = 0 
+  ElasticModulus(4,2) = 0 
+  ElasticModulus(4,3) = 0 
+  ElasticModulus(4,4) = Ex/(2*(1+nu_yx)) 
+ 
+ 
+
+  !ElasticModulus(1,1) = E_perpendicular
+  !ElasticModulus(1,2) = E_perpendicular*0.1
+  !ElasticModulus(2,1) = E_perpendicular*0.1
+  !ElasticModulus(2,2) = E_parallel
+  
+  GPA = 1.0e9
+
+  print *, "Youngs modulus X: ", Ex/GPA, " Y:  ", Ey/GPA, " Z: ", Ez/GPA
+  print *, "Poisson ratio, parallel", nu_parallel, " perpendicular", nu_perpendicular
+ 
+
+  
+  print *,  "Elastic modulus"
+  print *,  ElasticModulus(1,1)/GPA, ElasticModulus(1,2)/GPA, ElasticModulus(1,3)/GPA, ElasticModulus(1,4)/GPA
+  print *,  ElasticModulus(2,1)/GPA, ElasticModulus(2,2)/GPA, ElasticModulus(2,3)/GPA, ElasticModulus(2,4)/GPA
+  print *,  ElasticModulus(3,1)/GPA, ElasticModulus(3,2)/GPA, ElasticModulus(3,3)/GPA, ElasticModulus(3,4)/GPA
+  print *,  ElasticModulus(4,1)/GPA, ElasticModulus(4,2)/GPA, ElasticModulus(4,3)/GPA, ElasticModulus(4,4)/GPA
+
+END SUBROUTINE getElasticModulus
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   ! modules needed
