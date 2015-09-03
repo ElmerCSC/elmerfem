@@ -386,7 +386,7 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
  
   ! variables needed inside function
   REAL(KIND=dp) ::  ElasticModulus(:,:)
-  REAL(KIND=dp) :: Em,Ef,Vf,E_perpendicular, E_parallel
+  REAL(KIND=dp) :: Em,Ef,Vf,E_perpendicular, E_parallel,G12,Gm,Gf
   REAL(KIND=dp) :: Ex, Ey, Ez, nu,nu_xy,nu_xz,nu_yx,nu_yz,nu_zx,nu_zy, D,GPA
   REAL(KIND=dp) :: nu_parallel, nu_perpendicular, nu_m, nu_f
 
@@ -419,6 +419,10 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
   
   nu_perpendicular = (E_perpendicular/E_parallel)*nu_parallel
 
+  Gm = Em/(2*(1+nu_m))
+  Gf = Em/(2*(1+nu_f))
+
+  G12 = Gm*Gf/((1-Vf)*Gf+Vf*Gm)
 
   Ex = 1/(((1-Vf)/Em)+(Vf/Ef)) ! perpendicular
   Ey = Em*(1-Vf) + Ef*Vf ! parallel, direction of fibres
@@ -453,7 +457,7 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
   ElasticModulus(4,1) = 0 
   ElasticModulus(4,2) = 0 
   ElasticModulus(4,3) = 0 
-  ElasticModulus(4,4) = Ex/(2*(1+nu_yx)) 
+  ElasticModulus(4,4) = G12 ! Ex/(2*(1+nu_yx)) 
  
   
 
