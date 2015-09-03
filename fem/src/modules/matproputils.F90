@@ -598,7 +598,7 @@ SUBROUTINE getEpikotemFbnetk( model, n, dummyArgument,Conductivity )
   IF ((.NOT. FOUNDFT)) CALL Fatal('getEpikotemFbnetk', 'Epicotem Layer Thickness not found in Component section')
   
   Conductivity(1) = ((et + it) * mc * ic) / (it * mc + et * ic)   ! perp
-  Conductivity(2) = (et * mc + it * ic) / (et + it)               ! par
+  Conductivity(2) = (et * mc + et * ic) / (et + et)               ! par
   !WRITE(Message,*)  Conductivity(1,1), Conductivity(1,2)
   !CALL Info('getEpikotemFbnetk', Message, Level = 5)
 END SUBROUTINE getEpikotemFbnetk
