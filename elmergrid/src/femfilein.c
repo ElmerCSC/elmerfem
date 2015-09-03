@@ -4559,11 +4559,19 @@ int FluxToElmerType(int nonodes, int dim) {
   elmertype = 0;
   
   if( dim == 2 ) {
-    if( nonodes == 6 ) 
-      elmertype = 306;
-    else
+    switch( nonodes ) {
+    case 3: 
       elmertype = 203;
+      break;
+    case 6:
+      elmertype = 306;
+      break;
+    case 8:
+      elmertype = 408;
+      break;
+    }
   }
+    
 
   if( !elmertype ) printf("FluxToElmerType could not deduce element type! (%d %d)\n",nonodes,dim);
 
@@ -4605,7 +4613,7 @@ int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
   noknots = 0;
   noelements = 0;
   mode = 0;
-  maxnodes = 6;
+  maxnodes = 8;
 
 
 
