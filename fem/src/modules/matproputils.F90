@@ -426,10 +426,6 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
   TYPE(Element_t), POINTER :: Element
   Logical :: FOUND
 
-  Em = 12.0e9 
-  Ef = 73.0e9 
-  Vf = 0.2
-  nu = 0.3
 
 
   Material => GetMaterial()
@@ -451,16 +447,19 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
   E_perpendicular = 1/(((1-Vf)/Em)+(Vf/Ef))
 
   nu_parallel = nu_m*(1-Vf) + nu_f*Vf
-  nu_perpendicular = 1/(((1-Vf)/nu_m)+(Vf/nu_f))
+  !nu_perpendicular = 1/(((1-Vf)/nu_m)+(Vf/nu_f))
   
-  !nu_perpendicular = 0.2
+  nu_perpendicular = (E_perpendicular/E_parallel)*nu_parallel
+
 
   Ex = 1/(((1-Vf)/Em)+(Vf/Ef)) ! perpendicular
   Ey = Em*(1-Vf) + Ef*Vf ! parallel, direction of fibres
   Ez = Ex ! perpendicular, same as in x-direction
 
+  !Ex nu_yx = Ey nu_xy
+
   nu_xy = nu_perpendicular 
-  nu_xz = nu_perpendicular 
+  nu_xz = nu_perpendicular
   nu_yx = nu_parallel
   nu_yz = nu_parallel
   nu_zx = nu_perpendicular  
@@ -475,7 +474,7 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
  
   ElasticModulus(2,2) = (1-nu_zx*nu_xz)*D*Ey  
   ElasticModulus(2,1) = (nu_xy+nu_xz*nu_zy)*D*Ey
-  ElasticModulus(2,3) = (nu_zy+nu_zx*nu_yz)*D*Ey
+  ElasticModulus(2,3) = (nu_zy+nu_zx*nu_xy)*D*Ey
   ElasticModulus(2,4) = 0
 
   ElasticModulus(3,3) = (1-nu_xy*nu_yx)*D*Ez  
@@ -488,26 +487,6 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
   ElasticModulus(4,3) = 0 
   ElasticModulus(4,4) = Ex/(2*(1+nu_yx)) 
  
- 
-
-  !ElasticModulus(1,1) = E_perpendicular
-  !ElasticModulus(1,2) = E_perpendicular*0.1
-  !ElasticModulus(2,1) = E_perpendicular*0.1
-  !ElasticModulus(2,2) = E_parallel
-  
-  GPA = 1.0e9
-
-  !print *, "Youngs modulus X: ", Ex/GPA, " Y:  ", Ey/GPA, " Z: ", Ez/GPA
-  !print *, "Poisson ratio, parallel", nu_parallel, " perpendicular", nu_perpendicular
- 
-
-  
-  !print *,  "Elastic modulus"
-  !print *,  ElasticModulus(1,1)/GPA, ElasticModulus(1,2)/GPA, ElasticModulus(1,3)/GPA, ElasticModulus(1,4)/GPA
-  !print *,  ElasticModulus(2,1)/GPA, ElasticModulus(2,2)/GPA, ElasticModulus(2,3)/GPA, ElasticModulus(2,4)/GPA
-  !print *,  ElasticModulus(3,1)/GPA, ElasticModulus(3,2)/GPA, ElasticModulus(3,3)/GPA, ElasticModulus(3,4)/GPA
-  !print *,  ElasticModulus(4,1)/GPA, ElasticModulus(4,2)/GPA, ElasticModulus(4,3)/GPA, ElasticModulus(4,4)/GPA
-
 END SUBROUTINE getElasticModulus
 
 
