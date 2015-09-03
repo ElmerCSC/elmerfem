@@ -497,16 +497,16 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
   
   GPA = 1.0e9
 
-  print *, "Youngs modulus X: ", Ex/GPA, " Y:  ", Ey/GPA, " Z: ", Ez/GPA
-  print *, "Poisson ratio, parallel", nu_parallel, " perpendicular", nu_perpendicular
+  !print *, "Youngs modulus X: ", Ex/GPA, " Y:  ", Ey/GPA, " Z: ", Ez/GPA
+  !print *, "Poisson ratio, parallel", nu_parallel, " perpendicular", nu_perpendicular
  
 
   
-  print *,  "Elastic modulus"
-  print *,  ElasticModulus(1,1)/GPA, ElasticModulus(1,2)/GPA, ElasticModulus(1,3)/GPA, ElasticModulus(1,4)/GPA
-  print *,  ElasticModulus(2,1)/GPA, ElasticModulus(2,2)/GPA, ElasticModulus(2,3)/GPA, ElasticModulus(2,4)/GPA
-  print *,  ElasticModulus(3,1)/GPA, ElasticModulus(3,2)/GPA, ElasticModulus(3,3)/GPA, ElasticModulus(3,4)/GPA
-  print *,  ElasticModulus(4,1)/GPA, ElasticModulus(4,2)/GPA, ElasticModulus(4,3)/GPA, ElasticModulus(4,4)/GPA
+  !print *,  "Elastic modulus"
+  !print *,  ElasticModulus(1,1)/GPA, ElasticModulus(1,2)/GPA, ElasticModulus(1,3)/GPA, ElasticModulus(1,4)/GPA
+  !print *,  ElasticModulus(2,1)/GPA, ElasticModulus(2,2)/GPA, ElasticModulus(2,3)/GPA, ElasticModulus(2,4)/GPA
+  !print *,  ElasticModulus(3,1)/GPA, ElasticModulus(3,2)/GPA, ElasticModulus(3,3)/GPA, ElasticModulus(3,4)/GPA
+  !print *,  ElasticModulus(4,1)/GPA, ElasticModulus(4,2)/GPA, ElasticModulus(4,3)/GPA, ElasticModulus(4,4)/GPA
 
 END SUBROUTINE getElasticModulus
 
