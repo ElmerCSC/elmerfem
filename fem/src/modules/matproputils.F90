@@ -295,6 +295,74 @@ ExpCoeff_average=ExpCoeff_average*1.d-6
 
 END FUNCTION getExpCoeffEpikotem
 
+FUNCTION getExpCoeffEpikotemFgnetComposite( model, n, T ) RESULT(ExpCoeff_average)
+!===================================================================
+! Calculate the thermal expansion coefficient for Epikotem 
+!===================================================================
+USE DefUtils
+USE trapezoid
+IMPLICIT None
+TYPE(Model_t) :: model
+INTEGER :: n
+
+
+
+REAL(KIND = dp) T,Tref,a,b,f, x,integral,ExpCoeff_average, ExpCoeff_fgnet, Vf_ek, Vf_fgnet
+REAL(KIND = dp), DIMENSION(63) :: data_y, data_x
+INTEGER i, size_x,size_y
+TYPE(Valuelist_t), POINTER :: Material
+LOGICAL :: FOUND
+
+Material => GetMaterial()
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingSigma', 'Material not found')
+
+Tref = GetConstReal(Material, 'Reference Temperature', FOUND)
+IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Reference Temperature not found in Material section')
+
+Vf_fgnet = GetConstReal(Material, 'Mass Fraction Material 2', FOUND)
+IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Mass Fraction Material 2 not found in Material section')
+
+Vf_ek = 1 - Vf_fgnet
+
+! Epikotem data
+data_y = (/29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, &
+           29.969, 29.969, 30.3096, 30.6502, 30.6502, 30.9907, 30.9907, 31.3313, &
+           31.6718, 31.6718, 32.0124, 32.3529, 32.6935, 33.0341, 33.3746, 33.7152, &
+           34.0557, 34.3963, 35.0774, 37.1207, 38.8235, 40.8669, 42.9102, 44.9536, &
+           47.678, 50.743, 53.808, 57.2136, 60.2786, 63.3437, 66.4087, 69.8142, 72.8793, &
+           75.9443, 79.0093, 81.7337, 84.1176, 86.8421, 89.226, 91.6099, 93.9938, 95.6966, &
+           96.7183, 98.0805, 99.1022, 100.124, 100.124, 100.124, 100.124, 100.124, 100.124, &
+           100.124, 100.124, 100.124/)
+data_x = (/0.0, 0.236686, 1.89349, 4.26036, 6.62722, 8.99408, 11.3609, 13.7278, &
+           16.0947, 18.4615, 20.8284, 22.9586, 25.3254, 27.6923, 30.0592, 32.426, &
+           34.7929, 36.9231, 39.2899, 41.6568, 44.0237, 46.3905, 48.7574, 50.8876, &
+           53.2544, 55.6213, 57.9882, 60.1183, 62.0118, 63.9053, 66.0355, 67.929, &
+           69.8225, 70.7692, 71.716, 72.6627, 73.6095, 74.5562, 75.503, 76.213, &
+           77.1598, 78.1065, 79.0533, 80.0, 81.4201, 83.0769, 84.7337, 86.1538, &
+           87.8107, 89.4675, 91.3609, 93.7278, 95.858, 98.2249, 100.355, 102.722, &
+           105.089, 107.456, 109.822, 112.189, 114.556, 116.923, 119.29/)
+
+size_x = SIZE(data_x)
+size_y = SIZE(data_y)
+
+IF (T >= Tref) THEN
+  a = Tref
+  b = T
+ELSE
+  a = T
+  b = Tref
+ENDIF
+
+CALL trapezoid_for_data(data_x, size_x, data_y,size_y, a,b,integral,ExpCoeff_average)
+
+ExpCoeff_fgnet=5.3
+ExpCoeff_average=ExpCoeff_average*Vf_ek+ExpCoeff_fgnet*Vf_fgnet
+
+ExpCoeff_average=ExpCoeff_average*1.d-6
+
+END FUNCTION getExpCoeffEpikotemFgnetComposite
+
+
 FUNCTION getWindingSigmaConstantTemperature( model, n, T ) RESULT(eff_sigma)
   USE DefUtils
   USE CompUtils
