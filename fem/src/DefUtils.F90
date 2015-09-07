@@ -4279,6 +4279,7 @@ CONTAINS
         CurrentModel % CurrentElement => SaveElement
      END DO
 
+
      IF (ScaleSystem) THEN
        CALL BackScaleLinearSystem(Solver,A,b)
      ELSE

@@ -490,6 +490,9 @@ END INTERFACE
      REAL(KIND=dp)             :: Norm=0, PrevNorm=0,NonlinChange=0, SteadyChange=0
      INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter
      COMPLEX(KIND=dp), POINTER :: EigenValues(:),EigenVectors(:,:)
+     REAL(KIND=dp), POINTER :: ConstraintModes(:,:) => NULL()
+     INTEGER, POINTER :: ConstraintModesIndeces(:) => NULL()
+     INTEGER :: NumberOfConstraintModes = 0
      REAL(KIND=dp),    POINTER :: Values(:),PrevValues(:,:),PValues(:),&
        NonlinValues(:), SteadyValues(:)
      LOGICAL, POINTER :: UpperLimitActive(:) => NULL(), LowerLimitActive(:) => NULL()
