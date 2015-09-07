@@ -100,6 +100,7 @@ static void Instructions()
   printf("17) .msh      : Nastran format\n");
   printf("18) .msh      : CGsim format\n");
   printf("19) .geo      : Geo format\n");
+  printf("20) .tra      : Cedrat Flux format\n");
 #endif 
 
   printf("\nThe second parameter defines the output file format:\n");
@@ -507,6 +508,30 @@ int main(int argc, char *argv[])
       boundaries[nofile][i].nosides = 0;
     }
     if (LoadGeoInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
+    nomeshes++;
+    break;
+
+  case 20:
+    boundaries[nofile] = (struct BoundaryType*)
+      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    for(i=0;i<MAXBOUNDARIES;i++) {
+      boundaries[nofile][i].created = FALSE; 
+      boundaries[nofile][i].nosides = 0;
+    }
+    if (LoadFluxMesh(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
+    nomeshes++;
+    break;
+
+  case 21:
+    boundaries[nofile] = (struct BoundaryType*)
+      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    for(i=0;i<MAXBOUNDARIES;i++) {
+      boundaries[nofile][i].created = FALSE; 
+      boundaries[nofile][i].nosides = 0;
+    }
+    if (LoadFluxMesh3D(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
       Goodbye();
     nomeshes++;
     break;

@@ -598,11 +598,7 @@ CONTAINS
     !
     ! Dirichlet BCs in terms of electric field E
     ! ---------------------------------------------
-    IF (PiolaVersion) THEN
-       CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
-    ELSE
-       CALL DefaultDirichletBCs()
-    END IF
+    CALL DefaultDirichletBCs()
 
     !
     ! Fix unused potential dofs:
