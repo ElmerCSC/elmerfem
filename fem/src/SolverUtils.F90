@@ -6303,7 +6303,7 @@ CONTAINS
 
     TYPE(Variable_t), POINTER :: NrmVar, Tan1Var, Tan2Var
 
-    LOGICAL, ALLOCATABLE :: Done(:), MasterBC(:)
+    LOGICAL, ALLOCATABLE :: Done(:), NtMasterBC(:), NtSlaveBC(:)
   
     REAL(KIND=dp), POINTER :: SetNormal(:,:), Rot(:,:)
 
@@ -6322,7 +6322,8 @@ CONTAINS
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
 
     LOGICAL :: MassConsistent, LhsSystem
-    LOGICAL, ALLOCATABLE :: LhsTangent(:)
+    LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
+    INTEGER :: LhsConflicts
 
     TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------
@@ -6583,23 +6584,36 @@ CONTAINS
       IF(.NOT. Found ) LhsSystem = ( dim == 3 )
 
       IF( LhsSystem ) THEN
-        ALLOCATE( MasterBC( Model % NumberOfBCs ) )
-        MasterBC = .FALSE.
+        ALLOCATE( NtMasterBC( Model % NumberOfBCs ), NtSlaveBC( Model % NumberOfBCs ) )
+        NtMasterBC = .FALSE.; NtSlaveBC = .FALSE.
+
         DO i = 1, Model % NumberOfBcs
+          IF( .NOT. ListCheckPrefix( Model % BCs(i) % Values,'Normal-Tangential') ) CYCLE
+          
           j = ListGetInteger( Model % BCs(i) % Values,'Mortar BC',Found )
           IF( .NOT. Found ) THEN
             j = ListGetInteger( Model % BCs(i) % Values,'Contact BC',Found )
           END IF
           IF( j == 0 .OR. j > Model % NumberOfBCs ) CYCLE
-          MasterBC( j ) = .TRUE.
+
+          NtSlaveBC( i ) = .TRUE.
+          NtMasterBC( j ) = .TRUE.
         END DO
-        LhsSystem = ANY( MasterBC )
+        LhsSystem = ANY( NtMasterBC )
       END IF
 
-
       IF( LhsSystem ) THEN
+        DO i = 1, Model % NumberOfBcs
+          IF( NtSlaveBC( i ) .AND. NtMasterBC( i ) ) THEN
+            CALL Warn('AverageBoundaryNormals','BC '//TRIM(I2S(i))//' is both N-T master and slave!')
+          END IF
+        END DO
+
         ALLOCATE( LhsTangent( Model % NumberOfNodes ) )
         LhsTangent = .FALSE.
+
+        ALLOCATE( RhsTangent( Model % NumberOfNodes ) )
+        RhsTangent = .FALSE. 
 
         DO t=Model % NumberOfBulkElements + 1, Model % NumberOfBulkElements + &
             Model % NumberOfBoundaryElements
@@ -6611,11 +6625,18 @@ CONTAINS
           
           DO i=1,Model % NumberOfBCs
             IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
-              IF( MasterBC(i) ) LhsTangent( NodeIndexes ) = .TRUE.
+              IF( NtMasterBC(i) ) LhsTangent( NodeIndexes ) = .TRUE.
+              IF( NtSlaveBC(i) ) RhsTangent( NodeIndexes ) = .TRUE.
               EXIT
             END IF
           END DO
         END DO
+
+        LhsConflicts = COUNT( LhsTangent .AND. RhsTangent )
+        IF( LhsConflicts > 0 ) THEN
+          CALL Warn('AverageBoundaryNormals',&
+              'There are '//TRIM(I2S(LhsConflicts))//' nodes that could be both rhs and lhs!')
+        END IF
       END IF
 
 
