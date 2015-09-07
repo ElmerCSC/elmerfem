@@ -3073,9 +3073,10 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: NumberOfNodes, NumberOfElements, ParallelNodes, ParallelElements
   TYPE(Element_t), POINTER :: CurrentElement, LeftElem, RightElem
   TYPE(ValueList_t),POINTER :: Params
-  INTEGER :: MaxModes, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex, discontMesh
-  INTEGER, POINTER :: ActiveModes(:), Indexes(:)
-  LOGICAL :: GotActiveModes, EigenAnalysis, WriteIds, SaveBoundariesOnly, SaveBulkOnly, &
+  INTEGER :: MaxModes, MaxModes2, BCOffset, ElemFirst, ElemLast, LeftIndex, RightIndex, discontMesh
+  INTEGER, POINTER :: ActiveModes(:), ActiveModes2(:), Indexes(:)
+  LOGICAL :: GotActiveModes, GotActiveModes2, EigenAnalysis, ConstraintAnalysis, &
+      WriteIds, SaveBoundariesOnly, SaveBulkOnly, &
       GotMaskName, AllNodesUsed, SaveElemental, SaveNodal, GotMaskCond
   LOGICAL, ALLOCATABLE :: ActiveElem(:)
   REAL(KIND=dp), ALLOCATABLE :: MaskCond(:)
@@ -3406,10 +3407,32 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       END DO
     END IF     
   END IF
+  IF( MaxModes > 0 ) THEN
+    CALL Info('VtuOutputSolver','Maximum number of eigen modes: '//TRIM(I2S(MaxModes2)),Level=7)
+  END IF
 
-  EigenAnalysis = ListGetLogical( Params,'Eigen Analysis',GotIt)
+  ActiveModes2 => ListGetIntegerArray( Params,'Active ConstraintModes',GotActiveModes2 ) 
+  IF( GotActiveModes2 ) THEN
+    MaxModes2 = SIZE( ActiveModes2 )
+  ELSE
+    MaxModes2 = GetInteger( Params,'Number of ConstraintModes',GotIt)
+    IF(.NOT. GotIt ) THEN
+      DO i=1,Model % NumberOfSolvers
+        IF( .NOT. ASSOCIATED( Model % Solvers(i) % Variable ) ) CYCLE
+        MaxModes2 = MAX( MaxModes2, &
+            Model % Solvers(i) % Variable % NumberOfConstraintModes )
+      END DO
+    END IF
+  END IF
+  IF( MaxModes2 > 0 ) THEN
+    CALL Info('VtuOutputSolver','Maximum number of constraint modes: '//TRIM(I2S(MaxModes2)),Level=7)
+  END IF
+
+  ! This activates the solution of the modes one for each file
+  EigenAnalysis = ListGetLogical( Params,'Eigen Analysis',GotIt) .OR. &
+      ListGetLogical( Params,'Constraint Modes Analysis',GotIt) 
   IF( EigenAnalysis ) THEN
-    CALL Info('VtuOutputSolver','Saving each eigenmode to different file')
+    CALL Info('VtuOutputSolver','Saving each mode to different file')
     FileIndex = 1
   END IF
 
@@ -3487,7 +3510,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   IF( EigenAnalysis ) THEN
     FileIndex = FileIndex + 1
-    IF( FileIndex <= MaxModes ) GOTO 100
+    IF( FileIndex <= MaxModes + MaxModes2 ) GOTO 100
   END IF
 
   IF( NumberOfNodes > 0 ) THEN
@@ -3513,12 +3536,12 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var,Var1
     CHARACTER(LEN=512) :: str
     INTEGER :: i,ii,j,jj,k,dofs,Rank,cumn,n,dim,vari,sdofs,dispdofs, disp2dofs, Offset, &
-        NoFields, IndField, iField, NoModes
+        NoFields, NoFields2, IndField, iField, NoModes, NoModes2
     CHARACTER(LEN=1024) :: Txt, ScalarFieldName, VectorFieldName, TensorFieldName, &
         FieldName, FieldName2, OutStr
     CHARACTER :: lf
     LOGICAL :: ScalarsExist, VectorsExist, Found,&
-              ComponentVector, ComplementExists, Use2
+              ComponentVector, ComplementExists, Use2, DoEigen, DoConstraint
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution
     INTEGER, POINTER :: Perm(:), Perm2(:), DispPerm(:), Disp2Perm(:)
@@ -3528,6 +3551,7 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:)
     
     COMPLEX(KIND=dp), POINTER :: EigenVectors(:,:)
+    REAL(KIND=dp), POINTER :: ConstraintModes(:,:)
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Element_t), POINTER :: CurrentElement, Parent
     TYPE(ValueList_t), POINTER :: Params
@@ -3657,7 +3681,15 @@ CONTAINS
           IF( .NOT. ( DG .AND. SaveElemental ) ) CYCLE
         END IF
 
-	IF( ASSOCIATED(Solution % EigenVectors) ) THEN
+        ! Default is to save the field only once
+        NoFields = 0
+        NoFields2 = 0
+        NoModes = 0
+        NoModes2 = 0
+
+        DoEigen = .FALSE.
+
+	IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
           NoModes = SIZE( Solution % EigenValues )
           IF( ComponentVector ) THEN
             CALL Warn('WriteVtuXMLFile','Eigenmodes cannot be given componentwise!')
@@ -3681,11 +3713,42 @@ CONTAINS
             NoFields = NoModes
           END IF
           EigenVectors => Solution % EigenVectors
-        ELSE
-          NoModes = 0 
+          DoEigen = .TRUE.
+        END IF
+
+        DoConstraint = .FALSE.
+	IF( MaxModes2 > 0 .AND. ASSOCIATED(Solution % ConstraintModes) ) THEN
+          NoModes2 = Solution % NumberOfConstraintModes
+          IF( ComponentVector ) THEN
+            CALL Warn('WriteVtuXMLFile','Constraint modes cannot be given componentwise!')
+            CYCLE
+          ELSE IF( EigenAnalysis ) THEN
+            IF( GotActiveModes2 ) THEN
+              IndField = ActiveModes2( FileIndex - MaxModes ) 
+            ELSE
+              IndField = FileIndex - MaxModes 
+            END IF
+            IF( IndField > NoModes2 ) THEN
+	      WRITE( Message,'(A,I0,A,I0,A)') 'Too few constraint modes (',&
+                     IndField,',',NoModes,') in '//TRIM(FieldName)       
+              CALL Warn('WriteVtuXMLFile',Message)
+              CYCLE
+            END IF
+            NoModes2 = 1
+            NoFields2 = 1
+          ELSE	  
+            IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )
+            NoFields2 = NoModes2
+          END IF
+          ConstraintModes => Solution % ConstraintModes
+          DoConstraint = .TRUE.
+        END IF
+
+        IF(.NOT. (DoEigen .OR. DoConstraint ) ) THEN
           NoFields = 1
         END IF
-        
+
+
         Perm => Solution % Perm
         dofs = Solution % DOFs
         Values => Solution % Values
@@ -3740,22 +3803,36 @@ CONTAINS
         !---------------------------------------------------------------------
         ! Finally save the field values 
         !---------------------------------------------------------------------
-        DO iField = 1, NoFields          
+        DO iField = 1, NoFields + NoFields2          
 
-          IF( Nomodes > 0 .AND. .NOT. EigenAnalysis ) THEN
-            IF( GotActiveModes ) THEN
-              IndField = ActiveModes( iField ) 
-            ELSE
-              IndField = iField
+          IF( iField <= NoFields ) THEN
+            IF( Nomodes > 0 .AND. .NOT. EigenAnalysis ) THEN
+              IF( GotActiveModes ) THEN
+                IndField = ActiveModes( iField ) 
+              ELSE
+                IndField = iField
+              END IF
+            END IF
+          ELSE
+            IF( Nomodes2 > 0 .AND. .NOT. EigenAnalysis ) THEN
+              IF( GotActiveModes2 ) THEN
+                IndField = ActiveModes2( iField - NoFields ) 
+              ELSE
+                IndField = iField - NoFields
+              END IF
             END IF
           END IF
 
+
           IF( WriteXML ) THEN
-            IF( NoModes == 0 .OR. EigenAnalysis ) THEN
+            IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
               WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
-            ELSE 
+            ELSE IF( iField <= NoFields ) THEN
               WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
-                  TRIM(FieldName)//' mode',IndField
+                  TRIM(FieldName)//' EigenMode',IndField
+            ELSE
+              WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
+                  TRIM(FieldName)//' ConstraintMode',IndField
             END IF
             CALL AscBinStrWrite( OutStr )
             
@@ -3842,6 +3919,8 @@ CONTAINS
                       val = Values2(dofs*(j-1)+k)              
                     ELSE IF( NoModes > 0 ) THEN
                       val = EigenVectors(IndField,dofs*(j-1)+k)                              
+                    ELSE IF( NoModes2 > 0 ) THEN
+                      val = ConstraintModes(IndField,dofs*(j-1)+k)                                                    
                     ELSE
                       val = Values(dofs*(j-1)+k)              
                     END IF
@@ -3882,8 +3961,10 @@ CONTAINS
                     IF( k == 3 ) val = Values3(j)
                   ELSE IF( Use2 ) THEN
                     val = Values2(dofs*(j-1)+k)              
-                  ELSE IF( NoModes > 0 ) THEN
+                  ELSE IF( NoModes > 0 .AND. iField <= NoFields ) THEN
                     val = EigenVectors(IndField,dofs*(j-1)+k)                              
+                  ELSE IF( NoModes2 > 0 ) THEN
+                    val = ConstraintModes(IndField,dofs*(j-1)+k)
                   ELSE
                     val = Values(dofs*(j-1)+k)              
                   END IF
