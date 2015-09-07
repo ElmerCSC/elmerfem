@@ -319,10 +319,10 @@ Material => GetMaterial()
 Tref = GetConstReal(Material, 'Reference Temperature', FOUND)
 IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Reference Temperature not found in Material section')
 
-Vf_fgnet = GetConstReal(Material, 'Mass Fraction Material 2', FOUND)
-IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Mass Fraction Material 2 not found in Material section')
+Vf_fgnet = GetConstReal(Material, 'Volume Fraction Material 2', FOUND)
+IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Volume Fraction Material 2 not found in Material section')
 
-Vf_ek = 1 - Vf_fgnet
+Vf_ek = 1.0 - Vf_fgnet
 
 ! Epikotem data
 data_y = (/29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, &
@@ -503,8 +503,8 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
   IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Youngs Modulus for Material 1 not found')
   Ef = GetConstReal(Material, 'Youngs Modulus Material 2', FOUND)
   IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Youngs Modulus for Material 2 not found')
-  Vf = GetConstReal(Material, 'Mass Fraction Material 2', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Mass Fraction for Material 2 not found')
+  Vf = GetConstReal(Material, 'Volume Fraction Material 2', FOUND)
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Volume Fraction for Material 2 not found')
 
   nu_m = GetConstReal(Material, 'Poisson ratio Material 1', FOUND)
   IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Poisson ratio for Material 1 not found')
