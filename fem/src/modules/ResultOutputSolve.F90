@@ -3408,7 +3408,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF     
   END IF
   IF( MaxModes > 0 ) THEN
-    CALL Info('VtuOutputSolver','Maximum number of eigen modes: '//TRIM(I2S(MaxModes2)),Level=7)
+    CALL Info('VtuOutputSolver','Maximum number of eigen modes: '//TRIM(I2S(MaxModes)),Level=7)
   END IF
 
   ActiveModes2 => ListGetIntegerArray( Params,'Active ConstraintModes',GotActiveModes2 ) 
