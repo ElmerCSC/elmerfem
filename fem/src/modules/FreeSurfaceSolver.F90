@@ -552,6 +552,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      DO t=1,Solver % NumberOfActiveElements
         CurrentElement => GetActiveElement(t)
         n = GetElementNOFNodes()
+        IF(GetElementFamily() == 1) CYCLE
         NodeIndexes => CurrentElement % NodeIndexes
 
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
