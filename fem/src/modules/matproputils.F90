@@ -639,7 +639,7 @@ SUBROUTINE getEpikotemFbnetk( model, n, dummyArgument,Conductivity )
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
   REAL(KIND=dp) :: et, mc, it, ic, st, Ksi, Ktot
 
-  TYPE(Valuelist_t), POINTER :: Material, ComponentParams
+  TYPE(Valuelist_t), POINTER :: Material, BodyParams
   TYPE(Element_t), POINTER :: Element
   Logical :: FOUND, FOUNDFT, FOUNDST
   
@@ -649,24 +649,56 @@ SUBROUTINE getEpikotemFbnetk( model, n, dummyArgument,Conductivity )
   Element => GetCurrentElement()
   !ComponentParams => GetComponentParams(Element)
   CircuitVariableBody => Model % Bodies (Element % BodyId)
-  ComponentParams => CircuitVariableBody % Values
-  IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('getEpikotemFbnetk', 'Component Parameters not found!')
+  BodyParams => CircuitVariableBody % Values
+  IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('getEpikotemFbnetk', 'Body Parameters not found!')
   
-  et = GetConstReal(ComponentParams, 'Epikotem Layer Thickness', FoundFT)
+  et = GetConstReal(BodyParams, 'Epikotem Layer Thickness', FoundFT)
   
   mc = GetConstReal(Material, 'Material Heat Conductivity', Found)
   IF (.NOT. FOUND) CALL Fatal('getEpikotemFbnetk', 'Material Heat Conductivity not found in Material section')
   
-  it = GetConstReal(ComponentParams, 'Net Size', Found)
-  IF (.NOT. FOUND) CALL Fatal('getEpikotemFbnetk', 'Net Size not found in Component section')
+  it = GetConstReal(BodyParams, 'Net Size', Found)
+  IF (.NOT. FOUND) CALL Fatal('getEpikotemFbnetk', 'Net Size not found in Body section')
 
-  ic = GetConstReal(ComponentParams, 'Cast Heat Conductivity', Found)
-  IF (.NOT. FOUND) CALL Fatal('getEpikotemFbnetk', 'Cast Heat Conductivity not found in Component section')
+  ic = GetConstReal(BodyParams, 'Cast Heat Conductivity', Found)
+  IF (.NOT. FOUND) CALL Fatal('getEpikotemFbnetk', 'Cast Heat Conductivity not found in Body section')
 
-  IF ((.NOT. FOUNDFT)) CALL Fatal('getEpikotemFbnetk', 'Epicotem Layer Thickness not found in Component section')
+  IF ((.NOT. FOUNDFT)) CALL Fatal('getEpikotemFbnetk', 'Epicotem Layer Thickness not found in Body section')
   
   Conductivity(1) = ((et + it) * mc * ic) / (it * mc + et * ic)   ! perp
   Conductivity(2) = (et * mc + et * ic) / (et + et)               ! par
   !WRITE(Message,*)  Conductivity(1,1), Conductivity(1,2)
   !CALL Info('getEpikotemFbnetk', Message, Level = 5)
 END SUBROUTINE getEpikotemFbnetk
+
+SUBROUTINE getInsulationVolumeFraction( model, n, dummyArgument, volumeFraction )
+  ! modules needed
+  USE DefUtils
+  USE CompUtils
+ 
+  IMPLICIT None
+ 
+  ! variables in function header
+  TYPE(Model_t) :: model
+  INTEGER :: n
+  REAL(KIND=dp) :: dummyArgument
+ 
+  ! variables needed inside function
+  REAL(KIND=dp) ::  volumeFraction
+  TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
+
+  TYPE(Valuelist_t), POINTER :: Material, ComponentParams
+  TYPE(Element_t), POINTER :: Element
+  Logical :: FOUND
+  
+  Material => GetMaterial()
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getInsulationVolumeFraction', 'Material not found')
+  
+  Element => GetCurrentElement()
+  ComponentParams => GetComponentParams(Element)
+  IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('getInsulationVolumeFraction', 'Component Parameters not found!')
+  
+  volumeFraction = GetConstReal(Material, 'Insulation Volume Fraction', Found)
+  IF (.NOT. FOUND) CALL Fatal('getInsulationVolumeFractionk', 'Insulation Volume Fraction not found in Component section')
+ 
+END SUBROUTINE getInsulationVolumeFraction
