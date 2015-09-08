@@ -589,8 +589,6 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingk', 'Material not found')
   
   Element => GetCurrentElement()
-  !CircuitVariableBody => Model % Bodies (Element % BodyId)
-  !BodyParams => CircuitVariableBody % Values
   ComponentParams => GetComponentParams(Element)
   IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('getWindingk', 'Component Parameters not found!')
   
@@ -613,8 +611,8 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
     Conductivity(1) = ((ft + it) * mc * ic) / (it * mc + ft * ic)
     Conductivity(2) = (ft * mc + it * ic) / (ft + it)
   ELSE
-    Ksi = (st*mc)+(it*ic)/(st+it) !((st+it) * mc * ic)/((ic*st)+(mc+it))
-    Ktot = ((st+it)*Ksi*ic)/((it*Ksi)+(st*ic))     !(Ksi*st + ic*it)/(st+it)
+    Ksi = (st*mc)+(it*ic)/(st+it) 
+    Ktot = ((st+it)*Ksi*ic)/((it*Ksi)+(st*ic))
     Conductivity(1) = Ktot
     Conductivity(2) = Ktot
   END IF
@@ -647,7 +645,6 @@ SUBROUTINE getEpikotemFbnetk( model, n, dummyArgument,Conductivity )
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getEpikotemFbnetk', 'Material not found')
   
   Element => GetCurrentElement()
-  !ComponentParams => GetComponentParams(Element)
   CircuitVariableBody => Model % Bodies (Element % BodyId)
   BodyParams => CircuitVariableBody % Values
   IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('getEpikotemFbnetk', 'Body Parameters not found!')
@@ -749,7 +746,8 @@ SUBROUTINE getHeatExpCoeffComposite( model, n, dummyArgument, Coefficient )
   ! variables needed inside function
   REAL(KIND=dp) ::  Coefficient(:)
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
-  REAL(KIND=dp) :: heatExpCoeff1, heatExpCoeff2
+  REAL(KIND=dp) :: heatExpCoeff1, heatExpCoeff2, volumeFraction1, volumeFraction2
+  REAL(KIND=dp) :: E1, E2, div
 
   TYPE(Valuelist_t), POINTER :: Material, ComponentParams
   TYPE(Element_t), POINTER :: Element
@@ -764,7 +762,19 @@ SUBROUTINE getHeatExpCoeffComposite( model, n, dummyArgument, Coefficient )
   heatExpCoeff2 = GetConstReal(Material, 'Heat Expansion Coefficient Material 2', Found)
   IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Heat Expansion Coefficient not found in Material section')
   
-  Coefficient(1) = heatExpCoeff1
-  Coefficient(2) = (heatExpCoeff1 + heatExpCoeff2) / 2
+  volumeFraction2 = GetConstReal(Material, 'Volume Fraction Material 2', Found)
+  IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Volume Fraction Material 2 not found in Material section')
+  
+  volumeFraction1 = 1.0 - volumeFraction2
+  
+  E1 = GetConstReal(Material, 'Youngs Modulus Material 1', Found)
+  IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Youngs Modulus Material 1 not found in Material section')
+  
+  E2 = GetConstReal(Material, 'Youngs Modulus Material 2', Found)
+  IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Youngs Modulus Material 2 not found in Material section')
+  
+  div = E1*volumeFraction1 + E2*volumeFraction2
+  Coefficient(1) = (E1*heatExpCoeff1*volumeFraction1 + E2*heatExpCoeff2*volumeFraction2)/div
+  Coefficient(2) = (volumeFraction1 * heatExpCoeff1) + (volumeFraction2 * heatExpCoeff2)
   
 END SUBROUTINE getHeatExpCoeffComposite
