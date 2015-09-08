@@ -172,7 +172,7 @@ FUNCTION FreeSurfaceToMeshUpdate( Model, nodenumber, inarray, axis ) RESULT(mu)
   TYPE(Variable_t), POINTER :: OrientVar, TimeVar
   INTEGER :: NodeNumber, axis, i
   REAL(KIND=dp) :: t0, FS, RefFS, Diff, inarray(*), mu, UnRotationMatrix(3,3), &
-       Orientation(3), DiffVect(3), MuVect(3), NodeHolder(3),RotationMatrix(3,3)
+       Orientation(3), DiffVect(3), MuVect(3)
   CHARACTER(LEN=MAX_NAME_LEN)  :: USF_Name, VariableName
   LOGICAL :: Found, FirstTime
 
@@ -180,8 +180,8 @@ FUNCTION FreeSurfaceToMeshUpdate( Model, nodenumber, inarray, axis ) RESULT(mu)
   
   FS = inarray(1)
   RefFS = inarray(2)
-  USF_Name = "FreeSurfaceToMeshUpdate"
 
+  USF_Name = "FreeSurfaceToMeshUpdate"
   TimeVar => VariableGet(Model % Mesh % Variables, 'time' )
 
   IF(FirstTime) THEN
@@ -208,19 +208,13 @@ FUNCTION FreeSurfaceToMeshUpdate( Model, nodenumber, inarray, axis ) RESULT(mu)
 
   Orientation = OrientVar % Values
   UnRotationMatrix = TRANSPOSE(ComputeRotationMatrix(Orientation))
-  RotationMatrix = ComputeRotationMatrix(Orientation)
 
-  NodeHolder(1) = Model % Mesh % Nodes % x(nodenumber)
-  NodeHolder(2) = Model % Mesh % Nodes % y(nodenumber)
-  NodeHolder(3) = Model % Mesh % Nodes % z(nodenumber)
-  
-  NodeHolder = MATMUL(RotationMatrix, NodeHolder)
-
-  Diff = FS - NodeHolder(3)
+  Diff = FS - RefFS
   DiffVect = [0.0_dp, 0.0_dp, Diff]
 
   MuVect = MATMUL(UnRotationMatrix, DiffVect)
   mu = MuVect(axis)
+
 END FUNCTION FreeSurfaceToMeshUpdate
 
 !-----------------------------------------------------------------------------
