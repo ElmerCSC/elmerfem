@@ -776,5 +776,5 @@ SUBROUTINE getHeatExpCoeffComposite( model, n, dummyArgument, Coefficient )
   div = E1*volumeFraction1 + E2*volumeFraction2
   Coefficient(1) = (E1*heatExpCoeff1*volumeFraction1 + E2*heatExpCoeff2*volumeFraction2)/div
   Coefficient(2) = (volumeFraction1 * heatExpCoeff1) + (volumeFraction2 * heatExpCoeff2)
-  
+  coefficient(3) = Coefficient(1)
 END SUBROUTINE getHeatExpCoeffComposite
