@@ -5327,9 +5327,14 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	       Dirichlet conditions in the code. If the node is already saved in respect to 
 	       this partition no saving is done. */
 
+            /* NOTE: The following line is commented due to a very obscure issue when
+	       a partition is discontinuous, and has a single element missing on a side
+	       boundary. As a result, all nodes in the element are owned by this partition
+	       i.e. bcneeded == nodesd1, but the element itself isn't owned by this part */
+
 	    /* This partition must own at least one of the nodes so that this could be a problem,
 	       but not all the nodes */
-	    if(bcneeded == nodesd1) continue;
+	    /* if(bcneeded == nodesd1) continue; */
 
 	    /* For halo elements some additional BC elements have been saved */
 	    if( halomode == 1 || halomode == 2) {
