@@ -10398,8 +10398,7 @@ END SUBROUTINE GetMaxDefs
         END IF
         Mesh_out % Elements(cnt) % DGDOFs = 0
         Mesh_out % Elements(cnt) % DGIndexes => NULL()
-        Mesh_out % Elements(cnt) % ElementIndex = cnt + &
-                Mesh_out % NumberOfBulkElements
+        Mesh_out % Elements(cnt) % ElementIndex = cnt
         Mesh_out % Elements(cnt) % PDefs => NULL()
         Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
         Mesh_out % Elements(cnt) % FaceIndexes => NULL()
@@ -10468,8 +10467,7 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % TYPE => &
              Mesh_in % Elements(k) % TYPE
         END IF 
-        Mesh_out % Elements(cnt) % ElementIndex = cnt + &
-                Mesh_out % NumberOfBulkElements
+        Mesh_out % Elements(cnt) % ElementIndex = cnt
         Mesh_out % Elements(cnt) % DGDOFs = 0
         Mesh_out % Elements(cnt) % DGIndexes => NULL()
         Mesh_out % Elements(cnt) % PDefs => NULL()
@@ -10508,8 +10506,7 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % TYPE => &
                Mesh_in % Elements(k) % TYPE
 
-          Mesh_out % Elements(cnt) % ElementIndex = cnt + &
-               Mesh_out % NumberOfBulkElements
+          Mesh_out % Elements(cnt) % ElementIndex = cnt
           Mesh_out % Elements(cnt) % DGDOFs = 0
           Mesh_out % Elements(cnt) % DGIndexes => NULL()
           Mesh_out % Elements(cnt) % PDefs => NULL()
