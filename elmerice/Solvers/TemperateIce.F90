@@ -737,7 +737,11 @@ RECURSIVE SUBROUTINE TemperateIceSolver( Model,Solver,Timestep,TransientSimulati
         !  Update global matrices from local matrices
         !------------------------------------------------------------------------------
         IF (  Bubbles ) THEN
-           CALL Condensate( N, STIFF, FORCE, TimeForce )
+           IF(isActivePElement(Element).AND.Element % BDOFs>0) THEN
+              CALL CondensateP( N, Element % BDOFs, STIFF, FORCE, TimeForce )
+           ELSE
+              CALL Condensate( N, STIFF, FORCE, TimeForce )
+           END IF
            IF (TransientSimulation) CALL DefaultUpdateForce( TimeForce )
         END IF
 
