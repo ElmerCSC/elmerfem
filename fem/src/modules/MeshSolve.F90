@@ -94,7 +94,7 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-  INTEGER :: i,j,k,n,nd,nb,t,STDOFs,LocalNodes,istat
+  INTEGER :: i,j,k,l,m,n,nd,nb,t,DOFs,STDOFs,LocalNodes,istat
 
   TYPE(Element_t),POINTER :: Element
   TYPE(ValueList_t),POINTER :: Material, BC
@@ -106,7 +106,7 @@ END SUBROUTINE MeshSolver_Init
   REAL(KIND=dp), POINTER :: MeshUpdate(:),Displacement(:), &
        MeshVelocity(:)
 
-  INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:)
+  INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:), MeshVeloPerm(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
             GotForceBC, Found, ComputeMeshVelocity
@@ -115,7 +115,7 @@ END SUBROUTINE MeshSolver_Init
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
        Alpha(:,:), Beta(:)
 
-  SAVE STIFF, LOAD, FORCE, MeshVelocity, AllocationsDone, &
+  SAVE STIFF, LOAD, FORCE, MeshVelocity, MeshVeloPerm, AllocationsDone, &
        ElasticModulus, PoissonRatio, TPerm, Alpha, Beta
 
 !------------------------------------------------------------------------------
@@ -137,6 +137,7 @@ END SUBROUTINE MeshSolver_Init
     MeshSol      => VariableGet( Solver % Mesh % Variables, 'Mesh Velocity' )
     IF( ASSOCIATED( MeshSol ) ) THEN
       MeshVelocity => MeshSol % Values
+      MeshVeloPerm => MeshSol % Perm
     END IF
   END IF
 
@@ -368,22 +369,37 @@ END SUBROUTINE MeshSolver_Init
         k = 1
       END IF
       
-      SELECT CASE(k)
-      CASE(0)
-        MeshVelocity = 0._dp
-      CASE(1)
-        MeshVelocity = ( MeshUpdate - Solver % Variable % PrevValues(:,1) ) / dt
-      CASE(2)
-        MeshVelocity = ( &
-            MeshUpdate - (4.0d0/3.0d0)*Solver % Variable % PrevValues(:,1) &
-            + (1.0d0/3.0d0)*Solver % Variable % PrevValues(:,2) ) / dt
-      CASE DEFAULT
-        MeshVelocity = ( &
-            MeshUpdate - (18.0d0/11.0d0)*Solver % Variable % PrevValues(:,1) &
-            + ( 9.0d0/11.0d0)*Solver % Variable % PrevValues(:,2) &
-            - ( 2.0d0/11.0d0)*Solver % Variable % PrevValues(:,3) ) / dt
-      END SELECT
+      DOFs = MeshSol % DOFs
 
+      DO i=1,Solver % Mesh % NumberOfNodes
+         IF(MeshVeloPerm(i) <= 0) CYCLE
+
+         j = MeshPerm(i)*DOFs
+         l = MeshVeloPerm(i)*DOFs
+
+         SELECT CASE(k)
+         CASE(0)
+            MeshVelocity = 0._dp
+         CASE(1)
+            DO m=0,DOFs-1
+               MeshVelocity(l-m) = ( MeshUpdate(j-m) - &
+                    Solver % Variable % PrevValues(j-m,1) ) / dt
+            END DO
+         CASE(2)
+            DO m=0,DOFs-1
+               MeshVelocity(l-m) = ( &
+                    MeshUpdate(j-m) - (4.0d0/3.0d0)*Solver % Variable % PrevValues(j-m,1) &
+                    + (1.0d0/3.0d0)*Solver % Variable % PrevValues(j-m,2) ) / dt
+            END DO
+         CASE DEFAULT
+            DO m=0,DOFs-1
+               MeshVelocity(l-m) = ( &
+                    MeshUpdate(j-m) - (18.0d0/11.0d0)*Solver % Variable % PrevValues(j-m,1) &
+                    + ( 9.0d0/11.0d0)*Solver % Variable % PrevValues(j-m,2) &
+                    - ( 2.0d0/11.0d0)*Solver % Variable % PrevValues(j-m,3) ) / dt
+            END DO
+         END SELECT
+      END DO
     ELSE IF( ASSOCIATED( MeshVelocity ) ) THEN 
       MeshVelocity = 0.0d0
     END IF
