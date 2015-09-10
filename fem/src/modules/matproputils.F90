@@ -236,6 +236,58 @@ END MODULE CompUtils
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+FUNCTION getHeatConductivityCopper( model, n, T ) RESULT(HeatCondCoeff_average)
+!===================================================================
+! Calculate the Heat Conductivty Coefficient for copper 
+!===================================================================
+USE DefUtils
+USE trapezoid
+IMPLICIT None
+TYPE(Model_t) :: model
+INTEGER :: n
+
+
+
+REAL(KIND = dp) T,Tref,a,b,f, x,integral,HeatCondCoeff_average
+REAL(KIND = dp), DIMENSION(17) :: data_y, data_x
+INTEGER i, size_x,size_y
+TYPE(Valuelist_t), POINTER :: Material
+LOGICAL :: FOUND
+
+Material => GetMaterial()
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getHeatConductivityCopper', 'Material not found')
+
+Tref = GetConstReal(Material, 'Reference Temperature', FOUND)
+IF (.NOT. FOUND) CALL Fatal('getHeatConductivityCopper', 'Reference Temperature not found in Material section')
+
+!Copper data in K
+T = T + 273
+Tref = Tref + 273
+
+IF (T < 100 .OR. T > 1300 .OR. Tref < 100 .OR. Tref > 1000) & 
+  CALL Fatal('getHeatConductivityCopper', 'Temperature outside data range') 
+
+! Copper data
+data_y = (/483,428,413,404,401,398,394,392,388,383,377,371,364,357,350,342,343/)
+data_x = (/100,150,200,250,273,300,350,400,500,600,700,800,900,1000,1100,1200,1300/)
+
+size_x = SIZE(data_x)
+size_y = SIZE(data_y)
+
+IF (T >= Tref) THEN
+  a = Tref
+  b = T
+ELSE
+  a = T
+  b = Tref
+ENDIF
+
+CALL trapezoid_for_data(data_x, size_x, data_y,size_y, a,b,integral,HeatCondCoeff_average)
+
+print *, "ave", HeatCondCoeff_average, "T", T, "Tref", Tref
+
+END FUNCTION getHeatConductivityCopper
+
 FUNCTION getExpCoeffEpikotem( model, n, T ) RESULT(ExpCoeff_average)
 !===================================================================
 ! Calculate the thermal expansion coefficient for Epikotem 
@@ -255,10 +307,10 @@ TYPE(Valuelist_t), POINTER :: Material
 LOGICAL :: FOUND
 
 Material => GetMaterial()
-  IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingSigma', 'Material not found')
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getExpCoeffEpikotem', 'Material not found')
 
 Tref = GetConstReal(Material, 'Reference Temperature', FOUND)
-IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Reference Temperature not found in Material section')
+IF (.NOT. FOUND) CALL Fatal('getExpCoeffEpikotem', 'Reference Temperature not found in Material section')
 
 ! Epikotem data
 data_y = (/29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, &
@@ -314,13 +366,13 @@ TYPE(Valuelist_t), POINTER :: Material
 LOGICAL :: FOUND
 
 Material => GetMaterial()
-  IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingSigma', 'Material not found')
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getExpCoeffEpikotemFgnetComposite', 'Material not found')
 
 Tref = GetConstReal(Material, 'Reference Temperature', FOUND)
-IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Reference Temperature not found in Material section')
+IF (.NOT. FOUND) CALL Fatal('getExpCoeffEpikotemFgnetComposite', 'Reference Temperature not found in Material section')
 
 Vf_fgnet = GetConstReal(Material, 'Volume Fraction Material 2', FOUND)
-IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Volume Fraction Material 2 not found in Material section')
+IF (.NOT. FOUND) CALL Fatal('getExpCoeffEpikotemFgnetComposite', 'Volume Fraction Material 2 not found in Material section')
 
 Vf_ek = 1.0 - Vf_fgnet
 
@@ -500,16 +552,16 @@ SUBROUTINE getElasticModulusComposite( model, n, dummyArgument,ElasticModulus )
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingk', 'Material not found') 
   
   Em = GetConstReal(Material, 'Youngs Modulus Material 1', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Youngs Modulus for Material 1 not found')
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulusComposite', 'Youngs Modulus for Material 1 not found')
   Ef = GetConstReal(Material, 'Youngs Modulus Material 2', FOUND)
   IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Youngs Modulus for Material 2 not found')
   Vf = GetConstReal(Material, 'Volume Fraction Material 2', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Volume Fraction for Material 2 not found')
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulusComposite', 'Volume Fraction for Material 2 not found')
 
   nu_m = GetConstReal(Material, 'Poisson ratio Material 1', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Poisson ratio for Material 1 not found')
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulusComposite', 'Poisson ratio for Material 1 not found')
   nu_f = GetConstReal(Material, 'Poisson ratio Material 2', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Poisson ratio for Material 2 not found')
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulusComposite', 'Poisson ratio for Material 2 not found')
 
   E_parallel = Em*(1-Vf) + Ef*Vf
   E_perpendicular = 1/(((1-Vf)/Em)+(Vf/Ef))
