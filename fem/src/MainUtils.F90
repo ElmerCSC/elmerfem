@@ -1236,8 +1236,8 @@ CONTAINS
     INTEGER :: i,j,k,n,nrows,DOFs
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
-    LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal,EigAnal,VariableOutput, &
-        MGAlgebraic,MultigridActive
+    LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal, EigAnal, CMS, &
+         VariableOutput, MGAlgebraic,MultigridActive
     INTEGER :: MgLevels
     REAL(KIND=dp), POINTER :: Component(:)
     REAL(KIND=dp), POINTER :: freqv(:,:)
@@ -1345,8 +1345,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     EigAnal = ListGetLogical( Solver % Values, 'Eigen Analysis', Found )
-    
-    IF ( Transient .AND. .NOT. EigAnal .AND. .NOT. HarmonicAnal ) THEN
+    CMS = ListGetLogical( Solver % Values, 'Component Mode Synthesis', Found )
+
+    IF ( Transient .AND. .NOT. EigAnal .AND. .NOT. HarmonicAnal .AND. .NOT. CMS) THEN
       k = ListGetInteger( Solver % Values, 'Time Derivative Order', Found, &
           minv=0, maxv=2 )
       Solver % TimeOrder = 1
@@ -1445,9 +1446,9 @@ CONTAINS
             str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
       END IF
 
-      IF ( EigAnal ) THEN
-        ComplexFlag = ListGetLogical( Solver % Values,  'Eigen System Complex', Found )
-        IF ( .NOT. Found ) ComplexFlag = .FALSE.
+      IF ( EigAnal .OR. CMS) THEN
+        !ComplexFlag = ListGetLogical( Solver % Values,  'Eigen System Complex', Found )
+        !IF ( .NOT. Found ) ComplexFlag = .FALSE.
         
         n = ListGetInteger( Solver % Values,  'Eigen System Values', Found )
         IF ( Found .AND. n > 0 ) THEN
@@ -1465,12 +1466,12 @@ CONTAINS
               Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
               IF ( ASSOCIATED( Var ) ) THEN
                 Var % EigenValues => Solver % Variable % EigenValues
-                IF ( ComplexFlag ) THEN
-                  Var % EigenVectors => Solver % Variable % EigenVectors
-                ELSE
-                  Var % EigenVectors =>  & 
-                      Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
-                END IF
+                !IF ( ComplexFlag ) THEN
+                !  Var % EigenVectors => Solver % Variable % EigenVectors
+                !ELSE
+                Var % EigenVectors =>  & 
+                     Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
+                !END IF
               END IF
             END DO
           END IF
