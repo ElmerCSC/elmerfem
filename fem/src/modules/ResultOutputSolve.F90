@@ -3411,18 +3411,16 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     CALL Info('VtuOutputSolver','Maximum number of eigen modes: '//TRIM(I2S(MaxModes2)),Level=7)
   END IF
 
-  ActiveModes2 => ListGetIntegerArray( Params,'Active ConstraintModes',GotActiveModes2 ) 
+  ActiveModes2 => ListGetIntegerArray( Params,'Active Constraint Modes',GotActiveModes2 ) 
   IF( GotActiveModes2 ) THEN
     MaxModes2 = SIZE( ActiveModes2 )
   ELSE
-    MaxModes2 = GetInteger( Params,'Number of ConstraintModes',GotIt)
-    IF(.NOT. GotIt ) THEN
-      DO i=1,Model % NumberOfSolvers
-        IF( .NOT. ASSOCIATED( Model % Solvers(i) % Variable ) ) CYCLE
-        MaxModes2 = MAX( MaxModes2, &
-            Model % Solvers(i) % Variable % NumberOfConstraintModes )
-      END DO
-    END IF
+    MaxModes2 = 0
+    DO i=1,Model % NumberOfSolvers
+      IF( .NOT. ASSOCIATED( Model % Solvers(i) % Variable ) ) CYCLE
+      MaxModes2 = MAX( MaxModes2, &
+          Model % Solvers(i) % Variable % NumberOfConstraintModes )
+    END DO
   END IF
   IF( MaxModes2 > 0 ) THEN
     CALL Info('VtuOutputSolver','Maximum number of constraint modes: '//TRIM(I2S(MaxModes2)),Level=7)
@@ -3541,7 +3539,7 @@ CONTAINS
         FieldName, FieldName2, OutStr
     CHARACTER :: lf
     LOGICAL :: ScalarsExist, VectorsExist, Found,&
-              ComponentVector, ComplementExists, Use2, DoEigen, DoConstraint
+              ComponentVector, ComplementExists, Use2
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution
     INTEGER, POINTER :: Perm(:), Perm2(:), DispPerm(:), Disp2Perm(:)
@@ -3682,72 +3680,63 @@ CONTAINS
         END IF
 
         ! Default is to save the field only once
-        NoFields = 0
+        NoFields = 1
         NoFields2 = 0
         NoModes = 0
         NoModes2 = 0
 
-        DoEigen = .FALSE.
+        EigenVectors => Solution % EigenVectors
+        ConstraintModes => Solution % ConstraintModes
 
-	IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
-          NoModes = SIZE( Solution % EigenValues )
-          IF( ComponentVector ) THEN
-            CALL Warn('WriteVtuXMLFile','Eigenmodes cannot be given componentwise!')
-            CYCLE
-          ELSE IF( EigenAnalysis ) THEN
+        IF( EigenAnalysis ) THEN
+          IF( MaxModes > 0 .AND. FileIndex <= MaxModes .AND. &
+              ASSOCIATED(EigenVectors) ) THEN  
+            NoModes = SIZE( Solution % EigenValues )
+
             IF( GotActiveModes ) THEN
               IndField = ActiveModes( FileIndex ) 
             ELSE
               IndField = FileIndex
             END IF
             IF( IndField > NoModes ) THEN
-	      WRITE( Message,'(A,I0,A,I0,A)') 'Too few eigenmodes (',&
-                     IndField,',',NoModes,') in '//TRIM(FieldName)       
+              WRITE( Message,'(A,I0,A,I0,A)') 'Too few eigenmodes (',&
+                  IndField,',',NoModes,') in '//TRIM(FieldName)       
               CALL Warn('WriteVtuXMLFile',Message)
               CYCLE
             END IF
             NoModes = 1
-            NoFields = 1
-          ELSE	  
-            IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
-            NoFields = NoModes
-          END IF
-          EigenVectors => Solution % EigenVectors
-          DoEigen = .TRUE.
-        END IF
-
-        DoConstraint = .FALSE.
-	IF( MaxModes2 > 0 .AND. ASSOCIATED(Solution % ConstraintModes) ) THEN
-          NoModes2 = Solution % NumberOfConstraintModes
-          IF( ComponentVector ) THEN
-            CALL Warn('WriteVtuXMLFile','Constraint modes cannot be given componentwise!')
-            CYCLE
-          ELSE IF( EigenAnalysis ) THEN
+          ELSE IF( FileIndex > MaxModes .AND. &
+              ASSOCIATED(ConstraintModes) ) THEN
+            
+            NoModes2 = Solution % NumberOfConstraintModes
             IF( GotActiveModes2 ) THEN
               IndField = ActiveModes2( FileIndex - MaxModes ) 
             ELSE
               IndField = FileIndex - MaxModes 
             END IF
             IF( IndField > NoModes2 ) THEN
-	      WRITE( Message,'(A,I0,A,I0,A)') 'Too few constraint modes (',&
-                     IndField,',',NoModes,') in '//TRIM(FieldName)       
+              WRITE( Message,'(A,I0,A,I0,A)') 'Too few constraint modes (',&
+                  IndField,',',NoModes,') in '//TRIM(FieldName)       
               CALL Warn('WriteVtuXMLFile',Message)
               CYCLE
             END IF
             NoModes2 = 1
             NoFields2 = 1
-          ELSE	  
+          END IF
+        ELSE
+          IF( MaxModes > 0 .AND. ASSOCIATED(Solution % EigenVectors) ) THEN  
+            NoModes = SIZE( Solution % EigenValues )
+            IF( MaxModes > 0 ) NoModes = MIN( MaxModes, NoModes )
+            NoFields = NoModes
+          END IF
+
+          IF( MaxModes2 > 0 .AND. ASSOCIATED(ConstraintModes) ) THEN
+            NoModes2 = Solution % NumberOfConstraintModes
             IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )
             NoFields2 = NoModes2
           END IF
-          ConstraintModes => Solution % ConstraintModes
-          DoConstraint = .TRUE.
         END IF
-
-        IF(.NOT. (DoEigen .OR. DoConstraint ) ) THEN
-          NoFields = 1
-        END IF
-
+        
 
         Perm => Solution % Perm
         dofs = Solution % DOFs
@@ -3757,6 +3746,12 @@ CONTAINS
         ! Some vectors are defined by a set of components (either 2 or 3)
         !---------------------------------------------------------------------
         IF( ComponentVector ) THEN
+
+          IF( NoModes + NoModes2 > 0 ) THEN
+            CALL Warn('WriteVtuXMLFile','Modes cannot currently be given componentwise!')
+            CYCLE
+          END IF
+          
           Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 2')
           IF( ASSOCIATED(Solution)) THEN
             Values2 => Solution % Values
@@ -3772,10 +3767,10 @@ CONTAINS
 
         !---------------------------------------------------------------------
         ! There may be special complementary variables such as 
-        ! displacement & mesh update 
+        ! displacement & mesh update. These are not implemented for modal output. 
         !---------------------------------------------------------------------
         ComplementExists = .FALSE.
-        IF( NoModes > 0 ) THEN
+        IF( NoModes + NoModes2 == 0 ) THEN
           IF(Rank==0) WRITE(Txt,'(A,I0,A)') 'Scalar Field ',Vari,' Complement'
           IF(Rank==1) WRITE(Txt,'(A,I0,A)') 'Vector Field ',Vari,' Complement'
           IF(Rank==2) WRITE(Txt,'(A,I0,A)') 'Tensor Field ',Vari,' Complement'
@@ -3805,24 +3800,25 @@ CONTAINS
         !---------------------------------------------------------------------
         DO iField = 1, NoFields + NoFields2          
 
-          IF( iField <= NoFields ) THEN
-            IF( Nomodes > 0 .AND. .NOT. EigenAnalysis ) THEN
-              IF( GotActiveModes ) THEN
-                IndField = ActiveModes( iField ) 
-              ELSE
-                IndField = iField
+          IF(.NOT. EigenAnalysis ) THEN
+            IF( iField <= NoFields ) THEN
+              IF( Nomodes > 0 ) THEN
+                IF( GotActiveModes ) THEN
+                  IndField = ActiveModes( iField ) 
+                ELSE
+                  IndField = iField
+                END IF
               END IF
-            END IF
-          ELSE
-            IF( Nomodes2 > 0 .AND. .NOT. EigenAnalysis ) THEN
-              IF( GotActiveModes2 ) THEN
-                IndField = ActiveModes2( iField - NoFields ) 
-              ELSE
-                IndField = iField - NoFields
+            ELSE
+              IF( Nomodes2 > 0 ) THEN
+                IF( GotActiveModes2 ) THEN
+                  IndField = ActiveModes2( iField - NoFields ) 
+                ELSE
+                  IndField = iField - NoFields
+                END IF
               END IF
             END IF
           END IF
-
 
           IF( WriteXML ) THEN
             IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
@@ -3917,10 +3913,10 @@ CONTAINS
                       IF( k == 3 ) val = Values3(j)
                     ELSE IF( Use2 ) THEN
                       val = Values2(dofs*(j-1)+k)              
-                    ELSE IF( NoModes > 0 ) THEN
+                    ELSE IF( NoModes > 0 .AND. iField <= NoModes ) THEN
                       val = EigenVectors(IndField,dofs*(j-1)+k)                              
                     ELSE IF( NoModes2 > 0 ) THEN
-                      val = ConstraintModes(IndField,dofs*(j-1)+k)                                                    
+                      val = ConstraintModes(IndField,dofs*(j-1)+k)                                                
                     ELSE
                       val = Values(dofs*(j-1)+k)              
                     END IF
