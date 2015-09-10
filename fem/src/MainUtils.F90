@@ -1236,7 +1236,7 @@ CONTAINS
     INTEGER :: i,j,k,n,nrows,DOFs
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
-    LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal, EigAnal, CMS, &
+    LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal, EigAnal, &
          VariableOutput, MGAlgebraic,MultigridActive
     INTEGER :: MgLevels
     REAL(KIND=dp), POINTER :: Component(:)
@@ -1345,9 +1345,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     EigAnal = ListGetLogical( Solver % Values, 'Eigen Analysis', Found )
-    CMS = ListGetLogical( Solver % Values, 'Component Mode Synthesis', Found )
 
-    IF ( Transient .AND. .NOT. EigAnal .AND. .NOT. HarmonicAnal .AND. .NOT. CMS) THEN
+    IF ( Transient .AND. .NOT. EigAnal .AND. .NOT. HarmonicAnal ) THEN
       k = ListGetInteger( Solver % Values, 'Time Derivative Order', Found, &
           minv=0, maxv=2 )
       Solver % TimeOrder = 1
@@ -1446,7 +1445,7 @@ CONTAINS
             str, Solver % Variable % Dofs, Perm = Solver % Variable % Perm )
       END IF
 
-      IF ( EigAnal .OR. CMS) THEN
+      IF ( EigAnal ) THEN
         !ComplexFlag = ListGetLogical( Solver % Values,  'Eigen System Complex', Found )
         !IF ( .NOT. Found ) ComplexFlag = .FALSE.
         

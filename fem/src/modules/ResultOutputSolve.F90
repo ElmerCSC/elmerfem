@@ -3680,7 +3680,7 @@ CONTAINS
         END IF
 
         ! Default is to save the field only once
-        NoFields = 1
+        NoFields = 0
         NoFields2 = 0
         NoModes = 0
         NoModes2 = 0
@@ -3705,6 +3705,7 @@ CONTAINS
               CYCLE
             END IF
             NoModes = 1
+            NoFields = 1
           ELSE IF( FileIndex > MaxModes .AND. &
               ASSOCIATED(ConstraintModes) ) THEN
             
@@ -3735,6 +3736,8 @@ CONTAINS
             IF( MaxModes2 > 0 ) NoModes2 = MIN( MaxModes2, NoModes2 )
             NoFields2 = NoModes2
           END IF
+
+          IF( NoModes + NoModes2 == 0 ) NoFields = 1
         END IF
         
 
