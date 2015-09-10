@@ -5354,7 +5354,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-!> At first pass sum together the rows related to the periodic dofs.
+!> Prepare to set Dirichlet conditions for attachment DOFs in the case of
+!> component mode synthesis
 !------------------------------------------------------------------------------
    SUBROUTINE SetConstraintModesBoundaries( Model, A, b, &
        Name, NDOFs, Perm )
@@ -10084,7 +10085,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
                SkipZeroRhs, ComplexSystem, ComputeChangeScaled, ConstraintModesAnalysis, &
-               ModesAnalysis
+               ComponentModeSynthesis
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
@@ -10195,7 +10196,7 @@ END FUNCTION SearchNodeL
     ConstraintModesAnalysis = ListGetLogical( Params, &
         'Constraint Modes Analysis',GotIt )
 
-    ModesAnalysis = ListGetLogical( Params,'Modes Analysis',GotIt )
+    ComponentModeSynthesis = ListGetLogical( Params,'Component Mode Synthesis',GotIt )
     
 
     HarmonicAnalysis = Solver % NOFEigenValues>0 .AND. &
@@ -10205,7 +10206,7 @@ END FUNCTION SearchNodeL
     SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt ) 
 
     IF ( .NOT. ( HarmonicAnalysis .OR. EigenAnalysis .OR. ApplyLimiter &
-        .OR. SkipZeroRhs .OR. ConstraintModesAnalysis .OR. ModesAnalysis ) ) THEN
+        .OR. SkipZeroRhs .OR. ConstraintModesAnalysis .OR. ComponentModeSynthesis) ) THEN
       bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))      
       IF ( bnorm <= TINY( bnorm) ) THEN
         CALL Info('SolveSystem','Solution trivially zero!')
@@ -10277,7 +10278,7 @@ END FUNCTION SearchNodeL
 
 !   If solving constraint modes analysis go there:
 !   ----------------------------------------------
-    IF( ModesAnalysis ) THEN
+    IF( ComponentModeSynthesis ) THEN
       
       CALL ListAddLogical( Solver % Values,'Modes Analysis',.FALSE.)
      

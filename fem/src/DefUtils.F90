@@ -3808,6 +3808,11 @@ CONTAINS
        x => Solver % Variable
      END IF
 
+     ! Prepare for retrieving the linear system at a later point of time with the attachment DOF rows 
+     ! left as unmodified:
+     !-------------------------------------------------------------------------------------------
+     IF ( GetLogical(Params,'Component Mode Synthesis',Found) ) CALL CopyBulkMatrix(A)
+     
 
      ! Create soft limiters to be later applied by the Dirichlet conditions
      ! This is done only once for each solver, hence the complex logic. 
