@@ -253,7 +253,6 @@ ENDIF
 
 CALL trapezoid_for_data(data_x, size_x, data_y,size_y, a,b,integral,HeatCondCoeff_average)
 
-print *, "ave", HeatCondCoeff_average, "T", T, "Tref", Tref
 
 END FUNCTION getHeatConductivityCopper
 
