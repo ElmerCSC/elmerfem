@@ -205,9 +205,10 @@ END MODULE trapezoid
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-FUNCTION getHeatConductivityCopper( model, n, T ) RESULT(HeatCondCoeff_average)
+FUNCTION getHeatConductivityCopper( model, n, T ) RESULT(HeatCondCoeff)
 !===================================================================
-! Calculate the Heat Conductivty Coefficient for copper 
+! Calculate the Heat Conductivty Coefficient for copper by simple 
+! linear interpolation between datapoints 
 !===================================================================
 USE DefUtils
 USE trapezoid
@@ -217,23 +218,21 @@ INTEGER :: n
 
 
 
-REAL(KIND = dp) T,Tref,a,b,f, x,integral,HeatCondCoeff_average
+REAL(KIND = dp) T,a,b,f, x,integral,HeatCondCoeff,HeatCondTemp
+
 REAL(KIND = dp), DIMENSION(17) :: data_y, data_x
-INTEGER i, size_x,size_y
+INTEGER i, size_x,size_y,loc_start
 TYPE(Valuelist_t), POINTER :: Material
-LOGICAL :: FOUND
+LOGICAL :: FOUND,loc_extra
 
 Material => GetMaterial()
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getHeatConductivityCopper', 'Material not found')
 
-Tref = GetConstReal(Material, 'Reference Temperature', FOUND)
-IF (.NOT. FOUND) CALL Fatal('getHeatConductivityCopper', 'Reference Temperature not found in Material section')
 
 !Copper data in K
-T = T + 273
-Tref = Tref + 273
+T = T + 273.0
 
-IF (T < 100 .OR. T > 1300 .OR. Tref < 100 .OR. Tref > 1000) & 
+IF (T < 100 .OR. T > 1300) & 
   CALL Fatal('getHeatConductivityCopper', 'Temperature outside data range') 
 
 ! Copper data
@@ -243,19 +242,11 @@ data_x = (/100,150,200,250,273,300,350,400,500,600,700,800,900,1000,1100,1200,13
 size_x = SIZE(data_x)
 size_y = SIZE(data_y)
 
-IF (T >= Tref) THEN
-  a = Tref
-  b = T
-ELSE
-  a = T
-  b = Tref
-ENDIF
 
-CALL trapezoid_for_data(data_x, size_x, data_y,size_y, a,b,integral,HeatCondCoeff_average)
+CALL find_point_in_array(data_x,size_x,data_y,size_y,T,HeatCondTemp,HeatCondCoeff,loc_start, loc_extra)
 
 
 END FUNCTION getHeatConductivityCopper
-
 
 
 FUNCTION getExpCoeffEpikotem( model, n, T ) RESULT(ExpCoeff_average)
