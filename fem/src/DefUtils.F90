@@ -4280,13 +4280,11 @@ CONTAINS
 
      ! Add the possible constraint modes structures
      !----------------------------------------------------------
-     IF ( ListCheckPresentAnyBC( CurrentModel,'Constraint Modes ' // TRIM(x % Name) ) ) THEN
-       PRINT *,'found modes'
-
+     IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
        ! Prepare for retrieving the linear system at a later point of time with the attachment DOF rows 
        ! left as unmodified:
        !-------------------------------------------------------------------------------------------
-       IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) CALL CopyBulkMatrix(A)       
+       CALL CopyBulkMatrix(A)       
        CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
      END IF
 

@@ -5599,13 +5599,17 @@ CONTAINS
     Solver => Model % Solver
     Var => Solver % Variable 
     
-    IF( NDOFS /= Var % Dofs ) RETURN
-
     ! This needs to be allocated only once, hence return if already set
     IF( Var % NumberOfConstraintModes > 0 ) RETURN
 
     CALL Info('SetConstraintModesBoundaries','Setting constraint modes boundaries for variable: '&
         //TRIM(Name),Level=7)
+
+    IF( .NOT. ListGetLogicalAnyBC( Model,'Constraint Modes ' // Name(1:nlen)) ) THEN
+      CALL Warn('SetConstraintModesBoundaries',&
+          'Constraint Modes Analysis requested but no constrained BCs given!')
+      RETURN
+    END IF
 
     ! Allocate the indeces for the constraint modes
     ALLOCATE( Var % ConstraintModesIndeces( A % NumberOfRows ) )
@@ -5625,6 +5629,8 @@ CONTAINS
     END DO
     CALL Info('SetConstraintModesBoundaries','Number of active constraint modes boundaries: '&
         //TRIM(I2S(j)),Level=7)
+
+
     Var % NumberOfConstraintModes = NDOFS * j 
     
     
@@ -10079,7 +10085,7 @@ END FUNCTION SearchNodeL
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
                SkipZeroRhs, ComplexSystem, ComputeChangeScaled, ConstraintModesAnalysis, &
-               SpecialAnalysis
+               RecursiveAnalysis
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
@@ -10194,17 +10200,18 @@ END FUNCTION SearchNodeL
         ListGetLogical( Params, 'Harmonic Analysis',GotIt )
 
     ! These analyses types may require recursive strategies and may also have zero rhs
-    SpecialAnalysis = HarmonicAnalysis .OR. EigenAnalysis .OR. ConstraintModesAnalysis
+    RecursiveAnalysis = HarmonicAnalysis .OR. EigenAnalysis .OR. ConstraintModesAnalysis
+
 
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
     SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt ) 
 
-    IF ( .NOT. ( SpecialAnalysis .OR. ApplyLimiter .OR. SkipZeroRhs ) ) THEN
+    IF ( .NOT. ( RecursiveAnalysis .OR. ApplyLimiter .OR. SkipZeroRhs ) ) THEN
       bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))      
       IF ( bnorm <= TINY( bnorm) ) THEN
         CALL Info('SolveSystem','Solution trivially zero!')
         x = 0.0d0
-        
+
         ! Increase the nonlinear counter since otherwise some stuff may stagnate
         ! Normally this is done within ComputeChange
         iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
@@ -10217,29 +10224,31 @@ END FUNCTION SearchNodeL
       END IF
     END IF
     
+
+
     IF ( Solver % MultiGridLevel == -1  ) RETURN
 
-    SpecialAnalysis = .FALSE.
+    ! Set the flags to false to allow recursive strategies for these analysis types, little dirty...
+    IF( RecursiveAnalysis ) THEN
+      IF( HarmonicAnalysis ) CALL ListAddLogical( Solver % Values,'Harmonic Analysis',.FALSE.)
+      IF( EigenAnalysis ) CALL ListAddLogical( Solver % Values,'Eigen Analysis',.FALSE.)
+      IF( ConstraintModesAnalysis ) CALL ListAddLogical( Solver % Values,'Constraint Modes Analysis',.FALSE.)
+    END IF
+
 
 !------------------------------------------------------------------------------
 !   If solving harmonic analysis go there:
 !   --------------------------------------
     IF ( HarmonicAnalysis ) THEN
-      ! Set the 'Harmonic Analysis' flag to False to allow recursive strategies
-      CALL ListAddLogical( Solver % Values, 'Harmonic Analysis', .FALSE. )
       CALL SolveHarmonicSystem( A, Solver )
-      SpecialAnalysis = .TRUE.
     END IF
 
 
 !   If solving eigensystem go there:
 !   --------------------------------
     IF ( EigenAnalysis ) THEN
-      ! Set the 'Eigen Analysis' flag to False to allow recursive strategies 
-      CALL ListAddLogical( Solver % Values,'Eigen Analysis',.FALSE.)
-
       IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A )
-     
+
       CALL SolveEigenSystem( &
           A, Solver %  NOFEigenValues, &
           Solver % Variable % EigenValues,       &
@@ -10247,22 +10256,18 @@ END FUNCTION SearchNodeL
       
       IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A ) 
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
-      
+
       Norm = ComputeNorm(Solver,n,x)
       Solver % Variable % Norm = Norm
       
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
-      SpecialAnalysis = .TRUE.
     END IF
 
 
 !   If solving constraint modes analysis go there:
 !   ----------------------------------------------
     IF ( ConstraintModesAnalysis ) THEN
-      ! Set the 'Constraint Modes Analysis' flag to False to allow recursive strategies 
-      CALL ListAddLogical( Solver % Values,'Constraint Modes Analysis',.FALSE.)
-
       IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A )
      
       CALL SolveConstraintModesSystem( A, Solver )
@@ -10275,11 +10280,10 @@ END FUNCTION SearchNodeL
       
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
-      SpecialAnalysis = .TRUE.
     END IF
 
     ! We have solved {harmonic,eigen,constraint} system and no need to continue further
-    IF( SpecialAnalysis ) THEN
+    IF( RecursiveAnalysis ) THEN
       IF( HarmonicAnalysis ) CALL ListAddLogical( Solver % Values,'Harmonic Analysis',.TRUE.)
       IF( EigenAnalysis ) CALL ListAddLogical( Solver % Values,'Eigen Analysis',.TRUE.)
       IF( ConstraintModesAnalysis ) CALL ListAddLogical( Solver % Values,'Constraint Modes Analysis',.TRUE.)
@@ -10771,21 +10775,14 @@ END SUBROUTINE SolveEigenSystem
 !> Solve a linear system with permutated constraints.
 !------------------------------------------------------------------------------
 SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
-
 !------------------------------------------------------------------------------
     TYPE(Matrix_t), POINTER :: StiffMatrix
     TYPE(Solver_t) :: Solver
     TYPE(Variable_t), POINTER :: Var
     !------------------------------------------------------------------------------
     INTEGER :: i,n,k
-    LOGICAL :: SetFlag
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
-
-    ! Set the 'Constraint Modes Analysis' flag to False since internally 
-    ! some strategies rely on it not being set (e.g. 'block'). 
-    SetFlag = ListCheckPresent( Solver % Values,'Constraint Modes Analysis')
-    IF(SetFlag) CALL ListAddLogical( Solver % Values,'Constraint Modes Analysis',.FALSE.)
 
     Var => Solver % Variable
 
@@ -10800,8 +10797,6 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
       WHERE( Var % ConstraintModesIndeces == i ) StiffMatrix % Rhs = 0.0_dp            
       Var % ConstraintModes(i,:) = Var % Values
     END DO
-
-    IF( SetFlag ) CALL ListAddLogical( Solver % Values,'Constraint Modes Analysis',.TRUE.)
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveConstraintModesSystem
 !------------------------------------------------------------------------------
@@ -11239,7 +11234,6 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
     END DO
 
     Solver % NOFEigenValues = ne
-    CALL ListAddLogical( Solver % Values, 'Harmonic Analysis', .TRUE. )
 
     DEALLOCATE( x, b )
 !------------------------------------------------------------------------------
