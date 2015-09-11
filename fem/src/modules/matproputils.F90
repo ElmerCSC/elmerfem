@@ -216,10 +216,7 @@ IMPLICIT None
 TYPE(Model_t) :: model
 INTEGER :: n
 
-
-
-REAL(KIND = dp) T,a,b,f, x,integral,HeatCondCoeff,HeatCondTemp
-
+REAL(KIND = dp) T,HeatCondCoeff,HeatCondTemp
 REAL(KIND = dp), DIMENSION(17) :: data_y, data_x
 INTEGER i, size_x,size_y,loc_start
 TYPE(Valuelist_t), POINTER :: Material
