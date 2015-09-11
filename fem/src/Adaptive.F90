@@ -803,7 +803,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: NodalError(:), hConvergence(:), &
            ErrorLimit, minH, maxH, MaxChange, HValue(:)
-    LOGICAL :: Coarsening, NewLoadMesh
+    LOGICAL :: Coarsening
     TYPE(Mesh_t), POINTER :: NewMesh, RefMesh
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
@@ -902,14 +902,7 @@ CONTAINS
 
     CALL SystemCommand( MeshCommand )
 
-    NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',Found )
-    IF(.NOT. Found ) NewLoadMesh = .TRUE.
-
-    IF( NewLoadMesh ) THEN
-      NewMesh => LoadMesh2( Model, OutPutPath, Path, .FALSE., 1, 0 )
-    ELSE
-      NewMesh => LoadMesh( Model, OutPutPath, Path, .FALSE., 1, 0 )
-    END IF
+    NewMesh => LoadMesh2( Model, OutPutPath, Path, .FALSE., 1, 0 )
 
     IF ( Solver % Variable % Name == 'temperature' ) THEN
        Name = ListGetString( Model % Simulation, 'Gebhardt Factors', Found )
