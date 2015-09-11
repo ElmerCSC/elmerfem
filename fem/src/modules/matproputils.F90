@@ -196,6 +196,37 @@ CONTAINS
 
 END MODULE trapezoid
 
+MODULE CompUtils
+
+CONTAINS
+  !------------------------------------------------------------------------------
+  FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
+  !------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+      
+    INTEGER :: i
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
+    LOGICAL :: Found
+      
+    BodyParams => GetBodyParams( Element )
+    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('GetCompParams', 'Component parameters not found')
+      
+    i = GetInteger(BodyParams, 'Component', Found)
+
+    IF (.NOT. Found) CALL Fatal ('GetComponentParams', 'Body not associated to any Component!')
+
+    ComponentParams => CurrentModel % Components(i) % Values
+        
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+                                                           'Component parameters not found!')
+      
+  !------------------------------------------------------------------------------
+  END FUNCTION GetComponentParams
+  !------------------------------------------------------------------------------
+END MODULE CompUtils
+
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -265,10 +296,10 @@ TYPE(Valuelist_t), POINTER :: Material
 LOGICAL :: FOUND
 
 Material => GetMaterial()
-  IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingSigma', 'Material not found')
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getExpCoeffEpikotem', 'Material not found')
 
 Tref = GetConstReal(Material, 'Reference Temperature', FOUND)
-IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Reference Temperature not found in Material section')
+IF (.NOT. FOUND) CALL Fatal('getExpCoeffEpikotem', 'Reference Temperature not found in Material section')
 
 ! Epikotem data
 data_y = (/29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, &
@@ -305,46 +336,116 @@ ExpCoeff_average=ExpCoeff_average*1.d-6
 
 END FUNCTION getExpCoeffEpikotem
 
+FUNCTION getExpCoeffEpikotemFgnetComposite( model, n, T ) RESULT(ExpCoeff_average)
+!===================================================================
+! Calculate the thermal expansion coefficient for Epikotem 
+!===================================================================
+USE DefUtils
+USE trapezoid
+IMPLICIT None
+TYPE(Model_t) :: model
+INTEGER :: n
+
+
+
+REAL(KIND = dp) T,Tref,a,b,f, x,integral,ExpCoeff_average, ExpCoeff_fgnet, Vf_ek, Vf_fgnet
+REAL(KIND = dp), DIMENSION(63) :: data_y, data_x
+INTEGER i, size_x,size_y
+TYPE(Valuelist_t), POINTER :: Material
+LOGICAL :: FOUND
+
+Material => GetMaterial()
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getExpCoeffEpikotemFgnetComposite', 'Material not found')
+
+Tref = GetConstReal(Material, 'Reference Temperature', FOUND)
+IF (.NOT. FOUND) CALL Fatal('getExpCoeffEpikotemFgnetComposite', 'Reference Temperature not found in Material section')
+
+Vf_fgnet = GetConstReal(Material, 'Volume Fraction Material 2', FOUND)
+IF (.NOT. FOUND) CALL Fatal('getExpCoeffEpikotemFgnetComposite', 'Volume Fraction Material 2 not found in Material section')
+
+Vf_ek = 1.0 - Vf_fgnet
+
+! Epikotem data
+data_y = (/29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, 29.969, &
+           29.969, 29.969, 30.3096, 30.6502, 30.6502, 30.9907, 30.9907, 31.3313, &
+           31.6718, 31.6718, 32.0124, 32.3529, 32.6935, 33.0341, 33.3746, 33.7152, &
+           34.0557, 34.3963, 35.0774, 37.1207, 38.8235, 40.8669, 42.9102, 44.9536, &
+           47.678, 50.743, 53.808, 57.2136, 60.2786, 63.3437, 66.4087, 69.8142, 72.8793, &
+           75.9443, 79.0093, 81.7337, 84.1176, 86.8421, 89.226, 91.6099, 93.9938, 95.6966, &
+           96.7183, 98.0805, 99.1022, 100.124, 100.124, 100.124, 100.124, 100.124, 100.124, &
+           100.124, 100.124, 100.124/)
+data_x = (/0.0, 0.236686, 1.89349, 4.26036, 6.62722, 8.99408, 11.3609, 13.7278, &
+           16.0947, 18.4615, 20.8284, 22.9586, 25.3254, 27.6923, 30.0592, 32.426, &
+           34.7929, 36.9231, 39.2899, 41.6568, 44.0237, 46.3905, 48.7574, 50.8876, &
+           53.2544, 55.6213, 57.9882, 60.1183, 62.0118, 63.9053, 66.0355, 67.929, &
+           69.8225, 70.7692, 71.716, 72.6627, 73.6095, 74.5562, 75.503, 76.213, &
+           77.1598, 78.1065, 79.0533, 80.0, 81.4201, 83.0769, 84.7337, 86.1538, &
+           87.8107, 89.4675, 91.3609, 93.7278, 95.858, 98.2249, 100.355, 102.722, &
+           105.089, 107.456, 109.822, 112.189, 114.556, 116.923, 119.29/)
+
+size_x = SIZE(data_x)
+size_y = SIZE(data_y)
+
+IF (T >= Tref) THEN
+  a = Tref
+  b = T
+ELSE
+  a = T
+  b = Tref
+ENDIF
+
+CALL trapezoid_for_data(data_x, size_x, data_y,size_y, a,b,integral,ExpCoeff_average)
+
+ExpCoeff_fgnet=5.3
+ExpCoeff_average=ExpCoeff_average*Vf_ek+ExpCoeff_fgnet*Vf_fgnet
+
+ExpCoeff_average=ExpCoeff_average*1.d-6
+
+END FUNCTION getExpCoeffEpikotemFgnetComposite
+
+
 FUNCTION getWindingSigmaConstantTemperature( model, n, T ) RESULT(eff_sigma)
   USE DefUtils
+  USE CompUtils
   IMPLICIT None
   TYPE(Model_t) :: model
   INTEGER :: n
   REAL(KIND=dp) :: eff_sigma, alsigma, WindingT, T, rho, rho0, rho1, ft, it, ff, c
   
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
-  TYPE(Valuelist_t), POINTER :: Material, BodyParams
+  TYPE(Valuelist_t), POINTER :: Material, ComponentParams
   TYPE(Element_t), POINTER :: Element
   LOGICAL :: FOUND, FOUNDFT, FOUNDIT, FOUNDC
 
   Material => GetMaterial()
-  IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingSigma', 'Material not found')
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingSigmaConstant', 'Material not found')
   
   Element => GetCurrentElement()
-  CircuitVariableBody => Model % Bodies (Element % BodyId)
-  BodyParams => CircuitVariableBody % Values
-  IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('getWindingSigma', 'Body Parameters not found!')
+  !CircuitVariableBody => Model % Bodies (Element % BodyId)
+  !BodyParams => CircuitVariableBody % Values
+  ComponentParams => GetComponentParams(Element)
+  IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('getWindingSigmaConstant', 'Body Parameters not found!')
   
-  ft = GetConstReal(BodyParams, 'Foil Layer Thickness', FoundFT)
+  ft = GetConstReal(ComponentParams, 'Foil Layer Thickness', FoundFT)
 !  IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Foil Layer Thickness not found in Body section')
 
-  it = GetConstReal(BodyParams, 'Insulator Layer Thickness', FoundIT)
+  it = GetConstReal(ComponentParams, 'Insulator Layer Thickness', FoundIT)
 !  IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Insulator Layer Thickness not found in Body section')
   
-  c = GetConstReal(BodyParams, 'Insulator Portion', FoundC)
+  c = GetConstReal(ComponentParams, 'Insulator Portion', FoundC)
 !  IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Insulator Layer Thickness not found in Body section')
   
   IF (((.NOT. FOUNDFT).OR.(.NOT. FOUNDIT)).AND.(.NOT. FOUNDC)) &
-    CALL Fatal('getWindingSigma', 'Insulator Values not found in Body section')
+    CALL Fatal('getWindingSigmaConstant', 'Insulator Values not found in Component section')
   
-  WindingT = GetConstReal(BodyParams, 'Winding Temperature', Found)
-  IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'Winding Temperature not found in Body section')
+  WindingT = GetConstReal(ComponentParams, 'Winding Temperature', Found)
+  IF (.NOT. FOUND) CALL Fatal('getWindingSigmaConstant', 'Winding Temperature not found in Component section')
   
   rho1 = GetConstReal(Material, 'rho1', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'rho1 not found in Material section')
+  IF (.NOT. FOUND) CALL Fatal('getWindingSigmaConstant', 'rho1 not found in Material section')
   
   rho0 = GetConstReal(Material, 'rho0', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'rho0 not found in Material section')
+  IF (.NOT. FOUND) CALL Fatal('getWindingSigmaConstant', 'rho0 not found in Material section')
   
   rho = (rho1 * (273.15_dp+WindingT) + rho0)*1.d-9
   alsigma = 1._dp/rho
@@ -363,13 +464,14 @@ END FUNCTION getWindingSigmaConstantTemperature
 
 FUNCTION getWindingSigma( model, n, T ) RESULT(eff_sigma)
   USE DefUtils
+  USE CompUtils
   IMPLICIT None
   TYPE(Model_t) :: model
   INTEGER :: n
   REAL(KIND=dp) :: eff_sigma, alsigma, T, rho, rho0, rho1, ft, it, ff, c
   
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
-  TYPE(Valuelist_t), POINTER :: Material, BodyParams
+  TYPE(Valuelist_t), POINTER :: Material, ComponentParams
   TYPE(Element_t), POINTER :: Element
   LOGICAL :: FOUND, FOUNDFT, FOUNDIT, FOUNDC
 
@@ -377,18 +479,17 @@ FUNCTION getWindingSigma( model, n, T ) RESULT(eff_sigma)
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingSigma', 'Material not found')
   
   Element => GetCurrentElement()
-  CircuitVariableBody => Model % Bodies (Element % BodyId)
-  BodyParams => CircuitVariableBody % Values
-  IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('getWindingSigma', 'Body Parameters not found!')
+  ComponentParams => GetComponentParams(Element)
+  IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('getWindingSigma', 'Component Parameters not found!')
   
-  ft = GetConstReal(BodyParams, 'Foil Layer Thickness', FoundFT)
+  ft = GetConstReal(ComponentParams, 'Foil Layer Thickness', FoundFT)
 
-  it = GetConstReal(BodyParams, 'Insulator Layer Thickness', FoundIT)
+  it = GetConstReal(ComponentParams, 'Insulator Layer Thickness', FoundIT)
 
-  c = GetConstReal(BodyParams, 'Insulator Portion', FoundC)
+  c = GetConstReal(ComponentParams, 'Insulator Portion', FoundC)
   
   IF (((.NOT. FOUNDFT).OR.(.NOT. FOUNDIT)).AND.(.NOT. FOUNDC)) &
-    CALL Fatal('getWindingSigma', 'All needed values not found in Body section')
+    CALL Fatal('getWindingSigma', 'All needed values not found in Component section')
     
   rho1 = GetConstReal(Material, 'rho1', FOUND)
   IF (.NOT. FOUND) CALL Fatal('getWindingSigma', 'rho1 not found in Material section')
@@ -413,7 +514,7 @@ END FUNCTION getWindingSigma
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
+SUBROUTINE getElasticModulusComposite( model, n, dummyArgument,ElasticModulus )
   ! modules needed
   USE DefUtils
  
@@ -440,16 +541,16 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingk', 'Material not found') 
   
   Em = GetConstReal(Material, 'Youngs Modulus Material 1', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Youngs Modulus for Material 1 not found')
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulusComposite', 'Youngs Modulus for Material 1 not found')
   Ef = GetConstReal(Material, 'Youngs Modulus Material 2', FOUND)
   IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Youngs Modulus for Material 2 not found')
-  Vf = GetConstReal(Material, 'Mass Fraction Material 2', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Mass Fraction for Material 2 not found')
+  Vf = GetConstReal(Material, 'Volume Fraction Material 2', FOUND)
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulusComposite', 'Volume Fraction for Material 2 not found')
 
   nu_m = GetConstReal(Material, 'Poisson ratio Material 1', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Poisson ratio for Material 1 not found')
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulusComposite', 'Poisson ratio for Material 1 not found')
   nu_f = GetConstReal(Material, 'Poisson ratio Material 2', FOUND)
-  IF (.NOT. FOUND) CALL Fatal('getElasticModulus', 'Poisson ratio for Material 2 not found')
+  IF (.NOT. FOUND) CALL Fatal('getElasticModulusComposite', 'Poisson ratio for Material 2 not found')
 
   E_parallel = Em*(1-Vf) + Ef*Vf
   E_perpendicular = 1/(((1-Vf)/Em)+(Vf/Ef))
@@ -499,9 +600,7 @@ SUBROUTINE getElasticModulus( model, n, dummyArgument,ElasticModulus )
   ElasticModulus(4,3) = 0 
   ElasticModulus(4,4) = G12 ! Ex/(2*(1+nu_yx)) 
  
-  
-
-END SUBROUTINE getElasticModulus
+END SUBROUTINE getElasticModulusComposite
 
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -509,6 +608,7 @@ END SUBROUTINE getElasticModulus
 SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   ! modules needed
   USE DefUtils
+  USE CompUtils
  
   IMPLICIT None
  
@@ -522,7 +622,7 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
   REAL(KIND=dp) :: ft, mc, it, ic, st, Ksi, Ktot
 
-  TYPE(Valuelist_t), POINTER :: Material, BodyParams
+  TYPE(Valuelist_t), POINTER :: Material, ComponentParams
   TYPE(Element_t), POINTER :: Element
   Logical :: FOUND, FOUNDFT, FOUNDST
   
@@ -530,22 +630,21 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingk', 'Material not found')
   
   Element => GetCurrentElement()
-  CircuitVariableBody => Model % Bodies (Element % BodyId)
-  BodyParams => CircuitVariableBody % Values
-  IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('getWindingk', 'Body Parameters not found!')
+  ComponentParams => GetComponentParams(Element)
+  IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('getWindingk', 'Component Parameters not found!')
   
-  ft = GetConstReal(BodyParams, 'Foil Layer Thickness', FoundFT)
+  ft = GetConstReal(ComponentParams, 'Foil Layer Thickness', FoundFT)
   
-  st = GetConstReal(BodyParams, 'Strand Thickness', FoundST)
+  st = GetConstReal(ComponentParams, 'Strand Thickness', FoundST)
   
   mc = GetConstReal(Material, 'Material Heat Conductivity', Found)
   IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Material Heat Condictivity not found in Material section')
   
-  it = GetConstReal(BodyParams, 'Insulator Layer Thickness', Found)
-  IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Insulator Layer Thickness not found in Body section')
+  it = GetConstReal(ComponentParams, 'Insulator Layer Thickness', Found)
+  IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Insulator Layer Thickness not found in Component section')
 
-  ic = GetConstReal(BodyParams, 'Insulator Layer Heat Conductivity', Found)
-  IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Insulator Layer Heat Conductivity not found in Body section')
+  ic = GetConstReal(ComponentParams, 'Insulator Layer Heat Conductivity', Found)
+  IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Insulator Layer Heat Conductivity not found in Component section')
 
   IF ((.NOT. FOUNDFT) .AND. (.NOT. FOUNDST)) CALL Fatal('getWindingk', 'Material Thickness not found in Body section')
   
@@ -553,11 +652,170 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
     Conductivity(1) = ((ft + it) * mc * ic) / (it * mc + ft * ic)
     Conductivity(2) = (ft * mc + it * ic) / (ft + it)
   ELSE
-    Ksi = (st*mc)+(it*ic)/(st+it) !((st+it) * mc * ic)/((ic*st)+(mc+it))
-    Ktot = ((st+it)*Ksi*ic)/((it*Ksi)+(st*ic))     !(Ksi*st + ic*it)/(st+it)
+    Ksi = (st*mc)+(it*ic)/(st+it) 
+    Ktot = ((st+it)*Ksi*ic)/((it*Ksi)+(st*ic))
     Conductivity(1) = Ktot
     Conductivity(2) = Ktot
   END IF
   !WRITE(Message,*)  Conductivity(1,1), Conductivity(1,2)
   !CALL Info('getWindingk', Message, Level = 5)
 END SUBROUTINE getWindingk
+
+SUBROUTINE getEpikotemFbnetk( model, n, dummyArgument,Conductivity )
+  ! modules needed
+  USE DefUtils
+  USE CompUtils
+ 
+  IMPLICIT None
+ 
+  ! variables in function header
+  TYPE(Model_t) :: model
+  INTEGER :: n
+  REAL(KIND=dp) :: dummyArgument
+ 
+  ! variables needed inside function
+  REAL(KIND=dp) ::  Conductivity(:)
+  TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
+  REAL(KIND=dp) :: et, mc, it, ic, st, Ksi, Ktot
+
+  TYPE(Valuelist_t), POINTER :: Material, BodyParams
+  TYPE(Element_t), POINTER :: Element
+  Logical :: FOUND, FOUNDFT, FOUNDST
+  
+  Material => GetMaterial()
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getEpikotemFbnetk', 'Material not found')
+  
+  Element => GetCurrentElement()
+  CircuitVariableBody => Model % Bodies (Element % BodyId)
+  BodyParams => CircuitVariableBody % Values
+  IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('getEpikotemFbnetk', 'Body Parameters not found!')
+  
+  et = GetConstReal(BodyParams, 'Epikotem Layer Thickness', FoundFT)
+  
+  mc = GetConstReal(Material, 'Material Heat Conductivity', Found)
+  IF (.NOT. FOUND) CALL Fatal('getEpikotemFbnetk', 'Material Heat Conductivity not found in Material section')
+  
+  it = GetConstReal(BodyParams, 'Net Size', Found)
+  IF (.NOT. FOUND) CALL Fatal('getEpikotemFbnetk', 'Net Size not found in Body section')
+
+  ic = GetConstReal(BodyParams, 'Cast Heat Conductivity', Found)
+  IF (.NOT. FOUND) CALL Fatal('getEpikotemFbnetk', 'Cast Heat Conductivity not found in Body section')
+
+  IF ((.NOT. FOUNDFT)) CALL Fatal('getEpikotemFbnetk', 'Epicotem Layer Thickness not found in Body section')
+  
+  Conductivity(1) = ((et + it) * mc * ic) / (it * mc + et * ic)   ! perp
+  Conductivity(2) = (et * mc + et * ic) / (et + et)               ! par
+  !WRITE(Message,*)  Conductivity(1,1), Conductivity(1,2)
+  !CALL Info('getEpikotemFbnetk', Message, Level = 5)
+END SUBROUTINE getEpikotemFbnetk
+
+SUBROUTINE getFbnetVolumeFraction( model, n, dummyArgument, volumeFraction )
+  ! modules needed
+  USE DefUtils
+  USE CompUtils
+ 
+  IMPLICIT None
+ 
+  ! variables in function header
+  TYPE(Model_t) :: model
+  INTEGER :: n
+  REAL(KIND=dp) :: dummyArgument
+ 
+  ! variables needed inside function
+  REAL(KIND=dp) ::  volumeFraction
+  TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
+
+  TYPE(Valuelist_t), POINTER :: Material, BodyParams
+  TYPE(Element_t), POINTER :: Element
+  Logical :: FOUND
+  
+  Element => GetCurrentElement()
+  CircuitVariableBody => Model % Bodies (Element % BodyId)
+  BodyParams => CircuitVariableBody % Values
+  IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('getFbnetVolumeFraction', 'Component Parameters not found!')
+  
+  volumeFraction = GetConstReal(BodyParams, 'Volume Fraction', Found)
+  IF (.NOT. FOUND) CALL Fatal('getFbnetVolumeFraction', 'Fbnet Volume Fraction not found in Component section')
+ 
+END SUBROUTINE getFbnetVolumeFraction
+
+
+SUBROUTINE getInsulationVolumeFraction( model, n, dummyArgument, volumeFraction )
+  ! modules needed
+  USE DefUtils
+  USE CompUtils
+ 
+  IMPLICIT None
+ 
+  ! variables in function header
+  TYPE(Model_t) :: model
+  INTEGER :: n
+  REAL(KIND=dp) :: dummyArgument
+ 
+  ! variables needed inside function
+  REAL(KIND=dp) ::  volumeFraction
+  TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
+
+  TYPE(Valuelist_t), POINTER :: Material, ComponentParams
+  TYPE(Element_t), POINTER :: Element
+  Logical :: FOUND
+  
+  Material => GetMaterial()
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getInsulationVolumeFraction', 'Material not found')
+  
+  Element => GetCurrentElement()
+  ComponentParams => GetComponentParams(Element)
+  IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('getInsulationVolumeFraction', 'Component Parameters not found!')
+  
+  volumeFraction = GetConstReal(ComponentParams, 'Insulation Volume Fraction', Found)
+  IF (.NOT. FOUND) CALL Fatal('getInsulationVolumeFraction', 'Insulation Volume Fraction not found in Component section')
+ 
+END SUBROUTINE getInsulationVolumeFraction
+
+SUBROUTINE getHeatExpCoeffComposite( model, n, dummyArgument, Coefficient )
+  ! modules needed
+  USE DefUtils
+  USE CompUtils
+ 
+  IMPLICIT None
+ 
+  ! variables in function header
+  TYPE(Model_t) :: model
+  INTEGER :: n
+  REAL(KIND=dp) :: dummyArgument
+ 
+  ! variables needed inside function
+  REAL(KIND=dp) ::  Coefficient(:)
+  TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
+  REAL(KIND=dp) :: heatExpCoeff1, heatExpCoeff2, volumeFraction1, volumeFraction2
+  REAL(KIND=dp) :: E1, E2, div
+
+  TYPE(Valuelist_t), POINTER :: Material, ComponentParams
+  TYPE(Element_t), POINTER :: Element
+  Logical :: FOUND
+  
+  Material => GetMaterial()
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getHeatExpCoeffComposite', 'Material not found')
+  
+  heatExpCoeff1 = GetConstReal(Material, 'Heat Expansion Coefficient Material 1', Found)
+  IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Heat Expansion Coefficient not found in Material section')
+  
+  heatExpCoeff2 = GetConstReal(Material, 'Heat Expansion Coefficient Material 2', Found)
+  IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Heat Expansion Coefficient not found in Material section')
+  
+  volumeFraction2 = GetConstReal(Material, 'Volume Fraction Material 2', Found)
+  IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Volume Fraction Material 2 not found in Material section')
+  
+  volumeFraction1 = 1.0 - volumeFraction2
+  
+  E1 = GetConstReal(Material, 'Youngs Modulus Material 1', Found)
+  IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Youngs Modulus Material 1 not found in Material section')
+  
+  E2 = GetConstReal(Material, 'Youngs Modulus Material 2', Found)
+  IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Youngs Modulus Material 2 not found in Material section')
+  
+  div = E1*volumeFraction1 + E2*volumeFraction2
+  Coefficient(1) = (E1*heatExpCoeff1*volumeFraction1 + E2*heatExpCoeff2*volumeFraction2)/div
+  Coefficient(2) = (volumeFraction1 * heatExpCoeff1) + (volumeFraction2 * heatExpCoeff2)
+  coefficient(3) = Coefficient(1)
+END SUBROUTINE getHeatExpCoeffComposite
