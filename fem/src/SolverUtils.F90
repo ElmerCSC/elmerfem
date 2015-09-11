@@ -1724,7 +1724,7 @@ CONTAINS
      LOGICAL :: ConservativeAdd, ConservativeRemove, &
          DoAdd, DoRemove, DirectionActive, Rotated, FlatProjector, PlaneProjector, &
          RotationalProjector, FirstTime = .TRUE., &
-         RotatedContact, StickContact, TieContact, FrictionContact, SlipContact, &
+         AnyRotatedContact, ThisRotatedContact, StickContact, TieContact, FrictionContact, SlipContact, &
          CalculateVelocity, NodalNormal, ResidualMode, AddDiag, SkipFriction, DoIt
      TYPE(MortarBC_t), POINTER :: MortarBC
      TYPE(Matrix_t), POINTER :: Projector, DualProjector
@@ -1740,8 +1740,8 @@ CONTAINS
      VarName = GetVarName( Var ) 
      Mesh => Solver % Mesh
 
-     ! Is the boundary rotated or not
-     RotatedContact = ( NormalTangentialNOFNodes > 0 ) 
+     ! Is any boundary rotated or not
+     AnyRotatedContact = ( NormalTangentialNOFNodes > 0 ) 
 
      ! The variable to be constrained by the contact algorithm
      ! Here it is assumed to be some "displacement" i.e. a vector quantity
@@ -1841,14 +1841,16 @@ CONTAINS
        PlaneProjector = ListGetLogical( BC, 'Plane Projector',Found )
        RotationalProjector = ListGetLogical( BC, 'Rotational Projector',Found ) .OR. &
            ListGetLogical( BC, 'Cylindrical Projector',Found )
-       RotatedContact = ListGetLogical( BC,'Normal-Tangential '//TRIM(VarName),Found)
+
+       ! Is the current boundary rotated or not
+       ThisRotatedContact = ListGetLogical( BC,'Normal-Tangential '//TRIM(VarName),Found)
 
        IF( FlatProjector ) THEN
          ActiveDirection = ListGetInteger( BC, 'Flat Projector Coordinate',Found )
          IF( .NOT. Found ) ActiveDirection = dofs       
        ELSE IF( PlaneProjector ) THEN
          pNormal => ListGetConstRealArray( BC,'Plane Projector Normal',Found)
-         IF( RotatedContact ) THEN
+         IF( ThisRotatedContact ) THEN
            ActiveDirection = 1
          ELSE
            ActiveDirection = 1
@@ -1861,7 +1863,7 @@ CONTAINS
          END IF
        ELSE IF( RotationalProjector ) THEN
          ActiveDirection = 1
-         IF( .NOT. RotatedContact ) THEN
+         IF( .NOT. ThisRotatedContact ) THEN
            CALL Warn('DetermineContact','Rotational projector may not work without N-T coordinates')
          END IF
        ELSE
@@ -1883,7 +1885,7 @@ CONTAINS
       
        ! If we have N-T system then the mortar condition for the master side
        ! should have reverse sign as both normal displacement diminish the gap.
-       IF( RotatedContact ) THEN
+       IF( ThisRotatedContact ) THEN
          IF( master_ind > 0 ) THEN
            IF( .NOT. ListGetLogical( MasterBC, &
                'Normal-Tangential '//TRIM(VarName),Found) ) THEN
@@ -2052,7 +2054,7 @@ CONTAINS
      
      ! Use N-T coordinate system for the initial guess
      ! This is mandatory if using the residual mode linear solvers 
-     IF( RotatedContact ) THEN
+     IF( AnyRotatedContact ) THEN
        DEALLOCATE( RotatedField ) 
      END IF
      
@@ -2070,7 +2072,7 @@ CONTAINS
        REAL(KIND=dp) :: RotVec(3)
        INTEGER :: i,j,k,m
 
-       IF( .NOT. RotatedContact ) RETURN
+       IF( .NOT. AnyRotatedContact ) RETURN
 
        CALL Info('DetermineContact','Rotating displacement field',Level=8)
        ALLOCATE( RotatedField(Solver % Matrix % NumberOfRows ) )
@@ -2117,7 +2119,7 @@ CONTAINS
              'No Loads associated with variable: '//GetVarName(Var) )
        END IF
 
-       IF( RotatedContact ) THEN
+       IF( AnyRotatedContact ) THEN
          TempX => RotatedField 
        ELSE
          TempX => FieldValues
@@ -2487,7 +2489,7 @@ CONTAINS
          IF( TieContact .AND. .NOT. ResidualMode ) GOTO 200
 
 
-         IF( RotatedContact ) THEN
+         IF( ThisRotatedContact ) THEN
            Rotated = GetSolutionRotation(NTT, j )
            LocalNormal = NTT(:,1)
            LocalNormal0 = LocalNormal
@@ -2571,7 +2573,7 @@ CONTAINS
            ! Only compute the sum related to the active projector
            IF( SlaveNode(k) ) THEN
              wsum = wsum + coeff
-           ELSE IF( RotatedContact ) THEN
+           ELSE IF( ThisRotatedContact ) THEN
              CoeffSign = -1
            END IF
              
@@ -2587,7 +2589,7 @@ CONTAINS
 
            ! If nonliear analysis is used we may need to cancel the introduced gap due to numerical errors 
            IF( TieContact .AND. ResidualMode ) THEN
-             IF( RotatedContact ) THEN
+             IF( ThisRotatedContact ) THEN
                ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Disp )
                ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * Disp )
                IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * Disp )
@@ -2620,7 +2622,7 @@ CONTAINS
 
            ! DistN is used to give the distance that we need to move the original coordinates
            ! in the wanted direction in order to have contact.
-           IF( RotatedContact ) THEN
+           IF( ThisRotatedContact ) THEN
              ContactDist(1) = ContactDist(1) + coeff * SUM( LocalNormal * Coord )
            ELSE
              ContactDist(1) = ContactDist(1) + coeff * SUM( ContactNormal * Coord )
@@ -2632,7 +2634,7 @@ CONTAINS
              SlipCoord = -PrevDisp 
              IF( ResidualMode ) SlipCoord = SlipCoord + Disp 
 
-             IF( RotatedContact ) THEN
+             IF( ThisRotatedContact ) THEN
                ContactDist(2) = ContactDist(2) + coeff * SUM( LocalT1 * SlipCoord )
                IF( Dofs == 3) ContactDist(3) = ContactDist(3) + coeff * SUM( LocalT2 * SlipCoord )
              ELSE
@@ -2827,7 +2829,7 @@ CONTAINS
                NodalForce(l) = LoadValues(dofs*(k-1)+l)
              END DO
 
-             IF( RotatedContact ) THEN
+             IF( ThisRotatedContact ) THEN
                NormalForce = NodalForce(1)
              ELSE
                NormalForce = SUM( NodalForce * Normal ) 
@@ -3657,7 +3659,7 @@ CONTAINS
            ! There is no point of setting too small friction coefficient
            IF(ABS(Coeff) < 1.0d-10) CYCLE
 
-           IF( RotatedContact ) THEN
+           IF( ThisRotatedContact ) THEN
              Rotated = GetSolutionRotation(NTT, j )
              LocalNormal = NTT(:,1)
              LocalT1 = NTT(:,2)
