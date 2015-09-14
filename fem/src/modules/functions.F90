@@ -55,6 +55,47 @@ FUNCTION getAirViscosity( model, n, x ) RESULT(viscosity)
 
 END FUNCTION getAirViscosity
 
+FUNCTION getLinearMethod( model, n, x ) RESULT(temperature)
+  USE DefUtils
+  IMPLICIT None
+  TYPE(Model_t) :: model
+  INTEGER :: n
+  REAL(KIND=dp) :: temperature, x, x1, x2, t1, t2, k, b
+  
+  TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
+  TYPE(Valuelist_t), POINTER :: Material, BodyParams
+  TYPE(Element_t), POINTER :: Element
+  Logical :: FOUND
+  
+  Element => GetCurrentElement()
+  CircuitVariableBody => Model % Bodies (Element % BodyId)
+  BodyParams => CircuitVariableBody % Values
+  IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('getLinearMethod', 'Body Parameters not found!')
+  
+  x1 = GetConstReal(BodyParams, 'Temperature Limit Position 1', Found)
+  IF (.NOT. FOUND) CALL Fatal('getLinearMethod', 'Temperature Limit Position 1 not found in Body section!')
+  
+  x2 = GetConstReal(BodyParams, 'Temperature Limit Position 2', Found)
+  IF (.NOT. FOUND) CALL Fatal('getLinearMethod', 'Temperature Limit Position 2 not found in Body section!')
+  
+  t1 = GetConstReal(BodyParams, 'Initial Air Temperature', Found)
+  IF (.NOT. FOUND) CALL Fatal('getLinearMethod', 'Initial Air Temperature not found in Body section!')
+  
+  t2 = GetConstReal(BodyParams, 'Temperature', Found)
+  IF (.NOT. FOUND) CALL Fatal('getLinearMethod', 'Temperature not found in Body section!')
+  
+  IF (x < x1) THEN
+    temperature = t1
+  ELSEIF (x1 < x .AND. x < x2) THEN
+    k = (t2-t1)/(x2-x1)
+    b = t1 - k*x1
+    temperature = k*x + b
+  ELSE
+    temperature = t2
+  END IF
+  
+END FUNCTION getLinearMethod
+
 
 FUNCTION getTcondition( model, n, args ) RESULT(Condition)
   USE DefUtils
