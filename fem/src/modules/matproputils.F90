@@ -256,7 +256,6 @@ LOGICAL :: FOUND,loc_extra
 Material => GetMaterial()
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getHeatConductivityCopper', 'Material not found')
 
-
 !Copper data in K
 T = T + 273.0
 
@@ -270,9 +269,7 @@ data_x = (/100,150,200,250,273,300,350,400,500,600,700,800,900,1000,1100,1200,13
 size_x = SIZE(data_x)
 size_y = SIZE(data_y)
 
-
 CALL find_point_in_array(data_x,size_x,data_y,size_y,T,HeatCondTemp,HeatCondCoeff,loc_start, loc_extra)
-
 
 END FUNCTION getHeatConductivityCopper
 
@@ -538,7 +535,7 @@ SUBROUTINE getElasticModulusComposite( model, n, dummyArgument,ElasticModulus )
 
 
   Material => GetMaterial()
-  IF (.not. ASSOCIATED(Material)) CALL Fatal('getWindingk', 'Material not found') 
+  IF (.not. ASSOCIATED(Material)) CALL Fatal('getElasticModulusComposite', 'Material not found') 
   
   Em = GetConstReal(Material, 'Youngs Modulus Material 1', FOUND)
   IF (.NOT. FOUND) CALL Fatal('getElasticModulusComposite', 'Youngs Modulus for Material 1 not found')
@@ -614,12 +611,13 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
  
   ! variables in function header
   TYPE(Model_t) :: model
-  INTEGER :: n
+  INTEGER :: n, i
   REAL(KIND=dp) :: dummyArgument
  
   ! variables needed inside function
   REAL(KIND=dp) ::  Conductivity(:)
   TYPE(Bodyarray_t), POINTER :: CircuitVariableBody
+  REAL(KIND=dp) :: elementmc(Model%Mesh%MaxElementNodes)
   REAL(KIND=dp) :: ft, mc, it, ic, st, Ksi, Ktot
 
   TYPE(Valuelist_t), POINTER :: Material, ComponentParams
@@ -637,8 +635,13 @@ SUBROUTINE getWindingk( model, n, dummyArgument,Conductivity )
   
   st = GetConstReal(ComponentParams, 'Strand Thickness', FoundST)
   
-  mc = GetConstReal(Material, 'Material Heat Conductivity', Found)
+  elementmc = GetReal(Material, 'Material Heat Conductivity', Found)
   IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Material Heat Condictivity not found in Material section')
+  FOUND=.FALSE.
+  
+  CALL getElementNodeIndex(i, Element, n, Found)
+  IF (.NOT. FOUND) CALL Fatal('getWindingk', 'NodeIndex not found!')
+  mc = elementmc(i)
   
   it = GetConstReal(ComponentParams, 'Insulator Layer Thickness', Found)
   IF (.NOT. FOUND) CALL Fatal('getWindingk', 'Insulator Layer Thickness not found in Component section')
