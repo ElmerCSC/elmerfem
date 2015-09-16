@@ -10804,6 +10804,7 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
     TYPE(Variable_t), POINTER :: Var
     !------------------------------------------------------------------------------
     INTEGER :: i,n,k
+    LOGICAL :: PrecRecompute, Stat
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
 
@@ -10811,6 +10812,10 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
 
     DO i=1,Var % NumberOfConstraintModes
       CALL Info('SolveConstraintModesSystem','Solving for mode: '//TRIM(I2S(i)))
+
+      IF( i == 2 ) THEN
+        CALL ListAddLogical( Solver % Values,'No Precondition Recompute',.TRUE.)
+      END IF
 
       WHERE( Var % ConstraintModesIndeces == i ) StiffMatrix % Rhs = 1.0_dp      
 
@@ -10820,6 +10825,9 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
       WHERE( Var % ConstraintModesIndeces == i ) StiffMatrix % Rhs = 0.0_dp            
       Var % ConstraintModes(i,:) = Var % Values
     END DO
+
+    CALL ListAddLogical( Solver % Values,'No Precondition Recompute',.FALSE.)
+    
 !------------------------------------------------------------------------------
   END SUBROUTINE SolveConstraintModesSystem
 !------------------------------------------------------------------------------
