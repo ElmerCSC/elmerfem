@@ -469,7 +469,7 @@ CONTAINS
      END DO
 
 
-     IF( PRESENT( BulkMass ) ) THEN
+     IF( PRESENT( BulkMass ) .AND. ASSOCIATED( A % MassValues) ) THEN
        IF( BulkMass ) THEN
          n = SIZE( A % MassValues )
          IF( ASSOCIATED( A % BulkMassValues ) ) THEN
