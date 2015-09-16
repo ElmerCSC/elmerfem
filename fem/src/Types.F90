@@ -186,7 +186,7 @@ END INTERFACE
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
-		           BulkValues(:)=>NULL(), PrecValues(:)=>NULL()
+        BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), PrecValues(:)=>NULL()
 
 #ifdef HAVE_MUMPS
     TYPE(dmumps_struc), POINTER :: MumpsID => NULL() ! Global distributed Mumps

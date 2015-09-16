@@ -4284,7 +4284,7 @@ CONTAINS
        ! Prepare for retrieving the linear system at a later point of time with the attachment DOF rows 
        ! left as unmodified:
        !-------------------------------------------------------------------------------------------
-       CALL CopyBulkMatrix(A)       
+       CALL CopyBulkMatrix(A, BulkMass = .TRUE.)       
        CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
      END IF
 

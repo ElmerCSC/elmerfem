@@ -433,10 +433,11 @@ CONTAINS
 
 !> Create a copy of the linear system (Values,Rhs) to (BulkValues,BulkRhs).
 !------------------------------------------------------------------------------
-   SUBROUTINE CopyBulkMatrix( A )
+   SUBROUTINE CopyBulkMatrix( A, BulkMass )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      INTEGER :: i,n
+     LOGICAL, OPTIONAL :: BulkMass
      
      n = SIZE( A % Rhs )
      IF( ASSOCIATED( A % BulkRhs ) ) THEN
@@ -466,6 +467,28 @@ CONTAINS
      DO i=1,n
        A % BulkValues(i) = A % Values(i)
      END DO
+
+
+     IF( PRESENT( BulkMass ) ) THEN
+       IF( BulkMass ) THEN
+         n = SIZE( A % MassValues )
+         IF( ASSOCIATED( A % BulkMassValues ) ) THEN
+           IF( SIZE( A % BulkMassValues ) /= n ) THEN
+             DEALLOCATE( A % BulkMassValues ) 
+             A % BulkMassValues => NULL()
+           END IF
+         END IF
+         IF ( .NOT. ASSOCIATED( A % BulkMassValues ) ) THEN
+           ALLOCATE( A % BulkMassValues( n ) )
+         END IF
+         
+         DO i=1,n
+           A % BulkMassValues(i) = A % MassValues(i)
+         END DO         
+       END IF
+     END IF
+     
+
 
    END SUBROUTINE CopyBulkMatrix
 !------------------------------------------------------------------------------
