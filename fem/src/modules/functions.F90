@@ -45,7 +45,7 @@ FUNCTION getAirViscosity( model, n, x ) RESULT(viscosity)
   IF (.not. ASSOCIATED(Material)) CALL Fatal('getAirViscosity', 'Material not found')
   
   viscosityLowerLimit = GetConstReal(Material, 'Viscosity Lower Limit', Found)
-  IF (.NOT. FOUND) CALL Fatal('getHeatExpCoeffComposite', 'Viscosity Lower Limit not found in Material section')
+  IF (.NOT. FOUND) CALL Fatal('getAirViscosity', 'Viscosity Lower Limit not found in Material section')
   
   if (x > viscosityLowerLimit) then !( x > 0.40_dp ) then
     viscosity = 1e-3
