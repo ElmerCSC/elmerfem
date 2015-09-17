@@ -114,7 +114,7 @@ CONTAINS
     ProcName(j) = CHAR(0)
 
     q = 0
-    IF ( OutputPE/=0 ) THEN
+    IF ( OutputPE < 0 ) THEN
       q=1
     ELSE IF( PRESENT(Quiet) ) THEN
       IF ( Quiet ) q = 1
@@ -1214,6 +1214,7 @@ CONTAINS
               OPEN( 10,File='../SOLVER.KEYWORDS.byname',&
                   STATUS='UNKNOWN',POSITION='APPEND' )
               WRITE( 10,'(A,T40,A)') TRIM(Name),TRIM(str)
+              CLOSE(10)
 
               i = INDEX( str,':' )
               OPEN( 10,File='../SOLVER.KEYWORDS.bysection',&
@@ -1525,7 +1526,7 @@ CONTAINS
                  str(str_beg:str_beg) == '0' ) THEN
                  CALL ListAddLogical( List,Name,.FALSE. )
                ELSE 
-                 CALL Fatal('SectionContents','Problem reading logical keyword: '//TRIM(str(str_beg:)))
+                 CALL Fatal('SectionContents','Problem reading logical keyword: '//TRIM(Name)//': '//TRIM(str(str_beg:)))
                END IF
             END IF
             EXIT
@@ -1905,14 +1906,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Function to read the complete Elmer model: sif file and mesh files.
 !------------------------------------------------------------------------------
-  FUNCTION LoadModel( ModelName,BoundariesOnly,numprocs,mype ) RESULT( Model )
+  FUNCTION LoadModel( ModelName,BoundariesOnly,numprocs,mype,MeshIndex) RESULT( Model )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     CHARACTER(LEN=*) :: ModelName
     LOGICAL :: BoundariesOnly
 
-    INTEGER, OPTIONAL :: numprocs,mype
+    INTEGER, OPTIONAL :: numprocs,mype, MeshIndex
  
     TYPE(Model_t), POINTER :: Model
 
@@ -1920,7 +1921,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh
     INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
-    LOGICAL :: stat, single, MeshGrading, NewLoadMesh
+    LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
     INTEGER(KIND=AddrInt) :: InitProc
     INTEGER, TARGET :: Def_Dofs(10,6)
@@ -2026,6 +2027,9 @@ CONTAINS
     ! Check the mesh 
     !--------------------------------------------------------
     Name = ListGetString( Model % Simulation, 'Mesh', GotIt )
+    IF(PRESENT(MeshIndex)) THEN
+      IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+    END IF
 
     OneMeshName = .FALSE.
     IF ( GotIt ) THEN
@@ -2056,29 +2060,37 @@ CONTAINS
          MeshDir = "." // CHAR(0)
       END IF
       MeshName(i:i) = CHAR(0)
+    ELSE
+      IF(PRESENT(MeshIndex)) THEN
+        IF(MeshIndex>0) MeshName = MeshName(1:LEN_TRIM(MeshName)-1) // TRIM(I2S(MeshIndex))//CHAR(0)
+      END IF
     END IF
 
     NULLIFY( Model % Meshes )
     IF ( MeshDir(1:1) /= ' ' ) THEN
       ! @TODO: Don't forget funny define
       CALL ResetTimer('LoadMesh') 
-      NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) 
-      IF( .NOT. GotIt ) NewLoadMesh = .TRUE.
-      IF( NewLoadMesh ) THEN
-        Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs )
-      ELSE
-        Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs(1,:) )
+
+      Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+          BoundariesOnly, numprocs, mype, Def_Dofs )
+      IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
+        CALL FreeModel(Model)
+        Model => NULL()
+        RETURN
       END IF
 
       CALL CheckTimer('LoadMesh',Level=5,Delete=.TRUE.)
 
       CALL SetCoordinateSystem( Model )
 
+
       MeshLevels = ListGetInteger( Model % Simulation, 'Mesh Levels', GotIt )
       IF ( .NOT. GotIt ) MeshLevels=1
 
+      IF( MeshLevels > 1 ) THEN
+        CALL Info('LoadModel','Creating hierarchy of meshes by mesh multiplication: '&
+            //TRIM(I2S(MeshLevels)))
+      END IF
       MeshKeep = ListGetInteger( Model % Simulation, 'Mesh keep',  GotIt )
       IF ( .NOT. GotIt ) MeshKeep=MeshLevels
 
@@ -2160,6 +2172,9 @@ CONTAINS
 
     DO s=1,Model % NumberOfSolvers
       Name = ListGetString( Model % Solvers(s) % Values, 'Mesh', GotIt )
+      IF(PRESENT(MeshIndex)) THEN
+        IF ( MeshIndex>0 )Name = TRIM(Name)//TRIM(I2S(MeshIndex))
+      END IF
 
       IF( GotIt ) THEN
         WRITE(Message,'(A,I0)') 'Loading solver specific mesh > '//TRIM(Name)// ' < for solver ',s
@@ -2238,24 +2253,12 @@ CONTAINS
           END DO
         END DO
 
-        NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt)
-        IF(.NOT. GotIt) NewLoadMesh = .TRUE.
         IF ( Single ) THEN
-          IF( NewLoadMesh ) THEN
-            Model % Solvers(s) % Mesh => &
+          Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
-          ELSE
-            Model % Solvers(s) % Mesh => &
-              LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs(1,:) )
-          END IF
         ELSE
-          IF( NewLoadMesh ) THEN
-            Model % Solvers(s) % Mesh => &
+          Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs )
-          ELSE
-            Model % Solvers(s) % Mesh => &
-              LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs(1,:) )
-          END IF
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 
@@ -2348,6 +2351,7 @@ CONTAINS
        CALL MeshStabParams( Mesh )
        Mesh => Mesh % Next
     END DO
+
 !------------------------------------------------------------------------------
 
   CONTAINS
@@ -2475,6 +2479,17 @@ CONTAINS
       ! For debugging it may be usefull to show several.
       MaxOutputPE = ListGetInteger( CurrentModel % Simulation, &
           'Max Output Partition', GotIt )    
+      
+      MinOutputPE = ListGetInteger( CurrentModel % Simulation, &
+          'Min Output Partition', GotIt )    
+      
+      IF( ParEnv % MyPe >= MinOutputPE .AND. &
+          ParEnv % MyPe <= MaxOutputPE ) THEN 
+        OutputPE = ParEnv % MyPE
+      ELSE
+        OutputPE = -1
+      END IF
+  
 
     END SUBROUTINE InitializeOutputLevel
 !------------------------------------------------------------------------------
@@ -2490,21 +2505,31 @@ CONTAINS
 
     TYPE(Model_t), POINTER :: Model 
     TYPE(ValueList_t), POINTER :: List, ListB
-    INTEGER :: i,j
+    INTEGER :: i,j,k
     LOGICAL :: Found, Flag
-
+    
+    CALL Info('CompleteModelKeywords','Completing default keywords for master sides',Level=12)
 
     Model => CurrentModel 
 
     DO i=1,Model % NumberOfBCs
       List => Model % BCs(i) % Values
       j = ListGetInteger( List,'Mortar BC',Found )
-      IF( j == 0 ) CYCLE
+      IF(j==0) j = ListGetInteger( List,'Contact BC',Found )
+      IF(j==0) CYCLE
+
+      IF( j > Model % NumberOfBCs ) CYCLE
+
       ListB => Model % BCs(j) % Values
+      IF(.NOT. ASSOCIATED( ListB ) ) CYCLE
 
       CALL ListCompareAndCopy( List, ListB,'Mass Consistent Normals',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Mass Consistent Normals < to BC '//TRIM(I2S(j)),Level=10)
+          'Added > Mass Consistent Normals < to master BC '//TRIM(I2S(j)),Level=10)
+
+      CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Displacement',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Normal-Tangential Displacement < to master BC '//TRIM(I2S(j)),Level=10)
     END DO
 
 

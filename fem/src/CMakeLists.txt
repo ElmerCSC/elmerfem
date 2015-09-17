@@ -119,9 +119,9 @@ SET_TARGET_PROPERTIES(elmersolver
                       PROPERTIES LINKER_LANGUAGE Fortran)
 
 # ElmerSolver libraries 
-SET(ELMERSOLVER_LIBRARIES elmersolver matc umfpack 
+SET(ELMERSOLVER_LIBRARIES matc umfpack 
                           amd fhuti binio arpack
-  	                  ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
+                          ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
 
 IF(HAVE_EIO)
@@ -147,6 +147,7 @@ IF(WITH_MPI)
 
   # Add parpack and possibly others
   IF(Mumps_LIBRARIES)
+    INCLUDE_DIRECTORIES(${Mumps_INCLUDE_DIR})
     LIST(APPEND ELMERSOLVER_LIBRARIES ${Mumps_LIBRARIES})
   ENDIF()	
   IF(Hypre_LIBRARIES)

@@ -233,7 +233,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
 ! Sea level for that time
 !-------------------------
      
-      Zsl = GetConstReal( ParentMaterial, 'Sea level', GotIt )
+      Zsl = GetCReal( ParentMaterial, 'Sea level', GotIt )
       IF (.NOT.GotIt) THEN
          WRITE(Message,'(A)') 'Variable Sea level not found. &
               &Setting to 0.0'

@@ -188,10 +188,11 @@ CONTAINS
           CALL Info('GMGSolve', Message, Level=12 )
        ELSE IF ( Level <= 1 ) THEN
 
-          CALL ListAddLogical( Params,'Linear System Free Factorization', .FALSE. )
-          CALL ListAddLogical( Params,'Linear System Refactorize', NewLinearSystem )
 
           CALL ListPushNamespace('mglowest:')
+
+          CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
+          CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', NewLinearSystem )
 
           LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
           IF ( .NOT. Found ) THEN
@@ -924,14 +925,6 @@ CONTAINS
           IF ( PRESENT( NewSystem ) ) THEN
              NewLinearSystem = NewLinearSystem .AND. NewSystem
           END IF
-       ELSE IF ( Level <= 1 ) THEN
-          CALL ListAddLogical( Params,'Linear System Free Factorization', .FALSE. )
-          IF ( NewLinearSystem ) THEN
-            CALL ListAddLogical( Params,'Linear System Refactorize', .TRUE. )
-          ELSE
-            CALL ListAddLogical( Params,'Linear System Refactorize', .FALSE. )
-          END IF
-          NewLinearSystem = .FALSE.
        END IF
 
 !---------------------------------------------------------------------
@@ -941,6 +934,14 @@ CONTAINS
        IF ( Level <= 1 ) THEN
 
           CALL ListPushNamespace('mglowest:')
+
+          CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
+          IF ( NewLinearSystem ) THEN
+            CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', .TRUE. )
+          ELSE
+            CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', .FALSE. )
+          END IF
+          NewLinearSystem = .FALSE.
 
           LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
           IF ( .NOT. Found ) THEN

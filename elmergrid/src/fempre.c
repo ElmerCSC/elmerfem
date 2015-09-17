@@ -100,6 +100,7 @@ static void Instructions()
   printf("17) .msh      : Nastran format\n");
   printf("18) .msh      : CGsim format\n");
   printf("19) .geo      : Geo format\n");
+  printf("20) .tra      : Cedrat Flux format\n");
 #endif 
 
   printf("\nThe second parameter defines the output file format:\n");
@@ -511,6 +512,30 @@ int main(int argc, char *argv[])
     nomeshes++;
     break;
 
+  case 20:
+    boundaries[nofile] = (struct BoundaryType*)
+      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    for(i=0;i<MAXBOUNDARIES;i++) {
+      boundaries[nofile][i].created = FALSE; 
+      boundaries[nofile][i].nosides = 0;
+    }
+    if (LoadFluxMesh(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
+    nomeshes++;
+    break;
+
+  case 21:
+    boundaries[nofile] = (struct BoundaryType*)
+      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    for(i=0;i<MAXBOUNDARIES;i++) {
+      boundaries[nofile][i].created = FALSE; 
+      boundaries[nofile][i].nosides = 0;
+    }
+    if (LoadFluxMesh3D(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
+    nomeshes++;
+    break;
+
   default:
     Instructions();
     Goodbye();
@@ -709,8 +734,8 @@ int main(int argc, char *argv[])
   if(eg.clone[0] || eg.clone[1] || eg.clone[2]) {
     for(k=0;k<nomeshes;k++) {
       CloneMeshes(&data[k],boundaries[k],eg.clone,eg.clonesize,FALSE,info);
-      mergeeps = fabs(eg.clonesize[0]+eg.clonesize[1]+eg.clonesize[2]) * 1.0e-8;
-      MergeElements(&data[k],boundaries[k],eg.order,eg.corder,mergeeps,TRUE,TRUE);
+      /* mergeeps = fabs(eg.clonesize[0]+eg.clonesize[1]+eg.clonesize[2]) * 1.0e-8;
+	 MergeElements(&data[k],boundaries[k],eg.order,eg.corder,mergeeps,TRUE,TRUE); */
     }
   }
 

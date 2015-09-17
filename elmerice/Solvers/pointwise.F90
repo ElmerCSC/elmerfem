@@ -276,7 +276,7 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
 
         MaskName(NoVariables) = &
              ListGetString( Solver % Values, TRIM(Name) // ' Mask', Found)
-        PRINT *, 
+        
         IF (.NOT.Found) THEN
            
            WRITE(Message,'(A,A,A)')&

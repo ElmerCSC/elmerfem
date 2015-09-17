@@ -156,7 +156,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
             rhow = 1.03225e-18_dp
      End if
 
-     sealevel = GetConstReal( Model % Constants, 'Sea Level', Found )
+     sealevel = GetCReal( Model % Constants, 'Sea Level', Found )
      If (.NOT.Found) Then
             WRITE(Message,'(A)') 'Constant >Sea Level< not found. &
                    &Setting to 0.0'

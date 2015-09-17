@@ -1559,13 +1559,15 @@ RETURN
     INTEGER :: Dofs
     !---------------------------------------------------------
     INTEGER i,j,k,l,m,n,dim,NoPartitions,NoParticles,part, &
-        ierr, status(MPI_STATUS_SIZE), nReceived 
+        ierr, status(MPI_STATUS_SIZE), nReceived, nSent, nerr
     INTEGER, ALLOCATABLE :: RecvParts(:), SentParts(:), Requests(:)
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp), ALLOCATABLE :: SentReal(:),RecvReal(:)
     INTEGER(KIND=dp), ALLOCATABLE :: SentInt(:),RecvInt(:)
     !---------------------------------------------------------
     
+    CALL Info('ParticleAdvectParallel','Returning particle info to their initiating partition',Level=15)
+
     nReceived = 0
     IF( ParEnv% PEs == 1 ) RETURN
     
@@ -1601,39 +1603,64 @@ RETURN
         Requests(NoPartitions))
     SentParts = 0
     RecvParts = 0
+    Requests = 0
 
+    nerr = 0
     DO i=1,Particles % NumberOfParticles
       Part = Particles % Partition(i)
       IF( Part-1 == ParEnv % MyPe ) CYCLE
+      IF( Part < 1 .OR. Part > ParEnv % PEs ) THEN
+        nerr = nerr + 1
+        CYCLE
+      END IF
       SentParts(Part) = SentParts(Part) + 1
     END DO
+    IF( nerr > 0 ) THEN
+      CALL Info('ParticleAdvectParallel','Invalid partition in particles: '//TRIM(I2S(nerr)))
+    END IF
     
     n = SUM( SentParts )
-    CALL Info('ParticleAdvectParallel','Particles to be sent: '//TRIM(I2S(n)),Level=12)
+    CALL Info('ParticleAdvectParallel','Local particles to be sent: '//TRIM(I2S(n)),Level=12)
+    
+    CALL MPI_ALLREDUCE( n, nSent, 1, MPI_INTEGER, &
+        MPI_SUM, MPI_COMM_WORLD, ierr )
+
+    IF( nSent > 0 ) THEN
+      CALL Info('ParticleAdvectParallel','Global particles to be sent: '&
+          //TRIM(I2S(nSent)),Level=12)
+    ELSE
+      DEALLOCATE(SentParts, RecvParts, Requests )
+      CALL Info('ParticleAdvectParallel','Nothing to do in parallel!',Level=15)
+      RETURN
+    END IF
 
     ! Receive interface sizes:
     !--------------------------
     DO i=1,NoPartitions
+      IF( i-1 == ParEnv % MyPe ) CYCLE
       CALL MPI_iRECV( RecvParts(i), 1, MPI_INTEGER, i-1, &
           1000, MPI_COMM_WORLD, requests(i), ierr )
     END DO
     
     DO i=1,NoPartitions
+      IF( i-1 == ParEnv % MyPe ) CYCLE
       CALL MPI_BSEND( SentParts(i), 1, MPI_INTEGER, i-1, &
           1000, MPI_COMM_WORLD, ierr )
     END DO
     CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
+
     
     n = SUM(RecvParts)
     CALL Info('ParticleAdvectParallel','Particles to be recieved: '//TRIM(I2S(n)),Level=12)
 
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, MPI_COMM_WORLD, ierr )
+
     IF ( nReceived==0 ) THEN
       DEALLOCATE(RecvParts, SentParts, Requests )
       RETURN
     END IF
-    
+
     CALL Info('ParticleAdvectParallel','Total number of particles to be recieved: '&
         //TRIM(I2S(nReceived)),Level=12)    
 
@@ -1648,16 +1675,22 @@ RETURN
     !--------------------------------------------------------------------
     n = MAXVAL( SentParts )
     ALLOCATE( SentReal(n), SentInt(n) )
+    CALL Info('ParticleAdvectParallel','Allocating sent buffer of size: '&
+        //TRIM(I2S(n)),Level=18)
 
     n = MAXVAL( RecvParts ) 
     ALLOCATE( RecvReal(n), RecvInt(n) )
-
+    CALL Info('ParticleAdvectParallel','Allocating recieve buffer of size: '&
+        //TRIM(I2S(n)),Level=18)
    
     ! Send particles:
     ! ---------------
     CALL Info('ParticleAdvectParallel','Now sending field',Level=14)
+
     DO j=1,NoPartitions
-      
+
+      IF( j-1 == ParEnv % MyPe ) CYCLE
+
       IF( SentParts(j) == 0 ) CYCLE
 
       m = 0
@@ -1671,7 +1704,7 @@ RETURN
       
       CALL MPI_BSEND( SentInt, m, MPI_INTEGER, j-1, &
           1001, MPI_COMM_WORLD, ierr )
-     
+
       CALL MPI_BSEND( SentReal, m, MPI_DOUBLE_PRECISION, j-1, &
           1002, MPI_COMM_WORLD, ierr )
     END DO
@@ -1680,7 +1713,11 @@ RETURN
     ! Recv particles:
     ! ---------------   
     CALL Info('ParticleAdvectParallel','Now recieving field',Level=14)
+
+    nerr = 0 
     DO j=1,NoPartitions
+
+      IF( j-1 == ParEnv % MyPe ) CYCLE
 
       m = RecvParts(j)
       IF ( m == 0 ) CYCLE
@@ -1693,14 +1730,23 @@ RETURN
       
       DO l=1,m
         k = RecvInt(l)
+        IF( k < 0 .OR. k > SIZE( RecvField ) ) THEN
+          nerr = nerr + 1
+          CYCLE
+        END IF
         RecvField(k) = RecvReal(l)
       END DO
     END DO
         
+    IF( nerr > 0 ) THEN
+      CALL Info('ParticleAdvectParallel','Invalid recieved index in particles: '//TRIM(I2S(nerr)))
+    END IF
+
+
     CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
 
     DEALLOCATE(SentParts, RecvParts, Requests, SentInt, SentReal, RecvInt, RecvReal )
-   
+
     CALL Info('ParticleAdvectParallel','Particle field communication done',Level=14)
 
   END SUBROUTINE ParticleAdvectParallel

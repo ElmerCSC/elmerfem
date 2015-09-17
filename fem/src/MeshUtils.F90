@@ -172,6 +172,8 @@ CONTAINS
      Mesh % NumberOfBoundaryElements = 0
      Mesh % DiscontMesh = .FALSE.
 
+     Mesh % InvPerm => NULL()
+
      Mesh % MaxFaceDOFs = 0
      Mesh % MaxEdgeDOFs = 0
      Mesh % MaxBDOFs = 0
@@ -313,771 +315,68 @@ CONTAINS
 END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
-!------------------------------------------------------------------------------
-!> Function to load mesh from disk.
-!------------------------------------------------------------------------------
-#ifdef HAVE_EIO
-  FUNCTION LoadMesh( Model, MeshDirPar, MeshNamePar,&
-    BoundariesOnly, NumProcs,MyPE, Def_Dofs ) RESULT( Mesh )
-!------------------------------------------------------------------------------
-    USE PElementMaps, ONLY : GetRefPElementNodes
 
-    IMPLICIT NONE
+  SUBROUTINE MarkHaloNodes( Mesh, HaloNode, FoundHaloNodes )
 
-    CHARACTER(LEN=*) :: MeshDirPar,MeshNamePar
-    LOGICAL :: BoundariesOnly
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL, POINTER :: HaloNode(:)
+    LOGICAL :: FoundHaloNodes
 
-    INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:)
+    INTEGER :: n,t
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: Indexes(:)
+    LOGICAL :: AllocDone
 
-    TYPE(Mesh_t),  POINTER :: Mesh
-    TYPE(Model_t) :: Model
-
-    !  INTERFACE
-    !    SUBROUTINE eio_open_mesh(dir,info) BIND(C, NAME="eio_open_mesh")
-    !      USE, INTRINSIC :: ISO_C_BINDING
-    !      INTEGER(C_INT) :: info
-    !      CHARACTER(C_CHAR) :: dir(*)
-    !    END SUBROUTINE eio_open_mesh
-    !  END INTERFACE
-!------------------------------------------------------------------------------
-
-    INTEGER :: eio_info
- 
-    REAL(KIND=dp), POINTER :: cCoord(:), coord(:,:), Wrk(:,:)
-    REAL(KIND=dp) :: CoordScale(3)
-
-    INTEGER :: i,j,k,l,m,code,tag,body,TYPE,nodes(MAX_ELEMENT_NODES), &
-             left,right,fields,npart,parts(1024),n0
-
-    INTEGER :: bodies,body_forces,body_equations,materials, &
-      boundary_conditions,initial_conditions, mesh_parameters,bndry, &
-       name,n,linsys,procs,CountByType(64),Types(64),TypeCount,partn,id
-
-    LOGICAL :: GotIt, NeedEdges, FoundDG, Found
-
-    INTEGER :: MinIndex,MaxIndex,MinEIndex,MaxEIndex, DefaultTargetBC, &
-        BDOFs, EDOFs,FDOFs,inDOFs(10,6), DGIndex, istat, mesh_dim, save_dim
-    INTEGER, POINTER :: NodeTags(:),CoordMap(:),BList(:)
-    INTEGER, POINTER :: LocalPerm(:),LocalEPerm(:), &
-           ElementTags(:), EdgeDOFs(:), FaceDOFs(:)
-
-
-    LOGICAL, POINTER :: iface(:)
-    TYPE(ValueList_t), POINTER :: Vlist
-
-    CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
-    TYPE(Nodes_t) :: ElementNodes
-    TYPE(Element_t), POINTER :: Element, Edge, Face, Parent
-
-    TYPE(Matrix_t), POINTER :: Projector
-
-    REAL(KIND=dp) :: pCoord(3)
-
-    TYPE(NeighbourList_t), POINTER :: nlist(:)
-
-    LOGICAL :: parallel
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName, str
-!------------------------------------------------------------------------------
-!   call spariterbarrier
-    Mesh => AllocateMesh()
-    parallel = .FALSE.
-
-    MeshDir(1:LEN_TRIM(MeshDirPar)+1)   = TRIM(MeshDirPar)  // CHAR(0)
-    MeshName(1:LEN_TRIM(MeshNamePar)+1) = TRIM(MeshNamePar) // CHAR(0)
-!------------------------------------------------------------------------------
-    IF ( PRESENT(numprocs) .AND. PRESENT(mype) ) THEN
-      IF ( numprocs > 1 ) THEN
-        CALL eio_init( eio_info )
-#ifdef  EIO_GET_TOTAL
-#define EIO_GET_TOTAL
-           CALL eio_open_mesh( MeshName,eio_info )
-           IF ( eio_info /= 0 ) THEN
-              WRITE( Message, * ) 'Unable to load mesh: ', TRIM( MeshNamePar )
-              CALL Fatal( 'LoadMesh', Message )
-           END IF
-
-           CALL eio_get_mesh_description( Mesh % Nodes % TotalNodes,i,j, &
-                    Typecount,Types,CountByType,eio_info )
-
-           CALL eio_close_mesh( eio_info )
-!          CALL eio_close_model( eio_info )
-        CALL eio_close( eio_info )
-#endif
-        parallel = .TRUE.
-        CALL eio_init_parallel( numprocs,mype+1,eio_info )
-      ELSE
-        CALL eio_init( eio_info )
-      END IF
-    ELSE
-      CALL eio_init( eio_info )
-    END IF
-
-!------------------------------------------------------------------------------
-!   Mesh
-!------------------------------------------------------------------------------
-    CALL eio_open_mesh( MeshName,eio_info )
-    IF ( eio_info /= 0 ) THEN
-       WRITE( Message, * ) 'Unable to load mesh: ', TRIM(MeshNamePar)
-       CALL Fatal( 'LoadMesh', Message )
-    END IF
-
-    CALL eio_get_mesh_description( Mesh % NumberOfNodes, &
-      Mesh % NumberOfBulkElements,Mesh % NumberOfBoundaryElements, &
-             Typecount,Types,CountByType,eio_info )
-    IF ( eio_info /= 0 ) THEN
-       WRITE( Message, * ) 'Unable to read mesh header from mesh: ', TRIM(MeshNamePar)
-       CALL Fatal( 'LoadMesh', Message )
-    END IF
-
-    IF( Mesh % NumberOfNodes == 0 ) THEN
-      CALL Fatal('LoadMesh','Mesh has zero nodes!')
-    END IF
-    IF( Mesh % NumberOfBulkElements == 0 ) THEN
-      CALL Fatal('LoadMesh','Mesh has zero bulk elements!')
-    END IF
-
-
-    Mesh % Nodes % NumberOfNodes = Mesh % NumberOfNodes    
-
-    IF ( BoundariesOnly ) Mesh % NumberOfBulkElements = 0
-
-    Mesh % MaxElementNodes = 0
-    Mesh % MaxElementDOFs  = 0
-    Mesh % MaxEdgeDOFs     = 0
-    Mesh % MaxFaceDOFs     = 0
-    Mesh % MaxBDOFs        = 0
-    DO i=1,TypeCount
-      Mesh % MaxElementNodes = MAX( &
-                 Mesh % MaxElementNodes,Types(i)-100*(Types(i)/100) )
-    END DO
-
-    CALL AllocateVector( Mesh % Nodes % x, Mesh % NumberOfNodes, 'LoadMesh' )
-    CALL AllocateVector( Mesh % Nodes % y, Mesh % NumberOfNodes, 'LoadMesh' )
-    CALL AllocateVector( Mesh % Nodes % z, Mesh % NumberOfNodes, 'LoadMesh' )
-    CALL AllocateVector( Mesh % Elements, Mesh % NumberOfBulkElements + &
-              Mesh % NumberOfBoundaryElements, 'LoadMesh' )
-!
-!------------------------------------------------------------------------------
-!    Mesh nodes
-!------------------------------------------------------------------------------
-    CALL AllocateVector( cCoord, 3*Mesh % NumberOfNodes, 'LoadMesh' )
-    CALL AllocateVector( NodeTags, Mesh % NumberOfNodes, 'LoadMesh' )
-
-    CALL eio_get_mesh_nodes( NodeTags,cCoord,eio_info )
-
-    CoordMap => ListGetIntegerArray( Model % Simulation, &
-             'Coordinate Mapping',GotIt )
-
-    IF ( GotIt ) THEN
-      IF ( SIZE( CoordMap ) /= 3 .OR. &
-          ALL( CoordMap /= 1) .OR. ALL( CoordMap /= 2 ) .OR. ALL( CoordMap /= 3 ) ) THEN
-        WRITE( Message, * ) 'Inconsistent Coordinate Mapping: ', CoordMap
-        CALL Error( 'LoadMesh', Message )
-        WRITE( Message, * ) 'Coordinate mapping should be a permutation of 1,2 and 3'
-        CALL Fatal( 'LoadMesh', Message )
-      END IF
-
-      Mesh % Nodes % x = cCoord(CoordMap(1):3*Mesh % NumberOfNodes:3)
-      Mesh % Nodes % y = cCoord(CoordMap(2):3*Mesh % NumberOfNodes:3)
-      Mesh % Nodes % z = cCoord(CoordMap(3):3*Mesh % NumberOfNodes:3)
-    ELSE
-      Mesh % Nodes % x = cCoord(1:3*Mesh % NumberOfNodes:3)
-      Mesh % Nodes % y = cCoord(2:3*Mesh % NumberOfNodes:3)
-      Mesh % Nodes % z = cCoord(3:3*Mesh % NumberOfNodes:3)
-    END IF
-
-    mesh_dim = 0
-    IF ( ANY( Mesh % Nodes % x /= Mesh % Nodes % x(1) ) ) mesh_dim = mesh_dim + 1
-    IF ( ANY( Mesh % Nodes % y /= Mesh % Nodes % y(1) ) ) mesh_dim = mesh_dim + 1
-    IF ( ANY( Mesh % Nodes % z /= Mesh % Nodes % z(1) ) ) mesh_dim = mesh_dim + 1
-    Mesh % MeshDim = mesh_dim
-
-    save_dim = Model % DIMENSION
-    IF ( Model % DIMENSION <= 0 ) Model % DIMENSION = mesh_dim
- 
-    DEALLOCATE( cCoord )
-
-    MinIndex = MINVAL( NodeTags )
-    MaxIndex = MAXVAL( NodeTags )
-
-    CALL AllocateVector( LocalPerm, MaxIndex-MinIndex+1, 'LoadMesh' )
-    LocalPerm = 0
-    DO i=1,Mesh % NumberOfNodes
-      LocalPerm(NodeTags(i) - MinIndex + 1) = i
-    END DO
-
-!-----------------------------------------------------------------------------
-! Scaling of coordinates
-
-    Wrk => ListGetConstRealArray( Model % Simulation,'Coordinate Scaling',GotIt )    
-    IF( GotIt ) THEN            
-      CoordScale = 1.0_dp
-      DO i=1,mesh_dim
-        j = MIN( i, SIZE(Wrk,1) )
-        CoordScale(i) = Wrk(j,1)
+    ! Check whether we need to skip some elements and nodes on the halo boundary 
+    ! We don't want to create additional nodes on the nodes that are on the halo only 
+    ! since they just would create further need for new halo...
+    FoundHaloNodes = .FALSE.
+    IF( ParEnv % PEs > 1 ) THEN
+      DO t = 1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(t)
+        IF( ParEnv % MyPe /= Element % PartIndex ) THEN
+          FoundHaloNodes = .TRUE.
+          EXIT
+        END IF
       END DO
-      WRITE(Message,'(A,3ES10.3)') 'Scaling coordinates:',CoordScale(1:mesh_dim)
-      CALL Info('LoadMesh',Message) 
-      Mesh % Nodes % x = CoordScale(1) * Mesh % Nodes % x
-      IF( mesh_dim > 1) Mesh % Nodes % y = CoordScale(2) * Mesh % Nodes % y
-      IF( mesh_dim > 2) Mesh % Nodes % z = CoordScale(3) * Mesh % Nodes % z
     END IF
 
-!-----------------------------------------------------------------------------
-!   Mesh elements
-!------------------------------------------------------------------------------
-    CALL AllocateVector( ElementTags, Mesh % NumberOfBulkElements+1, 'LoadMesh' )
 
-    EdgeDOFs => NULL()
-    CALL AllocateVector( EdgeDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
+    ! If we have halo check the truly active nodes
+    IF( FoundHaloNodes ) THEN
+      CALL Info('MarkHaloNodes',&
+          'Checking for nodes that are not really needed in bulk assembly',Level=12)
 
-    FaceDOFs => NULL()
-    CALL AllocateVector( FaceDOFs, Mesh % NumberOfBulkElements, 'LoadMesh' )
-
-    ElementTags = 0
-    DGIndex = 0
-    NeedEdges = .FALSE.
-
-   DO i=1,Mesh % NumberOfBulkElements+1
-       ! Clear indofs
-
-      inDOFs = 0
-      CALL eio_get_mesh_element_conns( ElementTags(i),partn,body, &
-                   TYPE, inDOFs, nodes, eio_info )
-      ! CALL eio_get_mesh_element_conns( ElementTags(i), body, &
-      !              TYPE, inDOFs, nodes, eio_info )
-
-      IF(inDOFs(1,6)>0) THEN
-        CALL Fatal('LoadMesh', 'Mesh defined p-degree obsolite, use "Element=p:n" instead.')
-      END IF
-
-      IF ( eio_info /= 0 ) EXIT
-
-      IF ( PRESENT(Def_Dofs) ) THEN
-        DO j=1,6
-          IF ( Indofs(1,j) <= 0 ) inDOFs(:,j)=Def_Dofs(j)
-        END DO
-      END IF
-
-      Element => Mesh % Elements(i)
-      Element % ElementIndex = i
-
-      Element % PartIndex = partn-1
-      IF ( Element % PartIndex < 0 ) Element % PartIndex=mype
-
-      NULLIFY( Element % TYPE )
-      NULLIFY( Element % BoundaryInfo )
-      Element % TYPE => GetElementType( TYPE )
-
-      IF ( ASSOCIATED(Element % TYPE) ) THEN
-
-        n = Element % TYPE % NumberOfNodes
-        CALL AllocateVector( Element % NodeIndexes, n )
-        DO j=1,n
-          Element % NodeIndexes(j) = LocalPerm(nodes(j) - MinIndex + 1)
-        END DO
-
-        Element % BodyId = body
-        DO j=1,Model % NumberOfBodies
-          BList => ListGetIntegerArray( Model % Bodies(j) % Values, &
-                       'Target Bodies', GotIt ) 
-          IF ( Gotit ) THEN
-            DO k=1,SIZE(BList)
-              IF ( body == Blist(k) ) Element % BodyId = j
-            END DO
-          END IF
-        END DO
-
-        id = Element % BodyId
-        
-        IF( id > Model % NumberOfBodies ) THEN
-          CALL Fatal('LoadMesh','Body id '//I2S(id)//' larger than the number of bodies in sif file!')
-        END IF
-
-        Vlist => Model % Bodies(id) % Values
-        j = ListGetInteger(Vlist,'Equation',gotIt)
-        IF( gotIt ) THEN
-          Vlist => Model % Equations(j) % Values
-          ElementDef0=ListGetString(Vlist,'Element',Found )
-          DO j=1,Model % NumberOfSolvers
-            IF (.NOT. Found) ElementDef0=ListGetString(Model % Solvers(j) % Values,'Element',GotIt)
-            ElementDef=ListGetString(Vlist,'Element{'//TRIM(i2s(j))//'}',GotIt)
-            IF ( GotIt ) THEN
-              CALL GetMaxDefs( Model, Mesh, Element, ElementDef, j, id, Indofs )
-            ELSE
-              CALL GetMaxDefs( Model, Mesh, Element, ElementDef0, j, id, Indofs )
-            END IF
-          END DO
-        END IF
-
-        IF ( inDOFs(1,1) /= 0 ) THEN
-          Element % NDOFs = n
-        ELSE
-          Element % NDOFs = 0
-        END IF
-
-        EdgeDOFs(i) = MAX(0,inDOFs(1,2))
-        FaceDOFs(i) = MAX(0,inDOFs(1,3))
-
-        IF ( PRESENT(Def_Dofs) ) THEN
-          IF ( Def_Dofs(4) == 0 ) inDOFs(1,4) = n
-        END IF
-
-        NULLIFY( Element % DGIndexes )
-        IF ( inDOFs(1,4)>0 ) THEN
-          CALL AllocateVector( Element % DGIndexes, inDOFs(1,4))
-          DO j=1,inDOFs(1,4)
-             DGIndex = DGIndex + 1
-             Element % DGIndexes(j) = DGIndex
-          END DO
-        ELSE
-          NULLIFY( Element % DGIndexes )
-        END IF
-        Element % DGDOFs = MAX(0,inDOFs(1,4))
-        NeedEdges = NeedEdges .OR. ANY( inDOFs(1,2:4)>0 )
-
-        NULLIFY( Element % EdgeIndexes )
-        NULLIFY( Element % FaceIndexes )
-        NULLIFY( Element % BubbleIndexes )
-
-        ! Check if given element is a p element
-        IF (inDOFs(1,6) > 0) THEN
-           CALL AllocatePDefinitions(Element)
-
-           NeedEdges = .TRUE.
-              
-           ! Calculate element bubble dofs and set element p
-           Element % PDefs % P = inDOFs(1,6)
-           IF ( inDOFs(1,5) > 0 ) THEN
-              Element % BDOFs = inDOFs(1,5)
-           ELSE
-              Element % BDOFs = getBubbleDOFs(Element, Element % PDefs % P)
-           END IF
-              
-           ! All elements in actual mesh are not edges
-           Element % PDefs % pyramidQuadEdge = .FALSE.
-           Element % PDefs % isEdge = .FALSE.
-
-           ! If element is of type tetrahedron and is a p element, 
-           ! do the Ainsworth & Coyle trick
-           IF (Element % TYPE % ElementCode == 504) CALL ConvertToACTetra(Element)
-              CALL GetRefPElementNodes( Element,  Element % TYPE % NodeU, &
-                   Element % TYPE % NodeV, Element % TYPE % NodeW )
-        ELSE 
-           ! Clear P element definitions and set manual bubbles
-           Element % PDefs => NULL()
-           Element % BDOFs = MAX(0,inDOFs(1,5))
-           ! WRITE (*,*) Element % BDOFs
-        END IF
-
-        Mesh % MaxElementNodes = MAX( &
-                 Mesh % MaxElementNodes,Element % TYPE % NumberOfNodes )
-
+      IF( .NOT. ASSOCIATED( HaloNode ) ) THEN
+        ALLOCATE( HaloNode( Mesh % NumberOfNodes ) )
+        AllocDone = .TRUE.
       ELSE
-        WRITE( Message, * ) 'Unknown element type ',TYPE,' ignoring element.'
-        CALL Warn( 'LoadMesh', Message )
-      END IF
-    END DO
-
-!------------------------------------------------------------------------------
-    MinEIndex = MINVAL( ElementTags(1:Mesh % NumberOfBulkElements) )
-    MaxEIndex = MAXVAL( ElementTags(1:Mesh % NumberOfBulkElements) )
-
-    CALL AllocateVector( LocalEPerm, MaxEIndex - MinEIndex + 1, 'LoadMesh' )
-    LocalEPerm = 0
-    DO i=1,Mesh % NumberOfBulkElements
-       LocalEPerm( ElementTags(i) - MinEIndex + 1 ) = i
-    END DO
-
-    i = LEN_TRIM(MeshNamePar)
-    DO WHILE(MeshNamePar(i:i)==CHAR(0))
-      i=i-1
-    END DO
-    CALL ReadElementPropertyFile( TRIM(MeshNamePar(1:i)) // &
-         '/mesh.elements.data', Mesh )
-
-    ALLOCATE( coord(3,Mesh % MaxElementNodes) )
-!------------------------------------------------------------------------------
-!            Mesh boundary elements
-!------------------------------------------------------------------------------
-    DO i=Mesh % NumberOfBulkElements + 1, &
-      Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements  + 1
-
-      CALL eio_get_mesh_bndry_element( tag, partn, bndry, left, &
-            right, TYPE, nodes, coord, eio_info )
-
-      IF ( eio_info /= 0 ) THEN
-         Mesh % NumberOfBoundaryElements = &
-              i - (Mesh % NumberOfBulkElements + 1)
-         EXIT
+        AllocDone = .FALSE.
       END IF
 
-      IF ( Left >= MinEIndex .AND. Left <= MaxEIndex ) THEN
-         Left  = LocalEPerm(Left - MinEIndex + 1)
-      ELSE IF ( Left > 0 ) THEN
-         WRITE( Message, * ) mype,'BOUNDARY PARENT out of range: ', Tag, Left
-         CALL Error( 'LoadMesh', Message )
-         Left = 0
-      END IF
-
-      IF ( Right >= MinEIndex .AND. Right <= MaxEIndex ) THEN
-         Right = LocalEPerm(Right - MinEIndex + 1)
-      ELSE IF ( Right > 0 ) THEN
-         WRITE( Message, * ) mype,'BOUNDARY PARENT out of range: ', Tag,Right
-         CALL Error( 'LoadMesh', Message )
-         Right = 0
-      END IF
-
-      Mesh %  Elements(i) % ElementIndex = i
-      NULLIFY(Mesh % Elements(i) % TYPE)
-      Mesh % Elements(i) % TYPE => GetElementType( TYPE )
-
-      Mesh % MaxElementNodes = MAX( &
-                 Mesh % MaxElementNodes,TYPE-100*(TYPE/100))
-
-      IF ( ASSOCIATED( Mesh % Elements(i) % TYPE ) ) THEN
-        n = Mesh % Elements(i) % TYPE % NumberOfNodes
-
-        ALLOCATE( Mesh % Elements(i) % BoundaryInfo, STAT=istat )
-        IF ( istat /= 0 ) &
-           CALL Fatal( 'LoadMesh', 'Unable to allocate mesh arrays.' )
-
-        Mesh % Elements(i) % BoundaryInfo % Constraint =  0
-
-        DO j=1,Model % NumberOfBoundaries
-          IF ( Model % BoundaryId(j) == bndry ) THEN
-            Mesh % Elements(i) % BoundaryInfo % Constraint = &
-              ListGetInteger( Model % Boundaries(j) % Values, &
-                 'Boundary Condition',GotIt, minv=1, maxv=Model % NumberOFBCs )
-            EXIT
-          END IF
-        END DO
-
-        IF ( partn>=1 ) THEN
-          Mesh % Elements(i) % PartIndex = partn-1
-        ELSE
-          Mesh % Elements(i) % PartIndex = mype
+      ! Node is a halo node if it is not needed by any prooper element
+      HaloNode = .TRUE.
+      DO t = 1, Mesh % NumberOfBulkElements     
+        Element => Mesh % Elements(t)
+        IF( ParEnv % MyPe == Element % PartIndex ) THEN
+          Indexes => Element % NodeIndexes
+          HaloNode( Indexes ) = .FALSE.
         END IF
-        Mesh % Elements(i) % BodyId = 0
+      END DO
 
-        DefaultTargetBC=0
-        DO j=1,Model % NumberOfBCs
-          IF(ListGetLogical( Model % BCs(j) % Values, &
-                  'Default Target', GotIt)) DefaultTargetBC=j
-              
-          BList => ListGetIntegerArray( Model % BCs(j) % Values, &
-                     'Target Boundaries', GotIt ) 
-          IF ( GotIt ) THEN
-            DO k=1,SIZE(BList)
-              IF ( BList(k) == bndry ) THEN
-                Mesh % Elements(i) % BoundaryInfo % Constraint = j
-                Mesh % Elements(i) % BodyId  = ListGetInteger( &
-                  Model % BCs(j) % Values, 'Body Id', Gotit, 1, Model % NumberOfBodies )
-                EXIT
-              END IF
-            END DO
-          END IF
-        END DO
+      n = COUNT( HaloNode ) 
+      FoundHaloNodes = ( n > 0 ) 
+      CALL Info('MarkHaloNodes','Number of passive nodes in the halo: '&
+          //TRIM(I2S(n)),Level=10)
 
-        j = Mesh % Elements(i) % BoundaryInfo % Constraint
-        IF((j<=0.OR.j>Model % NumberOfBCs).AND.DefaultTargetBC>0) THEN
-          Mesh % Elements(i) % BoundaryInfo % Constraint=DefaultTargetBC
-          Mesh % Elements(i) % BodyId  = ListGetInteger( &
-            Model % BCs(DefaultTargetBC) % Values, 'Body Id', &
-               Gotit, 1, Model % NumberOfBodies )
-        END IF
-        j = Mesh % Elements(i) % BoundaryInfo % Constraint
-
-        IF ( j > 0 .AND. j <= Model % NumberOfBCs ) &
-          Mesh % Elements(i) % BoundaryInfo % OutBody = &
-             ListGetInteger( Model % BCs(j) % Values, &
-                'Normal Target Body', GotIt, maxv=Model % NumberOFBodies ) 
-
-        CALL AllocateVector( Mesh % Elements(i) % NodeIndexes, n )
-
-        ! Set local to global mapping for boundary element
-        DO j=1,n
-          Mesh % Elements(i) % NodeIndexes(j) = LocalPerm(nodes(j) - MinIndex + 1)
-        END DO
-
-        Mesh % Elements(i) % EdgeIndexes => NULL()
-        Mesh % Elements(i) % FaceIndexes => NULL()
-
-        Mesh % Elements(i) % BoundaryInfo % Left => NULL()
-        IF ( Left >= 1 ) &
-          Mesh % Elements(i) % BoundaryInfo % Left => Mesh % Elements(left)
-
-        Mesh % Elements(i) % BoundaryInfo % Right => NULL()
-        IF ( Right >= 1 ) &
-          Mesh % Elements(i) % BoundaryInfo % Right => Mesh % Elements(right)
-
-        Mesh % Elements(i) % Boundaryinfo % GebhardtFactors => NULL()
-
-        Mesh % Elements(i) % NDOFs  = n
-        IF ( ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % Left) ) THEN
-           IF( Mesh % Elements(i) % BoundaryInfo % Left % NDOFs == 0 )  &
-              Mesh % Elements(i) % NDOFs = 0
-
-           IF ( Mesh % Elements(i) % TYPE % DIMENSION == 1 ) THEN
-              Mesh % Elements(i) % BDOFs = &
-                 EdgeDOFs(Mesh % Elements(i) % BoundaryInfo % Left % ElementIndex)
-           ELSE
-              Mesh % Elements(i) % BDOFs = &
-                 FaceDOFs(Mesh % Elements(i) % BoundaryInfo % Left % ElementIndex)
-           END IF
-        END IF
-
-        IF ( ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % Right) ) THEN
-           IF ( Mesh % Elements(i) % BoundaryInfo % Right % NDOFs == 0 )  &
-              Mesh % Elements(i) % NDOFs = 0
-
-           IF ( Mesh % Elements(i) % TYPE % DIMENSION == 1 ) THEN
-              Mesh % Elements(i) % BDOFs = &
-                  EdgeDOFs(Mesh % Elements(i) % BoundaryInfo % Right % ElementIndex)
-           ELSE
-              Mesh % Elements(i) % BDOFs = &
-                  FaceDOFs(Mesh % Elements(i) % BoundaryInfo % Right % ElementIndex)
-           END IF
-        END IF
-
-        Mesh % Elements(i) % DGDOFs = 0
-        Mesh % Elements(i) % PDefs => NULL()
-        Mesh % Elements(i) % DGIndexes => NULL()
-        Mesh % Elements(i) % EdgeIndexes => NULL()
-        Mesh % Elements(i) % FaceIndexes => NULL()
-        Mesh % Elements(i) % BubbleIndexes => NULL()
-      ELSE
-        WRITE( Message, * ) 'Unknown element type ',TYPE,' ignoring element.'
-        CALL Warn( 'LoadMesh', Message )
+      ! If there are no halo nodes and the allocation was done within this subroutine
+      ! then deallocate also. 
+      IF( .NOT. FoundHaloNodes .AND. AllocDone ) THEN
+        DEALLOCATE( HaloNode ) 
       END IF
-    END DO
-    IF ( Mesh % MaxElementDOFs <= 0 ) Mesh % MaxElementDOFs=Mesh % MaxElementNodes 
+    END IF
 
-    DEALLOCATE( Coord, LocalEPerm )
-    Model % FreeSurfaceNodes => NULL()
-    Model % BoundaryCurvatures => NULL()
-!------------------------------------------------------------------------------
-
-    IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh,EdgeDOFs,FaceDOFs)
-    CALL SetMeshMaxDOFs(Mesh)
-
-   IF ( ASSOCIATED(EdgeDOFs) ) DEALLOCATE(EdgeDOFs, FaceDOFs)
-
-   ! Reallocate coordinate arrays for iso-parametric p-elements:
-   ! -----------------------------------------------------------
-   n = Mesh % NumberOfNodes + &
-       Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
-       Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
-       Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
-
-   n0 = SIZE( Mesh % Nodes % x )
-   IF ( n > n0 ) THEN
-     cCoord => Mesh % Nodes % x
-     ALLOCATE( Mesh % Nodes % x(n) )
-     Mesh % Nodes % x(n0+1:n) = 0.0d0
-     Mesh % Nodes % x(1:n0) = cCoord
-     DEALLOCATE( cCoord )
-
-     cCoord => Mesh % Nodes % y
-     ALLOCATE( Mesh % Nodes % y(n) )
-     Mesh % Nodes % y(n0+1:n) = 0.0d0
-     Mesh % Nodes % y(1:n0) = cCoord
-     DEALLOCATE( cCoord )
- 
-     cCoord => Mesh % Nodes % z
-     ALLOCATE( Mesh % Nodes % z(n) )
-     Mesh % Nodes % z(n0+1:n) = 0.0d0
-     Mesh % Nodes % z(1:n0) = cCoord
-     DEALLOCATE( cCoord )
-   END IF
-
-   Mesh % ParallelInfo % NumberOfIfDOFs = 0
-   Mesh % ParallelInfo % GlobalDOFs => NodeTags
-
-   IF ( parallel ) THEN
-     DO i=1,Mesh % NumberOfBulkElements
-       Mesh % Elements(i) % GElementIndex = ElementTags(i)
-     END DO
-
-     ALLOCATE( Mesh % ParallelInfo % GlobalDOFs(n) )
-     Mesh % ParallelInfo % GlobalDOFs = 0
-     Mesh % ParallelInfo % GlobalDOFs(1:Mesh % NumberOfNodes) = NodeTags
-
-     ALLOCATE(Mesh % ParallelInfo % NeighbourList(n), STAT=istat)
-     IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate mesh arrays.')
-
-     DO i=1,n
-       NULLIFY( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
-     END DO
-
-     CALL AllocateVector( Mesh % ParallelInfo % INTERFACE, n, 'LoadMesh')
-     Mesh % ParallelInfo % INTERFACE = .FALSE.
-
-     CALL eio_get_part_description( fields,eio_info )
-     DO i=1,fields
-       CALL eio_get_part_node( tag,bndry,pCoord,npart,parts,eio_info )
-       IF ( eio_info /= 0 ) &
-          CALL Fatal( 'LoadMesh', 'Error in shared nodes definition.' )
-       k = LocalPerm( tag-MinIndex+1 )
-
-       Mesh % ParallelInfo % INTERFACE(k) = .TRUE.
-       CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(k) % Neighbours,npart)
-       Mesh % ParallelInfo % NeighbourList(k) % Neighbours = parts(1:npart) - 1
-
-       IF ( parts(1)-1 /= mype ) Mesh % ParallelInfo % NumberOfIfDOFs = &
-                 Mesh % ParallelInfo % NumberOfIfDOFs + 1
-     END DO
-
-     DO i=1,n
-       IF (.NOT.ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
-          CALL AllocateVector(Mesh % ParallelInfo % NeighbourList(i) % Neighbours,1)
-          Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = mype
-       END IF
-     END DO
- 
-     CALL SParFaceNumbering(Mesh)
-
-     DO i=1,Mesh % NumberOfFaces
-       Mesh % MaxFaceDOFs = MAX(Mesh % MaxFaceDOFs,Mesh % Faces(i) % BDOFs)
-     END DO
-
-     CALL SParEdgeNumbering(Mesh)
-     DO i=1,Mesh % NumberOfEdges
-       Mesh % MaxEdgeDOFs = MAX(Mesh % MaxEdgeDOFs,Mesh % Edges(i) % BDOFs)
-     END DO
-
-     DO i=1,Mesh % NumberOfBulkElements
-       Element => Mesh % Elements(i)
-
-       ! Set max element dofs here (because element size may have changed
-       ! when edges and faces have been set). This is the absolute worst case.
-       ! Element which has MaxElementDOFs may not even be present as a 
-       ! real element
-       Mesh % MaxElementDOFs = MAX( Mesh % MaxElementDOFs, &
-            Element % TYPE % NumberOfNodes + &
-            Element % TYPE % NumberOfEdges * Mesh % MaxEdgeDOFs + &
-            Element % TYPE % NumberOfFaces * Mesh % MaxFaceDOFs + &
-            Element % BDOFs, &
-            Element % DGDOFs )
-     END DO
-   END IF
-
-   ! Reallocate coordinate arrays for iso-parametric p-elements:
-   ! -----------------------------------------------------------
-   n = Mesh % NumberOfNodes + &
-       Mesh % MaxEdgeDOFs * Mesh % NumberOFEdges + &
-       Mesh % MaxFaceDOFs * Mesh % NumberOFFaces + &
-       Mesh % MaxBDOFs    * Mesh % NumberOFBulkElements
-
-
-   n0 = SIZE( Mesh % Nodes % x )
-   IF ( n > n0 ) THEN
-     cCoord => Mesh % Nodes % x
-     ALLOCATE( Mesh % Nodes % x(n) )
-     Mesh % Nodes % x(n0+1:n) = 0.0d0
-     Mesh % Nodes % x(1:n0) = cCoord
-     DEALLOCATE( cCoord )
-
-     cCoord => Mesh % Nodes % y
-     ALLOCATE( Mesh % Nodes % y(n) )
-     Mesh % Nodes % y(n0+1:n) = 0.0d0
-     Mesh % Nodes % y(1:n0) = cCoord
-     DEALLOCATE( cCoord )
-
-     cCoord => Mesh % Nodes % z
-     ALLOCATE( Mesh % Nodes % z(n) )
-     Mesh % Nodes % z(n0+1:n) = 0.0d0
-     Mesh % Nodes % z(1:n0) = cCoord
-     DEALLOCATE( cCoord )
-   END IF
-
-   DEALLOCATE( LocalPerm, ElementTags )
-   CALL eio_close_mesh( eio_info )
-   
-   CALL eio_close( eio_info )
-   !
-   ! If periodic BC given, compute boundary mesh projector:
-   ! ------------------------------------------------------
-   DO i = 1,Model % NumberOfBCs
-     Model % BCs(i) % PMatrix => NULL()
-   END DO
-
-   DO i = 1,Model % NumberOfBCs
-      k = ListGetInteger( Model % BCs(i) % Values, 'Periodic BC', GotIt )
-      IF( GotIt ) THEN
-        Projector =>  PeriodicProjector( Model, Mesh, i, k )
-        IF ( ASSOCIATED( Projector ) ) THEN
-          Model % BCs(i) % PMatrix => Projector
-        END IF
-      END IF
-   END DO
-
-   Model % DIMENSION = save_dim
-
-!------------------------------------------------------------------------------
- END FUNCTION LoadMesh
-!------------------------------------------------------------------------------
-#else
-  FUNCTION LoadMesh( Model, MeshDirPar, MeshNamePar,&
-    BoundariesOnly, NumProcs,MyPE, Def_Dofs ) RESULT( Mesh )
-    IMPLICIT NONE
-
-    CHARACTER(LEN=*) :: MeshDirPar,MeshNamePar
-    LOGICAL :: BoundariesOnly
-
-    INTEGER, OPTIONAL :: numprocs,mype,Def_Dofs(:)
-
-    TYPE(Mesh_t),  POINTER :: Mesh
-    TYPE(Model_t) :: Model
-
-    !  INTERFACE
-    !    SUBROUTINE eio_open_mesh(dir,info) BIND(C, NAME="eio_open_mesh")
-    !      USE, INTRINSIC :: ISO_C_BINDING
-    !      INTEGER(C_INT) :: info
-    !      CHARACTER(C_CHAR) :: dir(*)
-    !    END SUBROUTINE eio_open_mesh
-    !  END INTERFACE
-!------------------------------------------------------------------------------
-
-    INTEGER :: eio_info
- 
-    REAL(KIND=dp), POINTER :: cCoord(:), coord(:,:), Wrk(:,:)
-    REAL(KIND=dp) :: CoordScale(3)
-
-    INTEGER :: i,j,k,l,m,code,tag,body,TYPE,nodes(MAX_ELEMENT_NODES), &
-             left,right,fields,npart,parts(1024),n0
-
-    INTEGER :: bodies,body_forces,body_equations,materials, &
-      boundary_conditions,initial_conditions, mesh_parameters,bndry, &
-       name,n,linsys,procs,CountByType(64),Types(64),TypeCount,partn,id
-
-    LOGICAL :: GotIt, NeedEdges, FoundDG, Found
-
-    INTEGER :: MinIndex,MaxIndex,MinEIndex,MaxEIndex, DefaultTargetBC, &
-        BDOFs, EDOFs,FDOFs,inDOFs(10,6), DGIndex, istat, mesh_dim, save_dim
-    INTEGER, POINTER :: NodeTags(:),CoordMap(:),BList(:)
-    INTEGER, POINTER :: LocalPerm(:),LocalEPerm(:), &
-           ElementTags(:), EdgeDOFs(:), FaceDOFs(:)
-
-
-    LOGICAL, POINTER :: iface(:)
-    TYPE(ValueList_t), POINTER :: Vlist
-
-    CHARACTER(MAX_NAME_LEN) :: ElementDef0, ElementDef
-    TYPE(Nodes_t) :: ElementNodes
-    TYPE(Element_t), POINTER :: Element, Edge, Face, Parent
-
-    TYPE(Matrix_t), POINTER :: Projector
-
-    REAL(KIND=dp) :: pCoord(3)
-
-    TYPE(NeighbourList_t), POINTER :: nlist(:)
-
-    LOGICAL :: parallel
-    CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName, str
-    CALL Fatal('LoadMesh', 'Not implemented due to lack of EIO.') ! TODO: better error message.
-  END FUNCTION LoadMesh
-#endif
+  END SUBROUTINE MarkHaloNodes
 
  
 !> Create a discontinuous mesh over requested boundaries.
@@ -1086,36 +385,41 @@ END SUBROUTINE GetMaxDefs
 !> of the nodes is needed by other bulk elements than those directly 
 !> associated with the discontinuous boundaries. 
 !------------------------------------------------------------------------------
- SUBROUTINE CreateDiscontMesh( Model, Mesh )
+ SUBROUTINE CreateDiscontMesh( Model, Mesh, DoAlways )
 
    TYPE(Model_t) :: Model
    TYPE(Mesh_t), POINTER :: Mesh
+   LOGICAL, OPTIONAL :: DoAlways
 
    INTEGER, POINTER :: DisContPerm(:)
-   LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), MovingNode(:), StayingNode(:),&
-       DecidedElem(:)
+   LOGICAL, ALLOCATABLE :: DisContNode(:), DisContElem(:), ParentUsed(:), &
+       MovingNode(:), StayingNode(:)
    LOGICAL :: Found, DisCont, GreedyBulk, GreedyBC, Debug, DoubleBC, UseTargetBodies, &
        UseConsistantBody, LeftHit, RightHit, Moving, Moving2, Set, Parallel
-   INTEGER :: i,j,k,n,t,bc
+   INTEGER :: i,j,k,l,n,m,t,bc
    INTEGER :: NoNodes, NoDisContElems, NoDisContNodes, &
        NoBulkElems, NoBoundElems, NoParentElems, NoMissingElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
        NoUndecided, PrevUndecided, NoEdges, Iter, ElemFamily, DecideLimit, &
-       DecidedByFamily(8), UndecidedByFamily(8), ActiveBCs, &
-       CandA, CandB, RightBody, LeftBody
+       ActiveBCs, CandA, CandB, RightBody, LeftBody
    INTEGER, TARGET :: TargetBody(1)
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:),TargetBodies(:)
-   TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, &
-       ParentElem, OtherElem
+   TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, ParentElem, OtherElem
    CHARACTER(MAX_NAME_LEN) :: DiscontFlag
-
+   LOGICAL :: CheckForHalo
+   LOGICAL, POINTER :: HaloNode(:)
+   TYPE(ValueList_t), POINTER :: BCList
 
    LOGICAL :: DoneThisAlready = .FALSE.
 
-   IF (DoneThisAlready) RETURN
+   IF(.NOT.PRESENT(DoAlways)) THEN
+     IF (DoneThisAlready) RETURN
+   ELSE 
+     IF(.NOT.DoAlways) THEN
+       IF (DoneThisAlready) RETURN
+     END IF
+   END IF
    DoneThisAlready = .TRUE.
-
-   Parallel = ( ParEnv % PEs > 1 )
 
    Discont = .FALSE.
    DoubleBC = .FALSE.
@@ -1128,26 +432,45 @@ END SUBROUTINE GetMaxDefs
        i = ListGetInteger( Model % BCs(bc) % Values,'Discontinuous BC',Found )
        j = ListGetInteger( Model % BCs(bc) % Values,'Periodic BC',Found )
        k = ListGetInteger( Model % BCs(bc) % Values,'Mortar BC',Found )
-       DoubleBC = ( i + j + k > 0 )
+       l = ListGetInteger( Model % BCs(bc) % Values,'Contact BC',Found )
+       DoubleBC = ( i + j + k + l > 0 )
        ActiveBCs = ActiveBCs + 1
-       EXIT
+       BCList => Model % BCs(bc) % Values
      END IF
    END DO
+   IF(ActiveBCs == 0 ) RETURN
    
-   IF(.NOT. DisCont ) RETURN
-   
+   CALL Info('CreateDiscontMesh','Creating discontinuous boundaries')
+
+   IF( ActiveBCs > 1 ) THEN
+     CALL Warn('CreateDiscontMesh','Be careful when using more than one > Discontinuous Boundary < !')
+   END IF
+
+   Parallel = ( ParEnv % PEs > 1 )
+
    NoNodes = Mesh % NumberOfNodes
    NoBulkElems = Mesh % NumberOfBulkElements
    NoBoundElems = Mesh % NumberOfBoundaryElements
    
    ALLOCATE( DisContNode(NoNodes))
    ALLOCATE( DisContElem(NoBoundElems))
-   ALLOCATE( DecidedElem(NoBulkElems+NoBoundElems))
+   ALLOCATE( ParentUsed(NoBulkElems))
    DisContNode = .FALSE.
    DisContElem = .FALSE.
-   DecidedElem = .FALSE.
+   ParentUsed = .FALSE.
    NoDisContElems = 0
    NoMissingElems = 0
+
+
+   ! Check whether we need to skip some elements and nodes on the halo boundary 
+   ! We might not want to create additional nodes on the nodes that are on the halo only 
+   ! since they just would create further need for new halo...
+   CheckForHalo = ListGetLogical( Model % Simulation,'No Discontinuous Halo',Found ) 
+   IF(.NOT. Found ) CheckForHalo = .TRUE.
+   IF( CheckForHalo ) THEN
+     HaloNode => NULL()
+     CALL MarkHaloNodes( Mesh, HaloNode, CheckForHalo ) 
+   END IF
 
    ! Go over all boundary elements and mark nodes that should be 
    ! discontinuous and nodes that should be continuous 
@@ -1155,113 +478,110 @@ END SUBROUTINE GetMaxDefs
      
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
-     
+     n = Element % Type % NumberOfNodes
+
      DisCont = .FALSE.
      DO bc = 1,Model % NumberOfBCs
        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
          DisCont = ListGetLogical( Model % BCs(bc) % Values,'Discontinuous Boundary',Found )
          IF( DisCont ) EXIT
        END IF
-     END DO
-     
+     END DO     
      IF(.NOT. DisCont ) CYCLE
      
-     DisContNode( Indexes ) = .TRUE.
+     DO i=1,n
+       j = Indexes(i) 
+       IF( CheckForHalo ) THEN
+         IF( HaloNode(j) ) CYCLE
+       END IF
+       DisContNode(j) = .TRUE.
+     END DO
      DisContElem( t ) = .TRUE.
-     DecidedElem( NoBulkElems + t ) = .TRUE.
      
      LeftElem => Element % BoundaryInfo % Left
      IF( ASSOCIATED( LeftElem ) ) THEN
-       DecidedElem( LeftElem % ElementIndex ) = .TRUE.
+       ParentUsed( LeftElem % ElementIndex ) = .TRUE.
      ELSE
        NoMissingElems = NoMissingElems + 1 
      END IF
      
      RightElem => Element % BoundaryInfo % Right
      IF( ASSOCIATED( RightElem ) ) THEN
-       DecidedElem( RightElem % ElementIndex ) = .TRUE.
+       ParentUsed( RightElem % ElementIndex ) = .TRUE.
      ELSE
        NoMissingElems = NoMissingElems + 1
      END IF
    END DO
    
    IF( NoMissingElems > 0 ) THEN
-     CALL Warn('CreateDiscontMesh',TRIM(I2S(NoMissingElems))// &
+     CALL Warn('CreateDiscontMesh','Missing '//TRIM(I2S(NoMissingElems))// &
      ' parent elements in partition '//TRIM(I2S(ParEnv % MyPe))) 
    END IF
 
    ! Calculate the number of discontinuous nodes and the number of bulk elements 
    ! associated to them. 
-   NoDisContElems = COUNT( DiscontElem(1:NoBoundElems) )
-   NoParentElems = COUNT( DecidedElem(1:NoBulkElems) )
+   NoDisContElems = COUNT( DiscontElem )
    NoDisContNodes = COUNT( DisContNode ) 
-
-   IF( .NOT. Parallel ) THEN
-     ! Print more information when operating in serial mode since in parallel
-     ! this results to additional communication.
-     CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '&
-         //TRIM(I2S(NoDisContElems)),Level=7)
-     CALL Info('CreateDiscontMesh','Number of discontinuous parent elements: '&
-         //TRIM(I2S(NoParentElems)),Level=7 )
-     CALL Info('CreateDiscontMesh','Number of candicate nodes: '&
-         //TRIM(I2S(NoDisContNodes)),Level=7)
-   END IF
-
+   CALL Info('CreateDiscontMesh','Number of discontinuous boundary elements: '&
+       //TRIM(I2S(NoDisContElems)),Level=7)
+   CALL Info('CreateDiscontMesh','Number of candicate nodes: '&
+       //TRIM(I2S(NoDisContNodes)),Level=7)
 
    ! By default all nodes that are associated to elements immediately at the discontinuous 
    ! boundary are treated as discontinuous. However, the user may be not be greedy and release
    ! some nodes from the list that are associated also with other non-discontinuous elements.   
    IF( NoDiscontNodes > 0 ) THEN
      n = NoDiscontNodes
+     
      GreedyBulk = ListGetLogical( Model % Simulation,'Discontinuous Bulk Greedy',Found ) 
-     IF(.NOT. Found ) GreedyBulk = .TRUE.
+     IF(.NOT. Found ) GreedyBulk = .TRUE.     
+     
      GreedyBC = ListGetLogical( Model % Simulation,'Discontinuous Boundary Greedy',Found ) 
-     IF(.NOT. Found ) GreedyBC = .TRUE.
+     IF(.NOT. Found ) GreedyBC = .TRUE.     
      
-     IF( .NOT. GreedyBulk ) THEN
-       DO t = 1, NoBulkElems
-         IF( DecidedElem(t) ) CYCLE
-         Element => Mesh % Elements(t)
-         Indexes => Element % NodeIndexes
-         DisContNode( Indexes ) = .FALSE.
-       END DO
-       NoDisContNodes = COUNT( DisContNode ) 
-     END IF
-     
-     IF( .NOT. GreedyBC ) THEN
-       DO t = NoBulkElems+1,NoBulkElems+NoBoundElems
-         IF( DecidedElem(t) ) CYCLE
-         Element => Mesh % Elements(t)
-         IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
-         IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right) ) CYCLE
-         Indexes => Element % NodeIndexes
-         DisContNode( Indexes ) = .FALSE.
-       END DO
-       NoDisContNodes = COUNT( DisContNode ) 
-     END IF
-     
-     IF(.NOT. Parallel ) THEN
-       IF( NoDiscontNodes < n ) THEN
-         CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '//TRIM(I2S(NoDisContNodes)) )
-       ELSE
-         CALL Info('CreateDiscontMesh','All candidate nodes used')
-       END IF
+     IF( .NOT. ( GreedyBC .AND. GreedyBulk ) ) THEN
+       CALL Info('CreateDiscontMesh','Applying non-greedy strategies for Discontinuous mesh',Level=12)
 
-       IF( NoDiscontNodes == 0 ) THEN
-         IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
-           CALL Info('CreateDiscontMesh','You might want to try the Greedy bulk strategy',Level=3)
+       DO t = 1,NoBulkElems+NoBoundElems
+         Element => Mesh % Elements(t)
+         IF( t <= NoBulkElems ) THEN
+           IF( GreedyBulk ) CYCLE
+           IF( ParentUsed(t) ) CYCLE
+         ELSE
+           IF( GreedyBC ) CYCLE
+           IF( DiscontElem(t) ) CYCLE
+           ! Check that this is not an internal BC
+           IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
+           IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right) ) CYCLE
          END IF
+         Indexes => Element % NodeIndexes
+         DisContNode( Indexes ) = .FALSE.
+       END DO
+       NoDisContNodes = COUNT( DisContNode ) 
+     END IF
+
+     IF( NoDiscontNodes < n ) THEN
+       CALL Info('CreateDiscontMesh','Number of local discontinuous nodes: '&
+           //TRIM(I2S(NoDisContNodes)), Level=12)
+     ELSE
+       CALL Info('CreateDiscontMesh','All candidate nodes used',Level=12)
+     END IF
+     
+     IF( NoDiscontNodes == 0 ) THEN
+       IF( n > 0 .AND. .NOT. GreedyBulk ) THEN
+         CALL Info('CreateDiscontMesh','You might want to try the Greedy bulk strategy',Level=3)
        END IF
      END IF
    END IF
-
+   
    i = NINT( ParallelReduction( 1.0_dp * NoDiscontNodes ) )
    CALL Info('CreateDiscontMesh','Number of discontinuous nodes: '&
        //TRIM(I2S(i)),Level=7)
 
    IF( i == 0 ) THEN
      CALL Warn('CreateDiscontMesh','Nothing to create, exiting...')
-     DEALLOCATE( DiscontNode, DiscontElem, DecidedElem )
+     IF( CheckForHalo ) DEALLOCATE( HaloNode ) 
+     DEALLOCATE( DiscontNode, DiscontElem, ParentUsed )
      RETURN
    END IF
 
@@ -1270,14 +590,6 @@ END SUBROUTINE GetMaxDefs
    DisContPerm => NULL()
    ALLOCATE( DisContPerm(NoNodes) )
    DisContPerm = 0    
-   j = 0
-   DO i=1,NoNodes
-     IF( DisContNode(i) ) THEN
-       j = j + 1
-       DisContPerm(i) = j
-     END IF
-   END DO
-
 
    ! We could end up here on an parallel case only
    ! Then we must make the parallel numbering, so jump to the end where this is done. 
@@ -1288,7 +600,7 @@ END SUBROUTINE GetMaxDefs
      ELSE
        Mesh % DisContMesh = .TRUE.
        Mesh % DisContPerm => DisContPerm
-       Mesh % DisContNodes = NoDisContNodes 
+       Mesh % DisContNodes = 0
      END IF
      GOTO 200
    END IF
@@ -1302,16 +614,19 @@ END SUBROUTINE GetMaxDefs
    ! For historical reasons there is both single 'body' and multiple 'bodies'
    ! that define on which side of the discontinuity the new nodes will be. 
    DiscontFlag = 'Discontinuous Target Bodies'
-   UseTargetBodies = ListCheckPresentAnyBC( Model, DiscontFlag ) 
+   TargetBodies => ListGetIntegerArray( BCList, DiscontFlag, UseTargetBodies ) 
    IF(.NOT. UseTargetBodies ) THEN
      DiscontFlag = 'Discontinuous Target Body'
-     UseTargetBodies = ListCheckPresentAnyBC( Model, DiscontFlag ) 
+     TargetBodies => ListGetIntegerArray( BCList, DiscontFlag, UseTargetBodies ) 
    END IF
 
    ! If either parent is consistently one of the bodies then we can create a discontinuous 
-   ! boundary. Note that this currently only works in serial!
-   UseConsistantBody = .FALSE.
+   ! boundary. Note that this currently only works currently in serial!
    IF(.NOT. UseTargetBodies ) THEN
+     IF( ParEnv % PEs > 1 ) THEN
+       CALL Fatal('CreateDiscontMesh','Please give > Discontinuous Target Bodies < on the BC!')
+     END IF
+     
      CALL Info('CreateDiscontMesh','Trying to find a dominating parent body',Level=12)
 
      CandA = -1
@@ -1320,7 +635,14 @@ END SUBROUTINE GetMaxDefs
        IF(.NOT. DisContElem(t) ) CYCLE
        Element => Mesh % Elements(NoBulkElems + t)
 
-       LeftBody = Element % BoundaryInfo % Left % BodyId
+       IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
+         CALL Fatal('CreateDiscontMesh','Alternative strategy requires all parent elements!')
+       END IF
+       IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
+         CALL Fatal('CreateDiscontMesh','Alternative strategy requires all parent elements!')
+       END IF
+
+       LeftBody = Element % BoundaryInfo % Left % BodyId         
        RightBody = Element % BoundaryInfo % Right % BodyId
 
        IF( CandA == -1 ) THEN
@@ -1341,15 +663,8 @@ END SUBROUTINE GetMaxDefs
      END DO
 
      ! Choose the bigger one to honor the old convention
-     IF( CandA > 0 .AND. CandB > 0 ) THEN
-       TargetBody(1) = MAX( CandA, CandB ) 
-     ELSE IF( CandA > 0 ) THEN
-       TargetBody(1) = CandA
-     ELSE IF( CandB > 0 ) THEN
-       TargetBody(1) = CandB
-     ELSE
-       TargetBody(1) = 0
-     END IF
+     ! This eliminates at the same time the unsuccesfull case of zero. 
+     TargetBody(1) = MAX( CandA, CandB ) 
 
      IF( TargetBody(1) > 0 ) THEN
        CALL Info('CreateDiscontMesh',&
@@ -1358,141 +673,11 @@ END SUBROUTINE GetMaxDefs
        UseConsistantBody = .TRUE.
        TargetBodies => TargetBody
      ELSE
-       CALL Warn('CreateDiscontMesh',&
+       CALL Fatal('CreateDiscontMesh',&
            'No simple rules available for determining discontinuous body')
      END IF
    END IF
 
-   ! Go through all the boundary elements and now really manipulate the boundary 
-   ! elements on the other side. The user may choose which of the parent elements
-   ! gets the additional node, or otheriwse the bigger parent index is chosen for
-   ! consistency. 
-   NoMovingElems = 0
-   NoStayingElems = 0
-
-   DO t=1, NoBoundElems
-
-     IF(.NOT. DisContElem(t) ) CYCLE
-
-     Element => Mesh % Elements(NoBulkElems + t)
-     Indexes => Element % NodeIndexes
-
-     IF( UseTargetBodies ) THEN
-       DO bc = 1,Model % NumberOfBCs
-         IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc) % Tag ) THEN
-           TargetBodies => ListGetIntegerArray( Model % BCs(bc) % Values,&
-               DiscontFlag, Found )
-           EXIT
-         END IF
-       END DO
-       IF(.NOT. Found ) THEN
-         CALL Fatal('CreateDiscontMesh','Use > '//TRIM(DiscontFlag)//' < in all, if any bc.')
-       END IF
-     END IF
-
-     NULLIFY( LeftElem ) 
-     NULLIFY( RightElem ) 
-     NULLIFY( ParentElem ) 
-     NULLIFY( OtherElem ) 
-
-     IF( ASSOCIATED( Element % BoundaryInfo % Left ) ) THEN
-       LeftElem => Element % BoundaryInfo % Left 
-     END IF
-     IF( ASSOCIATED( Element % BoundaryInfo % Right ) ) THEN
-       RightElem => Element % BoundaryInfo % Right
-     END IF
-
-     IF( UseTargetBodies .OR. UseConsistantBody ) THEN
-
-       ! This has been modified so that only information from either side of the discontinuous
-       ! node is needed to be able to handle with partitioned meshes. 
-       IF( ASSOCIATED( LeftElem ) .AND. ASSOCIATED( RightElem ) ) THEN
-         LeftHit = ANY( TargetBodies == LeftElem % BodyId )
-         RightHit = ANY( TargetBodies == RightElem % BodyId )
-         IF( LeftHit .AND. RightHit ) THEN
-           CALL Warn('CreateDiscontMesh','Both left and right parent belong to target bcs')
-         END IF
-       ELSE IF( ASSOCIATED( LeftElem ) ) THEN
-         LeftHit = ANY( TargetBodies == LeftElem % BodyId )
-         RightHit = .NOT. LeftHit
-       ELSE IF( ASSOCIATED( RightElem ) ) THEN
-         RightHit = ANY( TargetBodies == RightElem % BodyId )
-         LeftHit = .NOT. RightHit 
-       ELSE
-         CALL Fatal('CreateDiscontMesh','Either parent is needed (try partitioning with halobc)!')
-       END IF
-
-       IF( LeftHit ) THEN
-         IF( ASSOCIATED( LeftElem ) ) ParentElem => LeftElem
-         IF( ASSOCIATED( RightElem ) ) OtherElem => RightElem
-       ELSE IF( RightHit ) THEN
-         IF( ASSOCIATED( RightElem ) ) ParentElem => RightElem 
-         IF( ASSOCIATED( LeftElem ) ) OtherElem => LeftElem
-       ELSE
-         CALL Fatal('CreateDiscontMesh','Neither parent ('//TRIM(I2S(LeftElem % BodyId))//','&
-             //TRIM(I2S(RightElem % BodyId))//') is discontinuous target body!')
-       END IF
-     ELSE
-
-! Just use a consistent rule, if no target body specified
-       IF( .NOT. ( ASSOCIATED( LeftElem ) .AND. ASSOCIATED( RightElem ) ) ) THEN
-         CALL Fatal('CreateDiscontMesh','This method of creating discont bc requires parents!')
-       END IF
-       IF( LeftElem % BodyId > RightElem % BodyId ) THEN
-         ParentElem => LeftElem 
-         OtherElem => RightElem
-       ELSE
-         ParentElem => RightElem
-         OtherElem => LeftElem
-       END IF
-     END IF
-
-     ! Mark the nodes in elements that have been set
-     ! These related nodes are used to determine whether other
-     ! elements are on the discontinuous side. 
-     ! It may be that the parent element is a parent element 
-     ! of another boundary element in which case the nodal indexes 
-     ! might already have been manipulated. 
-     IF( ASSOCIATED( ParentElem ) ) THEN
-       DO j=1,SIZE(ParentElem % NodeIndexes)
-         k = ParentElem % NodeIndexes(j)
-         IF( k <= NoNodes ) MovingNode( k ) = .TRUE.
-       END DO
-
-       ! Ok, we found the element to manipulate the indexes. 
-       ! The new index is numbered on top of the old indexes. 
-       ParentIndexes => ParentElem % NodeIndexes
-       DO i=1,SIZE(ParentIndexes) 
-         j = ParentIndexes(i)
-
-         ! If a bulk element is parent to several boundary elements 
-         ! the numbering could already have been tampered so check for that.
-         IF( j > NoNodes ) CYCLE
-
-         IF( DisContPerm(j) > 0 ) THEN
-           ParentIndexes(i) = NoNodes + DisContPerm(j)
-         END IF
-       END DO
-       Element % BoundaryInfo % Right => ParentElem
-       NoMovingElems = NoMovingElems + 1
-     END IF
-
-     IF( ASSOCIATED( OtherElem ) ) THEN
-       DO j=1,SIZE(OtherElem % NodeIndexes)
-         k = OtherElem % NodeIndexes(j)
-         IF( k <= NoNodes ) StayingNode( k ) = .TRUE.
-       END DO
-       Element % BoundaryInfo % Left => OtherElem
-       NoStayingElems = NoStayingElems + 1
-     END IF
-   END DO
-
-   IF(.NOT. Parallel ) THEN
-     CALL Info('CreateDiscontMesh','Number of primary staying nodes: '&
-         //TRIM(I2S(COUNT(StayingNode))) )
-     CALL Info('CreateDiscontMesh','Number of primary moving nodes:  '&
-         //TRIM(I2S(COUNT(MovingNode))) )
-   END IF
 
    ! Assume we have only one active BC and we know the list of discontinuous 
    ! target bodies there. Hence we have all the info needed to set the 
@@ -1501,145 +686,95 @@ END SUBROUTINE GetMaxDefs
    NoUndecided = 0
    NoMovingElems = 0 
    NoStayingElems = 0
-   DecidedByFamily = 0
-   UnDecidedByFamily = 0
 
-   IF( ActiveBCs == 1 .AND. UseTargetBodies  ) THEN
-     DO t=1, NoBulkElems
+   DO t=1, NoBulkElems
+     Element => Mesh % Elements(t)
 
-       IF( DecidedElem(t) ) CYCLE
+     ! No need to treat halo elements
+     IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
 
-       Element => Mesh % Elements(t)
-       Indexes => Element % NodeIndexes
+     Indexes => Element % NodeIndexes
 
-       IF( ALL( DisContPerm( Indexes ) == 0 ) ) CYCLE
+     IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
+     Moving = ANY( TargetBodies == Element % BodyId )
 
-       ElemFamily = Element % TYPE % ElementCode / 100 
-
-       Moving = ANY( TargetBodies == Element % BodyId )
-
-       DecidedElem(t) = .TRUE.
-       IF( Moving ) THEN
-         NoMovingElems = NoMovingElems + 1 
-         DO i=1, SIZE(Indexes) 
-           j = DisContPerm(Indexes(i))
-           IF( j > 0 ) Indexes(i) = NoNodes + j
-         END DO
-       ELSE
-         NoStayingElems = NoStayingElems + 1
-       END IF
-       DecidedByFamily( ElemFamily ) = DecidedByFamily( ElemFamily ) + 1
-     END DO
-     IF(.NOT. Parallel ) THEN
-       CALL Info('CreateDiscontMesh','Number of bulk elements moving: '//TRIM(I2S(NoMovingElems)) )
-       CALL Info('CreateDiscontMesh','Number of bulk elements staying: '//TRIM(I2S(NoStayingElems)) )
+     IF( Moving ) THEN
+       NoMovingElems = NoMovingElems + 1 
+       MovingNode(Indexes) = .TRUE.
+     ELSE
+       StayingNode(Indexes) = .TRUE.
+       NoStayingElems = NoStayingElems + 1
      END IF
+   END DO
 
-   ELSE
+   CALL Info('CreateDiscontMesh','Number of bulk elements moving: '&
+       //TRIM(I2S(NoMovingElems)), Level=8)
+   CALL Info('CreateDiscontMesh','Number of bulk elements staying: '&
+       //TRIM(I2S(NoStayingElems)), Level=8)
 
-     ! Go over all other bulk elements that are not yeat marked but 
-     ! do have some node on the discontinuous boundary. They should 
-     ! change their node index together with the dominating destiny 
-     ! of the related nodes.
+   ! Set discontinuous nodes only if there is a real moving node associted with it
+   ! Otherwise we would create a zero to the permutation vector. 
+   DiscontNode = DiscontNode .AND. MovingNode 
 
-     Iter = 1
-     PrevUndecided = HUGE( PrevUndecided )
-10   NoUndecided = 0
-     UndecidedByFamily = 0
-
-     DO t=1, NoBulkElems 
-
-       IF( DecidedElem(t) ) CYCLE
-
-       Element => Mesh % Elements(t)
-       Indexes => Element % NodeIndexes
-
-       IF( ALL( DisContPerm( Indexes ) == 0 ) ) CYCLE
-
-       NoMoving = COUNT( MovingNode(Indexes)) 
-       NoStaying = COUNT( StayingNode(Indexes)) 
-
-       ElemFamily = Element % TYPE % ElementCode / 100 
-
-       IF( ElemFamily == 8 ) THEN
-         DecideLimit = 4
-       ELSE IF( ElemFamily >= 5 ) THEN
-         DecideLimit = 3
-       ELSE IF( ElemFamily >= 3 ) THEN
-         DecideLimit = 2
-       ELSE
-         DecideLimit = 1
-       END IF
-
-       IF( NoMoving < DecideLimit .AND. NoStaying < DecideLimit ) THEN
-         NoUndecided = NoUndecided + 1
-         UnDecidedByFamily( ElemFamily ) = UnDecidedByFamily( ElemFamily ) + 1 
-
-       ELSE IF( NoStaying > NoMoving ) THEN
-         DecidedElem(t) = .TRUE.
-         DecidedByFamily( ElemFamily ) = DecidedByFamily( ElemFamily ) + 1
-         NoStayingElems = NoStayingElems + 1
-         IF( t <= NoBulkElems ) THEN
-           StayingNode( Indexes ) = .TRUE. 
-         END IF
-         CYCLE
-
-       ELSE IF( NoMoving > NoStaying ) THEN
-         DecidedElem(t) = .TRUE.
-         DecidedByFamily( ElemFamily ) = DecidedByFamily( ElemFamily ) + 1 
-         NoMovingElems = NoMovingElems + 1 
-         IF( t <= NoBulkElems ) THEN
-           MovingNode( Indexes ) = .TRUE.
-         END IF
-         DO i=1, SIZE(Indexes) 
-           j = DisContPerm(Indexes(i))
-           IF( j > 0 ) Indexes(i) = NoNodes + j
-         END DO
-       ELSE
-         NoUndecided = NoUndecided + 1
-         UnDecidedByFamily( ElemFamily ) = UnDecidedByFamily( ElemFamily ) + 1 
-       END IF
-     END DO
-
-     ! If there are still undecided elements and we are getting somewhere loop again
-     IF( NoUndecided /= PrevUndecided .AND. Iter <= 100 ) THEN
-       Iter = Iter + 1
-       PrevUndecided = NoUndecided 
-       GOTO 10 
+   ! Create permutation numbering for the discontinuous nodes   
+   ! Doubling will be done only for nodes that have both parents
+   j = 0
+   DO i=1,NoNodes
+     IF( DisContNode(i) ) THEN
+       j = j + 1
+       DisContPerm(i) = j
      END IF
+   END DO
+   IF( j < NoDiscontNodes ) THEN
+     PRINT *,'Some discontinuous nodes only needed on the other side:',&
+         ParEnv % MyPe, NoDiscontNodes-j
+     NoDiscontNodes = j 
    END IF
 
-   IF( .NOT. Parallel ) THEN
-     DO i=1,8
-       IF( DecidedByFamily(i) + UndecidedByFamily(i) == 0 ) CYCLE
-       CALL Info('CreateDiscontMesh','Family: '//TRIM(I2S(100*i))//&
-           ' Decided: '//TRIM(I2S(DecidedByFamily(i)))//&
-           ', Undecided: '//TRIM(I2S(UndecidedByFamily(i))),Level=8)
-     END DO
-   END IF
-     
 
+   ! Now set the new indexes for bulk elements
+   ! In parallel skip the halo elements
+   DO t=1, NoBulkElems
+     Element => Mesh % Elements(t)
+
+     ! No need to treat halo elements
+     IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
+     Indexes => Element % NodeIndexes
+
+     IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
+     Moving = ANY( TargetBodies == Element % BodyId )
+
+     IF( Moving ) THEN
+       DO i=1, SIZE(Indexes) 
+         j = DisContPerm(Indexes(i))
+         IF( j > 0 ) Indexes(i) = NoNodes + j
+       END DO
+     END IF
+   END DO
+
+    
    ! Now set also the unset boundary elements by following the ownership of the parent elements
    ! or the majority opinion if this is conflicting.
    DO t=1, NoBoundElems
 
-     IF( DecidedElem(NoBulkElems + t) ) CYCLE
+     IF( DisContElem(t) ) CYCLE
 
      Element => Mesh % Elements(NoBulkElems + t)
      Indexes => Element % NodeIndexes
 
-     IF( ALL( DisContPerm( Indexes ) == 0 ) ) CYCLE
+     IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
 
      ElemFamily = Element % TYPE % ElementCode / 100 
+
      LeftElem => Element % BoundaryInfo % Left
      RightElem => Element % BoundaryInfo % Right
 
      ! The boundary element follows the parent element if it is clear what to do
      Set = .TRUE.
      IF( ASSOCIATED( LeftElem ) .AND. ASSOCIATED( RightElem ) ) THEN
-       Moving = ANY( LeftElem % NodeIndexes > NoNodes )  
-       Moving2 = ANY( RightElem % NodeIndexes > NoNodes )
-       IF( (Moving .AND. .NOT. Moving2) .OR. (Moving2 .AND. .NOT. Moving)  ) THEN
+       Moving = ANY( TargetBodies == LeftElem % BodyId )
+       Moving2 = ANY( TargetBodies == RightElem % BodyId ) 
+       IF( Moving .NEQV. Moving2) THEN
          CALL Warn('CreateDiscontMesh','Conflicting moving information')
          Set = .FALSE.
        END IF
@@ -1653,8 +788,8 @@ END SUBROUTINE GetMaxDefs
 
      ! Otherwise we follow the majority rule
      IF( .NOT. Set ) THEN
-       NoMoving = COUNT( MovingNode(Indexes)) 
-       NoStaying = COUNT( StayingNode(Indexes)) 
+       NoMoving = COUNT( MovingNode(Indexes) ) 
+       NoStaying = COUNT( StayingNode(Indexes) ) 
 
        IF( NoStaying /= NoMoving ) THEN
          Moving = ( NoMoving > NoStaying )
@@ -1664,7 +799,6 @@ END SUBROUTINE GetMaxDefs
 
      ! Ok, finally set whether boundary element is moving or staying
      IF( Set ) THEN
-       DecidedElem(NoBulkElems + t) = .TRUE.
        IF( Moving ) THEN
          NoMovingElems = NoMovingElems + 1 
          DO i=1, SIZE(Indexes) 
@@ -1674,34 +808,34 @@ END SUBROUTINE GetMaxDefs
        ELSE
          NoStayingElems = NoStayingElems + 1
        END IF
-       DecidedByFamily( ElemFamily) = DecidedByFamily( ElemFamily ) + 1
      ELSE
        NoUndecided = NoUndecided + 1
-       UnDecidedByFamily( ElemFamily ) = UnDecidedByFamily( ElemFamily ) + 1 
      END IF
    END DO
 
-   IF(.NOT. Parallel ) THEN
-     DO i=1,8
-       IF( DecidedByFamily(i) + UndecidedByFamily(i) == 0 ) CYCLE
-       CALL Info('CreateDiscontMesh','Undecied boundary elements by family: '//TRIM(I2S(100*i))//&
-           ' Decided: '//TRIM(I2S(DecidedByFamily(i)))//&
-           ', Undecided: '//TRIM(I2S(UndecidedByFamily(i))),Level=8)
-     END DO
-     
-     CALL Info('CreateDiscontMesh','Number of related elements moving: '&
-         //TRIM(I2S(NoMovingElems)), Level=8 )
-     CALL Info('CreateDiscontMesh','Number of related elements staying: '&
-         //TRIM(I2S(NoStayingElems)), Level=8 )
-     IF( NoUndecided == 0 ) THEN
-       CALL Info('CreateDiscontMesh','All elements marked either moving or staying')
-     ELSE
-       CALL Info('CreateDiscontMesh','Number of related undecided elements: '//TRIM(I2S(NoUndecided)) )
-       CALL Warn('CreateDiscontMesh','Could not decide what to do with some boundary elements!')
-     END IF
+   CALL Info('CreateDiscontMesh','Number of related elements moving: '&
+       //TRIM(I2S(NoMovingElems)), Level=8 )
+   CALL Info('CreateDiscontMesh','Number of related elements staying: '&
+       //TRIM(I2S(NoStayingElems)), Level=8 )
+   IF( NoUndecided == 0 ) THEN
+     CALL Info('CreateDiscontMesh','All elements marked either moving or staying')
+   ELSE
+     CALL Info('CreateDiscontMesh','Number of related undecided elements: '//TRIM(I2S(NoUndecided)) )
+     CALL Warn('CreateDiscontMesh','Could not decide what to do with some boundary elements!')
    END IF
 
-   DEALLOCATE( MovingNode, StayingNode )
+
+   m = COUNT( DiscontNode .AND. .NOT. MovingNode )
+   IF( m > 0 ) THEN
+     PRINT *,'Number of discont nodes not moving: ',ParEnv % MyPe, m
+   END IF
+
+   m = COUNT( DiscontNode .AND. .NOT. StayingNode )
+   IF( m > 0 ) THEN
+     PRINT *,'Number of discont nodes not staying: ',ParEnv % MyPe, m
+   END IF
+
+   !DEALLOCATE( MovingNode, StayingNode )
 
    ! Now add the new nodes also to the nodes structure
    ! and give the new nodes the same coordinates as the ones
@@ -1723,6 +857,8 @@ END SUBROUTINE GetMaxDefs
    ! is saved. The periodic and mortar conditions now need to perform
    ! searches. On the other hand the meshes may now freely move.,
    IF( DoubleBC ) THEN
+     CALL Info('CreateDiscontMesh','Creating secondary boundary for Discontinuous gap',Level=10)
+
      CALL EnlargeBoundaryElements( Mesh, NoDiscontElems ) 
 
      NoDisContElems = 0
@@ -1750,6 +886,9 @@ END SUBROUTINE GetMaxDefs
            DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
                'Periodic BC',Found )
            IF( Found ) EXIT
+           DisContTarget = ListGetInteger( Model % BCs(bc) % Values,&
+               'Contact BC',Found )
+           IF( Found ) EXIT
          END IF
        END DO
        IF( .NOT. Found .OR. DisContTarget == 0 ) THEN
@@ -1773,6 +912,8 @@ END SUBROUTINE GetMaxDefs
        NULLIFY( OtherElem % BoundaryInfo ) 
        ALLOCATE( OtherElem % BoundaryInfo ) 
        OtherElem % BoundaryInfo % Left => Element % BoundaryInfo % Right
+
+       ! Now both boundary elements are just one sided. Remove the associated to the other side. 
        NULLIFY( Element % BoundaryInfo % Right ) 
        NULLIFY( OtherElem % BoundaryInfo % Right )
 
@@ -1799,7 +940,7 @@ END SUBROUTINE GetMaxDefs
      CALL Info('CreateDiscontMesh','Number of original boundary elements: '&
          //TRIM(I2S(Mesh % NumberOfBoundaryElements)),Level=10)
      CALL Info('CreateDiscontMesh','Number of additional boundary elements: '&
-         //TRIM(I2S(NoDisContElems)))
+         //TRIM(I2S(NoDisContElems)),Level=10)
 
      Mesh % DiscontMesh = .FALSE.
      DEALLOCATE( DisContPerm ) 
@@ -1809,10 +950,12 @@ END SUBROUTINE GetMaxDefs
      Mesh % DisContNodes = NoDisContNodes 
    END IF
 
-200 DEALLOCATE( DisContNode, DiscontElem, DecidedElem )
-   
-   CALL EnlargeParallelInfo(Mesh)
-   
+200 CONTINUE
+
+   CALL EnlargeParallelInfo(Mesh )
+
+   DEALLOCATE( DisContNode, DiscontElem )   
+  
  END SUBROUTINE CreateDiscontMesh
 
 
@@ -1848,7 +991,6 @@ END SUBROUTINE GetMaxDefs
          //TRIM(I2S(n0))//' to '//TRIM(I2S(n)),Level=8)
 
      TmpCoord => Mesh % Nodes % x
-
      ALLOCATE( Mesh % Nodes % x(n) )
      Mesh % Nodes % x(1:n0) = TmpCoord
      Mesh % Nodes % x(n0 + 1:n) = 0.0_dp
@@ -1892,13 +1034,13 @@ END SUBROUTINE GetMaxDefs
    DO i=1,n0
      Mesh % Elements(i) = OldElements(i)
      IF(ASSOCIATED(OldElements(i) % BoundaryInfo)) THEN
-        IF (ASSOCIATED(OldElements(i) % BoundaryInfo % Left)) &
-          Mesh % Elements(i) % BoundaryInfo % Left => &
-            Mesh % Elements(OldElements(i) % BoundaryInfo % Left % ElementIndex)
-
-        IF (ASSOCIATED(OldElements(i) % BoundaryInfo % Right)) &
-          Mesh % Elements(i) % BoundaryInfo % Right => &
-            Mesh % Elements(OldElements(i) % BoundaryInfo % Right % ElementIndex)
+       IF (ASSOCIATED(OldElements(i) % BoundaryInfo % Left)) &
+           Mesh % Elements(i) % BoundaryInfo % Left => &
+           Mesh % Elements(OldElements(i) % BoundaryInfo % Left % ElementIndex)
+       
+       IF (ASSOCIATED(OldElements(i) % BoundaryInfo % Right)) &
+           Mesh % Elements(i) % BoundaryInfo % Right => &
+           Mesh % Elements(OldElements(i) % BoundaryInfo % Right % ElementIndex)
      END IF
    END DO
 
@@ -1925,31 +1067,31 @@ END SUBROUTINE GetMaxDefs
  SUBROUTINE EnlargeParallelInfo( Mesh )
 
    TYPE(Mesh_t) :: Mesh
+
    INTEGER :: nmax,n0,n1,i,j,istat, goffset
-   INTEGER, POINTER :: TmpGlobalDofs(:)
- 
+   INTEGER, POINTER :: TmpGlobalDofs(:) 
    INTEGER, ALLOCATABLE :: Perm(:)
-   LOGICAL, ALLOCATABLE :: Intf(:)
+   LOGICAL, POINTER :: Intf(:)
    TYPE(NeighbourList_t), POINTER :: Nlist(:)
 
    IF ( ParEnv % PEs <= 1 ) RETURN
 
+   ! As index offset use the number of nodes in the whole mesh
    goffset = ParallelReduction( MAXVAL(Mesh % ParallelInfo % GlobalDofs)*1._dp,2 )
 
    n0 = SIZE( Mesh % ParallelInfo % GlobalDofs )
    n1 = Mesh % NumberOfNodes 
-   IF( n0 >= n1 ) RETURN
+   IF( n0 >= n1 ) THEN
+     CALL Info('EnlargeParallelInfo','No need to grow: '&
+         //TRIM(I2S(n0))//' vs. '//TRIM(I2S(n1)),Level=10)
+     RETURN
+   END IF
    
    CALL Info('EnlargeParallelInfo','Increasing global numbering size from '&
          //TRIM(I2S(n0))//' to '//TRIM(I2S(n1)),Level=8)
 
-   ALLOCATE( TmpGlobalDofs(n1), STAT=istat )
-   IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate TmpGlobalDofs array.')
-   TmpGlobalDofs = 0
-   TmpGlobalDofs(1:n0) = Mesh % ParallelInfo % GlobalDofs
-
+   ! Create permutation table for the added nodes
    ALLOCATE(Perm(n1)); Perm  = 0
-
    IF(ASSOCIATED(Mesh % DisContPerm)) THEN
      DO i=1,n0
        IF ( Mesh % DiscontPerm(i) > 0 ) THEN
@@ -1958,47 +1100,62 @@ END SUBROUTINE GetMaxDefs
      END DO
    END IF
 
+   ! Create the enlarged set of global nodes indexes
+   ALLOCATE( TmpGlobalDofs(n1), STAT=istat )
+   IF (istat /= 0) CALL Fatal('LoadMesh', 'Unable to allocate TmpGlobalDofs array.')
+   TmpGlobalDofs = 0
+   DO i=1,n0
+     TmpGlobalDofs(i) = Mesh % ParallelInfo % GlobalDofs(i)
+   END DO
    DO i=n0+1,n1
      j = Perm(i)
      IF(j > 0) THEN
        TmpGlobalDofs(i) = TmpGlobalDOfs(j) + goffset
      END IF
    END DO
-
    DEALLOCATE(Mesh % ParallelInfo % GlobalDofs)
    Mesh % ParallelInfo % GlobalDOfs => TmpGlobalDofs
 
+   ! Create the enlarged list of neighbours
    ALLOCATE(Nlist(n1))
    DO i=1,n0
-    Nlist(i) % Neighbours => &
-      Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+     IF( ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+       Nlist(i) % Neighbours => &
+           Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+       Mesh % ParallelInfo % NeighbourList(i) % Neighbours => NULL()
+     ELSE 
+       Nlist(i) % Neighbours => NULL()
+     END IF
    END DO
 
    DO i=n0+1,n1
-    j = Perm(i)
-    IF ( j>0 ) THEN
-      Nlist(i) % Neighbours => Nlist(j) % Neighbours
-    ELSE
-      Nlist(i) % Neighbours => NULL()
-    END IF
+     j = Perm(i)
+     IF ( j > 0 ) THEN
+       IF( ASSOCIATED( Nlist(j) % Neighbours ) ) THEN
+         ALLOCATE( Nlist(i) % Neighbours(SIZE(Nlist(j) % Neighbours) ) )
+         Nlist(i) % Neighbours = Nlist(j) % Neighbours
+       ELSE
+         Nlist(i) % Neighbours => NULL()
+       END IF
+     END IF
    END DO
-
    DEALLOCATE(Mesh % ParallelInfo % NeighbourList)
    Mesh % ParallelInfo % NeighbourList => Nlist
 
-   ALLOCATE(Intf(n0))
-   Intf = Mesh % ParallelInfo % INTERFACE
-   DEALLOCATE(Mesh % ParallelInfo % INTERFACE)
-   ALLOCATE(Mesh % ParallelInfo % INTERFACE(n1)) 
-   Mesh % ParallelInfo % INTERFACE(1:n0) = Intf
+
+   ! Create logical table showing the interface nodes
+   ALLOCATE( Intf(n1) )
+   Intf = .FALSE.
+   Intf(1:n0) = Mesh % ParallelInfo % INTERFACE(1:n0)
    DO i=n0+1,n1
      j = Perm(i)
-     IF(j>0) THEN
-       Mesh % ParallelInfo % INTERFACE(i) = Intf(j)
-     ELSE
-       Mesh % ParallelInfo % INTERFACE(i) = .FALSE.
+     IF(j > 0 ) THEN
+       Intf(i) = Intf(j) 
      END IF
    END DO
+   DEALLOCATE( Mesh % ParallelInfo % INTERFACE )
+   Mesh % ParallelInfo % Interface => Intf
+
 
  END SUBROUTINE EnlargeParallelInfo
 
@@ -2678,6 +1835,27 @@ END SUBROUTINE GetMaxDefs
    TYPE(Matrix_t), POINTER :: Projector
    LOGICAL :: parallel, LoadNewMesh
 
+   Mesh => Null()
+
+   n = LEN_TRIM(MeshNamePar)
+   DO WHILE (MeshNamePar(n:n)==CHAR(0).OR.MeshNamePar(n:n)==' ')
+     n=n-1
+   END DO
+   IF(NumProcs<=1) THEN
+     INQUIRE( FILE=MeshNamePar(1:n)//'/mesh.header', EXIST=Found)
+     IF(.NOT. Found ) THEN
+       CALL Fatal('LoadMesh','Requested mesh > '//MeshNamePar(1:n)//' < does not exist!')
+     END IF
+   ELSE
+     INQUIRE( FILE=MeshNamePar(1:n)//'/partitioning.'// & 
+         TRIM(i2s(Numprocs))//'/part.1.header', EXIST=Found)
+     IF(.NOT. Found ) THEN
+       CALL Warn('LoadMesh','Requested mesh > '//MeshNamePar(1:n)//' < in partition '&
+           //TRIM(I2S(Numprocs))//' does not exist!')
+       RETURN
+     END IF
+   END IF
+
    CALL Info('LoadMesh','Starting',Level=8)
 
    Parallel = .FALSE.
@@ -2787,6 +1965,7 @@ END SUBROUTINE GetMaxDefs
    ! Don't know why this is saved really...
    ! I guess because the could be higher dimensional meshes loaded already
    Model % DIMENSION = save_dim
+
 
    CALL Info('LoadMesh','Loading mesh done',Level=8)
 
@@ -3870,6 +3049,10 @@ END SUBROUTINE GetMaxDefs
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
 
+
+    CALL Info('MeshStabParams','Computing stabilization parameters',Level=7)
+    CALL ResetTimer('MeshStabParams')
+
     DO i=1,CurrentModel % NumberOfSolvers
        Solver => CurrentModel % Solvers(i)
        IF ( ASSOCIATED( Mesh, Solver % Mesh ) ) THEN
@@ -3903,6 +3086,8 @@ END SUBROUTINE GetMaxDefs
     END DO
  
     DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
+
+    CALL CheckTimer('MeshStabParams',Level=7,Delete=.TRUE.)
 !----------------------------------------------------------------------------
   END SUBROUTINE MeshStabParams
 !------------------------------------------------------------------------------
@@ -4028,7 +3213,7 @@ END SUBROUTINE GetMaxDefs
 !> operations since the nodes may be ereased after use. 
 !------------------------------------------------------------------------------
   SUBROUTINE CreateInterfaceMeshes( Model, Mesh, This, Trgt, BMesh1, BMesh2, &
-      InvPerm1, InvPerm2, Success ) 
+      Success ) 
 !------------------------------------------------------------------------------    
     TYPE(Model_t) :: Model
     INTEGER :: This, Trgt
@@ -4039,13 +3224,12 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,k,l,m,n,n1,n2,k1,k2,ind,Constraint,DIM
     TYPE(Element_t), POINTER :: Element, Left, Right, Elements(:)
     LOGICAL :: ThisActive, TargetActive
-    INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:), &
-        InvPerm1(:), InvPerm2(:)
+    INTEGER, POINTER :: NodeIndexes(:), Perm1(:), Perm2(:), PPerm(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
-    LOGICAL :: OnTheFlyBC, CheckForHalo, HaloFound, NarrowHalo, NoHalo, Found
+    LOGICAL :: OnTheFlyBC, CheckForHalo, NarrowHalo, NoHalo, Found
 
     TYPE(Element_t), POINTER :: Parent,q
-    INTEGER :: en, in
+    INTEGER :: en, in, HaloCount, ActiveCount
     LOGICAL, ALLOCATABLE :: ActiveNode(:)
 
     CALL Info('CreateInterfaceMeshes','Making a list of elements at interface',Level=9)
@@ -4054,28 +3238,43 @@ END SUBROUTINE GetMaxDefs
       CALL Fatal('CreateInterfaceMeshes','Invalid target boundaries')
     END IF
 
+    ! Interface meshes consist of boundary elements only    
+    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
+
     ! If the target is larger than number of BCs givem then 
     ! it has probably been created on-the-fly from a discontinuous boundary.
     OnTheFlyBC = ( Trgt > Model % NumberOfBCs )
 
     ! In parallel we may have some excess halo elements. 
     ! To eliminate them mark the nodes that are associated to elements truly owned. 
+    NarrowHalo = .FALSE.
+    NoHalo = .FALSE.
+
     IF( ParEnv % PEs > 1 ) THEN
       ! Account for halo elements that share some nodes for the master boundary
-      NarrowHalo = ListGetLogical(Model % Simulation,'Projector Narrow Halo',Found)
+      NarrowHalo = ListGetLogical(Model % Solver % Values,'Projector Narrow Halo',Found)
+
       ! Do not allow for any halo elements for the master boundary
-      NoHalo = ListGetLogical(Model % Simulation,'Projector No Halo',Found)
-    ELSE
-      NarrowHalo = .FALSE.
-      NoHalo = .FALSE.
+      IF( .NOT. Found ) THEN
+        NoHalo = ListGetLogical(Model % Solver % Values,'Projector No Halo',Found)
+      END IF
+      
+      IF(.NOT. Found ) THEN
+        IF( ListGetLogical(Model % Solver % Values, 'Partition Local Constraints',Found) ) THEN
+          NarrowHalo = .TRUE.
+        ELSE
+          NoHalo = .TRUE.
+        END IF
+      END IF
     END IF
 
     ! This is just temporarily set to false always until the logic has been tested. 
     CheckForHalo = NarrowHalo .OR. NoHalo
 
-    HaloFound = .FALSE.
     IF( CheckForHalo ) THEN
+      CALL Info('CreateInterfaceMeshes','Checking for halo elements',Level=15)
       ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) )
+      HaloCount = 0
       ActiveNode = .FALSE.
       DO i=1, Mesh % NumberOfBoundaryElements
         Element => Elements(i)
@@ -4086,7 +3285,7 @@ END SUBROUTINE GetMaxDefs
           IF( Left % PartIndex == ParEnv % MyPe ) THEN
             ActiveNode( Left % NodeIndexes ) = .TRUE.
           ELSE
-            HaloFound = .TRUE.
+            HaloCount = HaloCount + 1
           END IF
         END IF
 
@@ -4095,27 +3294,29 @@ END SUBROUTINE GetMaxDefs
           IF( Right % PartIndex == ParEnv % MyPe ) THEN
             ActiveNode( Right % NodeIndexes ) = .TRUE.
           ELSE
-            HaloFound = .TRUE.
+            HaloCount = HaloCount + 1 
           END IF
         END IF
       END DO
 
       ! No halo element found on the boundary so no need to check them later
-      IF( .NOT. HaloFound ) THEN
+      IF( HaloCount == 0 ) THEN
+        CALL Info('CreateInterfaceMeshes','Found no halo elements to eliminate',Level=15)
         DEALLOCATE( ActiveNode ) 
         CheckForHalo = .FALSE.
+      ELSE
+        CALL Info('CreateInterfaceMeshes','Number of halo elements to eliminate: '&
+            //TRIM(I2S(HaloCount)),Level=12)
       END IF
     END IF
 
-
-    ! Interface meshes consist of boundary elements only    
-    Elements => Mesh % Elements( Mesh % NumberOfBulkElements+1: )
 
 !   Search elements in this boundary and its periodic
 !   counterpart:
 !   --------------------------------------------------
     n1 = 0
     n2 = 0
+    HaloCount = 0
     DO i=1, Mesh % NumberOfBoundaryElements
       Element => Elements(i)
       IF (Element % TYPE % ElementCode<=200) CYCLE
@@ -4126,6 +3327,8 @@ END SUBROUTINE GetMaxDefs
           IF( NarrowHalo ) THEN
             IF( ANY(ActiveNode(Element % NodeIndexes) ) ) THEN
               n1 = n1 + 1
+            ELSE
+              HaloCount = HaloCount + 1
             END IF
           ELSE IF( NoHalo ) THEN
             ThisActive = .FALSE.
@@ -4138,7 +3341,11 @@ END SUBROUTINE GetMaxDefs
               ThisActive = ThisActive .OR. &
                   ( Right % PartIndex == ParEnv % MyPe ) 
             END IF
-            IF( ThisActive ) n1 = n1 + 1
+            IF( ThisActive ) THEN
+              n1 = n1 + 1
+            ELSE
+              HaloCount = HaloCount + 1
+            END IF
           END IF
         ELSE
           n1 = n1 + 1
@@ -4151,6 +3358,11 @@ END SUBROUTINE GetMaxDefs
         IF ( Model % BCs(Trgt) % Tag == Constraint ) n2 = n2 + 1
       END IF
     END DO
+
+    IF( CheckForHalo ) THEN
+      CALL Info('CreateInterfaceMeshes','Number of halo elements eliminated: '&
+          //TRIM(I2S(HaloCount)),Level=12)
+    END IF
 
     IF ( n1 <= 0 .OR. n2 <= 0 ) THEN
       ! This is too conservative in parallel
@@ -4181,6 +3393,7 @@ END SUBROUTINE GetMaxDefs
     Perm2 = 0
     BMesh1 % MaxElementNodes = 0
     BMesh2 % MaxElementNodes = 0
+
 
     DO i=1, Mesh % NumberOfBoundaryElements
       Element => Elements(i)
@@ -4229,7 +3442,7 @@ END SUBROUTINE GetMaxDefs
         PPerm => Perm2
       END IF
 
-      n = Element % TYPE % NumberOfNodes        
+      n = Element % TYPE % NumberOfNodes             
       PMesh % MaxElementNodes = MAX( PMesh % MaxElementNodes, n )
       PMesh % Elements(ind) = Element
 
@@ -4238,6 +3451,8 @@ END SUBROUTINE GetMaxDefs
       IF( Mesh % NumberOfFaces == 0 .OR. Mesh % NumberOfEdges == 0 ) THEN
         PMesh % Elements(ind) % NodeIndexes(1:n) = Element % NodeIndexes(1:n)
       ELSE
+        ! If we have edge dofs we want the face element be associated with the 
+        ! face list since that only has properly defined edge indexes.
         Parent => Element % BoundaryInfo % Left
         IF(.NOT. ASSOCIATED( Parent ) ) THEN
           Parent => Element % BoundaryInfo % Right
@@ -4250,12 +3465,21 @@ END SUBROUTINE GetMaxDefs
         ! for the edge elements.
         PMesh % Elements(ind) % ElementIndex = q % ElementIndex
 
+        IF(ASSOCIATED(q % Pdefs)) THEN
+          ALLOCATE(Pmesh % Elements(ind) % Pdefs)
+          PMesh % Elements(ind) % PDefs = q % Pdefs
+        END IF
+
+        ! Set also the owner partition
+!       PMesh % Elements(ind) % PartIndex = q % PartIndex
+
         en = q % TYPE % NumberOfEdges
         ALLOCATE(PMesh % Elements(ind) % EdgeIndexes(en))
         Pmesh % Elements(ind) % EdgeIndexes(1:en) = q % EdgeIndexes(1:en)
       END IF
 
       PPerm( Element % NodeIndexes(1:n) ) = 1
+
     END DO
   
 !   Fill in the mesh node structures with the
@@ -4287,8 +3511,8 @@ END SUBROUTINE GetMaxDefs
     CALL AllocateVector( BMesh2 % Nodes % y, BMesh2 % NumberOfNodes ) 
     CALL AllocateVector( BMesh2 % Nodes % z, BMesh2 % NumberOfNodes )
     
-    CALL AllocateVector( InvPerm1, BMesh1 % NumberOfNodes )
-    CALL AllocateVector( InvPerm2, BMesh2 % NumberOfNodes )
+    CALL AllocateVector( Bmesh1 % InvPerm, BMesh1 % NumberOfNodes )
+    CALL AllocateVector( Bmesh2 % InvPerm, BMesh2 % NumberOfNodes )
 
     ! Now, create the master and target meshes that only include the active elements
     !---------------------------------------------------------------------------
@@ -4298,7 +3522,7 @@ END SUBROUTINE GetMaxDefs
       IF ( Perm1(i) > 0 ) THEN
         k1 = k1 + 1
         Perm1(i) = k1
-        InvPerm1(k1) = i
+        BMesh1 % InvPerm(k1) = i
 
         BMesh1 % Nodes % x(k1) = Mesh % Nodes % x(i)
         BMesh1 % Nodes % y(k1) = Mesh % Nodes % y(i)
@@ -4308,7 +3532,7 @@ END SUBROUTINE GetMaxDefs
       IF ( Perm2(i) > 0 ) THEN
         k2 = k2 + 1
         Perm2(i) = k2
-        InvPerm2(k2) = i
+        BMesh2 % InvPerm(k2) = i
         
         BMesh2 % Nodes % x(k2)= Mesh % Nodes % x(i)
         BMesh2 % Nodes % y(k2)= Mesh % Nodes % y(i)
@@ -4687,17 +3911,17 @@ END SUBROUTINE GetMaxDefs
   !> created. Then this projector matrix is transferred to a projector on the nodal
   !> coordinates.   
   !---------------------------------------------------------------------------
-   FUNCTION NodalProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
+   FUNCTION NodalProjector(BMesh2, BMesh1, &
        UseQuadrantTree, Repeating, AntiRepeating ) &
       RESULT ( Projector )
   !---------------------------------------------------------------------------
     USE Lists
 
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL :: UseQuadrantTree, Repeating, AntiRepeating
     TYPE(Matrix_t), POINTER :: Projector
     !--------------------------------------------------------------------------
+    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     INTEGER :: i,j,k,n
     INTEGER, POINTER :: Rows(:),Cols(:)
@@ -4705,6 +3929,9 @@ END SUBROUTINE GetMaxDefs
 
     BMesh1 % Parent => NULL()
     BMesh2 % Parent => NULL()
+
+    InvPerm1 => BMesh1 % InvPerm
+    InvPerm2 => BMesh2 % InvPerm
 
     ! Set the nodes of Mesh1 to be in the interval defined by Mesh2
     !-----------------------------------------------------------------
@@ -4825,7 +4052,7 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
 
 
-
+ 
   !---------------------------------------------------------------------------
   !> Create a projector for mixes nodal / edge problems assuming constant level
   !> in the 2nd direction. This kind of projector is suitable for 2D meshes where
@@ -4833,7 +4060,7 @@ END SUBROUTINE GetMaxDefs
   !> extrusion. 
   !---------------------------------------------------------------------------
   FUNCTION LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
-      FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &
+      FullCircle, Radius, DoNodes, DoEdges, &
       NodeScale, EdgeScale, BC ) &
       RESULT ( Projector )
     !---------------------------------------------------------------------------
@@ -4846,18 +4073,18 @@ END SUBROUTINE GetMaxDefs
     TYPE(Mesh_t), POINTER :: BMesh1, BMesh2, Mesh
     LOGICAL :: DoNodes, DoEdges
     LOGICAL :: Repeating, AntiRepeating, FullCircle, NotAllQuads, NotAllQuads2
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     REAL(KIND=dp) :: Radius, NodeScale, EdgeScale
     TYPE(ValueList_t), POINTER :: BC
     TYPE(Matrix_t), POINTER :: Projector    
     !--------------------------------------------------------------------------
+    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
     LOGICAL ::  StrongNodes, StrongLevelEdges, StrongExtrudedEdges, StrongSkewEdges
     LOGICAL :: Found, Parallel, SelfProject, EliminateUnneeded, SomethingUndone, &
         EdgeBasis, PiolaVersion, GenericIntegrator, Rotational, Cylindrical, IntGalerkin, &
-        CreateDual
+        CreateDual, HaveMaxDistance
     REAL(KIND=dp) :: XmaxAll, XminAll, YminAll, YmaxAll, Xrange, Yrange, &
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
-        ArcCoeff, EdgeCoeff, NodeCoeff
+        ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance
     INTEGER :: NoNodes1, NoNodes2, MeshDim
     INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow
     INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:),DualNodePerm(:)
@@ -4866,7 +4093,6 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     TYPE(Matrix_t), POINTER :: DualProjector    
-
     LOGICAL :: DualMaster, DualSlave, DualLCoeff, BiorthogonalBasis
 
     CALL Info('LevelProjector','Creating projector for a levelized mesh',Level=7)
@@ -4890,6 +4116,13 @@ END SUBROUTINE GetMaxDefs
         ListGetLogical( BC,'Anti Rotational Projector',Found )
     Cylindrical = ListGetLogical( BC,'Cylindrical Projector',Found ) 
     
+    MaxDistance = ListGetCReal( BC,'Projector Max Distance', HaveMaxDistance) 
+    IF(.NOT. HaveMaxDistance ) THEN
+      MaxDistance = ListGetCReal( CurrentModel % Solver % Values,&
+          'Projector Max Distance', HaveMaxDistance)       
+    END IF
+
+
     Parallel = ( ParEnv % PEs > 1 )
     Mesh => CurrentModel % Mesh
     BMesh1 % Parent => NULL()
@@ -4927,18 +4160,20 @@ END SUBROUTINE GetMaxDefs
       ArcCoeff = 1.0_dp
     END IF
 
+    IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', Found )
+    MeshDIm = Mesh % MeshDim
 
     ! Generic integrator does not make any assumptions on the way the mesh 
     ! is constructured. Otherwise constant strides in y-direction is assumed. 
+    ! For weak strategy always use the generic integrator. 
     GenericIntegrator = ListGetLogical( BC,'Level Projector Generic',Found ) 
+    IF(.NOT. Found ) GenericIntegrator = IntGalerkin
 
     ! There is no strong strategy for skewed edges currently
     StrongSkewEdges = .FALSE.
     ! Maximum skew in degrees before treating edges as skewed
     SkewTol = 0.1  
     
-    IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', Found )
-    MeshDIm = Mesh % MeshDim
 
     IF( MeshDim == 2 ) THEN
       ! In 2D these always yield since current only the strong method 
@@ -5044,6 +4279,9 @@ END SUBROUTINE GetMaxDefs
     NoNodes1 = BMesh1 % NumberOfNodes
     NoNodes2 = BMesh2 % NumberOfNodes
 
+    InvPerm1 => BMesh1 % InvPerm
+    InvPerm2 => BMesh2 % InvPerm
+
     ! Create a list matrix that allows for unspecified entries in the matrix 
     ! structure to be introduced.
     Projector => AllocateMatrix()
@@ -5061,7 +4299,23 @@ END SUBROUTINE GetMaxDefs
     ! Check whether biorthogonal basis for projectors requested:
     ! ----------------------------------------------------------
     BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
+
+    ! If we want to eliminate the constraints we have to have a biortgonal basis
+    IF(.NOT. Found ) THEN
+      BiOrthogonalBasis = ListGetLogical( CurrentModel % Solver % Values, &
+          'Eliminate Linear Constraints',Found )
+      IF( BiOrthogonalBasis ) THEN
+        CALL Info('LevelProjector',&
+            'Enforcing > Use Biorthogonal Basis < to True to enable elimination',Level=8)
+        CALL ListAddLogical( BC, 'Use Biorthogonal Basis',.TRUE. )
+      END IF
+    END IF
+
     IF (BiOrthogonalBasis) THEN
+      IF( DoEdges ) THEN
+        CALL Warn('LevelProjector','Biorthogonal basis cannot be combined with edge elements!')
+      END IF
+
       DualSlave  = ListGetLogical(BC, 'Biorthogonal Dual Slave', Found)
       IF(.NOT.Found) DualSlave  = .TRUE.
 
@@ -5088,6 +4342,7 @@ END SUBROUTINE GetMaxDefs
     PiolaVersion = ListGetLogical( CurrentModel % Solver % Values, &
         'Use Piola Transform', Found)
 
+
     ! At the 1st stage determine the maximum size of the projector
     ! If the strong projector is used then the numbering is done as we go
     ! this way we can eliminate unneeded rows. 
@@ -5095,10 +4350,20 @@ END SUBROUTINE GetMaxDefs
     IF( DoNodes ) THEN      
       ALLOCATE( NodePerm( Mesh % NumberOfNodes ) )
       NodePerm = 0
-      DO i=1,SIZE(InvPerm1)
-        NodePerm(InvPerm1(i)) = 1
+
+      ! in parallel only consider nodes that truly are part of this partition
+      DO i=1,BMesh1 % NumberOfBulkElements
+        Element => BMesh1 % Elements(i)        
+        IF( Parallel ) THEN
+          IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE          
+        END IF        
+        NodePerm( InvPerm1( Element % NodeIndexes ) ) = 1
       END DO
-      
+
+      n = SUM( NodePerm )
+      CALL Info('LevelProjector','Initial number of periodic nodes '//TRIM(I2S(n))//&
+          ' out of '//TRIM(I2S(BMesh1 % NumberOfNodes ) ), Level = 10 )
+
       ! Eliminate the redundant nodes by default. 
       ! These are noded that depend on themselves.
       EliminateUnneeded = ListGetLogical( BC,&
@@ -5116,7 +4381,7 @@ END SUBROUTINE GetMaxDefs
           j = InvPerm2(i) 
           IF( NodePerm(j) /= 0 ) THEN
             NodePerm(j) = 0
-            PRINT *,'Removing node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
+            !PRINT *,'Removing node:',j,Mesh % Nodes % x(j), Mesh % Nodes % y(j)
             m = m + 1
           END IF
         END DO
@@ -5126,14 +4391,18 @@ END SUBROUTINE GetMaxDefs
         END IF
       END IF
       
-
       IF( CreateDual ) THEN
         ALLOCATE( DualNodePerm( Mesh % NumberOfNodes ) )
         DualNodePerm = 0
-        DO i=1,SIZE(InvPerm2)
-          DualNodePerm(InvPerm2(i)) = 1
+
+        DO i=1,BMesh2 % NumberOfBulkElements
+          Element => BMesh2 % Elements(i)        
+          IF( Parallel ) THEN
+            IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE          
+          END IF
+          DualNodePerm( InvPerm2( Element % NodeIndexes ) ) = 1
         END DO
-        
+                
         IF( EliminateUnneeded ) THEN
           m = 0
           n = SUM( DualNodePerm )
@@ -5213,12 +4482,19 @@ END SUBROUTINE GetMaxDefs
     END IF
     ProjectorRows = EdgeRow0
 
+
     IF( DoEdges ) THEN
       ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
       EdgePerm = 0
 
       ! Mark the edges for which the projector must be created for
       DO i=1, BMesh1 % NumberOfBulkElements
+
+        ! in parallel only consider face elements that truly are part of this partition
+        IF( Parallel ) THEN
+          IF( BMesh1 % Elements(i) % PartIndex /= ParEnv % MyPe ) CYCLE          
+        END IF
+
         DO j=1, BMesh1 % Elements(i) % TYPE % NumberOfEdges
           EdgePerm( BMesh1 % Elements(i) % EdgeIndexes(j) ) = 1
         END DO
@@ -5272,6 +4548,8 @@ END SUBROUTINE GetMaxDefs
       ProjectorRows = FaceRow0
       
       IF( PiolaVersion ) THEN
+        ! Note: this might not work in parallel with halo since some of the face elements
+        ! do not then belong to the slave boundary. 
         m = BMesh1 % NumberOfBulkElements
         CALL Info('LevelProjector',&
             'Number of active faces in projector: '//TRIM(I2S(m)),Level=8)
@@ -5284,7 +4562,6 @@ END SUBROUTINE GetMaxDefs
         'Max number of rows in projector: '//TRIM(I2S(ProjectorRows)),Level=10)
     ALLOCATE( Projector % InvPerm(ProjectorRows) )
     Projector % InvPerm = 0
-
 
     ! If after strong projectors there are still something undone they must 
     ! be dealt with the weak projectors. 
@@ -5350,6 +4627,11 @@ END SUBROUTINE GetMaxDefs
     !--------------------------------------------------------------
     CALL List_toCRSMatrix(Projector)
     CALL CRS_SortMatrix(Projector,.TRUE.)
+    CALL Info('LevelProjector','Number of rows in projector: '&
+        //TRIM(I2S(Projector % NumberOfRows)),Level=12)
+    CALL Info('LevelProjector','Number of entries in projector: '&
+        //TRIM(I2S(SIZE(Projector % Values))),Level=12)
+  
 
     IF(ASSOCIATED(Projector % Child)) THEN
       CALL List_toCRSMatrix(Projector % Child)
@@ -5369,7 +4651,6 @@ END SUBROUTINE GetMaxDefs
     IF( m > 0 ) THEN
       CALL Warn('LevelProjector','Projector % InvPerm not set in for dofs: '//TRIM(I2S(m)))
     END IF
-
 
     CALL Info('LevelProjector','Projector created',Level=10)
 
@@ -5688,6 +4969,7 @@ END SUBROUTINE GetMaxDefs
       coeffi = 0
       sgn0 = 1
       Nundefined = 0
+      z1 = 0.0_dp
 
       ArcTol = ArcCoeff * Xtol
       ArcRange = ArcCoeff * Xrange 
@@ -5706,7 +4988,9 @@ END SUBROUTINE GetMaxDefs
         Found = .FALSE.
         x1 = ArcCoeff * BMesh1 % Nodes % x(ind)
         y1 = BMesh1 % Nodes % y(ind)
-        z1 = 0.0_dp
+        IF( HaveMaxDistance ) THEN
+          z1 = BMesh1 % Nodes % z(ind)
+        END IF
 
         sgn0 = 1
         coeff = 0.0_dp
@@ -5731,6 +5015,10 @@ END SUBROUTINE GetMaxDefs
           ElementM => BMesh2 % Elements(indM)
           nM = ElementM % TYPE % NumberOfNodes        
           IndexesM => ElementM % NodeIndexes
+
+          IF( HaveMaxDistance ) THEN
+            IF( MINVAL( ABS( BMesh2 % Nodes % z(IndexesM(1:nM)) - z1 ) ) > MaxDistance ) CYCLE          
+          END IF
           
           ! Quick tests to save time
           NodesM % y(1:nM) = BMesh2 % Nodes % y(IndexesM(1:nM))           
@@ -5809,14 +5097,16 @@ END SUBROUTINE GetMaxDefs
         END DO
 
         IF(.NOT. Found ) THEN
-          WRITE( Message,'(A,2I8,3ES12.3)') 'Problematic node: ',&
-              ind,ParEnv % MyPe,x1,y1,MaxMinBasis
           IF( MaxMinBasis > -1.0e-6 ) THEN
             CALL Info('LevelProjector',Message,Level=8)
             Found = .TRUE.
           ELSE
             Nundefined = Nundefined + 1
-            CALL Warn('LevelProjector',Message )
+            IF( .NOT. HaveMaxDistance ) THEN
+              WRITE( Message,'(A,2I8,3ES12.3)') 'Problematic node: ',&
+                  ind,ParEnv % MyPe,x1,y1,MaxMinBasis
+              CALL Warn('LevelProjector',Message )
+            END IF
           END IF
         END IF
 
@@ -5847,8 +5137,13 @@ END SUBROUTINE GetMaxDefs
       END DO
 
       IF( Nundefined > 0 ) THEN
-        CALL Warn('LevelProjector',&
-            'Nodes could not be determined by any edge: '//TRIM(I2S(Nundefined)))          
+        IF( HaveMaxDistance ) THEN
+          CALL Info('LevelProjector',&
+              'Nodes could not be found in any element: '//TRIM(I2S(Nundefined)))          
+        ELSE
+          CALL Warn('LevelProjector',&
+              'Nodes could not be found in any element: '//TRIM(I2S(Nundefined)))          
+        END IF
       END IF
 
       DEALLOCATE( NodesM % x, NodesM % y, NodesM % z, Basis, coeffi, coeff )
@@ -6802,10 +6097,11 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: x(10),y(10),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , val_dual
+          SumArea,TrueArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , &
+          val_dual, zmin, zmax, zminm, zmaxm
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol
-      REAL(KIND=dp) :: TotRefArea, TotSumArea
+      REAL(KIND=dp) :: TotRefArea, TotSumArea, TotTrueArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
       LOGICAL :: LeftCircle, Stat, CornerFound(4), CornerFoundM(4)
@@ -6813,7 +6109,7 @@ END SUBROUTINE GetMaxDefs
       TYPE(Variable_t), POINTER :: TimestepVar
 
       ! These are used temporarely for debugging purposes
-      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd
+      INTEGER :: SaveInd, MaxSubElem, MaxSubTriangles, DebugInd, Nslave, Nmaster
       LOGICAL :: SaveElem, DebugElem
       CHARACTER(LEN=20) :: FileName
 
@@ -6866,8 +6162,12 @@ END SUBROUTINE GetMaxDefs
       ActiveHits = 0
       TotRefArea = 0.0_dp
       TotSumArea = 0.0_dp
+      TotTrueArea = 0.0_dp
       Point = 0.0_dp
       MaxSubTriangles = 0
+      Nslave = 0
+      Nmaster = 0
+
 
       DO ind=1,BMesh1 % NumberOfBulkElements
 
@@ -6906,13 +6206,19 @@ END SUBROUTINE GetMaxDefs
         ymin = MINVAL(Nodes % y(1:n))
         ymax = MAXVAL(Nodes % y(1:n))
                 
+        IF( HaveMaxDistance ) THEN
+          zmin = MINVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+          zmax = MAXVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+        END IF
+
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
         IP = GaussPoints( Element ) 
         RefArea = detJ * SUM( IP % s(1:IP % n) )
         SumArea = 0.0_dp
-        
+        TrueArea = 0.0_dp
+
         IF( SaveElem ) THEN
           FileName = 't'//TRIM(I2S(TimeStep))//'_a.dat'
           OPEN( 10,FILE=Filename)
@@ -6932,6 +6238,20 @@ END SUBROUTINE GetMaxDefs
         END IF
 
 
+        IF( DoNodes .AND. .NOT. StrongNodes ) THEN
+          DO i=1,n
+            j = InvPerm1(Indexes(i))
+            nrow = NodePerm(j)
+            IF( nrow == 0 ) CYCLE
+            CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                j, 0.0_dp ) 
+             IF(ASSOCIATED(Projector % Child)) &
+               CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
+                   j, 0.0_dp ) 
+          END DO
+        END IF
+
+
         ! Currently a n^2 loop but it could be improved
         !--------------------------------------------------------------------
         ElemCands = 0
@@ -6942,6 +6262,13 @@ END SUBROUTINE GetMaxDefs
           IndexesM => ElementM % NodeIndexes
           nM = ElementM % TYPE % NumberOfNodes
 
+          IF( HaveMaxDistance ) THEN
+            zminm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            zmaxm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            IF( zmaxm < zmin - MaxDistance ) CYCLE
+            IF( zminm > zmax + MaxDistance ) CYCLE
+          END IF
+          
           NodesM % y(1:nM) = BMesh2 % Nodes % y(IndexesM(1:nM))
           
           ! Make the quick and dirty search first
@@ -7320,6 +6647,7 @@ END SUBROUTINE GetMaxDefs
 
                 DO j=1,n 
                   jj = Indexes(j)                                    
+
                   nrow = NodePerm(InvPerm1(jj))
                   IF( nrow == 0 ) CYCLE
 
@@ -7327,9 +6655,12 @@ END SUBROUTINE GetMaxDefs
                   val = Basis(j) * Wtemp
                   IF(BiorthogonalBasis) val_dual = CoeffBasis(j) * Wtemp
 
+                  TrueArea = TrueArea + val
+
                   IF( DebugElem ) PRINT *,'Vals:',val
 
                   DO i=1,n
+                    Nslave = Nslave + 1
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                           InvPerm1(Indexes(i)), NodeCoeff * Basis(i) * val ) 
 
@@ -7342,6 +6673,7 @@ END SUBROUTINE GetMaxDefs
                   DO i=1,nM
                     IF( ABS( val * BasisM(i) ) < 1.0e-10 ) CYCLE
 
+                    Nmaster = Nmaster + 1
                     CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
                         InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )                   
 
@@ -7373,6 +6705,10 @@ END SUBROUTINE GetMaxDefs
                     jj = jj + EdgeCol0
                     Projector % InvPerm( nrow ) = jj
                   ELSE
+                    IF( Parallel ) THEN
+                      IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+                    END IF
+
                     jj = 2 * ( ind - 1 ) + ( j - 4 )
                     nrow = FaceRow0 + jj
                     jj = 2 * ( Element % ElementIndex - 1) + ( j - 4 ) 
@@ -7433,6 +6769,7 @@ END SUBROUTINE GetMaxDefs
         TotHits = TotHits + ElemHits
         TotSumArea = TotSumArea + SumArea
         TotRefArea = TotRefArea + RefArea
+        TotTrueArea = TotTruearea + TrueArea
 
         Err = SumArea / RefArea
         IF( Err > MaxErr ) THEN
@@ -7480,12 +6817,21 @@ END SUBROUTINE GetMaxDefs
       WRITE( Message,'(A,ES12.3)') 'Average ratio in area integration:',Err 
       CALL Info('LevelProjector',Message,Level=8)
 
+      WRITE( Message,'(A,ES12.5)') 'True integrated area:',TotTrueArea
+      CALL Info('LevelProjector',Message,Level=8)
+
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Maximum relative discrepancy in areas (element: ',MaxErrInd,'):',MaxErr-1.0_dp 
       CALL Info('LevelProjector',Message,Level=8)
       WRITE( Message,'(A,I0,A,ES12.4)') &
           'Minimum relative discrepancy in areas (element: ',MinErrInd,'):',MinErr-1.0_dp 
       CALL Info('LevelProjector',Message,Level=8)
+
+      CALL Info('LevelProjector','Number of slave entries: '&
+          //TRIM(I2S(Nslave)),Level=10)
+      CALL Info('LevelProjector','Number of master entries: '&
+          //TRIM(I2S(Nmaster)),Level=10)
+
 
 
     END SUBROUTINE AddProjectorWeakGeneric
@@ -7506,7 +6852,8 @@ END SUBROUTINE GetMaxDefs
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: xt,yt,zt,xmax,xmin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,u,v,w,um,vm,wm,val,RefArea,dArea,&
-          SumArea,MaxErr,MinErr,Err,uvw(3),val_dual
+          SumArea,MaxErr,MinErr,Err,uvw(3),val_dual,dx,dxcut, &
+          zmin,zmax, zminm, zmaxm
       REAL(KIND=dp) :: TotRefArea, TotSumArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       LOGICAL :: LeftCircle, Stat
@@ -7552,7 +6899,7 @@ END SUBROUTINE GetMaxDefs
       zt = 0.0_dp
       LeftCircle = .FALSE.
      
-      ! The temporal triangle used in the numerical integration
+      ! The temporal element segment used in the numerical integration
       ElementT % TYPE => GetElementType( 202, .FALSE. )
       ElementT % NodeIndexes => IndexesT
       TotHits = 0
@@ -7587,6 +6934,13 @@ END SUBROUTINE GetMaxDefs
 
         xmin = MINVAL(Nodes % x(1:n))
         xmax = MAXVAL(Nodes % x(1:n))
+        dx = xmax - xmin 
+
+        ! The flattened dimension is always the z-component
+        IF( HaveMaxDistance ) THEN
+          zmin = MINVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+          zmax = MAXVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
+        END IF
                         
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
@@ -7604,6 +6958,18 @@ END SUBROUTINE GetMaxDefs
           CLOSE( 10 )
         END IF
 
+        ! Set the values to maintain the size of the matrix
+        ! The size of the matrix is used when allocating for utility vectors of contact algo.
+        ! This does not set the Projector % InvPerm to nonzero value that is used to 
+        ! determine whether there really is a projector. 
+        DO i=1,n
+          j = InvPerm1(Indexes(i))
+          nrow = NodePerm(j)
+          IF( nrow == 0 ) CYCLE
+          CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+              j, 0.0_dp ) 
+        END DO
+
         ! Currently a n^2 loop but it could be improved
         !--------------------------------------------------------------------
         ElemHits = 0
@@ -7613,6 +6979,8 @@ END SUBROUTINE GetMaxDefs
           IndexesM => ElementM % NodeIndexes
 
           nM = ElementM % TYPE % NumberOfNodes
+
+ 
           NodesM % x(1:nM) = BMesh2 % Nodes % x(IndexesM(1:nM))
 
           ! Treat the left circle differently. 
@@ -7652,11 +7020,26 @@ END SUBROUTINE GetMaxDefs
 200       IF( xminm >= xmax ) GOTO 100
           IF( xmaxm <= xmin ) GOTO 100
 
+          
+          ! This is a cheap test so perform that first, if requested
+          IF( HaveMaxDistance ) THEN
+            zminm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            zmaxm = MAXVAL( BMesh2 % Nodes % z(IndexesM(1:nM)) )
+            IF( zmaxm < zmin - MaxDistance ) GOTO 100 
+            IF( zminm > zmax + MaxDistance ) GOTO 100
+          END IF
+          
+
           NodesT % x(1) = MAX( xmin, xminm ) 
           NodesT % x(2) = MIN( xmax, xmaxm ) 
+          dxcut = ABS( NodesT % x(1)-NodesT % x(2) )
 
-          IF(ABS(NodesT % x(1)-NodesT % x(2))<1.d-12) GOTO 100
-         
+          ! Too small absolute values may result to problems when inverting matrix
+          IF( dxcut < 1.0d-12 ) GOTO 100
+
+          ! Too small relative value is irrelevant
+          IF( dxcut < 1.0d-8 * dx ) GOTO 100
+
           sgn0 = 1
           IF( AntiRepeating ) THEN
             IF ( MODULO(Nrange,2) /= 0 ) THEN
@@ -7797,7 +7180,6 @@ END SUBROUTINE GetMaxDefs
               DO j=1,nM 
                 jj = IndexesM(j)                                    
                 nrow = DualNodePerm(InvPerm2(jj))
-
                 IF( nrow == 0 ) CYCLE
                 
                 DualProjector % InvPerm(nrow) = InvPerm2(jj)
@@ -7907,7 +7289,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodePerm(:)
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
-    INTEGER :: p,q,i,j,it,nn,n,m,t,NoOrigNodes, NoDiscontNodes, size0, indp, indq, &
+    INTEGER :: p,q,i,j,it,nn,n,m,t,NoOrigNodes, NoDiscontNodes, indp, indq, &
         e1, e2, e12, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides, &
         InvPermSize, indpoffset
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
@@ -7917,16 +7299,18 @@ END SUBROUTINE GetMaxDefs
     INTEGER, ALLOCATABLE :: Indexes(:), DiscontIndexes(:)
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element, Left, Right, OldFace, NewFace, Swap
-    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, SetDiagEdges, DoNodes, DoEdges
+    LOGICAL :: Stat,DisCont,Found,NodalJump,AxisSym, SetDiag, &
+        SetDiagEdges, DoNodes, DoEdges, LocalConstraints, NoHalo
     LOGICAL, ALLOCATABLE :: EdgeDone(:)
     REAL(KIND=dp) :: point(3), uvw(3), DiagEps
     INTEGER, ALLOCATABLE :: EQind(:)
     INTEGER, POINTER :: OldMap(:,:), NewMap(:,:)
+    TYPE(ValueList_t), POINTER :: BCParams
+    LOGICAL :: CheckHaloNodes
+    LOGICAL, POINTER :: HaloNode(:)
 
     CALL Info('WeightedProjectorDiscont','Creating projector for discontinuous boundary '&
          //TRIM(I2S(bc)),Level=7)
-
-    Projector => NULL()
 
     Projector => NULL()
     IF( .NOT. Mesh % DisContMesh ) THEN
@@ -7946,32 +7330,39 @@ END SUBROUTINE GetMaxDefs
       CALL Warn('WeightedProjectorDiscont','One BC (not '&
           //TRIM(I2S(j))//') only for discontinuous boundary!')
     END IF
+ 
+    BCParams => Model % BCs(bc) % Values
 
-    Scale = ListGetCReal( Model % BCs(bc) % Values,'Mortar BC Scaling',Stat )  
+    Scale = ListGetCReal( BCParams,'Mortar BC Scaling',Stat )  
     IF(.NOT. Stat) Scale = -1.0_dp
 
-    NodalJump = ListCheckPrefix( Model % BCs(bc) % Values,'Mortar BC Coefficient')
+    NodalJump = ListCheckPrefix( BCParams,'Mortar BC Coefficient')
     IF(.NOT. NodalJump ) THEN
-      NodalJump = ListCheckPrefix( Model % BCs(bc) % Values,'Mortar BC Resistivity')
+      NodalJump = ListCheckPrefix( BCParams,'Mortar BC Resistivity')
     END IF
 
-    IF( NodalJump ) THEN
-      ! Just have a conservative upper limit for the size of the future matrix "A" so that
-      ! for sure the projector columns values won't include it. 
-      ! We will fix the entries then later.
-      IF( ASSOCIATED( Model % Solver % Variable ) ) THEN
-        size0 = SIZE( Model % Solver % Variable % perm ) 
-      ELSE
-        CALL Fatal('WeightedProjectorDiscont','Dont know offset for projector diagonal')
-        size0 = Model % Mesh % NumberOfNodes
-      END IF
-    ELSE
-      size0 = 0
+    ! Take the full weight when creating the constraints since the values will 
+    ! not be communicated
+    LocalConstraints = ListGetLogical(Model % Solver % Values, &
+        'Partition Local Projector',Found)
+    IF(.NOT. Found ) LocalConstraints = ListGetLogical(Model % Solver % Values, &
+        'Partition Local Constraints',Found)
+
+    ! Don't consider halo when creating discontinuity
+    NoHalo = ListGetLogical(Model % Solver % Values, &
+        'Projector No Halo',Found)
+
+    ! Don't consider single halo nodes when creating discontinuity
+    CheckHaloNodes = ListGetLogical( Model % Solver % Values,&
+        'Projector No Halo Nodes',Found ) 
+    IF( CheckHaloNodes ) THEN
+      CALL MarkHaloNodes( Mesh, HaloNode, CheckHaloNodes )
     END IF
-      
+
+
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',Found ) ) THEN
       DoEdges = .FALSE. 
-    ELSE IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Edges',Found ) ) THEN
+    ELSE IF( ListGetLogical( BCParams,'Projector Skip Edges',Found ) ) THEN
       DoEdges = .FALSE.
     ELSE
       DoEdges = ( Mesh % NumberOfEdges > 0 )
@@ -7983,17 +7374,31 @@ END SUBROUTINE GetMaxDefs
 
     IF( ListGetLogical( Model % Solver % Values,'Projector Skip Nodes',Found ) ) THEN
       DoNodes = .FALSE. 
-    ELSE IF( ListGetLogical( Model % BCs(bc) % Values,'Projector Skip Nodes',Found ) ) THEN
+    ELSE IF( ListGetLogical( BCParams,'Projector Skip Nodes',Found ) ) THEN
       DoNodes = .FALSE.
     ELSE
       DoNodes = ( Mesh % NumberOfNodes > 0 )
     END IF
 
     ! Should the projector be diagonal or mass matrix type 
-    SetDiag = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag',Found ) 
-    SetDiagEdges = ListGetLogical( Model % BCs(bc) % Values,'Mortar BC Diag Edges',Found )
+    SetDiag = ListGetLogical( BCParams,'Mortar BC Diag',Found ) 
+
+    IF(.NOT. Found ) SetDiag = ListGetLogical( BCParams, 'Use Biorthogonal Basis', Found)
+
+    ! If we want to eliminate the constraints we have to have a biortgonal basis
+    IF(.NOT. Found ) THEN
+      SetDiag = ListGetLogical( CurrentModel % Solver % Values, &
+          'Eliminate Linear Constraints',Found )
+      IF( SetDiag ) THEN
+        CALL Info('WeightedProjectorDiscont',&
+            'Setting > Use Biorthogonal Basis < to True to enable elimination',Level=8)
+      END IF
+    END IF
+
+
+    SetDiagEdges = ListGetLogical( BCParams,'Mortar BC Diag Edges',Found )
     IF(.NOT. Found ) SetDiagEdges = SetDiag
-    DiagEps = ListGetConstReal( Model % BCs(bc) % Values,'Mortar BC Diag Eps',Found ) 
+    DiagEps = ListGetConstReal( BCParams,'Mortar BC Diag Eps',Found ) 
 
     ! Integration weights should follow the metrics if we want physical nodal jumps. 
     AxisSym = .FALSE.
@@ -8054,7 +7459,7 @@ END SUBROUTINE GetMaxDefs
         IF( ASSOCIATED( Right ) ) THEN
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
         END IF 
-        !IF( ActSides == 0 ) CYCLE
+        IF( NoHalo .AND. ActSides == 0 ) CYCLE
         
         ! Consistently choose the face with the old edges 
         IF( ALL( Left % NodeIndexes <= NoOrigNodes ) ) THEN
@@ -8088,7 +7493,6 @@ END SUBROUTINE GetMaxDefs
           'Size of InvPerm estimated to be: '//TRIM(I2S(InvPermSize)),Level=8)
     END IF
 
-
     ! Ok, nothing to do just go end tidy things up
     IF( InvPermSize == 0 ) GOTO 100
 
@@ -8109,17 +7513,7 @@ END SUBROUTINE GetMaxDefs
     ! Projector for the nodal dofs. 
     !------------------------------------------------------------------------
     IF( DoNodes ) THEN
-      ! Number the degrees of freedom related to the nodal constraint
-      DO i=1,NoOrigNodes
-        j = NodePerm(i)
-        IF( j == 0 ) CYCLE
-        IF( InvPerm(j) > 0 ) THEN
-          PRINT *,'This should not happen: ',i,j,InvPerm(j)
-        ELSE
-          InvPerm(j) = i
-        END IF
-      END DO
-            
+
       ParentMissing = 0
       ParentFound = 0
       DO t = 1, Mesh % NumberOfBoundaryElements
@@ -8134,10 +7528,10 @@ END SUBROUTINE GetMaxDefs
         Right => Element % BoundaryInfo % Right 
 
         ! Here we really need both sides to be able to continue!
-        IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
-          ParentMissing = ParentMissing + 1
-          CYCLE
-        END IF
+        !IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) THEN
+        !  ParentMissing = ParentMissing + 1
+        !  CYCLE
+        !END IF
 
         PosSides = 0
         ActSides = 0
@@ -8148,15 +7542,25 @@ END SUBROUTINE GetMaxDefs
         IF( ASSOCIATED( Right ) ) THEN
           PosSides = PosSides + 1
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
-        END IF 
-        ! IF( ActSides == 0 ) CYCLE
+        END IF
+        IF( NoHalo .AND. ActSides == 0 ) CYCLE        
 
-        Coeff = 1.0_dp * ActSides / PosSides 
+        IF( LocalConstraints ) THEN
+          Coeff = 1.0_dp
+        ELSE
+          Coeff = 1.0_dp * ActSides / PosSides 
+        END IF
         ParentFound = ParentFound + 1
 
         ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
         ElementNodes % y(1:n) = Mesh % Nodes % y(Indexes(1:n))
         ElementNodes % z(1:n) = Mesh % Nodes % z(Indexes(1:n))
+
+        IF( ALL( NodePerm(Indexes(1:n)) == 0 ) ) CYCLE
+        
+        IF( CheckHaloNodes ) THEN
+          IF( ALL( HaloNode(Indexes(1:n)) ) ) CYCLE
+        END IF
 
         ! Get the indexes on the other side of the discontinuous boundary
         DO i=1,n
@@ -8185,6 +7589,12 @@ END SUBROUTINE GetMaxDefs
           DO p=1,n             
             indp = NodePerm( Indexes(p) )
             IF( indp == 0 ) CYCLE
+            IF( CheckHaloNodes ) THEN
+              IF( HaloNode( Indexes(p) ) ) CYCLE
+            END IF
+
+            ! Only set for the nodes are are really used
+            InvPerm(indp) = Indexes(p)
 
             val = weight * Basis(p)
 
@@ -8194,27 +7604,20 @@ END SUBROUTINE GetMaxDefs
 
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                   DiscontIndexes(p), Scale * val )             
-              ! Add entry to the diagonal-to-be if jump condition is to be used
-              !IF( NodalJump ) THEN
-              !  CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-              !      size0 + indp, DiagEps ) 
-              !END IF
             ELSE
               DO q=1,n
 
                 indq = NodePerm(Indexes(q))
                 IF( indq == 0 ) CYCLE
 
+                IF( CheckHaloNodes ) THEN
+                  IF( HaloNode( Indexes(p) ) ) CYCLE
+                END IF
+                
                 CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                     Indexes(q), Basis(q) * val ) 
                 CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
                     DiscontIndexes(q), Scale * Basis(q) * val ) 
-
-                ! Add entry to the diagonal-to-be if jump condition is to be used
-                !IF( NodalJump ) THEN
-                !  CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
-                !      size0 + indq, DiagEps ) 
-                !END IF
               END DO
             END IF
           END DO
@@ -8269,9 +7672,15 @@ END SUBROUTINE GetMaxDefs
         IF( ASSOCIATED( Right ) ) THEN
           PosSides = PosSides + 1
           IF( Right % PartIndex == ParEnv % myPe ) ActSides = ActSides + 1
-        END IF 
-        !IF( ActSides == 0 ) CYCLE
-        Coeff = (1.0_dp * ActSides) / (1.0_dp * PosSides)
+        END IF
+
+        IF( NoHalo .AND. ActSides == 0 ) CYCLE
+
+        IF( LocalConstraints ) THEN
+          Coeff = 1.0_dp
+        ELSE          
+          Coeff = (1.0_dp * ActSides) / (1.0_dp * PosSides)
+        END IF
 
         ! Consistently choose the face with the old edges
         IF( ALL( Left % NodeIndexes <= NoOrigNodes ) ) THEN
@@ -8388,6 +7797,7 @@ END SUBROUTINE GetMaxDefs
 
     ! Convert from list matrix to CRS matrix format
     CALL List_ToCRSMatrix(Projector)
+
     IF( Projector % NumberOfRows > 0) THEN
       CALL CRS_SortMatrix(Projector,.TRUE.)
       CALL Info('WeightedProjectorDiscont','Number of entries in projector matrix: '//&
@@ -8398,10 +7808,13 @@ END SUBROUTINE GetMaxDefs
 
 100 DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
     DEALLOCATE( Indexes, DisContIndexes, Basis, dBasisdx, WBasis, WBasis2, RotWBasis )
+    IF( CheckHaloNodes ) DEALLOCATE( HaloNode )
+
            
   END FUNCTION WeightedProjectorDiscont
   !------------------------------------------------------------------------------
  
+
   !---------------------------------------------------------------------------
   ! Simply fitting of cylinder into a point cloud. This is done in two phases.
   ! 1) The axis of the cylinder is found by minimizing the \sum((n_i*t)^2)
@@ -8489,18 +7902,21 @@ END SUBROUTINE GetMaxDefs
 
     ! Normalize the axis normal length to one    
     AxisNormal = AxisNormal / SQRT( SUM( AxisNormal ** 2 ) )
-    PRINT *,'Axis Normal:',AxisNormal
     IF( 1.0_dp - ABS( AxisNormal(3) ) > 1.0e-5 ) THEN
-      CALL Fatal('CylinderFit','Set the rest of the code to deal with generic axis!')
+      CALL Warn('CylinderFit','The cylinder axis is not aligned with z-axis!')
     END IF
 
 100 CALL TangentDirections( AxisNormal,Tangent1,Tangent2 )
-    PRINT *,'Axis Tangent 1:',Tangent1
-    PRINT *,'Axis Tangent 2:',Tangent2
+
+    IF(.FALSE.) THEN
+      PRINT *,'Axis Normal:',AxisNormal
+      PRINT *,'Axis Tangent 1:',Tangent1
+      PRINT *,'Axis Tangent 2:',Tangent2
+    END IF
 
     ! Finding three points with maximum distance in the tangent directions
 
-    ! First, find the single extrumum point in the first tangent direction
+    ! First, find the single extremum point in the first tangent direction
     ! Save the local coordinates in the N-T system of the cylinder
     MinDist = HUGE(MinDist) 
     DO i=1, PMesh % NumberOfNodes
@@ -8603,15 +8019,17 @@ END SUBROUTINE GetMaxDefs
     Y0 = -0.5 * m13 / m11
     rad = SQRT( x0**2 + y0**2 + m14/m11 )
 
-    PRINT *,'Radius of cylinder',rad
-    !PRINT *,'Center point in local coordinates:',x0,y0
-
     Coord = x0 * Tangent1 + y0 * Tangent2
 
-    PRINT *,'Center point in cartesian coordinates:',Coord
+    !PRINT *,'Center point in cartesian coordinates:',Coord
     
     CALL ListAddConstReal( PParams,'Rotational Projector Center X',Coord(1))
     CALL ListAddConstReal( PParams,'Rotational Projector Center Y',Coord(2))
+    CALL ListAddConstReal( PParams,'Rotational Projector Center Z',Coord(3))
+
+    CALL ListAddConstReal( PParams,'Rotational Projector Normal X',AxisNormal(1))
+    CALL ListAddConstReal( PParams,'Rotational Projector Normal Y',AxisNormal(2))
+    CALL ListAddConstReal( PParams,'Rotational Projector Normal Z',AxisNormal(3))
 
     
   CONTAINS
@@ -8652,12 +8070,14 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp) :: x1_min(3),x1_max(3),x2_min(3),x2_max(3),&
         x1r_min(3),x1r_max(3),x2r_min(3),x2r_max(3)
     REAL(KIND=dp) :: x(3), xcyl(3),rad2deg,F1min,F1max,F2min,F2max,dFii1,dFii2,eps_rad,&
-        err1,err2,dF,Fii,Nsymmetry,fmin,fmax,DegOffset,rad,alpha,x0(3)
+        err1,err2,dF,Fii,Fii0,Nsymmetry,fmin,fmax,DegOffset,rad,alpha,x0(3),xtmp(3),&
+        Normal(3), Tangent1(3), Tangent2(3) 
     REAL(KIND=dp), POINTER :: TmpCoord(:)
     REAL(KIND=dp),ALLOCATABLE :: Angles(:)
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: i,j,k,n,ind,Nmax,Nmin,Nfii,Nnodes,MaxElemNodes,NElems
     LOGICAL :: Found, Hit0, Hit90, Hit180, Hit270, SetDegOffset
+    LOGICAL :: GotNormal, GotCenter
 
     ! We choose degrees as they are more intuitive
     rad2deg = 180.0_dp / PI
@@ -8668,16 +8088,29 @@ END SUBROUTINE GetMaxDefs
     NElems = BMesh2 % NumberOfBulkElements
     FullCircle = .FALSE.
 
-    IF( ListGetLogical( BParams,'Rotational Projector Center Fit',Found ) ) THEN
+    ! Cylindrical projector is fitted always and rotational only when requested.
+    IF( ListGetLogical( BParams,'Rotational Projector Center Fit',Found ) .OR. &
+       Cylindrical ) THEN
       IF( .NOT. ListCheckPresent( BParams,'Rotational Projector Center X') ) THEN
         CALL CylinderFit( BMesh1, BParams ) 
       END IF
     END IF
     
-    x0(1) = ListGetCReal( BParams,'Rotational Projector Center X',Found ) 
+    x0(1) = ListGetCReal( BParams,'Rotational Projector Center X',GotCenter ) 
     x0(2) = ListGetCReal( BParams,'Rotational Projector Center Y',Found ) 
+    GotCenter = GotCenter .OR. Found
     x0(3) = ListGetCReal( BParams,'Rotational Projector Center Z',Found ) 
+    GotCenter = GotCenter .OR. Found
 
+    Normal(1) = ListGetCReal( BParams,'Rotational Projector Normal X',GotNormal ) 
+    Normal(2) = ListGetCReal( BParams,'Rotational Projector Normal Y',Found ) 
+    GotNormal = GotNormal .OR. Found
+    Normal(3) = ListGetCReal( BParams,'Rotational Projector Normal Z',Found ) 
+    GotNormal = GotNormal .OR. Found
+
+    IF( GotNormal ) THEN
+      CALL TangentDirections( Normal,Tangent1,Tangent2 )
+    END IF
 
     ! Go trough master (k=1) and target mesh (k=2)
     !--------------------------------------------
@@ -8735,8 +8168,18 @@ END SUBROUTINE GetMaxDefs
         x(3) = PMesh % Nodes % z(i)
 
         ! Subtract the center of axis
-        x = x - x0
-        
+        IF( GotCenter ) THEN
+          x = x - x0
+        END IF
+
+        IF( GotNormal ) THEN
+          xtmp = x
+          x(1) = SUM( Tangent1 * xtmp ) 
+          x(2) = SUM( Tangent2 * xtmp ) 
+          x(3) = SUM( Normal * xtmp ) 
+        END IF
+
+
         ! Set the angle to be the first coordinate as it may sometimes be the 
         ! only nonzero coordinate. Z-coordinate is always unchanged. 
         !------------------------------------------------------------------------
@@ -8784,9 +8227,13 @@ END SUBROUTINE GetMaxDefs
         CALL Info('RotationalInterfaceMeshes','Cylindrical interface seems to be a full circle',&
             Level=6)
       ELSE
-        IF( Cylindrical ) THEN
-          CALL Info('RotationalInterfaceMeshes','Cylindrical interface not full circle',&
-              Level=6)
+        IF( Cylindrical .AND. k == 2 ) THEN
+          CALL Info('RotationalInterfaceMeshes','Moving the 2nd mesh discontinuity to same angle',Level=6)
+          DO j=1,PMesh % NumberOfNodes
+            IF( PMesh % Nodes % x(j) < Fii ) PMesh % Nodes % x(j) = &
+                PMesh % Nodes % x(j) + 360.0_dp
+          END DO
+          
         ELSE IF( Hit180 ) THEN
           IF( .NOT. Hit0 ) THEN
             Fii = 0.0_dp
@@ -8795,12 +8242,13 @@ END SUBROUTINE GetMaxDefs
           ELSE IF( .NOT. Hit90 ) THEN
             Fii = 90.0
           END IF
-          
+
           DO j=1,PMesh % NumberOfNodes
             IF( PMesh % Nodes % x(j) < Fii ) PMesh % Nodes % x(j) = &
                 PMesh % Nodes % x(j) + 360.0_dp
           END DO
           WRITE( Message,'(A,F8.3)') 'Moving discontinuity of angle to: ',Fii
+          Fii0 = Fii
           CALL Info('RotationalInterfaceMesh',Message,Level=6)
         END IF
       END IF
@@ -8859,9 +8307,11 @@ END SUBROUTINE GetMaxDefs
 
     ! Ok, so we have concluded that the interface has constant radius
     ! therefore the constant radius may be removed from the mesh description.
+    ! Or perhaps we don't remove to allow more intelligent projector building 
+    ! for contact mechanics. 
     !---------------------------------------------------------------------------
-    Bmesh1 % Nodes % z = 0.0_dp
-    BMesh2 % Nodes % z = 0.0_dp
+    !Bmesh1 % Nodes % z = 0.0_dp
+    !BMesh2 % Nodes % z = 0.0_dp
 
     ! Check whether the z-coordinate is constant or not.
     ! Constant z-coordinate implies 1D system, otherwise 2D system.
@@ -8927,6 +8377,7 @@ END SUBROUTINE GetMaxDefs
   !---------------------------------------------------------------------------
   !> Given two interface meshes for nonconforming radial boundaries make 
   !> a coordinate transformation to (r,z) level.
+  !> This is always a symmetry condition and can not be a contact condition.
   !---------------------------------------------------------------------------
   SUBROUTINE RadialInterfaceMeshes(BMesh1, BMesh2, BParams )
   !---------------------------------------------------------------------------
@@ -9046,12 +8497,13 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: FlatDim, MeshDim, MinDiffI, i, j
     REAL(KIND=dp), POINTER :: Coord(:)
     REAL(KIND=dp) :: Diff, MaxDiff, MinDiff, RelDiff, RelDiff1
-    LOGICAL :: Found
+    LOGICAL :: Found, ReduceDim
 
     CALL Info('FlatInterfaceMeshes','Flattening interface meshes to 2D',Level=8)    
     
     MeshDim = CurrentModel % DIMENSION
     FlatDim = ListGetInteger( BParams,'Flat Projector Coordinate',Found,minv=1,maxv=3) 
+    ReduceDim = ListGetLogical( BParams,'Flat Projector Reduce Dimension',Found )
 
     IF(.NOT. Found ) THEN
       DO j=1, 2
@@ -9102,31 +8554,182 @@ END SUBROUTINE GetMaxDefs
       ELSE
         BMesh => BMesh2
       END IF
-      
+
+      ! Set the 3rd component to be the "distance" in the flat interface      
       IF( FlatDim == 3 ) THEN
-        BMesh % Nodes % z = 0.0_dp
+        CONTINUE
       ELSE IF( FlatDim == 2 ) THEN
-        IF( MeshDim == 3 ) THEN
-          BMesh % Nodes % y = BMesh % Nodes % z
-          BMesh % Nodes % z = 0.0_dp
-        ELSE
-          BMesh % Nodes % y = 0.0_dp
-        END IF
+        Coord => BMesh % Nodes % y
+        BMesh % Nodes % y => BMesh % Nodes % z
+        BMesh % Nodes % z => Coord
+        IF( MeshDim == 2 ) BMesh % Nodes % y = 0.0_dp
       ELSE IF( FlatDim == 1 ) THEN
-        IF( MeshDim == 3 ) THEN
-          BMesh % Nodes % x = BMesh % Nodes % z
-          BMesh % Nodes % z = 0.0_dp
-        ELSE 
-          BMesh % Nodes % x = BMesh % Nodes % y
-          BMesh % Nodes % y = 0.0_dp
-        END IF
+        Coord => BMesh % Nodes % x
+        BMesh % Nodes % x => BMesh % Nodes % y
+        BMesh % Nodes % y => BMesh % Nodes % z
+        Bmesh % Nodes % z => Coord
+        IF( MeshDim == 2 ) BMesh % Nodes % y = 0.0_dp
       END IF
+
+      IF( ReduceDim ) BMesh % Nodes % z = 0.0_dp
 
       Bmesh % MeshDim = 2
     END DO
 
   END SUBROUTINE FlatInterfaceMeshes
 !------------------------------------------------------------------------------
+
+
+  !---------------------------------------------------------------------------
+  !> Given two interface meshes flatten them into the plane that 
+  !> best fits either of the meshes. 
+  !---------------------------------------------------------------------------
+  SUBROUTINE PlaneInterfaceMeshes(BMesh1, BMesh2, BParams )
+    !---------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Valuelist_t), POINTER :: BParams
+    !--------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: Bmesh
+    INTEGER :: i, j, n, nip, MeshDim
+    REAL(KIND=dp) :: Normal(3), NormalSum(3), RefSum, Length, Planeness, &
+        PlaneNormal(3,1), PlaneNormal1(3,1), Planeness1, Normal1(3), &
+        Tangent(3), Tangent2(3), Coord(3), detJ, Normal0(3)
+    REAL(KIND=dp), POINTER :: PNormal(:,:), Basis(:)
+    TYPE(Element_t), POINTER :: Element
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t) :: ElementNodes
+    INTEGER, POINTER :: NodeIndexes(:)
+    LOGICAL :: Found, Stat, Normal0Set
+
+    CALL Info('PlaneInterfaceMeshes','Flattening interface meshes to a plane',Level=8)    
+
+    MeshDim = CurrentModel % DIMENSION
+    PNormal => ListGetConstRealArray( BParams,'Plane Projector Normal',Found) 
+
+    ! If the projector normal is not given determine it first 
+    IF(.NOT. Found ) THEN     
+      CALL Info('PlaneInterfaceMeshes','Could not find > Plane Projector Normal < so determining it now',Level=12)    
+      n = CurrentModel % MaxElementNodes
+      ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), &
+          ElementNodes % z(n), Basis(n) )
+
+      ! Fit a plane to both datasets
+      DO j=1, 2
+        IF( j == 1 ) THEN
+          Bmesh => BMesh1
+        ELSE      
+          BMesh => BMesh2
+        END IF
+
+        NormalSum = 0.0_dp
+        RefSum = 0.0_dp
+        Normal0Set = .FALSE.
+
+        ! we use the Dot2Min and Normal2 temporarily also for first mesh, with k=1
+        !-------------------------------------------------------------------------
+        DO i=1, BMesh % NumberOfBulkElements
+          Element => BMesh % Elements(i)
+          n = Element % TYPE % NumberOfNodes
+          NodeIndexes => Element % NodeIndexes
+          IP = GaussPoints( Element ) 
+
+          ElementNodes % x(1:n) = BMesh % Nodes % x(NodeIndexes(1:n))
+          ElementNodes % y(1:n) = BMesh % Nodes % y(NodeIndexes(1:n))
+          ElementNodes % z(1:n) = BMesh % Nodes % z(NodeIndexes(1:n))           
+
+          DO nip=1, IP % n 
+            stat = ElementInfo( Element,ElementNodes,&
+                IP % u(nip),IP % v(nip),IP % w(nip),detJ,Basis)
+
+            Normal = NormalVector( Element, ElementNodes, &
+                IP % u(nip), IP % v(nip), .FALSE. ) 
+            IF( .NOT. Normal0Set ) THEN
+              Normal0 = Normal
+              Normal0Set = .TRUE.
+            END IF
+
+            IF( SUM( Normal * Normal0 ) < 0.0 ) Normal = -Normal
+
+            NormalSum = NormalSum + IP % S(nip) * DetJ * Normal
+            RefSum = RefSum + IP % S(nip) * DetJ
+          END DO
+        END DO
+
+        ! Normalize the normal to unity length
+        Length = SQRT( SUM( NormalSum ** 2 ) )
+        PlaneNormal(:,1) = NormalSum / Length
+
+        ! Planeness is one if all the normals have the same direction
+        Planeness = Length / RefSum 
+        
+        ! Save the key parameters of the first mesh
+        IF( j == 1 ) THEN          
+          PlaneNormal1 = PlaneNormal
+          Planeness1 = Planeness
+        END IF
+      END DO
+
+      ! Choose the mesh for which is close to a plane 
+      IF( Planeness1 > Planeness ) THEN
+        PRINT *,'PlaneNormal: Selecting slave normal'
+        PlaneNormal = PlaneNormal1
+      ELSE
+        PRINT *,'PlaneNormal: Selecting master normal'        
+        PlaneNormal = -PlaneNormal
+      END IF
+
+      PRINT *,'PlaneNormal selected:',PlaneNormal(:,1)
+
+      CALL ListAddConstRealArray( BParams,'Plane Projector Normal',&
+          3,1,PlaneNormal )
+      DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z, Basis )
+
+      PNormal => ListGetConstRealArray( BParams,'Plane Projector Normal',Found) 
+    END IF
+
+    Normal = Pnormal(1:3,1)
+    CALL TangentDirections( Normal, Tangent, Tangent2 )
+
+    IF(.FALSE.) THEN
+      PRINT *,'Normal:',Normal
+      PRINT *,'Tangent1:',Tangent
+      PRINT *,'Tangent2:',Tangent2
+    END IF
+
+    DO j=1,2
+      IF( j == 1 ) THEN
+        Bmesh => BMesh1
+      ELSE
+        BMesh => BMesh2
+      END IF
+
+      DO i=1,BMesh % NumberOfNodes
+        Coord(1) = BMesh % Nodes % x(i)
+        Coord(2) = BMesh % Nodes % y(i)
+        Coord(3) = BMesh % Nodes % z(i)
+
+        BMesh % Nodes % x(i) = SUM( Coord * Tangent )
+        IF( MeshDim == 3 ) THEN
+          BMesh % Nodes % y(i) = SUM( Coord * Tangent2 )
+        ELSE
+          BMesh % Nodes % y(i) = 0.0_dp
+        END IF
+        BMesh % Nodes % z(i) = SUM( Coord * Normal ) 
+      END DO
+
+      IF(.FALSE.) THEN
+        PRINT *,'Range for mesh:',j
+        PRINT *,'X:',MINVAL(BMesh % Nodes % x),MAXVAL(BMesh % Nodes % x)
+        PRINT *,'Y:',MINVAL(BMesh % Nodes % y),MAXVAL(BMesh % Nodes % y)
+        PRINT *,'Z:',MINVAL(BMesh % Nodes % z),MAXVAL(BMesh % Nodes % z)
+      END IF
+    END DO
+
+    Bmesh % MeshDim = 2
+
+  END SUBROUTINE PlaneInterfaceMeshes
+  !------------------------------------------------------------------------------
+
 
 
   !---------------------------------------------------------------------------
@@ -9207,66 +8810,70 @@ END SUBROUTINE GetMaxDefs
 
   ! Save projector, mainly a utility for debugging purposes
   !--------------------------------------------------------
-  SUBROUTINE SaveProjector(Projector,SaveRowSum,Prefix)
+  SUBROUTINE SaveProjector(Projector,SaveRowSum,Prefix,InvPerm)
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: SaveRowSum 
-    CHARACTER(LEN=*), OPTIONAL :: Prefix
+    CHARACTER(LEN=*) :: Prefix
+    INTEGER, POINTER, OPTIONAL :: InvPerm(:)
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: Filename, IntPrefix
-    INTEGER :: i,j,This
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
+    INTEGER :: i,j
     REAL(KIND=dp) :: rowsum, dia
+    INTEGER, POINTER :: IntInvPerm(:)
 
-    This = Projector % ProjectorBC
-
-    IF( PRESENT( Prefix ) ) THEN
-      IntPrefix = TRIM( Prefix ) 
-    ELSE
-      IntPrefix = 'p'
-    END IF
+    IF(.NOT.ASSOCIATED(Projector)) RETURN
     
-    IF(ParEnv % PEs == 1 ) THEN
-      FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'.dat'
+    IF( PRESENT( InvPerm ) ) THEN
+      IntInvPerm => InvPerm 
     ELSE
-      FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'_part'//&
+      IntInvPerm => Projector % InvPerm
+    END IF
+
+    IF(ParEnv % PEs == 1 ) THEN
+      FileName = TRIM(Prefix)//'.dat'
+    ELSE
+      FileName = TRIM(Prefix)//'_part'//&
           TRIM(I2S(ParEnv % MyPe))//'.dat'
     END IF
 
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
+      IF( intinvperm(i) == 0 ) CYCLE
       rowsum = 0.0_dp
       DO j=projector % rows(i), projector % rows(i+1)-1
-        WRITE(1,*) projector % invperm(i), projector % cols(j), projector % values(j)
-        IF( projector % invperm(i) == projector % cols(j) ) THEN
+        WRITE(1,*) intinvperm(i), projector % cols(j), projector % values(j)
+        IF( intinvperm(i) == projector % cols(j) ) THEN
           dia = projector % values(j)
         ELSE
           rowsum = rowsum + projector % values(j)
         END IF
       END DO
-!               PRINT *,'rowsum i:',i,dia,rowsum,rowsum/dia
     END DO
     CLOSE(1)     
 
 
     IF( SaveRowSum ) THEN
       IF(ParEnv % PEs == 1 ) THEN
-        FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'_rsum.dat'
+        FileName = TRIM(Prefix)//'_rsum.dat'
       ELSE
-        FileName = TRIM(IntPrefix)//TRIM(I2S(This))//'_rsum_part'//&
+        FileName = TRIM(Prefix)//'_rsum_part'//&
             TRIM(I2S(ParEnv % MyPe))//'.dat'
       END IF
       
       OPEN(1,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
+        IF( intinvperm(i) == 0 ) CYCLE
         rowsum = 0.0_dp
-        DO j=projector % rows(i), projector % rows(i+1)-1
-          
-          IF( projector % invperm(i) == projector % cols(j) ) THEN
+        dia = 0.0_dp
+        DO j=projector % rows(i), projector % rows(i+1)-1          
+          IF( intinvperm(i) == projector % cols(j) ) THEN
             dia = projector % values(j)
           END IF
           rowsum = rowsum + projector % values(j)
         END DO
         
-        WRITE(1,*) projector % invperm(i), i, dia, rowsum
+        WRITE(1,*) intinvperm(i), i, &
+            projector % rows(i+1)-projector % rows(i),dia, rowsum
       END DO
       CLOSE(1)     
     END IF
@@ -9316,8 +8923,7 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
-        Flat, LevelProj, FullCircle, Cylindrical
-    INTEGER, POINTER :: InvPerm1(:), InvPerm2(:)
+        Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
@@ -9349,6 +8955,8 @@ END SUBROUTINE GetMaxDefs
     
     Projector => NULL()
     BC => Model % BCs(This) % Values
+    PMesh => Mesh
+
     
     ! Whether to choose nodal or Galerkin projector is determined by an optional
     ! flag. The default is the nodal projector.
@@ -9359,13 +8967,11 @@ END SUBROUTINE GetMaxDefs
       IntGalerkin = ListGetLogical( BC, 'Galerkin Projector', GotIt )
     END IF
 
-
     ! If the boundary is discontinuous then we have the luxury of creating the projector
     ! very cheaply using the permutation vector. This does not need the target as the 
     ! boundary is self-contained.
     !------------------------------------------------------------------------------------
     IF( ListGetLogical( BC, 'Discontinuous Boundary', GotIt ) .AND. Mesh % DisContMesh )THEN
-      PMesh => Mesh
       IF( IntGalerkin ) THEN
         Projector => WeightedProjectorDiscont( PMesh, This )
       ELSE
@@ -9377,6 +8983,37 @@ END SUBROUTINE GetMaxDefs
     END IF
     
     IF ( Trgt <= 0 ) RETURN    
+
+    ! Create the mesh projector, and if needed, also eliminate the ghost nodes
+    ! There are two choices of projector: a nodal projector P in x=Px, and a 
+    ! Galerkin projector [Q-P] in Qx=Px. 
+    ! The projector is assumed to be either a rotational projector with no translation
+    ! and rotation, or then generic one with possible coordinate mapping.
+    !---------------------------------------------------------------------------------
+    CALL Info('PeriodicProjector','-----------------------------------------------------',Level=8)
+    WRITE( Message,'(A,I0,A,I0)') 'Creating projector between BCs ',This,' and ',Trgt
+    CALL Info('PeriodicProjector',Message,Level=8)
+
+    ! Create temporal mesh structures that are utilized when making the 
+    ! projector between "This" and "Trgt" boundary.
+    !--------------------------------------------------------------------------
+    BMesh1 => AllocateMesh()
+    BMesh2 => AllocateMesh()
+    
+    CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
+        Success ) 
+
+    IF(.NOT. Success) THEN
+      CALL ReleaseMesh(BMesh1); CALL ReleaseMesh(BMesh2)
+      RETURN
+    END IF
+
+    ! Do we have external procedure to take care of the projection matrix creation
+    UseExtProjector = ListGetLogical( BC, 'External Projector', GotIt )
+
+    ! If requested map the interface coordinate from (x,y,z) to any permutation
+    ! of these. 
+    CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
 
     ! Check whether to use (anti)rotational projector.
     ! We don't really know on which side the projector was called so 
@@ -9405,6 +9042,16 @@ END SUBROUTINE GetMaxDefs
 
     Flat = ListGetLogical( BC, &
         'Flat Projector',GotIt )
+    Plane = ListGetLogical( BC, &
+        'Plane Projector',GotIt )
+
+    IF( Radial ) CALL Info('PeriodicProjector','Enforcing > Radial Projector <',Level=12)
+    IF( Sliding ) CALL Info('PeriodicProjector','Enforcing > Sliding Projector <',Level=12)
+    IF( Cylindrical ) CALL Info('PeriodicProjector','Enforcing > Cylindrical Projector <',Level=12)
+    IF( Rotational ) CALL Info('PeriodicProjector','Enforcing > Rotational Projector <',Level=12)
+    IF( Flat ) CALL Info('PeriodicProjector','Enforcing > Flat Projector <',Level=12)
+    IF( Plane ) CALL Info('PeriodicProjector','Enforcing > Plane Projector <',Level=12)
+
 
     NodeScale = ListGetConstReal( BC, 'Mortar BC Scaling',GotIt)
     IF(.NOT.Gotit ) THEN
@@ -9415,7 +9062,6 @@ END SUBROUTINE GetMaxDefs
       END IF
     END IF
     EdgeScale = NodeScale
-
 
     NodalJump = ListCheckPrefix( BC,'Mortar BC Coefficient')
     IF(.NOT. NodalJump ) THEN
@@ -9433,11 +9079,16 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
-    IF(.NOT. GotIt ) THEN
-      IF( Rotational .OR. Cylindrical .OR. Radial .OR. Sliding ) THEN
+    IF( Rotational .OR. Cylindrical .OR. Radial .OR. Flat .OR. Plane ) THEN
+      IF(.NOT. GotIt ) THEN
         CALL Info('PeriodicProjector','Enforcing > Level Projector = True < with dimensional reduction',&
             Level = 7 )
         LevelProj = .TRUE. 
+      ELSE IF(.NOT. LevelProj ) THEN
+        ! If we have dimensionally reduced projector but don't use LevelProjector 
+        ! to integrate over it, then ensure that the 3rd coordinate is set to zero.
+        BMesh1 % Nodes % z = 0.0_dp
+        BMesh2 % Nodes % z = 0.0_dp
       END IF
     END IF
 
@@ -9453,7 +9104,6 @@ END SUBROUTINE GetMaxDefs
         END IF
       END IF
 
-
       IF( ListGetLogical( Model % Solver % Values,'Projector Skip Edges',GotIt ) ) THEN
         DoEdges = .FALSE.
       ELSE
@@ -9464,37 +9114,19 @@ END SUBROUTINE GetMaxDefs
           ! still cannot be used for creating the projector
           DoEdges = ( Mesh % NumberOfEdges > 0 .AND. &
               Mesh % MeshDim == 3 .AND. Dim == 3 )
+
+          ! Ensure that there is no p-elements that made us think that we have edges
+          ! Here we assume that if there is any p-element then also the 1st element is such
+          IF( DoEdges ) THEN
+            IF(isPelement(Mesh % Elements(1))) THEN
+              DoEdges = .FALSE.
+              CALL Info('PeriodicProjector','Edge projector will not be created for p-element mesh',Level=10)
+            END IF
+          END IF
         END IF
       END IF
     END IF
 
-    ! Create temporal mesh structures that are utilized when making the 
-    ! projector between "This" and "Trgt" boundary.
-    !--------------------------------------------------------------------------
-    BMesh1 => AllocateMesh()
-    BMesh2 => AllocateMesh()
-    
-    CALL CreateInterfaceMeshes( Model, Mesh, This, Trgt, Bmesh1, BMesh2, &
-        InvPerm1, InvPerm2, Success ) 
-
-    IF(.NOT. Success) THEN
-      CALL ReleaseMesh(BMesh1); CALL ReleaseMesh(BMesh2)
-      RETURN
-    END IF
-
-    ! Create the mesh projector, and if needed, also eliminate the ghost nodes
-    ! There are two choices of projector: a nodal projector P in x=Px, and a 
-    ! Galerkin projector [Q-P] in Qx=Px. 
-    ! The projector is assumed to be either a rotational projector with no translation
-    ! and rotation, or then generic one with possible coordinate mapping.
-    !---------------------------------------------------------------------------------
-    CALL Info('PeriodicProjector','-----------------------------------------------------',Level=8)
-    WRITE( Message,'(A,I0,A,I0)') 'Creating projector between BCs ',This,' and ',Trgt
-    CALL Info('PeriodicProjector',Message,Level=8)
-
-    ! If requested map the interface coordinate from (x,y,z) to any permutation
-    ! of these. 
-    CALL MapInterfaceCoordinate( BMesh1, BMesh2, Model % BCs(This) % Values )
 
     ! If the interface is rotational move to (phi,z) plane and alter the phi coordinate 
     ! so that the meshes coinside. 
@@ -9508,20 +9140,22 @@ END SUBROUTINE GetMaxDefs
           Radius, FullCircle )
     ELSE IF( Radial ) THEN
       CALL RadialInterfaceMeshes( BMesh1, BMesh2, BC )
-    ELSE IF( Sliding ) THEN
-      CONTINUE
     ELSE IF( Flat ) THEN
       CALL FlatInterfaceMeshes( BMesh1, BMesh2, BC )
-    ELSE
+    ELSE IF( Plane ) THEN
+      CALL PlaneInterfaceMeshes( BMesh1, BMesh2, BC )
+    ELSE IF( .NOT. Sliding ) THEN
       CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
     END IF
 
     Repeating = ( Rotational .AND. .NOT. FullCircle ) .OR. Sliding 
     AntiRepeating = ( AntiRotational .AND. .NOT. FullCircle ) .OR. AntiSliding 
 
-    IF( LevelProj ) THEN 
+    IF( UseExtProjector ) THEN
+      Projector => ExtProjectorCaller( PMesh, BMesh1, BMesh2, This )
+    ELSE IF( LevelProj ) THEN 
       Projector => LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
-          FullCircle, Radius, InvPerm1, InvPerm2, DoNodes, DoEdges, &          
+          FullCircle, Radius, DoNodes, DoEdges, &          
           NodeScale, EdgeScale, BC )
     ELSE 
       IF( FullCircle ) THEN
@@ -9531,10 +9165,10 @@ END SUBROUTINE GetMaxDefs
       UseQuadrantTree = ListGetLogical(Model % Simulation,'Use Quadrant Tree',GotIt)
       IF( .NOT. GotIt ) UseQuadrantTree = .TRUE.
       IF( IntGalerkin ) THEN
-        Projector => WeightedProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
+        Projector => WeightedProjector( BMesh2, BMesh1, BMesh2 % InvPerm, BMesh1 % InvPerm, &
             UseQuadrantTree, Repeating, AntiRepeating, NodeScale, NodalJump )
       ELSE
-        Projector => NodalProjector( BMesh2, BMesh1, InvPerm2, InvPerm1, &
+        Projector => NodalProjector( BMesh2, BMesh1, &
             UseQuadrantTree, Repeating, AntiRepeating )
       END IF
     END IF
@@ -9542,10 +9176,13 @@ END SUBROUTINE GetMaxDefs
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
     BMesh1 % Projector => NULL()
-    BMesh1 % Parent => NULL(); CALL ReleaseMesh(BMesh1)
-    BMesh2 % Parent => NULL(); CALL ReleaseMesh(BMesh2)
+    BMesh1 % Parent => NULL()
+    DEALLOCATE( BMesh1 % InvPerm ) 
+    CALL ReleaseMesh(BMesh1)
 
-    DEALLOCATE( InvPerm1, InvPerm2 )
+    BMesh2 % Parent => NULL()
+    DEALLOCATE( BMesh2 % InvPerm ) 
+    CALL ReleaseMesh(BMesh2)
 
 100 Projector % ProjectorBC = This
 
@@ -9560,11 +9197,18 @@ END SUBROUTINE GetMaxDefs
 
 
     IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
-      CALL SaveProjector( Projector, .TRUE.,'p' ) 
+      CALL SaveProjector( Projector, .TRUE.,'p'//TRIM(I2S(This)) ) 
       ! Dual projector if it exists
       IF( ASSOCIATED( Projector % Ematrix ) ) THEN
-        CALL SaveProjector( Projector % Ematrix, .TRUE.,'d' ) 
+        CALL SaveProjector( Projector % Ematrix, .TRUE.,'pd'//TRIM(I2S(This)), &
+            Projector % InvPerm ) 
       END IF
+      ! Biorthogonal projector if it exists
+      IF( ASSOCIATED( Projector % Child ) ) THEN
+        CALL SaveProjector( Projector % Child, .TRUE.,'pb'//TRIM(I2S(This)), & 
+            Projector % InvPerm ) 
+      END IF
+
       IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
     END IF    
 
@@ -9574,6 +9218,93 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
   END FUNCTION PeriodicProjector
 !------------------------------------------------------------------------------
+
+
+
+  FUNCTION ExtProjectorCaller( Mesh, SlaveMesh, MasterMesh, SlaveBcInd ) RESULT ( Projector )
+    !---------------------------------------------------------------------------
+    USE Lists
+    USE Messages
+    USE Types
+    USE GeneralUtils
+    IMPLICIT NONE
+
+    TYPE(Mesh_t), POINTER :: Mesh, SlaveMesh, MasterMesh
+    INTEGER :: SlaveBCind
+    TYPE(Matrix_t), POINTER :: Projector    
+    !--------------------------------------------------------------------------
+    TYPE(ValueList_t), POINTER :: BC
+    LOGICAL :: Found, Parallel, CreateDual, BiorthogonalBasis
+    INTEGER(KIND=AddrInt) :: ProjectorAddr
+
+    CALL Info('ExtProjectorCaller','Creating projector using an external function',Level=7)
+
+    Parallel = ( ParEnv % PEs > 1 )
+    Mesh => CurrentModel % Mesh
+    BC => CurrentModel % BCs(SlaveBcInd) % Values
+
+    Projector => AllocateMatrix()
+    Projector % FORMAT = MATRIX_LIST
+    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
+
+    CreateDual = ListGetLogical( BC,'Create Dual Projector',Found ) 
+    IF( CreateDual ) THEN
+      Projector % Ematrix => AllocateMatrix()
+      Projector % Ematrix % FORMAT = MATRIX_LIST
+      Projector % Ematrix % ProjectorType = PROJECTOR_TYPE_GALERKIN
+    ELSE
+      Projector % EMatrix => NULL()
+    END IF
+
+    ! Check whether biorthogonal basis for projectors requested:
+    ! ----------------------------------------------------------
+    BiOrthogonalBasis = ListGetLogical( BC, 'Use Biorthogonal Basis', Found)
+
+    ! If we want to eliminate the constraints we have to have a biortgonal basis
+    IF(.NOT. Found ) THEN
+      BiOrthogonalBasis = ListGetLogical( CurrentModel % Solver % Values, &
+          'Eliminate Linear Constraints',Found )
+      IF( BiOrthogonalBasis ) THEN
+        CALL Info('ContactProjector',&
+            'Setting > Use Biorthogonal Basis < to True to enable elimination',Level=8)
+      END IF
+    END IF
+
+    IF (BiOrthogonalBasis) THEN
+      Projector % Child => AllocateMatrix()
+      Projector % Child % Format = MATRIX_LIST
+      CALL Info('ContactProjector','Using biorthogonal basis, as requested',Level=8)      
+    ELSE
+      Projector % Child => NULL()
+    END IF
+
+
+    ProjectorAddr = CurrentModel % Solver % MortarProc
+    IF( ProjectorAddr == 0 ) THEN
+      CALL Fatal('ExtProjectorCaller','External projector requested by no > Mortar Proc < given!')
+    ELSE
+      CALL ExecMortarProjector( ProjectorAddr, &
+          Mesh, SlaveMesh, MasterMesh, SlaveBCind, Projector )
+    END IF
+
+    ! Now change the matrix format to CRS from list matrix
+    !--------------------------------------------------------------
+    CALL List_toCRSMatrix(Projector)
+    CALL CRS_SortMatrix(Projector,.TRUE.)
+
+    IF( ASSOCIATED(Projector % Child) ) THEN
+      CALL List_toCRSMatrix(Projector % Child)
+      CALL CRS_SortMatrix(Projector % Child,.TRUE.)
+    END IF
+
+    IF( ASSOCIATED( Projector % Ematrix) ) THEN
+      CALL List_toCRSMatrix(Projector % Ematrix)
+      CALL CRS_SortMatrix(Projector % Ematrix,.TRUE.)
+    END IF
+
+    CALL Info('ExtProjectorCaller','Projector created',Level=10)
+    
+  END FUNCTION ExtProjectorCaller
 
 
 !------------------------------------------------------------------------------
@@ -12993,6 +12724,8 @@ END SUBROUTINE FindNeighbourNodes
     IF(.NOT.EdgesPresent) THEN
       CALL ReleaseMeshEdgeTables( Mesh )
       CALL ReleaseMeshFaceTables( Mesh )
+    ELSE
+      CALL FindMeshEdges( NewMesh )
     END IF
 
 !call writemeshtodisk( NewMesh, "." )
@@ -13366,38 +13099,38 @@ CONTAINS
  
 !    Deallocate mesh variables:
 !    --------------------------
+
      CALL ReleaseVariableList( Mesh % Variables )
      Mesh % Variables => NULL()
 
 !    Deallocate mesh geometry (nodes,elements and edges):
 !    ----------------------------------------------------
      IF ( ASSOCIATED( Mesh % Nodes ) ) THEN
-        IF ( ASSOCIATED( Mesh % Nodes % x ) ) DEALLOCATE( Mesh % Nodes % x )
-        IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
-        IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
+       IF ( ASSOCIATED( Mesh % Nodes % x ) ) DEALLOCATE( Mesh % Nodes % x )
+       IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
+       IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
+       DEALLOCATE( Mesh % Nodes )
 
-        IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
+       IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
            DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
 
-        IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
-           DO i=1,Mesh % NumberOfNodes
-              IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
-                   DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
-           END DO
-           DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
-        END IF
+       IF ( ASSOCIATED( Mesh % ParallelInfo % NeighbourList ) ) THEN 
+         DO i=1,Mesh % NumberOfNodes
+           IF(ASSOCIATED( Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) &
+               DEALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours )
+         END DO
+         DEALLOCATE( Mesh % ParallelInfo % NeighbourList )
+       END IF
 
-        IF ( ASSOCIATED( Mesh % ParallelInfo % INTERFACE ) ) &
+       IF ( ASSOCIATED( Mesh % ParallelInfo % INTERFACE ) ) &
            DEALLOCATE( Mesh % ParallelInfo % INTERFACE )
-
-        DEALLOCATE( Mesh % Nodes )
      END IF
+
      Mesh % Nodes => NULL()
 
      IF ( ASSOCIATED( Mesh % Edges ) ) CALL ReleaseMeshEdgeTables( Mesh )
      Mesh % Edges => NULL()
 
-! ML
      IF ( ASSOCIATED( Mesh % Faces ) ) CALL ReleaseMeshFaceTables( Mesh )
      Mesh % Faces => NULL()
 
@@ -13407,6 +13140,7 @@ CONTAINS
 
 
      IF ( ASSOCIATED( Mesh % Elements ) ) THEN
+
         DO i=1,Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
 !          Boundaryinfo structure for boundary elements
 !          ---------------------------------------------
@@ -13457,6 +13191,7 @@ CONTAINS
      END IF
      Mesh % Elements => NULL()
 
+
 !    Deallocate mesh to mesh projector structures:
 !    ---------------------------------------------
      Projector => Mesh % Projector
@@ -13468,6 +13203,7 @@ CONTAINS
         DEALLOCATE( Projector1 )
      END DO
      Mesh % Projector => NULL()
+
 
 !    Deallocate quadrant tree (used in mesh to mesh interpolation):
 !    --------------------------------------------------------------
@@ -14338,7 +14074,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE DetectExtrudedStructure( Mesh, Solver, ExtVar, &
       TopNodePointer, BotNodePointer, UpNodePointer, DownNodePointer, &
-      NumberOfLayers, NodeLayer )
+      MidNodePointer, MidLayerExists, NumberOfLayers, NodeLayer )
     
     USE CoordinateSystems
     IMPLICIT NONE
@@ -14347,9 +14083,10 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Variable_t), POINTER, OPTIONAL :: ExtVar
     INTEGER, POINTER, OPTIONAL :: TopNodePointer(:), BotNodePointer(:), &
-        UpNodePointer(:), DownNodePointer(:)
+        UpNodePointer(:), DownNodePointer(:), MidNodePointer(:)
     INTEGER, POINTER, OPTIONAL :: NodeLayer(:)
     INTEGER, OPTIONAL :: NumberOfLayers
+    LOGICAL, OPTIONAL :: MidLayerExists
 !-----------------------------------------------------------------------------
     REAL(KIND=dp) :: Direction(3)
     TYPE(ValueList_t), POINTER :: Params
@@ -14358,19 +14095,17 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
     INTEGER :: i,j,k,n,ii,jj,dim, nsize, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
-	UpHit, DownHit
+	UpHit, DownHit, bc_ind
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
     LOGICAL, POINTER :: TopFlag(:), BotFlag(:)
-#ifdef USE_ISO_C_BINDINGS
-    REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
-                 ElemVector(3), DotPro, Eps
-#else
-    REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
-                 ElemVector(3), DotPro, Eps, CPUTime
+#ifndef USE_ISO_C_BINDINGS
+    REAL(KIND=dp) :: CPUTime
 #endif
+    REAL(KIND=dp) :: at0, at1, Length, UnitVector(3), Vector(3), Vector2(3), &
+                 ElemVector(3), DotPro, Eps, MinTop, MaxTop, MinBot, MaxBot
     REAL(KIND=dp), POINTER :: Values(:)
-    INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:)
+    INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CoordTransform
 
    
@@ -14404,8 +14139,13 @@ CONTAINS
     IF(GotIt) THEN
       Var => VariableGet( Mesh % Variables,  VarName )
       IF(ASSOCIATED(Var)) THEN
-        MaskPerm => Var % Perm
-        MaskExists = ASSOCIATED(MaskPerm)
+        MaskExists = ASSOCIATED(Var % Perm)
+        IF( MaskExists ) THEN
+          ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
+          MaskPerm = Var % Perm 
+          CALL Info('DetectExtrudedStructure',&
+              'Using variable as mask: '//TRIM(VarName),Level=8)
+        END IF
       END IF
     END IF
 
@@ -14415,6 +14155,7 @@ CONTAINS
       CALL Info('DetectExtrudedStructure',Message,Level=8)
     ELSE
       nsize = Mesh % NumberOfNodes
+      CALL Info('DetectExtrudedStructure','Applying mask to the whole mesh',Level=8)
     END IF 
 
     CoordTransform = ListGetString(Params,'Mapping Coordinate Transformation',DoCoordTransform )
@@ -14657,23 +14398,102 @@ CONTAINS
       CALL Info('DetectExtrudedStructure',Message)
       NULLIFY(Layer)
     END IF
+
+
+    IF( PRESENT( MidNodePointer ) ) THEN
+      ALLOCATE( MidPointer( nsize ) )
+      MidPointer = 0 
+      MidLayerExists = .FALSE.
+
+      DO elem = Mesh % NumberOfBulkElements + 1, &       
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements  
+        
+        Element => Mesh % Elements(elem)
+        NodeIndexes => Element % NodeIndexes
+        
+        DO bc_ind = 1, CurrentModel % NumberOfBCs 
+          IF( Element % BoundaryInfo % Constraint == &
+              CurrentModel % BCs(bc_ind) % Tag ) THEN
+            IF( ListCheckPresent( CurrentModel % BCs(bc_ind) % Values,'Mid Surface') ) THEN
+              MidPointer( NodeIndexes ) = NodeIndexes
+              MidLayerExists = .TRUE.
+            END IF
+            EXIT
+          END IF
+        END DO
+      END DO
+
+      IF( MidLayerExists ) THEN
+        CALL Info('DetectExtrudedStructure','determine mid pointers',Level=9)
+
+        DO Rounds = 1, nsize
+          DownHit = 0
+          UpHit = 0
+          DO i=1,nsize
+            IF( MaskExists ) THEN
+              IF( MaskPerm(i) == 0) CYCLE
+            END IF
+            IF( MidPointer(i) == 0 ) CYCLE
+            IF( UpActive ) THEN
+              j = UpPointer(i)
+              IF( MidPointer(j) == 0 ) THEN
+                UpHit = UpHit + 1
+                MidPointer(j) = MidPointer(i)
+              END IF
+            END IF
+            IF( DownActive ) THEN
+              j = DownPointer(i)
+              IF( MidPointer(j) == 0 ) THEN
+                DownHit = DownHit + 1
+                MidPointer(j) = MidPointer(i)
+              END IF
+            END IF
+          END DO
+          IF( UpHit == 0 .AND. DownHit == 0 ) EXIT
+        END DO
+
+        CALL Info('DetectExtrudedStructure',&
+            'Mid layer structure detected in '//TRIM(I2S(Rounds-1))//' cycles',Level=9)
+        MidNodePointer => MidPointer
+      ELSE
+        DEALLOCATE( MidPointer ) 
+        MidNodePointer => NULL()
+      END IF
+    END IF
+
   
     ! Count the number of top and bottom nodes, for information only
     !---------------------------------------------------------------
     CALL Info('DetectExtrudedStructure','counting top and bottom bodes',Level=9)        
     IF( UpActive ) THEN
       TopNodes = 0
+      MinTop = HUGE( MinTop ) 
+      MaxTop = -HUGE( MaxTop )
       DO i=1,nsize
-        IF(TopPointer(i) == i) TopNodes = TopNodes + 1
+        IF(TopPointer(i) == i) THEN
+          MinTop = MIN( MinTop, Var % Values(i) )
+          MaxTop = MAX( MaxTop, Var % Values(i) )
+          TopNodes = TopNodes + 1
+        END IF
       END DO
+      PRINT *,'Top range:',MinTop,MaxTop
     END IF
 
     IF( DownActive ) THEN
       BotNodes = 0
+      MinBot = HUGE( MinBot ) 
+      MaxBot = -HUGE( MaxBot )
       DO i=1,nsize
-        IF(BotPointer(i) == i) BotNodes = BotNodes + 1
+        IF(BotPointer(i) == i) THEN
+          MinBot = MIN( MinBot, Var % Values(i))
+          MaxBot = MAX( MaxBot, Var % Values(i))
+          BotNodes = BotNodes + 1
+        END IF
       END DO
+      PRINT *,'Bottom range:',MinBot,MaxBot
     END IF
+
+
 
 
     ! Return the requested pointer structures, otherwise deallocate

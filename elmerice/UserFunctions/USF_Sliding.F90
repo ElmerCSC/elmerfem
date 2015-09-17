@@ -626,7 +626,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
         CALL FATAL(USF_name, 'Need Ocean Density for the Budd sliding law')
      END IF
      
-     sl = GetConstReal( ParentMaterial, 'Sea level', GotIt )
+     sl = GetCReal( ParentMaterial, 'Sea level', GotIt )
      IF (.NOT.GotIt) THEN
         CALL FATAL(USF_Name, 'Material property Sea level not found.')
      END IF

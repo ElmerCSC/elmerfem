@@ -252,6 +252,181 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+! This subroutine enables the rotation of vector valued keywords.
+!------------------------------------------------------------------------------
+   SUBROUTINE SetRotatedProperties(Model, Mesh)
+     TYPE(Model_t) :: Model
+     TYPE(Mesh_t), POINTER :: Mesh
+
+     LOGICAL :: AnyBC, AnyBodyForce, AnyMat, AnyBody
+     CHARACTER(LEN=MAX_NAME_LEN) :: Suffix
+     INTEGER :: list_ind
+     REAL(KIND=dp) :: RotMatrix(3,3), Angles(3,1)
+     REAL(KIND=dp), POINTER :: Pmatrix(:,:)
+     INTEGER, TARGET :: NodeIndex(1)
+     INTEGER, POINTER :: NodeIndexes(:)
+     REAL(KIND=dp) :: EntityWeight
+     LOGICAL :: Found
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL :: Visited = .FALSE.
+
+     SAVE Visited, Suffix, AnyBC, AnyBodyForce, AnyMat, AnyBody
+
+     IF(.NOT. Visited ) THEN
+       Suffix = 'Property Rotate'
+       AnyBC = ListCheckSuffixAnyBC( Model, Suffix )
+       AnyBodyForce = ListCheckSuffixAnyBodyForce( Model, Suffix )
+       AnyMat = ListCheckSuffixAnyMaterial( Model, Suffix )
+       AnyBody = ListCheckSuffixAnyBody( Model, Suffix )
+       Visited = .TRUE.
+     END IF
+       
+     IF( .NOT. ( AnyBC .OR. AnyBodyForce .OR. AnyMat .OR. AnyBody ) ) RETURN
+
+     NodeIndex(1) = 1
+     NodeIndexes => NodeIndex
+
+     IF( AnyBody ) THEN
+       DO list_ind = 1,Model % NumberOfBodies
+         List => Model % Bodies(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+
+     IF( AnyBodyForce ) THEN
+       DO list_ind = 1,Model % NumberOfBodyForces
+         List => Model % BodyForces(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+
+     IF( AnyMat ) THEN
+       DO list_ind = 1,Model % NumberOfMaterials
+         List => Model % Materials(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+
+     IF( AnyBC ) THEN
+       DO list_ind = 1,Model % NumberOfBCs
+         List => Model % BCs(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+   CONTAINS 
+
+     FUNCTION AnglesToRotationMatrix( Angles, RotateOrder ) RESULT ( RotMatrix )
+
+       REAL(KIND=dp) :: Angles(3), RotMatrix(3,3)
+       INTEGER, OPTIONAL :: RotateOrder(3)
+
+       INTEGER :: i,j
+       REAL(KIND=dp) :: TrfMatrix(3,3), IdentityMatrix(3,3), Alpha
+
+       IdentityMatrix = 0.0_dp
+       DO i=1,3
+         IdentityMatrix(i,i) = 1.0_dp
+       END DO
+
+       RotMatrix = IdentityMatrix
+
+       DO i=1,3
+         j = i
+         IF( PRESENT( RotateOrder ) ) j = RotateOrder(i)
+         Alpha = Angles(j) * PI / 180.0_dp
+
+         IF( ABS(Alpha) < TINY(Alpha) ) CYCLE
+         TrfMatrix = IdentityMatrix
+
+         SELECT CASE(j)
+         CASE(1)
+           TrfMatrix(2,2) =  COS(Alpha)
+           TrfMatrix(2,3) = -SIN(Alpha)
+           TrfMatrix(3,2) =  SIN(Alpha)
+           TrfMatrix(3,3) =  COS(Alpha)
+         CASE(2)
+           TrfMatrix(1,1) =  COS(Alpha)
+           TrfMatrix(1,3) = -SIN(Alpha)
+           TrfMatrix(3,1) =  SIN(Alpha)
+           TrfMatrix(3,3) =  COS(Alpha)
+         CASE(3)
+           TrfMatrix(1,1) =  COS(Alpha)
+           TrfMatrix(1,2) = -SIN(Alpha)
+           TrfMatrix(2,1) =  SIN(Alpha)
+           TrfMatrix(2,2) =  COS(Alpha)
+         END SELECT
+
+         RotMatrix = MATMUL( RotMatrix, TrfMatrix )
+       END DO
+
+     END FUNCTION AnglesToRotationMatrix
+
+
+   END SUBROUTINE SetRotatedProperties
+!------------------------------------------------------------------------------
+
+
 
 
 !------------------------------------------------------------------------------
@@ -274,6 +449,137 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE AddSolverProcedure
 !------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+   SUBROUTINE SwapMesh(Model,Mesh,Name)
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: Name
+     TYPE(Model_t) :: Model
+     TYPE(Mesh_t), POINTER :: Mesh, Newmesh, tmesh
+!------------------------------------------------------------------------------
+     INTEGER :: Def_Dofs(10,6), i,j,k
+     LOGICAL :: Found, Transient
+     TYPE(Solver_t), POINTER :: Solver
+!------------------------------------------------------------------------------
+
+     Def_Dofs = -1;
+     DO i=1,Model % NumberOfSolvers
+       DO j=1,10
+         DO k=1,6
+           Def_Dofs(j,k) = MAX(Def_Dofs(j,k), MAXVAL(Model % Solvers(i) % Def_Dofs(j,:,k)))
+         END DO
+       END DO
+     END DO
+
+     Newmesh => LoadMesh2( Model, Name, Name, &
+       .FALSE., Parenv % PEs, ParEnv % myPE, Def_Dofs )
+     IF(.NOT.ASSOCIATED(NewMesh)) RETURN
+
+     NewMesh % Next => Mesh % Next
+     IF(ASSOCIATED(Mesh,  Model % Meshes)) THEN
+       Model % Meshes => Newmesh
+     ELSE
+       Tmesh => Model % Meshes
+       DO WHILE(ASSOCIATED(Tmesh % next))
+         IF(ASSOCIATED(Mesh, Tmesh % next)) THEN
+           Tmesh % Next => Newmesh
+           EXIT
+         END IF
+       END DO
+     END IF
+
+     NewMesh % Name = Name
+     CALL AddCoordAndTime(Mesh,NewMesh)
+
+     DO i=1,Model % NumberOfSolvers
+       Solver => Model % Solvers(i)
+       IF(ASSOCIATED(Solver % Mesh, Mesh)) Solver % Mesh => Newmesh
+     END DO
+
+     IF(Mesh % DiscontMesh) CALL CreateDiscontMesh(Model,Newmesh,.TRUE.)
+
+     IF(ASSOCIATED(Model % Mesh, Mesh)) Model % Mesh => NewMesh
+     IF(ASSOCIATED(Model % Variables, Mesh % Variables)) Model % Variables => NewMesh % Variables
+
+     Mesh % Next => Null()
+     CALL ReleaseMesh( Mesh )
+
+     Transient = ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient'
+
+     DO i=1,Model % NumberOfSolvers
+       Solver => Model % Solvers(i)
+       IF(ASSOCIATED(Solver % Mesh, NewMesh)) THEN
+         CALL FreeMatrix(Solver % Matrix)
+         Model % Solver => Solver
+
+         CALL AddEquationBasics( Solver, ListGetString(Solver % Values, &
+                  'Variable', Found), Transient )
+         CALL AddEquationSolution( Solver, Transient )
+         IF ( Transient .AND. Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
+       END IF
+     END DO
+
+     CALL MeshStabParams( Newmesh )
+     NewMesh % Changed = .TRUE.
+
+CONTAINS
+
+
+   SUBROUTINE AddCoordAndTime(M1,M2)
+    TYPE(Solver_t), POINTER :: Solver => Null()
+    TYPE(Mesh_t) :: M1,M2
+    TYPE(Variable_t), POINTER :: DtVar, V
+
+     CALL VariableAdd( M2 % Variables, M2,Solver, &
+           'Coordinate 1',1, M2 % Nodes % x )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+           'Coordinate 2',1, M2 % Nodes % y )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+          'Coordinate 3',1,M2 % Nodes % z )
+
+     V => VariableGet( M1 % Variables, 'Time' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Time', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Periodic Time' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
+
+     V => VariableGet( M1 % Variables, 'Timestep' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep size', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep interval' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep interval', 1, V % Values )
+
+     ! Save some previous timesteps for variable timestep multistep methods
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     DtVar => VariableGet( M2 % Variables, 'Timestep size' )
+     DtVar % PrevValues => V % PrevValues
+
+     V => VariableGet( M1 % Variables, 'nonlin iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+             'nonlin iter', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'coupled iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+             'coupled iter', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'partition' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
+!------------------------------------------------------------------------------
+    END SUBROUTINE AddCoordAndTime
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE SwapMesh
+!------------------------------------------------------------------------------
+
+
 
 
 !------------------------------------------------------------------------------
@@ -894,16 +1200,23 @@ CONTAINS
        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
     END IF
 
-    Solver % LinAfterProc  = 0
     Solver % LinBeforeProc = 0
-    str = ListGetString( Solver  % Values, 'Before Linsolve', Found )
+    str = ListGetString( Solver % Values, 'Before Linsolve', Found )
     IF ( Found ) Solver % LinBeforeProc = GetProcAddr( str )
 
-    str = ListGetString( Solver  % Values, 'After Linsolve', Found )
+    Solver % LinAfterProc = 0
+    str = ListGetString( Solver % Values, 'After Linsolve', Found )
     IF ( Found ) Solver % LinAfterProc = GetProcAddr( str )
 
-    str = ListGetString( Solver  % Values, 'Matrix Vector Proc', Found )
-    IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
+    IF( ASSOCIATED( Solver % Matrix ) ) THEN
+      Solver % Matrix % MatVecSubr = 0
+      str = ListGetString( Solver % Values, 'Matrix Vector Proc', Found )
+      IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
+    END IF
+
+    Solver % MortarProc = 0
+    str = ListGetString( Solver % Values, 'External Projector Procedure', Found )
+    IF ( Found ) Solver % MortarProc = GetProcAddr( str )
 
   END SUBROUTINE AddEquationBasics
 
@@ -3452,16 +3765,31 @@ CONTAINS
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
      IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     IF ( ParEnv % PEs>1 .AND. .NOT.SlaveNotParallel ) THEN
-       DO i=1,ParEnv % PEs
-         IF ( ParEnv % Active(i) ) THEN
-           EXIT
+     IF ( ParEnv % PEs > 1 .AND. .NOT.SlaveNotParallel ) THEN
+       ! Check that the solver is active in some of the active output solvers
+       IF( ANY( ParEnv % Active(MinOutputPE+1:MaxOutputPE+1) ) ) THEN
+         IF( ParEnv % MyPe >= MinOutputPE .AND. &
+             ParEnv % MyPe <= MaxOutputPE ) THEN 
+           OutputPE = ParEnv % MyPE
+         ELSE
+           OutputPE = -1
          END IF
-       END DO
+       ELSE         
+        ! Otherwise get the first active partition for this solver
+        DO i=1,ParEnv % PEs
+           IF ( ParEnv % Active(i) ) THEN
+             EXIT
+           END IF
+         END DO
 
-       OutputPE = -1
-       IF ( i-1==ParEnv % MyPE .OR. i>ParEnv % PEs .AND. ParEnv % myPE==0 ) &
-         OutputPE=0
+         OutputPE = -1
+         IF ( i-1 == ParEnv % MyPE ) THEN
+           OutputPE = i-1 
+         ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
+           OutputPE = 0
+         END IF
+       END IF
+
 
        n = COUNT(ParEnv % Active)
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
@@ -3510,7 +3838,7 @@ CONTAINS
            ParEnv = Solver % Matrix % ParMatrix % ParEnv
          END IF
        END IF
-     ELSE
+     ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = MPI_COMM_WORLD
      END IF
 
@@ -3581,6 +3909,10 @@ CONTAINS
        CALL CoordinateTransformation( Solver % Mesh, CoordTransform, &
            Params, .FALSE. )
      END IF
+
+     ! Some properties might be rotated by "Property Rotate"
+     !--------------------------------------------------------------
+     CALL SetRotatedProperties(Model, Solver % Mesh)
 
      ! Some keywords may be normalized by area or volume
      !--------------------------------------------------------------
