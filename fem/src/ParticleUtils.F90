@@ -2155,7 +2155,10 @@ RETURN
     
     InitMethod = ListGetString( Params,'Coordinate Initialization Method',gotIt ) 
     Particles % RK2 = ListGetLogical( Params,'Runge Kutta', GotIt )
-
+    IF( Particles % RK2 .AND. ParEnv % PEs > 1 ) THEN
+      CALL Warn('InitializeParticles','> Runge Kutta < integration might not work in parallel')
+    END IF
+    
     Particles % DtConstant = ListGetLogical( Params,'Particle Dt Constant',GotIt )
     IF(.NOT. GotIt) Particles % DtConstant = .TRUE.
 
@@ -2589,7 +2592,6 @@ RETURN
           Particles % ElementIndex(i) = j
         END IF
       END DO
-      PRINT *,'done init'
 
       
     CASE ('sphere random')
@@ -4674,14 +4676,13 @@ RETURN
       TimeVar => ParticleVariableGet( Particles,'particle time')
       GotTimeVar = ASSOCIATED( TimeVar )
 
-      IF( .NOT. Particles % DtConstant ) THEN
-        DtVar => ParticleVariableGet( Particles,'particle dt')
-        IF(.NOT. ASSOCIATED( DtVar ) ) THEN
-          CALL Fatal('ParticleAdvanceTimesteo','Variable timestep, > particle dt < should exist!')
-        END IF
-        IF(.NOT. GotTimeVar ) THEN
-          CALL Fatal('ParticleAdvanceTimestep','Variable timestep, > particle dtime < should exist!')
-        END IF
+      IF( GotTimeVar ) THEN
+        IF( .NOT. Particles % DtConstant ) THEN
+          DtVar => ParticleVariableGet( Particles,'particle dt')
+          IF(.NOT. ASSOCIATED( DtVar ) ) THEN
+            CALL Fatal('ParticleAdvanceTimesteo','Variable timestep, > particle dt < should exist!')
+          END IF
+        END IF        
       END IF
  
       DistVar => ParticleVariableGet( Particles,'particle distance')
@@ -4720,6 +4721,8 @@ RETURN
       IF( .NOT. Particles % DtConstant ) THEN
         dtime = Particles % DtSign * DtVar % Values(No)
         TimeVar % Values(No) = TimeVar % Values(No) + DtVar % Values(No)
+      ELSE IF( GotTimeVar ) THEN
+        TimeVar % Values(No) = TimeVar % Values(No) + Particles % dTime         
       END IF
 
       IF ( Status == PARTICLE_FIXEDCOORD ) THEN
@@ -4777,7 +4780,7 @@ RETURN
     IF( Particles % DtConstant ) THEN
       Particles % Time = Particles % Time + Particles % dTime
     END IF
-
+    
     Particles % NumberOfMovingParticles = NoMoving
 
  END SUBROUTINE ParticleAdvanceTimestep
@@ -4920,10 +4923,11 @@ RETURN
       ! elemental derivate of the source term. 
       IF( UseGradSource ) THEN
         stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-        PrevCoord(1:dim) = Particles % PrevCoordinate(No,:) 
       ELSE
         stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
       END IF
+
+      PrevCoord(1:dim) = Particles % PrevCoordinate(No,:) 
 
       ! Path integral over time
       IF( TimeInteg ) THEN
@@ -4936,7 +4940,7 @@ RETURN
               SourceAtPath = SourceAtPath + 0.5*SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
                   ( PrevCoord(i) - Coord(i) )
             END DO
-          END IF          
+          END IF
           TimeIntegVar % Values(No) = TimeIntegVar % Values(No) + dtime * SourceAtPath
         END IF
       END IF
@@ -4963,7 +4967,7 @@ RETURN
               SourceAtPath = SourceAtPath + 0.5*SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
                   ( PrevCoord(i) - Coord(i) )
             END DO
-          END IF          
+          END IF
           DistIntegVar % Values(No) = DistIntegVar % Values(No) + ds * SourceAtPath
         END IF
       END IF

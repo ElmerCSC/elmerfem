@@ -408,7 +408,6 @@ CONTAINS
       
       ElementIndex = GetParticleElement( Particles, No )
       IF( ElementIndex == 0 ) THEN
-!PRINT *,'elemindex  = 0'
         Particles % Status(No) = PARTICLE_LOST
         NewLost(1) = NewLost(1) + 1
         CYCLE       
@@ -430,7 +429,6 @@ CONTAINS
       END IF
 
       IF(.NOT. Stat ) THEN
-!	print *,'Particle not in element!',No,Coord
         Particles % Status(No) = PARTICLE_LOST
         NewLost(2) = NewLost(2) + 1
         CYCLE
@@ -468,8 +466,6 @@ CONTAINS
       PRINT *,'New lost particles:',NewLost
       PRINT *,'New fixed velo particles:',FixedLost
     END IF
-
-!    print *,'NewLost:',NewLost
 
     
   END SUBROUTINE SetParticleVelocities
