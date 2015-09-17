@@ -6,3 +6,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO maze.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(ParticleHeating)
+ADD_ELMER_LABEL(ParticleHeating particle)
