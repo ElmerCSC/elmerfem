@@ -1119,6 +1119,43 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 	if(usedbc[i]) fprintf(out,"$ %s = %d\n",data->boundaryname[i],i);
     }
     fclose(out);
+
+    sprintf(filename,"%s","entities.sif");
+    out = fopen(filename,"w");
+    if(info) printf("Saving entities info to %s.\n",filename);  
+    if(out == NULL) {
+      printf("opening of file was not successful\n");
+      return(5);
+    }
+
+    if(data->bodynamesexist) {
+      fprintf(out,"!------ Skeleton for body section -----\n");
+      j = 0;
+      for(i=1;i<MAXBODIES;i++) {
+	if(usedbody[i]) {
+	  j = j + 1;
+	  fprintf(out,"Body %d\n",j);
+	  fprintf(out,"  Name = %s\n",data->bodyname[i]);
+	  fprintf(out,"End\n\n");
+	}
+      }
+    }
+
+    if(data->boundarynamesexist) {
+      fprintf(out,"!------ Skeleton for boundary section -----\n");
+      j = 0;
+      for(i=1;i<MAXBCS;i++) {
+	if(usedbc[i]) {
+	  j = j + 1;
+	  fprintf(out,"Boundary Condition %d\n",j);
+	  fprintf(out,"  Name = %s\n",data->boundaryname[i]);
+	  fprintf(out,"End\n\n");
+	}
+      }
+    }
+    fclose(out);
+
+
   }
   
   chdir("..");

@@ -423,6 +423,7 @@ CONTAINS
       A % Cholesky = ListGetLogical( Params, &
           'Linear System Symmetric ILU', Gotit )
       
+      ILUn = -1
       IF ( str == 'none' ) THEN
         PCondType = PRECOND_NONE
       ELSE IF ( str == 'diagonal' ) THEN

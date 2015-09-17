@@ -1496,14 +1496,16 @@ END FUNCTION GaussPointsPTetra
 !------------------------------------------------------------------------------
 !>    Given element structure return gauss integration points for the element.
 !----------------------------------------------------------------------------------------------
-   FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis, PReferenceElement ) RESULT(IntegStuff)
+   FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis, PReferenceElement, &
+        EdgeBasisDegree) RESULT(IntegStuff)
 !---------------------------------------------------------------------------------------------
      USE PElementMaps, ONLY : isActivePElement
      TYPE( Element_t ) :: elm   !< Structure holding element description
      INTEGER, OPTIONAL :: np    !< Number of requested points
      INTEGER, OPTIONAL :: RelOrder  !< Relative order of Gauss points (-1,0,+1)
      LOGICAL, OPTIONAL :: EdgeBasis !< For choosing quadrature suitable for edge elements
-     LOGICAL, OPTIONAL :: PReferenceElement !< For switching to the p-version reference element     
+     LOGICAL, OPTIONAL :: PReferenceElement !< For switching to the p-version reference element
+     INTEGER, OPTIONAL :: EdgeBasisDegree ! The degree of edge elements
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
      LOGICAL :: pElement, UsePRefElement
@@ -1516,7 +1518,11 @@ END FUNCTION GaussPointsPTetra
         IF (EdgeBasis) THEN
            UsePRefElement = .TRUE.
            IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
-           IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
+           IF (PRESENT(EdgeBasisDegree)) THEN
+              IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement, EdgeBasisDegree)
+           ELSE
+              IntegStuff = EdgeElementGaussPoints(elmt % ElementCode/100, UsePRefElement)
+           END IF
            RETURN
         END IF
      END IF
@@ -1551,7 +1557,12 @@ END FUNCTION GaussPointsPTetra
        END IF  
      ELSE
        IF (pElement) THEN
-         n = elm % PDefs % GaussPoints
+         IF( ASSOCIATED( elm % PDefs ) ) THEN
+           n = elm % PDefs % GaussPoints
+         ELSE
+           n = elmt % GaussPoints
+         END IF
+         IF( n == 0 ) n = elmt % GaussPoints
        ELSE
          n = elmt % GaussPoints
        END IF
@@ -1611,17 +1622,20 @@ END FUNCTION GaussPointsPTetra
 !>  an alternate (usually smaller) set of integration points on the classic 
 !>  reference element. This option may be useful when the edge basis functions are 
 !>  obtained via calling the alternate subroutine GetEdgeBasis.
-!------------------------------------------------------------------------------
-   FUNCTION EdgeElementGaussPoints(ElementFamily, PiolaVersion) RESULT(IP)
-!------------------------------------------------------------------------------
+!----------------------------------------------------------------------------------------
+   FUNCTION EdgeElementGaussPoints(ElementFamily, PiolaVersion, BasisDegree) RESULT(IP)
+!---------------------------------------------------------------------------------------
      INTEGER :: ElementFamily
      LOGICAL, OPTIONAL :: PiolaVersion
+     INTEGER, OPTIONAL :: BasisDegree
      TYPE(GaussIntegrationPoints_t) :: IP
 !------------------------------------------------------------------------------
-     LOGICAL :: PRefElement
+     LOGICAL :: PRefElement, SecondOrder
 !------------------------------------------------------------------------------
      PRefElement = .TRUE.
+     SecondOrder = .FALSE.
      IF ( PRESENT(PiolaVersion) ) PRefElement = PiolaVersion
+     IF ( PRESENT(BasisDegree) ) SecondOrder = BasisDegree > 1
 
      SELECT CASE(ElementFamily)
      CASE (1)
@@ -1629,7 +1643,11 @@ END FUNCTION GaussPointsPTetra
      CASE (2)
         IntegStuff = GaussPoints1D(2)
      CASE(3)
-        IP = GaussPointsTriangle(3, PReferenceElement=PRefElement)
+        IF (SecondOrder) THEN
+           IP = GaussPointsTriangle(6, PReferenceElement=PRefElement)
+        ELSE
+           IP = GaussPointsTriangle(3, PReferenceElement=PRefElement)
+        END IF
      CASE(4)
         IF (PRefElement) THEN
            IP = GaussPointsQuad(9)
@@ -1637,7 +1655,11 @@ END FUNCTION GaussPointsPTetra
            IP = GaussPointsQuad(4)
         END IF
      CASE(5)
-        IP = GaussPointsTetra(4, PReferenceElement=PRefElement)
+        IF (SecondOrder) THEN
+           IP = GaussPointsTetra(11, PReferenceElement=PRefElement)
+        ELSE
+           IP = GaussPointsTetra(4, PReferenceElement=PRefElement)
+        END IF
      CASE(6)
         IF (PRefElement) THEN
            IP = GaussPointsPPyramid(27)

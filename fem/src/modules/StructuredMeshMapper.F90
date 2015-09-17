@@ -62,15 +62,16 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Solver_t), POINTER :: PSolver
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TangledMaskVarName
-  INTEGER :: i,j,k,n,dim,DOFs,itop,ibot,ii,jj,Rounds,BotMode,TopMode,nsize, &
+  INTEGER :: i,j,k,n,dim,DOFs,itop,ibot,imid,ii,jj,Rounds,BotMode,TopMode,nsize, &
        ActiveDirection,elem, istat, TangledCount
   INTEGER, POINTER :: MaskPerm(:),TopPerm(:),BotPerm(:),TangledMaskPerm(:),TopPointer(:),&
-       BotPointer(:),NodeIndexes(:)
+       BotPointer(:),MidPointer(:),NodeIndexes(:)
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
-       DeTangle, ComputeTangledMask = .FALSE., Reinitialize
-  REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,xloc,wtop,BotVal,TopVal,&
-       TopVal0, BotVal0, ElemVector(3),DotPro,Eps,Length, MinHeight
+       DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
+       MidLayerExists
+  REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
+       TopVal0, BotVal0, MidVal, ElemVector(3),DotPro,Eps,Length, MinHeight
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2,Heps
 #else
@@ -85,7 +86,8 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
 
   SAVE Visited,Initialized,UnitVector,Coord,MaskExists,MaskPerm,TopPointer,BotPointer,&
-       TopMode,BotMode,TopField,BotField,TopPerm,BotPerm,Field,Surface,nsize, OrigCoord, ComputeTangledMask
+      TopMode,BotMode,TopField,BotField,TopPerm,BotPerm,Field,Surface,nsize, OrigCoord, &
+      ComputeTangledMask, MidPointer, MidLayerExists
 
   CALL Info( 'StructuredMeshMapper','---------------------------------------',Level=4 )
   CALL Info( 'StructuredMeshMapper','Performing mapping on a structured mesh ',Level=4 )
@@ -103,25 +105,26 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   IF(.NOT. Found) Reinitialize = .FALSE.
 
   IF( (.NOT. Initialized) .OR. Reinitialize ) THEN
-     IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
-     IF(ASSOCIATED(TopPointer)) DEALLOCATE(TopPointer)
-     CALL DetectExtrudedStructure( Mesh, PSolver, ExtVar = Var, &
-          TopNodePointer = TopPointer, BotNodePointer = BotPointer )
-     MaskExists = ASSOCIATED( Var % Perm ) 
-     IF( MaskExists ) MaskPerm => Var % Perm
-     Coord => Var % Values
-     nsize = SIZE( Coord )
-     Initialized = .TRUE.
+    IF(ASSOCIATED(BotPointer)) DEALLOCATE(BotPointer)
+    IF(ASSOCIATED(TopPointer)) DEALLOCATE(TopPointer)
+    CALL DetectExtrudedStructure( Mesh, PSolver, ExtVar = Var, &
+        TopNodePointer = TopPointer, BotNodePointer = BotPointer, &
+        MidNodePointer = MidPointer, MidLayerExists = MidLayerExists )
+    MaskExists = ASSOCIATED( Var % Perm ) 
+    IF( MaskExists ) MaskPerm => Var % Perm
+    Coord => Var % Values
+    nsize = SIZE( Coord )
+    Initialized = .TRUE.
 
-     IF(ALLOCATED(OrigCoord)) DEALLOCATE(OrigCoord)
-     ALLOCATE( OrigCoord(nsize), STAT=istat)
-     IF ( istat /= 0 ) THEN
-       CALL FATAL( 'StructuredMeshMapper', 'Memory allocation error' )
-     END IF
-   END IF
-   
-   OrigCoord(1:nsize) = Coord(1:nsize)
-   at0 = CPUTime()
+    IF(ALLOCATED(OrigCoord)) DEALLOCATE(OrigCoord)
+    ALLOCATE( OrigCoord(nsize), STAT=istat)
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'StructuredMeshMapper', 'Memory allocation error' )
+    END IF
+  END IF
+
+  OrigCoord(1:nsize) = Coord(1:nsize)
+  at0 = CPUTime()
 
   ! End of initialization
   !-------------------------------------------------------
@@ -129,38 +132,36 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   !---------------- detangling stuff --------------------------------
   MinHeight = 0.0_dp
   DeTangle = GetLogical(SolverParams,'Correct Surface',GotIt )
-  IF (GotIt) THEN
-     CALL INFO('StructuredMeshMapper',&
-          '>Correct Surface< in case of intersecting upper and lower surface',Level=1)
-     MinHeight = GetCReal(SolverParams,'Minimum Height', GotIt)
-     IF ((.NOT.GotIt) .OR. (MinHeight <= 0.0_dp)) THEN
-        CALL FATAL('StructuredMeshMapper',&
-             '>Minimum Height< either set to negative/zero value or not found')
-     ELSE
-        WRITE(Message,'(A,E11.4)') 'Adjusting upper surface to maintain minimum height to:', MinHeight
-        CALL INFO('StructuredMeshMapper',Message,Level=1)
-     END IF
-  ELSE
-     DeTangle = .FALSE.
-  END IF
-  IF (DeTangle) THEN
-     TangledMaskVarName = GetString(SolverParams,'Correct Surface Mask', ComputeTangledMask)
-     IF (ComputeTangledMask) THEN
-        TangledMaskVar => VariableGet( Mesh % Variables,  TRIM(TangledMaskVarName) )
-        IF (ASSOCIATED(TangledMaskVar)) THEN
-           IF(TangledMaskVar % DOFs /= 1) THEN 
-              CALL FATAL('StructuredMeshMapper','>Correct Surface Mask< variable should have only 1 dof')
-           END IF
-           TangledMask => TangledMaskVar % Values
-           TangledMask = 1.0_dp
-           TangledMaskPerm => TangledMaskVar % Perm
-           WRITE(Message,'(A,A)') 'Output of >Correct Surface Mask< to: ', TRIM(TangledMaskVarName)
-           CALL INFO('StructuredMeshMapper',Message)
-        ELSE
-           WRITE(Message,'(A,A,A)') 'Ignoring ',TRIM(TangledMaskVarName),' given as >Correct Surface Mask< variable, as not found.'
-           CALL WARN('StructuredMeshMapper',Message)
+  IF( DeTangle ) THEN
+    CALL Info('StructuredMeshMapper',&
+        '> Correct Surface < in case of intersecting upper and lower surface',Level=4)
+    MinHeight = GetCReal(SolverParams,'Minimum Height', GotIt)
+    IF (.NOT.GotIt .OR. (MinHeight <= 0.0_dp)) THEN
+      CALL Fatal('StructuredMeshMapper',&
+          '> Minimum Height < either set to negative/zero value or not found')
+    ELSE
+      WRITE(Message,'(A,E11.4)') 'Adjusting upper surface to maintain minimum height to:', MinHeight
+      CALL Info('StructuredMeshMapper',Message,Level=4)
+    END IF
+
+    TangledMaskVarName = GetString(SolverParams,'Correct Surface Mask', ComputeTangledMask)
+    IF (ComputeTangledMask) THEN
+      TangledMaskVar => VariableGet( Mesh % Variables,  TRIM(TangledMaskVarName) )
+      IF (ASSOCIATED(TangledMaskVar)) THEN
+        IF(TangledMaskVar % DOFs /= 1) THEN 
+          CALL Fatal('StructuredMeshMapper','>Correct Surface Mask< variable should have only 1 dof')
         END IF
-     END IF
+        TangledMask => TangledMaskVar % Values
+        TangledMask = 1.0_dp
+        TangledMaskPerm => TangledMaskVar % Perm
+        WRITE(Message,'(A,A)') 
+        CALL Info('StructuredMeshMapper',&
+            'Output of > Correct Surface Mask < to: '//TRIM(TangledMaskVarName),Level=6 )
+      ELSE
+        CALL Warn('StructuredMeshMapper',&
+            'Ignoring '//TRIM(TangledMaskVarName)//' given as >Correct Surface Mask< variable, as not found.')
+      END IF
+    END IF
   END IF
 
 
@@ -169,50 +170,50 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   TopMode = 0
   TopVal0 = GetCReal(SolverParams,'Top Surface Level',GotIt)
   IF(GotIt) THEN
-     TopMode = 1
+    TopMode = 1
   ELSE
-     VarName = GetString(SolverParams,'Top Surface Variable Name',GotIt )
-     IF(GotIt) THEN
-        Var => VariableGet( Mesh % Variables,  VarName )
-        IF(ASSOCIATED(Var)) THEN
-           IF(Var % DOFs /= 1) THEN
-              CALL Fatal('StructuredMeshMapper','Top surface variable should have only 1 dof')
-           ELSE
-              TopField => Var % Values
-              TopPerm => Var % Perm
-              TopMode = 2
-           END IF
+    VarName = GetString(SolverParams,'Top Surface Variable Name',GotIt )
+    IF(GotIt) THEN
+      Var => VariableGet( Mesh % Variables,  VarName )
+      IF(ASSOCIATED(Var)) THEN
+        IF(Var % DOFs /= 1) THEN
+          CALL Fatal('StructuredMeshMapper','Top surface variable should have only 1 dof')
         ELSE
-           CALL Fatal('StructuredMeshMapper','Top surface variable is missing: '//TRIM(VarName))
+          TopField => Var % Values
+          TopPerm => Var % Perm
+          TopMode = 2
         END IF
-     END IF
+      ELSE
+        CALL Fatal('StructuredMeshMapper','Top surface variable is missing: '//TRIM(VarName))
+      END IF
+    END IF
   END IF
 
   IF(TopMode == 0) THEN
-     IF( ListCheckPresentAnyBC( Model,'Top Surface') ) THEN
-        TopMode = 3
-        IF( Reinitialize ) THEN
-           IF( ALLOCATED(Field)) DEALLOCATE(Field)
-           IF( ALLOCATED(Surface)) DEALLOCATE(Surface)
+    IF( ListCheckPresentAnyBC( Model,'Top Surface') ) THEN
+      TopMode = 3
+      IF( Reinitialize ) THEN
+        IF( ALLOCATED(Field)) DEALLOCATE(Field)
+        IF( ALLOCATED(Surface)) DEALLOCATE(Surface)
+      END IF
+      IF(.NOT. ALLOCATED(Field)) THEN
+        N = Mesh % MaxElementNodes
+        ALLOCATE(Field(nsize),Surface(n))
+        Field = 0.0_dp
+      END IF
+      DO elem = 1, Mesh % NumberOfBoundaryElements
+        Element => GetBoundaryElement(elem)
+        BC => GetBC()
+        IF ( ASSOCIATED( BC ) ) THEN
+          NodeIndexes => Element % NodeIndexes
+          n = GetElementNOFNodes()
+          Surface(1:n) = GetReal( BC,'Top Surface',Found )
+          IF(Found) Field(NodeIndexes(1:n)) = Surface(1:n) 
         END IF
-        IF(.NOT. ALLOCATED(Field)) THEN
-           N = Mesh % MaxElementNodes
-           ALLOCATE(Field(nsize),Surface(n))
-           Field = 0.0_dp
-        END IF
-        DO elem = 1, Mesh % NumberOfBoundaryElements
-           Element => GetBoundaryElement(elem)
-           BC => GetBC()
-           IF ( ASSOCIATED( BC ) ) THEN
-              NodeIndexes => Element % NodeIndexes
-              n = GetElementNOFNodes()
-              Surface(1:n) = GetReal( BC,'Top Surface',Found )
-              IF(Found) Field(NodeIndexes(1:n)) = Surface(1:n) 
-           END IF
-        END DO
-     ELSE
-        CALL FATAL('StructuredMeshMapper','Top surface BC entry is missing')
-     END IF
+      END DO
+    ELSE
+      CALL Fatal('StructuredMeshMapper','Top surface BC entry is missing')
+    END IF
   END IF
 
 
@@ -221,63 +222,86 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   BotMode = 0
   BotVal0 = GetCReal(SolverParams,'Bottom Surface Level',GotIt)
   IF(GotIt) THEN
-     BotMode = 1
+    BotMode = 1
   ELSE
-     VarName = GetString(SolverParams,'Bottom Surface Variable Name',GotIt )
-     IF(GotIt) THEN
-        Var => VariableGet( Mesh % Variables,  VarName )
-        IF(ASSOCIATED(Var)) THEN
-           IF( Var % DOFs /= 1) THEN
-              CALL Fatal('StructuredMeshMapper','Bottom surface variable should have only 1 dof')
-           ELSE
-              BotField => Var % Values
-              BotPerm => Var % Perm
-              BotMode = 2
-           END IF
+    VarName = GetString(SolverParams,'Bottom Surface Variable Name',GotIt )
+    IF(GotIt) THEN
+      Var => VariableGet( Mesh % Variables,  VarName )
+      IF(ASSOCIATED(Var)) THEN
+        IF( Var % DOFs /= 1) THEN
+          CALL Fatal('StructuredMeshMapper','Bottom surface variable should have only 1 dof')
         ELSE
-           CALL Fatal('StructuredMeshMapper','Bottom surface variable is missing: '//TRIM(VarName))
+          BotField => Var % Values
+          BotPerm => Var % Perm
+          BotMode = 2
         END IF
-     END IF
+      ELSE
+        CALL Fatal('StructuredMeshMapper','Bottom surface variable is missing: '//TRIM(VarName))
+      END IF
+    END IF
   END IF
 
 
 
   IF( BotMode == 0) THEN
-     IF( ListCheckPresentAnyBC( Model,'Bottom Surface') ) THEN  
-        BotMode = 3
-        IF(.NOT. ALLOCATED(Field)) THEN
-           N = Mesh % MaxElementNodes
-           ALLOCATE(Field(nsize),Surface(n))
-           Field = 0.0_dp
+    IF( ListCheckPresentAnyBC( Model,'Bottom Surface') ) THEN  
+      BotMode = 3
+      IF(.NOT. ALLOCATED(Field)) THEN
+        N = Mesh % MaxElementNodes
+        ALLOCATE(Field(nsize),Surface(n))
+        Field = 0.0_dp
+      END IF
+      DO elem = 1, Mesh % NumberOfBoundaryElements
+        Element => GetBoundaryElement(elem)
+        BC => GetBC()
+        IF ( ASSOCIATED( BC ) ) THEN
+          NodeIndexes => Element % NodeIndexes
+          n = GetElementNOFNodes()
+          Surface(1:n) = GetReal( BC,'Bottom Surface',Found )
+          IF(Found) Field(NodeIndexes(1:n)) = Surface(1:n) 
         END IF
-        DO elem = 1, Mesh % NumberOfBoundaryElements
-           Element => GetBoundaryElement(elem)
-           BC => GetBC()
-           IF ( ASSOCIATED( BC ) ) THEN
-              NodeIndexes => Element % NodeIndexes
-              n = GetElementNOFNodes()
-              Surface(1:n) = GetReal( BC,'Bottom Surface',Found )
-              IF(Found) Field(NodeIndexes(1:n)) = Surface(1:n) 
-           END IF
-        END DO
-     END IF
+      END DO
+    END IF
   END IF
+
+
+  ! Get either variable or constant values for mid surface
+  !----------------------------------------------------------
+  IF( MidLayerExists ) THEN
+    IF(.NOT. ALLOCATED(Field)) THEN
+      N = Mesh % MaxElementNodes
+      ALLOCATE(Field(nsize),Surface(n))
+      Field = 0.0_dp
+    END IF
+    DO elem = 1, Mesh % NumberOfBoundaryElements
+      Element => GetBoundaryElement(elem)
+      BC => GetBC()
+      IF ( ASSOCIATED( BC ) ) THEN
+        NodeIndexes => Element % NodeIndexes
+        n = GetElementNOFNodes()
+        Surface(1:n) = GetReal( BC,'Mid Surface',Found )
+        IF(Found) Field(NodeIndexes(1:n)) = Surface(1:n) 
+      END IF
+    END DO
+  END IF
+
+
 
   ! Get the velocity variable component. 
   !-------------------------------------------------------------------
   GotVeloVar = .FALSE.
   VarName = GetString( SolverParams,'Mesh Velocity Variable',Found)
   IF( Found ) THEN
-     VeloVar => VariableGet( Mesh % Variables, VarName ) 
-     IF( ASSOCIATED( VeloVar ) ) THEN
-        IF( VeloVar % Dofs == 1 ) THEN
-           GotVeloVar = .TRUE.
-        ELSE  
-           CALL Fatal('StructuredMeshMapper','The size of mesh velocity must be one')
-        END IF
-     ELSE
-        CALL Fatal('StructuredMeshMapper','The variable does not exist: '//TRIM(VarName))
-     END IF
+    VeloVar => VariableGet( Mesh % Variables, VarName ) 
+    IF( ASSOCIATED( VeloVar ) ) THEN
+      IF( VeloVar % Dofs == 1 ) THEN
+        GotVeloVar = .TRUE.
+      ELSE  
+        CALL Fatal('StructuredMeshMapper','The size of mesh velocity must be one')
+      END IF
+    ELSE
+      CALL Fatal('StructuredMeshMapper','The variable does not exist: '//TRIM(VarName))
+    END IF
   END IF
 
   ! Get the mesh update variable component. 
@@ -286,16 +310,16 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   VarName = GetString( SolverParams,'Mesh Update Variable',Found)
   IF( Found ) THEN
-     UpdateVar => VariableGet( Mesh % Variables, VarName ) 
-     IF( ASSOCIATED( UpdateVar ) ) THEN
-        IF( UpdateVar % Dofs == 1 ) THEN
-           GotUpdateVar = .TRUE.
-        ELSE  
-           CALL Fatal('StructuredMeshMapper','The size of mesh update must be one')
-        END IF
-     ELSE
-        CALL Fatal('StructuredMeshMapper','The variable does not exist: '//TRIM(VarName))
-     END IF
+    UpdateVar => VariableGet( Mesh % Variables, VarName ) 
+    IF( ASSOCIATED( UpdateVar ) ) THEN
+      IF( UpdateVar % Dofs == 1 ) THEN
+        GotUpdateVar = .TRUE.
+      ELSE  
+        CALL Fatal('StructuredMeshMapper','The size of mesh update must be one')
+      END IF
+    ELSE
+      CALL Fatal('StructuredMeshMapper','The variable does not exist: '//TRIM(VarName))
+    END IF
   END IF
 
   DisplacementMode = GetLogical(SolverParams,'Displacement Mode',Found)
@@ -311,119 +335,140 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   DO i=1,nsize
 
-     j = i
-     IF( MaskExists ) THEN
-        j = MaskPerm(i) 
-        IF( j == 0) CYCLE
-     END IF
-     itop = TopPointer(i)
-     ibot = BotPointer(i)
+    j = i
+    IF( MaskExists ) THEN
+      j = MaskPerm(i) 
+      IF( j == 0) CYCLE
+    END IF
+    itop = TopPointer(i)
+    ibot = BotPointer(i)
+    IF( MidLayerExists ) imid = MidPointer(i)
 
-     ! Use the previous coordinates for determining the weights
-     !----------------------------------------------------------
-     x0top = OrigCoord(itop)
-     x0bot = OrigCoord(ibot)
-     x0loc = OrigCoord(i)
+    ! Use the previous coordinates for determining the weights
+    !----------------------------------------------------------
+    x0top = OrigCoord(itop)
+    x0bot = OrigCoord(ibot)
+    x0loc = OrigCoord(i)
 
-     wtop = (x0loc-x0bot)/(x0top-x0bot);
+    IF( TopMode == 1 ) THEN
+      TopVal = TopVal0
+    ELSE IF(TopMode == 2) THEN
+      TopVal = TopField(TopPerm(itop))
+    ELSE IF(TopMode == 3) THEN
+      TopVal = Field(itop)
+    ELSE
+      IF( DisplacementMode ) THEN
+        TopVal = 0.0_dp
+      ELSE
+        TopVal = x0top
+      END IF
+    END IF
 
-     IF( TopMode == 1 ) THEN
-        TopVal = TopVal0
-     ELSE IF(TopMode == 2) THEN
-        TopVal = TopField(TopPerm(itop))
-     ELSE IF(TopMode == 3) THEN
-        TopVal = Field(itop)
-     ELSE
+    IF( BotMode == 1 ) THEN
+      BotVal = BotVal0 
+    ELSE IF(BotMode == 2) THEN
+      BotVal = BotField(BotPerm(ibot))
+    ELSE IF(BotMode == 3) THEN    
+      BotVal = Field(ibot)
+    ELSE
+      IF( DisplacementMode ) THEN
+        BotVal = 0.0_dp
+      ELSE
+        BotVal = x0bot
+      END IF
+    END IF
+
+
+    IF( DisplacementMode ) THEN
+      Tangled = ( TopVal + x0top < BotVal + x0bot + MinHeight)
+    ELSE
+      Tangled = ( TopVal < BotVal + MinHeight) 
+    END IF
+
+    IF( Tangled ) THEN
+      TangledCount = TangledCount + 1
+      IF(.NOT.DeTangle ) THEN
+        PRINT *,'Mode',DisplacementMode
+        PRINT *,'TopVal',TopVal,x0top,TopVal+x0top
+        PRINT *,'Botval',BotVal,x0bot,BotVal+x0bot
+
+        PRINT *,'Node',i,'Height',Coord(i),'W',wtop
+        PRINT *,'Position',Mesh % Nodes % x(i),Mesh % Nodes % y(i),Mesh % Nodes % z(i)
+        PRINT *,'TopVal',TopVal,'BotVal',Botval,'dVal',TopVal-BotVal
+        !           WRITE( Message,'(A,2ES12.3)') 'Top and bottom get tangled: ',TopVal, BotVal 
+        !          CALL Fatal('SructuredMeshMapper',Message)
+      ELSE
         IF( DisplacementMode ) THEN
-           TopVal = 0.0_dp
+          TopVal = BotVal + x0bot + x0top + MinHeight
         ELSE
-           TopVal = x0top
+          TopVal = BotVal + MinHeight 
         END IF
-     END IF
 
-     IF( BotMode == 1 ) THEN
-        BotVal = BotVal0 
-     ELSE IF(BotMode == 2) THEN
-        BotVal = BotField(BotPerm(ibot))
-     ELSE IF(BotMode == 3) THEN    
-        BotVal = Field(ibot)
-     ELSE
-        IF( DisplacementMode ) THEN
-           BotVal = 0.0_dp
-        ELSE
-           BotVal = x0bot
-        END IF
-     END IF
-
-     IF( DisplacementMode ) THEN
-        Tangled = ( TopVal + x0top < BotVal + x0bot + MinHeight)
-     ELSE
-        Tangled = ( TopVal < BotVal + MinHeight) 
-     END IF
-
-     IF( Tangled ) THEN
-        TangledCount = TangledCount + 1
-        IF(.NOT.DeTangle ) THEN
-           PRINT *,'Mode',DisplacementMode
-           PRINT *,'TopVal',TopVal,x0top,TopVal+x0top
-           PRINT *,'Botval',BotVal,x0bot,BotVal+x0bot
-
-           PRINT *,'Node',i,'Height',Coord(i),'W',wtop
-           PRINT *,'Position',Mesh % Nodes % x(i),Mesh % Nodes % y(i),Mesh % Nodes % z(i)
-           PRINT *,'TopVal',TopVal,'BotVal',Botval,'dVal',TopVal-BotVal
-           !           WRITE( Message,'(A,2ES12.3)') 'Top and bottom get tangled: ',TopVal, BotVal 
-            !          CALL FATAL('SructuredMeshMapper',Message)
-        ELSE
-          IF( DisplacementMode ) THEN
-            TopVal = BotVal + x0bot + x0top + MinHeight
-          ELSE
-            TopVal = BotVal + MinHeight 
-          END IF
-          
-          IF (ComputeTangledMask) THEN
-            TangledMask(TangledMaskPerm(i)) = -1.0_dp 
-          END IF
-          IF( .FALSE. ) THEN
-            WRITE(Message,'(A,E11.4,A,E11.4,A,E11.4,A,E11.4)')&
-                "Corrected negative height:", TopVal - BotVal, "=",&
-                TopVal ,"-", BotVal, ". New upper value:", Field(itop)
-            CALL INFO('SructuredMeshMapper',Message,Level=9)
-          END IF
-        END IF
-     ELSE   
         IF (ComputeTangledMask) THEN
-           IF(TangledMask(TangledMaskPerm(itop)) == -1.0_dp) THEN
-              TangledMask(TangledMaskPerm(i)) = -1.0_dp
-           ELSE
-              TangledMask(TangledMaskPerm(i)) = 1.0_dp
-           END IF
+          TangledMask(TangledMaskPerm(i)) = -1.0_dp 
         END IF
-     END IF
+        IF( .FALSE. ) THEN
+          WRITE(Message,'(A,E11.4,A,E11.4,A,E11.4,A,E11.4)')&
+              "Corrected negative height:", TopVal - BotVal, "=",&
+              TopVal ,"-", BotVal, ". New upper value:", Field(itop)
+          CALL Info('SructuredMeshMapper',Message,Level=9)
+        END IF
+      END IF
+    ELSE   
+      IF (ComputeTangledMask) THEN
+        IF(TangledMask(TangledMaskPerm(itop)) == -1.0_dp) THEN
+          TangledMask(TangledMaskPerm(i)) = -1.0_dp
+        ELSE
+          TangledMask(TangledMaskPerm(i)) = 1.0_dp
+        END IF
+      END IF
+    END IF
 
-     ! New coordinate location
-     xloc = wtop * TopVal + (1.0_dp - wtop) * BotVal
+    ! New coordinate location
+    IF( MidLayerExists ) THEN
+      ! With middle layer in two parts
+      MidVal = Field(imid)
+      x0mid = OrigCoord(imid)
+      IF( (x0top - x0mid ) * ( x0loc - x0mid ) > 0.0_dp ) THEN
+        wtop = (x0loc-x0mid)/(x0top-x0mid);
+        xloc = wtop * TopVal + (1.0_dp - wtop) * MidVal         
+      ELSE
+        wtop = (x0loc-x0bot)/(x0mid-x0bot);
+        xloc = wtop * MidVal + (1.0_dp - wtop) * BotVal
+      END IF
+    ELSE
+      ! Otherwise in one part
+      wtop = (x0loc-x0bot)/(x0top-x0bot);
+      xloc = wtop * TopVal + (1.0_dp - wtop) * BotVal
+    END IF
 
-     IF(DisplacementMode) THEN
-        IF( GotVeloVar ) VeloVar % Values( VeloVar % Perm(i) ) = xloc / dt
-        Coord(i) = OrigCoord(i) + xloc
-     ELSE
-        IF( GotVeloVar ) VeloVar % Values( VeloVar % Perm(i) ) = ( xloc - OrigCoord(i) ) / dt
-        Coord(i) = xloc
-     END IF
-     IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(i) - OrigCoord(i)
+    IF(DisplacementMode) THEN
+      IF( GotVeloVar ) THEN
+        IF(Velovar % Perm(i)>0) &
+          VeloVar % Values( VeloVar % Perm(i) ) = xloc / dt
+      END IF
+      Coord(i) = OrigCoord(i) + xloc
+    ELSE
+      IF( GotVeloVar ) THEN
+        IF(Velovar % Perm(i)>0) &
+          VeloVar % Values( VeloVar % Perm(i) ) = ( xloc - OrigCoord(i) ) / dt
+      END IF
+      Coord(i) = xloc
+    END IF
+    IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(i) - OrigCoord(i)
   END DO
 
 
   IF( GotVeloVar .AND. .NOT. Visited ) THEN
-     IF( GetLogical(SolverParams,'Mesh Velocity First Zero',Found ) ) THEN
-        VeloVar % Values = 0.0_dp
-     END IF
+    IF( GetLogical(SolverParams,'Mesh Velocity First Zero',Found ) ) THEN
+      VeloVar % Values = 0.0_dp
+    END IF
   END IF
 
   IF( TangledCount > 0 ) THEN
-     CALL Warn('SructuredMeshMapper','There seems to be '&
-          //TRIM(I2S(TangledCount))//' (out of '//TRIM(I2S(nsize))//&
-          ') tangled nodes!')
+    CALL Warn('SructuredMeshMapper','There seems to be '&
+        //TRIM(I2S(TangledCount))//' (out of '//TRIM(I2S(nsize))//&
+        ') tangled nodes!')
   END IF
 
   at1 = CPUTime()

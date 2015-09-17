@@ -3358,7 +3358,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 /* Unites two meshes for one larger mesh */
 {
   int i,j,k,l,m;
-  int noelements,noknots,nonodes,totcopies,ind;
+  int noelements,noknots,nonodes,totcopies,ind,origdim;
   int **newtopo=NULL,*newmaterial=NULL,*newelementtypes=NULL,maxnodes;
   int maxmaterial,maxtype,ncopy,bndr,nosides;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
@@ -3371,11 +3371,19 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   printf("CloneMeshes: copying the mesh to a matrix\n");
   if(diffmats) diffmats = 1;
 
+  
+  origdim = data->dim;
   totcopies = 1;
+  if( ncopies[2] > 1 ) {
+    data->dim = 3;
+  }
+  else {
+    ncopies[2] = 1;
+  }
+
   for(i=0;i<data->dim;i++) {
     if(ncopies[i] > 1) totcopies *= ncopies[i];
   }
-  if(data->dim == 2) ncopies[2] = 1;
 
   maxcoord[0] = mincoord[0] = data->x[1];
   maxcoord[1] = mincoord[1] = data->y[1];
@@ -3386,15 +3394,16 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
     if(data->x[i] < mincoord[0]) mincoord[0] = data->x[i]; 
     if(data->y[i] > maxcoord[1]) maxcoord[1] = data->y[i]; 
     if(data->y[i] < mincoord[1]) mincoord[1] = data->y[i]; 
-    if(data->dim > 2) {
+    if(origdim == 3) {
       if(data->z[i] > maxcoord[2]) maxcoord[2] = data->z[i]; 
       if(data->z[i] < mincoord[2]) mincoord[2] = data->z[i]; 
     }
   }
 
-  for(i=0;i<data->dim;i++) {
+  for(i=0;i<origdim;i++) {
     if(maxcoord[i]-mincoord[i] > meshsize[i]) meshsize[i] = maxcoord[i]-mincoord[i];
   }
+  printf("meshsize %lg %lg %lg}\n",meshsize[0],meshsize[1],meshsize[2]);
 
   noknots = totcopies * data->noknots;
   noelements  = totcopies * data->noelements;
@@ -3420,7 +3429,14 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 
 	  newx[ind] = data->x[i] + j*meshsize[0];
 	  newy[ind] = data->y[i] + k*meshsize[1];
-	  if(data->dim == 3) newz[ind] = data->z[i] + l*meshsize[2];
+	  if(data->dim == 3) {
+	    if( origdim == 3 ) {
+	      newz[ind] = data->z[i] + l*meshsize[2];
+	    }
+	    else {
+	      newz[ind] = l * meshsize[2];
+	    }
+	  }
 	}
       }
     }
@@ -3461,7 +3477,6 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 
     printf("bndr=%d\n",bndr);
     nosides = totcopies * bound[bndr].nosides;
-    printf("sides=%d\n",bound[bndr].nosides);
 
     vparent = Ivector(1, nosides);
     vparent2 = Ivector(1, nosides);
@@ -3511,7 +3526,6 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 	}
       }
     }
-    printf("b3\n");
 
     bound[bndr].nosides = nosides;
     bound[bndr].side = vside;
@@ -3530,7 +3544,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   free_Ivector(data->material,1,data->noelements);
   free_Rvector(data->x,1,data->noknots);
   free_Rvector(data->y,1,data->noknots);
-  if(data->dim == 3) free_Rvector(data->z,1,data->noknots);
+  if(origdim == 3) free_Rvector(data->z,1,data->noknots);
 
   data->noelements = noelements;
   data->noknots  = noknots;

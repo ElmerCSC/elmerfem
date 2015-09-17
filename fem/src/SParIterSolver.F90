@@ -154,6 +154,7 @@ REAL(kind=dp) :: tt,realtime
     TYPE (BasicMatrix_t), POINTER :: NbsIfMatrix(:), CurrIf
     TYPE (BasicMatrix_t), DIMENSION(:), ALLOCATABLE :: RecvdIfMatrix
 
+    LOGICAL, ALLOCATABLE :: isNeighbour(:)
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, GotNewCol, Found
 
 #ifdef USE_ISO_C_BINDINGS
@@ -571,8 +572,6 @@ st = realtime()
   CALL ExchangeInterfaces( NbsIfMatrix, RecvdIfMatrix )
 !if ( parenv % mype==0 ) print*, 'EXCHANGE INTERF TIME: ', realtime()-st; st=realtime()
 
-
-
   !----------------------------------------------------------------------
   !
   ! sort inside matrix global tags to speed lookup
@@ -611,13 +610,22 @@ st = realtime()
     DO j=1,Currif % NumberOfRows
       IF ( CurrIf % RowOwner(j)==Parenv % MyPE ) CYCLE
       IF( .NOT. ParEnv % IsNeighbour(Currif % RowOwner(j)+1) ) THEN
-         ParEnv % NumOfNeighbours=ParEnv % NumOfNeighbours+1
+         ParEnv % NumOfNeighbours = ParEnv % NumOfNeighbours+1
          ParEnv % isNeighbour(CurrIf % RowOwner(j)+1) = .TRUE.
       END IF
     END DO
   END DO
 
+  ! Sync neighbour information, if changed by the above ^:
+  ! ------------------------------------------------------
+  ALLOCATE(isNeighbour(ParEnv % PEs))
+  isNeighbour = Parenv % IsNeighbour
+  CALL MPI_ALLREDUCE( isNeighbour, Parenv % IsNeighbour, Parenv % Pes, &
+      MPI_LOGICAL, MPI_LOR, SourceMatrix % Comm, i )
+  Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
+  Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
 
+  ! -
   ALLOCATE(SplittedMatrix % IfLCols(ParEnv % PEs))
   ALLOCATE(SplittedMatrix % IfORows(ParEnv % PEs))
   DO i = 1, ParEnv % PEs
@@ -1678,6 +1686,7 @@ INTEGER::inside
       n = SIZE(ParallelInfo % GlobalDOFs)
       ALLOCATE( Owner(n), Aperm(n) )
       CALL ContinuousNumbering(ParallelInfo,SourceMatrix % Perm,APerm,Owner)
+      Aperm = Aperm-1 ! Newer hypre libraries require zero based indexing
 
       ! ------------------------------------------------------------
       verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
@@ -1690,6 +1699,7 @@ INTEGER::inside
         bilu = 1
       END IF
 
+      CALL SParIterActiveBarrier()
       IF(hypre_pre/=3) THEN
         IF (NewSetup) THEN
           IF (SourceMatrix % Hypre /= 0) THEN
@@ -1758,6 +1768,7 @@ INTEGER::inside
         DEALLOCATE(GM % Values) 
         DEALLOCATE(GM)
       END IF
+      CALL SParIterActiveBarrier()
       
       DEALLOCATE( Owner, Aperm )
 

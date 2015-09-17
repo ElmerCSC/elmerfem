@@ -1,0 +1,9 @@
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( TempDist.sif TempDist.sif COPYONLY)
+
+file(COPY ELMERSOLVER_STARTINFO cond.dat angle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(heateq_resmode)
+ADD_ELMER_LABEL(heateq_resmode quick)
