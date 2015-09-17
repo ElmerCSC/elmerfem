@@ -433,10 +433,11 @@ CONTAINS
 
 !> Create a copy of the linear system (Values,Rhs) to (BulkValues,BulkRhs).
 !------------------------------------------------------------------------------
-   SUBROUTINE CopyBulkMatrix( A )
+   SUBROUTINE CopyBulkMatrix( A, BulkMass )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      INTEGER :: i,n
+     LOGICAL, OPTIONAL :: BulkMass
      
      n = SIZE( A % Rhs )
      IF( ASSOCIATED( A % BulkRhs ) ) THEN
@@ -466,6 +467,28 @@ CONTAINS
      DO i=1,n
        A % BulkValues(i) = A % Values(i)
      END DO
+
+
+     IF( PRESENT( BulkMass ) .AND. ASSOCIATED( A % MassValues) ) THEN
+       IF( BulkMass ) THEN
+         n = SIZE( A % MassValues )
+         IF( ASSOCIATED( A % BulkMassValues ) ) THEN
+           IF( SIZE( A % BulkMassValues ) /= n ) THEN
+             DEALLOCATE( A % BulkMassValues ) 
+             A % BulkMassValues => NULL()
+           END IF
+         END IF
+         IF ( .NOT. ASSOCIATED( A % BulkMassValues ) ) THEN
+           ALLOCATE( A % BulkMassValues( n ) )
+         END IF
+         
+         DO i=1,n
+           A % BulkMassValues(i) = A % MassValues(i)
+         END DO         
+       END IF
+     END IF
+     
+
 
    END SUBROUTINE CopyBulkMatrix
 !------------------------------------------------------------------------------
@@ -4586,7 +4609,7 @@ CONTAINS
     END SUBROUTINE CheckNTElement
 !------------------------------------------------------------------------------
 
- 
+
 !------------------------------------------------------------------------------
 !> Set values related to a specific boundary or bulk element.
 !------------------------------------------------------------------------------
@@ -5347,8 +5370,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-
-
 !> Set the diagonal entry related to mortar BCs.
 !> This implements the implicit jump condition. 
 !------------------------------------------------------------------------------
@@ -5567,6 +5588,129 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE SetDirichletBoundaries
 !------------------------------------------------------------------------------
+
+
+
+!> Prepare to set Dirichlet conditions for attachment DOFs in the case of
+!> component mode synthesis
+!------------------------------------------------------------------------------
+  SUBROUTINE SetConstraintModesBoundaries( Model, A, b, &
+      Name, NDOFs, Perm )
+    !------------------------------------------------------------------------------
+    TYPE(Model_t) :: Model        !< The current model structure
+    TYPE(Matrix_t), POINTER :: A  !< The global matrix
+    REAL(KIND=dp) :: b(:)         !< The global RHS vector
+    CHARACTER(LEN=*) :: Name      !< name of the dof to be set
+    INTEGER :: NDOFs              !< the total number of DOFs for this equation
+    INTEGER, TARGET :: Perm(:)    !< The node reordering info, this has been generated at the
+                                  !< beginning of the simulation for bandwidth optimization
+!------------------------------------------------------------------------------
+    INTEGER :: i,t,u,j,k,k2,l,l2,n,bc_id,nlen,NormalInd
+    LOGICAL :: Found
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Solver_t), POINTER :: Solver
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Variable_t), POINTER :: Var
+    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER, ALLOCATABLE :: BCPerm(:)
+
+!------------------------------------------------------------------------------
+
+    nlen = LEN_TRIM(Name)
+    Mesh => Model % Mesh
+    Solver => Model % Solver
+    Var => Solver % Variable 
+    
+    ! This needs to be allocated only once, hence return if already set
+    IF( Var % NumberOfConstraintModes > 0 ) RETURN
+
+    CALL Info('SetConstraintModesBoundaries','Setting constraint modes boundaries for variable: '&
+        //TRIM(Name),Level=7)
+
+    IF( .NOT. ListGetLogicalAnyBC( Model,'Constraint Modes ' // Name(1:nlen)) ) THEN
+      CALL Warn('SetConstraintModesBoundaries',&
+          'Constraint Modes Analysis requested but no constrained BCs given!')
+      RETURN
+    END IF
+
+    ! Allocate the indeces for the constraint modes
+    ALLOCATE( Var % ConstraintModesIndeces( A % NumberOfRows ) )
+    Var % ConstraintModesIndeces = 0
+    
+    ALLOCATE( BCPerm( Model % NumberOfBCs ) ) 
+    BCPerm = 0
+    
+    j = 0 
+    DO bc_id = 1,Model % NumberOfBCs
+      BC => Model % BCs(bc_id) % Values        
+      IF( ListGetLogical( BC,& 
+          'Constraint Modes ' // Name(1:nlen), Found ) ) THEN
+        j = j + 1
+        BCPerm(bc_id) = j
+      END IF
+    END DO
+    CALL Info('SetConstraintModesBoundaries','Number of active constraint modes boundaries: '&
+        //TRIM(I2S(j)),Level=7)
+
+
+    Var % NumberOfConstraintModes = NDOFS * j 
+    
+    
+    DO t = Mesh % NumberOfBulkElements+1, &
+        Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+      Element => Mesh % Elements(t)
+      
+      DO bc_id = 1,Model % NumberOfBCs
+        IF ( Element % BoundaryInfo % Constraint == Model % BCs(bc_id) % Tag ) EXIT
+      END DO
+      IF( bc_id > Model % NumberOfBCs ) CYCLE      
+      IF( BCPerm(bc_id) == 0 ) CYCLE
+      
+      NodeIndexes => Element % NodeIndexes
+
+      ! For vector valued problems treat each component as separate dof
+      DO k=1,NDOFs
+        Var % ConstraintModesIndeces( NDOFS*(Perm(NodeIndexes)-1)+k) = NDOFS*(BCPerm(bc_id)-1)+k
+      END DO
+    END DO
+    
+    ! The constraint modes can be either lumped or not.
+    ! If they are not lumped then mark each individually
+    IF( .NOT. ListGetLogical(Solver % Values,'Constraint Modes Lumped',Found ) ) THEN
+      j = 0
+      DO i=1,A % NumberOfRows
+        IF( Var % ConstraintModesIndeces(i) > 0 ) THEN
+          j = j + 1
+          Var % ConstraintModesIndeces(i) = j
+        END IF
+      END DO
+      CALL Info('SetConstraintModesBoundaries','Number of active constraint modes: '&
+          //TRIM(I2S(j)),Level=7)
+      Var % NumberOfConstraintModes = j 
+    END IF
+    
+
+    ! Manipulate the boundaries such that we need to modify only the r.h.s. in the actual linear solver
+    DO k=1,A % NumberOfRows       
+      IF( Var % ConstraintModesIndeces(k) == 0 ) CYCLE
+      CALL ZeroRow( A,k )
+      CALL SetMatrixElement( A,k,k,1._dp )
+      b(k) = 0.0_dp
+    END DO
+
+    
+    ALLOCATE( Var % ConstraintModes( Var % NumberOfConstraintModes, A % NumberOfRows ) )
+    Var % ConstraintModes = 0.0_dp
+
+    DEALLOCATE( BCPerm ) 
+    
+    CALL Info('SetConstraintModesBoundarues','All done',Level=10)
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetConstraintModesBoundaries
+!------------------------------------------------------------------------------
+
 
 
 
@@ -6303,7 +6447,7 @@ CONTAINS
 
     TYPE(Variable_t), POINTER :: NrmVar, Tan1Var, Tan2Var
 
-    LOGICAL, ALLOCATABLE :: Done(:), MasterBC(:)
+    LOGICAL, ALLOCATABLE :: Done(:), NtMasterBC(:), NtSlaveBC(:)
   
     REAL(KIND=dp), POINTER :: SetNormal(:,:), Rot(:,:)
 
@@ -6322,7 +6466,8 @@ CONTAINS
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
 
     LOGICAL :: MassConsistent, LhsSystem
-    LOGICAL, ALLOCATABLE :: LhsTangent(:)
+    LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
+    INTEGER :: LhsConflicts
 
     TYPE(Mesh_t), POINTER :: Mesh
 !------------------------------------------------------------------------------
@@ -6583,23 +6728,36 @@ CONTAINS
       IF(.NOT. Found ) LhsSystem = ( dim == 3 )
 
       IF( LhsSystem ) THEN
-        ALLOCATE( MasterBC( Model % NumberOfBCs ) )
-        MasterBC = .FALSE.
+        ALLOCATE( NtMasterBC( Model % NumberOfBCs ), NtSlaveBC( Model % NumberOfBCs ) )
+        NtMasterBC = .FALSE.; NtSlaveBC = .FALSE.
+
         DO i = 1, Model % NumberOfBcs
+          IF( .NOT. ListCheckPrefix( Model % BCs(i) % Values,'Normal-Tangential') ) CYCLE
+          
           j = ListGetInteger( Model % BCs(i) % Values,'Mortar BC',Found )
           IF( .NOT. Found ) THEN
             j = ListGetInteger( Model % BCs(i) % Values,'Contact BC',Found )
           END IF
           IF( j == 0 .OR. j > Model % NumberOfBCs ) CYCLE
-          MasterBC( j ) = .TRUE.
+
+          NtSlaveBC( i ) = .TRUE.
+          NtMasterBC( j ) = .TRUE.
         END DO
-        LhsSystem = ANY( MasterBC )
+        LhsSystem = ANY( NtMasterBC )
       END IF
 
-
       IF( LhsSystem ) THEN
+        DO i = 1, Model % NumberOfBcs
+          IF( NtSlaveBC( i ) .AND. NtMasterBC( i ) ) THEN
+            CALL Warn('AverageBoundaryNormals','BC '//TRIM(I2S(i))//' is both N-T master and slave!')
+          END IF
+        END DO
+
         ALLOCATE( LhsTangent( Model % NumberOfNodes ) )
         LhsTangent = .FALSE.
+
+        ALLOCATE( RhsTangent( Model % NumberOfNodes ) )
+        RhsTangent = .FALSE. 
 
         DO t=Model % NumberOfBulkElements + 1, Model % NumberOfBulkElements + &
             Model % NumberOfBoundaryElements
@@ -6611,11 +6769,18 @@ CONTAINS
           
           DO i=1,Model % NumberOfBCs
             IF ( Element % BoundaryInfo % Constraint == Model % BCs(i) % Tag ) THEN
-              IF( MasterBC(i) ) LhsTangent( NodeIndexes ) = .TRUE.
+              IF( NtMasterBC(i) ) LhsTangent( NodeIndexes ) = .TRUE.
+              IF( NtSlaveBC(i) ) RhsTangent( NodeIndexes ) = .TRUE.
               EXIT
             END IF
           END DO
         END DO
+
+        LhsConflicts = COUNT( LhsTangent .AND. RhsTangent )
+        IF( LhsConflicts > 0 ) THEN
+          CALL Warn('AverageBoundaryNormals',&
+              'There are '//TRIM(I2S(LhsConflicts))//' nodes that could be both rhs and lhs!')
+        END IF
       END IF
 
 
@@ -9942,7 +10107,8 @@ END FUNCTION SearchNodeL
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Relax,GotIt,Stat,ScaleSystem, EigenAnalysis, HarmonicAnalysis,&
                BackRotation, ApplyRowEquilibration, ApplyLimiter, Parallel, &
-               SkipZeroRhs, ComplexSystem, ComputeChangeScaled
+               SkipZeroRhs, ComplexSystem, ComputeChangeScaled, ConstraintModesAnalysis, &
+               RecursiveAnalysis
     INTEGER :: n,i,j,k,l,ii,m,DOF,istat,this,mn
     CHARACTER(LEN=MAX_NAME_LEN) :: Method, Prec, ProcName, SaveSlot
     INTEGER(KIND=AddrInt) :: Proc
@@ -10050,19 +10216,25 @@ END FUNCTION SearchNodeL
     EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
         ListGetLogical( Params, 'Eigen Analysis',GotIt )
     
+    ConstraintModesAnalysis = ListGetLogical( Params, &
+        'Constraint Modes Analysis',GotIt )
+
     HarmonicAnalysis = Solver % NOFEigenValues>0 .AND. &
         ListGetLogical( Params, 'Harmonic Analysis',GotIt )
+
+    ! These analyses types may require recursive strategies and may also have zero rhs
+    RecursiveAnalysis = HarmonicAnalysis .OR. EigenAnalysis .OR. ConstraintModesAnalysis
+
 
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
     SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt ) 
 
-    IF ( .NOT. ( HarmonicAnalysis .OR. EigenAnalysis .OR. ApplyLimiter &
-        .OR. SkipZeroRhs ) ) THEN
+    IF ( .NOT. ( RecursiveAnalysis .OR. ApplyLimiter .OR. SkipZeroRhs ) ) THEN
       bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))      
       IF ( bnorm <= TINY( bnorm) ) THEN
         CALL Info('SolveSystem','Solution trivially zero!')
         x = 0.0d0
-        
+
         ! Increase the nonlinear counter since otherwise some stuff may stagnate
         ! Normally this is done within ComputeChange
         iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
@@ -10075,26 +10247,53 @@ END FUNCTION SearchNodeL
       END IF
     END IF
     
+
+
     IF ( Solver % MultiGridLevel == -1  ) RETURN
+
+    ! Set the flags to false to allow recursive strategies for these analysis types, little dirty...
+    IF( RecursiveAnalysis ) THEN
+      IF( HarmonicAnalysis ) CALL ListAddLogical( Solver % Values,'Harmonic Analysis',.FALSE.)
+      IF( EigenAnalysis ) CALL ListAddLogical( Solver % Values,'Eigen Analysis',.FALSE.)
+      IF( ConstraintModesAnalysis ) CALL ListAddLogical( Solver % Values,'Constraint Modes Analysis',.FALSE.)
+    END IF
+
 
 !------------------------------------------------------------------------------
 !   If solving harmonic analysis go there:
 !   --------------------------------------
     IF ( HarmonicAnalysis ) THEN
       CALL SolveHarmonicSystem( A, Solver )
-      RETURN
     END IF
+
 
 !   If solving eigensystem go there:
 !   --------------------------------
     IF ( EigenAnalysis ) THEN
-
       IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A )
-     
+
       CALL SolveEigenSystem( &
           A, Solver %  NOFEigenValues, &
           Solver % Variable % EigenValues,       &
           Solver % Variable % EigenVectors, Solver )
+      
+      IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A ) 
+      IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
+
+      Norm = ComputeNorm(Solver,n,x)
+      Solver % Variable % Norm = Norm
+      
+      CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
+          Solver % Variable % Name )
+    END IF
+
+
+!   If solving constraint modes analysis go there:
+!   ----------------------------------------------
+    IF ( ConstraintModesAnalysis ) THEN
+      IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A )
+     
+      CALL SolveConstraintModesSystem( A, Solver )
       
       IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A ) 
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
@@ -10104,6 +10303,13 @@ END FUNCTION SearchNodeL
       
       CALL InvalidateVariable( CurrentModel % Meshes, Solver % Mesh, &
           Solver % Variable % Name )
+    END IF
+
+    ! We have solved {harmonic,eigen,constraint} system and no need to continue further
+    IF( RecursiveAnalysis ) THEN
+      IF( HarmonicAnalysis ) CALL ListAddLogical( Solver % Values,'Harmonic Analysis',.TRUE.)
+      IF( EigenAnalysis ) CALL ListAddLogical( Solver % Values,'Eigen Analysis',.TRUE.)
+      IF( ConstraintModesAnalysis ) CALL ListAddLogical( Solver % Values,'Constraint Modes Analysis',.TRUE.)
       RETURN
     END IF
 
@@ -10560,15 +10766,9 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     INTEGER :: NOFEigen
     TYPE(Solver_t) :: Solver
     !------------------------------------------------------------------------------
-
     INTEGER :: n
-
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
-
-    ! Set the 'Eigen Analysis' flag to False since internally 
-    ! some strategies rely on it not being set (e.g. 'block'). 
-    CALL ListAddLogical( Solver % Values,'Eigen Analysis',.FALSE.)
 
     IF ( .NOT. Solver % Matrix % COMPLEX ) THEN
       IF ( ParEnv % PEs <= 1 ) THEN
@@ -10588,11 +10788,51 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
       END IF
     END IF
 
-    CALL ListAddLogical( Solver % Values,'Eigen Analysis',.TRUE.)
-
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveEigenSystem
 !------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+!> Solve a linear system with permutated constraints.
+!------------------------------------------------------------------------------
+SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: StiffMatrix
+    TYPE(Solver_t) :: Solver
+    TYPE(Variable_t), POINTER :: Var
+    !------------------------------------------------------------------------------
+    INTEGER :: i,n,k
+    LOGICAL :: PrecRecompute, Stat
+    !------------------------------------------------------------------------------
+    n = StiffMatrix % NumberOfRows
+
+    Var => Solver % Variable
+
+    DO i=1,Var % NumberOfConstraintModes
+      CALL Info('SolveConstraintModesSystem','Solving for mode: '//TRIM(I2S(i)))
+
+      IF( i == 2 ) THEN
+        CALL ListAddLogical( Solver % Values,'No Precondition Recompute',.TRUE.)
+      END IF
+
+      WHERE( Var % ConstraintModesIndeces == i ) StiffMatrix % Rhs = 1.0_dp      
+
+      CALL SolveSystem( StiffMatrix,ParMatrix,StiffMatrix % rhs,&
+          Var % Values,Var % Norm,Var % DOFs,Solver )
+
+      WHERE( Var % ConstraintModesIndeces == i ) StiffMatrix % Rhs = 0.0_dp            
+      Var % ConstraintModes(i,:) = Var % Values
+    END DO
+
+    CALL ListAddLogical( Solver % Values,'No Precondition Recompute',.FALSE.)
+    
+!------------------------------------------------------------------------------
+  END SUBROUTINE SolveConstraintModesSystem
+!------------------------------------------------------------------------------
+
+
 
 
 !------------------------------------------------------------------------------
@@ -10972,7 +11212,6 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
       Nfrequency = 1
     END IF
 
-    CALL ListAddLogical( Solver % Values, 'Harmonic Analysis', .FALSE. )
     niter = MIN(Nfrequency,Solver % NOFEigenValues)
     ne=Solver % NofEigenValues
     Solver % NofEigenValues=0
@@ -11026,7 +11265,6 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
     END DO
 
     Solver % NOFEigenValues = ne
-    CALL ListAddLogical( Solver % Values, 'Harmonic Analysis', .TRUE. )
 
     DEALLOCATE( x, b )
 !------------------------------------------------------------------------------

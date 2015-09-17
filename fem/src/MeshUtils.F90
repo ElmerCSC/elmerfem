@@ -8077,7 +8077,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: i,j,k,n,ind,Nmax,Nmin,Nfii,Nnodes,MaxElemNodes,NElems
     LOGICAL :: Found, Hit0, Hit90, Hit180, Hit270, SetDegOffset
-    LOGICAL :: GotNormal, GotCenter
+    LOGICAL :: GotNormal, GotCenter, MoveAngle
 
     ! We choose degrees as they are more intuitive
     rad2deg = 180.0_dp / PI
@@ -8198,43 +8198,49 @@ END SUBROUTINE GetMaxDefs
       END DO
       
 
-      ! Let's see if we have a full angle to operate or not.
-      ! If not, then make the interval continuous. 
-      ! Here we check only four critical angles: (0,90,180,270) degs.
-      Hit0 = .FALSE.; Hit90 = .FALSE.; Hit180 = .FALSE.; Hit270 = .FALSE.
-      DO i=1, PMesh % NumberOfBulkElements
-        Element => PMesh % Elements(i)
-        n = Element % TYPE % NumberOfNodes        
-        NodeIndexes => Element % NodeIndexes
-        Angles(1:n) = PMesh % Nodes % x(NodeIndexes)
-
-        fmin = MINVAL( Angles(1:n) ) 
-        fmax = MAXVAL( Angles(1:n) )
-        
-        IF( fmax - fmin > 180.0_dp ) THEN
-          Hit180 = .TRUE.
-        ELSE
-          IF( fmax >= 0.0 .AND. fmin <= 0.0 ) Hit0 = .TRUE.
-          IF( fmax >= 90.0 .AND. fmin <= 90.0 ) Hit90 = .TRUE.
-          IF( fmax >= -90.0 .AND. fmin <= -90.0 ) Hit270 = .TRUE.
-        END IF
-      END DO
-      FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
-
-      ! Eliminate the problematic discontinuity in case we have no full circle
-      ! The discontinuity will be moved to some of angles (-90,0,90).
-      IF( FullCircle ) THEN
-        CALL Info('RotationalInterfaceMeshes','Cylindrical interface seems to be a full circle',&
-            Level=6)
-      ELSE
-        IF( Cylindrical .AND. k == 2 ) THEN
+      ! For cylindrical projector follow exactly the same logic for slave and master
+      !------------------------------------------------------------------------------
+      IF( Cylindrical .AND. k == 2 ) THEN
+        IF( MoveAngle ) THEN
           CALL Info('RotationalInterfaceMeshes','Moving the 2nd mesh discontinuity to same angle',Level=6)
           DO j=1,PMesh % NumberOfNodes
-            IF( PMesh % Nodes % x(j) < Fii ) PMesh % Nodes % x(j) = &
+            IF( PMesh % Nodes % x(j) < Fii0 ) PMesh % Nodes % x(j) = &
                 PMesh % Nodes % x(j) + 360.0_dp
           END DO
+        END IF
+      ELSE
+        ! Let's see if we have a full angle to operate or not.
+        ! If not, then make the interval continuous. 
+        ! Here we check only four critical angles: (0,90,180,270) degs.
+        Hit0 = .FALSE.; Hit90 = .FALSE.; Hit180 = .FALSE.; Hit270 = .FALSE.
+        MoveAngle = .FALSE.; Fii = 0.0_dp; Fii0 = 0.0_dp
+        
+        DO i=1, PMesh % NumberOfBulkElements
+          Element => PMesh % Elements(i)
+          n = Element % TYPE % NumberOfNodes        
+          NodeIndexes => Element % NodeIndexes
+          Angles(1:n) = PMesh % Nodes % x(NodeIndexes)
           
+          fmin = MINVAL( Angles(1:n) ) 
+          fmax = MAXVAL( Angles(1:n) )
+          
+          IF( fmax - fmin > 180.0_dp ) THEN
+            Hit180 = .TRUE.
+          ELSE
+            IF( fmax >= 0.0 .AND. fmin <= 0.0 ) Hit0 = .TRUE.
+            IF( fmax >= 90.0 .AND. fmin <= 90.0 ) Hit90 = .TRUE.
+            IF( fmax >= -90.0 .AND. fmin <= -90.0 ) Hit270 = .TRUE.
+          END IF
+        END DO
+        FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
+        
+        ! Eliminate the problematic discontinuity in case we have no full circle
+        ! The discontinuity will be moved to some of angles (-90,0,90).
+        IF( FullCircle ) THEN
+          CALL Info('RotationalInterfaceMeshes','Cylindrical interface seems to be a full circle',&
+              Level=6)
         ELSE IF( Hit180 ) THEN
+          MoveAngle = .TRUE.
           IF( .NOT. Hit0 ) THEN
             Fii = 0.0_dp
           ELSE IF( .NOT. Hit270 ) THEN
