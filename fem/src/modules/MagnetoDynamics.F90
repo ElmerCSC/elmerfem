@@ -2912,7 +2912,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), AirGapMu(:)
 
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
 
@@ -2937,7 +2937,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
-       LamThick, AllocationsDone, RotM
+       LamThick, AllocationsDone, RotM, &
+       GapLength, AirGapMu
 !------------------------------------------------------------------------------
   PiolaVersion = GetLogical( GetSolverParams(), 'Use Piola Transform', Found )
   SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )
@@ -2969,8 +2970,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), RotM(3,3,N), &
-          Acoef(N), LamCond(N), LamThick(N), &
-          STAT=istat )
+          GapLength(N), AirGapMu(N), Acoef(N), LamCond(N), &
+          LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
      END IF
@@ -3242,7 +3243,16 @@ CONTAINS
        Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
          GetReal( BC, 'Magnetic Transfer Coefficient im', Found), KIND=dp)
 
-       CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+       !If air gap length keyword is detected, use air gap boundary condition
+       GapLength=GetConstReal( BC, 'Air Gap Length', Found)
+       IF (Found) THEN
+         AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
+         IF (.NOT. Found) AirGapMu=1d0 ! if not found default to "air" property
+         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd )
+       ELSE
+         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+       END IF
+       
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
 
@@ -4402,6 +4412,69 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixAirGapBC(  STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: LOAD(:,:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element, Parent, Edge
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), localGapLength, muAir, muVacuum
+    REAL(KIND=dp) :: GapLength(:), AirGapMu(:)
+    LOGICAL :: Stat
+    INTEGER, POINTER :: EdgeMap(:,:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    MASS  = 0.0_dp
+
+    muVacuum = 4 * PI * 1d-7
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    DO t=1,IP % n
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
+
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
+
+       localGapLength  = SUM(Basis(1:n) * GapLength(1:n))
+       muAir  = SUM(Basis(1:n) * AirGapMu(1:n))
+ 
+       DO i = 1,nd-np
+         p = i+np
+         DO j = 1,nd-np
+           q = j+np
+           STIFF(p,q) = STIFF(p,q) + localGapLength / (muAir*muVacuum) * &
+              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+         END DO
+       END DO  
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixAirGapBC
 !------------------------------------------------------------------------------
 
 
