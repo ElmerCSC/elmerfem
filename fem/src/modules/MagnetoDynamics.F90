@@ -5294,25 +5294,23 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(Nodes_t), SAVE :: Nodes
    TYPE(Element_t), POINTER :: Element
 
-   INTEGER, ALLOCATABLE :: Pivot(:)
+   INTEGER, ALLOCATABLE :: Pivot(:), TorqueGroups(:)
 
    REAL(KIND=dp), POINTER :: Fsave(:), HB(:,:)=>NULL(), CubicCoeff(:)=>NULL()
    REAL(KIND=dp) :: Babs
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
-   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), RotM(:,:,:)
+   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), RotM(:,:,:), Torque(:)
 
    REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>NULL(), Cwrk_im(:,:,:)=>NULL()
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
-   REAL(KIND=dp) :: Torque(3)
    REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent
    
 !-------------------------------------------------------------------------------------------
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
-   Torque = 0._dp
 
    PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
    IF (PiolaVersion) &
@@ -6256,15 +6254,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)
    END IF
 
-   !IF(ASSOCIATED(NF) .OR. ASSOCIATED(EL_NF)) THEN
-   CALL NodalTorque(Torque)
-   WRITE(Message,*) 'Torque over defined bodies', Torque
-   CALL Info( 'MagnetoDynamicsCalcFields', Message )
-   CALL ListAddConstReal(Model % Simulation, 'res: x-axis torque over defined bodies', Torque(1))
-   CALL ListAddConstReal(Model % Simulation, 'res: y-axis torque over defined bodies', Torque(2))
-   CALL ListAddConstReal(Model % Simulation, 'res: z-axis torque over defined bodies', Torque(3))
-
-   !END IF
+   IF(ASSOCIATED(NF)) THEN
+     CALL NodalTorque(Torque, TorqueGroups)
+     DO i=1,size(TorqueGroups)
+       write (Message,'("res: Group ", i0, " torque")'), TorqueGroups(i)
+       CALL ListAddConstReal(Model % Simulation, trim(Message), Torque(i))
+       write (Message,'("Torque Group ", i0, " torque: ", f0.8)'), TorqueGroups(i), Torque(i)
+       call Info( 'MagnetoDynamicsCalcFields', Message)
+     END DO
+   END IF
 
   ! Flux On Boundary:
   !------------------
@@ -6351,45 +6349,137 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 CONTAINS
 
- SUBROUTINE NodalTorque(T)
-   REAL(KIND=dp) :: T(3), P(3), F(3)
+!------------------------------------------------------------------------------
+  SUBROUTINE NodalTorque(T, TorqueGroups)
+!------------------------------------------------------------------------------
+   INTEGER, ALLOCATABLE, INTENT(OUT) :: TorqueGroups(:)
+   REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: T(:)
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+
+   REAL(KIND=dp), POINTER :: axes(:,:), origins(:,:)
    TYPE(Element_t), POINTER :: Element
    TYPE(Variable_t), POINTER :: CoordVar
-   LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
-   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode
-   LOGICAL :: ONCE=.TRUE., DEBUG
+   TYPE(ValueList_t), POINTER :: BodyParams, SolverParams
+   TYPE(BodyArray_t), POINTER :: bodies(:)
+   INTEGER, POINTER :: LocalGroups(:)
 
+   LOGICAL, ALLOCATABLE :: VisitedNode(:,:)
+   INTEGER, ALLOCATABLE :: AllGroups(:)
+
+   REAL(KIND=dp) :: origin(3), axisvector(3), P(3), F(3), v1(3), v2(3)
+   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, ng, ngroups, &
+     n, maxngroups, m, k, num_origins, num_axes, pivot
+   LOGICAL :: Found
+
+   ! make union of body-wise declared torque groups. \TODO: make this abstract and move to generalutils
+   bodies => Model % bodies
+   maxngroups = 0
+   DO n=1,size(bodies)
+     LocalGroups => ListGetIntegerArray(bodies(n) % Values, "Torque Groups", Found)
+     IF (Found) THEN
+       maxngroups = maxngroups + size(LocalGroups)
+     END IF
+   END DO
+
+   ALLOCATE(AllGroups(maxngroups))
+   AllGroups = -1
+   ngroups = 0
+   DO n=1,size(bodies)
+     LocalGroups => ListGetIntegerArray(bodies(n) % Values, "Torque Groups", Found)
+     IF (Found) THEN
+       AllGroups((ngroups+1):(ngroups+size(LocalGroups))) = LocalGroups(1:size(LocalGroups))
+       ngroups = ngroups + size(LocalGroups)
+     END IF
+   END DO
+   call SORT(size(AllGroups), AllGroups)
+   pivot = AllGroups(1)
+   k = 1
+   m = 1
+   do while(pivot .ne. -1)
+     AllGroups(k) = pivot
+     DO n=m,size(AllGroups)
+       IF (AllGroups(k) .ne. AllGroups(n)) then
+         pivot = AllGroups(n)
+         k = k + 1
+         m = n
+         exit
+       end if
+       pivot = -1
+     END DO
+   END DO
+   ALLOCATE(TorqueGroups(k))
+
+   TorqueGroups = AllGroups(1:k)
+   ! done making union
+
+   SolverParams => GetSolverParams()
+   origins => ListGetConstRealArray(SolverParams, "Torque Group Origins", Found)
+   IF (.NOT. Found) THEN
+     num_origins = 0
+   ELSE
+     num_origins = SIZE(origins,1)
+   END IF
+
+   axes => ListGetConstRealArray(SolverParams, "Torque Group Axes", Found)
+   IF (.NOT. Found) THEN
+     num_axes = 0
+   ELSE
+     num_axes = SIZE(axes,1)
+   END IF
+
+   ng = size(TorqueGroups,1)
+   ALLOCATE(T(ng*3))
+   ALLOCATE(VisitedNode(Mesh % NumberOfNodes, ng))
    VisitedNode = .FALSE.
-
    T = 0._dp
-   P(3) = 0._dp
 
    DO pnodal=1,GetNOFActive()
      Element => GetActiveElement(pnodal)
-     IF(GetLogical(GetBodyParams(Element), 'Calculate Torque over body', Found)) THEN
-       ndofs = GetElementDOFs(ElemNodeDofs)
-       DO nnt=1,ndofs
-         globalnode = ElemNodeDofs(nnt)
-         IF (.NOT. VisitedNode(globalnode)) THEN
-           F(1) = NF % Values( 3*(NF % Perm((globalnode))-1) + 1)
-           F(2) = NF % Values( 3*(NF % Perm((globalnode))-1) + 2)
-           F(3) = NF % Values( 3*(NF % Perm((globalnode))-1) + 3)
-           P(1) = Mesh % Nodes % x(globalnode)
-           P(2) = Mesh % Nodes % y(globalnode)
-           P(3) = Mesh % Nodes % z(globalnode)
-           T(1) = T(1) + P(2)*F(3)-P(3)*F(2)
-           T(2) = T(2) + P(3)*F(1)-P(1)*F(3)
-           T(3) = T(3) + P(1)*F(2)-P(2)*F(1)
-           VisitedNode(globalnode) = .TRUE.
+     BodyParams => GetBodyParams(Element)
+     LocalGroups => ListGetIntegerArray(BodyParams, "Torque Groups", Found)
+     IF(.not. Found) CYCLE
+     ndofs = GetElementDOFs(ElemNodeDofs)
+     DO nnt=1,ndofs
+       globalnode = ElemNodeDofs(nnt)
+       F(1) = NF % Values( 3*(NF % Perm((globalnode))-1) + 1)
+       F(2) = NF % Values( 3*(NF % Perm((globalnode))-1) + 2)
+       F(3) = NF % Values( 3*(NF % Perm((globalnode))-1) + 3)
+       P(1) = Mesh % Nodes % x(globalnode)
+       P(2) = Mesh % Nodes % y(globalnode)
+       P(3) = Mesh % Nodes % z(globalnode)
+       DO ng=1,size(LocalGroups)
+         IF (.NOT. VisitedNode(globalnode, LocalGroups(ng))) THEN
+           VisitedNode(globalnode, LocalGroups(ng)) = .TRUE.
+           IF (LocalGroups(ng) .gt. num_origins) THEN
+             origin = 0._dp
+           ELSE
+             origin = origins(LocalGroups(ng),1:3)
+           END IF
+           IF (LocalGroups(ng) .gt. num_axes) THEN
+             axisvector = 0._dp
+             axisvector(3) = 1._dp
+           ELSE
+             axisvector = axes(LocalGroups(ng), 1:3)
+           END IF
+           v1 = P - origin
+           v1 = (1 - sum(axisvector*v1))*v1
+           v2 = CrossProduct(v1,F)
+           T(LocalGroups(ng)) = T(LocalGroups(ng)) + sum(axisvector*v2)
          END IF
-       END DO ! nnt
-     END IF
-   END DO ! pnodal
-   T(1) = ParallelReduction(T(1))
-   T(2) = ParallelReduction(T(2))
-   T(3) = ParallelReduction(T(3))
- END SUBROUTINE NodalTorque
- 
+       END DO 
+     END DO 
+
+   END DO
+   DO ng=1,size(TorqueGroups)
+     T(ng) = ParallelReduction(T(ng))
+   END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE NodalTorque
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs )
 !------------------------------------------------------------------------------
