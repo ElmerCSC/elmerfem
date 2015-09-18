@@ -38,7 +38,7 @@ End
 Solver 3
    Equation = "Mag"
    Variable = A[A re:1 A im:1]
-   Procedure = "MagnetoDynamics2DWithCircuitComponents" "MagnetoDynamics2DHarmonic"
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
    Linear System Symmetric = True
    NonLinear System Relaxation Factor=1
    Export Lagrange Multiplier = Logical True
@@ -59,7 +59,7 @@ Solver 4
    Variable = -nooutput temp
    Exported Variable 1 = B[B re:2 B im:2]
    Target Variable="A"
-   Procedure = "MagnetoDynamics2DWithCircuitComponents" "bSolver"
+   Procedure = "MagnetoDynamics2D" "bSolver"
    Discontinuous Galerkin = Logical True
    Calculate Joule Heating = Logical True
    Calculate Current Density = Logical True
