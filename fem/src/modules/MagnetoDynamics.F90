@@ -6358,17 +6358,18 @@ CONTAINS
 ! Local variables
 !------------------------------------------------------------------------------
 
-   REAL(KIND=dp), POINTER :: axes(:,:), origins(:,:)
+   REAL(KIND=dp), POINTER :: origins(:,:), omegas(:,:)
    TYPE(Element_t), POINTER :: Element
    TYPE(Variable_t), POINTER :: CoordVar
    TYPE(ValueList_t), POINTER :: BodyParams, SolverParams
    TYPE(BodyArray_t), POINTER :: bodies(:)
    INTEGER, POINTER :: LocalGroups(:)
+   REAL(KIND=dp), ALLOCATABLE :: axes(:,:)
 
    LOGICAL, ALLOCATABLE :: VisitedNode(:,:)
    INTEGER, ALLOCATABLE :: AllGroups(:)
 
-   REAL(KIND=dp) :: origin(3), axisvector(3), P(3), F(3), v1(3), v2(3)
+   REAL(KIND=dp) :: origin(3), axisvector(3), P(3), F(3), v1(3), v2(3), nrm
    INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, ng, ngroups, &
      n, maxngroups, m, k, num_origins, num_axes, pivot
    LOGICAL :: Found
@@ -6422,18 +6423,30 @@ CONTAINS
      num_origins = SIZE(origins,1)
    END IF
 
-   axes => ListGetConstRealArray(SolverParams, "Torque Group Axes", Found)
+   omegas => ListGetConstRealArray(SolverParams, "Torque Group Axes", Found)
    IF (.NOT. Found) THEN
      num_axes = 0
    ELSE
-     num_axes = SIZE(axes,1)
+     num_axes = SIZE(omegas,1)
    END IF
+   ALLOCATE(axes(size(omegas, 1), size(omegas, 2)))
+   axes = omegas
 
    ng = size(TorqueGroups,1)
    ALLOCATE(T(ng*3))
    ALLOCATE(VisitedNode(Mesh % NumberOfNodes, ng))
    VisitedNode = .FALSE.
    T = 0._dp
+
+   DO k = 1, size(axes,1)
+     nrm = NORM2(axes(k,:))
+     IF (nrm .EQ. 0._dp) THEN
+       WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")'), k
+       CALL Warn('MagnetoDynamicsCalcFields',Message)
+       CYCLE
+     END IF
+     axes(k,:) = axes(k,:) / nrm
+   END DO
 
    DO pnodal=1,GetNOFActive()
      Element => GetActiveElement(pnodal)
