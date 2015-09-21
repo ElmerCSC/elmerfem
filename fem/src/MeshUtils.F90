@@ -8077,7 +8077,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: i,j,k,n,ind,Nmax,Nmin,Nfii,Nnodes,MaxElemNodes,NElems
     LOGICAL :: Found, Hit0, Hit90, Hit180, Hit270, SetDegOffset
-    LOGICAL :: GotNormal, GotCenter
+    LOGICAL :: GotNormal, GotCenter, MoveAngle
 
     ! We choose degrees as they are more intuitive
     rad2deg = 180.0_dp / PI
@@ -8198,43 +8198,49 @@ END SUBROUTINE GetMaxDefs
       END DO
       
 
-      ! Let's see if we have a full angle to operate or not.
-      ! If not, then make the interval continuous. 
-      ! Here we check only four critical angles: (0,90,180,270) degs.
-      Hit0 = .FALSE.; Hit90 = .FALSE.; Hit180 = .FALSE.; Hit270 = .FALSE.
-      DO i=1, PMesh % NumberOfBulkElements
-        Element => PMesh % Elements(i)
-        n = Element % TYPE % NumberOfNodes        
-        NodeIndexes => Element % NodeIndexes
-        Angles(1:n) = PMesh % Nodes % x(NodeIndexes)
-
-        fmin = MINVAL( Angles(1:n) ) 
-        fmax = MAXVAL( Angles(1:n) )
-        
-        IF( fmax - fmin > 180.0_dp ) THEN
-          Hit180 = .TRUE.
-        ELSE
-          IF( fmax >= 0.0 .AND. fmin <= 0.0 ) Hit0 = .TRUE.
-          IF( fmax >= 90.0 .AND. fmin <= 90.0 ) Hit90 = .TRUE.
-          IF( fmax >= -90.0 .AND. fmin <= -90.0 ) Hit270 = .TRUE.
-        END IF
-      END DO
-      FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
-
-      ! Eliminate the problematic discontinuity in case we have no full circle
-      ! The discontinuity will be moved to some of angles (-90,0,90).
-      IF( FullCircle ) THEN
-        CALL Info('RotationalInterfaceMeshes','Cylindrical interface seems to be a full circle',&
-            Level=6)
-      ELSE
-        IF( Cylindrical .AND. k == 2 ) THEN
+      ! For cylindrical projector follow exactly the same logic for slave and master
+      !------------------------------------------------------------------------------
+      IF( Cylindrical .AND. k == 2 ) THEN
+        IF( MoveAngle ) THEN
           CALL Info('RotationalInterfaceMeshes','Moving the 2nd mesh discontinuity to same angle',Level=6)
           DO j=1,PMesh % NumberOfNodes
-            IF( PMesh % Nodes % x(j) < Fii ) PMesh % Nodes % x(j) = &
+            IF( PMesh % Nodes % x(j) < Fii0 ) PMesh % Nodes % x(j) = &
                 PMesh % Nodes % x(j) + 360.0_dp
           END DO
+        END IF
+      ELSE
+        ! Let's see if we have a full angle to operate or not.
+        ! If not, then make the interval continuous. 
+        ! Here we check only four critical angles: (0,90,180,270) degs.
+        Hit0 = .FALSE.; Hit90 = .FALSE.; Hit180 = .FALSE.; Hit270 = .FALSE.
+        MoveAngle = .FALSE.; Fii = 0.0_dp; Fii0 = 0.0_dp
+        
+        DO i=1, PMesh % NumberOfBulkElements
+          Element => PMesh % Elements(i)
+          n = Element % TYPE % NumberOfNodes        
+          NodeIndexes => Element % NodeIndexes
+          Angles(1:n) = PMesh % Nodes % x(NodeIndexes)
           
+          fmin = MINVAL( Angles(1:n) ) 
+          fmax = MAXVAL( Angles(1:n) )
+          
+          IF( fmax - fmin > 180.0_dp ) THEN
+            Hit180 = .TRUE.
+          ELSE
+            IF( fmax >= 0.0 .AND. fmin <= 0.0 ) Hit0 = .TRUE.
+            IF( fmax >= 90.0 .AND. fmin <= 90.0 ) Hit90 = .TRUE.
+            IF( fmax >= -90.0 .AND. fmin <= -90.0 ) Hit270 = .TRUE.
+          END IF
+        END DO
+        FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
+        
+        ! Eliminate the problematic discontinuity in case we have no full circle
+        ! The discontinuity will be moved to some of angles (-90,0,90).
+        IF( FullCircle ) THEN
+          CALL Info('RotationalInterfaceMeshes','Cylindrical interface seems to be a full circle',&
+              Level=6)
         ELSE IF( Hit180 ) THEN
+          MoveAngle = .TRUE.
           IF( .NOT. Hit0 ) THEN
             Fii = 0.0_dp
           ELSE IF( .NOT. Hit270 ) THEN
@@ -9443,7 +9449,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
     INTEGER :: in_levels
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,n,cnt,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
+    INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
         ExtrudedCoord,dg_n
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     INTEGER :: nnodes,gnodes,gelements,ierr
@@ -9552,11 +9558,21 @@ END SUBROUTINE GetMaxDefs
     END DO
     Mesh_out % NumberOfNodes=cnt
 
+    ! Count 101 elements:
+    ! (these require an extra layer)
+    ! -------------------
+
+    cnt101 = 0
+    DO i=Mesh_in % NumberOfBulkElements+1, &
+         Mesh_in % NumberOfBulkElements+Mesh_in % NumberOfBoundaryElements
+       IF(Mesh_in % Elements(i) % TYPE % ElementCode == 101) cnt101 = cnt101+1
+    END DO
+
     n=SIZE(Mesh_in % Elements)
     IF (PreserveBaseline) THEN
-        ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + Mesh_in % NumberOfBoundaryElements) )
+        ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + Mesh_in % NumberOfBoundaryElements + cnt101) )
     ELSE
-	ALLOCATE(Mesh_out % Elements(n*(in_levels+3)) )
+	ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + cnt101) )
     END IF
 
     ! Generate volume bulk elements:
@@ -9672,11 +9688,10 @@ END SUBROUTINE GetMaxDefs
             Mesh_in % Elements(k) % NodeIndexes
           Mesh_out % Elements(cnt) % TYPE => &
              Mesh_in % Elements(k) % TYPE
-        END IF 
+        END IF
         Mesh_out % Elements(cnt) % DGDOFs = 0
         Mesh_out % Elements(cnt) % DGIndexes => NULL()
-        Mesh_out % Elements(cnt) % ElementIndex = cnt + &
-                Mesh_out % NumberOfBulkElements
+        Mesh_out % Elements(cnt) % ElementIndex = cnt
         Mesh_out % Elements(cnt) % PDefs => NULL()
         Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
         Mesh_out % Elements(cnt) % FaceIndexes => NULL()
@@ -9745,8 +9760,7 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % TYPE => &
              Mesh_in % Elements(k) % TYPE
         END IF 
-        Mesh_out % Elements(cnt) % ElementIndex = cnt + &
-                Mesh_out % NumberOfBulkElements
+        Mesh_out % Elements(cnt) % ElementIndex = cnt
         Mesh_out % Elements(cnt) % DGDOFs = 0
         Mesh_out % Elements(cnt) % DGIndexes => NULL()
         Mesh_out % Elements(cnt) % PDefs => NULL()
@@ -9755,6 +9769,45 @@ END SUBROUTINE GetMaxDefs
         Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
       END DO
     END DO
+
+    !Take care of extra 101 elements
+    !-------------------------------
+
+    IF(cnt101 > 0) THEN
+       DO j=1,Mesh_in % NumberOfBoundaryElements
+          k = j + Mesh_in % NumberOfBulkElements
+
+          IF(Mesh_in % Elements(k) % TYPE % ElementCode /= 101) CYCLE
+          cnt=cnt+1
+
+          Mesh_out % Elements(cnt) = Mesh_in % Elements(k)
+
+          ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
+          Mesh_out % Elements(cnt) % BoundaryInfo = &
+               Mesh_in % Elements(k) % BoundaryInfo
+
+          Mesh_out % Elements(cnt) % BoundaryInfo % constraint = &
+               Mesh_out % Elements(cnt) % BoundaryInfo % constraint + max_baseline_bid
+
+          max_bid = MAX(max_bid, max_baseline_bid + &
+               Mesh_in % Elements(k) % BoundaryInfo % Constraint)
+
+          Mesh_out % Elements(cnt) % NDOFs = 1
+          ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(1))
+          Mesh_out % Elements(cnt) % NodeIndexes = &
+               Mesh_in % Elements(k) % NodeIndexes+(in_levels+1)*n
+          Mesh_out % Elements(cnt) % TYPE => &
+               Mesh_in % Elements(k) % TYPE
+
+          Mesh_out % Elements(cnt) % ElementIndex = cnt
+          Mesh_out % Elements(cnt) % DGDOFs = 0
+          Mesh_out % Elements(cnt) % DGIndexes => NULL()
+          Mesh_out % Elements(cnt) % PDefs => NULL()
+          Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
+          Mesh_out % Elements(cnt) % FaceIndexes => NULL()
+          Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+       END DO
+    END IF
     
     IF(isParallel) THEN
       j=max_bid
