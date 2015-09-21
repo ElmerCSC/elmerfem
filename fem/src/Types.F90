@@ -736,7 +736,7 @@ END INTERFACE
     INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
     LOGICAL :: UsePerm = .FALSE.
     INTEGER :: n, m, n_comp,CvarDofs
-    CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), sourceRe(:), sourceIm(:), sourcetype(:)
+    CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
     TYPE(CMPLXComponent_t), POINTER :: Components(:)
     TYPE(CMPLXCircuitVariable_t), POINTER :: CircuitVariables(:)
   END TYPE CMPLXCircuit_t

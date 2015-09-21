@@ -327,7 +327,7 @@ CONTAINS
     n = Circuit % n
     
     ALLOCATE( Circuit % ComponentIds(n), Circuit % names(n) )
-    ALLOCATE( Circuit % sourceRe(n), Circuit % sourceIm(n), Circuit % sourcetype(n) )
+    ALLOCATE( Circuit % source(n) )
     ALLOCATE( Circuit % CircuitVariables(n), Circuit % Perm(n) )
     ALLOCATE( Circuit % A(n,n), Circuit % B(n,n), &
               Circuit % Mre(n,n), Circuit % Mim(n,n)  )
@@ -608,23 +608,10 @@ variable % owner = ParEnv % PEs-1
       ! in the "Body Force 1" block of the .sif file.
       ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
       ! ---------------------------------------------------------------------------
-      cmd = 'nc:C.'//TRIM(i2s(CId))//'.source.'//TRIM(i2s(i))//'.re'
+      cmd = 'nc:C.'//TRIM(i2s(CId))//'.source.'//TRIM(i2s(i))
       slen = LEN_TRIM(cmd)
       CALL Matc( cmd, name, slen )
-      Circuit % SourceRe(i) = name(1:slen)
-      
-      cmd = 'nc:C.'//TRIM(i2s(CId))//'.source.'//TRIM(i2s(i))//'.im'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
-      Circuit % SourceIm(i) = name(1:slen)
-
-      ! Types of the source functions: voltage or current
-      ! (nc: is for 'no check' e.g. don't abort if the MATC variable is not found!)
-      ! ---------------------------------------------------------------------------
-      cmd = 'nc:C.'//TRIM(i2s(CId))//'.source.'//TRIM(i2s(i))//'.type'
-      slen = LEN_TRIM(cmd)
-      CALL Matc( cmd, name, slen )
-      Circuit % sourcetype(i) = name(1:slen)
+      Circuit % Source(i) = name(1:slen)
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadCircuitSources
@@ -1434,14 +1421,14 @@ CONTAINS
       
       vphi=0._dp
       IF ( ASSOCIATED(BF) ) &
-        vphi = GetCReal(BF, Circuit % SourceRe(i), Found)
+        vphi = GetCReal(BF, TRIM(Circuit % Source(i))//" re", Found)
       
       IF (Found) THEN 
         Cvar % SourceRe(i) = vphi
       END IF
       
       IF (ASSOCIATED(BF) ) &
-        vphi = GetCReal(BF, Circuit % SourceIm(i), Found)
+        vphi = GetCReal(BF, TRIM(Circuit % Source(i))//" im", Found)
 
       IF (Found) THEN 
         Cvar % SourceIm(i) = vphi

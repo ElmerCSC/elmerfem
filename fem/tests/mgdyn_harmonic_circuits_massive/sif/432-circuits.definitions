@@ -25,8 +25,7 @@ $ C.1.name.4 = "v_component(1)"
 ! Define sources:
 !------------------
 $ C.1.B(0,0) = 1
-$ C.1.source.1.re = "S1 Re"
-$ C.1.source.1.im = "S1 Im"
+$ C.1.source.1 = "S1"
 
 ! Define network cycles:
 !-------------------------
@@ -61,8 +60,7 @@ $ C.2.name.4 = "v_component(2)"
 ! Define sources:
 !------------------
 $ C.2.B(0,0) = 1
-$ C.2.source.1.re = "S2 Re"
-$ C.2.source.1.im = "S2 Im"
+$ C.2.source.1 = "S2"
 
 ! Define network cycles:
 !-------------------------
@@ -97,8 +95,7 @@ $ C.3.name.4 = "v_component(3)"
 ! Define sources:
 !------------------
 $ C.3.B(0,0) = 1
-$ C.3.source.1.re = "S3 Re"
-$ C.3.source.1.im = "S3 Im"
+$ C.3.source.1 = "S3"
 
 ! Define network cycles:
 !-------------------------

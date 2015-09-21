@@ -23,8 +23,7 @@ $ C.1.name.4 = "v_component(1)"
 ! Define sources:
 !------------------
 $ C.1.B(0,0) = 1
-$ C.1.source.1.re = "testsource Re"
-$ C.1.source.1.im = "testsource Im"
+$ C.1.source.1 = "testsource"
 
 ! Define network cycles:
 !-------------------------
