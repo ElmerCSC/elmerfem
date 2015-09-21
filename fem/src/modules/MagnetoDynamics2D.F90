@@ -78,6 +78,7 @@ END SUBROUTINE MagnetoDynamics2D_Init
 SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CircuitUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
@@ -382,7 +383,7 @@ CONTAINS
   SUBROUTINE LocalMatrix(Element, n, nd)
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     INTEGER :: i,p,q,t,siz
@@ -401,6 +402,9 @@ CONTAINS
 
     TYPE(Nodes_t), SAVE :: Nodes
 !$omp threadprivate(Nodes)
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    LOGICAL :: CoilBody    
+    TYPE(ValueList_t), POINTER :: CompParams
 !------------------------------------------------------------------------------
 
     CALL GetElementNodes( Nodes,Element )
@@ -460,6 +464,26 @@ CONTAINS
         mu = SUM( Basis(1:n) * R(1:n) )
       END IF
 
+      CoilBody = .FALSE.
+      CompParams => GetComponentParams( Element )
+      CoilType = ''
+      IF (ASSOCIATED(CompParams)) THEN
+        CoilType = GetString(CompParams, 'Coil Type', Found)
+        IF (Found) THEN
+          SELECT CASE (CoilType)
+          CASE ('stranded')
+             CoilBody = .TRUE.
+          CASE ('massive')
+             CoilBody = .TRUE.
+          CASE ('foil winding')
+             CoilBody = .TRUE.
+    !         CALL GetElementRotM(Element, RotM, n)
+          CASE DEFAULT
+             CALL Fatal ('MagnetoDynamics2DHarmonic', 'Non existent Coil Type Chosen!')
+          END SELECT
+        END IF
+      END IF
+
       C_ip = SUM( Basis(1:n) * C(1:n) )
       M_ip = MATMUL( M,Basis(1:n) )
 
@@ -469,7 +493,7 @@ CONTAINS
       IF(TransientSimulation .AND. C_ip/=0._dp) THEN
         DO p=1,nd
           DO q=1,nd
-            MASS(p,q) = MASS(p,q) + IP % s(t) * detJ * C_ip * Basis(q)*Basis(p)
+            IF(CoilType /= 'stranded') MASS(p,q) = MASS(p,q) + IP % s(t) * detJ * C_ip * Basis(q)*Basis(p)
           END DO
         END DO
       END IF

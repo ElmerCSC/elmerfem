@@ -1,7 +1,141 @@
-MODULE CircEqWriteMod
+!------------------------------------------------------------------------------
+!> Initialization for the primary solver: CurrentSource
+!------------------------------------------------------------------------------
+SUBROUTINE CircuitsAndDynamicsHarmonic_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
+  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
+  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
+  LOGICAL :: TransientSimulation !< Steady state or transient simulation
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: Params
 
-CONTAINS
+  Params => Solver % Values
+
+  ! When we introduce the variables in this way the variables are created
+  ! so that they exist when the proper simulation cycle starts.
+  ! This also keeps the command file cleaner.
+  CALL ListAddString( Params,'Exported Variable 1',&
+      '-global Rotor Angle')
+  CALL ListAddString( Params,'Exported Variable 2',&
+      '-global Rotor Velo')
+  Solver % Values => Params
+
+!------------------------------------------------------------------------------
+END SUBROUTINE CircuitsAndDynamicsHarmonic_init
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+  USE CircuitUtils
+  USE CircuitsMod
+  USE CircMatInitMod
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
+  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
+  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
+  LOGICAL :: TransientSimulation !< Steady state or transient simulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  LOGICAL :: First=.TRUE.
+
+  TYPE(Solver_t), POINTER :: Asolver => Null()
+
+  INTEGER :: p, n, istat, max_element_dofs
+  TYPE(Mesh_t), POINTER :: Mesh  
+
+  TYPE(Matrix_t), POINTER :: CM
+  INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
+  TYPE(Circuit_t), POINTER :: Circuits(:)
+    
+!------------------------------------------------------------------------------
+
+  IF (First) THEN
+    First = .FALSE.
+    
+    CALL AddComponentsToBodyLists()
+    
+    ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'CircuitsAndDynamicsHarmonic', 'Memory allocation error.' )
+    END IF
+
+    n_Circuits => Model%n_Circuits
+    Model%Circuit_tot_n = 0
   
+    Model % ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
+    ASolver => Model % ASolver
+    
+    CALL AllocateCircuitsList() ! CurrentModel%Circuits
+    Circuits => Model%Circuits
+    
+    DO p=1,n_Circuits
+      
+      n = GetNofCircVariables(p)
+      CALL AllocateCircuit(p)
+      
+      Circuits(p) % n_comp = CountNofCircComponents(p, n)
+      ALLOCATE(Circuits(p) % Components(Circuits(p) % n_comp))
+      
+      Circuits(p) % Harmonic = .TRUE.
+      
+      CALL ReadCircuitVariables(p)
+      CALL ReadComponents(p)
+      CALL AddComponentValuesToLists(p)  ! Lists are used to communicate values to other solvers at the moment...
+      CALL AddBareCircuitVariables(p)   ! these don't belong to any components
+      CALL ReadCoefficientMatrices(p)
+      CALL ReadPermutationVector(p)
+      CALL ReadCircuitSources(p)
+      CALL WriteCoeffVectorsForCircVariables(p)
+    
+    END DO
+
+    ! Create CRS matrix strucures for the circuit equations:
+    ! ------------------------------------------------------
+    CALL Circuits_MatrixInit()
+  END IF
+  
+  max_element_dofs = Model % Mesh % MaxElementDOFs
+  Circuits => Model%Circuits
+  n_Circuits => Model%n_Circuits
+  CM=>Model%CircuitMatrix
+  
+  ! Initialialize Circuit matrix:
+  ! -----------------------------
+  IF(.NOT.ASSOCIATED(CM)) RETURN
+
+  CM % RHS = 0._dp
+  IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
+
+  ! Write Circuit equations:
+  ! ------------------------
+  DO p = 1,n_Circuits
+    CALL AddBasicCircuitEquations(p)
+    CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
+  END DO
+  Asolver %  Matrix % AddMatrix => CM
+
+  IF(ASSOCIATED(CM)) THEN
+    IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
+    IF(CM % NumberOfRows<=0)  THEN
+      CALL FreeMatrix(CM)
+      Asolver % Matrix % AddMatrix => Null()
+    END IF
+  ELSE
+     ASolver % Matrix % AddMatrix => Null()
+  END IF
+
+  CONTAINS
+
 !------------------------------------------------------------------------------
    SUBROUTINE AddBasicCircuitEquations(p)
 !------------------------------------------------------------------------------
@@ -184,109 +318,6 @@ CONTAINS
    END SUBROUTINE AddComponentEquationsAndCouplings
 !------------------------------------------------------------------------------
 
-
-!------------------------------------------------------------------------------
-  SUBROUTINE GetConductivity(Element, Tcoef, nn)
-!------------------------------------------------------------------------------
-    USE DefUtils
-    IMPLICIT NONE
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Valuelist_t), POINTER :: Material
-    COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
-    REAL(KIND=dp), POINTER, SAVE :: Cwrk(:,:,:), Cwrk_im(:,:,:) 
-    INTEGER :: nn, i, j
-    LOGICAL, SAVE :: visited = .FALSE., Found
-
-    IF (.NOT. visited) THEN
-      NULLIFY( Cwrk, Cwrk_im )
-    END IF
-
-    Tcoef = cmplx(0.0d0,0.0d0)
-    Material => GetMaterial( Element )
-    IF (.NOT. ASSOCIATED(Material)) CALL Fatal('Circuits_apply','Material not found.')
-
-    CALL ListGetRealArray( Material, &
-           'Electric Conductivity', Cwrk, nn, Element % NodeIndexes, Found )
-
-    IF (.NOT. Found) CALL Fatal('Circuits_apply', 'Electric Conductivity not found.')
-    
-    IF (Found) THEN
-       IF ( SIZE(Cwrk,1) == 1 ) THEN
-          DO i=1,3
-             Tcoef( i,i,1:nn ) = Cwrk( 1,1,1:nn )
-          END DO
-       ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-          DO i=1,MIN(3,SIZE(Cwrk,1))
-             Tcoef(i,i,1:nn) = Cwrk(i,1,1:nn)
-          END DO
-       ELSE
-          DO i=1,MIN(3,SIZE(Cwrk,1))
-             DO j=1,MIN(3,SIZE(Cwrk,2))
-                Tcoef( i,j,1:nn ) = Cwrk(i,j,1:nn)
-             END DO
-          END DO
-       END IF
-    END IF
-
-    CALL ListGetRealArray( Material, &
-           'Electric Conductivity im', Cwrk_im, nn, Element % NodeIndexes, Found )
-
-    IF (Found) THEN
-       IF ( SIZE(Cwrk_im,1) == 1 ) THEN
-          DO i=1,3
-             Tcoef( i,i,1:nn ) = CMPLX( REAL(Tcoef( i,i,1:nn )), Cwrk_im( 1,1,1:nn ), KIND=dp)
-          END DO
-       ELSE IF ( SIZE(Cwrk_im,2) == 1 ) THEN
-          DO i=1,MIN(3,SIZE(Cwrk_im,1))
-             Tcoef(i,i,1:nn) = CMPLX( REAL(Tcoef( i,i,1:nn )), Cwrk_im( i,1,1:nn ), KIND=dp)
-          END DO
-       ELSE
-          DO i=1,MIN(3,SIZE(Cwrk_im,1))
-             DO j=1,MIN(3,SIZE(Cwrk_im,2))
-                Tcoef( i,j,1:nn ) = CMPLX( REAL(Tcoef( i,j,1:nn )), Cwrk_im( i,j,1:nn ), KIND=dp)
-             END DO
-          END DO
-       END IF
-    END IF
-
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE GetConductivity
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
- SUBROUTINE GetElementRotM(Element,RotM,n)
-!------------------------------------------------------------------------------
-   USE DefUtils
-   IMPLICIT NONE
-   TYPE(Element_t) :: Element
-   INTEGER :: k, l, m, j, n
-   REAL(KIND=dp) :: RotM(3,3,n)
-   TYPE(Variable_t), POINTER, SAVE :: RotMvar
-   LOGICAL, SAVE :: visited = .FALSE.
-   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
-   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
-  
-   IF(.NOT. visited) THEN
-     visited = .TRUE.
-     RotMvar => VariableGet( CurrentModel % Mesh % Variables, 'RotM E')
-     IF(.NOT. ASSOCIATED(RotMVar)) THEN
-       CALL Fatal('GetElementRotM','RotM E variable not found')
-     END IF
-   END IF
-
-   RotM = 0._dp
-   DO j = 1, n
-     DO k=1,RotMvar % DOFs
-       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
-             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
-     END DO
-   END DO
-
-!------------------------------------------------------------------------------
- END SUBROUTINE GetElementRotM
-!------------------------------------------------------------------------------
-
 !------------------------------------------------------------------------------
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
@@ -384,8 +415,8 @@ CONTAINS
         IF (dim == 3) q=q+nn
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
-          IF (dim == 2) cmplx_value = -im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(j)/localC
-          IF (dim == 3) cmplx_value = -im * Omega * Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/localC
+          IF (dim == 2) cmplx_value = im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(j)/localC
+          IF (dim == 3) cmplx_value = im * Omega * Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/localC
           CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(q))), &
                  REAL(cmplx_value), AIMAG(cmplx_value))
           
@@ -661,145 +692,108 @@ CONTAINS
    END SUBROUTINE Add_foil_winding
 !------------------------------------------------------------------------------
 
-END MODULE CircEqWriteMod
+!------------------------------------------------------------------------------
+  SUBROUTINE GetConductivity(Element, Tcoef, nn)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Valuelist_t), POINTER :: Material
+    COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
+    REAL(KIND=dp), POINTER, SAVE :: Cwrk(:,:,:), Cwrk_im(:,:,:) 
+    INTEGER :: nn, i, j
+    LOGICAL, SAVE :: visited = .FALSE., Found
 
-
-!------------------------------------------------------------------------------
-!> Initialization for the primary solver: CurrentSource
-!------------------------------------------------------------------------------
-SUBROUTINE CircuitsAndDynamicsHarmonic_init( Model,Solver,dt,TransientSimulation )
-!------------------------------------------------------------------------------
-  USE DefUtils
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
-  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
-  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
-  LOGICAL :: TransientSimulation !< Steady state or transient simulation
-!------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: Params
-
-  Params => Solver % Values
-
-  ! When we introduce the variables in this way the variables are created
-  ! so that they exist when the proper simulation cycle starts.
-  ! This also keeps the command file cleaner.
-  CALL ListAddString( Params,'Exported Variable 1',&
-      '-global Rotor Angle')
-  CALL ListAddString( Params,'Exported Variable 2',&
-      '-global Rotor Velo')
-  Solver % Values => Params
-
-!------------------------------------------------------------------------------
-END SUBROUTINE CircuitsAndDynamicsHarmonic_init
-!------------------------------------------------------------------------------
-
-
-
-!------------------------------------------------------------------------------
-SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
-!------------------------------------------------------------------------------
-  USE DefUtils
-  USE CircuitUtils
-  USE CircuitsMod
-  USE CircMatInitMod
-  USE CircEqWriteMod
-  IMPLICIT NONE
-!------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
-  TYPE(Model_t) :: Model         !< All model information (mesh, materials, BCs, etc...)
-  REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
-  LOGICAL :: TransientSimulation !< Steady state or transient simulation
-!------------------------------------------------------------------------------
-! Local variables
-!------------------------------------------------------------------------------
-  LOGICAL :: First=.TRUE.
-
-  TYPE(Solver_t), POINTER :: Asolver => Null()
-
-  INTEGER :: p, n, istat, max_element_dofs
-  TYPE(Mesh_t), POINTER :: Mesh  
-
-  TYPE(Matrix_t), POINTER :: CM
-  INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
-  TYPE(Circuit_t), POINTER :: Circuits(:)
-    
-!------------------------------------------------------------------------------
-
-  IF (First) THEN
-    First = .FALSE.
-    
-    CALL AddComponentsToBodyLists()
-    
-    ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
-    IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CircuitsAndDynamicsHarmonic', 'Memory allocation error.' )
+    IF (.NOT. visited) THEN
+      NULLIFY( Cwrk, Cwrk_im )
     END IF
 
-    n_Circuits => Model%n_Circuits
-    Model%Circuit_tot_n = 0
-  
-    Model % ASolver => FindSolverWithKey('Export Lagrange Multiplier', 26)
-    ASolver => Model % ASolver
+    Tcoef = cmplx(0.0d0,0.0d0)
+    Material => GetMaterial( Element )
+    IF (.NOT. ASSOCIATED(Material)) CALL Fatal('Circuits_apply','Material not found.')
+
+    CALL ListGetRealArray( Material, &
+           'Electric Conductivity', Cwrk, nn, Element % NodeIndexes, Found )
+
+    IF (.NOT. Found) CALL Fatal('Circuits_apply', 'Electric Conductivity not found.')
     
-    CALL AllocateCircuitsList() ! CurrentModel%Circuits
-    Circuits => Model%Circuits
-    
-    DO p=1,n_Circuits
-      
-      n = GetNofCircVariables(p)
-      CALL AllocateCircuit(p)
-      
-      Circuits(p) % n_comp = CountNofCircComponents(p, n)
-      ALLOCATE(Circuits(p) % Components(Circuits(p) % n_comp))
-      
-      Circuits(p) % Harmonic = .TRUE.
-      
-      CALL ReadCircuitVariables(p)
-      CALL ReadComponents(p)
-      CALL AddComponentValuesToLists(p)  ! Lists are used to communicate values to other solvers at the moment...
-      CALL AddBareCircuitVariables(p)   ! these don't belong to any components
-      CALL ReadCoefficientMatrices(p)
-      CALL ReadPermutationVector(p)
-      CALL ReadCircuitSources(p)
-      CALL WriteCoeffVectorsForCircVariables(p)
-    
-    END DO
-
-    ! Create CRS matrix strucures for the circuit equations:
-    ! ------------------------------------------------------
-    CALL Circuits_MatrixInit()
-  END IF
-  
-  max_element_dofs = Model % Mesh % MaxElementDOFs
-  Circuits => Model%Circuits
-  n_Circuits => Model%n_Circuits
-  CM=>Model%CircuitMatrix
-  
-  ! Initialialize Circuit matrix:
-  ! -----------------------------
-  IF(.NOT.ASSOCIATED(CM)) RETURN
-
-  CM % RHS = 0._dp
-  IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
-
-  ! Write Circuit equations:
-  ! ------------------------
-  DO p = 1,n_Circuits
-    CALL AddBasicCircuitEquations(p)
-    CALL AddComponentEquationsAndCouplings(p, max_element_dofs)
-  END DO
-  Asolver %  Matrix % AddMatrix => CM
-
-  IF(ASSOCIATED(CM)) THEN
-    IF(  CM % Format == MATRIX_LIST ) CALL List_toCRSMatrix(CM)
-    IF(CM % NumberOfRows<=0)  THEN
-      CALL FreeMatrix(CM)
-      Asolver % Matrix % AddMatrix => Null()
+    IF (Found) THEN
+       IF ( SIZE(Cwrk,1) == 1 ) THEN
+          DO i=1,3
+             Tcoef( i,i,1:nn ) = Cwrk( 1,1,1:nn )
+          END DO
+       ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+          DO i=1,MIN(3,SIZE(Cwrk,1))
+             Tcoef(i,i,1:nn) = Cwrk(i,1,1:nn)
+          END DO
+       ELSE
+          DO i=1,MIN(3,SIZE(Cwrk,1))
+             DO j=1,MIN(3,SIZE(Cwrk,2))
+                Tcoef( i,j,1:nn ) = Cwrk(i,j,1:nn)
+             END DO
+          END DO
+       END IF
     END IF
-  ELSE
-     ASolver % Matrix % AddMatrix => Null()
-  END IF
+
+    CALL ListGetRealArray( Material, &
+           'Electric Conductivity im', Cwrk_im, nn, Element % NodeIndexes, Found )
+
+    IF (Found) THEN
+       IF ( SIZE(Cwrk_im,1) == 1 ) THEN
+          DO i=1,3
+             Tcoef( i,i,1:nn ) = CMPLX( REAL(Tcoef( i,i,1:nn )), Cwrk_im( 1,1,1:nn ), KIND=dp)
+          END DO
+       ELSE IF ( SIZE(Cwrk_im,2) == 1 ) THEN
+          DO i=1,MIN(3,SIZE(Cwrk_im,1))
+             Tcoef(i,i,1:nn) = CMPLX( REAL(Tcoef( i,i,1:nn )), Cwrk_im( i,1,1:nn ), KIND=dp)
+          END DO
+       ELSE
+          DO i=1,MIN(3,SIZE(Cwrk_im,1))
+             DO j=1,MIN(3,SIZE(Cwrk_im,2))
+                Tcoef( i,j,1:nn ) = CMPLX( REAL(Tcoef( i,j,1:nn )), Cwrk_im( i,j,1:nn ), KIND=dp)
+             END DO
+          END DO
+       END IF
+    END IF
+
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE GetConductivity
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ SUBROUTINE GetElementRotM(Element,RotM,n)
+!------------------------------------------------------------------------------
+   USE DefUtils
+   IMPLICIT NONE
+   TYPE(Element_t) :: Element
+   INTEGER :: k, l, m, j, n
+   REAL(KIND=dp) :: RotM(3,3,n)
+   TYPE(Variable_t), POINTER, SAVE :: RotMvar
+   LOGICAL, SAVE :: visited = .FALSE.
+   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
+   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
+  
+   IF(.NOT. visited) THEN
+     visited = .TRUE.
+     RotMvar => VariableGet( CurrentModel % Mesh % Variables, 'RotM E')
+     IF(.NOT. ASSOCIATED(RotMVar)) THEN
+       CALL Fatal('GetElementRotM','RotM E variable not found')
+     END IF
+   END IF
+
+   RotM = 0._dp
+   DO j = 1, n
+     DO k=1,RotMvar % DOFs
+       RotM(ind1(k),ind2(k),j) = RotMvar % Values( &
+             RotMvar % DOFs*(RotMvar % Perm(Element % DGIndexes(j))-1)+k)
+     END DO
+   END DO
+
+!------------------------------------------------------------------------------
+ END SUBROUTINE GetElementRotM
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 END SUBROUTINE CircuitsAndDynamicsHarmonic
