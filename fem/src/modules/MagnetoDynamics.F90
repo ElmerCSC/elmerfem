@@ -5263,7 +5263,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
    REAL(KIND=dp) :: ComponentLoss(2,2)
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), localAlpha, localV(2), nofturns, coilthickness
-   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3)
+   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
    COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3), BodyForceCurrDens(3,35), &
                     BodyForceCurrDens_ip(3)
 
@@ -6262,6 +6262,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        write (Message,'("Torque Group ", i0, " torque: ", f0.8)'), TorqueGroups(i), Torque(i)
        call Info( 'MagnetoDynamicsCalcFields', Message)
      END DO
+
+     CALL NodalTorqueDeprecated(TorqueDeprecated, Found)
+     IF (Found) THEN
+       WRITE(Message,*) 'Torque over defined bodies', TorqueDeprecated
+       CALL Info( 'MagnetoDynamicsCalcFields', Message )
+       CALL Warn( 'MagnetoDynamicsCalcFields', 'Keyword "Calculate Torque over body" is deprecated, use Torque Groups instead')
+       CALL ListAddConstReal(Model % Simulation, 'res: x-axis torque over defined bodies', TorqueDeprecated(1))
+       CALL ListAddConstReal(Model % Simulation, 'res: y-axis torque over defined bodies', TorqueDeprecated(2))
+       CALL ListAddConstReal(Model % Simulation, 'res: z-axis torque over defined bodies', TorqueDeprecated(3))
+     END IF
    END IF
 
   ! Flux On Boundary:
@@ -6350,6 +6360,57 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 CONTAINS
 
 !------------------------------------------------------------------------------
+ SUBROUTINE NodalTorqueDeprecated(T, FoundOne)
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), INTENT(OUT) :: T(3)
+   LOGICAL, INTENT(OUT) :: FoundOne
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: P(3), F(3)
+   TYPE(Element_t), POINTER :: Element
+   TYPE(Variable_t), POINTER :: CoordVar
+   LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
+   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, m, n
+   LOGICAL :: ONCE=.TRUE., DEBUG, Found
+   
+   VisitedNode = .FALSE.
+   FoundOne = .FALSE.
+
+   DO n=1,size(Model % bodies)
+     IF(GetLogical(Model % bodies(n) % Values, 'Calculate Torque over body', FoundOne)) EXIT
+   END DO
+   IF(.not. FoundOne) RETURN
+   T = 0._dp
+   P = 0._dp
+
+   DO pnodal=1,GetNOFActive()
+     Element => GetActiveElement(pnodal)
+     IF(GetLogical(GetBodyParams(Element), 'Calculate Torque over body', Found)) THEN
+       ndofs = GetElementDOFs(ElemNodeDofs)
+       DO nnt=1,ndofs
+         globalnode = ElemNodeDofs(nnt)
+         IF (.NOT. VisitedNode(globalnode)) THEN
+           F(1) = NF % Values( 3*(NF % Perm((globalnode))-1) + 1)
+           F(2) = NF % Values( 3*(NF % Perm((globalnode))-1) + 2)
+           F(3) = NF % Values( 3*(NF % Perm((globalnode))-1) + 3)
+           P(1) = Mesh % Nodes % x(globalnode)
+           P(2) = Mesh % Nodes % y(globalnode)
+           P(3) = Mesh % Nodes % z(globalnode)
+           T(1) = T(1) + P(2)*F(3)-P(3)*F(2)
+           T(2) = T(2) + P(3)*F(1)-P(1)*F(3)
+           T(3) = T(3) + P(1)*F(2)-P(2)*F(1)
+           VisitedNode(globalnode) = .TRUE.
+         END IF
+       END DO ! nnt
+     END IF
+   END DO ! pnodal
+   T(1) = ParallelReduction(T(1))
+   T(2) = ParallelReduction(T(2))
+   T(3) = ParallelReduction(T(3))
+!------------------------------------------------------------------------------
+ END SUBROUTINE NodalTorqueDeprecated
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
   SUBROUTINE NodalTorque(T, TorqueGroups)
 !------------------------------------------------------------------------------
    INTEGER, ALLOCATABLE, INTENT(OUT) :: TorqueGroups(:)
@@ -6383,6 +6444,10 @@ CONTAINS
        maxngroups = maxngroups + size(LocalGroups)
      END IF
    END DO
+   IF(maxngroups .eq. 0) THEN
+     ALLOCATE(TorqueGroups(0), T(0))
+     RETURN
+   END IF
 
    ALLOCATE(AllGroups(maxngroups))
    AllGroups = -1
@@ -6411,6 +6476,7 @@ CONTAINS
      END DO
    END DO
    ALLOCATE(TorqueGroups(k))
+   IF(k .eq. 0) RETURN
 
    TorqueGroups = AllGroups(1:k)
    ! done making union
