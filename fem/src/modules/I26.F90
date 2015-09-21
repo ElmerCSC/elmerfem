@@ -88,41 +88,41 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
   LOGICAL  :: owner, STAT
 
-  TYPE CircuitVariable_t
+  TYPE OldCircuitVariable_t
     LOGICAL :: isIvar, isVvar
     INTEGER :: BodyId, valueId, dofs, pdofs
-    TYPE(Component_t), POINTER :: Component
+    TYPE(OldComponent_t), POINTER :: Component
     REAL(KIND=dp), ALLOCATABLE :: A(:), B(:), Source(:)
     INTEGER, ALLOCATABLE :: EqVarIds(:)
   END TYPE
 
-  TYPE(CircuitVariable_t), POINTER :: Cvar
+  TYPE(OldCircuitVariable_t), POINTER :: Cvar
 
-  TYPE Component_t
+  TYPE OldComponent_t
     REAL(KIND=dp) :: ElArea, N_j, coilthickness, nofturns
     INTEGER :: BodyId, polord, ElBoundary, nofcnts
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
-    TYPE(CircuitVariable_t), POINTER :: ivar, vvar
+    TYPE(OldCircuitVariable_t), POINTER :: ivar, vvar
   END TYPE
 
-  TYPE(Component_t), POINTER :: Comp
+  TYPE(OldComponent_t), POINTER :: Comp
 
-  TYPE Circuit_t
+  TYPE OldCircuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Area(:)
     INTEGER, ALLOCATABLE :: Body(:), Perm(:)
     LOGICAL :: UsePerm = .FALSE.
     INTEGER :: n, m, n_comp,CvarDofs
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:), sourcetype(:)
-    TYPE(Component_t), POINTER :: Components(:)
-    TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)
-  END TYPE Circuit_t
+    TYPE(OldComponent_t), POINTER :: Components(:)
+    TYPE(OldCircuitVariable_t), POINTER :: CircuitVariables(:)
+  END TYPE OldCircuit_t
 
   REAL(KIND=dp), ALLOCATABLE, SAVE :: ip(:)
   LOGICAL, ALLOCATABLE, SAVE :: Adirichlet(:)
   LOGICAL :: dofsdone
 
-  INTEGER, SAVE :: n_Circuits, Circuit_tot_n
-  TYPE(Circuit_t), ALLOCATABLE, SAVE :: Circuits(:)
+  INTEGER, SAVE :: n_Circuits, OldCircuit_tot_n
+  TYPE(OldCircuit_t), ALLOCATABLE, SAVE :: Circuits(:)
 
   INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
   LOGICAL*1, ALLOCATABLE :: Done(:)
@@ -229,7 +229,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ip = 0._dp
     LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
     IF(ASSOCIATED(LagrangeVar)) THEN
-      IF(SIZE(LagrangeVar % Values)>=Circuit_tot_n) ip=LagrangeVar % Values(1:Circuit_tot_n)
+      IF(SIZE(LagrangeVar % Values)>=OldCircuit_tot_n) ip=LagrangeVar % Values(1:OldCircuit_tot_n)
     END IF
 
     ! Export circuit & dynamic variables for "SaveScalars":
@@ -280,7 +280,7 @@ CONTAINS
 
     ! Read in number of circuit variables and their names for each circuit. 
     ! ---------------------------------------------------------------------
-    Circuit_tot_n = 0._dp
+    OldCircuit_tot_n = 0._dp
     tot_nofcomp=0
     DO p=1,n_Circuits
       ! #variables for circuit "p":
@@ -552,7 +552,7 @@ CONTAINS
     ! Store values of independent variables (e.g. currents & voltages) from
     ! previous timestep here:
     ! ---------------------------------------------------------------------
-    ALLOCATE( ip(Circuit_tot_n) ); ip = 0._dp
+    ALLOCATE( ip(OldCircuit_tot_n) ); ip = 0._dp
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_Init
 !------------------------------------------------------------------------------
@@ -560,11 +560,11 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CreateCircuitVariable (Variable, Component, isIvar, dofs, valueId)
 !------------------------------------------------------------------------------
-    TYPE(CircuitVariable_t), POINTER :: Variable
+    TYPE(OldCircuitVariable_t), POINTER :: Variable
     LOGICAL :: isIvar, isVvar
     INTEGER, OPTIONAL :: valueId
     INTEGER, OPTIONAL :: dofs
-    TYPE(Component_t), POINTER :: Component
+    TYPE(OldComponent_t), POINTER :: Component
     
     IF (.NOT. ASSOCIATED(Variable) ) THEN
       ALLOCATE(Variable)
@@ -592,17 +592,17 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddVariableToCircuit(Circuit, Variable, k)
 !------------------------------------------------------------------------------
-    TYPE(Circuit_t) :: Circuit
-    TYPE(CircuitVariable_t) :: Variable
+    TYPE(OldCircuit_t) :: Circuit
+    TYPE(OldCircuitVariable_t) :: Variable
     INTEGER :: k
 
     IF (Circuit % UsePerm) THEN
-      Variable % valueId = Circuit % Perm(Circuit_tot_n + 1)
+      Variable % valueId = Circuit % Perm(OldCircuit_tot_n + 1)
     ELSE
-      Variable % valueId = Circuit_tot_n + 1
+      Variable % valueId = OldCircuit_tot_n + 1
     END IF
     
-    Circuit_tot_n = Circuit_tot_n + Variable % dofs
+    OldCircuit_tot_n = OldCircuit_tot_n + Variable % dofs
     
 !------------------------------------------------------------------------------
   END SUBROUTINE AddVariableToCircuit
@@ -647,13 +647,13 @@ CONTAINS
 
     CM => AllocateMatrix()
     CM % Format = MATRIX_CRS
-    ALLOCATE(CM % RHS(nm + Circuit_tot_n)); CM % RHS=0._dp
+    ALLOCATE(CM % RHS(nm + OldCircuit_tot_n)); CM % RHS=0._dp
 
 !    cm % format = matrix_list ! xxxx
 !    Asolver %  Matrix % AddMatrix => CM
 !return ! xxxx
 
-    CM % NumberOfRows = nm + Circuit_tot_n
+    CM % NumberOfRows = nm + OldCircuit_tot_n
     n = CM % NumberOfRows
     ALLOCATE(Rows(n+1), Cnts(n)); Rows=0; Cnts=0
     ALLOCATE(Done(nm))
@@ -751,7 +751,7 @@ CONTAINS
     ! CREATE ROW POINTERS:
     ! ====================
 
-    CM % NumberOfRows = nm + Circuit_tot_n
+    CM % NumberOfRows = nm + OldCircuit_tot_n
     Rows(1) = 1
     DO i=2,CM % NumberOfRows+1
       Rows(i) = Rows(i-1) + Cnts(i-1)
@@ -1090,7 +1090,7 @@ CONTAINS
     INTEGER :: nn, nd
     REAL(KIND=dp) :: Tcoef(nn)
     TYPE(Element_t) :: Element
-    TYPE(Component_t) :: Comp
+    TYPE(OldComponent_t) :: Comp
 
     REAL(KIND=dp) :: Basis(nn), DetJ,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3), WBasis(nd,3), RotWBasis(nd,3), &
@@ -1170,7 +1170,7 @@ CONTAINS
     INTEGER :: nn, nd
     REAL(KIND=dp) :: Tcoef(nn)
     TYPE(Element_t) :: Element
-    TYPE(Component_t) :: Comp
+    TYPE(OldComponent_t) :: Comp
 
     REAL(KIND=dp) :: Basis(nn), DetJ,POT(nd),pPOT(nd),ppPOT(nd),tscl, localC,gradv(3)
     REAL(KIND=dp) :: dBasisdx(nn,3), WBasis(nd,3), RotWBasis(nd,3),wBase(nn),w(3)
@@ -1245,7 +1245,7 @@ CONTAINS
     INTEGER :: nn, nd
     REAL(KIND=dp) :: Tcoef(:,:,:), C(3,3)
     TYPE(Element_t) :: Element
-    TYPE(Component_t) :: Comp
+    TYPE(OldComponent_t) :: Comp
 
     REAL(KIND=dp) :: Basis(nn), DetJ,POT(nd),pPOT(nd),ppPOT(nd),tscl, &
                      localAlpha, localV, localVtest, gradv(3)
@@ -1394,7 +1394,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: nn
     TYPE(Element_t) :: Element
-    TYPE(Component_t) :: Comp
+    TYPE(OldComponent_t) :: Comp
     LOGICAL :: support
     REAL(KIND=dp) :: wBase(nn)
     

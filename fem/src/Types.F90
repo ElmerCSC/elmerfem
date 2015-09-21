@@ -713,33 +713,33 @@ END INTERFACE
 
 
 !-------------------Circuit stuff----------------------------------------------
-  TYPE CMPLXCircuitVariable_t
+  TYPE CircuitVariable_t
     LOGICAL :: isIvar, isVvar
     INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner, ComponentId
-    TYPE(CMPLXComponent_t), POINTER :: Component => Null()
+    TYPE(Component_t), POINTER :: Component => Null()
     REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
     REAL(KIND=dp), ALLOCATABLE :: SourceRe(:), SourceIm(:), Mre(:), Mim(:)
     INTEGER, ALLOCATABLE :: EqVarIds(:)
-  END TYPE CMPLXCircuitVariable_t
+  END TYPE CircuitVariable_t
   
-  TYPE CMPLXComponent_t
+  TYPE Component_t
     REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
                      N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
     INTEGER :: polord, ElBoundary, nofcnts, BodyId, ComponentId
     INTEGER, POINTER :: BodyIds(:) => Null()
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
-    TYPE(CMPLXCircuitVariable_t), POINTER :: ivar, vvar
-  END TYPE CMPLXComponent_t
+    TYPE(CircuitVariable_t), POINTER :: ivar, vvar
+  END TYPE Component_t
 
-  TYPE CMPLXCircuit_t
+  TYPE Circuit_t
     REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
     INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
-    LOGICAL :: UsePerm = .FALSE.
+    LOGICAL :: UsePerm = .FALSE., Harmonic
     INTEGER :: n, m, n_comp,CvarDofs
     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
-    TYPE(CMPLXComponent_t), POINTER :: Components(:)
-    TYPE(CMPLXCircuitVariable_t), POINTER :: CircuitVariables(:)
-  END TYPE CMPLXCircuit_t
+    TYPE(Component_t), POINTER :: Components(:)
+    TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)
+  END TYPE Circuit_t
 !-------------------Circuit stuff----------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -855,7 +855,7 @@ END INTERFACE
       ! Circuits:
       INTEGER, POINTER :: n_Circuits=>Null(), Circuit_tot_n=>Null()
       TYPE(Matrix_t), POINTER :: CircuitMatrix => Null()
-      TYPE(CMPLXCircuit_t), POINTER :: CMPLXCircuits(:) => Null()
+      TYPE(Circuit_t), POINTER :: Circuits(:) => Null()
       TYPE(Solver_t), POINTER :: ASolver    
       
     END TYPE Model_t

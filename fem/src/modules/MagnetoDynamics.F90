@@ -2888,7 +2888,8 @@ END SUBROUTINE WhitneyAVHarmonicSolver_Init0
 SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
-
+  USE CircuitUtils
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -3017,32 +3018,6 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   CALL CalculateLumped(Model % NumberOfBodyForces)
 
 CONTAINS
-
-!------------------------------------------------------------------------------
-  FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
-!------------------------------------------------------------------------------
-    USE DefUtils
-    IMPLICIT NONE
-    
-    INTEGER :: i
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
-    LOGICAL :: Found
-    
-    BodyParams => GetBodyParams( Element )
-    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('GetCompParams', 'Body Parameters not found')
-    
-    i = GetInteger(BodyParams, 'Component', Found)
-    
-    IF (.NOT. Found) THEN
-      ComponentParams => Null()
-    ELSE
-      ComponentParams => CurrentModel % Components(i) % Values
-    END IF
-   
-!------------------------------------------------------------------------------
-  END FUNCTION GetComponentParams
-!------------------------------------------------------------------------------
 
 !---------------------------------------------------------------------------------------------
   FUNCTION DoSolve(IterNo) RESULT(Converged)
@@ -5351,7 +5326,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
  SUBROUTINE MagnetoDynamicsCalcFields(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
    USE MagnetoDynamicsUtils
-
+   USE CircuitUtils
+   
    IMPLICIT NONE
 !------------------------------------------------------------------------------
    TYPE(Solver_t) :: Solver
@@ -6472,33 +6448,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
   END IF
 
 CONTAINS
-
-!------------------------------------------------------------------------------
-  FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
-!------------------------------------------------------------------------------
-    USE DefUtils
-    IMPLICIT NONE
-    
-    INTEGER :: i
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
-    LOGICAL :: Found
-    
-    BodyParams => GetBodyParams( Element )
-    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('GetCompParams', 'Body Parameters not found')
-    
-    i = GetInteger(BodyParams, 'Component', Found)
-    
-    IF (.NOT. Found) THEN
-      ComponentParams => Null()
-    ELSE
-      ComponentParams => CurrentModel % Components(i) % Values
-    END IF
-   
-!------------------------------------------------------------------------------
-  END FUNCTION GetComponentParams
-!------------------------------------------------------------------------------
-
 
  SUBROUTINE NodalTorque(T)
    REAL(KIND=dp) :: T(3), P(3), F(3)
