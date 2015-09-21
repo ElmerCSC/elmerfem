@@ -77,24 +77,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AddToCmplxMatrixElement(CM, RowId, ColId, Re, Im)
-!------------------------------------------------------------------------------
-    USE DefUtils
-    IMPLICIT NONE
-    TYPE(Matrix_t), POINTER :: CM
-    INTEGER :: RowId, ColId
-    REAL(KIND=dp) :: Re, Im
-
-    CALL AddToMatrixElement(CM, RowId, ColId, Re)
-    CALL AddToMatrixElement(CM, RowId, ColId+1, -Im)
-    CALL AddToMatrixElement(CM, RowId+1, ColId, Im)
-    CALL AddToMatrixElement(CM, RowId+1, ColId+1, Re)
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE AddToCmplxMatrixElement
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn)
 !------------------------------------------------------------------------------
     USE DefUtils
