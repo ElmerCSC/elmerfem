@@ -487,7 +487,7 @@ variable % owner = ParEnv % PEs-1
       ELSE
         Variable % valueId = Circuit_tot_n + 1
       END IF
-    
+      
       Circuit_tot_n = Circuit_tot_n + Variable % dofs
     END IF
 !------------------------------------------------------------------------------
@@ -1068,7 +1068,6 @@ CONTAINS
     n_Circuits = CurrentModel % n_Circuits
     Asolver => CurrentModel % Asolver
     nm = Asolver % Matrix % NumberOfRows
-
     DO p=1,n_Circuits
       DO CompInd=1,Circuits(p) % n_comp
         Done = .FALSE.
@@ -1109,7 +1108,7 @@ CONTAINS
             nn = GetElementNOFNodes(Element)
             nd = GetElementNOFDOFs(Element,ASolver)
             SELECT CASE (Comp % CoilType)
-            CASE('stranded')              
+            CASE('stranded')           
               CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows,Harmonic=Circuits(p)%Harmonic)
             CASE('massive')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
@@ -1249,7 +1248,7 @@ CONTAINS
       First = .FALSE.
       dim = CoordinateSystemDimension()
     END IF
-    
+
     IF (.NOT. PRESENT(Harmonic)) THEN
       harm = .FALSE.
     ELSE
@@ -1267,19 +1266,20 @@ CONTAINS
       ncdofs1=nn
       ncdofs2=nd
     END IF
+    
     DO p=ncdofs1,ncdofs2
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
-        j = ReIndex(PS(j))
+        IF (harm) j = ReIndex(PS(j))
         IF(PRESENT(Cols)) THEN
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j) 
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, Jsind)
-!          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, Jsind)
+          CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm) 
+          CALL CreateMatElement(Rows, Cols, Cnts, j, Jsind, harm)
+!          CALL CreateMatElement(Rows, Cols, Cnts, j, Jsind)
         ELSE
           CALL CountMatElement(Rows, Cnts, i, 1, harm)
           CALL CountMatElement(Rows, Cnts, j, 1, harm)
-!          CALL CountCmplxMatElement(Rows, Cnts, j, 1)
+!          CALL CountMatElement(Rows, Cnts, j, 1)
         END IF
       END IF
     END DO
@@ -1330,10 +1330,10 @@ CONTAINS
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
-        j = ReIndex(PS(j))
+        IF (harm) j = ReIndex(PS(j))
         IF(PRESENT(Cols)) THEN
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j)
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, i)
+          CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm)
+          CALL CreateMatElement(Rows, Cols, Cnts, j, i, harm)
         ELSE
           CALL CountMatElement(Rows, Cnts, i, 1, harm)
           CALL CountMatElement(Rows, Cnts, j, 1, harm)
@@ -1387,10 +1387,10 @@ CONTAINS
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = dofsdone
-        j = ReIndex(PS(j))
+        IF (harm) j = ReIndex(PS(j))
         IF(PRESENT(Cols)) THEN
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, i, j)
-          CALL CreateCmplxMatElement(Rows, Cols, Cnts, j, i)
+          CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm)
+          CALL CreateMatElement(Rows, Cols, Cnts, j, i, harm)
         ELSE
           CALL CountMatElement(Rows, Cnts, i, 1, harm)
           CALL CountMatElement(Rows, Cnts, j, 1, harm)
