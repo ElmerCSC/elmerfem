@@ -1346,8 +1346,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Solver_t), POINTER :: ASolver
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
-    REAL(KIND=dp) :: Basis(nn), DetJ, Omega, grads_coeff, circ_eq_coeff, &
-                     localAlpha, localV, localVtest, x, circ_eq_coeff, grads_coeff
+    REAL(KIND=dp) :: Basis(nn), DetJ, Omega, localAlpha, localV, localVtest, &
+                     x, circ_eq_coeff, grads_coeff
     REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
