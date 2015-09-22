@@ -438,7 +438,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Basis(nn), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3)
-    REAL(KIND=dp) :: localC, value, circ_eq_coeff
+    REAL(KIND=dp) :: localC, value, circ_eq_coeff, grads_coeff
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
     LOGICAL :: stat
