@@ -547,7 +547,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Basis(nn), DetJ, localAlpha, localV, localVtest, &
-                     x, circ_eq_coeff, grads_coeff,POT(nd),pPOT(nd),ppPOT(nd),tscl
+                     x, grads_coeff,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
@@ -611,14 +611,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
                 IP % W(t), detJ, Basis,dBasisdx )
 
       grads_coeff = 1._dp
-      circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          grads_coeff = grads_coeff/(2._dp*pi*x)
-          circ_eq_coeff = 2._dp * pi
+          grads_coeff = grads_coeff/x
         END IF
         C(1,1) = SUM( Tcoef(1,1,1:nn) * Basis(1:nn) )
       CASE(3)
@@ -656,7 +654,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           
           ! Computing the stiff term (sigma V(alpha) grad v0, V'(alpha) grad si):
           ! ---------------------------------------------------------------------
-          IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
+          IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
           CALL AddToMatrixElement(CM, dofIdtest+nm, dofId+nm, value)
         END DO
@@ -666,7 +664,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           IF (dim == 3) q=q+nn
           ! computing the mass term (sigma * d/dt * a, V'(alpha) grad si):
           ! ---------------------------------------------------------
-          IF (dim == 2) value = IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff/dt
+          IF (dim == 2) value = IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff/dt
           IF (dim == 3) value = IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)/dt
           CALL AddToMatrixElement(CM, dofIdtest+nm, PS(Indexes(q)), tscl * value)
           CM % RHS(dofIdtest+nm) = CM % RHS(dofIdtest+nm) + pPOT(q) * value
@@ -1335,7 +1333,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     INTEGER, POINTER :: PS(:)
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Basis(nn), DetJ, Omega, &
-                     localAlpha, localV, localVtest, x, circ_eq_coeff, grads_coeff
+                     localAlpha, localV, localVtest, x, grads_coeff
     REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
@@ -1391,14 +1389,12 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
                 IP % W(t), detJ, Basis,dBasisdx )
 
       grads_coeff = 1._dp
-      circ_eq_coeff = 1._dp
       SELECT CASE(dim)
       CASE(2)
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          grads_coeff = grads_coeff/(2._dp*pi*x)
-          circ_eq_coeff = 2._dp * pi
+          grads_coeff = grads_coeff/x
         END IF
         C(1,1) = SUM( Tcoef(1,1,1:nn) * Basis(1:nn) )
       CASE(3)
@@ -1436,7 +1432,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           
           ! Computing the stiff term (sigma V(alpha) grad v0, V'(alpha) grad si):
           ! ---------------------------------------------------------------------
-          IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
+          IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
           CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, dofId+nm, REAL(value), AIMAG(value))
         END DO
@@ -1446,7 +1442,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           IF (dim == 3) q=q+nn
           ! computing the mass term (sigma * im * Omega * a, V'(alpha) grad si):
           ! ---------------------------------------------------------
-          IF (dim == 2) value = im * Omega * IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff
+          IF (dim == 2) value = im * Omega * IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff
           IF (dim == 3) value = im * Omega * IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)
           CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, ReIndex(PS(Indexes(q))), REAL(value), AIMAG(value) )
         END DO
