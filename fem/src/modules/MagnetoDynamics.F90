@@ -332,7 +332,8 @@ END SUBROUTINE WhitneyAVSolver_Init0
 SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
-
+  USE CircuitUtils
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -375,7 +376,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TYPE(Variable_t), POINTER :: Var, FixJVar, CoordVar
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
-
+  TYPE(ValueList_t), POINTER :: CompParams
+  
   INTEGER :: n_n, n_e
   INTEGER, POINTER :: Vperm(:), Aperm(:)
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
@@ -578,25 +580,25 @@ CONTAINS
                 'Magnetization', FoundMagnetization )
      END IF
      
-     BodyParams => GetBodyParams( Element )
-     IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
-
      CoilBody = .FALSE.
-     CoilType = GetString(BodyParams, 'Coil Type', Found)
-     IF (.NOT. Found) THEN
-        CoilType = ''
-     ELSE
-        SELECT CASE (CoilType)
-        CASE ('stranded')
-           CoilBody = .TRUE.
-        CASE ('massive')
-           CoilBody = .TRUE.
-        CASE ('foil winding')
-           CoilBody = .TRUE.
-           CALL GetElementRotM(Element, RotM, n)
-        CASE DEFAULT
-           CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
-        END SELECT
+     CompParams => GetComponentParams( Element )
+     CoilType = ''
+     RotM = 0._dp
+     IF (ASSOCIATED(CompParams)) THEN
+       CoilType = GetString(CompParams, 'Coil Type', Found)
+       IF (Found) THEN
+         SELECT CASE (CoilType)
+         CASE ('stranded')
+            CoilBody = .TRUE.
+         CASE ('massive')
+            CoilBody = .TRUE.
+         CASE ('foil winding')
+            CoilBody = .TRUE.
+            CALL GetElementRotM(Element, RotM, n)
+         CASE DEFAULT
+            CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
+         END SELECT
+       END IF
      END IF
 
      Acoef = 0.0d0
