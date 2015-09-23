@@ -6037,7 +6037,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              Coeff = SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
                  TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s
                IF (IsRotating) THEN
-                 Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(velo, B(1,:)))*CrossProduct(velo,B(1,:)))*Basis(p)*s
+                 Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:)))*CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
                END IF
            ELSE
              ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
