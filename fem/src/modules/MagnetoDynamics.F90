@@ -5923,8 +5923,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        !Power = Power + SUM(E**2)*C_ip*s
        IF (vDOFS == 1) THEN
-          Power = Power + SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-               TRANSPOSE(E(1:1,1:dim)) ) * s
+          Power = Power + SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+               TRANSPOSE(E(1:1,1:3)) ) * s
        ELSE
           ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
           ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
@@ -6034,8 +6034,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF ( ASSOCIATED(JH).OR.ASSOCIATED(EL_JH) ) THEN
            ! The Joule heating power per unit volume: J.E = (sigma * E).E
            IF (vDOFS == 1) THEN
-             Coeff = SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-                 TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s
+             Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+                 TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
                IF (IsRotating) THEN
                  Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:)))*CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
                END IF
@@ -6043,14 +6043,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
              ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
              ! would be obtained.
-             Coeff = SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-                 TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s - &
-                 SUM( MATMUL( AIMAG(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
-                 TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s + &
-                 SUM( MATMUL( AIMAG(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-                 TRANSPOSE(E(2:2,1:dim)) ) * Basis(p) * s + &               
-                 SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
-                 TRANSPOSE(E(2:2,1:dim)) ) * Basis(p) * s
+             Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+               TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s - &
+               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
+               TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s + &
+               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+               TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s + &               
+               SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
+               TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s
            END IF
            IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
            FORCE(p,k+1) = FORCE(p,k+1) + Coeff
@@ -6129,8 +6129,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s*NF_ip(p,1:3)
            k = k + 3
          END IF
-       END DO
-     END DO
+       END DO ! p
+     END DO ! j
 
 
      IF(NodalFields) THEN
@@ -6154,11 +6154,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_CD,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_JXB,  3*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_FWP,  1*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_NF,   3, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_JH,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_NF,   3, n, MASS, FORCE, pivot, Dofs)
      END IF
 
    END DO

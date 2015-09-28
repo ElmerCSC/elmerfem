@@ -10213,6 +10213,168 @@ END SUBROUTINE GetMaxDefs
   END SUBROUTINE WriteMeshToDisk2
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Writes the mesh to disk, including detection of elementcodes and shared node
+!> info necessary for parallel meshes.
+!------------------------------------------------------------------------------
+  SUBROUTINE WriteMeshToDiskPartitioned(Model, Mesh, Path, &
+      ElementPart, NeighbourList )
+!------------------------------------------------------------------------------
+    USE Types
+!------------------------------------------------------------------------------
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    CHARACTER(LEN=*) :: Path
+    INTEGER, POINTER :: ElementPart(:)
+    TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: NoBoundaryElements, NoBulkElements, NoNodes, NoPartitions, Partition
+    INTEGER :: i,j,k,m,MaxNodes,ElmCode,NumElmCodes,ElmCodeCounts(827),&
+         Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared
+    LOGICAL :: Found, Hit
+    CHARACTER(LEN=MAX_NAME_LEN) :: DirectoryName, PrefixName
+!------------------------------------------------------------------------------
+
+    NoPartitions = MAXVAL( ElementPart ) 
+    NumElmCodes = 0
+    NumElements = Mesh % NumberOfBoundaryElements + Mesh % NumberOfBulkElements
+        
+    WRITE(DirectoryName, '(A,A,I0)') TRIM(PATH),'/partitioning.',NoPartitions
+    CALL MakeDirectory( TRIM(DirectoryName) // CHAR(0) )
+    CALL Info('WriteMeshToDiskPartitioned','Writing parallel mesh to disk: '//TRIM(DirectoryName))
+   
+
+    DO Partition = 1, NoPartitions 
+      
+      CALL Info('WriteMeshToDiskPartitioned','Writing piece to file: '//TRIM(I2S(Partition)),Level=12)
+      
+      WRITE( PrefixName,'(A,A,I0)') TRIM(DirectoryName),'/part.',Partition  
+
+      CALL Info('WriteMeshToDiskPartitioned','Write nodes file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.nodes', STATUS='UNKNOWN' )
+      NoNodes = 0
+      DO i=1,Mesh % NumberOfNodes
+        IF( ANY( NeighbourList(i) % Neighbours == Partition ) ) THEN
+          WRITE(1,'(I0,x,I0,x,3ES17.10)') i,-1, &
+              Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
+          NoNodes = NoNodes + 1
+        END IF
+      END DO
+      CLOSE(1)
+      
+
+      CALL Info('WriteMeshToDiskPartitioned','Write shared nodes file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.shared', STATUS='UNKNOWN' )
+      NoShared = 0
+      DO i=1,Mesh % NumberOfNodes
+        nneigh = SIZE( NeighbourList(i) % Neighbours )
+        IF( nneigh <= 1 ) CYCLE
+        
+        IF( ANY( NeighbourList(i) % Neighbours == Partition ) ) THEN
+          NoShared = NoShared + 1
+          WRITE(1,'(i0, x, i0, x)',ADVANCE='NO') i,nneigh
+          DO j=1,nneigh
+            WRITE(1,'(I0, x)',ADVANCE='NO') NeighbourList(i) % Neighbours(j) 
+          END DO
+          WRITE( 1,* ) ''
+        END IF
+      END DO
+      CLOSE(1)
+
+
+      CALL Info('WriteMeshToDiskPartitioned','Write elements file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.elements', STATUS='UNKNOWN' )
+      NoBulkElements = 0
+      ElmCodeCounts = 0      
+      DO i=1,Mesh % NumberOfBulkElements
+        IF( ElementPart(i) /= Partition ) CYCLE
+
+        Element => Mesh % Elements(i)
+        WRITE(1,'(i0,x,i0,x,i0,x)',ADVANCE='NO') i, &
+            Element % BodyId, Element % TYPE % ElementCode
+        DO j=1,Element % TYPE % NumberOfNodes
+          WRITE(1,'(i0,x)', ADVANCE='NO') Element % NodeIndexes(j)
+        END DO
+        WRITE(1,*) ''
+        
+        ElmCode = Element % TYPE % ElementCode
+        ElmCodeCounts( ElmCode ) = ElmCodeCounts( ElmCode ) + 1
+        NoBulkElements = NoBulkElements + 1
+      END DO
+      CLOSE(1)
+
+
+      CALL Info('WriteMeshToDiskPartitioned','Write boundary file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.boundary', STATUS='UNKNOWN' )
+      NoBoundaryElements = 0
+      DO i=Mesh % NumberOfBulkElements +1 ,&
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(i)
+       
+        parent1 = 0
+        parent2 = 0
+        Constraint = 0
+        
+        IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+          IF ( ASSOCIATED( Element % BoundaryInfo % Left ) ) &
+              parent1 = Element % BoundaryInfo % Left % ElementIndex
+          IF ( ASSOCIATED( Element % BoundaryInfo % Right ) ) &
+              parent2 = Element % BoundaryInfo % Right % ElementIndex        
+          Constraint = Element % BoundaryInfo % Constraint
+        END IF
+
+        Hit = .FALSE.
+        IF( parent1 > 0 ) THEN
+          IF( ElementPart( parent1 ) == Partition ) Hit = .TRUE.
+        END IF
+        IF( parent2 > 0 ) THEN
+          IF( ElementPart( parent2 ) == Partition ) Hit = .TRUE.
+        END IF
+
+        IF( .NOT. Hit ) CYCLE
+
+        WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & 
+            Constraint, Parent1, Parent2,&
+            Element % TYPE % ElementCode
+        DO j=1,Element % TYPE % NumberOfNodes
+          WRITE(1,'(x,i0)', ADVANCE='NO') Element % NodeIndexes(j)
+        END DO
+        WRITE(1,*) 
+
+        ElmCode = Element % TYPE % ElementCode
+        ElmCodeCounts( ElmCode ) = ElmCodeCounts( ElmCode ) + 1
+        NoBoundaryElements = NoBoundaryElements + 1
+      END DO
+      CLOSE(1)
+
+
+      CALL Info('WriteMeshToDiskPartitioned','Write header file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.header',STATUS='UNKNOWN' )
+      NumElmCodes = COUNT( ElmCodeCounts > 0 ) 
+      WRITE( 1,'(i0,x,i0,x,i0)' ) NoNodes, &
+          NoBulkElements, NoBoundaryElements      
+      WRITE( 1,'(i0)' ) NumElmCodes
+      DO i=SIZE(ElmCodeCounts),1,-1
+        IF( ElmCodeCounts(i) == 0 ) CYCLE
+        WRITE( 1,'(i0,x,i0,x)' ) i,ElmCodeCounts(i)
+      END DO
+      WRITE( 1,'(i0,x,i0)') NoShared, 0
+      CLOSE(1)
+      
+      CALL Info('WriteMeshToDiskPartitioned','Done writing partition',Level=12)
+    END DO
+
+    CALL Info('WriteMeshToDiskPartitioned','Done writing parallel mesh',Level=8)
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE WriteMeshToDiskPartitioned
+!------------------------------------------------------------------------------
+
+
+
+
 !------------------------------------------------------------------------------
 !> Generate element edge (faces in 3D) tables for given mesh.
 !> Currently only for triangles and tetras. If mesh already
@@ -15309,22 +15471,26 @@ CONTAINS
     INTEGER, POINTER :: Clustering(:)
 !---------------------------------------------------------------
     LOGICAL :: MaskExists,Found
-    INTEGER :: i,j,k,ind,n,dim,nsize,clusters
-    INTEGER, POINTER :: Iarray(:),NodePart(:),NoPart(:)
+    INTEGER :: i,j,k,ind,n,dim,nsize,nmask,clusters
+    INTEGER, POINTER :: Iarray(:),NodePart(:)
+    INTEGER, ALLOCATABLE :: NoPart(:)
     INTEGER :: Divisions(3),minpart,maxpart,Inds(3)
     REAL(KIND=dp) :: Coord(3), Weights(3), avepart,devpart
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp) :: BoundingBox(6)
     INTEGER, ALLOCATABLE :: CellCount(:,:,:)
-
-    ! CALL Info('ClusterElementsByDirection','')
+    
 
     MaskExists = PRESENT(MaskActive)
     IF( MaskExists ) THEN
-      nsize = COUNT( MaskActive ) 
+      nsize = SIZE( MaskActive ) 
+      nmask = COUNT( MaskActive ) 
+      CALL Info('ClusterElementsByDirection','Using mask of size: '//TRIM(I2S(nsize)))
     ELSE
-      nsize = Mesh % NumberOfBulkElements
+      nsize = Mesh % NumberOfBulkElements 
+      nmask = nsize
+      CALL Info('ClusterElementsByDirection','Applying division to all bulk elements: '//TRIM(I2S(nsize)))
     END IF
      
     IF( .NOT. ASSOCIATED( Params ) ) THEN
@@ -15355,7 +15521,10 @@ CONTAINS
 
     ALLOCATE( CellCount(Divisions(1), Divisions(2), Divisions(3) ) )
     CellCount = 0
-    Clusters = Divisions(1) * Divisions(2) * Divisions(3)
+    Clusters = 1
+    DO i=1,dim
+      Clusters = Clusters * Divisions(i)
+    END DO
 
     IF( .FALSE. ) THEN
       PRINT *,'dim:',dim
@@ -15371,6 +15540,7 @@ CONTAINS
     !----------------------------------------
     Inds = 1
     Coord = 0.0_dp
+
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       IF( MaskExists ) THEN
         IF( .NOT. MaskActive( i ) ) CYCLE
@@ -15394,7 +15564,8 @@ CONTAINS
             ( Coord(j) - BoundingBox(2*j-1) ) / &
             ( BoundingBox(2*j) - BoundingBox(2*j-1) ) )
       END DO
-      
+      Inds = MAX( Inds, 1 ) 
+
       CellCount(Inds(1),Inds(2),Inds(3)) = &
           CellCount(Inds(1),Inds(2),Inds(3)) + 1
 
@@ -15409,7 +15580,7 @@ CONTAINS
     n = COUNT( NoPart > 0 )    
     minpart = HUGE(minpart)
     maxpart = 0
-    avepart = 1.0_dp * nsize / n
+    avepart = 1.0_dp * nmask / n
     devpart = 0.0_dp
     DO i=1,clusters
       IF( nopart(i) > 0 ) THEN
@@ -15443,16 +15614,19 @@ CONTAINS
       j = NodePart(i)
       IF( j > 0 ) NodePart(i) = NoPart(j)
     END DO
-            
+           
     IF( ASSOCIATED(Clustering)) THEN
-      Clustering = Nodepart 
+      Clustering(1:nsize) = Nodepart(1:nsize)
       DEALLOCATE(Nodepart)
     ELSE
       Clustering => Nodepart
       NULLIFY( Nodepart ) 
     END IF
     
-    DEALLOCATE(NoPart)
+    IF( ALLOCATED( NoPart ) ) DEALLOCATE(NoPart)
+
+    CALL Info('ClusterElemetsUniform','Clustering finished')
+
 
   END SUBROUTINE ClusterElementsUniform
 
