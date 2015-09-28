@@ -7,3 +7,4 @@ file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_D
 
 ADD_ELMER_TEST(ParticleFalling)
 ADD_ELMER_LABEL(ParticleFalling quick)
+ADD_ELMER_LABEL(ParticleFalling particle)

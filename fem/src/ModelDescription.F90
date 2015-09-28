@@ -1921,7 +1921,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh
     INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
-    LOGICAL :: stat, single, MeshGrading, NewLoadMesh
+    LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
     INTEGER(KIND=AddrInt) :: InitProc
     INTEGER, TARGET :: Def_Dofs(10,6)
@@ -2070,19 +2070,13 @@ CONTAINS
     IF ( MeshDir(1:1) /= ' ' ) THEN
       ! @TODO: Don't forget funny define
       CALL ResetTimer('LoadMesh') 
-      NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) 
-      IF( .NOT. GotIt ) NewLoadMesh = .TRUE.
-      IF( NewLoadMesh ) THEN
-        Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs )
-        IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
-          CALL FreeModel(Model)
-          Model => Null()
-          RETURN
-        END IF
-      ELSE
-        Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs(1,:) )
+
+      Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+          BoundariesOnly, numprocs, mype, Def_Dofs )
+      IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
+        CALL FreeModel(Model)
+        Model => NULL()
+        RETURN
       END IF
 
       CALL CheckTimer('LoadMesh',Level=5,Delete=.TRUE.)
@@ -2259,24 +2253,12 @@ CONTAINS
           END DO
         END DO
 
-        NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt)
-        IF(.NOT. GotIt) NewLoadMesh = .TRUE.
         IF ( Single ) THEN
-          IF( NewLoadMesh ) THEN
-            Model % Solvers(s) % Mesh => &
+          Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
-          ELSE
-            Model % Solvers(s) % Mesh => &
-              LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs(1,:) )
-          END IF
         ELSE
-          IF( NewLoadMesh ) THEN
-            Model % Solvers(s) % Mesh => &
+          Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs )
-          ELSE
-            Model % Solvers(s) % Mesh => &
-              LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs(1,:) )
-          END IF
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 
