@@ -11642,41 +11642,45 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
           END DO
         END DO
       ELSE
+
+        CALL List_ToCRSMatrix(CollectionMatrix)
+        Tmat => AllocateMatrix()
+        Tmat % Format = MATRIX_LIST
+
         DO i=1,StiffMatrix % NumberOfRows
           IF(UsePerm(i)/=0) CYCLE
-          cPrev => Null()
-          cPtr  => Lmat(i) % Head
-          DO WHILE(ASSOCIATED(cPtr))
-            ! ...search for entry to be eliminated...
-            ! ----------------------------------------
-            j = SlavePerm(cPtr % Index)
+
+          DO m = CollectionMatrix % Rows(i), CollectionMatrix % Rows(i+1)-1
+            j = SlavePerm(CollectionMatrix % Cols(m))
+
             IF(j==0) THEN
-              cPrev => cPtr
-              cPtr  => cPtr % Next
               CYCLE
             END IF
-            scl = -cPtr % Value / SlaveDiag(j)
-
-            cTmp  => cPtr
-            cPtr  => cPtr % Next
-
-            ! Delete elimination entry:
-            ! -------------------------
-            CALL List_DeleteMatrixElement(Lmat,i,cTmp % Index)
+            scl = -CollectionMatrix % Values(m) / SlaveDiag(j)
+            CollectionMatrix % Values(m) = 0._dp
 
             ! ... and add replacement values:
             ! -------------------------------
             k = UseIPerm(j)
-            cTmp => Lmat(k) % Head
-            DO WHILE(ASSOCIATED(cTmp))
-               l = cTmp % Index
+            DO p=CollectionMatrix % Rows(k+1)-1, CollectionMatrix % Rows(k), -1
+               l = CollectionMatrix % Cols(p)
                IF ( l /= SlaveIPerm(j) ) &
-                 CALL List_AddToMatrixElement( Lmat, i, l, scl*cTmp % Value )
-               cTmp => cTmp % Next
+                 CALL List_AddToMatrixElement( Tmat % listmatrix, i, l, scl*CollectionMatrix % Values(p) )
             END DO
             CollectionVector(i) = CollectionVector(i) + scl * CollectionVector(k)
           END DO
         END DO
+
+        CALL List_ToListMatrix(CollectionMatrix)
+        Lmat => CollectionMatrix % ListMatrix
+
+        CALL List_ToCRSMatrix(Tmat)
+        DO i=TMat % NumberOfRows,1,-1
+          DO j=TMat % Rows(i+1)-1,TMat % Rows(i),-1
+            CALL List_AddToMatrixElement( Lmat, i, TMat % cols(j), TMat % Values(j) )
+          END DO
+        END DO
+        CALL FreeMatrix(Tmat)
       END IF
     END IF
 
