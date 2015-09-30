@@ -8615,9 +8615,10 @@ END SUBROUTINE GetMaxDefs
     ! If the projector normal is not given determine it first 
     IF(.NOT. Found ) THEN     
       CALL Info('PlaneInterfaceMeshes','Could not find > Plane Projector Normal < so determining it now',Level=12)    
-      n = CurrentModel % MaxElementNodes
-      ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), &
-          ElementNodes % z(n), Basis(n) )
+
+      n = MAX_ELEMENT_NODES
+      ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), Basis(n) )
+      ElementNodes % x = 0; ElementNodes % y = 0; ElementNodes % z = 0
 
       ! Fit a plane to both datasets
       DO j=1, 2
