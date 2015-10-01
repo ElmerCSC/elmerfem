@@ -379,6 +379,7 @@ END SUBROUTINE GetMaxDefs
   END SUBROUTINE MarkHaloNodes
 
  
+
 !> Create a discontinuous mesh over requested boundaries.
 !> The nodes are duplicated in order to facilitate the discontinuity.
 !> The duplicate nodes are not created by default if the connectivity 
@@ -757,15 +758,29 @@ END SUBROUTINE GetMaxDefs
    ! or the majority opinion if this is conflicting.
    DO t=1, NoBoundElems
 
-     IF( DisContElem(t) ) CYCLE
-
      Element => Mesh % Elements(NoBulkElems + t)
+
+     IF( DisContElem(t) ) THEN
+       LeftElem => Element % BoundaryInfo % Left
+       RightElem => Element % BoundaryInfo % Right
+
+       IF( ASSOCIATED( LeftElem ) ) THEN
+         Moving = ANY( TargetBodies == LeftElem % BodyId ) 
+       ELSE
+         Moving = .NOT. ANY( TargetBodies == RightElem % BodyId )
+       END IF
+       IF( Moving ) THEN
+         Element % BoundaryInfo % Left => RightElem
+         Element % BoundaryInfo % Right => LeftElem 
+       END IF
+       CYCLE
+     END IF
+
      Indexes => Element % NodeIndexes
 
      IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
 
      ElemFamily = Element % TYPE % ElementCode / 100 
-
      LeftElem => Element % BoundaryInfo % Left
      RightElem => Element % BoundaryInfo % Right
 
@@ -777,6 +792,11 @@ END SUBROUTINE GetMaxDefs
        IF( Moving .NEQV. Moving2) THEN
          CALL Warn('CreateDiscontMesh','Conflicting moving information')
          Set = .FALSE.
+       ELSE
+         IF( Moving ) THEN
+           Element % BoundaryInfo % Left => RightElem
+           Element % BoundaryInfo % Right => LeftElem 
+         END IF
        END IF
      ELSE IF( ASSOCIATED( LeftElem ) ) THEN
        Moving = ANY( LeftElem % NodeIndexes > NoNodes ) 
@@ -1183,6 +1203,7 @@ END SUBROUTINE GetMaxDefs
    INTEGER, POINTER :: NodeTags(:), ElementTags(:), LocalPerm(:)
    INTEGER :: MinNodeTag = 0, MaxNodeTag = 0, istat
    LOGICAL :: ElementPermutation=.FALSE., NodePermutation=.FALSE., Parallel
+
 
 
    SAVE PrevStep, BaseName, BaseNameLen, Mesh, mype, Parallel, &
@@ -1834,6 +1855,7 @@ END SUBROUTINE GetMaxDefs
    TYPE(Element_t), POINTER :: Element
    TYPE(Matrix_t), POINTER :: Projector
    LOGICAL :: parallel, LoadNewMesh
+
 
    Mesh => Null()
 
