@@ -971,10 +971,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
         ColId = Circuit % CircuitVariables(j) % ValueId + nm
 
-        ! - im * Omega * A x: (x could be voltage or current):
+        ! im * Omega * A x: (x could be voltage or current):
         !--------------------------------------------
         IF(Cvar % A(j) /= 0._dp) THEN
-          CALL AddToCmplxMatrixElement(CM, RowId, ColId, 0._dp, -Omega * Cvar % A(j))
+          CALL AddToCmplxMatrixElement(CM, RowId, ColId, 0._dp, Omega * Cvar % A(j))
         END IF
         ! B x:
         ! ------
