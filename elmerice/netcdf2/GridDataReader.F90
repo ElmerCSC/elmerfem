@@ -576,7 +576,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
         CASE (0)
            ALLOCATE(coordVar(i)%values(1,1,1))
         CASE (1)
-           ALLOCATE(coordVar(i)%values(DimSize(1),1,1))
+           ALLOCATE(coordVar(i)%values(DimSize(i),1,1))
            CALL NetCDFCoordVar( i, coordVar(i)%values(:,1,1) )
         CASE (2)
            IF (i /= 3) THEN
@@ -708,7 +708,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     IntTimeIndex = NINT( TimeIndex )
 
     IF( ABS( TimeIndex - IntTimeIndex ) > EpsTime ) THEN
-      IntTimeIndex = FLOOR( Time )
+      IntTimeIndex = FLOOR( TimeIndex )
       nTime = 2
       pTime = 1 + IntTimeIndex - TimeIndex
       WRITE (Message,'(A,ES10.3,A)') 'Given time value ', TimeIndex , ' using time interpolation.'
