@@ -5666,6 +5666,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      RotM = 0._dp
      IF (ASSOCIATED(CompParams)) THEN
        CoilType = GetString(CompParams, 'Coil Type', Found)
+       IF (Found) CoilBody = .TRUE.
      END IF 
  
      !------------------------------------------------------------------------------
@@ -5719,51 +5720,41 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
         
      IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp 
 
-     BodyParams => GetBodyParams( Element )
-     IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('MagnetoDynamicsCalcFields', 'Body Parameters not found!')
-
      dim = CoordinateSystemDimension()
 
-     IF (.NOT. Found) THEN
-       CoilType = ''
-     ELSE
-
+     IF (CoilBody) THEN
+       
        CALL GetLocalSolution(Wbase,'W')
   
        SELECT CASE (CoilType)
        CASE ('stranded')
-         CoilBody = .TRUE.
-
-         IvarId = GetInteger (BodyParams, 'Circuit Current Variable Id', Found)
+         IvarId = GetInteger (CompParams, 'Circuit Current Variable Id', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Current Variable Id not found!')
 
-         N_j = GetConstReal (BodyParams, 'Stranded Coil N_j', Found)
+         N_j = GetConstReal (CompParams, 'Stranded Coil N_j', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
 
-         nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
+         nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
        CASE ('massive')
-         CoilBody = .TRUE.
-
-         VvarId = GetInteger (BodyParams, 'Circuit Voltage Variable Id', Found)
+         VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
 
        CASE ('foil winding')
-         CoilBody = .TRUE.
          CALL GetLocalSolution(alpha,'Alpha')
          
          IF (dim == 3) CALL GetElementRotM(Element, RotM, n)
 
-         VvarId = GetInteger (BodyParams, 'Circuit Voltage Variable Id', Found)
+         VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
 
-         coilthickness = GetConstReal(BodyParams, 'Coil Thickness', Found)
+         coilthickness = GetConstReal(CompParams, 'Coil Thickness', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Coil Thickness not found!')
 
-         nofturns = GetConstReal(BodyParams, 'Number of Turns', Found)
+         nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
 
-         VvarDofs = GetInteger (BodyParams, 'Circuit Voltage Variable dofs', Found)
+         VvarDofs = GetInteger (CompParams, 'Circuit Voltage Variable dofs', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
          ! in case of a foil winding, transform the conductivity tensor:
          ! -------------------------------------------------------------

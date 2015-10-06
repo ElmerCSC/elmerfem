@@ -71,16 +71,16 @@ Solver 4
    Linear System Convergence Tolerance = 1e-6
 End
 
-!Solver 5
-!   Exec Solver = After timestep
-!   Equation = "ResultOutput"
-!   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-!   Output File Name = 1381-results
-!   Vtu format = Logical True
-!   Save Geometry Ids = Logical True
-!End
-
 Solver 5
+   Exec Solver = After timestep
+   Equation = "ResultOutput"
+   Procedure = "ResultOutputSolve" "ResultOutputSolver"
+   Output File Name = 1381-results
+   Vtu format = Logical True
+   Save Geometry Ids = Logical True
+End
+
+Solver 6
    Exec Solver = Always
    Equation = Circuits Output
    Procedure = "CircuitsAndDynamics" "CircuitsOutput"
