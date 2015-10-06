@@ -51,9 +51,10 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !---------------------------------------------------------------
-  LOGICAL :: SaveMeshLogical, Found
+  LOGICAL :: SaveMeshLogical, EveryTime, Found
   INTEGER :: i, parts, ierr
-  TYPE(Mesh_t), Pointer :: Mesh
+  TYPE(Mesh_t), POINTER :: Mesh
+  TYPE(Variable_t), POINTER :: TimestepVar
   CHARACTER(LEN=MAX_NAME_LEN):: MeshName, MeshDir, inty, tmp
 
   Mesh => Solver % Mesh
@@ -65,6 +66,8 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
 
   IF(.NOT. SaveMeshLogical) RETURN !nothing to do
 
+  TimestepVar => VariableGet( Mesh % Variables, "Timestep", .TRUE. )
+
   MeshName = ListgetString( Solver % Values,"Mesh Name", Found)
   IF(.NOT. Found) CALL FATAL("SaveMesh","No name given for mesh")
 
@@ -73,7 +76,14 @@ SUBROUTINE SaveMesh( Model,Solver,dt,TransientSimulation )
   IF(.NOT. Found) CALL FATAL("SaveMesh",&
        "No directory given to save mesh")
 
-  MeshDir = TRIM(MeshDir)//TRIM(MeshName)
+  EveryTime = ListGetLogical( Solver % Values, "Save All Timesteps", Found)
+  IF(.NOT. Found) EveryTime = .FALSE.
+
+  IF(EveryTime) THEN
+     WRITE(MeshDir, '(A,A,A,i4.4)') TRIM(MeshDir),TRIM(MeshName),"_",INT(TimestepVar % Values(1))
+  ELSE
+     WRITE(MeshDir, '(A,A)')TRIM(MeshDir)//TRIM(MeshName)
+  END IF
 
   IF( ParEnv % PEs<=1 ) THEN !serial
      CALL SYSTEM("mkdir -p "//MeshDir)

@@ -41,7 +41,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: SaveGid, SaveVTK, SaveOpenDx, SaveGmsh, &
       SaveVTU, SaveEP, SaveAny, ListSet = .FALSE., ActiveMesh, &
-      SomeMeshSaved
+      SomeMeshSaved, SaveAllMeshes
   INTEGER :: i,nInterval=1, nstep=0, OutputCount = 0, MeshDim,MeshLevel,nlen
   INTEGER, POINTER :: OutputIntervals(:), TimeSteps(:)
 
@@ -128,7 +128,6 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   OutputCount = OutputCount + 1
   CALL ListAddInteger( Params,'Output Count',OutputCount)
 
-
   ! Finally go for it and write desired data
   ! Some formats requite that the list of variables is explicitely given
   !-----------------------------------------
@@ -136,17 +135,21 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   MeshLevel = GetInteger( Params,'Output Mesh Level',Found)
   SomeMeshSaved = .FALSE.
 
+  SaveAllMeshes = GetLogical( Params,'Save All Meshes',Found ) 
+
+
   iMesh => Model % Meshes
   DO WHILE( ASSOCIATED(iMesh) )
     
-    IF ( .NOT. iMesh % OutputActive ) THEN
-      CALL Info('ResultOutputSolver','Skipping mesh: '//TRIM(iMesh % Name), Level=10 )
+    CALL Info('ResultOutputSolver','Working on mesh: '//TRIM(iMesh % Name), Level=7 )
+    WRITE(Message,'(A,I0)') 'Dimension of mesh: ',iMesh % MeshDim 
+
+    IF ( .NOT. SaveAllMeshes .AND. .NOT. iMesh % OutputActive ) THEN
+      CALL Info('ResultOutputSolver','Skipping mesh: '//TRIM(iMesh % Name), Level=7 )
       iMesh => iMesh % next
       CYCLE 
     END IF    
 
-    CALL Info('ResultOutputSolver','Working on mesh: '//TRIM(iMesh % Name), Level=7 )
-    WRITE(Message,'(A,I0)') 'Dimension of mesh: ',iMesh % MeshDim 
     CALL Info('ResultOutputSolver',Message) 
     IF( iMesh % MeshDim < 2 ) THEN
       CALL Info('ResultOutputSolver','Skipping meshes with too low dimension')

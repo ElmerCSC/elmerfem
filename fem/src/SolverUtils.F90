@@ -2565,18 +2565,18 @@ CONTAINS
              coeff = SUM( LocalNormal * NTT(:,1) ) + SUM( LocalT1*NTT(:,2)) + SUM(LocalT2*NTT(:,3))
              IF( SlaveNode(k) .AND. coeff < 2.5_dp ) THEN
                Found = .TRUE.
-               PRINT *,'Slave Normal:',i,j,k,Rotated,coeff
+               !PRINT *,'Slave Normal:',i,j,k,Rotated,coeff
              ELSE IF( .NOT. SlaveNode(k) .AND. coeff > -2.5_dp ) THEN
                Found = .TRUE.
-               PRINT *,'Master Normal:',i,j,k,Rotated,coeff
+               !PRINT *,'Master Normal:',i,j,k,Rotated,coeff
              ELSE
                Found = .FALSE.
              END IF
              IF( Found ) THEN
-               PRINT *,'Prod:',SUM( LocalNormal * NTT(:,1) ), SUM( LocalT1*NTT(:,2)), SUM(LocalT2*NTT(:,3))
-               PRINT *,'N:',LocalNormal,NTT(:,1)
-               PRINT *,'T1:',LocalT1,NTT(:,2)
-               PRINT *,'T2:',LocalT2,NTT(:,3)
+               !PRINT *,'Prod:',SUM( LocalNormal * NTT(:,1) ), SUM( LocalT1*NTT(:,2)), SUM(LocalT2*NTT(:,3))
+               !PRINT *,'N:',LocalNormal,NTT(:,1)
+               !PRINT *,'T1:',LocalT1,NTT(:,2)
+               !PRINT *,'T2:',LocalT2,NTT(:,3)
              END IF
            END DO
          END IF
@@ -13331,7 +13331,7 @@ CONTAINS
      TYPE(Solver_t) :: Solver
 
      INTEGER, POINTER :: Perm(:)
-     INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,row,col,col2,mcount,bcount
+     INTEGER :: i,j,j2,k,k2,dofs,maxperm,permsize,bc_ind,constraint_ind,row,col,col2,mcount,bcount
      TYPE(Matrix_t), POINTER :: Atmp,Btmp, Ctmp
      LOGICAL :: AllocationsDone, CreateSelf, ComplexMatrix, TransposePresent, Found, &
          SetDof, SomeSet, SomeSkip, SumProjectors, NewRow
@@ -13340,8 +13340,12 @@ CONTAINS
      TYPE(ValueList_t), POINTER :: BC
      TYPE(MortarBC_t), POINTER :: MortarBC
      REAL(KIND=dp) :: wsum, Scale
-     INTEGER :: rowoffset, arows, sumrow, EliminatedRows
+     INTEGER :: rowoffset, arows, sumrow, EliminatedRows, NeglectedRows
      CHARACTER(LEN=MAX_NAME_LEN) :: Str
+     LOGICAL :: AnyPriority
+     INTEGER :: Priority, PrevPriority
+     INTEGER, ALLOCATABLE :: BCOrdering(:), BCPriority(:)
+
 
      CALL Info('GenerateConstraintMatrix','Building constraint matrix',Level=12)
 
@@ -13419,24 +13423,53 @@ CONTAINS
        IF( .NOT. Found ) ComplexMatrix = ( MODULO( Dofs,2 ) == 0 )
      END IF
 
+     
+     AnyPriority = ListCheckPresentAnyBC( Model,'Projector Priority') 
+     IF( AnyPriority ) THEN
+       IF(.NOT. SumProjectors ) THEN
+         CALL Warn('GenerateConstraintMatrix','Priority has effect only in additive mode!')
+         AnyPriority = .FALSE.
+       ELSE
+         CALL Info('GenerateConstraintMatrix','Using priority for projector entries',Level=7)
+         ALLOCATE( BCPriority(Model % NumberOfBCs), BCOrdering( Model % NumberOfBCs) )
+         BCPriority = 0; BCOrdering = 0
+         DO bc_ind=1, Model % NumberOFBCs
+           Priority = ListGetInteger( Model % BCs(bc_ind) % Values,'Projector Priority',Found)
+           BCPriority(bc_ind) = -bc_ind + Priority * Model % NumberOfBCs 
+           BCOrdering(bc_ind) = bc_ind
+         END DO
+         CALL SortI( Model % NumberOfBCs, BCPriority, BCOrdering )
+       END IF
+     END IF
+     NeglectedRows = 0
+
 
 100  sumrow = 0
      k2 = 0
      rowoffset = 0
-     
+     Priority = -1
+     PrevPriority = -1
+    
      TransposePresent = .FALSE.
      Ctmp => Solver % Matrix % ConstraintMatrix
-     DO bc_ind=Model % NumberOFBCs+mcount,1,-1
+     DO constraint_ind=Model % NumberOFBCs+mcount,1,-1
        
        ! This is the default i.e. all components are applied mortar BCs
        ActiveComponents = .TRUE.
        
-       IF(bc_ind>Model % NumberOfBCs) THEN
+       IF(constraint_ind>Model % NumberOfBCs) THEN
          Atmp => Ctmp
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
          Ctmp => Ctmp % ConstraintMatrix
        ELSE
          IF(.NOT. Solver % MortarBCsChanged) EXIT
+         
+         IF( AnyPriority ) THEN
+           bc_ind = BCOrdering(constraint_ind)
+         ELSE
+           bc_ind = constraint_ind 
+         END IF
+
          MortarBC => Solver % MortarBCs(bc_ind) 
          Atmp => MortarBC % Projector
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
@@ -13446,6 +13479,8 @@ CONTAINS
          IF( .NOT. ASSOCIATED( Atmp % InvPerm ) ) THEN
            CALL Fatal('GenerateConstraintMatrix','InvPerm is required!')
          END IF
+
+         Priority = ListGetInteger( Model % BCs(bc_ind) % Values,'Projector Priority',Found)
 
          ! Enable that the user can for vector valued cases either set some 
          ! or skip some field components. 
@@ -13515,13 +13550,24 @@ CONTAINS
              NewRow = ( SumPerm(k) == 0 )
              IF( NewRow ) THEN
                sumrow = sumrow + 1                
-               SumPerm(k) = sumrow 
+               IF( Priority /= 0 ) THEN
+                 SumPerm(k) = -sumrow
+               ELSE
+                 SumPerm(k) = sumrow 
+               END IF
+             ELSE IF( Priority /= PrevPriority .AND. SumPerm(k) < 0 ) THEN
+               IF(.NOT. AllocationsDone ) THEN
+                 NeglectedRows = NeglectedRows + 1
+                 !PRINT *,'Neglecting:',bc_ind,k
+               END IF
+               CYCLE
              ELSE
                IF(.NOT. AllocationsDone ) THEN
                  EliminatedRows = EliminatedRows + 1
+                 !PRINT *,'Eliminating:',bc_ind,k
                END IF
              END IF
-             row = SumPerm(k)
+             row = ABS( SumPerm(k) )
            ELSE
              sumrow = sumrow + 1
              row = sumrow
@@ -13682,13 +13728,23 @@ CONTAINS
                NewRow = ( SumPerm(Dofs*(k-1)+j) == 0 )
                IF( NewRow ) THEN
                  sumrow = sumrow + 1                
-                 SumPerm(Dofs*(k-1)+j) = sumrow 
+                 IF( Priority /= 0 ) THEN
+                   ! Use negative sign to show that this has already been set by priority
+                   SumPerm(Dofs*(k-1)+j) = -sumrow 
+                 ELSE
+                   SumPerm(Dofs*(k-1)+j) = sumrow 
+                 END IF
+               ELSE IF( Priority /= PrevPriority .AND. SumPerm(Dofs*(k-1)+j) < 0 ) THEN
+                 IF(.NOT. AllocationsDone ) THEN
+                   NeglectedRows = NeglectedRows + 1
+                 END IF                 
+                 CYCLE
                ELSE
                  IF(.NOT. AllocationsDone ) THEN
                    EliminatedRows = EliminatedRows + 1
                  END IF
                END IF
-               row = SumPerm(Dofs*(k-1)+j)
+               row = ABS( SumPerm(Dofs*(k-1)+j) )
              ELSE
                sumrow = sumrow + 1
                row = sumrow
@@ -13842,6 +13898,8 @@ CONTAINS
        IF( .NOT. SumProjectors ) THEN
          rowoffset = rowoffset + Arows
        END IF
+
+       PrevPriority = Priority 
      END DO
 
      IF( k2 == 0 ) THEN
@@ -13879,6 +13937,7 @@ CONTAINS
          DO i=2,sumrow+1
            Btmp % Rows(i) = Btmp % Rows(i-1) + SumCount(i-1)
          END DO
+         SumPerm = 0
          DEALLOCATE( SumCount ) 
        END IF
 
@@ -13887,11 +13946,16 @@ CONTAINS
        GOTO 100
      END IF
 
-     ! Eliminate entre
+     ! Eliminate entries
      IF( EliminatedRows > 0 ) THEN
        CALL Info('GenerateConstraintMatrix','Number of eliminated rows: '&
            //TRIM(I2S(EliminatedRows)))
        CALL CRS_PackMatrix( Btmp ) 
+     END IF
+
+     IF( NeglectedRows > 0 ) THEN
+       CALL Info('GenerateConstraintMatrix','Number of neglected rows: '&
+           //TRIM(I2S(NeglectedRows)))
      END IF
 
      Solver % Matrix % ConstraintMatrix => Btmp

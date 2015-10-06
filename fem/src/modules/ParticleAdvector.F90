@@ -630,7 +630,6 @@ CONTAINS
         ResultVar => VariableGet( Mesh % Variables, TRIM(ResultName))
         IF(.NOT. ASSOCIATED(ResultVar)) CALL Fatal('ParticleAdvector','Problems in VariableAdd')
       END IF
-      
 
       ! Finally, set the values
       !---------------------------------------------------------      
@@ -691,7 +690,9 @@ CONTAINS
         ELSE IF( SEQL(VariableName, 'particle') ) THEN
           ParticleVar => ParticleVariableGet( Particles, VariableName )
           IF( ASSOCIATED( ParticleVar ) ) THEN
-            NewValues = ParticleVar % Values
+             !if ( SIZE(NewValues) /= SIZE(ParticleVar % Values) ) PRINT*,PARENV % MYPE, 'AAAAAAAAA*****BBBBB: ', &
+             !size(newvalues), size(particlevar % values), noparticles, particles % numberofparticles
+            NewValues = ParticleVar % Values(1:SIZE(NewValues))
           ELSE
             CALL Warn('ParticleAdvector','Field does not exist: '//TRIM(VariableName))
           END IF
@@ -735,6 +736,7 @@ CONTAINS
       ! different partitions to nodes. 
       !---------------------------------------------------------------------
       IF( Parallel ) THEN
+        NodeValues = 0._dp
         CALL ParticleAdvectParallel( Particles, NewValues, NodeValues, dofs )
       END IF
 
