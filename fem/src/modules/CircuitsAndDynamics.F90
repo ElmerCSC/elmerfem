@@ -382,8 +382,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          circ_eq_coeff = 2._dp * pi
         END IF
+        circ_eq_coeff = GetCircuitModelDepth()
         w = [0._dp, 0._dp, 1._dp]
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
@@ -501,9 +501,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          circ_eq_coeff = 2._dp * pi
-          grads_coeff = grads_coeff/(2._dp*pi*x)
+          grads_coeff = grads_coeff/x
         END IF
+        circ_eq_coeff = GetCircuitModelDepth()
+        grads_coeff = grads_coeff/circ_eq_coeff
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
@@ -623,9 +624,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          grads_coeff = grads_coeff/(2._dp*pi*x)
-          circ_eq_coeff = 2._dp * pi
+          grads_coeff = grads_coeff/x
         END IF
+        circ_eq_coeff = GetCircuitModelDepth()
+        grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(1,1,1:nn) * Basis(1:nn) )
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
@@ -1180,8 +1182,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          circ_eq_coeff = 2._dp * pi
         END IF
+        circ_eq_coeff = GetCircuitModelDepth()
         w = [0._dp, 0._dp, 1._dp]
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
@@ -1294,9 +1296,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          circ_eq_coeff = 2._dp * pi
-          grads_coeff = grads_coeff/(2._dp*pi*x)
+          grads_coeff = grads_coeff/x
         END IF
+        circ_eq_coeff = GetCircuitModelDepth()
+        grads_coeff = grads_coeff/circ_eq_coeff
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
@@ -1410,9 +1413,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:nn) * Nodes % x(1:nn) )
           detJ = detJ * x
-          grads_coeff = grads_coeff/(2._dp*pi*x)
-          circ_eq_coeff = 2._dp * pi
+          grads_coeff = grads_coeff/x
         END IF
+        circ_eq_coeff = GetCircuitModelDepth()
+        grads_coeff = grads_coeff/circ_eq_coeff
         C(1,1) = SUM( Tcoef(1,1,1:nn) * Basis(1:nn) )
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)

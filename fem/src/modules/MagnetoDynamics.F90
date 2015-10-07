@@ -5395,6 +5395,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(ValueList_t), POINTER :: CompParams
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
+   LOGICAL :: CSymmetry
+   REAL(KIND=dp) :: xcoord, grads_coeff
 !-------------------------------------------------------------------------------------------
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
@@ -5721,7 +5723,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp 
 
      dim = CoordinateSystemDimension()
-
+     CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric )
+     
      IF (CoilBody) THEN
        
        CALL GetLocalSolution(Wbase,'W')
@@ -5844,6 +5848,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            BodyForceCurrDens_ip(l) = SUM(BodyForceCurrDens(l,1:n)*Basis(1:n))
          END DO
        END IF
+       
+       grads_coeff = 1._dp/GetCircuitModelDepth()
+       IF( CSymmetry ) THEN
+         xcoord = SUM( Basis(1:np) * Nodes % x(1:np) )
+         grads_coeff = grads_coeff/xcoord
+       END IF
 
        IF ( Transient ) THEN
          IF (CoilType /= 'stranded') THEN 
@@ -5872,7 +5882,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            localV(1) = localV(1) + LagrangeVar % Values(VvarId)
            SELECT CASE(dim)
            CASE(2)
-             E(1,:) = E(1,:)-localV(1) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+             E(1,:) = E(1,:)-localV(1) * grads_coeff
            CASE(3)
              E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
            END SELECT
@@ -5883,7 +5893,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
            SELECT CASE(dim)
            CASE(2)
-             E(1,:) = E(1,:)-localV(1) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+             E(1,:) = E(1,:)-localV(1) * grads_coeff
            CASE(3)
              E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
            END SELECT
@@ -5930,8 +5940,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                 localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
                 SELECT CASE(dim)
                 CASE(2)
-                  E(1,:) = E(1,:)-localV(1) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
-                  E(2,:) = E(2,:)-localV(2) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+                  E(1,:) = E(1,:)-localV(1) * grads_coeff
+                  E(2,:) = E(2,:)-localV(2) * grads_coeff
                 CASE(3)
                   E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
                   E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
@@ -5946,8 +5956,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                 END DO
                 SELECT CASE(dim)
                 CASE(2)
-                  E(1,:) = E(1,:)-localV(1) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
-                  E(2,:) = E(2,:)-localV(2) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+                  E(1,:) = E(1,:)-localV(1) * grads_coeff
+                  E(2,:) = E(2,:)-localV(2) * grads_coeff
                 CASE(3)
                   E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
                   E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))

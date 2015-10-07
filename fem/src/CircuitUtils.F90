@@ -3,6 +3,34 @@ MODULE CircuitUtils
 CONTAINS
 
 !------------------------------------------------------------------------------
+  FUNCTION GetCircuitModelDepth() RESULT (Depth)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    
+    TYPE(Valuelist_t), POINTER :: simulation
+    REAL(KIND=dp) :: depth
+    LOGICAL :: Found, CSymmetry
+
+    CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric )
+
+    simulation => GetSimulation()
+    IF (.NOT. ASSOCIATED(simulation)) CALL Fatal ('GetCircuitModelDepth', 'Simulation not found!')
+   
+    depth = GetConstReal(simulation, 'Circuit Model Depth', Found)
+    
+    IF (.NOT. Found) THEN
+      depth = 1._dp
+      IF (CSymmetry) depth = 2._dp * pi
+    END IF
+       
+!------------------------------------------------------------------------------
+  END FUNCTION GetCircuitModelDepth
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
   FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
 !------------------------------------------------------------------------------
     USE DefUtils
