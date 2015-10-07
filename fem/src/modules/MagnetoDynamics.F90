@@ -5882,7 +5882,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            localV(1) = localV(1) + LagrangeVar % Values(VvarId)
            SELECT CASE(dim)
            CASE(2)
-             E(1,:) = E(1,:)-localV(1) * grads_coeff
+             E(1,3) = E(1,3)-localV(1) * grads_coeff
            CASE(3)
              E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
            END SELECT
@@ -5893,7 +5893,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
            SELECT CASE(dim)
            CASE(2)
-             E(1,:) = E(1,:)-localV(1) * grads_coeff
+             E(1,3) = E(1,3)-localV(1) * grads_coeff
            CASE(3)
              E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
            END SELECT
@@ -5940,8 +5940,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                 localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
                 SELECT CASE(dim)
                 CASE(2)
-                  E(1,:) = E(1,:)-localV(1) * grads_coeff
-                  E(2,:) = E(2,:)-localV(2) * grads_coeff
+                  E(1,3) = E(1,3)-localV(1) * grads_coeff
+                  E(2,3) = E(2,3)-localV(2) * grads_coeff
                 CASE(3)
                   E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
                   E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
@@ -5956,8 +5956,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                 END DO
                 SELECT CASE(dim)
                 CASE(2)
-                  E(1,:) = E(1,:)-localV(1) * grads_coeff
-                  E(2,:) = E(2,:)-localV(2) * grads_coeff
+                  E(1,3) = E(1,3)-localV(1) * grads_coeff
+                  E(2,3) = E(2,3)-localV(2) * grads_coeff
                 CASE(3)
                   E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
                   E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
