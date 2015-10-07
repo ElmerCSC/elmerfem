@@ -5861,18 +5861,32 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          localV=0._dp
          SELECT CASE (CoilType)
          CASE ('stranded')
-           wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-           wvec = wvec/SQRT(SUM(wvec**2._dp))
-           E(1,:) = E(1,:)+LagrangeVar % Values(IvarId) * N_j * wvec / REAL(CMat_ip(1,1))
+           SELECT CASE(dim)
+           CASE(2)
+             wvec = [0._dp, 0._dp, 1._dp]
+           CASE(3)
+             wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             wvec = wvec/SQRT(SUM(wvec**2._dp))
+           END SELECT
          CASE ('massive')
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,:) = E(1,:)-localV(1) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+           CASE(3)
              E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           END SELECT
          CASE ('foil winding')
            localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
            DO k = 1, VvarDofs-1
              localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
            END DO
-           E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,:) = E(1,:)-localV(1) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+           CASE(3)
+             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           END SELECT
          CASE DEFAULT
            IF(dim==3) THEN
              E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
@@ -5901,16 +5915,27 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              localV=0._dp
              SELECT CASE (CoilType)
              CASE ('stranded')
-                wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                wvec = wvec/SQRT(SUM(wvec**2._dp))
+               SELECT CASE(dim)
+               CASE(2)
+                 wvec = [0._dp, 0._dp, 1._dp]
+               CASE(3)
+                 wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                 wvec = wvec/SQRT(SUM(wvec**2._dp))
+               END SELECT
                 imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
                 E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(1,1))
                 E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(1,1))
              CASE ('massive')
                 localV(1) = localV(1) + LagrangeVar % Values(VvarId)
                 localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
-                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                SELECT CASE(dim)
+                CASE(2)
+                  E(1,:) = E(1,:)-localV(1) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+                  E(2,:) = E(2,:)-localV(2) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+                CASE(3)
+                  E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                  E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                END SELECT
              CASE ('foil winding')
                 localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
                 DO k = 1, VvarDofs-1
@@ -5919,8 +5944,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                   localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
                   localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
                 END DO
-                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                SELECT CASE(dim)
+                CASE(2)
+                  E(1,:) = E(1,:)-localV(1) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+                  E(2,:) = E(2,:)-localV(2) / SUM( 2._dp*pi*Basis(1:np) * Nodes % x(1:np) )
+                CASE(3)
+                  E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                  E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                END SELECT
              CASE DEFAULT
                 ! -Grad(V)
                 IF(dim==3) THEN
@@ -6203,7 +6234,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        Solver % Matrix % RHS => Fsave
      END IF
 
-
      IF(ElementalFields) THEN
        dofs = 0
        CALL LUdecomp(MASS,n,pivot)
@@ -6220,7 +6250,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
      END IF
-
    END DO
 
 

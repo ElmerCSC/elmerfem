@@ -1076,7 +1076,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         Element => GetActiveElement(q)
         IF (ElAssocToComp(Element, Comp)) THEN
           CompParams => GetComponentParams( Element )
-          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('Circuits_apply', 'Component parameters not found')
+          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings',&
+                                                        'Component parameters not found')
 
           CoilType = GetString(CompParams, 'Coil Type', Found)
           IF (.NOT. Found) CoilType = ''
@@ -1094,7 +1095,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
             IF (.NOT. HasSupport(Element,nn)) CYCLE
             CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd)
           CASE DEFAULT
-            CALL Fatal ('Circuits_apply', 'Non existent Coil Type Chosen!')
+            CALL Fatal ('AddComponentEquationsAndCouplings', 'Non existent Coil Type Chosen!')
           END SELECT
         END IF
       END DO
