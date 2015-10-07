@@ -1737,11 +1737,11 @@ CONTAINS
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
         
         Weight = IntegStuff % s(t) * detJ
-        grads_coeff = 1._dp
+        grads_coeff = 1._dp/GetCircuitModelDepth()
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:n) * Nodes % x(1:n) )
           Weight = Weight * x
-          grads_coeff = grads_coeff/(2._dp*pi*x)
+          grads_coeff = grads_coeff/x
         END IF
 
         IF ( .NOT. ConstantBulkMatrixInUse ) THEN
