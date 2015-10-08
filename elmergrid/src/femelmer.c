@@ -662,7 +662,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   }
   
   if( nosides > i ) {
-    printf("LoadElmerInput: removed %d boundary element with invalid parent definition!\n");
+    printf("LoadElmerInput: removed %d boundary element with invalid parent definition!\n",nosides-i);
   }
   bound->nosides = i;
   fclose(in); 
@@ -5190,10 +5190,18 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       if(reorder) ind = order[i];
       neededtwice[k] += 1; 
 
-      fprintf(outfiles[nofile],"%d %d %d",ind,neededtimes2[i],ownerpart[i]);      
-      for(m=1;m<=neededtimes2[i];m++) 
-	if(data->partitiontable[m][i] != ownerpart[i]) fprintf(outfiles[nofile]," %d",data->partitiontable[m][i]);
-      fprintf(outfiles[nofile],"\n");
+      if( halomode == 2 ) {
+	fprintf(outfiles[nofile],"%d %d %d",ind,MAX(1,neededtimes[i]),ownerpart[i]);      
+	for(m=1;m<=neededtimes[i];m++) 
+	  if(data->partitiontable[m][i] != ownerpart[i]) fprintf(outfiles[nofile]," %d",data->partitiontable[m][i]);
+	fprintf(outfiles[nofile],"\n");
+      }
+      else {
+	fprintf(outfiles[nofile],"%d %d %d",ind,neededtimes2[i],ownerpart[i]);      
+	for(m=1;m<=neededtimes2[i];m++) 
+	  if(data->partitiontable[m][i] != ownerpart[i]) fprintf(outfiles[nofile]," %d",data->partitiontable[m][i]);
+	fprintf(outfiles[nofile],"\n");
+      }
     }
   }
 
