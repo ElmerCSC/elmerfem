@@ -5815,12 +5815,28 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           END IF
        END IF
 
+
+       grads_coeff = 1._dp/GetCircuitModelDepth()
+       IF( CSymmetry ) THEN
+         xcoord = SUM( Basis(1:np) * Nodes % x(1:np) )
+         grads_coeff = grads_coeff/xcoord
+       END IF
+
        DO k=1,vDOFs
          SELECT CASE(dim)
          CASE(2)
-            B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
-            B(k,2) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) )
-            B(k,3) = 0._dp
+            ! This has been done with the same sign convention as in MagnetoDynamics2D:
+            ! -------------------------------------------------------------------------
+            IF ( CSymmetry ) THEN
+              B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
+              B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
+                       + SUM( SOL(1,1:nd) * Basis(1:nd) ) / xcoord
+              B(k,3) = 0._dp
+            ELSE
+              B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
+              B(k,2) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) )
+              B(k,3) = 0._dp
+            END IF
          CASE(3)
             B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
          END SELECT
@@ -5849,12 +5865,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END IF
        
-       grads_coeff = 1._dp/GetCircuitModelDepth()
-       IF( CSymmetry ) THEN
-         xcoord = SUM( Basis(1:np) * Nodes % x(1:np) )
-         grads_coeff = grads_coeff/xcoord
-       END IF
-
        IF ( Transient ) THEN
          IF (CoilType /= 'stranded') THEN 
            SELECT CASE(dim)
