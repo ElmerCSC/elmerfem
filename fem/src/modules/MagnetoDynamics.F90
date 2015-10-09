@@ -1641,13 +1641,13 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n)
+                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), lorentz_velo(3,n)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), FixJPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond
 
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody, IsRotating
+    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody, HasVelocity
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -1677,7 +1677,11 @@ CONTAINS
       FixJPot(1:n) = FixJVar % Values(FixJVar % Perm(Element % NodeIndexes))
     END IF
 
-    IF(ASSOCIATED(BodyForce)) CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', IsRotating)
+    IF(ASSOCIATED(BodyForce)) THEN
+      CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', Found)
+      CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasVelocity)
+      HasVelocity = Found .or. HasVelocity
+    END IF
     velo = 0._dp
 
     CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
@@ -1736,13 +1740,17 @@ CONTAINS
 
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
-       IF(IsRotating) THEN
+       IF(HasVelocity) THEN
          DO i=1,n
            velo(1:3) = velo(1:3) + CrossProduct(omega_velo(1:3,i), [ &
              basis(i) * Nodes % x(i), &
              basis(i) * Nodes % y(i), &
              basis(i) * Nodes % z(i)])
          END DO
+         velo(1:3) = velo(1:3) + [ &
+           basis(1:n)*lorentz_velo(1,1:n), &
+           basis(1:n)*lorentz_velo(2,1:n), &
+           basis(1:n)*lorentz_velo(3,1:n)]
        END IF
 
        ! Compute the conductivity tensor
@@ -5276,7 +5284,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
-   REAL(KIND=dp) :: ComponentLoss(2,2), omega_velo(3,35), rot_velo(3)
+   REAL(KIND=dp) :: ComponentLoss(2,2), omega_velo(3,35), rot_velo(3), lorentz_velo(3,35)
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
    COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3), BodyForceCurrDens(3,35), &
@@ -5304,7 +5312,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
-              ItoJCoeffFound, ImposeBodyForceCurrent, IsRotating
+              ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -5705,7 +5713,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL GetReluctivity(Material,R,n)
      END IF
 
-     IF(ASSOCIATED(BodyForce)) CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', IsRotating)
+    IF(ASSOCIATED(BodyForce)) THEN
+      CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', Found)
+      CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasVelocity)
+      HasVelocity = Found .or. HasVelocity
+    END IF
      rot_velo = 0._dp
 
 
@@ -5757,13 +5769,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
-       IF(IsRotating) THEN
+       IF(HasVelocity) THEN
          DO k=1,n
            rot_velo(1:3) = rot_velo(1:3) + CrossProduct(omega_velo(1:3,k), [ &
              basis(k) * Nodes % x(k), &
              basis(k) * Nodes % y(k), &
              basis(k) * Nodes % z(k)])
          END DO
+         !rot_velo(1:3) = rot_velo(1:3) + [ &
+           !basis(1:n)*lorentz_velo(1,1:n), &
+           !basis(1:n)*lorentz_velo(2,1:n), &
+           !basis(1:n)*lorentz_velo(3,1:n)]
        END IF
        !-------------------------------
        ! The conductivity as a tensor
@@ -6036,7 +6052,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            IF (vDOFS == 1) THEN
              Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
                  TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
-               IF (IsRotating) THEN
+               IF (HasVelocity) THEN
                  Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:)))*CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
                END IF
            ELSE
