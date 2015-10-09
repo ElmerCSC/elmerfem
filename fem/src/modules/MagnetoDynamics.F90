@@ -1748,9 +1748,9 @@ CONTAINS
              basis(i) * Nodes % z(i)])
          END DO
          velo(1:3) = velo(1:3) + [ &
-           basis(1:n)*lorentz_velo(1,1:n), &
-           basis(1:n)*lorentz_velo(2,1:n), &
-           basis(1:n)*lorentz_velo(3,1:n)]
+           sum(basis(1:n)*lorentz_velo(1,1:n)), &
+           sum(basis(1:n)*lorentz_velo(2,1:n)), &
+           sum(basis(1:n)*lorentz_velo(3,1:n))]
        END IF
 
        ! Compute the conductivity tensor
@@ -5776,10 +5776,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              basis(k) * Nodes % y(k), &
              basis(k) * Nodes % z(k)])
          END DO
-         !rot_velo(1:3) = rot_velo(1:3) + [ &
-           !basis(1:n)*lorentz_velo(1,1:n), &
-           !basis(1:n)*lorentz_velo(2,1:n), &
-           !basis(1:n)*lorentz_velo(3,1:n)]
+         rot_velo(1:3) = rot_velo(1:3) + [ &
+           sum(basis(1:n)*lorentz_velo(1,1:n)), &
+           sum(basis(1:n)*lorentz_velo(2,1:n)), &
+           sum(basis(1:n)*lorentz_velo(3,1:n))]
        END IF
        !-------------------------------
        ! The conductivity as a tensor
