@@ -6024,10 +6024,10 @@ CONTAINS
          DO j=1,n
            k = Perm(Indexes(j))
            
-           IF ( DoneLoad(k) ) CYCLE
-           DoneLoad(k) = .TRUE.
-           
            IF ( k > 0 ) THEN
+             IF ( DoneLoad(k) ) CYCLE
+             DoneLoad(k) = .TRUE.
+
              IF ( DOF>0 ) THEN
                k = NDOFs * (k-1) + DOF
                IF( ParEnv % Pes > 1 ) THEN
