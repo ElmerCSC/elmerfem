@@ -507,7 +507,7 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTEGER :: dim
        TYPE(Nodes_t) :: ElementNodes
-       INTEGER :: nBulk, i, j, k, l, n, np, bf_id, QTreeFails, TotFails
+       INTEGER :: nBulk, i, j, k, l, n, np, bf_id, QTreeFails, TotFails, FoundCnt
        REAL(KIND=dp), DIMENSION(3) :: Point
        INTEGER, POINTER :: Indexes(:)
        REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
@@ -521,7 +521,7 @@ CONTAINS
                           RotWBasis(:,:), WBasis(:,:)
        REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum, F(3,3), G(3,3)
        
-       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel
+       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel, TryLinear
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
        INTEGER, POINTER   :: Rows(:), Cols(:), Diag(:)
@@ -637,6 +637,10 @@ CONTAINS
          PiolaT = ListGetLogical(CurrentModel % Solver % Values,'Use Piola Transform',Found)
        END IF
 
+       TryLinear = ListGetLogical( CurrentModel % Simulation, 'Try Linear Search If Qtree Fails', Found)
+       IF(.NOT.Found) TryLinear = .TRUE.
+
+       FoundCnt = 0
 !------------------------------------------------------------------------------
 ! Loop over all nodes in the new mesh
 !------------------------------------------------------------------------------
@@ -699,8 +703,7 @@ CONTAINS
            END IF
          END IF
 
-         IF( .NOT. TryQTree .OR. &
-             (.NOT. Found .AND. .NOT. Parallel ) ) THEN
+         IF( .NOT. TryQTree .OR. (.NOT. Found .AND. .NOT. Parallel .AND. TryLinear ) ) THEN
            !------------------------------------------------------------------------------
            ! Go through all old mesh bulk elements
            !------------------------------------------------------------------------------
@@ -739,6 +742,7 @@ CONTAINS
 !         Found Element in OldModel:
 !         ---------------------------------
           IF ( PRESENT(Projector) ) THEN
+             FoundCnt = FoundCnt + 1
              ElemPtrs(i) % Element => Element
              LocalU(i) = LocalCoordinates(1)
              LocalV(i) = LocalCoordinates(2)
