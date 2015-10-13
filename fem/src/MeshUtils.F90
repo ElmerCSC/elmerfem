@@ -354,7 +354,7 @@ END SUBROUTINE GetMaxDefs
         AllocDone = .FALSE.
       END IF
 
-      ! Node is a halo node if it is not needed by any prooper element
+      ! Node is a halo node if it is not needed by any proper element
       HaloNode = .TRUE.
       DO t = 1, Mesh % NumberOfBulkElements     
         Element => Mesh % Elements(t)
@@ -692,7 +692,7 @@ END SUBROUTINE GetMaxDefs
      Element => Mesh % Elements(t)
 
      ! No need to treat halo elements
-     IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
+     !IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
 
      Indexes => Element % NodeIndexes
 
@@ -715,6 +715,7 @@ END SUBROUTINE GetMaxDefs
 
    ! Set discontinuous nodes only if there is a real moving node associted with it
    ! Otherwise we would create a zero to the permutation vector. 
+   ! If there is just a staying node then no need to create discontinuity at this node.
    DiscontNode = DiscontNode .AND. MovingNode 
 
    ! Create permutation numbering for the discontinuous nodes   
@@ -739,7 +740,7 @@ END SUBROUTINE GetMaxDefs
      Element => Mesh % Elements(t)
 
      ! No need to treat halo elements
-     IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
+     !IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
      Indexes => Element % NodeIndexes
 
      IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
@@ -853,6 +854,17 @@ END SUBROUTINE GetMaxDefs
    m = COUNT( DiscontNode .AND. .NOT. StayingNode )
    IF( m > 0 ) THEN
      PRINT *,'Number of discont nodes not staying: ',ParEnv % MyPe, m
+     DO i=1,SIZE(DisContNode)
+       IF( DiscontNode(i) .AND. .NOT. StayingNode(i) ) THEN
+         IF( ParEnv % PEs == 1 ) THEN
+           PRINT *,'Node:',ParEnv % MyPe,i
+         ELSE
+           PRINT *,'Node:',ParEnv % MyPe,i,Mesh % ParallelInfo % GlobalDofs(i), &
+               Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+         END IF
+         PRINT *,'Coord:',ParEnv % MyPe, Mesh % Nodes % x(i), Mesh % Nodes % y(i)
+       END IF
+     END DO
    END IF
 
    !DEALLOCATE( MovingNode, StayingNode )
@@ -7572,6 +7584,8 @@ END SUBROUTINE GetMaxDefs
         ELSE
           Coeff = 1.0_dp * ActSides / PosSides 
         END IF
+        IF( ABS( Coeff ) < TINY( 1.0_dp ) ) CYCLE
+
         ParentFound = ParentFound + 1
 
         ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
@@ -7615,10 +7629,10 @@ END SUBROUTINE GetMaxDefs
               IF( HaloNode( Indexes(p) ) ) CYCLE
             END IF
 
+            val = weight * Basis(p)
+
             ! Only set for the nodes are are really used
             InvPerm(indp) = Indexes(p)
-
-            val = weight * Basis(p)
 
             IF( SetDiag ) THEN
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &

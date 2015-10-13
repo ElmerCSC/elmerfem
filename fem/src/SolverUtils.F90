@@ -11631,7 +11631,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
     DO i=1, RestMatrix % NumberOfRows
       m = RestMatrix % InvPerm(i)
 
-      IF( m == 0 ) CYCLE
+      IF( m == 0 ) THEN
+        PRINT *,'InvPerm is zero:',ParEnv % MyPe, i
+        CYCLE
+      END IF
+
       m = MOD(m-1,n) + 1
       SlavePerm(m)  = i
       SlaveIperm(i) = m
@@ -11641,6 +11645,10 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
         IF(k>n) THEN
            DiagDiag(i) = Tvals(j)
            CYCLE
+        END IF
+
+        IF( ABS( TVals(j) ) < TINY( 1.0_dp ) ) THEN
+          PRINT *,'Tvals too small',ParEnv % MyPe,j,i,k,RestMatrix % InvPerm(i),Tvals(j)
         END IF
 
         IF(k == RestMatrix % InvPerm(i)) THEN
@@ -11797,6 +11805,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
     DO m=1,Tmat % NumberOfRows
       i = UseIPerm(m)
+      IF( ABS( UseDiag(m) ) < TINY( 1.0_dp ) ) THEN
+        PRINT *,'UseDiag too small:',m,ParEnv % MyPe,UseDiag(m)
+        CYCLE
+      END IF
+
       DO j=TMat % Rows(m), TMat % Rows(m+1)-1
         k = TMat % Cols(j)
         IF(k<=n) THEN
@@ -11820,6 +11833,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             scl = -2*Tvals(j) / UseDiag(m)
           END IF
         END IF
+
         DO l=StiffMatrix % Rows(i+1)-1, StiffMatrix % Rows(i),-1
           CALL List_AddToMatrixElement( Lmat, k, &
               StiffMatrix % Cols(l), scl * StiffMatrix % Values(l) )
@@ -11875,6 +11889,11 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
             IF(j==0) THEN
               CYCLE
             END IF
+            IF( ABS( SlaveDiag(j) ) < TINY( 1.0_dp ) ) THEN
+              PRINT *,'SlaveDiag too small:',j,ParEnv % MyPe,SlaveDiag(j)
+              CYCLE
+            END IF
+
             scl = -CollectionMatrix % Values(m) / SlaveDiag(j)
             CollectionMatrix % Values(m) = 0._dp
 
