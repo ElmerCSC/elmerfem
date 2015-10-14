@@ -1159,6 +1159,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     IF (dim == 3) THEN
       CALL GetLocalSolution(Wbase,'W')
       ncdofs=nd-nn
+      CALL GetLocalSolution(Wbase,'CoilPot')
     END IF
 
     VvarId = Comp % vvar % ValueId + nm
@@ -1188,6 +1189,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
+        !w = w/SQRT(SUM(w**2._dp))
       END SELECT
 
       localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
@@ -1251,6 +1253,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3)
     INTEGER :: ncdofs,q
+    REAL(KIND=dp) :: ModelDepth
 
     SAVE CSymmetry, dim
 
@@ -1298,8 +1301,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           detJ = detJ * x
           grads_coeff = grads_coeff/x
         END IF
-        circ_eq_coeff = GetCircuitModelDepth()
-        grads_coeff = grads_coeff/circ_eq_coeff
+        ModelDepth = GetCircuitModelDepth()
+        circ_eq_coeff = ModelDepth
+        grads_coeff = grads_coeff/ModelDepth
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
@@ -1325,7 +1329,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
                REAL(cmplx_value), AIMAG(cmplx_value))
 
-        IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*basis(j)
+        IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*basis(j)*grads_coeff
         IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
         CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
                 REAL(cmplx_value), AIMAG(cmplx_value))
