@@ -529,7 +529,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), tscl * value)
         CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
 
-        IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)
+        IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff
         IF(dim==3) value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
         CALL AddToMatrixElement(CM, PS(indexes(q)), vvarId, value)
       END DO
