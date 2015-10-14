@@ -2,10 +2,35 @@ MACRO(ADD_ELMER_LABEL test_name label_string)
   SET_PROPERTY(TEST ${test_name} APPEND PROPERTY LABELS ${label_string})
 ENDMACRO()
 
+
 MACRO(ADD_ELMER_TEST test_name)
-  ADD_TEST(NAME ${test_name}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMAND ${CMAKE_COMMAND}
+  # Check the number of input arguments
+  IF(${ARGC} GREATER 1 AND WITH_MPI) # This is a parallel test
+    # Construct a list with test names and number of tasks,
+    # note the suffix
+    FOREACH(n ${ARGN})
+      IF(${n} GREATER ${MPI_TEST_MAXPROC} OR ${n} LESS ${MPI_TEST_MINPROC})
+        MESSAGE(STATUS "Skipping test ${test_name} with ${n} procs")
+      ELSE()
+        LIST(APPEND test_list "${test_name}_${n}")
+        LIST(APPEND tasks_list "${n}")
+      ENDIF()
+    ENDFOREACH()
+  ELSE()
+    # Serial or single task test
+    SET(test_list "${test_name}")
+    SET(tasks_list 1)
+  ENDIF()
+
+  # Loop over the two lists, which is cumbersome in CMake
+  LIST(LENGTH test_list nt)
+  MATH(EXPR ntests "${nt} - 1")
+  FOREACH(n RANGE ${ntests})
+    LIST(GET test_list ${n} this_test_name)
+    LIST(GET tasks_list ${n} this_test_tasks)
+    ADD_TEST(NAME ${this_test_name}
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      COMMAND ${CMAKE_COMMAND}
       -DELMERGRID_BIN=${ELMERGRID_BIN}
       -DELMERSOLVER_BIN=${ELMERSOLVER_BIN}
       -DFINDNORM_BIN=${FINDNORM_BIN}
@@ -19,8 +44,10 @@ MACRO(ADD_ELMER_TEST test_name)
       -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
       -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
       -DWITH_MPI=${WITH_MPI}
+      -DMPIEXEC_NTASKS=${this_test_tasks}
       -P ${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
+  ENDFOREACH()
 ENDMACRO()
 
 
@@ -61,9 +88,9 @@ MACRO(RUN_ELMER_TEST)
   ENDIF(WIN32)
 
   IF(WITH_MPI)
-    EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
-      OUTPUT_FILE "test-stdout.log"
-      ERROR_FILE "test-stderr.log"
+    EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
+      OUTPUT_FILE "test-stdout_${MPIEXEC_NTASKS}.log"
+      ERROR_FILE "test-stderr_${MPIEXEC_NTASKS}.log"
       OUTPUT_VARIABLE TESTOUTPUT)
   ELSE()      
     EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
