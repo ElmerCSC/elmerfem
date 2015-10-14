@@ -64,7 +64,7 @@ Solver 3
 End
 
 Solver 4
-   Exec Solver = After timestep
+   Exec Solver = Never
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
    Output File Name = 1381-results
@@ -171,7 +171,7 @@ Boundary Condition 3
    Infinity BC = Logical True
 End
 
-Solver 3 :: Reference Norm = Real 5.225829E-03
+Solver 3 :: Reference Norm = Real 1.858123E-05
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 

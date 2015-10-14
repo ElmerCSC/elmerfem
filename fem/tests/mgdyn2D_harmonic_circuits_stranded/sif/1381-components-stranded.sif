@@ -10,7 +10,7 @@ Simulation 1
    Max Output Level = 5
    Coordinate System = Axi symmetric
    Simulation Type = Steady
-   Steady State Max Iterations = 2
+   Steady State Max Iterations = 1
    Angular Frequency = 314.159265359
 End
 
@@ -72,7 +72,7 @@ Solver 4
 End
 
 Solver 5
-   Exec Solver = After timestep
+   Exec Solver = Never
    Equation = "ResultOutput"
    Procedure = "ResultOutputSolve" "ResultOutputSolver"
    Output File Name = 1381-results
