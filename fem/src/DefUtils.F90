@@ -3826,7 +3826,6 @@ CONTAINS
        x => Solver % Variable
      END IF
 
-
      ! Create soft limiters to be later applied by the Dirichlet conditions
      ! This is done only once for each solver, hence the complex logic. 
      !---------------------------------------------------------------------
@@ -4296,6 +4295,16 @@ CONTAINS
         END DO
         CurrentModel % CurrentElement => SaveElement
      END DO
+
+     ! Add the possible constraint modes structures
+     !----------------------------------------------------------
+     IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
+       ! Prepare for retrieving the linear system at a later point of time with the attachment DOF rows 
+       ! left as unmodified:
+       !-------------------------------------------------------------------------------------------
+       CALL CopyBulkMatrix(A, BulkMass = .TRUE.)       
+       CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
+     END IF
 
      IF (ScaleSystem) THEN
        CALL BackScaleLinearSystem(Solver,A,b)

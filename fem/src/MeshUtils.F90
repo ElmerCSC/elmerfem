@@ -354,7 +354,7 @@ END SUBROUTINE GetMaxDefs
         AllocDone = .FALSE.
       END IF
 
-      ! Node is a halo node if it is not needed by any prooper element
+      ! Node is a halo node if it is not needed by any proper element
       HaloNode = .TRUE.
       DO t = 1, Mesh % NumberOfBulkElements     
         Element => Mesh % Elements(t)
@@ -379,6 +379,7 @@ END SUBROUTINE GetMaxDefs
   END SUBROUTINE MarkHaloNodes
 
  
+
 !> Create a discontinuous mesh over requested boundaries.
 !> The nodes are duplicated in order to facilitate the discontinuity.
 !> The duplicate nodes are not created by default if the connectivity 
@@ -691,7 +692,7 @@ END SUBROUTINE GetMaxDefs
      Element => Mesh % Elements(t)
 
      ! No need to treat halo elements
-     IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
+     !IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
 
      Indexes => Element % NodeIndexes
 
@@ -714,6 +715,7 @@ END SUBROUTINE GetMaxDefs
 
    ! Set discontinuous nodes only if there is a real moving node associted with it
    ! Otherwise we would create a zero to the permutation vector. 
+   ! If there is just a staying node then no need to create discontinuity at this node.
    DiscontNode = DiscontNode .AND. MovingNode 
 
    ! Create permutation numbering for the discontinuous nodes   
@@ -738,7 +740,7 @@ END SUBROUTINE GetMaxDefs
      Element => Mesh % Elements(t)
 
      ! No need to treat halo elements
-     IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
+     !IF( CheckForHalo .AND. Element % PartIndex /= ParEnv % MyPe ) CYCLE
      Indexes => Element % NodeIndexes
 
      IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
@@ -757,15 +759,29 @@ END SUBROUTINE GetMaxDefs
    ! or the majority opinion if this is conflicting.
    DO t=1, NoBoundElems
 
-     IF( DisContElem(t) ) CYCLE
-
      Element => Mesh % Elements(NoBulkElems + t)
+
+     IF( DisContElem(t) ) THEN
+       LeftElem => Element % BoundaryInfo % Left
+       RightElem => Element % BoundaryInfo % Right
+
+       IF( ASSOCIATED( LeftElem ) ) THEN
+         Moving = ANY( TargetBodies == LeftElem % BodyId ) 
+       ELSE
+         Moving = .NOT. ANY( TargetBodies == RightElem % BodyId )
+       END IF
+       IF( Moving ) THEN
+         Element % BoundaryInfo % Left => RightElem
+         Element % BoundaryInfo % Right => LeftElem 
+       END IF
+       CYCLE
+     END IF
+
      Indexes => Element % NodeIndexes
 
      IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
 
      ElemFamily = Element % TYPE % ElementCode / 100 
-
      LeftElem => Element % BoundaryInfo % Left
      RightElem => Element % BoundaryInfo % Right
 
@@ -777,6 +793,11 @@ END SUBROUTINE GetMaxDefs
        IF( Moving .NEQV. Moving2) THEN
          CALL Warn('CreateDiscontMesh','Conflicting moving information')
          Set = .FALSE.
+       ELSE
+         IF( Moving ) THEN
+           Element % BoundaryInfo % Left => RightElem
+           Element % BoundaryInfo % Right => LeftElem 
+         END IF
        END IF
      ELSE IF( ASSOCIATED( LeftElem ) ) THEN
        Moving = ANY( LeftElem % NodeIndexes > NoNodes ) 
@@ -833,6 +854,17 @@ END SUBROUTINE GetMaxDefs
    m = COUNT( DiscontNode .AND. .NOT. StayingNode )
    IF( m > 0 ) THEN
      PRINT *,'Number of discont nodes not staying: ',ParEnv % MyPe, m
+     DO i=1,SIZE(DisContNode)
+       IF( DiscontNode(i) .AND. .NOT. StayingNode(i) ) THEN
+         IF( ParEnv % PEs == 1 ) THEN
+           PRINT *,'Node:',ParEnv % MyPe,i
+         ELSE
+           PRINT *,'Node:',ParEnv % MyPe,i,Mesh % ParallelInfo % GlobalDofs(i), &
+               Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+         END IF
+         PRINT *,'Coord:',ParEnv % MyPe, Mesh % Nodes % x(i), Mesh % Nodes % y(i)
+       END IF
+     END DO
    END IF
 
    !DEALLOCATE( MovingNode, StayingNode )
@@ -1183,6 +1215,7 @@ END SUBROUTINE GetMaxDefs
    INTEGER, POINTER :: NodeTags(:), ElementTags(:), LocalPerm(:)
    INTEGER :: MinNodeTag = 0, MaxNodeTag = 0, istat
    LOGICAL :: ElementPermutation=.FALSE., NodePermutation=.FALSE., Parallel
+
 
 
    SAVE PrevStep, BaseName, BaseNameLen, Mesh, mype, Parallel, &
@@ -1834,6 +1867,7 @@ END SUBROUTINE GetMaxDefs
    TYPE(Element_t), POINTER :: Element
    TYPE(Matrix_t), POINTER :: Projector
    LOGICAL :: parallel, LoadNewMesh
+
 
    Mesh => Null()
 
@@ -7550,6 +7584,8 @@ END SUBROUTINE GetMaxDefs
         ELSE
           Coeff = 1.0_dp * ActSides / PosSides 
         END IF
+        IF( ABS( Coeff ) < TINY( 1.0_dp ) ) CYCLE
+
         ParentFound = ParentFound + 1
 
         ElementNodes % x(1:n) = Mesh % Nodes % x(Indexes(1:n))
@@ -7593,10 +7629,10 @@ END SUBROUTINE GetMaxDefs
               IF( HaloNode( Indexes(p) ) ) CYCLE
             END IF
 
+            val = weight * Basis(p)
+
             ! Only set for the nodes are are really used
             InvPerm(indp) = Indexes(p)
-
-            val = weight * Basis(p)
 
             IF( SetDiag ) THEN
               CALL List_AddToMatrixElement(Projector % ListMatrix, indp, &
@@ -8077,7 +8113,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER, POINTER :: NodeIndexes(:)
     INTEGER :: i,j,k,n,ind,Nmax,Nmin,Nfii,Nnodes,MaxElemNodes,NElems
     LOGICAL :: Found, Hit0, Hit90, Hit180, Hit270, SetDegOffset
-    LOGICAL :: GotNormal, GotCenter
+    LOGICAL :: GotNormal, GotCenter, MoveAngle
 
     ! We choose degrees as they are more intuitive
     rad2deg = 180.0_dp / PI
@@ -8198,43 +8234,49 @@ END SUBROUTINE GetMaxDefs
       END DO
       
 
-      ! Let's see if we have a full angle to operate or not.
-      ! If not, then make the interval continuous. 
-      ! Here we check only four critical angles: (0,90,180,270) degs.
-      Hit0 = .FALSE.; Hit90 = .FALSE.; Hit180 = .FALSE.; Hit270 = .FALSE.
-      DO i=1, PMesh % NumberOfBulkElements
-        Element => PMesh % Elements(i)
-        n = Element % TYPE % NumberOfNodes        
-        NodeIndexes => Element % NodeIndexes
-        Angles(1:n) = PMesh % Nodes % x(NodeIndexes)
-
-        fmin = MINVAL( Angles(1:n) ) 
-        fmax = MAXVAL( Angles(1:n) )
-        
-        IF( fmax - fmin > 180.0_dp ) THEN
-          Hit180 = .TRUE.
-        ELSE
-          IF( fmax >= 0.0 .AND. fmin <= 0.0 ) Hit0 = .TRUE.
-          IF( fmax >= 90.0 .AND. fmin <= 90.0 ) Hit90 = .TRUE.
-          IF( fmax >= -90.0 .AND. fmin <= -90.0 ) Hit270 = .TRUE.
-        END IF
-      END DO
-      FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
-
-      ! Eliminate the problematic discontinuity in case we have no full circle
-      ! The discontinuity will be moved to some of angles (-90,0,90).
-      IF( FullCircle ) THEN
-        CALL Info('RotationalInterfaceMeshes','Cylindrical interface seems to be a full circle',&
-            Level=6)
-      ELSE
-        IF( Cylindrical .AND. k == 2 ) THEN
+      ! For cylindrical projector follow exactly the same logic for slave and master
+      !------------------------------------------------------------------------------
+      IF( Cylindrical .AND. k == 2 ) THEN
+        IF( MoveAngle ) THEN
           CALL Info('RotationalInterfaceMeshes','Moving the 2nd mesh discontinuity to same angle',Level=6)
           DO j=1,PMesh % NumberOfNodes
-            IF( PMesh % Nodes % x(j) < Fii ) PMesh % Nodes % x(j) = &
+            IF( PMesh % Nodes % x(j) < Fii0 ) PMesh % Nodes % x(j) = &
                 PMesh % Nodes % x(j) + 360.0_dp
           END DO
+        END IF
+      ELSE
+        ! Let's see if we have a full angle to operate or not.
+        ! If not, then make the interval continuous. 
+        ! Here we check only four critical angles: (0,90,180,270) degs.
+        Hit0 = .FALSE.; Hit90 = .FALSE.; Hit180 = .FALSE.; Hit270 = .FALSE.
+        MoveAngle = .FALSE.; Fii = 0.0_dp; Fii0 = 0.0_dp
+        
+        DO i=1, PMesh % NumberOfBulkElements
+          Element => PMesh % Elements(i)
+          n = Element % TYPE % NumberOfNodes        
+          NodeIndexes => Element % NodeIndexes
+          Angles(1:n) = PMesh % Nodes % x(NodeIndexes)
           
+          fmin = MINVAL( Angles(1:n) ) 
+          fmax = MAXVAL( Angles(1:n) )
+          
+          IF( fmax - fmin > 180.0_dp ) THEN
+            Hit180 = .TRUE.
+          ELSE
+            IF( fmax >= 0.0 .AND. fmin <= 0.0 ) Hit0 = .TRUE.
+            IF( fmax >= 90.0 .AND. fmin <= 90.0 ) Hit90 = .TRUE.
+            IF( fmax >= -90.0 .AND. fmin <= -90.0 ) Hit270 = .TRUE.
+          END IF
+        END DO
+        FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
+        
+        ! Eliminate the problematic discontinuity in case we have no full circle
+        ! The discontinuity will be moved to some of angles (-90,0,90).
+        IF( FullCircle ) THEN
+          CALL Info('RotationalInterfaceMeshes','Cylindrical interface seems to be a full circle',&
+              Level=6)
         ELSE IF( Hit180 ) THEN
+          MoveAngle = .TRUE.
           IF( .NOT. Hit0 ) THEN
             Fii = 0.0_dp
           ELSE IF( .NOT. Hit270 ) THEN
@@ -8609,9 +8651,10 @@ END SUBROUTINE GetMaxDefs
     ! If the projector normal is not given determine it first 
     IF(.NOT. Found ) THEN     
       CALL Info('PlaneInterfaceMeshes','Could not find > Plane Projector Normal < so determining it now',Level=12)    
-      n = CurrentModel % MaxElementNodes
-      ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), &
-          ElementNodes % z(n), Basis(n) )
+
+      n = MAX_ELEMENT_NODES
+      ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), Basis(n) )
+      ElementNodes % x = 0; ElementNodes % y = 0; ElementNodes % z = 0
 
       ! Fit a plane to both datasets
       DO j=1, 2
@@ -9443,7 +9486,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
     INTEGER :: in_levels
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,n,cnt,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
+    INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
         ExtrudedCoord,dg_n
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
     INTEGER :: nnodes,gnodes,gelements,ierr
@@ -9552,11 +9595,21 @@ END SUBROUTINE GetMaxDefs
     END DO
     Mesh_out % NumberOfNodes=cnt
 
+    ! Count 101 elements:
+    ! (these require an extra layer)
+    ! -------------------
+
+    cnt101 = 0
+    DO i=Mesh_in % NumberOfBulkElements+1, &
+         Mesh_in % NumberOfBulkElements+Mesh_in % NumberOfBoundaryElements
+       IF(Mesh_in % Elements(i) % TYPE % ElementCode == 101) cnt101 = cnt101+1
+    END DO
+
     n=SIZE(Mesh_in % Elements)
     IF (PreserveBaseline) THEN
-        ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + Mesh_in % NumberOfBoundaryElements) )
+        ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + Mesh_in % NumberOfBoundaryElements + cnt101) )
     ELSE
-	ALLOCATE(Mesh_out % Elements(n*(in_levels+3)) )
+	ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + cnt101) )
     END IF
 
     ! Generate volume bulk elements:
@@ -9672,11 +9725,10 @@ END SUBROUTINE GetMaxDefs
             Mesh_in % Elements(k) % NodeIndexes
           Mesh_out % Elements(cnt) % TYPE => &
              Mesh_in % Elements(k) % TYPE
-        END IF 
+        END IF
         Mesh_out % Elements(cnt) % DGDOFs = 0
         Mesh_out % Elements(cnt) % DGIndexes => NULL()
-        Mesh_out % Elements(cnt) % ElementIndex = cnt + &
-                Mesh_out % NumberOfBulkElements
+        Mesh_out % Elements(cnt) % ElementIndex = cnt
         Mesh_out % Elements(cnt) % PDefs => NULL()
         Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
         Mesh_out % Elements(cnt) % FaceIndexes => NULL()
@@ -9745,8 +9797,7 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % TYPE => &
              Mesh_in % Elements(k) % TYPE
         END IF 
-        Mesh_out % Elements(cnt) % ElementIndex = cnt + &
-                Mesh_out % NumberOfBulkElements
+        Mesh_out % Elements(cnt) % ElementIndex = cnt
         Mesh_out % Elements(cnt) % DGDOFs = 0
         Mesh_out % Elements(cnt) % DGIndexes => NULL()
         Mesh_out % Elements(cnt) % PDefs => NULL()
@@ -9755,6 +9806,45 @@ END SUBROUTINE GetMaxDefs
         Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
       END DO
     END DO
+
+    !Take care of extra 101 elements
+    !-------------------------------
+
+    IF(cnt101 > 0) THEN
+       DO j=1,Mesh_in % NumberOfBoundaryElements
+          k = j + Mesh_in % NumberOfBulkElements
+
+          IF(Mesh_in % Elements(k) % TYPE % ElementCode /= 101) CYCLE
+          cnt=cnt+1
+
+          Mesh_out % Elements(cnt) = Mesh_in % Elements(k)
+
+          ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
+          Mesh_out % Elements(cnt) % BoundaryInfo = &
+               Mesh_in % Elements(k) % BoundaryInfo
+
+          Mesh_out % Elements(cnt) % BoundaryInfo % constraint = &
+               Mesh_out % Elements(cnt) % BoundaryInfo % constraint + max_baseline_bid
+
+          max_bid = MAX(max_bid, max_baseline_bid + &
+               Mesh_in % Elements(k) % BoundaryInfo % Constraint)
+
+          Mesh_out % Elements(cnt) % NDOFs = 1
+          ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(1))
+          Mesh_out % Elements(cnt) % NodeIndexes = &
+               Mesh_in % Elements(k) % NodeIndexes+(in_levels+1)*n
+          Mesh_out % Elements(cnt) % TYPE => &
+               Mesh_in % Elements(k) % TYPE
+
+          Mesh_out % Elements(cnt) % ElementIndex = cnt
+          Mesh_out % Elements(cnt) % DGDOFs = 0
+          Mesh_out % Elements(cnt) % DGIndexes => NULL()
+          Mesh_out % Elements(cnt) % PDefs => NULL()
+          Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
+          Mesh_out % Elements(cnt) % FaceIndexes => NULL()
+          Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+       END DO
+    END IF
     
     IF(isParallel) THEN
       j=max_bid
@@ -10159,6 +10249,168 @@ END SUBROUTINE GetMaxDefs
 !------------------------------------------------------------------------------
   END SUBROUTINE WriteMeshToDisk2
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Writes the mesh to disk, including detection of elementcodes and shared node
+!> info necessary for parallel meshes.
+!------------------------------------------------------------------------------
+  SUBROUTINE WriteMeshToDiskPartitioned(Model, Mesh, Path, &
+      ElementPart, NeighbourList )
+!------------------------------------------------------------------------------
+    USE Types
+!------------------------------------------------------------------------------
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    CHARACTER(LEN=*) :: Path
+    INTEGER, POINTER :: ElementPart(:)
+    TYPE(NeighbourList_t),POINTER  :: NeighbourList(:)
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: NoBoundaryElements, NoBulkElements, NoNodes, NoPartitions, Partition
+    INTEGER :: i,j,k,m,MaxNodes,ElmCode,NumElmCodes,ElmCodeCounts(827),&
+         Parent1,Parent2, ElemID, nneigh, Constraint, meshBC, NumElements, NoShared
+    LOGICAL :: Found, Hit
+    CHARACTER(LEN=MAX_NAME_LEN) :: DirectoryName, PrefixName
+!------------------------------------------------------------------------------
+
+    NoPartitions = MAXVAL( ElementPart ) 
+    NumElmCodes = 0
+    NumElements = Mesh % NumberOfBoundaryElements + Mesh % NumberOfBulkElements
+        
+    WRITE(DirectoryName, '(A,A,I0)') TRIM(PATH),'/partitioning.',NoPartitions
+    CALL MakeDirectory( TRIM(DirectoryName) // CHAR(0) )
+    CALL Info('WriteMeshToDiskPartitioned','Writing parallel mesh to disk: '//TRIM(DirectoryName))
+   
+
+    DO Partition = 1, NoPartitions 
+      
+      CALL Info('WriteMeshToDiskPartitioned','Writing piece to file: '//TRIM(I2S(Partition)),Level=12)
+      
+      WRITE( PrefixName,'(A,A,I0)') TRIM(DirectoryName),'/part.',Partition  
+
+      CALL Info('WriteMeshToDiskPartitioned','Write nodes file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.nodes', STATUS='UNKNOWN' )
+      NoNodes = 0
+      DO i=1,Mesh % NumberOfNodes
+        IF( ANY( NeighbourList(i) % Neighbours == Partition ) ) THEN
+          WRITE(1,'(I0,x,I0,x,3ES17.10)') i,-1, &
+              Mesh % Nodes % x(i), Mesh % Nodes % y(i), Mesh % Nodes % z(i)
+          NoNodes = NoNodes + 1
+        END IF
+      END DO
+      CLOSE(1)
+      
+
+      CALL Info('WriteMeshToDiskPartitioned','Write shared nodes file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.shared', STATUS='UNKNOWN' )
+      NoShared = 0
+      DO i=1,Mesh % NumberOfNodes
+        nneigh = SIZE( NeighbourList(i) % Neighbours )
+        IF( nneigh <= 1 ) CYCLE
+        
+        IF( ANY( NeighbourList(i) % Neighbours == Partition ) ) THEN
+          NoShared = NoShared + 1
+          WRITE(1,'(i0, x, i0, x)',ADVANCE='NO') i,nneigh
+          DO j=1,nneigh
+            WRITE(1,'(I0, x)',ADVANCE='NO') NeighbourList(i) % Neighbours(j) 
+          END DO
+          WRITE( 1,* ) ''
+        END IF
+      END DO
+      CLOSE(1)
+
+
+      CALL Info('WriteMeshToDiskPartitioned','Write elements file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.elements', STATUS='UNKNOWN' )
+      NoBulkElements = 0
+      ElmCodeCounts = 0      
+      DO i=1,Mesh % NumberOfBulkElements
+        IF( ElementPart(i) /= Partition ) CYCLE
+
+        Element => Mesh % Elements(i)
+        WRITE(1,'(i0,x,i0,x,i0,x)',ADVANCE='NO') i, &
+            Element % BodyId, Element % TYPE % ElementCode
+        DO j=1,Element % TYPE % NumberOfNodes
+          WRITE(1,'(i0,x)', ADVANCE='NO') Element % NodeIndexes(j)
+        END DO
+        WRITE(1,*) ''
+        
+        ElmCode = Element % TYPE % ElementCode
+        ElmCodeCounts( ElmCode ) = ElmCodeCounts( ElmCode ) + 1
+        NoBulkElements = NoBulkElements + 1
+      END DO
+      CLOSE(1)
+
+
+      CALL Info('WriteMeshToDiskPartitioned','Write boundary file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.boundary', STATUS='UNKNOWN' )
+      NoBoundaryElements = 0
+      DO i=Mesh % NumberOfBulkElements +1 ,&
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(i)
+       
+        parent1 = 0
+        parent2 = 0
+        Constraint = 0
+        
+        IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+          IF ( ASSOCIATED( Element % BoundaryInfo % Left ) ) &
+              parent1 = Element % BoundaryInfo % Left % ElementIndex
+          IF ( ASSOCIATED( Element % BoundaryInfo % Right ) ) &
+              parent2 = Element % BoundaryInfo % Right % ElementIndex        
+          Constraint = Element % BoundaryInfo % Constraint
+        END IF
+
+        Hit = .FALSE.
+        IF( parent1 > 0 ) THEN
+          IF( ElementPart( parent1 ) == Partition ) Hit = .TRUE.
+        END IF
+        IF( parent2 > 0 ) THEN
+          IF( ElementPart( parent2 ) == Partition ) Hit = .TRUE.
+        END IF
+
+        IF( .NOT. Hit ) CYCLE
+
+        WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & 
+            Constraint, Parent1, Parent2,&
+            Element % TYPE % ElementCode
+        DO j=1,Element % TYPE % NumberOfNodes
+          WRITE(1,'(x,i0)', ADVANCE='NO') Element % NodeIndexes(j)
+        END DO
+        WRITE(1,*) 
+
+        ElmCode = Element % TYPE % ElementCode
+        ElmCodeCounts( ElmCode ) = ElmCodeCounts( ElmCode ) + 1
+        NoBoundaryElements = NoBoundaryElements + 1
+      END DO
+      CLOSE(1)
+
+
+      CALL Info('WriteMeshToDiskPartitioned','Write header file',Level=12)
+      OPEN( 1,FILE=TRIM(PrefixName) // '.header',STATUS='UNKNOWN' )
+      NumElmCodes = COUNT( ElmCodeCounts > 0 ) 
+      WRITE( 1,'(i0,x,i0,x,i0)' ) NoNodes, &
+          NoBulkElements, NoBoundaryElements      
+      WRITE( 1,'(i0)' ) NumElmCodes
+      DO i=SIZE(ElmCodeCounts),1,-1
+        IF( ElmCodeCounts(i) == 0 ) CYCLE
+        WRITE( 1,'(i0,x,i0,x)' ) i,ElmCodeCounts(i)
+      END DO
+      WRITE( 1,'(i0,x,i0)') NoShared, 0
+      CLOSE(1)
+      
+      CALL Info('WriteMeshToDiskPartitioned','Done writing partition',Level=12)
+    END DO
+
+    CALL Info('WriteMeshToDiskPartitioned','Done writing parallel mesh',Level=8)
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE WriteMeshToDiskPartitioned
+!------------------------------------------------------------------------------
+
+
+
 
 !------------------------------------------------------------------------------
 !> Generate element edge (faces in 3D) tables for given mesh.
@@ -15256,22 +15508,26 @@ CONTAINS
     INTEGER, POINTER :: Clustering(:)
 !---------------------------------------------------------------
     LOGICAL :: MaskExists,Found
-    INTEGER :: i,j,k,ind,n,dim,nsize,clusters
-    INTEGER, POINTER :: Iarray(:),NodePart(:),NoPart(:)
+    INTEGER :: i,j,k,ind,n,dim,nsize,nmask,clusters
+    INTEGER, POINTER :: Iarray(:),NodePart(:)
+    INTEGER, ALLOCATABLE :: NoPart(:)
     INTEGER :: Divisions(3),minpart,maxpart,Inds(3)
     REAL(KIND=dp) :: Coord(3), Weights(3), avepart,devpart
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp) :: BoundingBox(6)
     INTEGER, ALLOCATABLE :: CellCount(:,:,:)
-
-    ! CALL Info('ClusterElementsByDirection','')
+    
 
     MaskExists = PRESENT(MaskActive)
     IF( MaskExists ) THEN
-      nsize = COUNT( MaskActive ) 
+      nsize = SIZE( MaskActive ) 
+      nmask = COUNT( MaskActive ) 
+      CALL Info('ClusterElementsByDirection','Using mask of size: '//TRIM(I2S(nsize)))
     ELSE
-      nsize = Mesh % NumberOfBulkElements
+      nsize = Mesh % NumberOfBulkElements 
+      nmask = nsize
+      CALL Info('ClusterElementsByDirection','Applying division to all bulk elements: '//TRIM(I2S(nsize)))
     END IF
      
     IF( .NOT. ASSOCIATED( Params ) ) THEN
@@ -15302,7 +15558,10 @@ CONTAINS
 
     ALLOCATE( CellCount(Divisions(1), Divisions(2), Divisions(3) ) )
     CellCount = 0
-    Clusters = Divisions(1) * Divisions(2) * Divisions(3)
+    Clusters = 1
+    DO i=1,dim
+      Clusters = Clusters * Divisions(i)
+    END DO
 
     IF( .FALSE. ) THEN
       PRINT *,'dim:',dim
@@ -15318,6 +15577,7 @@ CONTAINS
     !----------------------------------------
     Inds = 1
     Coord = 0.0_dp
+
     DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       IF( MaskExists ) THEN
         IF( .NOT. MaskActive( i ) ) CYCLE
@@ -15341,7 +15601,8 @@ CONTAINS
             ( Coord(j) - BoundingBox(2*j-1) ) / &
             ( BoundingBox(2*j) - BoundingBox(2*j-1) ) )
       END DO
-      
+      Inds = MAX( Inds, 1 ) 
+
       CellCount(Inds(1),Inds(2),Inds(3)) = &
           CellCount(Inds(1),Inds(2),Inds(3)) + 1
 
@@ -15356,7 +15617,7 @@ CONTAINS
     n = COUNT( NoPart > 0 )    
     minpart = HUGE(minpart)
     maxpart = 0
-    avepart = 1.0_dp * nsize / n
+    avepart = 1.0_dp * nmask / n
     devpart = 0.0_dp
     DO i=1,clusters
       IF( nopart(i) > 0 ) THEN
@@ -15390,16 +15651,19 @@ CONTAINS
       j = NodePart(i)
       IF( j > 0 ) NodePart(i) = NoPart(j)
     END DO
-            
+           
     IF( ASSOCIATED(Clustering)) THEN
-      Clustering = Nodepart 
+      Clustering(1:nsize) = Nodepart(1:nsize)
       DEALLOCATE(Nodepart)
     ELSE
       Clustering => Nodepart
       NULLIFY( Nodepart ) 
     END IF
     
-    DEALLOCATE(NoPart)
+    IF( ALLOCATED( NoPart ) ) DEALLOCATE(NoPart)
+
+    CALL Info('ClusterElemetsUniform','Clustering finished')
+
 
   END SUBROUTINE ClusterElementsUniform
 
