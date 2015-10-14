@@ -466,8 +466,8 @@ CONTAINS
            END IF
 
            IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBCs ) THEN
-              WRITE( Message, * ) 'Boundary Condition section number: ',Arrayn, &
-                            ' exeeds header value.'
+              WRITE( Message, * ) 'Boundary Condition section number ('//TRIM(I2S(Arrayn))// &
+                            ') exceeds number of BCs ('//TRIM(I2S(Model % NumberOfBCs))//')'
               CALL Fatal( 'Model Input', Message )
            END IF
            Model % BCs(ArrayN) % Tag = ArrayN
