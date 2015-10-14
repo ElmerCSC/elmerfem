@@ -662,7 +662,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   }
   
   if( nosides > i ) {
-    printf("LoadElmerInput: removed %d boundary element with invalid parent definition!\n");
+    printf("LoadElmerInput: removed %d boundary element with invalid parent definition!\n",nosides-i);
   }
   bound->nosides = i;
   fclose(in); 
@@ -4986,7 +4986,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	  if( elementhalo[part2] != i ) {
 	    halobulkelems += 1;
 	    
-	    if(0) printf("saving %d in partition %d / %d\n",i,part,part2);
+	    if(0) printf("saving element %d in partition %d / %d\n",i,part,part2);
 	    /* Save this element as a halo element for part2 as well */
 	    elementhalo[part2] = i;
 
@@ -5009,18 +5009,16 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 		if(!part3) break;
 	      }
 	      if(!hit) {
-		if(l3 <= maxneededtimes) {
-		  if(0) printf("l3 = %d %d %d %d %d\n",l3,maxneededtimes,part2,part3,data->partitiontable[l3][l2]);
-		  data->partitiontable[l3][l2] = part2;
-		} 
-		else {
+		if( l3 > maxneededtimes ) {
 		  maxneededtimes++;
-		  if(1) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
+		  if(0) printf("Allocating new column %d in partitiontable\n",maxneededtimes);
 		  data->partitiontable[maxneededtimes] = Ivector(1,noknots);
 		  for(m=1;m<=noknots;m++)
 		    data->partitiontable[maxneededtimes][m] = 0;
-		  data->partitiontable[maxneededtimes][l2] = part2;
 		}
+		if(0) printf("Adding halo node = %d %d %d %d %d\n",
+			     l3,maxneededtimes,part2,part3,data->partitiontable[l3][l2]);
+		data->partitiontable[l3][l2] = part2;
 	      }
 
 	      if(reorder) l2 = order[l2];
@@ -5182,6 +5180,8 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
     for(j=1;j<=neededtimes2[i];j++) {
       k = data->partitiontable[j][i];
+
+      if( halomode == 2 && neededtimes[i] == 1 && ownerpart[i] == k ) continue; 
       
       if(k < partstart || k > partfin) continue;
       nofile = k - partstart + 1;
@@ -5190,10 +5190,18 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
       if(reorder) ind = order[i];
       neededtwice[k] += 1; 
 
-      fprintf(outfiles[nofile],"%d %d %d",ind,neededtimes2[i],ownerpart[i]);      
-      for(m=1;m<=neededtimes2[i];m++) 
-	if(data->partitiontable[m][i] != ownerpart[i]) fprintf(outfiles[nofile]," %d",data->partitiontable[m][i]);
-      fprintf(outfiles[nofile],"\n");
+      if( halomode == 2 ) {
+	fprintf(outfiles[nofile],"%d %d %d",ind,MAX(1,neededtimes[i]),ownerpart[i]);      
+	for(m=1;m<=neededtimes[i];m++) 
+	  if(data->partitiontable[m][i] != ownerpart[i]) fprintf(outfiles[nofile]," %d",data->partitiontable[m][i]);
+	fprintf(outfiles[nofile],"\n");
+      }
+      else {
+	fprintf(outfiles[nofile],"%d %d %d",ind,neededtimes2[i],ownerpart[i]);      
+	for(m=1;m<=neededtimes2[i];m++) 
+	  if(data->partitiontable[m][i] != ownerpart[i]) fprintf(outfiles[nofile]," %d",data->partitiontable[m][i]);
+	fprintf(outfiles[nofile],"\n");
+      }
     }
   }
 

@@ -3,6 +3,19 @@ INCLUDE(CheckIncludeFiles)
 
 CHECK_INCLUDE_FILES(inttypes.h HAVE_INTTYPES_H)
 
+
+FUNCTION(FORTRANIZE infile outfile)
+  SET(RESULT "")
+  FILE(STRINGS "${infile}" lines)
+  FOREACH(i IN LISTS lines)
+    STRING(REGEX REPLACE "/\\*.*\\*/" "" i "${i}")
+    IF(i)
+      SET(RESULT "${RESULT}${i}\n")
+    ENDIF(i)
+  ENDFOREACH()
+  FILE(WRITE "${outfile}" "${RESULT}")
+ENDFUNCTION(FORTRANIZE infile outfile)
+
 #TODO: is this proper way of choosing shared library API?
 IF(WIN32)
   UNSET(HAVE_DLOPEN_API)
@@ -49,7 +62,8 @@ IF(APPLE)
   SET(SHL_EXTENSION ".dylib")
 ENDIF()
 
-CONFIGURE_FILE(config.h.cmake config.h)
+CONFIGURE_FILE(config.h.cmake config.h.commented)
+FORTRANIZE(${CMAKE_BINARY_DIR}/fem/config.h.commented ${CMAKE_BINARY_DIR}/fem/config.h)
 
 INCLUDE_DIRECTORIES("${PROJECT_BINARY_DIR}")
 ADD_SUBDIRECTORY(src)

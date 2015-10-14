@@ -2107,6 +2107,16 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     st = CPUTime()
 
     N = A % NumberOfRows
+
+    IF(N == 0) THEN
+       A % ILURows => A % Rows
+       A % ILUCols => A % Cols
+       A % ILUDiag => A % Diag
+
+       Status = .TRUE.
+       RETURN
+    END IF
+
     Diag   => A % Diag
     Rows   => A % Rows
     Cols   => A % Cols
