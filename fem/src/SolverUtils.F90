@@ -272,6 +272,23 @@ CONTAINS
    END SUBROUTINE AddToMatrixElement
 !------------------------------------------------------------------------------
 
+!> Adds CMPLX value to the value of a given CMPLX matrix element. -ettaka
+!------------------------------------------------------------------------------
+  SUBROUTINE AddToCmplxMatrixElement(CM, RowId, ColId, Re, Im)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Matrix_t), POINTER :: CM
+    INTEGER :: RowId, ColId
+    REAL(KIND=dp) :: Re, Im
+
+    CALL AddToMatrixElement(CM, RowId, ColId, Re)
+    CALL AddToMatrixElement(CM, RowId, ColId+1, -Im)
+    CALL AddToMatrixElement(CM, RowId+1, ColId, Im)
+    CALL AddToMatrixElement(CM, RowId+1, ColId+1, Re)
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddToCmplxMatrixElement
+!------------------------------------------------------------------------------
 
 !> Moves a matrix element from one position adding it to the value of another one.
 !------------------------------------------------------------------------------

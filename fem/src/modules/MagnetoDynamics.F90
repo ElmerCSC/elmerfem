@@ -332,7 +332,8 @@ END SUBROUTINE WhitneyAVSolver_Init0
 SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
-
+  USE CircuitUtils
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -375,7 +376,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TYPE(Variable_t), POINTER :: Var, FixJVar, CoordVar
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
-
+  TYPE(ValueList_t), POINTER :: CompParams
+  
   INTEGER :: n_n, n_e
   INTEGER, POINTER :: Vperm(:), Aperm(:)
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
@@ -578,25 +580,25 @@ CONTAINS
                 'Magnetization', FoundMagnetization )
      END IF
      
-     BodyParams => GetBodyParams( Element )
-     IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
-
      CoilBody = .FALSE.
-     CoilType = GetString(BodyParams, 'Coil Type', Found)
-     IF (.NOT. Found) THEN
-        CoilType = ''
-     ELSE
-        SELECT CASE (CoilType)
-        CASE ('stranded')
-           CoilBody = .TRUE.
-        CASE ('massive')
-           CoilBody = .TRUE.
-        CASE ('foil winding')
-           CoilBody = .TRUE.
-           CALL GetElementRotM(Element, RotM, n)
-        CASE DEFAULT
-           CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
-        END SELECT
+     CompParams => GetComponentParams( Element )
+     CoilType = ''
+     RotM = 0._dp
+     IF (ASSOCIATED(CompParams)) THEN
+       CoilType = GetString(CompParams, 'Coil Type', Found)
+       IF (Found) THEN
+         SELECT CASE (CoilType)
+         CASE ('stranded')
+            CoilBody = .TRUE.
+         CASE ('massive')
+            CoilBody = .TRUE.
+         CASE ('foil winding')
+            CoilBody = .TRUE.
+            CALL GetElementRotM(Element, RotM, n)
+         CASE DEFAULT
+            CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
+         END SELECT
+       END IF
      END IF
 
      Acoef = 0.0d0
@@ -611,7 +613,7 @@ CONTAINS
 
        CALL ListGetRealArray( Material, &
               'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
-
+       
        IF (Found) THEN
           IF ( SIZE(Cwrk,1) == 1 ) THEN
              DO i=1,3
@@ -629,6 +631,8 @@ CONTAINS
              END DO
           END IF
        END IF
+
+       IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
 
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
        IF (.NOT. LaminateStack) LaminateStackModel = ''
@@ -2886,7 +2890,8 @@ END SUBROUTINE WhitneyAVHarmonicSolver_Init0
 SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
-
+  USE CircuitUtils
+  
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -2910,7 +2915,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   COMPLEX(kind=dp) :: Aval
   COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), MASS(:,:), FORCE(:)
   COMPLEX(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:)
-  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:)
+  REAL(KIND=dp), ALLOCATABLE :: RotM(:,:,:), GapLength(:), AirGapMu(:)
 
   COMPLEX(KIND=dp), ALLOCATABLE :: LamCond(:)
 
@@ -2930,10 +2935,13 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
+  
+  TYPE(ValueList_t), POINTER :: CompParams
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, &
        Acoef, Cwrk, Cwrk_im, LamCond, &
-       LamThick, AllocationsDone, RotM
+       LamThick, AllocationsDone, RotM, &
+       GapLength, AirGapMu
 !------------------------------------------------------------------------------
   PiolaVersion = GetLogical( GetSolverParams(), 'Use Piola Transform', Found )
   SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )
@@ -2965,8 +2973,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
      N = Mesh % MaxElementDOFs  ! just big enough
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), RotM(3,3,N), &
-          Acoef(N), LamCond(N), LamThick(N), &
-          STAT=istat )
+          GapLength(N), AirGapMu(N), Acoef(N), LamCond(N), &
+          LamThick(N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVHarmonicSolver', 'Memory allocation error.' )
      END IF
@@ -3053,6 +3061,26 @@ CONTAINS
                  'Magnetization', FoundMagnetization )
        END IF
 
+       CoilBody = .FALSE.
+       CompParams => GetComponentParams( Element )
+       CoilType = ''
+       RotM = 0._dp
+       IF (ASSOCIATED(CompParams)) THEN
+         CoilType = GetString(CompParams, 'Coil Type', Found)
+         IF (Found) THEN
+           SELECT CASE (CoilType)
+           CASE ('stranded')
+              CoilBody = .TRUE.
+           CASE ('massive')
+              CoilBody = .TRUE.
+           CASE ('foil winding')
+              CoilBody = .TRUE.
+              CALL GetElementRotM(Element, RotM, n)
+           CASE DEFAULT
+              CALL Fatal ('WhitneyAVHarmonicSolver', 'Non existent Coil Type Chosen!')
+           END SELECT
+         END IF
+       END IF
        Acoef = 0.0_dp
        Tcoef = 0.0_dp
        Material => GetMaterial( Element )
@@ -3082,7 +3110,9 @@ CONTAINS
                END DO
             END IF
          END IF
-
+        
+         IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
+        
          CALL ListGetRealArray( Material, &
                 'Electric Conductivity im', Cwrk_im, n, Element % NodeIndexes, Found )
 
@@ -3103,6 +3133,8 @@ CONTAINS
                END DO
             END IF
          END IF
+
+         IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
 
          LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
          IF (.NOT. LaminateStack) LaminateStackModel = ''
@@ -3132,27 +3164,6 @@ CONTAINS
            CALL WARN('WhitneyAVSolver', 'Nonexistent Laminate Stack Model chosen!')
          END SELECT
        END IF
-
-       BodyParams => GetBodyParams( Element )
-       IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
-
-       CoilBody = .FALSE.
-       CoilType = GetString(BodyParams, 'Coil Type', Found)
-       IF (.NOT. Found) THEN
-          CoilType = ''
-       ELSE
-          SELECT CASE (CoilType)
-          CASE ('stranded')
-             CoilBody = .TRUE.
-          CASE ('massive')
-             CoilBody = .TRUE.
-          CASE ('foil winding')
-             CoilBody = .TRUE.
-             CALL GetElementRotM(Element, RotM, n)
-          CASE DEFAULT
-             CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
-          END SELECT
-        END IF
 
        Omega = GetAngularFrequency(Found=Found,UElement=Element)
 
@@ -3209,7 +3220,16 @@ CONTAINS
        Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
          GetReal( BC, 'Magnetic Transfer Coefficient im', Found), KIND=dp)
 
-       CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+       !If air gap length keyword is detected, use air gap boundary condition
+       GapLength=GetConstReal( BC, 'Air Gap Length', Found)
+       IF (Found) THEN
+         AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
+         IF (.NOT. Found) AirGapMu=1d0 ! if not found default to "air" property
+         CALL LocalMatrixAirGapBC(STIFF,FORCE,LOAD,GapLength,AirGapMu,Element,n,nd )
+       ELSE
+         CALL LocalMatrixBC(STIFF,FORCE,LOAD,Acoef,Element,n,nd )
+       END IF
+       
        CALL DefaultUpdateEquations(STIFF,FORCE,Element)
     END DO
 
@@ -4238,7 +4258,7 @@ CONTAINS
             END DO
             DO j=1,nd-np
               q = j+np
-
+              
               ! Compute the conductivity term <j * omega * C A,grad v> for 
               ! stiffness matrix (anisotropy taken into account)
               ! -------------------------------------------
@@ -4369,6 +4389,69 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixAirGapBC(  STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
+!------------------------------------------------------------------------------
+    COMPLEX(KIND=dp) :: LOAD(:,:)
+    COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element, Parent, Edge
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), localGapLength, muAir, muVacuum
+    REAL(KIND=dp) :: GapLength(:), AirGapMu(:)
+    LOGICAL :: Stat
+    INTEGER, POINTER :: EdgeMap(:,:)
+    TYPE(GaussIntegrationPoints_t) :: IP
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
+
+    TYPE(Nodes_t), SAVE :: Nodes
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
+
+    STIFF = 0.0_dp
+    FORCE = 0.0_dp
+    MASS  = 0.0_dp
+
+    muVacuum = 4 * PI * 1d-7
+
+    ! Numerical integration:
+    !-----------------------
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
+    np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
+    DO t=1,IP % n
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
+
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
+
+       localGapLength  = SUM(Basis(1:n) * GapLength(1:n))
+       muAir  = SUM(Basis(1:n) * AirGapMu(1:n))
+ 
+       DO i = 1,nd-np
+         p = i+np
+         DO j = 1,nd-np
+           q = j+np
+           STIFF(p,q) = STIFF(p,q) + localGapLength / (muAir*muVacuum) * &
+              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+         END DO
+       END DO  
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixAirGapBC
 !------------------------------------------------------------------------------
 
 
@@ -5245,7 +5328,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
  SUBROUTINE MagnetoDynamicsCalcFields(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
    USE MagnetoDynamicsUtils
-
+   USE CircuitUtils
+   
    IMPLICIT NONE
 !------------------------------------------------------------------------------
    TYPE(Solver_t) :: Solver
@@ -5307,7 +5391,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
    REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent
-   
+   TYPE(ValueList_t), POINTER :: CompParams
+   REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
+   REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
+   LOGICAL :: CSymmetry
+   REAL(KIND=dp) :: xcoord, grads_coeff
 !-------------------------------------------------------------------------------------------
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
@@ -5571,6 +5659,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
 
      CALL GetPermittivity(Material,PR,n)
+
+     CoilBody = .FALSE.
+     CompParams => GetComponentParams( Element )
+     CoilType = ''
+     RotM = 0._dp
+     IF (ASSOCIATED(CompParams)) THEN
+       CoilType = GetString(CompParams, 'Coil Type', Found)
+       IF (Found) CoilBody = .TRUE.
+     END IF 
  
      !------------------------------------------------------------------------------
      !  Read conductivity values (might be a tensor)
@@ -5597,7 +5694,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
         END IF
      END IF
-
+     
+     IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
+     
      CALL ListGetRealArray( Material, &
           'Electric Conductivity im', Cwrk_im, n, Element % NodeIndexes, Found )
 
@@ -5618,57 +5717,55 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END DO
         END IF
      END IF
+        
+     IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp 
 
-     ! in case of a foil winding, transform the conductivity tensor:
-     ! -------------------------------------------------------------
-     BodyParams => GetBodyParams( Element )
-     IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('MagnetoDynamicsCalcFields', 'Body Parameters not found!')
-
-     CoilType = GetString(BodyParams, 'Coil Type', Found)
-     IF (.NOT. Found) THEN
-       CoilType = ''
-     ELSE
-
+     dim = CoordinateSystemDimension()
+     CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+      CurrentCoordinateSystem() == CylindricSymmetric )
+     
+     IF (CoilBody) THEN
+       
        CALL GetLocalSolution(Wbase,'W')
   
        SELECT CASE (CoilType)
        CASE ('stranded')
-         CoilBody = .TRUE.
-
-         IvarId = GetInteger (BodyParams, 'Circuit Current Variable Id', Found)
+         IvarId = GetInteger (CompParams, 'Circuit Current Variable Id', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Current Variable Id not found!')
 
-         N_j = GetConstReal (BodyParams, 'Stranded Coil N_j', Found)
+         N_j = GetConstReal (CompParams, 'Stranded Coil N_j', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
 
-         nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+         nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
        CASE ('massive')
-         CoilBody = .TRUE.
-
-         VvarId = GetInteger (BodyParams, 'Circuit Voltage Variable Id', Found)
+         VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
 
        CASE ('foil winding')
-         CoilBody = .TRUE.
          CALL GetLocalSolution(alpha,'Alpha')
-         CALL GetElementRotM(Element, RotM, n)
+         
+         IF (dim == 3) CALL GetElementRotM(Element, RotM, n)
 
-         VvarId = GetInteger (BodyParams, 'Circuit Voltage Variable Id', Found)
+         VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
 
-         coilthickness = GetConstReal(BodyParams, 'Coil Thickness', Found)
+         coilthickness = GetConstReal(CompParams, 'Coil Thickness', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Coil Thickness not found!')
 
-         nofturns = GetInteger(BodyParams, 'Number of Turns', Found)
+         nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
 
-         VvarDofs = GetInteger (BodyParams, 'Circuit Voltage Variable dofs', Found)
+         VvarDofs = GetInteger (CompParams, 'Circuit Voltage Variable dofs', Found)
          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
-
-         DO k = 1,n
-           Tcoef(1:3,1:3,k) = MATMUL(MATMUL(RotM(1:3,1:3,k), Tcoef(1:3,1:3,k)), TRANSPOSE(RotM(1:3,1:3,k)))
-         END DO
+         ! in case of a foil winding, transform the conductivity tensor:
+         ! -------------------------------------------------------------
+        
+         IF (dim == 3) THEN
+             DO k = 1,n
+               Tcoef(1:3,1:3,k) = MATMUL(MATMUL(RotM(1:3,1:3,k), Tcoef(1:3,1:3,k)), TRANSPOSE(RotM(1:3,1:3,k)))
+             END DO
+         END IF
        CASE DEFAULT
          CALL Fatal ('MagnetoDynamicsCalcFields', 'Non existent Coil Type Chosen!')
        END SELECT
@@ -5688,8 +5785,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ELSE
        CALL GetReluctivity(Material,R,n)
      END IF
-
-
 
      ! Calculate nodal fields:
      ! -----------------------
@@ -5718,12 +5813,28 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
           END IF
        END IF
 
+
+       grads_coeff = 1._dp/GetCircuitModelDepth()
+       IF( CSymmetry ) THEN
+         xcoord = SUM( Basis(1:np) * Nodes % x(1:np) )
+         grads_coeff = grads_coeff/xcoord
+       END IF
+
        DO k=1,vDOFs
          SELECT CASE(dim)
          CASE(2)
-            B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
-            B(k,2) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) )
-            B(k,3) = 0._dp
+            ! This has been done with the same sign convention as in MagnetoDynamics2D:
+            ! -------------------------------------------------------------------------
+            IF ( CSymmetry ) THEN
+              B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
+              B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
+                       + SUM( SOL(1,1:nd) * Basis(1:nd) ) / xcoord
+              B(k,3) = 0._dp
+            ELSE
+              B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
+              B(k,2) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) )
+              B(k,3) = 0._dp
+            END IF
          CASE(3)
             B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
          END SELECT
@@ -5751,7 +5862,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            BodyForceCurrDens_ip(l) = SUM(BodyForceCurrDens(l,1:n)*Basis(1:n))
          END DO
        END IF
-
+       
        IF ( Transient ) THEN
          IF (CoilType /= 'stranded') THEN 
            SELECT CASE(dim)
@@ -5768,18 +5879,32 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          localV=0._dp
          SELECT CASE (CoilType)
          CASE ('stranded')
-           wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-           wvec = wvec/SQRT(SUM(wvec**2._dp))
-           E(1,:) = E(1,:)+LagrangeVar % Values(IvarId) * N_j * wvec / REAL(CMat_ip(1,1))
+           SELECT CASE(dim)
+           CASE(2)
+             wvec = [0._dp, 0._dp, 1._dp]
+           CASE(3)
+             wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             wvec = wvec/SQRT(SUM(wvec**2._dp))
+           END SELECT
          CASE ('massive')
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,3) = E(1,3)-localV(1) * grads_coeff
+           CASE(3)
              E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           END SELECT
          CASE ('foil winding')
            localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
            DO k = 1, VvarDofs-1
              localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
            END DO
-           E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,3) = E(1,3)-localV(1) * grads_coeff
+           CASE(3)
+             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           END SELECT
          CASE DEFAULT
            IF(dim==3) THEN
              E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
@@ -5808,16 +5933,27 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              localV=0._dp
              SELECT CASE (CoilType)
              CASE ('stranded')
-                wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                wvec = wvec/SQRT(SUM(wvec**2._dp))
+               SELECT CASE(dim)
+               CASE(2)
+                 wvec = [0._dp, 0._dp, 1._dp]
+               CASE(3)
+                 wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                 wvec = wvec/SQRT(SUM(wvec**2._dp))
+               END SELECT
                 imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
                 E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(1,1))
                 E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(1,1))
              CASE ('massive')
                 localV(1) = localV(1) + LagrangeVar % Values(VvarId)
                 localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
-                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                SELECT CASE(dim)
+                CASE(2)
+                  E(1,3) = E(1,3)-localV(1) * grads_coeff
+                  E(2,3) = E(2,3)-localV(2) * grads_coeff
+                CASE(3)
+                  E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                  E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                END SELECT
              CASE ('foil winding')
                 localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
                 DO k = 1, VvarDofs-1
@@ -5826,8 +5962,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                   localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
                   localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
                 END DO
-                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                SELECT CASE(dim)
+                CASE(2)
+                  E(1,3) = E(1,3)-localV(1) * grads_coeff
+                  E(2,3) = E(2,3)-localV(2) * grads_coeff
+                CASE(3)
+                  E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                  E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                END SELECT
              CASE DEFAULT
                 ! -Grad(V)
                 IF(dim==3) THEN
@@ -6111,7 +6253,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        Solver % Matrix % RHS => Fsave
      END IF
 
-
      IF(ElementalFields) THEN
        dofs = 0
        CALL LUdecomp(MASS,n,pivot)
@@ -6128,7 +6269,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_NF,   3, n, MASS, FORCE, pivot, Dofs)
      END IF
-
    END DO
 
 
