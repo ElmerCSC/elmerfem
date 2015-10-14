@@ -5,17 +5,21 @@ ENDMACRO()
 
 MACRO(ADD_ELMER_TEST test_name)
   # Check the number of input arguments
-  IF(${ARGC} GREATER 1) # This is a parallel test
+  IF(${ARGC} GREATER 1 AND WITH_MPI) # This is a parallel test
     # Construct a list with test names and number of tasks,
     # note the suffix
     FOREACH(n ${ARGN})
-      LIST(APPEND test_list "${test_name}_${n}")
-      LIST(APPEND tasks_list "${n}")
+      IF(${n} GREATER ${MPI_TEST_MAXPROC} OR ${n} LESS ${MPI_TEST_MINPROC})
+        MESSAGE(STATUS "Skipping test ${test_name} with ${n} procs")
+      ELSE()
+        LIST(APPEND test_list "${test_name}_${n}")
+        LIST(APPEND tasks_list "${n}")
+      ENDIF()
     ENDFOREACH()
   ELSE()
     # Serial or single task test
     SET(test_list "${test_name}")
-    SET(task_list 1)
+    SET(tasks_list 1)
   ENDIF()
 
   # Loop over the two lists, which is cumbersome in CMake
