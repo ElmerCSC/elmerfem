@@ -869,7 +869,7 @@ int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
 
 
 int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int decimals,int info)
+		   char *prefix,int decimals,int nooverwrite, int info)
 /* Saves the mesh in a form that may be used as input 
    in Elmer calculations. 
    */
@@ -923,6 +923,10 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
   }
   else {
     printf("Reusing an existing directory\n");
+    if(nooverwrite) {
+      printf("Mesh seems to already exist, writing is cancelled!\n"); 
+      return(0);
+    }
   }
 
   sprintf(filename,"%s","mesh.nodes");
@@ -4590,7 +4594,7 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
 
 int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 			      char *prefix,int decimals,int halomode,int indirect,
-			      int parthypre,int subparts,int info)
+			      int parthypre,int subparts,int nooverwrite, int info)
 /* Saves the mesh in a form that may be used as input 
    in Elmer calculations in parallel platforms. 
    */
@@ -4608,7 +4612,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   int *bcnodesaved,*bcnodesaved2,*bcelemsaved,*orphannodes,*bcnode;
   int *bcnodedummy,*elementhalo,*neededtimes2;
   int partstart,partfin,filesetsize,nofile,nofile2;
-  int halobulkelems,halobcs,savethis;
+  int halobulkelems,halobcs,savethis,fail;
   FILE *out,*outfiles[MAXPARTITIONS+1];
   int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart,sumorphannodes,sumindirect;
 
@@ -4695,19 +4699,32 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   sprintf(directoryname,"%s",prefix);
   sprintf(subdirectoryname,"%s.%d","partitioning",partitions);
 
+
 #ifdef MINGW32
   mkdir(directoryname);
 #else
   mkdir(directoryname,0700);
 #endif
-  chdir(directoryname);
+  if(info && !fail) printf("Created mesh directory: %s\n",directoryname);
+  fail = chdir(directoryname);
 #ifdef MINGW32
-  mkdir(subdirectoryname);
+  fail = mkdir(subdirectoryname);
 #else
-  mkdir(subdirectoryname,0700);
+  fail = mkdir(subdirectoryname,0700);
 #endif
-
+  if(fail) {
+    if(info) printf("Reusing existing subdirectory: %s\n",subdirectoryname);
+    if(nooverwrite) {
+      printf("Mesh seems to already exist, writing is cancelled!\n"); 
+      return(0);
+    }
+  }
+  else {
+    if(info) printf("Created subdirectory: %s\n",subdirectoryname);
+  }
   chdir(subdirectoryname);
+
+
 
   if(info) printf("Saving mesh in parallel ElmerSolver format to directory %s/%s.\n",
 		  directoryname,subdirectoryname);
