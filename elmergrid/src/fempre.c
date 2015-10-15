@@ -898,6 +898,17 @@ int main(int argc, char *argv[])
   for(k=0;k<nomeshes;k++) {
     int partoptim, partbcoptim, partopt, fail, partdual;
 
+    if( eg.metis == 1 ) {
+      if(info) printf("One Metis partition requested, enforcing serial mode\n");
+      eg.metis = 0;
+    }
+
+    if( eg.partitions == 1 ) {
+      if(info) printf("One geometric partition requested, enforcing serial mode\n");
+      eg.partitions = 0;
+    }
+
+
     partoptim = eg.partoptim;
     partbcoptim = eg.partbcoptim;
     partdual = eg.partdual;
