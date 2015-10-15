@@ -4,29 +4,39 @@ ENDMACRO()
 
 
 MACRO(ADD_ELMER_TEST test_name)
-  # Check the number of input arguments
-  IF(${ARGC} GREATER 1 AND WITH_MPI) # This is a parallel test
+  IF(${ARGC} GREATER 1)
+    # Additional arguments are present, this is a parallel test
     # Construct a list with test names and number of tasks,
     # note the suffix
     FOREACH(n ${ARGN})
-      IF(${n} GREATER ${MPI_TEST_MAXPROC} OR ${n} LESS ${MPI_TEST_MINPROC})
-        MESSAGE(STATUS "Skipping test ${test_name} with ${n} procs")
-      ELSE()
-        LIST(APPEND test_list "${test_name}_${n}")
-        LIST(APPEND tasks_list "${n}")
-      ENDIF()
+      IF(WITH_MPI)
+        # Check the task bounds and add only compatible tests
+        IF(${n} GREATER ${MPI_TEST_MAXPROC} OR ${n} LESS ${MPI_TEST_MINPROC})
+          MESSAGE(STATUS "Skipping test ${test_name} with ${n} procs")
+        ELSE()
+          LIST(APPEND tests_list "${test_name}_${n}")
+          LIST(APPEND tasks_list "${n}")
+        ENDIF()
+      ELSE(WITH_MPI)
+        # If there is a single task version in the task list, add
+        # it as a test case also for non-MPI builds
+        IF(${n} EQUAL 1)
+          SET(tests_list "${test_name}")
+          SET(tasks_list 1)
+        ENDIF()
+      ENDIF(WITH_MPI)
     ENDFOREACH()
   ELSE()
     # Serial or single task test
-    SET(test_list "${test_name}")
+    SET(tests_list "${test_name}")
     SET(tasks_list 1)
   ENDIF()
-
+  
   # Loop over the two lists, which is cumbersome in CMake
-  LIST(LENGTH test_list nt)
+  LIST(LENGTH tests_list nt)
   MATH(EXPR ntests "${nt} - 1")
   FOREACH(n RANGE ${ntests})
-    LIST(GET test_list ${n} this_test_name)
+    LIST(GET tests_list ${n} this_test_name)
     LIST(GET tasks_list ${n} this_test_tasks)
     ADD_TEST(NAME ${this_test_name}
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
@@ -79,7 +89,12 @@ MACRO(RUN_ELMER_TEST)
     SET(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
   ENDIF(NOT(WIN32))
 
-  FILE(REMOVE TEST.PASSED)
+  # Clean up old result files
+  IF(${MPIEXEC_NTASKS} GREATER 1)
+    FILE(REMOVE TEST.PASSED_${MPIEXEC_NTASKS})
+  ELSE()
+    FILE(REMOVE TEST.PASSED)
+  ENDIF()
 
   IF(WIN32)
     SET(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
@@ -90,19 +105,20 @@ MACRO(RUN_ELMER_TEST)
   IF(WITH_MPI)
     EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
       OUTPUT_FILE "test-stdout_${MPIEXEC_NTASKS}.log"
-      ERROR_FILE "test-stderr_${MPIEXEC_NTASKS}.log"
-      OUTPUT_VARIABLE TESTOUTPUT)
-  ELSE()      
+      ERROR_FILE "test-stderr_${MPIEXEC_NTASKS}.log")
+  ELSE()
     EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
       OUTPUT_FILE "test-stdout.log"
-      ERROR_FILE "test-stderr.log"
-      OUTPUT_VARIABLE TESTOUTPUT)
+      ERROR_FILE "test-stderr.log")
   ENDIF()
 
-  MESSAGE(STATUS "testoutput.........: ${TESTOUTPUT}")
-
-  FILE(READ "TEST.PASSED" RES)
-  IF (NOT RES EQUAL "1")
+  # Check the result file (with suffix is more than single task)
+  IF(${MPIEXEC_NTASKS} GREATER 1)
+    FILE(READ "TEST.PASSED_${MPIEXEC_NTASKS}" RES)
+  ELSE()
+    FILE(READ "TEST.PASSED" RES)
+  ENDIF()
+  IF(NOT RES EQUAL "1")
     MESSAGE(FATAL_ERROR "Test failed")
   ENDIF()
 ENDMACRO()
@@ -121,9 +137,8 @@ MACRO(EXECUTE_ELMER_SOLVER SIFNAME)
     GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
     SET(ENV{PATH} "${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
   ENDIF(WIN32)
-  
+
   EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN} ${SIFNAME}
     OUTPUT_FILE "${SIFNAME}-stdout.log"
     ERROR_FILE "${SIFNAME}-stderr.log")
 ENDMACRO()
-
