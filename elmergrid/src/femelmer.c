@@ -4599,7 +4599,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
    in Elmer calculations in parallel platforms. 
    */
 {
-  int noknots,noelements,sumsides,partitions,hit,parent,parent2,maxnosides;
+  int noknots,noelements,sumsides,partitions,hit,found,parent,parent2,maxnosides;
   int nodesd2,nodesd1,discont,maxelemtype,minelemtype,sidehits,elemsides,side,bctype;
   int part,otherpart,part2,part3,elemtype,sideelemtype,*needednodes,*neededtwice;
   int **bulktypes,*sidetypes,tottypes,splitsides;
@@ -4609,9 +4609,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   int *neededtimes,*elempart,*elementsinpart,*indirectinpart,*sidesinpart;
   int maxneededtimes,indirecttype,bcneeded,trueparent,trueparent2,*ownerpart;
   int *sharednodes,*ownnodes,reorder,*order=NULL,*invorder=NULL;
-  int *bcnodesaved,*bcnodesaved2,*bcelemsaved,*orphannodes,*bcnode;
+  int *bcnodesaved[MAXBCS],maxbcnodesaved,*bcelemsaved,*orphannodes,*bcnode;
   int *bcnodedummy,*elementhalo,*neededtimes2;
-  int partstart,partfin,filesetsize,nofile,nofile2;
+  int partstart,partfin,filesetsize,nofile,nofile2,nobcnodes;
   int halobulkelems,halobcs,savethis,fail;
   FILE *out,*outfiles[MAXPARTITIONS+1];
   int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart,sumorphannodes,sumindirect;
@@ -4677,23 +4677,25 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   } 
 
   /* Mark the nodes that are on some boundary in order to create boundary halos */
-  if( halomode == 2 ) {
-    bcnode = Ivector(1,noknots);
-    for(i=1;i<=noknots;i++)
-      bcnode[i] = FALSE;
-    for(j=0;j < MAXBOUNDARIES;j++) {
-      for(i=1; i <= bound[j].nosides; i++) {		
-	GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
-	nodesd1 = sideelemtype%100;
-	for(l=0;l<nodesd1;l++) 
-	  bcnode[sideind[l]] = TRUE;
-      }
+  bcnode = Ivector(1,noknots);
+  for(i=1;i<=noknots;i++)
+    bcnode[i] = FALSE;
+  for(j=0;j < MAXBOUNDARIES;j++) {
+    for(i=1; i <= bound[j].nosides; i++) {		
+      GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
+      nodesd1 = sideelemtype%100;
+      for(l=0;l<nodesd1;l++) 
+	bcnode[sideind[l]] = TRUE;
     }
-    j = 0;
-    for(i=1;i<=noknots;i++)
-      if( bcnode[i] ) j += 1;
-    if(info) printf("Number of boundary nodes potentially requiring halo: %d\n",j);
   }
+  nobcnodes = 0;
+  for(i=1;i<=noknots;i++) {
+    if( bcnode[i] ) {
+      nobcnodes += 1;
+      bcnode[i] = nobcnodes;
+    }
+  }
+  if(info) printf("Number of boundary nodes at the boundary: %d\n",nobcnodes);
 
 
   sprintf(directoryname,"%s",prefix);
@@ -5194,8 +5196,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   /*********** part.n.boundary *********************/
   /* This is still done in partition loop as the subroutines are quite complicated */
 
-  bcnodesaved = bcnodedummy;
-  bcnodesaved2 = Ivector(1,data->noknots);
+  maxbcnodesaved = 1;
+  bcnodesaved[1] = Ivector(1,nobcnodes);
+
   discont = FALSE;
   splitsides = 0;
 
@@ -5211,8 +5214,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     sprintf(filename,"%s.%d.%s","part",part,"boundary");
     out = fopen(filename,"w");
 
-    for(i=1;i<=noknots;i++)
-      bcnodesaved[i] = bcnodesaved2[i] = FALSE;
+    for(j=1;j<=maxbcnodesaved;j++)
+      for(i=1;i<=nobcnodes;i++)
+	bcnodesaved[j][i] = FALSE;
    
     for(i=minelemtype;i<=maxelemtype;i++)
       sidetypes[i] = 0;
@@ -5221,6 +5225,8 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 
     /* First loop the standard elements, 2nd time the orphan nodes */
     for(j=0;j < MAXBOUNDARIES;j++) {
+
+      if(bound[j].nosides == 0 ) continue;
 
       for(i=1;i<=maxnosides;i++)
 	bcelemsaved[i] = FALSE;
@@ -5259,17 +5265,13 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    }
 	  }
 
-	  if(sideelemtype == 101 ){
-	    printf("step = %d %d %d %d %d %d %d %d %d %d\n",step,parent,parent2,halomode,bcneeded,bcneeded2,nodesd1,sideelemtype,sideind[0]);
-	  }
 
-	  if( step == 1 ){
-	    
+	  if( step == 1 ){	    
+
 	    haloelem = FALSE;
-	    if(!parent && !parent2) {
+	    if(0 && !parent && !parent2) {
 	      /* If neither parent exists we cannot really use the parent information 
 		 then save the element if all nodes are needed. */
-	      printf("bcneeded = %d %d\n",bcneeded,nodesd1);
 	      if( bcneeded < nodesd1 ) continue;
 	    }
 	    else {
@@ -5327,12 +5329,12 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    if( haloelem ) 
 	      fprintf(out,"%d/%d %d %d %d %d",
 		      sumsides,elempart[parent],bctype,parent,parent2,sideelemtype);	    
-	    else if(trueparent2)
-	      fprintf(out,"%d %d %d %d %d",
-		      sumsides,bctype,parent2,parent,sideelemtype);	  
-	    else
+	    else if(trueparent)
 	      fprintf(out,"%d %d %d %d %d",
 		      sumsides,bctype,parent,parent2,sideelemtype);	  
+	    else
+	      fprintf(out,"%d %d %d %d %d",
+		      sumsides,bctype,parent2,parent,sideelemtype);	  
 	    
 	    if(reorder) {
 	      for(l=0;l<nodesd1;l++)
@@ -5342,23 +5344,38 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 		fprintf(out," %d",sideind[l]);	  
 	    }
 	    fprintf(out,"\n");
+	    
+	    bcelemsaved[i] = TRUE;
 
 	    /* Memorize that the node has already been saved as a regular BC. */
 	    for(l=0;l<nodesd1;l++) {
 	      k = sideind[l];
-	      if(bcnodesaved[k] == bctype || bcnodesaved2[k] == bctype ) continue;
-	      
-	      if(!bcnodesaved[k]) 
-		bcnodesaved[k] = bctype;
-	      else if(!bcnodesaved2[k]) 
-		bcnodesaved2[k] = bctype;
-	      else 
-		if(0) printf("Node %d shared by more than two BCs (%d)\n",k,bctype);
+	      found = FALSE;
+	      for(l2=1;l2<=maxbcnodesaved;l2++) {
+		if(bcnodesaved[l2][bcnode[k]] == bctype ) {
+		  found = TRUE;
+		  break;
+		}
+		if(bcnodesaved[l2][bcnode[k]] == 0 ) {
+		  bcnodesaved[l2][bcnode[k]] = bctype;
+		  found = TRUE;
+		  break;
+		}
+	      }
+	      if( !found ) {
+		maxbcnodesaved += 1;
+		if(0) printf("Increasing size of bc owners to %d\n",maxbcnodesaved);
+		bcnodesaved[maxbcnodesaved] = Ivector(1,nobcnodes);
+		for(l3=1;l3<=nobcnodes;l3++)
+		  bcnodesaved[maxbcnodesaved][l3] = 0;
+		bcnodesaved[maxbcnodesaved][bcnode[k]] = bctype;
+		if(0) for(l3=1;l3<=maxbcnodesaved;l3++)
+		  printf("bc index: %d %d %d %d\n",l3,k,bcnode[k],bcnodesaved[l3][bcnode[k]]);
+	      }
 	    }
-	    
-	    bcelemsaved[i] = TRUE;
 	  }
 	  else if( step == 2 ) {
+	    if(bcneeded == 0 ) continue;
 	    if( bcelemsaved[i] ) continue;
 		         
 	    for(l=0;l<nodesd1;l++) {
@@ -5367,13 +5384,34 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 		if(part == data->partitiontable[k][ind]) {
 		  
 		  /* Check whether the nodes was not already saved */
-		  if( bcnodesaved[ind] == bctype ) continue;	  
-		  if( bcnodesaved2[ind] == bctype ) continue;	  
-		  
-		  /* Memorize if the node really was saved. */		  
-		  if(!bcnodesaved[ind]) bcnodesaved[ind] = bctype;
-		  if(!bcnodesaved2[ind]) bcnodesaved2[ind] = bctype;
-		  
+		  found = FALSE;
+		  hit = FALSE;
+		  for(l2=1;l2<=maxbcnodesaved;l2++) {
+		    if(bcnodesaved[l2][bcnode[ind]] == bctype ) {
+		      found = TRUE;
+		      hit = TRUE;
+		      break;
+		    }
+		    if(bcnodesaved[l2][bcnode[ind]] == 0 ) {
+		      found = TRUE;
+		      bcnodesaved[l2][bcnode[ind]] = bctype;
+		      break;
+		    }
+		  }
+		  if( !found ) {
+		    maxbcnodesaved += 1;
+		    if(0) printf("Increasing size of bc owners b to %d\n",maxbcnodesaved);
+		    bcnodesaved[maxbcnodesaved] = Ivector(1,nobcnodes);
+		    for(l3=1;l3<=nobcnodes;l3++)
+		      bcnodesaved[maxbcnodesaved][l3] = 0;
+		    bcnodesaved[maxbcnodesaved][bcnode[ind]] = bctype;
+		    if(0) for(l3=1;l3<=maxbcnodesaved;l3++)
+		      printf("bc index b: %d %d %d %d\n",l3,k,bcnode[ind],bcnodesaved[l3][bcnode[ind]]);
+		    
+		  } 
+
+		  if(hit) continue;
+
 		  orphannodes[part] += 1;
 		  
 		  sumsides++;
@@ -5663,6 +5701,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     }
   }
   /*********** end of part.n.header *********************/
+
+  if(info) printf("Nodes needed in maximum %d boundary elements\n",maxbcnodesaved);
+
   
   sumelementsinpart = sumownnodes = sumsharednodes = sumsidesinpart = sumorphannodes = sumindirect = 0;
   for(i=1;i<=partitions;i++) {
@@ -5692,7 +5733,8 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   }
 
 
-  free_Ivector(bcnodesaved2,1,noknots);
+  for(i=1;i<=maxbcnodesaved;i++)
+    free_Ivector(bcnodesaved[i],1,nobcnodes);
   if(halomode) free_Ivector(neededtimes2,1,noknots);
   
   
