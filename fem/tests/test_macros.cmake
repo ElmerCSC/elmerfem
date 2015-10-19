@@ -3,35 +3,36 @@ MACRO(ADD_ELMER_LABEL test_name label_string)
 ENDMACRO()
 
 
-MACRO(ADD_ELMER_TEST test_name)
-  IF(${ARGC} GREATER 1)
-    # Additional arguments are present, this is a parallel test
-    # Construct a list with test names and number of tasks,
-    # note the suffix
-    FOREACH(n ${ARGN})
+MACRO(ADD_ELMER_TEST TestName)
+  # Parse optional named arguments, NPROCS and LABELS, which can be lists
+  CMAKE_PARSE_ARGUMENTS(_parsedArgs "" "" "NPROCS;LABELS" "${ARGN}")
+
+  IF(_parsedArgs_LABELS)
+    # List of task counts was given so this is a parallel test case
+    FOREACH(n ${_parsedArgs_NPROCS})
       IF(WITH_MPI)
         # Check the task bounds and add only compatible tests
         IF(${n} GREATER ${MPI_TEST_MAXPROC} OR ${n} LESS ${MPI_TEST_MINPROC})
-          MESSAGE(STATUS "Skipping test ${test_name} with ${n} procs")
+          MESSAGE(STATUS "Skipping test ${TestName} with ${n} procs")
         ELSE()
-          LIST(APPEND tests_list "${test_name}_${n}")
+          LIST(APPEND tests_list "${TestName}_np${n}")
           LIST(APPEND tasks_list "${n}")
         ENDIF()
       ELSE(WITH_MPI)
         # If there is a single task version in the task list, add
         # it as a test case also for non-MPI builds
         IF(${n} EQUAL 1)
-          SET(tests_list "${test_name}")
+          SET(tests_list "${TestName}")
           SET(tasks_list 1)
         ENDIF()
       ENDIF(WITH_MPI)
     ENDFOREACH()
   ELSE()
-    # Serial or single task test
-    SET(tests_list "${test_name}")
+    # Serial or purely single task test
+    SET(tests_list "${TestName}")
     SET(tasks_list 1)
   ENDIF()
-  
+
   # Loop over the two lists, which is cumbersome in CMake
   LIST(LENGTH tests_list nt)
   MATH(EXPR ntests "${nt} - 1")
@@ -57,8 +58,13 @@ MACRO(ADD_ELMER_TEST test_name)
       -DMPIEXEC_NTASKS=${this_test_tasks}
       -P ${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
+    IF(_parsedArgs_LABELS)
+      FOREACH(lbl ${_parsedArgs_LABELS})
+        SET_PROPERTY(TEST ${this_test_name} APPEND PROPERTY LABELS ${lbl})
+      ENDFOREACH()
+    ENDIF()
   ENDFOREACH()
-ENDMACRO()
+ENDMACRO(ADD_ELMER_TEST)
 
 
 MACRO(ADD_ELMERTEST_MODULE test_name module_name file_name)

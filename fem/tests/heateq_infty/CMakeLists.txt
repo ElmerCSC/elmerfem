@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO cubes.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(heateq_infty 1 2 4)
+ADD_ELMER_TEST(heateq_infty NPROCS 1 2 4 LABELS parallel)
