@@ -7,7 +7,7 @@ MACRO(ADD_ELMER_TEST TestName)
   # Parse optional named arguments, NPROCS and LABELS, which can be lists
   CMAKE_PARSE_ARGUMENTS(_parsedArgs "" "" "NPROCS;LABELS" "${ARGN}")
 
-  IF(_parsedArgs_LABELS)
+  IF(_parsedArgs_NPROCS)
     # List of task counts was given so this is a parallel test case
     FOREACH(n ${_parsedArgs_NPROCS})
       IF(WITH_MPI)
