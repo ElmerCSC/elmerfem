@@ -10,26 +10,29 @@ MACRO(ADD_ELMER_TEST TestName)
   IF(_parsedArgs_NPROCS)
     # List of task counts was given so this is a parallel test case
     FOREACH(n ${_parsedArgs_NPROCS})
-      IF(WITH_MPI)
+      IF(WITH_MPI AND ${n} GREATER 1)
         # Check the task bounds and add only compatible tests
         IF(${n} GREATER ${MPI_TEST_MAXPROC} OR ${n} LESS ${MPI_TEST_MINPROC})
           MESSAGE(STATUS "Skipping test ${TestName} with ${n} procs")
         ELSE()
           LIST(APPEND tests_list "${TestName}_np${n}")
+          LIST(APPEND label_list "parallel")
           LIST(APPEND tasks_list "${n}")
         ENDIF()
-      ELSE(WITH_MPI)
+      ELSE()
         # If there is a single task version in the task list, add
         # it as a test case also for non-MPI builds
         IF(${n} EQUAL 1)
           SET(tests_list "${TestName}")
+          SET(label_list "serial")
           SET(tasks_list 1)
         ENDIF()
-      ENDIF(WITH_MPI)
+      ENDIF()
     ENDFOREACH()
   ELSE()
-    # Serial or purely single task test
+    # No NPROCS argument, serial test
     SET(tests_list "${TestName}")
+    SET(label_list "serial")
     SET(tasks_list 1)
   ENDIF()
 
@@ -37,9 +40,10 @@ MACRO(ADD_ELMER_TEST TestName)
   LIST(LENGTH tests_list nt)
   MATH(EXPR ntests "${nt} - 1")
   FOREACH(n RANGE ${ntests})
-    LIST(GET tests_list ${n} this_test_name)
-    LIST(GET tasks_list ${n} this_test_tasks)
-    ADD_TEST(NAME ${this_test_name}
+    LIST(GET tests_list ${n} _this_test_name)
+    LIST(GET tasks_list ${n} _this_test_tasks)
+    LIST(GET label_list ${n} _this_test_label)
+    ADD_TEST(NAME ${_this_test_name}
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       COMMAND ${CMAKE_COMMAND}
       -DELMERGRID_BIN=${ELMERGRID_BIN}
@@ -55,12 +59,15 @@ MACRO(ADD_ELMER_TEST TestName)
       -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
       -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
       -DWITH_MPI=${WITH_MPI}
-      -DMPIEXEC_NTASKS=${this_test_tasks}
+      -DMPIEXEC_NTASKS=${_this_test_tasks}
       -P ${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake
       -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
+    SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${_this_test_label})
+    # If LABELS argument was given iterate through the given labels and add them
+    # to this test
     IF(_parsedArgs_LABELS)
       FOREACH(lbl ${_parsedArgs_LABELS})
-        SET_PROPERTY(TEST ${this_test_name} APPEND PROPERTY LABELS ${lbl})
+        SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${lbl})
       ENDFOREACH()
     ENDIF()
   ENDFOREACH()
