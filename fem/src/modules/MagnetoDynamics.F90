@@ -121,7 +121,7 @@ CONTAINS
           IF ( Face % NodeIndexes(j)==Boundary % NodeIndexes(k)) m=m+1
         END DO
       END DO
-      IF ( m==Boundary % TYPE % NumberOfNodes) EXIT
+      IF ( m==Face % TYPE % NumberOfNodes) EXIT
     END DO
     n = Parent % FaceIndexes(i)
 !------------------------------------------------------------------------------
@@ -279,18 +279,27 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion
+  LOGICAL :: Found, PiolaVersion, SecondOrder
   TYPE(ValueList_t), POINTER :: SolverParams
 
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     PiolaVersion = GetLogical(SolverParams, &
         'Use Piola Transform', Found )   
+    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
     IF (PiolaVersion) THEN
       IF ( Transient ) THEN
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+        IF (SecondOrder) THEN
+          CALL ListAddString( SolverParams, "Element", "n:1 e:2 -tri_face b:2" )  
+        ELSE
+          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+        END IF
       ELSE
-        CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+        IF (SecondOrder) THEN
+          CALL ListAddString( SolverParams, "Element", "n:0 e:2 -tri_face b:2" )  
+        ELSE
+          CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
+        END IF
       END IF
     ELSE
       IF ( Transient ) THEN
@@ -359,7 +368,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
   LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
          SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
-         PiolaVersion, LFact, LFactFound, EdgeBasis
+         PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis
 
   REAL(KIND=dp) :: Relax
 
@@ -378,8 +387,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
   CALL Info('WhitneyAVSolver','Solving the AV equations with edge elements',Level=5 )
 
-  PiolaVersion = GetLogical( GetSolverParams(), &
-      'Use Piola Transform', Found )
+  PiolaVersion = GetLogical( GetSolverParams(), 'Use Piola Transform', Found )
+  SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
@@ -387,6 +396,9 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         'Currently only homogeneous Dirichlet and Neumann BCs for the vector potential supported',Level=4)
     CALL Info('WhitneyAVSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
+    IF (SecondOrder) &
+         CALL Info('WhitneyAVSolver', &
+        'Using quadratic approximation, the background mesh should consist of element types 504 or 510 ',Level=4)
   END IF
 
   !Allocate some permanent storage, this is done first time only:
@@ -566,26 +578,26 @@ CONTAINS
                 'Magnetization', FoundMagnetization )
      END IF
      
-    BodyParams => GetBodyParams( Element )
-    IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
+     BodyParams => GetBodyParams( Element )
+     IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('WhitneyAVSolver', 'Body Parameters not found')
 
-    CoilBody = .FALSE.
-    CoilType = GetString(BodyParams, 'Coil Type', Found)
-    IF (.NOT. Found) THEN
-      CoilType = ''
-    ELSE
-      SELECT CASE (CoilType)
-      CASE ('stranded')
-        CoilBody = .TRUE.
-      CASE ('massive')
-        CoilBody = .TRUE.
-      CASE ('foil winding')
-        CoilBody = .TRUE.
-        CALL GetElementRotM(Element, RotM, n)
-      CASE DEFAULT
-        CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
-      END SELECT
-    END IF
+     CoilBody = .FALSE.
+     CoilType = GetString(BodyParams, 'Coil Type', Found)
+     IF (.NOT. Found) THEN
+        CoilType = ''
+     ELSE
+        SELECT CASE (CoilType)
+        CASE ('stranded')
+           CoilBody = .TRUE.
+        CASE ('massive')
+           CoilBody = .TRUE.
+        CASE ('foil winding')
+           CoilBody = .TRUE.
+           CALL GetElementRotM(Element, RotM, n)
+        CASE DEFAULT
+           CALL Fatal ('WhitneyAVSolver', 'Non existent Coil Type Chosen!')
+        END SELECT
+     END IF
 
      Acoef = 0.0d0
      Tcoef = 0.0d0
@@ -645,12 +657,12 @@ CONTAINS
      CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, &
           LamThick, LamCond, CoilBody, CoilType, RotM, &
-          Element, n, nd+nb, PiolaVersion )    
+          Element, n, nd+nb, PiolaVersion, SecondOrder )    
 
-    !Update global matrix and rhs vector from local matrix & vector:
-    !---------------------------------------------------------------
-    IF (Transient) CALL DefaultUpdateMass(MASS)
-    CALL DefaultUpdateEquations(STIFF,FORCE)
+     !Update global matrix and rhs vector from local matrix & vector:
+     !---------------------------------------------------------------
+     IF (Transient) CALL DefaultUpdateMass(MASS)
+     CALL DefaultUpdateEquations(STIFF,FORCE)
   END DO
 
   CALL DefaultFinishBulkAssembly(BulkUpdate=ConstantBulk)
@@ -742,11 +754,7 @@ CONTAINS
   !
   ! Dirichlet BCs in terms of vector potential A:
   ! ---------------------------------------------
-  IF (PiolaVersion) THEN
-     CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
-  ELSE
-     CALL DefaultDirichletBCs()
-  END IF
+  CALL DefaultDirichletBCs()
 
   ! Dirichlet BCs in terms of magnetic flux density B:
   ! --------------------------------------------------
@@ -887,7 +895,7 @@ CONTAINS
    INTEGER::nbf
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: torq,a(nbf),u(nbf),IMoment,IA,zforce,zzforce
-   INTEGER :: i,bfid,n,nd
+   INTEGER :: i,bfid,n,nd,EdgeBasisDegree
    LOGICAL :: Found, CalcTorque,CalcPotential,CalcInertia
    TYPE(ValueList_t),POINTER::Params
    TYPE(ELement_t), POINTER :: Element, Parent
@@ -899,6 +907,9 @@ CONTAINS
 
    IF(.NOT. (CalcTorque .OR. CalcPotential .OR. CalcInertia ) ) RETURN
 
+   EdgeBasisDegree = 1
+   IF (SecondOrder) EdgeBasisDegree = 2
+
    U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0; zforce=0
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
@@ -906,8 +917,8 @@ CONTAINS
      n  = GetElementNOFNodes(Element)
 
      IF( CalcTorque ) THEN
-       CALL Torque(Torq,Element,n,nd)
-       CALL AxialForce(zforce,Element,n,nd)
+       CALL Torque(Torq,Element,n,nd,EdgeBasisDegree)
+       CALL AxialForce(zforce,Element,n,nd,EdgeBasisDegree)
      END IF
 
      IF( CalcPotential ) THEN
@@ -915,7 +926,7 @@ CONTAINS
        IF(ASSOCIATED(Params)) THEN
          bfid=GetBodyForceId(Element)
          IF(GetLogical(Params,'Calculate Potential',Found)) &
-             CALL Potential(u(bfid),a(bfid),Element,n,nd)
+             CALL Potential(u(bfid),a(bfid),Element,n,nd,EdgeBasisDegree)
        END IF
      END IF
 
@@ -937,7 +948,7 @@ CONTAINS
        Parent => Element % BoundaryInfo % Left
        n  = GetELementNofNodes(Parent)
        nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd)
+       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
      END DO
    END IF
 
@@ -1020,9 +1031,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Torque(U,Element,n,nd)
+  SUBROUTINE Torque(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -1049,13 +1060,16 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -1077,9 +1091,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AxialForce(U,Element,n,nd)
+  SUBROUTINE AxialForce(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -1106,13 +1120,16 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -1135,9 +1152,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AxialForceSurf(U,Element,n,nd)
+  SUBROUTINE AxialForceSurf(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -1159,15 +1176,22 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        CALL Warn('AxialForceSurf', 'Surface force not implemented for Piola Elements')
-        RETURN
-!       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-!           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+
+        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+ 
+        stat = EdgeElementInfo( Parent, PNodes, uu, v, w, &
+              DetF = PDetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+
       ELSE
 
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -1195,10 +1219,10 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Potential( U, A, Element,n,nd)
+  SUBROUTINE Potential( U, A, Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: U,A
-    INTEGER :: n, nd
+    INTEGER :: n, nd, EdgeBasisDegree
     TYPE(Element_t) :: Element
 
     REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3),DetJ,POT(nd),pPOT(nd), &
@@ -1227,13 +1251,16 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)         
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -1603,14 +1630,14 @@ CONTAINS
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, &
-            Element, n, nd, PiolaVersion )
+            Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: PiolaVersion
+    LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
@@ -1621,7 +1648,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
     LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody
-    INTEGER :: t, i, j, p, q, np, siz
+    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
@@ -1630,6 +1657,12 @@ CONTAINS
            CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
 !------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+       EdgeBasisDegree = 2
+    ELSE
+       EdgeBasisDegree = 1
+    END IF
+
     CALL GetElementNodes( Nodes )
 
     STIFF = 0.0d0
@@ -1678,7 +1711,8 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree )
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
     DO t=1,IP % n
@@ -1686,7 +1720,7 @@ CONTAINS
           stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
                RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-               ApplyPiolaTransform = .TRUE.)
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
@@ -1858,37 +1892,43 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3),w0(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3),w0(3),w1(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, k, ii,jj, np, p, q
+    INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+       EdgeBasisDegree = 2
+    ELSE
+       EdgeBasisDegree = 1
+    END IF
+
     CALL GetElementNodes( Nodes, Element )
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
     MASS  = 0.0_dp
 
-!   IF(PiolaVersion) RETURN
-
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
        IF ( PiolaVersion ) THEN
-         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-            IP % W(t), detJ, Basis, dBasisdx, EdgeBasis=WBasis )
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
-         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                    IP % W(t), detJ, Basis, dBasisdx )
-         CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-      END IF
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
 
        B  = SUM(Basis(1:n) * Bcoef(1:n))
        L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
@@ -1913,9 +1953,10 @@ CONTAINS
          p = i+np
          FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP % s(t)
          DO j = 1,nd-np
+           w1 = CrossProduct(Wbasis(j,:),Normal)
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(WBasis(j,:)*w0)*detJ*IP % s(t)
+           STIFF(p,q) = STIFF(p,q) - B * &
+              SUM(w1*w0)*detJ*IP % s(t)
          END DO
        END DO
     END DO
@@ -1971,11 +2012,14 @@ CONTAINS
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, np, p, q
+    INTEGER :: t, i, j, np, p, q, EdgeBasisDegree
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes, Element )
+
+    EdgeBasisDegree = 1
+    IF (SecondOrder) EdgeBasisDegree = 2
 
     STIFF = 0.0_dp
     FORCE = 0.0_dp
@@ -1985,14 +2029,21 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
 
-       CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
 
        localGapLength  = SUM(Basis(1:n) * GapLength(1:n))
        muAir  = SUM(Basis(1:n) * AirGapMu(1:n))
@@ -2800,14 +2851,18 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, PiolaVersion
+  LOGICAL :: Found, PiolaVersion, SecondOrder
 
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
-    PiolaVersion = GetLogical(SolverParams, &
-        'Use Piola Transform', Found )   
+    PiolaVersion = GetLogical(SolverParams, 'Use Piola Transform', Found )
+    SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
     IF (PiolaVersion) THEN    
-       CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+       IF (SecondOrder) THEN
+          CALL ListAddString( SolverParams, "Element", "n:1 e:2 -tri_face b:2" )
+       ELSE
+          CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
+       END IF
     ELSE
        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
     END IF
@@ -2866,7 +2921,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, PiolaVersion, EdgeBasis,LFact,LFactFound
+  LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
+  LOGICAL :: PiolaVersion, SecondOrder
+
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
@@ -2878,8 +2935,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
        Acoef, Cwrk, Cwrk_im, LamCond, &
        LamThick, AllocationsDone, RotM
 !------------------------------------------------------------------------------
-  PiolaVersion = GetLogical( GetSolverParams(), &
-      'Use Piola Transform', Found )
+  PiolaVersion = GetLogical( GetSolverParams(), 'Use Piola Transform', Found )
+  SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
@@ -2887,6 +2944,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
         'Currently only homogeneous Dirichlet and Neumann BCs for the vector potential supported',Level=4)
     CALL Info('WhitneyAVSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
+    IF (SecondOrder) &
+         CALL Info('WhitneyAVHarmonicSolver', &
+        'Using quadratic approximation, the background mesh should consist of element types 504 or 510 ',Level=4)   
   END IF
 
   ! Allocate some permanent storage, this is done first time only:
@@ -2929,7 +2989,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   IF (FixJ) CALL JfixPotentialSolver(Model,Solver,dt,Transient)
 
   !
-  ! Resolve internal non.linearities, if requeted:
+  ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( GetSolverParams(), &
               'Nonlinear System Max Iterations',Found)
@@ -3100,7 +3160,7 @@ CONTAINS
        !----------------------------------------
        CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
           Tcoef, Acoef, LaminateStack, LaminateStackModel, LamThick, &
-          LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion )
+          LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion, SecondOrder )
 
        !Update global matrix and rhs vector from local matrix & vector:
        !---------------------------------------------------------------
@@ -3155,17 +3215,10 @@ CONTAINS
 
     CALL DefaultFinishAssembly()
 
-    ! And finally, solve:
-    !--------------------
-  
     !
     ! Dirichlet BCs in terms of vector potential A:
     ! ---------------------------------------------
-    IF (PiolaVersion) THEN
-       CALL DefaultDirichletBCs(PiolaCurlTransform=.TRUE.)
-    ELSE
-       CALL DefaultDirichletBCs()
-    END IF
+    CALL DefaultDirichletBCs()
 
     !
     ! Dirichlet BCs in terms of magnetic flux density B:
@@ -3257,7 +3310,7 @@ CONTAINS
    INTEGER::nbf
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: a(nbf),IMoment,IA
-   INTEGER :: i,bfid,n,nd
+   INTEGER :: i,bfid,n,nd,EdgeBasisDegree
    TYPE(Element_t), POINTER :: Element, Parent
    COMPLEX(KIND=dp) :: torq, U(nbf), zforce, zzforce
    LOGICAL :: Found, CalcTorque,CalcPotential,CalcInertia
@@ -3270,6 +3323,9 @@ CONTAINS
 
    IF(.NOT. (CalcTorque .OR. CalcPotential .OR. CalcInertia ) ) RETURN
 
+   EdgeBasisDegree = 1
+   IF (SecondOrder) EdgeBasisDegree = 2
+
    U=0._dp; a=0._dp; torq=0._dp; IMoment=0._dp;IA=0; zforce=0
    DO i=1,GetNOFActive()
      Element => GetActiveElement(i)
@@ -3277,8 +3333,8 @@ CONTAINS
      n  = GetElementNOFNodes(Element)
 
      IF( CalcTorque ) THEN
-       CALL Torque(Torq,Element,n,nd)
-       CALL AxialForce(zforce,Element,n,nd)
+       CALL Torque(Torq,Element,n,nd,EdgeBasisDegree)
+       CALL AxialForce(zforce,Element,n,nd,EdgeBasisDegree)
      END IF
 
      IF( CalcPotential ) THEN
@@ -3286,7 +3342,7 @@ CONTAINS
        IF(ASSOCIATED(Params)) THEN
          bfid=GetBodyForceId(Element)
          IF(GetLogical(Params,'Calculate Potential',Found)) &
-             CALL Potential(u(bfid),a(bfid),Element,n,nd)
+             CALL Potential(u(bfid),a(bfid),Element,n,nd,EdgeBasisDegree)
        END IF
      END IF
 
@@ -3308,7 +3364,7 @@ CONTAINS
        Parent => Element % BoundaryInfo % Left
        n  = GetELementNofNodes(Parent)
        nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd)
+       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
      END DO
    END IF
 
@@ -3348,7 +3404,7 @@ CONTAINS
        Parent => Element % BoundaryInfo % Left
        n  = GetELementNofNodes(Parent)
        nd = GetELementNofDOFs(Parent)
-       CALL AxialForceSurf(zzforce,Element,n,nd)
+       CALL AxialForceSurf(zzforce,Element,n,nd,EdgeBasisDegree)
      END DO
    END IF
      IF(ListGetLogicalAnyBC(Model,'Calculate Axial Force')) THEN
@@ -3409,9 +3465,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Torque(U,Element,n,nd)
+  SUBROUTINE Torque(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     COMPLEX(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -3440,13 +3496,16 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -3470,9 +3529,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AxialForce(U,Element,n,nd)
+  SUBROUTINE AxialForce(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     COMPLEX(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -3501,13 +3560,15 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-            detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -3533,9 +3594,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE AxialForceSurf(U,Element,n,nd)
+  SUBROUTINE AxialForceSurf(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
-    INTEGER :: n,nd
+    INTEGER :: n,nd,EdgeBasisDegree
     COMPLEX(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
@@ -3558,15 +3619,22 @@ CONTAINS
   
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
+
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        CALL Warn('AxialForceSurf', 'Surface force not implemented for Piola Elements')
-        RETURN
-!       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-!           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                  IP % W(t), detJ, Basis, dBasisdx )
+
+        CALL GetParentUVW(Element,GetElementNOFNodes(Element),Parent,n,uu,v,w,Basis)
+ 
+        stat = EdgeElementInfo( Parent, PNodes, uu, v, w, &
+              DetF = PDetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+              BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
       ELSE
 
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
@@ -3596,11 +3664,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE Potential( U, A, Element,n,nd)
+  SUBROUTINE Potential( U, A, Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: A
     COMPLEX(KIND=dp) :: U
-    INTEGER :: n, nd
+    INTEGER :: n, nd, EdgeBasisDegree
     TYPE(Element_t), POINTER :: Element
 
     REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3),DetJ,POT(2,nd), &
@@ -3624,13 +3692,15 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
     DO t=1,IP % n
       ! Basis function values & derivatives at the integration point:
       !--------------------------------------------------------------
       IF (PiolaVersion) THEN
-        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
-           detJ, Basis, dBasisdx,EdgeBasis=WBasis, RotBasis=RotWBasis )
+        stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), &
+             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, dBasisdx = dBasisdx, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)     
       ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                   IP % W(t), detJ, Basis, dBasisdx )
@@ -3992,7 +4062,8 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( MASS, STIFF, FORCE, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, & 
-            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, PiolaVersion )
+            LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, &
+            PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
@@ -4000,7 +4071,7 @@ CONTAINS
     REAL(KIND=dp) :: LamThick(:)
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: PiolaVersion
+    LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n)
@@ -4013,7 +4084,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
     LOGICAL :: Stat, LaminateStack, Newton, Cubic, HBCurve, CoilBody
-    INTEGER :: t, i, j, p, q, np, siz
+    INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
@@ -4022,6 +4093,12 @@ CONTAINS
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+       EdgeBasisDegree = 2
+    ELSE
+       EdgeBasisDegree = 1
+    END IF
+
     CALL GetElementNodes( Nodes )
 
     STIFF = 0.0_dp
@@ -4072,7 +4149,8 @@ CONTAINS
 
     !Numerical integration:
     !----------------------
-    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree )
 
     np = n*Solver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
 
@@ -4081,7 +4159,7 @@ CONTAINS
           stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
                RotBasis = RotWBasis, dBasisdx = dBasisdx, &
-               ApplyPiolaTransform = .TRUE.)
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
@@ -4220,16 +4298,22 @@ CONTAINS
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3),w0(3)
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3),w0(3),w1(3)
     COMPLEX(KIND=dp) :: B, F, TC, L(3)
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER :: t, i, j, k, ii,jj, np, p, q
+    INTEGER :: t, i, j, k, ii,jj, np, p, q, EdgeBasisDegree
 
     TYPE(Nodes_t), SAVE :: Nodes
 !------------------------------------------------------------------------------
+    IF (SecondOrder) THEN
+       EdgeBasisDegree = 2
+    ELSE
+       EdgeBasisDegree = 1
+    END IF
+
     CALL GetElementNodes( Nodes )
 
     STIFF = 0.0_dp
@@ -4238,14 +4322,21 @@ CONTAINS
 
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints(Element)
+    IP = GaussPoints(Element, EdgeBasis=.TRUE., PReferenceElement=PiolaVersion, &
+         EdgeBasisDegree=EdgeBasisDegree)
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
-       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-                  IP % W(t), detJ, Basis, dBasisdx )
+       IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+       ELSE       
+          stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+               IP % W(t), detJ, Basis, dBasisdx )
 
-       CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+       END IF
 
        B  = SUM(Basis(1:n) * Bcoef(1:n))
        L  = MATMUL(LOAD(1:3,1:n), Basis(1:n))
@@ -4269,9 +4360,10 @@ CONTAINS
          p = i+np
          FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP%s(t)
          DO j = 1,nd-np
+           w1 = CrossProduct(Wbasis(j,:),Normal)
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + B * &
-              SUM(WBasis(j,:)*w0)*detJ*IP%s(t)
+           STIFF(p,q) = STIFF(p,q) - B * &
+              SUM(w1*w0)*detJ*IP%s(t)
          END DO
        END DO
     END DO
@@ -5171,8 +5263,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
    REAL(KIND=dp) :: ComponentLoss(2,2)
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), localAlpha, localV(2), nofturns, coilthickness
-   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3)
-   COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3)
+   REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
+   COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3), BodyForceCurrDens(3,35), &
+                    BodyForceCurrDens_ip(3)
 
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
@@ -5188,44 +5281,47 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                                 EL_NF
 
    INTEGER :: Active,i,j,k,l,m,n,nd,np,p,q,DOFs,vDOFs,dim,BodyId,&
-              VvarDofs,VvarId,IvarId,Reindex,Imindex
+              VvarDofs,VvarId,IvarId,Reindex,Imindex,EdgeBasisDegree
 
    TYPE(Solver_t), POINTER :: pSolver, ElPotSolver
    CHARACTER(LEN=MAX_NAME_LEN) :: Pname, CoilType, ElectricPotName, LossFile, CurrPathPotName
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
-              CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, ItoJCoeffFound
+              CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, ItoJCoeffFound, ImposeBodyForceCurrent
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
    TYPE(Element_t), POINTER :: Element
 
-   INTEGER, ALLOCATABLE :: Pivot(:)
+   INTEGER, ALLOCATABLE :: Pivot(:), TorqueGroups(:)
 
    REAL(KIND=dp), POINTER :: Fsave(:), HB(:,:)=>NULL(), CubicCoeff(:)=>NULL()
    REAL(KIND=dp) :: Babs
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
-   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), RotM(:,:,:)
+   REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:,:), RotM(:,:,:), Torque(:)
 
    REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>NULL(), Cwrk_im(:,:,:)=>NULL()
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
 
-   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField
-   REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
-   REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
-   REAL(KIND=dp) :: Torque(3)
+   LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
    REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent
    
 !-------------------------------------------------------------------------------------------
+   dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
-   Torque = 0._dp
 
    PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
    IF (PiolaVersion) &
     CALL Info('MagnetoDynamicsCalcFields', &
         'USING NEW PIOLA TRASFORMED FINITE ELEMENTS',Level=2)
+   SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )  
+   IF (SecondOrder) THEN
+      EdgeBasisDegree = 2
+   ELSE
+      EdgeBasisDegree = 1
+   END IF
 
    Pname = GetString(SolverParams, 'Potential Variable')
    DO i=1,Model % NumberOfSolvers
@@ -5256,6 +5352,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential')
    EL_VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential E')
+
+   ImposeBodyForceCurrent = GetLogical(SolverParams, 'Impose Body Force Current', Found)
+   IF (.NOT. Found) ImposeBodyForceCurrent = .TRUE.
 
    ImposeCircuitCurrent = GetLogical(SolverParams, 'Impose Circuit Current', Found)
    CurrPathPotName = GetString(SolverParams, 'Circuit Current Path Potential Name', Found)
@@ -5353,7 +5452,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    n = Mesh % MaxElementDOFs
    ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n) )
-   IF (PiolaVersion) ALLOCATE( EBasis(n,3), CurlEBasis(n,3) )
+
    SOL = 0._dp; PSOL=0._dp
 
    LossEstimation = GetLogical(SolverParams,'Loss Estimation',Found) &
@@ -5396,7 +5495,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    Power = 0._dp; Energy = 0._dp
    CALL DefaultInitialize()
-
+   
+   IF(.NOT. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
+     ImposeBodyForceCurrent = .FALSE.
+     ImposeCircuitCurrent = .FALSE.
+   END IF
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
@@ -5415,6 +5518,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CircuitCurrent = LagrangeVar % Values(IvarId)
        END IF  
      END IF
+
 
      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
      IF (PrecomputedElectricPot) &
@@ -5443,6 +5547,26 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        IF(.NOT.FoundMagnetization) THEN
          CALL GetComplexVector( BodyForce,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
+       END IF
+     END IF
+
+     IF (ImposeBodyForceCurrent .AND. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
+       BodyForce => GetBodyForce()
+       BodyForceCurrDens = 0._dp
+       IF ( ASSOCIATED(BodyForce) ) THEN
+         SELECT CASE(DIM)
+         CASE(3)
+           CALL GetComplexVector( BodyForce, BodyForceCurrDens(1:3,1:n), 'Current Density', Found )
+         CASE(2)
+           IF (Vdofs == 2) THEN
+             BodyForceCurrDens(3,1:n) = CMPLX( ListGetReal(BodyForce, 'Current Density', n, Element % NodeIndexes, Found), &
+               ListGetReal(BodyForce, 'Current Density im', n, Element % NodeIndexes, Found), KIND=dp)
+           ELSE
+             BodyForceCurrDens(3,1:n) = CMPLX( ListGetReal(BodyForce, 'Current Density', & 
+               n, Element % NodeIndexes, Found), 0, KIND=dp)
+           END IF
+         END SELECT
+
        END IF
      END IF
 
@@ -5565,12 +5689,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL GetReluctivity(Material,R,n)
      END IF
 
-     dim = CoordinateSystemDimension()
 
 
      ! Calculate nodal fields:
      ! -----------------------
-     IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+     IF (SecondOrder) THEN
+        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+     ELSE
+        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+     END IF
 
      MASS  = 0._dp
      FORCE = 0._dp
@@ -5581,23 +5708,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        w = IP % W(j)
 
        IF (PiolaVersion) THEN
-          stat = EdgeElementInfo( Element, Nodes, u, v, w, &
-               F, G, DetF, Basis, EBasis, CurlEBasis, dBasisdx)
-
-          !-------------------------------------------------------------------------
-          ! Apply the Piola transformation so that WBasis(j,:) gives the jth basis
-          ! vector B_j(x), with the place x related to the reference element 
-          ! coordinates p via the element mapping x = f(p). Additionally, 
-          ! RotWBasis(j,:) gives (curl B_j)(f(p)) where curl is the spatial curl.
-          !-------------------------------------------------------------------------
-          GT(1:dim,1:dim) = TRANSPOSE(G(1:dim,1:dim))
-          DO l = 1,nd-np 
-             DO k=1,dim
-                WBasis(l,k) = SUM( GT(k,1:dim) * EBasis(l,1:dim) )
-                RotWBasis(l,k) = 1.0d0/DetF * SUM( F(k,1:dim) * CurlEBasis(l,1:dim) )
-             END DO
-          END DO
-          DetJ = ABS(DetF)
+          stat = EdgeElementInfo( Element, Nodes, u, v, w, DetF=DetJ, Basis=Basis, &
+               EdgeBasis=WBasis, RotBasis=RotWBasis, dBasisdx=dBasisdx, &
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
        ELSE
           stat=ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
           IF( dim == 3 ) THEN
@@ -5632,6 +5745,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            CMat_ip(k,l) = SUM( Tcoef(k,l,1:n) * Basis(1:n) )
          END DO
        END DO
+       BodyForceCurrDens_ip(1:3) = 0._dp
+       IF(ImposeBodyForceCurrent) THEN
+         DO l=1,3
+           BodyForceCurrDens_ip(l) = SUM(BodyForceCurrDens(l,1:n)*Basis(1:n))
+         END DO
+       END IF
 
        IF ( Transient ) THEN
          IF (CoilType /= 'stranded') THEN 
@@ -5775,8 +5894,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        !Power = Power + SUM(E**2)*C_ip*s
        IF (vDOFS == 1) THEN
-          Power = Power + SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-               TRANSPOSE(E(1:1,1:dim)) ) * s
+          Power = Power + SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+               TRANSPOSE(E(1:1,1:3)) ) * s
        ELSE
           ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
           ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
@@ -5822,38 +5941,35 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              k = k+3
            END DO
          END IF
+
          IF ( ASSOCIATED(CD).OR.ASSOCIATED(EL_CD)) THEN
-           !DO l=1,vDOFs
-           !  FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*C_ip*E(l,:)*Basis(p)
-           !  k = k+3
-           !END DO
            IF (ItoJCoeffFound) THEN
              IF (Vdofs == 1) THEN
-               DO l=1,dim
+               DO l=1,3
                  CC_J(1,l) = ItoJCoeff*wvec(l)*CircuitCurrent
                END DO
              ELSE
                CALL Fatal('MagnetoDynamicsCalcFields','Complex circuit current imposing is not implemented')
              END IF
-           ELSE
+           ELSE 
              CC_J(1,:) = 0.0_dp
            END IF
+
            IF (Vdofs == 1) THEN
-              DO l=1,dim
-                 JatIP(1,l) = SUM( REAL(CMat_ip(l,1:dim)) * E(1,1:dim) ) + CC_J(1,l)
-                 
-                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
+              DO l=1,3
+                JatIP(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l))
+                FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
            ELSE
-              DO l=1,dim
-                 FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( REAL(CMat_ip(l,1:dim)) * E(1,1:dim) )*Basis(p) - &
-                      s * SUM( AIMAG(CMat_ip(l,1:dim)) * E(2,1:dim) ) * Basis(p)
+              DO l=1,3
+                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) - &
+                  s * SUM( AIMAG(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*REAL(BodyForceCurrDens_ip(l))*Basis(p)
               END DO
               k = k+3
-              DO l=1,dim
-                 FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( AIMAG(CMat_ip(l,1:dim)) * E(1,1:dim) )*Basis(p) + &
-                      s * SUM( REAL(CMat_ip(l,1:dim)) * E(2,1:dim) ) * Basis(p) 
+              DO l=1,3
+                FORCE(p,k+l) = FORCE(p,k+l)+s*SUM( AIMAG(CMat_ip(l,1:3)) * E(1,1:3) )*Basis(p) + &
+                  s * SUM( REAL(CMat_ip(l,1:3)) * E(2,1:3) ) * Basis(p) + s*AIMAG(BodyForceCurrDens_ip(l))*Basis(p)
               END DO
               k = k+3
            END IF
@@ -5888,20 +6004,21 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF ( ASSOCIATED(JH).OR.ASSOCIATED(EL_JH) ) THEN
            ! The Joule heating power per unit volume: J.E = (sigma * E).E
            IF (vDOFS == 1) THEN
-             Coeff = SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-                 TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s
+             Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+               TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
+
            ELSE
              ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
              ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
              ! would be obtained.
-             Coeff = SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-                 TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s - &
-                 SUM( MATMUL( AIMAG(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
-                 TRANSPOSE(E(1:1,1:dim)) ) * Basis(p) * s + &
-                 SUM( MATMUL( AIMAG(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-                 TRANSPOSE(E(2:2,1:dim)) ) * Basis(p) * s + &               
-                 SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
-                 TRANSPOSE(E(2:2,1:dim)) ) * Basis(p) * s
+             Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+               TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s - &
+               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
+               TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s + &
+               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+               TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s + &               
+               SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
+               TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s
            END IF
            IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
            FORCE(p,k+1) = FORCE(p,k+1) + Coeff
@@ -5980,8 +6097,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3) + s*NF_ip(p,1:3)
            k = k + 3
          END IF
-       END DO
-     END DO
+       END DO ! p
+     END DO ! j
 
 
      IF(NodalFields) THEN
@@ -6005,11 +6122,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_CD,   3*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_JXB,  3*vdofs, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_FWP,  1*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_NF,   3, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_JH,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
+       CALL LocalSol(EL_NF,   3, n, MASS, FORCE, pivot, Dofs)
      END IF
 
    END DO
@@ -6077,7 +6194,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Tcoef,RotM )
-   IF (PiolaVersion) DEALLOCATE( EBasis, CurlEBasis )
 
    IF (LossEstimation) THEN
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss linear',TotalLoss(1) )
@@ -6139,15 +6255,25 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL ListAddConstReal(Model % Simulation,'res: Angular Frequency', Omega)
    END IF
 
-   !IF(ASSOCIATED(NF) .OR. ASSOCIATED(EL_NF)) THEN
-   CALL NodalTorque(Torque)
-   WRITE(Message,*) 'Torque over defined bodies', Torque
-   CALL Info( 'MagnetoDynamicsCalcFields', Message )
-   CALL ListAddConstReal(Model % Simulation, 'res: x-axis torque over defined bodies', Torque(1))
-   CALL ListAddConstReal(Model % Simulation, 'res: y-axis torque over defined bodies', Torque(2))
-   CALL ListAddConstReal(Model % Simulation, 'res: z-axis torque over defined bodies', Torque(3))
+   IF(ASSOCIATED(NF)) THEN
+     CALL NodalTorque(Torque, TorqueGroups)
+     DO i=1,size(TorqueGroups)
+       write (Message,'("res: Group ", i0, " torque")'), TorqueGroups(i)
+       CALL ListAddConstReal(Model % Simulation, trim(Message), Torque(i))
+       write (Message,'("Torque Group ", i0, " torque: ", f0.8)'), TorqueGroups(i), Torque(i)
+       call Info( 'MagnetoDynamicsCalcFields', Message)
+     END DO
 
-   !END IF
+     CALL NodalTorqueDeprecated(TorqueDeprecated, Found)
+     IF (Found) THEN
+       WRITE(Message,*) 'Torque over defined bodies', TorqueDeprecated
+       CALL Info( 'MagnetoDynamicsCalcFields', Message )
+       CALL Warn( 'MagnetoDynamicsCalcFields', 'Keyword "Calculate Torque over body" is deprecated, use Torque Groups instead')
+       CALL ListAddConstReal(Model % Simulation, 'res: x-axis torque over defined bodies', TorqueDeprecated(1))
+       CALL ListAddConstReal(Model % Simulation, 'res: y-axis torque over defined bodies', TorqueDeprecated(2))
+       CALL ListAddConstReal(Model % Simulation, 'res: z-axis torque over defined bodies', TorqueDeprecated(3))
+     END IF
+   END IF
 
   ! Flux On Boundary:
   !------------------
@@ -6234,18 +6360,28 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 CONTAINS
 
- SUBROUTINE NodalTorque(T)
-   REAL(KIND=dp) :: T(3), P(3), F(3)
+!------------------------------------------------------------------------------
+ SUBROUTINE NodalTorqueDeprecated(T, FoundOne)
+!------------------------------------------------------------------------------
+   REAL(KIND=dp), INTENT(OUT) :: T(3)
+   LOGICAL, INTENT(OUT) :: FoundOne
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: P(3), F(3)
    TYPE(Element_t), POINTER :: Element
    TYPE(Variable_t), POINTER :: CoordVar
    LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
-   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode
-   LOGICAL :: ONCE=.TRUE., DEBUG
-
+   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, m, n
+   LOGICAL :: ONCE=.TRUE., DEBUG, Found
+   
    VisitedNode = .FALSE.
+   FoundOne = .FALSE.
 
+   DO n=1,size(Model % bodies)
+     IF(GetLogical(Model % bodies(n) % Values, 'Calculate Torque over body', FoundOne)) EXIT
+   END DO
+   IF(.not. FoundOne) RETURN
    T = 0._dp
-   P(3) = 0._dp
+   P = 0._dp
 
    DO pnodal=1,GetNOFActive()
      Element => GetActiveElement(pnodal)
@@ -6271,8 +6407,159 @@ CONTAINS
    T(1) = ParallelReduction(T(1))
    T(2) = ParallelReduction(T(2))
    T(3) = ParallelReduction(T(3))
- END SUBROUTINE
- 
+!------------------------------------------------------------------------------
+ END SUBROUTINE NodalTorqueDeprecated
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE NodalTorque(T, TorqueGroups)
+!------------------------------------------------------------------------------
+   INTEGER, ALLOCATABLE, INTENT(OUT) :: TorqueGroups(:)
+   REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: T(:)
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+
+   REAL(KIND=dp), POINTER :: origins(:,:), omegas(:,:)
+   TYPE(Element_t), POINTER :: Element
+   TYPE(Variable_t), POINTER :: CoordVar
+   TYPE(ValueList_t), POINTER :: BodyParams, SolverParams
+   TYPE(BodyArray_t), POINTER :: bodies(:)
+   INTEGER, POINTER :: LocalGroups(:)
+   REAL(KIND=dp), ALLOCATABLE :: axes(:,:)
+
+   LOGICAL, ALLOCATABLE :: VisitedNode(:,:)
+   INTEGER, ALLOCATABLE :: AllGroups(:)
+
+   REAL(KIND=dp) :: origin(3), axisvector(3), P(3), F(3), v1(3), v2(3), nrm
+   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, ng, ngroups, &
+     n, maxngroups, m, k, num_origins, num_axes, pivot
+   LOGICAL :: Found
+
+   ! make union of body-wise declared torque groups. \TODO: make this abstract and move to generalutils
+   bodies => Model % bodies
+   maxngroups = 0
+   DO n=1,size(bodies)
+     LocalGroups => ListGetIntegerArray(bodies(n) % Values, "Torque Groups", Found)
+     IF (Found) THEN
+       maxngroups = maxngroups + size(LocalGroups)
+     END IF
+   END DO
+   IF(maxngroups .eq. 0) THEN
+     ALLOCATE(TorqueGroups(0), T(0))
+     RETURN
+   END IF
+
+   ALLOCATE(AllGroups(maxngroups))
+   AllGroups = -1
+   ngroups = 0
+   DO n=1,size(bodies)
+     LocalGroups => ListGetIntegerArray(bodies(n) % Values, "Torque Groups", Found)
+     IF (Found) THEN
+       AllGroups((ngroups+1):(ngroups+size(LocalGroups))) = LocalGroups(1:size(LocalGroups))
+       ngroups = ngroups + size(LocalGroups)
+     END IF
+   END DO
+   call SORT(size(AllGroups), AllGroups)
+   pivot = AllGroups(1)
+   k = 1
+   m = 1
+   do while(pivot .ne. -1)
+     AllGroups(k) = pivot
+     DO n=m,size(AllGroups)
+       IF (AllGroups(k) .ne. AllGroups(n)) then
+         pivot = AllGroups(n)
+         k = k + 1
+         m = n
+         exit
+       end if
+       pivot = -1
+     END DO
+   END DO
+   ALLOCATE(TorqueGroups(k))
+   IF(k .eq. 0) RETURN
+
+   TorqueGroups = AllGroups(1:k)
+   ! done making union
+
+   SolverParams => GetSolverParams()
+   origins => ListGetConstRealArray(SolverParams, "Torque Group Origins", Found)
+   IF (.NOT. Found) THEN
+     num_origins = 0
+   ELSE
+     num_origins = SIZE(origins,1)
+   END IF
+
+   omegas => ListGetConstRealArray(SolverParams, "Torque Group Axes", Found)
+   IF (.NOT. Found) THEN
+     num_axes = 0
+   ELSE
+     num_axes = SIZE(omegas,1)
+   END IF
+   ALLOCATE(axes(size(omegas, 1), size(omegas, 2)))
+   axes = omegas
+
+   ng = size(TorqueGroups,1)
+   ALLOCATE(T(ng*3))
+   ALLOCATE(VisitedNode(Mesh % NumberOfNodes, ng))
+   VisitedNode = .FALSE.
+   T = 0._dp
+
+   DO k = 1, size(axes,1)
+     nrm = NORM2(axes(k,:))
+     IF (nrm .EQ. 0._dp) THEN
+       WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")'), k
+       CALL Warn('MagnetoDynamicsCalcFields',Message)
+       CYCLE
+     END IF
+     axes(k,:) = axes(k,:) / nrm
+   END DO
+
+   DO pnodal=1,GetNOFActive()
+     Element => GetActiveElement(pnodal)
+     BodyParams => GetBodyParams(Element)
+     LocalGroups => ListGetIntegerArray(BodyParams, "Torque Groups", Found)
+     IF(.not. Found) CYCLE
+     ndofs = GetElementDOFs(ElemNodeDofs)
+     DO nnt=1,ndofs
+       globalnode = ElemNodeDofs(nnt)
+       F(1) = NF % Values( 3*(NF % Perm((globalnode))-1) + 1)
+       F(2) = NF % Values( 3*(NF % Perm((globalnode))-1) + 2)
+       F(3) = NF % Values( 3*(NF % Perm((globalnode))-1) + 3)
+       P(1) = Mesh % Nodes % x(globalnode)
+       P(2) = Mesh % Nodes % y(globalnode)
+       P(3) = Mesh % Nodes % z(globalnode)
+       DO ng=1,size(LocalGroups)
+         IF (.NOT. VisitedNode(globalnode, LocalGroups(ng))) THEN
+           VisitedNode(globalnode, LocalGroups(ng)) = .TRUE.
+           IF (LocalGroups(ng) .gt. num_origins) THEN
+             origin = 0._dp
+           ELSE
+             origin = origins(LocalGroups(ng),1:3)
+           END IF
+           IF (LocalGroups(ng) .gt. num_axes) THEN
+             axisvector = 0._dp
+             axisvector(3) = 1._dp
+           ELSE
+             axisvector = axes(LocalGroups(ng), 1:3)
+           END IF
+           v1 = P - origin
+           v1 = (1 - sum(axisvector*v1))*v1
+           v2 = CrossProduct(v1,F)
+           T(LocalGroups(ng)) = T(LocalGroups(ng)) + sum(axisvector*v2)
+         END IF
+       END DO 
+     END DO 
+
+   END DO
+   DO ng=1,size(TorqueGroups)
+     T(ng) = ParallelReduction(T(ng))
+   END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE NodalTorque
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs )
 !------------------------------------------------------------------------------
@@ -6466,8 +6753,9 @@ CONTAINS
     END SUBROUTINE LocalJumps
 !------------------------------------------------------------------------------
 
-
+!------------------------------------------------------------------------------
     SUBROUTINE calcAverageFlux (Flux, Area, Element, n, nd, np, SOL, vDOFs)
+!------------------------------------------------------------------------------
        INTEGER :: n, nd
        TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
@@ -6506,8 +6794,9 @@ CONTAINS
          Area = Area + s
 
       END DO
-
+!------------------------------------------------------------------------------
     END SUBROUTINE calcAverageFlux
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamicsCalcFields

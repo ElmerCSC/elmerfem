@@ -466,8 +466,8 @@ CONTAINS
            END IF
 
            IF ( Arrayn <= 0 .OR. Arrayn > Model % NumberOfBCs ) THEN
-              WRITE( Message, * ) 'Boundary Condition section number: ',Arrayn, &
-                            ' exeeds header value.'
+              WRITE( Message, * ) 'Boundary Condition section number ('//TRIM(I2S(Arrayn))// &
+                            ') exceeds number of BCs ('//TRIM(I2S(Model % NumberOfBCs))//')'
               CALL Fatal( 'Model Input', Message )
            END IF
            Model % BCs(ArrayN) % Tag = ArrayN
@@ -1526,7 +1526,7 @@ CONTAINS
                  str(str_beg:str_beg) == '0' ) THEN
                  CALL ListAddLogical( List,Name,.FALSE. )
                ELSE 
-                 CALL Fatal('SectionContents','Problem reading logical keyword: '//TRIM(str(str_beg:)))
+                 CALL Fatal('SectionContents','Problem reading logical keyword: '//TRIM(Name)//': '//TRIM(str(str_beg:)))
                END IF
             END IF
             EXIT
@@ -1921,7 +1921,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh,Mesh1,NewMesh,OldMesh
     INTEGER :: i,j,k,l,s,nlen,eqn,MeshKeep,MeshLevels
     LOGICAL :: GotIt,GotMesh,found,OneMeshName, OpenFile, Transient
-    LOGICAL :: stat, single, MeshGrading, NewLoadMesh
+    LOGICAL :: stat, single, MeshGrading
     TYPE(Solver_t), POINTER :: Solver
     INTEGER(KIND=AddrInt) :: InitProc
     INTEGER, TARGET :: Def_Dofs(10,6)
@@ -2070,19 +2070,13 @@ CONTAINS
     IF ( MeshDir(1:1) /= ' ' ) THEN
       ! @TODO: Don't forget funny define
       CALL ResetTimer('LoadMesh') 
-      NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt) 
-      IF( .NOT. GotIt ) NewLoadMesh = .TRUE.
-      IF( NewLoadMesh ) THEN
-        Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs )
-        IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
-          CALL FreeModel(Model)
-          Model => Null()
-          RETURN
-        END IF
-      ELSE
-        Model % Meshes => LoadMesh( Model, MeshDir, MeshName, &
-            BoundariesOnly, numprocs, mype, Def_Dofs(1,:) )
+
+      Model % Meshes => LoadMesh2( Model, MeshDir, MeshName, &
+          BoundariesOnly, numprocs, mype, Def_Dofs )
+      IF(.NOT.ASSOCIATED(Model % Meshes)) THEN
+        CALL FreeModel(Model)
+        Model => NULL()
+        RETURN
       END IF
 
       CALL CheckTimer('LoadMesh',Level=5,Delete=.TRUE.)
@@ -2259,24 +2253,12 @@ CONTAINS
           END DO
         END DO
 
-        NewLoadMesh = ListGetLogical( Model % Simulation,'New Load Mesh',GotIt)
-        IF(.NOT. GotIt) NewLoadMesh = .TRUE.
         IF ( Single ) THEN
-          IF( NewLoadMesh ) THEN
-            Model % Solvers(s) % Mesh => &
+          Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs )
-          ELSE
-            Model % Solvers(s) % Mesh => &
-              LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,1,0,def_dofs(1,:) )
-          END IF
         ELSE
-          IF( NewLoadMesh ) THEN
-            Model % Solvers(s) % Mesh => &
+          Model % Solvers(s) % Mesh => &
               LoadMesh2( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs )
-          ELSE
-            Model % Solvers(s) % Mesh => &
-              LoadMesh( Model,MeshDir,MeshName,BoundariesOnly,numprocs,mype,Def_Dofs(1,:) )
-          END IF
         END IF
         Model % Solvers(s) % Mesh % OutputActive = .TRUE.
 
@@ -2523,21 +2505,31 @@ CONTAINS
 
     TYPE(Model_t), POINTER :: Model 
     TYPE(ValueList_t), POINTER :: List, ListB
-    INTEGER :: i,j
+    INTEGER :: i,j,k
     LOGICAL :: Found, Flag
-
+    
+    CALL Info('CompleteModelKeywords','Completing default keywords for master sides',Level=12)
 
     Model => CurrentModel 
 
     DO i=1,Model % NumberOfBCs
       List => Model % BCs(i) % Values
       j = ListGetInteger( List,'Mortar BC',Found )
-      IF( j == 0 ) CYCLE
+      IF(j==0) j = ListGetInteger( List,'Contact BC',Found )
+      IF(j==0) CYCLE
+
+      IF( j > Model % NumberOfBCs ) CYCLE
+
       ListB => Model % BCs(j) % Values
+      IF(.NOT. ASSOCIATED( ListB ) ) CYCLE
 
       CALL ListCompareAndCopy( List, ListB,'Mass Consistent Normals',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
-          'Added > Mass Consistent Normals < to BC '//TRIM(I2S(j)),Level=10)
+          'Added > Mass Consistent Normals < to master BC '//TRIM(I2S(j)),Level=10)
+
+      CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Displacement',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Normal-Tangential Displacement < to master BC '//TRIM(I2S(j)),Level=10)
     END DO
 
 

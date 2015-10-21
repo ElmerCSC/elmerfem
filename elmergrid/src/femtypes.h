@@ -21,8 +21,6 @@
 #define MAXBODIES 100       /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
 
-#define MAXMETHODS 17
-
 #define CONPLAIN 0
 #define CONDISCONT 1
 #define CONPERIODIC 2

@@ -101,7 +101,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       GotIt, GotOper, GotParOper, GotVar, GotOldVar, ExactCoordinates, VariablesExist, &
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, LiveGraph, &
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
-      Hit, GotEpsAbs, SaveToFile, EchoValues, GotAny
+      Hit, GotEpsAbs, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
+      MaterialOper, MaskOper, GotMaskName
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -118,12 +119,13 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       NodeIndexes(:)
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: ScalarsFile, ScalarNamesFile, DateStr, &
-      VariableName, OldVariableName, ResultPrefix, Suffix, Oper, ParOper, Name, &
+      VariableName, OldVariableName, ResultPrefix, Suffix, Oper, Oper0, ParOper, Name, &
       CoefficientName, ScalarParFile, OutputDirectory, MinOper, MaxOper, &
-      MaskName
+      MaskName, SaveName
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues=0, DIM, &
-      MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat
+      MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen
+  LOGICAL, ALLOCATABLE :: NodeMask(:)
 #ifdef USE_ISO_C_BINDINGS
   REAL (KIND=DP) :: CT, RT
 #else
@@ -480,9 +482,30 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     NoOper = NoVar     
     WRITE (Name,'(A,I0)') 'Operator ',NoOper
-    Oper = ListGetString(Params,TRIM(Name),GotOper)
+    Oper0 = ListGetString(Params,TRIM(Name),GotOper)
     IF(.NOT. (GotOper .OR. GotVar ) ) CYCLE
     
+    IF( GotOper ) THEN
+      BodyOper = .FALSE.
+      BodyForceOper = .FALSE.      
+      MaterialOper = .FALSE.
+      nlen = LEN_TRIM(Oper0) 
+      IF( Oper0(1:11) == 'body force ') THEN
+        BodyForceOper = .TRUE.
+        Oper = Oper0(12:nlen)
+      ELSE IF( Oper0(1:5) == 'body ') THEN
+        BodyOper = .TRUE.
+        Oper = Oper0(6:nlen)
+      ELSE IF( Oper0(1:9) == 'material ') THEN
+        MaterialOper = .TRUE.
+        Oper = Oper0(10:nlen)
+      ELSE
+        Oper = Oper0
+      END IF
+      MaskOper = ( BodyForceOper .OR. BodyOper .OR. MaterialOper )
+    END IF
+
+
     WRITE (Name,'(A,I0)') 'Coefficient ',NoOper
     CoefficientName = ListGetString(Params,TRIM(Name),GotCoeff )
 
@@ -491,8 +514,22 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     IF(.NOT. GotParOper) ParOper = OperToParOperMap(Oper)
 
     WRITE (Name,'(A,I0)') 'Mask Name ',NoOper
-    MaskName = ListGetString(Params,TRIM(Name),GotIt)
-    IF(.NOT. GotIt) MaskName = 'Save Scalars'
+    MaskName = ListGetString(Params,TRIM(Name),GotMaskName)
+    IF(.NOT. GotMaskName) MaskName = 'save scalars'
+
+    IF( MaskOper ) THEN
+      GotIt = .FALSE.
+      IF( BodyOper ) THEN
+        GotIt = ListGetLogicalAnyBody( Model, MaskName )
+      ELSE IF( BodyForceOper ) THEN
+        GotIt = ListGetLogicalAnyBodyForce( Model, MaskName )
+      ELSE IF( MaterialOper ) THEN
+        GotIt = ListGetLogicalAnyMaterial( Model, MaskName )
+      END IF
+      IF(.NOT. GotIt ) THEN
+        CALL Warn('SaveScalars','Masked operators require mask!')
+      END IF
+    END IF
 
     ActiveBC = .FALSE.
     DO j=1,Model % NumberOfBCs
@@ -523,31 +560,45 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END SELECT
 
 
+      ! Set default name for saving 
+      IF(GotVar .OR. GotOldVar ) THEN
+        SaveName = TRIM(Oper0)//': '//TRIM(VariableName)
+        IF( GotMaskName ) THEN
+          SaveName = TRIM(SaveName)//' mask '//TRIM(MaskName)
+        END IF
+      END IF
+
       SELECT CASE(Oper)
 
       CASE ('partitions')
         Val = 1.0_dp * ParEnv % PEs 
-        CALL AddToSaveList('value: number of partitions',Val,.TRUE.,ParOper)
+        SaveName = 'value: number of partitions'
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
 
       CASE ('cpu time')
         Val = CPUTime()
-        CALL AddToSaveList('value: cpu time (s)',Val,.FALSE.,ParOper)
+        SaveName = 'value: cpu time (s)'
+        CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
       
       CASE ('wall time')
         Val = RealTime()
-        CALL AddToSaveList('value: real time (s)',Val,.FALSE.,ParOper)
+        SaveName = 'value: real time (s)'
+        CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
       
       CASE ('cpu memory') 
         Val = CPUMemory()
-        CALL AddToSaveList('value: maximum memory usage (kb)',Val,.FALSE.,ParOper)
+        SaveName = 'value: maximum memory usage (kb)'
+        CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
 
       CASE ('nodes')
         Val = 1.0_dp * Solver % Mesh % NumberOfNodes
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.TRUE.,ParOper)
+        SaveName = TRIM(Oper)//': '//TRIM(VariableName)
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
 
       CASE ('elements')
         Val = 1.0_dp * Solver % Mesh % NumberOfBulkElements
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.TRUE.,ParOper)
+        SaveName = TRIM(Oper)//': '//TRIM(VariableName)
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
 
       CASE ('bounding box')
         Val = MINVAL( Solver % Mesh % Nodes % x ) 
@@ -569,31 +620,31 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       !-----------------------------------------------------------------
       CASE ('norm')
         Val = Var % Norm
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.FALSE.,ParOper)
+        CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
         
       CASE ('nonlin change')
         Val = Var % NonlinChange
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.FALSE.,ParOper)
+        CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
         
       CASE ('steady state change')
         Val = Var % SteadyChange
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.FALSE.,ParOper)
+        CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
         
       CASE ('nonlin iter')
         Val = Var % NonlinIter
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.TRUE.,ParOper)
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
         
       CASE ('nonlin converged')
         Val = 1.0_dp * Var % NonlinConverged
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.TRUE.,ParOper)
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
         
       CASE ('steady converged')
         Val = 1.0_dp * Var % SteadyConverged
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.TRUE.,ParOper)
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
         
       CASE ('dofs')
         Val = 1.0_dp * SIZE(Var % Values)
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.TRUE.,ParOper)
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
 
       CASE ('nans')  ! number of NaN:s in vector
         GotIt = .FALSE.
@@ -604,26 +655,26 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
           END IF
         END DO
         Val = 1.0_dp * j
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.TRUE.,ParOper)
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
        
       CASE ('sum','sum abs','mean abs','max','max abs','min','min abs','mean','variance','range')
+        IF( MaskOper ) CALL CreateNodeMask()
         Val = VectorStatistics(Var,Oper)
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName),Val,.FALSE.,ParOper)
+        CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
         
       CASE ('deviation')
+        IF( MaskOper ) CALL CreateNodeMask()
         Val = VectorMeanDeviation(Var,Oper)
-        CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName), Val,.FALSE.,ParOper)
+        CALL AddToSaveList(SaveName, Val,.FALSE.,ParOper)
         
       CASE ('int','int mean','int variance','volume',&
           'potential energy','diffusive energy','convective energy')
         
         Val = BulkIntegrals(Var, Oper, GotCoeff, CoefficientName)
         IF(GotCoeff) THEN
-          CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName)//' with '//TRIM(CoefficientName), Val,&
-              .FALSE.,ParOper)
-        ELSE
-          CALL AddToSaveList(TRIM(Oper)//': '//TRIM(VariableName), Val,.FALSE.,ParOper)
+          SaveName = TRIM(SaveName)//' with '//TRIM(CoefficientName)
         END IF
+        CALL AddToSaveList(SaveName, Val,.FALSE.,ParOper)
         
       CASE('boundary sum','boundary dofs','boundary max','boundary max abs','boundary min',&
           'boundary min abs','boundary mean')
@@ -1372,6 +1423,49 @@ CONTAINS
   END SUBROUTINE AddToSaveList
 
 
+  ! Create table for masking nodes in statistical operators.
+  !-------------------------------------------------------------------------
+  SUBROUTINE CreateNodeMask( ) 
+
+    INTEGER :: t
+    TYPE(Element_t), POINTER :: Element
+    TYPE(ValueList_t), POINTER :: MaskList
+
+
+    IF(.NOT. MaskOper ) RETURN
+
+    IF(.NOT. ALLOCATED( NodeMask ) ) THEN
+      ALLOCATE( NodeMask( Mesh % NumberOfNodes ) )
+    END IF
+    NodeMask = .FALSE.
+    
+    DO t = 1, Mesh % NumberOfBulkElements 
+      Element => Mesh % Elements(t)
+      n = Element % TYPE % NumberOfNodes
+      NodeIndexes => Element % NodeIndexes
+     
+      ! If we are masking operators with correct (body, body force, or material) then do it here
+      IF( BodyOper ) THEN        
+        MaskList => GetBodyParams( Element ) 
+      ELSE IF( BodyForceOper ) THEN
+        MaskList => GetBodyForce( Element, GotIt )
+        IF( .NOT. GotIt ) CYCLE
+      ELSE IF( MaterialOper ) THEN
+        MaskList => GetMaterial( Element, GotIt ) 
+        IF(.NOT. GotIt ) CYCLE
+      ELSE
+        CALL Fatal('MaskNodes','Unknown mask strategy')
+      END IF
+      IF( ListGetLogical( MaskList, MaskName, GotIt ) ) THEN
+        NodeMask(NodeIndexes) = .TRUE.
+      END IF
+    END DO
+
+
+  END SUBROUTINE CreateNodeMask
+
+
+
 
   FUNCTION VectorStatistics(Var,OperName) RESULT (operx)
 
@@ -1383,6 +1477,7 @@ CONTAINS
     INTEGER :: Nonodes, i, j, k, l, NoDofs, sumi
     LOGICAL :: Initialized 
     TYPE(NeighbourList_t), POINTER :: nlist(:)
+
 
     Initialized = .FALSE.
     sumi = 0
@@ -1409,6 +1504,10 @@ CONTAINS
     END IF
 
     DO i=1,Nonodes
+      IF( MaskOper ) THEN
+        IF( .NOT. NodeMask(i) ) CYCLE
+      END IF
+
       j = i
 
       IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
@@ -1523,6 +1622,10 @@ CONTAINS
     Deviation = 0.0
 
     DO i=1,Nonodes
+      IF( MaskOper ) THEN
+        IF( .NOT. NodeMask(i) ) CYCLE
+      END IF
+
       j = i
 
       IF( ParEnv % PEs > 1 ) THEN
@@ -1591,6 +1694,7 @@ CONTAINS
     REAL(KIND=dp) :: func, coeff, integral1, integral2, Grad(3), CoeffGrad(3)
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
     LOGICAL :: Stat
+    TYPE(ValueList_t), POINTER :: MaskList
     
     INTEGER :: i,j,k,p,q,DIM,NoDofs
     
@@ -1624,6 +1728,20 @@ CONTAINS
       ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
+
+      ! If we are masking operators with correct (body, body force, or material) then do it here
+      IF( BodyOper ) THEN        
+        MaskList => GetBodyParams( Element ) 
+      ELSE IF( BodyForceOper ) THEN
+        MaskList => GetBodyForce( Element, GotIt )
+        IF( .NOT. GotIt ) CYCLE
+      ELSE IF( MaterialOper ) THEN
+        MaskList => GetMaterial( Element, GotIt ) 
+        IF(.NOT. GotIt ) CYCLE
+      END IF
+      IF( MaskOper ) THEN
+        IF( .NOT. ListGetLogical( MaskList, MaskName, GotIt ) ) CYCLE
+      END IF
 
 
       k = ListGetInteger( Model % Bodies( Element % BodyId ) % Values, &
