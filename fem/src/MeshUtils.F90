@@ -9481,10 +9481,12 @@ END SUBROUTINE GetMaxDefs
 !> The top and bottom surface will be assigned Boundary Condition tags
 !> with indexes one larger than the maximum used on by the 2D mesh. 
 !------------------------------------------------------------------------------
-  FUNCTION MeshExtrude(Mesh_in, in_levels) RESULT(Mesh_out)
+  FUNCTION MeshExtrude(Mesh_in, in_levels, ExtrudedMeshName) RESULT(Mesh_out)
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
     INTEGER :: in_levels
+    CHARACTER(LEN=MAX_NAME_LEN),INTENT(IN),OPTIONAL :: ExtrudedMeshName
+
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
         ExtrudedCoord,dg_n
@@ -9956,10 +9958,11 @@ END SUBROUTINE GetMaxDefs
     IF ( NeedEdges ) CALL SetMeshEdgeFaceDOFs(Mesh_out)
     CALL SetMeshMaxDOFs(Mesh_out)
 
-    ! CALL WriteMeshToDisk( Mesh_out, 'testExtrude')
+    IF (PRESENT(ExtrudedMeshName)) THEN
+       CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
+    END IF
 
 !------------------------------------------------------------------------------
-
   END FUNCTION MeshExtrude
 !------------------------------------------------------------------------------
 
