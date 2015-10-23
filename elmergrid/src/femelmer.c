@@ -922,12 +922,17 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     }
   }
   else {
-    printf("Reusing an existing directory\n");
+    if(info) printf("Reusing an existing directory\n");
     if(nooverwrite) {
-      printf("Mesh seems to already exist, writing is cancelled!\n"); 
-      return(0);
+      if (out = fopen("mesh.header", "r")) {
+	printf("Mesh seems to already exist, writing is cancelled!\n"); 
+	return(1);
+      }
     }
   }
+
+
+
 
   sprintf(filename,"%s","mesh.nodes");
   out = fopen(filename,"w");
