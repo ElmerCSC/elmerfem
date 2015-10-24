@@ -4315,6 +4315,7 @@ CONTAINS
               IF( Perm(j) == 0) CYCLE
               IF( ParEnv % PEs > 1 ) THEN
                 IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
+                IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPe ) CYCLE               
               END IF
               ind = j 
               EXIT
@@ -4467,7 +4468,8 @@ CONTAINS
               IF( Perm(j) == 0) CYCLE
               IF( ParEnv % PEs > 1 ) THEN
                 IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
-              END IF
+                IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPe ) CYCLE               
+               END IF
               ind = j 
               EXIT
             END DO
@@ -4618,7 +4620,7 @@ CONTAINS
     SUBROUTINE SetElementValues(n,elno)
       INTEGER :: n,elno
       INTEGER :: i,j,k,l,m,dim,kmax,lmax
-      LOGICAL :: CheckNT,found
+      LOGICAL :: CheckNT,found,HaloHit
       REAL(KIND=dp) :: Condition(n), Work(n), RotVec(3)
       
       dim = CoordinateSystemDimension()
@@ -4700,17 +4702,14 @@ CONTAINS
                   CALL ZeroRow( A,k )
 
                   ! Potentially do not add non-zero entries to non-owners
-                  !IF( ParEnv % PEs > 1 ) THEN
-                  !IF( SIZE( A % ParallelInfo % NeighbourList(k) % Neighbours) > 1 )  THEN
-                  !IF( A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) THEN
-                  !  PRINT *,'Node to skip: ',k,ParEnv % MyPe, &
-                  !      A % ParallelInfo % NeighbourList(k) % Neighbours
-                  !CYCLE
-                  !END IF
-                  !END IF
-                  !END IF
+                  HaloHit = .FALSE.
+                  IF( ParEnv % PEs > 1 ) THEN
+                    IF( A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) THEN
+                      HaloHit = .TRUE.
+                    END IF
+                  END IF
 
-                  IF( .NOT. OffDiagonal ) THEN
+                  IF( .NOT. ( OffDiagonal .OR. HaloHit ) ) THEN
                     CALL SetMatrixElement( A,k,k,1._dp )
                     b(k) = Work(j) / DiagScaling(k)
                     IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
