@@ -88,6 +88,8 @@ Solver 1
 !  Linear System Dirichlet Scaling = Logical False
 !  Optimize Bandwidth = False
 
+  Nonlinear System Consistent Norm = Logical True
+
   Linear System Abort Not Converged = False
   Apply Mortar BCs = True
 End
@@ -118,6 +120,7 @@ Boundary Condition 1
 
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
+  Discontinuous Target Bodies = Integer 2 
 
 ! If this keyword is zero then the BC refers to itself.
   Mortar BC = 0 

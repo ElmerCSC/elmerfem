@@ -20,5 +20,5 @@ Boundary Definitions
 End
 Element Degree = 1
 Element Innernodes = False
-Triangles = False
+Triangles = True
 Surface Elements = 200
