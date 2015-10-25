@@ -47,13 +47,14 @@
 !-------------------------------------------------------------------------------
        INTERFACE
          SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm)
            USE Types
            TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
            TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
            LOGICAL, OPTIONAL :: UseQuadrantTree,FoundNodes(:)
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+           INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 !-------------------------------------------------------------------------------
@@ -492,7 +493,7 @@ CONTAINS
 !>    the old model to the mesh of the new model.
 !------------------------------------------------------------------------------
      SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm )
 !------------------------------------------------------------------------------
        USE DefUtils
 !-------------------------------------------------------------------------------
@@ -504,6 +505,7 @@ CONTAINS
        TYPE(Projector_t), POINTER, OPTIONAL :: Projector  !< Use projector between meshes for interpolation, if available
        CHARACTER(LEN=*),OPTIONAL :: MaskName  !< Mask the old variable set by the given MaskName when trying to define the interpolation.
        LOGICAL, OPTIONAL :: FoundNodes(:)     !< List of nodes where the interpolation was a success
+       INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
 !------------------------------------------------------------------------------
        INTEGER :: dim
        TYPE(Nodes_t) :: ElementNodes
@@ -534,7 +536,7 @@ CONTAINS
        
        INTEGER, ALLOCATABLE:: RInd(:)
        LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, ProjectorAllocated
-       INTEGER :: eps_tries, nrow
+       INTEGER :: eps_tries, nrow, PassiveCoordinate
        REAL(KIND=dp) :: eps1 = 0.1, eps2, eps_global, eps_local, eps_basis,eps_numeric
        REAL(KIND=dp), POINTER :: Values(:), LocalU(:), LocalV(:), LocalW(:)
 
@@ -625,6 +627,9 @@ CONTAINS
            'Interpolation Numeric Epsilon', Stat)
        IF(.NOT. Stat) eps_numeric = 1.0e-10
 
+       PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
+           'Interpolation Passive Coordinate', Stat ) 
+
        QTreeFails = 0
        TotFails = 0
 
@@ -646,9 +651,19 @@ CONTAINS
 !------------------------------------------------------------------------------
        DO i=1,NewMesh % NumberOfNodes
 !------------------------------------------------------------------------------
+
+         ! Only get the variable for the requested nodes
+         IF( PRESENT( NewMaskPerm ) ) THEN
+           IF( NewMaskPerm(i) == 0 ) CYCLE
+         END IF
+
          Point(1) = NewMesh % Nodes % x(i)
          Point(2) = NewMesh % Nodes % y(i)
          Point(3) = NewMesh % Nodes % z(i)
+
+         IF( PassiveCoordinate /= 0 ) THEN
+           Point(PassiveCoordinate) = 0.0_dp
+         END IF
 
 !------------------------------------------------------------------------------
 ! Find in which old mesh bulk element the point belongs to

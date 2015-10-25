@@ -3800,10 +3800,10 @@ CONTAINS
                                             !< entries for matrix and r.h.s., for off-diagonal matrices just set the row to zero.
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
-    INTEGER, POINTER :: NodeIndexes(:), IndNodes(:)
+    INTEGER, POINTER :: NodeIndexes(:), IndNodes(:), BCOrder(:)
     INTEGER, ALLOCATABLE :: Indexes(:), PassPerm(:)
     INTEGER :: BC,i,j,j2,k,l,m,n,t,k1,k2,OffSet
-    LOGICAL :: GotIt, periodic, OrderByBCNumbering
+    LOGICAL :: GotIt, periodic, OrderByBCNumbering, ReorderBCs
     REAL(KIND=dp), POINTER :: MinDist(:)
     REAL(KIND=dp), POINTER :: WorkA(:,:,:) => NULL()
     REAL(KIND=dp) ::  s
@@ -3928,6 +3928,17 @@ CONTAINS
     OrderByBCNumbering = ListGetLogical( Model % Simulation, &
        'Set Dirichlet BCs by BC Numbering', gotIt)
 
+    BCOrder => ListGetIntegerArray( Model % Solver % Values, &
+         'Dirichlet BC Order', ReorderBCs)
+    IF(ReorderBCs) THEN
+       IF(.NOT. OrderByBCNumbering) THEN
+          CALL Warn('SetDirichletBoundaries',"Requested 'Dirichlet BC Order' but &
+               &not 'Set Dirichlet BCs by BC Numbering', ignoring...")
+       ELSE IF(SIZE(BCOrder) /= Model % NumberOfBCs) THEN
+          CALL Fatal('SetDirichletBoundaries',"'Dirichlet BC Order' is the wrong length!")
+       END IF
+    END IF
+
     bndry_start = Model % NumberOfBulkElements+1
     bndry_end   = bndry_start+Model % NumberOfBoundaryElements-1
 
@@ -3936,7 +3947,9 @@ CONTAINS
     ! --------------------------------------------------------------
     IF ( NormalTangentialNOFNodes>0 ) THEN
       IF ( OrderByBCNumbering ) THEN
-        DO BC=1,Model % NumberOfBCs
+        DO i=1,Model % NumberOfBCs
+          BC = i
+          IF(ReorderBCs) BC = BCOrder(BC)
           IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
           Conditional = ActiveCond(BC)
 
@@ -3999,7 +4012,9 @@ CONTAINS
     !----------------------------------------------------------------
     IF( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN    
       IF ( OrderByBCNumbering ) THEN
-        DO BC=1,Model % NumberOfBCs
+        DO i=1,Model % NumberOfBCs
+          BC = i
+          IF(ReorderBCs) BC = BCOrder(BC)
           IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
           Conditional = ActiveCond(BC)
 
