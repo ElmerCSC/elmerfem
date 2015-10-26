@@ -64,6 +64,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   IF (First) THEN
     First = .FALSE.
     
+    Model % HarmonicCircuits = .FALSE.
     CALL AddComponentsToBodyLists()
     
     ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )
@@ -849,6 +850,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   IF (First) THEN
     First = .FALSE.
     
+    Model % HarmonicCircuits = .TRUE.
+
     CALL AddComponentsToBodyLists()
     
     ALLOCATE( Model%Circuit_tot_n, Model%n_Circuits, STAT=istat )

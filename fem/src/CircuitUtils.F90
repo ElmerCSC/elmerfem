@@ -75,7 +75,7 @@ CONTAINS
     DO i = 1, SIZE(CurrentModel % Components)
       ComponentParams => CurrentModel % Components(i) % Values
       
-      IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+      IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('AddComponentsToBodyList', &
                                                          'Component parameters not found!')
       BodyAssociations => ListGetIntegerArray(ComponentParams, 'Body', Found)
       
@@ -84,10 +84,10 @@ CONTAINS
       DO j = 1, SIZE(BodyAssociations)
         BodyId = BodyAssociations(j)
         BodyParams => CurrentModel % Bodies(BodyId) % Values
-        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
                                                       'Body parameters not found!')
         k = GetInteger(BodyParams, 'Component', Found)
-        IF (Found) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+        IF (Found) CALL Fatal ('AddComponentsToBodyList', &
                                'Body '//TRIM(i2s(BodyId))//' associated to two components!')
         CALL listAddInteger(BodyParams, 'Component', i)
         BodyParams => Null()
@@ -96,13 +96,13 @@ CONTAINS
 
     DO i = 1, SIZE(CurrentModel % Bodies)
       BodyParams => CurrentModel % Bodies(i) % Values
-      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
                                                     'Body parameters not found!')
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
       WRITE(Message,'(A,I2,A,I2)') 'Body',i,' associated to Component', j
-      CALL Info('CircuitsAndDynamicsHarmonic',Message,Level=3)
+      CALL Info('AddComponentsToBodyList',Message,Level=3)
       BodyParams => Null()
     END DO
 !------------------------------------------------------------------------------
