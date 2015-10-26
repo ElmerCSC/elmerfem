@@ -7427,12 +7427,14 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: y(:)
 
+    CALL Info('ComputeNorm','Computing norm of solution',Level=10)
+
     IF(PRESENT(values)) THEN
       x => values
     ELSE
       x => Solver % Variable % Values
     END IF
-
+    
     NormDim = ListGetInteger(Solver % Values,'Nonlinear System Norm Degree',Stat)
     IF(.NOT. Stat) NormDim = 2
 
@@ -7524,51 +7526,50 @@ END FUNCTION SearchNodeL
 
       Norm = 0.0_dp
       totn = 0
-      DO j=1,n/Dofs
+      DO j=1,n
         IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
             == ParEnv % MyPE ) totn = totn + 1
       END DO        
 
       totn = NINT( ParallelReduction(1._dp*totn) )
-      nscale = NormDOFs*totn/(1._dp*DOFs)
+      nscale = 1.0_dp * totn
 
-      DO i=1,Dofs        
-        SELECT CASE(NormDim)
-
-        CASE(0) 
-          DO j=1,n
-            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-                /= ParEnv % MyPE ) CYCLE
-            val = x(Dofs*(j-1)+i)
-            Norm = MAX( Norm, ABS( val ) )
-          END DO
-
-        CASE(1)
-          DO j=1,n
-            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-                /= ParEnv % MyPE ) CYCLE
-            val = x(Dofs*(j-1)+i)
-            Norm = Norm + ABS(val)
-          END DO
+      SELECT CASE(NormDim)
+        
+      CASE(0) 
+        DO j=1,n
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = MAX( Norm, ABS( val ) )
+        END DO
+        
+      CASE(1)
+        DO j=1,n
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + ABS(val)
+        END DO
+        
+      CASE(2)          
+        DO j=1,n
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
           
-        CASE(2)          
-          DO j=1,n
-            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-                /= ParEnv % MyPE ) CYCLE
-            val = x(Dofs*(j-1)+i)
-            Norm = Norm + val**2 
-          END DO
-          
-        CASE DEFAULT
-          DO j=1,n
-            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-                /= ParEnv % MyPE ) CYCLE
-            val = x(Dofs*(j-1)+i)
-            Norm = Norm + val**NormDim 
-          END DO          
-        END SELECT
-      END DO
-  
+          Norm = Norm + val**2 
+        END DO
+        
+      CASE DEFAULT
+        DO j=1,n
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + val**NormDim 
+        END DO
+      END SELECT
+
       SELECT CASE(NormDim)
       CASE(0)
         Norm = ParallelReduction(Norm,2)
@@ -7582,7 +7583,7 @@ END FUNCTION SearchNodeL
       
     ELSE
       totn = NINT( ParallelReduction(1._dp*n) )
-      nscale = NormDOFs*totn/(1._dp*DOFs)
+      nscale = 1.0_dp * totn
 
       SELECT CASE(NormDim)
       CASE(0)
@@ -12039,6 +12040,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
+
 
 !------------------------------------------------------------------------------
 ! Separate the solution from CollectionSolution
