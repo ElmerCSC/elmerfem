@@ -198,7 +198,7 @@ Boundary Condition 5
    alpha = Real 1
 End
 
-Solver 3 :: Reference Norm = Real 6.779309E+01
+Solver 3 :: Reference Norm = Real 6.784474E+01 
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 

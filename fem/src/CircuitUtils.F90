@@ -741,6 +741,29 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  FUNCTION AddIndex(Ind, Harmonic)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    Integer :: Ind, AddIndex
+    LOGICAL, OPTIONAL :: Harmonic
+    LOGICAL :: harm
+    
+    IF (.NOT. PRESENT(Harmonic)) THEN
+      harm = CurrentModel % HarmonicCircuits
+    ELSE
+      harm = Harmonic
+    END IF
+ 
+    IF (harm) THEN
+      AddIndex = 2 * Ind
+    ELSE
+      AddIndex = Ind
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION AddIndex 
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
   FUNCTION ReIndex(Ind)
 !------------------------------------------------------------------------------
     Integer :: Ind, ReIndex
@@ -1125,7 +1148,7 @@ CONTAINS
             ! I(Vj) - I = 0
               ! ------------------------------------
             DO j=1, Cvar % pdofs
-              CALL CountMatElement(Rows, Cnts, RowId + 2*j, Cvar % dofs)
+              CALL CountMatElement(Rows, Cnts, RowId + AddIndex(j), Cvar % dofs)
             END DO
           END IF
         END SELECT
@@ -1147,7 +1170,7 @@ CONTAINS
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )   
-                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,Done,dofsdone,&
+                CALL CountAndCreateFoilWinding(Element,nn,nd,RowId+AddIndex(j),Cnts,Done,dofsdone,&
                                                          Rows)
               END DO
             END SELECT
@@ -1207,14 +1230,14 @@ CONTAINS
           DO j=0, Cvar % pdofs
             IF (Cvar % Owner == ParEnv % mype) THEN
               ! V = V0 + V1*alpha + V2*alpha^2 + ...
-              CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId + 2*j)
+              CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId + AddIndex(j))
               IF (j/=0) THEN
                 ! Circuit eqns for the pdofs:
                 ! I(Vi) - I = 0
                 ! ------------------------------------
-                CALL CreateMatElement(Rows, Cols, Cnts, VvarId + 2*j, IvarId)
+                CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), IvarId)
                 DO jj = 1, Cvar % pdofs
-                    CALL CreateMatElement(Rows, Cols, Cnts, VvarId + 2*j, VvarId + 2*jj)
+                    CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), VvarId + AddIndex(j))
                 END DO
               END IF
             END IF
@@ -1238,8 +1261,8 @@ CONTAINS
               IF (.NOT. HasSupport(Element,nn)) CYCLE   
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )
-                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+VvarId,Cnts,Done,dofsdone,Rows,&
-                                                          Cols=Cols)
+                CALL CountAndCreateFoilWinding(Element,nn,nd,VvarId+AddIndex(j),&
+                                               Cnts,Done,dofsdone,Rows,Cols=Cols)
               END DO
             END SELECT
           END IF
