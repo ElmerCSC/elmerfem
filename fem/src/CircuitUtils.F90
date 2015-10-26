@@ -1280,7 +1280,7 @@ CONTAINS
     END IF
 
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1341,7 +1341,7 @@ CONTAINS
     END IF
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1398,7 +1398,7 @@ CONTAINS
     END IF
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
