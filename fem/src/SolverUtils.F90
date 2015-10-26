@@ -10837,14 +10837,32 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
     TYPE(Solver_t) :: Solver
     TYPE(Variable_t), POINTER :: Var
     !------------------------------------------------------------------------------
-    INTEGER :: i,n,k
-    LOGICAL :: PrecRecompute, Stat
+    INTEGER :: i,j,k,n,m
+    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric
+    REAL(KIND=dp), POINTER :: PValues(:)
+    REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:)
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
 
     Var => Solver % Variable
+    IF( SIZE(Var % Values) /= n ) THEN
+      CALL Fatal('SolveConstraintModesSystem','Conflicting sizes for matrix and variable!')
+    END IF
 
-    DO i=1,Var % NumberOfConstraintModes
+    m = Var % NumberOfConstraintModes
+    IF( m == 0 ) THEN
+      CALL Fatal('SolveConstraintModesSystem','No constraint modes?!')
+    END IF
+
+    ComputeFluxes = ListGetLogical( Solver % Values,'Constraint Modes Fluxes',Found) 
+    IF( ComputeFluxes ) THEN
+      CALL Info('SolveConstraintModesSystem','Allocating for lumped fluxes',Level=10)
+      ALLOCATE( Fluxes( n ) )
+      ALLOCATE( FluxesMatrix( m, m ) )
+      FluxesMatrix = 0.0_dp
+    END IF
+
+    DO i=1,m
       CALL Info('SolveConstraintModesSystem','Solving for mode: '//TRIM(I2S(i)))
 
       IF( i == 2 ) THEN
@@ -10857,8 +10875,49 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
           Var % Values,Var % Norm,Var % DOFs,Solver )
 
       WHERE( Var % ConstraintModesIndeces == i ) StiffMatrix % Rhs = 0.0_dp            
+
       Var % ConstraintModes(i,:) = Var % Values
+
+      IF( ComputeFluxes ) THEN
+        CALL Info('SolveConstraintModesSystem','Computing lumped fluxes',Level=8)
+        PValues => StiffMatrix % Values
+        StiffMatrix % Values => StiffMatrix % BulkValues
+        Fluxes = 0.0_dp
+        CALL MatrixVectorMultiply( StiffMatrix, Var % Values, Fluxes ) 
+        StiffMatrix % Values => PValues
+
+        DO j=1,n
+          k = Var % ConstraintModesIndeces(j)
+          IF( k > 0 ) THEN
+            IF(.FALSE.) THEN
+              FluxesMatrix(i,k) = FluxesMatrix(i,k) + Fluxes(j)
+            ELSE
+              IF( i /= k ) THEN
+                FluxesMatrix(i,k) = FluxesMatrix(i,k) - Fluxes(j)
+              END IF
+              FluxesMatrix(i,i) = FluxesMatrix(i,i) + Fluxes(j)
+            END IF
+          END IF
+        END DO
+      END IF
     END DO
+
+    IF( ComputeFluxes ) THEN
+      Symmetric = ListGetLogical( Solver % Values,&
+          'Constraint Modes Fluxes Symmetric', Found ) 
+      IF( Symmetric ) THEN
+        FluxesMatrix = 0.5_dp * ( FluxesMatrix + TRANSPOSE( FluxesMatrix ) )
+      END IF
+      DO i=1,m
+        DO j=1,m
+          IF( Symmetric .AND. j < i ) CYCLE
+          WRITE( Message, '(I3,I3,ES15.5)' ) i,j,FluxesMatrix(i,j)
+          CALL Info( 'SolveConstraintModesSystem', Message, Level=4 )
+        END DO
+      END DO
+      DEALLOCATE( Fluxes )
+    END IF
+
 
     CALL ListAddLogical( Solver % Values,'No Precondition Recompute',.FALSE.)
     
