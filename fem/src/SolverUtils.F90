@@ -3817,10 +3817,10 @@ CONTAINS
                                             !< entries for matrix and r.h.s., for off-diagonal matrices just set the row to zero.
 !------------------------------------------------------------------------------
     TYPE(Element_t), POINTER :: Element
-    INTEGER, POINTER :: NodeIndexes(:), IndNodes(:)
+    INTEGER, POINTER :: NodeIndexes(:), IndNodes(:), BCOrder(:)
     INTEGER, ALLOCATABLE :: Indexes(:), PassPerm(:)
     INTEGER :: BC,i,j,j2,k,l,m,n,t,k1,k2,OffSet
-    LOGICAL :: GotIt, periodic, OrderByBCNumbering
+    LOGICAL :: GotIt, periodic, OrderByBCNumbering, ReorderBCs
     REAL(KIND=dp), POINTER :: MinDist(:)
     REAL(KIND=dp), POINTER :: WorkA(:,:,:) => NULL()
     REAL(KIND=dp) ::  s
@@ -3945,6 +3945,17 @@ CONTAINS
     OrderByBCNumbering = ListGetLogical( Model % Simulation, &
        'Set Dirichlet BCs by BC Numbering', gotIt)
 
+    BCOrder => ListGetIntegerArray( Model % Solver % Values, &
+         'Dirichlet BC Order', ReorderBCs)
+    IF(ReorderBCs) THEN
+       IF(.NOT. OrderByBCNumbering) THEN
+          CALL Warn('SetDirichletBoundaries',"Requested 'Dirichlet BC Order' but &
+               &not 'Set Dirichlet BCs by BC Numbering', ignoring...")
+       ELSE IF(SIZE(BCOrder) /= Model % NumberOfBCs) THEN
+          CALL Fatal('SetDirichletBoundaries',"'Dirichlet BC Order' is the wrong length!")
+       END IF
+    END IF
+
     bndry_start = Model % NumberOfBulkElements+1
     bndry_end   = bndry_start+Model % NumberOfBoundaryElements-1
 
@@ -3953,7 +3964,9 @@ CONTAINS
     ! --------------------------------------------------------------
     IF ( NormalTangentialNOFNodes>0 ) THEN
       IF ( OrderByBCNumbering ) THEN
-        DO BC=1,Model % NumberOfBCs
+        DO i=1,Model % NumberOfBCs
+          BC = i
+          IF(ReorderBCs) BC = BCOrder(BC)
           IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
           Conditional = ActiveCond(BC)
 
@@ -4016,7 +4029,9 @@ CONTAINS
     !----------------------------------------------------------------
     IF( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN    
       IF ( OrderByBCNumbering ) THEN
-        DO BC=1,Model % NumberOfBCs
+        DO i=1,Model % NumberOfBCs
+          BC = i
+          IF(ReorderBCs) BC = BCOrder(BC)
           IF(.NOT. ActivePart(BC) .AND. .NOT. ActivePartAll(BC) ) CYCLE
           Conditional = ActiveCond(BC)
 
@@ -4332,6 +4347,7 @@ CONTAINS
               IF( Perm(j) == 0) CYCLE
               IF( ParEnv % PEs > 1 ) THEN
                 IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
+                IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPe ) CYCLE               
               END IF
               ind = j 
               EXIT
@@ -4484,7 +4500,8 @@ CONTAINS
               IF( Perm(j) == 0) CYCLE
               IF( ParEnv % PEs > 1 ) THEN
                 IF( SIZE( Mesh % ParallelInfo % NeighbourList(j) % Neighbours) > 1 ) CYCLE               
-              END IF
+                IF( Mesh % ParallelInfo % NeighbourList(j) % Neighbours(1) /= ParEnv % MyPe ) CYCLE               
+               END IF
               ind = j 
               EXIT
             END DO
@@ -4635,7 +4652,7 @@ CONTAINS
     SUBROUTINE SetElementValues(n,elno)
       INTEGER :: n,elno
       INTEGER :: i,j,k,l,m,dim,kmax,lmax
-      LOGICAL :: CheckNT,found
+      LOGICAL :: CheckNT,found,HaloHit
       REAL(KIND=dp) :: Condition(n), Work(n), RotVec(3)
       
       dim = CoordinateSystemDimension()
@@ -4717,17 +4734,14 @@ CONTAINS
                   CALL ZeroRow( A,k )
 
                   ! Potentially do not add non-zero entries to non-owners
-                  !IF( ParEnv % PEs > 1 ) THEN
-                  !IF( SIZE( A % ParallelInfo % NeighbourList(k) % Neighbours) > 1 )  THEN
-                  !IF( A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) THEN
-                  !  PRINT *,'Node to skip: ',k,ParEnv % MyPe, &
-                  !      A % ParallelInfo % NeighbourList(k) % Neighbours
-                  !CYCLE
-                  !END IF
-                  !END IF
-                  !END IF
+                  HaloHit = .FALSE.
+                  IF( ParEnv % PEs > 1 ) THEN
+                    IF( A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) THEN
+                      HaloHit = .TRUE.
+                    END IF
+                  END IF
 
-                  IF( .NOT. OffDiagonal ) THEN
+                  IF( .NOT. ( OffDiagonal .OR. HaloHit ) ) THEN
                     CALL SetMatrixElement( A,k,k,1._dp )
                     b(k) = Work(j) / DiagScaling(k)
                     IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
@@ -7430,12 +7444,14 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), POINTER :: x(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: y(:)
 
+    CALL Info('ComputeNorm','Computing norm of solution',Level=10)
+
     IF(PRESENT(values)) THEN
       x => values
     ELSE
       x => Solver % Variable % Values
     END IF
-
+    
     NormDim = ListGetInteger(Solver % Values,'Nonlinear System Norm Degree',Stat)
     IF(.NOT. Stat) NormDim = 2
 
@@ -7527,51 +7543,50 @@ END FUNCTION SearchNodeL
 
       Norm = 0.0_dp
       totn = 0
-      DO j=1,n/Dofs
+      DO j=1,n
         IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
             == ParEnv % MyPE ) totn = totn + 1
       END DO        
 
       totn = NINT( ParallelReduction(1._dp*totn) )
-      nscale = NormDOFs*totn/(1._dp*DOFs)
+      nscale = 1.0_dp * totn
 
-      DO i=1,Dofs        
-        SELECT CASE(NormDim)
-
-        CASE(0) 
-          DO j=1,n
-            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-                /= ParEnv % MyPE ) CYCLE
-            val = x(Dofs*(j-1)+i)
-            Norm = MAX( Norm, ABS( val ) )
-          END DO
-
-        CASE(1)
-          DO j=1,n
-            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-                /= ParEnv % MyPE ) CYCLE
-            val = x(Dofs*(j-1)+i)
-            Norm = Norm + ABS(val)
-          END DO
+      SELECT CASE(NormDim)
+        
+      CASE(0) 
+        DO j=1,n
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = MAX( Norm, ABS( val ) )
+        END DO
+        
+      CASE(1)
+        DO j=1,n
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + ABS(val)
+        END DO
+        
+      CASE(2)          
+        DO j=1,n
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
           
-        CASE(2)          
-          DO j=1,n
-            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-                /= ParEnv % MyPE ) CYCLE
-            val = x(Dofs*(j-1)+i)
-            Norm = Norm + val**2 
-          END DO
-          
-        CASE DEFAULT
-          DO j=1,n
-            IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
-                /= ParEnv % MyPE ) CYCLE
-            val = x(Dofs*(j-1)+i)
-            Norm = Norm + val**NormDim 
-          END DO          
-        END SELECT
-      END DO
-  
+          Norm = Norm + val**2 
+        END DO
+        
+      CASE DEFAULT
+        DO j=1,n
+          IF( Solver % Matrix % ParallelInfo % NeighbourList(j) % Neighbours(1) &
+              /= ParEnv % MyPE ) CYCLE
+          val = x(j)
+          Norm = Norm + val**NormDim 
+        END DO
+      END SELECT
+
       SELECT CASE(NormDim)
       CASE(0)
         Norm = ParallelReduction(Norm,2)
@@ -7585,7 +7600,7 @@ END FUNCTION SearchNodeL
       
     ELSE
       totn = NINT( ParallelReduction(1._dp*n) )
-      nscale = NormDOFs*totn/(1._dp*DOFs)
+      nscale = 1.0_dp * totn
 
       SELECT CASE(NormDim)
       CASE(0)
@@ -12042,6 +12057,7 @@ RECURSIVE SUBROUTINE SolveWithLinearRestriction( StiffMatrix, ForceVector, Solut
 
   CALL SolveLinearSystem( CollectionMatrix, CollectionVector, &
       CollectionSolution, Norm, DOFs, Solver, StiffMatrix )
+
 
 !------------------------------------------------------------------------------
 ! Separate the solution from CollectionSolution

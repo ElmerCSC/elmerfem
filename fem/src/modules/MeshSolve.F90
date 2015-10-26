@@ -109,14 +109,15 @@ END SUBROUTINE MeshSolver_Init
   INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
-            GotForceBC, Found, ComputeMeshVelocity
-
+            GotForceBC, Found, ComputeMeshVelocity, &
+            SkipFirstMeshVelocity = .FALSE., FirstTime = .TRUE.
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
        Alpha(:,:), Beta(:)
 
   SAVE STIFF, LOAD, FORCE, MeshVelocity, AllocationsDone, &
-       ElasticModulus, PoissonRatio, TPerm, Alpha, Beta
+       ElasticModulus, PoissonRatio, TPerm, Alpha, Beta, &
+       SkipFirstMeshVelocity, FirstTime
 
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
@@ -357,8 +358,18 @@ END SUBROUTINE MeshSolver_Init
   IF ( TransientSimulation ) THEN
     ComputeMeshVelocity = ListGetLogical( Solver % Values, 'Compute Mesh Velocity', Found )
     IF ( .NOT. Found ) ComputeMeshVelocity = .TRUE.
+    SkipFirstMeshVelocity = .FALSE.
+    IF (ComputeMeshVelocity .AND. FirstTime) THEN
+       SkipFirstMeshVelocity = ListGetLogical( Solver % Values, 'Skip First Mesh Velocity', Found )
+       IF (.NOT. Found ) THEN 
+          SkipFirstMeshVelocity = .FALSE.
+       ELSE
+          CALL INFO('MeshSolve', 'Skipping computation of initial Mesh Velocity', Level=3)
+       END IF
+       FirstTime = .FALSE.
+    END IF
     
-    IF ( ComputeMeshVelocity ) THEN
+    IF ( ComputeMeshVelocity .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN
       k = MIN( SIZE(Solver % Variable % PrevValues,2), Solver % DoneTime )
       
       j = ListGetInteger( Solver % Values,'Compute Mesh Velocity Order', Found)
@@ -384,7 +395,7 @@ END SUBROUTINE MeshSolver_Init
             - ( 2.0d0/11.0d0)*Solver % Variable % PrevValues(:,3) ) / dt
       END SELECT
 
-    ELSE IF( ASSOCIATED( MeshVelocity ) ) THEN 
+    ELSE IF( ASSOCIATED( MeshVelocity ) .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN 
       MeshVelocity = 0.0d0
     END IF
   END IF

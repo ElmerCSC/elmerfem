@@ -894,13 +894,14 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTERFACE
          SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm)
            USE Types
            TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
            TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
            LOGICAL, OPTIONAL :: UseQuadrantTree,FoundNodes(:)
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+           INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 

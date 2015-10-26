@@ -24,10 +24,8 @@ Simulation
   Steady State Max Iterations = 1
   Output Intervals = 1
 
-!  Post File = "discont.vtu"
-
 ! Normally we dont want to apply this
-  Discontinuous Bulk Greedy = Logical False
+!  Discontinuous Bulk Greedy = Logical False
 End
 
 Constants
@@ -88,6 +86,8 @@ Solver 1
   Linear System Dirichlet Scaling = Logical False
   Optimize Bandwidth = False
 
+  Nonlinear System Consistent Norm = Logical True
+
   Linear System Abort Not Converged = False
   Apply Mortar BCs = True
 End
@@ -101,7 +101,22 @@ Solver 2
   Filename = f.dat
 End
 
- 
+
+Solver 3
+  Exec Solver = after all
+
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case_a
+
+!  Save Bulk Only = Logical True
+  Skip Halo Elements = Logical True
+
+  Vtu Format = Logical True
+  Binary Output = Logical True
+  Single Precision = Logical True
+End
+
 
 Material 1
   Name = "Material"
@@ -118,10 +133,11 @@ Boundary Condition 1
 
 ! This activates the discontinuous boundary creation
   Discontinuous Boundary = Logical True
+  Discontinuous Target Bodies = Integer 2
 
 ! If this keyword is nonzero then two BCs are created and
 ! standard mortar projector is used.
-  Mortar BC = 10 
+  Mortar BC = 0 
 
 !  Mortar BC Coefficient Temperature = Variable "Coordinate 2"
 !   Real MATC "1.0+tx"
