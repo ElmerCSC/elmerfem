@@ -1,3 +1,45 @@
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
+!
+!/******************************************************************************
+! *
+! *  Authors:   Eelis Takala(Trafotek Oy) and Juha Ruokolainen(CSC)
+! *  Emails:    eelis.takala@trafotek.fi and Juha.Ruokolainen@csc.fi
+! *  Web:       http://www.trafotek.fi and http://www.csc.fi/elmer
+! *  Addresses: Trafotek Oy
+! *             Kaarinantie 700
+! *             Turku
+! *
+! *             and
+! *
+! *             CSC - IT Center for Science Ltd.
+! *             Keilaranta 14
+! *             02101 Espoo, Finland 
+! *
+! *  Original Date: October 2015
+! *
+! *****************************************************************************/
+ 
 MODULE CircuitUtils
 
 CONTAINS
@@ -88,7 +130,7 @@ CONTAINS
                                                       'Body parameters not found!')
         k = GetInteger(BodyParams, 'Component', Found)
         IF (Found) CALL Fatal ('AddComponentsToBodyList', &
-                               'Body '//TRIM(i2s(BodyId))//' associated to two components!')
+                              'Body '//TRIM(i2s(BodyId))//' associated to two components!')
         CALL listAddInteger(BodyParams, 'Component', i)
         BodyParams => Null()
       END DO
@@ -97,7 +139,7 @@ CONTAINS
     DO i = 1, SIZE(CurrentModel % Bodies)
       BodyParams => CurrentModel % Bodies(i) % Values
       IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
-                                                    'Body parameters not found!')
+                                                   'Body parameters not found!')
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
@@ -1138,7 +1180,7 @@ CONTAINS
           IF (CVar % Owner == ParEnv % myPE) THEN
             CALL CountMatElement(Rows, Cnts, RowId, 1)
             CALL CountMatElement(Rows, Cnts, RowId, 1)
-          END IF
+         END IF
         CASE('foil winding')
           IF (Cvar % Owner == ParEnv % myPE) THEN
             ! V = V0 + V1*alpha + V2*alpha^2 + ...
@@ -1166,7 +1208,7 @@ CONTAINS
             CASE('massive')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
               CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows)
-            CASE('foil winding')
+           CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )   
@@ -1225,7 +1267,7 @@ CONTAINS
           IF (Cvar % Owner == ParEnv % myPE) THEN
             CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
             CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
-          END IF
+         END IF
         CASE('foil winding')
           DO j=0, Cvar % pdofs
             IF (Cvar % Owner == ParEnv % mype) THEN
@@ -1257,13 +1299,13 @@ CONTAINS
             CASE('massive')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
               CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols)
-            CASE('foil winding')
+           CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE   
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )
                 CALL CountAndCreateFoilWinding(Element,nn,nd,VvarId+AddIndex(j),&
                                                Cnts,Done,dofsdone,Rows,Cols=Cols)
-              END DO
+             END DO
             END SELECT
           END IF
         END DO
