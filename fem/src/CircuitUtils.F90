@@ -117,7 +117,7 @@ CONTAINS
     DO i = 1, SIZE(CurrentModel % Components)
       ComponentParams => CurrentModel % Components(i) % Values
       
-      IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+      IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('AddComponentsToBodyList', &
                                                          'Component parameters not found!')
       BodyAssociations => ListGetIntegerArray(ComponentParams, 'Body', Found)
       
@@ -126,11 +126,11 @@ CONTAINS
       DO j = 1, SIZE(BodyAssociations)
         BodyId = BodyAssociations(j)
         BodyParams => CurrentModel % Bodies(BodyId) % Values
-        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+        IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
                                                       'Body parameters not found!')
         k = GetInteger(BodyParams, 'Component', Found)
-        IF (Found) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
-                               'Body '//TRIM(i2s(BodyId))//' associated to two components!')
+        IF (Found) CALL Fatal ('AddComponentsToBodyList', &
+                              'Body '//TRIM(i2s(BodyId))//' associated to two components!')
         CALL listAddInteger(BodyParams, 'Component', i)
         BodyParams => Null()
       END DO
@@ -138,13 +138,13 @@ CONTAINS
 
     DO i = 1, SIZE(CurrentModel % Bodies)
       BodyParams => CurrentModel % Bodies(i) % Values
-      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
-                                                    'Body parameters not found!')
+      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('AddComponentsToBodyList', &
+                                                   'Body parameters not found!')
       j = GetInteger(BodyParams, 'Component', Found)
       IF (.NOT. Found) CYCLE
 
       WRITE(Message,'(A,I2,A,I2)') 'Body',i,' associated to Component', j
-      CALL Info('CircuitsAndDynamicsHarmonic',Message,Level=3)
+      CALL Info('AddComponentsToBodyList',Message,Level=3)
       BodyParams => Null()
     END DO
 !------------------------------------------------------------------------------
@@ -164,7 +164,7 @@ CONTAINS
     
     ComponentParams => CurrentModel % Components(Id) % Values
     
-    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('CircuitsAndDynamicsHarmonic', &
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentBodyIds', &
                                                          'Component parameters not found!')
     BodyIds => ListGetIntegerArray(ComponentParams, 'Body', Found)
     IF (.NOT. Found) BodyIds => Null()
@@ -783,6 +783,29 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  FUNCTION AddIndex(Ind, Harmonic)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    Integer :: Ind, AddIndex
+    LOGICAL, OPTIONAL :: Harmonic
+    LOGICAL :: harm
+    
+    IF (.NOT. PRESENT(Harmonic)) THEN
+      harm = CurrentModel % HarmonicCircuits
+    ELSE
+      harm = Harmonic
+    END IF
+ 
+    IF (harm) THEN
+      AddIndex = 2 * Ind
+    ELSE
+      AddIndex = Ind
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION AddIndex 
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
   FUNCTION ReIndex(Ind)
 !------------------------------------------------------------------------------
     Integer :: Ind, ReIndex
@@ -964,6 +987,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountMatElement(Rows, Cnts, RowId, dofs, Harmonic)
 !------------------------------------------------------------------------------
+    USE DefUtils
     IMPLICIT NONE
     INTEGER :: Rows(:), Cnts(:)
     INTEGER :: RowId, dofs
@@ -971,7 +995,7 @@ CONTAINS
     LOGICAL :: harm
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1025,6 +1049,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateMatElement(Rows, Cols, Cnts, RowId, ColId, Harmonic)
 !------------------------------------------------------------------------------
+    USE DefUtils
     IMPLICIT NONE
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: RowId, ColId
@@ -1032,7 +1057,7 @@ CONTAINS
     LOGICAL :: harm
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1073,7 +1098,7 @@ CONTAINS
         RowId = Cvar % ValueId + nm
         DO j=1,Circuits(p) % n
           IF(Cvar % A(j)/=0._dp.OR.Cvar % B(j)/=0._dp) &
-             CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
+             CALL CountMatElement(Rows, Cnts, RowId, 1)
         END DO
       END DO
     END DO
@@ -1106,7 +1131,7 @@ CONTAINS
         DO j=1,Circuits(p) % n
           IF(Cvar % A(j)/=0._dp .OR. Cvar % B(j)/=0._dp) THEN
             ColId = Circuits(p) % CircuitVariables(j) % ValueId + nm
-            CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId, Harmonic=Circuits(p)%Harmonic)
+            CALL CreateMatElement(Rows, Cols, Cnts, RowId, ColId)
           END IF
         END DO
       END DO
@@ -1148,24 +1173,24 @@ CONTAINS
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Cvar % Owner == ParEnv % myPE) THEN
-             CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
-             CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
+             CALL CountMatElement(Rows, Cnts, RowId, 1)
+             CALL CountMatElement(Rows, Cnts, RowId, 1)
           END IF
         CASE('massive')
           IF (CVar % Owner == ParEnv % myPE) THEN
-            CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
-            CALL CountMatElement(Rows, Cnts, RowId, 1, Harmonic=Circuits(p)%Harmonic)
-          END IF
+            CALL CountMatElement(Rows, Cnts, RowId, 1)
+            CALL CountMatElement(Rows, Cnts, RowId, 1)
+         END IF
         CASE('foil winding')
           IF (Cvar % Owner == ParEnv % myPE) THEN
             ! V = V0 + V1*alpha + V2*alpha^2 + ...
-            CALL CountMatElement(Rows, Cnts, RowId, Cvar % dofs, Harmonic=Circuits(p)%Harmonic)
+            CALL CountMatElement(Rows, Cnts, RowId, Cvar % dofs)
 
             ! Circuit eqns for the pdofs:
             ! I(Vj) - I = 0
               ! ------------------------------------
             DO j=1, Cvar % pdofs
-              CALL CountMatElement(Rows, Cnts, RowId + 2*j, Cvar % dofs, Harmonic=Circuits(p)%Harmonic)
+              CALL CountMatElement(Rows, Cnts, RowId + AddIndex(j), Cvar % dofs)
             END DO
           END IF
         END SELECT
@@ -1179,16 +1204,16 @@ CONTAINS
             nd = GetElementNOFDOFs(Element,ASolver)
             SELECT CASE (Comp % CoilType)
             CASE('stranded')           
-              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows,Harmonic=Circuits(p)%Harmonic)
+              CALL CountAndCreateStranded(Element,nn,nd,RowId,Cnts,Done,Rows)
             CASE('massive')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows,Harmonic=Circuits(p)%Harmonic)
-            CASE('foil winding')
+              CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows)
+           CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )   
-                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+RowId,Cnts,Done,dofsdone,&
-                                                         Rows,Harmonic=Circuits(p)%Harmonic)
+                CALL CountAndCreateFoilWinding(Element,nn,nd,RowId+AddIndex(j),Cnts,Done,dofsdone,&
+                                                         Rows)
               END DO
             END SELECT
           END IF
@@ -1235,26 +1260,26 @@ CONTAINS
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
           IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId, Harmonic=Circuits(p)%Harmonic)
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId, Harmonic=Circuits(p)%Harmonic)
+            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
+            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
           END IF
         CASE('massive')
           IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId, Harmonic=Circuits(p)%Harmonic)
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId, Harmonic=Circuits(p)%Harmonic)
-          END IF
+            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
+            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
+         END IF
         CASE('foil winding')
           DO j=0, Cvar % pdofs
             IF (Cvar % Owner == ParEnv % mype) THEN
               ! V = V0 + V1*alpha + V2*alpha^2 + ...
-              CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId + 2*j, Harmonic=Circuits(p)%Harmonic)
+              CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId + AddIndex(j))
               IF (j/=0) THEN
                 ! Circuit eqns for the pdofs:
                 ! I(Vi) - I = 0
                 ! ------------------------------------
-                CALL CreateMatElement(Rows, Cols, Cnts, VvarId + 2*j, IvarId, Harmonic=Circuits(p)%Harmonic)
+                CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), IvarId)
                 DO jj = 1, Cvar % pdofs
-                    CALL CreateMatElement(Rows, Cols, Cnts, VvarId + 2*j, VvarId + 2*jj, Harmonic=Circuits(p)%Harmonic)
+                    CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), VvarId + AddIndex(j))
                 END DO
               END IF
             END IF
@@ -1270,17 +1295,17 @@ CONTAINS
             nd = GetElementNOFDOFs(Element,ASolver)
             SELECT CASE (Comp % CoilType)
             CASE('stranded')
-              CALL CountAndCreateStranded(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols,IvarId,Harmonic=Circuits(p)%Harmonic)
+              CALL CountAndCreateStranded(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols,IvarId)
             CASE('massive')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols,Harmonic=Circuits(p)%Harmonic)
-            CASE('foil winding')
+              CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols)
+           CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE   
               DO j = 1, Cvar % pdofs
                 dofsdone = ( j==Cvar%pdofs )
-                CALL CountAndCreateFoilWinding(Element,nn,nd,2*j+VvarId,Cnts,Done,dofsdone,Rows,&
-                                                          Cols=Cols,Harmonic=Circuits(p)%Harmonic)
-              END DO
+                CALL CountAndCreateFoilWinding(Element,nn,nd,VvarId+AddIndex(j),&
+                                               Cnts,Done,dofsdone,Rows,Cols=Cols)
+             END DO
             END SELECT
           END IF
         END DO
@@ -1320,7 +1345,7 @@ CONTAINS
     END IF
 
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1381,7 +1406,7 @@ CONTAINS
     END IF
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
@@ -1438,7 +1463,7 @@ CONTAINS
     END IF
     
     IF (.NOT. PRESENT(Harmonic)) THEN
-      harm = .FALSE.
+      harm = CurrentModel % HarmonicCircuits
     ELSE
       harm = Harmonic
     END IF
