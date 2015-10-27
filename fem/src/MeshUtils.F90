@@ -875,6 +875,7 @@ END SUBROUTINE GetMaxDefs
    Mesh % NumberOfNodes = NoNodes + NoDisContNodes   
    CALL EnlargeCoordinates( Mesh ) 
 
+   CALL Info('CreateDiscontMesh','Setting new coordinate positions',Level=12)
    DO i=1, NoNodes
      j = DisContPerm(i)
      IF( j > 0 ) THEN
@@ -884,6 +885,7 @@ END SUBROUTINE GetMaxDefs
        Mesh % Nodes % z(k) = Mesh % Nodes % z(i)
      END IF
    END DO
+
 
    ! If the discontinuous boundary is duplicated then no information of it 
    ! is saved. The periodic and mortar conditions now need to perform
@@ -975,7 +977,6 @@ END SUBROUTINE GetMaxDefs
          //TRIM(I2S(NoDisContElems)),Level=10)
 
      Mesh % DiscontMesh = .FALSE.
-     DEALLOCATE( DisContPerm ) 
    ELSE
      Mesh % DisContMesh = .TRUE.
      Mesh % DisContPerm => DisContPerm
@@ -984,7 +985,14 @@ END SUBROUTINE GetMaxDefs
 
 200 CONTINUE
 
-   CALL EnlargeParallelInfo(Mesh )
+
+   CALL EnlargeParallelInfo(Mesh, DiscontPerm )
+   IF( ParEnv % PEs > 1 ) THEN
+     PRINT *,'Zero Global:',ParEnv % MyPe, COUNT( Mesh % ParallelInfo % GlobalDofs == 0) 
+   END IF
+
+   IF( DoubleBC .AND. NoDiscontNodes > 0 ) DEALLOCATE( DisContPerm )
+
 
    DEALLOCATE( DisContNode, DiscontElem )   
   
@@ -1096,9 +1104,10 @@ END SUBROUTINE GetMaxDefs
  END SUBROUTINE EnlargeBoundaryElements
 
 
- SUBROUTINE EnlargeParallelInfo( Mesh )
+ SUBROUTINE EnlargeParallelInfo( Mesh, DiscontPerm )
 
    TYPE(Mesh_t) :: Mesh
+   INTEGER, POINTER :: DiscontPerm(:)
 
    INTEGER :: nmax,n0,n1,i,j,istat, goffset
    INTEGER, POINTER :: TmpGlobalDofs(:) 
@@ -1124,13 +1133,11 @@ END SUBROUTINE GetMaxDefs
 
    ! Create permutation table for the added nodes
    ALLOCATE(Perm(n1)); Perm  = 0
-   IF(ASSOCIATED(Mesh % DisContPerm)) THEN
-     DO i=1,n0
-       IF ( Mesh % DiscontPerm(i) > 0 ) THEN
-         Perm(Mesh % DiscontPerm(i)+n0) = i
-       END IF
-     END DO
-   END IF
+   DO i=1,n0
+     IF ( DiscontPerm(i) > 0 ) THEN
+       Perm(DiscontPerm(i)+n0) = i
+     END IF
+   END DO
 
    ! Create the enlarged set of global nodes indexes
    ALLOCATE( TmpGlobalDofs(n1), STAT=istat )

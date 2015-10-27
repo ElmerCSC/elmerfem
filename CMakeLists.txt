@@ -25,6 +25,8 @@ SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Module
 
 # Defaults to cache variables
 SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
+SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel tests")
+SET(MPI_TEST_MINPROC 1 CACHE STRING "Minimum number of tasks used in parallel tests")
 SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread parallelization")
 SET(WITH_MKL FALSE CACHE BOOL "Use Intel Math Kernel library")
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")

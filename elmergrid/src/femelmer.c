@@ -505,6 +505,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   int noknots,noelements,nosides,maxelemtype;
   int sideind[MAXNODESD1],tottypes,elementtype;
   int i,j,k,l,dummyint,cdstat,fail;
+  int falseparents,noparents,bctopocreated;
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
 
@@ -605,6 +606,10 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   fclose(in);
 
 
+  falseparents = 0;
+  noparents = 0;
+  bctopocreated = FALSE;
+
   sprintf(filename,"%s","mesh.boundary");
   if ((in = fopen(filename,"r")) == NULL) {
     printf("LoadElmerInput: The opening of the boundary-file %s failed!\n",
@@ -648,22 +653,39 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
     if(bound->parent[i] > 0) {
       fail = FindParentSide(data,bound,i,elementtype,sideind);
-      if(fail) i--;      
+      if(fail) falseparents++;      
     }
     else {
-#if 0
-      printf("could not find parent for side %d with inds %d %d\n",
-	     dummyint,sideind[0],sideind[1]);
-      printf("eleminfo: parents %d %d type %d\n",
-	     bound->parent[i],bound->parent2[i],bound->types[i]);   
+#if 1
+      printf("Parents not specified for side %d with inds: ",dummyint);
+      for(j=0;j< elementtype%100 ;j++) 
+	printf("%d ",sideind[j]);
+      printf("and type: %d\n",bound->types[i]);   
 #endif
-      i--;
+      if( !bctopocreated ) {
+	bound->elementtypes = Ivector(1,nosides);
+	for(j=1;j<=nosides;j++)
+	  bound->elementtypes[j] = 0;
+	bound->topology = Imatrix(1,nosides,0,data->maxnodes-1);
+	bctopocreated = TRUE;
+      }
+
+      for(j=0;j< elementtype%100 ;j++) 
+	bound->topology[i][j] = sideind[j];
+      bound->elementtypes[i] = elementtype;
+
+      printf("elementtype = %d %d %d\n",i,elementtype,sideind[0]);
+      noparents++;
     }
   }
   
-  if( nosides > i ) {
-    printf("LoadElmerInput: removed %d boundary element with invalid parent definition!\n",nosides-i);
+  if( falseparents ) {
+    printf("There seems to be %d false parents in the mesh\n",falseparents);
   }
+  if( noparents ) {
+    printf("There seems to be %d bc elements without parents in the mesh\n",noparents);
+  }
+
   bound->nosides = i;
   fclose(in); 
 
@@ -801,10 +823,7 @@ int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
       
       for(i=1;i<=bound[j].nosides;i++) {
 
-	if(1) 
-	  GetBoundaryElement(i,&bound[j],data,ind,&sideelemtype); 
-	else
-	  GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],data,ind,&sideelemtype); 
+	GetBoundaryElement(i,&bound[j],data,ind,&sideelemtype); 
 
 	boundtype = bound[j].types[i];
 
@@ -850,7 +869,7 @@ int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
 
 
 int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int decimals,int info)
+		   char *prefix,int decimals,int nooverwrite, int info)
 /* Saves the mesh in a form that may be used as input 
    in Elmer calculations. 
    */
@@ -903,8 +922,17 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     }
   }
   else {
-    printf("Reusing an existing directory\n");
+    if(info) printf("Reusing an existing directory\n");
+    if(nooverwrite) {
+      if (out = fopen("mesh.header", "r")) {
+	printf("Mesh seems to already exist, writing is cancelled!\n"); 
+	return(1);
+      }
+    }
   }
+
+
+
 
   sprintf(filename,"%s","mesh.nodes");
   out = fopen(filename,"w");
@@ -976,10 +1004,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     
     for(i=1; i <= bound[j].nosides; i++) {
 
-      if(1)
-	GetBoundaryElement(i,&bound[j],data,ind,&sideelemtype); 
-      else
-	GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],data,ind,&sideelemtype); 
+      GetBoundaryElement(i,&bound[j],data,ind,&sideelemtype); 
       sumsides++;
       
       fprintf(out,"%d %d %d %d ",
@@ -996,84 +1021,12 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
     }
   }
 
-
-  /* Save additional nodeconnection arising from discontinuous boundaries */
-  if(0) for(j=0;j < MAXBOUNDARIES;j++) {
-     
-    if(bound[j].created == FALSE) continue;
-    if(bound[j].nosides == 0) continue;
-    if(!bound[j].ediscont) continue;
-    
-    for(i=1; i <= bound[j].nosides; i++) {
-      if(!bound[j].parent2[i] || !bound[j].discont[i]) continue;
-      
-      GetElementSide(bound[j].parent2[i],bound[j].side2[i],-bound[j].normal[i],data,ind2,&sideelemtype); 
-      GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],data,ind,&sideelemtype);       
-      nodesd1 = sideelemtype%100;
-      conelemtype = 100 + nodesd1 + 1;
-      sidetypes[conelemtype] += nodesd1;
-      
-      for(k=0;k<nodesd1;k++) {
-        sumsides++;
-	    fprintf(out,"%d 0 0 0 %d %d ",sumsides,conelemtype,ind[k]);
-	    for(l=0;l<nodesd1;l++)
-	      fprintf(out,"%d ",ind2[l]);
-	    fprintf(out,"\n");      
-      }
-    }
-  }
-
-
   newtype = 0;
   for(j=0;j < MAXBOUNDARIES;j++) {
     if(bound[j].created == FALSE) continue;
     for(i=1; i <= bound[j].nosides; i++) 
       newtype = MAX(newtype, bound[j].types[i]);
-  }
-  
-
-  if(0 && data->nodeconnectexist) {
-    int *connect,newsides,newline,count;
-    connect = data->nodeconnect;
-    
-    for(k=1;;k++) {
-      newsides = 0;
-      for(i=1; i <= data->noknots; i++) 
-	if(connect[i] == k) newsides++;
-      if(newsides == 0) break;
-
-      newtype++;      
-      count = 0;
-
-      if(info) printf("Adding %d connections to boundary condition %d\n",newsides,newtype);
-      newline = sumsides;
-
-      for(i=1; i <= data->noknots; i++) {
-	if(connect[i] != k) continue;
-
-	if(count == 0) {
-	  if(newline != sumsides) fprintf(out,"\n");
-	  newline = sumsides;
-	  sumsides++;
-	  count = MIN(63,newsides);	  
-	  sideelemtype = 100 + count + 1;
-	  sidetypes[sideelemtype] += 1;
-	  fprintf(out,"%d %d %d %d %d %d",
-		  sumsides,newtype,0,0,sideelemtype,data->noknots+k);
-	  
-	  if(0) printf("Added %d connection boundary conditions to boundary %d and elementtype %d.\n",
-			  k,newtype,sideelemtype);
-	  
-	}	
-
-	fprintf(out," %d",i);
-	newsides--;
-	count--;       
-      }
-      fprintf(out,"\n");
-    }
-  }
-
+  }  
   fclose(out);
 
   tottypes = 0;
@@ -2708,8 +2661,9 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
       
       for(i=1;i<=bound[bc].nosides;i++) {
 	
-	GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
-		       data,sideind,&sideelemtype);
+	GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
+	/* GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+	   data,sideind,&sideelemtype); */
 	sidenodes = sideelemtype % 100;
 	nohits = 0;
 	
@@ -2856,8 +2810,11 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
     
     for(i=1;i<=bound[bc].nosides;i++) {
       
-      GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
-		     data,sideind,&sideelemtype);
+      if(1)
+	GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
+      else
+	GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+		       data,sideind,&sideelemtype);
       sidenodes = sideelemtype % 100;
       nohits = 0;
       for(j=0;j<sidenodes;j++) 
@@ -3613,8 +3570,11 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 	  for(i=1;i<=bound[bc].nosides;i++) {
 	    if(bound[bc].types[i] != bctype) continue;
 	    
-	    GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
-			   data,sideind,&sideelemtype);
+	    if(1)
+	      GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
+	    else
+	      GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+			     data,sideind,&sideelemtype);
 	    sidenodes = sideelemtype%100;
 	    
 	    for(j=0;j<sidenodes;j++) {
@@ -3720,8 +3680,11 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 	for(i=1;i<=bound[bc].nosides;i++) {
 	  if(bound[bc].types[i] != bctype) continue;
 	  
-	  GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
-			 data,sideind,&sideelemtype);
+	  if(1)
+	    GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
+	  else
+	    GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+			   data,sideind,&sideelemtype);
 	  sidenodes = sideelemtype%100;
       
 	  for(j=0;j<sidenodes;j++) {
@@ -4636,12 +4599,12 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
 
 int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 			      char *prefix,int decimals,int halomode,int indirect,
-			      int parthypre,int subparts,int info)
+			      int parthypre,int subparts,int nooverwrite, int info)
 /* Saves the mesh in a form that may be used as input 
    in Elmer calculations in parallel platforms. 
    */
 {
-  int noknots,noelements,sumsides,partitions,hit,parent,parent2;
+  int noknots,noelements,sumsides,partitions,hit,found,parent,parent2,maxnosides;
   int nodesd2,nodesd1,discont,maxelemtype,minelemtype,sidehits,elemsides,side,bctype;
   int part,otherpart,part2,part3,elemtype,sideelemtype,*needednodes,*neededtwice;
   int **bulktypes,*sidetypes,tottypes,splitsides;
@@ -4651,10 +4614,10 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   int *neededtimes,*elempart,*elementsinpart,*indirectinpart,*sidesinpart;
   int maxneededtimes,indirecttype,bcneeded,trueparent,trueparent2,*ownerpart;
   int *sharednodes,*ownnodes,reorder,*order=NULL,*invorder=NULL;
-  int *bcnodesaved,*bcnodesaved2,*orphannodes,*bcnode;
+  int *bcnodesaved[MAXBCS],maxbcnodesaved,*bcelemsaved,*orphannodes,*bcnode;
   int *bcnodedummy,*elementhalo,*neededtimes2;
-  int partstart,partfin,filesetsize,nofile,nofile2;
-  int halobulkelems,halobcs;
+  int partstart,partfin,filesetsize,nofile,nofile2,nobcnodes;
+  int halobulkelems,halobcs,savethis,fail;
   FILE *out,*outfiles[MAXPARTITIONS+1];
   int sumelementsinpart,sumownnodes,sumsharednodes,sumsidesinpart,sumorphannodes,sumindirect;
 
@@ -4719,42 +4682,56 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   } 
 
   /* Mark the nodes that are on some boundary in order to create boundary halos */
-  if( halomode == 2 ) {
-    bcnode = Ivector(1,noknots);
-    for(i=1;i<=noknots;i++)
-      bcnode[i] = FALSE;
-    for(j=0;j < MAXBOUNDARIES;j++) {
-      for(i=1; i <= bound[j].nosides; i++) {	
-	GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],
-		       data,sideind,&sideelemtype);
-	nodesd1 = sideelemtype%100;
-	for(l=0;l<nodesd1;l++) 
-	  bcnode[sideind[l]] = TRUE;
-      }
+  bcnode = Ivector(1,noknots);
+  for(i=1;i<=noknots;i++)
+    bcnode[i] = FALSE;
+  for(j=0;j < MAXBOUNDARIES;j++) {
+    for(i=1; i <= bound[j].nosides; i++) {		
+      GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
+      nodesd1 = sideelemtype%100;
+      for(l=0;l<nodesd1;l++) 
+	bcnode[sideind[l]] = TRUE;
     }
-    j = 0;
-    for(i=1;i<=noknots;i++)
-      if( bcnode[i] ) j += 1;
-    if(info) printf("Number of boundary nodes potentially requiring halo: %d\n",j);
   }
+  nobcnodes = 0;
+  for(i=1;i<=noknots;i++) {
+    if( bcnode[i] ) {
+      nobcnodes += 1;
+      bcnode[i] = nobcnodes;
+    }
+  }
+  if(info) printf("Number of boundary nodes at the boundary: %d\n",nobcnodes);
 
 
   sprintf(directoryname,"%s",prefix);
   sprintf(subdirectoryname,"%s.%d","partitioning",partitions);
+
 
 #ifdef MINGW32
   mkdir(directoryname);
 #else
   mkdir(directoryname,0700);
 #endif
-  chdir(directoryname);
+  if(info && !fail) printf("Created mesh directory: %s\n",directoryname);
+  fail = chdir(directoryname);
 #ifdef MINGW32
-  mkdir(subdirectoryname);
+  fail = mkdir(subdirectoryname);
 #else
-  mkdir(subdirectoryname,0700);
+  fail = mkdir(subdirectoryname,0700);
 #endif
-
+  if(fail) {
+    if(info) printf("Reusing existing subdirectory: %s\n",subdirectoryname);
+    if(nooverwrite) {
+      printf("Mesh seems to already exist, writing is cancelled!\n"); 
+      return(0);
+    }
+  }
+  else {
+    if(info) printf("Created subdirectory: %s\n",subdirectoryname);
+  }
   chdir(subdirectoryname);
+
+
 
   if(info) printf("Saving mesh in parallel ElmerSolver format to directory %s/%s.\n",
 		  directoryname,subdirectoryname);
@@ -4903,6 +4880,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	 fully immersed in the other partition. This test takes more time. */
 	
       for(side=0;side<elemsides;side++) {
+
 	GetElementSide(i,side,1,data,&sideind[0],&sideelemtype);
 	  
 	for(l=1;l<=neededtimes[sideind[0]];l++) {
@@ -5223,20 +5201,27 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   /*********** part.n.boundary *********************/
   /* This is still done in partition loop as the subroutines are quite complicated */
 
-  bcnodesaved = bcnodedummy;
-  bcnodesaved2 = Ivector(1,data->noknots);
+  maxbcnodesaved = 1;
+  bcnodesaved[1] = Ivector(1,nobcnodes);
+
   discont = FALSE;
   splitsides = 0;
 
+  maxnosides = 0;
+  for(j=0;j < MAXBOUNDARIES;j++) 
+    maxnosides = MAX( maxnosides, bound[j].nosides );
+  bcelemsaved = Ivector(1,maxnosides);
+
   halobcs = 0;
   for(part=1;part<=partitions;part++) { 
-    int bcneeded2,step,closeparent,closeparent2;
+    int bcneeded2,step,closeparent,closeparent2,haloelem;
 
     sprintf(filename,"%s.%d.%s","part",part,"boundary");
     out = fopen(filename,"w");
 
-    for(i=1;i<=noknots;i++)
-      bcnodesaved[i] = bcnodesaved2[i] = FALSE;
+    for(j=1;j<=maxbcnodesaved;j++)
+      for(i=1;i<=nobcnodes;i++)
+	bcnodesaved[j][i] = FALSE;
    
     for(i=minelemtype;i<=maxelemtype;i++)
       sidetypes[i] = 0;
@@ -5244,16 +5229,29 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     sumsides = 0;
 
     /* First loop the standard elements, 2nd time the orphan nodes */
-    for(step=1;step<=2;step++) {
-      for(j=0;j < MAXBOUNDARIES;j++) {
+    for(j=0;j < MAXBOUNDARIES;j++) {
+
+      if(bound[j].nosides == 0 ) continue;
+
+      for(i=1;i<=maxnosides;i++)
+	bcelemsaved[i] = FALSE;
+
+      for(step=1;step<=2;step++) {
       
 	/* Normal boundary conditions */
 	for(i=1; i <= bound[j].nosides; i++) {
 	  
-	  GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],
-			 data,sideind,&sideelemtype);
+	  if(1) 
+	    GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
+	  else
+	    GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],
+			   data,sideind,&sideelemtype);
+
 	  bctype = bound[j].types[i];
 	  nodesd1 = sideelemtype%100;
+	  
+	  parent = bound[j].parent[i];
+	  parent2 = bound[j].parent2[i];
 	  
 	  bcneeded = 0;
 	  for(l=0;l<nodesd1;l++) {
@@ -5272,79 +5270,77 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	    }
 	  }
 
-	  parent = bound[j].parent[i];
-	  parent2 = bound[j].parent2[i];
 
-	  /* Check whether the side is such that it belongs to the domain */
-	  if( parent )
-	    trueparent = (elempart[parent] == part);
-	  else 
-	    trueparent = FALSE;
+	  if( step == 1 ){	    
 
-	  if( parent2 ) 
-	    trueparent2 = (elempart[parent2] == part);
-	  else
-	    trueparent2 = FALSE;
-
-	  if( halomode == 3 ) {
-	    closeparent = closeparent2 = FALSE;
-	    if( part <= subparts ) {
-	      if( parent ) 
-		if( elempart[parent] <= subparts) 
-		  closeparent = ( ABS( elempart[parent]-part) == 1 );
-	      if( parent2 ) 
-		if( elempart[parent2] <= subparts ) 
-		  closeparent2 = ( ABS( elempart[parent2]-part) == 1 );
+	    haloelem = FALSE;
+	    if(0 && !parent && !parent2) {
+	      /* If neither parent exists we cannot really use the parent information 
+		 then save the element if all nodes are needed. */
+	      if( bcneeded < nodesd1 ) continue;
 	    }
-	  }
-
-
-	  if( step == 1 ) {
-
-	    /* Halo elements ensure that both parents exist even if they are not trueparents */
-	    if(halomode == 1 || halomode == 2) {
-	      if( bcneeded2 < nodesd1 ) {
-		if( halomode == 2 ) {
+	    else {
+	      /* Check whether the side is such that it belongs to the domain */
+	      trueparent = trueparent2 = FALSE;
+	      if( parent ) trueparent = (elempart[parent] == part);
+	      if( parent2 ) trueparent2 = (elempart[parent2] == part);
+	      
+	      if(trueparent || trueparent2) {
+		/* Either parent must be associated with this partition, otherwise do not save this (except for halo) */
+		if( parent && !trueparent ) {	  
+		  splitsides++;
+		  parent = 0;
+		}
+		else if( parent2 && !trueparent2 ) {
+		  splitsides++;
+		  parent2 = 0;
+		}
+	      }
+	      else if( halomode == 1 || halomode == 2 ) {
+		/* Halo elements ensure that both parents exist even if they are not trueparents */
+		if( bcneeded == 0 ) continue; 
+		if( bcneeded2 < nodesd1 ) {
 		  printf("Warning: side element %d of type %d is halo but nodes are not in partition: %d %d\n",
 			 i,sideelemtype,bcneeded2,nodesd1);
 		}
+		haloelem = TRUE;
+		halobcs += 1;
+	      }
+	      else if( halomode == 3 ) {
+		closeparent = closeparent2 = FALSE;
+		if( part <= subparts ) {
+		  if( parent ) 
+		    if( elempart[parent] <= subparts) 
+		      closeparent = ( ABS( elempart[parent]-part) == 1 );
+		  if( parent2 ) 
+		    if( elempart[parent2] <= subparts ) 
+		      closeparent2 = ( ABS( elempart[parent2]-part) == 1 );
+		}
+		if(!closeparent && !closeparent2) continue;
+		haloelem = TRUE;
+		halobcs += 1;
+	      }
+	      else {
 		continue;
 	      }
-	      if(!trueparent && !trueparent2) halobcs += 1;
 	    }
-	    else if( halomode == 3 ) {
-	      if(!(trueparent || trueparent2 || closeparent || closeparent2 )) continue;
-	      if(!trueparent && !trueparent2) halobcs += 1;
-	    }
-	    else {	     
-	      /* Either parent must be associated with this partition, otherwise do not save this */
-	      if(!trueparent && !trueparent2) continue;
-
-	      if( parent && !trueparent ) {	  
-		splitsides++;
-		parent = 0;
-	      }
-	      else if( parent2 && !trueparent2 ) {
-		splitsides++;
-		parent2 = 0;
-	      }
-	    }
-	    
+	   
 	    if(bound[j].ediscont) 
 	      discont = bound[j].discont[i];
 
 	    sumsides++;	
 	    sidetypes[sideelemtype] += 1;
 	    
-	    if( trueparent ) 
-	      fprintf(out,"%d %d %d %d %d",
-		      sumsides,bctype,parent,parent2,sideelemtype);	  
-	    else if( trueparent2 ) 
-	      fprintf(out,"%d %d %d %d %d",
-		      sumsides,bctype,parent2,parent,sideelemtype);	  
-	    else  /* this is only reached for halomode */
+	    if( haloelem ) 
 	      fprintf(out,"%d/%d %d %d %d %d",
 		      sumsides,elempart[parent],bctype,parent,parent2,sideelemtype);	    
+	    else if(trueparent)
+	      fprintf(out,"%d %d %d %d %d",
+		      sumsides,bctype,parent,parent2,sideelemtype);	  
+	    else
+	      fprintf(out,"%d %d %d %d %d",
+		      sumsides,bctype,parent2,parent,sideelemtype);	  
+	    
 	    if(reorder) {
 	      for(l=0;l<nodesd1;l++)
 		fprintf(out," %d",order[sideind[l]]);
@@ -5353,41 +5349,39 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 		fprintf(out," %d",sideind[l]);	  
 	    }
 	    fprintf(out,"\n");
+	    
+	    bcelemsaved[i] = TRUE;
 
 	    /* Memorize that the node has already been saved as a regular BC. */
 	    for(l=0;l<nodesd1;l++) {
 	      k = sideind[l];
-	      if(bcnodesaved[k] == bctype || bcnodesaved2[k] == bctype ) continue;
-	      
-	      if(!bcnodesaved[k]) 
-		bcnodesaved[k] = bctype;
-	      else if(!bcnodesaved2[k]) 
-		bcnodesaved2[k] = bctype;
-	      else 
-		if(0) printf("Node %d shared by more than two BCs (%d)\n",k,bctype);
+	      found = FALSE;
+	      for(l2=1;l2<=maxbcnodesaved;l2++) {
+		if(bcnodesaved[l2][bcnode[k]] == bctype ) {
+		  found = TRUE;
+		  break;
+		}
+		if(bcnodesaved[l2][bcnode[k]] == 0 ) {
+		  bcnodesaved[l2][bcnode[k]] = bctype;
+		  found = TRUE;
+		  break;
+		}
+	      }
+	      if( !found ) {
+		maxbcnodesaved += 1;
+		if(0) printf("Increasing size of bc owners to %d\n",maxbcnodesaved);
+		bcnodesaved[maxbcnodesaved] = Ivector(1,nobcnodes);
+		for(l3=1;l3<=nobcnodes;l3++)
+		  bcnodesaved[maxbcnodesaved][l3] = 0;
+		bcnodesaved[maxbcnodesaved][bcnode[k]] = bctype;
+		if(0) for(l3=1;l3<=maxbcnodesaved;l3++)
+		  printf("bc index: %d %d %d %d\n",l3,k,bcnode[k],bcnodesaved[l3][bcnode[k]]);
+	      }
 	    }
 	  }
 	  else if( step == 2 ) {
-	    /* These are orphan nodes that are saved as 101 points and may be given 
-	       Dirichlet conditions in the code. If the node is already saved in respect to 
-	       this partition no saving is done. */
-
-	    /* This partition must own at least one of the nodes so that this could be a problem,
-	       but not all the nodes */
-	    if(bcneeded == nodesd1) continue;
-
-	    /* For halo elements some additional BC elements have been saved */
-	    if( halomode == 1 || halomode == 2) {
-	      if( bcneeded2 == nodesd1 ) continue;
-	    }
-	    /* For layer halo the BCs in the closeby partition have been saved */
-	    else if( halomode == 3 ) {
-	      if( closeparent || closeparent2 ) continue;
-	    }
-
-	    /* Check whether the side is such that it belongs to the domain,
-	       if it does it cannot be an orphan node. */
-	    if( trueparent || trueparent2 ) continue;
+	    if(bcneeded == 0 ) continue;
+	    if( bcelemsaved[i] ) continue;
 		         
 	    for(l=0;l<nodesd1;l++) {
 	      ind = sideind[l];
@@ -5395,15 +5389,34 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 		if(part == data->partitiontable[k][ind]) {
 		  
 		  /* Check whether the nodes was not already saved */
-		  if( bcnodesaved[ind] == bctype ) continue;	  
-		  if( bcnodesaved2[ind] == bctype ) continue;	  
-		  
-		  /* Memorize if the node really was saved. */
-		  if(!bcnodesaved[ind]) 
-		    bcnodesaved[ind] = bctype;
-		  else if(!bcnodesaved2[ind]) 
-		    bcnodesaved2[ind] = bctype;
-		  
+		  found = FALSE;
+		  hit = FALSE;
+		  for(l2=1;l2<=maxbcnodesaved;l2++) {
+		    if(bcnodesaved[l2][bcnode[ind]] == bctype ) {
+		      found = TRUE;
+		      hit = TRUE;
+		      break;
+		    }
+		    if(bcnodesaved[l2][bcnode[ind]] == 0 ) {
+		      found = TRUE;
+		      bcnodesaved[l2][bcnode[ind]] = bctype;
+		      break;
+		    }
+		  }
+		  if( !found ) {
+		    maxbcnodesaved += 1;
+		    if(0) printf("Increasing size of bc owners b to %d\n",maxbcnodesaved);
+		    bcnodesaved[maxbcnodesaved] = Ivector(1,nobcnodes);
+		    for(l3=1;l3<=nobcnodes;l3++)
+		      bcnodesaved[maxbcnodesaved][l3] = 0;
+		    bcnodesaved[maxbcnodesaved][bcnode[ind]] = bctype;
+		    if(0) for(l3=1;l3<=maxbcnodesaved;l3++)
+		      printf("bc index b: %d %d %d %d\n",l3,k,bcnode[ind],bcnodesaved[l3][bcnode[ind]]);
+		    
+		  } 
+
+		  if(hit) continue;
+
 		  orphannodes[part] += 1;
 		  
 		  sumsides++;
@@ -5448,8 +5461,6 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	if(bcneeded < nodesd1) continue;
 	
 	
-
-
 	trueparent = (elempart[bound[j].parent2[i]] == part);
 	if(!trueparent) continue;
 	
@@ -5695,6 +5706,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     }
   }
   /*********** end of part.n.header *********************/
+
+  if(info) printf("Nodes needed in maximum %d boundary elements\n",maxbcnodesaved);
+
   
   sumelementsinpart = sumownnodes = sumsharednodes = sumsidesinpart = sumorphannodes = sumindirect = 0;
   for(i=1;i<=partitions;i++) {
@@ -5715,7 +5729,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
     printf("Number of boundary elements associated with halo: %d\n",halobcs);
   }
  
-  if(splitsides) {
+  if(splitsides && !halomode) {
     printf("************************* Warning ****************************\n");
     printf("Number or boundary elements split at between parents: %d\n",splitsides);
     printf("This could be a problem for internal jump conditions\n");
@@ -5724,7 +5738,8 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
   }
 
 
-  free_Ivector(bcnodesaved2,1,noknots);
+  for(i=1;i<=maxbcnodesaved;i++)
+    free_Ivector(bcnodesaved[i],1,nobcnodes);
   if(halomode) free_Ivector(neededtimes2,1,noknots);
   
   
