@@ -372,7 +372,8 @@ struct ElmergridType {
     bcoffset,
     rotatecurve,
     timeron,
-    nosave;
+    nosave,
+    nooverwrite;
 
   Real cscale[3], 
     corder[3],

@@ -3777,25 +3777,6 @@ CONTAINS
 
      Params => GetSolverParams(Solver)
 
-     ! This is a check to help detecting backward incompatible code
-     ! that was created in order to make saving of bulk values thread safe.
-     !---------------------------------------------------------------------
-     IF( .NOT. ASSOCIATED( Solver % Matrix % BulkValues ) ) THEN
-       BUpd = GetLogical( Params,'Calculate Loads', Found )
-       BUpd = BUpd .OR. GetLogical( Params,'Constant Bulk System', Found )
-       BUpd = BUpd .OR. GetLogical( Params,'Save Bulk System', Found )
-       BUpd = BUpd .OR. GetLogical( Params,'Constant Bulk Matrix', Found )
-       IF( BUpd ) THEN
-         CALL Info('ElmerSolver','Solver code should be updated!',Level=3)
-         CALL Info('ElmerSolver','IF you need to save Bulk Values add the following code after bulk assembly',Level=3)
-         CALL Info('ElmerSolver','  CALL DefaultFinishBulkAssembly()',Level=3)
-         CALL Info('ElmerSolver','Then recompile and rerun, thank you',Level=3)
-         CALL Fatal('ElmerSolver','Now I can no longer continue, exiting...')
-       END IF
-     END IF
-
-
-
      IF ( GetString(Params,'Linear System Solver',Found)=='feti') THEN
        IF ( GetLogical(Params,'Total FETI', Found)) RETURN
      END IF
@@ -4281,10 +4262,6 @@ CONTAINS
      ! Add the possible constraint modes structures
      !----------------------------------------------------------
      IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
-       ! Prepare for retrieving the linear system at a later point of time with the attachment DOF rows 
-       ! left as unmodified:
-       !-------------------------------------------------------------------------------------------
-       CALL CopyBulkMatrix(A, BulkMass = .TRUE.)       
        CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
      END IF
 
@@ -4515,6 +4492,7 @@ CONTAINS
       BUpd = BUpd .OR. GetLogical( Params,'Constant Bulk System', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Save Bulk System', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Constant Bulk Matrix', Found )
+      BUpd = BUpd .OR. GetLogical( Params,'Constraint Modes Analysis',Found) 
     END IF
 
     IF( BUpd ) THEN
