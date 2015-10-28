@@ -42,12 +42,13 @@
  
 MODULE CircuitUtils
 
+    USE DefUtils
+
 CONTAINS
 
 !------------------------------------------------------------------------------
   FUNCTION GetCircuitModelDepth() RESULT (Depth)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     
     TYPE(Valuelist_t), POINTER :: simulation
@@ -75,7 +76,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetComponentParams(Element) RESULT (ComponentParams)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     
     INTEGER :: i
@@ -102,7 +102,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddComponentsToBodyLists()
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     
     LOGICAL :: Found
@@ -154,7 +153,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetComponentBodyIds(Id) RESULT (BodyIds)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     
     LOGICAL :: Found
@@ -176,7 +174,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION FindSolverWithKey(key, char_len) RESULT (Solver)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     
     LOGICAL :: Found
@@ -204,14 +201,16 @@ CONTAINS
 
 END MODULE CircuitUtils
 
+
 MODULE CircuitsMod
+
+  USE DefUtils
 
 CONTAINS 
 
 !------------------------------------------------------------------------------
   SUBROUTINE AllocateCircuitsList()
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: slen,n_Circuits
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
@@ -234,13 +233,11 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION CountNofCircVarsOfType(CId, Var_type) RESULT (nofc)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: nofc, char_len, slen, CId, i
     CHARACTER(LEN=MAX_NAME_LEN) :: Var_type
     CHARACTER(LEN=MAX_NAME_LEN) :: name,cmd
     TYPE(Circuit_t), POINTER :: Circuit
-
     
     Circuit => CurrentModel%Circuits(CId)
     
@@ -262,7 +259,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION CountNofCircComponents(CId, nofvar) RESULT (nofc)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: nofc, nofvar, slen, CId, i, j, CompId
     INTEGER :: ComponentIDs(nofvar)
@@ -298,7 +294,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReadCircuitVariables(CId)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: slen, ComponentId,i,j,CId, CompInd
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
@@ -361,7 +356,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetNofCircVariables(CId) RESULT(n)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: CId, n, slen 
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
@@ -385,7 +379,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AllocateCircuit(CId)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: slen,CId,n
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
@@ -411,7 +404,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ReadComponents(CId)
 !------------------------------------------------------------------------------
-    USE DefUtils
     USE CircuitUtils
     IMPLICIT NONE
     INTEGER :: CId, CompInd
@@ -520,7 +512,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddVariableToCircuit(Circuit, Variable, k)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Circuit_t) :: Circuit
     TYPE(CircuitVariable_t) :: Variable
@@ -567,7 +558,6 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   SUBROUTINE AddComponentValuesToLists(CId)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(Component_t), POINTER :: Comp
@@ -598,7 +588,6 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   SUBROUTINE AddBareCircuitVariables(CId)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: CVar
@@ -619,7 +608,6 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   SUBROUTINE ReadCoefficientMatrices(CId)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: CId,n
     TYPE(Circuit_t), POINTER :: Circuit
@@ -647,7 +635,6 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   SUBROUTINE ReadPermutationVector(CId)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: CId,n,slen,i
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
@@ -674,7 +661,6 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   SUBROUTINE ReadCircuitSources(CId)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: CId,n,slen,i
     CHARACTER(LEN=MAX_NAME_LEN) :: cmd, name
@@ -699,7 +685,6 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   SUBROUTINE WriteCoeffVectorsForCircVariables(CId)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: CId,n,slen,i,j,RowId
     TYPE(Circuit_t), POINTER :: Circuit
@@ -755,7 +740,6 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
    FUNCTION ElAssocToComp(Element, Component) RESULT (T)
 !------------------------------------------------------------------------------
-     USE DefUtils
      IMPLICIT NONE
      TYPE(Component_t), POINTER :: Component
      TYPE(Element_t), POINTER :: Element
@@ -768,7 +752,6 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
    FUNCTION ElAssocToCvar(Element, Cvar) RESULT (T)
 !------------------------------------------------------------------------------
-     USE DefUtils
      IMPLICIT NONE
      TYPE(CircuitVariable_t), POINTER :: Cvar
      TYPE(Element_t), POINTER :: Element
@@ -805,7 +788,6 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
    FUNCTION HasSupport(Element, nn) RESULT(support)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: nn, dim
     TYPE(Element_t) :: Element
@@ -832,13 +814,14 @@ END MODULE CircuitsMod
 
 MODULE CircMatInitMod
 
+  USE DefUtils
+  USE CircuitsMod
+
 CONTAINS
 
 !------------------------------------------------------------------------------
    SUBROUTINE SetCircuitsParallelInfo()
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Matrix_t), POINTER :: CM
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -1052,7 +1035,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountBasicCircuitEquations(Rows, Cnts)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -1084,7 +1066,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateBasicCircuitEquations(Rows, Cols, Cnts)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -1119,8 +1100,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountComponentEquations(Rows, Cnts, Done, dofsdone)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -1204,8 +1183,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateComponentEquations(Rows, Cols, Cnts, Done, dofsdone)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuits(:)
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -1298,8 +1275,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountAndCreateStranded(Element,nn,nd,i,Cnts,Done,Rows,Cols,Jsind,Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
@@ -1360,8 +1335,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountAndCreateMassive(Element,nn,nd,i,Cnts,Done,Rows,Cols,Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
@@ -1417,8 +1390,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,i,Cnts,Done,dofsdone,Rows,Cols,Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
@@ -1474,7 +1445,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Circuits_MatrixInit()
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Matrix_t), POINTER :: CM
     TYPE(Solver_t), POINTER :: ASolver
