@@ -273,6 +273,7 @@ static void STDCALLBULL append_path(char *path1, char *path2)
 static void STDCALLBULL try_dlopen(char *LibName, void **Handle, char *errorBuf)
 {
     static char dl_names[2][2*MAX_PATH_LEN];
+    char error_tmp[MAX_PATH_LEN];
     int i;
 
     strncpy(dl_names[0], LibName, 2*MAX_PATH_LEN);
