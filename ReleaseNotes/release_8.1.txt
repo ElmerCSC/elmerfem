@@ -21,14 +21,14 @@ Linear system solvers
     would be capacitance matrix, for example. 
   o Preliminary documentation in the ElmerSolver manual.
 
-- Keyword "Linear System Residual Mode" implemnted to enforce solution for the difference rather 
+- Keyword "Linear System Residual Mode" implemented to enforce solution for the difference rather 
   than for the absolute norm. Relaxes the needed tolerances for iterative linear solvers. 
   Makes some simulations, like those in contact mechanics, much more robust. 
 
 - Keyword "Linear System Consistent Norm" implemented that enforces the parallel norm to be exactly 
   the same as the serial norm. Essential in parallel consistency testing. 
 
-- Added possible to specify dirichlet boundary condition order for a specific solver with 
+- Added possibility to specify Dirichlet boundary condition order for a specific solver with 
   "Dirichlet BC Order" keyword. This is relevant when BCs may be conflicting.
 
 
@@ -36,15 +36,15 @@ Linear system solvers
 Mesh interpolation, projection and manipulation
 ------------------------------------------------
 - Projectors
-  o New accurate 1D edge-to-edge projector (galerkin type)
+  o New accurate 1D edge-to-edge projector (Galerkin type)
   o Enable rotation of rotational interfaces simply by providing offset for angle
-  o New strategies implemented (plane, cylindrical) implemented to allow flattening of interface meshes.
+  o New strategies (plane, cylindrical) implemented to allow flattening of interface meshes.
     The flattened interface meshes allow more accurate projection since there is no faceting of the meshes.
     These options fit the parameters for the plane/cylinder automatically.
   o Biorthogonal basis functions for the exact Galerkin projectors and discontinuous projector
 
 - Constraint matrix
-  o When combining projectors to constraint matrix allow projectors to be additive with ketword
+  o When combining projectors to constraint matrix allow projectors to be additive with keyword
     "Mortar BCs Additive = Logical True". 
   o Introduced possibility to determine priorities such that only higher priority is accounted for. 
     This may be usefull if there are number of constraints applied to the same dofs. 
@@ -59,7 +59,7 @@ Mesh interpolation, projection and manipulation
 - Discontinuous Meshes:
   o Improvements for robustness and parallel operation. 
 
-- When interpolating from mesh to mesh the Solver section keyword "Interpolate Passive Coordinate = Integer n"    
+- When interpolating from mesh to mesh, the Solver section keyword "Interpolate Passive Coordinate = Integer n"    
   will treat nodal coordinate n as zero when performing the interpolation.
 
 - InterpolateMeshToMesh can return a list of unfound nodes. Also a mask may be used to narrow down the dofs that 
@@ -79,7 +79,7 @@ Other library functionality
 - Implemented "GetRealVector" and "GetComplexVector" functions to make it more simple to take vector valued 
   input in Solver modules.
 
-- Added "ListGetActiveName()" to retreive activating keyword name within USFs. Also
+- Added "ListGetActiveName()" to retreive activating keyword name within UDFs. Also
   add "ListPushNameSpace()", "ListPopNamespace()".
 
 - Add "Component" input file section / model type field. This could be used for parameters that are not mesh 
@@ -94,7 +94,7 @@ Other library functionality
 
 ElmerSolver Solver modules
 ---------------------------
-- MgDynamics
+- MagnetoDynamics
   o The solver for the A-V formulation now supports the second-order edge elements 
     (with Quadratic Approximation = Logical True). 
 
@@ -106,7 +106,7 @@ ElmerSolver Solver modules
   o Added keyword "Impose Body Force Current" to add impressed body force current
     density to conduction current density.
   o Fixed post-processing of current density in 2D.
-  o Enable field calculation via postprocessing when using second order edge elements in A-V simulations
+  o Enabled field calculation via postprocessing when using second-order edge elements in A-V simulations
 
 - ParticleAdvector:
   o Path and time integrals implemented 
@@ -119,7 +119,7 @@ ElmerSolver Solver modules
   o Using the p-version of FEM is now possible in connection with finite elasticity.
 
 - SaveScalars
-  o Implemented making for body, body force and material sections in SaveScalars. 
+  o Implemented masking for body, body force and material sections in SaveScalars. 
     For example, one can now give for "Variable i" a corresponding mask "Mask Name i"
     such that the "Operator i = material myoper" would be applied only at the material
     where the given mask is True. 
@@ -128,14 +128,14 @@ ElmerSolver Solver modules
   o Enable an intermediate layer with the keyword "Mid Surface = Real" at on internal boundary.  
 
 - ComputeNormal 
-  o Enable paralle operation without halo elements.
+  o Enable parallel operation without halo elements.
 
 
 ElmerSolver environment:
 -----------------------
 - Parallel testing features implemented
 
-- Introduced use of labers in the tests. This allows easy selecting of a subset of tests when performing them. 
+- Introduced use of labels in the tests. This allows easy selecting of a subset of tests when performing them. 
   For example label 'slow' is added for the slowest tests and label 'quick' to fastest tests.
   Label 'parallel' is automatically added for parallel tests, and 'serial' for serial tests. 
 
