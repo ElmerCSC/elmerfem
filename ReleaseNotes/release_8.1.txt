@@ -28,6 +28,10 @@ Linear system solvers
 - Keyword "Linear System Consistent Norm" implemented that enforces the parallel norm to be exactly 
   the same as the serial norm. Essential in parallel consistency testing. 
 
+- Added possible to specify dirichlet boundary condition order for a specific solver with 
+  "Dirichlet BC Order" keyword. This is relevant when BCs may be conflicting.
+
+
 
 Mesh interpolation, projection and manipulation
 ------------------------------------------------
@@ -58,6 +62,10 @@ Mesh interpolation, projection and manipulation
 - When interpolating from mesh to mesh the Solver section keyword "Interpolate Passive Coordinate = Integer n"    
   will treat nodal coordinate n as zero when performing the interpolation.
 
+- InterpolateMeshToMesh can return a list of unfound nodes. Also a mask may be used to narrow down the dofs that 
+  the interpolation is applied for. 
+
+
 
 Other library functionality
 ---------------------------
@@ -79,6 +87,9 @@ Other library functionality
 
 - First version of "mesh swap" functionality that allows for chanching the mesh on-the-fly.
   Implement "Mesh mode" to allow the same simulation to be performed for a series of meshes.
+
+- SaveMesh can now output the model mesh at each timestep.
+
 
 
 ElmerSolver Solver modules
@@ -113,14 +124,16 @@ ElmerSolver Solver modules
     such that the "Operator i = material myoper" would be applied only at the material
     where the given mask is True. 
 
-- SrucuturedMeshMapper
+- StructuredMeshMapper
   o Enable an intermediate layer with the keyword "Mid Surface = Real" at on internal boundary.  
+
+- ComputeNormal 
+  o Enable paralle operation without halo elements.
 
 
 ElmerSolver environment:
 -----------------------
-- Parallel testing deatures implemented
-
+- Parallel testing features implemented
 
 - Introduced use of labers in the tests. This allows easy selecting of a subset of tests when performing them. 
   For example label 'slow' is added for the slowest tests and label 'quick' to fastest tests.
