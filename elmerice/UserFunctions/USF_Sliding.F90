@@ -469,9 +469,9 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   REAL(KIND=dp), POINTER      :: NormalValues(:), FlowValues(:), HValues(:)
   INTEGER, POINTER :: NormalPerm(:), FlowPerm(:), HPerm(:)
   INTEGER          :: DIM, i, body_id, other_body_id, material_id
-  REAL (KIND=dp)   :: C, m, q, g, rhoi, Zab, ep, sl, H, rhow
+  REAL (KIND=dp)   :: C, m, q, g, rhoi, Zab, Zab_offset, ep, sl, H, rhow
   REAL (KIND=dp)   :: ut, un, ut0
-  LOGICAL          :: GotIt, FirstTime = .TRUE., SSA = .FALSE., UseFloatation = .FALSE.
+  LOGICAL          :: GotIt, FirstTime = .TRUE., SSA = .FALSE., UseFloatation = .FALSE., H_scaling
   CHARACTER(LEN=MAX_NAME_LEN) :: USF_name, FlowSolverName
 
   SAVE :: normal, velo, DIM, SSA, FirstTime, FlowSolverName, UseFloatation
@@ -527,7 +527,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   END IF
 
   rhoi = GetConstReal( ParentMaterial, 'Density', GotIt )
-  IF (.NOT.GotIt) THEN
+  IF (.NOT. GotIt) THEN
      CALL FATAL(USF_Name, 'Material property Density not found.')
   END IF
 !  rhoi = GetConstReal( BC, 'Budd Ice Density', GotIt )
@@ -536,35 +536,45 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
 !  END IF
 
   C = GetConstReal( BC, 'Budd Friction Coefficient', GotIt )
-  IF (.NOT.GotIt) THEN
+  IF (.NOT. GotIt) THEN
      CALL FATAL(USF_name, 'Need a Friction Coefficient for the Budd sliding law')
   END IF
   
   m = GetConstReal( BC, 'Budd Velocity Exponent', GotIt )
-  IF (.NOT.GotIt) THEN
+  IF (.NOT. GotIt) THEN
      CALL FATAL(USF_name, 'Need a velocity Exponent for the Budd sliding law')
   END IF
   
   q = GetConstReal( BC, 'Budd Zab Exponent', GotIt )
-  IF (.NOT.GotIt) THEN
+  IF (.NOT. GotIt) THEN
      CALL FATAL(USF_name, 'Need a Zab Exponent for the Budd sliding law')
   END IF
   
+  Zab_offset = GetConstReal( BC, 'Budd Zab Offset', GotIt )
+  IF (.NOT. GotIt) THEN
+     Zab_offset = 0.0_dp
+  END IF
+  
   ut0 = GetConstReal( BC, 'Budd Linear Velocity', GotIt )
-  IF (.NOT.GotIt) THEN
+  IF (.NOT. GotIt) THEN
      CALL FATAL(USF_name, 'Need a Linear Velocity for the Budd sliding law')
   END IF
   
   g = GetConstReal( BC, 'Budd Gravity', GotIt )
-  IF (.NOT.GotIt) THEN
+  IF (.NOT. GotIt) THEN
      CALL FATAL(USF_name, 'Need Gravity for the Budd sliding law')
   END IF
    
   UseFloatation = GetLogical( BC, 'Budd Floatation', GotIt )
-  IF (.NOT.GotIt) THEN
+  IF (.NOT. GotIt) THEN
      CALL FATAL(USF_name, 'Need Floatation for the Budd sliding law')
   END IF
  
+  H_scaling = GetLogical( BC, 'Budd Thickness Scaling', GotIt )
+  IF (.NOT. GotIt) THEN
+     H_scaling = .FALSE.
+  END IF
+  
   FlowVariable => VariableGet( Model % Variables, FlowSolverName )
   IF ( ASSOCIATED( FlowVariable ) ) THEN
      FlowPerm    => FlowVariable % Perm
@@ -616,7 +626,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
         CALL FATAL(USF_name, 'Need Ocean Density for the Budd sliding law')
      END IF
      
-     sl = GetConstReal( ParentMaterial, 'Sea level', GotIt )
+     sl = GetCReal( ParentMaterial, 'Sea level', GotIt )
      IF (.NOT.GotIt) THEN
         CALL FATAL(USF_Name, 'Material property Sea level not found.')
      END IF
@@ -629,6 +639,12 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      ELSE
         Zab = H
      END IF
+     
+     ! this "offset" to the height above bouyancy is intended to provide a non-zero  
+     ! basal drag due to contact with the bed, even when effective pressure is zero.
+     ! Physically, this can be seen as a compromise between Elmer's "Weertman" 
+     ! implementation and Elmer's "Budd" implementation.
+     Zab = Zab + Zab_offset
 
   ELSE
      ep = effectivepressure (Model, nodenumber, z)
@@ -636,6 +652,10 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   END IF
 
   ut = MAX(ut,ut0) ! linearize for very low velocities
+
+  IF (H_scaling) THEN
+     Zab = Zab / H
+  END IF
 
   Bdrag = C * ut**(m-1.0) * Zab**q
   

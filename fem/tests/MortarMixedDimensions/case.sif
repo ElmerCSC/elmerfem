@@ -141,6 +141,11 @@ Boundary Condition 3
 ! This keyword flattens the boundary meshes to (x,y) plane
   Flat Projector = Logical True
   Flat Projector Coordinate = Integer 3 
+  Flat Projector Reduce Dimension = Logical True
+
+! The dimensional coupling is an exception where the level projector should 
+! not be applied. It is by default evoked for the flat projector.
+  Level Projector = Logical False
 End
 
 Boundary Condition 4

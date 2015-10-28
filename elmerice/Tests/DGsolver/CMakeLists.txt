@@ -1,0 +1,10 @@
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+CONFIGURE_FILE(density.sif density.sif COPYONLY)
+
+ADD_ELMERICETEST_MODULE(DGsolver DGtoNodalVariable ./PROG/DGtoNodalVariable.f90)
+ADD_ELMERICETEST_MODULE(DGsolver InitializeDGVariable ./PROG/InitializeDGVariable.f90)
+
+FILE(COPY ELMERSOLVER_STARTINFO cube.grd PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMERICE_TEST(DGsolver)

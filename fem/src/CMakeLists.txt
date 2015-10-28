@@ -39,7 +39,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 BackwardError.F90
-  ElmerSolver.F90)
+  ElmerSolver.F90 CircuitUtils.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
@@ -119,9 +119,9 @@ SET_TARGET_PROPERTIES(elmersolver
                       PROPERTIES LINKER_LANGUAGE Fortran)
 
 # ElmerSolver libraries 
-SET(ELMERSOLVER_LIBRARIES elmersolver matc umfpack 
+SET(ELMERSOLVER_LIBRARIES matc umfpack 
                           amd fhuti binio arpack
-  	                  ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
+                          ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
 
 IF(HAVE_EIO)
@@ -147,6 +147,7 @@ IF(WITH_MPI)
 
   # Add parpack and possibly others
   IF(Mumps_LIBRARIES)
+    INCLUDE_DIRECTORIES(${Mumps_INCLUDE_DIR})
     LIST(APPEND ELMERSOLVER_LIBRARIES ${Mumps_LIBRARIES})
   ENDIF()	
   IF(Hypre_LIBRARIES)

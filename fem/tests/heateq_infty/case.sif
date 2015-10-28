@@ -46,6 +46,8 @@ Solver 1
   Linear System Residual Output = 10
 
   Steady State Convergence Tolerance = 1.0e-05
+
+  Nonlinear System Consistent Norm = True
 End
 
 

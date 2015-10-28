@@ -1359,7 +1359,7 @@ END SUBROUTINE FetiProject
 !call resettimer('cpg')
     nrows=A % NumberOfRows
 
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     output = GetInteger( Params,'Linear System Residual Output', Found )
     IF (.NOT. Found ) output = 1
     maxit   = GetInteger( Params,'Linear System Max Iterations')
@@ -1496,7 +1496,7 @@ END SUBROUTINE FetiProject
     COMPLEX(KIND=dp), ALLOCATABLE :: EigVectors(:,:)
 !------------------------------------------------------------------------------
 
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
 
     dofs = Solver % Variable % DOFs
     n = A % NumberOfRows
@@ -1663,14 +1663,14 @@ END SUBROUTINE FetiProject
     CALL ListPushNameSpace('feti:')
 
     CALL ListAddString( Params, 'Feti: Linear System Solver', 'Direct' )
-    Params=>GetSolverParams()
+    Params=>ListGetSolverParams()
     CALL ListAddString( Params, 'Feti: Linear System Direct Method', 'umfpack' )
-    Params=>GetSolverParams()
+    Params=>ListGetSolverParams()
 
     IF (.NOT.ListCheckPresent(Params,'Eigen System Convergence Tolerance')) &
       CALL ListAddConstReal( Params, &
                'Feti: Eigen System Convergence Tolerance', 1.0d-9)
-    Params=>GetSolverParams()
+    Params=>ListGetSolverParams()
 
     IF (.NOT.ASSOCIATED(A % MassValues)) THEN
       ALLOCATE(A % MassValues(SIZE(A % Values)))
@@ -1991,7 +1991,7 @@ END SUBROUTINE FetiProject
 
     ! Get various  solution options:
     ! ------------------------------
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     TOL=GetCReal( Params,'Linear System Convergence Tolerance')
 
     ! Check whether to use the 'total' FETI scheme:

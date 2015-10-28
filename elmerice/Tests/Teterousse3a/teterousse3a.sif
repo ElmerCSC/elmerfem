@@ -53,7 +53,7 @@ Simulation
 
   Output File = "teterousse_$Step".result"!"
   Post File = "teterousse_$Step".ep"!"
-  max output level = 3  
+  max output level = 4
 End
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -219,7 +219,7 @@ Solver 4
 End
 
 Solver 5
-  Exec Solver = Never !!!!!!!!
+  !Exec Solver = Never !!!!!!!!
   Equation = "Free Surface Top"
   Variable = String "Zs Top" 
   Variable DOFs =  1
@@ -264,8 +264,8 @@ Solver 6
   Exported Variable 1 = String "Zs Bottom Residual"
   Exported Variable 1 DOFs = 1
 
-  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
-  !Procedure = "./FreeSurface1" "FreeSurfaceSolver"
+  !Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  Procedure = "./FreeSurface1" "FreeSurfaceSolver"
   Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
 
   Linear System Solver = Iterative
@@ -382,3 +382,9 @@ Boundary Condition 3
   Save Line = Logical True
   Flux integrate = Logical True
 End
+
+Solver 6 :: Reference Norm = Real 3164.3866
+Solver 6 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=3164.3866,EPS=1E-06\n" );

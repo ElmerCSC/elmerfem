@@ -25,6 +25,8 @@ SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Module
 
 # Defaults to cache variables
 SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
+SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel tests")
+SET(MPI_TEST_MINPROC 1 CACHE STRING "Minimum number of tasks used in parallel tests")
 SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread parallelization")
 SET(WITH_MKL FALSE CACHE BOOL "Use Intel Math Kernel library")
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
@@ -53,6 +55,11 @@ SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
 
 IF(NOT(ELMER_FEM_REVISION))
+  SET(RESET_ELMER_REVISION TRUE CACHE BOOL "")
+  MARK_AS_ADVANCED(RESET_ELMER_REVISION)
+ENDIF()
+
+IF(RESET_ELMER_REVISION)
   execute_process(
     COMMAND "git" "--no-pager" "log" "-1" "--pretty=format:%h"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
@@ -157,7 +164,6 @@ ENDIF()
 IF(Mumps_FOUND)
   SET(HAVE_MUMPS TRUE)
   MARK_AS_ADVANCED(HAVE_MUMPS)
-  INCLUDE_DIRECTORIES(${Mumps_INCLUDE_DIR})
   # LINK_DIRECTORIES(${MUMPS_LIBRARIES})
 ENDIF()
 

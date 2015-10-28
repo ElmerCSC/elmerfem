@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import os, fnmatch, re, types, subprocess, sys
 
-DEFAULT_BUILD_DIR="/home/jkataja/src/elmer/build"
+DEFAULT_BUILD_DIR=""
 
 ##################################
 
@@ -10,7 +10,7 @@ ignore_file_glob = ['*.swp','Makefile','*.cmake',\
 source_file_glob = ['*.f90', '*.F90']
 
 CMakeLists_Template = """\
-INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+INCLUDE(${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 %s
 
@@ -20,7 +20,6 @@ ADD_ELMER_TEST(%s)
 """
 
 runtests_Template = """\
-include(${TEST_SOURCE}/../test_macros.cmake)
 %s
 RUN_ELMER_TEST()
 """

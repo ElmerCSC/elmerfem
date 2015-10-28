@@ -1,3 +1,5 @@
+/* Don't use multiline c-style comments */
+
 #ifndef CONFIG_H_FEM
 #define CONFIG_H_FEM
 
@@ -31,8 +33,8 @@
 /* Define to 1 if you have the `dlopen' function. */
 #define HAVE_DLOPEN
 
-/* Define if your system has dlopen, dlsym, dlerror, and dlclose for dynamic
-   linking */
+/* Define if your system has dlopen, dlsym, dlerror, and dlclose for dynamic */
+/* linking */
 #cmakedefine HAVE_DLOPEN_API
 
 /* Define if your system has LoadLibrary API (e.g. WIN32)*/

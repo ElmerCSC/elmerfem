@@ -154,6 +154,7 @@ REAL(kind=dp) :: tt,realtime
     TYPE (BasicMatrix_t), POINTER :: NbsIfMatrix(:), CurrIf
     TYPE (BasicMatrix_t), DIMENSION(:), ALLOCATABLE :: RecvdIfMatrix
 
+    LOGICAL, ALLOCATABLE :: isNeighbour(:)
     LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, GotNewCol, Found
 
 #ifdef USE_ISO_C_BINDINGS
@@ -571,8 +572,6 @@ st = realtime()
   CALL ExchangeInterfaces( NbsIfMatrix, RecvdIfMatrix )
 !if ( parenv % mype==0 ) print*, 'EXCHANGE INTERF TIME: ', realtime()-st; st=realtime()
 
-
-
   !----------------------------------------------------------------------
   !
   ! sort inside matrix global tags to speed lookup
@@ -611,13 +610,22 @@ st = realtime()
     DO j=1,Currif % NumberOfRows
       IF ( CurrIf % RowOwner(j)==Parenv % MyPE ) CYCLE
       IF( .NOT. ParEnv % IsNeighbour(Currif % RowOwner(j)+1) ) THEN
-         ParEnv % NumOfNeighbours=ParEnv % NumOfNeighbours+1
+         ParEnv % NumOfNeighbours = ParEnv % NumOfNeighbours+1
          ParEnv % isNeighbour(CurrIf % RowOwner(j)+1) = .TRUE.
       END IF
     END DO
   END DO
 
+  ! Sync neighbour information, if changed by the above ^:
+  ! ------------------------------------------------------
+  ALLOCATE(isNeighbour(ParEnv % PEs))
+  isNeighbour = Parenv % IsNeighbour
+  CALL MPI_ALLREDUCE( isNeighbour, Parenv % IsNeighbour, Parenv % Pes, &
+      MPI_LOGICAL, MPI_LOR, SourceMatrix % Comm, i )
+  Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
+  Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
 
+  ! -
   ALLOCATE(SplittedMatrix % IfLCols(ParEnv % PEs))
   ALLOCATE(SplittedMatrix % IfORows(ParEnv % PEs))
   DO i = 1, ParEnv % PEs
@@ -1539,22 +1547,22 @@ INTEGER::inside
 
       IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )
 
-      IF ( IterativeMethod(1:8) == 'bicgstab' ) THEN
+      IF ( IterativeMethod == 'bicgstab' ) THEN
         CALL Info("SParIterSolver", "Hypre: BiCGStab",Level=3)
         hypre_sol = 0;
-      ELSE IF ( IterativeMethod(1:9) == 'boomeramg' )THEN
+      ELSE IF ( IterativeMethod == 'boomeramg' )THEN
         CALL Info("SParIterSolver", "Hypre: BoomerAMG",Level=3)
         hypre_sol = 1;
-      ELSE IF ( IterativeMethod(1:2) == 'cg' ) THEN
+      ELSE IF ( IterativeMethod == 'cg' ) THEN
         hypre_sol = 2;
         CALL Info("SParIterSolver", "Hypre: CG",Level=3)
-      ELSE IF ( IterativeMethod(1:5) == 'gmres' ) THEN
+      ELSE IF ( IterativeMethod == 'gmres' ) THEN
         hypre_sol = 3;
         CALL Info("SParIterSolver", "Hypre: GMRes",Level=3)
-      ELSE IF ( IterativeMethod(1:9) == 'flexgmres' ) THEN
+      ELSE IF ( IterativeMethod == 'flexgmres' ) THEN
         hypre_sol = 4;
         CALL Info("SParIterSolver", "Hypre: FlexGMRes",Level=3)
-      ELSE IF ( IterativeMethod(1:6) == 'lgmres' ) THEN
+      ELSE IF ( IterativeMethod == 'lgmres' ) THEN
         hypre_sol = 5;
         CALL Info("SParIterSolver", "Hypre: LGMRes",Level=3)
       ELSE
@@ -1562,20 +1570,20 @@ INTEGER::inside
       END IF
 
       IF ( hypre_sol /= 1) THEN
-         IF ( Prec(1:3)=='ilu' .AND. Prec(4:4)/='t') THEN
+         IF ( SEQL(Prec,'ilu') ) THEN
            READ( Prec(4:), * ) ILUn
            WRITE( Message,'(a, i1)') 'Preconditioner: ILU', ILUn
            CALL Info("SParIterSolver", Message,Level=3)
-         ELSE IF( Prec(1:9) == 'parasails' ) THEN
+         ELSE IF( Prec == 'parasails' ) THEN
            CALL Info("SParIterSolver", "Preconditioner: ParaSails",Level=3)
            hypre_pre = 1
-         ELSE IF( Prec(1:9) == 'boomeramg' ) THEN
+         ELSE IF( Prec == 'boomeramg' ) THEN
            CALL Info("SParIterSolver", "Preconditioner: boomerAMG",Level=3)
            hypre_pre = 2
-         ELSE IF( Prec(1:3) == 'ams' ) THEN
+         ELSE IF( Prec == 'ams' ) THEN
            CALL Info("SParIterSolver", "Preconditioner: AMS",Level=3)
            hypre_pre = 3
-         ELSE IF( Prec(1:4) == 'none' ) THEN
+         ELSE IF( Prec == 'none' ) THEN
            hypre_pre = 9
          END IF
       END IF
@@ -1678,6 +1686,7 @@ INTEGER::inside
       n = SIZE(ParallelInfo % GlobalDOFs)
       ALLOCATE( Owner(n), Aperm(n) )
       CALL ContinuousNumbering(ParallelInfo,SourceMatrix % Perm,APerm,Owner)
+      Aperm = Aperm-1 ! Newer hypre libraries require zero based indexing
 
       ! ------------------------------------------------------------
       verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
@@ -1690,6 +1699,7 @@ INTEGER::inside
         bilu = 1
       END IF
 
+      CALL SParIterActiveBarrier()
       IF(hypre_pre/=3) THEN
         IF (NewSetup) THEN
           IF (SourceMatrix % Hypre /= 0) THEN
@@ -1758,6 +1768,7 @@ INTEGER::inside
         DEALLOCATE(GM % Values) 
         DEALLOCATE(GM)
       END IF
+      CALL SParIterActiveBarrier()
       
       DEALLOCATE( Owner, Aperm )
 
@@ -2163,6 +2174,7 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
 !   END IF
   END IF
 
+#if 0
   DO i = 1, SplittedMatrix % InsideMatrix % NumberOfRows
     j = SplittedMatrix % InsideMatrix % Diag(i)
     IF ( SplittedMatrix % InsideMatrix % Values(j)==0 ) THEN
@@ -2176,6 +2188,8 @@ SUBROUTINE Solve( SourceMatrix, SplittedMatrix, ParallelInfo, &
       END IF
     END IF
   END DO
+#endif
+
 
  !----------------------------------------------------------------------
  !

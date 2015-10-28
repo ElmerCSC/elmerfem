@@ -8,3 +8,4 @@ ADD_ELMERTEST_MODULE(StokesProj Pressure Pressure.f90)
 file(COPY ELMERSOLVER_STARTINFO Step Step.grd Velocity.f90  Pressure.f90 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(StokesProj)
+ADD_ELMER_LABEL(StokesProj quick)

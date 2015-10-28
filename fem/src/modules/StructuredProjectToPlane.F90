@@ -284,7 +284,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       
       WRITE (Name,'(A,I0)') 'Isosurface Value ',NoVar
       Level = ListGetConstReal(Params,TRIM(Name),GotIt)
-    ELSE IF ( Oper(1:5) == 'layer' ) THEN
+    ELSE IF ( SEQL(Oper, 'layer') ) THEN
       WRITE (Name,'(A,I0)') 'Layer Index ',NoVar
       layer = GetInteger( Params, Name, GotIt )
       IF (.NOT.GotIt) THEN

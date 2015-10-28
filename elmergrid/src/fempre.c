@@ -100,6 +100,7 @@ static void Instructions()
   printf("17) .msh      : Nastran format\n");
   printf("18) .msh      : CGsim format\n");
   printf("19) .geo      : Geo format\n");
+  printf("20) .tra      : Cedrat Flux format\n");
 #endif 
 
   printf("\nThe second parameter defines the output file format:\n");
@@ -161,6 +162,7 @@ static void Instructions()
   printf("-isoparam            : ensure that higher order elements are convex\n");
   printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
   printf("-nosave              : disable saving part alltogether\n");
+  printf("-nooverwrite         : if mesh already exists don't overwite it\n");
   printf("-timer               : show timer information\n");
   printf("-infofile str        : file for saving the timer and size information\n");
 
@@ -511,6 +513,30 @@ int main(int argc, char *argv[])
     nomeshes++;
     break;
 
+  case 20:
+    boundaries[nofile] = (struct BoundaryType*)
+      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    for(i=0;i<MAXBOUNDARIES;i++) {
+      boundaries[nofile][i].created = FALSE; 
+      boundaries[nofile][i].nosides = 0;
+    }
+    if (LoadFluxMesh(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
+    nomeshes++;
+    break;
+
+  case 21:
+    boundaries[nofile] = (struct BoundaryType*)
+      malloc((size_t) (MAXBOUNDARIES)*sizeof(struct BoundaryType)); 	
+    for(i=0;i<MAXBOUNDARIES;i++) {
+      boundaries[nofile][i].created = FALSE; 
+      boundaries[nofile][i].nosides = 0;
+    }
+    if (LoadFluxMesh3D(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],TRUE))
+      Goodbye();
+    nomeshes++;
+    break;
+
   default:
     Instructions();
     Goodbye();
@@ -709,8 +735,8 @@ int main(int argc, char *argv[])
   if(eg.clone[0] || eg.clone[1] || eg.clone[2]) {
     for(k=0;k<nomeshes;k++) {
       CloneMeshes(&data[k],boundaries[k],eg.clone,eg.clonesize,FALSE,info);
-      mergeeps = fabs(eg.clonesize[0]+eg.clonesize[1]+eg.clonesize[2]) * 1.0e-8;
-      MergeElements(&data[k],boundaries[k],eg.order,eg.corder,mergeeps,TRUE,TRUE);
+      /* mergeeps = fabs(eg.clonesize[0]+eg.clonesize[1]+eg.clonesize[2]) * 1.0e-8;
+	 MergeElements(&data[k],boundaries[k],eg.order,eg.corder,mergeeps,TRUE,TRUE); */
     }
   }
 
@@ -873,6 +899,17 @@ int main(int argc, char *argv[])
   for(k=0;k<nomeshes;k++) {
     int partoptim, partbcoptim, partopt, fail, partdual;
 
+    if( eg.metis == 1 ) {
+      if(info) printf("One Metis partition requested, enforcing serial mode\n");
+      eg.metis = 0;
+    }
+
+    if( eg.partitions == 1 ) {
+      if(info) printf("One geometric partition requested, enforcing serial mode\n");
+      eg.partitions = 0;
+    }
+
+
     partoptim = eg.partoptim;
     partbcoptim = eg.partbcoptim;
     partdual = eg.partdual;
@@ -964,9 +1001,9 @@ int main(int argc, char *argv[])
       if(data[k].nopartitions > 1) 
 	SaveElmerInputPartitioned(&data[k],boundaries[k],eg.filesout[k],eg.decimals,
 				  eg.partitionhalo,eg.partitionindirect,eg.parthypre,
-				  eg.partbcz,info);
+				  eg.partbcz,eg.nooverwrite,info);
       else
-	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,info);
+	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,eg.nooverwrite,info);
     }
     break;
 

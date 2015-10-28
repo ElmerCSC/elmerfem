@@ -39,7 +39,7 @@ Simulation
 
   Post File = "test_$Step$.vtu"
 
-  max output level = 10
+  max output level = 4
 
 !  Extruded Mesh Levels = 3
 End
@@ -281,3 +281,9 @@ Boundary Condition 6
   Top surface = Variable Zb , H
      REAL MATC "tx(0)+tx(1)"
 End
+
+Solver 4 :: Reference Norm = Real 1000.0046
+Solver 4 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1000.0046,EPS=1E-06\n" );

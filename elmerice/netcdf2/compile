@@ -4,3 +4,10 @@ elmerf90 $NETCDF_LIBS $NETCDF_INCLUDES GridDataReader.F90 -o GridDataReader.so
 # works better, but you should load modules in the following order before compiling:
 #module load elmer/latest
 #module load netcdf
+
+
+#Joe Todd Note: I found that, on systems other than the CSC Cray machines, it was important to specify
+#the source file before the library/include flags, or else at runtime you get 'undefined symbol' errors.
+# So (assuming default lib and inc locations):
+
+# elmerf90 GridDataReader.F90 -I/usr/include -L/usr/lib -lnetcdff -o GridDataReader.so

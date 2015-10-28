@@ -54,8 +54,8 @@
 
 int matcactive=FALSE, iodebug=FALSE;
 
-
-char *IOmethods[] = {
+int MAXINMETHODS = 15;
+char *InMethods[] = {
   /*0*/ "EG",
   /*1*/ "ELMERGRID",
   /*2*/ "ELMERSOLVER",
@@ -64,7 +64,7 @@ char *IOmethods[] = {
   /*5*/ "IDEAS",
   /*6*/ "ABAQUS",
   /*7*/ "FIDAP",
-  /*8*/ "EASYMESH",
+  /*8*/ "UNV",
   /*9*/ "COMSOL",
   /*10*/ "FIELDVIEW",
   /*11*/ "TRIANGLE",
@@ -72,9 +72,16 @@ char *IOmethods[] = {
   /*13*/ "GID",
   /*14*/ "GMSH",
   /*15*/ "PARTITIONED",
-  /*16*/ "UNV",
-  /*17*/ "NASTRAN",
-  /*18*/ "FASTCAP"
+};
+
+int MAXOUTMETHODS = 5;
+char *OutMethods[] = {
+  /*0*/ "EG",
+  /*1*/ "ELMERGRID",
+  /*2*/ "ELMERSOLVER",
+  /*3*/ "ELMERPOST",
+  /*4*/ "GMSH",
+  /*5*/ "VTU",
 };
 
 
@@ -305,6 +312,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->saveboundaries = TRUE;
   eg->timeron = FALSE;
   eg->nosave = FALSE;
+  eg->nooverwrite = FALSE;
   eg->merge = FALSE;
   eg->bcoffset = FALSE;
   eg->periodic = 0;
@@ -348,25 +356,25 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
   /* Type of input file */
   strcpy(command,argv[1]);
   for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
-  for(i=0;i<=MAXMETHODS;i++) {
-    if(strstr(command,IOmethods[i])) {
+  for(i=0;i<=MAXINMETHODS;i++) {
+    if(strstr(command,InMethods[i])) {
       eg->inmethod = i;
       break;
     }
   }
-  if(i>MAXMETHODS) eg->inmethod = atoi(argv[1]);
+  if(i>MAXINMETHODS) eg->inmethod = atoi(argv[1]);
 
 
   /* Type of output file (fewer options) */
   strcpy(command,argv[2]);
   for(i=0;i<MAXLINESIZE;i++) command[i] = toupper(command[i]);
-  for(i=1;i<=MAXMETHODS;i++) {
-    if(strstr(command,IOmethods[i])) {
+  for(i=1;i<=MAXOUTMETHODS;i++) {
+    if(strstr(command,OutMethods[i])) {
       eg->outmethod = i;
       break;
     }
   }
-  if(i>MAXMETHODS) eg->outmethod = atoi(argv[2]);
+  if(i>MAXOUTMETHODS) eg->outmethod = atoi(argv[2]);
  
 
   /* Default names of output file are derived from input file name */
@@ -917,6 +925,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-nosave") == 0) {
       eg->nosave = TRUE;
     }
+    if(strcmp(argv[arg],"-nooverwrite") == 0) {
+      eg->nooverwrite = TRUE;
+    }
     if(strcmp(argv[arg],"-timer") == 0) {
       eg->timeron = TRUE;
     }
@@ -1047,26 +1058,26 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
       else if(strstr(command,"INPUT MODE")) {
 	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
 	
-	for(i=0;i<=MAXMETHODS;i++) {
-	  if(strstr(params,IOmethods[i])) {
+	for(i=0;i<=MAXINMETHODS;i++) {
+	  if(strstr(params,InMethods[i])) {
 	    eg->inmethod = i;
 	    break;
 	  }
 	}
-	if(i>MAXMETHODS) sscanf(params,"%d",&eg->inmethod);
+	if(i>MAXINMETHODS) sscanf(params,"%d",&eg->inmethod);
       }
 
       else if(strstr(command,"OUTPUT MODE")) {
 	for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
 	
 	/* Type of output file (fewer options) */
-	for(i=1;i<=MAXMETHODS;i++) {
-	  if(strstr(params,IOmethods[i])) {
+	for(i=1;i<=MAXOUTMETHODS;i++) {
+	  if(strstr(params,OutMethods[i])) {
 	    eg->outmethod = i;
 	    break;
 	  }
 	}
-	if(i>MAXMETHODS) sscanf(params,"%d",&eg->outmethod);	
+	if(i>MAXOUTMETHODS) sscanf(params,"%d",&eg->outmethod);	
       }
     }    
     /* End of command file specific part */
@@ -1074,6 +1085,9 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
 
     if(strstr(command,"DECIMALS")) {
       sscanf(params,"%d",&eg->decimals);
+    }
+    else if(strstr(command,"BOUNDARY OFFSET")) {
+      sscanf(params,"%d",&eg->bcoffset);
     }
     else if(strstr(command,"TRIANGLES CRITICAL ANGLE")) {
       sscanf(params,"%le",&eg->triangleangle);

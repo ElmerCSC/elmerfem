@@ -1,0 +1,7 @@
+INCLUDE(${TEST_SOURCE}/../test_macros.cmake)
+
+FILE(COPY ${ELMERSOLVER_HOME}/lib/FreeSurfaceSolver${SHLEXT} DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+FILE(RENAME FreeSurfaceSolver${SHLEXT}  MyFreeSurfaceSolver)
+
+RUN_ELMERICE_TEST()

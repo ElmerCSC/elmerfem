@@ -6,3 +6,4 @@ CONFIGURE_FILE( Step.sif Step.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO Step.grd  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(Step_stokes_block)
+ADD_ELMER_LABEL(Step_stokes_block quick)

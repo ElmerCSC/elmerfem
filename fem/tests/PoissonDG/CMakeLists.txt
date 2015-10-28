@@ -7,3 +7,4 @@ ADD_ELMERTEST_MODULE(PoissonDG PoissonDG PoissonDG.F90)
 file(COPY square.grd PoissonDG.F90 ELMERSOLVER_STARTINFO square so_locations  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(PoissonDG)
+ADD_ELMER_LABEL(PoissonDG quick)

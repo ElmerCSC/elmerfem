@@ -72,10 +72,13 @@
 
 !  Variable 1 Supporting Points = Integer 3 !minimum of points to be used for interpolation
 !  Variable 1 Dimensions = Integer 2 !dimension of variable, here needs a file with two columns, NOTE numbers have to be written as 0.04 and not 4e-2
+!  Variable 1 Exponent = Real 3.0 ! inverse distance weighting exponent (has to be positive) - default 2.0
+!  Variable 1 Area Scaling Factor = Real 2.0 ! increases the max search distance by factor 2 of the maximium distance of dataset poitns
 !  Variable 1 Directions(2) = Integer 1 2 !which dimensions are these? Here direction 1 and 2 (x and y)
 !  Exported Variable 1 = mb !Variablename in Elmer
 !  Exported Variable 1 DOFS = Integer 1 !degrees of freedom
 !End
+!
 
 
 RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimulation )
@@ -97,28 +100,30 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
   INTEGER :: istat, NoVariables, VariableNo, LocalNodes, DataChannel,&
        timearound=1, AllocationIncrement, DIM, dataread, elementnumber,&
        i, j, k, SupportingPoints(99), NoDim(99),VariableDirections(99,3), &
-       SimulTime, VariableDataIName(99), VariableDataIName2(99)
-  INTEGER, POINTER :: Permutation(:),VarPerm(:),NodeIndexes(:)
+       SimulTime, VariableDataIName(99), VariableDataIName2(99), &
+       skippednodes, allnodes
+  INTEGER, POINTER :: Permutation(:),VarPerm(:),MaskVarPerm(:),NodeIndexes(:)
   REAL(KIND=dp), ALLOCATABLE, TARGET :: InData(:,:), DummyIn(:)
-  REAL(KIND=dp), POINTER :: Field(:), VarVal(:)
-  LOGICAL, ALLOCATABLE:: IsToBeInterpolated(:)
-  LOGICAL :: AllocationsDone=.FALSE., FirstTime=.TRUE., Found, GotVar, VariablesExist, InterpolateVariable, reinitiate,Found2
+  REAL(KIND=dp), POINTER :: Field(:), VarVal(:), MaskVarVal(:)
+  LOGICAL :: AllocationsDone=.FALSE., FirstTime=.TRUE., Found, GotVar,&
+       VariablesExist, reinitiate,Found2,IsMasked(99)
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName, Name, DataName,DataNameI, &
        DataNameI2, temp,& 
        DataNameEnd,  VariableName(99) , VariableDataName(99), &
-       VariableDataNameShort(99), VariableDataNameEnd(99)
-  TYPE(Variable_t), POINTER :: Var
+       VariableDataNameShort(99), VariableDataNameEnd(99), MaskName(99)
+  TYPE(Variable_t), POINTER :: Var, MaskVar
   TYPE(Solver_t), POINTER :: PointerToSolver
   TYPE(ValueList_t), POINTER :: BC, Equation
   TYPE(Element_t), POINTER :: CurrentElement
-  Real :: TimeStepSize
+  REAL (KIND=dp):: theInterpolatedValue, IDExponent(99), ScalingFactor(99)
 
 
   SAVE AllocationsDone, FirstTime, SolverName,&
        DIM,NoVariables, VariablesExist, LocalNodes,Permutation,&
-       IsToBeInterpolated, SupportingPoints, VariableName,&
+       SupportingPoints, VariableName, MaskName,&
        VariableDataNameShort, SimulTime, NoDim, VariableDirections,&
-       VariableDataIName, VariableDataNameEnd, VariableDataIName2
+       VariableDataIName, VariableDataNameEnd, VariableDataIName2, &
+       IsMasked, IDExponent,ScalingFactor
 
   IF (FirstTime) WRITE(SolverName,'(A)') 'InterpolatePointValue'
   PointerToSolver => Solver
@@ -186,21 +191,35 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
                 VariableDataIName(NoVariables),&
                 VariableDataIName2(NoVariables), VariableDataNameEnd(NoVariables),' not found.'
            CALL FATAL(SolverName,Message)
-       END IF
-
-
+        END IF
+        ! supporting points used for this variable
         SupportingPoints(NoVariables) = &
              ListGetInteger( Solver % Values, TRIM(Name) // ' Supporting Points', Found)
         IF (.NOT.Found) THEN
            WRITE(Message,'(A,A)') TRIM(Name),&
                 ' Number of supporting points not found - setting to 2'
-           CALL INFO(SolverName,Message,Level=3)
+           CALL WARN(SolverName,Message)
            SupportingPoints(NoVariables) = 2
         ELSE
-           WRITE(Message,'(A,A,I6)') TRIM(Name),&
-                ' Number of supporting points: ', SupportingPoints(NoVariables)
-           CALL INFO(SolverName,Message,Level=4)
+           IF (SupportingPoints(NoVariables) > 99) THEN
+              WRITE(Message,'(A,A,I6,A)') TRIM(Name),&
+                   ' Number of supporting points: ', SupportingPoints(NoVariables), &
+                   ' exceeds maximum value of 99 - reseting to 99'
+              SupportingPoints(NoVariables) = 99
+              CALL WARN(SolverName, Message)
+           ELSEIF (SupportingPoints(NoVariables) < 2) THEN
+              WRITE(Message,'(A,A,I6,A)') TRIM(Name),&
+                   ' Number of supporting points: ', SupportingPoints(NoVariables), &
+                   ' less than 2 - reseting to 2'
+              SupportingPoints(NoVariables) = 2
+              CALL WARN(SolverName, Message)
+           ELSE
+              WRITE(Message,'(A,A,I6)') TRIM(Name),&
+                   ' Number of supporting points: ', SupportingPoints(NoVariables)
+              CALL INFO(SolverName,Message,Level=4)
+           END IF
         END IF
+        ! Dimension of coordinates of input data for this variable
         NoDim(NoVariables) = &
              ListGetInteger( Solver % Values, TRIM(Name) // ' Dimensions', Found)
         VariableDirections(NoVariables,1:3) = 0
@@ -222,6 +241,55 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
               CALL FATAL(SolverName,Message)
            END IF
         END IF
+        ! inverse distance exponent
+        IDExponent(NoVariables) = &
+             GetConstReal( Solver % Values, TRIM(Name) // ' Exponent', Found)
+        IF (.NOT.Found) THEN
+          IDExponent(NoVariables) = 2.0_dp
+          WRITE(Message,'(A,A,A)')&
+                   'Inverse distance >', TRIM(Name),' Exponent< not found - setting to 2.0'
+          CALL WARN(SolverName,Message)
+        ELSE
+           IF (IDExponent(NoVariables) < 0.0_dp) THEN
+              WRITE(Message,'(A,A,A,F8.2,A)')&
+                   'Inverse distance >', TRIM(Name),' Exponent< value = ', IDExponent(NoVariables),' < 0.0 - setting to 1'
+              CALL WARN(SolverName,Message)
+              IDExponent(NoVariables) = 1.0_dp
+           ELSE
+              WRITE(Message,'(A,A,A,F8.2)')&
+                   'Exponent for ', TRIM(Name), '= ', IDExponent(NoVariables)
+              CALL INFO(SolverName,Message,Level=3)
+           END IF
+        END IF
+        ScalingFactor(NoVariables) = &
+             GetConstReal( Solver % Values, TRIM(Name) // ' Area Scaling Factor', Found)
+        IF (.NOT.Found) THEN
+           ScalingFactor(NoVariables) = 1.0_dp
+           WRITE(Message,'(A,A,A)')&
+                '>', TRIM(Name),' Area Scaling Factor< not found - setting to 1.0'
+           CALL WARN(SolverName,Message)
+        ELSE
+           WRITE(Message,'(A,A,A,F8.2)')&
+               'Area Scaling Factor for ', TRIM(Name), '= ', ScalingFactor(NoVariables)
+           CALL INFO(SolverName,Message,Level=3)
+        END IF
+
+        MaskName(NoVariables) = &
+             ListGetString( Solver % Values, TRIM(Name) // ' Mask', Found)
+        
+        IF (.NOT.Found) THEN
+           
+           WRITE(Message,'(A,A,A)')&
+                '>', TRIM(Name),' Mask< not found - interpolating whole area'
+           CALL INFO(SolverName,Message,Level=3)
+           IsMasked(NoVariables)=.FALSE.
+        ELSE
+           WRITE(Message,'(A,A,A,A)')&
+               'Area Scaling Factor for ', TRIM(Name), ' is ', MaskName(NoVariables)
+           CALL INFO(SolverName,Message,Level=3)
+           IsMasked(NoVariables)=.TRUE.
+        END IF
+
      END DO
      NoVariables = NoVariables-1
 
@@ -248,10 +316,10 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
                    VariableNo, ' (',TRIM(VariableName(VariableNo)),') added.'
               CALL INFO(SolverName,Message,Level=3)
               NULLIFY( Field ) 
-           END IF
-        END DO
+           END IF              
+        END DO      
      ELSE
-        CALL FATAL(SolverName, 'No valid parameters found.')
+        CALL FATAL(SolverName, 'No valid variables found.')
      END IF
      CALL INFO(Solvername,'(Re-)Initialization done',Level=1)
   END IF ! FirstTime---------------------------------------------------------------------------------------------
@@ -275,6 +343,15 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
         END IF
         VarPerm  => Var % Perm
         VarVal => Var % Values
+        IF (IsMasked(VariableNo)) THEN
+           MaskVar => VariableGet( Model % Variables, TRIM(MaskName(VariableNo)), .TRUE.)
+           IF (.NOT.ASSOCIATED(MaskVar)) THEN
+              WRITE(Message,'(A,A,A)') MaskName(VariableNo),' given but no variable assigned - interpolating over whole area'
+              CALL WARN(SolverName,Message)
+           END IF
+           MaskVarPerm  => MaskVar % Perm
+           MaskVarVal => MaskVar % Values
+        END IF
         !----------------------
         ! Read data and 
         ! to inquire the size
@@ -285,25 +362,25 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
         ALLOCATE(DummyIn(NoDim(VariableNo)))
 
 
-        if (VariableDataIName(VariableNo)==0) then
+        IF (VariableDataIName(VariableNo)==0) THEN
            VariableDataName(VariableNo)= VariableDataNameShort(VariableNo)
-        elseif (VariableDataIName(VariableNo)==2) then
-           write(temp,*) VariableDataIName2(VariableNo)+SimulTime
-           VariableDataName(VariableNo) = trim(VariableDataNameShort(VariableNo))&
-                //trim(adjustl(temp))//"-"
-           write(temp,*) VariableDataIName2(VariableNo)+SimulTime+1
-           VariableDataName(VariableNo)=trim(VariableDataName(VariableNo))&
-                //trim(adjustl(temp))//trim(VariableDataNameEnd(VariableNo))
+        ELSEIF (VariableDataIName(VariableNo)==2) THEN
+           WRITE(temp,*) VariableDataIName2(VariableNo)+SimulTime
+           VariableDataName(VariableNo) = TRIM(VariableDataNameShort(VariableNo))&
+                //TRIM(ADJUSTL(temp))//"-"
+           WRITE(temp,*) VariableDataIName2(VariableNo)+SimulTime+1
+           VariableDataName(VariableNo)=TRIM(VariableDataName(VariableNo))&
+                //TRIM(ADJUSTL(temp))//TRIM(VariableDataNameEnd(VariableNo))
 
-        elseif (VariableDataIName(VariableNo)==1) then
-           write(temp,*) VariableDataIName2(VariableNo)+SimulTime
-           VariableDataName(VariableNo) = trim(VariableDataNameShort(VariableNo))&
-                //trim(adjustl(temp))//trim(VariableDataNameEnd(VariableNo))
+        ELSEIF (VariableDataIName(VariableNo)==1) THEN
+           WRITE(temp,*) VariableDataIName2(VariableNo)+SimulTime
+           VariableDataName(VariableNo) = TRIM(VariableDataNameShort(VariableNo))&
+                //TRIM(ADJUSTL(temp))//TRIM(VariableDataNameEnd(VariableNo))
 
-        else
-           write(Message,'(A,I2)') "Varialbe DataI has to be 0,1 or 2, but is" , VariableDataIName(VariableNo)
+        ELSE
+           WRITE(Message,'(A,I2)') "Varialbe DataI has to be 0,1 or 2, but is" , VariableDataIName(VariableNo)
            CALL FATAL(SolverName,Message)
-        endif
+        ENDIF
 
         OPEN (15, FILE=VariableDataName(VariableNo), STATUS="UNKNOWN", IOSTAT=Istat)
         IF (Istat /= 0) THEN 
@@ -319,7 +396,7 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
         END DO
 10      CLOSE(15)       
         dataread = dataread - 1
-        WRITE(Message,'(A,I6,A,A)') 'Found ', dataread, ' datests in ', VariableDataName(VariableNo)
+        WRITE(Message,'(A,I10,A,A)') 'Found ', dataread, ' datasets in ', VariableDataName(VariableNo)
 
         CALL INFO(SolverName,Message,Level=3)
 
@@ -346,7 +423,7 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
            READ (15, *, END=20, IOSTAT=Istat, ERR=30) InData(i,1:NoDim(VariableNo)+1)
         END DO
 20      CLOSE(15)
-        WRITE(Message, '(A,I6,A,A,A,I3,A,A,A)') &
+        WRITE(Message, '(A,I9,A,A,A,I3,A,A,A)') &
              'Data read  (',dataread,' datasets) from file ', TRIM(VariableDataName(VariableNo)),&
              ' for variable no. ', VariableNo,' (',&
              TRIM(VariableName(VariableNo)),')'
@@ -360,40 +437,39 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
         !------------------------------------------------------
         ! Loop all active elements of solver
         !------------------------------------------------------
-        DO elementNumber=1,Solver % NumberOFActiveElements
+        skippednodes = 0
+        DO elementNumber=1,Solver % NumberOFActiveElements    
            CurrentElement => GetActiveElement(elementNumber)
            IF (.NOT.ASSOCIATED(CurrentElement)) CALL FATAL(SolverName,'Element pointer not associated')
-           Equation => GetEquation()
-           IF ( ASSOCIATED( Equation ) ) THEN           
-              InterpolateVariable = ListGetLogical( Equation, &
-                   'Interpolate' // TRIM(VariableName(VariableNo)), Found)
-              IF (.NOT.  Found) &
-                   InterpolateVariable = .FALSE.
-           ELSE
-              WRITE(Message,'(A,I3,A)') 'Equation for body no ', &
-                   CurrentElement % BodyId, ' not found'
-              CALL FATAL(SolverName,Message)
-           END IF
-           DO i=1,GetElementNOFNodes(CurrentElement)  
-              VarVal(VarPerm(CurrentElement % NodeIndexes(i))) = &
-                   GetRadiallyInterpolatedValue(InData,&
+           !------------------------------------------------------
+           ! Loop all points of element
+           !------------------------------------------------------
+           DO i=1,GetElementNOFNodes(CurrentElement)
+              allnodes = allnodes + 1
+              IF ( (IsMasked(VariableNo)) .AND. (MaskVarVal(MaskVarPerm(CurrentElement % NodeIndexes( i ))) == 0.0_dp) ) THEN
+                 skippednodes = skippednodes + 1
+                 CYCLE
+              END IF
+              theInterpolatedValue = GetRadiallyInterpolatedValue(InData,&
                    Model % Nodes % x( CurrentElement % NodeIndexes( i ) ),&
                    Model % Nodes % y( CurrentElement % NodeIndexes( i ) ),&
                    Model % Nodes % z( CurrentElement % NodeIndexes( i ) ),&
                    dataread,&
                    NoDim(VariableNo),&
                    VariableDirections(VariableNo,1:3), &
-                   2.0_dp, &
+                   IDExponent(VariableNo), &
+                   ScalingFactor(VariableNo), &
                    reinitiate,&
                    SupportingPoints(VariableNo),&
-                   SolverName)          
+                   SolverName) 
+              reinitiate = .FALSE.
+              VarVal(VarPerm(CurrentElement % NodeIndexes(i))) = theInterpolatedValue
            END DO
-           IF (elementNumber==1) reinitiate = .FALSE.
         END DO ! DO elementNumber
+        WRITE (Message,'(A,A,A,F5.3)') &
+             'Percentage of skipped nodes for variable', TRIM(VariableName(VariableNo)), ': ', FLOAT(skippednodes)/FLOAT(allnodes)
      END DO !DO VariableNo
   END IF
-
-
   RETURN
 
 30 CLOSE(15)
@@ -403,31 +479,30 @@ RECURSIVE SUBROUTINE InterpolatePointValue( Model,Solver,Timestep,TransientSimul
 CONTAINS
   !-----------------------------------------------------------------------------------------------------------
   FUNCTION GetRadiallyInterpolatedValue(InData,XI,YI,ZI,&
-       NoInData,DIM,Directions,exponent,reinitiate,numberOfSupportingPoints,SolverName)&
+       NoInData,DIM,Directions,exponent,scalingfactor,reinitiate,numberOfSupportingPoints,SolverName)&
        RESULT(theInterpolatedValue)
     USE DefUtils
     REAL(KIND=dp) :: theInterpolatedValue
-    REAL(KIND=dp), INTENT(IN)  :: InData(:,:), XI,YI,ZI,exponent
-    INTEGER, INTENT(IN)  :: DIM, NoInData, numberOfSupportingPoints, Directions(3)
-    LOGICAL, INTENT(IN) :: reinitiate
-    CHARACTER(LEN=MAX_NAME_LEN), INTENT(IN) :: SolverName
+    REAL(KIND=dp)  :: InData(:,:), XI,YI,ZI,exponent,scalingfactor
+    INTEGER  :: DIM, NoInData, numberOfSupportingPoints, Directions(3)
+    LOGICAL :: reinitiate
+    CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
 
 
     REAL(KIND=dp) :: maxdistance, difference, actualdifference, minmaxxy(2,3), &
          radius, weightsum, weight, datasum, X(3)
-    REAL(KIND=dp), ALLOCATABLE ::  distanceToPoint(:)
-    INTEGER :: i,j,k,usedSupportingPoints,actualpoint
-    INTEGER, ALLOCATABLE :: closestPoints(:)
+    REAL(KIND=dp) :: distanceToPoint(99)
+    INTEGER :: i,j,k,usedSupportingPoints,actualpoint, istat
+    INTEGER :: closestPoints(99)
     LOGICAL :: isSmallerThanAny
 
-    SAVE distanceToPoint, closestPoints, maxdistance
+    SAVE  maxdistance
 
     IF (numberOfSupportingPoints < 2) &
          CALL FATAL(SolverName // TRIM('(GetRadiallyInterpolatedValue)'),'The number of supporting points must be at least 2')
-    IF (exponent < 1) &
+    IF (exponent < 0.0) &
          CALL  FATAL(SolverName // TRIM('(GetRadiallyInterpolatedValue)'),'The exponent should be larger or equal to unity')
 
-    !PRINT *, Directions(1:3)
     X(1:3) = 0.0_dp
     DO i=1,DIM
        SELECT CASE (Directions(i))
@@ -441,18 +516,10 @@ CONTAINS
           X(i) = 0.0_dp
        END SELECT
     END DO
-!    write(*,*) X(1:3),XI,ZI,YI
-
     !--------------------
     ! (re)initialization
     !--------------------
     IF (reinitiate) THEN
-       !------------
-       ! allocations
-       !------------
-       IF (ALLOCATED(distanceToPoint)) DEALLOCATE(distanceToPoint)
-       IF (ALLOCATED(closestPoints)) DEALLOCATE(closestPoints)
-       ALLOCATE(distanceToPoint(numberOfSupportingPoints),closestPoints(numberOfSupportingPoints))
        !-----------------
        ! get bounding box
        !-----------------
@@ -468,10 +535,8 @@ CONTAINS
        DO j=1,DIM
           maxdistance = maxdistance + (minmaxxy(2,j) - minmaxxy(1,j))**2.0_dp
        END DO
-       maxdistance = 2.0_dp * sqrt(maxdistance)     
+       maxdistance = scalingfactor * sqrt(maxdistance)     
     END IF
-    !-------------------
-
     !-------------------
     ! get the supporting
     ! points for the 
@@ -479,7 +544,7 @@ CONTAINS
     !-------------------
     distanceToPoint = maxdistance
     closestPoints = 0  
-    DO i=1,NoInData
+    DO i=1,NoInData       
        !-------------------------------
        ! get radius to input data point
        !-------------------------------
@@ -487,10 +552,15 @@ CONTAINS
        DO j=1,DIM
           radius = radius + (X(j) -  InData(i,j))**2.0_dp
        END DO
+       !--------------------------
+       ! do we have a bull's eye?
+       !--------------------------
        IF (radius > 1.0D-06) THEN 
           radius = SQRT(radius)
        ELSE
-          radius = 0.0_dp
+          CALL INFO(SolverName, 'Grid and data point coordinates match',Level=12)
+          theInterpolatedValue = InData(i,DIM+1)
+          RETURN
        END IF
        !----------------------------------------
        ! check whether one and if so which one 
@@ -500,8 +570,7 @@ CONTAINS
        actualdifference = distanceToPoint(numberOfSupportingPoints)
        actualpoint = 0
        isSmallerThanAny = .FALSE.
-       DO j =1,numberOfSupportingPoints,1        
-!                 PRINT *,'J=',j,' R=', radius,' D=',distanceToPoint(j)
+       DO j =1,numberOfSupportingPoints        
           difference = distanceToPoint(j) - radius
           IF (difference > 0.0_dp) THEN
              isSmallerThanAny = .TRUE.
@@ -523,108 +592,40 @@ CONTAINS
           distanceToPoint(actualpoint) = radius
           closestPoints(actualpoint) = i
        END IF
-       !     IF (ANY(closestPoints(1:numberOfSupportingPoints) == 0)) THEN        
-       !        CALL WARN(SolverName,'Less than the reqested supporting points found')
-       !     END IF
-
-!            PRINT *,'N=',closestPoints(1:numberOfSupportingPoints)
-!            PRINT *,'D=',distanceToPoint(1:numberOfSupportingPoints)
-
     END DO
-    !-----------------
-
-
-    !--------------------------
-    ! do we have a bull's eye?
-    !--------------------------
-    IF (distanceToPoint(1) < 1.0D-12) THEN
-       theInterpolatedValue = InData(closestPoints(1),DIM+1)
-    ELSE 
-       !-----------
-       ! interpolate
-       !-----------
-       weightsum = 0.0_dp
-       theInterpolatedValue = 0.0_dp
-       usedSupportingPoints = 0
-       DO k=1,numberOfSupportingPoints
-          IF (closestPoints(k) /= 0) THEN
-             usedSupportingPoints = usedSupportingPoints + 1
-             weight = (distanceToPoint(k))**(-exponent)
-             theInterpolatedValue = theInterpolatedValue + weight * InData(closestPoints(k),DIM+1)
-             weightsum = weightsum + weight
-             else
-          END IF
-          
-       END DO
-       IF (usedSupportingPoints < numberOfSupportingPoints) THEN
-          WRITE(Message,'(A,F10.3,F15.3,F15.3,A,I3,A,I3)')&
-               'Number of supporting points used for point (',&
-               XI,YI,ZI,') =', usedSupportingPoints,&
-               ' smaller than requested ', numberOfSupportingPoints
-          CALL WARN(TRIM(Solvername) // '(GetRadiallyInterpolatedValue)',&
-               Message)
+    !-----------
+    ! interpolate
+    !-----------
+    weightsum = 0.0_dp
+    theInterpolatedValue = 0.0_dp
+    usedSupportingPoints = 0
+    DO k=1,numberOfSupportingPoints
+       IF (closestPoints(k) /= 0) THEN
+          usedSupportingPoints = usedSupportingPoints + 1
+          weight = (distanceToPoint(k))**(-exponent)
+          theInterpolatedValue = theInterpolatedValue + weight * InData(closestPoints(k),DIM+1)
+          weightsum = weightsum + weight
        END IF
-       IF (usedSupportingPoints == 0) THEN
-          WRITE(Message,'(A,F10.3,F15.3,F15.3,A)') &
-               'No supporting point for point (',&
-               XI,YI,ZI,') found'
-          CALL FATAL(TRIM(Solvername) // '(GetRadiallyInterpolatedValue)',&
-               Message)
-       END IF
-       theInterpolatedValue = theInterpolatedValue/weightsum
+    END DO
+    IF (usedSupportingPoints < numberOfSupportingPoints) THEN
+       WRITE(Message,'(A,F10.3,F15.3,F15.3,A,I3,A,I3)')&
+            'Number of supporting points used for point (',&
+            XI,YI,ZI,') =', usedSupportingPoints,&
+            ' smaller than requested ', numberOfSupportingPoints
+       CALL WARN(TRIM(Solvername) // '(GetRadiallyInterpolatedValue)',&
+            Message)
     END IF
+    IF (usedSupportingPoints == 0) THEN
+       WRITE(Message,'(A,F10.3,F15.3,F15.3,A)') &
+            'No supporting point for point (',&
+            XI,YI,ZI,') found'
+       CALL FATAL(TRIM(Solvername) // '(GetRadiallyInterpolatedValue)',&
+            Message)
+    END IF
+    theInterpolatedValue = theInterpolatedValue/weightsum
     RETURN
-
   END FUNCTION GetRadiallyInterpolatedValue
 
 END SUBROUTINE InterpolatePointValue
 
 
-! sets variable entries to variable of this solver
-!--------------------------------------------------
-RECURSIVE SUBROUTINE PointwiseVariableSet( Model,Solver,Timestep,TransientSimulation )
-  USE DefUtils
-
-
-  IMPLICIT NONE
-
-
-!------------------------------------------------------------------------------
-!    External variables
-!------------------------------------------------------------------------------
-  TYPE(Model_t)  :: Model
-  TYPE(Solver_t), TARGET :: Solver
-  LOGICAL :: TransientSimulation
-  REAL(KIND=dp) :: Timestep
-!------------------------------------------------------------------------------
-!    Local variables
-!------------------------------------------------------------------------------
-  REAL(KIND=dp), ALLOCATABLE :: InData(:)
-
-  TYPE(Variable_t), POINTER :: PointerVar
-
-  INTEGER :: i,j
-
-  PointerVar => Solver % Variable
-
-  IF ( ASSOCIATED(PointerVar) ) THEN
-     ! sets the array for data I/O to the size of your mesh points
-     ! i.e., we are dealing with a scalar variable
-     ! modify, if vector/tensor parameters are needed
-     ALLOCATE(InData(Model % Mesh % NumberOfNodes))  
-     
-     ! PETE: here you have to write yourself the I/O part, that fills InData with the point-wise information
-
-     DO i=1,SIZE(PointerVar % Perm)
-        j = PointerVar % Perm(i)
-        IF ( j>0 ) THEN
-           PointerVar % Values(j) = InData(i)
-        END IF
-     END DO
-     DEALLOCATE(InData)
-  ELSE 
-     WRITE(Message,'(A,A)')&
-          'Could not find variable',TRIM(Solver % Variable % Name)
-     CALL FATAL("PointwiseVariableSet",Message);
-  END IF
-END SUBROUTINE PointwiseVariableSet

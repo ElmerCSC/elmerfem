@@ -188,10 +188,11 @@ CONTAINS
           CALL Info('GMGSolve', Message, Level=12 )
        ELSE IF ( Level <= 1 ) THEN
 
-          CALL ListAddLogical( Params,'Linear System Free Factorization', .FALSE. )
-          CALL ListAddLogical( Params,'Linear System Refactorize', NewLinearSystem )
 
           CALL ListPushNamespace('mglowest:')
+
+          CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
+          CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', NewLinearSystem )
 
           LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
           IF ( .NOT. Found ) THEN
@@ -454,7 +455,7 @@ CONTAINS
              END IF
            END IF
 
-       ELSE IF ( str(1:3) == 'ilu' ) THEN
+       ELSE IF ( SEQL(str, 'ilu') ) THEN
           IF ( NewLinearSystem ) THEN
              k = ICHAR(str(4:4)) - ICHAR('0')
              IF ( k < 0 .OR. k > 9 ) k = 0
@@ -924,14 +925,6 @@ CONTAINS
           IF ( PRESENT( NewSystem ) ) THEN
              NewLinearSystem = NewLinearSystem .AND. NewSystem
           END IF
-       ELSE IF ( Level <= 1 ) THEN
-          CALL ListAddLogical( Params,'Linear System Free Factorization', .FALSE. )
-          IF ( NewLinearSystem ) THEN
-            CALL ListAddLogical( Params,'Linear System Refactorize', .TRUE. )
-          ELSE
-            CALL ListAddLogical( Params,'Linear System Refactorize', .FALSE. )
-          END IF
-          NewLinearSystem = .FALSE.
        END IF
 
 !---------------------------------------------------------------------
@@ -941,6 +934,14 @@ CONTAINS
        IF ( Level <= 1 ) THEN
 
           CALL ListPushNamespace('mglowest:')
+
+          CALL ListAddLogical( Params,'mglowest: Linear System Free Factorization', .FALSE. )
+          IF ( NewLinearSystem ) THEN
+            CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', .TRUE. )
+          ELSE
+            CALL ListAddLogical( Params,'mglowest: Linear System Refactorize', .FALSE. )
+          END IF
+          NewLinearSystem = .FALSE.
 
           LowestSolver = ListGetString(Params,'MG Lowest Linear Solver',Found)
           IF ( .NOT. Found ) THEN
@@ -1213,7 +1214,7 @@ CONTAINS
            ELSE
              Condition = CRS_ILUT( Matrix1, ILUTOL )
            END IF
-         ELSE IF ( str(1:3) == 'ilu' ) THEN
+         ELSE IF ( SEQL(str, 'ilu') ) THEN
            k = ICHAR(str(4:4)) - ICHAR('0')
            IF ( k < 0 .OR. k > 9 ) k = 0
            IF ( Parallel ) THEN
@@ -1765,7 +1766,7 @@ CONTAINS
         END IF
       END IF
       
-    ELSE IF ( str(1:3) == 'ilu' ) THEN      
+    ELSE IF ( SEQL(str, 'ilu') ) THEN      
       IF ( NewLinearSystem ) THEN
         k = ICHAR(str(4:4)) - ICHAR('0')
         IF ( k < 0 .OR. k > 9 ) k = 0
@@ -5368,7 +5369,7 @@ CONTAINS
         END IF
       END IF
       
-    ELSE IF ( str(1:3) == 'ilu' ) THEN      
+    ELSE IF ( SEQL(str, 'ilu') ) THEN      
       IF ( NewLinearSystem ) THEN
         k = ICHAR(str(4:4)) - ICHAR('0')
         IF ( k < 0 .OR. k > 9 ) k = 0

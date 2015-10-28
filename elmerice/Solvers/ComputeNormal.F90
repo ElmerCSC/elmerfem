@@ -70,25 +70,37 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
+  TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t), POINTER :: Element
   TYPE(Variable_t), POINTER :: NormalSolution
   TYPE(ValueList_t), POINTER :: BC, SolverParams
 
-  INTEGER :: i, j, k, n, t, DIM
+  INTEGER :: i, j, k, l, m, n, cnt, ierr, t, DIM
   REAL(KIND=dp) :: u, v, w, s 
-  REAL(KIND=dp), POINTER :: Nvector(:)
-  INTEGER, POINTER :: Permutation(:)
-
+  REAL(KIND=dp), POINTER :: Nvector(:), PassNVector(:), RecvNVector(:)
+  INTEGER, POINTER :: Permutation(:), Neighbours(:)
+  INTEGER, ALLOCATABLE :: NeighbourPerm(:), PassCount(:), RecvCount(:),&
+       PassIndices(:,:), RecvIndices(:,:), LocalPerm(:)
+  INTEGER, DIMENSION(MPI_STATUS_SIZE) :: status
   TYPE(Nodes_t), SAVE :: Nodes
   REAL(KIND=dp) :: Bu, Bv, Normal(3), NormalCond(4)
 
-  LOGICAL :: CompAll = .TRUE., CompBC = .TRUE., Found
+  LOGICAL :: CompAll = .TRUE., CompBC = .TRUE., Found, Parallel, &
+       FirstTime = .TRUE.
+  LOGICAL, ALLOCATABLE :: Hit(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'ComputeNormalSolver'
 
-!---------------------------------------
-! Setup pointer to the current solution:
-!---------------------------------------
+  SAVE :: NeighbourPerm, PassCount, RecvCount, PassIndices, &
+       RecvIndices, LocalPerm, Hit
+
+  Parallel = (ParEnv % PEs > 1)
+  Mesh => Solver % Mesh
+  DIM = CoordinateSystemDimension()
+
+  !---------------------------------------
+  ! Setup pointer to the current solution:
+  !---------------------------------------
   NormalSolution => VariableGet( Solver % Mesh % Variables, 'Normal Vector' )
   IF ( ASSOCIATED( NormalSolution ) ) THEN 
      Nvector => NormalSolution % Values
@@ -113,10 +125,49 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
     IF (CompAll) CompBC = .TRUE.
   END IF
 
-  DIM = CoordinateSystemDimension()
- 
+  IF((FirstTime .OR. Solver % Mesh % Changed) .AND. Parallel) THEN
+     
+     IF(.NOT. FirstTime) THEN
+        DEALLOCATE(Hit, NeighbourPerm, PassCount, RecvCount, &
+             PassIndices, RecvIndices, LocalPerm)
+     END IF
+
+     ALLOCATE(Hit(Mesh % NumberOfNodes), &
+          NeighbourPerm(ParEnv % PEs),&
+          PassCount(ParEnv % NumOfNeighbours),&
+          RecvCount(ParEnv % NumOfNeighbours),&
+          PassIndices(ParEnv % NumOfNeighbours, Mesh % NumberOfNodes),&
+          RecvIndices(ParEnv % NumOfNeighbours, Mesh % NumberOfNodes),&
+          LocalPerm( MAXVAL(Mesh % ParallelInfo % GlobalDOFs)))
+
+     NeighbourPerm = 0
+     LocalPerm = 0
+     Hit = .FALSE.
+     RecvCount = 0
+     PassCount = 0
+     PassIndices = 0
+
+     !Create a list of partitions with which we share nodes
+     cnt = 0
+     DO i=1,ParEnv % PEs
+        IF(ParEnv % MyPE == i-1) CYCLE
+        IF(.NOT. ParEnv % IsNeighbour(i)) CYCLE
+        cnt = cnt + 1
+        NeighbourPerm(i) = cnt
+     END DO
+
+     !Perm to get back from global to local node numbering
+     DO i=1, Mesh % NumberOfNodes
+        LocalPerm(Mesh % ParallelInfo % GlobalDOFs(i)) = i
+     END DO
+
+  END IF !FirstTime
+
   DO t = 1, Solver % Mesh % NumberOfBoundaryElements
     Element => GetBoundaryElement(t)
+
+    IF(Element % PartIndex /= ParEnv % MyPE) CYCLE
+
     n = GetElementNOFNodes(Element)
     BC => GetBC(Element)
     IF (n == 1) CYCLE
@@ -135,24 +186,103 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
     END IF
 
     IF (CompBC) THEN
+       DO i = 1,n
+          IF (NormalCond(i) .LT. 0) CYCLE
+          j = Element % NodeIndexes( i )
+          k = Permutation(j)
 
-      DO i = 1,n
-        IF (NormalCond(i) .LT. 0) CYCLE
-        j = Element % NodeIndexes( i )
-        k = Permutation(j)
-           
-        Bu = Element % Type % NodeU(i)
-        IF ( Element % Type % Dimension > 1 ) THEN
-          Bv = Element % Type % NodeV(i)
-        ELSE
-          Bv = 0.0D0
-        END IF
-        Normal = NormalVector(Element, Nodes, Bu, Bv, .TRUE.)
-        Nvector(DIM*(k-1)+1:DIM*k) = Nvector(DIM*(k-1)+1:DIM*k) +& 
-        Normal(1:DIM)
-      END DO
+          Bu = Element % Type % NodeU(i)
+          IF ( Element % Type % Dimension > 1 ) THEN
+             Bv = Element % Type % NodeV(i)
+          ELSE
+             Bv = 0.0D0
+          END IF
+          Normal = NormalVector(Element, Nodes, Bu, Bv, .TRUE.)
+          Nvector(DIM*(k-1)+1:DIM*k) = Nvector(DIM*(k-1)+1:DIM*k) +& 
+               Normal(1:DIM)
+
+          IF(Parallel) Hit(j) = .TRUE.
+       END DO
     END IF
-  END DO
+ END DO
+
+  IF(Parallel) THEN
+
+     IF(FirstTime .OR. Solver % Mesh % Changed) THEN
+
+        !Find nodes on partition boundaries
+        FirstTime = .FALSE.
+        RecvCount = 0
+        PassCount = 0
+        PassIndices = 0
+        DO i=1,Model % Mesh % NumberOfNodes
+           IF(.NOT.Hit(i)) CYCLE !no normal computation
+           IF(.NOT. Mesh % ParallelInfo % INTERFACE(i)) CYCLE !no partition interface
+           Neighbours => Mesh % ParallelInfo % NeighbourList(i) % Neighbours
+
+           DO j=1,SIZE(Neighbours)
+              IF(Neighbours(j) == ParEnv % MyPE) CYCLE
+
+              m = NeighbourPerm(Neighbours(j)+1)
+              PassCount(m) = PassCount(m) + 1
+              PassIndices(m, PassCount(m)) = i
+           END DO
+        END DO
+     END IF
+
+     !Send
+     DO i=1,ParEnv % PEs
+        IF(NeighbourPerm(i) == 0) CYCLE
+        m = NeighbourPerm(i)
+
+        !Send count
+        CALL MPI_BSEND(PassCount(m), 1, MPI_INTEGER, i-1, 200, MPI_COMM_WORLD, ierr)
+        !Send (global) node numbers
+        CALL MPI_BSEND(Mesh % ParallelInfo % GlobalDOFs(PassIndices(m,1:PassCount(m))),&
+             PassCount(m), MPI_INTEGER, i-1, 201, MPI_COMM_WORLD, ierr)
+
+        !Construct normal vector array to pass
+        ALLOCATE(PassNVector(PassCount(m) * DIM))
+        DO j=1, PassCount(m)
+           l = Permutation(PassIndices(m,j))
+           PassNVector(DIM*(j-1)+1:DIM*j) = NVector(DIM*(l-1)+1:DIM*l)
+        END DO
+
+        !Send normal vectors
+        CALL MPI_BSEND(PassNVector, PassCount(m)*DIM, MPI_DOUBLE_PRECISION, &
+             i-1, 202, MPI_COMM_WORLD, ierr)
+
+        DEALLOCATE(PassNVector)
+     END DO
+
+     !Receive
+     DO i=1,ParEnv % PEs
+
+        IF(NeighbourPerm(i) == 0) CYCLE
+        m = NeighbourPerm(i)
+
+        !Receive count
+        CALL MPI_RECV(RecvCount(m), 1, MPI_INTEGER, i-1, 200, MPI_COMM_WORLD, status, ierr)
+
+        !Receive (global) node numbers
+        CALL MPI_RECV(RecvIndices(m,1:RecvCount(m)), RecvCount(m), MPI_INTEGER, &
+             i-1, 201, MPI_COMM_WORLD, status, ierr)
+
+        !Receive normal vectors
+        ALLOCATE(RecvNVector(RecvCount(m)*DIM))
+        CALL MPI_RECV(RecvNVector, RecvCount(m)*DIM, MPI_DOUBLE_PRECISION, &
+             i-1, 202, MPI_COMM_WORLD, status, ierr)
+        
+        DO j=1, RecvCount(m)
+           IF(.NOT. Hit(LocalPerm(RecvIndices(m,j)))) CYCLE !passed a halo node
+           k = Permutation(LocalPerm(RecvIndices(m,j)))
+           NVector(DIM*(k-1)+1:DIM*k) = NVector(DIM*(k-1)+1:DIM*k) + RecvNVector(DIM*(j-1)+1:DIM*j)
+        END DO
+
+        DEALLOCATE(RecvNVector)
+     END DO
+
+  END IF !Parallel
   
   DO i=1,Model % NumberOfNodes
     k = Permutation(i)

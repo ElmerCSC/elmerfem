@@ -6,3 +6,4 @@ CONFIGURE_FILE( beam.sif beam.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO temp.log  beam3d.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(beam-springs)
+ADD_ELMER_LABEL(beam-springs quick)

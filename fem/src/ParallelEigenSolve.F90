@@ -310,7 +310,7 @@ INCLUDE "mpif.h"
                'Linear System ILUT Tolerance' )
 
           stat = CRS_ILUT( PMatrix, ILUTOL )
-        ELSE IF ( str(1:3) == 'ilu' ) THEN
+        ELSE IF ( SEQL(str, 'ilu') ) THEN
            k = ICHAR(str(4:4)) - ICHAR('0')
            IF ( k<0 .OR. k>9 ) k = 0
            PMatrix % Cholesky = ListGetLogical( Solver % Values, &
@@ -898,7 +898,7 @@ INCLUDE "mpif.h"
                'Linear System ILUT Tolerance' )
 
           stat = CRS_ComplexILUT( PMatrix, ILUTOL )
-        ELSE IF ( str(1:3) == 'ilu' ) THEN
+        ELSE IF ( SEQL(str, 'ilu') ) THEN
            k = ICHAR(str(4:4)) - ICHAR('0')
            IF ( k<0 .OR. k>9 ) k = 0
            stat = CRS_ComplexIncompleteLU( PMatrix, k )

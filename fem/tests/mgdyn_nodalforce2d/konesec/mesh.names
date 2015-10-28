@@ -1,0 +1,19 @@
+! ----- names for bodies -----
+$ axelsteel = 1
+$ rotorcoreplating = 2
+$ rotor_air = 3
+$ rotor_pm = 4
+$ statorcoreplating = 5
+$ winding_b = 6
+$ winding_c = 7
+$ cutout_stator = 8
+$ winding_a = 9
+$ airgap = 10
+! ----- names for boundaries -----
+$ mortar_surf = 11
+$ periodic_rotor_left = 12
+$ periodic_rotor_bottom = 13
+$ periodic_stator_left = 14
+$ periodic_stator_bottom = 15
+$ stator_ext = 16
+$ stator_teeth_surf = 17

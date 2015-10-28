@@ -7,3 +7,4 @@ ADD_ELMERTEST_MODULE(HelmholtzEdge Hrot Hrot.f90)
 file(COPY Hrot.f90 square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(HelmholtzEdge)
+ADD_ELMER_LABEL(HelmholtzEdge quick)

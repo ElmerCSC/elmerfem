@@ -73,11 +73,11 @@
      REAL(KIND=dp) :: s,dt,dtfunc
      REAL(KIND=dP), POINTER :: WorkA(:,:,:) => NULL()
      REAL(KIND=dp), POINTER, SAVE :: sTime(:), sStep(:), sInterval(:), sSize(:), &
-           steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:)
+           steadyIt(:),nonlinIt(:),sPrevSizes(:,:),sPeriodic(:),sPar(:)
 
      TYPE(Element_t),POINTER :: CurrentElement
 
-     LOGICAL :: GotIt,Transient,Scanning,LastSaved
+     LOGICAL :: GotIt,Transient,Scanning,LastSaved, MeshMode = .FALSE.
 
      INTEGER :: TimeIntervals,interval,timestep, &
        TotalTimesteps,SavedSteps,CoupledMaxIter,CoupledMinIter
@@ -112,7 +112,7 @@
 
      INTEGER :: iargc, NoArgs
 
-     INTEGER :: ExtrudeLevels
+     INTEGER :: ExtrudeLevels, MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
      INTEGER :: omp_get_max_threads
@@ -133,11 +133,15 @@ END INTERFACE
 
      ! If parallel execution requested, initialize parallel environment:
      !------------------------------------------------------------------
-     ParallelEnv => ParallelInit()
-     OutputPE = ParEnv % MyPE
+     IF(FirstTime)  ParallelEnv => ParallelInit()
 
-!tt = realtime()
+     OutputPE = -1
+     IF( ParEnv % MyPe == 0 ) THEN
+       OutputPE = 0 
+     END IF
+     
      IF ( FirstTime ) THEN
+
        !
        ! Print banner to output:
 #include "../config.h"
@@ -240,8 +244,7 @@ END INTERFACE
 
        IF( Version ) RETURN
        
-       CALL InitializeElementDescriptions
-       FirstTime = .FALSE.
+       CALL InitializeElementDescriptions()
      END IF
 
      ! Read input file name either as an argument, or from the default file:
@@ -280,9 +283,16 @@ END INTERFACE
 !------------------------------------------------------------------------------
 !    Read Model and mesh from Elmer mesh data base
 !------------------------------------------------------------------------------
+     MeshIndex = 0
      DO WHILE( .TRUE. )
 
        IF ( initialize==2 ) GOTO 1
+
+       IF(MeshMode) THEN
+         CALL FreeModel(CurrentModel)
+         MeshIndex = MeshIndex + 1
+         FirstLoad=.TRUE.
+       END IF
 
        IF ( FirstLoad ) THEN
          IF( .NOT. Silent ) THEN
@@ -296,7 +306,18 @@ END INTERFACE
          IF ( gotIt ) CLOSE(inFileUnit)
          
          OPEN( Unit=InFileUnit, Action='Read',File=ModelName,Status='OLD',ERR=20 )
-         CurrentModel => LoadModel( ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE )
+         CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
+         IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
+
+         MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
+
+         !------------------------------------------------------------------------------
+         ! Some keywords automatically require other keywords to be set
+         ! We could complain on the missing keywords later on, but sometimes 
+         ! it may be just as simple to add them directly. 
+         !------------------------------------------------------------------------------
+         CALL CompleteModelKeywords( )
+
 
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
@@ -372,7 +393,6 @@ END INTERFACE
        Scanning  = eq == 'scanning'
        Transient = eq == 'transient'
 
-
 !------------------------------------------------------------------------------
 !      To more conveniently support the use of VTK based visualization there 
 !      is a hack that recognizes VTU suffix and creates a instance of output solver.
@@ -436,7 +456,7 @@ END INTERFACE
 
        IF ( FirstLoad ) &
          ALLOCATE( sTime(1), sStep(1), sInterval(1), sSize(1), &
-             steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1) )
+             steadyIt(1), nonLinit(1), sPrevSizes(1,5), sPeriodic(1), sPar(1) )
 
        dt   = 0._dp
 
@@ -451,6 +471,7 @@ END INTERFACE
 
        steadyIt = 0
        nonlinIt = 0
+       sPar = 0
 
        CoupledMinIter = ListGetInteger( CurrentModel % Simulation, &
                   'Steady State Min Iterations', GotIt )
@@ -460,7 +481,7 @@ END INTERFACE
 !      coordinate dependent parameter computing routines can ask for
 !      them...
 !------------------------------------------------------------------------------
-       IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime
+       IF ( FirstLoad ) CALL AddMeshCoordinatesAndTime()
 
 !------------------------------------------------------------------------------
 !      Get Output File Options
@@ -574,13 +595,14 @@ END INTERFACE
 !------------------------------------------------------------------------------
      IF ( Initialize /= 1 ) CALL Info( 'ElmerSolver', '*** Elmer Solver: ALL DONE ***',Level=3 )
 
-     IF ( Initialize <=0 ) CALL FreeModel(CurrentModel)
+     IF ( Initialize <= 0 ) CALL FreeModel(CurrentModel)
 
 #ifdef HAVE_TRILINOS
   CALL TrilinosCleanup()
 #endif
 
-     CALL ParallelFinalize()
+     IF ( FirstTime ) CALL ParallelFinalize()
+     FirstTime = .FALSE.
      CALL Info('ElmerSolver','The end',Level=3)
 
      RETURN
@@ -607,9 +629,11 @@ END INTERFACE
        TYPE(Solver_t), POINTER :: Solver
        TYPE(Variable_t), POINTER :: Var
        LOGICAL :: Found, Success = .TRUE., FinalizeOnly, CompareNorm, CompareSolution
+       CHARACTER(LEN=MAX_STRING_LEN) :: PassedMsg
 
        SAVE TestCount, PassCount 
 
+       IF( ParEnv % MyPe > 0 ) RETURN
 
        ! Write the success to a file for further use e.g. by cmake
        !----------------------------------------------------------
@@ -634,12 +658,19 @@ END INTERFACE
          
          IF( FinalizeOnly ) THEN
            IF( ParEnv % MyPe == 0 ) THEN
-             OPEN( 10, FILE = 'TEST.PASSED' )
+             IF( ParEnv % PEs > 1 ) THEN
+               ! Parallel test, add the number of tasks as a suffix
+               WRITE(PassedMsg, '("TEST.PASSED_",I0)') ParEnv % PEs
+               OPEN( 10, FILE = PassedMsg )
+             ELSE
+               OPEN( 10, FILE = 'TEST.PASSED' )
+             END IF
              IF( Success ) THEN
                WRITE( 10,'(I1)' ) 1
              ELSE
                WRITE( 10,'(I1)' ) 0
              END IF
+             CLOSE( 10 )
            END IF
          END IF
 
@@ -742,8 +773,6 @@ END INTERFACE
            END IF
          END IF
 
-
-
          IF( Success ) PassCount = PassCount + 1
        END DO
       
@@ -836,6 +865,9 @@ END INTERFACE
       LOGICAL :: InitSolver, Found
 !------------------------------------------------------------------------------
 
+      CALL Info('AddSolvers','Setting up '//TRIM(I2S(CurrentModel % NumberOfSolvers))//&
+          ' solvers',Level=10)
+
       ! This is a hack that sets Equation flags True for the "Active Solvers".
       ! The Equation flag is the legacy way of setting a Solver active and is still
       ! used internally.
@@ -861,8 +893,11 @@ END INTERFACE
        END IF
      END DO
 
+     ! Add the dynamically linked solver to be called later
+     !---------------------------------------------------------------------
      DO i=1,CurrentModel % NumberOfSolvers
         eq = ListGetString( CurrentModel % Solvers(i) % Values,'Equation', Found )
+        CALL Info('AddSolvers','Setting up solver '//TRIM(I2S(i))//': '//TRIM(eq),Level=10)
 
         Solver => CurrentModel % Solvers(i)
         InitSolver = ListGetLogical( Solver % Values, 'Initialize', Found )
@@ -880,6 +915,9 @@ END INTERFACE
           CALL AddEquationSolution( Solver, Transient )
         END IF
      END DO
+
+     CALL Info('AddSolvers','Setting up solvers done',Level=12)
+
 !------------------------------------------------------------------------------
   END SUBROUTINE AddSolvers
 !------------------------------------------------------------------------------
@@ -891,6 +929,8 @@ END INTERFACE
   SUBROUTINE AddMeshCoordinatesAndTime()
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: DtVar
+
+     CALL Info('AddMeshCoordinatesAndTime','Setting mesh coordinates and time',Level=10)
 
      NULLIFY( Solver )
 
@@ -919,6 +959,10 @@ END INTERFACE
                'nonlin iter', 1, nonlinIt )
        CALL VariableAdd( Mesh % Variables, Mesh, Solver, &
                'coupled iter', 1, steadyIt )
+
+       sPar(1) = 1.0_dp * ParEnv % MyPe 
+       CALL VariableAdd( Mesh % Variables, Mesh, Solver, 'Partition', 1, sPar ) 
+
        Mesh => Mesh % Next
      END DO
 !------------------------------------------------------------------------------
@@ -947,6 +991,9 @@ END INTERFACE
      LOGICAL :: nt_boundary
      TYPE(Element_t), POINTER :: Element
      TYPE(Variable_t), POINTER :: var, vect_var
+
+     CALL Info('SetInitialConditions','Setting up initial conditions (if any)',Level=10)
+
 
      dim = CoordinateSystemDimension()
 
@@ -1347,15 +1394,15 @@ END INTERFACE
       LOGICAL :: Transient,Scanning
 !------------------------------------------------------------------------------
      INTEGER :: interval, timestep, i, j, k, n
-     REAL(KIND=dp) :: dt, ddt, dtfunc
-     INTEGER :: timeleft,cum_timestep
+     REAL(KIND=dp) :: dt, ddt, dtfunc, timeleft
+     INTEGER :: cum_timestep
      INTEGER, SAVE ::  stepcount=0, RealTimestep
      LOGICAL :: ExecThis,SteadyStateReached=.FALSE.
 
      REAL(KIND=dp) :: CumTime, MaxErr, AdaptiveLimit, &
            AdaptiveMinTimestep, AdaptiveMaxTimestep, timePeriod
      INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1
-     LOGICAL :: AdaptiveTime = .TRUE.
+     LOGICAL :: AdaptiveTime = .TRUE., Found
 
      TYPE(Solver_t), POINTER :: Solver
 
@@ -1374,9 +1421,15 @@ END INTERFACE
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE==0 ) CYCLE
         IF ( Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_ALL ) THEN
-           CALL SolverActivate( CurrentModel,Solver,dt,Transient )
+          ! solver to be called prior to time looping can never be transient
+           CALL SolverActivate( CurrentModel,Solver,dt,.FALSE. )
         END IF
      END DO
+
+     IF( ListGetLogical( CurrentModel % Simulation,'Calculate Mesh Pieces',Found ) ) THEN
+       CALL CalculateMeshPieces( CurrentModel % Mesh ) 
+     END IF
+     
 
      DO interval = 1, TimeIntervals
         stepcount = stepcount + Timesteps(interval)
@@ -1448,24 +1501,27 @@ END INTERFACE
              IF( cum_Timestep > 1 ) THEN
                maxtime = ListGetConstReal( CurrentModel % Simulation,'Real Time Max',GotIt)
                IF( GotIt ) THEN
-                  WRITE( Message,'(A,F8.3)') 'Fraction of real time left: ',&
-                              1.0_dp-RealTime() / maxtime
-               ELSE             
-                 timeleft = NINT((stepcount-(cum_Timestep-1))*(newtime-prevtime)/60._dp);
-                 IF (timeleft > 120) THEN
-                   WRITE( Message, *) 'Estimated time left: ', &
-                     TRIM(i2s(timeleft/60)),' hours.'
-                 ELSE IF(timeleft > 60) THEN
-                   WRITE( Message, *) 'Estimated time left: 1 hour ', &
-                     TRIM(i2s(MOD(timeleft,60))), ' minutes.'
-                 ELSE IF(timeleft >= 1) THEN
-                   WRITE( Message, *) 'Estimated time left: ', &
-                     TRIM(i2s(timeleft)),' minutes.'
-                 ELSE
-                   WRITE( Message, *) 'Estimated time left: less than a minute.'
-                 END IF
+                 WRITE( Message,'(A,F8.3)') 'Fraction of real time left: ',&
+                     1.0_dp-RealTime() / maxtime
                END IF
-               CALL Info( 'MAIN', Message, Level=3 )
+
+               ! Compute estimated time left in seconds
+               timeleft = (stepcount-(cum_Timestep-1))*(newtime-prevtime)
+               
+               ! No sense to show too short estimated times
+               IF( timeleft > 1 ) THEN
+                 IF (timeleft >= 24 * 3600) THEN ! >24 hours
+                   WRITE( Message,'(A)') 'Estimated time left: '//I2S(NINT(timeleft/3600))//' hours'
+                 ELSE IF (timeleft >= 3600) THEN   ! 1 to 20 hours
+                   WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/3600,' hours'
+                 ELSE IF(timeleft >= 60) THEN ! 1 to 60 minutes
+                   WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft/60,' minutes'
+                 ELSE                         ! 1 to 60 seconds
+                   WRITE( Message,'(A,F5.1,A)') 'Estimated time left:',timeleft,' seconds'
+                 END IF
+                 CALL Info( 'MAIN', Message, Level=3 )
+               END IF
+               
              END IF
              prevtime = newtime
            ELSE

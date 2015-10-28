@@ -65,10 +65,10 @@ SUBROUTINE StatCurrentSolver_Init( Model,Solver,dt,TransientSimulation)
     IF( Calculate ) THEN
       IF( Dim == 2 ) THEN
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            'elcurr[Volume Current:2]' )
+            'Volume Current[Volume Current:2]' )
       ELSE
         CALL ListAddString( Params,NextFreeKeyword('Exported Variable ',Params), &
-            'elcurr[Volume Current:3]' )
+            'Volume Current[Volume Current:3]' )
       END IF
     END IF
    
@@ -172,9 +172,19 @@ END SUBROUTINE StatCurrentSolver_Init
 !------------------------------------------------------------------------------
 !    Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-     IF ( .NOT. AllocationsDone ) THEN
+     IF ( .NOT. AllocationsDone .OR. Solver % Mesh % Changed ) THEN
        N = Model % MaxElementNodes
  
+       IF(AllocationsDone) THEN
+         DEALLOCATE( ElementNodes % x, &
+                   ElementNodes % y,   &
+                   ElementNodes % z,   &
+                   Conductivity,       &
+                   LocalForce,         &
+                   LocalStiffMatrix,   &
+                   Load )
+       END IF
+
        ALLOCATE( ElementNodes % x(N),   &
                  ElementNodes % y(N),   &
                  ElementNodes % z(N),   &
@@ -193,7 +203,7 @@ END SUBROUTINE StatCurrentSolver_Init
        CalculateCurrent = ListGetLogical( Params, &
            'Calculate Volume Current', GotIt )
        IF ( CalculateCurrent ) THEN
-         Var => VariableGet( Solver % Mesh % Variables,'elcurr')
+         Var => VariableGet( Solver % Mesh % Variables,'Volume Current')
          IF( ASSOCIATED( Var) ) THEN
            VolCurrent => Var % Values
          ELSE

@@ -1282,7 +1282,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       RadiationFlag = GetString( BC, 'Radiation', Found )
 
-      IF ( Found .AND. RadiationFlag(1:4) /= 'none' ) THEN
+      IF ( Found .AND. RadiationFlag /= 'none' ) THEN
         NodalEmissivity(1:n) = GetReal(BC, 'Emissivity', Found)
         IF(.NOT. Found) THEN
            NodalEmissivity(1:n) = GetParentMatProp( 'Emissivity' )
@@ -1290,7 +1290,7 @@ CONTAINS
         Emissivity = SUM( NodalEmissivity(1:n) ) / n
 
 !------------------------------------------------------------------------------
-        IF (  RadiationFlag(1:9) == 'idealized' ) THEN
+        IF (  RadiationFlag == 'idealized' ) THEN
           AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
           IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
         ELSE

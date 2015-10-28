@@ -140,7 +140,7 @@
      eq = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
      TransientSimulation = .FALSE.
 
-     IF ( eq(1:9) == 'transient' ) THEN
+     IF ( eq == 'transient' ) THEN
        TransientSimulation= .TRUE.
 
        elmt => GetElementType( 303 )
@@ -158,44 +158,44 @@
      eq = ListGetString( CurrentModel % Simulation, 'Coordinate System', GotIt )
 
      Coordinates = Cartesian
-     IF ( eq(1:12) == 'cartesian 2d' ) THEN
+     IF ( eq == 'cartesian 2d' ) THEN
 
        CurrentModel % DIMENSION = 2
        Coordinates = Cartesian
 
-     ELSE IF ( eq(1:12) == 'cartesian 3d' ) THEN
+     ELSE IF ( eq == 'cartesian 3d' ) THEN
 
        CurrentModel % DIMENSION = 3
        Coordinates = Cartesian
 
-     ELSE IF ( eq(1:13) == 'axi symmetric' ) THEN
+     ELSE IF ( eq == 'axi symmetric' ) THEN
 
        CurrentModel % DIMENSION = 2
        Coordinates = AxisSymmetric
 
-     ELSE IF( eq(1:19) == 'cylindric symmetric' ) THEN
+     ELSE IF( eq == 'cylindric symmetric' ) THEN
 
        CurrentModel % DIMENSION = 2
        Coordinates = CylindricSymmetric
 
-     ELSE IF( eq(1:11) == 'cylindrical' ) THEN
+     ELSE IF( eq == 'cylindrical' ) THEN
 
        CurrentModel % DIMENSION = 3
        Coordinates = Cylindric
 
-     ELSE IF( eq(1:8) == 'polar 2d' ) THEN
+     ELSE IF( eq == 'polar 2d' ) THEN
 
        CurrentModel % DIMENSION = 2
        Coordinates = Polar
 
-     ELSE IF( eq(1:8) == 'polar 3d' ) THEN
+     ELSE IF( eq == 'polar 3d' ) THEN
 
        CurrentModel % DIMENSION = 3
        Coordinates = Polar
 
      ELSE
 
-       PRINT*,'Solver: ERROR: Unknown global coordinate system: ',eq(1:20),' Aborting'
+       PRINT*,'Solver: ERROR: Unknown global coordinate system: ',TRIM(eq),' Aborting'
        STOP
 
      END IF

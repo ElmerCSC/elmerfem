@@ -1,4 +1,3 @@
-include(${TEST_SOURCE}/../test_macros.cmake)
 file(MAKE_DIRECTORY Ldomain)
 execute_process(COMMAND ${MESH2D_BIN} Ldomain.mif .)
 file(COPY mesh.boundary mesh.elements mesh.header mesh.nodes
