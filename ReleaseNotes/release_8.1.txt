@@ -47,17 +47,17 @@ Mesh interpolation, projection and manipulation
   o When combining projectors to constraint matrix allow projectors to be additive with keyword
     "Mortar BCs Additive = Logical True". 
   o Introduced possibility to determine priorities such that only higher priority is accounted for. 
-    This may be usefull if there are number of constraints applied to the same dofs. 
+    This may be useful if there are number of constraints applied to the same dofs. 
   o Improvements on the elimination of dofs when constraint matrix is given.
 
 - Developments in contact mechanics 
   o Features to deal correctly with N-T coordinate system. For example, in 3D the coordinate system
-    must be left-handed for the master boundary. 
+    must be left-handed for the master boundary. Still limitations in cases with conflicting conditions. 
   o Preliminary implementation of various friction models
   o Utilization of more robust residual mode in setting up the linear problem
 
 - Discontinuous Meshes:
-  o Improvements for robustness and parallel operation. 
+  o Improvements for robustness and parallel operation. Problems in parallel operation using elimination persists. 
 
 - When interpolating from mesh to mesh, the Solver section keyword "Interpolate Passive Coordinate = Integer n"    
   will treat nodal coordinate n as zero when performing the interpolation.
@@ -85,7 +85,7 @@ Other library functionality
 - Add "Component" input file section / model type field. This could be used for parameters that are not mesh 
   related, such as electric circuits, equations of state, chemical reactions or other lumped models. 
 
-- First version of "mesh swap" functionality that allows for chanching the mesh on-the-fly.
+- First version of "mesh swap" functionality that allows for changing the mesh on-the-fly.
   Implement "Mesh mode" to allow the same simulation to be performed for a series of meshes.
 
 - SaveMesh can now output the model mesh at each timestep.
@@ -141,8 +141,9 @@ ElmerSolver environment:
 
 - Tens of new serial and parallel tests included among the consistency tests.
 
-- Added "ELMER_MODULES_PATH" environment variable. User can now set varible ELMER_MODULES_PATH to a
-  colomn separated list of search paths that are used when loading the solver modules.
+- Added "ELMER_MODULES_PATH" environment variable. User can now set variable ELMER_MODULES_PATH to a
+  colon separated list of search paths that are used when loading the solver modules.
+
 
 ElmerGrid
 ---------
