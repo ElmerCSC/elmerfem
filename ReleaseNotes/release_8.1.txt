@@ -134,6 +134,8 @@ ElmerSolver Solver modules
 ElmerSolver environment:
 -----------------------
 - Parallel testing features implemented
+  o ADD_ELMER_TEST now accepts two optional named list arguments NPROCS and LABELS.
+  o Correct MPI launcher has to be specified using CMake MPIEXEC variables.
 
 - Introduced use of labels in the tests. This allows easy selecting of a subset of tests when performing them. 
   For example label 'slow' is added for the slowest tests and label 'quick' to fastest tests.
