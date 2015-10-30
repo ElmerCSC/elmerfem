@@ -75,7 +75,6 @@ END SUBROUTINE CircuitsAndDynamics_init
 !------------------------------------------------------------------------------
 SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-  USE DefUtils
   USE CircuitUtils
   USE CircuitsMod
   USE CircMatInitMod
@@ -195,7 +194,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddBasicCircuitEquations(p,ip,dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -252,9 +250,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn, dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitUtils
-    USE CircuitsMod
     IMPLICIT NONE
     INTEGER :: p, CompInd, nm, nn, nd
     TYPE(Solver_t), POINTER :: ASolver
@@ -347,8 +342,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
@@ -468,8 +461,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
@@ -584,8 +575,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     INTEGER :: nn, nd
     TYPE(Element_t) :: Element
@@ -745,7 +734,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   SUBROUTINE GetConductivity(Element, Tcoef, nn)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
     TYPE(Valuelist_t), POINTER :: Material
@@ -792,7 +780,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
  SUBROUTINE GetElementRotM(Element,RotM,n)
 !------------------------------------------------------------------------------
-   USE DefUtils
    IMPLICIT NONE
    TYPE(Element_t) :: Element
    INTEGER :: k, l, m, j, n
@@ -862,9 +849,7 @@ END SUBROUTINE CircuitsAndDynamicsHarmonic_init
 !------------------------------------------------------------------------------
 SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-  USE DefUtils
   USE CircuitUtils
-  USE CircuitsMod
   USE CircMatInitMod
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -968,7 +953,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddBasicCircuitEquations(p)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -1042,9 +1026,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitUtils
-    USE CircuitsMod
     IMPLICIT NONE
     INTEGER :: p, CompInd, nm, nn, nd
     TYPE(Solver_t), POINTER :: ASolver
@@ -1151,8 +1132,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
@@ -1271,8 +1250,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
@@ -1385,8 +1362,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     INTEGER :: nn, nd
     TYPE(Element_t) :: Element
@@ -1537,7 +1512,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   SUBROUTINE GetConductivity(Element, Tcoef, nn)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
     TYPE(Valuelist_t), POINTER :: Material
@@ -1606,7 +1580,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
  SUBROUTINE GetElementRotM(Element,RotM,n)
 !------------------------------------------------------------------------------
-   USE DefUtils
    IMPLICIT NONE
    TYPE(Element_t) :: Element
    INTEGER :: k, l, m, j, n
