@@ -10,6 +10,7 @@
     <parameter name="Turbulent Prandtl number" >0.713</parameter>
     <parameter name="Sound speed" >343.0</parameter>
     <parameter name="Relative Permittivity" >1.00059</parameter>
+    <parameter name="Relative Permeability" >1.00000037</parameter>
   </material>
 
   <material name="Water (room temperature)" >
@@ -21,6 +22,7 @@
     <parameter name="Turbulent Prandtl number" >7.01</parameter>
     <parameter name="Sound speed" >1497.0</parameter>
     <parameter name="Relative Permittivity" >80.1</parameter>
+    <parameter name="Relative Permeability" >0.999992</parameter>
   </material>
 
   <material name="Glycerol (room temperature)" >
@@ -52,8 +54,6 @@
     <parameter name="Sound speed" >1430.0</parameter>
     <parameter name="Relative Permittivity" >3.1</parameter>
   </material>
-
-
   
   <material name ="Aluminium (generic)" >
     <parameter name="Density" >2700.0</parameter>
@@ -67,6 +67,7 @@
     <parameter name="Electric resistivity" >26.50e-9</parameter>
     <parameter name="Electric conductivity" >37.73e6</parameter>
     <parameter name="Sound speed" >5000.0</parameter>
+    <parameter name="Relative Permeability" >1.000022</parameter>
   </material>
     
   <material name="Steel (carbon - generic)">
@@ -136,6 +137,7 @@
     <parameter name="Electric resistivity" >16.78e-9</parameter>
     <parameter name="Electric conductivity" >59.59e6</parameter>
     <parameter name="Sound speed" >3810.0</parameter>
+    <parameter name="Relative Permeability" >0.999994</parameter>
   </material>
 
   <material name="Lead (generic)" >
