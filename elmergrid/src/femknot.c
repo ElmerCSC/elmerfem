@@ -3368,7 +3368,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   int *vtypes=NULL,*vmaterial=NULL,*vnormal=NULL,*vdiscont=NULL;
   Real *vareas=NULL; 
   
-  printf("CloneMeshes: copying the mesh to a matrix\n");
+  if(info) printf("CloneMeshes: copying the mesh to a matrix\n");
   if(diffmats) diffmats = 1;
 
   
@@ -3403,13 +3403,13 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   for(i=0;i<origdim;i++) {
     if(maxcoord[i]-mincoord[i] > meshsize[i]) meshsize[i] = maxcoord[i]-mincoord[i];
   }
-  printf("meshsize %lg %lg %lg}\n",meshsize[0],meshsize[1],meshsize[2]);
+  if(info) printf("Meshsize to be copied: %lg %lg %lg\n",meshsize[0],meshsize[1],meshsize[2]);
 
   noknots = totcopies * data->noknots;
   noelements  = totcopies * data->noelements;
   maxnodes = data->maxnodes;
 
-  printf("Copying the mesh to %d identical domains.\n",totcopies);
+  if(info) printf("Copying the mesh to %d identical domains in %d-dim.\n",totcopies);
 
   data->maxnodes = maxnodes;
   newtopo = Imatrix(1,noelements,0,maxnodes-1);
@@ -3424,7 +3424,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
     for(k=0;k<ncopies[1];k++) {
       for(j=0;j<ncopies[0];j++) {
 	for(i=1;i<=data->noknots;i++) {
-	  ncopy = j+k*ncopies[0]+k*l*ncopies[1];
+	  ncopy = j+k*ncopies[0]+l*ncopies[0]*ncopies[1];
 	  ind = i + ncopy*data->noknots;
 
 	  newx[ind] = data->x[i] + j*meshsize[0];
@@ -3450,7 +3450,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
     for(k=0;k<ncopies[1];k++) {
       for(j=0;j<ncopies[0];j++) {
 	for(i=1;i<=data->noelements;i++) {
-	  ncopy = j+k*ncopies[0]+k*l*ncopies[1];
+	  ncopy = j+k*ncopies[0]+l*ncopies[1]*ncopies[0];
 	  ind =  i + ncopy*data->noelements;
 
 	  newmaterial[ind] = data->material[i] + diffmats*maxmaterial*ncopy;
@@ -3475,7 +3475,6 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 
     if(!bound[bndr].created) continue;
 
-    printf("bndr=%d\n",bndr);
     nosides = totcopies * bound[bndr].nosides;
 
     vparent = Ivector(1, nosides);
@@ -3498,7 +3497,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 	for(j=0;j<ncopies[0];j++) {
 	  for(i=1; i <= bound[bndr].nosides; i++) {
 
-	    ncopy = j+k*ncopies[0]+k*l*ncopies[1];
+	    ncopy = j+k*ncopies[0]+l*ncopies[1]*ncopies[0];
 	    ind = i + ncopy * bound[bndr].nosides;
 	    
 	    vparent[ind] = bound[bndr].parent[i] + ncopy * data->noelements;
@@ -3526,7 +3525,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 	}
       }
     }
-
+   
     bound[bndr].nosides = nosides;
     bound[bndr].side = vside;
 
