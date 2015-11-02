@@ -142,7 +142,7 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: istat, n, nd, nn, q
  
   TYPE(Variable_t), POINTER, SAVE :: RotMvar, alphavecvar, &
-                                     betavecvar, gammavecvar
+                                     betavecvar, gammavecvar, tmpvar
  
   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
@@ -236,9 +236,20 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
  
     CALL GetElementNodes(Nodes)
-    CALL GetLocalSolution(beta,'beta')
-    CALL GetLocalSolution(alpha,'alpha')
- 
+    tmpvar => VariableGet( Mesh % Variables, 'alpha')
+    IF(ASSOCIATED(tmpvar)) THEN
+      CALL GetLocalSolution(alpha,'alpha')
+    ELSE
+      CALL GetLocalSolution(alpha,'alpha direction')
+    END IF
+
+    tmpvar => VariableGet( Mesh % Variables, 'beta')
+    IF(ASSOCIATED(tmpvar)) THEN
+      CALL GetLocalSolution(beta,'beta')
+    ELSE
+      CALL GetLocalSolution(beta,'beta direction')
+    END IF
+
     DO j=1,nn
        un = Element % TYPE % NodeU(j)
        vn = Element % TYPE % NodeV(j)
