@@ -62,6 +62,8 @@ Solver 1
   Linear System Abort Not Converged = False
   Linear System Residual Output = 10
   Linear System Precondition Recompute = 1
+
+  Nonlinear System Consistent Norm = True
 End 
 
 
