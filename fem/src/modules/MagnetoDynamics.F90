@@ -194,7 +194,7 @@ CONTAINS
     ELSE
       Acoef(1:n) = GetReal( Material, 'Reluctivity', Found )
     END IF
-    IF( .NOT. Found ) THEN
+    IF( .NOT. Found .AND. .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
       CALL Warn('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
     END IF
 
@@ -235,6 +235,9 @@ CONTAINS
       Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
          GetReal( Material, 'Reluctivity im', Found ), KIND=dp )
     END IF
+    IF( .NOT. Found .AND. .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
+      CALL Warn('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityC
 !------------------------------------------------------------------------------
@@ -264,7 +267,8 @@ CONTAINS
     END IF
 
     IF( .NOT. Found ) THEN
-      CALL Warn('GetPermittivity','Give > Relative Permittivity <  for material!')
+      CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+      Acoef(1:n) = Pvacuum
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GetPermittivity
