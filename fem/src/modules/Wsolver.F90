@@ -1,3 +1,105 @@
+!------------------------------------------------------------------------------
+SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  CHARACTER(LEN=MAX_NAME_LEN) :: varname
+  LOGICAL :: Found
+  INTEGER, POINTER :: Active(:)
+  INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln
+  TYPE(ValueList_t), POINTER :: SolverParams
+  TYPE(Solver_t), POINTER :: Solvers(:), PSolver
+  INTEGER, SAVE :: visited=0
+
+  visited = visited + 1
+
+  ! This is really using DG so we don't need to make any dirty tricks to create DG fields
+  ! as is done in this initialization. 
+  IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) RETURN
+
+  PSolver => Solver
+  DO mysolver=1,Model % NumberOfSolvers
+    IF ( ASSOCIATED(PSolver,Model % Solvers(mysolver)) ) EXIT
+  END DO
+
+  varname = GetString(GetSolverParams(), 'Variable', Found)
+
+  n = Model % NumberOfSolvers
+  DO i=1,Model % NumberOFEquations
+    Active => ListGetIntegerArray(Model % Equations(i) % Values, &
+                'Active Solvers', Found)
+    m = SIZE(Active)
+    IF ( ANY(Active==mysolver) ) &
+      CALL ListAddIntegerArray( Model % Equations(i) % Values,  &
+           'Active Solvers', m+1, [Active, n+1] )
+  END DO
+
+  ! Create DG solver structures on-the-fly without actually solving the matrix
+  ! equations. It is assumed that the DG field within each element is independent
+  ! and hence no coupling between elemental fields is needed. 
+  ALLOCATE(Solvers(n+1))
+  Solvers(1:n) = Model % Solvers
+  Solvers(n+1) % Values => ListAllocate()
+  SolverParams => Solvers(n+1) % Values
+  CALL ListAddLogical( SolverParams, 'Discontinuous Galerkin', .TRUE. )
+  Solvers(n+1) % PROCEDURE = 0
+  Solvers(n+1) % ActiveElements => NULL()
+  CALL ListAddString( SolverParams, 'Exec Solver', 'never' )
+  CALL ListAddLogical( SolverParams, 'No Matrix',.TRUE.)
+  CALL ListAddLogical( SolverParams, 'Optimize Bandwidth',.FALSE.)
+  CALL ListAddString( SolverParams, 'Equation', &
+  'elementaladd'//TRIM(i2s(visited)) )
+  CALL ListAddString( SolverParams, 'Procedure', &
+              'Wsolver Wsolve_Dummy',.FALSE. )
+  CALL ListAddString( SolverParams, 'Variable', '-nooutput '//TRIM(varname)//'_dummy' )
+
+
+!  pname = ListGetString( Model % Solvers(soln) % Values, 'Mesh', Found )
+!  IF(Found) THEN
+!    CALL ListAddString( SolverParams, 'Mesh', pname )
+!  END IF
+
+  i = 1
+  DO WHILE(.TRUE.)
+    IF(ListCheckPresent(SolverParams, "Exported Variable "//TRIM(i2s(i)))) THEN
+      i=i+1
+    ELSE
+      EXIT
+    END IF
+  END DO
+
+  CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
+        TRIM(varname)//" Potential" )
+
+  DEALLOCATE(Model % Solvers)
+  Model % Solvers => Solvers
+  Model % NumberOfSolvers = n+1
+!------------------------------------------------------------------------------
+END SUBROUTINE Wsolve_Init0
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+SUBROUTINE Wsolve_Dummy(Model,Solver,dt,Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+END SUBROUTINE Wsolve_Dummy
+!------------------------------------------------------------------------------
+
 SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
@@ -20,6 +122,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
   USE DefUtils
+  USE CircuitUtils
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -38,18 +141,18 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
   INTEGER :: n, nb, nd, t, istat, active, i, j
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: BodyForce, BC, BodyParams, Material
+  TYPE(ValueList_t), POINTER :: CompParams
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), &
                                 RotM(:,:,:), Tcoef(:,:,:)
-  REAL (KIND=DP), POINTER :: Cwrk(:,:,:)
   CHARACTER(LEN=MAX_NAME_LEN):: CoilType
   LOGICAL :: CoilBody
 
 
-  SAVE STIFF, LOAD, FORCE, Tcoef, RotM, Cwrk, AllocationsDone
+  SAVE STIFF, LOAD, FORCE, Tcoef, RotM, AllocationsDone
 !------------------------------------------------------------------------------
 
   IF (.NOT.ASSOCIATED(Solver % Matrix)) RETURN
-
+  CALL AddComponentsToBodyLists()
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
   Mesh => GetMesh()
@@ -61,7 +164,6 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
         CALL Fatal( 'Wsolve', 'Memory allocation error.' )
      END IF
 
-     NULLIFY( Cwrk )
 
      AllocationsDone = .TRUE.
   END IF
@@ -81,64 +183,54 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
       IF ( ASSOCIATED(BodyForce) ) &
          Load(1:n) = GetReal( BodyForce, 'Source', Found )
 
-      BodyParams => GetBodyParams( Element )
-      IF (.NOT. ASSOCIATED(BodyParams)) CALL Fatal ('Wsolve', 'Body Parameters not found')
+     CoilBody = .FALSE.
+     CompParams => GetComponentParams( Element )
+     CoilType = ''
+     RotM = 0._dp
+     IF (ASSOCIATED(CompParams)) THEN
+       CoilType = GetString(CompParams, 'Coil Type', Found)
+       IF (Found) CoilBody = .TRUE.
+     END IF 
 
-      CoilBody = .False.
-      CoilType = GetString(BodyParams, 'Coil Type', Found)
-      IF (.NOT. Found) THEN
-        CoilType = ''
-      ELSE
+      IF (CoilBody) THEN
         SELECT CASE (CoilType)
         CASE ('stranded')
           CoilBody = .True.
+          CALL GetElementRotM(Element, RotM, n)
         CASE ('massive')
           CoilBody = .True.
         CASE ('foil winding')
           CoilBody = .True.
           CALL GetElementRotM(Element, RotM, n)
         CASE DEFAULT
-          CALL Fatal ('Poisson', 'Non existent Coil Type Chosen!')
+          CALL Fatal ('Wsolve', 'Non existent Coil Type Chosen!')
         END SELECT
       END IF
 
       Tcoef = 0.0d0
-      Material => GetMaterial( Element )
-      IF ( ASSOCIATED(Material) ) THEN
 !------------------------------------------------------------------------------
 !      Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
+      TCoef = GetElectricConductivityTensor(Element,n)
 
-        CALL ListGetRealArray( Material, &
-               'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
-
-        IF (Found) THEN
-           IF ( SIZE(Cwrk,1) == 1 ) THEN
-              DO i=1,3
-                 Tcoef( i,i,1:n ) = Cwrk( 1,1,1:n )
-              END DO
-           ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-              DO i=1,MIN(3,SIZE(Cwrk,1))
-                 Tcoef(i,i,1:n) = Cwrk(i,1,1:n)
-              END DO
-           ELSE
-              DO i=1,MIN(3,SIZE(Cwrk,1))
-                 DO j=1,MIN(3,SIZE(Cwrk,2))
-                    Tcoef( i,j,1:n ) = Cwrk(i,j,1:n)
-                 END DO
-              END DO
-           END IF
-        END IF
+      IF (CoilBody) THEN 
+        SELECT CASE (CoilType)
+        CASE ('stranded')
+          Tcoef(1,1,1:n) = 0._dp
+          Tcoef(2,2,1:n) = 0._dp
+        CASE ('foil winding')
+          Tcoef(1,1,1:n) = 0._dp
+        END SELECT
       END IF
- 
       !Get element local matrix and rhs vector:
       !----------------------------------------
-      CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilType, Tcoef, RotM, n, nd+nb )
+      CALL LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilBody, CoilType, Tcoef, RotM, n, nd+nb )
       CALL LCondensate( nd, nb, STIFF, FORCE )
       CALL DefaultUpdateEquations( STIFF, FORCE )
    END DO
 
    DO t=1, Solver % Mesh % NumberOfBoundaryElements
+     CYCLE
      ! get element and BC info
      ! -----------------------
      Element => GetBoundaryElement(t)
@@ -159,7 +251,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
      IF (PosEl) LOAD = 1._dp
      IF (NegEl) LOAD = -1._dp
      
-     IF (Solver % Variable % name == 'w') CALL BoundaryCondition(LOAD, FORCE, Element, n)
+!     IF (Solver % Variable % name == 'w') CALL BoundaryCondition(LOAD, FORCE, Element, n)
 
      CALL DefaultUpdateEquations( STIFF, FORCE )
    END DO
@@ -171,10 +263,50 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
    !--------------------
    Norm = DefaultSolve()
 
+   CALL SaveWPotSolution(Model % numberofbodies)
 CONTAINS
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilType, Tcoef, RotM, n, nd )
+  FUNCTION GetElectricConductivityTensor(Element, n) RESULT (Tcoef)
+!------------------------------------------------------------------------------
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n
+    TYPE(Valuelist_t), POINTER :: Material
+    REAL(KIND=dp) :: Tcoef(3,3,n)
+    LOGICAL :: Found
+
+    Tcoef=0._dp
+    NULLIFY( Cwrk )
+    Material => GetMaterial( Element )
+    IF ( ASSOCIATED(Material) ) THEN
+      CALL ListGetRealArray( Material, &
+             'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
+  
+      IF (Found) THEN
+         IF ( SIZE(Cwrk,1) == 1 ) THEN
+            DO i=1,3
+               Tcoef( i,i,1:n ) = Cwrk( 1,1,1:n )
+            END DO
+         ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
+            DO i=1,MIN(3,SIZE(Cwrk,1))
+               Tcoef(i,i,1:n) = Cwrk(i,1,1:n)
+            END DO
+         ELSE
+            DO i=1,MIN(3,SIZE(Cwrk,1))
+               DO j=1,MIN(3,SIZE(Cwrk,2))
+                  Tcoef( i,j,1:n ) = Cwrk(i,j,1:n)
+               END DO
+            END DO
+         END IF
+      END IF
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION GetElectricConductivityTensor
+!------------------------------------------------------------------------------
+ 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrix(  STIFF, FORCE, LOAD, Element, CoilBody, CoilType, Tcoef, RotM, n, nd )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), LOAD(:), Tcoef(:,:,:)
     INTEGER :: n, nd
@@ -183,7 +315,7 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP, C(3,3), &
                      RotMLoc(3,3), RotM(3,3,n)
     CHARACTER(LEN=MAX_NAME_LEN):: CoilType
-    LOGICAL :: Stat
+    LOGICAL :: Stat, CoilBody
     INTEGER :: i,j,t
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -212,14 +344,16 @@ CONTAINS
       DO i=1,3
         DO j=1,3
           C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-          IF(CoilType == 'foil winding') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
+          IF (CoilBody .AND. CoilType /= 'massive') &
+            RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
         END DO
       END DO
 
       ! Transform the conductivity tensor (in case of a foil winding):
       ! --------------------------------------------------------------
-      IF (CoilType == 'foil winding') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
-
+      IF (CoilBody .AND. CoilType /= 'massive') & 
+              C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+      
       ! The source term at the integration point:
       !------------------------------------------
       LoadAtIP = SUM( Basis(1:n) * LOAD(1:n) )
@@ -337,6 +471,151 @@ CONTAINS
 !------------------------------------------------------------------------------
  END SUBROUTINE GetElementRotM
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE SaveWPotSolution(nofbodies)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+  INTEGER :: Active, n, t, nn, ns_iter, nofbodies
+  REAL(KIND=dp) :: Wnorms(nofbodies)
+  TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+  Wnorms = GetWNormsForBodies(nofbodies)
+  Active = GetNOFActive()
+  DO t=1,Active
+     Element => GetActiveElement(t)
+     nn = GetElementNOFNodes()
+     CALL SaveElementWSolution(Element, nn, Wnorms(Element%BodyId))
+  END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE SaveWPotSolution
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE SaveElementWSolution(Element, nn, Wnorm)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  IMPLICIT NONE
+  INTEGER :: nn, j, k
+  TYPE(Element_t), POINTER :: Element
+  TYPE(Valuelist_t), POINTER :: Solverparams
+  TYPE(Variable_t), POINTER, SAVE :: wpotvar
+  LOGICAL, SAVE :: First=.TRUE.
+  CHARACTER(LEN=MAX_NAME_LEN), SAVE :: varname
+  REAL(KIND=dp) :: wpot(nn)
+  REAL(KIND=dp) :: Wnorm
+
+  varname = GetString(GetSolverParams(), 'Variable', Found)
+  IF (First) THEN
+    First = .FALSE.
+    wpotvar => VariableGet( Mesh % Variables, TRIM(varname)//' Potential')
+    IF(.NOT. ASSOCIATED(wpotvar)) THEN
+      CALL Fatal('SaveElementWSolution()','Direction variable not found')
+    END IF
+  END IF
+ 
+  CALL GetLocalSolution(wpot, varname)
+  DO j=1,nn
+    IF (ASSOCIATED(wpotvar)) THEN
+      DO k=1,wpotvar % DOFs
+        IF (Wnorm > EPSILON(Wnorm)) & 
+        wpotvar % Values( wpotvar % DOFs*(wpotvar % Perm( &
+              Element % DGIndexes(j))-1)+k) = wpot(j)/Wnorm
+      END DO
+    END IF
+  END DO 
+!------------------------------------------------------------------------------
+  END SUBROUTINE SaveElementWSolution
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  FUNCTION GetWNormsForBodies(nofbodies) RESULT (Wnorms)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    INTEGER :: nofbodies
+    REAL(KIND=dp) :: Volumes(nofbodies)
+    REAL(KIND=dp) :: Wnorms(nofbodies)
+    REAL(KIND=dp) :: WnormCoeffs(nofbodies)
+    INTEGER :: Active, t, n
+    TYPE(Element_t),POINTER :: Element
+    LOGICAL :: CoilBody, Found, stat
+    CHARACTER(LEN=MAX_NAME_LEN):: CoilType
+    TYPE(ValueList_t), POINTER :: CompParams
+
+    Wnorms = 0._dp
+    Volumes = 0._dp
+    WnormCoeffs = 0._dp
+    Active = GetNOFActive()
+    DO t=1,Active
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes()
+  
+      CoilBody = .FALSE.
+      CompParams => GetComponentParams( Element )
+      CoilType = ''
+      IF (ASSOCIATED(CompParams)) THEN
+        CoilType = GetString(CompParams, 'Coil Type', Found)
+        IF (Found) CoilBody = .TRUE.
+      END IF 
+
+      IF (CoilBody) THEN
+        CALL ComputeElementWNormAndVolume(Element, n, nd, &
+                              WnormCoeffs(Element % BodyId), &
+                             Volumes(Element % BodyId))
+        Wnorms(Element % BodyId) = WnormCoeffs(Element % BodyId) &
+                                   /   Volumes(Element % BodyId)
+      END IF 
+    END DO
+   
+    CALL Info('GetWnormsForBodies', &
+         'W norm computed in components.', level=9)
+
+!------------------------------------------------------------------------------
+  END FUNCTION GetWNormsForBodies
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE ComputeElementWNormAndVolume(Element, n, nd, WnormCoeff, Volume)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp) :: WnormCoeff, Volume
+    
+    INTEGER :: Active, n, nd, j
+    TYPE(Element_t),POINTER :: Element
+    LOGICAL :: CoilBody, Found, stat
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(Nodes_t), SAVE :: Nodes
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ
+    REAL(KIND=dp) :: Wbase(n), s, w(3)
+
+    CALL GetElementNodes( Nodes )
+    CALL GetLocalSolution(Wbase,'W')
+  
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints( Element )
+    DO j=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
+       IP % W(j), detJ, Basis, dBasisdx )
+
+      ! Compute the Element Volume
+      ! -----------------------------
+      s = IP % s(j) * detJ
+      Volume = Volume + s
+
+      ! Compute the norm of W
+      ! ---------------------
+      w = -MATMUL(WBase(1:n), dBasisdx(1:n,:))
+      WnormCoeff = WnormCoeff + SQRT(SUM(w**2))*s
+    END DO
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE ComputeElementWNormAndVolume
+!------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------

@@ -107,13 +107,16 @@ CONTAINS
     
     LOGICAL :: Found
     INTEGER :: i, j, k
-    
+    LOGICAL, SAVE :: Visited=.FALSE.
     ! Components and Bodies:
     ! ----------------------  
     INTEGER :: BodyId
     INTEGER, POINTER :: BodyAssociations(:) => Null()
     TYPE(Valuelist_t), POINTER :: BodyParams, ComponentParams
-        
+     
+    IF (Visited) RETURN
+
+    Visited = .TRUE.
     DO i = 1, SIZE(CurrentModel % Components)
       ComponentParams => CurrentModel % Components(i) % Values
       
