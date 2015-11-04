@@ -194,6 +194,10 @@ CONTAINS
     ELSE
       Acoef(1:n) = GetReal( Material, 'Reluctivity', Found )
     END IF
+    IF( .NOT. Found ) THEN
+      CALL Warn('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
+    END IF
+
 !------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityR
 !------------------------------------------------------------------------------
@@ -257,6 +261,10 @@ CONTAINS
       Acoef(1:n) = Pvacuum * Acoef(1:n)
     ELSE
       Acoef(1:n) = GetReal( Material, 'Permittivity', Found )
+    END IF
+
+    IF( .NOT. Found ) THEN
+      CALL Warn('GetPermittivity','Give > Relative Permittivity <  for material!')
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GetPermittivity
