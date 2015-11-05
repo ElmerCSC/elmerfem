@@ -109,7 +109,7 @@ END SUBROUTINE MeshSolver_Init
   INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:), MeshVeloPerm(:)
 
   LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
-            GotForceBC, Found, ComputeMeshVelocity
+            GotForceBC, Found, ComputeMeshVelocity, DisplaceFirst
 
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
@@ -156,6 +156,7 @@ END SUBROUTINE MeshSolver_Init
     NULLIFY( StressSol )
   END IF
 
+  DisplaceFirst = ListGetLogical( Solver % Values,'First Time Non-Zero', Found)
 
   IF ( ASSOCIATED( StressSol ) )  THEN
      StressPerm   => StressSol % Perm
@@ -176,12 +177,12 @@ END SUBROUTINE MeshSolver_Init
         IF ( StressPerm(i) /= 0 .AND. MeshPerm(i) /= 0 ) TPerm(i) = 0
      END DO
 
-     IF ( AllocationsDone ) THEN
+     IF ( AllocationsDone .OR. DisplaceFirst ) THEN
         CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, TPerm,   STDOFs )
      END IF
      CALL DisplaceMesh( Solver % Mesh, Displacement,  -1, StressPerm, STDOFs )
   ELSE
-     IF ( AllocationsDone ) THEN
+     IF ( AllocationsDone .OR. DisplaceFirst ) THEN
         CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, MeshPerm, STDOFs )
      END IF
   END IF
