@@ -4571,6 +4571,26 @@ int FluxToElmerType(int nonodes, int dim) {
       break;
     }
   }
+  
+  if( dim == 3 ) {
+    switch( nonodes ) {
+    case 6:
+      elmertype = 306;
+      break;
+    case 8:
+      elmertype = 408;
+      break;
+    case 10: 
+      elmertype = 510;
+      break;
+    case 15: 
+      elmertype = 715;
+      break;
+    case 20:
+      elmertype = 820;
+      break;
+    }
+  }
     
 
   if( !elmertype ) printf("FluxToElmerType could not deduce element type! (%d %d)\n",nonodes,dim);
@@ -4751,6 +4771,8 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 {
   int noknots,noelements,maxnodes,dim,elmertype;
   int nonodes,matind,noregions,mode;
+  int fp3shape,fp3type,nreg,dimplusone,reserved1,fp3order;
+  int maxlinenodes, nodecnt;
   int debug;
   int *elementtypes;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
@@ -4763,13 +4785,13 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
   if ((in = fopen(filename,"r")) == NULL) {
     AddExtension(prefix,filename,"PF3");
     if ((in = fopen(filename,"r")) == NULL) {
-      printf("LoadFluxMesh: opening of the Flux mesh file '%s' wasn't succesfull !\n",
+      printf("LoadFluxMesh3D: opening of the Flux mesh file '%s' wasn't succesfull !\n",
 	     filename);
       return(1);
     }
   }
  
-  printf("Reading 2D mesh from Flux mesh file %s.\n",filename);
+  printf("Reading 3D mesh from Flux mesh file %s.\n",filename);
   InitializeKnots(data);
 
   debug = FALSE;
@@ -4778,8 +4800,8 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
   noknots = 0;
   noelements = 0;
   mode = 0;
-  maxnodes = 6;
-
+  maxnodes = 20; // 20?
+	maxlinenodes = 12; //nodes can be located at several lines
 
 
   for(;;) { 
@@ -4791,8 +4813,8 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
     if( strstr(line,"==== DECOUPAGE  TERMINE")) goto end;
 
     if( strstr(line,"NOMBRE DE DIMENSIONS DU DECOUPAGE")) mode = 1;
-    else if( strstr(line,"NOMBRE  D'ELEMENTS")) mode = 2;
-    else if( strstr(line,"NOMBRE DE POINTS")) mode = 3;
+    else if( strstr(line,"NOMBRE  D'ELEMENTS")) mode = 3;
+    else if( strstr(line,"NOMBRE DE POINTS")) mode = 2;
     else if( strstr(line,"NOMBRE DE REGIONS")) mode = 4;
 
     else if( strstr(line,"DESCRIPTEUR DE TOPOLOGIE DES ELEMENTS")) mode = 10;
@@ -4811,6 +4833,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
       break;
 
     case 2: 
+      if( strstr(line,"NOMBRE DE POINTS D'INTEGRATION")) break;/* We are looking for the total number of nodes */
       noknots = atoi(line);
       break;
 
@@ -4838,24 +4861,38 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
       AllocateKnots(data);
 
       if(info) printf("Reading %d element topologies\n",noelements);
-      for(i=1;i<=noelements;i++) {
+      for(i=1;i<=noelements;i++) 
+      {
 	Getrow(line,in,FALSE);
 	cp = line;
 	j = next_int(&cp);
 	if( i != j ) {
 	  printf("It seems that reordering of elements should be performed! (%d %d)\n",i,j);
 	}
-	nonodes = next_int(&cp);
-	matind = abs( next_int(&cp) ); 
-	
+	fp3shape = next_int(&cp); //2 internal elemnt type description
+	fp3type = next_int(&cp); //3 internal elemnt type description
+	nreg = next_int(&cp); //4 nomber of the belonging region
+	dimplusone = next_int(&cp); //5 dimensiality 4-3D 3-2D
+  reserved1 = next_int(&cp); //6 zero here always
+  fp3order = next_int(&cp); //7 internal elemnt type description
+	nonodes = next_int(&cp); // 8 number of nodes
+		
 	elmertype = FluxToElmerType( nonodes, dim );
 	data->elementtypes[i] = elmertype;
-	data->material[i] = matind;
+	data->material[i] = nreg;
 
 	Getrow(line,in,FALSE);
 	cp = line;
+  nodecnt = 0;
 	for(k=0;k<nonodes;k++) {
+
+	  if(nodecnt >= maxlinenodes) {
+	    nodecnt = 0;
+	  	Getrow(line,in,FALSE);
+	    cp = line;
+	  }
 	  data->topology[i][k] = next_int(&cp);
+	  nodecnt+=1;
 	}
       }
       break;
@@ -4871,7 +4908,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 	}
 	data->x[i] = next_real(&cp);
 	data->y[i] = next_real(&cp);
-	if(dim == 3) data->z[i] = next_real(&cp);
+	data->z[i] = next_real(&cp);
       }
       break;
 
