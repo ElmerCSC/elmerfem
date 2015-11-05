@@ -760,9 +760,11 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     IF( .NOT. ASSOCIATED( FieldVar ) ) THEN
       WRITE( str,'(A,I0)') 'Mask Name ',NoVar
       MaskName = GetString( Params,str, Found )
+
+      NULLIFY(FieldPerm)
+      ALLOCATE( FieldPerm( Mesh % NumberOfNodes ) )
+
       IF( Found ) THEN
-        NULLIFY(FieldPerm)
-        ALLOCATE( FieldPerm( Mesh % NumberOfNodes ) )
         CALL MakePermUsingMask( Model, Solver, Mesh, MaskName,.FALSE.,FieldPerm,&
             MaskNodes,RequireLogical=.TRUE.)
         IF( MaskNodes == 0 ) THEN
@@ -778,7 +780,8 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
         FieldVar => VariableGet( Mesh % Variables,TargetName )
         NULLIFY(FieldPerm)
       ELSE
-        CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,1)
+         FieldPerm = [(i,i=1,Mesh % NumberOfNodes)]
+         CALL VariableAddVector( Mesh % Variables,Mesh,PSolver,TargetName,1, Perm=FieldPerm)
         FieldVar => VariableGet( Mesh % Variables,TargetName )
       END IF
     END IF
