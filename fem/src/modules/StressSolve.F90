@@ -1332,7 +1332,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 
      INTEGER :: i,j,k,l,p,q, t, dim,sdim,elem, IND(9), BodyId,EqId
-     LOGICAL :: stat, CSymmetry, Isotropic(2), UseMask
+     LOGICAL :: stat, CSymmetry, Isotropic(2), UseMask, ContactOn
      INTEGER, POINTER :: Visited(:), Indexes(:), Permutation(:)
      REAL(KIND=dp) :: u,v,w,x,y,z,Strain(3,3),Stress(3,3),LGrad(3,3),detJ, &
           Young, Poisson, Ident(3,3), C(6,6), S(6), weight, st, Work(9), Principal(3), Relax
@@ -1370,6 +1370,10 @@ CONTAINS
      LimiterOn = ListGetLogical( SolverParams,'Apply Limiter',Found)
      IF( LimiterOn ) THEN
        CALL ListAddLogical( SolverParams,'Apply Limiter',.FALSE.) 
+     END IF
+     ContactOn = ListGetLogical( SolverParams,'Apply Contact BCs',Found)
+     IF( ContactOn ) THEN
+       CALL ListAddLogical( SolverParams,'Apply Contact BCs',.FALSE.) 
      END IF
 
      CALL ListSetNameSpace('stress:')
@@ -1759,6 +1763,9 @@ CONTAINS
 
       IF( LimiterOn ) THEN
         CALL ListAddLogical( SolverParams,'Apply Limiter',.TRUE.) 
+      END IF
+      IF( ContactOn ) THEN
+        CALL ListAddLogical( SolverParams,'Apply Contact BCs',.TRUE.) 
       END IF
 
       CALL Info('StressSolver','Finished Stress Computation',Level=5)
