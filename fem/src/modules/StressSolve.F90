@@ -1343,7 +1343,7 @@ CONTAINS
 
      LOGICAL :: FirstTime = .TRUE., OptimizeBW, GlobalBubbles, &
           Factorize, FoundFactorize, FreeFactorize, FoundFreeFactorize, &
-          LimiterOn
+          LimiterOn, SkipChange, FoundSkipChange
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      CHARACTER(LEN=MAX_NAME_LEN) :: eqname
@@ -1558,10 +1558,13 @@ CONTAINS
 
       Factorize = GetLogical( SolverParams, 'Linear System Refactorize', FoundFactorize )
       FreeFactorize = GetLogical( SolverParams, &
-              'Linear System Free Factorization', FoundFreeFactorize )
+          'Linear System Free Factorization', FoundFreeFactorize )
+      SkipChange = GetLogical( SolverParams, &
+          'Skip Compute Nonlinear Change', FoundSkipChange )
 
       CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .FALSE. )
       CALL ListAddLogical( SolverParams, 'Linear System Free Factorization', .FALSE. )
+      CALL ListAddLogical( SolverParams, 'Skip Compute Nonlinear Change', .TRUE. )
 
       DO i=1,3
         DO j=i,3
@@ -1611,10 +1614,16 @@ CONTAINS
         CALL ListRemove( SolverParams, 'Linear System Refactorize' )
       END IF
 
-      IF ( .NOT. FoundFreeFactorize ) THEN
-        CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
-      ELSE
+      IF ( FoundFreeFactorize ) THEN
         CALL ListAddLogical( SolverParams, 'Linear System Free Factorization', FreeFactorize )
+      ELSE
+        CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
+      END IF
+
+      IF( FoundSkipChange ) THEN
+        CALL ListAddLogical( SolverParams, 'Skip Compute Nonlinear Change',SkipChange )
+      ELSE
+        CALL ListRemove( SolverParams, 'Skip Compute Nonlinear Change' )
       END IF
 
       ! Von Mises stress from the component nodal values:
