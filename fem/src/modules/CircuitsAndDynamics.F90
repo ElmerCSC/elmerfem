@@ -1188,7 +1188,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     ncdofs=nd
     IF (dim == 3) THEN
       ncdofs=nd-nn
-      CALL GetLocalSolution(Wbase, 'w')
+      !CALL GetLocalSolution(Wbase, 'w')
+      CALL GetWPotential(WBase)
     END IF
 
     VvarId = Comp % vvar % ValueId + nm
@@ -1222,6 +1223,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       END SELECT
 
       localC = SUM(Tcoef(3,3,1:nn) * Basis(1:nn))
+      
       ! I * R, where 
       ! R = (1/sigma * js,js):
       ! ----------------------

@@ -471,6 +471,7 @@ CONTAINS
       DO k=1,wpotvar % DOFs
         IF (Wnorm > EPSILON(Wnorm)) THEN
           IF( CoilType/='stranded' ) Wnorm = 1._dp
+        ! Wnorm = 1._dp
           wpotvar % Values( wpotvar % DOFs*(wpotvar % Perm( &
               Element % DGIndexes(j))-1)+k) = wpot(j)/Wnorm
         END IF

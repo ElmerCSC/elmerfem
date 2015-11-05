@@ -53,8 +53,8 @@
     IF (CoilBody) THEN 
       SELECT CASE (CoilType)
       CASE ('stranded')
-        Tcoef(1,1,1:n) = 0._dp
-        Tcoef(2,2,1:n) = 0._dp
+        !Tcoef(1,1,1:n) = 0._dp
+        !Tcoef(2,2,1:n) = 0._dp
       CASE ('foil winding')
         Tcoef(1,1,1:n) = 0._dp
       END SELECT
