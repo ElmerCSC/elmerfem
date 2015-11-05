@@ -10661,6 +10661,7 @@ END FUNCTION SearchNodeL
     END IF
 
     IF( NeedPrevSol ) THEN
+      CALL Info('SolveSystem','Previous solution must be stored before system is solved',Level=10)
       Found = ASSOCIATED(Solver % Variable % NonlinValues)
       IF( Found ) THEN
         IF ( SIZE(Solver % Variable % NonlinValues) /= n) THEN
@@ -10681,9 +10682,10 @@ END FUNCTION SearchNodeL
        IF ( istat /= 0 ) GOTO 10
     END IF
 
-! If residual mode is requested make change of variables:
-! Ax=b -> Adx = b-Ax0 = r
+    ! If residual mode is requested make change of variables:
+    ! Ax=b -> Adx = b-Ax0 = r
     IF( ResidualMode ) THEN
+      CALL Info('SolveSystem','Changing the equation to residual based mode',Level=10)
       ALLOCATE( Res(n) ) 
 
       ! If needed move the current solution to N-T coordinate system
@@ -10717,8 +10719,10 @@ END FUNCTION SearchNodeL
       END IF
       CALL SolveWithLinearRestriction( A,bb,x,Norm,DOFs,Solver )
     ELSE
+      CALL Info('SolveSystem','Solving linear system without constraint matrix',Level=12)
       CALL SolveLinearSystem( A,bb,x,Norm,DOFs,Solver )
     END IF
+    CALL Info('SolveSystem','Linear system solved',Level=12)
 
     ! Even in the residual mode the system is reverted back to complete vectors 
     ! and we may forget about the residual.
@@ -10734,6 +10738,8 @@ END FUNCTION SearchNodeL
     END IF
 
     IF ( Solver % TimeOrder == 2 ) THEN
+      CALL Info('SolveSystem','Setting up PrevValues for 2nd order transient equations',Level=12)
+
       IF ( ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
         Gamma =  0.5d0 - Solver % Alpha
         Beta  = (1.0d0 - Solver % Alpha)**2 / 4.0d0
@@ -10781,6 +10787,8 @@ END FUNCTION SearchNodeL
       END IF
 
     END IF
+
+    CALL Info('SolveSystem','Finished solving the system',Level=12)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE SolveSystem
