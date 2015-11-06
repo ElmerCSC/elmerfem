@@ -301,7 +301,7 @@ CONTAINS
       
       ! Transform the conductivity tensor (in case of a foil winding):
       ! --------------------------------------------------------------
-      IF (CoilBody .AND. CoilType /= 'massive') & 
+      IF (CoilBody .AND. CoilType == 'foil winding') & 
               C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
       
       ! The source term at the integration point:

@@ -104,8 +104,9 @@ CONTAINS
     USE DefUtils
     IMPLICIT NONE
     REAL(KIND=dp) :: Wbase(:)
- 
-    CALL GetLocalSolution(Wbase,'W')
+
+    CALL GetLocalSolution(Wbase,'W Potential')
+    IF(.NOT. ANY(Wbase/=0._dp)) CALL GetLocalSolution(Wbase,'W')
 !------------------------------------------------------------------------------
   END SUBROUTINE GetWPotential
 !------------------------------------------------------------------------------
