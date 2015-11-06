@@ -4652,7 +4652,7 @@ CONTAINS
     SUBROUTINE SetElementValues(n,elno)
       INTEGER :: n,elno
       INTEGER :: i,j,k,l,m,dim,kmax,lmax
-      LOGICAL :: CheckNT,found,HaloHit
+      LOGICAL :: CheckNT,found
       REAL(KIND=dp) :: Condition(n), Work(n), RotVec(3)
       
       dim = CoordinateSystemDimension()
@@ -4733,15 +4733,15 @@ CONTAINS
                 ELSE
                   CALL ZeroRow( A,k )
 
-                  ! Potentially do not add non-zero entries to non-owners
-                  HaloHit = .FALSE.
+                  ! Do not add non-zero entries to pure halo nodes which are not associated with the partition.
+                  ! These are nodes could be created by the -halobc flag in ElmerGrid.
                   IF( ParEnv % PEs > 1 ) THEN
-                    IF( A % ParallelInfo % NeighbourList(k) % Neighbours(1) /= ParEnv % MyPe ) THEN
-                      HaloHit = .TRUE.
+                    IF( .NOT. ANY( A % ParallelInfo % NeighbourList(k) % Neighbours == ParEnv % MyPe ) ) THEN
+                      CYCLE
                     END IF
                   END IF
 
-                  IF( .NOT. ( OffDiagonal .OR. HaloHit ) ) THEN
+                  IF( .NOT. OffDiagonal ) THEN
                     CALL SetMatrixElement( A,k,k,1._dp )
                     b(k) = Work(j) / DiagScaling(k)
                     IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
