@@ -57,7 +57,7 @@ SUBROUTINE Wsolve_Init0(Model,Solver,dt,Transient)
   CALL ListAddString( SolverParams, 'Equation', &
   'elementaladd'//TRIM(i2s(visited)) )
   CALL ListAddString( SolverParams, 'Procedure', &
-              'Wsolver Wsolve_Dummy',.FALSE. )
+              'WPotentialSolver Wsolve_Dummy',.FALSE. )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput '//TRIM(varname)//'_dummy' )
 
 
