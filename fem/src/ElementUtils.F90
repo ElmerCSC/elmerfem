@@ -772,7 +772,26 @@ CONTAINS
        END DO
      END IF
 
-     ALLOCATE( InvInitialReorder(k) )
+     IF( ParEnv % PEs > 1 .AND. &
+         ListGetLogical( Solver % Values,'Skip Pure Halo Nodes',Found ) ) THEN
+       j = 0
+       DO i=1,Mesh % NumberOfNodes 
+         ! These are pure halo nodes that need not be communicated. They are created only 
+         ! for sufficient geometric information on the boundaries.
+         IF( .NOT. ANY( ParEnv % Mype == Mesh % ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
+           Perm(i) = 0
+         ELSE IF( Perm(i) > 0 ) THEN
+           j = j + 1
+           Perm(i) = j
+         END IF
+       END DO
+       PRINT *,'Eliminating '//TRIM(I2S(k-j))//' halo nodes out of '&
+           //TRIM(I2S(k))//' in partition '//TRIM(I2S(ParEnv % MyPe))
+       k = j
+     END IF
+
+
+   ALLOCATE( InvInitialReorder(k) )
      InvInitialReorder = 0
      DO i=1,SIZE(Perm)
         IF (Perm(i)>0) InvInitialReorder(Perm(i)) = i
