@@ -1356,7 +1356,6 @@ END FUNCTION ComponentNameVar
        F = FValues(1) * T
        RETURN
      END IF
-    
 
      DO i=1,n
         IF ( TValues(i) >= T ) EXIT
@@ -1409,6 +1408,81 @@ END FUNCTION ComponentNameVar
      END IF
 !------------------------------------------------------------------------------
    END FUNCTION DerivateCurve
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Integrate a curve given by linear table or splines.
+!------------------------------------------------------------------------------
+   FUNCTION IntegrateCurve( TValues,FValues,CubicCoeff,T0,T1 ) RESULT( F )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: TValues(:),FValues(:),F
+     REAL(KIND=dp), OPTIONAL :: T0, T1
+     REAL(KIND=dp), OPTIONAL, POINTER :: CubicCoeff(:)
+!------------------------------------------------------------------------------
+     INTEGER :: i,n,i0,i1
+     REAL(KIND=dp) :: t(2), y(2), r(2), h, a, b, c, d,lt, s0, s1, s
+     LOGICAL :: Cubic
+!------------------------------------------------------------------------------
+     n = SIZE(TValues)
+
+     Cubic = PRESENT(CubicCoeff)
+     IF ( Cubic ) Cubic = Cubic.AND.ASSOCIATED(CubicCoeff)
+
+     i0 = 1
+     IF(PRESENT(T0)) THEN
+       DO i0=1,n-1
+         IF ( TValues(i0+1) >= T0 ) EXIT
+       END DO
+       IF ( i0 > n-1 ) i0 = n-1
+     END IF
+
+     i1 = n-1
+     IF(PRESENT(T1)) THEN
+       DO i1=i0,n
+         IF ( TValues(i1) >= T1 ) EXIT
+       END DO
+       IF ( i1 > n-1 ) i1 = n-1
+     END IF
+
+     F = 0._dp
+     DO i=i0,i1
+       t(1) = Tvalues(i)
+       t(2) = Tvalues(i+1)
+
+       y(1) = FValues(i)
+       y(2) = FValues(i+1)
+
+       h  = t(2) - t(1)
+       s0 = 0._dp
+       IF(i==i0) THEN
+         IF(PRESENT(t0)) s0 = (t0-t(1))/h
+       END IF
+
+       s1 = 1._dp
+       IF(i==i1) THEN
+         IF(PRESENT(t1)) s1 = (t1-t(1))/h
+       END IF
+
+       IF(Cubic .AND. s0>=0 .AND. s1<=1) THEN
+         r(1) = CubicCoeff(i)
+         r(2) = CubicCoeff(i+1)
+
+         a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
+         b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
+         c = (r(1) * h)/2
+         d = y(1)
+       ELSE
+         a = 0
+         b = 0
+         c = (y(2)-y(1))/2
+         d = y(1)
+       END IF
+       F = F + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
+                     (((a*s0 + b)*s0 + c)*s0 + d)*s0 )
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION IntegrateCurve
 !------------------------------------------------------------------------------
 
 
