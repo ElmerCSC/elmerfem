@@ -5286,14 +5286,14 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	      if( parent2 ) trueparent2 = (elempart[parent2] == part);
 	      
 	      if(trueparent || trueparent2) {
-		/* Either parent must be associated with this partition, otherwise do not save this (except for halo) */
+		/* Either parent must be associated with this partition, otherwise do not save this (except for halo nodes) */
 		if( parent && !trueparent ) {	  
 		  splitsides++;
-		  parent = 0;
+		  if(halomode != 1 && halomode != 2) parent = 0;
 		}
 		else if( parent2 && !trueparent2 ) {
 		  splitsides++;
-		  parent2 = 0;
+		  if(!halomode != 1 && halomode != 2) parent2 = 0;
 		}
 	      }
 	      else if( halomode == 1 || halomode == 2 ) {

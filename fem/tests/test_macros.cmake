@@ -43,33 +43,35 @@ MACRO(ADD_ELMER_TEST TestName)
     LIST(GET tests_list ${n} _this_test_name)
     LIST(GET tasks_list ${n} _this_test_tasks)
     LIST(GET label_list ${n} _this_test_label)
-    ADD_TEST(NAME ${_this_test_name}
-      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-      COMMAND ${CMAKE_COMMAND}
-      -DELMERGRID_BIN=${ELMERGRID_BIN}
-      -DELMERSOLVER_BIN=${ELMERSOLVER_BIN}
-      -DFINDNORM_BIN=${FINDNORM_BIN}
-      -DMESH2D_BIN=${MESH2D_BIN}
-      -DTEST_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
-      -DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}
-      -DBINARY_DIR=${CMAKE_BINARY_DIR}
-      -DCMAKE_Fortran_COMPILER=${CMAKE_Fortran_COMPILER}
-      -DMPIEXEC=${MPIEXEC}
-      -DMPIEXEC_NUMPROC_FLAG=${MPIEXEC_NUMPROC_FLAG}
-      -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
-      -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
-      -DWITH_MPI=${WITH_MPI}
-      -DMPIEXEC_NTASKS=${_this_test_tasks}
-      -P ${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
-    SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${_this_test_label})
-    # If LABELS argument was given iterate through the given labels and add them
-    # to this test
-    IF(_parsedArgs_LABELS)
-      FOREACH(lbl ${_parsedArgs_LABELS})
-        SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${lbl})
-      ENDFOREACH()
-    ENDIF()
+    IF(_this_test_name)
+      ADD_TEST(NAME ${_this_test_name}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMAND ${CMAKE_COMMAND}
+        -DELMERGRID_BIN=${ELMERGRID_BIN}
+        -DELMERSOLVER_BIN=${ELMERSOLVER_BIN}
+        -DFINDNORM_BIN=${FINDNORM_BIN}
+        -DMESH2D_BIN=${MESH2D_BIN}
+        -DTEST_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
+        -DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+        -DBINARY_DIR=${CMAKE_BINARY_DIR}
+        -DCMAKE_Fortran_COMPILER=${CMAKE_Fortran_COMPILER}
+        -DMPIEXEC=${MPIEXEC}
+        -DMPIEXEC_NUMPROC_FLAG=${MPIEXEC_NUMPROC_FLAG}
+        -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
+        -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
+        -DWITH_MPI=${WITH_MPI}
+        -DMPIEXEC_NTASKS=${_this_test_tasks}
+        -P ${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
+      SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${_this_test_label})
+      # If LABELS argument was given iterate through the given labels and add them
+      # to this test
+      IF(_parsedArgs_LABELS)
+        FOREACH(lbl ${_parsedArgs_LABELS})
+          SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${lbl})
+        ENDFOREACH()
+      ENDIF()
+    ENDIF(_this_test_name)
   ENDFOREACH()
 ENDMACRO(ADD_ELMER_TEST)
 
@@ -148,7 +150,7 @@ MACRO(EXECUTE_ELMER_SOLVER SIFNAME)
   IF(WIN32)
     SET(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
     GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    SET(ENV{PATH} "${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+    SET(ENV{PATH} "$ENV{PATH};${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
   ENDIF(WIN32)
 
   EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN} ${SIFNAME}

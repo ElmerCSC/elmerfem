@@ -75,7 +75,6 @@ END SUBROUTINE CircuitsAndDynamics_init
 !------------------------------------------------------------------------------
 SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-  USE DefUtils
   USE CircuitUtils
   USE CircuitsMod
   USE CircMatInitMod
@@ -196,7 +195,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddBasicCircuitEquations(p,ip,dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -253,9 +251,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn, dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitUtils
-    USE CircuitsMod
     IMPLICIT NONE
     INTEGER :: p, CompInd, nm, nn, nd
     TYPE(Solver_t), POINTER :: ASolver
@@ -348,8 +343,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd,dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
@@ -403,7 +396,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase,'W')
+      CALL GetLocalSolution(Wbase, 'w')
       ncdofs=nd-nn
     END IF
 
@@ -469,8 +462,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd,dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     REAL(KIND=dp) :: Tcoef(3,3,nn),dt
@@ -522,7 +513,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase,'W')
+      CALL GetLocalSolution(Wbase, 'w')
       ncdofs=nd-nn
     END IF
 
@@ -585,8 +576,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd,dt)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     INTEGER :: nn, nd
     TYPE(Element_t) :: Element
@@ -643,7 +632,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase,'W')
+      CALL GetLocalSolution(Wbase, 'w')
       CALL GetElementRotM(Element, RotM, nn)
       ncdofs=nd-nn
     END IF
@@ -746,7 +735,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   SUBROUTINE GetConductivity(Element, Tcoef, nn)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
     TYPE(Valuelist_t), POINTER :: Material
@@ -793,7 +781,6 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
  SUBROUTINE GetElementRotM(Element,RotM,n)
 !------------------------------------------------------------------------------
-   USE DefUtils
    IMPLICIT NONE
    TYPE(Element_t) :: Element
    INTEGER :: k, l, m, j, n
@@ -863,10 +850,9 @@ END SUBROUTINE CircuitsAndDynamicsHarmonic_init
 !------------------------------------------------------------------------------
 SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-  USE DefUtils
   USE CircuitUtils
-  USE CircuitsMod
   USE CircMatInitMod
+  USE MGDynMaterialUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
@@ -971,7 +957,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddBasicCircuitEquations(p)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Circuit_t), POINTER :: Circuit
     TYPE(CircuitVariable_t), POINTER :: Cvar
@@ -1045,9 +1030,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE AddComponentEquationsAndCouplings(p, nn)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitUtils
-    USE CircuitsMod
     IMPLICIT NONE
     INTEGER :: p, CompInd, nm, nn, nd
     TYPE(Solver_t), POINTER :: ASolver
@@ -1131,15 +1113,20 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           
           nn = GetElementNOFNodes(Element)
           nd = GetElementNOFDOFs(Element,ASolver)
-          CALL GetConductivity(Element, Tcoef, nn)
           SELECT CASE(CoilType)
           CASE ('stranded')
+         !   CALL GetConductivity(Element, Tcoef, nn)
+            CALL GetCMPLXElectricConductivityTensor(TCoef, Element, nn, .TRUE., CoilType) 
             CALL Add_stranded(Element,Tcoef,Comp,nn,nd)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
+         !   CALL GetConductivity(Element, Tcoef, nn)
+            CALL GetCMPLXElectricConductivityTensor(TCoef, Element, nn, .TRUE., CoilType) 
             CALL Add_massive(Element,Tcoef,Comp,nn,nd)
           CASE ('foil winding')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
+         !   CALL GetConductivity(Element, Tcoef, nn)
+            CALL GetCMPLXElectricConductivityTensor(TCoef, Element, nn, .TRUE., CoilType) 
             CALL Add_foil_winding(Element,Tcoef,Comp,nn,nd)
           CASE DEFAULT
             CALL Fatal ('AddComponentEquationsAndCouplings', 'Non existent Coil Type Chosen!')
@@ -1154,8 +1141,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_stranded(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
@@ -1202,9 +1187,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase,'W')
       ncdofs=nd-nn
-      CALL GetLocalSolution(Wbase,'CoilPot')
+      !CALL GetLocalSolution(Wbase, 'w')
+      CALL GetWPotential(WBase)
     END IF
 
     VvarId = Comp % vvar % ValueId + nm
@@ -1237,7 +1222,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         !w = w/SQRT(SUM(w**2._dp))
       END SELECT
 
-      localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
+      localC = SUM(Tcoef(3,3,1:nn) * Basis(1:nn))
       
       ! I * R, where 
       ! R = (1/sigma * js,js):
@@ -1252,8 +1237,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF (dim == 3) q=q+nn
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
-          IF (dim == 2) cmplx_value = im * Omega * Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/localC
-          IF (dim == 3) cmplx_value = im * Omega * Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/localC
+          IF (dim == 2) cmplx_value = im * Omega * Comp % N_j &
+                  * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/localC
+          IF (dim == 3) cmplx_value = im * Omega * Comp % N_j &
+                  * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/localC
           CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(q))), &
                  REAL(cmplx_value), AIMAG(cmplx_value))
           
@@ -1274,8 +1261,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_massive(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     TYPE(Element_t) :: Element
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
@@ -1322,7 +1307,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase,'W')
+      CALL GetWPotential(WBase)
       ncdofs=nd-nn
     END IF
 
@@ -1388,8 +1373,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
    SUBROUTINE Add_foil_winding(Element,Tcoef,Comp,nn,nd)
 !------------------------------------------------------------------------------
-    USE DefUtils
-    USE CircuitsMod
     IMPLICIT NONE
     INTEGER :: nn, nd
     TYPE(Element_t) :: Element
@@ -1438,7 +1421,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
     ncdofs=nd
     IF (dim == 3) THEN
-      CALL GetLocalSolution(Wbase,'W')
+      !CALL GetLocalSolution(Wbase, 'w')
+      CALL GetWPotential(WBase)
       CALL GetElementRotM(Element, RotM, nn)
       ncdofs=nd-nn
     END IF
@@ -1466,7 +1450,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         END IF
         circ_eq_coeff = GetCircuitModelDepth()
         grads_coeff = grads_coeff/circ_eq_coeff
-        C(1,1) = SUM( Tcoef(1,1,1:nn) * Basis(1:nn) )
+        C(1,1) = SUM( Tcoef(3,3,1:nn) * Basis(1:nn) )
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         gradv = MATMUL( WBase(1:nn), dBasisdx(1:nn,:))
@@ -1540,7 +1524,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   SUBROUTINE GetConductivity(Element, Tcoef, nn)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
     TYPE(Valuelist_t), POINTER :: Material
@@ -1609,7 +1592,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
  SUBROUTINE GetElementRotM(Element,RotM,n)
 !------------------------------------------------------------------------------
-   USE DefUtils
    IMPLICIT NONE
    TYPE(Element_t) :: Element
    INTEGER :: k, l, m, j, n

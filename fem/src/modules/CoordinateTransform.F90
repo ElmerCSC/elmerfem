@@ -1,3 +1,26 @@
+!/*****************************************************************************/
+! *
+! *  Elmer, A Finite Element Software for Multiphysical Problems
+! *
+! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
+! *
+! *****************************************************************************/
+!
 !/******************************************************************************
 ! *
 ! *  Module for calculating the rotation matrix for 2-rank tensors
@@ -142,11 +165,17 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: istat, n, nd, nn, q
  
   TYPE(Variable_t), POINTER, SAVE :: RotMvar, alphavecvar, &
-                                     betavecvar, gammavecvar
- 
+                                     betavecvar, gammavecvar, tmpvar
+  ! Polar Decomposition
+  !-------------------- 
+  LOGICAL :: UsePDecomp
+  REAL :: PDDetTol
+  INTEGER :: PDMaxIter
+
   INTEGER, PARAMETER :: ind1(9) = [1,1,1,2,2,2,3,3,3]
   INTEGER, PARAMETER :: ind2(9) = [1,2,3,1,2,3,1,2,3]
- 
+  
+  SAVE :: UsePDecomp, PDDetTol, PDMaxIter 
 !------------------------------------------------------------------------------
  
   IF (First) THEN
@@ -182,7 +211,20 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
     IF(.NOT. ASSOCIATED(gammavecvar)) THEN
       CALL Fatal('RotMSolver()','Gamma Vector E variable not found')
     END IF
- 
+    
+    UsePDecomp = ListGetLogical(GetSolverParams(), 'Use Polar Decomposition', Found)
+    IF (.NOT. Found) UsePDecomp = .TRUE.
+    PDDetTol = GetConstReal(GetSolverParams(), 'Polar Decomposition Determinant Tolerance', Found)
+    IF (.NOT. Found) THEN
+      CALL Warn('CoordinateTransform','Polar Decomposition Determinant Tolerance not set.') 
+      PDDetTol = 1e-9
+    END IF  
+    PDMaxIter = GetInteger(GetSolverParams(), 'Polar Decomposition Max Iterations', Found)
+    IF (.NOT. Found) THEN
+      CALL Warn('CoordinateTransform','Polar Decomposition Max Iteration not set.') 
+      PDMaxIter= 100
+    END IF  
+    
     CoordSys_ijk(1,:) = [1,0,0]
     CoordSys_ijk(2,:) = [0,1,0]
     CoordSys_ijk(3,:) = [0,0,1]
@@ -213,13 +255,14 @@ SUBROUTINE RotMSolver( Model,Solver,dt,TransientSimulation )
     ! (transform from the element local coordinate system to the ijk)
     ! ----------------------------------------------------------------
  
-    CALL ComputeRotM(Element, CoordSys_ijk, CoordSys_ref, nn, nd)
+    CALL ComputeRotM(Element, CoordSys_ijk, CoordSys_ref, nn, nd, UsePDecomp, PDMaxIter, PDDetTol)
   END DO
  
 CONTAINS
  
 !------------------------------------------------------------------------------
-   SUBROUTINE ComputeRotM(Element,CoordSys_ijk,CoordSys_ref,nn,nd)
+   SUBROUTINE ComputeRotM(Element,CoordSys_ijk,CoordSys_ref,nn,nd, &
+                   UsePDecomp, PDMaxIter, PDDetTol)
 !------------------------------------------------------------------------------
     INTEGER :: nn, nd, ind
     TYPE(Element_t) :: Element
@@ -234,11 +277,25 @@ CONTAINS
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: UsePDecomp
+    REAL :: PDDetTol
+    INTEGER :: PDMaxIter
  
     CALL GetElementNodes(Nodes)
-    CALL GetLocalSolution(beta,'beta')
-    CALL GetLocalSolution(alpha,'alpha')
- 
+    tmpvar => VariableGet( Mesh % Variables, 'alpha')
+    IF(ASSOCIATED(tmpvar)) THEN
+      CALL GetLocalSolution(alpha,'alpha')
+    ELSE
+      CALL GetLocalSolution(alpha,'alpha direction')
+    END IF
+
+    tmpvar => VariableGet( Mesh % Variables, 'beta')
+    IF(ASSOCIATED(tmpvar)) THEN
+      CALL GetLocalSolution(beta,'beta')
+    ELSE
+      CALL GetLocalSolution(beta,'beta direction')
+    END IF
+
     DO j=1,nn
        un = Element % TYPE % NodeU(j)
        vn = Element % TYPE % NodeV(j)
@@ -272,6 +329,8 @@ CONTAINS
       ! -----------------------------------
  
       Relem = MATMUL(jac_ref, jac_e)
+      IF (UsePDecomp) CALL PolarDecomposition(Relem, PDMaxIter, PDDetTol)
+
  
       CoordSys2(1,1:3) = [1,0,0]
       CoordSys2(2,1:3) = [0,1,0]
@@ -319,6 +378,56 @@ CONTAINS
    END SUBROUTINE ComputeRotM
 !------------------------------------------------------------------------------
  
+!------------------------------------------------------------------------------ 
+  SUBROUTINE PolarDecomposition(RotMLoc, PDMaxIter, PDDetTol)
+!------------------------------------------------------------------------------ 
+    USE DefUtils
+    IMPLICIT NONE
+    REAL(KIND=dp) :: RotMLoc(3,3), RotMLocInv(3,3)
+    REAL(KIND=dp) :: C(3,3)
+    REAL(KIND=dp) :: Det
+    INTEGER :: i
+    REAL :: PDDetTol
+    INTEGER :: PDMaxIter
+    LOGICAL :: Converged
+    
+    IF (ANY(ISNAN(RotMloc))) RETURN
+
+    Converged=.FALSE. 
+    DO i=1,PDMaxIter
+      Det = Determinant3x3(RotMLoc)
+      CALL InvertMatrix3x3(RotMloc, RotMLocInv, Det)
+      RotMloc=(RotMloc+TRANSPOSE(RotMlocInv))/2_dp
+      IF (ABS(Det - 1_dp) <= PDDetTol) THEN
+        Converged=.TRUE. 
+        EXIT
+      END IF
+    END DO 
+
+    IF (.NOT. Converged) THEN
+      print *, "Reference Tolerance: ", PDDetTol
+      print *, "Tolerance: ", ABS(Det-1._dp)
+      CALL FATAL ('PolarDecomposition', &
+      'Failed: Polar Decomposition Tolerance')
+    END IF
+
+!------------------------------------------------------------------------------ 
+  END SUBROUTINE PolarDecomposition
+!------------------------------------------------------------------------------ 
+
+!------------------------------------------------------------------------------ 
+  FUNCTION Determinant3x3(A) RESULT(D)
+!------------------------------------------------------------------------------ 
+    USE DefUtils
+    REAL(KIND=DP) :: A(3,3), D
+
+    D = A(1,1)*A(2,2)*A(3,3)-A(1,1)*A(2,3)*A(3,2)- & 
+            A(1,2)*A(2,1)*A(3,3)+A(1,2)*A(2,3)*A(3,1)+ & 
+                A(1,3)*A(2,1)*A(3,2)-A(1,3)*A(2,2)*A(3,1)
+
+!------------------------------------------------------------------------------ 
+  END FUNCTION Determinant3x3
+!------------------------------------------------------------------------------ 
  
 !------------------------------------------------------------------------------
    SUBROUTINE GetElementRotM(Element,RotM,nn)
