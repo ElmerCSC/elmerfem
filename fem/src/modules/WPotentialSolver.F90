@@ -301,8 +301,9 @@ CONTAINS
       
       ! Transform the conductivity tensor (in case of a foil winding):
       ! --------------------------------------------------------------
-      IF (CoilBody .AND. CoilType /= 'massive') & 
-         C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+      IF (CoilBody .AND. CoilType /= 'massive') THEN
+        C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+      END IF
 
       ! The source term at the integration point:
       !------------------------------------------
@@ -471,7 +472,7 @@ CONTAINS
       DO k=1,wpotvar % DOFs
         IF (Wnorm > EPSILON(Wnorm)) THEN
           IF( CoilType/='stranded' ) Wnorm = 1._dp
-        ! Wnorm = 1._dp
+          !print *, "Wnorm:", Wnorm
           wpotvar % Values( wpotvar % DOFs*(wpotvar % Perm( &
               Element % DGIndexes(j))-1)+k) = wpot(j)/Wnorm
         END IF
