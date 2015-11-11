@@ -30,7 +30,7 @@ End
 $fileid="c"
 
 Simulation
-  Max Output Level = 20
+  Max Output Level = 32
   Coordinate System = Cartesian 3D
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady State
@@ -46,6 +46,8 @@ Simulation
 ! The ElasticSolver does not really like the Dirichlet conditions at the start 
 ! of the nonlinear iteration. 
   Initialize Dirichlet Conditions = False
+
+!  Max Output Partition = Integer 8
 End
 
 !Constants
@@ -80,42 +82,45 @@ Material 1
 End
 
 Solver 1
-  Equation = "Nonlinear elasticity"
+  Equation = "Elasticity"
   Procedure = "ElasticSolve" "ElasticSolver"
+!  Procedure = "StressSolve" "StressSolver"
   Variable = -dofs 3 Displacement
 
-  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Convergence Tolerance = 1.0e-7
   Nonlinear System Max Iterations = 10
   Nonlinear System Relaxation Factor = 1.0
 
   Linear System Solver = "Iterative"
-  Linear System Iterative Method = "BiCGStab"
+  Linear System Iterative Method = GCR 
   Linear System Abort Not Converged = True
-  Linear System Preconditioning = "ILU2"
+  Linear System Preconditioning = "ILU0"
   Linear System Residual Output = 100
   Linear System Max Iterations = 5000
   BiCGStabl Polynomial Degree = 4
   
-  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Convergence Tolerance = 1.0e-8
   Linear System Residual Mode = True
 
   Apply Contact BCs = Logical True
-! Save Contact = Logical True
+!  Save Contact = Logical True
 
 ! Restore the linear solution
 ! Elasticity Solver Linear = Logical True
 
   Calculate Stresses = Logical True
-  Optimize Bandwidth = False
-  LInear System Scaling = False
+!  Optimize Bandwidth = False
+!  Linear System Scaling = False
+!  debug normals = Logical True
 
-  debug normals = Logical True
-
+!  Nonlinear System Compute Change in Scaled System = Logical True
   Displace Mesh = Logical True
 ! Calculate Boundary Weights = Logical True
 
 ! Do not include constraints when analyzing the convergence and norm of a solution
-  Nonlinear System Convergence Without Constraints = Logical True
+!  Nonlinear System Convergence Without Constraints = Logical True
+
+  Nonlinear System Consistent Norm = True
 End
 
 Solver 2
@@ -165,7 +170,12 @@ End
 Boundary Condition 4
   Name = "Pressure load the upper surface of upper block"
   Target Boundaries(1) = 60
+
+! for ElasticSolver
   Normal Surface Traction = -1.0
+
+! for StressSolver
+!  Normal Force = -1.0
 End
 
 Boundary Condition 5
