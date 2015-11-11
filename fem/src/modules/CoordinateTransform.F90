@@ -405,6 +405,7 @@ CONTAINS
     END DO 
 
     IF (.NOT. Converged) THEN
+      print *, "i:", i, "R*R^T", MATMUL(RotMloc, TRANSPOSE(RotMloc))
       print *, "Reference Tolerance: ", PDDetTol
       print *, "Tolerance: ", ABS(Det-1._dp)
       CALL FATAL ('PolarDecomposition', &

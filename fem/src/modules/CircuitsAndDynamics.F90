@@ -1188,8 +1188,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     ncdofs=nd
     IF (dim == 3) THEN
       ncdofs=nd-nn
-      !CALL GetLocalSolution(Wbase, 'w')
       CALL GetWPotential(WBase)
+      !print *, "W Potential", Wbase
     END IF
 
     VvarId = Comp % vvar % ValueId + nm
@@ -1219,7 +1219,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       CASE(3)
         CALL GetEdgeBasis(Element,WBasis,RotWBasis,Basis,dBasisdx)
         w = -MATMUL(WBase(1:nn), dBasisdx(1:nn,:))
-        !w = w/SQRT(SUM(w**2._dp))
+        !print *, "W Pot norm:", SQRT(SUM(w**2._dp))
       END SELECT
 
       localC = SUM(Tcoef(3,3,1:nn) * Basis(1:nn))
