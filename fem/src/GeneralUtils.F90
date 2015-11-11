@@ -1435,7 +1435,6 @@ END FUNCTION ComponentNameVar
      tt1 = TValues(n)
      IF(PRESENT(t1)) tt1=t1
 
-     ! t0 < first, t1 <= first
      i0 = 1
       DO i0=1,n-1
        IF ( tt0 < TValues(i0+1) ) EXIT
@@ -1450,6 +1449,7 @@ END FUNCTION ComponentNameVar
 
      sumf = 0._dp
 
+     ! t0 < first, t1 <= first
      IF(tt1<=Tvalues(1)) THEN
        t(1) = Tvalues(1)
        t(2) = Tvalues(2)
@@ -1515,6 +1515,8 @@ END FUNCTION ComponentNameVar
        tt1 = Tvalues(n)
      END IF
 
+     IF(tt0 >= tt1) RETURN
+
      ! first (possibly incomplete) interval:
      ! -------------------------------------
      t(1) = Tvalues(i0)
@@ -1524,29 +1526,27 @@ END FUNCTION ComponentNameVar
      s0 = (tt0-t(1))/h
      s1 = MIN((tt1-t(1))/h,1._dp)
 
-     IF(s1>s0) THEN
-       y(1) = FValues(i0)
-       y(2) = FValues(i0+1)
+     y(1) = FValues(i0)
+     y(2) = FValues(i0+1)
 
-       IF(Cubic) THEN
-         r(1) = CubicCoeff(i0)
-         r(2) = CubicCoeff(i0+1)
+     IF(Cubic) THEN
+       r(1) = CubicCoeff(i0)
+       r(2) = CubicCoeff(i0+1)
 
-         a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
-         b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
-         c = (r(1) * h)/2
-         d = y(1)
-         sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
-                   (((a*s0 + b)*s0 + c)*s0 + d)*s0 )
+       a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
+       b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
+       c = (r(1) * h)/2
+       d = y(1)
+       sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
+                 (((a*s0 + b)*s0 + c)*s0 + d)*s0 )
 
-       ELSE
-         c = (y(2)-y(1))/2
-         d = y(1)
-         sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
-       END IF
-       i0 = i0 + 1 
-       tt0 = Tvalues(i0)
+     ELSE
+       c = (y(2)-y(1))/2
+       d = y(1)
+       sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
      END IF
+     i0 = i0 + 1 
+     tt0 = Tvalues(i0)
 
      IF(tt0 >= tt1) RETURN
 
@@ -1560,28 +1560,26 @@ END FUNCTION ComponentNameVar
      s0 = MAX((tt0-t(1))/h, 0.0_dp)
      s1 = (tt1-t(1))/h
 
-     IF(s1 > s0) THEN
-       y(1) = FValues(i1)
-       y(2) = FValues(i1+1)
+     y(1) = FValues(i1)
+     y(2) = FValues(i1+1)
 
-       IF(Cubic) THEN
-         r(1) = CubicCoeff(i1)
-         r(2) = CubicCoeff(i1+1)
+     IF(Cubic) THEN
+       r(1) = CubicCoeff(i1)
+       r(2) = CubicCoeff(i1+1)
 
-         a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
-         b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
-         c = (r(1) * h)/2
-         d = y(1)
-         sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
-                 (((a*s0 + b)*s0 + c)*s0 + d)*s0 )
-       ELSE
-         c = (y(2)-y(1))/2
-         d = y(1)
-         sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
-       END IF
-       tt1 = Tvalues(i1+1)
-       i1 = i1 - 1 
+       a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
+       b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
+       c = (r(1) * h)/2
+       d = y(1)
+       sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
+               (((a*s0 + b)*s0 + c)*s0 + d)*s0 )
+     ELSE
+       c = (y(2)-y(1))/2
+       d = y(1)
+       sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
      END IF
+     tt1 = Tvalues(i1+1)
+     i1 = i1 - 1 
 
      IF(tt0 >= tt1) RETURN
 
