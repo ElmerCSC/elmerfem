@@ -6647,9 +6647,18 @@ CONTAINS
      num_axes = 0
    ELSE
      num_axes = SIZE(omegas,1)
+     ALLOCATE(axes(num_axes, size(omegas, 2)))
+     axes = omegas
+     DO k = 1, num_axes
+       nrm = NORM2(axes(k,:))
+       IF (nrm .EQ. 0._dp) THEN
+         WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")'), k
+         CALL Warn('MagnetoDynamicsCalcFields',Message)
+         CYCLE
+       END IF
+       axes(k,:) = axes(k,:) / nrm
+     END DO
    END IF
-   ALLOCATE(axes(size(omegas, 1), size(omegas, 2)))
-   axes = omegas
 
    ng = size(TorqueGroups,1)
    ALLOCATE(T(ng*3))
@@ -6657,15 +6666,6 @@ CONTAINS
    VisitedNode = .FALSE.
    T = 0._dp
 
-   DO k = 1, size(axes,1)
-     nrm = NORM2(axes(k,:))
-     IF (nrm .EQ. 0._dp) THEN
-       WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")'), k
-       CALL Warn('MagnetoDynamicsCalcFields',Message)
-       CYCLE
-     END IF
-     axes(k,:) = axes(k,:) / nrm
-   END DO
 
    DO pnodal=1,GetNOFActive()
      Element => GetActiveElement(pnodal)
