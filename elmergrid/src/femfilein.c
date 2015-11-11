@@ -4572,31 +4572,12 @@ int FluxToElmerType(int nonodes, int dim) {
     }
   }
   
-  if( dim == 3 ) {
-    switch( nonodes ) {
-    case 6:
-      elmertype = 306;
-      break;
-    case 8:
-      elmertype = 408;
-      break;
-    case 10: 
-      elmertype = 510;
-      break;
-    case 15: 
-      elmertype = 715;
-      break;
-    case 20:
-      elmertype = 820;
-      break;
-    }
-  }
-    
-
   if( !elmertype ) printf("FluxToElmerType could not deduce element type! (%d %d)\n",nonodes,dim);
 
   return(elmertype);
 }
+
+
 
 
 
@@ -4765,6 +4746,122 @@ int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
 }
 
 
+
+/* Mapping between the elemental node order of PF3 file format to 
+   Elmer file format. */
+static void PF3ToElmerPermuteNodes(int elemtype,int *topology)
+{
+  int i=0,nodes=0,oldtopology[MAXNODESD2];
+  int reorder, *porder;
+  int debug;
+
+//  int order404[]={2,3,4,1};             //quad
+  int order408[]={2,3,4,1,6,7,8,5};     //quad^2
+//  int order504[]={1,3,2,4};             //tetra
+//  int order510[]={1,3,2,4,6,8,5,7,9,10};//tetra^2
+//  int order706[]={4,5,6,1,2,3};         //wedge (prism)  
+  int order715[]={4,5,6,1,2,3,10,11,12,7,8,9,13,14,15};                //wedge^2 (prism^2)  
+//  int order808[]={1,4,3,2,5,8,7,6};     //hexa
+//  int order820[]={1,4,3,2,5,8,7,6,12,11,10,9,17,20,19,18,16,15,14,13};  //hexa^2
+
+  debug = TRUE;
+  
+  reorder = FALSE;
+
+  switch (elemtype) {
+/*      
+  case 404:        
+    reorder = TRUE;
+    porder = &order404[0];
+    break;
+*/
+  case 408:   
+    printf("Permuting quadrilaterals node numbers.\n");       
+    reorder = TRUE;
+    porder = &order408[0];
+    break;
+
+/*  case 706:        
+    reorder = TRUE;
+    porder = &order706[0];
+    break;
+*/
+  case 715:  
+    printf("Permuting pyramid node numbers.\n");      
+    reorder = TRUE;
+    porder = &order715[0];
+    break;
+  default:
+      if(debug) printf("Warning : Unpermuted nodes of element: %d\n",elemtype );
+      break;
+  }
+
+  if( reorder ) {
+    nodes = elemtype % 100;
+    for(i=0;i<nodes;i++) 
+      oldtopology[i] = topology[i];
+    for(i=0;i<nodes;i++) 
+      topology[i] = oldtopology[porder[i]-1];
+  }
+}
+
+
+
+
+
+int FluxToElmerType3D(int nonodes, int dim) {
+  int elmertype;
+
+  elmertype = 0;
+  
+  if( dim == 2 ) {
+    switch( nonodes ) {
+    case 3: 
+      elmertype = 203;
+      break;
+    case 4: 
+      elmertype = 404;
+      break;
+    case 6:
+      elmertype = 306;
+      break;
+    case 8:
+      elmertype = 408;
+      break;
+    }
+  }
+  
+  if( dim == 3 ) {
+    switch( nonodes ) {
+    case 4:
+      elmertype = 504;
+      break;
+    case 6:
+      elmertype = 706;
+      break;
+    case 8:
+      elmertype = 808;
+      break;
+    case 10: 
+      elmertype = 510;
+      break;
+    case 15: 
+      elmertype = 715;
+      break;
+    case 20:
+      elmertype = 820;
+      break;
+    }
+  }
+    
+
+  if( !elmertype ) printf("FluxToElmerType3D could not deduce element type! (%d %d)\n",nonodes,dim);
+
+  return(elmertype);
+}
+
+
+
 int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 		    char *prefix,int info)
 /* Load the mesh from format of Flux Cedrat in PF3 format. */
@@ -4877,7 +4974,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
   fp3order = next_int(&cp); //7 internal elemnt type description
 	nonodes = next_int(&cp); // 8 number of nodes
 		
-	elmertype = FluxToElmerType( nonodes, dim );
+	elmertype = FluxToElmerType3D( nonodes, dimplusone-1 );
 	data->elementtypes[i] = elmertype;
 	data->material[i] = nreg;
 
@@ -4894,6 +4991,9 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 	  data->topology[i][k] = next_int(&cp);
 	  nodecnt+=1;
 	}
+	
+	PF3ToElmerPermuteNodes(elmertype,data->topology[noelements]);	 
+	
       }
       break;
 
