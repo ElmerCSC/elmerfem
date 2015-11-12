@@ -12,7 +12,7 @@ int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
 		      int nobound,char *prefix,int decimals,int info);
 int SaveSolutionElmerTriangles(struct FemType *data,char *prefix,int info);
 int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int decimals, int info);
+		   char *prefix,int decimals,int nooverwrite, int info);
 int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
 		 char *prefix,int info);
 int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
@@ -44,5 +44,4 @@ int OptimizePartitioning(struct FemType *data,struct BoundaryType *bound,int noo
 			 int partbw,int info);
 int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 			      char *prefix,int decimals,int halomode,int indirect,
-			      int parthypre,int partlayers,int info);
-
+			      int parthypre,int subparts,int nooverwrite, int info);

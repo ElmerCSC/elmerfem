@@ -715,6 +715,35 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
 
+!-------------------Circuit stuff----------------------------------------------
+  TYPE CircuitVariable_t
+    LOGICAL :: isIvar, isVvar
+    INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner, ComponentId
+    TYPE(Component_t), POINTER :: Component => Null()
+    REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
+    REAL(KIND=dp), ALLOCATABLE :: SourceRe(:), SourceIm(:), Mre(:), Mim(:)
+    INTEGER, ALLOCATABLE :: EqVarIds(:)
+  END TYPE CircuitVariable_t
+  
+  TYPE Component_t
+    REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
+                     N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
+    INTEGER :: polord, ElBoundary, nofcnts, BodyId, ComponentId
+    INTEGER, POINTER :: BodyIds(:) => Null()
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    TYPE(CircuitVariable_t), POINTER :: ivar, vvar
+  END TYPE Component_t
+
+  TYPE Circuit_t
+    REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
+    INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
+    LOGICAL :: UsePerm = .FALSE., Harmonic
+    INTEGER :: n, m, n_comp,CvarDofs
+    CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
+    TYPE(Component_t), POINTER :: Components(:)
+    TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)
+  END TYPE Circuit_t
+!-------------------Circuit stuff----------------------------------------------
 
 !------------------------------------------------------------------------------
     TYPE Model_t
@@ -825,11 +854,18 @@ END INTERFACE
 
       TYPE(Mesh_t),   POINTER :: Mesh   => NULL()
       TYPE(Solver_t), POINTER :: Solver => NULL()
+      
+      ! Circuits:
+      INTEGER, POINTER :: n_Circuits=>Null(), Circuit_tot_n=>Null()
+      TYPE(Matrix_t), POINTER :: CircuitMatrix => Null()
+      TYPE(Circuit_t), POINTER :: Circuits(:) => Null()
+      TYPE(Solver_t), POINTER :: ASolver    
+      
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
-
+    
 
 !------------------------------------------------------------------------------
 END MODULE Types

@@ -1356,7 +1356,6 @@ END FUNCTION ComponentNameVar
        F = FValues(1) * T
        RETURN
      END IF
-    
 
      DO i=1,n
         IF ( TValues(i) >= T ) EXIT
@@ -1409,6 +1408,209 @@ END FUNCTION ComponentNameVar
      END IF
 !------------------------------------------------------------------------------
    END FUNCTION DerivateCurve
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Integrate a curve given by linear table or splines.
+!------------------------------------------------------------------------------
+   FUNCTION IntegrateCurve( TValues,FValues,CubicCoeff,T0,T1 ) RESULT(sumf)
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: TValues(:),FValues(:),sumf
+     REAL(KIND=dp), OPTIONAL :: T0, T1
+     REAL(KIND=dp), OPTIONAL, POINTER :: CubicCoeff(:)
+!------------------------------------------------------------------------------
+     INTEGER :: i,n,i0,i1
+     REAL(KIND=dp) :: t(2), y(2), r(2), h, a, b, c, d,lt, s0, s1, s, tt0, tt1
+     LOGICAL :: Cubic
+!------------------------------------------------------------------------------
+     n = SIZE(TValues)
+
+     Cubic = PRESENT(CubicCoeff)
+     IF ( Cubic ) Cubic = Cubic.AND.ASSOCIATED(CubicCoeff)
+
+     tt0 = TValues(1)
+     IF(PRESENT(t0)) tt0=t0
+
+     tt1 = TValues(n)
+     IF(PRESENT(t1)) tt1=t1
+
+     i0 = 1
+      DO i0=1,n-1
+       IF ( tt0 < TValues(i0+1) ) EXIT
+     END DO
+     IF ( i0 > n-1 ) i0 = n-1
+
+     i1 = n-1
+     DO i1=i0,n-1
+       IF ( tt1 <= TValues(i1+1) ) EXIT
+     END DO
+     IF ( i1 > n-1 ) i1 = n-1
+
+     sumf = 0._dp
+
+     ! t0 < first, t1 <= first
+     IF(tt1<=Tvalues(1)) THEN
+       t(1) = Tvalues(1)
+       t(2) = Tvalues(2)
+
+       y(1) = FValues(1)
+       y(2) = FValues(2)
+
+       h  = t(2) - t(1)
+       s0 = (tt0-t(1)) / h
+       s1 = (tt1-t(1)) / h
+       c = (y(2)-y(1)) / 2
+       d = y(1)
+       sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
+       RETURN
+     END IF
+
+     ! t0 >= last, t1 > last
+     IF(tt0>=Tvalues(n)) THEN
+       t(1) = Tvalues(n-1)
+       t(2) = Tvalues(n)
+
+       y(1) = FValues(n-1)
+       y(2) = FValues(n)
+
+       h  = t(2) - t(1)
+       s0 = (tt0-t(1)) / h
+       s1 = (tt1-t(1)) / h
+       c = (y(2)-y(1)) / 2
+       d = y(1)
+       sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
+       RETURN
+     END IF
+
+     ! first interval outside 
+     IF(tt0<Tvalues(1)) THEN
+       t(1) = Tvalues(1)
+       t(2) = Tvalues(2)
+
+       y(1) = FValues(1)
+       y(2) = FValues(2)
+
+       h  = t(2) - t(1)
+       s0 = (tt0-t(1)) / h
+       c = (y(2)-y(1)) / 2
+       d = y(1)
+       sumf = sumf - h * (c*s0 + d)*s0
+       tt0 = Tvalues(1)
+     END IF
+
+     ! last interval outside 
+     IF(tt1>Tvalues(n)) THEN
+       t(1) = Tvalues(n-1)
+       t(2) = Tvalues(n)
+
+       y(1) = FValues(n-1)
+       y(2) = FValues(n)
+
+       h  = t(2) - t(1)
+       s1 = (tt1-t(1)) / h
+       c = (y(2)-y(1)) / 2
+       d = y(1)
+       sumf = sumf + h * ( (c*s1 + d)*s1 - (c+d) )
+       tt1 = Tvalues(n)
+     END IF
+
+     IF(tt0 >= tt1) RETURN
+
+     ! first (possibly incomplete) interval:
+     ! -------------------------------------
+     t(1) = Tvalues(i0)
+     t(2) = Tvalues(i0+1)
+
+     h  = t(2) - t(1)
+     s0 = (tt0-t(1))/h
+     s1 = MIN((tt1-t(1))/h,1._dp)
+
+     y(1) = FValues(i0)
+     y(2) = FValues(i0+1)
+
+     IF(Cubic) THEN
+       r(1) = CubicCoeff(i0)
+       r(2) = CubicCoeff(i0+1)
+
+       a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
+       b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
+       c = (r(1) * h)/2
+       d = y(1)
+       sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
+                 (((a*s0 + b)*s0 + c)*s0 + d)*s0 )
+
+     ELSE
+       c = (y(2)-y(1))/2
+       d = y(1)
+       sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
+     END IF
+     i0 = i0 + 1 
+     tt0 = Tvalues(i0)
+
+     IF(tt0 >= tt1) RETURN
+
+     ! last (possibly incomplete) interval:
+     ! ------------------------------------
+     t(1) = Tvalues(i1)
+     t(2) = Tvalues(i1+1)
+
+     h  = t(2) - t(1)
+
+     s0 = MAX((tt0-t(1))/h, 0.0_dp)
+     s1 = (tt1-t(1))/h
+
+     y(1) = FValues(i1)
+     y(2) = FValues(i1+1)
+
+     IF(Cubic) THEN
+       r(1) = CubicCoeff(i1)
+       r(2) = CubicCoeff(i1+1)
+
+       a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
+       b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
+       c = (r(1) * h)/2
+       d = y(1)
+       sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
+               (((a*s0 + b)*s0 + c)*s0 + d)*s0 )
+     ELSE
+       c = (y(2)-y(1))/2
+       d = y(1)
+       sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
+     END IF
+     tt1 = Tvalues(i1+1)
+     i1 = i1 - 1 
+
+     IF(tt0 >= tt1) RETURN
+
+     ! here only complete intervals:
+     ! -----------------------------
+     DO i=i0,i1
+       t(1) = Tvalues(i)
+       t(2) = Tvalues(i+1)
+
+       y(1) = FValues(i)
+       y(2) = FValues(i+1)
+
+       h  = t(2) - t(1)
+
+       IF(Cubic) THEN
+         r(1) = CubicCoeff(i)
+         r(2) = CubicCoeff(i+1)
+
+         a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
+         b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
+         c = (r(1) * h)/2
+         d = y(1)
+         sumf = sumf + h * (a+b+c+d)
+       ELSE
+         c = (y(2)-y(1))/2
+         d = y(1)
+         sumf = sumf + h * (c+d)
+       END IF
+     END DO
+!------------------------------------------------------------------------------
+   END FUNCTION IntegrateCurve
 !------------------------------------------------------------------------------
 
 
