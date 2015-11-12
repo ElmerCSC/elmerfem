@@ -1426,28 +1426,14 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
      n = SIZE(TValues)
 
-     Cubic = PRESENT(CubicCoeff)
-     IF ( Cubic ) Cubic = Cubic.AND.ASSOCIATED(CubicCoeff)
-
      tt0 = TValues(1)
      IF(PRESENT(t0)) tt0=t0
 
      tt1 = TValues(n)
      IF(PRESENT(t1)) tt1=t1
 
-     i0 = 1
-      DO i0=1,n-1
-       IF ( tt0 < TValues(i0+1) ) EXIT
-     END DO
-     IF ( i0 > n-1 ) i0 = n-1
-
-     i1 = n-1
-     DO i1=i0,n-1
-       IF ( tt1 <= TValues(i1+1) ) EXIT
-     END DO
-     IF ( i1 > n-1 ) i1 = n-1
-
      sumf = 0._dp
+     IF(tt0>=tt1) RETURN
 
      ! t0 < first, t1 <= first
      IF(tt1<=Tvalues(1)) THEN
@@ -1517,6 +1503,15 @@ END FUNCTION ComponentNameVar
 
      IF(tt0 >= tt1) RETURN
 
+     Cubic = PRESENT(CubicCoeff)
+     IF ( Cubic ) Cubic = Cubic.AND.ASSOCIATED(CubicCoeff)
+
+     i0 = 1
+      DO i0=1,n-1
+       IF ( tt0 < TValues(i0+1) ) EXIT
+     END DO
+     IF ( i0 > n-1 ) i0 = n-1
+
      ! first (possibly incomplete) interval:
      ! -------------------------------------
      t(1) = Tvalues(i0)
@@ -1533,8 +1528,8 @@ END FUNCTION ComponentNameVar
        r(1) = CubicCoeff(i0)
        r(2) = CubicCoeff(i0+1)
 
-       a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
-       b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
+       a = (-2 * (y(2) - y(1)) + (  r(1) + r(2)) * h)/4
+       b = ( 3 * (y(2) - y(1)) - (2*r(1) + r(2)) * h)/3
        c = (r(1) * h)/2
        d = y(1)
        sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
@@ -1549,6 +1544,12 @@ END FUNCTION ComponentNameVar
      tt0 = Tvalues(i0)
 
      IF(tt0 >= tt1) RETURN
+
+     i1 = n-1
+     DO i1=i0,n-1
+       IF ( tt1 <= TValues(i1+1) ) EXIT
+     END DO
+     IF ( i1 > n-1 ) i1 = n-1
 
      ! last (possibly incomplete) interval:
      ! ------------------------------------
@@ -1567,8 +1568,8 @@ END FUNCTION ComponentNameVar
        r(1) = CubicCoeff(i1)
        r(2) = CubicCoeff(i1+1)
 
-       a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
-       b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
+       a = (-2 * (y(2) - y(1)) + (  r(1) + r(2)) * h)/4
+       b = ( 3 * (y(2) - y(1)) - (2*r(1) + r(2)) * h)/3
        c = (r(1) * h)/2
        d = y(1)
        sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
@@ -1585,30 +1586,39 @@ END FUNCTION ComponentNameVar
 
      ! here only complete intervals:
      ! -----------------------------
-     DO i=i0,i1
-       t(1) = Tvalues(i)
-       t(2) = Tvalues(i+1)
+     IF ( Cubic ) THEN
+       DO i=i0,i1
+         t(1) = Tvalues(i)
+         t(2) = Tvalues(i+1)
 
-       y(1) = FValues(i)
-       y(2) = FValues(i+1)
+         y(1) = FValues(i)
+         y(2) = FValues(i+1)
 
-       h  = t(2) - t(1)
-
-       IF(Cubic) THEN
          r(1) = CubicCoeff(i)
          r(2) = CubicCoeff(i+1)
 
-         a = (-2 * ( y(2) - y(1) ) + (   r(1) + r(2) ) * h)/4
-         b = ( 3 * ( y(2) - y(1) ) - ( 2*r(1) + r(2) ) * h)/3
+         h  = t(2) - t(1)
+
+         a = (-2 * (y(2) - y(1)) + (  r(1) + r(2)) * h)/4
+         b = ( 3 * (y(2) - y(1)) - (2*r(1) + r(2)) * h)/3
          c = (r(1) * h)/2
          d = y(1)
          sumf = sumf + h * (a+b+c+d)
-       ELSE
+       END DO
+     ELSE
+       DO i=i0,i1
+         t(1) = Tvalues(i)
+         t(2) = Tvalues(i+1)
+
+         y(1) = FValues(i)
+         y(2) = FValues(i+1)
+
+         h  = t(2) - t(1)
          c = (y(2)-y(1))/2
          d = y(1)
          sumf = sumf + h * (c+d)
-       END IF
-     END DO
+       END DO
+     END IF
 !------------------------------------------------------------------------------
    END FUNCTION IntegrateCurve
 !------------------------------------------------------------------------------
