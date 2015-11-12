@@ -5392,7 +5392,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    INTEGER, ALLOCATABLE :: Pivot(:), TorqueGroups(:)
 
-   REAL(KIND=dp), POINTER :: Fsave(:), HB(:,:)=>NULL(), CubicCoeff(:)=>NULL()
+   REAL(KIND=dp), POINTER :: Fsave(:), HB(:,:)=>NULL(), CubicCoeff(:)=>NULL(), &
+     HBBVal(:), HBCval(:), HBHval(:)
    REAL(KIND=dp) :: Babs
    TYPE(Mesh_t), POINTER :: Mesh
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
@@ -5406,8 +5407,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(ValueList_t), POINTER :: CompParams
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
-   LOGICAL :: CSymmetry
+   LOGICAL :: CSymmetry, HBCurve
    REAL(KIND=dp) :: xcoord, grads_coeff
+   TYPE(ValueListEntry_t), POINTER :: HBLst
 !-------------------------------------------------------------------------------------------
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
@@ -5789,10 +5791,24 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GetConstRealArray( Material, HB, 'H-B curve', Found )
      IF ( ASSOCIATED(HB) ) THEN
       Cubic = GetLogical( Material, 'Cubic spline for H-B curve', Found)
-      IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff) ) THEN
-        l = SIZE(HB,1)
-        ALLOCATE(CubicCoeff(l))
-        CALL CubicSpline(l,HB(:,1),HB(:,2),CubicCoeff)
+      l = SIZE(HB,1)
+      HBBval => HB(:,1)
+      HBHval => HB(:,2)
+      IF(l>1) THEN
+        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff) ) THEN
+          ALLOCATE(CubicCoeff(l))
+          CALL CubicSpline(l,HB(:,1),HB(:,2),CubicCoeff)
+        END IF
+        HBCval => CubicCoeff
+      END IF
+
+      IF(l<=1) THEN
+        HBLst => ListFind(Material,'H-B Curve',HBcurve)
+        IF(HBcurve) THEN
+          HBCval => HBLst % CubicCoeff
+          HBBval => HBLst % TValues
+          HBHval => HBLst % FValues(1,1,:)
+        END IF
       END IF
      ELSE
        CALL GetReluctivity(Material,R,n)
@@ -6006,7 +6022,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        IF ( ASSOCIATED(HB) ) THEN
          Babs=SQRT(SUM(B(1,:)**2))
-         R_ip = InterpolateCurve(HB(:,1),HB(:,2),Babs,CubicCoeff)/Babs
+         R_ip = InterpolateCurve(HBBval,HBHval,Babs,HBCval)/Babs
        ELSE
          R_ip = SUM( Basis(1:n)*R(1:n) )
        END IF
@@ -6647,9 +6663,18 @@ CONTAINS
      num_axes = 0
    ELSE
      num_axes = SIZE(omegas,1)
+     ALLOCATE(axes(num_axes, size(omegas, 2)))
+     axes = omegas
+     DO k = 1, num_axes
+       nrm = NORM2(axes(k,:))
+       IF (nrm .EQ. 0._dp) THEN
+         WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")'), k
+         CALL Warn('MagnetoDynamicsCalcFields',Message)
+         CYCLE
+       END IF
+       axes(k,:) = axes(k,:) / nrm
+     END DO
    END IF
-   ALLOCATE(axes(size(omegas, 1), size(omegas, 2)))
-   axes = omegas
 
    ng = size(TorqueGroups,1)
    ALLOCATE(T(ng*3))
@@ -6657,15 +6682,6 @@ CONTAINS
    VisitedNode = .FALSE.
    T = 0._dp
 
-   DO k = 1, size(axes,1)
-     nrm = NORM2(axes(k,:))
-     IF (nrm .EQ. 0._dp) THEN
-       WRITE (Message,'("Axis for the torque group ", i0, "is a zero vector")'), k
-       CALL Warn('MagnetoDynamicsCalcFields',Message)
-       CYCLE
-     END IF
-     axes(k,:) = axes(k,:) / nrm
-   END DO
 
    DO pnodal=1,GetNOFActive()
      Element => GetActiveElement(pnodal)
