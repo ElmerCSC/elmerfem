@@ -291,8 +291,12 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, LorentzConductivity
   TYPE(ValueList_t), POINTER :: SolverParams
+
+  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+    ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
+  if(LorentzConductivity) call info("WhitneyAVSolver_Init0", "Material is moving: has Lorentz force present")
 
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
@@ -300,7 +304,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
         'Use Piola Transform', Found )   
     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
     IF (PiolaVersion) THEN
-      IF ( Transient ) THEN
+      IF ( Transient .or. LorentzConductivity ) THEN
         IF (SecondOrder) THEN
           CALL ListAddString( SolverParams, "Element", "n:1 e:2 -tri_face b:2" )  
         ELSE
@@ -314,7 +318,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
         END IF
       END IF
     ELSE
-      IF ( Transient ) THEN
+      IF ( Transient .or. LorentzConductivity ) THEN
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
@@ -1865,6 +1869,10 @@ CONTAINS
                  ! stiffness matrix (anisotropy taken into account)
                  ! ------------------------------------------------
                  STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
+               END DO
+               DO j=1,nd-np
+                 q = j+np
+                 STIFF(p,q) = STIFF(p,q) - SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(i,:))*detJ*IP % s(t)
                END DO
              END DO
            END IF
@@ -4929,7 +4937,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
-  LOGICAL :: Found, ElementalFields, RealField
+  LOGICAL :: Found, ElementalFields, RealField, LorentzConductivity
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln
   TYPE(ValueList_t), POINTER :: SolverParams
@@ -4956,6 +4964,9 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
       CALL ListAddIntegerArray( Model % Equations(i) % Values,  &
            'Active Solvers', m+1, [Active, n+1] )
   END DO
+
+  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+    ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
   ! The only purpose of this parsing of the variable name is to identify
   ! whether the field is real or complex. As the variable has not been
@@ -5099,7 +5110,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  IF ( Transient .OR. Vdofs>1 ) THEN
+  IF ( Transient .OR. Vdofs>1 .OR. LorentzConductivity) THEN
     IF ( GetLogical( Solver % Values, 'Calculate Electric Field', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
@@ -5178,7 +5189,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: name
   INTEGER  :: i
   TYPE(Variable_t), POINTER :: Var
-  LOGICAL :: Found, FluxFound, NodalFields, RealField
+  LOGICAL :: Found, FluxFound, NodalFields, RealField, LorentzConductivity
   TYPE(ValueList_t), POINTER :: EQ, SolverParams
 
   IF(.NOT.ASSOCIATED(Solver % Values)) Solver % Values=>ListAllocate()
@@ -5193,6 +5204,8 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   IF ( .NOT. ASSOCIATED(Var) ) THEN
     CALL Fatal( "MagnetoDynamicsCalcFields", "potential variable not available")
   ENDIF
+  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+    ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
   ! add these in the beginning, so that SaveData sees these existing, even
   ! if executed before the actual computations...
@@ -5315,7 +5328,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  IF ( Transient .OR. .NOT. RealField ) THEN
+  IF ( Transient .OR. .NOT. RealField .or. LorentzConductivity ) THEN
     IF ( GetLogical( SolverParams, 'Calculate Electric Field', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
@@ -5408,7 +5421,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
-              ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity
+              ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, LorentzConductivity
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -5456,6 +5469,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END DO
    vDOFs = pSolver % Variable % DOFs
 
+   LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+     ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
+
    ElectricPotName = GetString(SolverParams, 'Precomputed Electric Potential', PrecomputedElectricPot)
    IF (PrecomputedElectricPot) THEN
       DO i=1,Model % NumberOfSolvers
@@ -5495,7 +5511,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ML2 => NULL(); EL_ML2 => NULL();
    NF => NULL(); EL_NF => NULL();
 
-   IF ( Transient .OR. .NOT. RealField ) THEN
+   IF ( Transient .OR. .NOT. RealField .OR. LorentzConductivity) THEN
      EF => VariableGet( Mesh % Variables, 'Electric Field' )
      FWP => VariableGet( Mesh % Variables, 'Winding Voltage' )
 
