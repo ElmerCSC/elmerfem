@@ -139,6 +139,9 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   Convect = GetLogical( GetSolverParams(), 'Convective', Found )
   IF ( .NOT. Found ) Convect = .FALSE. 
 
+  SkipPowerLaw = ListGetLogical( Solver % Values, 'Constant-Viscosity Start', Found)
+  IF ( .NOT. Found) SkipPowerLaw = .TRUE.
+
   DoScaling=ListGetLogical(Solver % Values, 'Linear System Scaling', Found) 
   DoEquilibration=ListGetLogical(Solver % Values, 'Linear System Row Equilibration', Found)
   DoScaling = DoScaling .OR. DoEquilibration
