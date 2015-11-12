@@ -1578,8 +1578,8 @@ END FUNCTION ComponentNameVar
        d = y(1)
        sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
      END IF
-     tt1 = Tvalues(i1+1)
      i1 = i1 - 1 
+     tt1 = Tvalues(i1+1)
 
      IF(tt0 >= tt1) RETURN
 
