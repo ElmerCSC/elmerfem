@@ -11582,10 +11582,12 @@ END SUBROUTINE FindNeighbourNodes
 !------------------------------------------------------------------------------
     IF ( .NOT. ASSOCIATED( Mesh ) ) RETURN
 
+    CALL Info( 'SplitMeshEqual', 'Mesh splitting works for first order elements 303, 404, (504?) and 808.', Level = 6 )
+
     DO i=1,Mesh % NumberOfBulkElements
       SELECT CASE(Mesh % Elements(i) % TYPE % ElementCode/100)
-      CASE(6,7)
-        CALL Fatal('SplitMeshEqual','Wedges & Pyramids not supported, sorry.')
+      CASE(6)
+        CALL Fatal('SplitMeshEqual','Pyramids not supported?, sorry.')
       END SELECT
     END DO
 
