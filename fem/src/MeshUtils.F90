@@ -10431,6 +10431,7 @@ END SUBROUTINE GetMaxDefs
      LOGICAL, OPTIONAL :: FindEdges
 
      LOGICAL :: FindEdges3D
+     INTEGER :: MeshDim, SpaceDim
 
      IF(PRESENT(FindEdges)) THEN
        FindEdges3D = FindEdges
@@ -10440,7 +10441,18 @@ END SUBROUTINE GetMaxDefs
 
 !------------------------------------------------------------------------------
 
-     SELECT CASE( CoordinateSystemDimension() )
+     SpaceDim = CoordinateSystemDimension()
+     MeshDim = Mesh % MeshDim
+
+     IF( MeshDim == 0 ) THEN
+       CALL Fatal('FindMeshEdges','Mesh dimension is zero!')
+     END IF
+     IF( SpaceDim > MeshDim ) THEN
+       CALL Warn('FindMeshEdges','Mesh dimension and space dimension differ: '&
+           // TRIM(I2S(MeshDim))//' vs. '//TRIM(I2S(SpaceDim)))
+     END IF
+
+     SELECT CASE( MeshDim )
 
      CASE(2)
        IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
