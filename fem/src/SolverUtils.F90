@@ -10325,11 +10325,8 @@ END FUNCTION SearchNodeL
 !   If solving constraint modes analysis go there:
 !   ----------------------------------------------
     IF ( ConstraintModesAnalysis ) THEN
-      IF ( ScaleSystem ) CALL ScaleLinearSystem(Solver, A )
-     
       CALL SolveConstraintModesSystem( A, Solver )
-      
-      IF ( ScaleSystem ) CALL BackScaleLinearSystem( Solver, A ) 
+
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
       
       Norm = ComputeNorm(Solver,n,x)
@@ -10846,7 +10843,7 @@ SUBROUTINE SolveConstraintModesSystem( StiffMatrix, Solver )
     TYPE(Variable_t), POINTER :: Var
     !------------------------------------------------------------------------------
     INTEGER :: i,j,k,n,m
-    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric
+    LOGICAL :: PrecRecompute, Stat, Found, ComputeFluxes, Symmetric, ScaleSystem
     REAL(KIND=dp), POINTER :: PValues(:)
     REAL(KIND=dp), ALLOCATABLE :: Fluxes(:), FluxesMatrix(:,:)
     !------------------------------------------------------------------------------
