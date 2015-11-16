@@ -5,8 +5,8 @@
 
  CONTAINS
 !------------------------------------------------------------------------------
-  SUBROUTINE GetElectricConductivityTensor(Tcoef, Element, n, Part, &
-                   CoilBody,CoilType) 
+  FUNCTION GetElectricConductivityTensor(Element, n, Part, &
+                   CoilBody,CoilType) RESULT (Tcoef)  
 !------------------------------------------------------------------------------
     USE DefUtils
     IMPLICIT NONE
@@ -61,11 +61,12 @@
     END IF
  
 !------------------------------------------------------------------------------
-  END SUBROUTINE GetElectricConductivityTensor
+  END FUNCTION GetElectricConductivityTensor
 !------------------------------------------------------------------------------ 
 
 !------------------------------------------------------------------------------ 
-  SUBROUTINE GetCMPLXElectricConductivityTensor(TCoef, Element, n, CoilBody, CoilType)
+  FUNCTION GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) &
+                  RESULT (TCoef) 
 !------------------------------------------------------------------------------ 
     IMPLICIT NONE
     COMPLEX(KIND=dp) :: TCoef(3,3,n)
@@ -78,8 +79,8 @@
     TCoef=0._dp
     TCoefRe=0._dp
     TCoefIm=0._dp
-    CALL GetElectricConductivityTensor(TCoefRe,Element,n,'re',CoilBody,CoilType)
-    CALL GetElectricConductivityTensor(TCoefIm,Element,n,'im',CoilBody,CoilType)
+    TCoefRe = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
+    TCoefIm = GetElectricConductivityTensor(Element,n,'im',CoilBody,CoilType)
     DO i=1,3
        DO j=1,3
           Tcoef( i,j,1:n ) = CMPLX( REAL(TcoefRe( i,j,1:n )), TCoefIm( i,j,1:n ), KIND=dp)
@@ -87,11 +88,12 @@
     END DO
 
 !------------------------------------------------------------------------------ 
-  END SUBROUTINE GetCMPLXElectricConductivityTensor
+  END FUNCTION GetCMPLXElectricConductivityTensor
 !------------------------------------------------------------------------------ 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE GetPermeabilityTensor(mu, Element, n, Part)
+  FUNCTION GetPermeabilityTensor(Element, n, Part) &
+                  RESULT (mu)
 !------------------------------------------------------------------------------
     USE DefUtils
     IMPLICIT NONE
@@ -133,7 +135,7 @@
       END IF
     END IF
 !------------------------------------------------------------------------------
-  END SUBROUTINE GetPermeabilityTensor
+  END FUNCTION GetPermeabilityTensor
 !------------------------------------------------------------------------------ 
 
 

@@ -620,7 +620,7 @@ CONTAINS
 !      Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
 
-       CALL GetElectricConductivityTensor(TCoef, Element,n,'re',CoilBody,CoilType)
+       Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
 
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
        IF (.NOT. LaminateStack) LaminateStackModel = ''
@@ -3078,7 +3078,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !        Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
-         CALL GetCMPLXElectricConductivityTensor(TCoef, Element, n, CoilBody, CoilType) 
+         Tcoef = GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) 
 
          LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
          IF (.NOT. LaminateStack) LaminateStackModel = ''
@@ -5618,7 +5618,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      !  Read conductivity values (might be a tensor)
      !------------------------------------------------------------------------------
      !C(1:n) = GetReal(Material,'Electric Conductivity',Found)
-     CALL GetCMPLXElectricConductivityTensor(TCoef, Element, n, CoilBody, CoilType) 
+     Tcoef = GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) 
 
      dim = CoordinateSystemDimension()
      CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &

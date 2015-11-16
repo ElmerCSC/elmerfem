@@ -208,7 +208,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
       END IF
 
       Tcoef = 0.0d0
-      CALL GetElectricConductivityTensor(TCoef,Element,n,'re',CoilBody,CoilType)
+      Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
 
       !Get element local matrix and rhs vector:
       !----------------------------------------
