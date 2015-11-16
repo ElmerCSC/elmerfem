@@ -1277,6 +1277,7 @@ CONTAINS
      ptr % CValue = ' '
      ptr % LValue = .FALSE.
      NULLIFY( ptr % CubicCoeff )
+     NULLIFY( ptr % Cumulative )
      NULLIFY( ptr % Next )
      NULLIFY( ptr % FValues )
      NULLIFY( ptr % TValues )
@@ -1294,6 +1295,7 @@ CONTAINS
      TYPE(ValueListEntry_t), POINTER :: ptr
 
      IF ( ASSOCIATED(ptr % CubicCoeff) ) DEALLOCATE(ptr % CubicCoeff)
+     IF ( ASSOCIATED(ptr % Cumulative) ) DEALLOCATE(ptr % Cumulative)
      IF ( ASSOCIATED(ptr % FValues) ) DEALLOCATE(ptr % FValues)
      IF ( ASSOCIATED(ptr % TValues) ) DEALLOCATE(ptr % TValues)
      IF ( ASSOCIATED(ptr % IValues) ) DEALLOCATE(ptr % IValues)
@@ -2242,6 +2244,10 @@ CONTAINS
                     Ptr % CubicCoeff, Monotone )
        END IF
      END IF
+
+!    CALL ALLOCATE(ptr % Cumulative(n))
+!    CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
+!         Ptr % CubicCoeff, Ptr % Cumulative )
 
      ptr % NameLen = StringToLowerCase( ptr % Name,Name )
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DependName )

@@ -354,7 +354,7 @@ END INTERFACE
      INTEGER :: TYPE
      TYPE(ValueListEntry_t), POINTER :: Next => Null()
 
-     REAL(KIND=dp), POINTER :: TValues(:)
+     REAL(KIND=dp), POINTER :: TValues(:), Cumulative(:) => NULL()
      REAL(KIND=dp), POINTER :: FValues(:,:,:), CubicCoeff(:)=>NULL()
 
      LOGICAL :: LValue
