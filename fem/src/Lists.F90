@@ -2379,7 +2379,7 @@ CONTAINS
      IF ( PRESENT( maxv ) ) THEN
         IF ( L > maxv ) THEN
           WRITE( Message, '(A,I0,A,I0)') 'Given value ',L,' for property: ['//TRIM(Name)//& 
-              '] larger than given minimum: ', minv
+              '] larger than given maximum: ', maxv
           CALL Fatal( 'ListGetInteger', Message )
         END IF
      END IF
