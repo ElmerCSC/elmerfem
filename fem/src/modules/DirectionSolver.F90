@@ -55,7 +55,7 @@ SUBROUTINE DirectionSolver_Init0(Model,Solver,dt,Transient)
   CALL ListAddLogical( SolverParams, 'No Matrix',.TRUE.)
   CALL ListAddLogical( SolverParams, 'Optimize Bandwidth',.FALSE.)
   CALL ListAddString( SolverParams, 'Equation', &
-  'elementaladd'//TRIM(i2s(visited)) )
+  'elementaladd'//TRIM(varname) )
   CALL ListAddString( SolverParams, 'Procedure', &
               'DirectionSolver DirectionSolver_Dummy',.FALSE. )
   CALL ListAddString( SolverParams, 'Variable', '-nooutput '//TRIM(varname)//'_dummy' )
