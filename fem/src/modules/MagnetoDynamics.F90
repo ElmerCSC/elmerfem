@@ -6238,10 +6238,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF ( ASSOCIATED(JH).OR.ASSOCIATED(EL_JH) ) THEN
            ! The Joule heating power per unit volume: J.E = (sigma * E).E
            IF (vDOFS == 1) THEN
-             Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
-                 TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
                IF (HasVelocity) THEN
-                 Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:)))*CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
+                 Coeff = Coeff + &
+                 SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:))+E(1,1:3)) * &
+                   E(1,1:3)) * Basis(p)*s
+               ELSE
+                 Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+                   TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
                END IF
            ELSE
              ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
