@@ -1381,10 +1381,10 @@ CONTAINS
       Parent=>Element % BoundaryInfo % Right
     END IF
 
-    Bfield1 = AIMAG(GetReal(BC,'Magnetic Flux Density 1',Found), &
+    Bfield1 = CMPLX(GetReal(BC,'Magnetic Flux Density 1',Found), &
                     GetReal(BC,'Magnetic Flux Density 1 im',Found), KIND=dp)
 
-    Bfield2 = AIMAG(GetReal(BC,'Magnetic Flux Density 2',Found), &
+    Bfield2 = CMPLX(GetReal(BC,'Magnetic Flux Density 2',Found), &
                     GetReal(BC,'Magnetic Flux Density 2 im',Found), KIND=dp)
 
     !Numerical integration:
@@ -1410,7 +1410,7 @@ CONTAINS
       END IF
 
       DO p=1,nd
-        FORCE(p) = FORCE(p) + IP % s(t)*detJ*(Coord(2)*Bfield1-Coord(1)*Bfield2)
+        FORCE(p) = FORCE(p) + IP % s(t)*detJ*(Coord(2)*localB1-Coord(1)*localB2)
         DO q=1,nd
           STIFF(p,q) = STIFF(p,q) + IP % s(t)*detJ*Basis(q)*Basis(p)
         END DO
