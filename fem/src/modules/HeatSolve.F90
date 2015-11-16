@@ -107,7 +107,7 @@
      REAL(KIND=dp) :: NonlinearTol,NewtonTol,SmartTol,Relax, &
             SaveRelax,dt,dt0,CumulativeTime, VisibleFraction, PowerScaling=1.0, PrevPowerScaling=1.0, &
             PowerRelax, PowerTimeScale, PowerSensitivity, xave, yave, Normal(3), &
-	    dist, mindist, ControlPoint(3)
+	    dist, mindist, ControlPoint(3), HeatLayerThickness
 
      REAL(KIND=dp), POINTER :: Temperature(:),PrevTemperature(:),FlowSolution(:), &
        ElectricCurrent(:), PhaseChangeIntervals(:,:),ForceVector(:), &
@@ -951,6 +951,15 @@
          END IF
 !------------------------------------------------------------------------------
 
+
+         HeatLayerThickness = GetCReal( Material,'Heat Layer Thickness', Found)
+         IF( Found ) THEN
+           MASS = HeatLayerThickness * MASS
+           STIFF = HeatLayerThickness * STIFF
+           FORCE = HeatLayerThickness * FORCE
+         END IF
+
+
          IF ( HeaterControlLocal .AND. .NOT. TransientHeaterControl) THEN
 
            IF ( TransientAssembly .AND. .NOT. ConstantBulk ) THEN
@@ -993,6 +1002,8 @@
 
 
 1000  CONTINUE
+
+     
 
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
