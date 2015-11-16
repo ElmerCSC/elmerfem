@@ -1359,7 +1359,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp) :: R(n), R_ip, &
-            Inf_ip,Coord(3),Normal(3),mu,u,v
+            Inf_ip,Coord(3),Normal(3),mu,u,v,value_re(n), value_im(n)
 
     COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
 
@@ -1381,11 +1381,12 @@ CONTAINS
       Parent=>Element % BoundaryInfo % Right
     END IF
 
-    Bfield1 = CMPLX(GetReal(BC,'Magnetic Flux Density 1',Found), &
-                    GetReal(BC,'Magnetic Flux Density 1 im',Found), KIND=dp)
-
-    Bfield2 = CMPLX(GetReal(BC,'Magnetic Flux Density 2',Found), &
-                    GetReal(BC,'Magnetic Flux Density 2 im',Found), KIND=dp)
+    value_re = GetReal(BC,'Magnetic Flux Density 1',Found)
+    value_im = GetReal(BC,'Magnetic Flux Density 1 im',Found)
+    Bfield1 = CMPLX(value_re, value_im, KIND=dp)
+    value_re = GetReal(BC,'Magnetic Flux Density 2',Found)
+    value_im = GetReal(BC,'Magnetic Flux Density 2 im',Found)
+    Bfield2 = CMPLX(value_re, value_im, KIND=dp)
 
     !Numerical integration:
     !----------------------
