@@ -988,7 +988,8 @@ END SUBROUTINE GetMaxDefs
 
    CALL EnlargeParallelInfo(Mesh, DiscontPerm )
    IF( ParEnv % PEs > 1 ) THEN
-     PRINT *,'Zero Global:',ParEnv % MyPe, COUNT( Mesh % ParallelInfo % GlobalDofs == 0) 
+     m = COUNT( Mesh % ParallelInfo % GlobalDofs == 0) 
+     IF( m > 0 ) CALL Warn('CreateDiscontMesh','There are nodes with zero global dof index: '//TRIM(I2S(m)))
    END IF
 
    IF( DoubleBC .AND. NoDiscontNodes > 0 ) DEALLOCATE( DisContPerm )
