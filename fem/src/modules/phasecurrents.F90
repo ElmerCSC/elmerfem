@@ -52,7 +52,7 @@ MODULE HarmUtils
         sumA = sumA + amplitudes(i, 2) * sqrt(2._dp) * cos(amplitudes(i,1)  * fundamental_omega * t + phase)
       END DO
       
-    END FUNCTION SinSum
+    END FUNCTION CosSum
     
 END MODULE HarmUtils
 
