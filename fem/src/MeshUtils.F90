@@ -11570,7 +11570,7 @@ END SUBROUTINE FindNeighbourNodes
     TYPE(Mesh_t), POINTER :: Mesh, NewMesh
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: u(:),v(:),w(:),x(:),y(:),z(:),xh(:)
-    INTEGER :: i, j, k, n, NewElCnt, NodeCnt, EdgeCnt, Node, ParentId, Diag
+    INTEGER :: i, j, k, n, NewElCnt, NodeCnt, EdgeCnt, Node, ParentId, Diag, NodeIt
     LOGICAL :: Found, EdgesPresent
     TYPE(Element_t), POINTER :: Enew,Eold,Edge,Eptr,Eparent,Face,Faces(:)
     INTEGER, POINTER :: Child(:,:)
@@ -11582,7 +11582,7 @@ END SUBROUTINE FindNeighbourNodes
 !------------------------------------------------------------------------------
     IF ( .NOT. ASSOCIATED( Mesh ) ) RETURN
 
-    CALL Info( 'SplitMeshEqual', 'Mesh splitting works for first order elements 303, 404, (504?) and 808.', Level = 6 )
+    CALL Info( 'SplitMeshEqual', 'Mesh splitting works for first order elements 303, 404, 504, (706) and 808.', Level = 6 )
 
     DO i=1,Mesh % NumberOfBulkElements
       SELECT CASE(Mesh % Elements(i) % TYPE % ElementCode/100)
@@ -11614,22 +11614,30 @@ END SUBROUTINE FindNeighbourNodes
 !   -------------------------
     NodeCnt = Mesh % NumberOfNodes + Mesh % NumberOfEdges
 !
-!   For bricks, count faces:
+!   For quad faces add one node in the center:
 !   ------------------------
     DO i = 1, Mesh % NumberOfFaces
        Face => Mesh % Faces(i)
        IF( Face % TYPE % NumberOfNodes == 4 ) NodeCnt = NodeCnt+1
     END DO
+    
+    WRITE( Message, * ) 'Added nodes in the center of faces : ', NodeCnt - Mesh % NumberOfNodes - Mesh % NumberOfEdges
+    CALL Info( 'SplitMeshEqual', Message, Level=10 )
 !
 !   For quads and bricks, count centerpoints:
 !   -----------------------------------------
+    NodeIt = 0
     DO i=1,Mesh % NumberOfBulkElements
        Eold => Mesh % Elements(i)
        SELECT CASE( Eold % TYPE % ElementCode / 100 )
        CASE(4,8)
           NodeCnt = NodeCnt + 1
+          NodeIt = NodeIt + 1
        END SELECT
     END DO
+    
+    WRITE( Message, * ) 'Added nodes in the center of bulks : ', NodeIt
+    CALL Info( 'SplitMeshEqual', Message, Level=10 )
 !
 !   new mesh nodecoordinate arrays:
 !   -------------------------------
@@ -11654,6 +11662,7 @@ END SUBROUTINE FindNeighbourNodes
     y(1:Mesh % NumberOfNodes) = v
     z(1:Mesh % NumberOfNodes) = w
 
+! what is h? - pointer to nodal element size
     IF (PRESENT(h)) THEN
       ALLOCATE(xh(SIZE(x)))
       xh(1:SIZE(h)) = h
@@ -11679,8 +11688,10 @@ END SUBROUTINE FindNeighbourNodes
          z(j) = SUM(w(Edge % NodeIndexes))/k
        END IF
     END DO
+    
+    CALL Info('SplitMeshEqual','Added edge centers to the nodes list.', Level=10 )  
 !
-!   add face centers for bricks:
+!   add quad face centers for bricks and prisms(wedges):
 !   ----------------------------
     DO i=1,Mesh % NumberOfFaces
        Face => Mesh % Faces(i)
@@ -11706,6 +11717,8 @@ END SUBROUTINE FindNeighbourNodes
           END IF
        END IF
     END DO
+    
+    CALL Info('SplitMeshEqual','Added face centers to the nodes list.', Level=10 )
 !
 !   add centerpoint for quads & bricks:
 !   -----------------------------------
@@ -11791,16 +11804,28 @@ END SUBROUTINE FindNeighbourNodes
           NewElCnt = NewElCnt + 4 ! quads
        CASE(5)
           NewElCnt = NewElCnt + 8 ! tetras
+       CASE(7)
+          NewElCnt = NewElCnt + 8 ! prisms (wedges)
        CASE(8)
           NewElCnt = NewElCnt + 8 ! hexas
        END SELECT
     END DO
 
+    WRITE( Message, * ) 'Count of new elements : ', NewElCnt
+    CALL Info( 'SplitMeshEqual', Message, Level=10 )
+
     CALL AllocateVector( NewMesh % Elements, NewElCnt )
+    CALL Info('SplitMeshEqual','New mesh allocated.', Level=10 )
+
     CALL AllocateArray( Child, Mesh % NumberOfBulkElements, 8 )
+    CALL Info('SplitMeshEqual','Array for bulk elements allocated.', Level=10 )
+    
     NewElCnt = 0
     NodeCnt = Mesh % NumberOfNodes
     EdgeCnt = Mesh % NumberOfEdges
+    
+
+
 !
 !   Index to old quad/hexa centerpoint node in the new mesh nodal arrays:
 !   ---------------------------------------------------------------------
@@ -12187,6 +12212,141 @@ END SUBROUTINE FindNeighbourNodes
           Enew % NodeIndexes(4) = Eold % EdgeIndexes(6) + NodeCnt
 
           END SELECT
+
+
+       CASE(706)
+!
+!         Split prism to 8 new prism from edge
+!         centerpoints:
+!         --------------------------------------
+!
+!         1st new element
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Enew => NewMesh % Elements(NewElCnt)
+          Child(i,1) = NewElCnt
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL  AllocateVector( ENew % NodeIndexes, 6)
+          Enew % NodeIndexes(1) = Eold % NodeIndexes(1)
+          Enew % NodeIndexes(2) = Eold % EdgeIndexes(1) + NodeCnt 
+          Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt 
+          Enew % NodeIndexes(4) = Eold % EdgeIndexes(7) + NodeCnt
+          Enew % NodeIndexes(5) = Eold % FaceIndexes(3) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(6) = Eold % FaceIndexes(5) + NodeCnt + EdgeCnt
+
+!
+!         2nd new element
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Enew => NewMesh % Elements(NewElCnt)
+          Child(i,2) = NewElCnt
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( ENew % NodeIndexes, 6)
+          Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+          Enew % NodeIndexes(2) = Eold % NodeIndexes(2)
+          Enew % NodeIndexes(3) = Eold % EdgeIndexes(2) + NodeCnt
+          Enew % NodeIndexes(4) = Eold % FaceIndexes(3) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(5) = Eold % EdgeIndexes(8) + NodeCnt 
+          Enew % NodeIndexes(6) = Eold % FaceIndexes(4) + NodeCnt + EdgeCnt
+
+!
+!         3rd new element (near node 3)
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Enew => NewMesh % Elements(NewElCnt)
+          Child(i,3) = NewElCnt
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( ENew % NodeIndexes, 6)
+          Enew % NodeIndexes(1) = Eold % EdgeIndexes(3) + NodeCnt
+          Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
+          Enew % NodeIndexes(3) = Eold % NodeIndexes(3)
+          Enew % NodeIndexes(4) = Eold % FaceIndexes(5) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(5) = Eold % FaceIndexes(4) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(6) = Eold % EdgeIndexes(9) + NodeCnt
+
+!
+!         4th new element (bottom center)
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Enew => NewMesh % Elements(NewElCnt)
+          Child(i,4) = NewElCnt 
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( ENew % NodeIndexes, 6)
+          Enew % NodeIndexes(1) = Eold % EdgeIndexes(1) + NodeCnt
+          Enew % NodeIndexes(2) = Eold % EdgeIndexes(2) + NodeCnt
+          Enew % NodeIndexes(3) = Eold % EdgeIndexes(3) + NodeCnt
+          Enew % NodeIndexes(4) = Eold % FaceIndexes(3) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(5) = Eold % FaceIndexes(4) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(6) = Eold % FaceIndexes(5) + NodeCnt + EdgeCnt
+
+!
+!         5th new element
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Enew => NewMesh % Elements(NewElCnt)
+          Child(i,5) = NewElCnt 
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( ENew % NodeIndexes, 6)
+          Enew % NodeIndexes(1) = Eold % EdgeIndexes(7) + NodeCnt
+          Enew % NodeIndexes(2) = Eold % FaceIndexes(3) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(3) = Eold % FaceIndexes(5) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(4) = Eold % NodeIndexes(4)
+          Enew % NodeIndexes(5) = Eold % EdgeIndexes(4) + NodeCnt
+          Enew % NodeIndexes(6) = Eold % EdgeIndexes(6) + NodeCnt
+
+!
+!         6th new element
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Enew => NewMesh % Elements(NewElCnt)
+          Child(i,6) = NewElCnt 
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( ENew % NodeIndexes, 6)
+          Enew % NodeIndexes(1) = Eold % FaceIndexes(3) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(2) = Eold % EdgeIndexes(8) + NodeCnt
+          Enew % NodeIndexes(3) = Eold % FaceIndexes(4) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
+          Enew % NodeIndexes(5) = Eold % NodeIndexes(5)
+          Enew % NodeIndexes(6) = Eold % EdgeIndexes(5) + NodeCnt
+
+!
+!         7th new element
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Enew => NewMesh % Elements(NewElCnt)
+          Child(i,7) = NewElCnt 
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( ENew % NodeIndexes, 6)
+          Enew % NodeIndexes(1) = Eold % FaceIndexes(5) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(2) = Eold % FaceIndexes(4) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(3) = Eold % EdgeIndexes(9) + NodeCnt
+          Enew % NodeIndexes(4) = Eold % EdgeIndexes(6) + NodeCnt
+          Enew % NodeIndexes(5) = Eold % EdgeIndexes(5) + NodeCnt
+          Enew % NodeIndexes(6) = Eold % NodeIndexes(6)
+!
+!         8th new element (top half, center)
+!         ---------------
+          NewElCnt = NewElCnt + 1
+          Enew => NewMesh % Elements(NewElCnt)
+          Child(i,8) = NewElCnt
+          Enew = Eold
+          Enew % ElementIndex = NewElCnt
+          CALL AllocateVector( ENew % NodeIndexes, 6)
+          Enew % NodeIndexes(1) = Eold % FaceIndexes(3) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(2) = Eold % FaceIndexes(4) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(3) = Eold % FaceIndexes(5) + NodeCnt + EdgeCnt
+          Enew % NodeIndexes(4) = Eold % EdgeIndexes(4) + NodeCnt
+          Enew % NodeIndexes(5) = Eold % EdgeIndexes(5) + NodeCnt
+          Enew % NodeIndexes(6) = Eold % EdgeIndexes(6) + NodeCnt
+
+
 
        CASE(808)
 !
