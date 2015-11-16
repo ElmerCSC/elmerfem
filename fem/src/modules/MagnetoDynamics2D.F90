@@ -836,7 +836,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
       Element => GetBoundaryElement(t)
       BC=>GetBC(Element)
       IF(.NOT.ASSOCIATED(BC)) CYCLE
- 
+
       IF(GetLogical(BC,'Infinity BC',Found)) THEN
          n  = GetElementNOFNodes(Element)
          nd = GetElementNOFDOFs(Element)
@@ -845,6 +845,13 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
          n  = GetElementNOFNodes( Element )
          nd = GetElementNOFDOFs( Element )
          CALL LocalMatrixAirGapBC(Element, BC, n, nd)
+      ELSE IF(ListCheckPresent(BC, 'Magnetic Flux Density 1'   ) .OR. &
+              ListCheckPresent(BC, 'Magnetic Flux Density 1 im') .OR. &
+              ListCheckPresent(BC, 'Magnetic Flux Density 2'   ) .OR. &
+              ListCheckPresent(BC, 'Magnetic Flux Density 2 im')) THEN
+         n  = GetElementNOFNodes( Element )
+         nd = GetElementNOFDOFs( Element )
+         CALL LocalMatrixBBC(Element, BC, n, nd)
       END IF
     END DO
 !$omp end parallel do
@@ -1334,6 +1341,87 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixAirGapBC
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixBBC(Element, BC, n, nd )
+!          
+! P. Lombard, G. Meunier, "A general purpose method for electric and magnetic 
+! combined problems for 2D, axisymmetric and transient systems", IEEE Trans.
+! magn. 29(2), p. 1737 - 1740, Mar 1993
+! -ettaka- 
+!------------------------------------------------------------------------------
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
+    LOGICAL :: Stat
+    INTEGER :: i,p,q,t
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    REAL(KIND=dp) :: R(n), R_ip, &
+            Inf_ip,Coord(3),Normal(3),mu,u,v,value_re(n), value_im(n)
+
+    COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
+
+    TYPE(ValueList_t), POINTER :: BC
+
+    TYPE(Element_t), POINTER :: Parent
+    TYPE(Nodes_t) :: Nodes
+    COMPLEX(KIND=dp) :: localB1, localB2, Bfield1(n), Bfield2(n)
+
+    SAVE Nodes
+ 	!$OMP THREADPRIVATE(Nodes)
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    Parent=>Element % BoundaryInfo % Left
+    IF(.NOT.ASSOCIATED(Parent)) THEN
+      Parent=>Element % BoundaryInfo % Right
+    END IF
+
+    value_re = GetReal(BC,'Magnetic Flux Density 1',Found)
+    value_im = GetReal(BC,'Magnetic Flux Density 1 im',Found)
+    Bfield1 = CMPLX(value_re, value_im, KIND=dp)
+    value_re = GetReal(BC,'Magnetic Flux Density 2',Found)
+    value_im = GetReal(BC,'Magnetic Flux Density 2 im',Found)
+    Bfield2 = CMPLX(value_re, value_im, KIND=dp)
+
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+                 IP % W(t), detJ, Basis )
+
+      mu = SUM(Basis(1:n)*R(1:n))
+      localB1 = SUM(Basis(1:n)*Bfield1(1:n))
+      localB2 = SUM(Basis(1:n)*Bfield2(1:n))
+
+      Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
+      Coord(1) = SUM(Basis(1:n) * Nodes % x(1:n))
+      Coord(2) = SUM(Basis(1:n) * Nodes % y(1:n))
+      Coord(3) = SUM(Basis(1:n) * Nodes % z(1:n))
+      
+      IF( CSymmetry ) THEN
+        detJ = detJ * Coord(1)
+      END IF
+
+      DO p=1,nd
+        FORCE(p) = FORCE(p) + IP % s(t)*detJ*(Coord(2)*localB1-Coord(1)*localB2)
+        DO q=1,nd
+          STIFF(p,q) = STIFF(p,q) + IP % s(t)*detJ*Basis(q)*Basis(p)
+        END DO
+      END DO
+    END DO
+    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixBBC
+!------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------

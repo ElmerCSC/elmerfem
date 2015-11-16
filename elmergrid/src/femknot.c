@@ -2484,10 +2484,12 @@ int SetConnectedNodes(struct FemType *data,struct BoundaryType *bound,
 /* Mark node that are related to a boundary condition of a given bctype.
    This may be used to create strong connections in the partitioning process. */
 {
-  int i,j,k,bc,sideelemtype,sidenodes;
+  int i,j,k,bc,sideelemtype,sidenodes,nodesset;
   int sideind[MAXNODESD1],conflicts;
 
   conflicts = 0;
+  nodesset = 0;
+
   for(bc=0;bc<MAXBOUNDARIES;bc++) {    
     if(bound[bc].created == FALSE) continue;
     if(bound[bc].nosides == 0) continue;
@@ -2522,13 +2524,17 @@ int SetConnectedNodes(struct FemType *data,struct BoundaryType *bound,
       
       for(j=0;j<sidenodes;j++) {
 	k = sideind[j];
-	if( data->nodeconnect[k] & data->nodeconnect[k] != connecttype ) { 
-	  conflicts += 1;
+	if( data->nodeconnect[k] != connecttype ) {
+	  if( data->nodeconnect[k] ) conflicts += 1;
+	  data->nodeconnect[k] = connecttype;
+	  nodesset += 1;	  
 	}
-	data->nodeconnect[k] = connecttype;
       }
     }
   }
+  if(info) printf("Setting connectivity group %d for %d nodes on boundary %d\n",
+		  connecttype,nodesset,bctype);
+
   if(conflicts) printf("The were %d conflicts in the connectivity set %d\n",
 		       conflicts,connecttype);
 
@@ -6877,6 +6883,7 @@ void ReduceElementOrder(struct FemType *data,int matmin,int matmax)
     if(material >= matmin && material <= matmax) 
       elemcode2 = 101*(elemcode1/100);
     if(elemcode2 == 505) elemcode2 = 504; /* tetrahedron */
+    if(elemcode2 == 707) elemcode2 = 706; /* prism */
 #if 0
     printf("element=%d  codes=[%d,%d]\n",element,elemcode1,elemcode2);
     printf("mat=%d  interval=[%d,%d]\n",material,matmin,matmax);
