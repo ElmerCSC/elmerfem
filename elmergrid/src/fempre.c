@@ -100,7 +100,8 @@ static void Instructions()
   printf("17) .msh      : Nastran format\n");
   printf("18) .msh      : CGsim format\n");
   printf("19) .geo      : Geo format\n");
-  printf("20) .tra      : Cedrat Flux format\n");
+  printf("20) .tra      : Cedrat Flux 2D format\n");
+  printf("21) .pf3      : Cedrat Flux 3D format\n");
 #endif 
 
   printf("\nThe second parameter defines the output file format:\n");
