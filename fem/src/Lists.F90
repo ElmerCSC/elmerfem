@@ -2245,9 +2245,9 @@ CONTAINS
        END IF
      END IF
 
-!    CALL ALLOCATE(ptr % Cumulative(n))
-!    CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
-!         Ptr % CubicCoeff, Ptr % Cumulative )
+     ALLOCATE(ptr % Cumulative(n))
+     CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
+          Ptr % CubicCoeff, Ptr % Cumulative )
 
      ptr % NameLen = StringToLowerCase( ptr % Name,Name )
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DependName )
@@ -2379,7 +2379,7 @@ CONTAINS
      IF ( PRESENT( maxv ) ) THEN
         IF ( L > maxv ) THEN
           WRITE( Message, '(A,I0,A,I0)') 'Given value ',L,' for property: ['//TRIM(Name)//& 
-              '] larger than given maximum: ', maxv
+              '] larger than given minimum: ', minv
           CALL Fatal( 'ListGetInteger', Message )
         END IF
      END IF
