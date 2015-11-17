@@ -11588,7 +11588,7 @@ END SUBROUTINE FindNeighbourNodes
     DO i=1,Mesh % NumberOfBulkElements
       SELECT CASE(Mesh % Elements(i) % TYPE % ElementCode/100)
       CASE(6)
-        CALL Fatal('SplitMeshEqual','Pyramids not supported?, sorry.')
+        CALL Fatal('SplitMeshEqual','Pyramids not supported, sorry.')
       END SELECT
     END DO
 
@@ -12850,9 +12850,6 @@ END SUBROUTINE FindNeighbourNodes
                   EoldNodes(4) == FaceNodes(4) ) EXIT
 
           END DO
-if ( facenumber > SIZE(Eparent  % FaceIndexes) ) THEN
-stop 'notound'
-endif
 
 !         Then, what are the edges on this face?
 !         --------------------------------------
