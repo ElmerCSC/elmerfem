@@ -25,3 +25,7 @@ int LoadGeoInput(struct FemType *data,struct BoundaryType *bound,
 int LoadUniversalMesh(struct FemType *data,struct BoundaryType *bound, 
 		      char *prefix,int info);
 int LoadCGsimMesh(struct FemType *data,char *prefix,int info);
+int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
+		    char *prefix,int info);
+int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
+		    char *prefix,int info);

@@ -41,6 +41,7 @@
 
 !> \ingroup Solvers
 !> \{
+
 !------------------------------------------------------------------------------
 SUBROUTINE MagnetoDynamics2D_Init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -77,6 +78,7 @@ END SUBROUTINE MagnetoDynamics2D_Init
 SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CircuitUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
@@ -101,6 +103,8 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
   LOGICAL :: NewtonRaphson = .FALSE., CSymmetry
   INTEGER :: CoupledIter
   TYPE(Variable_t), POINTER :: IterV, CoordVar
+
+  TYPE(Matrix_t),POINTER::CM
 
 !------------------------------------------------------------------------------
 
@@ -152,6 +156,10 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
          n  = GetElementNOFNodes( Element )
          nd = GetElementNOFDOFs( Element )
          CALL LocalMatrixBC(Element, n, nd)
+      ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
+         n  = GetElementNOFNodes( Element )
+         nd = GetElementNOFDOFs( Element )
+         CALL LocalMatrixAirGapBC(Element, BC, n, nd)
       END IF
     END DO
 !$omp end parallel do
@@ -375,7 +383,7 @@ CONTAINS
   SUBROUTINE LocalMatrix(Element, n, nd)
 !------------------------------------------------------------------------------
     INTEGER :: n, nd
-    TYPE(Element_t) :: Element
+    TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
     INTEGER :: i,p,q,t,siz
@@ -394,6 +402,9 @@ CONTAINS
 
     TYPE(Nodes_t), SAVE :: Nodes
 !$omp threadprivate(Nodes)
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    LOGICAL :: CoilBody    
+    TYPE(ValueList_t), POINTER :: CompParams
 !------------------------------------------------------------------------------
 
     CALL GetElementNodes( Nodes,Element )
@@ -453,6 +464,26 @@ CONTAINS
         mu = SUM( Basis(1:n) * R(1:n) )
       END IF
 
+      CoilBody = .FALSE.
+      CompParams => GetComponentParams( Element )
+      CoilType = ''
+      IF (ASSOCIATED(CompParams)) THEN
+        CoilType = GetString(CompParams, 'Coil Type', Found)
+        IF (Found) THEN
+          SELECT CASE (CoilType)
+          CASE ('stranded')
+             CoilBody = .TRUE.
+          CASE ('massive')
+             CoilBody = .TRUE.
+          CASE ('foil winding')
+             CoilBody = .TRUE.
+    !         CALL GetElementRotM(Element, RotM, n)
+          CASE DEFAULT
+             CALL Fatal ('MagnetoDynamics2DHarmonic', 'Non existent Coil Type Chosen!')
+          END SELECT
+        END IF
+      END IF
+
       C_ip = SUM( Basis(1:n) * C(1:n) )
       M_ip = MATMUL( M,Basis(1:n) )
 
@@ -462,7 +493,7 @@ CONTAINS
       IF(TransientSimulation .AND. C_ip/=0._dp) THEN
         DO p=1,nd
           DO q=1,nd
-            MASS(p,q) = MASS(p,q) + IP % s(t) * detJ * C_ip * Basis(q)*Basis(p)
+            IF(CoilType /= 'stranded') MASS(p,q) = MASS(p,q) + IP % s(t) * detJ * C_ip * Basis(q)*Basis(p)
           END DO
         END DO
       END IF
@@ -573,6 +604,59 @@ CONTAINS
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixAirGapBC(Element, BC, n, nd )
+!------------------------------------------------------------------------------
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
+    LOGICAL :: Stat, Found
+    INTEGER :: i,p,q,t
+    TYPE(GaussIntegrationPoints_t) :: IP
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), R(n), R_ip, &
+            Inf_ip,Coord(3),Normal(3),mu,u,v, AirGapLength(nd), &
+            AirGapMu(nd), AirGapL
+
+    TYPE(ValueList_t), POINTER :: Material
+    TYPE(ValueList_t), POINTER :: BC
+
+    TYPE(Element_t), POINTER :: Parent
+    TYPE(Nodes_t) :: Nodes
+    SAVE Nodes
+    !$OMP THREADPRIVATE(Nodes)
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    AirGapLength=GetConstReal( BC, 'Air Gap Length', Found)
+    if (.not. Found) CALL FATAL('LocalMatrixAirGapBC', 'Air Gap Length not found!')
+
+    AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
+    if (.not. Found) AirGapMu=1d0
+
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx )
+
+      mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
+      AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
+
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
+             AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
+
+    END DO
+    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixAirGapBC
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivity(Material,Acoef,n,Element)
@@ -680,6 +764,7 @@ END SUBROUTINE MagnetoDynamics2DHarmonic_Init
 SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CircuitUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver       !< Linear & nonlinear equation solver options
@@ -702,6 +787,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
   LOGICAL, SAVE :: NewtonRaphson = .FALSE., CSymmetry
   INTEGER :: CoupledIter
   TYPE(Variable_t), POINTER :: IterV, CoordVar
+
+  TYPE(Matrix_t),POINTER::CM
 
 !------------------------------------------------------------------------------
 
@@ -754,6 +841,10 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,TransientSimulation )
          n  = GetElementNOFNodes(Element)
          nd = GetElementNOFDOFs(Element)
          CALL LocalMatrixBC(  Element, n, nd )
+      ELSE IF(GetLogical(BC,'Air Gap',Found)) THEN
+         n  = GetElementNOFNodes( Element )
+         nd = GetElementNOFDOFs( Element )
+         CALL LocalMatrixAirGapBC(Element, BC, n, nd)
       END IF
     END DO
 !$omp end parallel do
@@ -982,6 +1073,11 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Material,  BodyForce
 
     TYPE(Nodes_t), SAVE :: Nodes
+    
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    LOGICAL :: CoilBody    
+    TYPE(ValueList_t), POINTER :: CompParams
+
 !$omp threadprivate(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
@@ -1003,6 +1099,26 @@ CONTAINS
       Hval => Lst % FValues(1,1,:)
     ELSE
       CALL GetReluctivity(Material,R,n,Element)
+    END IF
+    
+    CoilBody = .FALSE.
+    CompParams => GetComponentParams( Element )
+    CoilType = ''
+    IF (ASSOCIATED(CompParams)) THEN
+      CoilType = GetString(CompParams, 'Coil Type', Found)
+      IF (Found) THEN
+        SELECT CASE (CoilType)
+        CASE ('stranded')
+           CoilBody = .TRUE.
+        CASE ('massive')
+           CoilBody = .TRUE.
+        CASE ('foil winding')
+           CoilBody = .TRUE.
+  !         CALL GetElementRotM(Element, RotM, n)
+        CASE DEFAULT
+           CALL Fatal ('MagnetoDynamics2DHarmonic', 'Non existent Coil Type Chosen!')
+        END SELECT
+      END IF
     END IF
 
     C = GetReal( Material, 'Electric Conductivity', Found, Element)
@@ -1054,7 +1170,8 @@ CONTAINS
 
       DO p=1,nd
         DO q=1,nd
-          STIFF(p,q) = STIFF(p,q) + IP % s(t) * detJ * im * omega * C_ip * Basis(q)*Basis(p)
+          IF(CoilType /= 'stranded') STIFF(p,q) = STIFF(p,q) + &
+                                   IP % s(t) * detJ * im * omega * C_ip * Basis(q)*Basis(p)
         END DO
       END DO
 
@@ -1164,6 +1281,60 @@ CONTAINS
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE LocalMatrixAirGapBC(Element, BC, n, nd )
+!------------------------------------------------------------------------------
+    INTEGER :: n, nd
+    TYPE(Element_t), POINTER :: Element
+!------------------------------------------------------------------------------
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,LoadAtIP
+    LOGICAL :: Stat, Found
+    INTEGER :: i,p,q,t
+    TYPE(GaussIntegrationPoints_t) :: IP
+    COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
+    REAL(KIND=dp) :: R(n), R_ip, &
+            Coord(3),Normal(3),mu,u,v, AirGapLength(nd), &
+            AirGapMu(nd), AirGapL
+
+    TYPE(ValueList_t), POINTER :: Material
+    TYPE(ValueList_t), POINTER :: BC
+
+    TYPE(Element_t), POINTER :: Parent
+    TYPE(Nodes_t) :: Nodes
+    SAVE Nodes
+    !$OMP THREADPRIVATE(Nodes)
+!------------------------------------------------------------------------------
+    CALL GetElementNodes( Nodes, Element )
+    STIFF = 0._dp
+    FORCE = 0._dp
+
+    AirGapLength=GetConstReal( BC, 'Air Gap Length', Found)
+    if (.not. Found) CALL FATAL('LocalMatrixAirGapBC', 'Air Gap Length not found!')
+
+    AirGapMu=GetConstReal( BC, 'Air Gap Relative Permeability', Found)
+    if (.not. Found) AirGapMu=1d0
+
+    !Numerical integration:
+    !----------------------
+    IP = GaussPoints( Element )
+    DO t=1,IP % n
+      ! Basis function values & derivatives at the integration point:
+      !--------------------------------------------------------------
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+              IP % W(t), detJ, Basis, dBasisdx )
+
+      mu = 4*pi*1d-7*SUM(Basis(1:n)*AirGapMu(1:n))
+      AirGapL = SUM(Basis(1:n)*AirGapLength(1:n))
+
+        STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
+             AirGapL/mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
+
+    END DO
+    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+!------------------------------------------------------------------------------
+  END SUBROUTINE LocalMatrixAirGapBC
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivity(Material,Acoef,n,Element)
@@ -1249,6 +1420,9 @@ SUBROUTINE Bsolver_init( Model,Solver,dt,Transient )
     CALL ListAddString( SolverParams, &
         NextFreeKeyword('Exported Variable',SolverParams), &
         'Joule Field' )
+    CALL ListAddString( SolverParams, &
+        NextFreeKeyword('Exported Variable',SolverParams), &
+        'Current Density[Current Density re:1 Current Density im:1]' )
   END IF
 
 
@@ -1263,6 +1437,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 
   USE DefUtils
+  USE CircuitUtils
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -1283,7 +1458,10 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating
+  TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
+  
+  TYPE(Variable_t), POINTER :: CurrDensSol
   
   SAVE Visited
 
@@ -1350,6 +1528,11 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
       IF( .NOT. ASSOCIATED( JouleSol ) ) THEN
         CALL Fatal('BSolver','Solution field not present: Joule Field' )
       END IF
+      TotDofs = TotDofs + 2
+      CurrDensSol => VariableGet(Solver % Mesh % Variables, 'Current Density')
+      IF( .NOT. ASSOCIATED( CurrDensSol ) ) THEN
+        CALL Fatal('BSolver','Solution field not present: Current Density' )
+      END IF
     END IF
   END IF
 
@@ -1381,8 +1564,10 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
        FluxSol % Values(i::FluxDofs) = Solver % Variable % Values
      ELSE IF( i == FluxDofs + 1 ) THEN
        JouleSol % Values = Solver % Variable % Values
-     ELSE
+     ELSE IF( i == FluxDofs + 2 ) THEN
        HeatingSol % Values = Solver % Variable % Values
+     ELSE 
+       CurrDensSol % Values(i-Fluxdofs-2::2) = Solver % Variable % Values
      END IF
    END DO
    DEALLOCATE( ForceVector )  
@@ -1408,7 +1593,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: weight,coeff,detJ,BAtIp(6),PotAtIp(2),CondAtIp,&
+    REAL(KIND=dp) :: weight,coeff,detJ,BAtIp(8),PotAtIp(2),CondAtIp,&
         Omega,TotalHeating, DesiredHeating, HeatingCoeff
     REAL(KIND=dp) :: Freq, FreqPower, FieldPower, ComponentLoss(2), LossCoeff, &
         ValAtIp, TotalLoss, x
@@ -1421,11 +1606,25 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:)
 
+    REAL(KIND=dp), ALLOCATABLE :: alpha(:)
+    TYPE(Variable_t), POINTER :: LagrangeVar
+    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+    REAL(KIND=dp) :: localV(2), coilthickness, localAlpha, N_j
+    TYPE(ValueList_t), POINTER :: CompParams
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber
+    LOGICAL :: CoilBody, EddyLoss
+    COMPLEX(KIND=dp) :: imag_value
+    INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
+    REAL(KIND=DP) :: grads_coeff, nofturns
+    REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im
+    COMPLEX(KIND=dp) :: i_multiplier
+    
     SAVE Nodes
 
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
     ALLOCATE( STIFF(n,n), FORCE(Totdofs,n) )
-    ALLOCATE( POT(2,n), Basis(n), dBasisdx(n,3) )
+    ALLOCATE( POT(2,n), Basis(n), dBasisdx(n,3), alpha(n) )
+    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
     
     IF( JouleHeating ) THEN
       ALLOCATE( Cond(n) ) 
@@ -1458,6 +1657,60 @@ CONTAINS
       nd = GetElementNOFDOFs()
       n  = GetElementNOFNodes()
       
+      CoilType = ''
+      CompParams => GetComponentParams( Element )
+      IF (ASSOCIATED(CompParams)) THEN    
+        CoilType = GetString(CompParams, 'Coil Type', Found)
+        
+        SELECT CASE (CoilType)
+        CASE ('stranded')
+          CoilBody = .TRUE.
+ 
+          IvarId = GetInteger (CompParams, 'Circuit Current Variable Id', Found)
+          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Current Variable Id not found!')
+ 
+          N_j = GetConstReal (CompParams, 'Stranded Coil N_j', Found)
+          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Stranded Coil N_j not found!')
+ 
+          nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
+          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Stranded Coil: Number of Turns not found!')
+          
+          i_multiplier_re = GetConstReal(CompParams, 'Current Multiplier re', Found)
+          IF (.NOT. Found) i_multiplier_re = 0._dp
+          
+          i_multiplier_im = GetConstReal(CompParams, 'Current Multiplier im', Found)
+          IF (.NOT. Found) i_multiplier_im = 0._dp
+          
+          i_multiplier = i_multiplier_re + im * i_multiplier_im
+          
+        CASE ('massive')
+          CoilBody = .TRUE.
+
+          VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
+          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
+
+        CASE ('foil winding')
+          CoilBody = .TRUE.
+          CALL GetLocalSolution(alpha,'Alpha')
+
+          VvarId = GetInteger (CompParams, 'Circuit Voltage Variable Id', Found)
+          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable Id not found!')
+
+          coilthickness = GetConstReal(CompParams, 'Coil Thickness', Found)
+          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Coil Thickness not found!')
+ 
+          nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
+          IF (.NOT. Found) CALL Fatal('MagnetoDynamicsCalcFields','Foil Winding: Number of Turns not found!')
+ 
+          VvarDofs = GetInteger (CompParams, 'Circuit Voltage Variable dofs', Found)
+          IF (.NOT. Found) CALL Fatal ('MagnetoDynamicsCalcFields', 'Circuit Voltage Variable dofs not found!')
+ 
+        CASE DEFAULT
+          CALL Fatal ('BSolver', 'Non existent Coil Type Chosen!')
+        END SELECT
+      END IF
+
+      
       ! Integrate local stresses:
       ! -------------------------
       IntegStuff = GaussPoints( Element )
@@ -1467,13 +1720,16 @@ CONTAINS
       CALL GetLocalSolution( POT, VarName )
 
       IF( JouleHeating ) THEN
+        BodyId = GetBody() 
         Material => GetMaterial()
         Cond(1:n) = GetReal( Material, 'Electric Conductivity', Found, Element)
       END IF
 
       IF( LossEstimation ) THEN
         BodyId = GetBody() 
-        LossCoeff = ListGetFun( Material,'Fourier Loss Coefficient',Freq,Found ) 
+        LossCoeff = ListGetFun( Material,'Fourier Loss Coefficient',Freq,Found )
+        EddyLoss = .FALSE.
+        IF (.NOT. Found) EddyLoss = .TRUE.
       END IF
 
       DO t=1,IntegStuff % n
@@ -1481,9 +1737,11 @@ CONTAINS
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
         
         Weight = IntegStuff % s(t) * detJ
+        grads_coeff = 1._dp/GetCircuitModelDepth()
         IF( CSymmetry ) THEN
           x = SUM( Basis(1:n) * Nodes % x(1:n) )
           Weight = Weight * x
+          grads_coeff = grads_coeff/x
         END IF
 
         IF ( .NOT. ConstantBulkMatrixInUse ) THEN
@@ -1517,20 +1775,61 @@ CONTAINS
         ! Joule heating fields
         IF( TotDofs > 4 ) THEN
           CondAtIp = SUM( Basis(1:n) * Cond(1:n) )
-          PotAtIp(1) = SUM( POT(1,1:nd) * Basis(1:nd ) )
-          PotAtIp(2) = SUM( POT(2,1:nd) * Basis(1:nd ) )
-          BAtIp(5) = 0.5_dp * Omega**2 * ( PotAtIp(1)**2 + PotAtIp(2)**2 )  
+          IF (CoilType /= 'stranded') THEN
+            PotAtIp(1) =   Omega * SUM(POT(2,1:nd) * Basis(1:nd))
+            PotAtIp(2) = - Omega * SUM(POT(1,1:nd) * Basis(1:nd))
+          ELSE
+            PotAtIp(1) = 0._dp
+            PotAtIp(2) = 0._dp
+          END IF
+
+          localV=0._dp
+          SELECT CASE (CoilType)
+          CASE ('stranded')
+            imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
+            IF (i_multiplier /= 0._dp) THEN
+              PotAtIp(1) = PotAtIp(1)+REAL(i_multiplier * imag_value * N_j / CondAtIp)
+              PotAtIp(2) = PotAtIp(2)+AIMAG(i_multiplier * imag_value * N_j / CondAtIp)
+            ELSE
+              PotAtIp(1) = PotAtIp(1)+REAL(imag_value * N_j / CondAtIp)
+              PotAtIp(2) = PotAtIp(2)+AIMAG(imag_value * N_j / CondAtIp)
+            END IF            
+          CASE ('massive')
+            localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+            localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
+            PotAtIp(1) = PotAtIp(1)-grads_coeff*localV(1)
+            PotAtIp(2) = PotAtIp(2)-grads_coeff*localV(2)
+          CASE ('foil winding')
+            localAlpha = coilthickness *SUM(alpha(1:nd) * Basis(1:nd)) 
+            DO k = 1, VvarDofs-1
+              Reindex = 2*k
+              Imindex = Reindex+1
+              localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
+              localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
+            END DO
+            PotAtIp(1) = PotAtIp(1)-grads_coeff*localV(1)
+            PotAtIp(2) = PotAtIp(2)-grads_coeff*localV(2)
+          END SELECT
+
+          BAtIp(5) = 0.5_dp * ( PotAtIp(1)**2 + PotAtIp(2)**2 )  
           BAtIp(6) = CondAtIp * BAtIp(5) 
           TotalHeating = TotalHeating + Weight * BAtIp(6)
+          BAtIp(7) = CondAtIp * PotAtIp(1)
+          BAtIp(8) = CondAtIp * PotAtIp(2)
+          
         END IF
 
         IF( LossEstimation ) THEN
-          DO i=1,2
-            ValAtIP = SUM( BAtIP(2*i-1:2*i) ** 2 )
-            Coeff = Weight * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
-            ComponentLoss(i) = ComponentLoss(i) + Coeff
-            BodyLoss(BodyId) = BodyLoss(BodyId) + Coeff
-          END DO          
+          IF ( EddyLoss ) THEN
+            BodyLoss(BodyId) = BodyLoss(BodyId) + 2._dp * pi * Weight * BAtIp(6)
+          ELSE
+            DO i=1,2
+              ValAtIP = SUM( BAtIP(2*i-1:2*i) ** 2 )
+              Coeff = Weight * LossCoeff * ( Freq ** FreqPower ) * ( ValAtIp ** FieldPower )
+              ComponentLoss(i) = ComponentLoss(i) + Coeff
+              BodyLoss(BodyId) = BodyLoss(BodyId) + Coeff
+            END DO
+          END IF
         END IF
         
         DO i=1,Totdofs
@@ -1615,6 +1914,8 @@ CONTAINS
       DO j=1,Model % NumberOfBodies
          IF( BodyLoss(j) < TINY( TotalLoss ) ) CYCLE
          WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLoss(j)
+         WRITE (bodyNumber, "(I0)") j
+         CALL ListAddConstReal( Model % Simulation,'res: Loss in Body '//TRIM(bodyNumber)//':', BodyLoss(j) )
          CALL Info('FourierLosses', Message, Level=6 )
       END DO
 

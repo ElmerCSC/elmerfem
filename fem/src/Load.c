@@ -53,9 +53,11 @@
 #else
 #include <strings.h>
 #  include <dlfcn.h>
+#  include <sys/stat.h>
 #endif
 
 #define MAX_PATH_LEN 512
+#define ERROR_BUF_LEN 10*MAX_PATH_LEN
 
 #ifndef USE_ISO_C_BINDINGS
 #ifdef SGI64
@@ -241,22 +243,112 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
 }
 
 /*--------------------------------------------------------------------------
+  INTERNAL: Appends two paths with slash checking
+  Args: path1, path2 - string to join
+ -------------------------------------------------------------------------*/
+static void STDCALLBULL append_path(char *path1, char *path2)
+{
+    size_t len1;
+
+    len1 = strnlen(path1, 2*MAX_PATH_LEN);
+#if defined(WIN32) || defined(MINGW)
+    if (path1[len1-1] != '\\') {
+        strncat(path1, "\\", 2*MAX_PATH_LEN);
+    }
+#else
+    if (path1[len1-1] != '/') {
+        strncat(path1, "/", 2*MAX_PATH_LEN);
+    }
+#endif
+    strncat(path1, path2, 2*MAX_PATH_LEN);
+}
+
+/*--------------------------------------------------------------------------
+  INTERNAL: Tries to open library with dlopen, first without
+            any extensions and then with SHL_EXTENSION.
+  Args: Libname - name of the library file
+        Handle - handle to the dl, NULL if fails
+        error_buf - string buffer for error messages
+ -------------------------------------------------------------------------*/
+static void STDCALLBULL try_dlopen(char *LibName, void **Handle, char *errorBuf)
+{
+    static char dl_names[2][2*MAX_PATH_LEN];
+    char error_tmp[MAX_PATH_LEN];
+    int i;
+
+    strncpy(dl_names[0], LibName, 2*MAX_PATH_LEN);
+    strncpy(dl_names[1], LibName, 2*MAX_PATH_LEN);
+
+    strncat(dl_names[1], SHL_EXTENSION, MAX_PATH_LEN);
+
+    for (i = 0; i < 2; i++) {
+#ifdef HAVE_DLOPEN_API
+        if ((*Handle = dlopen(dl_names[i], RTLD_NOW)) == NULL) {
+            strncat(errorBuf, dlerror(), MAX_PATH_LEN);
+            strncat(errorBuf, "\n", MAX_PATH_LEN);
+        } else {
+            break;
+        }
+#elif defined(HAVE_LOADLIBRARY_API)
+        if ((*Handle = LoadLibrary(dl_names[i])) == NULL) {
+            sprintf(error_tmp, "Can not find %s.\n", dl_names[i]);
+            strncat(errorBuf, error_tmp, ERROR_BUF_LEN);
+        } else {
+            break;
+        }
+#endif
+    }
+}
+
+/*--------------------------------------------------------------------------
+  INTERNAL: Parses the search path and tries to open a solver.
+            First search is done without any path prefixes.
+  Args: SearchPath - colon separated list of searhc paths
+        Library - name of the library file to be opened
+        Handle - handle to the dl file, NULL if fails
+        error_buf - string buffer for error messages
+ --------------------------------------------------------------------------*/
+static void STDCALLBULL
+try_open_solver(char *SearchPath, char *Library, void **Handle, char *errorBuf)
+{
+    static char CurrentLib[2*MAX_PATH_LEN];
+    char *tok;
+
+    /* Try to open first without any prefixes */
+    try_dlopen(Library, Handle, errorBuf);
+
+    /* and then using the provided paths */
+    if (*Handle == NULL) {
+
+        tok = strtok(SearchPath, ":");
+        while (tok != NULL) {
+            strncpy(CurrentLib, tok, 2*MAX_PATH_LEN);
+            append_path(CurrentLib, Library);
+
+            try_dlopen(CurrentLib, Handle, errorBuf);
+            if (*Handle != NULL)
+                break;
+            tok = strtok(NULL, ":");
+        }
+    }
+}
+
+/*--------------------------------------------------------------------------
   This routine will return address of a function given path to a dynamically
   loaded library and name of the routine.
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
 void *STDCALLBULL loadfunction_c( int *Quiet, int *abort_not_found, char *Library, char *Name )
 #else
-void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet,
-      int *abort_not_found, char *Library, char *Name )
+void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_not_found,
+                                                       char *Library, char *Name )
 #endif
 {
 /*--------------------------------------------------------------------------*/
    void (*Function)(),*Handle;
-   int i;
    char *cptr;
    static char ElmerLib[2*MAX_PATH_LEN], NewLibName[3*MAX_PATH_LEN],
-               NewName[MAX_PATH_LEN],   dl_err_msg[6][MAX_PATH_LEN];
+               NewName[MAX_PATH_LEN], ErrorBuffer[ERROR_BUF_LEN];
 /*--------------------------------------------------------------------------*/
    static char appPath[MAX_PATH_LEN] = "";
    char *exeName = NULL;
@@ -266,6 +358,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet,
    memset(ElmerLib, 0, 2*MAX_PATH_LEN);
    memset(NewLibName, 0, 3*MAX_PATH_LEN);
    memset(NewName, 0, MAX_PATH_LEN);
+   memset(ErrorBuffer, 0, ERROR_BUF_LEN);
 /*--------------------------------------------------------------------------*/
    fortranMangle( Name, NewName );
    strncpy( NewLibName, Library, 3*MAX_PATH_LEN );
@@ -274,20 +367,19 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet,
      fprintf(stdout,"Loading user function library: [%s]...[%s]\n", Library, Name );
      fflush(stdout);
    }
-   
-#ifdef HAVE_DLOPEN_API
 
-   /* Try again with explict ELMER_LIB dir */
-   ElmerLib[0] = '\0';
+   /* First path is always current directory (.) */
+   strncpy(ElmerLib, ".", 2*MAX_PATH_LEN);
    cptr = (char *)getenv( "ELMER_LIB" );
    if ( cptr != NULL ) {
-      strncpy( ElmerLib, cptr, 2*MAX_PATH_LEN );
-      strncat( ElmerLib, "/", 2*MAX_PATH_LEN  );
+      strncat( ElmerLib, ":", 2*MAX_PATH_LEN );
+      strncat( ElmerLib, cptr, 2*MAX_PATH_LEN );
    } else {
       cptr = (char *)getenv("ELMER_HOME");
       if ( cptr != NULL  ) {
-         strncpy( ElmerLib, cptr, 2*MAX_PATH_LEN );
-         strncat( ElmerLib, "/share/elmersolver/lib/", 2*MAX_PATH_LEN );
+         strncat( ElmerLib, ":", 2*MAX_PATH_LEN);
+         strncat( ElmerLib, cptr, 2*MAX_PATH_LEN );
+         strncat( ElmerLib, "/share/elmersolver/lib", 2*MAX_PATH_LEN );
       } else {
 #if defined(WIN32) || defined(MINGW32)
 	/* Should not get here unless WIN32 implements DLOPEN_API */
@@ -296,158 +388,46 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet,
 	n = (int)(exeName - appPath);
 	if(n < 0) n = 0;
 	if(n > MAX_PATH_LEN) n = MAX_PATH_LEN;
-	strncpy(ElmerLib, appPath, n);
-	strncat(ElmerLib, "\\..\\share\\elmersolver\\lib\\", 2*MAX_PATH_LEN);
+        strncat(ElmerLib, ":", 2*MAX_PATH_LEN);
+	strncat(ElmerLib, appPath, n);
+	strncat(ElmerLib, "\\..\\share\\elmersolver\\lib", 2*MAX_PATH_LEN);
 #else
-	strncpy( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN );
-	strncat( ElmerLib, "/lib/", 2*MAX_PATH_LEN );
+        strncat( ElmerLib, ":", 2*MAX_PATH_LEN );
+	strncat( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN );
+	strncat( ElmerLib, "/lib", 2*MAX_PATH_LEN );
 #endif
       }
    }
 
-   for( i=0; i<6; i++ )
-     {
-        switch(i) 
-        {
-          case 0: strncpy( NewLibName, Library,  3*MAX_PATH_LEN );
-                  break;
-          case 1: case 3: case 5:
-                  strncat( NewLibName, SHL_EXTENSION, 3*MAX_PATH_LEN );
-                  break;
-          case 2: strcpy( NewLibName, "./");
-                  strncat( NewLibName, Library,  3*MAX_PATH_LEN );
-                  break;
-          case 4: strncpy( NewLibName, ElmerLib, 3*MAX_PATH_LEN );
-                  strncat( NewLibName, Library,  3*MAX_PATH_LEN );
-                  break;
-        }
-        if ( ( Handle = dlopen( NewLibName , RTLD_NOW ) ) == NULL )
-          {
-             strncpy( dl_err_msg[i], dlerror(), MAX_PATH_LEN );
-          } else {
-             break;
-          }
-     }
+   cptr = (char *)getenv( "ELMER_MODULES_PATH" );
+   if ( cptr != NULL ) {
+      strncat( ElmerLib, ":", 2*MAX_PATH_LEN);
+      strncat( ElmerLib, cptr, 2*MAX_PATH_LEN);
+   }
 
-   if ( Handle == NULL ) 
-     {
-        for( i=0; i<6; i++ )
-          {
-             switch(i) 
-             {
-               case 0: strncpy( NewLibName, Library,  3*MAX_PATH_LEN );
-                       break;
-               case 1: case 3: case 5:
-                       strncat( NewLibName, SHL_EXTENSION, 3*MAX_PATH_LEN );
-                       break;
-               case 2: strcpy( NewLibName, "./");
-                       strncat( NewLibName, Library,  3*MAX_PATH_LEN );
-                       break;
-               case 4: strncpy( NewLibName, ElmerLib, 3*MAX_PATH_LEN );
-                       strncat( NewLibName, Library,  3*MAX_PATH_LEN );
-                       break;
-             }
-             fprintf( stderr, "\nLoad: Unable to open shared library: [%s]\n", NewLibName );
-             fprintf( stderr, "%s\n", dl_err_msg[i] );
-           }
-         exit(0);
-     }
+   try_open_solver(ElmerLib, Library, &Handle, ErrorBuffer);
+   if ( Handle == NULL ) {
+      fprintf(stderr, "%s", ErrorBuffer);
+      exit(0);
+   }
+   
+#ifdef HAVE_DLOPEN_API
 
    if ( (Function = (void(*)())dlsym( Handle,NewName)) == NULL && *abort_not_found )
    {
-       printf("XXX: %s\n", NewName);
       fprintf( stderr, "Load: FATAL: Can't find procedure [%s]\n", NewName );
       exit(0);
    }
 
-
 #elif defined(HAVE_LOADLIBRARY_API)
-
-   /* Try again with explict ELMER_LIB dir */
-   ElmerLib[0] = '\0';
-   cptr = (char *)getenv( "ELMER_LIB" );
-   if ( cptr != NULL ) {
-      strncpy( ElmerLib, cptr, 2*MAX_PATH_LEN );
-      strncat( ElmerLib, "/", 2*MAX_PATH_LEN  );
-   } else {
-      cptr = (char *)getenv("ELMER_HOME");
-      if ( cptr != NULL  ) {
-         strncpy( ElmerLib, cptr, 2*MAX_PATH_LEN );
-         strncat( ElmerLib, "/share/elmersolver/lib/", 2*MAX_PATH_LEN );
-      } else {
-#if defined(WIN32) || defined(MINGW32)
-	GetModuleFileName(NULL, appPath, MAX_PATH_LEN);
-	exeName = strrchr(appPath, '\\');
-	n = (int)(exeName - appPath);
-	if(n < 0) n = 0;
-	if(n > MAX_PATH_LEN) n = MAX_PATH_LEN;
-	strncpy(ElmerLib, appPath, n);
-	strncat(ElmerLib, "\\..\\share\\elmersolver\\lib\\", 2*MAX_PATH_LEN);
-#else
-	/* Should not get here unless Posix implements LOADLIBRARY_API */
-	strncpy( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN );
-	strncat( ElmerLib, "/lib/", 2*MAX_PATH_LEN );
-#endif
-      }
-   }
-
-   for( i=0; i<6; i++ )
-     {
-        switch(i) 
-        {
-   	  case 0: strncpy( NewLibName, Library,  3*MAX_PATH_LEN );
-                  break;
-          case 1: case 3: case 5:
-                  strncat( NewLibName, SHL_EXTENSION, 3*MAX_PATH_LEN );
-                  break;
-	  case 2: strcpy( NewLibName, "./");
-                  strncat( NewLibName, Library,  3*MAX_PATH_LEN );
-                  break;
-          case 4: strncpy( NewLibName, ElmerLib, 3*MAX_PATH_LEN );
-                  strncat( NewLibName, Library,  3*MAX_PATH_LEN );
-                  break;
-        }
-
-        if ( ( Handle = LoadLibrary( NewLibName ) ) == NULL )
-          {
-	    sprintf( dl_err_msg[i], "Can not find %s.", NewLibName );
-          } else {
-             break;
-          }
-     }
-
-
-   if ( Handle == NULL ) 
-     {
-        for( i=0; i<6; i++ )
-          {
-             switch(i) 
-             {
-               case 0: strncpy( NewLibName, Library,  3*MAX_PATH_LEN );
-                       break;
-               case 1: case 3: case 5:
-                       strncat( NewLibName, SHL_EXTENSION, 3*MAX_PATH_LEN );
-                       break;
-               case 2: strcpy( NewLibName, "./");
-                       strncat( NewLibName, Library,  3*MAX_PATH_LEN );
-                       break;
-               case 4: strncpy( NewLibName, ElmerLib, 3*MAX_PATH_LEN );
-                       strncat( NewLibName, Library,  3*MAX_PATH_LEN );
-                       break;
-             }
-             fprintf( stderr, "\nLoad: Unable to open shared library: [%s]\n", NewLibName );
-             fprintf( stderr, "%s\n", dl_err_msg[i] );
-           }
-         exit(0);
-     }
-
 
    if ( (Function = (void *)GetProcAddress(Handle,NewName)) == NULL && *abort_not_found )
    {
      fprintf( stderr,"Load: FATAL: Can't find procedure [%s]\n", NewName );
      exit(0);
    }
-#endif 
+
+#endif
 
    return (void *)Function;
 }
@@ -635,7 +615,7 @@ void STDCALLBULL FC_FUNC(matc,MATC) ( char *cmd, char *Value, int *len )
 
   static int been_here = 0;
   char *ptr, c, cc[32];
-  int slen, i, start;
+  int slen, start;
 #pragma omp threadprivate(been_here)
 
   /* MB: Critical section removed since Matc library

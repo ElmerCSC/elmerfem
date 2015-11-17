@@ -1299,9 +1299,10 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 !> Evalulate a cubic spline.
 !------------------------------------------------------------------------------
-   FUNCTION CubicSplineVal(x,y,r,t) RESULT(s)
+   PURE FUNCTION CubicSplineVal(x,y,r,t) RESULT(s)
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: x(:),y(:),r(:),s,t
+      REAL(KIND=dp) :: s
+      REAL(KIND=dp), INTENT(in) :: x(:),y(:),r(:),t
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: a,b,c,d,h,lt
 
@@ -1317,10 +1318,14 @@ END FUNCTION ComponentNameVar
    END FUNCTION CubicSplineVal
 !------------------------------------------------------------------------------
 
+
 !------------------------------------------------------------------------------
-   FUNCTION CubicSplinedVal(x,y,r,t) RESULT(s)
+!> Evalulate derivative of cubic spline.
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: x(:),y(:),r(:),s,t
+   PURE FUNCTION CubicSplinedVal(x,y,r,t) RESULT(s)
+!------------------------------------------------------------------------------
+      REAL(KIND=dp) :: s
+      REAL(KIND=dp), INTENT(in) :: x(:),y(:),r(:),t
 !------------------------------------------------------------------------------
       REAL(KIND=dp) :: a,b,c,h,lt
 
@@ -1337,12 +1342,51 @@ END FUNCTION ComponentNameVar
 
 
 !------------------------------------------------------------------------------
+!> Search array index such that tval(i) <= t < tval(i+1)
+!------------------------------------------------------------------------------
+   PURE FUNCTION SearchInterval( tval, t ) RESULT(i)
+!------------------------------------------------------------------------------
+      INTEGER :: i
+      REAL(KIND=dp), INTENT(in) :: tval(:), t
+!------------------------------------------------------------------------------
+      INTEGER :: n,n0,n1
+!------------------------------------------------------------------------------
+
+      n = SIZE(tval)
+
+      IF (t < tval(2)) THEN
+        i = 1
+      ELSE IF (t>=tval(n-1)) THEN
+        i = n-1
+      ELSE
+        n0 = 1
+        n1 = n
+        i = (n0+n1)/2
+        DO WHILE(.TRUE.)
+          IF  ( tval(i) <= t .AND. tval(i+1)>t ) EXIT
+
+          IF ( tval(i) >  t ) THEN
+            n1 = i-1
+          ELSE
+            n0 = i+1
+          END IF
+          i = (n0+n1)/2
+        END DO
+      END IF
+      IF(i>n-1) i=n-1
+!------------------------------------------------------------------------------
+   END FUNCTION SearchInterval
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> Interpolate values in a curve given by linear table or splines.
 !------------------------------------------------------------------------------
-   FUNCTION InterpolateCurve( TValues,FValues,T, CubicCoeff) RESULT( F )
+   PURE FUNCTION InterpolateCurve( TValues,FValues,T, CubicCoeff) RESULT( F )
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: TValues(:),FValues(:),T,F
-     REAL(KIND=dp), OPTIONAL, POINTER :: CubicCoeff(:)
+     REAL(KIND=dp) :: F
+     REAL(KIND=dp), INTENT(iN) :: TValues(:),FValues(:),T
+     REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
 !------------------------------------------------------------------------------
      INTEGER :: i,n
      LOGICAL :: Cubic
@@ -1356,23 +1400,18 @@ END FUNCTION ComponentNameVar
        F = FValues(1) * T
        RETURN
      END IF
-    
 
-     DO i=1,n
-        IF ( TValues(i) >= T ) EXIT
-     END DO
-     IF ( i > n ) i = n
-     IF ( i < 2 ) i = 2
+     i = SearchInterval( Tvalues, t )
 
      Cubic = PRESENT(CubicCoeff)
      Cubic = Cubic .AND. T>=Tvalues(1) .AND. T<=Tvalues(n)
      IF ( Cubic ) Cubic = Cubic.AND.ASSOCIATED(CubicCoeff)
 
      IF ( Cubic ) THEN
-       F = CubicSplineVal(Tvalues(i-1:i),FValues(i-1:i),CubicCoeff(i-1:i),T)
+       F = CubicSplineVal(Tvalues(i:i+1),FValues(i:i+1),CubicCoeff(i:i+1),T)
      ELSE
-       F = (T-TValues(i-1)) / (TValues(i)-TValues(i-1))
-       F = (1-F)*FValues(i-1) + F*FValues(i)
+       F = (T-TValues(i)) / (TValues(i+1)-TValues(i))
+       F = (1-F)*FValues(i) + F*FValues(i+1)
      END IF
    END FUNCTION InterpolateCurve
 !------------------------------------------------------------------------------
@@ -1381,34 +1420,304 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 !> Derivate a curve given by linear table or splines.
 !------------------------------------------------------------------------------
-   FUNCTION DerivateCurve( TValues,FValues,T,CubicCoeff ) RESULT( F )
+   PURE FUNCTION DerivateCurve( TValues,FValues,T,CubicCoeff ) RESULT( F )
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: TValues(:),FValues(:),T,F
-     REAL(KIND=dp), OPTIONAL, POINTER :: CubicCoeff(:)
+     REAL(KIND=dp) :: F
+     REAL(KIND=dp), INTENT(in) :: TValues(:),FValues(:),T
+     REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
 !------------------------------------------------------------------------------
      INTEGER :: i,n
      LOGICAL :: Cubic
 !------------------------------------------------------------------------------
      n = SIZE(TValues)
 
-     DO i=1,n
-       IF ( TValues(i) >= T ) EXIT
-     END DO
-
-     IF ( i > n ) i = n
-     IF ( i < 2 ) i = 2
+     i = SearchInterval( Tvalues, t )
 
      Cubic = PRESENT(CubicCoeff)
      Cubic = Cubic .AND. T>=Tvalues(1) .AND. T<=Tvalues(n)
      IF ( Cubic ) Cubic = Cubic.AND.ASSOCIATED(CubicCoeff)
 
      IF (Cubic) THEN
-       F = CubicSplinedVal(Tvalues(i-1:i),FValues(i-1:i),CubicCoeff(i-1:i),T)
+       F = CubicSplinedVal(Tvalues(i:i+1),FValues(i:i+1),CubicCoeff(i:i+1),T)
      ELSE
-       F = (FValues(i)-FValues(i-1)) / (TValues(i)-TValues(i-1))
+       F = (FValues(i+1)-FValues(i)) / (TValues(i+1)-TValues(i))
      END IF
 !------------------------------------------------------------------------------
    END FUNCTION DerivateCurve
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Integrate a curve given by linear table or splines.
+!------------------------------------------------------------------------------
+   PURE SUBROUTINE CumulativeIntegral(TValues,FValues,CubicCoeff,Cumulative)
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(in)  :: TValues(:),FValues(:)
+     REAL(KIND=dp), INTENT(out) :: Cumulative(:)
+     REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
+!------------------------------------------------------------------------------
+     INTEGER :: i,n
+     LOGICAL :: Cubic
+     REAL(KIND=dp) :: t(2), y(2), r(2), h, a, b, c, d
+!------------------------------------------------------------------------------
+     n = SIZE(TValues)
+
+     Cubic = PRESENT(CubicCoeff)
+     IF ( Cubic ) Cubic = Cubic.AND.ASSOCIATED(CubicCoeff)
+
+     ! here only complete intervals:
+     ! -----------------------------
+     Cumulative(1) = 0._dp
+     IF ( Cubic ) THEN
+       DO i=1,n-1
+         t(1) = Tvalues(i)
+         t(2) = Tvalues(i+1)
+
+         y(1) = FValues(i)
+         y(2) = FValues(i+1)
+
+         r(1) = CubicCoeff(i)
+         r(2) = CubicCoeff(i+1)
+
+         h  = t(2) - t(1)
+
+         a = (-2 * (y(2) - y(1)) + (  r(1) + r(2)) * h)/4
+         b = ( 3 * (y(2) - y(1)) - (2*r(1) + r(2)) * h)/3
+         c = (r(1) * h)/2
+         d = y(1)
+         Cumulative(i+1)=Cumulative(i) + h*(a+b+c+d)
+       END DO
+     ELSE
+       DO i=1,n-1
+         t(1) = Tvalues(i)
+         t(2) = Tvalues(i+1)
+
+         y(1) = FValues(i)
+         y(2) = FValues(i+1)
+
+         h  = t(2) - t(1)
+         c = (y(2)-y(1))/2
+         d = y(1)
+         Cumulative(i+1)=Cumulative(i) + h*(c+d)
+       END DO
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE CumulativeIntegral
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Integrate a curve given by linear table or splines.
+!------------------------------------------------------------------------------
+   PURE FUNCTION IntegrateCurve(TValues,FValues,CubicCoeff,T0,T1,Cumulative) RESULT(sumf)
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: sumf
+
+     REAL(KIND=dp), INTENT(in) :: TValues(:),FValues(:)
+     REAL(KIND=dp), OPTIONAL, INTENT(in) :: T0, T1
+     REAL(KIND=dp), OPTIONAL, INTENT(in) :: Cumulative(:)
+     REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
+!------------------------------------------------------------------------------
+     INTEGER :: i,n,i0,i1
+     LOGICAL :: Cubic
+     REAL(KIND=dp) :: t(2), y(2), r(2), h, a, b, c, d, s0, s1, tt0, tt1
+!------------------------------------------------------------------------------
+     n = SIZE(TValues)
+
+     tt0 = TValues(1)
+     IF(PRESENT(t0)) tt0=t0
+
+     tt1 = TValues(n)
+     IF(PRESENT(t1)) tt1=t1
+
+     sumf = 0._dp
+     IF(tt0>=tt1) RETURN
+
+     ! t0 < first, t1 <= first
+     IF(tt1<=Tvalues(1)) THEN
+       t(1) = Tvalues(1)
+       t(2) = Tvalues(2)
+
+       y(1) = FValues(1)
+       y(2) = FValues(2)
+
+       h  = t(2) - t(1)
+       s0 = (tt0 - t(1)) / h
+       s1 = (tt1 - t(1)) / h
+       c = (y(2) - y(1)) / 2
+       d = y(1)
+       sumf = sumf + h * ((c*s1 + d)*s1 - (c*s0 + d)*s0)
+       RETURN
+     END IF
+
+     ! t0 >= last, t1 > last
+     IF(tt0>=Tvalues(n)) THEN
+       t(1) = Tvalues(n-1)
+       t(2) = Tvalues(n)
+
+       y(1) = FValues(n-1)
+       y(2) = FValues(n)
+
+       h  = t(2) - t(1)
+       s0 = (tt0 - t(1)) / h
+       s1 = (tt1 - t(1)) / h
+       c = (y(2) - y(1)) / 2
+       d = y(1)
+       sumf = sumf + h * ((c*s1 + d)*s1 - (c*s0 + d)*s0)
+       RETURN
+     END IF
+
+     ! first interval outside 
+     IF(tt0<Tvalues(1)) THEN
+       t(1) = Tvalues(1)
+       t(2) = Tvalues(2)
+
+       y(1) = FValues(1)
+       y(2) = FValues(2)
+
+       h  = t(2) - t(1)
+       s0 = (tt0 - t(1)) / h
+       c = (y(2) - y(1)) / 2
+       d = y(1)
+       sumf = sumf - h * (c*s0 + d)*s0
+       tt0 = Tvalues(1)
+     END IF
+
+     ! last interval outside 
+     IF(tt1>Tvalues(n)) THEN
+       t(1) = Tvalues(n-1)
+       t(2) = Tvalues(n)
+
+       y(1) = FValues(n-1)
+       y(2) = FValues(n)
+
+       h  = t(2) - t(1)
+       s1 = (tt1 - t(1)) / h
+       c = (y(2) - y(1)) / 2
+       d = y(1)
+       sumf = sumf + h * ( (c*s1 + d)*s1 - (c+d) )
+       tt1 = Tvalues(n)
+     END IF
+
+     IF(tt0 >= tt1) RETURN
+
+     Cubic = PRESENT(CubicCoeff)
+     IF ( Cubic ) Cubic = Cubic.AND.ASSOCIATED(CubicCoeff)
+
+     i0 = SearchInterval( Tvalues, tt0 )
+
+     ! first (possibly partial) interval:
+     ! -------------------------------------
+     t(1) = Tvalues(i0)
+     t(2) = Tvalues(i0+1)
+
+     h  = t(2) - t(1)
+     s0 = (tt0-t(1))/h
+     s1 = MIN((tt1-t(1))/h,1._dp)
+
+     IF(s0>0 .OR. s1<1) THEN
+       y(1) = FValues(i0)
+       y(2) = FValues(i0+1)
+
+       IF(Cubic) THEN
+         r(1) = CubicCoeff(i0)
+         r(2) = CubicCoeff(i0+1)
+
+         a = (-2 * (y(2) - y(1)) + (  r(1) + r(2)) * h)/4
+         b = ( 3 * (y(2) - y(1)) - (2*r(1) + r(2)) * h)/3
+         c = (r(1) * h)/2
+         d = y(1)
+         sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
+                   (((a*s0 + b)*s0 + c)*s0 + d)*s0 )
+
+       ELSE
+         c = (y(2)-y(1))/2
+         d = y(1)
+         sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
+       END IF
+       i0 = i0 + 1 
+       tt0 = Tvalues(i0)
+       IF(tt0 >= tt1) RETURN
+     END IF
+
+     i1 = SearchInterval( Tvalues, tt1 )
+
+     ! last (possibly partial) interval:
+     ! ------------------------------------
+     t(1) = Tvalues(i1)
+     t(2) = Tvalues(i1+1)
+
+     h  = t(2) - t(1)
+
+     s0 = MAX((tt0-t(1))/h, 0.0_dp)
+     s1 = (tt1-t(1))/h
+
+     IF(s0>0 .OR. s1<1) THEN
+       y(1) = FValues(i1)
+       y(2) = FValues(i1+1)
+
+       IF(Cubic) THEN
+         r(1) = CubicCoeff(i1)
+         r(2) = CubicCoeff(i1+1)
+
+         a = (-2 * (y(2) - y(1)) + (  r(1) + r(2)) * h)/4
+         b = ( 3 * (y(2) - y(1)) - (2*r(1) + r(2)) * h)/3
+         c = (r(1) * h)/2
+         d = y(1)
+         sumf = sumf + h * ( (((a*s1 + b)*s1 + c)*s1 + d)*s1 - &
+                 (((a*s0 + b)*s0 + c)*s0 + d)*s0 )
+       ELSE
+         c = (y(2)-y(1))/2
+         d = y(1)
+         sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
+       END IF
+       i1 = i1 - 1 
+       tt1 = Tvalues(i1+1)
+       IF(tt0 >= tt1) RETURN
+     END IF
+
+     ! here only complete intervals:
+     ! -----------------------------
+
+     IF(PRESENT(Cumulative)) THEN
+       sumf = sumf + Cumulative(i1+1) - Cumulative(i0)
+       RETURN
+     END IF
+
+     IF ( Cubic ) THEN
+       DO i=i0,i1
+         t(1) = Tvalues(i)
+         t(2) = Tvalues(i+1)
+
+         y(1) = FValues(i)
+         y(2) = FValues(i+1)
+
+         r(1) = CubicCoeff(i)
+         r(2) = CubicCoeff(i+1)
+
+         h  = t(2) - t(1)
+
+         a = (-2 * (y(2) - y(1)) + (  r(1) + r(2)) * h)/4
+         b = ( 3 * (y(2) - y(1)) - (2*r(1) + r(2)) * h)/3
+         c = (r(1) * h)/2
+         d = y(1)
+         sumf = sumf + h * (a+b+c+d)
+       END DO
+     ELSE
+       DO i=i0,i1
+         t(1) = Tvalues(i)
+         t(2) = Tvalues(i+1)
+
+         y(1) = FValues(i)
+         y(2) = FValues(i+1)
+
+         h  = t(2) - t(1)
+         c = (y(2)-y(1))/2
+         d = y(1)
+         sumf = sumf + h * (c+d)
+       END DO
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION IntegrateCurve
 !------------------------------------------------------------------------------
 
 
@@ -1417,7 +1726,10 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
    SUBROUTINE SolveLinSys2x2( A, x, b )
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: A(:,:),x(:),b(:),detA
+     REAL(KIND=dp), INTENT(out) :: x(:)
+     REAL(KIND=dp), INTENT(in)  :: A(:,:),b(:)
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: detA
 !------------------------------------------------------------------------------
      detA = A(1,1) * A(2,2) - A(1,2) * A(2,1)
 
@@ -1440,7 +1752,8 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
    SUBROUTINE SolveLinSys3x3( A, x, b )
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: A(:,:),x(:),b(:)
+     REAL(KIND=dp), INTENT(out) :: x(:)
+     REAL(KIND=dp), INTENT(in)  :: A(:,:),b(:)
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: C(2,2),y(2),g(2),s,t,q
 !------------------------------------------------------------------------------

@@ -636,6 +636,7 @@ END INTERFACE
        TYPE(Solver_t), POINTER :: Solver
        TYPE(Variable_t), POINTER :: Var
        LOGICAL :: Found, Success = .TRUE., FinalizeOnly, CompareNorm, CompareSolution
+       CHARACTER(LEN=MAX_STRING_LEN) :: PassedMsg
 
        SAVE TestCount, PassCount 
 
@@ -664,12 +665,19 @@ END INTERFACE
          
          IF( FinalizeOnly ) THEN
            IF( ParEnv % MyPe == 0 ) THEN
-             OPEN( 10, FILE = 'TEST.PASSED' )
+             IF( ParEnv % PEs > 1 ) THEN
+               ! Parallel test, add the number of tasks as a suffix
+               WRITE(PassedMsg, '("TEST.PASSED_",I0)') ParEnv % PEs
+               OPEN( 10, FILE = PassedMsg )
+             ELSE
+               OPEN( 10, FILE = 'TEST.PASSED' )
+             END IF
              IF( Success ) THEN
                WRITE( 10,'(I1)' ) 1
              ELSE
                WRITE( 10,'(I1)' ) 0
              END IF
+             CLOSE( 10 )
            END IF
          END IF
 

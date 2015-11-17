@@ -1952,7 +1952,6 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, UseMask   
     LOGICAL :: Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize
-
     INTEGER, POINTER :: Permutation(:), Indeces(:)
     INTEGER :: dim, elem, n, nd, i, k, l, p, q, N_Gauss, Ind(9), StrainDim
 
@@ -2481,7 +2480,7 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, &
          Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize, PlaneStress, &
-         Isotropic, UseMask
+         Isotropic, UseMask, LimiterOn, ContactOn, ResidualOn
 
     CHARACTER(LEN=MAX_NAME_LEN) :: eqname
 
@@ -2563,6 +2562,20 @@ CONTAINS
        CALL ListSetNameSpace('stress:')
     END IF
 
+    LimiterOn = ListGetLogical( StSolver % Values,'Apply Limiter', Found ) 
+    IF( LimiterOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Apply Limiter',.FALSE.)
+    END IF
+    ContactOn = ListGetLogical( StSolver % Values,'Apply Contact BCs', Found ) 
+    IF( ContactOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Apply Contact BCs',.FALSE.)
+    END IF
+    ResidualOn = ListGetLogical( StSolver % Values,'Linear System Residual Mode', Found ) 
+    IF( ResidualOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Linear System Residual Mode',.FALSE.)
+    END IF
+    
+
     Model % Solver => StSolver
     IF (AxialSymmetry) THEN
        Ind = (/ 1, 4, 4, 3, 0, 0, 0, 0, 0 /)
@@ -2579,7 +2592,7 @@ CONTAINS
     END IF
     CALL DefaultInitialize()
 
-    !------------------------------------------------------------------------
+        !------------------------------------------------------------------------
     ! Assembly loop 
     !------------------------------------------------------------------------
     DO elem = 1, Solver % NumberOfActiveElements
@@ -3111,6 +3124,16 @@ CONTAINS
     Model % Solver => Solver
 
     CALL ListSetNameSpace('')
+
+    IF( LimiterOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Apply Limiter',.TRUE.)
+    END IF
+    IF( ContactOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Apply Contact BCs',.TRUE.)
+    END IF
+    IF( ResidualOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Linear System Residual Mode',.TRUE.)
+    END IF
 
     CALL Info('ElasticSolve','Finished postprocessing',Level=7)
 !--------------------------------------------------------------------------------
