@@ -2245,9 +2245,9 @@ CONTAINS
        END IF
      END IF
 
-!    CALL ALLOCATE(ptr % Cumulative(n))
-!    CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
-!         Ptr % CubicCoeff, Ptr % Cumulative )
+     ALLOCATE(ptr % Cumulative(n))
+     CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
+          Ptr % CubicCoeff, Ptr % Cumulative )
 
      ptr % NameLen = StringToLowerCase( ptr % Name,Name )
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DependName )
