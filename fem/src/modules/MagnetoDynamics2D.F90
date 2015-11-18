@@ -1519,7 +1519,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, &
-              AverageBCompute, BodyVolumesCompute
+              AverageBCompute, BodyVolumesCompute=.TRUE.
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
   
@@ -1607,6 +1607,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   END IF
 
   AverageBCompute = GetLogical(SolverParams, 'Average Magnetic Flux Density', GotIt)
+  IF (.NOT. GotIt ) AverageBCompute = .FALSE.
 
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),TotDOFs))  
   ForceVector = 0.0_dp
@@ -1924,12 +1925,14 @@ CONTAINS
           BodyVolumes(BodyId) = BodyVolumes(BodyId) + Weight
         END IF
 
-        IF (BodyAverageBCompute(BodyId)) THEN
-          BodyAvBre(1,BodyId) = BodyAvBre(1,BodyId) + Weight * BAtIp(1)
-          BodyAvBre(2,BodyId) = BodyAvBre(2,BodyId) + Weight * BAtIp(2)
-          IF (Fluxdofs==4) THEN
-            BodyAvBim(1,BodyId) = BodyAvBim(1,BodyId) + Weight * BAtIp(3)
-            BodyAvBim(2,BodyId) = BodyAvBim(2,BodyId) + Weight * BAtIp(4)
+        IF (AverageBCompute) THEN
+          IF (BodyAverageBCompute(BodyId)) THEN
+            BodyAvBre(1,BodyId) = BodyAvBre(1,BodyId) + Weight * BAtIp(1)
+            BodyAvBre(2,BodyId) = BodyAvBre(2,BodyId) + Weight * BAtIp(2)
+            IF (Fluxdofs==4) THEN
+              BodyAvBim(1,BodyId) = BodyAvBim(1,BodyId) + Weight * BAtIp(3)
+              BodyAvBim(2,BodyId) = BodyAvBim(2,BodyId) + Weight * BAtIp(4)
+            END IF
           END IF
         END IF
 
