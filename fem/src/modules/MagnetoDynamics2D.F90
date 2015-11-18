@@ -1518,7 +1518,8 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
   REAL(KIND=dp), POINTER :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
-  LOGICAL ::  CSymmetry, LossEstimation, JouleHeating
+  LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, &
+              AverageBCompute, BodyVolumesCompute
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
   
@@ -1605,6 +1606,8 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
     CALL Fatal( 'BSolver', 'Real solution, loss estimation omitted' )
   END IF
 
+  AverageBCompute = GetLogical(SolverParams, 'Average Magnetic Flux Density', GotIt)
+
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),TotDOFs))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
@@ -1666,13 +1669,15 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:)
+    REAL(KIND=dp), ALLOCATABLE :: BodyVolumes(:), BodyAvBim(:,:), BodyAvBre(:,:)
+    LOGICAL, ALLOCATABLE :: BodyAverageBCompute(:)
 
     REAL(KIND=dp), ALLOCATABLE :: alpha(:)
     TYPE(Variable_t), POINTER :: LagrangeVar
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     REAL(KIND=dp) :: localV(2), coilthickness, localAlpha, N_j
     TYPE(ValueList_t), POINTER :: CompParams
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber, XYNumber
     LOGICAL :: CoilBody, EddyLoss
     COMPLEX(KIND=dp) :: imag_value
     INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
@@ -1707,7 +1712,25 @@ CONTAINS
       ComponentLoss = 0.0_dp
       BodyLoss = 0.0_dp
     END IF
+    
+    IF ( AverageBCompute ) THEN
+      ALLOCATE( BodyAvBre(2,Model % NumberOfBodies), &
+                BodyAvBim(2,Model % NumberOfBodies), &
+                BodyAverageBCompute(Model % NumberOfBodies) )
+      BodyAvBre = 0._dp
+      BodyAvBim = 0._dp
+      BodyVolumesCompute = .TRUE.        
 
+      DO i = 1, Model % NumberOfBodies
+        BodyAverageBCompute(i) = ListGetLogical(Model % Bodies(i) % Values, 'Compute Average Magnetic Flux Density', Found)
+        IF (.NOT. Found) BodyAverageBCompute(i) = .TRUE.
+      END DO
+    END IF 
+
+    IF ( BodyVolumesCompute ) THEN
+      ALLOCATE( BodyVolumes(Model % NumberOfBodies) )
+      BodyVolumes = 0._dp
+    END IF
 
     DO elem = 1,GetNOFActive()
          
@@ -1791,6 +1814,10 @@ CONTAINS
         LossCoeff = ListGetFun( Material,'Fourier Loss Coefficient',Freq,Found )
         EddyLoss = .FALSE.
         IF (.NOT. Found) EddyLoss = .TRUE.
+      END IF
+      
+      IF (BodyVolumesCompute) THEN
+        BodyId = GetBody()
       END IF
 
       DO t=1,IntegStuff % n
@@ -1893,6 +1920,19 @@ CONTAINS
           END IF
         END IF
         
+        IF (BodyVolumesCompute) THEN
+          BodyVolumes(BodyId) = BodyVolumes(BodyId) + Weight
+        END IF
+
+        IF (BodyAverageBCompute(BodyId)) THEN
+          BodyAvBre(1,BodyId) = BodyAvBre(1,BodyId) + Weight * BAtIp(1)
+          BodyAvBre(2,BodyId) = BodyAvBre(2,BodyId) + Weight * BAtIp(2)
+          IF (Fluxdofs==4) THEN
+            BodyAvBim(1,BodyId) = BodyAvBim(1,BodyId) + Weight * BAtIp(3)
+            BodyAvBim(2,BodyId) = BodyAvBim(2,BodyId) + Weight * BAtIp(4)
+          END IF
+        END IF
+
         DO i=1,Totdofs
           Coeff = Weight * BAtIp(i)
           FORCE(i,1:nd) = FORCE(i,1:nd) + Coeff * Basis(1:nd)
@@ -1981,6 +2021,33 @@ CONTAINS
       END DO
 
       DEALLOCATE( BodyLoss )
+    END IF
+
+    IF (AverageBCompute) THEN
+      DO j=1,Model % NumberOfBodies 
+        IF (.NOT. BodyAverageBCompute(j)) CYCLE
+        DO i=1,2
+          BodyAvBre(i,j)=BodyAvBre(i,j)/BodyVolumes(j) 
+          WRITE (XYNumber, "(I0)") i 
+          WRITE (bodyNumber, "(I0)") j
+          CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
+                               //TRIM(XYNumber)//' in Body ' &
+                               //TRIM(bodyNumber)//':', BodyAvBre(i,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBre(i,j)
+          CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber), Message, Level=6 )
+          IF (Fluxdofs==4) THEN
+            BodyAvBim(i,j)=BodyAvBim(i,j)/BodyVolumes(j) 
+            WRITE (XYNumber, "(I0)") i 
+            WRITE (bodyNumber, "(I0)") j
+            CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
+                                 //TRIM(XYNumber)//' im in Body ' &
+                                 //TRIM(bodyNumber)//':', BodyAvBim(i,j) )
+            WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBim(i,j)
+            CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber)//' im', Message, Level=6 )
+          END IF
+        END DO
+      END DO
+      DEALLOCATE(BodyVolumes, BodyAvBre, BodyAvBim)
     END IF
 
     DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx )

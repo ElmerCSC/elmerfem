@@ -1427,5 +1427,9 @@ solver:logical:      'normalize coil current'
 solver:real:         'desired coil current'
 solver:real:         'harmonic loss linear exponent'
 solver:real:         'harmonic loss quadratic exponent'
-bc:logical:          'coil start'
-bc:logical:          'coil end'
+
+! TRAFOTEK KEYWORDS
+Material:Real:       'rho0'
+Material:Real:       'rho1'
+Material:Real:       'Foil Layer Heat Conductivity'
+Material:Real:       'Material Heat Conductivity'
