@@ -8861,16 +8861,18 @@ END SUBROUTINE GetMaxDefs
 
   ! Save projector, mainly a utility for debugging purposes
   !--------------------------------------------------------
-  SUBROUTINE SaveProjector(Projector,SaveRowSum,Prefix,InvPerm)
+  SUBROUTINE SaveProjector(Projector,SaveRowSum,Prefix,InvPerm,Parallel)
     TYPE(Matrix_t), POINTER :: Projector
     LOGICAL :: SaveRowSum 
     CHARACTER(LEN=*) :: Prefix
     INTEGER, POINTER, OPTIONAL :: InvPerm(:)
+    LOGICAL, OPTIONAL :: Parallel
 
     CHARACTER(LEN=MAX_NAME_LEN) :: Filename
-    INTEGER :: i,j
-    REAL(KIND=dp) :: rowsum, dia
+    INTEGER :: i,j,ii,jj
+    REAL(KIND=dp) :: rowsum, dia, val
     INTEGER, POINTER :: IntInvPerm(:)
+    LOGICAL :: GlobalInds
 
     IF(.NOT.ASSOCIATED(Projector)) RETURN
     
@@ -8880,28 +8882,34 @@ END SUBROUTINE GetMaxDefs
       IntInvPerm => Projector % InvPerm
     END IF
 
+    GlobalInds = .FALSE.
     IF(ParEnv % PEs == 1 ) THEN
       FileName = TRIM(Prefix)//'.dat'
     ELSE
       FileName = TRIM(Prefix)//'_part'//&
           TRIM(I2S(ParEnv % MyPe))//'.dat'
+      IF( PRESENT( Parallel ) ) GlobalInds = Parallel
     END IF
 
     OPEN(1,FILE=FileName,STATUS='Unknown')    
     DO i=1,projector % numberofrows
-      IF( intinvperm(i) == 0 ) CYCLE
-      rowsum = 0.0_dp
+      ii = intinvperm(i)
+      IF( ii == 0 ) CYCLE
+      IF( GlobalInds ) THEN
+        ii = CurrentModel % Mesh % ParallelInfo % GlobalDofs(ii)
+      END IF
       DO j=projector % rows(i), projector % rows(i+1)-1
-        WRITE(1,*) intinvperm(i), projector % cols(j), projector % values(j)
-        IF( intinvperm(i) == projector % cols(j) ) THEN
-          dia = projector % values(j)
+        jj = projector % cols(j)
+        val = projector % values(j)
+        IF( GlobalInds ) THEN
+          jj = CurrentModel % Mesh % ParallelInfo % GlobalDofs(jj)
+          WRITE(1,*) ii,jj,ParEnv % MyPe, val
         ELSE
-          rowsum = rowsum + projector % values(j)
+          WRITE(1,*) ii,jj,val
         END IF
       END DO
     END DO
     CLOSE(1)     
-
 
     IF( SaveRowSum ) THEN
       IF(ParEnv % PEs == 1 ) THEN
@@ -8913,18 +8921,29 @@ END SUBROUTINE GetMaxDefs
       
       OPEN(1,FILE=FileName,STATUS='Unknown')
       DO i=1,projector % numberofrows
-        IF( intinvperm(i) == 0 ) CYCLE
+        ii = intinvperm(i)
+        IF( ii == 0 ) CYCLE
         rowsum = 0.0_dp
         dia = 0.0_dp
+
         DO j=projector % rows(i), projector % rows(i+1)-1          
-          IF( intinvperm(i) == projector % cols(j) ) THEN
-            dia = projector % values(j)
+          jj = projector % cols(j)
+          val = projector % values(j)
+          IF( ii == jj ) THEN
+            dia = val
           END IF
-          rowsum = rowsum + projector % values(j)
+          rowsum = rowsum + val
         END DO
-        
-        WRITE(1,*) intinvperm(i), i, &
-            projector % rows(i+1)-projector % rows(i),dia, rowsum
+
+        IF( GlobalInds ) THEN
+          ii = CurrentModel % Mesh % ParallelInfo % GlobalDofs(ii)
+          WRITE(1,*) ii, i, &
+              projector % rows(i+1)-projector % rows(i), ParEnv % MyPe, dia, rowsum
+        ELSE
+          WRITE(1,*) ii, i, &
+              projector % rows(i+1)-projector % rows(i),dia, rowsum
+        END IF
+
       END DO
       CLOSE(1)     
     END IF
@@ -8974,7 +8993,8 @@ END SUBROUTINE GetMaxDefs
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
-        Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector
+        Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
+        ParallelNumbering
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
@@ -8994,6 +9014,9 @@ END SUBROUTINE GetMaxDefs
         TYPE(Matrix_t), POINTER :: Projector
         LOGICAL :: NodalJump
       END FUNCTION WeightedProjector
+
+
+
     END INTERFACE
 !------------------------------------------------------------------------------
     Projector => NULL()
@@ -9248,16 +9271,18 @@ END SUBROUTINE GetMaxDefs
 
 
     IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
-      CALL SaveProjector( Projector, .TRUE.,'p'//TRIM(I2S(This)) ) 
+      ParallelNumbering = ListGetLogical( BC,'Save Projector Global Numbering',GotIt )
+     
+      CALL SaveProjector( Projector, .TRUE.,'p'//TRIM(I2S(This)), Parallel = ParallelNumbering) 
       ! Dual projector if it exists
       IF( ASSOCIATED( Projector % Ematrix ) ) THEN
         CALL SaveProjector( Projector % Ematrix, .TRUE.,'pd'//TRIM(I2S(This)), &
-            Projector % InvPerm ) 
+            Projector % InvPerm, Parallel = ParallelNumbering) 
       END IF
       ! Biorthogonal projector if it exists
       IF( ASSOCIATED( Projector % Child ) ) THEN
         CALL SaveProjector( Projector % Child, .TRUE.,'pb'//TRIM(I2S(This)), & 
-            Projector % InvPerm ) 
+            Projector % InvPerm, Parallel = ParallelNumbering ) 
       END IF
 
       IF( ListGetLogical( BC,'Save Projector And Stop',GotIt ) ) STOP
