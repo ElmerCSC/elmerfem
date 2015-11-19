@@ -2054,7 +2054,7 @@ CONTAINS
     IF (ComplexPowerCompute) THEN
        DO j=1,Model % NumberOfBodies
          DO i = 1, 2
-           BodyComplexPower(i,j) = ParallelReduction(BodyComplexPower(i,j)
+           BodyComplexPower(i,j) = ParallelReduction(BodyComplexPower(i,j))
          END DO
          WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyComplexPower(1, j)
          WRITE (bodyNumber, "(I0)") j
