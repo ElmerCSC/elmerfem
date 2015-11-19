@@ -1519,7 +1519,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
-              AverageBCompute, BodyVolumesCompute=.TRUE.
+              AverageBCompute, BodyICompute, BodyVolumesCompute=.TRUE.
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
   
@@ -1612,6 +1612,9 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   AverageBCompute = GetLogical(SolverParams, 'Average Magnetic Flux Density', GotIt)
   IF (.NOT. GotIt ) AverageBCompute = .FALSE.
 
+  BodyICompute = GetLogical(SolverParams, 'Body Current', GotIt)
+  IF (.NOT. GotIt ) BodyICompute = .FALSE.
+
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),TotDOFs))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
@@ -1672,7 +1675,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: POT(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:), mu(:)
-    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:), BodyCurrent(:,:)
     REAL(KIND=dp), ALLOCATABLE :: BodyVolumes(:), BodyAvBim(:,:), BodyAvBre(:,:)
     LOGICAL, ALLOCATABLE :: BodyAverageBCompute(:)
 
@@ -1720,6 +1723,11 @@ CONTAINS
     IF ( ComplexPowerCompute ) THEN
       ALLOCATE( BodyComplexPower(2,Model % NumberOfBodies) )
       BodyComplexPower = 0.0_dp
+    END IF
+
+    IF (BodyICompute) THEN
+      ALLOCATE(BodyCurrent(2, Model % NumberOfBodies))
+      BodyCurrent = 0.0_dp
     END IF
 
     IF ( AverageBCompute ) THEN
@@ -1961,6 +1969,13 @@ CONTAINS
           END IF
         END IF
 
+        IF (BodyICompute) THEN
+          BodyCurrent(1,BodyId) = BodyCurrent(1,BodyId) + Weight * BatIp(7)
+          IF (Fluxdofs==4) THEN
+            BodyCurrent(2,BodyId) = BodyCurrent(2,BodyId) + Weight * BatIp(8)
+          END IF
+        END IF
+
         DO i=1,Totdofs
           Coeff = Weight * BAtIp(i)
           FORCE(i,1:nd) = FORCE(i,1:nd) + Coeff * Basis(1:nd)
@@ -2077,6 +2092,26 @@ CONTAINS
      END DO
    END IF
 
+   IF (BodyICompute) THEN
+     DO j = 1, Model % NumberOfBodies
+       BodyCurrent(1, j) = ParallelReduction(BodyCurrent(1, j)) 
+       WRITE (bodyNumber, "(I0)") j
+       CALL ListAddConstReal( Model % Simulation,'res: Body Current re in Body ' &
+                            //TRIM(bodyNumber)//':', BodyCurrent(1,j) )
+       WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyCurrent(1,j)
+       CALL Info('Body Current re', Message, Level=6 )
+
+       IF (FluxDofs==4) THEN
+         BodyCurrent(2, j) = ParallelReduction(BodyCurrent(2, j)) 
+         CALL ListAddConstReal( Model % Simulation,'res: Body Current im in Body ' &
+                              //TRIM(bodyNumber)//':', BodyCurrent(2,j) )
+         WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyCurrent(2,j)
+         CALL Info('Body Current im', Message, Level=6 )
+         END IF
+     END DO
+     DEALLOCATE(BodyCurrent)
+   END IF
+
    IF (AverageBCompute) THEN
      DO j=1,Model % NumberOfBodies 
        IF (.NOT. BodyAverageBCompute(j)) CYCLE
@@ -2101,8 +2136,13 @@ CONTAINS
          END IF
        END DO
      END DO
-     DEALLOCATE(BodyVolumes, BodyAvBre, BodyAvBim)
+     DEALLOCATE(BodyAvBre, BodyAvBim)
    END IF
+
+   IF (BodyVolumesCompute) THEN
+     DEALLOCATE(BodyVolumes)
+   END IF
+
 
    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond )
 
