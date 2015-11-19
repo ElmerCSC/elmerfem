@@ -40,37 +40,9 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: BodyForce
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:)
 
-real(kind=dp) :: x
-
-type(valueList_t), pointer :: list
-
 
   SAVE STIFF, LOAD, FORCE, AllocationsDone
 !------------------------------------------------------------------------------
-
-print*,1, associated(Model % Components(1) % Values)
-  call listaddconstreal( Model % Components(1) % Values, 'x', 1._dp)
-print*,2
-  call listaddconstreal( Model % Components(1) % Values, 'y', 2._dp)
-print*,3
-  list => Model % Components(1) % Values
-  call listremove( list, 'y' )
-print*,4, associated(list,model % components(1) % Values)
-  x = getconstreal( Model % Components(1) % Values, 'x' )
-  print*, 'eh: ', x, associated(List)
-do while(associated(list))
-  print*,trim(list % name)
-  list => list % Next
-end do
-print*,'xxxx'
-list => model % components(1) % values
-do while(associated(list))
-  print*,trim(list % name)
-  list => list % Next
-end do
-
- call a(stiff)
-  
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
@@ -186,11 +158,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
-
-subroutine a(b) 
-  real(kind=dp) :: b(:,:)
-  print*,isallocatable(b)
-end subroutine a
 
 !------------------------------------------------------------------------------
 END SUBROUTINE PoissonSolver
