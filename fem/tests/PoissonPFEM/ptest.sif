@@ -10,9 +10,13 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-! Post File   = "ptest.ep"
-! Output File = "ptest.dat"
+  Post File   = "ptest.ep"
+  Output File = "ptest.dat"
 End
+
+ Component 1
+!  arvoa = real 2.1
+ end
 
 Body 1
   Equation = 1
