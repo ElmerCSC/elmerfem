@@ -1518,7 +1518,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
   REAL(KIND=dp), POINTER :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
-  LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, &
+  LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
               AverageBCompute, BodyVolumesCompute=.TRUE.
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
@@ -1606,6 +1606,9 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
     CALL Fatal( 'BSolver', 'Real solution, loss estimation omitted' )
   END IF
 
+  ComplexPowerCompute = GetLogical(SolverParams,'Complex Power',GotIt)
+  IF (.NOT. GotIt ) ComplexPowerCompute = .FALSE.
+
   AverageBCompute = GetLogical(SolverParams, 'Average Magnetic Flux Density', GotIt)
   IF (.NOT. GotIt ) AverageBCompute = .FALSE.
 
@@ -1658,7 +1661,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: weight,coeff,detJ,BAtIp(8),PotAtIp(2),CondAtIp,&
+    REAL(KIND=dp) :: weight,coeff,detJ,BAtIp(8),PotAtIp(2),CondAtIp,MuAtIp, &
         Omega,TotalHeating, DesiredHeating, HeatingCoeff
     REAL(KIND=dp) :: Freq, FreqPower, FieldPower, ComponentLoss(2), LossCoeff, &
         ValAtIp, TotalLoss, x
@@ -1668,8 +1671,8 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:,:)
     REAL(KIND=dp), ALLOCATABLE :: POT(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
-    REAL(KIND=dp), ALLOCATABLE :: Cond(:)
-    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:)
+    REAL(KIND=dp), ALLOCATABLE :: Cond(:), mu(:)
+    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:)
     REAL(KIND=dp), ALLOCATABLE :: BodyVolumes(:), BodyAvBim(:,:), BodyAvBre(:,:)
     LOGICAL, ALLOCATABLE :: BodyAverageBCompute(:)
 
@@ -1683,7 +1686,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: imag_value
     INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
     REAL(KIND=DP) :: grads_coeff, nofturns
-    REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im
+    REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im, ModelDepth
     COMPLEX(KIND=dp) :: i_multiplier
     
     SAVE Nodes
@@ -1691,10 +1694,10 @@ CONTAINS
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
     ALLOCATE( STIFF(n,n), FORCE(Totdofs,n) )
     ALLOCATE( POT(2,n), Basis(n), dBasisdx(n,3), alpha(n) )
+    ALLOCATE( Cond(n), mu(n) ) 
     LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
-    
+
     IF( JouleHeating ) THEN
-      ALLOCATE( Cond(n) ) 
       Omega = GetAngularFrequency()
       TotalHeating = 0.0_dp
     END IF
@@ -1713,7 +1716,12 @@ CONTAINS
       ComponentLoss = 0.0_dp
       BodyLoss = 0.0_dp
     END IF
-    
+
+    IF ( ComplexPowerCompute ) THEN
+      ALLOCATE( BodyComplexPower(2,Model % NumberOfBodies) )
+      BodyComplexPower = 0.0_dp
+    END IF
+
     IF ( AverageBCompute ) THEN
       ALLOCATE( BodyAvBre(2,Model % NumberOfBodies), &
                 BodyAvBim(2,Model % NumberOfBodies), &
@@ -1821,6 +1829,13 @@ CONTAINS
         BodyId = GetBody()
       END IF
 
+      IF (ComplexPowerCompute) THEN
+        BodyId = GetBody()
+        Material => GetMaterial()
+        mu = GetReal( Material, 'Relative Permeability', Found)
+        IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
+      END IF
+
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
@@ -1864,6 +1879,7 @@ CONTAINS
         ! Joule heating fields
         IF( TotDofs > 4 ) THEN
           CondAtIp = SUM( Basis(1:n) * Cond(1:n) )
+          MuAtIp = SUM( Basis(1:n) * mu(1:n) )
           IF (CoilType /= 'stranded') THEN
             PotAtIp(1) =   Omega * SUM(POT(2,1:nd) * Basis(1:nd))
             PotAtIp(2) = - Omega * SUM(POT(1,1:nd) * Basis(1:nd))
@@ -1907,10 +1923,11 @@ CONTAINS
           BAtIp(8) = CondAtIp * PotAtIp(2)
           
         END IF
-
+        
+        ModelDepth = GetCircuitModelDepth()
         IF( LossEstimation ) THEN
           IF ( EddyLoss ) THEN
-            BodyLoss(BodyId) = BodyLoss(BodyId) + 2._dp * pi * Weight * BAtIp(6)
+            BodyLoss(BodyId) = BodyLoss(BodyId) + ModelDepth * Weight * BAtIp(6)
           ELSE
             DO i=1,2
               ValAtIP = SUM( BAtIP(2*i-1:2*i) ** 2 )
@@ -1920,7 +1937,15 @@ CONTAINS
             END DO
           END IF
         END IF
-        
+
+        IF (ComplexPowerCompute) THEN
+          BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) + ModelDepth * Weight * BAtIp(6)
+          imag_value = CMPLX(BatIp(1), BatIp(2), KIND=dp)
+          BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + &
+                         ModelDepth * Weight * Omega/MuAtIp * imag_value**2._dp
+        END IF
+
+       
         IF (BodyVolumesCompute) THEN
           BodyVolumes(BodyId) = BodyVolumes(BodyId) + Weight
         END IF
@@ -2026,6 +2051,23 @@ CONTAINS
       DEALLOCATE( BodyLoss )
     END IF
 
+    IF (ComplexPowerCompute) THEN
+       DO j=1,Model % NumberOfBodies
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyComplexPower(1, j)
+         WRITE (bodyNumber, "(I0)") j
+         CALL ListAddConstReal( Model % Simulation,'res: Power re in Body '&
+              //TRIM(bodyNumber)//':', BodyComplexPower(1,j) )
+         CALL Info('Compex Power re', Message, Level=6 )
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyComplexPower(2, j)
+         WRITE (bodyNumber, "(I0)") j
+         CALL ListAddConstReal( Model % Simulation,'res: Power im in Body '&
+              //TRIM(bodyNumber)//':', BodyComplexPower(2,j) )
+         CALL Info('Compex Power im', Message, Level=6 )
+      END DO
+
+      DEALLOCATE( BodyComplexPower )
+   END IF
+
     IF (AverageBCompute) THEN
       DO j=1,Model % NumberOfBodies 
         IF (.NOT. BodyAverageBCompute(j)) CYCLE
@@ -2053,11 +2095,7 @@ CONTAINS
       DEALLOCATE(BodyVolumes, BodyAvBre, BodyAvBim)
     END IF
 
-    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx )
-
-    IF( JouleHeating ) THEN
-      DEALLOCATE( Cond ) 
-    END IF
+    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
