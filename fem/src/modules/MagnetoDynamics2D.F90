@@ -2053,6 +2053,9 @@ CONTAINS
 
     IF (ComplexPowerCompute) THEN
        DO j=1,Model % NumberOfBodies
+         DO i = 1, 2
+           BodyComplexPower(i,j) = ParallelReduction(BodyComplexPower(i,j)
+         END DO
          WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyComplexPower(1, j)
          WRITE (bodyNumber, "(I0)") j
          CALL ListAddConstReal( Model % Simulation,'res: Power re in Body '&
@@ -2068,34 +2071,40 @@ CONTAINS
       DEALLOCATE( BodyComplexPower )
    END IF
 
-    IF (AverageBCompute) THEN
-      DO j=1,Model % NumberOfBodies 
-        IF (.NOT. BodyAverageBCompute(j)) CYCLE
-        DO i=1,2
-          BodyAvBre(i,j)=BodyAvBre(i,j)/BodyVolumes(j) 
-          WRITE (XYNumber, "(I0)") i 
-          WRITE (bodyNumber, "(I0)") j
-          CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
-                               //TRIM(XYNumber)//' in Body ' &
-                               //TRIM(bodyNumber)//':', BodyAvBre(i,j) )
-          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBre(i,j)
-          CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber), Message, Level=6 )
-          IF (Fluxdofs==4) THEN
-            BodyAvBim(i,j)=BodyAvBim(i,j)/BodyVolumes(j) 
-            WRITE (XYNumber, "(I0)") i 
-            WRITE (bodyNumber, "(I0)") j
-            CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
-                                 //TRIM(XYNumber)//' im in Body ' &
-                                 //TRIM(bodyNumber)//':', BodyAvBim(i,j) )
-            WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBim(i,j)
-            CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber)//' im', Message, Level=6 )
-          END IF
-        END DO
-      END DO
-      DEALLOCATE(BodyVolumes, BodyAvBre, BodyAvBim)
-    END IF
+   IF ( BodyVolumesCompute ) THEN
+     DO j=1,Model % NumberOfBodies
+       BodyVolumes(j) = ParallelReduction(BodyVolumes(j))
+     END DO
+   END IF
 
-    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond )
+   IF (AverageBCompute) THEN
+     DO j=1,Model % NumberOfBodies 
+       IF (.NOT. BodyAverageBCompute(j)) CYCLE
+       DO i=1,2
+         BodyAvBre(i,j)=ParallelReduction(BodyAvBre(i,j))/BodyVolumes(j) 
+         WRITE (XYNumber, "(I0)") i 
+         WRITE (bodyNumber, "(I0)") j
+         CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
+                              //TRIM(XYNumber)//' in Body ' &
+                              //TRIM(bodyNumber)//':', BodyAvBre(i,j) )
+         WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBre(i,j)
+         CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber), Message, Level=6 )
+         IF (Fluxdofs==4) THEN
+           BodyAvBim(i,j)=BodyAvBim(i,j)/BodyVolumes(j) 
+           WRITE (XYNumber, "(I0)") i 
+           WRITE (bodyNumber, "(I0)") j
+           CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
+                                //TRIM(XYNumber)//' im in Body ' &
+                                //TRIM(bodyNumber)//':', BodyAvBim(i,j) )
+           WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBim(i,j)
+           CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber)//' im', Message, Level=6 )
+         END IF
+       END DO
+     END DO
+     DEALLOCATE(BodyVolumes, BodyAvBre, BodyAvBim)
+   END IF
+
+   DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
