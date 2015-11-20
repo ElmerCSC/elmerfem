@@ -93,7 +93,7 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq, ExecCommand
+     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq, ExecCommand, ExtrudedMeshName
      CHARACTER(LEN=MAX_STRING_LEN) :: OutputFile, PostFile, RestartFile, &
                 OutputName=' ',PostName=' ', When, OptionString
 
@@ -322,28 +322,35 @@ END INTERFACE
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
          ExtrudeLevels=GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
-         IF(ExtrudeLevels>1) THEN
-           ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
-           DO i=1,CurrentModel % NumberOfSolvers
-             IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
-               CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
-           END DO
-           ExtrudedMesh % Next => CurrentModel % Meshes % Next
-           CurrentModel % Meshes => ExtrudedMesh
-
-           ! If periodic BC given, compute boundary mesh projector:
-           ! ------------------------------------------------------
-           DO i = 1,CurrentModel % NumberOfBCs
-             IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
-               CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
-             CurrentModel % BCs(i) % PMatrix => NULL()
-             k = ListGetInteger( CurrentModel % BCs(i) % Values, 'Periodic BC', GotIt )
-             IF( GotIt ) THEN
-               CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, i, k )
-             END IF
-           END DO
+         IF (Found) THEN
+            IF(ExtrudeLevels>1) THEN
+               ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
+               IF (Found) THEN
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2, ExtrudedMeshName)
+               ELSE
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
+               END IF
+               DO i=1,CurrentModel % NumberOfSolvers
+                  IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
+                       CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
+               END DO
+               ExtrudedMesh % Next => CurrentModel % Meshes % Next
+               CurrentModel % Meshes => ExtrudedMesh
+               
+               ! If periodic BC given, compute boundary mesh projector:
+               ! ------------------------------------------------------
+               DO i = 1,CurrentModel % NumberOfBCs
+                  IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
+                       CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
+                  CurrentModel % BCs(i) % PMatrix => NULL()
+                  k = ListGetInteger( CurrentModel % BCs(i) % Values, 'Periodic BC', GotIt )
+                  IF( GotIt ) THEN
+                     CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, i, k )
+                  END IF
+               END DO
+            END IF
          END IF
-         
+
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
@@ -1451,12 +1458,27 @@ END INTERFACE
        timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)
        IF(.NOT.GotIt) timePeriod = HUGE(timePeriod)
 
+       IF(Scanning) THEN
+         CALL ListPushNamespace('scan:')
+       ELSE IF(Transient) THEN
+         CALL ListPushNamespace('time:')
+       ELSE
+         CALL ListPushNamespace('steady:')
+       END IF
 
        RealTimestep = 1
        DO timestep = 1,Timesteps(interval)
 
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
+
+         IF( Scanning ) THEN
+           CALL ListPushNamespace('scan '//TRIM(i2s(cum_Timestep))//':')
+         ELSE IF ( Transient ) THEN
+           CALL ListPushNamespace('time '//TRIM(i2s(cum_Timestep))//':')
+         ELSE
+           CALL ListPushNamespace('steady '//TRIM(i2s(cum_Timestep))//':')
+         END IF
 
          dtfunc = ListGetConstReal( CurrentModel % Simulation, &
                   'Timestep Function', gotIt)
@@ -1715,6 +1737,8 @@ END INTERFACE
            END IF
          END IF
 !------------------------------------------------------------------------------
+         CALL ListPopNameSpace()
+!------------------------------------------------------------------------------
 
          maxtime = ListGetCReal( CurrentModel % Simulation,'Real Time Max',GotIt)
          IF( GotIt .AND. RealTime() - RT0 > maxtime ) THEN
@@ -1742,7 +1766,11 @@ END INTERFACE
      END DO ! timestep intervals, i.e. the simulation
 !------------------------------------------------------------------------------
 
-100   DO i=1,CurrentModel % NumberOfSolvers
+100  CONTINUE
+
+     CALL ListPopNamespace()
+
+     DO i=1,CurrentModel % NumberOfSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE == 0 ) CYCLE
         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )

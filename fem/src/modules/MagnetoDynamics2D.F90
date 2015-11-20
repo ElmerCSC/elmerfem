@@ -1518,7 +1518,9 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), ALLOCATABLE, TARGET :: ForceVector(:,:)
   REAL(KIND=dp), POINTER :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
-  LOGICAL ::  CSymmetry, LossEstimation, JouleHeating
+  LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
+              AverageBCompute, BodyICompute, BodyVolumesCompute, &
+              SkinAndProxParamCompute
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
   
@@ -1605,6 +1607,24 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
     CALL Fatal( 'BSolver', 'Real solution, loss estimation omitted' )
   END IF
 
+  SkinAndProxParamCompute = GetLogical(SolverParams, 'Skin and Proximity Parameters', GotIt)
+  IF (.NOT. GotIt ) SkinAndProxParamCompute = .FALSE.
+  IF( SkinAndProxParamCompute.AND. FluxDofs /= 4) THEN
+    CALL Fatal( 'BSolver', 'Real solution, Skin and Proximity Parameters omitted' )
+  END IF
+
+  ComplexPowerCompute = GetLogical(SolverParams,'Complex Power',GotIt)
+  IF (.NOT. GotIt ) ComplexPowerCompute = .FALSE.
+  IF( ComplexPowerCompute.AND. FluxDofs /= 4) THEN
+    CALL Fatal( 'BSolver', 'Real solution, Complex Power omitted' )
+  END IF
+
+  AverageBCompute = GetLogical(SolverParams, 'Average Magnetic Flux Density', GotIt)
+  IF (.NOT. GotIt ) AverageBCompute = .FALSE.
+
+  BodyICompute = GetLogical(SolverParams, 'Body Current', GotIt)
+  IF (.NOT. GotIt ) BodyICompute = .FALSE.
+
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),TotDOFs))  
   ForceVector = 0.0_dp
   SaveRHS => Solver % Matrix % RHS
@@ -1654,7 +1674,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: weight,coeff,detJ,BAtIp(8),PotAtIp(2),CondAtIp,&
+    REAL(KIND=dp) :: weight,coeff,detJ,BAtIp(8),PotAtIp(2),CondAtIp,MuAtIp, &
         Omega,TotalHeating, DesiredHeating, HeatingCoeff
     REAL(KIND=dp) :: Freq, FreqPower, FieldPower, ComponentLoss(2), LossCoeff, &
         ValAtIp, TotalLoss, x
@@ -1664,31 +1684,36 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:,:)
     REAL(KIND=dp), ALLOCATABLE :: POT(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
-    REAL(KIND=dp), ALLOCATABLE :: Cond(:)
-    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:)
+    REAL(KIND=dp), ALLOCATABLE :: Cond(:), mu(:)
+    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:), BodyCurrent(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: BodyVolumes(:), BodyAvBim(:,:), BodyAvBre(:,:), &
+                                  BodySkinCond(:,:), BodyProxNu(:,:) 
+    LOGICAL, ALLOCATABLE :: BodyAverageBCompute(:)
 
     REAL(KIND=dp), ALLOCATABLE :: alpha(:)
     TYPE(Variable_t), POINTER :: LagrangeVar
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     REAL(KIND=dp) :: localV(2), coilthickness, localAlpha, N_j
     TYPE(ValueList_t), POINTER :: CompParams
-    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber, XYNumber
     LOGICAL :: CoilBody, EddyLoss
     COMPLEX(KIND=dp) :: imag_value
     INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
     REAL(KIND=DP) :: grads_coeff, nofturns
-    REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im
+    REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im, ModelDepth
     COMPLEX(KIND=dp) :: i_multiplier
-    
+    REAL(KIND=dp) :: ValueNorm
+
     SAVE Nodes
 
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
     ALLOCATE( STIFF(n,n), FORCE(Totdofs,n) )
     ALLOCATE( POT(2,n), Basis(n), dBasisdx(n,3), alpha(n) )
+    ALLOCATE( Cond(n), mu(n) ) 
     LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
-    
+    ModelDepth = GetCircuitModelDepth()
+
     IF( JouleHeating ) THEN
-      ALLOCATE( Cond(n) ) 
       Omega = GetAngularFrequency()
       TotalHeating = 0.0_dp
     END IF
@@ -1708,6 +1733,44 @@ CONTAINS
       BodyLoss = 0.0_dp
     END IF
 
+    IF (SkinAndProxParamCompute) THEN
+      ALLOCATE(BodySkinCond(2, Model % NumberOfBodies), &
+                 BodyProxNu(2, Model % NumberOfBodies) )
+      BodySkinCond = 0.0_dp
+      BodyProxNu = 0.0_dp      
+      BodyICompute = .TRUE.
+      ComplexPowerCompute = .TRUE.
+      AverageBCompute = .TRUE.
+    END IF
+
+    IF ( ComplexPowerCompute ) THEN
+      ALLOCATE( BodyComplexPower(2,Model % NumberOfBodies) )
+      BodyComplexPower = 0.0_dp
+    END IF
+
+    IF (BodyICompute) THEN
+      ALLOCATE(BodyCurrent(2, Model % NumberOfBodies))
+      BodyCurrent = 0.0_dp
+    END IF
+
+    IF ( AverageBCompute ) THEN
+      ALLOCATE( BodyAvBre(2,Model % NumberOfBodies), &
+                BodyAvBim(2,Model % NumberOfBodies), &
+                BodyAverageBCompute(Model % NumberOfBodies) )
+      BodyAvBre = 0._dp
+      BodyAvBim = 0._dp
+      BodyVolumesCompute = .TRUE.        
+
+      DO i = 1, Model % NumberOfBodies
+        BodyAverageBCompute(i) = ListGetLogical(Model % Bodies(i) % Values, 'Compute Average Magnetic Flux Density', Found)
+        IF (.NOT. Found) BodyAverageBCompute(i) = .TRUE.
+      END DO
+    END IF 
+
+    IF ( BodyVolumesCompute ) THEN
+      ALLOCATE( BodyVolumes(Model % NumberOfBodies) )
+      BodyVolumes = 0._dp
+    END IF
 
     DO elem = 1,GetNOFActive()
          
@@ -1792,6 +1855,18 @@ CONTAINS
         EddyLoss = .FALSE.
         IF (.NOT. Found) EddyLoss = .TRUE.
       END IF
+      
+      IF (BodyVolumesCompute) THEN
+        BodyId = GetBody()
+      END IF
+
+      IF (ComplexPowerCompute) THEN
+        BodyId = GetBody()
+        Material => GetMaterial()
+        mu = 4._dp-7*PI
+        mu = mu * GetReal( Material, 'Relative Permeability', Found)
+        IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
+      END IF
 
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
@@ -1836,6 +1911,7 @@ CONTAINS
         ! Joule heating fields
         IF( TotDofs > 4 ) THEN
           CondAtIp = SUM( Basis(1:n) * Cond(1:n) )
+          MuAtIp = SUM( Basis(1:n) * mu(1:n) )
           IF (CoilType /= 'stranded') THEN
             PotAtIp(1) =   Omega * SUM(POT(2,1:nd) * Basis(1:nd))
             PotAtIp(2) = - Omega * SUM(POT(1,1:nd) * Basis(1:nd))
@@ -1879,10 +1955,10 @@ CONTAINS
           BAtIp(8) = CondAtIp * PotAtIp(2)
           
         END IF
-
+        
         IF( LossEstimation ) THEN
           IF ( EddyLoss ) THEN
-            BodyLoss(BodyId) = BodyLoss(BodyId) + 2._dp * pi * Weight * BAtIp(6)
+            BodyLoss(BodyId) = BodyLoss(BodyId) + ModelDepth * Weight * BAtIp(6)
           ELSE
             DO i=1,2
               ValAtIP = SUM( BAtIP(2*i-1:2*i) ** 2 )
@@ -1892,7 +1968,37 @@ CONTAINS
             END DO
           END IF
         END IF
-        
+
+        IF (ComplexPowerCompute) THEN
+          BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) + ModelDepth * Weight * BAtIp(6)
+          imag_value = CMPLX(BatIp(1), BatIp(2), KIND=dp)
+          BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + &
+                         ModelDepth * Weight * Omega/MuAtIp * imag_value**2._dp
+        END IF
+
+       
+        IF (BodyVolumesCompute) THEN
+          BodyVolumes(BodyId) = BodyVolumes(BodyId) + Weight * ModelDepth
+        END IF
+
+        IF (AverageBCompute) THEN
+          IF (BodyAverageBCompute(BodyId)) THEN
+            BodyAvBre(1,BodyId) = BodyAvBre(1,BodyId) + Weight * BAtIp(1)
+            BodyAvBre(2,BodyId) = BodyAvBre(2,BodyId) + Weight * BAtIp(2)
+            IF (Fluxdofs==4) THEN
+              BodyAvBim(1,BodyId) = BodyAvBim(1,BodyId) + Weight * BAtIp(3)
+              BodyAvBim(2,BodyId) = BodyAvBim(2,BodyId) + Weight * BAtIp(4)
+            END IF
+          END IF
+        END IF
+
+        IF (BodyICompute) THEN
+          BodyCurrent(1,BodyId) = BodyCurrent(1,BodyId) + Weight * BatIp(7)
+          IF (Fluxdofs==4) THEN
+            BodyCurrent(2,BodyId) = BodyCurrent(2,BodyId) + Weight * BatIp(8)
+          END IF
+        END IF
+
         DO i=1,Totdofs
           Coeff = Weight * BAtIp(i)
           FORCE(i,1:nd) = FORCE(i,1:nd) + Coeff * Basis(1:nd)
@@ -1983,11 +2089,117 @@ CONTAINS
       DEALLOCATE( BodyLoss )
     END IF
 
-    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx )
 
-    IF( JouleHeating ) THEN
-      DEALLOCATE( Cond ) 
+    IF (ComplexPowerCompute) THEN
+       DO j=1,Model % NumberOfBodies
+         DO i = 1, 2
+           BodyComplexPower(i,j) = ParallelReduction(BodyComplexPower(i,j))
+         END DO
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyComplexPower(1, j)
+         WRITE (bodyNumber, "(I0)") j
+         CALL ListAddConstReal( Model % Simulation,'res: Power re in Body '&
+              //TRIM(bodyNumber)//':', BodyComplexPower(1,j) )
+         CALL Info('Compex Power re', Message, Level=6 )
+         WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyComplexPower(2, j)
+         WRITE (bodyNumber, "(I0)") j
+         CALL ListAddConstReal( Model % Simulation,'res: Power im in Body '&
+              //TRIM(bodyNumber)//':', BodyComplexPower(2,j) )
+         CALL Info('Compex Power im', Message, Level=6 )
+      END DO
+
     END IF
+
+    IF ( BodyVolumesCompute ) THEN
+      DO j=1,Model % NumberOfBodies
+        BodyVolumes(j) = ParallelReduction(BodyVolumes(j))
+      END DO
+    END IF
+ 
+    IF (BodyICompute) THEN
+      DO j = 1, Model % NumberOfBodies
+        BodyCurrent(1, j) = ParallelReduction(BodyCurrent(1, j)) 
+        WRITE (bodyNumber, "(I0)") j
+        CALL ListAddConstReal( Model % Simulation,'res: Body Current re in Body ' &
+                             //TRIM(bodyNumber)//':', BodyCurrent(1,j) )
+        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyCurrent(1,j)
+        CALL Info('Body Current re', Message, Level=6 )
+ 
+        IF (FluxDofs==4) THEN
+          BodyCurrent(2, j) = ParallelReduction(BodyCurrent(2, j)) 
+          CALL ListAddConstReal( Model % Simulation,'res: Body Current im in Body ' &
+                               //TRIM(bodyNumber)//':', BodyCurrent(2,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyCurrent(2,j)
+          CALL Info('Body Current im', Message, Level=6 )
+          END IF
+      END DO
+    END IF
+ 
+    IF (AverageBCompute) THEN
+      DO j=1,Model % NumberOfBodies 
+        IF (.NOT. BodyAverageBCompute(j)) CYCLE
+        DO i=1,2
+          BodyAvBre(i,j)=ParallelReduction(BodyAvBre(i,j))*ModelDepth/BodyVolumes(j) 
+          WRITE (XYNumber, "(I0)") i 
+          WRITE (bodyNumber, "(I0)") j
+          CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
+                               //TRIM(XYNumber)//' in Body ' &
+                               //TRIM(bodyNumber)//':', BodyAvBre(i,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBre(i,j)
+          CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber), Message, Level=6 )
+          IF (Fluxdofs==4) THEN
+            BodyAvBim(i,j)=BodyAvBim(i,j)/BodyVolumes(j) 
+            WRITE (XYNumber, "(I0)") i 
+            WRITE (bodyNumber, "(I0)") j
+            CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
+                                 //TRIM(XYNumber)//' im in Body ' &
+                                 //TRIM(bodyNumber)//':', BodyAvBim(i,j) )
+            WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBim(i,j)
+            CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber)//' im', Message, Level=6 )
+          END IF
+        END DO
+      END DO
+    END IF
+
+    IF (SkinAndProxParamCompute) THEN
+      DO j = 1,Model % NumberOfBodies
+        ValueNorm = SQRT(BodyCurrent(1,j)**2 + BodyCurrent(2,j)**2)
+        BodySkinCond(1,j) = BodyComplexPower(1,j)/ValueNorm/BodyVolumes(j)
+        BodySkinCond(2,j) = BodyComplexPower(2,j)/ValueNorm/BodyVolumes(j)
+        ValueNorm = SQRT(BodyAvBre(1,j)**2 + BodyAvBim(2,j)**2)
+        ValueNorm = ValueNorm + SQRT(BodyAvBre(2,j)**2 + BodyAvBim(2,j)**2) 
+        BodyProxNu(1,j) = BodyComplexPower(1,j)/ValueNorm/BodyVolumes(j)
+        BodyProxNu(2,j) = BodyComplexPower(2,j)/ValueNorm/BodyVolumes(j)
+        WRITE (bodyNumber, "(I0)") j
+      
+        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity re in Body '&
+                             //TRIM(bodyNumber)//':', BodySkinCond(1,j) )
+        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(1,j)
+        CALL Info('Skin and Proximity Conductivity re', Message, Level=6 )
+
+        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity im in Body '&
+                             //TRIM(bodyNumber)//':', BodySkinCond(2,j) )
+        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(2,j)
+        CALL Info('Skin and Proximity Conductivity im', Message, Level=6 )
+
+        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity re in Body '&
+                             //TRIM(bodyNumber)//':', BodyProxNu(1,j) )
+        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(1,j)
+        CALL Info('Skin and Proximity Reluctivity re', Message, Level=6 )
+
+        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity im in Body '&
+                             //TRIM(bodyNumber)//':', BodyProxNu(2,j) )
+        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
+        CALL Info('Skin and Proximity Reluctivity im', Message, Level=6 )
+        END DO
+    END IF
+
+    IF (BodyVolumesCompute)      DEALLOCATE(BodyVolumes)
+    IF (AverageBCompute)         DEALLOCATE(BodyAvBre, BodyAvBim)
+    IF (BodyICompute)            DEALLOCATE(BodyCurrent)
+    IF (ComplexPowerCompute)     DEALLOCATE(BodyComplexPower)
+    IF (SkinAndProxParamCompute) DEALLOCATE(BodySkinCond, BodyProxNu)
+
+    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
