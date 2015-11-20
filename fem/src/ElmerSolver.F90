@@ -93,7 +93,7 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq, ExecCommand
+     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq, ExecCommand, ExtrudedMeshName
      CHARACTER(LEN=MAX_STRING_LEN) :: OutputFile, PostFile, RestartFile, &
                 OutputName=' ',PostName=' ', When, OptionString
 
@@ -322,28 +322,35 @@ END INTERFACE
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
          ExtrudeLevels=GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
-         IF(ExtrudeLevels>1) THEN
-           ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
-           DO i=1,CurrentModel % NumberOfSolvers
-             IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
-               CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
-           END DO
-           ExtrudedMesh % Next => CurrentModel % Meshes % Next
-           CurrentModel % Meshes => ExtrudedMesh
-
-           ! If periodic BC given, compute boundary mesh projector:
-           ! ------------------------------------------------------
-           DO i = 1,CurrentModel % NumberOfBCs
-             IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
-               CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
-             CurrentModel % BCs(i) % PMatrix => NULL()
-             k = ListGetInteger( CurrentModel % BCs(i) % Values, 'Periodic BC', GotIt )
-             IF( GotIt ) THEN
-               CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, i, k )
-             END IF
-           END DO
+         IF (Found) THEN
+            IF(ExtrudeLevels>1) THEN
+               ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
+               IF (Found) THEN
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2, ExtrudedMeshName)
+               ELSE
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
+               END IF
+               DO i=1,CurrentModel % NumberOfSolvers
+                  IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
+                       CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
+               END DO
+               ExtrudedMesh % Next => CurrentModel % Meshes % Next
+               CurrentModel % Meshes => ExtrudedMesh
+               
+               ! If periodic BC given, compute boundary mesh projector:
+               ! ------------------------------------------------------
+               DO i = 1,CurrentModel % NumberOfBCs
+                  IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
+                       CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
+                  CurrentModel % BCs(i) % PMatrix => NULL()
+                  k = ListGetInteger( CurrentModel % BCs(i) % Values, 'Periodic BC', GotIt )
+                  IF( GotIt ) THEN
+                     CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, i, k )
+                  END IF
+               END DO
+            END IF
          END IF
-         
+
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
