@@ -1863,7 +1863,8 @@ CONTAINS
       IF (ComplexPowerCompute) THEN
         BodyId = GetBody()
         Material => GetMaterial()
-        mu = GetReal( Material, 'Relative Permeability', Found)
+        mu = 4._dp-7*PI
+        mu = mu * GetReal( Material, 'Relative Permeability', Found)
         IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
       END IF
 
@@ -2181,13 +2182,13 @@ CONTAINS
         CALL Info('Skin and Proximity Conductivity im', Message, Level=6 )
 
         CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity re in Body '&
-                             //TRIM(bodyNumber)//':', BodySkinCond(1,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(1,j)
+                             //TRIM(bodyNumber)//':', BodyProxNu(1,j) )
+        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(1,j)
         CALL Info('Skin and Proximity Reluctivity re', Message, Level=6 )
 
         CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity im in Body '&
-                             //TRIM(bodyNumber)//':', BodySkinCond(2,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(2,j)
+                             //TRIM(bodyNumber)//':', BodyProxNu(2,j) )
+        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
         CALL Info('Skin and Proximity Reluctivity im', Message, Level=6 )
         END DO
     END IF
