@@ -1863,8 +1863,8 @@ CONTAINS
       IF (ComplexPowerCompute) THEN
         BodyId = GetBody()
         Material => GetMaterial()
-        mu = 4._dp-7*PI
-        mu = mu * GetReal( Material, 'Relative Permeability', Found)
+        mu = GetReal( Material, 'Relative Permeability', Found)
+        mu = mu * 4._dp-7*PI
         IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
       END IF
 
