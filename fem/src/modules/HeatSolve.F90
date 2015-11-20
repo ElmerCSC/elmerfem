@@ -94,7 +94,7 @@
         PhaseChange=.FALSE., CheckLatentHeatRelease=.FALSE., FirstTime, &
         SmartHeaterControl, IntegralHeaterControl, HeaterControlLocal, SmartTolReached=.FALSE., &
         TransientHeaterControl, SmartHeaterAverage, ConstantBulk, SaveBulk, &
-	TransientAssembly, Converged
+	TransientAssembly, Converged, AnyMultiply
      LOGICAL, POINTER :: SmartHeaters(:), IntegralHeaters(:)
 
      TYPE(Variable_t), POINTER :: TempSol,FlowSol,HeatSol,CurrentSol, MeshSol, DensitySol
@@ -107,7 +107,7 @@
      REAL(KIND=dp) :: NonlinearTol,NewtonTol,SmartTol,Relax, &
             SaveRelax,dt,dt0,CumulativeTime, VisibleFraction, PowerScaling=1.0, PrevPowerScaling=1.0, &
             PowerRelax, PowerTimeScale, PowerSensitivity, xave, yave, Normal(3), &
-	    dist, mindist, ControlPoint(3)
+	    dist, mindist, ControlPoint(3), HeatTransferMultiplier
 
      REAL(KIND=dp), POINTER :: Temperature(:),PrevTemperature(:),FlowSolution(:), &
        ElectricCurrent(:), PhaseChangeIntervals(:,:),ForceVector(:), &
@@ -396,6 +396,8 @@
 
      IF(Found .AND. dt > dt0) TransientAssembly = .FALSE.
 
+     
+     AnyMultiply = ListCheckPresentAnyMaterial( Model, 'Heat Transfer Multiplier' ) 
 
 !------------------------------------------------------------------------------
 
@@ -951,6 +953,19 @@
          END IF
 !------------------------------------------------------------------------------
 
+         ! The heat equation may have lower dimensional elements active also.
+         ! For example, heat transfer through a pipe could be expressed by 1d elements.
+         ! Then the multiplier should be the area of the pipe when included in 3D mesh.
+         IF( AnyMultiply ) THEN
+           HeatTransferMultiplier = GetCReal( Material, 'Heat Transfer Multiplier', Found )
+           IF( Found ) THEN
+             MASS = HeatTransferMultiplier * MASS
+             STIFF = HeatTransferMultiplier * STIFF
+             FORCE = HeatTransferMultiplier * FORCE
+           END IF
+         END IF
+
+
          IF ( HeaterControlLocal .AND. .NOT. TransientHeaterControl) THEN
 
            IF ( TransientAssembly .AND. .NOT. ConstantBulk ) THEN
@@ -993,6 +1008,8 @@
 
 
 1000  CONTINUE
+
+     
 
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions

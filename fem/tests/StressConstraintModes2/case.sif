@@ -107,4 +107,4 @@ Boundary Condition 3
   Target Boundaries = 1
 End 
 
-Solver 1 :: Reference Norm = 0.43637694
+Solver 1 :: Reference Norm = 0.31949900
