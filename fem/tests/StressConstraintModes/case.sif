@@ -55,7 +55,7 @@ Solver 1
   Linear System Preconditioning = BILU1
   Linear System Residual Output = 50
 
-!  Linear System Scaling = Logical True
+!  Linear System Scaling = Logical False
 !  Linear System Symmetric = Logical True
 
 !  Linear System Solver = Direct
@@ -105,4 +105,4 @@ Boundary Condition 3
   Target Boundaries = 1
 End 
 
-Solver 1 :: Reference Norm = 6.065229E-02
+Solver 1 :: Reference Norm = 0.45483353E-01

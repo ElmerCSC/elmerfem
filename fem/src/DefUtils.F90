@@ -4277,16 +4277,16 @@ CONTAINS
         CurrentModel % CurrentElement => SaveElement
      END DO
 
-     ! Add the possible constraint modes structures
-     !----------------------------------------------------------
-     IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
-       CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
-     END IF
-
      IF (ScaleSystem) THEN
        CALL BackScaleLinearSystem(Solver,A,b)
      ELSE
        DEALLOCATE(DiagScaling)
+     END IF
+
+     ! Add the possible constraint modes structures
+     !----------------------------------------------------------
+     IF ( GetLogical(Solver % Values,'Constraint Modes Analysis',Found) ) THEN
+       CALL SetConstraintModesBoundaries( CurrentModel, A, b, x % Name, x % DOFs, x % Perm )
      END IF
 
      CALL Info('DefUtils::DefaultDirichletBCs','Dirichlet boundary conditions set', Level=5)

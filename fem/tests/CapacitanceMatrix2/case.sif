@@ -43,7 +43,7 @@ Solver 1
   Linear System Preconditioning = ILU1
   Linear System ILUT Tolerance = 1.0e-03
 
-  Linear System Scaling = False
+!  Linear System Scaling = False
 
 
   Nonlinear System Max Iterations = 1
@@ -114,5 +114,5 @@ Boundary Condition 6
   Constraint Modes Potential = Logical True
 End
 
-Solver 1 :: Reference Norm = Real 0.27012653
+Solver 1 :: Reference Norm = Real 0.27012654
 
