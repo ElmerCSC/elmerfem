@@ -77,19 +77,12 @@ CONTAINS
       
       IF( Found ) THEN        
         IF ( ParEnv % PEs > 1 ) THEN
-          IF ( str /= 'mumps' ) THEN
+          IF ( str /= 'mumps'.OR.str /= 'permon' ) THEN
             CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 
             CALL ListAddString( Params,'Linear System Direct Method', str)
           END IF
-        ELSE
-!         IF ( str == 'mumps' ) THEN
-!           CALL Warn( 'CheckSolverOptions', 'Currently no serial interface' // &
-!               ' to the MUMPS solver implemented, trying UMFPACK!')
-!           str = 'umfpack'    
-!           CALL ListAddString( Params,'Linear System Direct Method', str)
-!         END IF
         END IF
         
         SELECT CASE( str )
@@ -115,6 +108,10 @@ CONTAINS
         CASE( 'cholmod','spqr' )
 #ifndef HAVE_CHOLMOD
           CALL Fatal( 'CheckLinearSolverOptions', 'Cholmod solver has not been installed.' )
+#endif
+        CASE( 'permon')
+#ifndef HAVE_PERMON
+          CALL Fatal( 'CheckLinearSolverOptions', 'Permon solver has not been installed.' )
 #endif
         CASE DEFAULT
           CALL Fatal( 'CheckLinearSolverOptions', 'Unknown direct solver method: ' // TRIM(str) )

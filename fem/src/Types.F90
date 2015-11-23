@@ -164,6 +164,7 @@ END INTERFACE
 
     TYPE(Solver_t), POINTER :: Solver => NULL()
 
+    LOGICAL :: NoDirichlet = .FALSE.
     LOGICAL, ALLOCATABLE :: ConstrainedDOF(:)
 
     INTEGER :: Subband, FORMAT, SolveCount, Comm=-1
@@ -188,6 +189,9 @@ END INTERFACE
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
         BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), PrecValues(:)=>NULL()
 
+#ifdef HAVE_PERMON
+    TYPE(C_PTR) :: PermonMatrix, PermonSolverInstance
+#endif
 #ifdef HAVE_MUMPS
     TYPE(dmumps_struc), POINTER :: MumpsID => NULL() ! Global distributed Mumps
     TYPE(dmumps_struc), POINTER :: MumpsIDL => NULL() ! Local domainwise Mumps

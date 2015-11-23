@@ -1859,6 +1859,85 @@ CONTAINS
   END SUBROUTINE Pardiso_SolveSystem
 !------------------------------------------------------------------------------
 
+
+!------------------------------------------------------------------------------
+!> Permon solver
+!------------------------------------------------------------------------------
+  SUBROUTINE Permon_SolveSystem( Solver,A,x,b,Free_Fact )
+!------------------------------------------------------------------------------
+ 
+  LOGICAL, OPTIONAL :: Free_Fact
+  TYPE(Matrix_t) :: A
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp), TARGET :: x(*), b(*)
+
+#ifdef HAVE_PERMON
+  INCLUDE 'mpif.h'
+
+  INTEGER, ALLOCATABLE :: Owner(:)
+  INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
+  LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled
+
+  INTEGER, ALLOCATABLE :: memb(:), DirichletInds(:)
+  REAL(KIND=dp), ALLOCATABLE :: DirichletVals(:)
+  INTEGER :: Comm_active, Group_active, Group_world
+
+  REAL(KIND=dp), ALLOCATABLE :: dbuf(:)
+
+  INTEGER, POINTER :: Ptr
+
+  INTERFACE
+     SUBROUTINE Permon_InitSolve( handle, n, gnum, nd, dinds, dvals ) BIND(c,name='permon_initsolve')
+        USE, INTRINSIC :: ISO_C_BINDING
+        TYPE(C_PTR) :: handle
+        INTEGER(C_INT), VALUE :: n, nd
+        REAL(C_DOUBLE) :: dvals(*)
+        INTEGER(C_INT) :: gnum(*), dinds(*)
+     END SUBROUTINE Permon_Initsolve
+
+     SUBROUTINE Permon_Solve( handle ) BIND(c,name='permon_solve')
+        USE, INTRINSIC :: ISO_C_BINDING
+        TYPE(C_PTR), VALUE :: handle
+     END SUBROUTINE Permon_solve
+  END INTERFACE
+
+  IF ( PRESENT(Free_Fact) ) THEN
+    IF ( Free_Fact ) THEN
+      RETURN
+    END IF
+  END IF
+
+  Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
+  IF ( .NOT. stat ) Factorize = .TRUE.
+
+  CALL C_F_POINTER(A % PermonSolverInstance,Ptr)
+  IF ( Factorize .OR. .NOT.ASSOCIATED(ptr) ) THEN
+    IF ( ASSOCIATED(ptr) ) THEN
+       CALL Fatal( 'Permon', 're-entry not implemented' )
+    END IF
+
+    n = COUNT(A % ConstrainedDOF)
+    ALLOCATE(DirichletInds(n), DirichletVals(n))
+    j = 0
+    DO i=1,A % NumberOfRows
+      IF(A % ConstrainedDOF(i)) THEN
+        j = j + 1
+        DirichletInds(j) = i; DirichletVals(j) = A % RHS(j)
+      END IF
+    END DO
+
+    CALL Permon_InitSolve( A % PermonSolverInstance, SIZE(A % ParallelInfo % GlobalDOFs), &
+             A % ParallelInfo % GlobalDOFs, n,  DirichletInds, DirichletVals )
+  END IF
+
+   CALL Permon_Solve( A % PermonSolverInstance )
+#else
+   CALL Fatal( 'Permon_SolveSystem', 'Permon Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE Permon_SolveSystem
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
   SUBROUTINE DirectSolver( A,x,b,Solver,Free_Fact )
 !------------------------------------------------------------------------------
@@ -1893,6 +1972,9 @@ CONTAINS
 #ifdef HAVE_CHOLMOD
         CALL SPQR_SolveSystem( Solver, A, x, b, Free_Fact )
         CALL Cholmod_SolveSystem( Solver, A, x, b, Free_Fact )
+#endif
+#ifdef HAVE_PERMON
+        CALL Permon_SolveSystem( Solver, A, x, b, Free_Fact )
 #endif
         RETURN
       END IF
@@ -1929,6 +2011,9 @@ CONTAINS
 
       CASE( 'pardiso' )
         CALL Pardiso_SolveSystem( Solver, A, x, b )
+
+      CASE( 'permon' )
+        CALL Permon_SolveSystem( Solver, A, x, b )
 
       CASE DEFAULT
         CALL Fatal( 'DirectSolver', 'Unknown direct solver method.' )

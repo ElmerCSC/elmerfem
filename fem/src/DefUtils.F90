@@ -47,6 +47,8 @@
 !--------------------------------------------------------------------------------
 MODULE DefUtils
 
+#include "../config.h"
+
    USE Adaptive
    USE SolverUtils
 
@@ -2789,10 +2791,71 @@ CONTAINS
 
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
-! add permon call
-     CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)), UElement=Element )
+
+     IF(GetString(Solver % Values, 'Linear System Direct Method',Found)=='permon') THEN
+        CALL UpdatePermonMatrix( A, G, f,n,x % DOFs, x % Perm(Indexes(1:n)) )
+     ELSE
+       CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)), UElement=Element )
+     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+ SUBROUTINE UpdatePermonMatrix(A,G,f,n,dofs,nind)
+!------------------------------------------------------------------------------
+   TYPE(Matrix_t) :: A
+   INTEGER :: n, dofs, nInd(:)
+   REAL(KIND=dp) :: G(:,:), f(:)
+!------------------------------------------------------------------------------
+  REAL(KIND=C_DOUBLE), ALLOCATABLE :: vals(:)
+  INTEGER, POINTER :: ptr
+  INTEGER :: i,j,k,l,k1,k2
+  INTEGER(C_INT), ALLOCATABLE :: ind(:)
+
+#ifdef HAVE_PERMON
+  INTERFACE
+     FUNCTION Permon_InitMatrix(n) RESULT(handle) BIND(C,Name="permon_init")
+       USE, INTRINSIC :: ISO_C_BINDING
+       TYPE(C_PTR) :: Handle
+       INTEGER(C_INT) :: n
+     END FUNCTION Permon_InitMatrix
+
+     SUBROUTINE Permon_UpdateMatrix(handle,n,inds,vals,rhsvals) BIND(C,Name="permon_update")
+       USE, INTRINSIC :: ISO_C_BINDING
+       TYPE(C_PTR), VALUE :: Handle
+       INTEGER(C_INT), VALUE :: n
+       INTEGER(C_INT) :: inds(*)
+       REAL(C_DOUBLE) :: vals(*), rhsvals(*)
+     END SUBROUTINE Permon_UpdateMatrix
+  END INTERFACE
+
+
+  CALL C_F_POINTER(A % PermonMatrix,ptr)
+  IF(.NOT.ASSOCIATED(ptr)) THEN
+    A % PermonMatrix = Permon_InitMatrix(A % NumberOFRows)
+  END IF
+
+  ALLOCATE(vals(n*n*dofs*dofs), ind(n*dofs))
+  DO i=1,n
+    DO j=1,dofs
+      k1 = (i-1)*dofs + j
+      DO k=1,n
+        DO l=1,dofs
+           k2 = (k-1)*dofs + l
+           vals(dofs*n*(k1-1)+k2) = G(k1,k2)
+        END DO
+      END DO
+      ind(k1) = dofs*(nInd(i)-1)+j
+    END DO
+  END DO
+
+  CALL Permon_UpdateMatrix( A % PermonMatrix, n*dofs, ind, vals, f )
+#endif
+    
+!------------------------------------------------------------------------------
+ END SUBROUTINE UpdatePermonMatrix
 !------------------------------------------------------------------------------
 
 
