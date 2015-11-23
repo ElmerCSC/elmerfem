@@ -1887,13 +1887,13 @@ CONTAINS
   INTEGER, POINTER :: Ptr
 
   INTERFACE
-     SUBROUTINE Permon_InitSolve( handle, n, gnum, nd, dinds, dvals ) BIND(c,name='permon_initsolve')
+     FUNCTION Permon_InitSolve(n, gnum, nd, dinds, dvals ) RESULT(handle) BIND(c,name='permon_initsolve') 
         USE, INTRINSIC :: ISO_C_BINDING
         TYPE(C_PTR) :: handle
         INTEGER(C_INT), VALUE :: n, nd
         REAL(C_DOUBLE) :: dvals(*)
         INTEGER(C_INT) :: gnum(*), dinds(*)
-     END SUBROUTINE Permon_Initsolve
+     END FUNCTION Permon_Initsolve
 
      SUBROUTINE Permon_Solve( handle ) BIND(c,name='permon_solve')
         USE, INTRINSIC :: ISO_C_BINDING
@@ -1926,8 +1926,8 @@ CONTAINS
       END IF
     END DO
 
-    CALL Permon_InitSolve( A % PermonSolverInstance, SIZE(A % ParallelInfo % GlobalDOFs), &
-             A % ParallelInfo % GlobalDOFs, n,  DirichletInds, DirichletVals )
+    A % PermonSolverInstance = Permon_InitSolve( SIZE(A % ParallelInfo % GlobalDOFs), &
+         A % ParallelInfo % GlobalDOFs, n,  DirichletInds, DirichletVals )
   END IF
 
    CALL Permon_Solve( A % PermonSolverInstance )
