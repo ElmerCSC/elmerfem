@@ -4709,7 +4709,7 @@ CONTAINS
                 IF ( .NOT. NTZeroing_done(m,kmax) ) THEN
                   NTZeroing_done(m,kmax) = .TRUE.
                   b(lmax) = 0._dp
-                  CALL ZeroRow( A,lmax )
+                  IF(.NOT.A % NoDirichlet) CALL ZeroRow( A,lmax )
                   NTZeroing_done(m,kmax) = .TRUE.                  
                   IF( .NOT. OffDiagonal ) THEN
                     b(lmax) = b(lmax) + Work(j)/DiagScaling(lmax)
@@ -4728,10 +4728,10 @@ CONTAINS
                 k = OffSet + NDOFs * (k-1) + DOF
                 IF ( A % FORMAT == MATRIX_SBAND ) THEN
                   CALL SBand_SetDirichlet( A,b,k,Work(j) )
-                ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
+                ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
                   CALL CRS_SetSymmDirichlet( A,b,k,Work(j)/DiagScaling(k) )
                 ELSE
-                  CALL ZeroRow( A,k )
+                  IF (.NOT.A % NoDirichlet) CALL ZeroRow( A,k )
 
                   ! Do not add non-zero entries to pure halo nodes which are not associated with the partition.
                   ! These are nodes could be created by the -halobc flag in ElmerGrid.
@@ -4742,7 +4742,7 @@ CONTAINS
                   END IF
 
                   IF( .NOT. OffDiagonal ) THEN
-                    CALL SetMatrixElement( A,k,k,1._dp )
+                    IF(.NOT.A % NoDirichlet) CALL SetMatrixElement( A,k,k,1._dp )
                     b(k) = Work(j) / DiagScaling(k)
                     IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
                   END IF
@@ -4753,14 +4753,14 @@ CONTAINS
                 k1 = Offset + NDOFs * (k-1) + l
                 IF ( A % FORMAT == MATRIX_SBAND ) THEN
                   CALL SBand_SetDirichlet( A,b,k1,WorkA(l,1,j) )
-                ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
+                ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
                   IF( .NOT. OffDiagonal ) THEN
                     CALL CRS_SetSymmDirichlet( A,b,k1,WorkA(l,1,j)/DiagScaling(k1) )
                   END IF
                 ELSE
-                  CALL ZeroRow( A,k1 )
+                  IF(.NOT.A % NoDirichlet) CALL ZeroRow( A,k1 )
 	          IF( .NOT. OffDiagonal ) THEN            
-                    CALL SetMatrixElement( A,k1,k1,1.0d0 )
+                    IF(.NOT.A % NoDirichlet) CALL SetMatrixElement( A,k1,k1,1.0d0 )
                     b(k1) = WorkA(l,1,j)/DiagScaling(k1)
                     IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k1) = .TRUE.
                   END IF
@@ -4863,12 +4863,12 @@ CONTAINS
             k = OffSet + NDOFs * (k-1) + DOF
             IF ( A % FORMAT == MATRIX_SBAND ) THEN
               CALL SBand_SetDirichlet( A,b,k,Work(j) )
-            ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
+            ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
               CALL CRS_SetSymmDirichlet( A,b,k,Work(j)/DiagScaling(k) )
             ELSE
-              CALL ZeroRow( A,k )
+              IF (.NOT.A % NoDirichlet) CALL ZeroRow( A,k )
               IF( .NOT. OffDiagonal ) THEN
-                CALL SetMatrixElement( A,k,k,1.0d0 )
+                IF( .NOT.A % NoDirichlet )CALL SetMatrixElement( A,k,k,1.0d0 )
                 b(k) = Work(j)/DiagScaling(k)
                 IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
               END IF
@@ -4878,14 +4878,14 @@ CONTAINS
               k1 = OffSet + NDOFs * (k-1) + l
               IF ( A % FORMAT == MATRIX_SBAND ) THEN
                 CALL SBand_SetDirichlet( A,b,k1,WorkA(l,1,j) )
-              ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
+              ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
                 IF( .NOT. OffDiagonal ) THEN
-                  CALL CRS_SetSymmDirichlet( A,b,k1,WorkA(l,1,j)/DiagScaling(k1))
+                  IF(.NOT.A % NoDirichlet) CALL CRS_SetSymmDirichlet( A,b,k1,WorkA(l,1,j)/DiagScaling(k1))
                 END IF
               ELSE
-                CALL ZeroRow( A,k1 )
+                IF(.NOT.A % NoDirichlet) CALL ZeroRow( A,k1 )
                 IF(.NOT. OffDiagonal ) THEN
-                  CALL SetMatrixElement( A,k1,k1,1.0d0 )
+                  IF(.NOT.A % NoDirichlet) CALL SetMatrixElement( A,k1,k1,1.0d0 )
                   b(k1) = WorkA(l,1,j)/DiagScaling(k1)
                   IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k1) = .TRUE.
                 END IF
@@ -4921,9 +4921,9 @@ CONTAINS
       ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
         CALL CRS_SetSymmDirichlet( A,b,k,val/DiagScaling(k) )
       ELSE
-        CALL ZeroRow( A,k )
+        IF (.NOT.A % NoDirichlet ) CALL ZeroRow( A,k )
         IF( .NOT. OffDiagonal ) THEN
-          CALL SetMatrixElement( A,k,k,1._dp )
+          IF (.NOT.A % NoDirichlet ) CALL SetMatrixElement( A,k,k,1._dp )
           b(k) = val / DiagScaling(k)
           IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
         END IF
@@ -4954,9 +4954,9 @@ CONTAINS
           ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
             CALL CRS_SetSymmDirichlet( A,b,k,Work(j)/DiagScaling(k) )
           ELSE
-            CALL ZeroRow( A,k )
+            IF(.NOT.A % NoDirichlet ) CALL ZeroRow( A,k )
             IF( .NOT. OffDiagonal ) THEN
-              CALL SetMatrixElement( A,k,k,1.0d0 )
+              IF(.NOT.A % NoDirichlet ) CALL SetMatrixElement( A,k,k,1.0d0 )
               b(k) = Work(j)/DiagScaling(k)
               IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
             END IF
@@ -5778,7 +5778,7 @@ CONTAINS
         CALL SBand_SetDirichlet( StiffMatrix,ForceVector,PermIndex,NodeValue )
         
       ELSE IF ( StiffMatrix % FORMAT == MATRIX_CRS .AND. &
-          StiffMatrix % Symmetric ) THEN
+          StiffMatrix % Symmetric.AND..NOT. StiffMatrix % NoDirichlet ) THEN
         
         CALL CRS_SetSymmDirichlet(StiffMatrix,ForceVector,PermIndex,NodeValue)
         
@@ -5786,8 +5786,8 @@ CONTAINS
         
         s = StiffMatrix % Values(StiffMatrix % Diag(PermIndex))
         ForceVector(PermIndex) = NodeValue * s
-        CALL ZeroRow( StiffMatrix,PermIndex )
-        CALL SetMatrixElement( StiffMatrix,PermIndex,PermIndex,1.0d0*s )
+        IF(.NOT. StiffMatrix % NoDirichlet) CALL ZeroRow( StiffMatrix,PermIndex )
+        IF(.NOT. StiffMatrix % NoDirichlet) CALL SetMatrixElement( StiffMatrix,PermIndex,PermIndex,1.0d0*s )
         IF(ALLOCATED(StiffMatrix % ConstrainedDOF)) StiffMatrix % ConstrainedDOF(PermIndex) = .TRUE.
         
       END IF

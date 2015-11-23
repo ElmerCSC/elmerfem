@@ -2834,6 +2834,7 @@ CONTAINS
 
   CALL C_F_POINTER(A % PermonMatrix,ptr)
   IF(.NOT.ASSOCIATED(ptr)) THEN
+    A % NoDirichlet = .TRUE.
     A % PermonMatrix = Permon_InitMatrix(A % NumberOFRows)
   END IF
 
