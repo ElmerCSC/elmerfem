@@ -3862,6 +3862,10 @@ CONTAINS
       DiagScaling = 1._dp
     END IF
 
+    IF( A % NoDirichlet ) THEN
+      IF(.NOT.ALLOCATED(A % Dvalues)) ALLOCATE(A % Dvalues(A % NumberOfRows))
+    END IF
+
     nlen = LEN_TRIM(Name)
     n = MAX( Model % NumberOfBodyForces,Model % NumberOfBCs)
     ALLOCATE( ActivePart(n), ActivePartAll(n), ActiveCond(n))
@@ -4379,7 +4383,7 @@ CONTAINS
         ! Ok, if this is the partition where the single node to eliminate the floating should 
         ! be eliminated then set it here.         
         IF( ind > 0 ) THEN
-          CALL SetSinglePoint(ind,SingleVal)
+          CALL SetSinglePoint(ind,SingleVal,.TRUE.)
         END IF
       END DO
     END IF
@@ -4410,12 +4414,9 @@ CONTAINS
             END DO
             IF (s>EPSILON(s)) CYCLE
  
-            DO l=1,NDOFs
-              m=NDOFs*(k-1)+l
-              CALL ZeroRow(A,m)
-              IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(m) = .TRUE.
-              A % Values(A % Diag(m))=1._dp
-              b(m)=Solver % Variable % Values(m)/DiagScaling(m)
+            DO DOF=1,NDOFs
+              m = NDOFs*(k-1)+DOF
+              CALL SetSinglePoint(k,Solver % Variable % Values(m),.FALSE.)
             END DO
           END DO
         END IF
@@ -4652,6 +4653,7 @@ CONTAINS
 !> Set values related to a specific boundary or bulk element.
 !------------------------------------------------------------------------------
     SUBROUTINE SetElementValues(n,elno)
+!------------------------------------------------------------------------------
       INTEGER :: n,elno
       INTEGER :: i,j,k,l,m,dim,kmax,lmax
       LOGICAL :: CheckNT,found
@@ -4711,7 +4713,9 @@ CONTAINS
                 IF ( .NOT. NTZeroing_done(m,kmax) ) THEN
                   NTZeroing_done(m,kmax) = .TRUE.
                   b(lmax) = 0._dp
+
                   IF(.NOT.A % NoDirichlet) CALL ZeroRow( A,lmax )
+
                   NTZeroing_done(m,kmax) = .TRUE.                  
                   IF( .NOT. OffDiagonal ) THEN
                     b(lmax) = b(lmax) + Work(j)/DiagScaling(lmax)
@@ -4722,58 +4726,24 @@ CONTAINS
                   IF( .NOT. OffDiagonal ) THEN
                     DO k=1,dim
                       l = NDOFs * (Perm(Indexes(j))-1) + k
-                      CALL SetMatrixElement( A,lmax,l,RotVec(k))
+                      CALL SetMatrixElement( A,lmax,l,RotVec(k) )
                     END DO
                   END IF
                 END IF
               ELSE
-                k = OffSet + NDOFs * (k-1) + DOF
-                IF ( A % FORMAT == MATRIX_SBAND ) THEN
-                  CALL SBand_SetDirichlet( A,b,k,Work(j) )
-                ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
-                  CALL CRS_SetSymmDirichlet( A,b,k,Work(j)/DiagScaling(k) )
-                ELSE
-                  IF (.NOT.A % NoDirichlet) CALL ZeroRow( A,k )
-
-                  ! Do not add non-zero entries to pure halo nodes which are not associated with the partition.
-                  ! These are nodes could be created by the -halobc flag in ElmerGrid.
-                  IF( ParEnv % PEs > 1 ) THEN
-                    IF( .NOT. ANY( A % ParallelInfo % NeighbourList(k) % Neighbours == ParEnv % MyPe ) ) THEN
-                      CYCLE
-                    END IF
-                  END IF
-
-                  IF( .NOT. OffDiagonal ) THEN
-                    IF(.NOT.A % NoDirichlet) CALL SetMatrixElement( A,k,k,1._dp )
-                    b(k) = Work(j) / DiagScaling(k)
-                    IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
-                  END IF
-                END IF
+                CALL SetSinglePoint(k,Work(j),.FALSE.)
               END IF
             ELSE
-              DO l=1,MIN( NDOFs, SIZE(Worka,1) )
-                k1 = Offset + NDOFs * (k-1) + l
-                IF ( A % FORMAT == MATRIX_SBAND ) THEN
-                  CALL SBand_SetDirichlet( A,b,k1,WorkA(l,1,j) )
-                ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
-                  IF( .NOT. OffDiagonal ) THEN
-                    CALL CRS_SetSymmDirichlet( A,b,k1,WorkA(l,1,j)/DiagScaling(k1) )
-                  END IF
-                ELSE
-                  IF(.NOT.A % NoDirichlet) CALL ZeroRow( A,k1 )
-	          IF( .NOT. OffDiagonal ) THEN            
-                    IF(.NOT.A % NoDirichlet) CALL SetMatrixElement( A,k1,k1,1.0d0 )
-                    b(k1) = WorkA(l,1,j)/DiagScaling(k1)
-                    IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k1) = .TRUE.
-                  END IF
-                END IF
+              DO DOF=1,MIN( NDOFs, SIZE(Worka,1) )
+                CALL SetSinglePoint(k,WorkA(l,1,j),.FALSE.)
               END DO
             END IF
           END IF
-
         END DO
       END IF
+!------------------------------------------------------------------------------
     END SUBROUTINE SetElementValues
+!------------------------------------------------------------------------------
   
 
 
@@ -4783,6 +4753,7 @@ CONTAINS
 !> they are moved.
 !------------------------------------------------------------------------------
     SUBROUTINE SetLumpedRows(ind0,n)
+!------------------------------------------------------------------------------
       INTEGER :: ind0,n
       INTEGER :: ind,i,j,k,k0
       REAL(KIND=dp) :: Coeff
@@ -4823,15 +4794,17 @@ CONTAINS
         END IF
       END DO
 
+!------------------------------------------------------------------------------
     END SUBROUTINE SetLumpedRows
+!------------------------------------------------------------------------------
 
 
 
 !------------------------------------------------------------------------------
 !> Set values related to individual points.
 !------------------------------------------------------------------------------
-  
     SUBROUTINE SetPointValues(n)
+!------------------------------------------------------------------------------
       INTEGER :: n
       REAL(KIND=dp) :: Work(n), Condition(n)        
 
@@ -4862,76 +4835,67 @@ CONTAINS
           END IF
 
           IF ( DOF>0 ) THEN
-            k = OffSet + NDOFs * (k-1) + DOF
-            IF ( A % FORMAT == MATRIX_SBAND ) THEN
-              CALL SBand_SetDirichlet( A,b,k,Work(j) )
-            ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
-              CALL CRS_SetSymmDirichlet( A,b,k,Work(j)/DiagScaling(k) )
-            ELSE
-              IF (.NOT.A % NoDirichlet) CALL ZeroRow( A,k )
-              IF( .NOT. OffDiagonal ) THEN
-                IF( .NOT.A % NoDirichlet )CALL SetMatrixElement( A,k,k,1.0d0 )
-                b(k) = Work(j)/DiagScaling(k)
-                IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
-              END IF
-            END IF
+            CALL SetSinglePoint(k,Work(j),.FALSE.)
           ELSE
-            DO l=1,MIN( NDOFs, SIZE(Worka,1) )
-              k1 = OffSet + NDOFs * (k-1) + l
-              IF ( A % FORMAT == MATRIX_SBAND ) THEN
-                CALL SBand_SetDirichlet( A,b,k1,WorkA(l,1,j) )
-              ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
-                IF( .NOT. OffDiagonal ) THEN
-                  IF(.NOT.A % NoDirichlet) CALL CRS_SetSymmDirichlet( A,b,k1,WorkA(l,1,j)/DiagScaling(k1))
-                END IF
-              ELSE
-                IF(.NOT.A % NoDirichlet) CALL ZeroRow( A,k1 )
-                IF(.NOT. OffDiagonal ) THEN
-                  IF(.NOT.A % NoDirichlet) CALL SetMatrixElement( A,k1,k1,1.0d0 )
-                  b(k1) = WorkA(l,1,j)/DiagScaling(k1)
-                  IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k1) = .TRUE.
-                END IF
-              END IF
+            DO DOF=1,MIN( NDOFs, SIZE(Worka,1) )
+              CALL SetSinglePoint(k,WorkA(l,1,j),.FALSE.)
             END DO
           END IF
 
         END DO
       END IF
-
+!------------------------------------------------------------------------------
     END SUBROUTINE SetPointValues
+!------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
 !> Set values related to one single point
 !------------------------------------------------------------------------------
-  
-    SUBROUTINE SetSinglePoint(ind,val)
+    SUBROUTINE SetSinglePoint(ind,val,ApplyPerm)
+!------------------------------------------------------------------------------
+      LOGICAL :: ApplyPerm
       INTEGER :: ind
       REAL(KIND=dp) :: val
 
+      REAL(KIND=dp) :: s
       INTEGER :: i,j,k,k1,l
 
-      k = Perm(ind)
-      IF( k == 0 ) THEN
-        CALL Warn('SetSinglePoint','This should not happe!')
-        RETURN
-      END IF
+      k = ind
+      IF (ApplyPerm) k = Perm(ind)
+      IF( k == 0 ) RETURN
       
       k = OffSet + NDOFs * (k-1) + DOF
+
+      ! Do not add non-zero entries to pure halo nodes which are not associated with the partition.
+      ! These are nodes could be created by the -halobc flag in ElmerGrid.
+      IF( ParEnv % PEs > 1 ) THEN
+        IF( .NOT. ANY( A % ParallelInfo % NeighbourList(k) % Neighbours == ParEnv % MyPe ) ) THEN
+           RETURN
+        END IF
+      END IF
+
       IF ( A % FORMAT == MATRIX_SBAND ) THEN
         CALL SBand_SetDirichlet( A,b,k,val )
-      ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric ) THEN
+      ELSE IF ( A % FORMAT == MATRIX_CRS .AND. A % Symmetric .AND..NOT. A % NoDirichlet) THEN
         CALL CRS_SetSymmDirichlet( A,b,k,val/DiagScaling(k) )
       ELSE
         IF (.NOT.A % NoDirichlet ) CALL ZeroRow( A,k )
         IF( .NOT. OffDiagonal ) THEN
-          IF (.NOT.A % NoDirichlet ) CALL SetMatrixElement( A,k,k,1._dp )
-          b(k) = val / DiagScaling(k)
+          IF (A % NoDirichlet ) THEN
+            A % Dvalues(k) = val / DiagScaling(k)
+          ELSE
+            s = A % Values(A % Diag(k)) 
+            IF (s==0) s=1._dp
+            CALL SetMatrixElement( A,k,k,s)
+            b(k) = s * val / DiagScaling(k)
+          END IF
           IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(k) = .TRUE.
         END IF
       END IF
-      
+!------------------------------------------------------------------------------
     END SUBROUTINE SetSinglePoint
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Set values related to upper and lower limiters.
@@ -10241,7 +10205,6 @@ END FUNCTION SearchNodeL
     IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
 #ifdef HAVE_PERMON
     IF ( C_ASSOCIATED(A % PermonMatrix) ) ScaleSystem = .FALSE.
-print*,scalesystem
 #endif
 
     EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &

@@ -2793,9 +2793,9 @@ CONTAINS
      n = GetElementDOFs( Indexes, Element, Solver )
 
      IF(GetString(Solver % Values, 'Linear System Direct Method',Found)=='permon') THEN
-       CALL UpdateGlobalEquations( A,G,b,0*f,n,x % DOFs, &
+       CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                             x % Perm(Indexes(1:n)), UElement=Element )
-       CALL UpdatePermonMatrix( A, G, f,n,x % DOFs, x % Perm(Indexes(1:n)) )
+       CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
      ELSE
        CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
                             x % Perm(Indexes(1:n)), UElement=Element )
@@ -2806,11 +2806,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
- SUBROUTINE UpdatePermonMatrix(A,G,f,n,dofs,nind)
+ SUBROUTINE UpdatePermonMatrix(A,G,n,dofs,nind)
 !------------------------------------------------------------------------------
    TYPE(Matrix_t) :: A
    INTEGER :: n, dofs, nInd(:)
-   REAL(KIND=dp) :: G(:,:), f(:)
+   REAL(KIND=dp) :: G(:,:)
 !------------------------------------------------------------------------------
   REAL(KIND=C_DOUBLE), ALLOCATABLE :: vals(:)
   INTEGER, POINTER :: ptr
@@ -2825,12 +2825,12 @@ CONTAINS
        INTEGER(C_INT), VALUE :: n
      END FUNCTION Permon_InitMatrix
 
-     SUBROUTINE Permon_UpdateMatrix(handle,n,inds,vals,rhsvals) BIND(C,Name="permon_update")
+     SUBROUTINE Permon_UpdateMatrix(handle,n,inds,vals) BIND(C,Name="permon_update")
        USE, INTRINSIC :: ISO_C_BINDING
        TYPE(C_PTR), VALUE :: Handle
        INTEGER(C_INT), VALUE :: n
        INTEGER(C_INT) :: inds(*)
-       REAL(C_DOUBLE) :: vals(*), rhsvals(*)
+       REAL(C_DOUBLE) :: vals(*)
      END SUBROUTINE Permon_UpdateMatrix
   END INTERFACE
 
@@ -2854,7 +2854,7 @@ CONTAINS
     END DO
   END DO
 
-  CALL Permon_UpdateMatrix( A % PermonMatrix, n*dofs, ind, vals, f )
+  CALL Permon_UpdateMatrix( A % PermonMatrix, n*dofs, ind, vals )
 #endif
     
 !------------------------------------------------------------------------------
@@ -3875,15 +3875,15 @@ CONTAINS
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
      A % ConstrainedDOF = .FALSE.
 
-     IF(C_ASSOCIATED(A % PermonMatrix)) THEN
-       ScaleSystem = .FALSE.
-     ELSE
-       ScaleSystem=GetLogical(Params,'Linear System Dirichlet Scaling',Found)
-       IF(.NOT.Found) THEN
-         ScaleSystem=GetLogical(Params,'Linear System Scaling',Found)
-         IF(.NOT.Found) ScaleSystem=.TRUE.
-       END IF
+
+     ScaleSystem=GetLogical(Params,'Linear System Dirichlet Scaling',Found)
+     IF(.NOT.Found) THEN
+       ScaleSystem=GetLogical(Params,'Linear System Scaling',Found)
+       IF(.NOT.Found) ScaleSystem=.TRUE.
      END IF
+#ifdef HAVE_PERMON
+     IF(C_ASSOCIATED(A % PermonMatrix)) ScaleSystem = .FALSE.
+#endif
 
      IF (ScaleSystem) THEN
        CALL ScaleLinearSystem(Solver,A,b,RHSscaling=.FALSE.)
