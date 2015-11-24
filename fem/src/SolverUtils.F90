@@ -4383,7 +4383,7 @@ CONTAINS
         ! Ok, if this is the partition where the single node to eliminate the floating should 
         ! be eliminated then set it here.         
         IF( ind > 0 ) THEN
-          CALL SetSinglePoint(ind,SingleVal,.TRUE.)
+          CALL SetSinglePoint(ind,DOF,SingleVal,.TRUE.)
         END IF
       END DO
     END IF
@@ -4399,7 +4399,7 @@ CONTAINS
       DO i=1,Solver % NumberOfActiveElements
         Element => Mesh % Elements(Solver % ActiveElements(i))
         IF (CheckPassiveElement(Element)) THEN
-          n=sGetElementDOFs(Indexes,UElement=Element)
+          n = sGetElementDOFs(Indexes,UElement=Element)
           DO j=1,n
             k=Indexes(j)
             IF (k<=0) CYCLE
@@ -4414,9 +4414,9 @@ CONTAINS
             END DO
             IF (s>EPSILON(s)) CYCLE
  
-            DO DOF=1,NDOFs
-              m = NDOFs*(k-1)+DOF
-              CALL SetSinglePoint(k,Solver % Variable % Values(m),.FALSE.)
+            DO l=1,NDOFs
+              m = NDOFs*(k-1)+l
+              CALL SetSinglePoint(k,l,Solver % Variable % Values(m),.FALSE.)
             END DO
           END DO
         END IF
@@ -4731,11 +4731,11 @@ CONTAINS
                   END IF
                 END IF
               ELSE
-                CALL SetSinglePoint(k,Work(j),.FALSE.)
+                CALL SetSinglePoint(k,DOF,Work(j),.FALSE.)
               END IF
             ELSE
-              DO DOF=1,MIN( NDOFs, SIZE(Worka,1) )
-                CALL SetSinglePoint(k,WorkA(l,1,j),.FALSE.)
+              DO l=1,MIN( NDOFs, SIZE(WorkA,1) )
+                CALL SetSinglePoint(k,l,WorkA(l,1,j),.FALSE.)
               END DO
             END IF
           END IF
@@ -4835,10 +4835,10 @@ CONTAINS
           END IF
 
           IF ( DOF>0 ) THEN
-            CALL SetSinglePoint(k,Work(j),.FALSE.)
+            CALL SetSinglePoint(k,DOF,Work(j),.FALSE.)
           ELSE
-            DO DOF=1,MIN( NDOFs, SIZE(Worka,1) )
-              CALL SetSinglePoint(k,WorkA(l,1,j),.FALSE.)
+            DO l=1,MIN( NDOFs, SIZE(Worka,1) )
+              CALL SetSinglePoint(k,l,WorkA(l,1,j),.FALSE.)
             END DO
           END IF
 
@@ -4852,10 +4852,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Set values related to one single point
 !------------------------------------------------------------------------------
-    SUBROUTINE SetSinglePoint(ind,val,ApplyPerm)
+    SUBROUTINE SetSinglePoint(ind,DOF,val,ApplyPerm)
 !------------------------------------------------------------------------------
       LOGICAL :: ApplyPerm
-      INTEGER :: ind
+      INTEGER :: ind, DOF
       REAL(KIND=dp) :: val
 
       REAL(KIND=dp) :: s
