@@ -1371,6 +1371,11 @@ CONTAINS
              ListCheckPresent( BC, 'Magnetic Flux Density 2') .OR. &
              ListCheckPresent( BC, 'Magnetic Flux Density 2 im') &
             ) THEN
+          Bx = 0._dp
+          Bxim = 0._dp
+          By = 0._dp
+          Byim = 0._dp
+
           Bx(1:n) = GetReal(BC, 'Magnetic Flux Density 1', Found)
           IF (.NOT. Found) Bx = 0._dp
           Bxim(1:n) = GetReal(BC, 'Magnetic Flux Density 1 im', Found)
@@ -1863,8 +1868,8 @@ CONTAINS
       IF (ComplexPowerCompute) THEN
         BodyId = GetBody()
         Material => GetMaterial()
-        mu = 4._dp-7*PI
-        mu = mu * GetReal( Material, 'Relative Permeability', Found)
+        mu = GetReal( Material, 'Relative Permeability', Found)
+        mu = mu * 4._dp-7*PI
         IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
       END IF
 
@@ -2163,12 +2168,23 @@ CONTAINS
     IF (SkinAndProxParamCompute) THEN
       DO j = 1,Model % NumberOfBodies
         ValueNorm = SQRT(BodyCurrent(1,j)**2 + BodyCurrent(2,j)**2)
-        BodySkinCond(1,j) = BodyComplexPower(1,j)/ValueNorm/BodyVolumes(j)
-        BodySkinCond(2,j) = BodyComplexPower(2,j)/ValueNorm/BodyVolumes(j)
+        IF (ValueNorm > TINY(ValueNorm)) THEN
+          BodySkinCond(1,j) = BodyComplexPower(1,j)/ValueNorm/BodyVolumes(j)
+          BodySkinCond(2,j) = BodyComplexPower(2,j)/ValueNorm/BodyVolumes(j)
+        ELSE
+          BodySkinCond(1,j) = HUGE(ValueNorm)
+          BodySkinCond(2,j) = HUGE(ValueNorm)
+        END IF
         ValueNorm = SQRT(BodyAvBre(1,j)**2 + BodyAvBim(2,j)**2)
         ValueNorm = ValueNorm + SQRT(BodyAvBre(2,j)**2 + BodyAvBim(2,j)**2) 
-        BodyProxNu(1,j) = BodyComplexPower(1,j)/ValueNorm/BodyVolumes(j)
-        BodyProxNu(2,j) = BodyComplexPower(2,j)/ValueNorm/BodyVolumes(j)
+        IF (ValueNorm > TINY(ValueNorm)) THEN
+          BodyProxNu(1,j) = BodyComplexPower(1,j)/ValueNorm/BodyVolumes(j)
+          BodyProxNu(2,j) = BodyComplexPower(2,j)/ValueNorm/BodyVolumes(j)
+        ELSE
+          BodyProxNu(1,j) = HUGE(ValueNorm)
+          BodyProxNu(2,j) = HUGE(ValueNorm)
+        END IF
+
         WRITE (bodyNumber, "(I0)") j
       
         CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity re in Body '&
