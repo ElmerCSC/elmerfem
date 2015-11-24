@@ -1875,7 +1875,7 @@ CONTAINS
   INCLUDE 'mpif.h'
 
   INTEGER, ALLOCATABLE :: Owner(:)
-  INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
+  INTEGER :: i,j,n,nd,ip,ierr,icntlft,nzloc
   LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled
 
   INTEGER, ALLOCATABLE :: memb(:), DirichletInds(:), Neighbours(:)
@@ -1883,8 +1883,6 @@ CONTAINS
   INTEGER :: Comm_active, Group_active, Group_world
 
   REAL(KIND=dp), ALLOCATABLE :: dbuf(:)
-
-  INTEGER, POINTER :: Ptr
 
   INTERFACE
      FUNCTION Permon_InitSolve(n, gnum, nd, dinds, dvals, n_n, n_ranks) RESULT(handle) BIND(c,name='permon_initsolve') 
@@ -1910,14 +1908,13 @@ CONTAINS
   Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
   IF ( .NOT. stat ) Factorize = .TRUE.
 
-  CALL C_F_POINTER(A % PermonSolverInstance,Ptr)
-  IF ( Factorize .OR. .NOT.ASSOCIATED(ptr) ) THEN
-    IF ( ASSOCIATED(ptr) ) THEN
+  IF ( Factorize .OR. .NOT.C_ASSOCIATED(A % PermonSolverInstance) ) THEN
+    IF ( C_ASSOCIATED(A % PermonSolverInstance) ) THEN
        CALL Fatal( 'Permon', 're-entry not implemented' )
     END IF
 
-    n = COUNT(A % ConstrainedDOF)
-    ALLOCATE(DirichletInds(n), DirichletVals(n))
+    nd = COUNT(A % ConstrainedDOF)
+    ALLOCATE(DirichletInds(nd), DirichletVals(nd))
     j = 0
     DO i=1,A % NumberOfRows
       IF(A % ConstrainedDOF(i)) THEN
@@ -1929,14 +1926,14 @@ CONTAINS
     n = 0
     ALLOCATE(neighbours(Parenv % PEs))
     DO i=1,ParEnv % PEs
-      IF( ParEnv % IsNeighbour(i) .AND. i/=ParEnv % myPE) THEN
+      IF( ParEnv % IsNeighbour(i) .AND. i-1/=ParEnv % myPE) THEN
         n = n + 1
         neighbours(n) = i-1
       END IF
     END DO
 
     A % PermonSolverInstance = Permon_InitSolve( SIZE(A % ParallelInfo % GlobalDOFs), &
-         A % ParallelInfo % GlobalDOFs, n,  DirichletInds, DirichletVals, n, neighbours )
+         A % ParallelInfo % GlobalDOFs, nd,  DirichletInds, DirichletVals, n, neighbours )
   END IF
 
    CALL Permon_Solve( A % PermonSolverInstance )

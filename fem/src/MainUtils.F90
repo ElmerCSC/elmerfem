@@ -74,10 +74,9 @@ CONTAINS
 
     IF ( str == 'direct' ) THEN
       str = ListGetString( Params,'Linear System Direct Method', Found )
-      
       IF( Found ) THEN        
         IF ( ParEnv % PEs > 1 ) THEN
-          IF ( str /= 'mumps'.OR.str /= 'permon' ) THEN
+          IF ( str /= 'mumps' .AND. str /= 'permon' ) THEN
             CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 

@@ -2818,7 +2818,7 @@ CONTAINS
      FUNCTION Permon_InitMatrix(n) RESULT(handle) BIND(C,Name="permon_init")
        USE, INTRINSIC :: ISO_C_BINDING
        TYPE(C_PTR) :: Handle
-       INTEGER(C_INT) :: n
+       INTEGER(C_INT), VALUE :: n
      END FUNCTION Permon_InitMatrix
 
      SUBROUTINE Permon_UpdateMatrix(handle,n,inds,vals,rhsvals) BIND(C,Name="permon_update")
@@ -2831,8 +2831,7 @@ CONTAINS
   END INTERFACE
 
 
-  CALL C_F_POINTER(A % PermonMatrix,ptr)
-  IF(.NOT.ASSOCIATED(ptr)) THEN
+  IF(.NOT.C_ASSOCIATED(A % PermonMatrix)) THEN
     A % NoDirichlet = .TRUE.
     A % PermonMatrix = Permon_InitMatrix(A % NumberOFRows)
   END IF
