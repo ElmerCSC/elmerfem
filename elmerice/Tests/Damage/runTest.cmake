@@ -1,6 +1,6 @@
 INCLUDE(${TEST_SOURCE}/../test_macros.cmake)
 
-FILE(COPY ${ELMERSOLVER_HOME}/lib/FreeSurfaceSolver${SHLEXT} DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+FILE(COPY ${BINARY_DIR}/fem/src/modules/FreeSurfaceSolver${SHLEXT} DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 FILE(RENAME FreeSurfaceSolver${SHLEXT} FreeSurfaceSolver1${SHLEXT})
 
