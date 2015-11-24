@@ -2792,10 +2792,9 @@ CONTAINS
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
 
+     CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)), UElement=Element )
      IF(GetString(Solver % Values, 'Linear System Direct Method',Found)=='permon') THEN
         CALL UpdatePermonMatrix( A, G, f,n,x % DOFs, x % Perm(Indexes(1:n)) )
-     ELSE
-       CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)), UElement=Element )
      END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
