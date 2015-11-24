@@ -1878,7 +1878,7 @@ CONTAINS
   INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
   LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled
 
-  INTEGER, ALLOCATABLE :: memb(:), DirichletInds(:)
+  INTEGER, ALLOCATABLE :: memb(:), DirichletInds(:), Neighbours(:)
   REAL(KIND=dp), ALLOCATABLE :: DirichletVals(:)
   INTEGER :: Comm_active, Group_active, Group_world
 
@@ -1887,12 +1887,12 @@ CONTAINS
   INTEGER, POINTER :: Ptr
 
   INTERFACE
-     FUNCTION Permon_InitSolve(n, gnum, nd, dinds, dvals ) RESULT(handle) BIND(c,name='permon_initsolve') 
+     FUNCTION Permon_InitSolve(n, gnum, nd, dinds, dvals, n_n, n_ranks) RESULT(handle) BIND(c,name='permon_initsolve') 
         USE, INTRINSIC :: ISO_C_BINDING
         TYPE(C_PTR) :: handle
-        INTEGER(C_INT), VALUE :: n, nd
+        INTEGER(C_INT), VALUE :: n, nd, n_n
         REAL(C_DOUBLE) :: dvals(*)
-        INTEGER(C_INT) :: gnum(*), dinds(*)
+        INTEGER(C_INT) :: gnum(*), dinds(*), n_ranks(*)
      END FUNCTION Permon_Initsolve
 
      SUBROUTINE Permon_Solve( handle ) BIND(c,name='permon_solve')
@@ -1926,8 +1926,17 @@ CONTAINS
       END IF
     END DO
 
+    n = 0
+    ALLOCATE(neighbours(Parenv % PEs))
+    DO i=1,ParEnv % PEs
+      IF( ParEnv % IsNeighbour(i) .AND. i/=ParEnv % myPE) THEN
+        n = n + 1
+        neighbours(n) = i-1
+      END IF
+    END DO
+
     A % PermonSolverInstance = Permon_InitSolve( SIZE(A % ParallelInfo % GlobalDOFs), &
-         A % ParallelInfo % GlobalDOFs, n,  DirichletInds, DirichletVals )
+         A % ParallelInfo % GlobalDOFs, n,  DirichletInds, DirichletVals, n, neighbours )
   END IF
 
    CALL Permon_Solve( A % PermonSolverInstance )
