@@ -47,6 +47,8 @@
 
 MODULE SolverUtils
 
+#include "../config.h"
+
 #ifdef USE_ISO_C_BINDINGS
    USE LoadMod
 #endif
@@ -5751,48 +5753,39 @@ CONTAINS
 !> Sets just one Dirichlet point in contrast to setting the whole field.
 !> This is a lower order routine that the previous one. 
 !------------------------------------------------------------------------------
-  SUBROUTINE SetDirichletPoint( StiffMatrix, ForceVector,DOF, NDOFs, &
-      Perm, NodeIndex, NodeValue) 
+  SUBROUTINE SetDirichletPoint( A, b,DOF, NDOFs, Perm, NodeIndex, NodeValue) 
 !------------------------------------------------------------------------------
-
     IMPLICIT NONE
-
-    TYPE(Matrix_t), POINTER :: StiffMatrix
-    REAL(KIND=dp) :: ForceVector(:)
+    TYPE(Matrix_t), POINTER :: A
+    REAL(KIND=dp) :: b(:)
     REAL(KIND=dp) :: NodeValue
     INTEGER :: DOF, NDOFs, Perm(:), NodeIndex
 !------------------------------------------------------------------------------
 
-    INTEGER :: PermIndex
     REAL(KIND=dp) :: s
+    INTEGER :: PermIndex
 
 !------------------------------------------------------------------------------
-
     PermIndex = Perm(NodeIndex)
-    
     IF ( PermIndex > 0 ) THEN
       PermIndex = NDOFs * (PermIndex-1) + DOF
-      
-      IF ( StiffMatrix % FORMAT == MATRIX_SBAND ) THEN
-        
-        CALL SBand_SetDirichlet( StiffMatrix,ForceVector,PermIndex,NodeValue )
-        
-      ELSE IF ( StiffMatrix % FORMAT == MATRIX_CRS .AND. &
-          StiffMatrix % Symmetric.AND..NOT. StiffMatrix % NoDirichlet ) THEN
-        
-        CALL CRS_SetSymmDirichlet(StiffMatrix,ForceVector,PermIndex,NodeValue)
-        
+
+      IF ( A % FORMAT == MATRIX_SBAND ) THEN
+        CALL SBand_SetDirichlet( A,b,PermIndex,NodeValue )
+      ELSE IF ( A % FORMAT == MATRIX_CRS .AND. &
+          A % Symmetric.AND..NOT. A % NoDirichlet ) THEN
+
+         CALL CRS_SetSymmDirichlet(A,b,PermIndex,NodeValue)
       ELSE                  
-        
-        s = StiffMatrix % Values(StiffMatrix % Diag(PermIndex))
-        ForceVector(PermIndex) = NodeValue * s
-        IF(.NOT. StiffMatrix % NoDirichlet) CALL ZeroRow( StiffMatrix,PermIndex )
-        IF(.NOT. StiffMatrix % NoDirichlet) CALL SetMatrixElement( StiffMatrix,PermIndex,PermIndex,1.0d0*s )
-        IF(ALLOCATED(StiffMatrix % ConstrainedDOF)) StiffMatrix % ConstrainedDOF(PermIndex) = .TRUE.
-        
+        s = A % Values(A % Diag(PermIndex))
+        b(PermIndex) = NodeValue * s
+        IF(.NOT. A % NoDirichlet) THEN
+           CALL ZeroRow( A,PermIndex )
+           CALL SetMatrixElement( A,PermIndex,PermIndex,s )
+        END IF
+        IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(PermIndex) = .TRUE.
       END IF
     END IF
-    
 !------------------------------------------------------------------------------
   END SUBROUTINE SetDirichletPoint
 !------------------------------------------------------------------------------
@@ -10246,6 +10239,10 @@ END FUNCTION SearchNodeL
 
     ScaleSystem = ListGetLogical( Params, 'Linear System Scaling', GotIt )
     IF ( .NOT. GotIt  ) ScaleSystem = .TRUE.
+#ifdef HAVE_PERMON
+    IF ( C_ASSOCIATED(A % PermonMatrix) ) ScaleSystem = .FALSE.
+print*,scalesystem
+#endif
 
     EigenAnalysis = Solver % NOFEigenValues > 0 .AND. &
         ListGetLogical( Params, 'Eigen Analysis',GotIt )

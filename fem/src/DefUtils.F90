@@ -3875,10 +3875,14 @@ CONTAINS
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
      A % ConstrainedDOF = .FALSE.
 
-     ScaleSystem=GetLogical(Params,'Linear System Dirichlet Scaling',Found)
-     IF(.NOT.Found) THEN
-       ScaleSystem=GetLogical(Params,'Linear System Scaling',Found)
-       IF(.NOT.Found) ScaleSystem=.TRUE.
+     IF(C_ASSOCIATED(A % PermonMatrix)) THEN
+       ScaleSystem = .FALSE.
+     ELSE
+       ScaleSystem=GetLogical(Params,'Linear System Dirichlet Scaling',Found)
+       IF(.NOT.Found) THEN
+         ScaleSystem=GetLogical(Params,'Linear System Scaling',Found)
+         IF(.NOT.Found) ScaleSystem=.TRUE.
+       END IF
      END IF
 
      IF (ScaleSystem) THEN
