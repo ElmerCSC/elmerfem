@@ -1893,8 +1893,9 @@ CONTAINS
         INTEGER(C_INT) :: gnum(*), dinds(*), n_ranks(*)
      END FUNCTION Permon_Initsolve
 
-     SUBROUTINE Permon_Solve( handle ) BIND(c,name='permon_solve')
+     SUBROUTINE Permon_Solve( handle, x ) BIND(c,name='permon_solve')
         USE, INTRINSIC :: ISO_C_BINDING
+        REAL(C_DOUBLE) :: x(*)
         TYPE(C_PTR), VALUE :: handle
      END SUBROUTINE Permon_solve
   END INTERFACE
@@ -1936,7 +1937,7 @@ CONTAINS
          A % ParallelInfo % GlobalDOFs, nd,  DirichletInds, DirichletVals, n, neighbours )
   END IF
 
-   CALL Permon_Solve( A % PermonSolverInstance )
+  CALL Permon_Solve( A % PermonSolverInstance, x )
 #else
    CALL Fatal( 'Permon_SolveSystem', 'Permon Solver has not been installed.' )
 #endif
