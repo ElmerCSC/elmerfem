@@ -10261,7 +10261,8 @@ END FUNCTION SearchNodeL
 
 
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
-    SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt ) 
+    SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt )
+    SkipZeroRhs = SkipZeroRhs .OR. A % NoDirichlet
 
     IF ( .NOT. ( RecursiveAnalysis .OR. ApplyLimiter .OR. SkipZeroRhs ) ) THEN
       bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))      

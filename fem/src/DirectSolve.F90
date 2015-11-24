@@ -1920,7 +1920,7 @@ CONTAINS
     DO i=1,A % NumberOfRows
       IF(A % ConstrainedDOF(i)) THEN
         j = j + 1
-        DirichletInds(j) = i; DirichletVals(j) = A % RHS(j)
+        DirichletInds(j) = i; DirichletVals(j) = A % RHS(i)
       END IF
     END DO
 
