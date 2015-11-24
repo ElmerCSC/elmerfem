@@ -402,7 +402,7 @@ END SUBROUTINE GetMaxDefs
        NoBulkElems, NoBoundElems, NoParentElems, NoMissingElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
        NoUndecided, PrevUndecided, NoEdges, Iter, ElemFamily, DecideLimit, &
-       ActiveBCs, CandA, CandB, RightBody, LeftBody
+       ActiveBCs, CandA, CandB, RightBody, LeftBody, ConflictElems
    INTEGER, TARGET :: TargetBody(1)
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:),TargetBodies(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, ParentElem, OtherElem
@@ -531,6 +531,7 @@ END SUBROUTINE GetMaxDefs
    ! By default all nodes that are associated to elements immediately at the discontinuous 
    ! boundary are treated as discontinuous. However, the user may be not be greedy and release
    ! some nodes from the list that are associated also with other non-discontinuous elements.   
+   ConflictElems = 0
    IF( NoDiscontNodes > 0 ) THEN
      n = NoDiscontNodes
      
@@ -545,20 +546,33 @@ END SUBROUTINE GetMaxDefs
 
        DO t = 1,NoBulkElems+NoBoundElems
          Element => Mesh % Elements(t)
+
          IF( t <= NoBulkElems ) THEN
            IF( GreedyBulk ) CYCLE
            IF( ParentUsed(t) ) CYCLE
          ELSE
            IF( GreedyBC ) CYCLE
-           IF( DiscontElem(t) ) CYCLE
+           IF( DiscontElem(t-NoBulkElems) ) CYCLE
+           !IF( Element % BoundaryInfo % Constraint == 0 ) CYCLE
            ! Check that this is not an internal BC
            IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
            IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right) ) CYCLE
          END IF
          Indexes => Element % NodeIndexes
-         DisContNode( Indexes ) = .FALSE.
+
+         IF( ANY( DisContNode( Indexes ) ) ) THEN
+           !PRINT *,'t',Element % BoundaryInfo % Constraint, t,DisContElem(t), &
+           !    Indexes, DisContNode( Indexes ) 
+           DisContNode( Indexes ) = .FALSE.
+           ConflictElems = ConflictElems + 1
+         END IF
        END DO
        NoDisContNodes = COUNT( DisContNode ) 
+     END IF
+
+     IF( ConflictElems > 0 ) THEN
+       CALL Info('CreateDiscontMesh','Conflicting discontinuity in elements: '&
+           //TRIM(I2S(ConflictElems)))
      END IF
 
      IF( NoDiscontNodes < n ) THEN
@@ -761,6 +775,9 @@ END SUBROUTINE GetMaxDefs
 
      Element => Mesh % Elements(NoBulkElems + t)
 
+     ! If the element has no constraint then there is no need to treat it
+     IF( Element % BoundaryInfo % Constraint == 0 ) CYCLE
+
      IF( DisContElem(t) ) THEN
        LeftElem => Element % BoundaryInfo % Left
        RightElem => Element % BoundaryInfo % Right
@@ -777,6 +794,7 @@ END SUBROUTINE GetMaxDefs
        CYCLE
      END IF
 
+
      Indexes => Element % NodeIndexes
 
      IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
@@ -792,6 +810,8 @@ END SUBROUTINE GetMaxDefs
        Moving2 = ANY( TargetBodies == RightElem % BodyId ) 
        IF( Moving .NEQV. Moving2) THEN
          CALL Warn('CreateDiscontMesh','Conflicting moving information')
+         !PRINT *,'Moving:',t,Element % BoundaryInfo % Constraint, &
+         !    Moving,Moving2,LeftElem % BodyId, RightElem % BodyId
          Set = .FALSE.
        ELSE
          IF( Moving ) THEN
