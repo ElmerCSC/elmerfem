@@ -931,6 +931,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   ! -----------------------------
   IF(.NOT.ASSOCIATED(CM)) RETURN
 
+  IF (SIZE(CM % values) <= 0) RETURN
   CM % RHS = 0._dp
   IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
 

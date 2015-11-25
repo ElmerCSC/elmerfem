@@ -804,6 +804,18 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  FUNCTION AddImIndex(Ind)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    Integer :: AddImIndex
+    IF ( .NOT. CurrentModel % HarmonicCircuits ) CALL Fatal ('AddImIndex','Model is not of harmonic type!')
+    
+    AddImIndex = 2 * Ind + 1
+!------------------------------------------------------------------------------
+  END FUNCTION AddImIndex 
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
   FUNCTION ReIndex(Ind)
 !------------------------------------------------------------------------------
     Integer :: Ind, ReIndex
@@ -909,23 +921,23 @@ CONTAINS
         
         IF (Circuits(p) % Harmonic) THEN
           DO j=1,Cvar % Dofs
-            IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+ReIndex(j)-1)%Neighbours)) THEN
-              ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+ReIndex(j)-1) % Neighbours(nn))
-              ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+ImIndex(j)-1) % Neighbours(nn))
+            IF(.NOT.ASSOCIATED(CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1))%Neighbours)) THEN
+              ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(nn))
+              ALLOCATE(CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(nn))
             END IF
-            CM % ParallelInfo % NeighbourList(RowId+ReIndex(j)-1) % Neighbours(1)   = CVar % Owner
-            CM % ParallelInfo % NeighbourList(RowId+ImIndex(j)-1) % Neighbours(1) = CVar % Owner
+            CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(1)   = CVar % Owner
+            CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(1) = CVar % Owner
             l = 1
             DO k=0,ParEnv % PEs-1
               IF(k==CVar % Owner) CYCLE
               IF(r_cnt(k+1)>0) THEN
                 l = l + 1
-                CM % ParallelInfo % NeighbourList(RowId+ReIndex(j)-1) % Neighbours(l) = k
-                CM % ParallelInfo % NeighbourList(RowId+ImIndex(j)-1) % Neighbours(l) = k
+                CM % ParallelInfo % NeighbourList(RowId+AddIndex(j-1)) % Neighbours(l) = k
+                CM % ParallelInfo % NeighbourList(RowId+AddImIndex(j-1)) % Neighbours(l) = k
               END IF
             END DO
-            CM % RowOwner(RowId + ReIndex(j)-1) = Cvar % Owner
-            CM % RowOwner(RowId + ImIndex(j)-1) = Cvar % Owner
+            CM % RowOwner(RowId + AddIndex(j-1)) = Cvar % Owner
+            CM % RowOwner(RowId + AddImIndex(j-1)) = Cvar % Owner
           END DO
         ELSE
           DO j=1,Cvar % Dofs
@@ -1507,7 +1519,7 @@ CONTAINS
     CurrentModel%CircuitMatrix=>CM
     
     CM % Format = MATRIX_CRS
-    Asolver %  Matrix % AddMatrix => CM
+    Asolver % Matrix % AddMatrix => CM
     ALLOCATE(CM % RHS(nm + Circuit_tot_n)); CM % RHS=0._dp
 
     CM % NumberOfRows = nm + Circuit_tot_n
@@ -1531,7 +1543,10 @@ CONTAINS
 
     IF (n<=0) THEN
       CM % NUmberOfRows = 0
-      DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null(); RETURN
+      DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null()
+      Asolver %  Matrix % AddMatrix => CM
+      CurrentModel%CircuitMatrix=>CM
+      RETURN 
     END IF
 
     ALLOCATE(Cols(n+1), Values(n+1))
