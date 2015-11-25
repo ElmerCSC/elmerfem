@@ -3875,6 +3875,12 @@ CONTAINS
        ALLOCATE(A % ConstrainedDOF(A % NumberOfRows))
      A % ConstrainedDOF = .FALSE.
 
+     IF( A % NoDirichlet ) THEN
+       IF(.NOT.ALLOCATED(A % Dvalues)) &
+         ALLOCATE(A % Dvalues(A % NumberOfRows))
+      A % Dvalues = 0._dp
+    END IF
+
 
      ScaleSystem=GetLogical(Params,'Linear System Dirichlet Scaling',Found)
      IF(.NOT.Found) THEN
@@ -3957,12 +3963,16 @@ CONTAINS
                  nb = x % Perm( gInd(k) )
                  IF ( nb <= 0 ) CYCLE
                  nb = Offset + x % DOFs * (nb-1) + DOF
-                 IF ( ConstantValue ) THEN
+                 IF ( ConstantValue .AND. .NOT. A % NoDirichlet ) THEN
                     CALL CRS_SetSymmDirichlet(A, A % RHS, nb, 0._dp )
                  ELSE
-                    CALL ZeroRow( A, nb )
-                    A % RHS(nb) = 0._dp
                     A % ConstrainedDOF(nb) = .TRUE.
+                    IF ( A % NoDirichlet ) THEN
+                      A % Dvalues(nb) = 0._dp
+                    ELSE
+                      CALL ZeroRow( A, nb )
+                      A % RHS(nb) = 0._dp
+                    END IF
                  END IF
               END DO
            ELSE
@@ -4060,7 +4070,11 @@ CONTAINS
                     nb = x % Perm( gInd(k) )
                     IF ( nb <= 0 ) CYCLE
                     nb = Offset + x % DOFs * (nb-1) + DOF
-                    CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(k-n)/DiagScaling(nb))
+                    IF( A % NoDirichlet ) THEN
+                      A % Dvalues(nb) = Work(k-n)/DiagScaling(nb)
+                    ELSE
+                      CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(k-n)/DiagScaling(nb))
+                    END IF
                  END DO
               ELSE
                  ! Contribute this boundary to global system
@@ -4069,7 +4083,6 @@ CONTAINS
                     nb = x % Perm( gInd(k) )
                     IF ( nb <= 0 ) CYCLE
                     nb = Offset + x % DOFs * (nb-1) + DOF
-                    A % ConstrainedDOF(nb) = .TRUE.
                     A % RHS(nb) = A % RHS(nb) + Work(k)/DiagScaling(nb)
                     DO l=1,numEdgeDofs
                        mb = x % Perm( gInd(l) )
@@ -4121,7 +4134,6 @@ CONTAINS
                  nb = x % Perm( gInd(k) )
                  IF ( nb <= 0 ) CYCLE
                  nb = Offset + x % DOFs * (nb-1) + DOF
-                 A % ConstrainedDOF(nb) = .TRUE.
                  A % RHS(nb) = A % RHS(nb) + Work(k)/DiagScaling(nb)
                  DO l=n_start,numEdgeDOFs
                     mb = x % Perm( gInd(l) )
@@ -4202,13 +4214,17 @@ CONTAINS
                           nb = x % Perm(gInd(k))
                           IF ( nb <= 0 ) CYCLE
                           nb = Offset + x % DOFs*(nb-1) + DOF
-                          IF ( A % Symmetric ) THEN
+                          IF ( A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
                              CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(1)/DiagScaling(nb))
                           ELSE
-                             CALL ZeroRow( A, nb )
                              A % ConstrainedDOF(nb) = .TRUE.
-                             A % RHS(nb) = Work(1)/DiagScaling(nb)
-                             CALL SetMatrixElement(A,nb,nb,1._dp)
+                             IF( A % NoDirichlet ) THEN
+                               A % Dvalues(nb) = Work(1)/DiagScaling(nb)
+                             ELSE
+                               CALL ZeroRow( A, nb )
+                               A % RHS(nb) = Work(1)/DiagScaling(nb)
+                               CALL SetMatrixElement(A,nb,nb,1._dp)
+                             END IF
                           END IF
                        END DO
                     ELSE
@@ -4254,13 +4270,17 @@ CONTAINS
                              nb = x % Perm(gInd(k))
                              IF ( nb <= 0 ) CYCLE
                              nb = Offset + x % DOFs*(nb-1) + DOF
-                             IF ( A % Symmetric ) THEN
+                             IF ( A % Symmetric .AND..NOT. A % NoDirichlet ) THEN
                                 CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(1)/DiagScaling(nb))
                              ELSE
-                                CALL ZeroRow(A,nb)
                                 A % ConstrainedDOF(nb) = .TRUE.
-                                A % RHS(nb) = Work(1)/DiagScaling(nb)
-                                CALL SetMatrixElement(A,nb,nb,1._dp)
+                                IF(A % NoDirichlet ) THEN
+                                  A % Dvalues(nb) = Work(1)/DiagScaling(nb)
+                                ELSE
+                                  CALL ZeroRow(A,nb)
+                                  A % RHS(nb) = Work(1)/DiagScaling(nb)
+                                  CALL SetMatrixElement(A,nb,nb,1._dp)
+                                END IF
                              END IF
                           END DO
                        ELSE
@@ -4279,13 +4299,17 @@ CONTAINS
                              nb = x % Perm(gInd(k))
                              IF ( nb <= 0 ) CYCLE
                              nb = Offset + x % DOFs*(nb-1) + DOF
-                             IF ( A % Symmetric ) THEN
+                             IF ( A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
                                 CALL CRS_SetSymmDirichlet(A,A % RHS,nb,0.0d0)
                              ELSE
-                                CALL ZeroRow(A,nb)
                                 A % ConstrainedDOF(nb) = .TRUE.
-                                A % RHS(nb) = 0.0d0
-                                CALL SetMatrixElement(A,nb,nb,1._dp)
+                                IF( A % NoDirichlet ) THEN
+                                  A % Dvalues(nb) = 0._dp
+                                ELSE
+                                  CALL ZeroRow(A,nb)
+                                  A % RHS(nb) = 0.0d0
+                                  CALL SetMatrixElement(A,nb,nb,1._dp)
+                                END IF
                              END IF
                           END DO
                        END IF
@@ -4303,13 +4327,17 @@ CONTAINS
                           nb = x % Perm(GInd(n-Face % BDOFs+j)) ! The last entries should be face-DOF indices
                           IF ( nb <= 0 ) CYCLE
                           nb = Offset + x % DOFs*(nb-1) + DOF
-                          IF ( A % Symmetric ) THEN
+                          IF ( A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
                              CALL CRS_SetSymmDirichlet(A,A % RHS,nb,0.0d0)
                           ELSE
-                             CALL ZeroRow(A,nb)
                              A % ConstrainedDOF(nb) = .TRUE.
-                             A % RHS(nb) = 0.0d0
-                             CALL SetMatrixElement(A,nb,nb,1._dp)
+                             IF(A % NoDirichlet ) THEN
+                               A % Dvalues(nb) = 0.0d0
+                             ELSE
+                               CALL ZeroRow(A,nb)
+                               A % RHS(nb) = 0.0d0
+                               CALL SetMatrixElement(A,nb,nb,1._dp)
+                             END IF
                           END IF
                        END DO
                     END IF
