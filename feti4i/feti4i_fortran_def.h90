@@ -1,0 +1,50 @@
+!#ifndef FETI4I_FORTRAN_DEF_H_
+!#define FETI4I_FORTRAN_DEF_H_
+
+! ------------------------------------------------------------------------------
+!  Set data-types used in FETI4I
+! 
+!  Possible values for FETI4I_INT_WIDTH:
+!    32: use 32 bit signed integer
+!    64: use 64 bit signed integer
+! 
+!  Possible values for FETI4I_REAL_WIDTH:
+!    64: ESPRESO supports only 64 bit real values
+! ------------------------------------------------------------------------------
+
+USE, INTRINSIC :: ISO_C_BINDING
+
+
+#ifndef FETI4I_INT_WIDTH
+#define FETI4I_INT_WIDTH 32
+#endif
+
+#ifndef FETI4I_REAL_WIDTH
+#define FETI4I_REAL_WIDTH 64
+#endif
+
+#if FETI4I_INT_WIDTH == 32
+  INTEGER, PARAMETER :: FETI4IInt = KIND(C_INT)
+#elif FETI4I_INT_WIDTH == 64
+  INTEGER, PARAMETER :: FETI4IInt = KIND(C_LONG)
+#else
+#error "Incorrect user-supplied value of FETI4I_INT_WIDTH"
+#endif
+
+! MPI integer (e.g. rank) are always 32-bit
+  INTEGER, PARAMETER :: FETI4IMPIInt = KIND(C_INT)
+
+#if FETI4I_REAL_WIDTH == 64
+  INTEGER, PARAMETER :: FETI4IReal = KIND(C_DOUBLE)
+#else
+#error "Incorrect user-supplied value of FETI4I_REAL_WIDTH"
+#endif
+
+! -----------------------------------------------------------------------------
+! Definitions of internal structures used in FETI4I
+! -----------------------------------------------------------------------------
+! use TYPE(C_PTR) for opaque pointers
+!TODO we could perhaps use Fortran types
+
+!#endif /* FETI4I_FORTRAN_DEF_H_ */
+
