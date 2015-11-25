@@ -1519,7 +1519,7 @@ CONTAINS
     CurrentModel%CircuitMatrix=>CM
     
     CM % Format = MATRIX_CRS
-    Asolver %  Matrix % AddMatrix => CM
+    Asolver % Matrix % AddMatrix => CM
     ALLOCATE(CM % RHS(nm + Circuit_tot_n)); CM % RHS=0._dp
 
     CM % NumberOfRows = nm + Circuit_tot_n
@@ -1543,7 +1543,10 @@ CONTAINS
 
     IF (n<=0) THEN
       CM % NUmberOfRows = 0
-      DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null(); RETURN
+      DEALLOCATE(Rows,Cnts,Done,CM); CM=>Null()
+      Asolver %  Matrix % AddMatrix => CM
+      CurrentModel%CircuitMatrix=>CM
+      RETURN 
     END IF
 
     ALLOCATE(Cols(n+1), Values(n+1))
