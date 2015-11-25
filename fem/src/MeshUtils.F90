@@ -6613,6 +6613,7 @@ END SUBROUTINE GetMaxDefs
               DO nip=1, IP % n 
                 stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
                     IP % v(nip),IP % w(nip),detJ,Basis)
+                IF(.NOT. Stat ) EXIT
 
                 ! We will actually only use the global coordinates and the integration weight 
                 ! from the temporal mesh. 
@@ -6629,6 +6630,7 @@ END SUBROUTINE GetMaxDefs
                 ! Integration point at the slave element
                 CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
                 stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+                IF(.NOT. Stat) CYCLE
 
                 DO i=1,n
                   DO j=1,n
@@ -6653,7 +6655,8 @@ END SUBROUTINE GetMaxDefs
             DO nip=1, IP % n 
               stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
                   IP % v(nip),IP % w(nip),detJ,Basis)
-              
+              IF(.NOT. Stat) EXIT
+
               ! We will actually only use the global coordinates and the integration weight 
               ! from the temporal mesh. 
               
@@ -6695,6 +6698,7 @@ END SUBROUTINE GetMaxDefs
               ELSE
                 stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
               END IF
+              IF(.NOT. Stat) CYCLE
 
               ! Add the nodal dofs
               IF( DoNodes .AND. .NOT. StrongNodes ) THEN
