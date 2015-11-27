@@ -164,6 +164,8 @@ END INTERFACE
 
     TYPE(Solver_t), POINTER :: Solver => NULL()
 
+    LOGICAL :: NoDirichlet = .FALSE.
+    REAL(KIND=dp), ALLOCATABLE :: Dvalues(:)
     LOGICAL, ALLOCATABLE :: ConstrainedDOF(:)
 
     INTEGER :: Subband, FORMAT, SolveCount, Comm=-1
