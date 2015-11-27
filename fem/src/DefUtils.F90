@@ -4300,7 +4300,7 @@ CONTAINS
         DO k=1,A % NumberOfRows
           IF ( A % ConstrainedDOF(k) ) THEN
             s = A % Values(A % Diag(k))
-            IF ( s==0 ) s = 1
+            IF (s==0) s = 1
 
             IF ( A % Symmetric ) THEN
               CALL CRS_SetSymmDirichlet(A,b,k,A % Dvalues(k)/s)
