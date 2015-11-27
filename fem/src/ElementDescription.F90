@@ -969,10 +969,10 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE NodalBasisFunctions2D( y,element,u,v )
 !------------------------------------------------------------------------------
+     REAL(KIND=dp) :: y(:)       !< The values of the reference element basis
      TYPE(Element_t) :: element  !< element structure
      REAL(KIND=dp) :: u          !< Point at which to evaluate the value
      REAL(KIND=dp) :: v          !< Point at which to evaluate the value
-     REAL(KIND=dp) :: y(:)       !< value of the quantity y = x(u,v)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
@@ -2021,13 +2021,17 @@ END IF
    END FUNCTION SecondDerivatives3D
 !------------------------------------------------------------------------------
 
-
+!------------------------------------------------------------------------------
+!>  Return the values of the reference element basis functions. In the case of
+!>  p-element, the values of the lowest-order basis functions corresponding 
+!>  to the background mesh are returned.
 !------------------------------------------------------------------------------
    SUBROUTINE NodalBasisFunctions( n, Basis, element, u, v, w)
 !------------------------------------------------------------------------------
-     INTEGER :: n
-     TYPE(Element_t) :: element
-     REAL(KIND=dp) :: Basis(:),u,v,w
+     INTEGER :: n                 !< The number of (background) element nodes
+     REAL(KIND=dp) :: Basis(:)    !< The values of reference element basis
+     TYPE(Element_t) :: element   !< The element structure
+     REAL(KIND=dp) :: u,v,w       !< The coordinates of the reference element point
 !------------------------------------------------------------------------------
      INTEGER   :: i, q, dim
      REAL(KIND=dp) :: NodalBasis(n)
@@ -2090,17 +2094,22 @@ END IF
    END SUBROUTINE NodalBasisFunctions
 !------------------------------------------------------------------------------
 
-
+!------------------------------------------------------------------------------
+!>  Return the gradient of the reference element basis functions, with the
+!>  gradient taken with respect to the reference element coordinates. In the case
+!>  of p-element, the gradients of the lowest-order basis functions corresponding 
+!>  to the background mesh are returned.
 !------------------------------------------------------------------------------
    SUBROUTINE NodalFirstDerivatives( n, dLBasisdx, element, u, v, w)
 !------------------------------------------------------------------------------
-     INTEGER :: n
-     TYPE(Element_t) :: element
-     REAL(KIND=dp) :: dLBasisdx(:,:),u,v,w
+     INTEGER :: n                    !< The number of (background) element nodes
+     REAL(KIND=dp) :: dLBasisdx(:,:) !< The gradient of reference element basis functions
+     TYPE(Element_t) :: element      !< The element structure
+     REAL(KIND=dp) :: u,v,w          !< The coordinates of the reference element point
 !------------------------------------------------------------------------------
      INTEGER   :: i, q, dim
      REAL(KIND=dp) :: NodalBasis(n)
-
+!------------------------------------------------------------------------------
      dim = Element % TYPE % DIMENSION
 
      IF ( IsActivePElement(Element) ) THEN
@@ -4493,8 +4502,8 @@ END IF
        IF ( PRESENT(HierarchicBasis) ) Hierarchic = HierarchicBasis
        !-------------------------------------------------------------------------------------------
        dLbasisdx = 0.0d0      
-       n    = Element % TYPE % NumberOfNodes
-       dim  = Element % TYPE % DIMENSION
+       n = Element % TYPE % NumberOfNodes
+       dim = Element % TYPE % DIMENSION
        cdim = CoordinateSystemDimension()
 
        IF ( Element % TYPE % ElementCode == 101 ) THEN
@@ -4569,11 +4578,17 @@ END IF
            ! The lowest-order quad from the optimal family (ABF_0)
            DOFs = 6
          END IF
-         ! Here the background mesh is of type 404 (currently no option to employ curved boundaries)
-         DO q=1,4
-           Basis(q) = QuadNodalPBasis(q, u, v)
-           dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v) 
-         END DO
+         IF (n>4) THEN
+           ! Here the background mesh is supposed to be of type 408/409
+           CALL NodalBasisFunctions2D(Basis, Element, u, v)
+           CALL NodalFirstDerivatives(n, dLBasisdx, Element, u, v, w)
+         ELSE
+           ! Here the background mesh is of type 404           
+           DO q=1,4
+             Basis(q) = QuadNodalPBasis(q, u, v)
+             dLBasisdx(q,1:2) = dQuadNodalPBasis(q, u, v) 
+           END DO
+         END IF
        CASE(5)
          IF (SecondOrder) THEN
            DOFs = 20
@@ -4657,11 +4672,98 @@ END IF
            ! The lowest-order prism from the optimal family
            DOFs = 15
          END IF
-         ! Here the background mesh is of type 706 (currently no option to employ curved boundaries)
-         DO q=1,n
-           Basis(q) = WedgeNodalPBasis(q, u, v, w)
-           dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
-         END DO
+
+         IF (n==15) THEN
+           ! Here the background mesh is of type 715.
+           ! The Lagrange interpolation basis on the p-approximation reference element:
+
+           h1 = -0.5d0*w + 0.5d0*w**2
+           h2 = 0.5d0*w + 0.5d0*w**2
+           h3 = 1.0d0 - w**2
+           dh1 = -0.5d0 + w
+           dh2 = 0.5d0 + w
+           dh3 = -2.0d0 * w
+           
+           WorkBasis(1,1) = (3.0d0*u**2 + v*(-Sqrt(3.0d0) + v) + u*(-3.0d0 + 2.0d0*Sqrt(3.0d0)*v))/6
+           grad(1) = -0.5d0 + u + v/Sqrt(3.0d0)
+           grad(2) = (-Sqrt(3.0d0) + 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v)/6.0d0
+           Basis(1) = WorkBasis(1,1) * h1
+           dLBasisdx(1,1:2) = grad(1:2) * h1
+           dLBasisdx(1,3) = WorkBasis(1,1) * dh1
+           Basis(4) = WorkBasis(1,1) * h2
+           dLBasisdx(4,1:2) = grad(1:2) * h2
+           dLBasisdx(4,3) = WorkBasis(1,1) * dh2
+           Basis(13) = WorkBasis(1,1) * h3
+           dLBasisdx(13,1:2) = grad(1:2) * h3
+           dLBasisdx(13,3) = WorkBasis(1,1) * dh3
+
+           WorkBasis(1,1) = (3.0d0*u**2 + v*(-Sqrt(3.0d0) + v) + u*(3.0d0 - 2.0d0*Sqrt(3.0d0)*v))/6.0d0
+           grad(1) = 0.5d0 + u - v/Sqrt(3.d0)
+           grad(2) = (-Sqrt(3.0d0) - 2.0d0*Sqrt(3.0d0)*u + 2.0d0*v)/6.0d0
+           Basis(2) = WorkBasis(1,1) * h1
+           dLBasisdx(2,1:2) = grad(1:2) * h1
+           dLBasisdx(2,3) = WorkBasis(1,1) * dh1
+           Basis(5) = WorkBasis(1,1) * h2
+           dLBasisdx(5,1:2) = grad(1:2) * h2
+           dLBasisdx(5,3) = WorkBasis(1,1) * dh2
+           Basis(14) = WorkBasis(1,1) * h3
+           dLBasisdx(14,1:2) = grad(1:2) * h3
+           dLBasisdx(14,3) = WorkBasis(1,1) * dh3
+
+           WorkBasis(1,1) = (v*(-Sqrt(3.0d0) + 2.0d0*v))/3.0d0
+           grad(1) = 0.0d0
+           grad(2) = -(1.0d0/Sqrt(3.0d0)) + (4.0d0*v)/3.0d0
+           Basis(3) = WorkBasis(1,1) * h1
+           dLBasisdx(3,1:2) = grad(1:2) * h1
+           dLBasisdx(3,3) = WorkBasis(1,1) * dh1
+           Basis(6) = WorkBasis(1,1) * h2
+           dLBasisdx(6,1:2) = grad(1:2) * h2
+           dLBasisdx(6,3) = WorkBasis(1,1) * dh2
+           Basis(15) = WorkBasis(1,1) * h3
+           dLBasisdx(15,1:2) = grad(1:2) * h3
+           dLBasisdx(15,3) = WorkBasis(1,1) * dh3
+
+           h1 = 0.5d0 * (1.0d0 - w)
+           dh1 = -0.5d0
+           h2 = 0.5d0 * (1.0d0 + w)
+           dh2 = 0.5d0
+
+           WorkBasis(1,1) = (3.0d0 - 3.0d0*u**2 - 2.0d0*Sqrt(3.0d0)*v + v**2)/3.0d0
+           grad(1) = -2.0d0*u
+           grad(2) = (-2.0d0*(Sqrt(3.0d0) - v))/3.0d0
+           Basis(7) = WorkBasis(1,1) * h1
+           dLBasisdx(7,1:2) = grad(1:2) * h1
+           dLBasisdx(7,3) = WorkBasis(1,1) * dh1
+           Basis(10) = WorkBasis(1,1) * h2
+           dLBasisdx(10,1:2) = grad(1:2) * h2
+           dLBasisdx(10,3) = WorkBasis(1,1) * dh2
+
+           WorkBasis(1,1) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - v)*v)/3.0d0
+           grad(1) = (2.0d0*v)/Sqrt(3.0d0)
+           grad(2) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - 2.0d0*v))/3.0d0
+           Basis(8) = WorkBasis(1,1) * h1
+           dLBasisdx(8,1:2) = grad(1:2) * h1
+           dLBasisdx(8,3) = WorkBasis(1,1) * dh1
+           Basis(11) = WorkBasis(1,1) * h2
+           dLBasisdx(11,1:2) = grad(1:2) * h2
+           dLBasisdx(11,3) = WorkBasis(1,1) * dh2
+
+           WorkBasis(1,1) = (-2.0d0*v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v))/3.0d0
+           grad(1) = (-2.0d0*v)/Sqrt(3.0d0)
+           grad(2) = (-2.0d0*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + 2.0d0*v))/3.0d0
+           Basis(9) = WorkBasis(1,1) * h1
+           dLBasisdx(9,1:2) = grad(1:2) * h1
+           dLBasisdx(9,3) = WorkBasis(1,1) * dh1
+           Basis(12) = WorkBasis(1,1) * h2
+           dLBasisdx(12,1:2) = grad(1:2) * h2
+           dLBasisdx(12,3) = WorkBasis(1,1) * dh2
+         ELSE
+           ! Here the background mesh is of type 706
+           DO q=1,n
+             Basis(q) = WedgeNodalPBasis(q, u, v, w)
+             dLBasisdx(q,1:3) = dWedgeNodalPBasis(q, u, v, w)
+           END DO
+         END IF
        CASE(8)
          IF (SecondOrder) THEN
            ! The second-order brick from the Nedelec's first family: affine physical elements may be needed
@@ -4670,11 +4772,17 @@ END IF
            ! The lowest-order brick from the optimal family
            DOFs = 27
          END IF
-          ! Here the background mesh is of type 808 (currently no option to employ curved boundaries)
-         DO q=1,n
-           Basis(q) = BrickNodalPBasis(q, u, v, w)
-           dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
-         END DO
+         IF (n>8) THEN
+           ! Here the background mesh is supposed to be of type 820/827
+           CALL NodalBasisFunctions3D(Basis, Element, u, v, w)
+           CALL NodalFirstDerivatives(n, dLBasisdx, Element, u, v, w) 
+         ELSE
+           ! Here the background mesh is of type 808
+           DO q=1,n
+             Basis(q) = BrickNodalPBasis(q, u, v, w)
+             dLBasisdx(q,1:3) = dBrickNodalPBasis(q, u, v, w)
+           END DO
+         END IF
        CASE DEFAULT
          CALL Fatal('ElementDescription::EdgeElementInfo','Unsupported element type')
        END SELECT
