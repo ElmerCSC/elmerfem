@@ -4306,9 +4306,9 @@ CONTAINS
               CALL CRS_SetSymmDirichlet(A,b,k,A % Dvalues(k)/s)
             ELSE
               CALL ZeroRow(A, k)
+              b(k) = A % Dvalues(k)/s
+              CALL SetMatrixElement(A,k,k,1._dp)
             END IF
-            b(k) = A % Dvalues(k)
-            CALL SetMatrixElement(A,k,k,s)
           END IF
         END DO
         DEALLOCATE(A % Dvalues)
