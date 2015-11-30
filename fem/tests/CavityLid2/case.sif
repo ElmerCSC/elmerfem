@@ -108,7 +108,7 @@ End
 
 
 
-Solver 1 :: Reference Norm = Real 0.20955436
+Solver 1 :: Reference Norm = Real  2.056714E-01
 $fprintf( stderr, "TEST CASE 1\n")$
 RUN
-$fprintf( stderr,"END TEST CASE 1: Target NRM= 0.20955436\n");
+$fprintf( stderr,"END TEST CASE 1: Target NRM=  2.056714E-01\n");
