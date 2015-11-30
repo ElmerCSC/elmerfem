@@ -284,12 +284,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
 !------------------------------------------------------------------------------
 
-  IF( NoElements > 0 ) THEN
-    n = Mesh % MaxElementNodes 
-    ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
-        ElementValues( n ), CoordinateBasis(n), STAT=istat)
-    IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 1') 	
-  END IF
+  n = Mesh % MaxElementNodes 
+  ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
+      ElementValues( n ), CoordinateBasis(n), STAT=istat)
+  IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 1') 	
 
   n = MAX( Model % NumberOfBodies, MAX(Model % NumberOfBCs, NoLines))
   ALLOCATE( BoundaryFluxes(n), BoundaryAreas(n), BoundaryHits(n), STAT=istat )
