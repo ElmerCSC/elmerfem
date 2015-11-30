@@ -1661,65 +1661,65 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    CM => Model%CircuitMatrix
    Circuits => Model%Circuits
    
-    ! Look for the solver we attach the circuit equations to:
-    ! -------------------------------------------------------
-    ASolver => CurrentModel % Asolver
-    IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CircuitsOutput','ASolver not found!')
+   ! Look for the solver we attach the circuit equations to:
+   ! -------------------------------------------------------
+   ASolver => CurrentModel % Asolver
+   IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('CircuitsOutput','ASolver not found!')
+   
+   nm =  Asolver % Matrix % NumberOfRows
+
+   ! Circuit variable values from previous timestep:
+   ! -----------------------------------------------
+   ALLOCATE(ip(circuit_tot_n), ipt(circuit_tot_n))
+   ip = 0._dp
+   ipt = 0._dp
+   LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
+   IF(ASSOCIATED(LagrangeVar)) THEN
+     IF(ParEnv % PEs>1) THEN
+       DO i=1,circuit_tot_n 
+         IF( CM % RowOwner(nm+i)==Parenv%myPE) ipt(i) = LagrangeVar%Values(i)
+       END DO
+       CALL MPI_ALLREDUCE(ipt,ip,circuit_tot_n, MPI_DOUBLE_PRECISION, &
+                  MPI_SUM, ASolver % Matrix % Comm, j)
+     ELSE
+       ip(1:circuit_tot_n) = LagrangeVar % Values
+     END IF
+   END IF
     
-    nm =  Asolver % Matrix % NumberOfRows
+   ! Export circuit & dynamic variables for "SaveScalars":
+   ! -----------------------------------------------------
 
-    ! Circuit variable values from previous timestep:
-    ! -----------------------------------------------
-    ALLOCATE(ip(circuit_tot_n), ipt(circuit_tot_n))
-    ip = 0._dp
-    ipt = 0._dp
-    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
-    IF(ASSOCIATED(LagrangeVar)) THEN
-      IF(ParEnv % PEs>1) THEN
-        DO i=1,SIZE(LagrangeVar % Values)
-          IF( CM % RowOwner(nm+i)==Parenv%myPE) ipt(i) = LagrangeVar%Values(i)
-        END DO
-        CALL MPI_ALLREDUCE(ipt,ip,circuit_tot_n, MPI_DOUBLE_PRECISION, &
-                   MPI_SUM, ASolver % Matrix % Comm, j)
-      ELSE
-        ip(1:SIZE(LagRangeVar % Values)) = LagrangeVar % Values
-      END IF
-    END IF
-     
-    ! Export circuit & dynamic variables for "SaveScalars":
-    ! -----------------------------------------------------
+   CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
+   
+   DO p=1,n_Circuits
+     DO i=1,Circuits(p) % n
+       Cvar => Circuits(p) % CircuitVariables(i)
+       
+       IF (Circuits(p) % Harmonic) THEN 
+         CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' re', ip(Cvar % ValueId))
+         CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId))
 
-    CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
-    
-    DO p=1,n_Circuits
-      DO i=1,Circuits(p) % n
-        Cvar => Circuits(p) % CircuitVariables(i)
-        
-        IF (Circuits(p) % Harmonic) THEN 
-          CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' re', ip(Cvar % ValueId))
-          CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))//' im', ip(Cvar % ImValueId))
+         IF (Cvar % pdofs /= 0 ) THEN
+           DO jj = 1, Cvar % pdofs
+             write (dofnumber, "(I2)") jj
+             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
+                                    //'re dof '//TRIM(dofnumber), ip(Cvar % ValueId + ReIndex(jj)))
+             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
+                                    //'im dof '//TRIM(dofnumber), ip(Cvar % ValueId + ImIndex(jj)))
+           END DO
+         END IF
+       ELSE
+         CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i)), ip(Cvar % ValueId))
+         
+         IF (Cvar % pdofs /= 0 ) THEN
+           DO jj = 1, Cvar % pdofs
+             write (dofnumber, "(I2)") jj
+             CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
+                                    //'dof '//TRIM(dofnumber), ip(Cvar % ValueId + jj))
+           END DO
+         END IF
+       END IF
 
-          IF (Cvar % pdofs /= 0 ) THEN
-            DO jj = 1, Cvar % pdofs
-              write (dofnumber, "(I2)") jj
-              CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                     //'re dof '//TRIM(dofnumber), ip(Cvar % ValueId + ReIndex(jj)))
-              CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                     //'im dof '//TRIM(dofnumber), ip(Cvar % ValueId + ImIndex(jj)))
-            END DO
-          END IF
-        ELSE
-          CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i)), ip(Cvar % ValueId))
-          
-          IF (Cvar % pdofs /= 0 ) THEN
-            DO jj = 1, Cvar % pdofs
-              write (dofnumber, "(I2)") jj
-              CALL ListAddConstReal( GetSimulation(), 'res: '//TRIM(Circuits(p) % names(i))&
-                                     //'dof '//TRIM(dofnumber), ip(Cvar % ValueId + jj))
-            END DO
-          END IF
-        END IF
-
-      END DO
-    END DO
+     END DO
+   END DO
 END SUBROUTINE CircuitsOutput
