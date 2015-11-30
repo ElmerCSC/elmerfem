@@ -4035,6 +4035,7 @@ CONTAINS
        IF(NamespaceFound) CALL ListPopNamespace()
      END IF
      Solver % dt = dt
+     Solver % TimesVisited = Solver % TimesVisited + 1
 
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )

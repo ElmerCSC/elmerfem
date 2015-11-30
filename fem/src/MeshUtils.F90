@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter R�back
+! *  Authors: Juha Ruokolainen, Peter Råback
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -15907,6 +15907,151 @@ CONTAINS
 
 
   END SUBROUTINE ClusterElementsUniform
+
+ 
+  !> Find the node closest to the given coordinate. 
+  !> The linear search only makes sense for a small number of points. 
+  !> Users include saving routines of pointwise information. 
+  !-----------------------------------------------------------------
+  FUNCTION ClosestNodeInMesh(Mesh,Coord,MinDist) RESULT ( NodeIndx )
+    TYPE(Mesh_t) :: Mesh
+    REAL(KIND=dp) :: Coord(3)
+    REAL(KIND=dp), OPTIONAL :: MinDist
+    INTEGER :: NodeIndx
+
+    REAL(KIND=dp) :: Dist2,MinDist2,NodeCoord(3)
+    INTEGER :: i
+
+    MinDist2 = HUGE( MinDist2 ) 
+
+    DO i=1,Mesh % NumberOfNodes
+      
+      NodeCoord(1) = Mesh % Nodes % x(i)
+      NodeCoord(2) = Mesh % Nodes % y(i)
+      NodeCoord(3) = Mesh % Nodes % z(i)
+    
+      Dist2 = SUM( ( Coord - NodeCoord )**2 )
+      IF( Dist2 < MinDist2 ) THEN
+        MinDist2 = Dist2
+        NodeIndx = i  
+      END IF
+    END DO
+    
+    IF( PRESENT( MinDist ) ) MinDist = SQRT( MinDist2 ) 
+
+  END FUNCTION ClosestNodeInMesh
+
+
+  !> Find the element that owns or is closest to the given coordinate. 
+  !> The linear search only makes sense for a small number of points. 
+  !> Users include saving routines of pointwise information. 
+  !-------------------------------------------------------------------
+  FUNCTION ClosestElementInMesh(Mesh, Coords) RESULT ( ElemIndx )
+
+    TYPE(Mesh_t) :: Mesh
+    REAL(KIND=dp) :: Coords(3)
+    INTEGER :: ElemIndx
+
+    REAL(KIND=dp) :: Dist,MinDist,LocalCoords(3)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+    TYPE(Nodes_t) :: ElementNodes
+    INTEGER :: k,l,n,istat
+    REAL(KIND=dp) :: ParallelHits,ParallelCands
+    LOGICAL :: Hit
+
+    n = Mesh % MaxElementNodes
+    ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), STAT=istat)
+    IF( istat /= 0 ) CALL Fatal('ClosestElementInMesh','Memory allocation error') 	
+    ElemIndx = 0
+    MinDist = HUGE( MinDist ) 
+    Hit = .FALSE.
+    l = 0
+    
+    ! Go through all bulk elements and look for hit in each element.
+    ! Linear search makes only sense for a small number of nodes
+    DO k=1,Mesh % NumberOfBulkElements
+
+      Element => Mesh % Elements(k)
+      n = Element % TYPE % NumberOfNodes
+      NodeIndexes => Element % NodeIndexes
+      
+      ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+      ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+      ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+      
+      Hit = PointInElement( Element, ElementNodes, &
+          Coords, LocalCoords, LocalDistance = Dist )
+      IF( Dist < MinDist ) THEN
+        MinDist = Dist
+        l = k
+      END IF
+      IF( Hit ) EXIT
+    END DO
+    
+    ! Count the number of parallel hits
+    !-----------------------------------------------------------------------
+    IF( Hit ) THEN
+      ParallelHits = 1.0_dp
+    ELSE
+      ParallelHits = 0.0_dp
+    END IF
+    ParallelHits = ParallelReduction( ParallelHits )
+    
+    ! If there was no proper hit go through the best candidates so far and 
+    ! see if they would give a acceptable hit
+    !----------------------------------------------------------------------
+    IF( ParallelHits < 0.5_dp ) THEN	  
+
+      ! Compute the number of parallel candidates
+      !------------------------------------------
+      IF( l > 0 ) THEN
+        ParallelCands = 1.0_dp
+      ELSE
+        ParallelCands = 0.0_dp
+      END IF
+      ParallelCands = ParallelReduction( ParallelCands ) 
+
+      IF( l > 0 ) THEN
+        Element => Mesh % Elements(l)
+        n = Element % TYPE % NumberOfNodes
+        NodeIndexes => Element % NodeIndexes
+
+        ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+        ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+        ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+
+        ! If there are more than two competing parallel hits then use more stringent conditions
+        ! since afterwords there is no way of deciding which one was closer.
+        !--------------------------------------------------------------------------------------
+        IF( ParallelCands > 1.5_dp ) THEN
+          Hit = PointInElement( Element, ElementNodes, &
+              Coords, LocalCoords, GlobalEps = 1.0e-3_dp, LocalEps=1.0e-4_dp )	
+        ELSE
+          Hit = PointInElement( Element, ElementNodes, &
+              Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	
+        END IF
+      END IF
+    END IF
+
+    IF( Hit ) ElemIndx = l
+
+    IF( ParallelHits < 0.5_dp ) THEN
+      IF( Hit ) THEN
+        ParallelHits = 1.0_dp
+      ELSE
+        ParallelHits = 0.0_dp
+      END IF
+      ParallelHits = ParallelReduction( ParallelHits )
+      IF( ParallelHits < 0.5_dp ) THEN
+        WRITE( Message, * ) 'Coordinate not found in any of the elements!',Coords
+        CALL Warn( 'ClosestElementInMesh', Message )
+      END IF
+    END IF
+
+    DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
+ 
+  END FUNCTION ClosestElementInMesh
 
 
 
