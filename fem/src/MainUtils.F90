@@ -1901,8 +1901,6 @@ CONTAINS
          END IF
          steadyIt = i
        END IF
-        
-       CALL ListPushNamespace('coupled '//TRIM(i2s(i))//': ')
 
        DoneThis = .FALSE.
 
@@ -2041,9 +2039,8 @@ CONTAINS
 !------------------------------------------------------------------------------
          END DO
 !------------------------------------------------------------------------------
-         CALL ListPopNamespace()
-         Model % Mesh % Changed = .FALSE.
-        IF ( ALL(DoneThis) ) EXIT
+       Model % Mesh % Changed = .FALSE.
+       IF ( ALL(DoneThis) ) EXIT
     END DO
 
     IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
