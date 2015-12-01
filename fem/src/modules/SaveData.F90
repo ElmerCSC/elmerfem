@@ -1412,6 +1412,14 @@ CONTAINS
       Nonodes = SIZE(Var % Values) / NoDofs
     END IF
 
+    IF( MaskOper ) THEN
+      IF( NoNodes > SIZE(NodeMask) ) THEN
+        CALL Info('SaveScalars','Decreasing operator range to size of mask: '&
+            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))) )
+        NoNodes = SIZE(NodeMask)
+      END IF
+    END IF
+
     nlist => NULL()
     IF(ParEnv % PEs>1) THEN
       IF(ASSOCIATED(Var % Solver)) THEN
@@ -1512,7 +1520,7 @@ CONTAINS
       operx = Variance
       
     CASE DEFAULT 
-      CALL Warn('SaveScalars','Unknown statistical OPERATOR')
+      CALL Warn('SaveScalars','Unknown statistical operator!')
 
     END SELECT
       
@@ -1533,11 +1541,18 @@ CONTAINS
     INTEGER :: Nonodes, i, j, k, NoDofs, sumi
 
     NoDofs = Var % Dofs
-    NoDofs = Var % Dofs
     IF(ASSOCIATED (Var % Perm)) THEN
       Nonodes = SIZE(Var % Perm) 
     ELSE
       Nonodes = SIZE(Var % Values) / NoDofs
+    END IF
+
+    IF( MaskOper ) THEN
+      IF( NoNodes > SIZE(NodeMask) ) THEN
+        CALL Info('SaveScalars','Decreasing operator range to size of mask: '&
+            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))) )
+        NoNodes = SIZE(NodeMask)
+      END IF
     END IF
 
     sumi = 0
