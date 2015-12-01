@@ -4305,9 +4305,9 @@ CONTAINS
             IF ( A % Symmetric ) THEN
               CALL CRS_SetSymmDirichlet(A,b,k,A % Dvalues(k)/s)
             ELSE
-              b(k) = A % Dvalues(k)
               CALL ZeroRow(A, k)
-              CALL SetMatrixElement(A,k,k,s)
+              b(k) = A % Dvalues(k)/s
+              CALL SetMatrixElement(A,k,k,1._dp)
             END IF
           END IF
         END DO
