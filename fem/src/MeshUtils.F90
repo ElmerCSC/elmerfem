@@ -10483,7 +10483,7 @@ END SUBROUTINE GetMaxDefs
      LOGICAL, OPTIONAL :: FindEdges
 
      LOGICAL :: FindEdges3D
-     INTEGER :: MeshDim, SpaceDim
+     INTEGER :: MeshDim, SpaceDim, MaxElemDim 
 
      IF(PRESENT(FindEdges)) THEN
        FindEdges3D = FindEdges
@@ -10504,7 +10504,14 @@ END SUBROUTINE GetMaxDefs
            // TRIM(I2S(MeshDim))//' vs. '//TRIM(I2S(SpaceDim)))
      END IF
 
-     SELECT CASE( MeshDim )
+     MaxElemDim = EnsureElemDim( MeshDim ) 
+     IF( MaxElemDim < MeshDim ) THEN
+       CALL Warn('FindMeshEdges','Element dimension smaller than mesh dimension: '//&
+           TRIM(I2S(MaxElemDim))//' vs '//TRIM(I2S(MeshDim)))
+     END IF
+
+
+     SELECT CASE( MaxElemDim )
 
      CASE(2)
        IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
@@ -10528,6 +10535,33 @@ END SUBROUTINE GetMaxDefs
      CALL AssignConstraints()
 
 CONTAINS
+
+  ! Check that the element dimension really follows the mesh dimension
+  ! The default is the MeshDim so we return immediately after that is 
+  ! confirmed. 
+  !--------------------------------------------------------------------
+    FUNCTION EnsureElemDim(MeshDim) RESULT (MaxElemDim)
+
+      INTEGER :: MeshDim, MaxElemDim 
+      INTEGER :: i,ElemDim, ElemCode
+
+      MaxElemDim = 0
+
+      DO i=1,Mesh % NumberOfBulkElements
+        ElemCode = Mesh % Elements(i) % Type % ElementCode
+        IF( ElemCode > 500 ) THEN
+          ElemDim = 3 
+        ELSE IF( ElemCode > 300 ) THEN
+          ElemDim = 2
+        ELSE IF( ElemCode > 200 ) THEN
+          ElemDim = 1
+        END IF
+        MaxElemDim = MAX( MaxElemDim, ElemDim ) 
+        IF( MaxElemDim == MeshDim ) EXIT
+      END DO
+          
+    END FUNCTION EnsureElemDim
+
 
     SUBROUTINE AssignConstraints()
 
@@ -10784,6 +10818,8 @@ CONTAINS
     
     INTEGER :: nf(4)
 !------------------------------------------------------------------------------
+    
+
     
     TetraFaceMap(1,:) = (/ 1, 2, 3, 5, 6, 7 /)
     TetraFaceMap(2,:) = (/ 1, 2, 4, 5, 9, 8 /)
