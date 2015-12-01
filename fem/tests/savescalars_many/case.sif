@@ -1,0 +1,135 @@
+! Test different operators of SaveScalars on a simple heat equation 
+! 
+! This tests the possibility of SaveScalars to have multiple instances
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+End
+
+Simulation
+  Max Output Level = 10
+  Coordinate System = "Cartesian"
+
+  Simulation Type = "Transient"
+  Timestep Intervals = 10
+  Timestep Sizes = 0.1
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Name = "Guess"
+  Temperature = 0.0
+End 
+
+Equation 1
+  Name = "Equation1"
+  Heat Equation = True
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 10
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+End
+
+
+Solver 2 
+  Exec Solver = before all
+  Equation = SaveScalars1
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f1.dat
+  Show Norm = True
+  Show Norm Index = 1
+
+  Variable 1 = Temperature
+  Operator 1 = Volume
+End
+
+Solver 3 
+  Equation = SaveScalars2
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f2.dat
+  Show Norm = True
+  Show Norm Index = 2
+
+  Variable 1 = Temperature
+  Operator 1 = min
+  Variable 2 = Temperature
+  Operator 2 = max
+End
+
+Solver 4 
+  Equation = SaveScalars3
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f3.dat
+
+  Save Coordinates(2,2) = 0.5 0.5 1.5 0.5
+End
+
+
+Solver 5
+  Exec Solver = after all
+  Equation = SaveScalars4
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f4.dat
+
+  Operator 1 = cpu time
+End
+
+
+
+Material 1
+  Name = "Material1"
+  Density = 1.0
+  Heat Conductivity = 1.0
+  Heat Capacity = 1.0
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Zero"
+  Target Boundaries(1) = 1
+  Temperature = 0
+
+  Filename = File f.dat
+  Save Scalars = True
+End
+
+Solver 1 :: Reference Norm = 0.79436022E-01
+Solver 2 :: Reference Norm = 3.0
+Solver 3 :: Reference Norm = 0.14875248

@@ -124,7 +124,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CoefficientName, ScalarParFile, OutputDirectory, MinOper, MaxOper, &
       MaskName, SaveName
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
-      NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues=0, DIM, &
+      NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT
@@ -979,8 +979,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   IF( SaveToFile ) THEN
 
     LineInd = ListGetInteger( Params,'Line Marker',GotIt)
-    
+    PrevNoValues = ListGetInteger( Params,'Save Scalars Dofs',GotIt) 
+
     IF(WriteCore .AND. NoValues /= PrevNoValues) THEN 
+      CALL ListAddInteger( Params,'Save Scalars Dofs',NoValues )
+
       WRITE( Message, '(A)' ) 'Saving names of values to file: '//TRIM(ScalarNamesFile)
       CALL Info( 'SaveScalars', Message, Level=4 )
       
@@ -1150,8 +1153,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   IF( NoElements > 0 ) THEN
     DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z)
   END IF
-
-  PrevNoValues = NoValues
 
   CALL Info('SaveScalars','All done')
   CALL Info('SaveScalars', '-----------------------------------------', Level=4 )
