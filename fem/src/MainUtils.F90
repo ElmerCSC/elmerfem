@@ -3051,6 +3051,7 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL InitializeToZero(Solver % Matrix, Solver % Matrix % rhs)
             
+            CALL ListPushNameSpace('block:')
             CALL ListPushNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
             CALL BlockSystemAssembly(PSolver,dt,Transient,RowVar,ColVar)
             
@@ -3058,7 +3059,7 @@ CONTAINS
             CALL DefaultFinishAssembly()                    
             
             CALL BlockSystemDirichlet(TotMatrix,RowVar,ColVar)
-            CALL ListPopNameSpace()
+            CALL ListPopNameSpace(); CALL ListPopNameSpace()
           END DO
         END DO
       END IF
