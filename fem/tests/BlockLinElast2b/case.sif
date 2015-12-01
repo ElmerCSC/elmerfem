@@ -58,8 +58,8 @@ Solver 1
   Calculate Stresses = False
   Displace Mesh = Logical False
 
-!  Dump system matrix = String a1.dat
-!  Dump system rhs = String f1.dat
+! Dump system matrix = String a1.dat
+! Dump system rhs = String f1.dat
 
 
   Steady State Convergence Tolerance = 1.0e-05
@@ -76,17 +76,14 @@ Solver 1
 
   Linear System Solver = string "block"
 
-  Block 11: Linear System Solver = string "iterative"
-  Block 22: Linear System Solver = string "iterative"
-
-  Linear System Refactorize = Logical False
-  Linear System Convergence Tolerance = real 0.1e-7
-  Linear System Iterative Method = string bicgstab
-  Linear System Max Iterations = integer 500
-!  Linear System Symmetric = Logical True 
-  Linear System Residual Output = integer 20
-!  Linear System Timing = True
-  Linear System Preconditioning = String ILU0
+  Block: Linear System Solver = string "iterative"
+  Block: Linear System Refactorize = Logical False
+  Block: Linear System Convergence Tolerance = real 0.1e-2
+  Block: Linear System Iterative Method = string bicgstab
+  Block: Linear System Max Iterations = integer 500
+  Block: Linear System Symmetric = Logical True 
+  Block: Linear System Residual Output = integer 20
+  Block: Linear System Preconditioning = String ILU0
 
   Linear System Block Method = String "other"
   Outer: Linear System Solver = string "Iterative"
