@@ -36,41 +36,39 @@ MACRO(ADD_ELMERICETEST_MODULE test_name module_name file_name)
   SET_TARGET_PROPERTIES(${ELMERICETEST_CMAKE_NAME}
     PROPERTIES OUTPUT_NAME ${module_name} LINKER_LANGUAGE Fortran)
   TARGET_LINK_LIBRARIES(${ELMERICETEST_CMAKE_NAME} elmersolver)
-  IF(WITH_MPI)
-    ADD_DEPENDENCIES(${ELMERICETEST_CMAKE_NAME} 
-      elmersolver ElmerSolver_mpi ElmerGrid)
-  ELSE()
-    ADD_DEPENDENCIES(${ELMERICETEST_CMAKE_NAME} 
-      elmersolver ElmerSolver ElmerGrid)
-  ENDIF()
+#  IF(WITH_MPI)
+#    ADD_DEPENDENCIES(${ELMERICETEST_CMAKE_NAME} elmersolver)
+#  ELSE()
+#    ADD_DEPENDENCIES(${ELMERICETEST_CMAKE_NAME} elmersolver)
+#  ENDIF()
   UNSET(ELMERICETEST_CMAKE_NAME)
 ENDMACRO()
 
 MACRO(RUN_ELMERICE_TEST)
   MESSAGE(STATUS "BINARY_DIR = ${BINARY_DIR}")
-  FILE(REMOVE TEST.PASSED)
+  SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
+  SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
+  SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/UserFunctions")
   #Optional arguments like WITH_MPI
   SET(LIST_VAR "${ARGN}")
-  IF("LIST_VAR" STREQUAL "")
+  IF(LIST_VAR STREQUAL "")
+    FILE(REMOVE "TEST.PASSED")
     EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
       OUTPUT_FILE "test-stdout.log"
-      ERROR_FILE "test-stderr.log"
-      OUTPUT_VARIABLE TESTOUTPUT)
+      ERROR_FILE "test-stderr.log")
   ELSE()
      IF("${LIST_VAR}" STREQUAL WITH_MPI)
        SET(N "${NPROCS}")
          IF("N" STREQUAL "")
 	   MESSAGE( FATAL_ERROR "Test failed:variable <NPROC> not defined. Set <NPROC> in runTes.cmake")
          ELSE()
+           FILE(REMOVE "TEST.PASSED_${N}")
 	   EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${N} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
              OUTPUT_FILE "test-stdout.log"
-             ERROR_FILE "test-stderr.log"
-             OUTPUT_VARIABLE TESTOUTPUT)
+             ERROR_FILE "test-stderr.log")
          ENDIF()
        ENDIF()
   ENDIF()
-
-  MESSAGE(STATUS "testoutput.........: ${TESTOUTPUT}")
 
   IF(NPROCS GREATER "1")
     FILE(READ "TEST.PASSED_${NPROCS}" RES)

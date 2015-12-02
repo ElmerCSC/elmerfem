@@ -1427,6 +1427,7 @@ solver:logical:      'normalize coil current'
 solver:real:         'desired coil current'
 solver:real:         'harmonic loss linear exponent'
 solver:real:         'harmonic loss quadratic exponent'
+Component:Real:      'Number of Turns'
 
 ! TRAFOTEK KEYWORDS
 Material:Real:       'rho0'
