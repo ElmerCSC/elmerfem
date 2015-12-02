@@ -927,12 +927,13 @@ CONTAINS
 !> If it not to be found in the current mesh, interpolation between
 !> meshes is automatically requested for.
 !------------------------------------------------------------------------------
-    RECURSIVE FUNCTION VariableGet( Variables, Name, ThisOnly, MaskName ) RESULT(Var)
+    RECURSIVE FUNCTION VariableGet( Variables, Name, ThisOnly, MaskName, UnfoundFatal ) RESULT(Var)
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       CHARACTER(LEN=*) :: Name
       LOGICAL, OPTIONAL :: ThisOnly
       CHARACTER(LEN=*),OPTIONAL :: MaskName
+      LOGICAL, OPTIONAL :: UnfoundFatal
 !------------------------------------------------------------------------------
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Projector_t), POINTER :: Projector
@@ -981,9 +982,18 @@ CONTAINS
       END DO
       Var => Tmp
 
+
 !------------------------------------------------------------------------------
       IF ( PRESENT(ThisOnly) ) THEN
-         IF ( ThisOnly ) RETURN
+         IF ( ThisOnly ) THEN
+            IF ( PRESENT(UnfoundFatal) ) THEN
+               IF ( UnfoundFatal ) THEN
+                  WRITE(Message,'(A,A)') "Failed to find variable ",Name
+                  CALL Fatal("VariableGet",Message)
+               END IF
+            END IF
+            RETURN
+         END IF
       END IF
 
 !------------------------------------------------------------------------------
@@ -1002,7 +1012,15 @@ CONTAINS
         Mesh => Mesh % Next
       END DO
 
-      IF ( .NOT.ASSOCIATED( PVar ) ) RETURN
+      IF ( .NOT.ASSOCIATED( PVar ) ) THEN
+         IF ( PRESENT(UnfoundFatal) ) THEN
+            IF ( UnfoundFatal ) THEN
+               WRITE(Message,'(A,A)') "Failed to find or interpolate variable ",Name
+               CALL Fatal("VariableGet",Message)
+            END IF
+         END IF
+         RETURN
+      END IF
 
 !------------------------------------------------------------------------------
 
