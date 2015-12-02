@@ -1709,6 +1709,13 @@ CONTAINS
     COMPLEX(KIND=dp) :: i_multiplier
     REAL(KIND=dp) :: ValueNorm
 
+    INTEGER :: NofComponents=0, bid
+    INTEGER, POINTER :: BodyIds(:)
+    REAL(KIND=DP) :: Vol
+    REAL(KIND=dp), ALLOCATABLE :: ComponentSkinCond(:,:), ComponentProxNu(:,:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: CompNumber
+    
+
     SAVE Nodes
 
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
@@ -1739,10 +1746,15 @@ CONTAINS
     END IF
 
     IF (SkinAndProxParamCompute) THEN
+      NofComponents = SIZE(Model % Components)
       ALLOCATE(BodySkinCond(2, Model % NumberOfBodies), &
-                 BodyProxNu(2, Model % NumberOfBodies) )
+                 BodyProxNu(2, Model % NumberOfBodies), &
+                   ComponentSkinCond(2, NofComponents), &
+                     ComponentProxNu(2, NofComponents)   )
       BodySkinCond = 0.0_dp
       BodyProxNu = 0.0_dp      
+      ComponentSkinCond = 0.0_dp
+      ComponentProxNu = 0.0_dp
       BodyICompute = .TRUE.
       ComplexPowerCompute = .TRUE.
       AverageBCompute = .TRUE.
@@ -2169,8 +2181,8 @@ CONTAINS
       DO j = 1,Model % NumberOfBodies
         ValueNorm = SQRT(BodyCurrent(1,j)**2 + BodyCurrent(2,j)**2)
         IF (ValueNorm > TINY(ValueNorm)) THEN
-          BodySkinCond(1,j) = BodyComplexPower(1,j)/ValueNorm/BodyVolumes(j)
-          BodySkinCond(2,j) = BodyComplexPower(2,j)/ValueNorm/BodyVolumes(j)
+          BodySkinCond(1,j) = BodyComplexPower(1,j)/ValueNorm**2/BodyVolumes(j)
+          BodySkinCond(2,j) = BodyComplexPower(2,j)/ValueNorm**2/BodyVolumes(j)
         ELSE
           BodySkinCond(1,j) = HUGE(ValueNorm)
           BodySkinCond(2,j) = HUGE(ValueNorm)
@@ -2178,8 +2190,8 @@ CONTAINS
         ValueNorm = SQRT(BodyAvBre(1,j)**2 + BodyAvBim(2,j)**2)
         ValueNorm = ValueNorm + SQRT(BodyAvBre(2,j)**2 + BodyAvBim(2,j)**2) 
         IF (ValueNorm > TINY(ValueNorm)) THEN
-          BodyProxNu(1,j) = BodyComplexPower(1,j)/ValueNorm/BodyVolumes(j)
-          BodyProxNu(2,j) = BodyComplexPower(2,j)/ValueNorm/BodyVolumes(j)
+          BodyProxNu(1,j) = BodyComplexPower(1,j)/ValueNorm**2/BodyVolumes(j)
+          BodyProxNu(2,j) = BodyComplexPower(2,j)/ValueNorm**2/BodyVolumes(j)
         ELSE
           BodyProxNu(1,j) = HUGE(ValueNorm)
           BodyProxNu(2,j) = HUGE(ValueNorm)
@@ -2206,14 +2218,47 @@ CONTAINS
                              //TRIM(bodyNumber)//':', BodyProxNu(2,j) )
         WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
         CALL Info('Skin and Proximity Reluctivity im', Message, Level=6 )
+      END DO
+
+      DO j = 1, NofComponents
+        BodyIds => GetComponentBodyIds(j)
+
+        DO i = 1, 2
+          Vol = 0._dp
+          DO k = 1, SIZE(BodyIds)
+            bid = BodyIds(k)
+            Vol = Vol + BodyVolumes(bid)
+            ComponentSkinCond(i,j) = ComponentSkinCond(i,j) &
+                   + BodySkinCond(1,bid) * BodyVolumes(bid)
+            ComponentProxNu(i,j) = ComponentProxNu(i,j) &
+                   + ComponentProxNu(1,bid) * BodyVolumes(bid)
+          END DO
+          ComponentSkinCond(i,j) = ComponentSkinCond(i,j)/Vol
+          ComponentProxNu(i,j) = ComponentProxNu(i,j)/Vol
         END DO
-    END IF
+
+        WRITE (CompNumber, "(I0)") j
+        CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
+                    //TRIM(CompNumber)//') re ', ComponentSkinCond(1,j) )
+        CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
+                    //TRIM(CompNumber)//') im ', ComponentSkinCond(2,j) )
+        CALL ListAddConstReal( Model % Simulation,'res: nu_component(' &
+                    //TRIM(CompNumber)//') re ', ComponentProxNu(1,j) )
+        CALL ListAddConstReal( Model % Simulation,'res: nu_component(' &
+                    //TRIM(CompNumber)//') im ', ComponentProxNu(2,j) )
+
+      END DO
+
+   END IF
 
     IF (BodyVolumesCompute)      DEALLOCATE(BodyVolumes)
     IF (AverageBCompute)         DEALLOCATE(BodyAvBre, BodyAvBim)
     IF (BodyICompute)            DEALLOCATE(BodyCurrent)
     IF (ComplexPowerCompute)     DEALLOCATE(BodyComplexPower)
-    IF (SkinAndProxParamCompute) DEALLOCATE(BodySkinCond, BodyProxNu)
+    IF (SkinAndProxParamCompute) DEALLOCATE(BodySkinCond     ,  &
+                                            BodyProxNu       ,  & 
+                                            ComponentSkinCond,  & 
+                                            ComponentProxNu      )
 
     DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond )
 
