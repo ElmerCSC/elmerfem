@@ -6085,9 +6085,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                TRANSPOSE(E(2:2,1:dim)) ) * s
        END IF
        IF(ASSOCIATED(HB) .AND. RealField) THEN 
-         Energy = Energy + s*(PR_ip*SUM(E**2)) + w_dens
+         Energy = Energy + s*(0.5*PR_ip*SUM(E**2) + w_dens)
        ELSE
-         Energy = Energy + s*(PR_ip*SUM(E**2) + R_ip*SUM(B**2))/2
+         Energy = Energy + s*0.5*(PR_ip*SUM(E**2) + R_ip*SUM(B**2))
        END IF
        DO p=1,n
          DO q=1,n
