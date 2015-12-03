@@ -164,6 +164,8 @@ END INTERFACE
 
     TYPE(Solver_t), POINTER :: Solver => NULL()
 
+    LOGICAL :: NoDirichlet = .FALSE.
+    REAL(KIND=dp), ALLOCATABLE :: Dvalues(:)
     LOGICAL, ALLOCATABLE :: ConstrainedDOF(:)
 
     INTEGER :: Subband, FORMAT, SolveCount, Comm=-1
@@ -688,6 +690,7 @@ END INTERFACE
       TYPE(ValueList_t), POINTER :: Values => Null()
 
       INTEGER :: TimeOrder,DoneTime,Order,NOFEigenValues=0
+      INTEGER :: TimesVisited = 0
       INTEGER(KIND=AddrInt) :: PROCEDURE, LinBeforeProc, LinAfterProc
 
       REAL(KIND=dp) :: Alpha,Beta,dt
