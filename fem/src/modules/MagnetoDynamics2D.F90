@@ -2199,25 +2199,43 @@ CONTAINS
 
         WRITE (bodyNumber, "(I0)") j
       
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity re in Body '&
-                             //TRIM(bodyNumber)//':', BodySkinCond(1,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(1,j)
-        CALL Info('Skin and Proximity Conductivity re', Message, Level=6 )
+        IF (GetCoupledIter()==3) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity re in Body '&
+                               //TRIM(bodyNumber)//':', BodySkinCond(1,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(1,j)
+          CALL Info('Skin and Proximity Conductivity re', Message, Level=6 )
+        END IF
 
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity im in Body '&
-                             //TRIM(bodyNumber)//':', BodySkinCond(2,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(2,j)
-        CALL Info('Skin and Proximity Conductivity im', Message, Level=6 )
+        IF (GetCoupledIter()==3) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity im in Body '&
+                               //TRIM(bodyNumber)//':', BodySkinCond(2,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(2,j)
+          CALL Info('Skin and Proximity Conductivity im', Message, Level=6 )
+        END IF
 
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity re in Body '&
-                             //TRIM(bodyNumber)//':', BodyProxNu(1,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(1,j)
-        CALL Info('Skin and Proximity Reluctivity re', Message, Level=6 )
+        IF (GetCoupledIter()==2) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity 22 re in Body '&
+                               //TRIM(bodyNumber)//':', BodyProxNu(1,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(1,j)
+          CALL Info('Skin and Proximity Reluctivity 22 re', Message, Level=6 )
 
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity im in Body '&
-                             //TRIM(bodyNumber)//':', BodyProxNu(2,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
-        CALL Info('Skin and Proximity Reluctivity im', Message, Level=6 )
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity 22 im in Body '&
+                               //TRIM(bodyNumber)//':', BodyProxNu(2,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
+          CALL Info('Skin and Proximity Reluctivity 22 im', Message, Level=6 )
+        END IF
+ 
+        IF (GetCoupledIter()==1) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity xx re in Body '&
+                               //TRIM(bodyNumber)//':', BodyProxNu(1,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(1,j)
+          CALL Info('Skin and Proximity Reluctivity xx re', Message, Level=6 )
+
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity xx im in Body '&
+                               //TRIM(bodyNumber)//':', BodyProxNu(2,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
+          CALL Info('Skin and Proximity Reluctivity xx im', Message, Level=6 )
+        END IF
       END DO
 
       DO j = 1, NofComponents
@@ -2238,14 +2256,25 @@ CONTAINS
         END DO
 
         WRITE (CompNumber, "(I0)") j
-        CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
-                    //TRIM(CompNumber)//') re ', ComponentSkinCond(1,j) )
-        CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
-                    //TRIM(CompNumber)//') im ', ComponentSkinCond(2,j) )
-        CALL ListAddConstReal( Model % Simulation,'res: nu_component(' &
-                    //TRIM(CompNumber)//') re ', ComponentProxNu(1,j) )
-        CALL ListAddConstReal( Model % Simulation,'res: nu_component(' &
-                    //TRIM(CompNumber)//') im ', ComponentProxNu(2,j) )
+        IF (GetCoupledIter()==3) & 
+          CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
+                      //TRIM(CompNumber)//') re ', ComponentSkinCond(1,j) )
+        IF (GetCoupledIter()==3) & 
+          CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
+                      //TRIM(CompNumber)//') im ', ComponentSkinCond(2,j) )
+        IF (GetCoupledIter()==2) & 
+          CALL ListAddConstReal( Model % Simulation,'res: nu_22_component(' &
+                      //TRIM(CompNumber)//') re ', ComponentProxNu(1,j) )
+        IF (GetCoupledIter()==2) & 
+          CALL ListAddConstReal( Model % Simulation,'res: nu_22_component(' &
+                      //TRIM(CompNumber)//') im ', ComponentProxNu(2,j) )
+        IF (GetCoupledIter()==1) & 
+          CALL ListAddConstReal( Model % Simulation,'res: nu_11_component(' &
+                      //TRIM(CompNumber)//') re ', ComponentProxNu(1,j) )
+        IF (GetCoupledIter()==1) & 
+          CALL ListAddConstReal( Model % Simulation,'res: nu_11_component(' &
+                      //TRIM(CompNumber)//') im ', ComponentProxNu(2,j) )
+
 
       END DO
 
