@@ -2181,8 +2181,8 @@ CONTAINS
       DO j = 1,Model % NumberOfBodies
         ValueNorm = SQRT(BodyCurrent(1,j)**2 + BodyCurrent(2,j)**2)
         IF (ValueNorm > TINY(ValueNorm)) THEN
-          BodySkinCond(1,j) = BodyComplexPower(1,j)/ValueNorm**2/BodyVolumes(j)
-          BodySkinCond(2,j) = BodyComplexPower(2,j)/ValueNorm**2/BodyVolumes(j)
+          BodySkinCond(1,j) = 1._dp/(BodyComplexPower(1,j)/ValueNorm**2/BodyVolumes(j))
+          BodySkinCond(2,j) = 1._dp/(BodyComplexPower(2,j)/ValueNorm**2/BodyVolumes(j))
         ELSE
           BodySkinCond(1,j) = HUGE(ValueNorm)
           BodySkinCond(2,j) = HUGE(ValueNorm)
@@ -2229,9 +2229,9 @@ CONTAINS
             bid = BodyIds(k)
             Vol = Vol + BodyVolumes(bid)
             ComponentSkinCond(i,j) = ComponentSkinCond(i,j) &
-                   + BodySkinCond(1,bid) * BodyVolumes(bid)
+                   + BodySkinCond(i,bid) * BodyVolumes(bid)
             ComponentProxNu(i,j) = ComponentProxNu(i,j) &
-                   + ComponentProxNu(1,bid) * BodyVolumes(bid)
+                   + BodyProxNu(i,bid) * BodyVolumes(bid)
           END DO
           ComponentSkinCond(i,j) = ComponentSkinCond(i,j)/Vol
           ComponentProxNu(i,j) = ComponentProxNu(i,j)/Vol
