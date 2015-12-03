@@ -2350,19 +2350,27 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a integer value from the list.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetInteger( List,Name,Found,minv,maxv ) RESULT(L)
+   RECURSIVE FUNCTION ListGetInteger( List,Name,Found,minv,maxv,UnfoundFatal ) RESULT(L)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      INTEGER :: L
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
      INTEGER, OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      L = 0
      ptr => ListFind(List,Name,Found)
-     IF (.NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find integer: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
      IF ( ptr % PROCEDURE /= 0 ) THEN
        CALL ListPushActiveName(Name)
@@ -2402,11 +2410,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a integer array from the list.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetIntegerArray( List,Name,Found ) RESULT( IValues )
+   RECURSIVE FUNCTION ListGetIntegerArray( List,Name,Found,UnfoundFatal ) RESULT( IValues )
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*)  :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER :: i,n
@@ -2414,7 +2422,15 @@ CONTAINS
 !------------------------------------------------------------------------------
      NULLIFY( IValues )
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find integer array: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
      IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
        WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -2441,18 +2457,26 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a logical value from the list, if not found return False.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetLogical( List,Name,Found ) RESULT(L)
+   RECURSIVE FUNCTION ListGetLogical( List,Name,Found,UnfoundFatal ) RESULT(L)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      LOGICAL :: L
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      L = .FALSE.
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find logical: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
      L = ptr % Lvalue
 !------------------------------------------------------------------------------
    END FUNCTION ListGetLogical
@@ -2462,18 +2486,26 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a string from the list by its name, if not found return empty string.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetString( List,Name,Found ) RESULT(S)
+   RECURSIVE FUNCTION ListGetString( List,Name,Found,UnfoundFatal ) RESULT(S)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found,UnfoundFatal
      CHARACTER(LEN=MAX_NAME_LEN) :: S
 !------------------------------------------------------------------------------
      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      S = ' '
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find string: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
      S = ptr % Cvalue
 !------------------------------------------------------------------------------
    END FUNCTION ListGetString
@@ -2483,12 +2515,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Get a constant real from the list by its name. 
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetConstReal( List,Name,Found,x,y,z,minv,maxv ) RESULT(F)
+   RECURSIVE FUNCTION ListGetConstReal( List,Name,Found,x,y,z,minv,maxv,UnfoundFatal ) RESULT(F)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      REAL(KIND=dp) :: F
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found,UnfoundFatal
      REAL(KIND=dp), OPTIONAL :: x,y,z
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
@@ -2501,7 +2533,15 @@ CONTAINS
      F = 0.0_dp
 
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find ConstReal: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
      SELECT CASE(ptr % TYPE)
 
@@ -2567,11 +2607,11 @@ CONTAINS
 !> Returns a scalar real value, that may depend on other scalar values such as 
 !> time or timestep size etc.
 !------------------------------------------------------------------------------
-  RECURSIVE FUNCTION ListGetCReal( List, Name, Found ) RESULT(s)
+  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, UnfoundFatal) RESULT(s)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found,UnfoundFatal
      INTEGER, TARGET :: Dnodes(1)
      INTEGER, POINTER :: NodeIndexes(:)
 
@@ -2590,9 +2630,9 @@ CONTAINS
      x = 0.0_dp
      IF ( ASSOCIATED(List % head) ) THEN
         IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
+           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, UnfoundFatal=UnfoundFatal )
         ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
+           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, UnfoundFatal=UnfoundFatal)
         END IF
      END IF
      s = x(1)
@@ -2604,12 +2644,12 @@ CONTAINS
 !> Returns a scalar real value, that may depend on other scalar values such as 
 !> time or timestep size etc.
 !------------------------------------------------------------------------------
-  RECURSIVE FUNCTION ListGetRealAtNode( List, Name, Node, Found ) RESULT(s)
+  RECURSIVE FUNCTION ListGetRealAtNode( List, Name, Node, Found, UnfoundFatal ) RESULT(s)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*)  :: Name
      INTEGER :: Node
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
      REAL(KIND=dp) :: s
 !-----------------------------------------------------------------------------
      INTEGER, TARGET, SAVE :: Dnodes(1)
@@ -2623,7 +2663,7 @@ CONTAINS
        NodeIndexes => Dnodes
        NodeIndexes(one) = Node
        
-       x(1:one) = ListGetReal( List, Name, one, NodeIndexes, Found )
+       x(1:one) = ListGetReal( List, Name, one, NodeIndexes, Found, UnfoundFatal=UnfoundFatal)
        s = x(one)
      ELSE
        s = 0.0_dp
@@ -2818,13 +2858,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in each node of an element.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetReal( List,Name,N,NodeIndexes,Found,minv,maxv ) RESULT(F)
+   RECURSIVE FUNCTION ListGetReal( List,Name,N,NodeIndexes,Found,minv,maxv,UnfoundFatal ) RESULT(F)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*)  :: Name
      INTEGER :: N,NodeIndexes(:)
      REAL(KIND=dp)  :: F(N)
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
@@ -2839,7 +2879,15 @@ CONTAINS
      ! !$ TID=OMP_GET_THREAD_NUM()
      F = 0.0_dp
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find real: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
 
      SELECT CASE(ptr % TYPE)
@@ -3645,11 +3693,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a constant real array from the list by its name.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetConstRealArray( List,Name,Found ) RESULT( F )
+   RECURSIVE FUNCTION ListGetConstRealArray( List,Name,Found,UnfoundFatal ) RESULT( F )
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
 !------------------------------------------------------------------------------
      REAL(KIND=dp), POINTER  :: F(:,:)
      INTEGER :: i,j,N1,N2
@@ -3657,7 +3705,15 @@ CONTAINS
 !------------------------------------------------------------------------------
      NULLIFY( F ) 
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find ConstRealArray: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
      IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
        WRITE(Message,*) 'Value type for property [', TRIM(Name), &
