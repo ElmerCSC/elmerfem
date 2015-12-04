@@ -1746,6 +1746,8 @@ CONTAINS
     END IF
 
     IF (SkinAndProxParamCompute) THEN
+      Omega = GetAngularFrequency()
+      CALL ListAddConstReal( Model % Simulation, 'res: Angular Frequency', Omega)
       NofComponents = SIZE(Model % Components)
       ALLOCATE(BodySkinCond(2, Model % NumberOfBodies), &
                  BodyProxNu(2, Model % NumberOfBodies), &
