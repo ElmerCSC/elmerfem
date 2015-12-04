@@ -187,7 +187,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION GetComponentSkinProxBodyIds(Id) RESULT (BodyIds)
+  FUNCTION GetComponentHomogenizationBodyIds(Id) RESULT (BodyIds)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     
@@ -198,13 +198,13 @@ CONTAINS
     
     ComponentParams => CurrentModel % Components(Id) % Values
     
-    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentSkinProxBodyIds', &
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentHomogenizationBodyIds', &
                                                          'Component parameters not found!')
-    BodyIds => ListGetIntegerArray(ComponentParams, 'Skin and Proximity Parameters Body', Found)
+    BodyIds => ListGetIntegerArray(ComponentParams, 'Homogenization Parameters Body', Found)
     IF (.NOT. Found) BodyIds => Null()
     
 !------------------------------------------------------------------------------
-  END FUNCTION GetComponentSkinProxBodyIds
+  END FUNCTION GetComponentHomogenizationBodyIds
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
