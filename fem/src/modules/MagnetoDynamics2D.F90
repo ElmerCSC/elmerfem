@@ -1713,7 +1713,7 @@ CONTAINS
     INTEGER, POINTER :: BodyIds(:)
     REAL(KIND=DP) :: Vol
     REAL(KIND=dp), ALLOCATABLE :: ComponentSkinCond(:,:), ComponentProxNu(:,:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: CompNumber
+    CHARACTER(LEN=MAX_NAME_LEN) :: CompNumber, OutputComp
     
 
     SAVE Nodes
@@ -1746,6 +1746,8 @@ CONTAINS
     END IF
 
     IF (SkinAndProxParamCompute) THEN
+      Omega = GetAngularFrequency()
+      CALL ListAddConstReal( Model % Simulation, 'res: Angular Frequency', Omega)
       NofComponents = SIZE(Model % Components)
       ALLOCATE(BodySkinCond(2, Model % NumberOfBodies), &
                  BodyProxNu(2, Model % NumberOfBodies), &
@@ -2184,8 +2186,8 @@ CONTAINS
           BodySkinCond(1,j) = 1._dp/(BodyComplexPower(1,j)/ValueNorm**2/BodyVolumes(j))
           BodySkinCond(2,j) = 1._dp/(BodyComplexPower(2,j)/ValueNorm**2/BodyVolumes(j))
         ELSE
-          BodySkinCond(1,j) = HUGE(ValueNorm)
-          BodySkinCond(2,j) = HUGE(ValueNorm)
+          BodySkinCond(1,j) = TINY(ValueNorm)
+          BodySkinCond(2,j) = TINY(ValueNorm)
         END IF
         ValueNorm = SQRT(BodyAvBre(1,j)**2 + BodyAvBim(2,j)**2)
         ValueNorm = ValueNorm + SQRT(BodyAvBre(2,j)**2 + BodyAvBim(2,j)**2) 
@@ -2199,56 +2201,70 @@ CONTAINS
 
         WRITE (bodyNumber, "(I0)") j
       
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity re in Body '&
-                             //TRIM(bodyNumber)//':', BodySkinCond(1,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(1,j)
-        CALL Info('Skin and Proximity Conductivity re', Message, Level=6 )
+        OutputComp = ListGetString(Model % Bodies(j) % Values, 'Skin and Proximity Conductivity Output Component', Found)
+        IF (Found) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity '&
+                              //TRIM(OutputComp)//' re in Body '//TRIM(bodyNumber)//':', BodySkinCond(1,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(1,j)
+          CALL Info('Skin and Proximity Conductivity '//TRIM(OutputComp)//' re', Message, Level=6 )
 
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity im in Body '&
-                             //TRIM(bodyNumber)//':', BodySkinCond(2,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(2,j)
-        CALL Info('Skin and Proximity Conductivity im', Message, Level=6 )
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity '&
+                             //TRIM(OutputComp)//' im in Body '//TRIM(bodyNumber)//':', BodySkinCond(2,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(2,j)
+          CALL Info('Skin and Proximity Conductivity '//TRIM(OutputComp)//' im', Message, Level=6 )
+       END IF
 
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity re in Body '&
-                             //TRIM(bodyNumber)//':', BodyProxNu(1,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(1,j)
-        CALL Info('Skin and Proximity Reluctivity re', Message, Level=6 )
+       OutputComp = ListGetString(Model % Bodies(j) % Values, 'Skin and Proximity Reluctivity Output Component', Found)
+       IF (Found) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity '&
+                            //TRIM(OutputComp)//' re in Body '//TRIM(bodyNumber)//':', BodyProxNu(1,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(1,j)
+          CALL Info('Skin and Proximity Reluctivity '//TRIM(OutputComp)//' re', Message, Level=6 )
 
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity im in Body '&
-                             //TRIM(bodyNumber)//':', BodyProxNu(2,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
-        CALL Info('Skin and Proximity Reluctivity im', Message, Level=6 )
+          CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity '&
+                           //TRIM(OutputComp)//' im in Body '//TRIM(bodyNumber)//':', BodyProxNu(2,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
+          CALL Info('Skin and Proximity Reluctivity '//TRIM(OutputComp)//' im', Message, Level=6 )
+        END IF
       END DO
 
       DO j = 1, NofComponents
-        BodyIds => GetComponentBodyIds(j)
+        BodyIds => GetComponentSkinProxBodyIds(j)
 
-        DO i = 1, 2
-          Vol = 0._dp
-          DO k = 1, SIZE(BodyIds)
-            bid = BodyIds(k)
-            Vol = Vol + BodyVolumes(bid)
-            ComponentSkinCond(i,j) = ComponentSkinCond(i,j) &
-                   + BodySkinCond(i,bid) * BodyVolumes(bid)
-            ComponentProxNu(i,j) = ComponentProxNu(i,j) &
-                   + BodyProxNu(i,bid) * BodyVolumes(bid)
+        IF (ASSOCIATED(BodyIds)) THEN
+          DO i = 1, 2
+            Vol = 0._dp
+            DO k = 1, SIZE(BodyIds)
+              bid = BodyIds(k)
+              Vol = Vol + BodyVolumes(bid)
+              ComponentSkinCond(i,j) = ComponentSkinCond(i,j) &
+                     + BodySkinCond(i,bid) * BodyVolumes(bid)
+              ComponentProxNu(i,j) = ComponentProxNu(i,j) &
+                     + BodyProxNu(i,bid) * BodyVolumes(bid)
+            END DO
+            ComponentSkinCond(i,j) = ComponentSkinCond(i,j)/Vol
+            ComponentProxNu(i,j) = ComponentProxNu(i,j)/Vol
           END DO
-          ComponentSkinCond(i,j) = ComponentSkinCond(i,j)/Vol
-          ComponentProxNu(i,j) = ComponentProxNu(i,j)/Vol
-        END DO
-
-        WRITE (CompNumber, "(I0)") j
-        CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
-                    //TRIM(CompNumber)//') re ', ComponentSkinCond(1,j) )
-        CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
-                    //TRIM(CompNumber)//') im ', ComponentSkinCond(2,j) )
-        CALL ListAddConstReal( Model % Simulation,'res: nu_component(' &
-                    //TRIM(CompNumber)//') re ', ComponentProxNu(1,j) )
-        CALL ListAddConstReal( Model % Simulation,'res: nu_component(' &
-                    //TRIM(CompNumber)//') im ', ComponentProxNu(2,j) )
-
+  
+          WRITE (CompNumber, "(I0)") j
+  
+          OutputComp = ListGetString(Model % Components(j) % Values, 'Skin and Proximity Conductivity Output Component', Found)
+          IF (Found) THEN
+            CALL ListAddConstReal( Model % Simulation,'res: sigma_'//TRIM(OutputComp)//'_component(' &
+                        //TRIM(CompNumber)//') re ', ComponentSkinCond(1,j) )
+            CALL ListAddConstReal( Model % Simulation,'res: sigma_'//TRIM(OutputComp)//'_component(' &
+                        //TRIM(CompNumber)//') im ', ComponentSkinCond(2,j) )
+          END IF
+  
+          OutputComp = ListGetString(Model % Components(j) % Values, 'Skin and Proximity Reluctivity Output Component', Found)
+          IF (Found) THEN
+            CALL ListAddConstReal( Model % Simulation,'res: nu_'//TRIM(OutputComp)//'_component(' &
+                        //TRIM(CompNumber)//') re ', ComponentProxNu(1,j) )
+            CALL ListAddConstReal( Model % Simulation,'res: nu_'//TRIM(OutputComp)//'_component(' &
+                        //TRIM(CompNumber)//') im ', ComponentProxNu(2,j) )
+          END IF
+        END IF
       END DO
-
    END IF
 
     IF (BodyVolumesCompute)      DEALLOCATE(BodyVolumes)

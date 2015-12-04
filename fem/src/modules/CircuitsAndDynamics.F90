@@ -235,7 +235,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         !--------------------------------------------
         IF(Cvar % A(j) /= 0._dp) THEN
           CALL AddToMatrixElement(CM, RowId, ColId, Cvar % A(j)/dt)
-          CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j)*ip(RowId)/dt
+          CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j)*ip(RowId-nm)/dt
         END IF
         ! B x:
         ! ------
