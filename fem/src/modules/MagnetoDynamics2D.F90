@@ -1618,16 +1618,16 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
     CALL Fatal( 'BSolver', 'Real solution, Calculate Homogenization Parameters omitted' )
   END IF
 
-  ComplexPowerCompute = GetLogical(SolverParams,'Complex Power',GotIt)
+  ComplexPowerCompute = GetLogical(SolverParams,'Calculate Complex Power',GotIt)
   IF (.NOT. GotIt ) ComplexPowerCompute = .FALSE.
   IF( ComplexPowerCompute.AND. FluxDofs /= 4) THEN
     CALL Fatal( 'BSolver', 'Real solution, Complex Power omitted' )
   END IF
 
-  AverageBCompute = GetLogical(SolverParams, 'Average Magnetic Flux Density', GotIt)
+  AverageBCompute = GetLogical(SolverParams, 'Calculate Average Magnetic Flux Density', GotIt)
   IF (.NOT. GotIt ) AverageBCompute = .FALSE.
 
-  BodyICompute = GetLogical(SolverParams, 'Body Current', GotIt)
+  BodyICompute = GetLogical(SolverParams, 'Calculate Body Current', GotIt)
   IF (.NOT. GotIt ) BodyICompute = .FALSE.
 
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),TotDOFs))  
