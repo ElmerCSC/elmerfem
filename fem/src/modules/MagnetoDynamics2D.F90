@@ -1525,7 +1525,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
               AverageBCompute, BodyICompute, BodyVolumesCompute, &
-              SkinAndProxParamCompute
+              HomogenizationParamCompute
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
   
@@ -1612,22 +1612,22 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
     CALL Fatal( 'BSolver', 'Real solution, loss estimation omitted' )
   END IF
 
-  SkinAndProxParamCompute = GetLogical(SolverParams, 'Skin and Proximity Parameters', GotIt)
-  IF (.NOT. GotIt ) SkinAndProxParamCompute = .FALSE.
-  IF( SkinAndProxParamCompute.AND. FluxDofs /= 4) THEN
-    CALL Fatal( 'BSolver', 'Real solution, Skin and Proximity Parameters omitted' )
+  HomogenizationParamCompute = GetLogical(SolverParams, 'Calculate Homogenization Parameters', GotIt)
+  IF (.NOT. GotIt ) HomogenizationParamCompute = .FALSE.
+  IF( HomogenizationParamCompute.AND. FluxDofs /= 4) THEN
+    CALL Fatal( 'BSolver', 'Real solution, Calculate Homogenization Parameters omitted' )
   END IF
 
-  ComplexPowerCompute = GetLogical(SolverParams,'Complex Power',GotIt)
+  ComplexPowerCompute = GetLogical(SolverParams,'Calculate Complex Power',GotIt)
   IF (.NOT. GotIt ) ComplexPowerCompute = .FALSE.
   IF( ComplexPowerCompute.AND. FluxDofs /= 4) THEN
     CALL Fatal( 'BSolver', 'Real solution, Complex Power omitted' )
   END IF
 
-  AverageBCompute = GetLogical(SolverParams, 'Average Magnetic Flux Density', GotIt)
+  AverageBCompute = GetLogical(SolverParams, 'Calculate Average Magnetic Flux Density', GotIt)
   IF (.NOT. GotIt ) AverageBCompute = .FALSE.
 
-  BodyICompute = GetLogical(SolverParams, 'Body Current', GotIt)
+  BodyICompute = GetLogical(SolverParams, 'Calculate Body Current', GotIt)
   IF (.NOT. GotIt ) BodyICompute = .FALSE.
 
   ALLOCATE(ForceVector(SIZE(Solver % Matrix % RHS),TotDOFs))  
@@ -1713,7 +1713,7 @@ CONTAINS
     INTEGER, POINTER :: BodyIds(:)
     REAL(KIND=DP) :: Vol
     REAL(KIND=dp), ALLOCATABLE :: ComponentSkinCond(:,:), ComponentProxNu(:,:)
-    CHARACTER(LEN=MAX_NAME_LEN) :: CompNumber
+    CHARACTER(LEN=MAX_NAME_LEN) :: CompNumber, OutputComp
     
 
     SAVE Nodes
@@ -1745,7 +1745,9 @@ CONTAINS
       BodyLoss = 0.0_dp
     END IF
 
-    IF (SkinAndProxParamCompute) THEN
+    IF (HomogenizationParamCompute) THEN
+      Omega = GetAngularFrequency()
+      CALL ListAddConstReal( Model % Simulation, 'res: Angular Frequency', Omega)
       NofComponents = SIZE(Model % Components)
       ALLOCATE(BodySkinCond(2, Model % NumberOfBodies), &
                  BodyProxNu(2, Model % NumberOfBodies), &
@@ -2177,15 +2179,15 @@ CONTAINS
       END DO
     END IF
 
-    IF (SkinAndProxParamCompute) THEN
+    IF (HomogenizationParamCompute) THEN
       DO j = 1,Model % NumberOfBodies
         ValueNorm = SQRT(BodyCurrent(1,j)**2 + BodyCurrent(2,j)**2)
         IF (ValueNorm > TINY(ValueNorm)) THEN
           BodySkinCond(1,j) = 1._dp/(BodyComplexPower(1,j)/ValueNorm**2/BodyVolumes(j))
           BodySkinCond(2,j) = 1._dp/(BodyComplexPower(2,j)/ValueNorm**2/BodyVolumes(j))
         ELSE
-          BodySkinCond(1,j) = HUGE(ValueNorm)
-          BodySkinCond(2,j) = HUGE(ValueNorm)
+          BodySkinCond(1,j) = TINY(ValueNorm)
+          BodySkinCond(2,j) = TINY(ValueNorm)
         END IF
         ValueNorm = SQRT(BodyAvBre(1,j)**2 + BodyAvBim(2,j)**2)
         ValueNorm = ValueNorm + SQRT(BodyAvBre(2,j)**2 + BodyAvBim(2,j)**2) 
@@ -2199,63 +2201,77 @@ CONTAINS
 
         WRITE (bodyNumber, "(I0)") j
       
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity re in Body '&
-                             //TRIM(bodyNumber)//':', BodySkinCond(1,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(1,j)
-        CALL Info('Skin and Proximity Conductivity re', Message, Level=6 )
+        OutputComp = ListGetString(Model % Bodies(j) % Values, 'Homogenization Conductivity Output Component', Found)
+        IF (Found) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: Homogenization Conductivity '&
+                              //TRIM(OutputComp)//' re in Body '//TRIM(bodyNumber)//':', BodySkinCond(1,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(1,j)
+          CALL Info('Homogenization Conductivity '//TRIM(OutputComp)//' re', Message, Level=6 )
 
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Conductivity im in Body '&
-                             //TRIM(bodyNumber)//':', BodySkinCond(2,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(2,j)
-        CALL Info('Skin and Proximity Conductivity im', Message, Level=6 )
+          CALL ListAddConstReal( Model % Simulation,'res: Homogenization Conductivity '&
+                             //TRIM(OutputComp)//' im in Body '//TRIM(bodyNumber)//':', BodySkinCond(2,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodySkinCond(2,j)
+          CALL Info('Homogenization Conductivity '//TRIM(OutputComp)//' im', Message, Level=6 )
+       END IF
 
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity re in Body '&
-                             //TRIM(bodyNumber)//':', BodyProxNu(1,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(1,j)
-        CALL Info('Skin and Proximity Reluctivity re', Message, Level=6 )
+       OutputComp = ListGetString(Model % Bodies(j) % Values, 'Homogenization Reluctivity Output Component', Found)
+       IF (Found) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: Homogenization Reluctivity '&
+                            //TRIM(OutputComp)//' re in Body '//TRIM(bodyNumber)//':', BodyProxNu(1,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(1,j)
+          CALL Info('Homogenization Reluctivity '//TRIM(OutputComp)//' re', Message, Level=6 )
 
-        CALL ListAddConstReal( Model % Simulation,'res: Skin and Proximity Reluctivity im in Body '&
-                             //TRIM(bodyNumber)//':', BodyProxNu(2,j) )
-        WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
-        CALL Info('Skin and Proximity Reluctivity im', Message, Level=6 )
+          CALL ListAddConstReal( Model % Simulation,'res: Homogenization Reluctivity '&
+                           //TRIM(OutputComp)//' im in Body '//TRIM(bodyNumber)//':', BodyProxNu(2,j) )
+          WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyProxNu(2,j)
+          CALL Info('Homogenization Reluctivity '//TRIM(OutputComp)//' im', Message, Level=6 )
+        END IF
       END DO
 
       DO j = 1, NofComponents
-        BodyIds => GetComponentBodyIds(j)
+        BodyIds => GetComponentHomogenizationBodyIds(j)
 
-        DO i = 1, 2
-          Vol = 0._dp
-          DO k = 1, SIZE(BodyIds)
-            bid = BodyIds(k)
-            Vol = Vol + BodyVolumes(bid)
-            ComponentSkinCond(i,j) = ComponentSkinCond(i,j) &
-                   + BodySkinCond(i,bid) * BodyVolumes(bid)
-            ComponentProxNu(i,j) = ComponentProxNu(i,j) &
-                   + BodyProxNu(i,bid) * BodyVolumes(bid)
+        IF (ASSOCIATED(BodyIds)) THEN
+          DO i = 1, 2
+            Vol = 0._dp
+            DO k = 1, SIZE(BodyIds)
+              bid = BodyIds(k)
+              Vol = Vol + BodyVolumes(bid)
+              ComponentSkinCond(i,j) = ComponentSkinCond(i,j) &
+                     + BodySkinCond(i,bid) * BodyVolumes(bid)
+              ComponentProxNu(i,j) = ComponentProxNu(i,j) &
+                     + BodyProxNu(i,bid) * BodyVolumes(bid)
+            END DO
+            ComponentSkinCond(i,j) = ComponentSkinCond(i,j)/Vol
+            ComponentProxNu(i,j) = ComponentProxNu(i,j)/Vol
           END DO
-          ComponentSkinCond(i,j) = ComponentSkinCond(i,j)/Vol
-          ComponentProxNu(i,j) = ComponentProxNu(i,j)/Vol
-        END DO
-
-        WRITE (CompNumber, "(I0)") j
-        CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
-                    //TRIM(CompNumber)//') re ', ComponentSkinCond(1,j) )
-        CALL ListAddConstReal( Model % Simulation,'res: sigma_component(' &
-                    //TRIM(CompNumber)//') im ', ComponentSkinCond(2,j) )
-        CALL ListAddConstReal( Model % Simulation,'res: nu_component(' &
-                    //TRIM(CompNumber)//') re ', ComponentProxNu(1,j) )
-        CALL ListAddConstReal( Model % Simulation,'res: nu_component(' &
-                    //TRIM(CompNumber)//') im ', ComponentProxNu(2,j) )
-
+  
+          WRITE (CompNumber, "(I0)") j
+  
+          OutputComp = ListGetString(Model % Components(j) % Values, 'Homogenization Conductivity Output Component', Found)
+          IF (Found) THEN
+            CALL ListAddConstReal( Model % Simulation,'res: sigma_'//TRIM(OutputComp)//'_component(' &
+                        //TRIM(CompNumber)//') re ', ComponentSkinCond(1,j) )
+            CALL ListAddConstReal( Model % Simulation,'res: sigma_'//TRIM(OutputComp)//'_component(' &
+                        //TRIM(CompNumber)//') im ', ComponentSkinCond(2,j) )
+          END IF
+  
+          OutputComp = ListGetString(Model % Components(j) % Values, 'Homogenization Reluctivity Output Component', Found)
+          IF (Found) THEN
+            CALL ListAddConstReal( Model % Simulation,'res: nu_'//TRIM(OutputComp)//'_component(' &
+                        //TRIM(CompNumber)//') re ', ComponentProxNu(1,j) )
+            CALL ListAddConstReal( Model % Simulation,'res: nu_'//TRIM(OutputComp)//'_component(' &
+                        //TRIM(CompNumber)//') im ', ComponentProxNu(2,j) )
+          END IF
+        END IF
       END DO
-
    END IF
 
-    IF (BodyVolumesCompute)      DEALLOCATE(BodyVolumes)
-    IF (AverageBCompute)         DEALLOCATE(BodyAvBre, BodyAvBim)
-    IF (BodyICompute)            DEALLOCATE(BodyCurrent)
-    IF (ComplexPowerCompute)     DEALLOCATE(BodyComplexPower)
-    IF (SkinAndProxParamCompute) DEALLOCATE(BodySkinCond     ,  &
+    IF (BodyVolumesCompute)         DEALLOCATE(BodyVolumes)
+    IF (AverageBCompute)            DEALLOCATE(BodyAvBre, BodyAvBim)
+    IF (BodyICompute)               DEALLOCATE(BodyCurrent)
+    IF (ComplexPowerCompute)        DEALLOCATE(BodyComplexPower)
+    IF (HomogenizationParamCompute) DEALLOCATE(BodySkinCond     ,  &
                                             BodyProxNu       ,  & 
                                             ComponentSkinCond,  & 
                                             ComponentProxNu      )

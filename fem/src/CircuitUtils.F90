@@ -187,6 +187,27 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+  FUNCTION GetComponentHomogenizationBodyIds(Id) RESULT (BodyIds)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    
+    LOGICAL :: Found
+    INTEGER :: Id
+    INTEGER, POINTER :: BodyIds(:)
+    TYPE(Valuelist_t), POINTER :: ComponentParams
+    
+    ComponentParams => CurrentModel % Components(Id) % Values
+    
+    IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentHomogenizationBodyIds', &
+                                                         'Component parameters not found!')
+    BodyIds => ListGetIntegerArray(ComponentParams, 'Homogenization Parameters Body', Found)
+    IF (.NOT. Found) BodyIds => Null()
+    
+!------------------------------------------------------------------------------
+  END FUNCTION GetComponentHomogenizationBodyIds
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
   FUNCTION FindSolverWithKey(key, char_len) RESULT (Solver)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
