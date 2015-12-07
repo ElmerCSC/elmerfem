@@ -60,19 +60,28 @@ SUBROUTINE PressurePrecond_Init0(Model, Solver, dt, Transient)
 
   CALL ListAddString(SolverParams, 'Exec Solver', 'before simulation' )
   CALL ListAddLogical(SolverParams, 'Variable Output', .FALSE.) 
-  CALL ListAddLogical(SolverParams, 'Bubbles in Global System', .FALSE.)  
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Bubbles in Global System') ) &
+      CALL ListAddLogical(SolverParams, 'Bubbles in Global System', .FALSE.)  
   CALL ListAddLogical(SolverParams, 'Skip Compute Nonlinear Change', .TRUE.) 
   CALL ListAddLogical(SolverParams, 'Back Rotate N-T Solution', .FALSE.) 
 
-  CALL ListAddString(SolverParams, 'Variable', 'P')
-  CALL ListAddInteger(SolverParams, 'Variable Dofs', 1)
+  IF ( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
+    CALL ListAddString(SolverParams, 'Variable', 'P')
+    CALL ListAddInteger(SolverParams, 'Variable Dofs', 1)
+  END IF
 
-  CALL ListAddString(SolverParams, 'Linear System Solver', 'Iterative')
-  CALL ListAddString(SolverParams, 'Linear System Iterative Method', 'BiCGStab2') 
-  CALL ListAddInteger(SolverParams, 'Linear System Max Iterations', 1000)
-  CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
-  CALL ListAddString(SolverParams, 'Linear System Preconditioning', 'Diagonal') 
-  CALL ListAddConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-6)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Solver') ) &
+      CALL ListAddString(SolverParams, 'Linear System Solver', 'Iterative')
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Iterative Method') ) &
+      CALL ListAddString(SolverParams, 'Linear System Iterative Method', 'BiCGStab2') 
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Max Iterations') ) &
+      CALL ListAddInteger(SolverParams, 'Linear System Max Iterations', 1000)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Row Equilibration') ) &
+      CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Preconditioning') ) &
+      CALL ListAddString(SolverParams, 'Linear System Preconditioning', 'Diagonal') 
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Convergence Tolerance') ) &
+      CALL ListAddConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-6)
   CALL ListAddLogical(SolverParams, 'Linear System Abort Not Converged', .FALSE.)
 
 !------------------------------------------------------------------------------
