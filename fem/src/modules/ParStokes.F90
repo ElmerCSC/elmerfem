@@ -24,16 +24,56 @@
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen, Mika Malinen
-! *  Email:   Juha.Ruokolainen@csc.fi
+! *  Email:   mika.malinen@csc.fi & Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
+! *  Original Date: 2012-01-30
 ! *
 ! *****************************************************************************/
 
+!------------------------------------------------------------------------------
+SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  USE SolverUtils
+  USE ElementUtils
 
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Bubbles in Global System') ) &
+      CALL ListAddLogical(SolverParams, 'Bubbles in Global System', .FALSE.)  
+
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Solver') ) &
+      CALL ListAddString(SolverParams, 'Linear System Solver', 'Iterative')
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Iterative Method') ) &
+      CALL ListAddString(SolverParams, 'Linear System Iterative Method', 'GCR')
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System GCR Restart') ) &
+      CALL ListAddInteger(SolverParams, 'Linear System GCR Restart', 50)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Max Iterations') ) &
+      CALL ListAddInteger(SolverParams, 'Linear System Max Iterations', 200)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Row Equilibration') ) &
+      CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Convergence Tolerance') ) &
+      CALL ListAddConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-6)
+
+!------------------------------------------------------------------------------
+END SUBROUTINE StokesSolver_Init0
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
