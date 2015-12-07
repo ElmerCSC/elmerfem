@@ -235,7 +235,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         !--------------------------------------------
         IF(Cvar % A(j) /= 0._dp) THEN
           CALL AddToMatrixElement(CM, RowId, ColId, Cvar % A(j)/dt)
-          CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j)*ip(RowId-nm)/dt
+          CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j)*ip(ColId-nm)/dt
         END IF
         ! B x:
         ! ------
@@ -432,15 +432,15 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ! R = (1/sigma * js,js):
       ! ----------------------
       
-      CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff)
+      CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff)
       
       DO j=1,ncdofs
         q=j
         IF (dim == 3) q=q+nn
         IF (Comp % N_j/=0._dp) THEN
           ! ( d/dt a,w )        
-          IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)/localC*circ_eq_coeff/dt
-          IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/localC/dt
+          IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt
+          IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
           CALL AddToMatrixElement(CM, VvarId, PS(Indexes(q)), tscl * value)
           CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
 
@@ -1230,8 +1230,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! ----------------------
       
       CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
-            REAL(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff), &
-           AIMAG(Comp % N_j * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff))
+            REAL(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff), &
+           AIMAG(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff))
       
       DO j=1,ncdofs
         q=j
@@ -1239,9 +1239,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         IF (Comp % N_j/=0._dp) THEN
           ! ( im * Omega a,w )
           IF (dim == 2) cmplx_value = im * Omega * Comp % N_j &
-                  * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/localC
+                  * IP % s(t)*detJ*Basis(j)*circ_eq_coeff
           IF (dim == 3) cmplx_value = im * Omega * Comp % N_j &
-                  * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/localC
+                  * IP % s(t)*detJ*SUM(WBasis(j,:)*w)
           CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(q))), &
                  REAL(cmplx_value), AIMAG(cmplx_value))
           
