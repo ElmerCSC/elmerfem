@@ -137,6 +137,7 @@ ELSE()
 ENDIF()
 
 # Find BLACS and Scalapack
+SET(MKL_CPARDISO_FOUND FALSE)
 IF (SCALAPACK_NEEDED AND NOT MKL_FAILMSG)
   # From MKL link line advisor
   # GNU, seq:  -Wl,--no-as-needed -L${MKLROOT}/lib/intel64 -lmkl_scalapack_lp64 -lmkl_gf_lp64 -lmkl_core -lmkl_sequential -lmkl_blacs_intelmpi_lp64 -lpthread -lm
@@ -157,6 +158,18 @@ IF (SCALAPACK_NEEDED AND NOT MKL_FAILMSG)
                                 ${MKL_PTHREAD_LIB}
 				${MKL_BLACS_LIB}
                                 ${MKL_M_LIB} CACHE FILEPATH "MKL SCALAPACK libraries")
+    # Attempt to find Cluster PARDISO for OpenMP compilations
+    IF(THREADS_NEEDED)
+      EXECUTE_PROCESS(COMMAND ${CMAKE_NM} ${MKL_NUM_LIB}
+	OUTPUT_VARIABLE MKL_CPARDISO_OUTPUT
+        ERROR_VARIABLE MKL_CPARDISO_ERROR)
+      STRING(FIND "${MKL_CPARDISO_OUTPUT}" "cluster_sparse_solver" 
+        MKL_CPARDISO_STR)
+      IF("${MKL_CPARDISO_STR}" GREATER "-1" AND
+	  "${MKL_CPARDISO_ERROR}" STREQUAL "")
+	SET(MKL_CPARDISO_FOUND TRUE)
+      ENDIF()
+    ENDIF()
   ELSE()
     SET(MKL_FAILMSG "MKL BLACS and SCALAPACK libraries not found.")
   ENDIF()
@@ -175,6 +188,9 @@ IF (MKL_FOUND)
     MESSAGE(STATUS "MKL LAPACK libraries: ${MKL_LAPACK_LIBRARIES}")
     IF(SCALAPACK_NEEDED)
       MESSAGE(STATUS "MKL SCALAPACK libraries: ${MKL_SCALAPACK_LIBRARIES}")
+    ENDIF()
+    IF(MKL_CPARDISO_FOUND)
+      MESSAGE(STATUS "MKL Cluster PARDISO found")
     ENDIF()
   ENDIF()
 ELSE()
@@ -199,4 +215,8 @@ MARK_AS_ADVANCED(
   MKL_BLAS_LIBRARIES
   MKL_LAPACK_LIBRARIES
   MKL_SCALAPACK_LIBRARIES
+  MKL_CPARDISO_OUTPUT
+  MKL_CPARDISO_STR
+  MKL_CPARDISO_ERROR
+  MKL_CPARDISO_FOUND
   )
