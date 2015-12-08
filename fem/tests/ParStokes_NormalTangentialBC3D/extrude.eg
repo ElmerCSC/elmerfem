@@ -1,0 +1,9 @@
+Input File = sinus0
+Output File = sinus03d
+Input Mode = ElmerSolver
+Output Mode = ElmerSolver
+Extruded Divisions = 1 
+Extruded Limits = 0 0.25
+Extruded Ratios = 1.0 
+Extruded Elements = 3
+ 
