@@ -309,6 +309,15 @@ END INTERFACE
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
+         !----------------------------------------------------------------------------------
+         ! Set namespace searching mode
+         !----------------------------------------------------------------------------------
+         CALL SetNamespaceCheck( ListGetLogical( CurrentModel % Simulation, &
+                    'Additive namespaces', Found ) )
+
+         !----------------------------------------------------------------------------------
+         ! ???
+         !----------------------------------------------------------------------------------
          MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
 
          !------------------------------------------------------------------------------
@@ -351,6 +360,8 @@ END INTERFACE
             END IF
          END IF
 
+
+         !----------------------------------------------------------------------------------
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
