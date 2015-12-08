@@ -122,6 +122,7 @@ CONTAINS
     ! Local variables
 
     INTEGER :: ierr
+    INTEGER :: req, prov
 
     !******************************************************************
 
@@ -132,7 +133,19 @@ CONTAINS
     ParEnv % ActiveComm = MPI_COMM_WORLD
 
     ierr = 0
+#ifdef _OPENMP
+    req = MPI_THREAD_FUNNELED
+    CALL MPI_Init_Thread(req, prov, ierr)
+    IF (prov < req) THEN
+      WRITE( Message, '(A,I0,I0,I0)' ) &
+            'MPI Thread Initialization failed! (req=', req,&
+            ', prov=,', prov, &
+            ', ierr=', ierr, ')'
+      CALL Fatal( 'ParCommInit', Message )
+    END IF
+#else
     CALL MPI_INIT( ierr )
+#endif
     IF ( ierr /= 0 ) RETURN
 
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
