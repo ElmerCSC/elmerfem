@@ -70,6 +70,9 @@
 /* Define if you have a MKL library */
 #cmakedefine HAVE_MKL
 
+/* Define if you have a CPardiso solver from MKL */
+#cmakedefine HAVE_CPARDISO
+
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK
 

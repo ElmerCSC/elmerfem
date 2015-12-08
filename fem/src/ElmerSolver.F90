@@ -1458,27 +1458,12 @@ END INTERFACE
        timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)
        IF(.NOT.GotIt) timePeriod = HUGE(timePeriod)
 
-       IF(Scanning) THEN
-         CALL ListPushNamespace('scan:')
-       ELSE IF(Transient) THEN
-         CALL ListPushNamespace('time:')
-       ELSE
-         CALL ListPushNamespace('steady:')
-       END IF
 
        RealTimestep = 1
        DO timestep = 1,Timesteps(interval)
 
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
-
-         IF( Scanning ) THEN
-           CALL ListPushNamespace('scan '//TRIM(i2s(cum_Timestep))//':')
-         ELSE IF ( Transient ) THEN
-           CALL ListPushNamespace('time '//TRIM(i2s(cum_Timestep))//':')
-         ELSE
-           CALL ListPushNamespace('steady '//TRIM(i2s(cum_Timestep))//':')
-         END IF
 
          dtfunc = ListGetConstReal( CurrentModel % Simulation, &
                   'Timestep Function', gotIt)
@@ -1737,8 +1722,6 @@ END INTERFACE
            END IF
          END IF
 !------------------------------------------------------------------------------
-         CALL ListPopNameSpace()
-!------------------------------------------------------------------------------
 
          maxtime = ListGetCReal( CurrentModel % Simulation,'Real Time Max',GotIt)
          IF( GotIt .AND. RealTime() - RT0 > maxtime ) THEN
@@ -1766,11 +1749,7 @@ END INTERFACE
      END DO ! timestep intervals, i.e. the simulation
 !------------------------------------------------------------------------------
 
-100  CONTINUE
-
-     CALL ListPopNamespace()
-
-     DO i=1,CurrentModel % NumberOfSolvers
+100   DO i=1,CurrentModel % NumberOfSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE == 0 ) CYCLE
         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )

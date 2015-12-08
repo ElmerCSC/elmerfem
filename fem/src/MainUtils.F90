@@ -77,8 +77,8 @@ CONTAINS
       
       IF( Found ) THEN        
         IF ( ParEnv % PEs > 1 ) THEN
-          IF ( str /= 'mumps' ) THEN
-            CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS direct solver' // &
+          IF ( str /= 'mumps' .AND. str /= 'cpardiso' ) THEN
+            CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS and CPardiso direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 
             CALL ListAddString( Params,'Linear System Direct Method', str)
@@ -111,6 +111,10 @@ CONTAINS
         CASE( 'pardiso' )
 #if !defined(HAVE_PARDISO) && !defined(HAVE_MKL)
           CALL Fatal( 'CheckLinearSolverOptions', 'Pardiso solver has not been installed.' )
+#endif
+        CASE( 'cpardiso')
+#if !defined(HAVE_CPARDISO) || !defined(HAVE_MKL)
+        CALL Fatal( 'CheckSolverOptions', ' Cluster Pardiso solver has not been installed.' )
 #endif
         CASE( 'cholmod','spqr' )
 #ifndef HAVE_CHOLMOD
@@ -1901,8 +1905,6 @@ CONTAINS
          END IF
          steadyIt = i
        END IF
-        
-       CALL ListPushNamespace('coupled '//TRIM(i2s(i))//': ')
 
        DoneThis = .FALSE.
 
@@ -2041,9 +2043,8 @@ CONTAINS
 !------------------------------------------------------------------------------
          END DO
 !------------------------------------------------------------------------------
-         CALL ListPopNamespace()
-         Model % Mesh % Changed = .FALSE.
-        IF ( ALL(DoneThis) ) EXIT
+       Model % Mesh % Changed = .FALSE.
+       IF ( ALL(DoneThis) ) EXIT
     END DO
 
     IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
@@ -4038,6 +4039,7 @@ CONTAINS
        IF(NamespaceFound) CALL ListPopNamespace()
      END IF
      Solver % dt = dt
+     Solver % TimesVisited = Solver % TimesVisited + 1
 
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )

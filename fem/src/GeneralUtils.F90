@@ -2384,18 +2384,20 @@ CONTAINS
     WRITE(Message,'(A,I0)')  'Writing to unit number: ',VtuUnit
     CALL Info('AscBinWriteInit',Message,Level=10)
 
-    WRITE(Message,'(A,I0)')  'Size of buffer is: ',BufferSize
-    CALL Info('AscBinWriteInit',Message,Level=10)
-
-    ALLOCATE( Ivals( BufferSize ) ) 
-    IF( SinglePrec ) THEN
-      ALLOCATE( FVals( BufferSize ) ) 
-    ELSE
-      ALLOCATE( Dvals( BufferSize ) ) 
+    IF(.NOT. AsciiOutput ) THEN
+      WRITE(Message,'(A,I0)')  'Size of buffer is: ',BufferSize
+      CALL Info('AscBinWriteInit',Message,Level=10)
+      
+      ALLOCATE( Ivals( BufferSize ) ) 
+      IF( SinglePrec ) THEN
+        ALLOCATE( FVals( BufferSize ) ) 
+      ELSE
+        ALLOCATE( Dvals( BufferSize ) ) 
+      END IF
+      
+      INoVals = 0 
+      NoVals = 0
     END IF
-
-    INoVals = 0 
-    NoVals = 0
 
   END SUBROUTINE AscBinWriteInit
 
@@ -2405,6 +2407,9 @@ CONTAINS
   SUBROUTINE AscBinWriteFree()
 
     CALL Info('AscBinWriteInit','Terminating buffered ascii/binary writing',Level=10)
+
+    IF( AsciiOutput ) RETURN
+
     IF( SinglePrec ) THEN
       DEALLOCATE( FVals )
     ELSE

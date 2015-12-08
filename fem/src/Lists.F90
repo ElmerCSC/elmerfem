@@ -1527,7 +1527,6 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1539,23 +1538,16 @@ CONTAINS
 
      k = StringToLowerCase( str,Name,.TRUE. )
 
-     IF( ListGetnamespace(strn) ) THEN
-       stack => Namespace_stack
-       DO WHILE(.TRUE.)
-         strn = TRIM(strn) //' '//str(1:k)
-         k1 = LEN(strn)
-         ptr => List % Head
-         DO WHILE( ASSOCIATED(ptr) )
-            n = ptr % NameLen
-            IF ( n==k1 ) THEN
-              IF ( ptr % Name(1:n) == strn ) EXIT
-            END IF
-            ptr => ptr % Next
-         END DO
-         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
-         IF(stack % name=='') EXIT
-         strn = char(stack % name)
-         stack => stack % next
+     IF ( ListGetNamespace(strn) ) THEN
+       strn = strn //' '//str(1:k)
+       k1 = LEN(strn)
+       ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+          n = ptr % NameLen
+          IF ( n==k1 ) THEN
+            IF ( ptr % Name(1:n) == strn ) EXIT
+          END IF
+          ptr => ptr % Next
        END DO
      END IF
 
@@ -1594,7 +1586,6 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1605,22 +1596,15 @@ CONTAINS
 
      k = StringToLowerCase( str,Name,.TRUE. )
      IF ( ListGetNamespace(strn) ) THEN
-       stack => Namespace_stack
-       DO WHILE(.TRUE.)
-         strn = TRIM(strn) //' '//str(1:k)
-         k1 = LEN(strn)
-         ptr => List % Head
-         DO WHILE( ASSOCIATED(ptr) )
-            n = ptr % NameLen
-            IF ( n >= k1 ) THEN
-              IF ( ptr % Name(1:k1) == strn ) EXIT
-            END IF
-            ptr => ptr % Next
-         END DO
-         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
-         IF(stack % name=='') EXIT
-         strn = char(stack % name)
-         stack => stack % next
+       strn = strn //' '//str(1:k)
+       k1 = LEN(strn)
+       ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+          n = ptr % NameLen
+          IF ( n >= k1 ) THEN
+            IF ( ptr % Name(1:k1) == strn ) EXIT
+          END IF
+          ptr => ptr % Next
        END DO
      END IF
 
@@ -1802,7 +1786,6 @@ CONTAINS
      LOGICAL :: ComponentWise
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1814,30 +1797,23 @@ CONTAINS
      k = StringToLowerCase( str,Name,.TRUE. )
 
      IF ( ListGetNamespace(strn) ) THEN
-       stack => Namespace_stack
-       DO WHILE(.TRUE.)
-         strn = TRIM(strn) //' '//str(1:k)
-         k1 = LEN(strn)
-         ptr => List % Head
-         DO WHILE( ASSOCIATED(ptr) )
-            n = ptr % NameLen
-            IF ( n == k1 ) THEN
-              IF ( ptr % Name(1:k1) == strn ) THEN
-                ComponentWise = .FALSE.
-                EXIT
-              END IF
-            ELSE IF( n == k1 + 2 ) THEN
-              IF ( ptr % Name(1:k1+1) == strn//' ' ) THEN
-                ComponentWise = .TRUE.
-                EXIT
-              END IF
+       strn = strn //' '//str(1:k)
+       k1 = LEN(strn)
+       ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+          n = ptr % NameLen
+          IF ( n == k1 ) THEN
+            IF ( ptr % Name(1:k1) == strn ) THEN
+              ComponentWise = .FALSE.
+              EXIT
             END IF
-            ptr => ptr % Next
-         END DO
-         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
-         IF(stack % name=='') EXIT
-         strn = char(stack % name)
-         stack => stack % next
+          ELSE IF( n == k1 + 2 ) THEN
+            IF ( ptr % Name(1:k1+1) == strn//' ' ) THEN
+              ComponentWise = .TRUE.
+              EXIT
+            END IF
+          END IF
+          ptr => ptr % Next
        END DO
      END IF
 
