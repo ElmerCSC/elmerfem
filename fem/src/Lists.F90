@@ -160,6 +160,8 @@ MODULE Lists
    TYPE(ValueList_t), POINTER, SAVE, PRIVATE  :: TimerList => NULL()
    LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerResults
 
+   LOGICAL, PRIVATE :: DoNamespaceCheck = .FALSE.
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -1518,6 +1520,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+   SUBROUTINE SetNamespaceCheck(L)
+!------------------------------------------------------------------------------
+     LOGICAL :: L
+!------------------------------------------------------------------------------
+     DoNamespaceCheck = L
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetNamespaceCheck
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
 !------------------------------------------------------------------------------
    FUNCTION ListFind( list, name, Found) RESULT(ptr)
@@ -1552,6 +1564,8 @@ CONTAINS
             END IF
             ptr => ptr % Next
          END DO
+         IF(.NOT.DoNamespaceCheck) EXIT
+
          IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
          IF(stack % name=='') EXIT
          strn = char(stack % name)
@@ -1617,6 +1631,8 @@ CONTAINS
             END IF
             ptr => ptr % Next
          END DO
+         IF(.NOT.DoNamespaceCheck) EXIT
+
          IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
          IF(stack % name=='') EXIT
          strn = char(stack % name)
@@ -1834,6 +1850,8 @@ CONTAINS
             END IF
             ptr => ptr % Next
          END DO
+         IF(.NOT.DoNamespaceCheck) EXIT
+
          IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
          IF(stack % name=='') EXIT
          strn = char(stack % name)
