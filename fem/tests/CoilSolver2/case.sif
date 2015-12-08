@@ -69,6 +69,8 @@ Solver 1
 ! In the unisotropic model the conductivity is aligned like the 
 ! previous gradient of the solution.
 !  Coil Unisotropic = Logical True
+
+  Nonlinear System Consistent Norm = Logical True
 End
 
 
@@ -88,6 +90,7 @@ Solver 2
   Linear System Convergence Tolerance = 1.0e-8
 
   Linear System Abort Not Converged = False
+  Nonlinear System Consistent Norm = True
 End
 
 
@@ -108,6 +111,7 @@ Solver 3
 !  Variable = Divergence
 
   Divergence Variable = String "CoilCurrent"
+  Nonlinear System Consistent Norm = True
 End
 
 
@@ -137,4 +141,6 @@ Solver 1
 End 
 
 
-Solver 3 :: Reference Norm =  4.4707036187427003E-002
+Solver 1 :: Reference Norm =  0.88041592
+Solver 2 :: Reference Norm =  0.88041592
+Solver 3 :: Reference Norm =  8.292685E-02 
