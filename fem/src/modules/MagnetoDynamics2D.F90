@@ -167,6 +167,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
     CALL DefaultFinishAssembly()
 
     CALL DefaultDirichletBCs()
+    CALL SetMagneticFluxDensityBC()
     Norm = DefaultSolve()
  
     IF( Solver % Variable % NonlinConverged == 1 ) EXIT
@@ -406,7 +407,8 @@ CONTAINS
     LOGICAL :: CoilBody    
     TYPE(ValueList_t), POINTER :: CompParams
 
-    REAL(KIND=dp) :: Bt(nd,2)
+    REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
+    REAL(KIND=dp) :: nu_tensor(2,2)
 !------------------------------------------------------------------------------
 
     CALL GetElementNodes( Nodes,Element )
@@ -504,8 +506,16 @@ CONTAINS
       Bt(:,2) =  dbasisdx(:,1)
       IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
 
+      nu_tensor = 0.0_dp
+      nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
+      nu_tensor(2,2) = mu
+
+      DO p = 1,nd
+        Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
+      END DO
+
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-             mu*MATMUL(Bt, TRANSPOSE(Bt))
+             MATMUL(Ht, TRANSPOSE(Bt))
 
       ! Csymmetry is not yet considered in the Newton linearization
       IF (HBcurve .AND. NewtonRaphson) THEN
@@ -653,6 +663,59 @@ CONTAINS
   END SUBROUTINE LocalMatrixAirGapBC
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE SetMagneticFluxDensityBC()
+!------------------------------------------------------------------------------
+! P. Lombard, G. Meunier, "A general purpose method for electric and magnetic 
+! combined problems for 2D, axisymmetric and transient systems", IEEE Trans.
+! magn. 29(2), p. 1737 - 1740, Mar 1993
+! -ettaka- 
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Matrix_t), POINTER :: A
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), POINTER :: b(:)
+    INTEGER :: i, n, j, k
+    TYPE(ValueList_t), POINTER :: BC
+    LOGICAL :: Found
+    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementNodes), &
+                      By(Solver % Mesh % MaxElementNodes)
+    REAL(KIND=dp) :: x, y
+    INTEGER, POINTER :: Perm(:)
+
+    Perm => Solver % Variable % Perm
+    A => Solver % Matrix
+    b => A % RHS
+    DO i=1,GetNofBoundaryElements()
+      Element => GetBoundaryElement(i)
+      n = GetELementNofNodes()
+      BC => GetBC()
+      IF ( ASSOCIATED(BC)) THEN
+        IF ( ListCheckPresent( BC, 'Magnetic Flux Density 1') .OR. &
+             ListCheckPresent( BC, 'Magnetic Flux Density 2')      &
+            ) THEN
+          Bx = 0._dp
+          By = 0._dp
+
+          Bx(1:n) = GetReal(BC, 'Magnetic Flux Density 1', Found)
+          IF (.NOT. Found) Bx = 0._dp
+          By(1:n) = GetReal(BC, 'Magnetic Flux Density 2', Found)
+          IF (.NOT. Found) By = 0._dp
+          DO j = 1,n
+            k = Element % NodeIndexes(j)
+            x = Mesh % Nodes % x(k)
+            y = Mesh % Nodes % y(k)
+            k = Perm(k)
+            b(k) = y * Bx(j) - x * By(j)
+            CALL ZeroRow(A, k)
+            CALL AddToMatrixElement(A, k, k, 1._dp)
+          END DO 
+        END IF  
+      END IF  
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetMagneticFluxDensityBC
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivity(Material,Acoef,n,Element)
