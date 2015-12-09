@@ -27,7 +27,7 @@
 ! *
 ! ******************************************************************************
 ! *
-! *  Authors: Peter R�back
+! *  Authors: Peter Råback
 ! *  Email:   Peter.Raback@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -44,7 +44,6 @@
 SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
-  USE Interpolation
 
   IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -55,16 +54,18 @@ SUBROUTINE SaveScalars_init( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Local variables
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: Params
   INTEGER :: NormInd
   LOGICAL :: GotIt
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
 
   ! If we want to show a pseudonorm add a variable for which the norm
   ! is associated with.
   NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
   IF( NormInd > 0 ) THEN
+    SolverName = ListGetString( Solver % Values, 'Equation',GotIt)
     IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
-      CALL ListAddString( Solver % Values,'Variable','-nooutput -global savescalars_var')
+      CALL ListAddString( Solver % Values,'Variable',&
+          '-nooutput -global '//TRIM(SolverName)//'_var')
     END IF
   END IF
 
@@ -97,49 +98,40 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t),POINTER :: CurrentElement
   TYPE(Nodes_t) :: ElementNodes
-  LOGICAL :: SubroutineVisited=.FALSE.,MovingMesh, GotCoeff, &
+  LOGICAL :: MovingMesh, GotCoeff, &
       GotIt, GotOper, GotParOper, GotVar, GotOldVar, ExactCoordinates, VariablesExist, &
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, LiveGraph, &
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
-      Hit, GotEpsAbs, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
+      Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
       MaterialOper, MaskOper, GotMaskName
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
   REAL (KIND=DP) :: Minimum, Maximum, AbsMinimum, AbsMaximum, &
-      Mean, Variance, Dist, MinDist, x, y, z, Deviation, Vol, Intmean, intvar, &
-      KineticEnergy, PotentialEnergy, FieldEnergy, & 
-      IntSquare, LocalCoords(3), TempCoordinates(3), Val, Val2, &
-      Change = 0._dp, Norm = 0.0_dp, PrevNorm, EpsAbs, ParallelHits, ParallelCands
-  REAL (KIND=DP), ALLOCATABLE :: Values(:), CoordinateDist(:), &
-      CoordinatesBasis(:,:), ElementValues(:), BoundaryFluxes(:),BoundaryAreas(:)
+      Mean, Variance, MinDist, x, y, z, Vol, Intmean, intvar, &
+      KineticEnergy, PotentialEnergy, &
+      Coords(3), LocalCoords(3), TempCoordinates(3), Val, Val2, &
+      Change = 0._dp, Norm = 0.0_dp, PrevNorm, ParallelHits, ParallelCands
+  REAL (KIND=DP), ALLOCATABLE :: Values(:), &
+      CoordinateBasis(:), ElementValues(:), BoundaryFluxes(:),BoundaryAreas(:)
   REAL (KIND=DP), POINTER :: PointCoordinates(:,:), LineCoordinates(:,:), WrkPntr(:)
   INTEGER, ALLOCATABLE :: BoundaryHits(:)
-  INTEGER, POINTER :: PointIndex(:), CoordinateIndex(:), CoordinatesElemNo(:), &
-      NodeIndexes(:)
+  INTEGER, POINTER :: PointIndex(:), NodeIndexes(:), CoordinateIndex(:), CoordinatesElemNo(:)
+  INTEGER, ALLOCATABLE, TARGET :: ClosestIndex(:)
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: ScalarsFile, ScalarNamesFile, DateStr, &
       VariableName, OldVariableName, ResultPrefix, Suffix, Oper, Oper0, ParOper, Name, &
       CoefficientName, ScalarParFile, OutputDirectory, MinOper, MaxOper, &
       MaskName, SaveName
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
-      NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues=0, DIM, &
+      NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen
   LOGICAL, ALLOCATABLE :: NodeMask(:)
-#ifdef USE_ISO_C_BINDINGS
   REAL (KIND=DP) :: CT, RT
-#else
-  REAL (KIND=DP) :: CPUTime, RealTime, CPUMemory, CT, RT
+#ifndef USE_ISO_C_BINDINGS
+  REAL (KIND=DP) :: CPUTime, RealTime, CPUMemory
 #endif
 
-  SAVE SubroutineVisited, NumberOfVars, FileAppend, ActiveBC, &
-      NoPoints, PointIndex, CoordinateIndex, CoordinateDist, ResultPrefix, &
-      Values, ValueNames, ValuesInteger, NoCoordinates, ScalarsFile, ScalarNamesFile, &
-      ExactCoordinates, CoordinatesElemNo, NoElements, ElementNodes, EchoValues, &
-      ElementValues, CoordinatesBasis, PointCoordinates, NoDims, SaveToFile, &
-      BoundaryFluxes, BoundaryAreas, BoundaryHits, VariablesExist, NoLines, &
-      LineCoordinates, ScalarParFile, IsParallel, ParallelWrite, ParSolver, PrevNoValues, &
-      LiveGraph, Norm, ParallelReduce, WriteCore, EpsAbs, GotEpsAbs
 
 !------------------------------------------------------------------------------
 
@@ -156,272 +148,163 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   DIM = CoordinateSystemDimension()
   Params => GetSolverParams()	
 
-  IF(.NOT.SubroutineVisited) THEN
  
-    ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
-
-    IF( SaveToFile ) THEN
-
-      ! Optionally number files by the number of partitions
-      ! This makes the benchmarking more convenient since each case 
-      ! may use the same command file
-      IF(ListGetLogical(Params,'Partition Numbering',GotIt)) THEN
-        i = INDEX( ScalarsFile,'.',.TRUE. )
-        j = LEN_TRIM(ScalarsFile)
-        IF(i > 0) THEN
-          Suffix = ScalarsFile(i:j)
-          WRITE( ScalarsFile,'(A,I0,A)') &
-              ScalarsFile(1:i-1)//'_',ParEnv % PEs,Suffix(1:j-i+1)
-        ELSE
-          WRITE( ScalarsFile,'(A,I0)') &
-              ScalarsFile(1:j)//'_',ParEnv % PEs 
-        END IF
-      END IF
-
-      IF ( .NOT. FileNameQualified(ScalarsFile) ) THEN
-        OutputDirectory = GetString( Params,'Output Directory',GotIt) 
-        IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
-          ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
-          CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
-        ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
-          ScalarsFile = TRIM(OutputPath)// '/' //TRIM(ScalarsFile)
-        END IF
-      END IF
-
-      IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
-        ScalarsFile = NextFreeFilename( ScalarsFile ) 
-      END IF
-
-      ScalarNamesFile = TRIM(ScalarsFile) // '.' // TRIM("names")
-      LiveGraph = ListGetLogical(Params,'Live Graph',GotIt) 
-    END IF
-
-    EchoValues = ListGetLogical( Params,'Echo Values',GotIt)
-    IF(.NOT. GotIt) EchoValues = .NOT. SaveToFile
-
-    ResultPrefix = ListGetString(Params,'Scalars Prefix',GotIt )
-    IF(.NOT. gotIt) ResultPrefix = 'res:'
-
-     
-    IsParallel = .FALSE.
-    WriteCore = .TRUE.
-    ParallelWrite = .FALSE.
-    ParallelReduce = .FALSE.
-
-    IF( ParEnv % PEs > 1 ) THEN
-      IsParallel = .TRUE.
-      ParallelReduce = GetLogical( Params,'Parallel Reduce',GotIt)
-      ParallelWrite = .NOT. ParallelReduce
-      IF( ParEnv % MyPe > 0 .AND. ParallelReduce ) THEN
-	EchoValues = .FALSE.
-	WriteCore = .FALSE. 
-      END IF 	
-      OutputPE = ParEnv % MYPe
-      IF( ParallelReduce ) CALL Info('SaveScalars','Parallel results will be reduced to one file')
-      IF( ParallelWrite ) CALL Info('SaveScalars','Parallel results will be written to separate files')      
-    END IF
-
-    FileAppend = ListGetLogical( Params,'File Append',GotIt)
-   
-    NoLines = 0
-    LineCoordinates => ListGetConstRealArray(Params,'Polyline Coordinates',gotIt)
-    IF(gotIt) THEN
-      NoLines = SIZE(LineCoordinates,1) / 2
-      NoDims = SIZE(LineCoordinates,2)
-    END IF
-
-    NoPoints = 0
-    PointIndex => ListGetIntegerArray( Params,'Save Points',GotIt)
-    IF ( gotIt ) NoPoints = SIZE(PointIndex)
-    
-    NoCoordinates = 0
-    NoElements = 0
-    PointCoordinates => ListGetConstRealArray(Params,'Save Coordinates',gotIt)
-    IF(gotIt) THEN
-      NoDims = SIZE(PointCoordinates,2)
-      ExactCoordinates = ListGetLogical(Params,'Exact Coordinates',GotIt )      
-
-      EpsAbs = ListGetConstReal( Params,'Coordinate Eps Abs',GotEpsAbs )
-
-      IF( ParallelReduce ) THEN
-        IF(.NOT. ExactCoordinates) THEN
-          CALL Warn('SaveScalars','Only Exact Save Coordinates works in parallel, enforcing...')
-          ExactCoordinates = .TRUE.
-        END IF
-      END IF
-
-      IF(ExactCoordinates) THEN
-        NoElements = SIZE(PointCoordinates,1)
-        n = Mesh % MaxElementNodes
-        ALLOCATE( CoordinatesElemNo(NoElements), ElementValues(n), &
-            CoordinatesBasis(NoElements,n), STAT=istat )
-	IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 1') 
-        CoordinatesElemNo = 0
-        CoordinatesBasis = 0.0_dp
+  ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
+  IF( SaveToFile ) THEN    
+    ! Optionally number files by the number of partitions
+    ! This makes the benchmarking more convenient since each case 
+    ! may use the same command file
+    IF(ListGetLogical(Params,'Partition Numbering',GotIt)) THEN
+      i = INDEX( ScalarsFile,'.',.TRUE. )
+      j = LEN_TRIM(ScalarsFile)
+      IF(i > 0) THEN
+        Suffix = ScalarsFile(i:j)
+        WRITE( ScalarsFile,'(A,I0,A)') &
+            ScalarsFile(1:i-1)//'_',ParEnv % PEs,Suffix(1:j-i+1)
       ELSE
-        NoCoordinates = SIZE(PointCoordinates,1)
-        ALLOCATE(CoordinateIndex(NoCoordinates), CoordinateDist(NoCoordinates),STAT=istat)
-	IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 2') 
+        WRITE( ScalarsFile,'(A,I0)') &
+            ScalarsFile(1:j)//'_',ParEnv % PEs 
       END IF
     END IF
+
+    IF ( .NOT. FileNameQualified(ScalarsFile) ) THEN
+      OutputDirectory = GetString( Params,'Output Directory',GotIt) 
+      IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
+        ScalarsFile = TRIM(OutputDirectory)// '/' //TRIM(ScalarsFile)
+        CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
+      ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
+        ScalarsFile = TRIM(OutputPath)// '/' //TRIM(ScalarsFile)
+      END IF
+    END IF
+
+    IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
+      ScalarsFile = NextFreeFilename( ScalarsFile ) 
+    END IF
+
+    ScalarNamesFile = TRIM(ScalarsFile) // '.' // TRIM("names")
+    LiveGraph = ListGetLogical(Params,'Live Graph',GotIt) 
+  END IF
+
+  EchoValues = ListGetLogical( Params,'Echo Values',GotIt)
+  IF(.NOT. GotIt) EchoValues = .NOT. SaveToFile
+
+  ResultPrefix = ListGetString(Params,'Scalars Prefix',GotIt )
+  IF(.NOT. gotIt) ResultPrefix = 'res:'
+
+
+  IsParallel = .FALSE.
+  WriteCore = .TRUE.
+  ParallelWrite = .FALSE.
+  ParallelReduce = .FALSE.
+
+  IF( ParEnv % PEs > 1 ) THEN
+    IsParallel = .TRUE.
+    ParallelReduce = GetLogical( Params,'Parallel Reduce',GotIt)
+    ParallelWrite = .NOT. ParallelReduce
+    IF( ParEnv % MyPe > 0 .AND. ParallelReduce ) THEN
+      EchoValues = .FALSE.
+      WriteCore = .FALSE. 
+    END IF
+    OutputPE = ParEnv % MYPe
+    IF( ParallelReduce ) CALL Info('SaveScalars','Parallel results will be reduced to one file')
+    IF( ParallelWrite ) CALL Info('SaveScalars','Parallel results will be written to separate files')      
+  END IF
+
+  FileAppend = ListGetLogical( Params,'File Append',GotIt)
+
+  NoLines = 0
+  LineCoordinates => ListGetConstRealArray(Params,'Polyline Coordinates',gotIt)
+  IF(gotIt) THEN
+    NoLines = SIZE(LineCoordinates,1) / 2
+    NoDims = SIZE(LineCoordinates,2)
+  END IF
+
+  NoPoints = 0
+  PointIndex => ListGetIntegerArray( Params,'Save Points',GotIt)
+  IF ( gotIt ) NoPoints = SIZE(PointIndex)
+    
+  NoCoordinates = 0
+  NoElements = 0
+  PointCoordinates => ListGetConstRealArray(Params,'Save Coordinates',gotIt)
+  IF(gotIt) THEN
+    NoDims = SIZE(PointCoordinates,2)
+    ExactCoordinates = ListGetLogical(Params,'Exact Coordinates',GotIt )      
+
+    IF( ParallelReduce .AND. .NOT. ExactCoordinates) THEN
+      CALL Warn('SaveScalars','Only Exact Save Coordinates works in parallel, enforcing...')
+      ExactCoordinates = .TRUE.
+    END IF
+
+    IF(ExactCoordinates) THEN            
+      ! Look for the value at the given coordinate point really.
+      NoElements = SIZE(PointCoordinates,1)
+      GotIt = .FALSE.
+      IF( .NOT. MovingMesh ) THEN
+        CoordinatesElemNo => ListGetIntegerArray( Params,'Save Coordinate Elements',GotIt )
+      END IF
+      IF(.NOT. GotIt ) THEN
+        CALL Info('SaveScalars','Searching for elements containing save coordinates',Level=8)
+        ALLOCATE(ClosestIndex(NoElements), STAT=istat)
+        IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error for CoordinateElemNo')         
+        DO j=1,NoElements
+          Coords(1:NoDims) = PointCoordinates(j,1:NoDims)
+          IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
+          ClosestIndex(j) = ClosestElementInMesh( Mesh, Coords )
+        END DO
+        CoordinatesElemNo => ClosestIndex
+        IF( .NOT. MovingMesh ) THEN
+          CALL ListAddIntegerArray( Params,'Save Coordinate Elements',&
+              NoElements,ClosestIndex )
+        END IF
+      END IF
+    ELSE      
+      ! Find the indexes of minimum distances
+      NoCoordinates = SIZE(PointCoordinates,1)
+      GotIt = .FALSE.
+      IF( .NOT. MovingMesh ) THEN
+        CoordinateIndex => ListGetIntegerArray( Params,'Save Coordinate Indexes',GotIt )
+      END IF
+      IF( .NOT. GotIt ) THEN
+        CALL Info('SaveScalars','Searching for closest nodes to coordinates',Level=8)
+        ALLOCATE(ClosestIndex(NoCoordinates), STAT=istat)
+        IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error for CoordinateIndex') 
+        DO j=1,NoCoordinates 
+          Coords(1:NoDims) = PointCoordinates(j,1:NoDims)
+          IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
+          ClosestIndex(j) = ClosestNodeInMesh( Mesh, Coords )
+        END DO
+        CoordinateIndex => ClosestIndex
+        IF( .NOT. MovingMesh ) THEN
+          CALL ListAddIntegerArray( Params,'Save Coordinate Indexes',&
+              NoCoordinates,ClosestIndex )
+        END IF
+      END IF
+    END IF
+  END IF
 
 !------------------------------------------------------------------------------
-    n = Mesh % MaxElementNodes
-    ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), STAT=istat)
-    IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 3') 	
 
-    n = MAX( Model % NumberOfBodies, MAX(Model % NumberOfBCs, NoLines))
-    ALLOCATE( BoundaryFluxes(n), BoundaryAreas(n), BoundaryHits(n), STAT=istat )
-    IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 4') 	
+  n = Mesh % MaxElementNodes 
+  ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
+      ElementValues( n ), CoordinateBasis(n), STAT=istat)
+  IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 1') 	
 
-    ALLOCATE( ActiveBC( Model % NumberOfBCs ), STAT=istat )
-    IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 5') 	
-  END IF
+  n = MAX( Model % NumberOfBodies, MAX(Model % NumberOfBCs, NoLines))
+  ALLOCATE( BoundaryFluxes(n), BoundaryAreas(n), BoundaryHits(n), STAT=istat )
+  IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 2') 	
+  
+  ALLOCATE( ActiveBC( Model % NumberOfBCs ), STAT=istat )
+  IF( istat /= 0 ) CALL Fatal('SaveScalars','Memory allocation error 3') 	
+
 
   ComplexEigenVectors = ListGetLogical(Params,'Complex Eigen Vectors',GotIt)
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
   
-  IF(.NOT.SubroutineVisited .OR. MovingMesh) THEN
     
-    ! Find the indexes of minimum distances
-    IF(NoCoordinates > 0) THEN
-
-      CoordinateDist = HUGE(Dist)
-      DO i=1,Model % NumberOfNodes
-        x = Mesh % Nodes % x(i)
-        y = Mesh % Nodes % y(i)
-        z = Mesh % Nodes % z(i)
-        
-        DO j=1,NoCoordinates
-          Dist = (x-PointCoordinates(j,1))**2 + &
-              (y-PointCoordinates(j,2))**2
-          IF(NoDims == 3) THEN
-            Dist = Dist + (z-PointCoordinates(j,3))**2
-          END IF
-          IF(Dist < CoordinateDist(j)) THEN
-            CoordinateDist(j) = Dist
-            CoordinateIndex(j) = i
-          END IF
-        END DO
-      END DO
-    END IF
-
-
-    ! Write the value at the given coordinate points, really.
-    ! Thus, find the point j's element and the local coordinates
-
-    IF(NoElements > 0) THEN
-
-      CoordinatesBasis = 0.0d0
-      
-      DO j=1,NoElements
-
-	Hit = .FALSE.
-        TempCoordinates = 0.0_dp
-        DO i = 1, NoDims
-          TempCoordinates(i) = PointCoordinates(j,i)
-        END DO
-	MinDist = HUGE( MinDist ) 
-	l = 0
-
-        ! Go through all old model bulk elements (could use quadrant tree!)
-        DO k=1,Mesh % NumberOfBulkElements
-
-          CurrentElement => Mesh % Elements(k)
-          n = CurrentElement % TYPE % NumberOfNodes
-          NodeIndexes => CurrentElement % NodeIndexes
-          
-          ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-          ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-          ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-          
-	  Hit = PointInElement( CurrentElement, ElementNodes, &
-                TempCoordinates, LocalCoords, LocalDistance = Dist )
-	  IF( Dist < MinDist ) THEN
-            MinDist = Dist
-            l = k
-          END IF   
-          IF( Hit ) EXIT
-        END DO       
-
-        
-	IF( Hit ) THEN
-	  ParallelHits = 1.0_dp
-        ELSE
-          ParallelHits = 0.0_dp
-        END IF
-	ParallelHits = ParallelReduction( ParallelHits )
-        
-        ! If there was no proper hit go through the best candidates so far and 
-        ! see if they would give a acceptable hit
-        !----------------------------------------------------------------------
-	IF( ParallelHits < 0.5_dp ) THEN	  
-
-          ! Compute the number of parallel candidates
-          !------------------------------------------
-	  IF( l > 0 ) THEN
-	    ParallelCands = 1.0_dp
-          ELSE
-            ParallelCands = 0.0_dp
-          END IF
-	  ParallelCands = ParallelReduction( ParallelCands ) 
-
-          IF( l > 0 ) THEN
-            CurrentElement => Mesh % Elements(l)
-            n = CurrentElement % TYPE % NumberOfNodes
-            NodeIndexes => CurrentElement % NodeIndexes
-          
-            ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-            ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-            ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-          
-            ! If there are more than two competing parallel hits then use more stringent conditions
-            ! since afterwords there is no way of deciding which one was closer.
-            !--------------------------------------------------------------------------------------
-	    IF( ParallelCands > 1.5_dp ) THEN
-   	      Hit = PointInElement( CurrentElement, ElementNodes, &
-                    TempCoordinates, LocalCoords, GlobalEps = 1.0e-3_dp, LocalEps=1.0e-4_dp )	
-            ELSE
-	      Hit = PointInElement( CurrentElement, ElementNodes, &
-                    TempCoordinates, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	
-            END IF
-          END IF
-        END IF
-
-        IF( Hit ) THEN
-          CoordinatesElemNo(j) = k
-          ElementValues(1:n) = 0.0d0
-          DO q=1,N
-            ElementValues(q) = 1.0d0
-            CoordinatesBasis(j,q) = InterpolateInElement( CurrentElement, ElementValues, &
-                LocalCoords(1), LocalCoords(2), LocalCoords(3) )
-            ElementValues(q) = 0.0d0
-          END DO
-        END IF
-
-
-        IF( ParallelHits < 0.5_dp ) THEN
-	  IF( Hit ) THEN
-	    ParallelHits = 1.0_dp
-          ELSE
-            ParallelHits = 0.0_dp
-          END IF
-	  ParallelHits = ParallelReduction( ParallelHits )
-          IF( ParallelHits < 0.5_dp ) THEN
-            WRITE( Message, * ) 'Coordinate not found in any of the elements!',j
-            CALL Warn( 'SaveScalars', Message )
-          END IF
-        END IF
-        
-      END DO
-    END IF
-  END IF
-    
-
+   
   !------------------------------------------------------------------------------
   ! Go through the variables and compute the desired statistical data
   !------------------------------------------------------------------------------
-
   NoValues = 0
   GotVar  = .TRUE.
   GotOper = .FALSE.
@@ -480,12 +363,19 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
+    IF( ASSOCIATED( Var ) ) THEN
+      CALL Info('SaveScalars','Trating variable: '//TRIM(VariableName),Level=12)
+    END IF
+
     NoOper = NoVar     
+    MaskOper = .FALSE.
     WRITE (Name,'(A,I0)') 'Operator ',NoOper
     Oper0 = ListGetString(Params,TRIM(Name),GotOper)
     IF(.NOT. (GotOper .OR. GotVar ) ) CYCLE
-    
+
     IF( GotOper ) THEN
+      CALL Info('SaveScalars','Treating operator: '//TRIM(Oper0),Level=12)
+
       BodyOper = .FALSE.
       BodyForceOper = .FALSE.      
       MaterialOper = .FALSE.
@@ -503,6 +393,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Oper = Oper0
       END IF
       MaskOper = ( BodyForceOper .OR. BodyOper .OR. MaterialOper )
+      IF( MaskOper ) THEN
+        CALL Info('SaveScalars','Operator to be masked: '//TRIM(Oper),Level=12)
+      END IF
     END IF
 
 
@@ -920,6 +813,25 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CurrentElement => Mesh % Elements(l)
       n = CurrentElement % TYPE % NumberOfNodes
       NodeIndexes => CurrentElement % NodeIndexes
+
+      Coords(1:NoDims) = PointCoordinates(k,1:NoDims)
+      IF(NoDims < 3 ) Coords(NoDims+1:3) = 0.0_dp
+
+      ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+      ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+      ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+               
+      Hit = PointInElement( CurrentElement, ElementNodes, &
+          Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	          
+
+      ElementValues(1:n) = 0.0d0          
+      CoordinateBasis = 0.0_dp
+      DO q=1,N
+        ElementValues(q) = 1.0d0
+        CoordinateBasis(q) = InterpolateInElement( CurrentElement, ElementValues, &
+            LocalCoords(1), LocalCoords(2), LocalCoords(3) )
+        ElementValues(q) = 0.0d0
+      END DO
     ELSE
       IF( .NOT. IsParallel ) CYCLE
     END IF
@@ -946,11 +858,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
                 
               ELSE IF( ALL(Var % Perm(NodeIndexes(1:n)) > 0)) THEN
                 ElementValues(1:n) = REAL( Var % EigenVectors(j,Var%Dofs*(Var % Perm(NodeIndexes(1:n))-1)+i) )
-                Val = SUM( CoordinatesBasis(k,1:n) * ElementValues(1:n) )             
+                Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) )             
                 
                 IF(ComplexEigenVectors) THEN
                   ElementValues(1:n) = AIMAG( Var % EigenVectors(j,Var%Dofs*(Var % Perm(NodeIndexes(1:n))-1)+i) )
-                  Val2 = SUM( CoordinatesBasis(k,1:n) * ElementValues(1:n) )             
+                  Val2 = SUM( CoordinateBasis(1:n) * ElementValues(1:n) )             
                 END IF
 
                 GotIt = .TRUE.
@@ -987,12 +899,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         ELSE IF( ASSOCIATED( Var % Perm ) ) THEN
           IF( ALL(Var % Perm(NodeIndexes(1:n)) > 0)) THEN            
             ElementValues(1:n) = Var % Values(Var % Perm(NodeIndexes(1:n)))
-            Val = SUM( CoordinatesBasis(k,1:n) * ElementValues(1:n) ) 
+            Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) ) 
             GotIt = .TRUE.
           END IF
         ELSE
           ElementValues(1:n) = Var % Values(NodeIndexes(1:n))
-          Val = SUM( CoordinatesBasis(k,1:n) * ElementValues(1:n) ) 
+          Val = SUM( CoordinateBasis(1:n) * ElementValues(1:n) ) 
           GotIt = .TRUE.
         END IF
 
@@ -1067,12 +979,15 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   IF( SaveToFile ) THEN
 
     LineInd = ListGetInteger( Params,'Line Marker',GotIt)
-    
+    PrevNoValues = ListGetInteger( Params,'Save Scalars Dofs',GotIt) 
+
     IF(WriteCore .AND. NoValues /= PrevNoValues) THEN 
+      CALL ListAddInteger( Params,'Save Scalars Dofs',NoValues )
+
       WRITE( Message, '(A)' ) 'Saving names of values to file: '//TRIM(ScalarNamesFile)
       CALL Info( 'SaveScalars', Message, Level=4 )
       
-      IF(SubroutineVisited) THEN
+      IF( Solver % TimesVisited > 0 ) THEN
         WRITE ( Message,'(A,I0,A,I0)') 'Number of scalar values differ from previous time:',&
             NoValues,' vs. ',PrevNoValues
         CALL Warn('SaveScalars',Message)
@@ -1117,13 +1032,13 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     IF ( ParallelWrite ) THEN
       WRITE( ScalarParFile, '(A,i0)' ) TRIM(ScalarsFile)//'.', ParEnv % MyPE
       
-      IF(SubroutineVisited .OR. FileAppend) THEN 
+      IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
         OPEN (10, FILE=ScalarParFile,POSITION='APPEND')
       ELSE 
         OPEN (10,FILE=ScalarParFile)
       END IF
     ELSE IF( WriteCore ) THEN 
-      IF(SubroutineVisited .OR. FileAppend) THEN 
+      IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
         OPEN (10, FILE=ScalarsFile,POSITION='APPEND')
       ELSE 
         OPEN (10,FILE=ScalarsFile)
@@ -1154,8 +1069,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       !------------------------------------------------------------------------------
       ! Save comments by line in a metadata file
       !------------------------------------------------------------------------------
-      IF( .NOT. SubroutineVisited .AND. FileAppend .AND. LineInd /= 0 ) THEN
-      
+      IF( Solver % TimesVisited == 0 .AND. FileAppend .AND. LineInd /= 0 ) THEN      
         Message = ListGetString(Params,'Comment',GotIt)
         Name = TRIM(ScalarsFile) // '.' // TRIM("marker")
         IF( GotIt ) THEN
@@ -1170,7 +1084,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     
       IF(LiveGraph) THEN
         ! Save data as comma-separated-values (cvs-file)
-        IF(SubroutineVisited .OR. FileAppend) THEN 
+        IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
           OPEN (10, FILE=TRIM(ScalarsFile)//'.csv',POSITION='APPEND')      
         ELSE 
           OPEN (10, FILE=TRIM(ScalarsFile)//'.csv')
@@ -1236,8 +1150,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   END IF
 
 
-  PrevNoValues = NoValues
-  SubroutineVisited = .TRUE.
+  IF( NoElements > 0 ) THEN
+    DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z)
+  END IF
 
   CALL Info('SaveScalars','All done')
   CALL Info('SaveScalars', '-----------------------------------------', Level=4 )
@@ -1431,8 +1346,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     TYPE(ValueList_t), POINTER :: MaskList
 
-
     IF(.NOT. MaskOper ) RETURN
+
+    CALL Info('SaveScalars','Creating mask for: '//TRIM(MaskName),Level=10)
 
     IF(.NOT. ALLOCATED( NodeMask ) ) THEN
       ALLOCATE( NodeMask( Mesh % NumberOfNodes ) )
@@ -1447,6 +1363,7 @@ CONTAINS
       ! If we are masking operators with correct (body, body force, or material) then do it here
       IF( BodyOper ) THEN        
         MaskList => GetBodyParams( Element ) 
+        IF(.NOT. ASSOCIATED(MaskList)) CYCLE
       ELSE IF( BodyForceOper ) THEN
         MaskList => GetBodyForce( Element, GotIt )
         IF( .NOT. GotIt ) CYCLE
@@ -1457,10 +1374,12 @@ CONTAINS
         CALL Fatal('MaskNodes','Unknown mask strategy')
       END IF
       IF( ListGetLogical( MaskList, MaskName, GotIt ) ) THEN
-        NodeMask(NodeIndexes) = .TRUE.
+        NodeMask(NodeIndexes(1:n)) = .TRUE.
       END IF
     END DO
-
+    
+    t = COUNT( NodeMask )    
+    CALL Info('SaveScalars','Created mask of size: '//TRIM(I2S(t)),Level=12)
 
   END SUBROUTINE CreateNodeMask
 
@@ -1478,6 +1397,7 @@ CONTAINS
     LOGICAL :: Initialized 
     TYPE(NeighbourList_t), POINTER :: nlist(:)
 
+    CALL Info('SaveScalars','Computing operator: '//TRIM(OperName),Level=12)
 
     Initialized = .FALSE.
     sumi = 0
@@ -1490,6 +1410,14 @@ CONTAINS
       Nonodes = SIZE(Var % Perm) 
     ELSE
       Nonodes = SIZE(Var % Values) / NoDofs
+    END IF
+
+    IF( MaskOper ) THEN
+      IF( NoNodes > SIZE(NodeMask) ) THEN
+        CALL Info('SaveScalars','Decreasing operator range to size of mask: '&
+            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))) )
+        NoNodes = SIZE(NodeMask)
+      END IF
     END IF
 
     nlist => NULL()
@@ -1592,10 +1520,13 @@ CONTAINS
       operx = Variance
       
     CASE DEFAULT 
-      CALL Warn('SaveScalars','Unknown statistical OPERATOR')
+      CALL Warn('SaveScalars','Unknown statistical operator!')
 
     END SELECT
       
+    
+    CALL Info('SaveScalars','Finished computing operator',Level=12)
+
 
   END FUNCTION VectorStatistics
 
@@ -1610,11 +1541,18 @@ CONTAINS
     INTEGER :: Nonodes, i, j, k, NoDofs, sumi
 
     NoDofs = Var % Dofs
-    NoDofs = Var % Dofs
     IF(ASSOCIATED (Var % Perm)) THEN
       Nonodes = SIZE(Var % Perm) 
     ELSE
       Nonodes = SIZE(Var % Values) / NoDofs
+    END IF
+
+    IF( MaskOper ) THEN
+      IF( NoNodes > SIZE(NodeMask) ) THEN
+        CALL Info('SaveScalars','Decreasing operator range to size of mask: '&
+            //TRIM(I2S(NoNodes))//' vs. '//TRIM(I2S(SIZE(NodeMask))) )
+        NoNodes = SIZE(NodeMask)
+      END IF
     END IF
 
     sumi = 0
@@ -2293,8 +2231,6 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: nodescomputed(:)    
     TYPE(Element_t), POINTER :: Element, Parent    
     TYPE(ValueList_t), POINTER :: Material
-    INTEGER, POINTER :: PermIndexes(:)
-
     LOGICAL :: Stat, Permutated    
     INTEGER :: i,j,k,p,q,t,DIM,bc,n,hits,istat
 
@@ -2788,7 +2724,7 @@ CONTAINS
         SideNodes % x, SideNodes % y, SideNodes % z, SideIndexes, &
         LineNodes % x, LineNodes % y, LineNodes % z, OnLine)
 
-  END SUBROUTINE 
+  END SUBROUTINE PolylineIntegrals
 !------------------------------------------------------------------------------
 
 
@@ -2872,10 +2808,10 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   REAL (KIND=dp) :: daxisx, daxisy, daxisz, x, y, z, eps, IntersectEpsilon, DetEpsilon, &
 	f0, f1, f2, fn, q, weight
   REAL (KIND=DP), POINTER :: PointCoordinates(:,:), PointFluxes(:,:), PointWeight(:), Isosurf(:)
-  LOGICAL :: Stat, GotIt, SubroutineVisited = .FALSE., FileAppend, CalculateFlux, &
+  LOGICAL :: Stat, GotIt, FileAppend, CalculateFlux, &
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
       SkipBoundaryInfo
-  INTEGER :: i,j,k,ivar,l,n,m,t,DIM,mat_id, TimesVisited=0, SaveThis, PrevDoneTime=-1, &
+  INTEGER :: i,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
       Side, SaveNodes, SaveNodes2, node, NoResults, LocalNodes, NoVar, &
       No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, NoFaces, &
       NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, FluxBody, istat, &
@@ -2895,9 +2831,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   LOGICAL, POINTER :: LineTag(:)
   LOGICAL :: cand, Parallel, InitializePerm
 
-  SAVE SubroutineVisited, TimesVisited, SavePerm, SaveNodes, ElementNodes, LineNodes, &
-      Basis, NoResults, NoEigenValues, Values, PrevDoneTime, Parallel, &
-      ParSolver, SideParFile, PrevMaskName
+  SAVE SavePerm, PrevMaskName, SaveNodes
 
 !------------------------------------------------------------------------------
 
@@ -2916,26 +2850,22 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     Mesh => Mesh % Next
   END DO
 
-  IF(.NOT. SubroutineVisited) THEN
-     n = Mesh % MaxElementNodes
-     ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
-          LineNodes % x(2), LineNodes % y(2), LineNodes % z(2), &
-          Basis(n), SavePerm(Mesh % NumberOfNodes), STAT=istat )     
-     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 1') 
+  n = Mesh % MaxElementNodes
+  ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
+      LineNodes % x(2), LineNodes % y(2), LineNodes % z(2), &
+      Basis(n), STAT=istat )     
+  IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 1') 
 
-     Parallel = ( ParEnv % PEs > 1) 
-     IF( GetLogical( Params,'Enforce Parallel Mode',GotIt) ) Parallel = .TRUE.	
+  IF( Solver % TimesVisited == 0 ) THEN
+    ALLOCATE( SavePerm(Mesh % NumberOfNodes) )
   END IF
+
+  
+  Parallel = ( ParEnv % PEs > 1) 
+  IF( GetLogical( Params,'Enforce Parallel Mode',GotIt) ) Parallel = .TRUE.	
 
   DIM = CoordinateSystemDimension()
 
-  IF(TransientSimulation .AND. PrevDoneTime /= Solver % DoneTime) THEN
-     PrevDoneTime = Solver % DoneTime
-     TimesVisited = 0
-  END IF
-
-  TimesVisited = TimesVisited + 1
-    
   SideFile = ListGetString(Params,'Filename',GotIt )
   IF(.NOT. GotIt) SideFile = DefaultSideFile
   
@@ -2943,7 +2873,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     OutputDirectory = GetString( Params,'Output Directory',GotIt) 
     IF( GotIt .AND. LEN_TRIM(OutputDirectory) > 0 ) THEN
       SideFile = TRIM(OutputDirectory)// '/' //TRIM(SideFile)
-      IF( TimesVisited == 1 ) THEN
+      IF( Solver % TimesVisited == 0 ) THEN
         CALL MakeDirectory( TRIM(OutputDirectory) // CHAR(0) )
       END IF
     ELSE IF( LEN_TRIM(OutputPath ) > 0 ) THEN
@@ -2982,11 +2912,11 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   
   SaveAxis(1) = ListGetLogical(Params,'Save Axis',GotIt)
   IF(GotIt) THEN
-     SaveAxis(2:3) = SaveAxis(1)
+    SaveAxis(2:3) = SaveAxis(1)
   ELSE
-     SaveAxis(1) = ListGetLogical(Params,'Save Axis 1',GotIt)
-     SaveAxis(2) = ListGetLogical(Params,'Save Axis 2',GotIt)
-     SaveAxis(3) = ListGetLogical(Params,'Save Axis 3',GotIt)    
+    SaveAxis(1) = ListGetLogical(Params,'Save Axis 1',GotIt)
+    SaveAxis(2) = ListGetLogical(Params,'Save Axis 2',GotIt)
+    SaveAxis(3) = ListGetLogical(Params,'Save Axis 3',GotIt)    
   END IF
   NoAxis = DIM
   
@@ -3040,7 +2970,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
       NoVar = NoVar + 1
       WRITE (Name,'(A,I0)') 'Variable ',NoVar
-      
+
       CALL ListAddString( Params,TRIM(Name),TRIM(Var % Name) )
       Var => Var % Next      
     END DO
@@ -3088,7 +3018,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     WRITE( SideParFile, '(A)') TRIM(SideFile)   
   END IF
 
-  IF(SubroutineVisited .OR. FileAppend) THEN 
+  IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
     OPEN (10, FILE=SideParFile,POSITION='APPEND')
   ELSE 
     OPEN (10,FILE=SideParFile)
@@ -3100,31 +3030,29 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   MaskName = ListGetString(Params,'Save Mask',GotIt) 
   IF(.NOT. GotIt) MaskName = 'Save Line'
 
-  IF( SubroutineVisited ) THEN
-     InitializePerm = ( MaskName /= PrevMaskName ) 
-     InitializePerm = InitializePerm .OR. Solver % Mesh % Changed
+  IF( Solver % TimesVisited > 0 ) THEN
+    InitializePerm = ( MaskName /= PrevMaskName ) 
+    InitializePerm = InitializePerm .OR. Solver % Mesh % Changed
   ELSE
-     InitializePerm = .TRUE.
+    InitializePerm = .TRUE.
   END IF
 
   IF( InitializePerm ) THEN
-     SavePerm = 0
-     SaveNodes = 0
+    SavePerm = 0
+    SaveNodes = 0
 
-     OptimizeOrder = ListGetLogical(Params,'Optimize Node Ordering',GotIt)
-     IF(.NOT. GotIt) OptimizeOrder = .NOT. Parallel
+    OptimizeOrder = ListGetLogical(Params,'Optimize Node Ordering',GotIt)
+    IF(.NOT. GotIt) OptimizeOrder = .NOT. Parallel
 
-     CALL MakePermUsingMask( Model,Solver,Mesh,MaskName, &
-          OptimizeOrder, SavePerm, SaveNodes, RequireLogical = .TRUE. )
-     
-     IF( SaveNodes > 0 ) THEN
-       IF( ListGetLogical( Params,'Calculate Weights',GotIt ) ) THEN
-         CALL CalculateNodalWeights( Solver, .TRUE., SavePerm, TRIM(MaskName)//' Weights')
-       END IF
-       
-       WRITE( Message, * ) 'Number of nodes in specified boundary ', SaveNodes
-       CALL Info('SaveLine',Message)
-     END IF
+    CALL MakePermUsingMask( Model,Solver,Mesh,MaskName, &
+        OptimizeOrder, SavePerm, SaveNodes, RequireLogical = .TRUE. )
+
+    IF( SaveNodes > 0 ) THEN
+      IF( ListGetLogical( Params,'Calculate Weights',GotIt ) ) THEN
+        CALL CalculateNodalWeights( Solver, .TRUE., SavePerm, TRIM(MaskName)//' Weights')
+      END IF
+      CALL Info('SaveLine','Number of nodes in specified boundary: '//TRIM(I2S(SaveNodes)))
+    END IF
   END IF
   PrevMaskName = MaskName
 
@@ -3136,7 +3064,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   IF( SaveNodes > 0 ) THEN
 
      ALLOCATE( InvPerm(SaveNodes), BoundaryIndex(SaveNodes), STAT=istat )
-     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 3') 
+     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 3: '//TRIM(I2S(SaveNodes))) 
 
      BoundaryIndex = 0
      InvPerm = 0
@@ -3232,7 +3160,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
        node = InvPerm(t)
        IF( .NOT. SkipBoundaryInfo ) THEN
          IF(TransientSimulation) WRITE(10,'(I6)',ADVANCE='NO') Solver % DoneTime
-         WRITE(10,'(I6,I4,I8)',ADVANCE='NO') TimesVisited,BoundaryIndex(t),node
+         WRITE(10,'(I6,I4,I8)',ADVANCE='NO') Solver % TimesVisited + 1,&
+             BoundaryIndex(t),node
        END IF
        
        No = 0
@@ -3287,7 +3216,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     ALLOCATE( LineTag(Mesh % NumberOfNodes), STAT=istat )
     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 5') 
         
-    IF(.NOT. SubroutineVisited) THEN 
+    IF( Solver % TimesVisited == 0 ) THEN 
       CALL FindMeshEdges( Mesh, .FALSE.)
     END IF
     
@@ -3366,7 +3295,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
         
         IF( .NOT. SkipBoundaryInfo ) THEN
           IF(TransientSimulation) WRITE(10,'(I6)',ADVANCE='NO') Solver % DoneTime
-          WRITE(10,'(I6,I4,I8)',ADVANCE='NO') TimesVisited,MaxBoundary,NodeIndexes(i)
+          WRITE(10,'(I6,I4,I8)',ADVANCE='NO') Solver % TimesVisited+1,&
+              MaxBoundary,NodeIndexes(i)
         END IF
         
         No = 0
@@ -3432,7 +3362,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     ALLOCATE( LineTag(Mesh % NumberOfNodes), STAT=istat )
     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 6') 
         
-    IF(.NOT. SubroutineVisited) THEN 
+    IF( Solver % TimesVisited == 0 ) THEN
       CALL FindMeshEdges( Mesh, .FALSE.)
     END IF
     
@@ -3524,7 +3454,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
         
         IF( .NOT. SkipBoundaryInfo ) THEN
           IF(TransientSimulation) WRITE(10,'(I6)',ADVANCE='NO') Solver % DoneTime
-          WRITE(10,'(I6,I4,I8)',ADVANCE='NO') TimesVisited,MaxBoundary,k
+          WRITE(10,'(I6,I4,I8)',ADVANCE='NO') Solver % TimesVisited+1,&
+              MaxBoundary,k
         END IF
         
         No = 0
@@ -3583,79 +3514,80 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   ! Finally save the names of the variables to help to identify the 
   ! columns in the result matrix.
   !-----------------------------------------------------------------
-  IF(.NOT. SubroutineVisited .AND. NoResults > 0 ) THEN
-     ALLOCATE( ValueNames(NoResults), STAT=istat )
-     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 6') 
-  
-     No = 0
-     DO ivar = 1,NoVar
-       Var => VariableGetN( ivar ) 
-          
-       IF (ASSOCIATED (Var % EigenVectors)) THEN
-         NoEigenValues = SIZE(Var % EigenValues) 
-         DO j=1,NoEigenValues
-           DO i=1,Var % DOFs
-             IF(i==1) THEN
-               WRITE(ValueNames(No+(j-1)*Var%Dofs+i),'(A,I0,A,A,I2,A,2ES20.11E3)') &
-                   "Eigen ",j," ",TRIM(Var%Name),i,"   EigenValue = ",Var % EigenValues(j)
-             ELSE 
-               WRITE(ValueNames(No+(j-1)*Var%Dofs+i),'(A,I0,A,A,I2)') &
-                   "Eigen ",j," ",TRIM(Var%Name),i
-             END IF
-           END DO
-         END DO
-         No = No + Var % Dofs * NoEigenValues
-       ELSE 
-         No = No + 1
-         ValueNames(No) = TRIM(Var % Name)
-       END IF
-       Var => Var % Next      
-     END DO
+  IF( Solver % TimesVisited == 0 .AND. NoResults > 0 ) THEN
+    ALLOCATE( ValueNames(NoResults), STAT=istat )
+    IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 6') 
 
-     IF ( CalculateFlux ) THEN
-       ValueNames(No+1) = 'Flux 1'
-       ValueNames(No+2) = 'Flux 2'
-       ValueNames(No+3) = 'Flux normal'      
-     END IF
-     
-     SideNamesFile = TRIM(SideParFile) // '.' // TRIM("names")
-     OPEN (10, FILE=SideNamesFile)
+    No = 0
+    DO ivar = 1,NoVar
+      Var => VariableGetN( ivar ) 
 
-     Message = ListGetString(Model % Simulation,'Comment',GotIt)
-     IF( GotIt ) THEN
-       WRITE(10,'(A)') TRIM(Message)
-     END IF
-     Message = ListGetString(Params,'Comment',GotIt)
-     IF( GotIt ) THEN
-       WRITE(10,'(A)') TRIM(Message)
-     END IF 
-     WRITE(10,'(A,A)') 'Variables in file: ',TRIM(SideParFile)
+      IF (ASSOCIATED (Var % EigenVectors)) THEN
+        NoEigenValues = SIZE(Var % EigenValues) 
+        DO j=1,NoEigenValues
+          DO i=1,Var % DOFs
+            IF(i==1) THEN
+              WRITE(ValueNames(No+(j-1)*Var%Dofs+i),'(A,I0,A,A,I2,A,2ES20.11E3)') &
+                  "Eigen ",j," ",TRIM(Var%Name),i,"   EigenValue = ",Var % EigenValues(j)
+            ELSE 
+              WRITE(ValueNames(No+(j-1)*Var%Dofs+i),'(A,I0,A,A,I2)') &
+                  "Eigen ",j," ",TRIM(Var%Name),i
+            END IF
+          END DO
+        END DO
+        No = No + Var % Dofs * NoEigenValues
+      ELSE 
+        No = No + 1
+        ValueNames(No) = TRIM(Var % Name)
+      END IF
+      Var => Var % Next      
+    END DO
 
-     DateStr = FormatDate()
-     WRITE( 10,'(A,A)') 'File started at: ',TRIM(DateStr)
+    IF ( CalculateFlux ) THEN
+      ValueNames(No+1) = 'Flux 1'
+      ValueNames(No+2) = 'Flux 2'
+      ValueNames(No+3) = 'Flux normal'      
+    END IF
 
-     WRITE(10,'(I7,A)') SaveNodes,' boundary nodes for each step'
-     WRITE(10,'(I7,A)') SaveNodes2,' polyline nodes for each step'
-     j = 0
-     IF( .NOT. SkipBoundaryInfo ) THEN
-        IF(TransientSimulation) THEN
-           WRITE(10,'(I3,": ",A)') 1,'Time step'
-           j = 1
-        END IF
-        WRITE(10,'(I3,": ",A)') 1+j,'Iteration step'
-        WRITE(10,'(I3,": ",A)') 2+j,'Boundary condition'
-        WRITE(10,'(I3,": ",A)') 3+j,'Node index'
-        j = j + 3
-     END IF
-     DO i=1,NoResults
-        WRITE(10,'(I3,": ",A)') i+j,TRIM(ValueNames(i))
-     END DO
-     CLOSE(10)
-     DEALLOCATE( ValueNames )
+    SideNamesFile = TRIM(SideParFile) // '.' // TRIM("names")
+    OPEN (10, FILE=SideNamesFile)
+
+    Message = ListGetString(Model % Simulation,'Comment',GotIt)
+    IF( GotIt ) THEN
+      WRITE(10,'(A)') TRIM(Message)
+    END IF
+    Message = ListGetString(Params,'Comment',GotIt)
+    IF( GotIt ) THEN
+      WRITE(10,'(A)') TRIM(Message)
+    END IF
+    WRITE(10,'(A,A)') 'Variables in file: ',TRIM(SideParFile)
+    
+    DateStr = FormatDate()
+    WRITE( 10,'(A,A)') 'File started at: ',TRIM(DateStr)
+
+    WRITE(10,'(I7,A)') SaveNodes,' boundary nodes for each step'
+    WRITE(10,'(I7,A)') SaveNodes2,' polyline nodes for each step'
+    j = 0
+    IF( .NOT. SkipBoundaryInfo ) THEN
+      IF(TransientSimulation) THEN
+        WRITE(10,'(I3,": ",A)') 1,'Time step'
+        j = 1
+      END IF
+      WRITE(10,'(I3,": ",A)') 1+j,'Iteration step'
+      WRITE(10,'(I3,": ",A)') 2+j,'Boundary condition'
+      WRITE(10,'(I3,": ",A)') 3+j,'Node index'
+      j = j + 3
+    END IF
+    DO i=1,NoResults
+      WRITE(10,'(I3,": ",A)') i+j,TRIM(ValueNames(i))
+    END DO
+    CLOSE(10)
+    DEALLOCATE( ValueNames )
   END IF
 
 
-  SubroutineVisited = .TRUE.
+  DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z, &
+      LineNodes % x, LineNodes % y, LineNodes % z, Basis )
 
   CALL Info('SaveLine','All done')
 
@@ -3881,13 +3813,13 @@ CONTAINS
   
 
 !-----------------------------------------------------------------------
-!>   Compuation of normal flux.
+!> Compuation of normal flux.
 !> Note that this is calculated on the nodal points only
-!>   using a single boundary element. The direction of the normal
-!>   may be somewhat different on the nodal point when calculated using 
-!>   a neighboring boundary element.
-!>   Thus normal flow calculation is useful only when the boundary 
-!>   is relatively smooth. Also quadratic elements are recommended.
+!> using a single boundary element. The direction of the normal
+!> may be somewhat different on the nodal point when calculated using 
+!> a neighboring boundary element.
+!> Thus normal flow calculation is useful only when the boundary 
+!> is relatively smooth. Also quadratic elements are recommended.
 !-----------------------------------------------------------------------
    
   SUBROUTINE BoundaryFlux( Model, Node, VarName, CoeffName, f1, f2, fn, weight, MaxN) 
@@ -4064,7 +3996,6 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   USE SolverUtils
 
   IMPLICIT NONE
-! Types
 !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
   TYPE(Model_t) :: Model
@@ -4081,118 +4012,108 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
   INTEGER :: NoParams, DIM, ParamNo, istat, LocalNodes, &
        n, j, i, elementNumber, FieldNodes, BodyForceParams
   INTEGER, POINTER :: NodeIndexes(:), FieldPerm(:)=>NULL()
-  REAL(KIND=dp), POINTER :: LocalParam(:), Field(:)
+  REAL(KIND=dp), POINTER :: Field(:)
+  REAL(KIND=dp), ALLOCATABLE :: LocalParam(:)
   CHARACTER(LEN=MAX_NAME_LEN) ::  ParamName(99), Name
-  LOGICAL :: SubroutineVisited=.FALSE.,FirstTime=.TRUE., GotCoeff, &
-       GotIt, GotOper, GotVar
-
-  SAVE SubroutineVisited, DIM, LocalNodes, ParamName, NoParams, LocalParam, &
-       BodyForceParams
+  LOGICAL :: GotCoeff, GotIt, GotOper, GotVar
 
 
   CALL Info('SaveMaterials','Creating selected material parameters as fields')
 
-  !-----------------------------------
-  ! Set some pointers
-  !-----------------------------------
+  !-------------------------------------------
+  ! Set some pointers and other initialization
+  !-------------------------------------------
   Params => GetSolverParams()
   PointerToSolver => Solver
   Mesh => Solver % Mesh
 
-  !----------------------------------------
-  ! Do these things for the first time only
-  !----------------------------------------
-  IF(.NOT.SubroutineVisited) THEN
-     DIM = CoordinateSystemDimension()
-     LocalNodes = Model % NumberOfNodes
+  DIM = CoordinateSystemDimension()
+  LocalNodes = Model % NumberOfNodes
+  
+  n = Mesh % MaxElementNodes
+  ALLOCATE( LocalParam(n), STAT=istat )
+  IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 1') 
 
-     n = Mesh % MaxElementNodes
-     ALLOCATE( LocalParam(n), STAT=istat )
-     IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 1') 
-
-     ! Find out how many variables should we saved
-     NoParams = 0
-     GotVar = .TRUE.
-
-     DO WHILE(GotVar)  
-       NoParams = NoParams + 1
-       WRITE (Name,'(A,I0)') 'Parameter ',NoParams
-       ParamName(NoParams) = ListGetString( Params, TRIM(Name), GotVar )
-     END DO
-     NoParams = NoParams-1
- 	 
-     IF( NoParams == 0) THEN
-       CALL WARN( 'SaveMaterials', 'No parameters found: No fields will be created')       
-       RETURN
-     END IF     
+  ! Find out how many variables should we saved
+  NoParams = 0
+  GotVar = .TRUE.
+  
+  DO WHILE(GotVar)  
+    NoParams = NoParams + 1
+    WRITE (Name,'(A,I0)') 'Parameter ',NoParams
+    ParamName(NoParams) = ListGetString( Params, TRIM(Name), GotVar )
+  END DO
+  NoParams = NoParams-1
+  
+  IF( NoParams == 0) THEN
+    CALL WARN( 'SaveMaterials', 'No parameters found: No fields will be created')       
+    RETURN
+  END IF
  
-     BodyForceParams = ListGetInteger( Params,'Body Force Parameters',GotIt)
+  BodyForceParams = ListGetInteger( Params,'Body Force Parameters',GotIt)
  
-     !------------------
-     ! Add new Variables
-     ! -----------------
-     DO ParamNo = 1, NoParams
-       Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
-       IF(.NOT. ASSOCIATED( Var ) ) THEN
-         ALLOCATE(FieldPerm(LocalNodes),STAT=istat)
-         IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 2') 
-
-         FieldPerm = 0
-
-         DO elementNumber=1,Mesh % NumberOfBulkElements
-           
-           CurrentElement => Mesh % Elements(elementNumber)
-           !------------------------------------------------------------------
-           ! do nothing, if we are dealing with a halo-element in parallel run
-           !------------------------------------------------------------------
-           IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
-
-           n = GetElementNOFNodes(CurrentElement)
-           NodeIndexes => CurrentElement % NodeIndexes           
-           Model % CurrentElement => CurrentElement
-
-           IF( ParamNo > BodyForceParams ) THEN
-             ValueList => GetMaterial(CurrentElement)
-           ELSE
-	     ValueList => GetBodyForce(CurrentElement)
-           END IF
-           IF( ListCheckPresent(ValueList, TRIM(ParamName(ParamNo))) ) THEN
-             FieldPerm( NodeIndexes ) = 1
-           END IF
-         END DO
+  !------------------
+  ! Add new Variables
+  ! -----------------
+  DO ParamNo = 1, NoParams
+    Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
+    IF( ASSOCIATED( Var ) ) CYCLE
+    
+    ALLOCATE(FieldPerm(LocalNodes),STAT=istat)
+    IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 2') 
+    
+    FieldPerm = 0
+    
+    DO elementNumber=1,Mesh % NumberOfBulkElements
       
-         j = 0 
-         DO i=1,LocalNodes
-           IF( FieldPerm(i) > 0 ) THEN
-             j = j + 1
-             FieldPerm(i) = j
-           END IF
-         END DO
+      CurrentElement => Mesh % Elements(elementNumber)
+      !------------------------------------------------------------------
+      ! do nothing, if we are dealing with a halo-element in parallel run
+      !------------------------------------------------------------------
+      IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
+      
+      n = GetElementNOFNodes(CurrentElement)
+      NodeIndexes => CurrentElement % NodeIndexes           
+      Model % CurrentElement => CurrentElement
+      
+      IF( ParamNo > BodyForceParams ) THEN
+        ValueList => GetMaterial(CurrentElement)
+      ELSE
+        ValueList => GetBodyForce(CurrentElement)
+      END IF
+      IF( ListCheckPresent(ValueList, TRIM(ParamName(ParamNo))) ) THEN
+        FieldPerm( NodeIndexes ) = 1
+      END IF
+    END DO
 
-         IF( j == 0 ) THEN
-           CALL Warn('SaveMaterials',&
-               'Parameter '//TRIM(ParamName(ParamNo))//' not present in any material')
-         ELSE
-           WRITE( Message,'(A,I0,A)') 'Parameter > '//TRIM(ParamName(ParamNo))&
-               //' < defined with ',j,' dofs'
-           CALL Info('SaveMaterials',Message)
+    j = 0 
+    DO i=1,LocalNodes
+      IF( FieldPerm(i) > 0 ) THEN
+        j = j + 1
+        FieldPerm(i) = j
+      END IF
+    END DO
+    
+    IF( j == 0 ) THEN
+      CALL Warn('SaveMaterials',&
+          'Parameter '//TRIM(ParamName(ParamNo))//' not present in any material')
+    ELSE
+      WRITE( Message,'(A,I0,A)') 'Parameter > '//TRIM(ParamName(ParamNo))&
+          //' < defined with ',j,' dofs'
+      CALL Info('SaveMaterials',Message)
+      
+      ALLOCATE(Field(j),STAT=istat)
+      IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 3') 
+      Field = 0.0_dp
+      
+      CALL VariableAdd( Mesh % Variables, Mesh, PointerToSolver, &
+          TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )         
+      
+      NULLIFY( Field )
+    END IF
 
-           ALLOCATE(Field(j),STAT=istat)
-           IF( istat /= 0 ) CALL Fatal('SaveMaterials','Memory allocation error 3') 
-           Field = 0.0_dp
-           
-           CALL VariableAdd( Mesh % Variables, Mesh, PointerToSolver, &
-               TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )         
-           
-           NULLIFY( Field )
-         END IF
-         
-         NULLIFY( FieldPerm )
-       END IF
-     END DO
-
-     SubroutineVisited = .TRUE.
-   END IF
+    NULLIFY( FieldPerm )
+  END DO
 
   !-----------------------------------
   ! loop all parameters to be exported
@@ -4204,10 +4125,10 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
     FieldPerm => Var % Perm
 
     DO elementNumber=1,Mesh % NumberOfBulkElements
-
+      
       CurrentElement => Mesh % Elements(elementNumber)
       IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
-
+      
       n = GetElementNOFNodes(CurrentElement)
       NodeIndexes => CurrentElement % NodeIndexes           
 
@@ -4225,7 +4146,7 @@ SUBROUTINE SaveMaterials( Model,Solver,dt,TransientSimulation )
       LocalParam(1:n) = ListGetReal(ValueList, TRIM(ParamName(ParamNo)), &
           n, NodeIndexes, GotIt)
       IF(.NOT. GotIt) CYCLE
-
+      
       IF( ASSOCIATED( FieldPerm ) ) THEN
         Field(FieldPerm(NodeIndexes(1:n))) = LocalParam(1:n)      
       ELSE
@@ -4266,152 +4187,144 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: ValueList, Params
   TYPE(Variable_t), POINTER :: Var
   INTEGER :: NoParams, DIM, ParamNo, istat, LocalNodes, &
-       n, j, i, elementNumber, FieldNodes
+       n, j, i, elementNumber
   INTEGER, POINTER :: NodeIndexes(:), FieldPerm(:)=>NULL()
-  REAL(KIND=dp), POINTER :: LocalParam(:), Field(:)
+  REAL(KIND=dp), POINTER :: Field(:)
+  REAL(KIND=dp), ALLOCATABLE :: LocalParam(:)
   CHARACTER(LEN=MAX_NAME_LEN) ::  ParamName(99), Name
-  LOGICAL :: SubroutineVisited=.FALSE.,FirstTime=.TRUE., GotCoeff, &
-       GotIt, GotOper, GotVar, ExactCoordinates
+  LOGICAL :: GotCoeff, GotIt, GotOper, GotVar, ExactCoordinates
   LOGICAL, ALLOCATABLE :: Valid(:)
 
-  SAVE SubroutineVisited, DIM, LocalNodes, ParamName, NoParams, LocalParam, Valid
+  SAVE DIM, LocalNodes, ParamName, NoParams, LocalParam, Valid
 
 
   CALL Info('SaveBoundaryValues','Creating selected boundary values as fields')
 
-  !-----------------------------------
-  ! Set some pointers
-  !-----------------------------------
+  !------------------------------------------------
+  ! Set some pointers and other initilization stuff
+  !------------------------------------------------
   Params => GetSolverParams()
   PointerToSolver => Solver
   Mesh => Solver % Mesh
+  
+  DIM = CoordinateSystemDimension()
+  LocalNodes = Model % NumberOfNodes
 
-  !----------------------------------------
-  ! Do these things for the first time only
-  !----------------------------------------
-  IF(.NOT.SubroutineVisited) THEN
-     DIM = CoordinateSystemDimension()
-     LocalNodes = Model % NumberOfNodes
+  n = Mesh % MaxElementNodes
+  ALLOCATE( LocalParam(n), STAT=istat )
+  IF( istat /= 0 ) CALL Fatal('SaveBoundaryValues','Memory allocation error 1') 
 
-     n = Mesh % MaxElementNodes
-     ALLOCATE( LocalParam(n), STAT=istat )
-     IF( istat /= 0 ) CALL Fatal('SaveBoundaryValues','Memory allocation error 1') 
+  ! Find out how many variables should we saved
+  NoParams = 0
+  GotVar = .TRUE.
+  
+  DO WHILE(GotVar)  
+    NoParams = NoParams + 1
+    WRITE (Name,'(A,I0)') 'Parameter ',NoParams
+    ParamName(NoParams) = ListGetString( Params, TRIM(Name), GotVar )
+  END DO
+  NoParams = NoParams-1
 
-     ! Find out how many variables should we saved
-     NoParams = 0
-     GotVar = .TRUE.
-
-     DO WHILE(GotVar)  
-       NoParams = NoParams + 1
-       WRITE (Name,'(A,I0)') 'Parameter ',NoParams
-       ParamName(NoParams) = ListGetString( Params, TRIM(Name), GotVar )
-     END DO
-     NoParams = NoParams-1
-
-     IF( NoParams == 0) THEN
-       CALL WARN( 'SaveBoundaryValues', 'No parameters found: No fields will be created')       
-       RETURN
-     END IF     
+  IF( NoParams == 0) THEN
+    CALL WARN( 'SaveBoundaryValues', 'No parameters found: No fields will be created')       
+    RETURN
+  END IF
      
-     ALLOCATE(Valid(NoParams)) !Prevent seg faults when missing
-     Valid = .TRUE.
+  ALLOCATE(Valid(NoParams)) !Prevent seg faults when missing
+  Valid = .TRUE.
+  
+  !------------------
+  ! Add new Variables
+  ! -----------------
+  DO ParamNo = 1, NoParams
+    Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
+    IF(ASSOCIATED( Var ) ) CYCLE
 
-     !------------------
-     ! Add new Variables
-     ! -----------------
-     DO ParamNo = 1, NoParams
-       Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
-       IF(.NOT. ASSOCIATED( Var ) ) THEN
-         ALLOCATE(FieldPerm(LocalNodes),STAT=istat)
-         IF( istat /= 0 ) CALL Fatal('SaveBoundaryValues','Memory allocation error 2') 
-
-         FieldPerm = 0
-
-         DO elementNumber=Mesh % NumberOfBulkElements+1, &
-             Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-           
-           CurrentElement => Mesh % Elements(elementNumber)
-           !------------------------------------------------------------------
-           ! do nothing, if we are dealing with a halo-element in parallel run
-           !------------------------------------------------------------------
-           IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
-
-           n = GetElementNOFNodes(CurrentElement)
-           NodeIndexes => CurrentElement % NodeIndexes           
-           Model % CurrentElement => CurrentElement
-
-           ValueList => GetBC(CurrentElement)
-           IF( ListCheckPresent(ValueList, TRIM(ParamName(ParamNo))) ) THEN
-             FieldPerm( NodeIndexes ) = 1
-           END IF
-         END DO
+    ALLOCATE(FieldPerm(LocalNodes),STAT=istat)
+    IF( istat /= 0 ) CALL Fatal('SaveBoundaryValues','Memory allocation error 2') 
+    
+    FieldPerm = 0
+    
+    DO elementNumber=Mesh % NumberOfBulkElements+1, &
+        Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
       
-         j = 0 
-         DO i=1,LocalNodes
-           IF( FieldPerm(i) > 0 ) THEN
-             j = j + 1
-             FieldPerm(i) = j
-           END IF
-         END DO
+      CurrentElement => Mesh % Elements(elementNumber)
+      !------------------------------------------------------------------
+      ! do nothing, if we are dealing with a halo-element in parallel run
+      !------------------------------------------------------------------
+      IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
+      
+      n = GetElementNOFNodes(CurrentElement)
+      NodeIndexes => CurrentElement % NodeIndexes           
+      Model % CurrentElement => CurrentElement
+      
+      ValueList => GetBC(CurrentElement)
+      IF( ListCheckPresent(ValueList, TRIM(ParamName(ParamNo))) ) THEN
+        FieldPerm( NodeIndexes ) = 1
+      END IF
+    END DO
+    
+    j = 0 
+    DO i=1,LocalNodes
+      IF( FieldPerm(i) > 0 ) THEN
+        j = j + 1
+        FieldPerm(i) = j
+      END IF
+    END DO
+    
+    IF( j == 0 ) THEN
+      CALL Warn('SaveBoundaryValues',&
+          'Parameter '//TRIM(ParamName(ParamNo))//' not present in any material')
+      Valid(ParamNo) = .FALSE.
+    ELSE
+      WRITE( Message,'(A,I0,A)') 'Parameter > '//TRIM(ParamName(ParamNo))&
+          //' < defined with ',j,' dofs'
+      CALL Info('SaveBoundaryValues',Message)
+      
+      ALLOCATE(Field(j),STAT=istat)
+      IF( istat /= 0 ) CALL Fatal('SaveBoundaryValues','Memory allocation error 3') 
+      Field = 0.0_dp
+      
+      CALL VariableAdd( Mesh % Variables, Mesh, PointerToSolver, &
+          TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )         
+      
+      NULLIFY( Field )
+    END IF
+    
+    NULLIFY( FieldPerm )
+  END DO   
 
-         IF( j == 0 ) THEN
-           CALL Warn('SaveBoundaryValues',&
-                'Parameter '//TRIM(ParamName(ParamNo))//' not present in any material')
-           Valid(ParamNo) = .FALSE.
-         ELSE
-           WRITE( Message,'(A,I0,A)') 'Parameter > '//TRIM(ParamName(ParamNo))&
-               //' < defined with ',j,' dofs'
-           CALL Info('SaveBoundaryValues',Message)
-
-           ALLOCATE(Field(j),STAT=istat)
-           IF( istat /= 0 ) CALL Fatal('SaveBoundaryValues','Memory allocation error 3') 
-           Field = 0.0_dp
-           
-           CALL VariableAdd( Mesh % Variables, Mesh, PointerToSolver, &
-               TRIM(ParamName(ParamNo)), 1, Field, FieldPerm )         
-           
-           NULLIFY( Field )
-         END IF
-         
-         NULLIFY( FieldPerm )
-       END IF
-     END DO
-
-     SubroutineVisited = .TRUE.
-   END IF
-   
-
-   !-------------------------------------------------------
-   ! Loop all parameters to be exported and update their values.
-   ! NoParams is set the 1st time the suboutine is visited. 
-   !--------------------------------------------------------
-   DO ParamNo=1,NoParams 
+  !-------------------------------------------------------
+  ! Loop all parameters to be exported and update their values.
+  ! NoParams is set the 1st time the suboutine is visited. 
+  !--------------------------------------------------------
+  DO ParamNo=1,NoParams 
     IF(.NOT. Valid(ParamNo)) CYCLE !prevents segfaults...
-        
+    
     Var => VariableGet( Model % Variables, TRIM(ParamName(ParamNo)), .TRUE.)     
     Field => Var % Values
     FieldPerm => Var % Perm
-
+    
     DO elementNumber=Mesh % NumberOfBulkElements+1, &
         Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-
+      
       CurrentElement => Mesh % Elements(elementNumber)
       IF (CurrentElement % PartIndex /= Parenv % mype) CYCLE
-
+      
       n = GetElementNOFNodes(CurrentElement)
       NodeIndexes => CurrentElement % NodeIndexes           
-
+      
       IF( ASSOCIATED( FieldPerm ) ) THEN
         IF( .NOT. ALL(FieldPerm(NodeIndexes) > 0) ) CYCLE
       END IF
-
+      
       Model % CurrentElement => CurrentElement
-
+      
       ValueList => GetBC(CurrentElement)
       LocalParam(1:n) = ListGetReal(ValueList, TRIM(ParamName(ParamNo)), &
           n, NodeIndexes, GotIt)
       IF(.NOT. GotIt) CYCLE
-
+      
       IF( ASSOCIATED( FieldPerm ) ) THEN
         Field(FieldPerm(NodeIndexes(1:n))) = LocalParam(1:n)      
       ELSE
@@ -4420,7 +4333,7 @@ SUBROUTINE SaveBoundaryValues( Model,Solver,dt,TransientSimulation )
       
     END DO
   END DO
-
+  
 END SUBROUTINE SaveBoundaryValues
 
 
