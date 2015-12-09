@@ -1444,9 +1444,9 @@ CONTAINS
           Bx(1:n) = GetReal(BC, 'Magnetic Flux Density 1', Found)
           IF (.NOT. Found) Bx = 0._dp
           Bxim(1:n) = GetReal(BC, 'Magnetic Flux Density 1 im', Found)
-          IF (.NOT. Found) By = 0._dp
-          By(1:n) = GetReal(BC, 'Magnetic Flux Density 2', Found)
           IF (.NOT. Found) Bxim = 0._dp
+          By(1:n) = GetReal(BC, 'Magnetic Flux Density 2', Found)
+          IF (.NOT. Found) By = 0._dp
           Byim(1:n) = GetReal(BC, 'Magnetic Flux Density 2 im', Found)
           IF (.NOT. Found) Byim = 0._dp
           DO j = 1,n
