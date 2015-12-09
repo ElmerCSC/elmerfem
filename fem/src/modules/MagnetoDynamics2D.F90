@@ -1079,6 +1079,8 @@ CONTAINS
     LOGICAL :: CoilBody    
     TYPE(ValueList_t), POINTER :: CompParams
 
+    REAL(KIND=dp) :: Bt(nd,2) 
+
 !$omp threadprivate(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
@@ -1176,18 +1178,12 @@ CONTAINS
         END DO
       END DO
 
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-             mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
+      Bt(:,1) = -dbasisdx(:,2)
+      Bt(:,2) =  dbasisdx(:,1)
+      IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
 
-      IF( Csymmetry ) THEN
-        DO p = 1,nd
-          DO q = 1,nd
-            STIFF(p,q) = STIFF(p,q) + IP % s(t) * DetJ * &
-                 (mu/x) * ( Basis(p)*dBasisdx(q,1) + &
-                 Basis(q)*dBasisdx(p,1) + Basis(p)*Basis(q)/x )              
-          END DO
-        END DO
-      END IF
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
+             mu*MATMUL(Bt, TRANSPOSE(Bt))
 
       IF (HBcurve.AND.NewtonRaphson) THEN
         DO p=1,nd
