@@ -1061,7 +1061,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LoadAtIp,&
       JAC(nd,nd),Agrad(3),Load(n),M(2,n),M_ip(2),POTC(nd), C(n), C_ip
 
-    REAL(KIND=dp) :: POT(2,nd),R(n),Babs,mu,muder,Omega
+    REAL(KIND=dp) :: POT(2,nd),R(n),Babs,mu,muder,Omega,nu_tensor(2,2)
 
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
@@ -1075,7 +1075,7 @@ CONTAINS
     LOGICAL :: CoilBody    
     TYPE(ValueList_t), POINTER :: CompParams
 
-    REAL(KIND=dp) :: Bt(nd,2) 
+    REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2) 
 
 !$omp threadprivate(Nodes)
 !------------------------------------------------------------------------------
@@ -1177,9 +1177,17 @@ CONTAINS
       Bt(:,1) = -dbasisdx(:,2)
       Bt(:,2) =  dbasisdx(:,1)
       IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
+      
+      nu_tensor = 0.0_dp
+      nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
+      nu_tensor(2,2) = mu
+
+      DO p = 1,nd
+        Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
+      END DO
 
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-             mu*MATMUL(Bt, TRANSPOSE(Bt))
+             MATMUL(Ht, TRANSPOSE(Bt))
 
       IF (HBcurve.AND.NewtonRaphson) THEN
         DO p=1,nd
