@@ -1133,7 +1133,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: nu_tensor(2,2)
     COMPLEX(KIND=dp) :: R(2,2,n)       
 
-    LOGICAL :: Cubic, HBcurve, Found, Stat
+    LOGICAL :: Cubic, HBcurve, Found, Stat, StrandedHomogenization
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
     TYPE(ValueListEntry_t), POINTER :: Lst
@@ -1148,6 +1148,9 @@ CONTAINS
     REAL(KIND=dp) :: Bt(nd,2)
     COMPLEX(KIND=dp) :: Ht(nd,2) 
 
+    REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
+    LOGICAL :: FoundIm
+
 !$omp threadprivate(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
@@ -1159,18 +1162,7 @@ CONTAINS
     Material => GetMaterial(Element)
 
     Omega = GetAngularFrequency(Found=Found)
-
-    Lst => ListFind(Material,'H-B Curve',HBcurve)
-    IF(HBcurve) THEN
-      CALL GetLocalSolution(POT,UElement=Element)
-      POTC=POT(1,:)+im*POT(2,:)
-      Cval => Lst % CubicCoeff
-      Bval => Lst % TValues
-      Hval => Lst % FValues(1,1,:)
-    ELSE
-      CALL GetReluctivity(Material,R,n,Element)
-    END IF
-    
+   
     CoilBody = .FALSE.
     CompParams => GetComponentParams( Element )
     CoilType = ''
@@ -1180,6 +1172,17 @@ CONTAINS
         SELECT CASE (CoilType)
         CASE ('stranded')
            CoilBody = .TRUE.
+           StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
+           IF ( .NOT. Found ) THEN 
+             StrandedHomogenization = .FALSE.
+           ELSE
+             nu_11 = GetReal(CompParams, 'nu 11', Found)
+             nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+             nu_22 = GetReal(CompParams, 'nu 22', Found)
+             nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+           END IF
         CASE ('massive')
            CoilBody = .TRUE.
         CASE ('foil winding')
@@ -1191,6 +1194,17 @@ CONTAINS
       END IF
     END IF
 
+    Lst => ListFind(Material,'H-B Curve',HBcurve)
+    IF(HBcurve) THEN
+      CALL GetLocalSolution(POT,UElement=Element)
+      POTC=POT(1,:)+im*POT(2,:)
+      Cval => Lst % CubicCoeff
+      Bval => Lst % TValues
+      Hval => Lst % FValues(1,1,:)
+    ELSE IF (.NOT. StrandedHomogenization) THEN 
+      CALL GetReluctivity(Material,R,n,Element)
+    END IF
+ 
     C = GetReal( Material, 'Electric Conductivity', Found, Element)
     C = C + im * GetReal( Material, 'Electric Conductivity im', Found, Element)
 
@@ -1235,11 +1249,16 @@ CONTAINS
         nu_tensor(2,2) = mu
       ELSE
         muder=0._dp
-        DO p=1,2
-          DO q=1,2
-            nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
+        IF (StrandedHomogenization) THEN
+          nu_tensor(1,1) = COMPLEX(nu_11, nuim_11, KIND=dp)
+          nu_tensor(2,2) = COMPLEX(nu_22, nuim_22, KIND=dp)
+        ELSE 
+          DO p=1,2
+            DO q=1,2
+              nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
+            END DO
           END DO
-        END DO
+        END IF 
      END IF
 
 
