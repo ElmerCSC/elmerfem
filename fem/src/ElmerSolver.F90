@@ -711,7 +711,7 @@ END INTERFACE
            Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
            IF(.NOT. Found ) Tol = 1.0d-5
            Norm = Var % Norm 
-           IF( ListGetLogidal( Solver % Values,'Reference Norm Absolute', Found ) ) THEN
+           IF( ListGetLogical( Solver % Values,'Reference Norm Absolute', Found ) ) THEN
              Err = ABS( Norm - RefNorm ) 
            ELSE
              Err = ABS( Norm - RefNorm ) / RefNorm 
