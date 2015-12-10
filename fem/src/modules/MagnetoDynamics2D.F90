@@ -1149,6 +1149,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: Ht(nd,2) 
 
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
+    REAL(KIND=dp) :: nu_val, nuim_val
     LOGICAL :: FoundIm
 
 !$omp threadprivate(Nodes)
@@ -1166,6 +1167,7 @@ CONTAINS
     CoilBody = .FALSE.
     CompParams => GetComponentParams( Element )
     CoilType = ''
+    StrandedHomogenization = .FALSE.
     IF (ASSOCIATED(CompParams)) THEN
       CoilType = GetString(CompParams, 'Coil Type', Found)
       IF (Found) THEN
@@ -1250,8 +1252,12 @@ CONTAINS
       ELSE
         muder=0._dp
         IF (StrandedHomogenization) THEN
-          nu_tensor(1,1) = COMPLEX(nu_11, nuim_11, KIND=dp)
-          nu_tensor(2,2) = COMPLEX(nu_22, nuim_22, KIND=dp)
+          nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
+          nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
+          nu_tensor(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
+          nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
+          nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
+          nu_tensor(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
         ELSE 
           DO p=1,2
             DO q=1,2
