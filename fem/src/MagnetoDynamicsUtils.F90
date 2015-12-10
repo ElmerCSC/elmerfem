@@ -187,6 +187,37 @@
   END FUNCTION GetTensor
 !------------------------------------------------------------------------------ 
 
+!------------------------------------------------------------------------------
+  FUNCTION GetCMPLXTensor(Element, n, tsize, varname, Found) &
+                  RESULT (T)
+!------------------------------------------------------------------------------
+    USE DefUtils
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: n, i, j, slen, tsize 
+    COMPLEX(KIND=dp) :: T(tsize,tsize,n)
+    REAL(KIND=dp) :: TRe(tsize,tsize,n), TIm(tsize,tsize,n)
+    CHARACTER(LEN=2) :: Part
+    CHARACTER(LEN=*) :: varname
+    LOGICAL, OPTIONAL :: Found
+    LOGICAL :: FoundRe, FoundIm
+
+    T=0._dp
+    TRe=0._dp
+    TIm=0._dp
+    TRe = GetTensor(Element,n,tsize,varname,'re',FoundRe)
+    TIm = GetTensor(Element,n,tsize,varname,'im',FoundIm)
+    Found = FoundRe .OR. FoundIm
+    DO i=1,tsize
+       DO j=1,tsize
+          T( i,j,1:n ) = CMPLX( REAL(TRe( i,j,1:n )), TIm( i,j,1:n ), KIND=dp)
+       END DO
+    END DO
+!------------------------------------------------------------------------------
+  END FUNCTION GetCMPLXTensor
+!------------------------------------------------------------------------------ 
+
+
 !-------------------------------------------------------------------
   FUNCTION Get2x2MatrixInverse(M) &
    RESULT (Minv)
@@ -226,6 +257,48 @@
 
 !-------------------------------------------------------------------
   END FUNCTION Get2x2TensorInverse
+!-------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+  FUNCTION Get2x2CMPLXMatrixInverse(M) &
+   RESULT (Minv)
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: M(2,2), Minv(2,2)
+    COMPLEX(KIND=dp) :: det, a, b, c, d 
+    REAL(KIND=dp) :: r
+
+    a = M(1,1); b = M(1,2); c=M(2,1); d=M(2,2)
+    Minv=0._dp
+  
+    IF ( ABS(a) <= TINY(r) .AND. ABS(b) <= TINY(r) .AND. &
+         ABS(c) <= TINY(r) .AND. ABS(d) <= TINY(r)         ) RETURN
+    det = a*d-b*c
+    IF (ABS(det) <= TINY(r)) CALL Fatal('Get2x2MatrixInverse', 'Determinant is zero! This should not happen...') 
+    
+    Minv(1,1) =  1/det * d
+    Minv(1,2) = -1/det * b 
+    Minv(2,1) = -1/det * c 
+    Minv(2,2) =  1/det * a 
+    
+!-------------------------------------------------------------------
+  END FUNCTION Get2x2CMPLXMatrixInverse
+!-------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+  FUNCTION Get2x2CMPLXTensorInverse(T, n) &
+    RESULT (Tinv)
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+    COMPLEX(KIND=dp) :: T(2,2,n), Tinv(2,2,n)
+    INTEGER :: i, n
+
+    DO i = 1, n
+      Tinv(:,:,i) = Get2x2CMPLXMatrixInverse(T(:,:,i))
+    END DO
+
+!-------------------------------------------------------------------
+  END FUNCTION Get2x2CMPLXTensorInverse
 !-------------------------------------------------------------------
 
 

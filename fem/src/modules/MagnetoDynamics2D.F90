@@ -458,6 +458,7 @@ CONTAINS
       !------------------------------------------
       LoadAtIP = SUM( Basis(1:n) * LOAD(1:n) )
 
+      nu_tensor = 0.0_dp
       IF (HBcurve) THEN
         Agrad = MATMUL( POT,dBasisdx )
         Babs = MAX( SQRT(SUM(Agrad**2)), 1.d-8 )
@@ -467,7 +468,6 @@ CONTAINS
         nu_tensor(2,2) = mu
       ELSE
         muder=0._dp
-        nu_tensor = 0.0_dp
         DO p=1,n
           DO q=1,n
             nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
@@ -1129,8 +1129,9 @@ CONTAINS
     COMPLEX(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LoadAtIp,&
       JAC(nd,nd),Agrad(3),Load(n),M(2,n),M_ip(2),POTC(nd), C(n), C_ip
 
-    REAL(KIND=dp) :: POT(2,nd),R(n),Babs,mu,muder,Omega
+    REAL(KIND=dp) :: POT(2,nd),Babs,mu,muder,Omega
     COMPLEX(KIND=dp) :: nu_tensor(2,2)
+    COMPLEX(KIND=dp) :: R(2,2,n)       
 
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
@@ -1224,15 +1225,23 @@ CONTAINS
       !------------------------------------------
       LoadAtIP = SUM( LOAD(1:n)*Basis(1:n) )
 
+      nu_tensor = 0.0_dp
       IF (HBcurve) THEN
         Agrad = MATMUL( POTC,dBasisdx )
         Babs = MAX( SQRT(SUM(ABS(Agrad)**2)), 1.d-8 )
         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
         muder = (DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/Babs
+        nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
+        nu_tensor(2,2) = mu
       ELSE
         muder=0._dp
-        mu = SUM( Basis(1:n) * R(1:n) )
-      END IF
+        DO p=1,n
+          DO q=1,n
+            nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
+          END DO
+        END DO
+     END IF
+
 
       C_ip = SUM( Basis(1:n) * C(1:n) )
       M_ip = MATMUL( M,Basis(1:n) )
@@ -1248,10 +1257,6 @@ CONTAINS
       Bt(:,2) =  dbasisdx(:,1)
       IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
       
-      nu_tensor = 0.0_dp
-      nu_tensor(1,1) = CMPLX(mu, 0, KIND=dp) ! Mu is really nu!!! too lazy to correct now...
-      nu_tensor(2,2) = CMPLX(mu, 0, KIND=dp)
-
       DO p = 1,nd
         Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
       END DO
@@ -1296,9 +1301,10 @@ CONTAINS
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    REAL(KIND=dp) :: R(n), R_ip, &
+    REAL(KIND=dp) :: R_ip, &
             Inf_ip,Coord(3),Normal(3),mu,u,v
-
+    
+    COMPLEX(KIND=dp) :: R(2,2,n)       
     COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
 
     TYPE(ValueList_t), POINTER :: Material
@@ -1328,7 +1334,7 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                  IP % W(t), detJ, Basis )
 
-      mu = SUM(Basis(1:n)*R(1:n))
+      mu = SUM(Basis(1:n)*R(1,1,1:n)) !We assume isotropic permeability
 
       Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
       Coord(1) = SUM(Basis(1:n) * Nodes % x(1:n))
@@ -1471,14 +1477,15 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE SetMagneticFluxDensityBC
 !------------------------------------------------------------------------------
-          
+
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivity(Material,Acoef,n,Element)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
-    REAL(KIND=dp) :: Acoef(:)
-    TYPE(Element_t), OPTIONAL :: Element
+    COMPLEX(KIND=dp) :: Acoef(2,2,n)
+    TYPE(Element_t), POINTER, OPTIONAL :: Element
 !------------------------------------------------------------------------------
     LOGICAL :: Found
     REAL(KIND=dp), SAVE :: Avacuum
@@ -1493,16 +1500,16 @@ CONTAINS
       FirstTime = .FALSE.
     END IF
 
-    Acoef(1:n) = GetReal( Material, 'Relative Permeability', Found, Element )
+    Acoef = GetCMPLXTensor(Element, n, 2, 'Relative Permeability', Found)
     IF ( Found ) THEN
-      Acoef(1:n) = Avacuum * Acoef(1:n)
+      Acoef = Avacuum * Acoef
     ELSE
-      Acoef(1:n) = GetReal( Material, 'Permeability', Found, Element )
+      Acoef = GetCMPLXTensor(Element, n, 2, 'Permeability', Found)
     END IF
     IF ( Found ) THEN
-      Acoef(1:n) = 1._dp / Acoef(1:n)
+      Acoef = Get2x2CMPLXTensorInverse(Acoef, n)
     ELSE
-      Acoef(1:n) = GetReal( Material, 'Reluctivity', Found, Element )
+      Acoef = GetCMPLXTensor(Element, n, 2, 'Reluctivity', Found)
     END IF
     
     IF( .NOT. Found ) THEN
