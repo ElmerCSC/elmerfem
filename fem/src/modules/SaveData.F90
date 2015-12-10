@@ -1852,9 +1852,9 @@ CONTAINS
     REAL(KIND=dp) :: fluxes(:), areas(:)
     INTEGER :: fluxescomputed(:)
     
-    INTEGER :: t, FluxBody, LBody, RBody
+    INTEGER :: t, FluxBody, LBody, RBody, NActive
     TYPE(Element_t), POINTER :: Element, Parent    
-    TYPE(ValueList_t), POINTER :: Material
+    TYPE(ValueList_t), POINTER :: Material, BCVal
     REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
     REAL(KIND=dp) :: Basis(Model % MaxElementNodes),dBasisdx(Model % MaxElementNodes,3),&
         ParentBasis(Model % MaxElementNodes),&
@@ -1864,6 +1864,7 @@ CONTAINS
     REAL(KIND=dp) :: func, coeff, Normal(3), Flow(3), flux
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:) => Null()
     INTEGER, POINTER :: ParentIndexes(:), PermIndexes(:)
+    REAL(KIND=dp) :: LocalVectorSolution(3,35)
 
     LOGICAL :: Stat, Permutated    
     INTEGER :: i,j,k,p,q,DIM,bc,NoDofs,pn,hits,istat
@@ -1919,11 +1920,24 @@ CONTAINS
     coeff = 1.0_dp
 
 
-    DO t = Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements &
-        + Mesh % NumberOfBoundaryElements
+    NActive = GetNOFBoundaryElements()
 
-      Element => Mesh % Elements(t)
-      Model % CurrentElement => Mesh % Elements(t)
+    DO t = 1, NActive !Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements &
+        !+ Mesh % NumberOfBoundaryElements
+
+      !Element => Mesh % Elements(t)
+
+      Element => GetBoundaryElement(t, Var % Solver)
+      BCVal => GetBC()
+      IF (.NOT. ASSOCIATED(BCVal) ) CYCLE
+      IF (.NOT. ActiveBoundaryElement(Element, Var % Solver)) CYCLE
+
+      IF (NoDOFs .gt. 1) CALL GetVectorLocalSolution(LocalVectorSolution, &
+        UElement=Element, USolver=Var % Solver, UVariable=Var)
+      IF (NoDOFs .eq. 1) CALL GetScalarLocalSolution(LocalVectorSolution(1,:), &
+        UElement=Element, USolver=Var % Solver, UVariable=Var)
+      !Model % CurrentElement => Mesh % Elements(t)
+      Model % CurrentElement => Element
 
       IF ( Element % TYPE % ElementCode == 101 ) CYCLE
 
@@ -2167,13 +2181,15 @@ CONTAINS
             coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))
             
             IF(NoDofs == 1) THEN
-              func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
+              !func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
+              func = SUM( LocalVectorSolution(1,1:n) * Basis(1:n) )
               fluxes(bc) = fluxes(bc) + s * coeff * func
               Minimum = MIN(Minimum, coeff*func)
               Maximum = MAX(Maximum, coeff*func)
             ELSE 
               DO j=1,DIM
-                Flow(j) = coeff * SUM( Var % Values(NoDofs*(PermIndexes(1:n)-1)+j) * Basis(1:n) )
+                !Flow(j) = coeff * SUM( Var % Values(NoDofs*(PermIndexes(1:n)-1)+j) * Basis(1:n) )
+                Flow(j) = coeff * SUM(LocalVectorSolution(j,1:n)*Basis(1:n))
               END DO
               fluxes(bc) = fluxes(bc) + s *  SUM(Normal * Flow)
               Minimum = MIN(Minimum,  SUM(Normal * Flow))
@@ -2185,7 +2201,8 @@ CONTAINS
             coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))
             
             IF(NoDofs == 1) THEN
-              func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
+              !func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
+              func = SUM( LocalVectorSolution(1,1:n) * Basis(1:n) )
               flux = coeff * func 
               fluxes(bc) = fluxes(bc) + s * flux
             ELSE 
