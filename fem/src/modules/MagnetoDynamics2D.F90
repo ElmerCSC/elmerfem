@@ -392,7 +392,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), &
-      LOAD(nd),R(n),C(n), mu,muder,Babs,POT(nd), &
+      LOAD(nd),R(2,2,n),C(n), mu,muder,Babs,POT(nd), &
         JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x
 
     LOGICAL :: Cubic, HBcurve, Found, Stat
@@ -463,10 +463,17 @@ CONTAINS
         Babs = MAX( SQRT(SUM(Agrad**2)), 1.d-8 )
         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
         muder = (DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/Babs
+        nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
+        nu_tensor(2,2) = mu
       ELSE
         muder=0._dp
-        mu = SUM( Basis(1:n) * R(1:n) )
-      END IF
+        nu_tensor = 0.0_dp
+        DO p=1,n
+          DO q=1,n
+            nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
+          END DO
+        END DO
+     END IF
 
       CoilBody = .FALSE.
       CompParams => GetComponentParams( Element )
@@ -505,10 +512,6 @@ CONTAINS
       Bt(:,1) = -dbasisdx(:,2)
       Bt(:,2) =  dbasisdx(:,1)
       IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
-
-      nu_tensor = 0.0_dp
-      nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
-      nu_tensor(2,2) = mu
 
       DO p = 1,nd
         Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
@@ -555,7 +558,7 @@ CONTAINS
     LOGICAL :: Stat
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
-    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), R(n), R_ip, &
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), R(2,2,n), R_ip, &
             Inf_ip,Coord(3),Normal(3),mu,u,v
 
     TYPE(ValueList_t), POINTER :: Material
@@ -586,7 +589,7 @@ CONTAINS
                  IP % W(t), detJ, Basis )
 
 
-      mu = SUM(Basis(1:n)*R(1:n))
+      mu = SUM(Basis(1:n)*R(1,1,1:n)) ! We assume isotropic reluctivity here.
 
       Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
       Coord(1) = SUM(Basis(1:n) * Nodes % x(1:n))
@@ -720,10 +723,11 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivity(Material,Acoef,n,Element)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
-    REAL(KIND=dp) :: Acoef(:)
-    TYPE(Element_t), OPTIONAL :: Element
+    REAL(KIND=dp) :: Acoef(2,2,n)
+    TYPE(Element_t), POINTER, OPTIONAL :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp), SAVE :: Avacuum
     LOGICAL :: Found
@@ -738,16 +742,17 @@ CONTAINS
       FirstTime = .FALSE.
     END IF
 
-    Acoef(1:n) = GetReal( Material, 'Relative Permeability', Found,Element )
+    Acoef = GetTensor(Element, n, 2, 'Relative Permeability', 're', Found)
+
     IF ( Found ) THEN
-      Acoef(1:n) = Avacuum * Acoef(1:n)
+      Acoef = Avacuum * Acoef
     ELSE
-      Acoef(1:n) = GetReal( Material, 'Permeability', Found,Element )
+      Acoef = GetTensor(Element, n, 2, 'Permeability', 're', Found)
     END IF
     IF ( Found ) THEN
-      Acoef(1:n) = 1._dp / Acoef(1:n)
+      Acoef = Get2x2TensorInverse(Acoef, n)
     ELSE
-      Acoef(1:n) = GetReal( Material, 'Reluctivity', Found,Element )
+      Acoef = GetTensor(Element, n, 2, 'Reluctivity', 're', Found)
     END IF
 
     IF( .NOT. Found ) THEN
