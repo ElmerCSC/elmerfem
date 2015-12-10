@@ -3,6 +3,12 @@ SUBROUTINE mpi_init(ierr)
   ierr = 0
 END SUBROUTINE mpi_init
 
+SUBROUTINE mpi_init_thread(req, prov, ierr)
+  INTEGER :: req, prov, ierr
+  prov = req
+  ierr = 0
+END SUBROUTINE mpi_init_thread
+
 SUBROUTINE mpi_finalize(ierr)
   INTEGER :: ierr
   ierr = 0

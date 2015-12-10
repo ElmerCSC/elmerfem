@@ -20,7 +20,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 5
+  Max Output Level = 6
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Steady state
@@ -28,8 +28,8 @@ Simulation
   Output Intervals = 1
   Timestepping Method = BDF
   BDF Order = 1
-  Solver Input File = case.sif
-  Post File = case.vtu
+!  Solver Input File = case.sif
+!  Post File = case.vtu
 End
 
 Constants
@@ -67,13 +67,13 @@ Solver 1
   Element= p:2
 End
 
-!Solver 2
-!  Exec Solver = After Simulation
-!  Equation = SaveScalars
-!  Procedure = "SaveData" "SaveScalars"
-!  Filename = "displacement.dat"
-!  Save Coordinates (2,3) = 750 0 10 750 200 10
-!End
+Solver 2
+  Exec Solver = After Simulation
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "displacement.dat"
+  Save Coordinates (2,3) = 750 0 10 750 200 10
+End
 
 Equation 1
   Name = "Elast"
@@ -104,8 +104,4 @@ Boundary Condition 2
 End
 
 Solver 1 :: Reference Norm = Real 0.96441612 
-Solver 1 :: Reference Norm Tolerance = Real 1.0
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.96441612 ,EPS=1.0\n" );
-
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5

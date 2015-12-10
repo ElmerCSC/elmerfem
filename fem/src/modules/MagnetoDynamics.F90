@@ -303,13 +303,15 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
     IF (PiolaVersion) THEN
       IF ( Transient ) THEN
         IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, "Element", "n:1 e:2 -tri_face b:2" )  
+          CALL ListAddString( SolverParams, &
+              "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
         ELSE
           CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
         END IF
       ELSE
         IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, "Element", "n:0 e:2 -tri_face b:2" )  
+          CALL ListAddString( SolverParams, "Element", &
+              "n:0 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
         ELSE
           CALL ListAddString( SolverParams, "Element", "n:0 e:1 -brick b:3 -quad_face b:2" )
         END IF
@@ -413,7 +415,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         'The option > Use Tree Gauge < is not available',Level=4)
     IF (SecondOrder) &
          CALL Info('WhitneyAVSolver', &
-        'Using quadratic approximation, the background mesh should consist of element types 504 or 510 ',Level=4)
+        'Using quadratic approximation, pyramidical elements are not yet available',Level=4)
   END IF
 
   !Allocate some permanent storage, this is done first time only:
@@ -2855,7 +2857,8 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
     IF (PiolaVersion) THEN    
        IF (SecondOrder) THEN
-          CALL ListAddString( SolverParams, "Element", "n:1 e:2 -tri_face b:2" )
+          CALL ListAddString( SolverParams, &
+              "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )
        ELSE
           CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
        END IF
@@ -2946,7 +2949,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
         'The option > Use Tree Gauge < is not available',Level=4)
     IF (SecondOrder) &
          CALL Info('WhitneyAVHarmonicSolver', &
-        'Using quadratic approximation, the background mesh should consist of element types 504 or 510 ',Level=4)   
+        'Using quadratic approximation, pyramidical elements are not yet available',Level=4)   
   END IF
 
   ! Allocate some permanent storage, this is done first time only:
@@ -5975,9 +5978,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                TRANSPOSE(E(2:2,1:dim)) ) * s
        END IF
        IF(ASSOCIATED(HB) .AND. RealField) THEN 
-         Energy = Energy + s*(PR_ip*SUM(E**2)) + w_dens
+         Energy = Energy + s*(0.5*PR_ip*SUM(E**2) + w_dens)
        ELSE
-         Energy = Energy + s*(PR_ip*SUM(E**2) + R_ip*SUM(B**2))/2
+         Energy = Energy + s*0.5*(PR_ip*SUM(E**2) + R_ip*SUM(B**2))
        END IF
        DO p=1,n
          DO q=1,n

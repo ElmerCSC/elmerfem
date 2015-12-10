@@ -167,6 +167,7 @@ SUBROUTINE MagnetoDynamics2D( Model,Solver,dt,TransientSimulation )
     CALL DefaultFinishAssembly()
 
     CALL DefaultDirichletBCs()
+    CALL SetMagneticFluxDensityBC()
     Norm = DefaultSolve()
  
     IF( Solver % Variable % NonlinConverged == 1 ) EXIT
@@ -391,7 +392,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), &
-      LOAD(nd),R(n),C(n), mu,muder,Babs,POT(nd), &
+      LOAD(nd),R(2,2,n),C(n), mu,muder,Babs,POT(nd), &
         JAC(nd,nd),Agrad(3),C_ip,M(2,n),M_ip(2),x
 
     LOGICAL :: Cubic, HBcurve, Found, Stat
@@ -405,6 +406,9 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: CoilBody    
     TYPE(ValueList_t), POINTER :: CompParams
+
+    REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
+    REAL(KIND=dp) :: nu_tensor(2,2)
 !------------------------------------------------------------------------------
 
     CALL GetElementNodes( Nodes,Element )
@@ -454,15 +458,22 @@ CONTAINS
       !------------------------------------------
       LoadAtIP = SUM( Basis(1:n) * LOAD(1:n) )
 
+      nu_tensor = 0.0_dp
       IF (HBcurve) THEN
         Agrad = MATMUL( POT,dBasisdx )
         Babs = MAX( SQRT(SUM(Agrad**2)), 1.d-8 )
         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
         muder = (DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/Babs
+        nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
+        nu_tensor(2,2) = mu
       ELSE
         muder=0._dp
-        mu = SUM( Basis(1:n) * R(1:n) )
-      END IF
+        DO p=1,2
+          DO q=1,2
+            nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
+          END DO
+        END DO
+     END IF
 
       CoilBody = .FALSE.
       CompParams => GetComponentParams( Element )
@@ -498,18 +509,16 @@ CONTAINS
         END DO
       END IF
 
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-             mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
+      Bt(:,1) = -dbasisdx(:,2)
+      Bt(:,2) =  dbasisdx(:,1)
+      IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
 
-      IF( Csymmetry ) THEN
-        DO p = 1,nd
-          DO q = 1,nd
-            STIFF(p,q) = STIFF(p,q) + IP % s(t) * DetJ * &
-                (mu/x) * ( Basis(p)*dBasisdx(q,1) + &
-                Basis(q)*dBasisdx(p,1) + Basis(p)*Basis(q)/x )              
-          END DO
-        END DO
-      END IF
+      DO p = 1,nd
+        Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
+      END DO
+
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
+             MATMUL(Ht, TRANSPOSE(Bt))
 
       ! Csymmetry is not yet considered in the Newton linearization
       IF (HBcurve .AND. NewtonRaphson) THEN
@@ -549,7 +558,7 @@ CONTAINS
     LOGICAL :: Stat
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
-    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), R(n), R_ip, &
+    REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), R(2,2,n), R_ip, &
             Inf_ip,Coord(3),Normal(3),mu,u,v
 
     TYPE(ValueList_t), POINTER :: Material
@@ -568,7 +577,7 @@ CONTAINS
       Parent=>Element % BoundaryInfo % Right
     END IF
     Material => GetMaterial(Parent)
-    CALL GetReluctivity(Material,R,n,Element)
+    CALL GetReluctivity(Material,R,n,Parent)
 
     !Numerical integration:
     !----------------------
@@ -580,7 +589,7 @@ CONTAINS
                  IP % W(t), detJ, Basis )
 
 
-      mu = SUM(Basis(1:n)*R(1:n))
+      mu = SUM(Basis(1:n)*R(1,1,1:n)) ! We assume isotropic reluctivity here.
 
       Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
       Coord(1) = SUM(Basis(1:n) * Nodes % x(1:n))
@@ -657,14 +666,68 @@ CONTAINS
   END SUBROUTINE LocalMatrixAirGapBC
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+  SUBROUTINE SetMagneticFluxDensityBC()
+!------------------------------------------------------------------------------
+! P. Lombard, G. Meunier, "A general purpose method for electric and magnetic 
+! combined problems for 2D, axisymmetric and transient systems", IEEE Trans.
+! magn. 29(2), p. 1737 - 1740, Mar 1993
+! -ettaka- 
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Matrix_t), POINTER :: A
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), POINTER :: b(:)
+    INTEGER :: i, n, j, k
+    TYPE(ValueList_t), POINTER :: BC
+    LOGICAL :: Found
+    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementNodes), &
+                      By(Solver % Mesh % MaxElementNodes)
+    REAL(KIND=dp) :: x, y
+    INTEGER, POINTER :: Perm(:)
+
+    Perm => Solver % Variable % Perm
+    A => Solver % Matrix
+    b => A % RHS
+    DO i=1,GetNofBoundaryElements()
+      Element => GetBoundaryElement(i)
+      n = GetELementNofNodes()
+      BC => GetBC()
+      IF ( ASSOCIATED(BC)) THEN
+        IF ( ListCheckPresent( BC, 'Magnetic Flux Density 1') .OR. &
+             ListCheckPresent( BC, 'Magnetic Flux Density 2')      &
+            ) THEN
+          Bx = 0._dp
+          By = 0._dp
+
+          Bx(1:n) = GetReal(BC, 'Magnetic Flux Density 1', Found)
+          IF (.NOT. Found) Bx = 0._dp
+          By(1:n) = GetReal(BC, 'Magnetic Flux Density 2', Found)
+          IF (.NOT. Found) By = 0._dp
+          DO j = 1,n
+            k = Element % NodeIndexes(j)
+            x = Mesh % Nodes % x(k)
+            y = Mesh % Nodes % y(k)
+            k = Perm(k)
+            b(k) = y * Bx(j) - x * By(j)
+            CALL ZeroRow(A, k)
+            CALL AddToMatrixElement(A, k, k, 1._dp)
+          END DO 
+        END IF  
+      END IF  
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetMagneticFluxDensityBC
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivity(Material,Acoef,n,Element)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
-    REAL(KIND=dp) :: Acoef(:)
-    TYPE(Element_t), OPTIONAL :: Element
+    REAL(KIND=dp) :: Acoef(2,2,n)
+    TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp), SAVE :: Avacuum
     LOGICAL :: Found
@@ -679,16 +742,17 @@ CONTAINS
       FirstTime = .FALSE.
     END IF
 
-    Acoef(1:n) = GetReal( Material, 'Relative Permeability', Found,Element )
+    Acoef = GetTensor(Element, n, 2, 'Relative Permeability', 're', Found)
+
     IF ( Found ) THEN
-      Acoef(1:n) = Avacuum * Acoef(1:n)
+      Acoef = Avacuum * Acoef
     ELSE
-      Acoef(1:n) = GetReal( Material, 'Permeability', Found,Element )
+      Acoef = GetTensor(Element, n, 2, 'Permeability', 're', Found)
     END IF
     IF ( Found ) THEN
-      Acoef(1:n) = 1._dp / Acoef(1:n)
+      Acoef = Get2x2TensorInverse(Acoef, n)
     ELSE
-      Acoef(1:n) = GetReal( Material, 'Reluctivity', Found,Element )
+      Acoef = GetTensor(Element, n, 2, 'Reluctivity', 're', Found)
     END IF
 
     IF( .NOT. Found ) THEN
@@ -1065,7 +1129,9 @@ CONTAINS
     COMPLEX(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LoadAtIp,&
       JAC(nd,nd),Agrad(3),Load(n),M(2,n),M_ip(2),POTC(nd), C(n), C_ip
 
-    REAL(KIND=dp) :: POT(2,nd),R(n),Babs,mu,muder,Omega
+    REAL(KIND=dp) :: POT(2,nd),Babs,mu,muder,Omega
+    COMPLEX(KIND=dp) :: nu_tensor(2,2)
+    COMPLEX(KIND=dp) :: R(2,2,n)       
 
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
@@ -1078,6 +1144,9 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     LOGICAL :: CoilBody    
     TYPE(ValueList_t), POINTER :: CompParams
+
+    REAL(KIND=dp) :: Bt(nd,2)
+    COMPLEX(KIND=dp) :: Ht(nd,2) 
 
 !$omp threadprivate(Nodes)
 !------------------------------------------------------------------------------
@@ -1156,15 +1225,23 @@ CONTAINS
       !------------------------------------------
       LoadAtIP = SUM( LOAD(1:n)*Basis(1:n) )
 
+      nu_tensor = 0.0_dp
       IF (HBcurve) THEN
         Agrad = MATMUL( POTC,dBasisdx )
         Babs = MAX( SQRT(SUM(ABS(Agrad)**2)), 1.d-8 )
         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
         muder = (DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/Babs
+        nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
+        nu_tensor(2,2) = mu
       ELSE
         muder=0._dp
-        mu = SUM( Basis(1:n) * R(1:n) )
-      END IF
+        DO p=1,2
+          DO q=1,2
+            nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
+          END DO
+        END DO
+     END IF
+
 
       C_ip = SUM( Basis(1:n) * C(1:n) )
       M_ip = MATMUL( M,Basis(1:n) )
@@ -1176,18 +1253,16 @@ CONTAINS
         END DO
       END DO
 
-      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
-             mu*MATMUL(dBasisdx, TRANSPOSE(dBasisdx))
+      Bt(:,1) = -dbasisdx(:,2)
+      Bt(:,2) =  dbasisdx(:,1)
+      IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
+      
+      DO p = 1,nd
+        Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
+      END DO
 
-      IF( Csymmetry ) THEN
-        DO p = 1,nd
-          DO q = 1,nd
-            STIFF(p,q) = STIFF(p,q) + IP % s(t) * DetJ * &
-                 (mu/x) * ( Basis(p)*dBasisdx(q,1) + &
-                 Basis(q)*dBasisdx(p,1) + Basis(p)*Basis(q)/x )              
-          END DO
-        END DO
-      END IF
+      STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + IP % s(t) * DetJ * &
+             MATMUL(Ht, TRANSPOSE(Bt))
 
       IF (HBcurve.AND.NewtonRaphson) THEN
         DO p=1,nd
@@ -1226,9 +1301,10 @@ CONTAINS
     INTEGER :: i,p,q,t
     TYPE(GaussIntegrationPoints_t) :: IP
 
-    REAL(KIND=dp) :: R(n), R_ip, &
+    REAL(KIND=dp) :: R_ip, &
             Inf_ip,Coord(3),Normal(3),mu,u,v
-
+    
+    COMPLEX(KIND=dp) :: R(2,2,n)       
     COMPLEX(KIND=dp) :: STIFF(nd,nd), FORCE(nd)
 
     TYPE(ValueList_t), POINTER :: Material
@@ -1247,7 +1323,7 @@ CONTAINS
       Parent=>Element % BoundaryInfo % Right
     END IF
     Material => GetMaterial(Parent)
-    CALL GetReluctivity(Material,R,n,Element)
+    CALL GetReluctivity(Material,R,n,Parent)
 
     !Numerical integration:
     !----------------------
@@ -1258,7 +1334,7 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                  IP % W(t), detJ, Basis )
 
-      mu = SUM(Basis(1:n)*R(1:n))
+      mu = SUM(Basis(1:n)*R(1,1,1:n)) !We assume isotropic permeability
 
       Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
       Coord(1) = SUM(Basis(1:n) * Nodes % x(1:n))
@@ -1379,9 +1455,9 @@ CONTAINS
           Bx(1:n) = GetReal(BC, 'Magnetic Flux Density 1', Found)
           IF (.NOT. Found) Bx = 0._dp
           Bxim(1:n) = GetReal(BC, 'Magnetic Flux Density 1 im', Found)
-          IF (.NOT. Found) By = 0._dp
-          By(1:n) = GetReal(BC, 'Magnetic Flux Density 2', Found)
           IF (.NOT. Found) Bxim = 0._dp
+          By(1:n) = GetReal(BC, 'Magnetic Flux Density 2', Found)
+          IF (.NOT. Found) By = 0._dp
           Byim(1:n) = GetReal(BC, 'Magnetic Flux Density 2 im', Found)
           IF (.NOT. Found) Byim = 0._dp
           DO j = 1,n
@@ -1401,14 +1477,15 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE SetMagneticFluxDensityBC
 !------------------------------------------------------------------------------
-          
+
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivity(Material,Acoef,n,Element)
 !------------------------------------------------------------------------------
+    USE MGDynMaterialUtils
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
-    REAL(KIND=dp) :: Acoef(:)
-    TYPE(Element_t), OPTIONAL :: Element
+    COMPLEX(KIND=dp) :: Acoef(2,2,n)
+    TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     LOGICAL :: Found
     REAL(KIND=dp), SAVE :: Avacuum
@@ -1423,16 +1500,17 @@ CONTAINS
       FirstTime = .FALSE.
     END IF
 
-    Acoef(1:n) = GetReal( Material, 'Relative Permeability', Found, Element )
+    Acoef = GetCMPLXTensor(Element, n, 2, 'Relative Permeability', Found)
+    
     IF ( Found ) THEN
-      Acoef(1:n) = Avacuum * Acoef(1:n)
+      Acoef = Avacuum * Acoef
     ELSE
-      Acoef(1:n) = GetReal( Material, 'Permeability', Found, Element )
+      Acoef = GetCMPLXTensor(Element, n, 2, 'Permeability', Found)
     END IF
     IF ( Found ) THEN
-      Acoef(1:n) = 1._dp / Acoef(1:n)
+      Acoef = Get2x2CMPLXTensorInverse(Acoef, n)
     ELSE
-      Acoef(1:n) = GetReal( Material, 'Reluctivity', Found, Element )
+      Acoef = GetCMPLXTensor(Element, n, 2, 'Reluctivity', Found)
     END IF
     
     IF( .NOT. Found ) THEN
@@ -1524,7 +1602,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
-              AverageBCompute, BodyICompute, BodyVolumesCompute, &
+              AverageBCompute, BodyICompute, BodyVolumesCompute = .FALSE., &
               HomogenizationParamCompute
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega

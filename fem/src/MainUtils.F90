@@ -77,8 +77,8 @@ CONTAINS
       
       IF( Found ) THEN        
         IF ( ParEnv % PEs > 1 ) THEN
-          IF ( str /= 'mumps' ) THEN
-            CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS direct solver' // &
+          IF ( str /= 'mumps' .AND. str /= 'cpardiso' ) THEN
+            CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS and CPardiso direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 
             CALL ListAddString( Params,'Linear System Direct Method', str)
@@ -111,6 +111,10 @@ CONTAINS
         CASE( 'pardiso' )
 #if !defined(HAVE_PARDISO) && !defined(HAVE_MKL)
           CALL Fatal( 'CheckLinearSolverOptions', 'Pardiso solver has not been installed.' )
+#endif
+        CASE( 'cpardiso')
+#if !defined(HAVE_CPARDISO) || !defined(HAVE_MKL)
+        CALL Fatal( 'CheckSolverOptions', ' Cluster Pardiso solver has not been installed.' )
 #endif
         CASE( 'cholmod','spqr' )
 #ifndef HAVE_CHOLMOD
@@ -3051,6 +3055,7 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL InitializeToZero(Solver % Matrix, Solver % Matrix % rhs)
             
+            CALL ListPushNameSpace('block:')
             CALL ListPushNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
             CALL BlockSystemAssembly(PSolver,dt,Transient,RowVar,ColVar)
             
@@ -3058,7 +3063,7 @@ CONTAINS
             CALL DefaultFinishAssembly()                    
             
             CALL BlockSystemDirichlet(TotMatrix,RowVar,ColVar)
-            CALL ListPopNameSpace()
+            CALL ListPopNameSpace(); CALL ListPopNameSpace()
           END DO
         END DO
       END IF
@@ -4038,6 +4043,7 @@ CONTAINS
        IF(NamespaceFound) CALL ListPopNamespace()
      END IF
      Solver % dt = dt
+     Solver % TimesVisited = Solver % TimesVisited + 1
 
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )

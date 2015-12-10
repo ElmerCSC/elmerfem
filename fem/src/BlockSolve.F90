@@ -772,7 +772,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
 #endif
       rhs_save => Solver % Matrix % RHS
       Solver % Matrix % RHS => b
-    
+
       ! Reuse block preconditioner from the first block to other components
       !--------------------------------------------------------------------
       IF( ListGetLogical( Params,'Block Prec Reuse',Found) ) THEN
@@ -782,7 +782,9 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
         END DO
       END IF
 
+      CALL ListPushNameSpace('block:')
       CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
+
       SkipCompChange = ListGetLogical( Params,'Skip Compute Nonlinear Change',Found)
       CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
 
@@ -868,8 +870,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
 #undef SOLSYS
 #endif
 
-
-    CALL ListPopNameSpace()
+    CALL ListPopNameSpace(); CALL ListPopNameSpace()
 
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
     CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',SkipCompChange)
