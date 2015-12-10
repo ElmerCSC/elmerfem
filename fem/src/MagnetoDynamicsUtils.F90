@@ -153,11 +153,12 @@
     CHARACTER(LEN=*) :: varname
     LOGICAL, OPTIONAL :: Found
 
-    slen = LEN_TRIM(varname)
+    IF (.NOT. ASSOCIATED(Element)) CALL Fatal ('GetTensor', 'Element not associated')
     T=0._dp
     NULLIFY( Cwrk )
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
+      slen = LEN_TRIM(varname)
       IF (Part=='re') THEN 
         CALL ListGetRealArray( Material, &
           varname(1:slen), Cwrk, n, Element % NodeIndexes, Found )

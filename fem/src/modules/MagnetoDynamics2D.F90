@@ -468,8 +468,8 @@ CONTAINS
         nu_tensor(2,2) = mu
       ELSE
         muder=0._dp
-        DO p=1,n
-          DO q=1,n
+        DO p=1,2
+          DO q=1,2
             nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
           END DO
         END DO
@@ -577,7 +577,7 @@ CONTAINS
       Parent=>Element % BoundaryInfo % Right
     END IF
     Material => GetMaterial(Parent)
-    CALL GetReluctivity(Material,R,n,Element)
+    CALL GetReluctivity(Material,R,n,Parent)
 
     !Numerical integration:
     !----------------------
@@ -727,7 +727,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
     REAL(KIND=dp) :: Acoef(2,2,n)
-    TYPE(Element_t), POINTER, OPTIONAL :: Element
+    TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp), SAVE :: Avacuum
     LOGICAL :: Found
@@ -1235,8 +1235,8 @@ CONTAINS
         nu_tensor(2,2) = mu
       ELSE
         muder=0._dp
-        DO p=1,n
-          DO q=1,n
+        DO p=1,2
+          DO q=1,2
             nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
           END DO
         END DO
@@ -1323,7 +1323,7 @@ CONTAINS
       Parent=>Element % BoundaryInfo % Right
     END IF
     Material => GetMaterial(Parent)
-    CALL GetReluctivity(Material,R,n,Element)
+    CALL GetReluctivity(Material,R,n,Parent)
 
     !Numerical integration:
     !----------------------
@@ -1485,7 +1485,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(2,2,n)
-    TYPE(Element_t), POINTER, OPTIONAL :: Element
+    TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     LOGICAL :: Found
     REAL(KIND=dp), SAVE :: Avacuum
@@ -1501,6 +1501,7 @@ CONTAINS
     END IF
 
     Acoef = GetCMPLXTensor(Element, n, 2, 'Relative Permeability', Found)
+    
     IF ( Found ) THEN
       Acoef = Avacuum * Acoef
     ELSE
@@ -1601,7 +1602,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: SaveRHS(:)  
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
-              AverageBCompute, BodyICompute, BodyVolumesCompute, &
+              AverageBCompute, BodyICompute, BodyVolumesCompute = .FALSE., &
               HomogenizationParamCompute
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
