@@ -1805,7 +1805,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: CompParams
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType, bodyNumber, XYNumber
     LOGICAL :: CoilBody, EddyLoss
-    COMPLEX(KIND=dp) :: imag_value
+    COMPLEX(KIND=dp) :: imag_value, imag_value2
     INTEGER :: IvarId, ReIndex, ImIndex, VvarDofs, VvarId
     REAL(KIND=DP) :: grads_coeff, nofturns
     REAL(KIND=DP) :: i_multiplier_re, i_multiplier_im, ModelDepth
@@ -1986,7 +1986,7 @@ CONTAINS
         BodyId = GetBody()
         Material => GetMaterial()
         mu = GetReal( Material, 'Relative Permeability', Found)
-        mu = mu * 4._dp-7*PI
+        mu = mu * 4.d-7*PI
         IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
       END IF
 
@@ -2075,7 +2075,6 @@ CONTAINS
           TotalHeating = TotalHeating + Weight * BAtIp(6)
           BAtIp(7) = CondAtIp * PotAtIp(1)
           BAtIp(8) = CondAtIp * PotAtIp(2)
-          
         END IF
         
         IF( LossEstimation ) THEN
@@ -2092,10 +2091,17 @@ CONTAINS
         END IF
 
         IF (ComplexPowerCompute) THEN
-          BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) + ModelDepth * Weight * BAtIp(6)
-          imag_value = CMPLX(BatIp(1), BatIp(2), KIND=dp)
+          imag_value = CMPLX(BAtIp(7), BAtIp(8))
+
+          IF ( CondAtIp > TINY(CondAtIp) ) THEN
+            BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) + ModelDepth * Weight * imag_value**2._dp / CondAtIp
+          END IF
+
+          imag_value = CMPLX(BatIp(1), BatIp(3), KIND=dp)
+          imag_value2 = CMPLX(BatIp(2), BatIp(4), KIND=dp)
           BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + &
-                         ModelDepth * Weight * Omega/MuAtIp * imag_value**2._dp
+                         ModelDepth * Weight * Omega/MuAtIp * (imag_value**2._dp+imag_value2**2._dp)
+          
         END IF
 
        
@@ -2286,8 +2292,13 @@ CONTAINS
       DO j = 1,Model % NumberOfBodies
         ValueNorm = SQRT(BodyCurrent(1,j)**2 + BodyCurrent(2,j)**2)
         IF (ValueNorm > TINY(ValueNorm)) THEN
-          BodySkinCond(1,j) = 1._dp/(BodyComplexPower(1,j)/ValueNorm**2/BodyVolumes(j))
-          BodySkinCond(2,j) = 1._dp/(BodyComplexPower(2,j)/ValueNorm**2/BodyVolumes(j))
+          imag_value = CMPLX(BodyComplexPower(1,j), &
+                             BodyComplexPower(2,j), &
+                             KIND=dp)
+          imag_value = imag_value*BodyVolumes(j)/(ModelDepth*ValueNorm)**2
+          imag_value2 = 1._dp/imag_value
+          BodySkinCond(1,j) = REAL(imag_value2) 
+          BodySkinCond(2,j) = AIMAG(imag_value2) 
         ELSE
           BodySkinCond(1,j) = TINY(ValueNorm)
           BodySkinCond(2,j) = TINY(ValueNorm)
@@ -2295,8 +2306,13 @@ CONTAINS
         ValueNorm = SQRT(BodyAvBre(1,j)**2 + BodyAvBim(2,j)**2)
         ValueNorm = ValueNorm + SQRT(BodyAvBre(2,j)**2 + BodyAvBim(2,j)**2) 
         IF (ValueNorm > TINY(ValueNorm)) THEN
-          BodyProxNu(1,j) = BodyComplexPower(1,j)/ValueNorm**2/BodyVolumes(j)
-          BodyProxNu(2,j) = BodyComplexPower(2,j)/ValueNorm**2/BodyVolumes(j)
+          imag_value = CMPLX(BodyComplexPower(1,j), &
+                             BodyComplexPower(2,j), &
+                             KIND=dp)
+          imag_value = imag_value / im / BodyVolumes(j) / Omega / ValueNorm**2._dp
+!          imag_value = imag_value / (4d-7 * pi) 
+          BodyProxNu(1,j) = REAL(imag_value) 
+          BodyProxNu(2,j) = AIMAG(imag_value) 
         ELSE
           BodyProxNu(1,j) = HUGE(ValueNorm)
           BodyProxNu(2,j) = HUGE(ValueNorm)
