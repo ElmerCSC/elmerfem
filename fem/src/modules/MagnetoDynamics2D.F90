@@ -1961,7 +1961,7 @@ CONTAINS
         BodyId = GetBody()
         Material => GetMaterial()
         mu = GetReal( Material, 'Relative Permeability', Found)
-        mu = mu * 4._dp-7*PI
+        mu = mu * 4.d-7*PI
         IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
       END IF
 
@@ -2076,6 +2076,7 @@ CONTAINS
           imag_value2 = CMPLX(BatIp(2), BatIp(4), KIND=dp)
           BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + &
                          ModelDepth * Weight * Omega/MuAtIp * (imag_value**2._dp+imag_value2**2._dp)
+          
         END IF
 
        
