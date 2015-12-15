@@ -1111,6 +1111,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
                                                         'Component parameters not found')
 
 
+          StrandedHomogenization = .FALSE.
           CoilType = GetString(CompParams, 'Coil Type', Found)
           IF (.NOT. Found) CoilType = ''
           
@@ -1118,7 +1119,6 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           nd = GetElementNOFDOFs(Element,ASolver)
           SELECT CASE(CoilType)
           CASE ('stranded')
-            StrandedHomogenization = .FALSE.
             StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
             IF ( StrandedHomogenization ) THEN 
               sigma_33 = 0._dp

@@ -1175,9 +1175,9 @@ CONTAINS
         CASE ('stranded')
            CoilBody = .TRUE.
            StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
-           IF ( .NOT. Found ) THEN 
-             StrandedHomogenization = .FALSE.
-           ELSE
+           IF ( .NOT. Found ) StrandedHomogenization = .FALSE.
+             
+           IF ( StrandedHomogenization ) THEN
              nu_11 = 0._dp
              nuim_11 = 0._dp
              nu_11 = GetReal(CompParams, 'nu 11', Found)
@@ -1189,6 +1189,7 @@ CONTAINS
              nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
              IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
            END IF
+
         CASE ('massive')
            CoilBody = .TRUE.
         CASE ('foil winding')
@@ -1939,9 +1940,9 @@ CONTAINS
           i_multiplier = i_multiplier_re + im * i_multiplier_im
 
           StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
-          IF ( .NOT. Found ) THEN 
-            StrandedHomogenization = .FALSE.
-          ELSE
+          IF ( .NOT. Found ) StrandedHomogenization = .FALSE.
+
+          IF ( StrandedHomogenization ) THEN 
 !            nu_11 = 0._dp
 !            nuim_11 = 0._dp
 !            nu_11 = GetReal(CompParams, 'nu 11', Found)
@@ -2109,10 +2110,11 @@ CONTAINS
           END SELECT
 
           BAtIp(5) = 0.5_dp * ( PotAtIp(1)**2 + PotAtIp(2)**2 )  
-          BAtIp(6) = CondAtIp * BAtIp(5) 
+          BAtIp(6) = REAL(CondAtIp * BAtIp(5)) 
           TotalHeating = TotalHeating + Weight * BAtIp(6)
-          BAtIp(7) = CondAtIp * PotAtIp(1)
-          BAtIp(8) = CondAtIp * PotAtIp(2)
+          imag_value = CMPLX(PotAtIp(1), PotAtIp(2), KIND=dp)
+          BAtIp(7) = REAL(CondAtIp * imag_value)
+          BAtIp(8) = AIMAG(CondAtIp * imag_value)
         END IF
         
         IF( LossEstimation ) THEN
