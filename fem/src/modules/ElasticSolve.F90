@@ -185,7 +185,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
   
 
-  LOGICAL :: GotForceBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
+  LOGICAL :: GotForceBC, GotFSIBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
        CauchyResponseFunction  = .FALSE., UseUMAT = .FALSE., AxialSymmetry
   LOGICAL :: PseudoTraction, GlobalPseudoTraction
@@ -790,7 +790,6 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            GotForceBC = GotForceBC .OR. GotIt
 
            GotForceBC = GotForceBC .OR. GetLogical( BC, 'Force BC', GotIt )
-           GotForceBC = GotForceBC .OR. GetLogical( BC, 'FSI BC', GotIt )
 
            SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
            IF ( .NOT. NormalSpring ) THEN
@@ -806,7 +805,11 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
               END DO
            END IF
 
-           IF ( .NOT. GotForceBC .AND. ALL( SpringCoeff==0.0d0 ) ) CYCLE
+           GotFSIBC = GetLogical( BC, 'FSI BC', GotIt )
+           IF(.NOT. GotIt ) GotFSIBc = ASSOCIATED( FlowSol  ) 
+
+           IF ( .NOT. GotForceBC .AND. .NOT. GotFSIBC .AND. ALL( SpringCoeff==0.0d0 ) ) CYCLE
+
            PseudoTraction = GetLogical( BC, 'Pseudo-Traction', GotIt)
            IF(.NOT. GotIt ) PseudoTraction = GlobalPseudoTraction
            !------------------------------------------------------------------------------
@@ -837,7 +840,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            FlowNOFNodes = 1
 
            ! Note: Here the flow solution is not interpolated using the full p-basis
-           IF ( ASSOCIATED( FlowSol  ) ) THEN
+           IF ( GotFSIBC ) THEN
               FlowElement => CurrentElement % BoundaryInfo % Left
 
               IF ( .NOT. ASSOCIATED(FlowElement) ) THEN
