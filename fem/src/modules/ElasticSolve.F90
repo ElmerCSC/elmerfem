@@ -221,7 +221,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        PrevLocalDisplacement(:,:), SpringCoeff(:,:,:)
          
   REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), &
-       Tdiff,Normal(3),s, UnitNorm
+       Tdiff,Normal(3),s, UnitNorm,DragCoeff
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
 !------------------------------------------------------------------------------
@@ -884,18 +884,28 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                  j = ListGetInteger( Model % Bodies(FlowElement % BodyId) &
                       % Values,'Material', minv=1, maxv=Model % NumberOFMaterials )
                  Material => Model % Materials(j) % Values
+                 DragCoeff = ListGetCReal( BC,'FSI Drag Coefficient',GotIt)
+
+                 
                  Viscosity(1:FlowNOFNodes) = ListGetReal( &
-                      Material,'Viscosity',FlowNOFNodes,AdjacentNodes,gotIt )
-
+                     Material,'Viscosity',FlowNOFNodes,AdjacentNodes,gotIt )
+                 
                  CompressibilityFlag = ListGetString( Material, &
-                      'Compressibility Model', GotIt )
-
+                     'Compressibility Model', GotIt )
+                 
                  CompressibilityDefined = .FALSE.
                  IF ( GotIt ) THEN
-                    IF ( CompressibilityFlag /= 'incompressible' ) THEN
-                       CompressibilityDefined = .TRUE.
-                    END IF
+                   IF ( CompressibilityFlag /= 'incompressible' .AND. &
+                       CompressibilityFlag /= 'artificial compressible') THEN
+                     CompressibilityDefined = .TRUE.
+                   END IF
                  END IF
+                 
+                 DragCoeff = ListGetCReal( BC,'FSI Drag Multiplier',GotIt)
+                 IF(GotIt) THEN
+                   Viscosity(1:FlowNOFNodes) = DragCoeff * Viscosity(1:FlowNOFNodes) 
+                 END IF
+
               END IF
            END IF
 
