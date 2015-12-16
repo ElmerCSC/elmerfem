@@ -1791,7 +1791,7 @@ CONTAINS
         Omega,TotalHeating, DesiredHeating, HeatingCoeff
     COMPLEX(KIND=dp) :: CondAtIp
     REAL(KIND=dp) :: Freq, FreqPower, FieldPower, ComponentLoss(2), LossCoeff, &
-        ValAtIp, TotalLoss, x
+        ValAtIp, ValAtIpim, TotalLoss, x
     LOGICAL :: Found, SetHeating
     TYPE(ValueList_t), POINTER :: Material
 
@@ -1955,10 +1955,10 @@ CONTAINS
 !            nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
 !            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('MagnetoDynamicsCalcFields', &
 !                                                      'Homogenization Model nu 22 not found!')
-            sigma_33 = 0._dp
-            sigmaim_33 = 0._dp
             sigma_33 = GetReal(CompParams, 'sigma 33', Found)
+            IF ( .NOT. Found ) sigma_33 = 0._dp
             sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
+            IF ( .NOT. FoundIm ) sigmaim_33 = 0._dp
             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('MagnetoDynamicsCalcFields', &
                                                                  'Homogenization Model Sigma 33 not found!')
           END IF
@@ -2070,9 +2070,15 @@ CONTAINS
   
         ! Joule heating fields
         IF( TotDofs > 4 ) THEN
-          CondAtIp = CMPLX(SUM( Basis(1:n) * Cond(1:n) ), 0._dp, KIND=dp)
-          IF ( StrandedHomogenization ) CondAtIp = CMPLX(SUM(Basis(1:n) * sigma_33(1:n)), &
-                                                         SUM(Basis(1:n) * sigmaim_33(i:n)), KIND=dp)
+          IF ( StrandedHomogenization ) THEN 
+            ValAtIp = SUM(Basis(1:n) * sigma_33(1:n))
+            ValAtIpim = SUM(Basis(1:n) * sigmaim_33(1:n))
+          ELSE
+            ValAtIp = SUM( Basis(1:n) * Cond(1:n) )
+            ValAtIpim = 0._dp
+          END IF
+          CondAtIp = ValAtIp + im * ValAtIpim
+                                                         
           IF (CoilType /= 'stranded') THEN
             PotAtIp(1) =   Omega * SUM(POT(2,1:nd) * Basis(1:nd))
             PotAtIp(2) = - Omega * SUM(POT(1,1:nd) * Basis(1:nd))
@@ -2109,12 +2115,13 @@ CONTAINS
             PotAtIp(2) = PotAtIp(2)-grads_coeff*localV(2)
           END SELECT
 
-          BAtIp(5) = 0.5_dp * ( PotAtIp(1)**2 + PotAtIp(2)**2 )  
-          BAtIp(6) = REAL(CondAtIp * BAtIp(5)) 
+          BAtIp(5) = 0.5_dp * ( PotAtIp(1)**2 + PotAtIp(2)**2 )
+          BAtIp(6) = REAL(CondAtIp * BAtIp(5))
           TotalHeating = TotalHeating + Weight * BAtIp(6)
-          imag_value = CMPLX(PotAtIp(1), PotAtIp(2), KIND=dp)
-          BAtIp(7) = REAL(CondAtIp * imag_value)
-          BAtIp(8) = AIMAG(CondAtIp * imag_value)
+          imag_value = CondAtIp * (PotAtIp(1) + im * PotAtIp(2))
+          BAtIp(7) = REAL(imag_value)
+          BAtIp(8) = AIMAG(imag_value)
+
         END IF
         
         IF( LossEstimation ) THEN
