@@ -1927,11 +1927,10 @@ CONTAINS
       Element => GetBoundaryElement(t, Var % Solver)
       BCVal => GetBC()
       IF (.NOT. ASSOCIATED(BCVal) ) CYCLE
-      IF (.NOT. ActiveBoundaryElement(Element, Var % Solver)) CYCLE
 
-      IF (NoDOFs .gt. 1) CALL GetVectorLocalSolution(LocalVectorSolution, &
+      IF (NoDOFs > 1) CALL GetVectorLocalSolution(LocalVectorSolution, &
         UElement=Element, USolver=Var % Solver, UVariable=Var)
-      IF (NoDOFs .eq. 1) CALL GetScalarLocalSolution(LocalVectorSolution(1,:), &
+      IF (NoDOFs == 1) CALL GetScalarLocalSolution(LocalVectorSolution(1,:), &
         UElement=Element, USolver=Var % Solver, UVariable=Var)
       Model % CurrentElement => Element
 
