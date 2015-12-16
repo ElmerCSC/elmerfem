@@ -72,13 +72,13 @@ Solver 1
 !  Nonlinear System Linesearch = Logical True
 !  Nonlinear System Linesearch Linear = Logical True
 
-  Block: Linear System Solver = "iterative"
-  Block: Linear System Refactorize = False
-  Block: Linear System Convergence Tolerance = 1e-2
-  Block: Linear System Iterative Method = BiCGStab
-  Block: Linear System Max Iterations = 500
-  Block: Linear System Residual Output = 20
-  Block: Linear System Preconditioning = Ilu0
+  Linear System Solver = "iterative"
+  Linear System Refactorize = False
+  Linear System Convergence Tolerance = 1e-2
+  Linear System Iterative Method = BiCGStab
+  Linear System Max Iterations = 500
+  Linear System Residual Output = 20
+  Linear System Preconditioning = Ilu0
 
   Linear System Block Method = "other"
   Outer: Linear System Solver = "Iterative"
