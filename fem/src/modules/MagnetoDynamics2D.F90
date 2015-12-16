@@ -1752,6 +1752,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
    TotNorm = 0.0_dp
    DO i=1,TotDofs
      Solver % Matrix % RHS => ForceVector(:,i)
+     Solver % Variable % Values = 0
      UNorm = DefaultSolve()
      TotNorm = TotNorm + SUM(Solver % Variable % Values**2)
      IF( i <= FluxDofs ) THEN
