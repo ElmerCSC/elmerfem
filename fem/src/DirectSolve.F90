@@ -1484,7 +1484,6 @@ CONTAINS
     IF ( .NOT. Found ) Factorize = .TRUE.
 
     ! Set matrix type for Pardiso
-    ! TODO: implement complex support
     mat_type = ListGetString( Solver % Values, 'Linear System Matrix Type', Found )
     
     IF (Found) THEN
@@ -1860,6 +1859,434 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> Solves a linear system using Cluster Pardiso direct solver from MKL
+!------------------------------------------------------------------------------
+  SUBROUTINE CPardiso_SolveSystem( Solver,A,x,b,Free_fact )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
+    REAL(KIND=dp), TARGET :: x(*), b(*)
+    LOGICAL, OPTIONAL :: Free_fact
+
+! Cluster Pardiso
+#if defined(HAVE_MKL) && defined(HAVE_CPARDISO)
+    INTERFACE
+        SUBROUTINE cluster_sparse_solver(pt, maxfct, mnum, mtype, phase, n, &
+              values, rows, cols, perm, nrhs, iparm, msglvl, b, x, comm, ierror)
+            USE Types
+            REAL(KIND=dp) :: values(*), b(*), x(*)
+            INTEGER(KIND=AddrInt) :: pt(*)
+            INTEGER :: perm(*), nrhs, iparm(*), msglvl, ierror
+            INTEGER :: maxfct, mnum, mtype, phase, n, rows(*), cols(*), comm
+        END SUBROUTINE cluster_sparse_solver
+    END INTERFACE
+
+    INTEGER :: phase, n, ierror
+    INTEGER, POINTER :: Iparm(:)
+    INTEGER i, j, k, nz, nzutd, idum(1), nl, nt
+    LOGICAL :: Found, matsym, matpd
+    REAL(kind=dp) :: ddum(1)
+    REAL(kind=dp), POINTER, DIMENSION(:) :: dbuf
+
+    LOGICAL :: Factorize, FreeFactorize
+    INTEGER :: tlen, allocstat
+
+    REAL(KIND=dp), POINTER CONTIG :: values(:)
+    INTEGER, POINTER CONTIG :: rows(:), cols(:)
+
+    ! Free factorization if requested
+    IF ( PRESENT(Free_Fact) ) THEN
+        IF ( Free_Fact ) THEN
+            CALL CPardiso_Free(A)
+        END IF
+
+        RETURN
+    END IF
+
+    ! Check if system needs to be refactorized
+    Factorize = ListGetLogical( Solver % Values, &
+                                'Linear System Refactorize', Found )
+    IF ( .NOT. Found ) Factorize = .TRUE.
+
+    ! Compute factorization if necessary
+    IF ( Factorize .OR. .NOT.ASSOCIATED(A % CPardisoID) ) THEN
+        CALL CPardiso_Factorize(Solver, A)
+    END IF
+
+    ! Get global start and end of domain
+    nl = A % CPardisoId % iparm(41)
+    nt = A % CPardisoId % iparm(42)
+
+    ! Gather RHS
+    A % CPardisoId % rhs = 0D0
+    DO i=1,A % NumberOfRows
+        A % CPardisoId % rhs(A % Gorder(i)-nl+1) = b(i)
+    END DO
+
+    ! Perform solve
+    phase = 33      ! Solve, iterative refinement
+    CALL cluster_sparse_solver(A % CPardisoId % ID, &
+          A % CPardisoId % maxfct, A % CPardisoId % mnum, &
+          A % CPardisoId % mtype,  phase, A % CPardisoId % n, &
+          A % CPardisoID % aa, A % CPardisoID % ia, A % CPardisoID % ja, idum, &
+          A % CPardisoId % nrhs, A % CPardisoID % iparm, &
+          A % CPardisoId % msglvl, A % CPardisoId % rhs, &
+          A % CPardisoId % x,  A % Comm, ierror)
+
+    IF (ierror /= 0) THEN
+        WRITE(*,'(A,I0)') 'MKL CPardiso: ERROR=', ierror
+        CALL Fatal('CPardiso_SolveSystem','Error during solve phase')
+    END IF
+
+    ! Distribute solution
+    DO i=1,A % NumberOfRows
+        x(i)=A % CPardisoId % x(A % Gorder(i)-nl+1)
+    END DO
+
+    ! Release memory if needed
+    FreeFactorize = ListGetLogical( Solver % Values, &
+                                    'Linear System Free Factorization', Found )
+    IF ( .NOT. Found ) FreeFactorize = .TRUE.
+
+    IF ( Factorize .AND. FreeFactorize ) THEN
+        CALL CPardiso_Free(A)
+    END IF
+
+#else
+    CALL Fatal( 'CParsido_SolveSystem', 'Cluster Pardiso solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE CPardiso_SolveSystem
+!------------------------------------------------------------------------------
+
+#if defined(HAVE_MKL) && defined(HAVE_CPARDISO)
+  SUBROUTINE CPardiso_Factorize(Solver, A)
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
+
+    INTERFACE
+        SUBROUTINE cluster_sparse_solver(pt, maxfct, mnum, mtype, phase, n, &
+              values, rows, cols, perm, nrhs, iparm, msglvl, b, x, comm, ierror)
+            USE Types
+            REAL(KIND=dp) :: values(*), b(*), x(*)
+            INTEGER(KIND=AddrInt) :: pt(*)
+            INTEGER :: perm(*), nrhs, iparm(*), msglvl, ierror
+            INTEGER :: maxfct, mnum, mtype, phase, n, rows(*), cols(*), comm
+        END SUBROUTINE cluster_sparse_solver
+    END INTERFACE
+
+    LOGICAL :: matsym, matpd, Found
+    INTEGER :: i, j, k, rind, lrow, rptr, rsize, lind, tind
+    INTEGER :: allocstat, n, nz, nzutd, nl, nt, nOwned, nhalo, ierror
+    INTEGER :: phase, idum(1)
+    REAL(kind=dp) :: ddum(1)
+    REAL(kind=dp), DIMENSION(:), POINTER :: aa
+    INTEGER, DIMENSION(:), POINTER CONTIG :: iparm, ia, ja, owner, dsize, iperm, Order
+
+    INTEGER :: fid
+    CHARACTER(LEN=MAX_NAME_LEN) :: mat_type
+
+    ! Free old factorization if neccessary
+    IF (ASSOCIATED(A % CPardisoId)) THEN
+        CALL CPardiso_Free(A)
+    END IF
+
+    ! Allocate Pardiso structure
+    ALLOCATE(A % CPardisoId, STAT=allocstat)
+    IF (allocstat /= 0) THEN
+    CALL Fatal('CPardiso_Factorize', &
+                   'Memory allocation for CPardiso failed')
+    END IF
+    ! Allocate control structures
+    ALLOCATE(A % CPardisoId% ID(64), A % CPardisoId % IParm(64), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+        CALL Fatal('CPardiso_Factorize', &
+                   'Memory allocation for CPardiso failed')
+    END IF
+
+    iparm => A % CPardisoId % IParm
+    ! Initialize control parameters and solver Id's
+    DO i=1,64
+        iparm(i)=0
+    END DO
+    DO i=1,64
+        A % CPardisoId % ID(i)=0
+    END DO
+
+    ! Set matrix type for CPardiso
+    mat_type = ListGetString( Solver % Values, 'Linear System Matrix Type', Found )
+    IF (Found) THEN
+      SELECT CASE(mat_type)
+      CASE('positive definite')
+        A % CPardisoID % mtype = 2
+      CASE('symmetric indefinite')
+        A % CPardisoID % mtype = -2
+      CASE('structurally symmetric')
+        A % CPardisoID % mtype = 1
+      CASE('nonsymmetric', 'general')
+        A % CPardisoID % mtype = 11
+      CASE DEFAULT
+        A % CPardisoID % mtype = 11
+      END SELECT
+    ELSE
+      ! Check if matrix is symmetric or spd
+      matsym = ListGetLogical(Solver % Values, &
+                            'Linear System Symmetric', Found)
+
+      matpd = ListGetLogical(Solver % Values, &
+                    'Linear System Positive Definite', Found)
+
+      IF (matsym) THEN
+        IF (matpd) THEN
+          ! Matrix is symmetric positive definite
+          A % CPardisoID % mtype = 2
+        ELSE
+          ! Matrix is structurally symmetric
+          A % CPardisoID % mtype = 1
+        END IF
+      ELSE
+        ! Matrix is nonsymmetric
+        A % CPardisoID % mtype = 11
+      END IF
+    END IF
+
+    ! Set up continuous numbering for the whole computation domain
+    n = SIZE(A % ParallelInfo % GlobalDOFs)
+    ALLOCATE(A % Gorder(n), Owner(n), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+         CALL Fatal('CPardiso_Factorize', &
+                    'Memory allocation for CPardiso global numbering failed')
+    END IF
+    CALL ContinuousNumbering(A % ParallelInfo, A % Perm, A % Gorder, Owner, nOwn=nOwned)
+
+    ! Compute the number of global dofs
+    CALL MPI_ALLREDUCE(nOwned, A % CPardisoId % n, &
+                       1, MPI_INTEGER, MPI_SUM, A % Comm, ierror)
+    DEALLOCATE(Owner)
+
+    ! Find bounds of domain
+    nl = A % Gorder(1)
+    nt = A % Gorder(1)
+    DO i=2,n
+        ! NOTE: Matrix is structurally symmetric
+        rind = A % Gorder(i)
+        nl = MIN(rind, nl)
+        nt = MAX(rind, nt)
+    END DO
+
+    ! Allocate temp storage for global numbering
+    ALLOCATE(Order(n), iperm(n), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+        CALL Fatal('CPardiso_Factorize', &
+                    'Memory allocation for CPardiso global numbering failed')
+    END IF
+
+    ! Sort global numbering to build matrix
+    Order(1:n) = A % Gorder(1:n)
+    DO i=1,n
+        iperm(i)=i
+    END DO
+    CALL SortI(n, Order, iperm)
+
+    ! Allocate storage for CPardiso matrix
+    nhalo = (nt-nl+1)-n
+    nz = A % Rows(A % NumberOfRows+1)-1
+    IF (ABS(A % CPardisoID % mtype) == 2) THEN
+        nzutd = ((nz-n)/2)+1 + n
+        ALLOCATE(A % CPardisoID % ia(nt-nl+2), &
+                 A % CPardisoId % ja(nzutd+nhalo), &
+                 A % CPardisoId % aa(nzutd+nhalo), &
+                 STAT=allocstat)
+    ELSE
+        ALLOCATE(A % CPardisoID % ia(nt-nl+2), &
+                 A % CPardisoId % ja(nz+nhalo), &
+                 A % CPardisoId % aa(nz+nhalo), &
+                STAT=allocstat)
+    END IF
+    IF (allocstat /= 0) THEN
+        CALL Fatal('CPardiso_Factorize', &
+                   'Memory allocation for CPardiso matrix failed')
+    END IF
+    ia => A % CPardisoId % ia
+    ja => A % CPardisoId % ja
+    aa => A % CPardisoId % aa
+
+    ! Build distributed CRS matrix
+    ia(1) = 1
+    lrow = 1      ! Next row to add
+    rptr = 1      ! Pointer to next row to add, equals ia(lrow)
+    lind = Order(1)-1 ! Row pointer for the first round
+    
+    ! Add rows of matrix 
+    DO i=1,n
+      ! Add empty rows until the beginning of the row to add
+      ! (first round adds nothing due to choice of lind)
+      tind = Order(i)
+      rsize = (tind-lind)-1
+      
+      ! Put zeroes to the diagonal
+      DO j=1,rsize
+        ia(lrow+j)=rptr+j
+        ja(rptr+(j-1))=lind+j
+        aa(rptr+(j-1))=0D0
+      END DO
+      ! Set up row pointers
+      rptr = rptr + rsize
+      lrow = lrow + rsize
+      
+      ! Add next row
+      rind = iperm(i)
+      lind = A % rows(rind)
+      tind = A % rows(rind+1)
+      IF (ABS(A % CPardisoId % mtype) == 2) THEN
+        ! Add only upper triangular elements for symmetric matrices
+        rsize = 0
+        DO j=lind, tind-1
+          IF (A % Gorder(A % Cols(j)) >= Order(i)) THEN
+            ja(rptr+rsize)=A % Gorder(A % Cols(j))
+            aa(rptr+rsize)=A % values(j)
+            rsize = rsize + 1
+          END IF
+        END DO
+
+      ELSE
+        rsize = tind-lind
+        DO j=lind, tind-1
+          ja(rptr+(j-lind))=A % Gorder(A % Cols(j))
+          aa(rptr+(j-lind))=A % values(j)
+        END DO
+      END IF
+        
+      ! Sort column indices
+      CALL SortF(rsize, ja(rptr:rptr+rsize), aa(rptr:rptr+rsize))
+        
+      ! Set up row pointers
+      rptr = rptr + rsize
+      lrow = lrow + 1
+      ia(lrow) = rptr
+
+      lind = Order(i) ! Store row index for next round
+    END DO
+
+    ! Deallocate temp storage
+    DEALLOCATE(Order, iperm)
+
+    ! Set up parameters
+    A % CPardisoId % msglvl    = 0 ! Do not write out = 0 / write out = 1 info
+    A % CPardisoId % maxfct    = 1 ! Set up space for 1 matrix at most
+    A % CPardisoId % mnum      = 1 ! Matrix to use in the solution phase (1st and only one)
+    A % CPardisoId % nrhs      = 1 ! Use only one RHS
+    ALLOCATE(A % CPardisoId % rhs(nt-nl+1), &
+             A % CPardisoId % x(nt-nl+1), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+        CALL Fatal('CPardiso_Factorize', &
+                   'Memory allocation for CPardiso rhs and solution vector x failed')
+    END IF
+
+    ! Set up parameters explicitly
+    iparm(1)=1          ! Do not use = 1 / use = 0 solver default parameters
+    iparm(2)=2          ! Minimize fill-in with OpenMP nested dissection
+    iparm(5)=0          ! No user input permutation
+    iparm(6)=0          ! Write solution vector to x
+    iparm(8)=0          ! Number of iterative refinement steps
+    IF (A % CPardisoID % mtype ==11 .OR. &
+        A % CPardisoID % mtype == 13) THEN
+      iparm(10)=13      ! Perturbation value 10^-iparm(10) in case of small pivots
+      iparm(11)=1       ! Use scalings from symmetric weighted matching
+      iparm(13)=1       ! Use permutations from nonsymmetric weighted matching
+    ELSE
+      iparm(10)=8       ! Perturbation value 10^-iparm(10) in case of small pivots
+      iparm(11)=0       ! Do not use scalings from symmetric weighted matching
+      iparm(13)=0       ! Do not use permutations from symmetric weighted matching
+    END IF
+    
+    iparm(21)=1         ! Do not use Bunch Kaufman pivoting
+    iparm(27)=0         ! Do not check sparse matrix representation
+    iparm(28)=0         ! Use double precision
+    iparm(35)=0         ! Use Fortran indexing
+
+    ! CPardiso matrix input format
+    iparm(40) = 2       ! Distributed solution phase, distributed solution vector
+    iparm(41) = nl      ! Beginning of solution domain
+    iparm(42) = nt      ! End of solution domain
+
+    ! Perform analysis
+    phase = 11      ! Analysis
+    CALL cluster_sparse_solver(A % CPardisoId % ID, &
+          A % CPardisoId % maxfct, A % CPardisoId % mnum, &
+          A % CPardisoId % mtype, phase, A % CPardisoId % n, &
+          aa, ia, ja, idum, A % CPardisoId % nrhs, iparm, &
+          A % CPardisoId % msglvl, &
+          ddum, ddum, A % Comm, ierror)
+    IF (ierror /= 0) THEN
+        WRITE(*,'(A,I0)') 'MKL CPardiso: ERROR=', ierror
+        CALL Fatal('CPardiso_SolveSystem','Error during analysis phase')
+    END IF
+
+    ! Perform factorization
+    phase = 22      ! Factorization
+    CALL cluster_sparse_solver(A % CPardisoId % ID, &
+          A % CPardisoId % maxfct, A % CPardisoId % mnum, &
+          A % CPardisoId % mtype, phase, A % CPardisoId % n, &
+          aa, ia, ja, idum, A % CPardisoId % nrhs, iparm, &
+          A % CPardisoId % msglvl, &
+          ddum, ddum,  A % Comm, ierror)
+    IF (ierror .NE. 0) THEN
+        WRITE(*,'(A,I0)') 'MKL CPardiso: ERROR=', ierror
+        CALL Fatal('CPardiso_SolveSystem','Error during factorization phase')
+    END IF
+  END SUBROUTINE CPardiso_Factorize
+
+
+  SUBROUTINE CPardiso_Free(A)
+    IMPLICIT NONE
+
+    TYPE(Matrix_t) :: A
+    INTERFACE
+        SUBROUTINE cluster_sparse_solver(pt, maxfct, mnum, mtype, phase, n, &
+                           values, rows, cols, perm, nrhs, iparm, &
+                           msglvl, b, x, comm, ierror)
+            USE Types
+            REAL(KIND=dp) :: values(*), b(*), x(*)
+            INTEGER(KIND=AddrInt) :: pt(*)
+            INTEGER :: perm(*), nrhs, iparm(*), msglvl, ierror
+            INTEGER :: maxfct, mnum, mtype, phase, n, rows(*), cols(*), comm
+        END SUBROUTINE cluster_sparse_solver
+    END INTERFACE
+
+    INTEGER :: ierror, phase, idum(1)
+    REAL(kind=dp) :: ddum(1)
+
+    IF(ASSOCIATED(A % CPardisoId)) THEN
+        phase     = -1           ! release internal memory
+        CALL cluster_sparse_solver(A % CPardisoId % ID, &
+              A % CPardisoID % maxfct, A % CPardisoID % mnum, &
+              A % CPardisoID % mtype, phase, A % CPardisoID % n, &
+              A % CPardisoId % aa, A % CPardisoId % ia, A % CPardisoId % ja, &
+              idum, A % CPardisoID % nrhs, A % CPardisoID % IParm, &
+              A % CPardisoID % msglvl, ddum, ddum, A % Comm, ierror)
+
+        ! Deallocate global ordering
+        DEALLOCATE(A % Gorder)
+
+        ! Deallocate control structures
+        DEALLOCATE(A % CPardisoId % ID)
+        DEALLOCATE(A % CPardisoID % IParm)
+        ! Deallocate matrix and permutation
+        DEALLOCATE(A % CPardisoId % ia, A % CPardisoId % ja, &
+                   A % CPardisoId % aa, A % CPardisoID % rhs, &
+                   A % CPardisoID % x)
+        ! Deallocate CPardiso structure
+        DEALLOCATE(A % CPardisoID)
+    END IF
+  END SUBROUTINE CPardiso_Free
+#endif
+
+
+!------------------------------------------------------------------------------
   SUBROUTINE DirectSolver( A,x,b,Solver,Free_Fact )
 !------------------------------------------------------------------------------
 
@@ -1883,6 +2310,9 @@ CONTAINS
 #endif
 #if defined(HAVE_MKL) || defined(HAVE_PARDISO)
         CALL Pardiso_SolveSystem( Solver, A, x, b, Free_Fact )
+#endif
+#if defined(HAVE_MKL) && defined(HAVE_CPARDISO)
+        CALL CPardiso_SolveSystem( Solver, A, x, b, Free_Fact )
 #endif
 #ifdef HAVE_SUPERLU
         CALL SuperLU_SolveSystem( Solver, A, x, b, Free_Fact )
@@ -1929,6 +2359,9 @@ CONTAINS
 
       CASE( 'pardiso' )
         CALL Pardiso_SolveSystem( Solver, A, x, b )
+
+      CASE( 'cpardiso' )
+        CALL CPardiso_SolveSystem( Solver, A, x, b )
 
       CASE DEFAULT
         CALL Fatal( 'DirectSolver', 'Unknown direct solver method.' )

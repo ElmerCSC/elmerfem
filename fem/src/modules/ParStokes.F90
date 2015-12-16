@@ -24,16 +24,56 @@
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen, Mika Malinen
-! *  Email:   Juha.Ruokolainen@csc.fi
+! *  Email:   mika.malinen@csc.fi & Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           02101 Espoo, Finland 
 ! *
+! *  Original Date: 2012-01-30
 ! *
 ! *****************************************************************************/
 
+!------------------------------------------------------------------------------
+SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
+!------------------------------------------------------------------------------
+  USE DefUtils
+  USE SolverUtils
+  USE ElementUtils
 
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: Transient
+!------------------------------------------------------------------------------
+  TYPE(ValueList_t), POINTER :: SolverParams
+!------------------------------------------------------------------------------
+  SolverParams => GetSolverParams()
+
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Bubbles in Global System') ) &
+      CALL ListAddLogical(SolverParams, 'Bubbles in Global System', .FALSE.)  
+
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Solver') ) &
+      CALL ListAddString(SolverParams, 'Linear System Solver', 'Iterative')
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Iterative Method') ) &
+      CALL ListAddString(SolverParams, 'Linear System Iterative Method', 'GCR')
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System GCR Restart') ) &
+      CALL ListAddInteger(SolverParams, 'Linear System GCR Restart', 50)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Max Iterations') ) &
+      CALL ListAddInteger(SolverParams, 'Linear System Max Iterations', 200)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Row Equilibration') ) &
+      CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Convergence Tolerance') ) &
+      CALL ListAddConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-6)
+
+!------------------------------------------------------------------------------
+END SUBROUTINE StokesSolver_Init0
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !******************************************************************************
@@ -82,9 +122,11 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
        SkipPowerLaw=.TRUE., Newton = .FALSE.
   TYPE(Element_t), POINTER :: Element
 
-  REAL(KIND=dp) :: Norm, NonlinearTol, NewtonThreshold, NonLinError
+  REAL(KIND=dp) :: Norm, NonlinearTol, NewtonThreshold, NonLinError, res
+  INTEGER, POINTER :: EdgeMap(:,:)
+  INTEGER :: BrickFaceMap(6,4)
   INTEGER :: n, m, p, q, nb, nd, t, istat, active, dim, &
-       iter, NonlinearIter, MaxPicardIterations
+       iter, NonlinearIter, MaxPicardIterations, MidEdgeNodes(12)
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: BodyForce, Material, BC
   REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:,:), FORCE(:), rho(:), mu(:), &
@@ -101,7 +143,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 ! Variables for two-level iterations... 
 !----------------------------------------------------------------------------- 
   LOGICAL :: BlockPreconditioning, Parallel, UpdateMatrix, UseTrueResidual, Timing, &
-       OptimizeBW, GlobalBubbles
+       OptimizeBW, GlobalBubbles, P2P1
   LOGICAL :: DoScaling, DoEquilibration, BlockDiagonalA, UseVeloLaplacian, AdaptiveTols
   CHARACTER(LEN=MAX_NAME_LEN) :: Eq
   INTEGER :: i, j, k, nlen, Round, MaxIterations, RestartM
@@ -133,6 +175,8 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
   Parallel = ParEnv % Pes > 1
 
   dim = CoordinateSystemDimension()
+
+  P2P1 = ListGetLogical( Solver % Values, 'P2-P1 Approximation', Found)
   BlockPreconditioning = ListGetLogical( Solver % Values, 'Block Preconditioning', Found)
   IF ( .NOT. Found) BlockPreconditioning = .FALSE.
 
@@ -368,7 +412,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         ! Get element local matrix and rhs vector:
         !---------------------------------------------------------------------
         CALL LocalMatrix( STIFF, ALocal, PLocal, FORCE, LOAD, rho, mu, &
-             Vx, Vy, Vz, Element, n, nd+nb, dim, Convect, SkipPowerLaw, Newton, &
+             Vx, Vy, Vz, Element, n, nd+nb, dim, Convect, P2P1, SkipPowerLaw, Newton, &
              BlockDiagonalA)
 
         IF ( nb > 0 ) THEN
@@ -435,15 +479,6 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         BC => GetBC()
         IF ( .NOT. ASSOCIATED(BC) ) CYCLE
 
-        !--------------------------------------------------------------------------------
-        ! Allways nullify higher order edge dofs if any constraint has been specified.
-        ! The current focus is on the standard Lagrangian interpolation elements,
-        ! so that the following call has no effect. If p-elements were supported,
-        ! we would need a similar call for the block preconditioner... 
-        !-------------------------------------------------------------------------------
-        CALL NullifyEdgeDofs(Model, Solver % Matrix, dim+1, Element, Solver % Variable % Perm, &
-             Solver % Matrix % RHS)
-
         GotForceBC = GetLogical( BC, 'Flow Force BC', Found )
         IF ( .NOT. Found ) GotForceBC = .TRUE.
 
@@ -481,7 +516,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
          
            CALL NavierStokesBoundary( STIFF, FORCE, &
                 LoadVector, ExtPressure, SlipCoeff, NormalTangential,   &
-                Element, n, ElementNodes )
+                Element, n, nd, ElementNodes )
 
            IF (BlockPreconditioning) THEN
              Alocal = 0.0d0
@@ -509,41 +544,13 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 
      CALL DefaultFinishAssembly()
 
-     !-------------------------------------------------------------------------------------------------
-     ! Dirichlet BSs for p-elements need special treatment in order to handle non-nodal dofs. Here
-     ! we just nullify the effect of non-nodal dofs. The current focus is on the standard Lagrangian 
-     ! interpolation elements, so this is commented out for this reason...
-     !------------------------------------------------------------------------------------------------ 
-     IF (.FALSE.) THEN
-       CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 1), &
-           1, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)
-       CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 2), &
-           2, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)
-       IF ( dim > 2 ) &
-           CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 3), &
-           3, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)        
-     END IF
-     CALL DefaultDirichletBCs() 
-
+     CALL DefaultDirichletBCs()
 
      IF (BlockPreconditioning) THEN
         ! CALL DefaultFinishAssembly(VelocitySolver)
         ! CALL DefaultFinishAssembly(PressureSolver)
         CALL DefaultDirichletBCs(USolver=PressureSolver)
         CALL DefaultDirichletBCs(USolver=VelocitySolver)
-
-        !------------------------------------------------------------------------------------------
-        ! Dirichlet BSs for p-elements need special treatment in order to handle non-nodal dofs.
-        !------------------------------------------------------------------------------------------
-        IF (.FALSE.) THEN
-          CALL SetBoundaryConditions(Model, VelocitySolver % Matrix, ComponentName(Solver % Variable % name, 1), &
-              1, dim,  VelocitySolver % Variable % Perm)
-          CALL SetBoundaryConditions(Model, VelocitySolver % Matrix, ComponentName(Solver % Variable % name, 2), &
-              2, dim,  VelocitySolver % Variable % Perm)
-          IF ( dim > 2 ) &
-              CALL SetBoundaryConditions(Model, VelocitySolver % Matrix, ComponentName(Solver % Variable % name, 3), &
-              3, dim,  VelocitySolver % Variable % Perm)
-        END IF
      END IF
 
 
@@ -561,11 +568,9 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         !-------------------------------------------------------------------------------
         IF ( DoScaling ) THEN
            IF ( DoEquilibration ) THEN
-              !CALL OptimalMatrixScaling( Solver % Matrix, VelocitySolver % Matrix, &
-              !     PressureSolver % Matrix, dim, Solver % Matrix % RHS, Parallel )
-              CALL RowEquilibration(Solver%Matrix,Solver%Matrix%RHS,Parallel)
+              CALL RowEquilibration(Solver % Matrix,Solver % Matrix % RHS,Parallel)
            ELSE
-              CALL ScaleLinearSystem(Solver,Solver%Matrix,Solver%Matrix%RHS)
+              CALL ScaleLinearSystem(Solver,Solver % Matrix,Solver % Matrix % RHS)
            END IF
            ! store the scaling for the blocks A and Q
            j = PressureSolver % Matrix % NumberOfRows
@@ -1027,7 +1032,80 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
    IF (BlockPreconditioning) &
        DEALLOCATE(RotatedVarValues)
 
+   IF (P2P1) THEN
+     !----------------------------------------------------------------------------------------
+     ! Replace the zero pressure solution at the nodes which are not needed in the linear
+     ! pressure approximation by the interpolated values for right visualization:
+     !----------------------------------------------------------------------------------------
+     DO t=1,Active
+       ! First the midedge nodes:
+       Element => GetActiveElement(t)
+       nd = GetElementDOFs( Indexes )
+       k = GetElementFamily()
+       EdgeMap => GetEdgeMap(k)
+       SELECT CASE(k)
+       CASE (3)
+         MidEdgeNodes(1:3) = (/ 4, 5, 6 /)
+       CASE (4)
+         MidEdgeNodes(1:4) = (/ 5, 6, 7, 8 /)
+       CASE (5)
+         MidEdgeNodes(1:6) = (/ 5, 6, 7, 8, 9, 10 /) 
+       CASE (6)
+         MidEdgeNodes(1:8) = (/ 6, 7, 8, 9, 10, 11, 12, 13 /)
+       CASE (7)
+         MidEdgeNodes(1:9) = (/ 7, 8, 9, 10, 11, 12, 13, 14, 15 /)
+       CASE (8)
+         MidEdgeNodes(1:12) = (/ 9, 10, 11, 12, 17, 18, 19, 20, 13, 14, 15, 16 /)
+       END SELECT
 
+       DO q=1,SIZE(EdgeMap,1)
+         m = (dim+1) * Solver % Variable % Perm(Indexes(MidEdgeNodes(q)))
+         i = (dim+1) * Solver % Variable % Perm(Indexes(EdgeMap(q,1)))
+         j = (dim+1) * Solver % Variable % Perm(Indexes(EdgeMap(q,2)))
+         Solver % Variable % Values(m) = 0.5d0 * ( Solver % Variable % Values(i) + &
+             Solver % Variable % Values(j) )   
+       END DO
+
+       ! The pressure at the midface nodes for 409 elements: 
+       IF (k==4 .AND. nd==9) THEN
+         res = 0.0d0
+         DO q=1,4
+           i = (dim+1) * Solver % Variable % Perm(Indexes(q))
+           res = res + Solver % Variable % Values(i)
+         END DO
+         m = (dim+1) * Solver % Variable % Perm(Indexes(9))
+         Solver % Variable % Values(m) = 0.25d0 * res
+       END IF
+
+       ! The pressure at the midpoint and at the midface nodes for 827 elements:
+       IF (k==8 .AND. nd==27) THEN
+         BrickFaceMap(1,:) = (/ 1,2,6,5 /)         
+         BrickFaceMap(2,:) = (/ 2,3,7,6 /)
+         BrickFaceMap(3,:) = (/ 4,3,7,8 /)
+         BrickFaceMap(4,:) = (/ 1,4,8,5 /)
+         BrickFaceMap(5,:) = (/ 1,2,3,4 /)          
+         BrickFaceMap(6,:) = (/ 5,6,7,8 /)
+         DO j=1,6
+           res = 0.0d0
+           DO q=1,4
+             i = (dim+1) * Solver % Variable % Perm(Indexes(BrickFaceMap(j,q)))
+             res = res + Solver % Variable % Values(i)
+           END DO
+           m = (dim+1) * Solver % Variable % Perm(Indexes(20+j))
+           Solver % Variable % Values(m) = 0.25d0 * res
+         END DO           
+
+         res = 0.0d0
+         DO q=1,8
+           i = (dim+1) * Solver % Variable % Perm(Indexes(q))
+           res = res + Solver % Variable % Values(i)
+         END DO
+         m = (dim+1) * Solver % Variable % Perm(Indexes(27))      
+         Solver % Variable % Values(m) = 0.125d0 * res
+       END IF
+
+     END DO
+   END IF
 
 CONTAINS
 
@@ -1112,28 +1190,40 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(  STIFF, VeloBlock, Mass, FORCE, LOAD, Nodalrho, &
-       Nodalmu, Vx, Vy, Vz, Element, n, nd, dim, Convect, SkipPowerLaw, Newton, DiagonalA)
+       Nodalmu, Vx, Vy, Vz, Element, n, nd, dim, Convect, P2P1, SkipPowerLaw, &
+       Newton, DiagonalA)
 !------------------------------------------------------------------------------
     REAL(KIND=dp), TARGET :: STIFF(:,:), VeloBlock(:,:), Mass(:,:), FORCE(:), LOAD(:,:)
     REAL(KIND=dp) :: Nodalmu(:), Nodalrho(:), Vx(:), Vy(:), Vz(:), GradDivParam
     INTEGER :: dim, n, nd
     TYPE(Element_t), POINTER :: Element
-    LOGICAL :: Stabilization, Convect, SkipPowerLaw, Newton, DiagonalA
+    LOGICAL :: Stabilization, Convect, P2P1, SkipPowerLaw, Newton, DiagonalA
     !------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: PressureElement => NULL()
     REAL(KIND=dp) :: Basis(nd), dBasisdx(nd,3), &
          DetJ, LoadAtIP(dim+1), Velo(dim), Grad(dim,dim), AK, w1, w2, w3, ViscAtIp, RhoAtIP
+    REAL(KIND=dp) :: LinBasis(nd)
     REAL(KIND=dp), POINTER :: A(:,:), F(:), M(:,:), Jac(:,:)
     REAL(KIND=dp), TARGET :: JacM(nd*(dim+1),nd*(dim+1)), Sol(nd*(dim+1)) 
     LOGICAL :: Stat, ViscNewtonLin
     INTEGER :: t, i, j, k, l, p, q
+    INTEGER :: Code, nlin
+    INTEGER :: LinearCode(3:8) = (/ 303,404,504,605,706,808 /)
     TYPE(GaussIntegrationPoints_t) :: IP
 
     REAL(KIND=dp) :: mu = 1.0d0, rho = 1.0d0, s, c, c2, ch, rotterm, mK, hK, Re, VNorm, &
          a1, a2, muder, muder0, Strain(dim,dim)
 
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
+    SAVE Nodes, PressureElement
     !------------------------------------------------------------------------------
+    
+    IF (P2P1) THEN
+      IF ( .NOT. ASSOCIATED(PressureElement) ) PressureElement => AllocateElement()
+      k = GetElementFamily()
+      PressureElement % Type => GetElementType( LinearCode(k), .FALSE. )
+      nlin = PressureElement % Type % NumberOfNodes
+    END IF
 
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
@@ -1154,6 +1244,12 @@ CONTAINS
        !--------------------------------------------------------------
        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detJ, Basis, dBasisdx )
+
+       !--------------------------------------------------------------
+       ! Linear pressure basis functions for P2-P1 approximation:
+       !--------------------------------------------------------------
+       IF (P2P1) CALL NodalBasisFunctions( nlin, LinBasis, PressureElement, &
+           IP % U(t), IP % V(t), IP % W(t) )
 
        s = IP % s(t) * detJ
 
@@ -1223,18 +1319,24 @@ CONTAINS
              END IF
 
              DO i=1,dim
-                DO j = 1,dim
-                   A(i,i) = A(i,i) + s * mu * dBasisdx(q,j) * dBasisdx(p,j)
-                   A(i,j) = A(i,j) + s * mu * dBasisdx(q,i) * dBasisdx(p,j)
-                END DO
-               
-                ! Only linear pressure approximation is used...
-                IF (q <= n) &
+               DO j = 1,dim
+                 A(i,i) = A(i,i) + s * mu * dBasisdx(q,j) * dBasisdx(p,j)
+                 A(i,j) = A(i,j) + s * mu * dBasisdx(q,i) * dBasisdx(p,j)
+               END DO
+
+               ! Only linear pressure approximation is used...
+               IF (P2P1) THEN
+                 IF (q <= nlin) &
+                     A(i,dim+1) = A(i,dim+1) - s * LinBasis(q) * dBasisdx(p,i)
+                 IF (p <= nlin) &
+                     A(dim+1,i) = A(dim+1,i) - s * dBasisdx(q,i) * LinBasis(p)
+               ELSE
+                 IF (q <= n) &
                      A(i,dim+1) = A(i,dim+1) - s * Basis(q) * dBasisdx(p,i)
 
-                IF (p <= n) &   
-                     ! Testing w.r.t  linear pressure test functions...                
+                 IF (p <= n) &   
                      A(dim+1,i) = A(dim+1,i) - s * dBasisdx(q,i) * Basis(p)
+               END IF
              END DO
 
              IF (DiagonalA) THEN
@@ -1273,11 +1375,19 @@ CONTAINS
 
        END DO
 
-       DO p=1,n
-          DO q=1,n       
+       IF (P2P1) THEN
+         DO p=1,nlin
+           DO q=1,nlin       
              Mass(p,q) = Mass(p,q) - s * 1.0d0/mu * Basis(p) * Basis(q)            
-          END DO
-       END DO
+           END DO
+         END DO
+       ELSE
+         DO p=1,n
+           DO q=1,n       
+             Mass(p,q) = Mass(p,q) - s * 1.0d0/mu * Basis(p) * Basis(q)            
+           END DO
+         END DO
+       END IF
     END DO
 
     IF ( ViscNewtonLin ) THEN
@@ -1291,14 +1401,25 @@ CONTAINS
     END IF
 
     ! Omit dofs that do not correspond to linear pressure approximation...
-    DO p = n+1,nd
-       i = (dim+1) * p
-       FORCE(i)   = 0.0d0
-       STIFF(i,:) = 0.0d0
-       STIFF(:,i) = 0.0d0       
-       STIFF(i,i) = 1.0d0
-       Mass(p,p) = 1.0d0
-    END DO
+    IF (P2P1) THEN
+      DO p = nlin+1,nd
+        i = (dim+1) * p
+        FORCE(i)   = 0.0d0
+        STIFF(i,:) = 0.0d0
+        STIFF(:,i) = 0.0d0       
+        STIFF(i,i) = 1.0d0
+        Mass(p,p) = 1.0d0
+      END DO
+    ELSE
+      DO p = n+1,nd
+        i = (dim+1) * p
+        FORCE(i)   = 0.0d0
+        STIFF(i,:) = 0.0d0
+        STIFF(:,i) = 0.0d0       
+        STIFF(i,i) = 1.0d0
+        Mass(p,p) = 1.0d0
+      END DO
+    END IF
 
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -1502,69 +1623,13 @@ CONTAINS
 
 
 
-!------------------------------------------------------------------------------
-   SUBROUTINE NullifyEdgeDofs( Model, StiffMatrix, NDOFs, Element, Perm, rhs )
-!------------------------------------------------------------------------------
-!
-! Nullify the effect of non-nodal dofs
-!
-! TYPE(Model_t) :: Model
-!   INPUT: the current model structure
-!
-! TYPE(Matrix_t), POINTER :: StiffMatrix
-!   INOUT: The global matrix
-!
-! INTEGER :: NDOFs
-!   INPUT: the total number of DOFs for
-!          this equation
-!
-! INTEGER :: Perm(:)
-!   INPUT: The node reordering info, this has been generated at the
-!          beginning of the simulation for bandwidth optimization
-!******************************************************************************
-!------------------------------------------------------------------------------
-    TYPE(Model_t) :: Model
-    TYPE(Matrix_t), POINTER :: StiffMatrix
-    TYPE(Element_t), POINTER :: Element
-    INTEGER :: NDOFs, Perm(:)
-    REAL(KIND=dp), OPTIONAL :: rhs(:)    
-!------------------------------------------------------------------------------
-
-    TYPE(Element_t), POINTER :: CurrentElement
-    INTEGER, POINTER :: NodeIndexes(:)
-    INTEGER :: i,j,k,n,t,k1,k2,nd
-    LOGICAL :: GotIt, periodic
-    REAL(KIND=dp) :: Work(Model % MaxElementNodes),s
-
-!------------------------------------------------------------------------------
-
-    CurrentElement => Element
-    Model % CurrentElement => Element
-
-    n  = GetElementNOFNodes()
-    nd = GetElementDOFs( Indexes )
-    NodeIndexes => CurrentElement % NodeIndexes(1:n)
-
-    DO j=n+1,nd
-      DO i = 1, NDOFs
-        k = Perm(Indexes(j))
-        k = NDOFs * (k-1) + i              
-        CALL ZeroRow( StiffMatrix,k )
-        CALL SetMatrixElement( StiffMatrix,k,k, 1.0d0 )
-        IF ( PRESENT(rhs) ) rhs(k) = 0.0d0  
-      END DO
-    END DO
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE NullifyEdgeDofs
-!------------------------------------------------------------------------------
 
 
 
 
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesBoundary( BoundaryMatrix, BoundaryVector, LoadVector,   &
-     NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, n, Nodes )
+     NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, n, nd, Nodes )
              
 !------------------------------------------------------------------------------
 !******************************************************************************
@@ -1610,10 +1675,10 @@ CONTAINS
    REAL(KIND=dp) :: BoundaryMatrix(:,:), BoundaryVector(:), LoadVector(:,:), &
        NodalSlipCoeff(:,:), NodalExtPressure(:)
 
-   INTEGER :: n, pn
+   INTEGER :: n, nd, pn
 
    TYPE(Element_t),POINTER  :: Element, Parent
-   TYPE(Nodes_t)    :: Nodes, ParentNodes
+   TYPE(Nodes_t) :: Nodes, ParentNodes
 
    LOGICAL :: NormalTangential
 
@@ -1713,8 +1778,8 @@ CONTAINS
      END SELECT
 
      IF ( ANY( NodalSlipCoeff(:,:) /= 0.0d0 ) ) THEN
-       DO p=1,n
-         DO q=1,n
+       DO p=1,nd
+         DO q=1,nd
            DO i=1,dim
              SlipCoeff = SUM( NodalSlipCoeff(i,1:n) * Basis(1:n) )
 
@@ -1745,7 +1810,7 @@ CONTAINS
        END DO
      END IF
 
-     DO q=1,n
+     DO q=1,nd
        DO i=1,dim
          k = (q-1)*c + i
          IF ( NormalTangential ) THEN
@@ -1775,98 +1840,6 @@ CONTAINS
    END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE NavierStokesBoundary
-!------------------------------------------------------------------------------
-
-!------------------------------------------------------------------------------
-  SUBROUTINE OptimalMatrixScaling( K, A, Q, dim, b, Parallel )
-!------------------------------------------------------------------------------
-!   This subroutine equilibrates the rows of the coefficient matrix K. 
-!   The associated rhs vector b is also scaled and the same scaling factors
-!   are applied to preconditioning matrices A and Q 
-!-----------------------------------------------------------------------------
-    TYPE(Matrix_t) :: K, A, Q
-    REAL(KIND=dp) :: b(:)
-    LOGICAL :: Parallel
-    INTEGER :: dim
-!-----------------------------------------------------------------------------
-    INTEGER :: i, j, m, n 
-    REAL(kind=dp) :: norm, tmp
-    INTEGER, POINTER :: Cols(:), Rows(:)
-    REAL(KIND=dp), POINTER :: Values(:), Diag(:)
-!-------------------------------------------------------------------------
-    n = K % NumberOfRows
-    Rows   => K % Rows
-    Values => K % Values
-
-    IF( .NOT. ASSOCIATED(K % DiagScaling) ) THEN
-      ALLOCATE( K % DiagScaling(n) ) 
-    END IF
-    Diag => K % DiagScaling    
-    
-    Diag = 0.0d0
-    norm = 0.0d0    
-
-    DO i=1,n
-       tmp = 0.0d0
-       DO j=Rows(i),Rows(i+1)-1        
-          tmp = tmp + ABS(Values(j))          
-       END DO
-
-       IF ( .NOT. Parallel ) THEN
-          IF (tmp > norm) norm = tmp        
-       END IF
-
-       IF (tmp > 0.0d0) Diag(i) = tmp       
-    END DO
-
-    IF (Parallel) THEN
-      CALL ParallelSumVector(K, Diag)
-      norm = ParallelReduction(MAXVAL(Diag(1:n)),2)
-    END IF
-
-    DO i=1,n      
-       IF (Diag(i) > 0.0d0) THEN
-          Diag(i) = 1.0d0/Diag(i)
-       ELSE
-          Diag(i) = 1.0d0
-       END IF
-    END DO
-
-    DO i=1,n    
-       DO j=Rows(i),Rows(i+1)-1
-          Values(j) = Values(j) * Diag(i)
-       END DO
-       b(i) = Diag(i) * b(i)
-    END DO
-
-    !---------------------------------------------------
-    ! Apply scaling to the preconditioning matrices...
-    !---------------------------------------------------
-    Rows   => A % Rows
-    Values => A % Values
-
-    DO i=1,n/(dim+1)
-       DO m=1,dim
-          DO j = Rows((i-1)*dim+m), Rows((i-1)*dim+m+1)-1          
-             Values(j) = Values(j) * Diag( (i-1)*(dim+1)+m )
-          END DO
-       END DO
-    END DO
-    
-    Rows   => Q % Rows
-    Values => Q % Values
-
-    DO i=1,n/(dim+1)
-       DO j=Rows(i),Rows(i+1)-1
-          Values(j) = Values(j) * Diag(i*(dim+1))
-       END DO
-    END DO
-    
-    WRITE( Message, * ) 'Unscaled matrix norm: ', norm    
-    CALL Info( 'OptimalMatrixScaling', Message, Level=5 )
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE OptimalMatrixScaling
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

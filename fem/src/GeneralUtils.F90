@@ -202,11 +202,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Converts string of length n to an integer number. 
 !------------------------------------------------------------------------------
-  FUNCTION s2i(str,n) RESULT(ival)
+  PURE FUNCTION s2i(str,n) RESULT(ival)
 !------------------------------------------------------------------------------
     INTEGER, INTENT(IN) :: n
-    CHARACTER(LEN=n), INTENT(IN) :: str
     INTEGER :: ival
+    CHARACTER(LEN=n), INTENT(IN) :: str
 !------------------------------------------------------------------------------
     LOGICAL :: neg
     INTEGER :: j,k    
@@ -232,9 +232,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION str2ints(str,ints,sep) RESULT(n)
 !------------------------------------------------------------------------------
-    INTEGER :: ints(:)
-    CHARACTER(LEN=*) :: str
-    CHARACTER, OPTIONAL :: sep
+    INTEGER, INTENT(out) :: ints(:)
+    CHARACTER(LEN=*), INTENT(in) :: str
+    CHARACTER, OPTIONAL, INTENT(in) :: sep
 
     INTEGER :: i,k,l,m,n,ic, icsep
     INTEGER, PARAMETER :: ic0 = ICHAR('0'), ic9 = ICHAR('9'), icm = ICHAR('-'), &
@@ -333,9 +333,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Sort an array of integer values. 
 !------------------------------------------------------------------------------
-   SUBROUTINE Sort( n,a )
+   PURE SUBROUTINE Sort( n,a )
 !------------------------------------------------------------------------------
-     INTEGER :: n,a(:)
+     INTEGER, INTENT(in)  :: n
+     INTEGER, INTENT(inout) :: a(:)
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,l,ir,ra
@@ -383,9 +384,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Sort an interger array a, together with an another integer array.
 !------------------------------------------------------------------------------
-   SUBROUTINE SortI( n,a,b )
+   PURE SUBROUTINE SortI( n,a,b )
 !------------------------------------------------------------------------------
-     INTEGER :: n,a(:),b(:)
+     INTEGER, INTENT(in) :: n
+     INTEGER, INTENT(inout) :: a(:),b(:)
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,l,ir,ra,rb
@@ -439,10 +441,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Sort an index array, and change the order of an real array accordingly.
 !------------------------------------------------------------------------------
-   SUBROUTINE SortF( n,a,b )
+   PURE SUBROUTINE SortF( n,a,b )
 !------------------------------------------------------------------------------
-     INTEGER :: n,a(:)
-     REAL(KIND=dp) :: b(:)
+     INTEGER, INTENT(in) :: n
+     INTEGER, INTENT(inout) :: a(:)
+     REAL(KIND=dp), INTENT(inout) :: b(:)
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,l,ir,ra
@@ -498,10 +501,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Sort an real array, and change the order of an index array accordingly.
 !------------------------------------------------------------------------------
-   SUBROUTINE SortD( n,a,b )
+   PURE SUBROUTINE SortD( n,a,b )
 !------------------------------------------------------------------------------
-     INTEGER :: n,b(:)
-     REAL(KIND=dp) :: a(:)
+     INTEGER, INTENT(in) :: n
+     INTEGER, INTENT(inout) :: b(:)
+     REAL(KIND=dp), INTENT(inout) :: a(:)
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,l,ir,rb
@@ -557,10 +561,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Sort an complex array, and organize an index table accordingly.
 !------------------------------------------------------------------------------
-   SUBROUTINE SortC( n,a,b )
+   PURE SUBROUTINE SortC( n,a,b )
 !------------------------------------------------------------------------------
-     INTEGER :: n,b(:)
-     COMPLEX(KIND=dp):: a(:)
+     INTEGER, INTENT(in) :: n
+     INTEGER, INTENT(inout) :: b(:)
+     COMPLEX(KIND=dp), INTENT(inout) :: a(:)
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,l,ir,rb
@@ -616,10 +621,11 @@ CONTAINS
 !> Order real components in b in a decreasing order and return the new order
 !> of indexes in a.
 !------------------------------------------------------------------------------
-   SUBROUTINE SortR( n,a,b )
+   PURE SUBROUTINE SortR( n,a,b )
 !------------------------------------------------------------------------------
-     INTEGER :: n,a(:)
-     REAL(KIND=dp) :: b(:)
+     INTEGER, INTENT(in) :: n
+     INTEGER, INTENT(inout) :: a(:)
+     REAL(KIND=dp), INTENT(inout) :: b(:)
 !------------------------------------------------------------------------------
 
      INTEGER :: i,j,l,ir,ra
@@ -674,9 +680,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Search an integer value in an ordered array. 
 !------------------------------------------------------------------------------
-   FUNCTION SearchI( N,Array,Val ) RESULT ( Idx )
+   PURE FUNCTION SearchI( N,Array,Val ) RESULT ( Idx )
 !------------------------------------------------------------------------------
-    INTEGER :: N,Val,Array(:)
+    INTEGER, INTENT(in) :: N,Val,Array(:)
 !------------------------------------------------------------------------------
     INTEGER :: Lower, Upper,Lou,Idx
 !------------------------------------------------------------------------------
@@ -721,12 +727,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Search a real value in an ordered array. 
 !------------------------------------------------------------------------------
-  FUNCTION SearchR( N,Array,Val ) RESULT ( Idx )
+  PURE FUNCTION SearchR( N,Array,Val ) RESULT ( Idx )
 !------------------------------------------------------------------------------
 
-    INTEGER :: N
-    REAL(KIND=dP) :: Val,Array(:)
+    INTEGER, INTENT(in) :: N
     INTEGER :: Idx
+    REAL(KIND=dP), INTENT(in) :: Val,Array(:)
 !------------------------------------------------------------------------------
     INTEGER :: Lower, Upper,Lou
 !------------------------------------------------------------------------------
@@ -1130,9 +1136,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  FUNCTION GetVarName(Var) RESULT(str)
+  PURE FUNCTION GetVarName(Var) RESULT(str)
 !------------------------------------------------------------------------------
-    TYPE(Variable_t) :: Var
+    TYPE(Variable_t), INTENT(in) :: Var
     CHARACTER(LEN=Var % NameLen) :: str
 !------------------------------------------------------------------------------
     str = Var % Name(1:Var % NameLen)
@@ -1169,8 +1175,8 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
   FUNCTION ComponentNameStr( BaseName, Component_arg ) RESULT(str)
 !------------------------------------------------------------------------------
-    INTEGER, OPTIONAL :: Component_arg
-    CHARACTER(LEN=*) :: BaseName
+    INTEGER, OPTIONAL, INTENT(in) :: Component_arg
+    CHARACTER(LEN=*), INTENT(in) :: BaseName
 !------------------------------------------------------------------------------
     INTEGER :: ind, ind1, DOFsTot, DOFs, Component
     CHARACTER(LEN=MAX_NAME_LEN) :: str
@@ -1211,10 +1217,12 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 !> Solves a tridiagonal linear system. 
 !------------------------------------------------------------------------------
-    SUBROUTINE SolveTriDiag( n, y, h, r )
+    PURE SUBROUTINE SolveTriDiag( n, y, h, r )
 !------------------------------------------------------------------------------
-       INTEGER :: n
-       REAL(KIND=dp) :: y(:), h(:), r(:)
+       INTEGER, INTENT(in) :: n
+       REAL(KIND=dp), INTENT(out) :: r(:)
+       REAL(KIND=dp), INTENT(in)  :: y(:), h(:)
+
        REAL(KIND=dp) :: s,b(n)
        INTEGER :: i
 
@@ -1242,11 +1250,12 @@ END FUNCTION ComponentNameVar
 !------------------------------------------------------------------------------
 !> Solver for the coefficients of a cubic spline.
 !------------------------------------------------------------------------------
-    SUBROUTINE CubicSpline( n,x,y,r, monotone )
+    PURE SUBROUTINE CubicSpline( n,x,y,r, monotone )
 !------------------------------------------------------------------------------
-      REAL(KIND=dp) :: x(:),y(:),r(:)
-      INTEGER :: n
-      LOGICAL, OPTIONAL :: monotone
+      REAL(KIND=dp), INTENT(in)  :: x(:),y(:)
+      REAL(KIND=dp), INTENT(out) :: r(:)
+      INTEGER, INTENT(in) :: n
+      LOGICAL, OPTIONAL, INTENT(in) :: monotone
 
       REAL(KIND=dp) ::  t,h(n),tau, alpha, beta
       INTEGER :: i
@@ -1485,7 +1494,7 @@ END FUNCTION ComponentNameVar
          b = ( 3 * (y(2) - y(1)) - (2*r(1) + r(2)) * h)/3
          c = (r(1) * h)/2
          d = y(1)
-         Cumulative(i+1)=Cumulative(i) + h*(a+b+c+d)
+         Cumulative(i+1) = Cumulative(i) + h*(a+b+c+d)
        END DO
      ELSE
        DO i=1,n-1
@@ -1498,7 +1507,7 @@ END FUNCTION ComponentNameVar
          h  = t(2) - t(1)
          c = (y(2)-y(1))/2
          d = y(1)
-         Cumulative(i+1)=Cumulative(i) + h*(c+d)
+         Cumulative(i+1) = Cumulative(i) + h*(c+d)
        END DO
      END IF
 !------------------------------------------------------------------------------
@@ -1815,7 +1824,7 @@ END FUNCTION ComponentNameVar
 
 !------------------------------------------------------------------------------
    SUBROUTINE ClearMatrix( Matrix ) 
-     TYPE(Matrix_t), POINTER :: Matrix
+     TYPE(Matrix_t), POINTER, INTENT(in) :: Matrix
 INCLUDE "mpif.h"
   
      Matrix % FORMAT = MATRIX_CRS
@@ -2375,18 +2384,20 @@ CONTAINS
     WRITE(Message,'(A,I0)')  'Writing to unit number: ',VtuUnit
     CALL Info('AscBinWriteInit',Message,Level=10)
 
-    WRITE(Message,'(A,I0)')  'Size of buffer is: ',BufferSize
-    CALL Info('AscBinWriteInit',Message,Level=10)
-
-    ALLOCATE( Ivals( BufferSize ) ) 
-    IF( SinglePrec ) THEN
-      ALLOCATE( FVals( BufferSize ) ) 
-    ELSE
-      ALLOCATE( Dvals( BufferSize ) ) 
+    IF(.NOT. AsciiOutput ) THEN
+      WRITE(Message,'(A,I0)')  'Size of buffer is: ',BufferSize
+      CALL Info('AscBinWriteInit',Message,Level=10)
+      
+      ALLOCATE( Ivals( BufferSize ) ) 
+      IF( SinglePrec ) THEN
+        ALLOCATE( FVals( BufferSize ) ) 
+      ELSE
+        ALLOCATE( Dvals( BufferSize ) ) 
+      END IF
+      
+      INoVals = 0 
+      NoVals = 0
     END IF
-
-    INoVals = 0 
-    NoVals = 0
 
   END SUBROUTINE AscBinWriteInit
 
@@ -2396,6 +2407,9 @@ CONTAINS
   SUBROUTINE AscBinWriteFree()
 
     CALL Info('AscBinWriteInit','Terminating buffered ascii/binary writing',Level=10)
+
+    IF( AsciiOutput ) RETURN
+
     IF( SinglePrec ) THEN
       DEALLOCATE( FVals )
     ELSE

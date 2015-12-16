@@ -331,7 +331,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp) :: Coeff, detJ, WeightCorr, val, Wrhs, Wmat, DiffMatrix(3,3)
     REAL(KIND=dp), POINTER :: MatValues(:), MatRhs(:)
-    REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
+    REAL(KIND=dp), POINTER :: Hwrk(:,:,:) => Null()
     REAL(KIND=dp), POINTER :: DataDiffusivity(:,:,:)
     INTEGER, POINTER :: MatDiag(:)
     TYPE(Matrix_t), POINTER :: StiffMatrix 

@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter R�back
+! *  Authors: Juha Ruokolainen, Peter Råback
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -402,7 +402,7 @@ END SUBROUTINE GetMaxDefs
        NoBulkElems, NoBoundElems, NoParentElems, NoMissingElems, &
        DisContTarget, NoMoving, NoStaying, NoStayingElems, NoMovingElems, &
        NoUndecided, PrevUndecided, NoEdges, Iter, ElemFamily, DecideLimit, &
-       ActiveBCs, CandA, CandB, RightBody, LeftBody
+       ActiveBCs, CandA, CandB, RightBody, LeftBody, ConflictElems
    INTEGER, TARGET :: TargetBody(1)
    INTEGER, POINTER :: Indexes(:),ParentIndexes(:),TargetBodies(:)
    TYPE(Element_t), POINTER :: Element, LeftElem, RightElem, ParentElem, OtherElem
@@ -531,6 +531,7 @@ END SUBROUTINE GetMaxDefs
    ! By default all nodes that are associated to elements immediately at the discontinuous 
    ! boundary are treated as discontinuous. However, the user may be not be greedy and release
    ! some nodes from the list that are associated also with other non-discontinuous elements.   
+   ConflictElems = 0
    IF( NoDiscontNodes > 0 ) THEN
      n = NoDiscontNodes
      
@@ -545,20 +546,33 @@ END SUBROUTINE GetMaxDefs
 
        DO t = 1,NoBulkElems+NoBoundElems
          Element => Mesh % Elements(t)
+
          IF( t <= NoBulkElems ) THEN
            IF( GreedyBulk ) CYCLE
            IF( ParentUsed(t) ) CYCLE
          ELSE
            IF( GreedyBC ) CYCLE
-           IF( DiscontElem(t) ) CYCLE
+           IF( DiscontElem(t-NoBulkElems) ) CYCLE
+           !IF( Element % BoundaryInfo % Constraint == 0 ) CYCLE
            ! Check that this is not an internal BC
            IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Left ) ) CYCLE
            IF( .NOT. ASSOCIATED( Element % BoundaryInfo % Right) ) CYCLE
          END IF
          Indexes => Element % NodeIndexes
-         DisContNode( Indexes ) = .FALSE.
+
+         IF( ANY( DisContNode( Indexes ) ) ) THEN
+           !PRINT *,'t',Element % BoundaryInfo % Constraint, t,DisContElem(t), &
+           !    Indexes, DisContNode( Indexes ) 
+           DisContNode( Indexes ) = .FALSE.
+           ConflictElems = ConflictElems + 1
+         END IF
        END DO
        NoDisContNodes = COUNT( DisContNode ) 
+     END IF
+
+     IF( ConflictElems > 0 ) THEN
+       CALL Info('CreateDiscontMesh','Conflicting discontinuity in elements: '&
+           //TRIM(I2S(ConflictElems)))
      END IF
 
      IF( NoDiscontNodes < n ) THEN
@@ -761,6 +775,9 @@ END SUBROUTINE GetMaxDefs
 
      Element => Mesh % Elements(NoBulkElems + t)
 
+     ! If the element has no constraint then there is no need to treat it
+     IF( Element % BoundaryInfo % Constraint == 0 ) CYCLE
+
      IF( DisContElem(t) ) THEN
        LeftElem => Element % BoundaryInfo % Left
        RightElem => Element % BoundaryInfo % Right
@@ -777,6 +794,7 @@ END SUBROUTINE GetMaxDefs
        CYCLE
      END IF
 
+
      Indexes => Element % NodeIndexes
 
      IF( .NOT. ANY( DisContNode( Indexes ) ) ) CYCLE
@@ -792,6 +810,8 @@ END SUBROUTINE GetMaxDefs
        Moving2 = ANY( TargetBodies == RightElem % BodyId ) 
        IF( Moving .NEQV. Moving2) THEN
          CALL Warn('CreateDiscontMesh','Conflicting moving information')
+         !PRINT *,'Moving:',t,Element % BoundaryInfo % Constraint, &
+         !    Moving,Moving2,LeftElem % BodyId, RightElem % BodyId
          Set = .FALSE.
        ELSE
          IF( Moving ) THEN
@@ -3618,7 +3638,6 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp), POINTER :: PArray(:,:)
     INTEGER :: i,j,k
 
-   
     ! First, check the bounding boxes
     !---------------------------------------------------------------------------
     x1_min(1) = MINVAL( BMesh1 % Nodes % x )
@@ -3629,9 +3648,9 @@ END SUBROUTINE GetMaxDefs
     x1_max(2) = MAXVAL( BMesh1 % Nodes % y )
     x1_max(3) = MAXVAL( BMesh1 % Nodes % z )
 
-    WRITE(Message,'(A,3ES12.3)') 'Minimum values for this periodic BC:  ',x1_min
+    WRITE(Message,'(A,3ES15.6)') 'Minimum values for this periodic BC:  ',x1_min
     CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
-    WRITE(Message,'(A,3ES12.3)') 'Maximum values for this periodic BC:  ',x1_max
+    WRITE(Message,'(A,3ES15.6)') 'Maximum values for this periodic BC:  ',x1_max
     CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
 
     x2_min(1) = MINVAL( BMesh2 % Nodes % x )
@@ -3642,9 +3661,9 @@ END SUBROUTINE GetMaxDefs
     x2_max(2) = MAXVAL( BMesh2 % Nodes % y )
     x2_max(3) = MAXVAL( BMesh2 % Nodes % z )
     
-    WRITE(Message,'(A,3ES12.3)') 'Minimum values for target periodic BC:',x2_min
+    WRITE(Message,'(A,3ES15.6)') 'Minimum values for target periodic BC:',x2_min
     CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
-    WRITE(Message,'(A,3ES12.3)') 'Maximum values for target periodic BC:',x2_max
+    WRITE(Message,'(A,3ES15.6)') 'Maximum values for target periodic BC:',x2_max
     CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
 
 !    If whole transformation matrix given, it will be used directly
@@ -3684,7 +3703,7 @@ END SUBROUTINE GetMaxDefs
       END IF
 
       IF ( GotRotate ) THEN
-        WRITE(Message,'(A,3ES12.3)') 'Rotating target with: ',Angles
+        WRITE(Message,'(A,3ES15.6)') 'Rotating target with: ',Angles
         CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
         
         DO i=1,3
@@ -3734,10 +3753,10 @@ END SUBROUTINE GetMaxDefs
         x2r_max(2) = MAXVAL( BMesh2 % Nodes % y )
         x2r_max(3) = MAXVAL( BMesh2 % Nodes % z )
         
-        WRITE(Message,'(A,3ES12.3)') 'Minimum values for rotated target:',x2r_min
+        WRITE(Message,'(A,3ES15.6)') 'Minimum values for rotated target:',x2r_min
         CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
         
-        WRITE(Message,'(A,3ES12.3)') 'Maximum values for rotated target:',x2r_max
+        WRITE(Message,'(A,3ES15.6)') 'Maximum values for rotated target:',x2r_max
         CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
       ELSE
         x2r_min = x2_min
@@ -3765,7 +3784,7 @@ END SUBROUTINE GetMaxDefs
           scl(1:3) = 1.0_dp
         END IF
         
-        WRITE(Message,'(A,3ES12.3)') 'Scaling with: ',scl(1:3)
+        WRITE(Message,'(A,3ES15.6)') 'Scaling with: ',scl(1:3)
         CALL Info('OverlayInterfaceMeshes',Message)
         DO i=1,3 
           SclMatrix(i,i) = scl(i)        
@@ -3786,11 +3805,11 @@ END SUBROUTINE GetMaxDefs
         DO i=1,3
           TrsMatrix(4,i) = x1_min(i) - SclMatrix(i,i) * x2r_min(i)
         END DO
-        WRITE(Message,'(A,3ES12.3)') 'Translation: ',TrsMatrix(4,1:3)
-        CALL Info('OverlayInterfaceMeshes',Message)
       END IF
+      WRITE(Message,'(A,3ES15.6)') 'Translation: ',TrsMatrix(4,1:3)
+      CALL Info('OverlayInterfaceMeshes',Message)
       TrfMatrix = MATMUL( SclMatrix, TrsMatrix )
-    END IF 
+    END IF
 
 !    Now transform the coordinates:
 !    ------------------------------
@@ -3814,10 +3833,10 @@ END SUBROUTINE GetMaxDefs
       x2r_max(2) = MAXVAL( BMesh2 % Nodes % y )
       x2r_max(3) = MAXVAL( BMesh2 % Nodes % z )
       
-      WRITE(Message,'(A,3ES12.3)') 'Minimum values for transformed target:',x2r_min
+      WRITE(Message,'(A,3ES15.6)') 'Minimum values for transformed target:',x2r_min
       CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
       
-      WRITE(Message,'(A,3ES12.3)') 'Maximum values for transformed target:',x2r_max
+      WRITE(Message,'(A,3ES15.6)') 'Maximum values for transformed target:',x2r_max
       CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
     END IF
 
@@ -6593,6 +6612,7 @@ END SUBROUTINE GetMaxDefs
               DO nip=1, IP % n 
                 stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
                     IP % v(nip),IP % w(nip),detJ,Basis)
+                IF(.NOT. Stat ) EXIT
 
                 ! We will actually only use the global coordinates and the integration weight 
                 ! from the temporal mesh. 
@@ -6609,6 +6629,7 @@ END SUBROUTINE GetMaxDefs
                 ! Integration point at the slave element
                 CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
                 stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
+                IF(.NOT. Stat) CYCLE
 
                 DO i=1,n
                   DO j=1,n
@@ -6633,7 +6654,8 @@ END SUBROUTINE GetMaxDefs
             DO nip=1, IP % n 
               stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
                   IP % v(nip),IP % w(nip),detJ,Basis)
-              
+              IF(.NOT. Stat) EXIT
+
               ! We will actually only use the global coordinates and the integration weight 
               ! from the temporal mesh. 
               
@@ -6675,6 +6697,7 @@ END SUBROUTINE GetMaxDefs
               ELSE
                 stat = ElementInfo( ElementM, NodesM, um, vm, wm, detJ, BasisM )
               END IF
+              IF(.NOT. Stat) CYCLE
 
               ! Add the nodal dofs
               IF( DoNodes .AND. .NOT. StrongNodes ) THEN
@@ -10459,7 +10482,7 @@ END SUBROUTINE GetMaxDefs
      LOGICAL, OPTIONAL :: FindEdges
 
      LOGICAL :: FindEdges3D
-     INTEGER :: MeshDim, SpaceDim
+     INTEGER :: MeshDim, SpaceDim, MaxElemDim 
 
      IF(PRESENT(FindEdges)) THEN
        FindEdges3D = FindEdges
@@ -10480,7 +10503,14 @@ END SUBROUTINE GetMaxDefs
            // TRIM(I2S(MeshDim))//' vs. '//TRIM(I2S(SpaceDim)))
      END IF
 
-     SELECT CASE( MeshDim )
+     MaxElemDim = EnsureElemDim( MeshDim ) 
+     IF( MaxElemDim < MeshDim ) THEN
+       CALL Warn('FindMeshEdges','Element dimension smaller than mesh dimension: '//&
+           TRIM(I2S(MaxElemDim))//' vs '//TRIM(I2S(MeshDim)))
+     END IF
+
+
+     SELECT CASE( MaxElemDim )
 
      CASE(2)
        IF ( .NOT.ASSOCIATED( Mesh % Edges ) ) THEN
@@ -10504,6 +10534,33 @@ END SUBROUTINE GetMaxDefs
      CALL AssignConstraints()
 
 CONTAINS
+
+  ! Check that the element dimension really follows the mesh dimension
+  ! The default is the MeshDim so we return immediately after that is 
+  ! confirmed. 
+  !--------------------------------------------------------------------
+    FUNCTION EnsureElemDim(MeshDim) RESULT (MaxElemDim)
+
+      INTEGER :: MeshDim, MaxElemDim 
+      INTEGER :: i,ElemDim, ElemCode
+
+      MaxElemDim = 0
+
+      DO i=1,Mesh % NumberOfBulkElements
+        ElemCode = Mesh % Elements(i) % Type % ElementCode
+        IF( ElemCode > 500 ) THEN
+          ElemDim = 3 
+        ELSE IF( ElemCode > 300 ) THEN
+          ElemDim = 2
+        ELSE IF( ElemCode > 200 ) THEN
+          ElemDim = 1
+        END IF
+        MaxElemDim = MAX( MaxElemDim, ElemDim ) 
+        IF( MaxElemDim == MeshDim ) EXIT
+      END DO
+          
+    END FUNCTION EnsureElemDim
+
 
     SUBROUTINE AssignConstraints()
 
@@ -10760,6 +10817,8 @@ CONTAINS
     
     INTEGER :: nf(4)
 !------------------------------------------------------------------------------
+    
+
     
     TetraFaceMap(1,:) = (/ 1, 2, 3, 5, 6, 7 /)
     TetraFaceMap(2,:) = (/ 1, 2, 4, 5, 9, 8 /)
@@ -15883,6 +15942,151 @@ CONTAINS
 
 
   END SUBROUTINE ClusterElementsUniform
+
+ 
+  !> Find the node closest to the given coordinate. 
+  !> The linear search only makes sense for a small number of points. 
+  !> Users include saving routines of pointwise information. 
+  !-----------------------------------------------------------------
+  FUNCTION ClosestNodeInMesh(Mesh,Coord,MinDist) RESULT ( NodeIndx )
+    TYPE(Mesh_t) :: Mesh
+    REAL(KIND=dp) :: Coord(3)
+    REAL(KIND=dp), OPTIONAL :: MinDist
+    INTEGER :: NodeIndx
+
+    REAL(KIND=dp) :: Dist2,MinDist2,NodeCoord(3)
+    INTEGER :: i
+
+    MinDist2 = HUGE( MinDist2 ) 
+
+    DO i=1,Mesh % NumberOfNodes
+      
+      NodeCoord(1) = Mesh % Nodes % x(i)
+      NodeCoord(2) = Mesh % Nodes % y(i)
+      NodeCoord(3) = Mesh % Nodes % z(i)
+    
+      Dist2 = SUM( ( Coord - NodeCoord )**2 )
+      IF( Dist2 < MinDist2 ) THEN
+        MinDist2 = Dist2
+        NodeIndx = i  
+      END IF
+    END DO
+    
+    IF( PRESENT( MinDist ) ) MinDist = SQRT( MinDist2 ) 
+
+  END FUNCTION ClosestNodeInMesh
+
+
+  !> Find the element that owns or is closest to the given coordinate. 
+  !> The linear search only makes sense for a small number of points. 
+  !> Users include saving routines of pointwise information. 
+  !-------------------------------------------------------------------
+  FUNCTION ClosestElementInMesh(Mesh, Coords) RESULT ( ElemIndx )
+
+    TYPE(Mesh_t) :: Mesh
+    REAL(KIND=dp) :: Coords(3)
+    INTEGER :: ElemIndx
+
+    REAL(KIND=dp) :: Dist,MinDist,LocalCoords(3)
+    TYPE(Element_t), POINTER :: Element
+    INTEGER, POINTER :: NodeIndexes(:)
+    TYPE(Nodes_t) :: ElementNodes
+    INTEGER :: k,l,n,istat
+    REAL(KIND=dp) :: ParallelHits,ParallelCands
+    LOGICAL :: Hit
+
+    n = Mesh % MaxElementNodes
+    ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), STAT=istat)
+    IF( istat /= 0 ) CALL Fatal('ClosestElementInMesh','Memory allocation error') 	
+    ElemIndx = 0
+    MinDist = HUGE( MinDist ) 
+    Hit = .FALSE.
+    l = 0
+    
+    ! Go through all bulk elements and look for hit in each element.
+    ! Linear search makes only sense for a small number of nodes
+    DO k=1,Mesh % NumberOfBulkElements
+
+      Element => Mesh % Elements(k)
+      n = Element % TYPE % NumberOfNodes
+      NodeIndexes => Element % NodeIndexes
+      
+      ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+      ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+      ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+      
+      Hit = PointInElement( Element, ElementNodes, &
+          Coords, LocalCoords, LocalDistance = Dist )
+      IF( Dist < MinDist ) THEN
+        MinDist = Dist
+        l = k
+      END IF
+      IF( Hit ) EXIT
+    END DO
+    
+    ! Count the number of parallel hits
+    !-----------------------------------------------------------------------
+    IF( Hit ) THEN
+      ParallelHits = 1.0_dp
+    ELSE
+      ParallelHits = 0.0_dp
+    END IF
+    ParallelHits = ParallelReduction( ParallelHits )
+    
+    ! If there was no proper hit go through the best candidates so far and 
+    ! see if they would give a acceptable hit
+    !----------------------------------------------------------------------
+    IF( ParallelHits < 0.5_dp ) THEN	  
+
+      ! Compute the number of parallel candidates
+      !------------------------------------------
+      IF( l > 0 ) THEN
+        ParallelCands = 1.0_dp
+      ELSE
+        ParallelCands = 0.0_dp
+      END IF
+      ParallelCands = ParallelReduction( ParallelCands ) 
+
+      IF( l > 0 ) THEN
+        Element => Mesh % Elements(l)
+        n = Element % TYPE % NumberOfNodes
+        NodeIndexes => Element % NodeIndexes
+
+        ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+        ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+        ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+
+        ! If there are more than two competing parallel hits then use more stringent conditions
+        ! since afterwords there is no way of deciding which one was closer.
+        !--------------------------------------------------------------------------------------
+        IF( ParallelCands > 1.5_dp ) THEN
+          Hit = PointInElement( Element, ElementNodes, &
+              Coords, LocalCoords, GlobalEps = 1.0e-3_dp, LocalEps=1.0e-4_dp )	
+        ELSE
+          Hit = PointInElement( Element, ElementNodes, &
+              Coords, LocalCoords, GlobalEps = 1.0_dp, LocalEps=0.1_dp )	
+        END IF
+      END IF
+    END IF
+
+    IF( Hit ) ElemIndx = l
+
+    IF( ParallelHits < 0.5_dp ) THEN
+      IF( Hit ) THEN
+        ParallelHits = 1.0_dp
+      ELSE
+        ParallelHits = 0.0_dp
+      END IF
+      ParallelHits = ParallelReduction( ParallelHits )
+      IF( ParallelHits < 0.5_dp ) THEN
+        WRITE( Message, * ) 'Coordinate not found in any of the elements!',Coords
+        CALL Warn( 'ClosestElementInMesh', Message )
+      END IF
+    END IF
+
+    DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z )
+ 
+  END FUNCTION ClosestElementInMesh
 
 
 
