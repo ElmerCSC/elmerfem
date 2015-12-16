@@ -1922,10 +1922,7 @@ CONTAINS
 
     NActive = GetNOFBoundaryElements()
 
-    DO t = 1, NActive !Mesh % NumberOfBulkElements+1, Mesh % NumberOfBulkElements &
-        !+ Mesh % NumberOfBoundaryElements
-
-      !Element => Mesh % Elements(t)
+    DO t = 1, NActive 
 
       Element => GetBoundaryElement(t, Var % Solver)
       BCVal => GetBC()
@@ -1936,7 +1933,6 @@ CONTAINS
         UElement=Element, USolver=Var % Solver, UVariable=Var)
       IF (NoDOFs .eq. 1) CALL GetScalarLocalSolution(LocalVectorSolution(1,:), &
         UElement=Element, USolver=Var % Solver, UVariable=Var)
-      !Model % CurrentElement => Mesh % Elements(t)
       Model % CurrentElement => Element
 
       IF ( Element % TYPE % ElementCode == 101 ) CYCLE
@@ -2181,17 +2177,15 @@ CONTAINS
             coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))
             
             IF(NoDofs == 1) THEN
-              !func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
               func = SUM( LocalVectorSolution(1,1:n) * Basis(1:n) )
               fluxes(bc) = fluxes(bc) + s * coeff * func
               Minimum = MIN(Minimum, coeff*func)
               Maximum = MAX(Maximum, coeff*func)
             ELSE 
               DO j=1,DIM
-                !Flow(j) = coeff * SUM( Var % Values(NoDofs*(PermIndexes(1:n)-1)+j) * Basis(1:n) )
                 Flow(j) = coeff * SUM(LocalVectorSolution(j,1:n)*Basis(1:n))
               END DO
-              fluxes(bc) = fluxes(bc) + s *  SUM(Normal * Flow)
+              fluxes(bc) = fluxes(bc) + s * SUM(Normal * Flow)
               Minimum = MIN(Minimum,  SUM(Normal * Flow))
               Maximum = MAX(Maximum,  SUM(Normal * Flow))
             END IF
@@ -2201,7 +2195,6 @@ CONTAINS
             coeff = SUM( EnergyCoeff(1:n) * Basis(1:n))
             
             IF(NoDofs == 1) THEN
-              !func = SUM( Var % Values(PermIndexes(1:n)) * Basis(1:n) )
               func = SUM( LocalVectorSolution(1,1:n) * Basis(1:n) )
               flux = coeff * func 
               fluxes(bc) = fluxes(bc) + s * flux
@@ -2211,7 +2204,7 @@ CONTAINS
                 flux = flux + SUM( Var % Values(NoDofs*(PermIndexes(1:n)-1)+j) * Basis(1:n) )**2
               END DO
               flux = coeff * SQRT( flux )
-              fluxes(bc) = fluxes(bc) + s *  flux
+              fluxes(bc) = fluxes(bc) + s * flux
             END IF
      
           CASE ('area')
