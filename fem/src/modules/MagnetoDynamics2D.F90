@@ -1133,7 +1133,7 @@ CONTAINS
     COMPLEX(KIND=dp) :: nu_tensor(2,2)
     COMPLEX(KIND=dp) :: R(2,2,n)       
 
-    LOGICAL :: Cubic, HBcurve, Found, Stat
+    LOGICAL :: Cubic, HBcurve, Found, Stat, StrandedHomogenization
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
     TYPE(ValueListEntry_t), POINTER :: Lst
@@ -1148,6 +1148,10 @@ CONTAINS
     REAL(KIND=dp) :: Bt(nd,2)
     COMPLEX(KIND=dp) :: Ht(nd,2) 
 
+    REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
+    REAL(KIND=dp) :: nu_val, nuim_val
+    LOGICAL :: FoundIm
+
 !$omp threadprivate(Nodes)
 !------------------------------------------------------------------------------
     CALL GetElementNodes( Nodes,Element )
@@ -1159,27 +1163,33 @@ CONTAINS
     Material => GetMaterial(Element)
 
     Omega = GetAngularFrequency(Found=Found)
-
-    Lst => ListFind(Material,'H-B Curve',HBcurve)
-    IF(HBcurve) THEN
-      CALL GetLocalSolution(POT,UElement=Element)
-      POTC=POT(1,:)+im*POT(2,:)
-      Cval => Lst % CubicCoeff
-      Bval => Lst % TValues
-      Hval => Lst % FValues(1,1,:)
-    ELSE
-      CALL GetReluctivity(Material,R,n,Element)
-    END IF
-    
+   
     CoilBody = .FALSE.
     CompParams => GetComponentParams( Element )
     CoilType = ''
+    StrandedHomogenization = .FALSE.
     IF (ASSOCIATED(CompParams)) THEN
       CoilType = GetString(CompParams, 'Coil Type', Found)
       IF (Found) THEN
         SELECT CASE (CoilType)
         CASE ('stranded')
            CoilBody = .TRUE.
+           StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
+           IF ( .NOT. Found ) StrandedHomogenization = .FALSE.
+             
+           IF ( StrandedHomogenization ) THEN
+             nu_11 = 0._dp
+             nuim_11 = 0._dp
+             nu_11 = GetReal(CompParams, 'nu 11', Found)
+             nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+             nu_22 = 0._dp
+             nuim_22 = 0._dp
+             nu_22 = GetReal(CompParams, 'nu 22', Found)
+             nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+             IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+           END IF
+
         CASE ('massive')
            CoilBody = .TRUE.
         CASE ('foil winding')
@@ -1191,6 +1201,17 @@ CONTAINS
       END IF
     END IF
 
+    Lst => ListFind(Material,'H-B Curve',HBcurve)
+    IF(HBcurve) THEN
+      CALL GetLocalSolution(POT,UElement=Element)
+      POTC=POT(1,:)+im*POT(2,:)
+      Cval => Lst % CubicCoeff
+      Bval => Lst % TValues
+      Hval => Lst % FValues(1,1,:)
+    ELSE IF (.NOT. StrandedHomogenization) THEN 
+      CALL GetReluctivity(Material,R,n,Element)
+    END IF
+ 
     C = GetReal( Material, 'Electric Conductivity', Found, Element)
     C = C + im * GetReal( Material, 'Electric Conductivity im', Found, Element)
 
@@ -1235,11 +1256,20 @@ CONTAINS
         nu_tensor(2,2) = mu
       ELSE
         muder=0._dp
-        DO p=1,2
-          DO q=1,2
-            nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
+        IF (StrandedHomogenization) THEN
+          nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
+          nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
+          nu_tensor(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
+          nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
+          nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
+          nu_tensor(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
+        ELSE 
+          DO p=1,2
+            DO q=1,2
+              nu_tensor(p,q) = SUM(Basis(1:n) * R(p,q,1:n))
+            END DO
           END DO
-        END DO
+        END IF 
      END IF
 
 
@@ -1722,6 +1752,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
    TotNorm = 0.0_dp
    DO i=1,TotDofs
      Solver % Matrix % RHS => ForceVector(:,i)
+     Solver % Variable % Values = 0
      UNorm = DefaultSolve()
      TotNorm = TotNorm + SUM(Solver % Variable % Values**2)
      IF( i <= FluxDofs ) THEN
@@ -1757,10 +1788,11 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
-    REAL(KIND=dp) :: weight,coeff,detJ,BAtIp(8),PotAtIp(2),CondAtIp,MuAtIp, &
+    REAL(KIND=dp) :: weight,coeff,detJ,BAtIp(8),PotAtIp(2),MuAtIp, &
         Omega,TotalHeating, DesiredHeating, HeatingCoeff
+    COMPLEX(KIND=dp) :: CondAtIp
     REAL(KIND=dp) :: Freq, FreqPower, FieldPower, ComponentLoss(2), LossCoeff, &
-        ValAtIp, TotalLoss, x
+        ValAtIp, ValAtIpim, TotalLoss, x
     LOGICAL :: Found, SetHeating
     TYPE(ValueList_t), POINTER :: Material
 
@@ -1793,13 +1825,16 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: ComponentSkinCond(:,:), ComponentProxNu(:,:)
     CHARACTER(LEN=MAX_NAME_LEN) :: CompNumber, OutputComp
     
+    LOGICAL :: StrandedHomogenization, FoundIm
+
+    REAL(KIND=dp), ALLOCATABLE :: sigma_33(:), sigmaim_33(:)
 
     SAVE Nodes
 
     n = 2*MAX(Solver % Mesh % MaxElementDOFs,Solver % Mesh % MaxElementNodes)
     ALLOCATE( STIFF(n,n), FORCE(Totdofs,n) )
     ALLOCATE( POT(2,n), Basis(n), dBasisdx(n,3), alpha(n) )
-    ALLOCATE( Cond(n), mu(n) ) 
+    ALLOCATE( Cond(n), mu(n), sigma_33(n), sigmaim_33(n) ) 
     LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
     ModelDepth = GetCircuitModelDepth()
 
@@ -1880,6 +1915,7 @@ CONTAINS
       
       CoilType = ''
       CompParams => GetComponentParams( Element )
+      StrandedHomogenization = .FALSE.
       IF (ASSOCIATED(CompParams)) THEN    
         CoilType = GetString(CompParams, 'Coil Type', Found)
         
@@ -1903,7 +1939,31 @@ CONTAINS
           IF (.NOT. Found) i_multiplier_im = 0._dp
           
           i_multiplier = i_multiplier_re + im * i_multiplier_im
-          
+
+          StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
+          IF ( .NOT. Found ) StrandedHomogenization = .FALSE.
+
+          IF ( StrandedHomogenization ) THEN 
+!            nu_11 = 0._dp
+!            nuim_11 = 0._dp
+!            nu_11 = GetReal(CompParams, 'nu 11', Found)
+!            nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+!            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('MagnetoDynamicsCalcFields', &
+!                                                      'Homogenization Model nu 11 not found!')
+!            nu_22 = 0._dp
+!            nuim_22 = 0._dp
+!            nu_22 = GetReal(CompParams, 'nu 22', Found)
+!            nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+!            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('MagnetoDynamicsCalcFields', &
+!                                                      'Homogenization Model nu 22 not found!')
+            sigma_33 = GetReal(CompParams, 'sigma 33', Found)
+            IF ( .NOT. Found ) sigma_33 = 0._dp
+            sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
+            IF ( .NOT. FoundIm ) sigmaim_33 = 0._dp
+            IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('MagnetoDynamicsCalcFields', &
+                                                                 'Homogenization Model Sigma 33 not found!')
+          END IF
+ 
         CASE ('massive')
           CoilBody = .TRUE.
 
@@ -1960,6 +2020,10 @@ CONTAINS
       IF (ComplexPowerCompute) THEN
         BodyId = GetBody()
         Material => GetMaterial()
+
+        IF (StrandedHomogenization) CALL Fatal ('MagnetoDynamics2D','Calculate Complex Power for Stranded & 
+                                                 Homogenization model is not implemented.')
+
         mu = GetReal( Material, 'Relative Permeability', Found)
         mu = mu * 4.d-7*PI
         IF ( .NOT. Found ) CALL Warn('BSolver', 'Relative Permeability not found!')
@@ -2007,8 +2071,15 @@ CONTAINS
   
         ! Joule heating fields
         IF( TotDofs > 4 ) THEN
-          CondAtIp = SUM( Basis(1:n) * Cond(1:n) )
-          MuAtIp = SUM( Basis(1:n) * mu(1:n) )
+          IF ( StrandedHomogenization ) THEN 
+            ValAtIp = SUM(Basis(1:n) * sigma_33(1:n))
+            ValAtIpim = SUM(Basis(1:n) * sigmaim_33(1:n))
+          ELSE
+            ValAtIp = SUM( Basis(1:n) * Cond(1:n) )
+            ValAtIpim = 0._dp
+          END IF
+          CondAtIp = ValAtIp + im * ValAtIpim
+                                                         
           IF (CoilType /= 'stranded') THEN
             PotAtIp(1) =   Omega * SUM(POT(2,1:nd) * Basis(1:nd))
             PotAtIp(2) = - Omega * SUM(POT(1,1:nd) * Basis(1:nd))
@@ -2045,11 +2116,13 @@ CONTAINS
             PotAtIp(2) = PotAtIp(2)-grads_coeff*localV(2)
           END SELECT
 
-          BAtIp(5) = 0.5_dp * ( PotAtIp(1)**2 + PotAtIp(2)**2 )  
-          BAtIp(6) = CondAtIp * BAtIp(5) 
+          BAtIp(5) = 0.5_dp * ( PotAtIp(1)**2 + PotAtIp(2)**2 )
+          BAtIp(6) = REAL(CondAtIp * BAtIp(5))
           TotalHeating = TotalHeating + Weight * BAtIp(6)
-          BAtIp(7) = CondAtIp * PotAtIp(1)
-          BAtIp(8) = CondAtIp * PotAtIp(2)
+          imag_value = CondAtIp * (PotAtIp(1) + im * PotAtIp(2))
+          BAtIp(7) = REAL(imag_value)
+          BAtIp(8) = AIMAG(imag_value)
+
         END IF
         
         IF( LossEstimation ) THEN
@@ -2068,7 +2141,9 @@ CONTAINS
         IF (ComplexPowerCompute) THEN
           imag_value = CMPLX(BAtIp(7), BAtIp(8))
 
-          IF ( CondAtIp > TINY(CondAtIp) ) THEN
+          MuAtIp = SUM( Basis(1:n) * mu(1:n) )
+
+          IF ( ABS(CondAtIp) > TINY(Weight) ) THEN
             BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) + ModelDepth * Weight * imag_value**2._dp / CondAtIp
           END IF
 
@@ -2370,7 +2445,7 @@ CONTAINS
                                             ComponentSkinCond,  & 
                                             ComponentProxNu      )
 
-    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond )
+    DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond, sigma_33, sigmaim_33 )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
