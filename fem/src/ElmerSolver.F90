@@ -291,7 +291,7 @@ END INTERFACE
        IF(MeshMode) THEN
          CALL FreeModel(CurrentModel)
          MeshIndex = MeshIndex + 1
-         FirstLoad=.TRUE.
+         FirstLoad = .TRUE.
        END IF
 
        IF ( FirstLoad ) THEN
@@ -1483,12 +1483,14 @@ END INTERFACE
        timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)
        IF(.NOT.GotIt) timePeriod = HUGE(timePeriod)
 
-       IF(Scanning) THEN
-         CALL ListPushNamespace('scan:')
-       ELSE IF(Transient) THEN
-         CALL ListPushNamespace('time:')
-       ELSE
-         CALL ListPushNamespace('steady:')
+       IF(GetNameSpaceCheck()) THEN
+         IF(Scanning) THEN
+           CALL ListPushNamespace('scan:')
+         ELSE IF(Transient) THEN
+           CALL ListPushNamespace('time:')
+         ELSE
+           CALL ListPushNamespace('steady:')
+         END IF
        END IF
 
        RealTimestep = 1
@@ -1497,12 +1499,14 @@ END INTERFACE
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
 
-         IF( Scanning ) THEN
-           CALL ListPushNamespace('scan '//TRIM(i2s(cum_Timestep))//':')
-         ELSE IF ( Transient ) THEN
-           CALL ListPushNamespace('time '//TRIM(i2s(cum_Timestep))//':')
-         ELSE
-           CALL ListPushNamespace('steady '//TRIM(i2s(cum_Timestep))//':')
+         IF ( GetNamespaceCheck() ) THEN
+           IF( Scanning ) THEN
+             CALL ListPushNamespace('scan '//TRIM(i2s(cum_Timestep))//':')
+           ELSE IF ( Transient ) THEN
+             CALL ListPushNamespace('time '//TRIM(i2s(cum_Timestep))//':')
+           ELSE
+             CALL ListPushNamespace('steady '//TRIM(i2s(cum_Timestep))//':')
+           END IF
          END IF
 
          dtfunc = ListGetConstReal( CurrentModel % Simulation, &

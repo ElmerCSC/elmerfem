@@ -19,6 +19,8 @@ Simulation
   Steady State Min Iterations = 1
   Output Intervals = 1
 
+  Additive Namespaces = Logical True
+
 !  Post File = "case.ep"
 End
 
@@ -79,14 +81,14 @@ Solver 1
   Block: Linear System Convergence Tolerance = 1.0e-05
   Block: Multigrid Levels = Integer 10
   Block: MG Algebraic = Logical True
-  BLock: MG Pre Smoothing Iterations = 1
-  BLock: MG Post Smoothing Iterations = 1
-  BLock: MG Lowest Linear Solver Iterative = Logical False
-  BLock: MG Lowest Linear Solver Limit = Integer 50
-  BLock: MG Lowest Linear Solver Unsolve = Logical True 
-  BLock: MG Smoother = String sgs
-  BLock: MG Preconditioning = diagonal
-  BLock: MG Max Iterations = Integer 1
+  Block: MG Pre Smoothing Iterations = 1
+  Block: MG Post Smoothing Iterations = 1
+  Block: MG Lowest Linear Solver Iterative = Logical False
+  Block: MG Lowest Linear Solver Limit = Integer 50
+  Block: MG Lowest Linear Solver Unsolve = Logical True 
+  Block: MG Smoother = String sgs
+  Block: MG Preconditioning = diagonal
+  Block: MG Max Iterations = Integer 1
 
   Block: MG Direct Interpolate = Logical True
   Block: MG Strong Connection Limit = Real 0.06

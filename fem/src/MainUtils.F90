@@ -1906,7 +1906,7 @@ CONTAINS
          steadyIt = i
        END IF
         
-       CALL ListPushNamespace('coupled '//TRIM(i2s(i))//': ')
+       IF( GetNamespaceCheck() ) CALL ListPushNamespace('coupled '//TRIM(i2s(i))//': ')
 
        DoneThis = .FALSE.
 
