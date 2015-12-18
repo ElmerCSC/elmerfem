@@ -346,11 +346,12 @@ CONTAINS
   END FUNCTION GetNOFBoundaryElements
 
 !> Returns a scalar field in the nodes of the element
-  SUBROUTINE GetScalarLocalSolution( x,name,UElement,USolver,tStep )
+  SUBROUTINE GetScalarLocalSolution( x,name,UElement,USolver,tStep, UVariable )
      REAL(KIND=dp) :: x(:)
      CHARACTER(LEN=*), OPTIONAL :: name
      TYPE(Solver_t)  , OPTIONAL, TARGET :: USolver
      TYPE(Element_t),  OPTIONAL, TARGET :: UElement
+     TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
 
      REAL(KIND=dp), POINTER :: Values(:)
@@ -366,7 +367,12 @@ CONTAINS
 
      x = 0.0d0
 
-     Variable => Solver % Variable
+     IF(.NOT. PRESENT(UVariable)) THEN
+       Variable => Solver % Variable
+     ELSE
+       Variable => UVariable
+     END IF
+     
      IF ( PRESENT(name) ) THEN
         Variable => VariableGet( Solver % Mesh % Variables, name )
      END IF
@@ -411,11 +417,12 @@ CONTAINS
 
 
 !> Returns a vector field in the nodes of the element
-  SUBROUTINE GetVectorLocalSolution( x,name,UElement,USolver,tStep )
+  SUBROUTINE GetVectorLocalSolution( x,name,UElement,USolver,tStep, UVariable )
      REAL(KIND=dp) :: x(:,:)
      CHARACTER(LEN=*), OPTIONAL :: name
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
+     TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
 
      TYPE(Variable_t), POINTER :: Variable
@@ -431,7 +438,12 @@ CONTAINS
 
      x = 0.0d0
 
-     Variable => Solver % Variable
+     IF(.NOT. PRESENT(UVariable)) THEN
+       Variable => Solver % Variable
+     ELSE
+       Variable => UVariable
+     END IF
+
      IF ( PRESENT(name) ) THEN
         Variable => VariableGet( Solver % Mesh % Variables, name )
      END IF
