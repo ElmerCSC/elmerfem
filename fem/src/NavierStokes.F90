@@ -788,13 +788,22 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
  
          ! Pressure terms:
-         ! --------------- 
-         IF ( gradPDiscretization  ) THEN
-            A(i,c) = A(i,c) + s * dBasisdx(q,i) * Basis(p)
+         ! ---------------
+         IF (P2P1) THEN
+           IF (q <= LinearBasis) THEN
+             IF ( gradPDiscretization  ) THEN
+               A(i,c) = A(i,c) + s * PdBasisdx(q,i) * Basis(p)
+             ELSE
+               A(i,c) = A(i,c) - s * PBasis(q) * dBasisdx(p,i)
+             END IF
+           END IF
          ELSE
-            A(i,c) = A(i,c) - s * Basis(q) * dBasisdx(p,i)
+           IF ( gradPDiscretization  ) THEN
+             A(i,c) = A(i,c) + s * dBasisdx(q,i) * Basis(p)
+           ELSE
+             A(i,c) = A(i,c) - s * Basis(q) * dBasisdx(p,i)
+           END IF
          END IF
-
 
          ! Continuity equation:
          !---------------------
