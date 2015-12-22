@@ -996,7 +996,11 @@ MODULE NavierStokes
      FORCEvector(1:p)=Forcevector(1:p)+MATMUL(JacM(1:p,1:p),SOL(1:p))
    END IF
 
-   IF (  P2P1 ) THEN
+   ! Original P2P1 implementation: Now commented out and replaced by an alternate
+   ! implementation since this appears to produce numerical oscillations. To be
+   ! removed?
+   IF (.FALSE.) THEN
+   !IF (  P2P1 ) THEN
      j = GetElementFamily()
      EdgeMap => GetEdgeMap(j)
 
@@ -1009,6 +1013,20 @@ MODULE NavierStokes
        StiffMatrix( c*i, c*i ) =  1._dp
        StiffMatrix( c*i, c*p ) = -0.5_dp
        StiffMatrix( c*i, c*q ) = -0.5_dp
+     END DO
+   END IF
+   
+   ! Produce zero values for pressure at the nodes which are not needed
+   ! in the lowest-order pressure interpolation. We shall return consistent
+   ! values after the nonlinear iteration has terminated:
+   IF (P2P1) THEN
+      DO i=LinearBasis+1,nBasis
+        StiffMatrix( c*i, : ) = 0._dp
+        MassMatrix(  c*i, : ) = 0._dp
+        StiffMatrix( :, c*i ) = 0._dp
+        MassMatrix(  :, c*i ) = 0._dp
+        ForceVector( c*i ) = 0._dp
+        StiffMatrix( c*i, c*i ) = 1._dp
      END DO
    END IF
 
