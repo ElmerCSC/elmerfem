@@ -128,7 +128,7 @@
      REAL(KIND=dp), ALLOCATABLE, SAVE :: pDensity0(:), pDensity1(:)
 !
      LOGICAL :: AllocationsDone = .FALSE., FreeSurfaceFlag, &
-         PseudoPressureExists, PseudoCompressible, Bubbles, &
+         PseudoPressureExists, PseudoCompressible, Bubbles, P2P1, &
          Porous =.FALSE., PotentialForce=.FALSE., Hydrostatic=.FALSE., &
          MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate
 
@@ -396,7 +396,7 @@
 
 
 !------------------------------------------------------------------------------
-
+     P2P1 = .FALSE.
      Bubbles   = ListGetLogical( Solver % Values,'Bubbles',GotIt )
      Stabilize = ListGetLogical( Solver % Values,'Stabilize',GotIt )
 
@@ -409,6 +409,12 @@
           StabilizeFlag = 'bubbles'
        ELSE
           StabilizeFlag = 'stabilized'
+       END IF
+     ELSE
+       IF (StabilizeFlag == 'p2/p1' .OR. StabilizeFlag == 'p2p1') THEN
+         P2P1 = .TRUE.
+         Bubbles = .FALSE.
+         Stabilize = .FALSE.         
        END IF
      END IF
 
@@ -987,11 +993,11 @@
             Bubbles = .TRUE.
             StabilizeFlag = 'bubbles'
          END IF
-         IF ( Element % TYPE % BasisFunctionDegree <= 1 .AND. &
-              StabilizeFlag == 'p2/p1' ) THEN
+         IF ( Element % TYPE % BasisFunctionDegree <= 1 .AND. P2P1 ) THEN
             Bubbles = .TRUE.
             StabilizeFlag = 'bubbles'
          END IF
+
          IF ( nb==0 .AND. Bubbles ) nb = n
 
          TimeForce = 0.0_dp
@@ -1311,7 +1317,7 @@
 !------------------------------------------------------------------------------
     END DO  ! of nonlinear iteration
 
-    IF (StabilizeFlag == 'p2/p1' .OR. StabilizeFlag == 'p2p1') THEN
+    IF ( P2P1 ) THEN
       !----------------------------------------------------------------------------------------
       ! Replace the zero pressure solution at the nodes which are not needed in the linear
       ! pressure approximation by the interpolated values for right visualization:
@@ -1319,6 +1325,8 @@
       DO t=1,GetNOFActive()
         ! First the midedge nodes:
         Element => GetActiveElement(t)
+        IF ( Element % TYPE % BasisFunctionDegree <= 1 ) CYCLE
+
         nd = GetElementDOFs( Indexes )
         k = GetElementFamily()
         EdgeMap => GetEdgeMap(k)

@@ -229,7 +229,7 @@ MODULE NavierStokes
      NBasis    = n
      Bubbles   = .FALSE.
      PBubbles  = .FALSE.
-     P2P1      = .FALSE.
+     P2P1 = .FALSE.
      VMS =  StabilizeFlag == 'vms'
 
      Material => GetMaterial()
@@ -266,7 +266,7 @@ MODULE NavierStokes
           NBasis    = 2 * n
           Bubbles   = .TRUE.
        ELSE
-          P2P1 = .TRUE.
+          P2P1 = StabilizeFlag == 'p2/p1' .OR. StabilizeFlag == 'p2p1'
        END IF
        Stabilize = .FALSE.
      END IF
