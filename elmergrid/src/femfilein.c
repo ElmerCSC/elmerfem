@@ -4888,6 +4888,9 @@ int FluxToElmerType3D(int nonodes, int dim) {
     case 4:
       elmertype = 504;
       break;
+    case 5:
+      elmertype = 605;
+      break;
     case 6:
       elmertype = 706;
       break;
@@ -4896,6 +4899,9 @@ int FluxToElmerType3D(int nonodes, int dim) {
       break;
     case 10: 
       elmertype = 510;
+      break;
+    case 13:
+      elmertype = 613;
       break;
     case 15: 
       elmertype = 715;
