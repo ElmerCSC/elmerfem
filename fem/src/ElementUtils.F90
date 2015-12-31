@@ -293,7 +293,7 @@ CONTAINS
     LOGICAL, OPTIONAL :: ProjectorDofs
     CHARACTER(LEN=*), OPTIONAL :: Equation
 !------------------------------------------------------------------------------
-    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This
+    INTEGER :: t,i,j,k,l,m,k1,k2,n,p,q,e1,e2,f1,f2, EDOFs, FDOFs, BDOFs, This, istat
 
     LOGICAL :: Flag, FoundDG, GB, Found, Radiation, DoProjectors
 
@@ -308,15 +308,16 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element,Elm, Edge1, Edge2, Face1, Face2
 !------------------------------------------------------------------------------
 
-   GB = .FALSE.
-   IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
+    CALL Info('MakeListMatrix','Creating list matrix',Level=14)
+
+    GB = .FALSE.
+    IF ( PRESENT(GlobalBubbles) ) GB = GlobalBubbles
 
     List => List_AllocateMatrix(LocalNodes)
 
     BDOFs = Mesh % MaxBDOFs
     EDOFs = Mesh % MaxEdgeDOFs
     FDOFs = Mesh % MaxFaceDOFs
-
     IF( PRESENT( NodalDofsOnly ) ) THEN
       IF( NodalDofsOnly ) THEN
         EDOFS = 0
@@ -342,7 +343,11 @@ CONTAINS
 
 
     IndexSize = 128
-    ALLOCATE( Indexes(IndexSize) )
+    ALLOCATE( Indexes(IndexSize), STAT=istat )
+    IF( istat /= 0 ) THEN
+      CALL Fatal('MakeListMatrix','Allocation error for Indexes')
+    END IF
+
 
     ! Create the permutation for the Discontinuous Galerkin solver 
     !-------------------------------------------------------------------
@@ -418,6 +423,7 @@ CONTAINS
       END DO
     END IF
 
+
     ! If this is not a GD solver then create permutation considering 
     ! nodal, edge, face and bubble dofs. 
     !-------------------------------------------------------------------
@@ -443,7 +449,10 @@ CONTAINS
          IF ( n > IndexSize ) THEN
             IndexSize = n
             IF ( ALLOCATED( Indexes ) ) DEALLOCATE( Indexes )
-            ALLOCATE( Indexes(n) )
+            ALLOCATE( Indexes(n), STAT=istat )
+            IF( istat /= 0 ) THEN
+              CALL Fatal('MakeListMatrix','Allocation error for Indexes of size: '//TRIM(I2S(n)))
+            END IF
          END IF
 
          n = 0
@@ -596,6 +605,7 @@ CONTAINS
 
     END IF
 
+
     k = 0
     DO i=1,SIZE(Reorder)
        IF (Reorder(i)>0) THEN
@@ -718,7 +728,7 @@ CONTAINS
      TYPE(ListMatrixEntry_t), POINTER :: CList
      CHARACTER(LEN=MAX_NAME_LEN) :: Eq, str
      LOGICAL :: GotIt, DG, GB, UseOptimized, Found
-     INTEGER i,j,k,l,k1,t,n, p,m, EDOFs, FDOFs, BDOFs, cols
+     INTEGER i,j,k,l,k1,t,n, p,m, EDOFs, FDOFs, BDOFs, cols, istat
      INTEGER, POINTER :: Ivals(:)
      INTEGER, ALLOCATABLE :: InvInitialReorder(:)
 
@@ -754,7 +764,8 @@ CONTAINS
 
      Perm = 0
      IF ( PRESENT(Equation) ) THEN
-        k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB )
+       CALL Info('CreateMatrix','creating initial permutation',Level=14)
+       k = InitialPermutation( Perm,Model,Solver,Mesh,Eq,DG,GB )
         IF ( k <= 0 ) THEN
            RETURN
         END IF
@@ -774,6 +785,7 @@ CONTAINS
 
      IF( ParEnv % PEs > 1 .AND. &
          ListGetLogical( Solver % Values,'Skip Pure Halo Nodes',Found ) ) THEN
+       CALL Info('CreateMatrix','Skipping pure halo nodes',Level=14)
        j = 0
        DO i=1,Mesh % NumberOfNodes 
          ! These are pure halo nodes that need not be communicated. They are created only 
@@ -790,8 +802,12 @@ CONTAINS
        k = j
      END IF
 
+     CALL Info('CreateMatrix','Creating inverse of initial order os size: '//TRIM(I2S(k)),Level=14)
+     ALLOCATE( InvInitialReorder(k), STAT=istat )
+     IF( istat /= 0 ) THEN
+       CALL Fatal('CreateMatrix','Allocation error for InvInitialReorder of size: '//TRIM(I2S(k)))
+     END IF
 
-   ALLOCATE( InvInitialReorder(k) )
      InvInitialReorder = 0
      DO i=1,SIZE(Perm)
         IF (Perm(i)>0) InvInitialReorder(Perm(i)) = i
@@ -809,9 +825,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    Compute matrix structure and do bandwidth optimization if requested
 !------------------------------------------------------------------------------
-     ALLOCATE( Model % RowNonZeros(k) ); Model % RowNonzeros=0
+     ALLOCATE( Model % RowNonZeros(k), STAT=istat )
+     IF( istat /= 0 ) THEN
+       CALL Fatal('CreateMatrix','Allocation error for RowNonZeros of size: '//TRIM(I2S(k)))
+     END IF
+    
+
+     Model % RowNonzeros=0
      NULLIFY( ListMatrix )
 
+     CALL Info('CreateMatrix','Creating list matrix for equation',Level=14)
      IF ( PRESENT(Equation) ) THEN
         CALL MakeListMatrix( Model, Solver, Mesh, ListMatrix, Perm, k, Eq, DG, GB,&
             NodalDofsOnly, ProjectorDofs )
@@ -828,10 +851,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    Ok, create and initialize the matrix
 !------------------------------------------------------------------------------
+     CALL Info('CreateMatrix','Initializing list matrix for equation',Level=14)
      SELECT CASE( MatrixFormat )
        CASE( MATRIX_CRS )
          Matrix => CRS_CreateMatrix( DOFs*k, &
-           Model % TotalMatrixElements,Model % RowNonzeros,DOFs,Perm,.TRUE. )
+             Model % TotalMatrixElements,Model % RowNonzeros,DOFs,Perm,.TRUE. )
          Matrix % FORMAT = MatrixFormat
          CALL InitializeMatrix( Matrix, k, ListMatrix, &
                Perm, InvInitialReorder, DOFs )
@@ -842,6 +866,7 @@ CONTAINS
        CASE( MATRIX_SBAND )
          Matrix => Band_CreateMatrix( DOFs*k, DOFs*n,.TRUE.,.TRUE. )
      END SELECT
+     CALL Info('CreateMatrix','Matrix created finally',Level=14)
 
      CALL List_FreeMatrix( k, ListMatrix )
 
@@ -859,7 +884,10 @@ CONTAINS
        Matrix % ConstraintMatrix => AllocateMatrix()
        A => Matrix % ConstraintMatrix
        A % NumberOfRows = n
-       ALLOCATE( A % Rows(n+1), A % Diag(n), A % RHS(n) )
+       ALLOCATE( A % Rows(n+1), A % Diag(n), A % RHS(n), STAT=istat )
+       IF( istat /= 0 ) THEN
+         CALL Fatal('CreateMatrix','Allocation error for CRS matrix topology: '//TRIM(I2S(n)))
+       END IF
 
        DO i=1,n
          A % RHS(i:i) = ListGetConstReal( Solver % Values,  &
@@ -898,7 +926,10 @@ CONTAINS
          A % Rows(i+1) = A % Rows(i)+Cols
        END DO
 
-       ALLOCATE( A % Cols(cols), A % Values(cols) )
+       ALLOCATE( A % Cols(cols), A % Values(cols), STAT=istat )
+       IF( istat /= 0 ) THEN
+         CALL Fatal('CreateMatrix','Allocation error for CRS cols and values: '//TRIM(I2S(cols)))
+       END IF
        A % Cols = 0
        A % Values = 0
 
@@ -1144,14 +1175,17 @@ CONTAINS
      REAL(KIND=dp) :: Basis(Model % MaxElementNodes)
      REAL(KIND=dp) :: dBasisdx(Model % MaxElementNodes,3),SqrtElementMetric
      REAL(KIND=dp) :: IntegrandAtGPt, dV
-     INTEGER :: N_Integ, t, tg, i
+     INTEGER :: N_Integ, t, tg, i, istat
      LOGICAL :: stat
 
 ! Need MaxElementNodes only in allocation
      n = Model % MaxElementNodes
      ALLOCATE( ElementNodes % x( n ),   &
                ElementNodes % y( n ),   &
-               ElementNodes % z( n ) )
+               ElementNodes % z( n ), STAT=istat )
+     IF( istat /= 0 ) THEN
+       CALL Fatal('VolumeIntegrate','Allocation error for ElementNodes')
+     END IF
 
      Integral = 0.0d0
 
@@ -1261,7 +1295,7 @@ CONTAINS
      REAL(KIND=dp) :: dBasisdx(Model % MaxElementNodes,3),SqrtElementMetric
      REAL(KIND=dp) :: Normal(3)
      REAL(KIND=dp) :: IntegrandAtGPt(3), FluxAtGPt, dS
-     INTEGER :: N_Integ, t, tg, i, j, DIM
+     INTEGER :: N_Integ, t, tg, i, j, DIM, istat
      LOGICAL :: stat
 
      DIM = CoordinateSystemDimension()
@@ -1270,7 +1304,10 @@ CONTAINS
      n = Model % MaxElementNodes
      ALLOCATE( ElementNodes % x( n ),   &
                ElementNodes % y( n ),   &
-               ElementNodes % z( n ) )
+               ElementNodes % z( n ), STAT=istat )
+     IF( istat /= 0 ) THEN
+       CALL Fatal('FluxIntegrate','Allocation error for ElementNodes')
+     END IF
 
      Integral = 0.0d0
 
@@ -1414,7 +1451,7 @@ CONTAINS
      REAL(KIND=dp) :: dBasisdx(Model % MaxElementNodes,3),SqrtElementMetric
 !     REAL(KIND=dp) :: Normal(3)
      REAL(KIND=dp) :: IntegrandAtGPt(3), dS
-     INTEGER :: N_Integ, t, tg, i, j, DIM
+     INTEGER :: N_Integ, t, tg, i, j, DIM, istat
      LOGICAL :: stat
 
      DIM = CoordinateSystemDimension()
@@ -1423,7 +1460,10 @@ CONTAINS
      n = Model % MaxElementNodes
      ALLOCATE( ElementNodes % x( n ),   &
                ElementNodes % y( n ),   &
-               ElementNodes % z( n ) )
+               ElementNodes % z( n ), STAT=istat )
+     IF( istat /= 0 ) THEN
+       CALL Fatal('SurfaceIntegrate','Allocation error for ElementNodes')
+     END IF
 
      Integral = 0.0d0
 
