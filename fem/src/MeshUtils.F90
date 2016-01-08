@@ -2032,6 +2032,10 @@ END SUBROUTINE GetMaxDefs
    CALL Info('LoadMesh','Loading mesh done',Level=8)
 
 
+   IF( ListGetLogical( Model % Simulation,'Inspect Mesh',GotIt ) ) THEN
+     CALL InspectMesh( Mesh ) 
+   END IF
+
  CONTAINS
 
 
@@ -2754,6 +2758,59 @@ END SUBROUTINE GetMaxDefs
  END FUNCTION LoadMesh2
  !------------------------------------------------------------------------------
 
+
+ SUBROUTINE InspectMesh(Mesh)
+   
+   TYPE(Mesh_t), POINTER :: Mesh
+   INTEGER :: i,j,mini,maxi
+   INTEGER, POINTER :: Indexes(:)
+   INTEGER, ALLOCATABLE :: ActiveCount(:)
+
+   PRINT *,'Inspecting mesh for ranges and correctness'
+
+   PRINT *,'No bulk elements:',Mesh % NumberOfBulkElements
+   PRINT *,'No boundary elements:',Mesh % NumberOfBoundaryElements
+   PRINT *,'No nodes:',Mesh % NumberOfNodes
+
+   PRINT *,'Range:'
+   PRINT *,'X:',MINVAL( Mesh % Nodes % x ), MAXVAL( Mesh % Nodes % x )
+   PRINT *,'Y:',MINVAL( Mesh % Nodes % y ), MAXVAL( Mesh % Nodes % y )
+   PRINT *,'Z:',MINVAL( Mesh % Nodes % z ), MAXVAL( Mesh % Nodes % z )
+
+   ALLOCATE( ActiveCount( Mesh % NumberOfNodes ) )
+
+   mini = HUGE(mini)
+   maxi = 0
+   ActiveCount = 0
+   DO i=1,Mesh % NumberOfBulkElements
+     Indexes => Mesh % Elements(i) % NodeIndexes
+     mini = MIN(mini, MINVAL( Indexes ) )
+     maxi = MAX(maxi, MAXVAL( Indexes ) )
+     ActiveCount(Indexes) = ActiveCount(Indexes) + 1
+   END DO
+   PRINT *,'Bulk index range: ',mini,maxi
+   PRINT *,'Bulk nodes:',COUNT(ActiveCount > 0 )
+   PRINT *,'Bulk index count: ',MINVAL(ActiveCount),MAXVAL(ActiveCount)
+
+   mini = HUGE(mini)
+   maxi = 0
+   ActiveCount = 0
+   DO i=Mesh % NumberOfBulkElements+1, &
+       Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+     Indexes => Mesh % Elements(i) % NodeIndexes
+     mini = MIN(mini, MINVAL( Indexes ) )
+     maxi = MAX(maxi, MAXVAL( Indexes ) )
+     ActiveCount(Indexes) = ActiveCount(Indexes) + 1
+   END DO
+   PRINT *,'Boundary index range: ',mini,maxi
+   PRINT *,'Boundary nodes: ',COUNT(ActiveCount > 0)
+   PRINT *,'Boundary index count: ',MINVAL(ActiveCount),MAXVAL(ActiveCount)
+
+   DEALLOCATE( ActiveCount )
+
+   PRINT *,'Done inspecting mesh'
+
+ END SUBROUTINE InspectMesh
 
 
 
@@ -4147,7 +4204,7 @@ END SUBROUTINE GetMaxDefs
         RelTolX, RelTolY, XTol, YTol, RadTol, MaxSkew1, MaxSkew2, SkewTol, &
         ArcCoeff, EdgeCoeff, NodeCoeff, MaxDistance
     INTEGER :: NoNodes1, NoNodes2, MeshDim
-    INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow
+    INTEGER :: i,j,k,n,m,Nrange,Nrange2, nrow, Naxial
     INTEGER, ALLOCATABLE :: EdgePerm(:),NodePerm(:),DualNodePerm(:)
     INTEGER :: EdgeRow0, FaceRow0, EdgeCol0, FaceCol0, ProjectorRows
     TYPE(Element_t), POINTER :: Element
@@ -4182,6 +4239,8 @@ END SUBROUTINE GetMaxDefs
       MaxDistance = ListGetCReal( CurrentModel % Solver % Values,&
           'Projector Max Distance', HaveMaxDistance)       
     END IF
+
+    Naxial = ListGetInteger( BC,'Axial Projector Periods',Found ) 
 
 
     Parallel = ( ParEnv % PEs > 1 )
@@ -6150,7 +6209,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
-          MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep
+          MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1
       TYPE(Element_t), POINTER :: Element, ElementM
       TYPE(Element_t) :: ElementT
       TYPE(GaussIntegrationPoints_t) :: IP
@@ -6159,7 +6218,7 @@ END SUBROUTINE GetMaxDefs
       REAL(KIND=dp) :: x(10),y(10),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
           SumArea,TrueArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , &
-          val_dual, zmin, zmax, zminm, zmaxm
+          val_dual, zmin, zmax, zminm, zmaxm, alpha
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol
       REAL(KIND=dp) :: TotRefArea, TotSumArea, TotTrueArea
@@ -6356,19 +6415,26 @@ END SUBROUTINE GetMaxDefs
 
           IF( Repeating ) THEN
             ! Enforce xmaxm to be on the same interval than xmin
-            Nrange = FLOOR( (xmaxm-xmin+ArcTol) / ArcRange )
-            IF( Nrange /= 0 ) THEN
-              xminm = xminm - Nrange * ArcRange
-              xmaxm = xmaxm - Nrange * ArcRange
-              NodesM % x(1:nM) = NodesM % x(1:nM) - NRange * ArcRange 
+            IF( Naxial > 0 ) THEN
+              Nrange1 = 0
+              Nrange2 = Naxial - 1
+            ELSE
+              Nrange1 = FLOOR( (xmaxm-xmin+ArcTol) / ArcRange )
+              Nrange2 = FLOOR( (xmax-xminm+ArcTol) / ArcRange )
+              IF( Nrange1 /= 0 ) THEN
+                xminm = xminm - Nrange1 * ArcRange
+                xmaxm = xmaxm - Nrange1 * ArcRange
+                NodesM % x(1:nM) = NodesM % x(1:nM) - NRange1 * ArcRange 
+              END IF
             END IF
 
+            Nrange = Nrange1
             ! Check whether there could be a intersection in an other interval as well
-            IF( xminm + ArcRange < xmax + ArcTol ) THEN
-              Nrange2 = 1
-            ELSE
-              Nrange2 = 0
-            END IF
+            !IF( xminm + ArcRange < xmax + ArcTol ) THEN
+            !  Nrange2 = 1
+            !ELSE
+            !  Nrange2 = 0
+            !END IF
           END IF
 
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
@@ -6810,12 +6876,26 @@ END SUBROUTINE GetMaxDefs
           END DO
 
 100       IF( Repeating ) THEN
-            IF( NRange2 /= 0 ) THEN
-              xminm = xminm + ArcCoeff * Nrange2 * ArcRange
-              xmaxm = xmaxm + ArcCoeff * Nrange2 * ArcRange
-              NodesM % x(1:n) = NodesM % x(1:n) + NRange2 * ArcRange 
-              NRange = NRange + NRange2
-              NRange2 = 0
+            IF( NRange /= NRange2 ) THEN
+              Nrange = Nrange + 1
+              IF( Naxial > 1 ) THEN
+                Alpha = 2.0_dp * PI * Nrange / Naxial
+                DO i=1,nM
+                  x0 = NodesM % x(i)
+                  y0 = NodesM % y(i)
+                  NodesM % x(i) = COS(Alpha) * x0 - SIN(Alpha) * y0
+                  NodesM % y(i) = SIN(Alpha) * x0 + COS(Alpha) * y0
+                END DO
+                xminm = MINVAL( NodesM % x(1:nM))
+                xmaxm = MAXVAL( NodesM % x(1:nM))
+                yminm = MINVAL( NodesM % y(1:nM))
+                ymaxm = MAXVAL( NodesM % y(1:nM))
+              ELSE
+                Nrange = NRange2
+                xminm = xminm + ArcCoeff * ArcRange * (Nrange2 - Nrange1)
+                xmaxm = xmaxm + ArcCoeff * ArcRange * (Nrange2 - Nrange1)
+                NodesM % x(1:n) = NodesM % x(1:n) + ArcRange  * (Nrange2 - Nrange1)
+              END IF
               GOTO 200
             END IF
           END IF
@@ -8448,6 +8528,159 @@ END SUBROUTINE GetMaxDefs
 
 
   !---------------------------------------------------------------------------
+  !> Given axial projectors compute the number of cycles.
+  !---------------------------------------------------------------------------
+  SUBROUTINE AxialInterfaceMeshes(BMesh1, BMesh2, BParams )
+  !---------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: BMesh1, BMesh2
+    TYPE(Valuelist_t), POINTER :: BParams
+    !--------------------------------------------------------------------------
+    TYPE(Mesh_t), POINTER :: PMesh
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: minalpha, maxalpha, minalpha2, maxalpha2
+    REAL(KIND=dp) :: x(3), xcyl(3),rad2deg,F1min,F1max,F2min,F2max,dFii, dFii1,dFii2,eps_rad,&
+        err1,err2,dF,Nsymmetry,rad,alpha,x0(3),xtmp(3), maxrad, &
+        Normal(3), Tangent1(3), Tangent2(3) 
+    REAL(KIND=dp), POINTER :: TmpCoord(:)
+    REAL(KIND=dp),ALLOCATABLE :: Angles(:)
+    INTEGER, POINTER :: NodeIndexes(:)
+    INTEGER :: i,j,k,n,ind,Nmax,Nmin,Nfii,Nnodes,MaxElemNodes,sweep
+    LOGICAL :: Found, Hit0, Hit90, Hit180, Hit270
+    LOGICAL :: GotNormal, GotCenter, FullCircle
+
+    ! We choose degrees as they are more intuitive
+    rad2deg = 180.0_dp / PI
+    MaxElemNodes = BMesh2 % MaxElementNodes 
+    
+    x0(1) = ListGetCReal( BParams,'Axial Projector Center X',GotCenter ) 
+    x0(2) = ListGetCReal( BParams,'Axial Projector Center Y',Found ) 
+    GotCenter = GotCenter .OR. Found
+    x0(3) = ListGetCReal( BParams,'Axial Projector Center Z',Found ) 
+    GotCenter = GotCenter .OR. Found
+
+    Normal(1) = ListGetCReal( BParams,'Axial Projector Normal X',GotNormal ) 
+    Normal(2) = ListGetCReal( BParams,'Axial Projector Normal Y',Found ) 
+    GotNormal = GotNormal .OR. Found
+    Normal(3) = ListGetCReal( BParams,'Axial Projector Normal Z',Found ) 
+    GotNormal = GotNormal .OR. Found
+
+    IF( GotNormal ) THEN
+      CALL TangentDirections( Normal,Tangent1,Tangent2 )
+    END IF
+
+    ! Go trough master (k=1) and target mesh (k=2)
+    !--------------------------------------------
+    FullCircle = .FALSE.
+
+    DO k=1,2
+     
+      IF( k == 1 ) THEN
+        PMesh => BMesh1
+      ELSE
+        PMesh => BMesh2
+      END IF
+
+      ! Do the actual coordinate transformation
+      !---------------------------------------------------------------------------
+      n = PMesh % NumberOfNodes
+
+      ! Register the hit in basic quadrants
+      Hit0 = .FALSE.; Hit90 = .FALSE.; Hit180 = .FALSE.; Hit270 = .FALSE.
+      maxrad = 0.0_dp
+      minalpha = HUGE( minalpha ); maxalpha = -HUGE(maxalpha)
+      minalpha2 = HUGE( minalpha2 ); maxalpha2 = -HUGE(maxalpha2)
+      
+      ! 1st sweep only find max radius, 2nd sweep register the angle range
+      DO sweep = 1, 2
+        DO i=1,n
+          x(1) = PMesh % Nodes % x(i)
+          x(2) = PMesh % Nodes % y(i)
+          x(3) = PMesh % Nodes % z(i)
+          
+          ! Subtract the center of axis
+          IF( GotCenter ) x = x - x0
+          
+          IF( GotNormal ) THEN
+            xtmp = x
+            x(1) = SUM( Tangent1 * xtmp ) 
+            x(2) = SUM( Tangent2 * xtmp ) 
+            x(3) = SUM( Normal * xtmp ) 
+          END IF
+          
+          ! Compute the angle
+          !------------------------------------------------------------------------
+          rad = SQRT( x(1)**2 + x(2)**2)
+          
+          IF( sweep == 1 ) THEN
+            maxrad = MAX( maxrad, rad ) 
+            CYCLE
+          END IF
+
+          ! Do the logic for large enough radius
+          IF( rad < 0.5 * maxrad ) CYCLE
+
+          IF( x(1) > 0.0 .AND. ABS(x(2)) < ABS(x(1)) ) Hit0 = .TRUE.
+          IF( x(2) > 0.0 .AND. ABS(x(1)) < ABS(x(2)) ) Hit90 = .TRUE.
+          IF( x(1) < 0.0 .AND. ABS(x(2)) < ABS(x(1)) ) Hit180 = .TRUE.
+          IF( x(2) < 0.0 .AND. ABS(x(1)) < ABS(x(2)) ) Hit270 = .TRUE.
+          
+          ! This can compute the range if there is no nodes close to discontinuity at 180 degs
+          alpha = rad2deg * ATAN2( x(2), x(1)  ) 
+          minalpha = MIN( alpha, minalpha ) 
+          maxalpha = MAX( alpha, maxalpha ) 
+
+          ! This eliminates the discontinuity and moves it to 0 degs
+          IF( alpha < 0.0_dp ) alpha = alpha + 360.0_dp          
+          minalpha2 = MIN( alpha, minalpha2 ) 
+          maxalpha2 = MAX( alpha, maxalpha2 ) 
+        END DO
+      END DO     
+
+      FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
+      IF( FullCircle ) THEN
+        CALL Info('RotationalInterfaceMeshes','Axial interface seems to be a full circle',&
+            Level=6)
+        EXIT
+      END IF
+
+      dFii = MAX( maxalpha2 - minalpha2, maxalpha - minalpha ) 
+
+      WRITE(Message,'(A,ES12.3)') 'This boundary dfii: ',dFii
+      CALL Info('AxialInterfaceMeshes',Message,Level=8)    
+
+      ! memorize the max angle for 1st boundary mesh
+      IF( k == 1 ) THEN
+        dFii1 = dFii
+      ELSE
+        dFii2 = dFii
+      END IF
+    END DO
+
+    IF( FullCircle ) THEN
+      Nsymmetry = 1.0_dp
+    ELSE
+      err1 = 2 * ABS( dFii1 - dFii2 ) / ( dFii1 + dFii2 )
+      WRITE(Message,'(A,ES12.3)') 'Discrepancy in dfii:',err1
+      CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
+      Nsymmetry = 360.0 / ( MIN( dfii1, dfii2 ) ) 
+    END IF
+    
+    WRITE(Message,'(A,ES12.3)') 'Suggested number of periods:',Nsymmetry
+    CALL Info('AxialInterfaceMeshes',Message,Level=8)        
+
+    i = ListGetInteger(BParams,'Axial Projector Periods',Found ) 
+    IF( .NOT. Found ) THEN
+      CALL ListAddInteger(BParams,'Axial Projector Periods', NINT( Nsymmetry ) ) 
+    ELSE
+      WRITE(Message,'(A,I0)') 'Using enforced number of periods: ',i
+      CALL Info('RotationalInterfaceMeshes',Message,Level=8)        
+    END IF
+
+  END SUBROUTINE AxialInterfaceMeshes
+!------------------------------------------------------------------------------
+
+
+  !---------------------------------------------------------------------------
   !> Given two interface meshes for nonconforming radial boundaries make 
   !> a coordinate transformation to (r,z) level.
   !> This is always a symmetry condition and can not be a contact condition.
@@ -9015,7 +9248,7 @@ END SUBROUTINE GetMaxDefs
     INTEGER :: i,j,k,n,dim
     LOGICAL :: GotIt, UseQuadrantTree, Success, IntGalerkin, &
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
-        Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
+        Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, Axial, AntiAxial, &
         Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
         ParallelNumbering
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
@@ -9131,6 +9364,12 @@ END SUBROUTINE GetMaxDefs
         'Anti Radial Projector',GotIt )
     IF( AntiRadial ) Radial = .TRUE.
 
+    Axial = ListGetLogical( BC,&
+        'Axial Projector',GotIt )
+    AntiAxial = ListGetLogical( BC,&
+        'Anti Axial Projector',GotIt )
+    IF( AntiRadial ) Axial = .TRUE.
+
     Sliding = ListGetLogical( BC, &
         'Sliding Projector',GotIt )
     AntiSliding = ListGetLogical( BC, &
@@ -9143,6 +9382,7 @@ END SUBROUTINE GetMaxDefs
         'Plane Projector',GotIt )
 
     IF( Radial ) CALL Info('PeriodicProjector','Enforcing > Radial Projector <',Level=12)
+    IF( Axial ) CALL Info('PeriodicProjector','Enforcing > Axial Projector <',Level=12)
     IF( Sliding ) CALL Info('PeriodicProjector','Enforcing > Sliding Projector <',Level=12)
     IF( Cylindrical ) CALL Info('PeriodicProjector','Enforcing > Cylindrical Projector <',Level=12)
     IF( Rotational ) CALL Info('PeriodicProjector','Enforcing > Rotational Projector <',Level=12)
@@ -9176,7 +9416,7 @@ END SUBROUTINE GetMaxDefs
     END IF
 
     LevelProj = ListGetLogical( BC,'Level Projector',GotIt) 
-    IF( Rotational .OR. Cylindrical .OR. Radial .OR. Flat .OR. Plane ) THEN
+    IF( Rotational .OR. Cylindrical .OR. Radial .OR. Flat .OR. Plane .OR. Axial ) THEN
       IF(.NOT. GotIt ) THEN
         CALL Info('PeriodicProjector','Enforcing > Level Projector = True < with dimensional reduction',&
             Level = 7 )
@@ -9239,14 +9479,17 @@ END SUBROUTINE GetMaxDefs
       CALL RadialInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( Flat ) THEN
       CALL FlatInterfaceMeshes( BMesh1, BMesh2, BC )
+    ELSE IF( Axial ) THEN
+      CALL FlatInterfaceMeshes( BMesh1, BMesh2, BC )      
+      CALL AxialInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( Plane ) THEN
       CALL PlaneInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( .NOT. Sliding ) THEN
       CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
     END IF
 
-    Repeating = ( Rotational .AND. .NOT. FullCircle ) .OR. Sliding 
-    AntiRepeating = ( AntiRotational .AND. .NOT. FullCircle ) .OR. AntiSliding 
+    Repeating = ( Rotational .OR. Sliding .OR. Axial ) .AND. .NOT. FullCircle 
+    AntiRepeating = ( AntiRotational .OR. AntiSliding .OR. AntiAxial ) .AND. .NOT. FullCircle 
 
     IF( UseExtProjector ) THEN
       Projector => ExtProjectorCaller( PMesh, BMesh1, BMesh2, This )
@@ -10641,6 +10884,9 @@ CONTAINS
 !
 !   Initialize:
 !   -----------
+    CALL Info('FindMeshEdges2D','Allocating edge table of size: '&
+        //TRIM(I2S(4*Mesh % NumberOfBulkElements)),Level=12)
+    
     CALL AllocateVector( Mesh % Edges, 4*Mesh % NumberOfBulkElements )
     Edges => Mesh % Edges
 
@@ -10652,6 +10898,8 @@ CONTAINS
        Element % EdgeIndexes = 0
     END DO
 
+    CALL Info('FindMeshEdges2D','Creating hash table of size '&
+        //TRIM(I2S(Mesh % NumberOfNodes))//' for noto-to-node connectivity',Level=12)
     ALLOCATE( HashTable( Mesh % NumberOfNodes ) )
     DO i=1,Mesh % NumberOfNodes
        NULLIFY( HashTable(i) % Head )
@@ -10765,6 +11013,7 @@ CONTAINS
     END DO
 
     Mesh % NumberOfEdges = NofEdges
+    CALL Info('FindMeshEdges2D','Number of edges found: '//TRIM(I2S(NofEdges)),Level=10)
 
 !   Delete the hash table:
 !   ----------------------
@@ -10777,6 +11026,9 @@ CONTAINS
        END DO
     END DO
     DEALLOCATE( HashTable )
+
+    CALL Info('FindMeshEdges2D','All done',Level=12)
+
 !------------------------------------------------------------------------------
   END SUBROUTINE FindMeshEdges2D
 !------------------------------------------------------------------------------
@@ -10818,7 +11070,7 @@ CONTAINS
     INTEGER :: nf(4)
 !------------------------------------------------------------------------------
     
-
+    CALL Info('FindMeshFaces3D','Finding mesh faces in 3D mesh',Level=12)
     
     TetraFaceMap(1,:) = (/ 1, 2, 3, 5, 6, 7 /)
     TetraFaceMap(2,:) = (/ 1, 2, 4, 5, 9, 8 /)
@@ -11080,6 +11332,7 @@ CONTAINS
     END DO
 
     Mesh % NumberOfFaces = NofFaces
+    CALL Info('FindMeshFaces3D','Number of faces found: '//TRIM(I2S(NofFaces)),Level=10)
 
 !   Delete the hash table:
 !   ----------------------
@@ -11092,6 +11345,8 @@ CONTAINS
        END DO
     END DO
     DEALLOCATE( HashTable )
+
+    CALL Info('FindMeshFaces3D','All done',Level=12)
 !------------------------------------------------------------------------------
   END SUBROUTINE FindMeshFaces3D
 !------------------------------------------------------------------------------
@@ -11131,6 +11386,9 @@ CONTAINS
       WedgeEdgeMap(9,3), PyramidEdgeMap(8,3), TetraFaceEdgeMap(4,3), &
       BrickFaceEdgeMap(8,4), WedgeFaceEdgeMap(6,4), PyramidFaceEdgeMap(5,4)
 !------------------------------------------------------------------------------
+
+    CALL Info('FindMeshEdges3D','Finding mesh edges in 3D mesh',Level=12)
+
     TetraFaceMap(1,:) = (/ 1, 2, 3, 5, 6, 7 /)
     TetraFaceMap(2,:) = (/ 1, 2, 4, 5, 9, 8 /)
     TetraFaceMap(3,:) = (/ 2, 3, 4, 6,10, 9 /)
@@ -11391,6 +11649,7 @@ CONTAINS
     END DO
 
     Mesh % NumberOfEdges = NofEdges
+    CALL Info('FindMeshEdges3D','Number of edges found: '//TRIM(I2S(NofEdges)),Level=10)
 
 !   Delete the hash table:
 !   ----------------------
@@ -11405,6 +11664,8 @@ CONTAINS
     DEALLOCATE( HashTable )
 
     IF (ASSOCIATED(Mesh % Faces)) CALL FixFaceEdges()
+
+    CALL Info('FindMeshEdges3D','All done',Level=12)
 
 CONTAINS 
 
