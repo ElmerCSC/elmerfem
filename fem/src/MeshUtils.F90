@@ -4178,8 +4178,7 @@ END SUBROUTINE GetMaxDefs
   !> extrusion. 
   !---------------------------------------------------------------------------
   FUNCTION LevelProjector( BMesh1, BMesh2, Repeating, AntiRepeating, &
-      FullCircle, Radius, DoNodes, DoEdges, &
-      NodeScale, EdgeScale, BC ) &
+      FullCircle, Radius, DoNodes, DoEdges, NodeScale, EdgeScale, BC ) &
       RESULT ( Projector )
     !---------------------------------------------------------------------------
     USE Lists
@@ -4242,7 +4241,6 @@ END SUBROUTINE GetMaxDefs
 
     Naxial = ListGetInteger( BC,'Axial Projector Periods',Found ) 
 
-
     Parallel = ( ParEnv % PEs > 1 )
     Mesh => CurrentModel % Mesh
     BMesh1 % Parent => NULL()
@@ -4303,6 +4301,13 @@ END SUBROUTINE GetMaxDefs
       IF(.NOT. Found) StrongNodes = ListGetLogical( BC,'Level Projector Strong',Found ) 
       IF(.NOT. Found) StrongNodes = .NOT. IntGalerkin
     ELSE ! 3D 
+      IF(.NOT. GenericIntegrator ) THEN
+        IF( Naxial > 0 ) THEN
+          GenericIntegrator = .TRUE.
+          CALL Info('LevelProjector','Generic integrator enforced for axial projector',Level=6)
+        END IF
+      END IF
+
       ! It is assumed that that the target mesh is always un-skewed 
       ! Make a test here to be able to skip it later. No test is needed
       ! if the generic integrator is enforced. 
@@ -6218,11 +6223,13 @@ END SUBROUTINE GetMaxDefs
       REAL(KIND=dp) :: x(10),y(10),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
           SumArea,TrueArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , &
-          val_dual, zmin, zmax, zminm, zmaxm, alpha
+          val_dual, zmin, zmax, zminm, zmaxm, dAlpha
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
-          x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol
+          x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol, &
+          amin, amax, aminM, amaxM
       REAL(KIND=dp) :: TotRefArea, TotSumArea, TotTrueArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
+      REAL(KIND=dp), POINTER :: Alpha(:), AlphaM(:)
       REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:),WBasisM(:,:),RotWbasis(:,:),dBasisdx(:,:)
       LOGICAL :: LeftCircle, Stat, CornerFound(4), CornerFoundM(4)
       TYPE(Mesh_t), POINTER :: Mesh
@@ -6254,6 +6261,13 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( Basis(n), BasisM(n) )
       ALLOCATE( dBasisdx(n,3), WBasis(n,3), WBasisM(n,3), RotWBasis(n,3) )
 
+      IF( Naxial > 1 ) THEN
+        ALLOCATE( Alpha(n), AlphaM(n) )
+      ELSE
+        Alpha => Nodes % x
+        AlphaM => NodesM % x
+      END IF
+
       IF(BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
 
       Nodes % z  = 0.0_dp
@@ -6266,6 +6280,7 @@ END SUBROUTINE GetMaxDefs
       MinErrInd = 0
       zt = 0.0_dp
       LeftCircle = .FALSE.
+
       ArcTol = ArcCoeff * Xtol
       ArcRange = ArcCoeff * Xrange 
      
@@ -6309,23 +6324,38 @@ END SUBROUTINE GetMaxDefs
         ! Transform the angle to archlength in order to have correct balance between x and y
         Nodes % x(1:n) = ArcCoeff * BMesh1 % Nodes % x(Indexes(1:n))
         Nodes % y(1:n) = BMesh1 % Nodes % y(Indexes(1:n))
-
-        IF( FullCircle ) THEN
-          LeftCircle = ( ALL( ABS( Nodes % x(1:n) ) > ArcCoeff * 90.0_dp ) )
-          IF( LeftCircle ) THEN
+        
+        ! For axial projector the angle is neither of the coordinates
+        IF( Naxial > 1 ) THEN
+          DO j=1,n
+            alpha(j) = ( 180.0_dp / PI ) * ATAN2( Nodes % y(j), Nodes % x(j)  ) 
+          END DO
+          amin = MINVAL( Alpha(1:n) )
+          amax = MAXVAL( Alpha(1:n) )
+          IF( amax - amin > 180.0_dp ) THEN
             DO j=1,n
-              IF( Nodes % x(j) < 0.0 ) Nodes % x(j) = &
-                  Nodes % x(j) + ArcCoeff * 360.0_dp
+              IF( Alpha(j) < 0.0 ) Alpha(j) = Alpha(j) + 360.0_dp
             END DO
+            amin = MINVAL( Alpha(1:n) )
+            amax = MAXVAL( Alpha(1:n) )            
           END IF
         END IF
 
+        IF( FullCircle ) THEN
+          LeftCircle = ( ALL( ABS( Alpha(1:n) ) > ArcCoeff * 90.0_dp ) )
+          IF( LeftCircle ) THEN
+            DO j=1,n
+              IF( Alpha(j) < 0.0 ) Alpha(j) = Alpha(j) + ArcCoeff * 360.0_dp
+            END DO
+          END IF
+        END IF
+       
         xmin = MINVAL(Nodes % x(1:n))
         xmax = MAXVAL(Nodes % x(1:n))
 
         ymin = MINVAL(Nodes % y(1:n))
         ymax = MAXVAL(Nodes % y(1:n))
-                
+
         IF( HaveMaxDistance ) THEN
           zmin = MINVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
           zmax = MAXVAL( BMesh1 % Nodes % z(Indexes(1:n)) )
@@ -6390,40 +6420,70 @@ END SUBROUTINE GetMaxDefs
           END IF
           
           NodesM % y(1:nM) = BMesh2 % Nodes % y(IndexesM(1:nM))
-          
+          NodesM % x(1:nM) = ArcCoeff * BMesh2 % Nodes % x(IndexesM(1:nM))
+        
           ! Make the quick and dirty search first
           ! This requires some minimal width of the cut
-          yminm = MINVAL( NodesM % y(1:nM))
-          IF( yminm > ymax - Ytol ) CYCLE
-          
-          ymaxm = MAXVAL( NodesM % y(1:nM))
-          IF( ymaxm < ymin + Ytol ) CYCLE
-          
-          NodesM % x(1:nM) = ArcCoeff * BMesh2 % Nodes % x(IndexesM(1:nM))
+          IF(Naxial <= 1 ) THEN
+            yminm = MINVAL( NodesM % y(1:nM))
+            IF( yminm > ymax - Ytol ) CYCLE
+            
+            ymaxm = MAXVAL( NodesM % y(1:nM))
+            IF( ymaxm < ymin + Ytol ) CYCLE
+          ELSE
+            DO j=1,nM
+              alphaM(j) = ( 180.0_dp / PI ) * ATAN2( NodesM % y(j), NodesM % x(j)  ) 
+            END DO
+            aminm = MINVAL( AlphaM(1:nM) )
+            amaxm = MAXVAL( AlphaM(1:nM) )
+            IF( amaxm - aminm > 180.0_dp ) THEN
+              DO j=1,nM
+                IF( AlphaM(j) < 0.0 ) AlphaM(j) = AlphaM(j) + 360.0_dp
+              END DO
+              aminm = MINVAL( AlphaM(1:nM) )
+              amaxm = MAXVAL( AlphaM(1:nN) )            
+            END IF
+          END IF
+
           ! Treat the left circle differently. 
           IF( LeftCircle ) THEN
             ! Omit the element if it is definately on the right circle
-            IF( ALL( ABS( NodesM % x(1:nM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
+            IF( ALL( ABS( AlphaM(1:nM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
             DO j=1,nM
-              IF( NodesM % x(j) < 0.0_dp ) NodesM % x(j) = &
-                  NodesM % x(j) + ArcCoeff * 360.0_dp
+              IF( AlphaM(j) < 0.0_dp ) AlphaM(j) = AlphaM(j) + ArcCoeff * 360.0_dp
             END DO
           END IF
-          
-          xminm = MINVAL( NodesM % x(1:nM))
-          xmaxm = MAXVAL( NodesM % x(1:nM))
+
 
           IF( Repeating ) THEN
             ! Enforce xmaxm to be on the same interval than xmin
-            IF( Naxial > 0 ) THEN
-              Nrange1 = 0
-              Nrange2 = Naxial - 1
+            IF( Naxial > 1 ) THEN
+              Nrange1 = FLOOR( Naxial * (amaxm-amin+RelTolX) / 360.0 )
+              Nrange2 = FLOOR( Naxial * (amax-aminm+RelTolX) / 360.0 )
+              
+              IF( Nrange1 /= 0 ) THEN
+                dAlpha = Nrange1 * 2.0_dp * PI / Naxial
+                DO i=1,nM
+                  x0 = NodesM % x(i)
+                  y0 = NodesM % y(i)
+                  NodesM % x(i) = COS(dAlpha) * x0 - SIN(dAlpha) * y0
+                  NodesM % y(i) = SIN(dAlpha) * x0 + COS(dAlpha) * y0
+                END DO
+              END IF
+
+              IF( DebugElem) THEN
+                PRINT *,'axial:',ind,indM,amin,aminm,Nrange1,Nrange2
+                PRINT *,'coord:',Nodes % x(1), Nodes % y(1), NodesM % x(1), NodesM % y(1)
+                !PRINT *,'Alphas:',Alpha(1:n),AlphaM(1:nM)
+              END IF
+              
             ELSE
+              xminm = MINVAL( NodesM % x(1:nM) )
+              xmaxm = MAXVAL( NodesM % x(1:nM) )
+
               Nrange1 = FLOOR( (xmaxm-xmin+ArcTol) / ArcRange )
               Nrange2 = FLOOR( (xmax-xminm+ArcTol) / ArcRange )
               IF( Nrange1 /= 0 ) THEN
-                xminm = xminm - Nrange1 * ArcRange
-                xmaxm = xmaxm - Nrange1 * ArcRange
                 NodesM % x(1:nM) = NodesM % x(1:nM) - NRange1 * ArcRange 
               END IF
             END IF
@@ -6437,12 +6497,27 @@ END SUBROUTINE GetMaxDefs
             !END IF
           END IF
 
+          xminm = MINVAL( NodesM % x(1:nM) )
+          xmaxm = MAXVAL( NodesM % x(1:nM) )
+
           IF( FullCircle .AND. .NOT. LeftCircle ) THEN
             IF( xmaxm - xminm > ArcCoeff * 180.0 ) CYCLE
           END IF
 
 200       IF( xminm > xmax - ArcTol ) GOTO 100
           IF( xmaxm < xmin + ArcTol ) GOTO 100
+
+
+          ! Rotation alters also the y-coordinate for "axial projector"
+          ! Therefore this check is postponed until here.
+          IF( Naxial > 1 ) THEN
+            yminm = MINVAL( NodesM % y(1:nM) )
+            IF( yminm > ymax - Ytol ) GOTO 100
+            
+            ymaxm = MAXVAL( NodesM % y(1:nM))
+            IF( ymaxm < ymin + Ytol ) GOTO 100
+          END IF
+
 
           IF( DebugElem ) THEN
             PRINT *,'Candidate Elem:',indM,nM
@@ -6877,25 +6952,20 @@ END SUBROUTINE GetMaxDefs
 
 100       IF( Repeating ) THEN
             IF( NRange /= NRange2 ) THEN
-              Nrange = Nrange + 1
+              Nrange = Nrange2
               IF( Naxial > 1 ) THEN
-                Alpha = 2.0_dp * PI * Nrange / Naxial
+                dAlpha = (Nrange2 - Nrange1) * 2.0_dp * PI / Naxial
                 DO i=1,nM
                   x0 = NodesM % x(i)
                   y0 = NodesM % y(i)
-                  NodesM % x(i) = COS(Alpha) * x0 - SIN(Alpha) * y0
-                  NodesM % y(i) = SIN(Alpha) * x0 + COS(Alpha) * y0
+                  NodesM % x(i) = COS(dAlpha) * x0 - SIN(dAlpha) * y0
+                  NodesM % y(i) = SIN(dAlpha) * x0 + COS(dAlpha) * y0
                 END DO
-                xminm = MINVAL( NodesM % x(1:nM))
-                xmaxm = MAXVAL( NodesM % x(1:nM))
-                yminm = MINVAL( NodesM % y(1:nM))
-                ymaxm = MAXVAL( NodesM % y(1:nM))
               ELSE
-                Nrange = NRange2
-                xminm = xminm + ArcCoeff * ArcRange * (Nrange2 - Nrange1)
-                xmaxm = xmaxm + ArcCoeff * ArcRange * (Nrange2 - Nrange1)
                 NodesM % x(1:n) = NodesM % x(1:n) + ArcRange  * (Nrange2 - Nrange1)
               END IF
+              xminm = MINVAL( NodesM % x(1:nM))
+              xmaxm = MAXVAL( NodesM % x(1:nM))
               GOTO 200
             END IF
           END IF
@@ -6959,10 +7029,10 @@ END SUBROUTINE GetMaxDefs
       CALL Info('LevelProjector',Message,Level=8)
 
       Err = TotSumArea / TotRefArea
-      WRITE( Message,'(A,ES12.3)') 'Average ratio in area integration:',Err 
+      WRITE( Message,'(A,ES15.6)') 'Average ratio in area integration:',Err 
       CALL Info('LevelProjector',Message,Level=8)
 
-      WRITE( Message,'(A,ES12.5)') 'True integrated area:',TotTrueArea
+      WRITE( Message,'(A,ES15.6)') 'True integrated area:',TotTrueArea
       CALL Info('LevelProjector',Message,Level=8)
 
       WRITE( Message,'(A,I0,A,ES12.4)') &
@@ -8634,7 +8704,7 @@ END SUBROUTINE GetMaxDefs
           minalpha2 = MIN( alpha, minalpha2 ) 
           maxalpha2 = MAX( alpha, maxalpha2 ) 
         END DO
-      END DO     
+      END DO
 
       FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
       IF( FullCircle ) THEN
@@ -8643,7 +8713,7 @@ END SUBROUTINE GetMaxDefs
         EXIT
       END IF
 
-      dFii = MAX( maxalpha2 - minalpha2, maxalpha - minalpha ) 
+      dFii = MIN( maxalpha2 - minalpha2, maxalpha - minalpha ) 
 
       WRITE(Message,'(A,ES12.3)') 'This boundary dfii: ',dFii
       CALL Info('AxialInterfaceMeshes',Message,Level=8)    
@@ -9278,6 +9348,7 @@ END SUBROUTINE GetMaxDefs
     Projector => NULL()
     IF ( This <= 0  ) RETURN    
 
+    CALL Info('PeriodicProjector','Starting projector creation',Level=12)
 
     DIM = CoordinateSystemDimension()
 
