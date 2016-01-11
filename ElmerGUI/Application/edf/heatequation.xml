@@ -300,7 +300,12 @@
          <Parameter Widget="Edit" >
             <Name> Enthalpy </Name>
             <StatusTip> Set value to enthalpy. </StatusTip>
-            <Whatis>Note that, when using the solidification modelling, an enthalpy-temperature curve must be given.  The enthalpy is derived with respect to temperature to get the value of the effective heat capacity. </Whatis>
+            <Whatis>Note that, when using the solidification modelling, an enthalpy-temperature curve must be given.  The enthalpy is derived with respect to temperature to get the value of the effective heat capacity. The unit here is energy per volume. </Whatis>
+         </Parameter>
+         <Parameter Widget="Edit" >
+            <Name> Specific Enthalpy </Name>
+            <StatusTip> Set value to specific enthalpy. </StatusTip>
+            <Whatis>Note that, when using the solidification modelling, an enthalpy-temperature curve must be given.  The enthalpy is derived with respect to temperature to get the value of the effective heat capacity. The unit here is energy per mass unit. </Whatis>
          </Parameter>
          <Parameter Widget="Edit" >
             <Name> Pressure Coefficient </Name>

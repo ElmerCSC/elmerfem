@@ -283,7 +283,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       IF ( Cvar % Owner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          CALL AddToMatrixElement(CM, VvarId, VvarId, 1._dp)
+          CALL AddToMatrixElement(CM, VvarId, VvarId, -1._dp)
         CASE('massive')
           CALL AddToMatrixElement(CM, VvarId, IvarId, -1._dp)
         CASE('foil winding')
@@ -1041,13 +1041,14 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(Valuelist_t), POINTER :: CompParams
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp) :: Omega
+    REAL(KIND=dp) :: sigma_33(nn), sigmaim_33(nn)
     INTEGER :: VvarId, IvarId, q, j
     COMPLEX(KIND=dp) :: i_multiplier, cmplx_value
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     COMPLEX(KIND=dp) :: Tcoef(3,3,nn)
     REAL(KIND=dp) :: RotM(3,3,nn)
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
-    LOGICAL :: Found
+    LOGICAL :: Found, FoundIm, StrandedHomogenization
 
     ASolver => CurrentModel % Asolver
     IF (.NOT.ASSOCIATED(ASolver)) CALL Fatal('AddComponentEquationsAndCouplings','ASolver not found!')
@@ -1066,7 +1067,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF ( Cvar % Owner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          CALL AddToCmplxMatrixElement(CM, VvarId, VvarId, 1._dp, 0._dp)
+          CALL AddToCmplxMatrixElement(CM, VvarId, VvarId, -1._dp, 0._dp)
         CASE('massive')
           i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
           IF (i_multiplier /= 0_dp) THEN
@@ -1109,6 +1110,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings',&
                                                         'Component parameters not found')
 
+
+          StrandedHomogenization = .FALSE.
           CoilType = GetString(CompParams, 'Coil Type', Found)
           IF (.NOT. Found) CoilType = ''
           
@@ -1116,8 +1119,19 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           nd = GetElementNOFDOFs(Element,ASolver)
           SELECT CASE(CoilType)
           CASE ('stranded')
-         !   CALL GetConductivity(Element, Tcoef, nn)
-            Tcoef = GetCMPLXElectricConductivityTensor(Element, nn, .TRUE., CoilType) 
+            StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
+            IF ( StrandedHomogenization ) THEN 
+              sigma_33 = 0._dp
+              sigmaim_33 = 0._dp
+              sigma_33 = GetReal(CompParams, 'sigma 33', Found)
+              sigmaim_33 = GetReal(CompParams, 'sigma 33 im', FoundIm)
+              IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('AddComponentEquationsAndCouplings', &
+                                                                 'Homogenization Model Sigma 33 not found!')
+              Tcoef = CMPLX(0._dp, 0._dp, KIND=dp)
+              Tcoef(3,3,1:nn) = CMPLX(sigma_33, sigmaim_33, KIND=dp)
+            ELSE
+              Tcoef = GetCMPLXElectricConductivityTensor(Element, nn, .TRUE., CoilType) 
+            END IF
             CALL Add_stranded(Element,Tcoef,Comp,nn,nd)
           CASE ('massive')
             IF (.NOT. HasSupport(Element,nn)) CYCLE
@@ -1656,6 +1670,9 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
    TYPE(Circuit_t), POINTER :: Circuits(:)
 
+
+   IF (.NOT. ASSOCIATED(CM)) RETURN
+
    Circuit_tot_n => Model%Circuit_tot_n
    n_Circuits => Model%n_Circuits
    CM => Model%CircuitMatrix
@@ -1676,6 +1693,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
    IF(ASSOCIATED(LagrangeVar)) THEN
      IF(ParEnv % PEs>1) THEN
+       print *, ParEnv % MyPe, "circuit_tot_n:", circuit_tot_n
        DO i=1,circuit_tot_n 
          IF( CM % RowOwner(nm+i)==Parenv%myPE) ipt(i) = LagrangeVar%Values(i)
        END DO
