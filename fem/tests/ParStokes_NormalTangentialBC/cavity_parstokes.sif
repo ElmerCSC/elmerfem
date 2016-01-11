@@ -100,7 +100,7 @@ End
 !--------------------------------------------
 Boundary Condition 3
   Target Boundaries = 3
-  Pressure 2 = Real -1000.0
+  Pressure 2 = Real 0.0
   FlowVar 1 = Real 0.1
   V 1 = Real 0.1
   Flow Force BC = Logical True
@@ -112,5 +112,5 @@ Boundary Condition 4
   Target Boundaries = 4
 End
 
-Solver 3 :: Reference Norm = Real 577.35033
+Solver 3 :: Reference Norm = Real 5.966727E-02
 Solver 3 :: Reference Norm Tolerance = Real 1.0E-6

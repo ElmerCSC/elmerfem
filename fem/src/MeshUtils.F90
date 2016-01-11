@@ -3638,7 +3638,6 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp), POINTER :: PArray(:,:)
     INTEGER :: i,j,k
 
-   
     ! First, check the bounding boxes
     !---------------------------------------------------------------------------
     x1_min(1) = MINVAL( BMesh1 % Nodes % x )
@@ -3649,9 +3648,9 @@ END SUBROUTINE GetMaxDefs
     x1_max(2) = MAXVAL( BMesh1 % Nodes % y )
     x1_max(3) = MAXVAL( BMesh1 % Nodes % z )
 
-    WRITE(Message,'(A,3ES12.3)') 'Minimum values for this periodic BC:  ',x1_min
+    WRITE(Message,'(A,3ES15.6)') 'Minimum values for this periodic BC:  ',x1_min
     CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
-    WRITE(Message,'(A,3ES12.3)') 'Maximum values for this periodic BC:  ',x1_max
+    WRITE(Message,'(A,3ES15.6)') 'Maximum values for this periodic BC:  ',x1_max
     CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
 
     x2_min(1) = MINVAL( BMesh2 % Nodes % x )
@@ -3662,9 +3661,9 @@ END SUBROUTINE GetMaxDefs
     x2_max(2) = MAXVAL( BMesh2 % Nodes % y )
     x2_max(3) = MAXVAL( BMesh2 % Nodes % z )
     
-    WRITE(Message,'(A,3ES12.3)') 'Minimum values for target periodic BC:',x2_min
+    WRITE(Message,'(A,3ES15.6)') 'Minimum values for target periodic BC:',x2_min
     CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
-    WRITE(Message,'(A,3ES12.3)') 'Maximum values for target periodic BC:',x2_max
+    WRITE(Message,'(A,3ES15.6)') 'Maximum values for target periodic BC:',x2_max
     CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
 
 !    If whole transformation matrix given, it will be used directly
@@ -3704,7 +3703,7 @@ END SUBROUTINE GetMaxDefs
       END IF
 
       IF ( GotRotate ) THEN
-        WRITE(Message,'(A,3ES12.3)') 'Rotating target with: ',Angles
+        WRITE(Message,'(A,3ES15.6)') 'Rotating target with: ',Angles
         CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
         
         DO i=1,3
@@ -3754,10 +3753,10 @@ END SUBROUTINE GetMaxDefs
         x2r_max(2) = MAXVAL( BMesh2 % Nodes % y )
         x2r_max(3) = MAXVAL( BMesh2 % Nodes % z )
         
-        WRITE(Message,'(A,3ES12.3)') 'Minimum values for rotated target:',x2r_min
+        WRITE(Message,'(A,3ES15.6)') 'Minimum values for rotated target:',x2r_min
         CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
         
-        WRITE(Message,'(A,3ES12.3)') 'Maximum values for rotated target:',x2r_max
+        WRITE(Message,'(A,3ES15.6)') 'Maximum values for rotated target:',x2r_max
         CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
       ELSE
         x2r_min = x2_min
@@ -3785,7 +3784,7 @@ END SUBROUTINE GetMaxDefs
           scl(1:3) = 1.0_dp
         END IF
         
-        WRITE(Message,'(A,3ES12.3)') 'Scaling with: ',scl(1:3)
+        WRITE(Message,'(A,3ES15.6)') 'Scaling with: ',scl(1:3)
         CALL Info('OverlayInterfaceMeshes',Message)
         DO i=1,3 
           SclMatrix(i,i) = scl(i)        
@@ -3806,11 +3805,11 @@ END SUBROUTINE GetMaxDefs
         DO i=1,3
           TrsMatrix(4,i) = x1_min(i) - SclMatrix(i,i) * x2r_min(i)
         END DO
-        WRITE(Message,'(A,3ES12.3)') 'Translation: ',TrsMatrix(4,1:3)
-        CALL Info('OverlayInterfaceMeshes',Message)
       END IF
+      WRITE(Message,'(A,3ES15.6)') 'Translation: ',TrsMatrix(4,1:3)
+      CALL Info('OverlayInterfaceMeshes',Message)
       TrfMatrix = MATMUL( SclMatrix, TrsMatrix )
-    END IF 
+    END IF
 
 !    Now transform the coordinates:
 !    ------------------------------
@@ -3834,10 +3833,10 @@ END SUBROUTINE GetMaxDefs
       x2r_max(2) = MAXVAL( BMesh2 % Nodes % y )
       x2r_max(3) = MAXVAL( BMesh2 % Nodes % z )
       
-      WRITE(Message,'(A,3ES12.3)') 'Minimum values for transformed target:',x2r_min
+      WRITE(Message,'(A,3ES15.6)') 'Minimum values for transformed target:',x2r_min
       CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
       
-      WRITE(Message,'(A,3ES12.3)') 'Maximum values for transformed target:',x2r_max
+      WRITE(Message,'(A,3ES15.6)') 'Maximum values for transformed target:',x2r_max
       CALL Info('OverlayInterfaceMeshes',Message,Level=8)    
     END IF
 

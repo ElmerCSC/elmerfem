@@ -809,8 +809,9 @@ CONTAINS
 ! Case non-linear calculate E_D^2 = gamma_e^2/fa + E_m^2/fb
 ! ----------------------------------------------------------
       ss = 1.0_dp
+      LGrad = 0.0_dp
       IF ( Wn(2) > 1.0 ) THEN
-        LGrad = MATMUL( NodalVelo(1:dim,1:nd), dBasisdx(1:nd,1:dim) )
+        LGrad(1:dim,1:dim) = MATMUL( NodalVelo(1:dim,1:nd), dBasisdx(1:nd,1:dim) )
         SR = 0.5 * ( LGrad + TRANSPOSE(LGrad) )
       
         IF ( CSymmetry ) THEN
@@ -1093,7 +1094,8 @@ CONTAINS
 !    Compute strainRate : 
 !    -------------------
 
-      LGrad = MATMUL( NodalVelo(1:dim,1:n), dBasisdx(1:n,1:dim) )
+      LGrad = 0.0_dp
+      LGrad(1:dim,1:dim) = MATMUL( NodalVelo(1:dim,1:n), dBasisdx(1:n,1:dim) )
         
       StrainRate = 0.5 * ( LGrad + TRANSPOSE(LGrad) )
       

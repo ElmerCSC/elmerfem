@@ -1266,7 +1266,12 @@
               'Nonlinear system Relaxation Before', gotIt )
         IF ( .NOT.gotIt .OR. RelaxBefore ) THEN
           CALL ListAddLogical( Solver % Values, 'Skip Compute Nonlinear Change', .FALSE. )
+
+          Solver % Variable % Norm = ComputeNorm(Solver, n, PSolution)
+
           CALL ComputeChange( Solver, .FALSE., n, FlowSolution, PSolution )
+
+          Solver % Variable % Norm = ComputeNorm(Solver, n, FlowSolution)
         END IF
       END IF
       RelativeChange = Solver % Variable % NonlinChange

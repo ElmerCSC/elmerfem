@@ -56,6 +56,8 @@ Solver 2
   Linear System Abort Not Converged = False
   Linear System Residual Output = 1
   Linear System Precondition Recompute = 1
+ 
+  Nonlinear System Consistent Norm = Logical True
 End
 
 Solver 1
@@ -80,6 +82,8 @@ Solver 1
   Linear System Preconditioning = Ilu
   Linear System Residual Output = 10
   Linear System Abort Not Converged = False
+
+  Nonlinear System Consistent Norm = Logical True
 End
 
 Equation 1
@@ -90,11 +94,13 @@ End
 Material 1
   Name = "Space"
   Permeability = real 1
+  Relative Permittivity = 1.0
 End
 
 Material 2
   Name = "Conductor"
   Permeability = real 1
+  Relative Permittivity = 1.0
 End
 
 Body Force 1
