@@ -1670,9 +1670,6 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    INTEGER, POINTER :: n_Circuits => Null(), circuit_tot_n => Null()
    TYPE(Circuit_t), POINTER :: Circuits(:)
 
-
-   IF (.NOT. ASSOCIATED(CM)) RETURN
-
    Circuit_tot_n => Model%Circuit_tot_n
    n_Circuits => Model%n_Circuits
    CM => Model%CircuitMatrix
@@ -1693,9 +1690,10 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier')
    IF(ASSOCIATED(LagrangeVar)) THEN
      IF(ParEnv % PEs>1) THEN
-       print *, ParEnv % MyPe, "circuit_tot_n:", circuit_tot_n
        DO i=1,circuit_tot_n 
-         IF( CM % RowOwner(nm+i)==Parenv%myPE) ipt(i) = LagrangeVar%Values(i)
+         IF (ASSOCIATED(Model%CircuitMatrix)) THEN  
+           IF( CM % RowOwner(nm+i)==Parenv%myPE) ipt(i) = LagrangeVar%Values(i)
+         END IF
        END DO
        CALL MPI_ALLREDUCE(ipt,ip,circuit_tot_n, MPI_DOUBLE_PRECISION, &
                   MPI_SUM, ASolver % Matrix % Comm, j)
