@@ -6534,22 +6534,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     END IF
   END IF
 
-  IF( ListGetLogical( SolverParams,'Average Within Bodies',Found ) ) THEN
-    CALL Info('MagnetoDynamicsCalcFields','Averaging elemental fields within bodies',Level=6)
-    CALL CalculateBodyAverage(EL_MFD,  Mesh )
-    CALL CalculateBodyAverage(EL_MFS,  Mesh ) 
-    CALL CalculateBodyAverage(EL_VP,   Mesh )
-    CALL CalculateBodyAverage(EL_EF,   Mesh ) 
-    CALL CalculateBodyAverage(EL_CD,   Mesh )
-    CALL CalculateBodyAverage(EL_JXB,  Mesh )
-    CALL CalculateBodyAverage(EL_FWP,  Mesh ) 
-    CALL CalculateBodyAverage(EL_JH,   Mesh ) 
-    CALL CalculateBodyAverage(EL_ML,   Mesh ) 
-    CALL CalculateBodyAverage(EL_ML2,  Mesh )
-    CALL CalculateBodyAverage(EL_MST,  Mesh ) 
-    CALL CalculateBodyAverage(EL_NF,   Mesh )    
-  END IF
-
 
 CONTAINS
 
@@ -6809,74 +6793,6 @@ CONTAINS
 !------------------------------------------------------------------------------
  END SUBROUTINE LocalSol
 !------------------------------------------------------------------------------
-
-
- SUBROUTINE CalculateBodyAverage( Var, Mesh )
-
-   TYPE(Variable_t), POINTER :: Var
-   TYPE(Mesh_t), POINTER :: Mesh
-   TYPE(Model_t), POINTER :: Model
-
-   TYPE(Element_t), POINTER :: Element
-   REAL(KIND=dp), ALLOCATABLE :: BodyAverage(:)
-   INTEGER, ALLOCATABLE :: BodyCount(:)
-   INTEGER :: i,j,k,l,nodeind,dgind
-   REAL(KIND=dp) :: AveHits
-
-   IF(.NOT. ASSOCIATED(var)) RETURN
-   IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
-   
-   CALL Info('CalcalateBodyAverage','Calculating average for: '//TRIM(Var % Name), Level=8)
-
-   n = Mesh % NumberOfNodes
-   ALLOCATE( BodyCount(n), BodyAverage(n) )
-
-
-   DO i=1,CurrentModel % NumberOfBodies
-
-     DO k=1,Var % Dofs
-       BodyCount = 0
-       BodyAverage = 0.0_dp
-
-       DO j=1,Mesh % NumberOfBulkElements 
-         Element => Mesh % Elements(j)
-         IF( Element % BodyId /= i ) CYCLE
-         DO l = 1, Element % TYPE % NumberOfNodes
-           nodeind = Element % NodeIndexes(l)
-           dgind = Var % Perm(Element % DGIndexes(l) )
-           IF( dgind > 0 ) THEN
-             BodyAverage( nodeind ) = BodyAverage( nodeind ) + &
-                 Var % Values( Var % DOFs*( dgind-1)+k )
-             BodyCount( nodeind ) = BodyCount( nodeind ) + 1 
-           END IF
-         END DO
-       END DO
-
-       IF( k == 1 ) THEN
-         AveHits = 1.0_dp * SUM( BodyCount ) / COUNT( BodyCount > 0 )
-         !PRINT *,'AveHits:',i,AveHits
-       END IF
-
-       DO j=1,n
-         IF( BodyCount(j) > 0 ) BodyAverage(j) = BodyAverage(j) / BodyCount(j)
-       END DO
-
-       DO j=1,Mesh % NumberOfBulkElements 
-         Element => Mesh % Elements(j)
-         IF( Element % BodyId /= i ) CYCLE
-         DO l = 1, Element % TYPE % NumberOfNodes
-           nodeind = Element % NodeIndexes(l)
-           dgind = Var % Perm(Element % DGIndexes(l) )
-           IF( dgind > 0 ) THEN
-             Var % Values( Var % DOFs*( dgind-1)+k ) = BodyAverage( nodeind ) 
-           END IF
-         END DO
-       END DO
-     END DO
-   END DO
-
- END SUBROUTINE CalculateBodyAverage
-
 
 
 !------------------------------------------------------------------------------

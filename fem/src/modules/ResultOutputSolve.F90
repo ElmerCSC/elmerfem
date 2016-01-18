@@ -3338,11 +3338,15 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   NumberOfDofNodes = 0
 
-  ! If we have a discontinuous mesh then create the permutation vectors to deal with the discontinuities
+  ! If we have a discontinuous mesh then create the permutation vectors to deal with the discontinuities.
   IF( DG .OR. DN ) THEN
     NoPermutation = .FALSE.
 
-    IF( DN ) ALLOCATE( BodyVisited( Mesh % NumberOfNodes ) )
+    IF( DN ) THEN      
+      CALL AverageBodyFields( Mesh )  
+      ALLOCATE( BodyVisited( Mesh % NumberOfNodes ) )
+    END IF
+
 
     k = 0
     DO i=1,Mesh % NumberOfBulkElements         
@@ -3405,6 +3409,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END DO
 
     IF( DN ) DEALLOCATE( BodyVisited ) 
+
   ELSE
     NoPermutation = ( NumberOfGeomNodes == Mesh % NumberOfNodes )    
     IF( NoPermutation ) THEN
@@ -3592,6 +3597,41 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
 
 CONTAINS
+
+
+  SUBROUTINE AverageBodyFields( Mesh ) 
+    
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    TYPE(Variable_t), POINTER :: Var
+    INTEGER :: NoAve
+
+    NoAve = 0
+    Var => Mesh % Variables
+    DO WHILE( ASSOCIATED( Var ) ) 
+      
+      ! Skip if variable is not active for saving       
+      IF ( .NOT. Var % Output ) THEN
+        CONTINUE
+      ! Skip if variable is global one
+      ELSE IF ( SIZE( Var % Values ) == Var % DOFs ) THEN  
+        CONTINUE
+      ! Each field is present componentwise and as a vector. 
+      ! Only do the components, and this takes care of the vectors as well.
+      ELSE IF ( Var % DOFs > 1 ) THEN  
+        CONTINUE
+      ! And finally do the everaging for remaining DG fields only
+      ELSE IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
+        NoAve = NoAve + 1
+        CALL CalculateBodyAverage( Mesh, Var )
+      END IF
+
+      Var => Var % Next
+    END DO
+
+    CALL Info('VtuOutputSolver','Averaged '//TRIM(I2S(NoAve))//' elemental fields',Level=7)
+
+  END SUBROUTINE AverageBodyFields
 
 
 

@@ -16533,6 +16533,79 @@ CONTAINS
   END FUNCTION CreateLineMesh
 
 
+  ! Calcalate body average for a discontinuous galerkin field.
+  ! The intended use is in conjunction of saving the results. 
+  ! This tampers the field and therefore may have unwanted side effects
+  ! if the solution is to be used for something else too.
+  !-------------------------------------------------------------------
+  SUBROUTINE CalculateBodyAverage( Mesh, Var )
+
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Mesh_t), POINTER :: Mesh
+
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), ALLOCATABLE :: BodyAverage(:)
+    INTEGER, ALLOCATABLE :: BodyCount(:)
+    INTEGER :: n,i,j,k,l,nodeind,dgind
+    REAL(KIND=dp) :: AveHits
+
+    IF(.NOT. ASSOCIATED(var)) RETURN
+    IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
+
+    CALL Info('CalcalateBodyAverage','Calculating average for: '//TRIM(Var % Name), Level=8)
+
+    n = Mesh % NumberOfNodes
+    ALLOCATE( BodyCount(n), BodyAverage(n) )
+
+
+    DO i=1,CurrentModel % NumberOfBodies
+
+      DO k=1,Var % Dofs
+        BodyCount = 0
+        BodyAverage = 0.0_dp
+
+        DO j=1,Mesh % NumberOfBulkElements 
+          Element => Mesh % Elements(j)
+          IF( Element % BodyId /= i ) CYCLE
+          DO l = 1, Element % TYPE % NumberOfNodes
+            nodeind = Element % NodeIndexes(l)
+            dgind = Var % Perm(Element % DGIndexes(l) )
+            IF( dgind > 0 ) THEN
+              BodyAverage( nodeind ) = BodyAverage( nodeind ) + &
+                  Var % Values( Var % DOFs*( dgind-1)+k )
+              BodyCount( nodeind ) = BodyCount( nodeind ) + 1 
+            END IF
+          END DO
+        END DO
+
+        IF( k == 1 ) THEN
+          AveHits = 1.0_dp * SUM( BodyCount ) / COUNT( BodyCount > 0 )
+          !PRINT *,'AveHits:',i,AveHits
+        END IF
+
+        DO j=1,n
+          IF( BodyCount(j) > 0 ) BodyAverage(j) = BodyAverage(j) / BodyCount(j)
+        END DO
+
+        DO j=1,Mesh % NumberOfBulkElements 
+          Element => Mesh % Elements(j)
+          IF( Element % BodyId /= i ) CYCLE
+          DO l = 1, Element % TYPE % NumberOfNodes
+            nodeind = Element % NodeIndexes(l)
+            dgind = Var % Perm(Element % DGIndexes(l) )
+            IF( dgind > 0 ) THEN
+              Var % Values( Var % DOFs*( dgind-1)+k ) = BodyAverage( nodeind ) 
+            END IF
+          END DO
+        END DO
+      END DO
+    END DO
+
+  END SUBROUTINE CalculateBodyAverage
+
+
+
+
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
 !------------------------------------------------------------------------------
