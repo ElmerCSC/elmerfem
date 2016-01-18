@@ -5008,6 +5008,7 @@ CONTAINS
         Order827 = (/1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16,24,22,21,23,25,26,27/)
     LOGICAL :: DgElem
       
+
     ElmerCode = Element % Type % ElementCode
 
     SELECT CASE (ElmerCode)
@@ -5030,12 +5031,14 @@ CONTAINS
     END IF
 
     IF( DGElem ) THEN
+      UseIndexes => NULL()
       IF( ASSOCIATED( Element % DGIndexes ) ) THEN
         UseIndexes => Element % DGIndexes
-      ELSE IF ( ASSOCIATED(CurrentElement % BoundaryInfo) ) THEN
-        Parent => CurrentElement % BoundaryInfo % Left
-        IF (.NOT.ASSOCIATED(Parent) ) &
-            Parent => CurrentElement % BoundaryInfo % Right        
+      ELSE IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
+        Parent => Element % BoundaryInfo % Left
+        IF (.NOT.ASSOCIATED(Parent) ) THEN
+          Parent => Element % BoundaryInfo % Right        
+        END IF
         IF ( ASSOCIATED(Parent) ) THEN
           IF (ASSOCIATED(Parent % DGIndexes) ) THEN
             n = Element % TYPE % NumberOfNodes 
@@ -5050,9 +5053,14 @@ CONTAINS
             UseIndexes => BCIndexes
           END IF
         END IF
-      ELSE
-        CALL Fatal('VtuOutputSolver','No bulk nor boundary element?')
       ENDIF
+
+      IF(.NOT. ASSOCIATED( UseIndexes ) ) THEN
+        PRINT *,'Problematic BC elem:',Element % BodyId, Element % ElementIndex, Element % NodeIndexes, &
+            ASSOCIATED( Element % DgIndexes ), ASSOCIATED( Element % BoundaryInfo ), DGelem, &
+            Element % TYPE % ElementCode
+        CALL Fatal('VtuOutputSolver','Could not set indexes for boundary element!')        
+      END IF
     ELSE
       UseIndexes => Element % NodeIndexes
     END IF
@@ -5064,7 +5072,7 @@ CONTAINS
     ELSE
       NodeIndexes => UseIndexes
     END IF
-
+  
   END FUNCTION Elmer2VtkIndexes
 
 
