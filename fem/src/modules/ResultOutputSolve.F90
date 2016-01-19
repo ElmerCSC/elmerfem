@@ -3605,6 +3605,7 @@ CONTAINS
 
     TYPE(Variable_t), POINTER :: Var
     INTEGER :: NoAve
+    LOGICAL :: BodySum 
 
     NoAve = 0
     Var => Mesh % Variables
@@ -3623,13 +3624,19 @@ CONTAINS
       ! And finally do the everaging for remaining DG fields only
       ELSE IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
         NoAve = NoAve + 1
-        CALL CalculateBodyAverage( Mesh, Var )
+
+        ! This is really quite dirty!
+        ! For variables that scale with h the operator is more naturally a sum 
+        ! than an average. 
+        BodySum = ( INDEX( Var % Name,'nodal force' ) /= 0 .OR. &
+            INDEX( Var % Name,' loads' ) /= 0 )
+        CALL CalculateBodyAverage( Mesh, Var, BodySum )
       END IF
 
       Var => Var % Next
     END DO
 
-    CALL Info('VtuOutputSolver','Averaged '//TRIM(I2S(NoAve))//' elemental fields',Level=7)
+    CALL Info('VtuOutputSolver','Reduced '//TRIM(I2S(NoAve))//' elemental fields',Level=7)
 
   END SUBROUTINE AverageBodyFields
 

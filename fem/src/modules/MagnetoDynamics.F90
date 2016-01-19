@@ -6303,7 +6303,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_ML,   1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_ML2,  1, n, MASS, FORCE, pivot, Dofs)
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
-       CALL LocalSol(EL_NF,   3, n, MASS, FORCE, pivot, Dofs)
+
+       ! This is a nodal quantity
+       CALL LocalCopy(EL_NF, 3, n, FORCE, Dofs)
      END IF
    END DO
 
@@ -6792,6 +6794,27 @@ CONTAINS
    END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE LocalSol
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ SUBROUTINE LocalCopy(Var, m, n, b, dofs )
+!------------------------------------------------------------------------------
+   TYPE(Variable_t), POINTER :: Var
+   INTEGER :: m,n,dofs
+   REAL(KIND=dp) :: b(:,:)
+!------------------------------------------------------------------------------
+   INTEGER :: ind(n), i
+!------------------------------------------------------------------------------
+   IF(.NOT. ASSOCIATED(var)) RETURN
+
+   ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
+
+   DO i=1,m
+     dofs = dofs+1
+     Var % Values(ind(1:n)+i) = b(1:n,dofs)
+   END DO
+!------------------------------------------------------------------------------
+ END SUBROUTINE LocalCopy
 !------------------------------------------------------------------------------
 
 

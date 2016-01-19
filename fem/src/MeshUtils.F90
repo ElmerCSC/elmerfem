@@ -16538,10 +16538,11 @@ CONTAINS
   ! This tampers the field and therefore may have unwanted side effects
   ! if the solution is to be used for something else too.
   !-------------------------------------------------------------------
-  SUBROUTINE CalculateBodyAverage( Mesh, Var )
+  SUBROUTINE CalculateBodyAverage( Mesh, Var, BodySum )
 
     TYPE(Variable_t), POINTER :: Var
     TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL :: BodySum
 
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), ALLOCATABLE :: BodyAverage(:)
@@ -16552,7 +16553,13 @@ CONTAINS
     IF(.NOT. ASSOCIATED(var)) RETURN
     IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
 
-    CALL Info('CalcalateBodyAverage','Calculating average for: '//TRIM(Var % Name), Level=8)
+    IF( BodySum ) THEN
+      CALL Info('CalculateBodyAverage','Calculating bodywise nodal sum for: '&
+          //TRIM(Var % Name), Level=8)
+    ELSE
+      CALL Info('CalculateBodyAverage','Calculating bodywise nodal average for: '&
+          //TRIM(Var % Name), Level=8)
+    END IF
 
     n = Mesh % NumberOfNodes
     ALLOCATE( BodyCount(n), BodyAverage(n) )
@@ -16583,9 +16590,13 @@ CONTAINS
           !PRINT *,'AveHits:',i,AveHits
         END IF
 
-        DO j=1,n
-          IF( BodyCount(j) > 0 ) BodyAverage(j) = BodyAverage(j) / BodyCount(j)
-        END DO
+        ! Do not average weighted quantities. They should only be summed, I guess... 
+        
+        IF( .NOT. BodySum ) THEN
+          DO j=1,n
+            IF( BodyCount(j) > 0 ) BodyAverage(j) = BodyAverage(j) / BodyCount(j)
+          END DO
+        END IF
 
         DO j=1,Mesh % NumberOfBulkElements 
           Element => Mesh % Elements(j)
@@ -16602,8 +16613,6 @@ CONTAINS
     END DO
 
   END SUBROUTINE CalculateBodyAverage
-
-
 
 
 !------------------------------------------------------------------------------
