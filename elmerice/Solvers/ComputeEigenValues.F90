@@ -120,7 +120,7 @@
           if (dim.eq.3) then
                   localM(2,3)=Stress( StressDOFs * (StressPerm(t) - 1 ) + 5)
                   localM(1,3)=Stress( StressDOFs * (StressPerm(t) - 1 ) + 6)
-                  localM(3,1)=localM(2,3)
+                  localM(3,2)=localM(2,3)
                   localM(3,1)=localM(1,3)
            end if
 

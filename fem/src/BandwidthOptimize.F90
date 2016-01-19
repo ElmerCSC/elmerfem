@@ -76,7 +76,7 @@ CONTAINS
      INTEGER :: HalfBandWidth
      INTEGER, OPTIONAL :: Reorder(:), InvInitialReorder(:)
 !-------------------------------------------------------------------------------
-     INTEGER :: i,j,k
+     INTEGER :: i,j,k,istat
      TYPE(ListMatrixEntry_t), POINTER :: CList
 !-------------------------------------------------------------------------------
      HalfBandWidth = 0
@@ -122,7 +122,7 @@ use spariterglobals
      INTEGER, ALLOCATABLE :: PermLocal(:),DoneIndex(:)
      LOGICAL :: Newroot, Finished
      INTEGER :: MinDegree,StartNode,MaxLevel
-     INTEGER :: Indx,i,j,k,n,k1,k2,HalfBandWidthBefore,HalfBandWidthAfter
+     INTEGER :: Indx,i,j,k,n,k1,k2,HalfBandWidthBefore,HalfBandWidthAfter,istat
 
      TYPE(Element_t),POINTER :: Element
      TYPE(ListMatrixEntry_t), POINTER :: p
@@ -163,7 +163,11 @@ use spariterglobals
        ListMatrix(i) % Level = 0
      END DO
 
-     ALLOCATE(DoneAlready(LocalNodes))
+     ALLOCATE(DoneAlready(LocalNodes),STAT=istat)
+     IF( istat /= 0 ) THEN
+       CALL Fatal('OptimizeBandwidth','Allocation error for DoneAlready of size: '&
+           //TRIM(I2S(LocalNodes)))
+     END IF
 
      MaxLevel = 0
      DoneAlready = .FALSE.
@@ -199,8 +203,18 @@ use spariterglobals
        END IF
      END DO
 !-------------------------------------------------------------------------------
-     ALLOCATE( PermLocal(SIZE(Perm)), DoneIndex(LocalNodes) )
+     ALLOCATE( PermLocal(SIZE(Perm)), STAT=istat )
+     IF( istat /= 0 ) THEN
+       CALL Fatal('OptimizeBandwidth','Allocation error for PermLocal: '//&
+           TRIM(I2S(SIZE(Perm))))
+     END IF
      PermLocal = 0
+
+     ALLOCATE( DoneIndex(LocalNodes), STAT=istat )
+     IF( istat /= 0 ) THEN
+       CALL Fatal('OptimizeBandwidth','Allocation error for DoneIndex: '&
+           //TRIM(I2S(LocalNodes)))
+     END IF
      DoneIndex = 0
 !-------------------------------------------------------------------------------
 !    This loop really does the thing
@@ -300,11 +314,17 @@ use spariterglobals
 
          INTEGER :: stackp
          TYPE(Stack_t), POINTER CONTIG :: stack(:), copystack(:)
+
+         INTEGER :: istat
 !-------------------------------------------------------------------------------
          n = nin
          Level=Levelin
 
-         ALLOCATE(stack(512))
+         ALLOCATE(stack(512),STAT=istat)
+         IF( istat /= 0 ) THEN
+           CALL Fatal('Levelize','Allocation error for stack of size 512')
+         END IF
+
          stackp = 0
 
          p=>ListMatrix(n) % Head

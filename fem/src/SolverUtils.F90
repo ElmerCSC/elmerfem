@@ -11066,6 +11066,8 @@ END SUBROUTINE UpdateExportedVariables
 
 !------------------------------------------------------------------------------
 !> Eliminates bubble degrees of freedom from a local linear system.
+!> This version is suitable for flow models with velocity and pressure as 
+!> unknowns.
 !------------------------------------------------------------------------------
 SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
 !------------------------------------------------------------------------------

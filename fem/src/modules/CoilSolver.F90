@@ -1286,12 +1286,13 @@ FUNCTION UnitedPotential( Model, n, t ) RESULT(f)
   TYPE( Variable_t), POINTER :: PotA, PotB
   TYPE( Nodes_t), POINTER :: Nodes
   INTEGER :: i,j,m
-  TYPE(Element_t), POINTER :: Element
+  TYPE(Element_t), POINTER :: Element, PrevElement => NULL()
   REAL(KIND=dp) :: xmin, r(3), rp(3), CoilCenter(3), CoilTangent(3)
   REAL(KIND=dp), POINTER :: WrkPntr(:,:) => NULL()
   LOGICAL :: GotCoilTangent
 
-  SAVE Visited, PotA, PotB, Nodes, CoilCenter, CoilTangent, GotCoilTangent
+  SAVE Visited, PotA, PotB, Nodes, CoilCenter, CoilTangent, GotCoilTangent, &
+      PrevElement, xmin
 
   IF( .NOT. Visited ) THEN
     PotB => VariableGet( Model % Mesh % Variables,'CoilPotB' )
@@ -1319,25 +1320,28 @@ FUNCTION UnitedPotential( Model, n, t ) RESULT(f)
   END IF
 
   Element => Model % CurrentElement
-  m = GetElementNOFNodes()
 
-  ! One could use as well max or mean, for example
-  ! Consistancy is most important
-
-  xmin = HUGE( xmin ) 
-  DO i=1,m
-    j = Element % NodeIndexes(i)
-    r(1) = Model % Mesh % Nodes % x(j) 
-    IF( GotCoilTangent ) THEN
-      r(2) = Model % Mesh % Nodes % y(j) 
-      r(3) = Model % Mesh % Nodes % z(j) 
-      r = r - CoilCenter
-      rp(1) = SUM( CoilTangent * r ) 
-    ELSE
-      rp(1) = r(1) - CoilCenter(1)
-    END IF
-    xmin = MIN( xmin, rp(1) )
-  END DO
+  IF( .NOT. ASSOCIATED( Element, PrevElement ) ) THEN
+    m = GetElementNOFNodes()
+    
+    ! One could use as well max or mean, for example
+    ! Consistancy is most important
+    
+    xmin = HUGE( xmin ) 
+    DO i=1,m
+      j = Element % NodeIndexes(i)
+      r(1) = Model % Mesh % Nodes % x(j) 
+      IF( GotCoilTangent ) THEN
+        r(2) = Model % Mesh % Nodes % y(j) 
+        r(3) = Model % Mesh % Nodes % z(j) 
+        r = r - CoilCenter
+        rp(1) = SUM( CoilTangent * r ) 
+      ELSE
+        rp(1) = r(1) - CoilCenter(1)
+      END IF
+      xmin = MIN( xmin, rp(1) )
+    END DO
+  END IF
 
   IF( xmin > 0.0 ) THEN
     f = PotB % Values( PotB % Perm(n) )
@@ -1346,3 +1350,182 @@ FUNCTION UnitedPotential( Model, n, t ) RESULT(f)
   END IF
 
 END FUNCTION UnitedPotential
+
+
+FUNCTION UnitedPotentialNormalized( Model, n, t ) RESULT(f)
+
+  USE DefUtils
+
+  IMPLICIT NONE
+
+  TYPE(Model_t) :: Model
+  INTEGER :: n
+  REAL(KIND=dp) :: t,f
+
+  LOGICAL :: Visited = .FALSE., Found, Stat
+  TYPE( Variable_t), POINTER :: PotA, PotB
+  TYPE( Nodes_t) :: Nodes
+  INTEGER :: i,j,m
+  TYPE(Element_t), POINTER :: Element, PrevElement => NULL()
+  REAL(KIND=dp) :: xmin, r(3), rp(3), CoilCenter(3), CoilTangent(3), &
+      DesiredCurrentDensity, u, v, w, NormCoeff, detJ, gradPot(3)
+  REAL(KIND=dp), POINTER :: WrkPntr(:,:) => NULL()
+  REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:), NodalPot(:)
+  LOGICAL :: GotCoilTangent, UsePotB
+  TYPE(GaussIntegrationPoints_t) :: IP
+
+  SAVE Visited, PotA, PotB, Nodes, CoilCenter, CoilTangent, GotCoilTangent, &
+      PrevElement, xmin, DesiredCurrentDensity, Basis, dBasisdx, NodalPot, &
+      UsePotB
+
+  IF( .NOT. Visited ) THEN
+    PotB => VariableGet( Model % Mesh % Variables,'CoilPotB' )
+    PotA => VariableGet( Model % Mesh % Variables,'CoilPot' )
+
+    WrkPntr => ListGetConstRealArray( Model % Simulation,'Coil Center', Found ) 
+    IF( Found ) THEN
+      CoilCenter(1:3) = WrkPntr(1:3,1)
+    ELSE
+      CoilCenter(1) = ListGetCReal( Model % Simulation,'Coil x0',Found )
+      CoilCenter(2) = ListGetCReal( Model % Simulation,'Coil y0',Found )
+      CoilCenter(3) = ListGetCReal( Model % Simulation,'Coil z0',Found )
+    END IF
+     
+    WrkPntr => ListGetConstRealArray( Model % Simulation,'Coil Tangent', GotCoilTangent )
+    IF( GotCoilTangent ) THEN
+      CoilTangent(1:3) = WrkPntr(1:3,1)
+    ELSE
+      CoilTangent = 0.0_dp
+      CoilTangent(1) = 1.0_dp
+    END IF
+   
+    DesiredCurrentDensity = ListGetCReal( Model % Simulation,'Desired Current Density',Found)
+    IF(.NOT. Found ) DesiredCurrentDensity = 1.0_dp
+
+    n = Model % Solver % Mesh % MaxElementNodes
+    ALLOCATE( Basis(n), dBasisdx(n,3), NodalPot(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+
+    Visited = .TRUE.
+  END IF
+
+  Element => Model % CurrentElement
+
+  IF( .NOT. ASSOCIATED( Element, PrevElement ) ) THEN
+    m = GetElementNOFNodes()
+    
+    ! One could use as well max or mean, for example
+    ! Consistancy is most important
+    
+    Nodes % x(1:m) = Model % Mesh % Nodes % x(Element % NodeIndexes)
+    Nodes % y(1:m) = Model % Mesh % Nodes % y(Element % NodeIndexes)
+    Nodes % z(1:m) = Model % Mesh % Nodes % z(Element % NodeIndexes)
+
+    xmin = HUGE( xmin ) 
+    DO i=1,m
+      r(1) = Nodes % x(i) 
+      IF( GotCoilTangent ) THEN
+        r(2) = Nodes % y(i) 
+        r(3) = Nodes % z(i) 
+        r = r - CoilCenter
+        rp(1) = SUM( CoilTangent * r ) 
+      ELSE
+        rp(1) = r(1) - CoilCenter(1)
+      END IF
+      xmin = MIN( xmin, rp(1) )    
+    END DO
+
+    IP = GaussPoints( Element )
+    u = SUM( IP % U ) / IP % n
+    v = SUM( IP % V ) / IP % n
+    w = SUM( IP % W ) / IP % n
+
+    stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
+    UsePotB = ( xmin > 0.0 )
+    IF( UsePotB ) THEN
+      NodalPot(1:m) = PotB % Values( PotB % Perm(Element % NodeIndexes) )
+    ELSE
+      NodalPot(1:m) = PotA % Values( PotA % Perm(Element % NodeIndexes) )
+    END IF
+    
+    DO i=1,3
+      GradPot(i) = SUM( dBasisdx(1:m,i) * NodalPot(1:m) )
+    END DO
+    
+    NormCoeff = DesiredCurrentDensity / SQRT( SUM(GradPot**2) )     
+    PrevElement => Element
+  END IF
+
+  IF( UsePotB ) THEN
+    f = NormCoeff * PotB % Values( PotB % Perm(n) )
+  ELSE
+    f = NormCoeff * PotA % Values( PotA % Perm(n) )
+  END IF
+
+END FUNCTION UnitedPotentialNormalized
+
+
+FUNCTION PotentialNormalized( Model, n, t ) RESULT(f)
+
+  USE DefUtils
+
+  IMPLICIT NONE
+
+  TYPE(Model_t) :: Model
+  INTEGER :: n
+  REAL(KIND=dp) :: t,f
+
+  LOGICAL :: Visited = .FALSE., Found, Stat
+  TYPE( Variable_t), POINTER :: PotA
+  TYPE( Nodes_t) :: Nodes
+  INTEGER :: i,j,m
+  TYPE(Element_t), POINTER :: Element, PrevElement => NULL()
+  REAL(KIND=dp) :: DesiredCurrentDensity, u, v, w, NormCoeff, detJ, gradPot(3)
+  REAL(KIND=dp), POINTER :: WrkPntr(:,:) => NULL()
+  REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:), NodalPot(:)
+  TYPE(GaussIntegrationPoints_t) :: IP
+
+  SAVE Visited, PotA, Nodes, PrevElement, DesiredCurrentDensity, Basis, dBasisdx, NodalPot
+
+  IF( .NOT. Visited ) THEN
+    PotA => VariableGet( Model % Mesh % Variables,'CoilPot' )
+
+    DesiredCurrentDensity = ListGetCReal( Model % Simulation,'Desired Current Density',Found)
+    IF(.NOT. Found ) DesiredCurrentDensity = 1.0_dp
+
+    n = Model % Solver % Mesh % MaxElementNodes
+    ALLOCATE( Basis(n), dBasisdx(n,3), NodalPot(n), Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+
+    Visited = .TRUE.
+  END IF
+
+  Element => Model % CurrentElement
+
+  IF( .NOT. ASSOCIATED( Element, PrevElement ) ) THEN
+    m = GetElementNOFNodes()
+    
+    ! One could use as well max or mean, for example
+    ! Consistancy is most important
+    
+    Nodes % x(1:m) = Model % Mesh % Nodes % x(Element % NodeIndexes)
+    Nodes % y(1:m) = Model % Mesh % Nodes % y(Element % NodeIndexes)
+    Nodes % z(1:m) = Model % Mesh % Nodes % z(Element % NodeIndexes)
+
+    IP = GaussPoints( Element )
+    u = SUM( IP % U ) / IP % n
+    v = SUM( IP % V ) / IP % n
+    w = SUM( IP % W ) / IP % n
+
+    stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis, dBasisdx )
+    NodalPot(1:m) = PotA % Values( PotA % Perm(Element % NodeIndexes) )
+    
+    DO i=1,3
+      GradPot(i) = SUM( dBasisdx(1:m,i) * NodalPot(1:m) )
+    END DO
+    
+    NormCoeff = DesiredCurrentDensity / SQRT( SUM(GradPot**2) )     
+    PrevElement => Element
+  END IF
+
+  f = NormCoeff * PotA % Values( PotA % Perm(n) )
+
+END FUNCTION PotentialNormalized

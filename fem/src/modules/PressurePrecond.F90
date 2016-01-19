@@ -76,8 +76,8 @@ SUBROUTINE PressurePrecond_Init0(Model, Solver, dt, Transient)
       CALL ListAddString(SolverParams, 'Linear System Iterative Method', 'BiCGStab2') 
   IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Max Iterations') ) &
       CALL ListAddInteger(SolverParams, 'Linear System Max Iterations', 1000)
-  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Row Equilibration') ) &
-      CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
+!  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Row Equilibration') ) &
+!      CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
   IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Preconditioning') ) &
       CALL ListAddString(SolverParams, 'Linear System Preconditioning', 'Diagonal') 
   IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Convergence Tolerance') ) &

@@ -763,6 +763,7 @@ CONTAINS
     !-----------------------------------------------------------------
     IF( IsProcedure ) THEN
       InitProc = GetProcAddr( TRIM(proc_name)//'_Init', abort=.FALSE. )
+      CALL Info('AddEquationBasics','Checking for _init solver',Level=12)
       IF ( InitProc /= 0 ) THEN
         CALL ExecSolver( InitProc, CurrentModel, Solver, &
             Solver % dt, Transient )
@@ -824,10 +825,12 @@ CONTAINS
               Simulation, 'Runge-Kutta Order', Found, minv=2, maxv=4 )
           IF ( .NOT.Found ) Solver % Order = 2
         END IF
-      ELSE
+        CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=12)
+     ELSE
         CALL Warn( 'AddEquation', '> Timestepping method < defaulted to > Implicit Euler <' )
         CALL ListAddString( SolverParams, 'Timestepping Method', 'Implicit Euler' )
       END IF
+
     END IF
 
     ! Get the procudure that really runs the solver
@@ -940,6 +943,7 @@ CONTAINS
         END IF
 
       ELSE        
+        CALL Info('AddEquationBasics','Creating standard variable: '//var_name(1:n),Level=8)
 
         ! If the variable is a field variable create a permutation and matrix related to it
         !----------------------------------------------------------------------------------
@@ -961,6 +965,7 @@ CONTAINS
         
         ! Computate the size of the permutation vector
         !-----------------------------------------------------------------------------------------
+        CALL Info('AddEquationBasics','Computing size of permutation vector',Level=12)
         Ndeg = 0
 !        IF( Solver % SolverMode == SOLVER_MODE_DEFAULT .OR. &
 !            Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
@@ -1014,17 +1019,24 @@ CONTAINS
         IF ( .NOT. Found ) BandwidthOptimize = .TRUE.
         CALL CheckLinearSolverOptions( Solver )
 
+        CALL Info('AddEquationBasics','Maximum size of permutation vector is: '//TRIM(I2S(Ndeg)),Level=12)
         ALLOCATE( Perm(Ndeg) )
 
         Perm = 0
         MatrixFormat = MATRIX_CRS
+
+
+        CALL Info('AddEquationBasics','Creating solver matrix topology',Level=12)
         Solver % Matrix => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
             Perm, DOFs, MatrixFormat, BandwidthOptimize, eq(1:LEN_TRIM(eq)), &
             ListGetLogical( SolverParams,'Discontinuous Galerkin', Found ), &
             GlobalBubbles=GlobalBubbles )          
         Nrows = DOFs * Ndeg
-        IF (ASSOCIATED(Solver % Matrix)) Nrows = Solver % Matrix % NumberOfRows
-       
+        IF (ASSOCIATED(Solver % Matrix)) THEN
+          Nrows = Solver % Matrix % NumberOfRows
+          CALL Info('AddEquationBasics','Number of rows in CRS matrix: '//TRIM(I2S(Nrows)),Level=12)
+        END IF
+
         ! Basically the solver could be matrix free but still the matrix
         ! is used here temperarily since it is needed when making the 
         ! permutation vector
@@ -1035,6 +1047,7 @@ CONTAINS
         END IF
        
         IF (Nrows>0) THEN
+          CALL Info('AddEquationBasics','Creating solver variable',Level=12)
           ALLOCATE(Solution(Nrows))
           Solution = InitValue
           
@@ -1071,6 +1084,8 @@ CONTAINS
       
       IF(.NOT. Found) EXIT
       
+      CALL Info('AddEquationBasics','Creating exported variable: '//TRIM(var_name),Level=12)
+
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' Output'
       VariableOutput = ListGetLogical( SolverParams, str, Found )
       IF ( .NOT. Found ) VariableOutput = .TRUE.

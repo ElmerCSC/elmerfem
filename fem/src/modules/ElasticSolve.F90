@@ -884,8 +884,6 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                  j = ListGetInteger( Model % Bodies(FlowElement % BodyId) &
                       % Values,'Material', minv=1, maxv=Model % NumberOFMaterials )
                  Material => Model % Materials(j) % Values
-                 DragCoeff = ListGetCReal( BC,'FSI Drag Coefficient',GotIt)
-
                  
                  Viscosity(1:FlowNOFNodes) = ListGetReal( &
                      Material,'Viscosity',FlowNOFNodes,AdjacentNodes,gotIt )
@@ -895,8 +893,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                  
                  CompressibilityDefined = .FALSE.
                  IF ( GotIt ) THEN
-                   IF ( CompressibilityFlag /= 'incompressible' .AND. &
-                       CompressibilityFlag /= 'artificial compressible') THEN
+                   IF ( CompressibilityFlag /= 'incompressible' ) THEN 
+!.AND. &
+!                       CompressibilityFlag /= 'artificial compressible') THEN
                      CompressibilityDefined = .TRUE.
                    END IF
                  END IF

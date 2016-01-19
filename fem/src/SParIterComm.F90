@@ -137,10 +137,10 @@ CONTAINS
     req = MPI_THREAD_FUNNELED
     CALL MPI_Init_Thread(req, prov, ierr)
     IF (prov < req) THEN
-      WRITE( Message, '(A,I0,I0,I0)' ) &
-            'MPI Thread Initialization failed! (req=', req,&
-            ', prov=,', prov, &
-            ', ierr=', ierr, ')'
+      WRITE( Message, '(A,I0,A,I0,A,I0,A)' ) &
+              'MPI Thread Initialization failed! (req=', req,&
+              ', prov=', prov, &
+              ', ierr=', ierr, ')'
       CALL Fatal( 'ParCommInit', Message )
     END IF
 #else
