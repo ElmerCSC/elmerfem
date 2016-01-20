@@ -1291,11 +1291,11 @@
       IF ( RelativeChange < NewtonTol .OR. &
              iter > NewtonIter ) NewtonLinearization = .TRUE.
 
-      IF ( RecheckNewton .AND. (RelativeChange > NewtonUBound) ) THEN
+      IF ( RecheckNewton .AND. (RelativeChange > NewtonUBound) .AND. NewtonLinearization ) THEN
         NewtonLinearization = .FALSE.
-	PRINT *,'Debug, switching back to picard'
+	CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
       END IF
-	    
+
       IF ( RelativeChange < NonLinearTol .AND. Iter<NonlinearIter ) EXIT
 
 !------------------------------------------------------------------------------
