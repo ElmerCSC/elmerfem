@@ -6309,6 +6309,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
    END DO
 
+   CALL CalcBoundaryModels()
 
    Power  = ParallelReduction(Power)
    Energy = ParallelReduction(Energy)
@@ -6539,6 +6540,110 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 CONTAINS
 
+!-------------------------------------------------------------------
+  SUBROUTINE CalcBoundaryModels()
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+!-------------------------------------------------------------------
+    REAL(KIND=dp) :: GapLength(35), AirGapMu(35)
+!-------------------------------------------------------------------
+    LOGICAL :: FirstTime = .TRUE.
+    REAL(KIND=dp) :: mu0, normal(3), B2, GapLength_ip
+
+    SAVE mu0
+
+    IF ( FirstTime ) THEN
+      mu0 = GetConstReal(CurrentModel % Constants, &
+        'Permeability of Vacuum', Found)
+      IF(.NOT. Found) mu0 = 1.2566370614359173e-6
+    END IF
+
+    DO i = 1,GetNOFBoundaryElements()
+      Element => GetBoundaryElement(i)
+      IF(.NOT. ActiveBoundaryElement()) CYCLE
+      BC => GetBC()
+      GapLength = GetReal(BC, 'Air Gap Length', Found)
+      IF(.NOT. Found) CYCLE
+      CALL GetElementNodes(Nodes)
+
+      n = GetElementNOFNodes()
+      np = n*MAXVAL(pSolver % Def_Dofs(GetElementFamily(Element),:,1))
+      nd = GetElementNOFDOFs(uSolver=pSolver)
+
+      AirGapMu = GetReal(BC, 'Air Gap Relative Permeability', Found)
+      IF(.NOT. Found) AirGapMu = 1.0_dp
+
+      FORCE = 0.0_dp
+      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
+
+
+      IF (SecondOrder) THEN
+        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+      ELSE
+        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+      END IF
+
+      DO j = 1,IP % n
+        IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
+            DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+            BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+        ELSE
+          stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
+            IP % W(j), detJ, Basis, dBasisdx )
+          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+        END IF
+
+        Normal = NormalVector(Element, Nodes, IP% U(j), IP % V(j))
+
+        DO k=1,vDOFs
+          SELECT CASE(dim)
+          CASE(2)
+            ! This has been done with the same sign convention as in MagnetoDynamics2D:
+            ! -------------------------------------------------------------------------
+            IF ( CSymmetry ) THEN
+              B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
+              B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
+                + SUM( SOL(1,1:nd) * Basis(1:nd) ) / xcoord
+              B(k,3) = 0._dp
+            ELSE
+              B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
+              B(k,2) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) )
+              B(k,3) = 0._dp
+            END IF
+          CASE(3)
+            B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
+          END SELECT
+        END DO
+        R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
+        GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
+        IF (ASSOCIATED(NF).OR.ASSOCIATED(EL_NF)) THEN
+          NF_ip = 0._dp
+          B2 = sum(B(1,:)*B(1,:) + B(2,:)*B(2,:))
+          DO k=1,n
+            DO l=1,3
+              DO m=1,3
+                NF_ip(k,l) = NF_ip(k,l) - (R_ip*(B(1,l)*B(1,m)))*(dBasisdx(k,m) + Normal(m)/GapLength_ip)
+              END DO
+              NF_ip(k,l) = NF_ip(k,l) + 0.5*R_ip*B2*(dBasisdx(k,l) + Normal(l)/GapLength_ip)
+            END DO
+          END DO
+        END IF
+        DO p=1,n
+          FORCE(p, 1:3) = FORCE(p, 1:3) + NF_ip(p,1:3)
+        END DO
+      END DO ! Integration points
+
+      IF(ElementalFields) THEN
+        CALL LocalCopy(EL_NF, 3, n, FORCE, 0)
+      END IF
+    END DO ! Boundary elements
+
+!-------------------------------------------------------------------
+  END SUBROUTINE CalcBoundaryModels
+!-------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
  SUBROUTINE NodalTorqueDeprecated(T, FoundOne)
 !------------------------------------------------------------------------------
@@ -6546,6 +6651,7 @@ CONTAINS
    LOGICAL, INTENT(OUT) :: FoundOne
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: P(3), F(3)
+   TYPE(Nodes_t), SAVE :: Nodes
    TYPE(Element_t), POINTER :: Element
    TYPE(Variable_t), POINTER :: CoordVar
    LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
@@ -6797,17 +6903,22 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
- SUBROUTINE LocalCopy(Var, m, n, b, dofs )
+ SUBROUTINE LocalCopy(Var, m, n, b, dofs, UElement)
 !------------------------------------------------------------------------------
    TYPE(Variable_t), POINTER :: Var
    INTEGER :: m,n,dofs
    REAL(KIND=dp) :: b(:,:)
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
+   TYPE(Element_t), POINTER, OPTIONAL :: UElement
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
+   IF(PRESENT(UElement)) THEN
+     ind(1:n) = Var % DOFs*(Var % Perm(UElement % DGIndexes(1:n))-1)
+   ELSE
+     ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
+   END IF
 
-   ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
 
    DO i=1,m
      dofs = dofs+1
