@@ -5784,7 +5784,7 @@ CONTAINS
     LoadName = TRIM(Name) // ' Load'
     nlen = LEN_TRIM(LoadName)
     
-    CALL Info('SetNodalLoads','Checking loads for: '//TRIM(Name),Level=10)
+    CALL Info('SetNodalLoads','Checking for nodal loads for variable: '//TRIM(Name),Level=10)
 
     n = MAX(Model % NumberOfBCs, Model % NumberOFBodyForces) 
     ALLOCATE( ActivePart(n), ActivePartAll(n) )
@@ -5810,7 +5810,7 @@ CONTAINS
     END DO
 
     IF ( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN
-      CALL Info('SetNodalLoads','Setting nodal loads on boundaries: '//TRIM(Name),Level=9)
+      CALL Info('SetNodalLoads','Setting nodal loads on boundaries: '//TRIM(LoadName),Level=9)
       ALLOCATE(DoneLoad( SIZE(b)/NDOFs) )
       DoneLoad = .FALSE.
 
@@ -5850,7 +5850,7 @@ CONTAINS
     END DO
 
     IF ( ANY( ActivePart ) .OR. ANY(ActivePartAll) ) THEN
-      CALL Info('SetNodalLoads','Setting nodal loads on bulk: '//TRIM(Name),Level=9)
+      CALL Info('SetNodalLoads','Setting nodal loads on body force: '//TRIM(LoadName),Level=9)
       IF(.NOT. ALLOCATED(DoneLoad)) ALLOCATE(DoneLoad( SIZE(b)/NDOFs) )      
       DoneLoad = .FALSE.
 
@@ -5977,6 +5977,8 @@ CONTAINS
 
     DEALLOCATE( Indexes )
     IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
+
+    CALL Info('SetNodalLoads','Finished checking for nodal loads',Level=12)
 
 
 CONTAINS
