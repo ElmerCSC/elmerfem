@@ -123,6 +123,8 @@ CONTAINS
      IF ( ASSOCIATED( Matrix % Values ) )      DEALLOCATE( Matrix % Values )
      IF ( ASSOCIATED( Matrix % MassValues ) )  DEALLOCATE( Matrix % MassValues )
      IF ( ASSOCIATED( Matrix % DampValues ) )  DEALLOCATE( Matrix % DampValues )
+     IF ( ASSOCIATED( Matrix % BulkValues ) )  DEALLOCATE( Matrix % BulkValues )
+     IF ( ASSOCIATED( Matrix % BulkRHS   ) )   DEALLOCATE( Matrix % BulkRHS )
 
      IF ( ASSOCIATED( Matrix % ILUValues ) )   DEALLOCATE( Matrix % ILUValues )
      IF ( ASSOCIATED( Matrix % ILUCols ) )     DEALLOCATE( Matrix % ILUCols )
