@@ -4751,18 +4751,22 @@ int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
    Elmer file format. */
 static void PF3ToElmerPermuteNodes(int elemtype,int *topology)
 {
-  int i=0,nodes=0,oldtopology[MAXNODESD2];
+  int i=0, nodes=0, oldtopology[MAXNODESD2];
   int reorder, *porder;
   int debug;
-
-  int order404[]={2,3,4,1};             //quad
-  int order408[]={2,3,4,1,6,7,8,5};     //quad^2
-//  int order504[]={1,3,2,4};             //tetra
-//  int order510[]={1,3,2,4,6,8,5,7,9,10};//tetra^2
-  int order706[]={4,5,6,1,2,3};         //wedge (prism)  
-  int order715[]={4,5,6,1,2,3,10,11,12,7,8,9,13,14,15};   //wedge^2 (prism^2)  
-//  int order808[]={1,4,3,2,5,8,7,6};     //hexa
-//  int order820[]={1,4,3,2,5,8,7,6,12,11,10,9,17,20,19,18,16,15,14,13};  //hexa^2
+  
+  int order303[] = {3,1,2};                //tri
+  int order306[] = {3,1,2,6,4,5};          //tri^2
+  int order404[] = {3,4,1,2};             //quad
+  int order408[] = {3,4,1,2,7,8,5,6};     //quad^2
+  int order504[] = {1,2,3,4};             //tetra
+  int order510[] = {1,2,3,4,5,8,6,7,10,9};//tetra^2
+  int order605[] = {3,2,1,4,5};           //pyramid
+  int order613[] = {3,2,1,4,5,7,6,9,8,12,11,10,13};           //pyramid^2
+  int order706[] = {6,4,5,3,1,2};         //wedge (prism)  
+  int order715[] = {6,4,5,3,1,2,12,10,11,9,7,8,15,13,14};   //wedge^2 (prism^2)  
+  int order808[] = {7,8,5,6,3,4,1,2};     //hexa
+  int order820[] = {7,8,5,6,3,4,1,2,15,16,13,14,19,20,17,18,11,12,9,10};  //hexa^2
 
   debug = TRUE;
   
@@ -4770,12 +4774,26 @@ static void PF3ToElmerPermuteNodes(int elemtype,int *topology)
 
   switch (elemtype) {
   
+  case 101:
+    //nothing to change here
+    break;
+    
+  case 202:
+    //nothing to change here
+    break;
+    
+  case 203:
+    //nothing to change here
+    break;
+    
   case 303:
-    //the same numbering
+    reorder = TRUE;
+    porder = &order303[0];
     break;
     
   case 306:
-    //the same numbering
+    reorder = TRUE;
+    porder = &order306[0];
     break;
      
   case 404:        
@@ -4787,6 +4805,26 @@ static void PF3ToElmerPermuteNodes(int elemtype,int *topology)
     reorder = TRUE;
     porder = &order408[0];
     break;
+    
+  case 504:        
+    reorder = TRUE;
+    porder = &order504[0];
+    break;
+
+  case 510:   
+    reorder = TRUE;
+    porder = &order510[0];
+    break;
+    
+  case 605:        
+    reorder = TRUE;
+    porder = &order605[0];
+    break;
+
+  case 613:   
+    reorder = TRUE;
+    porder = &order613[0];
+    break;
 
   case 706:        
     reorder = TRUE;
@@ -4797,8 +4835,19 @@ static void PF3ToElmerPermuteNodes(int elemtype,int *topology)
     reorder = TRUE;
     porder = &order715[0];
     break;
+    
+  case 808:        
+    reorder = TRUE;
+    porder = &order808[0];
+    break;
+
+  case 820:     
+    reorder = TRUE;
+    porder = &order820[0];
+    break;    
+
   default:
-      if(debug) printf("Warning : Untested element type: %d\n",elemtype );
+      if(debug) printf("Warning : Unknown element type: %d\n",elemtype );
       break;
   }
 
@@ -4839,6 +4888,9 @@ int FluxToElmerType3D(int nonodes, int dim) {
     case 4:
       elmertype = 504;
       break;
+    case 5:
+      elmertype = 605;
+      break;
     case 6:
       elmertype = 706;
       break;
@@ -4847,6 +4899,9 @@ int FluxToElmerType3D(int nonodes, int dim) {
       break;
     case 10: 
       elmertype = 510;
+      break;
+    case 13:
+      elmertype = 613;
       break;
     case 15: 
       elmertype = 715;
