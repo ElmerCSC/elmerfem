@@ -942,6 +942,8 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
       END DO
     END DO
 
+    IF(KeepOld) DEALLOCATE(FieldOldValues)
+
     IF( StatusCount(1) > 0) THEN
       WRITE( Message,'(A,I0)')'Number of proper mappings  : ',StatusCount(1)
       CALL Info('GridDataReader',Message)
