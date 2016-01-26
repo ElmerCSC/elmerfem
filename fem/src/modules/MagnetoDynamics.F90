@@ -171,7 +171,7 @@ CONTAINS
     INTEGER :: n
     REAL(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE.
+    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Avacuum
 
     SAVE Avacuum 
@@ -194,8 +194,10 @@ CONTAINS
     ELSE
       Acoef(1:n) = GetReal( Material, 'Reluctivity', Found )
     END IF
-    IF( .NOT. Found .AND. .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
+    IF( .NOT. Found .AND. .NOT. Warned .AND. &
+        .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
       CALL Warn('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
+      Warned = .TRUE.
     END IF
 
 !------------------------------------------------------------------------------
@@ -210,7 +212,7 @@ CONTAINS
     INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE.
+    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Avacuum
 
     SAVE Avacuum 
@@ -235,8 +237,10 @@ CONTAINS
       Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
          GetReal( Material, 'Reluctivity im', Found ), KIND=dp )
     END IF
-    IF( .NOT. Found .AND. .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
+    IF( .NOT. Found .AND. .NOT. Warned .AND. &
+        .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
       CALL Warn('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
+      Warned = .TRUE.
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityC
@@ -249,7 +253,7 @@ CONTAINS
     INTEGER :: n
     REAL(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE.
+    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Pvacuum = 0._dp
 
     IF ( FirstTime ) THEN
@@ -267,7 +271,10 @@ CONTAINS
     END IF
 
     IF( .NOT. Found ) THEN
-      CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+      IF(.NOT. Warned ) THEN
+        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+        Warned = .TRUE.
+      END IF
       Acoef(1:n) = Pvacuum
     END IF
 !------------------------------------------------------------------------------
@@ -1665,7 +1672,8 @@ CONTAINS
 
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody, HasVelocity
+    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody, &
+        HasVelocity, HasLorenzVelocity, HasAngularVelocity
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -1695,12 +1703,12 @@ CONTAINS
       FixJPot(1:n) = FixJVar % Values(FixJVar % Perm(Element % NodeIndexes))
     END IF
 
+    HasVelocity = .FALSE.
     IF(ASSOCIATED(BodyForce)) THEN
-      CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', Found)
-      CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasVelocity)
-      HasVelocity = Found .or. HasVelocity
+      CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
+      CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
+      HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
     END IF
-    velo = 0._dp
 
     CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
     siz = 0
@@ -1759,16 +1767,20 @@ CONTAINS
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
        IF(HasVelocity) THEN
-         DO i=1,n
-           velo(1:3) = velo(1:3) + CrossProduct(omega_velo(1:3,i), [ &
-             basis(i) * Nodes % x(i), &
-             basis(i) * Nodes % y(i), &
-             basis(i) * Nodes % z(i)])
-         END DO
-         velo(1:3) = velo(1:3) + [ &
-           sum(basis(1:n)*lorentz_velo(1,1:n)), &
-           sum(basis(1:n)*lorentz_velo(2,1:n)), &
-           sum(basis(1:n)*lorentz_velo(3,1:n))]
+         IF( HasAngularVelocity ) THEN
+           DO i=1,n
+             velo(1:3) = velo(1:3) + CrossProduct(omega_velo(1:3,i), [ &
+                 basis(i) * Nodes % x(i), &
+                 basis(i) * Nodes % y(i), &
+                 basis(i) * Nodes % z(i)])
+           END DO
+         END IF
+         IF( HasLorenzVelocity ) THEN
+           velo(1:3) = velo(1:3) + [ &
+               SUM(basis(1:n)*lorentz_velo(1,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(2,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(3,1:n))]
+         END IF
        END IF
 
        ! Compute the conductivity tensor
@@ -1887,9 +1899,11 @@ CONTAINS
             SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
          DO j = 1,nd-np
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + mu * &
-              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t) &
-              - SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
+           STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t) 
+           IF( HasVelocity ) THEN
+             STIFF(p,q) = STIFF(p,q) &
+                 - SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
+           END IF
            IF ( Newton ) THEN
              JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
                  SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
@@ -5411,7 +5425,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
-              ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity
+              ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
+              HasLorenzVelocity
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -5667,8 +5682,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
      BodyId = GetBody()
      Material => GetMaterial()
+     BodyForce => GetBodyForce()
      IF ( ASSOCIATED(MFS) ) THEN
-       BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.
        IF(ASSOCIATED(BodyForce)) THEN
          CALL GetComplexVector( BodyForce,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
@@ -5841,12 +5856,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL GetReluctivity(Material,R,n)
      END IF
 
+     HasVelocity = .FALSE.
      IF(ASSOCIATED(BodyForce)) THEN
-       CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', Found)
-       CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasVelocity)
-       HasVelocity = Found .OR. HasVelocity
+       CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
+       CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
+       HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
      END IF
-     rot_velo = 0._dp
      
 
      ! Calculate nodal fields:
@@ -5914,16 +5929,20 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
        IF(HasVelocity) THEN
-         DO k=1,n
-           rot_velo(1:3) = rot_velo(1:3) + CrossProduct(omega_velo(1:3,k), [ &
-             basis(k) * Nodes % x(k), &
-             basis(k) * Nodes % y(k), &
-             basis(k) * Nodes % z(k)])
-         END DO
-         rot_velo(1:3) = rot_velo(1:3) + [ &
-           sum(basis(1:n)*lorentz_velo(1,1:n)), &
-           sum(basis(1:n)*lorentz_velo(2,1:n)), &
-           sum(basis(1:n)*lorentz_velo(3,1:n))]
+         IF( HasAngularVelocity ) THEN
+           DO k=1,n
+             rot_velo(1:3) = rot_velo(1:3) + CrossProduct(omega_velo(1:3,k), [ &
+                 basis(k) * Nodes % x(k), &
+                 basis(k) * Nodes % y(k), &
+                 basis(k) * Nodes % z(k)])
+           END DO
+         END IF
+         IF( HasLorenzVelocity ) THEN
+           rot_velo(1:3) = rot_velo(1:3) + [ &
+               SUM(basis(1:n)*lorentz_velo(1,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(2,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(3,1:n))]
+         END IF
        END IF
        !-------------------------------
        ! The conductivity as a tensor
@@ -6182,8 +6201,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
            IF (Vdofs == 1) THEN
               DO l=1,3
-                JatIP(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l)) + &
-                  SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)))
+                JatIP(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l)) 
+                IF( HasVelocity ) THEN
+                  JatIP(1,l) = JatIP(1,l) + SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)))
+                END IF
                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
@@ -6233,7 +6254,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
                  TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
                IF (HasVelocity) THEN
-                 Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:)))*CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
+                 Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
+                     CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
                END IF
            ELSE
              ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
