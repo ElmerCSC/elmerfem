@@ -6548,9 +6548,26 @@ CONTAINS
     REAL(KIND=dp) :: GapLength(35), AirGapMu(35)
 !-------------------------------------------------------------------
     LOGICAL :: FirstTime = .TRUE.
-    REAL(KIND=dp) :: mu0, normal(3), B2, GapLength_ip
+    REAL(KIND=dp) :: B2, GapLength_ip, LeftCenter(3), &
+      RightCenter(3), BndCenter(3), LeftNormal(3), RightNormal(3), &
+      NF_ip_l(35,3), NF_ip_r(35,3)
+    TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
+    TYPE(Nodes_t) :: LPNodes, RPNodes
+    INTEGER :: n_lp, n_rp
+    REAL(KIND=dp), ALLOCATABLE :: LeftFORCE(:,:), RightFORCE(:,:)
+    INTEGER, ALLOCATABLE :: RightMap(:), LeftMap(:)
+    REAL(KIND=dp) :: ParentNodalU(n), parentNodalV(n), ParentNodalW(n)
+    REAL(KIND=dp) :: Normal(3), ParentU, ParentV, ParentW
+    TYPE(Variable_t), POINTER :: PotVar
+    REAL(KIND=dp), SAVE :: mu0 = 1.2566370614359173e-6_dp
 
-    SAVE mu0
+    PotVar => pSolver % Variable
+
+    n = Mesh % MaxElementDOFs
+
+    call Warn('MagnetoDynamicsCalcFields', 'CalcBoundaryModels is work in progress and &
+      &does not testably yield correct nodal forces nor energies')
+    ALLOCATE(LeftFORCE(n,3), RightForce(n,3), RightMap(n), LeftMap(n))
 
     IF ( FirstTime ) THEN
       mu0 = GetConstReal(CurrentModel % Constants, &
@@ -6559,42 +6576,132 @@ CONTAINS
     END IF
 
     DO i = 1,GetNOFBoundaryElements()
-      Element => GetBoundaryElement(i)
-      IF(.NOT. ActiveBoundaryElement()) CYCLE
-      BC => GetBC()
+      BElement => GetBoundaryElement(i, uSolver=pSolver)
+      IF(.NOT. ActiveBoundaryElement(BElement, uSolver=pSolver)) CYCLE
+      BC => GetBC(BElement)
       GapLength = GetReal(BC, 'Air Gap Length', Found)
       IF(.NOT. Found) CYCLE
-      CALL GetElementNodes(Nodes)
+      
+      IF( .NOT.(ASSOCIATED(BElement % BoundaryInfo % Left) & 
+        .AND. ASSOCIATED(BElement % BoundaryInfo % Right)) ) THEN
+        CALL Warn('MagnetoDynamicsCalcFields', 'AirGap length given on exterior boundary')
+        CYCLE
+      END IF
 
-      n = GetElementNOFNodes()
-      np = n*MAXVAL(pSolver % Def_Dofs(GetElementFamily(Element),:,1))
-      nd = GetElementNOFDOFs(uSolver=pSolver)
+      !RightParent => BElement % BoundaryInfo % Left
+      !LeftParent => BElement % BoundaryInfo % Right
+      LeftParent => BElement % BoundaryInfo % Left
+      RightParent => BElement % BoundaryInfo % Right
+
+      n = GetElementNOFNodes(BElement)
+      n_lp = GetElementNOFNodes(LeftParent)
+      n_rp = GetElementNOFNodes(RightParent) 
+
+      !write (*,*), "b nodes: ", BElement % NodeIndexes(1:n)
+      !write (*,*), "left nodes: ", LeftParent % NodeIndexes(1:n_lp)
+      !write (*,*), "right nodes: ", RightParent % NodeIndexes(1:n_rp)
+      !write (*,*), "left edges: ", LeftParent % EdgeIndexes(1:6)
+      !write (*,*), "right edges: ", RightParent % EdgeIndexes(1:6)
+
+      CALL GetElementNodes(Nodes, BElement)
+      CALL GetElementNodes(LPNodes, LeftParent)
+      CALL GetElementNodes(RPNodes, RightParent)
+
+      CALL GetVectorLocalSolution(SOL,Pname,uElement=BElement, uSolver=pSolver)
+      !write (*,*), 'SOL(1,1:6) =', SOL(1,1:6)
+
+      CALL GetVectorLocalSolution(SOL,Pname,uElement=LeftParent, uSolver=pSolver)
+
+      LeftCenter(1:3) = [ sum(LPNodes % x), sum(LPNodes % y), sum(LPNodes % z) ] / n_lp
+      RightCenter(1:3) = [ sum(RPNodes % x), sum(RPNodes % y), sum(RPNodes % z) ] / n_rp
+      BndCenter(1:3) = [ sum(Nodes % x), sum(Nodes % y), sum(Nodes % z) ] / n
+
+      np = n_lp*pSolver % Def_Dofs(GetElementFamily(LeftParent),LeftParent % BodyId,1)
+      nd = GetElementNOFDOFs(uElement=LeftParent, uSolver=pSolver)
+
+      ! DEBUG
+      !write (*,*), 'SOL(1,1:nd) =', SOL(1,1:nd)
+      !write (*,*), 'SOL(1,np+1:nd) =', SOL(1,np+1:nd)
+      !write (*,*), 'Solver % Def_dofs ...', pSolver % Def_Dofs(GetElementFamily(LeftParent),LeftParent % BodyId,1)
+      
+      DO k = 1,n
+        DO l = 1,n_lp
+          IF(LeftParent % NodeIndexes(l) == BElement % NodeIndexes(k)) THEN
+            LeftMap(k) = l
+            ParentNodalU(k) = LeftParent % Type % NodeU(l)
+            ParentNodalV(k) = LeftParent % Type % NodeV(l)
+            ParentNodalW(k) = LeftParent % Type % NodeW(l)
+          END IF
+        END DO
+        DO l = 1,n_rp
+          IF(RightParent % NodeIndexes(l) == BElement % NodeIndexes(k))  RightMap(k) = l
+        END DO
+      END DO
+
+      ! DEBUG
+      !write (*,*), 'LeftMap = ', LeftMap
+      !write (*,*), 'RightMap = ', RightMap
 
       AirGapMu = GetReal(BC, 'Air Gap Relative Permeability', Found)
       IF(.NOT. Found) AirGapMu = 1.0_dp
 
-      FORCE = 0.0_dp
-      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
+      LeftFORCE = 0.0_dp
+      RightFORCE = 0.0_dp
 
 
       IF (SecondOrder) THEN
-        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+        IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
       ELSE
-        IP = GaussPoints(Element, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+        IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
       END IF
 
       DO j = 1,IP % n
+        s = IP % s(j)
+
+        stat = ElementInfo( BElement,Nodes,IP % U(j), IP % V(j),IP % W(j),detJ, &
+          Basis,dBasisdx )
+        R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
+        GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
+        ! DEBUG
+        !write (*,*), 'GapLength_ip = ', GapLength_ip
+        !write (*,*), 'R_ip = ', R_ip
+        !write (*,*), 'AirGapMu(1:n) = ', AirGapMu(1:n)
+
+        s = s * detJ
+        ParentU = SUM( Basis(1:n) * ParentNodalU(1:n) )
+        ParentV = SUM( Basis(1:n) * ParentNodalV(1:n) )
+        ParentW = SUM( Basis(1:n) * ParentNodalW(1:n) )
+        ! DEBUG
+        !write (*,*), 'ParentUVW = ', ParentU, ParentV, ParentW 
+
         IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(j), IP % V(j), IP % W(j), &
+          stat = EdgeElementInfo( LeftParent, LPNodes, ParentU, ParentV,  ParentW, &
             DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
         ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-            IP % W(j), detJ, Basis, dBasisdx )
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
+          stat = ElementInfo( LeftParent, LPNodes, ParentU, ParentV,  ParentW, &
+            detJ, Basis, dBasisdx )
+          CALL GetEdgeBasis(LeftParent, WBasis, RotWBasis, Basis, dBasisdx)
         END IF
 
-        Normal = NormalVector(Element, Nodes, IP% U(j), IP % V(j))
+        Normal = NormalVector(BElement, Nodes, IP% U(j), IP % V(j))
+        
+        IF( SUM(normal*(LeftCenter - bndcenter)) <= 0 ) THEN
+          LeftNormal = Normal
+        ELSE
+          LeftNormal = -Normal
+        END IF
+
+        IF( SUM(normal*(RightCenter - bndcenter)) <= 0 ) THEN
+          RightNormal = Normal
+        ELSE
+          RightNormal = - Normal
+        END IF
+
+
+        ! DEBUG
+        !write (*,*), 'dim = ', dim, ' vdofs = ', vdofs
+        !write (*,*), 'rotwbasis(1:nd-np,:) = ', rotwbasis(1:nd-np,:)
 
         DO k=1,vDOFs
           SELECT CASE(dim)
@@ -6615,30 +6722,41 @@ CONTAINS
             B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
           END SELECT
         END DO
-        R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
-        GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
+        ! DEBUG
+        !write (*,*), 'B = ', B(1,:)
+        B2 = sum(B(1,:)*B(1,:) + B(2,:)*B(2,:))
         IF (ASSOCIATED(NF).OR.ASSOCIATED(EL_NF)) THEN
-          NF_ip = 0._dp
-          B2 = sum(B(1,:)*B(1,:) + B(2,:)*B(2,:))
-          DO k=1,n
+          NF_ip_r = 0._dp
+          NF_ip_l = 0._dp
+          DO k=1,n_lp
             DO l=1,3
               DO m=1,3
-                NF_ip(k,l) = NF_ip(k,l) - (R_ip*(B(1,l)*B(1,m)))*(dBasisdx(k,m) + Normal(m)/GapLength_ip)
+                NF_ip_l(k,l) = NF_ip_l(k,l) - (R_ip*(B(1,l)*B(1,m)))*(dBasisdx(k,m) + LeftNormal(m)/GapLength_ip)
+                NF_ip_r(k,l) = NF_ip_r(k,l) - (R_ip*(B(1,l)*B(1,m)))*(dBasisdx(k,m) + RightNormal(m)/GapLength_ip)
               END DO
-              NF_ip(k,l) = NF_ip(k,l) + 0.5*R_ip*B2*(dBasisdx(k,l) + Normal(l)/GapLength_ip)
+              NF_ip_l(k,l) = NF_ip_l(k,l) + 0.5*R_ip*B2*(dBasisdx(k,l) + LeftNormal(l)/GapLength_ip)
+              NF_ip_r(k,l) = NF_ip_r(k,l) + 0.5*R_ip*B2*(dBasisdx(k,l) + RightNormal(l)/GapLength_ip)
             END DO
           END DO
         END IF
+        Energy = Energy + GapLength_ip*s*0.5*R_ip*B2
         DO p=1,n
-          FORCE(p, 1:3) = FORCE(p, 1:3) + NF_ip(p,1:3)
+          LeftFORCE(LeftMap(p), 1:3) = LeftFORCE(LeftMap(p), 1:3) + GapLength_ip*s*NF_ip_l(p,1:3)
+          RightFORCE(RightMap(p), 1:3) = RightFORCE(RightMap(p), 1:3) + GapLength_ip*s*NF_ip_r(p,1:3)
         END DO
       END DO ! Integration points
 
       IF(ElementalFields) THEN
-        CALL LocalCopy(EL_NF, 3, n, FORCE, 0)
+        CALL LocalCopy(EL_NF, 3, n, LeftFORCE, 0, UElement=LeftParent)
+        ! DEBUG
+        !write (*,*), 'LeftFORCE(:,1) = ', LeftFORCE(1:n_lp,1)
+        !write (*,*), 'LeftFORCE(:,2) = ', LeftFORCE(1:n_lp,2)
+        !write (*,*), 'LeftFORCE(:,3) = ', LeftFORCE(1:n_lp,3)
+        CALL LocalCopy(EL_NF, 3, n, RightFORCE, 0, UElement=RightParent)
       END IF
     END DO ! Boundary elements
 
+    DEALLOCATE(LeftFORCE, RightFORCE, RightMap, LeftMap)
 !-------------------------------------------------------------------
   END SUBROUTINE CalcBoundaryModels
 !-------------------------------------------------------------------
@@ -6872,7 +6990,7 @@ CONTAINS
  SUBROUTINE LocalSol(Var, m, n, A, b, pivot, dofs )
 !------------------------------------------------------------------------------
    TYPE(Variable_t), POINTER :: Var
-   INTEGER :: pivot(:), m,n,dofs
+   INTEGER :: pivot(:), m,n, dofs
    REAL(KIND=dp) :: b(:,:), A(:,:)
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
@@ -6903,10 +7021,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
- SUBROUTINE LocalCopy(Var, m, n, b, dofs, UElement)
+ SUBROUTINE LocalCopy(Var, m, n, b, bias, UElement)
 !------------------------------------------------------------------------------
    TYPE(Variable_t), POINTER :: Var
-   INTEGER :: m,n,dofs
+   INTEGER, INTENT(IN) :: m,n,bias
+   INTEGER :: dofs
    REAL(KIND=dp) :: b(:,:)
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
@@ -6919,7 +7038,7 @@ CONTAINS
      ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
    END IF
 
-
+   dofs = bias
    DO i=1,m
      dofs = dofs+1
      Var % Values(ind(1:n)+i) = b(1:n,dofs)
@@ -7100,7 +7219,7 @@ CONTAINS
          DO k=1, vDOFs
            B(k,:) = MATMUL( SOL(k, np+1:nd), RotWBasis(1:nd-np,:) )
            Flux(k) = Flux(k) + s * SUM(Normal * B(k,:))
-         END DO  
+         END DO
 
          Area = Area + s
 
