@@ -67,7 +67,7 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable,FlowSol
   TYPE(Solver_t), POINTER :: PointerToSolver
 
-  LOGICAL :: AllocationsDone = .FALSE., Found
+  LOGICAL :: AllocationsDone = .FALSE., Found, ComputeSpecificSource=.FALSE.
 
   INTEGER :: i, j,n, m, t, istat,k
   INTEGER, POINTER :: Permutation(:), FlowPerm(:), NodeIndexes(:)
@@ -76,7 +76,7 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: Norm
   Integer :: STDOFs,NSDOFs,dim
 
-  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), Velo(:,:), Viscosity(:)
+  REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), LOAD(:), FORCE(:), Velo(:,:), Viscosity(:), Density(:)
   
   CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolName,SolverName
 
@@ -102,18 +102,27 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
                  ' variable >',FlowSolName,'< not found'
       CALL FATAL(SolverName,Message)              
   END IF
+  ComputeSpecificSource = GetLogical(Solver % Values, 'Specific Source', Found)
+  IF (.NOT.Found) &
+       ComputeSpecificSource = .FALSE.
+  IF (ComputeSpecificSource) THEN
+    CALL Info(SolverName,'Specific deformational heat source will be computed', Level=1)
+  ELSE
+    CALL Info(SolverName,'Volumetric deformational heat source will be computed', Level=1)
+  END IF
+
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
   IF ( (.NOT. AllocationsDone) .OR. Solver % Mesh % Changed  ) THEN
      N = Solver % Mesh % MaxElementNodes ! just big enough for elemental arrays
      M = Model % Mesh % NumberOfNodes
-     IF (AllocationsDone) DEALLOCATE(FORCE, LOAD, STIFF, Viscosity, Velo)
+     IF (AllocationsDone) DEALLOCATE(FORCE, LOAD, STIFF, Viscosity, Density,Velo)
 
-     ALLOCATE( FORCE(2*STDOFs*N), LOAD(2*STDOFs*N), STIFF(2*STDOFs*N,2*STDOFs*N), Viscosity(N), Velo(3,N), &
-          STAT=istat )
+     ALLOCATE( FORCE(2*STDOFs*N), LOAD(2*STDOFs*N), STIFF(2*STDOFs*N,2*STDOFs*N),&
+          Viscosity(N), Density(N), Velo(3,N), STAT=istat )
      IF ( istat /= 0 ) THEN
-        CALL Fatal( 'HessianSolve', 'Memory allocation error.' )
+        CALL Fatal(SolverName, 'Memory allocation error.' )
      END IF
      
 
@@ -133,7 +142,11 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
      Material => GetMaterial()
      Viscosity(1:n) = GetReal( Material,'Viscosity', Found )
      IF (.NOT.Found) CALL FATAL(SolverName,'Could not find  >Viscosity<')
-
+     IF (ComputeSpecificSource) THEN
+       Density(1:n) = GetReal( Material,'Density', Found )
+       IF (.NOT.Found) &
+            CALL FATAL(SolverName,'Could not find  >Density< needed in combination with >Specific Source<')
+     END IF
 
      Velo = 0.0d0
      Do i=1,n
@@ -143,7 +156,7 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
         End do
      End do
 
-     CALL LocalMatrix(  STIFF, FORCE, Element, n, Velo, Viscosity )
+     CALL LocalMatrix(  STIFF, FORCE, Element, n, Velo, Viscosity, Density, ComputeSpecificSource)
      CALL DefaultUpdateEquations( STIFF, FORCE )
   END DO
   
@@ -155,16 +168,17 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
 CONTAINS
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrix(  STIFF, FORCE, Element,  n, Velo, Viscosity)
+  SUBROUTINE LocalMatrix(  STIFF, FORCE, Element,  n, Velo, Viscosity, Density, Specific)
 !------------------------------------------------------------------------------
     USE MaterialModels
 
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), Velo(:,:), Viscosity(:)
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), Velo(:,:), Viscosity(:), Density(:)
     INTEGER :: n,dim
     TYPE(Element_t), POINTER :: Element
+    LOGICAL :: Specific
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),ddBasisddx(n,3,3),DetJ,LGrad(3,3)
-    REAL(KIND=dp) :: mu,VeloIP(3)
+    REAL(KIND=dp) :: mu,rho,VeloIP(3)
     LOGICAL :: Stat
     INTEGER :: t, p,q , i 
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -190,7 +204,11 @@ CONTAINS
         mu = SUM( Viscosity(1:n) * Basis(1:n) )
         mu = EffectiveViscosity( mu, 1.0_dp , Velo(1,:) , Velo(2,:), Velo(3,:), &
                                    Element, Nodes, n, n, IP % U(t), IP % V(t), IP % W(t) )
-
+        IF (Specific) THEN
+          rho = SUM( Density(1:n) * Basis(1:n) )
+        ELSE
+          rho = 1.0_dp ! neutral, in case of standard volumetric source
+        END IF
         LGrad = MATMUL( Velo(:,1:n), dBasisdx(1:n,:) )
         VeloIP=0.
         VeloIP(1) = SUM( Velo(1,1:n)*Basis(1:n) )
@@ -204,7 +222,7 @@ CONTAINS
                End do
           END DO
          DO p=1,n
-            Force(p) = Force(p) + IP % S(t) * detJ * 0.5_dp * mu * SecondInvariant(VeloIP,LGrad)  * Basis(p)
+            Force(p) = Force(p) + IP % S(t) * detJ * 0.5_dp * mu * SecondInvariant(VeloIP,LGrad)  * Basis(p)/rho
        END DO
     END DO
 !------------------------------------------------------------------------------
