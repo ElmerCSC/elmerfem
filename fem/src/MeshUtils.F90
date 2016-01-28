@@ -15110,7 +15110,6 @@ CONTAINS
           TopNodes = TopNodes + 1
         END IF
       END DO
-      PRINT *,'Top range:',MinTop,MaxTop
     END IF
 
     IF( DownActive ) THEN
@@ -15124,7 +15123,6 @@ CONTAINS
           BotNodes = BotNodes + 1
         END IF
       END DO
-      PRINT *,'Bottom range:',MinBot,MaxBot
     END IF
 
 
