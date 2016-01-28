@@ -112,7 +112,8 @@
 
      INTEGER :: iargc, NoArgs
 
-     INTEGER :: ExtrudeLevels, MeshIndex
+     INTEGER ::  MeshIndex
+     INTEGER, POINTER :: ExtrudeLevels(:)
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
      INTEGER :: omp_get_max_threads
@@ -321,15 +322,15 @@ END INTERFACE
 
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
-         ExtrudeLevels=GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
+         ExtrudeLevels => ListGetIntegerArray(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
          IF (Found) THEN
-            IF(ExtrudeLevels>1) THEN
+            IF(ExtrudeLevels(1)>1) THEN              
                ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
                IF (Found) THEN
-                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2, ExtrudedMeshName)
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels, ExtrudedMeshName)
                ELSE
-                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
-               END IF
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels)
+               END IF              
                DO i=1,CurrentModel % NumberOfSolvers
                   IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
                        CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
@@ -351,7 +352,7 @@ END INTERFACE
             END IF
          END IF
 
-         ! If requested perform coordinate transformation directly after is has been obtained.
+         ! If requested perform coordinate transformation directly after it has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
          CoordTransform = ListGetString(CurrentModel % Simulation,'Coordinate Transformation',GotIt)
