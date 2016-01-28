@@ -479,18 +479,9 @@ CONTAINS
         Comp % nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
         IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
 
-        Comp % ElBoundary = GetInteger(CompParams, 'Electrode Boundary 1', Found)
-        IF (.NOT. Found) THEN 
-          Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
-          IF (.NOT. Found) THEN
-            CALL Fatal('Circuits_Init','Electrode Boundary 1 or Electrode Area not found!')
-          END IF
-        ELSE
-          ! Compute Electrode Area Automatically:
-          ! -------------------------------------
-!              DO t=1,GetNOFBoundaryElements()
-!              Element => GetBoundaryElement(t)
-        END IF
+        !Comp % ElBoundary = GetInteger(CompParams, 'Electrode Boundary 1', Found)
+        Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
+        IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
         
         Comp % N_j = Comp % nofturns / Comp % ElArea
 
@@ -544,6 +535,37 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadComponents
 !------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+ SUBROUTINE ComputeElectrodeArea(Comp)
+!-------------------------------------------------------------------
+  IMPLICIT NONE
+  TYPE(Component_t) :: Comp
+  TYPE(Element_t), POINTER :: Element
+  TYPE(GaussIntegrationPoints_t) :: IP
+  TYPE(Nodes_t), SAVE :: Nodes
+  REAL(KIND=dp) :: DetJ, Basis(n)
+  
+  Comp % ElArea = 0._dp
+
+  IF (CoordinateSystemDimension() == 2) THEN
+    DO t=1,GetNOFActive()
+      Element => GetActiveElement(t)
+      IF (ElAssocToComp(Element, Comp)) THEN
+        CALL GetElementNodes( Nodes )
+        IP = GaussPoints(Element)
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+          IP % W(t), detJ, Basis)
+      
+        Comp % ElArea = Comp % ElArea + detJ * IP % s(t)
+      END IF
+    END DO
+  ELSE
+    CALL Fatal('ComputeElectrodeArea','Electrode area computation not implemented for 3D use Electrode Area keyword.')
+  END IF
+!-------------------------------------------------------------------
+ END SUBROUTINE ComputeElectrodeArea
+!-------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddVariableToCircuit(Circuit, Variable, k)
