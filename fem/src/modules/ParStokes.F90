@@ -487,15 +487,19 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            FORCE = 0.0d0
 
            ExtPressure = 0.0d0
-           ExtPressure(1:n) = GetReal( BC, 'External Pressure', GotForceBC )
+           ExtPressure(1:n) = GetReal( BC, 'Normal Surface Traction', GotForceBC )
+           IF (.NOT. GotForceBC) ExtPressure(1:n) = GetReal( BC, 'External Pressure', GotForceBC )
 
            !------------------------------------------------------------------------------
            ! Surface force in given direction BC: \sigma n = F
            !------------------------------------------------------------------------------
            LoadVector = 0.0d0
-           LoadVector(1,1:n) =  GetReal( BC, 'Pressure 1', Found )
-           LoadVector(2,1:n) =  GetReal( BC, 'Pressure 2', Found )
-           LoadVector(3,1:n) =  GetReal( BC, 'Pressure 3', Found )
+           LoadVector(1,1:n) = GetReal( BC, 'Surface Traction 1', Found )
+           IF (.NOT. Found) LoadVector(1,1:n) = GetReal( BC, 'Pressure 1', Found )
+           LoadVector(2,1:n) = GetReal( BC, 'Surface Traction 2', Found )
+           IF (.NOT. Found) LoadVector(2,1:n) = GetReal( BC, 'Pressure 2', Found )
+           LoadVector(3,1:n) = GetReal( BC, 'Surface Traction 3', Found )
+           IF (.NOT. Found) LoadVector(3,1:n) = GetReal( BC, 'Pressure 3', Found )
            LoadVector(4,1:n) =  0.0d0
 
            !------------------------------------------------------------------------------

@@ -479,18 +479,10 @@ CONTAINS
         Comp % nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
         IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
 
-        Comp % ElBoundary = GetInteger(CompParams, 'Electrode Boundary 1', Found)
-        IF (.NOT. Found) THEN 
-          Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
-          IF (.NOT. Found) THEN
-            CALL Fatal('Circuits_Init','Electrode Boundary 1 or Electrode Area not found!')
-          END IF
-        ELSE
-          ! Compute Electrode Area Automatically:
-          ! -------------------------------------
-!              DO t=1,GetNOFBoundaryElements()
-!              Element => GetBoundaryElement(t)
-        END IF
+        !Comp % ElBoundary = GetInteger(CompParams, 'Electrode Boundary 1', Found)
+        Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
+        IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
+        print *, "Electrode Area:", Comp % ElArea
         
         Comp % N_j = Comp % nofturns / Comp % ElArea
 
@@ -544,6 +536,110 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE ReadComponents
 !------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+ SUBROUTINE ComputeElectrodeArea(Comp, CompParams)
+!-------------------------------------------------------------------
+  USE ElementUtils
+  IMPLICIT NONE
+  TYPE(Component_t), POINTER :: Comp
+  TYPE(ValueList_t), POINTER :: CompParams
+  TYPE(Element_t), POINTER :: Element
+  TYPE(Mesh_t), POINTER :: Mesh
+  INTEGER :: t, n
+  
+  Mesh => CurrentModel % Mesh
+  Comp % ElArea = 0._dp
+
+  IF (CoordinateSystemDimension() == 2) THEN
+    DO t=1,GetNOFActive()
+      Element => GetActiveElement(t)
+      n  = GetElementNOFNodes() 
+      IF (ElAssocToComp(Element, Comp)) THEN
+        Comp % ElArea = Comp % ElArea + ElementAreaNoAxisTreatment(Mesh, Element, n) 
+      END IF
+    END DO
+  ELSE
+    CALL Fatal('ComputeElectrodeArea','Electrode area computation not implemented for 3D use Electrode Area keyword.')
+  END IF
+!-------------------------------------------------------------------
+ END SUBROUTINE ComputeElectrodeArea
+!-------------------------------------------------------------------
+
+! This function is originally from ElementUtils. However, there is 
+! some kind of treatment regarding axisymmetric cases which fails 
+! here since we don't want that.
+!------------------------------------------------------------------------------
+   FUNCTION ElementAreaNoAxisTreatment( Mesh,Element,N ) RESULT(A)
+!------------------------------------------------------------------------------
+     TYPE(Mesh_t), POINTER :: Mesh
+     INTEGER :: N
+     TYPE(Element_t) :: Element
+!------------------------------------------------------------------------------
+
+     REAL(KIND=dp), TARGET :: NX(N),NY(N),NZ(N)
+
+     REAL(KIND=dp) :: A
+
+     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
+     INTEGER :: N_Integ,t
+
+     REAL(KIND=dp) :: Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3), &
+              SqrtMetric,SqrtElementMetric
+
+     TYPE(Nodes_t) :: Nodes
+
+     LOGICAL :: stat
+
+     REAL(KIND=dp) :: Basis(n),u,v,w,x,y,z
+     REAL(KIND=dp) :: dBasisdx(n,3)
+
+     REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
+!------------------------------------------------------------------------------
+ 
+     Nodes % x => NX
+     Nodes % y => NY
+     Nodes % z => NZ
+
+     Nodes % x = Mesh % Nodes % x(Element % NodeIndexes)
+     Nodes % y = Mesh % Nodes % y(Element % NodeIndexes)
+     Nodes % z = Mesh % Nodes % z(Element % NodeIndexes)
+
+     IntegStuff = GaussPoints( element )
+     U_Integ => IntegStuff % u
+     V_Integ => IntegStuff % v
+     W_Integ => IntegStuff % w
+     S_Integ => IntegStuff % s
+     N_Integ  = IntegStuff % n
+!
+!------------------------------------------------------------------------------
+!   Now we start integrating
+!------------------------------------------------------------------------------
+!
+       A = 0.0
+       DO t=1,N_Integ
+!
+!        Integration stuff
+!
+         u = U_Integ(t)
+         v = V_Integ(t)
+         w = W_Integ(t)
+!
+!------------------------------------------------------------------------------
+!        Basis function values & derivatives at the integration point
+!------------------------------------------------------------------------------
+         stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric, &
+                    Basis,dBasisdx )
+!------------------------------------------------------------------------------
+!        Coordinatesystem dependent info
+!------------------------------------------------------------------------------
+           A =  A + SqrtElementMetric * S_Integ(t)
+       END DO
+!------------------------------------------------------------------------------
+   END FUNCTION ElementAreaNoAxisTreatment
+!------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddVariableToCircuit(Circuit, Variable, k)

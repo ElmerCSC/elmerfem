@@ -34,6 +34,7 @@ Solver 1
   Procedure = "VelocityPrecond" "VelocityPrecond"
   Variable = "V"
   Variable Dofs = 3
+  Linear System Row Equilibration = True
 End
 
 Solver 2
@@ -41,6 +42,7 @@ Solver 2
   Procedure = "PressurePrecond" "PressurePrecond"
   Variable = "P"
   Variable Dofs = 1
+  Linear System Row Equilibration = True
 End
 
 Solver 3
