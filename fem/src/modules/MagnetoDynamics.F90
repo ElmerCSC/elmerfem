@@ -6309,8 +6309,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
    END DO
 
+   CALL SumElementalVariable(EL_NF)
    CALL CalcBoundaryModels()
-   CALL TransferForceE()
 
    Power  = ParallelReduction(Power)
    Energy = ParallelReduction(Energy)
@@ -6542,46 +6542,51 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 CONTAINS
 
 !-------------------------------------------------------------------
-  SUBROUTINE TransferForceE()
+  SUBROUTINE SumElementalVariable(Var)
 !-------------------------------------------------------------------
     IMPLICIT NONE
-    INTEGER :: elem, n_lp, n_rp, p, q
-    TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
-    INTEGER, ALLOCATABLE :: NodeMap(:)
-    REAL(KIND=dp) :: LeftSOL(3,35), RightSOL(3,35)
-    REAL(KIND=dp), ALLOCATABLE :: LeftFORCE(:,:), RightFORCE(:,:)
+    TYPE(Variable_t), POINTER :: Var
 
-    n = Mesh % MaxElementDOFs
-    ALLOCATE(NodeMap(n), LeftFORCE(n,3), RightFORCE(n,3))
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), ALLOCATABLE :: NodeSum(:)
+    INTEGER :: n, j, k, l, nodeind, dgind, bias
+    LOGICAL, ALLOCATABLE :: AirGapNode(:)
 
-    DO elem = 1, Mesh % NumberOFBoundaryElements
-      BElement => GetBoundaryElement(elem, uSolver=pSolver)
-      IF(ListCheckPresent(BC, 'Air Gap Length')) CYCLE
 
-      IF( .NOT.(ASSOCIATED(BElement % BoundaryInfo % Left) & 
-        .AND. ASSOCIATED(BElement % BoundaryInfo % Right)) ) THEN
-        CYCLE
-      END IF
-      LeftParent => BElement % BoundaryInfo % Left
-      RightParent => BElement % BoundaryInfo % Right
-      n_lp = GetElementNOFNodes(LeftParent)
-      n_rp = GetElementNOFNodes(RightParent) 
-      DO p=1,n_lp
-        DO q=1,n_rp
-          IF (LeftParent % NodeIndexes(p) == RightParent % NodeIndexes(q)) NodeMap(p) = q
+    n = Mesh % NumberOFNodes
+    ALLOCATE(NodeSum(n), AirGapNode(n))
+    AirGapNode = .FALSE.
+
+    ! Collect nodal sum of DG elements
+    DO k=1,Var % Dofs
+      NodeSum = 0.0_dp
+      DO j=1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(j)
+        DO l = 1, Element % TYPE % NumberOfNodes
+          nodeind = Element % NodeIndexes(l)
+          dgind = Var % Perm(Element % DGIndexes(l))
+          IF( dgind > 0 ) THEN
+            NodeSum( nodeind ) = NodeSum( nodeind ) + &
+              Var % Values(Var % DOFs*( dgind-1)+k )
+          END IF 
         END DO
       END DO
-      CALL GetVectorLocalSolution(LeftSOL,uElement=LeftParent, uSolver=Solver, uVariable=EL_NF)
-      CALL GetVectorLocalSolution(RightSOL,uElement=RightParent, uSolver=Solver, uVariable=EL_NF)
-      ! FIXME: This is odd. Probably wrong
-      LeftFORCE(1:n_lp,:) = transpose(RightSOL(:, NodeMap(1:n_lp))) + LeftSOL(:,1:n_lp)
-      RightFORCE(NodeMap(1:n_lp),:) = transpose(LeftSOL(:, 1:n_lp)) + RightSOL(:,NodeMap(1:n_lp))
-      CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent)
-      CALL LocalCopy(EL_NF, 3, n_lp, RightFORCE, 0, UElement=RightParent)
+
+      DO j=1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(j)
+        DO l=1,Element%TYPE%NumberofNodes
+          nodeind = Element % NodeIndexes(l)
+          dgind = Var % Perm(Element % DGIndexes(l))
+          IF( dgind > 0 ) THEN
+            Var % Values( var % DOFs*(dgind-1)+k) = NodeSum(nodeind)
+          END IF
+        END DO
+      END DO
     END DO
 !-------------------------------------------------------------------
-  END SUBROUTINE TransferForceE
+  END SUBROUTINE SumElementalVariable
 !-------------------------------------------------------------------
+
 
 !-------------------------------------------------------------------
   SUBROUTINE CalcBoundaryModels()
