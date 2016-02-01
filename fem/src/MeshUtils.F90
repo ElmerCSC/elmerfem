@@ -9565,7 +9565,7 @@ END SUBROUTINE GetMaxDefs
       END DO
     END IF
 
-    PRINT *, "buildingblocks=", buildingblocks, "in_levels=",  in_levels(1:buildingblocks)
+    !PRINT *, "buildingblocks=", buildingblocks, "in_levels=",  in_levels(1:buildingblocks)
     
     isParallel = ParEnv % PEs>1
 
@@ -9719,7 +9719,6 @@ END SUBROUTINE GetMaxDefs
                MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
         END IF
       END IF
-      PRINT *,'blk=',blk,'max_body=', max_body
       DO i=0,in_levels(blk) - 2
         DO j=1,Mesh_in % NumberOfBulkElements
 
@@ -9782,34 +9781,40 @@ END SUBROUTINE GetMaxDefs
           END IF
         END DO
       END DO
-      !offset = offset + n ! move to final layer of previous block
-    END DO
-    IF(isParallel) THEN
-      j=max_body
-      CALL MPI_ALLREDUCE(j,max_body,1, &
+      IF(isParallel) THEN
+        j=max_body
+        CALL MPI_ALLREDUCE(j,max_body,1, &
+             MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+        IF (blk==1) THEN
+          j=max_bodylayer
+          CALL MPI_ALLREDUCE(j,max_bodylayer,1, &
                MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
-    END IF
+        END IF
+      END IF
+      !PRINT *,'blk=',blk,'max_body=', max_body, 'max_bodylayer=',max_bodylayer
+    END DO
+    WRITE(Message,'(A,I3,A,I3)')&
+         'Bodies in footprint mesh:',max_bodylayer,'Bodies in extruded mesh:', max_body
     Mesh_out % NumberOfBulkElements=cnt
-
     ! count the boundaries
     max_bid=0
     max_bidlayer=0
     max_baseline_bid=0
     DO j=1,Mesh_in % NumberOfBoundaryElements
-      k = j + Mesh_in % NumberOfBulkElements
+      k = j + Mesh_in % NumberOfBulkElements 
       max_bidlayer = MAX(max_bidlayer, Mesh_in % Elements(k) % &
            BoundaryInfo % Constraint)
-      PRINT *,'bidlayer:', max_bidlayer, Mesh_in % Elements(k) % BoundaryInfo % Constraint
+      !PRINT *,'bidlayer:', max_bidlayer, Mesh_in % Elements(k) % BoundaryInfo % Constraint
     END DO
     IF(isParallel) THEN
       j=max_bidlayer
       CALL MPI_ALLREDUCE(j,max_bidlayer,1, &
            MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
     END IF
-    WRITE(Message,'(A,I3)') 'Boundaries in footprint mesh:',max_bidlayer
+    WRITE(Message,'(A,I3)') 'Boundary conditions in footprint mesh:',max_bidlayer
     CALL Info('ExtrudeMesh',Message,Level=9)
     ! -------------------------------------------------------
-    ! outline boudnaries of mesh
+    ! outline boundaries of mesh
     !--------------------------------------------------------
     IF (PreserveBaseline) THEN
       DO blk=1,buildingblocks
@@ -9869,18 +9874,18 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % FaceIndexes => NULL()
           Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
         END DO
+        IF(isParallel) THEN
+          j=max_bid
+          CALL MPI_ALLREDUCE(j,max_bid,1, &
+               MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+        END IF
+        max_baseline_bid = max_bid 
       END DO
-      IF(isParallel) THEN
-        j=max_bid
-        CALL MPI_ALLREDUCE(j,max_bid,1, &
-             MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
-      END IF
-      max_baseline_bid = max_bid 
     ELSE
       max_baseline_bid = 0
     END IF
-
-    PRINT *, 'max_bid=',max_bid,'max_baseline_bid=',max_baseline_bid
+    WRITE(Message,'(A,I3)') 'Baseline boundary conditions in newmesh:',max_baseline_bid
+    CALL Info('ExtrudeMesh',Message,Level=9)
     ! Add side boundaries with the bottom mesh boundary id's:
     ! (or shift ids if preserving the baseline boundary)
     ! -------------------------------------------------------
@@ -9927,15 +9932,17 @@ END SUBROUTINE GetMaxDefs
             ind(1) = Mesh_in % Elements(k) % NodeIndexes(1)+i*n+offset
             ind(2) = Mesh_in % Elements(k) % NodeIndexes(2)+i*n+offset
             ind(3) = Mesh_in % Elements(k) % NodeIndexes(2)+(i+1)*n+offset
-            ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)+(i+1)*n+offset
+            ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)+(i+1)*n+offset            
             Mesh_out % Elements(cnt) % NodeIndexes = ind(1:4)
             Mesh_out % Elements(cnt) % TYPE => GetElementType(404)
+            !PRINT *, 'surface', blk, i, k, Mesh_out % Elements(cnt) % NodeIndexes(1:4)
           ELSE
             Mesh_out % Elements(cnt) % NDOFs = 1
             l=SIZE(Mesh_in % Elements(k) % NodeIndexes)
             ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l))
             Mesh_out % Elements(cnt) % NodeIndexes = &
                  Mesh_in % Elements(k) % NodeIndexes+i*n+offset
+            !PRINT *, 'line', blk, i, k, Mesh_out % Elements(cnt) % NodeIndexes(1:l)
             Mesh_out % Elements(cnt) % TYPE => &
                  Mesh_in % Elements(k) % TYPE
           END IF
@@ -9948,8 +9955,14 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
         END DO
       END DO
+      IF(isParallel) THEN
+        j=max_bid
+        CALL MPI_ALLREDUCE(j,max_bid,1, &
+             MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+      END IF
     END DO
-
+    WRITE(Message,'(A,I3)') 'Side boundary conditions in newmesh:',max_bid - max_baseline_bid
+    CALL Info('ExtrudeMesh',Message,Level=9)
     !Take care of extra 101 elements
     !-------------------------------
     IF(cnt101 > 0) THEN
@@ -9993,28 +10006,21 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % FaceIndexes => NULL()
           Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
         END DO
-        !offset = offset + n
+        IF(isParallel) THEN
+          j=max_bid
+          CALL MPI_ALLREDUCE(j,max_bid,1, &
+               MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+        END IF
       END DO
-    END IF
-
-    IF(isParallel) THEN
-      j=max_bid
-      CALL MPI_ALLREDUCE(j,max_bid,1, &
-           MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+      WRITE(Message,'(A,I3)')&
+           'Side boundary conditions in newmesh (incl. extruded 101):',max_bid - max_baseline_bid
+      CALL Info('ExtrudeMesh',Message,Level=9)
     END IF
 
     WRITE( Message,'(A,I0)') 'First Extruded BC set to: ',max_bid+1
     CALL Info('ExtrudeMesh',Message,Level=8)
 
-    !max_body=0
-    !DO i=1,Mesh_in % NumberOfBulkElements
-    !  max_body = MAX(max_body,Mesh_in % Elements(i) % Bodyid)
-    !END DO
-    IF(isParallel) THEN
-      j=max_body
-      CALL MPI_ALLREDUCE(j,max_body,1, &
-           MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
-    END IF
+
 
     WRITE( Message,'(A,I0)') 'Number of new BCs for layers: ',max_body
     CALL Info('ExtrudeMesh',Message,Level=8)
@@ -10093,7 +10099,7 @@ END SUBROUTINE GetMaxDefs
 
         ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n))
         Mesh_out % Elements(cnt) % NodeIndexes = &
-             Mesh_in % Elements(i) % NodeIndexes + offset +(in_levels(blk)-1)*n
+             Mesh_in % Elements(i) % NodeIndexes + offset 
         Mesh_out % Elements(cnt) % ElementIndex = cnt
         Mesh_out % Elements(cnt) % TYPE => &
              Mesh_in % Elements(i) % TYPE
@@ -15110,6 +15116,7 @@ CONTAINS
           TopNodes = TopNodes + 1
         END IF
       END DO
+      PRINT *,'Top range:',MinTop,MaxTop
     END IF
 
     IF( DownActive ) THEN
@@ -15123,6 +15130,7 @@ CONTAINS
           BotNodes = BotNodes + 1
         END IF
       END DO
+      PRINT *,'Bottom range:',MinBot,MaxBot
     END IF
 
 
