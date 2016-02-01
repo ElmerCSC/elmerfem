@@ -6733,16 +6733,16 @@ CONTAINS
 
         Normal = NormalVector(BElement, Nodes, IP% U(j), IP % V(j))
         
-        IF( SUM(normal*(LeftCenter - bndcenter)) <= 0 ) THEN
-          LeftNormal = Normal
-        ELSE
+        IF( SUM(normal*(LeftCenter - bndcenter)) >= 0 ) THEN
           LeftNormal = -Normal
+        ELSE
+          LeftNormal = Normal
         END IF
 
-        IF( SUM(normal*(RightCenter - bndcenter)) <= 0 ) THEN
-          RightNormal = Normal
+        IF( SUM(normal*(RightCenter - bndcenter)) >= 0 ) THEN
+          RightNormal = -Normal
         ELSE
-          RightNormal = - Normal
+          RightNormal = Normal
         END IF
 
 
@@ -6778,11 +6778,11 @@ CONTAINS
           DO k=1,n_lp
             DO l=1,3
               DO m=1,3
-                NF_ip_l(k,l) = NF_ip_l(k,l) - (R_ip*(B(1,l)*B(1,m)))*(dBasisdx(k,m) + LeftNormal(m)/GapLength_ip)
-                NF_ip_r(k,l) = NF_ip_r(k,l) - (R_ip*(B(1,l)*B(1,m)))*(dBasisdx(k,m) + RightNormal(m)/GapLength_ip)
+                NF_ip_l(k,l) = NF_ip_l(k,l) - (R_ip*(B(1,l)*B(1,m)))*(dBasisdx(k,m) - LeftNormal(m)/GapLength_ip)
+                NF_ip_r(k,l) = NF_ip_r(k,l) - (R_ip*(B(1,l)*B(1,m)))*(dBasisdx(k,m) - RightNormal(m)/GapLength_ip)
               END DO
-              NF_ip_l(k,l) = NF_ip_l(k,l) + 0.5*R_ip*B2*(dBasisdx(k,l) + LeftNormal(l)/GapLength_ip)
-              NF_ip_r(k,l) = NF_ip_r(k,l) + 0.5*R_ip*B2*(dBasisdx(k,l) + RightNormal(l)/GapLength_ip)
+              NF_ip_l(k,l) = NF_ip_l(k,l) + 0.5*R_ip*B2*(dBasisdx(k,l) - LeftNormal(l)/GapLength_ip)
+              NF_ip_r(k,l) = NF_ip_r(k,l) + 0.5*R_ip*B2*(dBasisdx(k,l) - RightNormal(l)/GapLength_ip)
             END DO
           END DO
         END IF
