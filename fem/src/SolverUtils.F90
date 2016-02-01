@@ -9667,6 +9667,77 @@ END FUNCTION SearchNodeL
   END SUBROUTINE ReverseRowEquilibration
 !------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------
+  SUBROUTINE CalculateEnergyNorm(Solver, Aaid, x)
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t), POINTER  :: Aaid
+    REAL(KIND=dp), INTENT(IN) CONTIG :: x(:)
+    REAL(KIND=dp), POINTER :: TempRHS(:), TempVector(:), SaveValues(:), Rhs(:), TempX(:)
+    REAL(KIND=dp) :: Energy, Energy_im
+    INTEGER :: i
+    LOGICAL :: Found
+
+    Rhs => Aaid % Rhs
+
+    ALLOCATE( TempVector(Aaid % NumberOfRows) )
+
+    IF ( ParEnv % PEs > 1 ) THEN
+      ALLOCATE(TempRHS(SIZE(Rhs)))
+      TempRHS = Rhs 
+      CALL ParallelInitSolve( Aaid, x, TempRHS, Tempvector )
+      CALL ParallelMatrixVector( Aaid, x, TempVector, .TRUE. )
+    ELSE
+      CALL MatrixVectorMultiply( Aaid, x, TempVector )
+    END IF
+
+    Energy = 0._dp
+    IF( ListGetLogical(Solver % Values, 'Linear System Complex', Found) ) THEN
+      Energy_im = 0._dp
+      DO i = 1, (Aaid % NumberOfRows / 2)
+        IF ( ParEnv % Pes>1 ) THEN
+          IF ( Aaid% ParMatrix % ParallelInfo % &
+            NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+        END IF
+        Energy    = Energy    + x(2*(i-1)+1) * TempVector(2*(i-1)+1) - x(2*(i-1)+2) * TempVector(2*(i-1)+2)
+        Energy_im = Energy_im + x(2*(i-1)+1) * TempVector(2*(i-1)+2) + x(2*(i-1)+2) * TempVector(2*(i-1)+1) 
+      END DO
+      Energy    = ParallelReduction(Energy)
+      Energy_im = ParallelReduction(Energy_im)
+
+      CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy)
+      CALL ListAddConstReal( Solver % Values, 'Energy norm im', Energy_im)
+
+      WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+      CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
+
+      WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm im'
+      CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy_im )
+
+      WRITE( Message, * ) 'Energy Norm: ', Energy, Energy_im
+      CALL Info( 'SolveLinearSystem', Message )
+    ELSE 
+      DO i=1,Aaid % NumberOfRows
+        IF ( ParEnv % Pes>1 ) THEN
+          IF ( Aaid % ParMatrix % ParallelInfo % &
+            NeighbourList(i) % Neighbours(1) /= Parenv % MyPE ) CYCLE
+        END IF
+        Energy = Energy + x(i)*TempVector(i)
+      END DO
+      Energy = ParallelReduction(Energy)
+      CALL ListAddConstReal( Solver % Values, 'Energy norm', Energy )
+
+      WRITE( Message,'(A,A,A)') 'res: ',GetVarname(Solver % Variable),' Energy Norm'
+      CALL ListAddConstReal( CurrentModel % Simulation, Message, Energy )
+
+      WRITE( Message, * ) 'Energy Norm: ', Energy
+      CALL Info( 'SolveLinearSystem', Message )
+    END IF
+!-------------------------------------------------------------------
+ END SUBROUTINE CalculateEnergyNorm
+!-------------------------------------------------------------------
+
 
   SUBROUTINE CalculateLoads( Solver, Aaid, x, DOFs, UseBulkValues, NodalLoads ) 
 
@@ -10444,6 +10515,8 @@ END FUNCTION SearchNodeL
       END IF
     END IF
 
+    IF (ListGetLogical(Solver % Values, "Calculate Energy Norm")) & 
+      CALL CalculateEnergyNorm(Solver, Aaid, x)
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
