@@ -375,11 +375,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     IF( ASSOCIATED( Var ) ) THEN
       CALL Info('SaveScalars','Treating variable: '//TRIM(VariableName),Level=12)
+      ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements ) 
     END IF
- 
-    PRINT *,'var sum:',SUM( Var % Values ), SIZE( Var % Values )
-
-    ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements ) 
 
 
     IF( GotOper ) THEN
