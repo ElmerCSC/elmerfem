@@ -199,7 +199,7 @@ Solver 4
   Save Geometry IDs = Logical True
   Vtu Format = Logical True
 
-  Save Bulk Only = Logical True
+!  Save Bulk Only = Logical True
   Discontinuous Bodies = Logical True
 End 
 
@@ -237,6 +237,8 @@ Solver 3
   Calculate Magnetic Field Strength = Logical True
   Calculate Magnetic Vector Potential = Logical True
   !Calculate Nodal Forces = Logical True
+
+  Calculate Nodal Fields = Logical False
   Calculate Elemental Fields = Logical True
   !Calculate Maxwell Stress = Logical True
   Apply Mortar BCs = Logical True
@@ -250,7 +252,7 @@ Solver 3
   Linear System Convergence Tolerance = 1.0e-8
   Impose Body Force Current = Logical True
 
-  Average Within Bodies = Logical True
+!  Average Within Bodies = Logical True
 End
 
 ! Save voltages and torque
