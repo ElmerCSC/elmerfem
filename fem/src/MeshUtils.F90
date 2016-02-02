@@ -9018,7 +9018,7 @@ END SUBROUTINE GetMaxDefs
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
         Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
-        ParallelNumbering
+        ParallelNumbering, EnforceOverlay
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
@@ -9234,6 +9234,8 @@ END SUBROUTINE GetMaxDefs
     !---------------------------------------------------------------------------------
     Radius = 1.0_dp
     FullCircle = .FALSE.
+    EnforceOverlay = ListGetLogical( BC, 'Mortar BC enforce overlay', GotIt )
+
     IF( Rotational .OR. Cylindrical ) THEN
       CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, Cylindrical, &
           Radius, FullCircle )
@@ -9244,6 +9246,10 @@ END SUBROUTINE GetMaxDefs
     ELSE IF( Plane ) THEN
       CALL PlaneInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( .NOT. Sliding ) THEN
+      IF( .NOT. GotIt ) EnforceOverlay = .TRUE.
+    END IF
+
+    IF( EnforceOverlay ) THEN
       CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
     END IF
 
