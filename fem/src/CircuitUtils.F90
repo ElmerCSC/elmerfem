@@ -482,8 +482,6 @@ CONTAINS
         !Comp % ElBoundary = GetInteger(CompParams, 'Electrode Boundary 1', Found)
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
-        print *, "Electrode Area:", Comp % ElArea
-        
         Comp % N_j = Comp % nofturns / Comp % ElArea
 
         ! Stranded coil has current and voltage 
@@ -562,6 +560,7 @@ CONTAINS
   ELSE
     CALL Fatal('ComputeElectrodeArea','Electrode area computation not implemented for 3D use Electrode Area keyword.')
   END IF
+  Comp % ElArea = ParallelReduction(Comp % ElArea)
 !-------------------------------------------------------------------
  END SUBROUTINE ComputeElectrodeArea
 !-------------------------------------------------------------------
