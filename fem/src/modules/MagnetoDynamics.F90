@@ -6542,16 +6542,25 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 CONTAINS
 
 !-------------------------------------------------------------------
-  SUBROUTINE SumElementalVariable(Var)
+  SUBROUTINE SumElementalVariable(Var, Values, BodyId, Additive)
 !-------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Variable_t), POINTER :: Var
+    REAL(KIND=dp), OPTIONAL, TARGET :: Values(:)
+    INTEGER, OPTIONAL :: BodyId
+    LOGICAL, OPTIONAL :: Additive
 
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), ALLOCATABLE :: NodeSum(:)
     INTEGER :: n, j, k, l, nodeind, dgind, bias
     LOGICAL, ALLOCATABLE :: AirGapNode(:)
+    REAL(KIND=dp), POINTER :: ValuesSource(:)
 
+    IF(PRESENT(Values)) THEN
+      ValuesSource => Values
+    ELSE 
+      ValuesSource => Var % Values
+    END IF
 
     n = Mesh % NumberOFNodes
     ALLOCATE(NodeSum(n), AirGapNode(n))
@@ -6562,23 +6571,30 @@ CONTAINS
       NodeSum = 0.0_dp
       DO j=1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(j)
+        IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
         DO l = 1, Element % TYPE % NumberOfNodes
           nodeind = Element % NodeIndexes(l)
           dgind = Var % Perm(Element % DGIndexes(l))
           IF( dgind > 0 ) THEN
             NodeSum( nodeind ) = NodeSum( nodeind ) + &
-              Var % Values(Var % DOFs*( dgind-1)+k )
+              ValuesSource(Var % DOFs*( dgind-1)+k ) 
           END IF 
         END DO
       END DO
 
       DO j=1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(j)
+        IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
         DO l=1,Element%TYPE%NumberofNodes
           nodeind = Element % NodeIndexes(l)
           dgind = Var % Perm(Element % DGIndexes(l))
           IF( dgind > 0 ) THEN
-            Var % Values( var % DOFs*(dgind-1)+k) = NodeSum(nodeind)
+            IF (PRESENT(Additive) .AND. Additive) THEN
+              Var % Values( var % DOFs*(dgind-1)+k) = NodeSum(nodeind) + &
+                Var % Values( var % DOFs*(dgind-1)+k)
+            ELSE
+              Var % Values( var % DOFs*(dgind-1)+k) = NodeSum(nodeind)
+            END IF
           END IF
         END DO
       END DO
@@ -6602,13 +6618,16 @@ CONTAINS
       NF_ip_l(35,3), NF_ip_r(35,3)
     TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
     TYPE(Nodes_t) :: LPNodes, RPNodes
+    REAL(KIND=dp) :: F(3,3)
     INTEGER :: n_lp, n_rp
-    REAL(KIND=dp), ALLOCATABLE :: LeftFORCE(:,:), RightFORCE(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: LeftFORCE(:,:), RightFORCE(:,:), &
+      AirGapForce(:,:), ForceValues(:)
     INTEGER, ALLOCATABLE :: RightMap(:), LeftMap(:)
     REAL(KIND=dp) :: ParentNodalU(n), parentNodalV(n), ParentNodalW(n)
     REAL(KIND=dp) :: Normal(3)
     TYPE(Variable_t), POINTER :: PotVar
     REAL(KIND=dp), SAVE :: mu0 = 1.2566370614359173e-6_dp
+    LOGICAL, ALLOCATABLE :: BodyMask(:)
 
     PotVar => pSolver % Variable
 
@@ -6616,7 +6635,12 @@ CONTAINS
 
     call Warn('MagnetoDynamicsCalcFields', 'CalcBoundaryModels is work in progress and &
       &does not testably yield correct nodal forces')
-    ALLOCATE(LeftFORCE(n,3), RightForce(n,3), RightMap(n), LeftMap(n))
+
+    ALLOCATE(LeftFORCE(n,3), RightForce(n,3), RightMap(n), LeftMap(n), &
+      AirGapForce(3,Mesh % NumberOfNodes), ForceValues(size(EL_NF % Values)))
+    ALLOCATE(BodyMask(Model % NumberOfBodies))
+
+    BodyMask = .FALSE.
 
     IF ( FirstTime ) THEN
       mu0 = GetConstReal(CurrentModel % Constants, &
@@ -6638,9 +6662,12 @@ CONTAINS
         CYCLE
       END IF
 
+      BElement => Mesh % Faces(GetBoundaryFaceIndex(BElement))
       LeftParent => BElement % BoundaryInfo % Left
       RightParent => BElement % BoundaryInfo % Right
-      BElement => Mesh % Faces(GetBoundaryFaceIndex(BElement))
+
+      BodyMask(LeftParent % BodyId) = .TRUE.
+      BodyMask(RightParent % BodyId) = .TRUE.
 
       n = GetElementNOFNodes(BElement)
       n_lp = GetElementNOFNodes(LeftParent)
@@ -6709,16 +6736,16 @@ CONTAINS
       DO j = 1,IP % n
         s = IP % s(j)
 
-       IF ( PiolaVersion ) THEN
+        IF ( PiolaVersion ) THEN
           stat = EdgeElementInfo( BElement, Nodes, IP % U(j), IP % V(j), IP % W(j), &
-               DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
-               dBasisdx=dBasisdx, BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-       ELSE
-          stat = ElementInfo( Element, Nodes, IP % U(j), IP % V(j), &
-               IP % W(j), detJ, Basis, dBasisdx )
+            F = F, DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+            dBasisdx=dBasisdx, BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+        ELSE
+          stat = ElementInfo( BElement, Nodes, IP % U(j), IP % V(j), &
+            IP % W(j), detJ, Basis, dBasisdx )
 
-          CALL GetEdgeBasis(Element, WBasis, RotWBasis, Basis, dBasisdx)
-       END IF
+          CALL GetEdgeBasis(BElement, WBasis, RotWBasis, Basis, dBasisdx)
+        END IF
 
         R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
         GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
@@ -6735,6 +6762,8 @@ CONTAINS
         !write (*,*), 'ParentUVW = ', ParentU, ParentV, ParentW 
 
         Normal = NormalVector(BElement, Nodes, IP% U(j), IP % V(j))
+        !Normal = CrossProduct(F(:,1), F(:,2))
+        !normal = normal/detj
         
         IF( SUM(normal*(LeftCenter - bndcenter)) >= 0 ) THEN
           LeftNormal = -Normal
@@ -6769,11 +6798,14 @@ CONTAINS
               B(k,3) = 0._dp
             END IF
           CASE(3)
-            B(k,:) = MATMUL( SOL(k,np+1:nd), RotWBasis(1:nd-np,:) )
+            B(k,:) = normal*sum( SOL(k,np+1:nd)* RotWBasis(1:nd-np,3) )
           END SELECT
         END DO
         ! DEBUG
-        !write (*,*), 'B = ', B(1,:)
+        write (*,*), 'B = ', B(1,:)
+        write (*,*), 'RotWBasis(1) = ', RotWBasis(1,:)
+        write (*,*), 'RotWBasis(2) = ', RotWBasis(2,:)
+        write (*,*), 'RotWBasis(3) = ', RotWBasis(3,:)
         B2 = sum(B(1,:)*B(1,:) + B(2,:)*B(2,:))
         IF (ASSOCIATED(NF).OR.ASSOCIATED(EL_NF)) THEN
           NF_ip_r = 0._dp
@@ -6781,11 +6813,11 @@ CONTAINS
           DO k=1,n
             DO l=1,3
               DO m=1,3
-                NF_ip_l(k,l) = NF_ip_l(k,l) + R_ip*B(1,l)*B(1,m)*LeftNormal(m)
-                NF_ip_r(k,l) = NF_ip_r(k,l) + R_ip*B(1,l)*B(1,m)*RightNormal(m)
+                NF_ip_l(k,l) = NF_ip_l(k,l) + R_ip*B(1,l)*B(1,m)*(LeftNormal(m)*Basis(k))
+                NF_ip_r(k,l) = NF_ip_r(k,l) + R_ip*B(1,l)*B(1,m)*(RightNormal(m)*Basis(k))
               END DO
-              NF_ip_l(k,l) = NF_ip_l(k,l) - 0.5*R_ip*B2*LeftNormal(l)
-              NF_ip_r(k,l) = NF_ip_r(k,l) - 0.5*R_ip*B2*RightNormal(l)
+              NF_ip_l(k,l) = NF_ip_l(k,l) - 0.5*R_ip*B2*(LeftNormal(l)*Basis(k))
+              NF_ip_r(k,l) = NF_ip_r(k,l) - 0.5*R_ip*B2*(RightNormal(l)*Basis(k))
             END DO
           END DO
         END IF
@@ -6797,12 +6829,15 @@ CONTAINS
       END DO ! Integration points
 
       IF(ElementalFields) THEN
-        CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent)
+        CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, Values=ForceValues)
         ! DEBUG
         !write (*,*), 'LeftFORCE(:,1) = ', LeftFORCE(1:n_lp,1)
         !write (*,*), 'LeftFORCE(:,2) = ', LeftFORCE(1:n_lp,2)
         !write (*,*), 'LeftFORCE(:,3) = ', LeftFORCE(1:n_lp,3)
-        CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent)
+        CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, Values=ForceValues)
+        DO p=1,Model % NumberOfBodies
+          IF(BodyMask(p)) CALL SumElementalVariable(EL_NF, Values=ForceValues, BodyId=p, Additive=.TRUE.)
+        END DO
       END IF
     END DO ! Boundary elements
 
@@ -7071,15 +7106,16 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
- SUBROUTINE LocalCopy(Var, m, n, b, bias, UElement)
+ SUBROUTINE LocalCopy(Var, m, n, b, bias, UElement, Values)
 !------------------------------------------------------------------------------
    TYPE(Variable_t), POINTER :: Var
    INTEGER, INTENT(IN) :: m,n,bias
    INTEGER :: dofs
    REAL(KIND=dp) :: b(:,:)
+   TYPE(Element_t), POINTER, OPTIONAL :: UElement
+   REAL(KIND=dp), OPTIONAL :: Values(:)
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
-   TYPE(Element_t), POINTER, OPTIONAL :: UElement
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
    IF(PRESENT(UElement)) THEN
@@ -7089,10 +7125,17 @@ CONTAINS
    END IF
 
    dofs = bias
-   DO i=1,m
-     dofs = dofs+1
-     Var % Values(ind(1:n)+i) = b(1:n,dofs)
-   END DO
+   IF(PRESENT(Values)) THEN
+     DO i=1,m
+       dofs = dofs+1
+       Values(ind(1:n)+i) = b(1:n,dofs)
+     END DO
+   ELSE
+     DO i=1,m
+       dofs = dofs+1
+       Var % Values(ind(1:n)+i) = b(1:n,dofs)
+     END DO
+   END IF
 !------------------------------------------------------------------------------
  END SUBROUTINE LocalCopy
 !------------------------------------------------------------------------------
