@@ -6835,11 +6835,14 @@ CONTAINS
         !write (*,*), 'LeftFORCE(:,2) = ', LeftFORCE(1:n_lp,2)
         !write (*,*), 'LeftFORCE(:,3) = ', LeftFORCE(1:n_lp,3)
         CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, Values=ForceValues)
-        DO p=1,Model % NumberOfBodies
-          IF(BodyMask(p)) CALL SumElementalVariable(EL_NF, Values=ForceValues, BodyId=p, Additive=.TRUE.)
-        END DO
       END IF
     END DO ! Boundary elements
+
+    IF(ElementalFields) THEN
+      DO p=1,Model % NumberOfBodies
+        IF(BodyMask(p)) CALL SumElementalVariable(EL_NF, Values=ForceValues, BodyId=p, Additive=.TRUE.)
+      END DO
+    END IF
 
     DEALLOCATE(LeftFORCE, RightFORCE, RightMap, LeftMap)
 !-------------------------------------------------------------------
