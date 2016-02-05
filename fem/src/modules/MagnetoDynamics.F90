@@ -4082,7 +4082,7 @@ CONTAINS
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n)
+    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n), Nu(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,FixJPot(2,nd), &
                      RotMLoc(3,3), RotM(3,3,n)
 
@@ -4239,6 +4239,10 @@ CONTAINS
          END SELECT
        END IF
 
+       Nu = CMPLX(0._dp, 0._dp)
+       Nu(1,1) = mu
+       Nu(2,2) = mu
+       Nu(3,3) = mu
 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
@@ -4303,8 +4307,8 @@ CONTAINS
                  SUM(CONJG(B_ip(:))*RotWBasis(j,:))*detJ*IP % s(t)/Babs
            END IF
 
-           STIFF(p,q) = STIFF(p,q) + mu * &
-              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+           STIFF(p,q) = STIFF(p,q) + &
+              SUM(MATMUL(Nu, RotWBasis(i,:))*RotWBasis(j,:))*detJ*IP%s(t)
 
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
