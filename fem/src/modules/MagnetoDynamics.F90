@@ -6802,10 +6802,10 @@ CONTAINS
           END SELECT
         END DO
         ! DEBUG
-        write (*,*), 'B = ', B(1,:)
-        write (*,*), 'RotWBasis(1) = ', RotWBasis(1,:)
-        write (*,*), 'RotWBasis(2) = ', RotWBasis(2,:)
-        write (*,*), 'RotWBasis(3) = ', RotWBasis(3,:)
+        !write (*,*), 'B = ', B(1,:)
+        !write (*,*), 'RotWBasis(1) = ', RotWBasis(1,:)
+        !write (*,*), 'RotWBasis(2) = ', RotWBasis(2,:)
+        !write (*,*), 'RotWBasis(3) = ', RotWBasis(3,:)
         B2 = sum(B(1,:)*B(1,:) + B(2,:)*B(2,:))
         IF (ASSOCIATED(NF).OR.ASSOCIATED(EL_NF)) THEN
           NF_ip_r = 0._dp
