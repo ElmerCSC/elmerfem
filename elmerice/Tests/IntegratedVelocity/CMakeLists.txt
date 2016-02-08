@@ -5,3 +5,4 @@ CONFIGURE_FILE(test.sif test.sif COPYONLY)
 FILE(COPY ELMERSOLVER_STARTINFO rectangle.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMERICE_TEST(IntegratedVelocity)
+ADD_ELMERICE_LABEL(IntegratedVelocity elmerice-fast)
