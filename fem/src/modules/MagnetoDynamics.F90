@@ -6306,12 +6306,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        ! This is a nodal quantity
        ! DEBUG
-       !CALL LocalCopy(EL_NF, 3, n, FORCE, Dofs)
+       CALL LocalCopy(EL_NF, 3, n, FORCE, Dofs)
      END IF
    END DO
 
    ! DEBUG
-   !CALL SumElementalVariable(EL_NF)
+   CALL SumElementalVariable(EL_NF)
    CALL CalcBoundaryModels()
 
    Power  = ParallelReduction(Power)
@@ -6571,6 +6571,8 @@ CONTAINS
     ! Collect nodal sum of DG elements
     DO k=1,Var % Dofs
       NodeSum = 0.0_dp
+
+      ! Collect DG data to nodal vector
       DO j=1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(j)
         IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
@@ -6584,6 +6586,7 @@ CONTAINS
         END DO
       END DO
 
+      ! Sum nodal data to elements
       DO j=1, Mesh % NumberOfBulkElements
         Element => Mesh % Elements(j)
         IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
@@ -6600,6 +6603,7 @@ CONTAINS
           END IF
         END DO
       END DO
+
     END DO
 !-------------------------------------------------------------------
   END SUBROUTINE SumElementalVariable
@@ -6671,6 +6675,11 @@ CONTAINS
       BElement => Mesh % Faces(GetBoundaryFaceIndex(BElement))
       LeftBodyID = BElement % BoundaryInfo % Left % BodyID
       RightBodyID = BElement % BoundaryInfo % Right % BodyID
+      IF(LeftBodyID == RightBodyID) THEN
+        CALL Warn('MagnetoDynamicsCalcFields', 'Airgap in the middle of single body Id')
+        CYCLE
+      END IF
+
       ! Make LeftParent be always the one with smaller Body ID
       IF (LeftBodyID > RightBodyID) THEN
         LeftParent => BElement % BoundaryInfo % Right
@@ -6711,18 +6720,22 @@ CONTAINS
 
       !np = n_lp*pSolver % Def_Dofs(GetElementFamily(LeftParent),LeftParent % BodyId,1)
       !nd = GetElementNOFDOFs(uElement=LeftParent, uSolver=pSolver)
-      np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(BElement),:,1))
+      np = n*MAXVAL(pSolver % Def_Dofs(GetElementFamily(BElement),:,1))
       nd = GetElementNOFDOFs(uElement=BElement, uSolver=pSolver)
 
+
+      ! DEBUG
+      write (*,*), 'n, np, nd =', n, np, nd
+      write (*,*), 'SOL(1,1:nd) =', SOL(1,1:nd)
+      write (*,*), 'SOL(1,np+1:nd) =', SOL(1,np+1:nd)
+      write (*,*), 'Solver % Def_dofs ...', pSolver % Def_Dofs(GetElementFamily(LeftParent),LeftParent % BodyId,1)
       
       DO k = 1,n
         DO l = 1,n_lp
-          IF(LeftParent % NodeIndexes(l) == BElement % NodeIndexes(k)) THEN
-            LeftMap(k) = l
-          END IF
+          IF(LeftParent % NodeIndexes(l) == BElement % NodeIndexes(k)) LeftMap(k) = l
         END DO
         DO l = 1,n_rp
-          IF(RightParent % NodeIndexes(l) == BElement % NodeIndexes(k))  RightMap(k) = l
+          IF(RightParent % NodeIndexes(l) == BElement % NodeIndexes(k)) RightMap(k) = l
         END DO
       END DO
 
@@ -6765,15 +6778,8 @@ CONTAINS
         !write (*,*), 'AirGapMu(1:n) = ', AirGapMu(1:n)
 
         s = s * detJ
-        !ParentU = SUM( Basis(1:n) * ParentNodalU(1:n) )
-        !ParentV = SUM( Basis(1:n) * ParentNodalV(1:n) )
-        !ParentW = SUM( Basis(1:n) * ParentNodalW(1:n) )
-        ! DEBUG
-        !write (*,*), 'ParentUVW = ', ParentU, ParentV, ParentW 
 
         Normal = NormalVector(BElement, Nodes, IP% U(j), IP % V(j))
-        !Normal = CrossProduct(F(:,1), F(:,2))
-        !normal = normal/detj
         
         IF( SUM(normal*(LeftCenter - bndcenter)) >= 0 ) THEN
           LeftNormal = -Normal
@@ -6839,12 +6845,12 @@ CONTAINS
       END DO ! Integration points
 
       IF(ElementalFields) THEN
-        CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, Values=ForceValues, uAdditive=.false.)
+        CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, Values=ForceValues, uAdditive=.true.)
         ! DEBUG
         !write (*,*), 'LeftFORCE(:,1) = ', LeftFORCE(1:n_lp,1)
         !write (*,*), 'LeftFORCE(:,2) = ', LeftFORCE(1:n_lp,2)
         !write (*,*), 'LeftFORCE(:,3) = ', LeftFORCE(1:n_lp,3)
-        CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, Values=ForceValues, uAdditive=.false.)
+        CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, Values=ForceValues, uAdditive=.true.)
       END IF
     END DO ! Boundary elements
 
@@ -7130,7 +7136,7 @@ CONTAINS
    LOGICAL, OPTIONAL :: uAdditive
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
-   LOGICAL, SAVE :: Additive = .FALSE.
+   LOGICAL :: Additive
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
    IF(PRESENT(UElement)) THEN
@@ -7139,14 +7145,18 @@ CONTAINS
      ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
    END IF
    
-   IF(PRESENT(uAdditive)) Additive = uAdditive
+   IF(PRESENT(uAdditive)) THEN
+     Additive = uAdditive
+   ELSE
+     Additive = .FALSE.
+   END IF
 
    dofs = bias
    IF(PRESENT(Values)) THEN
      DO i=1,m
        dofs = dofs+1
        IF(Additive) THEN
-         Values(ind(1:n)+i) = Values(ind(1:n)+1) + b(1:n,dofs)
+         Values(ind(1:n)+i) = Values(ind(1:n)+i) + b(1:n,dofs)
        ELSE
          Values(ind(1:n)+i) = b(1:n,dofs)
        END IF
@@ -7155,7 +7165,7 @@ CONTAINS
      DO i=1,m
        dofs = dofs+1
        IF(Additive) THEN
-         Var % Values(ind(1:n)+i) = Var % Values(ind(1:n)+1) + b(1:n,dofs)
+         Var % Values(ind(1:n)+i) = Var % Values(ind(1:n)+i) + b(1:n,dofs)
        ELSE
          Var % Values(ind(1:n)+i) = b(1:n,dofs)
        END IF
