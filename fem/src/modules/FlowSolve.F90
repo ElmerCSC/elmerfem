@@ -85,16 +85,16 @@
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER :: StiffMatrix
 
-     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat
+     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m
 
      TYPE(ValueList_t),POINTER :: Material, BC, BodyForce, Equation
      TYPE(Nodes_t) :: ElementNodes
      TYPE(Element_t),POINTER :: Element
 
      REAL(KIND=dp) :: RelativeChange,UNorm,Gravity(3),AngularVelocity(3), &
-       Tdiff,s,Relaxation,NewtonTol,NonlinearTol, &
+       Tdiff,s,Relaxation,NewtonTol,NewtonUBound,NonlinearTol, &
        ReferencePressure=0.0, SpecificHeatRatio, &
-       PseudoCompressibilityScale=1.0, NonlinearRelax,FreeSTol
+       PseudoCompressibilityScale=1.0, NonlinearRelax, FreeSTol, res
 
      INTEGER :: NSDOFs,NewtonIter,NonlinearIter,FreeSIter
 
@@ -112,21 +112,23 @@
      LOGICAL :: Stabilize,NewtonLinearization = .FALSE., GotForceBC, GotIt, &
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
-                  Transient, Rotating, AnyRotating
+                  Transient, Rotating, AnyRotating, RecheckNewton=.FALSE.
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
      CHARACTER(LEN=MAX_NAME_LEN) :: LocalCoords, FlowModel
      INTEGER :: CompressibilityModel, ModelCoords, ModelDim
      INTEGER :: body_id,bf_id,eq_id,DIM
+     INTEGER :: MidEdgeNodes(12), BrickFaceMap(6,4)
      INTEGER, POINTER :: NodeIndexes(:), Indexes(:)
+     INTEGER, POINTER :: EdgeMap(:,:)
 
 
      INTEGER, SAVE :: Timestep, SaveTimestep=-1
      REAL(KIND=dp), ALLOCATABLE, SAVE :: pDensity0(:), pDensity1(:)
 !
      LOGICAL :: AllocationsDone = .FALSE., FreeSurfaceFlag, &
-         PseudoPressureExists, PseudoCompressible, Bubbles, &
+         PseudoPressureExists, PseudoCompressible, Bubbles, P2P1, &
          Porous =.FALSE., PotentialForce=.FALSE., Hydrostatic=.FALSE., &
          MagneticForce =.FALSE., UseLocalCoords, PseudoPressureUpdate
 
@@ -394,7 +396,7 @@
 
 
 !------------------------------------------------------------------------------
-
+     P2P1 = .FALSE.
      Bubbles   = ListGetLogical( Solver % Values,'Bubbles',GotIt )
      Stabilize = ListGetLogical( Solver % Values,'Stabilize',GotIt )
 
@@ -407,6 +409,12 @@
           StabilizeFlag = 'bubbles'
        ELSE
           StabilizeFlag = 'stabilized'
+       END IF
+     ELSE
+       IF (StabilizeFlag == 'p2/p1' .OR. StabilizeFlag == 'p2p1') THEN
+         P2P1 = .TRUE.
+         Bubbles = .FALSE.
+         Stabilize = .FALSE.         
        END IF
      END IF
 
@@ -423,6 +431,11 @@
 
      NewtonTol = ListGetConstReal( Solver % Values, &
         'Nonlinear System Newton After Tolerance', minv=0.0d0 )
+
+     !Option to switch back to picard if convergence exceeds certain tolerance
+     NewtonUBound = ListGetConstReal( Solver % Values, &
+        'Nonlinear System Newton Max Tolerance', GotIt )
+     IF(GotIt) RecheckNewton = .TRUE.
 
      NewtonIter = ListGetInteger( Solver % Values, &
         'Nonlinear System Newton After Iterations', minv=0 )
@@ -985,11 +998,11 @@
             Bubbles = .TRUE.
             StabilizeFlag = 'bubbles'
          END IF
-         IF ( Element % TYPE % BasisFunctionDegree <= 1 .AND. &
-              StabilizeFlag == 'p2/p1' ) THEN
+         IF ( Element % TYPE % BasisFunctionDegree <= 1 .AND. P2P1 ) THEN
             Bubbles = .TRUE.
             StabilizeFlag = 'bubbles'
          END IF
+
          IF ( nb==0 .AND. Bubbles ) nb = n
 
          TimeForce = 0.0_dp
@@ -1286,6 +1299,11 @@
       IF ( RelativeChange < NewtonTol .OR. &
              iter > NewtonIter ) NewtonLinearization = .TRUE.
 
+      IF ( RecheckNewton .AND. (RelativeChange > NewtonUBound) .AND. NewtonLinearization ) THEN
+        NewtonLinearization = .FALSE.
+	CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
+      END IF
+
       IF ( RelativeChange < NonLinearTol .AND. Iter<NonlinearIter ) EXIT
 
 !------------------------------------------------------------------------------
@@ -1308,6 +1326,83 @@
       END IF
 !------------------------------------------------------------------------------
     END DO  ! of nonlinear iteration
+
+    IF ( P2P1 ) THEN
+      !----------------------------------------------------------------------------------------
+      ! Replace the zero pressure solution at the nodes which are not needed in the linear
+      ! pressure approximation by the interpolated values for right visualization:
+      !----------------------------------------------------------------------------------------
+      DO t=1,GetNOFActive()
+        ! First the midedge nodes:
+        Element => GetActiveElement(t)
+        IF ( Element % TYPE % BasisFunctionDegree <= 1 ) CYCLE
+
+        nd = GetElementDOFs( Indexes )
+        k = GetElementFamily()
+        EdgeMap => GetEdgeMap(k)
+        SELECT CASE(k)
+        CASE (3)
+          MidEdgeNodes(1:3) = (/ 4, 5, 6 /)
+        CASE (4)
+          MidEdgeNodes(1:4) = (/ 5, 6, 7, 8 /)
+        CASE (5)
+          MidEdgeNodes(1:6) = (/ 5, 6, 7, 8, 9, 10 /) 
+        CASE (6)
+          MidEdgeNodes(1:8) = (/ 6, 7, 8, 9, 10, 11, 12, 13 /)
+        CASE (7)
+          MidEdgeNodes(1:9) = (/ 7, 8, 9, 10, 11, 12, 13, 14, 15 /)
+        CASE (8)
+          MidEdgeNodes(1:12) = (/ 9, 10, 11, 12, 17, 18, 19, 20, 13, 14, 15, 16 /)
+        END SELECT
+
+        DO q=1,SIZE(EdgeMap,1)
+          m = (dim+1) * Solver % Variable % Perm(Indexes(MidEdgeNodes(q)))
+          i = (dim+1) * Solver % Variable % Perm(Indexes(EdgeMap(q,1)))
+          j = (dim+1) * Solver % Variable % Perm(Indexes(EdgeMap(q,2)))
+          Solver % Variable % Values(m) = 0.5d0 * ( Solver % Variable % Values(i) + &
+              Solver % Variable % Values(j) )   
+        END DO
+
+        ! The pressure at the midface nodes for 409 elements: 
+        IF (k==4 .AND. nd==9) THEN
+          res = 0.0d0
+          DO q=1,4
+            i = (dim+1) * Solver % Variable % Perm(Indexes(q))
+            res = res + Solver % Variable % Values(i)
+          END DO
+          m = (dim+1) * Solver % Variable % Perm(Indexes(9))
+          Solver % Variable % Values(m) = 0.25d0 * res
+        END IF
+
+        ! The pressure at the midpoint and at the midface nodes for 827 elements:
+        IF (k==8 .AND. nd==27) THEN
+          BrickFaceMap(1,:) = (/ 1,2,6,5 /)         
+          BrickFaceMap(2,:) = (/ 2,3,7,6 /)
+          BrickFaceMap(3,:) = (/ 4,3,7,8 /)
+          BrickFaceMap(4,:) = (/ 1,4,8,5 /)
+          BrickFaceMap(5,:) = (/ 1,2,3,4 /)          
+          BrickFaceMap(6,:) = (/ 5,6,7,8 /)
+          DO j=1,6
+            res = 0.0d0
+            DO q=1,4
+              i = (dim+1) * Solver % Variable % Perm(Indexes(BrickFaceMap(j,q)))
+              res = res + Solver % Variable % Values(i)
+            END DO
+            m = (dim+1) * Solver % Variable % Perm(Indexes(20+j))
+            Solver % Variable % Values(m) = 0.25d0 * res
+          END DO
+
+          res = 0.0d0
+          DO q=1,8
+            i = (dim+1) * Solver % Variable % Perm(Indexes(q))
+            res = res + Solver % Variable % Values(i)
+          END DO
+          m = (dim+1) * Solver % Variable % Perm(Indexes(27))      
+          Solver % Variable % Values(m) = 0.125d0 * res
+        END IF
+
+      END DO
+    END IF
 
     CALL ListAddConstReal( Solver % Values, &
         'Nonlinear System Relaxation Factor', NonlinearRelax )

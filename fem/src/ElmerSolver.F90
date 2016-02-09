@@ -686,7 +686,12 @@ CONTAINS
        REAL(KIND=dp) :: Norm, RefNorm, Tol, Err, val, refval
        TYPE(Solver_t), POINTER :: Solver
        TYPE(Variable_t), POINTER :: Var
+<<<<<<< HEAD
        LOGICAL :: Found, Success = .TRUE., FinalizeOnly, CompareNorm, CompareSolution
+=======
+       LOGICAL :: Found, Success = .TRUE., FinalizeOnly, CompareNorm, CompareSolution, AbsoluteErr
+       CHARACTER(LEN=MAX_STRING_LEN) :: PassedMsg
+>>>>>>> elmerice
 
        SAVE TestCount, PassCount 
 
@@ -753,22 +758,48 @@ CONTAINS
            Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
            IF(.NOT. Found ) Tol = 1.0d-5
            Norm = Var % Norm 
-           Err = ABS( Norm - RefNorm ) / RefNorm 
+           AbsoluteErr = ListGetLogical( Solver % Values,'Reference Norm Absolute', Found ) 
+           Err = ABS( Norm - RefNorm ) 
+
+           IF(.NOT. AbsoluteErr ) THEN
+             IF( RefNorm < TINY( RefNorm ) ) THEN
+               CALL Warn('CompareToReferenceSolution','Refenrece norm too small for relative error')
+               AbsoluteErr = .TRUE.
+             ELSE
+               Err = Err / RefNorm 
+             END IF
+           END IF
 
            ! Compare to given reference norm
            IF( Err > Tol ) THEN
              ! Warn only in the main core
              IF( ParEnv % MyPe == 0 ) THEN
+<<<<<<< HEAD
                WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
                    'Solver ',solver_id,' FAILED:  Norm = ',Norm,'  RefNorm = ',RefNorm
                CALL Warn('CompareToReferenceSolution',Message)
                WRITE( Message,'(A,ES12.6)') 'Relative Error to reference norm: ',Err
+=======
+               WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
+                   'Solver ',solver_id,' FAILED:  Norm =',Norm,'  RefNorm =',RefNorm
+               CALL Warn('CompareToReferenceSolution',Message)
+               IF( AbsoluteErr ) THEN
+                 WRITE( Message,'(A,ES13.6)') 'Absolute Error to reference norm:',Err
+               ELSE
+                 WRITE( Message,'(A,ES13.6)') 'Relative Error to reference norm:',Err
+               END IF
+>>>>>>> elmerice
                CALL Info('CompareToReferenceSolution',Message, Level = 4 )
              END IF
              Success = .FALSE.
            ELSE         
+<<<<<<< HEAD
              WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
                  'Solver ',solver_id,' PASSED:  Norm = ',Norm,'  RefNorm = ',RefNorm
+=======
+             WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
+                 'Solver ',solver_id,' PASSED:  Norm =',Norm,'  RefNorm =',RefNorm
+>>>>>>> elmerice
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
          END IF
@@ -808,16 +839,26 @@ CONTAINS
            IF( Err > Tol ) THEN
              ! Normally warning is done for every partition but this time it is the same for all
              IF( ParEnv % MyPe == 0 ) THEN
+<<<<<<< HEAD
                WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
                    'Solver ',solver_id,' FAILED:  Solution = ',Norm,'  RefSolution = ',RefNorm
+=======
+               WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
+                   'Solver ',solver_id,' FAILED:  Solution = ',Norm,'  RefSolution =',RefNorm
+>>>>>>> elmerice
                CALL Warn('CompareToReferenceSolution',Message)
                WRITE( Message,'(A,ES12.6)') 'Relative Error to reference solution: ',Err
                CALL Info('CompareToReferenceSolution',Message, Level = 4 )
              END IF
              Success = .FALSE.
            ELSE         
+<<<<<<< HEAD
              WRITE( Message,'(A,I0,A,ES12.6,A,ES12.6)') &
                  'Solver ',solver_id,' PASSED:  Solution = ',Norm,'  RefSolution = ',RefNorm
+=======
+             WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
+                 'Solver ',solver_id,' PASSED:  Solution =',Norm,'  RefSolution =',RefNorm
+>>>>>>> elmerice
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
          END IF

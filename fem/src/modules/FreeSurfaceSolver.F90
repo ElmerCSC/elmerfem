@@ -258,13 +258,13 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: &
        at,st,totat,totst,Norm,PrevNorm,LocalBottom, cv, &
-       Relax, MaxDisp, maxdh,LinearTol,NonlinearTol,RelativeChange,&
+       Relax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
        smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
        NodeHolder(3)
 #else
   REAL(KIND=dp) :: &
        at,st,totat,totst,CPUTime,Norm,PrevNorm,LocalBottom, cv, &
-       Relax, MaxDisp, maxdh,LinearTol,NonlinearTol,RelativeChange,&
+       Relax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
        smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
        NodeHolder(3)
 #endif
@@ -906,6 +906,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
              maxdh = MAX(maxdh, ABS(FreeSurf(j)-OldFreeSurf(j)))
            END IF
          END DO
+         maxdh = ParallelReduction(maxdh,2)
          IF(maxdh > MaxDisp) THEN
            Relax = Relax * MaxDisp/maxdh
          END IF

@@ -197,7 +197,7 @@ Boundary Condition 7
   Target Boundaries = 7
 
 ! continuous way of setting fsi conditions
-!  FSI BC = Logical True
+  FSI BC = Logical False
 !  Normal Target Body = 2
 
 ! discrete way

@@ -50,10 +50,12 @@
 #if defined(WIN32) | defined(MINGW32)
 #  include <direct.h>
 #  include <windows.h>
+#define ELMER_PATH_SEPARATOR ";"
 #else
 #include <strings.h>
 #  include <dlfcn.h>
 #  include <sys/stat.h>
+#define ELMER_PATH_SEPARATOR ":"
 #endif
 
 #define MAX_PATH_LEN 512
@@ -320,7 +322,7 @@ try_open_solver(char *SearchPath, char *Library, void **Handle, char *errorBuf)
     /* and then using the provided paths */
     if (*Handle == NULL) {
 
-        tok = strtok(SearchPath, ":");
+        tok = strtok(SearchPath, ELMER_PATH_SEPARATOR);
         while (tok != NULL) {
             strncpy(CurrentLib, tok, 2*MAX_PATH_LEN);
             append_path(CurrentLib, Library);
@@ -328,7 +330,7 @@ try_open_solver(char *SearchPath, char *Library, void **Handle, char *errorBuf)
             try_dlopen(CurrentLib, Handle, errorBuf);
             if (*Handle != NULL)
                 break;
-            tok = strtok(NULL, ":");
+            tok = strtok(NULL, ELMER_PATH_SEPARATOR);
         }
     }
 }
@@ -372,12 +374,12 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
    strncpy(ElmerLib, ".", 2*MAX_PATH_LEN);
    cptr = (char *)getenv( "ELMER_LIB" );
    if ( cptr != NULL ) {
-      strncat( ElmerLib, ":", 2*MAX_PATH_LEN );
+      strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN );
       strncat( ElmerLib, cptr, 2*MAX_PATH_LEN );
    } else {
       cptr = (char *)getenv("ELMER_HOME");
       if ( cptr != NULL  ) {
-         strncat( ElmerLib, ":", 2*MAX_PATH_LEN);
+         strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN);
          strncat( ElmerLib, cptr, 2*MAX_PATH_LEN );
          strncat( ElmerLib, "/share/elmersolver/lib", 2*MAX_PATH_LEN );
       } else {
@@ -388,11 +390,11 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
 	n = (int)(exeName - appPath);
 	if(n < 0) n = 0;
 	if(n > MAX_PATH_LEN) n = MAX_PATH_LEN;
-        strncat(ElmerLib, ":", 2*MAX_PATH_LEN);
+        strncat(ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN);
 	strncat(ElmerLib, appPath, n);
 	strncat(ElmerLib, "\\..\\share\\elmersolver\\lib", 2*MAX_PATH_LEN);
 #else
-        strncat( ElmerLib, ":", 2*MAX_PATH_LEN );
+        strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN );
 	strncat( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN );
 	strncat( ElmerLib, "/lib", 2*MAX_PATH_LEN );
 #endif
@@ -401,7 +403,7 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
 
    cptr = (char *)getenv( "ELMER_MODULES_PATH" );
    if ( cptr != NULL ) {
-      strncat( ElmerLib, ":", 2*MAX_PATH_LEN);
+      strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN);
       strncat( ElmerLib, cptr, 2*MAX_PATH_LEN);
    }
 
