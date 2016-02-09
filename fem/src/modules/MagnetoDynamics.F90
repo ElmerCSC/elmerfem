@@ -3103,6 +3103,7 @@ CONTAINS
            SELECT CASE (CoilType)
            CASE ('stranded')
               CoilBody = .TRUE.
+              CALL GetElementRotM(Element, RotM, n)
            CASE ('massive')
               CoilBody = .TRUE.
            CASE ('foil winding')
@@ -4102,7 +4103,7 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
 
     TYPE(ValueList_t), POINTER :: CompParams
-    LOGICAL :: StrandedHomogenization
+    LOGICAL :: StrandedHomogenization, FoundIm
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
 !------------------------------------------------------------------------------
@@ -4176,7 +4177,6 @@ CONTAINS
          nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
          IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
        END IF
-
     END IF
 
     !Numerical integration:
@@ -4244,6 +4244,16 @@ CONTAINS
        Nu(2,2) = mu
        Nu(3,3) = mu
 
+       IF (CoilBody .AND. StrandedHomogenization) THEN
+         nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
+         nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
+         Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
+         nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
+         nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
+         Nu(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
+         Nu = MATMUL(MATMUL(RotMLoc, Nu),TRANSPOSE(RotMLoc))
+       END IF 
+ 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
        L = L - MATMUL(FixJPotC, dBasisdx(1:n,:))
