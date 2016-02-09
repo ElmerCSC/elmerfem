@@ -1644,7 +1644,6 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   CALL Info( 'BSolver', '-------------------------------------',Level=4 )
   CALL Info( 'BSolver', 'Computing the magnetic field density ',Level=4 )
   CALL Info( 'BSolver', '-------------------------------------',Level=4 )
-
   dim = CoordinateSystemDimension()
 
   CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
