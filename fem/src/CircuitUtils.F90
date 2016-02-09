@@ -1294,27 +1294,21 @@ CONTAINS
         ColId = Cvar % ValueId + nm
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-             CALL CountMatElement(Rows, Cnts, RowId, 1)
-             CALL CountMatElement(Rows, Cnts, RowId, 1)
-          END IF
+           CALL CountMatElement(Rows, Cnts, RowId, 1)
+           CALL CountMatElement(Rows, Cnts, RowId, 1)
         CASE('massive')
-          IF (CVar % Owner == ParEnv % myPE) THEN
-            CALL CountMatElement(Rows, Cnts, RowId, 1)
-            CALL CountMatElement(Rows, Cnts, RowId, 1)
-         END IF
+           CALL CountMatElement(Rows, Cnts, RowId, 1)
+           CALL CountMatElement(Rows, Cnts, RowId, 1)
         CASE('foil winding')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-            ! V = V0 + V1*alpha + V2*alpha^2 + ...
-            CALL CountMatElement(Rows, Cnts, RowId, Cvar % dofs)
+          ! V = V0 + V1*alpha + V2*alpha^2 + ...
+          CALL CountMatElement(Rows, Cnts, RowId, Cvar % dofs)
 
-            ! Circuit eqns for the pdofs:
-            ! I(Vj) - I = 0
-              ! ------------------------------------
-            DO j=1, Cvar % pdofs
-              CALL CountMatElement(Rows, Cnts, RowId + AddIndex(j), Cvar % dofs)
-            END DO
-          END IF
+          ! Circuit eqns for the pdofs:
+          ! I(Vj) - I = 0
+          ! ------------------------------------
+          DO j=1, Cvar % pdofs
+            CALL CountMatElement(Rows, Cnts, RowId + AddIndex(j), Cvar % dofs)
+          END DO
         END SELECT
 
 !        temp = SUM(Cnts)
@@ -1379,29 +1373,23 @@ CONTAINS
 
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
-          END IF
+          CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
+          CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
         CASE('massive')
-          IF (Cvar % Owner == ParEnv % myPE) THEN
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
-            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
-         END IF
+          CALL CreateMatElement(Rows, Cols, Cnts, VvarId, IvarId)
+          CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId)
         CASE('foil winding')
           DO j=0, Cvar % pdofs
-            IF (Cvar % Owner == ParEnv % mype) THEN
-              ! V = V0 + V1*alpha + V2*alpha^2 + ...
-              CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId + AddIndex(j))
-              IF (j/=0) THEN
-                ! Circuit eqns for the pdofs:
-                ! I(Vi) - I = 0
-                ! ------------------------------------
-                CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), IvarId)
-                DO jj = 1, Cvar % pdofs
-                    CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), VvarId + AddIndex(j))
-                END DO
-              END IF
+            ! V = V0 + V1*alpha + V2*alpha^2 + ...
+            CALL CreateMatElement(Rows, Cols, Cnts, VvarId, VvarId + AddIndex(j))
+            IF (j/=0) THEN
+              ! Circuit eqns for the pdofs:
+              ! I(Vi) - I = 0
+              ! ------------------------------------
+              CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), IvarId)
+              DO jj = 1, Cvar % pdofs
+                  CALL CreateMatElement(Rows, Cols, Cnts, VvarId + AddIndex(j), VvarId + AddIndex(j))
+              END DO
             END IF
           END DO
         END SELECT
