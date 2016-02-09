@@ -131,6 +131,25 @@ CONTAINS
     INTEGER :: Init
     
     Initialize = init
+
+! !!!NYI!!!
+! 2.4  Running several sequences
+! Execution within command file
+! When reading the string RUN in the command file, 
+! the solver stops the reading and performs
+! the computation with the instructions so far obtained. 
+! After a successful execution the solver continues to 
+! interpret the command file. Using this functionality 
+! it is therefore possible to create scripts where some 
+! parameter value is changed and the problem is recomputed. 
+! For example, adding the same sequence to the end of the sif file
+! could be used to test the solution with another linear solver
+! RUN 
+! Solver 1::Linear System Iterative Method = BiCgstabl
+! RUN
+! It should be noted that not quite all features support this 
+! procedure. For example, some preconditioners create static 
+! structures that will not be recreated
     
     CALL ElmerSolver_init()
     IF ( Initialize /= 1 ) THEN       
