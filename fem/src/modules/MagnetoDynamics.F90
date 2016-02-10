@@ -6305,12 +6305,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL LocalSol(EL_MST,  6*vdofs, n, MASS, FORCE, pivot, Dofs)
 
        ! This is a nodal quantity
-       ! DEBUG
        CALL LocalCopy(EL_NF, 3, n, FORCE, Dofs)
      END IF
    END DO
 
-   ! DEBUG
    CALL SumElementalVariable(EL_NF)
    CALL CalcBoundaryModels()
 
@@ -6557,6 +6555,7 @@ CONTAINS
     INTEGER :: n, j, k, l, nodeind, dgind, bias
     LOGICAL, ALLOCATABLE :: AirGapNode(:)
     REAL(KIND=dp), POINTER :: ValuesSource(:)
+    REAL(KIND=dp) :: totalsum
 
     IF(PRESENT(Values)) THEN
       ValuesSource => Values
@@ -6571,6 +6570,7 @@ CONTAINS
     ! Collect nodal sum of DG elements
     DO k=1,Var % Dofs
       NodeSum = 0.0_dp
+      totalsum = 0.0_dp
 
       ! Collect DG data to nodal vector
       DO j=1, Mesh % NumberOfBulkElements
@@ -6581,6 +6581,8 @@ CONTAINS
           dgind = Var % Perm(Element % DGIndexes(l))
           IF( dgind > 0 ) THEN
             NodeSum( nodeind ) = NodeSum( nodeind ) + &
+              ValuesSource(Var % DOFs*( dgind-1)+k ) 
+            totalsum = totalsum + &
               ValuesSource(Var % DOFs*( dgind-1)+k ) 
           END IF 
         END DO
@@ -6603,12 +6605,14 @@ CONTAINS
           END IF
         END DO
       END DO
-
+      write (*,*), 'bodyid =', bodyid
+      write (*,*), 'dof = ', k
+      write (*,*), 'nodesum =', sum(nodesum)
+      write (*,*), 'totalsum =', totalsum
     END DO
 !-------------------------------------------------------------------
   END SUBROUTINE SumElementalVariable
 !-------------------------------------------------------------------
-
 
 !-------------------------------------------------------------------
   SUBROUTINE CalcBoundaryModels()
@@ -6643,7 +6647,8 @@ CONTAINS
       &does not testably yield correct nodal forces')
 
     ALLOCATE(LeftFORCE(n,3), RightForce(n,3), RightMap(n), LeftMap(n), &
-      AirGapForce(3,Mesh % NumberOfNodes), ForceValues(size(EL_NF % Values)))
+      AirGapForce(3,Mesh % NumberOfNodes), &
+      ForceValues(size(EL_NF % Values, 1)))
     ALLOCATE(BodyMask(Model % NumberOfBodies))
     ForceValues = 0.0_dp
 
@@ -6655,22 +6660,14 @@ CONTAINS
       IF(.NOT. Found) mu0 = 1.2566370614359173e-6
     END IF
 
-    LeftBodyID = -1
-    RightBodyID = -1
-
     DO i = 1,GetNOFBoundaryElements()
       BElement => GetBoundaryElement(i, uSolver=pSolver)
 
       IF(.NOT. ActiveBoundaryElement(BElement, uSolver=pSolver)) CYCLE
       BC => GetBC(BElement)
+
       GapLength = GetReal(BC, 'Air Gap Length', Found)
       IF(.NOT. Found) CYCLE
-      
-      IF( .NOT.(ASSOCIATED(BElement % BoundaryInfo % Left) & 
-        .AND. ASSOCIATED(BElement % BoundaryInfo % Right)) ) THEN
-        CALL Warn('MagnetoDynamicsCalcFields', 'AirGap length given on exterior boundary')
-        CYCLE
-      END IF
 
       BElement => Mesh % Faces(GetBoundaryFaceIndex(BElement))
       LeftBodyID = BElement % BoundaryInfo % Left % BodyID
@@ -6691,12 +6688,32 @@ CONTAINS
       LeftBodyID = LeftParent % BodyID
       RightBodyID = RightParent % BodyID
 
-      BodyMask(LeftBodyID) = .TRUE.
-      BodyMask(RightBodyID) = .TRUE.
+      IF(LeftBodyID == RightBodyID) CYCLE
 
       n = GetElementNOFNodes(BElement)
       n_lp = GetElementNOFNodes(LeftParent)
       n_rp = GetElementNOFNodes(RightParent) 
+      
+      DO k = 1,n
+        DO l = 1,n_lp
+          IF(LeftParent % NodeIndexes(l) == BElement % NodeIndexes(k)) LeftMap(k) = l
+        END DO
+        DO l = 1,n_rp
+          IF(RightParent % NodeIndexes(l) == BElement % NodeIndexes(k)) RightMap(k) = l
+        END DO
+      END DO
+
+      
+      IF( .NOT.(ASSOCIATED(BElement % BoundaryInfo % Left) & 
+        .AND. ASSOCIATED(BElement % BoundaryInfo % Right)) ) THEN
+        CALL Warn('MagnetoDynamicsCalcFields', 'AirGap length given on exterior boundary')
+        CYCLE
+      END IF
+
+
+      BodyMask(LeftBodyID) = .TRUE.
+      BodyMask(RightBodyID) = .TRUE.
+
 
       !write (*,*), "b nodes: ", BElement % NodeIndexes(1:n)
       !write (*,*), "left nodes: ", LeftParent % NodeIndexes(1:n_lp)
@@ -6708,7 +6725,7 @@ CONTAINS
       CALL GetElementNodes(LPNodes, LeftParent)
       CALL GetElementNodes(RPNodes, RightParent)
 
-      CALL GetVectorLocalSolution(SOL,Pname,uElement=BElement, uSolver=pSolver)
+      CALL GetVectorLocalSolution(SOL, Pname, uElement=BElement, uSolver=pSolver)
       ! DEBUG
       !write (*,*), 'SOL(1,1:6) =', SOL(1,1:6)
 
@@ -6725,19 +6742,11 @@ CONTAINS
 
 
       ! DEBUG
-      write (*,*), 'n, np, nd =', n, np, nd
-      write (*,*), 'SOL(1,1:nd) =', SOL(1,1:nd)
-      write (*,*), 'SOL(1,np+1:nd) =', SOL(1,np+1:nd)
-      write (*,*), 'Solver % Def_dofs ...', pSolver % Def_Dofs(GetElementFamily(LeftParent),LeftParent % BodyId,1)
+      !write (*,*), 'n, np, nd =', n, np, nd
+      !write (*,*), 'SOL(1,1:nd) =', SOL(1,1:nd)
+      !write (*,*), 'SOL(1,np+1:nd) =', SOL(1,np+1:nd)
+      !write (*,*), 'Solver % Def_dofs ...', pSolver % Def_Dofs(GetElementFamily(LeftParent),LeftParent % BodyId,1)
       
-      DO k = 1,n
-        DO l = 1,n_lp
-          IF(LeftParent % NodeIndexes(l) == BElement % NodeIndexes(k)) LeftMap(k) = l
-        END DO
-        DO l = 1,n_rp
-          IF(RightParent % NodeIndexes(l) == BElement % NodeIndexes(k)) RightMap(k) = l
-        END DO
-      END DO
 
       ! DEBUG
       !write (*,*), 'LeftMap = ', LeftMap
@@ -6748,7 +6757,6 @@ CONTAINS
 
       LeftFORCE = 0.0_dp
       RightFORCE = 0.0_dp
-
 
       IF (SecondOrder) THEN
         IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
@@ -6780,7 +6788,7 @@ CONTAINS
         s = s * detJ
 
         Normal = NormalVector(BElement, Nodes, IP% U(j), IP % V(j))
-        
+
         IF( SUM(normal*(LeftCenter - bndcenter)) >= 0 ) THEN
           LeftNormal = -Normal
         ELSE
@@ -6801,6 +6809,7 @@ CONTAINS
         DO k=1,vDOFs
           SELECT CASE(dim)
           CASE(2)
+            CALL Warn('MagnetoDynamicsCalcFields','Airgap force model is not implemented in 2D')
             ! This has been done with the same sign convention as in MagnetoDynamics2D:
             ! -------------------------------------------------------------------------
             IF ( CSymmetry ) THEN
@@ -6845,14 +6854,11 @@ CONTAINS
       END DO ! Integration points
 
       IF(ElementalFields) THEN
-        CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, Values=ForceValues, uAdditive=.true.)
-        ! DEBUG
-        !write (*,*), 'LeftFORCE(:,1) = ', LeftFORCE(1:n_lp,1)
-        !write (*,*), 'LeftFORCE(:,2) = ', LeftFORCE(1:n_lp,2)
-        !write (*,*), 'LeftFORCE(:,3) = ', LeftFORCE(1:n_lp,3)
-        CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, Values=ForceValues, uAdditive=.true.)
+        CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, Values=ForceValues, uAdditive=.TRUE.)
+        CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, Values=ForceValues, uAdditive=.TRUE.)
       END IF
     END DO ! Boundary elements
+
 
     IF(ElementalFields) THEN
       DO p=1,Model % NumberOfBodies
@@ -6860,7 +6866,8 @@ CONTAINS
       END DO
     END IF
 
-    DEALLOCATE(LeftFORCE, RightFORCE, RightMap, LeftMap)
+    DEALLOCATE(LeftFORCE, RightForce, RightMap, LeftMap, &
+      AirGapForce, ForceValues, BodyMask)
 !-------------------------------------------------------------------
   END SUBROUTINE CalcBoundaryModels
 !-------------------------------------------------------------------
