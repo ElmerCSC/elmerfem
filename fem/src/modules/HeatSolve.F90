@@ -1606,7 +1606,7 @@ CONTAINS
     SUBROUTINE EffectiveHeatCapacity()
       LOGICAL :: Found, Specific, GotFraction
       REAL(KIND=dp), ALLOCATABLE :: dT(:)
-      
+      REAL(KIND=dp) :: dT0
 
 !------------------------------------------------------------------------------
 !     See if temperature gradient indside the element is large enough 
@@ -1674,16 +1674,19 @@ CONTAINS
 ! that have an implemented analytical derivation rule.
 !-----------------------------------------------------------------------------
       CASE( PHASE_SPATIAL_1 )
+
         Work(1:n) = ListGetReal( Material, &
             'Effective Heat Capacity', n,Element % NodeIndexes, Found )
         IF ( .NOT. Found ) THEN
+          dT0 = ListGetCReal( Material,'Enthalpy Temperature Differential',Found )
+          IF(.NOT. Found) dT0 = 1.0d-3
           IF( Specific ) THEN
             Work(1:n) = ListGetDerivValue( Material, &
-                'Specific Enthalpy', n,Element % NodeIndexes )
+                'Specific Enthalpy', n,Element % NodeIndexes, dT0 )
             Work(1:n) = Density(1:n) * Work(1:n)
           ELSE
             Work(1:n) = ListGetDerivValue( Material, &
-                'Enthalpy', n,Element % NodeIndexes )            
+                'Enthalpy', n,Element % NodeIndexes, dT0 )
           END IF
         END IF
 
@@ -1751,6 +1754,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
       END SELECT
+
 !------------------------------------------------------------------------------
     END SUBROUTINE EffectiveHeatCapacity
 !------------------------------------------------------------------------------
