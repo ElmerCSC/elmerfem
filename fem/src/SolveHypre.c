@@ -336,6 +336,7 @@ void STDCALLBULL FC_FUNC(solvehypre,SOLVEHYPRE)
       HYPRE_BoomerAMGSetMaxLevels(solver, hypre_intpara[3]); /* levels of coarsening */
       HYPRE_BoomerAMGSetInterpType(solver, hypre_intpara[4]);  /* interpolation type */
       HYPRE_BoomerAMGSetSmoothType(solver, hypre_intpara[5]);  /* smoother type */
+      HYPRE_BoomerAMGSetCycleType(precond, hypre_intpara[6]);  /* coarsening type */
       HYPRE_BoomerAMGSetTol(solver, *TOL);      /* conv. tolerance */
       HYPRE_BoomerAMGSetMaxIter(solver, *Rounds); /* iteration rounds */
 
@@ -674,6 +675,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_BoomerAMGSetMaxLevels(precond, hypre_intpara[3]); /* levels of coarsening */
      HYPRE_BoomerAMGSetInterpType(precond, hypre_intpara[4]);  /* interpolation type */
      HYPRE_BoomerAMGSetSmoothType(precond, hypre_intpara[5]);  /* smoother type */
+     HYPRE_BoomerAMGSetCycleType(precond, hypre_intpara[6]);  /* coarsening type */
      /* threshold for strong coupling (default 0.25 recommended for 2D Laplace, 0.5-0.6 
 	for 3D Laplace, 0.9 for elasticity) */
      HYPRE_BoomerAMGSetStrongThreshold(precond, hypre_dppara[0]);  	 

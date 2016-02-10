@@ -25,6 +25,8 @@ SET(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake/Modules" ${CMAKE_ROOT}/Module
 
 # Defaults to cache variables
 SET(WITH_MPI TRUE CACHE BOOL "Use MPI parallelization")
+SET(MPI_TEST_MAXPROC 8 CACHE STRING "Maximum number of tasks used in parallel tests")
+SET(MPI_TEST_MINPROC 1 CACHE STRING "Minimum number of tasks used in parallel tests")
 SET(WITH_OpenMP FALSE CACHE BOOL "Use OpenMP thread parallelization")
 SET(WITH_MKL FALSE CACHE BOOL "Use Intel Math Kernel library")
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
@@ -47,12 +49,17 @@ MARK_AS_ADVANCED(ELMER_INSTALL_LIB_DIR)
 
 ENABLE_TESTING()
 
-SET(ELMER_FEM_MAJOR_VERSION 7)
-SET(ELMER_FEM_MINOR_VERSION 0)
+SET(ELMER_FEM_MAJOR_VERSION 8)
+SET(ELMER_FEM_MINOR_VERSION 1)
 SET(ELMER_FEM_VERSION
   ${ELMER_FEM_MAJOR_VERSION}.${ELMER_FEM_MINOR_VERSION})
 
 IF(NOT(ELMER_FEM_REVISION))
+  SET(RESET_ELMER_REVISION TRUE CACHE BOOL "")
+  MARK_AS_ADVANCED(RESET_ELMER_REVISION)
+ENDIF()
+
+IF(RESET_ELMER_REVISION)
   execute_process(
     COMMAND "git" "--no-pager" "log" "-1" "--pretty=format:%h"
     WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
@@ -67,6 +74,8 @@ ENDIF()
 SET(VERSION ${ELMER_FEM_VERSION})
 SET(REVISION ${ELMER_FEM_REVISION})
 SET(CMAKE_POSITION_INDEPENDENT_CODE TRUE)
+STRING(TIMESTAMP ELMER_FEM_COMPILATIONDATE "%Y-%m-%d")
+SET(COMPILATIONDATE ${ELMER_FEM_COMPILATIONDATE})
 
 # Check that the gfortran version is >= 4.8
 IF(${CMAKE_Fortran_COMPILER_ID} MATCHES "GNU")
@@ -119,6 +128,11 @@ IF(WITH_MKL)
   SET(LAPACK_LIBRARIES ${MKL_LAPACK_LIBRARIES} CACHE FILEPATH "")
   IF(MPI_FOUND)
     SET(SCALAPACK_LIBRARIES ${MKL_SCALAPACK_LIBRARIES})
+    # Versions >11.1 of MKL include Cluster PARDISO direct solver
+    IF(WITH_OpenMP AND MKL_CPARDISO_FOUND)
+      SET(HAVE_CPARDISO TRUE)
+      MARK_AS_ADVANCED(HAVE_CPARDISO)
+    ENDIF()
   ENDIF()
   INCLUDE_DIRECTORIES(${MKL_INCLUDE_DIR})
   SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MKL_Fortran_FLAGS}")
@@ -155,7 +169,6 @@ ENDIF()
 IF(Mumps_FOUND)
   SET(HAVE_MUMPS TRUE)
   MARK_AS_ADVANCED(HAVE_MUMPS)
-  INCLUDE_DIRECTORIES(${Mumps_INCLUDE_DIR})
   # LINK_DIRECTORIES(${MUMPS_LIBRARIES})
 ENDIF()
 
@@ -268,19 +281,23 @@ ENDIF(WITH_ELMERGUILOGGER)
 #MESSAGE(STATUS "${enabledFeaturesText}")
 
 # 
+IF(CMAKE_BUILD_TYPE)
+  STRING(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UPCASE)
+  MARK_AS_ADVANCED(CMAKE_BUILD_TYPE_UPCASE)
+ENDIF(CMAKE_BUILD_TYPE)
 
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  BLAS library:   " "${BLAS_LIBRARIES}")
 MESSAGE(STATUS "  LAPACK library: " "${LAPACK_LIBRARIES}")
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  Fortran compiler:        " "${CMAKE_Fortran_COMPILER}")
-MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS}")
+MESSAGE(STATUS "  Fortran flags:           " "${CMAKE_Fortran_FLAGS} ${CMAKE_Fortran_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  C compiler:              " "${CMAKE_C_COMPILER}")
-MESSAGE(STATUS "  C flags:                 " "${CMAKE_C_FLAGS}")
+MESSAGE(STATUS "  C flags:                 " "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
 MESSAGE(STATUS "------------------------------------------------")
 MESSAGE(STATUS "  CXX compiler:            " "${CMAKE_CXX_COMPILER}")
-MESSAGE(STATUS "  CXX flags:               " "${CMAKE_CXX_FLAGS}")
+MESSAGE(STATUS "  CXX flags:               " "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
 MESSAGE(STATUS "------------------------------------------------")
 IF(WITH_MPI)
   MESSAGE(STATUS "  MPI Fortran:             " "${MPI_Fortran_FOUND}")

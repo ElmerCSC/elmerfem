@@ -14,7 +14,7 @@ Simulation
   Timestep Intervals = 10
   Steady State Max Iterations = 1
 
-!  Post File = MGDynamics.vtu
+  Post File = MGDynamics.vtu
   Output Intervals(1) = 1
 End
 
@@ -36,7 +36,7 @@ Material 1
   Electric Conductivity = Real 1
 
   Harmonic Loss Linear Coefficient = Real 1.0
-  Harmonic Loss Quadratic Coefficient = Real 1.0
+  Harmonic Loss Quadratic Coefficient = Real 0.1
 End
 
 Equation 1
@@ -124,8 +124,5 @@ Boundary Condition 3
   P im {e} = Real 0
 End
 
-Solver 2 :: Reference Norm = Real 0.10358902E-03
-Solver 2 :: Reference Norm Tolerance = Real 1e-3
-$fprintf( stderr, "TEST CASE 1\n");
-RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.10358902E-03,EPS=1e-3\n" );
+Solver 2 :: Reference Norm = Real 0.12856155E-03
+Solver 2 :: Reference Norm Tolerance = Real 1e-4

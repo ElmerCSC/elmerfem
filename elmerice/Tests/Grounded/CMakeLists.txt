@@ -1,0 +1,12 @@
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+CONFIGURE_FILE(grounded.sif grounded.sif COPYONLY)
+
+SET(FILE_LISTS ./PROG/bedrock.f90
+		./PROG/fbed.f90)
+ADD_ELMERICETEST_MODULE(Grounded bedrock "${FILE_LISTS}")
+
+FILE(COPY ELMERSOLVER_STARTINFO Cube.grd PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMERICE_TEST(Grounded)
+ADD_ELMERICE_LABEL(Grounded elmerice-fast)

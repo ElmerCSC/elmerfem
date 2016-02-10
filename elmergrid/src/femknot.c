@@ -2484,10 +2484,12 @@ int SetConnectedNodes(struct FemType *data,struct BoundaryType *bound,
 /* Mark node that are related to a boundary condition of a given bctype.
    This may be used to create strong connections in the partitioning process. */
 {
-  int i,j,k,bc,sideelemtype,sidenodes;
+  int i,j,k,bc,sideelemtype,sidenodes,nodesset;
   int sideind[MAXNODESD1],conflicts;
 
   conflicts = 0;
+  nodesset = 0;
+
   for(bc=0;bc<MAXBOUNDARIES;bc++) {    
     if(bound[bc].created == FALSE) continue;
     if(bound[bc].nosides == 0) continue;
@@ -2522,13 +2524,17 @@ int SetConnectedNodes(struct FemType *data,struct BoundaryType *bound,
       
       for(j=0;j<sidenodes;j++) {
 	k = sideind[j];
-	if( data->nodeconnect[k] & data->nodeconnect[k] != connecttype ) { 
-	  conflicts += 1;
+	if( data->nodeconnect[k] != connecttype ) {
+	  if( data->nodeconnect[k] ) conflicts += 1;
+	  data->nodeconnect[k] = connecttype;
+	  nodesset += 1;	  
 	}
-	data->nodeconnect[k] = connecttype;
       }
     }
   }
+  if(info) printf("Setting connectivity group %d for %d nodes on boundary %d\n",
+		  connecttype,nodesset,bctype);
+
   if(conflicts) printf("The were %d conflicts in the connectivity set %d\n",
 		       conflicts,connecttype);
 
@@ -3358,7 +3364,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 /* Unites two meshes for one larger mesh */
 {
   int i,j,k,l,m;
-  int noelements,noknots,nonodes,totcopies,ind;
+  int noelements,noknots,nonodes,totcopies,ind,origdim;
   int **newtopo=NULL,*newmaterial=NULL,*newelementtypes=NULL,maxnodes;
   int maxmaterial,maxtype,ncopy,bndr,nosides;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
@@ -3368,14 +3374,22 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   int *vtypes=NULL,*vmaterial=NULL,*vnormal=NULL,*vdiscont=NULL;
   Real *vareas=NULL; 
   
-  printf("CloneMeshes: copying the mesh to a matrix\n");
+  if(info) printf("CloneMeshes: copying the mesh to a matrix\n");
   if(diffmats) diffmats = 1;
 
+  
+  origdim = data->dim;
   totcopies = 1;
+  if( ncopies[2] > 1 ) {
+    data->dim = 3;
+  }
+  else {
+    ncopies[2] = 1;
+  }
+
   for(i=0;i<data->dim;i++) {
     if(ncopies[i] > 1) totcopies *= ncopies[i];
   }
-  if(data->dim == 2) ncopies[2] = 1;
 
   maxcoord[0] = mincoord[0] = data->x[1];
   maxcoord[1] = mincoord[1] = data->y[1];
@@ -3386,21 +3400,22 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
     if(data->x[i] < mincoord[0]) mincoord[0] = data->x[i]; 
     if(data->y[i] > maxcoord[1]) maxcoord[1] = data->y[i]; 
     if(data->y[i] < mincoord[1]) mincoord[1] = data->y[i]; 
-    if(data->dim > 2) {
+    if(origdim == 3) {
       if(data->z[i] > maxcoord[2]) maxcoord[2] = data->z[i]; 
       if(data->z[i] < mincoord[2]) mincoord[2] = data->z[i]; 
     }
   }
 
-  for(i=0;i<data->dim;i++) {
+  for(i=0;i<origdim;i++) {
     if(maxcoord[i]-mincoord[i] > meshsize[i]) meshsize[i] = maxcoord[i]-mincoord[i];
   }
+  if(info) printf("Meshsize to be copied: %lg %lg %lg\n",meshsize[0],meshsize[1],meshsize[2]);
 
   noknots = totcopies * data->noknots;
   noelements  = totcopies * data->noelements;
   maxnodes = data->maxnodes;
 
-  printf("Copying the mesh to %d identical domains.\n",totcopies);
+  if(info) printf("Copying the mesh to %d identical domains in %d-dim.\n",totcopies);
 
   data->maxnodes = maxnodes;
   newtopo = Imatrix(1,noelements,0,maxnodes-1);
@@ -3415,12 +3430,19 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
     for(k=0;k<ncopies[1];k++) {
       for(j=0;j<ncopies[0];j++) {
 	for(i=1;i<=data->noknots;i++) {
-	  ncopy = j+k*ncopies[0]+k*l*ncopies[1];
+	  ncopy = j+k*ncopies[0]+l*ncopies[0]*ncopies[1];
 	  ind = i + ncopy*data->noknots;
 
 	  newx[ind] = data->x[i] + j*meshsize[0];
 	  newy[ind] = data->y[i] + k*meshsize[1];
-	  if(data->dim == 3) newz[ind] = data->z[i] + l*meshsize[2];
+	  if(data->dim == 3) {
+	    if( origdim == 3 ) {
+	      newz[ind] = data->z[i] + l*meshsize[2];
+	    }
+	    else {
+	      newz[ind] = l * meshsize[2];
+	    }
+	  }
 	}
       }
     }
@@ -3434,7 +3456,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
     for(k=0;k<ncopies[1];k++) {
       for(j=0;j<ncopies[0];j++) {
 	for(i=1;i<=data->noelements;i++) {
-	  ncopy = j+k*ncopies[0]+k*l*ncopies[1];
+	  ncopy = j+k*ncopies[0]+l*ncopies[1]*ncopies[0];
 	  ind =  i + ncopy*data->noelements;
 
 	  newmaterial[ind] = data->material[i] + diffmats*maxmaterial*ncopy;
@@ -3459,9 +3481,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 
     if(!bound[bndr].created) continue;
 
-    printf("bndr=%d\n",bndr);
     nosides = totcopies * bound[bndr].nosides;
-    printf("sides=%d\n",bound[bndr].nosides);
 
     vparent = Ivector(1, nosides);
     vparent2 = Ivector(1, nosides);
@@ -3483,7 +3503,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 	for(j=0;j<ncopies[0];j++) {
 	  for(i=1; i <= bound[bndr].nosides; i++) {
 
-	    ncopy = j+k*ncopies[0]+k*l*ncopies[1];
+	    ncopy = j+k*ncopies[0]+l*ncopies[1]*ncopies[0];
 	    ind = i + ncopy * bound[bndr].nosides;
 	    
 	    vparent[ind] = bound[bndr].parent[i] + ncopy * data->noelements;
@@ -3511,8 +3531,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 	}
       }
     }
-    printf("b3\n");
-
+   
     bound[bndr].nosides = nosides;
     bound[bndr].side = vside;
 
@@ -3530,7 +3549,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   free_Ivector(data->material,1,data->noelements);
   free_Rvector(data->x,1,data->noknots);
   free_Rvector(data->y,1,data->noknots);
-  if(data->dim == 3) free_Rvector(data->z,1,data->noknots);
+  if(origdim == 3) free_Rvector(data->z,1,data->noknots);
 
   data->noelements = noelements;
   data->noknots  = noknots;
@@ -6864,6 +6883,7 @@ void ReduceElementOrder(struct FemType *data,int matmin,int matmax)
     if(material >= matmin && material <= matmax) 
       elemcode2 = 101*(elemcode1/100);
     if(elemcode2 == 505) elemcode2 = 504; /* tetrahedron */
+    if(elemcode2 == 707) elemcode2 = 706; /* prism */
 #if 0
     printf("element=%d  codes=[%d,%d]\n",element,elemcode1,elemcode2);
     printf("mat=%d  interval=[%d,%d]\n",material,matmin,matmax);

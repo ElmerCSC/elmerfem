@@ -1,0 +1,10 @@
+INCLUDE(${TEST_SOURCE}/../test_macros.cmake)
+
+FILE(COPY ${BINARY_DIR}/fem/src/modules/FreeSurfaceSolver${SHLEXT} DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+FILE(RENAME FreeSurfaceSolver${SHLEXT} FreeSurfaceSolver1${SHLEXT})
+
+EXECUTE_PROCESS(COMMAND ${ELMERGRID_BIN} 1 2 mesh.grd)
+
+RUN_ELMERICE_TEST()
+

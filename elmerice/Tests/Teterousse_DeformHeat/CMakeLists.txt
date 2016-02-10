@@ -1,0 +1,10 @@
+INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+
+CONFIGURE_FILE(test.sif test.sif COPYONLY)
+
+ADD_ELMERICETEST_MODULE(Teterousse_DeformHeat USF_TR ./PROG/USF_TR.f90)
+
+FILE(COPY ELMERSOLVER_STARTINFO teterousse.msh PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMERICE_TEST(Teterousse_DeformHeat)
+ADD_ELMERICE_LABEL(Teterousse_DeformHeat elmerice-long)

@@ -1,0 +1,258 @@
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!!                                       !!
+!! Test ISMIP HOM F000 - no sliding      !!
+!!                                       !!
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+check keywords warn
+echo on
+$L = 50.0e3
+$Slope = 3.0 * pi / 180.0
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 1.0
+$A = 2.140373e-01
+$eta = 1.0/(2.0*A)
+
+Header
+  Mesh DB "." "rectangle"
+End
+
+Constants
+! No needed
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Simulation Type ="Transient"
+
+  Extruded Mesh Levels = Integer 16
+
+  Timestepping Method = "bdf"
+  BDF Order = 1
+  Output Intervals = 1
+  Timestep Intervals = 1000  
+  Timestep Sizes = 1.0 
+
+  Steady State Max Iterations = 8
+  Steady State Min Iterations = 1
+  Post File = "ismip_F001_.vtu"
+  max output level = 20 
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! the ice core (3d)
+Body 1
+  Name= "ice body"
+  Equation = 1
+  Body Force = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+! Upper free surface
+Body 2
+  Name= "free surface"
+  Equation = 2
+  Material = 1
+  Body Force = 2
+  Initial Condition = 2
+End
+
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! for ice core
+Initial Condition 1
+ Pressure = 0.0e0
+ Velocity 1 = 0.0e0
+ Velocity 2 = 0.0e0
+ Velocity 3 = 0.0e0
+End
+
+!! for free surface
+Initial Condition 2
+  Zs = Real 0.0  
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+Body Force 1
+  Flow BodyForce 1 = Real $-gravity*sin(Slope)
+  Flow BodyForce 2 = Real 0.0
+  Flow BodyForce 3 = Real $gravity*cos(Slope)
+End
+
+!! accumulation flux in m/year
+Body Force 2
+   Accumulation Flux 1 = Real 0.0e0
+   Accumulation Flux 2 = Real 0.0e0 
+   Accumulation Flux 3 = Real 0.0e0 
+End
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+!! ice material properties in MPa - m - a system 
+Material 1
+  Density = Real $rhoi 
+  Viscosity Model = String "power law"
+  Viscosity = Real $eta                       
+  Viscosity Exponent = Real 1.0               
+  Critical Shear Rate = Real 1.0e-10
+  
+  ! Bed condition
+  Min Zs = Real -1000.0
+  Max Zs = Real +1.0e10
+End
+
+Solver 1  
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 3
+
+  Top Surface Variable Name = String "Zs"
+
+  Mesh Velocity Variable = String "dSdt"
+  Mesh Update Variable = String "dS"
+  Mesh Velocity First Zero = Logical True
+End
+
+Solver 2
+  Equation = "Navier-Stokes"
+  
+  Stabilization Method = String Stabilized
+  Flow Model = Stokes
+
+  Exported Variable 1 = -dofs 1 "dSdt" 
+  Exported Variable 2 = -dofs 1 "dS" 
+
+  Linear System Solver = Iterative      
+  Linear System Iterative Method = BICGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-8
+  Linear System Max Iterations = 500
+
+  Nonlinear System Max Iterations = 1  ! n=1
+  Nonlinear System Convergence Tolerance  = 1.0e-5
+  Nonlinear System Newton After Iterations = 3   
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.00
+    
+  Steady State Convergence Tolerance = Real 1.0e-4
+End
+
+Solver 3
+  Equation = "Free Surface Top"
+  Variable = String "Zs" 
+  Variable DOFs =  1
+  Exported Variable 1 = String "Zs Residual"
+  Exported Variable 1 DOFs = 1
+
+  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1500
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU0
+  Linear System Convergence Tolerance = Real 1.0e-9
+  Linear System Abort Not Converged = False
+  Linear System Residual Output = 1
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance  = 1.0e-6
+  Nonlinear System Relaxation Factor = 1.00
+
+  Steady State Convergence Tolerance = 1.0e-04
+
+  Stabilization Method = Bubbles    
+  Apply Dirichlet = Logical False ! No limiter needed for the upper surface
+
+! How much the free surface is relaxed
+  Relaxation Factor = Real 1.00       
+End
+
+Solver 4
+  Exec Solver =  After TimeStep 
+  Procedure = File "SaveData" "SaveLine"
+  Filename =  "surface_F001.dat"
+  File Append = Logical False
+End
+
+Solver 5
+  Exec Solver =  After TimeStep 
+  Equation = "Save Scalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = "volume_F001.dat"
+  File Append = Logical True 
+  
+  Variable 1 = String "flow solution"
+  Operator 1 = String "Volume"
+
+  Variable 2 = String "dSdt"
+  Operator 2 = String "max abs"
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+Equation 1
+  Active Solvers (4)= 1 2 4 5 
+End
+
+Equation 2
+  Active Solvers (1) = 3
+  Flow Solution Name = String "Flow Solution"
+  Convection = String Computed
+End
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+!!! BC  (y=y0)    
+Boundary Condition 1
+  Target Boundaries = 1
+  Periodic BC = 3 
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Velocity 3  = Logical True
+  Periodic BC Pressure = Logical True
+  Periodic BC Zs  = Logical True
+End
+
+!!! BC (x=xmax) 
+Boundary Condition 2
+  Target Boundaries = 2
+  Periodic BC = 4 
+  Periodic BC Velocity 1  = Logical True
+  Periodic BC Velocity 2  = Logical True
+  Periodic BC Velocity 3  = Logical True
+  Periodic BC Pressure = Logical True
+  Periodic BC Zs  = Logical True
+End
+
+!!! BC (y=ymax)   
+Boundary Condition 3
+  Target Boundaries = 3
+End
+
+!!! BC  (x=x0) 
+Boundary Condition 4
+  Target Boundaries = 4
+End
+
+!!! bedrock
+Boundary Condition 5
+  Flow Force BC = Logical True
+
+  Velocity 1 = 0.0e0
+  Velocity 2 = 0.0e0
+  Velocity 3 = 0.0e0
+  
+  Bottom Surface = Variable Coordinate 1, Coordinate 2
+     Real MATC "-1000.0+100.0*exp(-(tx(0)*tx(0)+tx(1)*tx(1))/1.0e8)"
+End
+
+!!! free surface
+Boundary Condition 6
+  !!! this BC is equal to body no. 2 !!!
+  Body Id = 2
+  Save Line = Logical True
+End 

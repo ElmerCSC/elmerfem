@@ -51,6 +51,11 @@ namespace nglib {
 }
 
 #include <TopoDS_Shape.hxx>
+#include <Standard_Version.hxx>
+
+#if OCC_VERSION_HEX >= 0x060800
+#include <BRepMesh_IncrementalMesh.hxx>
+#endif
 
 class QMenu;
 class QAction;

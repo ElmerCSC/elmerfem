@@ -18,7 +18,7 @@ Body 1 :: Equation = 1
 Body 1 :: Body Force = 1
 
 Body Force 1 :: Source = Real 1
-Equation 1 :: Element="p:4"
+Equation 1 :: Element="p:3"
 Equation 1 :: Active Solvers = 1
 
 Solver 1
@@ -38,7 +38,7 @@ Boundary Condition 1
 End
 
 
-Solver 1 :: Reference Norm = Real 0.10163229
+Solver 1 :: Reference Norm = Real 0.12579221
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 $fprintf( stderr, "END TEST CASE 1: Target NRM=0.10163229\n" );

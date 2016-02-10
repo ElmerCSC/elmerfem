@@ -675,7 +675,6 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     TYPE(Variable_t), POINTER :: Var, SolverVar
 
     LOGICAL :: GotOrder, BlockGS, Found, NS, SkipCompChange
-    TYPE(Varying_string) :: namesp
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 #ifndef USE_ISO_C_BINDINGS
     INTEGER(KIND=AddrInt) :: AddrFunc
@@ -698,8 +697,6 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     Solver => TotMatrix % Solver
     offset => TotMatrix % Offset
     SolverVar => Solver % Variable
-
-    NS = ListGetNameSpace(namesp)
 
 #define SOLSYS
 #ifdef SOLSYS
@@ -785,7 +782,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
         END DO
       END IF
 
-      CALL ListSetNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
+      CALL ListPushNameSpace('block '//TRIM(i2s(i))//TRIM(i2s(i))//':')
       SkipCompChange = ListGetLogical( Params,'Skip Compute Nonlinear Change',Found)
       CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
 
@@ -872,7 +869,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
 #endif
 
 
-    CALL ListSetNameSpace(CHAR(namesp))
+    CALL ListPopNameSpace()
 
     CALL ListAddLogical( Params,'Linear System Refactorize',.FALSE. )
     CALL ListAddLogical( Params,'Skip Compute Nonlinear Change',SkipCompChange)
@@ -963,9 +960,10 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
         
         ! Solving the subsystem
         !-----------------------------------
-        CALL ListSetNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(RowVar))//':')          
+        CALL ListPushNamespace('block '//TRIM(i2s(RowVar))//TRIM(i2s(RowVar))//':')          
         CALL SolveSystem( A, ParMatrix, b, &
             Var % Values, Var % Norm, Var % DOFs, Solver )
+        CALL ListPopNamespace()
         
         Solver % Matrix % RHS => rhs_save
         Solver % Matrix => mat_save
@@ -1010,7 +1008,6 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     INTEGER, POINTER :: Offset(:),poffset(:),BlockStruct(:)
     INTEGER :: i,j,k,l,ia,ib
     LOGICAL :: LS, BlockAV,Found
-    TYPE(Varying_string) :: namesp
 
     Params => Solver % Values
 
@@ -1080,8 +1077,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     precProc = AddrFunc(BlockMatrixPrec)
     mvProc = AddrFunc(BlockMatrixVectorProd)
 
-    LS = ListGetNameSpace(namesp)
-    CALL ListSetNameSpace('outer:')
+    CALL ListPushNameSpace('outer:')
     
     prevXnorm = SQRT( SUM( x**2 ) )
 
@@ -1122,7 +1118,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     CALL ListAddLogical(Params,'Linear System Refactorize',.TRUE.)
     CALL ListAddLogical(Params,'Linear System Free Factorization',.TRUE.)
 
-    CALL ListSetNameSpace(CHAR(namesp))
+    CALL ListPopNamespace()
     Xnorm = SQRT( SUM( x**2) )
     
     MaxChange = 2*ABS(Xnorm-PrevXnorm)/(Xnorm+PrevXnorm)
@@ -1188,7 +1184,6 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     TYPE(Matrix_t), POINTER :: Amat, SaveMatrix
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
-    TYPE(Varying_string) :: namesp
 
     CALL Info('BlockSolver','---------------------------------------',Level=5)
 
@@ -1264,8 +1259,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
     TotNorm = 0.0_dp
     MaxChange = 0.0_dp
     
-    LS = ListGetNameSpace(namesp)
-    CALL ListSetNameSpace('outer:')
+    CALL ListPushNamespace('outer:')
     
     ! The case with one block is mainly for testing and developing features
     ! related to nonlinearity and assembly.
@@ -1289,7 +1283,7 @@ if(c_vv%numberofrows<=0) b_vv%constraintmatrix=>null()
       CALL Info('BlockSolverInt','Using block solution strategy',Level=6)
       CALL BlockStandardIter( Solver, MaxChange )
     END IF
-    CALL ListSetNameSpace('')
+    CALL ListPopNamespace()
 
     ! For legacy matrices do the backmapping 
     !------------------------------------------

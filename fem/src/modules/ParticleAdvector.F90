@@ -84,7 +84,7 @@ SUBROUTINE ParticleAdvector( Model,Solver,dt,TransientSimulation )
   Particles => GlobalParticles
   VisitedTimes = VisitedTimes + 1
 
-  Params => Solver % Values
+  Params => GetSolverParams()
   Mesh => Solver % Mesh
   PSolver => Solver
   DIM = CoordinateSystemDimension()
@@ -408,7 +408,6 @@ CONTAINS
       
       ElementIndex = GetParticleElement( Particles, No )
       IF( ElementIndex == 0 ) THEN
-!PRINT *,'elemindex  = 0'
         Particles % Status(No) = PARTICLE_LOST
         NewLost(1) = NewLost(1) + 1
         CYCLE       
@@ -430,7 +429,6 @@ CONTAINS
       END IF
 
       IF(.NOT. Stat ) THEN
-!	print *,'Particle not in element!',No,Coord
         Particles % Status(No) = PARTICLE_LOST
         NewLost(2) = NewLost(2) + 1
         CYCLE
@@ -469,8 +467,6 @@ CONTAINS
       PRINT *,'New fixed velo particles:',FixedLost
     END IF
 
-!    print *,'NewLost:',NewLost
-
     
   END SUBROUTINE SetParticleVelocities
    
@@ -503,6 +499,9 @@ CONTAINS
     
     
     SAVE :: Visited, PrevNorm, UnitPerm
+
+    CALL Info('ParticleAdvector','Setting the advected fields',Level=10)
+
     
     Mesh => GetMesh()
     dim = Mesh % MeshDim
@@ -516,6 +515,7 @@ CONTAINS
     NoParticles = Particles % NumberOfParticles
     maxdim = 0
 
+
     Parallel = ( ParEnv % PEs > 1 ) 
 
     Initiated = .FALSE.
@@ -527,16 +527,19 @@ CONTAINS
       VariableName = GetString( Params,Name,GotVar)
       IF(.NOT. GotVar ) EXIT
 
+      CALL Info('ParticleAdvector','Setting field for variable: '//TRIM(VariableName),Level=15)
+
       ! Get the target variables
       ! Variables starting with 'particle' as associated with particles
       !----------------------------------------------------------------
       IF( VariableName == 'particle coordinate' .OR. &
           VariableName == 'particle velocity' .OR. &
           VariableName == 'particle force') THEN
+
         dofs = dim 
         InternalVariable = .TRUE.
         maxdim = MAX( dim, maxdim )
-      ELSE IF( VariableName(1:8) == 'particle' ) THEN
+      ELSE IF( SEQL(VariableName, 'particle') ) THEN
         dofs = 1
         InternalVariable = .TRUE.
         maxdim = MAX( 1, maxdim )
@@ -566,6 +569,7 @@ CONTAINS
 
       WRITE (Name,'(A,I0)') 'Operator ',NoVar
       OperName = GetString( Params,Name,GotOper)
+
       IF( GotOper ) THEN
         IF( OperName == 'difference' ) THEN
           Difference = .TRUE.
@@ -579,6 +583,8 @@ CONTAINS
       ELSE
         OperName = 'adv'
       END IF
+
+      CALL Info('ParticleAdvector','Using operator for variable: '//TRIM(OperName),Level=15)
       
       WRITE (Name,'(A,I0)') 'Result Variable ',NoVar
       ResultName = GetString( Params,Name,GotRes)
@@ -586,10 +592,12 @@ CONTAINS
         ResultName = TRIM(OperName)//' '//TRIM(VariableName)
       END IF
 
+
       ! Create variables if they do not exist
       !---------------------------------------------------------      
       ResultVar => VariableGet( Mesh % Variables, TRIM(ResultName) )
       IF( .NOT. ASSOCIATED(ResultVar)) THEN
+
         IF( InternalVariable ) THEN
           UsePerm = .FALSE.
         ELSE
@@ -622,11 +630,12 @@ CONTAINS
         ResultVar => VariableGet( Mesh % Variables, TRIM(ResultName))
         IF(.NOT. ASSOCIATED(ResultVar)) CALL Fatal('ParticleAdvector','Problems in VariableAdd')
       END IF
-      
 
       ! Finally, set the values
       !---------------------------------------------------------      
       IF( InternalVariable ) THEN
+        CALL Info('ParticleAdvector','Setting particle variable to fields',Level=15)
+
         IF( VariableName == 'particle coordinate') THEN
           IF( ResultVar % Dofs /= dim ) THEN
             CALL Fatal('ParticleAdvector','Variable should have dim dofs: '//TRIM(VariableName))
@@ -678,16 +687,19 @@ CONTAINS
             NewValues(i) = 1.0_dp * Particles % Status(i)
           END DO
           
-        ELSE IF( VariableName(1:8) == 'particle' ) THEN
+        ELSE IF( SEQL(VariableName, 'particle') ) THEN
           ParticleVar => ParticleVariableGet( Particles, VariableName )
           IF( ASSOCIATED( ParticleVar ) ) THEN
-            NewValues = ParticleVar % Values
+             !if ( SIZE(NewValues) /= SIZE(ParticleVar % Values) ) PRINT*,PARENV % MYPE, 'AAAAAAAAA*****BBBBB: ', &
+             !size(newvalues), size(particlevar % values), noparticles, particles % numberofparticles
+            NewValues = ParticleVar % Values(1:SIZE(NewValues))
           ELSE
             CALL Warn('ParticleAdvector','Field does not exist: '//TRIM(VariableName))
           END IF
         END IF
         
       ELSE 
+        CALL Info('ParticleAdvector','Setting field variable to advected fields',Level=15)
 
         DO i = 1, NoParticles
           Status = GetParticleStatus( Particles, i )
@@ -724,6 +736,7 @@ CONTAINS
       ! different partitions to nodes. 
       !---------------------------------------------------------------------
       IF( Parallel ) THEN
+        NodeValues = 0._dp
         CALL ParticleAdvectParallel( Particles, NewValues, NodeValues, dofs )
       END IF
 
@@ -766,9 +779,9 @@ CONTAINS
       END IF
     END DO
 
-
     ! Allocate the local new temporal values
     IF(.NOT. Initiated ) THEN
+      CALL Info('ParticleAdvector','Allocating for temporal value vectors',Level=15)
       NoVar = NoVar - 1
       IF( NoVar < 1 ) THEN
         CALL Fatal('ParticleAdvector','No target and result variables exist!')
@@ -822,7 +835,7 @@ SUBROUTINE ParticleAdvector_Init( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found
   INTEGER :: NormInd
 
-  Params => Solver % Values
+  Params => GetSolverParams()
 
   ! These are default setting that make the operation of the advection solver 
   ! possible. There should always be one passive particle for each active node.

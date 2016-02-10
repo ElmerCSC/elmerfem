@@ -1,0 +1,155 @@
+!--------------------------------------------------
+! Test ISMIP HOM A (L=10km) solved with ParStokes
+! using Q2-Q1 approximation
+!-------------------------------------------------
+
+check keywords warn
+
+$yearinsec = 365.25*24*60*60
+$rhoi = 900.0/(1.0e6*yearinsec^2)   
+$gravity = -9.81*yearinsec^2
+$n = 3.0
+$eta = (2.0*100.0)^(-1.0/n)
+
+Header
+  Mesh DB "." "Mesh"
+End
+
+Constants
+! No constant needed
+End
+
+Simulation
+  Coordinate System  = Cartesian 3D 
+  Coordinate Mapping(3) = Integer 1 2 3
+  Simulation Type = Steady State
+  Output Intervals = 1
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+!  Post File = "ismip_A010_.vtu"
+  Max Output Level = 6
+End
+
+! the ice core (3d)
+Body 1
+  Equation = 1
+  Body Force = 1
+  Material = 1
+End
+
+Body Force 1
+  Flow BodyForce 1 = Real 0.0                          
+  Flow BodyForce 2 = Real 0.0                          
+  Flow BodyForce 3 = Real $gravity
+End
+
+
+! Ice material properties in MPa - m - a system:
+!------------------------------------------------ 
+Material 1
+  Density = Real $rhoi 
+  Viscosity Model = String "power law"
+  Viscosity = Real $eta                       
+  Viscosity Exponent = Real $1.0/n                
+  Critical Shear Rate = Real 5.0e-7
+End
+
+Solver 1
+  Equation = "Velocity Preconditioning"
+  Procedure = "VelocityPrecond" "VelocityPrecond"
+  Variable = "V"
+  Variable Dofs = 3
+  Linear System Row Equilibration = True
+End
+
+Solver 2
+  Equation = "Pressure Preconditioning"
+  Procedure = "PressurePrecond" "PressurePrecond"
+  Variable = "P"
+  Variable Dofs = 1
+  Linear System Row Equilibration = True
+End
+
+Solver 3
+  Equation = "Stokes eqs"
+  Procedure = "ParStokes" "StokesSolver"  
+  Variable = FlowVar	
+  Variable DOFs = 4
+  P2-P1 Approximation = Logical True
+
+  Block Preconditioning = Logical True
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Adaptive Tolerance = Logical True
+  Linear System Base Tolerance = Real 1.0e-3
+  Linear System Relative Tolerance = Real 1.0e-1
+
+  Nonlinear System Convergence Tolerance = 1.0e-5
+  Nonlinear System Newton After Tolerance = 5.0e-03
+  Nonlinear System Max Iterations = 50
+
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+
+!BC at y=y0
+Boundary Condition 1
+  Target Boundaries = 1
+  Periodic BC = 3 
+  Periodic BC FlowVar 1 = Logical True
+  Periodic BC FlowVar 2 = Logical True
+  Periodic BC FlowVar 3 = Logical True
+  Periodic BC V 1 = Logical True
+  Periodic BC V 2 = Logical True
+  Periodic BC V 3 = Logical True
+End
+
+! BC at x=x0:
+!-------------------
+Boundary Condition 2
+  Target Boundaries = 4
+  Periodic BC = 4
+!  Periodic BC Translate(3) = -1.0e+4 0.0 87.268680336183394
+  Periodic BC FlowVar 1 = Logical True
+  Periodic BC FlowVar 2 = Logical True
+  Periodic BC FlowVar 3 = Logical True
+  Periodic BC V 1 = Logical True
+  Periodic BC V 2 = Logical True
+  Periodic BC V 3 = Logical True
+End
+
+! BC at y=ymax:
+!-------------------  
+Boundary Condition 3
+  Target Boundaries = 3
+End
+
+! BC at x=xmax:
+!-------------------
+Boundary Condition 4
+  Target Boundaries = 2
+End
+
+! Bedrock:
+!-------------------
+Boundary Condition 5
+  Target Boundaries = 5
+  FlowVar 1 = Real 0.0e0
+  FlowVar 2 = Real 0.0e0
+  FlowVar 3 = Real 0.0e0
+  V 1 = Real 0.0e0
+  V 2 = Real 0.0e0
+  V 3 = Real 0.0e0
+End
+
+! Free surface:
+!----------------------
+Boundary Condition 6
+  Target Boundaries = 6
+End 
+
+Solver 3 :: Reference Norm = Real 8.9076121
+Solver 3 :: Reference Norm Tolerance = Real 1.0E-6

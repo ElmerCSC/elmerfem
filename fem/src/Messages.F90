@@ -49,6 +49,7 @@ MODULE Messages
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
    LOGICAL :: OutputLevelMask(0:31) = (/ (.TRUE.,i=1,32) /)
    INTEGER :: MaxOutputLevel=32, MinOutputLevel=0, OutputPE = 0
+   INTEGER :: MaxOutputPE = 0, MinOutputPE = 0
 
 CONTAINS
 
@@ -70,7 +71,7 @@ CONTAINS
 
 !-----------------------------------------------------------------------
 
-     IF ( OutputPE /= 0 ) RETURN
+     IF ( OutputPE < 0 ) RETURN
 
      IF ( PRESENT( Level ) ) THEN
        IF ( .NOT. OutputLevelMask(Level) ) RETURN
@@ -83,13 +84,21 @@ CONTAINS
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
-     IF ( OutputPrefix .AND. .NOT. nadv1 ) THEN
-        WRITE( *,'(A)', ADVANCE = 'NO' ) 'INFO:: '
+     IF(.NOT. nadv1 ) THEN
+       IF ( OutputPrefix ) THEN
+         WRITE( *,'(A)', ADVANCE = 'NO' ) 'INFO:: '
+       END IF
+
+       IF ( OutputCaller ) THEN
+         WRITE( *,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
+       END IF
+
+       ! If there are several partitions to be saved than plot the partition too
+       IF ( MaxOutputPE > 0 ) THEN
+         WRITE( *,'(A,I0,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': '
+       END IF
      END IF
 
-     IF ( OutputCaller .AND. .NOT. nadv1 ) THEN
-        WRITE( *,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
-     END IF
 
      IF ( nadv ) THEN
         WRITE( *,'(A)', ADVANCE = 'NO' )  TRIM(String)

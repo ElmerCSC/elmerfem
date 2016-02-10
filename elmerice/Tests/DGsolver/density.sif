@@ -22,7 +22,7 @@ Simulation
   Initialize Dirichlet Conditions = Logical True 
   
   Post File   = "test_dgsolver.vtu"
-  max output level = 100
+  max output level = 4
 End  
 
 Constants
@@ -218,3 +218,9 @@ Boundary Condition 3
    Normal-Tangential Porous = Logical True
    Porous 1 = Real 0.0
 End
+
+Solver 5 :: Reference Norm = Real 0.63603285
+Solver 5 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=0.63603285,EPS=1E-06\n" );

@@ -2,7 +2,15 @@ Test case based on ISMIP-HOM set-up
 solve the stokes and thickness evolution equations
 
 To run the test:
-> ./RunTest
+	ElmerGrid 1 2 cube.grd
+	ElmerSolver NS_3D.sif
 
 
 For other examples with the thickness solver look in Test_SSA
+
+Results established:
+------------------
+19.03.2015
+Laure Tavard,LGGE
+Froggy cluster (CIMENT: Grenoble University HPC centre)
+Revision 58f71b4

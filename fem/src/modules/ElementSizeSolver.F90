@@ -33,7 +33,7 @@ SUBROUTINE ElementSizeSolver( Model,Solver,dt,TransientSimulation )
   CALL Info('ElementSizeSolver','Computing nodal element size indicator')
 
   Mesh => GetMesh()
-  Params => Solver % Values
+  Params => GetSolverParams()
 
 
   ! Allocate some storage

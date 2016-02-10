@@ -115,6 +115,16 @@ MODULE Lists
    END INTERFACE
 
    INTERFACE
+     SUBROUTINE ExecRealVectorFunction( Proc,Md,Node,T,F )
+       USE Types
+       INTEGER(KIND=AddrInt) :: Proc
+       TYPE(Model_t) :: Md
+       INTEGER :: Node,n1,n2
+       REAL(KIND=dp) :: T(*), F(:)
+     END SUBROUTINE ExecRealVectorFunction
+   END INTERFACE
+
+   INTERFACE
      FUNCTION ExecConstRealFunction( Proc,Md,x,y,z ) RESULT(dbl)
        USE Types
 
@@ -129,8 +139,23 @@ MODULE Lists
      END FUNCTION ExecConstRealFunction
    END INTERFACE
 #endif
-   TYPE(Varying_string), SAVE, PRIVATE :: Namespace
+
+   TYPE String_stack_t
+      TYPE(Varying_string) :: Name
+      TYPE(String_stack_t), POINTER :: Next => Null()
+   END TYPE String_stack_t
+
+   CHARACTER(:), ALLOCATABLE, SAVE, PRIVATE :: Namespace
    !$OMP THREADPRIVATE(NameSpace)
+
+   TYPE(String_stack_t), SAVE, PRIVATE, POINTER :: Namespace_stack => Null()
+   !$OMP THREADPRIVATE(NameSpace_stack)
+
+   CHARACTER(:), ALLOCATABLE, SAVE, PRIVATE :: ActiveListName
+   !$OMP THREADPRIVATE(ActiveListName)
+
+   TYPE(String_stack_t), SAVE, PRIVATE, POINTER :: Activename_stack => Null()
+   !$OMP THREADPRIVATE(Activename_stack)
 
    TYPE(ValueList_t), POINTER, SAVE, PRIVATE  :: TimerList => NULL()
    LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerResults
@@ -569,7 +594,7 @@ CONTAINS
       ptr % SteadyConverged = -1    
 
       IF ( PRESENT( Secondary ) ) THEN
-        PRINT *,'Secondary:',TRIM(name)
+        IF(Secondary) PRINT *,'Secondary:',TRIM(name)
         ptr % Secondary = Secondary
       END IF
 
@@ -680,6 +705,11 @@ CONTAINS
 
     Var => VariableList
     DO WHILE( ASSOCIATED( Var ) )
+       IF ( Var % Secondary ) THEN
+         Var => Var % Next
+         CYCLE
+       END IF
+
        IF ( Var % DOFs > 1 ) THEN
          IF ( ASSOCIATED( Var % Values ) ) &
             DEALLOCATE( Var % Values )
@@ -726,36 +756,39 @@ CONTAINS
     
     IMPLICIT NONE
 !-----------------------------------------------
-    TYPE(Variable_t), POINTER :: Variables, Var, Prev, RmVar
+    TYPE(Variable_t), POINTER :: Variables
     CHARACTER(LEN=*) :: NameIn
-    CHARACTER(LEN=MAX_NAME_LEN) :: Name
 !-----------------------------------------------    
+    TYPE(Variable_t), POINTER :: Var, Prev, RmVar
+    CHARACTER(LEN=LEN_TRIM(NameIn)) :: Name
     LOGICAL :: GotIt
-    INTEGER :: dummyInt
+    INTEGER :: k
 
     GotIt = .FALSE.
 
     Var => Variables
     Prev => NULL()
-    dummyInt = StringToLowerCase(Name, NameIn,.TRUE.)
+    k = StringToLowerCase(Name, NameIn,.TRUE.)
 
-    WRITE(Message,'(a,a)') "Removing variable: ",Name
+    WRITE(Message,'(a,a)') "Removing variable: ",Name(1:k)
     CALL Info("VariableRemove",Message, Level=10)
 
     !Find variable by name, and hook up % Next appropriately
     DO WHILE(ASSOCIATED(Var))
-       IF(TRIM(Var % Name) == TRIM(Name)) THEN
-          GotIt = .TRUE.
-          RmVar => Var
-          IF(ASSOCIATED(Prev)) THEN
-             !Link up variables either side of removed var
-             Prev % Next => Var % Next
-          ELSE
-             !If this was the first variable, we point Variables
-             !at the next one...
-             Variables => Var % Next
+       IF( Var % NameLen == k ) THEN
+          IF(Var % Name(1:k) == Name(1:k)) THEN
+             GotIt = .TRUE.
+             RmVar => Var
+             IF(ASSOCIATED(Prev)) THEN
+                !Link up variables either side of removed var
+                Prev % Next => Var % Next
+             ELSE
+                !If this was the first variable, we point Variables
+                !at the next one...
+                Variables => Var % Next
+             END IF
+             EXIT
           END IF
-          EXIT
        END IF
        Prev => Var
        Var => Prev % Next
@@ -861,13 +894,14 @@ CONTAINS
 !------------------------------------------------------------------------------
        INTERFACE
          SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm)
            USE Types
            TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
            TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
            LOGICAL, OPTIONAL :: UseQuadrantTree,FoundNodes(:)
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+           INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 
@@ -894,12 +928,13 @@ CONTAINS
 !> If it not to be found in the current mesh, interpolation between
 !> meshes is automatically requested for.
 !------------------------------------------------------------------------------
-    RECURSIVE FUNCTION VariableGet( Variables, Name, ThisOnly, MaskName ) RESULT(Var)
+    RECURSIVE FUNCTION VariableGet( Variables, Name, ThisOnly, MaskName, UnfoundFatal ) RESULT(Var)
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Variables
       CHARACTER(LEN=*) :: Name
       LOGICAL, OPTIONAL :: ThisOnly
       CHARACTER(LEN=*),OPTIONAL :: MaskName
+      LOGICAL, OPTIONAL :: UnfoundFatal
 !------------------------------------------------------------------------------
       TYPE(Mesh_t), POINTER :: Mesh
       TYPE(Projector_t), POINTER :: Projector
@@ -917,11 +952,12 @@ CONTAINS
 !------------------------------------------------------------------------------
       INTERFACE
         SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName )
+            NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
           USE Types
           TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
           TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
           LOGICAL, OPTIONAL :: UseQuadrantTree
+          LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
           CHARACTER(LEN=*),OPTIONAL :: MaskName
           TYPE(Projector_t), POINTER, OPTIONAL :: Projector
         END SUBROUTINE InterpolateMeshToMesh
@@ -947,9 +983,18 @@ CONTAINS
       END DO
       Var => Tmp
 
+
 !------------------------------------------------------------------------------
       IF ( PRESENT(ThisOnly) ) THEN
-         IF ( ThisOnly ) RETURN
+         IF ( ThisOnly ) THEN
+            IF ( PRESENT(UnfoundFatal) ) THEN
+               IF ( UnfoundFatal ) THEN
+                  WRITE(Message,'(A,A)') "Failed to find variable ",Name
+                  CALL Fatal("VariableGet",Message)
+               END IF
+            END IF
+            RETURN
+         END IF
       END IF
 
 !------------------------------------------------------------------------------
@@ -968,7 +1013,15 @@ CONTAINS
         Mesh => Mesh % Next
       END DO
 
-      IF ( .NOT.ASSOCIATED( PVar ) ) RETURN
+      IF ( .NOT.ASSOCIATED( PVar ) ) THEN
+         IF ( PRESENT(UnfoundFatal) ) THEN
+            IF ( UnfoundFatal ) THEN
+               WRITE(Message,'(A,A)') "Failed to find or interpolate variable ",Name
+               CALL Fatal("VariableGet",Message)
+            END IF
+         END IF
+         RETURN
+      END IF
 
 !------------------------------------------------------------------------------
 
@@ -1193,11 +1246,46 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+ FUNCTION ListHead(list) RESULT(head)
+!------------------------------------------------------------------------------
+   TYPE(ValueList_t) :: List
+   TYPE(ValueListEntry_t), POINTER :: Head
+!------------------------------------------------------------------------------
+   head => List % Head
+!------------------------------------------------------------------------------
+ END FUNCTION ListHead
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+ FUNCTION ListEmpty(list) RESULT(l)
+!------------------------------------------------------------------------------
+    LOGICAL :: L
+    TYPE(ValueList_t) :: list
+!------------------------------------------------------------------------------
+    L = .NOT.ASSOCIATED(list % head)
+!------------------------------------------------------------------------------
+ END FUNCTION ListEmpty
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> Allocates a new value list.
 !------------------------------------------------------------------------------
   FUNCTION ListAllocate() RESULT(ptr)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: ptr
+     ALLOCATE( ptr )
+     ptr % Head => Null()
+!------------------------------------------------------------------------------
+  END FUNCTION ListAllocate
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Allocates a new value list.
+!------------------------------------------------------------------------------
+  FUNCTION ListEntryAllocate() RESULT(ptr)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
 
      ALLOCATE( ptr )
      ptr % PROCEDURE = 0
@@ -1207,12 +1295,13 @@ CONTAINS
      ptr % CValue = ' '
      ptr % LValue = .FALSE.
      NULLIFY( ptr % CubicCoeff )
+     NULLIFY( ptr % Cumulative )
      NULLIFY( ptr % Next )
      NULLIFY( ptr % FValues )
      NULLIFY( ptr % TValues )
      NULLIFY( ptr % IValues )
 !------------------------------------------------------------------------------
-  END FUNCTION ListAllocate
+  END FUNCTION ListEntryAllocate
 !------------------------------------------------------------------------------
 
 
@@ -1221,9 +1310,10 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ListDelete( ptr )
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 
      IF ( ASSOCIATED(ptr % CubicCoeff) ) DEALLOCATE(ptr % CubicCoeff)
+     IF ( ASSOCIATED(ptr % Cumulative) ) DEALLOCATE(ptr % Cumulative)
      IF ( ASSOCIATED(ptr % FValues) ) DEALLOCATE(ptr % FValues)
      IF ( ASSOCIATED(ptr % TValues) ) DEALLOCATE(ptr % TValues)
      IF ( ASSOCIATED(ptr % IValues) ) DEALLOCATE(ptr % IValues)
@@ -1238,23 +1328,23 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ListRemove( List, Name )
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List
-     CHARACTER(LEN=*) :: Name
+     TYPE(ValueList_t) :: List
+     CHARACTER(LEN=*)  :: Name
 !------------------------------------------------------------------------------
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k
      LOGICAL :: Found
-     TYPE(ValueList_t), POINTER :: ptr, prev
+     TYPE(ValueListEntry_t), POINTER :: ptr, prev
 !------------------------------------------------------------------------------
-     IF ( ASSOCIATED(List) ) THEN
+     IF ( ASSOCIATED(List % Head) ) THEN
        k = StringToLowerCase( str,Name,.TRUE. )
-       ptr  => List
+       ptr  => List % Head
        Prev => ptr
        DO WHILE( ASSOCIATED(ptr) )
          IF ( ptr % NameLen == k .AND. ptr % Name(1:k) == str(1:k) ) THEN
-            IF ( ASSOCIATED(ptr,List) ) THEN
-               List => ptr % Next
-               Prev => List
+            IF ( ASSOCIATED(ptr,List % Head) ) THEN
+               List % Head => ptr % Next
+               Prev => List % Head
             ELSE
                Prev % Next => ptr % Next
             END IF
@@ -1277,22 +1367,24 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION ListAdd( List, Name ) RESULT(NEW)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: List, NEW
+     TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
+     TYPE(ValueListEntry_t), POINTER :: new
 !------------------------------------------------------------------------------
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k
      LOGICAL :: Found
-     TYPE(ValueList_t), POINTER :: ptr, prev
+     TYPE(ValueListEntry_t), POINTER :: ptr, prev
 !------------------------------------------------------------------------------
      Prev => NULL()
      Found = .FALSE.
 
-     NEW => ListAllocate()
+     IF(.NOT.ASSOCIATED(List)) List => ListAllocate()
+     New => ListEntryAllocate()
 
-     IF ( ASSOCIATED(List) ) THEN
+     IF ( ASSOCIATED(List % Head) ) THEN
        k = StringToLowerCase( str,Name,.TRUE. )
-       ptr  => List
+       ptr  => List % Head
        NULLIFY( prev )
        DO WHILE( ASSOCIATED(ptr) )
          IF ( ptr % NameLen == k .AND. ptr % Name(1:k) == str(1:k) ) THEN
@@ -1305,23 +1397,23 @@ CONTAINS
        END DO
 
        IF ( Found ) THEN
-         NEW % Next => ptr % Next
+         New % Next => ptr % Next
          IF ( ASSOCIATED( prev ) ) THEN
-           Prev % Next => NEW
+           Prev % Next => New
          ELSE
-           List => NEW
+           List % Head => New
          END IF
          CALL ListDelete( Ptr )
        ELSE
          IF ( ASSOCIATED(prev) ) THEN
            prev % next => NEW
          ELSE
-           NEW % Next => List % Next
-           List % Next => NEW
+           NEW % Next => List % Head % Next
+           List % Head % Next => NEW
          END IF
        END IF
      ELSE
-       List => NEW
+       List % Head => NEW
      END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListAdd
@@ -1336,7 +1428,12 @@ CONTAINS
 !------------------------------------------------------------------------------
      CHARACTER(LEN=*) :: str
 !------------------------------------------------------------------------------
-     NameSpace = str
+     CHARACTER(LEN=LEN_TRIM(str)) :: str_lcase
+!------------------------------------------------------------------------------
+     INTEGER :: n
+!------------------------------------------------------------------------------
+     n = StringToLowerCase( str_lcase,str,.TRUE. )
+     NameSpace = str_lcase
 !------------------------------------------------------------------------------
    END SUBROUTINE ListSetNamespace
 !------------------------------------------------------------------------------
@@ -1347,7 +1444,7 @@ CONTAINS
    FUNCTION ListGetNamespace(str) RESULT(l)
 !------------------------------------------------------------------------------
     LOGICAL :: l 
-    TYPE(Varying_string) :: str
+    CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
     l = .FALSE.
     IF ( Namespace /= '' ) THEN
@@ -1359,26 +1456,110 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+   SUBROUTINE ListPushNamespace(str)
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: str
+!------------------------------------------------------------------------------
+     LOGICAL :: L
+     CHARACTER(:), ALLOCATABLE :: tstr
+     TYPE(String_stack_t), POINTER :: stack
+!------------------------------------------------------------------------------
+     ALLOCATE(stack)
+     L = ListGetNameSpace(tstr)
+     IF(ALLOCATED(tstr)) THEN
+       stack % name = tstr
+     ELSE
+       stack % name = ''
+     END IF
+     stack % next => Namespace_stack
+     Namespace_stack => stack
+     CALL ListSetNamespace(str)
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListPushNamespace
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE ListPopNamespace()
+!------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
+!------------------------------------------------------------------------------
+     IF(ASSOCIATED(Namespace_stack)) THEN
+       Namespace = Namespace_stack % name
+       stack => Namespace_stack
+       Namespace_stack => stack % Next
+       DEALLOCATE(stack)
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListPopNamespace
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE ListPushActivename(str)
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: str
+!------------------------------------------------------------------------------
+     LOGICAL :: L
+     TYPE(String_stack_t), POINTER :: stack
+!------------------------------------------------------------------------------
+     ALLOCATE(stack)
+     stack % name = ListGetActiveName()
+     stack % next => Activename_stack
+     Activename_stack => stack
+     ActiveListName = str
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListPushActiveName
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   SUBROUTINE ListPopActiveName()
+!------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
+!------------------------------------------------------------------------------
+     IF(ASSOCIATED(Activename_stack)) THEN
+       ActiveListName = Activename_stack % name
+       stack => Activename_stack
+       Activename_stack => stack % Next
+       DEALLOCATE(stack)
+     END IF
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListPopActiveName
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   FUNCTION ListGetActiveName() RESULT(str)
+!------------------------------------------------------------------------------
+    CHARACTER(:), ALLOCATABLE :: str
+!------------------------------------------------------------------------------
+    str = ActiveListName
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetActiveName
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
 !------------------------------------------------------------------------------
    FUNCTION ListFind( list, name, Found) RESULT(ptr)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: list, ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
+     CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n
 
+     IF(PRESENT(Found)) Found = .FALSE.
+     ptr => NULL()
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
      k = StringToLowerCase( str,Name,.TRUE. )
 
-     ptr => NULL()
      IF ( ListGetNamespace(strn) ) THEN
        strn = strn //' '//str(1:k)
        k1 = LEN(strn)
-       ptr => List
+       ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
           n = ptr % NameLen
           IF ( n==k1 ) THEN
@@ -1389,7 +1570,7 @@ CONTAINS
      END IF
 
      IF ( .NOT. ASSOCIATED(ptr) ) THEN
-       Ptr => List
+       Ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
          n = ptr % NameLen
          IF ( n==k ) THEN
@@ -1418,22 +1599,24 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION ListFindPrefix( list, name, Found) RESULT(ptr)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: list, ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
+     CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
 
-     k = StringToLowerCase( str,Name,.TRUE. )
-     
      ptr => NULL()
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
+     k = StringToLowerCase( str,Name,.TRUE. )
      IF ( ListGetNamespace(strn) ) THEN
        strn = strn //' '//str(1:k)
        k1 = LEN(strn)
-       ptr => List
+       ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
           n = ptr % NameLen
           IF ( n >= k1 ) THEN
@@ -1444,7 +1627,7 @@ CONTAINS
      END IF
 
      IF ( .NOT. ASSOCIATED(ptr) ) THEN
-       Ptr => List
+       Ptr => List % Head
        DO WHILE( ASSOCIATED(ptr) )
          n = ptr % NameLen
          IF ( n >= k ) THEN
@@ -1473,18 +1656,20 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION ListFindSuffix( list, name, Found) RESULT(ptr)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: list, ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(Varying_string) :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
      INTEGER :: k, k1, n, m
 
-     k = StringToLowerCase( str,Name,.TRUE. )
+     ptr => Null()
+     IF(.NOT.ASSOCIATED(List)) RETURN
      
-     Ptr => List
+     k = StringToLowerCase( str,Name,.TRUE. )
+     Ptr => List % Head
      DO WHILE( ASSOCIATED(ptr) )
        n = ptr % NameLen
        IF ( n >= k ) THEN
@@ -1506,6 +1691,24 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+!------------------------------------------------------------------------------
+!> Check if the suffix exists in the list.
+!------------------------------------------------------------------------------
+   FUNCTION ListCheckSuffix( List, Name ) RESULT(Found)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL :: Found
+     TYPE(ValuelistEntry_t), POINTER :: ptr
+     
+     ptr => ListFindSuffix( List, Name, Found )
+!------------------------------------------------------------------------------
+   END FUNCTION ListCheckSuffix
+!------------------------------------------------------------------------------
+  
+
+
 !------------------------------------------------------------------------------
 !> Check if the keyword is with the given suffix is present in any boundary condition.
 !------------------------------------------------------------------------------
@@ -1515,7 +1718,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: bc
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO bc = 1,Model % NumberOfBCs
@@ -1535,7 +1738,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: body_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO body_id = 1,Model % NumberOfBodies
@@ -1555,7 +1758,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: mat_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO mat_id = 1,Model % NumberOfMaterials
@@ -1575,7 +1778,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: bf_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO bf_id = 1,Model % NumberOfBodyForces
@@ -1586,30 +1789,115 @@ CONTAINS
    END FUNCTION ListCheckSuffixAnyBodyForce
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Finds an entry related to vector keyword of type "name" or "name i", i=1,2,3.
+!> This could save time since it will detect at one sweep whether the keyword
+!> for a vector is given, and whether it is componentwise or not. 
+!> There is a caveat since currently the "i" is not checked and possibly 
+!> the user could mix the formats and the chosen one would be random.  
+!------------------------------------------------------------------------------
+   FUNCTION ListFindVectorPrefix( list, name, ComponentWise,Found ) RESULT(ptr)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
+     CHARACTER(LEN=*) :: name
+     LOGICAL :: ComponentWise
+     LOGICAL, OPTIONAL :: Found
+!------------------------------------------------------------------------------
+     CHARACTER(:), ALLOCATABLE :: strn
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+!------------------------------------------------------------------------------
+     INTEGER :: k, k1, n, m
 
+     ptr => NULL()
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+
+     IF ( ListGetNamespace(strn) ) THEN
+       strn = strn //' '//str(1:k)
+       k1 = LEN(strn)
+       ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+          n = ptr % NameLen
+          IF ( n == k1 ) THEN
+            IF ( ptr % Name(1:k1) == strn ) THEN
+              ComponentWise = .FALSE.
+              EXIT
+            END IF
+          ELSE IF( n == k1 + 2 ) THEN
+            IF ( ptr % Name(1:k1+1) == strn//' ' ) THEN
+              ComponentWise = .TRUE.
+              EXIT
+            END IF
+          END IF
+          ptr => ptr % Next
+       END DO
+     END IF
+
+     IF ( .NOT. ASSOCIATED(ptr) ) THEN
+       Ptr => List % Head
+       DO WHILE( ASSOCIATED(ptr) )
+         n = ptr % NameLen
+         IF ( n == k ) THEN
+           IF ( ptr % Name(1:k) == str(1:k) ) THEN
+             ComponentWise = .FALSE.
+             EXIT
+           END IF
+         ELSE IF( n == k + 2 ) THEN
+           IF ( ptr % Name(1:k+1) == str(1:k)//' ' ) THEN
+             ComponentWise = .TRUE.
+             EXIT
+           END IF
+         END IF
+         ptr => ptr % Next
+       END DO
+     END IF
+
+     IF ( PRESENT(Found) ) THEN
+       Found = ASSOCIATED(ptr)
+     ELSE IF (.NOT.ASSOCIATED(ptr) ) THEN
+       CALL Warn( 'ListFindVectorPrefix', ' ' )
+       WRITE(Message,*) 'Requested vector prefix: ', '[',TRIM(Name),'], not found'
+       CALL Warn( 'ListFindVectorPrefix', Message )
+       CALL Warn( 'ListFindVectorPrefix', ' ' )
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ListFindVectorPrefix
+!------------------------------------------------------------------------------
+
+
+
+!------------------------------------------------------------------------------
+!> Finds a keyword with the given basename and normalizes it with a 
+!> constant coefficients for all future request of the keyword.
+!------------------------------------------------------------------------------
    SUBROUTINE ListSetCoefficients( list, name, coeff )
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: list
      CHARACTER(LEN=*) :: name
      REAL(KIND=dp) :: coeff
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr, ptr2
-     TYPE(Varying_string) :: strn
+     TYPE(ValueListEntry_t), POINTER :: ptr, ptr2
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
      INTEGER :: k, k1, n, n2, m
 
+     IF(.NOT.ASSOCIATED(List)) RETURN
+
      k = StringToLowerCase( str,Name,.TRUE. )
      
-     Ptr => list
+     Ptr => list % Head
      DO WHILE( ASSOCIATED(ptr) )
        n = ptr % NameLen
        IF ( n >= k ) THEN
+         ! Did we find a keyword which has the correct suffix?
          IF ( ptr % Name(n-k+1:n) == str(1:k) ) THEN
-           Ptr2 => list
+           Ptr2 => list % Head
            DO WHILE( ASSOCIATED(ptr2) )
              n2 = ptr2 % NameLen
-             
              IF( n2 + k <= n ) THEN
+
+               ! Did we find the corresponding keyword without the suffix?
                IF ( ptr2 % Name(1:n2) == ptr % Name(1:n2) ) THEN
                  WRITE( Message,'(A,ES12.5)') 'Normalizing > '//&
                      TRIM( ptr2 % Name )// ' < by ',Coeff
@@ -1617,6 +1905,7 @@ CONTAINS
                  ptr2 % Coeff = Coeff
                  EXIT
                END IF
+
              END IF
              ptr2 => ptr2 % Next
            END DO
@@ -1626,6 +1915,60 @@ CONTAINS
      END DO
 
    END SUBROUTINE ListSetCoefficients
+ 
+
+
+!> Copies an entry from 'ptr' to an entry in *different* list with the same content.
+!-----------------------------------------------------------------------------------
+   SUBROUTINE ListCopyItem( ptr, list )
+
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: list
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptrb, ptrnext
+
+     ptrb => ListAdd( List, ptr % Name ) 
+
+     ptrnext => ptrb % next
+     ptrb = ptr
+     ptrb % next => ptrnext
+
+   END SUBROUTINE ListCopyItem
+
+
+!> Checks two lists for a given keyword. If it is given then 
+!> copy it as it is to the 2nd list.
+!------------------------------------------------------------------------------
+   SUBROUTINE ListCompareAndCopy( list, listb, name, Found )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: list, listb
+     CHARACTER(LEN=*) :: name
+     LOGICAL :: Found
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+     CHARACTER(LEN=LEN_TRIM(Name)) :: str
+     INTEGER :: k, n
+
+     k = StringToLowerCase( str,Name,.TRUE. )
+     Found = .FALSE.
+
+     ! Find the keyword from the 1st list 
+     Ptr => List % Head
+     DO WHILE( ASSOCIATED(ptr) )
+       n = ptr % NameLen
+       IF ( n==k ) THEN
+         IF ( ptr % Name(1:n) == str(1:n) ) EXIT
+       END IF
+       ptr => ptr % Next
+     END DO
+     
+     IF(.NOT. ASSOCIATED( ptr ) ) RETURN
+     
+     ! Add the same entry to the 2nd list 
+     CALL ListCopyItem( ptr, listb ) 
+     Found = .TRUE.
+
+   END SUBROUTINE ListCompareAndCopy
  
   
 !------------------------------------------------------------------------------
@@ -1637,7 +1980,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      ptr => ListFind(List,Name,Found)
 !------------------------------------------------------------------------------
@@ -1654,7 +1997,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      ptr => ListFindPrefix(List,Name,Found)
 !------------------------------------------------------------------------------
@@ -1670,7 +2013,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: bc
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO bc = 1,Model % NumberOfBCs
@@ -1690,7 +2033,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: body_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO body_id = 1,Model % NumberOfBodies
@@ -1710,7 +2053,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: mat_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO mat_id = 1,Model % NumberOfMaterials
@@ -1730,7 +2073,7 @@ CONTAINS
      CHARACTER(LEN=*) :: Name
      LOGICAL :: Found
      INTEGER :: bf_id
-     TYPE(Valuelist_t), POINTER :: ptr
+     TYPE(ValuelistEntry_t), POINTER :: ptr
      
      Found = .FALSE.
      DO bf_id = 1,Model % NumberOfBodyForces
@@ -1757,7 +2100,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       INTEGER :: k
       LOGICAL :: DoCase
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
 
@@ -1787,7 +2130,7 @@ CONTAINS
       CHARACTER(LEN=*) :: Name
       LOGICAL :: LValue
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
       Ptr % LValue = LValue
@@ -1808,7 +2151,7 @@ CONTAINS
       INTEGER :: IValue
       INTEGER(Kind=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
       IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
@@ -1833,7 +2176,7 @@ CONTAINS
       INTEGER :: IValues(N)
       INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
 
@@ -1859,7 +2202,7 @@ CONTAINS
       REAL(KIND=dp) :: FValue
       INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
 
@@ -1901,7 +2244,7 @@ CONTAINS
      REAL(KIND=dp) :: TValues(N)
      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      ptr => ListAdd( List, Name )
      IF ( PRESENT(Proc) ) ptr % PROCEDURE = Proc
@@ -1919,6 +2262,10 @@ CONTAINS
                     Ptr % CubicCoeff, Monotone )
        END IF
      END IF
+
+     ALLOCATE(ptr % Cumulative(n))
+     CALL CumulativeIntegral(ptr % TValues, Ptr % FValues(1,1,:), &
+          Ptr % CubicCoeff, Ptr % Cumulative )
 
      ptr % NameLen = StringToLowerCase( ptr % Name,Name )
      ptr % DepNameLen = StringToLowerCase( ptr % DependName,DependName )
@@ -1944,7 +2291,7 @@ CONTAINS
       REAL(KIND=dp) :: FValues(:,:)
       INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-      TYPE(ValueList_t), POINTER :: ptr
+      TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
       ptr => ListAdd( List, Name )
 
@@ -1983,7 +2330,7 @@ CONTAINS
      REAL(KIND=dp) :: TValues(N)
      INTEGER(KIND=AddrInt), OPTIONAL :: Proc
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
 
      ptr => ListAdd( List, Name )
@@ -2010,22 +2357,32 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a integer value from the list.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetInteger( List,Name,Found,minv,maxv ) RESULT(L)
+   RECURSIVE FUNCTION ListGetInteger( List,Name,Found,minv,maxv,UnfoundFatal ) RESULT(L)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      INTEGER :: L
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
      INTEGER, OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      L = 0
      ptr => ListFind(List,Name,Found)
-     IF (.NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find integer: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
      IF ( ptr % PROCEDURE /= 0 ) THEN
+       CALL ListPushActiveName(Name)
        L = ExecIntFunction( ptr % PROCEDURE, CurrentModel )
+       CALL ListPopActiveName()
      ELSE
        IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
          WRITE(Message,*) 'Value type for property [', TRIM(Name), &
@@ -2048,7 +2405,7 @@ CONTAINS
      IF ( PRESENT( maxv ) ) THEN
         IF ( L > maxv ) THEN
           WRITE( Message, '(A,I0,A,I0)') 'Given value ',L,' for property: ['//TRIM(Name)//& 
-              '] larger than given minimum: ', minv
+              '] larger than given maximum: ', maxv
           CALL Fatal( 'ListGetInteger', Message )
         END IF
      END IF
@@ -2060,19 +2417,27 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a integer array from the list.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetIntegerArray( List,Name,Found ) RESULT( IValues )
+   RECURSIVE FUNCTION ListGetIntegerArray( List,Name,Found,UnfoundFatal ) RESULT( IValues )
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*)  :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER :: i,n
      INTEGER, POINTER :: IValues(:)
 !------------------------------------------------------------------------------
      NULLIFY( IValues )
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find integer array: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
      IF ( .NOT. ASSOCIATED(ptr % IValues) ) THEN
        WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -2085,10 +2450,12 @@ CONTAINS
      IValues => Ptr % IValues(1:n)
 
      IF ( ptr % PROCEDURE /= 0 ) THEN
+       CALL ListPushActiveName(Name)
        IValues = 0
        DO i=1,N
          Ivalues(i) = ExecIntFunction( ptr % PROCEDURE, CurrentModel )
        END DO
+       CALL ListPopActiveName()
      END IF
 !------------------------------------------------------------------------------
    END FUNCTION ListGetIntegerArray
@@ -2097,18 +2464,26 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a logical value from the list, if not found return False.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetLogical( List,Name,Found ) RESULT(L)
+   RECURSIVE FUNCTION ListGetLogical( List,Name,Found,UnfoundFatal ) RESULT(L)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      LOGICAL :: L
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      L = .FALSE.
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find logical: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
      L = ptr % Lvalue
 !------------------------------------------------------------------------------
    END FUNCTION ListGetLogical
@@ -2118,18 +2493,26 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a string from the list by its name, if not found return empty string.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetString( List,Name,Found ) RESULT(S)
+   RECURSIVE FUNCTION ListGetString( List,Name,Found,UnfoundFatal ) RESULT(S)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found,UnfoundFatal
      CHARACTER(LEN=MAX_NAME_LEN) :: S
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      S = ' '
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find string: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
      S = ptr % Cvalue
 !------------------------------------------------------------------------------
    END FUNCTION ListGetString
@@ -2139,17 +2522,17 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Get a constant real from the list by its name. 
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetConstReal( List,Name,Found,x,y,z,minv,maxv ) RESULT(F)
+   RECURSIVE FUNCTION ListGetConstReal( List,Name,Found,x,y,z,minv,maxv,UnfoundFatal ) RESULT(F)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
      REAL(KIND=dp) :: F
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found,UnfoundFatal
      REAL(KIND=dp), OPTIONAL :: x,y,z
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      REAL(KIND=dp) :: xx,yy,zz
      INTEGER :: i,j,k,n
      CHARACTER(LEN=MAX_NAME_LEN) :: cmd,tmp_str
@@ -2157,7 +2540,15 @@ CONTAINS
      F = 0.0_dp
 
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find ConstReal: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
      SELECT CASE(ptr % TYPE)
 
@@ -2192,8 +2583,10 @@ CONTAINS
        IF ( PRESENT(x) ) xx = x
        IF ( PRESENT(y) ) yy = y
        IF ( PRESENT(z) ) zz = z
+       CALL ListPushActiveName(Name)
        F = Ptr % Coeff * &
            ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,xx,yy,zz )
+       CALL ListPopActiveName()
 
      END SELECT
 
@@ -2221,11 +2614,11 @@ CONTAINS
 !> Returns a scalar real value, that may depend on other scalar values such as 
 !> time or timestep size etc.
 !------------------------------------------------------------------------------
-  RECURSIVE FUNCTION ListGetCReal( List, Name, Found ) RESULT(s)
+  RECURSIVE FUNCTION ListGetCReal( List, Name, Found, UnfoundFatal) RESULT(s)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found,UnfoundFatal
      INTEGER, TARGET :: Dnodes(1)
      INTEGER, POINTER :: NodeIndexes(:)
 
@@ -2242,11 +2635,11 @@ CONTAINS
      NodeIndexes(n) = 1
 
      x = 0.0_dp
-     IF ( ASSOCIATED(List) ) THEN
+     IF ( ASSOCIATED(List % head) ) THEN
         IF ( PRESENT( Found ) ) THEN
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
+           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found, UnfoundFatal=UnfoundFatal )
         ELSE
-           x(1:n) = ListGetReal( List, Name, n, NodeIndexes )
+           x(1:n) = ListGetReal( List, Name, n, NodeIndexes, UnfoundFatal=UnfoundFatal)
         END IF
      END IF
      s = x(1)
@@ -2258,12 +2651,12 @@ CONTAINS
 !> Returns a scalar real value, that may depend on other scalar values such as 
 !> time or timestep size etc.
 !------------------------------------------------------------------------------
-  RECURSIVE FUNCTION ListGetRealAtNode( List, Name, Node, Found ) RESULT(s)
+  RECURSIVE FUNCTION ListGetRealAtNode( List, Name, Node, Found, UnfoundFatal ) RESULT(s)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*)  :: Name
      INTEGER :: Node
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
      REAL(KIND=dp) :: s
 !-----------------------------------------------------------------------------
      INTEGER, TARGET, SAVE :: Dnodes(1)
@@ -2273,11 +2666,11 @@ CONTAINS
 
      IF ( PRESENT( Found ) ) Found = .FALSE.
 
-     IF ( ASSOCIATED(List) ) THEN
+     IF ( ASSOCIATED(List % Head) ) THEN
        NodeIndexes => Dnodes
        NodeIndexes(one) = Node
        
-       x(1:one) = ListGetReal( List, Name, one, NodeIndexes, Found )
+       x(1:one) = ListGetReal( List, Name, one, NodeIndexes, Found, UnfoundFatal=UnfoundFatal)
        s = x(one)
      ELSE
        s = 0.0_dp
@@ -2395,12 +2788,13 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION ListCheckAllGlobal( ptr, name ) RESULT ( AllGlobal )
+  FUNCTION ListCheckAllGlobal( List, name ) RESULT ( AllGlobal )
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: name
      LOGICAL :: AllGlobal
 !------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
      TYPE(Element_t), POINTER :: Element
      INTEGER :: ind,i,j,k,n,k1,l,l0,l1
      TYPE(Variable_t), POINTER :: Variable, CVar
@@ -2408,6 +2802,9 @@ CONTAINS
 
      AllGlobal = .TRUE.
 
+     IF(.NOT.ASSOCIATED(List)) RETURN
+     ptr => List % Head
+     IF(.NOT.ASSOCIATED(ptr)) RETURN
 
      slen = ptr % DepNameLen
 
@@ -2468,17 +2865,17 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a real valued parameter in each node of an element.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetReal( List,Name,N,NodeIndexes,Found,minv,maxv ) RESULT(F)
+   RECURSIVE FUNCTION ListGetReal( List,Name,N,NodeIndexes,Found,minv,maxv,UnfoundFatal ) RESULT(F)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*)  :: Name
      INTEGER :: N,NodeIndexes(:)
      REAL(KIND=dp)  :: F(N)
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      REAL(KIND=dp) :: T(MAX_FNC)
      INTEGER :: i,j,k,k1,l,l0,l1,lsize
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
@@ -2489,7 +2886,15 @@ CONTAINS
      ! !$ TID=OMP_GET_THREAD_NUM()
      F = 0.0_dp
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find real: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
 
      SELECT CASE(ptr % TYPE)
@@ -2507,6 +2912,7 @@ CONTAINS
      
      CASE( LIST_TYPE_VARIABLE_SCALAR )
 
+       CALL ListPushActiveName(Name)
        DO i=1,n
          k = NodeIndexes(i)
          CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
@@ -2533,6 +2939,7 @@ CONTAINS
            END IF
          END IF
        END DO
+       CALL ListPopActiveName()
 
 
      CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
@@ -2589,6 +2996,7 @@ CONTAINS
          RETURN
        END IF
 
+       CALL ListPushActiveName(name)
        DO i=1,n
          F(i) = Ptr % Coeff * &
              ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
@@ -2596,6 +3004,7 @@ CONTAINS
              CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
              CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
        END DO
+       CALL ListPopActiveName()
 
      END SELECT
 
@@ -2639,7 +3048,7 @@ CONTAINS
      REAL(KIND=dp), OPTIONAL :: dFdx, eps
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      REAL(KIND=dp) :: T(1)
      INTEGER :: i,j,k,k1,l,l0,l1,lsize
      CHARACTER(LEN=MAX_NAME_LEN) ::  cmd, tmp_str
@@ -2652,7 +3061,8 @@ CONTAINS
        ptr => ListFind(List,Name,Found)
        IF ( .NOT.ASSOCIATED(ptr) ) RETURN
      ELSE
-       ptr => List
+       IF(.NOT.ASSOCIATED(List)) RETURN
+       ptr => List % Head
        IF ( .NOT.ASSOCIATED(ptr) ) THEN
          CALL Warn('ListGetFun','List entry not associated')
          RETURN
@@ -2682,6 +3092,7 @@ CONTAINS
      CASE( LIST_TYPE_VARIABLE_SCALAR )
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
+         CALL ListPushActiveName(name)
          F = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
 
          ! Compute derivative at the point if requested
@@ -2698,6 +3109,7 @@ CONTAINS
            F2 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T(1) )
            dFdx = ( F2 - F1 ) / (2*xeps)
          END IF
+         CALL ListPopActiveName()
        ELSE
          IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
            WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -2800,7 +3212,7 @@ CONTAINS
      REAL(KIND=dp)  :: val
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER, POINTER :: NodeIndexes(:)
      REAL(KIND=dp) :: T(MAX_FNC),x,y,z
      REAL(KIND=dp), POINTER :: F(:)
@@ -2824,11 +3236,14 @@ CONTAINS
 
      ! If the provided list is the same as last time, also the keyword will
      ! be sitting at the same place, otherwise find it in the new list
-     IF( .NOT. ASSOCIATED( List ) ) THEN
+     IF( .NOT. ASSOCIATED(List) ) THEN
        IF(PRESENT(Found)) Found = .FALSE.
        RETURN
-     ELSE IF( ASSOCIATED( List, Handle % List ) ) THEN
-       ptr => Handle % ptr       
+     ELSE IF( .NOT. ASSOCIATED( List % Head ) ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       RETURN
+     ELSE IF( ASSOCIATED( Handle % List, List ) ) THEN
+       ptr => Handle % ptr % head
        IF(PRESENT(Found)) Found = .TRUE.
        IF( Handle % ConstantInList ) THEN
          val = Handle % Values(1)
@@ -2844,7 +3259,9 @@ CONTAINS
        END IF
   
        Handle % List => List
-       Handle % ptr => ptr
+       IF(.NOT.ASSOCIATED(Handle % Ptr)) &
+           Handle % Ptr => ListAllocate()
+       Handle % Ptr % Head => ptr
        
        ! Check whether the keyword should be evaluated at integration point directly
        IF( ListGetLogical( List, TRIM( Name )//' At IP',GotIt ) ) THEN
@@ -2950,7 +3367,9 @@ CONTAINS
          ! there is no node index, so use zero
          j = 0 
          IF ( ptr % PROCEDURE /= 0 ) THEN
+           CALL ListPushActiveName(name)
            val = ExecRealFunction( ptr % PROCEDURE,CurrentModel, j, T )
+           CALL ListPopActiveName()
          ELSE
            val = InterpolateCurve( ptr % TValues,ptr % FValues(1,1,:), &
                T(1), ptr % CubicCoeff )
@@ -2986,7 +3405,9 @@ CONTAINS
            y = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % y( NodeIndexes(1:n) ) )
            z = SUM( Basis(1:n) * CurrentModel % Mesh % Nodes % z( NodeIndexes(1:n) ) )
 
+           CALL ListPushActiveName(name)
            val = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,x,y,z)
+           CALL ListPopActiveName()
          ELSE
            CALL Fatal('ListGetRealAtIp','Constant scalar evaluation failed at ip!')
          END IF
@@ -3035,6 +3456,7 @@ CONTAINS
 
 
          CASE( LIST_TYPE_VARIABLE_SCALAR )
+           CALL ListPushActiveName(name)
            DO i=1,n
              k = NodeIndexes(i)
              CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
@@ -3065,6 +3487,7 @@ CONTAINS
                END IF
              END IF
            END DO
+           CALL ListPopActiveName()
            
          CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
            Handle % ConstantInList = .TRUE.
@@ -3117,6 +3540,7 @@ CONTAINS
              RETURN
            END IF
            
+           CALL ListPushActiveName(name)
            DO i=1,n
              F(i) = ptr % Coeff * &
                  ExecConstRealFunction( ptr % PROCEDURE,CurrentModel, &
@@ -3124,6 +3548,7 @@ CONTAINS
                  CurrentModel % Mesh % Nodes % y( NodeIndexes(i) ), &
                  CurrentModel % Mesh % Nodes % z( NodeIndexes(i) ) )
            END DO
+           CALL ListPopActiveName()
            
          END SELECT
        END IF
@@ -3171,7 +3596,8 @@ CONTAINS
      CHARACTER(LEN=*)  :: Section,Name
      REAL(KIND=dp), OPTIONAL :: minv,maxv
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr, List
+     TYPE(ValueList_t), POINTER :: List
+     TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER :: i, n, NoVal
      TYPE(Model_t), POINTER :: Model
      REAL(KIND=dp)  :: val
@@ -3274,19 +3700,27 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a constant real array from the list by its name.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetConstRealArray( List,Name,Found ) RESULT( F )
+   RECURSIVE FUNCTION ListGetConstRealArray( List,Name,Found,UnfoundFatal ) RESULT( F )
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: List
      CHARACTER(LEN=*) :: Name
-     LOGICAL, OPTIONAL :: Found
+     LOGICAL, OPTIONAL :: Found, UnfoundFatal
 !------------------------------------------------------------------------------
      REAL(KIND=dp), POINTER  :: F(:,:)
      INTEGER :: i,j,N1,N2
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 !------------------------------------------------------------------------------
      NULLIFY( F ) 
      ptr => ListFind(List,Name,Found)
-     IF ( .NOT.ASSOCIATED(ptr) ) RETURN
+     IF (.NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(UnfoundFatal)) THEN
+         IF(UnfoundFatal) THEN
+           WRITE(Message, '(A,A)') "Failed to find ConstRealArray: ",Name
+           CALL Fatal("ListGetInteger", Message)
+         END IF
+       END IF
+       RETURN
+     END IF
 
      IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
        WRITE(Message,*) 'Value type for property [', TRIM(Name), &
@@ -3301,11 +3735,13 @@ CONTAINS
      F => ptr % FValues(:,:,1)
 
      IF ( ptr % PROCEDURE /= 0 ) THEN
+       CALL ListPushActiveName(name)
        DO i=1,N1
          DO j=1,N2
            F(i,j) = ExecConstRealFunction( ptr % PROCEDURE,CurrentModel,0.0d0,0.0d0,0.0d0 )
          END DO
        END DO
+       CALL ListPopActiveName()
      END IF
    END FUNCTION ListGetConstRealArray
 !------------------------------------------------------------------------------
@@ -3322,7 +3758,7 @@ CONTAINS
      INTEGER :: N,NodeIndexes(:)
      REAL(KIND=dp), POINTER :: F(:,:,:), G(:,:)
 !------------------------------------------------------------------------------
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
 
      TYPE(Variable_t), POINTER :: Variable, CVar, TVar
 
@@ -3356,6 +3792,7 @@ CONTAINS
        END DO
 
        IF ( ptr % PROCEDURE /= 0 ) THEN
+         CALL ListPushActiveName(name)
          DO i=1,N1
            DO j=1,N2
              F(i,j,1) = ptr % Coeff * &
@@ -3363,6 +3800,7 @@ CONTAINS
                  CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
            END DO
          END DO
+         CALL ListPopActiveName()
        END IF
    
      
@@ -3372,6 +3810,7 @@ CONTAINS
        k = LEN_TRIM(cmd)
        CALL matc( cmd, tmp_str, k )
 
+       CALL ListPushActiveName(name)
        DO i=1,n
          k = NodeIndexes(i)
          CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
@@ -3400,9 +3839,9 @@ CONTAINS
              END DO
            END DO
          END IF
-
          IF( AllGlobal ) EXIT
        END DO
+       CALL ListPopActiveName()
 
        IF( AllGlobal ) THEN
          DO i=2,n
@@ -3432,6 +3871,158 @@ CONTAINS
    END SUBROUTINE ListGetRealArray
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Gets a real vector from the list by its name
+!------------------------------------------------------------------------------
+   RECURSIVE SUBROUTINE ListGetRealVector( List,Name,F,N,NodeIndexes,Found )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     LOGICAL, OPTIONAL :: Found
+     INTEGER :: N,NodeIndexes(:)
+     REAL(KIND=dp), TARGET :: F(:,:)
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+
+     TYPE(Variable_t), POINTER :: Variable, CVar, TVar
+
+     REAL(KIND=dp), ALLOCATABLE :: G(:,:)
+     REAL(KIND=dp) :: T(MAX_FNC)
+     REAL(KIND=dp), POINTER :: RotMatrix(:,:)
+     INTEGER :: i,j,k,nlen,N1,N2,k1,S1,S2,l, cnt
+     CHARACTER(LEN=2048) :: tmp_str, cmd
+     LOGICAL :: AllGlobal, lFound, AnyFound
+!------------------------------------------------------------------------------
+     ptr => ListFind(List,Name,lFound)
+     IF ( .NOT.ASSOCIATED(ptr) ) THEN
+       IF(PRESENT(Found)) Found = .FALSE.
+       AnyFound = .FALSE.
+       DO i=1,SIZE(F,1)
+         F(i,1:n) = ListGetReal(List,TRIM(Name)//' '//TRIM(I2S(i)),n,NodeIndexes,lFound)
+         AnyFound = AnyFound.OR.lFound
+       END DO
+       IF(PRESENT(Found)) THEN
+          Found = AnyFound
+       ELSE IF(.NOT.AnyFound) THEN
+          CALL Warn( 'ListFind', 'Requested property ['//TRIM(Name)//'] not found')
+       END IF
+       IF( .NOT. AnyFound ) RETURN
+       GOTO 200
+     END IF
+
+     F = 0._dp
+     cnt = 0
+     ALLOCATE(G(SIZE(F,1),SIZE(F,2)))
+
+100  CONTINUE
+
+     IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+       CALL Fatal( 'ListGetRealVector', &
+           'Value type for property > '// TRIM(Name) // '< not used consistently.')
+     END IF
+
+     N1 = SIZE(ptr % FValues,1)
+
+     SELECT CASE(ptr % TYPE)
+     CASE ( LIST_TYPE_CONSTANT_TENSOR )
+       DO i=1,n
+         G(:,i) = ptr % Coeff * ptr % FValues(:,1,1)
+       END DO
+
+       IF ( ptr % PROCEDURE /= 0 ) THEN
+         CALL ListPushActiveName(name)
+         DO i=1,n1
+           F(i,1) = ptr % Coeff * &
+             ExecConstRealFunction( ptr % PROCEDURE, &
+               CurrentModel, 0.0_dp, 0.0_dp, 0.0_dp )
+         END DO
+         CALL ListPopActiveName()
+       END IF
+     
+     CASE( LIST_TYPE_VARIABLE_TENSOR,LIST_TYPE_VARIABLE_TENSOR_STR )
+       TVar => VariableGet( CurrentModel % Variables, 'Time' ) 
+       WRITE( cmd, '(a,e15.8)' ) 'tx=0; st = ', TVar % Values(1)
+       k = LEN_TRIM(cmd)
+       CALL matc( cmd, tmp_str, k )
+
+       CALL ListPushActiveName(name)
+       DO i=1,n
+         k = NodeIndexes(i)
+         CALL ListParseStrToValues( Ptr % DependName, Ptr % DepNameLen, k, Name, T, j, AllGlobal)
+         IF ( ANY(T(1:j)==HUGE(1._dP)) ) CYCLE
+
+         IF ( ptr % TYPE==LIST_TYPE_VARIABLE_TENSOR_STR) THEN
+           DO l=1,j
+             WRITE( cmd, '(a,g19.12)' ) 'tx('//TRIM(i2s(l-1))//')=', T(l)
+             k1 = LEN_TRIM(cmd)
+             CALL matc( cmd, tmp_str, k1 )
+           END DO
+
+           cmd = ptr % CValue
+           k1 = LEN_TRIM(cmd)
+           CALL matc( cmd, tmp_str, k1 )
+           READ( tmp_str(1:k1), * ) (G(j,i),j=1,N1)
+         ELSE IF ( ptr % PROCEDURE /= 0 ) THEN
+           CALL ExecRealVectorFunction( ptr % PROCEDURE, CurrentModel, &
+                     NodeIndexes(i), T, G(:,i) )
+         ELSE
+           DO k=1,n1
+             G(k,i) = InterpolateCurve(ptr % TValues, &
+                   ptr % FValues(k,1,:), T(MIN(j,k)), ptr % CubicCoeff )
+           END DO
+         END IF
+
+         IF( AllGlobal ) EXIT
+       END DO
+       CALL ListPopActiveName()
+
+       IF( AllGlobal ) THEN
+         DO i=2,n
+           DO j=1,N1
+             G(j,i) = G(j,1) 
+           END DO
+         END DO
+       END IF
+
+       IF( ABS( ptr % Coeff - 1.0_dp ) > EPSILON( ptr % Coeff ) ) THEN
+         G = ptr % Coeff * G
+       END IF
+  
+     CASE DEFAULT
+       G = 0.0d0
+       DO i=1,N1
+         IF ( PRESENT( Found ) ) THEN
+           G(i,:) = ListGetReal( List,Name,N,NodeIndexes,Found )
+         ELSE
+           G(i,:) = ListGetReal( List,Name,N,NodeIndexes )
+         END IF
+       END DO
+     END SELECT
+
+
+     F = F + G
+     cnt = cnt + 1
+     ptr => ListFind(List,Name//'{'//TRIM(I2S(cnt))//'}',lFound)
+     IF(ASSOCIATED(ptr)) GOTO 100
+
+200  IF( ListGetLogical( List, Name//' Property Rotate', lFound ) ) THEN
+       RotMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',lFound )
+       IF( .NOT. ASSOCIATED( RotMatrix ) ) THEN
+         CALL Fatal('ListGetRealVector','Property rotation matrix not given for: '//TRIM(Name))
+       END IF
+       IF( SIZE(F,1) /= 3 ) THEN
+         CALL Fatal('ListGetRealVector','Property may be rotated only with three components!')
+       END IF
+       DO i = 1,SIZE(F,2) 
+         F(1:3,i) = MATMUL( RotMatrix, F(1:3,i) )
+       END DO
+     END IF
+
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE ListGetRealVector
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
 !> Gets a real derivative from. This is only available for tables with dependencies.
@@ -3444,7 +4035,7 @@ CONTAINS
      REAL(KIND=dp) :: F(N)
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER :: i,k,l
      REAL(KIND=dp) :: T
 !------------------------------------------------------------------------------
@@ -3649,7 +4240,7 @@ CONTAINS
      LOGICAL :: IsArray
      LOGICAL :: Found
      INTEGER :: mat, n1, n2
-     TYPE(ValueList_t), POINTER :: ptr
+     TYPE(ValueListEntry_t), POINTER :: ptr
     
      IsArray = .FALSE.
      DO mat = 1,Model % NumberOfMaterials
@@ -3739,7 +4330,7 @@ CONTAINS
     IMPLICIT NONE
 !------------------------------------------------------------------------------
     TYPE(Model_t) :: Model
-    TYPE(ValueList_t),POINTER  :: List
+    TYPE(ValueList_t), POINTER  :: List
     LOGICAL :: ShowVariables
     LOGICAL, OPTIONAL :: ClearList
 !------------------------------------------------------------------------------
@@ -3918,7 +4509,7 @@ CONTAINS
             Var1 => VariableGet(Variables,TRIM(str(1:k)))
             IF( ASSOCIATED( Var1 ) ) THEN
               GotIt = .TRUE.
-              IsVector = ( Var1 % Dofs == Dim ) 
+              IsVector = ( Var1 % Dofs == Dim .OR. Var1 % Dofs == 3 ) 
               Set = ( Comp == 1 .OR. .NOT. IsVector )
             END IF
           END IF
@@ -4100,7 +4691,7 @@ CONTAINS
 !> Returns the angular frequency  
   FUNCTION ListGetAngularFrequency(ValueList,Found,UElement) RESULT(w)
     REAL(KIND=dp) :: w
-    TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
+    TYPE(ValueList_t), OPTIONAL, POINTER :: ValueList
     LOGICAL, OPTIONAL :: Found
     LOGICAL :: GotIt
     TYPE(Element_t), POINTER :: Element, UElement
@@ -4188,6 +4779,23 @@ CONTAINS
       CALL Warn('ListGetAngularFrequency','Angular frequency could not be determined!')
     END IF
   END FUNCTION ListGetAngularFrequency
+
+
+  !------------------------------------------------------------------------------
+!> Returns handle to the Solver value list of the active solver
+  FUNCTION ListGetSolverParams(Solver) RESULT(SolverParam)
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER :: SolverParam
+     TYPE(Solver_t), OPTIONAL :: Solver
+
+     IF ( PRESENT(Solver) ) THEN
+       SolverParam => Solver % Values
+     ELSE
+       SolverParam => CurrentModel % Solver % Values
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ListGetSolverParams
+!------------------------------------------------------------------------------
 
 
 

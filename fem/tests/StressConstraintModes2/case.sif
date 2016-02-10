@@ -1,0 +1,110 @@
+!------------------------------------------------
+! Test case for constraint modes in 2D elasticity
+! Here all displacement on boundary are set at once.
+!
+!
+! P.R. 7.9.2015
+!-------------------------------------------------
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Angle"
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Equation = "Stress Analysis"
+  Variable = "Displacement"
+  Variable Dofs = 2
+
+  Constraint Modes Analysis = Logical True
+  Constraint Modes Lumped = Logical True
+
+  Optimize Bandwidth = False 
+
+  Linear System Solver = string "Iterative"
+  Linear System Convergence Tolerance = real 1e-8
+  Linear System Iterative Method = BiCGStabl
+  BiCGStabl Polynomial Degree = 4
+  Linear System Residual Output = integer 1
+  Linear System Max Iterations = integer 2000
+  Linear System Preconditioning = BILU1
+  Linear System Residual Output = 50
+
+!  Linear System Scaling = Logical True
+!  Linear System Symmetric = Logical True
+
+!  Linear System Solver = Direct
+!  Linear System Direct Method = umfpack
+
+  Solver Timing = Logical True
+  Displace Mesh = Logical False
+End
+
+
+Solver 2
+!  Exec Solver = never
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+  Single Precision = Logical True 
+
+! This enforces the constraints to be written to individual files 
+  Constraint Modes Analysis = Logical True
+End
+
+
+Material 1
+  Name = "Structure"
+  Density = 1000.0
+  Youngs Modulus = 1.0e9
+  Poisson Ratio = 0.3
+End
+
+
+Boundary Condition 1
+  Name = "Left"
+  Target Boundaries(1) = 2
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 2
+  Name = "Right"
+  Target Boundaries = 3
+  Constraint Modes Displacement = Logical True
+End 
+
+Boundary Condition 3
+  Name = "Else"
+  Target Boundaries = 1
+End 
+
+Solver 1 :: Reference Norm = 0.31949900

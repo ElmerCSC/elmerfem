@@ -648,21 +648,32 @@ CONTAINS
 
     IF( ASSOCIATED( Partition ) ) THEN
       ALLOCATE( Particles % Partition(NoParticles) )
+      Particles % Partition = -1
     END IF
       
     ! Delete lost particles and move the remaining ones so that each 
-    ! empty slot is used.
+    ! empty slot is used. Perm is the reordering of the particles, 
+    ! not the reordering of field values as normally. 
     ! ---------------------------------------------------------------
     IF( PrevNoParticles > 0 ) THEN
       n = 0
       ALLOCATE( Perm( PrevNoParticles ) )
       Perm = 0
-      
+           
       DO No=1,PrevNoParticles
         IF ( Status(No) == PARTICLE_LOST ) CYCLE
-        n=n+1
+        n = n+1
         Perm(n) = No
       END DO
+
+      WRITE(Message,'(A,I0)') 'Number of old active particles: ',n
+      CALL Info('AllocateParticles',Message,Level=8)    
+
+      IF( n < PrevNoParticles ) THEN
+        WRITE(Message,'(A,I0)') 'Number of deleted particles: ',PrevNoParticles-n
+        CALL Info('AllocateParticles',Message,Level=10)    
+      END IF
+
       n1 = 1
       n2 = n
       
@@ -678,11 +689,11 @@ CONTAINS
       IF( ASSOCIATED( PrevVelocity ) ) &
         Particles % PrevVelocity(n1:n2,:) = PrevVelocity(Perm(n1:n2),:)
       IF( Particles % NeighbourTable ) &
-          Particles % ClosestNode(n1:n2)=Closest(Perm(n1:n2))
+          Particles % ClosestNode(n1:n2) = Closest(Perm(n1:n2))
       IF ( ASSOCIATED(NodeIndex) ) &
-          Particles % NodeIndex(n1:n2)=NodeIndex(Perm(n1:n2))
+          Particles % NodeIndex(n1:n2) = NodeIndex(Perm(n1:n2))
       IF ( ASSOCIATED(Partition) ) &
-          Particles % Partition(n1:n2)=Partition(Perm(n1:n2))
+          Particles % Partition(n1:n2) = Partition(Perm(n1:n2))
             
       PrevNoParticles = n
       Particles % NumberOfParticles = n
@@ -727,9 +738,10 @@ CONTAINS
 
     ! Finally resize the generic variables related to the particles
     !--------------------------------------------------------------
-    CALL ParticleVariablesResize( Particles, NoParticles, Perm )
+    CALL ParticleVariablesResize( Particles, PrevNoParticles, NoParticles, Perm )
 
     IF( PrevNoParticles > 0 ) THEN
+      CALL Info('AllocateParticles','Deallocating particle permutation',Level=12)
       DEALLOCATE( Perm )
     END IF
 
@@ -762,7 +774,16 @@ CONTAINS
     END DO
 
     n2 = n
-    IF(n1 == 0 ) RETURN
+    CALL Info('DeleteLostParticles','Number of active particles: '&
+        //TRIM(I2S(n2)),Level=12)
+
+    IF(n1 == 0 ) THEN
+      CALL Info('DeleteLostParticles','No particles need to be deleted',Level=12)
+      RETURN
+    ELSE
+      CALL Info('DeleteLostParticles','First particle with changed permutation: '&
+          //TRIM(I2S(n1)),Level=12)      
+    END IF
 
     Particles % Coordinate(n1:n2,:) = &
         Particles % Coordinate(Perm(n1:n2),:)
@@ -803,12 +824,11 @@ CONTAINS
        IF ( ASSOCIATED(Particles % NodeIndex) ) &
           Particles % NodeIndex(n2+1:PrevNoParticles) = 0
        IF ( ASSOCIATED(Particles % Partition) ) &
-           Particles % Partition(n2+1:PrevNoParticles) = 0
-      
+           Particles % Partition(n2+1:PrevNoParticles) = 0      
     END IF
 
     ! Rorders the variables accordingly to Perm, no resize is needed since number of particles is not changed
-    CALL ParticleVariablesResize( Particles, PrevNoParticles, Perm )
+    CALL ParticleVariablesResize( Particles, PrevNoParticles, PrevNoParticles, Perm )
 
 
   END SUBROUTINE DeleteLostParticles
@@ -817,7 +837,7 @@ CONTAINS
 
   !----------------------------------------------------
   !> Subroutine sets particles that are still sitting on boundary to 
-  !> leave the premises and call for their delition.
+  !> leave the premises and call for their deletion.
   !----------------------------------------------------
   SUBROUTINE EliminateExitingParticles( Particles )
     
@@ -906,6 +926,9 @@ RETURN
 
   SUBROUTINE DestroyParticles(Particles) 
     TYPE(Particle_t), POINTER :: Particles
+
+    CALL Info('DestroyParticles','Destrying the particle structures',Level=10)
+
     
     IF ( ASSOCIATED(Particles % Velocity) ) &
         DEALLOCATE( Particles % Velocity ) 
@@ -969,7 +992,7 @@ RETURN
     
     ! Get the size of the current release set
     !-------------------------------------------------------
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     ReleaseSet = GetInteger( Params,'Particle Release Number',Found)
     IF( .NOT. Found ) THEN
       ReleaseFraction = GetCReal( Params,'Particle Release Fraction',Found )
@@ -981,8 +1004,6 @@ RETURN
     END IF
     CALL Info('ReleaseWaitingParticles','Releasing number of particles: '&
         //TRIM(I2S(ReleaseCount)),Level=8)
-!    PRINT *,'Releasing:',NoParticles,ReleaseCount, ReleaseSet
-    
     
     IF( ReleaseSet <= 0 ) RETURN
     
@@ -1031,13 +1052,15 @@ RETURN
     END TYPE ExchgInfo_t
     
     REAL(KIND=dp), ALLOCATABLE :: Buf(:)
-    INTEGER(KIND=dp), ALLOCATABLE :: BufInt(:)
-    TYPE(ExchgInfo_t), ALLOCATABLE :: Info(:)
+    INTEGER, ALLOCATABLE :: BufInt(:)
+    TYPE(ExchgInfo_t), ALLOCATABLE :: ExcInfo(:)
     !---------------------------------------------------------
     
     nReceived = 0
     IF( ParEnv% PEs == 1 ) RETURN
     
+    CALL Info('ChangeParticlePartition','Sending particles among partitions',Level=10)
+
     Mesh => GetMesh()
     dim = Particles % dim
     
@@ -1059,11 +1082,14 @@ RETURN
     END DO
     DEALLOCATE(IsNeighbour)
     
+    CALL Info('ChangeParticlePartition','Number of active partitions: '&
+        //TRIM(I2S(NoPartitions)),Level=12)
+    
     !
     ! Count particles to be sent to neighbours:
     ! -----------------------------------------
-    ALLOCATE(Info(NoPartitions))
-    Info % n = 0
+    ALLOCATE(ExcInfo(NoPartitions))
+    ExcInfo % n = 0
     
     DO i=1,Particles % NumberOfParticles
       IF( Particles % Status(i) /= PARTICLE_WALLBOUNDARY ) CYCLE
@@ -1090,7 +1116,7 @@ RETURN
             nextPart = Neighbours(j)
             k = Perm(nextPart+1)
             IF ( k>0 ) THEN
-              Info(k) % n=Info(k) % n+1
+              ExcInfo(k) % n = ExcInfo(k) % n+1
               Particles % Status(i) = PARTICLE_PARTBOUNDARY
             ELSE 
               Particles % Status(i) = PARTICLE_LOST
@@ -1100,6 +1126,10 @@ RETURN
         END DO
       END IF
     END DO
+   
+    n = SUM( ExcInfo(1:NoPartitions) % n )
+    CALL Info('ChangeParticlePartition','Number of particles to send: '&
+        //TRIM(I2S(n)),Level=10)
     
     !
     ! Receive interface sizes:
@@ -1111,25 +1141,35 @@ RETURN
     END DO
     
     DO i=1,NoPartitions
-      CALL MPI_BSEND( Info(i) % n, 1, MPI_INTEGER, Neigh(i), &
+      CALL MPI_BSEND( ExcInfo(i) % n, 1, MPI_INTEGER, Neigh(i), &
           1000, MPI_COMM_WORLD, ierr )
     END DO
     CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
     
     n = SUM(Recv_Parts)
+    CALL Info('ChangeParticlePartition','Number of particles to recieve: '&
+        //TRIM(I2S(n)),Level=10)
+   
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, MPI_COMM_WORLD, ierr )
     IF ( nReceived==0 ) THEN
-      DEALLOCATE(Recv_Parts, Requests, Info, Perm, Neigh)
+      CALL Info('ChangeParticlePartition','No particles needs to be sent',Level=10)
+      DEALLOCATE(Recv_Parts, Requests, ExcInfo, Perm, Neigh)
       RETURN
     END IF
-    
+   
+    n = SUM( ExcInfo(1:NoPartitions) % n )
+    CALL Info('ChangeParticlePartition','Total number of particles to sent: '&
+        //TRIM(I2S(n)),Level=10)
+
+
     !
     ! Collect particles to be sent to neighbours:
     ! -------------------------------------------
     DO i=1,NoPartitions
-      ALLOCATE( Info(i) % Gindex(Info(i) % n), Info(i) % Particles(Info(i) % n) )
-      Info(i) % n = 0
+      ALLOCATE( ExcInfo(i) % Gindex(ExcInfo(i) % n), &
+          ExcInfo(i) % Particles(ExcInfo(i) % n) )
+      ExcInfo(i) % n = 0
     END DO
     
     DO i=1,Particles % NumberOfParticles
@@ -1161,18 +1201,20 @@ RETURN
           CALL Warn( 'ChangeParticlePartition', 'Neighbouring partition not found?')
           CYCLE
         END IF
-        Info(j) % n = Info(j) % n+1
-        n = Info(j) % n
-        Info(j) % Particles(n) = i
-        Info(j) % Gindex(n) = Face % GElementIndex
+        ExcInfo(j) % n = ExcInfo(j) % n+1
+        n = ExcInfo(j) % n
+        ExcInfo(j) % Particles(n) = i
+        ExcInfo(j) % Gindex(n) = Face % GElementIndex
       END IF
     END DO
     
-
     n = 0
     DO i=1,NoPartitions
-      n = n + Info(i) % n
+      n = n + ExcInfo(i) % n
     END DO
+
+    CALL Info('ChangeParticlePartition','Collected particles from partitions: '&
+        //TRIM(I2S(n)),Level=12)
 
     ncomp = dim ! coordinate
     IF( ASSOCIATED( Particles % Velocity ) ) ncomp = ncomp + dim
@@ -1192,25 +1234,34 @@ RETURN
     IF ( ASSOCIATED(Particles % Partition) ) ncompInt = ncompInt + 1
     ! status, elementindex & closestnode are recomputed, and hence not communicated
 
+    CALL Info('ChangeParticlePartition','Transferring real entries between particles: '&
+        //TRIM(I2S(ncomp)),Level=12)
+    CALL Info('ChangeParticlePartition','Transferring integer entries between particles: '&
+        //TRIM(I2S(ncompInt)),Level=12)
+
 
     n = 2*(n + 2*ncomp + MPI_BSEND_OVERHEAD*2*NoPartitions)
     CALL CheckBuffer(n)
     
+    CALL Info('ChangeParticlePartition','Size of data buffer: ' &
+        //TRIM(I2S(n)),Level=12)
+
     ! Send particles:
     ! ---------------
+    CALL Info('ChangeParticlePartition','Now sending particle data',Level=14)
     DO j=1,NoPartitions
-      n = Info(j) % n
+      n = ExcInfo(j) % n
       IF ( n<=0 ) CYCLE
       
-      CALL MPI_BSEND( Info(j) % Gindex, n, MPI_INTEGER, Neigh(j), &
+      CALL MPI_BSEND( ExcInfo(j) % Gindex, n, MPI_INTEGER, Neigh(j), &
           1001, MPI_COMM_WORLD, ierr )
       
-      ALLOCATE(Buf(n*ncomp))
+      ALLOCATE(Buf(dim*n*ncomp))
       m = 0
       DO k=1,dim
         DO l=1,n
           m = m + 1
-          Buf(m) = Particles % Coordinate(Info(j) % Particles(l),k)
+          Buf(m) = Particles % Coordinate(ExcInfo(j) % Particles(l),k)
         END DO
       END DO
       
@@ -1218,7 +1269,7 @@ RETURN
         DO k=1,dim
           DO l=1,n
             m = m + 1
-            Buf(m) = Particles % Velocity(Info(j) % Particles(l),k)
+            Buf(m) = Particles % Velocity(ExcInfo(j) % Particles(l),k)
           END DO
         END DO
       END IF
@@ -1227,7 +1278,7 @@ RETURN
         DO k=1,dim
           DO l=1,n
             m = m + 1
-            Buf(m) = Particles % Force(Info(j) % Particles(l),k)
+            Buf(m) = Particles % Force(ExcInfo(j) % Particles(l),k)
           END DO
         END DO
       END IF
@@ -1236,7 +1287,7 @@ RETURN
         DO k=1,dim
           DO l=1,n
             m = m + 1
-            Buf(m) = Particles % PrevCoordinate(Info(j) % Particles(l),k)
+            Buf(m) = Particles % PrevCoordinate(ExcInfo(j) % Particles(l),k)
           END DO
         END DO
       END IF
@@ -1245,7 +1296,7 @@ RETURN
         DO k=1,dim
           DO l=1,n
             m = m + 1
-            Buf(m) = Particles % PrevVelocity(Info(j) % Particles(l),k)
+            Buf(m) = Particles % PrevVelocity(ExcInfo(j) % Particles(l),k)
           END DO
         END DO
       END IF
@@ -1255,7 +1306,7 @@ RETURN
         IF( Var % Dofs == 1 ) THEN
           DO l=1,n
             m = m + 1
-            Buf(m) = Var % Values(Info(j) % Particles(l))
+            Buf(m) = Var % Values(ExcInfo(j) % Particles(l))
           END DO
         END IF
         Var => Var % Next 
@@ -1274,19 +1325,21 @@ RETURN
         IF ( ASSOCIATED(Particles % NodeIndex) ) THEN
           DO l=1,n
             m = m + 1
-            BufInt(m) = Particles % NodeIndex(Info(j) % Particles(l))
+            BufInt(m) = Particles % NodeIndex(ExcInfo(j) % Particles(l))
           END DO
         END IF
         
         IF ( ASSOCIATED(Particles % Partition) ) THEN
           DO l=1,n
             m = m + 1
-            BufInt(m) = Particles % Partition(Info(j) % Particles(l))
-          END DO
+            BufInt(m) = Particles % Partition(ExcInfo(j) % Particles(l))
+!If(Particles % Partition(ExcInfo(j) % Particles(l)) == 2 .AND. &
+!   Particles % NodeIndex(ExcInfo(j) % Particles(l)) == 325 ) then
+!  print*,parenv % mype, 'sending 325 to', neigh(j); flush(6)
+!endif
+         END DO
         END IF
-        
-        CALL MPI_BSEND( BufInt, m, MPI_INTEGER, &
-            Neigh(j), 1003, MPI_COMM_WORLD, ierr )
+        CALL MPI_BSEND( BufInt, m, MPI_INTEGER, Neigh(j), 1003, MPI_COMM_WORLD, ierr )
         
         DEALLOCATE(BufInt)
       END IF
@@ -1295,18 +1348,22 @@ RETURN
 
     DEALLOCATE(Perm)
     DO i=1,NoPartitions
-      DEALLOCATE( Info(i) % Gindex, Info(i) % Particles )
+      DEALLOCATE( ExcInfo(i) % Gindex, ExcInfo(i) % Particles )
     END DO
-    DEALLOCATE(Info)
-
+    DEALLOCATE(ExcInfo)
 
     ! Recv particles:
     ! ---------------
+    CALL Info('ChangeParticlePartition','Now recieving particle data',Level=14)
     
     n = SUM(Recv_Parts)
+
+
+    CALL DeleteLostParticles(Particles)
     IF ( Particles % NumberOfParticles+n > Particles % MaxNumberOfParticles ) THEN
-      CALL IncreaseParticles( Particles, Particles % NumberOfParticles+2*n - &
-          Particles % MaxNumberOfParticles )
+      CALL IncreaseParticles( Particles, Particles % NumberOfParticles + 2*n - &
+                    Particles % MaxNumberOfParticles )
+    ELSE
     END IF
     
     IF(Particles % dim==2 ) THEN
@@ -1346,10 +1403,9 @@ RETURN
         Particles % ElementIndex(n_part) = Parent % ElementIndex
       END DO
       
-      ALLOCATE(Buf(n*ncomp))
-      
-      m = n*ncomp
+      m = n*ncomp*dim
       IF ( ASSOCIATED(Particles % Velocity) ) m=m+n*dim
+      ALLOCATE(Buf(m))
       CALL MPI_RECV( Buf, m, MPI_DOUBLE_PRECISION, proc, &
           1002, MPI_COMM_WORLD, status, ierr )
       
@@ -1413,11 +1469,10 @@ RETURN
 
       IF( ncompInt > 0 ) THEN
 
-        ALLOCATE(BufInt(n*ncompInt))      
+        ALLOCATE(BufInt(n*ncompInt))
         m = n*ncompInt
         
-        CALL MPI_RECV( BufInt, m, MPI_DOUBLE_PRECISION, proc, &
-            1003, MPI_COMM_WORLD, status, ierr )
+       CALL MPI_RECV( BufInt, m, MPI_INTEGER, proc, 1003, MPI_COMM_WORLD, status, ierr )
         
         n_part=Particles % NumberOfParticles
         m = 0
@@ -1431,8 +1486,12 @@ RETURN
           DO l=1,n
             m = m + 1
             Particles % Partition(n_part+l) = BufInt(m)
+!if ( particles % partition(n_part+l)==2 .and. particles % nodeindex(n_part+l) == 325 ) then
+!  print*,'yyyy: ', particles % coordinate(n_part+l,:); flush(6)
+!endif
           END DO
         END IF
+        DEALLOCATE(BufInt)
       END IF
       
       Particles % NumberOfParticles = Particles % NumberOfParticles + n
@@ -1441,6 +1500,9 @@ RETURN
     
     DEALLOCATE(Recv_Parts, Neigh, Requests)
     CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+
+    CALL Info('ChangeParticlePartition','Information exchange done',Level=10)
+
     
   CONTAINS
     
@@ -1504,13 +1566,15 @@ RETURN
     INTEGER :: Dofs
     !---------------------------------------------------------
     INTEGER i,j,k,l,m,n,dim,NoPartitions,NoParticles,part, &
-        ierr, status(MPI_STATUS_SIZE), nReceived 
+        ierr, status(MPI_STATUS_SIZE), nReceived, nSent, nerr
     INTEGER, ALLOCATABLE :: RecvParts(:), SentParts(:), Requests(:)
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp), ALLOCATABLE :: SentReal(:),RecvReal(:)
-    INTEGER(KIND=dp), ALLOCATABLE :: SentInt(:),RecvInt(:)
+    INTEGER, ALLOCATABLE :: SentInt(:),RecvInt(:)
     !---------------------------------------------------------
     
+    CALL Info('ParticleAdvectParallel','Returning particle info to their initiating partition',Level=15)
+
     nReceived = 0
     IF( ParEnv% PEs == 1 ) RETURN
     
@@ -1546,50 +1610,94 @@ RETURN
         Requests(NoPartitions))
     SentParts = 0
     RecvParts = 0
-    
+    Requests = 0
+
+    nerr = 0
     DO i=1,Particles % NumberOfParticles
       Part = Particles % Partition(i)
       IF( Part-1 == ParEnv % MyPe ) CYCLE
+      IF( Part < 1 .OR. Part > ParEnv % PEs ) THEN
+        nerr = nerr + 1
+        CYCLE
+      END IF
       SentParts(Part) = SentParts(Part) + 1
     END DO
+    IF( nerr > 0 ) THEN
+      CALL Info('ParticleAdvectParallel','Invalid partition in particles: '//TRIM(I2S(nerr)))
+    END IF
     
+    n = SUM( SentParts )
+    CALL Info('ParticleAdvectParallel','Local particles to be sent: '//TRIM(I2S(n)),Level=12)
+    
+    CALL MPI_ALLREDUCE( n, nSent, 1, MPI_INTEGER, &
+        MPI_SUM, MPI_COMM_WORLD, ierr )
+
+    IF( nSent > 0 ) THEN
+      CALL Info('ParticleAdvectParallel','Global particles to be sent: '&
+          //TRIM(I2S(nSent)),Level=12)
+    ELSE
+      DEALLOCATE(SentParts, RecvParts, Requests )
+      CALL Info('ParticleAdvectParallel','Nothing to do in parallel!',Level=15)
+      RETURN
+    END IF
+
     ! Receive interface sizes:
     !--------------------------
     DO i=1,NoPartitions
+      IF( i-1 == ParEnv % MyPe ) CYCLE
       CALL MPI_iRECV( RecvParts(i), 1, MPI_INTEGER, i-1, &
           1000, MPI_COMM_WORLD, requests(i), ierr )
     END DO
     
     DO i=1,NoPartitions
+      IF( i-1 == ParEnv % MyPe ) CYCLE
       CALL MPI_BSEND( SentParts(i), 1, MPI_INTEGER, i-1, &
           1000, MPI_COMM_WORLD, ierr )
     END DO
     CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
+
     
     n = SUM(RecvParts)
+    CALL Info('ParticleAdvectParallel','Particles to be recieved: '//TRIM(I2S(n)),Level=12)
+
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, MPI_COMM_WORLD, ierr )
+
     IF ( nReceived==0 ) THEN
       DEALLOCATE(RecvParts, SentParts, Requests )
       RETURN
     END IF
-    
+
+    CALL Info('ParticleAdvectParallel','Total number of particles to be recieved: '&
+        //TRIM(I2S(nReceived)),Level=12)    
+
     n = 2*(n + MPI_BSEND_OVERHEAD*2*NoPartitions)
     CALL CheckBuffer(n)
+
+    CALL Info('ParticleAdvectParallel','Buffer size for sending and recieving: ' &
+        //TRIM(I2S(n)),Level=14)    
+
 
     ! Allocate sent and recieve buffers based on the maximum needed size.
     !--------------------------------------------------------------------
     n = MAXVAL( SentParts )
     ALLOCATE( SentReal(n), SentInt(n) )
+    CALL Info('ParticleAdvectParallel','Allocating sent buffer of size: '&
+        //TRIM(I2S(n)),Level=18)
 
     n = MAXVAL( RecvParts ) 
     ALLOCATE( RecvReal(n), RecvInt(n) )
-
+    CALL Info('ParticleAdvectParallel','Allocating recieve buffer of size: '&
+        //TRIM(I2S(n)),Level=18)
    
     ! Send particles:
     ! ---------------
+    CALL Info('ParticleAdvectParallel','Now sending field',Level=14)
+
     DO j=1,NoPartitions
-      
+
+      IF( j-1 == ParEnv % MyPe ) CYCLE
+
       IF( SentParts(j) == 0 ) CYCLE
 
       m = 0
@@ -1600,10 +1708,10 @@ RETURN
           SentInt(m) = Particles % NodeIndex(l)
         END IF
       END DO
-      
+
       CALL MPI_BSEND( SentInt, m, MPI_INTEGER, j-1, &
           1001, MPI_COMM_WORLD, ierr )
-     
+
       CALL MPI_BSEND( SentReal, m, MPI_DOUBLE_PRECISION, j-1, &
           1002, MPI_COMM_WORLD, ierr )
     END DO
@@ -1611,7 +1719,12 @@ RETURN
 
     ! Recv particles:
     ! ---------------   
+    CALL Info('ParticleAdvectParallel','Now recieving field',Level=14)
+
+    nerr = 0 
     DO j=1,NoPartitions
+
+      IF( j-1 == ParEnv % MyPe ) CYCLE
 
       m = RecvParts(j)
       IF ( m == 0 ) CYCLE
@@ -1624,14 +1737,25 @@ RETURN
       
       DO l=1,m
         k = RecvInt(l)
+        IF( k <=0 .OR. k > SIZE( RecvField ) ) THEN
+          nerr = nerr + 1
+          CYCLE
+        END IF
         RecvField(k) = RecvReal(l)
       END DO
     END DO
         
+    IF( nerr > 0 ) THEN
+      CALL Info('ParticleAdvectParallel','Invalid recieved index in particles: '//TRIM(I2S(nerr)))
+    END IF
+
+
     CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
 
     DEALLOCATE(SentParts, RecvParts, Requests, SentInt, SentReal, RecvInt, RecvReal )
-   
+
+    CALL Info('ParticleAdvectParallel','Particle field communication done',Level=14)
+
   END SUBROUTINE ParticleAdvectParallel
 
 
@@ -1804,7 +1928,7 @@ RETURN
     SAVE Visited, MaxSpeed
     
     IF(.NOT. Visited ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       UseMaxSpeed = GetLogical( Params,'Characteristic Max Speed',Found)
       Visited = .TRUE.
     END IF
@@ -1852,7 +1976,7 @@ RETURN
     CharSpeed = MAX( Charspeed, TINY( CharSpeed ) )
     
     IF(.FALSE.) THEN
-      WRITE( Message,'(A,E12.6)') 'Speed for timestep control: ',CharSpeed
+      WRITE( Message,'(A,E13.6)') 'Speed for timestep control:',CharSpeed
       CALL Info('CharacteristicSpeed',Message )
     END IF
     
@@ -2028,7 +2152,7 @@ RETURN
 
 
     Mesh => GetMesh()
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     dim = Particles % Dim
     Parallel = ( ParEnv % PEs > 1 )
     
@@ -2038,7 +2162,10 @@ RETURN
     
     InitMethod = ListGetString( Params,'Coordinate Initialization Method',gotIt ) 
     Particles % RK2 = ListGetLogical( Params,'Runge Kutta', GotIt )
-
+    IF( Particles % RK2 .AND. ParEnv % PEs > 1 ) THEN
+      CALL Warn('InitializeParticles','> Runge Kutta < integration might not work in parallel')
+    END IF
+    
     Particles % DtConstant = ListGetLogical( Params,'Particle Dt Constant',GotIt )
     IF(.NOT. GotIt) Particles % DtConstant = .TRUE.
 
@@ -2079,7 +2206,7 @@ RETURN
         InvPerm => NULL()
       ELSE
         GotMask = .TRUE.
-        IF( InitMethod(1:5) == 'nodal') THEN
+        IF( InitMethod == 'nodal') THEN
           ALLOCATE( InvPerm(SIZE(MaskPerm)) )
           InvPerm = 0
           j = 0
@@ -2095,7 +2222,7 @@ RETURN
           nonodes = j
           
           PRINT *,'Total nodes vs. masked',Mesh % NumberOfNodes,nonodes
-        ELSE IF( InitMethod(1:9) == 'elemental') THEN
+        ELSE IF( InitMethod == 'elemental') THEN
           ALLOCATE( InvPerm( MAX( Mesh % NumberOfBulkElements, Mesh % NumberOfBoundaryElements ) ) ) 
           InvPerm = 0
           
@@ -2144,7 +2271,7 @@ RETURN
     ! Use a simple bounding box for initializatin
     ! By default a local bounding box is used...
     !-------------------------------------------------------------------------  
-    IF( InitMethod(1:3) == 'box') THEN
+    IF( InitMethod == 'box') THEN
       Eps = GetCReal( Params,'Wall Particle Radius',GotIt)
       IF(.NOT. GotIt) eps = 1.0d-8
       
@@ -2472,7 +2599,6 @@ RETURN
           Particles % ElementIndex(i) = j
         END IF
       END DO
-      PRINT *,'done init'
 
       
     CASE ('sphere random')
@@ -3105,8 +3231,9 @@ RETURN
   !-------------------------------------------------------------------------
   SUBROUTINE LocateParticleInMeshMarch( ElementIndex, Rinit, Rfin, Init, &
       ParticleStatus, AccurateAtFace, StopFaceIndex, Lambda, Velo, &
-      No, ParticleWallKernel )
+      No, ParticleWallKernel, Particles )
     
+    TYPE(Particle_t), POINTER :: Particles
     INTEGER :: ElementIndex
     REAL(KIND=dp) :: Rinit(3), Rfin(3)
     LOGICAL :: Init
@@ -3152,9 +3279,10 @@ RETURN
     Mesh => GetMesh()
     Counter = Counter + 1
     Debug = .FALSE.
+!debug = particles % partition(no) == 2 .and. particles % nodeindex(no) == 325
  
     IF( .NOT. Visited ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       Robust = ListGetLogical( Params,'Particle Locate Robust',stat)
       IF(.NOT. Stat) Robust = .TRUE.
       StopAtFace = ListGetLogical( Params,'Particle Stop At Face',Stat)
@@ -3188,10 +3316,10 @@ RETURN
     END IF
 
     IF( Debug ) THEN
-      PRINT *,'Starting'
-      PRINT *,'Rinit:',Rinit
-      PRINT *,'Rfin:',Rfin
-      PRINT *,'Velo:',Velo
+      PRINT *,parenv % mype, 'Starting'
+      PRINT *,parenv % mype, 'Rinit:',Rinit
+      PRINT *,parenv % mype, 'Rfin:',Rfin
+      PRINT *,parenv % mype, 'Velo:',Velo
     END IF
     
     NULLIFY( PrevElement ) 
@@ -3368,7 +3496,7 @@ RETURN
         END IF
         IF( Inside ) THEN
 	  Problems(1) = Problems(1) + 1
-!          CALL Warn('LocateParticleInMeshMarch','Elements are same, found in NextElement!')          
+           CALL Warn('LocateParticleInMeshMarch','Elements are same, found in NextElement!')          
           Element => NextElement
           ParticleStatus = PARTICLE_HIT	  
           EXIT
@@ -3382,13 +3510,13 @@ RETURN
         END IF
         IF( Inside ) THEN
 	  Problems(2) = Problems(2) + 1
-!          CALL Warn('LocateParticleInMeshMarch','Elements are same, found in Element!')          
+           CALL Warn('LocateParticleInMeshMarch','Elements are same, found in Element!')          
           ParticleStatus = PARTICLE_HIT	  
           EXIT
         END IF 
 
         Problems(3) = Problems(3) + 1
-!            CALL Warn('LocateParticleInMeshMarch','Elements are same, this is going nowhere!')          
+        CALL Warn('LocateParticleInMeshMarch','Elements are same, this is going nowhere!')          
         ParticleStatus = PARTICLE_LOST
         EXIT
       END IF
@@ -3447,7 +3575,7 @@ RETURN
     INTEGER :: PartitionChanges, Status, ElementIndex, No, &
                NoParticles, dim, ElementIndex0
     REAL(KIND=dp) :: Rinit(3), Rfin(3),Rfin0(3),Velo(3), Velo0(3)
-    LOGICAL :: Stat, InitLocation, AccurateAtFace, AccurateAlways, AccurateNow
+    LOGICAL :: Stat, InitLocation, AccurateAtFace, AccurateAlways, AccurateNow, debug
     INTEGER :: FaceIndex, FaceIndex0, Status0, InitStatus
     REAL(KIND=dp) :: Lambda
     TYPE(Mesh_t), POINTER :: Mesh
@@ -3455,11 +3583,12 @@ RETURN
 
 ! print *,'Locating Particles'
     
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     Mesh => GetMesh()
     dim = Particles % dim      
     PartitionChangesOnly = .FALSE.
     Velo = 0.0_dp
+    Debug = .FALSE.
 
     ! Particles may be located either using the mid-point of the current element as the 
     ! reference point for finding face intersections, or using the true starting 
@@ -3468,9 +3597,11 @@ RETURN
     AccurateAlways = ListGetLogical( Params,'Particle Accurate Always',Stat)
     AccurateAtFace = ListGetLogical( Params,'Particle Accurate At Face',Stat)
 
+
 100 NoParticles = Particles % NumberOfParticles
 
     DO No = 1, NoParticles
+!debug = particles % partition(no) == 2 .and. particles % nodeindex(no) == 325
       
       Status = Particles % Status( No )
       InitStatus = Status
@@ -3495,17 +3626,32 @@ RETURN
       Rfin(1:dim) = GetParticleCoord( Particles, No )
       Velo(1:dim) = GetParticleVelo( Particles, No )      
       IF( AccurateNow ) Rinit = GetParticlePrevCoord( Particles, No )        
+      Rinit = GetParticlePrevCoord( Particles, No )        
+
+      IF( debug ) THEN
+        PRINT *,parenv % mype, 'going No',No,'Element',ElementIndex,'Face',FaceIndex,'Status',Status
+        PRINT *,parenv % mype, 'going Init:    ',Rinit(1:dim),Rfin(1:dim)
+        PRINT *,parenv % mype, 'going Velo:',GetParticleVelo(Particles,No), Velo(1:dim)
+      END IF
       
       CALL LocateParticleInMeshMarch(ElementIndex, Rinit, Rfin, InitLocation, &
-          Status,AccurateNow, FaceIndex, Lambda, Velo, No, ParticleWallKernel )
+          Status,AccurateNow, FaceIndex, Lambda, Velo, No, ParticleWallKernel, Particles )
+
+      IF( debug ) THEN
+        PRINT *,parenv % mype, 'leving No',No,'Element',ElementIndex,'Face',FaceIndex,'Status',Status
+        PRINT *,parenv % mype, 'leving Init:    ',Rinit(1:dim),Rfin(1:dim)
+        PRINT *,parenv % mype, 'Velo:',GetParticleVelo(Particles,No), Velo(1:dim)
+      END IF
 
       ! If a boundary face is passed then repeat the process more diligently. 
       ! Note that if we want proper collisions they should be implemented below
       !----------------------------------------------------------------------------
       IF( .NOT. AccurateNow ) THEN
         AccurateNow = AccurateAtFace .AND. FaceIndex > 0
-        IF( AccurateNow ) THEN
 
+if ( debug ) print*,accuratenow, accurateatface, faceindex > 0
+
+        IF( AccurateNow ) THEN
           FaceIndex0 = FaceIndex
           ElementIndex0 = ElementIndex
           Status0 = Status
@@ -3514,6 +3660,7 @@ RETURN
           ElementIndex = GetParticleElement( Particles, No )
           Rfin(1:dim) = GetParticleCoord( Particles, No )
           Velo(1:dim) = GetParticleVelo( Particles, No )      
+if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
           GOTO 200
         END IF
       END IF
@@ -3533,11 +3680,10 @@ RETURN
         FaceIndex = FaceIndex0
       END IF
 
-      IF( .FALSE. ) THEN
-        PRINT *,'No',No,'Element',ElementIndex,'Face',FaceIndex,'Status',Status
-        PRINT *,'Init:    ',Rinit(1:dim),Rfin(1:dim)
-        PRINT *,'Velo:',GetParticleVelo(Particles,No), Velo(1:dim)
-        Status = PARTICLE_LOST
+      IF( debug ) THEN
+        PRINT *,parenv % mype, 'No',No,'Element',ElementIndex,'Face',FaceIndex,'Status',Status
+        PRINT *,parenv % mype, 'Init:    ',Rinit(1:dim),Rfin(1:dim)
+        PRINT *,parenv % mype, 'Velo:',GetParticleVelo(Particles,No), Velo(1:dim)
       END IF
 
       Particles % ElementIndex(No) = ElementIndex       
@@ -3548,7 +3694,6 @@ RETURN
       IF( ElementIndex == 0 ) Velo = 0.0_dp
 
       CALL SetParticleVelo( Particles, No, Velo  )                
-
     END DO
 
     ! Change the partion in where the particles are located
@@ -3657,7 +3802,7 @@ RETURN
     
     IF(.NOT. Visited ) THEN
       Mesh => GetMesh()
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       n = Mesh % MaxElementNodes
       ALLOCATE( LocalPerm(n), LocalVelo(n,3) )
       
@@ -4273,7 +4418,7 @@ RETURN
       proc = Neigh(i)
       
       ALLOCATE(Indexes(n))
-      CALL MPI_RECV( Indexes, n, MPI_DOUBLE_PRECISION, proc, &
+      CALL MPI_RECV( Indexes, n, MPI_INTEGER, proc, &
           2001, MPI_COMM_WORLD, status, ierr )
       
       n_part=Particles % NumberOfParticles
@@ -4535,7 +4680,7 @@ RETURN
 
     
     IF(.NOT. Visited ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       TimeOrder = Particles % TimeOrder
       dim = Particles % dim
       
@@ -4557,14 +4702,13 @@ RETURN
       TimeVar => ParticleVariableGet( Particles,'particle time')
       GotTimeVar = ASSOCIATED( TimeVar )
 
-      IF( .NOT. Particles % DtConstant ) THEN
-        DtVar => ParticleVariableGet( Particles,'particle dt')
-        IF(.NOT. ASSOCIATED( DtVar ) ) THEN
-          CALL Fatal('ParticleAdvanceTimesteo','Variable timestep, > particle dt < should exist!')
-        END IF
-        IF(.NOT. GotTimeVar ) THEN
-          CALL Fatal('ParticleAdvanceTimestep','Variable timestep, > particle dtime < should exist!')
-        END IF
+      IF( GotTimeVar ) THEN
+        IF( .NOT. Particles % DtConstant ) THEN
+          DtVar => ParticleVariableGet( Particles,'particle dt')
+          IF(.NOT. ASSOCIATED( DtVar ) ) THEN
+            CALL Fatal('ParticleAdvanceTimesteo','Variable timestep, > particle dt < should exist!')
+          END IF
+        END IF        
       END IF
  
       DistVar => ParticleVariableGet( Particles,'particle distance')
@@ -4603,6 +4747,8 @@ RETURN
       IF( .NOT. Particles % DtConstant ) THEN
         dtime = Particles % DtSign * DtVar % Values(No)
         TimeVar % Values(No) = TimeVar % Values(No) + DtVar % Values(No)
+      ELSE IF( GotTimeVar ) THEN
+        TimeVar % Values(No) = TimeVar % Values(No) + Particles % dTime         
       END IF
 
       IF ( Status == PARTICLE_FIXEDCOORD ) THEN
@@ -4649,7 +4795,15 @@ RETURN
       NoMoving = NoMoving + 1
 
       Particles % Status(No) = PARTICLE_READY
+!if ( particles % partition(no)==2 .AND. particles % nodeindex(no) == 325 )then
+!print*,parenv % mype, particles % status(no), ' xxxxx 1 ', dcoord(1:dim),  particles%coordinate(no,:); flush(6)
+!endif
       Particles % Coordinate(No,:) = Particles % Coordinate(No,:) + dCoord(1:dim)
+
+!if ( particles % partition(no)==2 .AND. particles % nodeindex(no) == 325 )then
+!print*,parenv % mype, particles % status(no), ' xxxxx ', dcoord(1:dim),  particles%coordinate(no,:); flush(6)
+!endif
+
 
       IF( GotDistVar ) THEN
         ds = SQRT( SUM( dCoord(1:dim)**2 ) )
@@ -4660,7 +4814,7 @@ RETURN
     IF( Particles % DtConstant ) THEN
       Particles % Time = Particles % Time + Particles % dTime
     END IF
-
+    
     Particles % NumberOfMovingParticles = NoMoving
 
  END SUBROUTINE ParticleAdvanceTimestep
@@ -4703,7 +4857,7 @@ RETURN
     IF(.NOT. Visited ) THEN
       Visited = .TRUE.
 
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       Mesh => CurrentModel % Solver % Mesh
       dim = Particles % dim
 
@@ -4769,7 +4923,9 @@ RETURN
         dtime = RKCoeff * DtVar % Values(No)
       END IF
 
+      Coord = 0._dp
       Coord(1:dim) = Particles % Coordinate(No,:) 
+      Velo  = 0._dp
       Velo(1:dim) = Particles % Velocity(No,:) 	
       
       Element => Mesh % Elements( Particles % ElementIndex(No) )            
@@ -4801,10 +4957,11 @@ RETURN
       ! elemental derivate of the source term. 
       IF( UseGradSource ) THEN
         stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis,dBasisdx)
-        PrevCoord(1:dim) = Particles % PrevCoordinate(No,:) 
       ELSE
         stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
       END IF
+
+      PrevCoord(1:dim) = Particles % PrevCoordinate(No,:) 
 
       ! Path integral over time
       IF( TimeInteg ) THEN
@@ -4817,7 +4974,7 @@ RETURN
               SourceAtPath = SourceAtPath + 0.5*SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
                   ( PrevCoord(i) - Coord(i) )
             END DO
-          END IF          
+          END IF
           TimeIntegVar % Values(No) = TimeIntegVar % Values(No) + dtime * SourceAtPath
         END IF
       END IF
@@ -4844,7 +5001,7 @@ RETURN
               SourceAtPath = SourceAtPath + 0.5*SUM( dBasisdx(1:n,i) * Source(1:n) ) * &
                   ( PrevCoord(i) - Coord(i) )
             END DO
-          END IF          
+          END IF
           DistIntegVar % Values(No) = DistIntegVar % Values(No) + ds * SourceAtPath
         END IF
       END IF
@@ -4881,7 +5038,7 @@ RETURN
     IF( .NOT. Visited ) THEN
       Visited = .TRUE.
       Mesh => GetMesh()
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       dim = Mesh % Meshdim
       
       NoPeriodic = 0
@@ -4986,7 +5143,7 @@ RETURN
     IF( .NOT. Visited ) THEN
       Visited = .TRUE.
       Mesh => GetMesh()
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       dim = Mesh % Meshdim
       
       NoContact = 0
@@ -5113,7 +5270,7 @@ RETURN
     dtout = 0.0_dp
 
     IF( InitInterval ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       
       ! directly defined timestep
       dt0 = GetCReal(Params,'Timestep Size',DtIs)
@@ -5343,37 +5500,41 @@ RETURN
 !> so that they lost ones are eliminated. This is controlled by the Perm
 !> vector that includes only the indexes of the particles to be saved.
 !------------------------------------------------------------------------------
-    SUBROUTINE ParticleVariablesResize( Particles, Newsize, Perm) 
+    SUBROUTINE ParticleVariablesResize( Particles, Prevsize, Newsize, Perm) 
 !------------------------------------------------------------------------------
       TYPE(Particle_t), POINTER :: Particles
-      INTEGER :: Newsize
+      INTEGER :: Newsize, Prevsize
       INTEGER, OPTIONAL :: Perm(:)
 !------------------------------------------------------------------------------
       TYPE(Variable_t), POINTER :: Var
       REAL(KIND=dp), POINTER :: Values(:)
-      INTEGER :: i,j,k, OldSize
+      INTEGER :: i,j,k,OldSize
 !------------------------------------------------------------------------------
       
+      oldsize = prevsize
       IF( PRESENT( Perm ) ) THEN
+        oldsize = SIZE(Perm)
         DO i=1,SIZE(Perm)
           IF( Perm(i) == 0 ) THEN
             oldsize = i-1
             EXIT
           END IF
         END DO
+        IF( oldsize < 1 ) oldsize = 1
+        CALL Info('ParticleVariablesResize','Using compact size of: '//TRIM(I2S(oldsize)),Level=12)
       END IF
 
       Var => Particles % Variables
       DO WHILE( ASSOCIATED(Var) )
         k = Var % NameLen
         IF( k > 0 ) THEN
-          ! print *,'Increasing size of: '//TRIM(tmp % name(1:k))
+          CALL Info('ParticleVariableResize','Increasing size of variable: '// &
+              Var % name(1:k),Level=12)
           IF( Var % Dofs > 1 ) THEN
-            CALL Fatal('ParticleVariableResize','Implement for vectors!')
+            CALL Fatal('ParticleVariableResize','Implement size increase for vectors!')
           END IF
           Values => Var % Values
           IF( SIZE( Var % Values ) < newsize ) THEN            
-            NULLIFY( Var % Values ) 
             ALLOCATE( Var % Values(newsize) )
             IF( PRESENT( Perm ) ) THEN
               Var % Values(1:oldsize) = Values(Perm(1:oldsize))
@@ -5448,7 +5609,7 @@ RETURN
 
 
     IF( VisitedTimes == 1 ) THEN
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       FilePrefix = ListGetString(Params,'Filename Prefix')
       CALL WriteParticleFileNames(FilePrefix, dim)
       
@@ -5865,7 +6026,7 @@ RETURN
 
     SAVE :: VisitedTimes, Params, FilePrefix, TimeVar, FileNameGmsh, CoordInit
 
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     FilePrefix = ListGetString(Params,'Filename Prefix')
 
     WRITE( FileNameGmsh,'(A,A)') TRIM(FilePrefix),'.pos'
@@ -5987,7 +6148,7 @@ RETURN
     
     SAVE :: MinSaveStatus, MaxSaveStatus
     
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     Mesh => GetMesh()
     
     ExtCount = ListGetInteger( Params,'Output Count',GotIt)
@@ -6111,7 +6272,7 @@ RETURN
           ComplementExists, ThisOnly, Stat
       LOGICAL :: WriteData, WriteXML, Buffered   
       INTEGER, POINTER :: Perm(:), Perm2(:), Indexes(:)
-      INTEGER(KIND=dp), ALLOCATABLE :: ElemInd(:),ElemInd2(:)
+      INTEGER, ALLOCATABLE :: ElemInd(:),ElemInd2(:)
       REAL(KIND=dp), POINTER :: Values(:),Values2(:),&
           Values3(:),VecValues(:,:),Basis(:)
       REAL(KIND=dp) :: x,y,z,u,v,w,DetJ,val
@@ -6142,7 +6303,7 @@ RETURN
       
       WriteXML = .TRUE.
       WriteData = AsciiOutput
-      Params => GetSolverParams()
+      Params => ListGetSolverParams()
       Buffered = .TRUE.
       
       ! This is a hack to ensure that the streamed saving will cover the whole file
@@ -6864,7 +7025,7 @@ RETURN
     INTEGER :: NumberOfNodes, ParallelNodes, Dim
     
     
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     Mesh => GetMesh()
     
     ExtCount = ListGetInteger( Params,'Output Count',GotIt)
@@ -6943,7 +7104,7 @@ RETURN
       LOGICAL :: ScalarsExist, VectorsExist, Found, ParticleMode, ComponentVector, &
           ComplementExists, ThisOnly, Stat, WriteData, WriteXML
       INTEGER, POINTER :: Perm(:), Perm2(:), Indexes(:)
-      INTEGER(KIND=dp), ALLOCATABLE :: ElemInd(:),ElemInd2(:)
+      INTEGER, ALLOCATABLE :: ElemInd(:),ElemInd2(:)
       REAL(KIND=dp), POINTER :: ScalarValues(:), VectorValues(:,:),Values(:),Values2(:),&
           Values3(:),Basis(:)
       REAL(KIND=dp) :: x,y,z,u,v,w,DetJ,val
@@ -7454,7 +7615,7 @@ RETURN
 
     
     Particles => GlobalParticles
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     
     TableFormat = ListGetLogical( Params,'Table Format',Found)
     GmshFormat = ListGetLogical( Params,'Gmsh Format',Found)

@@ -33,7 +33,7 @@ Simulation
   Steady State Min Iterations = 1
 
   Post File = "grounded.vtu"
-  max output level = 3
+  max output level = 4
 End
 
 !---------------------------------------------------
@@ -274,3 +274,9 @@ Boundary Condition 3
   Mesh Update 1 = Real 0.0
   Mesh Update 2 = Real 0.0
 End
+
+Solver 4 :: Reference Norm = Real 5.5935137
+Solver 4 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=5.5935137,EPS=1E-06\n" );

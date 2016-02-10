@@ -84,9 +84,9 @@ MODULE Types
 	                SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
 	                SOLVER_MODE_MATRIXFREE = 6    ! normal field, no matrix
 
-  INTEGER, PARAMETER :: CONSTRAINT_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
-                        CONSTRAINT_TYPE_NODAL = 1, &    ! nodal projector
-                        CONSTRAINT_TYPE_GALERKIN = 2    ! Galerkin projector
+  INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
+                        PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
+                        PROJECTOR_TYPE_GALERKIN = 2    ! Galerkin projector
   
 !------------------------------------------------------------------------------
   CHARACTER, PARAMETER :: Backslash = ACHAR(92)
@@ -122,13 +122,14 @@ END INTERFACE
   INCLUDE 'dmumps_struc.h'
 #endif
 
+
   TYPE BasicMatrix_t
     INTEGER :: NumberOfRows
     INTEGER, ALLOCATABLE :: Rows(:), Cols(:), Diag(:)
     INTEGER, ALLOCATABLE :: GRows(:), RowOwner(:)
     REAL(KIND=dp), ALLOCATABLE :: Values(:),MassValues(:), &
         DampValues(:),ILUValues(:),PrecValues(:)
-  END  TYPE BasicMatrix_t
+  END TYPE BasicMatrix_t
 
 
   TYPE SubVector_t
@@ -154,21 +155,38 @@ END INTERFACE
     LOGICAL :: GotBlockStruct
   END TYPE BlockMatrix_t
 
+#if defined(HAVE_MKL) && defined(HAVE_CPARDISO)                                 
+  TYPE CPardiso_struct                                                          
+    INTEGER :: n                                                                
+    INTEGER :: mtype                                                            
+    INTEGER :: msglvl                                                           
+    INTEGER :: maxfct                                                           
+    INTEGER :: mnum                                                             
+    INTEGER :: nrhs                                                             
+    INTEGER, POINTER CONTIG :: ia(:) => NULL(), ja(:) => NULL()
+    REAL(kind=dp), POINTER CONTIG :: aa(:) => NULL(), rhs(:) => NULL(), &
+          x(:) => NULL()
+    INTEGER, POINTER CONTIG :: IParm(:) => NULL()    
+    INTEGER(KIND=AddrInt), POINTER CONTIG :: ID(:) => NULL()                           
+  END TYPE CPardiso_struct
+#endif     
 
   TYPE Matrix_t
-    TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), &
+    TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), CircuitMatrix => Null(), &
         ConstraintMatrix=>NULL(), EMatrix=>NULL(), AddMatrix=>NULL(), CollectionMatrix=>NULL()
 
     INTEGER :: NumberOfRows, ExtraDOFs=0, ParallelDOFs=0
 
     TYPE(Solver_t), POINTER :: Solver => NULL()
 
+    LOGICAL :: NoDirichlet = .FALSE.
+    REAL(KIND=dp), ALLOCATABLE :: Dvalues(:)
     LOGICAL, ALLOCATABLE :: ConstrainedDOF(:)
 
     INTEGER :: Subband, FORMAT, SolveCount, Comm=-1
     LOGICAL :: Ordered, Lumped, Symmetric, COMPLEX, DGMatrix, Cholesky
 
-    INTEGER :: ConstraintBC,ConstraintType
+    INTEGER :: ProjectorBC,ProjectorType
 
     TYPE(ListMatrix_t), POINTER :: ListMatrix(:) => NULL()
 
@@ -180,12 +198,12 @@ END INTERFACE
     REAL(KIND=dp), POINTER CONTIG :: BulkResidual(:)=>NULL()
 
     REAL(KIND=dp),  POINTER CONTIG :: Values(:)=>NULL(), ILUValues(:)=>NULL(), &
-               DiagScaling(:) => NULL()
+               DiagScaling(:) => NULL(), TValues(:) => Null()
 
     REAL(KIND=dp), ALLOCATABLE :: extraVals(:)
     REAL(KIND=dp) :: RhsScaling
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
-		           BulkValues(:)=>NULL(), PrecValues(:)=>NULL()
+        BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), PrecValues(:)=>NULL()
 
 #ifdef HAVE_MUMPS
     TYPE(dmumps_struc), POINTER :: MumpsID => NULL() ! Global distributed Mumps
@@ -195,6 +213,9 @@ END INTERFACE
     INTEGER, POINTER :: PardisoParam(:) => NULL()
     INTEGER(KIND=AddrInt), POINTER :: PardisoID(:) => NULL()
 #endif
+#if defined(HAVE_MKL) && defined(HAVE_CPARDISO)                                 
+    TYPE(CPardiso_struct), POINTER :: CPardisoID => NULL()                      
+#endif 
 #ifdef HAVE_SUPERLU
     INTEGER(KIND=AddrInt) :: SuperLU_Factors=0
 #endif
@@ -349,14 +370,11 @@ END INTERFACE
    END TYPE ElementType_t
 
 !------------------------------------------------------------------------------
-
-   TYPE ValueList_t
-     TYPE(ValueList_t), POINTER :: Next
-
-     INTEGER :: Model
+   TYPE ValueListEntry_t
      INTEGER :: TYPE
+     TYPE(ValueListEntry_t), POINTER :: Next => Null()
 
-     REAL(KIND=dp), POINTER :: TValues(:)
+     REAL(KIND=dp), POINTER :: TValues(:), Cumulative(:) => NULL()
      REAL(KIND=dp), POINTER :: FValues(:,:,:), CubicCoeff(:)=>NULL()
 
      LOGICAL :: LValue
@@ -368,19 +386,25 @@ END INTERFACE
      INTEGER(KIND=AddrInt) :: PROCEDURE
 #endif
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
      REAL(KIND=dp) :: Coeff = 1.0_dp
+     CHARACTER(LEN=MAX_NAME_LEN) :: CValue
 
      INTEGER :: NameLen,DepNameLen
      CHARACTER(LEN=MAX_NAME_LEN) :: Name,DependName
+   END TYPE ValueListEntry_t
+
+   TYPE ValueList_t
+     TYPE(ValueListEntry_t), POINTER :: Head => Null()
    END TYPE ValueList_t
+
 
    ! This is a tentative data type to speed up the retrieval of parameters
    ! at Gaussian points.
    !----------------------------------------------------------------------
    TYPE ValueHandle_t
      TYPE(Element_t), POINTER :: Element => NULL()
-     TYPE(ValueList_t), POINTER :: List => NULL(), ptr => NULL()
+     TYPE(ValueList_t), POINTER :: List => Null()
+     TYPE(ValueList_t), POINTER :: Ptr  => Null()
      TYPE(Nodes_t), POINTER :: Nodes
      INTEGER, POINTER :: Indexes
      INTEGER :: n 
@@ -399,7 +423,7 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
    TYPE MaterialArray_t
-     TYPE(ValueList_t), POINTER :: Values
+     TYPE(ValueList_t), POINTER :: Values => Null()
    END TYPE MaterialArray_t
 
 !------------------------------------------------------------------------------
@@ -408,44 +432,50 @@ END INTERFACE
      INTEGER :: TYPE,Tag
      TYPE(Matrix_t), POINTER :: PMatrix => NULL()
      LOGICAL :: PMatrixGalerkin = .FALSE.
-     TYPE(ValueList_t), POINTER :: Values
+     TYPE(ValueList_t), POINTER :: Values => Null()
    END TYPE BoundaryConditionArray_t
 
 !------------------------------------------------------------------------------
 
    TYPE InitialConditionArray_t
      INTEGER :: TYPE,Tag
-     TYPE(ValueList_t), POINTER :: Values
+     TYPE(ValueList_t), POINTER :: Values => Null()
    END TYPE InitialConditionArray_t
 
 !------------------------------------------------------------------------------
 
+    TYPE ComponentArray_t
+      TYPE(ValueList_t), POINTER :: Values => Null()
+    END TYPE ComponentArray_t
+
+!------------------------------------------------------------------------------
+
     TYPE BodyForceArray_t
-      TYPE(ValueList_t), POINTER :: Values
+      TYPE(ValueList_t), POINTER :: Values => Null()
     END TYPE BodyForceArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE BoundaryArray_t
-      TYPE(ValueList_t), POINTER :: Values
+      TYPE(ValueList_t), POINTER :: Values => Null()
     END TYPE BoundaryArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE BodyArray_t
-      TYPE(ValueList_t), POINTER :: Values
+      TYPE(ValueList_t), POINTER :: Values => Null()
     END TYPE BodyArray_t
 
 !------------------------------------------------------------------------------
 
     TYPE EquationArray_t
-      TYPE(ValueList_t), POINTER :: Values
+      TYPE(ValueList_t), POINTER :: Values => Null()
     END TYPE EquationArray_t
 
 !------------------------------------------------------------------------------
 
 !   TYPE SimulationInfo_t
-!     TYPE(ValueList_t), POINTER :: Values
+!     TYPE(ValueList_t) :: Values => Null()
 !   END TYPE SimulationInfo_t
 
 !------------------------------------------------------------------------------
@@ -480,6 +510,9 @@ END INTERFACE
      REAL(KIND=dp)             :: Norm=0, PrevNorm=0,NonlinChange=0, SteadyChange=0
      INTEGER :: NonlinConverged=-1, SteadyConverged=-1, NonlinIter
      COMPLEX(KIND=dp), POINTER :: EigenValues(:),EigenVectors(:,:)
+     REAL(KIND=dp), POINTER :: ConstraintModes(:,:) => NULL()
+     INTEGER, POINTER :: ConstraintModesIndeces(:) => NULL()
+     INTEGER :: NumberOfConstraintModes = 0
      REAL(KIND=dp),    POINTER :: Values(:),PrevValues(:,:),PValues(:),&
        NonlinValues(:), SteadyValues(:)
      LOGICAL, POINTER :: UpperLimitActive(:) => NULL(), LowerLimitActive(:) => NULL()
@@ -638,6 +671,8 @@ END INTERFACE
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
      INTEGER :: DisContNodes
+     
+     INTEGER, POINTER :: InvPerm(:)
 
      INTEGER :: NumberOfNodes, NumberOfBulkElements, NumberOfEdges, &
                 NumberOfFaces, NumberOfBoundaryElements, MeshDim, PassBCcnt=0
@@ -647,8 +682,19 @@ END INTERFACE
      REAL(KIND=dp), POINTER :: BCWeight(:), BodyForceWeight(:),&
          BodyWeight(:), MaterialWeight(:)
      
-
    END TYPE Mesh_t
+
+
+   TYPE MortarBC_t 
+     TYPE(Matrix_t), POINTER :: Projector => NULL()
+     INTEGER, POINTER :: Perm(:) => NULL()
+     REAL(KIND=dp), POINTER :: Rhs(:) => NULL()
+     REAL(KIND=dp), POINTER :: Diag(:) => NULL()
+     LOGICAL, POINTER :: Active(:) => NULL()
+     REAL(KIND=dp) :: SlaveScale = 1.0_dp
+     REAL(KIND=dp) :: MasterScale = 1.0_dp
+     LOGICAL :: LumpedDiag = .TRUE.
+   END TYPE MortarBC_t
 
 !------------------------------------------------------------------------------
 
@@ -660,9 +706,10 @@ END INTERFACE
 !------------------------------------------------------------------------------
 
     TYPE Solver_t
-      TYPE(ValueList_t), POINTER :: Values => NULL()
+      TYPE(ValueList_t), POINTER :: Values => Null()
 
       INTEGER :: TimeOrder,DoneTime,Order,NOFEigenValues=0
+      INTEGER :: TimesVisited = 0
       INTEGER(KIND=AddrInt) :: PROCEDURE, LinBeforeProc, LinAfterProc
 
       REAL(KIND=dp) :: Alpha,Beta,dt
@@ -681,11 +728,44 @@ END INTERFACE
       TYPE(BlockMatrix_t), POINTER :: BlockMatrix => NULL()
       TYPE(Matrix_t),   POINTER :: Matrix => NULL()
       TYPE(Variable_t), POINTER :: Variable => NULL()
+
+      TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
+      LOGICAL :: MortarBCsChanged = .FALSE., MortarBCsOnly=.FALSE.
+      INTEGER(KIND=AddrInt) :: MortarProc
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
 
 
+!-------------------Circuit stuff----------------------------------------------
+  TYPE CircuitVariable_t
+    LOGICAL :: isIvar, isVvar
+    INTEGER :: BodyId, valueId, ImValueId, dofs, pdofs, Owner, ComponentId
+    TYPE(Component_t), POINTER :: Component => Null()
+    REAL(KIND=dp), ALLOCATABLE :: A(:), B(:)
+    REAL(KIND=dp), ALLOCATABLE :: SourceRe(:), SourceIm(:), Mre(:), Mim(:)
+    INTEGER, ALLOCATABLE :: EqVarIds(:)
+  END TYPE CircuitVariable_t
+  
+  TYPE Component_t
+    REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
+                     N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
+    INTEGER :: polord, ElBoundary, nofcnts, BodyId, ComponentId
+    INTEGER, POINTER :: BodyIds(:) => Null()
+    CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
+    TYPE(CircuitVariable_t), POINTER :: ivar, vvar
+  END TYPE Component_t
+
+  TYPE Circuit_t
+    REAL(KIND=dp), ALLOCATABLE :: A(:,:), B(:,:), Mre(:,:), Mim(:,:), Area(:)
+    INTEGER, ALLOCATABLE :: ComponentIds(:), Perm(:)
+    LOGICAL :: UsePerm = .FALSE., Harmonic
+    INTEGER :: n, m, n_comp,CvarDofs
+    CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: names(:), source(:)
+    TYPE(Component_t), POINTER :: Components(:)
+    TYPE(CircuitVariable_t), POINTER :: CircuitVariables(:)
+  END TYPE Circuit_t
+!-------------------Circuit stuff----------------------------------------------
 
 !------------------------------------------------------------------------------
     TYPE Model_t
@@ -703,7 +783,7 @@ END INTERFACE
 !
 !     Simulation input data, that concern the model as a whole
 !
-      TYPE(ValueList_t), POINTER :: Simulation => NULL()
+      TYPE(ValueList_t), POINTER :: Simulation => Null()
 !
 !     Variables
 !
@@ -712,7 +792,7 @@ END INTERFACE
 !     Some physical constants, that will be read from the database or set by
 !     other means: gravity direction/intensity and Stefan-Boltzmann constant)
 !
-      TYPE(ValueList_t), POINTER :: Constants => NULL()
+      TYPE(ValueList_t), POINTER :: Constants => Null()
 !
 !     Types  of  equations (flow,heat,...) and  some  parameters (for example
 !     laminar or turbulent flow or type of convection model for heat equation,
@@ -720,6 +800,11 @@ END INTERFACE
 !
       INTEGER :: NumberOfEquations = 0
       TYPE(EquationArray_t), POINTER :: Equations(:) => NULL()
+!
+!     Active electrical components
+!
+      INTEGER :: NumberOfComponents = 0
+      TYPE(ComponentArray_t), POINTER :: Components(:) => NULL()
 !
 !     Active bodyforces: (bussinesq approx., heatsource, freele chosen
 !     bodyforce...)
@@ -791,15 +876,20 @@ END INTERFACE
 
       TYPE(Mesh_t),   POINTER :: Mesh   => NULL()
       TYPE(Solver_t), POINTER :: Solver => NULL()
+      
+      ! Circuits:
+      INTEGER, POINTER :: n_Circuits=>Null(), Circuit_tot_n=>Null()
+      TYPE(Matrix_t), POINTER :: CircuitMatrix => Null()
+      TYPE(Circuit_t), POINTER :: Circuits(:) => Null()
+      TYPE(Solver_t), POINTER :: ASolver    
+      
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
-
-
+    
 
 !------------------------------------------------------------------------------
 END MODULE Types
 !------------------------------------------------------------------------------
-
 !> \}

@@ -94,7 +94,7 @@
         PhaseChange=.FALSE., CheckLatentHeatRelease=.FALSE., FirstTime, &
         SmartHeaterControl, IntegralHeaterControl, HeaterControlLocal, SmartTolReached=.FALSE., &
         TransientHeaterControl, SmartHeaterAverage, ConstantBulk, SaveBulk, &
-	TransientAssembly, Converged
+	TransientAssembly, Converged, AnyMultiply
      LOGICAL, POINTER :: SmartHeaters(:), IntegralHeaters(:)
 
      TYPE(Variable_t), POINTER :: TempSol,FlowSol,HeatSol,CurrentSol, MeshSol, DensitySol
@@ -107,7 +107,7 @@
      REAL(KIND=dp) :: NonlinearTol,NewtonTol,SmartTol,Relax, &
             SaveRelax,dt,dt0,CumulativeTime, VisibleFraction, PowerScaling=1.0, PrevPowerScaling=1.0, &
             PowerRelax, PowerTimeScale, PowerSensitivity, xave, yave, Normal(3), &
-	    dist, mindist, ControlPoint(3)
+	    dist, mindist, ControlPoint(3), HeatTransferMultiplier
 
      REAL(KIND=dp), POINTER :: Temperature(:),PrevTemperature(:),FlowSolution(:), &
        ElectricCurrent(:), PhaseChangeIntervals(:,:),ForceVector(:), &
@@ -396,6 +396,8 @@
 
      IF(Found .AND. dt > dt0) TransientAssembly = .FALSE.
 
+     
+     AnyMultiply = ListCheckPresentAnyMaterial( Model, 'Heat Transfer Multiplier' ) 
 
 !------------------------------------------------------------------------------
 
@@ -912,14 +914,16 @@
 !------------------------------------------------------------------------------
 !          Perfusion (added as suggested by Matthias Zenker)
 !------------------------------------------------------------------------------
-         PerfusionRate(1:n) = GetReal( BodyForce, 'Perfusion Rate', Found )
+         IF( ASSOCIATED(BodyForce) ) THEN
+           PerfusionRate(1:n) = GetReal( BodyForce, 'Perfusion Rate', Found )
          
-         IF ( Found ) THEN
-           PerfusionRefTemperature(1:n) = GetReal( BodyForce, 'Perfusion Reference Temperature' )
-           PerfusionDensity(1:n) = GetReal( BodyForce, 'Perfusion Density' )
-           PerfusionHeatCapacity(1:n) = GetReal( BodyForce, 'Perfusion Heat Capacity' )
-           C0(1:n) = PerfusionHeatCapacity(1:n) * PerfusionRate(1:n) * PerfusionDensity(1:n) 
-           Load(1:n) = Load(1:n) + C0(1:n) * PerfusionRefTemperature(1:n)           
+           IF ( Found ) THEN
+             PerfusionRefTemperature(1:n) = GetReal( BodyForce, 'Perfusion Reference Temperature' )
+             PerfusionDensity(1:n) = GetReal( BodyForce, 'Perfusion Density' )
+             PerfusionHeatCapacity(1:n) = GetReal( BodyForce, 'Perfusion Heat Capacity' )
+             C0(1:n) = PerfusionHeatCapacity(1:n) * PerfusionRate(1:n) * PerfusionDensity(1:n) 
+             Load(1:n) = Load(1:n) + C0(1:n) * PerfusionRefTemperature(1:n)           
+           END IF
          END IF
 
 !------------------------------------------------------------------------------
@@ -948,6 +952,19 @@
 !------------------------------------------------------------------------------
          END IF
 !------------------------------------------------------------------------------
+
+         ! The heat equation may have lower dimensional elements active also.
+         ! For example, heat transfer through a pipe could be expressed by 1d elements.
+         ! Then the multiplier should be the area of the pipe when included in 3D mesh.
+         IF( AnyMultiply ) THEN
+           HeatTransferMultiplier = GetCReal( Material, 'Heat Transfer Multiplier', Found )
+           IF( Found ) THEN
+             MASS = HeatTransferMultiplier * MASS
+             STIFF = HeatTransferMultiplier * STIFF
+             FORCE = HeatTransferMultiplier * FORCE
+           END IF
+         END IF
+
 
          IF ( HeaterControlLocal .AND. .NOT. TransientHeaterControl) THEN
 
@@ -991,6 +1008,8 @@
 
 
 1000  CONTINUE
+
+     
 
 !------------------------------------------------------------------------------
 !     Neumann & Newton boundary conditions
@@ -1280,7 +1299,7 @@ CONTAINS
 !------------------------------------------------------------------------------
       RadiationFlag = GetString( BC, 'Radiation', Found )
 
-      IF ( Found .AND. RadiationFlag(1:4) /= 'none' ) THEN
+      IF ( Found .AND. RadiationFlag /= 'none' ) THEN
         NodalEmissivity(1:n) = GetReal(BC, 'Emissivity', Found)
         IF(.NOT. Found) THEN
            NodalEmissivity(1:n) = GetParentMatProp( 'Emissivity' )
@@ -1288,7 +1307,7 @@ CONTAINS
         Emissivity = SUM( NodalEmissivity(1:n) ) / n
 
 !------------------------------------------------------------------------------
-        IF (  RadiationFlag(1:9) == 'idealized' ) THEN
+        IF (  RadiationFlag == 'idealized' ) THEN
           AText(1:n) = GetReal( BC, 'Radiation External Temperature',Found )
           IF(.NOT. Found) AText(1:n) = GetReal( BC, 'External Temperature' )
         ELSE

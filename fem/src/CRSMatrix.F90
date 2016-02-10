@@ -695,46 +695,53 @@ CONTAINS
     IF ( isDamp ) &
       isDamp = isDamp .AND. SIZE(A % DampValues) == SIZE(A % Values)
 
-    DO l=A % Rows(n),A % Rows(n+1)-1
-       i = A % Cols(l)
-       IF ( i == n ) CYCLE
+    IF(.NOT.A % NoDirichlet) THEN
+      DO l=A % Rows(n),A % Rows(n+1)-1
+         i = A % Cols(l)
+         IF ( i == n ) CYCLE
 
-       IF ( n > i ) THEN
-         k1 = A % Diag(i)+1
-         k2 = A % Rows(i+1)-1
-       ELSE 
-         k1 = A % Rows(i)
-         k2 = A % Diag(i)-1
-       END IF
+         IF ( n > i ) THEN
+           k1 = A % Diag(i)+1
+           k2 = A % Rows(i+1)-1
+         ELSE 
+           k1 = A % Rows(i)
+           k2 = A % Diag(i)-1
+         END IF
 
-       k = k2 - k1 + 1
-       IF ( k <= 30 ) THEN
-         DO j = k1, k2
-           IF ( A % Cols(j) == n ) THEN
+         k = k2 - k1 + 1
+         IF ( k <= 30 ) THEN
+           DO j = k1, k2
+             IF ( A % Cols(j) == n ) THEN
+               b(i) = b(i) - A % Values(j) * val
+               A % Values(j) = 0.0_dp
+               IF ( isMass ) A % MassValues(j) = 0._dp
+               IF ( isDamp ) A % DampValues(j) = 0._dp
+               EXIT
+             ELSE IF ( A % Cols(j) > n ) THEN
+               EXIT
+             END IF
+           END DO
+         ELSE
+           j = CRS_Search( k,A % Cols(k1:k2),n )
+           IF ( j > 0 ) THEN
+             j = j + k1 - 1
              b(i) = b(i) - A % Values(j) * val
              A % Values(j) = 0.0_dp
              IF ( isMass ) A % MassValues(j) = 0._dp
              IF ( isDamp ) A % DampValues(j) = 0._dp
-             EXIT
-           ELSE IF ( A % Cols(j) > n ) THEN
-             EXIT
            END IF
-         END DO
-       ELSE
-         j = CRS_Search( k,A % Cols(k1:k2),n )
-         IF ( j > 0 ) THEN
-           j = j + k1 - 1
-           b(i) = b(i) - A % Values(j) * val
-           A % Values(j) = 0.0_dp
-           IF ( isMass ) A % MassValues(j) = 0._dp
-           IF ( isDamp ) A % DampValues(j) = 0._dp
          END IF
-       END IF
-    END DO
+      END DO
+      CALL CRS_ZeroRow(A,n)
+      A % Values(A % Diag(n)) = 1._dp
+      b(n) = val
+    END IF
 
-    CALL CRS_ZeroRow(A,n)
-    b(n) = val
-    A % Values(A % Diag(n)) = 1._dp
+    IF(ALLOCATED(A % Dvalues)) THEN
+      A % DValues(n) = val
+    ELSE
+      b(n) = val
+    END IF
     IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(n) = .TRUE.
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_SetSymmDirichlet
@@ -832,18 +839,27 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, POINTER :: InvPerm(:)
 !------------------------------------------------------------------------------
 
+    CALL Info('CRS_CreateMatrix','Creating CRS Matrix of size: '//TRIM(I2S(n)),Level=12)
+
     A => AllocateMatrix()
 
-    k = Ndeg*Ndeg*Total
-
-    ALLOCATE( A % Rows(n+1),A % Diag(n),A % Cols(k),STAT=istat )
-
-    IF ( istat == 0 .AND. AllocValues ) THEN
-      ALLOCATE( A % Values(k), STAT=istat )
+    ALLOCATE( A % Rows(n+1),A % Diag(n),STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix topology.' )
     END IF
 
+    k = Ndeg*Ndeg*Total
+    CALL Info('CRS_CreateMatrix','Creating CRS Matrix with nofs: '//TRIM(I2S(k)),Level=14)
+    ALLOCATE( A % Cols(k),STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CreateMatrix', 'Memory allocation error.' )
+      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix cols.' )
+    END IF
+
+    IF ( AllocValues ) THEN
+      ALLOCATE( A % Values(k), STAT=istat )
+      IF ( istat /= 0 ) THEN
+        CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix values.' )
+      END IF
     END IF
 
     NULLIFY( A % ILUValues )
@@ -864,6 +880,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        j = InvPerm((i-2)/Ndeg+1)
        A % Rows(i) = A % Rows(i-1) + Ndeg*RowNonzeros(j)
     END DO
+
     j = InvPerm((n-1)/ndeg+1)
     A % Rows(n+1) = A % Rows(n)  +  Ndeg*RowNonzeros(j)
 
@@ -871,104 +888,12 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     A % Diag = 0
 
     A % Ordered = .FALSE.
+
+    CALL Info('CRS_CreateMatrix','Creating CRS Matrix finished',Level=14)
+
   END FUNCTION CRS_CreateMatrix
 !------------------------------------------------------------------------------
 
-
-
-!------------------------------------------------------------------------------
-!> Prints the values of the CRS matrix to standard output.
-!------------------------------------------------------------------------------
-  SUBROUTINE CRS_PrintMatrix( A, SaveMass, SaveDamp, SaveStiff )
-!------------------------------------------------------------------------------
-    TYPE(Matrix_t) :: A            !< Structure holding matrix
-    LOGICAL, OPTIONAL :: SaveMass  !< Should we save the mass matrix
-    LOGICAL, OPTIONAL :: SaveDamp  !< Should we save the damping matrix
-    LOGICAL, OPTIONAL :: SaveStiff !< Should we save the stiffness matrix
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,k,IndMass,IndDamp,IndStiff,IndMax
-    LOGICAL :: DoMass, DoDamp, DoStiff
-    REAL(KIND=dp) :: Vals(3)
-
-    DoMass = .FALSE.
-    IF( PRESENT( SaveMass ) ) DoMass = SaveMass
-    IF( DoMass .AND. .NOT. ASSOCIATED( A % MassValues ) ) THEN
-      CALL Warn('CRS_PrintMatrix','Cannot save nonexisting mass matrix')
-      DoMass = .FALSE. 
-    END IF
-
-    DoDamp = .FALSE.
-    IF( PRESENT( SaveDamp ) ) DoDamp = SaveDamp
-    IF( DoDamp .AND. .NOT. ASSOCIATED( A % DampValues ) ) THEN
-      CALL Warn('CRS_PrintMatrix','Cannot save nonexisting damp matrix')
-      DoDamp = .FALSE. 
-    END IF
-
-    DoStiff = .TRUE.
-    IF( PRESENT( SaveStiff ) ) DoStiff = SaveStiff
-    IF( DoStiff .AND. .NOT. ASSOCIATED( A % Values ) ) THEN
-      CALL Warn('CRS_PrintMatrix','Cannot save nonexisting stiff matrix')
-      DoStiff = .FALSE. 
-    END IF
-
-    IF(.NOT. (DoStiff .OR. DoDamp .OR. DoMass ) ) THEN
-      CALL Warn('CRS_PrintMatrix','Saving just the topology!')
-    END IF
-    
-    IndStiff = 0
-    IndDamp = 0
-    IndMass = 0
-
-    IF( DoStiff ) IndStiff = 1
-    IF( DoDamp ) IndDamp = IndStiff + 1
-    IF( DoMass ) IndMass = IndDamp + 1
-    IndMax = MAX( IndStiff, IndDamp, IndMass )
-
-    DO i=1,A % NumberOfRows
-      DO j=A % Rows(i),A % Rows(i+1)-1
-        WRITE(1,'(I0,A,I0,A)',ADVANCE='NO') i,' ',A % Cols(j),' '
-        IF( DoStiff ) THEN
-          Vals(IndStiff) = A % Values(j)
-        END IF
-        IF( DoDamp ) THEN
-          Vals(IndDamp) = A % DampValues(j)
-        END IF
-        IF( DoMass ) THEN
-          Vals(IndMass) = A % MassValues(j)
-        END IF
-
-        IF( IndMax > 0 ) THEN
-          WRITE(1,*) Vals(1:IndMax)          
-        ELSE
-          WRITE(1,'(A)') ' '
-        END IF
-      END DO
-    END DO
-
-  END SUBROUTINE CRS_PrintMatrix
-
-!------------------------------------------------------------------------------
-!> Prints the values of the right-hand-side vector to standard output.
-!------------------------------------------------------------------------------
-  SUBROUTINE CRS_PrintRHS( A )
-!------------------------------------------------------------------------------
-    TYPE(Matrix_t) :: A  !< Structure holding matrix
-!------------------------------------------------------------------------------
-    INTEGER :: i
-    REAL(KIND=dp) :: Val
-
-    DO i=1,A % NumberOfRows
-      Val = A % Rhs(i)
-      WRITE(1,'(I0,A)',ADVANCE='NO') i,' '
-      IF( ABS( Val ) <= TINY( Val ) ) THEN
-        WRITE(1,'(A)') '0.0'
-      ELSE
-        WRITE(1,*) Val
-      END IF
-    END DO
-
-  END SUBROUTINE CRS_PrintRHS
-!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !>    Matrix vector product (v = Au) for a matrix given in CRS format.
@@ -2173,9 +2098,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !------------------------------------------------------------------------------
   FUNCTION CRS_IncompleteLU(A,ILUn) RESULT(Status)
 !------------------------------------------------------------------------------
-    TYPE(Matrix_t) :: A  !< Strcture holding input matrix, will also hold the factorization on exit.
-    INTEGER, INTENT(IN) :: ILUn   !< Order of fills allowed 0-9
-    LOGICAL :: Status  !< Whether or not the factorization succeeded.
+    TYPE(Matrix_t) :: A          !< Structure holding input matrix, will also hold the factorization on exit.
+    INTEGER, INTENT(IN) :: ILUn  !< Order of fills allowed 0-9
+    LOGICAL :: Status            !< Whether or not the factorization succeeded.
 !------------------------------------------------------------------------------
     LOGICAL :: Warned
     INTEGER :: i,j,k,l,m,n,istat
@@ -2202,6 +2127,16 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     st = CPUTime()
 
     N = A % NumberOfRows
+
+    IF(N == 0) THEN
+       A % ILURows => A % Rows
+       A % ILUCols => A % Cols
+       A % ILUDiag => A % Diag
+
+       Status = .TRUE.
+       RETURN
+    END IF
+
     Diag   => A % Diag
     Rows   => A % Rows
     Cols   => A % Cols
@@ -3906,6 +3841,89 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
 
   END SUBROUTINE CRS_InspectMatrix
+
+
+!------------------------------------------------------------------------------
+!> Eliminate redundant entries in matrix A by summing same (i,j) combinations
+!> together. It is assumed that the same entries are on the same CRS row.
+!------------------------------------------------------------------------------
+  SUBROUTINE CRS_PackMatrix( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A     !< Structure holding the matrix
+!------------------------------------------------------------------------------ 
+    INTEGER :: i,j,k,k2,n,rowi,nofs0
+    INTEGER, ALLOCATABLE :: LocalCols(:), ColIndex(:)
+    INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
+    REAL(KIND=dp), POINTER :: Values(:), TValues(:)
+    REAL(KIND=dp), ALLOCATABLE :: LocalValues(:), LocalTValues(:)
+!------------------------------------------------------------------------------
+
+    IF(A % NumberOfRows == 0 ) RETURN
+
+    Rows    => A % Rows
+    Cols    => A % Cols
+    Diag    => A % Diag
+    Values  => A % Values
+    TValues => A % TValues
+
+    nofs0 = Rows(A % NumberOfRows+1)-1
+
+    n = 0
+    DO i=1,A % NumberOfRows
+      n = MAX( n, Rows(i+1)+1-Rows(i) )
+    END DO
+
+    ALLOCATE( LocalCols(n), LocalValues(n), LocalTValues(n) )
+    LocalCols = 0
+    LocalValues = 0.0_dp
+
+    ALLOCATE(ColIndex(MAXVAL(Cols)))
+    ColIndex = 0
+
+    k2 = 0
+    DO i=1,A % NumberOfRows
+      Rowi = k2+1
+
+      ! Memorize the matrix row
+      DO k=1,Rows(i+1)-Rows(i)
+        LocalCols(k)   = Cols(Rows(i)+k-1)
+        LocalValues(k) = Values(Rows(i)+k-1)
+        IF(ASSOCIATED(TValues)) &
+          LocalTValues(k) = TValues(Rows(i)+k-1)
+      END DO
+
+      ! Pack the matrix row 
+      DO k=1,Rows(i+1)-Rows(i)
+        j = LocalCols(k) 
+        IF( ColIndex(j) == 0 ) THEN
+          k2 = k2 + 1
+          ColIndex(j) = k2
+          Cols(k2) = Cols(Rows(i)+k-1)
+          Values(k2) = LocalValues(k)
+          IF(ASSOCIATED(TValues)) &
+            TValues(k2) = LocalTValues(k)
+        ELSE
+          Values(ColIndex(j)) = Values(ColIndex(j)) + LocalValues(k)
+          IF(ASSOCIATED(TValues)) &
+            TValues(ColIndex(j)) = TValues(ColIndex(j)) + LocalTValues(k)
+        END IF
+      END DO
+      
+      ! Nullify the index table
+      DO k=1,Rows(i+1)-Rows(i)
+        j = LocalCols(k) 
+        ColIndex(j) = 0 
+      END DO
+      Rows(i) = Rowi
+    END DO
+    Rows(i) = k2+1
+
+    CALL Info('CRS_PackMatrix','Number of summed-up matrix entries: '&
+        //TRIM(I2S(nofs0-k2)),Level=8)
+
+  END SUBROUTINE CRS_PackMatrix
+!------------------------------------------------------------------------------
+
 
 
 END MODULE CRSMatrix

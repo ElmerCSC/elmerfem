@@ -6,7 +6,7 @@
 !> that speeds up the interpolation.
 !------------------------------------------------------------------------------
      SUBROUTINE InterpolateMeshToMesh( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName )
+            NewVariables, UseQuadrantTree, Projector, MaskName, UnfoundNodes )
 !------------------------------------------------------------------------------
        USE Lists
        USE SParIterComm
@@ -23,6 +23,7 @@
        INTEGER, ALLOCATABLE :: perm(:), vperm(:)
        INTEGER, POINTER :: nperm(:)
        LOGICAL, ALLOCATABLE :: FoundNodes(:)
+       LOGICAL, POINTER, OPTIONAL :: UnfoundNodes(:)
        TYPE(Mesh_t), POINTER :: nMesh
        TYPE(VAriable_t), POINTER :: Var, nVar
        INTEGER :: i,j,k,l,nfound,maxrecv,n,ierr,nvars,npart,proc,status(MPI_STATUS_SIZE)
@@ -46,29 +47,41 @@
 !-------------------------------------------------------------------------------
        INTERFACE
          SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+             NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm)
            USE Types
            TYPE(Variable_t), POINTER, OPTIONAL :: OldVariables, NewVariables
            TYPE(Mesh_t), TARGET  :: OldMesh, NewMesh
            LOGICAL, OPTIONAL :: UseQuadrantTree,FoundNodes(:)
            CHARACTER(LEN=*),OPTIONAL :: MaskName
            TYPE(Projector_t), POINTER, OPTIONAL :: Projector
+           INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
          END SUBROUTINE InterpolateMeshToMeshQ
        END INTERFACE
 !-------------------------------------------------------------------------------
 
+      ALLOCATE( FoundNodes(NewMesh % NumberOfNodes) ); FoundNodes=.FALSE.
+
+      IF(PRESENT(UnfoundNodes)) THEN
+         IF(ASSOCIATED(UnfoundNodes)) DEALLOCATE(UnfoundNodes)
+         ALLOCATE(UnfoundNodes(NewMesh % NumberOfNodes))
+      END IF
+
       IF ( ParEnv % PEs<=1 ) THEN
          CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName )
+            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+
+         IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
          RETURN
       END IF
 
       ! Interpolate within our own partition, flag the points
       ! we found:
       ! -----------------------------------------------------
-      ALLOCATE( FoundNodes(NewMesh % NumberOfNodes) ); FoundNodes=.FALSE.
+
       CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
          NewVariables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodes )
+
+      IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
 
       ! special case "all found":
       !--------------------------
@@ -357,6 +370,14 @@
         CALL MPI_RECV( vperm, n, MPI_INTEGER, proc, &
               2002, MPI_COMM_WORLD, status, ierr )
 
+        !Mark nodes as found if requested
+        IF(PRESENT(UnfoundNodes)) THEN
+           DO j=1,n
+              k=perm(ProcSend(proc+1) % Perm(vperm(j)))
+              UnfoundNodes(k) = .FALSE.
+           END DO
+        END IF
+
         ! recv values and store:
         ! ----------------------
         Var => OldVariables
@@ -472,7 +493,7 @@ CONTAINS
 !>    the old model to the mesh of the new model.
 !------------------------------------------------------------------------------
      SUBROUTINE InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
-            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes )
+            NewVariables, UseQuadrantTree, Projector, MaskName, FoundNodes, NewMaskPerm )
 !------------------------------------------------------------------------------
        USE DefUtils
 !-------------------------------------------------------------------------------
@@ -484,10 +505,11 @@ CONTAINS
        TYPE(Projector_t), POINTER, OPTIONAL :: Projector  !< Use projector between meshes for interpolation, if available
        CHARACTER(LEN=*),OPTIONAL :: MaskName  !< Mask the old variable set by the given MaskName when trying to define the interpolation.
        LOGICAL, OPTIONAL :: FoundNodes(:)     !< List of nodes where the interpolation was a success
+       INTEGER, OPTIONAL, POINTER :: NewMaskPerm(:)  !< Mask the new variable set by the given MaskName when trying to define the interpolation.
 !------------------------------------------------------------------------------
        INTEGER :: dim
        TYPE(Nodes_t) :: ElementNodes
-       INTEGER :: nBulk, i, j, k, l, n, np, bf_id, QTreeFails, TotFails
+       INTEGER :: nBulk, i, j, k, l, n, np, bf_id, QTreeFails, TotFails, FoundCnt
        REAL(KIND=dp), DIMENSION(3) :: Point
        INTEGER, POINTER :: Indexes(:)
        REAL(KIND=dp), DIMENSION(3) :: LocalCoordinates
@@ -501,7 +523,7 @@ CONTAINS
                           RotWBasis(:,:), WBasis(:,:)
        REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum, F(3,3), G(3,3)
        
-       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT
+       LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel, TryLinear
        TYPE(Quadrant_t), POINTER :: RootQuadrant
        
        INTEGER, POINTER   :: Rows(:), Cols(:), Diag(:)
@@ -514,7 +536,7 @@ CONTAINS
        
        INTEGER, ALLOCATABLE:: RInd(:)
        LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, ProjectorAllocated
-       INTEGER :: eps_tries, nrow
+       INTEGER :: eps_tries, nrow, PassiveCoordinate
        REAL(KIND=dp) :: eps1 = 0.1, eps2, eps_global, eps_local, eps_basis,eps_numeric
        REAL(KIND=dp), POINTER :: Values(:), LocalU(:), LocalV(:), LocalW(:)
 
@@ -525,6 +547,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+       Parallel = (ParEnv % PEs > 1)
 !
 !      If projector argument given, search for existing
 !      projector matrix, or generate new projector, if
@@ -604,6 +627,9 @@ CONTAINS
            'Interpolation Numeric Epsilon', Stat)
        IF(.NOT. Stat) eps_numeric = 1.0e-10
 
+       PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
+           'Interpolation Passive Coordinate', Stat ) 
+
        QTreeFails = 0
        TotFails = 0
 
@@ -616,14 +642,28 @@ CONTAINS
          PiolaT = ListGetLogical(CurrentModel % Solver % Values,'Use Piola Transform',Found)
        END IF
 
+       TryLinear = ListGetLogical( CurrentModel % Simulation, 'Try Linear Search If Qtree Fails', Found)
+       IF(.NOT.Found) TryLinear = .TRUE.
+
+       FoundCnt = 0
 !------------------------------------------------------------------------------
 ! Loop over all nodes in the new mesh
 !------------------------------------------------------------------------------
        DO i=1,NewMesh % NumberOfNodes
 !------------------------------------------------------------------------------
+
+         ! Only get the variable for the requested nodes
+         IF( PRESENT( NewMaskPerm ) ) THEN
+           IF( NewMaskPerm(i) == 0 ) CYCLE
+         END IF
+
          Point(1) = NewMesh % Nodes % x(i)
          Point(2) = NewMesh % Nodes % y(i)
          Point(3) = NewMesh % Nodes % z(i)
+
+         IF( PassiveCoordinate /= 0 ) THEN
+           Point(PassiveCoordinate) = 0.0_dp
+         END IF
 
 !------------------------------------------------------------------------------
 ! Find in which old mesh bulk element the point belongs to
@@ -678,8 +718,7 @@ CONTAINS
            END IF
          END IF
 
-         IF( .NOT. TryQTree .OR. &
-             (.NOT. Found .AND. .NOT. PRESENT( FoundNodes) ) ) THEN
+         IF( .NOT. TryQTree .OR. (.NOT. Found .AND. .NOT. Parallel .AND. TryLinear ) ) THEN
            !------------------------------------------------------------------------------
            ! Go through all old mesh bulk elements
            !------------------------------------------------------------------------------
@@ -704,7 +743,7 @@ CONTAINS
          
          IF (.NOT.Found) THEN
            Element => NULL()
-           IF (.NOT.PRESENT(FoundNodes) ) THEN
+           IF (.NOT. Parallel ) THEN
              WRITE( Message,'(A,I0,A)' ) 'Point ',i,' was not found in any of the elements!'
              CALL Info( 'InterpolateMeshToMesh', Message, Level=20 )
              TotFails = TotFails + 1
@@ -718,6 +757,7 @@ CONTAINS
 !         Found Element in OldModel:
 !         ---------------------------------
           IF ( PRESENT(Projector) ) THEN
+             FoundCnt = FoundCnt + 1
              ElemPtrs(i) % Element => Element
              LocalU(i) = LocalCoordinates(1)
              LocalV(i) = LocalCoordinates(2)
@@ -797,7 +837,7 @@ CONTAINS
 !------------------------------------------------------------------------------
          END DO
 
-         IF( .NOT. PRESENT( FoundNodes ) ) THEN
+         IF( .NOT. Parallel ) THEN
            IF( QtreeFails > 0 ) THEN
              WRITE( Message,'(A,I0)' ) 'Number of points not found in quadtree: ',QtreeFails
              CALL Info( 'InterpolateMeshToMesh', Message )
@@ -1070,7 +1110,7 @@ CONTAINS
   !> created. The this projector matrix is transferred to a projector on the nodal
   !> coordinates.   
   !---------------------------------------------------------------------------
-   FUNCTION WeightedProjector2(BMesh2, BMesh1, InvPerm2, InvPerm1, &
+   FUNCTION WeightedProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
        UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, & 
        NodalJump ) &
       RESULT ( Projector )
@@ -1263,7 +1303,7 @@ CONTAINS
     !-----------------------------------------------------------
     Projector => AllocateMatrix()
     Projector % FORMAT = MATRIX_LIST
-    Projector % ConstraintType = CONSTRAINT_TYPE_GALERKIN
+    Projector % ProjectorType = PROJECTOR_TYPE_GALERKIN
 
     ALLOCATE(Eqind(eqindsize))
     EqInd = 0
@@ -1347,12 +1387,12 @@ CONTAINS
             ! Add a diagonal entry to the future constrained system.
             ! This will enable a jump to the discontinuous boundary.
             ! So far no value is added just the sparse matrix entry.
-            IF( NodalJump ) THEN
-              IF( Indexes(p) <= nodesize .AND. Indexes(q) <= nodesize ) THEN 
-                CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
-                    totsize + EQInd(Indexes(q)), 0.0_dp )
-              END IF
-            END IF
+            !IF( NodalJump ) THEN
+            !  IF( Indexes(p) <= nodesize .AND. Indexes(q) <= nodesize ) THEN 
+            !    CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
+            !        totsize + EQInd(Indexes(q)), 0.0_dp )
+            !  END IF
+            !END IF
           END DO
 
           DO q = Rows(NoGaussPoints), Rows(NoGaussPoints+1)-1
@@ -1418,5 +1458,5 @@ CONTAINS
     IF(EdgeBasis) DEALLOCATE( dBasisdx, WBasis, RotWBasis ) 
 
 !------------------------------------------------------------------------------
-  END FUNCTION WeightedProjector2
+  END FUNCTION WeightedProjector
 !------------------------------------------------------------------------------

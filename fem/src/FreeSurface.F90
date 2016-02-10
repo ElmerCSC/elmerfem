@@ -822,9 +822,9 @@ print*,'----------------------'
       FirstTime = .FALSE.
 
       ALLOCATE( Solver )
+      Solver % Values => ListAllocate()
       Solver % Mesh => CurrentModel % Mesh
 
-      NULLIFY( Solver % Values )
       CALL ListAddString( Solver % Values, &
                       'Linear System Iterative Method', 'CGS' )
       CALL ListAddInteger( Solver % Values, &

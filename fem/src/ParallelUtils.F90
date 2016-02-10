@@ -85,7 +85,8 @@ CONTAINS
 !-------------------------------------------------------------------------------
        TYPE(ParallelInfo_t), POINTER :: MatrixPI, MeshPI
        INTEGER :: i, j, k, l, m, n, DOFs, PDOFs
-       LOGICAL :: DGSolver, Found, GB, Global_dof, LocalConstraints, DiscontBC
+       LOGICAL :: DGSolver, Found, GB, Global_dof, LocalConstraints, DiscontBC, &
+                     OwnersGiven, NeighboursGiven
        TYPE(Mesh_t), POINTER :: Mesh
        TYPE(Element_t), POINTER :: Element
        TYPE(NeighbourList_t), POINTER :: MtrxN, MeshN
@@ -105,6 +106,7 @@ CONTAINS
        INTEGER :: Ierr, status(MPI_STATUS_SIZE)
 
 !-------------------------------------------------------------------------------
+
 
 !tt = realtime()
 #ifdef PARALLEL_FOR_REAL
@@ -290,19 +292,49 @@ CONTAINS
            G % Format = MATRIX_LIST
          END IF
 
+         OwnersGiven = Matrix % ParallelDOFs>0
+         IF(OwnersGiven) THEN
+           OwnersGiven = ASSOCIATED(Solver % Matrix % AddMatrix)
+           IF(OwnersGiven) OwnersGiven = ALLOCATED(Solver % Matrix % AddMatrix % RowOwner)
+         END IF
+
+         NeighboursGiven = Matrix % ParallelDOFs>0
+         IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(Solver % Matrix % AddMatrix)
+         IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(Solver % Matrix % AddMatrix % ParallelInfo)
+         IF(NeighboursGiven) NeighboursGiven = ASSOCIATED(Solver % Matrix % AddMatrix % ParallelInfo % &
+                             NeighbourList)
+
          j=0
          DO i=Matrix % NumberOFRows-Matrix % ExtraDOFs+1,Matrix % NumberOfRows
            j=j+1
            Global_dof = j <= Matrix % ParallelDOFs
            IF (Global_dof) THEN
              Matrix % Parallelinfo % Interface(i) = .TRUE.
-             ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
 
-             l = 0
-             DO k=ParEnv % PEs,1,-1
-               l = l + 1
-               Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l)=k-1
-             END DO
+             IF(NeighboursGiven) THEN
+               ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours( &
+                  SIZE(Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours)))
+               Matrix % ParallelInfo % NeighbourList(i) % Neighbours = &
+                  Solver % Matrix % AddMatrix % ParallelInfo % NeighbourList(i) % Neighbours
+             ELSE IF (OwnersGiven) THEN
+               ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
+               DO k=1,ParEnv % PEs
+                 Matrix % ParallelInfo % NeighbourList(i) % Neighbours(k)=k-1
+               END DO
+
+               l = j + Solver % Matrix % NumberOfRows
+               l = Solver % Matrix % AddMatrix % RowOwner(l)
+
+               Matrix % ParallelInfo % NeighbourList(i) % Neighbours(1)   = l
+               Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l+1) = 0
+             ELSE
+               ALLOCATE(Matrix % ParallelInfo % NeighbourList(i) % Neighbours(ParEnv % PEs))
+               l = 0
+               DO k=ParEnv % PEs,1,-1
+                 l = l + 1
+                 Matrix % ParallelInfo % NeighbourList(i) % Neighbours(l)=k-1
+               END DO
+             END IF
 
              k = j + g_beg
            ELSE IF(Found) THEN
@@ -349,7 +381,6 @@ CONTAINS
            END IF
            Matrix % ParallelInfo % GlobalDofs(i) = k
          END DO
-
 
          l=Matrix % ExtraDOFs
          n=SIZE(Perm)

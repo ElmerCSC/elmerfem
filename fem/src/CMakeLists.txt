@@ -39,7 +39,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 BackwardError.F90
-  ElmerSolver.F90)
+  ElmerSolver.F90 CircuitUtils.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
@@ -74,7 +74,16 @@ FOREACH( d ${ELMER_CDEFS} )
 	 SET(ELMER_F90FLAGS "${ELMER_F90FLAGS} -D${d}")
 ENDFOREACH()
 
+
+# Extract compile flags arising from build type
+IF(CMAKE_BUILD_TYPE)
+  STRING(TOUPPER ${CMAKE_BUILD_TYPE} CMAKE_BUILD_TYPE_UPCASE)
+  SET(ELMER_F90FLAGS "${ELMER_F90FLAGS} ${CMAKE_Fortran_FLAGS_${CMAKE_BUILD_TYPE_UPCASE}}")
+  MARK_AS_ADVANCED(CMAKE_BUILD_TYPE_UPCASE)
+ENDIF(CMAKE_BUILD_TYPE)
+
 # Output elmerf90 and elmerld
+
 IF(WIN32)
   CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/elmerf90.bat.in.cmake
 	  ${CMAKE_CURRENT_BINARY_DIR}/elmerf90.bat)
@@ -110,9 +119,9 @@ SET_TARGET_PROPERTIES(elmersolver
                       PROPERTIES LINKER_LANGUAGE Fortran)
 
 # ElmerSolver libraries 
-SET(ELMERSOLVER_LIBRARIES elmersolver matc umfpack 
+SET(ELMERSOLVER_LIBRARIES matc umfpack 
                           amd fhuti binio arpack
-  	                  ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
+                          ${BLAS_LIBRARIES} ${LAPACK_LIBRARIES} 
                           ${CMAKE_DL_LIBS})
 
 IF(HAVE_EIO)
@@ -138,8 +147,14 @@ IF(WITH_MPI)
 
   # Add parpack and possibly others
   IF(Mumps_LIBRARIES)
+    INCLUDE_DIRECTORIES(${Mumps_INCLUDE_DIR})
+    # Link to SCALAPACK implicitly
     LIST(APPEND ELMERSOLVER_LIBRARIES ${Mumps_LIBRARIES})
-  ENDIF()	
+  ELSEIF(MKL_CPARDISO_FOUND)
+    # Mumps includes SCALAPACK, but it is needed with CPARDISO
+    LIST(APPEND ELMERSOLVER_LIBRARIES ${SCALAPACK_LIBRARIES})
+  ENDIF()
+
   IF(Hypre_LIBRARIES)
     LIST(APPEND ELMERSOLVER_LIBRARIES ${Hypre_LIBRARIES})
   ENDIF()

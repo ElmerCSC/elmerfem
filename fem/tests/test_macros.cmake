@@ -1,24 +1,79 @@
-
-
-MACRO(ADD_ELMER_TEST test_name)
-  ADD_TEST(NAME ${test_name}
-    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    COMMAND ${CMAKE_COMMAND}
-      -DELMERGRID_BIN=${ELMERGRID_BIN}
-      -DELMERSOLVER_BIN=${ELMERSOLVER_BIN}
-      -DFINDNORM_BIN=${FINDNORM_BIN}
-      -DMESH2D_BIN=${MESH2D_BIN}
-      -DTEST_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
-      -DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}
-      -DBINARY_DIR=${CMAKE_BINARY_DIR}
-      -DCMAKE_Fortran_COMPILER=${CMAKE_Fortran_COMPILER}
-      -DMPIEXEC=${MPIEXEC}
-      -DMPIEXEC_NUMPROC_FLAG=${MPIEXEC_NUMPROC_FLAG}
-      -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
-      -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
-      -DWITH_MPI=${WITH_MPI}
-      -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
+MACRO(ADD_ELMER_LABEL test_name label_string)
+  SET_PROPERTY(TEST ${test_name} APPEND PROPERTY LABELS ${label_string})
 ENDMACRO()
+
+
+MACRO(ADD_ELMER_TEST TestName)
+  # Parse optional named arguments, NPROCS and LABELS, which can be lists
+  CMAKE_PARSE_ARGUMENTS(_parsedArgs "" "" "NPROCS;LABELS" "${ARGN}")
+
+  IF(_parsedArgs_NPROCS)
+    # List of task counts was given so this is a parallel test case
+    FOREACH(n ${_parsedArgs_NPROCS})
+      IF(WITH_MPI AND ${n} GREATER 1)
+        # Check the task bounds and add only compatible tests
+        IF(${n} GREATER ${MPI_TEST_MAXPROC} OR ${n} LESS ${MPI_TEST_MINPROC})
+          MESSAGE(STATUS "Skipping test ${TestName} with ${n} procs")
+        ELSE()
+          LIST(APPEND tests_list "${TestName}_np${n}")
+          LIST(APPEND label_list "parallel")
+          LIST(APPEND tasks_list "${n}")
+        ENDIF()
+      ELSE()
+        # If there is a single task version in the task list, add
+        # it as a test case also for non-MPI builds
+        IF(${n} EQUAL 1)
+          SET(tests_list "${TestName}")
+          SET(label_list "serial")
+          SET(tasks_list 1)
+        ENDIF()
+      ENDIF()
+    ENDFOREACH()
+  ELSE()
+    # No NPROCS argument, serial test
+    SET(tests_list "${TestName}")
+    SET(label_list "serial")
+    SET(tasks_list 1)
+  ENDIF()
+
+  # Loop over the two lists, which is cumbersome in CMake
+  LIST(LENGTH tests_list nt)
+  MATH(EXPR ntests "${nt} - 1")
+  FOREACH(n RANGE ${ntests})
+    LIST(GET tests_list ${n} _this_test_name)
+    LIST(GET tasks_list ${n} _this_test_tasks)
+    LIST(GET label_list ${n} _this_test_label)
+    IF(_this_test_name)
+      ADD_TEST(NAME ${_this_test_name}
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        COMMAND ${CMAKE_COMMAND}
+        -DELMERGRID_BIN=${ELMERGRID_BIN}
+        -DELMERSOLVER_BIN=${ELMERSOLVER_BIN}
+        -DFINDNORM_BIN=${FINDNORM_BIN}
+        -DMESH2D_BIN=${MESH2D_BIN}
+        -DTEST_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}
+        -DPROJECT_SOURCE_DIR=${PROJECT_SOURCE_DIR}
+        -DBINARY_DIR=${CMAKE_BINARY_DIR}
+        -DCMAKE_Fortran_COMPILER=${CMAKE_Fortran_COMPILER}
+        -DMPIEXEC=${MPIEXEC}
+        -DMPIEXEC_NUMPROC_FLAG=${MPIEXEC_NUMPROC_FLAG}
+        -DMPIEXEC_PREFLAGS=${MPIEXEC_PREFLAGS}
+        -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
+        -DWITH_MPI=${WITH_MPI}
+        -DMPIEXEC_NTASKS=${_this_test_tasks}
+        -P ${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
+      SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${_this_test_label})
+      # If LABELS argument was given iterate through the given labels and add them
+      # to this test
+      IF(_parsedArgs_LABELS)
+        FOREACH(lbl ${_parsedArgs_LABELS})
+          SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${lbl})
+        ENDFOREACH()
+      ENDIF()
+    ENDIF(_this_test_name)
+  ENDFOREACH()
+ENDMACRO(ADD_ELMER_TEST)
 
 
 MACRO(ADD_ELMERTEST_MODULE test_name module_name file_name)
@@ -34,13 +89,8 @@ MACRO(ADD_ELMERTEST_MODULE test_name module_name file_name)
   SET_TARGET_PROPERTIES(${ELMERTEST_CMAKE_NAME}
     PROPERTIES OUTPUT_NAME ${module_name} LINKER_LANGUAGE Fortran)
   TARGET_LINK_LIBRARIES(${ELMERTEST_CMAKE_NAME} elmersolver)
-  IF(WITH_MPI)
-    ADD_DEPENDENCIES(${ELMERTEST_CMAKE_NAME} 
-      elmersolver ElmerSolver_mpi ElmerGrid)
-  ELSE()
-    ADD_DEPENDENCIES(${ELMERTEST_CMAKE_NAME} 
-      elmersolver ElmerSolver ElmerGrid)
-  ENDIF()
+  ADD_DEPENDENCIES(${ELMERTEST_CMAKE_NAME} 
+    elmersolver Solver_TGT ElmerGrid)
   UNSET(ELMERTEST_CMAKE_NAME)
 ENDMACRO()
 
@@ -54,7 +104,12 @@ MACRO(RUN_ELMER_TEST)
     SET(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")
   ENDIF(NOT(WIN32))
 
-  FILE(REMOVE TEST.PASSED)
+  # Clean up old result files
+  IF(${MPIEXEC_NTASKS} GREATER 1)
+    FILE(REMOVE TEST.PASSED_${MPIEXEC_NTASKS})
+  ELSE()
+    FILE(REMOVE TEST.PASSED)
+  ENDIF()
 
   IF(WIN32)
     SET(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
@@ -63,21 +118,22 @@ MACRO(RUN_ELMER_TEST)
   ENDIF(WIN32)
 
   IF(WITH_MPI)
-    EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
-      OUTPUT_FILE "test-stdout.log"
-      ERROR_FILE "test-stderr.log"
-      OUTPUT_VARIABLE TESTOUTPUT)
-  ELSE()      
+    EXECUTE_PROCESS(COMMAND ${MPIEXEC} ${MPIEXEC_NUMPROC_FLAG} ${MPIEXEC_NTASKS} ${MPIEXEC_PREFLAGS} ${ELMERSOLVER_BIN} ${MPIEXEC_POSTFLAGS}
+      OUTPUT_FILE "test-stdout_${MPIEXEC_NTASKS}.log"
+      ERROR_FILE "test-stderr_${MPIEXEC_NTASKS}.log")
+  ELSE()
     EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN}
       OUTPUT_FILE "test-stdout.log"
-      ERROR_FILE "test-stderr.log"
-      OUTPUT_VARIABLE TESTOUTPUT)
+      ERROR_FILE "test-stderr.log")
   ENDIF()
 
-  MESSAGE(STATUS "testoutput.........: ${TESTOUTPUT}")
-
-  FILE(READ "TEST.PASSED" RES)
-  IF (NOT RES EQUAL "1")
+  # Check the result file (with suffix is more than single task)
+  IF(${MPIEXEC_NTASKS} GREATER 1)
+    FILE(READ "TEST.PASSED_${MPIEXEC_NTASKS}" RES)
+  ELSE()
+    FILE(READ "TEST.PASSED" RES)
+  ENDIF()
+  IF(NOT RES EQUAL "1")
     MESSAGE(FATAL_ERROR "Test failed")
   ENDIF()
 ENDMACRO()
@@ -94,11 +150,10 @@ MACRO(EXECUTE_ELMER_SOLVER SIFNAME)
   IF(WIN32)
     SET(ENV{PATH} "$ENV{PATH};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fem/src")
     GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    SET(ENV{PATH} "${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
+    SET(ENV{PATH} "$ENV{PATH};${COMPILER_DIRECTORY};$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack")
   ENDIF(WIN32)
-  
+
   EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN} ${SIFNAME}
     OUTPUT_FILE "${SIFNAME}-stdout.log"
     ERROR_FILE "${SIFNAME}-stderr.log")
 ENDMACRO()
-

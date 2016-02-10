@@ -84,6 +84,7 @@ MODULE IterSolve
    INTEGER, PARAMETER, PRIVATE :: PRECOND_MG        =           540
    INTEGER, PARAMETER, PRIVATE :: PRECOND_BILUn     =           550
    INTEGER, PARAMETER, PRIVATE :: PRECOND_Vanka     =           560
+   INTEGER, PARAMETER, PRIVATE :: PRECOND_Circuit   =           570
 
    INTEGER, PARAMETER :: stack_max=64
    INTEGER :: stack_pos=0
@@ -223,6 +224,18 @@ CONTAINS
         INTEGER :: ipar(*)
         REAL(KIND=dp) :: u(*),v(*)
       END SUBROUTINE VankaPrec
+
+      SUBROUTINE CircuitPrec(u,v,ipar)
+        USE Types
+        INTEGER :: ipar(*)
+        REAL(KIND=dp) :: u(*),v(*)
+      END SUBROUTINE CircuitPrec
+
+      SUBROUTINE CircuitPrecComplex(u,v,ipar)
+        USE Types
+        INTEGER :: ipar(*)
+        COMPLEX(KIND=dp) :: u(*),v(*)
+      END SUBROUTINE CircuitPrecComplex
     END INTERFACE
 !------------------------------------------------------------------------------
     N = A % NumberOfRows
@@ -241,31 +254,32 @@ CONTAINS
       CALL Info('IterSolver','Using iterative method: '//TRIM(str),Level=9)
     END IF
 
-    IF ( str(1:9) == 'bicgstab2' ) THEN
+    SELECT CASE(str)
+    CASE('bicgstab2')
       IterType = ITER_BiCGStab2
-    ELSE IF ( str(1:9) == 'bicgstabl' ) THEN
+    CASE('bicgstabl')
       IterType = ITER_BICGstabl
-    ELSE IF ( str(1:8) == 'bicgstab' ) THEN
+    CASE('bicgstab')
       IterType = ITER_BiCGStab
-    ELSE IF ( str(1:5) == 'tfqmr' )THEN
+    CASE('tfqmr')
       IterType = ITER_TFQMR
-    ELSE IF ( str(1:3) == 'cgs' ) THEN
+    CASE('cgs')
       IterType = ITER_CGS
-    ELSE IF ( str(1:2) == 'cg' ) THEN
+    CASE('cg')
       IterType = ITER_CG
-    ELSE IF ( str(1:5) == 'gmres' ) THEN
+    CASE('gmres')
       IterType = ITER_GMRES
-    ELSE IF ( str(1:3) == 'sgs' ) THEN
+    CASE('sgs')
       IterType = ITER_SGS
-    ELSE IF ( str(1:6) == 'jacobi' ) THEN
+    CASE('jacobi')
       IterType = ITER_jacobi
-    ELSE IF ( str(1:10) == 'richardson' ) THEN
+    CASE('richardson')
       IterType = ITER_richardson
-    ELSE IF ( str(1:3) == 'gcr' ) THEN
+    CASE('gcr')
       IterType = ITER_GCR
-    ELSE
+    CASE DEFAULT
       IterType = ITER_BiCGStab
-    END IF
+    END SELECT
     
 !------------------------------------------------------------------------------
 
@@ -330,6 +344,7 @@ CONTAINS
     
     wsize = HUTI_WRKDIM
     
+    StopcProc = 0
     IF (PRESENT(StopcF)) THEN
        StopcProc = StopcF
        HUTI_STOPC = HUTI_USUPPLIED_STOPC
@@ -408,22 +423,23 @@ CONTAINS
       A % Cholesky = ListGetLogical( Params, &
           'Linear System Symmetric ILU', Gotit )
       
-      IF ( str(1:4) == 'none' ) THEN
+      ILUn = -1
+      IF ( str == 'none' ) THEN
         PCondType = PRECOND_NONE
-      ELSE IF ( str(1:8) == 'diagonal' ) THEN
+      ELSE IF ( str == 'diagonal' ) THEN
         PCondType = PRECOND_DIAGONAL
-      ELSE IF ( str(1:4) == 'ilut' ) THEN
+      ELSE IF ( str == 'ilut' ) THEN
         ILUT_TOL = ListGetCReal( Params, &
             'Linear System ILUT Tolerance',GotIt )
         PCondType = PRECOND_ILUT
-      ELSE IF ( str(1:3) == 'ilu' ) THEN
+      ELSE IF ( SEQL(str, 'ilu') ) THEN
         ILUn = NINT(ListGetCReal( Params, &
             'Linear System ILU Order', gotit ))
         IF ( .NOT.gotit ) &
             ILUn = ICHAR(str(4:4)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         PCondType = PRECOND_ILUn
-      ELSE IF ( str(1:4) == 'bilu' ) THEN
+      ELSE IF ( SEQL(str, 'bilu') ) THEN
         ILUn = ICHAR(str(5:5)) - ICHAR('0')
         IF ( ILUn  < 0 .OR. ILUn > 9 ) ILUn = 0
         IF( Solver % Variable % Dofs == 1) THEN
@@ -432,10 +448,14 @@ CONTAINS
         ELSE
           PCondType = PRECOND_BILUn
         END IF
-      ELSE IF ( str(1:9) == 'multigrid' ) THEN
+      ELSE IF ( str == 'multigrid' ) THEN
         PCondType = PRECOND_MG
-      ELSE IF ( str(1:5) == 'vanka' ) THEN
+      ELSE IF ( str == 'vanka' ) THEN
         PCondType = PRECOND_VANKA
+      ELSE IF ( str == 'circuit' ) THEN
+        ILUn = ListGetInteger( Params, 'Linear System ILU Order', gotit )
+        IF(.NOT.Gotit ) ILUn=-1
+        PCondType = PRECOND_Circuit
       ELSE
         PCondType = PRECOND_NONE
         CALL Warn( 'IterSolve', 'Unknown preconditioner type, feature disabled.' )
@@ -466,7 +486,7 @@ CONTAINS
             END IF
 
             IF ( A % COMPLEX ) THEN
-              IF ( PCondType == PRECOND_ILUn ) THEN
+              IF ( PCondType == PRECOND_ILUn .OR. (PCondType==PRECOND_Circuit.AND.ILUn>=0) ) THEN
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)
                 CM => A % ConstraintMatrix
                 IF(NullEdges.OR.ASSOCIATED(CM)) THEN
@@ -544,9 +564,9 @@ CONTAINS
               ELSE IF ( PCondType == PRECOND_ILUT ) THEN
                 Condition = CRS_ComplexILUT( A,ILUT_TOL )
               END IF
-            ELSE
+            ELSE IF (ILUn>=0) THEN
               SELECT CASE(PCondType)
-              CASE(PRECOND_ILUn)
+              CASE(PRECOND_ILUn, PRECOND_Circuit)
                 NullEdges = ListGetLogical(Params, 'Edge Basis', GotIt)
                 CM => A % ConstraintMatrix
                 IF(NullEdges.OR.ASSOCIATED(CM)) THEN
@@ -711,6 +731,13 @@ CONTAINS
         
       CASE (PRECOND_VANKA)
         pcondProc = AddrFunc( VankaPrec )
+
+      CASE (PRECOND_Circuit)
+        IF ( .NOT. A % Complex ) THEN
+          pcondProc = AddrFunc( CircuitPrec )
+        ELSE
+          pcondProc = AddrFunc( CircuitPrecComplex )
+        END IF
         
       CASE DEFAULT
         pcondProc = 0

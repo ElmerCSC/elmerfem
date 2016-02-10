@@ -65,7 +65,10 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
     END IF
     CALL ListAddInteger( SolverParams, 'Time derivative order', 2 )
 
-
+    IF( .NOT. ListCheckPresent( SolverParams,'Displace Mesh At Init') ) THEN
+      CALL ListAddLogical( SolverParams,'Displace Mesh At Init',.TRUE.)
+    END IF
+    
     CalculateStrains = GetLogical(SolverParams, 'Calculate Strains', Found)
     CalcPrincipalAngle = GetLogical(SolverParams, 'Calculate PAngle', Found)
     CalcPrincipalAll = GetLogical(SolverParams, 'Calculate Principal', Found)
@@ -1329,7 +1332,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 
      INTEGER :: i,j,k,l,p,q, t, dim,sdim,elem, IND(9), BodyId,EqId
-     LOGICAL :: stat, CSymmetry, Isotropic(2), UseMask
+     LOGICAL :: stat, CSymmetry, Isotropic(2), UseMask, ContactOn
      INTEGER, POINTER :: Visited(:), Indexes(:), Permutation(:)
      REAL(KIND=dp) :: u,v,w,x,y,z,Strain(3,3),Stress(3,3),LGrad(3,3),detJ, &
           Young, Poisson, Ident(3,3), C(6,6), S(6), weight, st, Work(9), Principal(3), Relax
@@ -1340,12 +1343,12 @@ CONTAINS
 
      LOGICAL :: FirstTime = .TRUE., OptimizeBW, GlobalBubbles, &
           Factorize, FoundFactorize, FreeFactorize, FoundFreeFactorize, &
-          LimiterOn
+          LimiterOn, SkipChange, FoundSkipChange
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      CHARACTER(LEN=MAX_NAME_LEN) :: eqname
 
-     SAVE Nodes, StSolver, ForceG, Permutation, SForceG, Eqname
+     SAVE Nodes, StSolver, ForceG, Permutation, SForceG, Eqname, UseMask
 
      ! These variables are needed for Principal stress calculation
      ! they are quite small and allocated even if principal stress calculation
@@ -1367,6 +1370,10 @@ CONTAINS
      LimiterOn = ListGetLogical( SolverParams,'Apply Limiter',Found)
      IF( LimiterOn ) THEN
        CALL ListAddLogical( SolverParams,'Apply Limiter',.FALSE.) 
+     END IF
+     ContactOn = ListGetLogical( SolverParams,'Apply Contact BCs',Found)
+     IF( ContactOn ) THEN
+       CALL ListAddLogical( SolverParams,'Apply Contact BCs',.FALSE.) 
      END IF
 
      CALL ListSetNameSpace('stress:')
@@ -1551,10 +1558,13 @@ CONTAINS
 
       Factorize = GetLogical( SolverParams, 'Linear System Refactorize', FoundFactorize )
       FreeFactorize = GetLogical( SolverParams, &
-              'Linear System Free Factorization', FoundFreeFactorize )
+          'Linear System Free Factorization', FoundFreeFactorize )
+      SkipChange = GetLogical( SolverParams, &
+          'Skip Compute Nonlinear Change', FoundSkipChange )
 
       CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .FALSE. )
       CALL ListAddLogical( SolverParams, 'Linear System Free Factorization', .FALSE. )
+      CALL ListAddLogical( SolverParams, 'Skip Compute Nonlinear Change', .TRUE. )
 
       DO i=1,3
         DO j=i,3
@@ -1604,10 +1614,16 @@ CONTAINS
         CALL ListRemove( SolverParams, 'Linear System Refactorize' )
       END IF
 
-      IF ( .NOT. FoundFreeFactorize ) THEN
-        CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
-      ELSE
+      IF ( FoundFreeFactorize ) THEN
         CALL ListAddLogical( SolverParams, 'Linear System Free Factorization', FreeFactorize )
+      ELSE
+        CALL ListRemove( SolverParams, 'Linear System Free Factorization' )
+      END IF
+
+      IF( FoundSkipChange ) THEN
+        CALL ListAddLogical( SolverParams, 'Skip Compute Nonlinear Change',SkipChange )
+      ELSE
+        CALL ListRemove( SolverParams, 'Skip Compute Nonlinear Change' )
       END IF
 
       ! Von Mises stress from the component nodal values:
@@ -1757,6 +1773,9 @@ CONTAINS
       IF( LimiterOn ) THEN
         CALL ListAddLogical( SolverParams,'Apply Limiter',.TRUE.) 
       END IF
+      IF( ContactOn ) THEN
+        CALL ListAddLogical( SolverParams,'Apply Contact BCs',.TRUE.) 
+      END IF
 
       CALL Info('StressSolver','Finished Stress Computation',Level=5)
       CALL Info('StressSolver','------------------------------------------',Level=5)
@@ -1819,7 +1838,7 @@ CONTAINS
          IF( .NOT. PossibleFluxElement(Element) ) CYCLE
 
          BC => GetBC()
-         IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
 !------------------------------------------------------------------------------
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
          
@@ -1975,7 +1994,7 @@ CONTAINS
        n = GetElementNOFNodes()
        
        BC => GetBC()
-       IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+       IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
        
        IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
 
@@ -2082,7 +2101,7 @@ CONTAINS
          IF( .NOT. PossibleFluxElement(Element) ) CYCLE
          
          BC => GetBC()
-         IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
          
          n = GetElementNOFNodes()
@@ -2121,7 +2140,7 @@ CONTAINS
          IF( .NOT. PossibleFluxElement(Element) ) CYCLE
          
          BC => GetBC()
-         IF ( .NOT. ASSOCIATED( BC ) ) CYCLE
+         IF ( .NOT.ASSOCIATED( BC ) ) CYCLE
          IF(.NOT. GetLogical( BC, 'Model Lumping Boundary',Found )) CYCLE
          
          n = GetElementNOFNodes()
@@ -2534,7 +2553,7 @@ CONTAINS
      ResidualNorm  = 0.0d0
 
      BC => GetBC()
-     IF ( .NOT. ASSOCIATED( BC ) ) RETURN
+     IF ( .NOT.ASSOCIATED( BC ) ) RETURN
 
      ! Logical parameters:
      ! -------------------

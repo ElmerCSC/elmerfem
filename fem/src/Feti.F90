@@ -894,9 +894,6 @@ CONTAINS
 
     type(matrix_t), pointer :: gtg_m => null()
 
-    logical :: gotnm
-    type(Varying_string) :: nm
-
     integer,save :: size, mygroup, grpsize, subsize, comm_group,solv_group,solv_comm,ir=0
     integer, allocatable, save :: ranks(:,:),subsizes(:)
 
@@ -913,9 +910,7 @@ CONTAINS
       return
     end if
 
-    nm=''
-    gotNM=ListGetNameSpace(nm)
-    CALL ListSetNameSpace('feti proj:')
+    CALL ListPushNameSpace('feti proj:')
 
     nrows = A % NumberOfRows
     ALLOCATE(x(nz),b(nz),P(nrows),Q(nrows));P=0; Q=0
@@ -1215,7 +1210,7 @@ CONTAINS
       CALL Fatal('Feti Procjection','Unknown projection OP.')
     END SELECT
 
-    CALL ListSetNameSpace(CHAR(nm))
+    CALL ListPopNameSpace()
 !call checktimer('project',delete=.true.)
 
 CONTAINS
@@ -1364,7 +1359,7 @@ END SUBROUTINE FetiProject
 !call resettimer('cpg')
     nrows=A % NumberOfRows
 
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     output = GetInteger( Params,'Linear System Residual Output', Found )
     IF (.NOT. Found ) output = 1
     maxit   = GetInteger( Params,'Linear System Max Iterations')
@@ -1493,8 +1488,7 @@ END SUBROUTINE FetiProject
     INTEGER, POINTER :: p(:)
     INTEGER :: i,j,k,n,m,dofs,neigs,dim,FixNodes(0:6)
     REAL(KIND=dp), POINTER :: coord_x(:),coord_y(:),coord_z(:), dscale(:)
-    TYPE(Varying_string) :: nm
-    LOGICAL :: Found, gotNM
+    LOGICAL :: Found
     REAL(KIND=dp) :: xc,yc,zc,hc,ss
     INTEGER, ALLOCATABLE :: floatinds(:)
     CHARACTER(MAX_NAME_LEN) :: Method
@@ -1502,7 +1496,7 @@ END SUBROUTINE FetiProject
     COMPLEX(KIND=dp), ALLOCATABLE :: EigVectors(:,:)
 !------------------------------------------------------------------------------
 
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
 
     dofs = Solver % Variable % DOFs
     n = A % NumberOfRows
@@ -1666,19 +1660,17 @@ END SUBROUTINE FetiProject
     ! ----------------------------------
     ALLOCATE(eigVectors(Neigs,n))
       
-    nm=''
-    gotNM=ListGetNameSpace(nm)
-    CALL ListSetNameSpace('feti:')
+    CALL ListPushNameSpace('feti:')
 
     CALL ListAddString( Params, 'Feti: Linear System Solver', 'Direct' )
-    Params=>GetSolverParams()
+    Params=>ListGetSolverParams()
     CALL ListAddString( Params, 'Feti: Linear System Direct Method', 'umfpack' )
-    Params=>GetSolverParams()
+    Params=>ListGetSolverParams()
 
     IF (.NOT.ListCheckPresent(Params,'Eigen System Convergence Tolerance')) &
       CALL ListAddConstReal( Params, &
                'Feti: Eigen System Convergence Tolerance', 1.0d-9)
-    Params=>GetSolverParams()
+    Params=>ListGetSolverParams()
 
     IF (.NOT.ASSOCIATED(A % MassValues)) THEN
       ALLOCATE(A % MassValues(SIZE(A % Values)))
@@ -1694,7 +1686,7 @@ END SUBROUTINE FetiProject
     ! ------------------------------------------------------------------------
     CALL DirectSolver(A,x,x,Solver,Free_Fact=.TRUE.)
 
-    CALL ListSetNameSpace(CHAR(nm))
+    CALL ListPopNameSpace()
 
     ! Finally create null(A) from zero freq. eigenvectors:
     ! ----------------------------------------------------
@@ -1999,7 +1991,7 @@ END SUBROUTINE FetiProject
 
     ! Get various  solution options:
     ! ------------------------------
-    Params => GetSolverParams()
+    Params => ListGetSolverParams()
     TOL=GetCReal( Params,'Linear System Convergence Tolerance')
 
     ! Check whether to use the 'total' FETI scheme:

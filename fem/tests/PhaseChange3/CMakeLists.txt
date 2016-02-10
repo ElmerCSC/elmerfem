@@ -6,3 +6,4 @@ CONFIGURE_FILE( PhaseChangeTrans.sif PhaseChangeTrans.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO  PhaseChange.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMER_TEST(PhaseChange3)
+ADD_ELMER_LABEL(PhaseChange3 quick)

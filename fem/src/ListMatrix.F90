@@ -41,10 +41,14 @@ CONTAINS
 !-------------------------------------------------------------------------------
   FUNCTION List_AllocateMatrix(N) RESULT(Matrix)
 !-------------------------------------------------------------------------------
-    INTEGER :: i,n
+    INTEGER :: i,n,istat
     TYPE(ListMatrix_t), POINTER :: Matrix(:)
 
-    ALLOCATE( Matrix(n) ) 
+    ALLOCATE( Matrix(n), STAT=istat )
+    IF( istat /= 0 ) THEN
+      CALL Fatal('List_AllocateMatrix','Allocation error for ListMatrix of size: '//TRIM(I2S(n)))
+    END IF
+
     DO i=1,n
       Matrix(i) % Head => NULL()
     END DO
@@ -269,7 +273,7 @@ CONTAINS
      TYPE(ListMatrixEntry_t), POINTER :: CList,Prev, Entry
 !-------------------------------------------------------------------------------
 
-     INTEGER :: i
+     INTEGER :: i, istat
 
      IF ( .NOT. ASSOCIATED(List) ) List=>List_AllocateMatrix(k1)
 
@@ -281,7 +285,11 @@ CONTAINS
      Clist => List(k1) % Head
 
      IF ( .NOT. ASSOCIATED(Clist) ) THEN
-        ALLOCATE( Entry )
+        ALLOCATE( ENTRY, STAT=istat )
+        IF( istat /= 0 ) THEN
+          CALL Fatal('List_GetMatrixIndex','Could not allocate entry!')
+        END IF
+
         Entry % Value = 0._dp
         Entry % INDEX = k2
         NULLIFY( Entry % Next )
@@ -352,11 +360,13 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-   SUBROUTINE List_DeleteRow(List,k1)
+   SUBROUTINE List_DeleteRow(List,k1,Keep)
 !-------------------------------------------------------------------------------
      INTEGER :: k1,k2
+     LOGICAL, OPTIONAL :: Keep
      TYPE(ListMatrix_t) :: List(:)
 !-------------------------------------------------------------------------------
+     LOGICAL :: lKeep
      INTEGER::n
      TYPE(ListMatrixEntry_t), POINTER :: Clist,Next
 
@@ -369,10 +379,18 @@ CONTAINS
        DEALLOCATE(Clist)
        Clist=>Next
      END DO
+
+     lKeep = .FALSE.
+     IF(PRESENT(Keep)) lKeep = Keep
      
-     List(k1:n-1)=List(k1+1:n)
-     List(n) % Degree=0
-     List(n) % Head=>NULL()
+     IF(lKeep) THEN
+       List(k1) % Degree=0
+       List(k1) % Head=>NULL()
+     ELSE
+       List(k1:n-1)=List(k1+1:n)
+       List(n) % Degree=0
+       List(n) % Head=>NULL()
+     END IF
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_DeleteRow
 !-------------------------------------------------------------------------------

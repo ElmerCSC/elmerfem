@@ -1,3 +1,5 @@
+/* Don't use multiline c-style comments */
+
 #ifndef CONFIG_H_FEM
 #define CONFIG_H_FEM
 
@@ -9,6 +11,7 @@
 
 #cmakedefine VERSION "${VERSION}"
 #cmakedefine REVISION "${ELMER_FEM_REVISION}"
+#cmakedefine COMPILATIONDATE "${ELMER_FEM_COMPILATIONDATE}"
 #cmakedefine HAVE_INTTYPES_H
 #cmakedefine ELMER_SOLVER_HOME "${ELMER_SOLVER_HOME}"
 
@@ -30,8 +33,8 @@
 /* Define to 1 if you have the `dlopen' function. */
 #define HAVE_DLOPEN
 
-/* Define if your system has dlopen, dlsym, dlerror, and dlclose for dynamic
-   linking */
+/* Define if your system has dlopen, dlsym, dlerror, and dlclose for dynamic */
+/* linking */
 #cmakedefine HAVE_DLOPEN_API
 
 /* Define if your system has LoadLibrary API (e.g. WIN32)*/
@@ -66,6 +69,9 @@
 
 /* Define if you have a MKL library */
 #cmakedefine HAVE_MKL
+
+/* Define if you have a CPardiso solver from MKL */
+#cmakedefine HAVE_CPARDISO
 
 /* Define if you have LAPACK library. */
 #define HAVE_LAPACK

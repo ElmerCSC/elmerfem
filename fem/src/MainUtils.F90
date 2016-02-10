@@ -44,10 +44,7 @@
 MODULE MainUtils
 
 !------------------------------------------------------------------------------
-
-  USE SolverUtils
-  USE BlockSolve
-  USE ModelDescription
+  Use BlockSolve
 #ifdef USE_ISO_C_BINDINGS
   USE LoadMod
 #endif
@@ -63,7 +60,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Routine checks the feasibility of solver options.
 !------------------------------------------------------------------------------
-  SUBROUTINE CheckSolverOptions( Solver ) 
+  SUBROUTINE CheckLinearSolverOptions( Solver ) 
 !------------------------------------------------------------------------------
     TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
@@ -72,7 +69,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str
 !------------------------------------------------------------------------------
 
-    Params => Solver % Values
+    Params => ListGetSolverParams(Solver)
     str = ListGetString( Params,'Linear System Solver', Found )
 
     IF ( str == 'direct' ) THEN
@@ -80,8 +77,8 @@ CONTAINS
       
       IF( Found ) THEN        
         IF ( ParEnv % PEs > 1 ) THEN
-          IF ( str /= 'mumps' ) THEN
-            CALL Warn( 'CheckSolverOptions', 'Only MUMPS direct solver' // &
+          IF ( str /= 'mumps' .AND. str /= 'cpardiso' ) THEN
+            CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS and CPardiso direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 
             CALL ListAddString( Params,'Linear System Direct Method', str)
@@ -105,22 +102,26 @@ CONTAINS
 #endif
         CASE( 'mumps', 'mumpslocal' )
 #ifndef HAVE_MUMPS
-          CALL Fatal( 'CheckSolverOptions', 'MUMPS solver has not been installed.' )
+          CALL Fatal( 'CheckLinearSolverOptions', 'MUMPS solver has not been installed.' )
 #endif
         CASE( 'superlu' )
 #ifndef HAVE_SUPERLU
-          CALL Fatal( 'CheckSolverOptions', 'SuperLU solver has not been installed.' )
+          CALL Fatal( 'CheckLinearSolverOptions', 'SuperLU solver has not been installed.' )
 #endif
         CASE( 'pardiso' )
 #if !defined(HAVE_PARDISO) && !defined(HAVE_MKL)
-          CALL Fatal( 'CheckSolverOptions', 'Pardiso solver has not been installed.' )
+          CALL Fatal( 'CheckLinearSolverOptions', 'Pardiso solver has not been installed.' )
+#endif
+        CASE( 'cpardiso')
+#if !defined(HAVE_CPARDISO) || !defined(HAVE_MKL)
+        CALL Fatal( 'CheckSolverOptions', ' Cluster Pardiso solver has not been installed.' )
 #endif
         CASE( 'cholmod','spqr' )
 #ifndef HAVE_CHOLMOD
-          CALL Fatal( 'CheckSolverOptions', 'Cholmod solver has not been installed.' )
+          CALL Fatal( 'CheckLinearSolverOptions', 'Cholmod solver has not been installed.' )
 #endif
         CASE DEFAULT
-          CALL Fatal( 'CheckSolverOptions', 'Unknown direct solver method: ' // TRIM(str) )
+          CALL Fatal( 'CheckLinearSolverOptions', 'Unknown direct solver method: ' // TRIM(str) )
         END SELECT
         
       ELSE
@@ -134,42 +135,42 @@ CONTAINS
 #ifdef HAVE_MUMPS
           str = 'mumps'
 #else
-          CALL Fatal( 'CheckSolverOptions', 'There is no direct parallel solver available (MUMPS)')
+          CALL Fatal( 'CheckLinearSolverOptions', 'There is no direct parallel solver available (MUMPS)')
 #endif
         END IF
-        CALL Info('CheckSolverOptions','Setting > Linear System Direct Method < to:'//TRIM(str) )
+        CALL Info('CheckLinearSolverOptions','Setting > Linear System Direct Method < to:'//TRIM(str) )
         CALL ListAddString( Params,'Linear System Direct Method', str )
       END IF
 
     ELSE IF ( str == 'feti' ) THEN
       IF( ParEnv % PEs <= 1 ) THEN
-        CALL Fatal('CheckSolverOptions','Feti not usable in serial!')
+        CALL Fatal('CheckLinearSolverOptions','Feti not usable in serial!')
       END IF
 
     ELSE
       IF (ListGetLogical( Params,  &
           'Linear System Use Hypre', Found )) THEN
         IF( ParEnv % PEs <= 1 ) THEN
-          CALL Fatal('CheckSolverOptions','Hypre not usable in serial!')
+          CALL Fatal('CheckLinearSolverOptions','Hypre not usable in serial!')
         END IF
 #ifndef HAVE_HYPRE
-        CALL Fatal('CheckSolverOptions','Hypre requested but not compiled with!')
+        CALL Fatal('CheckLinearSolverOptions','Hypre requested but not compiled with!')
 #endif
       END IF
 
       IF (ListGetLogical( Params,  &
           'Linear System Use Trilinos', Found )) THEN        
         IF( ParEnv % PEs <= 1 ) THEN
-          CALL Fatal('CheckSolverOptions','Trilinos not usable in serial!')
+          CALL Fatal('CheckLinearSolverOptions','Trilinos not usable in serial!')
         END IF
 #ifndef HAVE_TRILINOS
-        CALL Fatal('CheckSolverOptions','Trilinos requested but not compiled with!')
+        CALL Fatal('CheckLinearSolverOptions','Trilinos requested but not compiled with!')
 #endif
       END IF
     END IF
   
 !------------------------------------------------------------------------------
-  END SUBROUTINE CheckSolverOptions
+  END SUBROUTINE CheckLinearSolverOptions
 !------------------------------------------------------------------------------
 
 
@@ -255,6 +256,181 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+! This subroutine enables the rotation of vector valued keywords.
+!------------------------------------------------------------------------------
+   SUBROUTINE SetRotatedProperties(Model, Mesh)
+     TYPE(Model_t) :: Model
+     TYPE(Mesh_t), POINTER :: Mesh
+
+     LOGICAL :: AnyBC, AnyBodyForce, AnyMat, AnyBody
+     CHARACTER(LEN=MAX_NAME_LEN) :: Suffix
+     INTEGER :: list_ind
+     REAL(KIND=dp) :: RotMatrix(3,3), Angles(3,1)
+     REAL(KIND=dp), POINTER :: Pmatrix(:,:)
+     INTEGER, TARGET :: NodeIndex(1)
+     INTEGER, POINTER :: NodeIndexes(:)
+     REAL(KIND=dp) :: EntityWeight
+     LOGICAL :: Found
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL :: Visited = .FALSE.
+
+     SAVE Visited, Suffix, AnyBC, AnyBodyForce, AnyMat, AnyBody
+
+     IF(.NOT. Visited ) THEN
+       Suffix = 'Property Rotate'
+       AnyBC = ListCheckSuffixAnyBC( Model, Suffix )
+       AnyBodyForce = ListCheckSuffixAnyBodyForce( Model, Suffix )
+       AnyMat = ListCheckSuffixAnyMaterial( Model, Suffix )
+       AnyBody = ListCheckSuffixAnyBody( Model, Suffix )
+       Visited = .TRUE.
+     END IF
+       
+     IF( .NOT. ( AnyBC .OR. AnyBodyForce .OR. AnyMat .OR. AnyBody ) ) RETURN
+
+     NodeIndex(1) = 1
+     NodeIndexes => NodeIndex
+
+     IF( AnyBody ) THEN
+       DO list_ind = 1,Model % NumberOfBodies
+         List => Model % Bodies(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+
+     IF( AnyBodyForce ) THEN
+       DO list_ind = 1,Model % NumberOfBodyForces
+         List => Model % BodyForces(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+
+     IF( AnyMat ) THEN
+       DO list_ind = 1,Model % NumberOfMaterials
+         List => Model % Materials(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+
+     IF( AnyBC ) THEN
+       DO list_ind = 1,Model % NumberOfBCs
+         List => Model % BCs(list_ind) % Values                  
+         IF(.NOT. ListCheckSuffix( List, Suffix ) ) CYCLE
+
+         CALL ListGetRealVector( List,'Property Rotate',Angles,1,NodeIndexes,Found )
+         IF(.NOT. Found ) THEN
+           CALL Fatal('SetRotatedProperties','> Property Rotate < suffix requires angles!')
+         END IF
+         
+         RotMatrix = AnglesToRotationMatrix( Angles(1:3,1) )
+
+         PMatrix => ListGetConstRealArray( List,'Property Rotation Matrix',Found )
+         IF( Found ) THEN
+           PMatrix = RotMatrix(3,3) 
+         ELSE
+           CALL ListAddConstRealArray( List,'Property Rotation Matrix', 3, 3, RotMatrix )
+         END IF
+       END DO
+     END IF
+
+   CONTAINS 
+
+     FUNCTION AnglesToRotationMatrix( Angles, RotateOrder ) RESULT ( RotMatrix )
+
+       REAL(KIND=dp) :: Angles(3), RotMatrix(3,3)
+       INTEGER, OPTIONAL :: RotateOrder(3)
+
+       INTEGER :: i,j
+       REAL(KIND=dp) :: TrfMatrix(3,3), IdentityMatrix(3,3), Alpha
+
+       IdentityMatrix = 0.0_dp
+       DO i=1,3
+         IdentityMatrix(i,i) = 1.0_dp
+       END DO
+
+       RotMatrix = IdentityMatrix
+
+       DO i=1,3
+         j = i
+         IF( PRESENT( RotateOrder ) ) j = RotateOrder(i)
+         Alpha = Angles(j) * PI / 180.0_dp
+
+         IF( ABS(Alpha) < TINY(Alpha) ) CYCLE
+         TrfMatrix = IdentityMatrix
+
+         SELECT CASE(j)
+         CASE(1)
+           TrfMatrix(2,2) =  COS(Alpha)
+           TrfMatrix(2,3) = -SIN(Alpha)
+           TrfMatrix(3,2) =  SIN(Alpha)
+           TrfMatrix(3,3) =  COS(Alpha)
+         CASE(2)
+           TrfMatrix(1,1) =  COS(Alpha)
+           TrfMatrix(1,3) = -SIN(Alpha)
+           TrfMatrix(3,1) =  SIN(Alpha)
+           TrfMatrix(3,3) =  COS(Alpha)
+         CASE(3)
+           TrfMatrix(1,1) =  COS(Alpha)
+           TrfMatrix(1,2) = -SIN(Alpha)
+           TrfMatrix(2,1) =  SIN(Alpha)
+           TrfMatrix(2,2) =  COS(Alpha)
+         END SELECT
+
+         RotMatrix = MATMUL( RotMatrix, TrfMatrix )
+       END DO
+
+     END FUNCTION AnglesToRotationMatrix
+
+
+   END SUBROUTINE SetRotatedProperties
+!------------------------------------------------------------------------------
+
+
 
 
 !------------------------------------------------------------------------------
@@ -279,6 +455,137 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+
+!------------------------------------------------------------------------------
+   SUBROUTINE SwapMesh(Model,Mesh,Name)
+!------------------------------------------------------------------------------
+     CHARACTER(LEN=*) :: Name
+     TYPE(Model_t) :: Model
+     TYPE(Mesh_t), POINTER :: Mesh, Newmesh, tmesh
+!------------------------------------------------------------------------------
+     INTEGER :: Def_Dofs(10,6), i,j,k
+     LOGICAL :: Found, Transient
+     TYPE(Solver_t), POINTER :: Solver
+!------------------------------------------------------------------------------
+
+     Def_Dofs = -1;
+     DO i=1,Model % NumberOfSolvers
+       DO j=1,10
+         DO k=1,6
+           Def_Dofs(j,k) = MAX(Def_Dofs(j,k), MAXVAL(Model % Solvers(i) % Def_Dofs(j,:,k)))
+         END DO
+       END DO
+     END DO
+
+     Newmesh => LoadMesh2( Model, Name, Name, &
+       .FALSE., Parenv % PEs, ParEnv % myPE, Def_Dofs )
+     IF(.NOT.ASSOCIATED(NewMesh)) RETURN
+
+     NewMesh % Next => Mesh % Next
+     IF(ASSOCIATED(Mesh,  Model % Meshes)) THEN
+       Model % Meshes => Newmesh
+     ELSE
+       Tmesh => Model % Meshes
+       DO WHILE(ASSOCIATED(Tmesh % next))
+         IF(ASSOCIATED(Mesh, Tmesh % next)) THEN
+           Tmesh % Next => Newmesh
+           EXIT
+         END IF
+       END DO
+     END IF
+
+     NewMesh % Name = Name
+     CALL AddCoordAndTime(Mesh,NewMesh)
+
+     DO i=1,Model % NumberOfSolvers
+       Solver => Model % Solvers(i)
+       IF(ASSOCIATED(Solver % Mesh, Mesh)) Solver % Mesh => Newmesh
+     END DO
+
+     IF(Mesh % DiscontMesh) CALL CreateDiscontMesh(Model,Newmesh,.TRUE.)
+
+     IF(ASSOCIATED(Model % Mesh, Mesh)) Model % Mesh => NewMesh
+     IF(ASSOCIATED(Model % Variables, Mesh % Variables)) Model % Variables => NewMesh % Variables
+
+     Mesh % Next => Null()
+     CALL ReleaseMesh( Mesh )
+
+     Transient = ListGetString( Model % Simulation, 'Simulation Type' ) == 'transient'
+
+     DO i=1,Model % NumberOfSolvers
+       Solver => Model % Solvers(i)
+       IF(ASSOCIATED(Solver % Mesh, NewMesh)) THEN
+         CALL FreeMatrix(Solver % Matrix)
+         Model % Solver => Solver
+
+         CALL AddEquationBasics( Solver, ListGetString(Solver % Values, &
+                  'Variable', Found), Transient )
+         CALL AddEquationSolution( Solver, Transient )
+         IF ( Transient .AND. Solver % PROCEDURE /= 0 ) CALL InitializeTimestep(Solver)
+       END IF
+     END DO
+
+     CALL MeshStabParams( Newmesh )
+     NewMesh % Changed = .TRUE.
+
+CONTAINS
+
+
+   SUBROUTINE AddCoordAndTime(M1,M2)
+    TYPE(Solver_t), POINTER :: Solver => Null()
+    TYPE(Mesh_t) :: M1,M2
+    TYPE(Variable_t), POINTER :: DtVar, V
+
+     CALL VariableAdd( M2 % Variables, M2,Solver, &
+           'Coordinate 1',1, M2 % Nodes % x )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+           'Coordinate 2',1, M2 % Nodes % y )
+
+     CALL VariableAdd(M2 % Variables,M2,Solver, &
+          'Coordinate 3',1,M2 % Nodes % z )
+
+     V => VariableGet( M1 % Variables, 'Time' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Time', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Periodic Time' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Periodic Time', 1, V % Values)
+
+     V => VariableGet( M1 % Variables, 'Timestep' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep size', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'Timestep interval' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Timestep interval', 1, V % Values )
+
+     ! Save some previous timesteps for variable timestep multistep methods
+     V => VariableGet( M1 % Variables, 'Timestep size' )
+     DtVar => VariableGet( M2 % Variables, 'Timestep size' )
+     DtVar % PrevValues => V % PrevValues
+
+     V => VariableGet( M1 % Variables, 'nonlin iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+             'nonlin iter', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'coupled iter' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, &
+             'coupled iter', 1, V % Values )
+
+     V => VariableGet( M1 % Variables, 'partition' )
+     CALL VariableAdd( M2 % Variables, M2, Solver, 'Partition', 1, V % Values )
+!------------------------------------------------------------------------------
+    END SUBROUTINE AddCoordAndTime
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE SwapMesh
+!------------------------------------------------------------------------------
+
+
+
+
 !------------------------------------------------------------------------------
 !> Add the generic stuff related to each Solver. 
 !> A few solvers are for historical reasons given a special treatment. 
@@ -296,14 +603,14 @@ CONTAINS
     INTEGER(KIND=AddrInt) :: InitProc
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs
-    INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,MatrixFormat,istat,Maxdim
+    INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim
 
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
     MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
     VariableGlobal, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, &
-    IsProcedure
+    IsProcedure, LegacySolver
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name, tmpname
+    CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname
 
     TYPE(ValueList_t), POINTER :: SolverParams
     TYPE(Mesh_t),   POINTER :: NewMesh,OldMesh
@@ -313,22 +620,116 @@ CONTAINS
     TYPE(Variable_t), POINTER :: Var
     TYPE(Variable_t), POINTER :: NewVariable
 
-#ifdef USE_ISO_C_BINDINGS
     REAL(KIND=dp) :: tt, InitValue
-#else
-    REAL(KIND=dp) :: tt, CPUTime, InitValue
-#endif
     REAL(KIND=dp), POINTER :: Component(:)
 
-    EXTERNAL FlowSolver, HeatSolver, MagneticSolver, StressSolver, MeshSolver
-    INTEGER :: FlowSolver, HeatSolver, MagneticSolver, StressSolver, MeshSolver
+
+    ! Set pointer to the list of solver parameters
+    !------------------------------------------------------------------------------
+    SolverParams => ListGetSolverParams(Solver)
 
     !------------------------------------------------------------------------------
+    ! Check the historical solvers that may be built-in on some .sif files
+    ! Therefore some special strategies are used for them.
+    !------------------------------------------------------------------------------
+    IsProcedure = ListCheckPresent( SolverParams, 'Procedure' )
+    Dim = CoordinateSystemDimension()        
+    Dofs = 1
+    InitValue = 0.0_dp
+    LegacySolver = .TRUE.
 
-    SolverParams => Solver % Values
+    SELECT CASE( Name )       
+      !------------------------------------------------------------------------------
+      
+      !------------------------------------------------------------------------------
+    CASE('navier-stokes')
+      !------------------------------------------------------------------------------
+      dofs = dim 
+      IF ( CurrentCoordinateSystem() == CylindricSymmetric ) DOFs = DOFs + 1
+      IF( dofs == 3 ) THEN
+        var_name = 'Flow Solution[Velocity:3 Pressure:1]'
+      ELSE
+        var_name = 'Flow Solution[Velocity:2 Pressure:1]'
+      END IF
+      proc_name = 'FlowSolve FlowSolver'
+      InitValue = 1.0d-6
+      ! We don't want to use automated setting of dofs later so set this back to one!
+      dofs = 1
+
+      !------------------------------------------------------------------------------
+    CASE('magnetic induction')
+      !------------------------------------------------------------------------------
+      var_name = 'Magnetic Field'
+      proc_name = 'MagneticSolve MagneticSolver'
+      dofs = 3
+      CALL ListAddString( SolverParams,&
+          NextFreeKeyword('Exported Variable',SolverParams),&
+          'Electric Current[Electric Current:3]')                  
+      
+      !------------------------------------------------------------------------------
+    CASE('stress analysis')
+      !------------------------------------------------------------------------------
+      dofs = dim
+      var_name = 'Displacement'
+      proc_name = 'StressSolve StressSolver'      
+            
+      !------------------------------------------------------------------------------
+    CASE('mesh update')
+      !------------------------------------------------------------------------------
+      dofs = dim
+      var_name = 'Mesh Update'
+      proc_name = 'MeshSolve MeshSolver'
+
+      IF( Transient ) THEN
+        IF( Dofs == 2 ) THEN
+          CALL ListAddString( SolverParams,&
+              NextFreeKeyword('Exported Variable',SolverParams),&
+              '-dofs 2 Mesh Velocity')        
+        ELSE
+          CALL ListAddString( SolverParams,&
+              NextFreeKeyword('Exported Variable',SolverParams),&
+              '-dofs 3 Mesh Velocity')                  
+        END IF
+      END IF
+
+      !------------------------------------------------------------------------------
+    CASE('heat equation')
+      !------------------------------------------------------------------------------
+      var_name = 'Temperature'
+      proc_name = 'HeatSolve HeatSolver'
+      
+      IF( .NOT. ListCheckPresent( SolverParams,'Radiation Solver') ) THEN
+        CALL ListAddLogical( SolverParams,'Radiation Solver',.TRUE.)
+      END IF
+      !------------------------------------------------------------------------------
+
+    CASE DEFAULT
+      LegacySolver = .FALSE.
+      
+    END SELECT
+
+    IF( LegacySolver ) THEN
+      CALL Info('AddEquationBasics','Setting up keywords internally for legacy solver: '&
+          //TRIM(Name),Level=10)
+      IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
+        CALL ListAddString( SolverParams,'Variable',var_name )
+        IF( Dofs > 1 ) CALL ListAddInteger( SolverParams,'Variable Dofs',dofs )
+      END IF
+      IF( .NOT. IsProcedure ) THEN      
+        CALL ListAddString(SolverParams, 'Procedure', proc_name,.FALSE.)
+      END IF
+    END IF
+
+    ! We should have the procedure 
+    proc_name = ListGetString( SolverParams, 'Procedure',IsProcedure)
+    IF( IsProcedure ) THEN
+      CALL Info('AddEquationBasics','Using procedure: '//TRIM(proc_name),Level=10)
+    END IF
+
 
     ! If there is a matrix level Flux Corrected Transport and/or nonlinear timestepping
     ! then you must use global matrices for time integration.
+    !----------------------------------------------------------------------------------
     IF( ListGetLogical( SolverParams,'Linear System FCT',Found ) ) THEN
       IF( ParEnv % PEs > 1 ) THEN
         CALL Fatal('AddEquationBasics','FCT scheme not implemented in parallel yet!')
@@ -339,7 +740,13 @@ CONTAINS
       CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.)
     END IF
 
+    ! Compute the mesh dimension for this solver
+    !----------------------------------------------------------------------------
     eq = ListGetString( SolverParams, 'Equation', Found )
+    IF( Found ) THEN
+      CALL Info('AddEquationBasics','Setting up solver: '//TRIM(eq),Level=8)
+    END IF
+
     IF ( Found ) THEN
       MAXdim = 0
       DO i=1,Solver % Mesh % NumberOfBulkElements+Solver % Mesh % NumberOFBoundaryElements
@@ -351,15 +758,18 @@ CONTAINS
       CALL ListAddInteger( SolverParams, 'Active Mesh Dimension', Maxdim )
     END IF
 
-    str = ListGetString( Solver  % Values, 'Procedure', IsProcedure )
-    IF ( IsProcedure ) THEN
-      InitProc = GetProcAddr( TRIM(str)//'_Init', abort=.FALSE. )
+    ! Check the solver for initialization
+    ! This is utilized only by some solvers.
+    !-----------------------------------------------------------------
+    IF( IsProcedure ) THEN
+      InitProc = GetProcAddr( TRIM(proc_name)//'_Init', abort=.FALSE. )
+      CALL Info('AddEquationBasics','Checking for _init solver',Level=12)
       IF ( InitProc /= 0 ) THEN
         CALL ExecSolver( InitProc, CurrentModel, Solver, &
             Solver % dt, Transient )
       END IF
     END IF
-     
+
     Solver % SolverMode = SOLVER_MODE_DEFAULT
     IF( ListGetLogical( SolverParams, 'Auxiliary Solver', Found ) ) &
         Solver % SolverMode = SOLVER_MODE_AUXILIARY
@@ -387,6 +797,8 @@ CONTAINS
     Solver % Order = 1
     Solver % TimeOrder = 1
     
+    ! Set up time-stepping strategies for transient problems
+    !------------------------------------------------------------------------------
     IF ( Transient ) THEN
       str = ListGetString( SolverParams, 'Timestepping Method',Found )
       IF ( .NOT. Found ) THEN
@@ -413,127 +825,18 @@ CONTAINS
               Simulation, 'Runge-Kutta Order', Found, minv=2, maxv=4 )
           IF ( .NOT.Found ) Solver % Order = 2
         END IF
-      ELSE
-        CALL Warn( 'AddEquation', 'Time stepping method defaulted to IMPLICIT EULER' )
+        CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=12)
+     ELSE
+        CALL Warn( 'AddEquation', '> Timestepping method < defaulted to > Implicit Euler <' )
         CALL ListAddString( SolverParams, 'Timestepping Method', 'Implicit Euler' )
       END IF
+
     END IF
-
-    !------------------------------------------------------------------------------
-
-    DOFs = CoordinateSystemDimension()
-    InitValue = 0.0_dp
-    
-    !------------------------------------------------------------------------------
-    ! These are historical solvers that may be built-in on some .sif files
-    ! Therefore some special strategies are used for them.
-    !------------------------------------------------------------------------------
-    SELECT CASE( Name )       
-      !------------------------------------------------------------------------------
-      
-      !------------------------------------------------------------------------------
-    CASE('navier-stokes')
-      !------------------------------------------------------------------------------
-      IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN        
-        DOFs = CoordinateSystemDimension()        
-        IF ( CurrentCoordinateSystem() == CylindricSymmetric ) DOFs = DOFs + 1
-        IF( Dofs == 3 ) THEN
-          CALL ListAddString( SolverParams,'Variable','Flow Solution[Velocity:3 Pressure:1]')
-        ELSE
-          CALL ListAddString( SolverParams,'Variable','Flow Solution[Velocity:2 Pressure:1]')
-        END IF
-      END IF
-      IF( .NOT. IsProcedure ) THEN      
-        CALL ListAddString(SolverParams, 'Procedure', 'FlowSolve FlowSolver',.FALSE.)
-      END IF
-      InitValue = 1.0d-6
-      !------------------------------------------------------------------------------
-
-      !------------------------------------------------------------------------------
-    CASE('magnetic induction')
-      !------------------------------------------------------------------------------
-      IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN        
-        CALL ListAddString( SolverParams,'Variable','-dofs 3 Magnetic Field')
-        CALL ListAddString( SolverParams,&
-            NextFreeKeyword('Exported Variable',SolverParams),&
-            'Electric Current[Electric Current:3]')                  
-      END IF
-      IF( .NOT. IsProcedure ) THEN      
-        CALL ListAddString(SolverParams, 'Procedure', 'MagneticSolve MagneticSolver',.FALSE.)
-      END IF
-      !------------------------------------------------------------------------------      
-      
-      !------------------------------------------------------------------------------
-    CASE('stress analysis')
-      !------------------------------------------------------------------------------
-      IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-        IF( Dofs == 2 ) THEN
-          CALL ListAddString( SolverParams,'Variable','-dofs 2 Displacement')
-        ELSE
-          CALL ListAddString( SolverParams,'Variable','-dofs 3 Displacement')
-        END IF
-      END IF
-      IF( .NOT. IsProcedure ) THEN      
-        CALL ListAddString(SolverParams, 'Procedure', 'StressSolve StressSolver',.FALSE.)
-      END IF
-      !------------------------------------------------------------------------------
-            
-      !------------------------------------------------------------------------------
-    CASE('mesh update')
-      !------------------------------------------------------------------------------
-      IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN        
-        IF( Dofs == 2 ) THEN
-          CALL ListAddString( SolverParams,'Variable','-dofs 2 Mesh Update')
-        ELSE
-          CALL ListAddString( SolverParams,'Variable','-dofs 3 Mesh Update')
-        END IF
-      END IF
-
-      IF( Transient ) THEN
-        IF( Dofs == 2 ) THEN
-          CALL ListAddString( SolverParams,&
-              NextFreeKeyword('Exported Variable',SolverParams),&
-              '-dofs 2 Mesh Velocity')        
-        ELSE
-          CALL ListAddString( SolverParams,&
-              NextFreeKeyword('Exported Variable',SolverParams),&
-              '-dofs 3 Mesh Velocity')                  
-        END IF
-      END IF
-
-      IF( .NOT. IsProcedure ) THEN      
-        CALL ListAddString(SolverParams, 'Procedure', 'MeshSolve MeshSolver',.FALSE.)
-      END IF
-      !------------------------------------------------------------------------------
-      
-      !------------------------------------------------------------------------------
-    CASE('heat equation')
-      !------------------------------------------------------------------------------
-      IF( .NOT. ListCheckPresent( SolverParams,'Variable') ) THEN
-        CALL ListAddString( SolverParams,'Variable','Temperature')
-      END IF
-      
-      IF( .NOT. IsProcedure ) THEN
-        CALL ListAddString(SolverParams, 'Procedure', 'HeatSolve HeatSolver',.FALSE.)
-      END IF
-
-      IF( .NOT. ListCheckPresent( SolverParams,'Radiation Solver') ) THEN
-        CALL ListAddLogical( SolverParams,'Radiation Solver',.TRUE.)
-      END IF
-      !------------------------------------------------------------------------------
-    END SELECT
-
 
     ! Get the procudure that really runs the solver
     !------------------------------------------------------------------------------
-    IF( Solver % PROCEDURE == 0 ) THEN
-      str = ListGetString( SolverParams, 'Procedure', Found )        
-      IF(Found) THEN
-        IsProcedure = .TRUE.
-        Solver % PROCEDURE = GetProcAddr(str)
-      ELSE IF(.NOT. IsAssemblySolver ) THEN
-        CALL Fatal('AddEquationBasics','No procedure associated with equation')
-      END IF
+    IF( IsProcedure ) THEN
+      Solver % PROCEDURE = GetProcAddr(proc_name)
     END IF
     
     ! Initialize and get the variable 
@@ -554,11 +857,11 @@ CONTAINS
       NULLIFY( Solver % Variable % Values )
       
       
-    ELSE IF( IsCoupledSolver .AND. Solver % PROCEDURE == 0 ) THEN
+    ELSE IF( IsCoupledSolver .AND. .NOT. IsProcedure ) THEN
       ! Coupled solver may inherit the matrix only if procedure is given
       !-----------------------------------------------------------------
 
-    ELSE IF( IsBlockSolver .AND. Solver % PROCEDURE == 0 ) THEN
+    ELSE IF( IsBlockSolver .AND. .NOT. IsProcedure ) THEN
       ! Block solver may inherit the matrix only if procedure is given
       !-----------------------------------------------------------------
       
@@ -584,17 +887,17 @@ CONTAINS
       END IF
       
       DO WHILE( var_name(1:1) == '-' )
-        IF ( var_name(1:10) == '-nooutput ' ) THEN
+        IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
         END IF
         
-        IF ( var_name(1:8) == '-global ' ) THEN
+        IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
         END IF
         
-        IF ( var_name(1:6) == '-dofs ' ) THEN
+        IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs
           i = 7
           j = LEN_TRIM( var_name )
@@ -613,6 +916,8 @@ CONTAINS
       ! allocated. 
       !------------------------------------------------------------------------------------
       IF( VariableGlobal ) THEN
+        CALL Info('AddEquationBasics','Creating global variable: '//var_name(1:n),Level=8)
+
         Solver % SolverMode = SOLVER_MODE_GLOBAL
         ALLOCATE( Solution( DOFs ) )
         Solution = 0.0_dp
@@ -628,7 +933,17 @@ CONTAINS
                 tmpname, 1, Component )
           END DO
         END IF
+
+        IF( ListGetLogical( SolverParams,'Ode Matrix',Found ) ) THEN
+          CALL Info('AddEquationBasics','Creating dense matrix for ODE: '&
+              //TRIM(I2S(Dofs)),Level=8)
+          ALLOCATE( Solver % Variable % Perm(1) )
+          Solver % Variable % Perm(1) = 1
+          Solver % Matrix => CreateOdeMatrix( CurrentModel, Solver, Dofs )
+        END IF
+
       ELSE        
+        CALL Info('AddEquationBasics','Creating standard variable: '//var_name(1:n),Level=8)
 
         ! If the variable is a field variable create a permutation and matrix related to it
         !----------------------------------------------------------------------------------
@@ -650,6 +965,7 @@ CONTAINS
         
         ! Computate the size of the permutation vector
         !-----------------------------------------------------------------------------------------
+        CALL Info('AddEquationBasics','Computing size of permutation vector',Level=12)
         Ndeg = 0
 !        IF( Solver % SolverMode == SOLVER_MODE_DEFAULT .OR. &
 !            Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
@@ -701,19 +1017,26 @@ CONTAINS
         BandwidthOptimize = ListGetLogical( SolverParams, &
             'Optimize Bandwidth', Found )
         IF ( .NOT. Found ) BandwidthOptimize = .TRUE.
-        CALL CheckSolverOptions( Solver )
+        CALL CheckLinearSolverOptions( Solver )
 
+        CALL Info('AddEquationBasics','Maximum size of permutation vector is: '//TRIM(I2S(Ndeg)),Level=12)
         ALLOCATE( Perm(Ndeg) )
 
         Perm = 0
         MatrixFormat = MATRIX_CRS
+
+
+        CALL Info('AddEquationBasics','Creating solver matrix topology',Level=12)
         Solver % Matrix => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
             Perm, DOFs, MatrixFormat, BandwidthOptimize, eq(1:LEN_TRIM(eq)), &
             ListGetLogical( SolverParams,'Discontinuous Galerkin', Found ), &
             GlobalBubbles=GlobalBubbles )          
         Nrows = DOFs * Ndeg
-        IF (ASSOCIATED(Solver % Matrix)) Nrows = Solver % Matrix % NumberOfRows
-       
+        IF (ASSOCIATED(Solver % Matrix)) THEN
+          Nrows = Solver % Matrix % NumberOfRows
+          CALL Info('AddEquationBasics','Number of rows in CRS matrix: '//TRIM(I2S(Nrows)),Level=12)
+        END IF
+
         ! Basically the solver could be matrix free but still the matrix
         ! is used here temperarily since it is needed when making the 
         ! permutation vector
@@ -724,6 +1047,7 @@ CONTAINS
         END IF
        
         IF (Nrows>0) THEN
+          CALL Info('AddEquationBasics','Creating solver variable',Level=12)
           ALLOCATE(Solution(Nrows))
           Solution = InitValue
           
@@ -760,6 +1084,8 @@ CONTAINS
       
       IF(.NOT. Found) EXIT
       
+      CALL Info('AddEquationBasics','Creating exported variable: '//TRIM(var_name),Level=12)
+
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' Output'
       VariableOutput = ListGetLogical( SolverParams, str, Found )
       IF ( .NOT. Found ) VariableOutput = .TRUE.
@@ -782,17 +1108,17 @@ CONTAINS
       VariableGlobal = .FALSE.
       
       DO WHILE( var_name(1:1) == '-' )
-        IF ( var_name(1:10) == '-nooutput ' ) THEN
+        IF ( SEQL(var_name, '-nooutput ') ) THEN
           VariableOutput = .FALSE.
           var_name(1:LEN(var_name)-10) = var_name(11:)
         END IF
         
-        IF ( var_name(1:8) == '-global ' ) THEN
+        IF ( SEQL(var_name, '-global ') ) THEN
           VariableGlobal = .TRUE.
           var_name(1:LEN(var_name)-8) = var_name(9:)
         END IF
         
-        IF ( var_name(1:6) == '-dofs ' ) THEN
+        IF ( SEQL(var_name, '-dofs ') ) THEN
           READ( var_name(7:), * ) DOFs 
           j = LEN_TRIM( var_name )
           k = 7
@@ -893,16 +1219,23 @@ CONTAINS
        Solver % SolverExecWhen = SOLVER_EXEC_AFTER_SAVE
     END IF
 
-    Solver % LinAfterProc  = 0
     Solver % LinBeforeProc = 0
-    str = ListGetString( Solver  % Values, 'Before Linsolve', Found )
+    str = ListGetString( Solver % Values, 'Before Linsolve', Found )
     IF ( Found ) Solver % LinBeforeProc = GetProcAddr( str )
 
-    str = ListGetString( Solver  % Values, 'After Linsolve', Found )
+    Solver % LinAfterProc = 0
+    str = ListGetString( Solver % Values, 'After Linsolve', Found )
     IF ( Found ) Solver % LinAfterProc = GetProcAddr( str )
 
-    str = ListGetString( Solver  % Values, 'Matrix Vector Proc', Found )
-    IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
+    IF( ASSOCIATED( Solver % Matrix ) ) THEN
+      Solver % Matrix % MatVecSubr = 0
+      str = ListGetString( Solver % Values, 'Matrix Vector Proc', Found )
+      IF ( Found ) Solver % Matrix % MatVecSubr = GetProcAddr( str )
+    END IF
+
+    Solver % MortarProc = 0
+    str = ListGetString( Solver % Values, 'External Projector Procedure', Found )
+    IF ( Found ) Solver % MortarProc = GetProcAddr( str )
 
   END SUBROUTINE AddEquationBasics
 
@@ -922,8 +1255,8 @@ CONTAINS
     INTEGER :: i,j,k,n,nrows,DOFs
     REAL(KIND=dp), POINTER :: Solution(:)
     INTEGER, POINTER :: Perm(:)
-    LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal,EigAnal,VariableOutput, &
-        MGAlgebraic,MultigridActive
+    LOGICAL :: Found, Stat, ComplexFlag, HarmonicAnal, EigAnal, &
+         VariableOutput, MGAlgebraic,MultigridActive
     INTEGER :: MgLevels
     REAL(KIND=dp), POINTER :: Component(:)
     REAL(KIND=dp), POINTER :: freqv(:,:)
@@ -978,7 +1311,8 @@ CONTAINS
 
     ! Create a additional variable for the limiters. For elasticity, for example
     ! the variable will be the contact load. 
-    IF ( ListGetLogical( Solver % Values,'Apply Limiter', Found ) ) THEN
+    IF ( ListGetLogical( Solver % Values,'Apply Limiter', Found ) .OR. &
+        ListGetLogical( Solver % Values,'Apply Contact BCs',Found ) ) THEN
       Var_name = GetVarName(Solver % Variable) // ' Contact Load'
       Var => VariableGet( Solver % Mesh % Variables, var_name )
       IF ( .NOT. ASSOCIATED(Var) ) THEN
@@ -1030,7 +1364,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     EigAnal = ListGetLogical( Solver % Values, 'Eigen Analysis', Found )
-    
+
     IF ( Transient .AND. .NOT. EigAnal .AND. .NOT. HarmonicAnal ) THEN
       k = ListGetInteger( Solver % Values, 'Time Derivative Order', Found, &
           minv=0, maxv=2 )
@@ -1131,8 +1465,8 @@ CONTAINS
       END IF
 
       IF ( EigAnal ) THEN
-        ComplexFlag = ListGetLogical( Solver % Values,  'Eigen System Complex', Found )
-        IF ( .NOT. Found ) ComplexFlag = .FALSE.
+        !ComplexFlag = ListGetLogical( Solver % Values,  'Eigen System Complex', Found )
+        !IF ( .NOT. Found ) ComplexFlag = .FALSE.
         
         n = ListGetInteger( Solver % Values,  'Eigen System Values', Found )
         IF ( Found .AND. n > 0 ) THEN
@@ -1150,12 +1484,12 @@ CONTAINS
               Var => VariableGet( Solver % Mesh % Variables, str, .TRUE. )
               IF ( ASSOCIATED( Var ) ) THEN
                 Var % EigenValues => Solver % Variable % EigenValues
-                IF ( ComplexFlag ) THEN
-                  Var % EigenVectors => Solver % Variable % EigenVectors
-                ELSE
-                  Var % EigenVectors =>  & 
-                      Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
-                END IF
+                !IF ( ComplexFlag ) THEN
+                !  Var % EigenVectors => Solver % Variable % EigenVectors
+                !ELSE
+                Var % EigenVectors =>  & 
+                     Solver % Variable % EigenVectors(:,k::Solver % Variable % DOFs )
+                !END IF
               END IF
             END DO
           END IF
@@ -1772,8 +2106,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE CoupledSolver( Model, Solver, dt, Transient )
 !------------------------------------------------------------------------------    
-    USE DefUtils
-    
     IMPLICIT NONE
 !------------------------------------------------------------------------------
     TYPE(Solver_t), TARGET :: Solver
@@ -1827,7 +2159,7 @@ CONTAINS
     END INTERFACE
 #endif
 
-    SolverParams => GetSolverParams()
+    SolverParams => ListGetSolverParams(Solver)
 
     IsCoupledSolver = .FALSE.
     IsAssemblySolver = .FALSE.
@@ -2548,9 +2880,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BlockSolver( Model, Solver, dt, Transient )
 !------------------------------------------------------------------------------
-    
-    USE DefUtils
-    
     IMPLICIT NONE
  !------------------------------------------------------------------------------
     TYPE(Solver_t), TARGET :: Solver
@@ -2578,7 +2907,6 @@ CONTAINS
     TYPE (Matrix_t), POINTER :: Amat, SolverMatrix
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: SolverParams
-    TYPE(Varying_string) :: namesp
 
     CALL Info('BlockSolver','---------------------------------------',Level=5)
     IF( Solver % SolverMode /= SOLVER_MODE_BLOCK ) THEN
@@ -2588,7 +2916,7 @@ CONTAINS
     END IF
     CALL Info('BlockSolver','---------------------------------------',Level=5)
 
-    SolverParams => Solver % Values
+    SolverParams => ListGetSolverParams(Solver)
     Mesh => Solver % Mesh
     PSolver => Solver
 
@@ -2739,16 +3067,16 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL InitializeToZero(Solver % Matrix, Solver % Matrix % rhs)
             
-            CALL ListSetNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
+            CALL ListPushNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
             CALL BlockSystemAssembly(PSolver,dt,Transient,RowVar,ColVar)
             
             ! Mainly sets the r.h.s. in transient case correctly
             CALL DefaultFinishAssembly()                    
             
             CALL BlockSystemDirichlet(TotMatrix,RowVar,ColVar)
+            CALL ListPopNameSpace()
           END DO
         END DO
-        CALL ListSetNameSpace('')
       END IF
 
       ! The user may give a user defined preconditioner matrix
@@ -2814,8 +3142,7 @@ CONTAINS
       TotNorm = 0.0_dp
       MaxChange = 0.0_dp
 
-      LS = ListGetNameSpace(namesp)
-      CALL ListSetNameSpace('outer:')
+      CALL ListPushNameSpace('outer:')
 
       ! The case with one block is mainly for testing and developing features
       ! related to nonlinearity and assembly.
@@ -2840,7 +3167,7 @@ CONTAINS
 	CALL Info('BlockSolver','Using block solution strategy',Level=6)
         CALL BlockStandardIter( Solver, MaxChange )
       END IF      
-      CALL ListSetNameSpace('')
+      CALL ListPopNameSpace()
 
       ! For legacy matrices do the backmapping 
       !------------------------------------------
@@ -3117,8 +3444,6 @@ CONTAINS
   SUBROUTINE BlockSystemAssembly(Solver,dt,Transient,RowVar,ColVar,&
       RowIndOffset,ColIndOffset)
 !---------------------------------------------------
-    USE DefUtils
-
     TYPE(Solver_t), POINTER :: Solver
     REAL(KIND=dp) :: dt
     LOGICAL :: Transient
@@ -3459,16 +3784,31 @@ CONTAINS
         MeActive = MeActive .AND. (Solver % Matrix % NumberOfRows > 0)
      IF(.NOT.SlaveNotParallel) CALL ParallelActive( MeActive )
 
-     IF ( ParEnv % PEs>1 .AND. .NOT.SlaveNotParallel ) THEN
-       DO i=1,ParEnv % PEs
-         IF ( ParEnv % Active(i) ) THEN
-           EXIT
+     IF ( ParEnv % PEs > 1 .AND. .NOT.SlaveNotParallel ) THEN
+       ! Check that the solver is active in some of the active output solvers
+       IF( ANY( ParEnv % Active(MinOutputPE+1:MaxOutputPE+1) ) ) THEN
+         IF( ParEnv % MyPe >= MinOutputPE .AND. &
+             ParEnv % MyPe <= MaxOutputPE ) THEN 
+           OutputPE = ParEnv % MyPE
+         ELSE
+           OutputPE = -1
          END IF
-       END DO
+       ELSE         
+        ! Otherwise get the first active partition for this solver
+        DO i=1,ParEnv % PEs
+           IF ( ParEnv % Active(i) ) THEN
+             EXIT
+           END IF
+         END DO
 
-       OutputPE = -1
-       IF ( i-1==ParEnv % MyPE .OR. i>ParEnv % PEs .AND. ParEnv % myPE==0 ) &
-         OutputPE=0
+         OutputPE = -1
+         IF ( i-1 == ParEnv % MyPE ) THEN
+           OutputPE = i-1 
+         ELSE IF( i > ParEnv % PEs .AND. ParEnv % myPE == 0 ) THEN
+           OutputPE = 0
+         END IF
+       END IF
+
 
        n = COUNT(ParEnv % Active)
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
@@ -3517,19 +3857,20 @@ CONTAINS
            ParEnv = Solver % Matrix % ParMatrix % ParEnv
          END IF
        END IF
-     ELSE
+     ELSE IF (.NOT.SlaveNotParallel) THEN
        Parenv % ActiveComm = MPI_COMM_WORLD
      END IF
 
 
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
-     FoundMortar = .FALSE.
-     IF(.NOT.GetLogical(GetSolverParams(),'Mortar Projector Nonlinear',Found)) &
-        FoundMortar = GenerateProjectors(Model,Solver)
+!     FoundMortar = .FALSE.
+!     IF(.NOT.GetLogical(ListGetSolverParams(),'Mortar Projector Nonlinear',Found)) &
+!     FoundMortar = 
+     CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
      CALL INFO("SingleSolver", "Attempting to call solver", level=5)
-     SolverParams => GetSolverParams(Solver)
+     SolverParams => ListGetSolverParams(Solver)
      Equation = GetString(SolverParams, 'Equation', GotIt)
      IF (GotIt) THEN
         WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
@@ -3543,7 +3884,7 @@ CONTAINS
          Model, Solver, dt, TransientSimulation)
 #endif
 
-    IF(FoundMortar) CALL ReleaseProjectors(Solver)
+!    IF(FoundMortar) CALL ReleaseProjectors(Solver)
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
@@ -3564,13 +3905,12 @@ CONTAINS
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: OrigDT, DTScal
      LOGICAL :: stat, Found, TimeDerivativeActive, Timing, IsPassiveBC, &
-         UpdateExported, GotCoordTransform
+         UpdateExported, GotCoordTransform, NamespaceFound
      INTEGER :: i, j, n, BDOFs, timestep, timei, timei0, PassiveBcId
      INTEGER, POINTER :: ExecIntervals(:),ExecIntervalsOffset(:)
-#ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct
-#else
-     REAL(KIND=dp) :: tcond, t0, rt0, st, rst, ct, CPUTime,RealTime
+#ifndef USE_ISO_C_BINDINGS
+     CPUTime,RealTime
 #endif
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
@@ -3580,7 +3920,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      CALL SetCurrentMesh( Model, Solver % Mesh )
      Model % Solver => Solver
-     Params => Solver % Values
+     Params => ListGetSolverParams(Solver)
 
      CoordTransform = ListGetString(Params,'Coordinate Transformation',&
          GotCoordTransform )
@@ -3588,6 +3928,10 @@ CONTAINS
        CALL CoordinateTransformation( Solver % Mesh, CoordTransform, &
            Params, .FALSE. )
      END IF
+
+     ! Some properties might be rotated by "Property Rotate"
+     !--------------------------------------------------------------
+     CALL SetRotatedProperties(Model, Solver % Mesh)
 
      ! Some keywords may be normalized by area or volume
      !--------------------------------------------------------------
@@ -3669,8 +4013,8 @@ CONTAINS
        iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
        iterV % Values(1) = 1
 
-       str = ListGetString( Params, 'Namespace', Found )
-       IF (Found) CALL ListSetNamespace(TRIM(str))
+       str = ListGetString( Params, 'Namespace', NamespaceFound )
+       IF (NamespaceFound) CALL ListPushNamespace(TRIM(str))
      END IF
 
  !------------------------------------------------------------------------------
@@ -3706,8 +4050,11 @@ CONTAINS
      ELSE 
        CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
      END IF
-     CALL ListSetNamespace('')
+     IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
+       IF(NamespaceFound) CALL ListPopNamespace()
+     END IF
      Solver % dt = dt
+     Solver % TimesVisited = Solver % TimesVisited + 1
 
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
