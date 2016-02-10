@@ -40,6 +40,7 @@
 !-----------------------------------------------------------------------------
 !>  Module that defined the Model: reads in the command file, mesh and results etc.
 !-----------------------------------------------------------------------------
+#include "../config.h"
 
 MODULE ModelDescription
 
@@ -1052,7 +1053,6 @@ CONTAINS
 !         Priority is in ELMER_LIB, ELMER_HOME, and finally, if all else fails
 !         use the compilation time prefix.
 !         ------------------------------------------------------
-#include "../config.h"
 
 #ifdef USE_ISO_C_BINDINGS
           str = 'ELMER_LIB'

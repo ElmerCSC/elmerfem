@@ -48,6 +48,9 @@ MODULE Types
    USE Messages
    USE iso_varying_string
    USE, INTRINSIC :: ISO_C_BINDING
+#ifdef _OPENMP
+   USE omp_lib 
+#endif 
 
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
 
@@ -602,10 +605,10 @@ END INTERFACE
    !
    TYPE Nodes_t
      INTEGER :: NumberOfNodes
-     REAL(KIND=dp), POINTER :: xyz(:,:) => NULL()
-     REAL(KIND=dp), POINTER :: x(:)=>NULL()
-     REAL(KIND=dp), POINTER :: y(:)=>NULL()
-     REAL(KIND=dp), POINTER :: z(:)=>NULL()
+     REAL(KIND=dp), ALLOCATABLE :: xyz(:,:)
+     REAL(KIND=dp), POINTER CONTIG :: x(:)=>NULL()
+     REAL(KIND=dp), POINTER CONTIG :: y(:)=>NULL()
+     REAL(KIND=dp), POINTER CONTIG :: z(:)=>NULL()
    END TYPE Nodes_t
 
 !------------------------------------------------------------------------------
@@ -666,7 +669,8 @@ END INTERFACE
 
      TYPE(Nodes_t), POINTER :: Nodes
      TYPE(Element_t), DIMENSION(:), POINTER :: Elements, Edges, Faces
-     TYPE(Nodes_t), POINTER :: NodesMapped, NodesOrig
+     TYPE(Nodes_t), POINTER :: NodesOrig
+     TYPE(Nodes_t), POINTER :: NodesMapped
 
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
@@ -684,6 +688,15 @@ END INTERFACE
      
    END TYPE Mesh_t
 
+   TYPE Graph_t
+     INTEGER :: n
+     INTEGER, ALLOCATABLE :: ptr(:), ind(:)
+   END type Graph_t
+   
+   TYPE Graphcolour_t
+     INTEGER :: nc
+     INTEGER, ALLOCATABLE :: colours(:)
+   END TYPE Graphcolour_t
 
    TYPE MortarBC_t 
      TYPE(Matrix_t), POINTER :: Projector => NULL()

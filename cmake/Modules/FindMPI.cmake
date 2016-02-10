@@ -168,7 +168,7 @@ endforeach()
 
 
 # Names to try for MPI exec
-set(_MPI_EXEC_NAMES                        mpiexec mpirun lamexec srun)
+set(_MPI_EXEC_NAMES mpiexec.hydra mpiexec mpirun lamexec srun)
 
 # Grab the path to MPI from the registry if we're on windows.
 set(_MPI_PREFIX_PATH)

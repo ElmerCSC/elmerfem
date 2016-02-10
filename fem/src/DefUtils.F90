@@ -98,15 +98,15 @@ MODULE DefUtils
      MODULE PROCEDURE GetScalarLocalEigenmode, GetVectorLocalEigenmode
    END INTERFACE
 
-   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:)
+   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
    REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: Store(:)
    ! TODO: Get actual values for these from mesh
    INTEGER, PARAMETER, PRIVATE :: ISTORE_MAX_SIZE = 1024
    INTEGER, PARAMETER, PRIVATE :: STORE_MAX_SIZE = 1024
    ! SAVE IndexStore, Store
 
-   !$OMP THREADPRIVATE(IndexStore, Store)
-   PRIVATE :: GetIndexStore, GetStore
+   !$OMP THREADPRIVATE(IndexStore, VecIndexStore, Store)
+   PRIVATE :: GetIndexStore, GetVecIndexStore, GetStore
 
 CONTAINS
 
@@ -159,7 +159,7 @@ CONTAINS
 !   END FUNCTION GetStore
 
   FUNCTION GetIndexStore() RESULT(ind)
-    INTEGER, POINTER :: Ind(:)
+    INTEGER, POINTER CONTIG :: Ind(:)
     INTEGER :: istat
 
     IF ( .NOT. ALLOCATED(IndexStore) ) THEN
@@ -171,8 +171,22 @@ CONTAINS
     ind => IndexStore( : )
   END FUNCTION GetIndexStore
 
+  FUNCTION GetVecIndexStore() RESULT(ind)
+    IMPLICIT NONE
+    INTEGER, POINTER CONTIG :: Ind(:)
+    INTEGER :: istat
+     
+    IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
+      ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE), STAT=istat )
+      VecIndexStore = 0
+      IF ( istat /= 0 ) CALL Fatal( 'GetVecIndexStore', 'Memory allocation error.' )
+    END IF
+    
+    ind => VecIndexStore( : )
+  END FUNCTION GetVecIndexStore
+
   FUNCTION GetStore(n) RESULT(val)
-    REAL(KIND=dp), POINTER :: val(:)
+    REAL(KIND=dp), POINTER CONTIG :: val(:)
     INTEGER :: n, istat
 
     IF ( .NOT.ALLOCATED(Store) ) THEN
@@ -1104,6 +1118,7 @@ CONTAINS
 
      IF ( t > 0 .AND. t <= Solver % NumberOfActiveElements ) THEN
         Element => Solver % Mesh % Elements( Solver % ActiveElements(t) )
+
         !$omp critical(GetActiveElementCurrentElement)
         CurrentModel % CurrentElement => Element ! may be used by user functions
         !$omp end critical(GetActiveElementCurrentElement)
@@ -1540,17 +1555,15 @@ CONTAINS
 
 !> Returns the nodal coordinate values in the active element
     SUBROUTINE GetElementNodesVec( ElementNodes, UElement, USolver, UMesh )
-        TYPE(Nodes_t) :: ElementNodes
+        TYPE(Nodes_t), TARGET :: ElementNodes
         TYPE(Solver_t), OPTIONAL, TARGET :: USolver
         TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
         TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
         INTEGER :: padn, dum
-        ! Count number of integers in 64 bytes in order to
-        ! pad columns to 64-byte boundaries
-        INTEGER, PARAMETER :: INT_ALIGN = 64/kind(dum)
+
         INTEGER :: i,n,nd,sz,sz1
-        INTEGER, POINTER :: Indexes(:)
+        INTEGER, POINTER CONTIG :: Indexes(:)
 
         TYPE(Solver_t),  POINTER  :: Solver
         TYPE(Mesh_t),  POINTER  :: Mesh
@@ -1568,15 +1581,19 @@ CONTAINS
         END IF
 
         n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
-        ! Pad beginning of columns of xyz to 64-byte boundaries
-        padn=((n-1)/INT_ALIGN)*INT_ALIGN+INT_ALIGN
-        IF (.NOT. ASSOCIATED( ElementNodes % xyz)) THEN
+        padn = n
+        
+        ! Here we could pad beginning of columns of xyz to 64-byte 
+        ! boundaries if needed as follows
+        ! padn=NBytePad(n,STORAGE_SIZE(REAL(1,dp))/8,64)
+        
+        IF (.NOT. ALLOCATED( ElementNodes % xyz)) THEN
             ALLOCATE(ElementNodes % xyz(padn,3))
             ElementNodes % xyz = REAL(0,dp)
             ElementNodes % x => ElementNodes % xyz(1:n,1)
             ElementNodes % y => ElementNodes % xyz(1:n,2)
             ElementNodes % z => ElementNodes % xyz(1:n,3)
-        ELSE IF (SIZE(ElementNodes % xyz, 1)<n) THEN
+        ELSE IF (SIZE(ElementNodes % xyz, 1)<padn) THEN
             DEALLOCATE(ElementNodes % xyz)
             ALLOCATE(ElementNodes % xyz(padn,3))
             ElementNodes % xyz = REAL(0,dp)
@@ -1586,9 +1603,12 @@ CONTAINS
         END IF
 
         n = Element % TYPE % NumberOfNodes
-        ElementNodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
-        ElementNodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
-        ElementNodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
+!DIR$ IVDEP
+        DO i=1,n
+          ElementNodes % x(i) = Mesh % Nodes % x(Element % NodeIndexes(i))
+          ElementNodes % y(i) = Mesh % Nodes % y(Element % NodeIndexes(i))
+          ElementNodes % z(i) = Mesh % Nodes % z(Element % NodeIndexes(i))
+        END DO
 
         sz = SIZE(ElementNodes % x)
         IF ( sz > n ) THEN
@@ -1601,6 +1621,7 @@ CONTAINS
         IF (sz1 > Mesh % NumberOfNodes) THEN
             Indexes => GetIndexStore()
             nd = GetElementDOFs(Indexes,Element,NotDG=.TRUE.)
+!DIR$ IVDEP
             DO i=n+1,nd
                 IF ( Indexes(i)>0 .AND. Indexes(i)<=sz1 ) THEN
                     ElementNodes % x(i) = Mesh % Nodes % x(Indexes(i))
@@ -2785,26 +2806,27 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, BulkUpdate ) 
+  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, BulkUpdate, VecAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      REAL(KIND=dp)   :: G(:,:), f(:)
-     LOGICAL, OPTIONAL :: BulkUpdate
+     LOGICAL, OPTIONAL :: BulkUpdate, VecAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-     REAL(KIND=dp), POINTER    :: b(:), SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG   :: b(:)
+     REAL(KIND=dp), POINTER :: SaveValues(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
-     LOGICAL :: Found, BUpd
+     LOGICAL :: Found, BUpd, VecAsm, MCAsm
 
-     INTEGER :: n, nd
+     INTEGER :: j, n, nd
      INTEGER(KIND=AddrInt) :: Proc
-     INTEGER, POINTER :: Indexes(:)
+     INTEGER, POINTER CONTIG :: Indexes(:), PermIndexes(:)
 
 #ifndef USE_ISO_C_BINDINGS
      INTERFACE 
@@ -2833,6 +2855,11 @@ CONTAINS
         Element => UElement 
      ELSE
         Element => CurrentModel % CurrentElement
+     END IF
+     
+     VecAsm = .FALSE.
+     IF ( PRESENT( VecAssembly )) THEN
+       VecAsm = VecAssembly
      END IF
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
@@ -2873,21 +2900,47 @@ CONTAINS
        END IF
      END IF
 
-     Indexes => GetIndexStore()
-     n = GetElementDOFs( Indexes, Element, Solver )
+     ! Vectorized version of the glueing process requested
+     IF (VecAsm) THEN
+#ifdef _OPENMP
+       IF (OMP_GET_NUM_THREADS() == 1) THEN
+         MCAsm = .TRUE.
+       ELSE
+         MCAsm = ListGetLogical( Solver % Values, 'Mesh Colouring', Found )
+         MCAsm = MCAsm .AND. Found
+       END IF
+#else
+       MCAsm = .TRUE.
+#endif       
+       Indexes => GetIndexStore()
+       n = GetElementDOFs( Indexes, Element, Solver )
+       
+       PermIndexes => GetVecIndexStore()
+       ! Get permuted indices
+!DIR$ IVDEP
+       DO j=1,n
+         PermIndexes(j) = Solver % Variable % Perm(Indexes(j))
+       END DO
 
-     CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)), UElement=Element )
+       CALL UpdateGlobalEquationsVec( A, G, b, f, n, &
+               x % DOFs, PermIndexes, &
+               UElement=Element, MCAssembly=MCAsm )
+     ELSE
+       Indexes => GetIndexStore()
+       n = GetElementDOFs( Indexes, Element, Solver )
+       CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)), UElement=Element )
+     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, BulkUpdate ) 
+  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, BulkUpdate, MCAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      COMPLEX(KIND=dp)   :: GC(:,:), FC(:)
-     LOGICAL, OPTIONAL :: BulkUpdate
+     LOGICAL, OPTIONAL :: BulkUpdate, MCAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A

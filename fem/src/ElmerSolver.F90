@@ -49,6 +49,8 @@
 !> \ingroup ElmerLib
 !> \{
 
+#include "../config.h"
+
 !------------------------------------------------------------------------------
 !> The main program for Elmer. Solves the equations as defined by the input files.
 !------------------------------------------------------------------------------
@@ -115,8 +117,6 @@
      INTEGER :: ExtrudeLevels, MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
-     INTEGER :: omp_get_max_threads
-
 #ifdef HAVE_TRILINOS
 INTERFACE
       SUBROUTINE TrilinosCleanup() BIND(C,name='TrilinosCleanup')
@@ -144,7 +144,6 @@ END INTERFACE
 
        !
        ! Print banner to output:
-#include "../config.h"
        ! -----------------------
 #ifdef USE_ISO_C_BINDINGS
        NoArgs = COMMAND_ARGUMENT_COUNT()

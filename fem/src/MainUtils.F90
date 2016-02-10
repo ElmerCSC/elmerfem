@@ -37,7 +37,7 @@
 !> \ingroup ElmerLib
 !> \}
 
-
+#include "../config.h"
 !------------------------------------------------------------------------------
 !>  Utility routines for the elmer main program.
 !------------------------------------------------------------------------------
@@ -96,7 +96,6 @@ CONTAINS
         CASE('banded' )
           
         CASE( 'umfpack', 'big umfpack' )
-#include "../config.h"
 #ifndef HAVE_UMFPACK
           CALL Fatal( 'GetMatrixFormat', 'UMFPACK solver has not been installed.' )
 #endif

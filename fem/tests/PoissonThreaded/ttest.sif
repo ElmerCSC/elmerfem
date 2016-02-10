@@ -1,7 +1,7 @@
 Check Keywords "Warn"
 
 Header
-  Mesh DB "." "cube2"
+  Mesh DB "." "cube"
 End
 
 Simulation
@@ -10,8 +10,8 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-  Post File   = "ptest.ep"
-  Output File = "ptest.dat"
+  Post File   = "ttest.ep"
+  Output File = "ttest.dat"
 End
 
 Body 1
@@ -32,26 +32,17 @@ Solver 1
 
   Variable = "Potential"
   Variable DOFs = 1
-  Procedure = "PoissonOMPBLAS" "PoissonSolver"
+  Procedure = "Poisson" "PoissonSolver"
 
-  ! Element = "p:2"
-
-  !  Linear System Solver = "Direct"
   Linear System Symmetric = True
   Linear System Solver = "Iterative"
   Linear System Iterative Method = Cg
   Linear System Convergence Tolerance = 1e-6
   Linear System Preconditioning = None
   Linear System Max Iterations = 200
-  Optimize Bandwidth = False
-  ! Linear System Residual Output = 1
+  Optimize Bandwidth = True
   Steady State Convergence Tolerance = 1e-09
-  Bubbles in Global System = False
- 
-  ! Linear System Save = Logical True
-  ! Linear System Save Prefix = File "ptest"
-  ! Linear System Save Format = String "MatrixMarket"
-  ! Linear System Save and Stop = Logical False
+  Mesh Colouring = Logical True
 End
 
 Boundary Condition 1
@@ -59,6 +50,6 @@ Boundary Condition 1
   Potential = Real 0
 End
 
-$fprintf( stderr, "TEST CASE 1\n");
+Solver 1 :: Reference Norm = Real 0.24103925E-01
+Solver 1 :: Reference Norm Tolerance = Real 1E-05
 RUN
-$fprintf( stderr, "END TEST CASE 1: Target NRM=0.223544023689E-01\n" );

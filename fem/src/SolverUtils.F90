@@ -1116,6 +1116,123 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!> Add element local matrices & vectors to global matrices and vectors.
+!> Vectorized version, does not support normal or tangential boundary
+!> conditions yet.
+   SUBROUTINE UpdateGlobalEquationsVec( Gmtr, Lmtr, Gvec, Lvec, n, &
+           NDOFs, NodeIndexes, RotateNT, UElement, MCAssembly )
+     TYPE(Matrix_t), POINTER :: Gmtr         !< The global matrix
+     REAL(KIND=dp) :: Lmtr(:,:)              !< Local matrix to be added to the global matrix.
+     REAL(KIND=dp) :: Gvec(:)                !< Element local force vector.
+     REAL(KIND=dp) :: Lvec(:)                !< The global RHS vector.
+     INTEGER :: n                            !< Number of nodes.
+     INTEGER :: NDOFs                        !< Number of degrees of free per node.
+     INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping.
+     LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
+     LOGICAL, OPTIONAL :: MCAssembly   !< Assembly process is multicoloured and guaranteed race condition free 
+
+     ! Local variables
+     INTEGER :: dim, i,j,k
+     INTEGER :: Ind(n*NDOFs)
+     REAL(KIND=dp) :: Vals(n*NDOFs)
+!DIR$ ATTRIBUTES ALIGN:64::Ind, Vals
+
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: Rotate
+     LOGICAL :: ColouredAssembly
+
+     IF (PRESENT(UElement)) THEN
+       Element => UElement
+     ELSE
+       Element => CurrentModel % CurrentElement
+     END IF
+     
+     IF ( CheckPassiveElement(Element) )  RETURN
+     Rotate = .TRUE.
+     IF ( PRESENT(RotateNT) ) Rotate = RotateNT
+     
+     ColouredAssembly = .FALSE.
+     IF ( PRESENT(MCAssembly) ) ColouredAssembly = MCAssembly
+
+     dim = CoordinateSystemDimension()
+     ! TEMP
+     ! IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
+     
+     ! DO i=1,Element % TYPE % NumberOfNodes
+     !     Ind(i) = BoundaryReorder(Element % NodeIndexes(i))
+     ! END DO
+     ! TODO: See that RotateMatrix is vectorized
+     ! CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
+     !                    Ind, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
+     IF (Rotate .AND. ndofs >= dim) THEN
+       CALL Fatal('UpdateGlobalEquationsVec', &
+               'Normal or tangential boundary conditions not supported yet!')
+     END IF
+     
+     IF ( ASSOCIATED( Gmtr ) ) THEN
+       SELECT CASE( Gmtr % FORMAT )
+       CASE( MATRIX_CRS )
+         CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr, ColouredAssembly)
+       CASE DEFAULT
+         CALL Fatal('UpdateGlobalEquationsVec','Not implemented for given matrix type')
+       END SELECT
+     END IF
+     
+     ! Check for multicolored assembly
+     IF (ColouredAssembly) THEN 
+       IF (ANY(NodeIndexes<=0)) THEN
+         ! Vector masking needed, no ATOMIC needed
+         DO i=1,n
+           IF (NodeIndexes(i)>0) THEN
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+             DO j=1,NDOFs
+               k = NDOFs*(NodeIndexes(i)-1) + j
+               Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+             END DO
+           END IF
+         END DO
+       ELSE
+         ! No vector masking needed, no ATOMIC needed
+         DO i=1,n
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+           DO j=1,NDOFs
+             k = NDOFs*(NodeIndexes(i)-1) + j
+             Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+           END DO
+         END DO
+       END IF ! Vector masking
+     ELSE
+       IF (ANY(NodeIndexes<=0)) THEN
+         ! Vector masking needed, ATOMIC needed
+         DO i=1,n
+           IF (NodeIndexes(i)>0) THEN
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+             DO j=1,NDOFs
+               k = NDOFs*(NodeIndexes(i)-1) + j
+               !$OMP ATOMIC
+               Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+             END DO
+           END IF
+         END DO
+       ELSE
+         ! No vector masking needed, ATOMIC needed
+         DO i=1,n
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+           DO j=1,NDOFs
+             k = NDOFs*(NodeIndexes(i)-1) + j
+             !$OMP ATOMIC
+             Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+           END DO
+         END DO
+       END IF ! Vector masking
+     END IF ! Coloured assembly
+   END SUBROUTINE UpdateGlobalEquationsVec
+
 !------------------------------------------------------------------------------
 !> Update the global vector with the local vector entry.
 !------------------------------------------------------------------------------

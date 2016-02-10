@@ -1006,7 +1006,7 @@ CONTAINS
             tninlen = ninlen
             tcmdstr = copystr(i+1:inlen)
             CALL MATC( tcmdstr, tmatcstr, tninlen )
-			!$OMP BARRIER
+            !$OMP BARRIER
 
             !$OMP SINGLE
             matcstr(1:tninlen) = tmatcstr(1:tninlen)
@@ -2224,6 +2224,36 @@ INCLUDE "mpif.h"
   END SUBROUTINE  AllocateLogicalArray
 !------------------------------------------------------------------------------
 
+  ! Pad given integer value to be the next largest multiple of nbyte
+  FUNCTION IntegerNBytePad(val, nbyte) RESULT(padval)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: val, nbyte
+    INTEGER :: padval
+    ! Parameters and variables
+    INTEGER, PARAMETER :: bytesinint = KIND(val)
+    INTEGER :: nbytesinint
+
+    ! Compute number of nbytes in int
+    nbytesinint = nbyte/bytesinint
+    ! Compute value padded to multiples of n-byte
+    padval=((val-1)/nbytesinint)*nbytesinint+nbytesinint
+  END FUNCTION IntegerNBytePad
+
+  ! Pad given value to be the next largest multiple of nbyte
+  FUNCTION NBytePad(val, bytesinelem, nbyte) RESULT(padval)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: val, bytesinelem, nbyte
+    INTEGER :: padval
+    ! Variables
+    INTEGER :: nbytesinelem
+
+    ! Compute number of nbytes in a single element
+    nbytesinelem = nbyte/bytesinelem
+    ! Compute value padded to multiples of n-byte
+    padval=((val-1)/nbytesinelem)*nbytesinelem+nbytesinelem
+  END FUNCTION NBytePad
 
 !------------------------------------------------------------------------------
 !> Given the filename0 (and suffix0) find the 1st free filename
