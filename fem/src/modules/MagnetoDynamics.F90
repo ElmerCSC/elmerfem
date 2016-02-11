@@ -5413,6 +5413,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL :: CSymmetry, HBCurve
    REAL(KIND=dp) :: xcoord, grads_coeff
    TYPE(ValueListEntry_t), POINTER :: HBLst
+   
+   INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
 !-------------------------------------------------------------------------------------------
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
@@ -6311,8 +6313,29 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END DO
 
    ! DEBUG
-   CALL SumElementalVariable(EL_NF)
-   CALL CalcBoundaryModels()
+
+   IF( ListGetLogical( Solver % Values,'Experimental',Found ) ) THEN
+     ! Does not seem to work yet in this mode...
+     CALL CalcBoundaryModels(.FALSE.)
+     
+     ! Create a minimal discontinuous set such that discontinuity is only created
+     ! when body has an air gap boundary condition. Only do the reduction for the 1st time.
+     IF( .NOT. ASSOCIATED( SetPerm ) ) THEN
+       SetPerm => MinimalElementalSet( Mesh,'db', Solver % Variable % Perm, &
+           BcFlag = 'Air Gap Jump', BcGreedy = .FALSE. ) 
+     END IF
+
+     ! Sum up (no averaging) the elemental fields such that each elemental nodes has also 
+     ! the contributions of the related nodes in other elements
+     CALL ReduceElementalVar( Mesh, EL_NF, SetPerm, TakeAverage = .FALSE.)
+
+     ! Sum up the nodal forces in each body such that each redundant reference is summed
+     ! only once because they were already lumped into nodes.  
+     CALL LumpedElementalVar( Mesh, EL_NF, SetPerm, AlreadySummed = .TRUE.)
+   ELSE
+     CALL SumElementalVariable(EL_NF)
+     CALL CalcBoundaryModels(.TRUE.)
+   END IF
 
    Power  = ParallelReduction(Power)
    Energy = ParallelReduction(Energy)
@@ -6611,10 +6634,11 @@ CONTAINS
 
 
 !-------------------------------------------------------------------
-  SUBROUTINE CalcBoundaryModels()
+  SUBROUTINE CalcBoundaryModels( SumForces )
 !-------------------------------------------------------------------
     IMPLICIT NONE
 !-------------------------------------------------------------------
+    LOGICAL :: SumForces
     REAL(KIND=dp) :: GapLength(35), AirGapMu(35)
 
 !-------------------------------------------------------------------
@@ -6643,11 +6667,14 @@ CONTAINS
       &does not testably yield correct nodal forces')
 
     ALLOCATE(LeftFORCE(n,3), RightForce(n,3), RightMap(n), LeftMap(n), &
-      AirGapForce(3,Mesh % NumberOfNodes), ForceValues(size(EL_NF % Values)))
-    ALLOCATE(BodyMask(Model % NumberOfBodies))
-    ForceValues = 0.0_dp
+      AirGapForce(3,Mesh % NumberOfNodes) )
 
-    BodyMask = .FALSE.
+    IF( SumForces ) THEN
+      ALLOCATE( ForceValues(SIZE(EL_NF % Values)))
+      ForceValues = 0.0_dp
+      ALLOCATE(BodyMask(Model % NumberOfBodies))
+      BodyMask = .FALSE.
+    END IF
 
     IF ( FirstTime ) THEN
       mu0 = GetConstReal(CurrentModel % Constants, &
@@ -6691,8 +6718,10 @@ CONTAINS
       LeftBodyID = LeftParent % BodyID
       RightBodyID = RightParent % BodyID
 
-      BodyMask(LeftBodyID) = .TRUE.
-      BodyMask(RightBodyID) = .TRUE.
+      IF( SumForces ) THEN
+        BodyMask(LeftBodyID) = .TRUE.
+        BodyMask(RightBodyID) = .TRUE.
+      END IF
 
       n = GetElementNOFNodes(BElement)
       n_lp = GetElementNOFNodes(LeftParent)
@@ -6845,16 +6874,22 @@ CONTAINS
       END DO ! Integration points
 
       IF(ElementalFields) THEN
-        CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, Values=ForceValues, uAdditive=.true.)
         ! DEBUG
         !write (*,*), 'LeftFORCE(:,1) = ', LeftFORCE(1:n_lp,1)
         !write (*,*), 'LeftFORCE(:,2) = ', LeftFORCE(1:n_lp,2)
         !write (*,*), 'LeftFORCE(:,3) = ', LeftFORCE(1:n_lp,3)
-        CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, Values=ForceValues, uAdditive=.true.)
+        IF( SumForces ) THEN
+          CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, Values=ForceValues, uAdditive=.TRUE.)
+          CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, Values=ForceValues, uAdditive=.TRUE.)
+        ELSE
+          CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, uAdditive=.TRUE.)
+          CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, uAdditive=.TRUE.)
+        END IF
+
       END IF
     END DO ! Boundary elements
 
-    IF(ElementalFields) THEN
+    IF(ElementalFields .AND. SumForces ) THEN
       DO p=1,Model % NumberOfBodies
         IF(BodyMask(p)) CALL SumElementalVariable(EL_NF, Values=ForceValues, BodyID=p, Additive=.TRUE.)
       END DO

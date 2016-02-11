@@ -16652,10 +16652,10 @@ CONTAINS
     INTEGER, POINTER, OPTIONAL :: VarPerm(:)
     CHARACTER(LEN=*), OPTIONAL :: BcFlag
     LOGICAL, OPTIONAL :: BcGreedy
-    REAL(KIND=dp), POINTER :: SetPerm(:)
+    INTEGER, POINTER :: SetPerm(:)
 
     TYPE(Element_t), POINTER :: Element, Left, Right
-    INTEGER :: n,i,j,k,l,bc_id,mat_id,body_id,NoJumpNodes,nodeind,JumpModeIndx,&
+    INTEGER :: n,i,j,k,l,bc_id,mat_id,body_id,NoElimNodes,nodeind,JumpModeIndx,&
         LeftI,RightI,NumberOfBlocks
     LOGICAL, ALLOCATABLE :: JumpNodes(:)
     INTEGER, ALLOCATABLE :: NodeVisited(:)
@@ -16679,8 +16679,9 @@ CONTAINS
     ALLOCATE( SetPerm(k) )
     SetPerm = 0
     l = 0
+    NoElimNodes = 0
 
-    CALL Info('MinimalElementalSet','Reducing elemental discontinuity with mode:'//TRIM(JumpMode),Level=7)
+    CALL Info('MinimalElementalSet','Reducing elemental discontinuity with mode: '//TRIM(JumpMode),Level=7)
 
     SELECT CASE ( JumpMode )
 
@@ -16702,8 +16703,7 @@ CONTAINS
       ALLOCATE( JumpNodes( Mesh % NumberOfNodes ) )
     END IF
 
-
-        
+    
     DO i=1,NumberOfBlocks
       
       ! Before the 1st block no numbers have been given.
@@ -16724,7 +16724,7 @@ CONTAINS
             IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
           END DO
           IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
-          IF( .NOT. ListGetLogical( CurrentModel % BCs(bc_id) % Values, BcFlag, Found ) ) CYCLE
+          IF( .NOT. ListCheckPresent( CurrentModel % BCs(bc_id) % Values, BcFlag ) ) CYCLE
 
           Left => Element % BoundaryInfo % Left
           Right => Element % BoundaryInfo % Right
@@ -16753,7 +16753,7 @@ CONTAINS
               END DO
               IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
 
-              IF( ListGetLogical( CurrentModel % BCs(bc_id) % Values, BcFlag, Found ) ) CYCLE
+              IF( ListCheckPresent( CurrentModel % BCs(bc_id) % Values, BcFlag ) ) CYCLE
 
               Left => Element % BoundaryInfo % Left
               Right => Element % BoundaryInfo % Right
@@ -16765,9 +16765,6 @@ CONTAINS
             END DO
           END IF
         END IF
-
-        NoJumpNodes = COUNT( JumpNodes ) 
-        CALL Info('MinimalElementalSet','Discontinuous boundary nodes: '//TRIM(I2S(NoJumpNodes)),Level=7)     
 
         ! Initialize new potential nodes for the block where we found discontinuity
         WHERE( JumpNodes ) NodeVisited = 0
@@ -16796,6 +16793,7 @@ CONTAINS
           END IF
           IF( NodeVisited( nodeind ) > 0 ) THEN
             SetPerm( Element % DGIndexes(k) ) = NodeVisited( nodeind )
+            NoElimNodes = NoElimNodes + 1
           ELSE
             l = l + 1
             NodeVisited(nodeind) = l
@@ -16805,7 +16803,8 @@ CONTAINS
       END DO
     END DO
 
-    CALL Info('MinimalElementalSet','Independent dofs in elemental field: '//TRIM(I2S(l)),Level=10)
+    CALL Info('MinimalElementalSet','Independent dofs in elemental field: '//TRIM(I2S(l)),Level=7)
+    CALL Info('MinimalElementalSet','Redundant dofs in elemental field: '//TRIM(I2S(NoElimNodes)),Level=7)     
 
   END FUNCTION MinimalElementalSet
 
@@ -16825,18 +16824,25 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), ALLOCATABLE :: SetSum(:)
     INTEGER, ALLOCATABLE :: SetCount(:)
-    INTEGER :: n,m,i,j,k,l,nodeind,dgind
+    INTEGER :: dof,n,m,i,j,k,l,nodeind,dgind
     REAL(KIND=dp) :: AveHits
 
-    IF(.NOT. ASSOCIATED(var)) RETURN
-    IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
+    IF(.NOT. ASSOCIATED(var)) THEN
+      CALL Warn('ReduceElementalVar','Variable not associated!')
+      RETURN
+    END IF
+
+    IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) THEN
+      CALL Warn('ReduceElementalVar','Var % Perm too small!')
+      RETURN
+    END IF
 
     IF( TakeAverage ) THEN
       CALL Info('CalculateSetAverage','Calculating reduced set average for: '&
-          //TRIM(Var % Name), Level=8)
+          //TRIM(Var % Name), Level=7)
     ELSE
       CALL Info('CalculateSetAverage','Calculating reduced set sum for: '&
-          //TRIM(Var % Name), Level=8)
+          //TRIM(Var % Name), Level=7)
     END IF
 
     n = Mesh % NumberOfNodes
@@ -16847,14 +16853,14 @@ CONTAINS
     SetSum = 0.0_dp
 
     ! Take the sum to nodes, and calculate average if requested
-    DO k=1,Var % Dofs
+    DO dof=1,Var % Dofs
       SetCount = 0
       SetSum = 0.0_dp
 
       DO i=1,SIZE(SetPerm)
         j = SetPerm(i)
         l = Var % Perm(i)
-        SetSum(j) = SetSum(j) + Var % Values( Var % DOFs * (l-1) + k )
+        SetSum(j) = SetSum(j) + Var % Values( Var % DOFs * (l-1) + dof )
         SetCount(j) = SetCount(j) + 1
       END DO
         
@@ -16862,7 +16868,7 @@ CONTAINS
         WHERE( SetCount > 0 ) SetSum = SetSum / SetCount
       END IF
 
-      IF( k == 1 ) THEN
+      IF( dof == 1 ) THEN
         AveHits = 1.0_dp * SUM( SetCount ) / COUNT( SetCount > 0 )
         PRINT *,'AveHits:',AveHits
       END IF
@@ -16871,7 +16877,7 @@ CONTAINS
       DO i=1,SIZE(SetPerm)
         j = SetPerm(i)
         l = Var % Perm(i)
-        Var % Values( Var % DOFs * (l-1) + k ) = SetSum(j)
+        Var % Values( Var % DOFs * (l-1) + dof ) = SetSum(j)
       END DO
     END DO
 
@@ -16891,15 +16897,11 @@ CONTAINS
 
     TYPE(Element_t), POINTER :: Element
     LOGICAL, ALLOCATABLE :: NodeVisited(:)
-    INTEGER :: n,m,i,j,k,l,nodeind,dgind
+    INTEGER :: dof,n,m,i,j,k,l,nodeind,dgind
     REAL(KIND=dp), ALLOCATABLE :: BodySum(:)
 
     IF(.NOT. ASSOCIATED(var)) RETURN
     IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
-    IF( Var % Dofs > 1 ) THEN
-      CALL Warn('LumpedElementalVar','Code for vector variables!')
-      RETURN
-    END IF
 
     CALL Info('LumpedElementalVar','Calculating lumped sum for: '&
         //TRIM(Var % Name), Level=8)
@@ -16911,41 +16913,50 @@ CONTAINS
       ALLOCATE( NodeVisited(m) )
     END IF
     ALLOCATE( BodySum( CurrentModel % NumberOfBodies ) )
-    BodySum = 0.0_dp
 
     ! Take the sum to nodes, and calculate average if requested
-    DO i=1,CurrentModel % NumberOfBodies
+    DO dof=1,Var % Dofs
 
-      IF( AlreadySummed ) THEN
-        NodeVisited = .FALSE.
+      BodySum = 0.0_dp
+
+      DO i=1,CurrentModel % NumberOfBodies
+
+        IF( AlreadySummed ) THEN
+          NodeVisited = .FALSE.
+        END IF
+
+        DO j=1,Mesh % NumberOfBulkElements         
+          Element => Mesh % Elements(j)
+          IF( Element % BodyId /= i ) CYCLE
+
+          DO k=1,Element % TYPE % NumberOfNodes         
+            dgind = Element % DGIndexes(k)
+            l = SetPerm(dgind)
+            IF( l == 0 ) CYCLE
+
+            IF( AlreadySummed ) THEN
+              IF( NodeVisited(l) ) CYCLE           
+              NodeVisited(l) = .TRUE.
+            END IF
+
+            BodySum(i) = BodySum(i) + &
+                Var % Values( Var % Dofs * ( Var % Perm( dgind )-1) + dof )
+          END DO
+        END DO
+      END DO
+
+      IF( Var % Dofs > 1 ) THEN
+        CALL Info('LumpedElementalVar','Lumped sum for component: '//TRIM(I2S(dof)),Level=6)
       END IF
+      DO i=1,CurrentModel % NumberOfBodies
+        PRINT *,'BodySum',i,BodySum(i)
+      END DO
 
-      DO j=1,Mesh % NumberOfBulkElements         
-         Element => Mesh % Elements(j)
-         IF( Element % BodyId /= i ) CYCLE
-         
-         DO k=1,Element % TYPE % NumberOfNodes         
-           dgind = Element % DGIndexes(k)
-           l = SetPerm(dgind)
-           IF( l == 0 ) CYCLE
+    END DO
 
-           IF( AlreadySummed ) THEN
-             IF( NodeVisited(l) ) CYCLE           
-             NodeVisited(l) = .TRUE.
-           END IF
+    DEALLOCATE( NodeVisited, BodySum )
 
-           BodySum(i) = BodySum(i) + Var % Values( Var % Perm( dgind ) )
-         END DO
-       END DO
-     END DO
-
-     DO i=1,CurrentModel % NumberOfBodies
-       PRINT *,'BodySum',i,BodySum(i)
-     END DO
-
-     DEALLOCATE( NodeVisited, BodySum )
-
-   END SUBROUTINE LumpedElementalVar
+  END SUBROUTINE LumpedElementalVar
 
 !------------------------------------------------------------------------------
 END MODULE MeshUtils
