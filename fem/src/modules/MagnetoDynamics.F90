@@ -6581,9 +6581,11 @@ CONTAINS
     LOGICAL, ALLOCATABLE :: AirGapNode(:)
     REAL(KIND=dp), POINTER :: ValuesSource(:)
 
+
     IF(PRESENT(Values)) THEN
       ValuesSource => Values
     ELSE 
+      IF( .NOT. ASSOCIATED( Var ) ) RETURN
       ValuesSource => Var % Values
     END IF
 
@@ -6670,8 +6672,10 @@ CONTAINS
       AirGapForce(3,Mesh % NumberOfNodes) )
 
     IF( SumForces ) THEN
-      ALLOCATE( ForceValues(SIZE(EL_NF % Values)))
-      ForceValues = 0.0_dp
+      IF( ElementalFields .AND. ASSOCIATED( EL_NF ) ) THEN
+        ALLOCATE( ForceValues(SIZE(EL_NF % Values)))
+        ForceValues = 0.0_dp
+      END IF
       ALLOCATE(BodyMask(Model % NumberOfBodies))
       BodyMask = .FALSE.
     END IF
