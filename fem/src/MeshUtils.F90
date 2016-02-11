@@ -16645,13 +16645,13 @@ CONTAINS
   !> potential discontinuous nodes that may be greedy or not. 
   !-------------------------------------------------------------------------------
   FUNCTION MinimalElementalSet( Mesh, JumpMode, VarPerm, BcFlag, &
-      BcGreedy ) RESULT ( SetPerm )
+      NonGreedy ) RESULT ( SetPerm )
 
     TYPE(Mesh_t), POINTER :: Mesh
     CHARACTER(LEN=*) :: JumpMode
     INTEGER, POINTER, OPTIONAL :: VarPerm(:)
     CHARACTER(LEN=*), OPTIONAL :: BcFlag
-    LOGICAL, OPTIONAL :: BcGreedy
+    LOGICAL, OPTIONAL :: NonGreedy
     INTEGER, POINTER :: SetPerm(:)
 
     TYPE(Element_t), POINTER :: Element, Left, Right
@@ -16742,8 +16742,8 @@ CONTAINS
           JumpNodes( Element % NodeIndexes ) = .TRUE.
         END DO
 
-        IF( PRESENT( BcGreedy ) ) THEN
-          IF( BcGreedy ) THEN        
+        IF( PRESENT( NonGreedy ) ) THEN
+          IF( NonGreedy ) THEN        
             DO j=Mesh % NumberOfBulkElements + 1, &
                 Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
               Element => Mesh % Elements(j)

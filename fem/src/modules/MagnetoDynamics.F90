@@ -6314,7 +6314,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ! DEBUG
 
-   IF( ListGetLogical( Solver % Values,'Experimental',Found ) ) THEN
+   IF( ListGetLogical( Solver % Values,'Experimental Jump',Found ) ) THEN
      ! Does not seem to work yet in this mode...
      CALL CalcBoundaryModels(.FALSE.)
      
@@ -6322,7 +6322,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ! when body has an air gap boundary condition. Only do the reduction for the 1st time.
      IF( .NOT. ASSOCIATED( SetPerm ) ) THEN
        SetPerm => MinimalElementalSet( Mesh,'db', Solver % Variable % Perm, &
-           BcFlag = 'Air Gap Jump', BcGreedy = .FALSE. ) 
+           BcFlag = 'Air Gap Jump', &
+           NonGreedy = ListGetLogical( Solver % Values,'Nongreedy Jump',Found) ) 
      END IF
 
      ! Sum up (no averaging) the elemental fields such that each elemental nodes has also 
