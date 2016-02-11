@@ -16654,8 +16654,9 @@ CONTAINS
     LOGICAL, OPTIONAL :: BcGreedy
     REAL(KIND=dp), POINTER :: SetPerm(:)
 
-    TYPE(Element_t), POINTER :: Element
-    INTEGER :: n,i,j,k,l,bc_id,mat_id,body_id,NoJumpNodes,nodeind
+    TYPE(Element_t), POINTER :: Element, Left, Right
+    INTEGER :: n,i,j,k,l,bc_id,mat_id,body_id,NoJumpNodes,nodeind,JumpModeIndx,&
+        LeftI,RightI,NumberOfBlocks
     LOGICAL, ALLOCATABLE :: JumpNodes(:)
     INTEGER, ALLOCATABLE :: NodeVisited(:)
     INTEGER, POINTER :: NodeIndexes(:)
@@ -16679,119 +16680,130 @@ CONTAINS
     SetPerm = 0
     l = 0
 
-    NoJumpNodes = 0
-    IF( PRESENT( BcFlag ) ) THEN
-      ! Vector indicating the disontinuous nodes
-      ! If this is not given all interface nodes are potentially discontinuous
-      ALLOCATE( JumpNodes( Mesh % NumberOfNodes ) ) 
-      JumpNodes = .FALSE.
-
-      DO j=Mesh % NumberOfBulkElements + 1, &
-          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-        Element => Mesh % Elements(j)
-        
-        DO bc_id=1,CurrentModel % NumberOfBCs
-          IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
-        END DO
-        IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
-        
-        IF( ListGetLogical( CurrentModel % BCs(bc_id) % Values, BcFlag, Found ) ) THEN
-          JumpNodes( Element % NodeIndexes ) = .TRUE.
-        END IF
-      END DO
-
-      IF( PRESENT( BcGreedy ) ) THEN
-        IF( BcGreedy ) THEN        
-          DO j=Mesh % NumberOfBulkElements + 1, &
-              Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-            Element => Mesh % Elements(j)
-            
-            DO bc_id=1,CurrentModel % NumberOfBCs
-              IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
-            END DO
-            IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
-            
-            IF( .NOT. ListGetLogical( CurrentModel % BCs(bc_id) % Values, BcFlag, Found ) ) THEN
-              JumpNodes( Element % NodeIndexes ) = .FALSE.
-            END IF
-          END DO
-        END IF
-      END IF
-
-      NoJumpNodes = COUNT( JumpNodes ) 
-      CALL Info('MinimalElementalSet','Discontinuous boundary nodes: '//TRIM(I2S(NoJumpNodes)),Level=7)     
-    END IF
-
-
-    CALL Info('MinimalElementalSet','Creating discontinuity with mode:'//TRIM(JumpMode),Level=7)
+    CALL Info('MinimalElementalSet','Reducing elemental discontinuity with mode:'//TRIM(JumpMode),Level=7)
 
     SELECT CASE ( JumpMode )
 
     CASE('db') ! discontinuous bodies
-      DO i=1,CurrentModel % NumberOfBodies
-
-        ! Only reset the indexes at the discontinuous interface between bodies if 
-        ! it has been given. 
-        IF( NoJumpNodes > 0 ) THEN
-          WHERE( JumpNodes ) NodeVisited = 0
-        ELSE
-          NodeVisited = 0
-        END IF
-
-        DO j=1,Mesh % NumberOfBulkElements         
-          Element => Mesh % Elements(j)
-          IF( Element % BodyId /= i ) CYCLE
-          NodeIndexes => Element % NodeIndexes
-
-          DO k=1,Element % TYPE % NumberOfNodes         
-            nodeind = NodeIndexes(k)
-            IF( PRESENT( VarPerm ) ) THEN
-              IF( VarPerm( nodeind ) == 0 ) CYCLE
-            END IF
-            IF( NodeVisited( nodeind ) > 0 ) THEN
-              SetPerm( Element % DGIndexes(k) ) = NodeVisited( nodeind )
-            ELSE
-              l = l + 1
-              NodeVisited(nodeind) = l
-              SetPerm( Element % DGIndexes(k) ) = l
-            END IF
-          END DO
-        END DO
-      END DO
+      NumberOfBlocks = CurrentModel % NumberOfBodies
+      JumpModeIndx = 1
 
     CASE('dm') ! discontinuous materials
-      DO i=1,CurrentModel % NumberOfMaterials
+      NumberOfBlocks = CurrentModel % NumberOfMaterials
+      JumpModeIndx = 2
 
-        ! Only set disontinuity between given material interfaces
-        IF( NoJumpNodes > 0 ) THEN
-          WHERE( JumpNodes ) NodeVisited = 0
-        ELSE
-          NodeVisited = 0
+    CASE DEFAULT
+      CALL Fatal('MinimalElementalSet','Unknown JumpMode: '//TRIM(JumpMode))
+
+    END SELECT
+  
+
+    IF( PRESENT( BcFlag ) ) THEN
+      ALLOCATE( JumpNodes( Mesh % NumberOfNodes ) )
+    END IF
+
+
+        
+    DO i=1,NumberOfBlocks
+      
+      ! Before the 1st block no numbers have been given.
+      ! Also if we want discontinuous blocks on all sides initialize the whole list to zero. 
+      IF( i == 1 .OR. .NOT. PRESENT( BcFlag ) ) THEN
+        NodeVisited = 0
+
+      ELSE
+        ! Vector indicating the disontinuous nodes
+        ! If this is not given all interface nodes are potentially discontinuous
+        JumpNodes = .FALSE.
+        
+        DO j=Mesh % NumberOfBulkElements + 1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(j)
+
+          DO bc_id=1,CurrentModel % NumberOfBCs
+            IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+          END DO
+          IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
+          IF( .NOT. ListGetLogical( CurrentModel % BCs(bc_id) % Values, BcFlag, Found ) ) CYCLE
+
+          Left => Element % BoundaryInfo % Left
+          Right => Element % BoundaryInfo % Right
+          IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) CYCLE
+
+          IF( JumpModeIndx == 1 ) THEN
+            LeftI = Left % BodyId
+            RightI = Right % BodyId
+          ELSE
+            LeftI = ListGetInteger( CurrentModel % Bodies(Left % BodyId) % Values,'Material',Found)
+            RightI = ListGetInteger( CurrentModel % Bodies(Right % BodyId) % Values,'Material',Found)
+          END IF
+
+          IF( LeftI /= i .AND. RightI /= i ) CYCLE
+          JumpNodes( Element % NodeIndexes ) = .TRUE.
+        END DO
+
+        IF( PRESENT( BcGreedy ) ) THEN
+          IF( BcGreedy ) THEN        
+            DO j=Mesh % NumberOfBulkElements + 1, &
+                Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+              Element => Mesh % Elements(j)
+
+              DO bc_id=1,CurrentModel % NumberOfBCs
+                IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+              END DO
+              IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
+
+              IF( ListGetLogical( CurrentModel % BCs(bc_id) % Values, BcFlag, Found ) ) CYCLE
+
+              Left => Element % BoundaryInfo % Left
+              Right => Element % BoundaryInfo % Right
+
+              ! External BCs don't have a concept of jump, so no need to treat them
+              IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) CYCLE
+
+              JumpNodes( Element % NodeIndexes ) = .FALSE.
+            END DO
+          END IF
         END IF
 
-        DO j=1,Mesh % NumberOfBulkElements         
-          Element => Mesh % Elements(j)
-          Body_Id = Element % BodyId 
+        NoJumpNodes = COUNT( JumpNodes ) 
+        CALL Info('MinimalElementalSet','Discontinuous boundary nodes: '//TRIM(I2S(NoJumpNodes)),Level=7)     
+
+        ! Initialize new potential nodes for the block where we found discontinuity
+        WHERE( JumpNodes ) NodeVisited = 0
+      END IF
+
+
+      ! Now do the real thing. 
+      ! Add new dofs such that minimal discontinuity is maintained 
+      DO j=1,Mesh % NumberOfBulkElements         
+        Element => Mesh % Elements(j)
+
+        Body_Id = Element % BodyId 
+        IF( JumpModeIndx == 1 ) THEN
+          IF( Body_id /= i ) CYCLE
+        ELSE
           Mat_Id = ListGetInteger( CurrentModel % Bodies(Body_Id) % Values,'Material',Found)
           IF( Mat_Id /= i ) CYCLE
+        END IF
 
-          NodeIndexes => Element % NodeIndexes
-          DO k=1,Element % TYPE % NumberOfNodes         
-            nodeind = NodeIndexes(k)
-            IF( PRESENT( VarPerm ) ) THEN
-              IF( VarPerm( nodeind ) == 0 ) CYCLE
-            END IF
-            IF( NodeVisited( nodeind ) > 0 ) THEN
-              SetPerm( Element % DGIndexes(k) ) = NodeVisited( nodeind )
-            ELSE
-              l = l + 1
-              NodeVisited(nodeind) = l
-              SetPerm( Element % DGIndexes(k) ) = l
-            END IF
-          END DO
+        NodeIndexes => Element % NodeIndexes
+        
+        DO k=1,Element % TYPE % NumberOfNodes         
+          nodeind = NodeIndexes(k)
+          IF( PRESENT( VarPerm ) ) THEN
+            IF( VarPerm( nodeind ) == 0 ) CYCLE
+          END IF
+          IF( NodeVisited( nodeind ) > 0 ) THEN
+            SetPerm( Element % DGIndexes(k) ) = NodeVisited( nodeind )
+          ELSE
+            l = l + 1
+            NodeVisited(nodeind) = l
+            SetPerm( Element % DGIndexes(k) ) = l
+          END IF
         END DO
       END DO
-    END SELECT
+    END DO
 
     CALL Info('MinimalElementalSet','Independent dofs in elemental field: '//TRIM(I2S(l)),Level=10)
 
