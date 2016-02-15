@@ -148,7 +148,7 @@ MODULE DiffuseConvectiveGeneral
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
-     REAL(KIND=dp) :: C0,CT,C1,C2(3,3),dC2dx(3,3,3),SU(n),SW(n),Density
+     REAL(KIND=dp) :: C0,CT,CL,C1,C2(3,3),dC2dx(3,3,3),SU(n),SW(n),Density
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
@@ -265,7 +265,9 @@ MODULE DiffuseConvectiveGeneral
           dTemp = dTemp + SUM( Temperature(1:n) * dBasisdx(1:n,i) )**2
         END DO
 
-        CT = SQRT( dEnth / dTemp )
+        CL = SQRT( dEnth / dTemp )
+        
+        CT = CT + CL
       END IF
 !------------------------------------------------------------------------------
 !      Coefficient of the diffusion term & its derivatives at the
@@ -290,7 +292,7 @@ MODULE DiffuseConvectiveGeneral
        Convection = .FALSE.
        IF ( C1 /= 0.0D0 ) THEN
          Convection = .TRUE.
-         IF ( PhaseChange ) C1 = CT
+         IF ( PhaseChange ) C1 = C1 + CL
 !------------------------------------------------------------------------------
 !        Velocity and pressure (deviation) from previous iteration
 !        at the integration point
