@@ -1,0 +1,245 @@
+!echo on
+
+$yearinsec = 365.25*24*60*60 
+$MPainPa = 1.0e6 
+$rhoi = 917.0/(MPainPa*yearinsec^2) 
+$gravity = 9.80*yearinsec^2
+$nGlen = 4.5
+$ZbEnd = 337 !Altitude of the bedrock downstream, m
+$TubeSurf = 5000 !surface of the tube, m2
+$a=0.024 !accumulation, m/a
+
+Header
+  Mesh DB "." "domec"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 4
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+  Simulation Type = "Transient"
+  Steady State Max Iterations = 1
+  Timestepping Method = "BDF"
+  BDF Order = 1 
+  Timestep Sizes = 10
+  Timestep Intervals =  10
+  Output Intervals = 10 
+  Output File = "AIFlow.result"
+  Post File = "AIFlow.vtu" ! use .ep suffix for leagcy format
+  Initialize Dirichlet Conditions = Logical False
+End
+
+Body 1
+  Name = "Glacier"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "Surface"
+  Body Force = 2
+  Equation = 2
+  Material = 2
+  Initial Condition = 2
+End
+
+Equation 1
+  Name = "Equation1"
+  Convection = "computed"
+  Flow Solution Name = String "AIFlow"
+  Active Solvers(3) = 1 2 4
+End
+
+Equation 2
+  Name = "Equation2"
+  Convection = "computed"
+  Active Solvers(1) = 3
+  Flow Solution Name = String "AIFlow"
+End
+
+Initial Condition 1
+  AIFlow 1 = Real 0.0              ! u
+  AIFlow 2 = Real 0.0              ! w
+  AIFlow 3 = Real 0.0 		   ! p
+  Depth = Real 0.0
+  Mesh Velocity 1 = Real 0.0
+  Mesh Velocity 2 = Real 0.0
+  Mesh Velocity 3 = Real 0.0
+  Temperature = Real -25.0
+End
+
+Initial Condition 2
+  Zs = Variable Coordinate 1  
+     Real MATC "3240-12*tx/50000"
+  RefZs = Variable Coordinate 1  
+     Real MATC "3240-12*tx/50000"
+End
+
+Solver 1
+   Equation = "Flowdepth"
+   Procedure = File "ElmerIceSolvers" "FlowDepthSolver"
+   Variable = String "Depth"
+   Variable DOFs = 1
+   Linear System Solver = "Direct"
+   Linear System Direct Method = "UMFPACK"
+   Linear System Max Iterations = 200
+   Linear System Convergence Tolerance = 1.0E-09
+   Linear System Abort Not Converged = False
+   Linear System Preconditioning = "ILU0"
+   Linear System Residual Output = 1
+   Gradient = Real -1.0E00
+   Exported Variable 1 = -dofs 3 "Mesh Velocity" 
+   Calc Free Surface = Logical True
+   Freesurf Name = String "FreeSurf"
+End
+
+Solver 2
+  Equation = "AIFlow"
+  Variable = AIFlow
+  Variable DOFs = 3                        !3 for 2D (u,v,p) -- 4 for 3D (u,v,w,p)
+  
+  Exported Variable 1 = Temperature        !Define Temperature Mandatory!!
+  Exported Variable 1 DOFS = Integer 1
+
+  Exported Variable 2 = Fabric             !Define Fabric Variable !!Mandatory if Isotropic=False
+  Exported Variable 2 DOFS = Integer 5
+
+  Exported Variable 3 =  StrainRate        ! Compute SR
+  Exported Variable 3 DOFS = Integer 4     !4 in 2D  6 in 3D (11,22,33,12,23,31)
+
+  Exported Variable 4 =  DeviatoricStress  ! Compute Stresses
+  Exported Variable 4 DOFS = Integer 4     !4 in 2D  6 in 3D  (11,22,33,12,23,31)
+
+  Exported Variable 5 =  Spin              ! Compute Spin
+  Exported Variable 5 DOFS = Integer 1     !1 in 2D  3 in 3D (12,23,31)
+
+  Steady State Convergence Tolerance = 1.0E-05
+!  Stabilization Method can be [Stabilized,P2/P1,Bubbles] 
+  Stabilization Method = Stabilized
+
+  Nonlinear System Convergence Tolerance = 1.0E-04
+  Nonlinear System Convergence Measure = Solution
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance =  1.0E-01
+
+! If non-linearity introduced using deviatoric stress second invariant 
+ Procedure = "AIFlowSolveS2" "AIFlowSolver_nlS2" 
+
+End
+
+Solver 3
+   Exec Solver = "After Timestep"
+   Equation = "Free Surface"
+   Variable = String "Zs"
+   Variable DOFs =  1
+   Exported Variable 1 = -dofs 1 "Zs Residual"
+   Exported Variable 2 = -dofs 1 "RefZs"
+   Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
+ !  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
+
+   Linear System Solver = Iterative
+   Linear System Max Iterations = 1500
+   Linear System Iterative Method = BiCGStab
+   Linear System Preconditioning = ILU0
+   Linear System Convergence Tolerance = Real 1.0e-8
+   Linear System Abort Not Converged = False
+   Linear System Residual Output = 1
+
+   Nonlinear System Max Iterations = 1000
+   Nonlinear System Convergence Tolerance  = 1.0e-8
+   Nonlinear System Relaxation Factor = 0.60
+
+   Steady State Convergence Tolerance = 1.0e-04
+
+   Stabilization Method = Bubbles    
+   Apply Dirichlet = Logical True
+End
+
+Solver 4
+  Exec Solver = "after timestep"
+  Equation = "MapCoordinate"
+  Procedure = "StructuredMeshMapper" "StructuredMeshMapper"
+  Active Coordinate = Integer 2 ! the mesh-update is y-direction
+  Mesh Velocity Variable = String "Mesh Velocity 2"
+  Mesh Velocity First Zero = Logical True
+  Dot Product Tolerance = Real 0.01
+End
+
+!MPa - yr - m system
+Material 1
+  Name = "Ice"
+  Powerlaw Exponent = Real $nGlen     ! sqrt(tr(S^2/2))^n if AIFlow_nlS2 sqrt(tr(2D^2))^(1/n-1) if  AIFlow_nlD2
+  Min Second Invariant = Real 1.0e-10  ! Min value for the second invariant of strain-rates
+  Reference Temperature = Real -10.0   ! T0 (Celsius)!
+  Fluidity Parameter = Real 240000      ! Bn(T0) MPa^-n yr^-1
+  Limit Temperature = Real -10.0       ! TL  (Celsius)!
+  Activation Energy 1 = Real 60e3! Joule/mol for T&lt;TL
+  Activation Energy 2 = Real 139e3! Joule/mol for T&gt;TL
+  !Constant Temperature = Real -10.0
+
+  Isotropic = Logical True  !If set to true Glen flow law (no need to define Fabric)
+
+!!!! For Fabric Solver
+  Interaction Parameter = Real 0.615 !alpha                                
+  Diffusion Parameter = Real 0.0   ! Diffusion term. To account for other phenomena than grain rotation. By default set to 0 if not defined
+  FlowWidth = Variable Coordinate 1
+    Real MATC "(tx/15000)^2"    
+End 
+
+Material 2
+  Min Zs = Real 0.0 
+  Max Zs = Real 10000.0
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  AIFlow Force 1 = Real 0.0
+  AIFlow Force 2 = Real $-rhoi*gravity  ! body force, i.e. gravity * density
+End
+
+Body Force 2
+  Zs Accumulation Flux 1 = Real 0.0e0
+  Zs Accumulation Flux 2 = Real $a
+End
+
+Boundary Condition 1
+  Name = "bedrock"
+  Target Boundaries = 1
+  Compute Normals = Logical True
+   AIFlow 1 = Real 0.0
+   AIFlow 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Name = "Dome"
+  Target Boundaries = 4
+  AIFlow 1 = Real 0.0
+End
+
+Boundary Condition 3
+  Name = "End_of_domain"
+  Target Boundaries = 2
+  AIFlow 1 = Variable Depth, FreeSurf
+    Real MATC "TubeSurf*a/(tx(1)-ZbEnd)*(nGlen+2)/(nGlen+1)*(1-(1-(tx(1)-ZbEnd-tx(0))/(tx(1)-ZbEnd))^(nGlen+1))"
+End
+
+Boundary Condition 4
+  Name = "surface"
+  Top Surface = Equals "Zs"
+  Target Boundaries = 3
+  Body ID = 2
+  Depth = Real 0.0
+End
+
+
+Solver 2 :: Reference Norm = Real 1.06324421E+01
+Solver 2 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=1.06324421E+01,EPS=1E-06\n" );
+

@@ -6912,7 +6912,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,inds(10),nM,iM,i2,i2M
       INTEGER :: ElemHits, TotHits, MaxErrInd, MinErrInd, TimeStep, AntiPeriodicHits
       TYPE(Element_t), POINTER :: Element, ElementM
-      TYPE(Element_t) :: ElementT
+      TYPE(Element_t) :: ElementT 
       TYPE(GaussIntegrationPoints_t) :: IP
       TYPE(Nodes_t) :: Nodes, NodesM, NodesT
       REAL(KIND=dp) :: xt,yt,zt,xmax,xmin,xmaxm,ymaxm,&
@@ -6967,6 +6967,8 @@ END SUBROUTINE GetMaxDefs
       ! The temporal element segment used in the numerical integration
       ElementT % TYPE => GetElementType( 202, .FALSE. )
       ElementT % NodeIndexes => IndexesT
+      IP = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2  ) 
+
       TotHits = 0
       AntiPeriodicHits = 0
       TotRefArea = 0.0_dp
@@ -7010,7 +7012,6 @@ END SUBROUTINE GetMaxDefs
         ! Compute the reference area
         u = 0.0_dp; v = 0.0_dp; w = 0.0_dp;
         stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
-        IP = GaussPoints( Element ) 
         RefArea = detJ * ArcCoeff * SUM( IP % s(1:IP % n) )
         SumArea = 0.0_dp
         
@@ -9017,7 +9018,7 @@ END SUBROUTINE GetMaxDefs
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
         Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
-        ParallelNumbering
+        ParallelNumbering, EnforceOverlay
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
@@ -9101,7 +9102,8 @@ END SUBROUTINE GetMaxDefs
         Success ) 
 
     IF(.NOT. Success) THEN
-      CALL ReleaseMesh(BMesh1); CALL ReleaseMesh(BMesh2)
+      CALL ReleaseMesh(BMesh1)
+      CALL ReleaseMesh(BMesh2)
       RETURN
     END IF
 
@@ -9232,6 +9234,8 @@ END SUBROUTINE GetMaxDefs
     !---------------------------------------------------------------------------------
     Radius = 1.0_dp
     FullCircle = .FALSE.
+    EnforceOverlay = ListGetLogical( BC, 'Mortar BC enforce overlay', GotIt )
+
     IF( Rotational .OR. Cylindrical ) THEN
       CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, Cylindrical, &
           Radius, FullCircle )
@@ -9242,6 +9246,10 @@ END SUBROUTINE GetMaxDefs
     ELSE IF( Plane ) THEN
       CALL PlaneInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( .NOT. Sliding ) THEN
+      IF( .NOT. GotIt ) EnforceOverlay = .TRUE.
+    END IF
+
+    IF( EnforceOverlay ) THEN
       CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
     END IF
 
@@ -9270,15 +9278,17 @@ END SUBROUTINE GetMaxDefs
       END IF
     END IF
 
+
     ! Deallocate mesh structures:
     !---------------------------------------------------------------
     BMesh1 % Projector => NULL()
     BMesh1 % Parent => NULL()
-    DEALLOCATE( BMesh1 % InvPerm ) 
+    !DEALLOCATE( BMesh1 % InvPerm ) 
     CALL ReleaseMesh(BMesh1)
 
+    BMesh2 % Projector => NULL()
     BMesh2 % Parent => NULL()
-    DEALLOCATE( BMesh2 % InvPerm ) 
+    !DEALLOCATE( BMesh2 % InvPerm ) 
     CALL ReleaseMesh(BMesh2)
 
 100 Projector % ProjectorBC = This
@@ -9292,16 +9302,16 @@ END SUBROUTINE GetMaxDefs
         'Projector Multiplier',GotIt) 
     IF( GotIt ) Projector % Values = Coeff * Projector % Values
 
-
     IF( ListGetLogical( BC,'Save Projector',GotIt ) ) THEN
       ParallelNumbering = ListGetLogical( BC,'Save Projector Global Numbering',GotIt )
-     
+
       CALL SaveProjector( Projector, .TRUE.,'p'//TRIM(I2S(This)), Parallel = ParallelNumbering) 
       ! Dual projector if it exists
       IF( ASSOCIATED( Projector % Ematrix ) ) THEN
         CALL SaveProjector( Projector % Ematrix, .TRUE.,'pd'//TRIM(I2S(This)), &
             Projector % InvPerm, Parallel = ParallelNumbering) 
       END IF
+
       ! Biorthogonal projector if it exists
       IF( ASSOCIATED( Projector % Child ) ) THEN
         CALL SaveProjector( Projector % Child, .TRUE.,'pb'//TRIM(I2S(This)), & 
@@ -13628,12 +13638,15 @@ CONTAINS
 !    Deallocate mesh variables:
 !    --------------------------
 
+
+     CALL Info('ReleaseMesh','Releasing mesh variables',Level=15)
      CALL ReleaseVariableList( Mesh % Variables )
      Mesh % Variables => NULL()
 
 !    Deallocate mesh geometry (nodes,elements and edges):
 !    ----------------------------------------------------
      IF ( ASSOCIATED( Mesh % Nodes ) ) THEN
+       CALL Info('ReleaseMesh','Releasing mesh nodes',Level=15)
        IF ( ASSOCIATED( Mesh % Nodes % x ) ) DEALLOCATE( Mesh % Nodes % x )
        IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
        IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
@@ -13656,44 +13669,77 @@ CONTAINS
 
      Mesh % Nodes => NULL()
 
-     IF ( ASSOCIATED( Mesh % Edges ) ) CALL ReleaseMeshEdgeTables( Mesh )
-     Mesh % Edges => NULL()
+     IF ( ASSOCIATED( Mesh % Edges ) ) THEN
+       CALL Info('ReleaseMesh','Releasing mesh edges',Level=15)
+       CALL ReleaseMeshEdgeTables( Mesh )
+       Mesh % Edges => NULL()
+     END IF
 
-     IF ( ASSOCIATED( Mesh % Faces ) ) CALL ReleaseMeshFaceTables( Mesh )
-     Mesh % Faces => NULL()
+     IF ( ASSOCIATED( Mesh % Faces ) ) THEN
+       CALL Info('ReleaseMesh','Releasing mesh faces',Level=15)
+       CALL ReleaseMeshFaceTables( Mesh )
+       Mesh % Faces => NULL()
+     END IF
 
-     IF (ASSOCIATED(Mesh % ViewFactors) ) &
-          CALL ReleaseMeshFactorTables( Mesh % ViewFactors )
-     Mesh % ViewFactors => NULL()
+     IF (ASSOCIATED(Mesh % ViewFactors) ) THEN
+     CALL Info('ReleaseMesh','Releasing mesh view factors',Level=15)
+       CALL ReleaseMeshFactorTables( Mesh % ViewFactors )
+       Mesh % ViewFactors => NULL()
+     END IF
+
+
+!    Deallocate mesh to mesh projector structures:
+!    ---------------------------------------------
+     Projector => Mesh % Projector
+     DO WHILE( ASSOCIATED( Projector ) )
+       CALL Info('ReleaseMesh','Releasing mesh projector',Level=15)
+       CALL FreeMatrix( Projector % Matrix )
+       CALL FreeMatrix( Projector % TMatrix )
+       Projector1 => Projector
+       Projector => Projector % Next
+       DEALLOCATE( Projector1 )
+     END DO
+     Mesh % Projector => NULL()
+
+
+!    Deallocate quadrant tree (used in mesh to mesh interpolation):
+!    --------------------------------------------------------------
+     IF( ASSOCIATED( Mesh % RootQuadrant ) ) THEN
+       CALL Info('ReleaseMesh','Releasing mesh quadrant tree',Level=15)
+       CALL FreeQuadrantTree( Mesh % RootQuadrant )
+       Mesh % RootQuadrant => NULL()
+     END IF
 
 
      IF ( ASSOCIATED( Mesh % Elements ) ) THEN
+       CALL Info('ReleaseMesh','Releasing mesh elements',Level=15)
 
         DO i=1,Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
+
 !          Boundaryinfo structure for boundary elements
 !          ---------------------------------------------
            IF ( Mesh % Elements(i) % Copy ) CYCLE
 
            IF ( i > Mesh % NumberOfBulkElements ) THEN
-              IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
-                 IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
-                   IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
-                      GebhardtFactors % Elements ) ) THEN
-                      DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                        GebhardtFactors % Elements )
-                      DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
-                        GebhardtFactors % Factors )
-                   END IF
-                   DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
-                END IF
-                DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
+             IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo ) ) THEN
+               IF (ASSOCIATED(Mesh % Elements(i) % BoundaryInfo % GebhardtFactors)) THEN
+                 IF ( ASSOCIATED( Mesh % Elements(i) % BoundaryInfo % &
+                     GebhardtFactors % Elements ) ) THEN
+                   DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
+                       GebhardtFactors % Elements )
+                   DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % &
+                       GebhardtFactors % Factors )
+                 END IF
+                 DEALLOCATE( Mesh % Elements(i) % BoundaryInfo % GebhardtFactors )
+               END IF
+               DEALLOCATE( Mesh % Elements(i) % BoundaryInfo )
              END IF
            END IF
 
            IF ( ASSOCIATED( Mesh % Elements(i) % NodeIndexes ) ) &
-              DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
+               DEALLOCATE( Mesh % Elements(i) % NodeIndexes )
            Mesh % Elements(i) % NodeIndexes => NULL()
-
+           
            IF ( ASSOCIATED( Mesh % Elements(i) % EdgeIndexes ) ) &
               DEALLOCATE( Mesh % Elements(i) % EdgeIndexes )
            Mesh % Elements(i) % EdgeIndexes => NULL()
@@ -13707,39 +13753,22 @@ CONTAINS
            Mesh % Elements(i) % DGIndexes => NULL()
 
            IF ( ASSOCIATED( Mesh % Elements(i) % BubbleIndexes ) ) &
-              DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
+             DEALLOCATE( Mesh % Elements(i) % BubbleIndexes )
            Mesh % Elements(i) % BubbleIndexes => NULL()
 
-           IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
-              DEALLOCATE( Mesh % Elements(i) % PDefs )
+           ! This creates problems later on!!!
+           !IF ( ASSOCIATED( Mesh % Elements(i) % PDefs ) ) &
+           !   DEALLOCATE( Mesh % Elements(i) % PDefs )
+
            Mesh % Elements(i) % PDefs => NULL()
  
         END DO
         DEALLOCATE( Mesh % Elements )
-     END IF
-     Mesh % Elements => NULL()
+        Mesh % Elements => NULL()
+      END IF
 
-
-!    Deallocate mesh to mesh projector structures:
-!    ---------------------------------------------
-     Projector => Mesh % Projector
-     DO WHILE( ASSOCIATED( Projector ) )
-        CALL FreeMatrix( Projector % Matrix )
-        CALL FreeMatrix( Projector % TMatrix )
-        Projector1 => Projector
-        Projector => Projector % Next
-        DEALLOCATE( Projector1 )
-     END DO
-     Mesh % Projector => NULL()
-
-
-!    Deallocate quadrant tree (used in mesh to mesh interpolation):
-!    --------------------------------------------------------------
-     CALL FreeQuadrantTree( Mesh % RootQuadrant )
-     Mesh % RootQuadrant => NULL()
-
-!    DEALLOCATE( Mesh )
-
+      CALL Info('ReleaseMesh','Releasing mesh finished',Level=15)
+     
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseMesh
 !------------------------------------------------------------------------------
@@ -15004,7 +15033,6 @@ CONTAINS
           TopNodes = TopNodes + 1
         END IF
       END DO
-      PRINT *,'Top range:',MinTop,MaxTop
     END IF
 
     IF( DownActive ) THEN
@@ -15018,7 +15046,6 @@ CONTAINS
           BotNodes = BotNodes + 1
         END IF
       END DO
-      PRINT *,'Bottom range:',MinBot,MaxBot
     END IF
 
 
@@ -16531,6 +16558,177 @@ CONTAINS
     CALL Info('CreateLineMesh','All done')
 
   END FUNCTION CreateLineMesh
+
+
+  ! Calcalate body average for a discontinuous galerkin field.
+  ! The intended use is in conjunction of saving the results. 
+  ! This tampers the field and therefore may have unwanted side effects
+  ! if the solution is to be used for something else too.
+  !-------------------------------------------------------------------
+  SUBROUTINE CalculateBodyAverage( Mesh, Var, BodySum )
+
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Mesh_t), POINTER :: Mesh
+    LOGICAL :: BodySum
+
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), ALLOCATABLE :: BodyAverage(:)
+    INTEGER, ALLOCATABLE :: BodyCount(:)
+    INTEGER :: n,i,j,k,l,nodeind,dgind
+    REAL(KIND=dp) :: AveHits
+
+    IF(.NOT. ASSOCIATED(var)) RETURN
+    IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
+
+    IF( BodySum ) THEN
+      CALL Info('CalculateBodyAverage','Calculating bodywise nodal sum for: '&
+          //TRIM(Var % Name), Level=8)
+    ELSE
+      CALL Info('CalculateBodyAverage','Calculating bodywise nodal average for: '&
+          //TRIM(Var % Name), Level=8)
+    END IF
+
+    n = Mesh % NumberOfNodes
+    ALLOCATE( BodyCount(n), BodyAverage(n) )
+
+
+    DO i=1,CurrentModel % NumberOfBodies
+
+      DO k=1,Var % Dofs
+        BodyCount = 0
+        BodyAverage = 0.0_dp
+
+        DO j=1,Mesh % NumberOfBulkElements 
+          Element => Mesh % Elements(j)
+          IF( Element % BodyId /= i ) CYCLE
+          DO l = 1, Element % TYPE % NumberOfNodes
+            nodeind = Element % NodeIndexes(l)
+            dgind = Var % Perm(Element % DGIndexes(l) )
+            IF( dgind > 0 ) THEN
+              BodyAverage( nodeind ) = BodyAverage( nodeind ) + &
+                  Var % Values( Var % DOFs*( dgind-1)+k )
+              BodyCount( nodeind ) = BodyCount( nodeind ) + 1 
+            END IF
+          END DO
+        END DO
+
+        IF( k == 1 ) THEN
+          AveHits = 1.0_dp * SUM( BodyCount ) / COUNT( BodyCount > 0 )
+          !PRINT *,'AveHits:',i,AveHits
+        END IF
+
+        IF(ParEnv % Pes>1) THEN
+          CALL SendInterface(); CALL RecvInterface()
+        END IF
+
+        ! Do not average weighted quantities. They should only be summed, I guess... 
+        
+        IF( .NOT. BodySum ) THEN
+          DO j=1,n
+            IF( BodyCount(j) > 0 ) BodyAverage(j) = BodyAverage(j) / BodyCount(j)
+          END DO
+        END IF
+
+        DO j=1,Mesh % NumberOfBulkElements 
+          Element => Mesh % Elements(j)
+          IF( Element % BodyId /= i ) CYCLE
+          DO l = 1, Element % TYPE % NumberOfNodes
+            nodeind = Element % NodeIndexes(l)
+            dgind = Var % Perm(Element % DGIndexes(l) )
+            IF( dgind > 0 ) THEN
+              Var % Values( Var % DOFs*( dgind-1)+k ) = BodyAverage( nodeind ) 
+            END IF
+          END DO
+        END DO
+      END DO
+    END DO
+
+CONTAINS
+
+     SUBROUTINE SendInterface()
+       TYPE buf_t
+         REAL(KIND=dp), ALLOCATABLE :: dval(:)
+         INTEGER, ALLOCATABLE :: gdof(:), ival(:)
+       END TYPE buf_t
+
+       INTEGER, ALLOCATABLE :: cnt(:)
+       TYPE(buf_t), ALLOCATABLE :: buf(:)
+
+       INTEGER :: i,j,k,ierr
+
+       ALLOCATE(cnt(ParEnv % PEs), buf(ParEnv % PEs))
+
+       cnt = 0
+       DO i=1,Mesh % NumberOfNodes
+         IF(.NOT.Mesh % ParallelInfo % Interface(i)) CYCLE
+         IF(BodyCount(i) <= 0 ) CYCLE
+
+         DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+           k = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(j)+1
+           cnt(k) = cnt(k) + 1
+         END DO
+       END DO
+
+       DO i=1,ParEnv % PEs
+         ALLOCATE(buf(i) % gdof(cnt(i)), buf(i) % ival(cnt(i)), buf(i) % dval(cnt(i)))
+       END DO
+
+       cnt = 0
+       DO i=1,Mesh % NumberOfNodes
+         IF(.NOT.Mesh % ParallelInfo % Interface(i)) CYCLE
+         IF(BodyCount(i) <= 0 ) CYCLE
+
+         DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+           k = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(j)+1
+           cnt(k) = cnt(k) + 1
+           buf(k) % gdof(cnt(k)) = Mesh % ParallelInfo % GlobalDOFs(i)
+           buf(k) % ival(cnt(k)) = BodyCount(i)
+           buf(k) % dval(cnt(k)) = BodyAverage(i)
+         END DO
+       END DO
+
+       DO i=1,ParEnv % PEs
+         IF(.NOT. ParEnv % isNeighbour(i)) CYCLE
+
+         CALL MPI_BSEND( cnt(i),1,MPI_INTEGER,i-1,1310,MPI_COMM_WORLD,ierr )
+         IF(cnt(i)>0) THEN
+           CALL MPI_BSEND( buf(i) % gdof,cnt(i),MPI_INTEGER,i-1,1311,MPI_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf(i) % ival,cnt(i),MPI_INTEGER,i-1,1312,MPI_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf(i) % dval,cnt(i),MPI_DOUBLE_PRECISION,i-1,1313,MPI_COMM_WORLD,ierr )
+         END IF
+       END DO
+     END SUBROUTINE SendInterface
+
+
+     SUBROUTINE RecvInterface()
+       INTEGER, ALLOCATABLE :: gdof(:), ival(:)
+       REAL(KIND=dp), ALLOCATABLE :: dval(:)
+       INTEGER :: i,j,k,ierr, cnt, status(MPI_STATUS_SIZE)
+
+       DO i=1,ParEnv % PEs
+         IF(.NOT. ParEnv % isNeighbour(i)) CYCLE
+
+         CALL MPI_RECV( cnt,1,MPI_INTEGER,i-1,1310,MPI_COMM_WORLD,status,ierr )
+         IF(cnt>0) THEN
+           ALLOCATE( gdof(cnt), ival(cnt), dval(cnt) )
+           CALL MPI_RECV( gdof,cnt,MPI_INTEGER,i-1,1311,MPI_COMM_WORLD,status,ierr )
+           CALL MPI_RECV( ival,cnt,MPI_INTEGER,i-1,1312,MPI_COMM_WORLD,status,ierr )
+           CALL MPI_RECV( dval,cnt,MPI_DOUBLE_PRECISION,i-1,1313,MPI_COMM_WORLD,status,ierr )
+
+           DO j=1,cnt
+             k = SearchNode(Mesh % ParallelInfo, gdof(j))
+             IF (k>0) THEN
+               BodyCount(k) = BodyCount(k) + ival(j)
+               BodyAverage(k) = BodyAverage(k)  + dval(j)
+             END IF
+           END DO 
+           DEALLOCATE( gdof, ival, dval )
+         END IF
+       END DO
+       CALL MPI_BARRIER(MPI_COMM_WORLD,ierr)
+     END SUBROUTINE RecvInterface
+
+  END SUBROUTINE CalculateBodyAverage
 
 
 !------------------------------------------------------------------------------
