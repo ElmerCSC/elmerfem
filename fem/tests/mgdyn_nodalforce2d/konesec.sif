@@ -3,7 +3,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 30
+  Max Output Level = 7
   Coordinate System = Cartesian
   Simulation Type = steady state
 
@@ -118,7 +118,12 @@ $omega = 2*pi*25*180/pi
 End
 
 ! Air
-Material 1:: Relative Permeability = 1
+Material 1
+  Name = "Air"
+  Relative Permeability = 1
+  Relative Permittivity = 1
+End 
+
 
 ! core plating / axel steel
 Material 2
@@ -129,12 +134,14 @@ Material 2
  ! End
  !Electric Conductivity = 0
   Relative Permeability = 1000
+  Relative Permittivity = 1
   Electric Conductivity = Real 1e5
 End
 
 ! Kupari
 Material 3
   Electric Conductivity = 60e6
+  Relative Permittivity = 1
   Relative Permeability = 1
 End
 
@@ -144,6 +151,7 @@ $function mx(tx) { r=sqrt(sum(tx^2)); _mx=tx(0)/r; }
 ! Kestomagneetti
 Material 4
   Relative Permeability = 1
+  Relative Permittivity = 1
   $ mag = -8e5
   Magnetization 1 = Variable Coordinate
     Real MATC "mag*mx(tx(0) tx(1))"
@@ -155,6 +163,7 @@ End
 ! nonlinear iron
 Material 5
  Name = "Iron"
+ Relative Permittivity = 1
  !H-B Curve = Variable coupled iter
  !Real Cubic
     !Include BH
@@ -164,10 +173,11 @@ End
 
 ! linear iron
 Material 6
- Name = "Iron"
- !Electric Conductivity = 0
- Relative Permeability = 1000
+  Name = "Iron"
+  !Electric Conductivity = 0
+  Relative Permeability = 1000
   Electric Conductivity = Real 1e5
+  Relative Permittivity = 1
 End
 
 
@@ -181,13 +191,16 @@ Solver 1
 End
 
 Solver 4
-  exec solver = never
+!  exec solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
   Output File Name = case
   Output Directory = konesec
   Save Geometry IDs = Logical True
   Vtu Format = Logical True
+
+!  Save Bulk Only = Logical True
+  Discontinuous Bodies = Logical True
 End 
 
 Solver 2
@@ -224,11 +237,13 @@ Solver 3
   Calculate Magnetic Field Strength = Logical True
   Calculate Magnetic Vector Potential = Logical True
   Calculate Nodal Forces = Logical True
+
+  Calculate Nodal Fields = Logical True
   Calculate Elemental Fields = Logical True
   !Calculate Maxwell Stress = Logical True
-  Apply Mortar BCs = Logical True
+  !Apply Mortar BCs = Logical True
   !Optimize Bandwidth = False
-
+ 
   Linear System Solver = Iterative
   Linear System Iterative Method = BicgstabL
   Linear System Symmetric = True
