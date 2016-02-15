@@ -35,6 +35,25 @@ MODULE HarmUtils
       
     END FUNCTION SinSum
     
+    FUNCTION CosSum(fundamental_f, amplitudes, t, phase) RESULT(sumA)
+      USE DefUtils
+      IMPLICIT NONE
+      
+      REAL(KIND=dp) :: fundamental_f, fundamental_omega, t
+      REAL(KIND=dp) :: amplitudes(:,:)
+      REAL(KIND=dp) :: sumA
+      REAL(KIND=dp) :: phase
+      
+      INTEGER :: i
+      
+      sumA = 0
+      fundamental_omega = 2 * PI * fundamental_f
+      DO i = 1, SIZE(amplitudes(:,1))
+        sumA = sumA + amplitudes(i, 2) * sqrt(2._dp) * cos(amplitudes(i,1)  * fundamental_omega * t + phase)
+      END DO
+      
+    END FUNCTION CosSum
+    
 END MODULE HarmUtils
 
 
@@ -63,7 +82,7 @@ FUNCTION source( model, n, time ) RESULT(current)
   phase = GetConstReal(BF, 'Phase', Found)
   IF (.NOT. FOUND) CALL FATAL('source', ListGetActiveName()//': phase not found in Body Force 1 section.')
   
-  Isum = SinSum(freq, Amplitudes, time, phase)
+  Isum = CosSum(freq, Amplitudes, time, phase)
   
   DO i = 1, SIZE(amplitudes(:,1))
     WRITE(Message,*) TRIM(ListGetActiveName())//': Amplitudes = ', Amplitudes(i,1), ' ', Amplitudes(i,2)
