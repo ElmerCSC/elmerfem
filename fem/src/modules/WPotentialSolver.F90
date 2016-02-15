@@ -472,7 +472,7 @@ CONTAINS
       DO k=1,wpotvar % DOFs
         IF (Wnorm > EPSILON(Wnorm)) THEN
           IF( CoilType/='stranded' ) Wnorm = 1._dp
-          !print *, "Wnorm:", Wnorm
+!          print *, ParEnv % MyPe, "Wnorm:", Wnorm
           wpotvar % Values( wpotvar % DOFs*(wpotvar % Perm( &
               Element % DGIndexes(j))-1)+k) = wpot(j)/Wnorm
         END IF
@@ -514,14 +514,17 @@ CONTAINS
       END IF 
 
       IF (CoilBody) THEN
-        CALL ComputeElementWNormAndVolume(Element, n, nd, &
+        CALL AddElementWNormAndVolume(Element, n, nd, &
                               WnormCoeffs(Element % BodyId), &
                              Volumes(Element % BodyId))
-        Wnorms(Element % BodyId) = WnormCoeffs(Element % BodyId) &
-                                   /   Volumes(Element % BodyId)
       END IF 
     END DO
    
+    WnormCoeffs(Element % BodyId) = ParallelReduction(WnormCoeffs(Element % BodyId)) 
+    Volumes(Element % BodyId) = ParallelReduction(Volumes(Element % BodyId)) 
+    Wnorms(Element % BodyId) = WnormCoeffs(Element % BodyId) &
+                               /   Volumes(Element % BodyId)
+
     CALL Info('GetWnormsForBodies', &
          'W norm computed in components.', level=9)
 
@@ -530,7 +533,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE ComputeElementWNormAndVolume(Element, n, nd, WnormCoeff, Volume)
+  SUBROUTINE AddElementWNormAndVolume(Element, n, nd, WnormCoeff, Volume)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: WnormCoeff, Volume
@@ -567,7 +570,7 @@ CONTAINS
     END DO
 
 !------------------------------------------------------------------------------
-  END SUBROUTINE ComputeElementWNormAndVolume
+  END SUBROUTINE AddElementWNormAndVolume
 !------------------------------------------------------------------------------
 
 
