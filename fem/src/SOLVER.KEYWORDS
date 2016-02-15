@@ -1436,6 +1436,12 @@ solver:real:         'desired coil current'
 solver:real:         'harmonic loss linear exponent'
 solver:real:         'harmonic loss quadratic exponent'
 Component:Real:      'Number of Turns'
+!!!!!!!! TRAFOTEK KEYWORDS
+Material:Real:       'rho0'
+Material:Real:       'rho1'
+Material:Real:       'Foil Layer Heat Conductivity'
+Material:Real:       'Material Heat Conductivity'
+!!!!!!!!!!!!!!!!!!!!!!
 bc:logical:          'coil start'
 bc:logical:          'coil end'
 bc:logical:          'flat projector reduce dimension'
