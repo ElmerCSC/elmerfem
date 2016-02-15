@@ -103,7 +103,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, LiveGraph, &
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
-      MaterialOper, MaskOper, GotMaskName
+      MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -120,7 +120,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER, ALLOCATABLE, TARGET :: ClosestIndex(:)
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
   CHARACTER(LEN=MAX_NAME_LEN) :: ScalarsFile, ScalarNamesFile, DateStr, &
-      VariableName, OldVariableName, ResultPrefix, Suffix, Oper, Oper0, ParOper, Name, &
+      VariableName, OldVariableName, ResultPrefix, Suffix, Oper, Oper0, OldOper0, ParOper, Name, &
       CoefficientName, ScalarParFile, OutputDirectory, MinOper, MaxOper, &
       MaskName, SaveName
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
@@ -308,6 +308,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   NoValues = 0
   GotVar  = .TRUE.
   GotOper = .FALSE.
+  GotOldOper = .FALSE.
   NULLIFY(OldVar)
   NoVar = 0
   MinOper = 'min'
@@ -363,39 +364,49 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    IF( ASSOCIATED( Var ) ) THEN
-      CALL Info('SaveScalars','Trating variable: '//TRIM(VariableName),Level=12)
-    END IF
-
     NoOper = NoVar     
     MaskOper = .FALSE.
     WRITE (Name,'(A,I0)') 'Operator ',NoOper
     Oper0 = ListGetString(Params,TRIM(Name),GotOper)
+    IF(.NOT. GotOper .AND. GotOldOper ) Oper0 = OldOper0
+
     IF(.NOT. (GotOper .OR. GotVar ) ) CYCLE
+
+
+    IF( ASSOCIATED( Var ) ) THEN
+      CALL Info('SaveScalars','Treating variable: '//TRIM(VariableName),Level=12)
+      ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements ) 
+    END IF
+
 
     IF( GotOper ) THEN
       CALL Info('SaveScalars','Treating operator: '//TRIM(Oper0),Level=12)
+      OldOper0 = Oper0
+      GotOldOper = .TRUE.
+    ELSE
+      Oper0 = OldOper0
+      GotOper = .TRUE.
+   END IF
 
-      BodyOper = .FALSE.
-      BodyForceOper = .FALSE.      
-      MaterialOper = .FALSE.
-      nlen = LEN_TRIM(Oper0) 
-      IF( Oper0(1:11) == 'body force ') THEN
-        BodyForceOper = .TRUE.
-        Oper = Oper0(12:nlen)
-      ELSE IF( Oper0(1:5) == 'body ') THEN
-        BodyOper = .TRUE.
-        Oper = Oper0(6:nlen)
-      ELSE IF( Oper0(1:9) == 'material ') THEN
-        MaterialOper = .TRUE.
-        Oper = Oper0(10:nlen)
-      ELSE
-        Oper = Oper0
-      END IF
-      MaskOper = ( BodyForceOper .OR. BodyOper .OR. MaterialOper )
-      IF( MaskOper ) THEN
-        CALL Info('SaveScalars','Operator to be masked: '//TRIM(Oper),Level=12)
-      END IF
+    BodyOper = .FALSE.
+    BodyForceOper = .FALSE.      
+    MaterialOper = .FALSE.
+    nlen = LEN_TRIM(Oper0) 
+    IF( Oper0(1:11) == 'body force ') THEN
+      BodyForceOper = .TRUE.
+      Oper = Oper0(12:nlen)
+    ELSE IF( Oper0(1:5) == 'body ') THEN
+      BodyOper = .TRUE.
+      Oper = Oper0(6:nlen)
+    ELSE IF( Oper0(1:9) == 'material ') THEN
+      MaterialOper = .TRUE.
+      Oper = Oper0(10:nlen)
+    ELSE
+      Oper = Oper0
+    END IF
+    MaskOper = ( BodyForceOper .OR. BodyOper .OR. MaterialOper )
+    IF( MaskOper ) THEN
+      CALL Info('SaveScalars','Operator to be masked: '//TRIM(Oper),Level=12)
     END IF
 
 
@@ -408,7 +419,9 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     WRITE (Name,'(A,I0)') 'Mask Name ',NoOper
     MaskName = ListGetString(Params,TRIM(Name),GotMaskName)
-    IF(.NOT. GotMaskName) MaskName = 'save scalars'
+    IF(.NOT. GotMaskName) THEN
+      MaskName = 'save scalars'
+    END IF
 
     IF( MaskOper ) THEN
       GotIt = .FALSE.
@@ -420,7 +433,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         GotIt = ListGetLogicalAnyMaterial( Model, MaskName )
       END IF
       IF(.NOT. GotIt ) THEN
-        CALL Warn('SaveScalars','Masked operators require mask!')
+        CALL Warn('SaveScalars','Masked operators require mask: '//TRIM(MaskName))
       END IF
     END IF
 
@@ -560,9 +573,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = VectorMeanDeviation(Var,Oper)
         CALL AddToSaveList(SaveName, Val,.FALSE.,ParOper)
         
-      CASE ('int','int mean','int variance','volume',&
+      CASE ('int','int mean','int abs','int abs mean','int variance','volume',&
           'potential energy','diffusive energy','convective energy')
         
+        IF( MaskOper ) CALL CreateNodeMask()
         Val = BulkIntegrals(Var, Oper, GotCoeff, CoefficientName)
         IF(GotCoeff) THEN
           SaveName = TRIM(SaveName)//' with '//TRIM(CoefficientName)
@@ -574,7 +588,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
         IF( .NOT. ANY( ActiveBC ) ) THEN
           CALL Error('SaveScalars','No flag > '//TRIM(MaskName)// &
-              '< active for operator: '// TRIM(Oper))
+              ' < active for operator: '// TRIM(Oper))
           CYCLE
         END IF
  
@@ -597,7 +611,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         END DO
         
       CASE ('boundary int','boundary int mean','area','diffusive flux','convective flux')
- 
+         
         IF( .NOT. ANY( ActiveBC ) ) THEN
           CALL Error('SaveScalars','No flag > '//TRIM(MaskName)// &
               '< active for operator: '// TRIM(Oper))
@@ -812,6 +826,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     IF( l > 0 ) THEN
       CurrentElement => Mesh % Elements(l)
       n = CurrentElement % TYPE % NumberOfNodes
+
       NodeIndexes => CurrentElement % NodeIndexes
 
       Coords(1:NoDims) = PointCoordinates(k,1:NoDims)
@@ -839,6 +854,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     Var => Model % Variables
     DO WHILE( ASSOCIATED( Var ) )
 
+      ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements ) 
+
       IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == Var % DOFs) THEN
         CONTINUE 
       
@@ -853,6 +870,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
               Val = -HUGE(Val)
               Val2 = -HUGE(Val)
               GotIt = .FALSE.
+
+              IF( ElementalVar ) THEN
+                NodeIndexes => CurrentElement % DgIndexes
+              ELSE
+                NodeIndexes => CurrentElement % NodeIndexes 
+              END IF
 
               IF( l == 0 ) THEN
                 
@@ -893,6 +916,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
         Val = -HUGE( Val )
         GotIt = .FALSE.
+        
+        IF( ElementalVar ) THEN
+          NodeIndexes => CurrentElement % DgIndexes
+        ELSE
+          NodeIndexes => CurrentElement % NodeIndexes 
+        END IF
 
         IF( l == 0 ) THEN
 
@@ -1174,7 +1203,7 @@ CONTAINS
 
     SELECT CASE(LocalOper)
       
-    CASE('nodes','elements','dofs','sum','sum abs','int','volume','potential energy','convective energy',&
+    CASE('nodes','elements','dofs','sum','sum abs','int','int abs','volume','potential energy','convective energy',&
         'diffusive energy','boundary sum','boundary dofs','boundary int','area','diffusive flux',&
         'convective flux','nans')
       ParOper = 'sum'
@@ -1349,17 +1378,26 @@ CONTAINS
     IF(.NOT. MaskOper ) RETURN
 
     CALL Info('SaveScalars','Creating mask for: '//TRIM(MaskName),Level=10)
-
+    
+    IF( ALLOCATED( NodeMask ) ) THEN
+      IF( SIZE( NodeMask ) /= SIZE( Var % Perm ) ) DEALLOCATE( NodeMask ) 
+    END IF
+   
     IF(.NOT. ALLOCATED( NodeMask ) ) THEN
-      ALLOCATE( NodeMask( Mesh % NumberOfNodes ) )
+      ALLOCATE( NodeMask( SIZE( Var % Perm ) ) ) 
     END IF
     NodeMask = .FALSE.
     
     DO t = 1, Mesh % NumberOfBulkElements 
       Element => Mesh % Elements(t)
       n = Element % TYPE % NumberOfNodes
-      NodeIndexes => Element % NodeIndexes
-     
+
+      IF( ElementalVar ) THEN
+        NodeIndexes => Element % DgIndexes
+      ELSE        
+        NodeIndexes => Element % NodeIndexes
+      END IF
+
       ! If we are masking operators with correct (body, body force, or material) then do it here
       IF( BodyOper ) THEN        
         MaskList => GetBodyParams( Element ) 
@@ -1379,7 +1417,8 @@ CONTAINS
     END DO
     
     t = COUNT( NodeMask )    
-    CALL Info('SaveScalars','Created mask of size: '//TRIM(I2S(t)),Level=12)
+    CALL Info('SaveScalars','Created mask of size: '&
+        //TRIM(I2S(t)),Level=12)
 
   END SUBROUTINE CreateNodeMask
 
@@ -1437,7 +1476,6 @@ CONTAINS
       END IF
 
       j = i
-
       IF(ASSOCIATED(Var % Perm)) j = Var % Perm(i)
 
       IF(j > 0) THEN
@@ -1623,7 +1661,7 @@ CONTAINS
     
     INTEGER :: t, hits
     TYPE(Element_t), POINTER :: Element
- 
+    INTEGER, POINTER :: NodeIndexes(:), PermIndexes(:)
     REAL(KIND=dp) :: SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
     REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
     REAL(KIND=dp) :: EnergyTensor(3,3,Model % MaxElementNodes),&
@@ -1633,7 +1671,7 @@ CONTAINS
     REAL(KIND=DP), POINTER :: Pwrk(:,:,:)
     LOGICAL :: Stat
     TYPE(ValueList_t), POINTER :: MaskList
-    
+
     INTEGER :: i,j,k,p,q,DIM,NoDofs
     
     TYPE(GaussIntegrationPoints_t) :: IntegStuff
@@ -1656,16 +1694,24 @@ CONTAINS
       Element => Mesh % Elements(t)
       Model % CurrentElement => Mesh % Elements(t)
       n = Element % TYPE % NumberOfNodes
-      NodeIndexes => Element % NodeIndexes
-      
+
       IF ( Element % TYPE % ElementCode == 101 ) CYCLE
-      IF ( ANY(Var % Perm(NodeIndexes(1:n)) == 0) ) CYCLE
       
+      IF( ElementalVar ) THEN
+        PermIndexes => Element % DgIndexes
+      ELSE
+        PermIndexes => Element % NodeIndexes
+      END IF
+
+      IF ( ANY(Var % Perm(PermIndexes) == 0 ) ) CYCLE      
       hits = hits + 1
       
+
+      NodeIndexes => Element % NodeIndexes 
       ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes(1:n))
+      
 
       ! If we are masking operators with correct (body, body force, or material) then do it here
       IF( BodyOper ) THEN        
@@ -1726,7 +1772,7 @@ CONTAINS
 !    Numerical integration
 !------------------------------------------------------------------------------
       IntegStuff = GaussPoints( Element )
-      
+            
       DO i=1,IntegStuff % n
         U = IntegStuff % u(i)
         V = IntegStuff % v(i)
@@ -1759,43 +1805,47 @@ CONTAINS
           integral1 = integral1 + coeff * S
 
           CASE ('int','int mean')
-          func = SUM( Var % Values(Var % Perm(NodeIndexes(1:n))) * Basis(1:n) )
+          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
+          integral1 = integral1 + S * coeff * func 
+
+          CASE ('int abs','int abs mean')
+          func = ABS( SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) ) )
           integral1 = integral1 + S * coeff * func 
 
           CASE ('int variance')
-          func = SUM( Var % Values(Var % Perm(NodeIndexes(1:n))) * Basis(1:n) )
+          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
           integral1 = integral1 + S * coeff * func 
           integral2 = integral2 + S * coeff * func**2 
 
           CASE ('diffusive energy')
           CoeffGrad = 0.0d0
           DO j = 1, DIM
-            Grad(j) = SUM( dBasisdx(1:n,j) *  Var % Values(Var % Perm(NodeIndexes(1:n))) )
+            Grad(j) = SUM( dBasisdx(1:n,j) *  Var % Values(Var % Perm(PermIndexes)) )
             DO k = 1, DIM
               CoeffGrad(j) = CoeffGrad(j) + SUM( EnergyTensor(j,k,1:n) * Basis(1:n) ) * &
-                  SUM( dBasisdx(1:n,k) * Var % Values(Var % Perm(NodeIndexes(1:n))) )
+                  SUM( dBasisdx(1:n,k) * Var % Values(Var % Perm(PermIndexes)) )
             END DO
           END DO
           
           integral1 = integral1 + s * SUM( Grad(1:DIM) * CoeffGrad(1:DIM) )
 
           CASE ('convective energy')
-          func = SUM( Var % Values(Var % Perm(NodeIndexes(1:n))) * Basis(1:n) )
+          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
 
           IF(NoDofs == 1) THEN
-            func = SUM( Var % Values(Var % Perm(NodeIndexes(1:n))) * Basis(1:n) )
+            func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
             integral1 = integral1 + s * coeff * func**2
           ELSE
             func = 0.0d0
             DO j=1,MIN(DIM,NoDofs)
-              func = SUM( Var % Values(NoDofs*(Var % Perm(NodeIndexes(1:n))-1)+j) * Basis(1:n) )
+              func = SUM( Var % Values(NoDofs*(Var % Perm(PermIndexes)-1)+j) * Basis(1:n) )
               integral1 = integral1 + s * coeff * func**2
             END DO
           END IF
 
           CASE ('potential energy')
 
-          func = SUM( Var % Values(Var % Perm(NodeIndexes(1:n))) * Basis(1:n) )
+          func = SUM( Var % Values(Var % Perm(PermIndexes)) * Basis(1:n) )
           integral1 = integral1 + s * coeff * func
 
         CASE DEFAULT 
@@ -1820,8 +1870,14 @@ CONTAINS
 
       CASE ('int')
       operx = integral1
+
+      CASE ('int abs')
+      operx = integral1
       
       CASE ('int mean')
+      operx = integral1 / vol        
+
+      CASE ('int abs mean')
       operx = integral1 / vol        
 
       CASE ('int variance')

@@ -13,7 +13,7 @@ Simulation
   Output Intervals = 1
   Post File   = "carre2D.ep"
   Output File = "carre2D.result"
-  max output level = 10
+  max output level = 4
 End  
 
 
@@ -126,3 +126,9 @@ Boundary Condition 4
   Target Boundaries = 4
   Velocity 1 = Real 0.0
 End
+
+Solver 1 :: Reference Norm = Real 3.65326623E-01
+Solver 1 :: Reference Norm Tolerance = Real 1E-06
+$fprintf( stderr, "TEST CASE 1\n");
+RUN
+$fprintf( stderr, "END TEST CASE 1: Target NRM=3.65326623E-01,EPS=1E-06\n" );

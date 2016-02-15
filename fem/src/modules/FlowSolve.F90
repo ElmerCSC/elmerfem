@@ -92,7 +92,7 @@
      TYPE(Element_t),POINTER :: Element
 
      REAL(KIND=dp) :: RelativeChange,UNorm,Gravity(3),AngularVelocity(3), &
-       Tdiff,s,Relaxation,NewtonTol,NonlinearTol, &
+       Tdiff,s,Relaxation,NewtonTol,NewtonUBound,NonlinearTol, &
        ReferencePressure=0.0, SpecificHeatRatio, &
        PseudoCompressibilityScale=1.0, NonlinearRelax, FreeSTol, res
 
@@ -112,7 +112,7 @@
      LOGICAL :: Stabilize,NewtonLinearization = .FALSE., GotForceBC, GotIt, &
                   MBFlag, Convect  = .TRUE., NormalTangential, RelaxBefore, &
                   divDiscretization, GradPDiscretization, ComputeFree=.FALSE., &
-                  Transient, Rotating, AnyRotating
+                  Transient, Rotating, AnyRotating, RecheckNewton=.FALSE.
 
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, StabilizeFlag, VarName
@@ -431,6 +431,11 @@
 
      NewtonTol = ListGetConstReal( Solver % Values, &
         'Nonlinear System Newton After Tolerance', minv=0.0d0 )
+
+     !Option to switch back to picard if convergence exceeds certain tolerance
+     NewtonUBound = ListGetConstReal( Solver % Values, &
+        'Nonlinear System Newton Max Tolerance', GotIt )
+     IF(GotIt) RecheckNewton = .TRUE.
 
      NewtonIter = ListGetInteger( Solver % Values, &
         'Nonlinear System Newton After Iterations', minv=0 )
@@ -1293,6 +1298,11 @@
 
       IF ( RelativeChange < NewtonTol .OR. &
              iter > NewtonIter ) NewtonLinearization = .TRUE.
+
+      IF ( RecheckNewton .AND. (RelativeChange > NewtonUBound) .AND. NewtonLinearization ) THEN
+        NewtonLinearization = .FALSE.
+	CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
+      END IF
 
       IF ( RelativeChange < NonLinearTol .AND. Iter<NonlinearIter ) EXIT
 

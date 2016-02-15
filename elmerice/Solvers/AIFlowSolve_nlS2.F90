@@ -29,6 +29,7 @@
 ! *  Original Date: 08 Jun 1997
 ! *       Date of modification: April 08 => non linear
 ! *                             May 09 => N-T (see mail Juha 20 Feb 2006) OG
+! *                             Dec 15 =>2.5D FlowWidth O. Passalacqua
 ! * 
 ! *****************************************************************************
 !> Module containing a solver for (primarily thermal) anisotropic flow
@@ -88,7 +89,8 @@
      REAL(KIND=dp), ALLOCATABLE :: dBasisdx(:,:), SlipCoeff(:,:)
      REAL(KIND=dp) :: u,v,w,detJ
      
-     LOGICAL :: stat, CSymmetry 
+     LOGICAL :: stat, CSymmetry = .FALSE., VariableFlowWidth = .FALSE., &
+            VariableLocalFlowWidth
        
      INTEGER, PARAMETER :: INDi(1:6) = (/ 1, 2, 3, 1, 2, 3 /) ,&
            INDj(1:6)=(/ 1, 2, 3, 2, 3, 1 /)
@@ -133,7 +135,7 @@
        LocalTemperature(:), Alpha(:,:), Beta(:), & 
        ReferenceTemperature(:), BoundaryDispl(:), K1(:), K2(:), E1(:), &
        E2(:), E3(:), TimeForce(:), RefS(:), RefD(:), RefSpin(:), &
-       LocalVelo(:,:), LocalFluidity(:)
+       LocalVelo(:,:), LocalFluidity(:), LocalFlowWidth(:)
             
      INTEGER :: NumberOfBoundaryNodes
      INTEGER, POINTER :: BoundaryReorder(:)
@@ -142,26 +144,25 @@
      REAL(KIND=dp), POINTER :: BoundaryNormals(:,:), &
          BoundaryTangent1(:,:), BoundaryTangent2(:,:)
      CHARACTER(LEN=MAX_NAME_LEN) :: viscosityFile
+     REAL(KIND=dp) :: Radius
 
 #ifdef USE_ISO_C_BINDINGS
      REAL(KIND=dp) :: at, at0
 #else
-     REAL(KIND=dp) :: at, at0, CPUTime, RealTime
+     REAL(KIND=dp) :: CPUTime, RealTime
 #endif
-
 !------------------------------------------------------------------------------
      SAVE NumberOfBoundaryNodes,BoundaryReorder,BoundaryNormals, &
               BoundaryTangent1, BoundaryTangent2, FabricGrid, viscosityFile
 
      SAVE TimeForce, Basis, dBasisdx, ddBasisddx
      SAVE LocalMassMatrix, LocalStiffMatrix, LoadVector, &
-       LocalForce, ElementNodes, Alpha, Beta, LocalTemperature, &
+       LocalForce, ElementNodes, Alpha, Beta, LocalTemperature, LocalFlowWidth, &
        Isotropic,AllocationsDone,ReferenceTemperature,BoundaryDispl, &
        NodalAIFlow, K1, K2, E1, E2, E3, Wn, MinSRInvariant, old_body, &
        LocalFluidity
 
-     SAVE RefD, RefS, RefSpin, LocalVelo, SlipCoeff 
-              
+     SAVE RefD, RefS, RefSpin, LocalVelo, SlipCoeff
 !------------------------------------------------------------------------------
 !  Read constants from constants section of SIF file
 !------------------------------------------------------------------------------
@@ -206,7 +207,7 @@
       SpinValues => SpinVar % Values  
       END IF
       
-      StrainRateVar => VariableGet(Solver % Mesh %Variables,'StrainRate')
+      StrainRateVar => VariableGet(Solver % Mesh % Variables,'StrainRate')
       IF ( ASSOCIATED( StrainRateVar ) ) THEN
       SRPerm => StrainRateVar % Perm    
       SRValues => StrainRateVar % Values  
@@ -217,6 +218,11 @@
       IF ( ASSOCIATED( DevStressVar ) ) THEN
       DSPerm => DevStressVar % Perm    
       DSValues => DevStressVar % Values  
+      END IF
+      
+      IF ( CurrentCoordinateSystem() == AxisSymmetric ) THEN
+      CSymmetry = .TRUE.
+      VariableFlowWidth = .TRUE.
       END IF
 
       StiffMatrix => Solver % Matrix
@@ -237,6 +243,7 @@
                      BoundaryDispl,        &
                      ReferenceTemperature, &
                      LocalTemperature,     &
+                     LocalFlowWidth,	   &
                      LocalVelo,            &
                      LocalForce,           &
                      RefD, RefS, RefSpin,  &
@@ -252,6 +259,7 @@
                  BoundaryDispl( N ), &
                  ReferenceTemperature( N ), &
                  LocalTemperature( N ), &
+                 LocalFlowWidth (N), &
                  K1( N ), K2( N ), E1( N ), E2( N ), E3( N ), &
                  LocalForce( 2*STDOFs*N ),&
                  RefS(2*dim*LocalNodes ),&                              
@@ -329,6 +337,7 @@
          END IF
 
          CurrentElement => GetActiveElement(t)
+
          n = GetElementNOFNodes()
          NodeIndexes => CurrentElement % NodeIndexes
 
@@ -356,6 +365,25 @@
          LocalFluidity(1:n) = 1.0
         END IF
 
+
+       LocalFlowWidth(1:n) = ListGetReal ( Material, &
+                        'FlowWidth', n, NodeIndexes, GotIt)
+       IF (.NOT. GotIt) THEN
+         IF (CSymmetry) THEN
+           DO i=1,n
+             LocalFlowWidth(i) = ElementNodes % x(i)
+           END DO          
+         END IF
+       ELSE
+         VariableFlowWidth = .TRUE.
+       END IF
+	  
+! Test if flow width is locally constant (infinite radius case)
+       VariableLocalFlowWidth = .TRUE.
+       IF (MAXVAL(LocalFlowWidth(1:n))- &
+                MINVAL(LocalFlowWidth(1:n)) == 0.0) &
+                VariableLocalFlowWidth = .FALSE.
+            
 !------------------------------------------------------------------------------
 !        Set body forces
 !------------------------------------------------------------------------------
@@ -399,8 +427,9 @@
 
          CALL LocalMatrix( LocalMassMatrix, LocalStiffMatrix, &
               LocalForce, LoadVector, K1, K2, E1, E2, E3, LocalVelo, &
-              LocalTemperature, LocalFluidity, CurrentElement, n, &
-              ElementNodes, Wn, MinSRInvariant, Isotropic)
+              LocalTemperature, LocalFlowWidth, LocalFluidity, CurrentElement, n, &
+              ElementNodes, Wn, MinSRInvariant, Isotropic, VariableFlowWidth, &
+              VariableLocalFlowWidth)
 
         TimeForce = 0.0d0
          CALL NSCondensate(N, N,STDOFs-1,LocalStiffMatrix,LocalForce,TimeForce )
@@ -418,6 +447,7 @@
       DO t = 1, Model % NumberOFBoundaryElements
 
         CurrentElement => GetBoundaryElement(t)
+              
         IF ( GetElementFamily() == 101 ) CYCLE
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
@@ -475,10 +505,12 @@
                      'Normal-Tangential AIFlow', GotIt )
                
             IF ( .NOT.GotForceBC ) CYCLE
+
 !------------------------------------------------------------------------------
             CALL LocalMatrixBoundary( LocalStiffMatrix, LocalForce, &
                  LoadVector, Alpha, Beta, SlipCoeff, NormalTangential, &
-                 CurrentElement, n, ElementNodes )
+                 CurrentElement, n, ElementNodes, VariableFlowWidth, &
+                 VariableLocalFlowWidth, LocalFlowWidth )
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
 !           Update global matrices from local matrices (will also affect
@@ -549,7 +581,6 @@
          NodeIndexes => CurrentElement % NodeIndexes
 
          body_id = CurrentElement % BodyId
-         CSymmetry = CurrentCoordinateSystem() == AxisSymmetric
          dim = CoordinateSystemDimension()
 
 !------------------------------------------------------------------------------
@@ -569,7 +600,14 @@
          LocalFluidity(1:n) = 1.0
         END IF
 
-
+       LocalFlowWidth(1:n) = ListGetReal ( Material, &
+                        'FlowWidth', n, NodeIndexes, GotIt)
+       IF (.NOT. GotIt .AND. CSymmetry) THEN
+          DO i=1,n
+            LocalFlowWidth(i) = ElementNodes % x(i)
+          END DO         
+       END IF
+                 
          ElementNodes % x(1:n) = Model % Nodes % x(NodeIndexes(1:n))
          ElementNodes % y(1:n) = Model % Nodes % y(NodeIndexes(1:n))
          ElementNodes % z(1:n) = Model % Nodes % z(NodeIndexes(1:n))
@@ -601,6 +639,7 @@
          DO i=1,STDOFs - 1
             LocalVelo(i,1:n) = AIFlow( STDOFs*(AIFlowPerm(NodeIndexes(1:n))-1) + i)
          END DO
+         
 ! Go for all nodes of the element        
          Do i=1,n
 
@@ -611,26 +650,27 @@
        
             stat = ElementInfo(CurrentElement,ELementNodes,u,v,w,detJ, &
                Basis,dBasisdx,ddBasisddx,.FALSE.,.FALSE.)
-! Axi symmetric case when R=0 strain, stress not calculated exactly in
+
+! Variable flow width case when R=0 strain, stress not calculated exactly in
 ! x=0 (I agree it is not very nice, better solution ???)
-        Requal0 = .False.
-        IF (( CSymmetry) .And. & 
-          (SUM(ElementNodes % x(1:n) * Basis(1:n)) == 0.0)) THEN  
+       Requal0 = .False.
+       IF (( VariableFlowWidth ) .And. & 
+          (SUM(LocalFlowWidth (1:n) * Basis(1:n)) == 0.0)) THEN 
            Requal0 = .True.
-            u= u + 0.0001  
+            u= u + 0.0001 
             stat = ElementInfo(CurrentElement,ELementNodes,u,v,w,detJ, &
-               Basis,dBasisdx,ddBasisddx,.FALSE.,.FALSE.)
+                     Basis,dBasisdx,ddBasisddx,.FALSE.,.FALSE.)
         END IF
 
            CALL LocalSD(NodalStresses, NodalStrainRate, NodalSpin, & 
                  LocalVelo, LocalTemperature, LocalFluidity,  &
-                K1, K2, E1, E2, E3, CSymmetry, Basis, dBasisdx, &
+                LocalFlowWidth, K1, K2, E1, E2, E3, Basis, dBasisdx, &
                 CurrentElement, n, ElementNodes, dim, Wn, &
-                MinSRInvariant, Isotropic)
+                MinSRInvariant, Isotropic, VariableFlowWidth, &
+                VariableLocalFlowWidth)
                 
-
-        IF (Requal0) NodalSpin = 0. 
-
+        IF (Requal0)   NodalSpin = 0. 
+        
            IF (ASSOCIATED(StrainRateVar)) &
              RefD(2*dim*(SRPerm(NodeIndexes(i))-1)+1 : &
                                       2*dim*SRPerm(NodeIndexes(i))) &
@@ -740,7 +780,6 @@ CONTAINS
           END IF
       ENDIF
 
-
       Wn(2) = ListGetConstReal( Material , 'Powerlaw Exponent', GotIt )
       IF (.NOT.GotIt) THEN
          WRITE(Message,'(A)') 'Variable  Powerlaw Exponent not found. &
@@ -775,6 +814,7 @@ CONTAINS
       END IF
 
       Wn(5) = ListGetConstReal(Material, 'Reference Temperature', GotIt)
+
       IF (.NOT.GotIt) THEN
          WRITE(Message,'(A)') 'Variable Reference Temperature not found. &
                                &Setting to -10.0 (Celsius)'
@@ -798,6 +838,7 @@ CONTAINS
 
 ! Get the Minimum value of the Effective Strain rate 
       MinSRInvariant = 100.0*AEPS
+
       IF ( Wn(2) > 1.0  ) THEN
         MinSRInvariant =  &
              ListGetConstReal( Material, 'Min Second Invariant', GotIt )
@@ -818,10 +859,10 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE LocalMatrix( MassMatrix, StiffMatrix, ForceVector, &
               LoadVector, NodalK1, NodalK2, NodalEuler1, NodalEuler2, &
-              NodalEuler3, NodalVelo, NodalTemperature, NodalFluidity, &
-              Element, n, Nodes, Wn, MinSRInvariant, Isotropic )
-              
-              
+              NodalEuler3, NodalVelo, NodalTemperature, NodalFlowWidth, &
+              NodalFluidity, Element, n, Nodes, Wn, MinSRInvariant, Isotropic, &
+              VariableFlowWidth, VariableLocalFlowWidth )
+                       
 !------------------------------------------------------------------------------
 
      REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:)
@@ -829,10 +870,10 @@ CONTAINS
      REAL(KIND=dp) :: Wn(7), MinSRInvariant
      REAL(KIND=dp), DIMENSION(:) :: ForceVector, NodalK1, NodalK2, &
              NodalEuler1, NodalEuler2, NodalEuler3, NodalTemperature, &
-             NodalFluidity
+             NodalFluidity, NodalFlowWidth
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t) :: Element
-     LOGICAL :: Isotropic
+     LOGICAL :: Isotropic, VariableFlowWidth, VariableLocalFlowWidth
      INTEGER :: n
 !------------------------------------------------------------------------------
 !
@@ -850,7 +891,7 @@ CONTAINS
 
      INTEGER :: i, j, k, p, q, t, dim, NBasis, ind(3)
 
-     REAL(KIND=dp) :: s,u,v,w, Radius, B(6,3), G(3,6)
+     REAL(KIND=dp) :: s,u,v,w, Radius, B(6,3), G(3,6), FW
   
      REAL(KIND=dp) :: dDispldx(3,3), ai(3), Angle(3), a2(6)
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -859,7 +900,7 @@ CONTAINS
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
-     LOGICAL :: stat, CSymmetry
+     LOGICAL :: stat
 
      INTERFACE
       Subroutine R2Ro(a2,dim,ai,angle)
@@ -875,7 +916,6 @@ CONTAINS
         END SUBROUTINE OPILGGE_ai_nl
 
       END INTERFACE
-
 !------------------------------------------------------------------------------
       dim = CoordinateSystemDimension()
 
@@ -918,9 +958,6 @@ CONTAINS
       DO i=1,dim
          Force(i) = SUM( LoadVector(i,1:n)*Basis(1:n))
       END DO
-
-
-      Radius = SUM( Nodes % x(1:n) * Basis(1:n) )
 !
 !     Temperature at the integration point
 !
@@ -928,7 +965,6 @@ CONTAINS
       Wn(1) = SUM( NodalFluidity(1:n)*Basis(1:n) )
       Bg=BGlenT(Temperature,Wn)
       ss=1.0_dp
-
 
 ! if not isotropic use GOLF
       C = 0.0_dp
@@ -951,10 +987,11 @@ CONTAINS
             C(i,i)=1.0_dp
           End do
       ENDIF
-
-      CSymmetry = CurrentCoordinateSystem() == AxisSymmetric
-      IF ( CSymmetry ) s = s * Radius
-
+      
+      FW = SUM( NodalFlowWidth(1:n) * Basis(1:n) )
+      Radius = FW / (SUM( NodalFlowWidth(1:n) * dBasisdx(1:n,1)) )
+      IF (.NOT. VariableLocalFlowWidth) Radius = 10e7
+      IF (VariableFlowWidth )  s = s * FW 
 
 !
 ! Case non-linear
@@ -964,11 +1001,10 @@ CONTAINS
 
          Bg=Bg**(1.0/Wn(2))
 
-
         LGrad = MATMUL( NodalVelo(:,1:n), dBasisdx(1:n,:) )
         SR = 0.5 * ( LGrad + TRANSPOSE(LGrad) )
       
-        IF ( CSymmetry ) THEN
+        IF ( VariableFlowWidth ) THEN 
           SR(1,3) = 0.0
           SR(2,3) = 0.0
           SR(3,1) = 0.0
@@ -976,7 +1012,6 @@ CONTAINS
           SR(3,3) = 0.0
           IF ( Radius > 10*AEPS ) THEN
             SR(3,3) = SUM( Nodalvelo(1,1:n) * Basis(1:n) ) /Radius
-                 
           END IF
           epsi = SR(1,1)+SR(2,2)+SR(3,3)
           DO i=1,3   
@@ -1031,10 +1066,8 @@ CONTAINS
         END DO
         IF (ss < MinSRInvariant ) ss = MinSRInvariant
         ss = (2.*ss)**nn
-     End if
+     END IF
 
-         
-        
       END IF
 
 ! Non relative viscosity matrix
@@ -1051,7 +1084,7 @@ CONTAINS
 
        G = 0.0d0
 
-       IF ( CSymmetry ) THEN
+       IF ( VariableFlowWidth ) THEN
           G(1,1) = dBasisdx(p,1)
           G(1,3) = Basis(p) / Radius
           G(1,4) = dBasisdx(p,2)
@@ -1074,7 +1107,8 @@ CONTAINS
        DO q=1,NBasis
 
          B = 0.0d0
-         IF ( CSymmetry ) THEN
+
+         IF ( VariableFlowWidth ) THEN
             B(1,1) = dBasisdx(q,1)
             B(2,2) = dBasisdx(q,2)
             B(3,1) = Basis(q) / Radius
@@ -1094,18 +1128,17 @@ CONTAINS
 
          A(1:3,1:3) = MATMUL( G, B )
 
-
 ! Pressure gradient
          DO i=1,dim
             A(i,dim+1) = -dBasisdx(p,i) * Basis(q)
          END DO
-         IF ( CSymmetry ) A(1,dim+1) =  A(1,dim+1) - Basis(p) * Basis(q) / Radius
+         IF ( VariableFlowWidth ) A(1,dim+1) =  A(1,dim+1) - Basis(p) * Basis(q) / Radius
 
 ! Continuity equation:
          DO i=1,dim
             A(dim+1,i) = dBasisdx(q,i) * Basis(p)
          END DO
-         IF ( CSymmetry ) A(dim+1,1) =  A(dim+1,1) + Basis(p) * Basis(q) / Radius
+         IF ( VariableFlowWidth ) A(dim+1,1) =  A(dim+1,1) + Basis(p) * Basis(q) / Radius
          A(dim+1, dim+1) = 0.0d0
 
 ! Add nodal matrix to element matrix
@@ -1138,29 +1171,32 @@ CONTAINS
 !------------------------------------------------------------------------------
       SUBROUTINE LocalMatrixBoundary( BoundaryMatrix, BoundaryVector, &
                  LoadVector, NodalAlpha, NodalBeta, NodalSlipCoeff, & 
-                  NormalTangential, Element, n, Nodes )
+                 NormalTangential, Element, n, Nodes, &
+                 VariableFlowWidth, VariableLocalFlowWidth, NodalFlowWidth )
                       
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: BoundaryMatrix(:,:),BoundaryVector(:)
      REAL(KIND=dp) :: NodalAlpha(:,:),NodalBeta(:),LoadVector(:,:)
-     REAL(KIND=dp) :: NodalSlipCoeff(:,:)
+     REAL(KIND=dp) :: NodalSlipCoeff(:,:), NodalFlowWidth(:)
      TYPE(Element_t),POINTER  :: Element
      TYPE(Nodes_t)    :: Nodes
      LOGICAL :: NormalTangential
+     INTEGER, POINTER :: NodeIndexes(:)
      INTEGER :: n
 !------------------------------------------------------------------------------
      REAL(KIND=dp) :: Basis(n),ddBasisddx(1,1,1)
-     REAL(KIND=dp) :: dBasisdx(n,3),SqrtElementMetric
+     REAL(KIND=dp) :: dBasisdx(n,3),SqrtElementMetric, FW
 
      REAL(KIND=dp) :: u,v,w,s
      REAL(KIND=dp) :: Force(3),Alpha(3),Beta,Normal(3)
      REAL(KIND=dp), POINTER :: U_Integ(:),V_Integ(:),W_Integ(:),S_Integ(:)
-
      REAL(KIND=dp) :: Tangent(3),Tangent2(3),Vect(3), SlipCoeff
+     REAL(KIND=dp) :: Up,Vp,Wp
      INTEGER :: i,t,q,p,dim,N_Integ, c
 
-     LOGICAL :: stat
-
+     LOGICAL :: stat, VariableFlowWidth, VariableLocalFlowWidth
+     LOGICAL,SAVE :: AllocationDone=.False.
+    
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 !------------------------------------------------------------------------------
 
@@ -1178,6 +1214,16 @@ CONTAINS
       W_Integ => IntegStuff % w
       S_Integ => IntegStuff % s
       N_Integ =  IntegStuff % n
+
+    NodeIndexes => Element % NodeIndexes
+                   
+     NodalFlowWidth(1:n) = ListGetReal ( Material, &
+                        'FlowWidth', n, NodeIndexes, GotIt)
+       IF (.NOT. GotIt .AND. CSymmetry) THEN
+           DO i=1,n
+             NodalFlowWidth(i) = Nodes % x(i)
+           END DO          
+       END IF
 !
 !  Now we start integrating
 !
@@ -1193,9 +1239,13 @@ CONTAINS
        stat = ElementInfo( Element, Nodes, u, v, w, SqrtElementMetric, &
                 Basis, dBasisdx, ddBasisddx, .FALSE. )
 
+       FW = SUM( NodalFlowWidth(1:n) * Basis(1:n) )
+
        s = SqrtElementMetric * S_Integ(t)
-       IF ( CurrentCoordinateSystem() == AxisSymmetric ) &
-        s = s * SUM( Nodes % x(1:n) * Basis(1:n) )
+
+       IF (.NOT. VariableLocalFlowWidth ) Radius = 10e7
+       IF ( VariableFlowWidth )    s= s * FW
+
 !------------------------------------------------------------------------------
        Force = 0.0D0
        DO i=1,dim
@@ -1275,18 +1325,18 @@ CONTAINS
 
 !------------------------------------------------------------------------------
       SUBROUTINE LocalSD( Stress, StrainRate, Spin, &
-        NodalVelo, NodalTemp, NodalFluidity, NodalK1,  &
-        NodalK2, NodalE1, NodalE2, NodalE3, CSymmetry, &
+        NodalVelo, NodalTemp, NodalFluidity, NodalFlowWidth, &
+        NodalK1, NodalK2, NodalE1, NodalE2, NodalE3, &
         Basis, dBasisdx, Element, n,  Nodes, dim,  Wn, MinSRInvariant, &
-        Isotropic)
+        Isotropic, VariableFlowWidth, VariableLocalFlowWidth )
 !------------------------------------------------------------------------------
-!    Subroutine to computre the nodal Strain-Rate, Stress, ...
+!    Subroutine to compute the nodal Strain-Rate, Stress, ...
 !------------------------------------------------------------------------------
-     LOGICAL ::  CSymmetry 
      INTEGER :: n, dim
      INTEGER :: INDi(6),INDj(6)
      REAL(KIND=dp) :: Stress(:,:), StrainRate(:,:), Spin(:,:)
-     REAL(KIND=dp) :: NodalVelo(:,:), NodalTemp(:), NodalFluidity(:)
+     REAL(KIND=dp) :: NodalVelo(:,:), NodalTemp(:), NodalFluidity(:), &
+                      NodalFlowWidth(:)
      REAL(KIND=dp) :: Basis(2*n), ddBasisddx(1,1,1)
      REAL(KIND=dp) :: dBasisdx(2*n,3)
      REAL(KIND=dp) :: detJ
@@ -1294,14 +1344,14 @@ CONTAINS
      REAL(KIND=dp) :: NodalE1(:), NodalE2(:), NodalE3(:)
      REAL(KIND=dp) :: u, v, w      
      REAL(KIND=dp) :: Wn(7),  D(6), MinSRInvariant
-     LOGICAL :: Isotropic
+     LOGICAL :: Isotropic,VariableFlowWidth, VariableLocalFlowWidth
       
      TYPE(Nodes_t) :: Nodes
      TYPE(Element_t) :: Element
 !------------------------------------------------------------------------------
      LOGICAL :: stat
      INTEGER :: i,j,k,p,q
-     REAL(KIND=dp) :: LGrad(3,3),   Radius, Temp, ai(3), Angle(3),a2(6)
+     REAL(KIND=dp) :: LGrad(3,3), Radius, Temp, ai(3), Angle(3),a2(6)
      REAL(KIND=dp) :: C(6,6), epsi
      Real(kind=dp) :: Bg, BGlenT, ss, nn
 !------------------------------------------------------------------------------
@@ -1334,16 +1384,24 @@ CONTAINS
 !    -------------------
 
       LGrad = MATMUL( NodalVelo(:,1:n), dBasisdx(1:n,:) )
-        
-      StrainRate = 0.5 * ( LGrad + TRANSPOSE(LGrad) )
       
-      IF ( CSymmetry ) THEN
+      StrainRate = 0.5 * ( LGrad + TRANSPOSE(LGrad) )
+
+      IF ( VariableFlowWidth ) THEN
+
         StrainRate(1,3) = 0.0
         StrainRate(2,3) = 0.0
         StrainRate(3,1) = 0.0
         StrainRate(3,2) = 0.0
         StrainRate(3,3) = 0.0
-        Radius = SUM( Nodes % x(1:n) * Basis(1:n) )
+        
+        IF (SUM( NodalFlowWidth(1:n) * dBasisdx(1:n,1)) == 0) THEN
+              Radius = 10e7
+        ELSE
+                Radius = SUM( NodalFlowWidth(1:n) * Basis(1:n) ) / &
+                (SUM( NodalFlowWidth(1:n) * dBasisdx(1:n,1)) )
+        END IF
+        
         IF ( Radius > 10*AEPS ) THEN
          StrainRate(3,3) = SUM( Nodalvelo(1,1:n) * Basis(1:n) ) / Radius
         END IF
@@ -1367,7 +1425,6 @@ CONTAINS
 !
 !    Compute deviatoric stresses: 
 !    ----------------------------
-
 
       IF (.Not.Isotropic) then
 	    C = 0.0_dp
