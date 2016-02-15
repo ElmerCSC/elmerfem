@@ -245,26 +245,26 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        NeedOldValues, LimitDisp,  Bubbles = .TRUE.,&
        NormalFlux = .TRUE., SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE.,&
-       RotateFS
+       RotateFS, IsParallel
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
        i,j,K,L, p, q, R, t,N,NMAX,MMAX,nfamily, deg, Nmatrix,&
        edge, bf_id,DIM,istat,LocalNodes,nocorr,&
-       NSDOFs,NonlinearIter,iter, numberofsurfacenodes
+       NSDOFs,NonlinearIter,iter, numberofsurfacenodes, ierr
   INTEGER, POINTER ::&
        FreeSurfPerm(:), FlowPerm(:), NodeIndexes(:), EdgeMap(:,:)
 
 #ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: &
        at,st,totat,totst,Norm,PrevNorm,LocalBottom, cv, &
-       Relax, MaxDisp, maxdh,LinearTol,NonlinearTol,RelativeChange,&
+       Relax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
        smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
        NodeHolder(3)
 #else
   REAL(KIND=dp) :: &
        at,st,totat,totst,CPUTime,Norm,PrevNorm,LocalBottom, cv, &
-       Relax, MaxDisp, maxdh,LinearTol,NonlinearTol,RelativeChange,&
+       Relax, MaxDisp, maxdh, maxdh_comm, LinearTol,NonlinearTol,RelativeChange,&
        smallestpossiblenumber, rr, ss, Orientation(3), RotationMatrix(3,3),&
        NodeHolder(3)
 #endif
@@ -306,6 +306,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   VariableName = TRIM(Solver % Variable % Name)
   SolverName = 'FreeSurfaceSolver ('// TRIM(Solver % Variable % Name) // ')'
+  IsParallel = (ParEnv % PEs > 1)
   !------------------------------------------------------------------------------
   !    if this partition (or the serial problem) has no free surface,
   !    then nothing to be doneGet variabel/solver name
@@ -906,6 +907,11 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
              maxdh = MAX(maxdh, ABS(FreeSurf(j)-OldFreeSurf(j)))
            END IF
          END DO
+         IF(IsParallel) THEN
+           maxdh_comm = maxdh
+           CALL MPI_ALLREDUCE(maxdh_comm,maxdh,1, &
+                MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD,ierr)
+         END IF
          IF(maxdh > MaxDisp) THEN
            Relax = Relax * MaxDisp/maxdh
          END IF

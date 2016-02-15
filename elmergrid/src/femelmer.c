@@ -2810,11 +2810,9 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
     
     for(i=1;i<=bound[bc].nosides;i++) {
       
-      if(1)
-	GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
-      else
-	GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
-		       data,sideind,&sideelemtype);
+      GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
+      /* GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+	 data,sideind,&sideelemtype); */
       sidenodes = sideelemtype % 100;
       nohits = 0;
       for(j=0;j<sidenodes;j++) 
@@ -3570,11 +3568,10 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 	  for(i=1;i<=bound[bc].nosides;i++) {
 	    if(bound[bc].types[i] != bctype) continue;
 	    
-	    if(1)
-	      GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
-	    else
-	      GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
-			     data,sideind,&sideelemtype);
+	    GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
+	    /* GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+	       data,sideind,&sideelemtype); */
+
 	    sidenodes = sideelemtype%100;
 	    
 	    for(j=0;j<sidenodes;j++) {
@@ -5241,11 +5238,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	/* Normal boundary conditions */
 	for(i=1; i <= bound[j].nosides; i++) {
 	  
-	  if(1) 
-	    GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
-	  else
-	    GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],
-			   data,sideind,&sideelemtype);
+	  GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
+	  /* GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],
+	     data,sideind,&sideelemtype); */
 
 	  bctype = bound[j].types[i];
 	  nodesd1 = sideelemtype%100;
@@ -5274,56 +5269,51 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	  if( step == 1 ){	    
 
 	    haloelem = FALSE;
-	    if(0 && !parent && !parent2) {
-	      /* If neither parent exists we cannot really use the parent information 
-		 then save the element if all nodes are needed. */
-	      if( bcneeded < nodesd1 ) continue;
+
+	    /* Check whether the side is such that it belongs to the domain */
+	    trueparent = trueparent2 = FALSE;
+	    if( parent ) trueparent = (elempart[parent] == part);
+	    if( parent2 ) trueparent2 = (elempart[parent2] == part);
+	      
+	    if(trueparent || trueparent2) {
+	      /* Either parent must be associated with this partition, otherwise do not save this (except for halo nodes) */
+	      if( parent && !trueparent ) {	  
+		splitsides++;
+		if(halomode != 1 && halomode != 2) parent = 0;
+	      }
+	      else if( parent2 && !trueparent2 ) {
+		splitsides++;
+		if(!halomode != 1 && halomode != 2) parent2 = 0;
+	      }
+	    }
+	    else if( halomode == 1 || halomode == 2 ) {
+	      /* Halo elements ensure that both parents exist even if they are not trueparents */
+	      if( bcneeded == 0 ) continue; 
+	      if( bcneeded2 < nodesd1 ) {
+		printf("Warning: side element %d of type %d is halo but nodes are not in partition: %d %d\n",
+		       i,sideelemtype,bcneeded2,nodesd1);
+	      }
+	      haloelem = TRUE;
+	      halobcs += 1;
+	    }
+	    else if( halomode == 3 ) {
+	      closeparent = closeparent2 = FALSE;
+	      if( part <= subparts ) {
+		if( parent ) 
+		  if( elempart[parent] <= subparts) 
+		    closeparent = ( ABS( elempart[parent]-part) == 1 );
+		if( parent2 ) 
+		  if( elempart[parent2] <= subparts ) 
+		    closeparent2 = ( ABS( elempart[parent2]-part) == 1 );
+	      }
+	      if(!closeparent && !closeparent2) continue;
+	      haloelem = TRUE;
+	      halobcs += 1;
 	    }
 	    else {
-	      /* Check whether the side is such that it belongs to the domain */
-	      trueparent = trueparent2 = FALSE;
-	      if( parent ) trueparent = (elempart[parent] == part);
-	      if( parent2 ) trueparent2 = (elempart[parent2] == part);
-	      
-	      if(trueparent || trueparent2) {
-		/* Either parent must be associated with this partition, otherwise do not save this (except for halo nodes) */
-		if( parent && !trueparent ) {	  
-		  splitsides++;
-		  if(halomode != 1 && halomode != 2) parent = 0;
-		}
-		else if( parent2 && !trueparent2 ) {
-		  splitsides++;
-		  if(!halomode != 1 && halomode != 2) parent2 = 0;
-		}
-	      }
-	      else if( halomode == 1 || halomode == 2 ) {
-		/* Halo elements ensure that both parents exist even if they are not trueparents */
-		if( bcneeded == 0 ) continue; 
-		if( bcneeded2 < nodesd1 ) {
-		  printf("Warning: side element %d of type %d is halo but nodes are not in partition: %d %d\n",
-			 i,sideelemtype,bcneeded2,nodesd1);
-		}
-		haloelem = TRUE;
-		halobcs += 1;
-	      }
-	      else if( halomode == 3 ) {
-		closeparent = closeparent2 = FALSE;
-		if( part <= subparts ) {
-		  if( parent ) 
-		    if( elempart[parent] <= subparts) 
-		      closeparent = ( ABS( elempart[parent]-part) == 1 );
-		  if( parent2 ) 
-		    if( elempart[parent2] <= subparts ) 
-		      closeparent2 = ( ABS( elempart[parent2]-part) == 1 );
-		}
-		if(!closeparent && !closeparent2) continue;
-		haloelem = TRUE;
-		halobcs += 1;
-	      }
-	      else {
-		continue;
-	      }
+	      continue;
 	    }
+
 	   
 	    if(bound[j].ediscont) 
 	      discont = bound[j].discont[i];
@@ -5379,6 +5369,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	      }
 	    }
 	  }
+
 	  else if( step == 2 ) {
 	    if(bcneeded == 0 ) continue;
 	    if( bcelemsaved[i] ) continue;
@@ -5410,9 +5401,6 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 		    for(l3=1;l3<=nobcnodes;l3++)
 		      bcnodesaved[maxbcnodesaved][l3] = 0;
 		    bcnodesaved[maxbcnodesaved][bcnode[ind]] = bctype;
-		    if(0) for(l3=1;l3<=maxbcnodesaved;l3++)
-		      printf("bc index b: %d %d %d %d\n",l3,k,bcnode[ind],bcnodesaved[l3][bcnode[ind]]);
-		    
 		  } 
 
 		  if(hit) continue;
