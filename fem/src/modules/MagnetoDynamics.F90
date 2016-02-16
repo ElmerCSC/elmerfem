@@ -6332,7 +6332,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      ! Sum up the nodal forces in each body such that each redundant reference is summed
      ! only once because they were already lumped into nodes.  
-     CALL LumpedElementalVar( Mesh, EL_NF, SetPerm, AlreadySummed = .TRUE.)
+     !CALL LumpedElementalVar( Mesh, EL_NF, SetPerm, AlreadySummed = .TRUE.)
+     CALL LumpGroupedElementalVar( Mesh, EL_NF,  SetPerm, .TRUE., "Nodal Force") 
    ELSE
      CALL SumElementalVariable(EL_NF)
      CALL CalcBoundaryModels(.TRUE.)
@@ -6732,37 +6733,21 @@ CONTAINS
       n_lp = GetElementNOFNodes(LeftParent)
       n_rp = GetElementNOFNodes(RightParent) 
 
-      !write (*,*), "b nodes: ", BElement % NodeIndexes(1:n)
-      !write (*,*), "left nodes: ", LeftParent % NodeIndexes(1:n_lp)
-      !write (*,*), "right nodes: ", RightParent % NodeIndexes(1:n_rp)
-      !write (*,*), "left edges: ", LeftParent % EdgeIndexes(1:6)
-      !write (*,*), "right edges: ", RightParent % EdgeIndexes(1:6)
 
       CALL GetElementNodes(Nodes, BElement)
       CALL GetElementNodes(LPNodes, LeftParent)
       CALL GetElementNodes(RPNodes, RightParent)
 
       CALL GetVectorLocalSolution(SOL,Pname,uElement=BElement, uSolver=pSolver)
-      ! DEBUG
-      !write (*,*), 'SOL(1,1:6) =', SOL(1,1:6)
 
-      !CALL GetVectorLocalSolution(SOL,Pname,uElement=LeftParent, uSolver=pSolver)
 
       LeftCenter(1:3) = [ sum(LPNodes % x), sum(LPNodes % y), sum(LPNodes % z) ] / n_lp
       RightCenter(1:3) = [ sum(RPNodes % x), sum(RPNodes % y), sum(RPNodes % z) ] / n_rp
       BndCenter(1:3) = [ sum(Nodes % x), sum(Nodes % y), sum(Nodes % z) ] / n
 
-      !np = n_lp*pSolver % Def_Dofs(GetElementFamily(LeftParent),LeftParent % BodyId,1)
-      !nd = GetElementNOFDOFs(uElement=LeftParent, uSolver=pSolver)
       np = n*MAXVAL(pSolver % Def_Dofs(GetElementFamily(BElement),:,1))
       nd = GetElementNOFDOFs(uElement=BElement, uSolver=pSolver)
 
-
-      ! DEBUG
-      write (*,*), 'n, np, nd =', n, np, nd
-      write (*,*), 'SOL(1,1:nd) =', SOL(1,1:nd)
-      write (*,*), 'SOL(1,np+1:nd) =', SOL(1,np+1:nd)
-      write (*,*), 'Solver % Def_dofs ...', pSolver % Def_Dofs(GetElementFamily(LeftParent),LeftParent % BodyId,1)
       
       DO k = 1,n
         DO l = 1,n_lp
@@ -6772,10 +6757,6 @@ CONTAINS
           IF(RightParent % NodeIndexes(l) == BElement % NodeIndexes(k)) RightMap(k) = l
         END DO
       END DO
-
-      ! DEBUG
-      !write (*,*), 'LeftMap = ', LeftMap
-      !write (*,*), 'RightMap = ', RightMap
 
       AirGapMu = GetReal(BC, 'Air Gap Relative Permeability', Found)
       IF(.NOT. Found) AirGapMu = 1.0_dp
@@ -6806,10 +6787,6 @@ CONTAINS
 
         R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
         GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
-        ! DEBUG
-        !write (*,*), 'GapLength_ip = ', GapLength_ip
-        !write (*,*), 'R_ip = ', R_ip
-        !write (*,*), 'AirGapMu(1:n) = ', AirGapMu(1:n)
 
         s = s * detJ
 
@@ -6827,10 +6804,6 @@ CONTAINS
           RightNormal = Normal
         END IF
 
-
-        ! DEBUG
-        !write (*,*), 'dim = ', dim, ' vdofs = ', vdofs
-        !write (*,*), 'rotwbasis(1:nd-np,:) = ', rotwbasis(1:nd-np,:)
 
         DO k=1,vDOFs
           SELECT CASE(dim)
@@ -6851,11 +6824,6 @@ CONTAINS
             B(k,:) = normal*sum( SOL(k,np+1:nd)* RotWBasis(1:nd-np,3) )
           END SELECT
         END DO
-        ! DEBUG
-        !write (*,*), 'B = ', B(1,:)
-        !write (*,*), 'RotWBasis(1) = ', RotWBasis(1,:)
-        !write (*,*), 'RotWBasis(2) = ', RotWBasis(2,:)
-        !write (*,*), 'RotWBasis(3) = ', RotWBasis(3,:)
         B2 = sum(B(1,:)*B(1,:) + B(2,:)*B(2,:))
         IF (ASSOCIATED(NF).OR.ASSOCIATED(EL_NF)) THEN
           NF_ip_r = 0._dp
@@ -6879,10 +6847,6 @@ CONTAINS
       END DO ! Integration points
 
       IF(ElementalFields) THEN
-        ! DEBUG
-        !write (*,*), 'LeftFORCE(:,1) = ', LeftFORCE(1:n_lp,1)
-        !write (*,*), 'LeftFORCE(:,2) = ', LeftFORCE(1:n_lp,2)
-        !write (*,*), 'LeftFORCE(:,3) = ', LeftFORCE(1:n_lp,3)
         IF( SumForces ) THEN
           CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, Values=ForceValues, uAdditive=.TRUE.)
           CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, Values=ForceValues, uAdditive=.TRUE.)
@@ -6957,6 +6921,68 @@ CONTAINS
 !------------------------------------------------------------------------------
  END SUBROUTINE NodalTorqueDeprecated
 !------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+ SUBROUTINE GetBodyGroups(GroupPrefix, Groups)
+!-------------------------------------------------------------------
+   IMPLICIT NONE
+   CHARACTER(LEN=*), INTENT(IN) :: GroupPrefix
+   INTEGER, ALLOCATABLE, INTENT(OUT) :: Groups(:)
+   INTEGER, POINTER :: LocalGroups(:)
+
+   INTEGER, ALLOCATABLE :: AllGroups(:)
+   INTEGER :: n, maxngroups, ngroups, k, m, pivot
+
+
+   maxngroups = 0
+   DO n=1,size(Model % bodies)
+     LocalGroups => ListGetIntegerArray(Model % bodies(n) % Values, GroupPrefix // " Groups", Found)
+     IF (Found) THEN
+       maxngroups = maxngroups + size(LocalGroups)
+     END IF
+   END DO
+   IF(maxngroups .eq. 0) THEN
+     ALLOCATE(Groups(0))
+     return
+   END IF
+
+   ALLOCATE(AllGroups(maxngroups))
+   AllGroups = -1
+   ngroups = 0
+   DO n=1,size(Model % bodies)
+     LocalGroups => ListGetIntegerArray(Model % bodies(n) % Values, GroupPrefix //" Groups", Found)
+     IF (Found) THEN
+       AllGroups((ngroups+1):(ngroups+size(LocalGroups))) = LocalGroups(1:size(LocalGroups))
+       ngroups = ngroups + size(LocalGroups)
+     END IF
+   END DO
+
+   call SORT(size(AllGroups), AllGroups)
+   pivot = AllGroups(1)
+   k = 1
+   m = 1
+   do while(pivot .ne. -1)
+     AllGroups(k) = pivot
+     DO n=m,size(AllGroups)
+       IF (AllGroups(k) .ne. AllGroups(n)) then
+         pivot = AllGroups(n)
+         k = k + 1
+         m = n
+         exit
+       end if
+       pivot = -1
+     END DO
+   END DO
+   ALLOCATE(Groups(k))
+   IF(k .eq. 0) RETURN
+
+   Groups(1:k) = AllGroups(1:k)
+   DEALLOCATE(AllGroups)
+     
+!-------------------------------------------------------------------
+ END SUBROUTINE GetBodyGroups
+!-------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE NodalTorque(T, TorqueGroups)
@@ -7396,6 +7422,84 @@ CONTAINS
     END SUBROUTINE calcAverageFlux
 !------------------------------------------------------------------------------
 
+  SUBROUTINE LumpGroupedElementalVar( Mesh, Var, SetPerm, AlreadySummed, GroupPrefix)
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: SetPerm(:)
+    LOGICAL :: AlreadySummed
+    CHARACTER(LEN=*), INTENT(IN) :: GroupPrefix
+    INTEGER, ALLOCATABLE :: Groups(:)
+    INTEGER, POINTER :: LocalGroups(:)
+
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, ALLOCATABLE :: VisitedNode(:,:)
+    INTEGER :: dof,n,m,i,j,k,l,nodeind,dgind, ng
+    REAL(KIND=dp), ALLOCATABLE :: BodySum(:,:)
+
+    CALL GetBodyGroups(GroupPrefix, Groups)
+    ng = size(Groups,1)
+    
+    IF(.NOT. ASSOCIATED(var)) RETURN
+    IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
+
+    CALL Info('LumpedElementalVar','Calculating lumped sum for: '&
+        //TRIM(Var % Name), Level=8)
+
+    n = Mesh % NumberOfNodes
+
+    m = MAXVAL( SetPerm )
+    IF( AlreadySummed ) THEN
+      ALLOCATE( VisitedNode(m,ng) )
+    END IF
+
+    
+    ALLOCATE( BodySum(var%dofs, ng) )
+
+
+    ! Take the sum to nodes, and calculate average if requested
+    BodySum = 0.0_dp
+    IF( AlreadySummed ) THEN
+      VisitedNode = .FALSE.
+    END IF
+
+    DO j=1,Mesh % NumberOfBulkElements
+      Element => GetActiveElement(j)
+      BodyParams => GetBodyParams(Element)
+      LocalGroups => ListGetIntegerArray(BodyParams, GroupPrefix // " Groups", Found)
+      IF(.NOT. Found) CYCLE
+
+      DO k=1,Element % TYPE % NumberOfNodes         
+        dgind = Element % DGIndexes(k)
+        l = SetPerm(dgind)
+        IF( l == 0 ) CYCLE
+
+        DO ng=1,size(LocalGroups)
+          IF( AlreadySummed ) THEN
+            IF( VisitedNode(l,LocalGroups(ng)) ) CYCLE           
+            VisitedNode(l,LocalGroups(ng)) = .TRUE.
+          END IF
+          DO dof=1,Var % Dofs
+            BodySum(dof,LocalGroups(ng)) = BodySum(dof, LocalGroups(ng)) + &
+              Var % Values( Var % Dofs * ( Var % Perm( dgind )-1) + dof )
+          END DO
+        END DO
+      END DO
+    END DO
+    
+    DO dof=1,Var%Dofs
+      DO i=1,size(Groups)
+        write (Message,'("res: Group ", i0, " ", A, " ", i0)'), &
+          Groups(i), GroupPrefix, dof
+        CALL ListAddConstReal(Model % Simulation, trim(Message), BodySum(dof,i))
+        write (Message,'("Group ", i0, " ",A " ", i0, ": ", f0.8)'), & 
+          Groups(i), GroupPrefix, dof, BodySum(dof,i)
+        call Info( 'MagnetoDynamicsCalcFields', Message)
+      END DO
+    END DO
+
+    DEALLOCATE( VisitedNode, BodySum )
+
+  END SUBROUTINE LumpGroupedElementalVar
 !------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamicsCalcFields
 !------------------------------------------------------------------------
