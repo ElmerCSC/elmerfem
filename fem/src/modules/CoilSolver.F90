@@ -762,7 +762,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     REAL(KIND=dp) :: x,y,z,x0,y0,rad2deg,fii,dfii,dy
     REAL(KIND=dp) :: MinCoord(3),MaxCoord(3),r(3),rp(3),ParTmp(3),ierr
-    INTEGER :: i,j,k,ioffset,Counter(4)
+    INTEGER :: i,j,k,ioffset
     LOGICAL :: Found
 
     CALL Info('CoilSolver','Choosing fixing nodes for set: '//TRIM(I2S(SetNo)))
@@ -786,7 +786,7 @@ CONTAINS
     MinCoord = HUGE( MinCoord )
     MaxCoord = -HUGE( MaxCoord )
     ioffset = 10 * NoCoils 
-    Counter = 0
+
 
     DO i=1,Mesh % NumberOfNodes
       IF( Perm(i) == 0 ) CYCLE
@@ -827,10 +827,14 @@ CONTAINS
       dy = 0.2 * ( MaxCoord(2) - MinCoord(2) )
     END IF
 
-    
-    DO i=1,Mesh % NumberOfNodes
-      j = Perm(i)
 
+    DO i=1,Mesh % NumberOfNodes
+
+      IF( SelectNodes ) THEN
+        IF( CoilIndex(i) /= NoCoils ) CYCLE
+      END IF
+
+      j = Perm(i)
       IF( j == 0 ) CYCLE
       
       r(1) = Mesh % Nodes % x(i)
@@ -862,16 +866,12 @@ CONTAINS
       IF( rp(1) > 0 ) THEN
         IF( rp(2) > dy / 2 ) THEN
           Set(j) = 2 + ioffset
-          Counter(1) = Counter(1) + 1
         ELSE IF( rp(2) > 0.0 ) THEN
           Set(j) = 1 + ioffset
-          Counter(2) = Counter(2) + 1
         ELSE IF( rp(2) > -dy / 2 ) THEN
           Set(j) = -1 - ioffset
-          Counter(3) = Counter(3) + 1
         ELSE 
           Set(j) = -2 - ioffset
-          Counter(4) = Counter(4) + 1
         END IF
       END IF
 
@@ -1327,7 +1327,7 @@ CONTAINS
       CALL Info('CoilSolver',Message,Level=7)
 
       IF( sumerr > 0.5 ) THEN
-        CALL Fatal('CoilSolver','Positive and negative sums differ too much!ä')
+        CALL Warn('CoilSolver','Positive and negative sums differ too much!')
       END IF
 
       InitialCurrent = ( possum - negsum ) / 2.0
