@@ -5361,7 +5361,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
    REAL(KIND=dp) :: ComponentLoss(2,2)
-   REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), localAlpha, localV(2), nofturns, coilthickness
+   REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
    COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3), BodyForceCurrDens(3,35), &
                     BodyForceCurrDens_ip(3)
@@ -5394,6 +5394,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(Element_t), POINTER :: Element
 
    INTEGER, ALLOCATABLE :: Pivot(:), TorqueGroups(:)
+   INTEGER, POINTER :: MasterBodies(:)
 
    REAL(KIND=dp), POINTER :: Fsave(:), HB(:,:)=>NULL(), CubicCoeff(:)=>NULL(), &
      HBBVal(:), HBCval(:), HBHval(:)
@@ -5411,7 +5412,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
    LOGICAL :: CSymmetry, HBCurve
-   REAL(KIND=dp) :: xcoord, grads_coeff
+   REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
    
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
@@ -6334,6 +6335,20 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ! only once because they were already lumped into nodes.  
      !CALL LumpedElementalVar( Mesh, EL_NF, SetPerm, AlreadySummed = .TRUE.)
      CALL LumpGroupedElementalVar( Mesh, EL_NF,  SetPerm, .TRUE., "Nodal Force") 
+
+     ! This is the newest version utlizing components
+     DO j=1,Model % NumberOfComponents
+       CompParams => Model % Components(j) % Values
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Force', Found ) ) THEN 
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, EL_NF, &
+             Force = LumpedForce, SetPerm = SetPerm )
+         DO i=1,3
+           CALL ListAddConstReal( CompParams,'res: magnetic force e '//TRIM(I2S(i)), LumpedForce(i) )
+         END DO
+       END IF
+     END DO
+
+
    ELSE
      CALL SumElementalVariable(EL_NF)
      CALL CalcBoundaryModels(.TRUE.)
@@ -6436,7 +6451,27 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLoss(k,j)
          CALL Info('MagnetoDynamicsCalcFields', Message, Level=6 )
        END DO
+
+       ! Save losses to components if requested. 
+       !---------------------------------------------------------------------------
+       DO j=1,Model % NumberOfComponents
+         CompParams => Model % Components(j) % Values
+         IF( ListGetLogical( CompParams,'Calculate Magnetic Losses', Found ) ) THEN
+           MasterBodies => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
+           IF(.NOT. Found ) CYCLE
+           val = SUM( BodyLoss(k,MasterBodies) )
+           IF( k == 1 ) THEN
+             CALL ListAddConstReal( CompParams,'res: harmonic loss linear',val )
+           ELSE IF( k == 2 ) THEN
+             CALL ListAddConstReal( CompParams,'res: harmonic loss quadratic',val )
+           ELSE
+             CALL ListAddConstReal( CompParams,'res: joule loss',val )
+           END IF
+         END IF
+       END DO
      END DO
+
+     
 
      IF( ParEnv % MyPe == 0 ) THEN
        LossFile = ListGetString(SolverParams,'Harmonic Loss Filename',Found )
@@ -6480,6 +6515,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL ListAddConstReal(Model % Simulation, 'res: y-axis torque over defined bodies', TorqueDeprecated(2))
        CALL ListAddConstReal(Model % Simulation, 'res: z-axis torque over defined bodies', TorqueDeprecated(3))
      END IF
+   
+     ! This is the newest version utlizing components
+     DO j=1,Model % NumberOfComponents
+       CompParams => Model % Components(j) % Values
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN 
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
+             Torque = val )
+         CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
+       END IF
+     END DO
+
    END IF
 
   ! Flux On Boundary:
@@ -7132,6 +7178,174 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE NodalTorque
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Compute reduction operators for a given component with given nodal vector field.
+!> Force is simple sum of nodal forces
+!> Moment is moment of nodal forces about a given center point
+!> Torque is moment of nodal forces about a given rotational axis
+!> If the given field is a elemental (DG) field it may be reduced by 
+!> optional SetPerm reordering for minimal discontinuous set. 
+!------------------------------------------------------------------------------
+  SUBROUTINE ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
+      Force, Moment, Torque, SetPerm ) 
+!------------------------------------------------------------------------------
+    TYPE(Model_t) :: Model
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(ValueList_t), POINTER :: CompParams
+    TYPE(Variable_t), POINTER :: NF
+    REAL(KIND=dp), OPTIONAL :: Moment(3), Force(3), Torque
+    INTEGER, POINTER, OPTIONAL :: SetPerm(:)
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, ALLOCATABLE :: VisitedNode(:)
+    REAL(KIND=dp) :: Origin(3), Axis(3), P(3), F(3), v1(3), v2(3)
+    INTEGER :: t, i, j, k, dofs, globalnode
+    LOGICAL :: ElementalVar, Found, NeedLocation
+    INTEGER, POINTER :: MasterBodies(:),NodeIndexes(:),DofIndexes(:)
+    LOGICAL :: VisitNodeOnlyOnce
+
+
+    CALL Info('ComponentNodalForceReduction','Performing reduction for component: '&
+        //TRIM(ListGetString(CompParams,'Name')),Level=10)
+    
+    IF(.NOT. (PRESENT(Torque) .OR. PRESENT(Moment) .OR. PRESENT(Force) ) ) THEN
+      CALL Warn('ComponentNodalForceReduction','Nothing to compute!')
+      RETURN
+    END IF
+
+    IF( PRESENT(Torque)) Torque = 0.0_dp
+    IF( PRESENT(Moment)) Moment = 0.0_dp
+    IF( PRESENT(Force)) Force = 0.0_dp
+
+    MasterBodies => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
+    IF( .NOT. Found ) THEN
+      CALL Warn('ComponentNodalForceReduction','> Master Bodies < not given')
+      RETURN
+    END IF
+    
+    NeedLocation = PRESENT( Moment ) .OR. PRESENT( Torque )
+
+    ! We can later get these from the component list
+    Origin = 0.0_dp   ! torque origin
+    Axis = 0.0_dp    
+    Axis(3) = 1.0_dp  ! torque axis
+    
+    ElementalVar = ( NF % TYPE == Variable_on_nodes_on_elements )
+    IF( PRESENT( SetPerm ) .AND. .NOT. ElementalVar ) THEN
+      CALL Fatal('ComponentNodalForceReduction','SetPerm is usable only for elemental fields')
+    END IF
+
+    dofs = NF % Dofs
+    IF( dofs == 2 ) F(3) = 0.0_dp
+
+    ! For nodal field compute only once each node
+    ! For DG field each node is visited only once by construction
+    VisitNodeOnlyOnce = .NOT. ElementalVar .OR. PRESENT(SetPerm)
+    IF( VisitNodeOnlyOnce ) THEN
+      ALLOCATE(VisitedNode( Mesh % NumberOfNodes ) )
+      VisitedNode = .FALSE.
+    END IF
+
+
+    DO t=1,Mesh % NumberOfBulkElements
+      Element => Mesh % Elements(t)
+      IF( ALL( MasterBodies /= Element % BodyId ) ) CYCLE
+
+      n = Element % TYPE % NumberOfNodes
+      NodeIndexes => Element % NodeIndexes 
+      IF( ElementalVar ) THEN
+        DofIndexes => Element % DGIndexes
+      ELSE
+        DofIndexes => NodeIndexes
+      END IF
+      
+      DO i=1,n
+        j = DofIndexes(i)        
+        k = NF % Perm(j)
+
+        IF( VisitNodeOnlyOnce ) THEN
+          IF( PRESENT( SetPerm ) ) j = SetPerm(j)
+          IF( VisitedNode(j) ) CYCLE
+          VisitedNode(j) = .TRUE.
+        END IF
+
+        globalnode = NodeIndexes(i)
+
+        ! Only compute the parallel reduction once
+        IF( ParEnv % PEs > 1 ) THEN
+          IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
+        END IF
+       
+        F(1) = NF % Values( dofs*(k-1) + 1)
+        F(2) = NF % Values( dofs*(k-1) + 2)
+        IF( dofs == 3 ) THEN 
+          F(3) = NF % Values( dofs*(k-1) + 3)
+        END IF
+        
+        IF( PRESENT( Force ) ) THEN
+          ! calculate simple sum
+          Force = Force + F
+        END IF
+
+        IF( NeedLocation ) THEN
+          P(1) = Mesh % Nodes % x(globalnode)
+          P(2) = Mesh % Nodes % y(globalnode)
+          P(3) = Mesh % Nodes % z(globalnode)
+        
+          v1 = P - Origin
+
+          ! Calculate moment 
+          IF( PRESENT( Moment ) ) THEN
+            Moment = Moment + CrossProduct(v1,F)
+          END IF
+
+          ! Calculate torque around an axis
+          IF( PRESENT( Torque ) ) THEN
+            v1 = (1.0_dp - SUM(Axis*v1) ) * v1
+            v2 = CrossProduct(v1,F)
+            Torque = Torque + SUM(Axis*v2)        
+          END IF
+        END IF
+
+      END DO
+    END DO
+
+    IF( PRESENT( Force ) ) THEN
+      IF( ParEnv % PEs > 1 ) THEN
+        !Force = ParallelReduction(Force)      
+        CALL Fatal(' ComponentNodalForceReduction','Implement parallel reduction for Force')
+      END IF
+      WRITE( Message,'(A,3ES15.6)') 'Force in component > '&
+          //TRIM(ListGetString(CompParams,'Name'))//' < :', Force
+      CALL Info('ComponentNodalForceReduction',Message,Level=7)
+    END IF
+
+    IF( PRESENT( Moment ) ) THEN
+      IF( ParEnv % MyPe > 1 ) THEN
+        !Moment = ParallelReduction(Moment)
+        CALL Fatal(' ComponentNodalForceReduction','Implement parallel reduction for Moment')
+      END IF
+      WRITE( Message,'(A,3ES15.6)') 'Moment in component > '&
+          //TRIM(ListGetString(CompParams,'Name'))//' < :', Moment
+      CALL Info('ComponentNodalForceReduction',Message,Level=7)
+    END IF
+
+    IF( PRESENT( Torque ) ) THEN
+      Torque = ParallelReduction(Torque)
+      WRITE( Message,'(A,ES15.6)') 'Torque in component > '&
+          //TRIM(ListGetString(CompParams,'Name'))//' < :', Torque
+      CALL Info('ComponentNodalForceReduction',Message,Level=7)
+    END IF
+
+!------------------------------------------------------------------------------
+  END SUBROUTINE ComponentNodalForceReduction
+!------------------------------------------------------------------------------
+
+
 
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs )
