@@ -61,6 +61,7 @@ Solver 2
   Nonlinear System Max Iterations = 1
   Nonlinear System Min Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-08
+  Nonlinear System Consistent Norm = True
   Steady State Convergence Tolerance = 1.0e-6
   Exported Variable 1 = Freesurface Residual
   Exported Variable 1 DOFs = 1
