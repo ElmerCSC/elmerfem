@@ -6923,11 +6923,11 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------
- SUBROUTINE GetBodyGroups(GroupPrefix, Groups)
+ SUBROUTINE GetBodyGroups(GroupPrefix, Groups, GroupPerm)
 !-------------------------------------------------------------------
    IMPLICIT NONE
    CHARACTER(LEN=*), INTENT(IN) :: GroupPrefix
-   INTEGER, ALLOCATABLE, INTENT(OUT) :: Groups(:)
+   INTEGER, ALLOCATABLE, INTENT(OUT) :: Groups(:), GroupPerm(:)
    INTEGER, POINTER :: LocalGroups(:)
 
    INTEGER, ALLOCATABLE :: AllGroups(:)
@@ -6973,10 +6973,19 @@ CONTAINS
        pivot = -1
      END DO
    END DO
+
    ALLOCATE(Groups(k))
-   IF(k .eq. 0) RETURN
+
 
    Groups(1:k) = AllGroups(1:k)
+
+   ALLOCATE(GroupPerm(MAXVAL(Groups)))
+   GroupPerm = -1
+   IF(k .eq. 0) RETURN
+   DO m=1,k
+     GroupPerm(Groups(m)) = m
+   END DO
+
    DEALLOCATE(AllGroups)
      
 !-------------------------------------------------------------------
@@ -7428,7 +7437,7 @@ CONTAINS
     INTEGER, POINTER :: SetPerm(:)
     LOGICAL :: AlreadySummed
     CHARACTER(LEN=*), INTENT(IN) :: GroupPrefix
-    INTEGER, ALLOCATABLE :: Groups(:)
+    INTEGER, ALLOCATABLE :: Groups(:), GroupPerm(:)
     INTEGER, POINTER :: LocalGroups(:)
 
     TYPE(Element_t), POINTER :: Element
@@ -7436,7 +7445,7 @@ CONTAINS
     INTEGER :: dof,n,m,i,j,k,l,nodeind,dgind, ng
     REAL(KIND=dp), ALLOCATABLE :: BodySum(:,:)
 
-    CALL GetBodyGroups(GroupPrefix, Groups)
+    CALL GetBodyGroups(GroupPrefix, Groups, GroupPerm)
     ng = size(Groups,1)
     
     IF(.NOT. ASSOCIATED(var)) RETURN
@@ -7465,7 +7474,8 @@ CONTAINS
     DO j=1,Mesh % NumberOfBulkElements
       Element => GetActiveElement(j)
       BodyParams => GetBodyParams(Element)
-      LocalGroups => ListGetIntegerArray(BodyParams, GroupPrefix // " Groups", Found)
+      LocalGroups => ListGetIntegerArray(BodyParams, &
+        GroupPrefix // " Groups", Found)
       IF(.NOT. Found) CYCLE
 
       DO k=1,Element % TYPE % NumberOfNodes         
@@ -7475,11 +7485,12 @@ CONTAINS
 
         DO ng=1,size(LocalGroups)
           IF( AlreadySummed ) THEN
-            IF( VisitedNode(l,LocalGroups(ng)) ) CYCLE           
-            VisitedNode(l,LocalGroups(ng)) = .TRUE.
+            IF( VisitedNode(l,GroupPerm(LocalGroups(ng))) ) CYCLE           
+            VisitedNode(l,GroupPerm(LocalGroups(ng))) = .TRUE.
           END IF
           DO dof=1,Var % Dofs
-            BodySum(dof,LocalGroups(ng)) = BodySum(dof, LocalGroups(ng)) + &
+            BodySum(dof,GroupPerm(LocalGroups(ng))) = & 
+              BodySum(dof,GroupPerm(LocalGroups(ng))) + &
               Var % Values( Var % Dofs * ( Var % Perm( dgind )-1) + dof )
           END DO
         END DO
@@ -7499,7 +7510,10 @@ CONTAINS
 
     DEALLOCATE( VisitedNode, BodySum )
 
+!------------------------------------------------------------------------
   END SUBROUTINE LumpGroupedElementalVar
+!------------------------------------------------------------------------
+
 !------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamicsCalcFields
 !------------------------------------------------------------------------
