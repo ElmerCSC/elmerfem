@@ -618,12 +618,13 @@ st = realtime()
 
   ! Sync neighbour information, if changed by the above ^:
   ! ------------------------------------------------------
-  ALLOCATE(isNeighbour(ParEnv % PEs))
-  isNeighbour = Parenv % IsNeighbour
-  CALL MPI_ALLREDUCE( isNeighbour, Parenv % IsNeighbour, Parenv % Pes, &
-      MPI_LOGICAL, MPI_LOR, SourceMatrix % Comm, i )
-  Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
-  Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
+! ALLOCATE(isNeighbour(ParEnv % PEs))
+! isNeighbour = Parenv % IsNeighbour
+! CALL MPI_ALLREDUCE( isNeighbour, Parenv % IsNeighbour, Parenv % Pes, &
+!     MPI_LOGICAL, MPI_LOR, SourceMatrix % Comm, i )
+! Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
+! Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
+  CALL SyncNeighbours(ParEnv)
 
   ! -
   ALLOCATE(SplittedMatrix % IfLCols(ParEnv % PEs))

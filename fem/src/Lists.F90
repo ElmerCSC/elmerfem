@@ -2920,8 +2920,7 @@ CONTAINS
          IF ( .NOT. ANY( T(1:j)==HUGE(1.0_dp) ) ) THEN
            IF ( ptr % PROCEDURE /= 0 ) THEN
              F(i) = ptr % Coeff * &
-                 ExecRealFunction( ptr % PROCEDURE,CurrentModel, &
-                          NodeIndexes(i), T )
+                 ExecRealFunction( ptr % PROCEDURE,CurrentModel, k, T )
            ELSE
              IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
                WRITE(Message,*) 'VALUE TYPE for property [', TRIM(Name), &
@@ -4027,46 +4026,80 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Gets a real derivative from. This is only available for tables with dependencies.
 !------------------------------------------------------------------------------
-   RECURSIVE FUNCTION ListGetDerivValue(List,Name,N,NodeIndexes) RESULT(F)
+   RECURSIVE FUNCTION ListGetDerivValue(List,Name,N,NodeIndexes,dT) RESULT(F)
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER ::  List
      CHARACTER(LEN=*) :: Name
      INTEGER :: N,NodeIndexes(:)
+     REAL(KIND=dp), OPTIONAL :: dT
      REAL(KIND=dp) :: F(N)
 !------------------------------------------------------------------------------
      TYPE(Variable_t), POINTER :: Variable
      TYPE(ValueListEntry_t), POINTER :: ptr
      INTEGER :: i,k,l
-     REAL(KIND=dp) :: T
+     REAL(KIND=dp) :: T,T1(1),T2(1),F1,F2
 !------------------------------------------------------------------------------
+
      F = 0.0D0
      ptr => ListFind(List,Name)
+
+
      IF ( .NOT.ASSOCIATED(ptr) ) RETURN
 
-     IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
-       CALL Fatal( 'ListGetDerivValue', &
-           'Value type for property > '// TRIM(Name) // '< not used consistently.')
-     END IF
 
      SELECT CASE(ptr % TYPE)
        CASE( LIST_TYPE_VARIABLE_SCALAR )
-         Variable => VariableGet( CurrentModel % Variables,ptr % DependName ) 
-         DO i=1,n
-           k = NodeIndexes(i)
-           IF ( ASSOCIATED(Variable % Perm) ) k = Variable % Perm(K)
-           IF ( k > 0 ) THEN
-             T = Variable % Values(k)
-             F(i) = ptr % Coeff * &
-                 DerivateCurve(ptr % TValues,ptr % FValues(1,1,:), &
-                 T, ptr % CubicCoeff )
+         
+         IF ( ptr % PROCEDURE /= 0 ) THEN
+           IF( .NOT. PRESENT( dT ) ) THEN
+             CALL Fatal('ListGetDerivValue','Numerical derivative of function requires dT')
            END IF
-         END DO
+           Variable => VariableGet( CurrentModel % Variables,ptr % DependName ) 
+           IF( .NOT. ASSOCIATED( Variable ) ) THEN
+             CALL Fatal('ListGetDeriveValue','Cannot derivate with variable: '//TRIM(ptr % DependName))
+           END IF
+
+           DO i=1,n
+             k = NodeIndexes(i)            
+             IF ( ASSOCIATED(Variable % Perm) ) k = Variable % Perm(k)
+             IF ( k > 0 ) THEN
+               T = Variable % Values(k) 
+               T1(1) = T + 0.5_dp * dT
+               T2(1) = T - 0.5_dp * dT 
+               F1 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, NodeIndexes(i), T1 )
+               F2 = ExecRealFunction( ptr % PROCEDURE,CurrentModel, NodeIndexes(i), T2 )
+               F(i) = ptr % Coeff * ( F1 - F2 ) / dT
+             END IF
+           END DO
+
+         ELSE
+           IF ( .NOT. ASSOCIATED(ptr % FValues) ) THEN
+             CALL Fatal( 'ListGetDerivValue', &
+                 'Value type for property > '// TRIM(Name) // '< not used consistently.')
+           END IF
+           Variable => VariableGet( CurrentModel % Variables,ptr % DependName ) 
+           IF( .NOT. ASSOCIATED( Variable ) ) THEN
+             CALL Fatal('ListGetDeriveValue','Cannot derivate with variable: '//TRIM(ptr % DependName))
+           END IF
+           DO i=1,n
+             k = NodeIndexes(i)
+             IF ( ASSOCIATED(Variable % Perm) ) k = Variable % Perm(k)
+             IF ( k > 0 ) THEN
+               T = Variable % Values(k)
+               F(i) = ptr % Coeff * &
+                   DerivateCurve(ptr % TValues,ptr % FValues(1,1,:), &
+                   T, ptr % CubicCoeff )
+             END IF
+           END DO
+         END IF
+
 
        CASE DEFAULT 
          CALL Fatal( 'ListGetDerivValue', &
              'No automated derivation possible for > '//TRIM(Name)//' <' )
 
      END SELECT
+
 
    END FUNCTION ListGetDerivValue
 !------------------------------------------------------------------------------

@@ -138,6 +138,7 @@ static void Instructions()
   printf("-clone int[3]        : make ideantilcal copies of the mesh\n");
   printf("-clonesize real[3]   : the size of the mesh to be cloned if larger to the original\n");
   printf("-mirror int[3]       : copy the mesh around the origin in coordinate directions\n");
+  printf("-cloneinds           : when performing cloning should cloned entitities be given new indexes\n");
   printf("-unite               : the meshes will be united\n");
   printf("-polar real          : map 2D mesh to a cylindrical shell with given radius\n");
   printf("-cylinder            : map 2D/3D cylindrical mesh to a cartesian mesh\n");
@@ -735,9 +736,7 @@ int main(int argc, char *argv[])
   
   if(eg.clone[0] || eg.clone[1] || eg.clone[2]) {
     for(k=0;k<nomeshes;k++) {
-      CloneMeshes(&data[k],boundaries[k],eg.clone,eg.clonesize,FALSE,info);
-      /* mergeeps = fabs(eg.clonesize[0]+eg.clonesize[1]+eg.clonesize[2]) * 1.0e-8;
-	 MergeElements(&data[k],boundaries[k],eg.order,eg.corder,mergeeps,TRUE,TRUE); */
+      CloneMeshes(&data[k],boundaries[k],eg.clone,eg.clonesize,eg.cloneinds,info);
     }
   }
 
