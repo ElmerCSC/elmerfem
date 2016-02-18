@@ -907,6 +907,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
              maxdh = MAX(maxdh, ABS(FreeSurf(j)-OldFreeSurf(j)))
            END IF
          END DO
+         maxdh = ParallelReduction(maxdh,2)
          IF(maxdh > MaxDisp) THEN
            Relax = Relax * MaxDisp/maxdh
          END IF
