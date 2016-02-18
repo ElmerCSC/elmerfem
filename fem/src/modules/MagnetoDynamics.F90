@@ -6322,6 +6322,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ! Create a minimal discontinuous set such that discontinuity is only created
      ! when body has an air gap boundary condition. Only do the reduction for the 1st time.
      IF( .NOT. ASSOCIATED( SetPerm ) ) THEN
+       CALL Info('MagnetoDynamicsCalcFields','Creating minimal elemental set',Level=10)
        SetPerm => MinimalElementalSet( Mesh,'db', Solver % Variable % Perm, &
            BcFlag = 'Air Gap Jump', &
            NonGreedy = ListGetLogical( Solver % Values,'Nongreedy Jump',Found) ) 
@@ -6339,12 +6340,17 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ! This is the newest version utlizing components
      DO j=1,Model % NumberOfComponents
        CompParams => Model % Components(j) % Values
-       IF( ListGetLogical( CompParams,'Calculate Magnetic Force', Found ) ) THEN 
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Force e', Found ) ) THEN 
          CALL ComponentNodalForceReduction(Model, Mesh, CompParams, EL_NF, &
              Force = LumpedForce, SetPerm = SetPerm )
          DO i=1,3
            CALL ListAddConstReal( CompParams,'res: magnetic force e '//TRIM(I2S(i)), LumpedForce(i) )
          END DO
+       END IF
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque e', Found ) ) THEN 
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, EL_NF, &
+             Torque = val, SetPerm = SetPerm )
+         CALL ListAddConstReal( CompParams,'res: magnetic torque e', val )
        END IF
      END DO
 
@@ -6519,6 +6525,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      ! This is the newest version utlizing components
      DO j=1,Model % NumberOfComponents
        CompParams => Model % Components(j) % Values
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Force', Found ) ) THEN 
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
+             Force = LumpedForce )
+         DO i=1,3
+           CALL ListAddConstReal( CompParams,'res: magnetic force'//TRIM(I2S(i)), LumpedForce(i) )
+         END DO
+       END IF
+
        IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN 
          CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
              Torque = val )
@@ -7255,7 +7269,12 @@ CONTAINS
     ! For DG field each node is visited only once by construction
     VisitNodeOnlyOnce = .NOT. ElementalVar .OR. PRESENT(SetPerm)
     IF( VisitNodeOnlyOnce ) THEN
-      ALLOCATE(VisitedNode( Mesh % NumberOfNodes ) )
+      IF( PRESENT( SetPerm ) ) THEN
+        n = MAXVAL( SetPerm ) 
+      ELSE
+        n = Mesh % NumberOfNodes
+      END IF
+      ALLOCATE(VisitedNode( n ) )
       VisitedNode = .FALSE.
     END IF
 
@@ -7275,6 +7294,7 @@ CONTAINS
       DO i=1,n
         j = DofIndexes(i)        
         k = NF % Perm(j)
+        IF( k == 0 ) CYCLE
 
         IF( VisitNodeOnlyOnce ) THEN
           IF( PRESENT( SetPerm ) ) j = SetPerm(j)
@@ -7288,7 +7308,7 @@ CONTAINS
         IF( ParEnv % PEs > 1 ) THEN
           IF( Mesh % ParallelInfo % NeighbourList(globalnode) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
         END IF
-       
+        
         F(1) = NF % Values( dofs*(k-1) + 1)
         F(2) = NF % Values( dofs*(k-1) + 2)
         IF( dofs == 3 ) THEN 
