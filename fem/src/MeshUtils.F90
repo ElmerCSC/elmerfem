@@ -9814,13 +9814,13 @@ END SUBROUTINE GetMaxDefs
       k = j + Mesh_in % NumberOfBulkElements 
       max_bidlayer = MAX(max_bidlayer, Mesh_in % Elements(k) % &
            BoundaryInfo % Constraint)
+      IF(isParallel) THEN
+        l=max_bidlayer
+        CALL MPI_ALLREDUCE(l,max_bidlayer,1, &
+             MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+      END IF
       !PRINT *,'bidlayer:', max_bidlayer, Mesh_in % Elements(k) % BoundaryInfo % Constraint
     END DO
-    IF(isParallel) THEN
-      j=max_bidlayer
-      CALL MPI_ALLREDUCE(j,max_bidlayer,1, &
-           MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
-    END IF
     WRITE(Message,'(A,I3)') 'Boundary conditions in footprint mesh:',max_bidlayer
     CALL Info('ExtrudeMesh',Message,Level=9)
     ! -------------------------------------------------------
