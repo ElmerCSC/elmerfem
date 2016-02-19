@@ -155,7 +155,7 @@ MODULE DiffuseConvective
      REAL(KIND=dp) :: s,u,v,w,dEnth,dTemp,mu,DivVelo,Pressure,rho,&
                       Pcoeff, minl, maxl
 
-     REAL(KIND=dp) :: C0,C00,C1,CT,C2(3,3),dC2dx(3,3,3),SU(n),SW(n)
+     REAL(KIND=dp) :: C0,C00,C1,CT,CL,C2(3,3),dC2dx(3,3,3),SU(n),SW(n)
 
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
@@ -168,7 +168,6 @@ MODULE DiffuseConvective
      StabilizeFlag = GetString( GetSolverParams(),'Stabilization Method',Found )
      Vms = StabilizeFlag == 'vms'
 
-
      dim = CoordinateSystemDimension()
      c = dim + 1
 
@@ -176,6 +175,8 @@ MODULE DiffuseConvective
      StiffMatrix = 0.0D0
      MassMatrix  = 0.0D0
      Load = 0.0D0
+
+     CL = 0
 
      Convection =  ANY( NodalC1 /= 0.0d0 )
      NBasis = n
@@ -328,12 +329,13 @@ MODULE DiffuseConvective
           END DO
 
           IF( dTemp > TINY( dTemp ) ) THEN
-            CT = SQRT( dEnth/dTemp )
+            CL = SQRT( dEnth/dTemp )
           ELSE
             CALL Info('DiffuseConvectiveCompose',&
                 'Temperature difference almost zero, cannot account for phase change!',Level=7)
-            CT = 0.0
+            CL = 0.0
           END IF
+          CT = CT + CL
         END IF
 !------------------------------------------------------------------------------
 !      Coefficient of the diffusion term & it s derivatives at the
@@ -358,7 +360,7 @@ MODULE DiffuseConvective
        Convection = .FALSE.
        IF ( C1 /= 0.0D0 ) THEN
           Convection = .TRUE.
-          IF ( PhaseChange ) C1 = CT
+          IF ( PhaseChange ) C1 = C1 + CL
 !------------------------------------------------------------------------------
 !         Velocity from previous iteration at the integration point
 !------------------------------------------------------------------------------
@@ -553,10 +555,10 @@ MODULE DiffuseConvective
                 A = A - C1 * Tau_M * VRM(i) * dBasisdx(q,i) * Basis(p)
 
                 A = A + C1 * Velo(i) * Tau * RM(q) * dBasisdx(p,i)
-                M = M + C1 * Velo(i) * Tau * CT*Basis(q) * dBasisdx(p,i)
+                M = M + C1 * Velo(i) * Tau * CT * Basis(q) * dBasisdx(p,i)
 
                 A = A - C1 * Tau_M * VRM(i) * Tau * RM(q) * dBasisdx(p,i)
-                M = M - C1 * Tau_M * VRM(i) * Tau * CT*Basis(q) * dBasisdx(p,i)
+                M = M - C1 * Tau_M * VRM(i) * Tau * CT * Basis(q) * dBasisdx(p,i)
               END DO
             ELSE IF ( Stabilize ) THEN
               A = A + Tau * SU(q) * SW(p)

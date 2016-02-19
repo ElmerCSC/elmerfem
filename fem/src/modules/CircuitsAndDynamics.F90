@@ -121,6 +121,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     
     CALL AllocateCircuitsList() ! CurrentModel%Circuits
     Circuits => Model%Circuits
+
+    CALL SetBoundaryAreasToValueLists() 
     
     DO p=1,n_Circuits
       
@@ -895,6 +897,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     
     CALL AllocateCircuitsList() ! CurrentModel%Circuits
     Circuits => Model%Circuits
+
+    CALL SetBoundaryAreasToValueLists() 
     
     DO p=1,n_Circuits
       
