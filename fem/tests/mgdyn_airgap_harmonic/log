@@ -1,0 +1,112 @@
+ELMER SOLVER (v 8.0) STARTED AT: 2015/09/18 12:07:11
+ParCommInit:  Initialize #PEs:            1
+MAIN: 
+MAIN: =============================================================
+MAIN: ElmerSolver finite element software, Welcome!
+MAIN: This program is free software licensed under (L)GPL
+MAIN: Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.
+MAIN: Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi
+MAIN: Version: 8.0 (Rev: 16012b5, Compiled: 2015-09-18)
+MAIN:  HYPRE library linked in.
+MAIN:  MUMPS library linked in.
+MAIN: =============================================================
+MAIN: 
+MAIN: 
+MAIN: -------------------------------------
+MAIN: Reading Model: airgap.sif
+Model Input:  Unlisted keyword: [p re] in section: [initial condition 1]
+Model Input:  Unlisted keyword: [p im] in section: [initial condition 1]
+Model Input:  Unlisted keyword: [p {e} re] in section: [initial condition 1]
+Model Input:  Unlisted keyword: [p {e} im] in section: [initial condition 1]
+Model Input:  Unlisted keyword: [p {e} re] in section: [boundary condition 1]
+Model Input:  Unlisted keyword: [p {e} im] in section: [boundary condition 1]
+Model Input:  Unlisted keyword: [p {e} re] in section: [boundary condition 2]
+Model Input:  Unlisted keyword: [p {e} im] in section: [boundary condition 2]
+Model Input:  Unlisted keyword: [electric current density re] in section: [boundary condition 2]
+Model Input:  Unlisted keyword: [p {e} re] in section: [boundary condition 3]
+Model Input:  Unlisted keyword: [p {e} im] in section: [boundary condition 3]
+Model Input:  Unlisted keyword: [p re] in section: [boundary condition 3]
+Model Input:  Unlisted keyword: [p im] in section: [boundary condition 3]
+Model Input:  Unlisted keyword: [electric current density re] in section: [boundary condition 3]
+Model Input:  Unlisted keyword: [air gap length] in section: [boundary condition 5]
+Model Input:  Unlisted keyword: [air gap relative permeability] in section: [boundary condition 5]
+Loading user function library: [MagnetoDynamics]...[WhitneyAVHarmonicSolver_Init0]
+Loading user function library: [ResultOutputSolve]...[ResultOutputSolver_Init0]
+LoadMesh: Starting
+ElmerAsciiMesh: Performing step: 1
+LoadMesh: Base mesh name: ./airgap
+LoadMesh: Number of nodes in mesh: 265
+LoadMesh: Number of bulk elements in mesh: 676
+LoadMesh: Number of boundary elements in mesh: 596
+ElmerAsciiMesh: Performing step: 2
+LoadMesh: Dimension of model is: 3
+LoadMesh: Dimension of mesh is: 3
+ElmerAsciiMesh: Performing step: 3
+ElmerAsciiMesh: Performing step: 4
+LoadMesh: Performing node mapping
+LoadMesh: Remapping bodies
+LoadMesh: Minimum initial body index: 1
+LoadMesh: Maximum initial body index: 3
+LoadMesh: Remapping boundaries
+LoadMesh: Minimum initial boundary index: 1
+LoadMesh: Maximum initial boundary index: 6
+ElmerAsciiMesh: Performing step: 5
+NonNodalElements: Requested elements require creation of edges
+FindMeshEdges: Determining faces in 3D mesh
+FindMeshEdges: Determining edges in 3D mesh
+ElmerAsciiMesh: Performing step: 6
+LoadMesh: Loading mesh done
+LoadMesh: Elapsed time (CPU,REAL):     0.0040    0.0044 (s)
+MeshStabParams: Computing stabilization parameters
+MeshStabParams: Elapsed time (CPU,REAL):     0.0000    0.0001 (s)
+MAIN: -------------------------------------
+AddEquationBasics: Setting up solver: mgdynamics
+Loading user function library: [MagnetoDynamics]...[WhitneyAVHarmonicSolver_Init]
+Loading user function library: [MagnetoDynamics]...[WhitneyAVHarmonicSolver]
+OptimizeBandwidth: ---------------------------------------------------------
+OptimizeBandwidth: Computing matrix structure for: mgdynamics...done.
+OptimizeBandwidth: Half bandwidth without optimization: 1454
+OptimizeBandwidth: 
+OptimizeBandwidth: Bandwidth Optimization ...done.
+OptimizeBandwidth: Half bandwidth after optimization: 262
+OptimizeBandwidth: ---------------------------------------------------------
+AddEquationBasics: Setting up solver: resultoutput
+Loading user function library: [ResultOutputSolve]...[ResultOutputSolver_Init]
+Loading user function library: [ResultOutputSolve]...[ResultOutputSolver]
+MAIN: 
+MAIN: -------------------------------------
+MAIN:  Steady state iteration:            1
+MAIN: -------------------------------------
+MAIN: 
+SingleSolver: Attempting to call solver
+SingleSolver: Solver Equation string is: mgdynamics
+DefUtils::DefaultDirichletBCs: Setting Dirichlet boundary conditions
+DefUtils::DefaultDirichletBCs: Dirichlet boundary conditions set
+SolveSystem: Solution trivially zero!
+ComputeChange: SS (ITER=1) (NRM,RELC): (  0.0000000      0.0000000     ) :: mgdynamics
+WARNING:: SolveEquations: No routine related to solver!
+SingleSolver: Attempting to call solver
+SingleSolver: Solver Equation string is: resultoutput
+ResultOutputSolver: -------------------------------------
+ResultOutputSolve: Saving with prefix: airgap
+ResultOutputSolver: Working on mesh: airgap
+ResultOutputSolver: Dimension of mesh: 3
+ResultOutputSolver: Creating list for saving - if not present
+CreateListForSaving: Field Variables for Saving
+CreateListForSaving: Scalar Field 1: p re
+CreateListForSaving: Scalar Field 2: p im
+ResultOutputSolver: Saving in unstructured VTK XML (.vtu) format
+VtuOutputSolver: Saving results in VTK XML format with prefix: airgap
+VtuOutputSolver: Saving number of partitions: 1
+VtuOutputSolver: Number of nodes to save:     265
+VtuOutputSolver: Number of elements to save:    1272
+VtuOutputSolver: Writing the vtu file: ./airgap/airgap0001.vtu
+AscBinWriteInit: Initializing buffered ascii/binary writing
+ResultOutputSolver: -------------------------------------
+WARNING:: CompareToReferenceSolution: Solver 2 FAILED:  Norm = 0.000000E+00  RefNorm = 3.063344E+03
+CompareToReferenceSolution: Relative Error to reference norm: 1.000000E+00
+WARNING:: CompareToReferenceSolution: FAILED 1 tests out of 1!
+ElmerSolver: *** Elmer Solver: ALL DONE ***
+ElmerSolver: The end
+SOLVER TOTAL TIME(CPU,REAL):         0.13        0.15
+ELMER SOLVER FINISHED AT: 2015/09/18 12:07:11

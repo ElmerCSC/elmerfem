@@ -882,6 +882,7 @@ END INTERFACE
       TYPE(Circuit_t), POINTER :: Circuits(:) => Null()
       TYPE(Solver_t), POINTER :: ASolver    
       
+      LOGICAL :: HarmonicCircuits
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel
