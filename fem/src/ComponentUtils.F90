@@ -78,9 +78,11 @@ MODULE ComponentUtils
      REAL(KIND=dp) :: Origin(3), Axis(3), P(3), F(3), v1(3), v2(3)
      INTEGER :: t, i, j, k, dofs, globalnode
      LOGICAL :: ElementalVar, Found, NeedLocation
-     INTEGER, POINTER :: MasterBodies(:),NodeIndexes(:),DofIndexes(:)
-     LOGICAL :: VisitNodeOnlyOnce
-     
+     INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
+     LOGICAL :: VisitNodeOnlyOnce     
+     INTEGER :: FirstElem, LastElem
+     LOGICAL :: BcMode 
+
      
      CALL Info('ComponentNodalForceReduction','Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
@@ -94,9 +96,16 @@ MODULE ComponentUtils
      IF( PRESENT(Moment)) Moment = 0.0_dp
      IF( PRESENT(Force)) Force = 0.0_dp
 
-     MasterBodies => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
+     BcMode = .FALSE.
+     MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found )     
      IF( .NOT. Found ) THEN
-       CALL Warn('ComponentNodalForceReduction','> Master Bodies < not given')
+       MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries',Found ) 
+       BcMode = .TRUE.
+     END IF
+
+     IF(.NOT. Found ) THEN
+       CALL Warn('ComponentNodalForceReduction',&
+           '> Master Bodies < or > Master Boundaries < not given')
        RETURN
      END IF
 
@@ -129,9 +138,14 @@ MODULE ComponentUtils
      END IF
 
 
-     DO t=1,Mesh % NumberOfBulkElements
+     DO t=FirstElem,LastElem
        Element => Mesh % Elements(t)
-       IF( ALL( MasterBodies /= Element % BodyId ) ) CYCLE
+
+       IF( BcMode ) THEN
+         IF( ALL( MasterEntities /= Element % BoundaryInfo % Constraint ) ) CYCLE
+       ELSE
+         IF( ALL( MasterEntities /= Element % BodyId ) ) CYCLE
+       END IF
 
        n = Element % TYPE % NumberOfNodes
        NodeIndexes => Element % NodeIndexes 
@@ -236,19 +250,36 @@ MODULE ComponentUtils
      INTEGER :: t, i, j, k, NoDofs, globalnode, sumi
      REAL(KIND=dp) :: X, Minimum, Maximum, AbsMinimum, AbsMaximum, SumX, SumXX, SumAbsX
      LOGICAL :: ElementalVar, Found
-     INTEGER, POINTER :: MasterBodies(:),NodeIndexes(:),DofIndexes(:)
+     INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
      LOGICAL :: VisitNodeOnlyOnce, Initialized
-     
+     INTEGER :: FirstElem, LastElem
+     LOGICAL :: BcMode 
+
 
      CALL Info('ComponentNodalReduction','Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
 
      OperX = 0.0_dp
 
-     MasterBodies => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
+     BcMode = .FALSE.
+     MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
      IF( .NOT. Found ) THEN
-       CALL Warn('ComponentNodalForceReduction','> Master Bodies < not given')
+       MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries',Found ) 
+       BcMode = .TRUE.
+     END IF
+
+     IF(.NOT. Found ) THEN
+       CALL Warn('ComponentNodalReduction',&
+           '> Master Bodies < or > Master Boundaries < not given')
        RETURN
+     END IF
+
+     IF( BcMode ) THEN
+       FirstElem = Mesh % NumberOfBulkElements + 1
+       LastElem = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+     ELSE
+       FirstElem = 1 
+       LastElem = Mesh % NumberOfBulkElements
      END IF
 
      ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements )
@@ -265,9 +296,14 @@ MODULE ComponentUtils
      END IF
 
 
-     DO t=1,Mesh % NumberOfBulkElements
+     DO t=FirstElem,LastElem
        Element => Mesh % Elements(t)
-       IF( ALL( MasterBodies /= Element % BodyId ) ) CYCLE
+
+       IF( BcMode ) THEN
+         IF( ALL( MasterEntities /= Element % BoundaryInfo % Constraint ) ) CYCLE
+       ELSE
+         IF( ALL( MasterEntities /= Element % BodyId ) ) CYCLE
+       END IF
 
        n = Element % TYPE % NumberOfNodes
        NodeIndexes => Element % NodeIndexes 
@@ -418,35 +454,56 @@ MODULE ComponentUtils
      REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
      REAL(KIND=dp) :: Coeff(Model % MaxElementNodes)
      TYPE(GaussIntegrationPoints_t) :: IntegStuff
-     INTEGER, POINTER :: MasterBodies(:)
+     INTEGER, POINTER :: MasterEntities(:)
      TYPE(Nodes_t), SAVE :: ElementNodes
      LOGICAL, SAVE :: AllocationsDone = .FALSE.
+     INTEGER :: FirstElem, LastElem
+     LOGICAL :: BcMode 
 
 
-     CALL Info('ComponentNodalReduction','Performing reduction for component: '&
+     CALL Info('ComponentIntegralReduction','Performing reduction for component: '&
          //TRIM(ListGetString(CompParams,'Name')),Level=10)
 
      OperX = 0.0_dp
 
-     MasterBodies => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
+     BcMode = .FALSE.
+     MasterEntities => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
      IF( .NOT. Found ) THEN
-       CALL Warn('ComponentNodalForceReduction','> Master Bodies < not given')
+       MasterEntities => ListGetIntegerArray( CompParams,'Master Boundaries',Found ) 
+       BcMode = .TRUE.
+     END IF
+
+     IF(.NOT. Found ) THEN
+       CALL Warn('ComponentIntegralReduction',&
+           '> Master Bodies < or > Master Boundaries < not given')
        RETURN
+     END IF
+
+     IF( BcMode ) THEN
+       FirstElem = Mesh % NumberOfBulkElements + 1
+       LastElem = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+     ELSE
+       FirstElem = 1 
+       LastElem = Mesh % NumberOfBulkElements
      END IF
 
      IF(.NOT. AllocationsDone ) THEN
        n = Model % MaxElementNodes
        ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n) )      
+       AllocationsDone = .TRUE.
      END IF
-
 
      ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements )
      NoDofs = Var % Dofs
      CoeffAtIp = 1.0_dp
 
-     DO t=1,Mesh % NumberOfBulkElements
+     DO t=FirstElem,LastElem
        Element => Mesh % Elements(t)
-       IF( ALL( MasterBodies /= Element % BodyId ) ) CYCLE
+       IF( BcMode ) THEN
+         IF( ALL( MasterEntities /= Element % BoundaryInfo % Constraint ) ) CYCLE
+       ELSE
+         IF( ALL( MasterEntities /= Element % BodyId ) ) CYCLE
+       END IF
 
        n = Element % TYPE % NumberOfNodes
        NodeIndexes => Element % NodeIndexes 
@@ -587,6 +644,10 @@ MODULE ComponentUtils
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Each solver may include a list of dependent components that are updated
+!> after the solver (or the nonlinear iteration related to it) has been executed.
+!------------------------------------------------------------------------------
   SUBROUTINE UpdateDependentComponents( ComponentList )
     INTEGER, POINTER :: ComponentList(:)
 
@@ -671,10 +732,14 @@ MODULE ComponentUtils
       END DO
     END DO
 
+!------------------------------------------------------------------------------
   END SUBROUTINE UpdateDependentComponents
+!------------------------------------------------------------------------------
 
 
  END MODULE ComponentUtils
+!------------------------------------------------------------------------------
+
 
 !> \}
 
