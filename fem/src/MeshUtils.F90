@@ -9554,11 +9554,11 @@ END SUBROUTINE GetMaxDefs
     CHARACTER(LEN=MAX_NAME_LEN),INTENT(IN),OPTIONAL :: ExtrudedMeshName
 
     !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
-         ExtrudedCoord,dg_n, buildingblocks, blk, istart, offset, eoffset, levels, istat,&
-         max_bidlayer, max_bodylayer
+    INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,&
+         max_body,bcid, ExtrudedCoord,dg_n, buildingblocks, blk, istart,&
+         offset, eoffset, boffset,levels, istat, max_bidlayer, max_bodylayer
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
-    INTEGER :: nnodes,gnodes,gelements,ierr
+    INTEGER :: nnodes,gnodes,blkgnodes,gelements,ierr
     LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline
     REAL(KIND=dp)::w,MinCoord,MaxCoord,LocalMinCoord,LocalMaxCoord,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
@@ -9648,10 +9648,12 @@ END SUBROUTINE GetMaxDefs
     cnt=0
     istart = 0
     LocalMinCoord = MinCoord
+    blkgnodes = 0
     DO blk=1,buildingblocks
       IF (blk > 1) THEN 
         istart = 1 ! the first level is already covered by the lower boundary
         LocalMinCoord = LocalMinCoord + (MaxCoord - MinCoord)/(buildingblocks)
+        blkgnodes = blkgnodes + (in_levels(blk - 1) - 1)*gnodes
       END IF
       LocalMaxCoord = LocalMinCoord + (MaxCoord - MinCoord)/(buildingblocks)
       PRINT *,"blk=",blk,"LMinMax=", LocalMinCoord, LocalMaxCoord
@@ -9683,7 +9685,9 @@ END SUBROUTINE GetMaxDefs
             PI_out % NeighbourList(cnt) % Neighbours = &
                  PI_in % NeighbourList(j) % Neighbours
 
-            PI_out % GlobalDOFs(cnt) = PI_in % GlobalDOFs(j)+i*gnodes
+            PI_out % GlobalDOFs(cnt) = PI_in % GlobalDOFs(j) + i*gnodes + blkgnodes
+!            PRINT *, blk, PI_out % GlobalDOFs(cnt), cnt
+!            PRINT *, PI_in % GlobalDOFs(j), i, gnodes, blkgnodes
           END IF
 
         END DO
@@ -10038,6 +10042,7 @@ END SUBROUTINE GetMaxDefs
 
     ! Add bottom boundary/ies:
     ! -----------------------
+    boffset = max_bid
     DO i=1,Mesh_in % NumberOfBulkElements
       cnt=cnt+1
 
@@ -10051,15 +10056,16 @@ END SUBROUTINE GetMaxDefs
            Mesh_out % Elements(i)
       Mesh_out % Elements(cnt) % BoundaryInfo % Right => NULL()
 
-      bcid = max_bid + Mesh_out % Elements(cnt) % BodyId
+      bcid = boffset + Mesh_out % Elements(cnt) % BodyId
       Mesh_out % Elements(cnt) % BoundaryInfo % Constraint = bcid
-
+      max_bid = MAX(max_bid, bcid)
       Mesh_out % Elements(cnt) % BodyId = 0
       IF( bcid<=CurrentModel % NumberOfBCs) THEN
         j=ListGetInteger(CurrentModel % BCs(bcid) % Values,'Body Id',Found)
         IF(Found) Mesh_out % Elements(cnt) % BodyId=j
       END IF
-
+      
+           
       ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n))
       Mesh_out % Elements(cnt) % NodeIndexes = &
            Mesh_in % Elements(i) % NodeIndexes
@@ -10072,15 +10078,27 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
       Mesh_out % Elements(cnt) % FaceIndexes => NULL()
       Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
-    END DO
 
+    END DO
+    IF(isParallel) THEN
+      j=max_bid
+      CALL MPI_ALLREDUCE(j,max_bid,1, &
+           MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+    END IF
     ! Add top boundaries:
     ! -----------------
-    offset = 0
-    eoffset = 0
+    offset = 0    
     DO blk=1,buildingblocks
       offset = offset + (in_levels(blk) - 1)*n
-      eoffset = eoffset + (in_levels(blk) - 2)*gelements
+      if (blk == 1) THEN
+        eoffset = 0
+      ELSE
+        eoffset = eoffset + (in_levels(blk - 1) - 1)*gelements
+        !eoffset = eoffset + (in_levels(blk) - 2)*gelements
+      END if
+      boffset = max_bid
+      !PRINT *,"PE:",ParEnv % MyPe,"blk,offset,eoffset,boffset,gelements,in_levels",&
+      !     blk,offset,eoffset,boffset,gelements,in_levels(blk)
       DO i=1,Mesh_in % NumberOfBulkElements
         cnt=cnt+1
 
@@ -10098,7 +10116,10 @@ END SUBROUTINE GetMaxDefs
         ELSE
           Mesh_out % Elements(cnt) % BoundaryInfo % Right => NULL()
         END IF
-        bcid = max_bid + Mesh_out % Elements(cnt) % BodyId + max_body*blk
+        bcid = boffset + Mesh_out % Elements(cnt) % BodyId !+ max_bodylayer*blk
+        !PRINT *,"blk/bcid/maxbodyl/boffset",blk,bcid,max_bodylayer,boffset
+        max_bid = MAX(max_bid, bcid)
+
         Mesh_out % Elements(cnt) % BoundaryInfo % Constraint = bcid
 
         Mesh_out % Elements(cnt) % BodyId = 0
@@ -10120,6 +10141,11 @@ END SUBROUTINE GetMaxDefs
         Mesh_out % Elements(cnt) % FaceIndexes => NULL()
         Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
       END DO
+      IF(isParallel) THEN
+        j=max_bid
+        CALL MPI_ALLREDUCE(j,max_bid,1, &
+             MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+      END IF
       !offset = offset + n
     END DO
 
