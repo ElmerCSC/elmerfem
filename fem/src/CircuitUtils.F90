@@ -436,6 +436,51 @@ CONTAINS
   END SUBROUTINE AllocateCircuit
 !------------------------------------------------------------------------------
 
+!-------------------------------------------------------------------
+ SUBROUTINE SetBoundaryAreasToValueLists()
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Element_t), POINTER :: Element
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(Valuelist_t), POINTER :: BC
+    REAL(KIND=dp) :: BoundaryAreas(CurrentModel % NumberOFBCs)
+    INTEGER :: Active, t, i, BCid, n
+    LOGICAL :: Found
+
+    BoundaryAreas = 0._dp
+    Mesh => CurrentModel % Mesh
+
+    DO i=1, CurrentModel % NumberOfBcs
+       BC => CurrentModel % BCs(i) % Values
+       IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('SetBoundaryAreasToValueLists', 'Boundary not found!')
+       CALL ListAddInteger(BC, 'Boundary Id', i)
+    END DO
+    
+    Active = GetNOFBoundaryElements()
+    DO t=1,Active
+       Element => GetBoundaryElement(t)
+       IF (.NOT. ActiveBoundaryElement()) CYCLE
+       
+       BC=>GetBC()
+       IF (.NOT. ASSOCIATED(BC) ) CYCLE
+     
+       BCid = GetInteger(BC, 'Boundary Id', Found)
+       n = GetElementNOFNodes() 
+       BoundaryAreas(BCid) = BoundaryAreas(BCid) + ElementAreaNoAxisTreatment(Mesh, Element, n) 
+    END DO
+
+    DO i=1, CurrentModel % NumberOfBcs
+       BC => CurrentModel % BCs(i) % Values
+       IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeCoilBoundaryAreas', 'Boundary not found!')
+       BCid = GetInteger(BC, 'Boundary Id', Found)
+       BoundaryAreas(BCid) = ParallelReduction(BoundaryAreas(BCid))
+       CALL ListAddConstReal(BC, 'Area', BoundaryAreas(BCid))
+    END DO
+    
+!-------------------------------------------------------------------
+ END SUBROUTINE SetBoundaryAreasToValueLists
+!-------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE ReadComponents(CId)
@@ -447,7 +492,7 @@ CONTAINS
     TYPE(Component_t), POINTER :: Comp
     TYPE(Valuelist_t), POINTER :: CompParams
     LOGICAL :: Found
-    
+
     Circuit => CurrentModel%Circuits(CId)
     
     Circuit % CvarDofs = 0
@@ -473,15 +518,17 @@ CONTAINS
       IF (.NOT. Found) Comp % i_multiplier_re = 0._dp
       Comp % i_multiplier_im = GetConstReal(CompParams, 'Current Multiplier im', Found)
       IF (.NOT. Found) Comp % i_multiplier_im = 0._dp
+
+      Comp % ElBoundaries => ListGetIntegerArray(CompParams, 'Electrode Boundaries', Found)
       
       SELECT CASE (Comp % CoilType) 
       CASE ('stranded')
         Comp % nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
         IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
 
-        !Comp % ElBoundary = GetInteger(CompParams, 'Electrode Boundary 1', Found)
         Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
         IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
+
         Comp % N_j = Comp % nofturns / Comp % ElArea
 
         ! Stranded coil has current and voltage 
@@ -541,10 +588,11 @@ CONTAINS
   USE ElementUtils
   IMPLICIT NONE
   TYPE(Component_t), POINTER :: Comp
-  TYPE(ValueList_t), POINTER :: CompParams
+  TYPE(ValueList_t), POINTER :: CompParams, BC
   TYPE(Element_t), POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
-  INTEGER :: t, n
+  INTEGER :: t, n, BCid
+  LOGICAL :: Found
   
   Mesh => CurrentModel % Mesh
   Comp % ElArea = 0._dp
@@ -557,10 +605,19 @@ CONTAINS
         Comp % ElArea = Comp % ElArea + ElementAreaNoAxisTreatment(Mesh, Element, n) 
       END IF
     END DO
+    Comp % ElArea = ParallelReduction(Comp % ElArea)
   ELSE
-    CALL Fatal('ComputeElectrodeArea','Electrode area computation not implemented for 3D use Electrode Area keyword.')
+    IF (.NOT. ASSOCIATED(Comp % ElBoundaries)) &
+      CALL Fatal('ComputeElectrodeArea','Electrode Boundaries not found')
+
+    BCid = Comp % ElBoundaries(1)
+    BC => CurrentModel % BCs(BCid) % Values
+    IF (.NOT. ASSOCIATED(BC) ) CALL Fatal('ComputeElectrodeArea', 'Boundary not found!')
+
+    Comp % ElArea = GetConstReal(BC, 'Area', Found)
+    IF (.NOT. Found) CALL Fatal('ComputeElectrodeArea', 'Area not found!')
+    
   END IF
-  Comp % ElArea = ParallelReduction(Comp % ElArea)
 !-------------------------------------------------------------------
  END SUBROUTINE ComputeElectrodeArea
 !-------------------------------------------------------------------

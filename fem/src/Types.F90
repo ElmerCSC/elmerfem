@@ -749,7 +749,8 @@ END INTERFACE
   TYPE Component_t
     REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
                      N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
-    INTEGER :: polord, ElBoundary, nofcnts, BodyId, ComponentId
+    INTEGER :: polord, nofcnts, BodyId, ComponentId
+    INTEGER, POINTER :: ElBoundaries(:) => Null()
     INTEGER, POINTER :: BodyIds(:) => Null()
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
