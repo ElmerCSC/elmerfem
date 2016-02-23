@@ -137,6 +137,14 @@ MODULE ComponentUtils
        VisitedNode = .FALSE.
      END IF
 
+     IF( BcMode ) THEN
+       FirstElem = Mesh % NumberOfBulkElements + 1
+       LastElem = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+     ELSE       
+       FirstElem = 1
+       LastElem = Mesh % NumberOfBulkElements
+     END IF
+
 
      DO t=FirstElem,LastElem
        Element => Mesh % Elements(t)
