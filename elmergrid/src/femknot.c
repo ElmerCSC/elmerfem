@@ -3375,8 +3375,9 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   Real *vareas=NULL; 
   
   if(info) printf("CloneMeshes: copying the mesh to a matrix\n");
-  if(diffmats) diffmats = 1;
-
+  if(diffmats) {
+    if(info) printf("CloneMeshes: giving each new entity new material and bc indexes\n");
+  }
   
   origdim = data->dim;
   totcopies = 1;
@@ -3415,7 +3416,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   noelements  = totcopies * data->noelements;
   maxnodes = data->maxnodes;
 
-  if(info) printf("Copying the mesh to %d identical domains in %d-dim.\n",totcopies);
+  if(info) printf("Copying the mesh to %d identical domains in %d-dim.\n",totcopies,data->dim);
 
   data->maxnodes = maxnodes;
   newtopo = Imatrix(1,noelements,0,maxnodes-1);
@@ -3449,8 +3450,11 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   }
 
   maxmaterial = 0;
-  for(i=1;i<=data->noelements;i++) 
-    if(data->material[i] > maxmaterial) maxmaterial = data->material[i];
+  if( diffmats ) {
+    for(i=1;i<=data->noelements;i++) 
+      if(data->material[i] > maxmaterial) maxmaterial = data->material[i];
+    if(info ) printf("Material offset for cloning set to: %d\n",maxmaterial);
+  }
 
   for(l=0;l<ncopies[2];l++) {
     for(k=0;k<ncopies[1];k++) {
@@ -3460,7 +3464,6 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
 	  ind =  i + ncopy*data->noelements;
 
 	  newmaterial[ind] = data->material[i] + diffmats*maxmaterial*ncopy;
-
 	  newelementtypes[ind] = data->elementtypes[i]; 
 	  nonodes = newelementtypes[i]%100;
 	  for(m=0;m<nonodes;m++)
@@ -3471,10 +3474,13 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   }
 
   maxtype = 0;
-  for(j=0;j < MAXBOUNDARIES;j++) {
-    if(!bound[j].created) continue;
-    for(i=1; i <= bound[j].nosides; i++) 
-      if(maxtype < bound[j].types[i]) maxtype = bound[j].types[i];
+  if( diffmats ) {
+    for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound[j].created) continue;
+      for(i=1; i <= bound[j].nosides; i++) 
+	if(maxtype < bound[j].types[i]) maxtype = bound[j].types[i];
+    }
+    if(info ) printf("Boundary offset for cloning set to: %d\n",maxtype);
   }
 
   for(bndr=0;bndr < MAXBOUNDARIES;bndr++) {
@@ -3555,6 +3561,7 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   data->noknots  = noknots;
   data->topology = newtopo;
   data->material = newmaterial;
+
   data->elementtypes = newelementtypes; 
   data->x = newx;
   data->y = newy;

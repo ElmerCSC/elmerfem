@@ -303,6 +303,7 @@ struct ElmergridType {
     rotate,     /* rotate the mesh */
     clone[3],   /* clone the mesh the number of given times */
     mirror[3],  /* mirror the mash around the given axis */
+    cloneinds,  /* should the material and bc indexes be altered when cloning */
     canter, 
     decimals,   /* save the mesh with number of decimals */
     layers,     /* create boundary layers */
