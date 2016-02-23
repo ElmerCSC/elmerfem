@@ -17,8 +17,8 @@ int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
 		 char *prefix,int info);
 int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 			 char *prefix,int decimals, int info);
-int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
-			    int partorder, Real corder[],int info);
+int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct BoundaryType *bound,
+			    int dimpart[],int dimper[],int partorder, Real corder[],int info);
 int PartitionSimpleElementsNonRecursive(struct FemType *data,
 					int dimpart[],int dimper[],int info);
 #if PARTMETIS

@@ -1752,8 +1752,8 @@ static int PartitionNodesByElements(struct FemType *data,int info)
 
 
 
-int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
-			    int partorder, Real corder[],int info)
+int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct BoundaryType *bound,
+			    int dimpart[],int dimper[],int partorder, Real corder[],int info)
 /* Partition elements recursively in major directions. 
    This may be the optimal method of partitioning for simple geometries. */ 
 {
@@ -1761,9 +1761,12 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
   int noknots,noelements,nonodes,elemsinpart,periodic;
   int partitions1,partitions2,partitions3,partitions;
   int vpartitions1,vpartitions2,vpartitions3,vpartitions;
-  int *indx,*nopart,*inpart;
+  int noelements0,noelements1,noparts0;
+  int *indx,*nopart,*inpart,*elemconnect;
   Real *arrange;
   Real x,y,z,cx,cy,cz;
+
+  printf("PartitionSimpleElements\n");
 
   noelements = data->noelements;
   noknots = data->noknots;
@@ -1786,6 +1789,14 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     bigerror("Partitioning not performed");
   }
     
+  if( eg->partbcz > 1 ) 
+    PartitionConnectedElements1D(data,bound,eg,info);
+  else if( eg->partbcmetis > 1 ) 
+    PartitionConnectedElementsMetis(data,bound,eg->partbcmetis,3,info); 
+
+  if( data->nodeconnectexist ) 
+    ExtendBoundaryPartitioning(data,bound,eg->partbclayers,info);
+
   if(!data->partitionexist) {
     data->partitionexist = TRUE;
     data->elempart = Ivector(1,noelements);
@@ -1798,6 +1809,20 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
   vpartitions2 = partitions2;
   vpartitions3 = partitions3;
 
+  noparts0 = 0;
+  noelements0 = 0;
+  if( data->elemconnectexist ) {
+    elemconnect = data->elemconnect;  
+    noparts0 = 0;
+    for(i=1;i<=data->noelements;i++) {
+      if( elemconnect[i] ) noelements0 = noelements0 + 1;
+      noparts0 = MAX( noparts0, elemconnect[i] );
+    }
+    if(info) printf("There are %d initial partitions in the connected mesh\n",noparts0);
+    if(info) printf("There are %d initial elements in the connected mesh\n",noelements0);
+  }
+  noelements1 = noelements - noelements0; 
+
   periodic = dimper[0] || dimper[1] || dimper[2];
   if(periodic) {
     if(dimper[0] && partitions1 > 1) vpartitions1 *= 2;
@@ -1805,10 +1830,12 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     if(dimper[2] && partitions3 > 1) vpartitions3 *= 2;
   }
   vpartitions = vpartitions1 * vpartitions2 * vpartitions3;
-  nopart = Ivector(1,vpartitions);
+  nopart = Ivector(1,vpartitions+noparts0);
+
+
 
   if(info) printf("Making a simple partitioning for %d elements in %d-dimensions.\n",
-		  noelements,data->dim);
+		  noelements1,data->dim);
 
   arrange = Rvector(1,noelements);
   indx = Ivector(1,noelements);
@@ -1833,6 +1860,12 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     if(info) printf("Ordering 1st direction with (%.3g*x + %.3g*y + %.3g*z)\n",cx,cy,cz);
 
     for(j=1;j<=noelements;j++) {
+      if( data->elemconnectexist ) {
+	if( elemconnect[j] > 0 ) {
+	  arrange[j] = 1.0e9;
+	  continue;
+	}
+      }
       nonodes = data->elementtypes[j]%100;
       x = y = z = 0.0;
       for(i=0;i<nonodes;i++) {
@@ -1846,9 +1879,9 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
 
     SortIndex(noelements,arrange,indx);
 
-    for(i=1;i<=noelements;i++) {
+    for(i=1;i<=noelements1;i++) {
       ind = indx[i];
-      k = (i*vpartitions1-1)/noelements+1;
+      k = (i*vpartitions1-1)/noelements1+1;
       inpart[ind] = k;
     }
   } 
@@ -1859,6 +1892,12 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     if(info) printf("Ordering in the 2nd direction.\n");
 
     for(j=1;j<=noelements;j++) {
+      if( data->elemconnectexist ) {
+	if( elemconnect[j] > 0 ) {
+	  arrange[j] = 1.0e9;
+	  continue;
+	}
+      }
       nonodes = data->elementtypes[j]%100;
       x = y = z = 0.0;
       for(i=0;i<nonodes;i++) {
@@ -1874,8 +1913,8 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     for(i=1;i<=vpartitions;i++)
       nopart[i] = 0;
     
-    elemsinpart = noelements / (vpartitions1*vpartitions2);
-    for(i=1;i<=noelements;i++) {
+    elemsinpart = noelements1 / (vpartitions1*vpartitions2);
+    for(i=1;i<=noelements1;i++) {
       j = 0;
       ind = indx[i];
       do {
@@ -1894,6 +1933,13 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     if(info) printf("Ordering in the 3rd direction.\n");
 
     for(j=1;j<=noelements;j++) {
+      if( data->elemconnectexist ) {
+	if( elemconnect[j] > 0 ) {
+	  arrange[j] = 1.0e9;
+	  continue;
+	}
+      }
+
       nonodes = data->elementtypes[j]%100;
       x = y = z = 0.0;
       for(i=0;i<nonodes;i++) {
@@ -1904,13 +1950,14 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
       }
       arrange[j] = (-cz*x - cy*y + cx*z) / nonodes;
     }
+
     SortIndex(noelements,arrange,indx);
 
     for(i=1;i<=vpartitions;i++)
       nopart[i] = 0;
     
-    elemsinpart = noelements / (vpartitions1*vpartitions2*vpartitions3);
-    for(i=1;i<=noelements;i++) {
+    elemsinpart = noelements1 / (vpartitions1*vpartitions2*vpartitions3);
+    for(i=1;i<=noelements1;i++) {
       j = 0;
       ind = indx[i];
       do {
@@ -1924,6 +1971,17 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     }
   }
 
+  if( data->elemconnectexist ) {
+    for(j=1;j<=noelements;j++) {
+      if( elemconnect[j] > 0 ) 
+	inpart[j] = elemconnect[j];
+      else
+	inpart[j] = inpart[j] + noparts0;
+    }
+    partitions = partitions + noparts0;
+    data->nopartitions = partitions;
+  }
+
 
   /* For periodic systems the number of virtual partitions is larger. Now map the mesh so that the 
      1st and last partition for each direction will be joined */
@@ -1931,6 +1989,11 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     int *partmap;
     int p1,p2,p3,q1,q2,q3;
     int P,Q;
+
+    if(data->elemconnectexist ) {
+      bigerror("Cannot use connect flag with periodic systems\n");
+    }
+
     p1=p2=p3=1;
     partmap = Ivector(1,vpartitions);
     for(i=1;i<=vpartitions;i++)
@@ -3443,7 +3506,6 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 
   nparts = partitions;
   if( dual ) {
-
     if( eg->partbcz > 1 ) 
       PartitionConnectedElements1D(data,bound,eg,info);
     else if( eg->partbcmetis > 1 ) 
