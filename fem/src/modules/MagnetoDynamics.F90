@@ -6312,24 +6312,24 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
    END DO
 
-   ! Collect nodal forces due airgap
-   CALL CalcBoundaryModels()
-
-   ! Create a minimal discontinuous set such that discontinuity is only created
-   ! when body has an air gap boundary condition. Only do the reduction for the 1st time.
-   IF( .NOT. ASSOCIATED( SetPerm ) ) THEN
-     CALL Info('MagnetoDynamicsCalcFields','Creating minimal elemental set',Level=10)
-     SetPerm => MinimalElementalSet( Mesh,'db', Solver % Variable % Perm, &
-       BcFlag = 'Air Gap Jump', &
-       NonGreedy = ListGetLogical( Solver % Values,'Nongreedy Jump',Found) ) 
-   END IF
-
-   ! Sum up (no averaging) the elemental fields such that each elemental nodes has also 
-   ! the contributions of the related nodes in other elements
-   CALL ReduceElementalVar( Mesh, EL_NF, SetPerm, TakeAverage = .FALSE.)
 
    ! Lump componentwise forces and torques. TODO: This requires 'Nodal Force e' to be present and it
    IF(ASSOCIATED(EL_NF)) THEN
+     ! Collect nodal forces due airgap
+     CALL CalcBoundaryModels()
+
+     ! Create a minimal discontinuous set such that discontinuity is only created
+     ! when body has an air gap boundary condition. Only do the reduction for the 1st time.
+     IF( .NOT. ASSOCIATED( SetPerm ) ) THEN
+       CALL Info('MagnetoDynamicsCalcFields','Creating minimal elemental set',Level=10)
+       SetPerm => MinimalElementalSet( Mesh,'db', Solver % Variable % Perm, &
+         BcFlag = 'Air Gap Length', &
+         NonGreedy = ListGetLogical( Solver % Values,'Nongreedy Jump',Found) ) 
+     END IF
+
+     ! Sum up (no averaging) the elemental fields such that each elemental nodes has also 
+     ! the contributions of the related nodes in other elements
+     CALL ReduceElementalVar( Mesh, EL_NF, SetPerm, TakeAverage = .FALSE.)
      DO j=1,Model % NumberOfComponents
        CompParams => Model % Components(j) % Values
        IF( ListGetLogical( CompParams,'Calculate Magnetic Force e', Found ) ) THEN 
@@ -6358,6 +6358,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL ListAddConstReal( CompParams,'res: magnetic torque e', val )
        END IF
      END DO
+   ELSE
+     IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) ) &
+       CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap forces correctly because elemental&
+       & fields are not to be calculated')
+     ! Calculate lumped forces from NF field here...
    END IF
 
    Power  = ParallelReduction(Power)
