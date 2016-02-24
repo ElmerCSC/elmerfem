@@ -76,6 +76,7 @@ MODULE ComponentUtils
      TYPE(Element_t), POINTER :: Element
      LOGICAL, ALLOCATABLE :: VisitedNode(:)
      REAL(KIND=dp) :: Origin(3), Axis(3), P(3), F(3), v1(3), v2(3)
+     REAL(KIND=dp), POINTER :: Pwrk(:,:)
      INTEGER :: t, i, j, k, dofs, globalnode
      LOGICAL :: ElementalVar, Found, NeedLocation
      INTEGER, POINTER :: MasterEntities(:),NodeIndexes(:),DofIndexes(:)
@@ -111,10 +112,27 @@ MODULE ComponentUtils
 
      NeedLocation = PRESENT( Moment ) .OR. PRESENT( Torque )
 
-     ! We can later get these from the component list
-     Origin = 0.0_dp   ! torque origin
-     Axis = 0.0_dp    
-     Axis(3) = 1.0_dp  ! torque axis
+     ! User may specific origin and axis for torque computation
+     ! By default (0,0,0) is the origin, and (0,0,1) the axis. 
+     Pwrk => ListGetConstRealArray( CompParams,'Torque Origin',Found )
+     IF( Found ) THEN
+       IF( SIZE(Pwrk,1) /= 1 .OR. SIZE(Pwrk,2) /= 3 ) THEN
+         CALL Fatal('ComponentNodalForceReduction','Size of > Torque Origin < should be 3!')
+       END IF
+       Origin = Pwrk(1:3,1)
+     ELSE
+       Origin = 0.0_dp
+     END IF
+     Pwrk => ListGetConstRealArray( CompParams,'Torque Axis',Found )
+     IF( Found ) THEN
+       IF( SIZE(Pwrk,1) /= 1 .OR. SIZE(Pwrk,2) /= 3 ) THEN
+         CALL Fatal('ComponentNodalForceReduction','Size of > Torque Axis < should be 3!')
+       END IF
+       Axis = Pwrk(1:3,1)
+     ELSE
+       Axis = 0.0_dp    
+       Axis(3) = 1.0_dp  
+     END IF
 
      ElementalVar = ( NF % TYPE == Variable_on_nodes_on_elements )
      IF( PRESENT( SetPerm ) .AND. .NOT. ElementalVar ) THEN
