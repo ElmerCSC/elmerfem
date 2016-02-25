@@ -3627,9 +3627,9 @@ CONTAINS
         ! This is really quite dirty!
         ! For variables that scale with h the operator is more naturally a sum 
         ! than an average. 
-        BodySum = ( INDEX( Var % Name,'nodal force' ) /= 0 .OR. &
-            INDEX( Var % Name,' loads' ) /= 0 )
-        CALL CalculateBodyAverage( Mesh, Var, BodySum )
+        !BodySum = ( INDEX( Var % Name,'nodal force' ) /= 0 .OR. &
+            !INDEX( Var % Name,' loads' ) /= 0 )
+        CALL CalculateBodyAverage( Mesh, Var, .FALSE. )
       END IF
 
       Var => Var % Next

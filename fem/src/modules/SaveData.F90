@@ -956,6 +956,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   ! Update time elapsed from start if requested
   !------------------------------------------------------------------------------
   IF( ListGetLogical( Model % Simulation,'Simulation Timing',GotIt ) ) THEN
+    CALL Info('SaveScalars','Adding information on simulation timing',Level=10)
     CT = CPUTime() - ListGetConstReal( Model % Simulation,'cputime0',GotIt)
     RT = RealTime() - ListGetConstReal( Model % Simulation,'realtime0',GotIt)
     CALL AddToSaveList('simulation: cpu time (s)',CT )
@@ -975,7 +976,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     Lst => Lst % Next
   END DO
   IF(l > 0 ) THEN
-    WRITE (Message,'(A,I0,A)') 'Registered ',l,' existing scalars'
+    WRITE (Message,'(A,I0,A)') 'Found ',l,' result scalars in simulation section'
     CALL Info('SaveScalars',Message)
   END IF
 
@@ -990,6 +991,29 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     Val = ListGetCReal( Params, TRIM(Name), GotVar )
     IF( GotVar ) CALL AddToSaveList(TRIM(Name),Val)
   END DO
+
+  !------------------------------------------------------------------------------
+  ! Add results in Components
+  !------------------------------------------------------------------------------
+  IF( ListGetLogical( Params,'Save Component Results',GotIt ) ) THEN
+    CALL Info('SaveScalars','Saving results from component',Level=10)
+    l = 0
+    DO i = 1, Model % NumberOfComponents
+      Lst => ListHead( Model % Components(i) % Values )
+      DO WHILE( ASSOCIATED( Lst ) )    
+        IF ( Lst % Name(1:4) == TRIM(ResultPrefix) ) THEN
+          CALL AddToSaveList('comp'//TRIM(I2S(i))//': '//TRIM(Lst % Name), Lst % Fvalues(1,1,1))
+          l = l + 1
+        END IF
+        Lst => Lst % Next
+      END DO
+    END DO
+    IF(l > 0 ) THEN
+      WRITE (Message,'(A,I0,A)') 'Found ',l,' result scalars in components section'
+      CALL Info('SaveScalars',Message)
+    END IF
+  END IF
+  
 
   !------------------------------------------------------------------------------
   ! If there are no values 
