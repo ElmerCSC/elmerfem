@@ -2152,7 +2152,7 @@ END SUBROUTINE GetMaxDefs
          IF ( Gotit ) THEN
            DO k=1,SIZE(BList)
              body = Blist(k)
-             IF( body > maxid ) THEN
+             IF( body > maxid .OR. body < minid ) THEN
 #if 0
                CALL Warn('LoadMesh','Unused body entry in > Target Bodies <  : '&
                    //TRIM(I2S(body)) )              
