@@ -266,7 +266,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       CoilList => Model % Components(i) % Values
 
       IF(.NOT. ListCheckPresent( CoilList,'Coil Type' ) ) CYCLE      
-      TargetBodies => ListGetIntegerArray( CoilList,'Target Bodies',Found )
+      TargetBodies => ListGetIntegerArray( CoilList,'Master Bodies',Found )
       IF( .NOT. Found ) TargetBodies => ListGetIntegerArray( CoilList,'Body',Found )
       IF( .NOT. Found ) CALL Fatal('CoilSolver','Coil fitting requires > Target Bodies <') 
 
