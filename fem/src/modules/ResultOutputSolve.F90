@@ -3347,7 +3347,6 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       ALLOCATE( BodyVisited( Mesh % NumberOfNodes ) )
     END IF
 
-
     k = 0
     DO i=1,Mesh % NumberOfBulkElements         
       CurrentElement => Mesh % Elements(i)
@@ -4318,6 +4317,7 @@ CONTAINS
         y = Model % Mesh % Nodes % y( i )
         z = Model % Mesh % Nodes % z( i )
 
+
         ! If displacement field is active remove the displacement from the coordinates
         IF( dispdofs > 0 .OR. disp2dofs > 0) THEN
           j = 0
@@ -4399,8 +4399,10 @@ CONTAINS
         NodeIndexes => Elmer2VtkIndexes( CurrentElement, DG .OR. DN )
 
         DO j=1,n
-          IF( DG .OR. DN ) THEN
+          IF( DN ) THEN
             jj = DgPerm( NodeIndexes(j) )
+          ELSE IF( DG ) THEN
+            jj = NodeIndexes(j)
           ELSE IF( NoPermutation ) THEN
             jj = NodeIndexes(j)
           ELSE
@@ -5007,7 +5009,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Parent
     INTEGER, POINTER :: UseIndexes(:)
     INTEGER, TARGET :: NewIndexes(27),BCIndexes(27)
-    INTEGER :: ElmerCode, i,j,k,n
+    INTEGER :: ElmerCode, i,j,k,n,hits
     INTEGER, POINTER :: Order(:)
     INTEGER, TARGET, DIMENSION(20) :: &
         Order820 = (/1,2,3,4,5,6,7,8,9,10,11,12,17,18,19,20,13,14,15,16/)
@@ -5037,6 +5039,7 @@ CONTAINS
       DgElem = .FALSE.
     END IF
 
+
     IF( DGElem ) THEN
       UseIndexes => NULL()
       IF( ASSOCIATED( Element % DGIndexes ) ) THEN
@@ -5049,15 +5052,20 @@ CONTAINS
         IF ( ASSOCIATED(Parent) ) THEN
           IF (ASSOCIATED(Parent % DGIndexes) ) THEN
             n = Element % TYPE % NumberOfNodes 
+            hits = 0
             DO j=1,n
               DO k=1,Parent % TYPE % NumberOfNodes
                 IF(Element % NodeIndexes(j) == Parent % NodeIndexes(k)) THEN
                   BCIndexes(j) = Parent % DGIndexes(k) 
+                  hits = hits + 1
                   EXIT
                 END IF
               END DO
             END DO
             UseIndexes => BCIndexes
+            IF( Hits < n ) THEN
+              CALL Fatal('VtuOutputSolver','Could not determine DG boundary indexes')
+            END IF
           END IF
         END IF
       ENDIF
@@ -5071,7 +5079,7 @@ CONTAINS
     ELSE
       UseIndexes => Element % NodeIndexes
     END IF
-    
+
     IF( ASSOCIATED( Order ) ) THEN
       n = Element % TYPE % NumberOfNodes 
       NewIndexes(1:n) = UseIndexes( Order(1:n) )

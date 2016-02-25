@@ -9018,7 +9018,7 @@ END SUBROUTINE GetMaxDefs
         Rotational, AntiRotational, Sliding, AntiSliding, Repeating, AntiRepeating, &
         Discontinuous, NodalJump, Radial, AntiRadial, DoNodes, DoEdges, &
         Flat, Plane, LevelProj, FullCircle, Cylindrical, UseExtProjector, &
-        ParallelNumbering
+        ParallelNumbering, EnforceOverlay
     LOGICAL, ALLOCATABLE :: MirrorNode(:)
     TYPE(Mesh_t), POINTER ::  BMesh1, BMesh2, PMesh
     TYPE(Nodes_t), POINTER :: MeshNodes, GaussNodes
@@ -9234,6 +9234,8 @@ END SUBROUTINE GetMaxDefs
     !---------------------------------------------------------------------------------
     Radius = 1.0_dp
     FullCircle = .FALSE.
+    EnforceOverlay = ListGetLogical( BC, 'Mortar BC enforce overlay', GotIt )
+
     IF( Rotational .OR. Cylindrical ) THEN
       CALL RotationalInterfaceMeshes( BMesh1, BMesh2, BC, Cylindrical, &
           Radius, FullCircle )
@@ -9244,6 +9246,10 @@ END SUBROUTINE GetMaxDefs
     ELSE IF( Plane ) THEN
       CALL PlaneInterfaceMeshes( BMesh1, BMesh2, BC )
     ELSE IF( .NOT. Sliding ) THEN
+      IF( .NOT. GotIt ) EnforceOverlay = .TRUE.
+    END IF
+
+    IF( EnforceOverlay ) THEN
       CALL OverlayIntefaceMeshes( BMesh1, BMesh2, BC )
     END IF
 
@@ -15027,7 +15033,6 @@ CONTAINS
           TopNodes = TopNodes + 1
         END IF
       END DO
-      PRINT *,'Top range:',MinTop,MaxTop
     END IF
 
     IF( DownActive ) THEN
@@ -15041,7 +15046,6 @@ CONTAINS
           BotNodes = BotNodes + 1
         END IF
       END DO
-      PRINT *,'Bottom range:',MinBot,MaxBot
     END IF
 
 
@@ -16613,6 +16617,10 @@ CONTAINS
           !PRINT *,'AveHits:',i,AveHits
         END IF
 
+        IF(ParEnv % Pes>1) THEN
+          CALL SendInterface(); CALL RecvInterface()
+        END IF
+
         ! Do not average weighted quantities. They should only be summed, I guess... 
         
         IF( .NOT. BodySum ) THEN
@@ -16634,6 +16642,91 @@ CONTAINS
         END DO
       END DO
     END DO
+
+CONTAINS
+
+     SUBROUTINE SendInterface()
+       TYPE buf_t
+         REAL(KIND=dp), ALLOCATABLE :: dval(:)
+         INTEGER, ALLOCATABLE :: gdof(:), ival(:)
+       END TYPE buf_t
+
+       INTEGER, ALLOCATABLE :: cnt(:)
+       TYPE(buf_t), ALLOCATABLE :: buf(:)
+
+       INTEGER :: i,j,k,ierr
+
+       ALLOCATE(cnt(ParEnv % PEs), buf(ParEnv % PEs))
+
+       cnt = 0
+       DO i=1,Mesh % NumberOfNodes
+         IF(.NOT.Mesh % ParallelInfo % Interface(i)) CYCLE
+         IF(BodyCount(i) <= 0 ) CYCLE
+
+         DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+           k = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(j)+1
+           cnt(k) = cnt(k) + 1
+         END DO
+       END DO
+
+       DO i=1,ParEnv % PEs
+         ALLOCATE(buf(i) % gdof(cnt(i)), buf(i) % ival(cnt(i)), buf(i) % dval(cnt(i)))
+       END DO
+
+       cnt = 0
+       DO i=1,Mesh % NumberOfNodes
+         IF(.NOT.Mesh % ParallelInfo % Interface(i)) CYCLE
+         IF(BodyCount(i) <= 0 ) CYCLE
+
+         DO j=1,SIZE(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)
+           k = Mesh % ParallelInfo % NeighbourList(i) % Neighbours(j)+1
+           cnt(k) = cnt(k) + 1
+           buf(k) % gdof(cnt(k)) = Mesh % ParallelInfo % GlobalDOFs(i)
+           buf(k) % ival(cnt(k)) = BodyCount(i)
+           buf(k) % dval(cnt(k)) = BodyAverage(i)
+         END DO
+       END DO
+
+       DO i=1,ParEnv % PEs
+         IF(.NOT. ParEnv % isNeighbour(i)) CYCLE
+
+         CALL MPI_BSEND( cnt(i),1,MPI_INTEGER,i-1,1310,MPI_COMM_WORLD,ierr )
+         IF(cnt(i)>0) THEN
+           CALL MPI_BSEND( buf(i) % gdof,cnt(i),MPI_INTEGER,i-1,1311,MPI_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf(i) % ival,cnt(i),MPI_INTEGER,i-1,1312,MPI_COMM_WORLD,ierr )
+           CALL MPI_BSEND( buf(i) % dval,cnt(i),MPI_DOUBLE_PRECISION,i-1,1313,MPI_COMM_WORLD,ierr )
+         END IF
+       END DO
+     END SUBROUTINE SendInterface
+
+
+     SUBROUTINE RecvInterface()
+       INTEGER, ALLOCATABLE :: gdof(:), ival(:)
+       REAL(KIND=dp), ALLOCATABLE :: dval(:)
+       INTEGER :: i,j,k,ierr, cnt, status(MPI_STATUS_SIZE)
+
+       DO i=1,ParEnv % PEs
+         IF(.NOT. ParEnv % isNeighbour(i)) CYCLE
+
+         CALL MPI_RECV( cnt,1,MPI_INTEGER,i-1,1310,MPI_COMM_WORLD,status,ierr )
+         IF(cnt>0) THEN
+           ALLOCATE( gdof(cnt), ival(cnt), dval(cnt) )
+           CALL MPI_RECV( gdof,cnt,MPI_INTEGER,i-1,1311,MPI_COMM_WORLD,status,ierr )
+           CALL MPI_RECV( ival,cnt,MPI_INTEGER,i-1,1312,MPI_COMM_WORLD,status,ierr )
+           CALL MPI_RECV( dval,cnt,MPI_DOUBLE_PRECISION,i-1,1313,MPI_COMM_WORLD,status,ierr )
+
+           DO j=1,cnt
+             k = SearchNode(Mesh % ParallelInfo, gdof(j))
+             IF (k>0) THEN
+               BodyCount(k) = BodyCount(k) + ival(j)
+               BodyAverage(k) = BodyAverage(k)  + dval(j)
+             END IF
+           END DO 
+           DEALLOCATE( gdof, ival, dval )
+         END IF
+       END DO
+       CALL MPI_BARRIER(MPI_COMM_WORLD,ierr)
+     END SUBROUTINE RecvInterface
 
   END SUBROUTINE CalculateBodyAverage
 

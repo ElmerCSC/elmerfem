@@ -372,10 +372,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     IF(.NOT. (GotOper .OR. GotVar ) ) CYCLE
 
+
     IF( ASSOCIATED( Var ) ) THEN
       CALL Info('SaveScalars','Treating variable: '//TRIM(VariableName),Level=12)
       ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements ) 
     END IF
+
 
     IF( GotOper ) THEN
       CALL Info('SaveScalars','Treating operator: '//TRIM(Oper0),Level=12)

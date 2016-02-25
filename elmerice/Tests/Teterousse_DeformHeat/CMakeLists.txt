@@ -7,4 +7,4 @@ ADD_ELMERICETEST_MODULE(Teterousse_DeformHeat USF_TR ./PROG/USF_TR.f90)
 FILE(COPY ELMERSOLVER_STARTINFO teterousse.msh PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMERICE_TEST(Teterousse_DeformHeat)
-ADD_ELMER_LABEL(Teterousse_DeformHeat slow)
+ADD_ELMERICE_LABEL(Teterousse_DeformHeat elmerice-long)

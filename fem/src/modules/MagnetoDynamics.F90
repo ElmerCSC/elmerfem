@@ -171,7 +171,7 @@ CONTAINS
     INTEGER :: n
     REAL(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE.
+    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Avacuum
 
     SAVE Avacuum 
@@ -194,8 +194,10 @@ CONTAINS
     ELSE
       Acoef(1:n) = GetReal( Material, 'Reluctivity', Found )
     END IF
-    IF( .NOT. Found .AND. .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
+    IF( .NOT. Found .AND. .NOT. Warned .AND. &
+        .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
       CALL Warn('GetReluctivityR','Give > Relative Permeability < or > Reluctivity <  for material!')
+      Warned = .TRUE.
     END IF
 
 !------------------------------------------------------------------------------
@@ -210,7 +212,7 @@ CONTAINS
     INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE.
+    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Avacuum
 
     SAVE Avacuum 
@@ -235,8 +237,10 @@ CONTAINS
       Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
          GetReal( Material, 'Reluctivity im', Found ), KIND=dp )
     END IF
-    IF( .NOT. Found .AND. .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
+    IF( .NOT. Found .AND. .NOT. Warned .AND. &
+        .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
       CALL Warn('GetReluctivityC','Give > Relative Permeability < or > Reluctivity <  for material!')
+      Warned = .TRUE.
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityC
@@ -249,7 +253,7 @@ CONTAINS
     INTEGER :: n
     REAL(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE.
+    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Pvacuum = 0._dp
 
     IF ( FirstTime ) THEN
@@ -267,7 +271,10 @@ CONTAINS
     END IF
 
     IF( .NOT. Found ) THEN
-      CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+      IF(.NOT. Warned ) THEN
+        CALL Warn('GetPermittivity','Permittivity not defined in material, defaulting to that of vacuum')
+        Warned = .TRUE.
+      END IF
       Acoef(1:n) = Pvacuum
     END IF
 !------------------------------------------------------------------------------
@@ -1659,13 +1666,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
-                     RotMLoc(3,3), RotM(3,3,n)
+                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), lorentz_velo(3,n)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), FixJPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond
 
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
-    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody
+    LOGICAL :: Stat, Found, Newton, Cubic, HBCurve, LaminateStack, CoilBody, &
+        HasVelocity, HasLorenzVelocity, HasAngularVelocity
     INTEGER :: t, i, j, p, q, np, siz, EdgeBasisDegree
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -1693,6 +1701,13 @@ CONTAINS
     FixJpot = 0._dp
     IF (FixJ) THEN
       FixJPot(1:n) = FixJVar % Values(FixJVar % Perm(Element % NodeIndexes))
+    END IF
+
+    HasVelocity = .FALSE.
+    IF(ASSOCIATED(BodyForce)) THEN
+      CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
+      CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
+      HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
     END IF
 
     CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
@@ -1748,6 +1763,25 @@ CONTAINS
 
        A = SUM( Basis(1:n) * Acoef(1:n) )
        mu = A
+
+       ! Compute convection type term coming from rotation
+       ! -------------------------------------------------
+       IF(HasVelocity) THEN
+         IF( HasAngularVelocity ) THEN
+           DO i=1,n
+             velo(1:3) = velo(1:3) + CrossProduct(omega_velo(1:3,i), [ &
+                 basis(i) * Nodes % x(i), &
+                 basis(i) * Nodes % y(i), &
+                 basis(i) * Nodes % z(i)])
+           END DO
+         END IF
+         IF( HasLorenzVelocity ) THEN
+           velo(1:3) = velo(1:3) + [ &
+               SUM(basis(1:n)*lorentz_velo(1,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(2,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(3,1:n))]
+         END IF
+       END IF
 
        ! Compute the conductivity tensor
        ! -------------------------------
@@ -1865,8 +1899,11 @@ CONTAINS
             SUM(M*RotWBasis(i,:)))*detJ*IP%s(t) 
          DO j = 1,nd-np
            q = j+np
-           STIFF(p,q) = STIFF(p,q) + mu * &
-              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+           STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t) 
+           IF( HasVelocity ) THEN
+             STIFF(p,q) = STIFF(p,q) &
+                 - SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
+           END IF
            IF ( Newton ) THEN
              JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(j,:)) * &
                  SUM(B_ip(:)*RotWBasis(i,:))*detJ*IP % s(t)/Babs
@@ -5360,7 +5397,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy, w_dens
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
-   REAL(KIND=dp) :: ComponentLoss(2,2)
+   REAL(KIND=dp) :: ComponentLoss(2,2), omega_velo(3,35), rot_velo(3), lorentz_velo(3,35)
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
    COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3), BodyForceCurrDens(3,35), &
@@ -5387,7 +5424,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    TYPE(ValueList_t), POINTER :: Material, BC, BodyForce, BodyParams, SolverParams
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
-              CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, ItoJCoeffFound, ImposeBodyForceCurrent
+              CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
+              ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
+              HasLorenzVelocity
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -5646,6 +5685,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
      BodyId = GetBody()
      Material => GetMaterial()
+     BodyForce => GetBodyForce()
      IF ( ASSOCIATED(MFS) ) THEN
        BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.
@@ -5820,6 +5860,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL GetReluctivity(Material,R,n)
      END IF
 
+     HasVelocity = .FALSE.
+     IF(ASSOCIATED(BodyForce)) THEN
+       CALL GetRealVector( BodyForce, omega_velo, 'Angular velocity', HasAngularVelocity)
+       CALL GetRealVector( BodyForce, lorentz_velo, 'Lorentz velocity', HasLorenzVelocity)
+       HasVelocity = HasAngularVelocity .OR. HasLorenzVelocity
+     END IF
+     
+
      ! Calculate nodal fields:
      ! -----------------------
      IF (SecondOrder) THEN
@@ -5879,6 +5927,25 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            wvec = wvec/SQRT(SUM(wvec**2._dp))
          ELSE
            wvec = [0.0_dp, 0.0_dp, 1.0_dp]
+         END IF
+       END IF
+
+       ! Compute convection type term coming from rotation
+       ! -------------------------------------------------
+       IF(HasVelocity) THEN
+         IF( HasAngularVelocity ) THEN
+           DO k=1,n
+             rot_velo(1:3) = rot_velo(1:3) + CrossProduct(omega_velo(1:3,k), [ &
+                 basis(k) * Nodes % x(k), &
+                 basis(k) * Nodes % y(k), &
+                 basis(k) * Nodes % z(k)])
+           END DO
+         END IF
+         IF( HasLorenzVelocity ) THEN
+           rot_velo(1:3) = rot_velo(1:3) + [ &
+               SUM(basis(1:n)*lorentz_velo(1,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(2,1:n)), &
+               SUM(basis(1:n)*lorentz_velo(3,1:n))]
          END IF
        END IF
        !-------------------------------
@@ -6138,7 +6205,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
            IF (Vdofs == 1) THEN
               DO l=1,3
-                JatIP(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l))
+                JatIP(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l)) 
+                IF( HasVelocity ) THEN
+                  JatIP(1,l) = JatIP(1,l) + SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)))
+                END IF
                 FORCE(p,k+l) = FORCE(p,k+l)+s*JatIp(1,l)*Basis(p)
               END DO
               k = k+3
@@ -6186,8 +6256,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            ! The Joule heating power per unit volume: J.E = (sigma * E).E
            IF (vDOFS == 1) THEN
              Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
-               TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
-
+                 TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
+               IF (HasVelocity) THEN
+                 Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
+                     CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
+               END IF
            ELSE
              ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
              ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
@@ -6378,7 +6451,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
 
          ! Warn if user has air gaps and no "nodal force e"
-         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) )
+         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) ) &
            CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap &
              &forces correctly because elemental field "Nodal Force e" is &
              &not present.')
@@ -6407,7 +6480,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
 
          ! Warn if user has air gaps and no "nodal force e" is available
-         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) )
+         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) ) &
            CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap &
              &forces correctly because elemental field "Nodal Force e" is not &
              &present.')
@@ -6468,6 +6541,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL GlobalSol(ML ,  1      , Gforce, Dofs)
      CALL GlobalSol(ML2,  1      , Gforce, Dofs)
      CALL GlobalSol(MST,  6*vdofs, Gforce, Dofs)
+     !CALL GlobalSol(NF,   3,       Gforce, Dofs)
      IF (ASSOCIATED(NF)) THEN
        DO i=1,3
          dofs = dofs + 1
@@ -6540,8 +6614,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
        END DO
      END DO
-
-     
 
      IF( ParEnv % MyPe == 0 ) THEN
        LossFile = ListGetString(SolverParams,'Harmonic Loss Filename',Found )
@@ -6951,7 +7023,6 @@ CONTAINS
    LOGICAL, INTENT(OUT) :: FoundOne
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: P(3), F(3)
-   TYPE(Nodes_t), SAVE :: Nodes
    TYPE(Element_t), POINTER :: Element
    TYPE(Variable_t), POINTER :: CoordVar
    LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
@@ -6995,77 +7066,6 @@ CONTAINS
 !------------------------------------------------------------------------------
  END SUBROUTINE NodalTorqueDeprecated
 !------------------------------------------------------------------------------
-
-!-------------------------------------------------------------------
- SUBROUTINE GetBodyGroups(GroupPrefix, Groups, GroupPerm)
-!-------------------------------------------------------------------
-   IMPLICIT NONE
-   CHARACTER(LEN=*), INTENT(IN) :: GroupPrefix
-   INTEGER, ALLOCATABLE, INTENT(OUT) :: Groups(:), GroupPerm(:)
-   INTEGER, POINTER :: LocalGroups(:)
-
-   INTEGER, ALLOCATABLE :: AllGroups(:)
-   INTEGER :: n, maxngroups, ngroups, k, m, pivot
-
-
-   maxngroups = 0
-   DO n=1,size(Model % bodies)
-     LocalGroups => ListGetIntegerArray(Model % bodies(n) % Values, GroupPrefix // " Groups", Found)
-     IF (Found) THEN
-       maxngroups = maxngroups + size(LocalGroups)
-     END IF
-   END DO
-   IF(maxngroups .eq. 0) THEN
-     ALLOCATE(Groups(0))
-     return
-   END IF
-
-   ALLOCATE(AllGroups(maxngroups))
-   AllGroups = -1
-   ngroups = 0
-   DO n=1,size(Model % bodies)
-     LocalGroups => ListGetIntegerArray(Model % bodies(n) % Values, GroupPrefix //" Groups", Found)
-     IF (Found) THEN
-       AllGroups((ngroups+1):(ngroups+size(LocalGroups))) = LocalGroups(1:size(LocalGroups))
-       ngroups = ngroups + size(LocalGroups)
-     END IF
-   END DO
-
-   call SORT(size(AllGroups), AllGroups)
-   pivot = AllGroups(1)
-   k = 1
-   m = 1
-   do while(pivot .ne. -1)
-     AllGroups(k) = pivot
-     DO n=m,size(AllGroups)
-       IF (AllGroups(k) .ne. AllGroups(n)) then
-         pivot = AllGroups(n)
-         k = k + 1
-         m = n
-         exit
-       end if
-       pivot = -1
-     END DO
-   END DO
-
-   ALLOCATE(Groups(k))
-
-
-   Groups(1:k) = AllGroups(1:k)
-
-   ALLOCATE(GroupPerm(MAXVAL(Groups)))
-   GroupPerm = -1
-   IF(k .eq. 0) RETURN
-   DO m=1,k
-     GroupPerm(Groups(m)) = m
-   END DO
-
-   DEALLOCATE(AllGroups)
-     
-!-------------------------------------------------------------------
- END SUBROUTINE GetBodyGroups
-!-------------------------------------------------------------------
-
 
 !------------------------------------------------------------------------------
   SUBROUTINE NodalTorque(T, TorqueGroups)
@@ -7216,10 +7216,6 @@ CONTAINS
   END SUBROUTINE NodalTorque
 !------------------------------------------------------------------------------
 
-
-
-
-
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs )
 !------------------------------------------------------------------------------
@@ -7247,7 +7243,7 @@ CONTAINS
  SUBROUTINE LocalSol(Var, m, n, A, b, pivot, dofs )
 !------------------------------------------------------------------------------
    TYPE(Variable_t), POINTER :: Var
-   INTEGER :: pivot(:), m,n, dofs
+   INTEGER :: pivot(:), m,n,dofs
    REAL(KIND=dp) :: b(:,:), A(:,:)
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
@@ -7500,7 +7496,7 @@ CONTAINS
          DO k=1, vDOFs
            B(k,:) = MATMUL( SOL(k, np+1:nd), RotWBasis(1:nd-np,:) )
            Flux(k) = Flux(k) + s * SUM(Normal * B(k,:))
-         END DO
+         END DO  
 
          Area = Area + s
 
@@ -7508,89 +7504,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     END SUBROUTINE calcAverageFlux
 !------------------------------------------------------------------------------
-
-  SUBROUTINE LumpGroupedElementalVar( Mesh, Var, SetPerm, AlreadySummed, GroupPrefix)
-    TYPE(Variable_t), POINTER :: Var
-    TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER, POINTER :: SetPerm(:)
-    LOGICAL :: AlreadySummed
-    CHARACTER(LEN=*), INTENT(IN) :: GroupPrefix
-    INTEGER, ALLOCATABLE :: Groups(:), GroupPerm(:)
-    INTEGER, POINTER :: LocalGroups(:)
-
-    TYPE(Element_t), POINTER :: Element
-    LOGICAL, ALLOCATABLE :: VisitedNode(:,:)
-    INTEGER :: dof,n,m,i,j,k,l,nodeind,dgind, ng
-    REAL(KIND=dp), ALLOCATABLE :: BodySum(:,:)
-
-    CALL GetBodyGroups(GroupPrefix, Groups, GroupPerm)
-    ng = size(Groups,1)
-    
-    IF(.NOT. ASSOCIATED(var)) RETURN
-    IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
-
-    CALL Info('LumpedElementalVar','Calculating lumped sum for: '&
-        //TRIM(Var % Name), Level=8)
-
-    n = Mesh % NumberOfNodes
-
-    m = MAXVAL( SetPerm )
-    IF( AlreadySummed ) THEN
-      ALLOCATE( VisitedNode(m,ng) )
-    END IF
-
-    
-    ALLOCATE( BodySum(var%dofs, ng) )
-
-
-    ! Take the sum to nodes, and calculate average if requested
-    BodySum = 0.0_dp
-    IF( AlreadySummed ) THEN
-      VisitedNode = .FALSE.
-    END IF
-
-    DO j=1,Mesh % NumberOfBulkElements
-      Element => GetActiveElement(j)
-      BodyParams => GetBodyParams(Element)
-      LocalGroups => ListGetIntegerArray(BodyParams, &
-        GroupPrefix // " Groups", Found)
-      IF(.NOT. Found) CYCLE
-
-      DO k=1,Element % TYPE % NumberOfNodes         
-        dgind = Element % DGIndexes(k)
-        l = SetPerm(dgind)
-        IF( l == 0 ) CYCLE
-
-        DO ng=1,size(LocalGroups)
-          IF( AlreadySummed ) THEN
-            IF( VisitedNode(l,GroupPerm(LocalGroups(ng))) ) CYCLE           
-            VisitedNode(l,GroupPerm(LocalGroups(ng))) = .TRUE.
-          END IF
-          DO dof=1,Var % Dofs
-            BodySum(dof,GroupPerm(LocalGroups(ng))) = & 
-              BodySum(dof,GroupPerm(LocalGroups(ng))) + &
-              Var % Values( Var % Dofs * ( Var % Perm( dgind )-1) + dof )
-          END DO
-        END DO
-      END DO
-    END DO
-    
-    DO dof=1,Var%Dofs
-      DO i=1,size(Groups)
-        write (Message,'("res: Group ", i0, " ", A, " ", i0)'), &
-          Groups(i), GroupPrefix, dof
-        CALL ListAddConstReal(Model % Simulation, trim(Message), BodySum(dof,i))
-        write (Message,'("Group ", i0, " ",A " ", i0, ": ", f0.8)'), & 
-          Groups(i), GroupPrefix, dof, BodySum(dof,i)
-        call Info( 'MagnetoDynamicsCalcFields', Message)
-      END DO
-    END DO
-
-    DEALLOCATE( VisitedNode, BodySum )
-
-!------------------------------------------------------------------------
-  END SUBROUTINE LumpGroupedElementalVar
-!------------------------------------------------------------------------
 
 !------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamicsCalcFields
