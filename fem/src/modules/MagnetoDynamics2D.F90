@@ -1161,7 +1161,8 @@ CONTAINS
 
     LOGICAL :: Cubic, HBcurve, Found, Stat, StrandedHomogenization
 
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
+    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:), &
+      CubicCoeff(:), HB(:,:) => NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
     TYPE(ValueList_t), POINTER :: Material,  BodyForce
 
@@ -1227,13 +1228,39 @@ CONTAINS
       END IF
     END IF
 
+    CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
+    siz = 0
+    Cval => NULL()
+    IF ( HBCurve ) THEN
+      siz = SIZE(HB,1)
+      IF(siz>1) THEN
+        Bval=>HB(:,1)
+        Hval=>HB(:,2)
+        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
+        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff)) THEN
+          ALLOCATE(CubicCoeff(siz))
+          CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
+        END IF
+        Cval=>CubicCoeff
+        HBCurve = .TRUE.
+      END IF
+    END IF
+
+    IF(siz<=1) THEN
+      Lst => ListFind(Material,'H-B Curve',HBcurve)
+      IF(HBcurve) THEN
+        Cval => Lst % CubicCoeff
+        Bval => Lst % TValues
+        Hval => Lst % FValues(1,1,:)
+      END IF
+    END IF
+
     Lst => ListFind(Material,'H-B Curve',HBcurve)
     IF(HBcurve) THEN
       CALL GetLocalSolution(POT,UElement=Element)
       POTC=POT(1,:)+im*POT(2,:)
-      Cval => Lst % CubicCoeff
-      Bval => Lst % TValues
-      Hval => Lst % FValues(1,1,:)
+      IF (.NOT. ASSOCIATED(Bval) ) CALL Fatal ('mgdyn2D','bval not associated')
+      IF (.NOT. ASSOCIATED(Hval) ) CALL Fatal ('mgdyn2D','hval not associated')
     ELSE IF (.NOT. StrandedHomogenization) THEN 
       CALL GetReluctivity(Material,R,n,Element)
     END IF
