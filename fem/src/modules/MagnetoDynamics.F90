@@ -6313,9 +6313,12 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END DO
 
 
-   ! Lump componentwise forces and torques. TODO: This requires 'Nodal Force e' to be present and it
+   ! Lump componentwise forces and torques. 
+   
+   ! Prefer DG nodal force variable
    IF(ASSOCIATED(EL_NF)) THEN
-     ! Collect nodal forces due airgap
+
+     ! Collect nodal forces from airgaps
      CALL CalcBoundaryModels()
 
      ! Create a minimal discontinuous set such that discontinuity is only created
@@ -6332,37 +6335,94 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      CALL ReduceElementalVar( Mesh, EL_NF, SetPerm, TakeAverage = .FALSE.)
      DO j=1,Model % NumberOfComponents
        CompParams => Model % Components(j) % Values
-       IF( ListGetLogical( CompParams,'Calculate Magnetic Force e', Found ) ) THEN 
+
+       IF ( ListGetLogical( CompParams,'Calculate Magnetic Force', Found ) ) THEN
 
          CALL ComponentNodalForceReduction(Model, Mesh, CompParams, EL_NF, &
            Force = LumpedForce, SetPerm = SetPerm )
 
-         WRITE( Message,'(A,3ES15.6)') 'Magnetic force e reduced: > '&
+         WRITE( Message,'(A,3ES15.6)') 'Magnetic force reduced: > '&
            //TRIM(ListGetString(CompParams,'Name'))//' < :', LumpedForce
          CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
 
          DO i=1,3
-           CALL ListAddConstReal( CompParams,'res: magnetic force e '//TRIM(I2S(i)), LumpedForce(i) )
+           CALL ListAddConstReal( CompParams,'res: magnetic force'//TRIM(I2S(i)), LumpedForce(i) )
          END DO
 
        END IF
-       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque e', Found ) ) THEN 
+
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN
 
          CALL ComponentNodalForceReduction(Model, Mesh, CompParams, EL_NF, &
            Torque = val, SetPerm = SetPerm )
 
-         WRITE( Message,'(A,ES15.6)') 'Magnetic torque e reduced: > '&
+         WRITE( Message,'(A,ES15.6)') 'Magnetic torque reduced: > '&
            //TRIM(ListGetString(CompParams,'Name'))//' < :', val
          CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
 
-         CALL ListAddConstReal( CompParams,'res: magnetic torque e', val )
+         CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
        END IF
      END DO
    ELSE
-     IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) ) &
-       CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap forces correctly because elemental&
-       & fields are not to be calculated')
-     ! Calculate lumped forces from NF field here...
+     DO j=1,Model % NumberOfComponents
+       CompParams => Model % Components(j) % Values
+
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Force', Found ) ) THEN 
+
+         ! fail if there is no nodal force variable available
+         IF (.NOT. ASSOCIATED(NF)) THEN
+           CALL Warn('MagnetoDynamicsCalcFields','Unable to calculated lumped &
+             &forces because nodal forces are not present. Use keyword &
+             &"Calculate Nodal Forces = true" in MagnetoDynamicsCalcFields solver.')
+           EXIT
+         END IF
+
+         ! Warn if user has air gaps and no "nodal force e"
+         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) )
+           CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap &
+             &forces correctly because elemental field "Nodal Force e" is &
+             &not present.')
+
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
+           Force = LumpedForce )
+
+         WRITE( Message,'(A,3ES15.6)') 'Magnetic force reduced: > '&
+           //TRIM(ListGetString(CompParams,'Name'))//' < :', LumpedForce
+         CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
+
+         DO i=1,3
+           CALL ListAddConstReal( CompParams,'res: magnetic force'//TRIM(I2S(i)), LumpedForce(i) )
+         END DO
+
+       END IF
+
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN 
+
+         ! fail if there is no nodal force variable available
+         IF (.NOT. ASSOCIATED(NF)) THEN
+           CALL Warn('MagnetoDynamicsCalcFields','Unable to calculated lumped &
+             &forces because nodal forces are not present. Use keyword &
+             &"Calculate Nodal Forces = true" in MagnetoDynamicsCalcFields solver.')
+           EXIT 
+         END IF
+
+         ! Warn if user has air gaps and no "nodal force e" is available
+         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) )
+           CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap &
+             &forces correctly because elemental field "Nodal Force e" is not &
+             &present.')
+
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
+           Torque = val )
+
+         WRITE( Message,'(A,ES15.6)') 'Magnetic torque reduced: > '&
+           //TRIM(ListGetString(CompParams,'Name'))//' < :', val
+         CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
+
+         CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
+       END IF
+     END DO
+
    END IF
 
    Power  = ParallelReduction(Power)
@@ -6525,31 +6585,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CALL ListAddConstReal(Model % Simulation, 'res: y-axis torque over defined bodies', TorqueDeprecated(2))
        CALL ListAddConstReal(Model % Simulation, 'res: z-axis torque over defined bodies', TorqueDeprecated(3))
      END IF
-   
-     ! This is the newest version utlizing components
-     DO j=1,Model % NumberOfComponents
-       CompParams => Model % Components(j) % Values
-       IF( ListGetLogical( CompParams,'Calculate Magnetic Force', Found ) ) THEN 
-         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
-             Force = LumpedForce )
-         WRITE( Message,'(A,3ES15.6)') 'Magnetic force reduced: > '&
-             //TRIM(ListGetString(CompParams,'Name'))//' < :', LumpedForce
-         CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
-         DO i=1,3
-           CALL ListAddConstReal( CompParams,'res: magnetic force'//TRIM(I2S(i)), LumpedForce(i) )
-         END DO
-       END IF
-
-       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN 
-         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
-             Torque = val )
-         WRITE( Message,'(A,ES15.6)') 'Magnetic torque e reduced: > '&
-             //TRIM(ListGetString(CompParams,'Name'))//' < :', val
-         CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
-         CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
-       END IF
-     END DO
-
    END IF
 
   ! Flux On Boundary:

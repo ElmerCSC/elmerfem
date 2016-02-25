@@ -124,17 +124,16 @@ Boundary Condition 2 ! airgap
   Target Boundaries(1) = 1
   Air Gap Length = Real $ airgap
   Air Gap Relative Permeability = Real 1.0
-  Air Gap Jump = Logical True
 End
 Component 1 ! gap_down component
   Name = string "gap_down"
   Master Bodies(1) = integer 5
-  calculate magnetic force e = logical true
+  calculate magnetic force = logical true
 End
 Component 2 ! gap_up component
   Name = string "gap_up"
   Master Bodies(1) = integer 4
-  calculate magnetic force e = logical true
+  calculate magnetic force = logical true
 End
 
 Solver 4::Reference Norm = 1.17605159E-01
