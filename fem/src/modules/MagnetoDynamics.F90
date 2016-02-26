@@ -6419,7 +6419,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
 
          DO i=1,3
-           CALL ListAddConstReal( CompParams,'res: magnetic force'//TRIM(I2S(i)), LumpedForce(i) )
+           CALL ListAddConstReal( CompParams,'res: magnetic force '//TRIM(I2S(i)), LumpedForce(i) )
          END DO
 
        END IF
@@ -6464,7 +6464,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
 
          DO i=1,3
-           CALL ListAddConstReal( CompParams,'res: magnetic force'//TRIM(I2S(i)), LumpedForce(i) )
+           CALL ListAddConstReal( CompParams,'res: magnetic force '//TRIM(I2S(i)), LumpedForce(i) )
          END DO
 
        END IF

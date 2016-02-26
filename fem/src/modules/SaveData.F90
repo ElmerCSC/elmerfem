@@ -1002,7 +1002,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       Lst => ListHead( Model % Components(i) % Values )
       DO WHILE( ASSOCIATED( Lst ) )    
         IF ( Lst % Name(1:4) == TRIM(ResultPrefix) ) THEN
-          CALL AddToSaveList('comp'//TRIM(I2S(i))//': '//TRIM(Lst % Name), Lst % Fvalues(1,1,1))
+          CALL AddToSaveList('component '//TRIM(I2S(i))//': '//TRIM(Lst % Name), Lst % Fvalues(1,1,1))
           l = l + 1
         END IF
         Lst => Lst % Next
