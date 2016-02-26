@@ -77,7 +77,7 @@
      REAL(KIND=dp) :: WORK(24),Dumy(1)
      Real(KIND=dp) :: a 
      INTEGER :: i, j, t, ordre(3),infor
-     LOGICAL :: GotIt
+     LOGICAL :: GotIt,UnFoundFatal
      CHARACTER(LEN=MAX_NAME_LEN) :: TensorVarName, EigenVarName
 
 
@@ -96,9 +96,7 @@
      ! Eigen Values (dimension 3)
       EigenVarName = GetString( Solver % Values, 'EigenValue Variable Name', GotIt )    
       IF (.NOT.Gotit) EigenVarName = 'EigenStress'
-      EigenSol => VariableGet( Solver % Mesh % Variables, EigenVarName )
-      if (.not.associated(EigenSol)) &
-        CALL FATAL('Compute EigenValues', 'No variable <EigenStress< associated')
+      EigenSol => VariableGet( Solver % Mesh % Variables, EigenVarName,UnFoundFatal=UnFoundFatal)
       EigenPerm => EigenSol % Perm
       Eigen => EigenSol % Values
 

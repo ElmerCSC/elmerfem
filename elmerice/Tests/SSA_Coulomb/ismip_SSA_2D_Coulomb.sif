@@ -81,6 +81,8 @@ Material 1
   SSA Mean Density = Real $rhoi
 
   SSA Friction Law = String "Coulomb"
+  
+  SSA Min Effective Pressure = Real 1.0e-6
 
   ! Needed for Linear, Weertman and Coulomb 
   SSA Friction Parameter = Real 1.0e-3
