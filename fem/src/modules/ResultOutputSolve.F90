@@ -3338,6 +3338,16 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
   NumberOfDofNodes = 0
 
+  IF( DG .OR. DN ) THEN    
+    IF(.NOT. CheckAnyElementalField() ) THEN
+      CALL Info('VtuOutputSolver','No elemental fields, omitting discontinuity creation!',Level=6)
+      DG = .FALSE. 
+      DN = .FALSE.
+    END IF
+  END IF
+
+
+
   ! If we have a discontinuous mesh then create the permutation vectors to deal with the discontinuities.
   IF( DG .OR. DN ) THEN
     NoPermutation = .FALSE.
@@ -3597,7 +3607,45 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
 CONTAINS
 
+  ! Check whether there is any elemental field to be saved. 
+  ! It does not make sense to use discontinuous saving if there are no discontinuous fields.
+  ! It will even result to errors since probably there are no DG indexes either. 
+  FUNCTION CheckAnyElementalField() RESULT ( HaveAnyElemental ) 
 
+    LOGICAL :: HaveAnyElemental
+    INTEGER :: Rank, Vari
+    CHARACTER(LEN=1024) :: Txt, FieldName
+    TYPE(Variable_t), POINTER :: Solution
+    LOGICAL :: Found
+
+    HaveAnyElemental = .FALSE.
+
+    DO Rank = 0,1
+      DO Vari = 1, 999
+        IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
+        IF(Rank==1) WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
+        
+        FieldName = GetString( Params, TRIM(Txt), Found )
+        IF(.NOT. Found) EXIT
+        
+        Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+        IF(.NOT. ASSOCIATED(Solution)) THEN
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+        END IF
+        IF( .NOT. ASSOCIATED( Solution ) ) CYCLE
+        
+        IF ( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+          HaveAnyElemental = .TRUE.
+          EXIT
+        END IF
+      END DO
+    END DO
+
+  END FUNCTION CheckAnyElementalField
+
+
+
+  ! Average fields within bodies
   SUBROUTINE AverageBodyFields( Mesh ) 
     
     TYPE(Mesh_t), POINTER :: Mesh
