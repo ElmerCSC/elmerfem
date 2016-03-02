@@ -64,7 +64,7 @@ FUNCTION source( model, n, time ) RESULT(current)
   IMPLICIT None
   TYPE(Model_t) :: model
   TYPE(ValueList_t), POINTER :: BF
-  LOGICAL :: Found, strengthen
+  LOGICAL :: Found, amplitude_fade_in
   INTEGER :: n, i
   REAL(KIND=dp) :: time, current, Isum, freq, coeff, phase
   REAL(KIND=dp), POINTER :: Amplitudes(:,:)=>NULL()
@@ -82,8 +82,8 @@ FUNCTION source( model, n, time ) RESULT(current)
   phase = GetConstReal(BF, 'Phase', Found)
   IF (.NOT. FOUND) CALL FATAL('source', ListGetActiveName()//': phase not found in Body Force 1 section.')
   
-  strengthen = GetLogical(BF, 'Strengthen', Found)
-  IF (.NOT. Found) strengthen = .TRUE.
+  amplitude_fade_in = GetLogical(BF, 'Amplitude Fade In', Found)
+  IF (.NOT. Found) amplitude_fade_in = .TRUE.
   
   Isum = CosSum(freq, Amplitudes, time, phase)
   
@@ -101,7 +101,7 @@ FUNCTION source( model, n, time ) RESULT(current)
   CALL ListPopNameSpace()
   
   coeff = 1._dp
-  IF (strengthen .AND. 2*pi*freq*time <= pi/2) coeff = 4._dp*freq*time 
+  IF (amplitude_fade_in .AND. 2*pi*freq*time <= pi/2) coeff = 4._dp*freq*time 
   
   CALL Info('source', Message, Level=5 )
   
