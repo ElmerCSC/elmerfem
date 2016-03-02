@@ -6386,8 +6386,61 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    END DO
 
 
-   ! Lump componentwise forces and torques. 
+   Power  = ParallelReduction(Power)
+   Energy = ParallelReduction(Energy)
+
+   IF (LossEstimation) THEN
+     DO j=1,2
+       DO i=1,2
+         ComponentLoss(j,i) = ParallelReduction(ComponentLoss(j,i)) 
+       END DO
+     END DO
+
+     DO j=1,3
+       DO i=1,Model % NumberOfBodies
+         BodyLoss(j,i) = ParallelReduction(BodyLoss(j,i))
+       END DO
+       TotalLoss(j) = SUM( BodyLoss(j,:) )
+     END DO
+   END IF
    
+   ! Assembly of the face terms:
+   !----------------------------
+
+   IF (GetLogical(SolverParams,'Discontinuous Galerkin',Found)) THEN
+     IF (GetLogical(SolverParams,'Average Within Materials',Found)) THEN
+       FORCE = 0.0_dp
+       CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
+     END IF
+   END IF
+
+
+   IF(NodalFields) THEN
+     Fsave => Solver % Matrix % RHS
+     DOFs = 0
+     CALL GlobalSol(MFD,  3*vdofs, Gforce, Dofs)
+     CALL GlobalSol(MFS,  3*vdofs, Gforce, Dofs)
+     CALL GlobalSol(VP ,  3*vdofs, Gforce, Dofs)
+     CALL GlobalSol(EF,   3*vdofs, Gforce, Dofs)
+     CALL GlobalSol(CD,   3*vdofs, Gforce, Dofs)
+     CALL GlobalSol(JXB,  3*vdofs, Gforce, Dofs)
+     CALL GlobalSol(FWP,  1*vdofs, Gforce, Dofs)
+     CALL GlobalSol(JH ,  1      , Gforce, Dofs)
+     CALL GlobalSol(ML ,  1      , Gforce, Dofs)
+     CALL GlobalSol(ML2,  1      , Gforce, Dofs)
+     CALL GlobalSol(MST,  6*vdofs, Gforce, Dofs)
+     !CALL GlobalSol(NF,   3,       Gforce, Dofs)
+     IF (ASSOCIATED(NF)) THEN
+       DO i=1,3
+         dofs = dofs + 1
+         NF % Values(i::3) = Gforce(:,dofs)
+       END DO
+     END IF
+     Solver % Matrix % RHS => Fsave
+   END IF
+
+
+   ! Lump componentwise forces and torques. 
    ! Prefer DG nodal force variable
    IF(ASSOCIATED(EL_NF)) THEN
 
@@ -6498,58 +6551,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    END IF
 
-   Power  = ParallelReduction(Power)
-   Energy = ParallelReduction(Energy)
-
-   IF (LossEstimation) THEN
-     DO j=1,2
-       DO i=1,2
-         ComponentLoss(j,i) = ParallelReduction(ComponentLoss(j,i)) 
-       END DO
-     END DO
-
-     DO j=1,3
-       DO i=1,Model % NumberOfBodies
-         BodyLoss(j,i) = ParallelReduction(BodyLoss(j,i))
-       END DO
-       TotalLoss(j) = SUM( BodyLoss(j,:) )
-     END DO
-   END IF
-   
-    ! Assembly of the face terms:
-    !----------------------------
-
-    IF (GetLogical(SolverParams,'Discontinuous Galerkin',Found)) THEN
-      IF (GetLogical(SolverParams,'Average Within Materials',Found)) THEN
-        FORCE = 0.0_dp
-        CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
-      END IF
-    END IF
-
-
-   IF(NodalFields) THEN
-     Fsave => Solver % Matrix % RHS
-     DOFs = 0
-     CALL GlobalSol(MFD,  3*vdofs, Gforce, Dofs)
-     CALL GlobalSol(MFS,  3*vdofs, Gforce, Dofs)
-     CALL GlobalSol(VP ,  3*vdofs, Gforce, Dofs)
-     CALL GlobalSol(EF,   3*vdofs, Gforce, Dofs)
-     CALL GlobalSol(CD,   3*vdofs, Gforce, Dofs)
-     CALL GlobalSol(JXB,  3*vdofs, Gforce, Dofs)
-     CALL GlobalSol(FWP,  1*vdofs, Gforce, Dofs)
-     CALL GlobalSol(JH ,  1      , Gforce, Dofs)
-     CALL GlobalSol(ML ,  1      , Gforce, Dofs)
-     CALL GlobalSol(ML2,  1      , Gforce, Dofs)
-     CALL GlobalSol(MST,  6*vdofs, Gforce, Dofs)
-     !CALL GlobalSol(NF,   3,       Gforce, Dofs)
-     IF (ASSOCIATED(NF)) THEN
-       DO i=1,3
-         dofs = dofs + 1
-         NF % Values(i::3) = Gforce(:,dofs)
-       END DO
-     END IF
-     Solver % Matrix % RHS => Fsave
-   END IF
 
    WRITE(Message,*) 'Eddy current power: ', Power
    CALL Info( 'MagnetoDynamicsCalcFields', Message )
