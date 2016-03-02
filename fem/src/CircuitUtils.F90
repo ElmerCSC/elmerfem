@@ -989,13 +989,26 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION ReIndex(Ind)
+  FUNCTION ReIndex(Ind, Harmonic)
 !------------------------------------------------------------------------------
-    Integer :: Ind, ReIndex
-
-    ReIndex = 2 * Ind - 1
+    USE DefUtils
+    INTEGER :: Ind, ReIndex
+    LOGICAL, OPTIONAL :: Harmonic
+    LOGICAL :: harm
+    
+    IF (.NOT. PRESENT(Harmonic)) THEN
+      harm = CurrentModel % HarmonicCircuits
+    ELSE
+      harm = Harmonic
+    END IF
+ 
+    IF (harm) THEN
+      ReIndex = 2 * Ind - 1
+    ELSE
+      ReIndex = Ind
+    END IF
 !------------------------------------------------------------------------------
-  END FUNCTION ReIndex
+  END FUNCTION ReIndex 
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1634,7 +1647,7 @@ CONTAINS
     vpolord_tot = Comp % vvar % pdofs - 1
 
     DO vpolordtest=0,vpolord_tot ! V'(alpha)
-      dofIdtest = 2*(vpolordtest + 1) + vvarId
+      dofIdtest = AddIndex(vpolordtest + 1) + vvarId
       DO vpolord = 0, vpolord_tot ! V(alpha)
         dofId = 2*(vpolord + 1) + vvarId
         IF (PRESENT(Cols)) THEN  
@@ -1656,7 +1669,7 @@ CONTAINS
     END DO
 
     DO vpolord = 0, vpolord_tot ! V(alpha)
-      dofId = 2*(vpolord + 1) + vvarId
+      dofId = AddIndex(vpolord + 1) + vvarId
       DO j=1,ncdofs
         q=j
         IF (dim == 3) q=q+nn
