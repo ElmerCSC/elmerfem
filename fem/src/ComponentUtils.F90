@@ -116,7 +116,7 @@ MODULE ComponentUtils
      ! By default (0,0,0) is the origin, and (0,0,1) the axis. 
      Pwrk => ListGetConstRealArray( CompParams,'Torque Origin',Found )
      IF( Found ) THEN
-       IF( SIZE(Pwrk,1) /= 1 .OR. SIZE(Pwrk,2) /= 3 ) THEN
+       IF( SIZE(Pwrk,1) /= 3 .OR. SIZE(Pwrk,2) /= 1 ) THEN
          CALL Fatal('ComponentNodalForceReduction','Size of > Torque Origin < should be 3!')
        END IF
        Origin = Pwrk(1:3,1)
@@ -125,7 +125,7 @@ MODULE ComponentUtils
      END IF
      Pwrk => ListGetConstRealArray( CompParams,'Torque Axis',Found )
      IF( Found ) THEN
-       IF( SIZE(Pwrk,1) /= 1 .OR. SIZE(Pwrk,2) /= 3 ) THEN
+       IF( SIZE(Pwrk,1) /= 3 .OR. SIZE(Pwrk,2) /= 1 ) THEN
          CALL Fatal('ComponentNodalForceReduction','Size of > Torque Axis < should be 3!')
        END IF
        Axis = Pwrk(1:3,1)
