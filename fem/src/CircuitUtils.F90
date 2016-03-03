@@ -1649,7 +1649,7 @@ CONTAINS
     DO vpolordtest=0,vpolord_tot ! V'(alpha)
       dofIdtest = AddIndex(vpolordtest + 1) + vvarId
       DO vpolord = 0, vpolord_tot ! V(alpha)
-        dofId = 2*(vpolord + 1) + vvarId
+        dofId = AddIndex(vpolord + 1) + vvarId
         IF (PRESENT(Cols)) THEN  
           CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, dofId+nm, harm)
         ELSE
