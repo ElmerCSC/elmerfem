@@ -695,46 +695,53 @@ CONTAINS
     IF ( isDamp ) &
       isDamp = isDamp .AND. SIZE(A % DampValues) == SIZE(A % Values)
 
-    DO l=A % Rows(n),A % Rows(n+1)-1
-       i = A % Cols(l)
-       IF ( i == n ) CYCLE
+    IF(.NOT.A % NoDirichlet) THEN
+      DO l=A % Rows(n),A % Rows(n+1)-1
+         i = A % Cols(l)
+         IF ( i == n ) CYCLE
 
-       IF ( n > i ) THEN
-         k1 = A % Diag(i)+1
-         k2 = A % Rows(i+1)-1
-       ELSE 
-         k1 = A % Rows(i)
-         k2 = A % Diag(i)-1
-       END IF
+         IF ( n > i ) THEN
+           k1 = A % Diag(i)+1
+           k2 = A % Rows(i+1)-1
+         ELSE 
+           k1 = A % Rows(i)
+           k2 = A % Diag(i)-1
+         END IF
 
-       k = k2 - k1 + 1
-       IF ( k <= 30 ) THEN
-         DO j = k1, k2
-           IF ( A % Cols(j) == n ) THEN
+         k = k2 - k1 + 1
+         IF ( k <= 30 ) THEN
+           DO j = k1, k2
+             IF ( A % Cols(j) == n ) THEN
+               b(i) = b(i) - A % Values(j) * val
+               A % Values(j) = 0.0_dp
+               IF ( isMass ) A % MassValues(j) = 0._dp
+               IF ( isDamp ) A % DampValues(j) = 0._dp
+               EXIT
+             ELSE IF ( A % Cols(j) > n ) THEN
+               EXIT
+             END IF
+           END DO
+         ELSE
+           j = CRS_Search( k,A % Cols(k1:k2),n )
+           IF ( j > 0 ) THEN
+             j = j + k1 - 1
              b(i) = b(i) - A % Values(j) * val
              A % Values(j) = 0.0_dp
              IF ( isMass ) A % MassValues(j) = 0._dp
              IF ( isDamp ) A % DampValues(j) = 0._dp
-             EXIT
-           ELSE IF ( A % Cols(j) > n ) THEN
-             EXIT
            END IF
-         END DO
-       ELSE
-         j = CRS_Search( k,A % Cols(k1:k2),n )
-         IF ( j > 0 ) THEN
-           j = j + k1 - 1
-           b(i) = b(i) - A % Values(j) * val
-           A % Values(j) = 0.0_dp
-           IF ( isMass ) A % MassValues(j) = 0._dp
-           IF ( isDamp ) A % DampValues(j) = 0._dp
          END IF
-       END IF
-    END DO
+      END DO
+      CALL CRS_ZeroRow(A,n)
+      A % Values(A % Diag(n)) = 1._dp
+      b(n) = val
+    END IF
 
-    CALL CRS_ZeroRow(A,n)
-    b(n) = val
-    A % Values(A % Diag(n)) = 1._dp
+    IF(ALLOCATED(A % Dvalues)) THEN
+      A % DValues(n) = val
+    ELSE
+      b(n) = val
+    END IF
     IF(ALLOCATED(A % ConstrainedDOF)) A % ConstrainedDOF(n) = .TRUE.
 !------------------------------------------------------------------------------
   END SUBROUTINE CRS_SetSymmDirichlet
@@ -832,18 +839,27 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     INTEGER, POINTER :: InvPerm(:)
 !------------------------------------------------------------------------------
 
+    CALL Info('CRS_CreateMatrix','Creating CRS Matrix of size: '//TRIM(I2S(n)),Level=12)
+
     A => AllocateMatrix()
 
-    k = Ndeg*Ndeg*Total
-
-    ALLOCATE( A % Rows(n+1),A % Diag(n),A % Cols(k),STAT=istat )
-
-    IF ( istat == 0 .AND. AllocValues ) THEN
-      ALLOCATE( A % Values(k), STAT=istat )
+    ALLOCATE( A % Rows(n+1),A % Diag(n),STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix topology.' )
     END IF
 
+    k = Ndeg*Ndeg*Total
+    CALL Info('CRS_CreateMatrix','Creating CRS Matrix with nofs: '//TRIM(I2S(k)),Level=14)
+    ALLOCATE( A % Cols(k),STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CreateMatrix', 'Memory allocation error.' )
+      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix cols.' )
+    END IF
+
+    IF ( AllocValues ) THEN
+      ALLOCATE( A % Values(k), STAT=istat )
+      IF ( istat /= 0 ) THEN
+        CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix values.' )
+      END IF
     END IF
 
     NULLIFY( A % ILUValues )
@@ -864,6 +880,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        j = InvPerm((i-2)/Ndeg+1)
        A % Rows(i) = A % Rows(i-1) + Ndeg*RowNonzeros(j)
     END DO
+
     j = InvPerm((n-1)/ndeg+1)
     A % Rows(n+1) = A % Rows(n)  +  Ndeg*RowNonzeros(j)
 
@@ -871,6 +888,9 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     A % Diag = 0
 
     A % Ordered = .FALSE.
+
+    CALL Info('CRS_CreateMatrix','Creating CRS Matrix finished',Level=14)
+
   END FUNCTION CRS_CreateMatrix
 !------------------------------------------------------------------------------
 

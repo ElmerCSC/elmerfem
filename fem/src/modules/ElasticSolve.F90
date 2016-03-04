@@ -185,7 +185,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
   
 
-  LOGICAL :: GotForceBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
+  LOGICAL :: GotForceBC, GotFSIBC, GotIt, NewtonLinearization = .FALSE., Isotropic = .TRUE., &
        RotateModuli, LinearModel = .FALSE., MeshDisplacementActive, NeoHookeanMaterial = .FALSE., &
        CauchyResponseFunction  = .FALSE., UseUMAT = .FALSE., AxialSymmetry
   LOGICAL :: PseudoTraction, GlobalPseudoTraction
@@ -221,7 +221,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        PrevLocalDisplacement(:,:), SpringCoeff(:,:,:)
          
   REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), &
-       Tdiff,Normal(3),s, UnitNorm
+       Tdiff,Normal(3),s, UnitNorm,DragCoeff
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
 !------------------------------------------------------------------------------
@@ -790,7 +790,6 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            GotForceBC = GotForceBC .OR. GotIt
 
            GotForceBC = GotForceBC .OR. GetLogical( BC, 'Force BC', GotIt )
-           GotForceBC = GotForceBC .OR. GetLogical( BC, 'FSI BC', GotIt )
 
            SpringCoeff(1:n,1,1) =  GetReal( BC, 'Spring', NormalSpring )
            IF ( .NOT. NormalSpring ) THEN
@@ -806,7 +805,11 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
               END DO
            END IF
 
-           IF ( .NOT. GotForceBC .AND. ALL( SpringCoeff==0.0d0 ) ) CYCLE
+           GotFSIBC = GetLogical( BC, 'FSI BC', GotIt )
+           IF(.NOT. GotIt ) GotFSIBc = ASSOCIATED( FlowSol  ) 
+
+           IF ( .NOT. GotForceBC .AND. .NOT. GotFSIBC .AND. ALL( SpringCoeff==0.0d0 ) ) CYCLE
+
            PseudoTraction = GetLogical( BC, 'Pseudo-Traction', GotIt)
            IF(.NOT. GotIt ) PseudoTraction = GlobalPseudoTraction
            !------------------------------------------------------------------------------
@@ -837,7 +840,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            FlowNOFNodes = 1
 
            ! Note: Here the flow solution is not interpolated using the full p-basis
-           IF ( ASSOCIATED( FlowSol  ) ) THEN
+           IF ( GotFSIBC ) THEN
               FlowElement => CurrentElement % BoundaryInfo % Left
 
               IF ( .NOT. ASSOCIATED(FlowElement) ) THEN
@@ -881,18 +884,27 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                  j = ListGetInteger( Model % Bodies(FlowElement % BodyId) &
                       % Values,'Material', minv=1, maxv=Model % NumberOFMaterials )
                  Material => Model % Materials(j) % Values
+                 
                  Viscosity(1:FlowNOFNodes) = ListGetReal( &
-                      Material,'Viscosity',FlowNOFNodes,AdjacentNodes,gotIt )
-
+                     Material,'Viscosity',FlowNOFNodes,AdjacentNodes,gotIt )
+                 
                  CompressibilityFlag = ListGetString( Material, &
-                      'Compressibility Model', GotIt )
-
+                     'Compressibility Model', GotIt )
+                 
                  CompressibilityDefined = .FALSE.
                  IF ( GotIt ) THEN
-                    IF ( CompressibilityFlag /= 'incompressible' ) THEN
-                       CompressibilityDefined = .TRUE.
-                    END IF
+                   IF ( CompressibilityFlag /= 'incompressible' ) THEN 
+!.AND. &
+!                       CompressibilityFlag /= 'artificial compressible') THEN
+                     CompressibilityDefined = .TRUE.
+                   END IF
                  END IF
+                 
+                 DragCoeff = ListGetCReal( BC,'FSI Drag Multiplier',GotIt)
+                 IF(GotIt) THEN
+                   Viscosity(1:FlowNOFNodes) = DragCoeff * Viscosity(1:FlowNOFNodes) 
+                 END IF
+
               END IF
            END IF
 
@@ -1952,7 +1964,6 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, UseMask   
     LOGICAL :: Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize
-
     INTEGER, POINTER :: Permutation(:), Indeces(:)
     INTEGER :: dim, elem, n, nd, i, k, l, p, q, N_Gauss, Ind(9), StrainDim
 
@@ -2481,7 +2492,7 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, &
          Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize, PlaneStress, &
-         Isotropic, UseMask
+         Isotropic, UseMask, LimiterOn, ContactOn, ResidualOn
 
     CHARACTER(LEN=MAX_NAME_LEN) :: eqname
 
@@ -2563,6 +2574,20 @@ CONTAINS
        CALL ListSetNameSpace('stress:')
     END IF
 
+    LimiterOn = ListGetLogical( StSolver % Values,'Apply Limiter', Found ) 
+    IF( LimiterOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Apply Limiter',.FALSE.)
+    END IF
+    ContactOn = ListGetLogical( StSolver % Values,'Apply Contact BCs', Found ) 
+    IF( ContactOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Apply Contact BCs',.FALSE.)
+    END IF
+    ResidualOn = ListGetLogical( StSolver % Values,'Linear System Residual Mode', Found ) 
+    IF( ResidualOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Linear System Residual Mode',.FALSE.)
+    END IF
+    
+
     Model % Solver => StSolver
     IF (AxialSymmetry) THEN
        Ind = (/ 1, 4, 4, 3, 0, 0, 0, 0, 0 /)
@@ -2579,7 +2604,7 @@ CONTAINS
     END IF
     CALL DefaultInitialize()
 
-    !------------------------------------------------------------------------
+        !------------------------------------------------------------------------
     ! Assembly loop 
     !------------------------------------------------------------------------
     DO elem = 1, Solver % NumberOfActiveElements
@@ -3111,6 +3136,16 @@ CONTAINS
     Model % Solver => Solver
 
     CALL ListSetNameSpace('')
+
+    IF( LimiterOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Apply Limiter',.TRUE.)
+    END IF
+    IF( ContactOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Apply Contact BCs',.TRUE.)
+    END IF
+    IF( ResidualOn ) THEN
+      CALL ListAddLogical( StSolver % Values,'Linear System Residual Mode',.TRUE.)
+    END IF
 
     CALL Info('ElasticSolve','Finished postprocessing',Level=7)
 !--------------------------------------------------------------------------------

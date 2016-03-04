@@ -122,6 +122,7 @@ CONTAINS
     ! Local variables
 
     INTEGER :: ierr
+    INTEGER :: req, prov
 
     !******************************************************************
 
@@ -132,7 +133,19 @@ CONTAINS
     ParEnv % ActiveComm = MPI_COMM_WORLD
 
     ierr = 0
+#ifdef _OPENMP
+    req = MPI_THREAD_FUNNELED
+    CALL MPI_Init_Thread(req, prov, ierr)
+    IF (prov < req) THEN
+      WRITE( Message, '(A,I0,A,I0,A,I0,A)' ) &
+              'MPI Thread Initialization failed! (req=', req,&
+              ', prov=', prov, &
+              ', ierr=', ierr, ')'
+      CALL Fatal( 'ParCommInit', Message )
+    END IF
+#else
     CALL MPI_INIT( ierr )
+#endif
     IF ( ierr /= 0 ) RETURN
 
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
@@ -497,10 +510,6 @@ CONTAINS
   END SUBROUTINE FindActivePEs
 !-----------------------------------------------------------------------
 
-
-!-----------------------------------------------------------------------
-!> Try to agree about global numbering of nodes among active
-!> processes.
 !-----------------------------------------------------------------------
   SUBROUTINE AddToCommonList( list, ENTRY )
 !-----------------------------------------------------------------------
@@ -529,6 +538,34 @@ CONTAINS
 !-----------------------------------------------------------------------
   END SUBROUTINE AddToCommonList
 !-----------------------------------------------------------------------  
+
+!-----------------------------------------------------------------------
+ SUBROUTINE SyncNeighbours(ParEnv)
+!-----------------------------------------------------------------------
+  TYPE(ParEnv_t) :: ParEnv
+!-----------------------------------------------------------------------
+  LOGICAL :: L
+  INTEGER :: i, ierr, status(MPI_STATUS_SIZE)
+!-----------------------------------------------------------------------
+  DO i=1,ParEnv % PEs
+    IF(Parenv % Mype==i-1) CYCLE
+    IF(ParEnv % Active(i)) &
+      CALL MPI_BSEND( ParEnv % IsNeighbour(i),1, &
+                 MPI_LOGICAL,i-1,1410,MPI_COMM_WORLD,ierr)
+  END DO
+
+  DO i=1,ParEnv % PEs
+    IF(Parenv % Mype==i-1) CYCLE
+    IF(ParEnv % Active(i)) THEN
+      CALL MPI_RECV( L,1,MPI_LOGICAL,i-1,1410,MPI_COMM_WORLD,status,ierr)
+      IF(L) ParEnv % IsNeighbour(i) = .TRUE.
+    END IF
+  END DO
+  Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
+  Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
+!-----------------------------------------------------------------------
+  END SUBROUTINE SyncNeighbours
+!-----------------------------------------------------------------------
 
 !-----------------------------------------------------------------------  
   FUNCTION MeshNeighbours(Mesh,IsNeighbour) RESULT(num)

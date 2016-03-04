@@ -65,6 +65,9 @@ add_executable(ElmerPost ${ElmerPost_SRCS})
 target_link_libraries(ElmerPost camera elements module objects visuals graphics
   glaux ${OPENGL_LIBRARIES} ${TCL_LIBRARY} ${TK_LIBRARY} matc m)
 
+IF(NOT(WIN32))
+  SET_TARGET_PROPERTIES(ElmerPost PROPERTIES INSTALL_RPATH ${ELMERSOLVER_RPATH_STRING})
+ENDIF()
 
 IF(WIN32)
   target_link_libraries(ElmerPost gdi32 user32 advapi32)

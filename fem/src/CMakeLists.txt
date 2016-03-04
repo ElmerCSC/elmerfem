@@ -39,7 +39,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 BackwardError.F90
-  ElmerSolver.F90 CircuitUtils.F90)
+  ElmerSolver.F90 CircuitUtils.F90 ComponentUtils.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
@@ -148,8 +148,13 @@ IF(WITH_MPI)
   # Add parpack and possibly others
   IF(Mumps_LIBRARIES)
     INCLUDE_DIRECTORIES(${Mumps_INCLUDE_DIR})
+    # Link to SCALAPACK implicitly
     LIST(APPEND ELMERSOLVER_LIBRARIES ${Mumps_LIBRARIES})
-  ENDIF()	
+  ELSEIF(MKL_CPARDISO_FOUND)
+    # Mumps includes SCALAPACK, but it is needed with CPARDISO
+    LIST(APPEND ELMERSOLVER_LIBRARIES ${SCALAPACK_LIBRARIES})
+  ENDIF()
+
   IF(Hypre_LIBRARIES)
     LIST(APPEND ELMERSOLVER_LIBRARIES ${Hypre_LIBRARIES})
   ENDIF()

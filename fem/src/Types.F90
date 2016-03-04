@@ -155,6 +155,21 @@ END INTERFACE
     LOGICAL :: GotBlockStruct
   END TYPE BlockMatrix_t
 
+#if defined(HAVE_MKL) && defined(HAVE_CPARDISO)                                 
+  TYPE CPardiso_struct                                                          
+    INTEGER :: n                                                                
+    INTEGER :: mtype                                                            
+    INTEGER :: msglvl                                                           
+    INTEGER :: maxfct                                                           
+    INTEGER :: mnum                                                             
+    INTEGER :: nrhs                                                             
+    INTEGER, POINTER CONTIG :: ia(:) => NULL(), ja(:) => NULL()
+    REAL(kind=dp), POINTER CONTIG :: aa(:) => NULL(), rhs(:) => NULL(), &
+          x(:) => NULL()
+    INTEGER, POINTER CONTIG :: IParm(:) => NULL()    
+    INTEGER(KIND=AddrInt), POINTER CONTIG :: ID(:) => NULL()                           
+  END TYPE CPardiso_struct
+#endif     
 
   TYPE Matrix_t
     TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), CircuitMatrix => Null(), &
@@ -164,6 +179,8 @@ END INTERFACE
 
     TYPE(Solver_t), POINTER :: Solver => NULL()
 
+    LOGICAL :: NoDirichlet = .FALSE.
+    REAL(KIND=dp), ALLOCATABLE :: Dvalues(:)
     LOGICAL, ALLOCATABLE :: ConstrainedDOF(:)
 
     INTEGER :: Subband, FORMAT, SolveCount, Comm=-1
@@ -196,6 +213,9 @@ END INTERFACE
     INTEGER, POINTER :: PardisoParam(:) => NULL()
     INTEGER(KIND=AddrInt), POINTER :: PardisoID(:) => NULL()
 #endif
+#if defined(HAVE_MKL) && defined(HAVE_CPARDISO)                                 
+    TYPE(CPardiso_struct), POINTER :: CPardisoID => NULL()                      
+#endif 
 #ifdef HAVE_SUPERLU
     INTEGER(KIND=AddrInt) :: SuperLU_Factors=0
 #endif
@@ -354,7 +374,7 @@ END INTERFACE
      INTEGER :: TYPE
      TYPE(ValueListEntry_t), POINTER :: Next => Null()
 
-     REAL(KIND=dp), POINTER :: TValues(:)
+     REAL(KIND=dp), POINTER :: TValues(:), Cumulative(:) => NULL()
      REAL(KIND=dp), POINTER :: FValues(:,:,:), CubicCoeff(:)=>NULL()
 
      LOGICAL :: LValue
@@ -688,6 +708,7 @@ END INTERFACE
       TYPE(ValueList_t), POINTER :: Values => Null()
 
       INTEGER :: TimeOrder,DoneTime,Order,NOFEigenValues=0
+      INTEGER :: TimesVisited = 0
       INTEGER(KIND=AddrInt) :: PROCEDURE, LinBeforeProc, LinAfterProc
 
       REAL(KIND=dp) :: Alpha,Beta,dt

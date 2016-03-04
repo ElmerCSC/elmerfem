@@ -1,0 +1,97 @@
+ElmerIce Solver cmake test case "How-to"
+========================================
+Laure Tavard / LGGE, 2016/01
+Adapted from ElmerSolver_cmake_test-how-to.txt (J. Kataja)
+
+This How-to describes how to create and use test cases in software
+development and case definition.
+
+The test cases are used to check for possible bugs, and to ensure 
+backward compatibility. For that purpose they are currently around 
+39 repertories (Jan 2016) . The tests should be located in directory
+
+[TRUNK]/elmerice/Tests
+
+To run the test-cases, compile Elmer, go to the build repertory and run:
+	ctest -L elmerice   (all Elmer/Ice tests)
+	ctest -L elmerice-fast   (all fast Elmer/Ice tests)
+	ctest -L slow   (all slow Elmer/Ice tests)
+	ctest -R <TestName> (all tests matching expression)
+
+
+B. How to create a test
+=======================
+
+When a new feature has been verified it is often a good idea to
+create a test case that ensures the feature will be maintained
+also in the future versions of Elmer. To do this:
+
+1) Create new directory in the "tests" directory under [TRUNK]/elmerice.
+   The folders in this directory will be automatically scanned and
+   tests run.
+
+2) Define your analysis: .sif file, mesh files, F90 files &
+   ELMERSOLVER_STARTINFO 
+
+      In order to test a norm resulting from a solver <N>,
+      add those lines at the end of .sif file:
+	*** CODE ***
+	Solver N :: Reference Norm = Real <norm>
+	Solver N :: Reference Norm Tolerance = Real <tol>
+	$fprintf( stderr, "TEST CASE 1\n");
+	RUN
+	$fprintf( stderr, "END TEST CASE 1: Target NRM=<norm>,EPS=<tol>\n" );
+	************
+
+      Equivalent to those lines inside the solver block to be tested
+
+	*** CODE ***
+	Reference Norm = real <norm>
+	Reference Norm Tolerance = Real <tol>
+	************
+
+3) Create CMakeLists.txt file in the test directory containing
+	*** CODE ***
+	INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
+	CONFIGURE_FILE(<sif_name>.sif <sif_name>.sif COPYONLY)
+	ADD_ELMERICETEST_MODULE(<test_name> <module_name> <module_source.f90>)
+	FILE(COPY ELMERSOLVER_STARTINFO <file1> <file2> <directory1> ...DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+	ADD_ELMERICE_TEST(<test_name>)
+	ADD_ELMERICE_LABEL(<test_name> <label>)
+	************
+    For label, 
+  test < 10s, <label>=elmerice-fast
+  test > 100s, <label>=slow
+
+4) Create runTest.cmake with
+	*** CODE ***
+	INCLUDE(${TEST_SOURCE}/../test_macros.cmake)
+	EXECUTE_PROCESS(COMMAND <command_name> <arg1> <arg2> ...)
+	RUN_ELMERICE_TEST()
+	************
+
+
+C. Results 
+============
+	On screen
+	---------
+Run the tests will print some informations for each test-case. For example:
+      Start  1: Teterousse3a
+ 1/36 Test  #1: Teterousse3a .....................***Passed    503.64 sec
+      Start  2: Dating
+ 2/36 Test  #2: Dating ...........................***Passed    2.73 sec
+
+        In directory build/elmerice/Testing/Temporary/
+	----------------------------------------------
+LastTest.log with all the details about the tests and
+LastTestsFailed.log with the list of failed tests. 
+
+
+D. How to use the test case as starting point
+==============================================
+
+One can take these tests as a starting point or copy-paste
+appropriate solver sections from there. These tests do not include
+any ElmerGUI project file and therefore the graphical user interface
+cannot be used to view these cases. You can look at the README.txt in
+each test to see what sequence of command is usually needed.

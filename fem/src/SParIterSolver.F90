@@ -618,12 +618,13 @@ st = realtime()
 
   ! Sync neighbour information, if changed by the above ^:
   ! ------------------------------------------------------
-  ALLOCATE(isNeighbour(ParEnv % PEs))
-  isNeighbour = Parenv % IsNeighbour
-  CALL MPI_ALLREDUCE( isNeighbour, Parenv % IsNeighbour, Parenv % Pes, &
-      MPI_LOGICAL, MPI_LOR, SourceMatrix % Comm, i )
-  Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
-  Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
+! ALLOCATE(isNeighbour(ParEnv % PEs))
+! isNeighbour = Parenv % IsNeighbour
+! CALL MPI_ALLREDUCE( isNeighbour, Parenv % IsNeighbour, Parenv % Pes, &
+!     MPI_LOGICAL, MPI_LOR, SourceMatrix % Comm, i )
+! Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
+! Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
+  CALL SyncNeighbours(ParEnv)
 
   ! -
   ALLOCATE(SplittedMatrix % IfLCols(ParEnv % PEs))
@@ -1187,12 +1188,13 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 !> Create continuous numbering for the dofs expected by some linear solvers.
 !----------------------------------------------------------------------
-  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin,Mesh )
+  SUBROUTINE ContinuousNumbering(ParallelInfo, Mperm, Aperm, Owner, nin,Mesh, nOwn )
 !--------------------------------------------------------------------
      INTEGER :: Mperm(:), Aperm(:), Owner(:)
      TYPE(Mesh_t), OPTIONAL :: Mesh
      INTEGER, OPTIONAL :: nin
      TYPE(ParallelInfo_t) :: ParallelInfo
+     INTEGER, OPTIONAL :: nOwn
 
      INTEGER, ALLOCATABLE :: neigh(:), sz(:),buf_a(:,:),buf_g(:,:), &
                   buf_aa(:), buf_gg(:)
@@ -1200,7 +1202,7 @@ END SUBROUTINE ZeroSplittedMatrix
      INTEGER, POINTER :: nb(:)
      LOGICAL, POINTER :: isNeighbour(:)
      INTEGER :: min_id,max_id,my_id,next_id,prev_id, active_neighbours
-     INTEGER :: i,j,k,src,n,nob,gind,ssz,status(MPI_STATUS_SIZE),ierr,nneigh
+     INTEGER :: i,j,k,src,n,nob,gind,gindp,ssz,status(MPI_STATUS_SIZE),ierr,nneigh
 
      Owner = 0; Aperm = 0;
      IF(PRESENT(nin)) THEN
@@ -1240,6 +1242,7 @@ END SUBROUTINE ZeroSplittedMatrix
 
      ! give a number to dofs owned by us:
      ! -----------------------------------
+     gindp = gind
      DO i=1,n
        nb => ParallelInfo % NeighbourList(i) % Neighbours
        IF ( nb(1)==my_id ) THEN
@@ -1248,6 +1251,8 @@ END SUBROUTINE ZeroSplittedMatrix
          Aperm(i) = gind
        END IF
      END DO
+     ! Compute the number of dofs owned                                         
+     IF (PRESENT(nOwn)) nOwn = gind - gindp
 
      ! next pe in line needs it's base:
      ! --------------------------------

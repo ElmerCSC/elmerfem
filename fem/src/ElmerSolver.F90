@@ -93,7 +93,7 @@
 
      TYPE(ParEnv_t), POINTER :: ParallelEnv
 
-     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq, ExecCommand
+     CHARACTER(LEN=MAX_NAME_LEN) :: ModelName, eq, ExecCommand, ExtrudedMeshName
      CHARACTER(LEN=MAX_STRING_LEN) :: OutputFile, PostFile, RestartFile, &
                 OutputName=' ',PostName=' ', When, OptionString
 
@@ -322,28 +322,35 @@ END INTERFACE
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
          ExtrudeLevels=GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
-         IF(ExtrudeLevels>1) THEN
-           ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
-           DO i=1,CurrentModel % NumberOfSolvers
-             IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
-               CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
-           END DO
-           ExtrudedMesh % Next => CurrentModel % Meshes % Next
-           CurrentModel % Meshes => ExtrudedMesh
-
-           ! If periodic BC given, compute boundary mesh projector:
-           ! ------------------------------------------------------
-           DO i = 1,CurrentModel % NumberOfBCs
-             IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
-               CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
-             CurrentModel % BCs(i) % PMatrix => NULL()
-             k = ListGetInteger( CurrentModel % BCs(i) % Values, 'Periodic BC', GotIt )
-             IF( GotIt ) THEN
-               CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, i, k )
-             END IF
-           END DO
+         IF (Found) THEN
+            IF(ExtrudeLevels>1) THEN
+               ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
+               IF (Found) THEN
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2, ExtrudedMeshName)
+               ELSE
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
+               END IF
+               DO i=1,CurrentModel % NumberOfSolvers
+                  IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
+                       CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
+               END DO
+               ExtrudedMesh % Next => CurrentModel % Meshes % Next
+               CurrentModel % Meshes => ExtrudedMesh
+               
+               ! If periodic BC given, compute boundary mesh projector:
+               ! ------------------------------------------------------
+               DO i = 1,CurrentModel % NumberOfBCs
+                  IF(ASSOCIATED(CurrentModel % Bcs(i) % PMatrix)) &
+                       CALL FreeMatrix( CurrentModel % BCs(i) % PMatrix )
+                  CurrentModel % BCs(i) % PMatrix => NULL()
+                  k = ListGetInteger( CurrentModel % BCs(i) % Values, 'Periodic BC', GotIt )
+                  IF( GotIt ) THEN
+                     CurrentModel % BCs(i) % PMatrix =>  PeriodicProjector( CurrentModel, ExtrudedMesh, i, k )
+                  END IF
+               END DO
+            END IF
          END IF
-         
+
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
@@ -628,7 +635,7 @@ END INTERFACE
        REAL(KIND=dp) :: Norm, RefNorm, Tol, Err, val, refval
        TYPE(Solver_t), POINTER :: Solver
        TYPE(Variable_t), POINTER :: Var
-       LOGICAL :: Found, Success = .TRUE., FinalizeOnly, CompareNorm, CompareSolution
+       LOGICAL :: Found, Success = .TRUE., FinalizeOnly, CompareNorm, CompareSolution, AbsoluteErr
        CHARACTER(LEN=MAX_STRING_LEN) :: PassedMsg
 
        SAVE TestCount, PassCount 
@@ -704,21 +711,35 @@ END INTERFACE
            Tol = ListGetConstReal( Solver % Values,'Reference Norm Tolerance', Found )
            IF(.NOT. Found ) Tol = 1.0d-5
            Norm = Var % Norm 
-           Err = ABS( Norm - RefNorm ) / RefNorm 
+           AbsoluteErr = ListGetLogical( Solver % Values,'Reference Norm Absolute', Found ) 
+           Err = ABS( Norm - RefNorm ) 
+
+           IF(.NOT. AbsoluteErr ) THEN
+             IF( RefNorm < TINY( RefNorm ) ) THEN
+               CALL Warn('CompareToReferenceSolution','Refenrece norm too small for relative error')
+               AbsoluteErr = .TRUE.
+             ELSE
+               Err = Err / RefNorm 
+             END IF
+           END IF
 
            ! Compare to given reference norm
            IF( Err > Tol ) THEN
              ! Warn only in the main core
              IF( ParEnv % MyPe == 0 ) THEN
-               WRITE( Message,'(A,I0,A,ES13.6,A,ES13.6)') &
+               WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
                    'Solver ',solver_id,' FAILED:  Norm =',Norm,'  RefNorm =',RefNorm
                CALL Warn('CompareToReferenceSolution',Message)
-               WRITE( Message,'(A,ES13.6)') 'Relative Error to reference norm:',Err
+               IF( AbsoluteErr ) THEN
+                 WRITE( Message,'(A,ES13.6)') 'Absolute Error to reference norm:',Err
+               ELSE
+                 WRITE( Message,'(A,ES13.6)') 'Relative Error to reference norm:',Err
+               END IF
                CALL Info('CompareToReferenceSolution',Message, Level = 4 )
              END IF
              Success = .FALSE.
            ELSE         
-             WRITE( Message,'(A,I0,A,ES13.6,A,ES13.6)') &
+             WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
                  'Solver ',solver_id,' PASSED:  Norm =',Norm,'  RefNorm =',RefNorm
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
@@ -759,7 +780,7 @@ END INTERFACE
            IF( Err > Tol ) THEN
              ! Normally warning is done for every partition but this time it is the same for all
              IF( ParEnv % MyPe == 0 ) THEN
-               WRITE( Message,'(A,I0,A,ES13.6,A,ES13.6)') &
+               WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
                    'Solver ',solver_id,' FAILED:  Solution = ',Norm,'  RefSolution =',RefNorm
                CALL Warn('CompareToReferenceSolution',Message)
                WRITE( Message,'(A,ES13.6)') 'Relative Error to reference solution:',Err
@@ -767,7 +788,7 @@ END INTERFACE
              END IF
              Success = .FALSE.
            ELSE         
-             WRITE( Message,'(A,I0,A,ES13.6,A,ES13.6)') &
+             WRITE( Message,'(A,I0,A,ES15.8,A,ES15.8)') &
                  'Solver ',solver_id,' PASSED:  Solution =',Norm,'  RefSolution =',RefNorm
              CALL Info('CompareToReferenceSolution',Message,Level=4)
            END IF
@@ -1343,7 +1364,8 @@ END INTERFACE
 !------------------------------------------------------------------------------
      USE DefUtils
      LOGICAL :: Gotit
-     INTEGER :: k,StartTime
+     INTEGER :: k
+     REAL(KIND=dp) :: StartTime
 !------------------------------------------------------------------------------
 
 

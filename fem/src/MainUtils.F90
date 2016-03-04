@@ -77,8 +77,8 @@ CONTAINS
       
       IF( Found ) THEN        
         IF ( ParEnv % PEs > 1 ) THEN
-          IF ( str /= 'mumps' ) THEN
-            CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS direct solver' // &
+          IF ( str /= 'mumps' .AND. str /= 'cpardiso' ) THEN
+            CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS and CPardiso direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 
             CALL ListAddString( Params,'Linear System Direct Method', str)
@@ -111,6 +111,10 @@ CONTAINS
         CASE( 'pardiso' )
 #if !defined(HAVE_PARDISO) && !defined(HAVE_MKL)
           CALL Fatal( 'CheckLinearSolverOptions', 'Pardiso solver has not been installed.' )
+#endif
+        CASE( 'cpardiso')
+#if !defined(HAVE_CPARDISO) || !defined(HAVE_MKL)
+        CALL Fatal( 'CheckSolverOptions', ' Cluster Pardiso solver has not been installed.' )
 #endif
         CASE( 'cholmod','spqr' )
 #ifndef HAVE_CHOLMOD
@@ -759,6 +763,7 @@ CONTAINS
     !-----------------------------------------------------------------
     IF( IsProcedure ) THEN
       InitProc = GetProcAddr( TRIM(proc_name)//'_Init', abort=.FALSE. )
+      CALL Info('AddEquationBasics','Checking for _init solver',Level=12)
       IF ( InitProc /= 0 ) THEN
         CALL ExecSolver( InitProc, CurrentModel, Solver, &
             Solver % dt, Transient )
@@ -820,10 +825,12 @@ CONTAINS
               Simulation, 'Runge-Kutta Order', Found, minv=2, maxv=4 )
           IF ( .NOT.Found ) Solver % Order = 2
         END IF
-      ELSE
+        CALL Info('AddEquationBasics','Time stepping method is: '//TRIM(str),Level=12)
+     ELSE
         CALL Warn( 'AddEquation', '> Timestepping method < defaulted to > Implicit Euler <' )
         CALL ListAddString( SolverParams, 'Timestepping Method', 'Implicit Euler' )
       END IF
+
     END IF
 
     ! Get the procudure that really runs the solver
@@ -936,6 +943,7 @@ CONTAINS
         END IF
 
       ELSE        
+        CALL Info('AddEquationBasics','Creating standard variable: '//var_name(1:n),Level=8)
 
         ! If the variable is a field variable create a permutation and matrix related to it
         !----------------------------------------------------------------------------------
@@ -957,6 +965,7 @@ CONTAINS
         
         ! Computate the size of the permutation vector
         !-----------------------------------------------------------------------------------------
+        CALL Info('AddEquationBasics','Computing size of permutation vector',Level=12)
         Ndeg = 0
 !        IF( Solver % SolverMode == SOLVER_MODE_DEFAULT .OR. &
 !            Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
@@ -1010,17 +1019,24 @@ CONTAINS
         IF ( .NOT. Found ) BandwidthOptimize = .TRUE.
         CALL CheckLinearSolverOptions( Solver )
 
+        CALL Info('AddEquationBasics','Maximum size of permutation vector is: '//TRIM(I2S(Ndeg)),Level=12)
         ALLOCATE( Perm(Ndeg) )
 
         Perm = 0
         MatrixFormat = MATRIX_CRS
+
+
+        CALL Info('AddEquationBasics','Creating solver matrix topology',Level=12)
         Solver % Matrix => CreateMatrix( CurrentModel, Solver, Solver % Mesh, &
             Perm, DOFs, MatrixFormat, BandwidthOptimize, eq(1:LEN_TRIM(eq)), &
             ListGetLogical( SolverParams,'Discontinuous Galerkin', Found ), &
             GlobalBubbles=GlobalBubbles )          
         Nrows = DOFs * Ndeg
-        IF (ASSOCIATED(Solver % Matrix)) Nrows = Solver % Matrix % NumberOfRows
-       
+        IF (ASSOCIATED(Solver % Matrix)) THEN
+          Nrows = Solver % Matrix % NumberOfRows
+          CALL Info('AddEquationBasics','Number of rows in CRS matrix: '//TRIM(I2S(Nrows)),Level=12)
+        END IF
+
         ! Basically the solver could be matrix free but still the matrix
         ! is used here temperarily since it is needed when making the 
         ! permutation vector
@@ -1031,6 +1047,7 @@ CONTAINS
         END IF
        
         IF (Nrows>0) THEN
+          CALL Info('AddEquationBasics','Creating solver variable',Level=12)
           ALLOCATE(Solution(Nrows))
           Solution = InitValue
           
@@ -1067,6 +1084,8 @@ CONTAINS
       
       IF(.NOT. Found) EXIT
       
+      CALL Info('AddEquationBasics','Creating exported variable: '//TRIM(var_name),Level=12)
+
       str = TRIM( ComponentName( 'exported variable', l ) ) // ' Output'
       VariableOutput = ListGetLogical( SolverParams, str, Found )
       IF ( .NOT. Found ) VariableOutput = .TRUE.
@@ -3896,6 +3915,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
      TYPE(ValueList_t), POINTER :: Params
+     INTEGER, POINTER :: UpdateComponents(:)
 
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -4035,10 +4055,31 @@ CONTAINS
        IF(NamespaceFound) CALL ListPopNamespace()
      END IF
      Solver % dt = dt
+     Solver % TimesVisited = Solver % TimesVisited + 1
 
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
+
+
+!---------------------------------------------------------------------
+! After each solver one may do some special derived fields etc. 
+!---------------------------------------------------------------------
+     
+
+     ! Update the variables that depend on this solver
+     IF( ListGetLogical( Params,&
+           'Update Exported Variables', Found) ) THEN
+       CALL UpdateExportedVariables( Solver )	
+     END IF
+    
+
+     ! Update the components that depend on this solver
+     UpdateComponents => ListGetIntegerArray( Params, &
+         'Update Components', Found )   
+     IF( Found ) CALL UpdateDependentComponents( UpdateComponents )	
+     
+
 
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested

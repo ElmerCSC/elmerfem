@@ -4,4 +4,4 @@ CONFIGURE_FILE(teterousse1a.sif teterousse1a.sif COPYONLY)
 FILE(COPY ELMERSOLVER_STARTINFO teterousse1a.msh PROG DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
 ADD_ELMERICE_TEST(Grid2DInterpolator)
-ADD_ELMER_LABEL(Grid2DInterpolator slow)
+ADD_ELMERICE_LABEL(Grid2DInterpolator elmerice-long)

@@ -100,7 +100,8 @@ static void Instructions()
   printf("17) .msh      : Nastran format\n");
   printf("18) .msh      : CGsim format\n");
   printf("19) .geo      : Geo format\n");
-  printf("20) .tra      : Cedrat Flux format\n");
+  printf("20) .tra      : Cedrat Flux 2D format\n");
+  printf("21) .pf3      : Cedrat Flux 3D format\n");
 #endif 
 
   printf("\nThe second parameter defines the output file format:\n");
@@ -137,6 +138,7 @@ static void Instructions()
   printf("-clone int[3]        : make ideantilcal copies of the mesh\n");
   printf("-clonesize real[3]   : the size of the mesh to be cloned if larger to the original\n");
   printf("-mirror int[3]       : copy the mesh around the origin in coordinate directions\n");
+  printf("-cloneinds           : when performing cloning should cloned entitities be given new indexes\n");
   printf("-unite               : the meshes will be united\n");
   printf("-polar real          : map 2D mesh to a cylindrical shell with given radius\n");
   printf("-cylinder            : map 2D/3D cylindrical mesh to a cartesian mesh\n");
@@ -734,9 +736,7 @@ int main(int argc, char *argv[])
   
   if(eg.clone[0] || eg.clone[1] || eg.clone[2]) {
     for(k=0;k<nomeshes;k++) {
-      CloneMeshes(&data[k],boundaries[k],eg.clone,eg.clonesize,FALSE,info);
-      /* mergeeps = fabs(eg.clonesize[0]+eg.clonesize[1]+eg.clonesize[2]) * 1.0e-8;
-	 MergeElements(&data[k],boundaries[k],eg.order,eg.corder,mergeeps,TRUE,TRUE); */
+      CloneMeshes(&data[k],boundaries[k],eg.clone,eg.clonesize,eg.cloneinds,info);
     }
   }
 
@@ -930,7 +930,7 @@ int main(int argc, char *argv[])
 
       if(eg.partitions) {
 	if(partopt == 0) 
-	  PartitionSimpleElements(&data[k],eg.partdim,eg.periodicdim,eg.partorder,eg.partcorder,info);	
+	  PartitionSimpleElements(&data[k],&eg,boundaries[k],eg.partdim,eg.periodicdim,eg.partorder,eg.partcorder,info);	
 	else if(partopt == 2) 
 	  PartitionSimpleElementsNonRecursive(&data[k],eg.partdim,eg.periodicdim,info);	
 	else if(partopt == 3) 

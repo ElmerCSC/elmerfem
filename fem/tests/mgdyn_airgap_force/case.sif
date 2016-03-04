@@ -1,0 +1,140 @@
+$ gap_up = 1
+$ gap_down = 2
+$ coilbrick = 3
+$ uparm = 4
+$ downarm = 5
+$ air = 6
+include modeldata.sif
+
+Header
+  Mesh DB "." "umagnet"
+End
+Simulation
+  Max Output Level = 12
+  Simulation type = steady state
+  mesh levels = 1
+End
+Solver 1 ! avsolver
+  Equation = "mgdyn"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Use Piola Transform = logical true
+  variable = string "av"
+  use piola Transform = true
+  quadratic approximation = logical $ quadratic
+
+  Linear System Solver = Iterative
+  Linear System Preconditioning = none
+  Linear System Residual Output = 20
+  Linear System Max Iterations = 2500
+  Linear System Iterative Method = bicgstabl
+  BicGStabL Polynomial Degree = 2
+  Linear System GCR Restart = 600
+  Linear System Convergence Tolerance = 1e-9
+  Linear System Abort Not Converged = False
+
+  Edge Basis = Logical True
+End
+Solver 2 ! postprocess
+  Exec Solver = always
+  Equation = "MGDynamicsCalc"
+
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Linear System Symmetric = True
+  Potential Variable = String "AV"
+  use piola Transform = true
+  quadratic approximation = logical $ quadratic
+
+  Calculate Current Density = Logical True
+  Calculate Electric Field = Logical True
+  Calculate Magnetic Field Strength = Logical True
+  Calculate Magnetic Vector Potential = Logical True
+  Calculate Magnetic Flux Density = Logical True
+  calculate nodal forces = logical true
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 0
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-8
+  optimize bandwidth = false
+  
+End
+Solver 3 ! resultoutput
+    Equation = "Result Output"
+    Procedure = "ResultOutputSolve" "ResultOutputSolver"
+    Save Geometry IDs = Logical True
+    Output File Name = "case"
+    output directory = "umagnet"
+    Output Format = vtu
+End
+Solver 4 ! savescalars
+  Equation = "Savedata"
+  Procedure = "SaveData" "SaveScalars"
+  filename = "case.dat"
+  save component results = logical true
+End
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+Body 1 ! magnet
+  Target bodies(2) = $ uparm downarm
+  Material = 1
+  Equation = 1
+End
+Body 2 ! coil
+  Target bodies(1) = $ coilbrick
+  Body Force = 1
+  Material = 1
+  Equation = 1
+End
+Body 3 ! air
+  Target bodies(1) = $ air
+  Material = 2
+  Equation = 1
+End
+Body 4 ! gap_up
+  Target Bodies(1) = $ gap_up
+  Material = 1
+  Equation = 1
+  gap up mask = logical true
+End
+Body 5 ! gap_down
+  Target Bodies(1) = $ gap_down
+  Material = 1
+  Equation = 1
+  gap down mask = logical true
+End
+Material 1 ! mu_pm
+  Relative Permeability = $ mu_pm
+  Relative Permittivity = 1
+End
+Material 2 ! vacuum
+  Relative Permeability = 1
+  Relative Permittivity = 1
+End
+Body Force 1 ! magnetization
+  Magnetization 2 = $ B0 / (mu_pm*mu0)
+End
+Boundary Condition 1 ! exterior
+  Target Boundaries(1) = 2
+  AV {e} = real 0
+End
+Boundary Condition 2 ! airgap
+  Target Boundaries(1) = 1
+  Air Gap Length = Real $ airgap
+  Air Gap Relative Permeability = Real 1.0
+End
+Component 1 ! gap_down component
+  Name = string "gap_down"
+  Master Bodies(1) = integer 5
+  calculate magnetic force = logical true
+End
+Component 2 ! gap_up component
+  Name = string "gap_up"
+  Master Bodies(1) = integer 4
+  calculate magnetic force = logical true
+End
+
+Solver 4::Reference Norm = 1.17605159E-01
+Solver 4::Show Norm Index = 4
