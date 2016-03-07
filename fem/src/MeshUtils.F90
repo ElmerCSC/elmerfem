@@ -9853,12 +9853,16 @@ END SUBROUTINE GetMaxDefs
             Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
                  Mesh_out % Elements( (Mesh_in %  NumberOfBulkElements) *(in_levels(blk) - 1)+ &
                  (in_levels(blk))*Mesh_in % NumberOfBoundaryElements+l)
+            IF (.NOT.ASSOCIATED(Mesh_out % Elements(cnt) % BoundaryInfo % Left)) &
+                 CALL FATAL('MeshExtrude',"Baseline BC Element left side not associated")
           END IF
           IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Right)) THEN
             l=Mesh_in % Elements(k) % BoundaryInfo % Right % ElementIndex
             Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
                  Mesh_out % Elements(Mesh_in % NumberOfBulkElements*(in_levels(blk) - 1)+ &
                  (in_levels(blk))*Mesh_in % NumberOfBoundaryElements+l)
+            IF (.NOT.ASSOCIATED(Mesh_out % Elements(cnt) % BoundaryInfo % Right)) &
+                 CALL FATAL('MeshExtrude',"Baseline BC Element right side not associated")
           END IF
 
           IF(Mesh_in % Elements(k) % TYPE % ElementCode>=200) THEN
@@ -9932,11 +9936,15 @@ END SUBROUTINE GetMaxDefs
             l=Mesh_in % Elements(k) % BoundaryInfo % Left % ElementIndex
             Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
                  Mesh_out % Elements(gelements*i+eoffset+l)
+            IF (.NOT.ASSOCIATED(Mesh_out % Elements(cnt) % BoundaryInfo % Left)) &
+                 CALL FATAL('MeshExtrude',"BC Element left side not associated")
           END IF
           IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Right)) THEN
             l=Mesh_in % Elements(k) % BoundaryInfo % Right % ElementIndex
             Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
                  Mesh_out % Elements(gelements*i+eoffset+l)
+            IF (.NOT.ASSOCIATED(Mesh_out % Elements(cnt) % BoundaryInfo % Right)) &
+                 CALL FATAL('MeshExtrude',"BC Element right side not associated")
           END IF
 
           IF(Mesh_in % Elements(k) % TYPE % ElementCode>=200) THEN
@@ -10054,6 +10062,8 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
       Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
            Mesh_out % Elements(i)
+      IF (.NOT.ASSOCIATED(Mesh_out % Elements(cnt) % BoundaryInfo % Left)) &
+           CALL FATAL('MeshExtrude',"Bottom BC Element left side not associated")
       Mesh_out % Elements(cnt) % BoundaryInfo % Right => NULL()
 
       bcid = boffset + Mesh_out % Elements(cnt) % BodyId
@@ -10110,9 +10120,13 @@ END SUBROUTINE GetMaxDefs
         ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
         Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
              Mesh_out % Elements(eoffset + i)
+        IF (.NOT.ASSOCIATED(Mesh_out % Elements(cnt) % BoundaryInfo % Left)) &
+             CALL FATAL('MeshExtrude',"Mid/Top BC Element left side not associated")
         IF (blk < buildingblocks) THEN 
           Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
              Mesh_out % Elements(eoffset + gelements + i)
+          IF (.NOT.ASSOCIATED(Mesh_out % Elements(cnt) % BoundaryInfo % Right)) &
+               CALL FATAL('MeshExtrude',"Mid BC Element right side not associated")
         ELSE
           Mesh_out % Elements(cnt) % BoundaryInfo % Right => NULL()
         END IF
