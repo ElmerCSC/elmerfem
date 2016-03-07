@@ -5389,20 +5389,27 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  
+!  The following arrays have hard-coded sizes which may need to be altered if
+!  new finite elements are added. Current defaults are 54 edge finite element 
+!  DOFs and 27 nodal DOFs at maximum (obtained for the second-order brick over
+!  a background element of type 827):
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), PSOL(35), R(35), C(35), Norm, ElPotSol(1,8)
-   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3), JatIP(2,3), &
-                    VP_ip(2,3), Wbase(35), alpha(35), JXBatIP(2,3), CC_J(2,3), NF_ip(35,3), B2
-   REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy, w_dens
+   REAL(KIND=dp) :: WBasis(54,3), RotWBasis(54,3), Basis(27), dBasisdx(27,3)
+   REAL(KIND=dp) :: SOL(2,81), PSOL(81), ElPotSol(1,27), R(27), C(27)
+   REAL(KIND=dp) :: Wbase(27), alpha(27), NF_ip(27,3)
+   REAL(KIND=dp) :: PR(27), omega_velo(3,27), lorentz_velo(3,27)
+   COMPLEX(KIND=dp) :: Magnetization(3,27), BodyForceCurrDens(3,27) 
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: s,u,v,w, Norm
+   REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), B2
+   REAL(KIND=dp) :: detJ, C_ip, R_ip, PR_ip, ST(3,3), Omega, Power, Energy, w_dens
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
-   REAL(KIND=dp) :: ComponentLoss(2,2), omega_velo(3,35), rot_velo(3), lorentz_velo(3,35)
+   REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3) 
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
-   COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3), BodyForceCurrDens(3,35), &
-                    BodyForceCurrDens_ip(3)
 
+   COMPLEX(KIND=dp) :: MG_ip(3), BodyForceCurrDens_ip(3)
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
    COMPLEX(KIND=dp) :: imag_value
@@ -5922,7 +5929,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END SELECT
        END DO
        IF(ImposeCircuitCurrent .and. ItoJCoeffFound) THEN
-         wvec = -MATMUL(Wbase(1:nd), dBasisdx(1:nd,:))
+         wvec = -MATMUL(Wbase(1:n), dBasisdx(1:n,:))
          IF(SUM(wvec**2._dp) .GE. AEPS) THEN
            wvec = wvec/SQRT(SUM(wvec**2._dp))
          ELSE
@@ -6820,13 +6827,13 @@ CONTAINS
 !-------------------------------------------------------------------
     IMPLICIT NONE
 !-------------------------------------------------------------------
-    REAL(KIND=dp) :: GapLength(35), AirGapMu(35)
+    REAL(KIND=dp) :: GapLength(27), AirGapMu(27)
 
 !-------------------------------------------------------------------
     LOGICAL :: FirstTime = .TRUE.
     REAL(KIND=dp) :: B2, GapLength_ip, LeftCenter(3), &
       RightCenter(3), BndCenter(3), LeftNormal(3), RightNormal(3), &
-      NF_ip_l(35,3), NF_ip_r(35,3)
+      NF_ip_l(27,3), NF_ip_r(27,3)
     TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
     TYPE(Nodes_t) :: LPNodes, RPNodes
     REAL(KIND=dp) :: F(3,3)
@@ -7027,7 +7034,7 @@ CONTAINS
    TYPE(Element_t), POINTER :: Element
    TYPE(Variable_t), POINTER :: CoordVar
    LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
-   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, m, n
+   INTEGER :: pnodal, nnt, ElemNodeDofs(27), ndofs, globalnode, m, n
    LOGICAL :: ONCE=.TRUE., DEBUG, Found
    
    VisitedNode = .FALSE.
@@ -7089,7 +7096,7 @@ CONTAINS
    INTEGER, ALLOCATABLE :: AllGroups(:)
 
    REAL(KIND=dp) :: origin(3), axisvector(3), P(3), F(3), v1(3), v2(3), nrm
-   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, ng, ngroups, &
+   INTEGER :: pnodal, nnt, ElemNodeDofs(27), ndofs, globalnode, ng, ngroups, &
      n, maxngroups, m, k, num_origins, num_axes, pivot
    LOGICAL :: Found
 
