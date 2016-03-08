@@ -600,6 +600,6 @@ FUNCTION PermafrostConductivity(Model, Node, Temp) RESULT(Cond)
     phiw = pordepth
   ENDIF
 
-  Cond = Kr**phir + Ki**(pordepth-phiw) + Kw**phiw
+  Cond = Kr**phir * Ki**(pordepth-phiw) * Kw**phiw
 
 END FUNCTION PermafrostConductivity
