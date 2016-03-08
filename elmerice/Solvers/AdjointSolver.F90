@@ -154,6 +154,10 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
 
         CALL CRS_SortMatrix( TransMat , .true. )
 
+        IF ( SIZE(StiffMatrix % Values) .NE. SIZE(TransMat % Values) ) THEN
+              CALL WARN(SolverName,'StiffMatrix different size to TransMat. Is this the correct the body?')
+        END IF
+
         StiffMatrix % Values = TransMat % Values
         StiffMatrix % Rows = TransMat % Rows
         StiffMatrix % Cols = TransMat % Cols
