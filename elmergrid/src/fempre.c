@@ -930,7 +930,7 @@ int main(int argc, char *argv[])
 
       if(eg.partitions) {
 	if(partopt == 0) 
-	  PartitionSimpleElements(&data[k],eg.partdim,eg.periodicdim,eg.partorder,eg.partcorder,info);	
+	  PartitionSimpleElements(&data[k],&eg,boundaries[k],eg.partdim,eg.periodicdim,eg.partorder,eg.partcorder,info);	
 	else if(partopt == 2) 
 	  PartitionSimpleElementsNonRecursive(&data[k],eg.partdim,eg.periodicdim,info);	
 	else if(partopt == 3) 

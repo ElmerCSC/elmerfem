@@ -5389,20 +5389,27 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  
+!  The following arrays have hard-coded sizes which may need to be altered if
+!  new finite elements are added. Current defaults are 54 edge finite element 
+!  DOFs and 27 nodal DOFs at maximum (obtained for the second-order brick over
+!  a background element of type 827):
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), PSOL(35), R(35), C(35), Norm, ElPotSol(1,8)
-   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3), JatIP(2,3), &
-                    VP_ip(2,3), Wbase(35), alpha(35), JXBatIP(2,3), CC_J(2,3), NF_ip(35,3), B2
-   REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy, w_dens
+   REAL(KIND=dp) :: WBasis(54,3), RotWBasis(54,3), Basis(27), dBasisdx(27,3)
+   REAL(KIND=dp) :: SOL(2,81), PSOL(81), ElPotSol(1,27), R(27), C(27)
+   REAL(KIND=dp) :: Wbase(27), alpha(27), NF_ip(27,3)
+   REAL(KIND=dp) :: PR(27), omega_velo(3,27), lorentz_velo(3,27)
+   COMPLEX(KIND=dp) :: Magnetization(3,27), BodyForceCurrDens(3,27) 
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: s,u,v,w, Norm
+   REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), B2
+   REAL(KIND=dp) :: detJ, C_ip, R_ip, PR_ip, ST(3,3), Omega, Power, Energy, w_dens
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
-   REAL(KIND=dp) :: ComponentLoss(2,2), omega_velo(3,35), rot_velo(3), lorentz_velo(3,35)
-   REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), localAlpha, localV(2), nofturns, coilthickness
+   REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3) 
+   REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
-   COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3), BodyForceCurrDens(3,35), &
-                    BodyForceCurrDens_ip(3)
 
+   COMPLEX(KIND=dp) :: MG_ip(3), BodyForceCurrDens_ip(3)
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
    COMPLEX(KIND=dp) :: imag_value
@@ -5433,6 +5440,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(Element_t), POINTER :: Element
 
    INTEGER, ALLOCATABLE :: Pivot(:), TorqueGroups(:)
+   INTEGER, POINTER :: MasterBodies(:)
 
    REAL(KIND=dp), POINTER :: Fsave(:), HB(:,:)=>NULL(), CubicCoeff(:)=>NULL(), &
      HBBVal(:), HBCval(:), HBHval(:)
@@ -5450,8 +5458,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
    LOGICAL :: CSymmetry, HBCurve
-   REAL(KIND=dp) :: xcoord, grads_coeff
+   REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
+   
+   INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
 !-------------------------------------------------------------------------------------------
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
@@ -5684,6 +5694,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      Material => GetMaterial()
      BodyForce => GetBodyForce()
      IF ( ASSOCIATED(MFS) ) THEN
+       BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.
        IF(ASSOCIATED(BodyForce)) THEN
          CALL GetComplexVector( BodyForce,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
@@ -5918,7 +5929,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END SELECT
        END DO
        IF(ImposeCircuitCurrent .and. ItoJCoeffFound) THEN
-         wvec = -MATMUL(Wbase(1:nd), dBasisdx(1:nd,:))
+         wvec = -MATMUL(Wbase(1:n), dBasisdx(1:n,:))
          IF(SUM(wvec**2._dp) .GE. AEPS) THEN
            wvec = wvec/SQRT(SUM(wvec**2._dp))
          ELSE
@@ -6400,15 +6411,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END DO
    END IF
    
-    ! Assembly of the face terms:
-    !----------------------------
+   ! Assembly of the face terms:
+   !----------------------------
 
-    IF (GetLogical(SolverParams,'Discontinuous Galerkin',Found)) THEN
-      IF (GetLogical(SolverParams,'Average Within Materials',Found)) THEN
-        FORCE = 0.0_dp
-        CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
-      END IF
-    END IF
+   IF (GetLogical(SolverParams,'Discontinuous Galerkin',Found)) THEN
+     IF (GetLogical(SolverParams,'Average Within Materials',Found)) THEN
+       FORCE = 0.0_dp
+       CALL AddLocalFaceTerms( MASS, FORCE(:,1) )
+     END IF
+   END IF
 
 
    IF(NodalFields) THEN
@@ -6434,6 +6445,119 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
      Solver % Matrix % RHS => Fsave
    END IF
+
+
+   ! Lump componentwise forces and torques. 
+   ! Prefer DG nodal force variable
+   IF(ASSOCIATED(EL_NF)) THEN
+
+     ! Collect nodal forces from airgaps
+     CALL CalcBoundaryModels()
+
+     ! Create a minimal discontinuous set such that discontinuity is only created
+     ! when body has an air gap boundary condition. Only do the reduction for the 1st time.
+     IF( .NOT. ASSOCIATED( SetPerm ) ) THEN
+       CALL Info('MagnetoDynamicsCalcFields','Creating minimal elemental set',Level=10)
+       SetPerm => MinimalElementalSet( Mesh,'db', Solver % Variable % Perm, &
+         BcFlag = 'Air Gap Length', &
+         NonGreedy = ListGetLogical( Solver % Values,'Nongreedy Jump',Found) ) 
+     END IF
+
+     ! Sum up (no averaging) the elemental fields such that each elemental nodes has also 
+     ! the contributions of the related nodes in other elements
+     CALL ReduceElementalVar( Mesh, EL_NF, SetPerm, TakeAverage = .FALSE.)
+     DO j=1,Model % NumberOfComponents
+       CompParams => Model % Components(j) % Values
+
+       IF ( ListGetLogical( CompParams,'Calculate Magnetic Force', Found ) ) THEN
+
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, EL_NF, &
+           Force = LumpedForce, SetPerm = SetPerm )
+
+         WRITE( Message,'(A,3ES15.6)') 'Magnetic force reduced: > '&
+           //TRIM(ListGetString(CompParams,'Name'))//' < :', LumpedForce
+         CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
+
+         DO i=1,3
+           CALL ListAddConstReal( CompParams,'res: magnetic force '//TRIM(I2S(i)), LumpedForce(i) )
+         END DO
+
+       END IF
+
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN
+
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, EL_NF, &
+           Torque = val, SetPerm = SetPerm )
+
+         WRITE( Message,'(A,ES15.6)') 'Magnetic torque reduced: > '&
+           //TRIM(ListGetString(CompParams,'Name'))//' < :', val
+         CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
+
+         CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
+       END IF
+     END DO
+   ELSE
+     DO j=1,Model % NumberOfComponents
+       CompParams => Model % Components(j) % Values
+
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Force', Found ) ) THEN 
+
+         ! fail if there is no nodal force variable available
+         IF (.NOT. ASSOCIATED(NF)) THEN
+           CALL Warn('MagnetoDynamicsCalcFields','Unable to calculated lumped &
+             &forces because nodal forces are not present. Use keyword &
+             &"Calculate Nodal Forces = true" in MagnetoDynamicsCalcFields solver.')
+           EXIT
+         END IF
+
+         ! Warn if user has air gaps and no "nodal force e"
+         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) ) &
+           CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap &
+             &forces correctly because elemental field "Nodal Force e" is &
+             &not present.')
+
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
+           Force = LumpedForce )
+
+         WRITE( Message,'(A,3ES15.6)') 'Magnetic force reduced: > '&
+           //TRIM(ListGetString(CompParams,'Name'))//' < :', LumpedForce
+         CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
+
+         DO i=1,3
+           CALL ListAddConstReal( CompParams,'res: magnetic force '//TRIM(I2S(i)), LumpedForce(i) )
+         END DO
+
+       END IF
+
+       IF( ListGetLogical( CompParams,'Calculate Magnetic Torque', Found ) ) THEN 
+
+         ! fail if there is no nodal force variable available
+         IF (.NOT. ASSOCIATED(NF)) THEN
+           CALL Warn('MagnetoDynamicsCalcFields','Unable to calculated lumped &
+             &forces because nodal forces are not present. Use keyword &
+             &"Calculate Nodal Forces = true" in MagnetoDynamicsCalcFields solver.')
+           EXIT 
+         END IF
+
+         ! Warn if user has air gaps and no "nodal force e" is available
+         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) ) &
+           CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap &
+             &forces correctly because elemental field "Nodal Force e" is not &
+             &present.')
+
+         CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
+           Torque = val )
+
+         WRITE( Message,'(A,ES15.6)') 'Magnetic torque reduced: > '&
+           //TRIM(ListGetString(CompParams,'Name'))//' < :', val
+         CALL Info('MagnetoDynamicsCalcFields',Message,Level=6)           
+
+         CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
+       END IF
+     END DO
+
+   END IF
+
 
    WRITE(Message,*) 'Eddy current power: ', Power
    CALL Info( 'MagnetoDynamicsCalcFields', Message )
@@ -6478,6 +6602,24 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          IF( BodyLoss(k,j) < TINY( TotalLoss(k) ) ) CYCLE
          WRITE( Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyLoss(k,j)
          CALL Info('MagnetoDynamicsCalcFields', Message, Level=6 )
+       END DO
+
+       ! Save losses to components if requested. 
+       !---------------------------------------------------------------------------
+       DO j=1,Model % NumberOfComponents
+         CompParams => Model % Components(j) % Values
+         IF( ListGetLogical( CompParams,'Calculate Magnetic Losses', Found ) ) THEN
+           MasterBodies => ListGetIntegerArray( CompParams,'Master Bodies',Found ) 
+           IF(.NOT. Found ) CYCLE
+           val = SUM( BodyLoss(k,MasterBodies) )
+           IF( k == 1 ) THEN
+             CALL ListAddConstReal( CompParams,'res: harmonic loss linear',val )
+           ELSE IF( k == 2 ) THEN
+             CALL ListAddConstReal( CompParams,'res: harmonic loss quadratic',val )
+           ELSE
+             CALL ListAddConstReal( CompParams,'res: joule loss',val )
+           END IF
+         END IF
        END DO
      END DO
 
@@ -6611,6 +6753,277 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 CONTAINS
 
+!-------------------------------------------------------------------
+  SUBROUTINE SumElementalVariable(Var, Values, BodyId, Additive)
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(Variable_t), POINTER :: Var
+    REAL(KIND=dp), OPTIONAL, TARGET :: Values(:)
+    INTEGER, OPTIONAL :: BodyId
+    LOGICAL, OPTIONAL :: Additive
+
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), ALLOCATABLE :: NodeSum(:)
+    INTEGER :: n, j, k, l, nodeind, dgind, bias
+    LOGICAL, ALLOCATABLE :: AirGapNode(:)
+    REAL(KIND=dp), POINTER :: ValuesSource(:)
+
+
+    IF(PRESENT(Values)) THEN
+      ValuesSource => Values
+    ELSE 
+      IF( .NOT. ASSOCIATED( Var ) ) RETURN
+      ValuesSource => Var % Values
+    END IF
+
+    n = Mesh % NumberOFNodes
+    ALLOCATE(NodeSum(n), AirGapNode(n))
+    AirGapNode = .FALSE.
+
+    ! Collect nodal sum of DG elements
+    DO k=1,Var % Dofs
+      NodeSum = 0.0_dp
+
+      ! Collect DG data to nodal vector
+      DO j=1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(j)
+        IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
+        DO l = 1, Element % TYPE % NumberOfNodes
+          nodeind = Element % NodeIndexes(l)
+          dgind = Var % Perm(Element % DGIndexes(l))
+          IF( dgind > 0 ) THEN
+            NodeSum( nodeind ) = NodeSum( nodeind ) + &
+              ValuesSource(Var % DOFs*( dgind-1)+k ) 
+          END IF 
+        END DO
+      END DO
+
+      ! Sum nodal data to elements
+      DO j=1, Mesh % NumberOfBulkElements
+        Element => Mesh % Elements(j)
+        IF(PRESENT(BodyID) .AND. Element % BodyID /= BodyID) CYCLE
+        DO l=1,Element%TYPE%NumberofNodes
+          nodeind = Element % NodeIndexes(l)
+          dgind = Var % Perm(Element % DGIndexes(l))
+          IF( dgind > 0 ) THEN
+            IF (PRESENT(Additive) .AND. Additive) THEN
+              Var % Values( var % DOFs*(dgind-1)+k) = NodeSum(nodeind) + &
+                Var % Values( var % DOFs*(dgind-1)+k)
+            ELSE
+              Var % Values( var % DOFs*(dgind-1)+k) = NodeSum(nodeind)
+            END IF
+          END IF
+        END DO
+      END DO
+
+    END DO
+!-------------------------------------------------------------------
+  END SUBROUTINE SumElementalVariable
+!-------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------
+  SUBROUTINE CalcBoundaryModels( )
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+!-------------------------------------------------------------------
+    REAL(KIND=dp) :: GapLength(27), AirGapMu(27)
+
+!-------------------------------------------------------------------
+    LOGICAL :: FirstTime = .TRUE.
+    REAL(KIND=dp) :: B2, GapLength_ip, LeftCenter(3), &
+      RightCenter(3), BndCenter(3), LeftNormal(3), RightNormal(3), &
+      NF_ip_l(27,3), NF_ip_r(27,3)
+    TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
+    TYPE(Nodes_t) :: LPNodes, RPNodes
+    REAL(KIND=dp) :: F(3,3)
+    INTEGER :: n_lp, n_rp, LeftBodyID, RightBodyID
+    REAL(KIND=dp), ALLOCATABLE :: LeftFORCE(:,:), RightFORCE(:,:), &
+      AirGapForce(:,:), ForceValues(:)
+    INTEGER, ALLOCATABLE :: RightMap(:), LeftMap(:)
+    REAL(KIND=dp) :: ParentNodalU(n), parentNodalV(n), ParentNodalW(n)
+    REAL(KIND=dp) :: Normal(3)
+    REAL(KIND=dp), SAVE :: mu0 = 1.2566370614359173e-6_dp
+    LOGICAL, ALLOCATABLE :: BodyMask(:)
+    LOGICAL :: HasLeft, HasRight
+
+    n = Mesh % MaxElementDOFs
+
+    ALLOCATE(LeftFORCE(n,3), RightForce(n,3), RightMap(n), LeftMap(n), &
+      AirGapForce(3,Mesh % NumberOfNodes) )
+
+    IF ( FirstTime ) THEN
+      mu0 = GetConstReal(CurrentModel % Constants, &
+        'Permeability of Vacuum', Found)
+      IF(.NOT. Found) mu0 = 1.2566370614359173e-6
+    END IF
+
+    LeftBodyID = -1
+    RightBodyID = -1
+
+    DO i = 1,GetNOFBoundaryElements()
+      BElement => GetBoundaryElement(i, uSolver=pSolver)
+
+      IF(.NOT. ActiveBoundaryElement(BElement, uSolver=pSolver)) CYCLE
+      BC => GetBC(BElement)
+      GapLength = GetReal(BC, 'Air Gap Length', Found)
+      IF(.NOT. Found) CYCLE
+      
+      HasLeft = ASSOCIATED(BElement % BoundaryInfo % Left)
+      HasRight = ASSOCIATED(BElement % BoundaryInfo % Right)
+      IF( .NOT. (HasLeft .OR. HasRight)) THEN
+        CALL Warn('MagnetoDynamicsCalcFields', 'Airgap Length given on orphan boundary')
+        CYCLE
+      END IF
+
+      IF(.NOT. (HasLeft .AND. HasRight)) &
+        CALL Warn('MagnetoDynamicsCalcFields', 'Onesided airgap force calculation is untested.')
+
+      BElement => Mesh % Faces(GetBoundaryFaceIndex(BElement))
+      LeftBodyID = BElement % BoundaryInfo % Left % BodyID
+      RightBodyID = BElement % BoundaryInfo % Right % BodyID
+      IF(LeftBodyID == RightBodyID) THEN
+        CALL Warn('MagnetoDynamicsCalcFields', 'Airgap in the middle of single body Id')
+        CYCLE
+      END IF
+
+      IF(HasLeft) LeftParent => BElement % BoundaryInfo % Left
+      IF(HasRight) RightParent => BElement % BoundaryInfo % Right
+
+      n = GetElementNOFNodes(BElement)
+      IF(HasLeft) n_lp = GetElementNOFNodes(LeftParent)
+      if(HasRight) n_rp = GetElementNOFNodes(RightParent) 
+
+      CALL GetElementNodes(Nodes, BElement)
+      IF(HasLeft) CALL GetElementNodes(LPNodes, LeftParent)
+      IF(HasRight) CALL GetElementNodes(RPNodes, RightParent)
+
+      CALL GetVectorLocalSolution(SOL,Pname,uElement=BElement, uSolver=pSolver)
+
+
+      IF(HasLeft) LeftCenter(1:3) = [ sum(LPNodes % x), sum(LPNodes % y), sum(LPNodes % z) ] / n_lp
+      IF(HasRight) RightCenter(1:3) = [ sum(RPNodes % x), sum(RPNodes % y), sum(RPNodes % z) ] / n_rp
+      BndCenter(1:3) = [ sum(Nodes % x), sum(Nodes % y), sum(Nodes % z) ] / n
+
+      np = n*MAXVAL(pSolver % Def_Dofs(GetElementFamily(BElement),:,1))
+      nd = GetElementNOFDOFs(uElement=BElement, uSolver=pSolver)
+
+      
+      DO k = 1,n
+        IF(HasLeft) THEN  
+          DO l = 1,n_lp
+            IF(LeftParent % NodeIndexes(l) == BElement % NodeIndexes(k)) LeftMap(k) = l
+          END DO
+        END IF
+        IF(HasRight) THEN
+          DO l = 1,n_rp
+            IF(RightParent % NodeIndexes(l) == BElement % NodeIndexes(k)) RightMap(k) = l
+          END DO
+        END IF
+      END DO
+
+      AirGapMu = GetReal(BC, 'Air Gap Relative Permeability', Found)
+      IF(.NOT. Found) AirGapMu = 1.0_dp
+
+      LeftFORCE = 0.0_dp
+      RightFORCE = 0.0_dp
+
+      IF (SecondOrder) THEN
+        IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+      ELSE
+        IP = GaussPoints(BElement, EdgeBasis=dim==3, PReferenceElement=PiolaVersion)
+      END IF
+
+      DO j = 1,IP % n
+        s = IP % s(j)
+
+        IF ( PiolaVersion ) THEN
+          stat = EdgeElementInfo( BElement, Nodes, IP % U(j), IP % V(j), IP % W(j), &
+            F = F, DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, RotBasis = RotWBasis, &
+            dBasisdx=dBasisdx, BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+        ELSE
+          stat = ElementInfo( BElement, Nodes, IP % U(j), IP % V(j), &
+            IP % W(j), detJ, Basis, dBasisdx )
+
+          CALL GetEdgeBasis(BElement, WBasis, RotWBasis, Basis, dBasisdx)
+        END IF
+
+        R_ip = SUM( Basis(1:n)/(mu0*AirGapMu(1:n)) )
+        GapLength_ip = SUM( Basis(1:n)*GapLength(1:n) )
+
+        s = s * detJ
+
+        Normal = NormalVector(BElement, Nodes, IP% U(j), IP % V(j))
+        IF(HasLeft)  THEN
+          IF( SUM(normal*(LeftCenter - bndcenter)) >= 0 ) THEN
+            LeftNormal = -Normal
+          ELSE
+            LeftNormal = Normal
+          END IF
+        END IF
+
+        IF(HasRight) THEN
+          IF( SUM(normal*(RightCenter - bndcenter)) >= 0 ) THEN
+            RightNormal = -Normal
+          ELSE
+            RightNormal = Normal
+          END IF
+        END IF
+
+
+        DO k=1,vDOFs
+          SELECT CASE(dim)
+          CASE(2)
+            ! This has been done with the same sign convention as in MagnetoDynamics2D:
+            ! -------------------------------------------------------------------------
+            IF ( CSymmetry ) THEN
+              B(k,1) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
+              B(k,2) = SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) ) &
+                + SUM( SOL(1,1:nd) * Basis(1:nd) ) / xcoord
+              B(k,3) = 0._dp
+            ELSE
+              B(k,1) =  SUM( SOL(k,1:nd) * dBasisdx(1:nd,2) )
+              B(k,2) = -SUM( SOL(k,1:nd) * dBasisdx(1:nd,1) )
+              B(k,3) = 0._dp
+            END IF
+          CASE(3)
+            B(k,:) = normal*sum( SOL(k,np+1:nd)* RotWBasis(1:nd-np,3) )
+          END SELECT
+        END DO
+        B2 = sum(B(1,:)*B(1,:) + B(2,:)*B(2,:))
+        IF (ASSOCIATED(NF).OR.ASSOCIATED(EL_NF)) THEN
+          NF_ip_r = 0._dp
+          NF_ip_l = 0._dp
+          DO k=1,n
+            DO l=1,3
+              DO m=1,3
+                IF(HasLeft)  NF_ip_l(k,l) = NF_ip_l(k,l) + R_ip*B(1,l)*B(1,m)*(LeftNormal(m)*Basis(k))
+                IF(HasRight) NF_ip_r(k,l) = NF_ip_r(k,l) + R_ip*B(1,l)*B(1,m)*(RightNormal(m)*Basis(k))
+              END DO
+              IF(HasLeft) NF_ip_l(k,l) = NF_ip_l(k,l) - 0.5*R_ip*B2*(LeftNormal(l)*Basis(k))
+              IF(HasRight) NF_ip_r(k,l) = NF_ip_r(k,l) - 0.5*R_ip*B2*(RightNormal(l)*Basis(k))
+            END DO
+          END DO
+        END IF
+        Energy = Energy + GapLength_ip*s*0.5*R_ip*B2
+        DO p=1,n
+          IF(HasLeft) LeftFORCE(LeftMap(p), 1:3) = LeftFORCE(LeftMap(p), 1:3) + s*NF_ip_l(p,1:3)
+          IF(HasRight) RightFORCE(RightMap(p), 1:3) = RightFORCE(RightMap(p), 1:3) + s*NF_ip_r(p,1:3)
+        END DO
+      END DO ! Integration points
+
+      IF(ElementalFields) THEN
+        IF(HasLeft) CALL LocalCopy(EL_NF, 3, n_lp, LeftFORCE, 0, UElement=LeftParent, uAdditive=.TRUE.)
+        IF(HasRight) CALL LocalCopy(EL_NF, 3, n_rp, RightFORCE, 0, UElement=RightParent, uAdditive=.TRUE.)
+      END IF
+    END DO ! Boundary elements
+
+    DEALLOCATE(LeftFORCE, RightFORCE, RightMap, LeftMap)
+!-------------------------------------------------------------------
+  END SUBROUTINE CalcBoundaryModels
+!-------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
  SUBROUTINE NodalTorqueDeprecated(T, FoundOne)
 !------------------------------------------------------------------------------
@@ -6621,7 +7034,7 @@ CONTAINS
    TYPE(Element_t), POINTER :: Element
    TYPE(Variable_t), POINTER :: CoordVar
    LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
-   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, m, n
+   INTEGER :: pnodal, nnt, ElemNodeDofs(27), ndofs, globalnode, m, n
    LOGICAL :: ONCE=.TRUE., DEBUG, Found
    
    VisitedNode = .FALSE.
@@ -6683,7 +7096,7 @@ CONTAINS
    INTEGER, ALLOCATABLE :: AllGroups(:)
 
    REAL(KIND=dp) :: origin(3), axisvector(3), P(3), F(3), v1(3), v2(3), nrm
-   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, ng, ngroups, &
+   INTEGER :: pnodal, nnt, ElemNodeDofs(27), ndofs, globalnode, ng, ngroups, &
      n, maxngroups, m, k, num_origins, num_axes, pivot
    LOGICAL :: Found
 
@@ -6869,22 +7282,52 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
- SUBROUTINE LocalCopy(Var, m, n, b, dofs )
+ SUBROUTINE LocalCopy(Var, m, n, b, bias, UElement, Values, uAdditive)
 !------------------------------------------------------------------------------
    TYPE(Variable_t), POINTER :: Var
-   INTEGER :: m,n,dofs
+   INTEGER, INTENT(IN) :: m,n,bias
+   INTEGER :: dofs
    REAL(KIND=dp) :: b(:,:)
+   TYPE(Element_t), POINTER, OPTIONAL :: UElement
+   REAL(KIND=dp), OPTIONAL :: Values(:)
+   LOGICAL, OPTIONAL :: uAdditive
 !------------------------------------------------------------------------------
    INTEGER :: ind(n), i
+   LOGICAL :: Additive
 !------------------------------------------------------------------------------
    IF(.NOT. ASSOCIATED(var)) RETURN
+   IF(PRESENT(UElement)) THEN
+     ind(1:n) = Var % DOFs*(Var % Perm(UElement % DGIndexes(1:n))-1)
+   ELSE
+     ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
+   END IF
+   
+   IF(PRESENT(uAdditive)) THEN
+     Additive = uAdditive
+   ELSE
+     Additive = .FALSE.
+   END IF
 
-   ind(1:n) = Var % DOFs*(Var % Perm(Element % DGIndexes(1:n))-1)
-
-   DO i=1,m
-     dofs = dofs+1
-     Var % Values(ind(1:n)+i) = b(1:n,dofs)
-   END DO
+   dofs = bias
+   IF(PRESENT(Values)) THEN
+     DO i=1,m
+       dofs = dofs+1
+       IF(Additive) THEN
+         Values(ind(1:n)+i) = Values(ind(1:n)+i) + b(1:n,dofs)
+       ELSE
+         Values(ind(1:n)+i) = b(1:n,dofs)
+       END IF
+     END DO
+   ELSE
+     DO i=1,m
+       dofs = dofs+1
+       IF(Additive) THEN
+         Var % Values(ind(1:n)+i) = Var % Values(ind(1:n)+i) + b(1:n,dofs)
+       ELSE
+         Var % Values(ind(1:n)+i) = b(1:n,dofs)
+       END IF
+     END DO
+   END IF
 !------------------------------------------------------------------------------
  END SUBROUTINE LocalCopy
 !------------------------------------------------------------------------------
