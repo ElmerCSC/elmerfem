@@ -56,6 +56,7 @@ MODULE SolverUtils
    USE Multigrid
    USE IterSolve
    USE ElementUtils
+   USE ComponentUtils
    USE TimeIntegrate
    USE ModelDescription
    USE MeshUtils
@@ -7602,6 +7603,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRVec, TmpRHSVec
     INTEGER :: ipar(1)
     TYPE(ValueList_t), POINTER :: SolverParams
+    INTEGER, POINTER :: UpdateComponents(:)
 
     SolverParams => Solver % Values
     
@@ -7944,18 +7946,24 @@ END FUNCTION SearchNodeL
     CALL Info( 'ComputeChange', Message, Level=3 )
 
 
-    ! The update of exported variables may be done internally to allow some nonlinear features	   
-    ! or in steady state level to allow coupling to other solvers.
-    !-----------------------------------------------------------------------------------------
-    DoIt = .FALSE.
-    IF( SteadyState ) THEN 
-      DoIt = ListGetLogical( SolverParams,&
-          'Update Exported Variables',Stat)
-    ELSE 
-      DoIt = ListGetLogical( SolverParams,&
-          'Nonlinear Update Exported Variables',Stat)
+    ! For SteadyState loop the corresponding operations are done within "SolverActivate"
+    ! This is for nonlinear level only.
+    IF(.NOT. SteadyState ) THEN
+      ! The update of exported variables on nonliear level to allow some coupling within
+      !-----------------------------------------------------------------------------------------    
+      IF( ListGetLogical( SolverParams,&
+          'Nonlinear Update Exported Variables',Stat) ) THEN
+        CALL UpdateExportedVariables( Solver )	
+      END IF
+
+      ! Update components depending on the solver solution to allow some nonlinear couplings
+      !-----------------------------------------------------------------------------------------
+      UpdateComponents => ListGetIntegerArray( SolverParams, &
+          'Nonlinear Update Components', Stat )
+      IF( Stat ) THEN
+        CALL UpdateDependentComponents( UpdateComponents )	
+      END IF
     END IF
-    IF( DoIt ) CALL UpdateExportedVariables( Solver )	
 
 
     ! Optional a posteriori scaling for the computed fields
@@ -11064,6 +11072,7 @@ END SUBROUTINE VariableNameParser
   END IF
 
 END SUBROUTINE UpdateExportedVariables
+
 
 
 !------------------------------------------------------------------------------

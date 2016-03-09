@@ -102,8 +102,6 @@ SUBROUTINE CoilSolver_init( Model,Solver,dt,TransientSimulation )
         'CoilIndex')
   END IF
 
-
-
   CALL ListAddString( Params,&
        NextFreeKeyword('Exported Variable',Params),&
        'CoilCurrent[CoilCurrent:'//TRIM(I2S(dim))//']')
@@ -266,7 +264,7 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
       CoilList => Model % Components(i) % Values
 
       IF(.NOT. ListCheckPresent( CoilList,'Coil Type' ) ) CYCLE      
-      TargetBodies => ListGetIntegerArray( CoilList,'Target Bodies',Found )
+      TargetBodies => ListGetIntegerArray( CoilList,'Master Bodies',Found )
       IF( .NOT. Found ) TargetBodies => ListGetIntegerArray( CoilList,'Body',Found )
       IF( .NOT. Found ) CALL Fatal('CoilSolver','Coil fitting requires > Target Bodies <') 
 
@@ -1547,16 +1545,21 @@ FUNCTION CoilPotentialNormalized( Model, n, t ) RESULT(f)
   TYPE(GaussIntegrationPoints_t) :: IP
 
   SAVE Visited, PotA, PotB, PotP, PotSelect, Nodes, &
-      PrevElement, xmin, DesiredCurrentDensity, Basis, dBasisdx, NodalPot
-
+      PrevElement, xmin, DesiredCurrentDensity, Basis, dBasisdx, NodalPot, &
+      GradPot, NormCoeff
 
   IF( .NOT. Visited ) THEN
+
     PotB => VariableGet( Model % Mesh % Variables,'CoilPotB' )
     PotA => VariableGet( Model % Mesh % Variables,'CoilPot' )
     PotP => PotA
     PotSelect => VariableGet( Model % Mesh % Variables,'PotSelect' )
    
-    DesiredCurrentDensity = ListGetCReal( Model % Simulation,'Desired Current Density',Found)
+    DO i=1,Model % NumberOfSolvers
+      DesiredCurrentDensity = ListGetCReal( Model % Solvers(i) % Values,&
+          'Desired Current Density',Found )
+      IF( Found ) EXIT
+    END DO
     IF(.NOT. Found ) DesiredCurrentDensity = 1.0_dp
 
     n = Model % Solver % Mesh % MaxElementNodes
