@@ -21,7 +21,7 @@ Header
 End
    
 Simulation
-  Max Output Level = 7
+  Max Output Level = 10
   Coordinate System = Cartesian
   Coordinate Mapping(3) = 1 2 3
   Simulation Type = Transient
@@ -92,7 +92,7 @@ Solver 2
   Lumped Mass Matrix = False
   Optimize Bandwidth = True
   Steady State Convergence Tolerance = 1.0e-5
-  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Convergence Tolerance = 1.0e-9
   Nonlinear System Max Iterations = 1
   Nonlinear System Newton After Iterations = 3
   Nonlinear System Newton After Tolerance = 1.0e-3
@@ -241,8 +241,8 @@ Boundary Condition 3
 
   Level Projector = Logical True
   Level Projector Generic = Logical True
-
-!  Save Projector = Logical True
+  
+  Save Projector = Logical True
 !  Level Projector Save Element Index = Integer 1
 End
 

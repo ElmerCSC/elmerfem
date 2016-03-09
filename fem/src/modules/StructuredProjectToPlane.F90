@@ -600,7 +600,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 
           dx = 0.5*(Coord(iup) - Coord(idown))
           itop = TopPointer(i)
-          FieldOut(PermOut(itop)) = FieldOut(PermOut(itop)) + dx 
+          TopField(TopPerm(itop)) = TopField(TopPerm(itop)) + dx 
         END DO
 
       ! Following three operators may have full dimensional results

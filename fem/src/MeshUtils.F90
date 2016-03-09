@@ -2152,7 +2152,7 @@ END SUBROUTINE GetMaxDefs
          IF ( Gotit ) THEN
            DO k=1,SIZE(BList)
              body = Blist(k)
-             IF( body > maxid ) THEN
+             IF( body > maxid .OR. body < minid ) THEN
 #if 0
                CALL Warn('LoadMesh','Unused body entry in > Target Bodies <  : '&
                    //TRIM(I2S(body)) )              
@@ -16560,10 +16560,10 @@ CONTAINS
   END FUNCTION CreateLineMesh
 
 
-  ! Calcalate body average for a discontinuous galerkin field.
-  ! The intended use is in conjunction of saving the results. 
-  ! This tampers the field and therefore may have unwanted side effects
-  ! if the solution is to be used for something else too.
+  !> Calcalate body average for a discontinuous galerkin field.
+  !> The intended use is in conjunction of saving the results. 
+  !> This tampers the field and therefore may have unwanted side effects
+  !> if the solution is to be used for something else too.
   !-------------------------------------------------------------------
   SUBROUTINE CalculateBodyAverage( Mesh, Var, BodySum )
 
@@ -16730,6 +16730,326 @@ CONTAINS
 
   END SUBROUTINE CalculateBodyAverage
 
+
+
+  !> Given an elemental DG field create a minimal reduced set of it that maintains
+  !> the necessary continuities. The continuities may be requested between bodies
+  !> or materials. Optionally the user may give a boundary mask which defines the 
+  !> potential discontinuous nodes that may be greedy or not. 
+  !-------------------------------------------------------------------------------
+  FUNCTION MinimalElementalSet( Mesh, JumpMode, VarPerm, BcFlag, &
+      NonGreedy ) RESULT ( SetPerm )
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    CHARACTER(LEN=*) :: JumpMode
+    INTEGER, POINTER, OPTIONAL :: VarPerm(:)
+    CHARACTER(LEN=*), OPTIONAL :: BcFlag
+    LOGICAL, OPTIONAL :: NonGreedy
+    INTEGER, POINTER :: SetPerm(:)
+
+    TYPE(Element_t), POINTER :: Element, Left, Right
+    INTEGER :: n,i,j,k,l,bc_id,mat_id,body_id,NoElimNodes,nodeind,JumpModeIndx,&
+        LeftI,RightI,NumberOfBlocks
+    LOGICAL, ALLOCATABLE :: JumpNodes(:)
+    INTEGER, ALLOCATABLE :: NodeVisited(:)
+    INTEGER, POINTER :: NodeIndexes(:)
+    LOGICAL :: Found
+    
+
+    CALL Info('MinimalDiscontSet','Creating discontinuous subset from DG field',Level=5)
+
+    ! Calculate size of permutation vector
+    ALLOCATE( NodeVisited( Mesh % NumberOfNodes ) )
+    NodeVisited = 0
+
+    NULLIFY( SetPerm ) 
+    k = 0
+    DO i=1,Mesh % NumberOfBulkElements         
+      Element => Mesh % Elements(i)
+      k = k + Element % TYPE % NumberOfNodes
+    END DO
+    CALL Info('MinimalElementalSet','Maximum number of dofs in DG: '//TRIM(I2S(k)),Level=12)
+    ALLOCATE( SetPerm(k) )
+    SetPerm = 0
+    l = 0
+    NoElimNodes = 0
+
+    CALL Info('MinimalElementalSet','Reducing elemental discontinuity with mode: '//TRIM(JumpMode),Level=7)
+
+    SELECT CASE ( JumpMode )
+
+    CASE('db') ! discontinuous bodies
+      NumberOfBlocks = CurrentModel % NumberOfBodies
+      JumpModeIndx = 1
+
+    CASE('dm') ! discontinuous materials
+      NumberOfBlocks = CurrentModel % NumberOfMaterials
+      JumpModeIndx = 2
+
+    CASE DEFAULT
+      CALL Fatal('MinimalElementalSet','Unknown JumpMode: '//TRIM(JumpMode))
+
+    END SELECT
+  
+
+    IF( PRESENT( BcFlag ) ) THEN
+      ALLOCATE( JumpNodes( Mesh % NumberOfNodes ) )
+    END IF
+
+    
+    DO i=1,NumberOfBlocks
+      
+      ! Before the 1st block no numbers have been given.
+      ! Also if we want discontinuous blocks on all sides initialize the whole list to zero. 
+      IF( i == 1 .OR. .NOT. PRESENT( BcFlag ) ) THEN
+        NodeVisited = 0
+
+      ELSE
+        ! Vector indicating the disontinuous nodes
+        ! If this is not given all interface nodes are potentially discontinuous
+        JumpNodes = .FALSE.
+        
+        DO j=Mesh % NumberOfBulkElements + 1, &
+            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+          Element => Mesh % Elements(j)
+
+          DO bc_id=1,CurrentModel % NumberOfBCs
+            IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+          END DO
+          IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
+          IF( .NOT. ListCheckPresent( CurrentModel % BCs(bc_id) % Values, BcFlag ) ) CYCLE
+
+          Left => Element % BoundaryInfo % Left
+          Right => Element % BoundaryInfo % Right
+          IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) CYCLE
+
+          IF( JumpModeIndx == 1 ) THEN
+            LeftI = Left % BodyId
+            RightI = Right % BodyId
+          ELSE
+            LeftI = ListGetInteger( CurrentModel % Bodies(Left % BodyId) % Values,'Material',Found)
+            RightI = ListGetInteger( CurrentModel % Bodies(Right % BodyId) % Values,'Material',Found)
+          END IF
+
+          IF( LeftI /= i .AND. RightI /= i ) CYCLE
+          JumpNodes( Element % NodeIndexes ) = .TRUE.
+        END DO
+
+        IF( PRESENT( NonGreedy ) ) THEN
+          IF( NonGreedy ) THEN        
+            DO j=Mesh % NumberOfBulkElements + 1, &
+                Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+              Element => Mesh % Elements(j)
+
+              DO bc_id=1,CurrentModel % NumberOfBCs
+                IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
+              END DO
+              IF ( bc_id > CurrentModel % NumberOfBCs ) CYCLE
+
+              IF( ListCheckPresent( CurrentModel % BCs(bc_id) % Values, BcFlag ) ) CYCLE
+
+              Left => Element % BoundaryInfo % Left
+              Right => Element % BoundaryInfo % Right
+
+              ! External BCs don't have a concept of jump, so no need to treat them
+              IF(.NOT. ASSOCIATED( Left ) .OR. .NOT. ASSOCIATED( Right ) ) CYCLE
+
+              JumpNodes( Element % NodeIndexes ) = .FALSE.
+            END DO
+          END IF
+        END IF
+
+        ! Initialize new potential nodes for the block where we found discontinuity
+        WHERE( JumpNodes ) NodeVisited = 0
+      END IF
+
+
+      ! Now do the real thing. 
+      ! Add new dofs such that minimal discontinuity is maintained 
+      DO j=1,Mesh % NumberOfBulkElements         
+        Element => Mesh % Elements(j)
+
+        Body_Id = Element % BodyId 
+        IF( JumpModeIndx == 1 ) THEN
+          IF( Body_id /= i ) CYCLE
+        ELSE
+          Mat_Id = ListGetInteger( CurrentModel % Bodies(Body_Id) % Values,'Material',Found)
+          IF( Mat_Id /= i ) CYCLE
+        END IF
+
+        NodeIndexes => Element % NodeIndexes
+        
+        DO k=1,Element % TYPE % NumberOfNodes         
+          nodeind = NodeIndexes(k)
+          IF( PRESENT( VarPerm ) ) THEN
+            IF( VarPerm( nodeind ) == 0 ) CYCLE
+          END IF
+          IF( NodeVisited( nodeind ) > 0 ) THEN
+            SetPerm( Element % DGIndexes(k) ) = NodeVisited( nodeind )
+            NoElimNodes = NoElimNodes + 1
+          ELSE
+            l = l + 1
+            NodeVisited(nodeind) = l
+            SetPerm( Element % DGIndexes(k) ) = l
+          END IF
+        END DO
+      END DO
+    END DO
+
+    CALL Info('MinimalElementalSet','Independent dofs in elemental field: '//TRIM(I2S(l)),Level=7)
+    CALL Info('MinimalElementalSet','Redundant dofs in elemental field: '//TRIM(I2S(NoElimNodes)),Level=7)     
+
+  END FUNCTION MinimalElementalSet
+
+
+  !> Calculate the reduced DG field given the reduction permutation.
+  !> The permutation must be predefined. This may be called repeatedly
+  !> for different variables. Optionally one may take average, or 
+  !> a plain sum over the shared nodes. 
+  !-------------------------------------------------------------------
+  SUBROUTINE ReduceElementalVar( Mesh, Var, SetPerm, TakeAverage )
+
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: SetPerm(:)
+    LOGICAL :: TakeAverage
+
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp), ALLOCATABLE :: SetSum(:)
+    INTEGER, ALLOCATABLE :: SetCount(:)
+    INTEGER :: dof,n,m,i,j,k,l,nodeind,dgind
+    REAL(KIND=dp) :: AveHits
+
+    IF(.NOT. ASSOCIATED(var)) THEN
+      CALL Warn('ReduceElementalVar','Variable not associated!')
+      RETURN
+    END IF
+
+    IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) THEN
+      CALL Warn('ReduceElementalVar','Var % Perm too small!')
+      RETURN
+    END IF
+
+    IF( TakeAverage ) THEN
+      CALL Info('CalculateSetAverage','Calculating reduced set average for: '&
+          //TRIM(Var % Name), Level=7)
+    ELSE
+      CALL Info('CalculateSetAverage','Calculating reduced set sum for: '&
+          //TRIM(Var % Name), Level=7)
+    END IF
+
+    n = Mesh % NumberOfNodes
+
+    m = MAXVAL( SetPerm )
+    ALLOCATE( SetCount(m), SetSum(m) )
+    SetCount = 0
+    SetSum = 0.0_dp
+
+    ! Take the sum to nodes, and calculate average if requested
+    DO dof=1,Var % Dofs
+      SetCount = 0
+      SetSum = 0.0_dp
+
+      DO i=1,SIZE(SetPerm)
+        j = SetPerm(i)
+        l = Var % Perm(i)
+        SetSum(j) = SetSum(j) + Var % Values( Var % DOFs * (l-1) + dof )
+        SetCount(j) = SetCount(j) + 1
+      END DO
+        
+      IF( TakeAverage ) THEN
+        WHERE( SetCount > 0 ) SetSum = SetSum / SetCount
+      END IF
+
+      IF( dof == 1 ) THEN
+        AveHits = 1.0_dp * SUM( SetCount ) / COUNT( SetCount > 0 )
+        PRINT *,'AveHits:',AveHits
+      END IF
+
+      ! Copy the reduced set back to the original elemental field
+      DO i=1,SIZE(SetPerm)
+        j = SetPerm(i)
+        l = Var % Perm(i)
+        Var % Values( Var % DOFs * (l-1) + dof ) = SetSum(j)
+      END DO
+    END DO
+
+  END SUBROUTINE ReduceElementalVar
+
+
+  !> Given a elemental DG field and a reduction permutation compute the 
+  !> body specific lumped sum. The DG field may be either original one
+  !> or already summed up. In the latter case only one incident of the 
+  !> redundant nodes is set.
+  !---------------------------------------------------------------------
+  SUBROUTINE LumpedElementalVar( Mesh, Var, SetPerm, AlreadySummed )
+    TYPE(Variable_t), POINTER :: Var
+    TYPE(Mesh_t), POINTER :: Mesh
+    INTEGER, POINTER :: SetPerm(:)
+    LOGICAL :: AlreadySummed
+
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL, ALLOCATABLE :: NodeVisited(:)
+    INTEGER :: dof,n,m,i,j,k,l,nodeind,dgind
+    REAL(KIND=dp), ALLOCATABLE :: BodySum(:)
+
+    IF(.NOT. ASSOCIATED(var)) RETURN
+    IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
+
+    CALL Info('LumpedElementalVar','Calculating lumped sum for: '&
+        //TRIM(Var % Name), Level=8)
+
+    n = Mesh % NumberOfNodes
+
+    m = MAXVAL( SetPerm )
+    IF( AlreadySummed ) THEN
+      ALLOCATE( NodeVisited(m) )
+    END IF
+    ALLOCATE( BodySum( CurrentModel % NumberOfBodies ) )
+
+    ! Take the sum to nodes, and calculate average if requested
+    DO dof=1,Var % Dofs
+
+      BodySum = 0.0_dp
+
+      DO i=1,CurrentModel % NumberOfBodies
+
+        IF( AlreadySummed ) THEN
+          NodeVisited = .FALSE.
+        END IF
+
+        DO j=1,Mesh % NumberOfBulkElements         
+          Element => Mesh % Elements(j)
+          IF( Element % BodyId /= i ) CYCLE
+
+          DO k=1,Element % TYPE % NumberOfNodes         
+            dgind = Element % DGIndexes(k)
+            l = SetPerm(dgind)
+            IF( l == 0 ) CYCLE
+
+            IF( AlreadySummed ) THEN
+              IF( NodeVisited(l) ) CYCLE           
+              NodeVisited(l) = .TRUE.
+            END IF
+
+            BodySum(i) = BodySum(i) + &
+                Var % Values( Var % Dofs * ( Var % Perm( dgind )-1) + dof )
+          END DO
+        END DO
+      END DO
+
+      IF( Var % Dofs > 1 ) THEN
+        CALL Info('LumpedElementalVar','Lumped sum for component: '//TRIM(I2S(dof)),Level=6)
+      END IF
+      DO i=1,CurrentModel % NumberOfBodies
+        PRINT *,'BodySum',i,BodySum(i)
+      END DO
+
+    END DO
+
+    DEALLOCATE( NodeVisited, BodySum )
+
+  END SUBROUTINE LumpedElementalVar
 
 !------------------------------------------------------------------------------
 END MODULE MeshUtils

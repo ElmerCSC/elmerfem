@@ -77,7 +77,7 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
   integer :: p,q
 
   logical :: PowerFormulation,Beta2Formulation
-  Logical ::  Firsttime=.true.,Found,stat
+  Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal
   Logical :: NormalTangential1,NormalTangential2
 
   save SolverName,NeumannSolName,AdjointSolName,VarSolName,GradSolName
@@ -154,43 +154,21 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
   Endif
 
 
-     PointerToVariable => VariableGet( Solver % Mesh % Variables, GradSolName  )
-        IF (ASSOCIATED(PointerToVariable)) THEN
-           VariableValues => PointerToVariable % Values
-           Permutation => PointerToVariable % Perm
-        ELSE
-                WRITE(Message,'(A,A,A)') 'No variable >',GradSolName,'< found'
-                CALL FATAL(SolverName,Message)
-        END IF
+     PointerToVariable => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal)
+     VariableValues => PointerToVariable % Values
+     Permutation => PointerToVariable % Perm
 
-     BetaVariable => VariableGet( Solver % Mesh % Variables, VarSolName )
-        IF (ASSOCIATED(BetaVariable)) THEN
-                BetaValues => BetaVariable % Values
-                BetaPerm => BetaVariable % Perm
-        ELSE
-                WRITE(Message,'(A,A,A)') 'No variable >',VarSolName,'< found'
-                CALL FATAL(SolverName,Message)
-        END IF
+     BetaVariable => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
+     BetaValues => BetaVariable % Values
+     BetaPerm => BetaVariable % Perm
 
-     VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName )
-           IF ( ASSOCIATED( VeloSolN ) ) THEN
-             VelocityN => VeloSolN % Values
-             VeloNPerm => VeloSolN % Perm
-           ELSE
-              WRITE(Message,'(A,A,A)') &
-                   'No variable >',NeumannSolName,'< found'
-              CALL FATAL(SolverName,Message)              
-           END IF
+     VeloSolN => VariableGet( Solver % Mesh % Variables, NeumannSolName,UnFoundFatal=UnFoundFatal)
+     VelocityN => VeloSolN % Values
+     VeloNPerm => VeloSolN % Perm
 
-     VeloSolD => VariableGet( Solver % Mesh % Variables, AdjointSolName )
-          IF (ASSOCIATED(veloSolD)) THEN
-             VelocityD => VeloSolD % Values
-             VeloDPerm => VeloSolD % Perm
-          ELSE
-              WRITE(Message,'(A,A,A)') &
-                   'No variable >',AdjointSolName,'< found'
-              CALL FATAL(SolverName,Message)              
-           END IF
+     VeloSolD => VariableGet( Solver % Mesh % Variables, AdjointSolName,UnFoundFatal=UnFoundFatal)
+     VelocityD => VeloSolD % Values
+     VeloDPerm => VeloSolD % Perm
 
 
 
