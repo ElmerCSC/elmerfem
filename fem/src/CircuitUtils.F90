@@ -989,13 +989,26 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  FUNCTION ReIndex(Ind)
+  FUNCTION ReIndex(Ind, Harmonic)
 !------------------------------------------------------------------------------
-    Integer :: Ind, ReIndex
-
-    ReIndex = 2 * Ind - 1
+    USE DefUtils
+    INTEGER :: Ind, ReIndex
+    LOGICAL, OPTIONAL :: Harmonic
+    LOGICAL :: harm
+    
+    IF (.NOT. PRESENT(Harmonic)) THEN
+      harm = CurrentModel % HarmonicCircuits
+    ELSE
+      harm = Harmonic
+    END IF
+ 
+    IF (harm) THEN
+      ReIndex = 2 * Ind - 1
+    ELSE
+      ReIndex = Ind
+    END IF
 !------------------------------------------------------------------------------
-  END FUNCTION ReIndex
+  END FUNCTION ReIndex 
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1383,11 +1396,7 @@ CONTAINS
               CALL CountAndCreateMassive(Element,nn,nd,RowId,Cnts,Done,Rows)
            CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE 
-              DO j = 1, Cvar % pdofs
-                dofsdone = ( j==Cvar%pdofs )   
-                CALL CountAndCreateFoilWinding(Element,nn,nd,RowId+AddIndex(j),Cnts,Done,dofsdone,&
-                                                         Rows)
-              END DO
+              CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows)
             END SELECT
           END IF
         END DO
@@ -1466,11 +1475,7 @@ CONTAINS
               CALL CountAndCreateMassive(Element,nn,nd,VvarId,Cnts,Done,Rows,Cols=Cols)
            CASE('foil winding')
               IF (.NOT. HasSupport(Element,nn)) CYCLE   
-              DO j = 1, Cvar % pdofs
-                dofsdone = ( j==Cvar%pdofs )
-                CALL CountAndCreateFoilWinding(Element,nn,nd,VvarId+AddIndex(j),&
-                                               Cnts,Done,dofsdone,Rows,Cols=Cols)
-             END DO
+              CALL CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows,Cols=Cols)
             END SELECT
           END IF
         END DO
@@ -1601,14 +1606,17 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-   SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,i,Cnts,Done,dofsdone,Rows,Cols,Harmonic)
+    SUBROUTINE CountAndCreateFoilWinding(Element,nn,nd,Comp,Cnts,Done,Rows,Cols,Harmonic)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     TYPE(Element_t) :: Element
-    INTEGER :: nn, nd, ncdofs1, ncdofs2, dim
+    TYPE(Component_t), POINTER :: Comp
+    INTEGER :: nn, nd, ncdofs, dim
     OPTIONAL :: Cols
     INTEGER :: Rows(:), Cols(:), Cnts(:)
-    INTEGER :: p,i,j,Indexes(nd)
+    INTEGER :: Indexes(nd)
+    INTEGER :: p,j,q,vpolord,vpolordtest,vpolord_tot,&
+      dofId,dofIdtest,vvarId, nm
     LOGICAL :: dofsdone, First=.TRUE.
     INTEGER, POINTER :: PS(:)
     LOGICAL*1 :: Done(:)
@@ -1630,26 +1638,47 @@ CONTAINS
     IF (.NOT. ASSOCIATED(CurrentModel % ASolver) ) CALL Fatal ('CountAndCreateFoilWinding','ASolver not found!')
     PS => CurrentModel % Asolver % Variable % Perm
     nd = GetElementDOFs(Indexes,Element,CurrentModel % ASolver)
-    IF(dim==2) THEN
-      ncdofs1=1
-      ncdofs2=nd
-    ELSE IF(dim==3) THEN
-      ncdofs1=nn
-      ncdofs2=nd
-    END IF
-    DO p=ncdofs1,ncdofs2
-      j = Indexes(p)
-      IF(.NOT.Done(j)) THEN
-        Done(j) = dofsdone
-        IF (harm) j = ReIndex(PS(j))
-        IF(PRESENT(Cols)) THEN
-          CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm)
-          CALL CreateMatElement(Rows, Cols, Cnts, j, i, harm)
+    nm = CurrentModel % ASolver % Matrix % NumberOfRows
+
+    ncdofs=nd
+    IF (dim == 3) ncdofs=nd-nn
+
+    vvarId = Comp % vvar % ValueId
+    vpolord_tot = Comp % vvar % pdofs - 1
+
+    DO vpolordtest=0,vpolord_tot ! V'(alpha)
+      dofIdtest = AddIndex(vpolordtest + 1) + vvarId
+      DO vpolord = 0, vpolord_tot ! V(alpha)
+        dofId = AddIndex(vpolord + 1) + vvarId
+        IF (PRESENT(Cols)) THEN  
+          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, dofId+nm, harm)
         ELSE
-          CALL CountMatElement(Rows, Cnts, i, 1, harm)
-          CALL CountMatElement(Rows, Cnts, j, 1, harm)
+          CALL CountMatElement(Rows, Cnts, dofIdtest+nm, 1, harm)
         END IF
-      END IF
+      END DO
+
+      DO j=1,ncdofs
+        q=j
+        IF (dim == 3) q=q+nn
+        IF (PRESENT(Cols)) THEN  
+          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, ReIndex(PS(Indexes(q))), harm)
+        ELSE
+          CALL CountMatElement(Rows, Cnts, dofIdtest+nm, 1, harm)
+        END IF
+      END DO
+    END DO
+
+    DO vpolord = 0, vpolord_tot ! V(alpha)
+      dofId = AddIndex(vpolord + 1) + vvarId
+      DO j=1,ncdofs
+        q=j
+        IF (dim == 3) q=q+nn
+        IF (PRESENT(Cols)) THEN  
+          CALL CreateMatElement(Rows, Cols, Cnts, ReIndex(PS(indexes(q))), dofId+nm, harm)
+        ELSE
+          CALL CountMatElement(Rows, Cnts, ReIndex(PS(indexes(q))), 1, harm)
+        END IF
+      END DO
     END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE CountAndCreateFoilWinding

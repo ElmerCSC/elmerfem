@@ -397,7 +397,8 @@ CONTAINS
 
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
+    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:), &
+      CubicCoeff(:), HB(:,:) => NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
     TYPE(ValueList_t), POINTER :: Material, BodyForce
 
@@ -409,6 +410,7 @@ CONTAINS
 
     REAL(KIND=dp) :: Bt(nd,2), Ht(nd,2)
     REAL(KIND=dp) :: nu_tensor(2,2)
+    REAL(KIND=dp) :: B_ip(2), Alocal
 !------------------------------------------------------------------------------
 
     CALL GetElementNodes( Nodes,Element )
@@ -419,12 +421,37 @@ CONTAINS
 
     Material => GetMaterial(Element)
 
-    Lst => ListFind(Material,'H-B Curve',HBcurve)
+    CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
+    siz = 0
+    Cval => NULL()
+    IF ( HBCurve ) THEN
+      siz = SIZE(HB,1)
+      IF(siz>1) THEN
+        Bval=>HB(:,1)
+        Hval=>HB(:,2)
+        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
+        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff)) THEN
+          ALLOCATE(CubicCoeff(siz))
+          CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
+        END IF
+        Cval=>CubicCoeff
+        HBCurve = .TRUE.
+      END IF
+    END IF
+
+    IF(siz<=1) THEN
+      Lst => ListFind(Material,'H-B Curve',HBcurve)
+      IF(HBcurve) THEN
+        Cval => Lst % CubicCoeff
+        Bval => Lst % TValues
+        Hval => Lst % FValues(1,1,:)
+      END IF
+    END IF
+
     IF(HBcurve) THEN
       CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
-      Cval => Lst % CubicCoeff
-      Bval => Lst % TValues
-      Hval => Lst % FValues(1,1,:)
+      IF (.NOT. ASSOCIATED(Bval) ) CALL Fatal ('mgdyn2D','bval not associated')
+      IF (.NOT. ASSOCIATED(Hval) ) CALL Fatal ('mgdyn2D','hval not associated')
     ELSE
       CALL GetReluctivity(Material,R,n,Element)
     END IF
@@ -460,8 +487,16 @@ CONTAINS
 
       nu_tensor = 0.0_dp
       IF (HBcurve) THEN
+        Agrad = 0.0_dp
         Agrad = MATMUL( POT,dBasisdx )
-        Babs = MAX( SQRT(SUM(Agrad**2)), 1.d-8 )
+        Alocal = SUM( POT(1:n) * Basis(1:n) )
+        ! Sign?
+        ! -----
+        B_ip(1) = -Agrad(2) 
+        B_ip(2) = Agrad(1)
+        IF( CSymmetry ) B_ip(2) = B_ip(2) + Alocal/x
+        ! -----
+        Babs = MAX( SQRT(SUM(B_ip**2)), 1.d-8 )
         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
         muder = (DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/Babs
         nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
@@ -509,6 +544,8 @@ CONTAINS
         END DO
       END IF
 
+      ! Is the sign correct?
+      !---------------------
       Bt(:,1) = -dbasisdx(:,2)
       Bt(:,2) =  dbasisdx(:,1)
       IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
@@ -522,10 +559,16 @@ CONTAINS
 
       ! Csymmetry is not yet considered in the Newton linearization
       IF (HBcurve .AND. NewtonRaphson) THEN
+!        DO p=1,nd
+!          DO q=1,nd
+!            JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
+!              muder/babs*SUM(Agrad*dBasisdx(q,:))*SUM(Agrad*dBasisdx(p,:))
+!          END DO
+!        END DO
         DO p=1,nd
           DO q=1,nd
             JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
-              muder/babs*SUM(Agrad*dBasisdx(q,:))*SUM(Agrad*dBasisdx(p,:))
+              muder/babs*SUM(B_ip(:)*Bt(q,:))*SUM(B_ip*Bt(p,:))
           END DO
         END DO
       END IF
@@ -1135,7 +1178,8 @@ CONTAINS
 
     LOGICAL :: Cubic, HBcurve, Found, Stat, StrandedHomogenization
 
-    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:)
+    REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:), &
+      CubicCoeff(:), HB(:,:) => NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
     TYPE(ValueList_t), POINTER :: Material,  BodyForce
 
@@ -1146,7 +1190,8 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: CompParams
 
     REAL(KIND=dp) :: Bt(nd,2)
-    COMPLEX(KIND=dp) :: Ht(nd,2) 
+    REAL(KIND=dp) :: Ht(nd,2) 
+    COMPLEX(KIND=dp) :: B_ip(2), Alocal
 
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
@@ -1201,13 +1246,39 @@ CONTAINS
       END IF
     END IF
 
+    CALL GetConstRealArray( Material, HB, 'H-B curve', HBCurve )
+    siz = 0
+    Cval => NULL()
+    IF ( HBCurve ) THEN
+      siz = SIZE(HB,1)
+      IF(siz>1) THEN
+        Bval=>HB(:,1)
+        Hval=>HB(:,2)
+        Cubic = GetLogical( Material, 'Cubic spline for H-B curve',Found)
+        IF (Cubic.AND..NOT.ASSOCIATED(CubicCoeff)) THEN
+          ALLOCATE(CubicCoeff(siz))
+          CALL CubicSpline(siz,Bval,Hval,CubicCoeff)
+        END IF
+        Cval=>CubicCoeff
+        HBCurve = .TRUE.
+      END IF
+    END IF
+
+    IF(siz<=1) THEN
+      Lst => ListFind(Material,'H-B Curve',HBcurve)
+      IF(HBcurve) THEN
+        Cval => Lst % CubicCoeff
+        Bval => Lst % TValues
+        Hval => Lst % FValues(1,1,:)
+      END IF
+    END IF
+
     Lst => ListFind(Material,'H-B Curve',HBcurve)
     IF(HBcurve) THEN
       CALL GetLocalSolution(POT,UElement=Element)
       POTC=POT(1,:)+im*POT(2,:)
-      Cval => Lst % CubicCoeff
-      Bval => Lst % TValues
-      Hval => Lst % FValues(1,1,:)
+      IF (.NOT. ASSOCIATED(Bval) ) CALL Fatal ('mgdyn2D','bval not associated')
+      IF (.NOT. ASSOCIATED(Hval) ) CALL Fatal ('mgdyn2D','hval not associated')
     ELSE IF (.NOT. StrandedHomogenization) THEN 
       CALL GetReluctivity(Material,R,n,Element)
     END IF
@@ -1245,11 +1316,18 @@ CONTAINS
       ! The source term at the integration point:
       !------------------------------------------
       LoadAtIP = SUM( LOAD(1:n)*Basis(1:n) )
-
       nu_tensor = 0.0_dp
       IF (HBcurve) THEN
+        Agrad = 0.0_dp
         Agrad = MATMUL( POTC,dBasisdx )
-        Babs = MAX( SQRT(SUM(ABS(Agrad)**2)), 1.d-8 )
+        Alocal = SUM( POTC(1:n) * Basis(1:n) )
+        ! Sign?
+        ! -----
+        B_ip(1) = -Agrad(2) 
+        B_ip(2) = Agrad(1)
+        IF( CSymmetry ) B_ip(2) = B_ip(2) + Alocal/x
+        ! -----
+        Babs = MAX(SQRT(SUM(ABS(B_ip)**2)), 1.d-8)
         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
         muder = (DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/Babs
         nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
@@ -1295,10 +1373,16 @@ CONTAINS
              MATMUL(Ht, TRANSPOSE(Bt))
 
       IF (HBcurve.AND.NewtonRaphson) THEN
+!        DO p=1,nd
+!          DO q=1,nd
+!            JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
+!              muder/babs*SUM(Agrad*dBasisdx(q,:))*SUM(CONJG(Agrad)*dBasisdx(p,:))
+!          END DO
+!        END DO
         DO p=1,nd
           DO q=1,nd
             JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
-              muder/babs*SUM(Agrad*dBasisdx(q,:))*SUM(CONJG(Agrad)*dBasisdx(p,:))
+              muder/babs*SUM(B_ip(:)*Bt(q,:))*SUM(B_ip*Bt(p,:))
           END DO
         END DO
       END IF
