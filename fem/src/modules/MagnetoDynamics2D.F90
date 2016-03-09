@@ -486,8 +486,14 @@ CONTAINS
 
       nu_tensor = 0.0_dp
       IF (HBcurve) THEN
+        Agrad = 0.0_dp
         Agrad = MATMUL( POT,dBasisdx )
         Babs = MAX( SQRT(SUM(Agrad**2)), 1.d-8 )
+        ! Sign?
+        ! -----
+        B_ip(1) = -Agrad(2) 
+        B_ip(2) = Agrad(1) + 
+        ! -----
         mu = InterpolateCurve(Bval,Hval,Babs,CubicCoeff=Cval)/Babs
         muder = (DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/Babs
         nu_tensor(1,1) = mu ! Mu is really nu!!! too lazy to correct now...
@@ -535,6 +541,8 @@ CONTAINS
         END DO
       END IF
 
+      ! Is the sign correct?
+      !---------------------
       Bt(:,1) = -dbasisdx(:,2)
       Bt(:,2) =  dbasisdx(:,1)
       IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
@@ -548,12 +556,14 @@ CONTAINS
 
       ! Csymmetry is not yet considered in the Newton linearization
       IF (HBcurve .AND. NewtonRaphson) THEN
-        DO p=1,nd
-          DO q=1,nd
-            JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
-              muder/babs*SUM(Agrad*dBasisdx(q,:))*SUM(Agrad*dBasisdx(p,:))
-          END DO
-        END DO
+!        DO p=1,nd
+!          DO q=1,nd
+!            JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
+!              muder/babs*SUM(Agrad*dBasisdx(q,:))*SUM(Agrad*dBasisdx(p,:))
+!          END DO
+!        END DO
+        JAC(1:nd,1:nd) = JAC(1:nd,1:nd) + IP % s(t) * DetJ * &
+             muder/babs * MATMUL(SUM(B_ip*Bt)*B_ip, TRANSPOSE(Bt))
       END IF
 
       FORCE(1:nd) = FORCE(1:nd) + IP % s(t) * DetJ * (LoadAtip * Basis(1:nd) + &
