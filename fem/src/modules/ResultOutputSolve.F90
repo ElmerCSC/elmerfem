@@ -3232,28 +3232,33 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       
       IF( SkipHalo .OR. SaveOnlyHalo ) THEN
         IF( IsBoundaryElement ) THEN
-          LeftElem => CurrentElement % BoundaryInfo % Left
-          IF( ASSOCIATED( LeftElem ) ) THEN
-            LeftIndex = LeftElem % ElementIndex
-            IF( LeftIndex > 0 ) THEN
-              IF( Mesh % Elements(LeftIndex) % PartIndex /= ParEnv % MyPe ) LeftIndex = 0
+          IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN
+            LeftElem => CurrentElement % BoundaryInfo % Left
+            IF( ASSOCIATED( LeftElem ) ) THEN
+              LeftIndex = LeftElem % ElementIndex
+              IF( LeftIndex > 0 ) THEN
+                IF( Mesh % Elements(LeftIndex) % PartIndex /= ParEnv % MyPe ) LeftIndex = 0
+              END IF
+            ELSE
+              LeftIndex = 0
             END IF
-          ELSE
-            LeftIndex = 0
-          END IF
-          RightElem => CurrentElement % BoundaryInfo % Right
-          IF( ASSOCIATED( RightElem ) ) THEN
-            RightIndex = RightElem % ElementIndex
-            IF( RightIndex > 0 ) THEN
-              IF( Mesh % Elements(RightIndex) % PartIndex /= ParEnv % MyPe ) RightIndex = 0
+            RightElem => CurrentElement % BoundaryInfo % Right
+            IF( ASSOCIATED( RightElem ) ) THEN
+              RightIndex = RightElem % ElementIndex
+              IF( RightIndex > 0 ) THEN
+                IF( Mesh % Elements(RightIndex) % PartIndex /= ParEnv % MyPe ) RightIndex = 0
+              END IF
+            ELSE
+              RightIndex = 0
             END IF
+            IsHalo = ( LeftIndex == 0 .AND. RightIndex == 0 )
           ELSE
-            RightIndex = 0
+            IsHalo = .FALSE.
           END IF
-          IsHalo = ( LeftIndex == 0 .AND. RightIndex == 0 )
         ELSE
           IsHalo = ( CurrentElement % PartIndex /= ParEnv % MyPe )
         END IF
+
         IF( IsHalo ) THEN
           IF( SkipHalo ) CYCLE
         ELSE
@@ -3333,6 +3338,8 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END DO
     
     NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
+    
+    CALL Info('VtuOutputSolver','Number of geometry nodes: '//TRIM(I2S(NumberOfGeomNodes)),Level=10)
   END IF
 
 
@@ -3428,7 +3435,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       InvNodePerm = 0
       j = 0
       DO i=1,Mesh % NumberOfNodes
-        IF( InvNodePerm(i) > 0 ) THEN
+        IF( NodePerm(i) > 0 ) THEN
           j = j + 1       
           NodePerm(i) = j
           InvNodePerm(j) = i
