@@ -14,3 +14,4 @@ compile_*.sh
 create_module_file.sh
 fem/tests/SEMTEC_CircuitsAndDynamics
 run_mgdyn_tests.sh
+fem/tests/CircuitsAndDynamics
