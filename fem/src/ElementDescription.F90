@@ -4498,7 +4498,7 @@ END IF
        END IF
        PerformPiolaTransform = .FALSE.
        IF ( PRESENT(ApplyPiolaTransform) ) PerformPiolaTransform = ApplyPiolaTransform
-       Hierarchic = .FALSE.
+       Hierarchic = .TRUE. ! .TRUE. to automate the compatibility of the bases for different element shapes 
        IF ( PRESENT(HierarchicBasis) ) Hierarchic = HierarchicBasis
        !-------------------------------------------------------------------------------------------
        dLbasisdx = 0.0d0      

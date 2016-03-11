@@ -52,7 +52,7 @@ SUBROUTINE GradientValidation ( Model,Solver,dt,TransientSimulation )
   integer,parameter :: io=20
   integer :: MyPe=-1
 
-  Logical :: FirstVisit=.true.,Found
+  Logical :: FirstVisit=.true.,Found, UnFoundFatal
   Logical :: Parallel
   logical,allocatable :: VisitedNode(:)
 
@@ -158,37 +158,20 @@ SUBROUTINE GradientValidation ( Model,Solver,dt,TransientSimulation )
             ENDIF
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-             CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
-             IF (ASSOCIATED(CostVar)) THEN 
-                CostValues => CostVar % Values 
-             ELSE
-                  WRITE(Message,'(A,A,A)') 'No variable >',CostSolName,'< found' 
-                  CALL FATAL(SolverName,Message) 
-             ENDIF 
-             Var => VariableGet( Solver % Mesh % Variables, VarSolName ) 
-             IF (ASSOCIATED(Var)) THEN 
-                Values => Var % Values 
-                Perm => Var % Perm 
-             ELSE 
-                WRITE(Message,'(A,A,A)') 'No variable >',VarSolName,'< found' 
-                CALL FATAL(SolverName,Message) 
-             ENDIF
-             PVar => VariableGet( Solver % Mesh % Variables, PSolName ) 
-             IF (ASSOCIATED(PVar)) THEN 
-                PValues => PVar % Values 
-                PPerm => PVar % Perm 
-             ELSE 
-                WRITE(Message,'(A,A,A)') 'No variable >',PSolName,'< found' 
-                CALL FATAL(SolverName,Message) 
-             ENDIF
-             GradVar => VariableGet( Solver % Mesh % Variables, GradSolName) 
-             IF (ASSOCIATED(GradVar)) THEN 
-                GradValues   => GradVar % Values 
-                GradPerm => GradVar % Perm 
-             ELSE 
-                 WRITE(Message,'(A,A,A)') 'No variable >',GradSolName,'< found' 
-                 CALL FATAL(SolverName,Message)    
-             END IF
+             CostVar => VariableGet( Solver % Mesh % Variables, CostSolName,UnFoundFatal=UnFoundFatal)
+             CostValues => CostVar % Values 
+
+             Var => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal) 
+             Values => Var % Values 
+             Perm => Var % Perm
+ 
+             PVar => VariableGet( Solver % Mesh % Variables, PSolName,UnFoundFatal=UnFoundFatal) 
+             PValues => PVar % Values 
+             PPerm => PVar % Perm 
+
+             GradVar => VariableGet( Solver % Mesh % Variables, GradSolName,UnFoundFatal=UnFoundFatal) 
+             GradValues   => GradVar % Values 
+             GradPerm => GradVar % Perm 
 
              x(1:NActiveNodes)=Values(Perm(ActiveNodes(1:NActiveNodes)))
              g(1:NActiveNodes)=GradValues(GradPerm(ActiveNodes(1:NActiveNodes)))
@@ -223,21 +206,12 @@ SUBROUTINE GradientValidation ( Model,Solver,dt,TransientSimulation )
         End if
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
-        CostVar => VariableGet( Solver % Mesh % Variables, CostSolName )
-        IF (ASSOCIATED(CostVar)) THEN 
-              CostValues => CostVar % Values 
-        ELSE
-              WRITE(Message,'(A,A,A)') 'No variable >',CostSolName,'< found' 
-              CALL FATAL(SolverName,Message) 
-        ENDIF 
-        Var => VariableGet( Solver % Mesh % Variables, VarSolName ) 
-        IF (ASSOCIATED(Var)) THEN 
-            Values => Var % Values 
-            Perm => Var % Perm 
-        ELSE 
-             WRITE(Message,'(A,A,A)') 'No variable >',VarSolName,'< found' 
-             CALL FATAL(SolverName,Message) 
-        ENDIF
+        CostVar => VariableGet( Solver % Mesh % Variables, CostSolName,UnFoundFatal=UnFoundFatal)
+        CostValues => CostVar % Values
+ 
+        Var => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal) 
+        Values => Var % Values 
+        Perm => Var % Perm 
 
        
         J=CostValues(1)
