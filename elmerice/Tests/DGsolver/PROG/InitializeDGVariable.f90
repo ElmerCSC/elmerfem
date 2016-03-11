@@ -12,7 +12,7 @@ RECURSIVE SUBROUTINE InitializeDGVariable(Model, Solver, Timestep, TransientSimu
 !------------ internal variables ---------------------------
   REAL(KIND=dp) :: z, D
   INTEGER :: i, j, k, t, n, dummyInt, Active, Indexes(128)
-  LOGICAL :: GotIt
+  LOGICAL :: GotIt,UnFoundFatal
   TYPE(Element_t), POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Nodes_t) :: ElementNodes
@@ -34,11 +34,7 @@ RECURSIVE SUBROUTINE InitializeDGVariable(Model, Solver, Timestep, TransientSimu
      CALL FATAL(SolverName, Message)
   END IF
 
-  VarSol => VariableGet(Solver % Mesh % Variables,VariableName)
-  IF ( .NOT. ASSOCIATED( VarSol ) ) THEN
-     WRITE(Message,'(A,A,A)') 'Variable ',  VariableName, ' not associated'
-     CALL FATAL(SolverName, Message)
-  END IF
+  VarSol => VariableGet(Solver % Mesh % Variables,VariableName,UnFoundFatal=UnFoundFatal)
 
   Active = GetNOFActive()
   DO t = 1, Active  

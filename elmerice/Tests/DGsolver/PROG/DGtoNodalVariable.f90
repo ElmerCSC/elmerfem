@@ -15,7 +15,7 @@ RECURSIVE SUBROUTINE DGtoNodalVariable1(Model, Solver, Timestep, TransientSimula
 !------------ internal variables ---------------------------
   REAL(KIND=dp) :: z, D
   INTEGER :: i, j, k, t, n, dummyInt, Active, Indexes(128)
-  LOGICAL :: GotIt
+  LOGICAL :: GotIt,UnFoundFatal
   TYPE(Element_t), POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(LEN=MAX_NAME_LEN) :: InName, OutName, SolverName
@@ -39,16 +39,9 @@ RECURSIVE SUBROUTINE DGtoNodalVariable1(Model, Solver, Timestep, TransientSimula
      CALL FATAL(SolverName, Message)
   END IF
 
-  InSol => VariableGet(Solver % Mesh % Variables,InName)
-  IF ( .NOT. ASSOCIATED( InSol ) ) THEN
-     WRITE(Message,'(A,A,A)') 'Variable ', TRIM(InName), ' not associated'
-     CALL FATAL(SolverName, Message)
-  END IF
-  OutSol => VariableGet(Solver % Mesh % Variables,OutName)
-  IF ( .NOT. ASSOCIATED( OutSol ) ) THEN
-     WRITE(Message,'(A,A,A)') 'Variable ', TRIM(OutName), ' not associated'
-     CALL FATAL(SolverName, Message)
-  END IF
+  InSol => VariableGet(Solver % Mesh % Variables,InName,UnFoundFatal=UnFoundFatal)
+
+  OutSol => VariableGet(Solver % Mesh % Variables,OutName,UnFoundFatal=UnFoundFatal)
 
   Active = GetNOFActive()
   DO t = 1, Active  
@@ -75,7 +68,7 @@ RECURSIVE SUBROUTINE DGtoNodalVariable2(Model, Solver, Timestep, TransientSimula
 !------------ internal variables ---------------------------
   REAL(KIND=dp) :: z, D
   INTEGER :: i, j, k, t, n, dummyInt, Active, Indexes(128)
-  LOGICAL :: GotIt
+  LOGICAL :: GotIt,UnFoundFatal
   TYPE(Element_t), POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(LEN=MAX_NAME_LEN) :: InName, OutName, SolverName
@@ -101,11 +94,7 @@ RECURSIVE SUBROUTINE DGtoNodalVariable2(Model, Solver, Timestep, TransientSimula
      CALL FATAL(SolverName, Message)
   END IF
 
-  OutSol => VariableGet(Solver % Mesh % Variables,OutName)
-  IF ( .NOT. ASSOCIATED( OutSol ) ) THEN
-     WRITE(Message,'(A,A,A)') 'Variable ', TRIM(OutName), ' not associated'
-     CALL FATAL(SolverName, Message)
-  END IF
+  OutSol => VariableGet(Solver % Mesh % Variables,OutName,UnFoundFatal=UnFoundFatal)
 
   Active = GetNOFActive()
   DO t = 1, Active  

@@ -61,7 +61,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   TYPE(ValueList_t),POINTER :: SolverParams
   TYPE(Mesh_t),POINTER :: Mesh
   TYPE(Solver_t), POINTER :: PSolver
-  CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TangledMaskVarName
+  CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TangledMaskVarName, MappedMeshName
   INTEGER :: i,j,k,n,dim,DOFs,itop,ibot,imid,ii,jj,Rounds,BotMode,TopMode,nsize, &
        ActiveDirection,elem, istat, TangledCount
   INTEGER, POINTER :: MaskPerm(:),TopPerm(:),BotPerm(:),TangledMaskPerm(:),TopPointer(:),&
@@ -69,7 +69,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
        DisplacementMode, MaskExists, GotVeloVar, GotUpdateVar, Tangled,&
        DeTangle, ComputeTangledMask = .FALSE., Reinitialize, &
-       MidLayerExists
+       MidLayerExists, WriteMappedMeshToDisk = .FALSE.
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, MidVal, ElemVector(3),DotPro,Eps,Length, MinHeight
 #ifdef USE_ISO_C_BINDINGS
@@ -83,7 +83,6 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   TYPE(Element_t), POINTER :: Element
   TYPE(Nodes_t), SAVE :: Nodes
   TYPE(ValueList_t),POINTER :: BC
-
 
   SAVE Visited,Initialized,UnitVector,Coord,MaskExists,MaskPerm,TopPointer,BotPointer,&
       TopMode,BotMode,TopField,BotField,TopPerm,BotPerm,Field,Surface,nsize, OrigCoord, &
@@ -128,6 +127,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   ! End of initialization
   !-------------------------------------------------------
+
+
+  MappedMeshName = GetString(SolverParams,'Mapped Mesh Name', WriteMappedMeshToDisk)
 
   !---------------- detangling stuff --------------------------------
   MinHeight = 0.0_dp
@@ -474,6 +476,10 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   at1 = CPUTime()
   WRITE(Message,* ) 'Active coordinate mapping time: ',at1-at0
   CALL Info('StructuredMeshMapper',Message)
+
+  IF ( (.NOT.Visited) .AND. WriteMappedMeshToDisk ) THEN
+     CALL WriteMeshToDisk(Mesh, MappedMeshName)
+  END IF
 
   Visited = .TRUE.
 

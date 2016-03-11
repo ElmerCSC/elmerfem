@@ -298,8 +298,12 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
   REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  LOGICAL :: Found, PiolaVersion, SecondOrder
+  LOGICAL :: Found, PiolaVersion, SecondOrder, LorentzConductivity
   TYPE(ValueList_t), POINTER :: SolverParams
+ 
+  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+    ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
+  IF(LorentzConductivity) CALL INFO("WhitneyAVSolver_Init0", "Material is moving: has Lorentz force present")
 
   SolverParams => GetSolverParams()
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
@@ -307,7 +311,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
         'Use Piola Transform', Found )   
     SecondOrder = GetLogical(SolverParams, 'Quadratic Approximation', Found)
     IF (PiolaVersion) THEN
-      IF ( Transient ) THEN
+      IF ( Transient .OR. LorentzConductivity ) THEN
         IF (SecondOrder) THEN
           CALL ListAddString( SolverParams, &
               "Element", "n:1 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
@@ -323,7 +327,7 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
         END IF
       END IF
     ELSE
-      IF ( Transient ) THEN
+      IF ( Transient .OR. LorentzConductivity ) THEN
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
@@ -1767,6 +1771,7 @@ CONTAINS
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
        IF(HasVelocity) THEN
+         velo = 0.0_dp
          IF( HasAngularVelocity ) THEN
            DO i=1,n
              velo(1:3) = velo(1:3) + CrossProduct(omega_velo(1:3,i), [ &
@@ -1880,6 +1885,12 @@ CONTAINS
                  ! ------------------------------------------------
                  STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(i,:))*WBasis(j,:))*detJ*IP % s(t)
                END DO
+               IF ( HasVelocity ) THEN
+                 DO j=1,nd-np
+                   q = j+np
+                   STIFF(p,q) = STIFF(p,q) - SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(i,:))*detJ*IP % s(t)
+                 END DO
+               END IF
              END DO
            END IF
          END IF
@@ -4946,11 +4957,14 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   CHARACTER(LEN=MAX_NAME_LEN) :: sname,pname
-  LOGICAL :: Found, ElementalFields, RealField
+  LOGICAL :: Found, ElementalFields, RealField, LorentzConductivity
   INTEGER, POINTER :: Active(:)
   INTEGER :: mysolver,i,j,k,l,n,m,vDOFs, soln
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
+
+  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+    ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
   ! This is really using DG so we don't need to make any dirty tricks to create DG fields
   ! as is done in this initialization. 
@@ -5116,7 +5130,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  IF ( Transient .OR. Vdofs>1 ) THEN
+  IF ( Transient .OR. Vdofs>1 .OR. LorentzConductivity ) THEN
     IF ( GetLogical( Solver % Values, 'Calculate Electric Field', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
@@ -5195,8 +5209,11 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: name
   INTEGER  :: i
   TYPE(Variable_t), POINTER :: Var
-  LOGICAL :: Found, FluxFound, NodalFields, RealField
+  LOGICAL :: Found, FluxFound, NodalFields, RealField, LorentzConductivity
   TYPE(ValueList_t), POINTER :: EQ, SolverParams
+
+  LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+    ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
   IF(.NOT.ASSOCIATED(Solver % Values)) Solver % Values=>ListAllocate()
   SolverParams => GetSolverParams()
@@ -5332,7 +5349,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  IF ( Transient .OR. .NOT. RealField ) THEN
+  IF ( Transient .OR. .NOT. RealField .OR. LorentzConductivity) THEN
     IF ( GetLogical( SolverParams, 'Calculate Electric Field', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
@@ -5389,20 +5406,27 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    REAL(KIND=dp) :: dt
    LOGICAL :: Transient
 !------------------------------------------------------------------------------
-  
+!  The following arrays have hard-coded sizes which may need to be altered if
+!  new finite elements are added. Current defaults are 54 edge finite element 
+!  DOFs and 27 nodal DOFs at maximum (obtained for the second-order brick over
+!  a background element of type 827):
 !------------------------------------------------------------------------------
-   REAL(KIND=dp) :: s,u,v,w,WBasis(35,3), SOL(2,35), PSOL(35), R(35), C(35), Norm, ElPotSol(1,8)
-   REAL(KIND=dp) :: RotWBasis(35,3), Basis(35), dBasisdx(35,3), B(2,3), E(2,3), JatIP(2,3), &
-                    VP_ip(2,3), Wbase(35), alpha(35), JXBatIP(2,3), CC_J(2,3), NF_ip(35,3), B2
-   REAL(KIND=dp) ::  detJ, C_ip, R_ip, PR_ip, PR(16), ST(3,3), Omega, Power,Energy, w_dens
+   REAL(KIND=dp) :: WBasis(54,3), RotWBasis(54,3), Basis(27), dBasisdx(27,3)
+   REAL(KIND=dp) :: SOL(2,81), PSOL(81), ElPotSol(1,27), R(27), C(27)
+   REAL(KIND=dp) :: Wbase(27), alpha(27), NF_ip(27,3)
+   REAL(KIND=dp) :: PR(27), omega_velo(3,27), lorentz_velo(3,27)
+   COMPLEX(KIND=dp) :: Magnetization(3,27), BodyForceCurrDens(3,27) 
+!------------------------------------------------------------------------------
+   REAL(KIND=dp) :: s,u,v,w, Norm
+   REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), B2
+   REAL(KIND=dp) :: detJ, C_ip, R_ip, PR_ip, ST(3,3), Omega, Power, Energy, w_dens
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
-   REAL(KIND=dp) :: ComponentLoss(2,2), omega_velo(3,35), rot_velo(3), lorentz_velo(3,35)
+   REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3) 
    REAL(KIND=dp) :: Coeff, Coeff2, TotalLoss(3), LumpedForce(3), localAlpha, localV(2), nofturns, coilthickness
    REAL(KIND=dp) :: Flux(2), AverageFluxDensity(2), Area, N_j, wvec(3), PosCoord(3), TorqueDeprecated(3)
-   COMPLEX(KIND=dp) ::  Magnetization(3,35), MG_ip(3), BodyForceCurrDens(3,35), &
-                    BodyForceCurrDens_ip(3)
 
+   COMPLEX(KIND=dp) :: MG_ip(3), BodyForceCurrDens_ip(3)
    COMPLEX(KIND=dp) :: CST(3,3)
    COMPLEX(KIND=dp) :: CMat_ip(3,3)  
    COMPLEX(KIND=dp) :: imag_value
@@ -5450,7 +5474,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(ValueList_t), POINTER :: CompParams
    REAL(KIND=dp) :: DetF, F(3,3), G(3,3), GT(3,3)
    REAL(KIND=dp), ALLOCATABLE :: EBasis(:,:), CurlEBasis(:,:) 
-   LOGICAL :: CSymmetry, HBCurve
+   LOGICAL :: CSymmetry, HBCurve, LorentzConductivity
    REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
    
@@ -5488,6 +5512,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ! Do we have a real or complex valued primary field?
    RealField = ( vDofs == 1 ) 
 
+   LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
+     ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
+
    Mesh => GetMesh()
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier', ThisOnly=.TRUE.)
 
@@ -5516,7 +5543,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    ML2 => NULL(); EL_ML2 => NULL();
    NF => NULL(); EL_NF => NULL();
 
-   IF ( Transient .OR. .NOT. RealField ) THEN
+   IF ( Transient .OR. .NOT. RealField .OR. LorentzConductivity ) THEN
      EF => VariableGet( Mesh % Variables, 'Electric Field' )
      FWP => VariableGet( Mesh % Variables, 'Winding Voltage' )
 
@@ -5922,7 +5949,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END SELECT
        END DO
        IF(ImposeCircuitCurrent .and. ItoJCoeffFound) THEN
-         wvec = -MATMUL(Wbase(1:nd), dBasisdx(1:nd,:))
+         wvec = -MATMUL(Wbase(1:n), dBasisdx(1:n,:))
          IF(SUM(wvec**2._dp) .GE. AEPS) THEN
            wvec = wvec/SQRT(SUM(wvec**2._dp))
          ELSE
@@ -5933,6 +5960,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
        IF(HasVelocity) THEN
+         rot_velo = 0.0_dp
          IF( HasAngularVelocity ) THEN
            DO k=1,n
              rot_velo(1:3) = rot_velo(1:3) + CrossProduct(omega_velo(1:3,k), [ &
@@ -6091,7 +6119,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              END IF
           END IF
        END IF
-
+       
 
        IF ( ASSOCIATED(HB) ) THEN
          Babs=SQRT(SUM(B(1,:)**2))
@@ -6141,6 +6169,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        IF (vDOFS == 1) THEN
           Power = Power + SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
                TRANSPOSE(E(1:1,1:3)) ) * s
+          IF (HasVelocity) THEN
+            Power = Power + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
+              CrossProduct(rot_velo,B(1,:)))*s
+          END IF
        ELSE
           ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
           ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
@@ -6205,7 +6237,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
            IF (Vdofs == 1) THEN
               DO l=1,3
-                JatIP(1,l) = SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l)) 
+                JatIP(1,l) =  SUM( REAL(CMat_ip(l,1:3)) * E(1,1:3) ) + CC_J(1,l) + REAL(BodyForceCurrDens_ip(l)) 
                 IF( HasVelocity ) THEN
                   JatIP(1,l) = JatIP(1,l) + SUM( REAL(CMat_ip(l,1:3)) * CrossProduct(rot_velo, B(1,1:3)))
                 END IF
@@ -6820,13 +6852,13 @@ CONTAINS
 !-------------------------------------------------------------------
     IMPLICIT NONE
 !-------------------------------------------------------------------
-    REAL(KIND=dp) :: GapLength(35), AirGapMu(35)
+    REAL(KIND=dp) :: GapLength(27), AirGapMu(27)
 
 !-------------------------------------------------------------------
     LOGICAL :: FirstTime = .TRUE.
     REAL(KIND=dp) :: B2, GapLength_ip, LeftCenter(3), &
       RightCenter(3), BndCenter(3), LeftNormal(3), RightNormal(3), &
-      NF_ip_l(35,3), NF_ip_r(35,3)
+      NF_ip_l(27,3), NF_ip_r(27,3)
     TYPE(Element_t), POINTER :: LeftParent, RightParent, BElement
     TYPE(Nodes_t) :: LPNodes, RPNodes
     REAL(KIND=dp) :: F(3,3)
@@ -7027,7 +7059,7 @@ CONTAINS
    TYPE(Element_t), POINTER :: Element
    TYPE(Variable_t), POINTER :: CoordVar
    LOGICAL :: VisitedNode(Mesh % NumberOfNodes)
-   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, m, n
+   INTEGER :: pnodal, nnt, ElemNodeDofs(27), ndofs, globalnode, m, n
    LOGICAL :: ONCE=.TRUE., DEBUG, Found
    
    VisitedNode = .FALSE.
@@ -7089,7 +7121,7 @@ CONTAINS
    INTEGER, ALLOCATABLE :: AllGroups(:)
 
    REAL(KIND=dp) :: origin(3), axisvector(3), P(3), F(3), v1(3), v2(3), nrm
-   INTEGER :: pnodal, nnt, ElemNodeDofs(35), ndofs, globalnode, ng, ngroups, &
+   INTEGER :: pnodal, nnt, ElemNodeDofs(27), ndofs, globalnode, ng, ngroups, &
      n, maxngroups, m, k, num_origins, num_axes, pivot
    LOGICAL :: Found
 
