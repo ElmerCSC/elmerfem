@@ -142,14 +142,14 @@ End
 Component 1 
   Name = String "CoilA"
   Coil Type = String "test"
-  Target Bodies(1) = Integer 1
+  Master Bodies(1) = Integer 1
   Desired Current Density = Real 1.0
 End 
 
 Component 2 
   Name = String "CoilB"
   Coil Type = String "test"
-  Target Bodies(1) = Integer 2
+  Master Bodies(1) = Integer 2
   Desired Current Density = Real 2.0
 End 
  
