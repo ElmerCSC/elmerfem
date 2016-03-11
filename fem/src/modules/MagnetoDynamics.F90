@@ -410,6 +410,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, GapLength, AirGapMu, &
        Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone
 !------------------------------------------------------------------------------
+  IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN	
 
   CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
   CALL Info('WhitneyAVSolver','Solving the AV equations with edge elements',Level=5 )
@@ -3006,6 +3007,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
        LamThick, AllocationsDone, RotM, &
        GapLength, AirGapMu
 !------------------------------------------------------------------------------
+  IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
+
   PiolaVersion = GetLogical( GetSolverParams(), 'Use Piola Transform', Found )
   SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )
   IF (PiolaVersion) THEN
@@ -5480,6 +5483,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
 !-------------------------------------------------------------------------------------------
+   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
+
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
 
