@@ -747,7 +747,7 @@ END INTERFACE
   END TYPE CircuitVariable_t
   
   TYPE Component_t
-    REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
+    REAL(KIND=dp) :: Inductance=0._dp, Resistance=0._dp, emf = 0._dp, ElArea, &
                      N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
     INTEGER :: polord, nofcnts, BodyId, ComponentId
     INTEGER, POINTER :: ElBoundaries(:) => Null()
