@@ -1169,6 +1169,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
     END DO
+
 !------------------------------------------------------------------------------
    END SUBROUTINE AddComponentEquationsAndCouplings
 !------------------------------------------------------------------------------
@@ -1315,7 +1316,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: Basis(nn), DetJ, x
     REAL(KIND=dp) :: dBasisdx(nn,3)
     COMPLEX(KIND=dp) :: localC, cmplx_value
-    REAL(KIND=dp) :: localR !, localL
+    REAL(KIND=dp) :: localConductance !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
     LOGICAL :: stat
@@ -1389,8 +1390,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! ------------------------------------------------
       IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff
       IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*gradv)
-      localR = ABS(1._dp/cmplx_value)
-      Comp % Resistance = Comp % Resistance + localR
+      localConductance = ABS(cmplx_value)
+      Comp % Conductance = Comp % Conductance + localConductance
       CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
               REAL(cmplx_value), AIMAG(cmplx_value))
 
@@ -1441,7 +1442,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     LOGICAL :: CSymmetry, First=.TRUE.
-    REAL(KIND=dp) :: localR
+    REAL(KIND=dp) :: localConductance
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
                      RotMLoc(3,3), RotM(3,3,nn)
@@ -1537,8 +1538,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           ! ---------------------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
-          localR = 1._dp/value
-          Comp % Resistance = Comp % Resistance + localR
+
+          localConductance = ABS(value) * Comp % coilthickness / Comp % nofturns
+          Comp % Conductance = Comp % Conductance + localConductance
+          
           CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, dofId+nm, REAL(value), AIMAG(value))
         END DO
 
@@ -1775,6 +1778,8 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
        DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
+         IF (Comp % Resistance < TINY(0._dp) .AND. Comp % Conductance > TINY(0._dp)) &
+             Comp % Resistance = 1._dp / Comp % Conductance
          CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
            TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
 !         CALL ListAddConstReal( GetSimulation(), 'res: inductance('//&
