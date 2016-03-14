@@ -357,7 +357,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     TYPE(Nodes_t), SAVE :: Nodes
     REAL(KIND=dp) :: Basis(nn), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn), w(3)
-    REAL(KIND=dp) :: localC, value, circ_eq_coeff
+    REAL(KIND=dp) :: localC, value, circ_eq_coeff, localR !, localL
     INTEGER :: j,t
     LOGICAL :: stat
 
@@ -433,8 +433,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ! I * R, where 
       ! R = (1/sigma * js,js):
       ! ----------------------
+      localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
+      Comp % Resistance = Comp % Resistance + localR
       
-      CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff)
+      CALL AddToMatrixElement(CM, VvarId, IvarId, localR)
       
       DO j=1,ncdofs
         q=j
@@ -443,6 +445,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           ! ( d/dt a,w )        
           IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt
           IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
+          
+!          localL = value
+!          Comp % Inductance = Comp % Inductance + localL
+
           CALL AddToMatrixElement(CM, VvarId, PS(Indexes(q)), tscl * value)
           CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
 
@@ -474,7 +480,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     TYPE(Matrix_t), POINTER :: CM
     REAL(KIND=dp) :: Basis(nn), DetJ, x,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3)
-    REAL(KIND=dp) :: localC, value, circ_eq_coeff, grads_coeff
+    REAL(KIND=dp) :: localC, value, circ_eq_coeff, grads_coeff, localR !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
     LOGICAL :: stat
@@ -553,6 +559,9 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       ! ------------------------------------------------
       IF(dim==2) value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff
       IF(dim==3) value = IP % s(t)*detJ*localC*SUM(gradv*gradv)
+
+      localR = 1._dp/value 
+      Comp % Resistance = Comp % Resistance + localR
       CALL AddToMatrixElement(CM, vvarId, vvarId, value)
 
       DO j=1,ncdofs
@@ -562,6 +571,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         ! ---------------------------------------------------------
         IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff/dt
         IF(dim==3) value = IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)/dt
+!        localL = value
+!        Comp % Inductance = Comp % Inductance + localL
         CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), tscl * value)
         CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
 
@@ -590,6 +601,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: Basis(nn), DetJ, localAlpha, localV, localVtest, &
                      x, circ_eq_coeff, grads_coeff,POT(nd),pPOT(nd),ppPOT(nd),tscl
     REAL(KIND=dp) :: dBasisdx(nn,3),alpha(nn)
+    REAL(KIND=dp) :: localR !, localL
     INTEGER :: nm,p,j,t,Indexes(nd),vvarId,vpolord_tot, &
                vpolord, vpolordtest, dofId, dofIdtest, &
                dim
@@ -700,6 +712,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           ! ---------------------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
+          localR = 1._dp/value
+          Comp % Resistance = Comp % Resistance + localR
           CALL AddToMatrixElement(CM, dofIdtest+nm, dofId+nm, value)
         END DO
 
@@ -710,6 +724,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           ! ---------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff/dt
           IF (dim == 3) value = IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)/dt
+!          localL = value
+!          Comp % Inductance = Comp % Inductance + localL
           CALL AddToMatrixElement(CM, dofIdtest+nm, PS(Indexes(q)), tscl * value)
           CM % RHS(dofIdtest+nm) = CM % RHS(dofIdtest+nm) + pPOT(q) * value
         END DO
@@ -1174,6 +1190,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: Basis(nn), DetJ, x, circ_eq_coeff
     REAL(KIND=dp) :: dBasisdx(nn,3), wBase(nn), w(3)
     COMPLEX(KIND=dp) :: localC, i_multiplier, cmplx_value
+    REAL(KIND=dp) :: localR !, localL
     INTEGER :: j,t
     LOGICAL :: stat
 
@@ -1246,6 +1263,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! I * R, where 
       ! R = (1/sigma * js,js):
       ! ----------------------
+      localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
+      Comp % Resistance = Comp % Resistance + localR
       
       CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
             REAL(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff), &
@@ -1260,6 +1279,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
                   * IP % s(t)*detJ*Basis(j)*circ_eq_coeff
           IF (dim == 3) cmplx_value = im * Omega * Comp % N_j &
                   * IP % s(t)*detJ*SUM(WBasis(j,:)*w)
+
+!          localL = ABS(cmplx_value)
+!          Comp % Inductance = Comp % Inductance + localL
+
           CALL AddToCmplxMatrixElement(CM, VvarId, ReIndex(PS(Indexes(q))), &
                  REAL(cmplx_value), AIMAG(cmplx_value))
           
@@ -1292,6 +1315,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     REAL(KIND=dp) :: Basis(nn), DetJ, x
     REAL(KIND=dp) :: dBasisdx(nn,3)
     COMPLEX(KIND=dp) :: localC, cmplx_value
+    REAL(KIND=dp) :: localR !, localL
     INTEGER :: nn, nd, j, t, nm, Indexes(nd), &
                VvarId, dim
     LOGICAL :: stat
@@ -1365,6 +1389,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       ! ------------------------------------------------
       IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*grads_coeff**2*circ_eq_coeff
       IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*gradv)
+      localR = ABS(1._dp/cmplx_value)
+      Comp % Resistance = Comp % Resistance + localR
       CALL AddToCmplxMatrixElement(CM, vvarId, vvarId, &
               REAL(cmplx_value), AIMAG(cmplx_value))
 
@@ -1378,6 +1404,9 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
         CALL AddToCmplxMatrixElement(CM, vvarId, ReIndex(PS(Indexes(q))), &
                REAL(cmplx_value), AIMAG(cmplx_value))
 
+!        localL = ABS(1._dp/cmplx_value)
+!        Comp % Inductance = Comp % Inductance + localL
+        
         IF(dim==2) cmplx_value = IP % s(t)*detJ*localC*basis(j)*grads_coeff
         IF(dim==3) cmplx_value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
         CALL AddToCmplxMatrixElement(CM, ReIndex(PS(indexes(q))), vvarId, &
@@ -1412,6 +1441,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     TYPE(GaussIntegrationPoints_t) :: IP
     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
     LOGICAL :: CSymmetry, First=.TRUE.
+    REAL(KIND=dp) :: localR
 
     REAL(KIND=dp) :: wBase(nn), gradv(3), WBasis(nd,3), RotWBasis(nd,3), &
                      RotMLoc(3,3), RotM(3,3,nn)
@@ -1507,6 +1537,8 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
           ! ---------------------------------------------------------------------
           IF (dim == 2) value = IP % s(t)*detJ*localV*localVtest*C(1,1)*grads_coeff**2*circ_eq_coeff
           IF (dim == 3) value = IP % s(t)*detJ*localV*localVtest*SUM(MATMUL(C,gradv)*gradv)
+          localR = 1._dp/value
+          Comp % Resistance = Comp % Resistance + localR
           CALL AddToCmplxMatrixElement(CM, dofIdtest+nm, dofId+nm, REAL(value), AIMAG(value))
         END DO
 
@@ -1665,6 +1697,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
    INTEGER :: nm
    
    TYPE(Solver_t), POINTER :: ASolver
+   TYPE(Component_t), POINTER :: Comp
 
    CHARACTER(LEN=MAX_NAME_LEN) :: dofnumber
    INTEGER :: i,p,jj,j
@@ -1740,6 +1773,16 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
          END IF
        END IF
 
+       DO j = 1, SIZE(Circuits(p) % Components)
+         Comp => Circuits(p) % Components(j)
+         CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
+           TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
+!         CALL ListAddConstReal( GetSimulation(), 'res: inductance('//&
+!           TRIM(i2s(Comp % ComponentId))//'):', Comp % Inductance)
+       END DO  
+
      END DO
    END DO
+
+
 END SUBROUTINE CircuitsOutput
