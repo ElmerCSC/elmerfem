@@ -1775,7 +1775,7 @@ SUBROUTINE CircuitsOutput(Model,Solver,dt,Transient)
 
        DO j = 1, SIZE(Circuits(p) % Components)
          Comp => Circuits(p) % Components(j)
-         CALL ListAddConstReal( GetSimulation(), 'res: resistance('//&
+         CALL ListAddConstReal( GetSimulation(), 'res: r_component('//&
            TRIM(i2s(Comp % ComponentId))//')', Comp % Resistance)
 !         CALL ListAddConstReal( GetSimulation(), 'res: inductance('//&
 !           TRIM(i2s(Comp % ComponentId))//'):', Comp % Inductance)
