@@ -16,9 +16,9 @@ ElmerSolver libary functionality
   SaveScalars but they operate only on the "Master Bodies" and "Master Boundaries" as defined in the 
   component section.  
 
-- Mesh multiplication implemented for elementtype 706 (prisms) and 
+- Mesh multiplication implemented for elementtype 706 (prisms) 
 
-- Impelemented automated overlay also with dimensionally reduced projectors. 
+- Implemented automated overlay also with dimensionally reduced projectors. 
 
 - Hierarchic edge element (curl-conforming) basis functions of second order for all basic element shapes 
   (pyramid still missing). The background mesh may then consist of nodal elements of either first or second degree.
@@ -35,7 +35,7 @@ ElmerSolver Solver modules
   o Correct treatment of generalized nodal forces also for nonlinear H-B curves. 
   o Include airgap model in the generalized nodal forces computation. Only applicable to elemental fields.
   o Allow magnetic force reduction computation to components. These are activated by the logical keywords
-    "calculate magnetic force" and "calculate magnetic torque". If airgap exists then proper reduction
+    "calculate magnetic force" and "calculate magnetic torque". If airgap exists, then proper reduction
     requires use of elemental forces. 
 
 - HeatSolver
@@ -63,7 +63,7 @@ ElmerSolver Solver modules
 - ResultOutputSolver:
   o In VTU output implemented minimal discontinuous basis for DG fields where discontinuity is maintaied only over 
     body interfaces. Activated by "Discontinuous Bodies = Logical True" keyword.
-    If discontinous reduction is used the results are averaged for the representative node. 
+    If discontinous reduction is used, the results are averaged for the representative node. 
 
 - SaveScalars
   o Allow saving of results computed in Components by "Save Component Results" keyword. 
@@ -72,7 +72,7 @@ ElmerSolver Solver modules
 ElmerGrid
 ---------
 - Added offset for materials and bc indexes when doing cloning of meshes
-- When doing partitioning with connected sets allow hybrid partitioning also with geometric version
+- When doing partitioning with connected sets, allow hybrid partitioning also with geometric version
 
 
 
