@@ -6996,9 +6996,9 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
   SUBROUTINE ParticleOutputVti( Particles, GridExtent, GridOrigin, GridDx, GridIndex )
 !------------------------------------------------------------------------------
 
-    USE DefUtils 
-    USE MeshUtils
-    USE ElementDescription
+!    USE DefUtils 
+!    USE MeshUtils
+!    USE ElementDescription
     USE AscBinOutputUtils    
 
     IMPLICIT NONE
