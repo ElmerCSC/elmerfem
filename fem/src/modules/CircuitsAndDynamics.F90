@@ -338,6 +338,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
     END DO
+
+    DO CompInd = 1, Circuit % n_comp
+      Comp => Circuit % Components(CompInd)
+      Comp % Resistance = ParallelReduction(Comp % Resistance)
+      Comp % Conductance = ParallelReduction(Comp % Conductance)
+    END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE AddComponentEquationsAndCouplings
 !------------------------------------------------------------------------------
@@ -1175,6 +1181,11 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       END DO
     END DO
 
+    DO CompInd = 1, Circuit % n_comp
+      Comp => Circuit % Components(CompInd)
+      Comp % Resistance = ParallelReduction(Comp % Resistance)
+      Comp % Conductance = ParallelReduction(Comp % Conductance)
+    END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE AddComponentEquationsAndCouplings
 !------------------------------------------------------------------------------
