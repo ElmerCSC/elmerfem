@@ -700,6 +700,14 @@ MODULE ComponentUtils
         OperName = ListGetString( CompParams,'Operator '//TRIM(I2S(NoVar)), GotOper)
         VarName = ListGetString( CompParams,'Variable '//TRIM(I2S(NoVar)), GotVar)
         CoeffName = ListGetString( CompParams,'Coeffcient '//TRIM(I2S(NoVar)), GotCoeff)
+        
+        IF(.NOT. GotVar .AND. GotOper .AND. OperName == 'electric resistance') THEN
+          VarName = 'Potential'
+          GotVar = .TRUE.
+          CALL Info('UpdateDependentComponents',&
+              'Defaulting field to > Potential < for operator: '//TRIM(OperName),Level=8)
+        END IF
+        
         IF(.NOT. (GotVar .AND. GotOper ) ) EXIT
 
         Var => VariableGet( CurrentModel % Mesh % Variables, VarName ) 
