@@ -9,11 +9,6 @@ ElmerSolver libary functionality
 --------------------------------
 - Added support for MKL Parallel Direct Sparse Direct Solver for Clusters.
 
-- Namespace policy changes such that all available namespaces will be chekced
-  for keyword validity, instead of the latest. Also add simulation loop
-  namespaces 'scan:', 'scan i:', 'time:', 'time i:', 'steady:', 'steady i:', and
-  'coupled:', 'coupled i:'
-
 - Internal spline integration added. The integral curve is computed while adding the 
   data to the list to speed up calculation of definite integrals (IntegrateCurve()).
 
