@@ -577,6 +577,11 @@ CONTAINS
         Comp % nofturns = GetConstReal(CompParams, 'Number of Turns', Found)
         IF (.NOT. Found) CALL Fatal('Circuits_Init','Number of Turns not found!')
 
+        Comp % ElArea = GetConstReal(CompParams, 'Electrode Area', Found)
+        IF (.NOT. Found) CALL ComputeElectrodeArea(Comp, CompParams)
+
+        Comp % N_j = Comp % nofturns / Comp % ElArea
+
       END SELECT
       CALL AddVariableToCircuit(Circuit, Comp % ivar, CId)
       CALL AddVariableToCircuit(Circuit, Comp % vvar, CId)
