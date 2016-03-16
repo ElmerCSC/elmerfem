@@ -3915,6 +3915,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
      TYPE(ValueList_t), POINTER :: Params
+     INTEGER, POINTER :: UpdateComponents(:)
 
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -4059,6 +4060,26 @@ CONTAINS
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
+
+
+!---------------------------------------------------------------------
+! After each solver one may do some special derived fields etc. 
+!---------------------------------------------------------------------
+     
+
+     ! Update the variables that depend on this solver
+     IF( ListGetLogical( Params,&
+           'Update Exported Variables', Found) ) THEN
+       CALL UpdateExportedVariables( Solver )	
+     END IF
+    
+
+     ! Update the components that depend on this solver
+     UpdateComponents => ListGetIntegerArray( Params, &
+         'Update Components', Found )   
+     IF( Found ) CALL UpdateDependentComponents( UpdateComponents )	
+     
+
 
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested

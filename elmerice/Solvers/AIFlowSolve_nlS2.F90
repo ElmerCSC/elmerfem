@@ -121,7 +121,7 @@
 
      INTEGER :: AIFlowType
      LOGICAL :: GotForceBC, GotIt, NewtonLinearization = .FALSE., &
-                NormalTangential=.FALSE.
+                NormalTangential=.FALSE.,UnFoundFatal
 
      INTEGER :: body_id,bf_id
      INTEGER :: old_body = -1
@@ -357,13 +357,9 @@
         END IF
 
         LocalFluidity(1:n) = ListGetReal( Material, &
-                         'Fluidity Parameter', n, NodeIndexes, GotIt )
-        IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Fluidity Parameter not found. &
-                            &Setting to 1.0'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         LocalFluidity(1:n) = 1.0
-        END IF
+                         'Fluidity Parameter', n, NodeIndexes, GotIt,&
+                         UnFoundFatal=UnFoundFatal)
+       !Previous default value: LocalFluidity(1:n) = 1.0
 
 
        LocalFlowWidth(1:n) = ListGetReal ( Material, &
@@ -592,13 +588,9 @@
         END IF
 
         LocalFluidity(1:n) = ListGetReal( Material, &
-                      'Fluidity Parameter', n, NodeIndexes, GotIt )
-        IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Fluidity Parameter not found. &
-                            &Setting to 1.0'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         LocalFluidity(1:n) = 1.0
-        END IF
+                      'Fluidity Parameter', n, NodeIndexes, GotIt,&
+                      UnFoundFatal=UnFoundFatal)
+        ! Previous default value: LocalFluidity(1:n) = 1.0
 
        LocalFlowWidth(1:n) = ListGetReal ( Material, &
                         'FlowWidth', n, NodeIndexes, GotIt)
@@ -766,75 +758,38 @@ CONTAINS
 
       IF (.NOT.Isotropic) Then
         ! Get the viscosity file and store the viscosities into FabricGrid
-         viscosityFile = ListGetString( Material ,'Viscosity File',GotIt )
-         IF (.NOT.GotIt) THEN
-            WRITE(Message,'(3A)') &
-                      'Viscosity File ', viscosityFile, ' not found'
-           CALL FATAL('AIFlowSolve',Message)
-         ELSE
-             OPEN( 1, File = viscosityFile)
-             DO i=1,813
-                 READ( 1, '(6(e14.8))' ) FabricGrid( 6*(i-1)+1:6*(i-1)+6 )
-             END DO
-             CLOSE(1)
-          END IF
+         viscosityFile = ListGetString( Material ,'Viscosity File',GotIt,UnFoundFatal )
+         OPEN( 1, File = viscosityFile)
+         DO i=1,813
+             READ( 1, '(6(e14.8))' ) FabricGrid( 6*(i-1)+1:6*(i-1)+6 )
+         END DO
+         CLOSE(1)
       ENDIF
 
-      Wn(2) = ListGetConstReal( Material , 'Powerlaw Exponent', GotIt )
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable  Powerlaw Exponent not found. &
-                                    & Setting to 1.0'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(2) = 1.0
-      ELSE
-       WRITE(Message,'(A,F10.4)') 'Powerlaw Exponent = ',   Wn(2)
-       CALL INFO('AIFlowSolve', Message, Level = 20)
-       END IF
+      Wn(2) = ListGetConstReal( Material , 'Powerlaw Exponent', GotIt,UnFoundFatal=UnFoundFatal)
+         !Previous default value: Wn(2) = 1.0
+      WRITE(Message,'(A,F10.4)') 'Powerlaw Exponent = ',   Wn(2)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 
-      Wn(3) = ListGetConstReal( Material, 'Activation Energy 1', GotIt )
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Activation Energy 1 not found.&
-                            & Setting to 1.0'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(3) = 1.0
-      ELSE
-         WRITE(Message,'(A,F10.4)') 'Activation Energy 1 = ',   Wn(3)
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-      END IF
+      Wn(3) = ListGetConstReal( Material, 'Activation Energy 1', GotIt,UnFoundFatal=UnFoundFatal)
+         !Previous default value: Wn(3) = 1.0
+      WRITE(Message,'(A,F10.4)') 'Activation Energy 1 = ',   Wn(3)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 
-      Wn(4) = ListGetConstReal( Material, 'Activation Energy 2', GotIt )
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Activation Energy 2 not found. &
-                               &Setting to 1.0'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(4) = 1.0
-      ELSE
-         WRITE(Message,'(A,F10.4)') 'Activation Energy 2 = ',   Wn(4)
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-      END IF
+      Wn(4) = ListGetConstReal( Material, 'Activation Energy 2', GotIt,UnFoundFatal=UnFoundFatal)
+         !Previous default value: Wn(4) = 1.0
+      WRITE(Message,'(A,F10.4)') 'Activation Energy 2 = ',   Wn(4)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 
-      Wn(5) = ListGetConstReal(Material, 'Reference Temperature', GotIt)
+      Wn(5) = ListGetConstReal(Material, 'Reference Temperature', GotIt,UnFoundFatal=UnFoundFatal)
+         !Previous default value: Wn(5) = -10.0 (Celsius)
+      WRITE(Message,'(A,F10.4)') 'Reference Temperature = ',   Wn(5)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Reference Temperature not found. &
-                               &Setting to -10.0 (Celsius)'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(5) = -10.0
-      ELSE
-         WRITE(Message,'(A,F10.4)') 'Reference Temperature = ',   Wn(5)
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-      END IF
-
-      Wn(6) = ListGetConstReal( Material, 'Limit Temperature', GotIt )
-      IF (.NOT.GotIt) THEN
-         WRITE(Message,'(A)') 'Variable Limit Temperature not found. &
-                               &Setting to -10.0 (Celsius)'
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-         Wn(6) = -10.0
-      ELSE
-         WRITE(Message,'(A,F10.4)') 'Limit Temperature = ',   Wn(6)
-         CALL INFO('AIFlowSolve', Message, Level = 20)
-      END IF
+      Wn(6) = ListGetConstReal( Material, 'Limit Temperature', GotIt,UnFoundFatal=UnFoundFatal)
+         !Previous default value: Wn(6) = -10.0 (Celsius)
+      WRITE(Message,'(A,F10.4)') 'Limit Temperature = ',   Wn(6)
+      CALL INFO('AIFlowSolve', Message, Level = 20)
 
 ! Get the Minimum value of the Effective Strain rate 
       MinSRInvariant = 100.0*AEPS

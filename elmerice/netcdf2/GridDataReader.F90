@@ -1245,6 +1245,9 @@ CONTAINS
 
     LOGICAL :: success
 
+    ind     = 0
+    Weights = 0.0_dp
+
     success = .FALSE.
 
   END FUNCTION findCell1D

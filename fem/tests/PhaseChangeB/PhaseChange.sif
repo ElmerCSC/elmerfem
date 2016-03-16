@@ -1,0 +1,128 @@
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "Mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Coordinate System = Cartesian
+  Max Output Level = 10
+
+  Simulation Type = Transient
+  Timestep sizes = 50
+  Timestep Intervals = 5
+  Output Intervals = 1
+ 
+  Timestepping Method = BDF
+  BDF Order = 1
+  Steady State Max Iterations = 1
+
+  Post File = "TempDist.vtu"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Heat Equation = True
+  Phase Change Model = Spatial 2
+  Check Latent Heat Release = True
+End
+ 
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "BiCGStab"
+  Linear System Max Iterations = 350
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = "ILU0"
+  Linear System Residual Output = 1
+  Steady State Convergence Tolerance = 1.0e-04
+  Stabilize = False
+  Nonlinear System Convergence Tolerance = 1.0e-04
+  Nonlinear System Max Iterations = 500
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 0.25
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+
+  Variable 1 = time
+  Variable 2 = Temperature
+  Operator 2 = int mean
+End 
+
+
+Material 1
+  Name = "Material1"
+
+! For this case the heat capacity is a combination of "heat capacity" and
+! enthahlpy.
+  Heat Capacity = 222.0
+
+  Enthalpy = Variable Temperature
+    Real
+      0.0  0
+      0.45 0
+      0.55 878
+      1.0  878
+    End
+
+!  Enthalpy = Variable Temperature
+!    Real
+!      0    100
+!      0.45 200
+!      0.55 1000
+!      1    1100
+!    End
+  Phase Change Intervals(2,1) = 0.45 0.55
+
+  Density = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce1"
+
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries(3) = 2 3 4
+
+  Temperature = 0
+End
+
+Boundary Condition 2
+  Name = "Constraint2"
+  Target Boundaries(1) = 6
+
+  Temperature = 1
+End
+
+Solver 1 :: Reference Norm = Real 0.381968332
+
+
+!End Of File
+
