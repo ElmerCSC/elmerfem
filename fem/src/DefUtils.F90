@@ -4566,7 +4566,11 @@ CONTAINS
     IF( BUpd ) THEN
       str = GetString( Params,'Equation',Found)
       CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//TRIM(str), Level=5 )
-      CALL CopyBulkMatrix( PSolver % Matrix ) 
+      IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
+        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE. ) 
+      ELSE
+        CALL CopyBulkMatrix( PSolver % Matrix ) 
+      END IF
     END IF
 
     IF( GetLogical( Params,'Bulk System Multiply',Found ) ) THEN	
