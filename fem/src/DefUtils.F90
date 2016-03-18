@@ -3760,26 +3760,26 @@ CONTAINS
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Solver_t), POINTER :: Solver
-     REAL(KIND=dp), POINTER    :: b(:)
-
-     REAL(KIND=dp) :: xx, s
-     REAL(KIND=dp), POINTER :: DiagScaling(:)
-     REAL(KIND=dp), ALLOCATABLE :: Work(:), STIFF(:,:)
-
-     INTEGER, ALLOCATABLE :: lInd(:), gInd(:)
-     INTEGER :: i,j, k, kk, l, m, n,nd, nb, mb, nn, ni, nj, &
-          EDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
-
-     LOGICAL :: Flag,Found, ConstantValue, ScaleSystem
      TYPE(ValueListEntry_t), POINTER :: ptr
      TYPE(ValueList_t), POINTER :: BC, Params
      TYPE(Element_t), POINTER :: Element, Parent, Edge, Face, SaveElement
-     CHARACTER(LEN=MAX_NAME_LEN) :: name
+
+     REAL(KIND=dp), ALLOCATABLE :: Work(:), STIFF(:,:)
+     REAL(KIND=dp), POINTER :: b(:)
+     REAL(KIND=dp), POINTER :: DiagScaling(:)
+     REAL(KIND=dp) :: xx, s
+
+     INTEGER, ALLOCATABLE :: lInd(:), gInd(:)
+     INTEGER :: i, j, k, kk, l, m, n, nd, nb, np, mb, nn, ni, nj
+     INTEGER :: EDOFs, DOF, local, numEdgeDofs, istat, n_start, Offset
+
+     LOGICAL :: Flag,Found, ConstantValue, ScaleSystem
      LOGICAL :: BUpd, PiolaTransform
 
-     INTEGER::iii=0
+     CHARACTER(LEN=MAX_NAME_LEN) :: name
 
      SAVE gInd, lInd, STIFF, Work
+!-------------------------------------------------------------------------------------------- 
 
      IF ( PRESENT( USolver ) ) THEN
         Solver => USolver
@@ -4137,54 +4137,42 @@ CONTAINS
               IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
                  SELECT CASE(GetElementFamily())
                  CASE(2)
-                    DO j=1,Parent % TYPE % NumberOfEdges
-                       Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(j))
-                       n = 0
-                       DO k=1,Element % TYPE % NumberOfNodes
-                          DO l=1,Edge % TYPE % NumberOfNodes
-                             IF ( Element % NodeIndexes(k)==Edge % NodeIndexes(l)) n=n+1
-                          END DO
+                   DO j=1,Parent % TYPE % NumberOfEdges
+                     Edge => Solver % Mesh % Edges(Parent % EdgeIndexes(j))
+                     n = 0
+                     DO k=1,Element % TYPE % NumberOfNodes
+                       DO l=1,Edge % TYPE % NumberOfNodes
+                         IF ( Element % NodeIndexes(k)==Edge % NodeIndexes(l)) n=n+1
                        END DO
-                       IF ( n==Element % TYPE % NumberOfNodes ) EXIT
-                    END DO
+                     END DO
+                     IF ( n==Element % TYPE % NumberOfNodes ) EXIT
+                   END DO
 
-                    EDOFs = Edge % BDOFs
-                    IF (EDOFs == 1) THEN
-                       !-----------------------------------------------------------------
-                       ! The lowest-order edge element interpolation with one DOF/edge:
-                       !-----------------------------------------------------------------
-                       nb = Parent % TYPE % NumberOfNodes
-                       n  =  Edge % TYPE % NumberOfNodes
-                       CALL LocalBcIntegral(BC,Edge,n,Parent,nb,TRIM(Name)//' {e}',Work(1))
+                   EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
+                   np = Parent % TYPE % NumberOfNodes
+                   n = Edge % TYPE % NumberOfNodes
+                   CALL LocalBcIntegral(BC,Edge,n,Parent,np,TRIM(Name)//' {e}',Work,EDOFs)
 
-                       n=GetElementDOFs(gInd,Edge)
+                   n=GetElementDOFs(gInd,Edge)
 
-                       n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
-                       DO k=n_start+1,n_start+EDOFs
-                          nb = x % Perm(gInd(k))
-                          IF ( nb <= 0 ) CYCLE
-                          nb = Offset + x % DOFs*(nb-1) + DOF
-                          IF ( A % Symmetric.AND..NOT.A % NoDirichlet ) THEN
-                             CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(1)/DiagScaling(nb))
-                          ELSE
-                             A % ConstrainedDOF(nb) = .TRUE.
-                             A % Dvalues(nb) = Work(1)/DiagScaling(nb)
-                             IF( A % NoDirichlet ) THEN
-                             ELSE
-                               CALL ZeroRow( A, nb )
-!                              A % RHS(nb) = Work(1)/DiagScaling(nb)
-                               CALL SetMatrixElement(A,nb,nb,1._dp)
-                             END IF
-                          END IF
-                       END DO
-                    ELSE
-                       !-----------------------------------------------------------------
-                       ! The cases with more than one DOF/edge. To do: handle these by
-                       ! L2 projection of boundary data
-                       !-----------------------------------------------------------------                    
-                       CALL Fatal('DefaultDirichletBCs',&
-                            'BCs are not yet defined for this type of edge element interpolation')
-                    END IF
+                   n_start = Solver % Def_Dofs(2,Parent % BodyId,1)*Edge % NDOFs
+                   DO j=1,EDOFs
+                     k = n_start + j
+                     nb = x % Perm(gInd(k))
+                     IF ( nb <= 0 ) CYCLE
+                     nb = Offset + x % DOFs*(nb-1) + DOF
+                     IF ( A % Symmetric .AND. (.NOT. A % NoDirichlet) ) THEN
+                       CALL CRS_SetSymmDirichlet(A,A % RHS,nb,Work(j)/DiagScaling(nb))
+                     ELSE
+                       A % ConstrainedDOF(nb) = .TRUE.
+                       A % Dvalues(nb) = Work(j)/DiagScaling(nb)
+                       IF( .NOT. A % NoDirichlet ) THEN
+                         CALL ZeroRow( A, nb )
+                         CALL SetMatrixElement(A,nb,nb,1._dp)
+                       END IF
+                     END IF
+                   END DO
+
                  CASE(3,4)
                     DO j=1,Parent % TYPE % NumberOfFaces
                        Face => Solver % Mesh % Faces(Parent % FaceIndexes(j))
@@ -4211,7 +4199,7 @@ CONTAINS
                           n  = Parent % TYPE % NumberOfNodes
 
                           CALL LocalBcIntegral( BC, Edge, nb, Parent, &
-                               n, TRIM(Name)//' {e}', Work(1) )
+                              n, TRIM(Name)//' {e}', Work, EDOFs )
 
                           n=GetElementDOFs(gInd,Edge)
 
@@ -4376,75 +4364,97 @@ CONTAINS
   END SUBROUTINE SolveLinSys
 !------------------------------------------------------------------------------
 
-
-!> This subroutine can be used to compute the values of DOFs corresponding
-!> the edge finite elements of the lowest order so that the edge finite
-!> element interpolant of the BC data is obtained. The value of DOF is
-!> defined as D = S*(g.t,1)_E where g.t is tangential component of data,
-!> E is the region occupied by the boundary element and S reverts sign
+!------------------------------------------------------------------------------
+!> This subroutine computes the values of DOFs that are associated with 
+!> mesh edges in the case of curl-conforming (edge) finite elements, so that
+!> the edge finite element interpolant of the BC data can be constructed. 
+!> The values of the DOFs are defined as D = S*(g.t,v)_E where g.t is tangential 
+!> component of data, v is a polynomial on the edge E, and S reverts sign
 !> if necessary.
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalBcIntegral(BC, Element, nd, Parent, np, Name, Integral)
+  SUBROUTINE LocalBcIntegral(BC, Element, n, Parent, np, Name, Integral, EDOFs)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     TYPE(ValueList_t), POINTER :: BC !< The list of boundary condition values
     TYPE(Element_t) :: Element       !< The boundary element handled
-    INTEGER :: nd                    !< The number of boundary element nodes
+    INTEGER :: n                     !< The number of boundary element nodes
     TYPE(Element_t) :: Parent        !< The parent element of the boundary element
     INTEGER :: np                    !< The number of parent element nodes
     CHARACTER(LEN=*) :: Name         !< The name of boundary condition
-    REAL(KIND=dp) :: Integral        !< The value of DOF
+    REAL(KIND=dp) :: Integral(:)     !< The values of DOFs
+    INTEGER, OPTIONAL :: EDOFs       !< The number of DOFs    
 !------------------------------------------------------------------------------
-    TYPE(GaussIntegrationPoints_t) :: IP
-    INTEGER, POINTER :: Edgemap(:,:)
-    INTEGER :: i,j,k,n,p,q,t
-    LOGICAL :: Lstat
-    TYPE(ElementType_t), POINTER :: SavedType
     TYPE(Nodes_t), SAVE :: Nodes, Pnodes
-    REAL(KIND=dp) :: Basis(np) ,dBasisdx(np,3)
-    REAL(KIND=dp) :: L,VL(3),G(3)
-    REAL(KIND=dp) :: u,v,w,s,DetJ,Load(np),Vload(3,1:np)
+    TYPE(ElementType_t), POINTER :: SavedType
+    TYPE(GaussIntegrationPoints_t) :: IP
+
+    LOGICAL :: Lstat, RevertSign
+    INTEGER, POINTER :: Edgemap(:,:)
+    INTEGER :: i,j,k,p,DOFs
+
+    REAL(KIND=dp) :: Basis(n),Load(n),Vload(3,1:n),VL(3),t(3)
+    REAL(KIND=dp) :: v,L,s,DetJ
 !------------------------------------------------------------------------------
+    DOFs = 1
+    IF (PRESENT(EDOFs)) THEN
+      IF (EDOFs > 2) THEN
+        CALL Fatal('LocalBCIntegral','Cannot handle more than 2 DOFs per edge')
+      ELSE
+        DOFs = EDOFs
+      END IF
+    END IF   
 
     ! Get the nodes of the boundary and parent elements:
     CALL GetElementNodes(Nodes, Element)
     CALL GetElementNodes(PNodes, Parent)
 
-    Load(1:nd) = GetReal( BC, Name, Lstat, Element )
-
+    RevertSign = .FALSE.
     EdgeMap => GetEdgeMap(GetElementFamily(Parent))
     DO i=1,SIZE(EdgeMap,1)
-      j=EdgeMap(i,1); k=EdgeMap(i,2)
+      j=EdgeMap(i,1)
+      k=EdgeMap(i,2)
       IF ( Parent % NodeIndexes(j)==Element % NodeIndexes(1) .AND. &
-           Parent % NodeIndexes(k)==Element % NodeIndexes(2) .OR.  &
-           Parent % NodeIndexes(j)==Element % NodeIndexes(2) .AND. &
-           Parent % NodeIndexes(k)==Element % NodeIndexes(1) ) EXIT
+          Parent % NodeIndexes(k)==Element % NodeIndexes(2) ) THEN
+        EXIT
+      ELSE IF (Parent % NodeIndexes(j)==Element % NodeIndexes(2) .AND. &
+          Parent % NodeIndexes(k)==Element % NodeIndexes(1) ) THEN
+        RevertSign = .TRUE.
+        EXIT
+      END IF
     END DO
 
-    n = LEN_TRIM(Name)
-    VLoad(1,1:nd)=GetReal(BC,Name(1:n)//' 1',Lstat,element)
-    VLoad(2,1:nd)=GetReal(BC,Name(1:n)//' 2',Lstat,element)
-    VLoad(3,1:nd)=GetReal(BC,Name(1:n)//' 3',Lstat,element)
+    Load(1:n) = GetReal( BC, Name, Lstat, Element )
 
-    G(1) = PNodes % x(k) - PNodes % x(j)
-    G(2) = PNodes % y(k) - PNodes % y(j)
-    G(3) = PNodes % z(k) - PNodes % z(j)
-    G = G/SQRT(SUM(G**2))
+    i = LEN_TRIM(Name)
+    VLoad(1,1:n)=GetReal(BC,Name(1:i)//' 1',Lstat,element)
+    VLoad(2,1:n)=GetReal(BC,Name(1:i)//' 2',Lstat,element)
+    VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
+
+    t(1) = PNodes % x(k) - PNodes % x(j)
+    t(2) = PNodes % y(k) - PNodes % y(j)
+    t(3) = PNodes % z(k) - PNodes % z(j)
+    t = t/SQRT(SUM(t**2))
 
     SavedType => Element % TYPE
     IF ( GetElementFamily()==1 ) Element % TYPE=>GetElementType(202)
       
-    Integral = 0._dp
+    Integral(1:DOFs) = 0._dp
     IP = GaussPoints(Element)
-    DO t=1,IP % n
-      Lstat = ElementInfo( Element, Nodes, IP % u(t), &
-            IP % v(t), IP % w(t), DetJ, Basis )
-      s = IP % s(t) * DetJ
+    DO p=1,IP % n
+      Lstat = ElementInfo( Element, Nodes, IP % u(p), &
+            IP % v(p), IP % w(p), DetJ, Basis )
+      s = IP % s(p) * DetJ
 
-      L  = SUM(Load(1:nd)*Basis(1:nd))
-      VL = MATMUL(Vload(:,1:nd),Basis(1:nd))
-      Integral=Integral+s*(L+SUM(VL*G))
+      L  = SUM(Load(1:n)*Basis(1:n))
+      VL = MATMUL(Vload(:,1:n),Basis(1:n))
+      Integral(1)=Integral(1)+s*(L+SUM(VL*t))
+
+      IF (DOFs>1) THEN
+        v = Basis(2)-Basis(1)
+        IF (RevertSign) v = -1.0d0*v
+        Integral(2)=Integral(2)+s*SUM(VL*t)*v
+      END IF
     END DO
     Element % TYPE => SavedType
 
@@ -4456,7 +4466,7 @@ CONTAINS
     IF ( ParEnv % PEs>1 ) &
       k=CurrentModel % Mesh % ParallelInfo % GlobalDOFs(k)
 
-    IF (k < j) Integral=-Integral
+    IF (k < j) Integral(1)=-Integral(1)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalBcIntegral
 !------------------------------------------------------------------------------
