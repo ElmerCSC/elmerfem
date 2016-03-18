@@ -1920,6 +1920,8 @@ CONTAINS
          END IF
          steadyIt = i
        END IF
+        
+       IF( GetNamespaceCheck() ) CALL ListPushNamespace('coupled '//TRIM(i2s(i))//': ')
 
        DoneThis = .FALSE.
 
@@ -2058,8 +2060,9 @@ CONTAINS
 !------------------------------------------------------------------------------
          END DO
 !------------------------------------------------------------------------------
-       Model % Mesh % Changed = .FALSE.
-       IF ( ALL(DoneThis) ) EXIT
+         CALL ListPopNamespace()
+         Model % Mesh % Changed = .FALSE.
+        IF ( ALL(DoneThis) ) EXIT
     END DO
 
     IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
@@ -3067,6 +3070,7 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL InitializeToZero(Solver % Matrix, Solver % Matrix % rhs)
             
+            CALL ListPushNameSpace('block:')
             CALL ListPushNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
             CALL BlockSystemAssembly(PSolver,dt,Transient,RowVar,ColVar)
             
@@ -3074,7 +3078,7 @@ CONTAINS
             CALL DefaultFinishAssembly()                    
             
             CALL BlockSystemDirichlet(TotMatrix,RowVar,ColVar)
-            CALL ListPopNameSpace()
+            CALL ListPopNameSpace(); CALL ListPopNameSpace()
           END DO
         END DO
       END IF

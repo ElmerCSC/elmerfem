@@ -747,9 +747,10 @@ END INTERFACE
   END TYPE CircuitVariable_t
   
   TYPE Component_t
-    REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
+    REAL(KIND=dp) :: Inductance=0._dp, Resistance=0._dp, Conductance = 0._dp, ElArea, &
                      N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
-    INTEGER :: polord, ElBoundary, nofcnts, BodyId, ComponentId
+    INTEGER :: polord, nofcnts, BodyId, ComponentId
+    INTEGER, POINTER :: ElBoundaries(:) => Null()
     INTEGER, POINTER :: BodyIds(:) => Null()
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
@@ -882,6 +883,7 @@ END INTERFACE
       TYPE(Circuit_t), POINTER :: Circuits(:) => Null()
       TYPE(Solver_t), POINTER :: ASolver    
       
+      LOGICAL :: HarmonicCircuits
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel

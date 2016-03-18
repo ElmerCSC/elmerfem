@@ -10,6 +10,7 @@ Elmer-linux-ubuntu12.cmake
 Makefile
 builddir
 cmake_install.cmake
-compile_devel.sh
-compile_trafotek.sh
-
+compile_*.sh
+create_module_file.sh
+fem/tests/SEMTEC_CircuitsAndDynamics
+run_mgdyn_tests.sh

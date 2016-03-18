@@ -157,7 +157,25 @@ CONTAINS
 ! !$   thread=omp_get_thread_num()
 !      val => Store( thread*MAX_ELEMENT_NODES+1:thread*MAX_ELEMENT_NODES+n )
 !   END FUNCTION GetStore
-
+  
+  SUBROUTINE getElementNodeIndex(i, Element, n, FOUND)
+    IMPLICIT None
+ 
+    ! variables in function header
+    INTEGER :: i, n
+    TYPE(Element_t), POINTER :: Element
+    Logical :: FOUND
+        
+    DO i=1, SIZE(Element%NodeIndexes)
+    IF (n == Element%NodeIndexes(i)) THEN
+      FOUND=.TRUE.
+      EXIT
+    END IF
+  END DO
+  
+  END SUBROUTINE getElementNodeIndex
+  
+  
   FUNCTION GetIndexStore() RESULT(ind)
     INTEGER, POINTER :: Ind(:)
     INTEGER :: istat

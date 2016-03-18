@@ -43,6 +43,7 @@
 MODULE MagnetoDynamicsUtils
 
    USE DefUtils
+   USE MGDynMaterialUtils
 
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 
@@ -358,7 +359,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
   USE CircuitUtils
-  
+
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -637,28 +638,7 @@ CONTAINS
 !      Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
 
-       CALL ListGetRealArray( Material, &
-              'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
-       
-       IF (Found) THEN
-          IF ( SIZE(Cwrk,1) == 1 ) THEN
-             DO i=1,3
-                Tcoef( i,i,1:n ) = Cwrk( 1,1,1:n )
-             END DO
-          ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-             DO i=1,MIN(3,SIZE(Cwrk,1))
-                Tcoef(i,i,1:n) = Cwrk(i,1,1:n)
-             END DO
-          ELSE
-             DO i=1,MIN(3,SIZE(Cwrk,1))
-                DO j=1,MIN(3,SIZE(Cwrk,2))
-                   Tcoef( i,j,1:n ) = Cwrk(i,j,1:n)
-                END DO
-             END DO
-          END IF
-       END IF
-
-       IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
+       Tcoef = GetElectricConductivityTensor(Element,n,'re',CoilBody,CoilType)
 
        LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
        IF (.NOT. LaminateStack) LaminateStackModel = ''
@@ -1794,13 +1774,13 @@ CONTAINS
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-           IF(CoilType == 'foil winding') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
+           IF(CoilBody .AND. CoilType /= 'massive') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------
-       IF (CoilType == 'foil winding') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       IF (CoilBody .AND. CoilType /= 'massive') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
@@ -2955,7 +2935,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
   USE CircuitUtils
-  
+
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -3137,6 +3117,7 @@ CONTAINS
            SELECT CASE (CoilType)
            CASE ('stranded')
               CoilBody = .TRUE.
+              CALL GetElementRotM(Element, RotM, n)
            CASE ('massive')
               CoilBody = .TRUE.
            CASE ('foil winding')
@@ -3156,51 +3137,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !        Read conductivity values (might be a tensor)
 !------------------------------------------------------------------------------
-         CALL ListGetRealArray( Material, &
-                'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
-
-         IF (Found) THEN
-            IF ( SIZE(Cwrk,1) == 1 ) THEN
-               DO i=1,3
-                  Tcoef( i,i,1:n ) = Cwrk( 1,1,1:n )
-               END DO
-            ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-               DO i=1,MIN(3,SIZE(Cwrk,1))
-                  Tcoef(i,i,1:n) = Cwrk(i,1,1:n)
-               END DO
-            ELSE
-               DO i=1,MIN(3,SIZE(Cwrk,1))
-                  DO j=1,MIN(3,SIZE(Cwrk,2))
-                     Tcoef( i,j,1:n ) = Cwrk(i,j,1:n)
-                  END DO
-               END DO
-            END IF
-         END IF
-        
-         IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
-        
-         CALL ListGetRealArray( Material, &
-                'Electric Conductivity im', Cwrk_im, n, Element % NodeIndexes, Found )
-
-         IF (Found) THEN
-            IF ( SIZE(Cwrk_im,1) == 1 ) THEN
-               DO i=1,3
-                  Tcoef( i,i,1:n ) = CMPLX( REAL(Tcoef( i,i,1:n )), Cwrk_im( 1,1,1:n ), KIND=dp)
-               END DO
-            ELSE IF ( SIZE(Cwrk_im,2) == 1 ) THEN
-               DO i=1,MIN(3,SIZE(Cwrk_im,1))
-                  Tcoef(i,i,1:n) = CMPLX( REAL(Tcoef( i,i,1:n )), Cwrk_im( i,1,1:n ), KIND=dp)
-               END DO
-            ELSE
-               DO i=1,MIN(3,SIZE(Cwrk_im,1))
-                  DO j=1,MIN(3,SIZE(Cwrk_im,2))
-                     Tcoef( i,j,1:n ) = CMPLX( REAL(Tcoef( i,j,1:n )), Cwrk_im( i,j,1:n ), KIND=dp)
-                  END DO
-               END DO
-            END IF
-         END IF
-
-         IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
+         Tcoef = GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) 
 
          LaminateStackModel = GetString( Material, 'Laminate Stack Model', LaminateStack )
          IF (.NOT. LaminateStack) LaminateStackModel = ''
@@ -4160,7 +4097,7 @@ CONTAINS
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
-    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n)
+    COMPLEX(KIND=dp) :: mu, C(3,3), L(3), G(3), M(3), FixJPotC(n), Nu(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,FixJPot(2,nd), &
                      RotMLoc(3,3), RotM(3,3,n)
 
@@ -4178,6 +4115,11 @@ CONTAINS
     TYPE(ValueListEntry_t), POINTER :: Lst
 
     TYPE(Nodes_t), SAVE :: Nodes
+
+    TYPE(ValueList_t), POINTER :: CompParams
+    LOGICAL :: StrandedHomogenization, FoundIm
+    REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
+    REAL(KIND=dp) :: nu_val, nuim_val
 !------------------------------------------------------------------------------
     IF (SecondOrder) THEN
        EdgeBasisDegree = 2
@@ -4232,6 +4174,24 @@ CONTAINS
       Newton = GetLogical( GetSolverParams(),'Newton-Raphson iteration',Found)
     END IF
 
+    IF (CoilType == 'stranded') THEN 
+       CompParams => GetComponentParams( Element )
+       StrandedHomogenization = GetLogical(CompParams, 'Homogenization Model', Found)
+       IF ( .NOT. Found ) StrandedHomogenization = .FALSE.
+         
+       IF ( StrandedHomogenization ) THEN
+         nu_11 = 0._dp
+         nuim_11 = 0._dp
+         nu_11 = GetReal(CompParams, 'nu 11', Found)
+         nuim_11 = GetReal(CompParams, 'nu 11 im', FoundIm)
+         IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 11 not found!')
+         nu_22 = 0._dp
+         nuim_22 = 0._dp
+         nu_22 = GetReal(CompParams, 'nu 22', Found)
+         nuim_22 = GetReal(CompParams, 'nu 22 im', FoundIm)
+         IF ( .NOT. Found .AND. .NOT. FoundIm ) CALL Fatal ('LocalMatrix', 'Homogenization Model nu 22 not found!')
+       END IF
+    END IF
 
     !Numerical integration:
     !----------------------
@@ -4260,13 +4220,14 @@ CONTAINS
        DO i=1,3
          DO j=1,3
            C(i,j) = SUM( Tcoef(i,j,1:n) * Basis(1:n) )
-           IF(CoilType == 'foil winding') RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
+           IF(CoilBody .AND. CoilType /= 'massive') &
+                   RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------
-       IF (CoilType == 'foil winding') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
+       IF (CoilBody .AND. CoilType /= 'massive') C = MATMUL(MATMUL(RotMLoc, C),TRANSPOSE(RotMLoc))
 
        IF ( HBCurve ) THEN
          B_ip = MATMUL( Aloc(np+1:nd), RotWBasis(1:nd-np,:) )
@@ -4292,7 +4253,21 @@ CONTAINS
          END SELECT
        END IF
 
+       Nu = CMPLX(0._dp, 0._dp)
+       Nu(1,1) = mu
+       Nu(2,2) = mu
+       Nu(3,3) = mu
 
+       IF (CoilBody .AND. StrandedHomogenization) THEN
+         nu_val = SUM( Basis(1:n) * nu_11(1:n) ) 
+         nuim_val = SUM( Basis(1:n) * nuim_11(1:n) ) 
+         Nu(1,1) = CMPLX(nu_val, nuim_val, KIND=dp)
+         nu_val = SUM( Basis(1:n) * nu_22(1:n) ) 
+         nuim_val = SUM( Basis(1:n) * nuim_22(1:n) ) 
+         Nu(2,2) = CMPLX(nu_val, nuim_val, KIND=dp)
+         Nu = MATMUL(MATMUL(RotMLoc, Nu),TRANSPOSE(RotMLoc))
+       END IF 
+ 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
        L = L - MATMUL(FixJPotC, dBasisdx(1:n,:))
@@ -4356,8 +4331,8 @@ CONTAINS
                  SUM(CONJG(B_ip(:))*RotWBasis(j,:))*detJ*IP % s(t)/Babs
            END IF
 
-           STIFF(p,q) = STIFF(p,q) + mu * &
-              SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
+           STIFF(p,q) = STIFF(p,q) + &
+              SUM(MATMUL(Nu, RotWBasis(i,:))*RotWBasis(j,:))*detJ*IP%s(t)
 
            ! Compute the conductivity term <j * omega * C A,eta> 
            ! for stiffness matrix (anisotropy taken into account)
@@ -5765,60 +5740,16 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      !  Read conductivity values (might be a tensor)
      !------------------------------------------------------------------------------
      !C(1:n) = GetReal(Material,'Electric Conductivity',Found)
-     CALL ListGetRealArray( Material, &
-          'Electric Conductivity', Cwrk, n, Element % NodeIndexes, Found )
-
-     Tcoef = CMPLX(0.0d0, 0.0d0, KIND=dp)
-     IF (Found) THEN
-        IF ( SIZE(Cwrk,1) == 1 ) THEN
-           DO k=1,3
-              Tcoef( k,k,1:n ) = Cwrk( 1,1,1:n )
-           END DO
-        ELSE IF ( SIZE(Cwrk,2) == 1 ) THEN
-           DO k=1,MIN(3,SIZE(Cwrk,1))
-              Tcoef(k,k,1:n) = Cwrk(k,1,1:n)
-           END DO
-        ELSE
-           DO k=1,MIN(3,SIZE(Cwrk,1))
-              DO j=1,MIN(3,SIZE(Cwrk,2))
-                 Tcoef( k,j,1:n ) = Cwrk(k,j,1:n)
-              END DO
-           END DO
-        END IF
-     END IF
-     
-     IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp
-     
-     CALL ListGetRealArray( Material, &
-          'Electric Conductivity im', Cwrk_im, n, Element % NodeIndexes, Found )
-
-     IF (Found) THEN
-        IF ( SIZE(Cwrk_im,1) == 1 ) THEN
-           DO k=1,3
-              Tcoef( k,k,1:n ) = CMPLX( REAL(Tcoef( k,k,1:n )), Cwrk_im( 1,1,1:n ), KIND=dp)
-           END DO
-        ELSE IF ( SIZE(Cwrk_im,2) == 1 ) THEN
-           DO k=1,MIN(3,SIZE(Cwrk_im,1))
-              Tcoef(k,k,1:n) = CMPLX( REAL(Tcoef( k,k,1:n )), Cwrk_im( k,1,1:n ), KIND=dp)
-           END DO
-        ELSE
-           DO k=1,MIN(3,SIZE(Cwrk_im,1))
-              DO j=1,MIN(3,SIZE(Cwrk_im,2))
-                 Tcoef( k,j,1:n ) = CMPLX( REAL(Tcoef( k,j,1:n )), Cwrk_im( k,j,1:n ), KIND=dp)
-              END DO
-           END DO
-        END IF
-     END IF
-        
-     IF (CoilType == 'foil winding') Tcoef(1,1,:) = 0._dp 
+     Tcoef = GetCMPLXElectricConductivityTensor(Element, n, CoilBody, CoilType) 
 
      dim = CoordinateSystemDimension()
      CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
-      CurrentCoordinateSystem() == CylindricSymmetric )
+     CurrentCoordinateSystem() == CylindricSymmetric )
      
      IF (CoilBody) THEN
        
-       CALL GetLocalSolution(Wbase,'W')
+       !CALL GetLocalSolution(Wbase, 'w')
+       Call GetWPotential(Wbase)
   
        SELECT CASE (CoilType)
        CASE ('stranded')
@@ -6075,8 +6006,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
                  wvec = wvec/SQRT(SUM(wvec**2._dp))
                END SELECT
                 imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
-                E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(1,1))
-                E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(1,1))
+                E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(3,3))
+                E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(3,3))
              CASE ('massive')
                 localV(1) = localV(1) + LagrangeVar % Values(VvarId)
                 localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
