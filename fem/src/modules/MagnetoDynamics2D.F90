@@ -1195,6 +1195,11 @@ CONTAINS
 
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
     REAL(KIND=dp) :: nu_val, nuim_val
+
+    REAL(KIND=dp) :: foilthickness, coilthickness, nofturns, skindepth, mu0 
+    COMPLEX(KIND=dp) :: FR
+    LOGICAL :: InPlaneProximity = .FALSE.
+
     LOGICAL :: FoundIm
 
 !$omp threadprivate(Nodes)
@@ -1208,6 +1213,7 @@ CONTAINS
     Material => GetMaterial(Element)
 
     Omega = GetAngularFrequency(Found=Found)
+    InPlaneProximity = .FALSE.
    
     CoilBody = .FALSE.
     CompParams => GetComponentParams( Element )
@@ -1240,6 +1246,14 @@ CONTAINS
         CASE ('foil winding')
            CoilBody = .TRUE.
   !         CALL GetElementRotM(Element, RotM, n)
+           InPlaneProximity = GetLogical(CompParams, 'Foil In Plane Proximity', Found)
+           IF (InPlaneProximity) THEN
+             coilthickness = GetConstReal(CompParams, 'Coil Thickness', Found)
+             IF (.NOT. Found ) Call Fatal('LocalMatrix', 'Coil Thickness not found!')
+             nofturns = GetConstReal(CompParams, 'Number Of Turns', Found)
+             IF (.NOT. Found ) Call Fatal('LocalMatrix', 'Number of Turns not found!')
+             foilthickness = coilthickness/nofturns
+           END IF
         CASE DEFAULT
            CALL Fatal ('MagnetoDynamics2DHarmonic', 'Non existent Coil Type Chosen!')
         END SELECT
@@ -1365,6 +1379,16 @@ CONTAINS
       Bt(:,2) =  dbasisdx(:,1)
       IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
       
+      IF (InPlaneProximity) THEN
+        mu0 = 4d-7 * pi
+        skindepth = sqrt(2._dp/(omega * C_ip * mu0))
+        FR = C_ip * foilthickness * skindepth * (1_dp + im)/8._dp
+        FR = FR*SINH((1_dp+im)*foilthickness/skindepth)
+        FR = FR/SINH((1_dp+im)*foilthickness/skindepth/2._dp)**2._dp
+        nu_tensor(1,1) = nu_tensor(1,1) + FR
+        nu_tensor(2,2) = nu_tensor(2,2) + FR
+      END IF
+
       DO p = 1,nd
         Ht(p,:) = MATMUL(nu_tensor, Bt(p,:))
       END DO
