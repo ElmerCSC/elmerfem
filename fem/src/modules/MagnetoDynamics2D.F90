@@ -1382,9 +1382,9 @@ CONTAINS
       IF (InPlaneProximity) THEN
         mu0 = 4d-7 * pi
         skindepth = sqrt(2._dp/(omega * C_ip * mu0))
-        FR = C_ip * foilthickness * skindepth * (1_dp + im)/8._dp
-        FR = FR*SINH((1_dp+im)*foilthickness/skindepth)
-        FR = FR/SINH((1_dp+im)*foilthickness/skindepth/2._dp)**2._dp
+        FR = C_ip * foilthickness * skindepth * omega * (1_dp + im)/8._dp
+        FR = FR*(-im)*SIN(im*(1_dp+im)*foilthickness/skindepth)
+        FR = FR/(-im * SIN(im*(1_dp+im)*foilthickness/skindepth/2._dp))**2._dp
         nu_tensor(1,1) = nu_tensor(1,1) + FR
         nu_tensor(2,2) = nu_tensor(2,2) + FR
       END IF
