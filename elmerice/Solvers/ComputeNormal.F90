@@ -105,6 +105,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   IF ( ASSOCIATED( NormalSolution ) ) THEN 
      Nvector => NormalSolution % Values
      Permutation => NormalSolution % Perm
+     NVector = 0.0_dp
   ELSE
      PRINT *,'FATAL: Unable to set pointer to the current solution'
      STOP
