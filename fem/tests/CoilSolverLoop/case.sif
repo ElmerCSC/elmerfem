@@ -12,7 +12,7 @@ Simulation
   Steady State Max Iterations = 1
 
 !  Filename Numbering = Logical True
-!  Post File = "case.vtu"
+  Post File = "case.vtu"
 
 ! Increase mesh density
   Mesh Levels = 2
@@ -99,7 +99,9 @@ Solver 2
   Linear System Convergence Tolerance = 1.0e-8
 
   Linear System Abort Not Converged = False
-  Exec Solver = never
+!  Exec Solver = never
+
+  Nonlinear System Consistent Norm = True
 End
 
 
@@ -118,7 +120,9 @@ Solver 3
   Steady State Convergence Tolerance = 1.0e-4
 
   Divergence Variable = String "CoilCurrent"
-  Exec Solver = never
+!  Exec Solver = never
+
+  Nonlinear System Consistent Norm = True
 End
 
 
@@ -127,4 +131,6 @@ Material 1
 End
 
 
-Solver 1 :: Reference Norm = 1.6393045
+Solver 1 :: Reference Norm = 8.19652353E-01
+Solver 2 :: Reference Norm = 1.21160884E+00
+Solver 3 :: Reference Norm = 9.58641785E-02

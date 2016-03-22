@@ -67,7 +67,8 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable,FlowSol
   TYPE(Solver_t), POINTER :: PointerToSolver
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, ComputeSpecificSource=.FALSE.
+  LOGICAL :: AllocationsDone = .FALSE., Found, UnFoundFatal,ComputeSpecificSource=.FALSE.
+
 
   INTEGER :: i, j,n, m, t, istat,k
   INTEGER, POINTER :: Permutation(:), FlowPerm(:), NodeIndexes(:)
@@ -92,7 +93,7 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   
   FlowSolName  = GetString( Solver % Values, 'Flow Solver Name', Found )
   IF (.NOT.Found)   WRITE(FlowSolName,'(A)') 'Flow Solution'
-  FlowSol => VariableGet( Solver % Mesh % Variables, FlowSolName )
+  FlowSol => VariableGet( Solver % Mesh % Variables, FlowSolName,UnFoundFatal=UnFoundFatal )
   IF ( ASSOCIATED( FlowSol ) ) THEN
        FlowPerm     => FlowSol % Perm
        NSDOFs     =  FlowSol % DOFs
@@ -110,7 +111,6 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   ELSE
     CALL Info(SolverName,'Volumetric deformational heat source will be computed', Level=1)
   END IF
-
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------

@@ -3232,28 +3232,33 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       
       IF( SkipHalo .OR. SaveOnlyHalo ) THEN
         IF( IsBoundaryElement ) THEN
-          LeftElem => CurrentElement % BoundaryInfo % Left
-          IF( ASSOCIATED( LeftElem ) ) THEN
-            LeftIndex = LeftElem % ElementIndex
-            IF( LeftIndex > 0 ) THEN
-              IF( Mesh % Elements(LeftIndex) % PartIndex /= ParEnv % MyPe ) LeftIndex = 0
+          IF( ASSOCIATED( CurrentElement % BoundaryInfo ) ) THEN
+            LeftElem => CurrentElement % BoundaryInfo % Left
+            IF( ASSOCIATED( LeftElem ) ) THEN
+              LeftIndex = LeftElem % ElementIndex
+              IF( LeftIndex > 0 ) THEN
+                IF( Mesh % Elements(LeftIndex) % PartIndex /= ParEnv % MyPe ) LeftIndex = 0
+              END IF
+            ELSE
+              LeftIndex = 0
             END IF
-          ELSE
-            LeftIndex = 0
-          END IF
-          RightElem => CurrentElement % BoundaryInfo % Right
-          IF( ASSOCIATED( RightElem ) ) THEN
-            RightIndex = RightElem % ElementIndex
-            IF( RightIndex > 0 ) THEN
-              IF( Mesh % Elements(RightIndex) % PartIndex /= ParEnv % MyPe ) RightIndex = 0
+            RightElem => CurrentElement % BoundaryInfo % Right
+            IF( ASSOCIATED( RightElem ) ) THEN
+              RightIndex = RightElem % ElementIndex
+              IF( RightIndex > 0 ) THEN
+                IF( Mesh % Elements(RightIndex) % PartIndex /= ParEnv % MyPe ) RightIndex = 0
+              END IF
+            ELSE
+              RightIndex = 0
             END IF
+            IsHalo = ( LeftIndex == 0 .AND. RightIndex == 0 )
           ELSE
-            RightIndex = 0
+            IsHalo = .FALSE.
           END IF
-          IsHalo = ( LeftIndex == 0 .AND. RightIndex == 0 )
         ELSE
           IsHalo = ( CurrentElement % PartIndex /= ParEnv % MyPe )
         END IF
+
         IF( IsHalo ) THEN
           IF( SkipHalo ) CYCLE
         ELSE
@@ -3333,10 +3338,22 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END DO
     
     NumberOfGeomNodes = COUNT( NodePerm > 0 ) 
+    
+    CALL Info('VtuOutputSolver','Number of geometry nodes: '//TRIM(I2S(NumberOfGeomNodes)),Level=10)
   END IF
 
 
   NumberOfDofNodes = 0
+
+  IF( DG .OR. DN ) THEN    
+    IF(.NOT. CheckAnyElementalField() ) THEN
+      CALL Info('VtuOutputSolver','No elemental fields, omitting discontinuity creation!',Level=6)
+      DG = .FALSE. 
+      DN = .FALSE.
+    END IF
+  END IF
+
+
 
   ! If we have a discontinuous mesh then create the permutation vectors to deal with the discontinuities.
   IF( DG .OR. DN ) THEN
@@ -3418,7 +3435,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
       InvNodePerm = 0
       j = 0
       DO i=1,Mesh % NumberOfNodes
-        IF( InvNodePerm(i) > 0 ) THEN
+        IF( NodePerm(i) > 0 ) THEN
           j = j + 1       
           NodePerm(i) = j
           InvNodePerm(j) = i
@@ -3597,7 +3614,45 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
 
 CONTAINS
 
+  ! Check whether there is any elemental field to be saved. 
+  ! It does not make sense to use discontinuous saving if there are no discontinuous fields.
+  ! It will even result to errors since probably there are no DG indexes either. 
+  FUNCTION CheckAnyElementalField() RESULT ( HaveAnyElemental ) 
 
+    LOGICAL :: HaveAnyElemental
+    INTEGER :: Rank, Vari
+    CHARACTER(LEN=1024) :: Txt, FieldName
+    TYPE(Variable_t), POINTER :: Solution
+    LOGICAL :: Found
+
+    HaveAnyElemental = .FALSE.
+
+    DO Rank = 0,1
+      DO Vari = 1, 999
+        IF(Rank==0) WRITE(Txt,'(A,I0)') 'Scalar Field ',Vari
+        IF(Rank==1) WRITE(Txt,'(A,I0)') 'Vector Field ',Vari
+        
+        FieldName = GetString( Params, TRIM(Txt), Found )
+        IF(.NOT. Found) EXIT
+        
+        Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName))
+        IF(.NOT. ASSOCIATED(Solution)) THEN
+          Solution => VariableGet( Model % Mesh % Variables, TRIM(FieldName)//' 1')
+        END IF
+        IF( .NOT. ASSOCIATED( Solution ) ) CYCLE
+        
+        IF ( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+          HaveAnyElemental = .TRUE.
+          EXIT
+        END IF
+      END DO
+    END DO
+
+  END FUNCTION CheckAnyElementalField
+
+
+
+  ! Average fields within bodies
   SUBROUTINE AverageBodyFields( Mesh ) 
     
     TYPE(Mesh_t), POINTER :: Mesh
@@ -3627,9 +3682,9 @@ CONTAINS
         ! This is really quite dirty!
         ! For variables that scale with h the operator is more naturally a sum 
         ! than an average. 
-        BodySum = ( INDEX( Var % Name,'nodal force' ) /= 0 .OR. &
-            INDEX( Var % Name,' loads' ) /= 0 )
-        CALL CalculateBodyAverage( Mesh, Var, BodySum )
+        !BodySum = ( INDEX( Var % Name,'nodal force' ) /= 0 .OR. &
+            !INDEX( Var % Name,' loads' ) /= 0 )
+        CALL CalculateBodyAverage( Mesh, Var, .FALSE. )
       END IF
 
       Var => Var % Next

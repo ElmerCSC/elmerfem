@@ -61,5 +61,5 @@ Solver 1
   Tabulate Basis = Logical False
 End
 
-Solver 1 :: Reference Norm = Real 0.13744184
+Solver 1 :: Reference Norm = Real 6.15433172E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0E-6

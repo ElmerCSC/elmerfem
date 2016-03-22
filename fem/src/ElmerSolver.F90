@@ -292,7 +292,7 @@ END INTERFACE
        IF(MeshMode) THEN
          CALL FreeModel(CurrentModel)
          MeshIndex = MeshIndex + 1
-         FirstLoad=.TRUE.
+         FirstLoad = .TRUE.
        END IF
 
        IF ( FirstLoad ) THEN
@@ -310,6 +310,15 @@ END INTERFACE
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
+         !----------------------------------------------------------------------------------
+         ! Set namespace searching mode
+         !----------------------------------------------------------------------------------
+         CALL SetNamespaceCheck( ListGetLogical( CurrentModel % Simulation, &
+                    'Additive namespaces', Found ) )
+
+         !----------------------------------------------------------------------------------
+         ! ???
+         !----------------------------------------------------------------------------------
          MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
 
          !------------------------------------------------------------------------------
@@ -355,8 +364,8 @@ END INTERFACE
                END DO
             END IF
          END IF
-
-         ! If requested perform coordinate transformation directly after it has been obtained.
+         !----------------------------------------------------------------------------------
+         ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
          CoordTransform = ListGetString(CurrentModel % Simulation,'Coordinate Transformation',GotIt)
@@ -1324,7 +1333,7 @@ END INTERFACE
                        IF ( l>0 ) THEN
                          CALL LocalBcIntegral( IC, &
                              Edge, Edge % TYPE % NumberOfNodes, CurrentElement, n, &
-                             TRIM(Var % Name)//' {e}', Work(1) )
+                             TRIM(Var % Name)//' {e}', Work )
                          Var % Values(l) = Work(1)
                        END IF
                      END DO
@@ -1369,7 +1378,8 @@ END INTERFACE
 !------------------------------------------------------------------------------
      USE DefUtils
      LOGICAL :: Gotit
-     INTEGER :: k,StartTime
+     INTEGER :: k
+     REAL(KIND=dp) :: StartTime
 !------------------------------------------------------------------------------
 
 
@@ -1477,12 +1487,31 @@ END INTERFACE
        timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)
        IF(.NOT.GotIt) timePeriod = HUGE(timePeriod)
 
+       IF(GetNameSpaceCheck()) THEN
+         IF(Scanning) THEN
+           CALL ListPushNamespace('scan:')
+         ELSE IF(Transient) THEN
+           CALL ListPushNamespace('time:')
+         ELSE
+           CALL ListPushNamespace('steady:')
+         END IF
+       END IF
 
        RealTimestep = 1
        DO timestep = 1,Timesteps(interval)
 
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
+
+         IF ( GetNamespaceCheck() ) THEN
+           IF( Scanning ) THEN
+             CALL ListPushNamespace('scan '//TRIM(i2s(cum_Timestep))//':')
+           ELSE IF ( Transient ) THEN
+             CALL ListPushNamespace('time '//TRIM(i2s(cum_Timestep))//':')
+           ELSE
+             CALL ListPushNamespace('steady '//TRIM(i2s(cum_Timestep))//':')
+           END IF
+         END IF
 
          dtfunc = ListGetConstReal( CurrentModel % Simulation, &
                   'Timestep Function', gotIt)
@@ -1741,6 +1770,8 @@ END INTERFACE
            END IF
          END IF
 !------------------------------------------------------------------------------
+         CALL ListPopNameSpace()
+!------------------------------------------------------------------------------
 
          maxtime = ListGetCReal( CurrentModel % Simulation,'Real Time Max',GotIt)
          IF( GotIt .AND. RealTime() - RT0 > maxtime ) THEN
@@ -1768,7 +1799,11 @@ END INTERFACE
      END DO ! timestep intervals, i.e. the simulation
 !------------------------------------------------------------------------------
 
-100   DO i=1,CurrentModel % NumberOfSolvers
+100  CONTINUE
+
+     CALL ListPopNamespace()
+
+     DO i=1,CurrentModel % NumberOfSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE == 0 ) CYCLE
         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )

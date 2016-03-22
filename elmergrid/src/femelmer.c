@@ -495,6 +495,21 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 }
 
 
+static int Getnamerow(char *line,FILE *io,int upper) 
+{
+  int i,isend;
+  char *charend;
+
+
+  charend = fgets(line,MAXLINESIZE,io);
+  isend = (charend == NULL);
+
+  if(isend) 
+    return(1);
+  else
+    return(0);
+}
+
 
 
 int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
@@ -507,7 +522,8 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   int i,j,k,l,dummyint,cdstat,fail;
   int falseparents,noparents,bctopocreated;
   FILE *in;
-  char line[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
+  char line[MAXLINESIZE],line2[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
+  char *ptr1,*ptr2;
 
 
   sprintf(directoryname,"%s",prefix);
@@ -688,6 +704,76 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   bound->nosides = i;
   fclose(in); 
+
+
+
+  sprintf(filename,"%s","mesh.names");
+  if (in = fopen(filename,"r") ) {
+    int isbody,started;
+
+    if(info) printf("Loading names for mesh parts from file %s\n",filename);
+
+    isbody = TRUE;
+
+    for(;;) {
+      if(Getnamerow(line,in,FALSE)) goto namesend;
+
+      if(strstr(line,"names for boundaries")) {
+	if(info) printf("Reading names for mesh boundaries\n");
+	isbody = FALSE;
+	continue;
+      }
+      else if(strstr(line,"names for bodies")) {
+	if(info) printf("Reading names for mesh bodies\n");	
+	isbody = TRUE;
+	continue;
+      }
+
+      /* get position for entity name */
+      ptr1 = strchr( line,'$');
+      if(!ptr1) continue;
+      ptr1++;
+
+      /* get position for entity index and read it */
+      ptr2 = strchr( line,'=');
+      if(!ptr2) continue;
+      ptr2++;      
+      j = next_int(&ptr2);
+
+      /* Initialize the entity name by white spaces */
+      for(i=0;i<MAXLINESIZE;i++) 
+	line2[i] = ' ';
+
+      started = FALSE;
+      k = 0;
+      for(i=0;i<MAXLINESIZE;i++) {
+	if( ptr1[0] == '=' ) {
+	  /* remove possible trailing white space */
+	  if(line2[k-1] == ' ') k--;	    
+	  line2[k] = NULL;
+	  break;
+	}
+	if(started || ptr1[0] != ' ') {
+	  /* remove possible leading white space */
+	  line2[k] = ptr1[0];
+	  started = TRUE;
+	  k++;
+	}
+	ptr1++;
+      }
+     
+      /* Copy the entityname to mesh structure */
+      if( isbody ) {
+	strcpy(data->bodyname[j],line2);	
+	data->bodynamesexist = TRUE;
+      }
+      else {
+	strcpy(data->boundaryname[j],line2);	
+	data->boundarynamesexist = TRUE;
+      }
+    }
+  }
+  namesend:
 
   if(!cdstat) chdir("..");
 
@@ -1752,8 +1838,8 @@ static int PartitionNodesByElements(struct FemType *data,int info)
 
 
 
-int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
-			    int partorder, Real corder[],int info)
+int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct BoundaryType *bound,
+			    int dimpart[],int dimper[],int partorder, Real corder[],int info)
 /* Partition elements recursively in major directions. 
    This may be the optimal method of partitioning for simple geometries. */ 
 {
@@ -1761,9 +1847,12 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
   int noknots,noelements,nonodes,elemsinpart,periodic;
   int partitions1,partitions2,partitions3,partitions;
   int vpartitions1,vpartitions2,vpartitions3,vpartitions;
-  int *indx,*nopart,*inpart;
+  int noelements0,noelements1,noparts0;
+  int *indx,*nopart,*inpart,*elemconnect;
   Real *arrange;
   Real x,y,z,cx,cy,cz;
+
+  printf("PartitionSimpleElements\n");
 
   noelements = data->noelements;
   noknots = data->noknots;
@@ -1786,6 +1875,14 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     bigerror("Partitioning not performed");
   }
     
+  if( eg->partbcz > 1 ) 
+    PartitionConnectedElements1D(data,bound,eg,info);
+  else if( eg->partbcmetis > 1 ) 
+    PartitionConnectedElementsMetis(data,bound,eg->partbcmetis,3,info); 
+
+  if( data->nodeconnectexist ) 
+    ExtendBoundaryPartitioning(data,bound,eg->partbclayers,info);
+
   if(!data->partitionexist) {
     data->partitionexist = TRUE;
     data->elempart = Ivector(1,noelements);
@@ -1798,6 +1895,20 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
   vpartitions2 = partitions2;
   vpartitions3 = partitions3;
 
+  noparts0 = 0;
+  noelements0 = 0;
+  if( data->elemconnectexist ) {
+    elemconnect = data->elemconnect;  
+    noparts0 = 0;
+    for(i=1;i<=data->noelements;i++) {
+      if( elemconnect[i] ) noelements0 = noelements0 + 1;
+      noparts0 = MAX( noparts0, elemconnect[i] );
+    }
+    if(info) printf("There are %d initial partitions in the connected mesh\n",noparts0);
+    if(info) printf("There are %d initial elements in the connected mesh\n",noelements0);
+  }
+  noelements1 = noelements - noelements0; 
+
   periodic = dimper[0] || dimper[1] || dimper[2];
   if(periodic) {
     if(dimper[0] && partitions1 > 1) vpartitions1 *= 2;
@@ -1805,10 +1916,12 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     if(dimper[2] && partitions3 > 1) vpartitions3 *= 2;
   }
   vpartitions = vpartitions1 * vpartitions2 * vpartitions3;
-  nopart = Ivector(1,vpartitions);
+  nopart = Ivector(1,vpartitions+noparts0);
+
+
 
   if(info) printf("Making a simple partitioning for %d elements in %d-dimensions.\n",
-		  noelements,data->dim);
+		  noelements1,data->dim);
 
   arrange = Rvector(1,noelements);
   indx = Ivector(1,noelements);
@@ -1833,6 +1946,12 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     if(info) printf("Ordering 1st direction with (%.3g*x + %.3g*y + %.3g*z)\n",cx,cy,cz);
 
     for(j=1;j<=noelements;j++) {
+      if( data->elemconnectexist ) {
+	if( elemconnect[j] > 0 ) {
+	  arrange[j] = 1.0e9;
+	  continue;
+	}
+      }
       nonodes = data->elementtypes[j]%100;
       x = y = z = 0.0;
       for(i=0;i<nonodes;i++) {
@@ -1846,9 +1965,9 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
 
     SortIndex(noelements,arrange,indx);
 
-    for(i=1;i<=noelements;i++) {
+    for(i=1;i<=noelements1;i++) {
       ind = indx[i];
-      k = (i*vpartitions1-1)/noelements+1;
+      k = (i*vpartitions1-1)/noelements1+1;
       inpart[ind] = k;
     }
   } 
@@ -1859,6 +1978,12 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     if(info) printf("Ordering in the 2nd direction.\n");
 
     for(j=1;j<=noelements;j++) {
+      if( data->elemconnectexist ) {
+	if( elemconnect[j] > 0 ) {
+	  arrange[j] = 1.0e9;
+	  continue;
+	}
+      }
       nonodes = data->elementtypes[j]%100;
       x = y = z = 0.0;
       for(i=0;i<nonodes;i++) {
@@ -1874,8 +1999,8 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     for(i=1;i<=vpartitions;i++)
       nopart[i] = 0;
     
-    elemsinpart = noelements / (vpartitions1*vpartitions2);
-    for(i=1;i<=noelements;i++) {
+    elemsinpart = noelements1 / (vpartitions1*vpartitions2);
+    for(i=1;i<=noelements1;i++) {
       j = 0;
       ind = indx[i];
       do {
@@ -1894,6 +2019,13 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     if(info) printf("Ordering in the 3rd direction.\n");
 
     for(j=1;j<=noelements;j++) {
+      if( data->elemconnectexist ) {
+	if( elemconnect[j] > 0 ) {
+	  arrange[j] = 1.0e9;
+	  continue;
+	}
+      }
+
       nonodes = data->elementtypes[j]%100;
       x = y = z = 0.0;
       for(i=0;i<nonodes;i++) {
@@ -1904,13 +2036,14 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
       }
       arrange[j] = (-cz*x - cy*y + cx*z) / nonodes;
     }
+
     SortIndex(noelements,arrange,indx);
 
     for(i=1;i<=vpartitions;i++)
       nopart[i] = 0;
     
-    elemsinpart = noelements / (vpartitions1*vpartitions2*vpartitions3);
-    for(i=1;i<=noelements;i++) {
+    elemsinpart = noelements1 / (vpartitions1*vpartitions2*vpartitions3);
+    for(i=1;i<=noelements1;i++) {
       j = 0;
       ind = indx[i];
       do {
@@ -1924,6 +2057,17 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     }
   }
 
+  if( data->elemconnectexist ) {
+    for(j=1;j<=noelements;j++) {
+      if( elemconnect[j] > 0 ) 
+	inpart[j] = elemconnect[j];
+      else
+	inpart[j] = inpart[j] + noparts0;
+    }
+    partitions = partitions + noparts0;
+    data->nopartitions = partitions;
+  }
+
 
   /* For periodic systems the number of virtual partitions is larger. Now map the mesh so that the 
      1st and last partition for each direction will be joined */
@@ -1931,6 +2075,11 @@ int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
     int *partmap;
     int p1,p2,p3,q1,q2,q3;
     int P,Q;
+
+    if(data->elemconnectexist ) {
+      bigerror("Cannot use connect flag with periodic systems\n");
+    }
+
     p1=p2=p3=1;
     partmap = Ivector(1,vpartitions);
     for(i=1;i<=vpartitions;i++)
@@ -2810,11 +2959,9 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
     
     for(i=1;i<=bound[bc].nosides;i++) {
       
-      if(1)
-	GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
-      else
-	GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
-		       data,sideind,&sideelemtype);
+      GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
+      /* GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+	 data,sideind,&sideelemtype); */
       sidenodes = sideelemtype % 100;
       nohits = 0;
       for(j=0;j<sidenodes;j++) 
@@ -3445,7 +3592,6 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 
   nparts = partitions;
   if( dual ) {
-
     if( eg->partbcz > 1 ) 
       PartitionConnectedElements1D(data,bound,eg,info);
     else if( eg->partbcmetis > 1 ) 
@@ -3570,11 +3716,10 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 	  for(i=1;i<=bound[bc].nosides;i++) {
 	    if(bound[bc].types[i] != bctype) continue;
 	    
-	    if(1)
-	      GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
-	    else
-	      GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
-			     data,sideind,&sideelemtype);
+	    GetBoundaryElement(i,&bound[bc],data,sideind,&sideelemtype); 
+	    /* GetElementSide(bound[bc].parent[i],bound[bc].side[i],bound[bc].normal[i],
+	       data,sideind,&sideelemtype); */
+
 	    sidenodes = sideelemtype%100;
 	    
 	    for(j=0;j<sidenodes;j++) {
@@ -5241,11 +5386,9 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	/* Normal boundary conditions */
 	for(i=1; i <= bound[j].nosides; i++) {
 	  
-	  if(1) 
-	    GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
-	  else
-	    GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],
-			   data,sideind,&sideelemtype);
+	  GetBoundaryElement(i,&bound[j],data,sideind,&sideelemtype); 
+	  /* GetElementSide(bound[j].parent[i],bound[j].side[i],bound[j].normal[i],
+	     data,sideind,&sideelemtype); */
 
 	  bctype = bound[j].types[i];
 	  nodesd1 = sideelemtype%100;
@@ -5274,56 +5417,51 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	  if( step == 1 ){	    
 
 	    haloelem = FALSE;
-	    if(0 && !parent && !parent2) {
-	      /* If neither parent exists we cannot really use the parent information 
-		 then save the element if all nodes are needed. */
-	      if( bcneeded < nodesd1 ) continue;
+
+	    /* Check whether the side is such that it belongs to the domain */
+	    trueparent = trueparent2 = FALSE;
+	    if( parent ) trueparent = (elempart[parent] == part);
+	    if( parent2 ) trueparent2 = (elempart[parent2] == part);
+	      
+	    if(trueparent || trueparent2) {
+	      /* Either parent must be associated with this partition, otherwise do not save this (except for halo nodes) */
+	      if( parent && !trueparent ) {	  
+		splitsides++;
+		if(halomode != 1 && halomode != 2) parent = 0;
+	      }
+	      else if( parent2 && !trueparent2 ) {
+		splitsides++;
+		if(!halomode != 1 && halomode != 2) parent2 = 0;
+	      }
+	    }
+	    else if( halomode == 1 || halomode == 2 ) {
+	      /* Halo elements ensure that both parents exist even if they are not trueparents */
+	      if( bcneeded == 0 ) continue; 
+	      if( bcneeded2 < nodesd1 ) {
+		printf("Warning: side element %d of type %d is halo but nodes are not in partition: %d %d\n",
+		       i,sideelemtype,bcneeded2,nodesd1);
+	      }
+	      haloelem = TRUE;
+	      halobcs += 1;
+	    }
+	    else if( halomode == 3 ) {
+	      closeparent = closeparent2 = FALSE;
+	      if( part <= subparts ) {
+		if( parent ) 
+		  if( elempart[parent] <= subparts) 
+		    closeparent = ( ABS( elempart[parent]-part) == 1 );
+		if( parent2 ) 
+		  if( elempart[parent2] <= subparts ) 
+		    closeparent2 = ( ABS( elempart[parent2]-part) == 1 );
+	      }
+	      if(!closeparent && !closeparent2) continue;
+	      haloelem = TRUE;
+	      halobcs += 1;
 	    }
 	    else {
-	      /* Check whether the side is such that it belongs to the domain */
-	      trueparent = trueparent2 = FALSE;
-	      if( parent ) trueparent = (elempart[parent] == part);
-	      if( parent2 ) trueparent2 = (elempart[parent2] == part);
-	      
-	      if(trueparent || trueparent2) {
-		/* Either parent must be associated with this partition, otherwise do not save this (except for halo nodes) */
-		if( parent && !trueparent ) {	  
-		  splitsides++;
-		  if(halomode != 1 && halomode != 2) parent = 0;
-		}
-		else if( parent2 && !trueparent2 ) {
-		  splitsides++;
-		  if(!halomode != 1 && halomode != 2) parent2 = 0;
-		}
-	      }
-	      else if( halomode == 1 || halomode == 2 ) {
-		/* Halo elements ensure that both parents exist even if they are not trueparents */
-		if( bcneeded == 0 ) continue; 
-		if( bcneeded2 < nodesd1 ) {
-		  printf("Warning: side element %d of type %d is halo but nodes are not in partition: %d %d\n",
-			 i,sideelemtype,bcneeded2,nodesd1);
-		}
-		haloelem = TRUE;
-		halobcs += 1;
-	      }
-	      else if( halomode == 3 ) {
-		closeparent = closeparent2 = FALSE;
-		if( part <= subparts ) {
-		  if( parent ) 
-		    if( elempart[parent] <= subparts) 
-		      closeparent = ( ABS( elempart[parent]-part) == 1 );
-		  if( parent2 ) 
-		    if( elempart[parent2] <= subparts ) 
-		      closeparent2 = ( ABS( elempart[parent2]-part) == 1 );
-		}
-		if(!closeparent && !closeparent2) continue;
-		haloelem = TRUE;
-		halobcs += 1;
-	      }
-	      else {
-		continue;
-	      }
+	      continue;
 	    }
+
 	   
 	    if(bound[j].ediscont) 
 	      discont = bound[j].discont[i];
@@ -5379,6 +5517,7 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 	      }
 	    }
 	  }
+
 	  else if( step == 2 ) {
 	    if(bcneeded == 0 ) continue;
 	    if( bcelemsaved[i] ) continue;
@@ -5410,9 +5549,6 @@ int SaveElmerInputPartitioned(struct FemType *data,struct BoundaryType *bound,
 		    for(l3=1;l3<=nobcnodes;l3++)
 		      bcnodesaved[maxbcnodesaved][l3] = 0;
 		    bcnodesaved[maxbcnodesaved][bcnode[ind]] = bctype;
-		    if(0) for(l3=1;l3<=maxbcnodesaved;l3++)
-		      printf("bc index b: %d %d %d %d\n",l3,k,bcnode[ind],bcnodesaved[l3][bcnode[ind]]);
-		    
 		  } 
 
 		  if(hit) continue;
