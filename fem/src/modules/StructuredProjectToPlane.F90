@@ -122,7 +122,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   SAVE Visited,Nodes,Initialized,UnitVector,Coord,MaskExist,MaskPerm,TopPointer,&
       BotPointer,MidPointer, UpPointer,DownPointer,FieldOut,FieldIn,&
       TopNodes,MidNodes,TopPerm, MidPerm, TopField, BotNodes, BotPerm, nsize, &
-      UnitPerm
+      UnitPerm, MidLayerExists
  
   CALL Info( 'StructuredProjectToPlane','------------------------------------------',Level=4 )
   CALL Info( 'StructuredProjectToPlane','Performing projection on a structured mesh ',Level=4 )
