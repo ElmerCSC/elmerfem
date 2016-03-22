@@ -1189,8 +1189,8 @@ CONTAINS
     LOGICAL :: CoilBody    
     TYPE(ValueList_t), POINTER :: CompParams
 
-    REAL(KIND=dp) :: Bt(nd,2)
-    REAL(KIND=dp) :: Ht(nd,2) 
+    COMPLEX(KIND=dp) :: Bt(nd,2)
+    COMPLEX(KIND=dp) :: Ht(nd,2) 
     COMPLEX(KIND=dp) :: B_ip(2), Alocal
 
     REAL(KIND=dp) :: nu_11(nd), nuim_11(nd), nu_22(nd), nuim_22(nd)
@@ -1380,6 +1380,7 @@ CONTAINS
       IF ( CSymmetry ) Bt(:,2) = Bt(:,2) + Basis(:)/x
       
       IF (InPlaneProximity) THEN
+        FR = 0._dp + im*0._dp
         mu0 = 4d-7 * pi
         skindepth = sqrt(2._dp/(omega * C_ip * mu0))
         FR = C_ip * foilthickness * skindepth * omega * (1_dp + im)/8._dp
