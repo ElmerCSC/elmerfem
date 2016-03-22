@@ -9698,8 +9698,6 @@ END SUBROUTINE GetMaxDefs
 
         END DO
       END DO
-
-      PRINT *,'blk ',blk,'level ',currentlevel
     END DO
     Mesh_out % NumberOfNodes=cnt
     alllevels = currentlevel - 2
@@ -9713,21 +9711,19 @@ END SUBROUTINE GetMaxDefs
     DO i=Mesh_in % NumberOfBulkElements+1, &
          Mesh_in % NumberOfBulkElements+Mesh_in % NumberOfBoundaryElements
       IF(Mesh_in % Elements(i) % TYPE % ElementCode == 101) cnt101 = cnt101+1
+
     END DO
 
     n=SIZE(Mesh_in % Elements)
     IF (PreserveBaseline) THEN
-      ALLOCATE(Mesh_out % Elements(n*(alllevels+3) + Mesh_in % NumberOfBoundaryElements + cnt101), STAT=istat )
-      IF ( istat /= 0 ) THEN
-        CALL FATAL('MeshExtrude','Allocation error, Element allocation')
-      END IF
+      ALLOCATE(Mesh_out % Elements(n*(alllevels+3+(blk-1))&
+           + Mesh_in % NumberOfBoundaryElements + cnt101), STAT=istat )
     ELSE
-      ALLOCATE(Mesh_out % Elements(n*(alllevels+3) + cnt101), STAT=istat )
-      IF ( istat /= 0 ) THEN
-        CALL FATAL('MeshExtrude','Allocation error, Element allocation')
-      END IF
+      ALLOCATE(Mesh_out % Elements(n*(alllevels+3+(blk-1)) + cnt101), STAT=istat )
     END IF
-
+    IF ( istat /= 0 ) THEN
+      CALL FATAL('MeshExtrude','Allocation error, Element allocation')
+    END IF
     !
     ! count bodies in orginal mesh
     max_body=0
@@ -10048,9 +10044,9 @@ END SUBROUTINE GetMaxDefs
 
     ! Add top boundaries:
     ! -----------------
-    currentlevel = 1
+    currentlevel = 0
     DO blk=1,buildingblocks
-      currentlevel = currentlevel + in_levels(blk) - 1
+      currentlevel = currentlevel + in_levels(blk) + 1
       DO i=1,Mesh_in % NumberOfBulkElements
         cnt=cnt+1
 
@@ -10061,7 +10057,7 @@ END SUBROUTINE GetMaxDefs
 
         ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
         Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
-             Mesh_out % Elements(currentlevel*Mesh_in % NumberOfBulkElements+i)
+             Mesh_out % Elements((currentlevel-1)*Mesh_in % NumberOfBulkElements+i)
         Mesh_out % Elements(cnt) % BoundaryInfo % Right => NULL()
 
         bcid = max_bid + Mesh_out % Elements(cnt) % BodyId + blk*max_body
@@ -10075,7 +10071,7 @@ END SUBROUTINE GetMaxDefs
 
         ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n))
         Mesh_out % Elements(cnt) % NodeIndexes = &
-             Mesh_in % Elements(i) % NodeIndexes+(currentlevel+1)*n
+             Mesh_in % Elements(i) % NodeIndexes+(currentlevel)*n
         Mesh_out % Elements(cnt) % ElementIndex = cnt
         Mesh_out % Elements(cnt) % TYPE => &
              Mesh_in % Elements(i) % TYPE
