@@ -22,7 +22,10 @@ Simulation
   Steady State Min Iterations = 1
   Output Intervals = 1
 
-  Post File = "case.ep"
+  Post File = "case.vtu"
+
+! required currently by the block solver strategy
+  Additive Namespaces = Logical True
 End
 
 Constants

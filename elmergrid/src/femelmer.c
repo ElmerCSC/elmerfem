@@ -495,6 +495,21 @@ static int FindParentSide(struct FemType *data,struct BoundaryType *bound,
 }
 
 
+static int Getnamerow(char *line,FILE *io,int upper) 
+{
+  int i,isend;
+  char *charend;
+
+
+  charend = fgets(line,MAXLINESIZE,io);
+  isend = (charend == NULL);
+
+  if(isend) 
+    return(1);
+  else
+    return(0);
+}
+
 
 
 int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
@@ -507,7 +522,8 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   int i,j,k,l,dummyint,cdstat,fail;
   int falseparents,noparents,bctopocreated;
   FILE *in;
-  char line[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
+  char line[MAXLINESIZE],line2[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
+  char *ptr1,*ptr2;
 
 
   sprintf(directoryname,"%s",prefix);
@@ -688,6 +704,76 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   bound->nosides = i;
   fclose(in); 
+
+
+
+  sprintf(filename,"%s","mesh.names");
+  if (in = fopen(filename,"r") ) {
+    int isbody,started;
+
+    if(info) printf("Loading names for mesh parts from file %s\n",filename);
+
+    isbody = TRUE;
+
+    for(;;) {
+      if(Getnamerow(line,in,FALSE)) goto namesend;
+
+      if(strstr(line,"names for boundaries")) {
+	if(info) printf("Reading names for mesh boundaries\n");
+	isbody = FALSE;
+	continue;
+      }
+      else if(strstr(line,"names for bodies")) {
+	if(info) printf("Reading names for mesh bodies\n");	
+	isbody = TRUE;
+	continue;
+      }
+
+      /* get position for entity name */
+      ptr1 = strchr( line,'$');
+      if(!ptr1) continue;
+      ptr1++;
+
+      /* get position for entity index and read it */
+      ptr2 = strchr( line,'=');
+      if(!ptr2) continue;
+      ptr2++;      
+      j = next_int(&ptr2);
+
+      /* Initialize the entity name by white spaces */
+      for(i=0;i<MAXLINESIZE;i++) 
+	line2[i] = ' ';
+
+      started = FALSE;
+      k = 0;
+      for(i=0;i<MAXLINESIZE;i++) {
+	if( ptr1[0] == '=' ) {
+	  /* remove possible trailing white space */
+	  if(line2[k-1] == ' ') k--;	    
+	  line2[k] = NULL;
+	  break;
+	}
+	if(started || ptr1[0] != ' ') {
+	  /* remove possible leading white space */
+	  line2[k] = ptr1[0];
+	  started = TRUE;
+	  k++;
+	}
+	ptr1++;
+      }
+     
+      /* Copy the entityname to mesh structure */
+      if( isbody ) {
+	strcpy(data->bodyname[j],line2);	
+	data->bodynamesexist = TRUE;
+      }
+      else {
+	strcpy(data->boundaryname[j],line2);	
+	data->boundarynamesexist = TRUE;
+      }
+    }
+  }
+  namesend:
 
   if(!cdstat) chdir("..");
 

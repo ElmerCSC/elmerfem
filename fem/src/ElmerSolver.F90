@@ -1330,7 +1330,7 @@ END INTERFACE
                        IF ( l>0 ) THEN
                          CALL LocalBcIntegral( IC, &
                              Edge, Edge % TYPE % NumberOfNodes, CurrentElement, n, &
-                             TRIM(Var % Name)//' {e}', Work(1) )
+                             TRIM(Var % Name)//' {e}', Work )
                          Var % Values(l) = Work(1)
                        END IF
                      END DO

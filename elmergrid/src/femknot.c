@@ -3262,6 +3262,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   int noelements,noknots,nonodes,maxnodes;
   int **newtopo=NULL,*newmaterial=NULL,*newelementtypes=NULL;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
+  int mat,usenames,*bodynameis,*boundarynameis;
 
   noknots = data1->noknots + data2->noknots;
   noelements  = data1->noelements + data2->noelements;
@@ -3270,6 +3271,32 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   if(data2->dim > data1->dim) data1->dim = data2->dim;
 
   if(0) printf("Uniting two meshes to %d nodes and %d elements.\n",noknots,noelements);
+
+  usenames = data1->bodynamesexist || data1->boundarynamesexist; 
+  if( usenames ) {
+    bodynameis = Ivector(1,MAXBODIES);
+    boundarynameis = Ivector(1,MAXBCS);
+    for(i=1;i<=MAXBODIES;i++)
+      bodynameis[i] = FALSE;
+    for(i=1;i<=MAXBCS;i++)
+      boundarynameis[i] = FALSE;
+
+
+    for(i=1;i<=data1->noelements;i++) {
+      mat = data1->material[i];
+      if( mat < MAXBODIES ) bodynameis[mat] = 1;
+    }
+
+    for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound2[j].created) continue;     
+      for(i=1; i <= bound1[k].nosides; i++) {
+	mat = bound1[j].types[i];
+	if( mat < MAXBCS ) bodynameis[mat] = 1;
+      }
+    }
+  }
+  
+
 
   for(j=0;j < MAXBOUNDARIES;j++) {
     if(!bound2[j].created) continue;
@@ -3294,7 +3321,23 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
       bound1[k].parent[i] += data1->noelements;
       if(bound1[k].parent2[i])
 	bound1[k].parent2[i] += data1->noelements;	 
+
+      
+      if( usenames ) {
+	mat = bound2[j].types[i];
+	if( mat < MAXBCS ) {
+	  if( !boundarynameis[mat] ) {
+	    strcpy(data1->boundaryname[mat],data2->boundaryname[mat]);
+	  }
+	  else if( boundarynameis[mat] == 1 ) {
+	    printf("Same BC with boundary names: %s vs. %s\n",
+		   data1->boundaryname[mat],data2->boundaryname[mat]);
+	  }
+	  boundarynameis[mat] = 2;
+	}
+      }
     }
+
   }
 
   data1->maxnodes = maxnodes;
@@ -3316,18 +3359,34 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   }
 
   for(i=1;i<=data1->noelements;i++) {
-    newmaterial[i] = data1->material[i];
+    mat = data1->material[i];
+    newmaterial[i] = mat;
     newelementtypes[i] = data1->elementtypes[i]; 
     nonodes = newelementtypes[i]%100;
     for(j=0;j<nonodes;j++)
       newtopo[i][j] = data1->topology[i][j];
   }
   for(i=1;i<=data2->noelements;i++) {
-    newmaterial[i+data1->noelements] = data2->material[i];
+    mat = data2->material[i];
+    newmaterial[i+data1->noelements] = mat;
     newelementtypes[i+data1->noelements] = data2->elementtypes[i]; 
     nonodes = newelementtypes[i+data1->noelements]%100;
     for(j=0;j<nonodes;j++)
       newtopo[i+data1->noelements][j] = data2->topology[i][j] + data1->noknots;
+
+    if( usenames ) {
+      if( mat < MAXBODIES ) {
+	if( !bodynameis[mat] ) {
+	  strcpy(data1->bodyname[mat],data2->bodyname[mat]);
+	}
+	else if( bodynameis[mat] == 1 ) {
+	  printf("Same material with body names: %s vs. %s\n",
+		 data1->bodyname[mat],data2->bodyname[mat]);
+	}
+	bodynameis[mat] = 2;
+      }
+    }
+
   }
 
   free_Imatrix(data1->topology,1,data1->noelements,0,data1->maxnodes-1);
@@ -3350,7 +3409,6 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   data1->x = newx;
   data1->y = newy;
   if(data1->dim == 3) data1->z = newz;
-
 
   if(info) printf("Two meshes were united to one with %d nodes and %d elements.\n",
 		  noknots,noelements);
