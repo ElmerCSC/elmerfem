@@ -43,6 +43,7 @@
 MODULE CircuitUtils
 
     USE DefUtils
+    IMPLICIT NONE
 
 CONTAINS
 
@@ -101,7 +102,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GetWPotential(Wbase)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     REAL(KIND=dp) :: Wbase(:)
 
@@ -244,6 +244,7 @@ END MODULE CircuitUtils
 MODULE CircuitsMod
 
   USE DefUtils
+  IMPLICIT NONE
 
 CONTAINS 
 
@@ -964,7 +965,7 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   FUNCTION AddIndex(Ind, Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
+    IMPLICIT NONE
     Integer :: Ind, AddIndex
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
@@ -987,7 +988,8 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   FUNCTION AddImIndex(Ind)
 !------------------------------------------------------------------------------
-    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: Ind
     Integer :: AddImIndex
     IF ( .NOT. CurrentModel % HarmonicCircuits ) CALL Fatal ('AddImIndex','Model is not of harmonic type!')
     
@@ -999,7 +1001,7 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   FUNCTION ReIndex(Ind, Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
+    IMPLICIT NONE
     INTEGER :: Ind, ReIndex
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
@@ -1022,6 +1024,7 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   FUNCTION ImIndex(Ind)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     Integer :: Ind, ImIndex
 
     ImIndex = 2 * Ind
@@ -1058,8 +1061,8 @@ END MODULE CircuitsMod
 
 MODULE CircMatInitMod
 
-  USE DefUtils
   USE CircuitsMod
+  IMPLICIT NONE
 
 CONTAINS
 
@@ -1191,7 +1194,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountMatElement(Rows, Cnts, RowId, dofs, Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: Rows(:), Cnts(:)
     INTEGER :: RowId, dofs
@@ -1253,7 +1255,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateMatElement(Rows, Cols, Cnts, RowId, ColId, Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: RowId, ColId
