@@ -493,7 +493,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
   TYPE(array3D) :: coordVar(3)
   INTEGER :: n,k,node,MeshDim, NetDim,iTime,nTime
   INTEGER, POINTER :: FieldPerm(:)
-  REAL(KIND=dp), POINTER :: Field(:), FieldOldValues(:)
+  REAL(KIND=dp), POINTER :: Field(:), FieldOldValues(:)=>NULL()
   REAL(KIND=dp) :: x(3),dx(3),x0(3),x1(3),u1(3),u2(3),dt,t0,val,&
                    Eps(3),Time,x0e(3),x1e(3),pTime,EpsTime,q,r
   INTEGER :: DimSize(3), CoordVarNDims(3), i
