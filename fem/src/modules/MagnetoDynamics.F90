@@ -422,8 +422,6 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
     CALL Info('WhitneyAVSolver', &
-        'Currently only homogeneous Dirichlet and Neumann BCs for the vector potential supported',Level=4)
-    CALL Info('WhitneyAVSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
     IF (SecondOrder) &
          CALL Info('WhitneyAVSolver', &
@@ -1940,7 +1938,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, Parent, Edge
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,L(3),Normal(3),w0(3),w1(3)
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), B, F, TC, NormalSign
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -1967,10 +1965,19 @@ CONTAINS
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
+
+       Normal = NormalVector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
+
        IF ( PiolaVersion ) THEN
-          stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
-               IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+         stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
+             IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE., &
+             TangentialTrMapping=.TRUE.)
+
+         NormalSign = 1.0d0
+         w0 = NormalVector(Element,Nodes,IP % U(t),IP % V(t),.FALSE.)
+         IF (SUM(w0*Normal) < 0.0d0) NormalSign = -1.0d0
+
        ELSE
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
@@ -1983,8 +1990,6 @@ CONTAINS
        F  = SUM(LOAD(4,1:n)*Basis(1:n))
        TC = SUM(LOAD(5,1:n)*Basis(1:n))
 
-       Normal = NormalVector(Element,Nodes,IP % U(t), IP % V(t),.TRUE.)
-
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
        DO p=1,np
@@ -1996,13 +2001,21 @@ CONTAINS
        END DO
 
        DO i = 1,nd-np
-         w0 = -CrossProduct(Wbasis(i,:),Normal)
+         IF (PiolaVersion) THEN
+           w0 = NormalSign * Wbasis(i,:)
+         ELSE
+           w0 = CrossProduct(Wbasis(i,:),Normal)
+         END IF
          p = i+np
-         FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP % s(t)
+         FORCE(p) = FORCE(p) - SUM(L*w0)*detJ*IP % s(t)
          DO j = 1,nd-np
-           w1 = CrossProduct(Wbasis(j,:),Normal)
+           IF (PiolaVersion) THEN
+             w1 = NormalSign * Wbasis(j,:)
+           ELSE           
+             w1 = CrossProduct(Wbasis(j,:),Normal)
+           END IF
            q = j+np
-           STIFF(p,q) = STIFF(p,q) - B * &
+           STIFF(p,q) = STIFF(p,q) + B * &
               SUM(w1*w0)*detJ*IP % s(t)
          END DO
        END DO
@@ -2994,8 +3007,6 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
-    CALL Info('WhitneyAVSolver', &
-        'Currently only homogeneous Dirichlet and Neumann BCs for the vector potential supported',Level=4)
     CALL Info('WhitneyAVSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
     IF (SecondOrder) &
@@ -4361,7 +4372,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ,Normal(3),w0(3),w1(3)
     COMPLEX(KIND=dp) :: B, F, TC, L(3)
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3)
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), NormalSign
     LOGICAL :: Stat
     INTEGER, POINTER :: EdgeMap(:,:)
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -4388,10 +4399,19 @@ CONTAINS
 
     np = n*MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     DO t=1,IP % n
+
+       Normal = NormalVector(Element,Nodes,IP % U(t), IP % V(t),.TRUE.)
+
        IF ( PiolaVersion ) THEN
           stat = EdgeElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
-               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
+               BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE., &
+               TangentialTrMapping=.TRUE.)
+
+          NormalSign = 1.0d0
+          w0 = NormalVector(Element,Nodes,IP % U(t),IP % V(t),.FALSE.)
+          IF (SUM(w0*Normal) < 0.0d0) NormalSign = -1.0d0
+
        ELSE       
           stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
                IP % W(t), detJ, Basis, dBasisdx )
@@ -4404,7 +4424,6 @@ CONTAINS
 
        F  = SUM(LOAD(4,1:n)*Basis(1:n)) !* (-im/Omega)
        TC = SUM(LOAD(5,1:n)*Basis(1:n)) !* (-im/Omega)
-       Normal = NormalVector(Element,Nodes,IP % U(t), IP % V(t),.TRUE.)
 
        ! Compute element stiffness matrix and force vector:
        !---------------------------------------------------
@@ -4417,13 +4436,21 @@ CONTAINS
        END DO
 
        DO i = 1,nd-np
-         w0 = -CrossProduct(Wbasis(i,:),Normal)
+         IF (PiolaVersion) THEN
+           w0 = NormalSign * Wbasis(i,:)
+         ELSE         
+           w0 = CrossProduct(Wbasis(i,:),Normal)
+         END IF
          p = i+np
-         FORCE(p) = FORCE(p) + SUM(L*w0)*detJ*IP%s(t)
+         FORCE(p) = FORCE(p) - SUM(L*w0)*detJ*IP%s(t)
          DO j = 1,nd-np
-           w1 = CrossProduct(Wbasis(j,:),Normal)
+           IF (PiolaVersion) THEN
+             w1 = NormalSign * Wbasis(j,:)
+           ELSE           
+             w1 = CrossProduct(Wbasis(j,:),Normal)
+           END IF
            q = j+np
-           STIFF(p,q) = STIFF(p,q) - B * &
+           STIFF(p,q) = STIFF(p,q) + B * &
               SUM(w1*w0)*detJ*IP%s(t)
          END DO
        END DO
