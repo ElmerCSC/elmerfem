@@ -72,10 +72,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
        MidLayerExists, WriteMappedMeshToDisk = .FALSE.
   REAL(KIND=dp) :: UnitVector(3),x0loc,x0bot,x0top,x0mid,xloc,wtop,BotVal,TopVal,&
        TopVal0, BotVal0, MidVal, ElemVector(3),DotPro,Eps,Length, MinHeight
-#ifdef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: at0,at1,at2,Heps
-#else
-  REAL(KIND=dp) :: at0,at1,at2,CPUTime,RealTime,Heps
+#ifndef USE_ISO_C_BINDINGS
+  REAL(KIND=dp) :: CPUTime,RealTime
 #endif
   REAL(KIND=dp), POINTER :: Coord(:),BotField(:),TopField(:),TangledMask(:)
   REAL(KIND=dp), ALLOCATABLE :: OrigCoord(:), Field(:), Surface(:)
@@ -112,7 +111,10 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
     MaskExists = ASSOCIATED( Var % Perm ) 
     IF( MaskExists ) MaskPerm => Var % Perm
     Coord => Var % Values
-    nsize = SIZE( Coord )
+
+    ! For p-elements the number of nodes and coordinate vector differ
+    ! The projection is implemented only for the true nodes
+    nsize = MIN( SIZE( Coord ), Mesh % NumberOfNodes )
     Initialized = .TRUE.
 
     IF(ALLOCATED(OrigCoord)) DEALLOCATE(OrigCoord)
