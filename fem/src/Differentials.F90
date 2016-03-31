@@ -320,8 +320,10 @@ CONTAINS
       Jvar => VariableGet( CurrentModel % Variables, 'Joule Heating e' )
       IF ( ASSOCIATED( Jvar ) ) JouleMode = 1 
 
-      Jvar => VariableGet( CurrentModel % Variables, 'Joule Field' )
-      IF ( ASSOCIATED( Jvar ) ) JouleMode = 2
+      IF( JouleMode == 0 ) THEN
+        Jvar => VariableGet( CurrentModel % Variables, 'Joule Field' )
+        IF ( ASSOCIATED( Jvar ) ) JouleMode = 2
+      END IF
 
       IF( JouleMode == 0 ) THEN
         Jvar => VariableGet( CurrentModel % Variables, 'Potential' )
