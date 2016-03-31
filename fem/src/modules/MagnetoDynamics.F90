@@ -5118,7 +5118,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   IF ( GetLogical( Solver % Values, 'Calculate Joule Heating', Found ) ) THEN
     i = i + 1
     CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-        "Joule Field E" )
+        "Joule Heating E" )
   END IF
 
   IF ( GetLogical( Solver % Values, 'Calculate Harmonic Loss', Found ) ) THEN
@@ -5337,7 +5337,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   IF ( GetLogical( SolverParams, 'Calculate Joule Heating', Found ) ) THEN
     i = i + 1
     CALL ListAddString( SolverParams, "Exported Variable "//TRIM(i2s(i)), &
-        "Joule Field" )
+        "Joule Heating" )
   END IF
 
   IF ( GetLogical( SolverParams, 'Calculate Harmonic Loss', Found ) ) THEN
@@ -5566,8 +5566,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CD => VariableGet( Mesh % Variables, 'Current Density' )
    EL_CD => VariableGet( Mesh % Variables, 'Current Density E' )
 
-   JH => VariableGet( Mesh % Variables, 'Joule Field' )
-   EL_JH => VariableGet( Mesh % Variables, 'Joule Field E' )
+   JH => VariableGet( Mesh % Variables, 'Joule Heating' )
+   EL_JH => VariableGet( Mesh % Variables, 'Joule Heating E' )
 
    IF(.NOT. RealField ) THEN
      ML => VariableGet( Mesh % Variables, 'Harmonic Loss Linear')
