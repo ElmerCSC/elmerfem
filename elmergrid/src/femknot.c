@@ -3262,7 +3262,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   int noelements,noknots,nonodes,maxnodes;
   int **newtopo=NULL,*newmaterial=NULL,*newelementtypes=NULL;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
-  int mat,usenames,*bodynameis,*boundarynameis;
+  int mat,usenames,*bodynameis,*boundarynameis,*bodyused,*boundaryused;
 
   noknots = data1->noknots + data2->noknots;
   noelements  = data1->noelements + data2->noelements;
@@ -3276,24 +3276,99 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   if( usenames ) {
     bodynameis = Ivector(1,MAXBODIES);
     boundarynameis = Ivector(1,MAXBCS);
+    bodyused = Ivector(1,MAXBODIES);
+    boundaryused = Ivector(1,MAXBCS);
+
     for(i=1;i<=MAXBODIES;i++)
-      bodynameis[i] = FALSE;
+      bodynameis[i] = bodyused[i] = FALSE;
     for(i=1;i<=MAXBCS;i++)
-      boundarynameis[i] = FALSE;
+      boundarynameis[i] = boundaryused[i] = FALSE;
 
-
+    /* First mark the original bodies and boundaries that maintain their index */
     for(i=1;i<=data1->noelements;i++) {
       mat = data1->material[i];
-      if( mat < MAXBODIES ) bodynameis[mat] = 1;
+      if( mat < MAXBODIES ) {
+	if(!bodynameis[mat]) {
+	  bodynameis[mat] = -1;
+	  bodyused[mat] = TRUE;
+	}
+      }
+    }
+
+    for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound1[j].created) continue;     
+      for(i=1; i <= bound1[k].nosides; i++) {
+	mat = bound1[j].types[i];
+	if( mat < MAXBCS ) {
+	  if(!boundarynameis[mat]) {
+	    boundarynameis[mat] = -1;
+	    boundaryused[mat] = TRUE;
+	  }
+	}
+      }
+    }
+
+    /* Then mark the joined bodies and boundaries that are not conflicting */ 
+    for(i=1;i<=data2->noelements;i++) {
+      mat = data2->material[i];
+      if( mat < MAXBODIES ) {
+	if( !bodynameis[mat] ) {
+	  bodynameis[mat] = mat;
+	  bodyused[mat] = TRUE;
+	  strcpy(data1->bodyname[mat],data2->bodyname[mat]);
+	}
+      }
     }
 
     for(j=0;j < MAXBOUNDARIES;j++) {
       if(!bound2[j].created) continue;     
-      for(i=1; i <= bound1[k].nosides; i++) {
-	mat = bound1[j].types[i];
-	if( mat < MAXBCS ) bodynameis[mat] = 1;
+
+      for(i=1; i <= bound2[j].nosides; i++) {
+	mat = bound2[j].types[i];
+	if( mat < MAXBCS ) {
+	  if( !boundarynameis[mat] ) {
+	    boundarynameis[mat] = mat;
+	    boundaryused[mat] = TRUE;
+	    strcpy(data1->boundaryname[mat],data2->boundaryname[mat]);
+	  }
+	}
       }
     }
+
+
+    /* And finally number the conflicting joinded bodies and BCs */
+    for(i=1;i<=data2->noelements;i++) {
+      mat = data2->material[i];
+      if( mat < MAXBODIES ) {
+	if( bodynameis[mat] == -1) {
+	  for(k=1;k<MAXBODIES;k++)
+	    if(!bodyused[k]) break;
+	  if(info) printf("Renumbering body %d to %d\n",mat,k);
+	  bodynameis[mat] = k;	  
+	  bodyused[k] = TRUE;
+	  strcpy(data1->bodyname[k],data2->bodyname[mat]);
+	}
+      }
+    }
+
+    for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound2[j].created) continue;     
+      for(i=1; i <= bound2[j].nosides; i++) {
+	mat = bound2[j].types[i];
+
+	if( mat < MAXBCS ) {
+	  if( boundarynameis[mat] == -1) {
+	    for(k=1;k<MAXBCS;k++) 
+	      if(!boundaryused[k]) break;
+	    if(info) printf("Renumbering boundary %d to %d\n",mat,k);
+	    boundarynameis[mat] = k;
+	    boundaryused[k] = TRUE;
+	    strcpy(data1->boundaryname[k],data2->boundaryname[mat]);
+	  }
+	}
+      }
+    }
+
   }
   
 
@@ -3321,19 +3396,11 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
       bound1[k].parent[i] += data1->noelements;
       if(bound1[k].parent2[i])
 	bound1[k].parent2[i] += data1->noelements;	 
-
       
       if( usenames ) {
 	mat = bound2[j].types[i];
 	if( mat < MAXBCS ) {
-	  if( !boundarynameis[mat] ) {
-	    strcpy(data1->boundaryname[mat],data2->boundaryname[mat]);
-	  }
-	  else if( boundarynameis[mat] == 1 ) {
-	    printf("Same BC with boundary names: %s vs. %s\n",
-		   data1->boundaryname[mat],data2->boundaryname[mat]);
-	  }
-	  boundarynameis[mat] = 2;
+	  bound1[k].types[i] = boundarynameis[mat];
 	}
       }
     }
@@ -3376,14 +3443,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 
     if( usenames ) {
       if( mat < MAXBODIES ) {
-	if( !bodynameis[mat] ) {
-	  strcpy(data1->bodyname[mat],data2->bodyname[mat]);
-	}
-	else if( bodynameis[mat] == 1 ) {
-	  printf("Same material with body names: %s vs. %s\n",
-		 data1->bodyname[mat],data2->bodyname[mat]);
-	}
-	bodynameis[mat] = 2;
+        newmaterial[i+data1->noelements] = bodynameis[mat];
       }
     }
 

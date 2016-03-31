@@ -153,7 +153,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
     MaskExist = ASSOCIATED( Var % Perm ) 
     IF( MaskExist ) MaskPerm => Var % Perm
     Coord => Var % Values
-    nsize = SIZE( Coord )
+    nsize = MIN( SIZE( Coord ), Mesh % NumberOfNodes )
     Initialized = .TRUE.
 
     TopNodes = 0
