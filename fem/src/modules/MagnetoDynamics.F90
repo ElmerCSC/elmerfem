@@ -5455,7 +5455,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
-              HasLorenzVelocity
+              HasLorenzVelocity, HaveAirGap, UseElementalNF
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -6436,8 +6436,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 
    ! Lump componentwise forces and torques. 
-   ! Prefer DG nodal force variable
-   IF(ASSOCIATED(EL_NF)) THEN
+   ! Prefer DG nodal force variable if air gap is present
+
+   ! Warn if user has air gaps and no "nodal force e"
+   HaveAirGap = ListCheckPresentAnyBC( Model, 'Air Gap Length' ) 
+   UseElementalNF = ASSOCIATED( EL_NF ) .AND. ( .NOT. ASSOCIATED( NF ) .OR. HaveAirGap )
+
+
+   IF( UseElementalNF ) THEN
 
      ! Collect nodal forces from airgaps
      CALL CalcBoundaryModels()
@@ -6484,7 +6490,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
        END IF
      END DO
-   ELSE
+   ELSE 
      DO j=1,Model % NumberOfComponents
        CompParams => Model % Components(j) % Values
 
@@ -6497,12 +6503,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              &"Calculate Nodal Forces = true" in MagnetoDynamicsCalcFields solver.')
            EXIT
          END IF
-
-         ! Warn if user has air gaps and no "nodal force e"
-         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) ) &
-           CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap &
-             &forces correctly because elemental field "Nodal Force e" is &
-             &not present.')
 
          CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
            Force = LumpedForce )
@@ -6528,10 +6528,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
 
          ! Warn if user has air gaps and no "nodal force e" is available
-         IF ( ListCheckPresentAnyBC( Model, 'Air Gap Length' ) ) &
+         IF ( HaveAirGap ) THEN
            CALL Warn('MagnetoDynamicsCalcFields', 'Cannot calculate air gap &
              &forces correctly because elemental field "Nodal Force e" is not &
              &present.')
+         END IF
 
          CALL ComponentNodalForceReduction(Model, Mesh, CompParams, NF, &
            Torque = val )
@@ -6543,7 +6544,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          CALL ListAddConstReal( CompParams,'res: magnetic torque', val )
        END IF
      END DO
-
    END IF
 
 
