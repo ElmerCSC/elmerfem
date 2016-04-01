@@ -374,7 +374,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   TYPE(Element_t),POINTER :: Element, Edge
 
   REAL(KIND=dp) :: Norm, PrevDT=-1, RelChange
-  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams
+  TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material, BC, BodyParams
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0, &
           NoIterationsMax,NoIterationsMin, nsize
@@ -416,17 +416,35 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   CALL Info('WhitneyAVSolver','-------------------------------------------',Level=8 )
   CALL Info('WhitneyAVSolver','Solving the AV equations with edge elements',Level=5 )
 
-  PiolaVersion = GetLogical( GetSolverParams(), 'Use Piola Transform', Found )
-  SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )
+  SolverParams => GetSolverParams()
+
+
+  PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
+  SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
-    CALL Info('WhitneyAVSolver', &
-        'The option > Use Tree Gauge < is not available',Level=4)
     IF (SecondOrder) &
-         CALL Info('WhitneyAVSolver', &
+        CALL Info('WhitneyAVSolver', &
         'Using quadratic approximation, pyramidical elements are not yet available',Level=4)
   END IF
+
+
+  ! Gauge tree, if requested or using direct solver:
+  ! ------------------------------------------------
+  TG = GetLogical(SolverParams,'Use tree gauge', Found)
+  IF (.NOT. Found) THEN
+    IF( GetString(SolverParams,'Linear System Solver',Found)=='direct') THEN
+      CALL Info('WhitneyAVSolver','Defaulting to tree gauge when using direct solver')
+      TG = .TRUE.
+    END IF
+  END IF
+
+  IF( PiolaVersion .AND. TG ) THEN
+    CALL Fatal('WhitneyAVSolver', &
+        'Tree Gauge cannot be used in conjuction with Piola transformation')
+  END IF
+
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
@@ -445,7 +463,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
      END IF
 
-     IF(GetString(GetSolverParams(),'Linear System Solver')=='block') THEN
+     IF(GetString(SolverParams,'Linear System Solver')=='block') THEN
        n = Mesh % NumberOfNodes
        n_n = COUNT(Perm(1:n)>0)
        n_e = COUNT(Perm(n+1:)>0)
@@ -474,15 +492,15 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      AllocationsDone = .TRUE.
   END IF
 
-  ConstantSystem = GetLogical( GetSolverParams(), &
+  ConstantSystem = GetLogical( SolverParams, &
        'Constant System', Found )
 
-  ConstantBulk = GetLogical( GetSolverParams(), &
+  ConstantBulk = GetLogical( SolverParams, &
        'Constant Bulk System', Found )
 
   SkipAssembly = DoneAssembly.AND.(ConstantBulk.OR.ConstantSystem)
 
-  FixJ = GetLogical(GetSolverParams(),'Fix input Current Density', Found)
+  FixJ = GetLogical(SolverParams,'Fix input Current Density', Found)
   IF (.NOT. Found .AND. .NOT. Transient ) THEN
     ! Only fix the current density if there is one
     FixJ = ListCheckPrefixAnyBodyForce(Model, 'Current Density')
@@ -495,24 +513,24 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   ! 
   ! Use vec.pot. dofs only for convergence:
   ! ----------------------------------------
-  CALL ListAddInteger(GetSolverParams(),'Norm Permutation',nNodes+1)
+  CALL ListAddInteger(SolverParams,'Norm Permutation',nNodes+1)
 
   ! 
   ! Resolve internal non.linearities, if requeted:
   ! ----------------------------------------------
-  NoIterationsMax = GetInteger( GetSolverParams(), &
+  NoIterationsMax = GetInteger( SolverParams, &
 	      'Nonlinear System Max Iterations',Found)
   IF(.NOT. Found) NoIterationsMax = 1
 
-  NoIterationsMin = GetInteger( GetSolverParams(), &
+  NoIterationsMin = GetInteger( SolverParams, &
 	      'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
-  LFact = GetLogical( GetSolverParams(),'Linear System Refactorize', LFactFound )
+  LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
   IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN
-    CALL ListAddLogical( getSolverParams(), 'Linear System Refactorize', .TRUE. )
+    CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
   END IF
-  EdgeBasis = .NOT.LFactFound .AND. GetLogical( GetSolverParams(), 'Edge Basis', Found )
+  EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
 
   DO i=1,NoIterationsMax
     IF( NoIterationsMax > 1 ) THEN
@@ -521,12 +539,12 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
-    IF( EdgeBasis ) CALL ListAddLogical(GetSolverParams(),'Linear System Refactorize',.FALSE.)
+    IF( EdgeBasis ) CALL ListAddLogical(SolverParams,'Linear System Refactorize',.FALSE.)
   END DO
-  IF ( EdgeBasis ) CALL ListRemove( GetSolverParams(), 'Linear System Refactorize' )
+  IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
   IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN
-    CALL ListAddLogical( GetSolverParams(), 'Linear System Refactorize', .FALSE. )
+    CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .FALSE. )
   END IF
   PrevDT = dt
 
@@ -769,12 +787,6 @@ CONTAINS
   CALL DirichletAfromB()
   CALL ConstrainUnused(A)
 
-  !
-  ! Gauge tree, if requested or using direct solver:
-  ! ------------------------------------------------
-  TG=GetLogical(GetSolverParams(), 'Use tree gauge', Found)
-  IF (.NOT. Found) TG=GetString(GetSolverParams(), &
-     'Linear System Solver',Found)=='direct'
 
   IF (TG) THEN
     CALL GaugeTree()
@@ -790,25 +802,25 @@ CONTAINS
   ! The following gives the user an option to adapt the linear system convergence tolerance
   ! adaptively:
   !-------------------------------------------------------------------------------------------
-  AdaptiveTols = ListGetLogical(GetSolverParams(), 'Linear System Adaptive Tolerance', Found)
+  AdaptiveTols = ListGetLogical(SolverParams, 'Linear System Adaptive Tolerance', Found)
   IF (AdaptiveTols) THEN
      IF (iterno == 1) THEN
-        BaseTol = ListGetConstReal(GetSolverParams(), 'Linear System Base Tolerance', Found)
-        IF (Found) CALL ListAddConstReal(GetSolverParams(), &
+        BaseTol = ListGetConstReal(SolverParams, 'Linear System Base Tolerance', Found)
+        IF (Found) CALL ListAddConstReal(SolverParams, &
              'Linear System Convergence Tolerance', BaseTol)
      ELSE
-        IF (.NOT. ListCheckPresent(GetSolverParams(), 'Linear System Relative Tolerance')) THEN
+        IF (.NOT. ListCheckPresent(SolverParams, 'Linear System Relative Tolerance')) THEN
            RelTol = 1.0d-2
         ELSE
-           RelTol = ListGetConstReal(GetSolverParams(), 'Linear System Relative Tolerance')
+           RelTol = ListGetConstReal(SolverParams, 'Linear System Relative Tolerance')
         END IF
-        IF (.NOT. ListCheckPresent(GetSolverParams(), 'Linear System Base Tolerance')) THEN
+        IF (.NOT. ListCheckPresent(SolverParams, 'Linear System Base Tolerance')) THEN
            BaseTol = 1.0d-3
         ELSE
-           BaseTol = ListGetConstReal(GetSolverParams(), 'Linear System Base Tolerance')
+           BaseTol = ListGetConstReal(SolverParams, 'Linear System Base Tolerance')
         END IF
         LinTol = MIN(BaseTol, RelTol * Solver % Variable % NonlinChange)
-        CALL ListAddConstReal(GetSolverParams(),'Linear System Convergence Tolerance', &
+        CALL ListAddConstReal(SolverParams,'Linear System Convergence Tolerance', &
              LinTol)
      END IF
   END IF
@@ -1722,7 +1734,7 @@ CONTAINS
 
     IF(HBCurve) THEN
       CALL GetScalarLocalSolution(Aloc)
-      Newton = GetLogical( GetSolverParams(),'Newton-Raphson iteration',Found)
+      Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
     END IF
 
     !Numerical integration:
@@ -2693,7 +2705,7 @@ CONTAINS
     END DO
 
 
-    Jfluxeps = GetCReal(GetSolverParams(), 'J normal eps', Found)
+    Jfluxeps = GetCReal(SolverParams, 'J normal eps', Found)
     IF (.NOT. Found) Jfluxeps = 1.0d-2
 
     IF (ParEnv%Pes>1) THEN
@@ -5490,23 +5502,35 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
 
-   PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
-   IF (PiolaVersion) &
-    CALL Info('MagnetoDynamicsCalcFields', &
-        'USING NEW PIOLA TRASFORMED FINITE ELEMENTS',Level=2)
-   SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )  
-   IF (SecondOrder) THEN
-      EdgeBasisDegree = 2
-   ELSE
-      EdgeBasisDegree = 1
-   END IF
-
-   Pname = GetString(SolverParams, 'Potential Variable')
+   Pname = GetString(SolverParams, 'Potential Variable',Found)
+   IF(.NOT. Found ) Pname = 'av'
+   Found = .FALSE.
    DO i=1,Model % NumberOfSolvers
      pSolver => Model % Solvers(i)
-     IF ( Pname==getVarName(pSolver % Variable)) EXIT
+     IF ( Pname == getVarName(pSolver % Variable)) THEN
+       Found = .TRUE.
+       EXIT
+     END IF
    END DO
+
+   IF(.NOT. Found ) THEN
+     CALL Fatal('MagnetoDynamicsCalcFields','Solver associated to potential variable > '&
+         //TRIM(Pname)//' < not found!')
+   END IF
+
+   ! Inherit the solution basis from the primary solver
    vDOFs = pSolver % Variable % DOFs
+   PiolaVersion = GetLogical( pSolver % Values,'Use Piola Transform', Found ) 
+   IF (PiolaVersion) &
+       CALL Info('MagnetoDynamicsCalcFields', &
+       'Using Piola transformed finite elements',Level=5)
+   SecondOrder = GetLogical( pSolver % Values, 'Quadratic Approximation', Found )  
+   IF (SecondOrder) THEN
+     EdgeBasisDegree = 2
+   ELSE
+     EdgeBasisDegree = 1
+   END IF
+
 
    ElectricPotName = GetString(SolverParams, 'Precomputed Electric Potential', PrecomputedElectricPot)
    IF (PrecomputedElectricPot) THEN
