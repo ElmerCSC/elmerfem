@@ -4772,7 +4772,9 @@ CONTAINS
           END IF
         END IF
 
-        IF( Solution % TYPE == Variable_on_nodes_on_elements ) CYCLE
+        IF( Solution % TYPE == Variable_on_nodes_on_elements ) THEN
+          IF( .NOT. ( ( DG .OR. DN ) .AND. SaveElemental ) ) CYCLE
+        END IF
 
         IF( ASSOCIATED(Solution % EigenVectors)) THEN
            NoModes = SIZE( Solution % EigenValues )
@@ -4847,7 +4849,7 @@ CONTAINS
     !-------------------------------------
     WRITE( VtuUnit,'(A)') '    <PCellData>'
 
-  IF( SaveElemental ) THEN
+  IF( SaveElemental  .AND. .NOT. ( DG .OR. DN ) ) THEN
     IF( ScalarsExist .OR. VectorsExist ) THEN
       DO Rank = 0,2
         DO Vari = 1, 999
