@@ -42,8 +42,8 @@
 !-------------------------------------------------------------------------------
 MODULE MagnetoDynamicsUtils
 
-   USE DefUtils
    USE MGDynMaterialUtils
+   IMPLICIT NONE
 
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 
@@ -60,6 +60,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetBoundaryEdgeIndex(Boundary,nedge) RESULT(n)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n,nedge
     TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
@@ -102,6 +103,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetBoundaryFaceIndex(Boundary) RESULT(n)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n
     TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
@@ -133,6 +135,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetDOFToValueR(Solver,k,VALUE)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp) :: VALUE,v
     TYPE(Solver_t) :: Solver
     INTEGER :: n,k
@@ -150,6 +153,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SetDOFToValueC(Solver,k,VALUE)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     COMPLEX(KIND=dp) :: VALUE
     TYPE(Solver_t) :: Solver
     INTEGER :: n,k
@@ -168,6 +172,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivityR(Material,Acoef,n)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
     REAL(KIND=dp) :: Acoef(:)
@@ -209,6 +214,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GetReluctivityC(Material,Acoef,n)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(:)
@@ -250,6 +256,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GetPermittivity(Material,Acoef,n)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(ValueList_t), POINTER :: Material
     INTEGER :: n
     REAL(KIND=dp) :: Acoef(:)
@@ -290,7 +297,6 @@ END MODULE MagnetoDynamicsUtils
 SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE MagnetoDynamicsUtils
-
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -569,6 +575,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   LOGICAL FUNCTION DoSolve(IterNo) RESULT(Converged)
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    CHARACTER(LEN=MAX_NAME_LEN) :: potname
    INTEGER :: i,j,k,t,n,nd,nb,IterNo
 
@@ -843,6 +850,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GetElementRotM(Element,RotM,n)
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    TYPE(Element_t) :: Element
    INTEGER :: k, l, m, j, n
    REAL(KIND=dp) :: RotM(3,3,n)
@@ -876,6 +884,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE ConstrainUnused(A)
 !------------------------------------------------------------------------------
+  IMPLICIT NONE
   TYPE(Matrix_t) :: A
 !------------------------------------------------------------------------------
   INTEGER :: i,j,n
@@ -912,6 +921,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE CalculateLumped(nbf)
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    INTEGER::nbf
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: torq,a(nbf),u(nbf),IMoment,IA,zforce,zzforce
@@ -1015,6 +1025,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE InertialMoment(U,A,Element,n,nd)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n,nd
     REAL(KIND=dp)::U,a
     TYPE(Element_t)::Element
@@ -1053,6 +1064,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Torque(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
@@ -1113,6 +1125,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AxialForce(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
@@ -1174,6 +1187,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AxialForceSurf(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n,nd,EdgeBasisDegree
     REAL(KIND=dp)::U
     TYPE(Element_t)::Element
@@ -1241,6 +1255,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Potential( U, A, Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp) :: U,A
     INTEGER :: n, nd, EdgeBasisDegree
     TYPE(Element_t) :: Element
@@ -1301,6 +1316,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GaugeTree()
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(ListMatrixEntry_t), POINTER :: Aentry
     TYPE(ListMatrix_t), POINTER :: Alist(:)
     INTEGER :: i,j,k,l,n,Start
@@ -1391,6 +1407,7 @@ CONTAINS
 !   TYPE(Mesh_t) :: Mesh
 !   LOGICAL, ALLOCATABLE :: TreeEdges(:)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(ListMatrixEntry_t), POINTER :: Aentry, Ltmp
     TYPE(ListMatrix_t), POINTER :: Alist(:)
     INTEGER :: i,j,k,l,n,Start,nCount,fixedge
@@ -1493,6 +1510,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BreadthFirstSearch(Alist,done,start,nCount,NodeList)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: start,nCount,NodeList(:)
     LOGICAL :: Done(:)
     TYPE(ListMatrix_t) :: Alist(:)
@@ -1613,6 +1631,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddToCycle(bcycle,index)
+    IMPLICIT NONE
     INTEGER :: bcycle,index
 !------------------------------------------------------------------------------
     TYPE(ListMatrixEntry_t), POINTER :: Btmp
@@ -1628,6 +1647,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DepthFirstSearch(Alist,done,i)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(ListMatrix_t) :: Alist(:)
     INTEGER :: i
     LOGICAL :: Done(:)
@@ -1668,6 +1688,7 @@ CONTAINS
             LamThick, LamCond, CoilBody, CoilType, RotM, &
             Element, n, nd, PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
@@ -1677,9 +1698,10 @@ CONTAINS
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
-                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), lorentz_velo(3,n)
+                     RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
+                     lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), FixJPot(nd)
-    REAL(KIND=dp) :: LocalLamThick, LocalLamCond
+    REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
 
     CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
 
@@ -1895,7 +1917,23 @@ CONTAINS
                IF ( HasVelocity ) THEN
                  DO j=1,nd-np
                    q = j+np
-                   STIFF(p,q) = STIFF(p,q) - SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(i,:))*detJ*IP % s(t)
+#ifndef __INTEL_COMPILER
+                   STIFF(p,q) = STIFF(p,q) - &
+                        SUM(MATMUL(C,CrossProduct(velo, RotWBasis(j,:)))*dBasisdx(i,:))*detJ*IP % s(t)
+#else
+                   ! Ifort workaround
+                   RotWJ(1:3) = RotWBasis(j,1:3)
+                   ! VeloCrossW(1:3) = CrossProduct(velo(1:3), RotWJ(1:3))
+                   ! CVelo(1:3)=MATMUL(C(1:3,1:3),VeloCrossW(1:3))
+                   CVelo(1:3) = C(1:3,1)*(velo(2)*RotWJ(3) - velo(3)*RotWJ(2))
+                   CVelo(1:3) = CVelo(1:3) + C(1:3,2)*(-velo(1)*RotWJ(3) + velo(3)*RotWJ(1))
+                   CVelo(1:3) = CVelo(1:3) + C(1:3,3)*(velo(1)*RotWJ(2) - velo(2)*RotWJ(1))
+                   CVeloSum = REAL(0,dp)
+                   DO k=1,3
+                      CVeloSum = CVeloSum + CVelo(k)*dBasisdx(i,k)
+                   END DO
+                   STIFF(p,q) = STIFF(p,q) - CVeloSum*detJ*IP % s(t)
+#endif
                  END DO
                END IF
              END DO
@@ -1960,6 +1998,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp) :: LOAD(:,:), Bcoef(:)
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
@@ -2056,6 +2095,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
   FUNCTION LocalFluxBC( LOAD, Element, n, nd ) RESULT(Bn)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp) :: LOAD(:,:), Bn
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Edge, Parent
@@ -2090,6 +2130,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixAirGapBC(  STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp) :: LOAD(:,:), GapLength(:), AirGapMu(:)
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
@@ -2152,6 +2193,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE DirichletAfromB()
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp) :: s,p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     TYPE(ListMatrixEntry_t), POINTER :: Ltmp
     TYPE(Matrix_t), POINTER :: Smat
@@ -2469,6 +2511,7 @@ CONTAINS
   RECURSIVE FUNCTION FloodFill(Element,CycleEdges, &
           FaceMap,UsedFaces,Bn,CycleSum) RESULT(Found)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(Element_t), POINTER :: e, Element
     REAL(KIND=dp) :: CycleSum, Bn(:)
     INTEGER :: i,j,n, FaceMap(:)
@@ -2513,7 +2556,6 @@ CONTAINS
 !------------------------------------------------------------------------------
 SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
-
   USE DefUtils
 
   IMPLICIT NONE
@@ -2623,7 +2665,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-       
+    IMPLICIT NONE       
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF_C(:,:), FORCE_C(:)
     REAL(KIND=dp), ALLOCATABLE :: STIFF_R(:,:), FORCE_R(:)
     INTEGER :: elem,t,i,j,k,p,q,n,nd, Rank
@@ -2869,6 +2911,7 @@ CONTAINS
 !   with the Helmholtz projection if the source electric current density is
 !   generated by applying the StatCurrentSolve module.
 !-------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp), ALLOCATABLE :: FORCE_R(:), LOAD(:), Basis(:), dBasisdx(:,:)
     TYPE(GaussIntegrationPoints_t), TARGET :: IP  
     TYPE(Element_t), POINTER :: Element
@@ -3109,6 +3152,7 @@ CONTAINS
 !---------------------------------------------------------------------------------------------
   FUNCTION DoSolve(IterNo) RESULT(Converged)
 !---------------------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: IterNo
     LOGICAL :: Converged
 !---------------------------------------------------------------------------------------------
@@ -3320,6 +3364,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE ConstrainUnused(A)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(Matrix_t) :: A
 !------------------------------------------------------------------------------
     INTEGER :: i,j,n
@@ -3369,6 +3414,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE CalculateLumped(nbf)
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    INTEGER::nbf
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: a(nbf),IMoment,IA
@@ -3491,6 +3537,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE InertialMoment(U,A,Element,n,nd)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n,nd
     REAL(KIND=dp)::U,a
     TYPE(Element_t)::Element
@@ -3529,6 +3576,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Torque(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n,nd,EdgeBasisDegree
     COMPLEX(KIND=dp)::U
     TYPE(Element_t)::Element
@@ -3593,6 +3641,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AxialForce(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n,nd,EdgeBasisDegree
     COMPLEX(KIND=dp)::U
     TYPE(Element_t)::Element
@@ -3658,6 +3707,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AxialForceSurf(U,Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: n,nd,EdgeBasisDegree
     COMPLEX(KIND=dp)::U
     TYPE(Element_t)::Element
@@ -3728,6 +3778,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE Potential( U, A, Element,n,nd,EdgeBasisDegree)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp) :: A
     COMPLEX(KIND=dp) :: U
     INTEGER :: n, nd, EdgeBasisDegree
@@ -3781,6 +3832,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GaugeTree()
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(ListMatrixEntry_t), POINTER :: Aentry
     TYPE(ListMatrix_t), POINTER :: Alist(:)
     INTEGER :: i,j,k,l,n,Start
@@ -3868,6 +3920,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GaugeTreeFluxBC()
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(ListMatrixEntry_t), POINTER :: Aentry, Ltmp
     TYPE(ListMatrix_t), POINTER :: Alist(:)
     INTEGER :: i,j,k,l,n,Start,nCount,fixedge
@@ -3970,6 +4023,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BreadthFirstSearch(Alist,done,start,nCount,NodeList)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     INTEGER :: start,nCount,NodeList(:)
     LOGICAL :: Done(:)
     TYPE(ListMatrix_t) :: Alist(:)
@@ -4090,6 +4144,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddToCycle(bcycle,index)
+    IMPLICIT NONE
     INTEGER :: bcycle,index
 !------------------------------------------------------------------------------
     TYPE(ListMatrixEntry_t), POINTER :: Btmp
@@ -4105,6 +4160,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DepthFirstSearch(Alist,done,i)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(ListMatrix_t) :: Alist(:)
     INTEGER :: i
     LOGICAL :: Done(:)
@@ -4144,6 +4200,7 @@ CONTAINS
             LamThick, LamCond, CoilBody, CoilType, RotM, Element, n, nd, &
             PiolaVersion, SecondOrder )
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     COMPLEX(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                         LamCond(:)
@@ -4410,6 +4467,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrixBC(  STIFF, FORCE, LOAD, Bcoef, Element, n, nd )
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:), Bcoef(:)
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
@@ -4507,6 +4565,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrixAirGapBC(  STIFF, FORCE, LOAD, GapLength, AirGapMu, Element, n, nd )
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:)
     COMPLEX(KIND=dp) :: STIFF(:,:), FORCE(:)
     INTEGER :: n, nd
@@ -4571,6 +4630,7 @@ CONTAINS
 !-----------------------------------------------------------------------------
   FUNCTION LocalFluxBC( LOAD, Element, n, nd ) RESULT(Bn)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     COMPLEX(KIND=dp) :: LOAD(:,:), Bn
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element, Edge, Parent
@@ -4607,6 +4667,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE DirichletAfromB()
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     REAL(KIND=dp) :: p(3),q(3),cx(3),r,xmin,ymin,zmin,xmax,ymax,zmax
     COMPLEX(KIND=dp) :: S
     TYPE(ListMatrixEntry_t), POINTER :: Ltmp
@@ -4926,6 +4987,7 @@ CONTAINS
   RECURSIVE FUNCTION FloodFill(Element,CycleEdges, &
           FaceMap,UsedFaces,Bn,CycleSum) RESULT(Found)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     TYPE(Element_t), POINTER :: e, Element
     COMPLEX(KIND=dp) :: CycleSum, Bn(:)
     INTEGER :: i,j,n, FaceMap(:)
@@ -4959,6 +5021,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GetElementRotM(Element,RotM,n)
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    TYPE(Element_t) :: Element
    INTEGER :: k, l, m, j, n
    REAL(KIND=dp) :: RotM(3,3,n)
@@ -7074,6 +7137,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE NodalTorqueDeprecated(T, FoundOne)
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    REAL(KIND=dp), INTENT(OUT) :: T(3)
    LOGICAL, INTENT(OUT) :: FoundOne
 !------------------------------------------------------------------------------
@@ -7125,6 +7189,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE NodalTorque(T, TorqueGroups)
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    INTEGER, ALLOCATABLE, INTENT(OUT) :: TorqueGroups(:)
    REAL(KIND=dp), ALLOCATABLE, INTENT(OUT) :: T(:)
 !------------------------------------------------------------------------------
@@ -7274,6 +7339,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs )
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    REAL(KIND=dp), TARGET :: b(:,:)
    INTEGER :: m, dofs
    TYPE(Variable_t), POINTER :: Var
@@ -7297,6 +7363,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE LocalSol(Var, m, n, A, b, pivot, dofs )
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    TYPE(Variable_t), POINTER :: Var
    INTEGER :: pivot(:), m,n,dofs
    REAL(KIND=dp) :: b(:,:), A(:,:)
@@ -7331,6 +7398,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE LocalCopy(Var, m, n, b, bias, UElement, Values, uAdditive)
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    TYPE(Variable_t), POINTER :: Var
    INTEGER, INTENT(IN) :: m,n,bias
    INTEGER :: dofs
@@ -7383,6 +7451,7 @@ CONTAINS
 !------------------------------------------------------------------------------
  SUBROUTINE GetElementRotM(Element,RotM,n)
 !------------------------------------------------------------------------------
+   IMPLICIT NONE
    TYPE(Element_t) :: Element
    INTEGER :: k, l, m, j, n
    REAL(KIND=dp) :: RotM(3,3,n)
@@ -7416,6 +7485,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE AddLocalFaceTerms(STIFF,FORCE)
 !------------------------------------------------------------------------------
+     IMPLICIT NONE
      REAL(KIND=dp) :: STIFF(:,:), FORCE(:)
 
      TYPE(Element_t),POINTER :: P1,P2,Face,Faces(:)
@@ -7518,6 +7588,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     SUBROUTINE calcAverageFlux (Flux, Area, Element, n, nd, np, SOL, vDOFs)
 !------------------------------------------------------------------------------
+       IMPLICIT NONE
        INTEGER :: n, nd
        TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
