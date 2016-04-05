@@ -4134,7 +4134,6 @@ CONTAINS
         SaveElement => CurrentModel % CurrentElement
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
-           IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
            BC => GetBC()
            IF ( .NOT.ASSOCIATED(BC) ) CYCLE
@@ -4168,6 +4167,8 @@ CONTAINS
                      END DO
                      IF ( n==Element % TYPE % NumberOfNodes ) EXIT
                    END DO
+
+                   IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
 
                    EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
                    n = Edge % TYPE % NumberOfNodes
@@ -4208,6 +4209,8 @@ CONTAINS
                        IF ( n==Face % TYPE % NumberOfNodes ) EXIT
                      END IF
                    END DO
+
+                   IF ( .NOT. ActiveBoundaryElement(Face) ) CYCLE
 
                    ! ---------------------------------------------------------------------
                    ! Set first constraints for DOFs associated with edges. Save the values

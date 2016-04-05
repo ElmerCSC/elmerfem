@@ -533,7 +533,6 @@ CONTAINS
     Active = GetNOFBoundaryElements()
     DO t=1,Active
        Element => GetBoundaryElement(t)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
      
@@ -545,6 +544,7 @@ CONTAINS
        CASE(3,4)
          k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
        END SELECT
+       IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
        nd = GetElementNOFDOFs(Element)
        n  = GetElementNOFNodes(Element)

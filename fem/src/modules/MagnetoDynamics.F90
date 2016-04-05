@@ -701,7 +701,6 @@ CONTAINS
   Active = GetNOFBoundaryElements()
   DO t=1,Active
      Element => GetBoundaryElement(t)
-     IF (.NOT. ActiveBoundaryElement()) CYCLE
      BC=>GetBC()
      IF (.NOT. ASSOCIATED(BC) ) CYCLE
      
@@ -713,6 +712,7 @@ CONTAINS
      CASE(3,4)
        k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
      END SELECT
+     IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
      Model % CurrentElement => Element
      nd = GetElementNOFDOFs(Element)
@@ -1306,7 +1306,7 @@ CONTAINS
     INTEGER :: i,j,k,l,n,Start
     LOGICAL, ALLOCATABLE :: Done(:)
     TYPE(ValueList_t), POINTER :: BC
-    TYPE(Element_t), POINTER :: Edge, Boundary
+    TYPE(Element_t), POINTER :: Edge, Boundary, Element
 !------------------------------------------------------------------------------
 
     IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
@@ -1321,8 +1321,17 @@ CONTAINS
     ! ---------------------------------
     DO i=1,Mesh % NumberOfBoundaryElements
       Boundary => GetBoundaryElement(i)
-      IF ( .NOT.ActiveBoundaryElement()) CYCLE
-      IF ( GetElementFamily()==1 ) CYCLE
+
+      SELECT CASE(GetElementFamily())
+      CASE(1)
+        CYCLE
+      CASE(2)
+        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
+      CASE(3,4)
+        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
+      END SELECT
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
+
       BC => GetBC()
       IF (.NOT.ASSOCIATED(BC)) CYCLE
       IF (.NOT.ListCheckPresent( BC, &
@@ -1387,7 +1396,7 @@ CONTAINS
     INTEGER :: i,j,k,l,n,Start,nCount,fixedge
     LOGICAL, ALLOCATABLE :: Done(:)
     INTEGER, ALLOCATABLE :: NodeList(:)
-    TYPE(Element_t), POINTER :: Edge, Boundary
+    TYPE(Element_t), POINTER :: Edge, Boundary, Element
 !------------------------------------------------------------------------------
 
     IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
@@ -1428,8 +1437,15 @@ CONTAINS
     ! ---------------------------------
     DO i=1,Mesh % NumberOfBoundaryElements
       Boundary => GetBoundaryElement(i)
-      IF ( .NOT.ActiveBoundaryElement()) CYCLE
-      IF ( GetElementFamily()==1 ) CYCLE
+      SELECT CASE(GetElementFamily())
+      CASE(1)
+        CYCLE
+      CASE(2)
+        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
+      CASE(3,4)
+        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
+      END SELECT
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
       BC => GetBC()
       IF (.NOT.ASSOCIATED(BC)) CYCLE
       IF (.NOT.ListCheckPresent( BC, &
@@ -2157,7 +2173,6 @@ CONTAINS
     DO t=1,Active
        Element => GetBoundaryElement(t)
 
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
        IF ( GetElementFamily()==1 ) CYCLE
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
@@ -2171,6 +2186,7 @@ CONTAINS
          CASE(3,4)
            k = GetBoundaryFaceIndex(Element); Element => Mesh % Faces(k)
          END SELECT
+         IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
          FluxBoundaryEdge(Element % EdgeIndexes)=.TRUE.
        END IF
     END DO
@@ -2202,7 +2218,6 @@ CONTAINS
     DO t=1,Active
       Element => GetBoundaryElement(t)
 
-      IF (.NOT. ActiveBoundaryElement()) CYCLE
       IF ( GetElementFamily()==1 ) CYCLE
       BC=>GetBC()
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
@@ -2211,6 +2226,7 @@ CONTAINS
       IF ( .NOT. Found ) CYCLE
 
       k = GetBoundaryFaceIndex(Element); Element=>Mesh % Faces(k)
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
       Faces = Faces+1
       FaceMap(k) = Faces
 
@@ -2240,7 +2256,6 @@ CONTAINS
     DO t=1,Active
       Element => GetBoundaryElement(t)
 
-      IF (.NOT.ActiveBoundaryElement()) CYCLE
       IF ( GetElementFamily()==1 ) CYCLE
       BC=>GetBC()
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
@@ -2252,6 +2267,7 @@ CONTAINS
       IF (Found.OR.Found1) THEN
         k = GetBoundaryFaceIndex(Element)
         Element => Mesh % Faces(k)
+        IF (.NOT.ActiveBoundaryElement(Element)) CYCLE        
         nd = GetElementNOFDOFs(Element)
         Bn(FaceMap(k))=LocalFluxBC(LOAD,Element,n,nd)
       END IF
@@ -3210,7 +3226,6 @@ CONTAINS
     Active = GetNOFBoundaryElements()
     DO t=1,Active
        Element => GetBoundaryElement(t)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
      
@@ -3222,6 +3237,7 @@ CONTAINS
        CASE(3,4)
          k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
        END SELECT
+       IF (.NOT. ActiveBoundaryElement(Element)) CYCLE       
 
        Model % CurrentElement => Element
        nd = GetElementNOFDOFs(Element)
@@ -3769,7 +3785,7 @@ CONTAINS
     TYPE(ListMatrix_t), POINTER :: Alist(:)
     INTEGER :: i,j,k,l,n,Start
     LOGICAL, ALLOCATABLE :: Done(:)
-    TYPE(Element_t), POINTER :: Edge, Boundary
+    TYPE(Element_t), POINTER :: Edge, Boundary, Element
 !------------------------------------------------------------------------------
 
     IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
@@ -3784,8 +3800,17 @@ CONTAINS
     ! ---------------------------------
     DO i=1,Mesh % NumberOfBoundaryElements
       Boundary => GetBoundaryElement(i)
-      IF ( .NOT.ActiveBoundaryElement()) CYCLE
-      IF ( GetElementFamily()==1 ) CYCLE
+
+      SELECT CASE(GetElementFamily())
+      CASE(1)
+        CYCLE
+      CASE(2)
+        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
+      CASE(3,4)
+        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
+      END SELECT
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
+
       BC => GetBC()
       IF (.NOT.ASSOCIATED(BC)) CYCLE
       IF (.NOT.ListCheckPresent( BC, &
@@ -3848,7 +3873,7 @@ CONTAINS
     INTEGER :: i,j,k,l,n,Start,nCount,fixedge
     LOGICAL, ALLOCATABLE :: Done(:)
     INTEGER, ALLOCATABLE :: NodeList(:)
-    TYPE(Element_t), POINTER :: Edge, Boundary
+    TYPE(Element_t), POINTER :: Edge, Boundary, Element
 !------------------------------------------------------------------------------
     IF ( .NOT. ALLOCATED(TreeEdges) ) THEN
       ALLOCATE(TreeEdges(Mesh % NumberOfEdges)); TreeEdges=.FALSE.
@@ -3888,8 +3913,16 @@ CONTAINS
     ! ---------------------------------
     DO i=1,Mesh % NumberOfBoundaryElements
       Boundary => GetBoundaryElement(i)
-      IF ( .NOT.ActiveBoundaryElement()) CYCLE
-      IF ( GetElementFamily()==1 ) CYCLE
+      SELECT CASE(GetElementFamily())
+      CASE(1)
+        CYCLE
+      CASE(2)
+        k = GetBoundaryEdgeIndex(Boundary,1); Element => Mesh % Edges(k)
+      CASE(3,4)
+        k = GetBoundaryFaceIndex(Boundary)  ; Element => Mesh % Faces(k)
+      END SELECT
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
+
       BC => GetBC()
       IF (.NOT.ASSOCIATED(BC)) CYCLE
       IF (.NOT.ListCheckPresent( BC, &
@@ -4596,7 +4629,6 @@ CONTAINS
     DO t=1,Active
        Element => GetBoundaryElement(t)
 
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
        IF ( GetElementFamily()==1 ) CYCLE
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
@@ -4610,6 +4642,7 @@ CONTAINS
          CASE(3,4)
            k = GetBoundaryFaceIndex(Element); Element => Mesh % Faces(k)
          END SELECT
+         IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
          FluxBoundaryEdge(Element % EdgeIndexes)=.TRUE.
        END IF
     END DO
@@ -4640,7 +4673,6 @@ CONTAINS
     DO t=1,Active
       Element => GetBoundaryElement(t)
 
-      IF (.NOT. ActiveBoundaryElement()) CYCLE
       IF ( GetElementFamily()==1 ) CYCLE
       BC=>GetBC()
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
@@ -4649,6 +4681,7 @@ CONTAINS
       IF ( .NOT. Found ) CYCLE
 
       k = GetBoundaryFaceIndex(Element); Element=>Mesh % Faces(k)
+      IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
       Faces = Faces + 1
       FaceMap(k) = Faces
 
@@ -4677,7 +4710,6 @@ CONTAINS
     DO t=1,Active
       Element => GetBoundaryElement(t)
 
-      IF (.NOT.ActiveBoundaryElement()) CYCLE
       IF ( GetElementFamily()==1 ) CYCLE
       BC=>GetBC()
       IF (.NOT. ASSOCIATED(BC) ) CYCLE
@@ -4692,6 +4724,7 @@ CONTAINS
       IF (Found.OR.Found1) THEN
         k = GetBoundaryFaceIndex(Element)
         Element => Mesh % Faces(k)
+        IF (.NOT.ActiveBoundaryElement(Element)) CYCLE        
         nd = GetElementNOFDOFs(Element)
         Bn(FaceMap(k))=LocalFluxBC(LOAD,Element,n,nd)
       END IF
@@ -6694,7 +6727,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
     ELSE
     DO i=1,GetNOFBoundaryElements()
        Element => GetBoundaryElement(i)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
      
@@ -6706,6 +6738,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        CASE(3,4)
          k = GetBoundaryFaceIndex(Element)  ; Element => Mesh % Faces(k)
        END SELECT
+       IF (.NOT. ActiveBoundaryElement(Element)) CYCLE
 
        IF (ASSOCIATED(Element % BoundaryInfo % Right)) THEN
          BodyId = Element % BoundaryInfo % Right % BodyID       
@@ -6875,9 +6908,9 @@ CONTAINS
 
     DO i = 1,GetNOFBoundaryElements()
       BElement => GetBoundaryElement(i, uSolver=pSolver)
-
-      IF(.NOT. ActiveBoundaryElement(BElement, uSolver=pSolver)) CYCLE
       BC => GetBC(BElement)
+      IF (.NOT. ASSOCIATED(BC) ) CYCLE
+
       GapLength = GetReal(BC, 'Air Gap Length', Found)
       IF(.NOT. Found) CYCLE
       
@@ -6892,6 +6925,8 @@ CONTAINS
         CALL Warn('MagnetoDynamicsCalcFields', 'Onesided airgap force calculation is untested.')
 
       BElement => Mesh % Faces(GetBoundaryFaceIndex(BElement))
+      IF(.NOT. ActiveBoundaryElement(BElement, uSolver=pSolver)) CYCLE
+
       LeftBodyID = BElement % BoundaryInfo % Left % BodyID
       RightBodyID = BElement % BoundaryInfo % Right % BodyID
       IF(LeftBodyID == RightBodyID) THEN
