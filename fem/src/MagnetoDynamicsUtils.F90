@@ -2,13 +2,13 @@
  MODULE MGDynMaterialUtils
 !------------------------------------------------------------------------------
  USE DefUtils
+ IMPLICIT NONE
 
  CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetElectricConductivityTensor(Element, n, Part, &
                    CoilBody,CoilType) RESULT (Tcoef)  
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), POINTER :: Element
@@ -95,7 +95,6 @@
   FUNCTION GetPermeabilityTensor(Element, n, Part) &
                   RESULT (mu)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), POINTER :: Element
@@ -142,7 +141,6 @@
   FUNCTION GetTensor(Element, n, tsize, varname, Part, Found) &
                   RESULT (T)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
     TYPE(Element_t), POINTER :: Element
@@ -192,7 +190,6 @@
   FUNCTION GetCMPLXTensor(Element, n, tsize, varname, Found) &
                   RESULT (T)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j, slen, tsize 

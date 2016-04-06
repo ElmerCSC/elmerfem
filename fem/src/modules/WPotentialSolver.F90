@@ -121,7 +121,7 @@ SUBROUTINE Wsolve( Model,Solver,dt,TransientSimulation )
 !     INPUT: Steady state or transient simulation
 !
 !******************************************************************************
-  USE DefUtils
+  USE LinearAlgebra
   USE CircuitUtils
   USE MGDynMaterialUtils
   IMPLICIT NONE
@@ -326,7 +326,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LCondensate( N, Nb, K, F )
 !------------------------------------------------------------------------------
-    USE LinearAlgebra
     INTEGER :: N, Nb
     REAL(KIND=dp) :: K(:,:),F(:),Kbb(Nb,Nb), &
          Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
@@ -426,7 +425,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SaveWPotSolution(nofbodies)
 !------------------------------------------------------------------------------
-  USE DefUtils
   IMPLICIT NONE
   INTEGER :: Active, n, t, nn, ns_iter, nofbodies
   REAL(KIND=dp) :: Wnorms(nofbodies)
@@ -446,7 +444,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE SaveElementWSolution(Element, nn, Wnorm)
 !------------------------------------------------------------------------------
-  USE DefUtils
   IMPLICIT NONE
   INTEGER :: nn, j, k
   TYPE(Element_t), POINTER :: Element
