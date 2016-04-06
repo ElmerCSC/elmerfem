@@ -4271,11 +4271,12 @@ CONTAINS
                    ! ---------------------------------------------------------------------
                    IF (Face % BDOFs > 0) THEN
                      EDOFs = i0 ! The count of edge DOFs set so far
-                     n = GetElementDOFs(GInd,Face)
+                     n = Face % TYPE % NumberOfNodes
 
                      CALL SolveLocalFaceDOFs(BC, Face, n, TRIM(Name)//' {e}', Work, EDOFs, &
                          Face % BDOFs, QuadraticApproximation)
 
+                     n = GetElementDOFs(GInd,Face)
                      DO j=1,Face % BDOFs
                        nb = x % Perm(GInd(n-Face % BDOFs+j)) ! The last entries should be face-DOF indices
                        IF ( nb <= 0 ) CYCLE
