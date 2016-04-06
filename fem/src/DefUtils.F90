@@ -1200,6 +1200,20 @@ CONTAINS
      family = CurrElement % TYPE % ElementCode / 100
   END FUNCTION GetElementFamily
 
+
+!> Return the number of corners nodes i.e. the number of dofs for the lowest order element
+  FUNCTION GetElementCorners( Element )  RESULT(corners)
+    INTEGER :: corners
+    TYPE(Element_t), OPTIONAL :: Element
+    TYPE(Element_t), POINTER :: CurrElement
+    
+    CurrElement => GetCurrentElement(Element)
+    corners = CurrElement % TYPE % ElementCode / 100
+    IF( corners >= 5 .AND. corners <= 7 ) THEN
+      corners = corners - 1
+    END IF
+  END FUNCTION GetElementCorners
+  
 !> Return true if the element is a possible flux element
 !> Needed to skip nodal elements in 2D and 3D boundary condition setting.
   FUNCTION PossibleFluxElement( Element, Mesh )  RESULT(possible)
