@@ -2974,10 +2974,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  
+  SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
+
   IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
-    SideFile = NextFreeFilename( SideFile ) 
+    IF( Parallel ) THEN
+      CALL Warn('SaveLine','Cannot number filenames in parallel with another number!')
+    ELSE
+      SideParFile = NextFreeFilename( SideParFile ) 
+    END IF
   END IF
 
+  
   FileAppend = ListGetLogical(Params,'File Append',GotIt )
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
  
@@ -3116,12 +3124,6 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Open files for saving
 !------------------------------------------------------------------------------
-  IF ( Parallel ) THEN     
-    WRITE( SideParFile, '(A,i0)' ) TRIM(SideFile)//'.',ParEnv % MyPE
-  ELSE	
-    WRITE( SideParFile, '(A)') TRIM(SideFile)   
-  END IF
-
   IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
     OPEN (10, FILE=SideParFile,POSITION='APPEND')
   ELSE 
@@ -3769,8 +3771,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   ! Finally save the names of the variables to help to identify the 
   ! columns in the result matrix.
   !-----------------------------------------------------------------
-  SaveNodes = NINT( ParallelReduction( 1.0_dp * SaveNodes ) )
-  SaveNodes2 = NINT( ParallelReduction( 1.0_dp * SaveNodes2 ) )
+  !SaveNodes = NINT( ParallelReduction( 1.0_dp * SaveNodes ) )
+  !SaveNodes2 = NINT( ParallelReduction( 1.0_dp * SaveNodes2 ) )
 
   IF( Solver % TimesVisited == 0 .AND. NoResults > 0 .AND. &
       (.NOT. Parallel .OR. ParEnv % MyPe == 0 ) ) THEN
