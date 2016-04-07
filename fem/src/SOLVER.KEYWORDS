@@ -1491,3 +1491,5 @@ solver:logical:      'constraint modes mass lumping'
 solver:string:       'elasticity solver name'
 solver:integer:      'update components'
 solver:logical:      'save linear elements'
+solver:integer:      'polyline divisions'
+
