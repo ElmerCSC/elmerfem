@@ -10850,7 +10850,7 @@ CONTAINS
     BrickFaceMap(1,:) = (/ 1, 2, 3, 4,  9, 10, 11, 12, 25 /)
     BrickFaceMap(2,:) = (/ 5, 6, 7, 8, 17, 18, 19, 20, 26 /)
     BrickFaceMap(3,:) = (/ 1, 2, 6, 5,  9, 14, 17, 13, 21 /)
-    BrickFaceMap(4,:) = (/ 2, 3, 7, 6, 10, 15, 17, 14, 22 /)
+    BrickFaceMap(4,:) = (/ 2, 3, 7, 6, 10, 15, 18, 14, 22 /)
     BrickFaceMap(5,:) = (/ 3, 4, 8, 7, 11, 16, 19, 15, 23 /)
     BrickFaceMap(6,:) = (/ 4, 1, 5, 8, 12, 13, 20, 16, 24 /)
 
@@ -16957,13 +16957,17 @@ CONTAINS
         SetCount(j) = SetCount(j) + 1
       END DO
         
+      m = SUM( SetCount ) 
+      IF( m == 0 ) RETURN
+
       IF( TakeAverage ) THEN
         WHERE( SetCount > 0 ) SetSum = SetSum / SetCount
       END IF
 
       IF( dof == 1 ) THEN
         AveHits = 1.0_dp * SUM( SetCount ) / COUNT( SetCount > 0 )
-        PRINT *,'AveHits:',AveHits
+        WRITE(Message,'(A,ES15.4)') 'Average number of hits: ',AveHits
+        CALL Info('ReduceElementalVar',Message,Level=10)
       END IF
 
       ! Copy the reduced set back to the original elemental field
@@ -17042,7 +17046,8 @@ CONTAINS
         CALL Info('LumpedElementalVar','Lumped sum for component: '//TRIM(I2S(dof)),Level=6)
       END IF
       DO i=1,CurrentModel % NumberOfBodies
-        PRINT *,'BodySum',i,BodySum(i)
+        WRITE(Message,'(A,ES15.4)') 'Body '//TRIM(I2S(i))//' sum:',BodySum(i)
+        CALL Info('LumpedElementalVar',Message,Level=10)
       END DO
 
     END DO

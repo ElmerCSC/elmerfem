@@ -5585,6 +5585,8 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
 
     SAVE :: VisitedTimes, Params, FilePrefix, NumberFilesByParticles, NumberFilesBySteps, &
         MinSaveStatus, MaxSaveStatus, TimeVar, Basis, Nodes
+
+    CALL Info('ParticleOutputTable','Saving particle data into simple ascii table',Level=8)
     
     VisitedTimes = VisitedTimes + 1
     
@@ -5626,6 +5628,10 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       IF(.NOT. Found ) MaxSaveStatus = PARTICLE_LOST-1
       
       TimeVar => VariableGet( Mesh % Variables,'time')
+
+      IF( ParEnv % PEs > 1 ) THEN
+        WRITE( FilePrefix,'(A,A,I4.4)' ) TRIM(FilePrefix),'par',ParEnv % MyPe + 1
+      END IF
     END IF
     
     time = TimeVar % Values(1)
@@ -5805,17 +5811,15 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       IF( FileNo == 0 ) THEN
         WRITE( FileName,'(A,A)') TRIM(FilePrefix),'.dat'
         IF( .NOT. Visited ) THEN
-          CALL Info( 'ParticleTracker', 'Saving particle paths to file: '//TRIM(FileName), Level=4 )
+          CALL Info( 'ParticleOutputTable', 'Saving particle data to file: '//TRIM(FileName), Level=4 )
         END IF
       ELSE
         IF ( FileNo==1 .AND.  .NOT. Visited ) THEN
-          WRITE( Message, * ) 'Saving particle paths to files: ', TRIM(FilePrefix)//'_*.dat'
-          CALL Info( 'ParticleTracker', Message, Level=4 )
+          WRITE( Message, * ) 'Saving particle data to files: ', TRIM(FilePrefix)//'_*.dat'
+          CALL Info( 'ParticleOutputTable', Message, Level=4 )
         END IF
         FileName=TRIM(FilePrefix)//'_'//TRIM(i2s(fileno))//'.dat'
       END IF
-      IF ( ParEnv % Pes>1 ) FileName=TRIM(FileName)//TRIM(i2s(ParEnv % myPE))
-
       
       IF( VisitedTimes == 1 .OR. NumberFilesBySteps ) THEN
         OPEN (TableUnit, FILE=FileName )
@@ -6900,8 +6904,14 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
           END IF
         END IF
         
-        WRITE( VtuUnit,'(A)') '      <PDataArray type="Float64" Name="'//TRIM(FieldName)&
-            //'" NumberOfComponents="1" format="ascii"/>'    
+        IF( AsciiOutput ) THEN
+          WRITE( VtuUnit,'(A)') '      <PDataArray type="Float'//TRIM(I2S(PrecBits))//&
+              '" Name="'//TRIM(FieldName)//'" NumberOfComponents="1" format="ascii"/>'    
+        ELSE
+          WRITE( VtuUnit,'(A)') '      <PDataArray type="Float'//TRIM(I2S(PrecBits))//&
+              '" Name="'//TRIM(FieldName)//'" NumberOfComponents="1" format="appended"/>'    
+        END IF
+
       END DO
 
 
@@ -6950,8 +6960,13 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
         END IF
 
         sdofs = dofs
-        WRITE( VtuUnit,'(A,I1,A)') '      <PDataArray type="Float64" Name="'//TRIM(FieldName)&
-            //'" NumberOfComponents="',sdofs,'" format="ascii"/>'    
+        IF( AsciiOutput ) THEN
+          WRITE( VtuUnit,'(A,I1,A)') '      <PDataArray type="Float'//TRIM(I2S(PrecBits))//'" Name="&
+              '//TRIM(FieldName)//'" NumberOfComponents="',sdofs,'" format="ascii"/>'    
+        ELSE
+          WRITE( VtuUnit,'(A,I1,A)') '      <PDataArray type="Float'//TRIM(I2S(PrecBits))//'" Name="&
+              '//TRIM(FieldName)//'" NumberOfComponents="',sdofs,'" format="appended"/>'    
+        END  IF
       END DO
 
       IF ( ScalarsExist .OR. VectorsExist) THEN
@@ -6960,9 +6975,15 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
     
       ! Coordinates of each point
       !-------------------------------------
-      WRITE( VtuUnit,'(A)') '      <PPoints>'
-      WRITE( VtuUnit,'(A)') '        <DataArray type="Float64" NumberOfComponents="3" format="ascii"/>'    
-      WRITE( VtuUnit,'(A)') '      </PPoints>' 
+      WRITE( VtuUnit,'(A)') '    <PPoints>'
+      IF( AsciiOutput ) THEN
+        WRITE( VtuUnit,'(A)') '      <DataArray type="Float'//TRIM(I2S(PrecBits))//&
+            '" NumberOfComponents="3" format="ascii"/>'    
+      ELSE
+        WRITE( VtuUnit,'(A)') '      <DataArray type="Float'//TRIM(I2S(PrecBits))//&
+        '" NumberOfComponents="3" format="appended"/>'    
+      END IF
+      WRITE( VtuUnit,'(A)') '    </PPoints>' 
       
       DO i=1,Partitions
         IF( iTime < 10000 ) THEN
@@ -7281,11 +7302,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
           END IF
           
           IF( WriteXML ) THEN
-            IF( SinglePrec ) THEN
-              WRITE( OutStr,'(A)') '      <DataArray type="Float32" Name="'//TRIM(FieldName)//'"'
-            ELSE
-              WRITE( OutStr,'(A)') '      <DataArray type="Float64" Name="'//TRIM(FieldName)//'"'
-            END IF
+            WRITE( OutStr,'(A)') '      <DataArray type="Float64" Name="'//TRIM(FieldName)//'"'
             CALL AscBinStrWrite( OutStr ) 
 
             WRITE( OutStr,'(A,I1,A)') ' NumberOfComponents="',sdofs,'"'          
@@ -7564,9 +7581,9 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       
       ! Coordinates of each point
       !-------------------------------------
-      WRITE( VtiUnit,'(A)') '      <PPoints>'
-      WRITE( VtiUnit,'(A)') '        <DataArray type="Float64" NumberOfComponents="3" format="ascii"/>'    
-      WRITE( VtiUnit,'(A)') '      </PPoints>' 
+      WRITE( VtiUnit,'(A)') '    <PPoints>'
+      WRITE( VtiUnit,'(A)') '      <DataArray type="Float64" NumberOfComponents="3" format="ascii"/>'    
+      WRITE( VtiUnit,'(A)') '    </PPoints>' 
       
       DO i=1,Partitions
         IF( NoFileindex ) THEN

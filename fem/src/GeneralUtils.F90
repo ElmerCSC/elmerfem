@@ -2277,8 +2277,52 @@ INCLUDE "mpif.h"
   END FUNCTION NextFreeFilename
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Given the filename0 add a string related to the partitioning.
+!------------------------------------------------------------------------------
 
-  !---------------------------------------------------------
+  FUNCTION AddFilenameParSuffix(Filename0,Suffix0,Parallel,MyPe) RESULT (Filename)
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename0
+    CHARACTER(LEN=*), OPTIONAL :: Suffix0 
+    LOGICAL :: Parallel
+    INTEGER :: MyPe
+    CHARACTER(LEN=MAX_NAME_LEN) :: Filename
+    CHARACTER(LEN=MAX_NAME_LEN) :: Prefix, Suffix
+    INTEGER :: No, ind, len
+
+
+    ind = INDEX( FileName0,'.',.TRUE. )
+    len = LEN_TRIM(Filename0)
+    IF(ind > 0) THEN
+      Prefix = Filename0(1:ind-1)
+      Suffix = Filename0(ind:len)
+    ELSE
+      Prefix = Filename0(1:len)
+      IF(PRESENT(Suffix0)) THEN
+        Suffix = '.'//TRIM(Suffix0)
+      ELSE
+        Suffix = '.dat'
+      END IF
+    END IF
+
+    IF( Parallel ) THEN
+      No = MyPe + 1
+      IF( No < 10000 ) THEN
+        WRITE( FileName,'(A,I4.4,A)') TRIM(Prefix),No,TRIM(Suffix)
+      ELSE
+        WRITE( FileName,'(A,I0,A)') TRIM(Prefix),No,TRIM(Suffix)
+      END IF
+    ELSE
+      FileName = TRIM(Prefix)//TRIM(Suffix)
+    END IF
+
+!------------------------------------------------------------------------------
+  END FUNCTION AddFilenameParSuffix
+!------------------------------------------------------------------------------
+
+
+  !---------------------------------------------------------<
   !> Returns values from a normal distribution to be used in 
   !> thermal velocity distribution, for example.
   !---------------------------------------------------------
