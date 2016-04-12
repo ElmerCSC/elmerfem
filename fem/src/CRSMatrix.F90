@@ -519,13 +519,13 @@ CONTAINS
 !>    Add a set of values (.i.e. element stiffness matrix) to a CRS format
 !>    matrix. 
 !------------------------------------------------------------------------------
-  SUBROUTINE CRS_GlueLocalMatrix( A,N,Dofs,Indeces,LocalMatrix )
+  SUBROUTINE CRS_GlueLocalMatrix( A,N,Dofs,Indices,LocalMatrix )
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A  !< Structure holding matrix
      REAL(KIND=dp), INTENT(IN) :: LocalMatrix(:,:)  !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added to the CRS format matrix
      INTEGER, INTENT(IN) :: N             !< Number of nodes in element
      INTEGER, INTENT(IN) :: Dofs          !< Number of degrees of freedom for one node
-     INTEGER, INTENT(IN) :: Indeces(:)    !< Maps element node numbers to global (or partition) node numbers 
+     INTEGER, INTENT(IN) :: Indices(:)    !< Maps element node numbers to global (or partition) node numbers 
      INTEGER::jc,ic
 	                                      !! (to matrix rows and columns, if Dofs = 1)
 !------------------------------------------------------------------------------ 
@@ -541,10 +541,10 @@ CONTAINS
 
      IF ( Dofs == 1 ) THEN
        DO i=1,N
-         Row = Indeces(i)
+         Row = Indices(i)
          IF ( Row <=0 ) CYCLE
          DO j=1,N
-           Col = Indeces(j)
+           Col = Indices(j)
            IF ( Col <= 0 ) CYCLE
            IF ( Col >= Row ) THEN
              DO c=Diag(Row),Rows(Row+1)-1
@@ -568,12 +568,12 @@ CONTAINS
      ELSE
        DO i=1,N
           DO k=0,Dofs-1
-             IF ( Indeces(i) <= 0 ) CYCLE
-             Row  = Dofs * Indeces(i) - k
+             IF ( Indices(i) <= 0 ) CYCLE
+             Row  = Dofs * Indices(i) - k
              DO j=1,N
                 DO l=0,Dofs-1
-                   IF ( Indeces(j) <= 0 ) CYCLE
-                   Col  = Dofs * Indeces(j) - l
+                   IF ( Indices(j) <= 0 ) CYCLE
+                   Col  = Dofs * Indices(j) - l
                    IF ( Col >= Row ) THEN
                      DO c=Diag(Row),Rows(Row+1)-1
                         IF ( Cols(c) == Col ) THEN

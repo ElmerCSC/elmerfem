@@ -1033,7 +1033,7 @@ CONTAINS
 !     INPUT: Number of bodies to consider
 !
 !  INTEGER :: Indx( Model % NumberOfBodies )
-!     INPUT: Indeces of these bodies and all other array elements set to -1
+!     INPUT: Indices of these bodies and all other array elements set to -1
 !
 !******************************************************************************
 !------------------------------------------------------------------------------

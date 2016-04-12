@@ -199,7 +199,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
 
   INTEGER, POINTER :: TempPerm(:),StressPerm(:),PressPerm(:),NodeIndexes(:), &
-          Indeces(:), FlowPerm(:), AdjacentNodes(:)
+          Indices(:), FlowPerm(:), AdjacentNodes(:)
 
   INTEGER :: dim,i,j,k,l,m,n,nd,nb,ntot,t,iter,NDeg,k1,k2,STDOFs,LocalNodes,istat
   INTEGER :: NewtonIter, NonlinearIter, MinNonlinearIter, FlowNOFNodes
@@ -232,7 +232,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        LocalDisplacement, Velocity, Pressure, PrevSOL, CalculateStrains, CalculateStresses, &
        NodalStrain, NodalStress, VonMises, PrincipalStress, PrincipalStrain, Tresca, &
        PrincipalAngle, CalcPrincipalAngle, CalcPrincipal, &
-       PrevLocalDisplacement, SpringCoeff, Indeces
+       PrevLocalDisplacement, SpringCoeff, Indices
   SAVE NPROPS, NSTATEV, MaxIntegrationPoints, PointwiseStateV, PointwiseStateV0
 !-----------------------------------------------------------------------------------------------------
 #ifdef USE_ISO_C_BINDINGS
@@ -356,7 +356,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              LocalDisplacement, &
              PrevLocalDisplacement, &
              SpringCoeff, &
-             Indeces)
+             Indices)
      END IF
 
      ALLOCATE( &
@@ -375,7 +375,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
           LocalDisplacement( 3,N ), &
           PrevLocalDisplacement( 3,N ), &
           SpringCoeff( N,3,3 ), &
-          Indeces(N), &
+          Indices(N), &
           STAT=istat )
 
      IF ( istat /= 0 ) THEN
@@ -562,7 +562,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         n = GetElementNOFNodes()
         NodeIndexes => CurrentElement % NodeIndexes
 
-        nd = GetElementDOFs( Indeces )
+        nd = GetElementDOFs( Indices )
         nb = GetElementNOFBDOFs()
         ntot = nd + nb
 
@@ -677,7 +677,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
         LocalDisplacement = 0.0D0
         DO i=1,nd
-           k = StressPerm(Indeces(i))
+           k = StressPerm(Indices(i))
            DO j=1,STDOFs
               LocalDisplacement(j,i) = Displacement(STDOFs*(k-1)+j)
            END DO
@@ -690,7 +690,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
         PrevLocalDisplacement = 0.0D0
         IF (TransientSimulation .AND. UseUMAT) THEN
            DO i=1,nd
-              k = StressPerm(Indeces(i))
+              k = StressPerm(Indices(i))
               DO j=1,STDOFs
                  PrevLocalDisplacement(j,i) = Solver % Variable % PrevValues(STDOFs*(k-1)+j,3)
               END DO
@@ -823,13 +823,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                    ParentElement => CurrentElement % BoundaryInfo % Right
            END IF
 
-           nd = GetElementDOFs(Indeces, ParentElement)
+           nd = GetElementDOFs(Indices, ParentElement)
            CALL GetElementNodes( ParentNodes, ParentElement )
 
            LocalDisplacement = 0.0D0
            IF( .NOT. LinearModel ) THEN
               DO l=1,nd
-                 k = StressPerm(Indeces(l))
+                 k = StressPerm(Indices(l))
                  DO j=1,STDOFs
                     LocalDisplacement(j,l) = Displacement(STDOFs*(k-1)+j)
                  END DO
@@ -1964,7 +1964,7 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, UseMask   
     LOGICAL :: Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize
-    INTEGER, POINTER :: Permutation(:), Indeces(:)
+    INTEGER, POINTER :: Permutation(:), Indices(:)
     INTEGER :: dim, elem, n, nd, i, k, l, p, q, N_Gauss, Ind(9), StrainDim
 
     REAL(KIND=dp), POINTER :: StrainTemp(:)
@@ -1984,7 +1984,7 @@ CONTAINS
     dim = CoordinateSystemDimension()
 
     n = Solver % Mesh % MaxElementDOFs
-    ALLOCATE( Indeces(n), &
+    ALLOCATE( Indices(n), &
          LocalDisplacement(3,n), &
          Mass(n,n), &
          Force(n), &
@@ -2054,7 +2054,7 @@ CONTAINS
     DO elem = 1, Solver % NumberOfActiveElements
        Element => GetActiveElement(elem, Solver)
        n  = GetElementNOFNodes()
-       nd = GetElementDOFs( Indeces )
+       nd = GetElementDOFs( Indices )
 
        CALL GetElementNodes( Nodes )
        CALL GetVectorLocalSolution( LocalDisplacement, USolver=Solver )
@@ -2113,7 +2113,7 @@ CONTAINS
        ! Assemble global RHS vectors:
        !--------------------------------
        DO p=1,nd
-          l = Permutation(Indeces(p))
+          l = Permutation(Indices(p))
           DO i=1,StrainDim
              SForceG(StrainDim*(l-1)+i) = SForceG(StrainDim*(l-1)+i) + SForce(StrainDim*(p-1)+i)
           END DO
@@ -2193,7 +2193,7 @@ CONTAINS
 
     CALL ListAddLogical(StSolver % Values, 'Skip Compute Nonlinear Change', .FALSE.)
 
-    DEALLOCATE( Indeces, &
+    DEALLOCATE( Indices, &
          LocalDisplacement, &
          MASS, &
          Force, &
@@ -2232,7 +2232,7 @@ CONTAINS
     LOGICAL :: FirstTime = .TRUE., Found, OptimizeBW, GlobalBubbles, Stat, UseMask   
     LOGICAL :: Factorize,  FoundFactorize, FreeFactorize, FoundFreeFactorize
 
-    INTEGER, POINTER :: Permutation(:), Indeces(:)
+    INTEGER, POINTER :: Permutation(:), Indices(:)
     INTEGER :: dim, elem, n, nd, i, k, l, p, q, N_Gauss, Ind(6), StressDim
 
     REAL(KIND=dp), POINTER :: StressTemp(:)
@@ -2251,7 +2251,7 @@ CONTAINS
     dim = CoordinateSystemDimension()
 
     n = Solver % Mesh % MaxElementDOFs
-    ALLOCATE( Indeces(n), &
+    ALLOCATE( Indices(n), &
          Mass(n,n), &
          Force(n), &
          SForce(6*n), &
@@ -2320,7 +2320,7 @@ CONTAINS
     DO elem = 1, Solver % NumberOfActiveElements
        Element => GetActiveElement(elem, Solver)
        n  = GetElementNOFNodes()
-       nd = GetElementDOFs( Indeces )
+       nd = GetElementDOFs( Indices )
        CALL GetElementNodes( Nodes )
 
        k = (elem-1)*MaxIntegrationPoints
@@ -2366,7 +2366,7 @@ CONTAINS
        ! Assemble global RHS vectors:
        !--------------------------------
        DO p=1,nd
-          l = Permutation(Indeces(p))
+          l = Permutation(Indices(p))
           DO i=1,StressDim
              SForceG(StressDim*(l-1)+i) = SForceG(StressDim*(l-1)+i) + SForce(StressDim*(p-1)+i)
           END DO
@@ -2444,7 +2444,7 @@ CONTAINS
 
     CALL ListAddLogical(StSolver % Values, 'Skip Compute Nonlinear Change', .FALSE.)
 
-    DEALLOCATE( Indeces, &
+    DEALLOCATE( Indices, &
          MASS, &
          Force, &
          SForce, &
@@ -2477,7 +2477,7 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     TYPE(ValueList_t), POINTER :: Equation
 
-    INTEGER, POINTER :: Permutation(:), Indeces(:)
+    INTEGER, POINTER :: Permutation(:), Indices(:)
 
     INTEGER :: dim, cdim, n, nd, elem, i, j, k, l, p, q, t, Ind(9), StrainDim
 
@@ -2516,7 +2516,7 @@ CONTAINS
     END IF
 
     n = Solver % Mesh % MaxElementDOFs
-    ALLOCATE( Indeces(n), &
+    ALLOCATE( Indices(n), &
          LocalDisplacement(3,n), &
          Mass(n,n), &
          Force(6*n), &
@@ -2610,7 +2610,7 @@ CONTAINS
     DO elem = 1, Solver % NumberOfActiveElements
        Element => GetActiveElement(elem, Solver)
        n  = GetElementNOFNodes()
-       nd = GetElementDOFs( Indeces )
+       nd = GetElementDOFs( Indices )
 
        CALL GetElementNodes( Nodes )
        CALL GetVectorLocalSolution( LocalDisplacement, USolver=Solver )
@@ -2633,10 +2633,10 @@ CONTAINS
        IF (NeoHookeanMaterial) THEN
           Isotropic = .TRUE.
           ElasticModulus(1,1,1:n) = ListGetReal( Material, &
-               'Youngs Modulus', n, Indeces, Found )
+               'Youngs Modulus', n, Indices, Found )
        ELSE
           CALL InputTensor( ElasticModulus, Isotropic, &
-               'Youngs Modulus', Material, n, Indeces )        
+               'Youngs Modulus', Material, n, Indices )        
        END IF
 
        !------------------------------------------------------------------------------
@@ -2679,7 +2679,7 @@ CONTAINS
        PoissonRatio = 0.0d0
        IF (Isotropic) THEN
           PoissonRatio(1:n) = ListGetReal( Material, &
-               'Poisson Ratio', n, Indeces )
+               'Poisson Ratio', n, Indices )
           !-----------------------------------------------------------------------------------
           ! In the case of plane stress alter the definition of the Lame (lambda) parameter
           ! so that the plane stress components are directly obtained in terms of the
@@ -2834,7 +2834,7 @@ CONTAINS
        !--------------------------------   
        IF (CalculateStrains) THEN
           DO p=1,nd
-             l = Permutation(Indeces(p))
+             l = Permutation(Indices(p))
              DO i=1,StrainDim
                 ForceG(StrainDim*(l-1)+i) = ForceG(StrainDim*(l-1)+i) + Force(StrainDim*(p-1)+i)
              END DO
@@ -2843,7 +2843,7 @@ CONTAINS
 
        IF (CalculateStresses) THEN
           DO p=1,nd
-             l = Permutation(Indeces(p))
+             l = Permutation(Indices(p))
              DO i=1,StrainDim
                 SForceG(StrainDim*(l-1)+i) = SForceG(StrainDim*(l-1)+i) + SForce(StrainDim*(p-1)+i)
              END DO
@@ -3123,7 +3123,7 @@ CONTAINS
        END DO
     END IF
 
-    DEALLOCATE( Indeces, &
+    DEALLOCATE( Indices, &
          LocalDisplacement, &
          MASS, &
          FORCE, &

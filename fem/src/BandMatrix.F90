@@ -160,14 +160,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Add a set of values (.i.e. element stiffness matrix) to a Band format matrix. 
 !------------------------------------------------------------------------------
-  SUBROUTINE Band_GlueLocalMatrix( A,N,Dofs,Indeces,LocalMatrix )
+  SUBROUTINE Band_GlueLocalMatrix( A,N,Dofs,Indices,LocalMatrix )
 !------------------------------------------------------------------------------ 
      REAL(KIND=dp) :: LocalMatrix(:,:)  !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be
                                         !! added to the Band format matrix
      TYPE(Matrix_t) :: A   !< Structure holding matrix, values are affected in the process
      INTEGER :: N                   !< Number of nodes in element
      INTEGER :: Dofs                !< Number of degrees of freedom for one node
-     INTEGER :: Indeces(:)          !< Maps element node numbers to global (or partition) node numbers
+     INTEGER :: Indices(:)          !< Maps element node numbers to global (or partition) node numbers
                                     !! (to matrix rows and columns, if Dofs = 1)
 !------------------------------------------------------------------------------
 !    Local variables
@@ -181,10 +181,10 @@ CONTAINS
      IF ( A % Format == MATRIX_BAND ) THEN
        DO i=1,N
          DO k=0,Dofs-1
-           Row = Dofs * Indeces(i) - k
+           Row = Dofs * Indices(i) - k
            DO j=1,N
              DO l=0,Dofs-1
-               Col = Dofs * Indeces(j) - l
+               Col = Dofs * Indices(j) - l
                ind = BAND_INDEX(Row,Col)
                Values(ind) = &
                   Values(ind) + LocalMatrix(Dofs*i-k,Dofs*j-l)
@@ -195,10 +195,10 @@ CONTAINS
      ELSE
        DO i=1,N
          DO k=0,Dofs-1
-           Row = Dofs * Indeces(i) - k
+           Row = Dofs * Indices(i) - k
            DO j=1,N
              DO l=0,Dofs-1
-               Col = Dofs * Indeces(j) - l
+               Col = Dofs * Indices(j) - l
                IF ( Col <= Row ) THEN
                  ind = SBAND_INDEX(Row,Col)
                  Values(ind) = &

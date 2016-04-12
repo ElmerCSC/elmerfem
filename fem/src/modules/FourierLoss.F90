@@ -669,7 +669,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: ElemField(:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: WBasis(:,:), RotWBasis(:,:)
-    INTEGER, ALLOCATABLE :: Indeces(:), Pivot(:)
+    INTEGER, ALLOCATABLE :: Indices(:), Pivot(:)
 
     SAVE Nodes
 
@@ -681,9 +681,9 @@ CONTAINS
 
     IF (AVField) THEN
       nt = MAX(TargetSolverPtr % Mesh % MaxElementDOFs,TargetSolverPtr % Mesh % MaxElementNodes)
-      ALLOCATE( WBasis(nt,3), RotWBasis(nt,3), Indeces(nt), ElemField(nt) )
+      ALLOCATE( WBasis(nt,3), RotWBasis(nt,3), Indices(nt), ElemField(nt) )
     ELSE
-      ALLOCATE( ElemField(n), Indeces(n) )
+      ALLOCATE( ElemField(n), Indices(n) )
     END IF
 
     Freq = Omega / (2*PI)
@@ -718,7 +718,7 @@ CONTAINS
       Element => GetActiveElement( elem )
       CALL GetElementNodes( Nodes )
       ! nd = GetElementNOFDOFs()
-      nd = GetElementDOFs( Indeces )
+      nd = GetElementDOFs( Indices )
       n  = GetElementNOFNodes()
 
       IF (AVField) THEN
@@ -727,7 +727,7 @@ CONTAINS
         IF ( .NOT. ASSOCIATED(TargetElement) ) THEN
           CALL Fatal('FourierLossSolver','Element on target mesh cannot be associated')
         END IF
-        nt = GetElementDOFs( Indeces, TargetElement, TargetSolverPtr )
+        nt = GetElementDOFs( Indices, TargetElement, TargetSolverPtr )
       END IF
 
       ! Integrate over local element:
@@ -785,7 +785,7 @@ CONTAINS
           Component => FourierField(j::FourierDofs)
 
           IF ( AVField ) THEN
-            ElemField(1:nt) = Component( FourierPerm( Indeces(1:nt) ) )
+            ElemField(1:nt) = Component( FourierPerm( Indices(1:nt) ) )
 
             ! Here we assume that the solution contains both a nodal interpolation
             ! field (scalar) and edge interpolation part (vector). The gradient is 
@@ -801,15 +801,15 @@ CONTAINS
             IF ( dim > 2 ) &
                 CurlAtIp(3) = SUM( ElemField(n+1:nt) * RotWBasis(1:(nt-n),3) )             
           ELSE IF( dim == 3 ) THEN
-            ElemField(1:nd) = Component( 3 * (FourierPerm( Indeces(1:nd))-1) + 1 )
+            ElemField(1:nd) = Component( 3 * (FourierPerm( Indices(1:nd))-1) + 1 )
             DO k=1,3
               GradAtIp(1,k) =  SUM( ElemField(1:nd) * dBasisdx(1:nd,k) )
             END DO
-            ElemField(1:nd) = Component( 3 * (FourierPerm( Indeces(1:nd))-1) + 2 )
+            ElemField(1:nd) = Component( 3 * (FourierPerm( Indices(1:nd))-1) + 2 )
             DO k=1,3
               GradAtIp(2,k) =  SUM( ElemField(1:nd) * dBasisdx(1:nd,k) )
             END DO
-            ElemField(1:nd) = Component( 3 * (FourierPerm( Indeces(1:nd))-1) + 3 )
+            ElemField(1:nd) = Component( 3 * (FourierPerm( Indices(1:nd))-1) + 3 )
             DO k=1,3
               GradAtIp(3,k) =  SUM( ElemField(1:nd) * dBasisdx(1:nd,k) )
             END DO
@@ -818,7 +818,7 @@ CONTAINS
             CurlAtIp(2) = GradAtIp(1,3) - GradAtIp(3,1)
             CurlAtIp(3) = GradAtIp(2,1) - GradAtIp(1,2)
           ELSE
-            ElemField(1:nd) = Component( FourierPerm( Indeces(1:nd) ) )
+            ElemField(1:nd) = Component( FourierPerm( Indices(1:nd) ) )
 
             !GradAtIp(1) =  SUM( ElemField(1:nd) * dBasisdx(1:nd,1) )
             !GradAtIp(2) =  SUM( ElemField(1:nd) * dBasisdx(1:nd,2) )
@@ -871,7 +871,7 @@ CONTAINS
     END IF
 
     DEALLOCATE( ElemField, STIFF, FORCE, Pivot, Basis, &
-        dBasisdx, Indeces )
+        dBasisdx, Indices )
     IF (AVField) THEN
       DEALLOCATE( WBasis, RotWBasis )
     END IF

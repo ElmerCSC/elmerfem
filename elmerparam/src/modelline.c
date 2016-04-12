@@ -120,7 +120,7 @@ static int get_natural(const char *s, int *i,
 }
 
 
-/* Get list of indeces from 's' and put them into 'index' and number of indeces
+/* Get list of Indices from 's' and put them into 'index' and number of Indices
  * in 'len'.  In case of error, print error message to stderr and put -1 in len,
  * Return number of characters consumed.  */
 
