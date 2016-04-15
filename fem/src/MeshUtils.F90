@@ -4115,7 +4115,7 @@ END SUBROUTINE GetMaxDefs
 
  
   !---------------------------------------------------------------------------
-  !> Create a projector for mixes nodal / edge problems assuming constant level
+  !> Create a projector for mixed nodal / edge problems assuming constant level
   !> in the 2nd direction. This kind of projector is suitable for 2D meshes where
   !> the mortar line is effectively 1D, or to 3D cases that have been created by
   !> extrusion. 
@@ -4155,6 +4155,7 @@ END SUBROUTINE GetMaxDefs
     REAL(KIND=dp), ALLOCATABLE :: Cond(:)
     TYPE(Matrix_t), POINTER :: DualProjector    
     LOGICAL :: DualMaster, DualSlave, DualLCoeff, BiorthogonalBasis
+    LOGICAL :: SecondOrder
 
     CALL Info('LevelProjector','Creating projector for a levelized mesh',Level=7)
 
@@ -4402,7 +4403,8 @@ END SUBROUTINE GetMaxDefs
 
     PiolaVersion = ListGetLogical( CurrentModel % Solver % Values, &
         'Use Piola Transform', Found)
-
+    SecondOrder = ListGetLogical( CurrentModel % Solver % Values, &
+        'Quadratic Approximation', Found)
 
     ! At the 1st stage determine the maximum size of the projector
     ! If the strong projector is used then the numbering is done as we go
@@ -4422,7 +4424,7 @@ END SUBROUTINE GetMaxDefs
       END DO
 
       n = SUM( NodePerm )
-      CALL Info('LevelProjector','Initial number of periodic nodes '//TRIM(I2S(n))//&
+      CALL Info('LevelProjector','Initial number of slave nodes '//TRIM(I2S(n))//&
           ' out of '//TRIM(I2S(BMesh1 % NumberOfNodes ) ), Level = 10 )
 
       ! Eliminate the redundant nodes by default. 
@@ -4543,7 +4545,6 @@ END SUBROUTINE GetMaxDefs
     END IF
     ProjectorRows = EdgeRow0
 
-
     IF( DoEdges ) THEN
       ALLOCATE( EdgePerm( Mesh % NumberOfEdges ) )
       EdgePerm = 0
@@ -4605,17 +4606,25 @@ END SUBROUTINE GetMaxDefs
       END IF
       CALL Info('LevelProjector',&
           'Number of active edges in projector: '//TRIM(I2S(m)),Level=8)
-      FaceRow0 = EdgeRow0 + m
+      IF (SecondOrder) THEN
+        FaceRow0 = EdgeRow0 + 2*m
+      ELSE
+        FaceRow0 = EdgeRow0 + m
+      END IF
       ProjectorRows = FaceRow0
       
       IF( PiolaVersion ) THEN
         ! Note: this might not work in parallel with halo since some of the face elements
         ! do not then belong to the slave boundary. 
-        m = BMesh1 % NumberOfBulkElements
+        m = 0
+        DO i=1,BMesh1 % NumberOfBulkElements
+          m = m + BMesh1 % Elements(i) % BDOFs
+        END DO
         CALL Info('LevelProjector',&
-            'Number of active faces in projector: '//TRIM(I2S(m)),Level=8)
-        ! There are two additional dofs associated with each face
-        ProjectorRows = FaceRow0 + 2 * m
+            'Number of active faces in projector: '//TRIM(I2S(BMesh1 % NumberOfBulkElements)),Level=8)
+        CALL Info('LevelProjector',&
+            'Number of active face DOFs in projector: '//TRIM(I2S(m)),Level=8)
+        ProjectorRows = FaceRow0 + m
       END IF
     END IF
 
@@ -4648,7 +4657,11 @@ END SUBROUTINE GetMaxDefs
     EdgeBasis = .FALSE.
     IF( DoEdges ) THEN
       EdgeCol0 = Mesh % NumberOfNodes
-      FaceCol0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
+      IF (SecondOrder) THEN
+        FaceCol0 = Mesh % NumberOfNodes + 2 * Mesh % NumberOfEdges
+      ELSE
+        FaceCol0 = Mesh % NumberOfNodes + Mesh % NumberOfEdges
+      END IF
 
       IF( StrongLevelEdges .OR. StrongExtrudedEdges ) THEN
         CALL AddEdgeProjectorStrongStrides()
@@ -6149,6 +6162,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER, TARGET :: IndexesT(3)
       INTEGER, POINTER :: Indexes(:), IndexesM(:)
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
+      INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
           MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep
       TYPE(Element_t), POINTER :: Element, ElementM
@@ -6159,7 +6173,7 @@ END SUBROUTINE GetMaxDefs
       REAL(KIND=dp) :: x(10),y(10),xt,yt,zt,xmax,ymax,xmin,ymin,xmaxm,ymaxm,&
           xminm,yminm,DetJ,Wtemp,q,ArcTol,u,v,w,um,vm,wm,val,RefArea,dArea,&
           SumArea,TrueArea,MaxErr,MinErr,Err,phi(10),Point(3),uvw(3),ArcRange , &
-          val_dual, zmin, zmax, zminm, zmaxm
+          val_dual, zmin, zmax, zminm, zmaxm, uq, vq
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol
       REAL(KIND=dp) :: TotRefArea, TotSumArea, TotTrueArea
@@ -6188,14 +6202,13 @@ END SUBROUTINE GetMaxDefs
       Timestep = NINT( TimestepVar % Values(1) )
  
       n = Mesh % MaxElementNodes
-
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
       ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n) )
       ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
-      ALLOCATE( Basis(n), BasisM(n) )
-      ALLOCATE( dBasisdx(n,3), WBasis(n,3), WBasisM(n,3), RotWBasis(n,3) )
-
+      ALLOCATE( Basis(n), BasisM(n), dBasisdx(n,3) )
       IF(BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
+      n = 12 ! Hard-coded size sufficient for second-order edge elements
+      ALLOCATE( WBasis(n,3), WBasisM(n,3), RotWBasis(n,3) )
 
       Nodes % z  = 0.0_dp
       NodesM % z = 0.0_dp
@@ -6229,7 +6242,6 @@ END SUBROUTINE GetMaxDefs
       Nslave = 0
       Nmaster = 0
 
-
       DO ind=1,BMesh1 % NumberOfBulkElements
 
         ! Optionally save the submesh for specified element, for vizualization and debugging
@@ -6240,12 +6252,8 @@ END SUBROUTINE GetMaxDefs
         Indexes => Element % NodeIndexes
 
         n = Element % TYPE % NumberOfNodes
-        ne = Element % TYPE % NumberOfEdges
-        IF( PiolaVersion .AND. ne == 4 ) THEN
-          nf = 2
-        ELSE
-          nf = 0
-        END IF
+        ne = Element % TYPE % NumberOfEdges  ! #(SLAVE EDGES)
+        nf = Element % BDOFs                 ! #(SLAVE FACE DOFS)
         
         ! Transform the angle to archlength in order to have correct balance between x and y
         Nodes % x(1:n) = ArcCoeff * BMesh1 % Nodes % x(Indexes(1:n))
@@ -6384,13 +6392,9 @@ END SUBROUTINE GetMaxDefs
             PRINT *,'Y:',NodesM % y(1:nM)
           END IF
 
-          neM = ElementM % TYPE % NumberOfEdges
-          IF( PiolaVersion .AND. neM == 4 ) THEN
-            nfM = 2
-          ELSE
-            nfM = 0
-          END IF
-          
+          neM = ElementM % TYPE % NumberOfEdges 
+          nfM = ElementM % BDOFs
+
           k = 0
           ElemCands = ElemCands + 1
           CornerFound = .FALSE.
@@ -6672,8 +6676,21 @@ END SUBROUTINE GetMaxDefs
               CALL GlobalToLocal( u, v, w, xt, yt, zt, Element, Nodes )              
               IF( EdgeBasis ) THEN
                 IF (PiolaVersion) THEN
-                  stat = ElementInfo( Element, Nodes, u, v, w, &
-                      detJ, Basis, dBasisdx,EdgeBasis=WBasis)
+                  ! Take into account that the reference elements are different:
+                  IF (Element % Type % ElementCode/100 == 3) THEN
+                    uq = u
+                    vq = v
+                    u = -1.0d0 + 2.0d0*uq + vq
+                    v = SQRT(3.0d0)*vq
+                  END IF
+                  IF (SecondOrder) THEN
+                    stat = EdgeElementInfo( Element, Nodes, u, v, w, &
+                        DetF = DetJ, Basis = Basis, EdgeBasis = WBasis, &
+                        BasisDegree = 2, ApplyPiolaTransform = .TRUE.)
+                  ELSE
+                    stat = ElementInfo( Element, Nodes, u, v, w, &
+                        detJ, Basis, dBasisdx,EdgeBasis=WBasis)
+                  END IF
                 ELSE
                   stat = ElementInfo( Element, Nodes, u, v, w, &
                       detJ, Basis, dBasisdx )
@@ -6687,8 +6704,21 @@ END SUBROUTINE GetMaxDefs
               CALL GlobalToLocal( um, vm, wm, xt, yt, zt, ElementM, NodesM )
               IF( EdgeBasis ) THEN
                 IF (PiolaVersion) THEN
-                  stat = ElementInfo( ElementM, NodesM, um, vm, wm, &
-                      detJ, Basis, dBasisdx, EdgeBasis=WBasisM)
+                  ! Take into account that the reference elements are different:
+                  IF (ElementM % Type % ElementCode/100 == 3) THEN
+                    uq = um
+                    vq = vm
+                    um = -1.0d0 + 2.0d0*uq + vq
+                    vm = SQRT(3.0d0)*vq
+                  END IF
+                  IF (SecondOrder) THEN
+                    stat = EdgeElementInfo( ElementM, NodesM, um, vm, wm, &
+                        DetF=detJ, Basis=BasisM, EdgeBasis=WBasisM, &
+                        BasisDegree = 2, ApplyPiolaTransform = .TRUE.)                   
+                  ELSE
+                    stat = ElementInfo( ElementM, NodesM, um, vm, wm, &
+                        detJ, BasisM, dBasisdx, EdgeBasis=WBasisM)
+                  END IF
                 ELSE
                   stat = ElementInfo( ElementM, NodesM, um, vm, wm, &
                       detJ, BasisM, dBasisdx )
@@ -6756,55 +6786,113 @@ END SUBROUTINE GetMaxDefs
               END IF
 
               IF( DoEdges ) THEN
-                ! Dofs are numbered as follows:
-                ! 1....number of nodes
-                ! + ( 1 ... number of edges )
-                ! + ( 1 ... 2 x number of faces )
-                !-------------------------------------------
-                DO j=1,ne+nf
-                  
-                  IF( j <= ne ) THEN
-                    jj = Element % EdgeIndexes(j) 
-                    IF( EdgePerm(jj) == 0 ) CYCLE
-                    nrow = EdgeRow0 + EdgePerm(jj)
-                    jj = jj + EdgeCol0
-                    Projector % InvPerm( nrow ) = jj
-                  ELSE
-                    IF( Parallel ) THEN
-                      IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
-                    END IF
+                IF (SecondOrder) THEN
 
-                    jj = 2 * ( ind - 1 ) + ( j - 4 )
-                    nrow = FaceRow0 + jj
-                    jj = 2 * ( Element % ElementIndex - 1) + ( j - 4 ) 
-                    Projector % InvPerm( nrow ) = FaceCol0 + jj
-                  END IF
-                                   
-                  DO i=1,neM+nfM
-                    IF( i <= neM ) THEN
-                      ii = Element % EdgeIndexes(i) + EdgeCol0
+                  DO j=1,2*ne+nf   ! for all slave dofs
+                    IF (j<=2*ne) THEN
+                      edge = 1+(j-1)/2    ! The edge to which the dof is associated
+                      edof = j-2*(edge-1) ! The edge-wise index of the dof
+                      jj = Element % EdgeIndexes(edge) 
+                      IF( EdgePerm(jj) == 0 ) CYCLE
+                      nrow = EdgeRow0 + 2*(EdgePerm(jj)-1) + edof  ! The row to be written
+                      jj = EdgeCol0 + 2*(jj-1) + edof              ! The index of the corresponding DOF
+                      Projector % InvPerm( nrow ) = jj
                     ELSE
-                      ii = 2 * ( Element % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
+                      IF( Parallel ) THEN
+                        IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+                      END IF
+                      fdof = j-2*ne ! The face-wise index of the dof
+                      nrow = FaceRow0 + nf * ( ind - 1 ) + fdof
+                      jj = FaceCol0 + nf * ( Element % ElementIndex - 1) + fdof
+                      Projector % InvPerm( nrow ) = jj
                     END IF
 
-                    val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
-                    IF( ABS( val ) > 1.0e-12 ) THEN
-                      CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                          ii, EdgeCoeff * val ) 
-                    END IF
+                    DO i=1,2*ne+nf ! for all slave dofs
+                      IF( i <= 2*ne ) THEN
+                        edge = 1+(i-1)/2    ! The edge to which the dof is associated
+                        edof = i-2*(edge-1) ! The edge-wise index of the dof
+                        ii = EdgeCol0 + 2*(Element % EdgeIndexes(edge) - 1) + edof
+                      ELSE
+                        fdof = i-2*ne ! The face-wise index of the dof
+                        ii = FaceCol0 + nf * ( Element % ElementIndex - 1) + fdof
+                      END IF
 
-                    IF( i <= neM ) THEN
-                      ii = ElementM % EdgeIndexes(i) + EdgeCol0
-                    ELSE
-                      ii = 2 * ( ElementM % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
-                    END IF                    
-                    val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
-                    IF( ABS( val ) > 1.0e-12 ) THEN
-                      CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
-                          ii, EdgeScale * EdgeCoeff * val  ) 
-                    END IF
+                      val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
+                      IF( ABS( val ) > 1.0e-12 ) THEN
+                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                            ii, EdgeCoeff * val ) 
+                      END IF
+                    END DO
+                    
+                    DO i=1,2*neM+nfM ! for all master dofs
+                      IF( i <= 2*neM ) THEN
+                        edge = 1+(i-1)/2    ! The edge to which the dof is associated
+                        edof = i-2*(edge-1) ! The edge-wise index of the dof
+                        ii = EdgeCol0 + 2*(ElementM % EdgeIndexes(edge) - 1) + edof
+                      ELSE
+                        fdof = i-2*neM ! The face-wise index of the dof
+                        ii = FaceCol0 + nfM * ( ElementM % ElementIndex - 1) + fdof
+                      END IF
+
+                      val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
+                      IF( ABS( val ) > 1.0e-12 ) THEN
+                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                            ii, EdgeScale * EdgeCoeff * val  ) 
+                      END IF
+                    END DO
                   END DO
-                END DO
+
+                ELSE
+                  ! Dofs are numbered as follows:
+                  ! 1....number of nodes
+                  ! + ( 1 ... number of edges )
+                  ! + ( 1 ... 2 x number of faces )
+                  !-------------------------------------------
+                  DO j=1,ne+nf
+
+                    IF( j <= ne ) THEN
+                      jj = Element % EdgeIndexes(j) 
+                      IF( EdgePerm(jj) == 0 ) CYCLE
+                      nrow = EdgeRow0 + EdgePerm(jj)
+                      jj = jj + EdgeCol0
+                      Projector % InvPerm( nrow ) = jj
+                    ELSE
+                      IF( Parallel ) THEN
+                        IF( Element % PartIndex /= ParEnv % MyPe ) CYCLE
+                      END IF
+
+                      jj = 2 * ( ind - 1 ) + ( j - 4 )
+                      nrow = FaceRow0 + jj
+                      jj = 2 * ( Element % ElementIndex - 1) + ( j - 4 ) 
+                      Projector % InvPerm( nrow ) = FaceCol0 + jj
+                    END IF
+
+                    DO i=1,neM+nfM
+                      IF( i <= neM ) THEN
+                        ii = Element % EdgeIndexes(i) + EdgeCol0
+                      ELSE
+                        ii = 2 * ( Element % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
+                      END IF
+
+                      val = Wtemp * SUM( WBasis(j,:) * Wbasis(i,:) ) 
+                      IF( ABS( val ) > 1.0e-12 ) THEN
+                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                            ii, EdgeCoeff * val ) 
+                      END IF
+
+                      IF( i <= neM ) THEN
+                        ii = ElementM % EdgeIndexes(i) + EdgeCol0
+                      ELSE
+                        ii = 2 * ( ElementM % ElementIndex - 1 ) + ( i - 4 ) + FaceCol0
+                      END IF
+                      val = -Wtemp * sgn0 * SUM( WBasis(j,:) * WBasisM(i,:) ) 
+                      IF( ABS( val ) > 1.0e-12 ) THEN
+                        CALL List_AddToMatrixElement(Projector % ListMatrix, nrow, &
+                            ii, EdgeScale * EdgeCoeff * val  ) 
+                      END IF
+                    END DO
+                  END DO
+                END IF
               END IF
             END DO
           END DO
