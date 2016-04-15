@@ -83,7 +83,7 @@
     TCoefIm = GetElectricConductivityTensor(Element,n,'im',CoilBody,CoilType)
     DO i=1,3
        DO j=1,3
-          Tcoef( i,j,1:n ) = CMPLX( REAL(TcoefRe( i,j,1:n )), TCoefIm( i,j,1:n ), KIND=dp)
+          Tcoef( i,j,1:n ) = CMPLX( TcoefRe( i,j,1:n ), TCoefIm( i,j,1:n ), KIND=dp)
        END DO
     END DO
 
