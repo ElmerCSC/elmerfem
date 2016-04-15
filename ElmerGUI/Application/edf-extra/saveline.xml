@@ -40,6 +40,12 @@
             <Whatis> Save data on the line segments defined by two coordinate points. </Whatis>
          </Parameter> 
 
+         <Parameter Widget="Edit" >
+            <Name> Polyline Divisions </Name>
+            <Type> Integer </Type>
+            <Whatis> Define the number of divisions for each polyline segment defined by two coordinate points. </Whatis>
+         </Parameter> 
+
          <Parameter Widget="CheckBox" >
             <Name> Save Axis </Name>
             <Type> Logical </Type>
