@@ -95,7 +95,7 @@
                   RESULT (mu)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => Null()
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -104,7 +104,6 @@
     LOGICAL :: Found
 
     mu=0._dp
-    NULLIFY( Cwrk )
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
       IF (Part=='re') THEN 
@@ -141,7 +140,7 @@
                   RESULT (T)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => Null()
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j, slen, tsize 
     TYPE(Valuelist_t), POINTER :: Material
@@ -152,7 +151,6 @@
 
     IF (.NOT. ASSOCIATED(Element)) CALL Fatal ('GetTensor', 'Element not associated')
     T=0._dp
-    NULLIFY( Cwrk )
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
       slen = LEN_TRIM(varname)
