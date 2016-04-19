@@ -3544,7 +3544,6 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   newy = Rvector(1,noknots);
   if(data->dim == 3) newz = Rvector(1,noknots);
 
-
   for(l=0;l<ncopies[2];l++) {
     for(k=0;k<ncopies[1];k++) {
       for(j=0;j<ncopies[0];j++) {
@@ -3684,6 +3683,12 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   data->x = newx;
   data->y = newy;
   if(data->dim == 3) data->z = newz;
+
+  if( data->bodynamesexist || data->boundarynamesexist ) {
+    printf("Cloning cannot treat names yet, omitting treatment of names for now!\n");
+    data->bodynamesexist = FALSE;
+    data->boundarynamesexist = FALSE;
+  } 
 
   if(info) printf("The mesh was copied to several identical meshes\n");
 
@@ -3888,6 +3893,12 @@ int MirrorMeshes(struct FemType *data,struct BoundaryType *bound,
   data->x = newx;
   data->y = newy;
   if(data->dim == 3) data->z = newz;
+
+  if( data->bodynamesexist || data->boundarynamesexist ) {
+    printf("Mirroring cannot treat names yet, omitting treatment of names for now!\n");
+    data->bodynamesexist = FALSE;
+    data->boundarynamesexist = FALSE;
+  } 
 
   if(info) printf("The mesh was copied to several identical meshes\n");
 
