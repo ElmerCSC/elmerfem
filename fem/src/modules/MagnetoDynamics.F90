@@ -2584,7 +2584,13 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   B => GetMatrix()
   SolverParams => GetSolverParams()
 
-  ALLOCATE(Perm(SIZE(Solver % Variable % Perm)))
+  fixJpot => VariableGet( Mesh % Variables, 'Jfix')
+
+  IF( ASSOCIATED(fixJPot)) THEN
+    Perm => fixJPot % Perm
+  ELSE
+    ALLOCATE(Perm(SIZE(Solver % Variable % Perm)))
+  END IF
   Perm = 0
   dofs = Solver % Variable % DOFs
 
@@ -2604,13 +2610,11 @@ SUBROUTINE JfixPotentialSolver( Model,Solver,dt,Transient )
   n = A % NumberOfRows
   IF (dofs>1) A % COMPLEX = .TRUE.
 
-  fixJpot => VariableGet( Mesh % Variables, 'Jfix')
   IF (.NOT.ASSOCIATED(fixJPot)) THEN
     ALLOCATE(fixpot(n)); fixpot=0._dp
 
     CALL VariableAddVector( Mesh % Variables, Mesh, &
           Solver,'Jfix',dofs,fixpot,Perm)
-!,Output=.FALSE. )
 
     fixJpot => VariableGet(Mesh % Variables, 'Jfix')
   END IF

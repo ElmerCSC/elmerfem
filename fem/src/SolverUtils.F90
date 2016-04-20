@@ -9988,7 +9988,7 @@ END FUNCTION SearchNodeL
 
     IF( DoStiff ) IndStiff = 1
     IF( DoDamp ) IndDamp = IndStiff + 1
-    IF( DoMass ) IndMass = IndDamp + 1
+    IF( DoMass ) IndMass = MAX( IndStiff, IndDamp ) + 1
     IndMax = MAX( IndStiff, IndDamp, IndMass )
 
     IF (Parallel.AND.Cnumbering) THEN
@@ -12360,8 +12360,9 @@ CONTAINS
     END IF
 
     SaveMass = ListGetLogical( Params,'Linear System Save Mass',Found)
-    SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)
-    
+
+    SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)   
+
     dumpprefix = ListGetString( Params, 'Linear System Save Prefix', Found)
     IF(.NOT. Found ) dumpprefix = 'linsys'
 
