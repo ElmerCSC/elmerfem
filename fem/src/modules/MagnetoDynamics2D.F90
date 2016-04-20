@@ -2453,7 +2453,7 @@ CONTAINS
           imag_value = CMPLX(BodyComplexPower(1,j), &
                              BodyComplexPower(2,j), &
                              KIND=dp)
-          imag_value = imag_value*BodyVolumes(j)/(ModelDepth*ValueNorm)**2
+          imag_value = imag_value*BodyVolumes(j)/ValueNorm**2
           imag_value2 = 1._dp/imag_value
           BodySkinCond(1,j) = REAL(imag_value2) 
           BodySkinCond(2,j) = AIMAG(imag_value2) 
