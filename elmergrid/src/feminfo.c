@@ -273,7 +273,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->rotate = FALSE;
   eg->polar = FALSE;
   eg->cylinder = FALSE;
-  eg->usenames = FALSE;
+  eg->usenames = TRUE;
   eg->layers = 0;
   eg->layereps = 0.0;
   eg->layermove = 0;
@@ -584,9 +584,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       printf("The meshes will be united.\n");
     }   
 
-    if(strcmp(argv[arg],"-names") == 0) {
-      eg->usenames = TRUE;
-      printf("Names will be conserved when possible\n");
+    if(strcmp(argv[arg],"-nonames") == 0) {
+      eg->usenames = FALSE;
+      printf("Names will be omitted even if they would exist\n");
     }   
 
     if(strcmp(argv[arg],"-removelowdim") == 0) {
@@ -1023,7 +1023,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else 
       return(2);
   }
-  if(mode == 1) { 
+  else if(mode == 1) { 
     AddExtension(prefix,filename,"eg");
     if ((in = fopen(filename,"r")) == NULL) {
       printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
@@ -1358,6 +1358,10 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else if(strstr(command,"REMOVE UNUSED NODES")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->removeunused = TRUE; 
+    }
+    else if(strstr(command,"NO MESH NAMES")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->usenames = FALSE; 
     }
     else if(strstr(command,"REORDER MATERIAL")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
