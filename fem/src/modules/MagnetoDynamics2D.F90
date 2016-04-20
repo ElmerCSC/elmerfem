@@ -2433,7 +2433,7 @@ CONTAINS
           WRITE (Message,'(A,I0,A,ES12.3)') 'Body ',j,' : ',BodyAvBre(i,j)
           CALL Info('Average Magnetic Flux Density '//TRIM(XYNumber), Message, Level=6 )
           IF (Fluxdofs==4) THEN
-            BodyAvBim(i,j)=BodyAvBim(i,j)/BodyVolumes(j) 
+            BodyAvBim(i,j)=ParallelReduction(BodyAvBim(i,j))*ModelDepth/BodyVolumes(j) 
             WRITE (XYNumber, "(I0)") i 
             WRITE (bodyNumber, "(I0)") j
             CALL ListAddConstReal( Model % Simulation,'res: Average Magnetic Flux Density ' &
@@ -2453,7 +2453,7 @@ CONTAINS
           imag_value = CMPLX(BodyComplexPower(1,j), &
                              BodyComplexPower(2,j), &
                              KIND=dp)
-          imag_value = imag_value*BodyVolumes(j)/(ModelDepth*ValueNorm)**2
+          imag_value = imag_value*BodyVolumes(j)/ValueNorm**2
           imag_value2 = 1._dp/imag_value
           BodySkinCond(1,j) = REAL(imag_value2) 
           BodySkinCond(2,j) = AIMAG(imag_value2) 

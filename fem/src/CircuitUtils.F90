@@ -204,8 +204,8 @@ CONTAINS
     IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentHomogenizationBodyIds', &
                                                          'Component parameters not found!')
     BodyIds => ListGetIntegerArray(ComponentParams, 'Homogenization Parameters Body', Found)
-    IF (.NOT. Found) BodyIds => Null()
-    
+    IF (.NOT. Found) BodyIds => GetComponentBodyIds(Id)
+
 !------------------------------------------------------------------------------
   END FUNCTION GetComponentHomogenizationBodyIds
 !------------------------------------------------------------------------------
