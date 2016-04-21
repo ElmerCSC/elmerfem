@@ -2527,34 +2527,9 @@ CONTAINS
 
     IF (HomogenizationParamCompute) THEN
       DO j = 1,Model % NumberOfBodies
-        ValueNorm = SQRT(BodyCurrent(1,j)**2 + BodyCurrent(2,j)**2)
-        IF (ValueNorm > TINY(ValueNorm)) THEN
-          imag_value = CMPLX(BodyComplexPower(1,j), &
-                             BodyComplexPower(2,j), &
-                             KIND=dp)
-          imag_value = imag_value*BodyVolumes(j)/ValueNorm**2
-          imag_value2 = 1._dp/imag_value
-          BodySkinCond(1,j) = REAL(imag_value2) 
-          BodySkinCond(2,j) = AIMAG(imag_value2) 
-        ELSE
-          BodySkinCond(1,j) = TINY(ValueNorm)
-          BodySkinCond(2,j) = TINY(ValueNorm)
-        END IF
-        ValueNorm = SQRT(BodyAvBre(1,j)**2 + BodyAvBim(2,j)**2)
-        ValueNorm = ValueNorm + SQRT(BodyAvBre(2,j)**2 + BodyAvBim(2,j)**2) 
-        IF (ValueNorm > TINY(ValueNorm)) THEN
-          imag_value = CMPLX(BodyComplexPower(1,j), &
-                             BodyComplexPower(2,j), &
-                             KIND=dp)
-          imag_value = imag_value / im / BodyVolumes(j) / Omega / ValueNorm**2._dp
-!          imag_value = imag_value / (4d-7 * pi) 
-          BodyProxNu(1,j) = REAL(imag_value) 
-          BodyProxNu(2,j) = AIMAG(imag_value) 
-        ELSE
-          BodyProxNu(1,j) = HUGE(ValueNorm)
-          BodyProxNu(2,j) = HUGE(ValueNorm)
-        END IF
-
+        CALL ComputeHomogenizationParams(BodyCurrent(:,j), BodyAvBre(:,j), BodyAvBim(:,j), &
+                                         BodyVolumes(j), BodyComplexPower(:,j), Omega, &
+                                         BodySkinCond(:,j), BodyProxNu(:,j))
         WRITE (bodyNumber, "(I0)") j
       
         OutputComp = ListGetString(Model % Bodies(j) % Values, 'Homogenization Conductivity Output Component', Found)
