@@ -2514,8 +2514,8 @@ CONTAINS
           DO i = 1, 2
             DO k = 1, SIZE(BodyIds)
               bid = BodyIds(k)
-              CirCompAvBre(i,j) = CirCompAvBre(i,j) + BodyAvBre(i,j)
-              CirCompAvBim(i,j) = CirCompAvBim(i,j) + BodyAvBim(i,j)
+              CirCompAvBre(i,j) = CirCompAvBre(i,j) + BodyAvBre(i,bid)
+              CirCompAvBim(i,j) = CirCompAvBim(i,j) + BodyAvBim(i,bid)
             END DO
           END DO
         END IF
