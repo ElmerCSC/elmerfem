@@ -2585,33 +2585,10 @@ CONTAINS
       END DO
 
       DO j = 1, NofComponents
-        ValueNorm = SQRT(CirCompCurrent(1,j)**2 + CirCompCurrent(2,j)**2)
-        IF (ValueNorm > TINY(ValueNorm)) THEN
-          imag_value = CMPLX(CirCompComplexPower(1,j), &
-                             CirCompComplexPower(2,j), &
-                             KIND=dp)
-          imag_value = imag_value*CirCompVolumes(j)/ValueNorm**2
-          imag_value2 = 1._dp/imag_value
-          CirCompSkinCond(1,j) = REAL(imag_value2) 
-          CirCompSkinCond(2,j) = AIMAG(imag_value2) 
-        ELSE
-          CirCompSkinCond(1,j) = TINY(ValueNorm)
-          CirCompSkinCond(2,j) = TINY(ValueNorm)
-        END IF
-        ValueNorm = SQRT(CirCompAvBre(1,j)**2 + CirCompAvBim(2,j)**2)
-        ValueNorm = ValueNorm + SQRT(CirCompAvBre(2,j)**2 + CirCompAvBim(2,j)**2) 
-        IF (ValueNorm > TINY(ValueNorm)) THEN
-          imag_value = CMPLX(CirCompComplexPower(1,j), &
-                             CirCompComplexPower(2,j), &
-                             KIND=dp)
-          imag_value = imag_value / im / CirCompVolumes(j) / Omega / ValueNorm**2._dp
-!          imag_value = imag_value / (4d-7 * pi) 
-          CirCompProxNu(1,j) = REAL(imag_value) 
-          CirCompProxNu(2,j) = AIMAG(imag_value) 
-        ELSE
-          CirCompProxNu(1,j) = HUGE(ValueNorm)
-          CirCompProxNu(2,j) = HUGE(ValueNorm)
-        END IF
+
+        CALL ComputeHomogenizationParams(CirCompCurrent(:,j), CirCompAvBre(:,j), CirCompAvBim(:,j), &
+                                         CirCompVolumes(j), CirCompComplexPower(:,j), Omega, &
+                                         CirCompSkinCond(:,j), CirCompProxNu(:,j))
 
         WRITE (CompNumber, "(I0)") j
   
@@ -2651,6 +2628,50 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
 !------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+ SUBROUTINE ComputeHomogenizationParams(Current, AvBre, AvBim, Volume, ComplexPower, Omega, &
+                                        SkinCond, ProxNu)
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp) :: Current(2), AvBre(2), AvBim(2), Volume, ValueNorm
+    COMPLEX(KIND=dp) :: imag_value, imag_value2
+    REAL(KIND=dp) :: SkinCond(2), ProxNu(2), ComplexPower(2)
+    REAL(KIND=dp) :: Omega
+    COMPLEX(KIND=dp), PARAMETER :: im=(0._dp,1._dp)
+
+    ValueNorm = SQRT(Current(1)**2 + Current(2)**2)
+    IF (ValueNorm > TINY(ValueNorm)) THEN
+      imag_value = CMPLX(ComplexPower(1), &
+                         ComplexPower(2), &
+                         KIND=dp)
+      imag_value = imag_value*Volume/ValueNorm**2
+      imag_value2 = 1._dp/imag_value
+      SkinCond(1) = REAL(imag_value2) 
+      SkinCond(2) = AIMAG(imag_value2) 
+    ELSE
+      SkinCond(1) = TINY(ValueNorm)
+      SkinCond(2) = TINY(ValueNorm)
+    END IF
+    ValueNorm = SQRT(AvBre(1)**2 + AvBim(2)**2)
+    ValueNorm = ValueNorm + SQRT(AvBre(2)**2 + AvBim(2)**2) 
+    IF (ValueNorm > TINY(ValueNorm)) THEN
+      imag_value = CMPLX(ComplexPower(1), &
+                         ComplexPower(2), &
+                         KIND=dp)
+      imag_value = imag_value / im / Volume / Omega / ValueNorm**2._dp
+!          imag_value = imag_value / (4d-7 * pi) 
+      ProxNu(1) = REAL(imag_value) 
+      ProxNu(2) = AIMAG(imag_value) 
+    ELSE
+      ProxNu(1) = HUGE(ValueNorm)
+      ProxNu(2) = HUGE(ValueNorm)
+    END IF
+
+!-------------------------------------------------------------------
+ END SUBROUTINE ComputeHomogenizationParams
+!-------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddLocalFaceTerms(STIFF,FORCE)
