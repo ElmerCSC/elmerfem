@@ -1908,7 +1908,8 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: POT(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:), mu(:)
-    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:), BodyCurrent(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:), BodyCurrent(:,:), &
+                                  CirCompComplexPower(:,:)
     REAL(KIND=dp), ALLOCATABLE :: BodyVolumes(:), BodyAvBim(:,:), BodyAvBre(:,:), &
                                   BodySkinCond(:,:), BodyProxNu(:,:) 
     LOGICAL, ALLOCATABLE :: BodyAverageBCompute(:)
@@ -1984,8 +1985,11 @@ CONTAINS
     END IF
 
     IF ( ComplexPowerCompute ) THEN
-      ALLOCATE( BodyComplexPower(2,Model % NumberOfBodies) )
+      NofComponents = SIZE(Model % Components)
+      ALLOCATE( BodyComplexPower(2,Model % NumberOfBodies), &
+                CirCompComplexPower(2, NofComponents ) )
       BodyComplexPower = 0.0_dp
+      CirCompComplexPower = 0.0_dp
     END IF
 
     IF (BodyICompute) THEN
@@ -2375,7 +2379,6 @@ CONTAINS
       DEALLOCATE( BodyLoss )
     END IF
 
-
     IF (ComplexPowerCompute) THEN
        DO j=1,Model % NumberOfBodies
          DO i = 1, 2
@@ -2391,8 +2394,26 @@ CONTAINS
          CALL ListAddConstReal( Model % Simulation,'res: Power im in Body '&
               //TRIM(bodyNumber)//':', BodyComplexPower(2,j) )
          CALL Info('Compex Power im', Message, Level=6 )
-      END DO
+       END DO
 
+       DO j = 1, NofComponents
+         BodyIds => GetComponentHomogenizationBodyIds(j) ! this will fall back to GetComponentBodyIds()
+
+         IF (ASSOCIATED(BodyIds)) THEN
+           DO i = 1, 2
+             DO k = 1, SIZE(BodyIds)
+               bid = BodyIds(k)
+               CirCompComplexPower(1,j) = CirCompComplexPower(1,j) + BodyComplexPower(1,j)
+               CirCompComplexPower(2,j) = CirCompComplexPower(2,j) + BodyComplexPower(2,j)
+             END DO
+           END DO
+  
+           CALL ListAddConstReal( Model % Simulation,'res: p_component(' &
+                         //TRIM(i2s(j))//') re ', CirCompComplexPower(1,j) )
+           CALL ListAddConstReal( Model % Simulation,'res: p_component(' &
+                         //TRIM(i2s(j))//') im ', CirCompComplexPower(2,j) )
+         END IF
+       END DO
     END IF
 
     IF ( BodyVolumesCompute ) THEN
