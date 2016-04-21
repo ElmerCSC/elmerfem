@@ -2007,7 +2007,7 @@ CONTAINS
       ALLOCATE( BodyAvBre(2,Model % NumberOfBodies), &
                 BodyAvBim(2,Model % NumberOfBodies), &
                 BodyAverageBCompute(Model % NumberOfBodies), &
-                CirCompAvBre(1,NofComponents), &
+                CirCompAvBre(2,NofComponents), &
                 CirCompAvBim(2,NofComponents) )
               
       BodyAvBre = 0._dp
@@ -2475,7 +2475,7 @@ CONTAINS
           DO i = 1, 2
             DO k = 1, SIZE(BodyIds)
               bid = BodyIds(k)
-              CirCompCurrent(i,j) = CirCompCurrent(i,j) + BodyCurrent(1,bid)
+              CirCompCurrent(i,j) = CirCompCurrent(i,j) + BodyCurrent(i,bid)
             END DO
           END DO
         END IF
@@ -2514,8 +2514,10 @@ CONTAINS
           DO i = 1, 2
             DO k = 1, SIZE(BodyIds)
               bid = BodyIds(k)
-              CirCompAvBre(i,j) = CirCompAvBre(i,j) + BodyAvBre(i,bid)
-              CirCompAvBim(i,j) = CirCompAvBim(i,j) + BodyAvBim(i,bid)
+              CirCompAvBre(i,j) = CirCompAvBre(i,j) & 
+                  + BodyVolumes(bid)/CirCompVolumes(j) * BodyAvBre(i,bid)
+              CirCompAvBim(i,j) = CirCompAvBim(i,j) &
+                  + BodyVolumes(bid)/CirCompVolumes(j) * BodyAvBim(i,bid)
             END DO
           END DO
         END IF
