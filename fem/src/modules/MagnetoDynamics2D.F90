@@ -2609,38 +2609,41 @@ CONTAINS
                                         SkinCond, ProxNu)
 !-------------------------------------------------------------------
     IMPLICIT NONE
-    REAL(KIND=dp) :: Current(2), AvBre(2), AvBim(2), Volume, ValueNorm
-    COMPLEX(KIND=dp) :: imag_value, imag_value2
+    REAL(KIND=dp) :: Current(2), AvBre(2), AvBim(2), Volume
+    COMPLEX(KIND=dp) :: imag_value, imag_value2, Bav(2), I
     REAL(KIND=dp) :: SkinCond(2), ProxNu(2), ComplexPower(2)
     REAL(KIND=dp) :: Omega
     COMPLEX(KIND=dp), PARAMETER :: im=(0._dp,1._dp)
 
-    ValueNorm = SQRT(Current(1)**2 + Current(2)**2)
-    IF (ValueNorm > TINY(ValueNorm)) THEN
+    IF (Current(1) > TINY(Omega) .OR. Current(2) > TINY(Omega)) THEN
       imag_value = CMPLX(ComplexPower(1), &
                          ComplexPower(2), &
                          KIND=dp)
-      imag_value = imag_value*Volume/ValueNorm**2
+      I = CMPLX(Current(1), Current(2))
+      imag_value = imag_value*Volume/I**2._dp
       imag_value2 = 1._dp/imag_value
       SkinCond(1) = REAL(imag_value2) 
       SkinCond(2) = AIMAG(imag_value2) 
     ELSE
-      SkinCond(1) = TINY(ValueNorm)
-      SkinCond(2) = TINY(ValueNorm)
+      SkinCond(1) = TINY(Omega)
+      SkinCond(2) = TINY(Omega)
     END IF
-    ValueNorm = SQRT(AvBre(1)**2 + AvBim(2)**2)
-    ValueNorm = ValueNorm + SQRT(AvBre(2)**2 + AvBim(2)**2) 
-    IF (ValueNorm > TINY(ValueNorm)) THEN
+
+    IF ( AvBre(1) > TINY(Omega) .OR. AvBre(2) > TINY(Omega) .OR. &
+         AvBim(1) > TINY(Omega) .OR. AvBim(2) > TINY(Omega)         ) THEN
+      Bav(1) = CMPLX(AvBre(1), AvBim(1), KIND=dp)
+      Bav(2) = CMPLX(AvBre(2), AvBim(2), KIND=dp)
+
       imag_value = CMPLX(ComplexPower(1), &
                          ComplexPower(2), &
                          KIND=dp)
-      imag_value = imag_value / im / Volume / Omega / ValueNorm**2._dp
-!          imag_value = imag_value / (4d-7 * pi) 
+      imag_value = imag_value / im / Volume / Omega / (Bav(1)**2._dp+Bav(2)**2._dp)
+
       ProxNu(1) = REAL(imag_value) 
       ProxNu(2) = AIMAG(imag_value) 
     ELSE
-      ProxNu(1) = HUGE(ValueNorm)
-      ProxNu(2) = HUGE(ValueNorm)
+      ProxNu(1) = HUGE(Omega)
+      ProxNu(2) = HUGE(Omega)
     END IF
 
 !-------------------------------------------------------------------
