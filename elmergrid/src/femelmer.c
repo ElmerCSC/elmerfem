@@ -513,7 +513,7 @@ static int Getnamerow(char *line,FILE *io,int upper)
 
 
 int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int info)
+		   char *prefix,int nonames, int info)
 /* This procedure reads the mesh assuming ElmerSolver format.
    */
 {
@@ -709,11 +709,17 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   sprintf(filename,"%s","mesh.names");
   if (in = fopen(filename,"r") ) {
-    int isbody,started;
+    int isbody,started,nameproblem;
+    
+    isbody = TRUE;
+    nameproblem = FALSE;
+
+    if( nonames ) {
+      printf("Ignoring > mesh.names < because it was explicitely requested!\n");
+      goto namesend;
+    }
 
     if(info) printf("Loading names for mesh parts from file %s\n",filename);
-
-    isbody = TRUE;
 
     for(;;) {
       if(Getnamerow(line,in,FALSE)) goto namesend;
@@ -764,16 +770,34 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
      
       /* Copy the entityname to mesh structure */
       if( isbody ) {
-	strcpy(data->bodyname[j],line2);	
-	data->bodynamesexist = TRUE;
+	if(j < 0 || j > MAXBODIES ) {
+	  printf("Cannot treat names for body %d\n",j);
+	  nameproblem = TRUE;
+	}
+	else {
+	  strcpy(data->bodyname[j],line2);	
+	  data->bodynamesexist = TRUE;
+	}
       }
       else {
-	strcpy(data->boundaryname[j],line2);	
-	data->boundarynamesexist = TRUE;
+	if(j < 0 || j > MAXBOUNDARIES ) {
+	  printf("Cannot treat names for boundary %d\n",j);
+	  nameproblem = TRUE;
+	}
+	else {
+	  strcpy(data->boundaryname[j],line2);	
+	  data->boundarynamesexist = TRUE;
+	}
       }
     }
+    namesend:
+
+    if( nameproblem ) {
+      data->boundarynamesexist = FALSE;
+      data->bodynamesexist = FALSE;
+      printf("Warning: omitting use of names because the indexes are beyond range, code some more...\n");
+    }
   }
-  namesend:
 
   if(!cdstat) chdir("..");
 
