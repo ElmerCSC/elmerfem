@@ -1910,6 +1910,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: Cond(:), mu(:)
     REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:), BodyCurrent(:,:), &
                                   CirCompComplexPower(:,:), CirCompCurrent(:,:)
+    COMPLEX(KIND=dp) :: cmplx_power 
     REAL(KIND=dp), ALLOCATABLE :: BodyVolumes(:), BodyAvBim(:,:), BodyAvBre(:,:), &
                                   BodySkinCond(:,:), BodyProxNu(:,:), &
                                   CirCompVolumes(:), CirCompAvBim(:,:), CirCompAvBre(:,:), &
@@ -2269,22 +2270,23 @@ CONTAINS
         END IF
 
         IF (ComplexPowerCompute) THEN
+          cmplx_power = 0._dp
           imag_value = CMPLX(BAtIp(7), BAtIp(8))
 
           MuAtIp = SUM( Basis(1:n) * mu(1:n) )
 
           IF ( ABS(CondAtIp) > TINY(Weight) ) THEN
-            BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) + ModelDepth * Weight * imag_value**2._dp / CondAtIp
+            cmplx_power = cmplx_power + ModelDepth * Weight * imag_value**2._dp / CondAtIp 
           END IF
 
           imag_value = CMPLX(BatIp(1), BatIp(3), KIND=dp)
           imag_value2 = CMPLX(BatIp(2), BatIp(4), KIND=dp)
-          BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + &
-                         ModelDepth * Weight * Omega/MuAtIp * (imag_value**2._dp+imag_value2**2._dp)
-          
+          cmplx_power = cmplx_power + im * ModelDepth * Weight * Omega/MuAtIp * (imag_value**2._dp+imag_value2**2._dp)
+
+          BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) +  REAL(cmplx_power)
+          BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + AIMAG(cmplx_power)
         END IF
 
-       
         IF (BodyVolumesCompute) THEN
           BodyVolumes(BodyId) = BodyVolumes(BodyId) + Weight * ModelDepth
         END IF
