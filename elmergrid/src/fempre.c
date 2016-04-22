@@ -163,6 +163,7 @@ static void Instructions()
   printf("-3d / -2d / -1d      : mesh is 3, 2 or 1-dimensional (applies to examples)\n");
   printf("-isoparam            : ensure that higher order elements are convex\n");
   printf("-nobound             : disable saving of boundary elements in ElmerPost format\n");
+  printf("-nonames             : disable use of mesh.names even if it would be supported by the format\n");
   printf("-nosave              : disable saving part alltogether\n");
   printf("-nooverwrite         : if mesh already exists don't overwite it\n");
   printf("-timer               : show timer information\n");
@@ -231,10 +232,12 @@ int main(int argc, char *argv[])
 
   if(argc <= 1) {
     errorstat = LoadCommands(argv[1],&eg,grids,argc-1,info);     
-    Instructions();
-    if(errorstat) Goodbye();
+    if(errorstat) {
+      Instructions();
+      Goodbye();
+    }
   }
-  if(argc == 2) {
+  else if(argc == 2) {
     errorstat = LoadCommands(argv[1],&eg,grids,argc-1,info);     
     if(errorstat) Goodbye();
   }
@@ -305,7 +308,8 @@ int main(int argc, char *argv[])
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
-    if(LoadElmerInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],info))
+    if(LoadElmerInput(&(data[nofile]),boundaries[nofile],eg.filesin[nofile],
+		      !eg.usenames,info))
       Goodbye();
     nomeshes++;
     break;
@@ -351,7 +355,7 @@ int main(int argc, char *argv[])
       boundaries[nofile][i].created = FALSE; 
       boundaries[nofile][i].nosides = 0;
     }
-    if(0 && !eg.usenames) data[nofile].boundarynamesexist = data[nofile].bodynamesexist = FALSE;
+    if(!eg.usenames) data[nofile].boundarynamesexist = data[nofile].bodynamesexist = FALSE;
     ElementsToBoundaryConditions(&(data[nofile]),boundaries[nofile],FALSE,TRUE);
     RenumberBoundaryTypes(&data[nofile],boundaries[nofile],TRUE,0,info);
   

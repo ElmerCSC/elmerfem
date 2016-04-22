@@ -1742,7 +1742,7 @@ SUBROUTINE Bsolver( Model,Solver,dt,Transient )
   TYPE(Variable_t), POINTER :: FluxSol, HeatingSol, JouleSol, AzSol
   LOGICAL ::  CSymmetry, LossEstimation, JouleHeating, ComplexPowerCompute,&
               AverageBCompute, BodyICompute, BodyVolumesCompute = .FALSE., &
-              HomogenizationParamCompute
+              CirCompVolumesCompute = .FALSE., HomogenizationParamCompute
   TYPE(Matrix_t),POINTER::CM
   REAL(KIND=dp) :: Omega
   
@@ -1908,9 +1908,13 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: POT(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:)
     REAL(KIND=dp), ALLOCATABLE :: Cond(:), mu(:)
-    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:), BodyCurrent(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: BodyLoss(:), BodyComplexPower(:,:), BodyCurrent(:,:), &
+                                  CirCompComplexPower(:,:), CirCompCurrent(:,:)
+    COMPLEX(KIND=dp) :: cmplx_power 
     REAL(KIND=dp), ALLOCATABLE :: BodyVolumes(:), BodyAvBim(:,:), BodyAvBre(:,:), &
-                                  BodySkinCond(:,:), BodyProxNu(:,:) 
+                                  BodySkinCond(:,:), BodyProxNu(:,:), &
+                                  CirCompVolumes(:), CirCompAvBim(:,:), CirCompAvBre(:,:), &
+                                  CirCompSkinCond(:,:), CirCompProxNu(:,:) 
     LOGICAL, ALLOCATABLE :: BodyAverageBCompute(:)
 
     REAL(KIND=dp), ALLOCATABLE :: alpha(:)
@@ -1930,7 +1934,6 @@ CONTAINS
     INTEGER :: NofComponents=0, bid
     INTEGER, POINTER :: BodyIds(:)
     REAL(KIND=DP) :: Vol
-    REAL(KIND=dp), ALLOCATABLE :: ComponentSkinCond(:,:), ComponentProxNu(:,:)
     CHARACTER(LEN=MAX_NAME_LEN) :: CompNumber, OutputComp
     
     LOGICAL :: StrandedHomogenization, FoundIm
@@ -1967,39 +1970,53 @@ CONTAINS
     END IF
 
     IF (HomogenizationParamCompute) THEN
+      NofComponents = SIZE(Model % Components)
       Omega = GetAngularFrequency()
       CALL ListAddConstReal( Model % Simulation, 'res: Angular Frequency', Omega)
       NofComponents = SIZE(Model % Components)
       ALLOCATE(BodySkinCond(2, Model % NumberOfBodies), &
                  BodyProxNu(2, Model % NumberOfBodies), &
-                   ComponentSkinCond(2, NofComponents), &
-                     ComponentProxNu(2, NofComponents)   )
+                 CirCompSkinCond(2, Model % NumberOfBodies), &
+                 CirCompProxNu(2, Model % NumberOfBodies))
       BodySkinCond = 0.0_dp
       BodyProxNu = 0.0_dp      
-      ComponentSkinCond = 0.0_dp
-      ComponentProxNu = 0.0_dp
+      CirCompSkinCond = 0.0_dp
+      CirCompProxNu = 0.0_dp
       BodyICompute = .TRUE.
       ComplexPowerCompute = .TRUE.
       AverageBCompute = .TRUE.
     END IF
 
     IF ( ComplexPowerCompute ) THEN
-      ALLOCATE( BodyComplexPower(2,Model % NumberOfBodies) )
+      NofComponents = SIZE(Model % Components)
+      ALLOCATE( BodyComplexPower(2,Model % NumberOfBodies), &
+                CirCompComplexPower(2, NofComponents ) )
       BodyComplexPower = 0.0_dp
+      CirCompComplexPower = 0.0_dp
     END IF
 
     IF (BodyICompute) THEN
+      NofComponents = SIZE(Model % Components)
       ALLOCATE(BodyCurrent(2, Model % NumberOfBodies))
+      ALLOCATE(CirCompCurrent(2, Model % NumberOfBodies))
       BodyCurrent = 0.0_dp
+      CirCompCurrent = 0.0_dp
     END IF
 
     IF ( AverageBCompute ) THEN
+      NofComponents = SIZE(Model % Components)
       ALLOCATE( BodyAvBre(2,Model % NumberOfBodies), &
                 BodyAvBim(2,Model % NumberOfBodies), &
-                BodyAverageBCompute(Model % NumberOfBodies) )
+                BodyAverageBCompute(Model % NumberOfBodies), &
+                CirCompAvBre(2,NofComponents), &
+                CirCompAvBim(2,NofComponents) )
+              
       BodyAvBre = 0._dp
       BodyAvBim = 0._dp
       BodyVolumesCompute = .TRUE.        
+      CirCompAvBre = 0.0_dp
+      CirCompAvBim = 0.0_dp
+      CirCompVolumesCompute = .TRUE.        
 
       DO i = 1, Model % NumberOfBodies
         BodyAverageBCompute(i) = ListGetLogical(Model % Bodies(i) % Values, 'Compute Average Magnetic Flux Density', Found)
@@ -2010,6 +2027,12 @@ CONTAINS
     IF ( BodyVolumesCompute ) THEN
       ALLOCATE( BodyVolumes(Model % NumberOfBodies) )
       BodyVolumes = 0._dp
+    END IF
+
+    IF ( CirCompVolumesCompute ) THEN
+      NofComponents = SIZE(Model % Components)
+      ALLOCATE( CirCompVolumes(NofComponents) )
+      CirCompVolumes = 0._dp
     END IF
 
     DO elem = 1,GetNOFActive()
@@ -2247,22 +2270,23 @@ CONTAINS
         END IF
 
         IF (ComplexPowerCompute) THEN
+          cmplx_power = 0._dp
           imag_value = CMPLX(BAtIp(7), BAtIp(8))
 
           MuAtIp = SUM( Basis(1:n) * mu(1:n) )
 
           IF ( ABS(CondAtIp) > TINY(Weight) ) THEN
-            BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) + ModelDepth * Weight * imag_value**2._dp / CondAtIp
+            cmplx_power = cmplx_power + ModelDepth * Weight * imag_value**2._dp / CondAtIp 
           END IF
 
           imag_value = CMPLX(BatIp(1), BatIp(3), KIND=dp)
           imag_value2 = CMPLX(BatIp(2), BatIp(4), KIND=dp)
-          BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + &
-                         ModelDepth * Weight * Omega/MuAtIp * (imag_value**2._dp+imag_value2**2._dp)
-          
+          cmplx_power = cmplx_power + im * ModelDepth * Weight * Omega/MuAtIp * (imag_value**2._dp+imag_value2**2._dp)
+
+          BodyComplexPower(1,BodyId)=BodyComplexPower(1,BodyId) +  REAL(cmplx_power)
+          BodyComplexPower(2,BodyId)=BodyComplexPower(2,BodyId) + AIMAG(cmplx_power)
         END IF
 
-       
         IF (BodyVolumesCompute) THEN
           BodyVolumes(BodyId) = BodyVolumes(BodyId) + Weight * ModelDepth
         END IF
@@ -2375,7 +2399,6 @@ CONTAINS
       DEALLOCATE( BodyLoss )
     END IF
 
-
     IF (ComplexPowerCompute) THEN
        DO j=1,Model % NumberOfBodies
          DO i = 1, 2
@@ -2391,13 +2414,42 @@ CONTAINS
          CALL ListAddConstReal( Model % Simulation,'res: Power im in Body '&
               //TRIM(bodyNumber)//':', BodyComplexPower(2,j) )
          CALL Info('Compex Power im', Message, Level=6 )
-      END DO
+       END DO
 
+       DO j = 1, NofComponents
+         BodyIds => GetComponentHomogenizationBodyIds(j) ! this will fall back to GetComponentBodyIds()
+
+         IF (ASSOCIATED(BodyIds)) THEN
+           DO i = 1, 2
+             DO k = 1, SIZE(BodyIds)
+               bid = BodyIds(k)
+               CirCompComplexPower(i,j) = CirCompComplexPower(i,j) + BodyComplexPower(i,bid)
+             END DO
+           END DO
+  
+           CALL ListAddConstReal( Model % Simulation,'res: p_component(' &
+                         //TRIM(i2s(j))//') re ', CirCompComplexPower(1,j) )
+           CALL ListAddConstReal( Model % Simulation,'res: p_component(' &
+                         //TRIM(i2s(j))//') im ', CirCompComplexPower(2,j) )
+         END IF
+       END DO
     END IF
 
     IF ( BodyVolumesCompute ) THEN
       DO j=1,Model % NumberOfBodies
         BodyVolumes(j) = ParallelReduction(BodyVolumes(j))
+      END DO
+    END IF
+
+    IF ( CirCompVolumesCompute ) THEN
+      DO j=1,NofComponents
+         BodyIds => GetComponentHomogenizationBodyIds(j) ! this will fall back to GetComponentBodyIds()
+        IF (ASSOCIATED(BodyIds)) THEN
+           DO k = 1, SIZE(BodyIds)
+             bid = BodyIds(k)
+             CirCompVolumes(j) = CirCompVolumes(j) + BodyVolumes(bid)
+           END DO
+        END IF
       END DO
     END IF
  
@@ -2418,6 +2470,19 @@ CONTAINS
           CALL Info('Body Current im', Message, Level=6 )
           END IF
       END DO
+
+      DO j = 1, NofComponents
+        BodyIds => GetComponentHomogenizationBodyIds(j) ! this will fall back to GetComponentBodyIds()
+        IF (ASSOCIATED(BodyIds)) THEN
+          DO i = 1, 2
+            DO k = 1, SIZE(BodyIds)
+              bid = BodyIds(k)
+              CirCompCurrent(i,j) = CirCompCurrent(i,j) + BodyCurrent(i,bid)
+            END DO
+          END DO
+        END IF
+      END DO
+ 
     END IF
  
     IF (AverageBCompute) THEN
@@ -2444,38 +2509,29 @@ CONTAINS
           END IF
         END DO
       END DO
+
+      DO j = 1, NofComponents
+        BodyIds => GetComponentHomogenizationBodyIds(j) ! this will fall back to GetComponentBodyIds()
+        IF (ASSOCIATED(BodyIds)) THEN
+          DO i = 1, 2
+            DO k = 1, SIZE(BodyIds)
+              bid = BodyIds(k)
+              CirCompAvBre(i,j) = CirCompAvBre(i,j) & 
+                  + BodyVolumes(bid)/CirCompVolumes(j) * BodyAvBre(i,bid)
+              CirCompAvBim(i,j) = CirCompAvBim(i,j) &
+                  + BodyVolumes(bid)/CirCompVolumes(j) * BodyAvBim(i,bid)
+            END DO
+          END DO
+        END IF
+      END DO
+
     END IF
 
     IF (HomogenizationParamCompute) THEN
       DO j = 1,Model % NumberOfBodies
-        ValueNorm = SQRT(BodyCurrent(1,j)**2 + BodyCurrent(2,j)**2)
-        IF (ValueNorm > TINY(ValueNorm)) THEN
-          imag_value = CMPLX(BodyComplexPower(1,j), &
-                             BodyComplexPower(2,j), &
-                             KIND=dp)
-          imag_value = imag_value*BodyVolumes(j)/ValueNorm**2
-          imag_value2 = 1._dp/imag_value
-          BodySkinCond(1,j) = REAL(imag_value2) 
-          BodySkinCond(2,j) = AIMAG(imag_value2) 
-        ELSE
-          BodySkinCond(1,j) = TINY(ValueNorm)
-          BodySkinCond(2,j) = TINY(ValueNorm)
-        END IF
-        ValueNorm = SQRT(BodyAvBre(1,j)**2 + BodyAvBim(2,j)**2)
-        ValueNorm = ValueNorm + SQRT(BodyAvBre(2,j)**2 + BodyAvBim(2,j)**2) 
-        IF (ValueNorm > TINY(ValueNorm)) THEN
-          imag_value = CMPLX(BodyComplexPower(1,j), &
-                             BodyComplexPower(2,j), &
-                             KIND=dp)
-          imag_value = imag_value / im / BodyVolumes(j) / Omega / ValueNorm**2._dp
-!          imag_value = imag_value / (4d-7 * pi) 
-          BodyProxNu(1,j) = REAL(imag_value) 
-          BodyProxNu(2,j) = AIMAG(imag_value) 
-        ELSE
-          BodyProxNu(1,j) = HUGE(ValueNorm)
-          BodyProxNu(2,j) = HUGE(ValueNorm)
-        END IF
-
+        CALL ComputeHomogenizationParams(BodyCurrent(:,j), BodyAvBre(:,j), BodyAvBim(:,j), &
+                                         BodyVolumes(j), BodyComplexPower(:,j), Omega, &
+                                         BodySkinCond(:,j), BodyProxNu(:,j))
         WRITE (bodyNumber, "(I0)") j
       
         OutputComp = ListGetString(Model % Bodies(j) % Values, 'Homogenization Conductivity Output Component', Found)
@@ -2506,58 +2562,96 @@ CONTAINS
       END DO
 
       DO j = 1, NofComponents
-        BodyIds => GetComponentHomogenizationBodyIds(j)
 
-        IF (ASSOCIATED(BodyIds)) THEN
-          DO i = 1, 2
-            Vol = 0._dp
-            DO k = 1, SIZE(BodyIds)
-              bid = BodyIds(k)
-              Vol = Vol + BodyVolumes(bid)
-              ComponentSkinCond(i,j) = ComponentSkinCond(i,j) &
-                     + BodySkinCond(i,bid) * BodyVolumes(bid)
-              ComponentProxNu(i,j) = ComponentProxNu(i,j) &
-                     + BodyProxNu(i,bid) * BodyVolumes(bid)
-            END DO
-            ComponentSkinCond(i,j) = ComponentSkinCond(i,j)/Vol
-            ComponentProxNu(i,j) = ComponentProxNu(i,j)/Vol
-          END DO
+        CALL ComputeHomogenizationParams(CirCompCurrent(:,j), CirCompAvBre(:,j), CirCompAvBim(:,j), &
+                                         CirCompVolumes(j), CirCompComplexPower(:,j), Omega, &
+                                         CirCompSkinCond(:,j), CirCompProxNu(:,j))
+
+        WRITE (CompNumber, "(I0)") j
   
-          WRITE (CompNumber, "(I0)") j
+        OutputComp = ListGetString(Model % Components(j) % Values, 'Homogenization Conductivity Output Component', Found)
+        IF (Found) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: sigma_'//TRIM(OutputComp)//'_component(' &
+                      //TRIM(CompNumber)//') re ', CirCompSkinCond(1,j) )
+          CALL ListAddConstReal( Model % Simulation,'res: sigma_'//TRIM(OutputComp)//'_component(' &
+                      //TRIM(CompNumber)//') im ', CirCompSkinCond(2,j) )
+        END IF
   
-          OutputComp = ListGetString(Model % Components(j) % Values, 'Homogenization Conductivity Output Component', Found)
-          IF (Found) THEN
-            CALL ListAddConstReal( Model % Simulation,'res: sigma_'//TRIM(OutputComp)//'_component(' &
-                        //TRIM(CompNumber)//') re ', ComponentSkinCond(1,j) )
-            CALL ListAddConstReal( Model % Simulation,'res: sigma_'//TRIM(OutputComp)//'_component(' &
-                        //TRIM(CompNumber)//') im ', ComponentSkinCond(2,j) )
-          END IF
-  
-          OutputComp = ListGetString(Model % Components(j) % Values, 'Homogenization Reluctivity Output Component', Found)
-          IF (Found) THEN
-            CALL ListAddConstReal( Model % Simulation,'res: nu_'//TRIM(OutputComp)//'_component(' &
-                        //TRIM(CompNumber)//') re ', ComponentProxNu(1,j) )
-            CALL ListAddConstReal( Model % Simulation,'res: nu_'//TRIM(OutputComp)//'_component(' &
-                        //TRIM(CompNumber)//') im ', ComponentProxNu(2,j) )
-          END IF
+        OutputComp = ListGetString(Model % Components(j) % Values, 'Homogenization Reluctivity Output Component', Found)
+        IF (Found) THEN
+          CALL ListAddConstReal( Model % Simulation,'res: nu_'//TRIM(OutputComp)//'_component(' &
+                      //TRIM(CompNumber)//') re ', CirCompProxNu(1,j) )
+          CALL ListAddConstReal( Model % Simulation,'res: nu_'//TRIM(OutputComp)//'_component(' &
+                      //TRIM(CompNumber)//') im ', CirCompProxNu(2,j) )
         END IF
       END DO
    END IF
 
     IF (BodyVolumesCompute)         DEALLOCATE(BodyVolumes)
+    IF (CirCompVolumesCompute)      DEALLOCATE(CirCompVolumes)
     IF (AverageBCompute)            DEALLOCATE(BodyAvBre, BodyAvBim)
+    IF (AverageBCompute)            DEALLOCATE(CirCompAvBre, CirCompAvBim)
     IF (BodyICompute)               DEALLOCATE(BodyCurrent)
+    IF (BodyICompute)               DEALLOCATE(CirCompCurrent)
     IF (ComplexPowerCompute)        DEALLOCATE(BodyComplexPower)
+    IF (ComplexPowerCompute)        DEALLOCATE(CirCompComplexPower)
     IF (HomogenizationParamCompute) DEALLOCATE(BodySkinCond     ,  &
                                             BodyProxNu       ,  & 
-                                            ComponentSkinCond,  & 
-                                            ComponentProxNu      )
+                                            CirCompSkinCond,  & 
+                                            CirCompProxNu      )
 
     DEALLOCATE( POT, STIFF, FORCE, Basis, dBasisdx, mu, Cond, sigma_33, sigmaim_33 )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly
 !------------------------------------------------------------------------------
+
+!-------------------------------------------------------------------
+ SUBROUTINE ComputeHomogenizationParams(Current, AvBre, AvBim, Volume, ComplexPower, Omega, &
+                                        SkinCond, ProxNu)
+!-------------------------------------------------------------------
+    IMPLICIT NONE
+    REAL(KIND=dp) :: Current(2), AvBre(2), AvBim(2), Volume
+    COMPLEX(KIND=dp) :: imag_value, imag_value2, Bav(2), I
+    REAL(KIND=dp) :: SkinCond(2), ProxNu(2), ComplexPower(2)
+    REAL(KIND=dp) :: Omega
+    COMPLEX(KIND=dp), PARAMETER :: im=(0._dp,1._dp)
+
+    IF (Current(1) > TINY(Omega) .OR. Current(2) > TINY(Omega)) THEN
+      imag_value = CMPLX(ComplexPower(1), &
+                         ComplexPower(2), &
+                         KIND=dp)
+      I = CMPLX(Current(1), Current(2))
+      imag_value = imag_value*Volume/I**2._dp
+      imag_value2 = 1._dp/imag_value
+      SkinCond(1) = REAL(imag_value2) 
+      SkinCond(2) = AIMAG(imag_value2) 
+    ELSE
+      SkinCond(1) = TINY(Omega)
+      SkinCond(2) = TINY(Omega)
+    END IF
+
+    IF ( AvBre(1) > TINY(Omega) .OR. AvBre(2) > TINY(Omega) .OR. &
+         AvBim(1) > TINY(Omega) .OR. AvBim(2) > TINY(Omega)         ) THEN
+      Bav(1) = CMPLX(AvBre(1), AvBim(1), KIND=dp)
+      Bav(2) = CMPLX(AvBre(2), AvBim(2), KIND=dp)
+
+      imag_value = CMPLX(ComplexPower(1), &
+                         ComplexPower(2), &
+                         KIND=dp)
+      imag_value = imag_value / im / Volume / Omega / (Bav(1)**2._dp+Bav(2)**2._dp)
+
+      ProxNu(1) = REAL(imag_value) 
+      ProxNu(2) = AIMAG(imag_value) 
+    ELSE
+      ProxNu(1) = HUGE(Omega)
+      ProxNu(2) = HUGE(Omega)
+    END IF
+
+!-------------------------------------------------------------------
+ END SUBROUTINE ComputeHomogenizationParams
+!-------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE AddLocalFaceTerms(STIFF,FORCE)
