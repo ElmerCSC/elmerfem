@@ -904,10 +904,8 @@ int main(int argc, char *argv[])
     int partoptim, partbcoptim, partopt, fail, partdual;
 
     if( eg.metis == 1 ) {
-      if(!eg.connect) {
-	if(info) printf("One Metis partition requested, enforcing serial mode\n");
-	eg.metis = 0;
-      }
+      if(info) printf("One Metis partition requested, enforcing serial mode\n");
+      eg.metis = 0;
     }
 
     if( eg.partitions == 1 ) {
