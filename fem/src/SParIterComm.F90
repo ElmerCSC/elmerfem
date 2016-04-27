@@ -510,10 +510,6 @@ CONTAINS
   END SUBROUTINE FindActivePEs
 !-----------------------------------------------------------------------
 
-
-!-----------------------------------------------------------------------
-!> Try to agree about global numbering of nodes among active
-!> processes.
 !-----------------------------------------------------------------------
   SUBROUTINE AddToCommonList( list, ENTRY )
 !-----------------------------------------------------------------------
@@ -542,6 +538,34 @@ CONTAINS
 !-----------------------------------------------------------------------
   END SUBROUTINE AddToCommonList
 !-----------------------------------------------------------------------  
+
+!-----------------------------------------------------------------------
+ SUBROUTINE SyncNeighbours(ParEnv)
+!-----------------------------------------------------------------------
+  TYPE(ParEnv_t) :: ParEnv
+!-----------------------------------------------------------------------
+  LOGICAL :: L
+  INTEGER :: i, ierr, status(MPI_STATUS_SIZE)
+!-----------------------------------------------------------------------
+  DO i=1,ParEnv % PEs
+    IF(Parenv % Mype==i-1) CYCLE
+    IF(ParEnv % Active(i)) &
+      CALL MPI_BSEND( ParEnv % IsNeighbour(i),1, &
+                 MPI_LOGICAL,i-1,1410,MPI_COMM_WORLD,ierr)
+  END DO
+
+  DO i=1,ParEnv % PEs
+    IF(Parenv % Mype==i-1) CYCLE
+    IF(ParEnv % Active(i)) THEN
+      CALL MPI_RECV( L,1,MPI_LOGICAL,i-1,1410,MPI_COMM_WORLD,status,ierr)
+      IF(L) ParEnv % IsNeighbour(i) = .TRUE.
+    END IF
+  END DO
+  Parenv % IsNeighbour(Parenv % myPE+1) = .FALSE.
+  Parenv % NumOfNeighbours = COUNT(Parenv % IsNeighbour)
+!-----------------------------------------------------------------------
+  END SUBROUTINE SyncNeighbours
+!-----------------------------------------------------------------------
 
 !-----------------------------------------------------------------------  
   FUNCTION MeshNeighbours(Mesh,IsNeighbour) RESULT(num)

@@ -160,7 +160,7 @@ CONTAINS
   END SUBROUTINE ElmerSolver
   
   !------------------------------------------------------------------------------
-  SUBROUTINE ElmerSolver_init(meshFootprint,ParEnvInitialised)
+  SUBROUTINE ElmerSolver_init(meshFootprint,ParEnvInitialised,inputFileName)
   
 #ifdef HAVE_TRILINOS
     INTERFACE
@@ -172,6 +172,7 @@ CONTAINS
 
     TYPE(mesh_t),INTENT(INOUT),OPTIONAL :: meshFootprint
     LOGICAL,INTENT(IN),OPTIONAL         :: ParEnvInitialised
+    CHARACTER(LEN=MAX_STRING_LEN),INTENT(IN),OPTIONAL :: inputFileName
 
     INTEGER :: ii, kk
 
@@ -303,23 +304,29 @@ CONTAINS
     ! Read input file name either as an argument, or from the default file:
     !----------------------------------------------------------------------
     GotModelName = .FALSE.
-    IF ( ParEnv % PEs <= 1 .AND. NoArgs > 0 ) THEN
+    
+    IF (PRESENT(inputFileName)) THEN
+       ModelName = inputFileName
+       GotModelName = .TRUE.
+    ELSE
+       IF ( ParEnv % PEs <= 1 .AND. NoArgs > 0 ) THEN
 #ifdef USE_ISO_C_BINDINGS
-       CALL GET_COMMAND_ARGUMENT(1, ModelName)
+          CALL GET_COMMAND_ARGUMENT(1, ModelName)
 #else
-       CALL getarg( 1,ModelName )
+          CALL getarg( 1,ModelName )
 #endif
-       IF( ModelName(1:1) /= '-') THEN 
-          GotModelName = .TRUE.
-          
+          IF( ModelName(1:1) /= '-') THEN 
+             GotModelName = .TRUE.
+             
 #ifdef USE_ISO_C_BINDINGS
-          IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
+             IF (NoArgs > 1) CALL GET_COMMAND_ARGUMENT(2, eq)
 #else
-          IF ( NoArgs > 1 ) CALL getarg( 2,eq )
+             IF ( NoArgs > 1 ) CALL getarg( 2,eq )
 #endif 
+          END IF
        END IF
     END IF
-    
+
     IF( .NOT. GotModelName ) THEN
        OPEN( 1, File='ELMERSOLVER_STARTINFO', STATUS='OLD', ERR=10 )
        READ(1,'(a)') ModelName
@@ -1387,7 +1394,8 @@ CONTAINS
 !------------------------------------------------------------------------------
      USE DefUtils
      LOGICAL :: Gotit
-     INTEGER :: kk,StartTime
+     INTEGER :: kk
+     REAL(KIND=dp) :: StartTime
 !------------------------------------------------------------------------------
 
 

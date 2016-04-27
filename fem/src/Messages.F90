@@ -44,7 +44,9 @@
 MODULE Messages
 
    IMPLICIT NONE
+
    CHARACTER(LEN=512) :: Message = ' '
+   INTEGER, PUBLIC  :: MessageUnit = 6
    INTEGER, PRIVATE :: i
    LOGICAL :: OutputPrefix=.FALSE., OutputCaller=.TRUE.
    LOGICAL :: OutputLevelMask(0:31) = (/ (.TRUE.,i=1,32) /)
@@ -86,28 +88,28 @@ CONTAINS
 
      IF(.NOT. nadv1 ) THEN
        IF ( OutputPrefix ) THEN
-         WRITE( *,'(A)', ADVANCE = 'NO' ) 'INFO:: '
+         WRITE( MessageUnit,'(A)', ADVANCE = 'NO' ) 'INFO:: '
        END IF
 
        IF ( OutputCaller ) THEN
-         WRITE( *,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
+         WRITE( MessageUnit,'(A)', ADVANCE = 'NO' ) TRIM(Caller) // ': '
        END IF
 
        ! If there are several partitions to be saved than plot the partition too
        IF ( MaxOutputPE > 0 ) THEN
-         WRITE( *,'(A,I0,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': '
+         WRITE( MessageUnit,'(A,I0,A)', ADVANCE = 'NO' ) 'Part',OutputPE,': '
        END IF
      END IF
 
 
      IF ( nadv ) THEN
-        WRITE( *,'(A)', ADVANCE = 'NO' )  TRIM(String)
+        WRITE( MessageUnit,'(A)', ADVANCE = 'NO' )  TRIM(String)
      ELSE
-        WRITE( *,'(A)', ADVANCE = 'YES' ) TRIM(String)
+        WRITE( MessageUnit,'(A)', ADVANCE = 'YES' ) TRIM(String)
      END IF
      nadv1 = nadv
 
-     CALL FLUSH(6)
+     CALL FLUSH(MessageUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Info
 !-----------------------------------------------------------------------
@@ -134,18 +136,18 @@ CONTAINS
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
+        WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='NO' ) &
           'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
      ELSE
         IF ( .NOT. nadv1 ) THEN
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+           WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='YES' ) &
              'WARNING:: ', TRIM(Caller), ': ', TRIM(String)
         ELSE
-           WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+           WRITE( MessageUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
      END IF
      nadv1 = nadv
-     CALL FLUSH(6)
+     CALL FLUSH(MessageUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Warn
 !-----------------------------------------------------------------------
@@ -171,18 +173,18 @@ CONTAINS
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
+        WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='NO' ) &
           'ERROR:: ', TRIM(Caller), ': ', TRIM(String )
      ELSE
         IF ( .NOT. nadv1 ) THEN
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+           WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='YES' ) &
              'ERROR:: ', TRIM(Caller), ': ', TRIM(String)
         ELSE
-           WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+           WRITE( MessageUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
      END IF
      nadv1 = nadv
-     CALL FLUSH(6)
+     CALL FLUSH(MessageUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Error
 !-----------------------------------------------------------------------
@@ -206,19 +208,19 @@ CONTAINS
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
 
      IF ( nadv ) THEN
-        WRITE( *, '(A,A,A,A)', ADVANCE='NO' ) &
+        WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='NO' ) &
           'ERROR:: ', TRIM(Caller), ': ', TRIM(String )
      ELSE
         IF ( .NOT. nadv1 ) THEN
-           WRITE( *, '(A,A,A,A)', ADVANCE='YES' ) &
+           WRITE( MessageUnit, '(A,A,A,A)', ADVANCE='YES' ) &
              'ERROR:: ', TRIM(Caller), ': ', TRIM(String)
         ELSE
-           WRITE( *, '(A)', ADVANCE='YES' ) TRIM(String)
+           WRITE( MessageUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
         STOP
      END IF
      nadv1 = nadv
-     CALL FLUSH(6)
+     CALL FLUSH(MessageUnit)
 !-----------------------------------------------------------------------
    END SUBROUTINE Fatal
 !-----------------------------------------------------------------------

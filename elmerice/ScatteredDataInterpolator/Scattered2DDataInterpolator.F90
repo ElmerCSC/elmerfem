@@ -77,7 +77,7 @@
         CHARACTER(LEN=MAX_NAME_LEN) :: Xdim,dimName,FillName
         CHARACTER(2) :: method
 
-        LOGICAL :: GotVar,Found
+        LOGICAL :: GotVar,Found,UnFoundFatal
         LOGICAL :: CheckBBox,CheckNaN,ReplaceNaN,NETCDFFormat
         LOGICAL :: GoodVal,HaveFillv
         LOGICAL,dimension(:,:), allocatable :: mask
@@ -142,13 +142,8 @@
             Perm => Var % Perm
 
             WRITE (FName,'(A,I0,A)') 'Variable ',NoVar,' Data File'
-            DataF = ListGetString( Params, TRIM(FName), Found )
+            DataF = ListGetString( Params, TRIM(FName), Found, UnFoundFatal )
 
-            IF (.NOT.Found) then
-               write(message,'(A,A,A)') &
-                        'Keyword <',Trim(Fname),'> not found'
-               CALL Fatal(Trim(SolverName),Trim(message))
-            END IF
             k = INDEX( DataF,'.nc' )
             NETCDFFormat = ( k /= 0 )
 
