@@ -1,6 +1,4 @@
-
-
-!
+!/*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -53,7 +51,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        LimitDisp,  Bubbles = .False.,&
        SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE. , &
-       ConvectionVar,Compute_dhdt,UnFoundFatal
+       ConvectionVar,Compute_dhdt,UnFoundFatal=.TRUE.
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
