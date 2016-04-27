@@ -610,6 +610,7 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
   ! effective pressure at the bed is calculated as the normal stress 
   ! at the lower boundary minus the External Pressure (which is set in 
   ! the boundary condition section of the sif).
+  ! Alternatively it can be approximated using the floatation condition.
   IF (UseFloatation) THEN
 
      Hvar => VariableGet( Model % Variables, "Depth" )
@@ -639,13 +640,11 @@ FUNCTION Sliding_Budd (Model, nodenumber, z) RESULT(Bdrag)
      ELSE
         Zab = H
      END IF
-     
      ! this "offset" to the height above bouyancy is intended to provide a non-zero  
      ! basal drag due to contact with the bed, even when effective pressure is zero.
      ! Physically, this can be seen as a compromise between Elmer's "Weertman" 
      ! implementation and Elmer's "Budd" implementation.
      Zab = Zab + Zab_offset
-
   ELSE
      ep = effectivepressure (Model, nodenumber, z)
      Zab = - ep / (g * rhoi)
