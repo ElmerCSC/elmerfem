@@ -3218,6 +3218,15 @@ void MainWindow::createBoundaryCheckBoxes(DynamicEditor *pe)
         else
           a = new QCheckBox(title);
 
+        if (glWidget->stateBcColors) {
+          int c[3];
+          QPixmap pm(16,16);
+
+          GLWidget::indexColors(c, n);
+          pm.fill(qRgb(c[0], c[1], c[2]));
+          a->setIcon(QIcon(pm));
+        }
+
         DynamicEditor *p = NULL;
 
         p=boundary->condition;

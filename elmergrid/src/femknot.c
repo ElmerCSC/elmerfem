@@ -3262,6 +3262,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   int noelements,noknots,nonodes,maxnodes;
   int **newtopo=NULL,*newmaterial=NULL,*newelementtypes=NULL;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
+  int mat,usenames,*bodynameis,*boundarynameis,*bodyused,*boundaryused;
 
   noknots = data1->noknots + data2->noknots;
   noelements  = data1->noelements + data2->noelements;
@@ -3270,6 +3271,107 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   if(data2->dim > data1->dim) data1->dim = data2->dim;
 
   if(0) printf("Uniting two meshes to %d nodes and %d elements.\n",noknots,noelements);
+
+  usenames = data1->bodynamesexist || data1->boundarynamesexist; 
+  if( usenames ) {
+    bodynameis = Ivector(1,MAXBODIES);
+    boundarynameis = Ivector(1,MAXBCS);
+    bodyused = Ivector(1,MAXBODIES);
+    boundaryused = Ivector(1,MAXBCS);
+
+    for(i=1;i<=MAXBODIES;i++)
+      bodynameis[i] = bodyused[i] = FALSE;
+    for(i=1;i<=MAXBCS;i++)
+      boundarynameis[i] = boundaryused[i] = FALSE;
+
+    /* First mark the original bodies and boundaries that maintain their index */
+    for(i=1;i<=data1->noelements;i++) {
+      mat = data1->material[i];
+      if( mat < MAXBODIES ) {
+	if(!bodynameis[mat]) {
+	  bodynameis[mat] = -1;
+	  bodyused[mat] = TRUE;
+	}
+      }
+    }
+
+    for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound1[j].created) continue;     
+      for(i=1; i <= bound1[k].nosides; i++) {
+	mat = bound1[j].types[i];
+	if( mat < MAXBCS ) {
+	  if(!boundarynameis[mat]) {
+	    boundarynameis[mat] = -1;
+	    boundaryused[mat] = TRUE;
+	  }
+	}
+      }
+    }
+
+    /* Then mark the joined bodies and boundaries that are not conflicting */ 
+    for(i=1;i<=data2->noelements;i++) {
+      mat = data2->material[i];
+      if( mat < MAXBODIES ) {
+	if( !bodynameis[mat] ) {
+	  bodynameis[mat] = mat;
+	  bodyused[mat] = TRUE;
+	  strcpy(data1->bodyname[mat],data2->bodyname[mat]);
+	}
+      }
+    }
+
+    for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound2[j].created) continue;     
+
+      for(i=1; i <= bound2[j].nosides; i++) {
+	mat = bound2[j].types[i];
+	if( mat < MAXBCS ) {
+	  if( !boundarynameis[mat] ) {
+	    boundarynameis[mat] = mat;
+	    boundaryused[mat] = TRUE;
+	    strcpy(data1->boundaryname[mat],data2->boundaryname[mat]);
+	  }
+	}
+      }
+    }
+
+
+    /* And finally number the conflicting joinded bodies and BCs */
+    for(i=1;i<=data2->noelements;i++) {
+      mat = data2->material[i];
+      if( mat < MAXBODIES ) {
+	if( bodynameis[mat] == -1) {
+	  for(k=1;k<MAXBODIES;k++)
+	    if(!bodyused[k]) break;
+	  if(info) printf("Renumbering body %d to %d\n",mat,k);
+	  bodynameis[mat] = k;	  
+	  bodyused[k] = TRUE;
+	  strcpy(data1->bodyname[k],data2->bodyname[mat]);
+	}
+      }
+    }
+
+    for(j=0;j < MAXBOUNDARIES;j++) {
+      if(!bound2[j].created) continue;     
+      for(i=1; i <= bound2[j].nosides; i++) {
+	mat = bound2[j].types[i];
+
+	if( mat < MAXBCS ) {
+	  if( boundarynameis[mat] == -1) {
+	    for(k=1;k<MAXBCS;k++) 
+	      if(!boundaryused[k]) break;
+	    if(info) printf("Renumbering boundary %d to %d\n",mat,k);
+	    boundarynameis[mat] = k;
+	    boundaryused[k] = TRUE;
+	    strcpy(data1->boundaryname[k],data2->boundaryname[mat]);
+	  }
+	}
+      }
+    }
+
+  }
+  
+
 
   for(j=0;j < MAXBOUNDARIES;j++) {
     if(!bound2[j].created) continue;
@@ -3294,7 +3396,15 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
       bound1[k].parent[i] += data1->noelements;
       if(bound1[k].parent2[i])
 	bound1[k].parent2[i] += data1->noelements;	 
+      
+      if( usenames ) {
+	mat = bound2[j].types[i];
+	if( mat < MAXBCS ) {
+	  bound1[k].types[i] = boundarynameis[mat];
+	}
+      }
     }
+
   }
 
   data1->maxnodes = maxnodes;
@@ -3316,18 +3426,27 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   }
 
   for(i=1;i<=data1->noelements;i++) {
-    newmaterial[i] = data1->material[i];
+    mat = data1->material[i];
+    newmaterial[i] = mat;
     newelementtypes[i] = data1->elementtypes[i]; 
     nonodes = newelementtypes[i]%100;
     for(j=0;j<nonodes;j++)
       newtopo[i][j] = data1->topology[i][j];
   }
   for(i=1;i<=data2->noelements;i++) {
-    newmaterial[i+data1->noelements] = data2->material[i];
+    mat = data2->material[i];
+    newmaterial[i+data1->noelements] = mat;
     newelementtypes[i+data1->noelements] = data2->elementtypes[i]; 
     nonodes = newelementtypes[i+data1->noelements]%100;
     for(j=0;j<nonodes;j++)
       newtopo[i+data1->noelements][j] = data2->topology[i][j] + data1->noknots;
+
+    if( usenames ) {
+      if( mat < MAXBODIES ) {
+        newmaterial[i+data1->noelements] = bodynameis[mat];
+      }
+    }
+
   }
 
   free_Imatrix(data1->topology,1,data1->noelements,0,data1->maxnodes-1);
@@ -3350,7 +3469,6 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
   data1->x = newx;
   data1->y = newy;
   if(data1->dim == 3) data1->z = newz;
-
 
   if(info) printf("Two meshes were united to one with %d nodes and %d elements.\n",
 		  noknots,noelements);
@@ -3425,7 +3543,6 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   newx = Rvector(1,noknots);
   newy = Rvector(1,noknots);
   if(data->dim == 3) newz = Rvector(1,noknots);
-
 
   for(l=0;l<ncopies[2];l++) {
     for(k=0;k<ncopies[1];k++) {
@@ -3566,6 +3683,12 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   data->x = newx;
   data->y = newy;
   if(data->dim == 3) data->z = newz;
+
+  if( data->bodynamesexist || data->boundarynamesexist ) {
+    printf("Cloning cannot treat names yet, omitting treatment of names for now!\n");
+    data->bodynamesexist = FALSE;
+    data->boundarynamesexist = FALSE;
+  } 
 
   if(info) printf("The mesh was copied to several identical meshes\n");
 
@@ -3770,6 +3893,12 @@ int MirrorMeshes(struct FemType *data,struct BoundaryType *bound,
   data->x = newx;
   data->y = newy;
   if(data->dim == 3) data->z = newz;
+
+  if( data->bodynamesexist || data->boundarynamesexist ) {
+    printf("Mirroring cannot treat names yet, omitting treatment of names for now!\n");
+    data->bodynamesexist = FALSE;
+    data->boundarynamesexist = FALSE;
+  } 
 
   if(info) printf("The mesh was copied to several identical meshes\n");
 

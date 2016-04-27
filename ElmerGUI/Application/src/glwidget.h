@@ -130,6 +130,9 @@ public:
   void changeProjection();
 
   bool toggleCoordinates();
+
+  static void indexColors(double *, int);
+  static void indexColors(int *, int);
   
   // public state variables:
   bool stateOrtho;

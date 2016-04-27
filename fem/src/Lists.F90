@@ -160,6 +160,8 @@ MODULE Lists
    TYPE(ValueList_t), POINTER, SAVE, PRIVATE  :: TimerList => NULL()
    LOGICAL, SAVE, PRIVATE :: TimerPassive, TimerResults
 
+   LOGICAL, PRIVATE :: DoNamespaceCheck = .FALSE.
+
 CONTAINS
 
 !------------------------------------------------------------------------------
@@ -1536,6 +1538,26 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+   SUBROUTINE SetNamespaceCheck(L)
+!------------------------------------------------------------------------------
+     LOGICAL :: L
+!------------------------------------------------------------------------------
+     DoNamespaceCheck = L
+!------------------------------------------------------------------------------
+   END SUBROUTINE SetNamespaceCheck
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   FUNCTION GetNamespaceCheck() RESULT(L)
+!------------------------------------------------------------------------------
+     LOGICAL :: L
+!------------------------------------------------------------------------------
+     L = DoNameSpaceCheck
+!------------------------------------------------------------------------------
+   END FUNCTION GetNamespaceCheck
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Finds an entry in the list by its name and returns a handle to it.
 !------------------------------------------------------------------------------
    FUNCTION ListFind( list, name, Found) RESULT(ptr)
@@ -1545,6 +1567,7 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1556,16 +1579,25 @@ CONTAINS
 
      k = StringToLowerCase( str,Name,.TRUE. )
 
-     IF ( ListGetNamespace(strn) ) THEN
-       strn = strn //' '//str(1:k)
-       k1 = LEN(strn)
-       ptr => List % Head
-       DO WHILE( ASSOCIATED(ptr) )
-          n = ptr % NameLen
-          IF ( n==k1 ) THEN
-            IF ( ptr % Name(1:n) == strn ) EXIT
-          END IF
-          ptr => ptr % Next
+     IF( ListGetnamespace(strn) ) THEN
+       stack => Namespace_stack
+       DO WHILE(.TRUE.)
+         strn = TRIM(strn) //' '//str(1:k)
+         k1 = LEN(strn)
+         ptr => List % Head
+         DO WHILE( ASSOCIATED(ptr) )
+            n = ptr % NameLen
+            IF ( n==k1 ) THEN
+              IF ( ptr % Name(1:n) == strn ) EXIT
+            END IF
+            ptr => ptr % Next
+         END DO
+         IF(.NOT.DoNamespaceCheck) EXIT
+
+         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
+         IF(stack % name=='') EXIT
+         strn = char(stack % name)
+         stack => stack % next
        END DO
      END IF
 
@@ -1604,6 +1636,7 @@ CONTAINS
      CHARACTER(LEN=*) :: name
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1614,15 +1647,24 @@ CONTAINS
 
      k = StringToLowerCase( str,Name,.TRUE. )
      IF ( ListGetNamespace(strn) ) THEN
-       strn = strn //' '//str(1:k)
-       k1 = LEN(strn)
-       ptr => List % Head
-       DO WHILE( ASSOCIATED(ptr) )
-          n = ptr % NameLen
-          IF ( n >= k1 ) THEN
-            IF ( ptr % Name(1:k1) == strn ) EXIT
-          END IF
-          ptr => ptr % Next
+       stack => Namespace_stack
+       DO WHILE(.TRUE.)
+         strn = TRIM(strn) //' '//str(1:k)
+         k1 = LEN(strn)
+         ptr => List % Head
+         DO WHILE( ASSOCIATED(ptr) )
+            n = ptr % NameLen
+            IF ( n >= k1 ) THEN
+              IF ( ptr % Name(1:k1) == strn ) EXIT
+            END IF
+            ptr => ptr % Next
+         END DO
+         IF(.NOT.DoNamespaceCheck) EXIT
+
+         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
+         IF(stack % name=='') EXIT
+         strn = char(stack % name)
+         stack => stack % next
        END DO
      END IF
 
@@ -1804,6 +1846,7 @@ CONTAINS
      LOGICAL :: ComponentWise
      LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
+     TYPE(String_stack_t), POINTER :: stack
      CHARACTER(:), ALLOCATABLE :: strn
      CHARACTER(LEN=LEN_TRIM(Name)) :: str
 !------------------------------------------------------------------------------
@@ -1815,23 +1858,32 @@ CONTAINS
      k = StringToLowerCase( str,Name,.TRUE. )
 
      IF ( ListGetNamespace(strn) ) THEN
-       strn = strn //' '//str(1:k)
-       k1 = LEN(strn)
-       ptr => List % Head
-       DO WHILE( ASSOCIATED(ptr) )
-          n = ptr % NameLen
-          IF ( n == k1 ) THEN
-            IF ( ptr % Name(1:k1) == strn ) THEN
-              ComponentWise = .FALSE.
-              EXIT
+       stack => Namespace_stack
+       DO WHILE(.TRUE.)
+         strn = TRIM(strn) //' '//str(1:k)
+         k1 = LEN(strn)
+         ptr => List % Head
+         DO WHILE( ASSOCIATED(ptr) )
+            n = ptr % NameLen
+            IF ( n == k1 ) THEN
+              IF ( ptr % Name(1:k1) == strn ) THEN
+                ComponentWise = .FALSE.
+                EXIT
+              END IF
+            ELSE IF( n == k1 + 2 ) THEN
+              IF ( ptr % Name(1:k1+1) == strn//' ' ) THEN
+                ComponentWise = .TRUE.
+                EXIT
+              END IF
             END IF
-          ELSE IF( n == k1 + 2 ) THEN
-            IF ( ptr % Name(1:k1+1) == strn//' ' ) THEN
-              ComponentWise = .TRUE.
-              EXIT
-            END IF
-          END IF
-          ptr => ptr % Next
+            ptr => ptr % Next
+         END DO
+         IF(.NOT.DoNamespaceCheck) EXIT
+
+         IF(ASSOCIATED(ptr).OR..NOT.ASSOCIATED(stack)) EXIT
+         IF(stack % name=='') EXIT
+         strn = char(stack % name)
+         stack => stack % next
        END DO
      END IF
 

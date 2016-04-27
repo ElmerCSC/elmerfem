@@ -2899,13 +2899,13 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   REAL (KIND=DP), POINTER :: PointCoordinates(:,:), PointFluxes(:,:), PointWeight(:), Isosurf(:)
   LOGICAL :: Stat, GotIt, FileAppend, CalculateFlux, &
       SaveAxis(3), Inside, MovingMesh, IntersectEdge, OptimizeOrder, Found, GotVar, &
-      SkipBoundaryInfo
-  INTEGER :: i,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
+      SkipBoundaryInfo, GotDivisions
+  INTEGER :: i,ii,j,k,ivar,l,n,m,t,DIM,mat_id, SaveThis, &
       Side, SaveNodes, SaveNodes2, node, NoResults, LocalNodes, NoVar, &
       No, axis, maxboundary, NoDims, MeshDim, NoLines, NoAxis, Line, NoFaces, &
       NoEigenValues, IntersectCoordinate, ElemCorners, ElemDim, FluxBody, istat, &
-      i1, i2
-  INTEGER, POINTER :: NodeIndexes(:), SavePerm(:), InvPerm(:), BoundaryIndex(:), IsosurfPerm(:)
+      i1, i2, NoTests
+  INTEGER, POINTER :: NodeIndexes(:), SavePerm(:), InvPerm(:), BoundaryIndex(:), IsosurfPerm(:), NoDivisions(:)
   TYPE(Solver_t), POINTER :: ParSolver
   TYPE(Variable_t), POINTER :: Var, IsosurfVar
   TYPE(Mesh_t), POINTER :: Mesh
@@ -2916,9 +2916,13 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
        TempName, MaskName, PrevMaskName, SideParFile, DateStr, OutputDirectory
   CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ValueNames(:)
 
-
-  LOGICAL, POINTER :: LineTag(:)
+  LOGICAL, ALLOCATABLE :: LineTag(:)
   LOGICAL :: cand, Parallel, InitializePerm
+  
+  REAL(KIND=dp) :: R0(3),R1(3),dR(3),S0(3),S1(3),dS(3),LocalCoord(3),&
+      MinCoord(3),MaxCoord(3),GlobalCoord(3),LineN(3),LineT1(3), &
+      LineT2(3),detJ
+  INTEGER :: imin,imax,nsize
 
   SAVE SavePerm, PrevMaskName, SaveNodes
 
@@ -2943,7 +2947,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), &
       LineNodes % x(2), LineNodes % y(2), LineNodes % z(2), &
       Basis(n), STAT=istat )     
-  IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 1') 
+  IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for Elemental stuff') 
 
   IF( Solver % TimesVisited == 0 ) THEN
     ALLOCATE( SavePerm(Mesh % NumberOfNodes) )
@@ -2970,10 +2974,18 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  
+  SideParFile = AddFilenameParSuffix(SideFile,'dat',Parallel,ParEnv % MyPe) 
+
   IF(ListGetLogical(Params,'Filename Numbering',GotIt)) THEN
-    SideFile = NextFreeFilename( SideFile ) 
+    IF( Parallel ) THEN
+      CALL Warn('SaveLine','Cannot number filenames in parallel with another number!')
+    ELSE
+      SideParFile = NextFreeFilename( SideParFile ) 
+    END IF
   END IF
 
+  
   FileAppend = ListGetLogical(Params,'File Append',GotIt )
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
  
@@ -3019,6 +3031,16 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   ELSE 
     NoLines = 0
   END IF
+
+  GotDivisions = .FALSE.
+  IF( NoLines > 0 ) THEN
+    NoDivisions => ListGetIntegerArray( Params,'Polyline Divisions',GotDivisions)
+    IF( SIZE( NoDivisions ) < NoLines + COUNT(SaveAxis) ) THEN
+      CALL Fatal('SaveLine','Polyline divisions size too small!')
+    END IF
+  END IF
+
+
 
   SkipBoundaryInfo = ListGetLogical(Params,'Skip Boundary Info',GotIt)
   !----------------------------------------------
@@ -3088,9 +3110,10 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END DO
 
   IF ( CalculateFlux ) NoResults = NoResults + 3
-    
+  CALL Info('SaveLine','Maximum number of vectors to save: '//TRIM(I2S(NoResults)),Level=18)
+
   ALLOCATE( Values(NoResults), STAT=istat )
-  IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 2') 
+  IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for Values') 
  
  
   CALL Info( 'SaveLine', '------------------------------------------', Level=4 )
@@ -3101,21 +3124,15 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 ! Open files for saving
 !------------------------------------------------------------------------------
-  IF ( Parallel ) THEN     
-    WRITE( SideParFile, '(A,i0)' ) TRIM(SideFile)//'.',ParEnv % MyPE
-  ELSE	
-    WRITE( SideParFile, '(A)') TRIM(SideFile)   
-  END IF
-
   IF( Solver % TimesVisited > 0 .OR. FileAppend) THEN 
     OPEN (10, FILE=SideParFile,POSITION='APPEND')
   ELSE 
     OPEN (10,FILE=SideParFile)
   END IF
-
-!------------------------------------------------------------------------------
-! Find out which nodes should be saved and optimize their order 
-!------------------------------------------------------------------------------
+  
+  !------------------------------------------------------------------------------
+  ! Find out which nodes should be saved and optimize their order 
+  !------------------------------------------------------------------------------
   MaskName = ListGetString(Params,'Save Mask',GotIt) 
   IF(.NOT. GotIt) MaskName = 'Save Line'
 
@@ -3145,180 +3162,190 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END IF
   PrevMaskName = MaskName
 
-!------------------------------------------------------------------------------
-! If nodes found, then go through the sides and compute the fluxes if requested 
-!------------------------------------------------------------------------------
+  !------------------------------------------------------------------------------
+  ! If nodes found, then go through the sides and compute the fluxes if requested 
+  !------------------------------------------------------------------------------
 
   maxboundary = 0
   IF( SaveNodes > 0 ) THEN
 
-     ALLOCATE( InvPerm(SaveNodes), BoundaryIndex(SaveNodes), STAT=istat )
-     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 3: '//TRIM(I2S(SaveNodes))) 
+    ALLOCATE( InvPerm(SaveNodes), BoundaryIndex(SaveNodes), STAT=istat )
+    IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 3: '//TRIM(I2S(SaveNodes))) 
 
-     BoundaryIndex = 0
-     InvPerm = 0
-     DO i=1,SIZE(SavePerm)
-       IF (SavePerm(i)>0) THEN
-         ! Error check for something that should never happen
-         IF( InvPerm( SavePerm(i)) > 0) THEN
-           WRITE( Message, *) 'Node multiple times in permutation',i,SavePerm(i)
-           CALL Warn('SaveLine',Message)
-         END IF
-         InvPerm(SavePerm(i)) = i
-       END IF
-     END DO
-     
-     IF(CalculateFlux) THEN
-       ALLOCATE(PointFluxes(SaveNodes,3),PointWeight(SaveNodes), STAT=istat)    
-       IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 4') 
-       
-       PointFluxes = 0.0d0
-       PointWeight = 0.0d0
-     END IF
+    BoundaryIndex = 0
+    InvPerm = 0
+    DO i=1,SIZE(SavePerm)
+      IF (SavePerm(i)>0) THEN
+        ! Error check for something that should never happen
+        IF( InvPerm( SavePerm(i)) > 0) THEN
+          WRITE( Message, *) 'Node multiple times in permutation',i,SavePerm(i)
+          CALL Warn('SaveLine',Message)
+        END IF
+        InvPerm(SavePerm(i)) = i
+      END IF
+    END DO
 
-     ! Go through the elements and register the boundary index and fluxes if asked
-     DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
-       
-       CurrentElement => Mesh % Elements(t)
-       Model % CurrentElement => CurrentElement
-       n = CurrentElement % TYPE % NumberOfNodes
-       NodeIndexes => CurrentElement % NodeIndexes
-       
-       IF( .NOT. ALL(SavePerm(NodeIndexes) > 0)) CYCLE 
-       
-       Found = .FALSE.
-       IF(t <= Mesh % NumberOfBulkElements) THEN
-         k = CurrentElement % BodyId           
-         IF( ListGetLogical( Model % Bodies(k) % Values,'Flux Integrate Body', gotIt )) THEN
-           Found = .TRUE.
-           FluxBody = ListGetInteger( Model % Bodies(k) % Values,'Flux Integrate Body', gotIt ) 
-         END IF
-       ELSE
-         DO k=1, Model % NumberOfBCs
-           IF ( Model % BCs(k) % Tag /= CurrentElement % BoundaryInfo % Constraint ) CYCLE
-           IF( ListCheckPresent(Model % BCs(k) % Values, MaskName ) ) THEN
-             Found = .TRUE.
-             FluxBody = ListGetInteger( Model % BCs(k) % Values,'Flux Integrate Body', gotIt )         
-             EXIT
-           END IF
-         END DO
-       END IF
-       IF(.NOT. Found) CYCLE
-       
-       MaxBoundary = MAX( MaxBoundary, k ) 
-       BoundaryIndex( SavePerm(NodeIndexes) ) = k
+    IF(CalculateFlux) THEN
+      ALLOCATE(PointFluxes(SaveNodes,3),PointWeight(SaveNodes), STAT=istat)    
+      IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 4') 
 
-       IF( .NOT. CalculateFlux ) CYCLE
-       
-       ElemCorners = CurrentElement % TYPE % ElementCode / 100
-       IF(ElemCorners > 4 .OR. ElemCorners < 2) CYCLE
-       
-       ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-       ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-       ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-       
-       DO i=1,n
-         node = NodeIndexes(i)
-         
-         CALL BoundaryFlux( Model, node, TempName,  &
-             CondName, f1, f2, fn, weight, Mesh % MaxElementDOFs ) 
-         
-         j = SavePerm(node) 
-         
-         PointFluxes(j,1) = PointFluxes(j,1) + weight * f1
-         PointFluxes(j,2) = PointFluxes(j,2) + weight * f2
-         PointFluxes(j,3) = PointFluxes(j,3) + weight * fn
-         PointWeight(j) = PointWeight(j) + weight
-       END DO
-     END DO
-     
-     ! Normalize flux by division with the integration weight
-     IF( CalculateFlux ) THEN
-       DO i = 1, SaveNodes
-         PointFluxes(i,1) = PointFluxes(i,1) / PointWeight(i)
-         PointFluxes(i,2) = PointFluxes(i,2) / PointWeight(i)
-         PointFluxes(i,3) = PointFluxes(i,3) / PointWeight(i)
-       END DO
-       DEALLOCATE(PointWeight)
-     END IF
-     
-     ! Save the nodes      
-     !---------------     
-     DO t = 1, SaveNodes    
-       
-       node = InvPerm(t)
-       IF( .NOT. SkipBoundaryInfo ) THEN
-         IF(TransientSimulation) WRITE(10,'(I6)',ADVANCE='NO') Solver % DoneTime
-         WRITE(10,'(I6,I4,I8)',ADVANCE='NO') Solver % TimesVisited + 1,&
-             BoundaryIndex(t),node
-       END IF
-       
-       No = 0
-       Values = 0.0d0
-       
-       DO ivar=1, NoVar
-         Var => VariableGetN( ivar ) 
-         
-         l = node
-         IF (ASSOCIATED (Var % EigenVectors)) THEN
-           NoEigenValues = SIZE(Var % EigenValues) 
-           DO j=1,NoEigenValues
-             DO i=1,Var % DOFs
-               IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-               IF(l > 0) THEN 
-                 Values(No+(j-1)*Var%Dofs+i) = &
-                     Var % EigenVectors(j,Var%Dofs*(l-1)+i)
-               END IF
-             END DO
-           END DO
-           No = No + Var % Dofs * NoEigenValues
-         ELSE           
-           No = No + 1
-           IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-           IF(l > 0) Values(No) = Var % Values(l)                    
-         END IF
-       END DO
-   
-       IF(CalculateFlux) THEN
-         Values(No+1:No+3) = PointFluxes(t,1:3)
-       END IF
-       
-       IF(NoResults > 0) THEN
-         DO i=1,NoResults-1
-           WRITE(10,'(ES21.12E3)',ADVANCE='NO') Values(i)
-         END DO
-         WRITE(10,'(ES21.12E3)') Values(NoResults)
-       END IF
-     END DO
-     
-     DEALLOCATE(InvPerm, BoundaryIndex)
-     IF(CalculateFlux) DEALLOCATE(PointFluxes)
-   END IF
+      PointFluxes = 0.0d0
+      PointWeight = 0.0d0
+    END IF
+
+    ! Go through the elements and register the boundary index and fluxes if asked
+    DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
+
+      CurrentElement => Mesh % Elements(t)
+      Model % CurrentElement => CurrentElement
+      n = CurrentElement % TYPE % NumberOfNodes
+      NodeIndexes => CurrentElement % NodeIndexes
+
+      IF( .NOT. ALL(SavePerm(NodeIndexes) > 0)) CYCLE 
+
+      Found = .FALSE.
+      IF(t <= Mesh % NumberOfBulkElements) THEN
+        k = CurrentElement % BodyId           
+        IF( ListGetLogical( Model % Bodies(k) % Values,'Flux Integrate Body', gotIt )) THEN
+          Found = .TRUE.
+          FluxBody = ListGetInteger( Model % Bodies(k) % Values,'Flux Integrate Body', gotIt ) 
+        END IF
+      ELSE
+        DO k=1, Model % NumberOfBCs
+          IF ( Model % BCs(k) % Tag /= CurrentElement % BoundaryInfo % Constraint ) CYCLE
+          IF( ListCheckPresent(Model % BCs(k) % Values, MaskName ) ) THEN
+            Found = .TRUE.
+            FluxBody = ListGetInteger( Model % BCs(k) % Values,'Flux Integrate Body', gotIt )         
+            EXIT
+          END IF
+        END DO
+      END IF
+      IF(.NOT. Found) CYCLE
+
+      MaxBoundary = MAX( MaxBoundary, k ) 
+      BoundaryIndex( SavePerm(NodeIndexes) ) = k
+
+      IF( .NOT. CalculateFlux ) CYCLE
+
+      ElemCorners = CurrentElement % TYPE % ElementCode / 100
+      IF(ElemCorners > 4 .OR. ElemCorners < 2) CYCLE
+
+      ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+      ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+      ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+
+      DO i=1,n
+        node = NodeIndexes(i)
+
+        CALL BoundaryFlux( Model, node, TempName,  &
+            CondName, f1, f2, fn, weight, Mesh % MaxElementDOFs ) 
+
+        j = SavePerm(node) 
+
+        PointFluxes(j,1) = PointFluxes(j,1) + weight * f1
+        PointFluxes(j,2) = PointFluxes(j,2) + weight * f2
+        PointFluxes(j,3) = PointFluxes(j,3) + weight * fn
+        PointWeight(j) = PointWeight(j) + weight
+      END DO
+    END DO
+
+    ! Normalize flux by division with the integration weight
+    IF( CalculateFlux ) THEN
+      DO i = 1, SaveNodes
+        PointFluxes(i,1) = PointFluxes(i,1) / PointWeight(i)
+        PointFluxes(i,2) = PointFluxes(i,2) / PointWeight(i)
+        PointFluxes(i,3) = PointFluxes(i,3) / PointWeight(i)
+      END DO
+      DEALLOCATE(PointWeight)
+    END IF
+
+    ! Save the nodes      
+    !---------------     
+    DO t = 1, SaveNodes    
+
+      node = InvPerm(t)
+      IF( .NOT. SkipBoundaryInfo ) THEN
+        IF(TransientSimulation) WRITE(10,'(I6)',ADVANCE='NO') Solver % DoneTime
+        WRITE(10,'(I6,I4,I8)',ADVANCE='NO') Solver % TimesVisited + 1,&
+            BoundaryIndex(t),node
+      END IF
+
+      No = 0
+      Values = 0.0d0
+
+      DO ivar=1, NoVar
+        Var => VariableGetN( ivar ) 
+
+        l = node
+        IF (ASSOCIATED (Var % EigenVectors)) THEN
+          NoEigenValues = SIZE(Var % EigenValues) 
+          DO j=1,NoEigenValues
+            DO i=1,Var % DOFs
+              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+              IF(l > 0) THEN 
+                Values(No+(j-1)*Var%Dofs+i) = &
+                    Var % EigenVectors(j,Var%Dofs*(l-1)+i)
+              END IF
+            END DO
+          END DO
+          No = No + Var % Dofs * NoEigenValues
+        ELSE           
+          No = No + 1
+          IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+          IF(l > 0) Values(No) = Var % Values(l)                    
+        END IF
+      END DO
+
+      IF(CalculateFlux) THEN
+        Values(No+1:No+3) = PointFluxes(t,1:3)
+      END IF
+
+      IF(NoResults > 0) THEN
+        DO i=1,NoResults-1
+          WRITE(10,'(ES21.12E3)',ADVANCE='NO') Values(i)
+        END DO
+        WRITE(10,'(ES21.12E3)') Values(NoResults)
+      END IF
+    END DO
+
+    DEALLOCATE(InvPerm, BoundaryIndex)
+    IF(CalculateFlux) DEALLOCATE(PointFluxes)
+  END IF
 
   !---------------------------------------------------------------------------
   ! Save data in the intersections of line segments defined by two coordinates
   ! and element faces, or save any of the principal axis.
   !---------------------------------------------------------------------------
-  SaveNodes2 = 0
-  IF(NoLines > 0  .OR. ANY(SaveAxis(1:DIM)) ) THEN
-    
-    ALLOCATE( LineTag(Mesh % NumberOfNodes), STAT=istat )
-    IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 5') 
-        
-    IF( Solver % TimesVisited == 0 ) THEN 
-      CALL FindMeshEdges( Mesh, .FALSE.)
+  SaveNodes2 = 0  
+  IF( NoLines > 0  .OR. ANY(SaveAxis(1:DIM) ) ) THEN
+    NoTests = 0
+
+    IF( .NOT. GotDivisions ) THEN
+      IF( Solver % TimesVisited == 0 ) THEN 
+        CALL FindMeshEdges( Mesh, .FALSE.)
+      END IF
+      
+      IF(DIM == 2 .OR. IntersectEdge) THEN
+        NoFaces = Mesh % NumberOfEdges
+      ELSE 
+        NoFaces = Mesh % NumberOfFaces
+      END IF
     END IF
-    
-    IF(DIM == 2 .OR. IntersectEdge) THEN
-      NoFaces = Mesh % NumberOfEdges
-    ELSE 
-      NoFaces = Mesh % NumberOfFaces
+
+    IF( GotDivisions ) THEN
+      t = MAXVAL( NoDivisions ) + 1
+    ELSE
+      t = Mesh % NumberOfNodes
     END IF
+
+    ALLOCATE( LineTag(0:t), STAT=istat )
+    IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for LineTag') 
+    
     
     DO Line = 1,NoLines + NoAxis
-      
+
       LineTag = .FALSE.
-      
+
       IF(Line <= NoLines) THEN
         LineNodes % x(1:2) = PointCoordinates(2*Line-1:2*Line,1) 
         LineNodes % y(1:2) = PointCoordinates(2*Line-1:2*Line,2) 
@@ -3347,97 +3374,238 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
           LineNodes % z(2) = MAXVAL(Mesh % Nodes % z)
         END IF
       END IF
-            
+
       MaxBoundary = MaxBoundary + 1
 
-      DO t = 1,NoFaces        
-        IF(DIM == 2 .OR. IntersectEdge) THEN
-          CurrentElement => Mesh % Edges(t)
-        ELSE 
-          CurrentElement => Mesh % Faces(t)
-        END IF
-        
-        n = CurrentElement % TYPE % NumberOfNodes
-        NodeIndexes => CurrentElement % NodeIndexes
-        
-        ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
-        ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
-        IF(DIM == 3) THEN
+      ! If we have specified number of divisions then use those
+      IF( GotDivisions ) THEN
+        R0(1) = LineNodes % x(1) 
+        R0(2) = LineNodes % y(1) 
+        R0(3) = LineNodes % z(1) 
+
+        R1(1) = LineNodes % x(2) 
+        R1(2) = LineNodes % y(2) 
+        R1(3) = LineNodes % z(2) 
+
+        dR = R1 - R0 
+        LineN = dR / SQRT( SUM( dR**2 ) )
+        CALL TangentDirections( LineN, LineT1, LineT2 ) 
+
+        nsize = NoDivisions(Line)
+
+        !PRINT *,'nsize:',Line,nsize
+        !PRINT *,'N:',LineN
+        !PRINT *,'T1:',LineT1
+        !PRINT *,'T2:',LineT2
+
+        DO t = 1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements       
+          IF( t <= Mesh % NumberOfBulkElements ) THEN
+            IF( IntersectEdge ) CYCLE
+          ELSE
+            IF( .NOT. IntersectEdge ) CYCLE
+          END IF
+
+          CurrentElement => Mesh % Elements(t)
+          n = CurrentElement % Type % NumberOfNodes
+          m = GetElementCorners( CurrentElement )
+          NodeIndexes => CurrentElement % NodeIndexes
+
+          ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+          ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
           ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-        ELSE
-          ElementNodes % z(1:n) = 0.0d0
-        END IF
-        
-        CALL GlobalToLocalCoords(CurrentElement,ElementNodes,n,LineNodes, &
-            DetEpsilon,Inside,Basis,i)
-        
-        IF(.NOT. Inside) CYCLE
-        
-        ! When the line goes through a node it might be saved several times 
-        ! without this checking
-        IF(1.0d0-MAXVAL(Basis(1:n)) < 1.0d-3) THEN
-          IF( LineTag(NodeIndexes(i)) ) CYCLE
-          LineTag(NodeIndexes(i)) = .TRUE.
-        END IF
-        
-        SaveNodes2 = SaveNodes2 + 1
-        
-        IF( .NOT. SkipBoundaryInfo ) THEN
-          IF(TransientSimulation) WRITE(10,'(I6)',ADVANCE='NO') Solver % DoneTime
-          WRITE(10,'(I6,I4,I8)',ADVANCE='NO') Solver % TimesVisited+1,&
-              MaxBoundary,NodeIndexes(i)
-        END IF
-        
-        No = 0
-        Values = 0.0d0
-        
-        DO ivar = 1,NoVar
-          Var => VariableGetN( ivar ) 
-          
-          IF (ASSOCIATED (Var % EigenVectors)) THEN
-            NoEigenValues = SIZE(Var % EigenValues) 
-            DO j=1,NoEigenValues
-              DO k=1,n
-                l = NodeIndexes(k)
-                IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-                IF(l > 0) THEN 
-                  DO i=1,Var % DOFs
-                    Values(No+(j-1)*Var%Dofs+i) = Values(No+(j-1)*Var%Dofs+i) + &
-                        Basis(k) * (Var % EigenVectors(j,Var%Dofs*(l-1)+i))
+
+          DO i=1,m
+            S1(1) = ElementNodes % x(i)  
+            S1(2) = ElementNodes % y(i)  
+            S1(3) = ElementNodes % z(i)  
+
+            dS = ( S1 - R0 ) / SQRT( SUM( dR**2 ) )
+            LocalCoord(1) = SUM( dS * LineN )
+            LocalCoord(2) = SUM( dS * LineT1 )
+            LocalCoord(3) = SUM( dS * LineT2 )
+
+            IF( i == 1 ) THEN
+              MinCoord = LocalCoord
+              MaxCoord = LocalCoord
+            ELSE
+              DO j=1,3
+                MinCoord(j) = MIN( MinCoord(j), LocalCoord(j) ) 
+                MaxCoord(j) = MAX( MaxCoord(j), LocalCoord(j) ) 
+              END DO
+            END IF
+          END DO
+
+          IF( MinCoord(2) * MaxCoord(2) > 0.0_dp ) CYCLE
+          IF( dim >= 3 .AND. .NOT. IntersectEdge ) THEN
+            IF( MinCoord(3) * MaxCoord(3) > 0.0_dp ) CYCLE
+          END IF
+
+          imin = MAX(0, CEILING( nsize * MinCoord(1) ) )
+          imax = MIN(nsize, FLOOR( ( nsize * MaxCoord(1) ) ) )
+
+
+          DO i=imin,imax
+            NoTests = NoTests + 1
+
+            IF( LineTag(i) ) CYCLE
+
+            GlobalCoord = R0 + i * dR / nsize
+
+            IF ( PointInElement( CurrentElement, ElementNodes, GlobalCoord, LocalCoord ) ) THEN
+              LineTag(i) = .TRUE.
+
+              !PRINT *,'Hit:',t,i,GlobalCoord
+
+              SaveNodes2 = SaveNodes2 + 1
+              stat = ElementInfo( CurrentElement, ElementNodes, LocalCoord(1), &
+                  LocalCoord(2), LocalCoord(3), detJ, Basis ) !, dBasisdx ) 
+
+              IF( .NOT. SkipBoundaryInfo ) THEN
+                IF(TransientSimulation) WRITE(10,'(I6)',ADVANCE='NO') Solver % DoneTime
+                WRITE(10,'(I6,I4,I8)',ADVANCE='NO') Solver % TimesVisited+1,&
+                    MaxBoundary,i
+              END IF
+
+              No = 0
+              Values = 0.0d0
+
+              DO ivar = 1,NoVar
+                Var => VariableGetN( ivar ) 
+
+                IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
+                  NodeIndexes => CurrentElement % DgIndexes
+                ELSE
+                  NodeIndexes => CurrentElement % NodeIndexes 
+                END IF
+
+                IF (ASSOCIATED (Var % EigenVectors)) THEN
+                  NoEigenValues = SIZE(Var % EigenValues) 
+                  DO j=1,NoEigenValues
+                    DO k=1,n
+                      l = NodeIndexes(k)
+                      IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+                      IF(l > 0) THEN 
+                        DO ii=1,Var % DOFs
+                          Values(No+(j-1)*Var%Dofs+ii) = Values(No+(j-1)*Var%Dofs+ii) + &
+                              Basis(k) * (Var % EigenVectors(j,Var%Dofs*(l-1)+ii))
+                        END DO
+                      END IF
+                    END DO
+                  END DO
+                  No = No + Var % Dofs * NoEigenValues
+                ELSE                  
+                  No = No + 1
+                  DO k=1,n
+                    l = NodeIndexes(k)
+                    IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+                    IF(l > 0) Values(No) = Values(No) + Basis(k) * (Var % Values(l))
                   END DO
                 END IF
               END DO
+
+              IF ( CalculateFlux ) Values(No+1:No+3) = 0.0
+
+              IF(NoResults > 0) THEN
+                DO j=1,NoResults-1
+                  WRITE(10,'(ES20.11E3)',ADVANCE='NO') Values(j)
+                END DO
+                WRITE(10,'(ES20.11E3)') Values(NoResults)
+              END IF
+            END IF
+          END DO
+        END DO
+      ELSE
+
+        DO t = 1,NoFaces        
+          IF(DIM == 2 .OR. IntersectEdge) THEN
+            CurrentElement => Mesh % Edges(t)
+          ELSE 
+            CurrentElement => Mesh % Faces(t)
+          END IF
+
+          n = CurrentElement % TYPE % NumberOfNodes
+          NodeIndexes => CurrentElement % NodeIndexes
+
+          ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
+          ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
+          IF(DIM == 3) THEN
+            ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+          ELSE
+            ElementNodes % z(1:n) = 0.0d0
+          END IF
+
+          CALL GlobalToLocalCoords(CurrentElement,ElementNodes,n,LineNodes, &
+              DetEpsilon,Inside,Basis,i)
+
+          IF(.NOT. Inside) CYCLE
+
+          ! When the line goes through a node it might be saved several times 
+          ! without this checking
+          IF(1.0d0-MAXVAL(Basis(1:n)) < 1.0d-3) THEN
+            IF( LineTag(NodeIndexes(i)) ) CYCLE
+            LineTag(NodeIndexes(i)) = .TRUE.
+          END IF
+
+          SaveNodes2 = SaveNodes2 + 1
+
+          IF( .NOT. SkipBoundaryInfo ) THEN
+            IF(TransientSimulation) WRITE(10,'(I6)',ADVANCE='NO') Solver % DoneTime
+            WRITE(10,'(I6,I4,I8)',ADVANCE='NO') Solver % TimesVisited+1,&
+                MaxBoundary,NodeIndexes(i)
+          END IF
+
+          No = 0
+          Values = 0.0d0
+
+          DO ivar = 1,NoVar
+            Var => VariableGetN( ivar ) 
+
+            IF (ASSOCIATED (Var % EigenVectors)) THEN
+              NoEigenValues = SIZE(Var % EigenValues) 
+              DO j=1,NoEigenValues
+                DO k=1,n
+                  l = NodeIndexes(k)
+                  IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+                  IF(l > 0) THEN 
+                    DO i=1,Var % DOFs
+                      Values(No+(j-1)*Var%Dofs+i) = Values(No+(j-1)*Var%Dofs+i) + &
+                          Basis(k) * (Var % EigenVectors(j,Var%Dofs*(l-1)+i))
+                    END DO
+                  END IF
+                END DO
+              END DO
+              No = No + Var % Dofs * NoEigenValues
+            ELSE                  
+              No = No + 1
+              DO k=1,n
+                l = NodeIndexes(k)
+                IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+                IF(l > 0) Values(No) = Values(No) + Basis(k) * (Var % Values(l))
+              END DO
+            END IF
+          END DO
+
+          IF ( CalculateFlux ) Values(No+1:No+3) = 0.0
+
+          IF(NoResults > 0) THEN
+            DO i=1,NoResults-1
+              WRITE(10,'(ES20.11E3)',ADVANCE='NO') Values(i)
             END DO
-            No = No + Var % Dofs * NoEigenValues
-          ELSE                  
-            No = No + 1
-            DO k=1,n
-              l = NodeIndexes(k)
-              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-              IF(l > 0) Values(No) = Values(No) + Basis(k) * (Var % Values(l))
-            END DO
+            WRITE(10,'(ES20.11E3)') Values(NoResults)
           END IF
         END DO
-        
-        IF ( CalculateFlux ) Values(No+1:No+3) = 0.0
-        
-        IF(NoResults > 0) THEN
-          DO i=1,NoResults-1
-            WRITE(10,'(ES20.11E3)',ADVANCE='NO') Values(i)
-          END DO
-          WRITE(10,'(ES20.11E3)') Values(NoResults)
-        END IF
-        
-      END DO
+      END IF
     END DO
-    
+
+    IF( NoTests > 0 ) THEN
+      CALL Info('SaveLine','Number of candidate nodes: '//TRIM(I2S(NoTests)),Level=8)
+    END IF
+
+    CALL Info('SaveLine','Number of nodes in specified lines: '//TRIM(I2S(SaveNodes2)))
+
     DEALLOCATE( LineTag )
-    
-    WRITE( Message, * ) 'Number of nodes in specified lines ', SaveNodes2
-    CALL Info('SaveLine',Message)
   END IF
-
-
+  
   !---------------------------------------------------------------------------
   ! Save data in the intersections isocurves and element edges.
   !---------------------------------------------------------------------------
@@ -3594,18 +3762,22 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
          
     END DO
     
-    DEALLOCATE( LineTag )
-    
+    DEALLOCATE( LineTag )    
   END IF
+
   CLOSE(10)
   DEALLOCATE( Values )
 
   ! Finally save the names of the variables to help to identify the 
   ! columns in the result matrix.
   !-----------------------------------------------------------------
-  IF( Solver % TimesVisited == 0 .AND. NoResults > 0 ) THEN
+  !SaveNodes = NINT( ParallelReduction( 1.0_dp * SaveNodes ) )
+  !SaveNodes2 = NINT( ParallelReduction( 1.0_dp * SaveNodes2 ) )
+
+  IF( Solver % TimesVisited == 0 .AND. NoResults > 0 .AND. &
+      (.NOT. Parallel .OR. ParEnv % MyPe == 0 ) ) THEN
     ALLOCATE( ValueNames(NoResults), STAT=istat )
-    IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error 6') 
+    IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for ValueNames') 
 
     No = 0
     DO ivar = 1,NoVar
@@ -3638,7 +3810,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       ValueNames(No+3) = 'Flux normal'      
     END IF
 
-    SideNamesFile = TRIM(SideParFile) // '.' // TRIM("names")
+    SideNamesFile = TRIM(SideFile) // '.' // TRIM("names")
     OPEN (10, FILE=SideNamesFile)
 
     Message = ListGetString(Model % Simulation,'Comment',GotIt)
@@ -3649,7 +3821,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     IF( GotIt ) THEN
       WRITE(10,'(A)') TRIM(Message)
     END IF
-    WRITE(10,'(A,A)') 'Variables in file: ',TRIM(SideParFile)
+    WRITE(10,'(A,A)') 'Variables in file: ',TRIM(SideFile)
     
     DateStr = FormatDate()
     WRITE( 10,'(A,A)') 'File started at: ',TRIM(DateStr)

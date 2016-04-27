@@ -288,7 +288,7 @@ CONTAINS
     REAL(KIND=dp) :: JouleH,u,v,w,x,y,z
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Mx,My,Mz,MFx,MFy,MFz
-    INTEGER :: i,j,k,bfId,JouleMode
+    INTEGER :: i,j,k,bfId
     LOGICAL :: stat,GotIt
     INTEGER, POINTER :: NodeIndexes(:)
 
@@ -301,8 +301,11 @@ CONTAINS
 
     REAL(KIND=dp) :: ExtMx(n),ExtMy(n),ExtMz(n)
     REAL(KIND=dp) :: mu,elcond,SqrtMetric,Metric(3,3),Symb(3,3,3),dSymb(3,3,3,3)
+
+    INTEGER, SAVE :: JouleMode = 0 
+    TYPE(Variable_t), POINTER, SAVE :: Jvar
 !------------------------------------------------------------------------------
-    JouleH = 0.0D0
+    JouleH = 0.0_dp
 
     bfId = ListGetInteger( CurrentModel % Bodies( Element % BodyId ) % &
          Values, 'Body Force', GotIt, 1, CurrentModel % NumberOfBodyForces )
@@ -312,136 +315,140 @@ CONTAINS
     IF ( .NOT.ListGetLogical( CurrentModel % BodyForces( &
          bfId ) % Values, 'Joule Heat' , GotIt ) ) RETURN
 !------------------------------------------------------------------------------
-    NodeIndexes => Element % NodeIndexes
-
-    JouleMode = 0
-    IF( JouleMode == 0 ) THEN
-       Mx => VariableGet( CurrentModel % Variables, 'Joule Field' )
-       IF ( ASSOCIATED( Mx ) ) THEN
-          IF ( ALL(Mx % Perm(NodeIndexes) > 0) ) JouleMode = 2
-       END IF
-    END IF
 
     IF( JouleMode == 0 ) THEN
-      Mx => VariableGet( CurrentModel % Variables, 'Magnetic Field 1' )
-      IF ( ASSOCIATED( Mx ) ) THEN
-        IF ( ALL(Mx % Perm(NodeIndexes) > 0) ) JouleMode = 1
+      Jvar => VariableGet( CurrentModel % Variables, 'Joule Heating e' )
+      IF ( ASSOCIATED( Jvar ) ) JouleMode = 1 
+
+      IF( JouleMode == 0 ) THEN
+        Jvar => VariableGet( CurrentModel % Variables, 'Joule Field' )
+        IF ( ASSOCIATED( Jvar ) ) JouleMode = 2
+      END IF
+
+      IF( JouleMode == 0 ) THEN
+        Jvar => VariableGet( CurrentModel % Variables, 'Potential' )
+        IF ( ASSOCIATED( Jvar ) ) JouleMode = 3
+      END IF
+
+      IF( JouleMode == 0 ) THEN
+        Jvar => VariableGet( CurrentModel % Variables, 'Magnetic Field 1' )
+        IF ( ASSOCIATED( Jvar ) ) JouleMode = 4 
+      END IF
+
+      IF( JouleMode == 0 ) THEN
+        CALL Warn('JouleHeat','Joule heating requested but no field to compute it!')
+        RETURN
       END IF
     END IF
 
-    IF( JouleMode == 0 ) THEN
-       Mx => VariableGet( CurrentModel % Variables, 'Potential' )
-       IF ( ASSOCIATED( Mx ) ) THEN
-          IF ( ALL(Mx % Perm(NodeIndexes) > 0) ) JouleMode = 3
-       END IF
+    IF( JouleMode == 1 ) THEN
+      NodeIndexes => Element % DgIndexes 
+    ELSE
+      NodeIndexes => Element % NodeIndexes
     END IF
+    IF( ANY( Jvar % Perm( NodeIndexes ) == 0 ) ) RETURN
 
-
-    IF( JouleMode == 0) RETURN
     
     !------------------------------------------------------------------------------
-    !   Get element info 
+    ! The simplest model just evaluates precomputed elemental heating at integration point
     !------------------------------------------------------------------------------
-    stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric, &
-         Basis,dBasisdx )
-    IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-       x = SUM( Nodes % x(1:n) * Basis(1:n))
-       y = SUM( Nodes % y(1:n) * Basis(1:n))
-       z = SUM( Nodes % z(1:n) * Basis(1:n))
-       CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
-       CALL InvertMatrix( Metric,3 )
+    IF( JouleMode == 1 ) THEN
+      stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis )
+      JouleH = SUM( Basis(1:n) * Jvar % Values( Jvar % Perm( NodeIndexes ) ) )
+
+      ! Make an early exit since we don't need conductivity 
+      RETURN
     END IF
 
+
     !------------------------------------------------------------------------------
-    !  All modelds need electric conductivity
+    !  All other models require electric conductivity
     !------------------------------------------------------------------------------
     k = ListGetInteger( CurrentModel % Bodies &
          (Element % BodyId) % Values, 'Material')
     Material => CurrentModel % Materials(k) % Values
     
     ElectricConductivity(1:n) = ListGetReal( Material, &
-         'Electrical Conductivity',n,NodeIndexes, GotIt )
-    IF( GotIt ) THEN
-       CALL Warn('JouleHeat','Use electric conductivity instead of electrical')
-    ELSE
-       ElectricConductivity(1:n) = ListGetReal( Material, &
-            'Electric Conductivity',n,NodeIndexes,GotIt )
+        'Electric Conductivity',n,NodeIndexes,GotIt )
+
+    IF( JouleMode == 2 ) THEN
+      ! This model uses a "joule field" and multiplies it with conductivity at the integration point
+      stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis )     
+      elcond = SUM( ElectricConductivity(1:n) * Basis(1:n) )
+      JouleH = elcond * SUM( Basis(1:n) * Jvar % Values(Jvar % Perm(NodeIndexes)) )
+
+    ELSE IF( JouleMode == 3 ) THEN
+      ! This model uses potential and evaluates the current from its gradient
+      stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis,dBasisdx )
+      elcond = SUM( ElectricConductivity(1:n) * Basis(1:n) )
+
+      B(1) = SUM( dBasisdx(1:n,1) * Jvar % Values(Jvar % Perm(NodeIndexes)) )
+      B(2) = SUM( dBasisdx(1:n,2) * Jvar % Values(Jvar % Perm(NodeIndexes)) )
+      B(3) = SUM( dBasisdx(1:n,3) * Jvar % Values(Jvar % Perm(NodeIndexes)) )     
+      JouleH = elcond * SUM( B * B )
+
+    ELSE IF( JouleMode == 4 ) THEN
+      !------------------------------------------------------------------------------
+      !  Magnetic induction equation, might be obsolite
+      !------------------------------------------------------------------------------
+      stat = ElementInfo( Element,Nodes,u,v,w,SqrtElementMetric,Basis,dBasisdx )      
+      elcond = SUM( ElectricConductivity(1:n) * Basis(1:n) )
+      IF( elcond < TINY( elcond ) ) RETURN
+
+      Permeability(1:n) = ListGetReal( Material, 'Magnetic Permeability', &
+          n, NodeIndexes ) 
+      
+      Mx => VariableGet( CurrentModel % Variables, 'Magnetic Field 1' )
+      My => VariableGet( CurrentModel % Variables, 'Magnetic Field 2' )
+      Mz => VariableGet( CurrentModel % Variables, 'Magnetic Field 3' )
+      
+      !------------------------------------------------------------------------------
+      ExtMx(1:n) = ListGetReal( Material, 'Applied Magnetic Field 1', &
+          n,NodeIndexes, Gotit )       
+      ExtMy(1:n) = ListGetReal( Material, 'Applied Magnetic Field 2', &
+          n,NodeIndexes, Gotit )       
+      ExtMz(1:n) = ListGetReal( Material, 'Applied Magnetic Field 3', &
+          n,NodeIndexes, Gotit )
+      !
+      MFx => VariableGet( CurrentModel % Variables, 'Magnetic Flux Density 1' )
+      MFy => VariableGet( CurrentModel % Variables, 'Magnetic Flux Density 2' )
+      MFz => VariableGet( CurrentModel % Variables, 'Magnetic Flux Density 3' )
+      IF ( ASSOCIATED( MFx ) ) THEN
+        ExtMx(1:n) = ExtMx(1:n) + MFx % Values(MFx % Perm(NodeIndexes))
+        ExtMy(1:n) = ExtMy(1:n) + MFy % Values(MFy % Perm(NodeIndexes))
+        ExtMz(1:n) = ExtMz(1:n) + MFz % Values(MFz % Perm(NodeIndexes))
+      END IF
+      
+      !------------------------------------------------------------------------------
+      B(1) = SUM( Basis(1:n) * Mx % Values(Mx % Perm(NodeIndexes)) )
+      B(2) = SUM( Basis(1:n) * My % Values(My % Perm(NodeIndexes)) )
+      B(3) = SUM( Basis(1:n) * Mz % Values(Mz % Perm(NodeIndexes)) )
+      
+      B(1) = B(1) + SUM( Basis(1:n) * ExtMx(1:n) )
+      B(2) = B(2) + SUM( Basis(1:n) * ExtMy(1:n) )
+      B(3) = B(3) + SUM( Basis(1:n) * ExtMz(1:n) )
+      
+      mu = SUM( Basis(1:n) * Permeability(1:n) )
+      DO i=1,3
+        dHdx(1,i) = SUM( dBasisdx(1:n,i)* &
+            Mx % Values(Mx % Perm(NodeIndexes))/Permeability(1:n) )
+        dHdx(2,i) = SUM( dBasisdx(1:n,i)* &
+            My % Values(My % Perm(NodeIndexes))/Permeability(1:n) )
+        dHdx(3,i) = SUM( dBasisdx(1:n,i)* &
+            Mz % Values(Mz % Perm(NodeIndexes))/Permeability(1:n) )
+      END DO
+      
+      IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
+        x = SUM( Nodes % x(1:n) * Basis(1:n))
+        y = SUM( Nodes % y(1:n) * Basis(1:n))
+        z = SUM( Nodes % z(1:n) * Basis(1:n))
+        CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,x,y,z )
+        CALL InvertMatrix( Metric,3 )
+      END IF
+      JouleH = ComputeMagneticHeat( B,dHdx,mu,SqrtMetric,Metric,Symb ) / &
+          elcond            
     END IF
-    elcond = SUM( ElectricConductivity(1:n) * Basis(1:n) )
-
-
-    ! Joule heating takes place only when there is ohmic resistance
-    IF( elcond < TINY(elcond) ) RETURN
-
-    !------------------------------------------------------------------------------
-    !  Magnetic induction equation
-    !------------------------------------------------------------------------------
-    IF( JouleMode == 1 ) THEN
-       Permeability(1:n) = ListGetReal( Material, 'Magnetic Permeability', &
-            n, NodeIndexes ) 
-       
-       Mx => VariableGet( CurrentModel % Variables, 'Magnetic Field 1' )
-       My => VariableGet( CurrentModel % Variables, 'Magnetic Field 2' )
-       Mz => VariableGet( CurrentModel % Variables, 'Magnetic Field 3' )
-              
-       !------------------------------------------------------------------------------
-       ExtMx(1:n) = ListGetReal( Material, 'Applied Magnetic Field 1', &
-            n,NodeIndexes, Gotit )       
-       ExtMy(1:n) = ListGetReal( Material, 'Applied Magnetic Field 2', &
-            n,NodeIndexes, Gotit )       
-       ExtMz(1:n) = ListGetReal( Material, 'Applied Magnetic Field 3', &
-            n,NodeIndexes, Gotit )
-!
-       MFx => VariableGet( CurrentModel % Variables, 'Magnetic Flux Density 1' )
-       MFy => VariableGet( CurrentModel % Variables, 'Magnetic Flux Density 2' )
-       MFz => VariableGet( CurrentModel % Variables, 'Magnetic Flux Density 3' )
-       IF ( ASSOCIATED( MFx ) ) THEN
-          ExtMx(1:n) = ExtMx(1:n) + MFx % Values(MFx % Perm(NodeIndexes))
-          ExtMy(1:n) = ExtMy(1:n) + MFy % Values(MFy % Perm(NodeIndexes))
-          ExtMz(1:n) = ExtMz(1:n) + MFz % Values(MFz % Perm(NodeIndexes))
-       END IF
-
-       !------------------------------------------------------------------------------
-       B(1) = SUM( Basis(1:n)*Mx % Values(Mx % Perm(NodeIndexes)) )
-       B(2) = SUM( Basis(1:n)*My % Values(My % Perm(NodeIndexes)) )
-       B(3) = SUM( Basis(1:n)*Mz % Values(Mz % Perm(NodeIndexes)) )
-       
-       B(1) = B(1) + SUM( Basis(1:n) * ExtMx(1:n) )
-       B(2) = B(2) + SUM( Basis(1:n) * ExtMy(1:n) )
-       B(3) = B(3) + SUM( Basis(1:n) * ExtMz(1:n) )
-       
-       mu = SUM( Basis(1:n) * Permeability(1:n) )
-       DO i=1,3
-          dHdx(1,i) = SUM( dBasisdx(1:n,i)* &
-               Mx % Values(Mx % Perm(NodeIndexes))/Permeability(1:n) )
-          dHdx(2,i) = SUM( dBasisdx(1:n,i)* &
-               My % Values(My % Perm(NodeIndexes))/Permeability(1:n) )
-          dHdx(3,i) = SUM( dBasisdx(1:n,i)* &
-               Mz % Values(Mz % Perm(NodeIndexes))/Permeability(1:n) )
-       END DO
-       
-       JouleH = ComputeMagneticHeat( B,dHdx,mu,SqrtMetric,Metric,Symb ) / &
-            elcond            
-    END IF
-
-     !------------------------------------------------------------------------------
-    !  Axisymmetric vector potential
-    !------------------------------------------------------------------------------
-    IF( JouleMode == 2) THEN
-       JouleH = elcond * SUM( Basis(1:n)*Mx % Values(Mx % Perm(NodeIndexes)) )
-    END IF
-
-   !------------------------------------------------------------------------------
-    !  Static current condution
-    !------------------------------------------------------------------------------
-    IF( JouleMode == 3) THEN
-       ! The electric field at IP
-       B(1) = SUM( dBasisdx(1:n,1) * Mx % Values(Mx % Perm(NodeIndexes)) )
-       B(2) = SUM( dBasisdx(1:n,2) * Mx % Values(Mx % Perm(NodeIndexes)) )
-       B(3) = SUM( dBasisdx(1:n,3) * Mx % Values(Mx % Perm(NodeIndexes)) )     
-       JouleH = elcond * SUM( B * B )
-    END IF
-
+    
 CONTAINS
 
 !------------------------------------------------------------------------------

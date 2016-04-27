@@ -1,0 +1,104 @@
+! Test case that shows how a part of the mesh can be use as a "component"
+! and reduction operator can be applied to that part only. 
+!
+! P.R. 10.3.2016
+
+
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "blocks"
+End
+
+Simulation
+  Max Output Level = 8
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Output Intervals(1) = 1
+  Steady State Max Iterations = 1
+
+!  Filename Numbering = Logical True
+  Post File = "case.vtu"
+
+! Increase mesh density
+  Mesh Levels = 1
+End
+
+Body 1
+  Target Bodies = 1 
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Target Bodies = 2
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1 
+  Name = "StatCurrent"
+  Active Solvers(1) = 1 
+End 
+
+
+Solver 1
+  Equation = "StatCurrent"
+
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+  Variable = Potential
+
+!  Linear System Solver = direct 
+
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = ilu2
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1e-10
+  Linear System Iterative Method = BiCGStabL
+  Linear System Residual Output = 20
+  Steady State Convergence Tolerance = 1e-06
+
+  Nonlinear System Consistent Norm = Logical True
+
+  Update Components(1) = Integer 1
+End
+
+
+Solver 2 
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+!  Filename = "f.dat"
+  Show Norm Index = Integer 1 
+
+  Save Component Results = Logical True
+End 
+
+
+Material 1
+  Density = 1.0
+  Electric Conductivity = Real 1.0e3
+  Elecric Conductivity = Real 1.0e3
+End
+
+Component 1 
+  Name = String "Resistant"
+  Master Bodies(1) = Integer 1
+  Operator 1 = String "electric resistance"
+  Variable 1 = String "potential"
+End 
+
+Boundary Condition 1 
+  Target Boundaries(1) = 1
+  Potential = Real 0.0
+End 
+
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  Potential = Real 2.0
+End 
+
+
+Solver 1 :: Reference Norm = 1.16189500E+00
+Solver 2 :: Reference Norm = 0.01

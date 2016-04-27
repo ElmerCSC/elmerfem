@@ -678,10 +678,10 @@ MODULE ComponentUtils
     INTEGER, POINTER :: ComponentList(:)
 
     INTEGER :: i,j,NoVar
-    CHARACTER(LEN=MAX_NAME_LEN) :: OperName, VarName, CoeffName
+    CHARACTER(LEN=MAX_NAME_LEN) :: OperName, VarName, CoeffName, TmpOper
     LOGICAL :: GotVar, GotOper, GotCoeff, VectorResult
     TYPE(ValueList_t), POINTER :: CompParams
-    REAL(KIND=dp) :: ScalarVal, VectorVal(3)
+    REAL(KIND=dp) :: ScalarVal, VectorVal(3), Power, Voltage
     TYPE(Variable_t), POINTER :: Var
 
     CALL Info('UpdateDepedentComponents','Updating Components to reflect new solution',Level=6)
@@ -700,6 +700,14 @@ MODULE ComponentUtils
         OperName = ListGetString( CompParams,'Operator '//TRIM(I2S(NoVar)), GotOper)
         VarName = ListGetString( CompParams,'Variable '//TRIM(I2S(NoVar)), GotVar)
         CoeffName = ListGetString( CompParams,'Coeffcient '//TRIM(I2S(NoVar)), GotCoeff)
+        
+        IF(.NOT. GotVar .AND. GotOper .AND. OperName == 'electric resistance') THEN
+          VarName = 'Potential'
+          GotVar = .TRUE.
+          CALL Info('UpdateDependentComponents',&
+              'Defaulting field to > Potential < for operator: '//TRIM(OperName),Level=8)
+        END IF
+        
         IF(.NOT. (GotVar .AND. GotOper ) ) EXIT
 
         Var => VariableGet( CurrentModel % Mesh % Variables, VarName ) 
@@ -711,6 +719,20 @@ MODULE ComponentUtils
 
         SELECT CASE( OperName ) 
 
+        CASE('electric resistance')
+          IF(.NOT. GotCoeff ) THEN
+            CoeffName = 'electric conductivity'
+            GotCoeff = .TRUE.
+          END IF
+          TmpOper = 'diffusive energy'
+          Power = ComponentIntegralReduction(CurrentModel, CurrentModel % Mesh, CompParams, Var, &
+              TmpOper, CoeffName, GotCoeff )
+          TmpOper = 'range'
+          Voltage = ComponentNodalReduction(CurrentModel, CurrentModel % Mesh, CompParams, Var, &
+              TmpOper )
+          ScalarVal = Voltage**2 / Power 
+          CALL ListAddConstReal( CompParams,'res: '//TRIM(OperName),ScalarVal )
+ 
         CASE ('sum','sum abs','min','max','min abs','max abs','range','mean','mean abs','variance')
           ScalarVal = ComponentNodalReduction(CurrentModel, CurrentModel % Mesh, CompParams, Var, &
               OperName )
