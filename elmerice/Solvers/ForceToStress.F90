@@ -90,7 +90,7 @@
 
      INTEGER, POINTER :: StressPerm(:), ForcePerm(:), NodeIndexes(:)
 
-     LOGICAL :: GotIt, AllocationsDone = .FALSE.,UnFoundFatal
+     LOGICAL :: GotIt, AllocationsDone = .FALSE.,UnFoundFatal=.TRUE.
 
      REAL(KIND=dp), ALLOCATABLE:: LocalMassMatrix(:,:), &
        LocalStiffMatrix(:,:), LocalForce(:), &

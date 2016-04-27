@@ -100,7 +100,7 @@
      REAL(KIND=dp) :: a2(6)
      REAL(KIND=dp) :: ai(3), Angle(3)
 
-     LOGICAL :: GotForceBC,GotIt,NewtonLinearization = .FALSE.,UnFoundFatal
+     LOGICAL :: GotForceBC,GotIt,NewtonLinearization = .FALSE.,UnFoundFatal=.TRUE.
 
      INTEGER :: body_id,bf_id,eq_id, comp, Indexes(128)
 !

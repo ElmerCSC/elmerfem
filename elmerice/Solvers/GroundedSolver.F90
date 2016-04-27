@@ -79,7 +79,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar
   TYPE(Nodes_t), SAVE :: Nodes
 
-  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal
+  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.
 
   INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
   INTEGER, POINTER :: Permutation(:), bedrockPerm(:)
