@@ -1035,7 +1035,7 @@ RETURN
     TYPE(Element_t), POINTER :: Face, Parent, Faces(:)
     
     INTEGER i,j,k,l,m,n,dim,NoPartitions, nextPart, nFaces, &
-        Proc, ierr, status(MPI_STATUS_SIZE), n_part, nReceived, &
+        Proc, ierr, status(MPI_STATUS_SIZE), n_part, nReceived, nSent, &
         ncomp, ncompInt
     
     INTEGER, ALLOCATABLE :: Perm(:), Indexes(:), Neigh(:), &
@@ -1131,6 +1131,14 @@ RETURN
     CALL Info('ChangeParticlePartition','Number of particles to send: '&
         //TRIM(I2S(n)),Level=10)
     
+    CALL MPI_ALLREDUCE( n, nSent, 1, MPI_INTEGER, &
+        MPI_SUM, MPI_COMM_WORLD, ierr )
+    IF ( nSent == 0 ) THEN
+      CALL Info('ChangeParticlePartition','No particles needs to be sent',Level=10)
+      DEALLOCATE(ExcInfo, Perm, Neigh)
+      RETURN
+    END IF
+
     !
     ! Receive interface sizes:
     !--------------------------
@@ -1153,7 +1161,7 @@ RETURN
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
         MPI_SUM, MPI_COMM_WORLD, ierr )
     IF ( nReceived==0 ) THEN
-      CALL Info('ChangeParticlePartition','No particles needs to be sent',Level=10)
+      CALL Info('ChangeParticlePartition','No particles needs to be received',Level=10)
       DEALLOCATE(Recv_Parts, Requests, ExcInfo, Perm, Neigh)
       RETURN
     END IF
@@ -1636,6 +1644,8 @@ RETURN
       CALL Info('ParticleAdvectParallel','Global particles to be sent: '&
           //TRIM(I2S(nSent)),Level=12)
     ELSE
+      ! If nobody is sending any particles then there can be no need to reveive particles either
+      ! Thus we can make an early exit. 
       DEALLOCATE(SentParts, RecvParts, Requests )
       CALL Info('ParticleAdvectParallel','Nothing to do in parallel!',Level=15)
       RETURN
@@ -3036,11 +3046,12 @@ RETURN
   !> This subroutine tests whether a particle is within element using the 
   !> consistant strategy with the above algorithm.
   !---------------------------------------------------------------------------
-  FUNCTION SegmentElementInside(Mesh,BulkElement,Rfin) RESULT ( Inside )
+  FUNCTION SegmentElementInside(Mesh,BulkElement,Rfin,Debug) RESULT ( Inside )
     !---------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER   :: BulkElement
     REAL(KIND=dp) :: Rfin(3)
+    LOGICAL :: Debug
     LOGICAL :: Inside
     !---------------------------------------------------------------------------
     REAL(KIND=dp) :: Rinit(3), MinLambda
@@ -3049,8 +3060,10 @@ RETURN
     REAL(KIND=dp) :: Lambda, Eps, Lambdas(6)
     INTEGER :: ElemDim, NoFaces, i,j,n,Hits
     INTEGER, POINTER :: NodeIndexes(:)
-    LOGICAL :: Success, AtBoundary, AtFace, Visited = .FALSE.
+    LOGICAL :: Success, AtBoundary, AtFace, Visited = .FALSE., Outside
     REAL(KIND=dp) :: minx,maxx,dx,mindist,dist
+
+
     Inside = .FALSE.
 
     MinLambda = HUGE(MinLambda)   
@@ -3075,8 +3088,13 @@ RETURN
       END IF
 
       dx = Eps * (maxx-minx) 
-      IF( Rfin(i) < minx - dx ) RETURN
-      IF( Rfin(i) > maxx + dx ) RETURN
+      Outside = ( Rfin(i) < minx - dx .OR. Rfin(i) > maxx + dx ) 
+
+      IF( Debug ) THEN
+        PRINT *,'Rough test: ',Outside,i,dx,minx,maxx,Rfin(i),MAX(minx-Rfin(i),Rfin(i)-maxx)
+      END IF
+
+      IF( Outside ) RETURN
     END DO
 
 
@@ -3112,14 +3130,20 @@ RETURN
       Hits = Hits + 1
       Lambdas(Hits) = Lambda
       IF (Lambda > 0.0_dp .AND. MinLambda > Lambda) MinLambda = Lambda
-    END DO
+    END DO    
+
+    IF( Debug ) THEN
+      PRINT *,'Intersecting faces:',Hits
+      PRINT *,'Lambdas:',Lambdas(1:Hits)
+    END IF
+
 
     IF( Hits == 0 ) THEN
       Inside = .FALSE.
     ELSE 
       Inside = MinLambda > 1.0 - Eps .AND. MinLambda > -Eps 
 
-      IF( .FALSE. .AND. Hits /= 2 ) THEN
+      IF( Debug ) THEN
         MinDist = HUGE(MinDist)
         DO i=1,n
           Dist = SQRT( (Rfin(1)-Nodes % x(i))**2 + &
@@ -3128,8 +3152,7 @@ RETURN
           MinDist = MIN( Dist, MinDist )
         END DO
 
-        PRINT *,'SegmentElementInside: number of hits: ', Hits,Inside,MinDist
-        PRINT *,'Lambdas:',Lambdas(1:Hits)
+        PRINT *,'Dist: ', Inside,MinDist
       END IF
     END IF
 
@@ -3263,7 +3286,8 @@ RETURN
 	LocalCoord(3),Velo0(3)
     LOGICAL :: Hit, DoInit, Stat, StopAtFace, AtWall, Visited = .FALSE.,&
         Debug,UseCenter,GotBC,GotBC2,ParticleBounce, Robust, Inside
-    INTEGER :: i,j,k,n,FaceIndex,MaxTrials,bc_id,cons_id,ElementIndex0,ParticleStatus0
+    INTEGER :: i,j,k,n,FaceIndex,MaxTrials,bc_id,cons_id,ElementIndex0,ParticleStatus0, &
+        DebugNo, DebugPart
     INTEGER :: Problems(3), PrevNo 
     TYPE(Nodes_t), SAVE :: ElementNodes
     INTEGER, POINTER :: NodeIndexes(:)
@@ -3274,13 +3298,12 @@ RETURN
     INTEGER :: NextPartition, Counter = 0
     LOGICAL, POINTER :: FaceInterface(:)
     
-    SAVE :: Mesh, StopAtFace, Debug, MaxTrials, Counter, PrevNo, Eps, Robust, Problems
+    SAVE :: Mesh, StopAtFace, Debug, MaxTrials, Counter, PrevNo, Eps, Robust, Problems, &
+        DebugNo, DebugPart
     
     Mesh => GetMesh()
     Counter = Counter + 1
-    Debug = .FALSE.
-!debug = particles % partition(no) == 2 .and. particles % nodeindex(no) == 325
- 
+
     IF( .NOT. Visited ) THEN
       Params => ListGetSolverParams()
       Robust = ListGetLogical( Params,'Particle Locate Robust',stat)
@@ -3288,12 +3311,18 @@ RETURN
       StopAtFace = ListGetLogical( Params,'Particle Stop At Face',Stat)
       MaxTrials = ListGetInteger( Params,'Max Particle Search Trials',Stat)
       IF(.NOT. Stat) MaxTrials = Mesh % NumberOfBulkElements      
+     
+      DebugNo = ListGetInteger( Params,'Debug particle index',Stat)
+      DebugPart = ListGetInteger( Params,'Debug particle partition',Stat)
 
       Eps = ListGetConstReal( Params,'Particle Hit Tolerance',Stat)
       IF(.NOT. Stat) Eps = 1.0e-10
       Problems = 0
       Visited = .TRUE.     
     END IF
+
+    Debug = ( No == DebugNo .AND. ParEnv % MyPe == DebugPart )
+    
 
     !--------------------------------------------------------------------
     ! This is a recursive algorithm that checks the intersections 
@@ -3316,10 +3345,11 @@ RETURN
     END IF
 
     IF( Debug ) THEN
-      PRINT *,parenv % mype, 'Starting'
-      PRINT *,parenv % mype, 'Rinit:',Rinit
-      PRINT *,parenv % mype, 'Rfin:',Rfin
-      PRINT *,parenv % mype, 'Velo:',Velo
+      PRINT *,'Starting'
+      PRINT *,'Rinit:',Rinit
+      PRINT *,'Rfin:',Rfin
+      PRINT *,'Velo:',Velo
+      PRINT *,'ds2:',ds2
     END IF
     
     NULLIFY( PrevElement ) 
@@ -3348,6 +3378,11 @@ RETURN
           Rtmp = Rtmp + MinLambda * (Rfin - Rtmp) 
         END IF
       END IF
+
+      IF( Debug ) THEN
+        PRINT *,'Center:',i, UseCenter, Rtmp, MinLambda
+      END IF
+
       
       IF( Robust ) THEN
         CALL SegmentElementIntersection2(Mesh,Element,&
@@ -3361,11 +3396,14 @@ RETURN
 
 
       IF( .NOT. ASSOCIATED( FaceElement ) ) THEN
-
         ! One likely cause for unsuccessful operation is that the 
         ! initial node and target node are the same
         
         ds2 = SUM ( ( Rtmp - Rfin )**2 )
+        IF( Debug ) THEN
+          PRINT *,'NoFace:',ds2
+        END IF
+ 
         IF( ds2 < EPSILON( ds2 ) ) THEN
           ParticleStatus = PARTICLE_HIT
           EXIT
@@ -3393,6 +3431,11 @@ RETURN
             END IF
           END DO
         END IF
+
+        IF( Debug ) THEN
+          PRINT *,'BC:',cons_id,GotBC
+        END IF
+ 
 
         ! Reflect particle from face and continue the search in the same element
         !-----------------------------------------------------------------------
@@ -3454,6 +3497,13 @@ RETURN
           LeftElement  => FaceElement % BoundaryInfo % Left
           RightElement => FaceElement % BoundaryInfo % Right
           
+          
+          IF( Debug ) THEN
+            PRINT *,'Left and Right:',&
+                ASSOCIATED(LeftElement),ASSOCIATED(RightElement)
+          END IF
+          
+
           IF( ASSOCIATED( LeftElement) .AND. ASSOCIATED(RightElement)) THEN
             IF( ASSOCIATED(Element, LeftElement)) THEN
               NextElement => RightElement
@@ -3462,21 +3512,35 @@ RETURN
             END IF
             IF( StopAtFace .AND. .NOT. DoInit ) ParticleStatus = PARTICLE_FACEBOUNDARY
           ELSE
-            ParticleStatus = PARTICLE_WALLBOUNDARY
+            ParticleStatus = PARTICLE_WALLBOUNDARY 
           END IF
         END IF
 
         ! There are different reasons why the particle is only integrated until the face
         IF( ParticleStatus == PARTICLE_WALLBOUNDARY .OR. &
             ParticleStatus == PARTICLE_FACEBOUNDARY ) THEN
+                  
           Lambda = MinLambda
           StopFaceIndex = FaceElement % ElementIndex
 
           Rfin = Rtmp + MinLambda * (Rfin - Rtmp) 
           Velo = 0.0_dp
+
+          IF( Debug ) THEN
+            PRINT *,'WallBC:',Rfin, MinLambda
+          END IF
+
+
           EXIT                      
         END IF
       END IF
+
+      IF( Debug ) THEN
+        PRINT *,'Same Elements:', ASSOCIATED( NextElement ), &
+            ASSOCIATED( NextElement, Element), ASSOCIATED( NextElement, PrevElement )
+      END IF
+      
+
 
       ! continue the search to new elements
       IF( .NOT. ASSOCIATED( NextElement ) ) THEN
@@ -3487,13 +3551,19 @@ RETURN
         CALL Warn('LocateParticleInMeshMarch','Elements are the same!')
       END IF
 
+
       IF( ASSOCIATED( NextElement, PrevElement ) ) THEN
         CALL GetElementNodes(ElementNodes,NextElement)
         IF( Robust ) THEN
-          Inside =  SegmentElementInside(Mesh,NextElement,Rfin) 
+          Inside =  SegmentElementInside(Mesh,NextElement,Rfin,Debug) 
         ELSE
           Inside = PointInElement( NextElement, ElementNodes, Rfin, LocalCoord )
         END IF
+
+        IF( Debug ) THEN
+          PRINT *,'NextElement',Inside,Robust,NextElement % ElementIndex,LocalCoord
+        END IF
+
         IF( Inside ) THEN
 	  Problems(1) = Problems(1) + 1
            CALL Warn('LocateParticleInMeshMarch','Elements are same, found in NextElement!')          
@@ -3504,19 +3574,28 @@ RETURN
 
         CALL GetElementNodes(ElementNodes,Element)
         IF( Robust ) THEN
-          Inside =  SegmentElementInside(Mesh,Element,Rfin) 
+          Inside =  SegmentElementInside(Mesh,Element,Rfin,Debug) 
         ELSE
           Inside = PointInElement( Element, ElementNodes, Rfin, LocalCoord )
         END IF
-        IF( Inside ) THEN
+
+        IF( Debug ) THEN
+          PRINT *,'ThisElement',Inside,Robust,Element % ElementIndex,LocalCoord
+        END IF
+
+       IF( Inside ) THEN
 	  Problems(2) = Problems(2) + 1
            CALL Warn('LocateParticleInMeshMarch','Elements are same, found in Element!')          
           ParticleStatus = PARTICLE_HIT	  
           EXIT
         END IF 
 
+
+
         Problems(3) = Problems(3) + 1
-        CALL Warn('LocateParticleInMeshMarch','Elements are same, this is going nowhere!')          
+        CALL Warn('LocateParticleInMeshMarch',&
+            'This is going nowhere, losing particle: '//TRIM(I2S(No))//' in '//TRIM(I2S(ParEnv % MyPe)))          
+
         ParticleStatus = PARTICLE_LOST
         EXIT
       END IF
