@@ -93,7 +93,7 @@ SUBROUTINE getStrainHeating( Model,Solver,dt,TransientSimulation )
        LocalU(3), GradU(3,3)
   INTEGER, ALLOCATABLE :: NumberOfVisits(:)
   INTEGER, POINTER :: FlowPerm(:),VarPerm(:)
-  LOGICAL :: AllocationsDone=.FALSE., FirstTime=.TRUE., Found, lstat,UnFoundFatal
+  LOGICAL :: AllocationsDone=.FALSE., FirstTime=.TRUE., Found, lstat,UnFoundFatal=.TRUE.
   TYPE(Variable_t), POINTER :: FlowSol,VarSol
   TYPE(Element_t),POINTER :: Element
   TYPE(Nodes_t)   :: ElementNodes

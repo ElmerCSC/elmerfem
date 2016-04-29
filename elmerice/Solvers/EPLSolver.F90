@@ -115,7 +115,7 @@ RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
        body_id, material_id, bf_id, bc_id
 
   LOGICAL, ALLOCATABLE :: ActiveEPL(:)
-  LOGICAL :: Found = .FALSE.,UnFoundFatal, &
+  LOGICAL :: Found = .FALSE.,UnFoundFatal=.TRUE., &
        Stabilize = .TRUE. ,&
        UseBubbles = .FALSE., &
        AllocationsDone = .FALSE., &
