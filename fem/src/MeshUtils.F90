@@ -16662,8 +16662,9 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), ALLOCATABLE :: BodyAverage(:)
     INTEGER, ALLOCATABLE :: BodyCount(:)
-    INTEGER :: n,i,j,k,l,nodeind,dgind
+    INTEGER :: n,i,j,k,l,nodeind,dgind, Nneighbours
     REAL(KIND=dp) :: AveHits
+    LOGICAL, ALLOCATABLE :: IsNeighbour(:)
 
     IF(.NOT. ASSOCIATED(var)) RETURN
     IF( SIZE(Var % Perm) <= Mesh % NumberOfNodes ) RETURN
@@ -16677,7 +16678,7 @@ CONTAINS
     END IF
 
     n = Mesh % NumberOfNodes
-    ALLOCATE( BodyCount(n), BodyAverage(n) )
+    ALLOCATE( BodyCount(n), BodyAverage(n), IsNeighbour(Parenv % PEs) )
 
 
     DO i=1,CurrentModel % NumberOfBodies
@@ -16706,6 +16707,7 @@ CONTAINS
         END IF
 
         IF(ParEnv % Pes>1) THEN
+          Nneighbours = MeshNeighbours(Mesh, IsNeighbour)
           CALL SendInterface(); CALL RecvInterface()
         END IF
 
@@ -16776,7 +16778,7 @@ CONTAINS
        END DO
 
        DO i=1,ParEnv % PEs
-         IF(.NOT. ParEnv % isNeighbour(i)) CYCLE
+         IF(.NOT. isNeighbour(i)) CYCLE
 
          CALL MPI_BSEND( cnt(i),1,MPI_INTEGER,i-1,1310,MPI_COMM_WORLD,ierr )
          IF(cnt(i)>0) THEN
@@ -16794,7 +16796,8 @@ CONTAINS
        INTEGER :: i,j,k,ierr, cnt, status(MPI_STATUS_SIZE)
 
        DO i=1,ParEnv % PEs
-         IF(.NOT. ParEnv % isNeighbour(i)) CYCLE
+
+         IF(.NOT.isNeighbour(i)) CYCLE
 
          CALL MPI_RECV( cnt,1,MPI_INTEGER,i-1,1310,MPI_COMM_WORLD,status,ierr )
          IF(cnt>0) THEN
