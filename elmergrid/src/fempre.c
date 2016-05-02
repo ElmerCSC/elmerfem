@@ -909,8 +909,10 @@ int main(int argc, char *argv[])
     }
 
     if( eg.partitions == 1 ) {
-      if(info) printf("One geometric partition requested, enforcing serial mode\n");
-      eg.partitions = 0;
+      if(!eg.connect) {
+	if(info) printf("One geometric partition requested, enforcing serial mode\n");
+	eg.partitions = 0;
+      }
     }
 
 

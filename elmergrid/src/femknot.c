@@ -2556,6 +2556,7 @@ int SetConnectedElements(struct FemType *data,int info)
 
   /* Allocated space for the connected elements */
   if(!data->elemconnectexist) {
+    printf("Created table for connected elements\n");
     data->elemconnect = Ivector(1,data->noelements);
     for(k=1;k<=data->noelements;k++)
       data->elemconnect[k] = 0;
@@ -2578,13 +2579,14 @@ int SetConnectedElements(struct FemType *data,int info)
       if(hit) nohits++;
     }
   
-    if(info) printf("Number of connected elements is %d\n",nohits);
+    if(info) printf("Number of connected elements is %d (out of %d)\n",nohits,data->noelements);
     data->elemconnectexist = nohits;
   }
 
   /* This is a little bit dirty. We set the connections to negative and use the unconnected 
      as a permutation. */
   if( data->elemconnectexist ) {
+    if(info) printf("Use connected table as a permutation for creating dual graph!\n");
     j = 0;
     for(i=1;i<=data->noelements;i++) {
       if( data->elemconnect[i] ) {
@@ -9913,7 +9915,9 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   /* If a dual graph only for the unconnected nodes is requested do that.
      Basically the connected nodes are omitted in the graph. */
   if( unconnected ) {
+    printf("Removing connected nodes from the dual graph\n");
     if( data->nodeconnectexist ) {
+      if(info) printf("Creating connected elements list from the connected nodes\n");
       SetConnectedElements(data,info);
     }
     if( data->elemconnectexist ) {
@@ -9923,6 +9927,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
     else {
       unconnected = FALSE;
     }
+    if(info) printf("List of unconnected elements created\n");
   }
 
   showgraph = FALSE;
@@ -9939,7 +9944,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   /* This marker is used to identify the connections already accounted for */  
   neededby = Ivector(1,freeelements);
   for(i=1;i<=freeelements;i++)
-    neededby[i] = 0.0;
+    neededby[i] = 0;
 
   allocated = FALSE;
  omstart: 
