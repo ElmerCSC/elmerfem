@@ -126,6 +126,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,k,l,q,n,ierr,No,NoPoints,NoCoordinates,NoLines,NumberOfVars,&
       NoDims, NoDofs, NoOper, NoElements, NoVar, NoValues, PrevNoValues, DIM, &
       MaxVars, NoEigenValues, Ind, EigenDofs, LineInd, NormInd, CostInd, istat, nlen
+  INTEGER :: IntVal 
   LOGICAL, ALLOCATABLE :: NodeMask(:)
   REAL (KIND=DP) :: CT, RT
 #ifndef USE_ISO_C_BINDINGS
@@ -449,6 +450,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       SELECT CASE( Oper ) 
         
       CASE ('partitions')
+      CASE ('partition checksum')
+      CASE ('partition neighbours checksum')
       CASE ('cpu time')
       CASE ('wall time')
       CASE ('cpu memory') 
@@ -480,6 +483,29 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         Val = 1.0_dp * ParEnv % PEs 
         SaveName = 'value: number of partitions'
         CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
+
+      CASE ('partition checksum')
+        Val = 0.0_dp
+        IF( ParEnv % PEs > 1 ) THEN
+          Val = 1.0_dp * SUM( 1.0_dp * Mesh % ParallelInfo % GlobalDOFS ) 
+          ! Give different partition different weight to create something like a checksum
+          Val = ( ParEnv % MyPe + 1 ) * Val
+        END IF
+        SaveName = 'value: partition checksum'
+        ! Don't use integer as type because it can exceed the bounds, long should be used
+        CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
+
+      CASE ('partition neighbours checksum')
+        Val = 0.0_dp
+        IF( ParEnv % PEs > 1 ) THEN
+          DO j=1,Mesh % NumberOfNodes 
+            Val = Val + 1.0_dp * SUM( Mesh % ParallelInfo % NeighbourList(j) % Neighbours )
+          END DO
+          Val = ( ParEnv % MyPe + 1 ) * Val
+        END IF
+        SaveName = 'value: partition neighbours checksum'
+        ! Don't use integer as type because it can exceed the bounds, long should be used
+        CALL AddToSaveList(SaveName,Val,.FALSE.,ParOper)
 
       CASE ('cpu time')
         Val = CPUTime()
@@ -1107,13 +1133,15 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
       DO No=1,NoValues-1
         IF( ValuesInteger(No) ) THEN
-          WRITE (10,'(I10)',advance='no') NINT(Values(No))
+          IntVal = NINT( Values(No) )
+          WRITE (10,'(I10)',advance='no') IntVal
         ELSE
           WRITE (10,'(ES22.12E3)',advance='no') Values(No)
         END IF
       END DO
       IF( ValuesInteger(NoValues) ) THEN
-        WRITE (10,'(I10)') NINT(Values(NoValues))
+        IntVal = NINT( Values(No) )
+        WRITE (10,'(I10)') IntVal
       ELSE
         WRITE (10,'(ES22.12E3)') Values(NoValues)
       END IF
@@ -1229,7 +1257,7 @@ CONTAINS
       
     CASE('nodes','elements','dofs','sum','sum abs','int','int abs','volume','potential energy','convective energy',&
         'diffusive energy','boundary sum','boundary dofs','boundary int','area','diffusive flux',&
-        'convective flux','nans')
+        'convective flux','nans','partition checksum','partition neighbours checksum')
       ParOper = 'sum'
             
     CASE('max','max abs','boundary max','boundary max abs')
