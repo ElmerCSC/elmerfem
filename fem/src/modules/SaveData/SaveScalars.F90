@@ -487,7 +487,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CASE ('partition checksum')
         Val = 0.0_dp
         IF( ParEnv % PEs > 1 ) THEN
-          Val = 1.0_dp * SUM( Mesh % ParallelInfo % GlobalDOFS ) 
+          Val = 1.0_dp * SUM( 1.0_dp * Mesh % ParallelInfo % GlobalDOFS ) 
           ! Give different partition different weight to create something like a checksum
           Val = ( ParEnv % MyPe + 1 ) * Val
         END IF
