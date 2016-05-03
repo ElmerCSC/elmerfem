@@ -463,7 +463,7 @@ CONTAINS
     Active = GetNOFBoundaryElements()
     DO t=1,Active
        Element => GetBoundaryElement(t)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
+!       IF (.NOT. ActiveBoundaryElement()) CYCLE
        
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
