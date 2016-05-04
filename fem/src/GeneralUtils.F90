@@ -2080,17 +2080,15 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
-          CALL Error( 'AllocateElementVector', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateElementVector', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateElementVector', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
+      CALL Error( 'AllocateElementVector', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateElementVector', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateElementVector', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE AllocateElementVector
@@ -2112,17 +2110,15 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n1,n2), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
-          CALL Error( 'AllocateRealArray', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateRealArray', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateRealArray', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
+      CALL Error( 'AllocateRealArray', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateRealArray', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateRealArray', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE  AllocateRealArray
@@ -2143,17 +2139,15 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n1,n2), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
-          CALL Error( 'AllocateComplexArray', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateComplexArray', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateComplexArray', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
+      CALL Error( 'AllocateComplexArray', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateComplexArray', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateComplexArray', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE  AllocateComplexArray
@@ -2175,17 +2169,15 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n1,n2), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element integer matrix.'
-          CALL Error( 'AllocateIntegerArray', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateIntegerArray', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateIntegerArray', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element integer matrix.'
+      CALL Error( 'AllocateIntegerArray', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateIntegerArray', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateIntegerArray', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE  AllocateIntegerArray
@@ -2208,17 +2200,15 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n1,n2), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element integer matrix.'
-          CALL Error( 'AllocateLogicalArray', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateLogicalArray', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateLogicalArray', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element integer matrix.'
+      CALL Error( 'AllocateLogicalArray', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateLogicalArray', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateLogicalArray', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE  AllocateLogicalArray

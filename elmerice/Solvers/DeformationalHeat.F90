@@ -67,7 +67,7 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable,FlowSol
   TYPE(Solver_t), POINTER :: PointerToSolver
 
-  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal
+  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal=.TRUE.
 
   INTEGER :: i, j,n, m, t, istat,k
   INTEGER, POINTER :: Permutation(:), FlowPerm(:), NodeIndexes(:)

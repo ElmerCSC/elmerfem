@@ -463,7 +463,7 @@ CONTAINS
     Active = GetNOFBoundaryElements()
     DO t=1,Active
        Element => GetBoundaryElement(t)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
+!       IF (.NOT. ActiveBoundaryElement()) CYCLE
        
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
@@ -1543,7 +1543,8 @@ CONTAINS
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
-        IF (harm) j = ReIndex(PS(j))
+        j = PS(j)
+        IF (harm) j = ReIndex(j)
         IF(PRESENT(Cols)) THEN
           CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm) 
           CALL CreateMatElement(Rows, Cols, Cnts, j, Jsind, harm)
@@ -1600,7 +1601,8 @@ CONTAINS
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
-        IF (harm) j = ReIndex(PS(j))
+        j = PS(j)
+        IF (harm) j = ReIndex(j)
         IF(PRESENT(Cols)) THEN
           CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm)
           CALL CreateMatElement(Rows, Cols, Cnts, j, i, harm)
@@ -1670,7 +1672,9 @@ CONTAINS
         q=j
         IF (dim == 3) q=q+nn
         IF (PRESENT(Cols)) THEN  
-          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, ReIndex(PS(Indexes(q))), harm)
+          q = PS(Indexes(q))
+          IF (harm) q = ReIndex(q)
+          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, q, harm)
         ELSE
           CALL CountMatElement(Rows, Cnts, dofIdtest+nm, 1, harm)
         END IF
@@ -1682,10 +1686,12 @@ CONTAINS
       DO j=1,ncdofs
         q=j
         IF (dim == 3) q=q+nn
+        q = PS(Indexes(q))
+        IF (harm) q = ReIndex(q)
         IF (PRESENT(Cols)) THEN  
-          CALL CreateMatElement(Rows, Cols, Cnts, ReIndex(PS(indexes(q))), dofId+nm, harm)
+          CALL CreateMatElement(Rows, Cols, Cnts, q, dofId+nm, harm)
         ELSE
-          CALL CountMatElement(Rows, Cnts, ReIndex(PS(indexes(q))), 1, harm)
+          CALL CountMatElement(Rows, Cnts, q, 1, harm)
         END IF
       END DO
     END DO

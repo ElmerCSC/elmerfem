@@ -754,6 +754,7 @@ END INTERFACE
     INTEGER, POINTER :: BodyIds(:) => Null()
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
+    LOGICAL :: UseCoilResistance = .FALSE.
   END TYPE Component_t
 
   TYPE Circuit_t

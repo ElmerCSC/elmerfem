@@ -71,7 +71,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material, BC
   TYPE(Variable_t), POINTER :: PointerToVariable, ZsSol, ZbSol, VeloSol, Nsol
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal
+  LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal=.TRUE.
   LOGICAL :: Newton
 
   INTEGER :: i, n, m, t, istat, DIM, p, STDOFs, iFriction
@@ -828,7 +828,7 @@ SUBROUTINE GetMeanValueSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, IntViscoSol, IntDensSol,&
                                 DepthSol  
 
-  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal
+  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal=.TRUE.
 
   INTEGER :: i, n, m, t, istat, DIM, COMP, other_body_id   
   INTEGER, POINTER :: Permutation(:), NodeIndexes(:), IntViscoPerm(:),&
@@ -1110,7 +1110,7 @@ SUBROUTINE SSASolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, Grad1Sol, Grad2Sol, &
                                DepthSol, VeloSol
 
-  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal
+  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal=.TRUE.
 
   INTEGER :: i, n, m, t, istat, DIM, p, Indexes(128), COMP 
   INTEGER, POINTER :: Permutation(:), VeloPerm(:), &
