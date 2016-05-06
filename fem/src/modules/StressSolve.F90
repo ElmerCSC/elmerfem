@@ -119,6 +119,7 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       END IF
     END IF
 
+    CALL ListAddLogical( SolverParams, 'stress: Linear System Save', .FALSE. )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE StressSolver_Init
@@ -1360,7 +1361,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
-     
+
      CALL Info('StressSolver','------------------------------------------',Level=5)
      CALL Info('StressSolver','Starting Stress Computation',Level=5)
 

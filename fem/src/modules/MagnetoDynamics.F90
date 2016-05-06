@@ -6079,7 +6079,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END IF
        
-       IF ( Transient ) THEN
+
+        
+       IF ( Transient .OR. &
+            ListGetString(GetSimulation(),'Simulation Type') == 'steady' ) THEN
          IF (CoilType /= 'stranded') THEN 
            SELECT CASE(dim)
            CASE(2)
@@ -6098,9 +6101,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            SELECT CASE(dim)
            CASE(2)
              wvec = [0._dp, 0._dp, 1._dp]
+             E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(1,1)
            CASE(3)
              wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
              wvec = wvec/SQRT(SUM(wvec**2._dp))
+             E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(3,3)
            END SELECT
          CASE ('massive')
            localV(1) = localV(1) + LagrangeVar % Values(VvarId)
