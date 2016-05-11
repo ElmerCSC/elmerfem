@@ -219,7 +219,7 @@ CONTAINS
     INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
+    LOGICAL :: L, Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Avacuum
 
     SAVE Avacuum 
@@ -242,7 +242,8 @@ CONTAINS
     ELSE
       Acoef(1:n) = GetReal( Material, 'Reluctivity', Found )
       Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
-         GetReal( Material, 'Reluctivity im', Found ), KIND=dp )
+         GetReal( Material, 'Reluctivity im', L ), KIND=dp )
+      Found = Found .OR. L
     END IF
     IF( .NOT. Found .AND. .NOT. Warned .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
