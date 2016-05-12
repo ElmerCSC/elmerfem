@@ -6080,10 +6080,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END IF
        
-
-        
-       IF ( Transient .OR. &
-            ListGetString(GetSimulation(),'Simulation Type') == 'steady' ) THEN
+       IF ( vDOFs == 1 ) THEN
          IF (CoilType /= 'stranded') THEN 
            SELECT CASE(dim)
            CASE(2)
@@ -6128,7 +6125,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
            END SELECT
          CASE DEFAULT
-           IF(dim==3) THEN
+           IF(dim==3 .AND. Transient) THEN
              E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
            ELSE ! given external potential ?
            END IF
