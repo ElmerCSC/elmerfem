@@ -2029,6 +2029,11 @@ END SUBROUTINE GetMaxDefs
    Model % DIMENSION = save_dim
 
 
+   IF( ListGetLogical( Model % Simulation,'Inspect Quadratic Mesh', GotIt ) ) THEN
+     CALL InspectQuadraticMesh( Mesh ) 
+   END IF
+
+
    CALL Info('LoadMesh','Loading mesh done',Level=8)
 
 
@@ -6346,7 +6351,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
-          MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep
+          MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, NoGaussPoints
       INTEGER :: ElemCode, LinCode, ElemCodeM, LinCodeM
       TYPE(Element_t), POINTER :: Element, ElementM, ElementP
       TYPE(Element_t) :: ElementT
@@ -6824,8 +6829,19 @@ END SUBROUTINE GetMaxDefs
           NodesT % y(1) = y(1)
           
           ! Use somewhat higher integration rules than the default
-          IP = GaussPoints( ElementT, ElementT % TYPE % GaussPoints2 ) 
           
+          NoGaussPoints = ListGetInteger( BC,'Mortar BC Gauss Points',Found ) 
+          IF(.NOT. Found ) THEN
+            IF( SecondOrder ) THEN
+              NoGaussPoints = 6
+            ELSE
+              NoGaussPoints = 3
+            END IF
+          END IF
+          IP = GaussPoints( ElementT, NoGaussPoints )
+            
+
+
           DO k=1,kmax-2                         
             
             ! This check over area also automatically elimiates redundant nodes
