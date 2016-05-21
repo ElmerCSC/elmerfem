@@ -253,7 +253,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      AllocationsDone = .TRUE.
      ActiveNode = .FALSE.
      ResidualVector = 0.0_dp
-  END IF
+   END IF
 
 
   !------------------------------------------------------------------------------
@@ -281,6 +281,15 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         FlowPerm     => FlowSol % Perm
         NSDOFs     =  FlowSol % DOFs
         FlowSolution => FlowSol % Values
+        IF (ASSOCIATED(FlowSol)) THEN
+          WRITE(Message, '(A,A,A,I0)') &
+               "Flow Solution <", TRIM(FlowSolName), "> found with DOFs=", NSDOFs
+          CALL Info(SolverName,Message,level=10)
+        ELSE
+          WRITE(Message, '(A,A,A)') &
+               "Flow Solution <", TRIM(FlowSolName), "> not associated"
+          CALL Fatal(SolverName,Message)
+        END IF
    END IF
 
   !------------------------------------------------------------------------------
@@ -308,6 +317,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      DO t=1,Solver % NumberOfActiveElements
         CurrentElement => GetActiveElement(t)
         n = GetElementNOFNodes()
+        !PRINT *, "N=", N
         NodeIndexes => CurrentElement % NodeIndexes
 
         ! set coords of highest occuring dimension to zero (to get correct path element)
@@ -359,20 +369,24 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
               IF((DIM == 2) .AND. (NSDOFs == 1)) THEN 
                  Velo(1,i) = FlowSolution( j ) 
                  Velo(2,i) = 0.0_dp
+                 !PRINT *, "HERE1"
               !2D problem - 2D Thickness evolution (plane view pb)
               ELSE IF ((DIM == 2) .AND. (NSDOFs == 2)) THEN
                  Velo(1,i) = FlowSolution( j-1 ) 
                  Velo(2,i) = FlowSolution( j ) 
+                 !PRINT *, "HERE2"
+                 !PRINT *, i,Velo(1,i), Velo(2,i)
               !3D problem - 2D Thickness evolution 
               ELSE IF ((DIM == 3) .AND. (NSDOFs == 2)) THEN
                  Velo(1,i) = FlowSolution( j-1 ) 
                  Velo(2,i) = FlowSolution( j ) 
+                 !PRINT *, i,Velo(1,i), Velo(2,i)
               ELSE
                  WRITE(Message,'(a,i0,a,i0,a)')&
                       'DIM=', DIM, ' NSDOFs=', NSDOFs, ' does not combine. Aborting'
                  CALL Fatal( SolverName, Message)
               END IF
-           END DO
+           END DO           
        ELSE
           IF (ASSOCIATED( BodyForce ) ) THEN
                Velo(1,1:n) = GetReal( BodyForce, 'Convection Velocity 1',Found )
@@ -383,7 +397,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         ! Get mesh velocity
         !------------------------------------------------------------------------------
         MeshVelocity = 0.0_dp
-        CALL GetVectorLocalSolution( MeshVelocity, 'Mesh Velocity',CurrentElement)
+        !CALL GetVectorLocalSolution( MeshVelocity, 'Mesh Velocity',CurrentElement)
         !
 
         !------------------------------------------------------------------------------
