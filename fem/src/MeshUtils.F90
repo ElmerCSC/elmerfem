@@ -6396,6 +6396,7 @@ END SUBROUTINE GetMaxDefs
       ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
       ALLOCATE( Basis(n), BasisM(n), dBasisdx(n,3) )
       IF(BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
+
       n = 12 ! Hard-coded size sufficient for second-order edge elements
       ALLOCATE( WBasis(n,3), WBasisM(n,3), RotWBasis(n,3) )
 
@@ -6842,27 +6843,24 @@ END SUBROUTINE GetMaxDefs
             
 
 
-          DO k=1,kmax-2                         
-            
-            ! This check over area also automatically elimiates redundant nodes
-            ! that were detected twice.
-            dArea = 0.5*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
+          ! First collect the biorthogonal basis mass matrix
+          IF(BiOrthogonalBasis) THEN
+            MASS = 0.0_dp
+            CoeffBasis = 0.0_dp
+            area = 0.0_dp
 
-            IF( DebugElem ) THEN
-              PRINT *,'dArea:',dArea,dArea / RefArea
-            END IF
+            DO k=1,kmax-2                         
+              
+              ! This check over area also automatically elimiates redundant nodes
+              ! that were detected twice.
+              dArea = 0.5*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
+              IF( dArea < RelTolY**2 * RefArea ) CYCLE
+              
+              NodesT % x(2) = x(k+1)
+              NodesT % y(2) = y(k+1)
+              NodesT % x(3) = x(k+2)
+              NodesT % y(3) = y(k+2)
 
-            IF( dArea < RelTolY**2 * RefArea ) CYCLE
-            
-            NodesT % x(2) = x(k+1)
-            NodesT % y(2) = y(k+1)
-            NodesT % x(3) = x(k+2)
-            NodesT % y(3) = y(k+2)
-
-            IF(BiOrthogonalBasis) THEN
-              MASS  = 0
-              CoeffBasis = 0
-              area = 0._dp
               DO nip=1, IP % n 
                 stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
                     IP % v(nip),IP % w(nip),detJ,Basis)
@@ -6900,23 +6898,43 @@ END SUBROUTINE GetMaxDefs
                   CoeffBasis(i) = CoeffBasis(i) + wTemp * Basis(i)
                 END DO
               END DO
+            END DO
 
-              IF(Area<1.d-12) GOTO 100
-
-              CALL InvertMatrix( MASS, n )
-
-              DO i=1,n
-                DO j=1,n
-                  MASS(i,j) = MASS(i,j) * CoeffBasis(i)
-                END DO
-              END DO
-            END IF
+            ! We cannot inverst a too small matrix
+            IF(Area < 1.d-12) GOTO 100
             
+            CALL InvertMatrix( MASS, n )
+            
+            DO i=1,n
+              DO j=1,n
+                MASS(i,j) = MASS(i,j) * CoeffBasis(i)
+              END DO
+            END DO
+          END IF
+
+
+          DO k=1,kmax-2                         
+            
+            ! This check over area also automatically elimiates redundant nodes
+            ! that were detected twice.
+            dArea = 0.5*ABS( (x(k+1)-x(1))*(y(k+2)-y(1)) -(x(k+2)-x(1))*(y(k+1)-y(1)))
+            IF( DebugElem ) THEN
+              PRINT *,'dArea:',dArea,dArea / RefArea
+            END IF
+            IF( dArea < RelTolY**2 * RefArea ) CYCLE
+            
+            NodesT % x(2) = x(k+1)
+            NodesT % y(2) = y(k+1)
+            NodesT % x(3) = x(k+2)
+            NodesT % y(3) = y(k+2)
+
+              
             ! Integration over the temporal element
             DO nip=1, IP % n 
               stat = ElementInfo( ElementT,NodesT,IP % u(nip),&
                   IP % v(nip),IP % w(nip),detJ,Basis)
               IF(.NOT. Stat) EXIT
+              IF(DetJ < 1.0e-20_dp) CYCLE
 
               ! We will actually only use the global coordinates and the integration weight 
               ! from the temporal mesh. 
@@ -6966,6 +6984,7 @@ END SUBROUTINE GetMaxDefs
               ELSE
                 stat = ElementInfo( Element, Nodes, u, v, w, detJ, Basis )
               END IF
+              IF(.NOT. stat) CYCLE
 
               ! Integration point at the master element
               IF( ElemCodeM /= LinCodeM ) THEN
@@ -7049,9 +7068,9 @@ END SUBROUTINE GetMaxDefs
                         InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val )                   
 
                     IF(BiOrthogonalBasis) THEN
-                      IF(DualMaster.OR.DualLCoeff) THEN
+                      IF(DualMaster .OR. DualLCoeff) THEN
                         CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
-                              InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val_dual ) 
+                            InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val_dual ) 
                       ELSE
                         CALL List_AddToMatrixElement(Projector % Child % ListMatrix, nrow, &
                               InvPerm2(IndexesM(i)), -sgn0 * NodeScale * NodeCoeff * BasisM(i) * val ) 
@@ -7176,6 +7195,7 @@ END SUBROUTINE GetMaxDefs
                 END IF
               END IF
             END DO
+
           END DO
 
 100       IF( Repeating ) THEN
