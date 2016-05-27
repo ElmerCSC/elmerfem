@@ -6432,6 +6432,10 @@ END SUBROUTINE GetMaxDefs
       Nslave = 0
       Nmaster = 0
 
+
+
+
+
       DO ind=1,BMesh1 % NumberOfBulkElements
 
         ! Optionally save the submesh for specified element, for vizualization and debugging
@@ -6832,16 +6836,9 @@ END SUBROUTINE GetMaxDefs
           ! Use somewhat higher integration rules than the default
           
           NoGaussPoints = ListGetInteger( BC,'Mortar BC Gauss Points',Found ) 
-          IF(.NOT. Found ) THEN
-            IF( SecondOrder ) THEN
-              NoGaussPoints = 6
-            ELSE
-              NoGaussPoints = 3
-            END IF
-          END IF
+          IF(.NOT. Found ) NoGaussPoints = ElementT % Type % GaussPoints2
           IP = GaussPoints( ElementT, NoGaussPoints )
             
-
 
           ! First collect the biorthogonal basis mass matrix
           IF(BiOrthogonalBasis) THEN
