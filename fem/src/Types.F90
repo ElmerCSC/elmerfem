@@ -85,7 +85,8 @@ MODULE Types
 	                SOLVER_MODE_COUPLED = 3, &    ! coupled solver with multiple blocks
 	                SOLVER_MODE_BLOCK = 4, &      ! block solver
 	                SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
-	                SOLVER_MODE_MATRIXFREE = 6    ! normal field, no matrix
+	                SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
+                        SOLVER_MODE_STEPS = 7         ! as the legacy but splitted to different steps
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
@@ -383,11 +384,7 @@ END INTERFACE
      LOGICAL :: LValue
      INTEGER, POINTER :: IValues(:)
 
-#ifdef SGI
-     INTEGER :: PROCEDURE
-#else
      INTEGER(KIND=AddrInt) :: PROCEDURE
-#endif
 
      REAL(KIND=dp) :: Coeff = 1.0_dp
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue

@@ -599,7 +599,7 @@ CONTAINS
 
     INTEGER, POINTER :: Perm(:)
 
-    INTEGER(KIND=AddrInt) :: InitProc
+    INTEGER(KIND=AddrInt) :: InitProc, AssProc
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs
     INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim
@@ -607,7 +607,7 @@ CONTAINS
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
     MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
     VariableGlobal, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, &
-    IsProcedure, LegacySolver
+    IsProcedure, IsStepsSolver, LegacySolver
 
     CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname
 
@@ -786,7 +786,16 @@ CONTAINS
 
     IF( Solver % SolverMode == SOLVER_MODE_DEFAULT ) THEN
       eq = ListGetString( Solver  % Values, 'Equation', Found )
-      IF(.NOT. Found ) Solver % SolverMode = SOLVER_MODE_AUXILIARY 
+      IF(.NOT. Found ) THEN
+        Solver % SolverMode = SOLVER_MODE_AUXILIARY 
+      ELSE
+        AssProc = GetProcAddr( TRIM(proc_name)//'_bulk', abort=.FALSE. )
+        CALL Info('AddEquationBasics','Checking for _bulk solver',Level=12)
+        IF ( AssProc /= 0 ) THEN
+          CALL Info('AddEquationBasics','Solver will be be perfomed in steps',Level=8)
+          Solver % SolverMode = SOLVER_MODE_STEPS
+        END IF        
+      END IF
     END IF
 
     IsCoupledSolver = ( Solver % SolverMode == SOLVER_MODE_COUPLED ) 
@@ -795,6 +804,19 @@ CONTAINS
     IsAssemblySolver = IsAssemblySolver .OR. &
 	( IsCoupledSolver .AND. .NOT. IsProcedure ) .OR. &
         ( IsBlockSolver .AND. .NOT. IsProcedure ) 
+    IsStepsSolver = ( Solver % SolverMode == SOLVER_MODE_STEPS ) 
+
+    ! Get the procudure that really runs the solver
+    !------------------------------------------------------------------------------
+    IF( IsProcedure ) THEN
+      IF( IsStepsSolver ) THEN
+        Solver % PROCEDURE = AssProc
+      ELSE
+        Solver % PROCEDURE = GetProcAddr(proc_name)
+      END IF
+    END IF
+
+
 
     ! Default order of equation
     !--------------------------
@@ -837,12 +859,6 @@ CONTAINS
 
     END IF
 
-    ! Get the procudure that really runs the solver
-    !------------------------------------------------------------------------------
-    IF( IsProcedure ) THEN
-      Solver % PROCEDURE = GetProcAddr(proc_name)
-    END IF
-    
     ! Initialize and get the variable 
     !------------------------------------------------------------------------    
     Solver % TimeOrder = 0
@@ -3748,6 +3764,59 @@ CONTAINS
   END SUBROUTINE BlockSystemAssembly
 !-----------------------------------------------------------------------------------
 
+
+  SUBROUTINE ExecSolverInSteps( Model, Solver, dt, TransientSimulation )
+!------------------------------------------------------------------------------
+    TYPE(Model_t)  :: Model
+    TYPE(Solver_t),POINTER :: Solver
+    LOGICAL :: TransientSimulation
+    REAL(KIND=dp) :: dt
+!------------------------------------------------------------------------------
+    INTEGER(KIND=AddrInt) :: SolverAddr
+    CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
+    INTEGER :: iter, MaxIter
+    LOGICAL :: Found
+!------------------------------------------------------------------------------
+
+    CALL Info('ExecSolverInSteps','Performing solution in steps',Level=5)
+    ProcName = ListGetString( Solver % Values,'Procedure', Found )
+
+    MaxIter = ListGetInteger( Solver % Values,'Nonlinear System Max Iterations', Found ) 
+    IF( .NOT. Found ) MaxIter = 1
+
+    DO iter = 1, MaxIter
+      SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_prebulk', abort=.FALSE. )
+      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      
+      SolverAddr = Solver % PROCEDURE
+      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      
+      SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_postbulk', abort=.FALSE. )
+      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+
+      SolverAddr = GetProcAddr( TRIM(ProcName)//'_boundary', abort=.FALSE. )
+      IF( SolverAddr /= 0 ) THEN
+        CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      END IF
+
+      SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_postboundary', abort=.FALSE. )
+      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      
+      SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_solve', abort=.FALSE. )
+      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      
+      IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+    END DO
+
+    SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
+    IF( SolverAddr /= 0 ) THEN
+      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+    END IF
+    
+
+  END SUBROUTINE ExecSolverInSteps
+
+
 !------------------------------------------------------------------------------
 !> This executes the original line of solvers (legacy solvers) where each solver 
 !> includes looping over elements and the convergence control. From generality
@@ -3762,10 +3831,11 @@ CONTAINS
      REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
      LOGICAL :: stat, Found, GB, MeActive, GotIt
-     INTEGER :: i, j, k, l, col, row, n, SolverAddr, BDOFs, maxdim, dsize, size0
+     INTEGER :: i, j, k, l, col, row, n, BDOFs, maxdim, dsize, size0
      TYPE(Element_t), POINTER :: CurrentElement
      TYPE(ValueList_t), POINTER :: SolverParams
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, str, Message, Equation
+     INTEGER(KIND=AddrInt) :: SolverAddr
 
      INTEGER, ALLOCATABLE :: memb(:)
      TYPE(Matrix_t), POINTER :: M
@@ -3890,12 +3960,8 @@ CONTAINS
        Parenv % ActiveComm = MPI_COMM_WORLD
      END IF
 
-
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
-!     FoundMortar = .FALSE.
-!     IF(.NOT.GetLogical(ListGetSolverParams(),'Mortar Projector Nonlinear',Found)) &
-!     FoundMortar = 
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
      CALL INFO("SingleSolver", "Attempting to call solver", level=5)
@@ -3905,15 +3971,14 @@ CONTAINS
         WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
         CALL INFO("SingleSolver", Message, level=5)
      END IF
-#ifdef SGIn32
-     SolverAddr = Solver % PROCEDURE
-     CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
-#else
-     CALL ExecSolver( Solver % PROCEDURE, &
-         Model, Solver, dt, TransientSimulation)
-#endif
 
-!    IF(FoundMortar) CALL ReleaseProjectors(Solver)
+     IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
+       CALL ExecSolverinSteps( Model, Solver, dt, TransientSimulation)
+     ELSE
+       SolverAddr = Solver % PROCEDURE
+       CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+     END IF
+
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
@@ -4080,6 +4145,7 @@ CONTAINS
      ELSE 
        CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
      END IF
+
      IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
        IF(NamespaceFound) CALL ListPopNamespace()
      END IF
