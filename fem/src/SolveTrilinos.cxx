@@ -639,7 +639,7 @@ if (!success)
    if (print_vectors)
    {
 #ifdef DEBUG_TRILINOS_INTERFACE   
-   str::string filebase = params->get("Filename Base","Trilinos");
+   std::string filebase = params->get("Filename Base","Trilinos");
    EpetraExt::MultiVectorToMatrixMarketFile((filebase+"Rhs.txt").c_str(),*b);
    EpetraExt::MultiVectorToMatrixMarketFile((filebase+"Sol.txt").c_str(),*x);
 #else
