@@ -745,6 +745,9 @@ END INTERFACE
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
       LOGICAL :: MortarBCsChanged = .FALSE., MortarBCsOnly=.FALSE.
       INTEGER(KIND=AddrInt) :: MortarProc
+
+      TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
+
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
@@ -903,7 +906,7 @@ END INTERFACE
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
-    
+    INTEGER :: CurrentColour
 
 !------------------------------------------------------------------------------
 END MODULE Types

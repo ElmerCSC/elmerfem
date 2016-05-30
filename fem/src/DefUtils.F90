@@ -277,12 +277,24 @@ CONTAINS
   FUNCTION GetNOFActive( USolver ) RESULT(n)
      INTEGER :: n
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+     TYPE(Solver_t), POINTER :: Solver
 
      IF ( PRESENT( USolver ) ) THEN
-        n = USolver % NumberOfActiveElements
+       Solver => USolver
      ELSE
-        n = CurrentModel % Solver % NumberOfActiveElements
+       Solver => CurrentModel % Solver 
      END IF
+
+     IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+       CurrentColour = CurrentColour + 1
+       PRINT *,'Colour:',CurrentColour
+       
+       n = Solver % ColourIndexList % ptr(CurrentColour+1)-1 &
+           - Solver % ColourIndexList % ptr(CurrentColour)
+     ELSE
+       n = Solver % NumberOfActiveElements
+     END IF
+
   END FUNCTION GetNOFActive
 
 !> Returns the current time
@@ -1130,19 +1142,27 @@ CONTAINS
      TYPE( Solver_t ), OPTIONAL, TARGET :: USolver
 
      TYPE( Solver_t ), POINTER :: Solver
+     INTEGER :: ind
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
 
      IF ( t > 0 .AND. t <= Solver % NumberOfActiveElements ) THEN
-        Element => Solver % Mesh % Elements( Solver % ActiveElements(t) )
+       IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+         ind = Solver % ActiveElements( &
+             Solver % ColourIndexList % ind(&
+             Solver % ColourIndexList % ptr(CurrentColour)+(t-1) ) )
+       ELSE
+         ind = Solver % ActiveElements(t)
+       END IF
+       Element => Solver % Mesh % Elements( ind )
 
-        !$omp critical(GetActiveElementCurrentElement)
-        CurrentModel % CurrentElement => Element ! may be used by user functions
-        !$omp end critical(GetActiveElementCurrentElement)
+       !$omp critical(GetActiveElementCurrentElement)
+       CurrentModel % CurrentElement => Element ! may be used by user functions
+       !$omp end critical(GetActiveElementCurrentElement)
      ELSE
-        WRITE( Message, * ) 'Invalid element number requested: ', t
-        CALL Fatal( 'GetActiveElement', Message )
+       WRITE( Message, * ) 'Invalid element number requested: ', t
+       CALL Fatal( 'GetActiveElement', Message )
      END IF
   END FUNCTION GetActiveElement
 
@@ -5509,6 +5529,25 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE GetParentUVW
 !------------------------------------------------------------------------------
+
+
+  FUNCTION GetColours(Solver) RESULT( ncolors ) 
+    TYPE(Solver_t), POINTER :: Solver
+    INTEGER :: ncolors
+
+    IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+      ncolors = Solver % ColourIndexList % n 
+    ELSE
+      ncolors = 1
+    END IF
+
+! Initialize the current color to one assuming that this is called at start of multicolor assembly loop
+    CurrentColour = 0
+    
+  END FUNCTION GetColours
+
+
+
 
 
 END MODULE DefUtils

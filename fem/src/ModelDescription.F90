@@ -4875,6 +4875,10 @@ END SUBROUTINE GetNodalElementSize
     CALL FreeMatrix(Solver % Matrix)
     IF (ALLOCATED(Solver % Def_Dofs)) DEALLOCATE(Solver % Def_Dofs)
     IF (ASSOCIATED(Solver % ActiveElements)) DEALLOCATE(Solver % ActiveElements)
+    IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+      CALL Graph_Deallocate(Solver % ColourIndexList)
+      DEALLOCATE( Solver % ColourIndexList )
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeSolver
 !------------------------------------------------------------------------------

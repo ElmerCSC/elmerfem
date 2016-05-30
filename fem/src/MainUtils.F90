@@ -623,6 +623,11 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Component(:)
 
 
+    TYPE(Graph_t) :: DualGraph
+    TYPE(GraphColour_t) :: GraphColouring
+
+    
+
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
     SolverParams => ListGetSolverParams(Solver)
@@ -1067,6 +1072,27 @@ CONTAINS
         IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = MPI_COMM_WORLD
         IF ( ListGetLogical( SolverParams, 'Discontinuous Galerkin', Found) ) &
           Solver % Variable % TYPE = Variable_on_nodes_on_elements
+
+
+        IF( ListGetLogical( SolverParams,'Multithreaded Solver',Found ) ) THEN
+          CALL Info('AddEquationBasics','Creating structures for mesh colouring')
+
+          ! Construct the dual graph from Elmer mesh
+          CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
+          
+          ! Colour the dual graph
+          CALL ElmerGraphColour(DualGraph, GraphColouring)
+          
+          ! Deallocate dual graph as it is no longer needed
+          CALL Graph_Deallocate(DualGraph)
+          
+          ! Construct colour lists
+          ALLOCATE( Solver % ColourIndexList )
+          CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
+          CALL Colouring_Deallocate(GraphColouring)          
+        END IF
+
+
       END IF
       !------------------------------------------------------------------------------
     END IF

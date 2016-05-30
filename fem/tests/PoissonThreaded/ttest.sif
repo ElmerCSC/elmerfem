@@ -5,13 +5,12 @@ Header
 End
 
 Simulation
-  Max Output Level = 3
+  Max Output Level = 5
   Coordinate System = Cartesian
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-  Post File   = "ttest.ep"
-  Output File = "ttest.dat"
+  Post File   = "ttest.vtu"
 End
 
 Body 1
@@ -40,6 +39,7 @@ Solver 1
   Linear System Convergence Tolerance = 1e-6
   Linear System Preconditioning = None
   Linear System Max Iterations = 200
+  Linear System Residual Output = 20
   Optimize Bandwidth = True
   Steady State Convergence Tolerance = 1e-09
   Mesh Colouring = Logical True
@@ -52,4 +52,3 @@ End
 
 Solver 1 :: Reference Norm = Real 0.24103925E-01
 Solver 1 :: Reference Norm Tolerance = Real 1E-05
-RUN
