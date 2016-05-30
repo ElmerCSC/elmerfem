@@ -104,7 +104,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   
   LOGICAL :: Isotropic, AllocationsDone = .FALSE.,  &
        Requal0
-  LOGICAL :: GotIt,  Cauchy = .FALSE.
+  LOGICAL :: GotIt,  Cauchy = .FALSE.,UnFoundFatal=.TRUE.
   
   REAL(KIND=dp), ALLOCATABLE:: LocalMassMatrix(:,:), &
        LocalStiffMatrix(:,:), LocalForce(:), &
@@ -143,14 +143,10 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   FlowSolverName = GetString( Solver % Values, 'Flow Solver Name', GotIt )    
   IF (.NOT.Gotit) FlowSolverName = 'Flow Solution'
-  FlowVariable => VariableGet( Solver % Mesh % Variables, FlowSolverName )
-  IF ( ASSOCIATED( FlowVariable ) ) THEN
-     FlowPerm    => FlowVariable % Perm
-     FlowValues  => FlowVariable % Values
-  ELSE
-     CALL FATAL('ComputeDevStress', &
-          & 'No variable for velocity associated.')
-  END IF
+  FlowVariable => VariableGet( Solver % Mesh % Variables, FlowSolverName,&
+       UnFoundFatal=UnFoundFatal )
+  FlowPerm    => FlowVariable % Perm
+  FlowValues  => FlowVariable % Values
 
 !------------------------------------------------------------------------------
 !  Read constants from constants section of SIF file
@@ -171,11 +167,8 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   IF (.NOT.Gotit) CALL FATAL('ComputeDevStress', & 
        'Stress Variable Name not defined')
   
-  StressSol => VariableGet( Solver % Mesh % Variables, TRIM(StressSolverName) )
-  IF ( .NOT. ASSOCIATED(StressSol) ) THEN
-     WRITE(Message,'(A,A)') 'Could not find Stress Variable: ', StressSolverName
-     CALL FATAL('ComputeDevStress',Message)
-  END IF
+  StressSol => VariableGet( Solver % Mesh % Variables, TRIM(StressSolverName),&
+       UnFoundFatal=UnFoundFatal )
   StressPerm => StressSol % Perm
   StressDOFs = StressSol % DOFs
   Stress => StressSol % Values
@@ -287,13 +280,9 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
            END IF
 
            LocalViscosity(1:n) = ListGetReal( Material, &
-                'Viscosity', n, NodeIndexes, GotIt )
-           IF (.NOT.GotIt) THEN
-              WRITE(Message,'(A)') 'Variable Viscosity not found. &
-                   &Setting to 1.0'
-              CALL INFO('ComputeStress', Message, Level = 20)
-              LocalViscosity(1:n) = 1.0_dp
-           END IF
+                'Viscosity', n, NodeIndexes, GotIt,&
+                UnFoundFatal=UnFoundFatal)
+           !Previous default value: LocalViscosity(1:n) = 1.0_dp
 
            LocalVelo = 0.0_dp
            DO i=1, dim

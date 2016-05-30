@@ -122,7 +122,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   SAVE Visited,Nodes,Initialized,UnitVector,Coord,MaskExist,MaskPerm,TopPointer,&
       BotPointer,MidPointer, UpPointer,DownPointer,FieldOut,FieldIn,&
       TopNodes,MidNodes,TopPerm, MidPerm, TopField, BotNodes, BotPerm, nsize, &
-      UnitPerm
+      UnitPerm, MidLayerExists
  
   CALL Info( 'StructuredProjectToPlane','------------------------------------------',Level=4 )
   CALL Info( 'StructuredProjectToPlane','Performing projection on a structured mesh ',Level=4 )
@@ -153,7 +153,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
     MaskExist = ASSOCIATED( Var % Perm ) 
     IF( MaskExist ) MaskPerm => Var % Perm
     Coord => Var % Values
-    nsize = SIZE( Coord )
+    nsize = MIN( SIZE( Coord ), Mesh % NumberOfNodes )
     Initialized = .TRUE.
 
     TopNodes = 0
@@ -600,7 +600,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 
           dx = 0.5*(Coord(iup) - Coord(idown))
           itop = TopPointer(i)
-          FieldOut(PermOut(itop)) = FieldOut(PermOut(itop)) + dx 
+          TopField(TopPerm(itop)) = TopField(TopPerm(itop)) + dx 
         END DO
 
       ! Following three operators may have full dimensional results

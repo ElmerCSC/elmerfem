@@ -123,7 +123,7 @@
        STIFF(:,:), LOAD(:), HeatConductivity(:,:,:), &
        FORCE(:), U(:), V(:), W(:), MU(:,:),TimeForce(:), &
        Density(:), LatentHeat(:), HeatTransferCoeff(:), &
-       HeatCapacity(:), Enthalpy(:), Viscosity(:), LocalTemperature(:), &
+       HeatCapacity(:), Enthalpy(:), EnthalpyFraction(:), Viscosity(:), LocalTemperature(:), &
        NodalEmissivity(:), ElectricConductivity(:), Permeability(:), Work(:), C0(:), &
        Pressure(:), dPressuredt(:), GasConstant(:),AText(:), HeaterArea(:), &
        HeaterTarget(:), HeaterScaling(:), HeaterDensity(:), HeaterSource(:), &
@@ -133,7 +133,7 @@
 
      SAVE U, V, W, MU, MASS, STIFF, LOAD, PressureCoeff, &
        FORCE, ElementNodes, HeatConductivity, HeatCapacity, HeatTransferCoeff, &
-       Enthalpy, Density, LatentHeat, PhaseVelocity, AllocationsDone, Viscosity, TimeForce, &
+       Enthalpy, EnthalpyFraction, Density, LatentHeat, PhaseVelocity, AllocationsDone, Viscosity, TimeForce, &
        LocalNodes, LocalTemperature, Work, ElectricConductivity, &
        NodalEmissivity, Permeability, C0, dPressuredt, Pressure, &
        GasConstant,AText,Hwrk, XX, YY, ForceHeater, Power, HeaterArea, HeaterTarget, &
@@ -255,6 +255,7 @@
                  MASS,       &
                  LocalTemperature,      &
                  HeatCapacity,Enthalpy, &
+                 EnthalpyFraction,      &
                  NodalEmissivity,       &
                  GasConstant, AText,    &
                  HeatConductivity,      &
@@ -290,6 +291,7 @@
                  MASS(  2*N,2*N ),                     &
                  LocalTemperature( N ),                &
                  HeatCapacity( N ),Enthalpy( N ),      &
+                 EnthalpyFraction( N ),                &
                  NodalEmissivity( N ),                 &
                  GasConstant( N ),AText( N ),          &
                  HeatConductivity( 3,3,N ),            &
@@ -717,7 +719,6 @@
 !------------------------------------------------------------------------------
          HeatCapacity(1:n) = GetReal( Material, 'Heat Capacity', Found )
 
-
          CALL ListGetRealArray( Material,'Heat Conductivity',Hwrk,n, &
                       Element % NodeIndexes )
          HeatConductivity = 0.0d0
@@ -860,14 +861,15 @@
          ELSE
            IF ( ALL(MU==0) ) C1 = 0.0D0 
          END IF
+
+         HeatCapacity(1:n) = Density(1:n) * HeatCapacity(1:n)
+ 
 !------------------------------------------------------------------------------
 !        Check if modelling Phase Change with Eulerian approach 
 !------------------------------------------------------------------------------
          PhaseSpatial = .FALSE.
          IF (  PhaseChange ) THEN
            CALL EffectiveHeatCapacity()
-         ELSE
-           HeatCapacity(1:n) = Density(1:n) * HeatCapacity(1:n)
          END IF
 
          Viscosity = 0.0d0
@@ -1602,8 +1604,9 @@ CONTAINS
 
 !------------------------------------------------------------------------------
     SUBROUTINE EffectiveHeatCapacity()
-      LOGICAL :: Found, Specific
+      LOGICAL :: Found, Specific, GotFraction
       REAL(KIND=dp), ALLOCATABLE :: dT(:)
+      REAL(KIND=dp) :: dT0
 
 !------------------------------------------------------------------------------
 !     See if temperature gradient indside the element is large enough 
@@ -1659,6 +1662,10 @@ CONTAINS
       PhaseSpatial = ( PhaseChangeModel == PHASE_SPATIAL_2 )
       Specific = ListCheckPresent( Material,'Specific Enthalpy')
 
+      EnthalpyFraction(1:n) = ListGetReal(Material,'Enthalpy Fraction',&
+          n,Element % NodeIndexes,GotFraction)          
+ 
+
 !-----------------------------------------------------------------------------
       SELECT CASE( PhaseChangeModel )
 
@@ -1667,17 +1674,26 @@ CONTAINS
 ! that have an implemented analytical derivation rule.
 !-----------------------------------------------------------------------------
       CASE( PHASE_SPATIAL_1 )
-        HeatCapacity(1:n) = ListGetReal( Material, &
-             'Effective Heat Capacity', n,Element % NodeIndexes, Found )
+
+        Work(1:n) = ListGetReal( Material, &
+            'Effective Heat Capacity', n,Element % NodeIndexes, Found )
         IF ( .NOT. Found ) THEN
+          dT0 = ListGetCReal( Material,'Enthalpy Temperature Differential',Found )
+          IF(.NOT. Found) dT0 = 1.0d-3
           IF( Specific ) THEN
-            HeatCapacity(1:n) = ListGetDerivValue( Material, &
-                'Specific Enthalpy', n,Element % NodeIndexes )
-            HeatCapacity(1:n) = Density(1:n) * HeatCapacity(1:n)
+            Work(1:n) = ListGetDerivValue( Material, &
+                'Specific Enthalpy', n,Element % NodeIndexes, dT0 )
+            Work(1:n) = Density(1:n) * Work(1:n)
           ELSE
-            HeatCapacity(1:n) = ListGetDerivValue( Material, &
-                'Enthalpy', n,Element % NodeIndexes )            
+            Work(1:n) = ListGetDerivValue( Material, &
+                'Enthalpy', n,Element % NodeIndexes, dT0 )
           END IF
+        END IF
+
+        IF( GotFraction ) THEN
+          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n) 
+        ELSE
+          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n) 
         END IF
           
 !---------------------------------------------------------------------------------------
@@ -1691,6 +1707,12 @@ CONTAINS
         ELSE
           Enthalpy(1:n) = ListGetReal(Material,'Enthalpy',n,Element % NodeIndexes)          
         END IF
+        
+        IF( GotFraction ) THEN
+          CALL Warn('EffectiveHeatCapacity',&
+              '> Enthalpy Fraction < not treated yet by spatial 2 phase change')
+        END IF
+
           
 !------------------------------------------------------------------------------
       CASE( PHASE_TEMPORAL )
@@ -1712,19 +1734,27 @@ CONTAINS
         IF( Specific ) THEN
           Work(1:n) = Work(1:n) - ListGetReal( Material,'Specific Enthalpy', &
               n,Element % NodeIndexes )          
-          HeatCapacity(1:n) = Density(1:n) * Work(1:n) / dT(1:n)
-       ELSE
+          Work(1:n) = Density(1:n) * Work(1:n) / dT(1:n)
+        ELSE
           Work(1:n) = Work(1:n) - ListGetReal( Material,'Enthalpy', &
               n,Element % NodeIndexes )
-          HeatCapacity(1:n) = Work(1:n) / dT(1:n)
+          Work(1:n) = Work(1:n) / dT(1:n)
         END IF
+
+        IF( GotFraction ) THEN
+          HeatCapacity(1:n) = HeatCapacity(1:n) + EnthalpyFraction(1:n) * Work(1:n) 
+        ELSE
+          HeatCapacity(1:n) = HeatCapacity(1:n) + Work(1:n) 
+        END IF
+
 
         ! Revert to current temperature
         Temperature(TempPerm(Element % NodeIndexes)) = & 
-            PrevTemperature(TempPerm(Element % NodeIndexes)) + dT(1:n)
+            PrevTemperature(TempPerm(Element % NodeIndexes)) + dT(1:n)        
 
 !------------------------------------------------------------------------------
       END SELECT
+
 !------------------------------------------------------------------------------
     END SUBROUTINE EffectiveHeatCapacity
 !------------------------------------------------------------------------------

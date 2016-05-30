@@ -273,7 +273,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->rotate = FALSE;
   eg->polar = FALSE;
   eg->cylinder = FALSE;
-  eg->usenames = FALSE;
+  eg->usenames = TRUE;
   eg->layers = 0;
   eg->layereps = 0.0;
   eg->layermove = 0;
@@ -326,6 +326,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->coordinatemap[0] = eg->coordinatemap[1] = eg->coordinatemap[2] = 0;
   eg->clone[0] = eg->clone[1] = eg->clone[2] = 0;
   eg->mirror[0] = eg->mirror[1] = eg->mirror[2] = 0;
+  eg->cloneinds = FALSE;
   eg->mirrorbc = 0;
   eg->decimals = 12;
   eg->discont = 0;
@@ -386,6 +387,8 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
   /* The optional inline parameters */
 
   for(arg=4;arg <argc; arg++) {
+
+
 
     if(strcmp(argv[arg],"-in") ==0 ) {
       if(arg+1 >= argc) {
@@ -553,7 +556,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 	if(dim == 3) eg->clonesize[2] = atof(argv[arg+3]);
       }
     }
-
+    if(strcmp(argv[arg],"-cloneinds") == 0) {
+      eg->cloneinds = TRUE;
+    }
     if(strcmp(argv[arg],"-mirror") == 0) {
       if(arg+dim >= argc) {
 	printf("Give the symmetry of the coordinate directions, eg. 1 1 0\n");
@@ -579,9 +584,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       printf("The meshes will be united.\n");
     }   
 
-    if(strcmp(argv[arg],"-names") == 0) {
-      eg->usenames = TRUE;
-      printf("Names will be conserved when possible\n");
+    if(strcmp(argv[arg],"-nonames") == 0) {
+      eg->usenames = FALSE;
+      printf("Names will be omitted even if they would exist\n");
     }   
 
     if(strcmp(argv[arg],"-removelowdim") == 0) {
@@ -1018,7 +1023,7 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else 
       return(2);
   }
-  if(mode == 1) { 
+  else if(mode == 1) { 
     AddExtension(prefix,filename,"eg");
     if ((in = fopen(filename,"r")) == NULL) {
       printf("LoadCommands: opening of the file '%s' wasn't succesfull !\n",filename);
@@ -1353,6 +1358,10 @@ int LoadCommands(char *prefix,struct ElmergridType *eg,
     else if(strstr(command,"REMOVE UNUSED NODES")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
       if(strstr(params,"TRUE")) eg->removeunused = TRUE; 
+    }
+    else if(strstr(command,"NO MESH NAMES")) {
+      for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);
+      if(strstr(params,"TRUE")) eg->usenames = FALSE; 
     }
     else if(strstr(command,"REORDER MATERIAL")) {
       for(j=0;j<MAXLINESIZE;j++) params[j] = toupper(params[j]);

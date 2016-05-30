@@ -1,6 +1,4 @@
-
-
-!
+!/*****************************************************************************/
 ! *
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
@@ -53,7 +51,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        LimitDisp,  Bubbles = .False.,&
        SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE. , &
-       ConvectionVar,Compute_dhdt
+       ConvectionVar,Compute_dhdt,UnFoundFatal=.TRUE.
   LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
 
   INTEGER :: & 
@@ -259,11 +257,8 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   !    Get variables for the residual
   !------------------------------------------------------------------------------
-  VarThickResidual => VariableGet( Model % Mesh % Variables, TRIM(VariableName) // ' Residual' )
-  IF (.NOT.ASSOCIATED(VarThickResidual)) THEN
-     WRITE(Message,'(A)') '>' // TRIM(VariableName) // ' Residual < not associated'
-     CALL Fatal( SolverName, Message)
-  END IF
+  VarThickResidual => VariableGet( Model % Mesh % Variables, TRIM(VariableName) // ' Residual',UnFoundFatal=UnFoundFatal)
+
   PointerToResidualVector => VarThickResidual % Values
 
   !------------------------------------------------------------------------------
@@ -280,16 +275,10 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         IF(.NOT.Found) &
             CALL Fatal(SolverName,'if <Flow Solution Name> not given prescribe <Convection Dimension>')
    ELSE
-        FlowSol => VariableGet( Solver % Mesh % Variables, FlowSolName )
-        IF ( ASSOCIATED( FlowSol ) ) THEN
-             FlowPerm     => FlowSol % Perm
-             NSDOFs     =  FlowSol % DOFs
-             FlowSolution => FlowSol % Values
-         ELSE
-            WRITE(Message,'(A,A,A)') &
-                    'No variable >',FlowSolName,'< found'
-          CALL Fatal(SolverName,Message)              
-         END IF
+        FlowSol => VariableGet( Solver % Mesh % Variables, FlowSolName,UnFoundFatal=UnFoundFatal)
+        FlowPerm     => FlowSol % Perm
+        NSDOFs     =  FlowSol % DOFs
+        FlowSolution => FlowSol % Values
    END IF
 
   !------------------------------------------------------------------------------
@@ -493,11 +482,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
         Norm = DefaultSolve()
 
        if (TransientSimulation.and.Compute_dhdt) then
-          DHDTSol => VariableGet( Model % Mesh % Variables, 'DHDT')
-          IF (.NOT.ASSOCIATED(DHDTSol)) THEN
-           WRITE(Message,'(A)') 'Compute dhdt is true but >DHDT< not associated'
-           CALL Fatal( SolverName, Message)
-          END IF
+          DHDTSol => VariableGet( Model % Mesh % Variables, 'DHDT',UnFoundFatal=UnFoundFatal)
           DHDT => DHDTSol % Values
 
           Do i=1,Solver % Mesh % NumberOfNodes

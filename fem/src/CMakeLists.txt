@@ -40,7 +40,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 BackwardError.F90
   LinearForms.F90 H1ElementBasisFunctions.F90 CircuitUtils.F90
-  ElmerSolver.F90)
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)

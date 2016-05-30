@@ -115,7 +115,7 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
        body_id, material_id, bf_id, bc_id, ierr
 
   LOGICAL, ALLOCATABLE :: ActiveIDS(:)
-  LOGICAL ::Found = .FALSE., &
+  LOGICAL ::Found = .FALSE.,UnFoundFatal=.TRUE.,&
        Stabilize = .TRUE. ,&
        UseBubbles = .FALSE., &
        AllocationsDone = .FALSE., &
@@ -345,32 +345,20 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
 
   !Variables needed to compute the residual and water pressure
   !----------------------------------------
-  VarIDSHeadResidual => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Residual' )
-  IF (ASSOCIATED(VarIDSHeadResidual)) THEN
-     PointerToResidualVector => VarIDSHeadResidual % Values
-     PTRPerm => VarIDSHeadResidual % Perm
-  ELSE
-     WRITE(Message,'(A)') '>' // TRIM(Solver % Variable % Name) // ' Residual< not associated'
-     CALL FATAL( SolverName, Message)
-  END IF
+  VarIDSHeadResidual => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Residual',&
+       UnFoundFatal=UnFoundFatal)
+  PointerToResidualVector => VarIDSHeadResidual % Values
+  PTRPerm => VarIDSHeadResidual % Perm
 
-  VarIDSHead => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Homologous' )
-  IF (ASSOCIATED(VarIDSHead)) THEN
-     IDSHeadHomologous => VarIDSHead % Values
-     HomolPerm => VarIDSHead % Perm
-  ELSE
-     WRITE(Message,'(A)') TRIM(Solver % Variable % Name) // ' VarIDSHead not associated'
-     CALL FATAL( SolverName, Message)
-  END IF
+  VarIDSHead => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Homologous',&
+       UnFoundFatal=UnFoundFatal)
+  IDSHeadHomologous => VarIDSHead % Values
+  HomolPerm => VarIDSHead % Perm
 
-  WaterPressure => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Pressure' )
-  IF (ASSOCIATED(WaterPressure)) THEN
-     Wpress => WaterPressure % Values
-     WpPerm  => WaterPressure % Perm
-  ELSE
-     WRITE(Message,'(A)') TRIM(Solver % Variable % Name) // ' WaterPressure not associated'
-     CALL FATAL( SolverName, Message)
-  END IF
+  WaterPressure => VariableGet( Model % Mesh % Variables, TRIM(Solver % Variable % Name) // ' Pressure',&
+       UnFoundFatal=UnFoundFatal)
+  Wpress => WaterPressure % Values
+  WpPerm  => WaterPressure % Perm
 
   !Checking wether to use upper limit
   !------------------------------------
@@ -490,21 +478,13 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
         !------------------------------------------------------------------------------
         ! Get element material parameters
         !------------------------------------------------------------------------------       
-        IDSComp(1:N) = listGetReal( Material,'IDS Compressibility', N, Element % NodeIndexes, Found )
-        IF (.NOT.Found) THEN
-           IDSComp(1:N) = 1.0D-2
-           WRITE(Message,'(a,a,a,i5,a,i5,a)') 'Keyword > ', 'IDS Compressibility', &
-                ' < not found for element ', t, ' material ', material_id
-           CALL INFO(SolverName,Message,Level=4)
-        END IF
+        IDSComp(1:N) = listGetReal( Material,'IDS Compressibility', N, Element % NodeIndexes, Found,&
+             UnFoundFatal=UnFoundFatal)
+        ! Previous default value: IDSComp(1:N) = 1.0D-2
 
-        Porosity(1:N) = listGetReal( Material,'IDS Porosity', N, Element % NodeIndexes, Found )
-        IF (.NOT.Found) THEN
-           Porosity(1:N) = 0.4D00
-           WRITE(Message,'(a,a,a,i5,a,i5,a)') 'Keyword > ', 'IDS Porosity', &
-                ' < not found for element ', t, ' material ', material_id
-           CALL INFO(SolverName,Message,Level=4)
-        END IF
+        Porosity(1:N) = listGetReal( Material,'IDS Porosity', N, Element % NodeIndexes, Found,&
+             UnFoundFatal=UnFoundFatal)
+        ! Previous default value: Porosity(1:N) = 0.4D00
 
         BodyForce => GetBodyForce()
         IF ( ASSOCIATED( BodyForce ) ) THEN
@@ -516,21 +496,13 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
            Gravity(1:N) = SQRT(SUM(g**2.0/N))
         END IF
 
-        IDSThick(1:N) = listGetReal( Material,'IDS Thickness', N, Element % NodeIndexes, Found )
-        IF (.NOT.Found) THEN
-           IDSThick(1:N) = 10.0D00
-           WRITE(Message,'(a,a,a,i5,a,i5,a)') 'Keyword > ', 'IDS Thickness', &
-                ' < not found for element ', t, ' material ', material_id
-           CALL INFO(SolverName,Message,Level=4)
-        END IF
+        IDSThick(1:N) = listGetReal( Material,'IDS Thickness', N, Element % NodeIndexes, Found,&
+             UnFoundFatal=UnFoundFatal)
+        ! Previous default value: IDSThick(1:N) = 10.0D00
 
-        Density(1:N) = ListGetReal( Material, 'Water Density',  N, Element % NodeIndexes, Found )
-        IF (.NOT.Found) THEN
-           Density(1:N) = 1.0055e-18
-           WRITE(Message,'(a,i5,a,i5,a)') 'Keyword >Water Density< not found for element ',&
-                t, ' material ', material_id
-           CALL INFO(SolverName,Message,Level=4)
-        END IF
+        Density(1:N) = ListGetReal( Material, 'Water Density',  N, Element % NodeIndexes, Found,&
+             UnFoundFatal=UnFoundFatal)
+        !Previous default value: Density(1:N) = 1.0055e-18
 
         !------------------------------------------------------------------------------
         ! add water contribution from input volume and transfer
@@ -541,21 +513,11 @@ RECURSIVE SUBROUTINE IDSSolver( Model,Solver,Timestep,TransientSimulation )
         IF (ASSOCIATED(BodyForce)) THEN
            bf_id = GetBodyForceId()
            Influx(1:N) = ListGetReal( BodyForce, TRIM(Solver % Variable % Name) // ' Source flux', &
-                N, Element % NodeIndexes(1:N),Found ) 
-           IF (.NOT.Found) THEN
-              WRITE(Message,'(a,a,a,i5,a,i5,a)') 'Keyword >', ' Source Flux', &
-                   '< not found for element ', t, ' Body Force ', bf_id
-              CALL INFO(SolverName,Message,Level=4)
-              Influx(1:N) = 0.0
-           END IF
+                N, Element % NodeIndexes(1:N),Found,UnFoundFatal=UnFoundFatal)
+           !Previous default value: Influx(1:N) = 0.0
            EPLToIDS(1:N) = ListGetReal( BodyForce,'EPLToIDS Transfer', &
-                N, Element % NodeIndexes(1:N),Found ) 
-           IF (.NOT.Found) THEN
-              WRITE(Message,'(a,a,a,i5,a,i5,a)') 'Keyword >', 'EPLToIDS Transfer', &
-                   '< not found for element ', t, ' Body Force ', bf_id
-              CALL INFO(SolverName,Message,Level=4)
-              EPLToIDS(1:N) = 0.0 
-           END IF
+                N, Element % NodeIndexes(1:N),Found,UnFoundFatal=UnFoundFatal)
+           !Previous default value: EPLToIDS(1:N) = 0.0 
         END IF
 
         LOAD(1:N) = Influx(1:N) + EPLToIDS(1:N)

@@ -5,7 +5,7 @@
 
 int LoadSolutionElmer(struct FemType *data,int results,char *prefix,int info);
 int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
-		   char *prefix,int info);
+		   char *prefix,int nonames, int info);
 int FuseSolutionElmerPartitioned(char *prefix,char *outfile,int decimals,int parts,
 				 int minstep, int maxstep, int dstep, int info);
 int SaveSolutionElmer(struct FemType *data,struct BoundaryType *bound,
@@ -17,8 +17,8 @@ int SaveSizeInfo(struct FemType *data,struct BoundaryType *bound,
 		 char *prefix,int info);
 int SaveElmerInputFemBem(struct FemType *data,struct BoundaryType *bound,
 			 char *prefix,int decimals, int info);
-int PartitionSimpleElements(struct FemType *data,int dimpart[],int dimper[],
-			    int partorder, Real corder[],int info);
+int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct BoundaryType *bound,
+			    int dimpart[],int dimper[],int partorder, Real corder[],int info);
 int PartitionSimpleElementsNonRecursive(struct FemType *data,
 					int dimpart[],int dimper[],int info);
 #if PARTMETIS
@@ -27,6 +27,8 @@ int PartitionConnectedElementsMetis(struct FemType *data,struct BoundaryType *bo
 #endif
 int PartitionSimpleElementsRotational(struct FemType *data,int dimpart[],int dimper[],
 				      int info);
+int PartitionConnectedElementsStraight(struct FemType *data,struct BoundaryType *bound,
+				       struct ElmergridType *eg, int info);
 int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound,
 				 struct ElmergridType *eg, int info);
 int PartitionSimpleNodes(struct FemType *data,int dimpart[],int dimper[],

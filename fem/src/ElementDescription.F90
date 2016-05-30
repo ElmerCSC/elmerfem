@@ -4674,6 +4674,7 @@ END IF
 !------------------------------------------------------------------------------
      FUNCTION CrossProduct( v1, v2 ) RESULT( v3 )
 !------------------------------------------------------------------------------
+       IMPLICIT NONE
        REAL(KIND=dp) :: v1(3), v2(3), v3(3)
        v3(1) =  v1(2)*v2(3) - v1(3)*v2(2)
        v3(2) = -v1(1)*v2(3) + v1(3)*v2(1)
@@ -4702,7 +4703,7 @@ END IF
      FUNCTION EdgeElementInfo( Element, Nodes, u, v, w, F, G, detF, &
           Basis, EdgeBasis, RotBasis, dBasisdx, SecondFamily, BasisDegree, &
           ApplyPiolaTransform, ReadyEdgeBasis, ReadyRotBasis, &
-          HierarchicBasis) RESULT(stat)
+          HierarchicBasis, TangentialTrMapping) RESULT(stat)
 !------------------------------------------------------------------------------
        IMPLICIT NONE
 
@@ -4719,14 +4720,16 @@ END IF
        REAL(KIND=dp), OPTIONAL :: RotBasis(:,:)  !< The Curl of the edge basis functions with respect to the local coordinates
        REAL(KIND=dp), OPTIONAL :: dBasisdx(:,:)  !< The first derivatives of the H1-conforming basis functions at (u,v,w)
        LOGICAL, OPTIONAL :: SecondFamily         !< If .TRUE., a Nedelec basis of the second kind is returned
-       INTEGER, OPTIONAL :: BasisDegree          !< The approximation degree (supported for some element types) 
+       INTEGER, OPTIONAL :: BasisDegree          !< The approximation degree 2 is also supported (except for pyramid) 
        LOGICAL, OPTIONAL :: ApplyPiolaTransform  !< If  .TRUE., perform the Piola transform so that, instead of b
                                                  !< and Curl b, return  B(f(p)) and (curl B)(f(p)) with B(x) the basis 
                                                  !< functions on the physical element and curl the spatial curl operator.
                                                  !< In this case the absolute value of detF is returned.
        REAL(KIND=dp), OPTIONAL :: ReadyEdgeBasis(:,:) !< A pretabulated edge basis function can be given
        REAL(KIND=dp), OPTIONAL :: ReadyRotBasis(:,:)  !< The preretabulated Curl of the edge basis function
-       LOGICAL, OPTIONAL :: HierarchicBasis      !< If .TRUE., return a hierachic basis (if available) 
+       LOGICAL, OPTIONAL :: HierarchicBasis      !< If .TRUE., return a hierachic basis (if available)
+       LOGICAL, OPTIONAL :: TangentialTrMapping  !< To return b x n, with n=(0,0,1) the normal to the 2D reference element.
+                                                 !< The Piola transform is then the usual div-conforming version.    
        LOGICAL :: Stat                           !< .FALSE. for a degenerate element
 !-----------------------------------------------------------------------------------------------------------------
 !      Local variables
@@ -4738,7 +4741,7 @@ END IF
        REAL(KIND=dp) :: ElmMetric(3,3), detJ, CurlBasis(54,3)
        REAL(KIND=dp) :: t(3), s(3), v1, v2, v3, h1, h2, h3, dh1, dh2, dh3, grad(2)
        LOGICAL :: Create2ndKindBasis, PerformPiolaTransform, UsePretabulatedBasis, Parallel
-       LOGICAL :: SecondOrder, Hierarchic
+       LOGICAL :: SecondOrder, Hierarchic, ApplyTraceMapping
        INTEGER, POINTER :: EdgeMap(:,:), Ind(:)
        INTEGER :: TriangleFaceMap(3), SquareFaceMap(4), BrickFaceMap(6,4), PrismSquareFaceMap(3,4), DOFs
 !----------------------------------------------------------------------------------------------------------
@@ -4770,8 +4773,11 @@ END IF
        END IF
        PerformPiolaTransform = .FALSE.
        IF ( PRESENT(ApplyPiolaTransform) ) PerformPiolaTransform = ApplyPiolaTransform
-       Hierarchic = .FALSE.
+       Hierarchic = .TRUE. ! .TRUE. to automate the compatibility of the bases for different element shapes 
        IF ( PRESENT(HierarchicBasis) ) Hierarchic = HierarchicBasis
+
+       ApplyTraceMapping = .FALSE.
+       IF ( PRESENT(TangentialTrMapping) ) ApplyTraceMapping = TangentialTrMapping
        !-------------------------------------------------------------------------------------------
        dLbasisdx = 0.0d0      
        n = Element % TYPE % NumberOfNodes
@@ -8360,7 +8366,7 @@ END IF
           END IF
        ELSE
 
-          IF (PerformPiolaTransform .OR. PRESENT(dBasisdx)) THEN
+          IF (PerformPiolaTransform .OR. PRESENT(dBasisdx) .OR. ApplyTraceMapping) THEN
              IF ( .NOT. ElementMetric( n, Element, Nodes, &
                   ElmMetric, detJ, dLBasisdx, LG ) ) THEN
                 stat = .FALSE.
@@ -8368,17 +8374,39 @@ END IF
              END IF
           END IF
 
-          IF (PerformPiolaTransform) THEN
-             DO j=1,DOFs
+          IF (ApplyTraceMapping .AND. (dim==2) ) THEN
+            ! Perform operation b -> b x n. The resulting field transforms under the usual 
+            ! Piola transform (like div-conforming field). For a general surface element
+            ! embedded in 3D we return B(f(p))=1/sqrt(a) F(b x n) where a is the determinant of
+            ! the metric tensor, F=[a1 a2] with a1 and a2 surface basis vectors and (b x n) is
+            ! considered to be 2-vector (the trivial component ignored). Note that asking simultaneously 
+            ! for the curl of the basis is not an expected combination.
+            DO j=1,DOFs
+              WorkBasis(1,1:2) = EdgeBasis(j,1:2)
+              EdgeBasis(j,1) = WorkBasis(1,2)
+              EdgeBasis(j,2) = -WorkBasis(1,1)
+            END DO
+            IF (PerformPiolaTransform) THEN
+              DO j=1,DOFs 
                 DO k=1,cdim
-                   B(k) = SUM( LG(k,1:dim) * EdgeBasis(j,1:dim) )
+                  B(k) = SUM( LF(k,1:dim) * EdgeBasis(j,1:dim) ) / DetJ
+                END DO
+                EdgeBasis(j,1:cdim) = B(1:cdim)                
+              END DO
+            END IF
+          ELSE
+            IF (PerformPiolaTransform) THEN
+              DO j=1,DOFs
+                DO k=1,cdim
+                  B(k) = SUM( LG(k,1:dim) * EdgeBasis(j,1:dim) )
                 END DO
                 EdgeBasis(j,1:cdim) = B(1:cdim)
                 ! The returned spatial curl in the case cdim=3 and dim=2 handled here
                 ! has limited usability. This handles only a transformation of
                 ! the type x_3 = p_3:
                 CurlBasis(j,3) = 1.0d0/DetJ * CurlBasis(j,3)
-             END DO
+              END DO
+            END IF
           END IF
 
           ! Make the returned value DetF to act as a metric term for integration

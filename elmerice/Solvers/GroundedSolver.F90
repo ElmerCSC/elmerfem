@@ -79,7 +79,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, bedrockVar
   TYPE(Nodes_t), SAVE :: Nodes
 
-  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat
+  LOGICAL :: AllocationsDone = .FALSE., GotIt, stat,UnFoundFatal=.TRUE.
 
   INTEGER :: i, mn, n, t, Nn, istat, DIM, MSum, ZSum, bedrockSource
   INTEGER, POINTER :: Permutation(:), bedrockPerm(:)
@@ -150,8 +150,7 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      
      SELECT CASE(bedrockSource)
      CASE (VARIABLE)
-        bedrockVar => VariableGet(Model % Mesh % Variables, bedrockName )
-        IF (.NOT. ASSOCIATED(bedrockVar)) CALL FATAL(SolverName,"Could not find bedrock variable")
+        bedrockVar => VariableGet(Model % Mesh % Variables, bedrockName,UnFoundFatal=UnFoundFatal)
         bedrockPerm => bedrockVar % Perm
         zb(1:n) =  bedrockVar % values(bedrockPerm(Element % NodeIndexes)) + toler
         NULLIFY(bedrockPerm)
@@ -159,13 +158,11 @@ SUBROUTINE GroundedSolver( Model,Solver,dt,TransientSimulation )
      CASE (MATERIAL_NAMED)
         Material => GetMaterial( Element )
         zb(1:n) = ListGetReal( Material,bedrockName, n , & 
-             Element % NodeIndexes, GotIt ) + toler
-        IF (.NOT. GotIt) CALL FATAL(SolverName,"Could not find bedrock material")
+             Element % NodeIndexes, GotIt,UnFoundFatal=UnFoundFatal) + toler
      CASE (MATERIAL_DEFAULT)
         Material => GetMaterial( Element )
         zb(1:n) = ListGetReal( Material,'Min Zs Bottom',n , & 
-             Element % NodeIndexes, GotIt ) + toler
-        IF (.NOT. GotIt) CALL FATAL(SolverName,"Could not find bedrock material")
+             Element % NodeIndexes, GotIt,UnFoundFatal=UnFoundFatal) + toler
      END SELECT
      
      CALL GetElementNodes( Nodes )

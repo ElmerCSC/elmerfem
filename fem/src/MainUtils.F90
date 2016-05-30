@@ -1919,6 +1919,8 @@ CONTAINS
          END IF
          steadyIt = i
        END IF
+        
+       IF( GetNamespaceCheck() ) CALL ListPushNamespace('coupled '//TRIM(i2s(i))//': ')
 
        DoneThis = .FALSE.
 
@@ -2057,8 +2059,9 @@ CONTAINS
 !------------------------------------------------------------------------------
          END DO
 !------------------------------------------------------------------------------
-       Model % Mesh % Changed = .FALSE.
-       IF ( ALL(DoneThis) ) EXIT
+         CALL ListPopNamespace()
+         Model % Mesh % Changed = .FALSE.
+        IF ( ALL(DoneThis) ) EXIT
     END DO
 
     IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
@@ -3066,6 +3069,7 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL InitializeToZero(Solver % Matrix, Solver % Matrix % rhs)
             
+            CALL ListPushNameSpace('block:')
             CALL ListPushNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
             CALL BlockSystemAssembly(PSolver,dt,Transient,RowVar,ColVar)
             
@@ -3073,7 +3077,7 @@ CONTAINS
             CALL DefaultFinishAssembly()                    
             
             CALL BlockSystemDirichlet(TotMatrix,RowVar,ColVar)
-            CALL ListPopNameSpace()
+            CALL ListPopNameSpace(); CALL ListPopNameSpace()
           END DO
         END DO
       END IF
@@ -3914,6 +3918,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
      TYPE(ValueList_t), POINTER :: Params
+     INTEGER, POINTER :: UpdateComponents(:)
 
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -4058,6 +4063,26 @@ CONTAINS
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
+
+
+!---------------------------------------------------------------------
+! After each solver one may do some special derived fields etc. 
+!---------------------------------------------------------------------
+     
+
+     ! Update the variables that depend on this solver
+     IF( ListGetLogical( Params,&
+           'Update Exported Variables', Found) ) THEN
+       CALL UpdateExportedVariables( Solver )	
+     END IF
+    
+
+     ! Update the components that depend on this solver
+     UpdateComponents => ListGetIntegerArray( Params, &
+         'Update Components', Found )   
+     IF( Found ) CALL UpdateDependentComponents( UpdateComponents )	
+     
+
 
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested

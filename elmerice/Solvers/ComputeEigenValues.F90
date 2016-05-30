@@ -1,35 +1,33 @@
+!/*****************************************************************************/
+! *
+! *  Elmer/Ice, a glaciological add-on to Elmer
+! *  http://elmerice.elmerfem.org
+! *
+! * 
+! *  This program is free software; you can redistribute it and/or
+! *  modify it under the terms of the GNU General Public License
+! *  as published by the Free Software Foundation; either version 2
+! *  of the License, or (at your option) any later version.
+! * 
+! *  This program is distributed in the hope that it will be useful,
+! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! *  GNU General Public License for more details.
+! *
+! *  You should have received a copy of the GNU General Public License
+! *  along with this program (in file fem/GPL-2); if not, write to the 
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  Boston, MA 02110-1301, USA.
+! *
 ! *****************************************************************************/
-! *
-! *       ELMER, A Computational Fluid Dynamics Program.
-! *
-! *       Copyright 1st April 1995 - , Center for Scientific Computing,
-! *                                    Finland.
-! *
-! *       All rights reserved. No part of this program may be used,
-! *       reproduced or transmitted in any form or by any means
-! *       without the written permission of CSC.
-! *
-! *****************************************************************************/
-!
-!/******************************************************************************
-! *
 ! ******************************************************************************
 ! *
-! *                     Author:       Juha Ruokolainen
+! *  Authors: Fabien / OG 
+! *  Email:   
+! *  Web:     http://elmerice.elmerfem.org
 ! *
-! *                    Address: Center for Scientific Computing
-! *                            Tietotie 6, P.O. Box 405
-! *                              02101 Espoo, Finland
-! *                              Tel. +358 0 457 2723
-! *                            Telefax: +358 0 457 2302
-! *                          EMail: Juha.Ruokolainen@csc.fi
-! *
-! *                       Date: 08 Jun 1997
-! *
-! *                Modified by:  Fabien / OG 
-! *
-! *       Date of modification: 13/10/05 from version 1.5
-! *
+! *  Original Date: 13/10/05 from version 1.5
+! * 
 ! *****************************************************************************/
 !------------------------------------------------------------------------------
    RECURSIVE SUBROUTINE ComputeEigenValues( Model,Solver,dt,TransientSimulation )
@@ -77,7 +75,7 @@
      REAL(KIND=dp) :: WORK(24),Dumy(1)
      Real(KIND=dp) :: a 
      INTEGER :: i, j, t, ordre(3),infor
-     LOGICAL :: GotIt
+     LOGICAL :: GotIt,UnFoundFatal=.TRUE.
      CHARACTER(LEN=MAX_NAME_LEN) :: TensorVarName, EigenVarName
 
 
@@ -96,9 +94,7 @@
      ! Eigen Values (dimension 3)
       EigenVarName = GetString( Solver % Values, 'EigenValue Variable Name', GotIt )    
       IF (.NOT.Gotit) EigenVarName = 'EigenStress'
-      EigenSol => VariableGet( Solver % Mesh % Variables, EigenVarName )
-      if (.not.associated(EigenSol)) &
-        CALL FATAL('Compute EigenValues', 'No variable <EigenStress< associated')
+      EigenSol => VariableGet( Solver % Mesh % Variables, EigenVarName,UnFoundFatal=UnFoundFatal)
       EigenPerm => EigenSol % Perm
       Eigen => EigenSol % Values
 

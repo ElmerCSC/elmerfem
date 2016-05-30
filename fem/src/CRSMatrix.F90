@@ -335,6 +335,10 @@ CONTAINS
     INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
     IF(i>A % NumberOfRows) THEN
+      CALL Warn('CRS_AddToMatrixElement','Matrix element is to be added to a nonexistent position')
+      CALL Warn('CRS_AddToMatrixElement','Row: '//i2s(i)//' Col: '//i2s(j))
+      CALL Warn('CRS_AddToMatrixElement','Number of Matrix rows:'//i2s(A % NumberOfRows))
+      CALL Warn('CRS_AddToMatrixElement','Converting CRS to list')
       A % FORMAT=MATRIX_LIST; RETURN
     END IF
 
@@ -345,7 +349,13 @@ CONTAINS
 
     IF ( .NOT.ASSOCIATED(Diag) .OR. i /= j .OR. .NOT. A % Ordered ) THEN
       k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
-      IF ( k==0 .AND. VALUE/=0 ) A % FORMAT = MATRIX_LIST
+      IF ( k==0 .AND. VALUE/=0 ) THEN
+        CALL Warn('CRS_AddToMatrixElement','Matrix element is to be added to a nonexistent position')
+        CALL Warn('CRS_AddToMatrixElement','Row: '//i2s(i)//' Col: '//i2s(j))
+        CALL Warn('CRS_AddToMatrixElement','Number of Matrix rows:'//i2s(A % NumberOfRows))
+        CALL Warn('CRS_AddToMatrixElement','Converting CRS to list')
+        A % FORMAT = MATRIX_LIST
+      END IF
       IF ( k==0 ) RETURN
       k = k + Rows(i) - 1
     ELSE

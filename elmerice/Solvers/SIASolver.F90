@@ -72,7 +72,7 @@ SUBROUTINE SIASolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, Grad1Sol, Grad2Sol, &
                                DepthSol, VeloSol
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, LimitVelocity
+  LOGICAL :: AllocationsDone = .FALSE., Found, LimitVelocity,UnFoundFatal=.TRUE.
   
   INTEGER :: i, j, n, m, t, istat, DIM, p, Indexes(128), COMP, constrainedvelocities
   INTEGER, POINTER :: Permutation(:), VeloPerm(:), &
@@ -132,36 +132,23 @@ SUBROUTINE SIASolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   DIM = CoordinateSystemDimension()
 
-  VeloSol => VariableGet( Solver % Mesh % Variables, 'SIAFlow' )
-  IF (ASSOCIATED(veloSol)) THEN
-     Velocity => VeloSol % Values
-     VeloPerm => VeloSol % Perm
-     PrevVelo => veloSol % PrevValues
-  ELSE
-     CALL FATAL(SolverName,'Could not find variable >SIAFlow<')
-  END IF
-  DepthSol => VariableGet( Solver % Mesh % Variables, 'Depth' )
-  IF (ASSOCIATED(DepthSol)) THEN
-     Depth => DepthSol % Values
-     DepthPerm => DepthSol % Perm
-  ELSE
-     CALL FATAL(SolverName,'Could not find variable >Depth<')
-  END IF
-  Grad1Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad1')
-  IF (ASSOCIATED(Grad1Sol)) THEN
-     GradSurface1 => Grad1Sol % Values
-     GradSurface1Perm => Grad1Sol % Perm
-  ELSE
-     CALL FATAL(SolverName,'Could not find variable >FreeSurfGrad1<')
-  END IF
+  VeloSol => VariableGet( Solver % Mesh % Variables, 'SIAFlow',UnFoundFatal=UnFoundFatal)
+  Velocity => VeloSol % Values
+  VeloPerm => VeloSol % Perm
+  PrevVelo => veloSol % PrevValues
+  
+  DepthSol => VariableGet( Solver % Mesh % Variables, 'Depth',UnFoundFatal=UnFoundFatal)
+  Depth => DepthSol % Values
+  DepthPerm => DepthSol % Perm
+  
+  Grad1Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad1',UnFoundFatal=UnFoundFatal)
+  GradSurface1 => Grad1Sol % Values
+  GradSurface1Perm => Grad1Sol % Perm
+
   IF (dim > 2) THEN
-     Grad2Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad2')
-     IF (ASSOCIATED(Grad2Sol)) THEN
-        GradSurface2 => Grad2Sol % Values
-        GradSurface2Perm => Grad2Sol % Perm
-     ELSE
-        CALL FATAL(SolverName,'Could not find variable >FreeSurfGrad2<')
-     END IF
+     Grad2Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad2',UnFoundFatal=UnFoundFatal)
+     GradSurface2 => Grad2Sol % Values
+     GradSurface2Perm => Grad2Sol % Perm
   END IF
 
   VelocityCutOff = ListGetConstReal( Solver % Values, 'Velocity Cutoff', Found)
