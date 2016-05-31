@@ -3778,6 +3778,7 @@ CONTAINS
     LOGICAL :: Found
 !------------------------------------------------------------------------------
     INTEGER :: NColours, col
+    REAL(KIND=dp) :: Norm
 
     CALL Info('ExecSolverInSteps','Performing solution in steps',Level=5)
     ProcName = ListGetString( Solver % Values,'Procedure', Found )
@@ -3786,8 +3787,7 @@ CONTAINS
     IF( .NOT. Found ) MaxIter = 1
 
     DO iter = 1, MaxIter
-      SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_prebulk', abort=.FALSE. )
-      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      CALL DefaultInitialize( Solver )
       
       IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
         ncolours = Solver % ColourIndexList % n 
@@ -3802,20 +3802,18 @@ CONTAINS
         ! to have similar interface as for non-steps solver
         CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
       END DO
-
-      SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_postbulk', abort=.FALSE. )
-      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      CALL DefaultFinishBulkAssembly( Solver )
 
       SolverAddr = GetProcAddr( TRIM(ProcName)//'_boundary', abort=.FALSE. )
       IF( SolverAddr /= 0 ) THEN
         CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
       END IF
 
-      SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_postboundary', abort=.FALSE. )
-      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
-      
-      SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_solve', abort=.FALSE. )
-      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      CALL DefaultFinishBoundaryAssembly( Solver )
+      CALL DefaultFinishAssembly( Solver )
+      CALL DefaultDirichletBCs( Solver )
+
+      Norm = DefaultSolve( Solver )
       
       IF( Solver % Variable % NonlinConverged == 1 ) EXIT
     END DO
