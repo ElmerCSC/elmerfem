@@ -1,7 +1,11 @@
-SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
+SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
-!  Solve the Poisson equation with OpenMP threading for assembly and solution
-!  phases implemented. Original case by Mikko B. 
+! Solve the Poisson equation with OpenMP threading for assembly and solution
+! phases implemented. Original case by Mikko B. 
+!
+! In this case the colouring calls and also the colour loop 
+! have been moved to the library.
+! Modidified 31.5.2016 / P.R.
 !------------------------------------------------------------------------------
   USE Types
   USE DefUtils
@@ -13,7 +17,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: TransientSimulation
   !------------------------------------------------------------------------------
   ! Local variables
-  !------------------------------------------------------------------------------
+  !-----------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
   REAL(KIND=dp) :: Norm
   INTEGER :: nnz, nthreads, n, nb, nd, t, istat, active
@@ -22,17 +26,11 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: BodyForce
   REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), LOAD(:), FORCE(:)
   INTEGER, POINTER :: Indexes(:)
-  INTEGER :: nind, ii, jj
   INTEGER, SAVE :: maxdofs
   LOGICAL, SAVE :: AllocationsDone = .FALSE.
   !$OMP THREADPRIVATE(STIFF, LOAD, FORCE, AllocationsDone, maxdofs)
-  ! Variables related to graph colouring
-  INTEGER :: col, cli, cti
-  TYPE(Graph_t) :: DualGraph
-  TYPE(GraphColour_t) :: GraphColouring
-  TYPE(Graph_t) :: ColourIndexList
-  INTEGER, ALLOCATABLE :: dualptr(:), dualind(:), colours(:), &
-        cptr(:), cind(:)
+  INTEGER :: nactive,col
+
   LOGICAL :: VecAsm, MCAsm
 
   REAL(kind=dp), POINTER :: LoadPtr(:)
@@ -40,35 +38,9 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 
   Mesh => GetMesh()
 
-  !System assembly:
-  !----------------
-  Active = GetNOFActive()
-  CALL DefaultInitialize()
 
-  ! Check that mesh colouring is actually in use
-  VecAsm = .TRUE.
-  MCAsm = ListGetLogical( Solver % Values, 'Mesh Colouring', Found )
-  IF (VecAsm .AND. MCAsm .AND. Found) THEN
-    CALL Info('PoissonSolver', 'Vectorized assembly in use')
-
-    ! Construct the dual graph from Elmer mesh
-    CALL ElmerMeshToDualGraph(Mesh, DualGraph)
-    
-    ! Colour the dual graph
-    CALL ElmerGraphColour(DualGraph, GraphColouring)
-    
-    ! Deallocate dual graph as it is no longer needed
-    CALL Graph_Deallocate(DualGraph)
-    
-    ! Construct colour lists
-    CALL ElmerColouringToGraph(GraphColouring, ColourIndexList)
-    CALL Colouring_Deallocate(GraphColouring)
-  ELSE
-    CALL Fatal('PoissonSolver', 'Vectorized assembly not in use')
-  END IF
-  
   !$OMP PARALLEL DEFAULT(NONE) &
-  !$OMP SHARED(Solver, Mesh, Active,nthreads, ColourIndexList, cli, cti, VecAsm) &
+  !$OMP SHARED(Solver, Mesh, Active,nthreads) &
   !$OMP PRIVATE(BodyForce, Element, col, n, nd, nb, t, istat, Found, Norm, &
   !$OMP         Indexes, nind, LoadPtr)
 
@@ -84,27 +56,19 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
     AllocationsDone = .TRUE.
   END IF
 
+  
+  nactive = GetNOFActive(Solver)
 
-  CALL ResetTimer('ThreadedAssembly')
+  ! Perform FE assembly 
+  ! The _bulk routine is always done one colour at a time (thread-safe)
 
-
-  ! Perform FE assembly one colour at a time (thread-safe)
-  ! Element indices are listed in packed (CRS) structure  ColourIndexList
-  DO col=1,ColourIndexList % n
-
-    !$OMP SINGLE
-    CALL Info('PoissonSolve','Assembly of colour: '//TRIM(I2S(col)),Level=10)
-    cli = ColourIndexList % ptr(col)
-    cti = ColourIndexList % ptr(col+1)-1
-    !$OMP END SINGLE
-
-    !$OMP DO SCHEDULE(STATIC)
-    DO t=cli, cti
-      Element => GetActiveElement(ColourIndexList % ind(t))
-      n  = GetElementNOFNodes(Element)
-      nd = GetElementNOFDOFs(Element)
-      nb = GetElementNOFBDOFs(Element)
-
+  !$OMP DO SCHEDULE(STATIC)
+  DO t=1,nactive
+    Element => GetActiveElement(t)
+    n  = GetElementNOFNodes(Element)
+    nd = GetElementNOFDOFs(Element)
+    nb = GetElementNOFBDOFs(Element)
+    
       LOAD(1:n) = 0.0d0
       BodyForce => GetBodyForce(Element)
       
@@ -121,21 +85,6 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
       CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=VecAsm )
     END DO ! Element loop
     !$OMP END DO
-
-  END DO ! Colour loop
-  !$OMP END PARALLEL
-
-  CALL CheckTimer('ThreadedAssembly',Delete=.TRUE.)
-
-  ! Deallocate colouring 
-  CALL Graph_Deallocate(ColourIndexList)
-
-  CALL DefaultFinishAssembly()
-  CALL DefaultDirichletBCs()
-
-  ! And finally, solve:
-  !--------------------
-  Norm = DefaultSolve()
 
   CONTAINS
 
@@ -309,7 +258,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   END SUBROUTINE LCondensate
 !------------------------------------------------------------------------------
 
-END SUBROUTINE PoissonSolver  
+END SUBROUTINE PoissonSolver_bulk
 !------------------------------------------------------------------------------
 ! END SUBROUTINE PoissonSolver
 !------------------------------------------------------------------------------

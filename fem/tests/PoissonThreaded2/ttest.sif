@@ -10,7 +10,7 @@ Simulation
   Simulation Type = Steady
   Output Intervals(1) = 1
   Steady State Max Iterations = 1
-  Post File   = "ttest.vtu"
+  Post File = "ttest.vtu"
 End
 
 Body 1
@@ -42,7 +42,9 @@ Solver 1
   Linear System Residual Output = 20
   Optimize Bandwidth = True
   Steady State Convergence Tolerance = 1e-09
-  Mesh Colouring = Logical True
+
+!  Mesh Colouring = Logical True
+  Multithreaded Solver = Logical True
 End
 
 Boundary Condition 1
