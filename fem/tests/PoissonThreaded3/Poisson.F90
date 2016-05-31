@@ -19,32 +19,28 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
   ! Local variables
   !-----------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
-  REAL(KIND=dp) :: Norm
-  INTEGER :: nnz, nthreads, n, nb, nd, t, istat, active
+  INTEGER :: n, nb, nd, t, istat
   LOGICAL :: Found
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: BodyForce
   REAL(KIND=dp), ALLOCATABLE, SAVE :: STIFF(:,:), LOAD(:), FORCE(:)
-  INTEGER, POINTER :: Indexes(:)
   INTEGER, SAVE :: maxdofs
   LOGICAL, SAVE :: AllocationsDone = .FALSE.
+  INTEGER :: nactive
+  REAL(KIND=dp), POINTER :: LoadPtr(:)
   !$OMP THREADPRIVATE(STIFF, LOAD, FORCE, AllocationsDone, maxdofs)
-  INTEGER :: nactive,col
 
-  LOGICAL :: VecAsm, MCAsm
-
-  REAL(kind=dp), POINTER :: LoadPtr(:)
+  LOGICAL :: VecAsm
   !------------------------------------------------------------------------------
 
   Mesh => GetMesh()
-
+  VecAsm = .TRUE.
 
   !$OMP PARALLEL DEFAULT(NONE) &
-  !$OMP SHARED(Solver, Mesh, Active,nthreads) &
-  !$OMP PRIVATE(BodyForce, Element, col, n, nd, nb, t, istat, Found, Norm, &
-  !$OMP         Indexes, nind, LoadPtr)
+  !$OMP SHARED(Solver, Mesh, nactive ) &
+  !$OMP PRIVATE(BodyForce, Element, n, nd, nb, t, istat, Found, LoadPtr)
 
-  !Allocate some permanent storage per thread:
+  ! Allocate some permanent storage per thread:
   !--------------------------------------------------------------
   IF ( .NOT. AllocationsDone ) THEN
     n = Mesh % MaxElementDOFs  ! just big enough for elemental arrays
@@ -56,7 +52,7 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
     AllocationsDone = .TRUE.
   END IF
 
-  
+
   nactive = GetNOFActive(Solver)
 
   ! Perform FE assembly 
@@ -68,23 +64,23 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
     n  = GetElementNOFNodes(Element)
     nd = GetElementNOFDOFs(Element)
     nb = GetElementNOFBDOFs(Element)
-    
-      LOAD(1:n) = 0.0d0
-      BodyForce => GetBodyForce(Element)
-      
-      IF ( ASSOCIATED(BodyForce) ) THEN
-        LoadPtr => GetReal( BodyForce, 'Source', Found, UElement=Element )
-        LOAD(1:n) = LoadPtr(1:n)
-      END IF
 
-      !Get element local matrix and rhs vector:
-      !----------------------------------------
-      CALL LocalMatrix( STIFF, FORCE, LOAD, Element, n, nd+nb )
-      CALL LCondensate( nd, nb, STIFF, FORCE, maxdofs )
+    LOAD(1:n) = 0.0d0
+    BodyForce => GetBodyForce(Element)
 
-      CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=VecAsm )
-    END DO ! Element loop
-    !$OMP END DO
+    IF ( ASSOCIATED(BodyForce) ) THEN
+      LoadPtr => GetReal( BodyForce, 'Source', Found, UElement=Element )
+      Load(1:n) = LoadPtr(1:n)
+    END IF
+
+    !Get element local matrix and rhs vector:
+    !----------------------------------------
+    CALL LocalMatrix( STIFF, FORCE, LOAD, Element, n, nd+nb )
+    CALL LCondensate( nd, nb, STIFF, FORCE, maxdofs )
+
+    CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element, VecAssembly=VecAsm )
+  END DO ! Element loop
+  !$OMP END DO
 
   CONTAINS
 
@@ -97,7 +93,7 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
     TYPE(Element_t), POINTER :: Element
 !------------------------------------------------------------------------------
     LOGICAL :: Stat
-    INTEGER :: i, dim, ldbasis, ngp, allocstat
+    INTEGER :: ldbasis, ngp, allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
 
     TYPE(Nodes_t), SAVE :: Nodes
@@ -118,14 +114,14 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
     ! Reserve workspace
     IF (.NOT. ALLOCATED(Basis)) THEN
       ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
-              DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
+          DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal('LocalMatrix','Storage allocation for local element basis failed')
       END IF
     ELSE IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) THEN
       DEALLOCATE(Basis, dBasisdx, DetJ, LoadAtIPs)
       ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), &
-              DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
+          DetJ(ngp), LoadAtIPs(ngp), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal('LocalMatrix','Storage allocation for local element basis failed')
       END IF
@@ -168,9 +164,9 @@ SUBROUTINE PoissonSolver_bulk( Model,Solver,dt,TransientSimulation )
     
     ! Variables
     REAL(KIND=dp) :: Kbb(Nb,Nb), &
-            Kbl(Nb,N), Klb(N,Nb), Fb(Nb), DNRM2
+            Kbl(Nb,N), Klb(N,Nb), Fb(Nb)
     
-    INTEGER :: m, i, j, l, p, nfo, PIV(Nb)
+    INTEGER :: i, j, nfo, PIV(Nb)
     ! INTEGER :: Ldofs(N), Bdofs(Nb)
     
     ! BLAS interfaces
