@@ -16975,6 +16975,8 @@ CONTAINS
 
     INTEGER, PARAMETER :: HEAPALG_THRESHOLD = 24
 
+    CALL Info('ElmerMeshToDualGraph','Creating a dual graph for the mesh',Level=8)
+
     ! Mesh data
     Elements => Mesh % Elements
     nvertex = Mesh % NumberOfNodes
@@ -17156,6 +17158,9 @@ CONTAINS
 
     ! Deallocate the rest of memory
     DEALLOCATE(eind, eptr, vptr, vind, thrblk)
+
+    CALL Info('ElmerMeshToDualGraph','Dual graph created with size '//TRIM(I2S(dnnz)),Level=8)
+
 
   CONTAINS
 

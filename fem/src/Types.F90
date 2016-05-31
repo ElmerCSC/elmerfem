@@ -903,7 +903,7 @@ END INTERFACE
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
-    INTEGER :: CurrentColour
+    INTEGER :: CurrentColour = 1
 
 !------------------------------------------------------------------------------
 END MODULE Types

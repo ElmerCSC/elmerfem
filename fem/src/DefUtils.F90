@@ -287,12 +287,14 @@ CONTAINS
 
      IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
        CurrentColour = CurrentColour + 1
-       PRINT *,'Colour:',CurrentColour
-       
        n = Solver % ColourIndexList % ptr(CurrentColour+1)-1 &
            - Solver % ColourIndexList % ptr(CurrentColour)
+       CALL Info('GetNOFActive','Number of active elements: '&
+           //TRIM(I2S(n))//' in colour '//TRIM(I2S(CurrentColour)),Level=12)
      ELSE
        n = Solver % NumberOfActiveElements
+       CALL Info('GetNOFActive','Number of active elements: '&
+           //TRIM(I2S(n)),Level=12)
      END IF
 
   END FUNCTION GetNOFActive
@@ -5531,23 +5533,28 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  FUNCTION GetColours(Solver) RESULT( ncolors ) 
-    TYPE(Solver_t), POINTER :: Solver
-    INTEGER :: ncolors
+  FUNCTION GetNOFColours(USolver) RESULT( ncolours ) 
+    TYPE(Solver_t), TARGET, OPTIONAL :: USolver
+    INTEGER :: ncolours
 
-    IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
-      ncolors = Solver % ColourIndexList % n 
+    ncolours = 1
+    IF ( PRESENT( USolver ) ) THEN
+      IF( ASSOCIATED( USolver % ColourIndexList ) ) THEN
+        ncolours = USolver % ColourIndexList % n 
+      END IF
     ELSE
-      ncolors = 1
+      IF( ASSOCIATED( CurrentModel % Solver % ColourIndexList ) ) THEN
+        ncolours = CurrentModel % Solver % ColourIndexList % n 
+      END IF
     END IF
 
+    CALL Info('GetNOFColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
+
+    
 ! Initialize the current color to one assuming that this is called at start of multicolor assembly loop
     CurrentColour = 0
     
-  END FUNCTION GetColours
-
-
-
+  END FUNCTION GetNOFColours
 
 
 END MODULE DefUtils

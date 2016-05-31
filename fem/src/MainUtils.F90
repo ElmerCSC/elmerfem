@@ -3777,6 +3777,7 @@ CONTAINS
     INTEGER :: iter, MaxIter
     LOGICAL :: Found
 !------------------------------------------------------------------------------
+    INTEGER :: NColours, col
 
     CALL Info('ExecSolverInSteps','Performing solution in steps',Level=5)
     ProcName = ListGetString( Solver % Values,'Procedure', Found )
@@ -3788,9 +3789,20 @@ CONTAINS
       SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_prebulk', abort=.FALSE. )
       CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
       
+      IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+        ncolours = Solver % ColourIndexList % n 
+      ELSE
+        ncolours = 1 
+      END IF
+
       SolverAddr = Solver % PROCEDURE
-      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
-      
+      CurrentColour = 0
+      DO col=1,ncolours
+        ! The > CurrentColour < is advanced by GetNOFActive() routine
+        ! to have similar interface as for non-steps solver
+        CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      END DO
+
       SolverAddr = GetProcAddr( 'DefaultSolver DefaultSolver_postbulk', abort=.FALSE. )
       CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
 
