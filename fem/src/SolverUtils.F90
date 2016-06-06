@@ -3852,6 +3852,7 @@ CONTAINS
     LOGICAL :: NeedListMatrix
     INTEGER, ALLOCATABLE :: Rows0(:), Cols0(:)
     REAL(KIND=dp), POINTER :: BulkValues0(:)
+    INTEGER :: DirCount
 
 !------------------------------------------------------------------------------
 ! These logical vectors are used to minimize extra effort in setting up different BCs
@@ -3911,6 +3912,12 @@ CONTAINS
              NDOFs, Perm, BC, DonePeriodic )
        END IF
      END DO
+
+     IF( InfoActive(12) ) THEN
+       CALL Info('SetDirichletBoundaries','Number of periodic points set: '&
+           //TRIM(I2S(COUNT(DonePeriodic))),Level=12)
+     END IF
+
      DEALLOCATE( DonePeriodic ) 
 
    END IF
@@ -3945,6 +3952,11 @@ CONTAINS
       ActiveCond(BC) = ListCheckPresent( Model % BCs(bc) % Values, CondName )      
     END DO
 
+    PRINT *,'Order:',OrderByBCNumbering
+    PRINT *,'ActivePart:',ActivePartAll
+    PRINT *,'ActivePart2:',ActivePart
+    PRINT *,'ActivePart3:',ActiveCond
+
     OrderByBCNumbering = ListGetLogical( Model % Simulation, &
        'Set Dirichlet BCs by BC Numbering', gotIt)
 
@@ -3961,6 +3973,7 @@ CONTAINS
 
     bndry_start = Model % NumberOfBulkElements+1
     bndry_end   = bndry_start+Model % NumberOfBoundaryElements-1
+    DirCount = 0
 
     ! check and set some flags for nodes belonging to n-t boundaries
     ! getting set by other bcs:
@@ -4594,6 +4607,9 @@ CONTAINS
     END IF
 
     IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
+
+    CALL Info('SetDirichletBoundaries','Number of dofs set: '//TRIM(I2S(DirCount)))
+
     
 !------------------------------------------------------------------------------
 
@@ -4717,6 +4733,7 @@ CONTAINS
 
                   ! Consider all components of the cartesian vector mapped to the 
                   ! N-T coordinate system. Should this perhaps have scaling included?
+                  DirCount = DirCount + 1
                   CALL ZeroRow( A,lmax )
                   IF( .NOT. OffDiagonal) THEN
                     DO k=1,dim
@@ -4728,10 +4745,12 @@ CONTAINS
                   A % ConstrainedDOF(lmax) = .FALSE.
                 END IF
               ELSE
+                DirCount = DirCount + 1
                 CALL SetSinglePoint(k,DOF,Work(j),.FALSE.)
               END IF
             ELSE
               DO l=1,MIN( NDOFs, SIZE(WorkA,1) )
+                DirCount = DirCount + 1
                 CALL SetSinglePoint(k,l,WorkA(l,1,j),.FALSE.)
               END DO
             END IF
@@ -4871,6 +4890,8 @@ CONTAINS
            RETURN
         END IF
       END IF
+
+      DirCount = DirCount + 1
 
       IF ( A % FORMAT == MATRIX_SBAND ) THEN
         CALL SBand_SetDirichlet( A,b,k,s*val )
@@ -13493,6 +13514,7 @@ CONTAINS
        SumCount = 0
      END IF
 
+
      ComplexMatrix = Solver % Matrix % Complex
      IF( ComplexMatrix ) THEN
        IF( MODULO( Dofs,2 ) /= 0 ) CALL Fatal('GenerateConstraintMatrix',&
@@ -13539,10 +13561,12 @@ CONTAINS
        ActiveComponents = .TRUE.
        
        IF(constraint_ind>Model % NumberOfBCs) THEN
+
          Atmp => Ctmp
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
          Ctmp => Ctmp % ConstraintMatrix
        ELSE
+
          IF(.NOT. Solver % MortarBCsChanged) EXIT
          
          IF( AnyPriority ) THEN
@@ -13568,8 +13592,14 @@ CONTAINS
          SomeSet = .FALSE.
          SomeSkip = .FALSE.
          DO i=1,Dofs
-           str = ComponentNameVar( Solver % Variable, i )
+           IF( Dofs > 1 ) THEN
+             str = ComponentName( Solver % Variable, i )
+           ELSE
+             str = Solver % Variable % Name 
+           END IF
+
            SetDof = ListGetLogical( Model % BCs(bc_ind) % Values,'Mortar BC '//TRIM(str),Found )
+
            SetDefined(i) = Found
            IF(Found) THEN
              ActiveComponents(i) = SetDof
@@ -13596,6 +13626,7 @@ CONTAINS
          END IF
 
        END IF
+
        TransposePresent = TransposePresent .OR. ASSOCIATED(Atmp % Child)
        IF( TransposePresent ) THEN
          CALL Info('GenerateConstraintMatrix','Transpose matrix is present')
@@ -13608,11 +13639,15 @@ CONTAINS
        IF( SumProjectors .AND. CreateSelf ) THEN
          CALL Fatal('GenerateConstraintMatrix','It is impossible to sum up nodal projectors!')
        END IF
+
        
        IF( Dofs == 1 ) THEN         
 
-         IF( .NOT. ActiveComponents(1) ) CYCLE
-
+         IF( .NOT. ActiveComponents(1) ) THEN
+           CALL Info('GenerateConstraintMatrix','Skipping component: '//TRIM(I2S(1)),Level=12)
+           CYCLE
+         END IF
+         
          DO i=1,Atmp % NumberOfRows           
 
            IF( Atmp % Rows(i) >= Atmp % Rows(i+1) ) CYCLE ! skip empty rows
@@ -13783,8 +13818,11 @@ CONTAINS
          DO i=1,Atmp % NumberOfRows           
            DO j=1,Dofs
              
-             IF( .NOT. ActiveComponents(j) ) CYCLE
-
+             IF( .NOT. ActiveComponents(j) ) THEN
+               CALL Info('GenerateConstraintMatrix','Skipping component: '//TRIM(I2S(j)),Level=12)
+               CYCLE
+             END IF
+             
              ! For complex matrices both entries mist be created
              ! since preconditioning benefits from 
              IF( ComplexMatrix ) THEN
