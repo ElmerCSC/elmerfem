@@ -3952,11 +3952,6 @@ CONTAINS
       ActiveCond(BC) = ListCheckPresent( Model % BCs(bc) % Values, CondName )      
     END DO
 
-    PRINT *,'Order:',OrderByBCNumbering
-    PRINT *,'ActivePart:',ActivePartAll
-    PRINT *,'ActivePart2:',ActivePart
-    PRINT *,'ActivePart3:',ActiveCond
-
     OrderByBCNumbering = ListGetLogical( Model % Simulation, &
        'Set Dirichlet BCs by BC Numbering', gotIt)
 
