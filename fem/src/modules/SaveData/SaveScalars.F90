@@ -207,8 +207,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       WriteCore = .FALSE. 
     END IF
     OutputPE = ParEnv % MYPe
-    IF( ParallelReduce ) CALL Info('SaveScalars','Parallel results will be reduced to one file')
-    IF( ParallelWrite ) CALL Info('SaveScalars','Parallel results will be written to separate files')      
   END IF
 
   FileAppend = ListGetLogical( Params,'File Append',GotIt)
@@ -379,16 +377,19 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements ) 
     END IF
 
-
     IF( GotOper ) THEN
       CALL Info('SaveScalars','Treating operator: '//TRIM(Oper0),Level=12)
       OldOper0 = Oper0
       GotOldOper = .TRUE.
-    ELSE
+    ELSE IF( GotOldOper ) THEN
       Oper0 = OldOper0
-      GotOper = .TRUE.
-   END IF
+      GotOper = GotOldOper
+    ELSE
+      CALL Info('SaveScalars','No operator given for variable: '//TRIM(VariableName))
+      CYCLE
+    END IF
 
+    
     BodyOper = .FALSE.
     BodyForceOper = .FALSE.      
     MaterialOper = .FALSE.
@@ -919,17 +920,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
               
               IF( GotIt .OR. IsParallel ) THEN
                 IF(Var % DOFs == 1) THEN
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A," in element ",I7)') j,TRIM(Var % Name),l
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),l
                 ELSE
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A,I2," in element ",I7)') j,TRIM(Var % Name),i,l
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,l
                 END IF
                 CALL AddToSaveList(TRIM(Name), Val,.FALSE.,ParOper)
 
                 IF( ComplexEigenVectors ) THEN
                   IF(Var % DOFs == 1) THEN
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A," in element ",I7)') j,TRIM(Var % Name),l
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),l
                   ELSE
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A,I2," in element ",I7)') j,TRIM(Var % Name),i,l
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,l
                   END IF
                   CALL AddToSaveList(TRIM(Name), Val2,.FALSE.,ParOper)                  
                 END IF
@@ -964,7 +965,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         END IF
 
         IF(GotIt .OR. IsParallel) THEN
-          WRITE(Name,'("value: ",A," in element ",I7)') TRIM(Var % Name),l
+          WRITE(Name,'("value: ",A," in element ",I0)') TRIM(Var % Name),l
           CALL AddToSaveList(TRIM(Name), Val,.FALSE.,ParOper)                   
         END IF
       END IF
@@ -1048,8 +1049,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     CALL Warn('SaveScalars','Found no values to save')
     RETURN
   ELSE
-    WRITE (Message,'(A,I0,A)') 'Found ',NoValues,' values to save in total'
-    CALL Info('SaveScalars',Message)
+    CALL Info('SaveScalars','Found '//TRIM(I2S(NoValues))//' values to save in total',Level=6)
   END IF
 
   !------------------------------------------------------------------------------
@@ -1072,6 +1072,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         CALL Warn('SaveScalars',Message)
       END IF
       
+      IF(ParallelWrite) CALL Info('SaveScalars','Parallel data is written into separate files',Level=6)
+      IF(ParallelReduce) CALL Info('SaveScalars','Parallel data is reduced into one file',Level=6)
+      IF(FileAppend) CALL Info('SaveScalars','Data is appended to existing file',Level=6)
+      
       OPEN (10, FILE=ScalarNamesFile)
       Message = ListGetString(Model % Simulation,'Comment',GotIt)
       IF( GotIt ) THEN
@@ -1083,10 +1087,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
       DateStr = FormatDate()
       WRITE( 10,'(A)') 'File started at: '//TRIM(DateStr)
-      IF(ParallelWrite) WRITE(10,'(A)') 'Parallel data is written into separate files'
-      IF(ParallelReduce) WRITE(10,'(A)') 'Parallel data is reduced into one file'
-      IF(FileAppend) WRITE(10,'(A)') 'Data is appended to existing file'
-      
+
       WRITE(10,'(A)') ' '
       WRITE(10,'(A)') 'Variables in columns of matrix: '//TRIM(ScalarsFile)
       IF( LineInd /= 0 ) THEN
