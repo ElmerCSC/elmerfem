@@ -94,7 +94,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   TYPE(Solver_t), POINTER :: ParSolver
   TYPE(ValueList_t), POINTER :: Params
   TYPE(ValueListEntry_t), POINTER :: Lst
-  TYPE(Variable_t), POINTER :: Var, OldVar
+  TYPE(Variable_t), POINTER :: Var, OldVar, Var2, Var3
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t),POINTER :: CurrentElement
   TYPE(Nodes_t) :: ElementNodes
@@ -103,7 +103,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, LiveGraph, &
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
-      MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar
+      MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -332,7 +332,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     IF(GotVar) THEN
       Var => VariableGet( Model % Variables, TRIM(VariableName) )
       IF ( .NOT. ASSOCIATED( Var ) )  THEN
-        CALL Fatal('SaveData','Requested variable does not exist: '//TRIM(VariableName))
+        Var => VariableGet( Model % Variables, TRIM(VariableName)//' 1' )
+        IF( ASSOCIATED( Var ) ) THEN
+          CALL Info('SaveScalars','Treating a component variable: '//TRIM(VariableName),Level=8)
+          ComponentVar = .TRUE.
+          Var2 => VariableGet( Model % Variables, TRIM(VariableName)//' 2' )
+          Var3 => VariableGet( Model % Variables, TRIM(VariableName)//' 3' )          
+        ELSE
+          CALL Fatal('SaveScalars','Requested variable does not exist: '//TRIM(VariableName))
+        END IF
+      ELSE
+        ComponentVar = .FALSE.
       END IF    
       OldVar => Var
       OldVariableName = VariableName
@@ -2012,7 +2022,7 @@ CONTAINS
       END IF
 
       CASE ('convective flux')
-      IF(NoDofs /= 1 .AND. NoDofs < DIM) THEN
+      IF( NoDofs /= 1 .AND. NoDofs < DIM) THEN
         CALL Warn('SaveScalars','convective flux & NoDofs < DIM?')
         RETURN
       END IF
@@ -2037,10 +2047,30 @@ CONTAINS
       BCVal => GetBC()
       IF (.NOT. ASSOCIATED(BCVal) ) CYCLE
 
-      IF (NoDOFs > 1) CALL GetVectorLocalSolution(LocalVectorSolution, &
-        UElement=Element, USolver=Var % Solver, UVariable=Var)
-      IF (NoDOFs == 1) CALL GetScalarLocalSolution(LocalVectorSolution(1,:), &
-        UElement=Element, USolver=Var % Solver, UVariable=Var)
+      IF (NoDOFs > 1) THEN
+        CALL GetVectorLocalSolution(LocalVectorSolution, &
+            UElement=Element, USolver=Var % Solver, UVariable=Var)
+      ELSE
+        CALL GetScalarLocalSolution(LocalVectorSolution(1,:), &
+            UElement=Element, USolver=Var % Solver, UVariable=Var)
+        IF( ComponentVar ) THEN
+          IF( ASSOCIATED( Var2 ) ) THEN
+            CALL GetScalarLocalSolution(LocalVectorSolution(2,:), &
+                UElement=Element, USolver=Var % Solver, UVariable=Var2)
+            NoDofs = 2
+          ELSE
+            LocalVectorSolution(2,:) = 0.0_dp
+          END IF
+          IF( ASSOCIATED( Var3 ) ) THEN
+            CALL GetScalarLocalSolution(LocalVectorSolution(3,:), &
+                UElement=Element, USolver=Var % Solver, UVariable=Var3)
+            NoDofs = 3
+          ELSE
+            LocalVectorSolution(3,:) = 0.0_dp
+          END IF
+        END IF
+      END IF
+
       Model % CurrentElement => Element
 
       IF ( Element % TYPE % ElementCode == 101 ) CYCLE
