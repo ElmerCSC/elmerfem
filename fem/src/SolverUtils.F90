@@ -6447,7 +6447,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: nbuff(:)
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
 
-    LOGICAL :: MassConsistent, LhsSystem
+    LOGICAL :: MassConsistent, LhsSystem, RotationalNormals
     LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
     INTEGER :: LhsConflicts
 
@@ -6510,8 +6510,10 @@ CONTAINS
                 Found = ListGetLogical( Model % BCs(i) % Values, &
                     TRIM(VariableName) // ' Rotate',gotIt)
                 IF ( Found .OR. .NOT. Gotit ) THEN
-                  MassConsistent=ListGetLogical(Model % BCs(i) % Values, &
+                  MassConsistent = ListGetLogical(Model % BCs(i) % Values, &
                           'Mass Consistent Normals',gotIt)
+                  RotationalNormals = ListGetLogical(Model % BCs(i) % Values, &
+                          'Rotational Normals',gotIt)
 
                   Condition(1:n) = ListGetReal( Model % BCs(i) % Values, &
                        TRIM(VariableName) // ' Condition', n, NodeIndexes, Conditional )
@@ -6524,6 +6526,11 @@ CONTAINS
                       nrm = 0._dp
                       IF (MassConsistent) THEN
                         CALL IntegMassConsistent(j,n,nrm)
+                      ELSE IF( RotationalNormals ) THEN
+                        nrm(1) = ElementNodes % x(j)
+                        nrm(2) = ElementNodes % y(j)
+                        nrm(3) = 0.0_dp
+                        nrm = nrm / SQRT( SUM( nrm * nrm ) )
                       ELSE
                         Bu = Element % TYPE % NodeU(j)
                         Bv = Element % TYPE % NodeV(j)

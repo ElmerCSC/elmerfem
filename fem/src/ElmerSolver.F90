@@ -507,7 +507,11 @@ END INTERFACE
 
        OutputIntervals => ListGetIntegerArray( CurrentModel % Simulation, &
                        'Output Intervals', GotIt )
-       IF ( .NOT. GotIt ) THEN
+       IF( GotIt ) THEN
+         IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
+           CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
+         END IF
+       ELSE
          ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
          OutputIntervals = 1
        END IF
