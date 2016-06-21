@@ -94,7 +94,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   TYPE(Solver_t), POINTER :: ParSolver
   TYPE(ValueList_t), POINTER :: Params
   TYPE(ValueListEntry_t), POINTER :: Lst
-  TYPE(Variable_t), POINTER :: Var, OldVar
+  TYPE(Variable_t), POINTER :: Var, OldVar, Var2, Var3
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Element_t),POINTER :: CurrentElement
   TYPE(Nodes_t) :: ElementNodes
@@ -103,7 +103,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       ComplexEigenVectors, ComplexEigenValues, IsParallel, ParallelWrite, LiveGraph, &
       FileAppend, SaveEigenValue, SaveEigenFreq, IsInteger, ParallelReduce, WriteCore, &
       Hit, SaveToFile, EchoValues, GotAny, BodyOper, BodyForceOper, &
-      MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar
+      MaterialOper, MaskOper, GotMaskName, GotOldOper, ElementalVar, ComponentVar
   LOGICAL, POINTER :: ValuesInteger(:)
   LOGICAL, ALLOCATABLE :: ActiveBC(:)
 
@@ -207,8 +207,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       WriteCore = .FALSE. 
     END IF
     OutputPE = ParEnv % MYPe
-    IF( ParallelReduce ) CALL Info('SaveScalars','Parallel results will be reduced to one file')
-    IF( ParallelWrite ) CALL Info('SaveScalars','Parallel results will be written to separate files')      
   END IF
 
   FileAppend = ListGetLogical( Params,'File Append',GotIt)
@@ -334,7 +332,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     IF(GotVar) THEN
       Var => VariableGet( Model % Variables, TRIM(VariableName) )
       IF ( .NOT. ASSOCIATED( Var ) )  THEN
-        CALL Fatal('SaveData','Requested variable does not exist: '//TRIM(VariableName))
+        Var => VariableGet( Model % Variables, TRIM(VariableName)//' 1' )
+        IF( ASSOCIATED( Var ) ) THEN
+          CALL Info('SaveScalars','Treating a component variable: '//TRIM(VariableName),Level=8)
+          ComponentVar = .TRUE.
+          Var2 => VariableGet( Model % Variables, TRIM(VariableName)//' 2' )
+          Var3 => VariableGet( Model % Variables, TRIM(VariableName)//' 3' )          
+        ELSE
+          CALL Fatal('SaveScalars','Requested variable does not exist: '//TRIM(VariableName))
+        END IF
+      ELSE
+        ComponentVar = .FALSE.
       END IF    
       OldVar => Var
       OldVariableName = VariableName
@@ -379,16 +387,19 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       ElementalVar = ( Var % TYPE == Variable_on_nodes_on_elements ) 
     END IF
 
-
     IF( GotOper ) THEN
       CALL Info('SaveScalars','Treating operator: '//TRIM(Oper0),Level=12)
       OldOper0 = Oper0
       GotOldOper = .TRUE.
-    ELSE
+    ELSE IF( GotOldOper ) THEN
       Oper0 = OldOper0
-      GotOper = .TRUE.
-   END IF
+      GotOper = GotOldOper
+    ELSE
+      CALL Info('SaveScalars','No operator given for variable: '//TRIM(VariableName))
+      CYCLE
+    END IF
 
+    
     BodyOper = .FALSE.
     BodyForceOper = .FALSE.      
     MaterialOper = .FALSE.
@@ -919,17 +930,17 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
               
               IF( GotIt .OR. IsParallel ) THEN
                 IF(Var % DOFs == 1) THEN
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A," in element ",I7)') j,TRIM(Var % Name),l
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),l
                 ELSE
-                  WRITE(Name,'("value: Re Eigen ",I0," ",A,I2," in element ",I7)') j,TRIM(Var % Name),i,l
+                  WRITE(Name,'("value: Re Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,l
                 END IF
                 CALL AddToSaveList(TRIM(Name), Val,.FALSE.,ParOper)
 
                 IF( ComplexEigenVectors ) THEN
                   IF(Var % DOFs == 1) THEN
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A," in element ",I7)') j,TRIM(Var % Name),l
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A," in element ",I0)') j,TRIM(Var % Name),l
                   ELSE
-                    WRITE(Name,'("value: Im Eigen ",I0," ",A,I2," in element ",I7)') j,TRIM(Var % Name),i,l
+                    WRITE(Name,'("value: Im Eigen ",I0," ",A," ",I0," in element ",I0)') j,TRIM(Var % Name),i,l
                   END IF
                   CALL AddToSaveList(TRIM(Name), Val2,.FALSE.,ParOper)                  
                 END IF
@@ -964,7 +975,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         END IF
 
         IF(GotIt .OR. IsParallel) THEN
-          WRITE(Name,'("value: ",A," in element ",I7)') TRIM(Var % Name),l
+          WRITE(Name,'("value: ",A," in element ",I0)') TRIM(Var % Name),l
           CALL AddToSaveList(TRIM(Name), Val,.FALSE.,ParOper)                   
         END IF
       END IF
@@ -1048,8 +1059,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
     CALL Warn('SaveScalars','Found no values to save')
     RETURN
   ELSE
-    WRITE (Message,'(A,I0,A)') 'Found ',NoValues,' values to save in total'
-    CALL Info('SaveScalars',Message)
+    CALL Info('SaveScalars','Found '//TRIM(I2S(NoValues))//' values to save in total',Level=6)
   END IF
 
   !------------------------------------------------------------------------------
@@ -1072,6 +1082,10 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         CALL Warn('SaveScalars',Message)
       END IF
       
+      IF(ParallelWrite) CALL Info('SaveScalars','Parallel data is written into separate files',Level=6)
+      IF(ParallelReduce) CALL Info('SaveScalars','Parallel data is reduced into one file',Level=6)
+      IF(FileAppend) CALL Info('SaveScalars','Data is appended to existing file',Level=6)
+      
       OPEN (10, FILE=ScalarNamesFile)
       Message = ListGetString(Model % Simulation,'Comment',GotIt)
       IF( GotIt ) THEN
@@ -1083,10 +1097,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       END IF
       DateStr = FormatDate()
       WRITE( 10,'(A)') 'File started at: '//TRIM(DateStr)
-      IF(ParallelWrite) WRITE(10,'(A)') 'Parallel data is written into separate files'
-      IF(ParallelReduce) WRITE(10,'(A)') 'Parallel data is reduced into one file'
-      IF(FileAppend) WRITE(10,'(A)') 'Data is appended to existing file'
-      
+
       WRITE(10,'(A)') ' '
       WRITE(10,'(A)') 'Variables in columns of matrix: '//TRIM(ScalarsFile)
       IF( LineInd /= 0 ) THEN
@@ -2011,7 +2022,7 @@ CONTAINS
       END IF
 
       CASE ('convective flux')
-      IF(NoDofs /= 1 .AND. NoDofs < DIM) THEN
+      IF( NoDofs /= 1 .AND. NoDofs < DIM) THEN
         CALL Warn('SaveScalars','convective flux & NoDofs < DIM?')
         RETURN
       END IF
@@ -2036,10 +2047,30 @@ CONTAINS
       BCVal => GetBC()
       IF (.NOT. ASSOCIATED(BCVal) ) CYCLE
 
-      IF (NoDOFs > 1) CALL GetVectorLocalSolution(LocalVectorSolution, &
-        UElement=Element, USolver=Var % Solver, UVariable=Var)
-      IF (NoDOFs == 1) CALL GetScalarLocalSolution(LocalVectorSolution(1,:), &
-        UElement=Element, USolver=Var % Solver, UVariable=Var)
+      IF (NoDOFs > 1) THEN
+        CALL GetVectorLocalSolution(LocalVectorSolution, &
+            UElement=Element, USolver=Var % Solver, UVariable=Var)
+      ELSE
+        CALL GetScalarLocalSolution(LocalVectorSolution(1,:), &
+            UElement=Element, USolver=Var % Solver, UVariable=Var)
+        IF( ComponentVar ) THEN
+          IF( ASSOCIATED( Var2 ) ) THEN
+            CALL GetScalarLocalSolution(LocalVectorSolution(2,:), &
+                UElement=Element, USolver=Var % Solver, UVariable=Var2)
+            NoDofs = 2
+          ELSE
+            LocalVectorSolution(2,:) = 0.0_dp
+          END IF
+          IF( ASSOCIATED( Var3 ) ) THEN
+            CALL GetScalarLocalSolution(LocalVectorSolution(3,:), &
+                UElement=Element, USolver=Var % Solver, UVariable=Var3)
+            NoDofs = 3
+          ELSE
+            LocalVectorSolution(3,:) = 0.0_dp
+          END IF
+        END IF
+      END IF
+
       Model % CurrentElement => Element
 
       IF ( Element % TYPE % ElementCode == 101 ) CYCLE

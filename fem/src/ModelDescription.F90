@@ -2527,9 +2527,17 @@ CONTAINS
       IF( Found ) CALL Info('CompleteModelKeywords',&
           'Added > Mass Consistent Normals < to master BC '//TRIM(I2S(j)),Level=10)
 
+      CALL ListCompareAndCopy( List, ListB,'Rotational Normals',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Rotational Normals < to master BC '//TRIM(I2S(j)),Level=10)
+
       CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Displacement',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
           'Added > Normal-Tangential Displacement < to master BC '//TRIM(I2S(j)),Level=10)
+
+      CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Velocity',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Normal-Tangential Velocity < to master BC '//TRIM(I2S(j)),Level=10)
     END DO
 
 
