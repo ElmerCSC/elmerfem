@@ -63,7 +63,7 @@ FUNCTION PermafrostEnthalpy(Model, Node, Temp) RESULT(enthalpy)
   ! Local variables
 
   TYPE(Variable_t), POINTER :: DepthVar, DepthVar2
-  REAL(KIND=dp) :: Depth
+  REAL(KIND=dp) :: Depth, Depth2
 
   REAL(KIND=dp) :: por                 ! Porosity
   REAL(KIND=dp) :: porscale            ! Porosity length scale
@@ -76,6 +76,7 @@ FUNCTION PermafrostEnthalpy(Model, Node, Temp) RESULT(enthalpy)
   REAL(KIND=dp) :: Tpmp                ! Melting point temperature of ice
   REAL(KIND=dp) :: a, b, Tstar, dT     ! Params for powerlaw/exponential model
   REAL(KIND=dp) :: fw                  ! Params for exponential model
+  REAL(KIND=dp) :: iceDepth, pice, prock, press ! For computing pressures
 
   CHARACTER(LEN=MAX_NAME_LEN) :: PermafrostModel
 
@@ -95,7 +96,7 @@ FUNCTION PermafrostEnthalpy(Model, Node, Temp) RESULT(enthalpy)
     Material => GetMaterial(Model % CurrentElement)
 
     IF (.NOT.ASSOCIATED(Material)) THEN
-      CALL FATAL('Permafrost',"No Material found")
+      CALL FATAL('Permafrost', 'No Material found')
     END IF
 
     PermafrostModel = GetString( Material, 'Permafrost Model', Found )
@@ -110,8 +111,7 @@ FUNCTION PermafrostEnthalpy(Model, Node, Temp) RESULT(enthalpy)
 
     porscale = GetCReal( Material, 'Permafrost Porosity Depth Scale', Found )
     IF (.NOT. Found) THEN
-      !CALL FATAL('Permafrost', 'Cound not find Porosity Depth Scale')
-      porscale = -1.0 ! Negative value means no depth depedence for por
+      porscale = -1.0 ! Negative value means no depth dependence for por
     ENDIF
 
     L = GetCReal( Material, 'Latent Heat', Found )
@@ -183,22 +183,29 @@ FUNCTION PermafrostEnthalpy(Model, Node, Temp) RESULT(enthalpy)
   ENDIF
 
   !-----------------------------------------------
-  ! Get the depth variable
+  ! Get the depth of lower layer
   !-----------------------------------------------
   DepthVar => VariableGet(Model % Mesh % Variables, "lower depth")
   IF ( ASSOCIATED(DepthVar) ) THEN
     Depth = DepthVar % Values ( DepthVar % Perm(Node) )
   ELSE 
-    DepthVar2 => VariableGet(Model % Mesh % Variables, "depth")
-    IF ( ASSOCIATED(DepthVar2) ) THEN
-      Depth = DepthVar2 % Values ( DepthVar2 % Perm(Node) )
-    ELSE
-      !CALL FATAL('Permafrost', 'Depth variable not found')
-      Depth = 0.0
-    END IF
+    Depth = 0.0
   END IF
 
-  WRITE(MESSAGE,*) Node, Temp, Depth
+  !-----------------------------------------------
+  ! Get the total depth below all layers
+  !-----------------------------------------------
+  DepthVar2 => VariableGet(Model % Mesh % Variables, "depth")
+  IF ( ASSOCIATED(DepthVar2) ) THEN
+    Depth2 = DepthVar2 % Values ( DepthVar2 % Perm(Node) )
+  ELSE
+    Depth2 = 0.0
+  END IF
+
+  ! In case there is no lower layer, use the only layer
+  if (Depth == 0.0) Depth = Depth2
+
+  WRITE(MESSAGE,*) Node, Temp, Depth, Depth2
   CALL Info('Permafrost', MESSAGE, level=11)
 
   !-------------------
@@ -212,19 +219,16 @@ FUNCTION PermafrostEnthalpy(Model, Node, Temp) RESULT(enthalpy)
 
   phir = 1 - pordepth
 
-  !  rhor = 2400
-  !  rhow = 1000
-  !  rhoi = 917
+  !----------------------
+  ! Compute Tpmp at depth
+  !----------------------
+  iceDepth = Depth2 - Depth
+  pice = iceDepth * rhoi * 9.81
+  prock = Depth * rhor * 9.81
+  press = pice + prock
+ !Tpmp = 273.15 ! Should be changed to depend on pressure
+  Tpmp = 273.15 - 9.8E-08*press
 
-  !  Cr = 1000.
-  !  Cw = 4217.7  ! at 273.15K [SI units] (REF: TN15.pdf)
-  !  Ci = 2127.46 ! at 273.15K [SI units] (REF: Elmer function)
-
-  !  a = 0.011
-  !  b = -0.6
-  !  L = 333.5E+03
-
-  Tpmp = 273.15 ! Should be changed to depend on pressure
   IF (TRIM(PermafrostModel) .EQ. "power law") THEN
     Tstar = Tpmp - Temp
     IF (Tstar <= dT) THEN
@@ -235,7 +239,7 @@ FUNCTION PermafrostEnthalpy(Model, Node, Temp) RESULT(enthalpy)
     ENDIF
 
   ELSE IF (TRIM(PermafrostModel) .EQ. "exponential") THEN
-    IF (Temp > Tpmp) then   ! Should be Tpmp not 0.0
+    IF (Temp > Tpmp) then 
       fw = 1.0
     ELSE
       fw = EXP(-((Temp - Tpmp)/a)**2)
@@ -255,6 +259,7 @@ FUNCTION PermafrostEnthalpy(Model, Node, Temp) RESULT(enthalpy)
   !WRITE (*,'(F12.10,1X,F10.5,1X,F10.5,1X,F12.10,1X,E17.10)') pordepth, Temp, Tstar, phiw, enthalpy
 
 END FUNCTION PermafrostEnthalpy
+
 !==============================================================================
 FUNCTION PermafrostDensity(Model, Node, Temp) RESULT(Dens)
 !==============================================================================
@@ -273,7 +278,7 @@ FUNCTION PermafrostDensity(Model, Node, Temp) RESULT(Dens)
   ! Local variables
 
   TYPE(Variable_t), POINTER :: DepthVar, DepthVar2
-  REAL(KIND=dp) :: Depth
+  REAL(KIND=dp) :: Depth, Depth2
 
   REAL(KIND=dp) :: por                 ! Porosity
   REAL(KIND=dp) :: porscale            ! Porosity length scale
@@ -284,6 +289,7 @@ FUNCTION PermafrostDensity(Model, Node, Temp) RESULT(Dens)
   REAL(KIND=dp) :: Tpmp                ! Melting point temperature of ice
   REAL(KIND=dp) :: a, b, Tstar, dT     ! Params for powerlaw/exponential model
   REAL(KIND=dp) :: fw                  ! Params for exponential model
+  REAL(KIND=dp) :: iceDepth, pice, prock, press
 
   CHARACTER(LEN=MAX_NAME_LEN) :: PermafrostModel
 
@@ -364,21 +370,29 @@ FUNCTION PermafrostDensity(Model, Node, Temp) RESULT(Dens)
   ENDIF
 
   !-----------------------------------------------
-  ! Get the depth variable
+  ! Get the depth of lower layer
   !-----------------------------------------------
   DepthVar => VariableGet(Model % Mesh % Variables, "lower depth")
   IF ( ASSOCIATED(DepthVar) ) THEN
     Depth = DepthVar % Values ( DepthVar % Perm(Node) )
   ELSE 
-    DepthVar2 => VariableGet(Model % Mesh % Variables, "depth")
-    IF ( ASSOCIATED(DepthVar2) ) THEN
-      Depth = DepthVar2 % Values ( DepthVar2 % Perm(Node) )
-    ELSE
-      Depth = 0.0
-    END IF
+    Depth = 0.0
   END IF
 
-  WRITE(MESSAGE,*) Node, Temp, Depth
+  !-----------------------------------------------
+  ! Get the total depth below all layers
+  !-----------------------------------------------
+  DepthVar2 => VariableGet(Model % Mesh % Variables, "depth")
+  IF ( ASSOCIATED(DepthVar2) ) THEN
+    Depth2 = DepthVar2 % Values ( DepthVar2 % Perm(Node) )
+  ELSE
+    Depth2 = 0.0
+  END IF
+
+  ! In case there is no lower layer, use the only layer
+  if (Depth == 0.0) Depth = Depth2
+
+  WRITE(MESSAGE,*) Node, Temp, Depth, Depth2
   CALL Info('Permafrost', MESSAGE, level=11)
 
   !-------------------
@@ -392,7 +406,16 @@ FUNCTION PermafrostDensity(Model, Node, Temp) RESULT(Dens)
 
   phir = 1 - pordepth
 
-  Tpmp = 273.15 ! Should be changed to depend on pressure
+  !----------------------
+  ! Compute Tpmp at depth
+  !----------------------
+  iceDepth = Depth2 - Depth
+  pice = iceDepth * rhoi * 9.81
+  prock = Depth * rhor * 9.81
+  press = pice + prock
+ !Tpmp = 273.15 ! Should be changed to depend on pressure
+  Tpmp = 273.15 - 9.8E-08*press
+
   IF (TRIM(PermafrostModel) .EQ. "power law") THEN
     Tstar = Tpmp - Temp
     IF (Tstar <= dT) THEN
@@ -403,7 +426,7 @@ FUNCTION PermafrostDensity(Model, Node, Temp) RESULT(Dens)
     ENDIF
 
   ELSE IF (TRIM(PermafrostModel) .EQ. "exponential") THEN
-    IF (Temp > Tpmp) then   ! Should be Tpmp not 0.0
+    IF (Temp > Tpmp) then
       fw = 1.0
     ELSE
       fw = EXP(-((Temp - Tpmp)/a)**2)
@@ -422,6 +445,7 @@ FUNCTION PermafrostDensity(Model, Node, Temp) RESULT(Dens)
   Dens = phir*rhor + (pordepth-phiw)*rhoi + phiw*rhow
 
 END FUNCTION PermafrostDensity
+
 !==============================================================================
 FUNCTION PermafrostConductivity(Model, Node, Temp) RESULT(Cond)
 !==============================================================================
@@ -440,19 +464,20 @@ FUNCTION PermafrostConductivity(Model, Node, Temp) RESULT(Cond)
   ! Local variables
 
   TYPE(Variable_t), POINTER :: DepthVar, DepthVar2
-  REAL(KIND=dp) :: Depth
+  REAL(KIND=dp) :: Depth, Depth2
 
   REAL(KIND=dp) :: por                 ! Porosity
   REAL(KIND=dp) :: porscale            ! Porosity length scale
   REAL(KIND=dp) :: pordepth            ! Porosity as a function of depth
   REAL(KIND=dp) :: phir, phiw, phii    ! Volume fractions
   ! r = rock, w = water, i = ice
-  REAL(KIND=dp) :: rhor, rhow          ! Densities 
+  REAL(KIND=dp) :: rhoi, rhor, rhow          ! Densities 
   REAL(KIND=dp) :: Kr, Kw, Ki          ! Heat conductivities
   REAL(KIND=dp) :: L                   ! Latent heat
   REAL(KIND=dp) :: Tpmp                ! Melting point temperature of ice
   REAL(KIND=dp) :: a, b, Tstar, dT     ! Params for powerlaw/exponential model
   REAL(KIND=dp) :: fw                  ! Params for exponential model
+  REAL(KIND=dp) :: iceDepth, pice, prock, press
 
   CHARACTER(LEN=MAX_NAME_LEN) :: PermafrostModel
 
@@ -460,7 +485,7 @@ FUNCTION PermafrostConductivity(Model, Node, Temp) RESULT(Cond)
   LOGICAL :: Found
 
   SAVE por, porscale
-  SAVE rhor, rhow
+  SAVE rhoi, rhor, rhow
   SAVE Kr, Kw, Ki, L
   SAVE a, b, dT
   SAVE FirstTime, PermafrostModel
@@ -498,6 +523,11 @@ FUNCTION PermafrostConductivity(Model, Node, Temp) RESULT(Cond)
     rhow = GetCReal( Material, 'Permafrost Density Water', Found )
     IF (.NOT. Found) THEN
       CALL FATAL('Permafrost', 'Cound not find Permafrost Density Water')
+    ENDIF
+
+    rhoi = GetCReal( Material, 'Permafrost Density Ice', Found )
+    IF (.NOT. Found) THEN
+      CALL FATAL('Permafrost', 'Cound not find Permafrost Density Ice')
     ENDIF
 
     Kr = GetCReal( Material, 'Permafrost Heat Conductivity Rock', Found )
@@ -545,21 +575,29 @@ FUNCTION PermafrostConductivity(Model, Node, Temp) RESULT(Cond)
   ENDIF
 
   !-----------------------------------------------
-  ! Get the depth variable
+  ! Get the depth of lower layer
   !-----------------------------------------------
   DepthVar => VariableGet(Model % Mesh % Variables, "lower depth")
   IF ( ASSOCIATED(DepthVar) ) THEN
     Depth = DepthVar % Values ( DepthVar % Perm(Node) )
   ELSE 
-    DepthVar2 => VariableGet(Model % Mesh % Variables, "depth")
-    IF ( ASSOCIATED(DepthVar2) ) THEN
-      Depth = DepthVar2 % Values ( DepthVar2 % Perm(Node) )
-    ELSE
-      Depth = 0.0
-    END IF
+    Depth = 0.0
   END IF
 
-  WRITE(MESSAGE,*) Node, Temp, Depth
+  !-----------------------------------------------
+  ! Get the total depth below all layers
+  !-----------------------------------------------
+  DepthVar2 => VariableGet(Model % Mesh % Variables, "depth")
+  IF ( ASSOCIATED(DepthVar2) ) THEN
+    Depth2 = DepthVar2 % Values ( DepthVar2 % Perm(Node) )
+  ELSE
+    Depth2 = 0.0
+  END IF
+
+  ! In case there is no lower layer, use the only layer
+  if (Depth == 0.0) Depth = Depth2
+
+  WRITE(MESSAGE,*) Node, Temp, Depth, Depth2
   CALL Info('Permafrost', MESSAGE, level=11)
 
   !-------------------
@@ -573,7 +611,16 @@ FUNCTION PermafrostConductivity(Model, Node, Temp) RESULT(Cond)
 
   phir = 1 - pordepth
 
-  Tpmp = 273.15 ! Should be changed to depend on pressure
+  !----------------------
+  ! Compute Tpmp at depth
+  !----------------------
+  iceDepth = Depth2 - Depth
+  pice = iceDepth * rhoi * 9.81
+  prock = Depth * rhor * 9.81
+  press = pice + prock
+ !Tpmp = 273.15 ! Should be changed to depend on pressure
+  Tpmp = 273.15 - 9.8E-08*press
+
   IF (TRIM(PermafrostModel) .EQ. "power law") THEN
     Tstar = Tpmp - Temp
     IF (Tstar <= dT) THEN
@@ -584,7 +631,7 @@ FUNCTION PermafrostConductivity(Model, Node, Temp) RESULT(Cond)
     ENDIF
 
   ELSE IF (TRIM(PermafrostModel) .EQ. "exponential") THEN
-    IF (Temp > Tpmp) then   ! Should be Tpmp not 0.0
+    IF (Temp > Tpmp) then
       fw = 1.0
     ELSE
       fw = EXP(-((Temp - Tpmp)/a)**2)
