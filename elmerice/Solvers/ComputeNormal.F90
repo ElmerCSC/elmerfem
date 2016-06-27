@@ -86,7 +86,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp) :: Bu, Bv, Normal(3), NormalCond(4)
 
   LOGICAL :: CompAll = .TRUE., CompBC = .TRUE., Found, Parallel, &
-       FirstTime = .TRUE.,UnFoundFatal
+       FirstTime = .TRUE.,UnFoundFatal=.TRUE.
   LOGICAL, ALLOCATABLE :: Hit(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'ComputeNormalSolver'

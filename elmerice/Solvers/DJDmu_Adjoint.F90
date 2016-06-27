@@ -105,7 +105,7 @@ SUBROUTINE DJDMu_Adjoint( Model,Solver,dt,TransientSimulation )
   CHARACTER(LEN=MAX_NAME_LEN) :: ViscosityFlag
 
   logical :: SquareFormulation
-  Logical ::  Firsttime=.true.,Found,stat,gotit,UnFoundFatal
+  Logical ::  Firsttime=.true.,Found,stat,gotit,UnFoundFatal=.TRUE.
 
 
   save Firsttime,DIM
