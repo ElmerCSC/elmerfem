@@ -556,6 +556,7 @@
 
      SaveRelax = Relax
      CumulativeTime = 0.0d0
+     HeaterControlLocal = .FALSE.
 
 !------------------------------------------------------------------------------
      FirstTime = .TRUE.
