@@ -3265,9 +3265,10 @@ static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
 {
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
-  int i,j,k,allocated,*revindx=NULL,maxindx;
+  int i,j,k,allocated,*revindx=NULL,maxindx,nobodies,noboundaries;
   int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
   int usetaggeom,tagmat,verno;
+  Real vernor;
   int physvolexist, physsurfexist;
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
@@ -3277,7 +3278,7 @@ static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
     printf("LoadGmshInput2: The opening of the mesh file %s failed!\n",filename);
     return(1);
   }
-  if(info) printf("Loading mesh in Gmsh format 2.0 from file %s\n",filename);
+  if(info) printf("Loading mesh in Gmsh format 2.2 from file %s\n",filename);
 
   allocated = FALSE;
   dim = data->dim;
@@ -3296,11 +3297,14 @@ omstart:
 
     if(strstr(line,"$MeshFormat")) {
       GETLINE;
-      cp = line;
-      verno = next_int(&cp);
+      printf("Format line: ");
+      printf(line);
+      cp = line;      
+      vernor = next_real(&cp);
+      printf("Format version number %1.1f\n", vernor );
 
-      if(verno != 2) {
-	printf("Version number is not compatible with the parser: %d\n",verno);
+      if(vernor != 2.2) {
+	printf("Version number is not compatible with the parser: %1.1f\n",vernor);
       }
 
       GETLINE;
@@ -3391,18 +3395,23 @@ omstart:
       GETLINE;
       cp = line;
       nophysical = next_int(&cp);
+      printf("Number of physical entities is %d\n", nophysical);
+      nobodies = 0;
+      noboundaries = 0;
       for(i=0;i<nophysical;i++) {
-	GETLINE;
+	    GETLINE;
         if(allocated) {
             cp = line;
             gmshtype = next_int(&cp);
             tagphys = next_int(&cp);
             if(gmshtype == dim-1) {
+                nobodies = nobodies+1;
                 physsurfexist = TRUE;
                 if(tagphys < MAXBCS) sscanf(cp," \"%[^\"]\"",data->boundaryname[tagphys]);
                 else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim-1],cp+1);
             }
             else if(gmshtype == dim) {
+                noboundaries = noboundaries+1;
                 physvolexist = TRUE;
                 if(tagphys < MAXBODIES) sscanf(cp," \"%[^\"]\"",data->bodyname[tagphys]);
                 else printf("Index %d too high: ignoring physical %s %s",tagphys,manifoldname[dim],cp+1);
@@ -3411,7 +3420,9 @@ omstart:
                         "ignoring group %d %s",gmshtype,dim,tagphys,cp+1);
         }
       }
-
+      printf("Number of physical bodies is %d\n",nobodies);
+      printf("Number of physical boundaries is %d\n",noboundaries);
+      
       GETLINE;
       if(!strstr(line,"$EndPhysicalNames")) {
 	printf("$PhysicalNames section should end to string $EndPhysicalNames:\n%s\n",line);
@@ -3506,8 +3517,9 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     printf("Format chosen using the first line: %s",line);
   }
 
-  if(strstr(line,"$MeshFormat")) 
+  if(strstr(line,"$MeshFormat")) {
     errno = LoadGmshInput2(data,bound,filename,info);
+  }
   else {
     printf("*****************************************************\n");
     printf("The $MeshFormat was not given, assuming Gmsh 1 format\n");
