@@ -6288,12 +6288,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
              IF (np > 0 .AND. dim==3 .AND. .NOT. Transient) THEN
                E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-             ELSE
-               IF (PrecomputedElectricPot) THEN
-                 E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
-               ELSE
-                 E(1,:) = 0.0d0
-               END IF
+             ELSEIF (PrecomputedElectricPot) THEN
+               E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
              END IF
            END SELECT
        END IF
