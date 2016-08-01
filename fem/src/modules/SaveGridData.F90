@@ -142,11 +142,11 @@ CONTAINS
     
 
     IF( NoParticles <= Particles % MaxNumberOfParticles ) THEN
-      ! CALL Info('AllocateParticles','There are already enough particles')
+      CALL Info('AllocateParticles','There are already enough particles',Level=12)
       RETURN
     ELSE
-      !WRITE(Message,*) 'Allocating number of particles:',NoParticles
-      !CALL Info('AllocateParticles',Message)    
+      CALL Info('AllocateParticles','Allocating number of particles: '// &
+          TRIM(I2S(NoParticles)),Level=12)    
     END IF
     
     dim = Particles % dim 
@@ -160,6 +160,8 @@ CONTAINS
       Particles % Coordinate = 0.0_dp
       Particles % uvw = 0.0_dp
       Particles % ElementIndex = 0
+      Particles % Status = PARTICLE_ALLOCATED
+
       Particles % MaxNumberOfParticles = NoParticles
     ELSE
       Coordinate => Particles % Coordinate
@@ -396,7 +398,13 @@ CONTAINS
     !PRINT *,'MinCoord: ',MinCoord
     !PRINT *,'MaxCoord: ',MaxCoord
     !PRINT *,'dX: ',dX
-    !PRINT *,'Indexes: ',imintot,imaxtot,jmintot,jmaxtot,kmintot,kmaxtot
+
+    CALL Info('SaveGridData','Index i range: '&
+        //TRIM(I2S(imintot))//' - '//TRIM(I2S(imaxtot)),Level=12)
+    CALL Info('SaveGridData','Index j range: '&
+        //TRIM(I2S(jmintot))//' - '//TRIM(I2S(jmaxtot)),Level=12)
+    CALL Info('SaveGridData','Index k range: '&
+        //TRIM(I2S(kmintot))//' - '//TRIM(I2S(kmaxtot)),Level=12)
 
     ! Create a table for checking active gridpoints
     !----------------------------------------------------------------------------
@@ -536,11 +544,11 @@ CONTAINS
     END IF
 
     WRITE( Message,'(A,I8)') 'Number of candidate nodes:',totcount(1)
-    CALL Info('CreateGridParticles',Message,Level=5)
+    CALL Info('CreateGridParticles',Message,Level=6)
        
     IF( CheckForDuplicates ) THEN
       WRITE( Message,'(A,I8)') 'Number of duplicate nodes:',totcount(1)-totcount(2)
-      CALL Info('CreateGridParticles',Message,Level=5)
+      CALL Info('CreateGridParticles',Message,Level=6)
     END IF
 
     WRITE( Message,'(A,I8)') 'Number of created nodes:',totcount(3)
@@ -548,7 +556,7 @@ CONTAINS
     
     IF( totcount(3) > 0 ) THEN
       WRITE( Message,'(A,F8.2)') 'Search hit fraction:',1.0_dp * totcount(3) / totcount(1)
-      CALL Info('CreateGridParticles',Message,Level=5)
+      CALL Info('CreateGridParticles',Message,Level=6)
     END IF
 
 
