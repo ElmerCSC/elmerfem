@@ -212,7 +212,7 @@ CONTAINS
 
     n = Particles % NumberOfParticles 
     IF( n == Particles % MaxNumberOfParticles ) THEN
-      m = MAX( 100, n / 10 ) 
+      m = MAX( 1000, n / 2 ) 
       CALL AllocateGridParticles( Particles, n + m )
     END IF
     
@@ -244,7 +244,7 @@ CONTAINS
     INTEGER, POINTER :: MaskPerm(:)
     INTEGER :: t,i,j,k,n,nx,ny,nz,imin,imax,jmin,jmax,kmin,kmax, &
         imintot,imaxtot,jmintot,jmaxtot,kmintot,kmaxtot,&
-        meshdim, griddim, ActiveCoordinate
+        meshdim, griddim, ActiveCoordinate,ntot
     INTEGER :: ioff,joff,koff,cands1, cands2, ierr, totcount(3),tmpcount(3)
     INTEGER :: ParallelNodes, NumberOfNodes
     TYPE(Nodes_t) :: Nodes
@@ -289,7 +289,7 @@ CONTAINS
         LowerDimensional = .NOT. MaskOnBulk
       END IF
     END IF
-
+    
     IF( LowerDimensional ) THEN
       griddim = meshdim - 1
       ElemStart = Mesh % NumberOfBulkElements + 1
@@ -395,10 +395,6 @@ CONTAINS
       kmaxtot = 0
     END IF
 
-    !PRINT *,'MinCoord: ',MinCoord
-    !PRINT *,'MaxCoord: ',MaxCoord
-    !PRINT *,'dX: ',dX
-
     CALL Info('SaveGridData','Index i range: '&
         //TRIM(I2S(imintot))//' - '//TRIM(I2S(imaxtot)),Level=12)
     CALL Info('SaveGridData','Index j range: '&
@@ -406,15 +402,15 @@ CONTAINS
     CALL Info('SaveGridData','Index k range: '&
         //TRIM(I2S(kmintot))//' - '//TRIM(I2S(kmaxtot)),Level=12)
 
+    ioff = imintot-1
+    joff = jmintot-1
+    koff = kmintot-1
+    
     ! Create a table for checking active gridpoints
     !----------------------------------------------------------------------------
     CheckForDuplicates = Structured .OR. GetLogical( Params,'Check for Duplicates')   
 
     IF( CheckForDuplicates ) THEN
-      ioff = imintot-1
-      joff = jmintot-1
-      koff = kmintot-1
-
       ALLOCATE( GridPointActive(imaxtot-ioff,jmaxtot-joff,kmaxtot-koff) )
       GridPointActive = .FALSE.
 
@@ -422,6 +418,13 @@ CONTAINS
         ALLOCATE( GridIndex(imaxtot-ioff,jmaxtot-joff,kmaxtot-koff) )
         GridIndex = 0
       END IF
+    END IF
+
+    ! It is most convenient to allocate enough at the start but this could 
+    ! mean excessive memory usage 
+    IF( .NOT. ListGetLogical( Params,'Adaptive Allocation',Found ) ) THEN
+      ntot = (imaxtot-ioff)*(jmaxtot-joff)*(kmaxtot-koff)
+      CALL AllocateGridParticles( Particles, ntot )
     END IF
 
 
@@ -432,6 +435,7 @@ CONTAINS
     Extent(5) = kmintot
     Extent(6) = kmaxtot
 
+    
 
     ! Create particles in the uniform grid
     !----------------------------------------------------------------------------
@@ -449,6 +453,10 @@ CONTAINS
       IF( MaskExist ) THEN
         IF( ANY( MaskPerm( Element % NodeIndexes ) == 0 ) ) CYCLE
       END IF
+
+      ! Only use the correct dimensional elements for interpolation!
+      IF( GetElementDim(Element) /= griddim ) CYCLE
+
 
       imin = CEILING( ( MINVAL( Nodes % x(1:n) ) - Origin(1) ) / dx(1) )
       imax = FLOOR( ( MAXVAL( Nodes % x(1:n) ) - Origin(1) ) / dx(1) )
