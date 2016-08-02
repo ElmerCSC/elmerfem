@@ -9567,10 +9567,10 @@ END SUBROUTINE GetMaxDefs
     Mesh_out => AllocateMesh()
     !   Mesh_out = Mesh_in
     buildingblocks = SIZE(in_levels)
-    WRITE(Message,'(A,I2,A)'), "buildingblocks=", buildingblocks, " levels within blocks:"
+    WRITE(Message,'(A,I2,A)'), "buildingblocks=", buildingblocks, " element levels within blocks:"
     CALL INFO('MeshExtrude',Message)
     DO blk=1,buildingblocks
-      WRITE(Message,'(I2,A,I3)'), blk,': ', in_levels(blk)
+      WRITE(Message,'(A,I2,A,I3)'), 'Block no. ',blk,': ', in_levels(blk) + 1
       CALL INFO('MeshExtrude',Message,Level=3)
     END DO
     isParallel = ParEnv % PEs>1
@@ -9580,7 +9580,7 @@ END SUBROUTINE GetMaxDefs
     lnodes = Mesh_in % NumberOfNodes
     n = lnodes
     ! the incoming
-    alllevels = SUM(in_levels) - (buildingblocks -1) ! remove first level of each block > 1
+    !alllevels = SUM(in_levels) - (buildingblocks -1) ! remove first level of each block > 1
     nnodes=(SUM(in_levels) + 2*buildingblocks - (buildingblocks -1))*lnodes ! levels + 2 for each block, first block level of each block, except first one removed
     
     ALLOCATE( Mesh_out % Nodes % x(nnodes),&
@@ -9805,13 +9805,12 @@ END SUBROUTINE GetMaxDefs
         END DO
       END DO
     END DO
-    Mesh_out % NumberOfBulkElements=cnt
+    Mesh_out % NumberOfBulkElements = cnt
 
     max_bid=0
     max_baseline_bid=0
     !currentlevel = 0
     !currentlevel = in_levels(1)
-    cnt0 = cnt
     ! -------------------------------------------------------
     IF (PreserveBaseline) THEN
       DO blk=1,1!buildingblocks   
@@ -9834,26 +9833,24 @@ END SUBROUTINE GetMaxDefs
 
           IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Left)) THEN
             l=Mesh_in % Elements(k) % BoundaryInfo % Left % ElementIndex
+            ! version with the bulk element being the parent
             !Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
-            !     Mesh_out % Elements(Mesh_in %  NumberOfBulkElements*(alllevels+1)+ &
-            !     (alllevels+2)*Mesh_in % NumberOfBoundaryElements+l)
+            !     Mesh_out % Elements((Mesh_in %  NumberOfBulkElements)*(currentlevel) + l)
             Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
-                 Mesh_out % Elements((Mesh_in %  NumberOfBulkElements)*(currentlevel) + l)
-!                 Mesh_out % Elements(Mesh_in %  NumberOfBulkElements*(currentlevel)+ & ! all bulk elements
-!                 (alllevels+1+currentlevel)*(Mesh_in % NumberOfBoundaryElements)+& ! all side elements + baseline elements + currentlevel = 
-!                 l) ! the index on that level
+                 Mesh_out % Elements(Mesh_in %  NumberOfBulkElements*(alllevels+2)+ & ! all bulk elements + one additional bottom layer
+                 (alllevels+2)*(Mesh_in % NumberOfBoundaryElements) + & ! all side elements + baseline elements + currentlevel  
+                 l) ! the index on that level
                  
           END IF
           IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Right)) THEN
             l=Mesh_in % Elements(k) % BoundaryInfo % Right % ElementIndex
+            ! version with the bulk element being the parent
             !Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
-            !     Mesh_out % Elements(Mesh_in % NumberOfBulkElements*(alllevels+1)+ &
-            !     (alllevels+2)*Mesh_in % NumberOfBoundaryElements+l)
+            !     Mesh_out % Elements((Mesh_in %  NumberOfBulkElements)*(currentlevel) + l)
             Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
-                 Mesh_out % Elements((Mesh_in %  NumberOfBulkElements)*(currentlevel) + l)
-!                 Mesh_out % Elements(Mesh_in %  NumberOfBulkElements*(alllevels+1)+ & ! all bulk elements
-!                 (alllevels+1+1+currentlevel)*(Mesh_in % NumberOfBoundaryElements)+& ! all side elements + baseline elements
-!                 l) ! the index on that level
+                 Mesh_out % Elements(Mesh_in %  NumberOfBulkElements*(alllevels+2)+ & ! all bulk elements + one additional bottom layer
+                 (alllevels+2)*(Mesh_in % NumberOfBoundaryElements) + & ! all side elements + baseline elements + currentlevel  
+                 l) ! the index on that level
           END IF
 
           IF(Mesh_in % Elements(k) % TYPE % ElementCode>=200) THEN
@@ -10109,7 +10106,9 @@ END SUBROUTINE GetMaxDefs
         Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
       END DO
     END DO
-    Mesh_out % NumberOfBoundaryElements=cnt-Mesh_out % NumberOfBulkElements
+    Mesh_out % NumberOfBoundaryElements = cnt - Mesh_out % NumberOfBulkElements
+    PRINT *, "NumberOfBulkElements=", Mesh_out % NumberOfBulkElements,&
+         "NumberOfBoundaryElements=", Mesh_out % NumberOfBoundaryElements
 
     Mesh_out % Name=Mesh_in % Name
     Mesh_out % DiscontMesh = Mesh_in % DiscontMesh
@@ -10140,34 +10139,59 @@ END SUBROUTINE GetMaxDefs
     CHARACTER(LEN=*) :: Path
     TYPE(Mesh_t), POINTER :: NewMesh
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,MaxNodes,ElmCode,Parent1,Parent2
+    INTEGER :: i,j,k,ElmCode,Parent1,Parent2,&
+         elementno(9), elementcode(9), differenttypesofelements, MeshDim
+    LOGICAL :: Found
 !------------------------------------------------------------------------------
-
+    MeshDim = NewMesh % MeshDim
     OPEN( 1,FILE=TRIM(Path) // '/mesh.header',STATUS='UNKNOWN' )
     WRITE( 1,'(3i8)' ) NewMesh % NumberOfNodes, &
          NewMesh % NumberOfBulkElements, NewMesh % NumberOfBoundaryElements
-    
-    WRITE( 1,* ) 2
-    MaxNodes = 0
-    ElmCode  = 0
-    DO i=1,NewMesh % NumberOfBoundaryElements
-       k = i + NewMesh % NumberOfBulkElements
-       IF ( NewMesh % Elements(k) % TYPE % NumberOfNodes > MaxNodes ) THEN
-          ElmCode  = NewMesh % Elements(k) % TYPE % ElementCode
-          MaxNodes = NewMesh % Elements(k) % TYPE % NumberOfNodes
-       END IF
+    k = 1 + NewMesh % NumberOfBulkElements
+    ElmCode  = NewMesh % Elements(k) % TYPE % ElementCode
+    elementcode(1) = ElmCode
+    elementno(1) = 1
+    elementno(2:9) = 0
+    differenttypesofelements = 1
+    DO i=2,NewMesh % NumberOfBoundaryElements
+      k = i + NewMesh % NumberOfBulkElements
+      ElmCode  = NewMesh % Elements(k) % TYPE % ElementCode
+      Found = .FALSE.
+      DO j = 1,differenttypesofelements
+        IF (ElmCode .EQ. elementcode(j)) THEN
+          Found = .TRUE.
+          elementno(j) = elementno(j) + 1     
+        END IF
+      END DO
+      IF (.NOT.Found) THEN
+        differenttypesofelements = differenttypesofelements + 1
+        elementcode(differenttypesofelements) = ElmCode
+        elementno(differenttypesofelements) = elementno(differenttypesofelements) + 1
+      END IF
     END DO
-    WRITE( 1,'(2i8)' ) ElmCode,NewMesh % NumberOfBoundaryElements
-
-    MaxNodes = 0
-    ElmCode  = 0
+    ! the bulk elements
     DO i=1,NewMesh % NumberOfBulkElements
-       IF ( NewMesh % Elements(i) % TYPE % NumberOfNodes > MaxNodes ) THEN
-          ElmCode  = NewMesh % Elements(i) % TYPE % ElementCode
-          MaxNodes = NewMesh % Elements(i) % TYPE % NumberOfNodes
-       END IF
+      ElmCode  = NewMesh % Elements(i) % TYPE % ElementCode
+      Found = .FALSE.
+      DO j = 1,differenttypesofelements
+        IF (ElmCode .EQ. elementcode(j)) THEN
+          Found = .TRUE.
+          elementno(j) = elementno(j) + 1     
+        END IF
+      END DO
+      IF (.NOT.Found) THEN
+        differenttypesofelements = differenttypesofelements + 1
+        elementcode(differenttypesofelements) = ElmCode
+        elementno(differenttypesofelements) = elementno(differenttypesofelements) + 1
+      END IF
     END DO
-    WRITE( 1,'(2i8)' ) ElmCode,NewMesh % NumberOfBulkElements
+
+    WRITE( 1,* ) differenttypesofelements
+    
+    DO i=1,differenttypesofelements
+      WRITE( 1,'(2i8)' )  elementcode(i), elementno(i)
+    END DO
+
     CLOSE(1)
 
     OPEN( 1,FILE=TRIM(Path) // '/mesh.nodes', STATUS='UNKNOWN' )
@@ -10201,6 +10225,10 @@ END SUBROUTINE GetMaxDefs
        parent2 = 0
        IF ( ASSOCIATED( NewMesh % Elements(k) % BoundaryInfo % Right ) ) &
           parent2 = NewMesh % Elements(k) % BoundaryInfo % Right % ElementIndex
+       IF (NewMesh % Elements(k) % TYPE % ElementCode < MeshDim*100) THEN
+         parent1 = 0
+         parent2 = 0
+       END IF
        WRITE(1,'(5i7)',ADVANCE='NO') i, &
             NewMesh % Elements(k) % BoundaryInfo % Constraint, Parent1,Parent2,&
             NewMesh % Elements(k) % TYPE % ElementCode

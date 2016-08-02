@@ -333,8 +333,8 @@ END INTERFACE
          !----------------------------------------------------------------------------------
          ExtrudeLevels => ListGetIntegerArray(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
          IF (Found) THEN
-            IF(ANY(ExtrudeLevels>1)) THEN            
-               ! the size of the mesh levesl has to be reduced by 2 to be compatible with original version
+            IF(ANY(ExtrudeLevels>2)) THEN            
+               ! the size of the mesh levels has to be reduced by 2 to be compatible with original version
                DO i=1,SIZE(ExtrudeLevels)
                  ExtrudeLevels(i) = ExtrudeLevels(i) - 2
                END DO
