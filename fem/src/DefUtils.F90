@@ -1226,6 +1226,26 @@ CONTAINS
      etype = CurrElement % TYPE % ElementCode
   END FUNCTION GetElementCode
 
+!> Return the element dimension in Elmer convention of the active element
+  FUNCTION GetElementDim( Element )  RESULT(edim)
+    INTEGER :: edim
+    TYPE(Element_t), OPTIONAL :: Element
+    TYPE(Element_t), POINTER :: CurrElement
+    INTEGER :: etype
+    
+    CurrElement => GetCurrentElement(Element)
+    etype = CurrElement % TYPE % ElementCode
+    IF( etype >= 500 ) THEN
+      edim = 3
+    ELSE IF( etype >= 300 ) THEN
+      edim = 2
+    ELSE IF( etype >= 200 ) THEN
+      edim = 1
+    ELSE 
+      edim = 0
+    END IF          
+  END FUNCTION GetElementDim
+
 
 !> Return the element family in Elmer convention of the active element
   FUNCTION GetElementFamily( Element )  RESULT(family)
