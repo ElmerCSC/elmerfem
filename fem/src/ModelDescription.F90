@@ -4538,6 +4538,8 @@ CONTAINS
                     END IF
                  ELSE
                     WRITE(PostFileUnit,'(A)',ADVANCE='NO') ' 0.0'
+                    IF(ASSOCIATED(Var % Cvalues)) &
+                      WRITE(PostFileUnit,'(A)',ADVANCE='NO') ' 0.0'
                  END IF
               ELSE
                  l = INDEX( var % name, '[' )

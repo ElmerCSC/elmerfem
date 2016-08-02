@@ -83,7 +83,6 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
       IF( CalcStressAll ) CALL ListAddLogical( SolverParams,'Calculate Stresses',.TRUE.)
     END IF
 
-
     IF ( CalcStressAll ) THEN
       CALL ListAddString( SolverParams,&
           NextFreeKeyword('Exported Variable ',SolverParams), &
@@ -760,6 +759,116 @@ SUBROUTINE StressSolver_Init( Model,Solver,dt,Transient )
 
            END DO
          END DO
+
+       ELSE IF ( HarmonicAnalysis ) THEN
+
+         nsize = SIZE(Solver % Variable % EigenVectors,2)/STDOFs
+         nomodes = Solver % NOFEigenValues
+
+         DO i=1,nomodes
+
+           WRITE (Message,'(A,I0)') 'Computing stresses for eigenmode: ',i 
+           CALL INfo('StressSolver', Message ) 
+
+           DO l=1,2
+            IF ( l==1 ) THEN
+              Displacement = REAL( Solver % Variable % EigenVectors(i,:) )
+            ELSE
+              Displacement = AIMAG( Solver % Variable % EigenVectors(i,:) )
+            END IF
+
+            CALL ComputeStress( Displacement, NodalStress,  &
+               VonMises, DisplPerm, StressPerm, &
+               NodalStrain, PrincipalStress, PrincipalStrain, Tresca, PrincipalAngle )
+
+
+           DO j=1,7               
+             SELECT CASE ( j )
+             CASE(1) 
+               VarName = 'Stress'
+             CASE(2) 
+               VarName = 'vonMises'
+             CASE(3) 
+               VarName = 'Principal Stress'
+             CASE(4) 
+               VarName = 'Strain'
+             CASE(5) 
+               VarName = 'Principal Strain'
+             CASE(6) 
+               VarName = 'Principal Angle'
+             CASE(7) 
+               VarName = 'Tresca'                 
+             END SELECT
+             
+             Var => VariableGet( Mesh % Variables, VarName )
+             IF(.NOT. ASSOCIATED(Var) ) CYCLE
+             dofs = Var % Dofs
+            
+             IF( i == 1 ) THEN               
+               IF( .NOT. ASSOCIATED( Var % EigenVectors ) ) THEN
+                 ALLOCATE( Var % EigenVectors(nomodes, dofs * nsize ) )             
+                 Var % EigenVectors = 0.0_dp
+               END IF
+               IF( .NOT. ASSOCIATED( Var % EigenValues ) ) THEN                 
+                 ALLOCATE( Var % EigenValues(nomodes) )
+                 Var % EigenValues = 0._dp
+               END IF
+
+               Var % EigenValues = Solver % Variable % EigenValues 
+               IF( dofs > 1 ) THEN
+                 DO k=1,dofs
+                   iVar => VariableGet( Mesh % Variables,ComponentName(Var % Name,k) )
+                   IF( ASSOCIATED( iVar ) ) THEN
+                     iVar % EigenValues => Var % EigenValues
+                     iVar % Eigenvectors => Var % EigenVectors(:,k::dofs)
+                   ELSE
+                     CALL Fatal('StressSolver','No variable associated: '//&
+                         ComponentName( Var % Name,k ) )
+                   END IF
+                 END DO
+               END IF
+             END IF
+
+
+             IF ( l==1 ) THEN
+               SELECT CASE ( j )
+               CASE(1) 
+                 Var % EigenVectors(i,:) = NodalStress
+               CASE(2) 
+                 Var % EigenVectors(i,:) = VonMises
+               CASE(3) 
+                 Var % EigenVectors(i,:) = PrincipalStress
+               CASE(4) 
+                 Var % EigenVectors(i,:) = NodalStrain
+               CASE(5) 
+                 Var % EigenVectors(i,:) = PrincipalStrain
+               CASE(6) 
+                 Var % EigenVectors(i,:) = PrincipalAngle
+               CASE(7) 
+                 Var % EigenVectors(i,:) = Tresca
+               END SELECT
+             ELSE
+               SELECT CASE ( j )
+               CASE(1) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,NodalStress,KIND=dp)
+               CASE(2) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,VonMises,KIND=dp)
+               CASE(3) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,PrincipalStress,KIND=dp)
+               CASE(4) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,NodalStrain,KIND=dp)
+               CASE(5) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,PrincipalStrain,KIND=dp)
+               CASE(6) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,PrincipalAngle,KIND=dp)
+               CASE(7) 
+                 Var % EigenVectors(i,:) = Var % EigenVectors(i,:) + CMPLX(0._dp,Tresca,KIND=dp)
+               END SELECT
+             END IF
+           END DO
+           END DO
+         END DO
+
        ELSE
          CALL ComputeStress( Displacement, NodalStress,  &
              VonMises, DisplPerm, StressPerm, &
@@ -1437,6 +1546,9 @@ CONTAINS
      IF ( EigenAnalysis ) &
        CALL ListAddLogical( SolverParams, 'Eigen Analysis', .FALSE. )
 
+     IF( HarmonicAnalysis ) &
+       CALL ListAddLogical( SolverParams, 'Harmonic Analysis', .FALSE. )
+
      StSolver % NOFEigenValues=0
 
      Ident = 0.0d0
@@ -1767,7 +1879,10 @@ CONTAINS
 
       IF ( EigenAnalysis ) &
         CALL ListAddLogical( SolverParams, 'Eigen Analysis', .TRUE. )
+      IF ( HarmonicAnalysis ) &
+        CALL ListAddLogical( SolverParams, 'Harmonic Analysis', .TRUE. )
       CALL ListAddConstReal( SolverParams,'Nonlinear System Relaxation Factor', Relax )
+
 
       Model % Solver => Solver
 
