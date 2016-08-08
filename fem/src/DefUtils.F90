@@ -2737,11 +2737,13 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
+    INTEGER :: NameSpaceI
 
     Solver => CurrentModel % Solver
     Norm = REAL(0, dp)
     IF ( PRESENT( USolver ) ) Solver => USolver
-    IF ( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) RETURN
+    
+    IF( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) RETURN
 
     A => Solver % Matrix
     b => A % RHS
@@ -2749,6 +2751,13 @@ CONTAINS
     SOL => x % Values
 
     Params => GetSolverParams(Solver)
+    
+    NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
+    IF( NameSpaceI > 0 ) THEN
+      CALL Info('DefaultSolver','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
+      CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
+    END IF
+
 
     IF( ListCheckPresent( Params, 'Dump system matrix') .OR. &
         ListCheckPresent( Params, 'Dump system RHS') ) THEN
@@ -2800,6 +2809,8 @@ CONTAINS
     END IF
 
     Norm = x % Norm
+
+    IF( NameSpaceI > 0 ) CALL ListPopNamespace()
 
 !------------------------------------------------------------------------------
   END FUNCTION DefaultSolve
