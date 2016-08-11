@@ -40,6 +40,7 @@
 !-----------------------------------------------------------------------------
 !>  Module that defined the Model: reads in the command file, mesh and results etc.
 !-----------------------------------------------------------------------------
+#include "../config.h"
 
 MODULE ModelDescription
 
@@ -1052,7 +1053,6 @@ CONTAINS
 !         Priority is in ELMER_LIB, ELMER_HOME, and finally, if all else fails
 !         use the compilation time prefix.
 !         ------------------------------------------------------
-#include "../config.h"
 
 #ifdef USE_ISO_C_BINDINGS
           str = 'ELMER_LIB'
@@ -2527,9 +2527,17 @@ CONTAINS
       IF( Found ) CALL Info('CompleteModelKeywords',&
           'Added > Mass Consistent Normals < to master BC '//TRIM(I2S(j)),Level=10)
 
+      CALL ListCompareAndCopy( List, ListB,'Rotational Normals',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Rotational Normals < to master BC '//TRIM(I2S(j)),Level=10)
+
       CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Displacement',Found )
       IF( Found ) CALL Info('CompleteModelKeywords',&
           'Added > Normal-Tangential Displacement < to master BC '//TRIM(I2S(j)),Level=10)
+
+      CALL ListCompareAndCopy( List, ListB,'Normal-Tangential Velocity',Found )
+      IF( Found ) CALL Info('CompleteModelKeywords',&
+          'Added > Normal-Tangential Velocity < to master BC '//TRIM(I2S(j)),Level=10)
     END DO
 
 
@@ -4530,6 +4538,8 @@ CONTAINS
                     END IF
                  ELSE
                     WRITE(PostFileUnit,'(A)',ADVANCE='NO') ' 0.0'
+                    IF(ASSOCIATED(Var % Cvalues)) &
+                      WRITE(PostFileUnit,'(A)',ADVANCE='NO') ' 0.0'
                  END IF
               ELSE
                  l = INDEX( var % name, '[' )
@@ -4875,6 +4885,10 @@ END SUBROUTINE GetNodalElementSize
     CALL FreeMatrix(Solver % Matrix)
     IF (ALLOCATED(Solver % Def_Dofs)) DEALLOCATE(Solver % Def_Dofs)
     IF (ASSOCIATED(Solver % ActiveElements)) DEALLOCATE(Solver % ActiveElements)
+    IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+      CALL Graph_Deallocate(Solver % ColourIndexList)
+      DEALLOCATE( Solver % ColourIndexList )
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeSolver
 !------------------------------------------------------------------------------

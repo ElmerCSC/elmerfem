@@ -1006,7 +1006,7 @@ CONTAINS
             tninlen = ninlen
             tcmdstr = copystr(i+1:inlen)
             CALL MATC( tcmdstr, tmatcstr, tninlen )
-			!$OMP BARRIER
+            !$OMP BARRIER
 
             !$OMP SINGLE
             matcstr(1:tninlen) = tmatcstr(1:tninlen)
@@ -2080,17 +2080,15 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
-          CALL Error( 'AllocateElementVector', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateElementVector', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateElementVector', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n, ' element integer array.'
+      CALL Error( 'AllocateElementVector', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateElementVector', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateElementVector', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE AllocateElementVector
@@ -2112,17 +2110,15 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n1,n2), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
-          CALL Error( 'AllocateRealArray', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateRealArray', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateRealArray', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
+      CALL Error( 'AllocateRealArray', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateRealArray', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateRealArray', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE  AllocateRealArray
@@ -2143,17 +2139,15 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n1,n2), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
-          CALL Error( 'AllocateComplexArray', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateComplexArray', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateComplexArray', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element real matrix.'
+      CALL Error( 'AllocateComplexArray', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateComplexArray', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateComplexArray', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE  AllocateComplexArray
@@ -2175,17 +2169,15 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n1,n2), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element integer matrix.'
-          CALL Error( 'AllocateIntegerArray', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateIntegerArray', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateIntegerArray', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element integer matrix.'
+      CALL Error( 'AllocateIntegerArray', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateIntegerArray', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateIntegerArray', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE  AllocateIntegerArray
@@ -2208,22 +2200,50 @@ INCLUDE "mpif.h"
        ALLOCATE( f(n1,n2), STAT=istat )
     END IF
     IF ( istat /=  0 ) THEN
-       IF ( PRESENT( FailureMessage  ) ) THEN
-          WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element integer matrix.'
-          CALL Error( 'AllocateLogicalArray', Message )
-          IF ( PRESENT( From ) ) THEN
-             WRITE( Message, * )'Requested From: ', TRIM(From)
-             CALL Error( 'AllocateLogicalArray', Message )
-          END IF
-          IF ( PRESENT( FailureMessage ) ) THEN
-             CALL Fatal( 'AllocateLogicalArray', FailureMessage )
-          END IF
-       END IF
+      WRITE( Message, * )'Unable to allocate ', n1, ' by ', n2, ' element integer matrix.'
+      CALL Error( 'AllocateLogicalArray', Message )
+      IF ( PRESENT( From ) ) THEN
+        WRITE( Message, * )'Requested From: ', TRIM(From)
+        CALL Error( 'AllocateLogicalArray', Message )
+      END IF
+      IF ( PRESENT( FailureMessage ) ) THEN
+        CALL Fatal( 'AllocateLogicalArray', FailureMessage )
+      END IF
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE  AllocateLogicalArray
 !------------------------------------------------------------------------------
 
+  ! Pad given integer value to be the next largest multiple of nbyte
+  FUNCTION IntegerNBytePad(val, nbyte) RESULT(padval)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: val, nbyte
+    INTEGER :: padval
+    ! Parameters and variables
+    INTEGER, PARAMETER :: bytesinint = KIND(val)
+    INTEGER :: nbytesinint
+
+    ! Compute number of nbytes in int
+    nbytesinint = nbyte/bytesinint
+    ! Compute value padded to multiples of n-byte
+    padval=((val-1)/nbytesinint)*nbytesinint+nbytesinint
+  END FUNCTION IntegerNBytePad
+
+  ! Pad given value to be the next largest multiple of nbyte
+  FUNCTION NBytePad(val, bytesinelem, nbyte) RESULT(padval)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: val, bytesinelem, nbyte
+    INTEGER :: padval
+    ! Variables
+    INTEGER :: nbytesinelem
+
+    ! Compute number of nbytes in a single element
+    nbytesinelem = nbyte/bytesinelem
+    ! Compute value padded to multiples of n-byte
+    padval=((val-1)/nbytesinelem)*nbytesinelem+nbytesinelem
+  END FUNCTION NBytePad
 
 !------------------------------------------------------------------------------
 !> Given the filename0 (and suffix0) find the 1st free filename

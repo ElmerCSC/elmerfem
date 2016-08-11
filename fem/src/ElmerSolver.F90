@@ -49,6 +49,8 @@
 !> \ingroup ElmerLib
 !> \{
 
+#include "../config.h"
+
 !------------------------------------------------------------------------------
 !> The main program for Elmer. Solves the equations as defined by the input files.
 !------------------------------------------------------------------------------
@@ -115,8 +117,6 @@
      INTEGER :: ExtrudeLevels, MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
-     INTEGER :: omp_get_max_threads
-
 #ifdef HAVE_TRILINOS
 INTERFACE
       SUBROUTINE TrilinosCleanup() BIND(C,name='TrilinosCleanup')
@@ -144,7 +144,6 @@ END INTERFACE
 
        !
        ! Print banner to output:
-#include "../config.h"
        ! -----------------------
 #ifdef USE_ISO_C_BINDINGS
        NoArgs = COMMAND_ARGUMENT_COUNT()
@@ -507,7 +506,11 @@ END INTERFACE
 
        OutputIntervals => ListGetIntegerArray( CurrentModel % Simulation, &
                        'Output Intervals', GotIt )
-       IF ( .NOT. GotIt ) THEN
+       IF( GotIt ) THEN
+         IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
+           CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
+         END IF
+       ELSE
          ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
          OutputIntervals = 1
        END IF

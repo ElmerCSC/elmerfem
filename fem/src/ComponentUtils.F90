@@ -772,9 +772,11 @@ MODULE ComponentUtils
                 //TRIM(VarName)//' '//TRIM(I2S(i)),VectorVal(i) )                        
           END DO
         ELSE          
-          WRITE( Message,'(A,ES15.6)') TRIM(OperName)//': '//TRIM(VarName)//': ',ScalarVal
+          WRITE( Message,'(A,ES15.6)') &
+              'comp '//TRIM(I2S(j))//': '//TRIM(OperName)//': '//TRIM(VarName)//': ',ScalarVal
           CALL Info('UpdateDependentComponents',Message,Level=5)
-          CALL ListAddConstReal( CompParams,'res: '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )           
+          CALL ListAddConstReal( CurrentModel % Simulation, &
+              'res: comp '//TRIM(I2S(j))//': '//TRIM(OperName)//' '//TRIM(VarName),ScalarVal )           
         END IF
 
       END DO

@@ -52,7 +52,8 @@ MODULE MagnetoDynamicsUtils
    END INTERFACE
 
    INTERFACE GetReluctivity
-     MODULE PROCEDURE GetReluctivityR, GetReluctivityC
+     MODULE PROCEDURE GetReluctivityR, GetReluctivityC, &
+         GetReluctivityTensorR, GetReluctivityTensorC
    END INTERFACE
 
 CONTAINS
@@ -219,7 +220,7 @@ CONTAINS
     INTEGER :: n
     COMPLEX(KIND=dp) :: Acoef(:)
 !------------------------------------------------------------------------------
-    LOGICAL :: Found, FirstTime = .TRUE., Warned = .FALSE.
+    LOGICAL :: L, Found, FirstTime = .TRUE., Warned = .FALSE.
     REAL(KIND=dp) :: Avacuum
 
     SAVE Avacuum 
@@ -242,7 +243,8 @@ CONTAINS
     ELSE
       Acoef(1:n) = GetReal( Material, 'Reluctivity', Found )
       Acoef(1:n) = CMPLX( REAL(Acoef(1:n)), &
-         GetReal( Material, 'Reluctivity im', Found ), KIND=dp )
+         GetReal( Material, 'Reluctivity im', L ), KIND=dp )
+      Found = Found .OR. L
     END IF
     IF( .NOT. Found .AND. .NOT. Warned .AND. &
         .NOT. ListCheckPresent(Material, 'H-B Curve') ) THEN
@@ -252,6 +254,70 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE GetReluctivityC
 !------------------------------------------------------------------------------
+
+!> Get real tensorial reluctivity
+!------------------------------------------------------------------------------
+  SUBROUTINE GetReluctivityTensorR(Material, Acoef, n, Found)
+!-------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
+    REAL(KIND=dp), POINTER :: Acoef(:,:,:)
+    INTEGER, INTENT(IN) :: n
+    LOGICAL , INTENT(OUT) :: Found
+!-------------------------------------------------------------------------------
+    LOGICAL :: FirstTime = .FALSE.
+    INTEGER :: k
+    REAL(KIND=dp) :: Avacuum
+
+    SAVE Avacuum
+
+    CALL GetRealArray( Material, Acoef, 'Relative Reluctivity', Found )
+!-------------------------------------------------------------------------------
+  END SUBROUTINE GetReluctivityTensorR
+!-------------------------------------------------------------------------------
+
+!> Get complex tensorial reluctivity
+!> Untested
+!------------------------------------------------------------------------------
+  SUBROUTINE GetReluctivityTensorC(Material, Acoef, n, Found, Cwrk)
+!-------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
+    COMPLEX(KIND=dp), POINTER :: Acoef(:,:,:)
+    REAL(KIND=dp), POINTER, OPTIONAL :: Cwrk(:,:,:)
+    INTEGER, INTENT(IN) :: n
+    LOGICAL , INTENT(OUT) :: Found
+!-------------------------------------------------------------------------------
+    LOGICAL :: FirstTime = .FALSE.
+    LOGICAL :: Found_im
+    INTEGER :: k1,k2,k3
+    REAL(KIND=dp) :: Avacuum
+    REAL(KIND=dp), POINTER :: work(:,:,:)
+
+    SAVE Avacuum
+
+    IF(.NOT. PRESENT(Cwrk)) THEN
+      ALLOCATE(work(size(Acoef,1), size(Acoef,2), size(Acoef,3)))
+    ELSE
+      work => Cwrk
+    END IF
+
+
+    CALL GetRealArray( Material, work, 'Relative Reluctivity', Found )
+    Acoef(:,:,:) = work(:,:,:)
+
+    CALL GetRealArray( Material, work, 'Relative Reluctivity im', Found_im )
+
+    Acoef = CMPLX(REAL(Acoef), work)
+
+    Found = Found .OR. Found_im
+
+    IF(.NOT. PRESENT(Cwrk)) THEN
+      DEALLOCATE(work)
+    END IF
+!-------------------------------------------------------------------------------
+  END SUBROUTINE GetReluctivityTensorC
+!-------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
  SUBROUTINE GetPermittivity(Material,Acoef,n)
@@ -387,7 +453,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   TYPE(Mesh_t), POINTER :: Mesh
   REAL(KIND=dp), POINTER :: VecPot(:)
-  REAL (KIND=DP), POINTER :: Cwrk(:,:,:)
+  REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Acoef_t(:,:,:)
   REAL(KIND=dp), ALLOCATABLE :: LOAD(:,:), Acoef(:), Tcoef(:,:,:), &
                                 GapLength(:), AirGapMu(:), LamThick(:), &
                                 LamCond(:), Wbase(:), RotM(:,:,:)
@@ -401,7 +467,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
   LOGICAL :: Stat, EigenAnalysis, TG, DoneAssembly=.FALSE., &
          SkipAssembly, ConstantSystem, ConstantBulk, FixJ, FoundRelax, &
-         PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis
+         PiolaVersion, SecondOrder, LFact, LFactFound, EdgeBasis, &
+         HasTensorReluctivity
 
   REAL(KIND=dp) :: Relax
 
@@ -415,7 +482,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Avals(:), Vvals(:)
 
   SAVE STIFF, LOAD, MASS, FORCE, Tcoef, GapLength, AirGapMu, &
-       Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone
+       Acoef, Cwrk, LamThick, LamCond, Wbase, RotM, AllocationsDone, &
+       Acoef_t
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN	
 
@@ -464,7 +532,8 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
      ALLOCATE( FORCE(N), LOAD(7,N), STIFF(N,N), &
           MASS(N,N), Tcoef(3,3,N), GapLength(N), &
           AirGapMu(N), Acoef(N), LamThick(N), &
-          LamCond(N), Wbase(N), RotM(3,3,N), STAT=istat )
+          LamCond(N), Wbase(N), RotM(3,3,N), Cwrk(3,3,N), &
+          Acoef_t(3,3,N), STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'WhitneyAVSolver', 'Memory allocation error.' )
      END IF
@@ -652,10 +721,13 @@ CONTAINS
      END IF
 
      Acoef = 0.0d0
+     Acoef_t = 0.0d0
      Tcoef = 0.0d0
      Material => GetMaterial( Element )
      IF ( ASSOCIATED(Material) ) THEN
-       CALL GetReluctivity(Material,Acoef,n)
+       HasTensorReluctivity = .FALSE.
+       CALL GetReluctivity(Material,Acoef_t,n,HasTensorReluctivity)
+       IF(.NOT. HasTensorReluctivity) CALL GetReluctivity(Material,Acoef,n)
 
 !------------------------------------------------------------------------------
 !      Read conductivity values (might be a tensor)
@@ -687,10 +759,10 @@ CONTAINS
 
      !Get element local matrix and rhs vector:
      !----------------------------------------
-     CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
-          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
-          LamThick, LamCond, CoilBody, CoilType, RotM, &
-          Element, n, nd+nb, PiolaVersion, SecondOrder )    
+       CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, &
+         Tcoef, Acoef, LaminateStack, LaminateStackModel, &
+         LamThick, LamCond, CoilBody, CoilType, RotM, &
+         Element, n, nd+nb, PiolaVersion, SecondOrder)
 
      !Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
@@ -1692,6 +1764,7 @@ CONTAINS
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:)
     REAL(KIND=dp) :: LOAD(:,:), Tcoef(:,:,:), Acoef(:), &
                      LamThick(:), LamCond(:)
+
     INTEGER :: n, nd
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: PiolaVersion, SecondOrder
@@ -1699,7 +1772,8 @@ CONTAINS
     REAL(KIND=dp) :: Aloc(nd), JAC(nd,nd), mu, muder, B_ip(3), Babs
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), A, Acoefder(n), C(3,3), &
                      RotMLoc(3,3), RotM(3,3,n), velo(3), omega_velo(3,n), &
-                     lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3)
+                     lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
+                     A_t(3,3)
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), FixJPot(nd)
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
 
@@ -1797,6 +1871,14 @@ CONTAINS
        A = SUM( Basis(1:n) * Acoef(1:n) )
        mu = A
 
+       IF(HasTensorReluctivity) THEN
+         DO i = 1,3
+           DO j = 1,3
+             A_t(i,j) = sum(Basis(1:n)*Acoef_t(i,j,1:n))
+           END DO
+         END DO
+       END IF
+
        ! Compute convection type term coming from rotation
        ! -------------------------------------------------
        IF(HasVelocity) THEN
@@ -1848,6 +1930,8 @@ CONTAINS
          IF ( Newton ) THEN
            muder=(DerivateCurve(Bval,Hval,Babs,CubicCoeff=Cval)-mu)/babs
          END IF
+       ELSE
+         muder = 0._dp
        END IF
 
        ! ------------------------------------------------------------------
@@ -1956,6 +2040,11 @@ CONTAINS
          DO j = 1,nd-np
            q = j+np
            STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t) 
+
+           ! Aniostropic part
+           IF(HasTensorReluctivity) & 
+             STIFF(p,q) = STIFF(p,q) &
+             + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
            IF( HasVelocity ) THEN
              STIFF(p,q) = STIFF(p,q) &
                  - SUM(WBasis(i,:)*MATMUL(C,CrossProduct(velo, RotWBasis(j,:))))*detJ*IP%s(t)
@@ -5536,7 +5625,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: s,u,v,w, Norm
    REAL(KIND=dp) :: B(2,3), E(2,3), JatIP(2,3), VP_ip(2,3), JXBatIP(2,3), CC_J(2,3), B2
-   REAL(KIND=dp) :: detJ, C_ip, R_ip, PR_ip, ST(3,3), Omega, Power, Energy, w_dens
+   REAL(KIND=dp) :: detJ, C_ip, R_ip, PR_ip, ST(3,3), Omega, Power, Energy, w_dens, R_t_ip(3,3)
    REAL(KIND=dp) :: Freq, FreqPower, FieldPower, LossCoeff, ValAtIP
    REAL(KIND=dp) :: Freq2, FreqPower2, FieldPower2, LossCoeff2
    REAL(KIND=dp) :: ComponentLoss(2,2), rot_velo(3) 
@@ -5567,7 +5656,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
-              HasLorenzVelocity, HaveAirGap, UseElementalNF
+              HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -5585,6 +5674,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    REAL(KIND=DP), POINTER :: Cwrk(:,:,:)=>NULL(), Cwrk_im(:,:,:)=>NULL()
    COMPLEX(KIND=dp), ALLOCATABLE :: Tcoef(:,:,:)
+   REAL(KIND=dp), POINTER :: R_t(:,:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, SecondOrder
    REAL(KIND=dp) :: ItoJCoeff, CircuitCurrent
@@ -5756,7 +5846,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    IF ( ASSOCIATED(EL_ML2)  ) ElementalFields=.TRUE.
 
    n = Mesh % MaxElementDOFs
-   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n) )
+   ALLOCATE( MASS(n,n), FORCE(n,DOFs), Tcoef(3,3,n), RotM(3,3,n), Pivot(n), R_t(3,3,n))
 
    SOL = 0._dp; PSOL=0._dp
 
@@ -5948,6 +6038,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
      !---------------------------------------------------------------------------------------------
 
+     HasTensorReluctivity = .FALSE.
      CALL GetConstRealArray( Material, HB, 'H-B curve', Found )
      IF ( ASSOCIATED(HB) ) THEN
       Cubic = GetLogical( Material, 'Cubic spline for H-B curve', Found)
@@ -5971,7 +6062,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
         END IF
       END IF
      ELSE
-       CALL GetReluctivity(Material,R,n)
+       CALL GetReluctivity(Material,R_t,n,HasTensorReluctivity)
+       IF(.NOT. HasTensorReluctivity) CALL GetReluctivity(Material,R,n)
      END IF
 
      HasVelocity = .FALSE.
@@ -6079,132 +6171,127 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END IF
        
-       IF ( Transient ) THEN
-         IF (CoilType /= 'stranded') THEN 
-           SELECT CASE(dim)
-           CASE(2)
-             E(1,1) = 0._dp
-             E(1,2) = 0._dp
-             E(1,3) = -SUM(PSOL(1:nd) * Basis(1:nd))
-           CASE(3)
-             E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
-           END SELECT
-         ELSE
-           E(1,:) = 0._dp
-         END IF
-         localV=0._dp
-         SELECT CASE (CoilType)
-         CASE ('stranded')
-           SELECT CASE(dim)
-           CASE(2)
-             wvec = [0._dp, 0._dp, 1._dp]
-           CASE(3)
-             wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-             wvec = wvec/SQRT(SUM(wvec**2._dp))
-           END SELECT
-         CASE ('massive')
-           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
-           SELECT CASE(dim)
-           CASE(2)
-             E(1,3) = E(1,3)-localV(1) * grads_coeff
-           CASE(3)
-             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-           END SELECT
-         CASE ('foil winding')
-           localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
-           DO k = 1, VvarDofs-1
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
-           END DO
-           SELECT CASE(dim)
-           CASE(2)
-             E(1,3) = E(1,3)-localV(1) * grads_coeff
-           CASE(3)
-             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-           END SELECT
-         CASE DEFAULT
-           IF(dim==3) THEN
-             E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-           ELSE ! given external potential ?
-           END IF
-         END SELECT
-       ELSE
-          IF (vDOFs > 1) THEN
-             IF (CoilType /= 'stranded') THEN
-                ! -j * Omega A
-                SELECT CASE(dim)
-                CASE(2)
-                  E(1,:) = 0._dp
-                  E(2,:) = 0._dp
-                  E(1,3) =  Omega*SUM(SOL(2,1:nd) * Basis(1:nd))
-                  E(2,3) = -Omega*SUM(SOL(1,1:nd) * Basis(1:nd))
-                CASE(3)
-                  E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
-                  E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
-                END SELECT
-             ELSE
+        IF (vDOFs > 1) THEN
+           IF (CoilType /= 'stranded') THEN
+              ! -j * Omega A
+              SELECT CASE(dim)
+              CASE(2)
                 E(1,:) = 0._dp
                 E(2,:) = 0._dp
+                E(1,3) =  Omega*SUM(SOL(2,1:nd) * Basis(1:nd))
+                E(2,3) = -Omega*SUM(SOL(1,1:nd) * Basis(1:nd))
+              CASE(3)
+                E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
+                E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
+              END SELECT
+           ELSE
+              E(1,:) = 0._dp
+              E(2,:) = 0._dp
+           END IF
+
+           localV=0._dp
+           SELECT CASE (CoilType)
+           CASE ('stranded')
+             SELECT CASE(dim)
+             CASE(2)
+               wvec = [0._dp, 0._dp, 1._dp]
+             CASE(3)
+               wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+               wvec = wvec/SQRT(SUM(wvec**2._dp))
+             END SELECT
+              imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
+              E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(3,3))
+              E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(3,3))
+           CASE ('massive')
+              localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+              localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
+              SELECT CASE(dim)
+              CASE(2)
+                E(1,3) = E(1,3)-localV(1) * grads_coeff
+                E(2,3) = E(2,3)-localV(2) * grads_coeff
+              CASE(3)
+                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+              END SELECT
+           CASE ('foil winding')
+              localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
+              DO k = 1, VvarDofs-1
+                Reindex = 2*k
+                Imindex = Reindex+1
+                localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
+                localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
+              END DO
+              SELECT CASE(dim)
+              CASE(2)
+                E(1,3) = E(1,3)-localV(1) * grads_coeff
+                E(2,3) = E(2,3)-localV(2) * grads_coeff
+              CASE(3)
+                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+              END SELECT
+           CASE DEFAULT
+              ! -Grad(V)
+              IF(dim==3) THEN
+                E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+                E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+              ELSE  ! external given scalar potential ?
+              END IF
+           END SELECT
+        ELSE
+          IF (CoilType /= 'stranded') THEN 
+             SELECT CASE(dim)
+             CASE(2)
+               E(1,1) = 0._dp
+               E(1,2) = 0._dp
+               E(1,3) = -SUM(PSOL(1:nd) * Basis(1:nd))
+             CASE(3)
+               E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
+             END SELECT
+           ELSE
+             E(1,:) = 0._dp
+           END IF
+           localV=0._dp
+           SELECT CASE (CoilType)
+           CASE ('stranded')
+             SELECT CASE(dim)
+             CASE(2)
+               wvec = [0._dp, 0._dp, 1._dp]
+               E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(1,1)
+             CASE(3)
+               wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+               wvec = wvec/SQRT(SUM(wvec**2._dp))
+               E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(3,3)
+             END SELECT
+           CASE ('massive')
+             localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+             SELECT CASE(dim)
+             CASE(2)
+               E(1,3) = E(1,3)-localV(1) * grads_coeff
+             CASE(3)
+               E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             END SELECT
+           CASE ('foil winding')
+             localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
+             DO k = 1, VvarDofs-1
+               localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
+             END DO
+             SELECT CASE(dim)
+             CASE(2)
+               E(1,3) = E(1,3)-localV(1) * grads_coeff
+             CASE(3)
+               E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             END SELECT
+           CASE DEFAULT
+             IF(dim==3 .AND. Transient) THEN
+               E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              END IF
 
-             localV=0._dp
-             SELECT CASE (CoilType)
-             CASE ('stranded')
-               SELECT CASE(dim)
-               CASE(2)
-                 wvec = [0._dp, 0._dp, 1._dp]
-               CASE(3)
-                 wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                 wvec = wvec/SQRT(SUM(wvec**2._dp))
-               END SELECT
-                imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
-                E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(3,3))
-                E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(3,3))
-             CASE ('massive')
-                localV(1) = localV(1) + LagrangeVar % Values(VvarId)
-                localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
-                SELECT CASE(dim)
-                CASE(2)
-                  E(1,3) = E(1,3)-localV(1) * grads_coeff
-                  E(2,3) = E(2,3)-localV(2) * grads_coeff
-                CASE(3)
-                  E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                  E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                END SELECT
-             CASE ('foil winding')
-                localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
-                DO k = 1, VvarDofs-1
-                  Reindex = 2*k
-                  Imindex = Reindex+1
-                  localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
-                  localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
-                END DO
-                SELECT CASE(dim)
-                CASE(2)
-                  E(1,3) = E(1,3)-localV(1) * grads_coeff
-                  E(2,3) = E(2,3)-localV(2) * grads_coeff
-                CASE(3)
-                  E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                  E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                END SELECT
-             CASE DEFAULT
-                ! -Grad(V)
-                IF(dim==3) THEN
-                  E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-                  E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
-                ELSE  ! external given scalar potential ?
-                END IF
-             END SELECT
-          ELSE
-             IF (np > 0 .AND. dim==3) THEN
+             IF (np > 0 .AND. dim==3 .AND. .NOT. Transient) THEN
                E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-             ELSE
-               IF (PrecomputedElectricPot) THEN
-                 E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
-               ELSE
-                 E(1,:) = 0.0d0
-               END IF
+             ELSEIF (PrecomputedElectricPot) THEN
+               E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
              END IF
-          END IF
+           END SELECT
        END IF
        
 
@@ -6214,6 +6301,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          w_dens = IntegrateCurve(HBBval,HBHval,HBCval,0._dp,Babs)
        ELSE
          R_ip = SUM( Basis(1:n)*R(1:n) )
+         IF(HasTensorReluctivity) THEN
+           DO k = 1,3
+             DO l = 1,3
+               R_t_ip(k,l) = sum(Basis(1:n)*R_t(k,l,1:n))
+             END DO
+           END DO
+           w_dens = 0.5*SUM(B(1,:)*MATMUL(R_t_ip,B(1,:)))
+         END IF
          w_dens = 0.5*R_ip*SUM(B(1,:)**2)
        END IF
        PR_ip = SUM( Basis(1:n)*PR(1:n) )
@@ -6679,7 +6774,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    CALL Info( 'MagnetoDynamicsCalcFields', Message )
    CALL ListAddConstReal(Model % Simulation,'res: Magnetic Field Energy',Energy)
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
-   DEALLOCATE( MASS,FORCE,Tcoef,RotM )
+   DEALLOCATE( MASS,FORCE,Tcoef,RotM, R_t )
 
    IF (LossEstimation) THEN
      CALL ListAddConstReal( Model % Simulation,'res: harmonic loss linear',TotalLoss(1) )

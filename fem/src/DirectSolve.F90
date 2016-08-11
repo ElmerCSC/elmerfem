@@ -2330,6 +2330,9 @@ CONTAINS
 
     Method = ListGetString( Solver % Values, 'Linear System Direct Method',GotIt )
     IF ( .NOT. GotIt ) Method = 'banded'
+    
+    
+    CALL Info('DirectSolver','Using direct method: '//TRIM(Method),Level=9)
 
     SELECT CASE( Method )
       CASE( 'banded', 'symmetric banded' )

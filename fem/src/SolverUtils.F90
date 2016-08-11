@@ -1117,6 +1117,123 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
+!> Add element local matrices & vectors to global matrices and vectors.
+!> Vectorized version, does not support normal or tangential boundary
+!> conditions yet.
+   SUBROUTINE UpdateGlobalEquationsVec( Gmtr, Lmtr, Gvec, Lvec, n, &
+           NDOFs, NodeIndexes, RotateNT, UElement, MCAssembly )
+     TYPE(Matrix_t), POINTER :: Gmtr         !< The global matrix
+     REAL(KIND=dp) :: Lmtr(:,:)              !< Local matrix to be added to the global matrix.
+     REAL(KIND=dp) :: Gvec(:)                !< Element local force vector.
+     REAL(KIND=dp) :: Lvec(:)                !< The global RHS vector.
+     INTEGER :: n                            !< Number of nodes.
+     INTEGER :: NDOFs                        !< Number of degrees of free per node.
+     INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping.
+     LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
+     LOGICAL, OPTIONAL :: MCAssembly   !< Assembly process is multicoloured and guaranteed race condition free 
+
+     ! Local variables
+     INTEGER :: dim, i,j,k
+     INTEGER :: Ind(n*NDOFs)
+     REAL(KIND=dp) :: Vals(n*NDOFs)
+!DIR$ ATTRIBUTES ALIGN:64::Ind, Vals
+
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: Rotate
+     LOGICAL :: ColouredAssembly
+
+     IF (PRESENT(UElement)) THEN
+       Element => UElement
+     ELSE
+       Element => CurrentModel % CurrentElement
+     END IF
+     
+     IF ( CheckPassiveElement(Element) )  RETURN
+     Rotate = .TRUE.
+     IF ( PRESENT(RotateNT) ) Rotate = RotateNT
+     
+     ColouredAssembly = .FALSE.
+     IF ( PRESENT(MCAssembly) ) ColouredAssembly = MCAssembly
+
+     dim = CoordinateSystemDimension()
+     ! TEMP
+     ! IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
+     
+     ! DO i=1,Element % TYPE % NumberOfNodes
+     !     Ind(i) = BoundaryReorder(Element % NodeIndexes(i))
+     ! END DO
+     ! TODO: See that RotateMatrix is vectorized
+     ! CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
+     !                    Ind, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
+     IF (Rotate .AND. ndofs >= dim) THEN
+       CALL Fatal('UpdateGlobalEquationsVec', &
+               'Normal or tangential boundary conditions not supported yet!')
+     END IF
+     
+     IF ( ASSOCIATED( Gmtr ) ) THEN
+       SELECT CASE( Gmtr % FORMAT )
+       CASE( MATRIX_CRS )
+         CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr, ColouredAssembly)
+       CASE DEFAULT
+         CALL Fatal('UpdateGlobalEquationsVec','Not implemented for given matrix type')
+       END SELECT
+     END IF
+     
+     ! Check for multicolored assembly
+     IF (ColouredAssembly) THEN 
+       IF (ANY(NodeIndexes<=0)) THEN
+         ! Vector masking needed, no ATOMIC needed
+         DO i=1,n
+           IF (NodeIndexes(i)>0) THEN
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+             DO j=1,NDOFs
+               k = NDOFs*(NodeIndexes(i)-1) + j
+               Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+             END DO
+           END IF
+         END DO
+       ELSE
+         ! No vector masking needed, no ATOMIC needed
+         DO i=1,n
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+           DO j=1,NDOFs
+             k = NDOFs*(NodeIndexes(i)-1) + j
+             Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+           END DO
+         END DO
+       END IF ! Vector masking
+     ELSE
+       IF (ANY(NodeIndexes<=0)) THEN
+         ! Vector masking needed, ATOMIC needed
+         DO i=1,n
+           IF (NodeIndexes(i)>0) THEN
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+             DO j=1,NDOFs
+               k = NDOFs*(NodeIndexes(i)-1) + j
+               !$OMP ATOMIC
+               Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+             END DO
+           END IF
+         END DO
+       ELSE
+         ! No vector masking needed, ATOMIC needed
+         DO i=1,n
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+           DO j=1,NDOFs
+             k = NDOFs*(NodeIndexes(i)-1) + j
+             !$OMP ATOMIC
+             Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+           END DO
+         END DO
+       END IF ! Vector masking
+     END IF ! Coloured assembly
+   END SUBROUTINE UpdateGlobalEquationsVec
+
 !------------------------------------------------------------------------------
 !> Update the global vector with the local vector entry.
 !------------------------------------------------------------------------------
@@ -3852,6 +3969,7 @@ CONTAINS
     LOGICAL :: NeedListMatrix
     INTEGER, ALLOCATABLE :: Rows0(:), Cols0(:)
     REAL(KIND=dp), POINTER :: BulkValues0(:)
+    INTEGER :: DirCount
 
 !------------------------------------------------------------------------------
 ! These logical vectors are used to minimize extra effort in setting up different BCs
@@ -3911,6 +4029,12 @@ CONTAINS
              NDOFs, Perm, BC, DonePeriodic )
        END IF
      END DO
+
+     IF( InfoActive(12) ) THEN
+       CALL Info('SetDirichletBoundaries','Number of periodic points set: '&
+           //TRIM(I2S(COUNT(DonePeriodic))),Level=12)
+     END IF
+
      DEALLOCATE( DonePeriodic ) 
 
    END IF
@@ -3961,6 +4085,7 @@ CONTAINS
 
     bndry_start = Model % NumberOfBulkElements+1
     bndry_end   = bndry_start+Model % NumberOfBoundaryElements-1
+    DirCount = 0
 
     ! check and set some flags for nodes belonging to n-t boundaries
     ! getting set by other bcs:
@@ -4594,6 +4719,9 @@ CONTAINS
     END IF
 
     IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
+
+    CALL Info('SetDirichletBoundaries','Number of dofs set: '//TRIM(I2S(DirCount)))
+
     
 !------------------------------------------------------------------------------
 
@@ -4717,6 +4845,7 @@ CONTAINS
 
                   ! Consider all components of the cartesian vector mapped to the 
                   ! N-T coordinate system. Should this perhaps have scaling included?
+                  DirCount = DirCount + 1
                   CALL ZeroRow( A,lmax )
                   IF( .NOT. OffDiagonal) THEN
                     DO k=1,dim
@@ -4728,10 +4857,12 @@ CONTAINS
                   A % ConstrainedDOF(lmax) = .FALSE.
                 END IF
               ELSE
+                DirCount = DirCount + 1
                 CALL SetSinglePoint(k,DOF,Work(j),.FALSE.)
               END IF
             ELSE
               DO l=1,MIN( NDOFs, SIZE(WorkA,1) )
+                DirCount = DirCount + 1
                 CALL SetSinglePoint(k,l,WorkA(l,1,j),.FALSE.)
               END DO
             END IF
@@ -4871,6 +5002,8 @@ CONTAINS
            RETURN
         END IF
       END IF
+
+      DirCount = DirCount + 1
 
       IF ( A % FORMAT == MATRIX_SBAND ) THEN
         CALL SBand_SetDirichlet( A,b,k,s*val )
@@ -6447,7 +6580,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: nbuff(:)
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
 
-    LOGICAL :: MassConsistent, LhsSystem
+    LOGICAL :: MassConsistent, LhsSystem, RotationalNormals
     LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
     INTEGER :: LhsConflicts
 
@@ -6510,8 +6643,10 @@ CONTAINS
                 Found = ListGetLogical( Model % BCs(i) % Values, &
                     TRIM(VariableName) // ' Rotate',gotIt)
                 IF ( Found .OR. .NOT. Gotit ) THEN
-                  MassConsistent=ListGetLogical(Model % BCs(i) % Values, &
+                  MassConsistent = ListGetLogical(Model % BCs(i) % Values, &
                           'Mass Consistent Normals',gotIt)
+                  RotationalNormals = ListGetLogical(Model % BCs(i) % Values, &
+                          'Rotational Normals',gotIt)
 
                   Condition(1:n) = ListGetReal( Model % BCs(i) % Values, &
                        TRIM(VariableName) // ' Condition', n, NodeIndexes, Conditional )
@@ -6524,6 +6659,11 @@ CONTAINS
                       nrm = 0._dp
                       IF (MassConsistent) THEN
                         CALL IntegMassConsistent(j,n,nrm)
+                      ELSE IF( RotationalNormals ) THEN
+                        nrm(1) = ElementNodes % x(j)
+                        nrm(2) = ElementNodes % y(j)
+                        nrm(3) = 0.0_dp
+                        nrm = nrm / SQRT( SUM( nrm * nrm ) )
                       ELSE
                         Bu = Element % TYPE % NodeU(j)
                         Bv = Element % TYPE % NodeV(j)
@@ -13486,6 +13626,7 @@ CONTAINS
        SumCount = 0
      END IF
 
+
      ComplexMatrix = Solver % Matrix % Complex
      IF( ComplexMatrix ) THEN
        IF( MODULO( Dofs,2 ) /= 0 ) CALL Fatal('GenerateConstraintMatrix',&
@@ -13532,10 +13673,12 @@ CONTAINS
        ActiveComponents = .TRUE.
        
        IF(constraint_ind>Model % NumberOfBCs) THEN
+
          Atmp => Ctmp
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
          Ctmp => Ctmp % ConstraintMatrix
        ELSE
+
          IF(.NOT. Solver % MortarBCsChanged) EXIT
          
          IF( AnyPriority ) THEN
@@ -13561,8 +13704,14 @@ CONTAINS
          SomeSet = .FALSE.
          SomeSkip = .FALSE.
          DO i=1,Dofs
-           str = ComponentNameVar( Solver % Variable, i )
+           IF( Dofs > 1 ) THEN
+             str = ComponentName( Solver % Variable, i )
+           ELSE
+             str = Solver % Variable % Name 
+           END IF
+
            SetDof = ListGetLogical( Model % BCs(bc_ind) % Values,'Mortar BC '//TRIM(str),Found )
+
            SetDefined(i) = Found
            IF(Found) THEN
              ActiveComponents(i) = SetDof
@@ -13589,6 +13738,7 @@ CONTAINS
          END IF
 
        END IF
+
        TransposePresent = TransposePresent .OR. ASSOCIATED(Atmp % Child)
        IF( TransposePresent ) THEN
          CALL Info('GenerateConstraintMatrix','Transpose matrix is present')
@@ -13601,11 +13751,15 @@ CONTAINS
        IF( SumProjectors .AND. CreateSelf ) THEN
          CALL Fatal('GenerateConstraintMatrix','It is impossible to sum up nodal projectors!')
        END IF
+
        
        IF( Dofs == 1 ) THEN         
 
-         IF( .NOT. ActiveComponents(1) ) CYCLE
-
+         IF( .NOT. ActiveComponents(1) ) THEN
+           CALL Info('GenerateConstraintMatrix','Skipping component: '//TRIM(I2S(1)),Level=12)
+           CYCLE
+         END IF
+         
          DO i=1,Atmp % NumberOfRows           
 
            IF( Atmp % Rows(i) >= Atmp % Rows(i+1) ) CYCLE ! skip empty rows
@@ -13776,8 +13930,11 @@ CONTAINS
          DO i=1,Atmp % NumberOfRows           
            DO j=1,Dofs
              
-             IF( .NOT. ActiveComponents(j) ) CYCLE
-
+             IF( .NOT. ActiveComponents(j) ) THEN
+               CALL Info('GenerateConstraintMatrix','Skipping component: '//TRIM(I2S(j)),Level=12)
+               CYCLE
+             END IF
+             
              ! For complex matrices both entries mist be created
              ! since preconditioning benefits from 
              IF( ComplexMatrix ) THEN
