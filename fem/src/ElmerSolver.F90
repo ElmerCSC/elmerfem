@@ -510,8 +510,9 @@ END INTERFACE
        OutputIntervals => ListGetIntegerArray( CurrentModel % Simulation, &
                        'Output Intervals', GotIt )
        IF( GotIt ) THEN
-         IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
-           CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
+         IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN 
+           CALL INFO('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !',Level=1)
+           CALL FATAL('ElmerSolver', 'If you are running >steady state<, give only single entry to > Output Intervals < ')
          END IF
        ELSE
          ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
