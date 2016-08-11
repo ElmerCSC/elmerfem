@@ -16193,7 +16193,7 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp) :: BoundingBox(6)
     INTEGER, ALLOCATABLE :: CellCount(:,:,:)
-    
+
 
     MaskExists = PRESENT(MaskActive)
     IF( MaskExists ) THEN
@@ -16323,14 +16323,15 @@ CONTAINS
         NoPart(i) = n
       END IF
     END DO
+
     DO i=1,nsize
       j = NodePart(i)
-      IF( j > 0 ) NodePart(i) = NoPart(j)
+      IF( j > 0 ) NodePart(i) = NoPart(j) 
     END DO
-           
-    IF( ASSOCIATED(Clustering)) THEN
-      Clustering(1:nsize) = Nodepart(1:nsize)
-      DEALLOCATE(Nodepart)
+              
+    IF( ASSOCIATED( Clustering ) ) THEN
+      WHERE( NodePart(1:nsize) > 0 ) Clustering(1:nsize) = Nodepart(1:nsize)
+      DEALLOCATE( NodePart ) 
     ELSE
       Clustering => Nodepart
       NULLIFY( Nodepart ) 

@@ -66,13 +66,11 @@
        END IF
        CALL PartitionMeshPart(SetNo,ElementSet,SectionParams,.TRUE.)
      END DO
-
      
-!     IF( NumberOfBoundarySets > 0 ) THEN
-!     CALL Info('PartitionMesh','Extending the boundary patitioning into the mesh') 
-!     IF( NumberOfBoundarySets > 0 ) THEN
-!       CALL ExtentMeshPart()
-!     END IF
+     IF( NumberOfBoundarySets > 0 ) THEN
+       CALL InheritBoundaryPart()
+       CALL ExtendBoundaryPart()
+     END IF
      
      CALL Info('PartitionMesh','Partition the bulk elements sets')
      CALL InitializeBulkElementSet(NumberOfSets)
@@ -113,13 +111,132 @@
 
    CONTAINS
 
+     ! Inherit partition from a boundary partition.
+     ! In case of conflict the 1st occurance prevails.
+     !-----------------------------------------------------
+     SUBROUTINE InheritBoundaryPart()
+       
+       TYPE(Element_t), POINTER :: Element, Parent
+       INTEGER :: t, LeftRight, BoundPart, NoHerited, NoConflict, ElemIndx
+
+       CALL Info('PartitionMesh','Inheriting the boundary patitioning into the bulk mesh') 
+
+       NoHerited = 0
+       NoConflict = 0
+
+       DO t=Mesh % NumberOfBulkElements + 1,&
+           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements 
+         Element => Solver % Mesh % Elements(t) 
+         IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
+           DO LeftRight=0,1
+             IF( LeftRight == 0 ) THEN
+               Parent => Element % BoundaryInfo % Left
+             ELSE
+               Parent => Element % BoundaryInfo % Right
+             END IF
+             IF( ASSOCIATED( Parent ) ) THEN
+               BoundPart = ElementSet( t ) 
+               ElemIndx = Parent % ElementIndex
+               IF( ElementSet( ElemIndx ) == 0 ) THEN
+                 NoHerited = NoHerited + 1
+                 ElementPart( ElemIndx ) = BoundPart
+               ELSE IF( ElementSet( ElemIndx ) /= BoundPart ) THEN
+                 NoConflict = NoConflict + 1
+               END IF
+             END IF
+           END DO
+         END IF
+       END DO
+       
+       CALL Info('PartitionMesh','Number of herited bulk elements: '//TRIM(I2S(NoHerited)))
+       CALL Info('PartitionMesh','Number of conflicted bulk elements: '//TRIM(I2S(NoConflict)))
+       
+     END SUBROUTINE InheritBoundaryPart
+
+
+     ! Extend partition from an existing bulk partitioning. 
+     ! In case of conflict the dominating partitioning prevails.
+     !-----------------------------------------------------
+
+     SUBROUTINE ExtendBoundaryPart()
+       
+       TYPE(Element_t), POINTER :: Element
+       INTEGER :: t, ExtendLayers, NoExtend, ElemIndx, NoHits, TestPart, NumberOfParts
+       LOGICAL, ALLOCATABLE :: ActiveNode(:)
+       INTEGER, ALLOCATABLE :: RefHits(:)
+
+       NoExtend = 0
+
+       ExtendLayers = ListGetInteger( Params,'Partition Mesh Extend Layers', Found ) 
+       IF( ExtendLayers <= 0 ) RETURN
+       
+       CALL Info('PartitionMesh','Extending boundary meshes by layers: '//TRIM(I2S(ExtendLayers)))
+
+       ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) ) 
+       
+       NumberOfParts = MAXVAL( ElementPart ) 
+       IF( NumberOfParts > 1 ) THEN
+         CALL Info('PartitionMesh','Extending boundary to dominating owner among: '//TRIM(I2S(NumberOfParts)))
+         ALLOCATE( RefHits( Mesh % NumberOfBulkElements ) )
+       END IF
+
+
+       DO i=1,ExtendLayers
+
+         ! If testing for several partitions then nullify the reference
+         IF( NumberOfParts > 1 ) THEN
+           RefHits = 0
+         END IF
+
+         DO TestPart = 1, NumberOfParts         
+
+           ! Set the active nodes for this partition
+           ActiveNode = .FALSE.
+           DO t=1, Mesh % NumberOfBulkElements 
+             IF( ElementPart( t ) == TestPart ) THEN
+               Element => Solver % Mesh % Elements(t) 
+               ActiveNode( Element % NodeIndexes ) = .TRUE.
+             END IF
+           END DO
+           
+           !PRINT *,'Active nodes:',COUNT( ActiveNode ) 
+           
+           ! Count the number of hits for this partition
+           ! If larger than the maximum so far set the partition
+           DO t=1, Mesh % NumberOfBulkElements 
+             IF( ElementPart( t ) /= 0 ) CYCLE
+
+             Element => Solver % Mesh % Elements(t) 
+             NoHits = COUNT( ActiveNode( Element % NodeIndexes ) )
+             IF( NoHits == 0 ) CYCLE
+
+             IF( NumberOfParts > 1 ) THEN
+               IF( NoHits <= RefHits( t ) ) CYCLE
+               RefHits( t ) = NoHits
+             END IF
+             
+             ElementPart( t ) = TestPart 
+             NoExtend = NoExtend + 1
+           END DO
+         END DO
+       END DO
+
+       CALL Info('PartitionMesh','Number of extended bulk elements: '//TRIM(I2S(NoExtend)))
+       
+       DEALLOCATE( ActiveNode ) 
+       IF( NumberOfParts > 1 ) DEALLOCATE( RefHits ) 
+
+     END SUBROUTINE ExtendBoundaryPart
+
+
      SUBROUTINE SetPartitionVariable()
        
        TYPE(Variable_t), POINTER :: Var
        INTEGER :: t
        INTEGER, POINTER :: DGIndexes(:)
        TYPE(Element_t), POINTER :: Element
-       
+       INTEGER :: n
+
        Var => Solver % Variable 
        IF( .NOT. ASSOCIATED( Var ) ) RETURN
        
@@ -127,7 +244,8 @@
        
        Var % Values = 0.0_dp
        
-       DO t=1,Mesh % NumberOfBulkElements 
+       n = Mesh % NumberOfBulkElements 
+       DO t=1,n
          Element => Solver % Mesh % Elements(t) 
          IF( ASSOCIATED( Element % DGIndexes ) ) THEN
            Var % Values( Element % DGIndexes ) = 1.0_dp * ElementPart(t)
@@ -157,7 +275,6 @@
        
        ALLOCATE( BCPart( Model % NUmberOfBCs ) ) 
        BCPart = 0
-RETURN
 
        NumberOfParts = 0
        DO bc_id = 1, Model % NumberOfBCs 
@@ -225,6 +342,7 @@ RETURN
        END DO
 
        CALL Info('PartitionMesh','Number of sets for boundary partitioning: '//TRIM(I2S(NumberOfParts)))
+       CALL Info('PartitionMesh','Number of boundary elements set: '//TRIM(I2S(COUNT(ElementSet > 0))))
       
      END SUBROUTINE InitializeBoundaryElementSet
 
@@ -261,6 +379,7 @@ RETURN
        Found = .FALSE.
        DO i = 1, Mesh % NumberOfBulkElements 
          IF( ElementPart(i) > 0 ) CYCLE
+
          Element => Mesh % Elements(i)
          j = 0
          IF( NumberOfParts > 0 ) THEN
@@ -300,7 +419,9 @@ RETURN
       INTEGER :: SumPartitions, NoPartitions, NoCand
       LOGICAL :: Found
       INTEGER :: NoCandElements
-      
+      REAL(KIND=dp) :: BoundaryFraction
+      INTEGER :: PartOffset
+
       
       PartitionCand = ( ElementSet == SetNo )
       n = Solver % Mesh % NumberOfBulkElements
@@ -310,6 +431,19 @@ RETURN
       CALL Info('PartitionMesh','Number of elements in set: '//TRIM(I2S(NoCandElements)))
 
       IF( NoCandElements == 0 ) RETURN
+
+      
+      BoundaryFraction = ListGetCReal( Params,&
+          'Boundary Partitioning Maximum Fraction',Found)
+      IF( IsBoundary .AND. NoCandElements <= &
+          BoundaryFraction * Solver % Mesh % NumberOfBulkElements ) THEN
+        WRITE(Message,'(A,ES12.3)') 'Number of boundary elements below critical limit: ',BoundaryFraction
+        CALL Info('PartitionMesh',Message )
+        WHERE( PartitionCand ) ElementPart = SetNo
+        RETURN
+      END IF
+
+
          
       BoundaryPart = .FALSE.
 
@@ -378,6 +512,9 @@ RETURN
       END IF
 
       CALL Info('PartitionMesh','Using partitioning method: '//TRIM(SetMethod))
+      
+      PartOffset = MAXVAL( ElementPart )       
+      CALL Info('PartitionMesh','Partitioning offset: '//TRIM(I2S(PartOffset)))
 
       SELECT CASE( SetMethod ) 
         
@@ -404,12 +541,17 @@ RETURN
           
       END SELECT
 
+      IF( PartOffset > 0 ) THEN
+        WHERE( PartitionCand ) ElementPart = ElementPart + PartOffset
+      END IF
+
+
       CALL Info('PartitionMesh','Partitioning of set finished')
 
       IF( GotCoordTransform ) THEN
         CALL BackCoordinateTransformation( Mesh, DeleteTemporalMesh = .TRUE. )
       END IF
-      
+
   
     END SUBROUTINE PartitionMeshPart
       
