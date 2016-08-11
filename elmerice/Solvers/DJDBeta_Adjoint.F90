@@ -77,7 +77,7 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
   integer :: p,q
 
   logical :: PowerFormulation,Beta2Formulation
-  Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal
+  Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal=.TRUE.
   Logical :: NormalTangential1,NormalTangential2
 
   save SolverName,NeumannSolName,AdjointSolName,VarSolName,GradSolName

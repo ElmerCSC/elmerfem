@@ -71,7 +71,7 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
   LOGICAL :: FirstTime=.TRUE., &
        Found= .FALSE., &
        AllocationsDone= .FALSE., &
-       UnFoundFatal
+       UnFoundFatal=.TRUE.
 
   SAVE g, &
        Density, &     

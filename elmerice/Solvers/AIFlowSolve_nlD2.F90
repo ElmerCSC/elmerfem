@@ -121,7 +121,7 @@
 
      INTEGER :: AIFlowType
      LOGICAL :: GotForceBC, GotIt, NewtonLinearization = .FALSE., &
-                NormalTangential=.FALSE., UnFoundFatal
+                NormalTangential=.FALSE., UnFoundFatal=.TRUE.
 
      INTEGER :: body_id,bf_id
      INTEGER :: old_body = -1
