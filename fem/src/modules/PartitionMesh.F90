@@ -24,7 +24,7 @@
      INTEGER :: NumberOfSets, NumberOfBoundarySets, SetNo, id
      LOGICAL, POINTER :: PartitionCand(:)
      TYPE(Mesh_t), POINTER :: Mesh
-     INTEGER :: i,j,k,n
+     INTEGER :: i,j,k,n, allocstat
      LOGICAL :: Found
      INTEGER, ALLOCATABLE :: EquationPart(:)    
 
@@ -43,13 +43,21 @@
      Params => Solver % Values
      Mesh => Solver % Mesh
      n = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-     ALLOCATE( PartitionCand(n), ElementSet(n), ElementPart(n) )
+     ALLOCATE( PartitionCand(n), ElementSet(n), ElementPart(n), STAT = allocstat )
+     IF( allocstat /= 0 ) THEN
+       CALL Fatal('PartitionMesh','Allocation error in partition stuff')
+     END IF
+
      PartitionCand = .FALSE.
      ElementSet = 0
      ElementPart = 0
      
      n = MAX( Model % NumberOfBCs, Model % NumberOfEquations ) 
-     ALLOCATE( ParameterInd(n) ) 
+     ALLOCATE( ParameterInd(n), STAT = allocstat ) 
+     IF( allocstat /= 0 ) THEN
+       CALL Fatal('PartitionMesh','Allocation error for ParameterInd')
+     END IF
+     
      ParameterInd = 0
      
      CALL Info('PartitionMesh','Partitioning the boundary elements sets') 
@@ -69,6 +77,9 @@
      
      IF( NumberOfBoundarySets > 0 ) THEN
        CALL InheritBoundaryPart()
+       IF( ListGetLogical( Params,'Partition Mesh Merge Boundaries',Found ) ) THEN
+         CALL MergeBoundaryPart()
+       END IF
        CALL ExtendBoundaryPart()
      END IF
      
@@ -90,10 +101,7 @@
      !CALL Info('PartitionMesh','Defining halo mesh')     
      !CALL DefineMeshHalo()
      
-
      CALL CreateNeighbourList()
-
-     
      
      DirectoryName = ListGetString( Params,'Output Directory',Found )
      IF( Found ) THEN
@@ -154,6 +162,94 @@
      END SUBROUTINE InheritBoundaryPart
 
 
+     ! Merge partitioned boundaries that share even just one node. 
+     !------------------------------------------------------------
+     SUBROUTINE MergeBoundaryPart()
+       
+       TYPE(Element_t), POINTER :: Element
+       INTEGER :: t, i, j, MaxPart
+       LOGICAL, ALLOCATABLE :: PartFlag(:), PartitionCoupling(:,:)
+       INTEGER, ALLOCATABLE :: PartMap(:)
+       
+
+       CALL Info('PartitionMesh','Inheriting the boundary patitioning into the bulk mesh') 
+
+       MaxPart = MAXVAL( ElementPart ) 
+
+       ALLOCATE( PartitionCoupling(MaxPart, MaxPart) )
+       PartitionCoupling = .FALSE.
+       
+       ALLOCATE( PartFlag( Mesh % NumberOfNodes ) ) 
+
+       DO i = 1, MaxPart
+         PartFlag = .FALSE.
+         CALL Info('PartitionMesh','Studying coupling with partition:'//TRIM(I2S(i)),Level=20)
+         DO t=1, Mesh % NumberOfBulkElements 
+           IF( ElementPart( t ) == i ) THEN 
+             Element => Solver % Mesh % Elements(t) 
+             PartFlag( Element % NodeIndexes ) = .TRUE.
+           END IF
+         END DO
+
+         ! Studying to which partitions couple to
+         ! Only study cases j>i since the coupling is symmetric
+         DO t=1, Mesh % NumberOfBulkElements 
+           j = ElementPart( t )
+           IF( j > i ) THEN
+             Element => Solver % Mesh % Elements(t) 
+             IF( ANY( PartFlag( Element % NodeIndexes ) ) ) THEN
+               IF( .NOT. PartitionCoupling(i,j) ) THEN
+                 CALL Info('PartitionMesh',&
+                     'Coupling '//TRIM(I2S(i))//' and '//TRIM(I2S(j)),Level=10)
+                 PartitionCoupling(i,j) = .TRUE.
+                 PartitionCoupling(j,i) = .TRUE.
+               END IF
+             END IF
+           END IF
+         END DO
+       END DO
+
+       IF(.NOT. ANY( PartitionCoupling ) ) THEN
+         CALL Info('PartitionMesh','Partitions are not coupled')
+         RETURN
+       END IF
+
+
+       ALLOCATE( PartMap( MaxPart ) )
+       DO i=1,MaxPart
+         PartMap(i) = i
+       END DO
+       DO i=1,MaxPart
+         DO j=i+1,MaxPart
+           IF( PartitionCoupling(i,j) ) THEN
+             IF( PartMap(i) /= PartMap(j) ) THEN
+               CALL Info('PartitionMesh','Mapping partition '&
+                   //TRIM(I2S(j))//' to be '//TRIM(I2S(PartMap(i))),Level=8)
+               PartMap(j) = PartMap(i)
+             END IF
+           END IF
+         END DO
+       END DO
+       j = MAXVAL( PartMap ) 
+       CALL Info('PartitionMesh','Number of mapped partitions: '//TRIM(I2S(j)))
+
+       ! The coupling is studied via bulk elements as they are all that matters. 
+       ! In the end we also remap the boundary elements for consistancy. 
+       DO t=1, Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+         i = ElementPart( t ) 
+         IF( i > 0 ) THEN
+           ElementPart(t) = PartMap(i)
+         END IF
+       END DO
+       j = MAXVAL( PartMap ) 
+       CALL Info('PartitionMesh','Connected boundaries merged')
+
+       
+     END SUBROUTINE MergeBoundaryPart
+
+
+
+
      ! Extend partition from an existing bulk partitioning. 
      ! In case of conflict the dominating partitioning prevails.
      !-----------------------------------------------------
@@ -164,6 +260,7 @@
        INTEGER :: t, ExtendLayers, NoExtend, ElemIndx, NoHits, TestPart, NumberOfParts
        LOGICAL, ALLOCATABLE :: ActiveNode(:)
        INTEGER, ALLOCATABLE :: RefHits(:)
+       INTEGER :: allocstat
 
        NoExtend = 0
 
@@ -172,12 +269,19 @@
        
        CALL Info('PartitionMesh','Extending boundary meshes by layers: '//TRIM(I2S(ExtendLayers)))
 
-       ALLOCATE( ActiveNode( Mesh % NumberOfNodes ) ) 
-       
+       ALLOCATE( ActiveNode( Mesh % NumberOfNodes ), STAT = allocstat ) 
+       IF( allocstat /= 0 ) THEN
+         CALL Fatal('PartitionMesh','Allocation error for ActiveNode')
+       END IF
+
+
        NumberOfParts = MAXVAL( ElementPart ) 
        IF( NumberOfParts > 1 ) THEN
          CALL Info('PartitionMesh','Extending boundary to dominating owner among: '//TRIM(I2S(NumberOfParts)))
-         ALLOCATE( RefHits( Mesh % NumberOfBulkElements ) )
+         ALLOCATE( RefHits( Mesh % NumberOfBulkElements ), STAT = allocstat )
+         IF( allocstat /= 0 ) THEN
+           CALL Fatal('PartitionMesh','Allocation error for RefHits')
+         END IF
        END IF
 
 
@@ -268,12 +372,16 @@
        TYPE(Element_t), POINTER :: Element
        LOGICAL :: Found, SeparateBoundarySets        
        INTEGER, ALLOCATABLE :: BCPart(:)
-       
+       INTEGER :: allocstat
+
        
        SeparateBoundarySets = ListGetLogical( Params, &
            'Partitioning Separate Boundary Set', Found)
        
-       ALLOCATE( BCPart( Model % NUmberOfBCs ) ) 
+       ALLOCATE( BCPart( Model % NUmberOfBCs ), STAT = allocstat )
+       IF( allocstat /= 0 ) THEN
+         CALL Fatal('PartitionMesh','Allocation error for BCPart')
+       END IF
        BCPart = 0
 
        NumberOfParts = 0
@@ -362,10 +470,15 @@
        TYPE(ValueList_t), POINTER :: ValueList
        TYPE(Element_t), POINTER :: Element
        LOGICAL :: Found, SeparateBoundarySets, FoundAny 
-                    
+       INTEGER :: allocstat
+     
        ElementSet = 0 
        
-       ALLOCATE( EquationPart( Model % NumberOfEquations ) ) 
+       ALLOCATE( EquationPart( Model % NumberOfEquations ), STAT = allocstat ) 
+       IF( allocstat /= 0 ) THEN
+         CALL Fatal('PartitionMesh','Allocation error for EquationPart')
+       END IF
+ 
        EquationPart = 0
        FoundAny = .FALSE.
        DO eq_id = 1, Model % NumberOfEquations 
@@ -566,11 +679,16 @@
       INTEGER :: i,j,k,l,n,m,Partition,lsum,lmax
       INTEGER :: TmpNeighbours(100)
       TYPE(Element_t), POINTER :: Element
+      INTEGER :: allocstat
 
       CALL Info('PartitionMesh','Creating neighbour list for parallel saving')
 
       n = Mesh % NumberOfNodes
       ALLOCATE( NeighbourList(n) ) 
+      IF( allocstat /= 0 ) THEN
+        CALL Fatal('PartitionMesh','Allocation error for NeighbourList')
+      END IF
+
 
       DO i=1,n
         NULLIFY( NeighbourList(i) % Neighbours )
@@ -583,7 +701,10 @@
         DO j=1,m
           k = Element % NodeIndexes(j)
           IF( .NOT. ASSOCIATED( NeighbourList(k) % Neighbours ) ) THEN
-            ALLOCATE( NeighbourList(k) % Neighbours(1) ) 
+            ALLOCATE( NeighbourList(k) % Neighbours(1), STAT = allocstat )
+            IF( allocstat /= 0 ) THEN
+              CALL Fatal('PartitionMesh','Allocation error for Neighbours')
+            END IF            
             NeighbourList(k) % Neighbours(1) = Partition
           ELSE IF( .NOT. ANY( NeighbourList(k) % Neighbours == Partition ) ) THEN
             l = SIZE( NeighbourList(k) % Neighbours )
@@ -591,7 +712,10 @@
             TmpNeighbours(1:l) = NeighbourList(k) % Neighbours(1:l)
             DEALLOCATE( NeighbourList(k) % Neighbours )
 
-            ALLOCATE( NeighbourList(k) % Neighbours(l+1) ) 
+            ALLOCATE( NeighbourList(k) % Neighbours(l+1), STAT = allocstat )
+            IF( allocstat /= 0 ) THEN
+              CALL Fatal('PartitionMesh','Allocation error for Neighbours')
+            END IF                       
             NeighbourList(k) % Neighbours(1:l) = TmpNeighbours(1:l)
             NeighbourList(k) % Neighbours(l+1) = Partition
           END IF
