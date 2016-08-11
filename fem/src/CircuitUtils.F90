@@ -43,6 +43,7 @@
 MODULE CircuitUtils
 
     USE DefUtils
+    IMPLICIT NONE
 
 CONTAINS
 
@@ -101,7 +102,6 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE GetWPotential(Wbase)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     REAL(KIND=dp) :: Wbase(:)
 
@@ -204,8 +204,8 @@ CONTAINS
     IF (.NOT. ASSOCIATED(ComponentParams)) CALL Fatal ('GetComponentHomogenizationBodyIds', &
                                                          'Component parameters not found!')
     BodyIds => ListGetIntegerArray(ComponentParams, 'Homogenization Parameters Body', Found)
-    IF (.NOT. Found) BodyIds => Null()
-    
+    IF (.NOT. Found) BodyIds => GetComponentBodyIds(Id)
+
 !------------------------------------------------------------------------------
   END FUNCTION GetComponentHomogenizationBodyIds
 !------------------------------------------------------------------------------
@@ -244,6 +244,7 @@ END MODULE CircuitUtils
 MODULE CircuitsMod
 
   USE DefUtils
+  IMPLICIT NONE
 
 CONTAINS 
 
@@ -462,7 +463,7 @@ CONTAINS
     Active = GetNOFBoundaryElements()
     DO t=1,Active
        Element => GetBoundaryElement(t)
-       IF (.NOT. ActiveBoundaryElement()) CYCLE
+!       IF (.NOT. ActiveBoundaryElement()) CYCLE
        
        BC=>GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
@@ -964,7 +965,7 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   FUNCTION AddIndex(Ind, Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
+    IMPLICIT NONE
     Integer :: Ind, AddIndex
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
@@ -987,7 +988,8 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   FUNCTION AddImIndex(Ind)
 !------------------------------------------------------------------------------
-    USE DefUtils
+    IMPLICIT NONE
+    INTEGER :: Ind
     Integer :: AddImIndex
     IF ( .NOT. CurrentModel % HarmonicCircuits ) CALL Fatal ('AddImIndex','Model is not of harmonic type!')
     
@@ -999,7 +1001,7 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   FUNCTION ReIndex(Ind, Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
+    IMPLICIT NONE
     INTEGER :: Ind, ReIndex
     LOGICAL, OPTIONAL :: Harmonic
     LOGICAL :: harm
@@ -1022,6 +1024,7 @@ variable % owner = ParEnv % PEs-1
 !------------------------------------------------------------------------------
   FUNCTION ImIndex(Ind)
 !------------------------------------------------------------------------------
+    IMPLICIT NONE
     Integer :: Ind, ImIndex
 
     ImIndex = 2 * Ind
@@ -1058,8 +1061,8 @@ END MODULE CircuitsMod
 
 MODULE CircMatInitMod
 
-  USE DefUtils
   USE CircuitsMod
+  IMPLICIT NONE
 
 CONTAINS
 
@@ -1191,7 +1194,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CountMatElement(Rows, Cnts, RowId, dofs, Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: Rows(:), Cnts(:)
     INTEGER :: RowId, dofs
@@ -1253,7 +1255,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CreateMatElement(Rows, Cols, Cnts, RowId, ColId, Harmonic)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     INTEGER :: Rows(:), Cols(:), Cnts(:)
     INTEGER :: RowId, ColId
@@ -1542,7 +1543,8 @@ CONTAINS
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
-        IF (harm) j = ReIndex(PS(j))
+        j = PS(j)
+        IF (harm) j = ReIndex(j)
         IF(PRESENT(Cols)) THEN
           CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm) 
           CALL CreateMatElement(Rows, Cols, Cnts, j, Jsind, harm)
@@ -1599,7 +1601,8 @@ CONTAINS
       j = Indexes(p)
       IF(.NOT.Done(j)) THEN
         Done(j) = .TRUE.
-        IF (harm) j = ReIndex(PS(j))
+        j = PS(j)
+        IF (harm) j = ReIndex(j)
         IF(PRESENT(Cols)) THEN
           CALL CreateMatElement(Rows, Cols, Cnts, i, j, harm)
           CALL CreateMatElement(Rows, Cols, Cnts, j, i, harm)
@@ -1669,7 +1672,9 @@ CONTAINS
         q=j
         IF (dim == 3) q=q+nn
         IF (PRESENT(Cols)) THEN  
-          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, ReIndex(PS(Indexes(q))), harm)
+          q = PS(Indexes(q))
+          IF (harm) q = ReIndex(q)
+          CALL CreateMatElement(Rows, Cols, Cnts, dofIdtest+nm, q, harm)
         ELSE
           CALL CountMatElement(Rows, Cnts, dofIdtest+nm, 1, harm)
         END IF
@@ -1681,10 +1686,12 @@ CONTAINS
       DO j=1,ncdofs
         q=j
         IF (dim == 3) q=q+nn
+        q = PS(Indexes(q))
+        IF (harm) q = ReIndex(q)
         IF (PRESENT(Cols)) THEN  
-          CALL CreateMatElement(Rows, Cols, Cnts, ReIndex(PS(indexes(q))), dofId+nm, harm)
+          CALL CreateMatElement(Rows, Cols, Cnts, q, dofId+nm, harm)
         ELSE
-          CALL CountMatElement(Rows, Cnts, ReIndex(PS(indexes(q))), 1, harm)
+          CALL CountMatElement(Rows, Cnts, q, 1, harm)
         END IF
       END DO
     END DO

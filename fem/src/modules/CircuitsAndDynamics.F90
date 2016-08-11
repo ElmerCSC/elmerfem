@@ -233,12 +233,15 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
         ColId = Circuit % CircuitVariables(j) % ValueId + nm
 
-        ! A d/dt(x): (x could be voltage or current):
-        !--------------------------------------------
-        IF(Cvar % A(j) /= 0._dp) THEN
-          CALL AddToMatrixElement(CM, RowId, ColId, Cvar % A(j)/dt)
-          CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j)*ip(ColId-nm)/dt
-        END IF
+
+        IF ( TransientSimulation ) THEN 
+          ! A d/dt(x): (x could be voltage or current):
+          !--------------------------------------------
+          IF(Cvar % A(j) /= 0._dp) THEN
+            CALL AddToMatrixElement(CM, RowId, ColId, Cvar % A(j)/dt)
+            CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j)*ip(ColId-nm)/dt
+          END IF
+        END IF  
         ! B x:
         ! ------
         IF(Cvar % B(j) /= 0._dp) THEN
@@ -277,7 +280,12 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     CM => CurrentModel%CircuitMatrix
 
     DO CompInd = 1, Circuit % n_comp
+    
       Comp => Circuit % Components(CompInd)
+
+      Comp % Resistance = 0._dp 
+      Comp % Conductance = 0._dp 
+
       Cvar => Comp % vvar
       vvarId = Comp % vvar % ValueId + nm
       IvarId = Comp % ivar % ValueId + nm
@@ -285,6 +293,17 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
       IF ( Cvar % Owner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
+          CompParams => CurrentModel % Components(CompInd) % Values
+          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
+          Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
+          IF (Found) THEN
+            CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+            Comp % UseCoilResistance = .TRUE.
+            CALL AddToMatrixElement(CM, VvarId, IvarId, Comp % Resistance)
+          ELSE
+            Comp % UseCoilResistance = .FALSE.
+            Comp % Resistance = 0._dp
+          END IF
           CALL AddToMatrixElement(CM, VvarId, VvarId, -1._dp)
         CASE('massive')
           CALL AddToMatrixElement(CM, VvarId, IvarId, -1._dp)
@@ -436,28 +455,32 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
       localC = SUM(Tcoef(1,1,1:nn) * Basis(1:nn))
       
-      ! I * R, where 
-      ! R = (1/sigma * js,js):
-      ! ----------------------
-      localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
-      Comp % Resistance = Comp % Resistance + localR
+      IF (.NOT. Comp % UseCoilResistance) THEN
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
+        Comp % Resistance = Comp % Resistance + localR
       
-      CALL AddToMatrixElement(CM, VvarId, IvarId, localR)
+        CALL AddToMatrixElement(CM, VvarId, IvarId, localR)
+      END IF
       
       DO j=1,ncdofs
         q=j
         IF (dim == 3) q=q+nn
         IF (Comp % N_j/=0._dp) THEN
           ! ( d/dt a,w )        
-          IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt
-          IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
-          
-!          localL = value
+
+          IF ( TransientSimulation ) THEN 
+            IF (dim == 2) value = Comp % N_j * IP % s(t)*detJ*Basis(j)*circ_eq_coeff/dt
+            IF (dim == 3) value = Comp % N_j * IP % s(t)*detJ*SUM(WBasis(j,:)*w)/dt
+ !          localL = value
 !          Comp % Inductance = Comp % Inductance + localL
 
-          CALL AddToMatrixElement(CM, VvarId, PS(Indexes(q)), tscl * value)
-          CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
-
+            CALL AddToMatrixElement(CM, VvarId, PS(Indexes(q)), tscl * value)
+            CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
+         END IF
+          
           ! source: 
           ! (J, rot a'), where
           ! J = w*I, thus I*(w, rot a'):
@@ -576,12 +599,15 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
         IF (dim == 3) q=q+nn
         ! computing the mass term (sigma d/dt a, grad si):
         ! ---------------------------------------------------------
-        IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff/dt
-        IF(dim==3) value = IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)/dt
-!        localL = value
-!        Comp % Inductance = Comp % Inductance + localL
-        CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), tscl * value)
-        CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
+ 
+        IF ( TransientSimulation ) THEN 
+          IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff*circ_eq_coeff/dt
+          IF(dim==3) value = IP % s(t)*detJ*localC*SUM(Wbasis(j,:)*gradv)/dt
+  !        localL = value
+  !        Comp % Inductance = Comp % Inductance + localL
+          CALL AddToMatrixElement(CM, vvarId, PS(Indexes(q)), tscl * value)
+          CM % RHS(vvarid) = CM % RHS(vvarid) + pPOT(q) * value
+        END IF
 
         IF(dim==2) value = IP % s(t)*detJ*localC*basis(j)*grads_coeff
         IF(dim==3) value = IP % s(t)*detJ*localC*SUM(gradv*Wbasis(j,:))
@@ -728,18 +754,21 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
           CALL AddToMatrixElement(CM, dofIdtest+nm, dofId+nm, value)
         END DO
 
-        DO j=1,ncdofs
-          q=j
-          IF (dim == 3) q=q+nn
-          ! computing the mass term (sigma * d/dt * a, V'(alpha) grad si):
-          ! ---------------------------------------------------------
-          IF (dim == 2) value = IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff/dt
-          IF (dim == 3) value = IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)/dt
-!          localL = value
-!          Comp % Inductance = Comp % Inductance + localL
-          CALL AddToMatrixElement(CM, dofIdtest+nm, PS(Indexes(q)), tscl * value)
-          CM % RHS(dofIdtest+nm) = CM % RHS(dofIdtest+nm) + pPOT(q) * value
-        END DO
+
+        IF ( TransientSimulation ) THEN 
+          DO j=1,ncdofs
+            q=j
+            IF (dim == 3) q=q+nn
+            ! computing the mass term (sigma * d/dt * a, V'(alpha) grad si):
+            ! ---------------------------------------------------------
+            IF (dim == 2) value = IP % s(t)*detJ*localVtest*C(1,1)*basis(j)*grads_coeff*circ_eq_coeff/dt
+            IF (dim == 3) value = IP % s(t)*detJ*localVtest*SUM(MATMUL(C,Wbasis(j,:))*gradv)/dt
+  !          localL = value
+  !          Comp % Inductance = Comp % Inductance + localL
+            CALL AddToMatrixElement(CM, dofIdtest+nm, PS(Indexes(q)), tscl * value)
+            CM % RHS(dofIdtest+nm) = CM % RHS(dofIdtest+nm) + pPOT(q) * value
+          END DO
+        END IF
 
       END DO
 
@@ -1091,6 +1120,10 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
     DO CompInd = 1, Circuit % n_comp
       Comp => Circuit % Components(CompInd)
+
+      Comp % Resistance = 0._dp 
+      Comp % Conductance = 0._dp 
+
       Cvar => Comp % vvar
       vvarId = Comp % vvar % ValueId + nm
       IvarId = Comp % ivar % ValueId + nm
@@ -1098,6 +1131,18 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
       IF ( Cvar % Owner == ParEnv % myPE ) THEN
         SELECT CASE (Comp % CoilType)
         CASE('stranded')
+          CompParams => CurrentModel % Components(CompInd) % Values
+          IF (.NOT. ASSOCIATED(CompParams)) CALL Fatal ('AddComponentEquationsAndCouplings', 'Component parameters not found')
+          Comp % Resistance = GetConstReal(CompParams, 'Resistance', Found)
+          IF (Found) THEN
+            CALL Info('AddComponentEquationsAndCouplings', 'Using coil resistance for component '//TRIM(i2s(CompInd)), Level = 5)
+            Comp % UseCoilResistance = .TRUE.
+            CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, Comp % Resistance, 0._dp)
+          ELSE
+            Comp % UseCoilResistance = .FALSE.
+            Comp % Resistance = 0._dp
+          END IF
+ 
           CALL AddToCmplxMatrixElement(CM, VvarId, VvarId, -1._dp, 0._dp)
         CASE('massive')
           i_multiplier = Comp % i_multiplier_re + im * Comp % i_multiplier_im
@@ -1277,15 +1322,17 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
       localC = SUM(Tcoef(3,3,1:nn) * Basis(1:nn))
       
-      ! I * R, where 
-      ! R = (1/sigma * js,js):
-      ! ----------------------
-      localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
-      Comp % Resistance = Comp % Resistance + localR
-      
-      CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
-            REAL(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff), &
-           AIMAG(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff))
+      IF (.NOT. Comp % UseCoilResistance) THEN
+        ! I * R, where 
+        ! R = (1/sigma * js,js):
+        ! ----------------------
+        localR = Comp % N_j **2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff
+        Comp % Resistance = Comp % Resistance + localR
+        
+        CALL AddToCmplxMatrixElement(CM, VvarId, IvarId, &
+              REAL(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff), &
+             AIMAG(Comp % N_j**2 * IP % s(t)*detJ*SUM(w*w)/localC*circ_eq_coeff))
+      END IF
       
       DO j=1,ncdofs
         q=j

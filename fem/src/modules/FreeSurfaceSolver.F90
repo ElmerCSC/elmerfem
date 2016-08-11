@@ -910,10 +910,10 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
          IF(maxdh > MaxDisp) THEN
            Relax = Relax * MaxDisp/maxdh
          END IF
-         WRITE(Message,'(a,E8.2)') 'Maximum displacement ',maxdh
+         WRITE(Message,'(a,E9.2)') 'Maximum displacement ',maxdh
          CALL Info( SolverName, Message, Level=4 )
        END IF
-       WRITE(Message,'(a,F8.2)') 'pp Relaxation factor',Relax
+       WRITE(Message,'(a,F9.2)') 'pp Relaxation factor',Relax
        CALL Info( SolverName, Message, Level=4 )
        DO i=1, Model % NumberOfNodes
          j = FreeSurfPerm(i)

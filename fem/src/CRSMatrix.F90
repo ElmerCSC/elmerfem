@@ -35,6 +35,7 @@
 ! ****************************************************************************/
 
 #include "huti_fdefs.h"
+#include "../config.h"
 
 !> \ingroup ElmerLib 
 !> \{
@@ -600,6 +601,211 @@ CONTAINS
   END SUBROUTINE CRS_GlueLocalMatrix
 !------------------------------------------------------------------------------
 
+  
+  SUBROUTINE CRS_GlueLocalMatrixVec(Gmtr, N, NDOFs, Indices, Lmtr, MCAssembly)
+    TYPE(Matrix_t) :: Gmtr               !< Global matrix
+    INTEGER, INTENT(IN) :: N             !< Number of nodes in element
+    INTEGER, INTENT(IN) :: NDOFs         !< Number of degrees of freedom for one node
+    INTEGER, INTENT(IN) :: Indices(:)    !< Maps element node numbers to global (or partition) node numbers
+    REAL(KIND=dp), INTENT(IN) :: Lmtr(:,:)  !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be added
+    LOGICAL :: MCAssembly                !< Is the assembly multicolored or not (free of race conditions)
+
+    ! Local storage
+    INTEGER :: Lind((N*NDOFs)*(N*NDOFs))
+    REAL(KIND=dp) :: Lvals((N*NDOFs)*(N*NDOFs))
+
+    INTEGER :: i,j, nzind
+    INTEGER :: ci, ri, rli, rti, rdof, cdof
+
+    LOGICAL :: needMasking
+
+    INTEGER, POINTER CONTIG :: gia(:), gja(:)
+    REAL(KIND=dp), POINTER CONTIG :: gval(:)
+!DIR$ ATTRIBUTES ALIGN:64::Lind
+!DIR$ ATTRIBUTES ALIGN:64::Lvals
+
+    gia  => Gmtr % Rows
+    gja   => Gmtr % Cols
+    gval => Gmtr % Values
+
+    needMasking = .FALSE.
+    DO i=1,N
+      IF (Indices(i)<=0) THEN
+        needMasking = .TRUE.
+        EXIT
+      END IF
+    END DO
+
+    ! Check if vector masking is needed
+    IF (needMasking) THEN
+      ! Masking and counting needed in the assignment (slower)
+      IF (NDOFs == 1) THEN
+        ! Separate case for only 1 DOF per node
+
+        ! Construct index array
+        nzind = 0
+!DIR$ LOOP COUNT MIN=1, AVG=6
+        DO i=1,N
+          IF (Indices(i) > 0) THEN
+            ! Row index
+            ri = Indices(i)
+
+            ! Get row pointers
+            rli = gia(ri)
+            rti = gia(ri+1)-1
+!DIR$ LOOP COUNT MIN=1, AVG=6
+            DO j=1,N
+              ! Get global matrix index for entry (ri,Indices(j)).
+              IF (Indices(j) > 0) THEN
+                nzind = nzind + 1
+!DIR$ INLINE
+                Lind(nzind)=BinarySearch(gja, Indices(j), rli, rti)
+                Lvals(nzind)=Lmtr(i,j)
+              END IF
+            END DO
+          END IF
+        END DO
+      ELSE
+        ! More than 1 DOF per node
+        ! Construct index array
+        nzind = 0
+!DIR$ LOOP COUNT MIN=1, AVG=6
+        DO i=1,N
+          IF (Indices(i) > 0) THEN
+!DIR$ LOOP COUNT MIN=2, AVG=3
+            DO rdof=1,NDOFs
+              ! Row index
+              ri = NDOFs*(Indices(i)-1)+rdof
+
+              ! Get row pointers
+              rli = gia(ri)
+              rti = gia(ri+1)-1
+!DIR$ LOOP COUNT MIN=1, AVG=6
+              DO j=1,N
+                IF (Indices(j) > 0) THEN
+!DIR$ LOOP COUNT MIN=2, AVG=3
+                  DO cdof=1,NDOFs
+                    ci = NDOFs*(Indices(j)-1)+cdof
+                    ! Get global matrix index for entry (ri,ci).
+!DIR$ INLINE
+                    Lind(nzind+cdof)=BinarySearch(gja, ci, rli, rti)
+                    Lvals(nzind+cdof)=Lmtr(NDOFs*(i-1)+rdof,NDOFs*(j-1)+cdof)
+                  END DO
+                  nzind = nzind + cdof
+                END IF
+              END DO
+            END DO
+          END IF
+        END DO
+      END IF ! NDOFs==1 check
+
+    ELSE
+      ! No masking needed (faster)
+      IF (NDOFs == 1) THEN
+        ! Separate case for only 1 DOF per node
+
+        ! Construct index array
+!DIR$ LOOP COUNT MIN=1, AVG=6
+        DO i=1,N
+          ! Row index
+          ri = Indices(i)
+
+          ! Get row pointers
+          rli = gia(ri)
+          rti = gia(ri+1)-1
+!DIR$ LOOP COUNT MIN=1, AVG=6
+          DO j=1,N
+            ! Get global matrix index for entry (ri,Indices(j)).
+!DIR$ INLINE
+            Lind(N*(i-1)+j)=BinarySearch(gja, Indices(j), rli, rti)
+            Lvals(N*(i-1)+j)=Lmtr(i,j)
+          END DO
+        END DO
+        nzind = N*N
+      ELSE
+        ! More than 1 DOF per node
+
+        ! Construct index array
+!DIR$ LOOP COUNT MIN=1, AVG=6
+        DO i=1,N
+!DIR$ LOOP COUNT MIN=2, AVG=3
+          DO rdof=1,NDOFs
+            ! Row index
+            ri = NDOFs*(Indices(i)-1)+rdof
+
+            ! Get row pointers
+            rli = gia(ri)
+            rti = gia(ri+1)-1
+!DIR$ LOOP COUNT MIN=1, AVG=6
+            DO j=1,N
+!DIR$ LOOP COUNT MIN=2, AVG=3
+              DO cdof=1,NDOFs
+                ci = NDOFs*(Indices(j)-1)+cdof
+                ! Get global matrix index for entry (ri,ci).
+!DIR$ INLINE
+                Lind((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=BinarySearch(gja, ci, rli, rti)
+                Lvals((NDOFs*N)*(i-1)+NDOFs*(j-1)+cdof)=Lmtr(NDOFs*(i-1)+rdof,NDOFs*(j-1)+cdof)
+              END DO
+            END DO
+          END DO
+
+          nzind = (NDOFs*N)*(NDOFs*N)
+        END DO
+      END IF ! NDOFs==1 check
+    END IF ! Masking check
+
+    ! The actual contribution loop
+    IF (MCAssembly) THEN
+      !$OMP SIMD
+      DO i=1,nzind
+        gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
+      END DO
+      !$OMP END SIMD
+    ELSE
+      DO i=1,nzind
+        !$OMP ATOMIC
+        gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
+      END DO
+    END IF
+
+  CONTAINS
+
+    PURE FUNCTION BinarySearch(arr, key, lind, tind) RESULT(keyloc)
+      IMPLICIT NONE
+
+      INTEGER, INTENT(IN) :: arr(:)
+      INTEGER, INTENT(IN) :: key, lind, tind
+
+      INTEGER, PARAMETER :: LINSEARCHTHRESH = 8
+      INTEGER :: keyloc
+      INTEGER :: li, ti, mi
+
+      li = lind
+      ti = tind
+      DO WHILE ((li+LINSEARCHTHRESH)<ti)
+        ! Compute midpoint
+        mi = li + ((ti - li) / 2)
+
+        IF (arr(mi)<key) THEN
+          li = mi + 1
+        ELSE
+          ti = mi
+        END IF
+      END DO
+
+      IF (li<ti) THEN
+        keyloc = 0
+        DO mi=li,ti
+          IF (arr(mi)==key) keyloc = mi
+        END DO
+      ELSE IF (li == ti .AND. arr(li)==key) THEN
+        keyloc = li
+      ELSE
+        keyloc = 0
+      END IF
+    END FUNCTION BinarySearch
+
+  END SUBROUTINE CRS_GlueLocalMatrixVec
 
 !------------------------------------------------------------------------------
 !>    Add a set of values (.i.e. element stiffness matrix) to a CRS format
@@ -955,6 +1161,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !$omp parallel do private(j,rsum)
      DO i=1,n
         rsum = 0.0d0
+!DIR$ IVDEP
         DO j=Rows(i),Rows(i+1)-1
            rsum = rsum + u(Cols(j)) * Values(j)
         END DO
@@ -1024,6 +1231,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
     DO i=1,n
       rsum = 0.0d0
       DO j=Rows(i),Rows(i+1)-1
+!DIR$ IVDEP
         rsum = rsum + u(Cols(j)) * ABS(Values(j))
       END DO
       v(i) = rsum
@@ -1137,6 +1345,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 #else
      v(1:n) = 0.0_dp
      DO i=1,n
+!DIR$ IVDEP
        DO j=Rows(i),Rows(i+1)-1
          k = Cols(j)
          v(k) = v(k) + u(i) * Values(j)
@@ -1327,6 +1536,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !$omp parallel do private(rsum,j,s)
     DO i=1,n
        rsum = CMPLX( 0.0d0, 0.0d0,KIND=dp )
+!DIR$ IVDEP
        DO j=Rows(2*i-1),Rows(2*i)-1,2
           s = CMPLX( Values(j), -Values(j+1), KIND=dp )
           rsum = rsum + s * u((Cols(j)+1)/2)
@@ -3552,6 +3762,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 !$omp parallel do private(j,s)
        DO i=1,n
           s = 0.0d0
+!DIR$ IVDEP
           DO j=Rows(i),Rows(i+1)-1
              s = s + Values(j) * u(Cols(j))
           END DO
@@ -3673,6 +3884,7 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
        v = CMPLX( 0.0d0, 0.0d0, KIND=dp )
        DO i=1,n
           rsum = u(i)
+!DIR$ IVDEP
           DO j=Rows(2*i-1),Rows(2*i)-1,2
              s = CMPLX( Values(j), -Values(j+1), KIND=dp )
              v((Cols(j)+1)/2) = v((Cols(j)+1)/2) + s * rsum

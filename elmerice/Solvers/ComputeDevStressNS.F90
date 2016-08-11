@@ -104,7 +104,7 @@ RECURSIVE SUBROUTINE ComputeDevStress( Model,Solver,dt,TransientSimulation )
   
   LOGICAL :: Isotropic, AllocationsDone = .FALSE.,  &
        Requal0
-  LOGICAL :: GotIt,  Cauchy = .FALSE.,UnFoundFatal
+  LOGICAL :: GotIt,  Cauchy = .FALSE.,UnFoundFatal=.TRUE.
   
   REAL(KIND=dp), ALLOCATABLE:: LocalMassMatrix(:,:), &
        LocalStiffMatrix(:,:), LocalForce(:), &

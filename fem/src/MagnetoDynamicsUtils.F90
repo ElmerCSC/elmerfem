@@ -2,15 +2,15 @@
  MODULE MGDynMaterialUtils
 !------------------------------------------------------------------------------
  USE DefUtils
+ IMPLICIT NONE
 
  CONTAINS
 !------------------------------------------------------------------------------
   FUNCTION GetElectricConductivityTensor(Element, n, Part, &
                    CoilBody,CoilType) RESULT (Tcoef)  
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => Null()
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -21,7 +21,6 @@
     LOGICAL :: CoilBody
 
     Tcoef=0._dp
-    NULLIFY( Cwrk )
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
       IF (Part=='re') THEN 
@@ -83,7 +82,7 @@
     TCoefIm = GetElectricConductivityTensor(Element,n,'im',CoilBody,CoilType)
     DO i=1,3
        DO j=1,3
-          Tcoef( i,j,1:n ) = CMPLX( REAL(TcoefRe( i,j,1:n )), TCoefIm( i,j,1:n ), KIND=dp)
+          Tcoef( i,j,1:n ) = CMPLX( TcoefRe( i,j,1:n ), TCoefIm( i,j,1:n ), KIND=dp)
        END DO
     END DO
 
@@ -95,9 +94,8 @@
   FUNCTION GetPermeabilityTensor(Element, n, Part) &
                   RESULT (mu)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => Null()
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j
     TYPE(Valuelist_t), POINTER :: Material
@@ -106,7 +104,6 @@
     LOGICAL :: Found
 
     mu=0._dp
-    NULLIFY( Cwrk )
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
       IF (Part=='re') THEN 
@@ -142,9 +139,8 @@
   FUNCTION GetTensor(Element, n, tsize, varname, Part, Found) &
                   RESULT (T)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
-    REAL(KIND=dp), POINTER :: Cwrk(:,:,:)
+    REAL(KIND=dp), POINTER :: Cwrk(:,:,:) => Null()
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j, slen, tsize 
     TYPE(Valuelist_t), POINTER :: Material
@@ -155,7 +151,6 @@
 
     IF (.NOT. ASSOCIATED(Element)) CALL Fatal ('GetTensor', 'Element not associated')
     T=0._dp
-    NULLIFY( Cwrk )
     Material => GetMaterial( Element )
     IF ( ASSOCIATED(Material) ) THEN
       slen = LEN_TRIM(varname)
@@ -192,7 +187,6 @@
   FUNCTION GetCMPLXTensor(Element, n, tsize, varname, Found) &
                   RESULT (T)
 !------------------------------------------------------------------------------
-    USE DefUtils
     IMPLICIT NONE
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, i, j, slen, tsize 

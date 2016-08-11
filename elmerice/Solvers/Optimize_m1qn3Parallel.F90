@@ -76,7 +76,7 @@ SUBROUTINE Optimize_m1qn3Parallel( Model,Solver,dt,TransientSimulation )
   integer,allocatable :: NewNode(:)
   integer, allocatable :: LocalToGlobalPerm(:),nodePerm(:),TestPerm(:)
 
-  Logical :: FirstVisit=.true.,Firsttime=.true.,Found,UseMask,ComputeNormG=.False.,UnFoundFatal
+  Logical :: FirstVisit=.true.,Firsttime=.true.,Found,UseMask,ComputeNormG=.False.,UnFoundFatal=.TRUE.
   logical,allocatable :: VisitedNode(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,NormM1QN3,MaskVarName,NormFile

@@ -77,7 +77,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp),POINTER :: ForceVector(:)
   integer :: t,n,NSDOFs,NVals,SolverInd
   REAL(KIND=dp),ALLOCATABLE :: STIFF(:,:),FORCE(:),ExtPressure(:),LoadVector(:,:),Alpha(:),Beta(:),SlipCoeff(:,:),w(:)
-  Logical :: Gotit,GotForceBC,NormalTangential,Firsttime=.true.,UnFoundFatal
+  Logical :: Gotit,GotForceBC,NormalTangential,Firsttime=.true.,UnFoundFatal=.TRUE.
   INTEGER, POINTER :: NodeIndexes(:),Perm(:)
   integer :: p,q,dim,c
 
@@ -153,6 +153,10 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
         CALL FreeMatrix( InitMat )
 
         CALL CRS_SortMatrix( TransMat , .true. )
+
+        IF ( SIZE(StiffMatrix % Values) .NE. SIZE(TransMat % Values) ) THEN
+              CALL WARN(SolverName,'StiffMatrix different size to TransMat. Is this the correct the body?')
+        END IF
 
         StiffMatrix % Values = TransMat % Values
         StiffMatrix % Rows = TransMat % Rows

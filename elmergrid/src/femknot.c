@@ -2556,6 +2556,7 @@ int SetConnectedElements(struct FemType *data,int info)
 
   /* Allocated space for the connected elements */
   if(!data->elemconnectexist) {
+    printf("Created table for connected elements\n");
     data->elemconnect = Ivector(1,data->noelements);
     for(k=1;k<=data->noelements;k++)
       data->elemconnect[k] = 0;
@@ -2578,13 +2579,14 @@ int SetConnectedElements(struct FemType *data,int info)
       if(hit) nohits++;
     }
   
-    if(info) printf("Number of connected elements is %d\n",nohits);
+    if(info) printf("Number of connected elements is %d (out of %d)\n",nohits,data->noelements);
     data->elemconnectexist = nohits;
   }
 
   /* This is a little bit dirty. We set the connections to negative and use the unconnected 
      as a permutation. */
   if( data->elemconnectexist ) {
+    if(info) printf("Use connected table as a permutation for creating dual graph!\n");
     j = 0;
     for(i=1;i<=data->noelements;i++) {
       if( data->elemconnect[i] ) {
@@ -3544,7 +3546,6 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   newy = Rvector(1,noknots);
   if(data->dim == 3) newz = Rvector(1,noknots);
 
-
   for(l=0;l<ncopies[2];l++) {
     for(k=0;k<ncopies[1];k++) {
       for(j=0;j<ncopies[0];j++) {
@@ -3684,6 +3685,12 @@ int CloneMeshes(struct FemType *data,struct BoundaryType *bound,
   data->x = newx;
   data->y = newy;
   if(data->dim == 3) data->z = newz;
+
+  if( data->bodynamesexist || data->boundarynamesexist ) {
+    printf("Cloning cannot treat names yet, omitting treatment of names for now!\n");
+    data->bodynamesexist = FALSE;
+    data->boundarynamesexist = FALSE;
+  } 
 
   if(info) printf("The mesh was copied to several identical meshes\n");
 
@@ -3888,6 +3895,12 @@ int MirrorMeshes(struct FemType *data,struct BoundaryType *bound,
   data->x = newx;
   data->y = newy;
   if(data->dim == 3) data->z = newz;
+
+  if( data->bodynamesexist || data->boundarynamesexist ) {
+    printf("Mirroring cannot treat names yet, omitting treatment of names for now!\n");
+    data->bodynamesexist = FALSE;
+    data->boundarynamesexist = FALSE;
+  } 
 
   if(info) printf("The mesh was copied to several identical meshes\n");
 
@@ -9902,7 +9915,9 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   /* If a dual graph only for the unconnected nodes is requested do that.
      Basically the connected nodes are omitted in the graph. */
   if( unconnected ) {
+    printf("Removing connected nodes from the dual graph\n");
     if( data->nodeconnectexist ) {
+      if(info) printf("Creating connected elements list from the connected nodes\n");
       SetConnectedElements(data,info);
     }
     if( data->elemconnectexist ) {
@@ -9912,6 +9927,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
     else {
       unconnected = FALSE;
     }
+    if(info) printf("List of unconnected elements created\n");
   }
 
   showgraph = FALSE;
@@ -9928,7 +9944,7 @@ int CreateDualGraph(struct FemType *data,int unconnected,int info)
   /* This marker is used to identify the connections already accounted for */  
   neededby = Ivector(1,freeelements);
   for(i=1;i<=freeelements;i++)
-    neededby[i] = 0.0;
+    neededby[i] = 0;
 
   allocated = FALSE;
  omstart: 

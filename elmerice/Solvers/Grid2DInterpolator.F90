@@ -79,7 +79,7 @@ SUBROUTINE Grid2DInterpolator( Model,Solver,dt,TransientSimulation )
    CHARACTER(LEN=MAX_NAME_LEN) :: Name, FName, ParaName
    CHARACTER(LEN=MAX_NAME_LEN), PARAMETER :: SolverName='Grid2DInterpolator'
 
-   LOGICAL :: GotVar, Found, InvertOrder, FillIn, UnFoundFatal
+   LOGICAL :: GotVar, Found, InvertOrder, FillIn, UnFoundFatal=.TRUE.
 
    NULLIFY(Params,Var,Values,Perm)
 
