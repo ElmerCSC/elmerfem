@@ -328,6 +328,7 @@
        
        IF( NumberOfParts == 0 ) RETURN
        
+
        DO i = Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
          Element => Mesh % Elements(i)
@@ -335,7 +336,9 @@
          DO bc_id=1,Model % NumberOfBCs
            IF ( Element % BoundaryInfo % Constraint == &
                Model % BCs(bc_id) % Tag ) THEN
-             ElementSet( i ) = BCPart( bc_id )
+             IF( BCPart( bc_id ) > 0 ) THEN
+               ElementSet( i ) = BCPart( bc_id )
+             END IF
              EXIT
            END IF
          END DO
@@ -428,6 +431,8 @@
       
       NoCandElements = COUNT( PartitionCand ) 
 
+
+      CALL Info('PartitionMesh','Doing element set: '//TRIM(I2S(SetNo)))
       CALL Info('PartitionMesh','Number of elements in set: '//TRIM(I2S(NoCandElements)))
 
       IF( NoCandElements == 0 ) RETURN
