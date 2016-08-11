@@ -12,7 +12,7 @@ Materials Interval = 1 1
 Boundary Definitions
 ! type     out      int     
   1        0        1        1       
-  2        0        2        1
+  2        2        1        1
 End
 Element Degree = 1
 Element Innernodes = False

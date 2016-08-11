@@ -1,5 +1,5 @@
 ! Test case for internal partitioning
-! Step 1) : partitioning 
+! Step 1) : hybrid partitioning 
 
 Header
   CHECK KEYWORDS Warn
@@ -92,8 +92,8 @@ Boundary Condition 2
   Name = "Constraint"
   Target Boundaries(1) = 2 
   Temperature = 0
-  Partition Set = Integer 1
+!  Partition Set = Integer 2
 End
 
 
-!Solver 1 :: Reference Norm = 3.77775139
+Solver 1 :: Reference Norm = 3.77775139
