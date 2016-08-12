@@ -142,6 +142,7 @@
              ELSE
                Parent => Element % BoundaryInfo % Right
              END IF
+
              IF( ASSOCIATED( Parent ) ) THEN
                BoundPart = ElementSet( t ) 
                ElemIndx = Parent % ElementIndex
@@ -163,7 +164,9 @@
 
 
      ! Merge partitioned boundaries that share even just one node. 
-     !------------------------------------------------------------
+     ! The algorithm works fine when there is a small number of 
+     ! partitions on the boundary and requires minimal additional space.
+     !------------------------------------------------------------------
      SUBROUTINE MergeBoundaryPart()
        
        TYPE(Element_t), POINTER :: Element
@@ -214,7 +217,7 @@
          RETURN
        END IF
 
-
+       ! Create mapping of existing partitions to new reduced number of partitions
        ALLOCATE( PartMap( MaxPart ) )
        DO i=1,MaxPart
          PartMap(i) = i
@@ -241,7 +244,6 @@
            ElementPart(t) = PartMap(i)
          END IF
        END DO
-       j = MAXVAL( PartMap ) 
        CALL Info('PartitionMesh','Connected boundaries merged')
 
        
@@ -252,7 +254,9 @@
 
      ! Extend partition from an existing bulk partitioning. 
      ! In case of conflict the dominating partitioning prevails.
-     !-----------------------------------------------------
+     ! The routine is written with just a small number of existing
+     ! boundary partitions in mind and uses minimal memory. 
+     !------------------------------------------------------------
 
      SUBROUTINE ExtendBoundaryPart()
        
@@ -294,7 +298,7 @@
 
          DO TestPart = 1, NumberOfParts         
 
-           ! Set the active nodes for this partition
+           ! Set the active nodes for the partition under testing
            ActiveNode = .FALSE.
            DO t=1, Mesh % NumberOfBulkElements 
              IF( ElementPart( t ) == TestPart ) THEN
@@ -303,10 +307,10 @@
              END IF
            END DO
            
-           !PRINT *,'Active nodes:',COUNT( ActiveNode ) 
-           
            ! Count the number of hits for this partition
            ! If larger than the maximum so far set the partition
+           ! For just one existing partitioning no checks need to be done. 
+           !--------------------------------------------------------------
            DO t=1, Mesh % NumberOfBulkElements 
              IF( ElementPart( t ) /= 0 ) CYCLE
 
@@ -333,6 +337,9 @@
      END SUBROUTINE ExtendBoundaryPart
 
 
+     ! Create a variable for the output of the partitioning.
+     ! This is an elemental field, not a nodal one. 
+     !------------------------------------------------------
      SUBROUTINE SetPartitionVariable()
        
        TYPE(Variable_t), POINTER :: Var
@@ -560,8 +567,6 @@
         WHERE( PartitionCand ) ElementPart = SetNo
         RETURN
       END IF
-
-
          
       BoundaryPart = .FALSE.
 
@@ -673,6 +678,9 @@
   
     END SUBROUTINE PartitionMeshPart
       
+
+    ! Given a partitioning create a list of Neighbours needed for the communication
+    !------------------------------------------------------------------------------
 
     SUBROUTINE CreateNeighbourList()
 
