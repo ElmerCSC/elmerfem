@@ -14135,6 +14135,7 @@ CONTAINS
 
      CALL Info('ReleaseMesh','Releasing mesh variables',Level=15)
      CALL ReleaseVariableList( Mesh % Variables )
+
      Mesh % Variables => NULL()
 
 !    Deallocate mesh geometry (nodes,elements and edges):
@@ -14144,6 +14145,7 @@ CONTAINS
        IF ( ASSOCIATED( Mesh % Nodes % x ) ) DEALLOCATE( Mesh % Nodes % x )
        IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
        IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
+
        DEALLOCATE( Mesh % Nodes )
 
        IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
@@ -15145,7 +15147,7 @@ CONTAINS
     REAL(KIND=dp) :: Tolerance
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
-    INTEGER :: i,j,k,n,ii,jj,dim, nsize, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
+    INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
 	UpHit, DownHit, bc_ind
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
@@ -15158,6 +15160,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CoordTransform
+    INTEGER :: allocstat
 
    
     CALL Info('DetectExtrudedStructure','Determining extruded structure',Level=6)
@@ -15192,27 +15195,34 @@ CONTAINS
       IF(ASSOCIATED(Var)) THEN
         MaskExists = ASSOCIATED(Var % Perm)
         IF( MaskExists ) THEN
-          ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
+          ALLOCATE( MaskPerm( SIZE( Var % Perm ) ), STAT = allocstat )
+          IF( allocstat /= 0 ) THEN
+            CALL Fatal('DetectExtrudedStructure','Allocation error for MaskPerm!')
+          END IF
           MaskPerm = Var % Perm 
           CALL Info('DetectExtrudedStructure',&
-              'Using variable as mask: '//TRIM(VarName),Level=8)
+              'Using variable as mask: '//TRIM(VarName),Level=8)          
         END IF
       END IF
     END IF
-
+    
+    nnodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
       nsize = MAXVAL( MaskPerm ) 
-      WRITE(Message,'(A,I8)') 'Applying mask of size:',nsize
-      CALL Info('DetectExtrudedStructure',Message,Level=8)
+      CALL Info('DetectExtrudedStructure',&
+          'Applying mask of size: '//TRIM(I2S(nsize)),Level=8)
     ELSE
-      nsize = Mesh % NumberOfNodes
+      nsize = nnodes
       CALL Info('DetectExtrudedStructure','Applying mask to the whole mesh',Level=8)
-    END IF 
+    END IF
 
     CoordTransform = ListGetString(Params,'Mapping Coordinate Transformation',DoCoordTransform )
     IF( DoCoordTransform .OR. MaskExists) THEN
       NULLIFY( Values )
-      ALLOCATE( Values( nsize ) )
+      ALLOCATE( Values( nsize ), STAT = allocstat )
+      IF( allocstat /= 0 ) THEN
+        CALL Fatal('DetectExtrudedStructure','Allocation error for coordinate tranform Values!')
+      END IF
       Values = 0.0_dp
       IF( MaskExists ) THEN
         CALL VariableAdd( Mesh % Variables, Mesh, Solver,'Extruded Coordinate',1,Values, MaskPerm)
@@ -15226,12 +15236,16 @@ CONTAINS
       Var => VariableGet( Mesh % Variables,'Coordinate 2')
     ELSE 
       Var => VariableGet( Mesh % Variables,'Coordinate 3')
-    END IF	      
+    END IF
 
     IF( MaskExists .OR. DoCoordTransform) THEN
       DO i=1,Mesh % NumberOfNodes
         j = i
-	IF( MaskExists ) j = MaskPerm(i)
+        IF( MaskExists ) THEN
+          j =  MaskPerm(i)
+          IF( j == 0 ) CYCLE
+        END IF
+
         Vector(1) = Mesh % Nodes % x(i)
 	Vector(2) = Mesh % Nodes % y(i)
 	Vector(3) = Mesh % Nodes % z(i)
@@ -15261,15 +15275,31 @@ CONTAINS
     ! Allocate pointers to top and bottom, and temporary pointers up and down
     !------------------------------------------------------------------------
     IF( UpActive ) THEN
-      ALLOCATE(TopPointer(nsize),UpPointer(nsize))
-      DO i=1,nsize
+      ALLOCATE(TopPointer(nnodes),UpPointer(nnodes))      
+      DO i=1,nnodes
+        IF( MaskExists ) THEN
+          IF( MaskPerm(i) == 0 ) THEN
+            TopPointer(i) = 0
+            UpPointer(i) = 0
+            CYCLE
+          END IF
+        END IF
+
         TopPointer(i) = i
         UpPointer(i) = i
       END DO
     END IF
     IF( DownActive ) THEN
-      ALLOCATE(BotPointer(nsize),DownPointer(nsize))
-      DO i=1,nsize
+      ALLOCATE(BotPointer(nnodes),DownPointer(nnodes))
+      DO i=1,nnodes
+        IF( MaskExists ) THEN
+          IF( MaskPerm(i) == 0 ) THEN
+            BotPointer(i) = 0
+            DownPointer(i) = 0
+            CYCLE
+          END IF
+        END IF
+
         BotPointer(i) = i
         DownPointer(i) = i
       END DO
@@ -15281,10 +15311,12 @@ CONTAINS
     ! Determine the up and down pointers using dot product as criterion
     !-----------------------------------------------------------------
     n = Mesh % MaxElementNodes
-    ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
-    
-    DO elem = 1,Mesh % NumberOfBulkElements      
+    ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n), STAT = allocstat )
+    IF( allocstat /= 0 ) THEN
+      CALL Fatal('DetectExtrudedStructure','Allocation error for Nodes!')
+    END IF
 
+    DO elem = 1,Mesh % NumberOfBulkElements      
       Element => Mesh % Elements(elem)
       NodeIndexes => Element % NodeIndexes
       CurrentModel % CurrentElement => Element
@@ -15293,6 +15325,8 @@ CONTAINS
       Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
       Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
       Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+
+!PRINT *,'elem:',elem, Mesh % NumberOfBulkElements, n, MAXVAL( NodeIndexes), SIZE(MaskPerm) 
 
       ! This is probably a copy-paste error, I comment it away for time being.   
       ! IF (.NOT. (Element % PartIndex == Parenv % Mype) ) CYCLE
@@ -15303,6 +15337,7 @@ CONTAINS
 
       DO i=1,n
         ii = NodeIndexes(i)
+
         Vector(1) = Nodes % x(i)
 	Vector(2) = Nodes % y(i)
 	Vector(3) = Nodes % z(i)
@@ -15325,6 +15360,8 @@ CONTAINS
           ElemVector = Vector2 - Vector
 
           Length = SQRT(SUM(ElemVector*ElemVector))
+          IF( Length <= EPSILON( Length ) ) CYCLE
+
           DotPro = SUM(ElemVector * UnitVector) / Length
 
           IF(DotPro > 1.0_dp - Eps) THEN 
@@ -15337,17 +15374,18 @@ CONTAINS
         END DO
       END DO
     END DO
-    DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
 
+    DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
     
     ! Pointer to top and bottom are found recursively using up and down
     !------------------------------------------------------------------
     CALL Info('DetectExtrudedStructure','determine top and bottom pointers',Level=9)
 
-    DO Rounds = 1, nsize
+    DO Rounds = 1, nnodes
+
       DownHit = 0
       UpHit = 0
-      DO i=1,nsize
+      DO i=1,nnodes
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0) CYCLE
         END IF
@@ -15385,13 +15423,14 @@ CONTAINS
     !------------------------------------------------------------------
     IF( PRESENT( NumberOfLayers ) ) THEN
       CALL Info('DetectExtrudedStructure','compute the number of layers',Level=9)    
-      DO i=1,nsize
+      DO i=1,nnodes
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0 ) CYCLE
         END IF
         EXIT
       END DO
 
+      ! Start from the bottom and go step-by-step to the top counting the layers
       j = BotPointer(i)
 
       NumberOfLayers = 0
@@ -15422,13 +15461,13 @@ CONTAINS
       CALL Info('DetectExtrudedStructure','creating layer index',Level=9)        
 
       NULLIFY(Layer)
-      ALLOCATE( Layer(nsize) )
+      ALLOCATE( Layer(nnodes) )
       Layer = 1
       IF( MaskExists ) THEN
         WHERE( MaskPerm == 0 ) Layer = 0
       END IF
       
-      DO i=1,nsize
+      DO i=1,nnodes
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0 ) CYCLE
         END IF
@@ -15451,8 +15490,9 @@ CONTAINS
     END IF
 
 
+    ! If mid layer is requesyed create that too
     IF( PRESENT( MidNodePointer ) ) THEN
-      ALLOCATE( MidPointer( nsize ) )
+      ALLOCATE( MidPointer( nnodes ) )
       MidPointer = 0 
       MidLayerExists = .FALSE.
 
@@ -15477,10 +15517,10 @@ CONTAINS
       IF( MidLayerExists ) THEN
         CALL Info('DetectExtrudedStructure','determine mid pointers',Level=9)
 
-        DO Rounds = 1, nsize
+        DO Rounds = 1, nnodes
           DownHit = 0
           UpHit = 0
-          DO i=1,nsize
+          DO i=1,nnodes
             IF( MaskExists ) THEN
               IF( MaskPerm(i) == 0) CYCLE
             END IF
@@ -15515,12 +15555,12 @@ CONTAINS
   
     ! Count the number of top and bottom nodes, for information only
     !---------------------------------------------------------------
-    CALL Info('DetectExtrudedStructure','counting top and bottom bodes',Level=9)        
+    CALL Info('DetectExtrudedStructure','counting top and bottom nodes',Level=9)        
     IF( UpActive ) THEN
       TopNodes = 0
       MinTop = HUGE( MinTop ) 
       MaxTop = -HUGE( MaxTop )
-      DO i=1,nsize
+      DO i=1,nnodes
         IF(TopPointer(i) == i) THEN
           MinTop = MIN( MinTop, Var % Values(i) )
           MaxTop = MAX( MaxTop, Var % Values(i) )
@@ -15533,7 +15573,7 @@ CONTAINS
       BotNodes = 0
       MinBot = HUGE( MinBot ) 
       MaxBot = -HUGE( MaxBot )
-      DO i=1,nsize
+      DO i=1,nnodes
         IF(BotPointer(i) == i) THEN
           MinBot = MIN( MinBot, Var % Values(i))
           MaxBot = MAX( MaxBot, Var % Values(i))
@@ -15692,12 +15732,19 @@ CONTAINS
       FirstTime = .NOT. ASSOCIATED( Mesh % NodesMapped )
       IF( FirstTime ) THEN
         ALLOCATE( Mesh % NodesMapped )
-        NULLIFY( NewCoords )
-        ALLOCATE( NewCoords(3*n) )
-        NewCoords = 0.0_dp
-        Mesh % NodesMapped % x => NewCoords(1:n)
-        Mesh % NodesMapped % y => NewCoords(n+1:2*n)
-        Mesh % NodesMapped % z => NewCoords(2*n+1:3*n)
+        !NULLIFY( NewCoords )
+        !ALLOCATE( NewCoords(3*n) )
+        !NewCoords = 0.0_dp
+        ALLOCATE( Mesh % NodesMapped % x(n) )
+        ALLOCATE( Mesh % NodesMapped % y(n) )
+        ALLOCATE( Mesh % NodesMapped % z(n) )
+        Mesh % NodesMapped % x = 0.0_dp
+        Mesh % NodesMapped % y = 0.0_dp
+        Mesh % NodesMapped % z = 0.0_dp
+
+        !Mesh % NodesMapped % x => NewCoords(1:n)
+        !Mesh % NodesMapped % y => NewCoords(n+1:2*n)
+        !Mesh % NodesMapped % z => NewCoords(2*n+1:3*n)
         ! Mesh % NodesMapped % x => NewCoords(1::3)
         ! Mesh % NodesMapped % y => NewCoords(2::3)
         ! Mesh % NodesMapped % z => NewCoords(3::3)
@@ -15733,8 +15780,8 @@ CONTAINS
               'Transformed Coordinate 2',1,y1) 
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
               'Transformed Coordinate 3',1,z1) 
-          CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
-              'Transformed Coordinate',3,NewCoords)
+!          CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
+!              'Transformed Coordinate',3,NewCoords)
         END IF
       END IF
     END IF

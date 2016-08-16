@@ -97,8 +97,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, OldVarName, Name, Oper, Oper0, OldOper, &
       LevelsetName, TargetName
-  INTEGER :: i,j,k,l,n,dim,Dofs,dof,itop,ibot,idown,iup,jup,lup,ii,jj,Rounds,nsize,layer, &
-      ActiveDirection,elem,TopNodes,MidNodes,NoVar,BotNodes, NormInd
+  INTEGER :: i,j,k,l,n,dim,Dofs,dof,itop,ibot,idown,iup,jup,lup,ii,jj,mi,mii,Rounds,nsize,layer, &
+      nnodes, ActiveDirection,elem,TopNodes,MidNodes,NoVar,BotNodes, NormInd
   INTEGER, POINTER :: MaskPerm(:),TopPointer(:),BotPointer(:),UpPointer(:),DownPointer(:),&
       MidPointer(:), NodeIndexes(:),TargetPointer(:),BotPerm(:),&
       PermOut(:),PermIn(:),LevelsetPerm(:),TopPerm(:),MidPerm(:),UnitPerm(:)=>NULL(), &
@@ -122,7 +122,7 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
   SAVE Visited,Nodes,Initialized,UnitVector,Coord,MaskExist,MaskPerm,TopPointer,&
       BotPointer,MidPointer, UpPointer,DownPointer,FieldOut,FieldIn,&
       TopNodes,MidNodes,TopPerm, MidPerm, TopField, BotNodes, BotPerm, nsize, &
-      UnitPerm, MidLayerExists
+      nnodes, UnitPerm, MidLayerExists
  
   CALL Info( 'StructuredProjectToPlane','------------------------------------------',Level=4 )
   CALL Info( 'StructuredProjectToPlane','Performing projection on a structured mesh ',Level=4 )
@@ -153,7 +153,8 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
     MaskExist = ASSOCIATED( Var % Perm ) 
     IF( MaskExist ) MaskPerm => Var % Perm
     Coord => Var % Values
-    nsize = MIN( SIZE( Coord ), Mesh % NumberOfNodes )
+    nnodes = Mesh % NumberOfNodes
+    nsize = MIN( SIZE( Coord ), nnodes )
     Initialized = .TRUE.
 
     TopNodes = 0
@@ -337,13 +338,17 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
           GotIt = .TRUE.
         END IF
       ELSE        
-        IF(.NOT. ASSOCIATED( UnitPerm ) ) THEN
-          ALLOCATE( UnitPerm( nsize ) ) 
-          DO i=1,nsize
-            UnitPerm(i) = i
-          END DO
+        IF( MaskExist ) THEN
+          PermOut => MaskPerm 
+        ELSE
+          IF(.NOT. ASSOCIATED( UnitPerm ) ) THEN
+            ALLOCATE( UnitPerm( nsize ) ) 
+            DO i=1,nsize
+              UnitPerm(i) = i
+            END DO
+          END IF
+          PermOut => UnitPerm 
         END IF
-        PermOut => UnitPerm 
       END IF
 
       CALL VariableAddVector( Mesh % Variables, Solver % Mesh, PSolver, &
@@ -395,11 +400,26 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         
       CASE ('sum')      
         TopField = 0.0_dp
-        DO i=1,nsize
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
+
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
 
           itop = TopPointer(i)
@@ -414,11 +434,26 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         
       CASE ('min')      
         TopField = HUGE(TopField)
-        DO i=1,nsize
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
+          
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
          
           itop = TopPointer(i)
@@ -432,11 +467,26 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         
       CASE ('max')      
         TopField = -HUGE(TopField)
-        DO i=1,nsize
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
+
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
 
           itop = TopPointer(i)
@@ -450,11 +500,26 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         
       CASE ('bottom')
         TopField = 0.0_dp
-        DO i=1,nsize
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
+         
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
          
           IF( i == TmpBotPointer(i) ) THEN
@@ -467,7 +532,12 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         
       CASE ('top')
         TopField = 0.0_dp
-        DO i=1,nsize
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          END IF
+
           IF( i == TmpTopPointer(i) ) THEN
             j = i
             IF(ASSOCIATED(PermIn)) j = PermIn(i)
@@ -478,7 +548,12 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 
       CASE ('middle')
         TopField = 0.0_dp
-        DO i=1,nsize
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          END IF
+
           IF( i == MidPointer(i) ) THEN
             j = i
             IF(ASSOCIATED(PermIn)) j = PermIn(i)
@@ -489,7 +564,12 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         
       CASE ('layer below top')
         TopField = 0.0_dp
-        DO i=1,nsize
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          END IF
+
           IF( i == TmpTopPointer(i) ) THEN
             l = i
             DO k=1,layer
@@ -503,7 +583,12 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         
       CASE ('layer above bottom')
         TopField = 0.0_dp
-        DO i=1,nsize
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          END IF
+
           IF( i == TmpBotPointer(i) ) THEN
             l = i
             DO k=1,layer
@@ -517,7 +602,11 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         
       CASE ('isosurface')
         TopField = 0.0_dp
-        DO i=1,nsize
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          END IF
 
           iup = UpPointer(i)
           j = i
@@ -546,12 +635,26 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         
       CASE ('int')
         TopField = 0.0_dp
-        DO i=1,nsize
-
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+        DO i=1,nnodes
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
+         
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
 
           ! Note for top and bottom this will automatically reduce the distance to half
@@ -580,10 +683,25 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       CASE ('thickness')
         TopField = 0.0_dp
         DO i=1,nsize
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
+
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
 
           IF( i == TmpTopPointer(i) ) THEN
@@ -609,11 +727,25 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       CASE ('index')
         FieldOut = 0.0_dp
         DO i=1,nsize
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
 
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
 
           IF( i == TmpTopPointer(i) ) THEN
@@ -635,11 +767,25 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       CASE ('depth') 
         FieldOut = 0.0_dp
         DO i=1,nsize
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE 
+            ii = i
+          END IF
 
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
 
           IF( i == TmpTopPointer(i) ) THEN
@@ -665,11 +811,25 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       CASE ('height')
         FieldOut = 0.0_dp
         DO i=1,nsize
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
 
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
 
           IF( i == TmpBotPointer(i) ) THEN
@@ -698,11 +858,25 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
 
         ! First check the distance to top ('depth')
         DO i=1,nsize
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
 
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
   
           IF( i == TmpTopPointer(i) ) THEN
@@ -726,12 +900,26 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
         END DO
 
         ! then distance to top ('height')
-        DO i=1,nsize
+        DO i=1,nsize          
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          ELSE
+            ii = i
+          END IF
 
-          IF( UpperOper ) THEN
-            IF( Coord(i) < Coord(MidPointer(i) ) ) CYCLE
-          ELSE IF( LowerOper ) THEN
-            IF( Coord(i) > Coord(MidPointer(i) ) ) CYCLE
+          IF( MidLayerExists ) THEN
+            mi = MidPointer(i)
+            IF( MaskExist ) THEN
+              mii = MaskPerm(mi)
+            ELSE
+              mii = mi
+            END IF
+            IF( UpperOper ) THEN
+              IF( Coord(ii) < Coord(mii) ) CYCLE
+            ELSE IF( LowerOper ) THEN
+              IF( Coord(ii) > Coord(mii) ) CYCLE
+            END IF
           END IF
 
           IF( i == TmpBotPointer(i) ) THEN
@@ -767,6 +955,11 @@ SUBROUTINE StructuredProjectToPlane( Model,Solver,dt,Transient )
       IF( ReducedDimensional ) THEN
         k = 0
         DO i=1,nsize
+          IF( MaskExist ) THEN
+            ii = MaskPerm(i)
+            IF( ii == 0 ) CYCLE
+          END IF
+
           j = i
           IF( ASSOCIATED( PermOut ) ) THEN
             j = PermOut(i)
