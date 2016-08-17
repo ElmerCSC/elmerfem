@@ -45,10 +45,10 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,nInterval=1, nstep=0, OutputCount = 0, MeshDim,MeshLevel,nlen
   INTEGER, POINTER :: OutputIntervals(:), TimeSteps(:)
 
-  TYPE(Mesh_t), POINTER :: Mesh, iMesh, ListMesh
+  TYPE(Mesh_t), POINTER :: Mesh, iMesh, ListMesh, MyMesh
   CHARACTER(10) :: OutputFormat
   CHARACTER(LEN=MAX_NAME_LEN) :: FilePrefix, MeshName, iMeshName
-  LOGICAL :: SubroutineVisited=.FALSE.,Found
+  LOGICAL :: SubroutineVisited=.FALSE.,Found, SaveThisMesh
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: ModelVariables
     
@@ -100,6 +100,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  MyMesh => GetMesh()
+
   IF( .NOT. SubroutineVisited ) THEN
     IF ( GetLogical(Params,'Show Variables',Found) ) THEN
       CALL CreateListForSaving( Model, Params,.TRUE. )    
@@ -136,7 +138,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   SomeMeshSaved = .FALSE.
 
   SaveAllMeshes = GetLogical( Params,'Save All Meshes',Found ) 
-
+  SaveThisMesh = GetLogical( Params,'Save This Mesh Only',Found ) 
 
   iMesh => Model % Meshes
   DO WHILE( ASSOCIATED(iMesh) )
@@ -149,6 +151,14 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       iMesh => iMesh % next
       CYCLE 
     END IF    
+
+    IF( SaveThisMesh ) THEN
+      IF( .NOT. ASSOCIATED( iMesh, MyMesh ) ) THEN
+        CALL Info('ResultOutputSolver','Skipping mesh: '//TRIM(iMesh % Name), Level=7 )
+        iMesh => iMesh % next
+        CYCLE
+      END IF
+    END IF
 
     CALL Info('ResultOutputSolver',Message) 
     IF( iMesh % MeshDim < 2 ) THEN
