@@ -144,7 +144,6 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   DO WHILE( ASSOCIATED(iMesh) )
     
     CALL Info('ResultOutputSolver','Working on mesh: '//TRIM(iMesh % Name), Level=7 )
-    WRITE(Message,'(A,I0)') 'Dimension of mesh: ',iMesh % MeshDim 
 
     IF ( .NOT. SaveAllMeshes .AND. .NOT. iMesh % OutputActive ) THEN
       CALL Info('ResultOutputSolver','Skipping mesh: '//TRIM(iMesh % Name), Level=7 )
@@ -160,8 +159,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       END IF
     END IF
 
-    CALL Info('ResultOutputSolver',Message) 
-    IF( iMesh % MeshDim < 2 ) THEN
+    CALL Info('ResultOutputSolver','Dimension of mesh is: '//TRIM(I2S(iMesh % MeshDim)),Level=7)
+    IF( iMesh % MeshDim < ListGetInteger( Params,'Minimum Mesh Dimension',Found )  ) THEN
       CALL Info('ResultOutputSolver','Skipping meshes with too low dimension')
       iMesh => iMesh % next
       CYCLE
