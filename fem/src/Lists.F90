@@ -4410,7 +4410,8 @@ CONTAINS
 !> by two quite separate ways. This subroutine tries to make the definition of
 !> variables for saving more straight-forward.
 !------------------------------------------------------------------------------
-  SUBROUTINE CreateListForSaving( Model, List, ShowVariables, ClearList )
+  SUBROUTINE CreateListForSaving( Model, List, ShowVariables, ClearList, &
+      UseGenericKeyword )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 !------------------------------------------------------------------------------
@@ -4418,12 +4419,13 @@ CONTAINS
     TYPE(ValueList_t), POINTER  :: List
     LOGICAL :: ShowVariables
     LOGICAL, OPTIONAL :: ClearList
+    LOGICAL, OPTIONAL :: UseGenericKeyword
 !------------------------------------------------------------------------------
     INTEGER :: i,j,k,l,LoopDim, VarDim,FullDim,DOFs,dim,Comp
     TYPE(Variable_t), POINTER :: Variables, Var, Var1
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, VarStr, VarStrComp, VarStrExt, str
     LOGICAL :: IsVector, Set, GotIt, ComponentVector, ThisOnly, IsIndex, &
-        EnforceVectors
+        EnforceVectors, UseGeneric
     INTEGER :: Nvector, Nscalar
     TYPE(ValueList_t), POINTER :: Params
 
@@ -4435,33 +4437,50 @@ CONTAINS
       RETURN
     END IF
 
+    IF( PRESENT( UseGenericKeyword ) ) THEN
+      UseGeneric = UseGenericKeyword 
+    END IF
+    
+
 !------------------------------------------------------------------------------
 ! Sometimes the list must be cleared in order to use it for a different mesh
 !-----------------------------------------------------------------------------
     IF( PRESENT( ClearList ) ) THEN
       IF( ClearList ) THEN
-        DO i=1,999
-          WRITE(VarStr,'(A,I0)') 'Scalar Field ',i
-          IF( ListCheckPresent( List, VarStr ) ) THEN
-            CALL ListRemove( List, VarStr )
-          ELSE
-            EXIT
-          END IF
-        END DO
-
-        DO i=1,999
-          WRITE(VarStr,'(A,I0)') 'Vector Field ',i
-          IF( ListCheckPresent( List, VarStr ) ) THEN
-            CALL ListRemove( List, VarStr )
-          ELSE
-            EXIT
-          END IF
-
-          WRITE(VarStr,'(A,I0,A)') 'Vector Field ',i,' Component'
-          IF( ListCheckPresent( List, VarStr ) ) THEN
-            CALL ListRemove( List, VarStr )
-          END IF
-        END DO
+        IF( UseGeneric ) THEN
+          DO i=1,999
+            WRITE(VarStr,'(A,I0)') 'Variable ',i
+            IF( ListCheckPresent( List, VarStr ) ) THEN
+              CALL ListRemove( List, VarStr )
+            ELSE
+              EXIT
+            END IF
+          END DO
+        ELSE
+          DO i=1,999
+            WRITE(VarStr,'(A,I0)') 'Scalar Field ',i
+            IF( ListCheckPresent( List, VarStr ) ) THEN
+              CALL ListRemove( List, VarStr )
+            ELSE
+              EXIT
+            END IF
+          END DO
+          
+          DO i=1,999
+            WRITE(VarStr,'(A,I0)') 'Vector Field ',i
+            IF( ListCheckPresent( List, VarStr ) ) THEN
+              CALL ListRemove( List, VarStr )
+            ELSE
+              EXIT
+            END IF
+            
+            WRITE(VarStr,'(A,I0,A)') 'Vector Field ',i,' Complement'
+            IF( ListCheckPresent( List, VarStr ) ) THEN
+              CALL ListRemove( List, VarStr )
+            END IF
+          END DO
+          
+        END IF
       END IF
     END IF
     
@@ -4469,16 +4488,23 @@ CONTAINS
     ! First check that there is a need to create the list i.e. it is not
     ! already manually defined
     !-------------------------------------------------------------------
-    IF( ListCheckPresent( List,'Scalar Field 1' ) ) THEN
-      CALL Info('CreateListForSaving','Scalar Field 1 exists, creating no list!',Level=10)
-      RETURN
+    IF( UseGeneric ) THEN
+      IF( ListCheckPresent( List,'Variable 1' ) ) THEN
+        CALL Info('CreateListForSaving','Variable 1 exists, creating no list!',Level=10)
+        RETURN
+      END IF
+    ELSE
+      IF( ListCheckPresent( List,'Scalar Field 1' ) ) THEN
+        CALL Info('CreateListForSaving','Scalar Field 1 exists, creating no list!',Level=10)
+        RETURN
+      END IF
+      
+      IF( ListCheckPresent( List,'Vector Field 1' ) ) THEN
+        CALL Info('CreateListForSaving','Vector Field 1 exists, creating no list!',Level=10)
+        RETURN
+      END IF
     END IF
-
-    IF( ListCheckPresent( List,'Vector Field 1' ) ) THEN
-      CALL Info('CreateListForSaving','Vector Field 1 exists, creating no list!',Level=10)
-      RETURN
-    END IF
-
+    
     Nscalar = 0
     Nvector = 0
 
@@ -4488,7 +4514,6 @@ CONTAINS
 
     EnforceVectors = ListGetLogical( Params,'Enforce Vectors',GotIt)
     IF(.NOT. GotIt ) EnforceVectors = .TRUE.
-
     
     Var => Variables
 
@@ -4537,14 +4562,14 @@ CONTAINS
 
       CASE( 'mesh update' )
         ! Mesh update is treated separately because its special connection to displacement
-
-        Var1 => Variables
-        DO WHILE( ASSOCIATED( Var1 ) )
-          IF ( TRIM(Var1 % Name) == 'displacement' ) EXIT
-          Var1 => Var1 % Next
-        END DO
-        IF ( .NOT. ASSOCIATED( Var1 ) ) THEN
-          Set = .TRUE.
+        Set = .TRUE.
+        IF(.NOT. UseGeneric ) THEN
+          Var1 => Variables
+          DO WHILE( ASSOCIATED( Var1 ) )
+            IF ( TRIM(Var1 % Name) == 'displacement' ) EXIT
+            Var1 => Var1 % Next
+          END DO
+          IF ( ASSOCIATED( Var1 ) ) Set = .FALSE.
         END IF
         
       CASE('mesh update 1','mesh update 2', 'mesh update 3' )
@@ -4552,16 +4577,19 @@ CONTAINS
       CASE( 'displacement' )
         Set = .TRUE.
         ! mesh update is by default the complement to displacement 
-        Var1 => Variables
-        DO WHILE( ASSOCIATED( Var1 ) )
-          IF ( TRIM(Var1 % Name) == 'mesh update' ) EXIT
-          Var1 => Var1 % Next
-        END DO
-        IF ( ASSOCIATED( Var1 ) ) THEN
-          WRITE(VarStrComp,'(A,I0,A)') 'Vector Field ',Nvector+1,' Complement'
-          CALL ListAddString( List ,TRIM(VarStrComp),'mesh update')
+        ! However, for generic variablelist the complement is not active
+        IF(.NOT. UseGeneric ) THEN
+          Var1 => Variables
+          DO WHILE( ASSOCIATED( Var1 ) )
+            IF ( TRIM(Var1 % Name) == 'mesh update' ) EXIT
+            Var1 => Var1 % Next
+          END DO
+          IF ( ASSOCIATED( Var1 ) ) THEN
+            WRITE(VarStrComp,'(A,I0,A)') 'Vector Field ',Nvector+1,' Complement'
+            CALL ListAddString( List ,TRIM(VarStrComp),'mesh update')
+          END IF
         END IF
-        
+
       CASE( 'displacement 1','displacement 2','displacement 3')
         
 
@@ -4632,7 +4660,10 @@ CONTAINS
       ! Set the default variable names that have not been set
       !------------------------------------------------------------------------
       IF( Set ) THEN
-        IF( IsVector ) THEN          
+        IF( UseGeneric ) THEN
+          Nscalar = Nscalar + 1
+          WRITE(VarStr,'(A,I0)') 'Variable ',Nscalar          
+        ELSE IF( IsVector ) THEN          
           Nvector = Nvector + 1
           WRITE(VarStr,'(A,I0)') 'Vector Field ',Nvector
         ELSE
@@ -4648,32 +4679,43 @@ CONTAINS
 
     IF( ShowVariables ) THEN
       CALL Info('CreateListForSaving','Field Variables for Saving')
-      DO i=1,Nscalar
-        WRITE(VarStr,'(A,I0)') 'Scalar Field ',i
-        VarName = ListGetString( List, VarStr,GotIt )
-        IF( GotIt ) THEN
-          WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
-          CALL Info('CreateListForSaving',Message)
-        END IF
-      END DO
-
-      DO i=1,Nvector
-        WRITE(VarStr,'(A,I0)') 'Vector Field ',i
-        VarName = ListGetString( List, VarStr,GotIt )
-        IF( GotIt ) THEN
-          WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
-          CALL Info('CreateListForSaving',Message)
-        END IF
-      END DO
-
-      DO i=1,Nvector
-        WRITE(VarStr,'(A,I0,A)') 'Vector Field ',i,' Complement'
-        VarName = ListGetString( List, VarStr, GotIt )
-        IF( GotIt ) THEN
-          WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
-          CALL Info('CreateListForSaving',Message)
-        END IF
-      END DO
+      IF( UseGeneric ) THEN
+        DO i=1,Nscalar
+          WRITE(VarStr,'(A,I0)') 'Variable ',i
+          VarName = ListGetString( List, VarStr,GotIt )
+          IF( GotIt ) THEN
+            WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
+            CALL Info('CreateListForSaving',Message,Level=6)
+          END IF
+        END DO
+      ELSE
+        DO i=1,Nscalar
+          WRITE(VarStr,'(A,I0)') 'Scalar Field ',i
+          VarName = ListGetString( List, VarStr,GotIt )
+          IF( GotIt ) THEN
+            WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
+            CALL Info('CreateListForSaving',Message,Level=6)
+          END IF
+        END DO
+        
+        DO i=1,Nvector
+          WRITE(VarStr,'(A,I0)') 'Vector Field ',i
+          VarName = ListGetString( List, VarStr,GotIt )
+          IF( GotIt ) THEN
+            WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
+            CALL Info('CreateListForSaving',Message,Level=6)
+          END IF
+        END DO
+        
+        DO i=1,Nvector
+          WRITE(VarStr,'(A,I0,A)') 'Vector Field ',i,' Complement'
+          VarName = ListGetString( List, VarStr, GotIt )
+          IF( GotIt ) THEN
+            WRITE( Message,'(A)') TRIM(VarStr)//': '//TRIM(VarName)
+            CALL Info('CreateListForSaving',Message,Level=6)
+          END IF
+        END DO
+      END IF
     END IF
 
   END SUBROUTINE CreateListForSaving
