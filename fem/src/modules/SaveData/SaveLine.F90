@@ -241,6 +241,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     END IF
   END DO
 
+  ! Add coordnate values
+  NoResults = NoResults + 3
 
   IF ( CalculateFlux ) NoResults = NoResults + 3
   CALL Info('SaveLine','Maximum number of vectors to save: '//TRIM(I2S(NoResults)),Level=18)
@@ -411,7 +413,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       No = 0
       Values = 0.0d0
 
-      DO ivar=1, NoVar
+      DO ivar=-2, NoVar
         Var => VariableGetN( ivar ) 
 
         l = node
@@ -607,7 +609,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
               No = 0
               Values = 0.0d0
 
-              DO ivar = 1,NoVar
+              DO ivar = -2,NoVar
                 Var => VariableGetN( ivar ) 
 
                 IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
@@ -695,7 +697,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
           No = 0
           Values = 0.0d0
 
-          DO ivar = 1,NoVar
+          DO ivar = -2,NoVar
             Var => VariableGetN( ivar ) 
 
             IF (ASSOCIATED (Var % EigenVectors)) THEN
@@ -856,7 +858,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
         No = 0
         Values = 0.0d0
         
-        DO ivar = 1,NoVar
+        DO ivar = -2,NoVar
           Var => VariableGetN( ivar ) 
           
           IF (ASSOCIATED (Var % EigenVectors)) THEN
@@ -918,7 +920,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for ValueNames') 
 
     No = 0
-    DO ivar = 1,NoVar
+    DO ivar = -2,NoVar
       Var => VariableGetN( ivar ) 
 
       IF (ASSOCIATED (Var % EigenVectors)) THEN
@@ -1001,9 +1003,14 @@ CONTAINS
 
     NULLIFY(Var)
     
-    WRITE (Name,'(A,I0)') 'Variable ',i
-    VarName = GetString( Params, Name, Found )
-
+    IF( i < 1 ) THEN
+      VarName = 'Coordinate '//TRIM(I2S(i+3))
+      Found = .TRUE.
+    ELSE
+      WRITE (Name,'(A,I0)') 'Variable ',i
+      VarName = GetString( Params, Name, Found )
+    END IF
+      
     IF( Found ) THEN
       Var => VariableGet( Model % Variables, VarName )
       IF(.NOT. ASSOCIATED( Var ) ) THEN
