@@ -13583,6 +13583,7 @@ CONTAINS
        DO WHILE(ASSOCIATED(Ctmp))
          mcount = mcount + 1
          row = row + Ctmp % NumberOfRows
+         Ctmp => Ctmp % ConstraintMatrix
        END DO
      END IF
 
