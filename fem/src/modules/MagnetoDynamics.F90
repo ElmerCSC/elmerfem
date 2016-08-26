@@ -412,7 +412,10 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       END IF
     END IF
   END IF
+  
   CALL ListAddLogical( SolverParams,'Use Global Mass Matrix',.TRUE.) 
+  CALL ListAddLogical( SolverParams,'Edge Basis',.TRUE.)
+
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVSolver_Init0
 !------------------------------------------------------------------------------
@@ -3094,6 +3097,9 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
   END IF
   IF( .NOT. ListCheckPresent( SolverParams, 'Linear System Complex') ) &
     CALL ListAddLogical( SolverParams, 'Linear System Complex', .TRUE. )
+
+  CALL ListAddLogical( SolverParams,'Edge Basis',.TRUE.)
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE WhitneyAVHarmonicSolver_Init0
 !------------------------------------------------------------------------------
