@@ -19,7 +19,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   !-----------------------------------------------------------------------------
   TYPE(Element_t),POINTER :: Element
   REAL(KIND=dp) :: Norm
-  INTEGER :: nnz, nthreads, n, nb, nd, t, istat, active
+  INTEGER :: nnz, n, nb, nd, t, istat, active
   LOGICAL :: Found
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueList_t), POINTER :: BodyForce
@@ -30,7 +30,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL, SAVE :: AllocationsDone = .FALSE.
   !$OMP THREADPRIVATE(STIFF, LOAD, FORCE, AllocationsDone, maxdofs)
   ! Variables related to graph colouring
-!  INTEGER :: col, cli, cti
+!  INTEGER :: col
 !  TYPE(Graph_t) :: DualGraph
 !  TYPE(GraphColour_t) :: GraphColouring
 !  TYPE(Graph_t), POINTER :: ColourIndexList
@@ -48,11 +48,10 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 
   !System assembly:
   !----------------
-  Active = GetNOFActive()
   CALL DefaultInitialize()
 
   ! Check that mesh colouring is actually in use
-!  VecAsm = .TRUE.
+  VecAsm = .TRUE.
 !  MCAsm = ListGetLogical( Solver % Values, 'Mesh Colouring', Found )
 !  IF (VecAsm .AND. MCAsm .AND. Found) THEN
 !    CALL Info('PoissonSolver', 'Vectorized assembly in use')
@@ -76,7 +75,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 !  ColourIndexList => Solver % ColourIndexList
 
   !$OMP PARALLEL DEFAULT(NONE) &
-  !$OMP SHARED(Solver, Mesh, Active,nthreads, ColourIndexList, cli, cti, VecAsm) &
+  !$OMP SHARED(Solver, Mesh, nActive,VecAsm) &
   !$OMP PRIVATE(BodyForce, Element, col, n, nd, nb, t, istat, Found, Norm, &
   !$OMP         Indexes, nind, LoadPtr)
 
