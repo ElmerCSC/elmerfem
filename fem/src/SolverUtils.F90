@@ -11405,6 +11405,8 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
         CALL Fatal( 'AddEquation', '> Frequency < must be given for harmonic analysis.' )
       END IF
       Nfrequency = 1
+      ! Add the number of frequencies even for case of one for some postprocessing stuff to work 
+      CALL ListAddInteger( Solver % Values,'Harmonic System Values',Nfrequency )
     END IF
 
     niter = MIN(Nfrequency,Solver % NOFEigenValues)
@@ -13581,6 +13583,7 @@ CONTAINS
        DO WHILE(ASSOCIATED(Ctmp))
          mcount = mcount + 1
          row = row + Ctmp % NumberOfRows
+         Ctmp => Ctmp % ConstraintMatrix
        END DO
      END IF
 

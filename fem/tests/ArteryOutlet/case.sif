@@ -39,7 +39,6 @@ Simulation
   Timestep Sizes = 0.001 
   TimeStep Intervals = 2 !300 
   Output Intervals = 1
-  Post File = "case.vtu"
 
   Simulation Timing = Logical True
 End
@@ -189,6 +188,19 @@ Solver 5
   Filename = f.dat
   Variable 1 = coupled iter 
 End  
+
+
+Solver 6
+  Equation = "ResultOutput"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+
+  Output File Name = case
+  Vtu format = Logical True
+  Save Geometry IDs = True
+
+! Supress saving of lines
+  Minimum Mesh Dimension = Integer 2
+End
 
 Equation 1
   Navier-Stokes = True

@@ -161,6 +161,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
+  CALL Info('SaveLine','Saving line data to file: '//TRIM(SideParFile),Level=12)
+
   
   FileAppend = ListGetLogical(Params,'File Append',GotIt )
   MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
@@ -216,77 +218,39 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     END IF
   END IF
 
-
-
   SkipBoundaryInfo = ListGetLogical(Params,'Skip Boundary Info',GotIt)
-  !----------------------------------------------
-  ! Calculate the number of given entries, if any
-  !---------------------------------------------- 
-  NoVar = 0  
-  DO ivar = 1,99
-    Var => VariableGetN( ivar ) 
-    IF( .NOT. ASSOCIATED( Var ) ) EXIT
-    NoVar = ivar
-  END DO
-  
-  !----------------------------------------------
-  ! Create the list of entries
-  !---------------------------------------------- 
-  IF( NoVar == 0 ) THEN
-    Var => Model % Variables
-    DO WHILE( ASSOCIATED( Var ) )            
-
-      IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == 1 .OR. &
-          (Var % DOFs /= 1 .AND. .NOT. ASSOCIATED(Var % EigenVectors)) ) THEN
-        Var => Var % Next        
-        CYCLE
-      END IF
-
-      IF( Var % TYPE /= Variable_on_nodes_on_elements .AND. &
-          Var % TYPE /= Variable_on_nodes ) THEN
-        var => Var % Next 
-        CYCLE
-      END IF
-
-      IF(.NOT. ASSOCIATED( Var % Perm ) ) THEN
-        IF( SIZE( Var % Values ) /= Var % Dofs * Mesh % NumberOfNodes ) THEN
-          Var => Var % Next
-          CYCLE
-        END IF
-      END IF
-
-      NoVar = NoVar + 1
-      WRITE (Name,'(A,I0)') 'Variable ',NoVar
-
-      CALL ListAddString( Params,TRIM(Name),TRIM(Var % Name) )
-      Var => Var % Next      
-    END DO
-  END IF
-    
-  IF( NoVar == 0 ) THEN
-    CALL Warn('SaveLine','No variables to save!')
-    RETURN
-  END IF
-
 
 !----------------------------------------------
-! Calculate the number of entries for each node
+! Specify the number of entries for each node
 !---------------------------------------------- 
+  IF( Solver % TimesVisited == 0  ) THEN
+    CALL CreateListForSaving( Model, Params,.TRUE.,UseGenericKeyword = .TRUE.)    
+  END IF
 
+  NoVar = 0
   NoResults = 0
-  DO ivar = 1,NoVar
+  DO ivar = 1,99
     Var => VariableGetN( ivar )
     IF ( .NOT. ASSOCIATED( Var ) )  EXIT
+    NoVar = ivar
     IF (ASSOCIATED (Var % EigenVectors)) THEN
       NoEigenValues = SIZE(Var % EigenValues) 
       NoResults = NoResults + Var % Dofs * NoEigenValues
     ELSE
-      NoResults = NoResults + 1
+      NoResults = NoResults + Var % Dofs
     END IF
   END DO
 
+  ! Add coordnate values
+  NoResults = NoResults + 3
+
   IF ( CalculateFlux ) NoResults = NoResults + 3
   CALL Info('SaveLine','Maximum number of vectors to save: '//TRIM(I2S(NoResults)),Level=18)
+
+  IF( NoVar == 0 .OR. NoResults == 0 ) THEN
+    CALL Warn('SaveLine','No variables to save!')
+    RETURN
+  END IF
 
   ALLOCATE( Values(NoResults), STAT=istat )
   IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for Values') 
@@ -449,7 +413,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
       No = 0
       Values = 0.0d0
 
-      DO ivar=1, NoVar
+      DO ivar=-2, NoVar
         Var => VariableGetN( ivar ) 
 
         l = node
@@ -645,7 +609,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
               No = 0
               Values = 0.0d0
 
-              DO ivar = 1,NoVar
+              DO ivar = -2,NoVar
                 Var => VariableGetN( ivar ) 
 
                 IF( Var % TYPE == Variable_on_nodes_on_elements ) THEN
@@ -733,7 +697,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
           No = 0
           Values = 0.0d0
 
-          DO ivar = 1,NoVar
+          DO ivar = -2,NoVar
             Var => VariableGetN( ivar ) 
 
             IF (ASSOCIATED (Var % EigenVectors)) THEN
@@ -894,7 +858,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
         No = 0
         Values = 0.0d0
         
-        DO ivar = 1,NoVar
+        DO ivar = -2,NoVar
           Var => VariableGetN( ivar ) 
           
           IF (ASSOCIATED (Var % EigenVectors)) THEN
@@ -956,7 +920,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for ValueNames') 
 
     No = 0
-    DO ivar = 1,NoVar
+    DO ivar = -2,NoVar
       Var => VariableGetN( ivar ) 
 
       IF (ASSOCIATED (Var % EigenVectors)) THEN
@@ -1039,11 +1003,19 @@ CONTAINS
 
     NULLIFY(Var)
     
-    WRITE (Name,'(A,I0)') 'Variable ',i
-    VarName = GetString( Params, Name, Found )
-
+    IF( i < 1 ) THEN
+      VarName = 'Coordinate '//TRIM(I2S(i+3))
+      Found = .TRUE.
+    ELSE
+      WRITE (Name,'(A,I0)') 'Variable ',i
+      VarName = GetString( Params, Name, Found )
+    END IF
+      
     IF( Found ) THEN
       Var => VariableGet( Model % Variables, VarName )
+      IF(.NOT. ASSOCIATED( Var ) ) THEN
+        CALL Warn('VariableGetN','Variable given but not found: '//TRIM(VarName))
+      END IF
     END IF
 
   END FUNCTION VariableGetN
