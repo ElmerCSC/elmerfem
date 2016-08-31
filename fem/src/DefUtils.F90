@@ -110,6 +110,31 @@ MODULE DefUtils
 
 CONTAINS
 
+
+   FUNCTION GetVersion() RESULT(ch)
+     CHARACTER(LEN=:), ALLOCATABLE :: ch
+     ch = VERSION
+   END FUNCTION GetVersion
+
+   FUNCTION GetRevision() RESULT(ch)
+     CHARACTER(LEN=:), ALLOCATABLE :: ch
+#ifdef REVISION
+     ch = REVISION
+#else
+     ch = "unknown"
+#endif
+   END FUNCTION GetRevision
+
+   FUNCTION GetCompilationDate() RESULT(ch)
+     CHARACTER(LEN=:), ALLOCATABLE :: ch
+#ifdef COMPILATIONDATE
+     ch = COMPILATIONDATE
+#else
+     ch = "unknown"
+#endif
+   END FUNCTION GetCompilationDate
+
+
 !
 !  FUNCTION GetIndexStore() RESULT(ind)
 !    INTEGER, POINTER :: Ind(:)
