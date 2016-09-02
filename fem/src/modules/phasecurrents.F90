@@ -85,7 +85,8 @@ FUNCTION source( model, n, time ) RESULT(current)
   amplitude_fade_in = GetLogical(BF, 'Amplitude Fade In', Found)
   IF (.NOT. Found) amplitude_fade_in = .TRUE.
   
-  Isum = CosSum(freq, Amplitudes, time, phase)
+!  Isum = CosSum(freq, Amplitudes, time, phase)
+  Isum = SinSum(freq, Amplitudes, time, phase)
   
   DO i = 1, SIZE(amplitudes(:,1))
     WRITE(Message,*) TRIM(ListGetActiveName())//': Amplitudes = ', Amplitudes(i,1), ' ', Amplitudes(i,2)
