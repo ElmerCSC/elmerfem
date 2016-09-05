@@ -74,9 +74,9 @@ END SUBROUTINE SaveLine_init
 
 
 !------------------------------------------------------------------------------
-!>  This subroutine saves 1D or 2D data in different formats.
-!> Data on existing boundaries and polylines defined by set of coordinates 
-!> may be saved.
+!> This subroutine saves 1D or 2D data in different formats.
+!> Data on existing boundaries, polylines and circle defined by set of coordinates 
+!> may be saved. 
 !------------------------------------------------------------------------------
 SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 
@@ -154,7 +154,8 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for Elemental stuff') 
 
   IF( Solver % TimesVisited == 0 ) THEN
-    ALLOCATE( SavePerm(Mesh % NumberOfNodes) )
+    ALLOCATE( SavePerm(Mesh % NumberOfNodes), STAT=istat )
+    IF( istat /= 0 ) CALL Fatal('SaveLine','Memory allocation error for SavePerm') 
   END IF
 
   NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
@@ -188,8 +189,6 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     IF(.NOT. gotIt) CondName = TRIM('Heat Conductivity')
   END IF
 
-
-
 !----------------------------------------------
 ! Specify the number of entries for each node
 !---------------------------------------------- 
@@ -209,7 +208,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
     ELSE
       EdgeBasis = .FALSE.
       IF( ASSOCIATED( Var % Solver ) ) THEN
-        EdgeBasis = GetLogical( Var % Solver % Values,'Edge Basis',Found )
+        EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found )
       END IF
       IF( EdgeBasis ) THEN
         NoResults = NoResults + 3
@@ -228,6 +227,7 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
   END IF
 
   ! Add coordnate values
+  MaxBoundary = 0
   NoResults = NoResults + 3
 
   ALLOCATE( Values(NoResults), STAT=istat )
@@ -274,6 +274,9 @@ SUBROUTINE SaveLine( Model,Solver,dt,TransientSimulation )
 CONTAINS
 
 
+  ! Get the Nth variable. The coordinate is a cludge since 
+  ! the coordinate is not in the automated variable list. 
+  !---------------------------------------------------------------
   FUNCTION VariableGetN(i) RESULT ( Var )
     INTEGER :: i
     TYPE(Variable_t), POINTER :: Var
@@ -381,7 +384,6 @@ CONTAINS
         absA = SUM(ABS(A(1,1:3))) * SUM(ABS(A(2,1:3))) * SUM(ABS(A(3,1:3))) 
 
         IF(ABS(detA) <= eps * absA + Eps2) CYCLE
-!        print *,'detA',detA
 
         B(1) = Plane % x(1) - Line % x(1)
         B(2) = Plane % y(1) - Line % y(1)
@@ -518,6 +520,8 @@ CONTAINS
   
 
 
+  ! Write a line of data for a point in a known element.
+  !----------------------------------------------------------------------
   SUBROUTINE WriteFieldsAtElement( Element, Basis, BC_id, &
       node_id, UseNode, NodalFlux, LocalCoord )
 
@@ -545,9 +549,9 @@ CONTAINS
 
     SAVE :: AllocationsDone, Nodes
     
+
     IF(.NOT. AllocationsDone ) THEN
-      AllocationsDone = .TRUE.
-      
+      AllocationsDone = .TRUE.      
     END IF
 
     n0 = 0
@@ -569,6 +573,7 @@ CONTAINS
       END IF
     END IF
 
+
     UseGivenNode = .FALSE.
     IF( PRESENT( UseNode ) ) UseGivenNode = UseNode
     IF( UseGivenNode ) THEN
@@ -589,6 +594,7 @@ CONTAINS
     No = 0
     Values = 0.0d0
 
+
     DO ivar = -2,NoVar
       Var => VariableGetN( ivar ) 
 
@@ -608,7 +614,7 @@ CONTAINS
           n = Element % TYPE % NumberOfNodes
 
           EdgeBasis = GetLogical(Var % Solver % Values, &
-              'Edge Basis', Found )  
+              'Hcurl Basis', Found )  
           PiolaVersion = GetLogical(Var % Solver % Values, &
               'Use Piola Transform', Found )   
         ELSE
@@ -934,11 +940,20 @@ CONTAINS
   END SUBROUTINE CloseLineFile
 
 
-  
+
+! Save a line (or boundary) that exist already in mesh.
+! Data is thus saved in existing nodes. 
+!-----------------------------------------------------------------------
   SUBROUTINE SaveExistingLines()
 
     MaskName = ListGetString(Params,'Save Mask',GotIt) 
     IF(.NOT. GotIt) MaskName = 'Save Line'
+
+    IF( .NOT. ( ListCheckPresentAnyBC( Model, MaskName ) .OR. &
+        ListCheckPresentAnyBodyForce( Model, MaskName ) ) ) RETURN
+
+    CALL Info('SaveLine','Saving existing nodes into ascii table',Level=8)
+
 
     IF( Solver % TimesVisited > 0 ) THEN
       InitializePerm = ( MaskName /= PrevMaskName ) 
@@ -969,8 +984,6 @@ CONTAINS
     !------------------------------------------------------------------------------
     ! If nodes found, then go through the sides and compute the fluxes if requested 
     !------------------------------------------------------------------------------
-
-    maxboundary = 0
     IF( SaveNodes > 0 ) THEN
 
       ALLOCATE( InvPerm(SaveNodes), BoundaryIndex(SaveNodes), STAT=istat )
@@ -996,6 +1009,7 @@ CONTAINS
         PointFluxes = 0.0d0
         PointWeight = 0.0d0
       END IF
+
 
       ! Go through the elements and register the boundary index and fluxes if asked
       DO t = 1,  Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements        
@@ -1066,11 +1080,15 @@ CONTAINS
       ! Save the nodes      
       !---------------     
       DO t = 1, SaveNodes    
-
         node = InvPerm(t)
-
-        CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
-            UseNode = .TRUE., NodalFlux = PointFluxes(t,:) )
+        
+        IF( CalculateFlux ) THEN
+          CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
+              UseNode = .TRUE., NodalFlux = PointFluxes(t,:) )
+        ELSE
+          CALL WriteFieldsAtElement( CurrentElement, Basis, BoundaryIndex(t), node, &
+              UseNode = .TRUE. )
+        END IF
       END DO
 
       DEALLOCATE(InvPerm, BoundaryIndex)
@@ -1081,6 +1099,10 @@ CONTAINS
 
 
 
+  ! Save data on given polylines. These are created on-the-fly.
+  ! Data is written either on intersections with element faces (edges), or
+  ! in uniformly distributed points. 
+  !-------------------------------------------------------------------------------------
   SUBROUTINE SavePolyLines()
     
     SaveAxis(1) = ListGetLogical(Params,'Save Axis',GotIt)
@@ -1103,6 +1125,9 @@ CONTAINS
     ELSE 
       NoLines = 0
     END IF
+
+    CALL Info('SaveLine','Saving PolyLines into ascii table',Level=8)
+
 
     GotDivisions = .FALSE.
     IF( NoLines > 0 ) THEN
@@ -1316,12 +1341,17 @@ CONTAINS
 
 
 
+  ! Save data on given circular lines.
+  ! Data is saved in given number of divisions for each circle.
+  !---------------------------------------------------------------------------
   SUBROUTINE SaveCircleLines()
     
     REAL(KIND=dp) :: CylCoord(3), Radius, Phi, Rtol
 
     PointCoordinates => ListGetConstRealArray(Params,'Circle Coordinates',gotIt)
     IF(.NOT. GotIt) RETURN
+
+    CALL Info('SaveLine','Saving circular lines into ascii table',Level=8)
 
     NoLines = SIZE(PointCoordinates,1) 
     NoDims = SIZE(PointCoordinates,2)
@@ -1487,9 +1517,13 @@ CONTAINS
 
 
 
+  ! Save data on isocurves of some field.
+  !--------------------------------------------------------------------------
   SUBROUTINE SaveIsoCurves()
 
     IF( .NOT. ListGetLogical( Params,'Save Isocurves',Found) ) RETURN
+
+    CALL Info('SaveLine','Saving isocurves into ascii table',Level=8)
 
     IF( DIM == 3 ) THEN
       CALL Fatal('SaveLine','Isocurves can only be saved in 2D')
@@ -1638,7 +1672,7 @@ CONTAINS
         ELSE 
           EdgeBasis = .FALSE.
           IF( ASSOCIATED( Var % Solver ) ) THEN
-            EdgeBasis = GetLogical( Var % Solver % Values,'Edge Basis',Found)         
+            EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found)         
           END IF
 
           No = No + 1
