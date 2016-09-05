@@ -167,7 +167,12 @@ set(OpenMP_Fortran_TEST_SOURCE
   "
 program test
 use omp_lib
-integer :: n
+integer :: n,m
+!$OMP SIMD
+DO n = 1,5
+m = 1
+END DO
+!$END OMP SIMD
 n = omp_get_num_threads()
 end program test
   "
