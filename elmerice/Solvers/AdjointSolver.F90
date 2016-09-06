@@ -77,7 +77,7 @@ SUBROUTINE AdjointSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp),POINTER :: ForceVector(:)
   integer :: t,n,NSDOFs,NVals,SolverInd
   REAL(KIND=dp),ALLOCATABLE :: STIFF(:,:),FORCE(:),ExtPressure(:),LoadVector(:,:),Alpha(:),Beta(:),SlipCoeff(:,:),w(:)
-  Logical :: Gotit,GotForceBC,NormalTangential,Firsttime=.true.,UnFoundFatal
+  Logical :: Gotit,GotForceBC,NormalTangential,Firsttime=.true.,UnFoundFatal=.TRUE.
   INTEGER, POINTER :: NodeIndexes(:),Perm(:)
   integer :: p,q,dim,c
 

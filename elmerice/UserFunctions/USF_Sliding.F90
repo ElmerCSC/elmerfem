@@ -78,7 +78,7 @@ FUNCTION Sliding_Weertman (Model, nodenumber, x) RESULT(Bdrag)
   REAL (KIND=dp) :: C, m, Bdrag 
   REAL (KIND=dp) :: ut, un, ut0
   REAL (KIND=dp), ALLOCATABLE :: normal(:), velo(:), AuxReal(:)
-  LOGICAL :: GotIt, FirstTime = .TRUE., SSA = .FALSE., UnFoundFatal
+  LOGICAL :: GotIt, FirstTime = .TRUE., SSA = .FALSE., UnFoundFatal=.TRUE.
   
   CHARACTER(LEN=MAX_NAME_LEN) :: FlowSolverName
 

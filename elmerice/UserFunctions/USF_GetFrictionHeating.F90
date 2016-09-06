@@ -64,7 +64,7 @@ FUNCTION getFrictionHeat(  Model, Node, DummyInput)RESULT(frictionheat)
   REAL(KIND=dp), POINTER :: FlowValues(:),NormalValues(:),StressValues(:)
   REAL(KIND=dp) :: normal(3), velo(3), un, ut, Sig(3,3), Sn(3), snn, snt
   INTEGER, POINTER :: FlowPerm(:),StressPerm(:), NormalPerm(:)
-  LOGICAL :: FirstTime=.TRUE.,UnFoundFatal
+  LOGICAL :: FirstTime=.TRUE.,UnFoundFatal=.TRUE.
   TYPE(Variable_t), POINTER :: FlowSol,StressVariable, NormalVar
   CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName
   

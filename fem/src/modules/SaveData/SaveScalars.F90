@@ -139,13 +139,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   CALL Info('SaveScalars', '-----------------------------------------', Level=4 )
   CALL Info('SaveScalars','Saving scalar values of various kinds',Level=4)
 
-  Mesh => Model % Meshes
-  DO WHILE( ASSOCIATED(Mesh) )
-    IF ( Mesh % OutputActive ) EXIT 
-    Mesh => Mesh % Next
-  END DO
-  CALL SetCurrentMesh( Model, Mesh )
 
+  Mesh => GetMesh()
   DIM = CoordinateSystemDimension()
   Params => GetSolverParams()	
 
