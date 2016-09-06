@@ -65,7 +65,7 @@ Solver 2
   Show Norm Index = 1
 
   Circle Coordinates(1,7) = Real 0.41 0.41 0.51 0.0 0.0 -1.0 0.25
-  Circle Divisions(1) = Integer 500
+  Circle Divisions(1) = Integer 100
 
 !  Variable 1 = Temperature
 End
@@ -89,19 +89,19 @@ Boundary Condition 1
 End
 
 Solver 2 :: Show Norm Index = Integer 1
-Solver 2 :: Reference Norm = Real 21.0
+Solver 2 :: Reference Norm = Real 100.0
 Solver 2 :: Reference Norm Tolerance = Real 1e-4
 $fprintf( stderr, "TEST CASE 1\n");
 RUN
 
-!Solver 2 :: Show Norm Index = Integer 4
-!Solver 2 :: Reference Norm = Real 10.5
-!$fprintf( stderr, "TEST CASE 2\n");
-!RUN
+Solver 2 :: Show Norm Index = Integer 4
+Solver 2 :: Reference Norm = Real 41.0
+$fprintf( stderr, "TEST CASE 2\n");
+RUN
 
-!Solver 2 :: Show Norm Index = Integer 7
-!Solver 2 :: Reference Norm = Real 8.35296385E-01
-!$fprintf( stderr, "TEST CASE 3\n");
-!RUN
+Solver 2 :: Show Norm Index = Integer 7
+Solver 2 :: Reference Norm = Real 5.39451247
+$fprintf( stderr, "TEST CASE 3\n");
+RUN
 
 !End Of File

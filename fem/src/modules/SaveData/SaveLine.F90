@@ -559,12 +559,14 @@ CONTAINS
       
       IF(TransientSimulation) THEN
         Labels(1) = Solver % DoneTime
-        nO = 1
+        n0 = 1
       END IF
       Labels(n0+1) = Solver % TimesVisited + 1
       Labels(n0+2) = bc_id
       Labels(n0+3) = node_id
+
       n0 = n0 + 3
+
       DO i=1,n0
         WRITE(10,'(A)',ADVANCE='NO') TRIM(I2S(Labels(i)))//' '
       END DO
@@ -1675,12 +1677,19 @@ CONTAINS
             EdgeBasis = GetLogical( Var % Solver % Values,'Hcurl Basis',Found)         
           END IF
 
-          No = No + 1
-          ValueNames(No) = TRIM(Var % Name)
           IF( EdgeBasis ) THEN
-            No = No + 2
+            ValueNames(No+1) = TRIM(Var % Name)//' {e} 1'
+            ValueNames(No+2) = TRIM(Var % Name)//' {e} 2'
+            ValueNames(No+3) = TRIM(Var % Name)//' {e} 3'         
+            No = No + 3
+          ELSE IF( Var % Dofs == 1 ) THEN
+            No = No + 1
+            ValueNames(No) = TRIM(Var % Name)
           ELSE
-            No = No + Var % Dofs - 1 
+            DO i=1,Var % Dofs
+              No = No + 1
+              ValueNames(No) = ComponentName(Var % Name,i)
+            END DO
           END IF
         END IF
         Var => Var % Next      
