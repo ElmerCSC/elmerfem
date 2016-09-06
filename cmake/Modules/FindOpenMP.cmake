@@ -176,7 +176,7 @@ END DO
 DO m = 1,16
 A(m) = B(m)
 END DO
-!$END OMP SIMD
+!$OMP END SIMD
 n = omp_get_num_threads()
 end program test
   "
