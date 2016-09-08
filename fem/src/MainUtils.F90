@@ -77,7 +77,7 @@ CONTAINS
       
       IF( Found ) THEN        
         IF ( ParEnv % PEs > 1 ) THEN
-          IF ( str /= 'mumps' .AND. str /= 'cpardiso' ) THEN
+          IF ( str /= 'mumps' .AND. str /= 'cpardiso' .AND. str /= 'permon' ) THEN
             CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS and CPardiso direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 
@@ -118,6 +118,10 @@ CONTAINS
         CASE( 'cholmod','spqr' )
 #ifndef HAVE_CHOLMOD
           CALL Fatal( 'CheckLinearSolverOptions', 'Cholmod solver has not been installed.' )
+#endif
+       CASE( 'permon')
+#ifndef HAVE_FETI4I
+          CALL Fatal( 'CheckLinearSolverOptions', 'FETI4I solver has not been installed.' )
 #endif
         CASE DEFAULT
           CALL Fatal( 'CheckLinearSolverOptions', 'Unknown direct solver method: ' // TRIM(str) )

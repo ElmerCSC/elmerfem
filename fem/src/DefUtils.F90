@@ -3038,11 +3038,83 @@ CONTAINS
      ELSE
        Indexes => GetIndexStore()
        n = GetElementDOFs( Indexes, Element, Solver )
-       CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)), UElement=Element )
+
+       IF(GetString(Solver % Values, 'Linear System Direct Method',Found)=='permon') THEN
+         CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
+                              x % Perm(Indexes(1:n)), UElement=Element )
+         CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
+       ELSE
+         CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
+                            x % Perm(Indexes(1:n)), UElement=Element )
+       END IF
      END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
 !------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+ SUBROUTINE UpdatePermonMatrix(A,G,n,dofs,nind)
+!------------------------------------------------------------------------------
+#ifdef HAVE_FETI4I
+   use feti4i
+#endif
+
+   TYPE(Matrix_t) :: A
+   INTEGER :: n, dofs, nInd(:)
+   REAL(KIND=dp) :: G(:,:)
+!------------------------------------------------------------------------------
+  REAL(KIND=C_DOUBLE), ALLOCATABLE :: vals(:)
+  INTEGER, POINTER :: ptr
+  INTEGER :: i,j,k,l,k1,k2
+  INTEGER(C_INT), ALLOCATABLE :: ind(:)
+
+#ifdef HAVE_FETI4I
+!!$  INTERFACE
+!!$     FUNCTION Permon_InitMatrix(n) RESULT(handle) BIND(C,Name="permon_init")
+!!$       USE, INTRINSIC :: ISO_C_BINDING
+!!$       TYPE(C_PTR) :: Handle
+!!$       INTEGER(C_INT), VALUE :: n
+!!$     END FUNCTION Permon_InitMatrix
+!!$
+!!$     SUBROUTINE Permon_UpdateMatrix(handle,n,inds,vals) BIND(C,Name="permon_update")
+!!$       USE, INTRINSIC :: ISO_C_BINDING
+!!$       TYPE(C_PTR), VALUE :: Handle
+!!$       INTEGER(C_INT), VALUE :: n
+!!$       INTEGER(C_INT) :: inds(*)
+!!$       REAL(C_DOUBLE) :: vals(*)
+!!$     END SUBROUTINE Permon_UpdateMatrix
+!!$  END INTERFACE
+
+  IF(.NOT.C_ASSOCIATED(A % PermonMatrix)) THEN
+    A % NoDirichlet = .TRUE.
+    !! A % PermonMatrix = Permon_InitMatrix(A % NumberOFRows)
+    CALL FETI4ICreateStiffnessMatrix(A % PermonMatrix, 1) !TODO add number of rows A % NumberOFRows
+  END IF
+
+  ALLOCATE(vals(n*n*dofs*dofs), ind(n*dofs))
+  DO i=1,n
+    DO j=1,dofs
+      k1 = (i-1)*dofs + j
+      DO k=1,n
+        DO l=1,dofs
+           k2 = (k-1)*dofs + l
+           vals(dofs*n*(k1-1)+k2) = G(k1,k2)
+        END DO
+      END DO
+      ind(k1) = dofs*(nInd(i)-1)+j
+    END DO
+  END DO
+
+  !CALL Permon_UpdateMatrix( A % PermonMatrix, n*dofs, ind, vals )
+  CALL FETI4IAddElement(A % PermonMatrix, n*dofs, ind, vals)
+
+#endif
+    
+!------------------------------------------------------------------------------
+ END SUBROUTINE UpdatePermonMatrix
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, BulkUpdate, MCAssembly ) 
@@ -4062,6 +4134,10 @@ CONTAINS
        ScaleSystem=GetLogical(Params,'Linear System Scaling',Found)
        IF(.NOT.Found) ScaleSystem=.TRUE.
      END IF
+#ifdef HAVE_FETI4I
+     IF(C_ASSOCIATED(A % PermonMatrix)) ScaleSystem = .FALSE.
+#endif
+
 
      IF (ScaleSystem) THEN
        CALL ScaleLinearSystem(Solver,A,b,RHSscaling=.FALSE.)

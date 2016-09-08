@@ -37,6 +37,7 @@ SET(WITH_ELMERGUITESTER FALSE CACHE BOOL "Include ElmerGUI tester")
 SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
 SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
+SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 
 MARK_AS_ADVANCED(WITH_ELMERPOST)
@@ -107,6 +108,7 @@ IF(WITH_MPI)
     MPI_LIBRARY
     )
 
+
   FIND_PACKAGE(MPI REQUIRED)
   # Workaround if MPI is found but MPI_FOUND is not set (windows+msmpi+findmpi)
   SET(MPI_FOUND TRUE CACHE BOOL "")
@@ -163,6 +165,11 @@ IF(MPI_FOUND)
   # Hypre
   IF(WITH_Hypre)
     FIND_PACKAGE(Hypre REQUIRED OPTIONAL_COMPONENTS Euclid parcsr_ls ParaSails IJ_mv QUIET)
+  ENDIF()
+
+  # Permon
+  IF(WITH_FETI4I)
+    FIND_PACKAGE(FETI4I REQUIRED)
   ENDIF()
 ENDIF()
 
