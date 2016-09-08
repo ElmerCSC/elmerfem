@@ -4436,7 +4436,8 @@ CONTAINS
       CALL Warn('CreateListForSaving','Mesh does not include any variables!')
       RETURN
     END IF
-
+    
+    UseGeneric = .FALSE.
     IF( PRESENT( UseGenericKeyword ) ) THEN
       UseGeneric = UseGenericKeyword 
     END IF

@@ -1500,6 +1500,23 @@ CONTAINS
         END IF
       END IF
 
+      IF( ListGetLogical( Solver % Values,'Transient Restart',Found) ) THEN
+        IF( .NOT. ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+          CALL Warn('AddEquationSolution',&
+              'Transient restart requires PrevValues!')
+        ELSE 
+          DO k = 1, SIZE( Solver % Variable % PrevValues, 2 )
+            Component => Solver % Variable % PrevValues(:,k)
+            str = TRIM( Solver % Variable % Name ) //' PrevValues'//TRIM(I2S(k))
+            CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+                str, Solver % Variable % Dofs, Component, Solver % Variable % Perm, &
+                Secondary = .TRUE. )
+          END DO
+        END IF
+      END IF
+
+
+
     ELSE
       Solver % TimeOrder = 0
 
