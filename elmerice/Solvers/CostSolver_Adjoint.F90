@@ -71,7 +71,7 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: Vb(:)
   INTEGER, POINTER :: NodeIndexes(:), BetaPerm(:)
   INTEGER, POINTER :: VbPerm(:)
-  Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit,UnFoundFatal
+  Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit,UnFoundFatal=.TRUE.
   integer :: i,j,k,l,t,n,NMAX,DIM,ierr,c
   real(kind=dp) :: Cost,Cost_bed,Cost_surf,Cost_S,Cost_bed_S,Cost_surf_S,Lambda
   real(kind=dp) :: Bu,Bv,u,v,w,s,coeff,SqrtElementMetric,x

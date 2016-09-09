@@ -95,7 +95,7 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
    REAL (KIND=dp) :: SigmaI, SigmaII, Chi, B, sigmath, pwater
    REAL (KIND=DP) :: EI(3),Dumy(1),Work(24), sigmath_var, stress_threshold
    REAL (KIND=DP) :: u, v, nbrPi, s
-   LOGICAL :: GotIt, FirstTime = .TRUE., Cauchy, UnFoundFatal
+   LOGICAL :: GotIt, FirstTime = .TRUE., Cauchy, UnFoundFatal=.TRUE.
    CHARACTER*20 :: USF_Name='SourceDamage'
 
 

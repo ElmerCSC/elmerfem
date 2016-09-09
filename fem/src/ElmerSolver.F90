@@ -49,6 +49,8 @@
 !> \ingroup ElmerLib
 !> \{
 
+#include "../config.h"
+
 !------------------------------------------------------------------------------
 !> The main program for Elmer. Solves the equations as defined by the input files.
 !------------------------------------------------------------------------------
@@ -115,8 +117,6 @@
      INTEGER :: ExtrudeLevels, MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
-     INTEGER :: omp_get_max_threads
-
 #ifdef HAVE_TRILINOS
 INTERFACE
       SUBROUTINE TrilinosCleanup() BIND(C,name='TrilinosCleanup')
@@ -144,7 +144,6 @@ END INTERFACE
 
        !
        ! Print banner to output:
-#include "../config.h"
        ! -----------------------
 #ifdef USE_ISO_C_BINDINGS
        NoArgs = COMMAND_ARGUMENT_COUNT()
@@ -198,16 +197,8 @@ END INTERFACE
          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
          CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
          CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
-         CALL Info( 'MAIN', 'Version: ' // VERSION &
-#ifdef REVISION
-             // ' (Rev: ' // REVISION  &
-#endif
-#ifdef COMPILATIONDATE
-             // ', Compiled: ' // COMPILATIONDATE // ')' &
-#else
-             // ')' &
-#endif
-         )
+         CALL Info( 'MAIN', 'Version: ' // GetVersion() // ' (Rev: ' // GetRevision() // &
+                            ', Compiled: ' // GetCompilationDate() // ')' )
 
          IF ( ParEnv % PEs > 1 ) &
              CALL Info( 'MAIN', ' Running in parallel using ' // &
@@ -218,6 +209,9 @@ END INTERFACE
              CALL Info('MAIN', ' Running in parallel with ' // &
                        TRIM(i2s(nthreads)) // ' threads per task.')
 
+#ifdef HAVE_FETI4I
+         CALL Info( 'MAIN', ' FETI4I library linked in.')
+#endif
 #ifdef HAVE_HYPRE
          CALL Info( 'MAIN', ' HYPRE library linked in.')
 #endif

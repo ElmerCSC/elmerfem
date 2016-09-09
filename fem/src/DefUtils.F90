@@ -98,17 +98,42 @@ MODULE DefUtils
      MODULE PROCEDURE GetScalarLocalEigenmode, GetVectorLocalEigenmode
    END INTERFACE
 
-   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:)
+   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
    REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: Store(:)
    ! TODO: Get actual values for these from mesh
    INTEGER, PARAMETER, PRIVATE :: ISTORE_MAX_SIZE = 1024
    INTEGER, PARAMETER, PRIVATE :: STORE_MAX_SIZE = 1024
    ! SAVE IndexStore, Store
 
-   !$OMP THREADPRIVATE(IndexStore, Store)
-   PRIVATE :: GetIndexStore, GetStore
+   !$OMP THREADPRIVATE(IndexStore, VecIndexStore, Store)
+   PRIVATE :: GetIndexStore, GetVecIndexStore, GetStore
 
 CONTAINS
+
+
+   FUNCTION GetVersion() RESULT(ch)
+     CHARACTER(LEN=:), ALLOCATABLE :: ch
+     ch = VERSION
+   END FUNCTION GetVersion
+
+   FUNCTION GetRevision() RESULT(ch)
+     CHARACTER(LEN=:), ALLOCATABLE :: ch
+#ifdef REVISION
+     ch = REVISION
+#else
+     ch = "unknown"
+#endif
+   END FUNCTION GetRevision
+
+   FUNCTION GetCompilationDate() RESULT(ch)
+     CHARACTER(LEN=:), ALLOCATABLE :: ch
+#ifdef COMPILATIONDATE
+     ch = COMPILATIONDATE
+#else
+     ch = "unknown"
+#endif
+   END FUNCTION GetCompilationDate
+
 
 !
 !  FUNCTION GetIndexStore() RESULT(ind)
@@ -177,7 +202,7 @@ CONTAINS
   
   
   FUNCTION GetIndexStore() RESULT(ind)
-    INTEGER, POINTER :: Ind(:)
+    INTEGER, POINTER CONTIG :: Ind(:)
     INTEGER :: istat
 
     IF ( .NOT. ALLOCATED(IndexStore) ) THEN
@@ -189,8 +214,22 @@ CONTAINS
     ind => IndexStore( : )
   END FUNCTION GetIndexStore
 
+  FUNCTION GetVecIndexStore() RESULT(ind)
+    IMPLICIT NONE
+    INTEGER, POINTER CONTIG :: Ind(:)
+    INTEGER :: istat
+     
+    IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
+      ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE), STAT=istat )
+      VecIndexStore = 0
+      IF ( istat /= 0 ) CALL Fatal( 'GetVecIndexStore', 'Memory allocation error.' )
+    END IF
+    
+    ind => VecIndexStore( : )
+  END FUNCTION GetVecIndexStore
+
   FUNCTION GetStore(n) RESULT(val)
-    REAL(KIND=dp), POINTER :: val(:)
+    REAL(KIND=dp), POINTER CONTIG :: val(:)
     INTEGER :: n, istat
 
     IF ( .NOT.ALLOCATED(Store) ) THEN
@@ -263,12 +302,26 @@ CONTAINS
   FUNCTION GetNOFActive( USolver ) RESULT(n)
      INTEGER :: n
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+     TYPE(Solver_t), POINTER :: Solver
 
      IF ( PRESENT( USolver ) ) THEN
-        n = USolver % NumberOfActiveElements
+       Solver => USolver
      ELSE
-        n = CurrentModel % Solver % NumberOfActiveElements
+       Solver => CurrentModel % Solver 
      END IF
+
+     IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+       CurrentColour = CurrentColour + 1
+       n = Solver % ColourIndexList % ptr(CurrentColour+1)-1 &
+           - Solver % ColourIndexList % ptr(CurrentColour)
+       CALL Info('GetNOFActive','Number of active elements: '&
+           //TRIM(I2S(n))//' in colour '//TRIM(I2S(CurrentColour)),Level=12)
+     ELSE
+       n = Solver % NumberOfActiveElements
+       CALL Info('GetNOFActive','Number of active elements: '&
+           //TRIM(I2S(n)),Level=12)
+     END IF
+
   END FUNCTION GetNOFActive
 
 !> Returns the current time
@@ -1116,18 +1169,27 @@ CONTAINS
      TYPE( Solver_t ), OPTIONAL, TARGET :: USolver
 
      TYPE( Solver_t ), POINTER :: Solver
+     INTEGER :: ind
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
 
      IF ( t > 0 .AND. t <= Solver % NumberOfActiveElements ) THEN
-        Element => Solver % Mesh % Elements( Solver % ActiveElements(t) )
-        !$omp critical(GetActiveElementCurrentElement)
-        CurrentModel % CurrentElement => Element ! may be used by user functions
-        !$omp end critical(GetActiveElementCurrentElement)
+       IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+         ind = Solver % ActiveElements( &
+             Solver % ColourIndexList % ind(&
+             Solver % ColourIndexList % ptr(CurrentColour)+(t-1) ) )
+       ELSE
+         ind = Solver % ActiveElements(t)
+       END IF
+       Element => Solver % Mesh % Elements( ind )
+
+       !$omp critical(GetActiveElementCurrentElement)
+       CurrentModel % CurrentElement => Element ! may be used by user functions
+       !$omp end critical(GetActiveElementCurrentElement)
      ELSE
-        WRITE( Message, * ) 'Invalid element number requested: ', t
-        CALL Fatal( 'GetActiveElement', Message )
+       WRITE( Message, * ) 'Invalid element number requested: ', t
+       CALL Fatal( 'GetActiveElement', Message )
      END IF
   END FUNCTION GetActiveElement
 
@@ -1188,6 +1250,26 @@ CONTAINS
      CurrElement => GetCurrentElement(Element)
      etype = CurrElement % TYPE % ElementCode
   END FUNCTION GetElementCode
+
+!> Return the element dimension in Elmer convention of the active element
+  FUNCTION GetElementDim( Element )  RESULT(edim)
+    INTEGER :: edim
+    TYPE(Element_t), OPTIONAL :: Element
+    TYPE(Element_t), POINTER :: CurrElement
+    INTEGER :: etype
+    
+    CurrElement => GetCurrentElement(Element)
+    etype = CurrElement % TYPE % ElementCode
+    IF( etype >= 500 ) THEN
+      edim = 3
+    ELSE IF( etype >= 300 ) THEN
+      edim = 2
+    ELSE IF( etype >= 200 ) THEN
+      edim = 1
+    ELSE 
+      edim = 0
+    END IF          
+  END FUNCTION GetElementDim
 
 
 !> Return the element family in Elmer convention of the active element
@@ -1570,6 +1652,84 @@ CONTAINS
      END IF
   END SUBROUTINE GetElementNodes
 
+!> Returns the nodal coordinate values in the active element
+    SUBROUTINE GetElementNodesVec( ElementNodes, UElement, USolver, UMesh )
+        TYPE(Nodes_t), TARGET :: ElementNodes
+        TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+        TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
+        TYPE(Element_t), OPTIONAL, TARGET :: UElement
+
+        INTEGER :: padn, dum
+
+        INTEGER :: i,n,nd,sz,sz1
+        INTEGER, POINTER CONTIG :: Indexes(:)
+
+        TYPE(Solver_t),  POINTER  :: Solver
+        TYPE(Mesh_t),  POINTER  :: Mesh
+        TYPE(Element_t), POINTER :: Element
+
+        Solver => CurrentModel % Solver
+        IF ( PRESENT( USolver ) ) Solver => USolver
+
+        Element => GetCurrentElement(UElement)
+
+        IF ( PRESENT( UMesh ) ) THEN
+            Mesh => UMesh
+        ELSE
+            Mesh => Solver % Mesh
+        END IF
+
+        n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
+        padn = n
+        
+        ! Here we could pad beginning of columns of xyz to 64-byte 
+        ! boundaries if needed as follows
+        ! padn=NBytePad(n,STORAGE_SIZE(REAL(1,dp))/8,64)
+        
+        IF (.NOT. ALLOCATED( ElementNodes % xyz)) THEN
+            ALLOCATE(ElementNodes % xyz(padn,3))
+            ElementNodes % xyz = REAL(0,dp)
+            ElementNodes % x => ElementNodes % xyz(1:n,1)
+            ElementNodes % y => ElementNodes % xyz(1:n,2)
+            ElementNodes % z => ElementNodes % xyz(1:n,3)
+        ELSE IF (SIZE(ElementNodes % xyz, 1)<padn) THEN
+            DEALLOCATE(ElementNodes % xyz)
+            ALLOCATE(ElementNodes % xyz(padn,3))
+            ElementNodes % xyz = REAL(0,dp)
+            ElementNodes % x => ElementNodes % xyz(1:n,1)
+            ElementNodes % y => ElementNodes % xyz(1:n,2)
+            ElementNodes % z => ElementNodes % xyz(1:n,3)
+        END IF
+
+        n = Element % TYPE % NumberOfNodes
+!DIR$ IVDEP
+        DO i=1,n
+          ElementNodes % x(i) = Mesh % Nodes % x(Element % NodeIndexes(i))
+          ElementNodes % y(i) = Mesh % Nodes % y(Element % NodeIndexes(i))
+          ElementNodes % z(i) = Mesh % Nodes % z(Element % NodeIndexes(i))
+        END DO
+
+        sz = SIZE(ElementNodes % x)
+        IF ( sz > n ) THEN
+            ElementNodes % x(n+1:sz) = 0.0d0
+            ElementNodes % y(n+1:sz) = 0.0d0
+            ElementNodes % z(n+1:sz) = 0.0d0
+        END IF
+
+        sz1 = SIZE(Mesh % Nodes % x)
+        IF (sz1 > Mesh % NumberOfNodes) THEN
+            Indexes => GetIndexStore()
+            nd = GetElementDOFs(Indexes,Element,NotDG=.TRUE.)
+!DIR$ IVDEP
+            DO i=n+1,nd
+                IF ( Indexes(i)>0 .AND. Indexes(i)<=sz1 ) THEN
+                    ElementNodes % x(i) = Mesh % Nodes % x(Indexes(i))
+                    ElementNodes % y(i) = Mesh % Nodes % y(Indexes(i))
+                    ElementNodes % z(i) = Mesh % Nodes % z(Indexes(i))
+                END IF
+            END DO
+        END IF
+    END SUBROUTINE GetElementNodesVec
 
 !> Get element body id
 !------------------------------------------------------------------------------
@@ -2602,11 +2762,13 @@ CONTAINS
     TYPE(Solver_t), POINTER :: Solver
     TYPE(Matrix_t), POINTER :: Ctmp
     CHARACTER(LEN=MAX_NAME_LEN) :: linsolver, precond, dumpfile, saveslot
+    INTEGER :: NameSpaceI
 
     Solver => CurrentModel % Solver
     Norm = REAL(0, dp)
     IF ( PRESENT( USolver ) ) Solver => USolver
-    IF ( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) RETURN
+    
+    IF( GetLogical(Solver % Values,'Linear System Solver Disabled',Found) ) RETURN
 
     A => Solver % Matrix
     b => A % RHS
@@ -2614,6 +2776,13 @@ CONTAINS
     SOL => x % Values
 
     Params => GetSolverParams(Solver)
+    
+    NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
+    IF( NameSpaceI > 0 ) THEN
+      CALL Info('DefaultSolver','Linear system namespace number: '//TRIM(I2S(NameSpaceI)),Level=7)
+      CALL ListPushNamespace('linsys'//TRIM(I2S(NameSpaceI))//':')
+    END IF
+
 
     IF( ListCheckPresent( Params, 'Dump system matrix') .OR. &
         ListCheckPresent( Params, 'Dump system RHS') ) THEN
@@ -2665,6 +2834,8 @@ CONTAINS
     END IF
 
     Norm = x % Norm
+
+    IF( NameSpaceI > 0 ) CALL ListPopNamespace()
 
 !------------------------------------------------------------------------------
   END FUNCTION DefaultSolve
@@ -2745,26 +2916,27 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, BulkUpdate ) 
+  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, BulkUpdate, VecAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      REAL(KIND=dp)   :: G(:,:), f(:)
-     LOGICAL, OPTIONAL :: BulkUpdate
+     LOGICAL, OPTIONAL :: BulkUpdate, VecAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
-     REAL(KIND=dp), POINTER    :: b(:), SaveValues(:)
+     REAL(KIND=dp), POINTER CONTIG   :: b(:)
+     REAL(KIND=dp), POINTER :: SaveValues(:)
 
      CHARACTER(LEN=MAX_NAME_LEN) :: str
 
-     LOGICAL :: Found, BUpd
+     LOGICAL :: Found, BUpd, VecAsm, MCAsm
 
-     INTEGER :: n, nd
+     INTEGER :: j, n, nd
      INTEGER(KIND=AddrInt) :: Proc
-     INTEGER, POINTER :: Indexes(:)
+     INTEGER, POINTER CONTIG :: Indexes(:), PermIndexes(:)
 
 #ifndef USE_ISO_C_BINDINGS
      INTERFACE 
@@ -2793,6 +2965,11 @@ CONTAINS
         Element => UElement 
      ELSE
         Element => CurrentModel % CurrentElement
+     END IF
+     
+     VecAsm = .FALSE.
+     IF ( PRESENT( VecAssembly )) THEN
+       VecAsm = VecAssembly
      END IF
 
      IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
@@ -2833,21 +3010,119 @@ CONTAINS
        END IF
      END IF
 
-     Indexes => GetIndexStore()
-     n = GetElementDOFs( Indexes, Element, Solver )
+     ! Vectorized version of the glueing process requested
+     IF (VecAsm) THEN
+#ifdef _OPENMP
+       IF (OMP_GET_NUM_THREADS() == 1) THEN
+         MCAsm = .TRUE.
+       ELSE
+         MCAsm = ListGetLogical( Solver % Values, 'Mesh Colouring', Found )
+         MCAsm = MCAsm .AND. Found
+       END IF
+#else
+       MCAsm = .TRUE.
+#endif       
+       Indexes => GetIndexStore()
+       n = GetElementDOFs( Indexes, Element, Solver )
+       
+       PermIndexes => GetVecIndexStore()
+       ! Get permuted indices
+!DIR$ IVDEP
+       DO j=1,n
+         PermIndexes(j) = Solver % Variable % Perm(Indexes(j))
+       END DO
 
-     CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)), UElement=Element )
+       CALL UpdateGlobalEquationsVec( A, G, b, f, n, &
+               x % DOFs, PermIndexes, &
+               UElement=Element, MCAssembly=MCAsm )
+     ELSE
+       Indexes => GetIndexStore()
+       n = GetElementDOFs( Indexes, Element, Solver )
+
+       IF(GetString(Solver % Values, 'Linear System Direct Method',Found)=='permon') THEN
+         CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
+                              x % Perm(Indexes(1:n)), UElement=Element )
+         CALL UpdatePermonMatrix( A, G, n, x % DOFs, x % Perm(Indexes(1:n)) )
+       ELSE
+         CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
+                            x % Perm(Indexes(1:n)), UElement=Element )
+       END IF
+     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
 !------------------------------------------------------------------------------
 
+
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, BulkUpdate ) 
+ SUBROUTINE UpdatePermonMatrix(A,G,n,dofs,nind)
+!------------------------------------------------------------------------------
+#ifdef HAVE_FETI4I
+   use feti4i
+#endif
+
+   TYPE(Matrix_t) :: A
+   INTEGER :: n, dofs, nInd(:)
+   REAL(KIND=dp) :: G(:,:)
+!------------------------------------------------------------------------------
+  REAL(KIND=C_DOUBLE), ALLOCATABLE :: vals(:)
+  INTEGER, POINTER :: ptr
+  INTEGER :: i,j,k,l,k1,k2
+  INTEGER(C_INT), ALLOCATABLE :: ind(:)
+
+#ifdef HAVE_FETI4I
+!!$  INTERFACE
+!!$     FUNCTION Permon_InitMatrix(n) RESULT(handle) BIND(C,Name="permon_init")
+!!$       USE, INTRINSIC :: ISO_C_BINDING
+!!$       TYPE(C_PTR) :: Handle
+!!$       INTEGER(C_INT), VALUE :: n
+!!$     END FUNCTION Permon_InitMatrix
+!!$
+!!$     SUBROUTINE Permon_UpdateMatrix(handle,n,inds,vals) BIND(C,Name="permon_update")
+!!$       USE, INTRINSIC :: ISO_C_BINDING
+!!$       TYPE(C_PTR), VALUE :: Handle
+!!$       INTEGER(C_INT), VALUE :: n
+!!$       INTEGER(C_INT) :: inds(*)
+!!$       REAL(C_DOUBLE) :: vals(*)
+!!$     END SUBROUTINE Permon_UpdateMatrix
+!!$  END INTERFACE
+
+  IF(.NOT.C_ASSOCIATED(A % PermonMatrix)) THEN
+    A % NoDirichlet = .TRUE.
+    !! A % PermonMatrix = Permon_InitMatrix(A % NumberOFRows)
+    CALL FETI4ICreateStiffnessMatrix(A % PermonMatrix, 1) !TODO add number of rows A % NumberOFRows
+  END IF
+
+  ALLOCATE(vals(n*n*dofs*dofs), ind(n*dofs))
+  DO i=1,n
+    DO j=1,dofs
+      k1 = (i-1)*dofs + j
+      DO k=1,n
+        DO l=1,dofs
+           k2 = (k-1)*dofs + l
+           vals(dofs*n*(k1-1)+k2) = G(k1,k2)
+        END DO
+      END DO
+      ind(k1) = dofs*(nInd(i)-1)+j
+    END DO
+  END DO
+
+  !CALL Permon_UpdateMatrix( A % PermonMatrix, n*dofs, ind, vals )
+  CALL FETI4IAddElement(A % PermonMatrix, n*dofs, ind, vals)
+
+#endif
+    
+!------------------------------------------------------------------------------
+ END SUBROUTINE UpdatePermonMatrix
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, BulkUpdate, MCAssembly ) 
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      COMPLEX(KIND=dp)   :: GC(:,:), FC(:)
-     LOGICAL, OPTIONAL :: BulkUpdate
+     LOGICAL, OPTIONAL :: BulkUpdate, MCAssembly
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
@@ -3859,6 +4134,10 @@ CONTAINS
        ScaleSystem=GetLogical(Params,'Linear System Scaling',Found)
        IF(.NOT.Found) ScaleSystem=.TRUE.
      END IF
+#ifdef HAVE_FETI4I
+     IF(C_ASSOCIATED(A % PermonMatrix)) ScaleSystem = .FALSE.
+#endif
+
 
      IF (ScaleSystem) THEN
        CALL ScaleLinearSystem(Solver,A,b,RHSscaling=.FALSE.)
@@ -5384,6 +5663,30 @@ CONTAINS
 !------------------------------------------------------------------------------
   END SUBROUTINE GetParentUVW
 !------------------------------------------------------------------------------
+
+
+  FUNCTION GetNOFColours(USolver) RESULT( ncolours ) 
+    TYPE(Solver_t), TARGET, OPTIONAL :: USolver
+    INTEGER :: ncolours
+
+    ncolours = 1
+    IF ( PRESENT( USolver ) ) THEN
+      IF( ASSOCIATED( USolver % ColourIndexList ) ) THEN
+        ncolours = USolver % ColourIndexList % n 
+      END IF
+    ELSE
+      IF( ASSOCIATED( CurrentModel % Solver % ColourIndexList ) ) THEN
+        ncolours = CurrentModel % Solver % ColourIndexList % n 
+      END IF
+    END IF
+
+    CALL Info('GetNOFColours','Number of colours: '//TRIM(I2S(ncolours)),Level=12)
+
+    
+! Initialize the current color to one assuming that this is called at start of multicolor assembly loop
+    CurrentColour = 0
+    
+  END FUNCTION GetNOFColours
 
 
 END MODULE DefUtils

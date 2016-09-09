@@ -587,7 +587,7 @@ CONTAINS
     END IF
     CALL DefaultUpdateEquations( STIFF, FORCE,UElement=Element, USolver=Solver)
 
-    DEALLOCATE(CubicCoeff)
+    IF ( ASSOCIATED(CubicCoeff) ) DEALLOCATE(CubicCoeff)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -1427,6 +1427,8 @@ CONTAINS
       CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
     END IF
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+
+    IF ( ASSOCIATED(CubicCoeff) ) DEALLOCATE(CubicCoeff)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------

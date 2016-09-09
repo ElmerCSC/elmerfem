@@ -4633,8 +4633,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
             NeighbourList => TmpList
             ListSize = ListSize + 20
             NULLIFY( TmpList ) 
-            WRITE(Message,'(A,I6)') 'Allocating more space:',ListSize
-            CALL Info('GetNextNeighbour',Message)
+            CALL Info('GetNextNeighbour','Allocating more space: '//TRIM(I2S(ListSize)))
           END IF
           
           NeighbourList(NoNeighbours) = No2
@@ -5697,7 +5696,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       NumberFilesByParticles = ListGetLogical( Params,'Filename Particle Numbering',Found) 
       NumberFilesBySteps = ListGetLogical( Params,'Filename Timestep Numbering',Found) 
       IF( NumberFilesByParticles .AND. NumberFilesBySteps ) THEN
-        CALL Fatal('ParticleTracker','Files may be numbered either by steps or particles')
+        CALL Fatal('ParticleOutputTable','Files may be numbered either by steps or particles')
       END IF
       
       MinSaveStatus = ListGetInteger( Params,'Min Status for Saving',Found)
@@ -5715,8 +5714,18 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
     
     time = TimeVar % Values(1)
     NoParticles = Particles % NumberOfParticles
+
+    CALL Info('ParticleOutputTable','Saving at maximum '//TRIM(I2S(NoParticles))//' particles',Level=6)
     
-    IF(.NOT. NumberFilesByParticles ) THEN
+    IF( NumberFilesByParticles ) THEN
+      DO i = 1, NoParticles
+        CALL OpenParticleFile(FilePrefix, i)
+        IF ( Particles % Status(i) > MaxSaveStatus .OR. &
+             Particles % Status(i) < MinSaveStatus )  CYCLE
+        CALL WriteParticleLine( dim, i ) 
+        CALL CloseParticleFile()
+      END DO
+    ELSE
       IF( NumberFilesBySteps ) THEN
         CALL OpenParticleFile(FilePrefix, VisitedTimes )
       ELSE
@@ -5728,14 +5737,6 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
         CALL WriteParticleLine( dim, i )        
       END DO
       CALL CloseParticleFile()
-    ELSE
-      DO i = 1, NoParticles
-        CALL OpenParticleFile(FilePrefix, i)
-        IF ( Particles % Status(i) > MaxSaveStatus .OR. &
-             Particles % Status(i) < MinSaveStatus )  CYCLE
-        CALL WriteParticleLine( dim, i ) 
-        CALL CloseParticleFile()
-      END DO
     END IF
 
     IF( .NOT. ParticleMode ) THEN
@@ -5919,7 +5920,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       INTEGER :: Dim, No
       TYPE(Variable_t), POINTER :: Solution
       REAL(KIND=dp), POINTER :: Values(:)
-      REAL(KIND=dp) :: u,v,w,val,detJ
+      REAL(KIND=dp) :: u,v,w,val,detJ,r(3)
       LOGICAL :: stat, ThisOnly=.TRUE., ComponentVector
       CHARACTER(LEN=1024) :: Txt, FieldName
       TYPE(Element_t), POINTER :: Element
@@ -5929,17 +5930,21 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       WRITE( TableUnit,'(ES12.4)', ADVANCE = 'NO' ) time
         
       IF( NumberFilesBySteps ) THEN
-        WRITE( TableUnit,'(I6)', ADVANCE = 'NO' ) No
+        WRITE( TableUnit,'(I9)', ADVANCE = 'NO' ) No
       ELSE IF( NumberFilesByParticles ) THEN
-        WRITE( TableUnit,'(I6)', ADVANCE = 'NO' ) VisitedTimes
+        WRITE( TableUnit,'(I9)', ADVANCE = 'NO' ) VisitedTimes
       ELSE       
-        WRITE( TableUnit,'(2I6)', ADVANCE = 'NO' ) VisitedTimes, No
+        WRITE( TableUnit,'(2I9)', ADVANCE = 'NO' ) VisitedTimes, No
       END IF
       
       IF( ParticleMode ) THEN
-        
-        WRITE( TableUnit,'(6ES12.4)', ADVANCE = 'NO' ) Coord(No,1:dim), Velo(No,1:dim) !Dist(No) 
-        
+       
+        IF( dim == 3 ) THEN
+          WRITE(TableUnit,'(6ES16.7E3)',ADVANCE='NO') Coord(No,1:3), Velo(No,1:3)
+        ELSE
+          WRITE(TableUnit,'(4ES16.7E3)',ADVANCE='NO') Coord(No,1:2), Velo(No,1:2)
+        END IF
+
         IF( GotDistVar ) WRITE (TableUnit,'(ES12.4)',ADVANCE='NO') PartDistVar % Values(No)
         IF( GotTimeVar ) WRITE (TableUnit,'(ES12.4)',ADVANCE='NO') PartTimeVar % Values(No)
         
@@ -5965,18 +5970,16 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
         
         stat = ElementInfo( Element,Nodes,u,v,w,detJ,Basis)
         
-        val = SUM( Basis(1:n) * Nodes % x(1:n) )
-        WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') val             
+        r(1) = SUM( Basis(1:n) * Nodes % x(1:n) )
+        r(2) = SUM( Basis(1:n) * Nodes % y(1:n) )
+        r(3) = SUM( Basis(1:n) * Nodes % z(1:n) )
 
-        val = SUM( Basis(1:n) * Nodes % y(1:n) )
-        WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') val             
-
+        WRITE( TableUnit,'(2ES16.7E3)', ADVANCE='no') r(1:2)             
         IF( dim == 3 ) THEN
-          val = SUM( Basis(1:n) * Nodes % z(1:n) )
-          WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') val             
+          WRITE( TableUnit,'(ES16.7E3)', ADVANCE='no') r(3)
         END IF
 
-      
+
         DO Rank = 1,2
 
           DO Vari = 1, 99

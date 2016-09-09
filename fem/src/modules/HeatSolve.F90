@@ -103,7 +103,7 @@
      INTEGER, POINTER :: TempPerm(:),FlowPerm(:),CurrentPerm(:),MeshPerm(:)
 
      INTEGER :: NSDOFs,NewtonIter,NonlinearIter,MDOFs, &
-         SmartHeaterBC, SmartHeaterNode, DoneTime=0
+         SmartHeaterBC, SmartHeaterNode, DoneTime=0, NOFactive
      REAL(KIND=dp) :: NonlinearTol,NewtonTol,SmartTol,Relax, &
             SaveRelax,dt,dt0,CumulativeTime, VisibleFraction, PowerScaling=1.0, PrevPowerScaling=1.0, &
             PowerRelax, PowerTimeScale, PowerSensitivity, xave, yave, Normal(3), &
@@ -556,6 +556,7 @@
 
      SaveRelax = Relax
      CumulativeTime = 0.0d0
+     HeaterControlLocal = .FALSE.
 
 !------------------------------------------------------------------------------
      FirstTime = .TRUE.
@@ -659,9 +660,11 @@
 !      Bulk elements
 !------------------------------------------------------------------------------
        CALL StartAdvanceOutput( 'HeatSolve', 'Assembly:' )
-       DO t=1,Solver % NumberOfActiveElements
+       NofActive = GetNOFActive()
 
-         CALL AdvanceOutput(t,GetNOFActive())
+       DO t=1,NofActive
+
+         CALL AdvanceOutput(t,NofActive)
 !------------------------------------------------------------------------------
 !        Check if this element belongs to a body where temperature 
 !        should be calculated

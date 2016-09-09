@@ -75,7 +75,7 @@
 
      INTEGER, POINTER :: NodeIndexes(:)
      LOGICAL :: Stabilize = .TRUE., Bubbles = .TRUE., UseBubbles,NewtonLinearization = .FALSE., &
-         Found, GotIt, HeatFluxBC, HeatGapBC, GotMeltPoint, IsRadiation, InfBC, UnFoundFatal
+         Found, GotIt, HeatFluxBC, HeatGapBC, GotMeltPoint, IsRadiation, InfBC, UnFoundFatal=.TRUE.
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, ConvectionField
      INTEGER :: CompressibilityModel

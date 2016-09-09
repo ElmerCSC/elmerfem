@@ -96,7 +96,7 @@ SUBROUTINE DJDMu_Robin( Model,Solver,dt,TransientSimulation )
 
   integer :: i,j,t,n,NMAX,NActiveNodes,DIM
 
-  Logical :: Firsttime=.true.,Found,stat,UnFoundFatal
+  Logical :: Firsttime=.true.,Found,stat,UnFoundFatal=.TRUE.
   logical :: SquareFormulation
 
 

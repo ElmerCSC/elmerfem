@@ -48,6 +48,9 @@ MODULE Types
    USE Messages
    USE iso_varying_string
    USE, INTRINSIC :: ISO_C_BINDING
+#ifdef _OPENMP
+   USE omp_lib 
+#endif 
 
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
 
@@ -82,7 +85,8 @@ MODULE Types
 	                SOLVER_MODE_COUPLED = 3, &    ! coupled solver with multiple blocks
 	                SOLVER_MODE_BLOCK = 4, &      ! block solver
 	                SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
-	                SOLVER_MODE_MATRIXFREE = 6    ! normal field, no matrix
+	                SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
+                        SOLVER_MODE_STEPS = 7         ! as the legacy but splitted to different steps
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
@@ -205,6 +209,9 @@ END INTERFACE
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
         BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), PrecValues(:)=>NULL()
 
+#ifdef HAVE_FETI4I
+    TYPE(C_PTR) :: PermonMatrix = C_NULL_PTR, PermonSolverInstance = C_NULL_PTR
+#endif
 #ifdef HAVE_MUMPS
     TYPE(dmumps_struc), POINTER :: MumpsID => NULL() ! Global distributed Mumps
     TYPE(dmumps_struc), POINTER :: MumpsIDL => NULL() ! Local domainwise Mumps
@@ -380,11 +387,7 @@ END INTERFACE
      LOGICAL :: LValue
      INTEGER, POINTER :: IValues(:)
 
-#ifdef SGI
-     INTEGER :: PROCEDURE
-#else
      INTEGER(KIND=AddrInt) :: PROCEDURE
-#endif
 
      REAL(KIND=dp) :: Coeff = 1.0_dp
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
@@ -602,9 +605,10 @@ END INTERFACE
    !
    TYPE Nodes_t
      INTEGER :: NumberOfNodes
-     REAL(KIND=dp), POINTER :: x(:)=>NULL()
-     REAL(KIND=dp), POINTER :: y(:)=>NULL()
-     REAL(KIND=dp), POINTER :: z(:)=>NULL()
+     REAL(KIND=dp), ALLOCATABLE :: xyz(:,:)
+     REAL(KIND=dp), POINTER CONTIG :: x(:)=>NULL()
+     REAL(KIND=dp), POINTER CONTIG :: y(:)=>NULL()
+     REAL(KIND=dp), POINTER CONTIG :: z(:)=>NULL()
    END TYPE Nodes_t
 
 !------------------------------------------------------------------------------
@@ -665,7 +669,8 @@ END INTERFACE
 
      TYPE(Nodes_t), POINTER :: Nodes
      TYPE(Element_t), DIMENSION(:), POINTER :: Elements, Edges, Faces
-     TYPE(Nodes_t), POINTER :: NodesMapped, NodesOrig
+     TYPE(Nodes_t), POINTER :: NodesOrig
+     TYPE(Nodes_t), POINTER :: NodesMapped
 
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
@@ -683,6 +688,15 @@ END INTERFACE
      
    END TYPE Mesh_t
 
+   TYPE Graph_t
+     INTEGER :: n
+     INTEGER, ALLOCATABLE :: ptr(:), ind(:)
+   END type Graph_t
+   
+   TYPE Graphcolour_t
+     INTEGER :: nc
+     INTEGER, ALLOCATABLE :: colours(:)
+   END TYPE Graphcolour_t
 
    TYPE MortarBC_t 
      TYPE(Matrix_t), POINTER :: Projector => NULL()
@@ -731,6 +745,9 @@ END INTERFACE
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
       LOGICAL :: MortarBCsChanged = .FALSE., MortarBCsOnly=.FALSE.
       INTEGER(KIND=AddrInt) :: MortarProc
+
+      TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
+
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
@@ -889,7 +906,7 @@ END INTERFACE
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
-    
+    INTEGER :: CurrentColour = 1
 
 !------------------------------------------------------------------------------
 END MODULE Types

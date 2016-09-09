@@ -71,7 +71,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    REAL(KIND=dp) :: y, pw, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: Zsl, rhow, gravity
    REAL(KIND=dp), ALLOCATABLE :: S(:), auxReal(:), Ns(:),  a_perp(:), SourceFunc(:), normal(:,:)
-   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE., UnFoundFatal
+   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE., UnFoundFatal=.TRUE.
    CHARACTER(LEN=MAX_NAME_LEN)  :: BottomSurfaceName
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM

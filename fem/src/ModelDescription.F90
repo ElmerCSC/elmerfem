@@ -40,6 +40,7 @@
 !-----------------------------------------------------------------------------
 !>  Module that defined the Model: reads in the command file, mesh and results etc.
 !-----------------------------------------------------------------------------
+#include "../config.h"
 
 MODULE ModelDescription
 
@@ -1052,7 +1053,6 @@ CONTAINS
 !         Priority is in ELMER_LIB, ELMER_HOME, and finally, if all else fails
 !         use the compilation time prefix.
 !         ------------------------------------------------------
-#include "../config.h"
 
 #ifdef USE_ISO_C_BINDINGS
           str = 'ELMER_LIB'
@@ -3478,8 +3478,16 @@ CONTAINS
              n = SIZE(Var % Values)
            END IF
            ! in case of (.NOT. LoadThis) n has already been set
-         END IF
 
+           ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
+           IF( ASSOCIATED( Var % Solver ) ) THEN
+             IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
+               CALL Info('LoadRestartFile','Assuming variable to have transient initialization: '//TRIM(Row),Level=6)
+               Var % Solver % DoneTime = Var % Solver % Order
+             END IF
+           END IF
+         END IF
+         
          DO j=1, n
            IF ( FmtVersion > 0 ) THEN
              CALL GetValue( RestartUnit, Perm, GotPerm, j, k, Val )
@@ -4538,6 +4546,8 @@ CONTAINS
                     END IF
                  ELSE
                     WRITE(PostFileUnit,'(A)',ADVANCE='NO') ' 0.0'
+                    IF(ASSOCIATED(Var % Cvalues)) &
+                      WRITE(PostFileUnit,'(A)',ADVANCE='NO') ' 0.0'
                  END IF
               ELSE
                  l = INDEX( var % name, '[' )
@@ -4883,6 +4893,10 @@ END SUBROUTINE GetNodalElementSize
     CALL FreeMatrix(Solver % Matrix)
     IF (ALLOCATED(Solver % Def_Dofs)) DEALLOCATE(Solver % Def_Dofs)
     IF (ASSOCIATED(Solver % ActiveElements)) DEALLOCATE(Solver % ActiveElements)
+    IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+      CALL Graph_Deallocate(Solver % ColourIndexList)
+      DEALLOCATE( Solver % ColourIndexList )
+    END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE FreeSolver
 !------------------------------------------------------------------------------

@@ -47,7 +47,7 @@ FUNCTION ZsIni ( Model, nodenumber, x) RESULT(Zs)
    INTEGER :: nodenumber,  NMAX, i, dim
    REAL(KIND=dp) :: x,   Zs       
    REAL(KIND=dp), ALLOCATABLE :: Zs0(:)       
-   LOGICAL :: FirstTime=.True., UnFoundFatal
+   LOGICAL :: FirstTime=.True., UnFoundFatal=.TRUE.
 
    SAVE FirstTime
    SAVE Zs0 

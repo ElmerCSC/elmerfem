@@ -50,6 +50,7 @@ MODULE LoadMod
 #endif
 
 #include "huti_fdefs.h"
+#include "../config.h"
 
     ! GENERAL ROUTINES
 
