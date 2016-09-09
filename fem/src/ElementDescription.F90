@@ -41,6 +41,8 @@
 !> \ingroup ElmerLib
 !> \{
 
+#include "../config.h"
+
 MODULE ElementDescription
 
    USE Integration
@@ -50,6 +52,8 @@ MODULE ElementDescription
    ! Use module P element basis functions 
    USE PElementMaps
    USE PElementBase
+   ! Vectorized P element basis functions
+   USE H1ElementBasisFunctions
 
    IMPLICIT NONE
 
@@ -429,7 +433,6 @@ CONTAINS
         tstr = 'ELMER_HOME'//CHAR(0)
 #endif
         CALL envir( tstr,elmer_home,k ) 
-#include "../config.h"
         IF ( k > 0 ) THEN
            WRITE( tstr, '(a,a)' ) elmer_home(1:k),&
 '/share/elmersolver/lib/elements.def'
@@ -3528,6 +3531,275 @@ END IF
      END IF
 !------------------------------------------------------------------------------
    END FUNCTION ElementInfo
+!------------------------------------------------------------------------------
+
+! ElementInfoVec uses only P element definitions for basis functions, even for purely nodal elements
+!------------------------------------------------------------------------------
+   FUNCTION ElementInfoVec( Element, Nodes, nc, u, v, w, detJ, Basis, dBasisdx ) RESULT(retval)
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+
+     TYPE(Element_t), TARGET :: Element    !< Element structure
+     TYPE(Nodes_t)   :: Nodes              !< Element nodal coordinates.
+     INTEGER, INTENT(IN) :: nc             !< Number of local coordinates to compute values of the basis function
+     REAL(KIND=dp) CONTIG, INTENT(IN) :: u(:)  !< 1st local coordinates at which to calculate the basis function.
+     REAL(KIND=dp) CONTIG, INTENT(IN) :: v(:)  !< 2nd local coordinates.
+     REAL(KIND=dp) CONTIG, INTENT(IN) :: w(:)  !< 3rd local coordinates.
+     REAL(KIND=dp) CONTIG, INTENT(OUT) :: detJ(:) !< Square roots of determinants of element coordinate system metric at coordinates
+     REAL(KIND=dp) CONTIG :: Basis(:,:)    !< Basis function values at (u,v,w)
+     REAL(KIND=dp) CONTIG, OPTIONAL :: dBasisdx(:,:,:)    !< Global first derivatives of basis functions at (u,v,w)
+     LOGICAL :: retval                             !< If .FALSE. element is degenerate. or if local storage allocation fails
+     !------------------------------------------------------------------------------
+     !    Local variables
+     !------------------------------------------------------------------------------
+     INTEGER :: cdim, dim, i, j, k, l, ip, n, p, nb, nbc, nbp, nbdxp, allocstat
+     LOGICAL :: elem
+
+     ! Local workspace for basis function values and mapping
+     REAL(KIND=dp), ALLOCATABLE, SAVE :: dLBasisdx(:,:,:), LtoGMaps(:,:,:)
+     !$OMP THREADPRIVATE(dLBasisdx, LtoGMaps)
+!DIR$ ATTRIBUTES ALIGN:64::dLBasisdx, LtoGMaps
+     !------------------------------------------------------------------------------
+     retval = .TRUE.
+     n    = Element % TYPE % NumberOfNodes
+     nb   = SIZE(Basis,2)
+     dim  = Element % TYPE % DIMENSION
+     cdim = CoordinateSystemDimension()
+
+     ! Set up workspace
+     IF (.NOT. ALLOCATED(dLBasisdx)) THEN
+       ALLOCATE(dLBasisdx(nc,nb,3), LtoGMaps(nc,3,3), STAT=allocstat)
+       ! Check memory allocation status
+       IF (allocstat /= 0) THEN
+         CALL Error('ElementInfoVec','Storage allocation for local element basis failed')
+         retval = .FALSE.
+         RETURN
+       END IF
+     ELSE IF (SIZE(dLBasisdx,1) < nc .OR. SIZE(dLBasisdx,2) < nb) THEN
+       DEALLOCATE(dLBasisdx,LtoGMaps)
+       ALLOCATE(dLBasisdx(nc,nb,3), LtoGMaps(nc,3,3), STAT=allocstat)
+       ! Check memory allocation status
+       IF (allocstat /= 0) THEN
+         CALL Error('ElementInfoVec','Storage allocation for local element basis failed')
+         retval = .FALSE.
+         RETURN
+       END IF
+     END IF
+
+     IF ( nb < Element % TYPE % NumberOfNodes ) THEN
+       CALL Fatal('ElementInfoVec','Not enough storage to compute local element basis')
+     END IF
+
+     ! Special case, Element: POINT
+     IF (Element % TYPE % ElementCODE == 101) THEN
+       DetJ(1:nc) = REAL(1, dp)
+       Basis(1:nc,1) = REAL(1, dp)
+       IF (PRESENT(dBasisdx)) dBasisdx(1:nc,1,1) = REAL(0, dp)
+       RETURN
+     END IF
+
+     ! Compute local nodal basis
+     SELECT CASE (Element % Type % ElementCode)
+     ! Element: LINE
+     CASE (202)
+       ! Compute nodal basis
+       CALL H1LineNodalBasisVec(nc, u, Basis)
+       ! Compute local first derivatives
+       CALL H1dLineNodalBasisVec(nc, u, dLBasisdx)
+       nbc = 2
+       nbp = 2
+       nbdxp = 2
+
+       ! Element bubble functions
+       IF (Element % BDOFS > 0) THEN 
+         ! Compute P from bubble dofs
+         P = Element % BDOFS + 1
+
+         ! TODO: Check the size of Basis and dLBasisdx before the call
+
+         ! TODO: Implement direction for surface elements
+         CALL H1LineBubblePBasisVec(nc, u, P, nbp, Basis)
+         CALL H1dLineBubblePBasisVec(nc, u, P, nbdxp, dLBasisdx)
+       END IF
+
+     ! Element: TRIANGLE
+     CASE (303)
+       ! Compute nodal basis
+       CALL H1TriangleNodalPBasisVec(nc, u, v, Basis)
+       ! Compute local first derivatives
+       CALL H1dTriangleNodalPBasisVec(nc, u, v, dLBasisdx)
+       nbc = 3
+       nbp = 3
+       nbdxp = 3
+       
+       IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+       END IF
+
+       ! Element bubble functions
+       IF (Element % BDOFS > 0) THEN 
+         ! Compute P from bubble dofs
+         P = NINT( ( 3.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+
+         ! TODO: Check the size of Basis and dLBasisdx before the call
+
+         ! TODO: Implement direction for surface elements
+         CALL H1TriangleBubblePBasisVec(nc, u, v, P, nbp, Basis)
+         CALL H1dTriangleBubblePBasisVec(nc, u, v, P, nbdxp, dLBasisdx)
+       END IF
+
+       ! QUADRILATERAL
+     CASE (404)
+       ! Compute nodal basis
+       CALL H1QuadNodalBasisVec(nc, u, v, Basis)
+       ! Compute local first derivatives
+       CALL H1dQuadNodalBasisVec(nc, u, v, dLBasisdx)
+       nbc = 4
+       nbp = 4
+       nbdxp = 4
+
+       IF (ASSOCIATED( Element % EdgeIndexes )) THEN
+         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+       END IF
+
+       ! Element bubble functions
+       IF (Element % BDOFS > 0) THEN 
+         ! Compute P from bubble dofs
+         p = NINT( ( 5.0d0+SQRT(1.0d0+8.0d0*(Element % BDOFS)) ) / 2.0d0 )
+
+         ! TODO: Check the size of Basis and dLBasisdx before the call
+
+         ! TODO: Implement direction for surface elements
+         CALL H1QuadBubblePBasisVec(nc, u, v, P, nbp, Basis)
+         CALL H1dQuadBubblePBasisVec(nc, u, v, P, nbdxp, dLBasisdx)
+       END IF
+
+       ! TETRAHEDRON
+     CASE (504)
+       ! Compute nodal basis
+       CALL H1TetraNodalPBasisVec(nc, u, v, w, Basis)
+       ! Compute local first derivatives
+       CALL H1dTetraNodalPBasisVec(nc, u, v, w, dLBasisdx)
+       nbc = 4
+       nbp = 4
+       nbdxp = 4
+
+       IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
+           ASSOCIATED( Element % FaceIndexes )) THEN
+         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+       END IF
+
+       ! Element bubble functions
+       IF (Element % BDOFS > 0) THEN 
+         ! Compute P based on bubble dofs
+         P=NINT(1/3d0*(81*(Element % BDOFS) + &
+                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
+                 1d0/(81*(Element % BDOFS)+ &
+                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+2)
+
+         ! TODO: Check the size of Basis and dLBasisdx before the call
+
+         CALL H1TetraBubblePBasisVec(nc, u, v, w, P, nbp, Basis)
+         CALL H1dTetraBubblePBasisVec(nc, u, v, w, P, nbdxp, dLBasisdx)
+       END IF
+
+       ! WEDGE
+     CASE (706)
+       ! Compute nodal basis
+       CALL H1WedgeNodalPBasisVec(nc, u, v, w, Basis)
+       ! Compute local first derivatives
+       CALL H1dWedgeNodalPBasisVec(nc, u, v, w, dLBasisdx)
+       nbc = 6
+       nbp = 6
+       nbdxp = 6
+
+       IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
+           ASSOCIATED( Element % FaceIndexes )) THEN
+         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+       END IF
+
+       ! Element bubble functions
+       IF (Element % BDOFS > 0) THEN 
+         ! Compute P from bubble dofs
+         p=NINT(1/3d0*(81*(Element % BDOFS) + &
+                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0) + &
+                 1d0/(81*(Element % BDOFS)+ &
+                 3*SQRT(-3d0+729*(Element % BDOFS)**2))**(1/3d0)+3)
+
+         ! TODO: Check the size of Basis and dLBasisdx before the call
+
+         CALL H1WedgeBubblePBasisVec(nc, u, v, w, P, nbp, Basis)
+         CALL H1dWedgeBubblePBasisVec(nc, u, v, w, P, nbdxp, dLBasisdx)
+       END IF
+
+       ! HEXAHEDRON
+     CASE (808)
+       ! Compute local basis
+       CALL H1BrickNodalBasisVec(nc, u, v, w, Basis)
+       ! Compute local first derivatives
+       CALL H1dBrickNodalBasisVec(nc, u, v, w, dLBasisdx)
+       nbc = 8
+       nbp = 8
+       nbdxp = 8
+
+       IF (ASSOCIATED( Element % EdgeIndexes ) .OR. &
+           ASSOCIATED( Element % FaceIndexes )) THEN
+         CALL Fatal( 'ElementInfoVec', 'Vectorized p-elements not fully implemented yet' )
+       END IF
+
+       ! Element bubble functions
+       IF (Element % BDOFS > 0) THEN 
+         ! Compute P from bubble dofs
+         P=NINT(1/3d0*(81*nb + &
+                 3*SQRT(-3d0+729*nb**2))**(1/3d0) + &
+                 1d0/(81*nb+3*SQRT(-3d0+729*nb**2))**(1/3d0)+4)
+         
+         ! TODO: Check the size of Basis and dLBasisdx before the call
+
+         CALL H1BrickBubblePBasisVec(nc, u, v, w, P, nbp, Basis)
+         CALL H1dBrickBubblePBasisVec(nc, u, v, w, P, nbdxp, dLBasisdx)
+       END IF
+
+     CASE DEFAULT
+       WRITE( Message, '(a,i4,a)' ) 'Vectorized basis for element: ', &
+               Element % TYPE % ElementCode, ' not implemented.'
+       CALL Error( 'ElementInfoVec', Message )
+       CALL Fatal( 'ElementInfoVec', 'ElementInfoVec is still experimental.' )
+     END SELECT
+
+     ! Set the final number of basis functions 
+     nbc = nbp     
+
+     !--------------------------------------------------------------
+     ! Element (contravariant) metric and square root of determinant
+     !--------------------------------------------------------------
+     elem = ElementMetricVec( nbc, Element, Nodes, nc, detJ, dLBasisdx, LtoGMaps )
+     IF (.NOT. elem) THEN
+       retval = .FALSE.
+       RETURN
+     END IF
+
+     ! Get global basis functions
+     !--------------------------------------------------------------
+     ! First derivatives
+     IF (PRESENT(dBasisdx)) THEN
+       dBasisdx = REAL(0,dp)
+!DIR$ LOOP COUNT MAX=3
+       DO k=1,dim
+!DIR$ LOOP COUNT MAX=3
+         DO j=1,cdim
+!DIR$ LOOP COUNT MAX=3
+           DO i=1,nbc
+             DO l=1,nc
+               ! Map local basis function to global
+               dBasisdx(l,i,j) = dBasisdx(l,i,j) + dLBasisdx(l,i,k)*LtoGMaps(l,j,k)
+             END DO
+           END DO
+         END DO
+       END DO
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION ElementInfoVec
 !------------------------------------------------------------------------------
 
 
@@ -8981,6 +9253,276 @@ END IF
 !------------------------------------------------------------------------------
    END FUNCTION ElementMetric
 !------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+   FUNCTION ElementMetricVec(ndof, Elm, Nodes, nc, DetJ, dLBasisdx, LtoGMap) RESULT(AllSuccess)
+!------------------------------------------------------------------------------
+     INTEGER :: ndof                        !< Number of active nodes in element
+     TYPE(Element_t)  :: Elm                !< Element structure
+     TYPE(Nodes_t)    :: Nodes              !< element nodal coordinates
+     INTEGER :: nc                          !< Number of points to map
+     REAL(KIND=dp) CONTIG :: DetJ(:)               !< SQRT of determinant of element coordinate metric at each point
+     REAL(KIND=dp) CONTIG :: dLBasisdx(:,:,:)      !< Derivatives of element basis function with 
+     !<  respect to local coordinates at each point
+     REAL(KIND=dp) CONTIG :: LtoGMap(:,:,:)        !< Mapping between local and global coordinates
+     LOGICAL :: AllSuccess                  !< Returns .FALSE. if some point in element is degenerate
+!------------------------------------------------------------------------------
+!       Local variables
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: dx(nc,3,3)
+     REAL(KIND=dp) :: Metric(nc,6), G(nc,6) ! Symmetric Metric(nc,3,3) and G(nc,3,3)
+!DIR$ ATTRIBUTES ALIGN:64::Metric
+!DIR$ ATTRIBUTES ALIGN:64::dx
+!DIR$ ATTRIBUTES ALIGN:64::G
+
+     REAL(KIND=dp) :: s
+     INTEGER :: cdim,dim,i,j,k,l,n,ip, jj, kk
+     INTEGER :: ldbasis, ldxyz, utind
+     !------------------------------------------------------------------------------
+     AllSuccess = .TRUE.
+
+     ! Coordinates (single array)
+     n = MIN( SIZE(Nodes % x, 1), ndof )
+
+     ! Dimensions (coordinate system and element)
+     cdim = CoordinateSystemDimension()
+     dim  = elm % TYPE % DIMENSION
+
+     ! Leading dimensions for local basis and coordinate arrays
+     ldbasis = SIZE(dLBasisdx, 1)
+     ldxyz = SIZE(Nodes % xyz, 1)
+
+     ! For linear, extruded and otherwise regular elements mapping has to be computed
+     ! only once, the problem is to identify these cases...
+     !------------------------------------------------------------------------------
+     !       Partial derivatives of global coordinates with respect to local coordinates
+     !------------------------------------------------------------------------------
+     DO i=1,dim
+       CALL DGEMM('N','N',nc, 3, n, &
+               REAL(1,dp), dLbasisdx(1,1,i), ldbasis, &
+               Nodes % xyz, ldxyz, REAL(0, dp), dx(1,1,i), nc)
+     END DO
+     !------------------------------------------------------------------------------
+     !       Compute the covariant metric tensor of the element coordinate system (symmetric)
+     !------------------------------------------------------------------------------
+
+     ! G(1:nc,1:dim,1:cdim)=REAL(0,dp)
+     G=REAL(0,dp)
+!DIR$ LOOP COUNT MAX=3
+     DO j=1,dim
+       ! G is symmetric, compute only the upper triangular part
+!DIR$ LOOP COUNT MAX=3
+       DO i=1,j
+         ! G(1:nc,i,j) = REAL(0,dp)
+         utind = GetSymmetricIndex(i,j)
+         ! Linearized upper triangular indices
+         ! | (1,1) (1,2) (1,3) | = | 1 2 4 |
+         ! |       (2,2) (2,3) |   |   3 5 |
+         ! |             (3,3) |   |     6 |
+         DO k=1,cdim
+           !$OMP SIMD
+           DO l=1,nc
+             G(l,utind)=G(l,utind)+dx(l,k,i)*dx(l,k,j)
+           END DO
+           !$OMP END SIMD
+         END DO
+       END DO
+     END DO
+
+     !------------------------------------------------------------------------------
+     !       Convert the metric to contravariant base, and compute the SQRT(DetG)
+     !------------------------------------------------------------------------------
+     SELECT CASE( dim )
+       !------------------------------------------------------------------------------
+       !       Line elements
+       !------------------------------------------------------------------------------
+     CASE (1)
+       ! Determinants
+       ! DetJ(1:nc)  = G(1:nc,1,1)
+       DetJ(1:nc)  = G(1:nc,1)
+
+       DO i=1,nc
+         IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
+           AllSuccess = .FALSE.
+           EXIT
+         END IF
+       END DO
+
+       IF (AllSuccess) THEN
+         !$OMP SIMD
+         DO i=1,nc
+           ! Metric(i,1,1) = REAL(1,dp)/DetJ(i)
+           Metric(i,1) = REAL(1,dp)/DetJ(i)
+         END DO
+         !$OMP END SIMD
+         !$OMP SIMD
+         DO i=1,nc
+           DetJ(i) = SQRT( DetJ(i))
+         END DO
+         !$OMP END SIMD
+       END IF
+
+
+       !------------------------------------------------------------------------------
+       !       Surface elements
+       !------------------------------------------------------------------------------
+     CASE (2)
+       ! Determinants
+       !$OMP SIMD
+       DO i=1,nc
+         ! DetJ(i) = ( G(i,1,1)*G(i,2,2) - G(i,1,2)*G(i,2,1) )
+         ! G is symmetric
+         DetJ(i) = G(i,1)*G(i,3)-G(i,2)*G(i,2)
+       END DO
+       !$OMP END SIMD
+
+       DO i=1,nc
+         IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
+           AllSuccess = .FALSE.
+           EXIT
+         END IF
+       END DO
+
+       IF (AllSuccess) THEN
+         ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
+         !$OMP SIMD
+         DO i=1,nc
+           s = REAL(1,dp)/DetJ(i)
+           ! G is symmetric
+           ! All in one go, with redundancies eliminated
+           Metric(i,1) =  s*G(i,3)
+           Metric(i,2) = -s*G(i,2)
+           Metric(i,3) =  s*G(i,1)
+         END DO
+         !$OMP END SIMD
+
+         !$OMP SIMD
+         DO i=1,nc
+           DetJ(i) = SQRT(DetJ(i))
+         END DO
+         !$OMP END SIMD
+       END IF
+       !------------------------------------------------------------------------------
+       !       Volume elements
+       !------------------------------------------------------------------------------
+     CASE (3)
+       ! Determinants
+       !$OMP SIMD
+       DO i=1,nc
+         ! DetJ(i) = G(i,1,1) * ( G(i,2,2)*G(i,3,3) - G(i,2,3)*G(i,3,2) ) + &
+         !           G(i,1,2) * ( G(i,2,3)*G(i,3,1) - G(i,2,1)*G(i,3,3) ) + &
+         !           G(i,1,3) * ( G(i,2,1)*G(i,3,2) - G(i,2,2)*G(i,3,1) )
+         ! G is symmetric
+         DetJ(i) = G(i,1)*(G(i,3)*G(i,6)-G(i,5)*G(i,5)) + &
+                 G(i,2)*(G(i,5)*G(i,4)-G(i,2)*G(i,6)) + &
+                 G(i,4)*(G(i,2)*G(i,5)-G(i,3)*G(i,4))
+       END DO
+       !$OMP END SIMD
+
+       DO i=1,nc
+         IF (DetJ(i) <= TINY(REAL(1,dp))) THEN
+           AllSuccess = .FALSE.
+           EXIT
+         END IF
+       END DO
+
+       IF (AllSuccess) THEN
+         ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
+         !$OMP SIMD
+         DO i=1,nc
+           s = REAL(1,dp) / DetJ(i)
+           ! Metric(i,1,1) =  s * (G(i,2,2)*G(i,3,3) - G(i,3,2)*G(i,2,3))
+           ! Metric(i,2,1) = -s * (G(i,2,1)*G(i,3,3) - G(i,3,1)*G(i,2,3))
+           ! Metric(i,3,1) =  s * (G(i,2,1)*G(i,3,2) - G(i,3,1)*G(i,2,2))
+           ! G is symmetric
+
+           ! All in one go, with redundancies eliminated
+           Metric(i,1)= s*(G(i,3)*G(i,6)-G(i,5)*G(i,5))
+           Metric(i,2)=-s*(G(i,2)*G(i,6)-G(i,4)*G(i,5))
+           Metric(i,3)= s*(G(i,1)*G(i,6)-G(i,4)*G(i,4))
+           Metric(i,4)= s*(G(i,2)*G(i,5)-G(i,3)*G(i,4))
+           Metric(i,5)=-s*(G(i,1)*G(i,5)-G(i,2)*G(i,4))
+           Metric(i,6)= s*(G(i,1)*G(i,3)-G(i,2)*G(i,2))
+         END DO
+         !$OMP END SIMD
+
+         !$OMP SIMD
+         DO i=1,nc
+           DetJ(i) = SQRT(DetJ(i))
+         END DO
+         !$OMP END SIMD
+
+       END IF
+     END SELECT
+
+     IF (AllSuccess) THEN
+       ! Construct mapping
+!DIR$ LOOP COUNT MAX=3
+       DO j=1,dim
+!DIR$ LOOP COUNT MAX=3
+         DO i=1,cdim
+           LtoGMap(1:nc,i,j) = REAL(0,dp)
+           ! DO l=1,nc
+           !   LtoGMap(l,i,j) = LtoGMap(l,i,j) + &
+           !           dx(l,i,k)*Metric(l,k,j)
+           ! END DO
+
+           ! Metric is symmetric, k<=j
+           DO k=1,j
+             jj = j*(j-1)/2
+             !$OMP SIMD
+             DO l=1,nc
+               LtoGMap(l,i,j) = LtoGMap(l,i,j) + dx(l,i,k)*Metric(l,jj+k)
+             END DO
+             !$OMP END SIMD
+           END DO
+           ! Metric is symmetric, k>j (reverse index)
+           DO k=j+1,dim
+             kk = k*(k-1)/2
+             !$OMP SIMD
+             DO l=1,nc
+               LtoGMap(l,i,j) = LtoGMap(l,i,j) + dx(l,i,k)*Metric(l,kk+j)
+             END DO
+             !$OMP END SIMD
+           END DO
+         END DO
+       END DO
+
+     ELSE
+
+       ! Degenerate element!
+       WRITE( Message,'(A,I0,A,I0,A,I0)') 'Degenerate ',dim,'D element: ',Elm % ElementIndex, ', pt=', i
+       CALL Error( 'ElementMetricVec', Message )
+       WRITE( Message,'(A,G10.3)') 'DetG:',DetJ(i)
+       CALL Info( 'ElementMetricVec', Message, Level=3 )
+       DO i=1,cdim
+         WRITE( Message,'(A,I0,A,3G10.3)') 'Dir: ',i,' Coord:',Nodes % xyz(i,1),&
+                 Nodes % xyz(i,2), Nodes % xyz(i,3)
+         CALL Info( 'ElementMetricVec', Message, Level=3 )
+       END DO
+       IF (cdim < dim) THEN
+         WRITE( Message,'(A,I0,A,I0)') 'Element dim larger than meshdim: ',dim,' vs. ',cdim
+         CALL Info( 'ElementMetricVec', Message, Level=3 )
+       END IF
+     END IF
+
+   CONTAINS
+
+     PURE FUNCTION GetSymmetricIndex(i,j) RESULT(utind)
+       IMPLICIT NONE
+       INTEGER, INTENT(IN) :: i, j
+       INTEGER :: utind
+
+       IF (i>j) THEN
+         utind = i*(i-1)/2+j
+       ELSE
+         utind = j*(j-1)/2+i
+       END IF
+     END FUNCTION GetSymmetricIndex
+!------------------------------------------------------------------------------
+   END FUNCTION ElementMetricVec
+!------------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------

@@ -39,11 +39,16 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   SolveTrilinos.cxx SolveSuperLU.c iso_varying_string.F90
   umf4_f77wrapper.c VankaCreate.F90 ParticleUtils.F90 Feti.F90
   cholmod.c InterpolateMeshToMesh.F90 BackwardError.F90
-  ElmerSolver.F90 CircuitUtils.F90 MagnetoDynamicsUtils.F90
-  ComponentUtils.F90)
+  LinearForms.F90 H1ElementBasisFunctions.F90 CircuitUtils.F90
+  ElmerSolver.F90 MagnetoDynamicsUtils.F90 ComponentUtils.F90)
 
 SET_PROPERTY(SOURCE MaxwellAxiS.F90 PROPERTY
 	COMPILE_DEFINITIONS FULL_INDUCTION)
+
+
+IF(HAVE_FETI4I)
+  LIST(APPEND solverlib_SOURCES ${FETI4I_INTERFACE_SOURCE})
+ENDIF()
 
 #FILE(GLOB SRC_FILES *.src)
 #FOREACH(FNAME ${SRC_FILES})
@@ -158,6 +163,10 @@ IF(WITH_MPI)
 
   IF(Hypre_LIBRARIES)
     LIST(APPEND ELMERSOLVER_LIBRARIES ${Hypre_LIBRARIES})
+  ENDIF()
+
+  IF(FETI4I_LIBRARIES)
+    LIST(APPEND ELMERSOLVER_LIBRARIES ${FETI4I_LIBRARIES})
   ENDIF()
    
   # Executable

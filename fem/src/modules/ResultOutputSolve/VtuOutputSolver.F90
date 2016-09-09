@@ -514,7 +514,7 @@ SUBROUTINE VtuOutputSolver( Model,Solver,dt,TransientSimulation )
     END IF     
   END IF
   IF( MaxModes > 0 ) THEN
-    CALL Info('VtuOutputSolver','Maximum number of eigen modes: '//TRIM(I2S(MaxModes)),Level=7)
+    CALL Info('VtuOutputSolver','Maximum number of eigen/harmonic modes: '//TRIM(I2S(MaxModes)),Level=7)
   END IF
 
   ActiveModes2 => ListGetIntegerArray( Params,'Active Constraint Modes',GotActiveModes2 ) 
@@ -898,7 +898,7 @@ CONTAINS
         FieldName, FieldName2, OutStr
     CHARACTER :: lf
     LOGICAL :: ScalarsExist, VectorsExist, Found,&
-        ComponentVector, ComplementExists, Use2
+        ComponentVector, ComplementExists, Use2, IsHarmonic
     LOGICAL :: WriteData, WriteXML, L, Buffered
     TYPE(Variable_t), POINTER :: Solution
     INTEGER, POINTER :: Perm(:), Perm2(:), DispPerm(:), Disp2Perm(:)
@@ -1053,6 +1053,12 @@ CONTAINS
           EigenVectors => Solution % EigenVectors
           ConstraintModes => Solution % ConstraintModes
 
+          IsHarmonic = .FALSE.
+          IF( ASSOCIATED( Solution % Solver ) ) THEN
+            IsHarmonic = ListCheckPresent( Solution % Solver % Values, &
+                'Harmonic System Values' )
+          END IF
+
           IF( EigenAnalysis ) THEN
             IF( MaxModes > 0 .AND. FileIndex <= MaxModes .AND. &
                 ASSOCIATED(EigenVectors) ) THEN  
@@ -1201,8 +1207,13 @@ CONTAINS
               IF( NoModes + NoModes2 == 0 .OR. EigenAnalysis ) THEN
                 WRITE( OutStr,'(A,I0,A)') '        <DataArray type="Float',PrecBits,'" Name="'//TRIM(FieldName)
               ELSE IF( iField <= NoFields ) THEN
-                WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
-                    TRIM(FieldName)//' EigenMode',IndField
+                IF( IsHarmonic ) THEN
+                  WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
+                      TRIM(FieldName)//' HarmonicMode',IndField
+                ELSE
+                  WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
+                      TRIM(FieldName)//' EigenMode',IndField
+                END IF
               ELSE
                 WRITE( OutStr,'(A,I0,A,I0)') '        <DataArray type="Float',PrecBits,'" Name="'//&
                     TRIM(FieldName)//' ConstraintMode',IndField
