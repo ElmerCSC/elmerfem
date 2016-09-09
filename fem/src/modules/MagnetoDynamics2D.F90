@@ -586,6 +586,8 @@ CONTAINS
       CALL Default1stOrderTime( MASS, STIFF, FORCE,UElement=Element, USolver=Solver )
     END IF
     CALL DefaultUpdateEquations( STIFF, FORCE,UElement=Element, USolver=Solver)
+
+    DEALLOCATE(CubicCoeff)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
