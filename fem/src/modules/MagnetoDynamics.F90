@@ -1992,6 +1992,8 @@ CONTAINS
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
     END IF
+
+    IF ( ASSOCIATED(CubicCoeff) ) DEALLOCATE(CubicCoeff)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -4465,6 +4467,8 @@ CONTAINS
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
     END IF
+
+    IF ( ASSOCIATED(CubicCoeff) ) DEALLOCATE(CubicCoeff)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
