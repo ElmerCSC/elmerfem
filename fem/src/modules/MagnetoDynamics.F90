@@ -2086,7 +2086,6 @@ CONTAINS
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
     END IF
 
-    IF ( ASSOCIATED(CubicCoeff) ) DEALLOCATE(CubicCoeff)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -4584,7 +4583,6 @@ CONTAINS
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
     END IF
 
-    IF ( ASSOCIATED(CubicCoeff) ) DEALLOCATE(CubicCoeff)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
