@@ -3137,7 +3137,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   TYPE(Element_t),POINTER :: Element, Edge
 
   REAL(KIND=dp) :: Norm, Omega
-  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams
+  TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, BodyParams, SolverParams
 
   INTEGER :: n,nb,nd,t,istat,i,j,k,l,nNodes,Active,FluxCount=0
   INTEGER :: NoIterationsMin, NoIterationsMax
@@ -3154,12 +3154,12 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   REAL (KIND=DP), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
 
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
-  TYPE(Variable_t), POINTER :: fixJpot
+  TYPE(Variable_t), POINTER :: fixJpot, HbCurveVar
 
-  CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType
+  CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
   LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
-  LOGICAL :: PiolaVersion, SecondOrder
+  LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar
 
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
@@ -3177,17 +3177,19 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
 
-  PiolaVersion = GetLogical( GetSolverParams(), 'Use Piola Transform', Found )
-  SecondOrder = GetLogical( GetSolverParams(), 'Quadratic Approximation', Found )
+  SolverParams => GetSolverParams()
+  
+  PiolaVersion = GetLogical( SolverParams, 'Use Piola Transform', Found )
+  SecondOrder = GetLogical( SolverParams, 'Quadratic Approximation', Found )
   IF (PiolaVersion) THEN
     CALL Info('WhitneyAVSolver', &
         'Using Piola Transformed element basis functions',Level=4)
     CALL Info('WhitneyAVSolver', &
         'The option > Use Tree Gauge < is not available',Level=4)
     IF (SecondOrder) &
-         CALL Info('WhitneyAVHarmonicSolver', &
+        CALL Info('WhitneyAVHarmonicSolver', &
         'Using quadratic approximation, pyramidical elements are not yet available',Level=4)   
-  END IF
+ END IF
 
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
@@ -3219,7 +3221,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   
   Omega = GetAngularFrequency(Found=Found)
 
-  FixJ = GetLogical(GetSolverParams(),'Fix input Current Density', Found)
+  FixJ = GetLogical(SolverParams,'Fix input Current Density', Found)
 
   ! If not specified compute the Jfix field only if there is a specified current BC
   IF(.NOT. Found ) THEN
@@ -3228,29 +3230,41 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   IF (FixJ) CALL JfixPotentialSolver(Model,Solver,dt,Transient)
 
+  
+  HbCurveVarName = GetString( SolverParams,'H-B Curve Variable', GotHbCurveVar )
+  IF( GotHbCurveVar ) THEN
+    HbCurveVar => VariableGet( Mesh % Variables, HbCurveVarName )
+    IF(.NOT. ASSOCIATED( HbCurveVar ) ) THEN
+      CALL Fatal('WhitneyAVHarmonicSolver','H-B Curve variable given but does not exist: '&
+          //TRIM(HbCurveVarName))
+    END IF
+  END IF
+
+    
   !
   ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
-  NoIterationsMax = GetInteger( GetSolverParams(), &
+  NoIterationsMax = GetInteger( SolverParams, &
               'Nonlinear System Max Iterations',Found)
   IF(.NOT. Found) NoIterationsMax = 1
 
-  NoIterationsMin = GetInteger( GetSolverParams(), &
+  NoIterationsMin = GetInteger( SolverParams, &
               'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
-  LFact = GetLogical( GetSolverParams(),'Linear System Refactorize', LFactFound )
-  EdgeBasis = .NOT.LFactFound .AND. GetLogical( GetSolverParams(), 'Edge Basis', Found )
+  LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
+  EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
   DO i=1,NoIterationsMax
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
-    IF( EdgeBasis ) CALL ListAddLogical(GetSolverParams(),'Linear System Refactorize',.FALSE.)
+    IF( EdgeBasis ) CALL ListAddLogical(SolverParams,'Linear System Refactorize',.FALSE.)
   END DO
-  IF ( EdgeBasis ) CALL ListRemove( GetSolverParams(), 'Linear System Refactorize' )
+  IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
 
   CALL CalculateLumped(Model % NumberOfBodyForces)
 
+  
 CONTAINS
 
 !---------------------------------------------------------------------------------------------
@@ -3438,15 +3452,15 @@ CONTAINS
     !
     ! Gauge tree, if requested or using direct solver:
     ! ------------------------------------------------
-    TG=GetLogical(GetSolverParams(), 'Use tree gauge', Found)
+    TG=GetLogical(SolverParams, 'Use tree gauge', Found)
     IF (.NOT. Found) TG=GetString(GetSolverParams(), &
-       'Linear System Solver',Found)=='direct'
+        'Linear System Solver',Found)=='direct'
 
     IF (TG) THEN
       CALL GaugeTree()
       WRITE(Message,*) 'Volume tree edges: ', &
-             TRIM(i2s(COUNT(TreeEdges))),     &
-               ' of total: ',Mesh % NumberOfEdges
+          TRIM(i2s(COUNT(TreeEdges))),     &
+          ' of total: ',Mesh % NumberOfEdges
       CALL Info('WhitneyAVHarmonicSolver: ', Message, Level=5)
     END IF
 
@@ -4330,7 +4344,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:),  &
            CubicCoeff(:)=>NULL(),HB(:,:)=>NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
-
+    
     TYPE(Nodes_t), SAVE :: Nodes
 
     TYPE(ValueList_t), POINTER :: CompParams
@@ -4386,9 +4400,14 @@ CONTAINS
     END IF
 
     IF(HBCurve) THEN
-      CALL GetLocalSolution(AlocR)
-      Aloc = CMPLX( AlocR(1,1:nd), AlocR(2,1:nd), KIND=dp)
-      Newton = GetLogical( GetSolverParams(),'Newton-Raphson iteration',Found)
+      IF( GotHbCurveVar ) THEN
+        CALL GetLocalSolution(AlocR(1,:), UVariable = HbCurveVar )
+        Aloc = CMPLX( AlocR(1,1:nd), 0.0_dp, KIND=dp)
+      ELSE
+        CALL GetLocalSolution(AlocR)
+        Aloc = CMPLX( AlocR(1,1:nd), AlocR(2,1:nd), KIND=dp)
+      END IF
+      Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
     END IF
 
     IF (CoilType == 'stranded') THEN 
