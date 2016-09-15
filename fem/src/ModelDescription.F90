@@ -3478,8 +3478,16 @@ CONTAINS
              n = SIZE(Var % Values)
            END IF
            ! in case of (.NOT. LoadThis) n has already been set
-         END IF
 
+           ! This relies that the "Transient Restart" flag has been used consistently when saving and loading
+           IF( ASSOCIATED( Var % Solver ) ) THEN
+             IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
+               CALL Info('LoadRestartFile','Assuming variable to have transient initialization: '//TRIM(Row),Level=6)
+               Var % Solver % DoneTime = Var % Solver % Order
+             END IF
+           END IF
+         END IF
+         
          DO j=1, n
            IF ( FmtVersion > 0 ) THEN
              CALL GetValue( RestartUnit, Perm, GotPerm, j, k, Val )

@@ -77,7 +77,7 @@ CONTAINS
       
       IF( Found ) THEN        
         IF ( ParEnv % PEs > 1 ) THEN
-          IF ( str /= 'mumps' .AND. str /= 'cpardiso' ) THEN
+          IF ( str /= 'mumps' .AND. str /= 'cpardiso' .AND. str /= 'permon' ) THEN
             CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS and CPardiso direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 
@@ -118,6 +118,10 @@ CONTAINS
         CASE( 'cholmod','spqr' )
 #ifndef HAVE_CHOLMOD
           CALL Fatal( 'CheckLinearSolverOptions', 'Cholmod solver has not been installed.' )
+#endif
+       CASE( 'permon')
+#ifndef HAVE_FETI4I
+          CALL Fatal( 'CheckLinearSolverOptions', 'FETI4I solver has not been installed.' )
 #endif
         CASE DEFAULT
           CALL Fatal( 'CheckLinearSolverOptions', 'Unknown direct solver method: ' // TRIM(str) )
@@ -1495,6 +1499,23 @@ CONTAINS
               Secondary = .TRUE. )
         END IF
       END IF
+
+      IF( ListGetLogical( Solver % Values,'Transient Restart',Found) ) THEN
+        IF( .NOT. ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+          CALL Warn('AddEquationSolution',&
+              'Transient restart requires PrevValues!')
+        ELSE 
+          DO k = 1, SIZE( Solver % Variable % PrevValues, 2 )
+            Component => Solver % Variable % PrevValues(:,k)
+            str = TRIM( Solver % Variable % Name ) //' PrevValues'//TRIM(I2S(k))
+            CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+                str, Solver % Variable % Dofs, Component, Solver % Variable % Perm, &
+                Secondary = .TRUE. )
+          END DO
+        END IF
+      END IF
+
+
 
     ELSE
       Solver % TimeOrder = 0

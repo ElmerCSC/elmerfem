@@ -398,7 +398,7 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, Found, Stat
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:), &
-      CubicCoeff(:), HB(:,:) => NULL()
+      CubicCoeff(:) => NULL(), HB(:,:) => NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
     TYPE(ValueList_t), POINTER :: Material, BodyForce
 
@@ -586,6 +586,7 @@ CONTAINS
       CALL Default1stOrderTime( MASS, STIFF, FORCE,UElement=Element, USolver=Solver )
     END IF
     CALL DefaultUpdateEquations( STIFF, FORCE,UElement=Element, USolver=Solver)
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -1179,7 +1180,7 @@ CONTAINS
     LOGICAL :: Cubic, HBcurve, Found, Stat, StrandedHomogenization
 
     REAL(KIND=dp), POINTER :: Bval(:), Hval(:), Cval(:), &
-      CubicCoeff(:), HB(:,:) => NULL()
+      CubicCoeff(:) => NULL(), HB(:,:) => NULL()
     TYPE(ValueListEntry_t), POINTER :: Lst
     TYPE(ValueList_t), POINTER :: Material,  BodyForce
 
@@ -1425,6 +1426,7 @@ CONTAINS
       CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
     END IF
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------

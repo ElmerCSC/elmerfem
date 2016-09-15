@@ -11015,7 +11015,7 @@ CONTAINS
     TYPE(Element_t), POINTER :: Element, Edges(:)
 
     LOGICAL :: Found
-    INTEGER :: i,j,k,n,NofEdges,Edge,Swap,Node1,Node2,istat,Degree
+    INTEGER :: i,j,k,n,NofEdges,Edge,Swap,Node1,Node2,istat,Degree,allocstat
 !------------------------------------------------------------------------------
 !
 !   Initialize:
@@ -11097,7 +11097,11 @@ CONTAINS
 
              Edges(Edge) % ElementIndex = Edge
              CALL AllocateVector( Edges(Edge) % NodeIndexes, Degree+1)
-             ALLOCATE( Edges(Edge) % BoundaryInfo )
+             ALLOCATE( Edges(Edge) % BoundaryInfo, STAT=allocstat )
+             IF( allocstat /= 0 ) THEN
+               CALL Fatal('FindMeshEdges2D','Allocation error for BoyndaryInfo alloction')
+             END IF
+
              Edges(Edge) % TYPE => GetElementType( 201+Degree, .FALSE. )
 
              Edges(Edge) % NodeIndexes(1) = Element % NodeIndexes(k)
@@ -11134,7 +11138,11 @@ CONTAINS
               
 !            Update the hash table:
 !            ----------------------
-             ALLOCATE( HashPtr )
+             ALLOCATE( HashPtr, STAT=allocstat )
+             IF( allocstat /= 0 ) THEN
+               CALL Fatal('FindMeshEdges2D','Allocation error for HashPtr alloction')
+             END IF
+
              HashPtr % Edge = Edge
              HashPtr % Node = Node2
              HashPtr % Next => HashTable(Node1) % Head
@@ -15962,7 +15970,7 @@ CONTAINS
     INTEGER :: Divisions(3),minpart,maxpart,clustersize
     REAL(KIND=dp), POINTER :: PArray(:,:), Arrange(:)
     REAL(KIND=dp) :: Normal(3), Tangent1(3), Tangent2(3), Coord(3), Weights(3), &
-        avepart,devpart
+        avepart,devpart, dist
     TYPE(Element_t), POINTER :: Element
     INTEGER, POINTER :: NodeIndexes(:)
 !---------------------------------------------------------------
@@ -16058,15 +16066,9 @@ CONTAINS
         Weights = Tangent2
       END IF
 
-      ! Initialize ordering for the current direction
-      !----------------------------------------------
-      DO i=1,nsize
-        Order(i) = i
-      END DO
-      
-
       ! Now compute the weights for each node
       !----------------------------------------
+      j = 0
       DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         IF( MaskExists ) THEN
           IF( .NOT. MaskActive( i ) ) CYCLE
@@ -16082,11 +16084,15 @@ CONTAINS
         Coord(2) = SUM( Mesh % Nodes % y( NodeIndexes ) ) / n
         Coord(3) = SUM( Mesh % Nodes % z( NodeIndexes ) ) / n
 
-        Arrange(i) = SUM( Weights * Coord )
+        j = j + 1
+        Arrange(j) = SUM( Weights * Coord )
+
+        ! Initialize ordering for the current direction
+        Order(j) = j
       END DO
 
-      ! Order the nodes for given direction
-      !----------------------------------------------
+      ! Order the distances for given direction, only the active ones
+      !--------------------------------------------------------------
       CALL SortR(nsize,Order,Arrange)
 
       ! For each direction the number of elements in cluster becomes smaller
@@ -16094,7 +16100,6 @@ CONTAINS
 
       ! initialize the counter partition
       nopart = 0
-
 
       ! Go through each node and locate it to a cluster taking into consideration
       ! the previous clustering (for 1st direction all one)
@@ -16132,6 +16137,8 @@ CONTAINS
           
         k = k0 + j
         nopart(k) = nopart(k) + 1
+
+        ! Now set the partition 
         nodepart(ind) = k
       END DO
 
@@ -16160,7 +16167,17 @@ CONTAINS
     
     
     IF( ASSOCIATED(Clustering)) THEN
-      Clustering = Nodepart 
+      IF( PRESENT( MaskActive ) ) THEN
+        j = 0
+        DO i=1, SIZE(MaskActive)
+          IF( MaskActive(i) ) THEN
+            j = j + 1
+            Clustering(i) = Nodepart(j)
+          END IF
+        END DO
+      ELSE
+        Clustering = Nodepart 
+      END IF
       DEALLOCATE(Nodepart)
     ELSE
       Clustering => Nodepart
@@ -16193,7 +16210,7 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:)
     REAL(KIND=dp) :: BoundingBox(6)
     INTEGER, ALLOCATABLE :: CellCount(:,:,:)
-    
+
 
     MaskExists = PRESENT(MaskActive)
     IF( MaskExists ) THEN
@@ -16323,14 +16340,15 @@ CONTAINS
         NoPart(i) = n
       END IF
     END DO
+
     DO i=1,nsize
       j = NodePart(i)
-      IF( j > 0 ) NodePart(i) = NoPart(j)
+      IF( j > 0 ) NodePart(i) = NoPart(j) 
     END DO
-           
-    IF( ASSOCIATED(Clustering)) THEN
-      Clustering(1:nsize) = Nodepart(1:nsize)
-      DEALLOCATE(Nodepart)
+              
+    IF( ASSOCIATED( Clustering ) ) THEN
+      WHERE( NodePart(1:nsize) > 0 ) Clustering(1:nsize) = Nodepart(1:nsize)
+      DEALLOCATE( NodePart ) 
     ELSE
       Clustering => Nodepart
       NULLIFY( Nodepart ) 
