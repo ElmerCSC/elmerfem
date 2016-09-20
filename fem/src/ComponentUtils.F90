@@ -129,6 +129,8 @@ MODULE ComponentUtils
          CALL Fatal('ComponentNodalForceReduction','Size of > Torque Axis < should be 3!')
        END IF
        Axis = Pwrk(1:3,1)
+       ! Normalize axis is it should just be used for the direction
+       Axis = Axis / SQRT( SUM( Axis*Axis ) )
      ELSE
        Axis = 0.0_dp    
        Axis(3) = 1.0_dp  
