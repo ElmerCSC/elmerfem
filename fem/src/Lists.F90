@@ -2303,6 +2303,12 @@ CONTAINS
 
      ALLOCATE( ptr % FValues(1,1,n),ptr % TValues(n) )
 
+     ! The (x,y) table should be such that values of x are increasing in size
+     IF( .NOT. CheckMonotone( n, TValues ) ) THEN
+       CALL Fatal('ListAddDepReal',&
+           'Values x in > '//TRIM(Name)//' < not monotonically ordered!')
+     END IF
+     
      ptr % TValues = TValues(1:n)
      ptr % FValues(1,1,:) = FValues(1:n)
      ptr % TYPE = LIST_TYPE_VARIABLE_SCALAR
