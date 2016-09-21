@@ -41,6 +41,36 @@
 !> \ingroup Solvers
 !> \{
 
+SUBROUTINE SaveDependence_init( Model,Solver,dt,TransientSimulation )
+!------------------------------------------------------------------------------
+  USE DefUtils
+
+  IMPLICIT NONE
+!------------------------------------------------------------------------------
+  TYPE(Solver_t), TARGET :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
+  LOGICAL :: TransientSimulation
+!------------------------------------------------------------------------------
+! Local variables
+!------------------------------------------------------------------------------
+  INTEGER :: NormInd
+  LOGICAL :: GotIt
+  CHARACTER(LEN=MAX_NAME_LEN) :: SolverName
+
+  ! If we want to show a pseudonorm add a variable for which the norm
+  ! is associated with.
+  NormInd = ListGetInteger( Solver % Values,'Show Norm Index',GotIt)
+  IF( NormInd > 0 ) THEN
+    SolverName = ListGetString( Solver % Values, 'Equation',GotIt)
+    IF( .NOT. ListCheckPresent( Solver % Values,'Variable') ) THEN
+      CALL ListAddString( Solver % Values,'Variable',&
+          '-nooutput -global '//TRIM(SolverName)//'_var')
+    END IF
+  END IF
+
+END SUBROUTINE SaveDependence_init
+
 
 !------------------------------------------------------------------------------
 !> This subroutine saves 1D dependence of a given property.
@@ -61,15 +91,16 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   CHARACTER(LEN=MAX_NAME_LEN) :: FileName, ParName, OutputDirectory
-  REAL(KIND=dp) :: x1, x0, x, w, f
-  INTEGER :: i,j,n,NoPar
+  REAL(KIND=dp) :: x1, x0, x, w, f, Norm
+  INTEGER :: i,j,n,NoPar,NormInd
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found, GotIt
-
+  
   IF( ParEnv % PEs > 1 ) THEN
     IF( ParEnv % MyPE > 0 ) RETURN
   END IF
 
+  CALL Info('SaveDependence','--------------------------------')
   CALL Info('SaveDependence','Saving dependencies in a table')
 
   Params => GetSolverParams()
@@ -77,6 +108,12 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
   FileName = ListGetString( Params,'Filename',Found)
   IF(.NOT. Found ) FileName = 'dep.dat'
 
+
+  !------------------------------------------------------------------------------
+  ! For consistancy checks one compute a pseudonorm.
+  !------------------------------------------------------------------------------
+  NormInd = ListGetInteger( Params,'Show Norm Index',GotIt)
+  Norm = 0.0_dp
 
   IF ( .NOT. FileNameQualified(FileName) ) THEN
     OutputDirectory = GetString( Params,'Output Directory',GotIt)
@@ -124,6 +161,8 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
       WRITE (ParName,'(A,I0)') 'Expression ',j
       f = ListGetFun( Params,ParName,x )
       WRITE (10,'(ES15.6)',ADVANCE='NO') f     
+
+      IF( NormInd == j ) Norm = Norm + f*f
     END DO
 
     WRITE (10,'(A)') ' '     
@@ -131,6 +170,12 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
   
   CLOSE( 10 ) 
 
+  IF( NormInd > 0 ) THEN
+    Norm = SQRT( Norm / n )
+    Solver % Variable % Values = Norm
+    Solver % Variable % Norm = Norm
+  END IF
+  
 END SUBROUTINE SaveDependence
 !------------------------------------------------------------------------------
 
