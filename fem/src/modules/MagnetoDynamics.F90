@@ -392,6 +392,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
           CALL ListAddString( SolverParams, "Element", "n:1 e:1 -brick b:3 -quad_face b:2" )
         END IF
       ELSE
+        ! No use to save nodal field as it does not exist!
+        CALL ListAddLogical( SolverParams,'Variable Output',.FALSE. )
         IF (SecondOrder) THEN
           CALL ListAddString( SolverParams, "Element", &
               "n:0 e:2 -brick b:6 -prism b:2 -quad_face b:4 -tri_face b:2" )  
@@ -403,6 +405,8 @@ SUBROUTINE WhitneyAVSolver_Init0(Model,Solver,dt,Transient)
       IF ( Transient .OR. LorentzConductivity ) THEN
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
       ELSE
+        ! No use to save nodal field as it does not exist!
+        CALL ListAddLogical( SolverParams,'Variable Output',.FALSE. )
         CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
       END IF
 
@@ -5207,7 +5211,9 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
   IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) RETURN
 
   ElementalFields = GetLogical( GetSolverParams(), 'Calculate Elemental Fields', Found)
-  IF(Found.AND..NOT.ElementalFields) RETURN
+  IF(.NOT. Found ) ElementalFields = .TRUE.
+
+  IF(.NOT. ElementalFields) RETURN
 
   PSolver => Solver
   DO mysolver=1,Model % NumberOfSolvers
@@ -5366,7 +5372,7 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init0(Model,Solver,dt,Transient)
     END IF
   END IF
 
-  IF ( Transient .OR. Vdofs>1 .OR. LorentzConductivity ) THEN
+  IF ( Transient .OR. Vdofs > 1 .OR. LorentzConductivity ) THEN
     IF ( GetLogical( Solver % Values, 'Calculate Electric Field', Found ) ) THEN
       i = i + 1
       IF ( RealField ) THEN
@@ -5490,8 +5496,10 @@ SUBROUTINE MagnetoDynamicsCalcFields_Init(Model,Solver,dt,Transient)
   END IF
 
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
+  IF(.NOT. Found ) NodalFields = .TRUE.
+  
+  IF(.NOT. NodalFields) RETURN
 
-  IF(Found .AND. .NOT.NodalFields) RETURN
   RealField = ( Var % Dofs == 1 )
 
   i=1
@@ -5686,8 +5694,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL :: Found, FoundMagnetization, stat, Cubic, LossEstimation, &
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
-              HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity
-
+              HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
+              ImposeBodyForcePotential
+   
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
    TYPE(Element_t), POINTER :: Element
@@ -5751,20 +5760,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      EdgeBasisDegree = 1
    END IF
 
-
    ElectricPotName = GetString(SolverParams, 'Precomputed Electric Potential', PrecomputedElectricPot)
    IF (PrecomputedElectricPot) THEN
-      DO i=1,Model % NumberOfSolvers
-         ElPotSolver => Model % Solvers(i)
-         IF (ElectricPotName==getVarName(ElPotSolver % Variable)) EXIT
-      END DO
+     DO i=1,Model % NumberOfSolvers
+       ElPotSolver => Model % Solvers(i)
+       IF (ElectricPotName==getVarName(ElPotSolver % Variable)) EXIT
+     END DO
    END IF
-
+     
    ! Do we have a real or complex valued primary field?
    RealField = ( vDofs == 1 ) 
 
    LorentzConductivity = ListCheckPrefixAnyBodyForce(Model, "Angular Velocity") .or. &
-     ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
+       ListCheckPrefixAnyBodyForce(Model, "Lorentz Velocity")
 
    Mesh => GetMesh()
    LagrangeVar => VariableGet( Solver % Mesh % Variables,'LagrangeMultiplier', ThisOnly=.TRUE.)
@@ -5777,7 +5785,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential')
    EL_VP => VariableGet( Mesh % Variables, 'Magnetic Vector Potential E')
-
+   
+   IF( .NOT. PreComputedElectricPot ) THEN
+     ImposeBodyForcePotential = GetLogical(SolverParams, 'Impose Body Force Potential', Found)
+     IF (.NOT. Found) ImposeBodyForcePotential = .FALSE.
+   ELSE
+     ImposeBodyForcePotential = .FALSE.
+   END IF
+     
    ImposeBodyForceCurrent = GetLogical(SolverParams, 'Impose Body Force Current', Found)
    IF (.NOT. Found) ImposeBodyForceCurrent = .TRUE.
 
@@ -5921,10 +5936,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    Power = 0._dp; Energy = 0._dp
    CALL DefaultInitialize()
    
-   IF(.NOT. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
-     ImposeBodyForceCurrent = .FALSE.
-     ImposeCircuitCurrent = .FALSE.
-   END IF
+   !IF(.NOT. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
+   !  ImposeBodyForceCurrent = .FALSE.
+   !  ImposeCircuitCurrent = .FALSE.
+   !END IF
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
@@ -5932,6 +5947,11 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      nd = GetElementNOFDOFs(uSolver=pSolver)
 
      CALL GetElementNodes( Nodes )
+
+     BodyId = GetBody()
+     Material => GetMaterial()
+     BodyForce => GetBodyForce()
+
      ItoJCoeffFound = .FALSE.
      IF(ImposeCircuitCurrent) THEN
        ItoJCoeff = ListGetConstReal(GetBodyParams(Element), &
@@ -5946,9 +5966,14 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
 
      CALL GetVectorLocalSolution(SOL,Pname,uSolver=pSolver)
-     IF (PrecomputedElectricPot) &
-         CALL GetScalarLocalSolution(ElPotSol(1,:),ElectricPotName,uSolver=ElPotSolver)
-
+     IF (PrecomputedElectricPot) THEN
+       CALL GetScalarLocalSolution(ElPotSol(1,:),ElectricPotName,uSolver=ElPotSolver)
+     END IF
+     
+     IF( ImposeBodyForcePotential ) THEN
+       ElPotSol(1,:) = GetReal(BodyForce,'Electric Potential',Found)
+     END IF
+       
      IF ( Transient ) THEN
        CALL GetScalarLocalSolution(PSOL,Pname,uSolver=pSolver,Tstep=-1)
        PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
@@ -5961,11 +5986,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
      Freq = Omega / (2*PI)
      
-     BodyId = GetBody()
-     Material => GetMaterial()
-     BodyForce => GetBodyForce()
      IF ( ASSOCIATED(MFS) ) THEN
-       BodyForce => GetBodyForce()
        FoundMagnetization = .FALSE.
        IF(ASSOCIATED(BodyForce)) THEN
          CALL GetComplexVector( BodyForce,Magnetization(1:3,1:n),'Magnetization',FoundMagnetization)
@@ -5977,7 +5998,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
 
      IF (ImposeBodyForceCurrent .AND. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
-       BodyForce => GetBodyForce()
        BodyForceCurrDens = 0._dp
        IF ( ASSOCIATED(BodyForce) ) THEN
          SELECT CASE(DIM)
@@ -6201,127 +6221,145 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END DO
        END IF
        
-        IF (vDOFs > 1) THEN
-           IF (CoilType /= 'stranded') THEN
-              ! -j * Omega A
-              SELECT CASE(dim)
-              CASE(2)
-                E(1,:) = 0._dp
-                E(2,:) = 0._dp
-                E(1,3) =  Omega*SUM(SOL(2,1:nd) * Basis(1:nd))
-                E(2,3) = -Omega*SUM(SOL(1,1:nd) * Basis(1:nd))
-              CASE(3)
-                E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
-                E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
-              END SELECT
-           ELSE
-              E(1,:) = 0._dp
-              E(2,:) = 0._dp
-           END IF
-
-           localV=0._dp
-           SELECT CASE (CoilType)
-           CASE ('stranded')
-             SELECT CASE(dim)
-             CASE(2)
-               wvec = [0._dp, 0._dp, 1._dp]
-             CASE(3)
-               wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-               wvec = wvec/SQRT(SUM(wvec**2._dp))
-             END SELECT
-              imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
-              E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(3,3))
-              E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(3,3))
-           CASE ('massive')
-              localV(1) = localV(1) + LagrangeVar % Values(VvarId)
-              localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
-              SELECT CASE(dim)
-              CASE(2)
-                E(1,3) = E(1,3)-localV(1) * grads_coeff
-                E(2,3) = E(2,3)-localV(2) * grads_coeff
-              CASE(3)
-                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-              END SELECT
-           CASE ('foil winding')
-              localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
-              DO k = 1, VvarDofs-1
-                Reindex = 2*k
-                Imindex = Reindex+1
-                localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
-                localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
-              END DO
-              SELECT CASE(dim)
-              CASE(2)
-                E(1,3) = E(1,3)-localV(1) * grads_coeff
-                E(2,3) = E(2,3)-localV(2) * grads_coeff
-              CASE(3)
-                E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-              END SELECT
-           CASE DEFAULT
-              ! -Grad(V)
-              IF(dim==3) THEN
-                E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-                E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
-              ELSE  ! external given scalar potential ?
-              END IF
-           END SELECT
-        ELSE
-          IF (CoilType /= 'stranded') THEN 
-             SELECT CASE(dim)
-             CASE(2)
-               E(1,1) = 0._dp
-               E(1,2) = 0._dp
-               E(1,3) = -SUM(PSOL(1:nd) * Basis(1:nd))
-             CASE(3)
-               E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
-             END SELECT
-           ELSE
+       IF (vDOFs > 1) THEN   ! Complex case
+         IF (CoilType /= 'stranded') THEN
+           ! -j * Omega A
+           SELECT CASE(dim)
+           CASE(2)
              E(1,:) = 0._dp
-           END IF
-           localV=0._dp
-           SELECT CASE (CoilType)
-           CASE ('stranded')
-             SELECT CASE(dim)
-             CASE(2)
-               wvec = [0._dp, 0._dp, 1._dp]
-               E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(1,1)
-             CASE(3)
-               wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-               wvec = wvec/SQRT(SUM(wvec**2._dp))
-               E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(3,3)
-             END SELECT
-           CASE ('massive')
-             localV(1) = localV(1) + LagrangeVar % Values(VvarId)
-             SELECT CASE(dim)
-             CASE(2)
-               E(1,3) = E(1,3)-localV(1) * grads_coeff
-             CASE(3)
-               E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-             END SELECT
-           CASE ('foil winding')
-             localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
-             DO k = 1, VvarDofs-1
-               localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
-             END DO
-             SELECT CASE(dim)
-             CASE(2)
-               E(1,3) = E(1,3)-localV(1) * grads_coeff
-             CASE(3)
-               E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
-             END SELECT
-           CASE DEFAULT
-             IF(dim==3 .AND. Transient) THEN
-               E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-             END IF
-
-             IF (np > 0 .AND. dim==3 .AND. .NOT. Transient) THEN
-               E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
-             ELSEIF (PrecomputedElectricPot) THEN
-               E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
-             END IF
+             E(2,:) = 0._dp
+             E(1,3) =  Omega*SUM(SOL(2,1:nd) * Basis(1:nd))
+             E(2,3) = -Omega*SUM(SOL(1,1:nd) * Basis(1:nd))
+           CASE(3)
+             E(1,:) = Omega*MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:))
+             E(2,:) = -Omega*MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:))
            END SELECT
+         ELSE
+           E(1,:) = 0._dp
+           E(2,:) = 0._dp
+         END IF
+
+         localV=0._dp
+         SELECT CASE (CoilType)
+
+         CASE ('stranded')
+           SELECT CASE(dim)
+           CASE(2)
+             wvec = [0._dp, 0._dp, 1._dp]
+           CASE(3)
+             wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             wvec = wvec/SQRT(SUM(wvec**2._dp))
+           END SELECT
+           imag_value = LagrangeVar % Values(IvarId) + im * LagrangeVar % Values(IvarId+1)
+           E(1,:) = E(1,:)+REAL(imag_value * N_j * wvec / CMat_ip(3,3))
+           E(2,:) = E(2,:)+AIMAG(imag_value * N_j * wvec / CMat_ip(3,3))
+
+         CASE ('massive')
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+           localV(2) = localV(2) + LagrangeVar % Values(VvarId+1)
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,3) = E(1,3)-localV(1) * grads_coeff
+             E(2,3) = E(2,3)-localV(2) * grads_coeff
+           CASE(3)
+             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           END SELECT
+           
+         CASE ('foil winding')
+           localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
+           DO k = 1, VvarDofs-1
+             Reindex = 2*k
+             Imindex = Reindex+1
+             localV(1) = localV(1) + LagrangeVar % Values(VvarId+Reindex) * localAlpha**(k-1)
+             localV(2) = localV(2) + LagrangeVar % Values(VvarId+Imindex) * localAlpha**(k-1)
+           END DO
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,3) = E(1,3)-localV(1) * grads_coeff
+             E(2,3) = E(2,3)-localV(2) * grads_coeff
+           CASE(3)
+             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             E(2,:) = E(2,:)-localV(2) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           END SELECT
+
+         CASE DEFAULT
+           ! -Grad(V)
+           IF(dim==3) THEN
+             E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+             E(2,:) = E(2,:)-MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
+           END IF
+
+           IF( ImposeBodyForcePotential ) THEN
+             E(1,1:n) = E(1,1:n) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+           END IF             
+         END SELECT
+         
+       ELSE   ! Real case
+         IF (CoilType /= 'stranded') THEN 
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,1) = 0._dp
+             E(1,2) = 0._dp
+             E(1,3) = -SUM(PSOL(1:nd) * Basis(1:nd))
+           CASE(3)
+             E(1,:) = -MATMUL(PSOL(np+1:nd), Wbasis(1:nd-np,:))
+           END SELECT
+         ELSE
+           E(1,:) = 0._dp
+         END IF
+         localV=0._dp
+
+         SELECT CASE (CoilType)
+
+         CASE ('stranded')
+           SELECT CASE(dim)
+           CASE(2)
+             wvec = [0._dp, 0._dp, 1._dp]
+             E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(1,1)
+           CASE(3)
+             wvec = -MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+             wvec = wvec/SQRT(SUM(wvec**2._dp))
+             E(1,:) = E(1,:)+ LagrangeVar % Values(IvarId) * N_j * wvec / CMat_ip(3,3)
+           END SELECT
+
+         CASE ('massive')
+           localV(1) = localV(1) + LagrangeVar % Values(VvarId)
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,3) = E(1,3)-localV(1) * grads_coeff
+           CASE(3)
+             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           END SELECT
+
+         CASE ('foil winding')
+           localAlpha = coilthickness *SUM(alpha(1:np) * Basis(1:np)) 
+           DO k = 1, VvarDofs-1
+             localV(1) = localV(1) + LagrangeVar % Values(VvarId+k) * localAlpha**(k-1)
+           END DO
+           SELECT CASE(dim)
+           CASE(2)
+             E(1,3) = E(1,3)-localV(1) * grads_coeff
+           CASE(3)
+             E(1,:) = E(1,:)-localV(1) * MATMUL(Wbase(1:np), dBasisdx(1:np,:))
+           END SELECT
+
+         CASE DEFAULT
+           IF(dim==3 .AND. Transient) THEN
+             E(1,:) = E(1,:)-MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+           END IF
+
+           IF (np > 0 .AND. dim==3 .AND. .NOT. Transient) THEN
+             E(1,:) = -MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
+           ELSE IF ( PrecomputedElectricPot ) THEN
+             E(1,:) = -MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+           END IF
+
+           IF( ImposeBodyForcePotential ) THEN
+             E(1,1:n) = E(1,1:n) - MATMUL(ElPotSol(1,1:n), dBasisdx(1:n,:))
+           END IF
+
+         END SELECT
        END IF
        
 
