@@ -578,6 +578,7 @@ CONTAINS
 
     UseGivenNode = .FALSE.
     IF( PRESENT( UseNode ) ) UseGivenNode = UseNode
+
     IF( UseGivenNode ) THEN
       n = 1
       NodeIndex(1) = node_id
@@ -592,14 +593,13 @@ CONTAINS
       SecondOrder = .FALSE.
     END IF
 
-
     No = 0
     Values = 0.0d0
 
 
     DO ivar = -2,NoVar
       Var => VariableGetN( ivar ) 
-
+      
       IF( PRESENT( LocalCoord ) ) THEN
         
         CALL GetElementNodes(Nodes, Element) 
@@ -663,39 +663,45 @@ CONTAINS
       IF( EdgeBasis ) THEN
         DO j=1,3
           No = No + 1
-          DO k=1,nd-n
-            l = PtoIndexes(n+k)
-            IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-            IF(l > 0) Values(No) = Values(No) + WBasis(k,j) * Var % Values(l)
-          END DO
+          IF( ASSOCIATED( PtoIndexes ) ) THEN
+            DO k=1,nd-n
+              l = PtoIndexes(n+k)
+              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+              IF(l > 0) Values(No) = Values(No) + WBasis(k,j) * Var % Values(l)
+            END DO
+          END IF
         END DO
 
       ELSE IF (ASSOCIATED (Var % EigenVectors)) THEN
         NoEigenValues = SIZE(Var % EigenValues) 
-        DO j=1,NoEigenValues
-          DO k=1,nd
+        IF( ASSOCIATED( PtoIndexes ) ) THEN
+          DO j=1,NoEigenValues          
+            DO k=1,nd
+              l = PtoIndexes(k)
+              IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
+              IF(l > 0) THEN 
+                DO ii=1,Var % DOFs
+                  Values(No+(j-1)*Var%Dofs+ii) = Values(No+(j-1)*Var%Dofs+ii) + &
+                      PtoBasis(k) * (Var % EigenVectors(j,Var%Dofs*(l-1)+ii))
+                END DO
+              END IF
+            END DO
+          END DO
+        END IF
+        No = No + Var % Dofs * NoEigenValues
+      ELSE                  
+        IF( ASSOCIATED( PtoIndexes ) ) THEN
+          DO k=1,n
             l = PtoIndexes(k)
             IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-            IF(l > 0) THEN 
-              DO ii=1,Var % DOFs
-                Values(No+(j-1)*Var%Dofs+ii) = Values(No+(j-1)*Var%Dofs+ii) + &
-                    PtoBasis(k) * (Var % EigenVectors(j,Var%Dofs*(l-1)+ii))
+            IF(l > 0) THEN
+              DO ii=1,Var % Dofs
+                Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
+                    Var % Values(Var%Dofs*(l-1)+ii)
               END DO
             END IF
           END DO
-        END DO
-        No = No + Var % Dofs * NoEigenValues
-      ELSE                  
-        DO k=1,n
-          l = PtoIndexes(k)
-          IF ( ASSOCIATED(Var % Perm) ) l = Var % Perm(l)
-          IF(l > 0) THEN
-            DO ii=1,Var % Dofs
-              Values(No+ii) = Values(No+ii) + PtoBasis(k) * &
-                  Var % Values(Var%Dofs*(l-1)+ii)
-            END DO
-          END IF
-        END DO
+        END IF
         No = No + Var % Dofs
       END IF
     END DO

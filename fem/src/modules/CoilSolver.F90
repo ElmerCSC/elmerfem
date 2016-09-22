@@ -973,11 +973,12 @@ CONTAINS
     REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ,Weight,LoadAtIP,GradAtIp(3), &
         FixAtIp, AbsGradAtIp, CondAtIp(3), DistGradAtIp(3),AbsDistGradAtIp,AbsCondAtIp
     REAL(KIND=dp) :: STIFF(nd,nd), FORCE(nd), NodalPot(n), &
-        NodalFix(n), NodalDist(n),DotProd
-    LOGICAL :: Stat,Found
+        NodalFix(n), NodalDist(n),DotProd, ElCond(n)
+    LOGICAL :: Stat,Found, GotElCond
     INTEGER :: i,t,p,q
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
+    TYPE(ValueList_t), POINTER :: Material
     SAVE Nodes
     !------------------------------------------------------------------------------
 
@@ -985,6 +986,9 @@ CONTAINS
     STIFF = 0._dp
     FORCE = 0._dp
 
+    Material => GetMaterial( Element ) 
+    ElCond(1:n) = GetReal( Material, 'Electric Conductivity', GotElCond ) 
+   
     IF( CoilParts == 1 ) THEN
       NodalPot(1:n) = PotVar % Values( Perm( Element % NodeIndexes ) )
     ELSE      
@@ -1012,6 +1016,7 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx )
 
+      CondAtIp = 1.0_dp
       IF( iter > 1 ) THEN
         FixAtIp = SUM( Basis(1:n) * NodalFix(1:n) )
         IF( CoilAnisotropic ) THEN
@@ -1019,14 +1024,13 @@ CONTAINS
             GradAtIP(i) = SUM( dBasisdx(1:n,i) * NodalPot(1:n) )
           END DO
           AbsGradAtIp = SQRT( SUM( GradAtIp ** 2 ) )
-          CondAtIp = FixAtIp * ABS( GradAtIp ) / AbsGradAtIp
-        ELSE
-          CondAtIp = FixAtIp
+          CondAtIp = ABS( GradAtIp ) / AbsGradAtIp
         END IF
       ELSE
-        CondAtIp = 1.0_dp
+        FixAtIp = 1.0_dp
       END IF
 
+                
       ! If distance from the tangential walls is used then
       ! remove from conductivity the normal component.
       ! The normal vector is defined as the gradient of distance.
@@ -1048,9 +1052,15 @@ CONTAINS
         END IF
 
         CondAtIp = CondAtIp - DotProd * DistGradAtIp
-
       END IF
 
+      IF( GotElCond ) THEN
+        CondAtIP = SUM( Basis(1:n) * ElCond(1:n) ) * FixAtIp * CondAtIp
+      ELSE
+        CondAtIP = FixAtIp * CondAtIp        
+      END IF
+        
+      
       Weight = IP % s(t) * DetJ
 
       ! diffusion term (Cond*grad(u),grad(v)):
