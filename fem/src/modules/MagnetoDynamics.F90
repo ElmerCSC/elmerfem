@@ -3223,7 +3223,11 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   END IF
   
   Omega = GetAngularFrequency(Found=Found)
-
+  IF(.NOT. Found ) THEN
+    CALL Fatal('WhitneyHarmonicAVSolver','Harmonic solution requires frequency!')
+  END IF
+    
+  
   FixJ = GetLogical(SolverParams,'Fix input Current Density', Found)
 
   ! If not specified compute the Jfix field only if there is a specified current BC
@@ -5979,7 +5983,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        PSOL(1:nd)=(SOL(1,1:nd)-PSOL(1:nd))/dt
      END IF
 
-     Omega = GetAngularFrequency(Found=Found,UElement=Element)
+     Omega = GetAngularFrequency(pSOlver % Values,Found,Element)
      IF( .NOT. ( RealField .OR. Found ) ) THEN
        CALL Fatal('MagnetoDynamicsCalcFields',&
            '(Angular) Frequency must be given for complex fields!')
