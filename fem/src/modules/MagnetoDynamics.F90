@@ -5980,8 +5980,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      END IF
 
      Omega = GetAngularFrequency(Found=Found,UElement=Element)
-     IF( .NOT. RealField .AND. (LossEstimation) ) THEN
-       IF(.NOT. Found ) CALL Fatal('MagnetoDynamicsCalcFields',&
+     IF( .NOT. ( RealField .OR. Found ) ) THEN
+       CALL Fatal('MagnetoDynamicsCalcFields',&
            '(Angular) Frequency must be given for complex fields!')
      END IF
      Freq = Omega / (2*PI)
