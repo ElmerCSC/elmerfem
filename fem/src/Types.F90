@@ -273,7 +273,8 @@ END INTERFACE
      LOGICAL, DIMENSION(:), POINTER   :: IsNeighbour
      LOGICAL, DIMENSION(:), POINTER   :: SendingNB
      INTEGER                          :: NumOfNeighbours
-  END TYPE ParEnv_t
+     INTEGER                          :: NumberOfThreads = 1
+   END TYPE ParEnv_t
 
 
   TYPE GlueTableT

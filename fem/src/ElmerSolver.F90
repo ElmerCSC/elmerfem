@@ -188,7 +188,8 @@ END INTERFACE
 #endif
          END IF
        END IF
-
+       ParEnv % NumberOfThreads = nthreads
+       
 
        IF( .NOT. Silent ) THEN
          CALL Info( 'MAIN', ' ')
