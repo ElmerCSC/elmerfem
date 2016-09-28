@@ -1778,6 +1778,17 @@ CONTAINS
       END IF
       WRITE(10,'(A,A)') 'Variables in file: ',TRIM(SideFile)
 
+      DateStr = GetVersion()
+      WRITE( 10,'(A)') 'Elmer version: '//TRIM(DateStr)     
+      DateStr = GetRevision( GotIt )
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Elmer revision: '//TRIM(DateStr)
+      END IF        
+      DateStr = GetCompilationDate( GotIt )
+      IF( GotIt ) THEN
+        WRITE( 10,'(A)') 'Elmer compilation date: '//TRIM(DateStr)
+      END IF
+      
       DateStr = FormatDate()
       WRITE( 10,'(A,A)') 'File started at: ',TRIM(DateStr)
 
