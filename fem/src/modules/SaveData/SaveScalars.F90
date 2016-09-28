@@ -466,6 +466,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CASE ('bounding box')
       CASE ('area')
       CASE ('volume')
+      CASE ('threads')
 
       CASE DEFAULT
         IF( .NOT. (GotVar .OR. GotOldVar ) ) THEN
@@ -488,6 +489,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
       CASE ('partitions')
         Val = 1.0_dp * ParEnv % PEs 
         SaveName = 'value: number of partitions'
+        CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
+
+      CASE ('threads')
+        Val = 1.0_dp * ParEnv % NumberOfThreads 
+        SaveName = 'value: number of threads'
         CALL AddToSaveList(SaveName,Val,.TRUE.,ParOper)
 
       CASE ('partition checksum')
@@ -1274,7 +1280,7 @@ CONTAINS
 
       ! These operators should already be more of less parallel
     CASE('partitions','cpu time','wall time','cpu memory','norm','nonlin change','steady state change',&
-	'nonlin iter','nonlin converged','steady converged')
+	'nonlin iter','nonlin converged','steady converged','threads')
       ParOper = 'none'
 
     CASE DEFAULT
