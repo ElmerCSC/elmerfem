@@ -116,25 +116,32 @@ CONTAINS
      ch = VERSION
    END FUNCTION GetVersion
 
-   FUNCTION GetRevision() RESULT(ch)
+   FUNCTION GetRevision(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
+     LOGICAL, OPTIONAL :: Found
 #ifdef REVISION
      ch = REVISION
+     IF(PRESENT(Found)) Found = .TRUE.
 #else
      ch = "unknown"
+     IF(PRESENT(Found)) Found = .FALSE.
 #endif
    END FUNCTION GetRevision
 
-   FUNCTION GetCompilationDate() RESULT(ch)
+   FUNCTION GetCompilationDate(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
+     LOGICAL, OPTIONAL :: Found
 #ifdef COMPILATIONDATE
      ch = COMPILATIONDATE
+     IF(PRESENT(Found)) Found = .TRUE.
 #else
      ch = "unknown"
+     IF(PRESENT(Found)) Found = .FALSE.
 #endif
    END FUNCTION GetCompilationDate
 
 
+   
 !
 !  FUNCTION GetIndexStore() RESULT(ind)
 !    INTEGER, POINTER :: Ind(:)
