@@ -1,3 +1,4 @@
+include(CMakeParseArguments)
 MACRO(ADD_ELMER_LABEL test_name label_string)
   SET_PROPERTY(TEST ${test_name} APPEND PROPERTY LABELS ${label_string})
 ENDMACRO()
@@ -61,7 +62,7 @@ MACRO(ADD_ELMER_TEST TestName)
         -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
         -DWITH_MPI=${WITH_MPI}
         -DMPIEXEC_NTASKS=${_this_test_tasks}
-        -P ${CMAKE_SOURCE_DIR}/fem/tests/test_macros.cmake
+        -P ${CMAKE_SOURCE_DIR}/cmake/Modules/test_macros.cmake
         -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
       SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${_this_test_label})
       # If LABELS argument was given iterate through the given labels and add them
@@ -96,9 +97,20 @@ ENDMACRO()
 
 
 MACRO(RUN_ELMER_TEST)
+  CMAKE_PARSE_ARGUMENTS(_parsedArgs "" "" "ELMER_LIB" "${ARGN}")
   MESSAGE(STATUS "BINARY_DIR = ${BINARY_DIR}")
   SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
   SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
+  IF(NOT _parsedArgs_ELMER_LIB STREQUAL "")
+    MESSAGE(STATUS "Extra library directories ${_parsedArgs_ELMER_LIB}")
+    FOREACH(_extra_lib ${_parsedArgs_ELMER_LIB})
+      IF(NOT(WIN32))
+        SET(ENV{ELMER_LIB} "$ENV{ELMER_LIB}:${BINARY_DIR}/fem/src/modules/${_extra_lib}")
+      ELSE()
+        SET(ENV{ELMER_LIB} "$ENV{ELMER_LIB};${BINARY_DIR}/fem/src/modules/${_extra_lib}")
+      ENDIF()
+    ENDFOREACH()
+  ENDIF()
 
   IF(NOT(WIN32))
     SET(ENV{PATH} "$ENV{PATH}:${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src")

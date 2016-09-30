@@ -4,7 +4,9 @@ INCLUDE(AddModules)
 
 ADD_ELMER_MODULES(SKIP contrib)
 
-ADD_SUBDIRECTORY(contrib)
+IF(WITH_CONTRIB)
+  ADD_SUBDIRECTORY(contrib)
+ENDIF(WITH_CONTRIB)
 
 ADD_DEPENDENCIES(EliminatePeriodic EliminateDirichlet)
 ADD_DEPENDENCIES(FourierLoss MagnetoDynamics)
