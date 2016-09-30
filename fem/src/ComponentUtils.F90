@@ -323,6 +323,10 @@ MODULE ComponentUtils
        VisitedNode = .FALSE.
      END IF
 
+     sumi = 0
+     sumx = 0.0_dp
+     sumxx = 0.0_dp
+     sumabsx = 0.0_dp
 
      DO t=FirstElem,LastElem
        Element => Mesh % Elements(t)
