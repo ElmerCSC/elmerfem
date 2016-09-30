@@ -39,6 +39,7 @@ SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared
 SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
 SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
+SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
@@ -341,6 +342,11 @@ IF(WITH_Trilinos)
   MESSAGE(STATUS "  Trilinos_LIBRARIES: " "${Trilinos_LIBRARIES}")
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF(WITH_Trilinos)
+
+IF(WITH_CONTRIB)
+  MESSAGE(STATUS "  Building contributed solvers")
+  MESSAGE(STATUS "------------------------------------------------")
+ENDIF(WITH_CONTRIB)
 
 IF(WITH_ELMERGUITESTER)
   MESSAGE(STATUS "  Building ElmerGUI tester")
