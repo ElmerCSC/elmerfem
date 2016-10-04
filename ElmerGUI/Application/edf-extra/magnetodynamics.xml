@@ -30,6 +30,11 @@
 	  <Whatis> Give the relative permeability compared to vacuum. </Whatis>
 	</Parameter>
 	<Parameter Widget="Edit" >
+	  <Name> Relative Permittivity </Name>
+	  <Type> String </Type>
+	  <Whatis> Give the relative permittivity compared to vacuum. </Whatis>
+	</Parameter>
+	<Parameter Widget="Edit" >
 	  <Name> Electric Conductivity </Name>
 	  <Type> String </Type>
 	  <Whatis> Give the electric conductivity. </Whatis>
