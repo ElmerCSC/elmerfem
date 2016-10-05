@@ -55,7 +55,7 @@ Material 2
 End 
 
 Equation 1
-  Active Solvers(2) = 1 2 
+  Active Solvers(3) = 1 2 3
 End
 
 
@@ -102,6 +102,7 @@ Solver 2
   Impose Body Force Current = Logical True
 
   Discontinuous Bodies = True
+  calculate harmonic peak power = logical true
 End
 
 
