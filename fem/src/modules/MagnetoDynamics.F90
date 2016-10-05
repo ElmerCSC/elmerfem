@@ -5727,6 +5727,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    LOGICAL :: CSymmetry, HBCurve, LorentzConductivity
    REAL(KIND=dp) :: xcoord, grads_coeff, val
    TYPE(ValueListEntry_t), POINTER :: HBLst
+   REAL(KIND=dp) :: HarmPowerCoeff = 0.5_dp
    
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
 !-------------------------------------------------------------------------------------------
@@ -5734,6 +5735,8 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    dim = CoordinateSystemDimension()
    SolverParams => GetSolverParams()
+
+   IF (GetLogical(SolverParams, 'Calculate harmonic peak power', Found)) HarmPowerCoeff = 1.0_dp
 
    Pname = GetString(SolverParams, 'Potential Variable',Found)
    IF(.NOT. Found ) Pname = 'av'
@@ -6419,27 +6422,6 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        s = IP % s(j) * detJ
 
-       !Power = Power + SUM(E**2)*C_ip*s
-       IF (vDOFS == 1) THEN
-          Power = Power + SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
-               TRANSPOSE(E(1:1,1:3)) ) * s
-          IF (HasVelocity) THEN
-            Power = Power + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
-              CrossProduct(rot_velo,B(1,:)))*s
-          END IF
-       ELSE
-          ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
-          ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
-          ! would be obtained.
-          Power = Power + SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-               TRANSPOSE(E(1:1,1:dim)) ) * s - &
-               SUM( MATMUL( AIMAG(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
-               TRANSPOSE(E(1:1,1:dim)) ) * s + &
-               SUM( MATMUL( AIMAG(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(1:1,1:dim)) ) * &
-               TRANSPOSE(E(2:2,1:dim)) ) * s + &               
-               SUM( MATMUL( REAL(CMat_ip(1:dim,1:dim)), TRANSPOSE(E(2:2,1:dim)) ) * &
-               TRANSPOSE(E(2:2,1:dim)) ) * s
-       END IF
        IF(ASSOCIATED(HB) .AND. RealField) THEN 
          Energy = Energy + s*(0.5*PR_ip*SUM(E**2) + w_dens)
        ELSE
@@ -6538,29 +6520,27 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            END IF
          END IF
 
-         IF ( ASSOCIATED(JH).OR.ASSOCIATED(EL_JH) ) THEN
-           ! The Joule heating power per unit volume: J.E = (sigma * E).E
-           IF (vDOFS == 1) THEN
-             Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
-                 TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
-               IF (HasVelocity) THEN
-                 Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
-                     CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
-               END IF
-           ELSE
-             ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
-             ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
-             ! would be obtained.
-             Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
-               TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s - &
-               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
-               TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s + &
-               SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
-               TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s + &               
-               SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
-               TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s
+         ! The Joule heating power per unit volume: J.E = (sigma * E).E
+         IF (vDOFS == 1) THEN
+           Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+             TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
+           IF (HasVelocity) THEN
+             Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
+               CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
            END IF
-           IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
+         ELSE
+           Coeff = HarmPowerCoeff * (SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+             TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s - &
+             SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
+             TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s + &
+             SUM( MATMUL( AIMAG(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+             TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s + &               
+             SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(2:2,1:3)) ) * &
+             TRANSPOSE(E(2:2,1:3)) ) * Basis(p) * s)
+         END IF
+         IF(ALLOCATED(BodyLoss)) BodyLoss(3,BodyId) = BodyLoss(3,BodyId) + Coeff
+         Power = Power + Coeff
+         IF ( ASSOCIATED(JH).OR.ASSOCIATED(EL_JH) ) THEN
            FORCE(p,k+1) = FORCE(p,k+1) + Coeff
            k = k+1
          END IF
