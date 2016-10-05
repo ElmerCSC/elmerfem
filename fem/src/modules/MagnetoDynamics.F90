@@ -5699,7 +5699,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               CalcFluxLogical, CoilBody, PreComputedElectricPot, ImposeCircuitCurrent, &
               ItoJCoeffFound, ImposeBodyForceCurrent, HasVelocity, HasAngularVelocity, &
               HasLorenzVelocity, HaveAirGap, UseElementalNF, HasTensorReluctivity, &
-              ImposeBodyForcePotential
+              ImposeBodyForcePotential, JouleHeatingFromCurrent
    
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -5792,13 +5792,13 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
    IF( .NOT. PreComputedElectricPot ) THEN
      ImposeBodyForcePotential = GetLogical(SolverParams, 'Impose Body Force Potential', Found)
-     IF (.NOT. Found) ImposeBodyForcePotential = .FALSE.
+     IF (.NOT. Found) ImposeBodyForcePotential = ListGetLogicalAnyBodyForce( Model,'Electric Potential')
    ELSE
      ImposeBodyForcePotential = .FALSE.
    END IF
      
    ImposeBodyForceCurrent = GetLogical(SolverParams, 'Impose Body Force Current', Found)
-   IF (.NOT. Found) ImposeBodyForceCurrent = .TRUE.
+   IF (.NOT. Found) ImposeBodyForceCurrent = ListCheckPrefixAnyBodyForce( Model,'Current Density')
 
    ImposeCircuitCurrent = GetLogical(SolverParams, 'Impose Circuit Current', Found)
    CurrPathPotName = GetString(SolverParams, 'Circuit Current Path Potential Name', Found)
@@ -5940,18 +5940,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    Power = 0._dp; Energy = 0._dp
    CALL DefaultInitialize()
    
-   !IF(.NOT. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
-   !  ImposeBodyForceCurrent = .FALSE.
-   !  ImposeCircuitCurrent = .FALSE.
-   !END IF
+
    DO i = 1, GetNOFActive()
      Element => GetActiveElement(i)
      n = GetElementNOFNodes()
      np = n*pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
      nd = GetElementNOFDOFs(uSolver=pSolver)
-
+     
      CALL GetElementNodes( Nodes )
 
+     JouleHeatingFromCurrent = ( np == 0 .AND. &
+         .NOT. ( PreComputedElectricPot .OR. ImposeBodyForcePotential ) )
+
+     
      BodyId = GetBody()
      Material => GetMaterial()
      BodyForce => GetBodyForce()
@@ -6001,7 +6002,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        END IF
      END IF
 
-     IF (ImposeBodyForceCurrent .AND. (ASSOCIATED(CD) .OR. ASSOCIATED(EL_CD))) THEN
+     IF (ImposeBodyForceCurrent ) THEN
        BodyForceCurrDens = 0._dp
        IF ( ASSOCIATED(BodyForce) ) THEN
          SELECT CASE(DIM)
@@ -6158,7 +6159,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
        grads_coeff = 1._dp/GetCircuitModelDepth()
        IF( CSymmetry ) THEN
-         xcoord = SUM( Basis(1:np) * Nodes % x(1:np) )
+         xcoord = SUM( Basis(1:n) * Nodes % x(1:n) )
          grads_coeff = grads_coeff/xcoord
        END IF
 
@@ -6445,6 +6446,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        ELSE
          Energy = Energy + s*0.5*(PR_ip*SUM(E**2) + R_ip*SUM(B**2))
        END IF
+
        DO p=1,n
          DO q=1,n
            MASS(p,q)=MASS(p,q)+s*Basis(p)*Basis(q)
@@ -6454,10 +6456,10 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
            FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*B(l,:)*Basis(p)
            k = k+3
          END DO
+
          IF ( ASSOCIATED(MFS).OR.ASSOCIATED(EL_MFS)) THEN
            FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(1,:)-REAL(MG_ip))*Basis(p)
            k = k+3
-
            IF ( Vdofs>1 ) THEN
              FORCE(p,k+1:k+3) = FORCE(p,k+1:k+3)+s*(R_ip*B(2,:)-AIMAG(MG_ip))*Basis(p)
              k = k+3
@@ -6539,14 +6541,24 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
          END IF
 
          IF ( ASSOCIATED(JH).OR.ASSOCIATED(EL_JH) ) THEN
-           ! The Joule heating power per unit volume: J.E = (sigma * E).E
            IF (vDOFS == 1) THEN
-             Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
-                 TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
-               IF (HasVelocity) THEN
-                 Coeff = Coeff + SUM(MATMUL(real(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
-                     CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
-               END IF
+             IF( JouleHeatingFromCurrent ) THEN
+               ! The Joule heating power per unit volume: J.E = J.J/sigma 
+               Coeff = 0.0_dp
+               DO l=1,3
+                 IF( REAL( CMat_ip(l,l) )  > 1.0d-20 ) THEN
+                   Coeff = Coeff + JatIP(1,l) * JatIP(1,l) / REAL( CMat_ip(l,l) )
+                 END IF
+               END DO
+             ELSE 
+               ! The Joule heating power per unit volume: J.E = (sigma * E).E
+               Coeff = SUM( MATMUL( REAL(CMat_ip(1:3,1:3)), TRANSPOSE(E(1:1,1:3)) ) * &
+                   TRANSPOSE(E(1:1,1:3)) ) * Basis(p) * s
+             END IF
+             IF (HasVelocity) THEN
+               Coeff = Coeff + SUM(MATMUL(REAL(CMat_ip), CrossProduct(rot_velo, B(1,:))) * &
+                   CrossProduct(rot_velo,B(1,:)))*Basis(p)*s
+             END IF
            ELSE
              ! Now Power = J.conjugate(E), with the possible imaginary component neglected.
              ! Perhaps we should set Power = 1/2 J.conjugate(E) so that the average power
