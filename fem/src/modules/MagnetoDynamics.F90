@@ -5803,7 +5803,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
    ImposeBodyForceCurrent = GetLogical(SolverParams, 'Impose Body Force Current', Found)
    IF (.NOT. Found) ImposeBodyForceCurrent = ListCheckPrefixAnyBodyForce( Model,'Current Density')
-   
+
    ImposeCircuitCurrent = GetLogical(SolverParams, 'Impose Circuit Current', Found)
    CurrPathPotName = GetString(SolverParams, 'Circuit Current Path Potential Name', Found)
    IF (.NOT. Found) CurrPathPotName = 'W'
@@ -5953,9 +5953,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
      
      CALL GetElementNodes( Nodes )
 
+     ! If potential is not available we have to use given current directly to estimate Joule losses
      JouleHeatingFromCurrent = ( np == 0 .AND. &
          .NOT. ( PreComputedElectricPot .OR. ImposeBodyForcePotential ) )
-
      
      BodyId = GetBody()
      Material => GetMaterial()
@@ -6528,8 +6528,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
              ! The Joule heating power per unit volume: J.E = J.J/sigma 
              Coeff = 0.0_dp
              DO l=1,3
-               IF( REAL( CMat_ip(l,l) )  > 1.0d-20 ) THEN
-                 Coeff = Coeff + JatIP(1,l) * JatIP(1,l) / REAL( CMat_ip(l,l) )
+               IF( REAL( CMat_ip(l,l) )  > EPSILON( Coeff ) ) THEN
+                 Coeff = Coeff + JatIP(1,l) * JatIP(1,l) / REAL( CMat_ip(l,l) ) * &
+                     Basis(p) * s 
                END IF
              END DO
            ELSE 
