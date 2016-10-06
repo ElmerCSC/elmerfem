@@ -232,8 +232,10 @@ ADD_DEFINITIONS(-DUSE_ARPACK)
 # Set up rpaths to point ELMER_INSTALL_LIB_DIR
 IF(${CMAKE_SYSTEM_NAME} MATCHES "Linux")   
   SET(ELMERSOLVER_RPATH_STRING "\$ORIGIN/../${ELMER_INSTALL_LIB_DIR}")
+  SET(ELMERLIB_RPATH_STRING "\$ORIGIN/")
 ELSEIF(APPLE)                               
   SET(ELMERSOLVER_RPATH_STRING "@loader_path/../${ELMER_INSTALL_LIB_DIR}")
+  SET(ELMERLIB_RPATH_STRING "@loader_path/")
 ENDIF()
 
 # Uncomment these to use rpath with linked libraries
