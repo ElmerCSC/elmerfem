@@ -5795,14 +5795,15 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    
    IF( .NOT. PreComputedElectricPot ) THEN
      ImposeBodyForcePotential = GetLogical(SolverParams, 'Impose Body Force Potential', Found)
-     IF (.NOT. Found) ImposeBodyForcePotential = ListGetLogicalAnyBodyForce( Model,'Electric Potential')
+     IF (.NOT. Found) ImposeBodyForcePotential = &
+         ListCheckPresentAnyBodyForce( Model,'Electric Potential')
    ELSE
      ImposeBodyForcePotential = .FALSE.
    END IF
-     
+
    ImposeBodyForceCurrent = GetLogical(SolverParams, 'Impose Body Force Current', Found)
    IF (.NOT. Found) ImposeBodyForceCurrent = ListCheckPrefixAnyBodyForce( Model,'Current Density')
-
+   
    ImposeCircuitCurrent = GetLogical(SolverParams, 'Impose Circuit Current', Found)
    CurrPathPotName = GetString(SolverParams, 'Circuit Current Path Potential Name', Found)
    IF (.NOT. Found) CurrPathPotName = 'W'
