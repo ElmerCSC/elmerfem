@@ -69,14 +69,12 @@ End
 
 Body 1
   Name = "lower_block"
-!  Target Bodies(1) = 55
   Equation = 1
   Material = 1
 End
 
 Body 2
   Name = "upper_block"
-!  Target Bodies(1) = 56
   Equation = 1
   Material = 1
 End
@@ -131,14 +129,11 @@ End
 
 Boundary Condition 
   Name = "lower_block_bot"
-!  Target Boundaries(1) = 57
   Displacement 3 = Real 0.0
 End
 
 Boundary Condition 
   Name = "lower_block_top"
-
-  Mortar BC = Integer 3
 
 ! Create a projector by choosing a plane where to integrate
   Plane Projector = Logical True
@@ -153,26 +148,21 @@ Boundary Condition
 End
 
 Boundary Condition 
-!  Name = "upper_block_bot"
   Name = "lower_block_top_contact"
-!  Target Boundaries(1) = 59
 End
 
 Boundary Condition 
   Name = "upper_block_top"
-!  Target Boundaries(1) = 60
   Normal Surface Traction = -1.0
 End
 
 Boundary Condition 
   Name = "symmetry_yz"
-!  Target Boundaries(1) = 61
   Displacement 1 = 0.0
 End
 
 Boundary Condition 
   Name = "symmetry_xz"
-!  Target Boundaries(1) = 62
   Displacement 2 = 0.0
 End
 
