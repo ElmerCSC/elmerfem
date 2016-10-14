@@ -266,7 +266,8 @@ CONTAINS
 
     LOGICAL :: FirstTime = .TRUE.
 
-    INTEGER :: nlen, BCcount, BodyCount, LineCount, ComponentCount
+    INTEGER :: nlen, BCcount, BodyCount, EqCount, MatCount, BfCount, &
+        IcCount, LineCount, ComponentCount
     REAL(KIND=dp) :: Val
 
 !------------------------------------------------------------------------------
@@ -387,6 +388,8 @@ CONTAINS
 
     BCcount = 0
     BodyCount = 0
+    EqCount = 0
+    IcCount = 0
     ComponentCount = 0
     LineCount = 0
     
@@ -518,8 +521,16 @@ CONTAINS
 
         READ( Section(18:),*,iostat=iostat ) Arrayn
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadInputFile','Problem reading section '&
-              //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          IF( Numbering ) THEN               
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          IcCount = IcCount + 1
+          ArrayN = IcCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Initial Condition < index next value: &
+                '//TRIM(I2S(IcCount)),Level=4)
+          END IF
         END IF
         
         IF ( ScanOnly ) THEN
@@ -559,8 +570,16 @@ CONTAINS
 
         READ( Section(9:),*,iostat=iostat ) Arrayn
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadInputFile','Problem reading section '&
-              //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          IF( Numbering ) THEN               
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          MatCount = MatCount + 1
+          ArrayN = MatCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Material < index next value: &
+                '//TRIM(I2S(MatCount)),Level=4)
+          END IF
         END IF
         
         IF ( ScanOnly ) THEN
@@ -597,8 +616,16 @@ CONTAINS
 
         READ( Section(12:),*,iostat=iostat ) Arrayn
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadInputFile','Problem reading section '&
-              //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          IF( Numbering ) THEN               
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          BfCount = BfCount + 1
+          ArrayN = BfCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Body Force < index next value: &
+                '//TRIM(I2S(BfCount)),Level=4)
+          END IF
         END IF
         
         IF ( ScanOnly ) THEN
@@ -635,10 +662,18 @@ CONTAINS
 
         READ( Section(9:),*,iostat=iostat ) Arrayn
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadInputFile','Problem reading section '&
-              //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          IF( Numbering ) THEN               
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          EqCount = EqCount + 1
+          ArrayN = EqCount 
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Equation < index next value: &
+                '//TRIM(I2S(EqCount)),Level=4)
+          END IF
         END IF
-        
+          
         IF ( ScanOnly ) THEN
           Model % NUmberOfEquations = MAX( Model % NumberOFEquations, ArrayN )
         ELSE
@@ -899,6 +934,57 @@ CONTAINS
           END IF
         END DO
       END DO
+      
+
+      ! If automatic numbering is used map the names to numbers
+      !------------------------------------------------------------
+      IF( Numbering .AND. FirstTime ) THEN
+        DO i = 1, Model % NumberOfBodies
+          IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Material') ) THEN
+            name = ListGetString( Model % Bodies(i) % Values,'Material Name', Found )
+            IF(.NOT. Found ) CYCLE
+            DO j = 1,Model % NumberOfMaterials
+              str = ListGetString( Model % Materials(j) % Values,'Name',Found )
+              IF(.NOT. Found ) CYCLE
+              IF( str == name ) THEN
+                CALL ListAddInteger( Model % Bodies(i) % Values,'Material',j)
+                CALL Info('LoadInputFile','Giving material > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                EXIT
+              END IF
+            END DO
+          END IF
+            
+          IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Equation') ) THEN
+            name = ListGetString( Model % Bodies(i) % Values,'Equation Name', Found )
+            IF(.NOT. Found ) CYCLE
+            DO j = 1,Model % NumberOfEquations
+              str = ListGetString( Model % Equations(j) % Values,'Name',Found )
+              IF(.NOT. Found ) CYCLE
+              IF( str == name ) THEN
+                CALL ListAddInteger( Model % Bodies(i) % Values,'Equation',j)
+                CALL Info('LoadInputFile','Giving equation > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                EXIT
+              END IF
+            END DO
+          END IF
+
+          IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Body Force') ) THEN
+            name = ListGetString( Model % Bodies(i) % Values,'Body Force Name', Found )
+            IF(.NOT. Found ) CYCLE
+            DO j = 1,Model % NumberOfBodyForces
+              str = ListGetString( Model % BodyForces(j) % Values,'Name',Found )
+              IF(.NOT. Found ) CYCLE
+              IF( str == name ) THEN
+                CALL ListAddInteger( Model % Bodies(i) % Values,'Body Force',j)
+                CALL Info('LoadInputFile','Giving body force > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                EXIT
+              END IF
+            END DO
+          END IF
+                  
+        END DO ! number of bodies
+      END IF
+
 
       ! Make sanity check that all Material, Body Force and Equation is associated to some
       ! body. This is not detrimental so a warning suffices. The 2nd time there is the 
@@ -989,10 +1075,7 @@ CONTAINS
          CALL ListAddInteger( Model % Bodies(1) % Values, 'Initial Condition', 1 )
        END IF
       ! -- done adding default fields
-
-
        
-
      END IF
     !--------------------------------------------------------------------
 
