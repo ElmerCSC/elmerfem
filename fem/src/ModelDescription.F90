@@ -267,7 +267,7 @@ CONTAINS
     LOGICAL :: FirstTime = .TRUE.
 
     INTEGER :: nlen, BCcount, BodyCount, EqCount, MatCount, BfCount, &
-        IcCount, LineCount, ComponentCount
+        IcCount, SolverCount, LineCount, ComponentCount
     REAL(KIND=dp) :: Val
 
 !------------------------------------------------------------------------------
@@ -390,6 +390,7 @@ CONTAINS
     BodyCount = 0
     EqCount = 0
     IcCount = 0
+    SolverCount = 0
     ComponentCount = 0
     LineCount = 0
     
@@ -449,7 +450,7 @@ CONTAINS
           ArrayN = BCcount 
           IF( ScanOnly ) THEN
             CALL Info('LoadInputFile','Giving an empty > Boundary Condition < index next value: &
-                '//TRIM(I2S(BCcount)),Level=4)
+                '//TRIM(I2S(ArrayN)),Level=4)
           END IF
         END IF
           
@@ -529,7 +530,7 @@ CONTAINS
           ArrayN = IcCount 
           IF( ScanOnly ) THEN
             CALL Info('LoadInputFile','Giving an empty > Initial Condition < index next value: &
-                '//TRIM(I2S(IcCount)),Level=4)
+                '//TRIM(I2S(ArrayN)),Level=4)
           END IF
         END IF
         
@@ -578,7 +579,7 @@ CONTAINS
           ArrayN = MatCount 
           IF( ScanOnly ) THEN
             CALL Info('LoadInputFile','Giving an empty > Material < index next value: &
-                '//TRIM(I2S(MatCount)),Level=4)
+                '//TRIM(I2S(ArrayN)),Level=4)
           END IF
         END IF
         
@@ -624,7 +625,7 @@ CONTAINS
           ArrayN = BfCount 
           IF( ScanOnly ) THEN
             CALL Info('LoadInputFile','Giving an empty > Body Force < index next value: &
-                '//TRIM(I2S(BfCount)),Level=4)
+                '//TRIM(I2S(ArrayN)),Level=4)
           END IF
         END IF
         
@@ -670,7 +671,7 @@ CONTAINS
           ArrayN = EqCount 
           IF( ScanOnly ) THEN
             CALL Info('LoadInputFile','Giving an empty > Equation < index next value: &
-                '//TRIM(I2S(EqCount)),Level=4)
+                '//TRIM(I2S(ArrayN)),Level=4)
           END IF
         END IF
           
@@ -718,7 +719,7 @@ CONTAINS
           ArrayN = BodyCount 
           IF( ScanOnly ) THEN
             CALL Info('LoadInputFile','Giving an empty > Body < index next value: &
-                '//TRIM(I2S(BodyCount)),Level=4)
+                '//TRIM(I2S(ArrayN)),Level=4)
           END IF
         END IF
         
@@ -765,7 +766,7 @@ CONTAINS
           ArrayN = ComponentCount 
           IF( ScanOnly ) THEN
             CALL Info('LoadInputFile','Giving an empty > Component < index next value: &
-                '//TRIM(I2S(ComponentCount)),Level=4)
+                '//TRIM(I2S(ArrayN)),Level=4)
           END IF
         END IF          
         
@@ -803,8 +804,16 @@ CONTAINS
 
         READ( Section(7:),*,iostat=iostat ) Arrayn
         IF( iostat /= 0 ) THEN
-          CALL Fatal('LoadInputFile','Problem reading section '&
-              //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          IF( Numbering ) THEN
+            CALL Fatal('LoadInputFile','Problem reading section '&
+                //TRIM(I2S(LineCount))//': '//TRIM(Section))
+          END IF
+          SolverCount = SolverCount + 1
+          ArrayN = SolverCount
+          IF( ScanOnly ) THEN
+            CALL Info('LoadInputFile','Giving an empty > Solver < index next value: &
+                '//TRIM(I2S(ArrayN)),Level=4)
+          END IF
         END IF
         
         IF ( ScanOnly ) THEN
@@ -981,7 +990,21 @@ CONTAINS
               END IF
             END DO
           END IF
-                  
+
+          IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Initial Condition') ) THEN
+            name = ListGetString( Model % Bodies(i) % Values,'Initial Condition Name', Found )
+            IF(.NOT. Found ) CYCLE
+            DO j = 1,Model % NumberOfICs
+              str = ListGetString( Model % ICs(j) % Values,'Name',Found )
+              IF(.NOT. Found ) CYCLE
+              IF( str == name ) THEN
+                CALL ListAddInteger( Model % Bodies(i) % Values,'Initial Condition',j)
+                CALL Info('LoadInputFile','Giving initial condition > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                EXIT
+              END IF
+            END DO
+          END IF
+               
         END DO ! number of bodies
       END IF
 
