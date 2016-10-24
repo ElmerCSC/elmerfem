@@ -148,6 +148,8 @@ CONTAINS
      INTEGER :: k,k0,k1,l
 !------------------------------------------------------------------------------
 
+     CALL Info('LoadIncludeFile','Loading include file: '//TRIM(FileName),Level=8)
+     
      IF ( .NOT. FileNameQualified(FileName) ) THEN
        k0 = 1
        k1 = INDEX( IncludePath, ';' )
@@ -213,6 +215,7 @@ CONTAINS
     INTEGER :: pos, posn
     CHARACTER(LEN=MAX_NAME_LEN) :: MeshDir, MeshName
 
+    CALL Info('ReloadInputFile','Realoading input file',Level=7)
     MeshDir  = ' '
     Meshname = ' '
     CALL LoadInputFile( Model, InFileUnit, ' ', &
@@ -249,7 +252,7 @@ CONTAINS
 
     CHARACTER(LEN=:), ALLOCATABLE :: section, name, str
 
-    LOGICAL :: Found, SizeGiven
+    LOGICAL :: Found, SizeGiven, FoundName
     LOGICAL :: FreeNames=.FALSE., Echo = .FALSE., Numbering = .TRUE.
     INTEGER :: CheckAbort = 0
 
@@ -276,6 +279,12 @@ CONTAINS
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::str)
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::name)
 
+    IF( ScanOnly ) THEN
+      CALL Info('LoadInputFile','Scanning input file: '//TRIM(FileName),Level=7)
+    ELSE
+      CALL Info('LoadInputFile','Loading input file: '//TRIM(FileName),Level=7)
+    END IF
+      
 !------------------------------------------------------------------------------
 !   Read model header first
 !------------------------------------------------------------------------------
@@ -389,6 +398,7 @@ CONTAINS
     BCcount = 0
     BodyCount = 0
     EqCount = 0
+    MatCount = 0
     IcCount = 0
     SolverCount = 0
     ComponentCount = 0
@@ -452,6 +462,8 @@ CONTAINS
             CALL Info('LoadInputFile','Giving an empty > Boundary Condition < index next value: &
                 '//TRIM(I2S(ArrayN)),Level=4)
           END IF
+        ELSE
+          BcCount = MAX( BcCount, ArrayN )
         END IF
           
         IF ( ScanOnly ) THEN
@@ -532,6 +544,8 @@ CONTAINS
             CALL Info('LoadInputFile','Giving an empty > Initial Condition < index next value: &
                 '//TRIM(I2S(ArrayN)),Level=4)
           END IF
+        ELSE
+          IcCount = MAX( IcCount, ArrayN ) 
         END IF
         
         IF ( ScanOnly ) THEN
@@ -570,6 +584,7 @@ CONTAINS
       ELSE IF ( SEQL(Section, 'material') ) THEN
 
         READ( Section(9:),*,iostat=iostat ) Arrayn
+        
         IF( iostat /= 0 ) THEN
           IF( Numbering ) THEN               
             CALL Fatal('LoadInputFile','Problem reading section '&
@@ -581,6 +596,8 @@ CONTAINS
             CALL Info('LoadInputFile','Giving an empty > Material < index next value: &
                 '//TRIM(I2S(ArrayN)),Level=4)
           END IF
+        ELSE
+          MatCount = MAX( MatCount, ArrayN ) 
         END IF
         
         IF ( ScanOnly ) THEN
@@ -627,10 +644,12 @@ CONTAINS
             CALL Info('LoadInputFile','Giving an empty > Body Force < index next value: &
                 '//TRIM(I2S(ArrayN)),Level=4)
           END IF
+        ELSE
+          BfCount = MAX( ArrayN, BfCount ) 
         END IF
         
         IF ( ScanOnly ) THEN
-          Model % NumberOFBodyForces = MAX( Model % NumberOFBodyForces, ArrayN)
+          Model % NumberOFBodyForces = BfCount
         ELSE
           IF ( .NOT.ASSOCIATED( Model % BodyForces ) ) THEN
             ALLOCATE( Model % BodyForces(Model % NumberOfBodyForces) )
@@ -673,6 +692,8 @@ CONTAINS
             CALL Info('LoadInputFile','Giving an empty > Equation < index next value: &
                 '//TRIM(I2S(ArrayN)),Level=4)
           END IF
+        ELSE
+          EqCount = MAX( EqCount, ArrayN )
         END IF
           
         IF ( ScanOnly ) THEN
@@ -721,10 +742,12 @@ CONTAINS
             CALL Info('LoadInputFile','Giving an empty > Body < index next value: &
                 '//TRIM(I2S(ArrayN)),Level=4)
           END IF
+        ELSE
+          BodyCount = MAX( BodyCount, ArrayN ) 
         END IF
         
         IF ( ScanOnly ) THEN
-          Model % NumberOFBodies = MAX( Model % NumberOFBodies, ArrayN )
+          Model % NumberOFBodies = BodyCount 
         ELSE
           IF ( .NOT.ASSOCIATED( Model % Bodies ) ) THEN
             ALLOCATE( Model % Bodies(Model % NumberOfBodies) )
@@ -768,10 +791,12 @@ CONTAINS
             CALL Info('LoadInputFile','Giving an empty > Component < index next value: &
                 '//TRIM(I2S(ArrayN)),Level=4)
           END IF
-        END IF          
+        ELSE
+          ComponentCount = MAX( ComponentCount, ArrayN )
+        END IF
         
         IF ( ScanOnly ) THEN
-          Model % NumberOFComponents = MAX( Model % NumberOFComponents, ArrayN )
+          Model % NumberOFComponents = ComponentCount  
         ELSE
           IF ( .NOT.ASSOCIATED( Model % Components ) ) THEN
             ALLOCATE( Model % Components(Model % NumberOfComponents) )
@@ -814,10 +839,12 @@ CONTAINS
             CALL Info('LoadInputFile','Giving an empty > Solver < index next value: &
                 '//TRIM(I2S(ArrayN)),Level=4)
           END IF
+        ELSE
+          SolverCount = MAX( SolverCount, ArrayN )
         END IF
         
         IF ( ScanOnly ) THEN
-          Model % NumberOfSolvers = MAX( Model % NumberOfSolvers, ArrayN )
+          Model % NumberOfSolvers = SolverCount
         ELSE
           IF ( .NOT.ASSOCIATED( Model % Solvers ) ) THEN
             ALLOCATE( Model % Solvers(Model % NumberOfSolvers) )
@@ -873,7 +900,7 @@ CONTAINS
     END DO
 !------------------------------------------------------------------------------
 
-    IF ( .NOT. ScanOnly )  THEN
+    IF ( BaseLoad .AND. .NOT. ScanOnly )  THEN
 
       ! Make some sanity checks that all the entries have been defined
       ! The might be missing entries due to duplicate numbering etc.
@@ -943,81 +970,104 @@ CONTAINS
           END IF
         END DO
       END DO
-      
-
+            
       ! If automatic numbering is used map the names to numbers
       !------------------------------------------------------------
-      IF( Numbering .AND. FirstTime ) THEN
+      IF( .NOT. Numbering ) THEN
         DO i = 1, Model % NumberOfBodies
           IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Material') ) THEN
             name = ListGetString( Model % Bodies(i) % Values,'Material Name', Found )
             IF(.NOT. Found ) CYCLE
+            FoundName = .FALSE.
             DO j = 1,Model % NumberOfMaterials
               str = ListGetString( Model % Materials(j) % Values,'Name',Found )
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Material',j)
                 CALL Info('LoadInputFile','Giving material > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                FoundName = .TRUE.
                 EXIT
               END IF
             END DO
+            IF(.NOT. FoundName ) THEN
+              CALL Fatal('LoadInputFile','> Material Name = '//TRIM(name)//&
+                  ' < given but no such material exists!')
+            END IF            
           END IF
             
           IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Equation') ) THEN
             name = ListGetString( Model % Bodies(i) % Values,'Equation Name', Found )
             IF(.NOT. Found ) CYCLE
+            FoundName = .FALSE.
             DO j = 1,Model % NumberOfEquations
               str = ListGetString( Model % Equations(j) % Values,'Name',Found )
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Equation',j)
                 CALL Info('LoadInputFile','Giving equation > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                FoundName = .TRUE.
                 EXIT
               END IF
             END DO
+            IF(.NOT. FoundName ) THEN
+              CALL Fatal('LoadInputFile','> Equation Name = '//TRIM(name)//&
+                  ' < given but no such equation exists!')
+            END IF            
           END IF
 
           IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Body Force') ) THEN
             name = ListGetString( Model % Bodies(i) % Values,'Body Force Name', Found )
             IF(.NOT. Found ) CYCLE
+            FoundName = .FALSE.
             DO j = 1,Model % NumberOfBodyForces
               str = ListGetString( Model % BodyForces(j) % Values,'Name',Found )
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Body Force',j)
                 CALL Info('LoadInputFile','Giving body force > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                FoundName = .TRUE.
                 EXIT
               END IF
             END DO
+            IF(.NOT. FoundName ) THEN
+              CALL Fatal('LoadInputFile','> Body Force Name = '//TRIM(name)//&
+                  ' < given but no such body force exists!')
+            END IF
           END IF
 
           IF( .NOT. ListCheckPresent( Model % Bodies(i) % Values,'Initial Condition') ) THEN
             name = ListGetString( Model % Bodies(i) % Values,'Initial Condition Name', Found )
             IF(.NOT. Found ) CYCLE
+            FoundName = .FALSE.
             DO j = 1,Model % NumberOfICs
               str = ListGetString( Model % ICs(j) % Values,'Name',Found )
               IF(.NOT. Found ) CYCLE
               IF( str == name ) THEN
                 CALL ListAddInteger( Model % Bodies(i) % Values,'Initial Condition',j)
                 CALL Info('LoadInputFile','Giving initial condition > '//TRIM(Name)//' < index: '//TRIM(I2S(j)),Level=5)
+                FoundName = .TRUE.
                 EXIT
               END IF
             END DO
+            IF(.NOT. FoundName ) THEN
+              CALL Fatal('LoadInputFile','> Initial Condition Name = '//TRIM(name)//&
+                  ' < given but no such initial condition exists!')
+            END IF            
           END IF
                
         END DO ! number of bodies
       END IF
-
+      
 
       ! Make sanity check that all Material, Body Force and Equation is associated to some
-      ! body. This is not detrimental so a warning suffices. The 2nd time there is the 
-      ! default setting so apply this only on the first time.
+      ! body. This is not detrimental so a warning suffices.
       !-----------------------------------------------------------------------------------
-      IF( FirstTime ) THEN
-        n = MAX( Model % NumberOfMaterials, &
-            Model % NumberOfBodyForces, &
-            Model % NumberOfEquations )
-        ALLOCATE( EntryUsed( n ) )
+      n = MAX( Model % NumberOfMaterials, &
+          Model % NumberOfBodyForces, &
+          Model % NumberOfEquations )
+      ALLOCATE( EntryUsed( n ) )
+
+      IF( Model % NumberOfMaterials > 0 ) THEN
         EntryUsed = .FALSE.
         DO i = 1, Model % NumberOfBodies
           j = ListGetInteger( Model % Bodies(i) % Values,'Material',Found )
@@ -1028,7 +1078,9 @@ CONTAINS
             CALL Warn('LoadInputFile','> Material '// TRIM(I2S(i)) //' < not used in any Body!')
           END IF
         END DO
-        
+      END IF
+
+      IF( Model % NumberOfBodyForces > 0 ) THEN
         EntryUsed = .FALSE.
         DO i = 1, Model % NumberOfBodies
           j = ListGetInteger( Model % Bodies(i) % Values,'Body Force',Found )
@@ -1039,7 +1091,9 @@ CONTAINS
             CALL Warn('LoadInputFile','> Body Force '// TRIM(I2S(i)) //' < not used in any Body!')
           END IF
         END DO
-        
+      END IF
+
+      IF( Model % NumberOfEquations > 0 ) THEN
         EntryUsed = .FALSE.
         DO i = 1, Model % NumberOfBodies
           j = ListGetInteger( Model % Bodies(i) % Values,'Equation',Found )
@@ -1050,56 +1104,56 @@ CONTAINS
             CALL Warn('LoadInputFile','> Equation '// TRIM(I2S(i)) //' < not used in any Body!')
           END IF
         END DO
-
-        DEALLOCATE( EntryUsed ) 
       END IF
+
+      DEALLOCATE( EntryUsed ) 
       !--- sanity checks done
 
       ! Add default equation, material, ic, bodyforce, and body if not given:
       ! ---------------------------------------------------------------------
       IF ( Model % NumberOFEquations <= 0 ) THEN
-         Model % NumberOfEquations = 1
-         ALLOCATE( Model % Equations(1) )
-         Model % Equations(1) % Values => ListAllocate()
-         CALL ListAddIntegerArray( Model % Equations(1) % Values, 'Active Solvers', &
-             Model % NumberOFSolvers, (/ (i,i=1,Model % NumberOfSolvers) /) )
-         CALL ListAddString ( Model % Equations(1) % Values, 'Name', 'Default Equation 1' )
-       END IF
+        Model % NumberOfEquations = 1
+        ALLOCATE( Model % Equations(1) )
+        Model % Equations(1) % Values => ListAllocate()
+        CALL ListAddIntegerArray( Model % Equations(1) % Values, 'Active Solvers', &
+            Model % NumberOFSolvers, (/ (i,i=1,Model % NumberOfSolvers) /) )
+        CALL ListAddString ( Model % Equations(1) % Values, 'Name', 'Default Equation 1' )
+      END IF
 
       IF ( Model % NumberOfMaterials <= 0 ) THEN
-         Model % NumberOfMaterials = 1
-         ALLOCATE( Model % Materials(1) )
-         Model % Materials(1) % Values => ListAllocate()
-         CALL ListAddString ( Model % Materials(1) % Values, 'Name', 'Default Material 1' )
+        Model % NumberOfMaterials = 1
+        ALLOCATE( Model % Materials(1) )
+        Model % Materials(1) % Values => ListAllocate()
+        CALL ListAddString ( Model % Materials(1) % Values, 'Name', 'Default Material 1' )
       END IF
 
       IF ( Model % NumberOfBodyForces <= 0 ) THEN
-         Model % NumberOfBodyForces = 1
-         ALLOCATE( Model % BodyForces(1) )
-         Model % BodyForces(1) % Values => ListAllocate()
-         CALL ListAddString ( Model % BodyForces(1) % Values, 'Name','Default Body Force 1' )
+        Model % NumberOfBodyForces = 1
+        ALLOCATE( Model % BodyForces(1) )
+        Model % BodyForces(1) % Values => ListAllocate()
+        CALL ListAddString ( Model % BodyForces(1) % Values, 'Name','Default Body Force 1' )
       END IF
 
       IF ( Model % NumberOfICs <= 0 ) THEN
-         Model % NumberOfICs = 1
-         ALLOCATE( Model % ICs(1) )
-         Model % ICs(1) % Values => ListAllocate()
-         CALL ListAddString ( Model % ICs(1) % Values, 'Name','Default IC 1' )
+        Model % NumberOfICs = 1
+        ALLOCATE( Model % ICs(1) )
+        Model % ICs(1) % Values => ListAllocate()
+        CALL ListAddString ( Model % ICs(1) % Values, 'Name','Default IC 1' )
       END IF
 
       IF ( Model % NumberOfBodies <= 0 ) THEN
-         Model % NumberOfBodies = 1
-         ALLOCATE( Model % Bodies(1) )
-         Model % Bodies(1) % Values => ListAllocate()
-         CALL ListAddString(  Model % Bodies(1) % Values, 'Name', 'Default Body 1' )
-         CALL ListAddInteger( Model % Bodies(1) % Values, 'Equation',   1 )
-         CALL ListAddInteger( Model % Bodies(1) % Values, 'Material',   1 )
-         CALL ListAddInteger( Model % Bodies(1) % Values, 'Body Force', 1 )
-         CALL ListAddInteger( Model % Bodies(1) % Values, 'Initial Condition', 1 )
-       END IF
+        Model % NumberOfBodies = 1
+        ALLOCATE( Model % Bodies(1) )
+        Model % Bodies(1) % Values => ListAllocate()
+        CALL ListAddString(  Model % Bodies(1) % Values, 'Name', 'Default Body 1' )
+        CALL ListAddInteger( Model % Bodies(1) % Values, 'Equation',   1 )
+        CALL ListAddInteger( Model % Bodies(1) % Values, 'Material',   1 )
+        CALL ListAddInteger( Model % Bodies(1) % Values, 'Body Force', 1 )
+        CALL ListAddInteger( Model % Bodies(1) % Values, 'Initial Condition', 1 )
+      END IF
       ! -- done adding default fields
-       
-     END IF
+               
+    END IF
     !--------------------------------------------------------------------
 
     FirstTime = .FALSE.
@@ -2045,7 +2099,7 @@ CONTAINS
     REWIND( InFileUnit )
     CALL LoadInputFile( Model,InFileUnit,ModelName,MeshDir,MeshName, .TRUE., .FALSE. )
     IF ( .NOT. OpenFile ) CLOSE( InFileUnit )
-
+    
     CALL InitializeOutputLevel()
 
     Transient=ListGetString(Model % Simulation, &
