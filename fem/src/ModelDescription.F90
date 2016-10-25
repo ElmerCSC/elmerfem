@@ -397,6 +397,7 @@ CONTAINS
 
     BCcount = 0
     BodyCount = 0
+    BfCount = 0
     EqCount = 0
     MatCount = 0
     IcCount = 0
@@ -408,7 +409,6 @@ CONTAINS
 !------------------------------------------------------------------------------
     DO WHILE(ReadAndTrim(InFileUnit,Section,Echo))
 !------------------------------------------------------------------------------
-      LineCount = LineCount + 1
       IF ( Section == '' .OR. Section == ' ' ) CYCLE
 
       IF ( SEQL(Section,'include') ) THEN
@@ -431,6 +431,7 @@ CONTAINS
 
       FreeNames = ( CheckAbort <= 0 )
       ArrayN = 0
+      LineCount = LineCount + 1
       
       IF ( SEQL(Section, 'constants') ) THEN
         IF ( .NOT. ScanOnly ) THEN
