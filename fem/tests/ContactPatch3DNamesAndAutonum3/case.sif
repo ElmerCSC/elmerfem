@@ -55,8 +55,8 @@ Simulation
 ! of the nonlinear iteration. 
   Initialize Dirichlet Conditions = False
 
-  Use Mesh Names = Logical True
-  Use Contact Names = Logical True
+  Use Mesh Names = True
+  Use Contact Names = True
 End
 
 Constants
@@ -70,14 +70,14 @@ End
 
 Body 
   Name = "lower_block"
-  Equation Name = String "Deformation"
-  Material Name = String "Ideal"
+  Equation Name = "Deformation"
+  Material Name = "Ideal"
 End
 
 Body 
   Name = "upper_block"
-  Equation Name = String "Deformation"
-  Material Name = String "Ideal"
+  Equation Name = "Deformation"
+  Material Name = "Ideal"
 End
 
 Material
@@ -109,15 +109,15 @@ Solver
   Linear System Residual Mode = True
 
 ! Enforce contact computation
-  Apply Contact BCs = Logical True
+  Apply Contact BCs = True
 !  Save Contact = Logical True
 
 ! Restore the linear solution
 ! Elasticity Solver Linear = Logical True
 
-  Calculate Stresses = Logical True
+  Calculate Stresses = True
 
-  Displace Mesh = Logical True
+  Displace Mesh = True
   Nonlinear System Consistent Norm = True
 End
 
@@ -136,12 +136,12 @@ Boundary Condition
   Name = "lower_block_top"
 
 ! Create a projector by choosing a plane where to integrate
-  Plane Projector = Logical True
+  Plane Projector = True
 
 ! Use weak projector (mortar method)
-  Galerkin Projector = Logical True
-  Normal-Tangential Displacement = Logical True
-  Mass Consistant Normals = Logical True
+  Galerkin Projector = True
+  Normal-Tangential Displacement = True
+  Mass Consistant Normals = True
 
 ! Type of contact 
   Tie Contact = Logical True
