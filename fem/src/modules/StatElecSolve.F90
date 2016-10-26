@@ -446,6 +446,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
     END IF
 
     IF ( CalculateEnergy ) THEN
+      Wetot = ParallelReduction(Wetot)      
       WRITE( Message, * ) 'Tot. Electric Energy  :', Wetot
       CALL Info( 'StatElecSolve', Message, Level=4 )
       CALL ListAddConstReal( Model % Simulation, &
@@ -470,6 +471,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       END IF
       
       IF(.NOT. GotIt) THEN
+        ! parallel reduction needed
+        MinPotential = ParallelReduction(MinPotential,1)
+        MaxPotential = ParallelReduction(MaxPotential,2)
         PotentialDifference = MaxPotential - MinPotential
       END IF
       
