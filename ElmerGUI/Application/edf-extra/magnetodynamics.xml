@@ -279,21 +279,21 @@
 
 	<Parameter Widget="Label" > <Name> Specify what kind of fields to compute  </Name> </Parameter>
 	<Parameter Widget="CheckBox">
-	  <Name> Calculate Elemental Fields </Name>
-	  <DefaultValue>True</DefaultValue>
-	  <Type> Logical </Type>
-	  <Whatis>Calculate elemental fields in postprocessing. Appropriate with material discontinuities. This could be set True when nodal fields are still computed.</Whatis>
-	</Parameter>
-	<Parameter Widget="CheckBox">
-	  <Name> Calculate Nodal Fields </Name>
+	  <Name> Skip Elemental Fields </Name>
 	  <DefaultValue>False</DefaultValue>
 	  <Type> Logical </Type>
-	  <Whatis>Calculate nodal fields in postprocessing. Appropriate when there are no material jumps. This could be set True when elemental fields are still computed.</Whatis>
+	  <Whatis>Skip computation of elemental fields in postprocessing. Appropriate when there are no material discontinuities. Otherwise elemental fields are preferable over nodal ones.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Skip Nodal Fields </Name>
+	  <DefaultValue>True</DefaultValue>
+	  <Type> Logical </Type>
+	  <Whatis>Skip computation of nodal fields in postprocessing. This is set True when elemental fields are still computed.</Whatis>
 	</Parameter>
 	<Parameter Widget="CheckBox">
 	  <Name> Discontinuous Galerkin </Name>
 	  <Type> Logical </Type>
-	  <Whatis>Enforce continuity of solution already at the linear system level using Discontinuous Galerkin method. This is very expensive!</Whatis>
+	  <Whatis>Enforce continuity of solution already at the linear system level using Discontinuous Galerkin method. This is very expensive! Makes nodal fields to be computed elementwise.</Whatis>
 	</Parameter>
 
       </Solver>

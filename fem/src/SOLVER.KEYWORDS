@@ -1533,5 +1533,7 @@ body:string:         'body force name'
 body:string:         'initial condition name'
 simulation:logical:  'use contact names'
 simulation:logical:  'use mortar names'
+solver:logical:      'skip nodal fields'
+solver:logical:      'skip elemental fields'
 
 
