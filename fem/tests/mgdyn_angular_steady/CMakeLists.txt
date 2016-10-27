@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO cylinder DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_angular_steady NPROCS 1 2)
+ADD_ELMER_TEST(mgdyn_angular_steady NPROCS 1 2 LABELS whitney)

@@ -6,4 +6,4 @@ ADD_ELMERTEST_MODULE(mgdyn_lamstack_lowfreq_transient currents currents.f90)
 
 file(COPY ELMERSOLVER_STARTINFO currents.f90 toroidalcoil DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_lamstack_lowfreq_transient)
+ADD_ELMER_TEST(mgdyn_lamstack_lowfreq_transient LABELS whitney)

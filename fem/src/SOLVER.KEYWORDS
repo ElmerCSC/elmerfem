@@ -1527,3 +1527,11 @@ solver:logical:      'variable global'
 solver:real:         '1d mesh length'
 solver:real:         'boundary partitioning maximum fraction'
 solver:string:       'partitioning method'
+body:string:         'equation name'
+body:string:         'material name'
+body:string:         'body force name'
+body:string:         'initial condition name'
+simulation:logical:  'use contact names'
+simulation:logical:  'use mortar names'
+
+

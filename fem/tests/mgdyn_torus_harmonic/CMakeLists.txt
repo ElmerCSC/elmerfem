@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO torus2 DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_torus_harmonic)
+ADD_ELMER_TEST(mgdyn_torus_harmonic LABELS whitney)

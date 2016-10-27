@@ -271,7 +271,32 @@
 	  <Type> Logical </Type>
 	  <Whatis> Compute the heating resulting from the induced currents.</Whatis>
 	</Parameter>
-    </Solver>
+	<Parameter Widget="CheckBox">
+	  <Name> Calculate Nodal Forces </Name>
+	  <Type> Logical </Type>
+	  <Whatis> Compute nodal forces to be used as loads in structural analysis.</Whatis>
+	</Parameter>
+
+	<Parameter Widget="Label" > <Name> Specify what kind of fields to compute  </Name> </Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Calculate Elemental Fields </Name>
+	  <DefaultValue>True</DefaultValue>
+	  <Type> Logical </Type>
+	  <Whatis>Calculate elemental fields in postprocessing. Appropriate with material discontinuities. This could be set True when nodal fields are still computed.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Calculate Nodal Fields </Name>
+	  <DefaultValue>False</DefaultValue>
+	  <Type> Logical </Type>
+	  <Whatis>Calculate nodal fields in postprocessing. Appropriate when there are no material jumps. This could be set True when elemental fields are still computed.</Whatis>
+	</Parameter>
+	<Parameter Widget="CheckBox">
+	  <Name> Discontinuous Galerkin </Name>
+	  <Type> Logical </Type>
+	  <Whatis>Enforce continuity of solution already at the linear system level using Discontinuous Galerkin method. This is very expensive!</Whatis>
+	</Parameter>
+
+      </Solver>
    </PDE>
 
 </edf>

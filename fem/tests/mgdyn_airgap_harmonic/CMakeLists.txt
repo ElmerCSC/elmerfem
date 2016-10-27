@@ -5,5 +5,4 @@ CONFIGURE_FILE( airgap.sif airgap.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO airgap DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(mgdyn_airgap_harmonic)
-ADD_ELMER_LABEL(mgdyn_airgap_harmonic quick)
+ADD_ELMER_TEST(mgdyn_airgap_harmonic LABELS whitney quick)
