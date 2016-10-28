@@ -1148,7 +1148,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
          CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,xpos,ypos,zpos )
 
-         s = s * SqrtMetric * SqrtElementMetric * S_Integ(tg)
+         s = SqrtMetric * SqrtElementMetric * S_Integ(tg)
 
          !------------------------------------------------------------------------------
 
