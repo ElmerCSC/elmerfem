@@ -288,7 +288,6 @@ SUBROUTINE AdjointSSA_GradientSolver( Model,Solver,dt,TransientSimulation )
                  CALL WARN(SolverName,'Taking default value >DJDBeta<')
                  WRITE(SName,'(A)') 'DJDBeta'
               END IF
-          PRINT *,trim(SName)
           DJDBetaSol => VariableGet( Solver % Mesh % Variables, SName )
                 IF (ASSOCIATED(DJDBetaSol)) THEN
                 DJDBeta => DJDBetaSol % Values

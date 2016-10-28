@@ -141,14 +141,16 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
     If (Parallel) then
         if (ParEnv % MyPe.EQ.0) then
            OPEN (IO, FILE=CostFile)
-                    write(IO,'(a1,a2,a1,a2,a1,a4,5x,a2,a1,a2,a1,a2)') '#',date(5:6),'/',date(7:8),'/',date(1:4), &
-                                 temps(1:2),':',temps(3:4),':',temps(5:6)
+                   write(IO,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(IO,1001) Lambda
+                   write(IO,'(A)') '# iter, Lambda*J0, rms'
            CLOSE(IO)
          End if
     Else
            OPEN (IO, FILE=CostFile)
-                    write(IO,'(a1,a2,a1,a2,a1,a4,5x,a2,a1,a2,a1,a2)') '#',date(5:6),'/',date(7:8),'/',date(1:4), &
-                                 temps(1:2),':',temps(3:4),':',temps(5:6)
+                   write(IO,1000) date(5:6),date(7:8),date(1:4),temps(1:2),temps(3:4),temps(5:6)
+                   write(IO,1001) Lambda
+                   write(IO,*)'# iter, Lambda*J0, rms'
            CLOSE(IO)
     End if
 
@@ -266,7 +268,6 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
          Element => GetActiveElement(InElement(s))
          IF (CheckPassiveElement(Element)) THEN
             InElement(s)=-1
-            !PRINT *,ParEnv%MyPe,'Cost PASSIVE ELEMENT'
          END IF
       END IF
      ENDIF !End if FirstRound
@@ -386,6 +387,10 @@ SUBROUTINE AdjointSSA_CostDiscSolver( Model,Solver,dt,TransientSimulation )
    End if
    FirstRound=.False.
    Return
+
+ 1000  format('#date,time,',a1,'/',a1,'/',a4,',',a2,':',a2,':',a2)
+ 1001  format('#lambda,',e15.8)
+
 !------------------------------------------------------------------------------
 END SUBROUTINE AdjointSSA_CostDiscSolver
 !------------------------------------------------------------------------------
