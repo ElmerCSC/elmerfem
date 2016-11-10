@@ -1,0 +1,42 @@
+#### Makefile to compile the solver GridDataReader.F90
+##### This solver require external libraries:
+	#####   netcdf netcdf-fortran
+####### These libraries must be compiled by the user and this Makefile edited/updated
+
+
+####### EDIT the following PATH according to your installation ###########
+# PATH to NETCDF HOME and INCLUDE directories and LIBS Flags
+NETCDFHOME="PATH_TO_NETCDF_HOME"
+NETCDFINC="-I$(NETCDFHOME)/include"
+NETCDFLIBS="-L$(NETCDFHOME)/lib -lnetcdff -lnetcdf"
+
+##########################################################################
+ELMERICE_HOME ?= $(ELMER_HOME)/share/elmersolver
+##############
+
+all: GridDataReader.so
+
+install: GridDataReader.so
+	cp -f GridDataReader.so $(ELMERICE_HOME)/lib/.
+
+GridDataReader.so: GridDataReader.F90 
+	elmerf90 $(NETCDFINC) $^ -o $@ $(NETCDFLIBS)
+
+clean:
+	rm -f GridDataReader.so
+	rm -f *.mod
+
+###########################################################################
+#Old File Compile and notes
+#-- elmerf90 -L/v/linux26_x86_64/opt/netcdf412/gnu450/lib -lnetcdff -lnetcdf -I/v/linux26_x86_64/opt/netcdf412/gnu450/include GridDataReader.F90 -o GridDataReader.so
+#-- elmerf90 $NETCDF_LIBS $NETCDF_INCLUDES GridDataReader.F90 -o GridDataReader.so
+
+# R Gladstone Note: a choice of two commands for compilation is given above (CSC specific).  The second one probably 
+#----------------- works better, but you should load modules in the following order before compiling:
+#-- module load elmer/latest
+#-- module load netcdf
+
+#Joe Todd Note: I found that, on systems other than the CSC Cray machines, it was important to specify
+#-------------- the source file before the library/include flags, or else at runtime you get 'undefined symbol' errors.
+#		# So (assuming default lib and inc locations):
+#--  elmerf90 GridDataReader.F90 -I/usr/include -L/usr/lib -lnetcdff -o GridDataReader.so

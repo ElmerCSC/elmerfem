@@ -47,3 +47,6 @@ TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver)
 
 INSTALL(TARGETS ElmerIceSolvers LIBRARY DESTINATION "share/elmersolver/lib"
 	    RUNTIME DESTINATION "share/elmersolver/lib")
+
+ADD_SUBDIRECTORY(GridDataReader)
+ADD_SUBDIRECTORY(ScatteredDataInterpolator)
