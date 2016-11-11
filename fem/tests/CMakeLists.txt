@@ -12,9 +12,6 @@ ENDIF()
 SET(FINDNORM_BIN "${CMAKE_CURRENT_BINARY_DIR}/findnorm")
 SET(MESH2D_BIN "${CMAKE_BINARY_DIR}/meshgen2d/src/Mesh2D")
 
-CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/runtests.in.cmake
-  ${CMAKE_CURRENT_BINARY_DIR}/runtests)
-
 MACRO(SUBDIRLIST result curdir depth)
   set(glob_pattern "*")
   FOREACH(D RANGE 1 depth)
