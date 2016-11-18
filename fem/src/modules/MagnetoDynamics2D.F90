@@ -1011,8 +1011,8 @@ CONTAINS
    INTEGER::nbf
 !------------------------------------------------------------------------------
    REAL(KIND=dp) :: a(nbf),IMoment,IA,TorqArea,rinner,router,ctorq, &
-       xRe, xIm
-   COMPLEX(KIND=dp)::u(nbf),torq
+       xRe, xIm, torq
+   COMPLEX(KIND=dp)::u(nbf)
    INTEGER :: i,bfid,n,nd
    TYPE(ValueList_t),POINTER::Params
 !------------------------------------------------------------------------------
@@ -1048,14 +1048,10 @@ CONTAINS
    END DO
    IMoment = ParallelReduction(IMoment)
    IA = ParallelReduction(IA)
-   xRe = REAL( Torq ); xIm = AIMAG( Torq )
-   xRe = ParallelReduction(xRe)
-   xIm = ParallelReduction(xIm)
-   Torq = CMPLX( xRe, xIm )
+   Torq = ParallelReduction(Torq)
+
    
-   WRITE(Message,'(A,ES15.4)') 'Air gap initial torque re:', REAL(Torq)
-   CALL Info('MagnetoDynamics2D',Message,Level=8)
-   WRITE(Message,'(A,ES15.4)') 'Air gap initial torque im:', AIMAG(Torq)
+   WRITE(Message,'(A,ES15.4)') 'Air gap initial torque:', Torq
    CALL Info('MagnetoDynamics2D',Message,Level=8)
 
    TorqArea = ParallelReduction(TorqArea)
@@ -1074,14 +1070,11 @@ CONTAINS
                      //TRIM(i2s(i)),AIMAG(u(i))/a(i))
      END IF
    END DO
-   CALL ListAddConstReal(Model % Simulation,'res: air gap torque re', REAL(Torq))
-   CALL ListAddConstReal(Model % Simulation,'res: air gap torque im', AIMAG(Torq))
+   CALL ListAddConstReal(Model % Simulation,'res: air gap torque', Torq)
    CALL ListAddConstReal(Model % Simulation,'res: inertial volume', IA)
    CALL ListAddConstReal(Model % Simulation,'res: inertial moment', IMoment)
 
-   WRITE(Message,'(A,ES15.4)') 'Air gap torque re:', REAL(Torq)
-   CALL Info('MagnetoDynamics2D',Message,Level=7)
-   WRITE(Message,'(A,ES15.4)') 'Air gap torque im:', AIMAG(Torq)
+   WRITE(Message,'(A,ES15.4)') 'Air gap torque:', Torq
    CALL Info('MagnetoDynamics2D',Message,Level=7)
    WRITE(Message,'(A,ES15.4)') 'Inertial volume:', IA
    CALL Info('MagnetoDynamics2D',Message,Level=7)
@@ -1135,12 +1128,13 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: n,nd
     REAL(KIND=dp) :: Area
-    COMPLEX(KIND=dp)::U
+    REAL(KIND=dp)::U
     TYPE(Element_t)::Element
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: dBasisdx(nd,3),Basis(nd), DetJ, &
              POT(2,nd),x,y,r,r0,r1
     COMPLEX(KIND=dp)::POTC(nd),Br,Bp,Bx,By
+    REAL(KIND=dp)::BrRe,BpRe,BrIm,BpIm
     INTEGER :: t
     LOGICAL :: stat
     TYPE(Nodes_t), SAVE :: Nodes
@@ -1178,7 +1172,11 @@ CONTAINS
       By = -SUM(POTC*dBasisdx(:,1))
       Br =  x/r*Bx + y/r*By
       Bp = -y/r*Bx + x/r*By
-      U = U + IP % s(t)*detJ*r*Br*Bp/(PI*4.0d-7*(r1-r0))
+      BrRe = REAL( Br ); BrIm = AIMAG( Br )
+      BpRe = REAL( Bp ); BpIm = AIMAG( Bp )
+
+
+      U = U + IP % s(t)*detJ*r*(BrRe*BpRe+BrIm*BpIm)/(2*PI*4.0d-7*(r1-r0))
       Area = Area + IP % s(t)*detJ
     END DO
 !------------------------------------------------------------------------------
