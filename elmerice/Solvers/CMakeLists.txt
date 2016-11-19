@@ -1,3 +1,8 @@
+SET(WITH_GridDataReader FALSE CACHE BOOL "Include ElmerIce GridDataReader")
+SET(WITH_ScatteredDataInterpolator FALSE CACHE BOOL "Include ElmerIce ScatteredDataInterpolator")
+MARK_AS_ADVANCED(WITH_GridDataReader)
+MARK_AS_ADVANCED(WITH_ScatteredDataInterpolator)
+
 SET(CMAKE_Fortran_MODULE_DIRECTORY
   ${PROJECT_BINARY_DIR}/fmodules CACHE PATH "Directory for Fortran modules")
 
@@ -48,5 +53,9 @@ TARGET_LINK_LIBRARIES(ElmerIceSolvers elmersolver)
 INSTALL(TARGETS ElmerIceSolvers LIBRARY DESTINATION "share/elmersolver/lib"
 	    RUNTIME DESTINATION "share/elmersolver/lib")
 
-ADD_SUBDIRECTORY(GridDataReader)
-ADD_SUBDIRECTORY(ScatteredDataInterpolator)
+IF(WITH_GridDataReader)
+  ADD_SUBDIRECTORY(GridDataReader)
+ENDIF()
+IF(WITH_ScatteredDataInterpolator)	
+  ADD_SUBDIRECTORY(ScatteredDataInterpolator)
+ENDIF()
