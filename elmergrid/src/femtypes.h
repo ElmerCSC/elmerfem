@@ -171,7 +171,7 @@ struct FemType {
   int created,     /* is the structure created? */
     noknots,       /* number of knots */
     noelements,    /* number of elements */
-    activenodeperm, /* are the nodes permutated at the start */
+    nodepermexist, /* are the nodes permutated at the start */
     *nodeperm,    /* Inverse node permutation to save */
     coordsystem,   /* coordsystem flag */
     nocells,       /* number of subcells */
