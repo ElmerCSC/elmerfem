@@ -481,6 +481,10 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 
   REAL(KIND=dp) :: Relax
 
+  REAL(KIND=dp) :: NewtonTol
+  INTEGER :: NewtonIter
+  LOGICAL :: ExtNewton
+  
   TYPE(Variable_t), POINTER :: Var, FixJVar, CoordVar
   TYPE(Matrix_t), POINTER :: A
   TYPE(ListMatrix_t), POINTER :: BasicCycles(:)
@@ -599,7 +603,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   ! ----------------------------------------
   CALL ListAddInteger(SolverParams,'Norm Permutation',nNodes+1)
 
-  ! 
+
   ! Resolve internal non.linearities, if requeted:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, &
@@ -610,6 +614,14 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
 	      'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
+  ! Use also these keyword for compatibility with ElmerGUI and old practices
+  NewtonIter = GetInteger( SolverParams,&
+      'Nonlinear System Newton After Iterations',Found ) 
+  IF(.NOT. Found ) NewtonIter = NoIterationsMax
+  NewtonTol = GetCReal( SolverParams,&
+      'Nonlinear System Newton After Tolerance',Found )
+
+
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
   IF ( dt /= PrevDT .AND. LFactFound .AND. .NOT. LFact ) THEN
     CALL ListAddLogical( SolverParams, 'Linear System Refactorize', .TRUE. )
@@ -617,6 +629,7 @@ SUBROUTINE WhitneyAVSolver( Model,Solver,dt,Transient )
   EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
 
   DO i=1,NoIterationsMax
+    ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( NoIterationsMax > 1 ) THEN
       CALL Info('WhitneyAVSolver','Nonlinear iteration: '//TRIM(I2S(i)),Level=8 )
     END IF
@@ -1856,6 +1869,7 @@ CONTAINS
     IF(HBCurve) THEN
       CALL GetScalarLocalSolution(Aloc)
       Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
+      IF(.NOT. Found ) Newton = ExtNewton
     END IF
 
     !Numerical integration:
@@ -3163,7 +3177,10 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   LOGICAL :: Stat, EigenAnalysis, TG, FixJ, LaminateStack, CoilBody, EdgeBasis,LFact,LFactFound
   LOGICAL :: PiolaVersion, SecondOrder, GotHbCurveVar
-
+  REAL(KIND=dp) :: NewtonTol
+  INTEGER :: NewtonIter
+  LOGICAL :: ExtNewton
+  
   INTEGER, POINTER :: Perm(:)
   INTEGER, ALLOCATABLE :: FluxMap(:)
   LOGICAL, ALLOCATABLE :: TreeEdges(:)
@@ -3252,16 +3269,25 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   ! Resolve internal non.linearities, if requested:
   ! ----------------------------------------------
   NoIterationsMax = GetInteger( SolverParams, &
-              'Nonlinear System Max Iterations',Found)
+      'Nonlinear System Max Iterations',Found)
   IF(.NOT. Found) NoIterationsMax = 1
-
+  
   NoIterationsMin = GetInteger( SolverParams, &
-              'Nonlinear System Min Iterations',Found)
+      'Nonlinear System Min Iterations',Found)
   IF(.NOT. Found) NoIterationsMin = 1
 
+  ! Use also these keyword for compatibility with ElmerGUI and old practices
+  NewtonIter = GetInteger( SolverParams,&
+      'Nonlinear System Newton After Iterations',Found ) 
+  IF(.NOT. Found ) NewtonIter = NoIterationsMax
+  NewtonTol = GetCReal( SolverParams,&
+      'Nonlinear System Newton After Tolerance',Found )
+
+  
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
   EdgeBasis = .NOT.LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
   DO i=1,NoIterationsMax
+    ExtNewton = ( i > NewtonIter .OR. Solver % Variable % NonlinChange < NewtonTol )
     IF( DoSolve(i) ) THEN
       IF(i>=NoIterationsMin) EXIT
     END IF
@@ -4407,6 +4433,9 @@ CONTAINS
     END IF
 
     IF(HBCurve) THEN
+      Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
+      IF(.NOT. Found ) Newton = ExtNewton
+
       IF( GotHbCurveVar ) THEN
         CALL GetLocalSolution(AlocR(1,:), UVariable = HbCurveVar )
         Aloc = CMPLX( AlocR(1,1:nd), 0.0_dp, KIND=dp)
@@ -4414,7 +4443,6 @@ CONTAINS
         CALL GetLocalSolution(AlocR)
         Aloc = CMPLX( AlocR(1,1:nd), AlocR(2,1:nd), KIND=dp)
       END IF
-      Newton = GetLogical( SolverParams,'Newton-Raphson iteration',Found)
     END IF
 
     IF (CoilType == 'stranded') THEN 
