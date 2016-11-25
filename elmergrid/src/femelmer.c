@@ -523,6 +523,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   int falseparents,noparents,bctopocreated;
   int activeperm,activeelemperm,mini,maxi,minelem,maxelem,p1,p2;
   int *nodeperm,*elemperm,*invperm,*invelemperm;
+  int iostat,noelements0;
   FILE *in;
   char line[MAXLINESIZE],line2[MAXLINESIZE],filename[MAXFILESIZE],directoryname[MAXFILESIZE];
   char *ptr1,*ptr2;
@@ -568,7 +569,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 
   data->maxnodes = maxelemtype % 100;
   data->noknots = noknots;
-  data->noelements = noelements;
+  data->noelements = noelements0 = noelements;
 
 
   if(info) printf("Allocating for %d knots and %d elements.\n",
@@ -617,8 +618,13 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
     invperm = Ivector(mini,maxi);
     for(i=mini;i<=maxi;i++)
       invperm[i] = -1;
-    for(i=1;i<=noknots;i++)
-      invperm[nodeperm[i]] = i;
+    for(i=1;i<=noknots;i++) {
+      j = nodeperm[i];
+      if( invperm[j] > 0 ) 
+	printf("LoadElmerInput: Node %d is redundant which may be problematic!\n",j);      
+      else
+	invperm[j] = i;
+    }
   }
   else {
     mini = 1;
@@ -637,17 +643,26 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
     if(info) printf("Loading %d bulk elements from %s\n",noelements,filename);
   
   for(i=1; i <= noelements; i++) {
-    fscanf(in,"%d",&j);
+    iostat = fscanf(in,"%d",&j);
+    if(iostat <= 0 ) {
+      printf("LoadElmerInput: Failed reading element line %d, reducing size of element table to %d!\n",i,i-1);
+      data->noelements = noelements = i-1;
+      break;
+    }
+    
     if(i != j && !activeelemperm) {
       printf("LoadElmerInput: The element numbering (%d) at element %d is not compact, creating permutation\n",j,i);
       activeelemperm = TRUE;
-      elemperm = Ivector(1,noelements);
+      elemperm = Ivector(1,noelements0);
       for(k=1; k < i; k++)
 	elemperm[k] = k;
     }
     if( activeelemperm ) elemperm[i] = j;
-    fscanf(in,"%d",&(data->material[i]));
-    fscanf(in,"%d",&elementtype);
+    iostat = fscanf(in,"%d %d",&(data->material[i]),&elementtype);
+    if( iostat < 2 ) {
+      printf("LoadElmerInput: Failed reading definitions for bulk element %d\n",j);
+      bigerror("Cannot continue without this data!\n");
+    }
     if(elementtype > maxelemtype ) {
       printf("Invalid bulk elementtype: %d\n",elementtype);
       bigerror("Cannot continue with invalid elements");
@@ -666,7 +681,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
     }
   }
   fclose(in);
-
+ 
 
   /* Create inverse permutation for bulk elements */
   if(activeelemperm) {
@@ -676,16 +691,21 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	maxelem = elemperm[i];
       }
       else {
-	minelem = MIN(elemperm[i],mini);
-	maxelem = MAX(elemperm[i],maxi);
+	minelem = MIN(elemperm[i],minelem);
+	maxelem = MAX(elemperm[i],maxelem);
       }
     }
     if(info) printf("LoadElmerInput: Element index range is: [%d %d]\n",minelem,maxelem);
     invelemperm = Ivector(minelem,maxelem);
     for(i=minelem;i<=maxelem;i++)
       invelemperm[i] = -1;
-    for(i=1;i<=noelements;i++)
-      invelemperm[elemperm[i]] = i;
+    for(i=1;i<=noelements;i++) {
+      j = elemperm[i];
+      if( invelemperm[j] > 0 )
+	printf("LoadElmerInput: Element %d is redundant which may be problematic!\n",j);      
+      else	
+	invelemperm[j] = i;
+    }
   }
   else {
     minelem = 1;
@@ -716,17 +736,19 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   i = 0;
   for(k=1; k <= nosides; k++) {
     
+    iostat = fscanf(in,"%d",&dummyint);
+    if( iostat < 1 ) {
+      printf("LoadElmerInput: Failed reading boundary element line %k, reducing size of element table to %d!\n",i);
+      bound->nosides = nosides = i;
+      break;
+    }      
     i++;
-    fscanf(in,"%d",&dummyint);
 
-#if 1
-    if(k != dummyint) printf("LoadElmerInput: k=%d side=%d\n",k,dummyint);
-#endif
-    fscanf(in,"%d",&(bound->types[i]));
-    fscanf(in,"%d",&p1);
-    fscanf(in,"%d",&p2);
-    fscanf(in,"%d",&elementtype);
-
+    iostat = fscanf(in,"%d %d %d %d",&(bound->types[i]),&p1,&p2,&elementtype);
+    if(iostat < 4 ) {
+      printf("LoadElmerInput: Failed reading definitions for boundary element %d\n",k);
+      bigerror("Cannot continue without this data!\n"); 
+    }    
     if( p1 > 0 && (p1 < minelem || p1 > maxelem ) ) {
       printf("Parent in boundary element %d out of range: %d\n",k,p1);    
       bigerror("Cannot continue with bad parents");
@@ -811,7 +833,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   /* Element permutation is irrelevant probably for practical purposes (?) and hence it is forgotten. */
   if(activeelemperm) {
     free_Ivector(invelemperm,minelem,maxelem);
-    free_Ivector(elemperm,1,noelements);
+    free_Ivector(elemperm,1,noelements0);
   }
   
 

@@ -646,7 +646,7 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
   int LittleEnd,PrecBits,elemoffset;
   FILE *out;
 
-  ! If we create dummy zero node the real indexes start from one
+  /* If we create dummy zero node the real indexes start from one */
   if( dummyzero ) 
     di = 0;
   else
