@@ -623,7 +623,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
         
       CASE('boundary sum','boundary dofs','boundary max','boundary max abs','boundary min',&
           'boundary min abs','boundary mean')
-
         
         IF( .NOT. ANY( ActiveBC ) ) THEN
           CALL Error('SaveScalars','No flag > '//TRIM(MaskName)// &
@@ -2412,14 +2411,14 @@ CONTAINS
     SELECT CASE(OperName)
       
     CASE('boundary sum','boundary dofs','boundary mean') 
-      fluxes(bc) = 0.0_dp
+      fluxes = 0.0_dp
 
     CASE('boundary min','boundary min abs')
-      fluxes(bc) = HUGE( fluxes )
+      fluxes = HUGE( val )
       FindMinMax = .TRUE.
       
     CASE('boundary max','boundary max abs') 
-      fluxes(bc) = -HUGE( fluxes )
+      fluxes = -HUGE( val )
       FindMinMax = .TRUE.
       
     CASE DEFAULT 
@@ -2469,18 +2468,24 @@ CONTAINS
           
           IF(FindMinMax) THEN
             SELECT CASE(OperName)              
+
             CASE('boundary min')
               fluxes(bc) = MIN( val, fluxes(bc) )
+
             CASE('boundary max')
               fluxes(bc) = MAX( val, fluxes(bc) )
+
             CASE('boundary min abs')
               IF(ABS(fluxes(bc)) < ABS( val )) fluxes(bc) = val
+
             CASE('boundary max abs')
               IF(ABS(fluxes(bc)) > ABS( val )) fluxes(bc) = val
+
             END SELECT
           ELSE
             fluxes(bc) = fluxes(bc) + val
           END IF
+
           nodescomputed(j) = .TRUE.         
           fluxescomputed(bc) = fluxescomputed(bc) + 1          
         END DO        
