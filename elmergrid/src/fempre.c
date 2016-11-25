@@ -166,6 +166,7 @@ static void Instructions()
   printf("-nonames             : disable use of mesh.names even if it would be supported by the format\n");
   printf("-nosave              : disable saving part alltogether\n");
   printf("-nooverwrite         : if mesh already exists don't overwite it\n");
+  printf("-vtuone              : start real node indexes in vtu file from one\n");
   printf("-timer               : show timer information\n");
   printf("-infofile str        : file for saving the timer and size information\n");
 
@@ -1044,7 +1045,7 @@ int main(int argc, char *argv[])
   case 5:
     for(k=0;k<nomeshes;k++) {
       SaveMeshVtu(&data[k],boundaries[k],eg.saveboundaries ? MAXBOUNDARIES:0,
-		   eg.filesout[k],eg.decimals,info);
+		   eg.filesout[k],eg.vtuone,info);
     }
     break;
 

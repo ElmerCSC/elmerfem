@@ -310,6 +310,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->partbcmetis = 0;
   eg->partbw = FALSE;
   eg->saveboundaries = TRUE;
+  eg->vtuone = FALSE;
   eg->timeron = FALSE;
   eg->nosave = FALSE;
   eg->nooverwrite = FALSE;
@@ -926,6 +927,9 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     }
     if(strcmp(argv[arg],"-nobound") == 0) {
       eg->saveboundaries = FALSE;
+    }
+    if(strcmp(argv[arg],"-vtuone") == 0) {
+      eg->vtuone = TRUE;
     }
     if(strcmp(argv[arg],"-nosave") == 0) {
       eg->nosave = TRUE;

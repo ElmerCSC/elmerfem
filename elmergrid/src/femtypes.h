@@ -349,6 +349,7 @@ struct ElmergridType {
     reducemat1,
     reducemat2,
     findsides,
+    vtuone, 
     saveboundaries,
     nodes3d,
     elements3d,
