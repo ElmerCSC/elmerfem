@@ -45,9 +45,6 @@ MODULE MeshUtils
 
 #ifdef USE_ISO_C_BINDINGS
     USE LoadMod
-#ifdef HAVE_EIO
-    USE EIOFortranAPI
-#endif
 #endif
     USE ElementUtils
     USE ElementDescription
