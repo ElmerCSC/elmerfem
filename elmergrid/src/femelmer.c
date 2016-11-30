@@ -517,7 +517,7 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 /* This procedure reads the mesh assuming ElmerSolver format.
    */
 {
-  int noknots,noelements,nosides,maxelemtype;
+  int noknots,noelements,nosides,maxelemtype,maxnodes,nonodes;
   int sideind[MAXNODESD1],tottypes,elementtype;
   int i,j,k,l,dummyint,cdstat,fail;
   int falseparents,noparents,bctopocreated;
@@ -557,17 +557,21 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
   sscanf(line,"%d",&tottypes);
 
   maxelemtype = 0;
+  maxnodes = 0;
   for(i=1;i<=tottypes;i++) {   
     getline;
     sscanf(line,"%d",&dummyint);
-    if(dummyint > maxelemtype) maxelemtype = dummyint;
+    maxelemtype = MAX( dummyint, maxelemtype );
+    j = maxelemtype % 100;
+    maxnodes = MAX( j, maxnodes );
   }
   printf("Maximum elementtype index is: %d\n",maxelemtype);
+  printf("Maximum number of nodes in element is: %d\n",maxnodes);
   fclose(in);
 
   data->dim = GetElementDimension(maxelemtype);
 
-  data->maxnodes = maxelemtype % 100;
+  data->maxnodes = maxnodes;
   data->noknots = noknots;
   data->noelements = noelements0 = noelements;
 
@@ -668,7 +672,12 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
       bigerror("Cannot continue with invalid elements");
     }
     data->elementtypes[i] = elementtype;
-    for(k=0;k< elementtype%100 ;k++) {
+    nonodes = elementtype % 100;
+    if( nonodes > maxnodes ) {
+      printf("Number of nodes %d in element %d is greater than allocated maximum %d\n",nonodes,j,maxnodes);
+      bigerror("Cannot continue with invalid elements");
+    }
+    for(k=0;k<nonodes;k++) {
       fscanf(in,"%d",&l);
       if( l < mini || l > maxi ) {
 	printf("Node %d in element %d is out of range: %d\n",k+1,j,l);
@@ -767,8 +776,13 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
       printf("Invalid boundary elementtype: %d\n",elementtype);
       bigerror("Cannot continue with invalid elements");
     }
-
-    for(j=0;j< elementtype%100 ;j++) { 
+    nonodes = elementtype % 100;
+    if( nonodes > maxnodes ) {
+      printf("Number of nodes %d in side element %d is greater than allocated maximum %d\n",nonodes,dummyint,maxnodes);
+      bigerror("Cannot continue with invalid elements");
+    }
+    
+    for(j=0;j< nonodes ;j++) { 
       fscanf(in,"%d",&l);
       if(activeperm) 
 	sideind[j] = invperm[l];
@@ -803,7 +817,6 @@ int LoadElmerInput(struct FemType *data,struct BoundaryType *bound,
 	bound->topology = Imatrix(1,nosides,0,data->maxnodes-1);
 	bctopocreated = TRUE;
       }
-
       for(j=0;j< elementtype%100 ;j++) 
 	bound->topology[i][j] = sideind[j];
       bound->elementtypes[i] = elementtype;
