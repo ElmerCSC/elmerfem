@@ -1,13 +1,6 @@
 ! Computation of the case winkel with various linear solvers
-! This case: hutiter / CG
 !
 ! P.R. 1.12.2016
-
-$solvertype = "iterative"
-$solvermethod = "cg"
-$precmethod = "ILU0"
-$maxiter = 1000
-$tol = 1.0e-8
 
 Header
   CHECK KEYWORDS Warn
@@ -17,7 +10,7 @@ Header
 End
 
 Simulation
-  Max Output Level = 7
+  Max Output Level = 6
 
   Coordinate System = "Cartesian"
   Coordinate Mapping(3) = 1 2 3
@@ -46,69 +39,59 @@ Equation 1
   Active Solvers(2) = 1 2
 End
 
+! Rest of the solver definitions exlucing the linear solver
 Solver 1
   Exec Solver = "Always"
-  Equation = "Heat Equation"
-  Variable = "Temperature"
-  Variable Dofs = 1
+  Equation = "PotSolver"
+
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
+  Variable = "Potential"
   
-  Linear System Solver = $solvertype
-  Linear System Iterative Method = $solvermethod
-  Linear System Max Iterations = $maxiter
-  Linear System Convergence Tolerance = $tol
-  Linear System Abort Not Converged = True
-  Linear System Preconditioning = $precmethod
-  Linear System Residual Output = 20
-
   Nonlinear System Consistent Norm = True
-
   Steady State Convergence Tolerance = 1.0e-05
-
-  Stabilize = False
-  Nonlinear System Convergence Tolerance = 1.0e-05
-  Nonlinear System Max Iterations = 1
-  Nonlinear System Newton After Iterations = 3
-  Nonlinear System Newton After Tolerance = 1.0e-02
-  Nonlinear System Relaxation Factor = 1.0
 
 ! Add some timing info
   Linear System Timing = True
   Solver Timing = True
+
+! Have the linear system definitions here since only they change
+! You can always move them to the solver section below
+  include linsys.sif 
 End
 
 
-
 Solver 2
-  Exec Solver = after simulation
+!  Exec Solver = after simulation
 
   Equation = SaveTimings
   Procedure = "SaveData" "SaveScalars"
 
   Filename = f.dat
-  Variable 1 = Temperature 
+  Variable 1 = Potential
   Operator 1 = dofs
   Operator 2 = elements
   Operator 3 = partitions
   Operator 4 = cpu time
+
+  Parallel Reduce = True
 End
 
 Material 1
   Name = "Material"
-  Density = 1
-  Heat Conductivity = 3
+  Electric Conductivity = 1.0
 End
 
 Body Force 1
   Name = "BodyForce"
-  Heat Source = 1
+  Current Source = 1.0
 End
 
 Boundary Condition 1
   Name = "Constraint"
   Target Boundaries(1) = 1 
-  Temperature = 0
+  Potential = 0.0
 End
 
-Solver 1 :: Reference Norm = 3.44270946E-01
+Solver 1 :: Reference Norm = 1.03281284
 
 !End Of File
