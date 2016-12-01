@@ -702,7 +702,7 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
   /* Write out the nodal indexes, this is mainly just on example */
   fprintf(out,"      <PointData>\n");
   fprintf(out,"        <DataArray type=\"Float%d\" Name=\"NodeNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
-  if( dummyzero ) fprintf(out,"12.6le ",0.0);
+  if( dummyzero ) fprintf(out,"%12.6le ",0.0);
   for(i=1;i<=noknots;i++) fprintf(out,"%12.6le ",1.0*i);
   fprintf(out,"\n");
   fprintf(out,"        </DataArray>\n");
