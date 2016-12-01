@@ -701,9 +701,16 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
 
   /* Write out the nodal indexes, this is mainly just on example */
   fprintf(out,"      <PointData>\n");
-  fprintf(out,"        <DataArray type=\"Float%d\" Name=\"NodeNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
-  if( dummyzero ) fprintf(out,"%12.6le ",0.0);
-  for(i=1;i<=noknots;i++) fprintf(out,"%12.6le ",1.0*i);
+  if(0) { /* Here we as as floats - just for testing */
+    fprintf(out,"        <DataArray type=\"Float%d\" Name=\"NodeNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
+    if( dummyzero ) fprintf(out,"%12.6le ",0.0);
+    for(i=1;i<=noknots;i++) fprintf(out,"%12.6le ",1.0*i);
+  }
+  else { /* And here as integers - what they really are */
+    fprintf(out,"        <DataArray type=\"Int32\" Name=\"NodeNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n");
+    if( dummyzero ) fprintf(out,"%d ",0);
+    for(i=1;i<=noknots;i++) fprintf(out,"%d ",i);
+  }
   fprintf(out,"\n");
   fprintf(out,"        </DataArray>\n");
   fprintf(out,"      </PointData>\n");
@@ -712,12 +719,21 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
   printf("Saving cell data (Element numbers and Goemetry Ids).\n");
   fprintf(out,"      <CellData>\n");
   /* Write out the element indexes, this is mainly just on example */
-  fprintf(out,"        <DataArray type=\"Float%d\" Name=\"ElementNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
-  for(i=1;i<=noelements;i++) 
-    fprintf(out,"%12.6le ",1.0*i);
-  fprintf(out,"\n");
-  fprintf(out,"        </DataArray>\n");
-
+  if(0) { /* This as floats - just for testing */
+    fprintf(out,"        <DataArray type=\"Float%d\" Name=\"ElementNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
+    for(i=1;i<=noelements;i++) 
+      fprintf(out,"%12.6le ",1.0*i);
+    fprintf(out,"\n");
+    fprintf(out,"        </DataArray>\n");
+  }
+  else { /* This as integers - what they are */
+    fprintf(out,"        <DataArray type=\"Int32\" Name=\"ElementNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n");
+    for(i=1;i<=noelements;i++) 
+      fprintf(out,"%d ",i);
+    fprintf(out,"\n");
+    fprintf(out,"        </DataArray>\n");
+  }
+    
   /* Write out the geometry Ids */
   fprintf(out,"        <DataArray type=\"Int32\" Name=\"GeometryIds\" NumberOfComponents=\"1\" format=\"ascii\">\n");
   for(i=1;i<=bulkelems;i++) 
