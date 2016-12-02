@@ -143,7 +143,6 @@ End
 Boundary Condition 3
   Name = "Fluid-structure boundary"
   Target Boundaries(1) = 3
-  Fsi BC = Logical True
   Normal Force = $ -1.0*p0
   Mesh Update 1 = Equals Displacement 1
   Mesh Update 2 = Equals Displacement 2
