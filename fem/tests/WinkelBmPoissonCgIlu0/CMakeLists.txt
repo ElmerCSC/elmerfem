@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO winkel.grd linsys.sif DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(WinkelBmPoissonCgIlu0 NPROCS 2 4 8 LABELS hutiter)
+ADD_ELMER_TEST(WinkelBmPoissonCgIlu0 NPROCS 2 8 LABELS hutiter)
