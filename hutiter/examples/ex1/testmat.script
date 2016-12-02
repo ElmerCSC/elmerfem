@@ -1,6 +1,0 @@
-#!/bin/sh
-
-./hutiex << _EOF
-testmat
-100
-_EOF

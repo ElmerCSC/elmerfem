@@ -46,8 +46,6 @@
 /* Define if your system has dyld for dynamic linking */
 #cmakedefine HAVE_DYLD_API
 
-/* Define if you have a EIOF library. */
-#define HAVE_EIOF
 /* Define to 1 if you have the `fseeko' function. */
 #define HAVE_FSEEKO
 
@@ -133,9 +131,6 @@
 
 /* Trilinos */
 #cmakedefine HAVE_TRILINOS
-
-/* This remove calls to EIO library */
-#cmakedefine HAVE_EIO
 
 #define ELMER_LINKTYP ${ELMER_LINKTYP}
 #define ENABLE_DYNAMIC_LINKING 1
