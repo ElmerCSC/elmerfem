@@ -40,6 +40,14 @@
 ! - Power formulation if 'Slip Coef'=10^Beta and optimization on Beta
 ! - Beta2 formulation if 'Slip Coef'=Beta^2  and optimization on Beta
 ! - Lambda : the regularization coefficient (Jr=0.5 Lambda (dBeta/dx)^2)
+!
+! If DJDBeta should be set to zero for floating ice shelves the following is 
+! to be used (default is not to do this):
+! - FreeSlipShelves (logical, default false)
+! - mask name (string, default GroundedMask)
+! Note that if FreeSlipShelves is true not only is DJDBeta set to zero for 
+! floating ice, but also the regularisation term NodalRegb.
+!
 ! *****************************************************************************
 SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -80,6 +88,14 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
   Logical ::  Firsttime=.true.,Found,stat,UnFoundFatal
   Logical :: NormalTangential1,NormalTangential2
 
+  ! Variables for setting DJDBeta to zero for ice shelves.
+  TYPE(Variable_t), POINTER   :: PointerToMask => NULL()
+  REAL(KIND=dp), POINTER      :: MaskValues(:) => NULL()
+  INTEGER, POINTER            :: MaskPerm(:) => NULL()
+  LOGICAL                     :: FreeSlipShelves
+  CHARACTER(LEN=MAX_NAME_LEN) :: MaskName
+
+  save FreeSlipShelves,MaskName
   save SolverName,NeumannSolName,AdjointSolName,VarSolName,GradSolName
   save VisitedNode,db,Basis,dBasisdx,nodalbetab,NodalRegb
   save Firsttime,DIM,Lambda
@@ -148,6 +164,21 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
         Lambda = 0.0
      End if
      
+     FreeSlipShelves=GetLogical( SolverParams, 'FreeSlipShelves', Found)
+     IF(.NOT.Found) THEN
+        CALL WARN(SolverName,'Keyword >FreeSlipShelves< not found in solver params')
+        CALL WARN(SolverName,'Taking default value >FALSE<')
+        FreeSlipShelves=.FALSE.
+     END IF
+     IF (FreeSlipShelves) THEN
+        MaskName =  GetString( SolverParams,'mask name', Found)
+        IF(.NOT.Found) THEN
+           CALL WARN(SolverName,'Keyword >mask name< not found in solver section')
+           CALL WARN(SolverName,'Taking default value >GroundedMask<')
+           WRITE(MaskName,'(A)') 'GroundedMask'
+        END IF
+     END IF
+
 !!! End of First visit
      Firsttime=.false.
   Endif
@@ -168,7 +199,11 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
   VelocityD => VeloSolD % Values
   VeloDPerm => VeloSolD % Perm
   
-  
+  IF (FreeSlipShelves) THEN
+     PointerToMask => VariableGet( Model % Variables, MaskName, UnFoundFatal=.TRUE.)
+     MaskValues => PointerToMask % Values
+     MaskPerm => PointerToMask % Perm
+  END IF
   
   VisitedNode=0.0_dp
   db=0.0_dp
@@ -275,14 +310,34 @@ SUBROUTINE DJDBeta_Adjoint( Model,Solver,dt,TransientSimulation )
      IF (Beta2Formulation) then
         nodalbetab(1:n)=nodalbetab(1:n)*2.0_dp*BetaValues(BetaPerm(NodeIndexes(1:n)))
      END IF
-     
+
+     ! Set regularisation to zero for floating points
+     IF (FreeSlipShelves) THEN
+        DO t=1,n
+           IF ( MaskValues(MaskPerm(NodeIndexes(t))).LT.0.0_dp ) THEN
+              NodalRegb(t) = 0.0_dp
+           END IF
+        END DO
+     END IF
+
      db(NodeIndexes(1:n)) = db(NodeIndexes(1:n)) + nodalbetab(1:n) + NodalRegb(1:n)
   End do ! on elements
   
   Do t=1,Solver % Mesh % NumberOfNodes
      if (VisitedNode(t).lt.1.0_dp) cycle
-     VariableValues(Permutation(t))=db(t) 
+     VariableValues(Permutation(t)) = db(t) 
+     IF (FreeSlipShelves) THEN
+        IF ( MaskValues(MaskPerm(t)).LT.0.0_dp ) THEN
+           VariableValues(Permutation(t)) = 0.0_dp
+        END IF
+     END IF
   End do
+  
+  IF (FreeSlipShelves) THEN
+     NULLIFY(PointerToMask)
+     NULLIFY(MaskValues)
+     NULLIFY(MaskPerm)
+  END IF
   
   Return
   
@@ -294,6 +349,7 @@ CONTAINS
     
     v2=v(1)*v(1)+v(2)*v(2)+v(3)*v(3)
   end function calcNorm
+
   function scalar(v1,v2) result(vr)
     implicit none
     real(kind=dp) :: v2(3),v1(3),vr
