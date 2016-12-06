@@ -13,7 +13,7 @@ Interpolation is made using external libraries
 	- Edit/Update the Makefile and compile/install the solver
 
 /!\ -- 
-/!\ Only executed if netcdf, csa & nn options are present in the building procjet.
+/!\ Only executed if netcdf, csa & nn options are present in the building project.
 /!\    NetCDF:     >NetCDF_INCLUDE_DIR<, >NetCDFF_LIBRARY<, >NetCDF_LIBRARY<
 /!\    NN    :     >NN_INCLUDE_DIR<, >NN_LIBRARY<
 /!\    CSA   :      >CSA_INCLUDE_DIR<, >CSA_LIBRARY<
