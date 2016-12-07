@@ -3074,6 +3074,7 @@ CONTAINS
   REAL(KIND=C_DOUBLE), ALLOCATABLE :: vals(:)
   INTEGER, POINTER :: ptr
   INTEGER :: i,j,k,l,k1,k2
+  INTEGER :: matrixType, eType
   INTEGER(C_INT), ALLOCATABLE :: ind(:)
 
 #ifdef HAVE_FETI4I
@@ -3096,7 +3097,9 @@ CONTAINS
   IF(.NOT.C_ASSOCIATED(A % PermonMatrix)) THEN
     A % NoDirichlet = .TRUE.
     !! A % PermonMatrix = Permon_InitMatrix(A % NumberOFRows)
-    CALL FETI4ICreateStiffnessMatrix(A % PermonMatrix, 1) !TODO add number of rows A % NumberOFRows
+     !! TODO: get correct matrix type 
+    matrixType = 0
+    CALL FETI4ICreateStiffnessMatrix(A % PermonMatrix, matrixType, 1) !TODO add number of rows A % NumberOFRows
   END IF
 
   ALLOCATE(vals(n*n*dofs*dofs), ind(n*dofs))
@@ -3114,7 +3117,8 @@ CONTAINS
   END DO
 
   !CALL Permon_UpdateMatrix( A % PermonMatrix, n*dofs, ind, vals )
-  CALL FETI4IAddElement(A % PermonMatrix, n*dofs, ind, vals)
+  eType = 3 !! 3D element -> type of the element is the same as its dimension
+  CALL FETI4IAddElement(A % PermonMatrix, eType, n, nInd, n*dofs, ind, vals)
 
 #endif
     
