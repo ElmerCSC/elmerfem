@@ -26,8 +26,6 @@ End
 Numbering = Horizontal
 Element Degree = 1
 Element Innernodes = False
-!Triangles = True
-!Surface Elements = 200
 Reference Density = 0.25
 Element Ratios 1 = 1 1
 Element Ratios 2 = 1 1 1
