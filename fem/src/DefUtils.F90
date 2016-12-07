@@ -3097,9 +3097,9 @@ CONTAINS
   IF(.NOT.C_ASSOCIATED(A % PermonMatrix)) THEN
     A % NoDirichlet = .TRUE.
     !! A % PermonMatrix = Permon_InitMatrix(A % NumberOFRows)
-    !! TODO: get correct matrix type
-    matrixType = 0 !! symmetric positive definite (for other types see feti4i.h)
-    CALL FETI4ICreateStiffnessMatrix(A % PermonMatrix, matrixType, 1)
+     !! TODO: get correct matrix type 
+    matrixType = 0  !! symmetric positive definite (for other types see feti4i.h)
+    CALL FETI4ICreateStiffnessMatrix(A % PermonMatrix, matrixType, 1) !TODO add number of rows A % NumberOFRows
   END IF
 
   ALLOCATE(vals(n*n*dofs*dofs), ind(n*dofs))
