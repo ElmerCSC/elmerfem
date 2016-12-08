@@ -6469,10 +6469,10 @@ CONTAINS
       DO i=1,ParEnv % PEs
         IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
            CALL MPI_BSEND( n_count(i), 1, MPI_INTEGER, i-1, &
-                800, MPI_COMM_WORLD, ierr )
+                800, ELMER_COMM_WORLD, ierr )
            IF ( n_count(i)>0 ) &
              CALL MPI_BSEND( n_index(i) % buff, n_count(i), MPI_INTEGER, i-1, &
-                 801, MPI_COMM_WORLD, ierr )
+                 801, ELMER_COMM_WORLD, ierr )
         END IF
       END DO
 
@@ -6481,12 +6481,12 @@ CONTAINS
 
         IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
            CALL MPI_RECV( n, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-                800, MPI_COMM_WORLD, status, ierr )
+                800, ELMER_COMM_WORLD, status, ierr )
            IF ( n>0 ) THEN
              ALLOCATE( gbuff(n) )
              proc = status(MPI_SOURCE)
              CALL MPI_RECV( gbuff, n, MPI_INTEGER, proc, &
-                 801, MPI_COMM_WORLD, status, ierr )
+                 801, ELMER_COMM_WORLD, status, ierr )
 
              DO j=1,n
                k = SearchNodeL( Mesh % ParallelInfo, gbuff(j), Mesh % NumberOfNodes )
@@ -6795,12 +6795,12 @@ CONTAINS
         DO i=1,ParEnv % PEs
           IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
             CALL MPI_BSEND( n_count(i), 1, MPI_INTEGER, i-1, &
-                900, MPI_COMM_WORLD, ierr )
+                900, ELMER_COMM_WORLD, ierr )
             IF ( n_count(i)>0 ) THEN
               CALL MPI_BSEND( n_index(i) % buff, n_count(i), MPI_INTEGER, i-1, &
-                  901, MPI_COMM_WORLD, ierr )
+                  901, ELMER_COMM_WORLD, ierr )
               CALL MPI_BSEND( n_index(i) % normals, 3*n_count(i), MPI_DOUBLE_PRECISION, &
-                    i-1,  902, MPI_COMM_WORLD, ierr )
+                    i-1,  902, ELMER_COMM_WORLD, ierr )
             END IF
           END IF
         END DO
@@ -6809,15 +6809,15 @@ CONTAINS
 
           IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
              CALL MPI_RECV( n, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-                    900, MPI_COMM_WORLD, status, ierr )
+                    900, ELMER_COMM_WORLD, status, ierr )
              IF ( n>0 ) THEN
                proc = status(MPI_SOURCE)
                ALLOCATE( gbuff(n), nbuff(3*n) )
                CALL MPI_RECV( gbuff, n, MPI_INTEGER, proc, &
-                   901, MPI_COMM_WORLD, status, ierr )
+                   901, ELMER_COMM_WORLD, status, ierr )
 
                CALL MPI_RECV( nbuff, 3*n, MPI_DOUBLE_PRECISION, proc, &
-                    902, MPI_COMM_WORLD, status, ierr )
+                    902, ELMER_COMM_WORLD, status, ierr )
 
                DO j=1,n
                  k = SearchNodeL( Mesh % ParallelInfo, gbuff(j), Mesh % NumberOfNodes )
@@ -9328,22 +9328,22 @@ END FUNCTION SearchNodeL
       IF( NoBC > 0 ) THEN
         tmp_weights(1:NoBC ) = bc_weights
         CALL MPI_ALLREDUCE( tmp_weights, bc_weights, NoBC, &
-            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
       IF( NoBF > 0 ) THEN
         tmp_weights(1:NoBF ) = bf_weights
         CALL MPI_ALLREDUCE( tmp_weights, bf_weights, NoBF, &
-            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
       IF( NoBodies > 0 ) THEN
         tmp_weights(1:NoBodies ) = body_weights
         CALL MPI_ALLREDUCE( tmp_weights, body_weights, NoBodies, &
-            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
       IF( NoMat > 0 ) THEN
         tmp_weights(1:NoMat ) = mat_weights
         CALL MPI_ALLREDUCE( tmp_weights, mat_weights, NoMat, &
-            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
       DEALLOCATE( tmp_weights )
     END IF
@@ -12298,7 +12298,7 @@ CONTAINS
     END IF
 
     CALL ParallelSumVector(A, x)
-!   CALL MPI_ALLREDUCE( x,r, ng, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, i ); x=r
+!   CALL MPI_ALLREDUCE( x,r, ng, MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, i ); x=r
 
     IF(ALLOCATED(perm)) THEN
       DO i=1,SIZE(perm)
@@ -12387,16 +12387,16 @@ CONTAINS
 
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN
-           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, MPI_COMM_WORLD, status, ierr )
+           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, ELMER_COMM_WORLD, status, ierr )
            IF ( cnt(i)>0 ) THEN
              CALL MPI_BSEND( Buf(i) % grow, cnt(i), MPI_INTEGER, &
-                 i, 7002, MPI_COMM_WORLD, status, ierr )
+                 i, 7002, ELMER_COMM_WORLD, status, ierr )
 
              CALL MPI_BSEND( Buf(i) % gcol, cnt(i), MPI_INTEGER, &
-                 i, 7003, MPI_COMM_WORLD, status, ierr )
+                 i, 7003, ELMER_COMM_WORLD, status, ierr )
 
              CALL MPI_BSEND( Buf(i) % gval, cnt(i), MPI_DOUBLE_PRECISION, &
-                 i, 7004, MPI_COMM_WORLD, status, ierr )
+                 i, 7004, ELMER_COMM_WORLD, status, ierr )
            END IF
          END IF
        END DO
@@ -12409,7 +12409,7 @@ CONTAINS
 
        DO i=1,ParEnv % NumOfNeighbours
          CALL MPI_RECV( rcnt, 1, MPI_INTEGER, &
-           MPI_ANY_SOURCE, 7001, MPI_COMM_WORLD, status, ierr )
+           MPI_ANY_SOURCE, 7001, ELMER_COMM_WORLD, status, ierr )
 
          IF ( rcnt>0 ) THEN
            IF(.NOT.ALLOCATED(rrow)) THEN
@@ -12421,13 +12421,13 @@ CONTAINS
 
            proc = status(MPI_SOURCE)
            CALL MPI_RECV( rrow, rcnt, MPI_INTEGER, &
-              proc, 7002, MPI_COMM_WORLD, status, ierr )
+              proc, 7002, ELMER_COMM_WORLD, status, ierr )
 
            CALL MPI_RECV( rcol, rcnt, MPI_INTEGER, &
-              proc, 7003, MPI_COMM_WORLD, status, ierr )
+              proc, 7003, ELMER_COMM_WORLD, status, ierr )
 
            CALL MPI_RECV( rval, rcnt, MPI_DOUBLE_PRECISION, &
-              proc, 7004, MPI_COMM_WORLD, status, ierr )
+              proc, 7004, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,rcnt
              l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)

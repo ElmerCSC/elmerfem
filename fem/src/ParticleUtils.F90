@@ -554,11 +554,11 @@ CONTAINS
     IF( ParEnv % PEs > 1 ) THEN
       s = MinCoord
       CALL MPI_ALLREDUCE( s, mincoord, 3, MPI_DOUBLE_PRECISION, &
-          MPI_MIN, MPI_COMM_WORLD, ierr )
+          MPI_MIN, ELMER_COMM_WORLD, ierr )
       
       s = MaxCoord
       CALL MPI_ALLREDUCE( s, maxcoord, 3, MPI_DOUBLE_PRECISION, &
-          MPI_MAX, MPI_COMM_WORLD, ierr )
+          MPI_MAX, ELMER_COMM_WORLD, ierr )
     END IF
     
     Particles % GlobalMinCoord = MinCoord
@@ -1132,7 +1132,7 @@ RETURN
         //TRIM(I2S(n)),Level=10)
     
     CALL MPI_ALLREDUCE( n, nSent, 1, MPI_INTEGER, &
-        MPI_SUM, MPI_COMM_WORLD, ierr )
+        MPI_SUM, ELMER_COMM_WORLD, ierr )
     IF ( nSent == 0 ) THEN
       CALL Info('ChangeParticlePartition','No particles needs to be sent',Level=10)
       DEALLOCATE(ExcInfo, Perm, Neigh)
@@ -1145,12 +1145,12 @@ RETURN
     ALLOCATE( Recv_Parts(NoPartitions), Requests(NoPartitions) )
     DO i=1,NoPartitions
       CALL MPI_iRECV( Recv_Parts(i),1, MPI_INTEGER, Neigh(i), &
-          1000, MPI_COMM_WORLD, requests(i), ierr )
+          1000, ELMER_COMM_WORLD, requests(i), ierr )
     END DO
     
     DO i=1,NoPartitions
       CALL MPI_BSEND( ExcInfo(i) % n, 1, MPI_INTEGER, Neigh(i), &
-          1000, MPI_COMM_WORLD, ierr )
+          1000, ELMER_COMM_WORLD, ierr )
     END DO
     CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
     
@@ -1159,7 +1159,7 @@ RETURN
         //TRIM(I2S(n)),Level=10)
    
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
-        MPI_SUM, MPI_COMM_WORLD, ierr )
+        MPI_SUM, ELMER_COMM_WORLD, ierr )
     IF ( nReceived==0 ) THEN
       CALL Info('ChangeParticlePartition','No particles needs to be received',Level=10)
       DEALLOCATE(Recv_Parts, Requests, ExcInfo, Perm, Neigh)
@@ -1262,7 +1262,7 @@ RETURN
       IF ( n<=0 ) CYCLE
       
       CALL MPI_BSEND( ExcInfo(j) % Gindex, n, MPI_INTEGER, Neigh(j), &
-          1001, MPI_COMM_WORLD, ierr )
+          1001, ELMER_COMM_WORLD, ierr )
       
       ALLOCATE(Buf(dim*n*ncomp))
       m = 0
@@ -1321,7 +1321,7 @@ RETURN
       END DO
      
       CALL MPI_BSEND( Buf, m, MPI_DOUBLE_PRECISION, &
-          Neigh(j), 1002, MPI_COMM_WORLD, ierr )
+          Neigh(j), 1002, ELMER_COMM_WORLD, ierr )
       
       DEALLOCATE(Buf)
 
@@ -1347,7 +1347,7 @@ RETURN
 !endif
          END DO
         END IF
-        CALL MPI_BSEND( BufInt, m, MPI_INTEGER, Neigh(j), 1003, MPI_COMM_WORLD, ierr )
+        CALL MPI_BSEND( BufInt, m, MPI_INTEGER, Neigh(j), 1003, ELMER_COMM_WORLD, ierr )
         
         DEALLOCATE(BufInt)
       END IF
@@ -1391,7 +1391,7 @@ RETURN
       ALLOCATE(Indexes(n))
       
       CALL MPI_RECV( Indexes, n, MPI_INTEGER, proc, &
-          1001, MPI_COMM_WORLD, status, ierr )
+          1001, ELMER_COMM_WORLD, status, ierr )
       
       n_part=Particles % NumberOfParticles
       DO j=1,n
@@ -1415,7 +1415,7 @@ RETURN
       IF ( ASSOCIATED(Particles % Velocity) ) m=m+n*dim
       ALLOCATE(Buf(m))
       CALL MPI_RECV( Buf, m, MPI_DOUBLE_PRECISION, proc, &
-          1002, MPI_COMM_WORLD, status, ierr )
+          1002, ELMER_COMM_WORLD, status, ierr )
       
       n_part=Particles % NumberOfParticles
       m = 0
@@ -1480,7 +1480,7 @@ RETURN
         ALLOCATE(BufInt(n*ncompInt))
         m = n*ncompInt
         
-       CALL MPI_RECV( BufInt, m, MPI_INTEGER, proc, 1003, MPI_COMM_WORLD, status, ierr )
+       CALL MPI_RECV( BufInt, m, MPI_INTEGER, proc, 1003, ELMER_COMM_WORLD, status, ierr )
         
         n_part=Particles % NumberOfParticles
         m = 0
@@ -1507,7 +1507,7 @@ RETURN
     END DO
     
     DEALLOCATE(Recv_Parts, Neigh, Requests)
-    CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+    CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
     CALL Info('ChangeParticlePartition','Information exchange done',Level=10)
 
@@ -1638,7 +1638,7 @@ RETURN
     CALL Info('ParticleAdvectParallel','Local particles to be sent: '//TRIM(I2S(n)),Level=12)
     
     CALL MPI_ALLREDUCE( n, nSent, 1, MPI_INTEGER, &
-        MPI_SUM, MPI_COMM_WORLD, ierr )
+        MPI_SUM, ELMER_COMM_WORLD, ierr )
 
     IF( nSent > 0 ) THEN
       CALL Info('ParticleAdvectParallel','Global particles to be sent: '&
@@ -1656,13 +1656,13 @@ RETURN
     DO i=1,NoPartitions
       IF( i-1 == ParEnv % MyPe ) CYCLE
       CALL MPI_iRECV( RecvParts(i), 1, MPI_INTEGER, i-1, &
-          1000, MPI_COMM_WORLD, requests(i), ierr )
+          1000, ELMER_COMM_WORLD, requests(i), ierr )
     END DO
     
     DO i=1,NoPartitions
       IF( i-1 == ParEnv % MyPe ) CYCLE
       CALL MPI_BSEND( SentParts(i), 1, MPI_INTEGER, i-1, &
-          1000, MPI_COMM_WORLD, ierr )
+          1000, ELMER_COMM_WORLD, ierr )
     END DO
     CALL MPI_WaitAll( NoPartitions, Requests, MPI_STATUSES_IGNORE, ierr )
 
@@ -1671,7 +1671,7 @@ RETURN
     CALL Info('ParticleAdvectParallel','Particles to be recieved: '//TRIM(I2S(n)),Level=12)
 
     CALL MPI_ALLREDUCE( n, nReceived, 1, MPI_INTEGER, &
-        MPI_SUM, MPI_COMM_WORLD, ierr )
+        MPI_SUM, ELMER_COMM_WORLD, ierr )
 
     IF ( nReceived==0 ) THEN
       DEALLOCATE(RecvParts, SentParts, Requests )
@@ -1720,10 +1720,10 @@ RETURN
       END DO
 
       CALL MPI_BSEND( SentInt, m, MPI_INTEGER, j-1, &
-          1001, MPI_COMM_WORLD, ierr )
+          1001, ELMER_COMM_WORLD, ierr )
 
       CALL MPI_BSEND( SentReal, m, MPI_DOUBLE_PRECISION, j-1, &
-          1002, MPI_COMM_WORLD, ierr )
+          1002, ELMER_COMM_WORLD, ierr )
     END DO
 
 
@@ -1740,10 +1740,10 @@ RETURN
       IF ( m == 0 ) CYCLE
       
       CALL MPI_RECV( RecvInt, m, MPI_INTEGER, j-1, &
-          1001, MPI_COMM_WORLD, status, ierr )
+          1001, ELMER_COMM_WORLD, status, ierr )
 
       CALL MPI_RECV( RecvReal, m, MPI_DOUBLE_PRECISION, j-1, &
-          1002, MPI_COMM_WORLD, status, ierr )
+          1002, ELMER_COMM_WORLD, status, ierr )
       
       DO l=1,m
         k = RecvInt(l)
@@ -1760,7 +1760,7 @@ RETURN
     END IF
 
 
-    CALL MPI_BARRIER( MPI_COMM_WORLD, ierr )
+    CALL MPI_BARRIER( ELMER_COMM_WORLD, ierr )
 
     DEALLOCATE(SentParts, RecvParts, Requests, SentInt, SentReal, RecvInt, RecvReal )
 
@@ -4381,7 +4381,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
     ALLOCATE( Recv_Parts(NoPartitions), Requests(NoPartitions) )
     DO i=1,NoPartitions
       CALL MPI_iRECV( Recv_Parts(i),1, MPI_INTEGER, Neigh(i), &
-          2000, MPI_COMM_WORLD, requests(i), ierr )
+          2000, ELMER_COMM_WORLD, requests(i), ierr )
     END DO
     
     PI => Mesh % ParallelInfo
@@ -4410,7 +4410,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
     
     DO i=1,NoPartitions
       CALL MPI_BSEND( Info(i) % n, 1, MPI_INTEGER, Neigh(i), &
-          2000, MPI_COMM_WORLD, ierr )
+          2000, ELMER_COMM_WORLD, ierr )
     END DO
     
     !
@@ -4453,7 +4453,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       IF ( n<=0 ) CYCLE
       
       CALL MPI_BSEND( Info(j) % Gindex, n, MPI_INTEGER, &
-          Neigh(j), 2001, MPI_COMM_WORLD, ierr )
+          Neigh(j), 2001, ELMER_COMM_WORLD, ierr )
       
       ALLOCATE(Buf(2*n*dim+n))
       m = 0
@@ -4476,7 +4476,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
         END DO
       END IF
       CALL MPI_BSEND( Buf, m, MPI_DOUBLE_PRECISION, &
-          Neigh(j), 2002, MPI_COMM_WORLD, ierr )
+          Neigh(j), 2002, ELMER_COMM_WORLD, ierr )
       DEALLOCATE(Buf)
     END DO
     
@@ -4498,7 +4498,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       
       ALLOCATE(Indexes(n))
       CALL MPI_RECV( Indexes, n, MPI_INTEGER, proc, &
-          2001, MPI_COMM_WORLD, status, ierr )
+          2001, ELMER_COMM_WORLD, status, ierr )
       
       n_part=Particles % NumberOfParticles
       DO j=1,n
@@ -4517,7 +4517,7 @@ if ( debug ) print*,parenv % mype, 'go 200 '; flush(6)
       
       ALLOCATE(Buf(m))
       CALL MPI_RECV( Buf, m, MPI_DOUBLE_PRECISION, proc, &
-          2002, MPI_COMM_WORLD, status, ierr )
+          2002, ELMER_COMM_WORLD, status, ierr )
       
       n_part=Particles % NumberOfParticles
       m = 0

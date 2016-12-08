@@ -908,6 +908,7 @@ END INTERFACE
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
     INTEGER :: CurrentColour = 1
+    INTEGER :: ELMER_COMM_WORLD = -1
 
 !------------------------------------------------------------------------------
 END MODULE Types

@@ -1913,7 +1913,7 @@ INCLUDE "mpif.h"
       Matrix % Solver => NULL()
 
       Matrix % DGMatrix = .FALSE.
-      Matrix % Comm = MPI_COMM_WORLD
+      Matrix % Comm = ELMER_COMM_WORLD
 
    END SUBROUTINE ClearMatrix
 

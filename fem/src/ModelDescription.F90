@@ -4909,7 +4909,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
   A => CreateMatrix(Model,Solver, &
            Solver % Mesh,CPerm,1,MATRIX_CRS,.FALSE.,NodalDofsOnly=.TRUE. )
 
-  A % Comm = MPI_COMM_WORLD
+  A % Comm = ELMER_COMM_WORLD
   A % ParMatrix => NULL()
   Solver % Matrix => A
   Model % Solver => Solver
@@ -4925,7 +4925,7 @@ SUBROUTINE GetNodalElementSize(Model,expo,noweight,h)
 
   IF ( ParEnv % PEs>1 ) THEN
     IF ( ASSOCIATED(Solver % Mesh % ParallelInfo % INTERFACE) ) THEN
-      ParEnv % ActiveComm = MPI_COMM_WORLD
+      ParEnv % ActiveComm = ELMER_COMM_WORLD
 
       ALLOCATE(ParEnv % Active(ParEnv % PEs))
       ParEnv % Active=.TRUE.
