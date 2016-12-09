@@ -2987,14 +2987,14 @@ CONTAINS
 
         IF(i<=gm % NumberOfRows) THEN
           ncols=gm % Rows(i+1)-gm % Rows(i)
-          CALL MPI_BSEND(ncols,1,MPI_INTEGER,i-1,2120,MPI_COMM_WORLD,ierr)
+          CALL MPI_BSEND(ncols,1,MPI_INTEGER,i-1,2120,ELMER_COMM_WORLD,ierr)
           IF(ncols>0) THEN
             CALL MPI_BSEND(gm%cols(gm%rows(i):gm%rows(i+1)-1),ncols, &
-                 MPI_INTEGER,i-1,2121,MPI_COMM_WORLD,ierr)
+                 MPI_INTEGER,i-1,2121,ELMER_COMM_WORLD,ierr)
           END IF
         ELSE
            ncols=0
-          CALL MPI_BSEND(ncols,1,MPI_INTEGER,i-1,2120,MPI_COMM_WORLD,ierr)
+          CALL MPI_BSEND(ncols,1,MPI_INTEGER,i-1,2120,ELMER_COMM_WORLD,ierr)
         END IF
       END DO
 
@@ -3003,10 +3003,10 @@ CONTAINS
       DO i=1,ParEnv % PEs
         IF(i-1==Parenv % myPE.OR..NOT.ParEnv % Active(i)) CYCLE
 
-        CALL MPI_RECV(ncols,1,MPI_INTEGER,i-1,2120,MPI_COMM_WORLD,status,ierr)
+        CALL MPI_RECV(ncols,1,MPI_INTEGER,i-1,2120,ELMER_COMM_WORLD,status,ierr)
         IF(ncols>0) THEN
           ALLOCATE(narr(ncols))
-          CALL MPI_RECV(narr,ncols,MPI_INTEGER,i-1,2121,MPI_COMM_WORLD,status,ierr)
+          CALL MPI_RECV(narr,ncols,MPI_INTEGER,i-1,2121,ELMER_COMM_WORLD,status,ierr)
           DO j=1,ncols
             k = SearchIAItem(A % NumberOfRows,A % ParallelInfo % GlobalDOFs, narr(j))
             IF(k>0) THEN

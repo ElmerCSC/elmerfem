@@ -539,7 +539,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        ALLOCATE( CapMatrixPara( CapBodies, CapBodies ) )
        CapMatrixPara = CapMatrix
        CALL MPI_ALLREDUCE(CapMatrixPara, CapMatrix, CapBodies**2, MPI_DOUBLE_PRECISION, MPI_SUM, &
-           MPI_COMM_WORLD, i)
+           ELMER_COMM_WORLD, i)
        DEALLOCATE( CapMatrixPara )
      END IF
 
