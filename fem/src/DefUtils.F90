@@ -3117,7 +3117,10 @@ CONTAINS
   END DO
 
   !CALL Permon_UpdateMatrix( A % PermonMatrix, n*dofs, ind, vals )
-  eType = 3 !! 3D element -> type of the element is the same as its dimension
+
+  eType = ElementDim( CurrentModel % CurrentElement )
+  ! type of the element is the same as its dimension
+
   CALL FETI4IAddElement(A % PermonMatrix, eType, n, nInd, n*dofs, ind, vals)
 
 #endif
