@@ -114,7 +114,8 @@
 
      INTEGER :: iargc, NoArgs
 
-     INTEGER :: ExtrudeLevels, MeshIndex
+     INTEGER ::  MeshIndex
+     INTEGER, POINTER :: ExtrudeLevels(:)
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
 #ifdef HAVE_TRILINOS
@@ -325,15 +326,19 @@ END INTERFACE
 
          ! Optionally perform simple extrusion to increase the dimension of the mesh
          !----------------------------------------------------------------------------------
-         ExtrudeLevels=GetInteger(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
+         ExtrudeLevels => ListGetIntegerArray(CurrentModel % Simulation,'Extruded Mesh Levels',Found)
          IF (Found) THEN
-            IF(ExtrudeLevels>1) THEN
+            IF(ANY(ExtrudeLevels>2)) THEN            
+               ! the size of the mesh levels has to be reduced by 2 to be compatible with original version
+               DO i=1,SIZE(ExtrudeLevels)
+                 ExtrudeLevels(i) = ExtrudeLevels(i) - 2
+               END DO
                ExtrudedMeshName = GetString(CurrentModel % Simulation,'Extruded Mesh Name',Found)
                IF (Found) THEN
-                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2, ExtrudedMeshName)
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels, ExtrudedMeshName)
                ELSE
-                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels-2)
-               END IF
+                  ExtrudedMesh => MeshExtrude(CurrentModel % Meshes, ExtrudeLevels)
+               END IF              
                DO i=1,CurrentModel % NumberOfSolvers
                   IF(ASSOCIATED(CurrentModel % Solvers(i) % Mesh,CurrentModel % Meshes)) &
                        CurrentModel % Solvers(i) % Mesh => ExtrudedMesh 
@@ -354,8 +359,6 @@ END INTERFACE
                END DO
             END IF
          END IF
-
-
          !----------------------------------------------------------------------------------
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
@@ -503,8 +506,9 @@ END INTERFACE
        OutputIntervals => ListGetIntegerArray( CurrentModel % Simulation, &
                        'Output Intervals', GotIt )
        IF( GotIt ) THEN
-         IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
-           CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
+         IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN 
+           CALL INFO('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !',Level=1)
+           CALL FATAL('ElmerSolver', 'If you are running >steady state<, give only single entry to > Output Intervals < ')
          END IF
        ELSE
          ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )

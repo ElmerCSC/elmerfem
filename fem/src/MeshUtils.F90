@@ -23,7 +23,7 @@
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen, Peter Råback
+! *  Authors: Juha Ruokolainen, Peter Råback, Thomas Zwinger
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
@@ -9914,35 +9914,47 @@ END SUBROUTINE GetMaxDefs
 !> with indexes one larger than the maximum used on by the 2D mesh. 
 !------------------------------------------------------------------------------
   FUNCTION MeshExtrude(Mesh_in, in_levels, ExtrudedMeshName) RESULT(Mesh_out)
-!------------------------------------------------------------------------------
+    !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh_in, Mesh_out
-    INTEGER :: in_levels
+    INTEGER, POINTER :: in_levels(:)
     CHARACTER(LEN=MAX_NAME_LEN),INTENT(IN),OPTIONAL :: ExtrudedMeshName
 
-!------------------------------------------------------------------------------
-    INTEGER :: i,j,k,l,n,cnt,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
-        ExtrudedCoord,dg_n
+    !------------------------------------------------------------------------------
+    INTEGER :: i,j,k,l,n,cnt,cnt0,cnt101,ind(8),max_baseline_bid,max_bid,l_n,max_body,bcid,&
+         ExtrudedCoord,dg_n,blk,buildingblocks,starti,currentlevel,alllevels,&
+         max_bclayer
     TYPE(ParallelInfo_t), POINTER :: PI_in, PI_out
-    INTEGER :: nnodes,gnodes,gelements,ierr
+    INTEGER :: nnodes,gnodes,lnodes,gelements,ierr,istat
     LOGICAL :: isParallel, Found, NeedEdges, PreserveBaseline
-    REAL(KIND=dp)::w,MinCoord,MaxCoord,CurrCoord
+    REAL(KIND=dp)::w,CurrCoord
     REAL(KIND=dp), POINTER :: ActiveCoord(:)
-    REAL(KIND=dp), ALLOCATABLE :: Wtable(:)
-!------------------------------------------------------------------------------
+    REAL(KIND=dp), ALLOCATABLE :: Wtable(:,:),Wtable_in(:),MinCoord(:),MaxCoord(:)
+    !------------------------------------------------------------------------------
     Mesh_out => AllocateMesh()
-!   Mesh_out = Mesh_in
-
-
+    !   Mesh_out = Mesh_in
+    buildingblocks = SIZE(in_levels)
+    WRITE(Message,'(A,I2,A)'), "buildingblocks=", buildingblocks, " element levels within blocks:"
+    CALL INFO('MeshExtrude',Message)
+    DO blk=1,buildingblocks
+      WRITE(Message,'(A,I2,A,I3)'), 'Block no. ',blk,': ', in_levels(blk) + 1
+      CALL INFO('MeshExtrude',Message,Level=3)
+    END DO
     isParallel = ParEnv % PEs>1
 
     ! Generate volume nodal points:
     ! -----------------------------
-    n=Mesh_in % NumberOfNodes
-    nnodes=(in_levels+2)*n
-
-    ALLOCATE( Mesh_out % Nodes % x(nnodes) )
-    ALLOCATE( Mesh_out % Nodes % y(nnodes) )
-    ALLOCATE( Mesh_out % Nodes % z(nnodes) )
+    lnodes = Mesh_in % NumberOfNodes
+    n = lnodes
+    ! the incoming
+    !alllevels = SUM(in_levels) - (buildingblocks -1) ! remove first level of each block > 1
+    nnodes=(SUM(in_levels) + 2*buildingblocks - (buildingblocks -1))*lnodes ! levels + 2 for each block, first block level of each block, except first one removed
+    
+    ALLOCATE( Mesh_out % Nodes % x(nnodes),&
+         Mesh_out % Nodes % y(nnodes),&
+         Mesh_out % Nodes % z(nnodes), STAT=istat)
+    IF ( istat /= 0 ) THEN
+      CALL FATAL('MeshExtrude','Allocation error')
+    END IF
 
     gelements = Mesh_in % NumberOfBulkElements
     IF (isParallel) THEN
@@ -9956,7 +9968,7 @@ END SUBROUTINE GetMaxDefs
       j=0
       DO i=1,Mesh_in % NumberOfNodes
         IF (PI_in % NeighbourList(i) % &
-            Neighbours(1) == ParEnv % MyPE ) j=j+1
+             Neighbours(1) == ParEnv % MyPE ) j=j+1
       END DO
       CALL MPI_ALLREDUCE(j,gnodes,1, &
            MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,ierr)
@@ -9972,11 +9984,22 @@ END SUBROUTINE GetMaxDefs
 
     ! Create the division for the 1D unit mesh
     !--------------------------------------------
-    ALLOCATE( Wtable( 0: in_levels + 1 ) )
-    CALL UnitSegmentDivision( Wtable, in_levels + 1 ) 
+    ALLOCATE( Wtable(1:buildingblocks,  0:(MAXVAL(in_levels) + 1) ),&
+         Wtable_in(0:(MAXVAL(in_levels) + 1) ),&
+         MinCoord(buildingblocks),&
+         MaxCoord(buildingblocks),STAT=istat )
+    IF ( istat /= 0 ) THEN
+      CALL FATAL('MeshExtrude','Allocation error')
+    END IF
+    DO blk=1,buildingblocks
+      WRITE (Message,'(A,I2)'), 'Block ',blk
+      CALL INFO('MeshExtrude',Message,Level=3)
+      CALL UnitSegmentDivision( Wtable_in, in_levels(blk) + 1 )
+      Wtable(blk,0:in_levels(blk) + 1) = Wtable_in(0:in_levels(blk) + 1)
+    END DO
 
     ExtrudedCoord = ListGetInteger( CurrentModel % Simulation,'Extruded Coordinate Index', &
-        Found, minv=1,maxv=3 )
+         Found, minv=1,maxv=3 )
     IF(.NOT. Found) ExtrudedCoord = 3 
 
     IF( ExtrudedCoord == 1 ) THEN
@@ -9991,43 +10014,61 @@ END SUBROUTINE GetMaxDefs
     PreserveBaseline = ListGetLogical( CurrentModel % Simulation,'Preserve Baseline',Found )
     IF(.NOT. Found) PreserveBaseline = .FALSE.
 
-    MinCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found )
-    IF(.NOT. Found) MinCoord = 0.0_dp
+    MinCoord(1) = ListGetConstReal( CurrentModel % Simulation,'Extruded Min Coordinate',Found )
+    IF(.NOT. Found) MinCoord(1) = 0.0_dp
 
-    MaxCoord = ListGetConstReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found )
-    IF(.NOT. Found) MaxCoord = 1.0_dp
+    MaxCoord(buildingblocks) = ListGetConstReal( CurrentModel % Simulation,'Extruded Max Coordinate',Found )
+    IF(.NOT. Found) MaxCoord(buildingblocks) = 1.0_dp * buildingblocks
+    IF (buildingblocks > 1) THEN
+      DO blk=1,buildingblocks
+        MinCoord(blk) = MinCoord(1) + ((MaxCoord(buildingblocks) - MinCoord(1))/buildingblocks)*(blk -1)
+        MaxCoord(blk) = MinCoord(1) + ((MaxCoord(buildingblocks) - MinCoord(1))/buildingblocks)*blk
+      END DO
+    END IF
+
 
     cnt=0
-    DO i=0,in_levels+1
+    starti = 0
+    currentlevel = 0
+    DO blk=1,buildingblocks
+      IF (blk > 1) starti = 1
+      DO i=starti,in_levels(blk)+1
+        currentlevel = currentlevel + 1
+        w = Wtable(blk, i ) 
+        CurrCoord = w * MaxCoord(blk) + (1-w) * MinCoord(blk)
 
-      w = Wtable( i ) 
-      CurrCoord = w * MaxCoord + (1-w) * MinCoord
+        DO j=1,Mesh_in % NumberOfNodes
 
-      DO j=1,Mesh_in % NumberOfNodes
+          cnt = cnt + 1
 
-        cnt = cnt + 1
+          Mesh_out % Nodes % x(cnt) = Mesh_in % Nodes % x(j) 
+          Mesh_out % Nodes % y(cnt) = Mesh_in % Nodes % y(j) 
+          Mesh_out % Nodes % z(cnt) = Mesh_in % Nodes % z(j) 
 
-        Mesh_out % Nodes % x(cnt) = Mesh_in % Nodes % x(j) 
-        Mesh_out % Nodes % y(cnt) = Mesh_in % Nodes % y(j) 
-        Mesh_out % Nodes % z(cnt) = Mesh_in % Nodes % z(j) 
+          ! Override the coordinate in the extruded direction by the value on the layer.
+          ActiveCoord(cnt) = CurrCoord
 
-        ! Override the coordinate in the extruded direction by the value on the layer.
-        ActiveCoord(cnt) = CurrCoord
+          IF (isParallel) THEN
+            PI_out % INTERFACE(cnt) = PI_in % INTERFACE(j)
 
-        IF (isParallel) THEN
-          PI_out % INTERFACE(cnt) = PI_in % INTERFACE(j)
+            ALLOCATE(PI_out % NeighbourList(cnt) % Neighbours(&
+                 SIZE(PI_in % NeighbourList(j) % Neighbours)),STAT=istat )
+            IF ( istat /= 0 ) THEN
+              CALL FATAL('MeshExtrude','Allocation error, NeighbourList')
+            END IF
+            PI_out % NeighbourList(cnt) % Neighbours = &
+                 PI_in % NeighbourList(j) % Neighbours
 
-          ALLOCATE(PI_out % NeighbourList(cnt) % Neighbours(&
-               SIZE(PI_in % NeighbourList(j) % Neighbours)))
-          PI_out % NeighbourList(cnt) % Neighbours = &
-            PI_in % NeighbourList(j) % Neighbours
+            PI_out % GlobalDOFs(cnt) = PI_in % GlobalDOFs(j)+currentlevel*gnodes
+          END IF
 
-          PI_out % GlobalDOFs(cnt) = PI_in % GlobalDOFs(j)+i*gnodes
-        END IF
-
+        END DO
       END DO
     END DO
     Mesh_out % NumberOfNodes=cnt
+    alllevels = currentlevel - 2
+    WRITE( Message,'(A,I10)') 'total levels in extruded mesh:',alllevels
+    CALL INFO('MeshExtrude',Message,Level=3)
 
     ! Count 101 elements:
     ! (these require an extra layer)
@@ -10036,16 +10077,31 @@ END SUBROUTINE GetMaxDefs
     cnt101 = 0
     DO i=Mesh_in % NumberOfBulkElements+1, &
          Mesh_in % NumberOfBulkElements+Mesh_in % NumberOfBoundaryElements
-       IF(Mesh_in % Elements(i) % TYPE % ElementCode == 101) cnt101 = cnt101+1
+      IF(Mesh_in % Elements(i) % TYPE % ElementCode == 101) cnt101 = cnt101+1
+
     END DO
 
     n=SIZE(Mesh_in % Elements)
     IF (PreserveBaseline) THEN
-        ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + Mesh_in % NumberOfBoundaryElements + cnt101) )
+      ALLOCATE(Mesh_out % Elements(n*(alllevels+3+(blk-1))&
+           + Mesh_in % NumberOfBoundaryElements + cnt101), STAT=istat )
     ELSE
-	ALLOCATE(Mesh_out % Elements(n*(in_levels+3) + cnt101) )
+      ALLOCATE(Mesh_out % Elements(n*(alllevels+3+(blk-1)) + cnt101), STAT=istat )
     END IF
-
+    IF ( istat /= 0 ) THEN
+      CALL FATAL('MeshExtrude','Allocation error, Element allocation')
+    END IF
+    !
+    ! count bodies in orginal mesh
+    max_body=0
+    DO i=1,Mesh_in % NumberOfBulkElements
+      max_body = MAX(max_body,Mesh_in % Elements(i) % Bodyid)
+    END DO
+    IF(isParallel) THEN
+      j=max_body
+      CALL MPI_ALLREDUCE(j,max_body,1, &
+           MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+    END IF
     ! Generate volume bulk elements:
     ! ------------------------------
 
@@ -10054,201 +10110,165 @@ END SUBROUTINE GetMaxDefs
     NeedEdges=.FALSE.
     n=Mesh_in % NumberOfNodes
     cnt=0; dg_n  = 0
-    DO i=0,in_levels
-      DO j=1,Mesh_in % NumberOfBulkElements
+    currentlevel=-1
+    DO blk=1,buildingblocks
+      DO i=0,in_levels(blk)
+        currentlevel = currentlevel + 1
+        DO j=1,Mesh_in % NumberOfBulkElements
 
-        cnt=cnt+1
-        Mesh_out % Elements(cnt) = Mesh_in % Elements(j)
-
-        l_n=0
-        DO k=1,Mesh_in % Elements(j) % TYPE % NumberOfNodes
-          l_n=l_n+1
-          ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)+i*n
-        END DO
-        DO k=1,Mesh_in % Elements(j) % TYPE % NumberOfNodes
-          l_n=l_n+1
-          ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)+(i+1)*n
-        END DO
-        Mesh_out % Elements(cnt) % NDOFs = l_n
-        Mesh_out % MaxElementNodes=MAX(Mesh_out % MaxElementNodes,l_n)
-
-        SELECT CASE(l_n)
-        CASE(6)
-          Mesh_out % Elements(cnt) % TYPE => GetElementType(706)
-        CASE(8)
-          Mesh_out % Elements(cnt) % TYPE => GetElementType(808)
-        END SELECT
-
-        Mesh_out % Elements(cnt) % GElementIndex = &
-             Mesh_in % Elements(j) % GelementIndex + gelements*i
-
-        Mesh_out % Elements(cnt) % ElementIndex = cnt
-        ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n)) 
-        Mesh_out % Elements(cnt) % DGIndexes => NULL()
-        Mesh_out % Elements(cnt) % NodeIndexes = ind(1:l_n)
-        Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
-        Mesh_out % Elements(cnt) % FaceIndexes => NULL()
-        Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
-
-        k = Mesh_out % Elements(cnt) % DGDOFs
-        IF(k>0) THEN
-          Mesh_out % Elements(cnt) % DGDOFs = &
-                Mesh_out % Elements(cnt) % TYPE % NumberOFNodes
-          k = Mesh_out % Elements(cnt) % DGDOFs
-          ALLOCATE(Mesh_out % Elements(cnt) % DGIndexes(k))
-          DO l=1,k
-            dg_n = dg_n + 1
-            Mesh_out % Elements(cnt) % DGIndexes(l) = dg_n
+          cnt=cnt+1
+          Mesh_out % Elements(cnt) = Mesh_in % Elements(j)
+          Mesh_out % Elements(cnt) % BodyID = Mesh_in % Elements(j) % BodyId &
+               + max_body * (blk - 1)
+          l_n=0
+          DO k=1,Mesh_in % Elements(j) % TYPE % NumberOfNodes
+            l_n=l_n+1
+            ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)+currentlevel*lnodes
           END DO
-          NeedEdges=.TRUE.
-        END IF
+          DO k=1,Mesh_in % Elements(j) % TYPE % NumberOfNodes
+            l_n=l_n+1
+            ind(l_n) = Mesh_in % Elements(j) % NodeIndexes(k)+(currentlevel+1)*lnodes
+          END DO
+          Mesh_out % Elements(cnt) % NDOFs = l_n
+          Mesh_out % MaxElementNodes=MAX(Mesh_out % MaxElementNodes,l_n)
 
-        IF(ASSOCIATED(Mesh_in % Elements(j) % PDefs)) THEN
-          NeedEdges=.TRUE.
-          ALLOCATE(Mesh_out % Elements(cnt) % PDefs)
-          Mesh_out % Elements(cnt) % PDefs=Mesh_in % Elements(j) % PDefs
-        END IF
+          SELECT CASE(l_n)
+          CASE(6)
+            Mesh_out % Elements(cnt) % TYPE => GetElementType(706)
+          CASE(8)
+            Mesh_out % Elements(cnt) % TYPE => GetElementType(808)
+          END SELECT
+
+          Mesh_out % Elements(cnt) % GElementIndex = &
+               Mesh_in % Elements(j) % GelementIndex + gelements*currentlevel
+
+          Mesh_out % Elements(cnt) % ElementIndex = cnt
+          ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n)) 
+          Mesh_out % Elements(cnt) % DGIndexes => NULL()
+          Mesh_out % Elements(cnt) % NodeIndexes = ind(1:l_n)
+          Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
+          Mesh_out % Elements(cnt) % FaceIndexes => NULL()
+          Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+
+          k = Mesh_out % Elements(cnt) % DGDOFs
+          IF(k>0) THEN
+            Mesh_out % Elements(cnt) % DGDOFs = &
+                 Mesh_out % Elements(cnt) % TYPE % NumberOFNodes
+            k = Mesh_out % Elements(cnt) % DGDOFs
+            ALLOCATE(Mesh_out % Elements(cnt) % DGIndexes(k))
+            DO l=1,k
+              dg_n = dg_n + 1
+              Mesh_out % Elements(cnt) % DGIndexes(l) = dg_n
+            END DO
+            NeedEdges=.TRUE.
+          END IF
+
+          IF(ASSOCIATED(Mesh_in % Elements(j) % PDefs)) THEN
+            NeedEdges=.TRUE.
+            ALLOCATE(Mesh_out % Elements(cnt) % PDefs)
+            Mesh_out % Elements(cnt) % PDefs=Mesh_in % Elements(j) % PDefs
+          END IF
+        END DO
       END DO
     END DO
-    Mesh_out % NumberOfBulkElements=cnt
+    Mesh_out % NumberOfBulkElements = cnt
 
     max_bid=0
     max_baseline_bid=0
-
+    !currentlevel = 0
+    !currentlevel = in_levels(1)
     ! -------------------------------------------------------
     IF (PreserveBaseline) THEN
-      DO j=1,Mesh_in % NumberOfBoundaryElements
-        k = j + Mesh_in % NumberOfBulkElements
+      DO blk=1,1!buildingblocks   
+        currentlevel = in_levels(blk) + 1
+        DO j=1,Mesh_in % NumberOfBoundaryElements
+          k = j + Mesh_in % NumberOfBulkElements
+         
+          cnt=cnt+1
+          
+          Mesh_out % Elements(cnt) = Mesh_in % Elements(k)
 
-        cnt=cnt+1
+          ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
+          Mesh_out % Elements(cnt) % BoundaryInfo = &
+               Mesh_in % Elements(k) % BoundaryInfo
 
-        Mesh_out % Elements(cnt) = Mesh_in % Elements(k)
+          Mesh_out % Elements(cnt) % BoundaryInfo % Constraint =&
+               Mesh_in % Elements(k) % BoundaryInfo % Constraint 
+          max_bid = MAX(max_bid, Mesh_out % Elements(cnt) % &
+               BoundaryInfo % Constraint)
 
-        ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
-        Mesh_out % Elements(cnt) % BoundaryInfo = &
-           Mesh_in % Elements(k) % BoundaryInfo
+          IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Left)) THEN
+            l=Mesh_in % Elements(k) % BoundaryInfo % Left % ElementIndex
+            ! version with the bulk element being the parent
+            !Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
+            !     Mesh_out % Elements((Mesh_in %  NumberOfBulkElements)*(currentlevel) + l)
+            Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
+                 Mesh_out % Elements(Mesh_in %  NumberOfBulkElements*(alllevels+2)+ & ! all bulk elements + one additional bottom layer
+                 (alllevels+2)*(Mesh_in % NumberOfBoundaryElements) + & ! all side elements + baseline elements + currentlevel  
+                 l) ! the index on that level
+                 
+          END IF
+          IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Right)) THEN
+            l=Mesh_in % Elements(k) % BoundaryInfo % Right % ElementIndex
+            ! version with the bulk element being the parent
+            !Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
+            !     Mesh_out % Elements((Mesh_in %  NumberOfBulkElements)*(currentlevel) + l)
+            Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
+                 Mesh_out % Elements(Mesh_in %  NumberOfBulkElements*(alllevels+2)+ & ! all bulk elements + one additional bottom layer
+                 (alllevels+2)*(Mesh_in % NumberOfBoundaryElements) + & ! all side elements + baseline elements + currentlevel  
+                 l) ! the index on that level
+          END IF
 
-        max_bid = MAX(max_bid, Mesh_in % Elements(k) % &
-                BoundaryInfo % Constraint)
+          IF(Mesh_in % Elements(k) % TYPE % ElementCode>=200) THEN
+            Mesh_out % Elements(cnt) % NDOFs = 2
+            ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(2)) 
+            !ind(1) = Mesh_in % Elements(k) % NodeIndexes(1) 
+            !ind(2) = Mesh_in % Elements(k) % NodeIndexes(2)
+            ind(1) = Mesh_in % Elements(k) % NodeIndexes(1) + currentlevel*lnodes 
+            ind(2) = Mesh_in % Elements(k) % NodeIndexes(2) + currentlevel*lnodes
+            Mesh_out % Elements(cnt) % NodeIndexes = ind(1:2)
+            Mesh_out % Elements(cnt) % TYPE => GetElementType(202)         
+          ELSE
+            Mesh_out % Elements(cnt) % NDOFs = 1
+            l=SIZE(Mesh_in % Elements(k) % NodeIndexes)
+            ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l))
+            Mesh_out % Elements(cnt) % NodeIndexes = &
+                 Mesh_in % Elements(k) % NodeIndexes + currentlevel*lnodes
+                 !Mesh_in % Elements(k) % NodeIndexes
+            Mesh_out % Elements(cnt) % TYPE => &
+                 Mesh_in % Elements(k) % TYPE
+          END IF
+          Mesh_out % Elements(cnt) % DGDOFs = 0
+          Mesh_out % Elements(cnt) % DGIndexes => NULL()
+          Mesh_out % Elements(cnt) % ElementIndex = cnt
+          Mesh_out % Elements(cnt) % PDefs => NULL()
+          Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
+          Mesh_out % Elements(cnt) % FaceIndexes => NULL()
+          Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+        END DO
 
-        IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Left)) THEN
-          l=Mesh_in % Elements(k) % BoundaryInfo % Left % ElementIndex
-          Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
-             Mesh_out % Elements(Mesh_in %  NumberOfBulkElements*(in_levels+1)+ &
-	                   (in_levels+2)*Mesh_in % NumberOfBoundaryElements+l)
+        IF(isParallel) THEN
+          j=max_bid
+          CALL MPI_ALLREDUCE(j,max_bid,1, &
+               MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
         END IF
-        IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Right)) THEN
-          l=Mesh_in % Elements(k) % BoundaryInfo % Right % ElementIndex
-          Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
-              Mesh_out % Elements(Mesh_in % NumberOfBulkElements*(in_levels+1)+ &
-	      (in_levels+2)*Mesh_in % NumberOfBoundaryElements+l)
-        END IF
-
-        IF(Mesh_in % Elements(k) % TYPE % ElementCode>=200) THEN
-          Mesh_out % Elements(cnt) % NDOFs = 2
-          ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(2)) 
-          ind(1) = Mesh_in % Elements(k) % NodeIndexes(1)
-          ind(2) = Mesh_in % Elements(k) % NodeIndexes(2)
-          Mesh_out % Elements(cnt) % NodeIndexes = ind(1:2)
-          Mesh_out % Elements(cnt) % TYPE => GetElementType(202)
-        ELSE
-          Mesh_out % Elements(cnt) % NDOFs = 1
-          l=SIZE(Mesh_in % Elements(k) % NodeIndexes)
-          ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l))
-          Mesh_out % Elements(cnt) % NodeIndexes = &
-            Mesh_in % Elements(k) % NodeIndexes
-          Mesh_out % Elements(cnt) % TYPE => &
-             Mesh_in % Elements(k) % TYPE
-        END IF
-        Mesh_out % Elements(cnt) % DGDOFs = 0
-        Mesh_out % Elements(cnt) % DGIndexes => NULL()
-        Mesh_out % Elements(cnt) % ElementIndex = cnt
-        Mesh_out % Elements(cnt) % PDefs => NULL()
-        Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
-        Mesh_out % Elements(cnt) % FaceIndexes => NULL()
-        Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+        max_baseline_bid = max_bid
       END DO
-    
-      IF(isParallel) THEN
-        j=max_bid
-        CALL MPI_ALLREDUCE(j,max_bid,1, &
-            MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
-      END IF
-
-      max_baseline_bid = max_bid
-
     END IF
 
 
     ! Add side boundaries with the bottom mesh boundary id's:
     ! (or shift ids if preserving the baseline boundary)
     ! -------------------------------------------------------
-    DO i=0,in_levels
-      DO j=1,Mesh_in % NumberOfBoundaryElements
-        k = j + Mesh_in % NumberOfBulkElements
-
-        cnt=cnt+1
-
-        Mesh_out % Elements(cnt) = Mesh_in % Elements(k)
-
-        ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
-        Mesh_out % Elements(cnt) % BoundaryInfo = &
-           Mesh_in % Elements(k) % BoundaryInfo
-
-        Mesh_out % Elements(cnt) % BoundaryInfo % constraint = &
-           Mesh_out % Elements(cnt) % BoundaryInfo % constraint + max_baseline_bid
-
-        max_bid = MAX(max_bid, max_baseline_bid + &
-           Mesh_in % Elements(k) % BoundaryInfo % Constraint)
-
-        IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Left)) THEN
-          l=Mesh_in % Elements(k) % BoundaryInfo % Left % ElementIndex
-          Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
-             Mesh_out % Elements(Mesh_in % NumberOfBulkElements*i+l)
-        END IF
-        IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Right)) THEN
-          l=Mesh_in % Elements(k) % BoundaryInfo % Right % ElementIndex
-          Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
-             Mesh_out % Elements(Mesh_in % NumberOfBulkElements*i+l)
-        END IF
-
-        IF(Mesh_in % Elements(k) % TYPE % ElementCode>=200) THEN
-          Mesh_out % Elements(cnt) % NDOFs = 4
-          ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(4)) 
-
-          ind(1) = Mesh_in % Elements(k) % NodeIndexes(1)+i*n
-          ind(2) = Mesh_in % Elements(k) % NodeIndexes(2)+i*n
-          ind(3) = Mesh_in % Elements(k) % NodeIndexes(2)+(i+1)*n
-          ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)+(i+1)*n
-          Mesh_out % Elements(cnt) % NodeIndexes = ind(1:4)
-          Mesh_out % Elements(cnt) % TYPE => GetElementType(404)
-        ELSE
-          Mesh_out % Elements(cnt) % NDOFs = 1
-          l=SIZE(Mesh_in % Elements(k) % NodeIndexes)
-          ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l))
-          Mesh_out % Elements(cnt) % NodeIndexes = &
-            Mesh_in % Elements(k) % NodeIndexes+i*n
-          Mesh_out % Elements(cnt) % TYPE => &
-             Mesh_in % Elements(k) % TYPE
-        END IF 
-        Mesh_out % Elements(cnt) % ElementIndex = cnt
-        Mesh_out % Elements(cnt) % DGDOFs = 0
-        Mesh_out % Elements(cnt) % DGIndexes => NULL()
-        Mesh_out % Elements(cnt) % PDefs => NULL()
-        Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
-        Mesh_out % Elements(cnt) % FaceIndexes => NULL()
-        Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
-      END DO
-    END DO
-
-    !Take care of extra 101 elements
-    !-------------------------------
-
-    IF(cnt101 > 0) THEN
-       DO j=1,Mesh_in % NumberOfBoundaryElements
+    currentlevel=-1
+    max_bclayer =0
+    DO blk=1,buildingblocks
+      !currentlevel = currentlevel - 1
+      DO i=0,in_levels(blk)
+        currentlevel = currentlevel + 1
+        DO j=1,Mesh_in % NumberOfBoundaryElements
           k = j + Mesh_in % NumberOfBulkElements
 
-          IF(Mesh_in % Elements(k) % TYPE % ElementCode /= 101) CYCLE
           cnt=cnt+1
 
           Mesh_out % Elements(cnt) = Mesh_in % Elements(k)
@@ -10258,18 +10278,41 @@ END SUBROUTINE GetMaxDefs
                Mesh_in % Elements(k) % BoundaryInfo
 
           Mesh_out % Elements(cnt) % BoundaryInfo % constraint = &
-               Mesh_out % Elements(cnt) % BoundaryInfo % constraint + max_baseline_bid
+               Mesh_in % Elements(k) % BoundaryInfo % constraint + &
+               (max_bclayer*(blk-1)) + max_baseline_bid
 
-          max_bid = MAX(max_bid, max_baseline_bid + &
-               Mesh_in % Elements(k) % BoundaryInfo % Constraint)
+          max_bid = MAX(max_bid, Mesh_out % Elements(cnt) % BoundaryInfo % constraint)
 
-          Mesh_out % Elements(cnt) % NDOFs = 1
-          ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(1))
-          Mesh_out % Elements(cnt) % NodeIndexes = &
-               Mesh_in % Elements(k) % NodeIndexes+(in_levels+1)*n
-          Mesh_out % Elements(cnt) % TYPE => &
-               Mesh_in % Elements(k) % TYPE
+          IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Left)) THEN
+            l=Mesh_in % Elements(k) % BoundaryInfo % Left % ElementIndex
+            Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
+                 Mesh_out % Elements(Mesh_in % NumberOfBulkElements*currentlevel+l)
+          END IF
+          IF(ASSOCIATED(Mesh_in % Elements(k) % BoundaryInfo % Right)) THEN
+            l=Mesh_in % Elements(k) % BoundaryInfo % Right % ElementIndex
+            Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
+                 Mesh_out % Elements(Mesh_in % NumberOfBulkElements*currentlevel+l)
+          END IF
 
+          IF(Mesh_in % Elements(k) % TYPE % ElementCode>=200) THEN
+            Mesh_out % Elements(cnt) % NDOFs = 4
+            ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(4)) 
+
+            ind(1) = Mesh_in % Elements(k) % NodeIndexes(1)+currentlevel*lnodes
+            ind(2) = Mesh_in % Elements(k) % NodeIndexes(2)+currentlevel*lnodes
+            ind(3) = Mesh_in % Elements(k) % NodeIndexes(2)+(currentlevel+1)*lnodes
+            ind(4) = Mesh_in % Elements(k) % NodeIndexes(1)+(currentlevel+1)*lnodes
+            Mesh_out % Elements(cnt) % NodeIndexes = ind(1:4)
+            Mesh_out % Elements(cnt) % TYPE => GetElementType(404)
+          ELSE
+            Mesh_out % Elements(cnt) % NDOFs = 1
+            l=SIZE(Mesh_in % Elements(k) % NodeIndexes)
+            ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l))
+            Mesh_out % Elements(cnt) % NodeIndexes = &
+                 Mesh_in % Elements(k) % NodeIndexes+currentlevel*lnodes
+            Mesh_out % Elements(cnt) % TYPE => &
+                 Mesh_in % Elements(k) % TYPE
+          END IF
           Mesh_out % Elements(cnt) % ElementIndex = cnt
           Mesh_out % Elements(cnt) % DGDOFs = 0
           Mesh_out % Elements(cnt) % DGIndexes => NULL()
@@ -10277,27 +10320,69 @@ END SUBROUTINE GetMaxDefs
           Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
           Mesh_out % Elements(cnt) % FaceIndexes => NULL()
           Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
-       END DO
+        END DO
+      END DO
+      IF(isParallel) THEN
+        j=max_bid
+        CALL MPI_ALLREDUCE(j,max_bid,1, &
+             MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+      END IF
+      IF (blk==1) THEN
+        max_bclayer=max_bid - max_baseline_bid
+      END IF
+    END DO
+
+    !Take care of extra 101 elements
+    !-------------------------------
+
+    IF(cnt101 > 0) THEN
+      PRINT *, "101!!!!!!!!!!!!!!"
+      DO j=1,Mesh_in % NumberOfBoundaryElements
+        k = j + Mesh_in % NumberOfBulkElements
+
+        IF(Mesh_in % Elements(k) % TYPE % ElementCode /= 101) CYCLE
+        cnt=cnt+1
+
+        Mesh_out % Elements(cnt) = Mesh_in % Elements(k)
+
+        ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
+        Mesh_out % Elements(cnt) % BoundaryInfo = &
+             Mesh_in % Elements(k) % BoundaryInfo
+
+        Mesh_out % Elements(cnt) % BoundaryInfo % constraint = &
+             Mesh_out % Elements(cnt) % BoundaryInfo % constraint + max_baseline_bid &
+             + max_bclayer*(buildingblocks)
+
+        max_bid = MAX(max_bid, &
+             Mesh_out % Elements(cnt) % BoundaryInfo % constraint + max_baseline_bid &
+             + max_bclayer*(buildingblocks))
+
+        Mesh_out % Elements(cnt) % NDOFs = 1
+        ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(1))
+        Mesh_out % Elements(cnt) % NodeIndexes = &
+             Mesh_in % Elements(k) % NodeIndexes+(alllevels+1)*lnodes
+        Mesh_out % Elements(cnt) % TYPE => &
+             Mesh_in % Elements(k) % TYPE
+
+        Mesh_out % Elements(cnt) % ElementIndex = cnt
+        Mesh_out % Elements(cnt) % DGDOFs = 0
+        Mesh_out % Elements(cnt) % DGIndexes => NULL()
+        Mesh_out % Elements(cnt) % PDefs => NULL()
+        Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
+        Mesh_out % Elements(cnt) % FaceIndexes => NULL()
+        Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+      END DO
     END IF
-    
+
     IF(isParallel) THEN
       j=max_bid
       CALL MPI_ALLREDUCE(j,max_bid,1, &
-          MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
+           MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
     END IF
 
     WRITE( Message,'(A,I0)') 'First Extruded BC set to: ',max_bid+1
     CALL Info('ExtrudeMesh',Message,Level=8)
 
-    max_body=0
-    DO i=1,Mesh_in % NumberOfBulkElements
-      max_body = MAX(max_body,Mesh_in % Elements(i) % Bodyid)
-    END DO
-    IF(isParallel) THEN
-      j=max_body
-      CALL MPI_ALLREDUCE(j,max_body,1, &
-          MPI_INTEGER,MPI_MAX,MPI_COMM_WORLD,ierr)
-    END IF
 
     WRITE( Message,'(A,I0)') 'Number of new BCs for layers: ',max_body
     CALL Info('ExtrudeMesh',Message,Level=8)
@@ -10329,10 +10414,10 @@ END SUBROUTINE GetMaxDefs
 
       ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n))
       Mesh_out % Elements(cnt) % NodeIndexes = &
-        Mesh_in % Elements(i) % NodeIndexes
+           Mesh_in % Elements(i) % NodeIndexes
       Mesh_out % Elements(cnt) % ElementIndex = cnt
       Mesh_out % Elements(cnt) % TYPE => &
-        Mesh_in % Elements(i) % TYPE
+           Mesh_in % Elements(i) % TYPE
       Mesh_out % Elements(cnt) % DGDOFs = 0
       Mesh_out % Elements(cnt) % DGIndexes => NULL()
       Mesh_out % Elements(cnt) % PDefs => NULL()
@@ -10341,45 +10426,55 @@ END SUBROUTINE GetMaxDefs
       Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
     END DO
 
-    ! Add top boundary:
+    ! Add top boundaries:
     ! -----------------
-    DO i=1,Mesh_in % NumberOfBulkElements
-      cnt=cnt+1
+    currentlevel = 0
+    DO blk=1,buildingblocks
+      currentlevel = currentlevel + in_levels(blk) + 1
+      DO i=1,Mesh_in % NumberOfBulkElements
+        cnt=cnt+1
 
-      Mesh_out % Elements(cnt) = Mesh_in % Elements(i)
+        Mesh_out % Elements(cnt) = Mesh_in % Elements(i)
 
-      l_n=Mesh_in % Elements(i) % TYPE % NumberOfNodes
-      Mesh_out % Elements(cnt) % NDOFs = l_n
+        l_n=Mesh_in % Elements(i) % TYPE % NumberOfNodes
+        Mesh_out % Elements(cnt) % NDOFs = l_n
 
-      ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
-      Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
-           Mesh_out % Elements(in_levels*Mesh_in % NumberOfBulkElements+i)
-      Mesh_out % Elements(cnt) % BoundaryInfo % Right => NULL()
+        ALLOCATE(Mesh_out % Elements(cnt) % BoundaryInfo)
+        Mesh_out % Elements(cnt) % BoundaryInfo % Left => &
+             Mesh_out % Elements((currentlevel-1)*(Mesh_in % NumberOfBulkElements)+i)
+        IF (blk < buildingblocks) THEN
+          Mesh_out % Elements(cnt) % BoundaryInfo % Right => &
+               Mesh_out % Elements((currentlevel)*(Mesh_in % NumberOfBulkElements)+i)
+        ELSE
+          Mesh_out % Elements(cnt) % BoundaryInfo % Right => NULL()
+        END IF
 
-      bcid = max_bid + Mesh_out % Elements(cnt) % BodyId + max_body
-      Mesh_out % Elements(cnt) % BoundaryInfo % Constraint = bcid
+        bcid = max_bid + Mesh_out % Elements(cnt) % BodyId + blk*max_body
+        Mesh_out % Elements(cnt) % BoundaryInfo % Constraint = bcid
 
-      Mesh_out % Elements(cnt) % BodyId = 0
-      IF( bcid<=CurrentModel % NumberOfBCs) THEN
-        j=ListGetInteger(CurrentModel % BCs(bcid) % Values,'Body Id',Found)
-        IF(Found) Mesh_out % Elements(cnt) % BodyId=j
-      END IF
+        Mesh_out % Elements(cnt) % BodyId = 0
+        IF( bcid<=CurrentModel % NumberOfBCs) THEN
+          j=ListGetInteger(CurrentModel % BCs(bcid) % Values,'Body Id',Found)
+          IF(Found) Mesh_out % Elements(cnt) % BodyId=j
+        END IF
 
-      ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n))
-      Mesh_out % Elements(cnt) % NodeIndexes = &
-        Mesh_in % Elements(i) % NodeIndexes+(in_Levels+1)*n
-      Mesh_out % Elements(cnt) % ElementIndex = cnt
-      Mesh_out % Elements(cnt) % TYPE => &
-        Mesh_in % Elements(i) % TYPE
-      Mesh_out % Elements(cnt) % DGDOFs = 0
-      Mesh_out % Elements(cnt) % DGIndexes => NULL()
-      Mesh_out % Elements(cnt) % PDefs => NULL()
-      Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
-      Mesh_out % Elements(cnt) % FaceIndexes => NULL()
-      Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+        ALLOCATE(Mesh_out % Elements(cnt) % NodeIndexes(l_n))
+        Mesh_out % Elements(cnt) % NodeIndexes = &
+             Mesh_in % Elements(i) % NodeIndexes+(currentlevel)*n
+        Mesh_out % Elements(cnt) % ElementIndex = cnt
+        Mesh_out % Elements(cnt) % TYPE => &
+             Mesh_in % Elements(i) % TYPE
+        Mesh_out % Elements(cnt) % DGDOFs = 0
+        Mesh_out % Elements(cnt) % DGIndexes => NULL()
+        Mesh_out % Elements(cnt) % PDefs => NULL()
+        Mesh_out % Elements(cnt) % EdgeIndexes => NULL()
+        Mesh_out % Elements(cnt) % FaceIndexes => NULL()
+        Mesh_out % Elements(cnt) % BubbleIndexes => NULL()
+      END DO
     END DO
-
-    Mesh_out % NumberOfBoundaryElements=cnt-Mesh_out % NumberOfBulkElements
+    Mesh_out % NumberOfBoundaryElements = cnt - Mesh_out % NumberOfBulkElements
+    PRINT *, "NumberOfBulkElements=", Mesh_out % NumberOfBulkElements,&
+         "NumberOfBoundaryElements=", Mesh_out % NumberOfBoundaryElements
 
     Mesh_out % Name=Mesh_in % Name
     Mesh_out % DiscontMesh = Mesh_in % DiscontMesh
@@ -10391,10 +10486,10 @@ END SUBROUTINE GetMaxDefs
     CALL SetMeshMaxDOFs(Mesh_out)
 
     IF (PRESENT(ExtrudedMeshName)) THEN
-       CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
+      CALL WriteMeshToDisk(Mesh_out, ExtrudedMeshName)
     END IF
 
-!------------------------------------------------------------------------------
+    !------------------------------------------------------------------------------
   END FUNCTION MeshExtrude
 !------------------------------------------------------------------------------
 
@@ -10410,34 +10505,59 @@ END SUBROUTINE GetMaxDefs
     CHARACTER(LEN=*) :: Path
     TYPE(Mesh_t), POINTER :: NewMesh
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,k,MaxNodes,ElmCode,Parent1,Parent2
+    INTEGER :: i,j,k,ElmCode,Parent1,Parent2,&
+         elementno(9), elementcode(9), differenttypesofelements, MeshDim
+    LOGICAL :: Found
 !------------------------------------------------------------------------------
-
+    MeshDim = NewMesh % MeshDim
     OPEN( 1,FILE=TRIM(Path) // '/mesh.header',STATUS='UNKNOWN' )
     WRITE( 1,'(3i8)' ) NewMesh % NumberOfNodes, &
          NewMesh % NumberOfBulkElements, NewMesh % NumberOfBoundaryElements
-    
-    WRITE( 1,* ) 2
-    MaxNodes = 0
-    ElmCode  = 0
-    DO i=1,NewMesh % NumberOfBoundaryElements
-       k = i + NewMesh % NumberOfBulkElements
-       IF ( NewMesh % Elements(k) % TYPE % NumberOfNodes > MaxNodes ) THEN
-          ElmCode  = NewMesh % Elements(k) % TYPE % ElementCode
-          MaxNodes = NewMesh % Elements(k) % TYPE % NumberOfNodes
-       END IF
+    k = 1 + NewMesh % NumberOfBulkElements
+    ElmCode  = NewMesh % Elements(k) % TYPE % ElementCode
+    elementcode(1) = ElmCode
+    elementno(1) = 1
+    elementno(2:9) = 0
+    differenttypesofelements = 1
+    DO i=2,NewMesh % NumberOfBoundaryElements
+      k = i + NewMesh % NumberOfBulkElements
+      ElmCode  = NewMesh % Elements(k) % TYPE % ElementCode
+      Found = .FALSE.
+      DO j = 1,differenttypesofelements
+        IF (ElmCode .EQ. elementcode(j)) THEN
+          Found = .TRUE.
+          elementno(j) = elementno(j) + 1     
+        END IF
+      END DO
+      IF (.NOT.Found) THEN
+        differenttypesofelements = differenttypesofelements + 1
+        elementcode(differenttypesofelements) = ElmCode
+        elementno(differenttypesofelements) = elementno(differenttypesofelements) + 1
+      END IF
     END DO
-    WRITE( 1,'(2i8)' ) ElmCode,NewMesh % NumberOfBoundaryElements
-
-    MaxNodes = 0
-    ElmCode  = 0
+    ! the bulk elements
     DO i=1,NewMesh % NumberOfBulkElements
-       IF ( NewMesh % Elements(i) % TYPE % NumberOfNodes > MaxNodes ) THEN
-          ElmCode  = NewMesh % Elements(i) % TYPE % ElementCode
-          MaxNodes = NewMesh % Elements(i) % TYPE % NumberOfNodes
-       END IF
+      ElmCode  = NewMesh % Elements(i) % TYPE % ElementCode
+      Found = .FALSE.
+      DO j = 1,differenttypesofelements
+        IF (ElmCode .EQ. elementcode(j)) THEN
+          Found = .TRUE.
+          elementno(j) = elementno(j) + 1     
+        END IF
+      END DO
+      IF (.NOT.Found) THEN
+        differenttypesofelements = differenttypesofelements + 1
+        elementcode(differenttypesofelements) = ElmCode
+        elementno(differenttypesofelements) = elementno(differenttypesofelements) + 1
+      END IF
     END DO
-    WRITE( 1,'(2i8)' ) ElmCode,NewMesh % NumberOfBulkElements
+
+    WRITE( 1,* ) differenttypesofelements
+    
+    DO i=1,differenttypesofelements
+      WRITE( 1,'(2i8)' )  elementcode(i), elementno(i)
+    END DO
+
     CLOSE(1)
 
     OPEN( 1,FILE=TRIM(Path) // '/mesh.nodes', STATUS='UNKNOWN' )
@@ -10471,6 +10591,10 @@ END SUBROUTINE GetMaxDefs
        parent2 = 0
        IF ( ASSOCIATED( NewMesh % Elements(k) % BoundaryInfo % Right ) ) &
           parent2 = NewMesh % Elements(k) % BoundaryInfo % Right % ElementIndex
+       IF (NewMesh % Elements(k) % TYPE % ElementCode < MeshDim*100) THEN
+         parent1 = 0
+         parent2 = 0
+       END IF
        WRITE(1,'(5i7)',ADVANCE='NO') i, &
             NewMesh % Elements(k) % BoundaryInfo % Constraint, Parent1,Parent2,&
             NewMesh % Elements(k) % TYPE % ElementCode
@@ -14016,6 +14140,7 @@ CONTAINS
 
      CALL Info('ReleaseMesh','Releasing mesh variables',Level=15)
      CALL ReleaseVariableList( Mesh % Variables )
+
      Mesh % Variables => NULL()
 
 !    Deallocate mesh geometry (nodes,elements and edges):
@@ -14025,6 +14150,7 @@ CONTAINS
        IF ( ASSOCIATED( Mesh % Nodes % x ) ) DEALLOCATE( Mesh % Nodes % x )
        IF ( ASSOCIATED( Mesh % Nodes % y ) ) DEALLOCATE( Mesh % Nodes % y )
        IF ( ASSOCIATED( Mesh % Nodes % z ) ) DEALLOCATE( Mesh % Nodes % z )
+
        DEALLOCATE( Mesh % Nodes )
 
        IF ( ASSOCIATED( Mesh % ParallelInfo % GlobalDOFs ) ) &
@@ -15026,7 +15152,7 @@ CONTAINS
     REAL(KIND=dp) :: Tolerance
     TYPE(Element_t), POINTER :: Element
     TYPE(Nodes_t) :: Nodes
-    INTEGER :: i,j,k,n,ii,jj,dim, nsize, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
+    INTEGER :: i,j,k,n,ii,jj,dim, nsize, nnodes, elem, TopNodes, BotNodes, Rounds, ActiveDirection, &
 	UpHit, DownHit, bc_ind
     INTEGER, POINTER :: NodeIndexes(:), MaskPerm(:)
     LOGICAL :: MaskExists, UpActive, DownActive, GotIt, Found, DoCoordTransform
@@ -15039,6 +15165,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Values(:)
     INTEGER, POINTER :: TopPointer(:), BotPointer(:), UpPointer(:), DownPointer(:),Layer(:),MidPointer(:)
     CHARACTER(LEN=MAX_NAME_LEN) :: VarName, CoordTransform
+    INTEGER :: allocstat
 
    
     CALL Info('DetectExtrudedStructure','Determining extruded structure',Level=6)
@@ -15073,27 +15200,34 @@ CONTAINS
       IF(ASSOCIATED(Var)) THEN
         MaskExists = ASSOCIATED(Var % Perm)
         IF( MaskExists ) THEN
-          ALLOCATE( MaskPerm( SIZE( Var % Perm ) ) )
+          ALLOCATE( MaskPerm( SIZE( Var % Perm ) ), STAT = allocstat )
+          IF( allocstat /= 0 ) THEN
+            CALL Fatal('DetectExtrudedStructure','Allocation error for MaskPerm!')
+          END IF
           MaskPerm = Var % Perm 
           CALL Info('DetectExtrudedStructure',&
-              'Using variable as mask: '//TRIM(VarName),Level=8)
+              'Using variable as mask: '//TRIM(VarName),Level=8)          
         END IF
       END IF
     END IF
-
+    
+    nnodes = Mesh % NumberOfNodes
     IF( MaskExists ) THEN
       nsize = MAXVAL( MaskPerm ) 
-      WRITE(Message,'(A,I8)') 'Applying mask of size:',nsize
-      CALL Info('DetectExtrudedStructure',Message,Level=8)
+      CALL Info('DetectExtrudedStructure',&
+          'Applying mask of size: '//TRIM(I2S(nsize)),Level=8)
     ELSE
-      nsize = Mesh % NumberOfNodes
+      nsize = nnodes
       CALL Info('DetectExtrudedStructure','Applying mask to the whole mesh',Level=8)
-    END IF 
+    END IF
 
     CoordTransform = ListGetString(Params,'Mapping Coordinate Transformation',DoCoordTransform )
     IF( DoCoordTransform .OR. MaskExists) THEN
       NULLIFY( Values )
-      ALLOCATE( Values( nsize ) )
+      ALLOCATE( Values( nsize ), STAT = allocstat )
+      IF( allocstat /= 0 ) THEN
+        CALL Fatal('DetectExtrudedStructure','Allocation error for coordinate tranform Values!')
+      END IF
       Values = 0.0_dp
       IF( MaskExists ) THEN
         CALL VariableAdd( Mesh % Variables, Mesh, Solver,'Extruded Coordinate',1,Values, MaskPerm)
@@ -15107,12 +15241,16 @@ CONTAINS
       Var => VariableGet( Mesh % Variables,'Coordinate 2')
     ELSE 
       Var => VariableGet( Mesh % Variables,'Coordinate 3')
-    END IF	      
+    END IF
 
     IF( MaskExists .OR. DoCoordTransform) THEN
       DO i=1,Mesh % NumberOfNodes
         j = i
-	IF( MaskExists ) j = MaskPerm(i)
+        IF( MaskExists ) THEN
+          j =  MaskPerm(i)
+          IF( j == 0 ) CYCLE
+        END IF
+
         Vector(1) = Mesh % Nodes % x(i)
 	Vector(2) = Mesh % Nodes % y(i)
 	Vector(3) = Mesh % Nodes % z(i)
@@ -15142,15 +15280,31 @@ CONTAINS
     ! Allocate pointers to top and bottom, and temporary pointers up and down
     !------------------------------------------------------------------------
     IF( UpActive ) THEN
-      ALLOCATE(TopPointer(nsize),UpPointer(nsize))
-      DO i=1,nsize
+      ALLOCATE(TopPointer(nnodes),UpPointer(nnodes))      
+      DO i=1,nnodes
+        IF( MaskExists ) THEN
+          IF( MaskPerm(i) == 0 ) THEN
+            TopPointer(i) = 0
+            UpPointer(i) = 0
+            CYCLE
+          END IF
+        END IF
+
         TopPointer(i) = i
         UpPointer(i) = i
       END DO
     END IF
     IF( DownActive ) THEN
-      ALLOCATE(BotPointer(nsize),DownPointer(nsize))
-      DO i=1,nsize
+      ALLOCATE(BotPointer(nnodes),DownPointer(nnodes))
+      DO i=1,nnodes
+        IF( MaskExists ) THEN
+          IF( MaskPerm(i) == 0 ) THEN
+            BotPointer(i) = 0
+            DownPointer(i) = 0
+            CYCLE
+          END IF
+        END IF
+
         BotPointer(i) = i
         DownPointer(i) = i
       END DO
@@ -15162,10 +15316,12 @@ CONTAINS
     ! Determine the up and down pointers using dot product as criterion
     !-----------------------------------------------------------------
     n = Mesh % MaxElementNodes
-    ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n) )
-    
-    DO elem = 1,Mesh % NumberOfBulkElements      
+    ALLOCATE( Nodes % x(n), Nodes % y(n),Nodes % z(n), STAT = allocstat )
+    IF( allocstat /= 0 ) THEN
+      CALL Fatal('DetectExtrudedStructure','Allocation error for Nodes!')
+    END IF
 
+    DO elem = 1,Mesh % NumberOfBulkElements      
       Element => Mesh % Elements(elem)
       NodeIndexes => Element % NodeIndexes
       CurrentModel % CurrentElement => Element
@@ -15174,6 +15330,8 @@ CONTAINS
       Nodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
       Nodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
       Nodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
+
+!PRINT *,'elem:',elem, Mesh % NumberOfBulkElements, n, MAXVAL( NodeIndexes), SIZE(MaskPerm) 
 
       ! This is probably a copy-paste error, I comment it away for time being.   
       ! IF (.NOT. (Element % PartIndex == Parenv % Mype) ) CYCLE
@@ -15184,6 +15342,7 @@ CONTAINS
 
       DO i=1,n
         ii = NodeIndexes(i)
+
         Vector(1) = Nodes % x(i)
 	Vector(2) = Nodes % y(i)
 	Vector(3) = Nodes % z(i)
@@ -15206,6 +15365,8 @@ CONTAINS
           ElemVector = Vector2 - Vector
 
           Length = SQRT(SUM(ElemVector*ElemVector))
+          IF( Length <= EPSILON( Length ) ) CYCLE
+
           DotPro = SUM(ElemVector * UnitVector) / Length
 
           IF(DotPro > 1.0_dp - Eps) THEN 
@@ -15218,17 +15379,18 @@ CONTAINS
         END DO
       END DO
     END DO
-    DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
 
+    DEALLOCATE( Nodes % x, Nodes % y,Nodes % z )
     
     ! Pointer to top and bottom are found recursively using up and down
     !------------------------------------------------------------------
     CALL Info('DetectExtrudedStructure','determine top and bottom pointers',Level=9)
 
-    DO Rounds = 1, nsize
+    DO Rounds = 1, nnodes
+
       DownHit = 0
       UpHit = 0
-      DO i=1,nsize
+      DO i=1,nnodes
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0) CYCLE
         END IF
@@ -15266,13 +15428,14 @@ CONTAINS
     !------------------------------------------------------------------
     IF( PRESENT( NumberOfLayers ) ) THEN
       CALL Info('DetectExtrudedStructure','compute the number of layers',Level=9)    
-      DO i=1,nsize
+      DO i=1,nnodes
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0 ) CYCLE
         END IF
         EXIT
       END DO
 
+      ! Start from the bottom and go step-by-step to the top counting the layers
       j = BotPointer(i)
 
       NumberOfLayers = 0
@@ -15303,13 +15466,13 @@ CONTAINS
       CALL Info('DetectExtrudedStructure','creating layer index',Level=9)        
 
       NULLIFY(Layer)
-      ALLOCATE( Layer(nsize) )
+      ALLOCATE( Layer(nnodes) )
       Layer = 1
       IF( MaskExists ) THEN
         WHERE( MaskPerm == 0 ) Layer = 0
       END IF
       
-      DO i=1,nsize
+      DO i=1,nnodes
         IF( MaskExists ) THEN
           IF( MaskPerm(i) == 0 ) CYCLE
         END IF
@@ -15332,8 +15495,9 @@ CONTAINS
     END IF
 
 
+    ! If mid layer is requesyed create that too
     IF( PRESENT( MidNodePointer ) ) THEN
-      ALLOCATE( MidPointer( nsize ) )
+      ALLOCATE( MidPointer( nnodes ) )
       MidPointer = 0 
       MidLayerExists = .FALSE.
 
@@ -15358,10 +15522,10 @@ CONTAINS
       IF( MidLayerExists ) THEN
         CALL Info('DetectExtrudedStructure','determine mid pointers',Level=9)
 
-        DO Rounds = 1, nsize
+        DO Rounds = 1, nnodes
           DownHit = 0
           UpHit = 0
-          DO i=1,nsize
+          DO i=1,nnodes
             IF( MaskExists ) THEN
               IF( MaskPerm(i) == 0) CYCLE
             END IF
@@ -15396,12 +15560,12 @@ CONTAINS
   
     ! Count the number of top and bottom nodes, for information only
     !---------------------------------------------------------------
-    CALL Info('DetectExtrudedStructure','counting top and bottom bodes',Level=9)        
+    CALL Info('DetectExtrudedStructure','counting top and bottom nodes',Level=9)        
     IF( UpActive ) THEN
       TopNodes = 0
       MinTop = HUGE( MinTop ) 
       MaxTop = -HUGE( MaxTop )
-      DO i=1,nsize
+      DO i=1,nnodes
         IF(TopPointer(i) == i) THEN
           MinTop = MIN( MinTop, Var % Values(i) )
           MaxTop = MAX( MaxTop, Var % Values(i) )
@@ -15414,7 +15578,7 @@ CONTAINS
       BotNodes = 0
       MinBot = HUGE( MinBot ) 
       MaxBot = -HUGE( MaxBot )
-      DO i=1,nsize
+      DO i=1,nnodes
         IF(BotPointer(i) == i) THEN
           MinBot = MIN( MinBot, Var % Values(i))
           MaxBot = MAX( MaxBot, Var % Values(i))
@@ -15573,12 +15737,19 @@ CONTAINS
       FirstTime = .NOT. ASSOCIATED( Mesh % NodesMapped )
       IF( FirstTime ) THEN
         ALLOCATE( Mesh % NodesMapped )
-        NULLIFY( NewCoords )
-        ALLOCATE( NewCoords(3*n) )
-        NewCoords = 0.0_dp
-        Mesh % NodesMapped % x => NewCoords(1:n)
-        Mesh % NodesMapped % y => NewCoords(n+1:2*n)
-        Mesh % NodesMapped % z => NewCoords(2*n+1:3*n)
+        !NULLIFY( NewCoords )
+        !ALLOCATE( NewCoords(3*n) )
+        !NewCoords = 0.0_dp
+        ALLOCATE( Mesh % NodesMapped % x(n) )
+        ALLOCATE( Mesh % NodesMapped % y(n) )
+        ALLOCATE( Mesh % NodesMapped % z(n) )
+        Mesh % NodesMapped % x = 0.0_dp
+        Mesh % NodesMapped % y = 0.0_dp
+        Mesh % NodesMapped % z = 0.0_dp
+
+        !Mesh % NodesMapped % x => NewCoords(1:n)
+        !Mesh % NodesMapped % y => NewCoords(n+1:2*n)
+        !Mesh % NodesMapped % z => NewCoords(2*n+1:3*n)
         ! Mesh % NodesMapped % x => NewCoords(1::3)
         ! Mesh % NodesMapped % y => NewCoords(2::3)
         ! Mesh % NodesMapped % z => NewCoords(3::3)
@@ -15614,8 +15785,8 @@ CONTAINS
               'Transformed Coordinate 2',1,y1) 
           CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
               'Transformed Coordinate 3',1,z1) 
-          CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
-              'Transformed Coordinate',3,NewCoords)
+!          CALL VariableAdd( Mesh % Variables,Mesh,CurrentModel % Solver,&
+!              'Transformed Coordinate',3,NewCoords)
         END IF
       END IF
     END IF

@@ -63,7 +63,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   TYPE(Solver_t), POINTER :: PSolver
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, TangledMaskVarName, MappedMeshName
   INTEGER :: i,j,k,n,dim,DOFs,itop,ibot,imid,ii,jj,Rounds,BotMode,TopMode,nsize, &
-       ActiveDirection,elem, istat, TangledCount
+       nnodes, ActiveDirection,elem, istat, TangledCount
   INTEGER, POINTER :: MaskPerm(:),TopPerm(:),BotPerm(:),TangledMaskPerm(:),TopPointer(:),&
        BotPointer(:),MidPointer(:),NodeIndexes(:)
   LOGICAL :: GotIt, Found, Visited = .FALSE., Initialized = .FALSE.,&
@@ -76,7 +76,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 #ifndef USE_ISO_C_BINDINGS
   REAL(KIND=dp) :: CPUTime,RealTime
 #endif
-  REAL(KIND=dp), POINTER :: Coord(:),BotField(:),TopField(:),TangledMask(:)
+  REAL(KIND=dp), POINTER :: Coord(:),TrueCoord(:),BotField(:),TopField(:),TangledMask(:)
   REAL(KIND=dp), ALLOCATABLE :: OrigCoord(:), Field(:), Surface(:)
   TYPE(Variable_t), POINTER :: Var, VeloVar, UpdateVar, TangledMaskVar
   TYPE(Element_t), POINTER :: Element
@@ -85,7 +85,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   SAVE Visited,Initialized,UnitVector,Coord,MaskExists,MaskPerm,TopPointer,BotPointer,&
       TopMode,BotMode,TopField,BotField,TopPerm,BotPerm,Field,Surface,nsize, OrigCoord, &
-      ComputeTangledMask, MidPointer, MidLayerExists
+      nnodes, ComputeTangledMask, MidPointer, MidLayerExists, ActiveDirection
 
   CALL Info( 'StructuredMeshMapper','---------------------------------------',Level=4 )
   CALL Info( 'StructuredMeshMapper','Performing mapping on a structured mesh ',Level=4 )
@@ -114,14 +114,34 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
     ! For p-elements the number of nodes and coordinate vector differ
     ! The projection is implemented only for the true nodes
-    nsize = MIN( SIZE( Coord ), Mesh % NumberOfNodes )
+    nnodes = Mesh % NumberOfNodes
+    nsize = MIN( SIZE( Coord ), nnodes )
     Initialized = .TRUE.
-
+     
     IF(ALLOCATED(OrigCoord)) DEALLOCATE(OrigCoord)
     ALLOCATE( OrigCoord(nsize), STAT=istat)
     IF ( istat /= 0 ) THEN
       CALL Fatal( 'StructuredMeshMapper', 'Memory allocation error' )
     END IF
+
+    ! We actually need to map some coordinate direction, so this is really needed here
+    IF( MaskExists ) THEN
+      ActiveDirection = ListGetInteger(SolverParams,'Active Coordinate',Found)
+      IF( .NOT. Found ) THEN
+        CALL Fatal('StructuredMeshMapper','Masked mapping requires active coordinate')
+        IF( ActiveDirection < 1 .OR. ActiveDirection > 3 ) THEN
+          CALL Fatal('StructuredMeshMapper','Invalid value for Active Coordinate')
+        END IF
+      END IF
+      IF( ActiveDirection == 1 ) THEN
+        TrueCoord => Mesh % Nodes % x
+      ELSE IF( ActiveDirection == 2 ) THEN
+        TrueCoord => Mesh % Nodes % y
+      ELSE
+        TrueCoord => Mesh % Nodes % z
+      END IF
+    END IF
+
   END IF
 
   OrigCoord(1:nsize) = Coord(1:nsize)
@@ -202,7 +222,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       END IF
       IF(.NOT. ALLOCATED(Field)) THEN
         N = Mesh % MaxElementNodes
-        ALLOCATE(Field(nsize),Surface(n))
+        ALLOCATE(Field(nnodes),Surface(n))
         Field = 0.0_dp
       END IF
       DO elem = 1, Mesh % NumberOfBoundaryElements
@@ -252,7 +272,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       BotMode = 3
       IF(.NOT. ALLOCATED(Field)) THEN
         N = Mesh % MaxElementNodes
-        ALLOCATE(Field(nsize),Surface(n))
+        ALLOCATE(Field(nnodes),Surface(n))
         Field = 0.0_dp
       END IF
       DO elem = 1, Mesh % NumberOfBoundaryElements
@@ -274,7 +294,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
   IF( MidLayerExists ) THEN
     IF(.NOT. ALLOCATED(Field)) THEN
       N = Mesh % MaxElementNodes
-      ALLOCATE(Field(nsize),Surface(n))
+      ALLOCATE(Field(nnodes),Surface(n))
       Field = 0.0_dp
     END IF
     DO elem = 1, Mesh % NumberOfBoundaryElements
@@ -337,22 +357,27 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
 
   TangledCount = 0
 
-  DO i=1,nsize
-
+  DO i=1,nnodes
     j = i
     IF( MaskExists ) THEN
       j = MaskPerm(i) 
       IF( j == 0) CYCLE
     END IF
-    itop = TopPointer(i)
+    itop = TopPointer(i)    
     ibot = BotPointer(i)
     IF( MidLayerExists ) imid = MidPointer(i)
 
     ! Use the previous coordinates for determining the weights
     !----------------------------------------------------------
-    x0top = OrigCoord(itop)
-    x0bot = OrigCoord(ibot)
-    x0loc = OrigCoord(i)
+    IF( MaskExists ) THEN
+      x0top = OrigCoord(MaskPerm(itop))
+      x0bot = OrigCoord(MaskPerm(ibot))
+      x0loc = OrigCoord(j)
+    ELSE
+      x0top = OrigCoord(itop)
+      x0bot = OrigCoord(ibot)
+      x0loc = OrigCoord(i)
+    END IF
 
     IF( TopMode == 1 ) THEN
       TopVal = TopVal0
@@ -404,6 +429,7 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       END IF
     END IF
 
+
     ! If the mesh is tangled then take some action.
     ! Here the lower surface stays intact. This is due to the main application field, 
     ! computational glaciology, where the lower surface of ice is usually nicely constrained. 
@@ -427,7 +453,9 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
       END IF
 
       IF (ComputeTangledMask) THEN
-        TangledMask(TangledMaskPerm(i)) = -1.0_dp 
+        IF( TangledMaskPerm(i) > 0 ) THEN
+          TangledMask(TangledMaskPerm(i)) = -1.0_dp 
+        END IF
       END IF
       IF( .FALSE. ) THEN
         WRITE(Message,'(A,E11.4,A,E11.4,A,E11.4,A,E11.4)')&
@@ -458,16 +486,20 @@ SUBROUTINE StructuredMeshMapper( Model,Solver,dt,Transient )
         IF(Velovar % Perm(i)>0) &
           VeloVar % Values( VeloVar % Perm(i) ) = xloc / dt
       END IF
-      Coord(i) = OrigCoord(i) + xloc
+      Coord(j) = OrigCoord(j) + xloc
     ELSE
       IF( GotVeloVar ) THEN
         IF(Velovar % Perm(i)>0) &
           VeloVar % Values( VeloVar % Perm(i) ) = ( xloc - OrigCoord(i) ) / dt
       END IF
-      Coord(i) = xloc
+      Coord(j) = xloc
     END IF
-    IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(i) - OrigCoord(i)
+
+    IF( GotUpdateVar ) UpdateVar % Values ( UpdateVar % Perm(i) ) = Coord(j) - OrigCoord(j)
+    IF( MaskExists ) TrueCoord( i ) = xloc
   END DO
+
+
 
 
   IF( GotVeloVar .AND. .NOT. Visited ) THEN

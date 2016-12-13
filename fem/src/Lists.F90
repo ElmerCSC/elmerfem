@@ -613,139 +613,184 @@ CONTAINS
     TYPE(Variable_t), POINTER :: VariableList
 !------------------------------------------------------------------------------
     REAL(KIND=dp), POINTER :: Ptr(:)
-    LOGICAL :: GotValues
+    LOGICAL :: PartOfVector
     INTEGER :: i, n, m
     TYPE(Variable_t), POINTER :: Var, Var1
 !------------------------------------------------------------------------------
 
+    CALL Info('ReleaseVariableList','Releasing variables',Level=20)
+
     Var => VariableList
     DO WHILE( ASSOCIATED( Var ) ) 
 
-!      This is used to skip variables such as time, timestep, timestep size etc.
-       IF( SIZE( Var % Values ) == Var % DOFs ) THEN
-         Var => Var % Next
-         CYCLE
-       END IF 
+      ! This is used to skip variables such as time, timestep, timestep size etc.
+      IF( SIZE( Var % Values ) == Var % DOFs ) THEN
+        Var => Var % Next
+        CYCLE
+      END IF
 
-       SELECT CASE( Var % Name )
-       CASE( 'coordinate 1', 'coordinate 2', 'coordinate 3' )
-         Var => Var % Next
-         CYCLE
-       END SELECT
+      SELECT CASE( Var % Name )
+      CASE( 'coordinate 1', 'coordinate 2', 'coordinate 3' )
+        Var => Var % Next
+        CYCLE
+      END SELECT
 
-	IF( Var % Secondary ) THEN
-          Var => Var % Next
-          CYCLE
-        END IF
+      IF( Var % Secondary ) THEN
+        Var => Var % Next
+        CYCLE
+      END IF
 
-       IF (Var % DOFs > 1) THEN
-         Var => Var % Next
-         CYCLE
-       END IF
-!
-!      Check that the variable is actually allocated,
-!      not pointer to some other variables memory:
-!      ----------------------------------------------
+      ! Only release scalar field here, vector fields in the end
+      IF (Var % DOFs > 1 ) THEN
+        Var => Var % Next
+        CYCLE
+      END IF
+      !
+      !      Check that the variable is actually allocated,
+      !      not pointer to some other variables memory:
+      !      ----------------------------------------------
 
-       GotValues = .TRUE.
-       Var1 => VariableList
-       DO WHILE( ASSOCIATED( Var1 ) )
-          IF (.NOT.ASSOCIATED(Var,Var1)) THEN
-             IF ( ASSOCIATED(Var1 % Values) ) THEN
-                DO i=1,Var1 % DOFs
-                   ptr => Var1 % Values(i::Var1 % DOFs)
-                   IF ( ASSOCIATED(Var % Values,ptr) ) THEN
-                      GotValues = .FALSE.
-                      EXIT
-                   END IF
-                END DO
-             END IF
+      CALL Info('ReleaseVariableList','Treating scalar field: '//TRIM(Var % Name) )
+
+      PartOfVector = .FALSE.
+      Var1 => VariableList
+      DO WHILE( ASSOCIATED( Var1 ) )
+        IF (.NOT.ASSOCIATED(Var,Var1)) THEN
+          IF ( ASSOCIATED(Var1 % Values) ) THEN
+            IF( Var1 % Dofs > 1 ) THEN
+              DO i=1,Var1 % DOFs
+                ptr => Var1 % Values(i::Var1 % DOFs)
+                IF ( ASSOCIATED(Var % Values,ptr) ) THEN
+                  PartOfVector = .TRUE.
+                  EXIT
+                END IF
+              END DO
+            END IF
           END IF
-          IF (.NOT. GotValues) EXIT
+        END IF
+        IF ( PartOfVector ) EXIT
+        Var1 => Var1 % Next
+      END DO
+      IF( PartOfVector ) THEN
+        CALL Info('ReleaseVariableList','Variable "'//TRIM(Var % Name)//&
+            '" is part of vector: '//TRIM(Var1 % Name),Level=20)       
+        Var => Var % Next
+        CYCLE
+      END IF
+
+
+      ! If permutation is used by others too, don't deallocate them, just nullify
+      ! Finally deallocate the main permutation too
+      IF (ASSOCIATED(Var % Perm)) THEN
+        Var1 => VariableList
+        DO WHILE(ASSOCIATED(Var1))
+          IF (.NOT. ASSOCIATED(Var,Var1)) THEN
+            IF( ASSOCIATED( Var1 % Perm ) ) THEN
+              IF (ASSOCIATED(Var % Perm,Var1 % Perm)) THEN
+                CALL Info('ReleaseVariableList','Permutation of "'&
+                    //TRIM(Var % Name)//'" used also by: '//TRIM(Var1 % Name),Level=32)
+                NULLIFY( Var1 % Perm )
+              END IF
+            END IF
+          END IF
           Var1 => Var1 % Next
-       END DO
-
-       IF (ASSOCIATED(Var % Perm)) THEN
-         Var1 => VariableList
-         DO WHILE(ASSOCIATED(Var1))
-           IF (.NOT.ASSOCIATED(Var,Var1)) THEN
-             IF (ASSOCIATED(Var % Perm,Var1 % Perm)) &
-               Var1 % Perm => NULL()
-           END IF
-           Var1 => Var1 % Next
-         END DO
-
-         DEALLOCATE( Var % Perm)
-       END IF
-
-       IF ( GotValues ) THEN
-
+        END DO
+        
+        CALL Info('ReleaseVariableList','Releasing permutation for: '//TRIM(Var % Name),Level=20)
+        
+        IF( ASSOCIATED( Var % Perm ) ) THEN
+! NULLIFY( Var % Perm )
+          DEALLOCATE( Var % Perm ) 
+        ELSE
+          CALL Info('ReleaseVariableList','Something fishy happened in releasing Perm: '//TRIM( Var % Name ) )
+        END IF
+      END IF
+      
+      IF( .TRUE. ) THEN
+        CALL Info('ReleaseVariableList','Releasing values for: '//TRIM(Var % Name),Level=20)
+        
         IF ( ASSOCIATED( Var % Values ) ) &
             DEALLOCATE( Var % Values )
-
-         IF ( ASSOCIATED( Var % PrevValues ) ) &
-	   DEALLOCATE( Var % PrevValues )
-
-         IF ( ASSOCIATED( Var % EigenValues ) ) &
-            DEALLOCATE( Var % EigenValues )
-
-         IF ( ASSOCIATED( Var % EigenVectors ) ) &
-            DEALLOCATE( Var % EigenVectors )
-
-         IF ( ASSOCIATED( Var % SteadyValues ) ) &
-            DEALLOCATE( Var % SteadyValues )
-
-         IF ( ASSOCIATED( Var % NonlinValues ) ) &
-            DEALLOCATE( Var % NonlinValues )
-       END IF
-       NULLIFY( Var % EigenVectors, Var % EigenValues )
-       NULLIFY( Var % Values, Var % PrevValues, Var % Perm )
-       NULLIFY( Var % SteadyValues, Var % NonlinValues )
-
-       Var => Var % Next
-    END DO
-
-    Var => VariableList
-    DO WHILE( ASSOCIATED( Var ) )
-       IF ( Var % Secondary ) THEN
-         Var => Var % Next
-         CYCLE
-       END IF
-
-       IF ( Var % DOFs > 1 ) THEN
-         IF ( ASSOCIATED( Var % Values ) ) &
-            DEALLOCATE( Var % Values )
-
-         IF ( ASSOCIATED( Var % Perm ) ) &
-            DEALLOCATE( Var % Perm )
-
-         IF ( ASSOCIATED( Var % PrevValues ) ) &
+        
+        IF ( ASSOCIATED( Var % PrevValues ) ) &
             DEALLOCATE( Var % PrevValues )
-
-         IF ( ASSOCIATED( Var % EigenValues ) ) &
+        
+        IF ( ASSOCIATED( Var % EigenValues ) ) &
             DEALLOCATE( Var % EigenValues )
-
-         IF ( ASSOCIATED( Var % EigenVectors ) ) &
+        
+        IF ( ASSOCIATED( Var % EigenVectors ) ) &
             DEALLOCATE( Var % EigenVectors )
-
-         IF ( ASSOCIATED( Var % NonlinValues ) ) &
+        
+        IF ( ASSOCIATED( Var % SteadyValues ) ) &
+            DEALLOCATE( Var % SteadyValues )
+        
+        IF ( ASSOCIATED( Var % NonlinValues ) ) &
             DEALLOCATE( Var % NonlinValues )
-       END IF
-       NULLIFY( Var % EigenVectors, Var % EigenValues )
-       NULLIFY( Var % Values, Var % PrevValues, Var % Perm )
-       NULLIFY( Var % SteadyValues, Var % NonlinValues )
-
-       Var => Var % Next
+      END IF
+      
+      Var => Var % Next
     END DO
 
-!   Deallocate mesh variable list:
-!   ------------------------------
+
+    CALL Info('ReleaseVariableList','Deallocating vector fields',Level=20)
     Var => VariableList
     DO WHILE( ASSOCIATED( Var ) )
-       Var1 => Var % Next
-       DEALLOCATE( Var )
-       Var => Var1
+      IF ( Var % Secondary .OR. Var % DOFs == 1 ) THEN
+        Var => Var % Next
+        CYCLE
+      END IF
+
+      CALL Info('ReleaseVariableList','Treating vector field: '//TRIM(Var % Name),Level=20)
+      
+      IF (ASSOCIATED(Var % Perm)) THEN
+        Var1 => VariableList
+        DO WHILE(ASSOCIATED(Var1))
+          IF( Var1 % Dofs > 1 ) THEN
+            IF (.NOT. ASSOCIATED(Var,Var1)) THEN
+              IF( ASSOCIATED( Var1 % Perm ) ) THEN
+                IF (ASSOCIATED(Var % Perm,Var1 % Perm)) THEN
+                  CALL Info('ReleaseVariableList','Permutation of "'&
+                      //TRIM(Var % Name)//'" used also by: '//TRIM(Var1 % Name),Level=32)
+                  NULLIFY( Var1 % Perm )
+                END IF
+              END IF
+            END IF
+          END IF
+          Var1 => Var1 % Next
+        END DO
+        DEALLOCATE( Var % Perm )
+      END IF
+      
+      IF ( ASSOCIATED( Var % Values ) ) &
+          DEALLOCATE( Var % Values )
+      
+      IF ( ASSOCIATED( Var % PrevValues ) ) &
+          DEALLOCATE( Var % PrevValues )
+      
+      IF ( ASSOCIATED( Var % EigenValues ) ) &
+          DEALLOCATE( Var % EigenValues )
+      
+      IF ( ASSOCIATED( Var % EigenVectors ) ) &
+          DEALLOCATE( Var % EigenVectors )
+      
+      IF ( ASSOCIATED( Var % NonlinValues ) ) &
+          DEALLOCATE( Var % NonlinValues )
+      
+      IF ( ASSOCIATED( Var % SteadyValues ) ) &
+          DEALLOCATE( Var % SteadyValues )
+    
+      Var => Var % Next
     END DO
+
+    CALL Info('ReleaseVariableList','Deallocating list structure in the end',Level=20)
+    Var => VariableList
+    DO WHILE( ASSOCIATED( Var ) )
+      Var1 => Var % Next
+      DEALLOCATE( Var )
+      Var => Var1
+    END DO
+
+    CALL Info('ReleaseVariableList','Releasing variablelist finished',Level=20)
 !------------------------------------------------------------------------------
   END SUBROUTINE ReleaseVariableList
 !------------------------------------------------------------------------------

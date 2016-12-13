@@ -168,6 +168,7 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
   LOGICAL :: FirstTime=.TRUE., GotIt,UnFoundFatal
   TYPE(Variable_t), POINTER :: FlowSol,FlowLoadSol, NormalVar
   CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName, FlowSolutionName, FlowLoadsName
+  TYPE(ValueList_t), POINTER :: BC
 
   SAVE FirstTime, FunctionName, DIM
 
@@ -176,14 +177,19 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
      FirstTime = .FALSE.    
      DIM = CoordinateSystemDimension()
   END IF
+
+  BC => GetBC(Model % CurrentElement)
   ! Get the variable velocity
   !---------------------------
   FlowSolutionName = GetString( Model % Solver % Values , 'Flow Solver Name', GotIt ) 
-  IF (.NOT. GotIt) THEN
-     WRITE(FlowSolutionName,'(A)') 'Flow Solution'
-     WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
-          FlowSolutionName
-     CALL WARN(FunctionName,Message)
+  IF (.NOT.GotIt) THEN
+    FlowSolutionName = GetString( BC , 'Flow Solver Name', GotIt )
+    IF (.NOT. GotIt) THEN
+      WRITE(FlowSolutionName,'(A)') 'Flow Solution'
+      WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
+           FlowSolutionName
+      CALL WARN(FunctionName,Message)
+    END IF
   END IF
   FlowSol => VariableGet( Model % Variables, TRIM(FlowSolutionName),UnFoundFatal=UnFoundFatal)
   FlowPerm    => FlowSol % Perm
@@ -191,15 +197,18 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
   ! Get the Stokes loads
   !---------------------------
   FlowLoadsName = GetString( Model % Solver % Values , 'Flow Loads Name', GotIt )  
-  IF (.NOT. GotIt) THEN
-     WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
-     WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
-         FlowLoadsName
-     CALL WARN(FunctionName,Message)
+  IF (.NOT.GotIt) THEN
+    FlowLoadsName = GetString( BC , 'Flow Loads Name', GotIt ) 
+    IF (.NOT. GotIt) THEN  
+      WRITE(FlowLoadsName,'(A)') TRIM(FlowSolutionName)//' Loads'
+      WRITE(Message,'(A,A)') 'Using default name for flow solution: ', &
+           FlowLoadsName
+      CALL WARN(FunctionName,Message)
+    END IF
   END IF
- FlowLoadSol => VariableGet( Model % Variables, TRIM(FlowLoadsName),UnFoundFatal=UnFoundFatal)
- FlowLoadPerm    => FlowLoadSol % Perm
- FlowLoadValues  => FlowLoadSol % Values
+  FlowLoadSol => VariableGet( Model % Variables, TRIM(FlowLoadsName),UnFoundFatal=UnFoundFatal)
+  FlowLoadPerm    => FlowLoadSol % Perm
+  FlowLoadValues  => FlowLoadSol % Values
 
   ! Get the variable for normal vector
   !-----------------------------------
