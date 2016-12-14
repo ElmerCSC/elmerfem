@@ -144,6 +144,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   DIM = CoordinateSystemDimension()
   Params => GetSolverParams()	
 
+  MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
+
  
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN    
@@ -292,7 +294,6 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
 
   ComplexEigenVectors = ListGetLogical(Params,'Complex Eigen Vectors',GotIt)
-  MovingMesh = ListGetLogical(Params,'Moving Mesh',GotIt )
   
     
    
