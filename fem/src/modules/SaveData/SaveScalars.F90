@@ -1408,7 +1408,7 @@ CONTAINS
         
         IF( MPIOper > 0 ) THEN
           CALL MPI_ALLREDUCE(Val,ParVal,1,&
-              MPI_DOUBLE_PRECISION,MPIOper,MPI_COMM_WORLD,ierr)
+              MPI_DOUBLE_PRECISION,MPIOper,ELMER_COMM_WORLD,ierr)
           Values(n) = ParVal
           IF( MPIOper == MPI_MIN ) THEN
             WRITE( ValueNames(n),'(A)') TRIM( ValueNames(n) )//' : mpi_min'
