@@ -842,9 +842,9 @@ FUNCTION FreeSlipShelves (Model, nodenumber, BetaIn) RESULT(BetaOut)
      BetaOut = 0.0_dp
   ELSE
      SELECT CASE (BetaForm)
-     CASE("Power")
+     CASE("Power","power")
         BetaOut = 10.0_dp**BetaIn
-     CASE("Beta2")
+     CASE("Beta2","beta2")
         BetaOut = BetaIn*BetaIn
      CASE DEFAULT
         WRITE(Message,'(A)') 'beta formulation not recognised'
