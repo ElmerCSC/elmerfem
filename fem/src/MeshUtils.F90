@@ -6412,7 +6412,8 @@ END SUBROUTINE GetMaxDefs
       INTEGER :: jj,ii,sgn0,k,kmax,ind,indM,nip,nn,ne,nf,inds(10),nM,neM,nfM,iM,i2,i2M
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
-          MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, 
+          MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, &
+          AllocStat
       TYPE(Element_t), POINTER :: Element, ElementM, ElementP
       INTEGER :: ElemCode, LinCode, ElemCodeM, LinCodeM
       TYPE(Element_t) :: ElementT
@@ -6454,11 +6455,13 @@ END SUBROUTINE GetMaxDefs
       Timestep = NINT( TimestepVar % Values(1) )
  
       n = Mesh % MaxElementNodes
-      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
-      ALLOCATE( NodesM % x(n), NodesM % y(n), NodesM % z(n) )
-      ALLOCATE( NodesT % x(n), NodesT % y(n), NodesT % z(n) )
-      ALLOCATE( Basis(n), BasisM(n), dBasisdx(n,3) )
+      ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n), &
+          NodesM % x(n), NodesM % y(n), NodesM % z(n), &
+          NodesT % x(n), NodesT % y(n), NodesT % z(n), & 
+          Basis(n), BasisM(n), dBasisdx(n,3), STAT = AllocStat )
+      IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 1')
 
+      
       IF( Naxial > 1 ) THEN
         ALLOCATE( Alpha(n), AlphaM(n) )
       ELSE
@@ -6466,11 +6469,15 @@ END SUBROUTINE GetMaxDefs
         AlphaM => NodesM % x
       END IF
 
-      IF(BiOrthogonalBasis) ALLOCATE(CoeffBasis(n), MASS(n,n))
-
+      IF(BiOrthogonalBasis) THEN
+        ALLOCATE(CoeffBasis(n), MASS(n,n), STAT=AllocStat)
+        IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 2')        
+      END IF
+        
       n = 12 ! Hard-coded size sufficient for second-order edge elements
-      ALLOCATE( WBasis(n,3), WBasisM(n,3), RotWBasis(n,3) )
-
+      ALLOCATE( WBasis(n,3), WBasisM(n,3), RotWBasis(n,3), STAT=AllocStat )
+      IF( AllocStat /= 0 ) CALL Fatal('AddProjectorWeakGeneric','Allocation error 3')
+      
       Nodes % z  = 0.0_dp
       NodesM % z = 0.0_dp
       NodesT % z = 0.0_dp
@@ -6503,9 +6510,6 @@ END SUBROUTINE GetMaxDefs
       MaxSubTriangles = 0
       Nslave = 0
       Nmaster = 0
-
-
-
 
 
       DO ind=1,BMesh1 % NumberOfBulkElements
@@ -6668,7 +6672,7 @@ END SUBROUTINE GetMaxDefs
                 IF( AlphaM(j) < 0.0 ) AlphaM(j) = AlphaM(j) + 360.0_dp
               END DO
               aminm = MINVAL( AlphaM(1:neM) )
-              amaxm = MAXVAL( AlphaM(1:neN) )            
+              amaxm = MAXVAL( AlphaM(1:neM) )            
             END IF
           END IF
 
@@ -7354,11 +7358,11 @@ END SUBROUTINE GetMaxDefs
         END IF
       END DO
 
-      DEALLOCATE( Nodes % x, Nodes % y, Nodes % z )
-      DEALLOCATE( NodesM % x, NodesM % y, NodesM % z )
-      DEALLOCATE( NodesT % x, NodesT % y, NodesT % z )
-      DEALLOCATE( Basis, BasisM )
-      DEALLOCATE( dBasisdx, WBasis, WBasisM, RotWBasis )
+      DEALLOCATE( Nodes % x, Nodes % y, Nodes % z, &
+          NodesM % x, NodesM % y, NodesM % z, &
+          NodesT % x, NodesT % y, NodesT % z, &
+          Basis, BasisM, dBasisdx, &
+          WBasis, WBasisM, RotWBasis )
 
       CALL Info('LevelProjector','Number of integration pair candidates: '&
           //TRIM(I2S(TotCands)),Level=10)
