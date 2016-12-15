@@ -3506,11 +3506,11 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     printf("Format chosen using the first line: %s",line);
   }
 
-  if(strstr(line,"$MeshFormat")) 
+  if(strstr(line,"$")) 
     errno = LoadGmshInput2(data,bound,filename,info);
   else {
     printf("*****************************************************\n");
-    printf("The $MeshFormat was not given, assuming Gmsh 1 format\n");
+    printf("The first line did not start with $, assuming Gmsh 1 format\n");
     printf("This version of Gmsh format is no longer supported\n");
     printf("Please use Gsmh 2 version for output\n");
     printf("*****************************************************\n");
