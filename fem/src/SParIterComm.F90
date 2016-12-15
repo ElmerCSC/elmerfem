@@ -150,7 +150,14 @@ CONTAINS
 
     CALL MPI_COMM_SIZE( MPI_COMM_WORLD, ParEnv % PEs, ierr )
     CALL MPI_COMM_RANK( MPI_COMM_WORLD, ParEnv % MyPE, ierr )
-    CALL MPI_Comm_split(MPI_COMM_WORLD,0,ParEnv % MyPE,ELMER_COMM_WORLD,ierr) ! 0 - Elmer color
+
+    ! The colour could be set to be some different if we want to couple ElmerSolver with some other
+    ! software having MPI colour set to zero. 
+#ifndef ELMER_COLOUR
+#define ELMER_COLOUR 0
+#endif
+    CALL MPI_COMM_SPLIT(MPI_COMM_WORLD,ELMER_COLOUR,&
+        ParEnv % MyPE,ELMER_COMM_WORLD,ierr) 
     ParEnv % ActiveComm = ELMER_COMM_WORLD
 
     CALL MPI_COMM_SIZE( ELMER_COMM_WORLD, ParEnv % PEs, ierr )
