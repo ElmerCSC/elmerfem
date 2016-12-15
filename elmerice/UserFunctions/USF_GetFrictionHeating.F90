@@ -64,7 +64,7 @@ FUNCTION getFrictionHeat(  Model, Node, DummyInput)RESULT(frictionheat)
   REAL(KIND=dp), POINTER :: FlowValues(:),NormalValues(:),StressValues(:)
   REAL(KIND=dp) :: normal(3), velo(3), un, ut, Sig(3,3), Sn(3), snn, snt
   INTEGER, POINTER :: FlowPerm(:),StressPerm(:), NormalPerm(:)
-  LOGICAL :: FirstTime=.TRUE.
+  LOGICAL :: FirstTime=.TRUE.,UnFoundFatal=.TRUE.
   TYPE(Variable_t), POINTER :: FlowSol,StressVariable, NormalVar
   CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName
   
@@ -87,32 +87,20 @@ FUNCTION getFrictionHeat(  Model, Node, DummyInput)RESULT(frictionheat)
   
   ! Get the variable velocity
   !---------------------------
-  FlowSol => VariableGet( Model % Variables, 'Flow Solution' )
-  IF ( ASSOCIATED( FlowSol ) ) THEN
-     FlowPerm    => FlowSol % Perm
-     FlowValues  => FlowSol % Values
-  ELSE
-     CALL FATAL(FunctionName, 'Need NS Solver, Flow Solution not found')
-  END IF
+  FlowSol => VariableGet( Model % Variables, 'Flow Solution',UnFoundFatal=UnFoundFatal)
+  FlowPerm    => FlowSol % Perm
+  FlowValues  => FlowSol % Values
   
   ! Get the stress variable
   !------------------------
-  StressVariable => VariableGet( Model % Variables, 'Stress' )
-  IF ( ASSOCIATED( StressVariable ) ) THEN
-     StressPerm    => StressVariable % Perm
-     StressValues  => StressVariable % Values
-  ELSE
-     CALL FATAL(FunctionName,'No variable Stress found')   
-  END IF
+  StressVariable => VariableGet( Model % Variables, 'Stress',UnFoundFatal=UnFoundFatal)
+  StressPerm    => StressVariable % Perm
+  StressValues  => StressVariable % Values
   
   ! Get the variable for normal vector
-  NormalVar =>  VariableGet(Model % Variables,'Normal Vector')
-  IF ( ASSOCIATED( NormalVar ) ) THEN
-     NormalPerm => NormalVar % Perm
-     NormalValues => NormalVar % Values
-  ELSE
-     CALL FATAL(FunctionName, 'Normal Vector variable not found')
-  END IF
+  NormalVar =>  VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=UnFoundFatal)
+  NormalPerm => NormalVar % Perm
+  NormalValues => NormalVar % Values
   
   DO i=1, DIM
      normal(i) = NormalValues(DIM*(NormalPerm(Node)-1) + i)      
@@ -177,7 +165,7 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
   REAL(KIND=dp), POINTER :: FlowValues(:),FlowLoadValues(:),NormalValues(:)
   REAL(KIND=dp) :: normal(3), velo(3), normalvelocity, flowload(3), tangvelocity(3)  
   INTEGER, POINTER :: FlowPerm(:),FlowLoadPerm(:), NormalPerm(:)
-  LOGICAL :: FirstTime=.TRUE., GotIt
+  LOGICAL :: FirstTime=.TRUE., GotIt,UnFoundFatal
   TYPE(Variable_t), POINTER :: FlowSol,FlowLoadSol, NormalVar
   CHARACTER(LEN=MAX_NAME_LEN) :: FunctionName, FlowSolutionName, FlowLoadsName
 
@@ -197,13 +185,9 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
           FlowSolutionName
      CALL WARN(FunctionName,Message)
   END IF
-  FlowSol => VariableGet( Model % Variables, TRIM(FlowSolutionName) )
-  IF ( ASSOCIATED( FlowSol ) ) THEN
-     FlowPerm    => FlowSol % Perm
-     FlowValues  => FlowSol % Values
-  ELSE
-     CALL FATAL(FunctionName, 'Need NS Solver, Flow Solution not found')
-  END IF
+  FlowSol => VariableGet( Model % Variables, TRIM(FlowSolutionName),UnFoundFatal=UnFoundFatal)
+  FlowPerm    => FlowSol % Perm
+  FlowValues  => FlowSol % Values
   ! Get the Stokes loads
   !---------------------------
   FlowLoadsName = GetString( Model % Solver % Values , 'Flow Loads Name', GotIt )  
@@ -213,24 +197,15 @@ FUNCTION getFrictionLoads(  Model, Node, DummyInput )RESULT(frictionLoad)
          FlowLoadsName
      CALL WARN(FunctionName,Message)
   END IF
- FlowLoadSol => VariableGet( Model % Variables, TRIM(FlowLoadsName) )
-  IF ( ASSOCIATED( FlowLoadSol ) ) THEN
-     FlowLoadPerm    => FlowLoadSol % Perm
-     FlowLoadValues  => FlowLoadSol % Values
-  ELSE
-     CALL FATAL(FunctionName,&
-          'Need >Calculate Loads = Logical True<. Flow Load not found')
-  END IF
+ FlowLoadSol => VariableGet( Model % Variables, TRIM(FlowLoadsName),UnFoundFatal=UnFoundFatal)
+ FlowLoadPerm    => FlowLoadSol % Perm
+ FlowLoadValues  => FlowLoadSol % Values
 
   ! Get the variable for normal vector
   !-----------------------------------
-  NormalVar =>  VariableGet(Model % Variables,'Normal Vector')
-  IF ( ASSOCIATED( NormalVar ) ) THEN
-     NormalPerm => NormalVar % Perm
-     NormalValues => NormalVar % Values
-  ELSE
-     CALL FATAL(FunctionName, 'Normal Vector variable not found')
-  END IF
+  NormalVar =>  VariableGet(Model % Variables,'Normal Vector',UnFoundFatal=UnFoundFatal)
+  NormalPerm => NormalVar % Perm
+  NormalValues => NormalVar % Values
   
 
   DO i=1, DIM

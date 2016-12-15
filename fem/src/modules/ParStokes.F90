@@ -67,6 +67,10 @@ SUBROUTINE StokesSolver_Init0(Model, Solver, dt, Transient)
       CALL ListAddLogical(SolverParams, 'Linear System Row Equilibration', .TRUE.)
   IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Convergence Tolerance') ) &
       CALL ListAddConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-6)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Base Tolerance') ) &
+      CALL ListAddConstReal(SolverParams, 'Linear System Base Tolerance', 1.0d-3)
+  IF ( .NOT. ListCheckPresent(SolverParams, 'Linear System Relative Tolerance') ) &
+      CALL ListAddConstReal(SolverParams, 'Linear System Relative Tolerance', 1.0d-2)
 
 !------------------------------------------------------------------------------
 END SUBROUTINE StokesSolver_Init0
@@ -717,7 +721,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
         !------------------------------------------------------------------------------------------
         ! Test whether the nonlinear residual is small enough to terminate the nonlinear iteration
         !------------------------------------------------------------------------------------------
-        IF (Iter > 1) THEN
+        IF (Iter >= 1) THEN
            !--------------------------------------------------------------------------------------
            ! The rotated variables are used to compute the current residual.
            !--------------------------------------------------------------------------------------
@@ -764,7 +768,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
            !---------------------------------------------------------------------------------------
            ! Adapt the linear system convergence tolerance in terms of the current nonlinear error
            !---------------------------------------------------------------------------------------
-           IF (Iter > 1 ) THEN
+           IF (Iter >= 1 ) THEN
               MinTolerance = RelTolerance * NonLinError
               IF (MinTolerance > BaseTolerance) MinTolerance = BaseTolerance
               IF (MinTolerance < TargetTol) MinTolerance = TargetTol

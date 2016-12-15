@@ -53,8 +53,38 @@
 
       <Parameter Widget="CheckBox">
         <Name> Save Geometry Ids </Name>  
-        <DefaultValue> False </DefaultValue>
+        <DefaultValue> True </DefaultValue>
         <Whatis> Save number of geometric entities when available (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Discontinuous Galerkin </Name>  
+        <DefaultValue> False </DefaultValue>
+        <Whatis> Save fields as a Discontinuous Galerkin field when available (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Discontinuous Bodies </Name>  
+        <DefaultValue> False </DefaultValue>
+        <Whatis> Save fields in a minimal discontinuous set over bodies field when available (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Save Elemental Fields </Name>  
+        <DefaultValue> True </DefaultValue>
+        <Whatis> If there are elemental fields this flag may be used to eliminate their saving, when availale (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Save Nodal Fields </Name>  
+        <DefaultValue> True </DefaultValue>
+        <Whatis> If there are nodal fields this flag may be used to eliminate their saving, when availale (vtu). </Whatis>
+      </Parameter>
+
+      <Parameter Widget="CheckBox">
+        <Name> Save Linear Elements </Name>  
+        <DefaultValue> False </DefaultValue>
+        <Whatis> With higher order elements save the data still using linear basis when available (vtu). </Whatis>
       </Parameter>
 
       <Parameter Widget="CheckBox">

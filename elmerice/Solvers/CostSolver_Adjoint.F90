@@ -71,7 +71,7 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), POINTER :: Vb(:)
   INTEGER, POINTER :: NodeIndexes(:), BetaPerm(:)
   INTEGER, POINTER :: VbPerm(:)
-  Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit
+  Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit,UnFoundFatal=.TRUE.
   integer :: i,j,k,l,t,n,NMAX,DIM,ierr,c
   real(kind=dp) :: Cost,Cost_bed,Cost_surf,Cost_S,Cost_bed_S,Cost_surf_S,Lambda
   real(kind=dp) :: Bu,Bv,u,v,w,s,coeff,SqrtElementMetric,x
@@ -143,25 +143,13 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
     Firsttime=.false.
   Endif
 
-    BetaSol => VariableGet( Solver % Mesh % Variables, VarSolName  )
-    IF ( ASSOCIATED( BetaSol ) ) THEN
-            Beta => BetaSol % Values
-            BetaPerm => BetaSol % Perm
-    ELSE
-            WRITE(Message,'(A,A,A)') &
-                               'No variable >',VarSolName,' < found'
-            CALL FATAL(SolverName,Message)
-    END IF  
+    BetaSol => VariableGet( Solver % Mesh % Variables, VarSolName,UnFoundFatal=UnFoundFatal)
+    Beta => BetaSol % Values
+    BetaPerm => BetaSol % Perm
 
-    VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb'  )
-    IF ( ASSOCIATED( VelocitybSol ) ) THEN
-            Vb => VelocitybSol % Values
-            VbPerm => VelocitybSol % Perm
-    ELSE
-            WRITE(Message,'(A)') &
-                               'No variable > Velocityb < found'
-            CALL FATAL(SolverName,Message)
-    END IF  
+    VelocitybSol => VariableGet( Solver % Mesh % Variables, 'Velocityb',UnFoundFatal=UnFoundFatal)
+    Vb => VelocitybSol % Values
+    VbPerm => VelocitybSol % Perm
     c=DIM + 1 ! size of the velocity variable
     IF (VelocitybSol % DOFs.NE.c) then
            WRITE(Message,'(A,I1,A,I1)') &
@@ -190,12 +178,8 @@ SUBROUTINE CostSolver_Adjoint( Model,Solver,dt,TransientSimulation )
 
       NodeCost=0.0_dp
       IF (BCName == 'surface') THEN
-          NodeCost(1:n) = ListGetReal(BC, 'Adjoint Cost', n, NodeIndexes, GotIt)
-          IF (.NOT.GotIt) Then
-                  WRITE(Message,'(A)') &
-                     'No variable >Adjoint Cost< found in "surface" BC'
-                  CALL FATAL(SolverName,Message)
-          END IF 
+          NodeCost(1:n) = ListGetReal(BC, 'Adjoint Cost', n, NodeIndexes, GotIt,&
+               UnFoundFatal=UnFoundFatal)
           NodeCost_der=0.0_dp
           
           NodeCost_der(1,1:n)=ListGetReal(BC, 'Adjoint Cost der 1', n, NodeIndexes, GotIt)

@@ -75,7 +75,7 @@
 
      INTEGER, POINTER :: NodeIndexes(:)
      LOGICAL :: Stabilize = .TRUE., Bubbles = .TRUE., UseBubbles,NewtonLinearization = .FALSE., &
-         Found, GotIt, HeatFluxBC, HeatGapBC, GotMeltPoint, IsRadiation, InfBC
+         Found, GotIt, HeatFluxBC, HeatGapBC, GotMeltPoint, IsRadiation, InfBC, UnFoundFatal=.TRUE.
 ! Which compressibility model is used
      CHARACTER(LEN=MAX_NAME_LEN) :: CompressibilityFlag, ConvectionField
      INTEGER :: CompressibilityModel
@@ -896,8 +896,8 @@ ENDIF
 !------------------------------------------------------------------------------
          IF ( CompressibilityModel /= Incompressible ) THEN
            ReferencePressure = ListGetConstReal( Material, &
-               'Reference Pressure', Found)
-           IF ( .NOT.Found ) ReferencePressure = 0.0d0
+               'Reference Pressure', Found,UnFoundFatal=UnFoundFatal)
+            !Previous default value: ReferencePressure = 0.0d0
          END IF
 !------------------------------------------------------------------------------
 
@@ -1339,8 +1339,8 @@ ENDIF
     IF(TransientHeaterControl) THEN
       PowerRelax = GetCReal(Solver % Values,'Smart Heater Relaxation Factor', GotIt)
       IF(.NOT. GotIt) PowerRelax = 1.0_dp
-      PowerSensitivity = ListGetConstReal(Solver % Values,'Smart Heater Power Sensivity',GotIt)
-      IF(.NOT. GotIt) PowerSensitivity = 4.0_dp
+      PowerSensitivity = ListGetConstReal(Solver % Values,'Smart Heater Power Sensivity',GotIt,UnFoundFatal=UnFoundFatal)
+      !Previous default value: PowerSensitivity = 4.0_dp
       PowerScaling = PowerScaling * (1 + PowerSensitivity * PowerRelax * (MeltPoint/yave - 1.0d0) ) 
 
       IF( ListGetLogical( Solver % Values,'Smart Heater Transient Speedup',GotIt ) ) THEN

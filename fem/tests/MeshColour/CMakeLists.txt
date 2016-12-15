@@ -1,0 +1,10 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE(colourtest.sif colourtest.sif COPYONLY)
+ADD_ELMERTEST_MODULE(MeshColour MeshColour MeshColour.F90)
+
+file(COPY MeshColour.F90 cube.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(MeshColour)
+ADD_ELMER_LABEL(MeshColour quick)

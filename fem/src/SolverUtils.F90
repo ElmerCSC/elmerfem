@@ -56,6 +56,7 @@ MODULE SolverUtils
    USE Multigrid
    USE IterSolve
    USE ElementUtils
+   USE ComponentUtils
    USE TimeIntegrate
    USE ModelDescription
    USE MeshUtils
@@ -1115,6 +1116,123 @@ CONTAINS
    END SUBROUTINE UpdateGlobalEquations
 !------------------------------------------------------------------------------
 
+
+!> Add element local matrices & vectors to global matrices and vectors.
+!> Vectorized version, does not support normal or tangential boundary
+!> conditions yet.
+   SUBROUTINE UpdateGlobalEquationsVec( Gmtr, Lmtr, Gvec, Lvec, n, &
+           NDOFs, NodeIndexes, RotateNT, UElement, MCAssembly )
+     TYPE(Matrix_t), POINTER :: Gmtr         !< The global matrix
+     REAL(KIND=dp) :: Lmtr(:,:)              !< Local matrix to be added to the global matrix.
+     REAL(KIND=dp) :: Gvec(:)                !< Element local force vector.
+     REAL(KIND=dp) :: Lvec(:)                !< The global RHS vector.
+     INTEGER :: n                            !< Number of nodes.
+     INTEGER :: NDOFs                        !< Number of degrees of free per node.
+     INTEGER :: NodeIndexes(:)               !< Element node to global node numbering mapping.
+     LOGICAL, OPTIONAL :: RotateNT           !< Should the global equation be done in local normal-tangential coordinates.
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement !< Element to be updated
+     LOGICAL, OPTIONAL :: MCAssembly   !< Assembly process is multicoloured and guaranteed race condition free 
+
+     ! Local variables
+     INTEGER :: dim, i,j,k
+     INTEGER :: Ind(n*NDOFs)
+     REAL(KIND=dp) :: Vals(n*NDOFs)
+!DIR$ ATTRIBUTES ALIGN:64::Ind, Vals
+
+     TYPE(Element_t), POINTER :: Element
+     LOGICAL :: Rotate
+     LOGICAL :: ColouredAssembly
+
+     IF (PRESENT(UElement)) THEN
+       Element => UElement
+     ELSE
+       Element => CurrentModel % CurrentElement
+     END IF
+     
+     IF ( CheckPassiveElement(Element) )  RETURN
+     Rotate = .TRUE.
+     IF ( PRESENT(RotateNT) ) Rotate = RotateNT
+     
+     ColouredAssembly = .FALSE.
+     IF ( PRESENT(MCAssembly) ) ColouredAssembly = MCAssembly
+
+     dim = CoordinateSystemDimension()
+     ! TEMP
+     ! IF ( Rotate .AND. NormalTangentialNOFNodes > 0 .AND. ndofs>=dim) THEN
+     
+     ! DO i=1,Element % TYPE % NumberOfNodes
+     !     Ind(i) = BoundaryReorder(Element % NodeIndexes(i))
+     ! END DO
+     ! TODO: See that RotateMatrix is vectorized
+     ! CALL RotateMatrix( LocalStiffMatrix, LocalForce, n, dim, NDOFs, &
+     !                    Ind, BoundaryNormals, BoundaryTangent1, BoundaryTangent2 )
+     IF (Rotate .AND. ndofs >= dim) THEN
+       CALL Fatal('UpdateGlobalEquationsVec', &
+               'Normal or tangential boundary conditions not supported yet!')
+     END IF
+     
+     IF ( ASSOCIATED( Gmtr ) ) THEN
+       SELECT CASE( Gmtr % FORMAT )
+       CASE( MATRIX_CRS )
+         CALL CRS_GlueLocalMatrixVec(Gmtr, n, NDOFs, NodeIndexes, Lmtr, ColouredAssembly)
+       CASE DEFAULT
+         CALL Fatal('UpdateGlobalEquationsVec','Not implemented for given matrix type')
+       END SELECT
+     END IF
+     
+     ! Check for multicolored assembly
+     IF (ColouredAssembly) THEN 
+       IF (ANY(NodeIndexes<=0)) THEN
+         ! Vector masking needed, no ATOMIC needed
+         DO i=1,n
+           IF (NodeIndexes(i)>0) THEN
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+             DO j=1,NDOFs
+               k = NDOFs*(NodeIndexes(i)-1) + j
+               Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+             END DO
+           END IF
+         END DO
+       ELSE
+         ! No vector masking needed, no ATOMIC needed
+         DO i=1,n
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+           DO j=1,NDOFs
+             k = NDOFs*(NodeIndexes(i)-1) + j
+             Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+           END DO
+         END DO
+       END IF ! Vector masking
+     ELSE
+       IF (ANY(NodeIndexes<=0)) THEN
+         ! Vector masking needed, ATOMIC needed
+         DO i=1,n
+           IF (NodeIndexes(i)>0) THEN
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+             DO j=1,NDOFs
+               k = NDOFs*(NodeIndexes(i)-1) + j
+               !$OMP ATOMIC
+               Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+             END DO
+           END IF
+         END DO
+       ELSE
+         ! No vector masking needed, ATOMIC needed
+         DO i=1,n
+!DIR$ LOOP COUNT MIN=1, AVG=3
+!DIR$ IVDEP
+           DO j=1,NDOFs
+             k = NDOFs*(NodeIndexes(i)-1) + j
+             !$OMP ATOMIC
+             Gvec(k) = Gvec(k) + Lvec(NDOFs*(i-1)+j)
+           END DO
+         END DO
+       END IF ! Vector masking
+     END IF ! Coloured assembly
+   END SUBROUTINE UpdateGlobalEquationsVec
 
 !------------------------------------------------------------------------------
 !> Update the global vector with the local vector entry.
@@ -3851,6 +3969,7 @@ CONTAINS
     LOGICAL :: NeedListMatrix
     INTEGER, ALLOCATABLE :: Rows0(:), Cols0(:)
     REAL(KIND=dp), POINTER :: BulkValues0(:)
+    INTEGER :: DirCount
 
 !------------------------------------------------------------------------------
 ! These logical vectors are used to minimize extra effort in setting up different BCs
@@ -3910,6 +4029,12 @@ CONTAINS
              NDOFs, Perm, BC, DonePeriodic )
        END IF
      END DO
+
+     IF( InfoActive(12) ) THEN
+       CALL Info('SetDirichletBoundaries','Number of periodic points set: '&
+           //TRIM(I2S(COUNT(DonePeriodic))),Level=12)
+     END IF
+
      DEALLOCATE( DonePeriodic ) 
 
    END IF
@@ -3960,6 +4085,7 @@ CONTAINS
 
     bndry_start = Model % NumberOfBulkElements+1
     bndry_end   = bndry_start+Model % NumberOfBoundaryElements-1
+    DirCount = 0
 
     ! check and set some flags for nodes belonging to n-t boundaries
     ! getting set by other bcs:
@@ -4593,6 +4719,9 @@ CONTAINS
     END IF
 
     IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
+
+    CALL Info('SetDirichletBoundaries','Number of dofs set: '//TRIM(I2S(DirCount)))
+
     
 !------------------------------------------------------------------------------
 
@@ -4716,6 +4845,7 @@ CONTAINS
 
                   ! Consider all components of the cartesian vector mapped to the 
                   ! N-T coordinate system. Should this perhaps have scaling included?
+                  DirCount = DirCount + 1
                   CALL ZeroRow( A,lmax )
                   IF( .NOT. OffDiagonal) THEN
                     DO k=1,dim
@@ -4727,10 +4857,12 @@ CONTAINS
                   A % ConstrainedDOF(lmax) = .FALSE.
                 END IF
               ELSE
+                DirCount = DirCount + 1
                 CALL SetSinglePoint(k,DOF,Work(j),.FALSE.)
               END IF
             ELSE
               DO l=1,MIN( NDOFs, SIZE(WorkA,1) )
+                DirCount = DirCount + 1
                 CALL SetSinglePoint(k,l,WorkA(l,1,j),.FALSE.)
               END DO
             END IF
@@ -4870,6 +5002,8 @@ CONTAINS
            RETURN
         END IF
       END IF
+
+      DirCount = DirCount + 1
 
       IF ( A % FORMAT == MATRIX_SBAND ) THEN
         CALL SBand_SetDirichlet( A,b,k,s*val )
@@ -5784,7 +5918,7 @@ CONTAINS
     LoadName = TRIM(Name) // ' Load'
     nlen = LEN_TRIM(LoadName)
     
-    CALL Info('SetNodalLoads','Checking loads for: '//TRIM(Name),Level=10)
+    CALL Info('SetNodalLoads','Checking for nodal loads for variable: '//TRIM(Name),Level=10)
 
     n = MAX(Model % NumberOfBCs, Model % NumberOFBodyForces) 
     ALLOCATE( ActivePart(n), ActivePartAll(n) )
@@ -5810,7 +5944,7 @@ CONTAINS
     END DO
 
     IF ( ANY(ActivePart) .OR. ANY(ActivePartAll) ) THEN
-      CALL Info('SetNodalLoads','Setting nodal loads on boundaries: '//TRIM(Name),Level=9)
+      CALL Info('SetNodalLoads','Setting nodal loads on boundaries: '//TRIM(LoadName),Level=9)
       ALLOCATE(DoneLoad( SIZE(b)/NDOFs) )
       DoneLoad = .FALSE.
 
@@ -5850,7 +5984,7 @@ CONTAINS
     END DO
 
     IF ( ANY( ActivePart ) .OR. ANY(ActivePartAll) ) THEN
-      CALL Info('SetNodalLoads','Setting nodal loads on bulk: '//TRIM(Name),Level=9)
+      CALL Info('SetNodalLoads','Setting nodal loads on body force: '//TRIM(LoadName),Level=9)
       IF(.NOT. ALLOCATED(DoneLoad)) ALLOCATE(DoneLoad( SIZE(b)/NDOFs) )      
       DoneLoad = .FALSE.
 
@@ -5977,6 +6111,8 @@ CONTAINS
 
     DEALLOCATE( Indexes )
     IF(.NOT.ASSOCIATED(A % DiagScaling,DiagScaling)) DEALLOCATE(DiagScaling)
+
+    CALL Info('SetNodalLoads','Finished checking for nodal loads',Level=12)
 
 
 CONTAINS
@@ -6333,10 +6469,10 @@ CONTAINS
       DO i=1,ParEnv % PEs
         IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
            CALL MPI_BSEND( n_count(i), 1, MPI_INTEGER, i-1, &
-                800, MPI_COMM_WORLD, ierr )
+                800, ELMER_COMM_WORLD, ierr )
            IF ( n_count(i)>0 ) &
              CALL MPI_BSEND( n_index(i) % buff, n_count(i), MPI_INTEGER, i-1, &
-                 801, MPI_COMM_WORLD, ierr )
+                 801, ELMER_COMM_WORLD, ierr )
         END IF
       END DO
 
@@ -6345,12 +6481,12 @@ CONTAINS
 
         IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
            CALL MPI_RECV( n, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-                800, MPI_COMM_WORLD, status, ierr )
+                800, ELMER_COMM_WORLD, status, ierr )
            IF ( n>0 ) THEN
              ALLOCATE( gbuff(n) )
              proc = status(MPI_SOURCE)
              CALL MPI_RECV( gbuff, n, MPI_INTEGER, proc, &
-                 801, MPI_COMM_WORLD, status, ierr )
+                 801, ELMER_COMM_WORLD, status, ierr )
 
              DO j=1,n
                k = SearchNodeL( Mesh % ParallelInfo, gbuff(j), Mesh % NumberOfNodes )
@@ -6444,7 +6580,7 @@ CONTAINS
     REAL(KIND=dp), ALLOCATABLE :: nbuff(:)
     INTEGER, ALLOCATABLE :: n_count(:), gbuff(:), n_comp(:)
 
-    LOGICAL :: MassConsistent, LhsSystem
+    LOGICAL :: MassConsistent, LhsSystem, RotationalNormals
     LOGICAL, ALLOCATABLE :: LhsTangent(:),RhsTangent(:)
     INTEGER :: LhsConflicts
 
@@ -6507,8 +6643,10 @@ CONTAINS
                 Found = ListGetLogical( Model % BCs(i) % Values, &
                     TRIM(VariableName) // ' Rotate',gotIt)
                 IF ( Found .OR. .NOT. Gotit ) THEN
-                  MassConsistent=ListGetLogical(Model % BCs(i) % Values, &
+                  MassConsistent = ListGetLogical(Model % BCs(i) % Values, &
                           'Mass Consistent Normals',gotIt)
+                  RotationalNormals = ListGetLogical(Model % BCs(i) % Values, &
+                          'Rotational Normals',gotIt)
 
                   Condition(1:n) = ListGetReal( Model % BCs(i) % Values, &
                        TRIM(VariableName) // ' Condition', n, NodeIndexes, Conditional )
@@ -6521,6 +6659,11 @@ CONTAINS
                       nrm = 0._dp
                       IF (MassConsistent) THEN
                         CALL IntegMassConsistent(j,n,nrm)
+                      ELSE IF( RotationalNormals ) THEN
+                        nrm(1) = ElementNodes % x(j)
+                        nrm(2) = ElementNodes % y(j)
+                        nrm(3) = 0.0_dp
+                        nrm = nrm / SQRT( SUM( nrm * nrm ) )
                       ELSE
                         Bu = Element % TYPE % NodeU(j)
                         Bv = Element % TYPE % NodeV(j)
@@ -6652,12 +6795,12 @@ CONTAINS
         DO i=1,ParEnv % PEs
           IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
             CALL MPI_BSEND( n_count(i), 1, MPI_INTEGER, i-1, &
-                900, MPI_COMM_WORLD, ierr )
+                900, ELMER_COMM_WORLD, ierr )
             IF ( n_count(i)>0 ) THEN
               CALL MPI_BSEND( n_index(i) % buff, n_count(i), MPI_INTEGER, i-1, &
-                  901, MPI_COMM_WORLD, ierr )
+                  901, ELMER_COMM_WORLD, ierr )
               CALL MPI_BSEND( n_index(i) % normals, 3*n_count(i), MPI_DOUBLE_PRECISION, &
-                    i-1,  902, MPI_COMM_WORLD, ierr )
+                    i-1,  902, ELMER_COMM_WORLD, ierr )
             END IF
           END IF
         END DO
@@ -6666,15 +6809,15 @@ CONTAINS
 
           IF ( ParEnv % Active(i) .AND. ParEnv % IsNeighbour(i) ) THEN
              CALL MPI_RECV( n, 1, MPI_INTEGER, MPI_ANY_SOURCE, &
-                    900, MPI_COMM_WORLD, status, ierr )
+                    900, ELMER_COMM_WORLD, status, ierr )
              IF ( n>0 ) THEN
                proc = status(MPI_SOURCE)
                ALLOCATE( gbuff(n), nbuff(3*n) )
                CALL MPI_RECV( gbuff, n, MPI_INTEGER, proc, &
-                   901, MPI_COMM_WORLD, status, ierr )
+                   901, ELMER_COMM_WORLD, status, ierr )
 
                CALL MPI_RECV( nbuff, 3*n, MPI_DOUBLE_PRECISION, proc, &
-                    902, MPI_COMM_WORLD, status, ierr )
+                    902, ELMER_COMM_WORLD, status, ierr )
 
                DO j=1,n
                  k = SearchNodeL( Mesh % ParallelInfo, gbuff(j), Mesh % NumberOfNodes )
@@ -7600,6 +7743,7 @@ END FUNCTION SearchNodeL
     REAL(KIND=dp), DIMENSION(:), ALLOCATABLE :: TmpXVec, TmpRVec, TmpRHSVec
     INTEGER :: ipar(1)
     TYPE(ValueList_t), POINTER :: SolverParams
+    INTEGER, POINTER :: UpdateComponents(:)
 
     SolverParams => Solver % Values
     
@@ -7942,18 +8086,24 @@ END FUNCTION SearchNodeL
     CALL Info( 'ComputeChange', Message, Level=3 )
 
 
-    ! The update of exported variables may be done internally to allow some nonlinear features	   
-    ! or in steady state level to allow coupling to other solvers.
-    !-----------------------------------------------------------------------------------------
-    DoIt = .FALSE.
-    IF( SteadyState ) THEN 
-      DoIt = ListGetLogical( SolverParams,&
-          'Update Exported Variables',Stat)
-    ELSE 
-      DoIt = ListGetLogical( SolverParams,&
-          'Nonlinear Update Exported Variables',Stat)
+    ! For SteadyState loop the corresponding operations are done within "SolverActivate"
+    ! This is for nonlinear level only.
+    IF(.NOT. SteadyState ) THEN
+      ! The update of exported variables on nonliear level to allow some coupling within
+      !-----------------------------------------------------------------------------------------    
+      IF( ListGetLogical( SolverParams,&
+          'Nonlinear Update Exported Variables',Stat) ) THEN
+        CALL UpdateExportedVariables( Solver )	
+      END IF
+
+      ! Update components depending on the solver solution to allow some nonlinear couplings
+      !-----------------------------------------------------------------------------------------
+      UpdateComponents => ListGetIntegerArray( SolverParams, &
+          'Nonlinear Update Components', Stat )
+      IF( Stat ) THEN
+        CALL UpdateDependentComponents( UpdateComponents )	
+      END IF
     END IF
-    IF( DoIt ) CALL UpdateExportedVariables( Solver )	
 
 
     ! Optional a posteriori scaling for the computed fields
@@ -9178,22 +9328,22 @@ END FUNCTION SearchNodeL
       IF( NoBC > 0 ) THEN
         tmp_weights(1:NoBC ) = bc_weights
         CALL MPI_ALLREDUCE( tmp_weights, bc_weights, NoBC, &
-            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
       IF( NoBF > 0 ) THEN
         tmp_weights(1:NoBF ) = bf_weights
         CALL MPI_ALLREDUCE( tmp_weights, bf_weights, NoBF, &
-            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
       IF( NoBodies > 0 ) THEN
         tmp_weights(1:NoBodies ) = body_weights
         CALL MPI_ALLREDUCE( tmp_weights, body_weights, NoBodies, &
-            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
       IF( NoMat > 0 ) THEN
         tmp_weights(1:NoMat ) = mat_weights
         CALL MPI_ALLREDUCE( tmp_weights, mat_weights, NoMat, &
-            MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, ierr )
+            MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
       DEALLOCATE( tmp_weights )
     END IF
@@ -9978,7 +10128,7 @@ END FUNCTION SearchNodeL
 
     IF( DoStiff ) IndStiff = 1
     IF( DoDamp ) IndDamp = IndStiff + 1
-    IF( DoMass ) IndMass = IndDamp + 1
+    IF( DoMass ) IndMass = MAX( IndStiff, IndDamp ) + 1
     IndMax = MAX( IndStiff, IndDamp, IndMass )
 
     IF (Parallel.AND.Cnumbering) THEN
@@ -10208,6 +10358,12 @@ END FUNCTION SearchNodeL
 
     ApplyLimiter = ListGetLogical( Params,'Apply Limiter',GotIt ) 
     SkipZeroRhs = ListGetLogical( Params,'Skip Zero Rhs Test',GotIt )
+#ifdef HAVE_FETI4I
+    IF ( C_ASSOCIATED(A % PermonMatrix) ) THEN
+      ScaleSystem = .FALSE.
+      SkipZeroRhs = .TRUE.
+    END IF
+#endif
 
     IF ( .NOT. ( RecursiveAnalysis .OR. ApplyLimiter .OR. SkipZeroRhs ) ) THEN
       bnorm = SQRT(ParallelReduction(SUM(b(1:n)**2)))      
@@ -11064,6 +11220,7 @@ END SUBROUTINE VariableNameParser
 END SUBROUTINE UpdateExportedVariables
 
 
+
 !------------------------------------------------------------------------------
 !> Eliminates bubble degrees of freedom from a local linear system.
 !> This version is suitable for flow models with velocity and pressure as 
@@ -11254,6 +11411,8 @@ SUBROUTINE SolveHarmonicSystem( G, Solver )
         CALL Fatal( 'AddEquation', '> Frequency < must be given for harmonic analysis.' )
       END IF
       Nfrequency = 1
+      ! Add the number of frequencies even for case of one for some postprocessing stuff to work 
+      CALL ListAddInteger( Solver % Values,'Harmonic System Values',Nfrequency )
     END IF
 
     niter = MIN(Nfrequency,Solver % NOFEigenValues)
@@ -12145,7 +12304,7 @@ CONTAINS
     END IF
 
     CALL ParallelSumVector(A, x)
-!   CALL MPI_ALLREDUCE( x,r, ng, MPI_DOUBLE_PRECISION, MPI_SUM, MPI_COMM_WORLD, i ); x=r
+!   CALL MPI_ALLREDUCE( x,r, ng, MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, i ); x=r
 
     IF(ALLOCATED(perm)) THEN
       DO i=1,SIZE(perm)
@@ -12234,16 +12393,16 @@ CONTAINS
 
        DO i=0,ParEnv % PEs-1
          IF ( ParEnv % IsNeighbour(i+1) ) THEN
-           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, MPI_COMM_WORLD, status, ierr )
+           CALL MPI_BSEND( cnt(i), 1, MPI_INTEGER, i, 7001, ELMER_COMM_WORLD, status, ierr )
            IF ( cnt(i)>0 ) THEN
              CALL MPI_BSEND( Buf(i) % grow, cnt(i), MPI_INTEGER, &
-                 i, 7002, MPI_COMM_WORLD, status, ierr )
+                 i, 7002, ELMER_COMM_WORLD, status, ierr )
 
              CALL MPI_BSEND( Buf(i) % gcol, cnt(i), MPI_INTEGER, &
-                 i, 7003, MPI_COMM_WORLD, status, ierr )
+                 i, 7003, ELMER_COMM_WORLD, status, ierr )
 
              CALL MPI_BSEND( Buf(i) % gval, cnt(i), MPI_DOUBLE_PRECISION, &
-                 i, 7004, MPI_COMM_WORLD, status, ierr )
+                 i, 7004, ELMER_COMM_WORLD, status, ierr )
            END IF
          END IF
        END DO
@@ -12256,7 +12415,7 @@ CONTAINS
 
        DO i=1,ParEnv % NumOfNeighbours
          CALL MPI_RECV( rcnt, 1, MPI_INTEGER, &
-           MPI_ANY_SOURCE, 7001, MPI_COMM_WORLD, status, ierr )
+           MPI_ANY_SOURCE, 7001, ELMER_COMM_WORLD, status, ierr )
 
          IF ( rcnt>0 ) THEN
            IF(.NOT.ALLOCATED(rrow)) THEN
@@ -12268,13 +12427,13 @@ CONTAINS
 
            proc = status(MPI_SOURCE)
            CALL MPI_RECV( rrow, rcnt, MPI_INTEGER, &
-              proc, 7002, MPI_COMM_WORLD, status, ierr )
+              proc, 7002, ELMER_COMM_WORLD, status, ierr )
 
            CALL MPI_RECV( rcol, rcnt, MPI_INTEGER, &
-              proc, 7003, MPI_COMM_WORLD, status, ierr )
+              proc, 7003, ELMER_COMM_WORLD, status, ierr )
 
            CALL MPI_RECV( rval, rcnt, MPI_DOUBLE_PRECISION, &
-              proc, 7004, MPI_COMM_WORLD, status, ierr )
+              proc, 7004, ELMER_COMM_WORLD, status, ierr )
 
            DO j=1,rcnt
              l = SearchNode(A % ParallelInfo,rcol(j),Order=A % Perm)
@@ -12349,8 +12508,9 @@ CONTAINS
     END IF
 
     SaveMass = ListGetLogical( Params,'Linear System Save Mass',Found)
-    SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)
-    
+
+    SaveDamp = ListGetLogical( Params,'Linear System Save Damp',Found)   
+
     dumpprefix = ListGetString( Params, 'Linear System Save Prefix', Found)
     IF(.NOT. Found ) dumpprefix = 'linsys'
 
@@ -13429,6 +13589,7 @@ CONTAINS
        DO WHILE(ASSOCIATED(Ctmp))
          mcount = mcount + 1
          row = row + Ctmp % NumberOfRows
+         Ctmp => Ctmp % ConstraintMatrix
        END DO
      END IF
 
@@ -13473,6 +13634,7 @@ CONTAINS
        ALLOCATE( SumCount( arows ) )
        SumCount = 0
      END IF
+
 
      ComplexMatrix = Solver % Matrix % Complex
      IF( ComplexMatrix ) THEN
@@ -13520,10 +13682,12 @@ CONTAINS
        ActiveComponents = .TRUE.
        
        IF(constraint_ind>Model % NumberOfBCs) THEN
+
          Atmp => Ctmp
          IF( .NOT. ASSOCIATED( Atmp ) ) CYCLE
          Ctmp => Ctmp % ConstraintMatrix
        ELSE
+
          IF(.NOT. Solver % MortarBCsChanged) EXIT
          
          IF( AnyPriority ) THEN
@@ -13549,8 +13713,14 @@ CONTAINS
          SomeSet = .FALSE.
          SomeSkip = .FALSE.
          DO i=1,Dofs
-           str = ComponentNameVar( Solver % Variable, i )
+           IF( Dofs > 1 ) THEN
+             str = ComponentName( Solver % Variable, i )
+           ELSE
+             str = Solver % Variable % Name 
+           END IF
+
            SetDof = ListGetLogical( Model % BCs(bc_ind) % Values,'Mortar BC '//TRIM(str),Found )
+
            SetDefined(i) = Found
            IF(Found) THEN
              ActiveComponents(i) = SetDof
@@ -13577,6 +13747,7 @@ CONTAINS
          END IF
 
        END IF
+
        TransposePresent = TransposePresent .OR. ASSOCIATED(Atmp % Child)
        IF( TransposePresent ) THEN
          CALL Info('GenerateConstraintMatrix','Transpose matrix is present')
@@ -13589,11 +13760,15 @@ CONTAINS
        IF( SumProjectors .AND. CreateSelf ) THEN
          CALL Fatal('GenerateConstraintMatrix','It is impossible to sum up nodal projectors!')
        END IF
+
        
        IF( Dofs == 1 ) THEN         
 
-         IF( .NOT. ActiveComponents(1) ) CYCLE
-
+         IF( .NOT. ActiveComponents(1) ) THEN
+           CALL Info('GenerateConstraintMatrix','Skipping component: '//TRIM(I2S(1)),Level=12)
+           CYCLE
+         END IF
+         
          DO i=1,Atmp % NumberOfRows           
 
            IF( Atmp % Rows(i) >= Atmp % Rows(i+1) ) CYCLE ! skip empty rows
@@ -13764,8 +13939,11 @@ CONTAINS
          DO i=1,Atmp % NumberOfRows           
            DO j=1,Dofs
              
-             IF( .NOT. ActiveComponents(j) ) CYCLE
-
+             IF( .NOT. ActiveComponents(j) ) THEN
+               CALL Info('GenerateConstraintMatrix','Skipping component: '//TRIM(I2S(j)),Level=12)
+               CYCLE
+             END IF
+             
              ! For complex matrices both entries mist be created
              ! since preconditioning benefits from 
              IF( ComplexMatrix ) THEN

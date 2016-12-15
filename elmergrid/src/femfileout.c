@@ -636,15 +636,22 @@ static int ElmerToVtkType(int elmertype)
 
 
 int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
-		 int nobound,char *prefix,int decimals,int info)
+		 int nobound,char *prefix,int dummyzero,int info)
 /* This procedure saves the mesh in the VTU format understood by Paraview and Visit, for example. */
 {
   int material,noknots,noelements,bulkelems,sideelems,vtktype,elemtype,boundtype;
   char filename[MAXFILESIZE],outstyle[MAXFILESIZE];
-  int i,j,k,nodesd2,elemind,idoffset;
+  int i,j,k,nodesd2,elemind,idoffset,di;
   int ind[MAXNODESD2];
   int LittleEnd,PrecBits,elemoffset;
   FILE *out;
+
+  /* If we create dummy zero node the real indexes start from one */
+  if( dummyzero ) 
+    di = 0;
+  else
+    di = 1;
+  
   
   if(!data->created) {
     printf("SaveMeshVtk: You tried to save points that were never created.\n");
@@ -690,12 +697,20 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
     fprintf(out,"<VTKFile type=\"UnstructuredGrid\" version=\"0.1\" byte_order=\"BigEndian\">\n");
 
   fprintf(out,"  <UnstructuredGrid>\n");
-  fprintf(out,"    <Piece NumberOfPoints=\"%d\"  NumberOfCells=\"%d\">\n",noknots,noelements);
+  fprintf(out,"    <Piece NumberOfPoints=\"%d\"  NumberOfCells=\"%d\">\n",noknots+dummyzero,noelements);
 
   /* Write out the nodal indexes, this is mainly just on example */
   fprintf(out,"      <PointData>\n");
-  fprintf(out,"        <DataArray type=\"Float%d\" Name=\"NodeNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
-  for(i=1;i<=noknots;i++) fprintf(out,"%12.6le ",1.0*i);
+  if(0) { /* Here we as as floats - just for testing */
+    fprintf(out,"        <DataArray type=\"Float%d\" Name=\"NodeNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
+    if( dummyzero ) fprintf(out,"%12.6le ",0.0);
+    for(i=1;i<=noknots;i++) fprintf(out,"%12.6le ",1.0*i);
+  }
+  else { /* And here as integers - what they really are */
+    fprintf(out,"        <DataArray type=\"Int32\" Name=\"NodeNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n");
+    if( dummyzero ) fprintf(out,"%d ",0);
+    for(i=1;i<=noknots;i++) fprintf(out,"%d ",i);
+  }
   fprintf(out,"\n");
   fprintf(out,"        </DataArray>\n");
   fprintf(out,"      </PointData>\n");
@@ -704,12 +719,21 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
   printf("Saving cell data (Element numbers and Goemetry Ids).\n");
   fprintf(out,"      <CellData>\n");
   /* Write out the element indexes, this is mainly just on example */
-  fprintf(out,"        <DataArray type=\"Float%d\" Name=\"ElementNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
-  for(i=1;i<=noelements;i++) 
-    fprintf(out,"%12.6le ",1.0*i);
-  fprintf(out,"\n");
-  fprintf(out,"        </DataArray>\n");
-
+  if(0) { /* This as floats - just for testing */
+    fprintf(out,"        <DataArray type=\"Float%d\" Name=\"ElementNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n",PrecBits);
+    for(i=1;i<=noelements;i++) 
+      fprintf(out,"%12.6le ",1.0*i);
+    fprintf(out,"\n");
+    fprintf(out,"        </DataArray>\n");
+  }
+  else { /* This as integers - what they are */
+    fprintf(out,"        <DataArray type=\"Int32\" Name=\"ElementNumber\" NumberOfComponents=\"1\" format=\"ascii\">\n");
+    for(i=1;i<=noelements;i++) 
+      fprintf(out,"%d ",i);
+    fprintf(out,"\n");
+    fprintf(out,"        </DataArray>\n");
+  }
+    
   /* Write out the geometry Ids */
   fprintf(out,"        <DataArray type=\"Int32\" Name=\"GeometryIds\" NumberOfComponents=\"1\" format=\"ascii\">\n");
   for(i=1;i<=bulkelems;i++) 
@@ -756,6 +780,10 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Saving %d nodal coordinates\n",noknots);
   fprintf(out,"      <Points>\n");  
   fprintf(out,"        <DataArray type=\"Float%d\" Name=\"ElementNumber\" NumberOfComponents=\"3\" format=\"ascii\">\n",PrecBits);
+  if( dummyzero ) {    
+    if(info) printf("Creating dummy duplicate for first index to allow numbering from one\n");
+    fprintf(out,"%12.6le %12.6le %12.6le ",data->x[1],data->y[1],data->z[1]);  
+  }
   for(i=1;i<=noknots;i++) 
     fprintf(out,"%12.6le %12.6le %12.6le ",data->x[i],data->y[i],data->z[i]);
   fprintf(out,"\n");
@@ -771,7 +799,7 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
   for(i=1;i<=bulkelems;i++) {
     elemtype = data->elementtypes[i];
     for(j=0;j<elemtype%100;j++)
-      fprintf(out,"%d ",data->topology[i][j]-1);
+      fprintf(out,"%d ",data->topology[i][j]-di);
   }
   if(nobound ) {
     for(j=0;j<nobound;j++) {
@@ -779,7 +807,7 @@ int SaveMeshVtu(struct FemType *data,struct BoundaryType *bound,
       for(i=1;i<=bound[j].nosides;i++) {
 	GetBoundaryElement(i,&bound[j],data,ind,&elemtype); 
 	for(k=0;k<elemtype%100;k++)
-	  fprintf(out,"%d ",ind[k]-1);
+	  fprintf(out,"%d ",ind[k]-di);
       }
     }
   }

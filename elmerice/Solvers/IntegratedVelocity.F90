@@ -71,7 +71,7 @@ SUBROUTINE IntegratedVelocity( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material
   TYPE(Variable_t), POINTER :: PointerToVariable, IntVeloSol, FlowVariable, HeightSol
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, OnSurface = .True.
+  LOGICAL :: AllocationsDone = .FALSE., Found, OnSurface = .TRUE.,UnFoundFatal=.TRUE.
 
   INTEGER :: i, n, m, t, istat, DIM, COMP, other_body_id   
   INTEGER, POINTER :: Permutation(:), NodeIndexes(:), IntVeloPerm(:),&
@@ -94,34 +94,22 @@ SUBROUTINE IntegratedVelocity( Model,Solver,dt,TransientSimulation )
   VariableValues => PointerToVariable % Values
   WRITE(SolverName, '(A)') 'IntegratedVelocity'
 
-  IntVeloSol => VariableGet( Solver % Mesh % Variables, 'Integrated Velocity' )
-  IF (ASSOCIATED(IntVeloSol)) THEN
-     IntVelo => IntVeloSol % Values
-     IntVeloPerm => IntVeloSol % Perm
-  ELSE
-     CALL FATAL(SolverName,'Could not find variable >Integrated Velocity<')
-  END IF
+  IntVeloSol => VariableGet( Solver % Mesh % Variables, 'Integrated Velocity',UnFoundFatal=UnFoundFatal)
+  IntVelo => IntVeloSol % Values
+  IntVeloPerm => IntVeloSol % Perm
   
   
   OnSurface = GetLogical( Solver % Values, 'On Surface', Found )
   IF (.Not.Found) OnSurface = .True.  !Default Value is True
   
   IF (OnSurface) THEN
-     HeightSol => VariableGet( Solver % Mesh % Variables, 'Height' )
-        IF (ASSOCIATED(HeightSol)) THEN
-           Height => HeightSol % Values
-           HeightPerm => HeightSol % Perm
-        ELSE
-           CALL FATAL(SolverName,'Could not find variable >Height<')
-        END IF
+     HeightSol => VariableGet( Solver % Mesh % Variables, 'Height',UnFoundFatal=UnFoundFatal)
+     Height => HeightSol % Values
+     HeightPerm => HeightSol % Perm
   ELSE
-     HeightSol => VariableGet( Solver % Mesh % Variables, 'Depth' )
-        IF (ASSOCIATED(HeightSol)) THEN
-           Height => HeightSol % Values
-           HeightPerm => HeightSol % Perm
-        ELSE
-           CALL FATAL(SolverName,'Could not find variable >Depth<')
-        END IF
+     HeightSol => VariableGet( Solver % Mesh % Variables, 'Depth',UnFoundFatal=UnFoundFatal)
+     Height => HeightSol % Values
+     HeightPerm => HeightSol % Perm
   END IF
   
 !------------------------------------------------------------------------------

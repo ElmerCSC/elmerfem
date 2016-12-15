@@ -64,9 +64,9 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: Var 
   REAL(KIND=dp), POINTER :: WeightVector(:),ForceVector(:),MaskVector(:),FieldVector(:)
   INTEGER, POINTER :: WeightPerm(:),ForcePerm(:),MaskPerm(:),FieldPerm(:)
-  REAL(KIND=dp) :: Norm, MinMaskVal, MaxMaskVal
+  REAL(KIND=dp) :: Norm, MinMaskVal, MaxMaskVal, GlobalWeight
   LOGICAL :: GivenNormalize, NodalNormalize, Found, Found2, Mask, MaskDiffusion, &
-      ConstantWeightSum, UseLogScale, RevertLogScale, ContinueWithBC
+      ConstantWeightSum, UseLogScale, RevertLogScale, ContinueWithBC, GlobalNormalize
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName, FileName
 
 
@@ -77,6 +77,7 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
   Var => Solver % Variable
   FieldVector => Var % Values
   FieldPerm => Var % Perm 
+  CALL Info('DataToFieldSolver','Fitting to variable: '//TRIM(Var % Name),Level=6)
 
   ! The variable containing the field contributions
   !------------------------------------------------------------------------
@@ -97,6 +98,8 @@ SUBROUTINE DataToFieldSolver( Model,Solver,dt,TransientSimulation )
 
   ! If normalization is requested then need the vector of weights as well
   !------------------------------------------------------------------------
+  GlobalWeight = GetCReal( Params,'Weight Coefficient',GlobalNormalize )
+
   GivenNormalize = GetLogical( Params,'Normalize by Given Weight',Found)
   IF(.NOT. GivenNormalize ) THEN
     GivenNormalize = GetLogical( Params,'Normalize Data by Weight',Found)
@@ -325,7 +328,7 @@ CONTAINS
     INTEGER :: i,j,p,q,j2,j3,k,t,n,istat,active,BoundaryNodes,dim,MaskActive
     TYPE(Element_t), POINTER :: Element
     TYPE(GaussIntegrationPoints_t) :: IP
-    CHARACTER(LEN=MAX_NAME_LEN) :: BoundaryName
+    CHARACTER(LEN=MAX_NAME_LEN) :: BoundaryName, DiffusivityName
     TYPE(Nodes_t) :: Nodes
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), NodalWeight(:)
     REAL(KIND=dp), POINTER :: Basis(:), dBasisdx(:,:)
@@ -339,12 +342,16 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: Material
     
     
-    SAVE Visited, Nodes, STIFF, FORCE, Basis, dBasisdx, NodalWeight
-    SAVE BoundaryPerm, BoundaryNodes
+    SAVE Visited, Nodes, STIFF, FORCE, Basis, dBasisdx, NodalWeight, &
+        BoundaryPerm, BoundaryNodes, DataDiffusivity
 
     ! Assembly the diffusion part used for regularization
     !----------------------------------------------------------
     Coeff = GetCReal( Solver % Values,'Diffusion Coefficient',GlobalDiffuse)
+    LocalDiffuse = .FALSE.
+
+    DiffusivityName = GetString( Solver % Values,'Diffusivity Name',Found )
+    IF(.NOT. Found ) DiffusivityName = 'Data Diffusivity'
     LocalDiffuse = .FALSE.
 
     active = GetNOFActive()
@@ -365,7 +372,6 @@ CONTAINS
           DataDiffusivity( 3,3,N ), STAT=istat )
       IF( istat /= 0) CALL Fatal('DataToFieldSolver','Allocation error 1 in BulkAssembly!')
       
-
       n = StiffMatrix % NumberOfRows
       ALLOCATE( NodalWeight( n ), STAT=istat )
       IF( istat /= 0) CALL Fatal('DataToFieldSolver','Allocation error 2 in BulkAssembly!')
@@ -401,7 +407,7 @@ CONTAINS
       
       IF( .NOT. GlobalDiffuse ) THEN
         Material => GetMaterial()
-        CALL ListGetRealArray( Material,'Data Diffusivity',Hwrk,n,Indexes,LocalDiffuse)
+        CALL ListGetRealArray( Material,DiffusivityName,Hwrk,n,Indexes,LocalDiffuse)
         IF( LocalDiffuse ) THEN
           DataDiffusivity = 0.0d0
           IF ( SIZE(Hwrk,1) == 1 ) THEN
@@ -543,7 +549,7 @@ CONTAINS
           Wmat = 0.0_dp
         END IF
         Wrhs = WeightCorr * val
-
+        
       ELSE IF( NodalNormalize ) THEN
         Wmat = NodalWeight(i)        
         Wrhs = val
@@ -552,7 +558,12 @@ CONTAINS
         Wmat = NodalWeight(i)
         Wrhs = NodalWeight(i) * val
       END IF
-           
+
+      IF( GlobalNormalize ) THEN
+        Wmat = GlobalWeight * Wmat
+        Wrhs = GlobalWeight * Wrhs
+      END IF
+
       k = MatDiag(j) 
       MatValues( k ) = MatValues( k ) + Wmat
       MatRhs(j) = MatRhs(j) + Wrhs

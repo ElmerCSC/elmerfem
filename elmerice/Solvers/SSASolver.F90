@@ -71,7 +71,7 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
   TYPE(ValueList_t), POINTER :: SolverParams, BodyForce, Material, BC
   TYPE(Variable_t), POINTER :: PointerToVariable, ZsSol, ZbSol, VeloSol, Nsol
 
-  LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront 
+  LOGICAL :: AllocationsDone = .FALSE., Found, GotIt, CalvingFront, UnFoundFatal=.TRUE.
   LOGICAL :: Newton
 
   INTEGER :: i, n, m, t, istat, DIM, p, STDOFs, iFriction
@@ -121,21 +121,13 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
  ! IF DIM = STDOFs+1  Normal-Tangential can not be used => trick temporary set Model Dimension to STDOFs
        IF (DIM.eq.(STDOFs+1)) CurrentModel % Dimension = STDOFs
 
-        ZbSol => VariableGet( Solver % Mesh % Variables, 'Zb' )
-        IF (ASSOCIATED(ZbSol)) THEN
-           Zb => ZbSol % Values
-           ZbPerm => ZbSol % Perm
-        ELSE
-           CALL FATAL(SolverName,'Could not find variable >Zb<')
-        END IF
+        ZbSol => VariableGet( Solver % Mesh % Variables, 'Zb',UnFoundFatal=UnFoundFatal)
+        Zb => ZbSol % Values
+        ZbPerm => ZbSol % Perm
 
-        ZsSol => VariableGet( Solver % Mesh % Variables, 'Zs' )
-        IF (ASSOCIATED(ZsSol)) THEN
-           Zs => ZsSol % Values
-           ZsPerm => ZsSol % Perm
-        ELSE
-           CALL FATAL(SolverName,'Could not find variable >Zs<')
-        END IF
+        ZsSol => VariableGet( Solver % Mesh % Variables, 'Zs',UnFoundFatal=UnFoundFatal)
+        Zs => ZsSol % Values
+        ZsPerm => ZsSol % Perm
 
         NSol => VariableGet( Solver % Mesh % Variables, 'Effective Pressure' )
         IF (ASSOCIATED(NSol)) THEN
@@ -288,14 +280,12 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
 
 
      NodalDensity=0.0_dp
-     NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n,NodeIndexes,Found)
-     IF (.NOT.Found) &
-           CALL FATAL(SolverName,'Could not find Material prop.  >SSA Mean Density<')
+     NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n,NodeIndexes,Found,&
+             UnFoundFatal=UnFoundFatal)
 
      NodalViscosity=0.0_dp
-     NodalViscosity(1:n) = ListGetReal( Material, 'SSA Mean Viscosity',n, NodeIndexes,Found)
-     IF (.NOT.Found) &
-          CALL FATAL(SolverName,'Could not find Material prop. >SSA Mean Viscosity<')
+     NodalViscosity(1:n) = ListGetReal( Material, 'SSA Mean Viscosity',n, NodeIndexes,Found,&
+             UnFoundFatal=UnFoundFatal)
 
      Friction = GetString(Material, 'SSA Friction Law', Found) 
      IF (.NOT.Found) &
@@ -316,43 +306,32 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
      ! for all friction law
      NodalBeta = 0.0_dp
      NodalBeta(1:n) = ListGetReal( &
-           Material, 'SSA Friction Parameter', n, NodeIndexes(1:n), Found )
-     IF (.NOT.Found) &
-        CALL FATAL(SolverName,'Could not find Material prop. >SSA Friction Parameter<')
+           Material, 'SSA Friction Parameter', n, NodeIndexes(1:n), Found,&
+             UnFoundFatal=UnFoundFatal)
 
      !PRINT *,NodalBeta(1:n),ElementNodes % x(1:n)
 
      ! for Weertman and Coulomb friction
      IF (iFriction > 1) THEN
-        fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found )
-        IF (.NOT.Found) &
-           CALL FATAL(SolverName,'Could not find Material prop. >SSA Friction Exponent<')
+        fm = ListGetConstReal( Material, 'SSA Friction Exponent', Found , UnFoundFatal=UnFoundFatal)
 
-        MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found )
-        IF (.NOT.Found) THEN
-           MinN = 1.0e-6_dp
-           WRITE( Message, * ) 'Parameter >SSA Min Effective Pressure< not found. Set to 10E-6'
-           CALL Info(SolverName, Message, Level=20 )
-        END IF
+        MinN = ListGetConstReal( Material, 'SSA Min Effective Pressure', Found, UnFoundFatal=UnFoundFatal)
+         !Previous default value: MinN = 1.0e-6_dp
 
         NodalLinVelo = 0.0_dp
         NodalLinVelo(1:n) = ListGetReal( &
-              Material, 'SSA Friction Linear Velocity', n, NodeIndexes(1:n), Found )
-        IF (.NOT.Found) &
-           CALL FATAL(SolverName,'Could not find Material prop. >SSA Friction Linear Velocity<')
+              Material, 'SSA Friction Linear Velocity', n, NodeIndexes(1:n), Found,&
+             UnFoundFatal=UnFoundFatal)
      END IF      
 
      ! only for Coulomb friction
      IF (iFriction > 2) THEN
-        PostPeak = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found )
-        IF (.NOT.Found) &
-           CALL FATAL(SolverName,'Could not find Material prop. >SSA Friction Post-Peak<')
+        PostPeak = ListGetConstReal( Material, 'SSA Friction Post-Peak', Found, UnFoundFatal=UnFoundFatal )
 
         NodalC = 0.0_dp
         NodalC(1:n) = ListGetReal( &
-              Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found )
-        IF (.NOT.Found) &
-           CALL FATAL(SolverName,'Could not find Material prop. >SSA Friction Maximum Value<')
+              Material, 'SSA Friction Maximum Value', n, NodeIndexes(1:n), Found,&
+             UnFoundFatal=UnFoundFatal)
         
         ! Get the effective pressure
         IF (ASSOCIATED(NSol)) THEN
@@ -444,9 +423,8 @@ SUBROUTINE SSABasalSolver( Model,Solver,dt,TransientSimulation )
         Material => GetMaterial(ParentElement)
 
         NodalDensity=0.0_dp
-        NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,Found)
-        IF (.NOT.Found) &
-           CALL FATAL(SolverName,'Could not find Material prop.  >SSA Mean Density<')
+        NodalDensity(1:n) = ListGetReal( Material, 'SSA Mean Density',n, NodeIndexes,Found,&
+             UnFoundFatal=UnFoundFatal)
 
         MinH = ListGetConstReal( Material, 'SSA Critical Thickness',Found)
         If (.NOT.Found) MinH=EPSILON(MinH)
@@ -850,7 +828,7 @@ SUBROUTINE GetMeanValueSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, IntViscoSol, IntDensSol,&
                                 DepthSol  
 
-  LOGICAL :: AllocationsDone = .FALSE., Found
+  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal=.TRUE.
 
   INTEGER :: i, n, m, t, istat, DIM, COMP, other_body_id   
   INTEGER, POINTER :: Permutation(:), NodeIndexes(:), IntViscoPerm(:),&
@@ -873,27 +851,18 @@ SUBROUTINE GetMeanValueSolver( Model,Solver,dt,TransientSimulation )
   VariableValues => PointerToVariable % Values
   WRITE(SolverName, '(A)') 'SSASolver-IntValue'
 
-  IntViscoSol => VariableGet( Solver % Mesh % Variables, 'Mean Viscosity' )
-  IF (ASSOCIATED(IntViscoSol)) THEN
-     IntVisco => IntViscoSol % Values
-     IntViscoPerm => IntViscoSol % Perm
-  ELSE
-     CALL FATAL(SolverName,'Could not find variable >Mean Viscosity<')
-  END IF
-  IntDensSol => VariableGet( Solver % Mesh % Variables, 'Mean Density' )
-  IF (ASSOCIATED(IntDensSol)) THEN
-     IntDens => IntDensSol % Values
-     IntDensPerm => IntDensSol % Perm
-  ELSE
-     CALL FATAL(SolverName,'Could not find variable >Mean Density<')
-  END IF
-  DepthSol => VariableGet( Solver % Mesh % Variables, 'Depth' )
-  IF (ASSOCIATED(DepthSol)) THEN
-     Depth => DepthSol % Values
-     DepthPerm => DepthSol % Perm
-  ELSE
-     CALL FATAL(SolverName,'Could not find variable >Depth<')
-  END IF
+  IntViscoSol => VariableGet( Solver % Mesh % Variables, 'Mean Viscosity',UnFoundFatal=UnFoundFatal)
+  IntVisco => IntViscoSol % Values
+  IntViscoPerm => IntViscoSol % Perm
+
+  IntDensSol => VariableGet( Solver % Mesh % Variables, 'Mean Density',UnFoundFatal=UnFoundFatal)
+  IntDens => IntDensSol % Values
+  IntDensPerm => IntDensSol % Perm
+  
+  DepthSol => VariableGet( Solver % Mesh % Variables, 'Depth',UnFoundFatal=UnFoundFatal)
+  Depth => DepthSol % Values
+  DepthPerm => DepthSol % Perm
+
   !--------------------------------------------------------------
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
@@ -1141,7 +1110,7 @@ SUBROUTINE SSASolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable, Grad1Sol, Grad2Sol, &
                                DepthSol, VeloSol
 
-  LOGICAL :: AllocationsDone = .FALSE., Found
+  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal=.TRUE.
 
   INTEGER :: i, n, m, t, istat, DIM, p, Indexes(128), COMP 
   INTEGER, POINTER :: Permutation(:), VeloPerm(:), &
@@ -1176,36 +1145,23 @@ SUBROUTINE SSASolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
         DIM = CoordinateSystemDimension()
 
-        VeloSol => VariableGet( Solver % Mesh % Variables, 'SSAFlow' )
-        IF (ASSOCIATED(veloSol)) THEN
-           Velocity => VeloSol % Values
-           VeloPerm => VeloSol % Perm
-           PrevVelo => veloSol % PrevValues
-        ELSE
-           CALL FATAL(SolverName,'Could not find variable >SSAFlow<')
-        END IF
-        DepthSol => VariableGet( Solver % Mesh % Variables, 'Depth' )
-        IF (ASSOCIATED(DepthSol)) THEN
-           Depth => DepthSol % Values
-           DepthPerm => DepthSol % Perm
-        ELSE
-           CALL FATAL(SolverName,'Could not find variable >Depth<')
-        END IF
-        Grad1Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad1')
-        IF (ASSOCIATED(Grad1Sol)) THEN
-           GradSurface1 => Grad1Sol % Values
-           GradSurface1Perm => Grad1Sol % Perm
-        ELSE
-           CALL FATAL(SolverName,'Could not find variable >FreeSurfGrad1<')
-        END IF
+        VeloSol => VariableGet( Solver % Mesh % Variables, 'SSAFlow',UnFoundFatal=UnFoundFatal)
+        Velocity => VeloSol % Values
+        VeloPerm => VeloSol % Perm
+        PrevVelo => veloSol % PrevValues
+
+        DepthSol => VariableGet( Solver % Mesh % Variables, 'Depth',UnFoundFatal=UnFoundFatal)
+        Depth => DepthSol % Values
+        DepthPerm => DepthSol % Perm
+
+        Grad1Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad1',UnFoundFatal=UnFoundFatal)
+        GradSurface1 => Grad1Sol % Values
+        GradSurface1Perm => Grad1Sol % Perm
+        
         IF (dim > 2) THEN
-           Grad2Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad2')
-           IF (ASSOCIATED(Grad2Sol)) THEN
-              GradSurface2 => Grad2Sol % Values
-              GradSurface2Perm => Grad2Sol % Perm
-           ELSE
-              CALL FATAL(SolverName,'Could not find variable >FreeSurfGrad2<')
-           END IF
+           Grad2Sol => VariableGet( Solver % Mesh % Variables, 'FreeSurfGrad2',UnFoundFatal=UnFoundFatal)
+           GradSurface2 => Grad2Sol % Values
+           GradSurface2Perm => Grad2Sol % Perm
         END IF
 
   !--------------------------------------------------------------

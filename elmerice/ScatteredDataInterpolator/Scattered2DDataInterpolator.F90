@@ -55,6 +55,7 @@
 
         TYPE(ValueList_t), POINTER :: Params
         TYPE(Variable_t), POINTER :: Var
+        TYPE(Element_t), POINTER :: Element
         REAL(KIND=dp), POINTER :: Values(:)
         INTEGER, POINTER :: Perm(:)
 
@@ -65,19 +66,20 @@
 
         INTEGER,parameter :: io=20
         INTEGER :: ok,nNaN
-        INTEGER :: i,j,k,kmin,NoVar
+        INTEGER :: i,j,k,t,kmin,NoVar
         INTEGER :: nppcin,csakin
         INTEGER :: NetcdfStatus,varid,ncid
         INTEGER :: compt,nx,ny,nval
+        INTEGER :: nodeind,Varind
 
-        CHARACTER(LEN=MAX_NAME_LEN) :: VariableName,DataF
+        CHARACTER(LEN=MAX_NAME_LEN) :: TargetVariableName,VariableName,DataF
         CHARACTER(LEN=MAX_NAME_LEN) :: Name,FName,WName,MName,CSVName,tmpName
         CHARACTER(LEN=MAX_NAME_LEN),parameter :: &
                          SolverName='Scattered2DDataInterpolator'
         CHARACTER(LEN=MAX_NAME_LEN) :: Xdim,dimName,FillName
         CHARACTER(2) :: method
 
-        LOGICAL :: GotVar,Found
+        LOGICAL :: GotVar,GotTVar,Found,UnFoundFatal=.TRUE.
         LOGICAL :: CheckBBox,CheckNaN,ReplaceNaN,NETCDFFormat
         LOGICAL :: GoodVal,HaveFillv
         LOGICAL,dimension(:,:), allocatable :: mask
@@ -128,27 +130,26 @@
 
         DO WHILE(GotVar)
             NoVar = NoVar + 1
-            WRITE (Name,'(A,I0)') 'Variable ',NoVar
+            WRITE(Name,'(A,I0)') 'Variable ',NoVar
 
             VariableName = ListGetString( Params, TRIM(Name), GotVar )
             IF (.NOT.GotVar) exit
+            
+            WRITE(Name,'(A,I0)') 'Target Variable ',NoVar
+            TargetVariableName=ListGetString( Params, TRIM(Name), GotTVar)
+            IF (.NOT.GotTVar) TargetVariableName=VariableName
 
-            Var => VariableGet(Model %  Mesh % Variables, VariableName )
+            Var => VariableGet(Model %  Mesh % Variables, TargetVariableName )
             IF(.NOT.ASSOCIATED(Var)) Then
-               CALL VariableAddVector(Model % Mesh % Variables,Model % Mesh,Solver,VariableName,1)
-               Var => VariableGet(Model %  Mesh % Variables, VariableName )
+               CALL VariableAddVector(Model % Mesh % Variables,Model % Mesh,Solver,TargetVariableName,1)
+               Var => VariableGet(Model %  Mesh % Variables, TargetVariableName )
             ENDIF
             Values => Var % Values
             Perm => Var % Perm
 
             WRITE (FName,'(A,I0,A)') 'Variable ',NoVar,' Data File'
-            DataF = ListGetString( Params, TRIM(FName), Found )
+            DataF = ListGetString( Params, TRIM(FName), Found, UnFoundFatal )
 
-            IF (.NOT.Found) then
-               write(message,'(A,A,A)') &
-                        'Keyword <',Trim(Fname),'> not found'
-               CALL Fatal(Trim(SolverName),Trim(message))
-            END IF
             k = INDEX( DataF,'.nc' )
             NETCDFFormat = ( k /= 0 )
 
@@ -384,13 +385,13 @@
                    endif
                        
                        write(message,'(A,A,A)') 'Initialise ',&
-                                                  Trim(Variablename),&
+                                                  Trim(TargetVariablename),&
                                      ' using cubic spline interpolation'
                         CALL INFO(Trim(SolverName),Trim(message),Level=5)
                         call csa_interpolate_points(nin, pin, nout, pout, nppc ,csak)
                   CASE ('l')
                       write(message,'(A,A,A)') 'Initialise ',&
-                                                  Trim(Variablename),&
+                                                  Trim(TargetVariablename),&
                                     ' using Linear interpolation'
                        CALL INFO(Trim(SolverName),Trim(message),Level=5)
                       call lpi_interpolate_points(nin, pin, nout, pout)
@@ -399,11 +400,11 @@
                         CASE ('s')
                          nn_rule=1
                          write(message,'(A,A,A)') 'Initialise ',&
-                                                  Trim(Variablename),&
+                                                  Trim(TargetVariablename),&
                  ' using Natural Neighbours Non-Sibsonian interpolation'
                         CASE DEFAULT
                          write(message,'(A,A,A)') 'Initialise ',&
-                                                  Trim(Variablename),&
+                                                  Trim(TargetVariablename),&
                        ' using Natural Neighbours Sibson interpolation'
                      END SELECT
                    CALL INFO(Trim(SolverName),Trim(message), Level=5)
@@ -413,9 +414,9 @@
              CALL INFO(Trim(SolverName),'-----Interpolation Done---', Level=5)
             !update variable value
             nNaN=0
-            Do i=1,nout
+            If (CheckNaN) Then
+              Do i=1,nout
                z=pout(i)%z
-               If (CheckNaN) Then
                   If (isnan(z)) Then
                      nNaN=nNaN+1
                      If (ReplaceNaN) then
@@ -437,9 +438,10 @@
                          z=pin(kmin)%z
                       End IF
                    End IF
-               End IF
-               Values(Perm(i))=z
-            End do
+                 pout(i)%z=z
+               !Values(Perm(i))=z
+              End do
+            End IF
             If (nNaN.GT.0) then
                 If (ReplaceNaN) then
                    write(message,'(I0,A,A,e14.7)') nNaN, &
@@ -452,8 +454,19 @@
                 EndIf
                 CALL INFO(Trim(SolverName),Trim(message), Level=5)
              End If
-           
-
+             
+             DO t=1,Model%Mesh%NumberOfBulkElements
+                Element => Model%Mesh%Elements(t)
+                DO i = 1, Element % TYPE % NumberOfNodes
+                   nodeind = Element % NodeIndexes(i)
+                   IF (Var % TYPE == Variable_on_nodes_on_elements) THEN
+                      Varind=Element % DGIndexes(i)
+                   ELSE
+                      Varind=Element % NodeIndexes(i)
+                   ENDIF
+                   Values(Perm(Varind))=pout(nodeind)%z
+                END DO
+             END DO
             deallocate(pin)
         END DO
 

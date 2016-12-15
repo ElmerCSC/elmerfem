@@ -71,7 +71,7 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
    REAL(KIND=dp) :: y, pw, t, told, dt, Bu, Bv
    REAL(KIND=dp) :: Zsl, rhow, gravity
    REAL(KIND=dp), ALLOCATABLE :: S(:), auxReal(:), Ns(:),  a_perp(:), SourceFunc(:), normal(:,:)
-   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE. 
+   LOGICAL :: FirstTime = .TRUE., NewTime, GotIt, ComputeS,  NormalFlux = .TRUE., UnFoundFatal=.TRUE.
    CHARACTER(LEN=MAX_NAME_LEN)  :: BottomSurfaceName
        
    SAVE told, FirstTime, NewTime, Nn, dt, Ns, Bodyforce, DIM
@@ -218,9 +218,9 @@ FUNCTION SeaPressure ( Model, nodenumber, y) RESULT(pw)
       END IF
       
       body_id = ParentElement % BodyId
-      material_id = ListGetInteger(Model % Bodies(body_id) % Values, 'Material', GotIt)
+      material_id = ListGetInteger(Model % Bodies(body_id) % Values, 'Material', GotIt, UnFoundFatal=UnFoundFatal)
       ParentMaterial => Model % Materials(material_id) % Values
-      IF ((.NOT. ASSOCIATED(ParentMaterial)) .OR. (.NOT. GotIt)) THEN
+      IF ((.NOT. ASSOCIATED(ParentMaterial))) THEN
          WRITE(Message,'(A,I10,A,I10)')&
               'No material values found for body no ', body_id,&
               ' under material id ', material_id

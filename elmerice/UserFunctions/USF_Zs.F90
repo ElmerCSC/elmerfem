@@ -47,17 +47,13 @@ FUNCTION ZsIni ( Model, nodenumber, x) RESULT(Zs)
    INTEGER :: nodenumber,  NMAX, i, dim
    REAL(KIND=dp) :: x,   Zs       
    REAL(KIND=dp), ALLOCATABLE :: Zs0(:)       
-   LOGICAL :: FirstTime=.True. 
+   LOGICAL :: FirstTime=.True., UnFoundFatal=.TRUE.
 
    SAVE FirstTime
    SAVE Zs0 
 
-   ZsSol => VariableGet( Model % Variables, 'Zs')
-   IF (ASSOCIATED(ZsSol)) THEN
-        ZsPerm => ZsSol % Perm
-   ELSE
-        CALL FATAL('ZsIni','Could not find variable >Zs<')
-   END IF
+   ZsSol => VariableGet( Model % Variables, 'Zs',UnFoundFatal=UnFoundFatal)
+   ZsPerm => ZsSol % Perm
 
    IF (FirstTime) THEN
         FirstTime = .False.
@@ -92,17 +88,13 @@ FUNCTION ZsMzsIni ( Model, nodenumber, Zs) RESULT(mu)
    INTEGER :: nodenumber,  NMAX, i, dim
    REAL(KIND=dp) :: mu,   Zs       
    REAL(KIND=dp), ALLOCATABLE :: Zs0(:)       
-   LOGICAL :: FirstTime=.True. 
+   LOGICAL :: FirstTime=.True.,UnFoundFatal
 
    SAVE FirstTime
    SAVE Zs0 
 
-   ZsSol => VariableGet( Model % Variables, 'Zs')
-   IF (ASSOCIATED(ZsSol)) THEN
-        ZsPerm => ZsSol % Perm
-   ELSE
-        CALL FATAL('ZsTopMZsIni','Could not find variable >Zs<')
-   END IF
+   ZsSol => VariableGet( Model % Variables, 'Zs',UnFoundFatal=UnFoundFatal)
+   ZsPerm => ZsSol % Perm
 
    IF (FirstTime) THEN
         FirstTime = .False.
@@ -139,17 +131,13 @@ FUNCTION ZsTopIni ( Model, nodenumber, x) RESULT(Zs)
    INTEGER :: nodenumber,  NMAX, i, dim
    REAL(KIND=dp) :: x,   Zs       
    REAL(KIND=dp), ALLOCATABLE :: Zs0(:)       
-   LOGICAL :: FirstTime=.True. 
+   LOGICAL :: FirstTime=.True.,UnFoundFatal
 
    SAVE FirstTime
    SAVE Zs0 
 
-   ZsSol => VariableGet( Model % Variables, 'Zs Top')
-   IF (ASSOCIATED(ZsSol)) THEN
-        ZsPerm => ZsSol % Perm
-   ELSE
-        CALL FATAL('ZsIni','Could not find variable >Zs Top<')
-   END IF
+   ZsSol => VariableGet( Model % Variables, 'Zs Top',UnFoundFatal=UnFoundFatal)
+   ZsPerm => ZsSol % Perm
 
    IF (FirstTime) THEN
         FirstTime = .False.
@@ -184,17 +172,13 @@ FUNCTION ZsTopMzsIni ( Model, nodenumber, Zs) RESULT(mu)
    INTEGER :: nodenumber,  NMAX, i, dim
    REAL(KIND=dp) :: mu,   Zs       
    REAL(KIND=dp), ALLOCATABLE :: Zs0(:)       
-   LOGICAL :: FirstTime=.True. 
+   LOGICAL :: FirstTime=.True.,UnFoundFatal
 
    SAVE FirstTime
    SAVE Zs0 
 
-   ZsSol => VariableGet( Model % Variables, 'Zs Top')
-   IF (ASSOCIATED(ZsSol)) THEN
-        ZsPerm => ZsSol % Perm
-   ELSE
-        CALL FATAL('ZsTopMZsIni','Could not find variable >Zs Top<')
-   END IF
+   ZsSol => VariableGet( Model % Variables, 'Zs Top',UnFoundFatal=UnFoundFatal)
+   ZsPerm => ZsSol % Perm
 
    IF (FirstTime) THEN
         FirstTime = .False.
@@ -231,17 +215,13 @@ FUNCTION ZsBottomIni ( Model, nodenumber, x) RESULT(Zs)
    INTEGER :: nodenumber,  NMAX, i, dim
    REAL(KIND=dp) :: x,   Zs       
    REAL(KIND=dp), ALLOCATABLE :: Zs0(:)       
-   LOGICAL :: FirstTime=.True. 
+   LOGICAL :: FirstTime=.True.,UnFoundFatal
 
    SAVE FirstTime
    SAVE Zs0 
 
-   ZsSol => VariableGet( Model % Variables, 'Zs Bottom')
-   IF (ASSOCIATED(ZsSol)) THEN
-        ZsPerm => ZsSol % Perm
-   ELSE
-        CALL FATAL('ZsIni','Could not find variable >Zs Bottom<')
-   END IF
+   ZsSol => VariableGet( Model % Variables, 'Zs Bottom',UnFoundFatal=UnFoundFatal)
+   ZsPerm => ZsSol % Perm
 
    IF (FirstTime) THEN
         FirstTime = .False.
@@ -276,17 +256,13 @@ FUNCTION ZsBottomMzsIni ( Model, nodenumber, Zs) RESULT(mu)
    INTEGER :: nodenumber,  NMAX, i, dim
    REAL(KIND=dp) :: mu,   Zs       
    REAL(KIND=dp), ALLOCATABLE :: Zs0(:)       
-   LOGICAL :: FirstTime=.True. 
+   LOGICAL :: FirstTime=.True.,UnFoundFatal
 
    SAVE FirstTime
    SAVE Zs0 
 
-   ZsSol => VariableGet( Model % Variables, 'Zs Bottom')
-   IF (ASSOCIATED(ZsSol)) THEN
-        ZsPerm => ZsSol % Perm
-   ELSE
-        CALL FATAL('ZsTopMZsIni','Could not find variable >Zs Bottom<')
-   END IF
+   ZsSol => VariableGet( Model % Variables, 'Zs Bottom',UnFoundFatal=UnFoundFatal)
+   ZsPerm => ZsSol % Perm
 
    IF (FirstTime) THEN
         FirstTime = .False.

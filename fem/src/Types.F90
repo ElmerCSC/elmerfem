@@ -48,6 +48,9 @@ MODULE Types
    USE Messages
    USE iso_varying_string
    USE, INTRINSIC :: ISO_C_BINDING
+#ifdef _OPENMP
+   USE omp_lib 
+#endif 
 
    INTEGER, PARAMETER :: MAX_NAME_LEN = 128, MAX_STRING_LEN=2048
 
@@ -82,7 +85,8 @@ MODULE Types
 	                SOLVER_MODE_COUPLED = 3, &    ! coupled solver with multiple blocks
 	                SOLVER_MODE_BLOCK = 4, &      ! block solver
 	                SOLVER_MODE_GLOBAL = 5, &     ! lumped variables (no mesh)
-	                SOLVER_MODE_MATRIXFREE = 6    ! normal field, no matrix
+	                SOLVER_MODE_MATRIXFREE = 6, & ! normal field, no matrix
+                        SOLVER_MODE_STEPS = 7         ! as the legacy but splitted to different steps
 
   INTEGER, PARAMETER :: PROJECTOR_TYPE_DEFAULT = 0, &  ! unspecified constraint matrix
                         PROJECTOR_TYPE_NODAL = 1, &    ! nodal projector
@@ -205,6 +209,9 @@ END INTERFACE
     REAL(KIND=dp),  POINTER CONTIG :: MassValues(:)=>NULL(),DampValues(:)=>NULL(), &
         BulkValues(:)=>NULL(), BulkMassValues(:)=>NULL(), PrecValues(:)=>NULL()
 
+#ifdef HAVE_FETI4I
+    TYPE(C_PTR) :: PermonMatrix = C_NULL_PTR, PermonSolverInstance = C_NULL_PTR
+#endif
 #ifdef HAVE_MUMPS
     TYPE(dmumps_struc), POINTER :: MumpsID => NULL() ! Global distributed Mumps
     TYPE(dmumps_struc), POINTER :: MumpsIDL => NULL() ! Local domainwise Mumps
@@ -266,7 +273,8 @@ END INTERFACE
      LOGICAL, DIMENSION(:), POINTER   :: IsNeighbour
      LOGICAL, DIMENSION(:), POINTER   :: SendingNB
      INTEGER                          :: NumOfNeighbours
-  END TYPE ParEnv_t
+     INTEGER                          :: NumberOfThreads = 1
+   END TYPE ParEnv_t
 
 
   TYPE GlueTableT
@@ -380,11 +388,7 @@ END INTERFACE
      LOGICAL :: LValue
      INTEGER, POINTER :: IValues(:)
 
-#ifdef SGI
-     INTEGER :: PROCEDURE
-#else
      INTEGER(KIND=AddrInt) :: PROCEDURE
-#endif
 
      REAL(KIND=dp) :: Coeff = 1.0_dp
      CHARACTER(LEN=MAX_NAME_LEN) :: CValue
@@ -602,9 +606,10 @@ END INTERFACE
    !
    TYPE Nodes_t
      INTEGER :: NumberOfNodes
-     REAL(KIND=dp), POINTER :: x(:)=>NULL()
-     REAL(KIND=dp), POINTER :: y(:)=>NULL()
-     REAL(KIND=dp), POINTER :: z(:)=>NULL()
+     REAL(KIND=dp), ALLOCATABLE :: xyz(:,:)
+     REAL(KIND=dp), POINTER CONTIG :: x(:)=>NULL()
+     REAL(KIND=dp), POINTER CONTIG :: y(:)=>NULL()
+     REAL(KIND=dp), POINTER CONTIG :: z(:)=>NULL()
    END TYPE Nodes_t
 
 !------------------------------------------------------------------------------
@@ -665,7 +670,8 @@ END INTERFACE
 
      TYPE(Nodes_t), POINTER :: Nodes
      TYPE(Element_t), DIMENSION(:), POINTER :: Elements, Edges, Faces
-     TYPE(Nodes_t), POINTER :: NodesMapped, NodesOrig
+     TYPE(Nodes_t), POINTER :: NodesOrig
+     TYPE(Nodes_t), POINTER :: NodesMapped
 
      LOGICAL :: DisContMesh 
      INTEGER, POINTER :: DisContPerm(:)
@@ -683,6 +689,15 @@ END INTERFACE
      
    END TYPE Mesh_t
 
+   TYPE Graph_t
+     INTEGER :: n
+     INTEGER, ALLOCATABLE :: ptr(:), ind(:)
+   END type Graph_t
+   
+   TYPE Graphcolour_t
+     INTEGER :: nc
+     INTEGER, ALLOCATABLE :: colours(:)
+   END TYPE Graphcolour_t
 
    TYPE MortarBC_t 
      TYPE(Matrix_t), POINTER :: Projector => NULL()
@@ -731,6 +746,9 @@ END INTERFACE
       TYPE(MortarBC_t), POINTER :: MortarBCs(:) => NULL()
       LOGICAL :: MortarBCsChanged = .FALSE., MortarBCsOnly=.FALSE.
       INTEGER(KIND=AddrInt) :: MortarProc
+
+      TYPE(Graph_t), POINTER :: ColourIndexList => NULL()
+
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
@@ -747,12 +765,14 @@ END INTERFACE
   END TYPE CircuitVariable_t
   
   TYPE Component_t
-    REAL(KIND=dp) :: BodyY=0._dp, BodyR=0._dp, ElArea, &
+    REAL(KIND=dp) :: Inductance=0._dp, Resistance=0._dp, Conductance = 0._dp, ElArea, &
                      N_j, coilthickness, i_multiplier_re, i_multiplier_im, nofturns
-    INTEGER :: polord, ElBoundary, nofcnts, BodyId, ComponentId
+    INTEGER :: polord, nofcnts, BodyId, ComponentId
+    INTEGER, POINTER :: ElBoundaries(:) => Null()
     INTEGER, POINTER :: BodyIds(:) => Null()
     CHARACTER(LEN=MAX_NAME_LEN) :: CoilType
     TYPE(CircuitVariable_t), POINTER :: ivar, vvar
+    LOGICAL :: UseCoilResistance = .FALSE.
   END TYPE Component_t
 
   TYPE Circuit_t
@@ -882,11 +902,13 @@ END INTERFACE
       TYPE(Circuit_t), POINTER :: Circuits(:) => Null()
       TYPE(Solver_t), POINTER :: ASolver    
       
+      LOGICAL :: HarmonicCircuits
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel
     TYPE(Matrix_t), POINTER :: GlobalMatrix
-    
+    INTEGER :: CurrentColour = 1
+    INTEGER :: ELMER_COMM_WORLD = -1
 
 !------------------------------------------------------------------------------
 END MODULE Types

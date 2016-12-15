@@ -86,7 +86,7 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp) :: Bu, Bv, Normal(3), NormalCond(4)
 
   LOGICAL :: CompAll = .TRUE., CompBC = .TRUE., Found, Parallel, &
-       FirstTime = .TRUE.
+       FirstTime = .TRUE.,UnFoundFatal=.TRUE.
   LOGICAL, ALLOCATABLE :: Hit(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: SolverName = 'ComputeNormalSolver'
@@ -101,14 +101,10 @@ SUBROUTINE ComputeNormalSolver( Model, Solver, dt, TransientSimulation )
   !---------------------------------------
   ! Setup pointer to the current solution:
   !---------------------------------------
-  NormalSolution => VariableGet( Solver % Mesh % Variables, 'Normal Vector' )
-  IF ( ASSOCIATED( NormalSolution ) ) THEN 
-     Nvector => NormalSolution % Values
-     Permutation => NormalSolution % Perm
-  ELSE
-     PRINT *,'FATAL: Unable to set pointer to the current solution'
-     STOP
-  END IF
+  NormalSolution => VariableGet( Solver % Mesh % Variables, 'Normal Vector',UnFoundFatal=UnFoundFatal)
+  Nvector => NormalSolution % Values
+  Permutation => NormalSolution % Perm
+  NVector = 0.0_dp
 
   CALL INFO(SolverName, 'Computing Normal Vector for Nodes', level=3)
 

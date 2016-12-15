@@ -37,7 +37,7 @@
 !> \ingroup ElmerLib
 !> \}
 
-
+#include "../config.h"
 !------------------------------------------------------------------------------
 !>  Utility routines for the elmer main program.
 !------------------------------------------------------------------------------
@@ -77,7 +77,7 @@ CONTAINS
       
       IF( Found ) THEN        
         IF ( ParEnv % PEs > 1 ) THEN
-          IF ( str /= 'mumps' .AND. str /= 'cpardiso' ) THEN
+          IF ( str /= 'mumps' .AND. str /= 'cpardiso' .AND. str /= 'permon' ) THEN
             CALL Warn( 'CheckLinearSolverOptions', 'Only MUMPS and CPardiso direct solver' // &
                 ' interface implemented in parallel, trying MUMPS!')
             str = 'mumps' 
@@ -96,7 +96,6 @@ CONTAINS
         CASE('banded' )
           
         CASE( 'umfpack', 'big umfpack' )
-#include "../config.h"
 #ifndef HAVE_UMFPACK
           CALL Fatal( 'GetMatrixFormat', 'UMFPACK solver has not been installed.' )
 #endif
@@ -119,6 +118,10 @@ CONTAINS
         CASE( 'cholmod','spqr' )
 #ifndef HAVE_CHOLMOD
           CALL Fatal( 'CheckLinearSolverOptions', 'Cholmod solver has not been installed.' )
+#endif
+       CASE( 'permon')
+#ifndef HAVE_FETI4I
+          CALL Fatal( 'CheckLinearSolverOptions', 'FETI4I solver has not been installed.' )
 #endif
         CASE DEFAULT
           CALL Fatal( 'CheckLinearSolverOptions', 'Unknown direct solver method: ' // TRIM(str) )
@@ -600,7 +603,7 @@ CONTAINS
 
     INTEGER, POINTER :: Perm(:)
 
-    INTEGER(KIND=AddrInt) :: InitProc
+    INTEGER(KIND=AddrInt) :: InitProc, AssProc
 
     INTEGER :: MaxDGDOFs, MaxNDOFs, MaxEDOFs, MaxFDOFs, MaxBDOFs
     INTEGER :: i,j,k,l,NDeg,Nrows,nSize,n,m,DOFs,dim,MatrixFormat,istat,Maxdim
@@ -608,7 +611,7 @@ CONTAINS
     LOGICAL :: Found, Stat, BandwidthOptimize, EigAnal, ComplexFlag, &
     MultigridActive, VariableOutput, GlobalBubbles, HarmonicAnal, MGAlgebraic, &
     VariableGlobal, NoMatrix, IsAssemblySolver, IsCoupledSolver, IsBlockSolver, &
-    IsProcedure, LegacySolver
+    IsProcedure, IsStepsSolver, LegacySolver
 
     CHARACTER(LEN=MAX_NAME_LEN) :: str,eq,var_name,proc_name,tmpname
 
@@ -623,6 +626,11 @@ CONTAINS
     REAL(KIND=dp) :: tt, InitValue
     REAL(KIND=dp), POINTER :: Component(:)
 
+
+    TYPE(Graph_t) :: DualGraph
+    TYPE(GraphColour_t) :: GraphColouring
+
+    
 
     ! Set pointer to the list of solver parameters
     !------------------------------------------------------------------------------
@@ -782,7 +790,16 @@ CONTAINS
 
     IF( Solver % SolverMode == SOLVER_MODE_DEFAULT ) THEN
       eq = ListGetString( Solver  % Values, 'Equation', Found )
-      IF(.NOT. Found ) Solver % SolverMode = SOLVER_MODE_AUXILIARY 
+      IF(.NOT. Found ) THEN
+        Solver % SolverMode = SOLVER_MODE_AUXILIARY 
+      ELSE
+        AssProc = GetProcAddr( TRIM(proc_name)//'_bulk', abort=.FALSE. )
+        CALL Info('AddEquationBasics','Checking for _bulk solver',Level=12)
+        IF ( AssProc /= 0 ) THEN
+          CALL Info('AddEquationBasics','Solver will be be perfomed in steps',Level=8)
+          Solver % SolverMode = SOLVER_MODE_STEPS
+        END IF        
+      END IF
     END IF
 
     IsCoupledSolver = ( Solver % SolverMode == SOLVER_MODE_COUPLED ) 
@@ -791,6 +808,19 @@ CONTAINS
     IsAssemblySolver = IsAssemblySolver .OR. &
 	( IsCoupledSolver .AND. .NOT. IsProcedure ) .OR. &
         ( IsBlockSolver .AND. .NOT. IsProcedure ) 
+    IsStepsSolver = ( Solver % SolverMode == SOLVER_MODE_STEPS ) 
+
+    ! Get the procudure that really runs the solver
+    !------------------------------------------------------------------------------
+    IF( IsProcedure ) THEN
+      IF( IsStepsSolver ) THEN
+        Solver % PROCEDURE = AssProc
+      ELSE
+        Solver % PROCEDURE = GetProcAddr(proc_name)
+      END IF
+    END IF
+
+
 
     ! Default order of equation
     !--------------------------
@@ -833,12 +863,6 @@ CONTAINS
 
     END IF
 
-    ! Get the procudure that really runs the solver
-    !------------------------------------------------------------------------------
-    IF( IsProcedure ) THEN
-      Solver % PROCEDURE = GetProcAddr(proc_name)
-    END IF
-    
     ! Initialize and get the variable 
     !------------------------------------------------------------------------    
     Solver % TimeOrder = 0
@@ -1065,9 +1089,30 @@ CONTAINS
           END IF
         END IF
 
-        IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = MPI_COMM_WORLD
+        IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = ELMER_COMM_WORLD
         IF ( ListGetLogical( SolverParams, 'Discontinuous Galerkin', Found) ) &
           Solver % Variable % TYPE = Variable_on_nodes_on_elements
+
+
+        IF( ListGetLogical( SolverParams,'Multithreaded Solver',Found ) ) THEN
+          CALL Info('AddEquationBasics','Creating structures for mesh colouring')
+
+          ! Construct the dual graph from Elmer mesh
+          CALL ElmerMeshToDualGraph(Solver % Mesh, DualGraph)
+          
+          ! Colour the dual graph
+          CALL ElmerGraphColour(DualGraph, GraphColouring)
+          
+          ! Deallocate dual graph as it is no longer needed
+          CALL Graph_Deallocate(DualGraph)
+          
+          ! Construct colour lists
+          ALLOCATE( Solver % ColourIndexList )
+          CALL ElmerColouringToGraph(GraphColouring, Solver % ColourIndexList)
+          CALL Colouring_Deallocate(GraphColouring)          
+        END IF
+
+
       END IF
       !------------------------------------------------------------------------------
     END IF
@@ -1454,6 +1499,23 @@ CONTAINS
               Secondary = .TRUE. )
         END IF
       END IF
+
+      IF( ListGetLogical( Solver % Values,'Transient Restart',Found) ) THEN
+        IF( .NOT. ASSOCIATED( Solver % Variable % PrevValues ) ) THEN
+          CALL Warn('AddEquationSolution',&
+              'Transient restart requires PrevValues!')
+        ELSE 
+          DO k = 1, SIZE( Solver % Variable % PrevValues, 2 )
+            Component => Solver % Variable % PrevValues(:,k)
+            str = TRIM( Solver % Variable % Name ) //' PrevValues'//TRIM(I2S(k))
+            CALL VariableAddVector( Solver % Mesh % Variables, Solver % Mesh, Solver, &
+                str, Solver % Variable % Dofs, Component, Solver % Variable % Perm, &
+                Secondary = .TRUE. )
+          END DO
+        END IF
+      END IF
+
+
 
     ELSE
       Solver % TimeOrder = 0
@@ -1920,6 +1982,8 @@ CONTAINS
          END IF
          steadyIt = i
        END IF
+        
+       IF( GetNamespaceCheck() ) CALL ListPushNamespace('coupled '//TRIM(i2s(i))//': ')
 
        DoneThis = .FALSE.
 
@@ -2058,8 +2122,9 @@ CONTAINS
 !------------------------------------------------------------------------------
          END DO
 !------------------------------------------------------------------------------
-       Model % Mesh % Changed = .FALSE.
-       IF ( ALL(DoneThis) ) EXIT
+         CALL ListPopNamespace()
+         Model % Mesh % Changed = .FALSE.
+        IF ( ALL(DoneThis) ) EXIT
     END DO
 
     IF ( TransientSimulation .AND. .NOT. ALL(DoneThis) ) THEN
@@ -3067,6 +3132,7 @@ CONTAINS
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL InitializeToZero(Solver % Matrix, Solver % Matrix % rhs)
             
+            CALL ListPushNameSpace('block:')
             CALL ListPushNameSpace('block '//TRIM(i2s(RowVar))//TRIM(i2s(ColVar))//':')
             CALL BlockSystemAssembly(PSolver,dt,Transient,RowVar,ColVar)
             
@@ -3074,7 +3140,7 @@ CONTAINS
             CALL DefaultFinishAssembly()                    
             
             CALL BlockSystemDirichlet(TotMatrix,RowVar,ColVar)
-            CALL ListPopNameSpace()
+            CALL ListPopNameSpace(); CALL ListPopNameSpace()
           END DO
         END DO
       END IF
@@ -3088,7 +3154,7 @@ CONTAINS
           DO ColVar=1,NoVar
             CALL ParallelActive( .TRUE.)
             Amat => TotMatrix % SubMatrix(RowVar,ColVar) % Mat
-            Amat % Comm = MPI_COMM_WORLD
+            Amat % Comm = ELMER_COMM_WORLD
             Parenv % ActiveComm = Amat % Comm
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL ParallelInitMatrix(Solver,Amat)
@@ -3719,6 +3785,69 @@ CONTAINS
   END SUBROUTINE BlockSystemAssembly
 !-----------------------------------------------------------------------------------
 
+
+  SUBROUTINE ExecSolverInSteps( Model, Solver, dt, TransientSimulation )
+!------------------------------------------------------------------------------
+    TYPE(Model_t)  :: Model
+    TYPE(Solver_t),POINTER :: Solver
+    LOGICAL :: TransientSimulation
+    REAL(KIND=dp) :: dt
+!------------------------------------------------------------------------------
+    INTEGER(KIND=AddrInt) :: SolverAddr
+    CHARACTER(LEN=MAX_NAME_LEN) :: ProcName
+    INTEGER :: iter, MaxIter
+    LOGICAL :: Found
+!------------------------------------------------------------------------------
+    INTEGER :: NColours, col
+    REAL(KIND=dp) :: Norm
+
+    CALL Info('ExecSolverInSteps','Performing solution in steps',Level=5)
+    ProcName = ListGetString( Solver % Values,'Procedure', Found )
+
+    MaxIter = ListGetInteger( Solver % Values,'Nonlinear System Max Iterations', Found ) 
+    IF( .NOT. Found ) MaxIter = 1
+
+    DO iter = 1, MaxIter
+      CALL DefaultInitialize( Solver )
+      
+      IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
+        ncolours = Solver % ColourIndexList % n 
+      ELSE
+        ncolours = 1 
+      END IF
+
+      SolverAddr = Solver % PROCEDURE
+      CurrentColour = 0
+      DO col=1,ncolours
+        ! The > CurrentColour < is advanced by GetNOFActive() routine
+        ! to have similar interface as for non-steps solver
+        CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      END DO
+      CALL DefaultFinishBulkAssembly( Solver )
+
+      SolverAddr = GetProcAddr( TRIM(ProcName)//'_boundary', abort=.FALSE. )
+      IF( SolverAddr /= 0 ) THEN
+        CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+      END IF
+
+      CALL DefaultFinishBoundaryAssembly( Solver )
+      CALL DefaultFinishAssembly( Solver )
+      CALL DefaultDirichletBCs( Solver )
+
+      Norm = DefaultSolve( Solver )
+      
+      IF( Solver % Variable % NonlinConverged == 1 ) EXIT
+    END DO
+
+    SolverAddr = GetProcAddr( TRIM(ProcName)//'_post', abort=.FALSE. )
+    IF( SolverAddr /= 0 ) THEN
+      CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+    END IF
+    
+
+  END SUBROUTINE ExecSolverInSteps
+
+
 !------------------------------------------------------------------------------
 !> This executes the original line of solvers (legacy solvers) where each solver 
 !> includes looping over elements and the convergence control. From generality
@@ -3733,10 +3862,11 @@ CONTAINS
      REAL(KIND=dp) :: dt
 !------------------------------------------------------------------------------
      LOGICAL :: stat, Found, GB, MeActive, GotIt
-     INTEGER :: i, j, k, l, col, row, n, SolverAddr, BDOFs, maxdim, dsize, size0
+     INTEGER :: i, j, k, l, col, row, n, BDOFs, maxdim, dsize, size0
      TYPE(Element_t), POINTER :: CurrentElement
      TYPE(ValueList_t), POINTER :: SolverParams
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName, str, Message, Equation
+     INTEGER(KIND=AddrInt) :: SolverAddr
 
      INTEGER, ALLOCATABLE :: memb(:)
      TYPE(Matrix_t), POINTER :: M
@@ -3813,11 +3943,11 @@ CONTAINS
        n = COUNT(ParEnv % Active)
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
          IF ( ASSOCIATED(Solver % Matrix) ) THEN
-           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
               CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
          END IF
 
-         CALL MPI_Comm_group( MPI_COMM_WORLD, group_world, ierr )
+         CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
          ALLOCATE(memb(n))
          n = 0
          DO i=1,ParEnv % PEs
@@ -3828,7 +3958,7 @@ CONTAINS
          END DO
          CALL MPI_Group_incl( group_world, n, memb, group_active, ierr)
          DEALLOCATE(memb)
-         CALL MPI_Comm_create( MPI_COMM_WORLD, group_active, &
+         CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, &
                  comm_active, ierr)
 
          M => Solver % Matrix
@@ -3839,7 +3969,7 @@ CONTAINS
        ELSE
          M => Solver % Matrix
          DO WHILE( ASSOCIATED(M) )
-           M % Comm = MPI_COMM_WORLD
+           M % Comm = ELMER_COMM_WORLD
            M => M % Parent
          END DO
        END IF
@@ -3858,15 +3988,11 @@ CONTAINS
          END IF
        END IF
      ELSE IF (.NOT.SlaveNotParallel) THEN
-       Parenv % ActiveComm = MPI_COMM_WORLD
+       Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
-
 
      ! Linear constraints from mortar BCs:
      ! -----------------------------------
-!     FoundMortar = .FALSE.
-!     IF(.NOT.GetLogical(ListGetSolverParams(),'Mortar Projector Nonlinear',Found)) &
-!     FoundMortar = 
      CALL GenerateProjectors(Model,Solver,Nonlinear = .FALSE. )
 
      CALL INFO("SingleSolver", "Attempting to call solver", level=5)
@@ -3876,15 +4002,14 @@ CONTAINS
         WRITE(Message,'(A,A)') 'Solver Equation string is: ', TRIM(Equation)
         CALL INFO("SingleSolver", Message, level=5)
      END IF
-#ifdef SGIn32
-     SolverAddr = Solver % PROCEDURE
-     CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
-#else
-     CALL ExecSolver( Solver % PROCEDURE, &
-         Model, Solver, dt, TransientSimulation)
-#endif
 
-!    IF(FoundMortar) CALL ReleaseProjectors(Solver)
+     IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
+       CALL ExecSolverinSteps( Model, Solver, dt, TransientSimulation)
+     ELSE
+       SolverAddr = Solver % PROCEDURE
+       CALL ExecSolver( SolverAddr, Model, Solver, dt, TransientSimulation)
+     END IF
+
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
@@ -3915,6 +4040,7 @@ CONTAINS
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      CHARACTER(LEN=MAX_NAME_LEN) :: str, CoordTransform
      TYPE(ValueList_t), POINTER :: Params
+     INTEGER, POINTER :: UpdateComponents(:)
 
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -4050,6 +4176,7 @@ CONTAINS
      ELSE 
        CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
      END IF
+
      IF(.NOT. ListGetLogical( Params,'Auxiliary Solver',Found)) THEN
        IF(NamespaceFound) CALL ListPopNamespace()
      END IF
@@ -4059,6 +4186,26 @@ CONTAINS
      IF( GotCoordTransform ) THEN
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
+
+
+!---------------------------------------------------------------------
+! After each solver one may do some special derived fields etc. 
+!---------------------------------------------------------------------
+     
+
+     ! Update the variables that depend on this solver
+     IF( ListGetLogical( Params,&
+           'Update Exported Variables', Found) ) THEN
+       CALL UpdateExportedVariables( Solver )	
+     END IF
+    
+
+     ! Update the components that depend on this solver
+     UpdateComponents => ListGetIntegerArray( Params, &
+         'Update Components', Found )   
+     IF( Found ) CALL UpdateDependentComponents( UpdateComponents )	
+     
+
 
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested

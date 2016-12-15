@@ -95,7 +95,7 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
    REAL (KIND=dp) :: SigmaI, SigmaII, Chi, B, sigmath, pwater
    REAL (KIND=DP) :: EI(3),Dumy(1),Work(24), sigmath_var, stress_threshold
    REAL (KIND=DP) :: u, v, nbrPi, s
-   LOGICAL :: GotIt, FirstTime = .TRUE., Cauchy
+   LOGICAL :: GotIt, FirstTime = .TRUE., Cauchy, UnFoundFatal=.TRUE.
    CHARACTER*20 :: USF_Name='SourceDamage'
 
 
@@ -144,22 +144,14 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
 
 
    ! Get the Stress                     
-   StressVariable => VariableGet( Model % Variables, 'Stress' )
-   IF ( ASSOCIATED( StressVariable ) ) THEN
-      StressPerm    => StressVariable % Perm
-      StressValues  => StressVariable % Values
-   ELSE
-      CALL FATAL('Damage Source', 'Need ComputeDevStress Solver, Stress not associated !')
-   END IF
+   StressVariable => VariableGet( Model % Variables, 'Stress',UnFoundFatal=UnFoundFatal)
+   StressPerm    => StressVariable % Perm
+   StressValues  => StressVariable % Values
 
    ! Get Chi variable (positive where damage increases)
-   ChiVariable => VariableGet( Model % Variables, 'Chi' )
-   IF ( ASSOCIATED( ChiVariable ) ) THEN
-      ChiPerm    => ChiVariable % Perm
-      ChiValues  => ChiVariable % Values
-   ELSE
-      CALL FATAL('Damage Source', 'Need to declare Chi variable somewhere !')
-   END IF
+   ChiVariable => VariableGet( Model % Variables, 'Chi',UnFoundFatal=UnFoundFatal)
+   ChiPerm    => ChiVariable % Perm
+   ChiValues  => ChiVariable % Values
    
    ! Get the Sea Damage Pressure
    PSeaDVariable => VariableGet( Model % Variables, 'PSeaD' )
@@ -172,13 +164,9 @@ FUNCTION SourceDamage (Model, nodenumber, D) RESULT(Source)
    END IF
 
    ! Get the variables to compute the hydrostatic pressure  
-   FlowVariable => VariableGet( Model % Variables, 'Flow Solution' )
-   IF ( ASSOCIATED( FlowVariable ) ) THEN
-      FlowPerm    => FlowVariable % Perm
-      FlowValues  => FlowVariable % Values
-   ELSE
-      CALL FATAL('Damage Source', 'Need NS Solver, Flow Solution not associated !')
-   END IF
+   FlowVariable => VariableGet( Model % Variables, 'Flow Solution',UnFoundFatal=UnFoundFatal)
+   FlowPerm    => FlowVariable % Perm
+   FlowValues  => FlowVariable % Values
 
    Sig = 0.0
    DO i=1, DIM

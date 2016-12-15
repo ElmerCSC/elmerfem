@@ -49,6 +49,8 @@
 !> \ingroup ElmerLib
 !> \{
 
+#include "../config.h"
+
 !------------------------------------------------------------------------------
 !> The main program for Elmer. Solves the equations as defined by the input files.
 !------------------------------------------------------------------------------
@@ -115,8 +117,6 @@
      INTEGER :: ExtrudeLevels, MeshIndex
      TYPE(Mesh_t), POINTER :: ExtrudedMesh
 
-     INTEGER :: omp_get_max_threads
-
 #ifdef HAVE_TRILINOS
 INTERFACE
       SUBROUTINE TrilinosCleanup() BIND(C,name='TrilinosCleanup')
@@ -144,7 +144,6 @@ END INTERFACE
 
        !
        ! Print banner to output:
-#include "../config.h"
        ! -----------------------
 #ifdef USE_ISO_C_BINDINGS
        NoArgs = COMMAND_ARGUMENT_COUNT()
@@ -189,7 +188,8 @@ END INTERFACE
 #endif
          END IF
        END IF
-
+       ParEnv % NumberOfThreads = nthreads
+       
 
        IF( .NOT. Silent ) THEN
          CALL Info( 'MAIN', ' ')
@@ -198,16 +198,8 @@ END INTERFACE
          CALL Info( 'MAIN', 'This program is free software licensed under (L)GPL          ')
          CALL Info( 'MAIN', 'Copyright 1st April 1995 - , CSC - IT Center for Science Ltd.')
          CALL Info( 'MAIN', 'Webpage http://www.csc.fi/elmer, Email elmeradm@csc.fi       ')
-         CALL Info( 'MAIN', 'Version: ' // VERSION &
-#ifdef REVISION
-             // ' (Rev: ' // REVISION  &
-#endif
-#ifdef COMPILATIONDATE
-             // ', Compiled: ' // COMPILATIONDATE // ')' &
-#else
-             // ')' &
-#endif
-         )
+         CALL Info( 'MAIN', 'Version: ' // GetVersion() // ' (Rev: ' // GetRevision() // &
+                            ', Compiled: ' // GetCompilationDate() // ')' )
 
          IF ( ParEnv % PEs > 1 ) &
              CALL Info( 'MAIN', ' Running in parallel using ' // &
@@ -218,6 +210,9 @@ END INTERFACE
              CALL Info('MAIN', ' Running in parallel with ' // &
                        TRIM(i2s(nthreads)) // ' threads per task.')
 
+#ifdef HAVE_FETI4I
+         CALL Info( 'MAIN', ' FETI4I library linked in.')
+#endif
 #ifdef HAVE_HYPRE
          CALL Info( 'MAIN', ' HYPRE library linked in.')
 #endif
@@ -291,7 +286,7 @@ END INTERFACE
        IF(MeshMode) THEN
          CALL FreeModel(CurrentModel)
          MeshIndex = MeshIndex + 1
-         FirstLoad=.TRUE.
+         FirstLoad = .TRUE.
        END IF
 
        IF ( FirstLoad ) THEN
@@ -309,6 +304,15 @@ END INTERFACE
          CurrentModel => LoadModel(ModelName,.FALSE.,ParEnv % PEs,ParEnv % MyPE,MeshIndex)
          IF(.NOT.ASSOCIATED(CurrentModel)) EXIT
 
+         !----------------------------------------------------------------------------------
+         ! Set namespace searching mode
+         !----------------------------------------------------------------------------------
+         CALL SetNamespaceCheck( ListGetLogical( CurrentModel % Simulation, &
+                    'Additive namespaces', Found ) )
+
+         !----------------------------------------------------------------------------------
+         ! ???
+         !----------------------------------------------------------------------------------
          MeshMode = ListGetLogical( CurrentModel % Simulation, 'Mesh Mode', Found)
 
          !------------------------------------------------------------------------------
@@ -351,6 +355,8 @@ END INTERFACE
             END IF
          END IF
 
+
+         !----------------------------------------------------------------------------------
          ! If requested perform coordinate transformation directly after is has been obtained.
          ! Don't maintain the original mesh. 
          !----------------------------------------------------------------------------------
@@ -496,7 +502,11 @@ END INTERFACE
 
        OutputIntervals => ListGetIntegerArray( CurrentModel % Simulation, &
                        'Output Intervals', GotIt )
-       IF ( .NOT. GotIt ) THEN
+       IF( GotIt ) THEN
+         IF( SIZE(OutputIntervals) /= SIZE(TimeSteps) ) THEN
+           CALL Fatal('ElmerSolver','> Output Intervals < should have the same size as > Timestep Intervals < !')
+         END IF
+       ELSE
          ALLOCATE( OutputIntervals(SIZE(TimeSteps)) )
          OutputIntervals = 1
        END IF
@@ -812,11 +822,13 @@ END INTERFACE
        TYPE(Solver_t), POINTER :: ABC(:), PSolver
        CHARACTER(LEN=MAX_NAME_LEN) :: str
        INTEGER :: i,j,j2,j3,k,n
-       TYPE(ValueList_t), POINTER :: Params
-       LOGICAL :: gotIt, VtuFormat
+       TYPE(ValueList_t), POINTER :: Params, Simu
+       LOGICAL :: Found, VtuFormat
 
-       str = ListGetString( CurrentModel % Simulation,'Post File',GotIt) 
-       IF(.NOT. GotIt) RETURN
+       Simu => CurrentModel % Simulation
+       str = ListGetString( Simu,'Post File',Found) 
+       IF(.NOT. Found) RETURN
+
        k = INDEX( str,'.vtu' )
        VtuFormat = ( k /= 0 ) 
 
@@ -824,8 +836,8 @@ END INTERFACE
        
        CALL Info('AddVtuOutputSolverHack','Adding ResultOutputSolver to write VTU output in file: '&
            //TRIM(str(1:k-1)))
-     
-       CALL ListRemove( CurrentModel % Simulation,'Post File')
+       
+       CALL ListRemove( Simu,'Post File')
        n = CurrentModel % NumberOfSolvers+1
        ALLOCATE( ABC(n) )
        DO i=1,n-1
@@ -866,14 +878,19 @@ END INTERFACE
        
        ! Add some keywords to the list
        CurrentModel % Solvers(n) % Values => ListAllocate()
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,&
+       Params => CurrentModel % Solvers(n) % Values
+       CALL ListAddString( Params,&
            'Procedure', 'ResultOutputSolve ResultOutputSolver',.FALSE.)
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,'Output Format','vtu')
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,'Output File Name',str(1:k-1))
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,'Exec Solver','after saving')
-       CALL ListAddString(CurrentModel % Solvers(n) % Values,'Equation','InternalVtuOutputSolver')
-       CALL ListAddLogical(CurrentModel % Solvers(n) % Values,'Save Geometry IDs',.TRUE.)
+       CALL ListAddString(Params,'Output Format','vtu')
+       CALL ListAddString(Params,'Output File Name',str(1:k-1))
+       CALL ListAddString(Params,'Exec Solver','after saving')
+       CALL ListAddString(Params,'Equation','InternalVtuOutputSolver')
+       CALL ListAddLogical(Params,'Save Geometry IDs',.TRUE.)
+       CALL ListAddLogical(Params,'Check Simulation Keywords',.TRUE.)
 
+       ! Add a few often needed keywords also if they are given in simulation section
+       CALL ListCopyPrefixedKeywords( Simu, Params, 'vtu:' )
+       
      END SUBROUTINE AddVtuOutputSolverHack
 
 
@@ -1319,7 +1336,7 @@ END INTERFACE
                        IF ( l>0 ) THEN
                          CALL LocalBcIntegral( IC, &
                              Edge, Edge % TYPE % NumberOfNodes, CurrentElement, n, &
-                             TRIM(Var % Name)//' {e}', Work(1) )
+                             TRIM(Var % Name)//' {e}', Work )
                          Var % Values(l) = Work(1)
                        END IF
                      END DO
@@ -1364,7 +1381,8 @@ END INTERFACE
 !------------------------------------------------------------------------------
      USE DefUtils
      LOGICAL :: Gotit
-     INTEGER :: k,StartTime
+     INTEGER :: k
+     REAL(KIND=dp) :: StartTime
 !------------------------------------------------------------------------------
 
 
@@ -1472,12 +1490,31 @@ END INTERFACE
        timePeriod = ListGetCReal(CurrentModel % Simulation, 'Time Period',gotIt)
        IF(.NOT.GotIt) timePeriod = HUGE(timePeriod)
 
+       IF(GetNameSpaceCheck()) THEN
+         IF(Scanning) THEN
+           CALL ListPushNamespace('scan:')
+         ELSE IF(Transient) THEN
+           CALL ListPushNamespace('time:')
+         ELSE
+           CALL ListPushNamespace('steady:')
+         END IF
+       END IF
 
        RealTimestep = 1
        DO timestep = 1,Timesteps(interval)
 
          cum_Timestep = cum_Timestep + 1
          sStep(1) = cum_Timestep
+
+         IF ( GetNamespaceCheck() ) THEN
+           IF( Scanning ) THEN
+             CALL ListPushNamespace('scan '//TRIM(i2s(cum_Timestep))//':')
+           ELSE IF ( Transient ) THEN
+             CALL ListPushNamespace('time '//TRIM(i2s(cum_Timestep))//':')
+           ELSE
+             CALL ListPushNamespace('steady '//TRIM(i2s(cum_Timestep))//':')
+           END IF
+         END IF
 
          dtfunc = ListGetConstReal( CurrentModel % Simulation, &
                   'Timestep Function', gotIt)
@@ -1736,6 +1773,8 @@ END INTERFACE
            END IF
          END IF
 !------------------------------------------------------------------------------
+         CALL ListPopNameSpace()
+!------------------------------------------------------------------------------
 
          maxtime = ListGetCReal( CurrentModel % Simulation,'Real Time Max',GotIt)
          IF( GotIt .AND. RealTime() - RT0 > maxtime ) THEN
@@ -1763,7 +1802,11 @@ END INTERFACE
      END DO ! timestep intervals, i.e. the simulation
 !------------------------------------------------------------------------------
 
-100   DO i=1,CurrentModel % NumberOfSolvers
+100  CONTINUE
+
+     CALL ListPopNamespace()
+
+     DO i=1,CurrentModel % NumberOfSolvers
         Solver => CurrentModel % Solvers(i)
         IF ( Solver % PROCEDURE == 0 ) CYCLE
         When = ListGetString( Solver % Values, 'Exec Solver', GotIt )

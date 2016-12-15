@@ -70,7 +70,8 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
 
   LOGICAL :: FirstTime=.TRUE., &
        Found= .FALSE., &
-       AllocationsDone= .FALSE.
+       AllocationsDone= .FALSE., &
+       UnFoundFatal=.TRUE.
 
   SAVE g, &
        Density, &     
@@ -139,13 +140,9 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
 
   !Get the Mask
   !------------
-  PipingMask => VariableGet( Model % Variables, 'Open EPL' )
-  IF ( ASSOCIATED( PipingMask ) ) THEN
-     MaskPerm    => PipingMask % Perm
-     MaskValues  => PipingMask % Values
-  ELSE
-     CALL FATAL('WaterTransfer', 'Need a Piping Mask expected variable name is "Open EPL" !!!') 
-  END IF
+  PipingMask => VariableGet( Model % Variables, 'Open EPL',UnFoundFatal=UnFoundFatal)
+  MaskPerm    => PipingMask % Perm
+  MaskValues  => PipingMask % Values
 
   IF(MaskValues(MaskPerm(nodenumber)).GE.0.0)THEN
      !EPL is not active, no transfer
@@ -154,21 +151,13 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
 
      !Get the EPL and IDS water Heads
      !-------------------------------------
-     EPLHead => VariableGet( Model % Variables, 'EPLHead' )
-     IF ( ASSOCIATED( EPLHead ) ) THEN
-        EPLPerm    => EPLHead % Perm
-        EPLValues  => EPLHead % Values
-     ELSE
-        CALL FATAL('WaterTransfer', 'Need a EPL Head expected variable name is "EPLHead" !!!') 
-     END IF
+     EPLHead => VariableGet( Model % Variables, 'EPLHead',UnFoundFatal=UnFoundFatal)
+     EPLPerm    => EPLHead % Perm
+     EPLValues  => EPLHead % Values
 
-     IDSHead => VariableGet( Model % Variables, 'IDSHead' )
-     IF ( ASSOCIATED( IDSHead ) ) THEN
-        IDSPerm    => IDSHead % Perm
-        IDSValues  => IDSHead % Values
-     ELSE
-        CALL FATAL('WaterTransfer', 'Need a IDS Head expected variable name is "IDSHead"!!!') 
-     END IF
+     IDSHead => VariableGet( Model % Variables, 'IDSHead',UnFoundFatal=UnFoundFatal)
+     IDSPerm    => IDSHead % Perm
+     IDSValues  => IDSHead % Values
 
      !Get Parameters needed to compute the storing coeficient
      !-------------------------------------------------------
@@ -197,12 +186,9 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
         WatComp = 5.04e-4
      END IF
 
-     Density(1:N) = ListGetReal( Material, 'Water Density',  N, Element % NodeIndexes, Found )
-     IF (.NOT.Found) THEN
-        Density = 1.0055e-18
-        WRITE(Message,'(a,i5)') 'Keyword >Water Density< not found for material ', material_id
-        CALL INFO("WaterTransfer",Message,Level=4)
-     END IF
+     Density(1:N) = ListGetReal( Material, 'Water Density',  N, Element % NodeIndexes, Found,&
+          UnfoundFatal=UnFoundFatal)
+        !Previous default value: Density = 1.0055e-18
 
      IF ( ASSOCIATED( BodyForce ) ) THEN
         bf_id = GetBodyForceId()
@@ -215,49 +201,31 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
 
      !EPL Parameters
      !--------------
-     EPLComp(1:N) = listGetReal( Material,'EPL Compressibility', N, Element % NodeIndexes, Found )
-     IF (.NOT.Found) THEN
-        EPLComp(1:N) = 1.0D-2
-        WRITE(Message,'(a,i5)') 'Keyword  EPL "Compressibility" not found for material ', material_id
-        CALL INFO("WaterTransfer",Message,Level=4)
-     END IF
+     EPLComp(1:N) = listGetReal( Material,'EPL Compressibility', N, Element % NodeIndexes, Found,&
+          UnfoundFatal=UnFoundFatal)
+        !Previous default value: EPLComp(1:N) = 1.0D-2
 
-     EPLPorosity(1:N) = listGetReal( Material,'EPL Porosity', N, Element % NodeIndexes, Found )
-     IF (.NOT.Found) THEN
-        EPLPorosity(1:N) = 0.4D00
-        WRITE(Message,'(a,i5)') 'Keyword "EPL Porosity" not found for material ', material_id
-        CALL INFO("WaterTransfer",Message,Level=4)
-     END IF
+     EPLPorosity(1:N) = listGetReal( Material,'EPL Porosity', N, Element % NodeIndexes, Found,&
+          UnfoundFatal=UnFoundFatal)
+        !Previous default value: EPLPorosity(1:N) = 0.4D00
 
-     EPLThick(1:N) = listGetReal( Material,'EPL Thickness', N, Element % NodeIndexes, Found )
-     IF (.NOT.Found) THEN
-        EPLThick(1:N) = 10.0D00
-        WRITE(Message,'(a,i5)') 'Keyword "EPL Thickness" not found for material ', material_id
-        CALL INFO("WaterTransfer",Message,Level=4)
-     END IF
+     EPLThick(1:N) = listGetReal( Material,'EPL Thickness', N, Element % NodeIndexes, Found,&
+          UnfoundFatal=UnFoundFatal)
+        !Previous default value: EPLThick(1:N) = 10.0D00
 
      !Inefficient Drainage System Parameters
      !--------------------------------------
-     IDSComp(1:N) = listGetReal( Material,'IDS Compressibility', N, Element % NodeIndexes, Found )
-     IF (.NOT.Found) THEN
-        IDSComp(1:N) = 1.0D-2
-        WRITE(Message,'(a,i5)') 'Keyword "IDS Compressibility" not found for material ', material_id
-        CALL INFO("WaterTransfer",Message,Level=4)
-     END IF
+     IDSComp(1:N) = listGetReal( Material,'IDS Compressibility', N, Element % NodeIndexes, Found,&
+          UnfoundFatal=UnFoundFatal)
+        !Previous default value: IDSComp(1:N) = 1.0D-2
 
-     IDSPorosity(1:N) = listGetReal( Material,'IDS Porosity', N, Element % NodeIndexes, Found )
-     IF (.NOT.Found) THEN
-        IDSPorosity(1:N) = 0.4D00
-        WRITE(Message,'(a,i5)') 'Keyword "IDS Porosity" not found for material ', material_id
-        CALL INFO("WaterTransfer",Message,Level=4)
-     END IF
+     IDSPorosity(1:N) = listGetReal( Material,'IDS Porosity', N, Element % NodeIndexes, Found,&
+          UnfoundFatal=UnFoundFatal)
+        !Previous default value: IDSPorosity(1:N) = 0.4D00
 
-     IDSThick(1:N) = listGetReal( Material,'IDS Thickness', N, Element % NodeIndexes, Found )
-     IF (.NOT.Found) THEN
-        IDSThick(1:N) = 10.0D00
-        WRITE(Message,'(a,i5)') 'Keyword "IDS Thickness" not found for material ', material_id
-        CALL INFO("WaterTransfer",Message,Level=4)
-     END IF
+     IDSThick(1:N) = listGetReal( Material,'IDS Thickness', N, Element % NodeIndexes, Found,&
+          UnfoundFatal=UnFoundFatal)
+        !Previous default value: IDSThick(1:N) = 10.0D00
 
      !Computing the Storing coeficient of the EPL
      !-------------------------------------------
@@ -273,12 +241,9 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
 
      !Get Inefficient Drainage System Transmitivity
      !---------------------------------------------
-      IDSTrans(1:N) = listGetReal( Material,'IDS Transmitivity', N, Element % NodeIndexes, Found )
-     IF (.NOT.Found) THEN
-        IDSTrans(1:N) = 1.5D04
-        WRITE(Message,'(a,i5)') 'Keyword "IDS Transmitivity" not found for material ', material_id
-        CALL INFO("WaterTransfer",Message,Level=4)
-     END IF
+      IDSTrans(1:N) = listGetReal( Material,'IDS Transmitivity', N, Element % NodeIndexes, Found,&
+          UnfoundFatal=UnFoundFatal)
+        !Previous default value: IDSTrans(1:N) = 1.5D04
 
      !Get Inefficient Drainage System Upper Limit
      !-------------------------------------------
@@ -291,12 +256,9 @@ FUNCTION EPLToIDS(Model,nodenumber,x) RESULT(Transfer)
 
      !Getting parameters needed by the Transfer Equation
      !--------------------------------------------------
-     LeakFact(1:n) = ListGetReal( Material, 'Leakage Factor', N, Element % NodeIndexes, Found )
-     IF (.NOT.Found) THEN
-        LeakFact(1:N) = 50.0D00
-        WRITE(Message,'(a,i5)') 'Keyword >Leakage Factor< not found for material,Set to 1e-3 a-1 ', material_id
-        CALL FATAL("WaterTransfer",Message)
-     END IF
+     LeakFact(1:n) = ListGetReal( Material, 'Leakage Factor', N, Element % NodeIndexes, Found,&
+          UnfoundFatal=UnFoundFatal)
+        !Previous default value: LeakFact(1:N) = 50.0D00
 
      !Computation of the Transfer
      !---------------------------

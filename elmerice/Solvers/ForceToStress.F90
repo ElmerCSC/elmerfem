@@ -90,7 +90,7 @@
 
      INTEGER, POINTER :: StressPerm(:), ForcePerm(:), NodeIndexes(:)
 
-     LOGICAL :: GotIt, AllocationsDone = .FALSE.
+     LOGICAL :: GotIt, AllocationsDone = .FALSE.,UnFoundFatal=.TRUE.
 
      REAL(KIND=dp), ALLOCATABLE:: LocalMassMatrix(:,:), &
        LocalStiffMatrix(:,:), LocalForce(:), &
@@ -120,14 +120,9 @@
         CALL INFO(SolverName,'Force Variable Name sets to Force',Level=4)
      END IF 
 
-     ForceSol => VariableGet( Solver % Mesh % Variables, InputVariableName )
-     IF ( ASSOCIATED( ForceSol ) ) THEN
-       ForcePerm    => ForceSol % Perm
-       ForceValues  => ForceSol % Values
-     ELSE
-       CALL FATAL(SolverName, &
-                      & 'No variable for Force associated.')
-     END IF
+     ForceSol => VariableGet( Solver % Mesh % Variables, InputVariableName,UnFoundFatal=UnFoundFatal)
+     ForcePerm    => ForceSol % Perm
+     ForceValues  => ForceSol % Values
 !              
 !------------------------------------------------------------------------------
 !    Get variables needed for solution

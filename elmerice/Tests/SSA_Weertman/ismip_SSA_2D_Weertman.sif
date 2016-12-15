@@ -80,6 +80,8 @@ Material 1
 
   SSA Friction Law = String "Weertman"
 
+  SSA Min Effective Pressure = Real 1.0e-6
+
   ! Needed for Linear, Weertman and Coulomb
   SSA Friction Parameter = Variable coordinate 1 , Coordinate 2
      Real  MATC "1.0e-3*(1.0 + sin(2.0*pi* tx(0) / L)*sin(2.0*pi* tx(1) / L))                                  

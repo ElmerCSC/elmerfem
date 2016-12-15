@@ -847,7 +847,7 @@ SUBROUTINE GridDataReader( Model,Solver,dtime,TransientSimulation )
     DO iTime = 1, nTime
 
       IF( iTime == 2 ) THEN
-        TimeIndex = TimeIndex + 1
+        IntTimeIndex = IntTimeIndex + 1
         pTime = 1.0_dp - pTime
       END IF
       Coeff = InterpMultiplier * pTime
@@ -1244,6 +1244,9 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: Weights
 
     LOGICAL :: success
+
+    ind     = 0
+    Weights = 0.0_dp
 
     success = .FALSE.
 

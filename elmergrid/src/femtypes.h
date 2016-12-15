@@ -5,7 +5,7 @@
 #define DIM 2               /* dimension of the space */
 #define MAXDOFS 20          /* maximum number of variables, e.g. T,P */ 
 #define MAXCELLS 100        /* maximum number of subcells in given direction */
-#define MAXBOUNDARIES 100   /* maximum number of boundaries for BCs */
+#define MAXBOUNDARIES 1000  /* maximum number of boundaries for BCs */
 #define MAXCASES    12      /* maximum number of coexisting cases */ 
 #define MAXFILESIZE 600     /* maximum filenamesize for i/o files */
 #define MAXLINESIZE 600     /* maximum length of line to be read */
@@ -18,7 +18,7 @@
 #define MAXMAPPINGS 20      /* maximum number of geometry mappings */
 #define MAXCONNECTIONS 500  /* maximum number of connections in nodal or dual graph */
 #define MAXBCS 1000         /* maximum number of BCs in naming */
-#define MAXBODIES 100       /* maximum number of bodies in naming */
+#define MAXBODIES 1000      /* maximum number of bodies in naming */
 #define MAXPARTITIONS 512   /* maximum number of partitions */
 
 #define CONPLAIN 0
@@ -171,6 +171,8 @@ struct FemType {
   int created,     /* is the structure created? */
     noknots,       /* number of knots */
     noelements,    /* number of elements */
+    nodepermexist, /* are the nodes permutated at the start */
+    *nodeperm,    /* Inverse node permutation to save */
     coordsystem,   /* coordsystem flag */
     nocells,       /* number of subcells */
     maxnodes,      /* maximum number of nodes */
@@ -303,6 +305,7 @@ struct ElmergridType {
     rotate,     /* rotate the mesh */
     clone[3],   /* clone the mesh the number of given times */
     mirror[3],  /* mirror the mash around the given axis */
+    cloneinds,  /* should the material and bc indexes be altered when cloning */
     canter, 
     decimals,   /* save the mesh with number of decimals */
     layers,     /* create boundary layers */
@@ -346,6 +349,7 @@ struct ElmergridType {
     reducemat1,
     reducemat2,
     findsides,
+    vtuone, 
     saveboundaries,
     nodes3d,
     elements3d,

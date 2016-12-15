@@ -403,7 +403,7 @@
       <item row="5" column="3">
        <widget class="QLineEdit" name="postFileEdit">
         <property name="text">
-         <string>case.ep</string>
+         <string>case.vtu</string>
         </property>
        </widget>
       </item>

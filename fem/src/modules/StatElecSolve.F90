@@ -446,6 +446,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
     END IF
 
     IF ( CalculateEnergy ) THEN
+      Wetot = ParallelReduction(Wetot)      
       WRITE( Message, * ) 'Tot. Electric Energy  :', Wetot
       CALL Info( 'StatElecSolve', Message, Level=4 )
       CALL ListAddConstReal( Model % Simulation, &
@@ -470,6 +471,9 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
       END IF
       
       IF(.NOT. GotIt) THEN
+        ! parallel reduction needed
+        MinPotential = ParallelReduction(MinPotential,1)
+        MaxPotential = ParallelReduction(MaxPotential,2)
         PotentialDifference = MaxPotential - MinPotential
       END IF
       
@@ -535,7 +539,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
        ALLOCATE( CapMatrixPara( CapBodies, CapBodies ) )
        CapMatrixPara = CapMatrix
        CALL MPI_ALLREDUCE(CapMatrixPara, CapMatrix, CapBodies**2, MPI_DOUBLE_PRECISION, MPI_SUM, &
-           MPI_COMM_WORLD, i)
+           ELMER_COMM_WORLD, i)
        DEALLOCATE( CapMatrixPara )
      END IF
 
@@ -1144,7 +1148,7 @@ SUBROUTINE StatElecSolver( Model,Solver,dt,TransientSimulation )
 
          CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,xpos,ypos,zpos )
 
-         s = s * SqrtMetric * SqrtElementMetric * S_Integ(tg)
+         s = SqrtMetric * SqrtElementMetric * S_Integ(tg)
 
          !------------------------------------------------------------------------------
 

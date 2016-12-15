@@ -67,7 +67,7 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: PointerToVariable,FlowSol
   TYPE(Solver_t), POINTER :: PointerToSolver
 
-  LOGICAL :: AllocationsDone = .FALSE., Found
+  LOGICAL :: AllocationsDone = .FALSE., Found,UnFoundFatal=.TRUE.
 
   INTEGER :: i, j,n, m, t, istat,k
   INTEGER, POINTER :: Permutation(:), FlowPerm(:), NodeIndexes(:)
@@ -92,16 +92,10 @@ SUBROUTINE DeformationalHeatSolver( Model,Solver,dt,TransientSimulation )
   
   FlowSolName  = GetString( Solver % Values, 'Flow Solver Name', Found )
   IF (.NOT.Found)   WRITE(FlowSolName,'(A)') 'Flow Solution'
-  FlowSol => VariableGet( Solver % Mesh % Variables, FlowSolName )
-  IF ( ASSOCIATED( FlowSol ) ) THEN
-       FlowPerm     => FlowSol % Perm
-       NSDOFs     =  FlowSol % DOFs
-       FlowSolution => FlowSol % Values
-  ELSE
-      WRITE(Message,'(a,a,a)') &
-                 ' variable >',FlowSolName,'< not found'
-      CALL FATAL(SolverName,Message)              
-  END IF
+  FlowSol => VariableGet( Solver % Mesh % Variables, FlowSolName,UnFoundFatal=UnFoundFatal)
+  FlowPerm     => FlowSol % Perm
+  NSDOFs     =  FlowSol % DOFs
+  FlowSolution => FlowSol % Values
 
   !Allocate some permanent storage, this is done first time only:
   !--------------------------------------------------------------
