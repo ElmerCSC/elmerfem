@@ -475,10 +475,10 @@ SUBROUTINE CoilSolver( Model,Solver,dt,TransientSimulation )
 
       IF( ParEnv % PEs > 1 ) THEN
         TmpCurr = MinCurr
-        CALL MPI_ALLREDUCE(MinCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MIN,MPI_COMM_WORLD,ierr)
+        CALL MPI_ALLREDUCE(MinCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
         MinCurr = TmpCurr
         TmpCurr = MaxCurr
-        CALL MPI_ALLREDUCE(MaxCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD,ierr)
+        CALL MPI_ALLREDUCE(MaxCurr,TmpCurr,3,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
         MaxCurr = TmpCurr
       END IF
 
@@ -621,7 +621,7 @@ CONTAINS
     IF( ParEnv % PEs > 1 ) THEN
       SerTmp(1:3) = Center
       SerTmp(4) = Volume
-      CALL MPI_ALLREDUCE(SerTmp,ParTmp,4,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(SerTmp,ParTmp,4,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
       Center = ParTmp(1:3)
       Volume = ParTmp(4)
     END IF
@@ -715,7 +715,7 @@ CONTAINS
     END DO
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(Imoment,ParTmp,9,MPI_DOUBLE_PRECISION,MPI_SUM,MPI_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(Imoment,ParTmp,9,MPI_DOUBLE_PRECISION,MPI_SUM,ELMER_COMM_WORLD,ierr)
       Imoment = ParTmp
     END IF
 
@@ -827,9 +827,9 @@ CONTAINS
     END DO
 
     IF( ParEnv % PEs > 1 ) THEN
-      CALL MPI_ALLREDUCE(MinCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MIN,MPI_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(MinCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MIN,ELMER_COMM_WORLD,ierr)
       MinCoord = ParTmp
-      CALL MPI_ALLREDUCE(MaxCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MAX,MPI_COMM_WORLD,ierr)
+      CALL MPI_ALLREDUCE(MaxCoord,ParTmp,3,MPI_DOUBLE_PRECISION,MPI_MAX,ELMER_COMM_WORLD,ierr)
       MaxCoord = ParTmp
     END IF
 

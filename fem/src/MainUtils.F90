@@ -1089,7 +1089,7 @@ CONTAINS
           END IF
         END IF
 
-        IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = MPI_COMM_WORLD
+        IF (ASSOCIATED(Solver % Matrix)) Solver % Matrix % Comm = ELMER_COMM_WORLD
         IF ( ListGetLogical( SolverParams, 'Discontinuous Galerkin', Found) ) &
           Solver % Variable % TYPE = Variable_on_nodes_on_elements
 
@@ -3154,7 +3154,7 @@ CONTAINS
           DO ColVar=1,NoVar
             CALL ParallelActive( .TRUE.)
             Amat => TotMatrix % SubMatrix(RowVar,ColVar) % Mat
-            Amat % Comm = MPI_COMM_WORLD
+            Amat % Comm = ELMER_COMM_WORLD
             Parenv % ActiveComm = Amat % Comm
             Solver % Variable => TotMatrix % SubVector(ColVar) % Var
             CALL ParallelInitMatrix(Solver,Amat)
@@ -3943,11 +3943,11 @@ CONTAINS
        n = COUNT(ParEnv % Active)
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
          IF ( ASSOCIATED(Solver % Matrix) ) THEN
-           IF ( Solver % Matrix % Comm /= MPI_COMM_WORLD ) &
+           IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD ) &
               CALL MPI_Comm_Free( Solver % Matrix % Comm, ierr )
          END IF
 
-         CALL MPI_Comm_group( MPI_COMM_WORLD, group_world, ierr )
+         CALL MPI_Comm_group( ELMER_COMM_WORLD, group_world, ierr )
          ALLOCATE(memb(n))
          n = 0
          DO i=1,ParEnv % PEs
@@ -3958,7 +3958,7 @@ CONTAINS
          END DO
          CALL MPI_Group_incl( group_world, n, memb, group_active, ierr)
          DEALLOCATE(memb)
-         CALL MPI_Comm_create( MPI_COMM_WORLD, group_active, &
+         CALL MPI_Comm_create( ELMER_COMM_WORLD, group_active, &
                  comm_active, ierr)
 
          M => Solver % Matrix
@@ -3969,7 +3969,7 @@ CONTAINS
        ELSE
          M => Solver % Matrix
          DO WHILE( ASSOCIATED(M) )
-           M % Comm = MPI_COMM_WORLD
+           M % Comm = ELMER_COMM_WORLD
            M => M % Parent
          END DO
        END IF
@@ -3988,7 +3988,7 @@ CONTAINS
          END IF
        END IF
      ELSE IF (.NOT.SlaveNotParallel) THEN
-       Parenv % ActiveComm = MPI_COMM_WORLD
+       Parenv % ActiveComm = ELMER_COMM_WORLD
      END IF
 
      ! Linear constraints from mortar BCs:

@@ -431,7 +431,7 @@ SUBROUTINE IsosurfaceSolver( Model,Solver,dt,Transient )
   ParTmp(6) = NoSurfaces
 
   IF( ParEnv % PEs > 1 ) THEN
-    CALL MPI_ALLREDUCE(ParTmp,ParSizes,6,MPI_INTEGER,MPI_SUM,MPI_COMM_WORLD,ierr)
+    CALL MPI_ALLREDUCE(ParTmp,ParSizes,6,MPI_INTEGER,MPI_SUM,ELMER_COMM_WORLD,ierr)
   ELSE
     ParSizes = ParTmp
   END IF

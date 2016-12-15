@@ -120,13 +120,13 @@ SUBROUTINE XdmfWriter(Model, Solver, dt, TransientSimulation)
   ALLOCATE(NofNodes(PEs), NofElements(PEs), NofStorage(PEs))
 
   NofNodes = 0; itmp = 0;  itmp(MyPE) = Mesh % NumberOfNodes
-  CALL MPI_ALLREDUCE(itmp, NofNodes, PEs, MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr)
+  CALL MPI_ALLREDUCE(itmp, NofNodes, PEs, MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr)
 
   NofElements = 0; itmp = 0; itmp(MyPE) = GetNofActive()
-  CALL MPI_ALLREDUCE(itmp, NofElements, PEs, MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr)
+  CALL MPI_ALLREDUCE(itmp, NofElements, PEs, MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr)
 
   NofStorage = 0; itmp = 0; itmp(MyPE) = GetElementStorageSize()
-  CALL MPI_ALLREDUCE(itmp, NofStorage, PEs, MPI_INTEGER, MPI_SUM, MPI_COMM_WORLD, ierr)
+  CALL MPI_ALLREDUCE(itmp, NofStorage, PEs, MPI_INTEGER, MPI_SUM, ELMER_COMM_WORLD, ierr)
 
   DEALLOCATE(itmp)  
 
@@ -134,7 +134,7 @@ SUBROUTINE XdmfWriter(Model, Solver, dt, TransientSimulation)
   !--------------------------------------------------------
   CALL h5open_f(ierr)
   CALL h5pcreate_f(H5P_FILE_ACCESS_F, plist_id, ierr)
-  CALL h5pset_fapl_mpio_f(plist_id, MPI_COMM_WORLD, MPI_INFO_NULL, ierr)
+  CALL h5pset_fapl_mpio_f(plist_id, ELMER_COMM_WORLD, MPI_INFO_NULL, ierr)
 
   IF(Counter == 1) THEN
      CALL h5fcreate_f(TRIM(BaseFileName)//'.h5', H5F_ACC_TRUNC_F, file_id, ierr, access_prp = plist_id)
