@@ -14258,28 +14258,35 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-!------------------------------------------------------------------------------
-  SUBROUTINE DisplaceMesh( Mesh, Update, SIGN, Perm, DOFs, StabRecomp )
-!------------------------------------------------------------------------------
+!----------------------------------------------------------------------------------
+  SUBROUTINE DisplaceMesh( Mesh, Update, SIGN, Perm, DOFs, StabRecomp, UpdateDirs )
+!----------------------------------------------------------------------------------
     TYPE(Mesh_t) , POINTER :: Mesh 
     REAL(KIND=dp) :: Update(:)
     INTEGER :: DOFs,SIGN,Perm(:)
     LOGICAL, OPTIONAL :: StabRecomp
+    INTEGER, OPTIONAL :: UpdateDirs
 
-    INTEGER :: i,k
+    INTEGER :: i,k,dim
     LOGICAL :: StabFlag
 
     TYPE(Nodes_t) :: ElementNodes
     TYPE(Element_t), POINTER :: Element
+
+    IF ( PRESENT( UpdateDirs ) ) THEN
+      dim = UpdateDirs
+    ELSE
+      dim = DOFs
+    END IF
 
     DO i=1,MIN( SIZE(Perm), SIZE(Mesh % Nodes % x) )
        k = Perm(i)
        IF ( k > 0 ) THEN
          k = DOFs * (k-1)
          Mesh % Nodes % x(i)   = Mesh % Nodes % x(i) + SIGN * Update(k+1)
-         IF ( DOFs > 1 ) &
+         IF ( dim > 1 ) &
            Mesh % Nodes % y(i) = Mesh % Nodes % y(i) + SIGN * Update(k+2)
-         IF ( DOFs > 2 ) &
+         IF ( dim > 2 ) &
            Mesh % Nodes % z(i) = Mesh % Nodes % z(i) + SIGN * Update(k+3)
         END IF
     END DO
