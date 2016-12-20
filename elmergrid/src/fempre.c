@@ -179,7 +179,7 @@ static void Instructions()
   printf("-partdual            : use the dual graph in the partitioning\n");
   printf("-halo                : create halo for the partitioning for DG\n");
   printf("-halobc              : create halo for the partitioning at boundaries only\n");
-  printf("-haloz               : create halo for the the special z-partitioning\n");
+  printf("-haloz / -halor      : create halo for the the special z- or r-partitioning\n");
   printf("-indirect            : create indirect connections in the partitioning\n");
   printf("-periodic int[3]     : decleare the periodic coordinate directions for parallel meshes\n");
   printf("-partjoin int        : number of partitions in the data to be joined\n");
