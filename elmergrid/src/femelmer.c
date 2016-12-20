@@ -3322,7 +3322,6 @@ int ExtendBoundaryPartitioning(struct FemType *data,struct BoundaryType *bound,
   printf("Extending boundary partitioning by majority rule\n");
 
   CreateInverseTopology(data, info);
-  printf("done inverse\n");
   invrow = data->invtopo.rows;
   invcol = data->invtopo.cols;
   
