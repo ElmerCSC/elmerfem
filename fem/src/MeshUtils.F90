@@ -6413,7 +6413,7 @@ END SUBROUTINE GetMaxDefs
       INTEGER :: edge, edof, fdof
       INTEGER :: ElemCands, TotCands, ElemHits, TotHits, EdgeHits, CornerHits, &
           MaxErrInd, MinErrInd, InitialHits, ActiveHits, TimeStep, Nrange1, NoGaussPoints, &
-          AllocStat
+          Centeri, CenteriM, AllocStat
       TYPE(Element_t), POINTER :: Element, ElementM, ElementP
       INTEGER :: ElemCode, LinCode, ElemCodeM, LinCodeM
       TYPE(Element_t) :: ElementT
@@ -6427,7 +6427,7 @@ END SUBROUTINE GetMaxDefs
           val_dual, zmin, zmax, zminm, zmaxm, dAlpha, uq, vq
       REAL(KIND=dp) :: A(2,2), B(2), C(2), absA, detA, rlen, &
           x1, x2, y1, y2, x1M, x2M, y1M, y2M, x0, y0, dist, DistTol, &
-          amin, amax, aminM, amaxM
+          amin, amax, aminM, amaxM, rmin2, rmax2, rmin2M, rmax2M
       REAL(KIND=dp) :: TotRefArea, TotSumArea, TotTrueArea
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), BasisM(:)
       REAL(KIND=dp), POINTER :: Alpha(:), AlphaM(:)
@@ -6511,7 +6511,30 @@ END SUBROUTINE GetMaxDefs
       Nslave = 0
       Nmaster = 0
 
-
+      
+      CenterI = 0
+      CenterIM = 0
+      IF( Naxial > 1 ) THEN
+        DO i=1,BMesh1 % NumberOfNodes
+          IF( BMesh1 % Nodes % x(i)**2 + BMesh1 % Nodes % y(i)**2 < 1.0e-20 ) THEN
+            CenterI = i
+            CALL Info('LevelProjector','Found center node in slave: '&
+                //TRIM(I2S(CenterI)),Level=10)
+            EXIT
+          END IF
+        END DO
+        DO i=1,BMesh2 % NumberOfNodes
+          IF( BMesh2 % Nodes % x(i)**2 + BMesh2 % Nodes % y(i)**2 < 1.0e-20 ) THEN
+            CenterIM = i
+            CALL Info('LevelProjector','Found center node in master: '&
+                //TRIM(I2S(CenterI)),Level=10)
+            EXIT
+          END IF
+        END DO
+      END IF
+        
+        
+      
       DO ind=1,BMesh1 % NumberOfBulkElements
 
         ! Optionally save the submesh for specified element, for vizualization and debugging
@@ -6521,7 +6544,6 @@ END SUBROUTINE GetMaxDefs
         IF( DebugElem ) THEN
           PRINT *,'Debug element turned on:',ind
         END IF
-
 
         Element => BMesh1 % Elements(ind)        
         Indexes => Element % NodeIndexes
@@ -6540,29 +6562,63 @@ END SUBROUTINE GetMaxDefs
         
         ! For axial projector the angle is neither of the coordinates
         IF( Naxial > 1 ) THEN
-          DO j=1,n
+          ! Calculate the [min,max] range of radius squared for slave element.
+          ! We are working with squares because squareroot is a relatively expensive operation. 
+          rmax2 = 0.0_dp
+          DO j=1,ne
+            val = Nodes % x(j)**2 + Nodes % y(j)**2 
+            rmax2 = MAX( rmax2, val )
+          END DO
+
+          ! The minimum distance in (r,phi) system is not simply minimum of r
+          ! We have to find minimum between (0,0) and the line passing (x1,y1) and (x2,y2) 
+          rmin2 = HUGE( rmin2 )
+          DO j=1,ne
+            k = j+1
+            IF( k > ne ) k = 1
+            val = SegmentOriginDistance2( Nodes % x(j), Nodes % y(j), &
+                Nodes % x(k), Nodes % y(k) )
+            rmin2 = MIN( rmin2, val )
+          END DO
+
+          ! Calculate the angle, and its [min,max] range
+          DO j=1,ne
             alpha(j) = ( 180.0_dp / PI ) * ATAN2( Nodes % y(j), Nodes % x(j)  ) 
           END DO
-          amin = MINVAL( Alpha(1:n) )
-          amax = MAXVAL( Alpha(1:n) )
+
+          ! If we have origin replace it with the average           
+          IF( CenterI > 0 ) THEN
+            DO j=1,ne
+              IF( Indexes(j) == CenterI ) THEN
+                alpha(j) = 0.0_dp
+                alpha(j) = SUM( Alpha(1:ne) ) / ( ne - 1 ) 
+                EXIT
+              END IF
+            END DO
+          END IF
+            
+          amin = MINVAL( Alpha(1:ne) )
+          amax = MAXVAL( Alpha(1:ne) )
           IF( amax - amin > 180.0_dp ) THEN
-            DO j=1,n
+            DO j=1,ne
               IF( Alpha(j) < 0.0 ) Alpha(j) = Alpha(j) + 360.0_dp
             END DO
-            amin = MINVAL( Alpha(1:n) )
-            amax = MAXVAL( Alpha(1:n) )            
+            amin = MINVAL( Alpha(1:ne) )
+            amax = MAXVAL( Alpha(1:ne) )            
           END IF
+
         END IF
 
         IF( FullCircle ) THEN
-          LeftCircle = ( ALL( ABS( Alpha(1:n) ) > ArcCoeff * 90.0_dp ) )
+          LeftCircle = ( ALL( ABS( Alpha(1:ne) ) > ArcCoeff * 90.0_dp ) )
           IF( LeftCircle ) THEN
             DO j=1,n
               IF( Alpha(j) < 0.0 ) Alpha(j) = Alpha(j) + ArcCoeff * 360.0_dp
             END DO
           END IF
         END IF
-
+        
+        ! Even for quadratic elements only work with corner nodes (n >= ne)        
         xmin = MINVAL(Nodes % x(1:ne))
         xmax = MAXVAL(Nodes % x(1:ne))
 
@@ -6585,6 +6641,7 @@ END SUBROUTINE GetMaxDefs
           PRINT *,'xrange:',xmin,xmax
           PRINT *,'yrange:',ymin,ymax
           PRINT *,'zrange:',zmin,zmax
+          IF( Naxial > 1 ) PRINT *,'Alpha: ',Alpha(1:n)
         END IF
 
 
@@ -6642,7 +6699,7 @@ END SUBROUTINE GetMaxDefs
           IF( DebugElem ) THEN
             PRINT *,'Candidate Elem:',indM,nM,NeM, ElemCodeM,LinCodeM
           END IF
-
+ 
           IF( HaveMaxDistance ) THEN
             zminm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:neM)) )
             zmaxm = MINVAL( BMesh2 % Nodes % z(IndexesM(1:neM)) )
@@ -6657,18 +6714,55 @@ END SUBROUTINE GetMaxDefs
           ! This requires some minimal width of the cut
           IF(Naxial <= 1 ) THEN
             yminm = MINVAL( NodesM % y(1:neM))
-            IF( yminm > ymax - Ytol ) CYCLE
+            IF( yminm > ymax ) CYCLE
             
             ymaxm = MAXVAL( NodesM % y(1:neM))
-            IF( ymaxm < ymin + Ytol ) CYCLE
+            IF( ymaxm < ymin ) CYCLE
           ELSE
-            DO j=1,nM
+
+            ! For axial projector first check the radius since it does not have complications with
+            ! periodicity and is therefore cheaper. 
+            rmax2M = 0.0_dp
+            DO j=1,neM
+              val = NodesM % x(j)**2 + NodesM % y(j)**2 
+              rmax2M = MAX( rmax2M, val )
+            END DO
+            IF( rmax2m < rmin2 ) CYCLE
+              
+            ! The minimum distance in (r,phi) system is not simply minimum of r
+            ! We have to find minimum between (0,0) and the line passing (x1,y1) and (x2,y2) 
+            rmin2M = HUGE( rmin2M )
+            DO j=1,neM
+              k = j+1
+              IF( k > neM ) k = 1
+              val = SegmentOriginDistance2( NodesM % x(j), NodesM % y(j), &
+                  NodesM % x(k), NodesM % y(k) )
+              rmin2M = MIN( rmin2M, val )
+            END DO
+            IF( rmin2m > rmax2 ) CYCLE
+           
+            DO j=1,neM
               alphaM(j) = ( 180.0_dp / PI ) * ATAN2( NodesM % y(j), NodesM % x(j)  ) 
             END DO
+            
+            ! If we have origin replace it with the average 
+            IF( CenterIM > 0 ) THEN
+              DO j=1,neM
+                IF( IndexesM(j) == CenterIM ) THEN
+                  alphaM(j) = 0.0_dp
+                  alphaM(j) = SUM( Alpha(1:ne) ) / ( ne - 1 ) 
+                  EXIT
+                END IF
+              END DO
+            END IF
+              
             aminm = MINVAL( AlphaM(1:neM) )
             amaxm = MAXVAL( AlphaM(1:neM) )
+
+            ! Check that the discrepancy in angle is not located for this element.
+            ! It it is, move it over by adding 360 degs to negative angles. 
             IF( amaxm - aminm > 180.0_dp ) THEN
-              DO j=1,nM
+              DO j=1,neM
                 IF( AlphaM(j) < 0.0 ) AlphaM(j) = AlphaM(j) + 360.0_dp
               END DO
               aminm = MINVAL( AlphaM(1:neM) )
@@ -6680,7 +6774,7 @@ END SUBROUTINE GetMaxDefs
           IF( LeftCircle ) THEN
             ! Omit the element if it is definately on the right circle
             IF( ALL( ABS( AlphaM(1:neM) ) - ArcCoeff * 90.0 < ArcTol ) ) CYCLE
-            DO j=1,nM
+            DO j=1,neM
               IF( AlphaM(j) < 0.0_dp ) AlphaM(j) = AlphaM(j) + ArcCoeff * 360.0_dp
             END DO
           END IF
@@ -6690,8 +6784,13 @@ END SUBROUTINE GetMaxDefs
             IF( Naxial > 1 ) THEN
               Nrange1 = FLOOR( Naxial * (amaxm-amin+RelTolX) / 360.0 )
               Nrange2 = FLOOR( Naxial * (amax-aminm+RelTolX) / 360.0 )
+
+              ! The two ranges could have just offset of 2*PI, eliminate that
+              IF( MODULO( Nrange1 - Nrange2, Naxial ) == 0 ) THEN
+                Nrange2 = Nrange1
+              END IF
               
-              IF( Nrange1 /= 0 ) THEN
+              IF( MODULO( Nrange1, Naxial) /= 0 ) THEN
                 dAlpha = Nrange1 * 2.0_dp * PI / Naxial
                 DO i=1,nM
                   x0 = NodesM % x(i)
@@ -6704,7 +6803,7 @@ END SUBROUTINE GetMaxDefs
               IF( DebugElem) THEN
                 PRINT *,'axial:',ind,indM,amin,aminm,Nrange1,Nrange2
                 PRINT *,'coord:',Nodes % x(1), Nodes % y(1), NodesM % x(1), NodesM % y(1)
-                !PRINT *,'Alphas:',Alpha(1:n),AlphaM(1:nM)
+                PRINT *,'Alphas:',Alpha(1:n),AlphaM(1:nM)
               END IF
               
             ELSE
@@ -6734,8 +6833,8 @@ END SUBROUTINE GetMaxDefs
             IF( xmaxm - xminm > ArcCoeff * 180.0 ) CYCLE
           END IF
 
-200       IF( xminm > xmax - ArcTol ) GOTO 100
-          IF( xmaxm < xmin + ArcTol ) GOTO 100
+200       IF( xminm > xmax ) GOTO 100
+          IF( xmaxm < xmin ) GOTO 100
 
 
           ! Rotation alters also the y-coordinate for "axial projector"
@@ -7316,6 +7415,7 @@ END SUBROUTINE GetMaxDefs
               Nrange = Nrange2
               IF( Naxial > 1 ) THEN
                 dAlpha = (Nrange2 - Nrange1) * 2.0_dp * PI / Naxial
+             
                 DO i=1,nM
                   x0 = NodesM % x(i)
                   y0 = NodesM % y(i)
@@ -7325,8 +7425,8 @@ END SUBROUTINE GetMaxDefs
               ELSE
                 NodesM % x(1:n) = NodesM % x(1:n) + ArcRange  * (Nrange2 - Nrange1)
               END IF
-              xminm = MINVAL( NodesM % x(1:nM))
-              xmaxm = MAXVAL( NodesM % x(1:nM))
+              xminm = MINVAL( NodesM % x(1:neM))
+              xmaxm = MAXVAL( NodesM % x(1:neM))
               GOTO 200
             END IF
           END IF
@@ -7413,6 +7513,27 @@ END SUBROUTINE GetMaxDefs
     END SUBROUTINE AddProjectorWeakGeneric
 
 
+    ! Return shortest distance squared of a point to a line segment.
+    ! This is limited to the spacial case when the point lies in origin. 
+    FUNCTION SegmentOriginDistance2(x1,y1,x2,y2) RESULT ( r2 )
+      REAL(KIND=dp) :: x1,y1,x2,y2,r2
+      REAL(KIND=dp) :: q,xc,yc
+
+      q = ( x1*(x1-x2) + y1*(y1-y2) ) / &
+          SQRT((x1**2+y1**2) * ((x1-x2)**2+(y1-y2)**2))
+      IF( q <= 0.0_dp ) THEN
+        r2 = x1**2 + y1**2
+      ELSE IF( q >= 1.0_dp ) THEN
+        r2 = x2**2 + y2**2
+      ELSE
+        xc = x1 + q * (x2-x1)
+        yc = y1 + q * (y2-y1)
+        r2 = xc**2 + yc**2
+      END IF
+             
+    END FUNCTION SegmentOriginDistance2
+
+    
     !----------------------------------------------------------------------
     ! Create weak projector for the nodes in 1D mesh.
     !----------------------------------------------------------------------
@@ -7867,7 +7988,7 @@ END SUBROUTINE GetMaxDefs
     TYPE(Model_t), POINTER :: Model
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
     INTEGER :: p,q,i,j,it,nn,n,m,t,NoOrigNodes, NoDiscontNodes, indp, indq, &
-        e1, e2, e12, i1, i2, j1, j2, sgn, ParentMissing, ParentFound, PosSides, ActSides, &
+        e1, e2, e12, i1, i2, j1, j2, ParentMissing, ParentFound, PosSides, ActSides, &
         InvPermSize, indpoffset
     INTEGER, POINTER :: Rows(:),Cols(:), InvPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Basis(:), WBasis(:,:), &
@@ -9070,25 +9191,25 @@ END SUBROUTINE GetMaxDefs
           maxalpha2 = MAX( alpha, maxalpha2 ) 
         END DO
       END DO
-
+      
       FullCircle = Hit0 .AND. Hit90 .AND. Hit180 .AND. Hit270
       IF( FullCircle ) THEN
         CALL Info('RotationalInterfaceMeshes','Axial interface seems to be a full circle',&
             Level=6)
         EXIT
       END IF
-
+      
       dFii = MIN( maxalpha2 - minalpha2, maxalpha - minalpha ) 
-
-      WRITE(Message,'(A,ES12.3)') 'This boundary dfii: ',dFii
-      CALL Info('AxialInterfaceMeshes',Message,Level=8)    
 
       ! memorize the max angle for 1st boundary mesh
       IF( k == 1 ) THEN
+        WRITE(Message,'(A,ES12.3)') 'This boundary dfii: ',dFii
         dFii1 = dFii
       ELSE
+        WRITE(Message,'(A,ES12.3)') 'Target boundary dfii: ',dFii
         dFii2 = dFii
       END IF
+      CALL Info('AxialInterfaceMeshes',Message,Level=8)    
     END DO
 
     IF( FullCircle ) THEN
@@ -9805,7 +9926,7 @@ END SUBROUTINE GetMaxDefs
         'Axial Projector',GotIt )
     AntiAxial = ListGetLogical( BC,&
         'Anti Axial Projector',GotIt )
-    IF( AntiRadial ) Axial = .TRUE.
+    IF( AntiAxial ) Axial = .TRUE.
 
     Sliding = ListGetLogical( BC, &
         'Sliding Projector',GotIt )
