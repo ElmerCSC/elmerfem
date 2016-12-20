@@ -742,7 +742,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
     }
 
-    if(strcmp(argv[arg],"-partconnect") == 0 || strcmp(argv[arg],"-partzbc") ) {
+    if(strcmp(argv[arg],"-partconnect") == 0 || strcmp(argv[arg],"-partzbc") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of 1D partitions is required as a parameter!\n");
 	return(15);
@@ -775,7 +775,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
     }
 
-    if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") ) {
+    if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of Metis partitions is required as a parameter\n");
 	return(15);
