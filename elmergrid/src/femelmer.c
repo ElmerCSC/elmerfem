@@ -2078,7 +2078,7 @@ int PartitionSimpleElements(struct FemType *data,struct ElmergridType *eg,struct
     bigerror("Partitioning not performed");
   }
     
-  if( eg->partbcz > 1 ) 
+  if( eg->partbcz > 1 || eg->partbcr ) 
     PartitionConnectedElements1D(data,bound,eg,info);
   else if( eg->partbcmetis > 1 ) 
     PartitionConnectedElementsMetis(data,bound,eg->partbcmetis,3,info); 
@@ -2853,22 +2853,27 @@ int PartitionConnectedElementsStraight(struct FemType *data,struct BoundaryType 
 
 int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound,
 				 struct ElmergridType *eg, int info) {
-  int i,j,k,l,dim,allocated,debug,partz,hit,bctype;
+  int i,j,k,l,dim,allocated,debug,partz,partr,hit,bctype;
   int noknots, noelements,bcelem,bc,maxbcelem;
   int IndZ,noconnect,totpartelems,sideelemtype,sidenodes,sidehits,nohits;
   int *cumz,*elemconnect,*partelems,*nodeconnect;
   int sideind[MAXNODESD2];
-  Real z,MaxZ,MinZ; 
+  Real val,z,MaxZ,MinZ; 
 
 
   debug = FALSE;
 
   partz = eg->partbcz;
-  if( partz == 0 ) return(0);
+  partr = eg->partbcr;
+  
+  if( partz == 0 && partr == 0) return(0);
 
 
   if(info) {
-    printf("Making a simple 1D partitioing in z for the connected elements only\n");
+    if( partz )
+      printf("Making a simple 1D partitioing in z for the connected elements only\n");
+    else
+      printf("Making a simple 1D partitioing in r for the connected elements only\n");     
   }
 
   if(!data->nodeconnectexist) {
@@ -2887,15 +2892,24 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
   noelements = data->noelements;
   totpartelems = 0;
 
-  MaxZ = MinZ = data->z[1];
-  for(i=1;i<=noknots;i++) {
-    z = data->z[i];
+  /* Because we don't want to change the code too much use 'z' for the 
+     coordinate also in the radial case. */ 
+  if( partr )
+    z = sqrt( data->x[1] * data->z[1] + data->y[1] * data->y[1]);
+  else
+    z = data->z[1];
+
+  for(i=1;i<=noknots;i++) {    
+    if( partr )
+      z = sqrt( data->x[i] * data->x[i] + data->y[i] * data->y[i]);
+    else
+      z = data->z[i];
     MaxZ = MAX( MaxZ, z);
     MinZ = MIN( MinZ, z);
   }
 
   if( info ) {
-    printf("Range in z-direction: %12.5e %12.5e\n",MinZ,MaxZ);
+    printf("Range in coordinate direction: %12.5e %12.5e\n",MinZ,MaxZ);
   }
 
   /* Zero is the 1st value so that recursive algos can be used. */ 
@@ -2918,21 +2932,6 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
 		     data,sideind,&sideelemtype);
 
       sidenodes = sideelemtype % 100;
-#if 0
-      /* This method of going through the connected BC elements was not really 
-	 robust enough since there can be elements that are not on the boundary 
-	 but still past the test if all their nodes are on the boundary. */
-      nohits = 0;      
-      z = 0.0; 
-      for(j=0;j<sidenodes;j++) {
-	k = sideind[j];
-	if( nodeconnect[k] ) {
-	  nohits++;
-	  z += data->z[k];
-	}
-      }
-      if( nohits < sidenodes ) continue;
-#else     
       hit = FALSE;
       
       for(k=1;k<=eg->connect;k++) {
@@ -2956,9 +2955,12 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
       z = 0.0; 
       for(j=0;j<sidenodes;j++) {
 	k = sideind[j];
-	z += data->z[k];
+	if( partr )
+	  val = sqrt( data->x[k]*data->x[k] + data->y[k]*data->y[k]);
+	else
+	  val = data->z[k];
+	z += val;
       }
-#endif
 
       z = z / sidenodes;
       IndZ = ceil( MAXCATEGORY * ( z - MinZ ) / ( MaxZ - MinZ ) );
@@ -3903,7 +3905,7 @@ int PartitionMetisGraph(struct FemType *data,struct BoundaryType *bound,
 
   nparts = partitions;
   if( dual ) {
-    if( eg->partbcz > 1 ) 
+    if( eg->partbcz > 1 || eg->partbcr ) 
       PartitionConnectedElements1D(data,bound,eg,info);
     else if( eg->partbcmetis > 1 ) 
       PartitionConnectedElementsMetis(data,bound,eg->partbcmetis,metisopt,info);

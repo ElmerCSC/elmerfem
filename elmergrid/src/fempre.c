@@ -189,9 +189,10 @@ static void Instructions()
   printf("-partbcoptim         : apply optimization to bc ownership sharing\n");
   printf("-partbw              : minimize the bandwidth of partition-partion couplings\n");
   printf("-parthypre           : number the nodes continuously partitionwise\n");
-  printf("-partconnect         : partition connected BCs separately to partitions in z-direction\n");
+  printf("-partzbc             : partition connected BCs separately to partitions in Z-direction\n");
+  printf("-partrbc             : partition connected BCs separately to partitions in R-direction\n");
 #if PARTMETIS
-  printf("-metisconnect        : partition connected BCs separately to partitions by Metis\n");
+  printf("-metisbc             : partition connected BCs separately to partitions by Metis\n");
 #endif
   printf("-partlayers          : extended boundary partitioning by element layers\n");
 
