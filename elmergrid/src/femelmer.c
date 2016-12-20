@@ -2853,7 +2853,7 @@ int PartitionConnectedElementsStraight(struct FemType *data,struct BoundaryType 
 
 int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound,
 				 struct ElmergridType *eg, int info) {
-  int i,j,k,l,dim,allocated,debug,partz,partr,hit,bctype;
+  int i,j,k,l,dim,allocated,debug,partz,partr,parts,hit,bctype;
   int noknots, noelements,bcelem,bc,maxbcelem;
   int IndZ,noconnect,totpartelems,sideelemtype,sidenodes,sidehits,nohits;
   int *cumz,*elemconnect,*partelems,*nodeconnect;
@@ -2868,6 +2868,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
   
   if( partz == 0 && partr == 0) return(0);
 
+  parts = MAX( partz, partr ); 
 
   if(info) {
     if( partz )
@@ -2898,7 +2899,8 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
     z = sqrt( data->x[1] * data->z[1] + data->y[1] * data->y[1]);
   else
     z = data->z[1];
-
+  MaxZ = MinZ = z;
+  
   for(i=1;i<=noknots;i++) {    
     if( partr )
       z = sqrt( data->x[i] * data->x[i] + data->y[i] * data->y[i]);
@@ -2909,7 +2911,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
   }
 
   if( info ) {
-    printf("Range in coordinate direction: %12.5e %12.5e\n",MinZ,MaxZ);
+    printf("Range in coordinate extent: %12.5e %12.5e\n",MinZ,MaxZ);
   }
 
   /* Zero is the 1st value so that recursive algos can be used. */ 
@@ -3021,7 +3023,7 @@ int PartitionConnectedElements1D(struct FemType *data,struct BoundaryType *bound
     
     noconnect = bcelem;
     for(i=1;i<=MAXCATEGORY;i++) 
-      cumz[i] = ceil( 1.0 * partz * cumz[i] / noconnect );
+      cumz[i] = ceil( 1.0 * parts * cumz[i] / noconnect );
     
     if( debug ) {
       printf("Partition categories\n");
@@ -3320,6 +3322,7 @@ int ExtendBoundaryPartitioning(struct FemType *data,struct BoundaryType *bound,
   printf("Extending boundary partitioning by majority rule\n");
 
   CreateInverseTopology(data, info);
+  printf("done inverse\n");
   invrow = data->invtopo.rows;
   invcol = data->invtopo.cols;
   
