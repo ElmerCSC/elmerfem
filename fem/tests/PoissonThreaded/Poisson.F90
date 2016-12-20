@@ -30,7 +30,7 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: col, cli, cti
   TYPE(Graph_t) :: DualGraph
   TYPE(GraphColour_t) :: GraphColouring
-  TYPE(Graph_t) :: ColourIndexList
+  TYPE(Graph_t), POINTER :: ColourIndexList
   INTEGER, ALLOCATABLE :: dualptr(:), dualind(:), colours(:), &
         cptr(:), cind(:)
   LOGICAL :: VecAsm, MCAsm
@@ -47,25 +47,32 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
 
   ! Check that mesh colouring is actually in use
   VecAsm = .TRUE.
-  MCAsm = ListGetLogical( Solver % Values, 'Mesh Colouring', Found )
+  MCAsm = ListGetLogical( Solver % Values, 'MultiColour Solver', Found )
   IF (VecAsm .AND. MCAsm .AND. Found) THEN
     CALL Info('PoissonSolver', 'Vectorized assembly in use')
 
+    ! Solver will construct colouring from dual mesh as follows
+    ! and store it to Solver % ColourIndexList -variable
+    ! (see MainUtils::AddEquationsBasics for details) 
+
     ! Construct the dual graph from Elmer mesh
-    CALL ElmerMeshToDualGraph(Mesh, DualGraph)
+    ! CALL ElmerMeshToDualGraph(Mesh, DualGraph)
     
     ! Colour the dual graph
-    CALL ElmerGraphColour(DualGraph, GraphColouring)
+    ! CALL ElmerGraphColour(DualGraph, GraphColouring)
     
     ! Deallocate dual graph as it is no longer needed
-    CALL Graph_Deallocate(DualGraph)
+    ! CALL Graph_Deallocate(DualGraph)
     
     ! Construct colour lists
-    CALL ElmerColouringToGraph(GraphColouring, ColourIndexList)
-    CALL Colouring_Deallocate(GraphColouring)
+    ! CALL ElmerColouringToGraph(GraphColouring, ColourIndexList)
+    ! CALL Colouring_Deallocate(GraphColouring)
+    ColourIndexList => Solver % ColourIndexList
   ELSE
     CALL Fatal('PoissonSolver', 'Vectorized assembly not in use')
   END IF
+  
+  CALL ResetTimer('ThreadedAssembly')
   
   !$OMP PARALLEL DEFAULT(NONE) &
   !$OMP SHARED(Solver, Mesh, Active,nthreads, ColourIndexList, cli, cti, VecAsm) &
@@ -84,10 +91,6 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
     AllocationsDone = .TRUE.
   END IF
 
-
-  CALL ResetTimer('ThreadedAssembly')
-
-
   ! Perform FE assembly one colour at a time (thread-safe)
   ! Element indices are listed in packed (CRS) structure  ColourIndexList
   DO col=1,ColourIndexList % n
@@ -96,21 +99,23 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
     CALL Info('PoissonSolve','Assembly of colour: '//TRIM(I2S(col)),Level=10)
     cli = ColourIndexList % ptr(col)
     cti = ColourIndexList % ptr(col+1)-1
+    ! Set current colour to Solver (normally done via call to GetNOFActive())
+    Solver % CurrentColour = col
     !$OMP END SINGLE
 
     !$OMP DO SCHEDULE(STATIC)
     DO t=cli, cti
-      Element => GetActiveElement(ColourIndexList % ind(t))
+      ! Element => GetActiveElement(ColourIndexList % ind(t))
+      Element => GetActiveElement(t-cli+1)
       n  = GetElementNOFNodes(Element)
       nd = GetElementNOFDOFs(Element)
       nb = GetElementNOFBDOFs(Element)
 
       LOAD(1:n) = 0.0d0
       BodyForce => GetBodyForce(Element)
-      
+
       IF ( ASSOCIATED(BodyForce) ) THEN
-        LoadPtr => GetReal( BodyForce, 'Source', Found, UElement=Element )
-        LOAD(1:n) = LoadPtr(1:n)
+        CALL GetRealValues( BodyForce, 'Source', Load, Found, UElement=Element )
       END IF
 
       !Get element local matrix and rhs vector:
@@ -126,9 +131,6 @@ SUBROUTINE PoissonSolver( Model,Solver,dt,TransientSimulation )
   !$OMP END PARALLEL
 
   CALL CheckTimer('ThreadedAssembly',Delete=.TRUE.)
-
-  ! Deallocate colouring 
-  CALL Graph_Deallocate(ColourIndexList)
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
