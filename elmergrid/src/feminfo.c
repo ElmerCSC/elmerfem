@@ -306,6 +306,7 @@ void InitParameters(struct ElmergridType *eg)
   eg->parthypre = FALSE;
   eg->partdual = FALSE;
   eg->partbcz = 0;
+  eg->partbcr = 0;
   eg->partbclayers = 1;
   eg->partbcmetis = 0;
   eg->partbw = FALSE;
@@ -475,7 +476,10 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
     if(strcmp(argv[arg],"-haloz") == 0) {
       eg->partitionhalo = 3;
     }
-     if(strcmp(argv[arg],"-indirect") == 0) {
+    if(strcmp(argv[arg],"-halor") == 0) {
+      eg->partitionhalo = 3;
+    }
+    if(strcmp(argv[arg],"-indirect") == 0) {
       eg->partitionindirect = TRUE;
     }
     if(strcmp(argv[arg],"-metisorder") == 0) {
@@ -729,7 +733,7 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
 
     if(strcmp(argv[arg],"-partjoin") == 0) {
       if(arg+1 >= argc) {
-	printf("The number of partitions is required as a parameter\n");
+	printf("The number of partitions is required as a parameter!\n");
 	return(15);
       }
       else {
@@ -738,14 +742,25 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
     }
 
-    if(strcmp(argv[arg],"-partconnect") == 0 ) {
+    if(strcmp(argv[arg],"-partconnect") == 0 || strcmp(argv[arg],"-partzbc") == 0 ) {
       if(arg+1 >= argc) {
-	printf("The number of 1D partitions is required as a parameter\n");
+	printf("The number of 1D partitions is required as a parameter!\n");
 	return(15);
       }
       else {
 	eg->partbcz = atoi(argv[arg+1]);
-	printf("The connected BCs will be partitioned to %d partitions in 1D.\n",eg->partbcz);
+	printf("The connected BCs will be partitioned to %d partitions in Z.\n",eg->partbcz);
+      }
+    }
+
+    if(strcmp(argv[arg],"-partrbc") == 0 ) {
+      if(arg+1 >= argc) {
+	printf("The number of 1D partitions is required as a parameter!\n");
+	return(15);
+      }
+      else {
+	eg->partbcr = atoi(argv[arg+1]);
+	printf("The connected BCs will be partitioned to %d partitions in R.\n",eg->partbcr);
       }
     }
 
@@ -756,11 +771,11 @@ int InlineParameters(struct ElmergridType *eg,int argc,char *argv[])
       }
       else {
 	eg->partbclayers = atoi(argv[arg+1]);
-	printf("The boundary partitioning will be extended by %d layers.\n",eg->partbcz);
+	printf("The boundary partitioning will be extended by %d layers.\n",eg->partbclayers);
       }
     }
 
-    if(strcmp(argv[arg],"-metisconnect") == 0) {
+    if(strcmp(argv[arg],"-metisconnect") == 0 || strcmp(argv[arg],"-metisbc") == 0 ) {
       if(arg+1 >= argc) {
 	printf("The number of Metis partitions is required as a parameter\n");
 	return(15);

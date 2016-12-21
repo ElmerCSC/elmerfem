@@ -368,6 +368,7 @@ struct ElmergridType {
     parthypre, /* renumber for hypre */
     partdual, 
     partbcz,
+    partbcr, 
     partbcmetis,
     partbclayers,
     nofilesin,

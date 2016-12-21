@@ -1061,20 +1061,23 @@ SUBROUTINE CRS_RowSumInfo( A, Values )
 
     ALLOCATE( A % Rows(n+1),A % Diag(n),STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix topology.' )
+      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix topology of size: '&
+          //TRIM(I2S(n)))
     END IF
 
     k = Ndeg*Ndeg*Total
     CALL Info('CRS_CreateMatrix','Creating CRS Matrix with nofs: '//TRIM(I2S(k)),Level=14)
     ALLOCATE( A % Cols(k),STAT=istat )
     IF ( istat /= 0 ) THEN
-      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix cols.' )
+      CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix cols of size: '&
+          //TRIM(I2S(k)) )
     END IF
 
     IF ( AllocValues ) THEN
       ALLOCATE( A % Values(k), STAT=istat )
       IF ( istat /= 0 ) THEN
-        CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix values.' )
+        CALL Fatal( 'CRS_CreateMatrix', 'Memory allocation error for matrix values of size: '&
+            //TRIM(I2S(k)) )
       END IF
     END IF
 

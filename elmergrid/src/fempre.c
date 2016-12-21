@@ -179,7 +179,7 @@ static void Instructions()
   printf("-partdual            : use the dual graph in the partitioning\n");
   printf("-halo                : create halo for the partitioning for DG\n");
   printf("-halobc              : create halo for the partitioning at boundaries only\n");
-  printf("-haloz               : create halo for the the special z-partitioning\n");
+  printf("-haloz / -halor      : create halo for the the special z- or r-partitioning\n");
   printf("-indirect            : create indirect connections in the partitioning\n");
   printf("-periodic int[3]     : decleare the periodic coordinate directions for parallel meshes\n");
   printf("-partjoin int        : number of partitions in the data to be joined\n");
@@ -189,9 +189,10 @@ static void Instructions()
   printf("-partbcoptim         : apply optimization to bc ownership sharing\n");
   printf("-partbw              : minimize the bandwidth of partition-partion couplings\n");
   printf("-parthypre           : number the nodes continuously partitionwise\n");
-  printf("-partconnect         : partition connected BCs separately to partitions in z-direction\n");
+  printf("-partzbc             : partition connected BCs separately to partitions in Z-direction\n");
+  printf("-partrbc             : partition connected BCs separately to partitions in R-direction\n");
 #if PARTMETIS
-  printf("-metisconnect        : partition connected BCs separately to partitions by Metis\n");
+  printf("-metisbc             : partition connected BCs separately to partitions by Metis\n");
 #endif
   printf("-partlayers          : extended boundary partitioning by element layers\n");
 
@@ -1008,7 +1009,7 @@ int main(int argc, char *argv[])
       if(data[k].nopartitions > 1) 
 	SaveElmerInputPartitioned(&data[k],boundaries[k],eg.filesout[k],eg.decimals,
 				  eg.partitionhalo,eg.partitionindirect,eg.parthypre,
-				  eg.partbcz,eg.nooverwrite,info);
+				  MAX(eg.partbcz,eg.partbcr),eg.nooverwrite,info);
       else
 	SaveElmerInput(&data[k],boundaries[k],eg.filesout[k],eg.decimals,eg.nooverwrite,info);
     }
